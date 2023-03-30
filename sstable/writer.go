@@ -5,24 +5,25 @@
 package sstable
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"math"
 	"runtime"
+	"sort"
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
 // encodedBHPEstimatedSize estimates the size of the encoded BlockHandleWithProperties.
@@ -109,22 +110,11 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	}
 }
 
-type flusher interface {
-	Flush() error
-}
-
-type writeCloseSyncer interface {
-	io.WriteCloser
-	Sync() error
-}
-
 // Writer is a table writer.
 type Writer struct {
-	writer    io.Writer
-	bufWriter *bufio.Writer
-	syncer    writeCloseSyncer
-	meta      WriterMetadata
-	err       error
+	writable objstorage.Writable
+	meta     WriterMetadata
+	err      error
 	// cacheID and fileNum are used to remove blocks written to the sstable from
 	// the cache, providing a defense in depth against bugs which cause cache
 	// collisions.
@@ -186,9 +176,9 @@ type Writer struct {
 	// indexBlockAlloc is used to bulk-allocate byte slices used to store index
 	// blocks in indexPartitions. These live until the index finishes.
 	indexBlockAlloc []byte
-	// indexSepAlloc is used to bulk-allocate index block seperator slices stored
+	// indexSepAlloc is used to bulk-allocate index block separator slices stored
 	// in indexPartitions. These live until the index finishes.
-	indexSepAlloc []byte
+	indexSepAlloc bytealloc.A
 
 	// To allow potentially overlapping (i.e. un-fragmented) range keys spans to
 	// be added to the Writer, a keyspan.Fragmenter is used to retain the keys
@@ -196,7 +186,8 @@ type Writer struct {
 	// keys must be added in order of their start user-key.
 	fragmenter        keyspan.Fragmenter
 	rangeKeyEncoder   rangekey.Encoder
-	rangeKeyCoalesced keyspan.Span
+	rangeKeysBySuffix keyspan.KeysBySuffix
+	rangeKeySpan      keyspan.Span
 	rkBuf             []byte
 	// dataBlockBuf consists of the state which is currently owned by and used by
 	// the Writer client goroutine. This state can be handed off to other goroutines.
@@ -256,35 +247,37 @@ func (c *coordinationState) init(parallelismEnabled bool, writer *Writer) {
 
 // sizeEstimate is a general purpose helper for estimating two kinds of sizes:
 // A. The compressed sstable size, which is useful for deciding when to start
-//    a new sstable during flushes or compactions. In practice, we use this in
-//    estimating the data size (excluding the index).
+//
+//	a new sstable during flushes or compactions. In practice, we use this in
+//	estimating the data size (excluding the index).
+//
 // B. The size of index blocks to decide when to start a new index block.
 //
 // There are some terminology peculiarities which are due to the origin of
 // sizeEstimate for use case A with parallel compression enabled (for which
 // the code has not been merged). Specifically this relates to the terms
 // "written" and "compressed".
-// - The notion of "written" for case A is sufficiently defined by saying that
-//   the data block is compressed. Waiting for the actual data block write to
-//   happen can result in unnecessary estimation, when we already know how big
-//   it will be in compressed form. Additionally, with the forthcoming value
-//   blocks containing older MVCC values, these compressed block will be held
-//   in-memory until late in the sstable writing, and we do want to accurately
-//   account for them without waiting for the actual write.
-//   For case B, "written" means that the index entry has been fully
-//   generated, and has been added to the uncompressed block buffer for that
-//   index block. It does not include actually writing a potentially
-//   compressed index block.
-// - The notion of "compressed" is to differentiate between a "inflight" size
-//   and the actual size, and is handled via computing a compression ratio
-//   observed so far (defaults to 1).
-//   For case A, this is actual data block compression, so the "inflight" size
-//   is uncompressed blocks (that are no longer being written to) and the
-//   "compressed" size is after they have been compressed.
-//   For case B the inflight size is for a key-value pair in the index for
-//   which the value size (the encoded size of the BlockHandleWithProperties)
-//   is not accurately known, while the compressed size is the size of that
-//   entry when it has been added to the (in-progress) index ssblock.
+//   - The notion of "written" for case A is sufficiently defined by saying that
+//     the data block is compressed. Waiting for the actual data block write to
+//     happen can result in unnecessary estimation, when we already know how big
+//     it will be in compressed form. Additionally, with the forthcoming value
+//     blocks containing older MVCC values, these compressed block will be held
+//     in-memory until late in the sstable writing, and we do want to accurately
+//     account for them without waiting for the actual write.
+//     For case B, "written" means that the index entry has been fully
+//     generated, and has been added to the uncompressed block buffer for that
+//     index block. It does not include actually writing a potentially
+//     compressed index block.
+//   - The notion of "compressed" is to differentiate between a "inflight" size
+//     and the actual size, and is handled via computing a compression ratio
+//     observed so far (defaults to 1).
+//     For case A, this is actual data block compression, so the "inflight" size
+//     is uncompressed blocks (that are no longer being written to) and the
+//     "compressed" size is after they have been compressed.
+//     For case B the inflight size is for a key-value pair in the index for
+//     which the value size (the encoded size of the BlockHandleWithProperties)
+//     is not accurately known, while the compressed size is the size of that
+//     entry when it has been added to the (in-progress) index ssblock.
 //
 // Usage: To update state, one can optionally provide an inflight write value
 // using addInflight (used for case B). When something is "written" the state
@@ -845,7 +838,12 @@ func (w *Writer) makeAddPointDecisionV3(
 func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	var err error
 	var setHasSameKeyPrefix, writeToValueBlock, addPrefixToValueStoredWithKey bool
+	maxSharedKeyLen := len(key.UserKey)
 	if w.valueBlockWriter != nil {
+		// maxSharedKeyLen is limited to the prefix of the preceding key. If the
+		// preceding key was in a different block, then the blockWriter will
+		// ignore this maxSharedKeyLen.
+		maxSharedKeyLen = w.lastPointKeyInfo.prefixLen
 		setHasSameKeyPrefix, writeToValueBlock, err = w.makeAddPointDecisionV3(key, len(value))
 		addPrefixToValueStoredWithKey = base.TrailerKind(key.Trailer) == InternalKeyKindSet
 	} else {
@@ -912,7 +910,8 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 
 	w.maybeAddToFilter(key.UserKey)
 	w.dataBlockBuf.dataBlock.addWithOptionalValuePrefix(
-		key, valueStoredWithKey, addPrefixToValueStoredWithKey, prefix, setHasSameKeyPrefix)
+		key, valueStoredWithKey, maxSharedKeyLen, addPrefixToValueStoredWithKey, prefix,
+		setHasSameKeyPrefix)
 
 	w.meta.updateSeqNum(key.SeqNum())
 
@@ -1037,10 +1036,15 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 }
 
 // RangeKeySet sets a range between start (inclusive) and end (exclusive) with
-// the given suffix to the given value.
+// the given suffix to the given value. The resulting range key is given the
+// sequence number zero, with the expectation that the resulting sstable will be
+// ingested.
 //
 // Keys must be added to the table in increasing order of start key. Spans are
-// not required to be fragmented.
+// not required to be fragmented. The same suffix may not be set or unset twice
+// over the same keyspan, because it would result in inconsistent state. Both
+// the Set and Unset would share the zero sequence number, and a key cannot be
+// both simultaneously set and unset.
 func (w *Writer) RangeKeySet(start, end, suffix, value []byte) error {
 	return w.addRangeKeySpan(keyspan.Span{
 		Start: w.tempRangeKeyCopy(start),
@@ -1056,10 +1060,15 @@ func (w *Writer) RangeKeySet(start, end, suffix, value []byte) error {
 }
 
 // RangeKeyUnset un-sets a range between start (inclusive) and end (exclusive)
-// with the given suffix.
+// with the given suffix. The resulting range key is given the
+// sequence number zero, with the expectation that the resulting sstable will be
+// ingested.
 //
 // Keys must be added to the table in increasing order of start key. Spans are
-// not required to be fragmented.
+// not required to be fragmented. The same suffix may not be set or unset twice
+// over the same keyspan, because it would result in inconsistent state. Both
+// the Set and Unset would share the zero sequence number, and a key cannot be
+// both simultaneously set and unset.
 func (w *Writer) RangeKeyUnset(start, end, suffix []byte) error {
 	return w.addRangeKeySpan(keyspan.Span{
 		Start: w.tempRangeKeyCopy(start),
@@ -1118,20 +1127,23 @@ func (w *Writer) addRangeKeySpan(span keyspan.Span) error {
 	return w.err
 }
 
-func (w *Writer) coalesceSpans(span keyspan.Span) {
-	// This method is the emit function of the Fragmenter, so span.Keys is only
-	// owned by this span and it's safe to mutate.
-	w.rangeKeyCoalesced.Start = span.Start
-	w.rangeKeyCoalesced.End = span.End
-	err := rangekey.Coalesce(w.compare, span.Keys, &w.rangeKeyCoalesced.Keys)
-	if err != nil {
-		w.err = errors.Newf("sstable: could not coalesce span: %s", err)
-		return
-	}
+func (w *Writer) encodeRangeKeySpan(span keyspan.Span) {
+	// This method is the emit function of the Fragmenter.
+	//
+	// NB: The span should only contain range keys and be internally consistent
+	// (eg, no duplicate suffixes, no additional keys after a RANGEKEYDEL).
+	//
+	// We use w.rangeKeysBySuffix and w.rangeKeySpan to avoid allocations.
 
-	// NB: The span only contains range keys and is internally consistent (eg,
-	// no duplicate suffixes, no additional keys after a RANGEKEYDEL).
-	w.err = firstError(w.err, w.rangeKeyEncoder.Encode(&w.rangeKeyCoalesced))
+	// Sort the keys by suffix. Iteration doesn't *currently* depend on it, but
+	// we may want to in the future.
+	w.rangeKeysBySuffix.Cmp = w.compare
+	w.rangeKeysBySuffix.Keys = span.Keys
+	sort.Sort(&w.rangeKeysBySuffix)
+
+	w.rangeKeySpan = span
+	w.rangeKeySpan.Keys = w.rangeKeysBySuffix.Keys
+	w.err = firstError(w.err, w.rangeKeyEncoder.Encode(&w.rangeKeySpan))
 }
 
 func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
@@ -1413,11 +1425,11 @@ func (w *Writer) indexEntrySep(prevKey, key InternalKey, dataBlockBuf *dataBlock
 // they're used when the index block is finished.
 //
 // Invariant:
-// 1. addIndexEntry must not store references to the sep InternalKey, the tmp
-//    byte slice, bhp.Props. That is, these must be either deep copied or
-//    encoded.
-// 2. addIndexEntry must not hold references to the flushIndexBuf, and the writeTo
-//    indexBlockBufs.
+//  1. addIndexEntry must not store references to the sep InternalKey, the tmp
+//     byte slice, bhp.Props. That is, these must be either deep copied or
+//     encoded.
+//  2. addIndexEntry must not hold references to the flushIndexBuf, and the writeTo
+//     indexBlockBufs.
 func (w *Writer) addIndexEntry(
 	sep InternalKey,
 	bhp BlockHandleWithProperties,
@@ -1462,8 +1474,8 @@ func (w *Writer) addPrevDataBlockToIndexBlockProps() {
 // aren't being written asynchronously.
 //
 // Invariant:
-// 1. addIndexEntrySync must not store references to the prevKey, key InternalKey's,
-//    the tmp byte slice. That is, these must be either deep copied or encoded.
+//  1. addIndexEntrySync must not store references to the prevKey, key InternalKey's,
+//     the tmp byte slice. That is, these must be either deep copied or encoded.
 func (w *Writer) addIndexEntrySync(
 	prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte,
 ) error {
@@ -1527,25 +1539,22 @@ func shouldFlush(
 	return newSize > targetBlockSize
 }
 
-const keyAllocSize = 256 << 10
-
-func cloneKeyWithBuf(k InternalKey, buf []byte) ([]byte, InternalKey) {
+func cloneKeyWithBuf(k InternalKey, a bytealloc.A) (bytealloc.A, InternalKey) {
 	if len(k.UserKey) == 0 {
-		return buf, k
+		return a, k
 	}
-	if len(buf) < len(k.UserKey) {
-		buf = make([]byte, len(k.UserKey)+keyAllocSize)
-	}
-	n := copy(buf, k.UserKey)
-	return buf[n:], InternalKey{UserKey: buf[:n:n], Trailer: k.Trailer}
+	a, keyCopy := a.Copy(k.UserKey)
+	return a, InternalKey{UserKey: keyCopy, Trailer: k.Trailer}
 }
 
 // Invariants: The byte slice returned by finishIndexBlockProps is heap-allocated
-//  and has its own lifetime, independent of the Writer and the blockPropsEncoder,
+//
+//	and has its own lifetime, independent of the Writer and the blockPropsEncoder,
+//
 // and it is safe to:
-// 1. Reuse w.blockPropsEncoder without first encoding the byte slice returned.
-// 2. Store the byte slice in the Writer since it is a copy and not supported by
-//    an underlying buffer.
+//  1. Reuse w.blockPropsEncoder without first encoding the byte slice returned.
+//  2. Store the byte slice in the Writer since it is a copy and not supported by
+//     an underlying buffer.
 func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 	w.blockPropsEncoder.resetProps()
 	for i := range w.blockPropCollectors {
@@ -1565,11 +1574,11 @@ func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 // level index block. This is only used when two level indexes are enabled.
 //
 // Invariants:
-// 1. The props slice passed into finishedIndexBlock must not be a
-//    owned by any other struct, since it will be stored in the Writer.indexPartitions
-//    slice.
-// 2. None of the buffers owned by indexBuf will be shallow copied and stored elsewhere.
-//    That is, it must be safe to reuse indexBuf after finishIndexBlock has been called.
+//  1. The props slice passed into finishedIndexBlock must not be a
+//     owned by any other struct, since it will be stored in the Writer.indexPartitions
+//     slice.
+//  2. None of the buffers owned by indexBuf will be shallow copied and stored elsewhere.
+//     That is, it must be safe to reuse indexBuf after finishIndexBlock has been called.
 func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
 	part := indexBlockAndBlockProperties{
 		nEntries: indexBuf.block.nEntries, properties: props,
@@ -1661,16 +1670,14 @@ func (w *Writer) writeCompressedBlock(block []byte, blockTrailerBuf []byte) (Blo
 	}
 
 	// Write the bytes to the file.
-	n, err := w.writer.Write(block)
-	if err != nil {
+	if err := w.writable.Write(block); err != nil {
 		return BlockHandle{}, err
 	}
-	w.meta.Size += uint64(n)
-	n, err = w.writer.Write(blockTrailerBuf[:blockTrailerLen])
-	if err != nil {
+	w.meta.Size += uint64(len(block))
+	if err := w.writable.Write(blockTrailerBuf[:blockTrailerLen]); err != nil {
 		return BlockHandle{}, err
 	}
-	w.meta.Size += uint64(n)
+	w.meta.Size += blockTrailerLen
 
 	return bh, nil
 }
@@ -1689,7 +1696,10 @@ func (w *Writer) Write(blockWithTrailer []byte) (n int, err error) {
 		w.cache.Delete(w.cacheID, w.fileNum, offset)
 	}
 	w.meta.Size += uint64(len(blockWithTrailer))
-	return w.writer.Write(blockWithTrailer)
+	if err := w.writable.Write(blockWithTrailer); err != nil {
+		return 0, err
+	}
+	return len(blockWithTrailer), nil
 }
 
 func (w *Writer) writeBlock(
@@ -1733,22 +1743,26 @@ func (w *Writer) Close() (err error) {
 	defer func() {
 		if w.valueBlockWriter != nil {
 			releaseValueBlockWriter(w.valueBlockWriter)
+			// Defensive code in case Close gets called again. We don't want to put
+			// the same object to a sync.Pool.
+			w.valueBlockWriter = nil
 		}
-		if w.syncer == nil {
-			return
+		if w.writable != nil {
+			w.writable.Abort()
+			w.writable = nil
 		}
-		err1 := w.syncer.Close()
-		if err == nil {
-			err = err1
+		// Record any error in the writer (so we can exit early if Close is called
+		// again).
+		if err != nil {
+			w.err = err
 		}
-		w.syncer = nil
 	}()
 
 	// finish must be called before we check for an error, because finish will
 	// block until every single task added to the writeQueue has been processed,
 	// and an error could be encountered while any of those tasks are processed.
-	if err = w.coordination.writeQueue.finish(); err != nil {
-		w.err = err
+	if err := w.coordination.writeQueue.finish(); err != nil {
+		return err
 	}
 
 	if w.err != nil {
@@ -1774,17 +1788,14 @@ func (w *Writer) Close() (err error) {
 	if w.dataBlockBuf.dataBlock.nEntries > 0 || w.indexBlock.block.nEntries == 0 {
 		bh, err := w.writeBlock(w.dataBlockBuf.dataBlock.finish(), w.compression, &w.dataBlockBuf.blockBuf)
 		if err != nil {
-			w.err = err
-			return w.err
+			return err
 		}
-		var bhp BlockHandleWithProperties
-		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
-			w.err = err
+		bhp, err := w.maybeAddBlockPropertiesToBlockHandle(bh)
+		if err != nil {
 			return err
 		}
 		prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
-		if err = w.addIndexEntrySync(prevKey, InternalKey{}, bhp, w.dataBlockBuf.tmp[:]); err != nil {
-			w.err = err
+		if err := w.addIndexEntrySync(prevKey, InternalKey{}, bhp, w.dataBlockBuf.tmp[:]); err != nil {
 			return err
 		}
 	}
@@ -1796,13 +1807,11 @@ func (w *Writer) Close() (err error) {
 	if w.filter != nil {
 		b, err := w.filter.finish()
 		if err != nil {
-			w.err = err
-			return w.err
+			return err
 		}
 		bh, err := w.writeBlock(b, NoCompression, &w.blockBuf)
 		if err != nil {
-			w.err = err
-			return w.err
+			return err
 		}
 		n := encodeBlockHandle(w.blockBuf.tmp[:], bh)
 		metaindex.add(InternalKey{UserKey: []byte(w.filter.metaName())}, w.blockBuf.tmp[:n])
@@ -1816,8 +1825,7 @@ func (w *Writer) Close() (err error) {
 		// Write the two level index block.
 		indexBH, err = w.writeTwoLevelIndex()
 		if err != nil {
-			w.err = err
-			return w.err
+			return err
 		}
 	} else {
 		w.props.IndexType = binarySearchIndex
@@ -1830,8 +1838,7 @@ func (w *Writer) Close() (err error) {
 		// Write the single level index block.
 		indexBH, err = w.writeBlock(w.indexBlock.finish(), w.compression, &w.blockBuf)
 		if err != nil {
-			w.err = err
-			return w.err
+			return err
 		}
 	}
 
@@ -1856,8 +1863,7 @@ func (w *Writer) Close() (err error) {
 		}
 		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression, &w.blockBuf)
 		if err != nil {
-			w.err = err
-			return w.err
+			return err
 		}
 	}
 
@@ -1871,8 +1877,7 @@ func (w *Writer) Close() (err error) {
 		kind := key.Kind()
 		endKey, _, ok := rangekey.DecodeEndKey(kind, w.rangeKeyBlock.curValue)
 		if !ok {
-			w.err = errors.Newf("invalid end key: %s", w.rangeKeyBlock.curValue)
-			return w.err
+			return errors.Newf("invalid end key: %s", w.rangeKeyBlock.curValue)
 		}
 		k := base.MakeExclusiveSentinelKey(kind, endKey).Clone()
 		w.meta.SetLargestRangeKey(k)
@@ -1881,8 +1886,7 @@ func (w *Writer) Close() (err error) {
 		// enable compression on this block.
 		rangeKeyBH, err = w.writeBlock(w.rangeKeyBlock.finish(), NoCompression, &w.blockBuf)
 		if err != nil {
-			w.err = err
-			return w.err
+			return err
 		}
 	}
 
@@ -1913,7 +1917,6 @@ func (w *Writer) Close() (err error) {
 		userProps := make(map[string]string)
 		for i := range w.propCollectors {
 			if err := w.propCollectors[i].Finish(userProps); err != nil {
-				w.err = err
 				return err
 			}
 		}
@@ -1921,10 +1924,8 @@ func (w *Writer) Close() (err error) {
 			scratch := w.blockPropsEncoder.getScratchForProp()
 			// Place the shortID in the first byte.
 			scratch = append(scratch, byte(i))
-			buf, err :=
-				w.blockPropCollectors[i].FinishTable(scratch)
+			buf, err := w.blockPropCollectors[i].FinishTable(scratch)
 			if err != nil {
-				w.err = err
 				return err
 			}
 			var prop string
@@ -1950,8 +1951,7 @@ func (w *Writer) Close() (err error) {
 		w.props.save(&raw)
 		bh, err := w.writeBlock(raw.finish(), NoCompression, &w.blockBuf)
 		if err != nil {
-			w.err = err
-			return w.err
+			return err
 		}
 		n := encodeBlockHandle(w.blockBuf.tmp[:], bh)
 		metaindex.add(InternalKey{UserKey: []byte(metaPropertiesName)}, w.blockBuf.tmp[:n])
@@ -1977,8 +1977,7 @@ func (w *Writer) Close() (err error) {
 	// expect the meta-index block to not be compressed.
 	metaindexBH, err := w.writeBlock(metaindex.blockWriter.finish(), NoCompression, &w.blockBuf)
 	if err != nil {
-		w.err = err
-		return w.err
+		return err
 	}
 
 	// Write the table footer.
@@ -1988,33 +1987,24 @@ func (w *Writer) Close() (err error) {
 		metaindexBH: metaindexBH,
 		indexBH:     indexBH,
 	}
-	var n int
-	if n, err = w.writer.Write(footer.encode(w.blockBuf.tmp[:])); err != nil {
-		w.err = err
-		return w.err
+	encoded := footer.encode(w.blockBuf.tmp[:])
+	if err := w.writable.Write(footer.encode(w.blockBuf.tmp[:])); err != nil {
+		return err
 	}
-	w.meta.Size += uint64(n)
+	w.meta.Size += uint64(len(encoded))
 	w.meta.Properties = w.props
-
-	// Flush the buffer.
-	if w.bufWriter != nil {
-		if err := w.bufWriter.Flush(); err != nil {
-			w.err = err
-			return err
-		}
-	}
 
 	// Check that the features present in the table are compatible with the format
 	// configured for the table.
 	if err = w.assertFormatCompatibility(); err != nil {
-		w.err = err
-		return w.err
-	}
-
-	if err := w.syncer.Sync(); err != nil {
-		w.err = err
 		return err
 	}
+
+	if err := w.writable.Finish(); err != nil {
+		w.writable = nil
+		return err
+	}
+	w.writable = nil
 
 	w.dataBlockBuf.clear()
 	dataBlockBufPool.Put(w.dataBlockBuf)
@@ -2024,9 +2014,6 @@ func (w *Writer) Close() (err error) {
 	w.indexBlock = nil
 
 	// Make any future calls to Set or Close return an error.
-	if w.err != nil {
-		return w.err
-	}
 	w.err = errWriterClosed
 	return nil
 }
@@ -2042,7 +2029,7 @@ func (w *Writer) EstimatedSize() uint64 {
 // Metadata returns the metadata for the finished sstable. Only valid to call
 // after the sstable has been finished.
 func (w *Writer) Metadata() (*WriterMetadata, error) {
-	if w.syncer != nil {
+	if w.writable != nil {
 		return nil, errors.New("pebble: writer is not closed")
 	}
 	return &w.meta, nil
@@ -2097,10 +2084,10 @@ func (i internalTableOpt) writerApply(w *Writer) {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *Writer {
+func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...WriterOption) *Writer {
 	o = o.ensureDefaults()
 	w := &Writer{
-		syncer: f,
+		writable: writable,
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
@@ -2150,8 +2137,8 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 
 	w.coordination.init(o.Parallelism, w)
 
-	if f == nil {
-		w.err = errors.New("pebble: nil file")
+	if writable == nil {
+		w.err = errors.New("pebble: nil writable")
 		return w
 	}
 
@@ -2231,16 +2218,8 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	}
 
 	// Initialize the range key fragmenter and encoder.
-	w.fragmenter.Emit = w.coalesceSpans
+	w.fragmenter.Emit = w.encodeRangeKeySpan
 	w.rangeKeyEncoder.Emit = w.addRangeKey
-
-	// If f does not have a Flush method, do our own buffering.
-	if _, ok := f.(flusher); ok {
-		w.writer = f
-	} else {
-		w.bufWriter = bufio.NewWriter(f)
-		w.writer = w.bufWriter
-	}
 	return w
 }
 

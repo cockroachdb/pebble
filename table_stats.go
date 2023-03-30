@@ -186,7 +186,10 @@ func (d *DB) loadNewFileStats(
 			continue
 		}
 
-		stats, newHints, err := d.loadTableStats(rs.current, nf.Level, nf.Meta)
+		stats, newHints, err := d.loadTableStats(
+			rs.current, nf.Level,
+			nf.Meta.PhysicalMeta(),
+		)
 		if err != nil {
 			d.opts.EventListener.BackgroundError(err)
 			continue
@@ -233,7 +236,9 @@ func (d *DB) scanReadStateTableStats(
 				return fill, hints, moreRemain
 			}
 
-			stats, newHints, err := d.loadTableStats(rs.current, l, f)
+			stats, newHints, err := d.loadTableStats(
+				rs.current, l, f.PhysicalMeta(),
+			)
 			if err != nil {
 				// Set `moreRemain` so we'll try again.
 				moreRemain = true
@@ -250,30 +255,38 @@ func (d *DB) scanReadStateTableStats(
 	return fill, hints, moreRemain
 }
 
+// loadTableStats currently only supports stats collection for physical
+// sstables.
+//
+// TODO(bananabrick): Support stats collection for virtual sstables.
 func (d *DB) loadTableStats(
-	v *version, level int, meta *fileMetadata,
+	v *version, level int, meta physicalMeta,
 ) (manifest.TableStats, []deleteCompactionHint, error) {
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
-	err := d.tableCache.withReader(meta, func(r *sstable.Reader) (err error) {
-		stats.NumEntries = r.Properties.NumEntries
-		stats.NumDeletions = r.Properties.NumDeletions
-		if r.Properties.NumPointDeletions() > 0 {
-			if err = d.loadTablePointKeyStats(r, v, level, meta, &stats); err != nil {
-				return
+	err := d.tableCache.withReader(
+		meta.FileMetadata, func(r *sstable.Reader) (err error) {
+			stats.NumEntries = r.Properties.NumEntries
+			stats.NumDeletions = r.Properties.NumDeletions
+			if r.Properties.NumPointDeletions() > 0 {
+				if err = d.loadTablePointKeyStats(r, v, level, meta, &stats); err != nil {
+					return
+				}
 			}
-		}
-		if r.Properties.NumRangeDeletions > 0 || r.Properties.NumRangeKeyDels > 0 {
-			if compactionHints, err = d.loadTableRangeDelStats(r, v, level, meta, &stats); err != nil {
-				return
+			if r.Properties.NumRangeDeletions > 0 || r.Properties.NumRangeKeyDels > 0 {
+				if compactionHints, err = d.loadTableRangeDelStats(
+					r, v, level, meta, &stats,
+				); err != nil {
+					return
+				}
 			}
-		}
-		// TODO(travers): Once we have real-world data, consider collecting
-		// additional stats that may provide improved heuristics for compaction
-		// picking.
-		stats.NumRangeKeySets = r.Properties.NumRangeKeySets
-		return
-	})
+			// TODO(travers): Once we have real-world data, consider collecting
+			// additional stats that may provide improved heuristics for compaction
+			// picking.
+			stats.NumRangeKeySets = r.Properties.NumRangeKeySets
+			stats.ValueBlocksSize = r.Properties.ValueBlocksSize
+			return
+		})
 	if err != nil {
 		return stats, nil, err
 	}
@@ -283,7 +296,7 @@ func (d *DB) loadTableStats(
 // loadTablePointKeyStats calculates the point key statistics for the given
 // table. The provided manifest.TableStats are updated.
 func (d *DB) loadTablePointKeyStats(
-	r *sstable.Reader, v *version, level int, meta *fileMetadata, stats *manifest.TableStats,
+	r *sstable.Reader, v *version, level int, meta physicalMeta, stats *manifest.TableStats,
 ) error {
 	// TODO(jackson): If the file has a wide keyspace, the average
 	// value size beneath the entire file might not be representative
@@ -303,9 +316,9 @@ func (d *DB) loadTablePointKeyStats(
 // loadTableRangeDelStats calculates the range deletion and range key deletion
 // statistics for the given table.
 func (d *DB) loadTableRangeDelStats(
-	r *sstable.Reader, v *version, level int, meta *fileMetadata, stats *manifest.TableStats,
+	r *sstable.Reader, v *version, level int, meta physicalMeta, stats *manifest.TableStats,
 ) ([]deleteCompactionHint, error) {
-	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta)
+	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta.FileMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -319,25 +332,50 @@ func (d *DB) loadTableRangeDelStats(
 	for s := iter.First(); s != nil; s = iter.Next() {
 		start, end := s.Start, s.End
 		// We only need to consider deletion size estimates for tables that contain
-		// point keys.
-		var hasPoints bool
+		// RANGEDELs.
+		var maxRangeDeleteSeqNum uint64
 		for _, k := range s.Keys {
-			if k.Kind() == base.InternalKeyKindRangeDelete {
-				hasPoints = true
+			if k.Kind() == base.InternalKeyKindRangeDelete && maxRangeDeleteSeqNum < k.SeqNum() {
+				maxRangeDeleteSeqNum = k.SeqNum()
 				break
 			}
 		}
 
 		// If the file is in the last level of the LSM, there is no data beneath
 		// it. The fact that there is still a range tombstone in a bottommost file
-		// suggests that an open snapshot kept the tombstone around. Estimate disk
-		// usage within the file itself.
+		// indicates two possibilites:
+		//   1. an open snapshot kept the tombstone around, and the data the
+		//      tombstone deletes is contained within the file itself.
+		//   2. the file was ingested.
+		// In the first case, we'd like to estimate disk usage within the file
+		// itself since compacting the file will drop that covered data. In the
+		// second case, we expect that compacting the file will NOT drop any
+		// data and rewriting the file is a waste of write bandwidth. We can
+		// distinguish these cases by looking at the file metadata's sequence
+		// numbers. A file's range deletions can only delete data within the
+		// file at lower sequence numbers. All keys in an ingested sstable adopt
+		// the same sequence number, preventing tombstones from deleting keys
+		// within the same file. We check here if the largest RANGEDEL sequence
+		// number is greater than the file's smallest sequence number. If it is,
+		// the RANGEDEL could conceivably (although inconclusively) delete data
+		// within the same file.
+		//
+		// Note that this heuristic is imperfect. If a table containing a range
+		// deletion is ingested into L5 and subsequently compacted into L6 but
+		// an open snapshot prevents elision of covered keys in L6, the
+		// resulting RangeDeletionsBytesEstimate will incorrectly include all
+		// covered keys.
+		//
+		// TODO(jackson): We could prevent the above error in the heuristic by
+		// computing the file's RangeDeletionsBytesEstimate during the
+		// compaction itself. It's unclear how common this is.
+		//
 		// NOTE: If the span `s` wholly contains a table containing range keys,
 		// the returned size estimate will be slightly inflated by the range key
 		// block. However, in practice, range keys are expected to be rare, and
 		// the size of the range key block relative to the overall size of the
 		// table is expected to be small.
-		if hasPoints && level == numLevels-1 {
+		if level == numLevels-1 && meta.SmallestSeqNum < maxRangeDeleteSeqNum {
 			size, err := r.EstimateDiskUsage(start, end)
 			if err != nil {
 				return nil, err
@@ -369,7 +407,7 @@ func (d *DB) loadTableRangeDelStats(
 			hintType:                hintType,
 			start:                   make([]byte, len(start)),
 			end:                     make([]byte, len(end)),
-			tombstoneFile:           meta,
+			tombstoneFile:           meta.FileMetadata,
 			tombstoneLevel:          level,
 			tombstoneLargestSeqNum:  s.LargestSeqNum(),
 			tombstoneSmallestSeqNum: s.SmallestSeqNum(),
@@ -383,7 +421,7 @@ func (d *DB) loadTableRangeDelStats(
 }
 
 func (d *DB) averageEntrySizeBeneath(
-	v *version, level int, meta *fileMetadata,
+	v *version, level int, meta physicalMeta,
 ) (avgKeySize, avgValueSize uint64, err error) {
 	// Find all files in lower levels that overlap with meta,
 	// summing their value sizes and entry counts.
@@ -393,13 +431,23 @@ func (d *DB) averageEntrySizeBeneath(
 			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
-			err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
-				fileSum += file.Size
-				entryCount += r.Properties.NumEntries
-				keySum += r.Properties.RawKeySize
-				valSum += r.Properties.RawValueSize
-				return nil
-			})
+			var err error
+			if file.Virtual {
+				// TODO(bananabrick): Once we have Properties for the virtual
+				// sstables, use those here.
+				panic("pebble: not implemented")
+			} else {
+				err = d.tableCache.withReader(
+					file,
+					func(r *sstable.Reader) (err error) {
+						fileSum += file.Size
+						entryCount += r.Properties.NumEntries
+						keySum += r.Properties.RawKeySize
+						valSum += r.Properties.RawValueSize
+						return nil
+					})
+			}
+
 			if err != nil {
 				return 0, 0, err
 			}
@@ -445,6 +493,11 @@ func (d *DB) estimateReclaimedSizeBeneath(
 		overlaps := v.Overlaps(l, d.cmp, start, end, true /* exclusiveEnd */)
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
+			if file.Virtual {
+				// TODO(bananabrick): Remove this check once
+				// Reader.EstimatedDiskUsage works for virtual sstables.
+				panic("pebble: unimplemented")
+			}
 			startCmp := d.cmp(start, file.Smallest.UserKey)
 			endCmp := d.cmp(file.Largest.UserKey, end)
 			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest.IsExclusiveSentinel()) {
@@ -501,10 +554,11 @@ func (d *DB) estimateReclaimedSizeBeneath(
 					continue
 				}
 				var size uint64
-				err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
-					size, err = r.EstimateDiskUsage(start, end)
-					return err
-				})
+				err := d.tableCache.withReader(
+					file, func(r *sstable.Reader) (err error) {
+						size, err = r.EstimateDiskUsage(start, end)
+						return err
+					})
 				if err != nil {
 					return 0, hintSeqNum, err
 				}
@@ -515,7 +569,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	return estimate, hintSeqNum, nil
 }
 
-func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) bool {
+func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) bool {
 	// If a table contains range deletions or range key deletions, we defer the
 	// stats collection. There are two main reasons for this:
 	//
@@ -555,6 +609,7 @@ func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) 
 	meta.Stats.NumRangeKeySets = props.NumRangeKeySets
 	meta.Stats.PointDeletionsBytesEstimate = pointEstimate
 	meta.Stats.RangeDeletionsBytesEstimate = 0
+	meta.Stats.ValueBlocksSize = props.ValueBlocksSize
 	meta.StatsMarkValid()
 	return true
 }
@@ -611,20 +666,20 @@ func estimateEntrySizes(
 // As an example, consider the following set of spans from the range deletion
 // and range key blocks of a table:
 //
-//         |---------|     |---------|         |-------| RANGEKEYDELs
-//   |-----------|-------------|           |-----|       RANGEDELs
-// __________________________________________________________
-//   a b c d e f g h i j k l m n o p q r s t u v w x y z
+//		      |---------|     |---------|         |-------| RANGEKEYDELs
+//		|-----------|-------------|           |-----|       RANGEDELs
+//	  __________________________________________________________
+//		a b c d e f g h i j k l m n o p q r s t u v w x y z
 //
 // The tableRangedDeletionIter produces the following set of output spans, where
 // '1' indicates a span containing only range deletions, '2' is a span
 // containing only range key deletions, and '3' is a span containing a mixture
 // of both range deletions and range key deletions.
 //
-//      1       3       1    3    2          1  3   2
-//   |-----|---------|-----|---|-----|     |---|-|-----|
-// __________________________________________________________
-//   a b c d e f g h i j k l m n o p q r s t u v w x y z
+//		   1       3       1    3    2          1  3   2
+//		|-----|---------|-----|---|-----|     |---|-|-----|
+//	  __________________________________________________________
+//		a b c d e f g h i j k l m n o p q r s t u v w x y z
 //
 // Algorithm.
 //
@@ -639,11 +694,11 @@ func estimateEntrySizes(
 // have already been defragmented. To the left and right of any overlap, the
 // same reasoning applies. For example,
 //
-//            |--------|         |-------| RANGEKEYDEL
-//   |---------------------------|         RANGEDEL
-//   |----1---|----3---|----1----|---2---| Merged, fragmented spans.
-// __________________________________________________________
-//   a b c d e f g h i j k l m n o p q r s t u v w x y z
+//		         |--------|         |-------| RANGEKEYDEL
+//		|---------------------------|         RANGEDEL
+//		|----1---|----3---|----1----|---2---| Merged, fragmented spans.
+//	  __________________________________________________________
+//		a b c d e f g h i j k l m n o p q r s t u v w x y z
 //
 // Any fragmented abutting spans produced by the merging iter will be of
 // differing types (i.e. a transition from a span with homogenous key kinds to a
@@ -728,7 +783,8 @@ func newCombinedDeletionKeyspanIter(
 		// Truncate tombstones to the containing file's bounds if necessary.
 		// See docs/range_deletions.md for why this is necessary.
 		iter = keyspan.Truncate(
-			comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey, nil, nil,
+			comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey,
+			nil, nil,
 		)
 		mIter.AddLevel(iter)
 	}
@@ -805,4 +861,98 @@ func countRangeKeySetFragments(v *version) (count uint64) {
 		count += *v.RangeKeyLevels[l].Annotation(rangeKeySetsAnnotator{}).(*uint64)
 	}
 	return count
+}
+
+// tombstonesAnnotator implements manifest.Annotator, annotating B-Tree nodes
+// with the sum of the files' counts of tombstones (DEL, SINGLEDEL and RANGEDELk
+// eys). Its annotation type is a *uint64. The count of tombstones may change
+// once a table's stats are loaded asynchronously, so its values are marked as
+// cacheable only if a file's stats have been loaded.
+type tombstonesAnnotator struct{}
+
+var _ manifest.Annotator = tombstonesAnnotator{}
+
+func (a tombstonesAnnotator) Zero(dst interface{}) interface{} {
+	if dst == nil {
+		return new(uint64)
+	}
+	v := dst.(*uint64)
+	*v = 0
+	return v
+}
+
+func (a tombstonesAnnotator) Accumulate(
+	f *fileMetadata, dst interface{},
+) (v interface{}, cacheOK bool) {
+	vptr := dst.(*uint64)
+	*vptr = *vptr + f.Stats.NumDeletions
+	return vptr, f.StatsValidLocked()
+}
+
+func (a tombstonesAnnotator) Merge(src interface{}, dst interface{}) interface{} {
+	srcV := src.(*uint64)
+	dstV := dst.(*uint64)
+	*dstV = *dstV + *srcV
+	return dstV
+}
+
+// countTombstones counts the number of tombstone (DEL, SINGLEDEL and RANGEDEL)
+// internal keys across all files of the LSM. It only counts keys in files for
+// which table stats have been loaded. It uses a b-tree annotator to cache
+// intermediate values between calculations when possible.
+func countTombstones(v *version) (count uint64) {
+	for l := 0; l < numLevels; l++ {
+		if v.Levels[l].Empty() {
+			continue
+		}
+		count += *v.Levels[l].Annotation(tombstonesAnnotator{}).(*uint64)
+	}
+	return count
+}
+
+// valueBlocksSizeAnnotator implements manifest.Annotator, annotating B-Tree
+// nodes with the sum of the files' Properties.ValueBlocksSize. Its annotation
+// type is a *uint64. The value block size may change once a table's stats are
+// loaded asynchronously, so its values are marked as cacheable only if a
+// file's stats have been loaded.
+type valueBlocksSizeAnnotator struct{}
+
+var _ manifest.Annotator = valueBlocksSizeAnnotator{}
+
+func (a valueBlocksSizeAnnotator) Zero(dst interface{}) interface{} {
+	if dst == nil {
+		return new(uint64)
+	}
+	v := dst.(*uint64)
+	*v = 0
+	return v
+}
+
+func (a valueBlocksSizeAnnotator) Accumulate(
+	f *fileMetadata, dst interface{},
+) (v interface{}, cacheOK bool) {
+	vptr := dst.(*uint64)
+	*vptr = *vptr + f.Stats.ValueBlocksSize
+	return vptr, f.StatsValidLocked()
+}
+
+func (a valueBlocksSizeAnnotator) Merge(src interface{}, dst interface{}) interface{} {
+	srcV := src.(*uint64)
+	dstV := dst.(*uint64)
+	*dstV = *dstV + *srcV
+	return dstV
+}
+
+// valueBlocksSizeForLevel returns the Properties.ValueBlocksSize across all
+// files for a level of the LSM. It only includes the size for files for which
+// table stats have been loaded. It uses a b-tree annotator to cache
+// intermediate values between calculations when possible. It must not be
+// called concurrently.
+//
+// REQUIRES: 0 <= level <= numLevels.
+func valueBlocksSizeForLevel(v *version, level int) (count uint64) {
+	if v.Levels[level].Empty() {
+		return 0
+	}
+	return *v.Levels[level].Annotation(valueBlocksSizeAnnotator{}).(*uint64)
 }

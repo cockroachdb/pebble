@@ -6,9 +6,9 @@ package metamorphic
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"io"
-	"math/rand"
 	"path/filepath"
 	"strings"
 
@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -72,7 +73,15 @@ type applyOp struct {
 func (o *applyOp) run(t *test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
 	w := t.getWriter(o.writerID)
-	err := w.Apply(b, t.writeOpts)
+	var err error
+	if o.writerID.tag() == dbTag && t.testOpts.asyncApplyToDB && t.writeOpts.Sync {
+		err = w.(*pebble.DB).ApplyNoSyncWait(b, t.writeOpts)
+		if err == nil {
+			err = b.SyncWait()
+		}
+	} else {
+		err = w.Apply(b, t.writeOpts)
+	}
 	h.Recordf("%s // %v", o, err)
 	_ = b.Close()
 	t.clearObj(o.batchID)
@@ -454,7 +463,10 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 
 	equal := t.opts.Comparer.Equal
 	tableFormat := t.db.FormatMajorVersion().MaxTableFormat()
-	w := sstable.NewWriter(f, t.opts.MakeWriterOptions(0, tableFormat))
+	w := sstable.NewWriter(
+		objstorageprovider.NewFileWritable(f),
+		t.opts.MakeWriterOptions(0, tableFormat),
+	)
 
 	var lastUserKey []byte
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
@@ -661,8 +673,8 @@ func (o *newIterOp) run(t *test, h historyRecorder) {
 }
 
 func (o *newIterOp) String() string {
-	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
-		o.iterID, o.readerID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
+	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %d, %d, %t /* use L6 filters */, %q /* masking suffix */)",
+		o.iterID, o.readerID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.useL6Filters, o.maskSuffix)
 }
 
 func (o *newIterOp) receiver() objID { return o.readerID }
@@ -712,9 +724,9 @@ func (o *newIterUsingCloneOp) run(t *test, h historyRecorder) {
 }
 
 func (o *newIterUsingCloneOp) String() string {
-	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
+	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %d, %d, %t /* use L6 filters */, %q /* masking suffix */)",
 		o.iterID, o.existingIterID, o.refreshBatch, o.lower, o.upper,
-		o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
+		o.keyTypes, o.filterMin, o.filterMax, o.useL6Filters, o.maskSuffix)
 }
 
 func (o *newIterUsingCloneOp) receiver() objID { return o.existingIterID }
@@ -798,8 +810,8 @@ func (o *iterSetOptionsOp) run(t *test, h historyRecorder) {
 }
 
 func (o *iterSetOptionsOp) String() string {
-	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
-		o.iterID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
+	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %d, %d, %t /* use L6 filters */, %q /* masking suffix */)",
+		o.iterID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.useL6Filters, o.maskSuffix)
 }
 
 func iterOptions(o iterOpts) *pebble.IterOptions {
@@ -820,6 +832,7 @@ func iterOptions(o iterOpts) *pebble.IterOptions {
 		RangeKeyMasking: pebble.RangeKeyMasking{
 			Suffix: o.maskSuffix,
 		},
+		UseL6Filters: o.useL6Filters,
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
 		opts.RangeKeyMasking.Filter = func() pebble.BlockPropertyFilterMask {
@@ -1126,6 +1139,32 @@ func (o *newSnapshotOp) run(t *test, h historyRecorder) {
 func (o *newSnapshotOp) String() string       { return fmt.Sprintf("%s = db.NewSnapshot()", o.snapID) }
 func (o *newSnapshotOp) receiver() objID      { return dbObjID }
 func (o *newSnapshotOp) syncObjs() objIDSlice { return []objID{o.snapID} }
+
+type dbRatchetFormatMajorVersionOp struct {
+	vers pebble.FormatMajorVersion
+}
+
+func (o *dbRatchetFormatMajorVersionOp) run(t *test, h historyRecorder) {
+	var err error
+	// NB: We no-op the operation if we're already at or above the provided
+	// format major version. Different runs start at different format major
+	// versions, making the presence of an error and the error message itself
+	// non-deterministic if we attempt to upgrade to an older version.
+	//
+	//Regardless, subsequent operations should behave identically, which is what
+	//we're really aiming to test by including this format major version ratchet
+	//operation.
+	if t.db.FormatMajorVersion() < o.vers {
+		err = t.db.RatchetFormatMajorVersion(o.vers)
+	}
+	h.Recordf("%s // %v", o, err)
+}
+
+func (o *dbRatchetFormatMajorVersionOp) String() string {
+	return fmt.Sprintf("db.RatchetFormatMajorVersion(%s)", o.vers)
+}
+func (o *dbRatchetFormatMajorVersionOp) receiver() objID      { return dbObjID }
+func (o *dbRatchetFormatMajorVersionOp) syncObjs() objIDSlice { return nil }
 
 type dbRestartOp struct{}
 

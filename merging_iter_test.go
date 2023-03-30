@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -151,7 +153,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 
 	var fileNum base.FileNum
 	newIters :=
-		func(file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+		func(_ context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts,
+		) (internalIterator, keyspan.FragmentIterator, error) {
 			r := readers[file.FileNum]
 			rangeDelIter, err := r.NewRawRangeDelIter()
 			if err != nil {
@@ -187,6 +190,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				m := (&fileMetadata{
 					FileNum: fileNum,
 				}).ExtendPointKeyBounds(cmp, smallestKey, largestKey)
+				m.InitPhysicalBacking()
 				files[level] = append(files[level], m)
 
 				i++
@@ -198,7 +202,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 				var tombstones []keyspan.Span
 				frag := keyspan.Fragmenter{
 					Cmp:    cmp,
@@ -234,7 +238,11 @@ func TestMergingIterCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				r, err := sstable.NewReader(f, sstable.ReaderOptions{})
+				readable, err := sstable.NewSimpleReadable(f)
+				if err != nil {
+					return err.Error()
+				}
+				r, err := sstable.NewReader(readable, sstable.ReaderOptions{})
 				if err != nil {
 					return err.Error()
 				}
@@ -252,8 +260,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 					continue
 				}
 				li := &levelIter{}
-				li.init(IterOptions{}, cmp, func(a []byte) int { return len(a) }, newIters,
-					slice.Iter(), manifest.Level(i), internalIterOpts{stats: &stats})
+				li.init(context.Background(), IterOptions{}, cmp, func(a []byte) int { return len(a) },
+					newIters, slice.Iter(), manifest.Level(i), internalIterOpts{stats: &stats})
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
 				li.initRangeDel(&levelIters[i].rangeDelIter)
@@ -285,7 +293,7 @@ func buildMergingIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], sstable.WriterOptions{
+		writers[i] = sstable.NewWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          NoCompression,
@@ -327,7 +335,11 @@ func buildMergingIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i], err = sstable.NewReader(f, opts)
+		readable, err := sstable.NewSimpleReadable(f)
+		if err != nil {
+			b.Fatal(err)
+		}
+		readers[i], err = sstable.NewReader(readable, opts)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -508,7 +520,7 @@ func buildLevelsForMergingIterSeqSeek(
 					writerOptions.IndexBlockSize = 1
 				}
 			}
-			writers[i] = append(writers[i], sstable.NewWriter(files[i][j], writerOptions))
+			writers[i] = append(writers[i], sstable.NewWriter(objstorageprovider.NewFileWritable(files[i][j]), writerOptions))
 		}
 	}
 
@@ -563,7 +575,11 @@ func buildLevelsForMergingIterSeqSeek(
 			if err != nil {
 				b.Fatal(err)
 			}
-			r, err := sstable.NewReader(f, opts)
+			readable, err := sstable.NewSimpleReadable(f)
+			if err != nil {
+				b.Fatal(err)
+			}
+			r, err := sstable.NewReader(readable, opts)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -584,6 +600,7 @@ func buildLevelsForMergingIterSeqSeek(
 			meta[j].FileNum = FileNum(j)
 			largest, _ := iter.Last()
 			meta[j].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.Clone(), largest.Clone())
+			meta[j].InitPhysicalBacking()
 		}
 		levelSlices[i] = manifest.NewLevelSliceSpecificOrder(meta)
 	}
@@ -596,7 +613,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		levelIndex := i
 		level := len(readers) - 1 - i
 		newIters := func(
-			file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
+			_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
 		) (internalIterator, keyspan.FragmentIterator, error) {
 			iter, err := readers[levelIndex][file.FileNum].NewIter(
 				opts.LowerBound, opts.UpperBound)

@@ -112,13 +112,15 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 	sorter := intervalKeySorter{keys: keys, cmp: cmp}
 	sort.Sort(sorter)
 
-	// intervalKeys are generated using the file bounds. Specifically, there are 2 intervalKeys
-	// for each file, and len(keys) = 2 * number of files. Each intervalKeyTemp stores information
-	// about which file it was generated from, and whether the key represents the end key of the file.
-	// So, as we're deduplicating the `keys` slice, we're guaranteed to iterate over the interval
-	// keys belonging to each of the files. Since the file.{min,max}IntervalIndex points to the position
-	// of the files bounds in the deduplicated `keys` slice, we can determine file.{min,max}IntervalIndex
-	// during the iteration.
+	// intervalKeys are generated using the file bounds. Specifically, there are
+	// 2 intervalKeys for each file, and len(keys) = 2 * number of files. Each
+	// `intervalKeyTemp` stores information about which file it was generated
+	// from, and whether the key represents the end key of the file. So, as
+	// we're deduplicating the `keys` slice, we're guaranteed to iterate over
+	// the interval keys belonging to each of the files. Since the
+	// file.{min,max}IntervalIndex points to the position of the files bounds in
+	// the deduplicated `keys` slice, we can determine
+	// file.{min,max}IntervalIndex during the iteration.
 	i := 0
 	j := 0
 	for i < len(keys) {
@@ -151,24 +153,24 @@ type fileInterval struct {
 	// cannot have any files participate in L0 -> Lbase compactions.
 	isBaseCompacting bool
 
-	// The min and max intervals index across all the files that overlap with this
-	// interval. Inclusive on both sides.
+	// The min and max intervals index across all the files that overlap with
+	// this interval. Inclusive on both sides.
 	filesMinIntervalIndex int
 	filesMaxIntervalIndex int
 
 	// True if another interval that has a file extending into this interval is
-	// undergoing a compaction into Lbase. In other words, this bool is true
-	// if any interval in [filesMinIntervalIndex,
-	// filesMaxIntervalIndex] has isBaseCompacting set to true. This
-	// lets the compaction picker de-prioritize this interval for picking
-	// compactions, since there's a high chance that a base compaction with a
-	// sufficient height of sublevels rooted at this interval could not be
-	// chosen due to the ongoing base compaction in the
-	// other interval. If the file straddling the two intervals is at a
-	// sufficiently high sublevel (with enough compactible files below it to
-	// satisfy minCompactionDepth), this is not an issue, but to optimize for
-	// quickly picking base compactions far away from other base compactions,
-	// this bool is used as a heuristic (but not as a complete disqualifier).
+	// undergoing a compaction into Lbase. In other words, this bool is true if
+	// any interval in [filesMinIntervalIndex, filesMaxIntervalIndex] has
+	// isBaseCompacting set to true. This lets the compaction picker
+	// de-prioritize this interval for picking compactions, since there's a high
+	// chance that a base compaction with a sufficient height of sublevels
+	// rooted at this interval could not be chosen due to the ongoing base
+	// compaction in the other interval. If the file straddling the two
+	// intervals is at a sufficiently high sublevel (with enough compactible
+	// files below it to satisfy minCompactionDepth), this is not an issue, but
+	// to optimize for quickly picking base compactions far away from other base
+	// compactions, this bool is used as a heuristic (but not as a complete
+	// disqualifier).
 	intervalRangeIsBaseCompacting bool
 
 	// All files in this interval, in increasing sublevel order.
@@ -178,9 +180,8 @@ type fileInterval struct {
 	// starting new compactions. This metric is not precise since the
 	// compactingFileCount can include files that are part of N (where N > 1)
 	// intra-L0 compactions, so the stack depth after those complete will be
-	// len(files) - compactingFileCount + N. We ignore this imprecision since
-	// we don't want to track which files are part of which intra-L0
-	// compaction.
+	// len(files) - compactingFileCount + N. We ignore this imprecision since we
+	// don't want to track which files are part of which intra-L0 compaction.
 	compactingFileCount int
 
 	// Interpolated from files in this interval. For files spanning multiple
@@ -332,17 +333,17 @@ func NewL0Sublevels(
 	for _, sublevelFiles := range s.levelFiles {
 		tr, ls := makeBTree(btreeCmpSmallestKey(cmp), sublevelFiles)
 		s.Levels = append(s.Levels, ls)
-		tr.release()
+		tr.Release()
 	}
 
 	s.calculateFlushSplitKeys(flushSplitMaxBytes)
 	return s, nil
 }
 
-// Helper function to merge new intervalKeys into an existing slice
-// of old fileIntervals, into result. Returns the new result and a slice of ints
-// mapping old interval indices to new ones. The added intervalKeys do not
-// need to be sorted; they get sorted and deduped in this function.
+// Helper function to merge new intervalKeys into an existing slice of old
+// fileIntervals, into result. Returns the new result and a slice of ints
+// mapping old interval indices to new ones. The added intervalKeys do not need
+// to be sorted; they get sorted and deduped in this function.
 func mergeIntervals(
 	old, result []fileInterval, added []intervalKeyTemp, compare Compare,
 ) ([]fileInterval, []int) {
@@ -413,35 +414,36 @@ func mergeIntervals(
 	return result, oldToNewMap
 }
 
-// AddL0Files incrementally builds a new L0Sublevels for when the only
-// change since the receiver L0Sublevels was an addition of the specified files,
-// with no L0 deletions. The common case of this is an ingestion or a flush.
-// These files can "sit on top" of existing sublevels, creating at most one
-// new sublevel for a flush (and possibly multiple for an ingestion), and at
-// most 2*len(files) additions to s.orderedIntervals. No files must have been
-// deleted from L0, and the added files must all be newer in sequence numbers
-// than existing files in L0Sublevels. The files parameter must be sorted in
-// seqnum order. The levelMetadata parameter corresponds to the new L0 post
-// addition of files. This method is meant to be significantly more performant
-// than NewL0Sublevels.
+// AddL0Files incrementally builds a new L0Sublevels for when the only change
+// since the receiver L0Sublevels was an addition of the specified files, with
+// no L0 deletions. The common case of this is an ingestion or a flush. These
+// files can "sit on top" of existing sublevels, creating at most one new
+// sublevel for a flush (and possibly multiple for an ingestion), and at most
+// 2*len(files) additions to s.orderedIntervals. No files must have been deleted
+// from L0, and the added files must all be newer in sequence numbers than
+// existing files in L0Sublevels. The files parameter must be sorted in seqnum
+// order. The levelMetadata parameter corresponds to the new L0 post addition of
+// files. This method is meant to be significantly more performant than
+// NewL0Sublevels.
 //
 // Note that this function can only be called once on a given receiver; it
 // appends to some slices in s which is only safe when done once. This is okay,
 // as the common case (generating a new L0Sublevels after a flush/ingestion) is
 // only going to necessitate one call of this method on a given receiver. The
-// returned value, if non-nil, can then have AddL0Files called on it again, and
-// so on. If errInvalidL0SublevelsOpt is returned as an error, it likely means
-// the optimization could not be applied (i.e. files added were older than files
-// already in the sublevels, which is possible around ingestions and in tests).
-// Eg. it can happen when an ingested file was ingested without queueing a flush
-// since it did not actually overlap with any keys in the memtable. Later on the
-// memtable was flushed, and the memtable had keys spanning around the ingested
-// file, producing a flushed file that overlapped with the ingested file in file
-// bounds but not in keys. It's possible for that flushed file to have a lower
-// LargestSeqNum than the ingested file if all the additions after the ingestion
-// were to another flushed file that was split into a separate sstable during
-// flush. Any other non-nil error means L0Sublevels generation failed in the same
-// way as NewL0Sublevels would likely fail.
+// returned value, if non-nil, can then have [*L0Sublevels.AddL0Files] called on
+// it again, and so on. If [errInvalidL0SublevelsOpt] is returned as an error,
+// it likely means the optimization could not be applied (i.e. files added were
+// older than files already in the sublevels, which is possible around
+// ingestions and in tests). Eg. it can happen when an ingested file was
+// ingested without queueing a flush since it did not actually overlap with any
+// keys in the memtable. Later on the memtable was flushed, and the memtable had
+// keys spanning around the ingested file, producing a flushed file that
+// overlapped with the ingested file in file bounds but not in keys. It's
+// possible for that flushed file to have a lower LargestSeqNum than the
+// ingested file if all the additions after the ingestion were to another
+// flushed file that was split into a separate sstable during flush. Any other
+// non-nil error means [L0Sublevels] generation failed in the same way as
+// [NewL0Sublevels] would likely fail.
 func (s *L0Sublevels) AddL0Files(
 	files []*FileMetadata, flushSplitMaxBytes int64, levelMetadata *LevelMetadata,
 ) (*L0Sublevels, error) {
@@ -485,8 +487,8 @@ func (s *L0Sublevels) AddL0Files(
 	keys := make([]fileInterval, 0, 2*levelMetadata.Len())
 	var oldToNewMap []int
 	// We can avoid the sortAndSweep step on the combined length of
-	// s.orderedIntervals and fileKeys by treating this as a merge of two
-	// sorted runs, fileKeys and s.orderedIntervals, into `keys` which will form
+	// s.orderedIntervals and fileKeys by treating this as a merge of two sorted
+	// runs, fileKeys and s.orderedIntervals, into `keys` which will form
 	// newVal.orderedIntervals.
 	keys, oldToNewMap = mergeIntervals(s.orderedIntervals, keys, fileKeys, s.cmp)
 	if invariants.Enabled {
@@ -502,20 +504,21 @@ func (s *L0Sublevels) AddL0Files(
 		newInterval := &keys[newIdx]
 		newInterval.index = newIdx
 		// This code, and related code in the for loop below, adjusts
-		// files{Min,Max}IntervalIndex just for interval indices shifting due to new
-		// intervals, and not for any of the new files being added to the same
-		// intervals. The goal is to produce a state of the system that's accurate
-		// for all existing files, and has all the new intervals to support new
-		// files. Once that's done, we can just call addFileToSublevel to adjust
-		// all relevant intervals for new files.
+		// files{Min,Max}IntervalIndex just for interval indices shifting due to
+		// new intervals, and not for any of the new files being added to the
+		// same intervals. The goal is to produce a state of the system that's
+		// accurate for all existing files, and has all the new intervals to
+		// support new files. Once that's done, we can just call
+		// addFileToSublevel to adjust all relevant intervals for new files.
 		newInterval.filesMinIntervalIndex = oldToNewMap[newInterval.filesMinIntervalIndex]
 		// maxIntervalIndexes are special. Since it's an inclusive end bound, we
 		// actually have to map it to the _next_ old interval's new previous
 		// interval. This logic is easier to understand if you see
 		// [f.minIntervalIndex, f.maxIntervalIndex] as [f.minIntervalIndex,
-		// f.maxIntervalIndex+1). The other case to remember is when the interval is
-		// completely empty (i.e. len(newInterval.files) == 0); in that case we want
-		// to refer back to ourselves regardless of additions to the right of us.
+		// f.maxIntervalIndex+1). The other case to remember is when the
+		// interval is completely empty (i.e. len(newInterval.files) == 0); in
+		// that case we want to refer back to ourselves regardless of additions
+		// to the right of us.
 		if newInterval.filesMaxIntervalIndex < len(oldToNewMap)-1 && len(newInterval.files) > 0 {
 			newInterval.filesMaxIntervalIndex = oldToNewMap[newInterval.filesMaxIntervalIndex+1] - 1
 		} else {
@@ -523,16 +526,16 @@ func (s *L0Sublevels) AddL0Files(
 			newInterval.filesMaxIntervalIndex = oldToNewMap[newInterval.filesMaxIntervalIndex]
 		}
 	}
-	// Loop through all instances of new intervals added between two old intervals
-	// and expand [filesMinIntervalIndex, filesMaxIntervalIndex] of new intervals
-	// to reflect that of adjacent old intervals.
+	// Loop through all instances of new intervals added between two old
+	// intervals and expand [filesMinIntervalIndex, filesMaxIntervalIndex] of
+	// new intervals to reflect that of adjacent old intervals.
 	{
 		// We can skip cases where new intervals were added to the left of all
 		// existing intervals (eg. if the first entry in oldToNewMap is
-		// oldToNewMap[0] >= 1). Those intervals will only contain newly added files
-		// and will have their parameters adjusted down in addFileToSublevels. The
-		// same can also be said about new intervals that are to the right of all
-		// existing intervals.
+		// oldToNewMap[0] >= 1). Those intervals will only contain newly added
+		// files and will have their parameters adjusted down in
+		// addFileToSublevels. The same can also be said about new intervals
+		// that are to the right of all existing intervals.
 		lastIdx := 0
 		for _, newIdx := range oldToNewMap {
 			for i := lastIdx + 1; i < newIdx; i++ {
@@ -555,28 +558,29 @@ func (s *L0Sublevels) AddL0Files(
 	// TODO(bilal): This is the only place in this method where we loop through
 	// all existing files, which could be much more in number than newly added
 	// files. See if we can avoid the need for this, either by getting rid of
-	// f.minIntervalIndex and f.maxIntervalIndex and calculating them on the
-	// fly with a binary search, or by only looping through files to the right
-	// of the first interval touched by this method.
+	// f.minIntervalIndex and f.maxIntervalIndex and calculating them on the fly
+	// with a binary search, or by only looping through files to the right of
+	// the first interval touched by this method.
 	for sublevel := range s.Levels {
 		s.Levels[sublevel].Each(func(f *FileMetadata) {
 			oldIntervalDelta := f.maxIntervalIndex - f.minIntervalIndex + 1
 			oldMinIntervalIndex := f.minIntervalIndex
 			f.minIntervalIndex = oldToNewMap[f.minIntervalIndex]
-			// maxIntervalIndex is special. Since it's an inclusive end bound, we
-			// actually have to map it to the _next_ old interval's new previous
-			// interval. This logic is easier to understand if you see
-			// [f.minIntervalIndex, f.maxIntervalIndex] as
-			// [f.minIntervalIndex, f.maxIntervalIndex+1).
+			// maxIntervalIndex is special. Since it's an inclusive end bound,
+			// we actually have to map it to the _next_ old interval's new
+			// previous interval. This logic is easier to understand if you see
+			// [f.minIntervalIndex, f.maxIntervalIndex] as [f.minIntervalIndex,
+			// f.maxIntervalIndex+1).
 			f.maxIntervalIndex = oldToNewMap[f.maxIntervalIndex+1] - 1
 			newIntervalDelta := f.maxIntervalIndex - f.minIntervalIndex + 1
-			// Recalculate estimatedBytes for all old files across new intervals, but
-			// only if new intervals were added in between.
+			// Recalculate estimatedBytes for all old files across new
+			// intervals, but only if new intervals were added in between.
 			if oldIntervalDelta != newIntervalDelta {
-				// j is incremented so that oldToNewMap[j] points to the next old
-				// interval. This is used to distinguish between old intervals (i.e.
-				// ones where we need to subtract f.Size/oldIntervalDelta) from new
-				// ones (where we don't need to subtract). In both cases we need to add
+				// j is incremented so that oldToNewMap[j] points to the next
+				// old interval. This is used to distinguish between old
+				// intervals (i.e. ones where we need to subtract
+				// f.Size/oldIntervalDelta) from new ones (where we don't need
+				// to subtract). In both cases we need to add
 				// f.Size/newIntervalDelta.
 				j := oldMinIntervalIndex
 				for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
@@ -628,7 +632,7 @@ func (s *L0Sublevels) AddL0Files(
 			// populated correctly.
 			newVal.Levels[sublevel] = ls
 		}
-		tr.release()
+		tr.Release()
 	}
 
 	newVal.flushSplitUserKeys = nil
@@ -636,12 +640,12 @@ func (s *L0Sublevels) AddL0Files(
 	return newVal, nil
 }
 
-// addFileToSublevels is called during L0Sublevels generation, and adds f to
-// the correct sublevel's levelFiles, the relevant intervals' files slices, and
-// sets interval indices on f. This method, if called successively on multiple
-// files, _must_ be called on successively newer files (by seqnum). If
-// checkInvariant is true, it could check for this in some cases and return
-// errInvalidL0SublevelsOpt if that invariant isn't held.
+// addFileToSublevels is called during L0Sublevels generation, and adds f to the
+// correct sublevel's levelFiles, the relevant intervals' files slices, and sets
+// interval indices on f. This method, if called successively on multiple files,
+// _must_ be called on successively newer files (by seqnum). If checkInvariant
+// is true, it could check for this in some cases and return
+// [errInvalidL0SublevelsOpt] if that invariant isn't held.
 func (s *L0Sublevels) addFileToSublevels(f *FileMetadata, checkInvariant bool) error {
 	// This is a simple and not very accurate estimate of the number of
 	// bytes this SSTable contributes to the intervals it is a part of.
@@ -738,11 +742,10 @@ func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 		}
 	}
 
-	// Some intervals may be base compacting without the files contained
-	// within those intervals being marked as compacting. This is possible if
-	// the files were added after the compaction initiated, and the active
-	// compaction files straddle the input file. Mark these intervals as base
-	// compacting.
+	// Some intervals may be base compacting without the files contained within
+	// those intervals being marked as compacting. This is possible if the files
+	// were added after the compaction initiated, and the active compaction
+	// files straddle the input file. Mark these intervals as base compacting.
 	for _, c := range inProgress {
 		startIK := intervalKey{key: c.Smallest.UserKey, isLargest: false}
 		endIK := intervalKey{key: c.Largest.UserKey, isLargest: !c.Largest.IsExclusiveSentinel()}
@@ -924,35 +927,35 @@ func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []UserKeyRange {
 			curr = &keyRanges[len(keyRanges)-1]
 		}
 
-		// If the filesMaxIntervalIndex is not the current index, we can jump
-		// to the max index, knowing that all intermediary intervals are
-		// overlapped by some file.
+		// If the filesMaxIntervalIndex is not the current index, we can jump to
+		// the max index, knowing that all intermediary intervals are overlapped
+		// by some file.
 		if maxIdx := s.orderedIntervals[i].filesMaxIntervalIndex; maxIdx != i {
 			// Note that end may be less than or equal to maxIdx if we're
 			// concerned with a key range that ends before the interval at
-			// maxIdx starts. We must set curr.End now, before making that
-			// leap, because this iteration may be the last.
+			// maxIdx starts. We must set curr.End now, before making that leap,
+			// because this iteration may be the last.
 			i = maxIdx
 			curr.End = s.orderedIntervals[i+1].startKey.key
 			continue
 		}
 
 		// No files overlapping with this interval overlap with the next
-		// interval. Update the current end to be the next interval's start
-		// key. Note that curr is not necessarily finished, because there may
-		// be an abutting non-empty interval.
+		// interval. Update the current end to be the next interval's start key.
+		// Note that curr is not necessarily finished, because there may be an
+		// abutting non-empty interval.
 		curr.End = s.orderedIntervals[i+1].startKey.key
 		i++
 	}
 	return keyRanges
 }
 
-// FlushSplitKeys returns a slice of user keys to split flushes at.
-// Used by flushes to avoid writing sstables that straddle these split keys.
-// These should be interpreted as the keys to start the next sstable (not the
-// last key to include in the prev sstable). These are user keys so that
-// range tombstones can be properly truncated (untruncated range tombstones
-// are not permitted for L0 files).
+// FlushSplitKeys returns a slice of user keys to split flushes at. Used by
+// flushes to avoid writing sstables that straddle these split keys. These
+// should be interpreted as the keys to start the next sstable (not the last key
+// to include in the prev sstable). These are user keys so that range tombstones
+// can be properly truncated (untruncated range tombstones are not permitted for
+// L0 files).
 func (s *L0Sublevels) FlushSplitKeys() [][]byte {
 	return s.flushSplitUserKeys
 }
@@ -978,6 +981,7 @@ func (s *L0Sublevels) MaxDepthAfterOngoingCompactions() int {
 //
 // TODO(bilal): Simplify away the debugging statements in this method, and make
 // this a pure sanity checker.
+//
 //lint:ignore U1000 - useful for debugging
 func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 	includedFiles := newBitSet(s.levelMetadata.Len())
@@ -1074,7 +1078,7 @@ func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 // recently started compaction. isBase specifies if this is a base compaction;
 // if false, this is assumed to be an intra-L0 compaction. The specified
 // compaction must be involving L0 SSTables. It's assumed that the Compacting
-// and IsIntraL0Compacting fields are already set on all FileMetadatas passed
+// and IsIntraL0Compacting fields are already set on all [FileMetadata]s passed
 // in.
 func (s *L0Sublevels) UpdateStateForStartedCompaction(inputs []LevelSlice, isBase bool) error {
 	minIntervalIndex := -1
@@ -1106,11 +1110,10 @@ func (s *L0Sublevels) UpdateStateForStartedCompaction(inputs []LevelSlice, isBas
 	return nil
 }
 
-// L0CompactionFiles represents a candidate set of L0 files for compaction.
-// Also referred to as "lcf". Contains state information useful
-// for generating the compaction (such as Files), as well as for picking
-// between candidate compactions (eg. fileBytes and
-// seedIntervalStackDepthReduction).
+// L0CompactionFiles represents a candidate set of L0 files for compaction. Also
+// referred to as "lcf". Contains state information useful for generating the
+// compaction (such as Files), as well as for picking between candidate
+// compactions (eg. fileBytes and seedIntervalStackDepthReduction).
 type L0CompactionFiles struct {
 	Files []*FileMetadata
 
@@ -1144,6 +1147,23 @@ type L0CompactionFiles struct {
 	preExtensionMinInterval int
 	preExtensionMaxInterval int
 	filesAdded              []*FileMetadata
+}
+
+// Clone allocates a new L0CompactionFiles, with the same underlying data. Note
+// that the two fileMetadata slices contain values that point to the same
+// underlying fileMetadata object. This is safe because these objects are read
+// only.
+func (l *L0CompactionFiles) Clone() *L0CompactionFiles {
+	oldLcf := *l
+	return &oldLcf
+}
+
+// String merely prints the starting address of the first file, if it exists.
+func (l *L0CompactionFiles) String() string {
+	if len(l.Files) > 0 {
+		return fmt.Sprintf("First File Address: %p", &l.Files[0])
+	}
+	return ""
 }
 
 // addFile adds the specified file to the LCF.
@@ -1180,12 +1200,11 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 
 // Compactions:
 //
-// The sub-levels and intervals can be visualized in 2 dimensions as the X
-// axis containing intervals in increasing order and the Y axis containing
-// sub-levels (older to younger). The intervals can be sparse wrt sub-levels.
-// We observe that the system is typically under severe pressure in L0 during
-// large numbers of ingestions where most files added to L0 are narrow and
-// non-overlapping.
+// The sub-levels and intervals can be visualized in 2 dimensions as the X axis
+// containing intervals in increasing order and the Y axis containing sub-levels
+// (older to younger). The intervals can be sparse wrt sub-levels. We observe
+// that the system is typically under severe pressure in L0 during large numbers
+// of ingestions where most files added to L0 are narrow and non-overlapping.
 //
 //    L0.1    d---g
 //    L0.0  c--e  g--j o--s u--x
@@ -1203,23 +1222,23 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 // it amenable to concurrent L0 -> Lbase compactions.
 //
 // L0 -> Lbase: The high-level goal of a L0 -> Lbase compaction is to reduce
-// stack depth, by compacting files in the intervals with the highest
-// (fileCount - compactingCount). Additionally, we would like compactions to
-// not involve a huge number of files, so that they finish quickly, and to
-// allow for concurrent L0 -> Lbase compactions when needed. In order to
-// achieve these goals we would like compactions to visualize as capturing
-// thin and tall rectangles. The approach below is to consider intervals in
-// some order and then try to construct a compaction using the interval. The
-// first interval we can construct a compaction for is the compaction that is
-// started. There can be multiple heuristics in choosing the ordering of the
-// intervals -- the code uses one heuristic that worked well for a large
-// ingestion stemming from a cockroachdb import, but additional experimentation
-// is necessary to pick a general heuristic. Additionally, the compaction that
-// gets picked may be not as desirable as one that could be constructed later
-// in terms of reducing stack depth (since adding more files to the compaction
-// can get blocked by needing to encompass files that are already being
-// compacted). So an alternative would be to try to construct more than one
-// compaction and pick the best one.
+// stack depth, by compacting files in the intervals with the highest (fileCount
+// - compactingCount). Additionally, we would like compactions to not involve a
+// huge number of files, so that they finish quickly, and to allow for
+// concurrent L0 -> Lbase compactions when needed. In order to achieve these
+// goals we would like compactions to visualize as capturing thin and tall
+// rectangles. The approach below is to consider intervals in some order and
+// then try to construct a compaction using the interval. The first interval we
+// can construct a compaction for is the compaction that is started. There can
+// be multiple heuristics in choosing the ordering of the intervals -- the code
+// uses one heuristic that worked well for a large ingestion stemming from a
+// cockroachdb import, but additional experimentation is necessary to pick a
+// general heuristic. Additionally, the compaction that gets picked may be not
+// as desirable as one that could be constructed later in terms of reducing
+// stack depth (since adding more files to the compaction can get blocked by
+// needing to encompass files that are already being compacted). So an
+// alternative would be to try to construct more than one compaction and pick
+// the best one.
 //
 // Here's a visualization of an ideal L0->LBase compaction selection:
 //
@@ -1243,9 +1262,9 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 //    Lbase a--------i    m---------w
 //
 // Note that running this compaction will mark the a--i file in Lbase as
-// compacting, and when ExtendL0ForBaseCompactionTo is called with the bounds
-// of that base file, it'll expand the compaction to also include all L0 files
-// in the a-d interval. The resultant compaction would then be:
+// compacting, and when ExtendL0ForBaseCompactionTo is called with the bounds of
+// that base file, it'll expand the compaction to also include all L0 files in
+// the a-d interval. The resultant compaction would then be:
 //
 //         _____________
 //    L0.3 |a--d    g-j|
@@ -1255,11 +1274,10 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 //
 //    Lbase a--------i    m---------w
 //
-// The next best interval for base compaction would therefore
-// be the one including r--t in L0.2 and p--x in L0.0, and both this compaction
-// and the one picked earlier can run in parallel. This is assuming
-// minCompactionDepth >= 2, otherwise the second compaction has too little
-// depth to pick.
+// The next best interval for base compaction would therefore be the one
+// including r--t in L0.2 and p--x in L0.0, and both this compaction and the one
+// picked earlier can run in parallel. This is assuming minCompactionDepth >= 2,
+// otherwise the second compaction has too little depth to pick.
 //
 //         _____________
 //    L0.3 |a--d    g-j|      _________
@@ -1292,24 +1310,23 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 //
 //    Lbase a--------ij--lm---------w
 //
-// Intra-L0: If the L0 score is high, but PickBaseCompaction() is unable to
-// pick a compaction, PickIntraL0Compaction will be used to pick an intra-L0
-// compaction. Similar to L0 -> Lbase compactions, we want to allow for
-// multiple intra-L0 compactions and not generate wide output files that
-// hinder later concurrency of L0 -> Lbase compactions. Also compactions
-// that produce wide files don't reduce stack depth -- they represent wide
-// rectangles in our visualization, which means many intervals have their
-// depth reduced by a small amount. Typically, L0 files have non-overlapping
-// sequence numbers, and sticking to that invariant would require us to
-// consider intra-L0 compactions that proceed from youngest to oldest files,
-// which could result in the aforementioned undesirable wide rectangle
-// shape. But this non-overlapping sequence number is already relaxed in
-// RocksDB -- sstables are primarily ordered by their largest sequence
-// number. So we can arrange for intra-L0 compactions to capture thin and
-// tall rectangles starting with the top of the stack (youngest files).
-// Like the L0 -> Lbase case we order the intervals using a heuristic and
-// consider each in turn. The same comment about better L0 -> Lbase heuristics
-// and not being greedy applies here.
+// Intra-L0: If the L0 score is high, but PickBaseCompaction() is unable to pick
+// a compaction, PickIntraL0Compaction will be used to pick an intra-L0
+// compaction. Similar to L0 -> Lbase compactions, we want to allow for multiple
+// intra-L0 compactions and not generate wide output files that hinder later
+// concurrency of L0 -> Lbase compactions. Also compactions that produce wide
+// files don't reduce stack depth -- they represent wide rectangles in our
+// visualization, which means many intervals have their depth reduced by a small
+// amount. Typically, L0 files have non-overlapping sequence numbers, and
+// sticking to that invariant would require us to consider intra-L0 compactions
+// that proceed from youngest to oldest files, which could result in the
+// aforementioned undesirable wide rectangle shape. But this non-overlapping
+// sequence number is already relaxed in RocksDB -- sstables are primarily
+// ordered by their largest sequence number. So we can arrange for intra-L0
+// compactions to capture thin and tall rectangles starting with the top of the
+// stack (youngest files). Like the L0 -> Lbase case we order the intervals
+// using a heuristic and consider each in turn. The same comment about better L0
+// -> Lbase heuristics and not being greedy applies here.
 //
 // Going back to a modified version of our example from earlier, let's say these
 // are the base compactions in progress:
@@ -1387,10 +1404,9 @@ func (s *L0Sublevels) PickBaseCompaction(
 		// Pick the seed file for the interval as the file
 		// in the lowest sub-level.
 		f := interval.files[0]
-		// Don't bother considering the intervals that are
-		// covered by the seed file since they are likely
-		// nearby. Note that it is possible that those intervals
-		// have seed files at lower sub-levels so could be
+		// Don't bother considering the intervals that are covered by the seed
+		// file since they are likely nearby. Note that it is possible that
+		// those intervals have seed files at lower sub-levels so could be
 		// viable for compaction.
 		if f == nil {
 			return nil, errors.New("no seed file found in sublevel intervals")
@@ -1398,23 +1414,22 @@ func (s *L0Sublevels) PickBaseCompaction(
 		consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
 		if f.IsCompacting() {
 			if f.IsIntraL0Compacting {
-				// If we're picking a base compaction and we came across a
-				// seed file candidate that's being intra-L0 compacted, skip
-				// the interval instead of erroring out.
+				// If we're picking a base compaction and we came across a seed
+				// file candidate that's being intra-L0 compacted, skip the
+				// interval instead of erroring out.
 				continue
 			}
-			// We chose a compaction seed file that should not be
-			// compacting. Usually means the score is not accurately
-			// accounting for files already compacting, or internal state is
-			// inconsistent.
+			// We chose a compaction seed file that should not be compacting.
+			// Usually means the score is not accurately accounting for files
+			// already compacting, or internal state is inconsistent.
 			return nil, errors.Errorf("file %s chosen as seed file for compaction should not be compacting", f.FileNum)
 		}
 
 		c := s.baseCompactionUsingSeed(f, interval.index, minCompactionDepth)
 		if c != nil {
-			// Check if the chosen compaction overlaps with any files
-			// in Lbase that have Compacting = true. If that's the case,
-			// this compaction cannot be chosen.
+			// Check if the chosen compaction overlaps with any files in Lbase
+			// that have Compacting = true. If that's the case, this compaction
+			// cannot be chosen.
 			baseIter := baseFiles.Iter()
 			// An interval starting at ImmediateSuccessor(key) can never be the
 			// first interval of a compaction since no file can start at that
@@ -1454,10 +1469,9 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 	c.addFile(f)
 
 	// The first iteration of this loop builds the compaction at the seed file's
-	// sublevel. Future iterations expand on this compaction by stacking
-	// more files from intervalIndex and repeating. This is an
-	// optional activity so when it fails we can fallback to the last
-	// successful candidate.
+	// sublevel. Future iterations expand on this compaction by stacking more
+	// files from intervalIndex and repeating. This is an optional activity so
+	// when it fails we can fallback to the last successful candidate.
 	var lastCandidate *L0CompactionFiles
 	interval := &s.orderedIntervals[intervalIndex]
 
@@ -1467,29 +1481,28 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 		c.seedIntervalStackDepthReduction++
 		c.seedIntervalMaxLevel = sl
 		c.addFile(f2)
-		// The seed file is in the lowest sublevel in the seed interval, but it may
-		// overlap with other files in even lower sublevels. For
-		// correctness we need to grow our interval to include those files, and
-		// capture all files in the next level that fall in this extended interval
-		// and so on. This can result in a triangular shape like the following
-		// where again the X axis is the key intervals and the Y axis
-		// is oldest to youngest. Note that it is not necessary for
-		// correctness to fill out the shape at the higher sub-levels
-		// to make it more rectangular since the invariant only requires
-		// that younger versions of a key not be moved to Lbase while
-		// leaving behind older versions.
+		// The seed file is in the lowest sublevel in the seed interval, but it
+		// may overlap with other files in even lower sublevels. For correctness
+		// we need to grow our interval to include those files, and capture all
+		// files in the next level that fall in this extended interval and so
+		// on. This can result in a triangular shape like the following where
+		// again the X axis is the key intervals and the Y axis is oldest to
+		// youngest. Note that it is not necessary for correctness to fill out
+		// the shape at the higher sub-levels to make it more rectangular since
+		// the invariant only requires that younger versions of a key not be
+		// moved to Lbase while leaving behind older versions.
 		//                     -
 		//                    ---
 		//                   -----
-		// It may be better for performance to have a more rectangular
-		// shape since the files being left behind will overlap with the
-		// same Lbase key range as that of this compaction. But there is
-		// also the danger that in trying to construct a more rectangular
-		// shape we will be forced to pull in a file that is already
-		// compacting. We expect extendCandidateToRectangle to eventually be called
-		// on this compaction if it's chosen, at which point we would iterate
-		// backward and choose those files. This logic is similar to compaction.grow
-		// for non-L0 compactions.
+		// It may be better for performance to have a more rectangular shape
+		// since the files being left behind will overlap with the same Lbase
+		// key range as that of this compaction. But there is also the danger
+		// that in trying to construct a more rectangular shape we will be
+		// forced to pull in a file that is already compacting. We expect
+		// extendCandidateToRectangle to eventually be called on this compaction
+		// if it's chosen, at which point we would iterate backward and choose
+		// those files. This logic is similar to compaction.grow for non-L0
+		// compactions.
 		done := false
 		for currLevel := sl - 1; currLevel >= 0; currLevel-- {
 			if !s.extendFiles(currLevel, math.MaxUint64, c) {
@@ -1509,8 +1522,8 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 		// depth, but long running compactions reduce flexibility in what can
 		// run concurrently in L0 and even Lbase -> Lbase+1. An increase more
 		// than 150% in bytes since the last candidate compaction (along with a
-		// total compaction size in excess of 100mb), or a total compaction
-		// size beyond a hard limit of 500mb, is criteria for rejecting this
+		// total compaction size in excess of 100mb), or a total compaction size
+		// beyond a hard limit of 500mb, is criteria for rejecting this
 		// candidate. This lets us prefer slow growths as we add files, while
 		// still having a hard limit. Note that if this is the first compaction
 		// candidate to reach a stack depth reduction of minCompactionDepth or
@@ -1568,7 +1581,7 @@ func (s *L0Sublevels) extendFiles(
 
 // PickIntraL0Compaction picks an intra-L0 compaction for files in this
 // sublevel. This method is only called when a base compaction cannot be chosen.
-// See comment above PickBaseCompaction for heuristics involved in this
+// See comment above [PickBaseCompaction] for heuristics involved in this
 // selection.
 func (s *L0Sublevels) PickIntraL0Compaction(
 	earliestUnflushedSeqNum uint64, minCompactionDepth int,
@@ -1584,9 +1597,8 @@ func (s *L0Sublevels) PickIntraL0Compaction(
 	}
 	sort.Sort(intervalSorterByDecreasingScore(scoredIntervals))
 
-	// Optimization to avoid considering different intervals that
-	// are likely to choose the same seed file. Again this is just
-	// to reduce wasted work.
+	// Optimization to avoid considering different intervals that are likely to
+	// choose the same seed file. Again this is just to reduce wasted work.
 	consideredIntervals := newBitSet(len(s.orderedIntervals))
 	for _, scoredInterval := range scoredIntervals {
 		interval := &s.orderedIntervals[scoredInterval.interval]
@@ -1595,8 +1607,8 @@ func (s *L0Sublevels) PickIntraL0Compaction(
 		}
 
 		var f *FileMetadata
-		// Pick the seed file for the interval as the file
-		// in the highest sub-level.
+		// Pick the seed file for the interval as the file in the highest
+		// sub-level.
 		stackDepthReduction := scoredInterval.score
 		for i := len(interval.files) - 1; i >= 0; i-- {
 			f = interval.files[i]
@@ -1604,9 +1616,8 @@ func (s *L0Sublevels) PickIntraL0Compaction(
 				break
 			}
 			consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
-			// Can this be the seed file? Files with newer sequence
-			// numbers than earliestUnflushedSeqNum cannot be in
-			// the compaction.
+			// Can this be the seed file? Files with newer sequence numbers than
+			// earliestUnflushedSeqNum cannot be in the compaction.
 			if f.LargestSeqNum >= earliestUnflushedSeqNum {
 				stackDepthReduction--
 				if stackDepthReduction == 0 {
@@ -1669,10 +1680,10 @@ func (s *L0Sublevels) intraL0CompactionUsingSeed(
 	}
 	// The first iteration of this loop produces an intra-L0 compaction at the
 	// seed level. Iterations after that optionally add to the compaction by
-	// stacking more files from intervalIndex and repeating. This is an
-	// optional activity so when it fails we can fallback to the last
-	// successful candidate. The code stops adding when it can't add more, or
-	// when fileBytes grows too large.
+	// stacking more files from intervalIndex and repeating. This is an optional
+	// activity so when it fails we can fallback to the last successful
+	// candidate. The code stops adding when it can't add more, or when
+	// fileBytes grows too large.
 	for ; slIndex >= 0; slIndex-- {
 		f2 := interval.files[slIndex]
 		sl := f2.SubLevel
@@ -1684,23 +1695,24 @@ func (s *L0Sublevels) intraL0CompactionUsingSeed(
 		c.addFile(f2)
 		// The seed file captures all files in the higher level that fall in the
 		// range of intervals. That may extend the range of intervals so for
-		// correctness we need to capture all files in the next higher level that
-		// fall in this extended interval and so on. This can result in an
-		// inverted triangular shape like the following where again the X axis is the
-		// key intervals and the Y axis is oldest to youngest. Note that it is not
-		// necessary for correctness to fill out the shape at lower sub-levels to
-		// make it more rectangular since the invariant only requires that if we
-		// move an older seqnum for key k into a file that has a higher seqnum, we
-		// also move all younger seqnums for that key k into that file.
+		// correctness we need to capture all files in the next higher level
+		// that fall in this extended interval and so on. This can result in an
+		// inverted triangular shape like the following where again the X axis
+		// is the key intervals and the Y axis is oldest to youngest. Note that
+		// it is not necessary for correctness to fill out the shape at lower
+		// sub-levels to make it more rectangular since the invariant only
+		// requires that if we move an older seqnum for key k into a file that
+		// has a higher seqnum, we also move all younger seqnums for that key k
+		// into that file.
 		//                  -----
 		//                   ---
 		//                    -
-		//
-		// It may be better for performance to have a more rectangular shape since
-		// it will reduce the stack depth for more intervals. But there is also
-		// the danger that in explicitly trying to construct a more rectangular
-		// shape we will be forced to pull in a file that is already compacting.
-		// We assume that the performance concern is not a practical issue.
+		// It may be better for performance to have a more rectangular shape
+		// since it will reduce the stack depth for more intervals. But there is
+		// also the danger that in explicitly trying to construct a more
+		// rectangular shape we will be forced to pull in a file that is already
+		// compacting. We assume that the performance concern is not a practical
+		// issue.
 		done := false
 		for currLevel := sl + 1; currLevel < len(s.levelFiles); currLevel++ {
 			if !s.extendFiles(currLevel, earliestUnflushedSeqNum, c) {
@@ -1734,11 +1746,11 @@ func (s *L0Sublevels) intraL0CompactionUsingSeed(
 }
 
 // ExtendL0ForBaseCompactionTo extends the specified base compaction candidate
-// L0CompactionFiles to optionally cover more files in L0 without "touching"
-// any of the passed-in keys (i.e. the smallest/largest bounds are exclusive),
-// as including any user keys for those internal keys
-// could require choosing more files in LBase which is undesirable. Unbounded
-// start/end keys are indicated by passing in the InvalidInternalKey.
+// L0CompactionFiles to optionally cover more files in L0 without "touching" any
+// of the passed-in keys (i.e. the smallest/largest bounds are exclusive), as
+// including any user keys for those internal keys could require choosing more
+// files in LBase which is undesirable. Unbounded start/end keys are indicated
+// by passing in the InvalidInternalKey.
 func (s *L0Sublevels) ExtendL0ForBaseCompactionTo(
 	smallest, largest InternalKey, candidate *L0CompactionFiles,
 ) bool {
@@ -1794,65 +1806,66 @@ func (s *L0Sublevels) ExtendL0ForBaseCompactionTo(
 // Consider this scenario (original candidate is inside the rectangle), with
 // isBase = true and interval bounds a-j (from the union of base file bounds and
 // that of compaction candidate):
-//               _______
-//    L0.3  a--d |  g-j|
-//    L0.2       | f--j|         r-t
-//    L0.1   b-d |e---j|
-//    L0.0  a--d | f--j| l--o  p-----x
 //
-//    Lbase a--------i    m---------w
+//	           _______
+//	L0.3  a--d |  g-j|
+//	L0.2       | f--j|         r-t
+//	L0.1   b-d |e---j|
+//	L0.0  a--d | f--j| l--o  p-----x
+//
+//	Lbase a--------i    m---------w
 //
 // This method will iterate from the bottom up. At L0.0, it will add a--d since
 // it's in the bounds, then add b-d, then a--d, and so on, to produce this:
 //
-//         _____________
-//    L0.3 |a--d    g-j|
-//    L0.2 |       f--j|         r-t
-//    L0.1 | b-d  e---j|
-//    L0.0 |a--d   f--j| l--o  p-----x
+//	     _____________
+//	L0.3 |a--d    g-j|
+//	L0.2 |       f--j|         r-t
+//	L0.1 | b-d  e---j|
+//	L0.0 |a--d   f--j| l--o  p-----x
 //
-//    Lbase a-------i     m---------w
+//	Lbase a-------i     m---------w
 //
 // Let's assume that, instead of a--d in the top sublevel, we had 3 files, a-b,
 // bb-c, and cc-d, of which bb-c is compacting. Let's also add another sublevel
 // L0.4 with some files, all of which aren't compacting:
 //
-//    L0.4  a------c ca--d _______
-//    L0.3  a-b bb-c  cc-d |  g-j|
-//    L0.2                 | f--j|         r-t
-//    L0.1    b----------d |e---j|
-//    L0.0  a------------d | f--j| l--o  p-----x
+//	L0.4  a------c ca--d _______
+//	L0.3  a-b bb-c  cc-d |  g-j|
+//	L0.2                 | f--j|         r-t
+//	L0.1    b----------d |e---j|
+//	L0.0  a------------d | f--j| l--o  p-----x
 //
-//    Lbase a------------------i    m---------w
+//	Lbase a------------------i    m---------w
 //
-// This method then needs to choose between the left side of L0.3 bb-c
-// (i.e. a-b), or the right side (i.e. cc-d and g-j) for inclusion in this
-// compaction. Since the right side has more files as well as one file that has
-// already been picked, it gets chosen at that sublevel, resulting in this
-// intermediate compaction:
+// This method then needs to choose between the left side of L0.3 bb-c (i.e.
+// a-b), or the right side (i.e. cc-d and g-j) for inclusion in this compaction.
+// Since the right side has more files as well as one file that has already been
+// picked, it gets chosen at that sublevel, resulting in this intermediate
+// compaction:
 //
-//    L0.4  a------c ca--d
-//                  ______________
-//    L0.3  a-b bb-c| cc-d    g-j|
-//    L0.2 _________|        f--j|         r-t
-//    L0.1 |  b----------d  e---j|
-//    L0.0 |a------------d   f--j| l--o  p-----x
+//	L0.4  a------c ca--d
+//	              ______________
+//	L0.3  a-b bb-c| cc-d    g-j|
+//	L0.2 _________|        f--j|         r-t
+//	L0.1 |  b----------d  e---j|
+//	L0.0 |a------------d   f--j| l--o  p-----x
 //
-//    Lbase a------------------i    m---------w
+//	Lbase a------------------i    m---------w
 //
 // Since bb-c had to be excluded at L0.3, the interval bounds for L0.4 are
 // actually ca-j, since ca is the next interval start key after the end interval
 // of bb-c. This would result in only ca-d being chosen at that sublevel, even
 // though a--c is also not compacting. This is the final result:
 //
-//                  ______________
-//    L0.4  a------c|ca--d       |
-//    L0.3  a-b bb-c| cc-d    g-j|
-//    L0.2 _________|        f--j|         r-t
-//    L0.1 |  b----------d  e---j|
-//    L0.0 |a------------d   f--j| l--o  p-----x
+//	              ______________
+//	L0.4  a------c|ca--d       |
+//	L0.3  a-b bb-c| cc-d    g-j|
+//	L0.2 _________|        f--j|         r-t
+//	L0.1 |  b----------d  e---j|
+//	L0.0 |a------------d   f--j| l--o  p-----x
 //
-//    Lbase a------------------i    m---------w
+//	Lbase a------------------i    m---------w
 //
 // TODO(bilal): Add more targeted tests for this method, through
 // ExtendL0ForBaseCompactionTo and intraL0CompactionUsingSeed.
@@ -1883,19 +1896,19 @@ func (s *L0Sublevels) extendCandidateToRectangle(
 	}
 	// Stats for files.
 	addedCount := 0
-	// Iterate from the oldest sub-level for L0 -> Lbase and youngest
-	// sub-level for intra-L0. The idea here is that anything that can't
-	// be included from that level constrains what can be included from
-	// the next level. This change in constraint is directly incorporated
-	// into minIntervalIndex, maxIntervalIndex.
+	// Iterate from the oldest sub-level for L0 -> Lbase and youngest sub-level
+	// for intra-L0. The idea here is that anything that can't be included from
+	// that level constrains what can be included from the next level. This
+	// change in constraint is directly incorporated into minIntervalIndex,
+	// maxIntervalIndex.
 	for sl := startLevel; sl != endLevel; sl += increment {
 		files := s.levelFiles[sl]
 		// Find the first file that overlaps with minIntervalIndex.
 		index := sort.Search(len(files), func(i int) bool {
 			return minIntervalIndex <= files[i].maxIntervalIndex
 		})
-		// Track the files that are fully within the current constraint
-		// of [minIntervalIndex, maxIntervalIndex].
+		// Track the files that are fully within the current constraint of
+		// [minIntervalIndex, maxIntervalIndex].
 		firstIndex := -1
 		lastIndex := -1
 		for ; index < len(files); index++ {
@@ -1904,8 +1917,8 @@ func (s *L0Sublevels) extendCandidateToRectangle(
 				break
 			}
 			include := true
-			// Extends out on the left so can't be included. This narrows
-			// what we can included in the next level.
+			// Extends out on the left so can't be included. This narrows what
+			// we can included in the next level.
 			if f.minIntervalIndex < minIntervalIndex {
 				include = false
 				minIntervalIndex = f.maxIntervalIndex + 1
@@ -1932,13 +1945,13 @@ func (s *L0Sublevels) extendCandidateToRectangle(
 			continue
 		}
 		// We have the files in [firstIndex, lastIndex] as potential for
-		// inclusion. Some of these may already have been picked. Some
-		// of them may be already compacting. The latter is tricky since
-		// we have to decide whether to contract minIntervalIndex or
-		// maxIntervalIndex when we encounter an already compacting file.
-		// We pick the longest sequence between firstIndex
-		// and lastIndex of non-compacting files -- this is represented by
-		// [candidateNonCompactingFirst, candidateNonCompactingLast].
+		// inclusion. Some of these may already have been picked. Some of them
+		// may be already compacting. The latter is tricky since we have to
+		// decide whether to contract minIntervalIndex or maxIntervalIndex when
+		// we encounter an already compacting file. We pick the longest sequence
+		// between firstIndex and lastIndex of non-compacting files -- this is
+		// represented by [candidateNonCompactingFirst,
+		// candidateNonCompactingLast].
 		nonCompactingFirst := -1
 		currentRunHasAlreadyPickedFiles := false
 		candidateNonCompactingFirst := -1
@@ -1985,8 +1998,8 @@ func (s *L0Sublevels) extendCandidateToRectangle(
 			}
 		}
 		if candidateNonCompactingFirst == -1 {
-			// All files are compacting. There will be gaps that we could exploit
-			// to continue, but don't bother.
+			// All files are compacting. There will be gaps that we could
+			// exploit to continue, but don't bother.
 			break
 		}
 		// May need to shrink [minIntervalIndex, maxIntervalIndex] for the next level.

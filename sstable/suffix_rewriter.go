@@ -2,23 +2,41 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"math"
-	"os"
 	"sync"
-	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
-// RewriteKeySuffixes copies the content of the passed SSTable bytes to a new
-// sstable, written to `out`, in which the suffix `from` has is replaced with
-// `to` in every key. The input sstable must consist of only Sets or RangeKeySets
-// and every key must have `from` as its suffix as determined by the Split
-// function of the Comparer in the passed WriterOptions. Range deletes must not
-// exist in this sstable, as they will be ignored.
+// RewriteKeySuffixes is deprecated.
+//
+// TODO(sumeer): remove after switching CockroachDB to RewriteKeySuffixesAndReturnFormat.
+func RewriteKeySuffixes(
+	sst []byte,
+	rOpts ReaderOptions,
+	out objstorage.Writable,
+	o WriterOptions,
+	from, to []byte,
+	concurrency int,
+) (*WriterMetadata, error) {
+	meta, _, err := RewriteKeySuffixesAndReturnFormat(sst, rOpts, out, o, from, to, concurrency)
+	return meta, err
+}
+
+// RewriteKeySuffixesAndReturnFormat copies the content of the passed SSTable
+// bytes to a new sstable, written to `out`, in which the suffix `from` has is
+// replaced with `to` in every key. The input sstable must consist of only
+// Sets or RangeKeySets and every key must have `from` as its suffix as
+// determined by the Split function of the Comparer in the passed
+// WriterOptions. Range deletes must not exist in this sstable, as they will
+// be ignored.
 //
 // Data blocks are rewritten in parallel by `concurrency` workers and then
 // assembled into a final SST. Filters are copied from the original SST without
@@ -27,61 +45,78 @@ import (
 //
 // Any block and table property collectors configured in the WriterOptions must
 // implement SuffixReplaceableTableCollector/SuffixReplaceableBlockCollector.
-func RewriteKeySuffixes(
+//
+// The WriterOptions.TableFormat is ignored, and the output sstable has the
+// same TableFormat as the input, which is returned in case the caller wants
+// to do some error checking. Suffix rewriting is meant to be efficient, and
+// allowing changes in the TableFormat detracts from that efficiency.
+func RewriteKeySuffixesAndReturnFormat(
 	sst []byte,
 	rOpts ReaderOptions,
-	out writeCloseSyncer,
+	out objstorage.Writable,
 	o WriterOptions,
 	from, to []byte,
 	concurrency int,
-) (*WriterMetadata, error) {
+) (*WriterMetadata, TableFormat, error) {
 	r, err := NewMemReader(sst, rOpts)
 	if err != nil {
-		return nil, err
+		return nil, TableFormatUnspecified, err
 	}
 	defer r.Close()
 	return rewriteKeySuffixesInBlocks(r, out, o, from, to, concurrency)
 }
 
 func rewriteKeySuffixesInBlocks(
-	r *Reader, out writeCloseSyncer, o WriterOptions, from, to []byte, concurrency int,
-) (*WriterMetadata, error) {
+	r *Reader, out objstorage.Writable, o WriterOptions, from, to []byte, concurrency int,
+) (*WriterMetadata, TableFormat, error) {
 	if o.Comparer == nil || o.Comparer.Split == nil {
-		return nil, errors.New("a valid splitter is required to define suffix to replace replace suffix")
+		return nil, TableFormatUnspecified,
+			errors.New("a valid splitter is required to rewrite suffixes")
 	}
 	if concurrency < 1 {
-		return nil, errors.New("concurrency must be >= 1")
+		return nil, TableFormatUnspecified, errors.New("concurrency must be >= 1")
 	}
-	if r.Properties.NumValueBlocks > 0 {
-		return nil, errors.New("sstable with a single suffix should not have value blocks")
+	// Even though NumValueBlocks = 0 => NumValuesInValueBlocks = 0, check both
+	// as a defensive measure.
+	if r.Properties.NumValueBlocks > 0 || r.Properties.NumValuesInValueBlocks > 0 {
+		return nil, TableFormatUnspecified,
+			errors.New("sstable with a single suffix should not have value blocks")
 	}
 
+	tableFormat := r.tableFormat
+	o.TableFormat = tableFormat
 	w := NewWriter(out, o)
-	defer w.Close()
+	defer func() {
+		if w != nil {
+			w.Close()
+		}
+	}()
 
 	for _, c := range w.propCollectors {
 		if _, ok := c.(SuffixReplaceableTableCollector); !ok {
-			return nil, errors.Errorf("property collector %s does not support suffix replacement", c.Name())
+			return nil, TableFormatUnspecified,
+				errors.Errorf("property collector %s does not support suffix replacement", c.Name())
 		}
 	}
 	for _, c := range w.blockPropCollectors {
 		if _, ok := c.(SuffixReplaceableBlockCollector); !ok {
-			return nil, errors.Errorf("block property collector %s does not support suffix replacement", c.Name())
+			return nil, TableFormatUnspecified,
+				errors.Errorf("block property collector %s does not support suffix replacement", c.Name())
 		}
 	}
 
 	l, err := r.Layout()
 	if err != nil {
-		return nil, errors.Wrap(err, "reading layout")
+		return nil, TableFormatUnspecified, errors.Wrap(err, "reading layout")
 	}
 
 	if err := rewriteDataBlocksToWriter(r, w, l.Data, from, to, w.split, concurrency); err != nil {
-		return nil, errors.Wrap(err, "rewriting data blocks")
+		return nil, TableFormatUnspecified, errors.Wrap(err, "rewriting data blocks")
 	}
 
 	// Copy over the range key block and replace suffixes in it if it exists.
 	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {
-		return nil, errors.Wrap(err, "rewriting range key blocks")
+		return nil, TableFormatUnspecified, errors.Wrap(err, "rewriting range key blocks")
 	}
 
 	// Copy over the filter block if it exists (rewriteDataBlocksToWriter will
@@ -89,7 +124,7 @@ func rewriteKeySuffixesInBlocks(
 	if w.filter != nil && l.Filter.Length > 0 {
 		filterBlock, _, err := readBlockBuf(r, l.Filter, nil)
 		if err != nil {
-			return nil, errors.Wrap(err, "reading filter")
+			return nil, TableFormatUnspecified, errors.Wrap(err, "reading filter")
 		}
 		w.filter = copyFilterWriter{
 			origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock,
@@ -97,10 +132,12 @@ func rewriteKeySuffixesInBlocks(
 	}
 
 	if err := w.Close(); err != nil {
-		return nil, err
+		w = nil
+		return nil, TableFormatUnspecified, err
 	}
-
-	return w.Metadata()
+	writerMeta, err := w.Metadata()
+	w = nil
+	return writerMeta, tableFormat, err
 }
 
 var errBadKind = errors.New("key does not have expected kind (set)")
@@ -129,8 +166,8 @@ func rewriteBlocks(
 		buf.checksummer.xxHasher = xxhash.New()
 	}
 
-	var blockAlloc []byte
-	var keyAlloc []byte
+	var blockAlloc bytealloc.A
+	var keyAlloc bytealloc.A
 	var scratch InternalKey
 
 	var inputBlock, inputBlockBuf []byte
@@ -181,7 +218,24 @@ func rewriteBlocks(
 			copy(scratch.UserKey, key.UserKey[:si])
 			copy(scratch.UserKey[si:], to)
 
+			// NB: for TableFormatPebblev3, since
+			// !iter.lazyValueHandling.hasValuePrefix, it will return the raw value
+			// in the block, which includes the 1-byte prefix. This is fine since bw
+			// also does not know about the prefix and will preserve it in bw.add.
 			v := val.InPlaceValue()
+			if invariants.Enabled && r.tableFormat == TableFormatPebblev3 &&
+				key.Kind() == InternalKeyKindSet {
+				if len(v) < 1 {
+					return errors.Errorf("value has no prefix")
+				}
+				prefix := valuePrefix(v[0])
+				if isValueHandle(prefix) {
+					return errors.Errorf("value prefix is incorrect")
+				}
+				if setHasSamePrefix(prefix) {
+					return errors.Errorf("multiple keys with same key prefix")
+				}
+			}
 			bw.add(scratch, v)
 			if output[i].start.UserKey == nil {
 				keyAlloc, output[i].start = cloneKeyWithBuf(scratch, keyAlloc)
@@ -194,12 +248,7 @@ func rewriteBlocks(
 		finished := compressAndChecksum(bw.finish(), compression, &buf)
 
 		// copy our finished block into the output buffer.
-		sz := len(finished) + blockTrailerLen
-		if cap(blockAlloc) < sz {
-			blockAlloc = make([]byte, sz*128)
-		}
-		output[i].data = blockAlloc[:sz:sz]
-		blockAlloc = blockAlloc[sz:]
+		blockAlloc, output[i].data = blockAlloc.Alloc(len(finished) + blockTrailerLen)
 		copy(output[i].data, finished)
 		copy(output[i].data[len(finished):], buf.tmp[:blockTrailerLen])
 	}
@@ -281,11 +330,11 @@ func rewriteDataBlocksToWriter(
 
 	for i := range blocks {
 		// Write the rewritten block to the file.
-		n, err := w.writer.Write(blocks[i].data)
-		if err != nil {
+		if err := w.writable.Write(blocks[i].data); err != nil {
 			return err
 		}
 
+		n := len(blocks[i].data)
 		bh := BlockHandle{Offset: w.meta.Size, Length: uint64(n) - blockTrailerLen}
 		// Update the overall size.
 		w.meta.Size += uint64(n)
@@ -309,8 +358,8 @@ func rewriteDataBlocksToWriter(
 			}
 		}
 
-		var bhp BlockHandleWithProperties
-		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
+		bhp, err := w.maybeAddBlockPropertiesToBlockHandle(bh)
+		if err != nil {
 			return err
 		}
 		var nextKey InternalKey
@@ -387,13 +436,18 @@ func (c copyFilterWriter) policyName() string      { return c.origPolicyName }
 // more work to rederive filters, props, etc, however re-doing that work makes
 // it less restrictive -- props no longer need to
 func RewriteKeySuffixesViaWriter(
-	r *Reader, out writeCloseSyncer, o WriterOptions, from, to []byte,
+	r *Reader, out objstorage.Writable, o WriterOptions, from, to []byte,
 ) (*WriterMetadata, error) {
 	if o.Comparer == nil || o.Comparer.Split == nil {
-		return nil, errors.New("a valid splitter is required to define suffix to replace replace suffix")
+		return nil, errors.New("a valid splitter is required to rewrite suffixes")
 	}
 
 	w := NewWriter(out, o)
+	defer func() {
+		if w != nil {
+			w.Close()
+		}
+	}()
 	i, err := r.NewIter(nil, nil)
 	if err != nil {
 		return nil, err
@@ -427,18 +481,21 @@ func RewriteKeySuffixesViaWriter(
 		return nil, err
 	}
 	if err := w.Close(); err != nil {
+		w = nil
 		return nil, err
 	}
-	return &w.meta, nil
+	writerMeta, err := w.Metadata()
+	w = nil
+	return writerMeta, err
 }
 
 // NewMemReader opens a reader over the SST stored in the passed []byte.
 func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
-	return NewReader(memReader{sst, bytes.NewReader(sst), sizeOnlyStat(int64(len(sst)))}, o)
+	return NewReader(newMemReader(sst), o)
 }
 
 func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error) {
-	raw := r.file.(memReader).b[bh.Offset : bh.Offset+bh.Length+blockTrailerLen]
+	raw := r.readable.(*memReader).b[bh.Offset : bh.Offset+bh.Length+blockTrailerLen]
 	if err := checkChecksum(r.checksumType, raw, bh, 0); err != nil {
 		return nil, buf, err
 	}
@@ -458,31 +515,42 @@ func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error)
 	return res, buf, err
 }
 
-// memReader is a thin wrapper around a []byte such that it can be passed to an
+// memReader is a thin wrapper around a []byte such that it can be passed to
 // sstable.Reader. It supports concurrent use, and does so without locking in
 // contrast to the heavier read/write vfs.MemFile.
 type memReader struct {
-	b []byte
-	r *bytes.Reader
-	s sizeOnlyStat
+	b  []byte
+	r  *bytes.Reader
+	rh objstorage.NoopReadHandle
 }
 
-var _ ReadableFile = memReader{}
+var _ objstorage.Readable = (*memReader)(nil)
 
-// ReadAt implements io.ReaderAt.
-func (m memReader) ReadAt(p []byte, off int64) (n int, err error) { return m.r.ReadAt(p, off) }
+func newMemReader(b []byte) *memReader {
+	r := &memReader{
+		b: b,
+		r: bytes.NewReader(b),
+	}
+	r.rh = objstorage.MakeNoopReadHandle(r)
+	return r
+}
 
-// Close implements io.Closer.
-func (memReader) Close() error { return nil }
+// ReadAt is part of objstorage.Readable.
+func (m *memReader) ReadAt(_ context.Context, p []byte, off int64) (n int, err error) {
+	return m.r.ReadAt(p, off)
+}
 
-// Stat implements ReadableFile.
-func (m memReader) Stat() (os.FileInfo, error) { return m.s, nil }
+// Close is part of objstorage.Readable.
+func (*memReader) Close() error {
+	return nil
+}
 
-type sizeOnlyStat int64
+// Stat is part of objstorage.Readable.
+func (m *memReader) Size() int64 {
+	return int64(len(m.b))
+}
 
-func (s sizeOnlyStat) Size() int64      { return int64(s) }
-func (sizeOnlyStat) IsDir() bool        { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) ModTime() time.Time { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) Mode() os.FileMode  { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) Name() string       { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) Sys() interface{}   { panic(errors.AssertionFailedf("unimplemented")) }
+// NewReadHandle is part of objstorage.Readable.
+func (m *memReader) NewReadHandle(_ context.Context) objstorage.ReadHandle {
+	return &m.rh
+}

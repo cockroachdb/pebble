@@ -28,6 +28,14 @@ type findRef struct {
 }
 
 // findT implements the find tool.
+//
+// TODO(bananabrick): Add support for virtual sstables in this tool. Currently,
+// the tool will work because we're parsing files from disk, so virtual sstables
+// will never be added to findT.tables. The manifest could contain information
+// about virtual sstables. This is fine because the manifest is only used to
+// compute the findT.editRefs, and editRefs is only used if a file in
+// findT.tables contains a key. Of course, the tool won't be completely
+// accurate without dealing with virtual sstable case.
 type findT struct {
 	Root *cobra.Command
 
@@ -413,7 +421,11 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				Comparer: f.opts.Comparer,
 				Filters:  f.opts.Filters,
 			}
-			r, err := sstable.NewReader(tf, opts, f.comparers, f.mergers,
+			readable, err := sstable.NewSimpleReadable(tf)
+			if err != nil {
+				return err
+			}
+			r, err := sstable.NewReader(readable, opts, f.comparers, f.mergers,
 				private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 			if err != nil {
 				return err

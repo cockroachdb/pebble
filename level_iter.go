@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"runtime/debug"
 
@@ -16,13 +17,37 @@ import (
 )
 
 // tableNewIters creates a new point and range-del iterator for the given file
-// number. If bytesIterated is specified, it is incremented as the given file is
-// iterated through.
+// number.
+//
+// On success, the internalIterator is not-nil and must be closed; the
+// FragmentIterator can be nil.
+// TODO(radu): always return a non-nil FragmentIterator.
+//
+// On error, the iterators are nil.
+//
+// The only (non-test) implementation of tableNewIters is tableCacheContainer.newIters().
 type tableNewIters func(
+	ctx context.Context,
 	file *manifest.FileMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error)
+
+// tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
+// for the rangedel iterator returned by tableNewIters.
+func tableNewRangeDelIter(ctx context.Context, newIters tableNewIters) keyspan.TableNewSpanIter {
+	return func(file *manifest.FileMetadata, iterOptions *keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+		iter, rangeDelIter, err := newIters(
+			ctx, file, &IterOptions{RangeKeyFilters: iterOptions.RangeKeyFilters}, internalIterOpts{})
+		if iter != nil {
+			_ = iter.Close()
+		}
+		if rangeDelIter == nil {
+			rangeDelIter = emptyKeyspanIter
+		}
+		return rangeDelIter, err
+	}
+}
 
 type internalIterOpts struct {
 	bytesIterated      *uint64
@@ -53,6 +78,11 @@ type internalIterOpts struct {
 // kind InternalKeyKindRangeDeletion which will be used to pause the levelIter
 // at the sstable until the mergingIter is ready to advance past it.
 type levelIter struct {
+	// The context is stored here since (a) iterators are expected to be
+	// short-lived (since they pin sstables), (b) plumbing a context into every
+	// method is very painful, (c) they do not (yet) respect context
+	// cancellation and are only used for tracing.
+	ctx    context.Context
 	logger Logger
 	cmp    Compare
 	split  Split
@@ -90,7 +120,8 @@ type levelIter struct {
 	// - err != nil
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
-	iter     internalIterator
+	iter internalIterator
+	// iterFile holds the current file. It is always equal to l.files.Current().
 	iterFile *fileMetadata
 	// filteredIter is an optional interface that may be implemented by internal
 	// iterators that perform filtering of keys. When a new file's iterator is
@@ -213,11 +244,13 @@ func newLevelIter(
 	bytesIterated *uint64,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(opts, cmp, split, newIters, files, level, internalIterOpts{bytesIterated: bytesIterated})
+	l.init(context.Background(), opts, cmp, split, newIters, files, level,
+		internalIterOpts{bytesIterated: bytesIterated})
 	return l
 }
 
 func (l *levelIter) init(
+	ctx context.Context,
 	opts IterOptions,
 	cmp Compare,
 	split Split,
@@ -226,6 +259,7 @@ func (l *levelIter) init(
 	level manifest.Level,
 	internalOpts internalIterOpts,
 ) {
+	l.ctx = ctx
 	l.err = nil
 	l.level = level
 	l.logger = opts.getLogger()
@@ -632,7 +666,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
-		iter, rangeDelIter, l.err = l.newIters(l.files.Current(), &l.tableOpts, l.internalOpts)
+		iter, rangeDelIter, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts)
 		l.iter = iter
 		if l.err != nil {
 			return noFileLoaded

@@ -8,10 +8,12 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
@@ -31,13 +33,19 @@ type blockWriter struct {
 	nextRestart     int
 	buf             []byte
 	// For datablocks in TableFormatPebblev3, we steal the most significant bit
-	// in restarts for encoding setHasSameKeyPrefix. This leaves us with 31
-	// bits, which is more than enough (no one needs > 2GB blocks). Typically,
-	// restarts occur every 16 keys, and by storing this bit with the restart,
-	// we can optimize for the case where a user wants to skip to the next
-	// prefix which happens to be in the same data block, but is > 16 keys away.
-	// We have seen production situations with 100+ versions per MVCC key (which
-	// share the same prefix).
+	// in restarts for encoding setHasSameKeyPrefixSinceLastRestart. This leaves
+	// us with 31 bits, which is more than enough (no one needs > 2GB blocks).
+	// Typically, restarts occur every 16 keys, and by storing this bit with the
+	// restart, we can optimize for the case where a user wants to skip to the
+	// next prefix which happens to be in the same data block, but is > 16 keys
+	// away. We have seen production situations with 100+ versions per MVCC key
+	// (which share the same prefix). Additionally, for such writers, the prefix
+	// compression of the key, that shares the key with the preceding key, is
+	// limited to the prefix part of the preceding key -- this ensures that when
+	// doing NPrefix (see blockIter) we don't need to assemble the full key
+	// for each step since by limiting the length of the shared key we are
+	// ensuring that any of the keys with the same prefix can be used to
+	// assemble the full key when the prefix does change.
 	restarts []uint32
 	curKey   []byte
 	// curValue excludes the optional prefix provided to
@@ -49,6 +57,7 @@ type blockWriter struct {
 	// block, so this is initially 0. It may be true for the second and later
 	// restarts in a block. Not having inter-block information is fine since we
 	// will optimize by stepping through restarts only within the same block.
+	// Note that the first restart is the first key in the block.
 	setHasSameKeyPrefixSinceLastRestart bool
 }
 
@@ -67,11 +76,17 @@ func (w *blockWriter) clear() {
 // internal use.
 const MaximumBlockSize = 1 << 28
 const setHasSameKeyPrefixRestartMask uint32 = 1 << 31
-const restartMaskLittleEndianHighByteWithoutSetHasSamePrefix byte = 0b01111111
+const restartMaskLittleEndianHighByteWithoutSetHasSamePrefix byte = 0b0111_1111
+const restartMaskLittleEndianHighByteOnlySetHasSamePrefix byte = 0b1000_0000
 
 // If !addValuePrefix, the valuePrefix is ignored.
 func (w *blockWriter) storeWithOptionalValuePrefix(
-	keySize int, value []byte, addValuePrefix bool, valuePrefix valuePrefix, setHasSameKeyPrefix bool,
+	keySize int,
+	value []byte,
+	maxSharedKeyLen int,
+	addValuePrefix bool,
+	valuePrefix valuePrefix,
+	setHasSameKeyPrefix bool,
 ) {
 	shared := 0
 	if !setHasSameKeyPrefix {
@@ -90,7 +105,7 @@ func (w *blockWriter) storeWithOptionalValuePrefix(
 		// is 3% faster on BenchmarkWriter on go1.16. Remove if future versions
 		// show this to not be a performance win. For now, functions that use of
 		// unsafe cannot be inlined.
-		n := len(w.curKey)
+		n := maxSharedKeyLen
 		if n > len(w.prevKey) {
 			n = len(w.prevKey)
 		}
@@ -175,13 +190,15 @@ func (w *blockWriter) storeWithOptionalValuePrefix(
 }
 
 func (w *blockWriter) add(key InternalKey, value []byte) {
-	w.addWithOptionalValuePrefix(key, value, false, 0, false)
+	w.addWithOptionalValuePrefix(
+		key, value, len(key.UserKey), false, 0, false)
 }
 
 // Callers that always set addValuePrefix to false should use add() instead.
 func (w *blockWriter) addWithOptionalValuePrefix(
 	key InternalKey,
 	value []byte,
+	maxSharedKeyLen int,
 	addValuePrefix bool,
 	valuePrefix valuePrefix,
 	setHasSameKeyPrefix bool,
@@ -195,7 +212,8 @@ func (w *blockWriter) addWithOptionalValuePrefix(
 	w.curKey = w.curKey[:size]
 	key.Encode(w.curKey)
 
-	w.storeWithOptionalValuePrefix(size, value, addValuePrefix, valuePrefix, setHasSameKeyPrefix)
+	w.storeWithOptionalValuePrefix(
+		size, value, maxSharedKeyLen, addValuePrefix, valuePrefix, setHasSameKeyPrefix)
 }
 
 func (w *blockWriter) finish() []byte {
@@ -278,18 +296,20 @@ type blockEntry struct {
 // handling. But these also turned out too costly for mid-stack inlining since
 // simple calls like the following have a high cost that is barely under the
 // budget of 80
-//  k, v := i.data.SeekGE(key, flags)  // cost 74
-//  k, v := i.data.Next()              // cost 72
+//
+//	k, v := i.data.SeekGE(key, flags)  // cost 74
+//	k, v := i.data.Next()              // cost 72
 //
 // We have 2 options for minimizing performance regressions:
-// - Include the lazyValueHandling logic in the already non-inlineable
-//   blockIter functions: Since most of the time is spent in data block iters,
-//   it is acceptable to take the small hit of unnecessary branching (which
-//   hopefully branch prediction will predict correctly) for other kinds of
-//   blocks.
-// - Duplicate the logic of singleLevelIterator and twoLevelIterator for the
-//   v3 sstable and only use the aforementioned lazyValueDataBlockIter for a
-//   v3 sstable. We would want to manage these copies via code generation.
+//   - Include the lazyValueHandling logic in the already non-inlineable
+//     blockIter functions: Since most of the time is spent in data block iters,
+//     it is acceptable to take the small hit of unnecessary branching (which
+//     hopefully branch prediction will predict correctly) for other kinds of
+//     blocks.
+//   - Duplicate the logic of singleLevelIterator and twoLevelIterator for the
+//     v3 sstable and only use the aforementioned lazyValueDataBlockIter for a
+//     v3 sstable. We would want to manage these copies via code generation.
+//
 // We have picked the first option here.
 type blockIter struct {
 	cmp Compare
@@ -500,6 +520,7 @@ func (i *blockIter) readEntry() {
 	}
 
 	unsharedKey := getBytes(ptr, int(unshared))
+	// TODO(sumeer): move this into the else block below.
 	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
 	if shared == 0 {
 		// Provide stability for the key across positioning calls if the key
@@ -994,6 +1015,285 @@ func (i *blockIter) Next() (*InternalKey, base.LazyValue) {
 	return &i.ikey, i.lazyValue
 }
 
+// nextPrefix is used for implementing NPrefix.
+func (i *blockIter) nextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+	if i.lazyValueHandling.hasValuePrefix {
+		return i.nextPrefixV3(succKey)
+	}
+	const nextsBeforeSeek = 3
+	k, v := i.Next()
+	for j := 1; k != nil && i.cmp(k.UserKey, succKey) < 0; j++ {
+		if j >= nextsBeforeSeek {
+			return i.SeekGE(succKey, base.SeekGEFlagsNone)
+		}
+		k, v = i.Next()
+	}
+	return k, v
+}
+
+func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) {
+	// Doing nexts that involve a key comparison can be expensive (and the cost
+	// depends on the key length), so we use the same threshold of 3 that we use
+	// for TableFormatPebblev2 in blockIter.nextPrefix above. The next fast path
+	// that looks at setHasSamePrefix takes ~5ns per key, which is ~150x faster
+	// than doing a SeekGE within the block, so we do this 16 times
+	// (~5ns*16=80ns), and then switch to looking at restarts. Doing the binary
+	// search for the restart consumes > 100ns. If the number of versions is >
+	// 17, we will increment nextFastCount to 17, then do a binary search, and
+	// on average need to find a key between two restarts, so another 8 steps
+	// corresponding to nextFastCount, for a mean total of 17 + 8 = 25 such
+	// steps.
+	//
+	// TODO(sumeer): use the configured restartInterval for the sstable when it
+	// was written (which we don't currently store) instead of the default value
+	// of 16.
+	const nextCmpThresholdBeforeSeek = 3
+	const nextFastThresholdBeforeRestarts = 16
+	nextCmpCount := 0
+	nextFastCount := 0
+	usedRestarts := false
+	// INVARIANT: blockIter is valid.
+	if invariants.Enabled && !i.valid() {
+		panic(errors.AssertionFailedf("nextPrefixV3 called on invalid blockIter"))
+	}
+	prevKeyIsSet := i.ikey.Kind() == InternalKeyKindSet
+	for {
+		i.offset = i.nextOffset
+		if !i.valid() {
+			return nil, base.LazyValue{}
+		}
+		// Need to decode the length integers, so we can compute nextOffset.
+		ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
+		// This is an ugly performance hack. Reading entries from blocks is one of
+		// the inner-most routines and decoding the 3 varints per-entry takes
+		// significant time. Neither go1.11 or go1.12 will inline decodeVarint for
+		// us, so we do it manually. This provides a 10-15% performance improvement
+		// on blockIter benchmarks on both go1.11 and go1.12.
+		//
+		// TODO(peter): remove this hack if go:inline is ever supported.
+
+		// Decode the shared key length integer.
+		var shared uint32
+		if a := *((*uint8)(ptr)); a < 128 {
+			shared = uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 1)
+		} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+			shared = uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 2)
+		} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+			shared = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 3)
+		} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+			shared = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 4)
+		} else {
+			d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+			shared = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 5)
+		}
+		// Decode the unshared key length integer.
+		var unshared uint32
+		if a := *((*uint8)(ptr)); a < 128 {
+			unshared = uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 1)
+		} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+			unshared = uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 2)
+		} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+			unshared = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 3)
+		} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+			unshared = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 4)
+		} else {
+			d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+			unshared = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 5)
+		}
+		// Decode the value length integer.
+		var value uint32
+		if a := *((*uint8)(ptr)); a < 128 {
+			value = uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 1)
+		} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+			value = uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 2)
+		} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+			value = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 3)
+		} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+			value = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 4)
+		} else {
+			d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+			value = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			ptr = unsafe.Pointer(uintptr(ptr) + 5)
+		}
+		// The starting position of the value.
+		valuePtr := unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
+		i.nextOffset = int32(uintptr(valuePtr)-uintptr(i.ptr)) + int32(value)
+		if invariants.Enabled && unshared < 8 {
+			// This should not happen since only the key prefix is shared, so even
+			// if the prefix length is the same as the user key length, the unshared
+			// will include the trailer.
+			panic(errors.AssertionFailedf("unshared %d is too small", unshared))
+		}
+		// The trailer is written in little endian, so the key kind is the first
+		// byte in the trailer that is encoded in the slice [unshared-8:unshared].
+		keyKind := InternalKeyKind((*[manual.MaxArrayLen]byte)(ptr)[unshared-8])
+		prefixChanged := false
+		if keyKind == InternalKeyKindSet {
+			if invariants.Enabled && value == 0 {
+				panic(errors.AssertionFailedf("value is of length 0, but we expect a valuePrefix"))
+			}
+			valPrefix := *((*valuePrefix)(valuePtr))
+			if setHasSamePrefix(valPrefix) {
+				// Fast-path. No need to assemble i.fullKey, or update i.key. We know
+				// that subsequent keys will not have a shared length that is greater
+				// than the prefix of the current key, which is also the prefix of
+				// i.key. Since we are continuing to iterate, we don't need to
+				// initialize i.ikey and i.lazyValue (these are initialized before
+				// returning).
+				nextFastCount++
+				if nextFastCount > nextFastThresholdBeforeRestarts {
+					if usedRestarts {
+						// Exhausted iteration budget. This will never happen unless
+						// someone is using a restart interval > 16. It is just to guard
+						// against long restart intervals causing too much iteration.
+						break
+					}
+					// Haven't used restarts yet, so find the first restart at or beyond
+					// the current offset.
+					targetOffset := i.offset
+					var index int32
+					{
+						// NB: manually inlined sort.Sort is ~5% faster.
+						//
+						// f defined for a restart point is true iff the offset >=
+						// targetOffset.
+						// Define f(-1) == false and f(i.numRestarts) == true.
+						// Invariant: f(index-1) == false, f(upper) == true.
+						upper := i.numRestarts
+						for index < upper {
+							h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
+							// index ≤ h < upper
+							offset := decodeRestart(i.data[i.restarts+4*h:])
+							if offset < targetOffset {
+								index = h + 1 // preserves f(index-1) == false
+							} else {
+								upper = h // preserves f(upper) == true
+							}
+						}
+						// index == upper, f(index-1) == false, and f(upper) (= f(index)) == true
+						// => answer is index.
+					}
+					usedRestarts = true
+					nextFastCount = 0
+					if index == i.numRestarts {
+						// Already past the last real restart, so iterate a bit more until
+						// we are done with the block.
+						continue
+					}
+					// Have some real restarts after index. NB: index is the first
+					// restart at or beyond the current offset.
+					startingIndex := index
+					for index != i.numRestarts &&
+						// The restart at index is 4 bytes written in little endian format
+						// starting at i.restart+4*index. The 0th byte is the least
+						// significant and the 3rd byte is the most significant. Since the
+						// most significant bit of the 3rd byte is what we use for
+						// encoding the set-has-same-prefix information, the indexing
+						// below has +3.
+						i.data[i.restarts+4*index+3]&restartMaskLittleEndianHighByteOnlySetHasSamePrefix != 0 {
+						// We still have the same prefix, so move to the next restart.
+						index++
+					}
+					// index is the first restart that did not have the same prefix.
+					if index != startingIndex {
+						// Managed to skip past at least one restart. Resume iteration
+						// from index-1. Since nextFastCount has been reset to 0, we
+						// should be able to iterate to the next prefix.
+						i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
+						i.readEntry()
+					}
+					// Else, unable to skip past any restart. Resume iteration. Since
+					// nextFastCount has been reset to 0, we should be able to iterate
+					// to the next prefix.
+					continue
+				}
+				continue
+			} else if prevKeyIsSet {
+				prefixChanged = true
+			}
+		} else {
+			prevKeyIsSet = false
+		}
+		// Slow-path cases:
+		// - (Likely) The prefix has changed.
+		// - (Unlikely) The prefix has not changed.
+		// We assemble the key etc. under the assumption that it is the likely
+		// case.
+		unsharedKey := getBytes(ptr, int(unshared))
+		// TODO(sumeer): move this into the else block below. This is a bit tricky
+		// since the current logic assumes we have always copied the latest key
+		// into fullKey, which is why when we get to the next key we can (a)
+		// access i.fullKey[:shared], (b) append only the unsharedKey to
+		// i.fullKey. For (a), we can access i.key[:shared] since that memory is
+		// valid (even if unshared). For (b), we will need to remember whether
+		// i.key refers to i.fullKey or not, and can append the unsharedKey only
+		// in the former case and for the latter case need to copy the shared part
+		// too. This same comment applies to the other place where we can do this
+		// optimization, in readEntry().
+		i.fullKey = append(i.fullKey[:shared], unsharedKey...)
+		i.val = getBytes(valuePtr, int(value))
+		if shared == 0 {
+			// Provide stability for the key across positioning calls if the key
+			// doesn't share a prefix with the previous key. This removes requiring the
+			// key to be copied if the caller knows the block has a restart interval of
+			// 1. An important example of this is range-del blocks.
+			i.key = unsharedKey
+		} else {
+			i.key = i.fullKey
+		}
+		// Manually inlined version of i.decodeInternalKey(i.key).
+		if n := len(i.key) - 8; n >= 0 {
+			i.ikey.Trailer = binary.LittleEndian.Uint64(i.key[n:])
+			i.ikey.UserKey = i.key[:n:n]
+			if i.globalSeqNum != 0 {
+				i.ikey.SetSeqNum(i.globalSeqNum)
+			}
+		} else {
+			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
+			i.ikey.UserKey = nil
+		}
+		nextCmpCount++
+		if invariants.Enabled && prefixChanged && i.cmp(i.ikey.UserKey, succKey) < 0 {
+			panic(errors.AssertionFailedf("prefix should have changed but %x < %x",
+				i.ikey.UserKey, succKey))
+		}
+		if prefixChanged || i.cmp(i.ikey.UserKey, succKey) >= 0 {
+			// Prefix has changed.
+			if invariants.Enabled && !i.lazyValueHandling.hasValuePrefix {
+				panic(errors.AssertionFailedf("nextPrefixV3 being run for non-v3 sstable"))
+			}
+			if base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
+				i.lazyValue = base.MakeInPlaceValue(i.val)
+			} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+				i.lazyValue = base.MakeInPlaceValue(i.val[1:])
+			} else {
+				i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+			}
+			return &i.ikey, i.lazyValue
+		}
+		// Else prefix has not changed.
+
+		if nextCmpCount >= nextCmpThresholdBeforeSeek {
+			break
+		}
+	}
+	return i.SeekGE(succKey, base.SeekGEFlagsNone)
+}
+
 // NextPrefix implements (base.InternalIterator).NextPrefix
 func (i *blockIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
 	const nextsBeforeSeek = 3
@@ -1138,7 +1438,7 @@ func (i *blockIter) valid() bool {
 // gathers all the fragments with identical bounds within a block and returns a
 // single keyspan.Span describing all the keys defined over the span.
 //
-// Memory lifetime
+// # Memory lifetime
 //
 // A Span returned by fragmentBlockIter is only guaranteed to be stable until
 // the next fragmentBlockIter iteration positioning method. A Span's Keys slice
@@ -1391,8 +1691,13 @@ func (i *fragmentBlockIter) Prev() *keyspan.Span {
 
 // SeekGE implements (keyspan.FragmentIterator).SeekGE.
 func (i *fragmentBlockIter) SeekGE(k []byte) *keyspan.Span {
-	i.dir = +1
-	return i.gatherForward(i.blockIter.SeekGE(k, base.SeekGEFlags(0)))
+	if s := i.SeekLT(k); s != nil && i.blockIter.cmp(k, s.End) < 0 {
+		return s
+	}
+	// TODO(jackson): If the above i.SeekLT(k) discovers a span but the span
+	// doesn't meet the k < s.End comparison, then there's no need for the
+	// SeekLT to gatherBackward.
+	return i.Next()
 }
 
 // SeekLT implements (keyspan.FragmentIterator).SeekLT.

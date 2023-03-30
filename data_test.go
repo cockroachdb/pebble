@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"fmt"
 	"io"
 	"math"
@@ -18,10 +19,12 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -199,6 +202,8 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			valid = iter.Valid()
 		case "stats":
 			stats := iter.Stats()
+			// The timing is non-deterministic, so set to 0.
+			stats.InternalStats.BlockReadDuration = 0
 			fmt.Fprintf(&b, "stats: %s\n", stats.String())
 			continue
 		case "clone":
@@ -488,6 +493,8 @@ func runInternalIterCmd(
 			continue
 		case "stats":
 			if o.stats != nil {
+				// The timing is non-deterministic, so set to 0.
+				o.stats.BlockReadDuration = 0
 				fmt.Fprintf(&b, "%+v\n", *o.stats)
 			}
 			continue
@@ -626,7 +633,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	if err != nil {
 		return err
 	}
-	w := sstable.NewWriter(f, writeOpts)
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 	iter := b.newInternalIter(nil)
 	for key, val := iter.First(); key != nil; key, val = iter.Next() {
 		tmp := *key
@@ -712,16 +719,16 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 // InternalKey's string representation, as understood by
 // ParseInternalKey, followed a colon and the corresponding value.
 //
-//     b.SET.50:foo
-//     c.DEL.20
+//	b.SET.50:foo
+//	c.DEL.20
 //
 // Range keys may be encoded by prefixing the line with `rangekey:`,
 // followed by the keyspan.Span string representation, as understood
 // by keyspan.ParseSpan.
 //
-//     rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
+//	rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
 //
-// Mechanics
+// # Mechanics
 //
 // runDBDefineCmd works by simulating a flush for every file written.
 // Keys are written to a memtable. When a file is complete, the table
@@ -902,6 +909,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			InternalKey{UserKey: []byte(parts[0])},
 			InternalKey{UserKey: []byte(parts[1])},
 		)
+		m.InitPhysicalBacking()
 		return m, nil
 	}
 
@@ -997,8 +1005,9 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			key := base.ParseInternalKey(data[:i])
 			valueStr := data[i+1:]
 			value := []byte(valueStr)
-			if valueStr == "<largeval>" {
-				value = make([]byte, 4096)
+			var randBytes int
+			if n, err := fmt.Sscanf(valueStr, "<rand-bytes=%d>", &randBytes); err == nil && n == 1 {
+				value = make([]byte, randBytes)
 				rnd := rand.New(rand.NewSource(int64(key.SeqNum())))
 				if _, err := rnd.Read(value[:]); err != nil {
 					return nil, err
@@ -1067,27 +1076,64 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 	return "(not found)"
 }
 
-func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
-	var timestamps []int
-	var maxKeyLength int
-	td.ScanArgs(t, "keylen", &maxKeyLength)
-	for _, cmdArg := range td.CmdArgs {
-		if cmdArg.Key != "timestamps" {
+func runTableFileSizesCmd(td *datadriven.TestData, d *DB) string {
+	var buf bytes.Buffer
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	v := d.mu.versions.currentVersion()
+	for l, levelMetadata := range v.Levels {
+		if levelMetadata.Empty() {
 			continue
 		}
-		for _, timestampVal := range cmdArg.Vals {
-			v, err := strconv.Atoi(timestampVal)
+		fmt.Fprintf(&buf, "L%d:\n", l)
+		iter := levelMetadata.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			fmt.Fprintf(&buf, "  %s: %d bytes (%s)\n", f, f.Size, humanize.IEC.Uint64(f.Size))
+		}
+	}
+	return buf.String()
+}
+
+func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
+	var maxKeyLength int
+	td.ScanArgs(t, "keylen", &maxKeyLength)
+	timestamps := []int{1}
+	valLength := 0
+	for _, cmdArg := range td.CmdArgs {
+		switch cmdArg.Key {
+		case "timestamps":
+			timestamps = timestamps[:0]
+			for _, timestampVal := range cmdArg.Vals {
+				v, err := strconv.Atoi(timestampVal)
+				require.NoError(t, err)
+				timestamps = append(timestamps, v)
+			}
+		case "vallen":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
 			require.NoError(t, err)
-			timestamps = append(timestamps, v)
+			valLength = v
+		default:
+			continue
 		}
 	}
 
 	ks := testkeys.Alpha(maxKeyLength)
 	buf := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
+	vbuf := make([]byte, valLength)
 	for i := 0; i < ks.Count(); i++ {
 		for _, ts := range timestamps {
 			n := testkeys.WriteKeyAt(buf, ks, i, ts)
-			require.NoError(t, b.Set(buf[:n], buf[:n], nil))
+
+			// Default to using the key as the value, but if the user provided
+			// the vallen argument, generate a random value of the specified
+			// length.
+			value := buf[:n]
+			if valLength > 0 {
+				_, err := crand.Read(vbuf)
+				require.NoError(t, err)
+				value = vbuf
+			}
+			require.NoError(t, b.Set(buf[:n], value, nil))
 		}
 	}
 }

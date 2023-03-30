@@ -11,11 +11,12 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
-func TestArchiveCleaner(t *testing.T) {
+func TestCleaner(t *testing.T) {
 	dbs := make(map[string]*DB)
 	defer func() {
 		for _, db := range dbs {
@@ -23,21 +24,16 @@ func TestArchiveCleaner(t *testing.T) {
 		}
 	}()
 
-	var buf syncedBuffer
 	mem := vfs.NewMem()
-	opts := &Options{
-		Cleaner: ArchiveCleaner{},
-		FS:      loggingFS{mem, &buf},
-		WALDir:  "wal",
-	}
-
+	var memLog base.InMemLogger
+	fs := vfs.WithLogging(mem, memLog.Infof)
 	datadriven.RunTest(t, "testdata/cleaner", func(t *testing.T, td *datadriven.TestData) string {
+		memLog.Reset()
 		switch td.Cmd {
 		case "batch":
 			if len(td.CmdArgs) != 1 {
 				return "batch <db>"
 			}
-			buf.Reset()
 			d := dbs[td.CmdArgs[0].String()]
 			b := d.NewBatch()
 			if err := runBatchDefineCmd(td, b); err != nil {
@@ -46,29 +42,39 @@ func TestArchiveCleaner(t *testing.T) {
 			if err := b.Commit(Sync); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "compact":
 			if len(td.CmdArgs) != 1 {
 				return "compact <db>"
 			}
-			buf.Reset()
 			d := dbs[td.CmdArgs[0].String()]
 			if err := d.Compact(nil, []byte("\xff"), false); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "flush":
 			if len(td.CmdArgs) != 1 {
 				return "flush <db>"
 			}
-			buf.Reset()
 			d := dbs[td.CmdArgs[0].String()]
 			if err := d.Flush(); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
+
+		case "close":
+			if len(td.CmdArgs) != 1 {
+				return "close <db>"
+			}
+			dbDir := td.CmdArgs[0].String()
+			d := dbs[dbDir]
+			if err := d.Close(); err != nil {
+				return err.Error()
+			}
+			delete(dbs, dbDir)
+			return memLog.String()
 
 		case "list":
 			if len(td.CmdArgs) != 1 {
@@ -79,30 +85,46 @@ func TestArchiveCleaner(t *testing.T) {
 				return err.Error()
 			}
 			sort.Strings(paths)
-			buf.Reset()
-			fmt.Fprintf(&buf, "%s\n", strings.Join(paths, "\n"))
-			return buf.String()
+			return fmt.Sprintf("%s\n", strings.Join(paths, "\n"))
 
 		case "open":
-			if len(td.CmdArgs) != 1 && len(td.CmdArgs) != 2 {
-				return "open <dir> [readonly]"
+			if len(td.CmdArgs) < 1 || len(td.CmdArgs) > 3 {
+				return "open <dir> [archive] [readonly]"
 			}
-			opts.ReadOnly = false
-			if len(td.CmdArgs) == 2 {
-				if td.CmdArgs[1].String() != "readonly" {
-					return "open <dir> [readonly]"
-				}
-				opts.ReadOnly = true
-			}
-
-			buf.Reset()
 			dir := td.CmdArgs[0].String()
+			opts := (&Options{
+				FS:     fs,
+				WALDir: dir + "_wal",
+			}).WithFSDefaults()
+
+			for i := 1; i < len(td.CmdArgs); i++ {
+				switch td.CmdArgs[i].String() {
+				case "readonly":
+					opts.ReadOnly = true
+				case "archive":
+					opts.Cleaner = ArchiveCleaner{}
+				default:
+					return "open <dir> [archive] [readonly]"
+				}
+			}
 			d, err := Open(dir, opts)
 			if err != nil {
 				return err.Error()
 			}
 			dbs[dir] = d
-			return buf.String()
+			return memLog.String()
+
+		case "create-bogus-file":
+			if len(td.CmdArgs) != 1 {
+				return "create-bogus-file <db/file>"
+			}
+			dst, err := fs.Create(td.CmdArgs[0].String())
+			require.NoError(t, err)
+			_, err = dst.Write([]byte("bogus data"))
+			require.NoError(t, err)
+			require.NoError(t, dst.Sync())
+			require.NoError(t, dst.Close())
+			return memLog.String()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

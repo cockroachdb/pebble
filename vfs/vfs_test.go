@@ -36,27 +36,30 @@ func normalizeError(err error) error {
 	return err
 }
 
-type loggingFS struct {
+// vfsTestFS is similar to loggingFS but is more specific to the vfs test. It
+// logs more operations and logs return values and errors.
+// It also supports injecting an error on Link.
+type vfsTestFS struct {
 	FS
 	base    string
 	w       io.Writer
 	linkErr error
 }
 
-func (fs loggingFS) stripBase(path string) string {
+func (fs vfsTestFS) stripBase(path string) string {
 	if strings.HasPrefix(path, fs.base+"/") {
 		return path[len(fs.base)+1:]
 	}
 	return path
 }
 
-func (fs loggingFS) Create(name string) (File, error) {
+func (fs vfsTestFS) Create(name string) (File, error) {
 	f, err := fs.FS.Create(name)
 	fmt.Fprintf(fs.w, "create: %s [%v]\n", fs.stripBase(name), normalizeError(err))
-	return loggingFile{f, fs.PathBase(name), fs.w}, err
+	return vfsTestFSFile{f, fs.PathBase(name), fs.w}, err
 }
 
-func (fs loggingFS) Link(oldname, newname string) error {
+func (fs vfsTestFS) Link(oldname, newname string) error {
 	err := fs.linkErr
 	if err == nil {
 		err = fs.FS.Link(oldname, newname)
@@ -66,61 +69,79 @@ func (fs loggingFS) Link(oldname, newname string) error {
 	return err
 }
 
-func (fs loggingFS) ReuseForWrite(oldname, newname string) (File, error) {
+func (fs vfsTestFS) ReuseForWrite(oldname, newname string) (File, error) {
 	f, err := fs.FS.ReuseForWrite(oldname, newname)
 	if err == nil {
-		f = loggingFile{f, fs.PathBase(newname), fs.w}
+		f = vfsTestFSFile{f, fs.PathBase(newname), fs.w}
 	}
 	fmt.Fprintf(fs.w, "reuseForWrite: %s -> %s [%v]\n",
 		fs.stripBase(oldname), fs.stripBase(newname), normalizeError(err))
 	return f, err
 }
 
-func (fs loggingFS) MkdirAll(dir string, perm os.FileMode) error {
+func (fs vfsTestFS) MkdirAll(dir string, perm os.FileMode) error {
 	err := fs.FS.MkdirAll(dir, perm)
 	fmt.Fprintf(fs.w, "mkdir: %s [%v]\n", fs.stripBase(dir), normalizeError(err))
 	return err
 }
 
-func (fs loggingFS) Open(name string, opts ...OpenOption) (File, error) {
+func (fs vfsTestFS) Open(name string, opts ...OpenOption) (File, error) {
 	f, err := fs.FS.Open(name, opts...)
 	fmt.Fprintf(fs.w, "open: %s [%v]\n", fs.stripBase(name), normalizeError(err))
-	return loggingFile{f, fs.stripBase(name), fs.w}, err
+	return vfsTestFSFile{f, fs.stripBase(name), fs.w}, err
 }
 
-func (fs loggingFS) Remove(name string) error {
+func (fs vfsTestFS) Remove(name string) error {
 	err := fs.FS.Remove(name)
 	fmt.Fprintf(fs.w, "remove: %s [%v]\n", fs.stripBase(name), normalizeError(err))
 	return err
 }
 
-func (fs loggingFS) RemoveAll(name string) error {
+func (fs vfsTestFS) RemoveAll(name string) error {
 	err := fs.FS.RemoveAll(name)
 	fmt.Fprintf(fs.w, "remove-all: %s [%v]\n", fs.stripBase(name), normalizeError(err))
 	return err
 }
 
-type loggingFile struct {
+type vfsTestFSFile struct {
 	File
 	name string
 	w    io.Writer
 }
 
-func (f loggingFile) Close() error {
+func (f vfsTestFSFile) Close() error {
 	err := f.File.Close()
 	fmt.Fprintf(f.w, "close: %s [%v]\n", f.name, err)
 	return err
 }
 
-func (f loggingFile) Sync() error {
+func (f vfsTestFSFile) Preallocate(off, n int64) error {
+	err := f.File.Preallocate(off, n)
+	fmt.Fprintf(f.w, "preallocate(off=%d,n=%d): %s [%v]\n", off, n, f.name, err)
+	return err
+}
+
+func (f vfsTestFSFile) Sync() error {
 	err := f.File.Sync()
 	fmt.Fprintf(f.w, "sync: %s [%v]\n", f.name, err)
 	return err
 }
 
+func (f vfsTestFSFile) SyncData() error {
+	err := f.File.SyncData()
+	fmt.Fprintf(f.w, "sync-data: %s [%v]\n", f.name, err)
+	return err
+}
+
+func (f vfsTestFSFile) SyncTo(length int64) (fullSync bool, err error) {
+	fullSync, err = f.File.SyncTo(length)
+	fmt.Fprintf(f.w, "sync-to(%d): %s [%t,%v]\n", length, f.name, fullSync, err)
+	return fullSync, err
+}
+
 func runTestVFS(t *testing.T, baseFS FS, dir string) {
 	var buf bytes.Buffer
-	fs := loggingFS{FS: baseFS, base: dir, w: &buf}
+	fs := vfsTestFS{FS: baseFS, base: dir, w: &buf}
 
 	datadriven.RunTest(t, "testdata/vfs", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -164,9 +185,9 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 					for _, p := range parts[3:] {
 						switch p {
 						case "disk":
-							dstFS = loggingFS{FS: Default, base: dir, w: &buf}
+							dstFS = vfsTestFS{FS: Default, base: dir, w: &buf}
 						case "mem":
-							dstFS = loggingFS{FS: NewMem(), base: dir, w: &buf}
+							dstFS = vfsTestFS{FS: NewMem(), base: dir, w: &buf}
 						case "link":
 							opts = append(opts, CloneTryLink)
 						case "sync":
@@ -314,18 +335,27 @@ func TestVFSCreateLinkSemantics(t *testing.T) {
 
 // TestVFSRootDirName ensures that opening the root directory on both the
 // Default and MemFS works and returns a File which has the name of the
-// path separator for the FS (always sep for MemFS).
+// path separator.
 func TestVFSRootDirName(t *testing.T) {
 	for _, fs := range []FS{Default, NewMem()} {
-		rootDir, err := fs.Open("/")
+		sep := sep
+		if fs == Default {
+			sep = string(os.PathSeparator)
+		}
+		rootDir, err := fs.Open(sep)
 		require.NoError(t, err)
 		fi, err := rootDir.Stat()
 		require.NoError(t, err)
+		require.Equal(t, sep, fi.Name())
+	}
+}
 
-		exp := sep
-		if fs == Default {
-			exp = string(os.PathSeparator)
-		}
-		require.Equal(t, exp, fi.Name())
+// TestOpType is intended to catch operations that have been added without an
+// associated string, which could result in a runtime panic.
+func TestOpType(t *testing.T) {
+	for i := 0; i < int(opTypeMax); i++ {
+		require.NotPanics(t, func() {
+			_ = OpType(i).String()
+		})
 	}
 }

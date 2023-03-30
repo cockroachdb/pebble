@@ -24,7 +24,8 @@ import (
 // Note that the start user key is inclusive and the end user key is exclusive.
 //
 // Currently the only supported key kinds are:
-//   RANGEDEL, RANGEKEYSET, RANGEKEYUNSET, RANGEKEYDEL.
+//
+//	RANGEDEL, RANGEKEYSET, RANGEKEYUNSET, RANGEKEYDEL.
 type Span struct {
 	// Start and End encode the user key range of all the contained items, with
 	// an inclusive start key and exclusive end key. Both Start and End must be
@@ -73,6 +74,15 @@ type Key struct {
 // SeqNum returns the sequence number component of the key.
 func (k Key) SeqNum() uint64 {
 	return k.Trailer >> 8
+}
+
+// VisibleAt returns true if the provided key is visible at the provided
+// snapshot sequence number. It interprets batch sequence numbers as always
+// visible, because non-visible batch span keys are filtered when they're
+// fragmented.
+func (k Key) VisibleAt(snapshot uint64) bool {
+	seq := k.SeqNum()
+	return seq < snapshot || seq&base.InternalKeySeqNumBatch != 0
 }
 
 // Kind returns the kind component of the key.
@@ -395,6 +405,17 @@ func SortKeysByTrailer(keys *[]Key) {
 	sorted := (*keysBySeqNumKind)(keys)
 	sort.Sort(sorted)
 }
+
+// KeysBySuffix implements sort.Interface, sorting its member Keys slice to by
+// Suffix in the order dictated by Cmp.
+type KeysBySuffix struct {
+	Cmp  base.Compare
+	Keys []Key
+}
+
+func (s *KeysBySuffix) Len() int           { return len(s.Keys) }
+func (s *KeysBySuffix) Less(i, j int) bool { return s.Cmp(s.Keys[i].Suffix, s.Keys[j].Suffix) < 0 }
+func (s *KeysBySuffix) Swap(i, j int)      { s.Keys[i], s.Keys[j] = s.Keys[j], s.Keys[i] }
 
 // ParseSpan parses the string representation of a Span. It's intended for
 // tests. ParseSpan panics if passed a malformed span representation.

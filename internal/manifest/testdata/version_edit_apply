@@ -167,3 +167,25 @@ edit
 ----
 pebble: file deleted L0.000002 before it was inserted
 
+apply
+ L0
+  1:[a#1,SET-b#2,SET]
+edit
+ delete
+  L0
+   1
+ add
+  L2
+  1:[a#1,SET-b#2,SET]
+  4:[c#3,SET-d#4,SET]
+  5:[s#3,SET-z#4,SET]
+edit
+  delete
+    L2
+     1
+    L2
+     4
+----
+2:
+  000005:[s#3,SET-z#4,SET]
+zombies []

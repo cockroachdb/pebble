@@ -277,14 +277,14 @@ MANIFEST-000001
   log-num:       9
   next-file-num: 11
   last-seq-num:  10
-  added:         L0 000010:834<#8-#10>[aaa#8,DEL-eee#72057594037927935,RANGEDEL] (2021-04-01T20:24:02Z)
+  added:         L0 000010:834<#8-#10>[aaa#8,DEL-eee#inf,RANGEDEL] (2021-04-01T20:24:02Z)
 349/8
   next-file-num: 12
   last-seq-num:  10
   deleted:       L0 000010
   deleted:       L6 000007
   deleted:       L6 000008
-  added:         L6 000011:898<#0-#10>[aaa#8,DEL-eee#72057594037927935,RANGEDEL] (2021-04-01T20:24:02Z)
+  added:         L6 000011:898<#0-#10>[aaa#8,DEL-eee#inf,RANGEDEL] (2021-04-01T20:24:02Z)
 408/9
   next-file-num: 12
   last-seq-num:  10
@@ -329,14 +329,14 @@ MANIFEST-000001
   log-num:       9
   next-file-num: 11
   last-seq-num:  10
-  added:         L0 000010:834<#8-#10>[aaa#8,DEL-eee#72057594037927935,RANGEDEL] (2021-04-01T20:24:02Z)
+  added:         L0 000010:834<#8-#10>[aaa#8,DEL-eee#inf,RANGEDEL] (2021-04-01T20:24:02Z)
 349/6
   next-file-num: 12
   last-seq-num:  10
   deleted:       L0 000010
   deleted:       L6 000007
   deleted:       L6 000008
-  added:         L6 000011:898<#0-#10>[aaa#8,DEL-eee#72057594037927935,RANGEDEL] (2021-04-01T20:24:02Z)
+  added:         L6 000011:898<#0-#10>[aaa#8,DEL-eee#inf,RANGEDEL] (2021-04-01T20:24:02Z)
 408/7
   next-file-num: 12
   last-seq-num:  10

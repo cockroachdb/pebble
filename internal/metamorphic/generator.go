@@ -33,12 +33,15 @@ type iterOpts struct {
 	filterMin uint64
 	filterMax uint64
 
+	// see IterOptions.UseL6Filters.
+	useL6Filters bool
+
 	// NB: If adding or removing fields, ensure IsZero is in sync.
 }
 
 func (o iterOpts) IsZero() bool {
 	return o.lower == nil && o.upper == nil && o.keyTypes == 0 &&
-		o.maskSuffix == nil && o.filterMin == 0 && o.filterMax == 0
+		o.maskSuffix == nil && o.filterMin == 0 && o.filterMax == 0 && !o.useL6Filters
 }
 
 type generator struct {
@@ -115,44 +118,45 @@ func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
 	g := newGenerator(rng, cfg, km)
 
 	generators := []func(){
-		batchAbort:           g.batchAbort,
-		batchCommit:          g.batchCommit,
-		dbCheckpoint:         g.dbCheckpoint,
-		dbCompact:            g.dbCompact,
-		dbFlush:              g.dbFlush,
-		dbRestart:            g.dbRestart,
-		iterClose:            g.randIter(g.iterClose),
-		iterFirst:            g.randIter(g.iterFirst),
-		iterLast:             g.randIter(g.iterLast),
-		iterNext:             g.randIter(g.iterNext),
-		iterNextWithLimit:    g.randIter(g.iterNextWithLimit),
-		iterNextPrefix:       g.randIter(g.iterNextPrefix),
-		iterPrev:             g.randIter(g.iterPrev),
-		iterPrevWithLimit:    g.randIter(g.iterPrevWithLimit),
-		iterSeekGE:           g.randIter(g.iterSeekGE),
-		iterSeekGEWithLimit:  g.randIter(g.iterSeekGEWithLimit),
-		iterSeekLT:           g.randIter(g.iterSeekLT),
-		iterSeekLTWithLimit:  g.randIter(g.iterSeekLTWithLimit),
-		iterSeekPrefixGE:     g.randIter(g.iterSeekPrefixGE),
-		iterSetBounds:        g.randIter(g.iterSetBounds),
-		iterSetOptions:       g.randIter(g.iterSetOptions),
-		newBatch:             g.newBatch,
-		newIndexedBatch:      g.newIndexedBatch,
-		newIter:              g.newIter,
-		newIterUsingClone:    g.newIterUsingClone,
-		newSnapshot:          g.newSnapshot,
-		readerGet:            g.readerGet,
-		snapshotClose:        g.snapshotClose,
-		writerApply:          g.writerApply,
-		writerDelete:         g.writerDelete,
-		writerDeleteRange:    g.writerDeleteRange,
-		writerIngest:         g.writerIngest,
-		writerMerge:          g.writerMerge,
-		writerRangeKeyDelete: g.writerRangeKeyDelete,
-		writerRangeKeySet:    g.writerRangeKeySet,
-		writerRangeKeyUnset:  g.writerRangeKeyUnset,
-		writerSet:            g.writerSet,
-		writerSingleDelete:   g.writerSingleDelete,
+		batchAbort:                  g.batchAbort,
+		batchCommit:                 g.batchCommit,
+		dbCheckpoint:                g.dbCheckpoint,
+		dbCompact:                   g.dbCompact,
+		dbFlush:                     g.dbFlush,
+		dbRatchetFormatMajorVersion: g.dbRatchetFormatMajorVersion,
+		dbRestart:                   g.dbRestart,
+		iterClose:                   g.randIter(g.iterClose),
+		iterFirst:                   g.randIter(g.iterFirst),
+		iterLast:                    g.randIter(g.iterLast),
+		iterNext:                    g.randIter(g.iterNext),
+		iterNextWithLimit:           g.randIter(g.iterNextWithLimit),
+		iterNextPrefix:              g.randIter(g.iterNextPrefix),
+		iterPrev:                    g.randIter(g.iterPrev),
+		iterPrevWithLimit:           g.randIter(g.iterPrevWithLimit),
+		iterSeekGE:                  g.randIter(g.iterSeekGE),
+		iterSeekGEWithLimit:         g.randIter(g.iterSeekGEWithLimit),
+		iterSeekLT:                  g.randIter(g.iterSeekLT),
+		iterSeekLTWithLimit:         g.randIter(g.iterSeekLTWithLimit),
+		iterSeekPrefixGE:            g.randIter(g.iterSeekPrefixGE),
+		iterSetBounds:               g.randIter(g.iterSetBounds),
+		iterSetOptions:              g.randIter(g.iterSetOptions),
+		newBatch:                    g.newBatch,
+		newIndexedBatch:             g.newIndexedBatch,
+		newIter:                     g.newIter,
+		newIterUsingClone:           g.newIterUsingClone,
+		newSnapshot:                 g.newSnapshot,
+		readerGet:                   g.readerGet,
+		snapshotClose:               g.snapshotClose,
+		writerApply:                 g.writerApply,
+		writerDelete:                g.writerDelete,
+		writerDeleteRange:           g.writerDeleteRange,
+		writerIngest:                g.writerIngest,
+		writerMerge:                 g.writerMerge,
+		writerRangeKeyDelete:        g.writerRangeKeyDelete,
+		writerRangeKeySet:           g.writerRangeKeySet,
+		writerRangeKeyUnset:         g.writerRangeKeyUnset,
+		writerSet:                   g.writerSet,
+		writerSingleDelete:          g.writerSingleDelete,
 	}
 
 	// TPCC-style deck of cards randomization. Every time the end of the deck is
@@ -477,6 +481,16 @@ func (g *generator) dbFlush() {
 	g.add(&flushOp{})
 }
 
+func (g *generator) dbRatchetFormatMajorVersion() {
+	// Ratchet to a random format major version between the minimum the
+	// metamorphic tests support and the newest. At runtime, the generated
+	// version may be behind the database's format major version, in which case
+	// RatchetFormatMajorVersion should deterministically error.
+	n := int(pebble.FormatNewest - minimumFormatMajorVersion)
+	vers := pebble.FormatMajorVersion(g.rng.Intn(n + 1))
+	g.add(&dbRatchetFormatMajorVersionOp{vers: vers})
+}
+
 func (g *generator) dbRestart() {
 	// Close any live iterators and snapshots, so that we can close the DB
 	// cleanly.
@@ -528,11 +542,11 @@ func (g *generator) newIter() {
 	}
 	opts.keyTypes, opts.maskSuffix = g.randKeyTypesAndMask()
 
-	// With a low probability, enable automatic filtering of keys with suffixes
+	// With 10% probability, enable automatic filtering of keys with suffixes
 	// not in the provided range. This filtering occurs both through
 	// block-property filtering and explicitly within the iterator operations to
 	// ensure determinism.
-	if g.rng.Intn(10) == 1 {
+	if g.rng.Float64() <= 0.1 {
 		max := g.cfg.writeSuffixDist.Max()
 		opts.filterMin, opts.filterMax = g.rng.Uint64n(max)+1, g.rng.Uint64n(max)+1
 		if opts.filterMin > opts.filterMax {
@@ -540,6 +554,11 @@ func (g *generator) newIter() {
 		} else if opts.filterMin == opts.filterMax {
 			opts.filterMax = opts.filterMin + 1
 		}
+	}
+
+	// Enable L6 filters with a 10% probability.
+	if g.rng.Float64() <= 0.1 {
+		opts.useL6Filters = true
 	}
 
 	g.itersLastOpts[iterID] = opts
@@ -1228,6 +1247,10 @@ func (g *generator) maybeMutateOptions(opts *iterOpts) {
 			} else if opts.filterMin == opts.filterMax {
 				opts.filterMax = opts.filterMin + 1
 			}
+		}
+		// With 10% probability, flip enablement of L6 filters.
+		if g.rng.Float64() <= 0.1 {
+			opts.useL6Filters = !opts.useL6Filters
 		}
 	}
 }

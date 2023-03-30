@@ -7,17 +7,13 @@ package manifest
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/vfs"
-	"github.com/cockroachdb/redact"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,6 +74,7 @@ func TestIkeyRange(t *testing.T) {
 				m := (&FileMetadata{
 					FileNum: base.FileNum(i),
 				}).ExtendPointKeyBounds(cmp, ikey(s[0:1]), ikey(s[2:3]))
+				m.InitPhysicalBacking()
 				f = append(f, m)
 			}
 		}
@@ -112,8 +109,10 @@ func TestOverlaps(t *testing.T) {
 			d.ScanArgs(t, "start", &start)
 			d.ScanArgs(t, "end", &end)
 			d.ScanArgs(t, "exclusive-end", &exclusiveEnd)
+			overlaps := v.Overlaps(level, testkeys.Comparer.Compare, []byte(start), []byte(end), exclusiveEnd)
 			var buf bytes.Buffer
-			v.Overlaps(level, testkeys.Comparer.Compare, []byte(start), []byte(end), exclusiveEnd).Each(func(f *FileMetadata) {
+			fmt.Fprintf(&buf, "%d files:\n", overlaps.Len())
+			overlaps.Each(func(f *FileMetadata) {
 				fmt.Fprintf(&buf, "%s\n", f.DebugString(base.DefaultFormatter, false))
 			})
 			return buf.String()
@@ -130,6 +129,7 @@ func TestContains(t *testing.T) {
 			FileNum: fileNum,
 			Size:    size,
 		}).ExtendPointKeyBounds(cmp, smallest, largest)
+		m.InitPhysicalBacking()
 		return m
 	}
 	m00 := newFileMeta(
@@ -274,7 +274,7 @@ func TestContains(t *testing.T) {
 func TestVersionUnref(t *testing.T) {
 	list := &VersionList{}
 	list.Init(&sync.Mutex{})
-	v := &Version{Deleted: func([]*FileMetadata) {}}
+	v := &Version{Deleted: func([]*FileBacking) {}}
 	v.Ref()
 	list.PushBack(v)
 	v.Unref()
@@ -304,109 +304,6 @@ func TestCheckOrdering(t *testing.T) {
 					return err.Error()
 				}
 				return "OK"
-
-			default:
-				return fmt.Sprintf("unknown command: %s", d.Cmd)
-			}
-		})
-}
-
-func TestCheckConsistency(t *testing.T) {
-	const dir = "./test"
-	mem := vfs.NewMem()
-	mem.MkdirAll(dir, 0755)
-
-	cmp := base.DefaultComparer.Compare
-	fmtKey := base.DefaultComparer.FormatKey
-	parseMeta := func(s string) (*FileMetadata, error) {
-		if len(s) == 0 {
-			return nil, nil
-		}
-		parts := strings.Split(s, ":")
-		if len(parts) != 2 {
-			return nil, errors.Errorf("malformed table spec: %q", s)
-		}
-		fileNum, err := strconv.Atoi(strings.TrimSpace(parts[0]))
-		if err != nil {
-			return nil, err
-		}
-		size, err := strconv.Atoi(strings.TrimSpace(parts[1]))
-		if err != nil {
-			return nil, err
-		}
-		return &FileMetadata{
-			FileNum: base.FileNum(fileNum),
-			Size:    uint64(size),
-		}, nil
-	}
-
-	datadriven.RunTest(t, "testdata/version_check_consistency",
-		func(t *testing.T, d *datadriven.TestData) string {
-			switch d.Cmd {
-			case "check-consistency":
-				var filesByLevel [NumLevels][]*FileMetadata
-				var files *[]*FileMetadata
-
-				for _, data := range strings.Split(d.Input, "\n") {
-					switch data {
-					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
-						level, err := strconv.Atoi(data[1:])
-						if err != nil {
-							return err.Error()
-						}
-						files = &filesByLevel[level]
-
-					default:
-						m, err := parseMeta(data)
-						if err != nil {
-							return err.Error()
-						}
-						if m != nil {
-							*files = append(*files, m)
-						}
-					}
-				}
-
-				redactErr := false
-				for _, arg := range d.CmdArgs {
-					switch v := arg.String(); v {
-					case "redact":
-						redactErr = true
-					default:
-						return fmt.Sprintf("unknown argument: %q", v)
-					}
-				}
-
-				v := NewVersion(cmp, fmtKey, 0, filesByLevel)
-				err := v.CheckConsistency(dir, mem)
-				if err != nil {
-					if redactErr {
-						redacted := redact.Sprint(err).Redact()
-						return string(redacted)
-					}
-					return err.Error()
-				}
-				return "OK"
-
-			case "build":
-				for _, data := range strings.Split(d.Input, "\n") {
-					m, err := parseMeta(data)
-					if err != nil {
-						return err.Error()
-					}
-					path := base.MakeFilepath(mem, dir, base.FileTypeTable, m.FileNum)
-					_ = mem.Remove(path)
-					f, err := mem.Create(path)
-					if err != nil {
-						return err.Error()
-					}
-					_, err = f.Write(make([]byte, m.Size))
-					if err != nil {
-						return err.Error()
-					}
-					f.Close()
-				}
-				return ""
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)

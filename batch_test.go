@@ -51,10 +51,22 @@ func TestBatch(t *testing.T) {
 		}
 	}
 
+	encodeFileNum := func(n base.FileNum) string {
+		return string(binary.AppendUvarint(nil, uint64(n)))
+	}
+	decodeFileNum := func(d []byte) base.FileNum {
+		val, n := binary.Uvarint(d)
+		if n <= 0 {
+			t.Fatalf("invalid filenum encoding")
+		}
+		return base.FileNum(val)
+	}
+
 	// RangeKeySet and RangeKeyUnset are untested here because they don't expose
 	// deferred variants. This is a consequence of these keys' more complex
 	// value encodings.
 	testCases := []testCase{
+		{InternalKeyKindIngestSST, encodeFileNum(1), ""},
 		{InternalKeyKindSet, "roses", "red"},
 		{InternalKeyKindSet, "violets", "blue"},
 		{InternalKeyKindDelete, "roses", ""},
@@ -97,6 +109,8 @@ func TestBatch(t *testing.T) {
 			_ = b.LogData([]byte(tc.key), nil)
 		case InternalKeyKindRangeKeyDelete:
 			_ = b.RangeKeyDelete([]byte(tc.key), []byte(tc.value), nil)
+		case InternalKeyKindIngestSST:
+			b.ingestSST(decodeFileNum([]byte(tc.key)))
 		}
 	}
 	verifyTestCases(&b, testCases)
@@ -135,6 +149,8 @@ func TestBatch(t *testing.T) {
 			d.Finish()
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
+		case InternalKeyKindIngestSST:
+			b.ingestSST(decodeFileNum([]byte(tc.key)))
 		case InternalKeyKindRangeKeyDelete:
 			d := b.RangeKeyDeleteDeferred(len(key), len(value))
 			copy(d.Key, key)
@@ -143,6 +159,18 @@ func TestBatch(t *testing.T) {
 		}
 	}
 	verifyTestCases(&b, testCases)
+}
+
+func TestBatchIngestSST(t *testing.T) {
+	// Verify that Batch.IngestSST has the correct batch count and memtable
+	// size.
+	var b Batch
+	b.ingestSST(1)
+	require.Equal(t, int(b.Count()), 1)
+	b.ingestSST(2)
+	require.Equal(t, int(b.Count()), 2)
+	require.Equal(t, int(b.memTableSize), 0)
+	require.Equal(t, b.ingestedSSTBatch, true)
 }
 
 func TestBatchLen(t *testing.T) {
@@ -223,6 +251,32 @@ func TestBatchEmpty(t *testing.T) {
 	require.NoError(t, iter2.Close())
 }
 
+func TestBatchApplyNoSyncWait(t *testing.T) {
+	db, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer db.Close()
+	var batches []*Batch
+	options := &WriteOptions{Sync: true}
+	for i := 0; i < 10000; i++ {
+		b := db.NewBatch()
+		str := fmt.Sprintf("a%d", i)
+		require.NoError(t, b.Set([]byte(str), []byte(str), nil))
+		require.NoError(t, db.ApplyNoSyncWait(b, options))
+		// k-v pair is visible even if not yet synced.
+		val, closer, err := db.Get([]byte(str))
+		require.NoError(t, err)
+		require.Equal(t, str, string(val))
+		closer.Close()
+		batches = append(batches, b)
+	}
+	for _, b := range batches {
+		require.NoError(t, b.SyncWait())
+		b.Close()
+	}
+}
+
 func TestBatchReset(t *testing.T) {
 	db, err := Open("", &Options{
 		FS: vfs.NewMem(),
@@ -244,6 +298,7 @@ func TestBatchReset(t *testing.T) {
 	b.applied = 1
 	b.commitErr = errors.New("test-error")
 	b.commit.Add(1)
+	b.fsyncWait.Add(1)
 	require.Equal(t, uint32(3), b.Count())
 	require.Equal(t, uint64(1), b.countRangeDels)
 	require.Equal(t, uint64(1), b.countRangeKeys)
@@ -1030,7 +1085,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			} else {
 				ii := fb.newIter(nil)
 				defer ii.Close()
-				scanInternalIterator(&buf, ii)
+				scanInternalIter(&buf, ii)
 			}
 			return buf.String()
 
@@ -1040,7 +1095,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 	})
 }
 
-func scanInternalIterator(w io.Writer, ii internalIterator) {
+func scanInternalIter(w io.Writer, ii internalIterator) {
 	for k, v := ii.First(); k != nil; k, v = ii.Next() {
 		fmt.Fprintf(w, "%s:%s\n", k, v.InPlaceValue())
 	}

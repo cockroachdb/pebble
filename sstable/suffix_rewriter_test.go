@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,6 +58,11 @@ func TestRewriteSuffixProps(t *testing.T) {
 	// Swap the order of two of the props so they have new shortIDs, and remove
 	// one.
 	rwOpts := wOpts
+	rwOpts.TableFormat = TableFormatPebblev2
+	if rand.Intn(2) != 0 {
+		rwOpts.TableFormat = TableFormatPebblev3
+	}
+	fmt.Printf("from format %s, to format %s\n", format.String(), rwOpts.TableFormat.String())
 	rwOpts.BlockPropertyCollectors = rwOpts.BlockPropertyCollectors[:3]
 	rwOpts.BlockPropertyCollectors[0], rwOpts.BlockPropertyCollectors[1] = rwOpts.BlockPropertyCollectors[1], rwOpts.BlockPropertyCollectors[0]
 
@@ -69,24 +75,35 @@ func TestRewriteSuffixProps(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Close()
 
-	for _, byBlocks := range []bool{false, true} {
+	var sstBytes [2][]byte
+	for i, byBlocks := range []bool{false, true} {
 		t.Run(fmt.Sprintf("byBlocks=%v", byBlocks), func(t *testing.T) {
 			rewrittenSST := &memFile{}
 			if byBlocks {
-				_, err := rewriteKeySuffixesInBlocks(r, rewrittenSST, rwOpts, from, to, 8)
+				_, rewriteFormat, err := rewriteKeySuffixesInBlocks(
+					r, rewrittenSST, rwOpts, from, to, 8)
+				// rewriteFormat is equal to the original format, since
+				// rwOpts.TableFormat is ignored.
+				require.Equal(t, wOpts.TableFormat, rewriteFormat)
 				require.NoError(t, err)
 			} else {
 				_, err := RewriteKeySuffixesViaWriter(r, rewrittenSST, rwOpts, from, to)
 				require.NoError(t, err)
 			}
 
+			sstBytes[i] = rewrittenSST.Data()
 			// Check that a reader on the rewritten STT has the expected props.
-			rRewritten, err := NewMemReader(rewrittenSST.Bytes(), readerOpts)
+			rRewritten, err := NewMemReader(rewrittenSST.Data(), readerOpts)
 			require.NoError(t, err)
 			defer rRewritten.Close()
 			require.Equal(t, expectedProps, rRewritten.Properties.UserProperties)
 
-			// Compare the block level props from the data blocks in the layout.
+			// Compare the block level props from the data blocks in the layout,
+			// only if we did not do a rewrite from one format to another. If the
+			// format changes, the block boundaries change slightly.
+			if !byBlocks && wOpts.TableFormat != rwOpts.TableFormat {
+				return
+			}
 			layout, err := r.Layout()
 			require.NoError(t, err)
 			newLayout, err := rRewritten.Layout()
@@ -116,32 +133,37 @@ func TestRewriteSuffixProps(t *testing.T) {
 			}
 		})
 	}
+	if wOpts.TableFormat == rwOpts.TableFormat {
+		// Both methods of rewriting should produce the same result.
+		require.Equal(t, sstBytes[0], sstBytes[1])
+	}
 }
 
 // memFile is a file-like struct that buffers all data written to it in memory.
-// Implements the writeCloseSyncer interface.
+// Implements the objstorage.Writable interface.
 type memFile struct {
-	bytes.Buffer
+	buf bytes.Buffer
 }
 
-// Close implements the writeCloseSyncer interface.
-func (*memFile) Close() error {
+var _ objstorage.Writable = (*memFile)(nil)
+
+// Finish is part of the objstorage.Writable interface.
+func (*memFile) Finish() error {
 	return nil
 }
 
-// Sync implements the writeCloseSyncer interface.
-func (*memFile) Sync() error {
-	return nil
+// Abort is part of the objstorage.Writable interface.
+func (*memFile) Abort() {}
+
+// Write is part of the objstorage.Writable interface.
+func (f *memFile) Write(p []byte) error {
+	_, err := f.buf.Write(p)
+	return err
 }
 
 // Data returns the in-memory buffer behind this MemFile.
 func (f *memFile) Data() []byte {
-	return f.Bytes()
-}
-
-// Flush is implemented so it prevents buffering inside Writter.
-func (f *memFile) Flush() error {
-	return nil
+	return f.buf.Bytes()
 }
 
 func make4bSuffixTestSST(
@@ -176,7 +198,7 @@ func make4bSuffixTestSST(
 		t.Fatal(err)
 	}
 
-	return f.Bytes()
+	return f.buf.Bytes()
 }
 
 func BenchmarkRewriteSST(b *testing.B) {
@@ -216,8 +238,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 				r := files[comp][sz]
 				b.Run(fmt.Sprintf("keys=%d", sizes[sz]), func(b *testing.B) {
 					b.Run("ReaderWriterLoop", func(b *testing.B) {
-						stat, _ := r.file.Stat()
-						b.SetBytes(stat.Size())
+						b.SetBytes(r.readable.Size())
 						for i := 0; i < b.N; i++ {
 							if _, err := RewriteKeySuffixesViaWriter(r, &discardFile{}, writerOpts, from, to); err != nil {
 								b.Fatal(err)
@@ -226,10 +247,9 @@ func BenchmarkRewriteSST(b *testing.B) {
 					})
 					for _, concurrency := range []int{1, 2, 4, 8, 16} {
 						b.Run(fmt.Sprintf("RewriteKeySuffixes,concurrency=%d", concurrency), func(b *testing.B) {
-							stat, _ := r.file.Stat()
-							b.SetBytes(stat.Size())
+							b.SetBytes(r.readable.Size())
 							for i := 0; i < b.N; i++ {
-								if _, err := rewriteKeySuffixesInBlocks(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456"), concurrency); err != nil {
+								if _, _, err := rewriteKeySuffixesInBlocks(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456"), concurrency); err != nil {
 									b.Fatal(err)
 								}
 							}

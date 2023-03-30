@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -230,7 +231,7 @@ func (o *IterOptions) getLogger() Logger {
 // Specifically, when configured with a RangeKeyMasking.Suffix _s_, and there
 // exists a range key with suffix _r_ covering a point key with suffix _p_, and
 //
-//     _s_ ≤ _r_ < _p_
+//	_s_ ≤ _r_ < _p_
 //
 // then the point key is elided.
 //
@@ -453,17 +454,27 @@ type Options struct {
 	// TODO(peter): untested
 	DisableWAL bool
 
-	// ErrorIfExists is whether it is an error if the database already exists.
+	// ErrorIfExists causes an error on Open if the database already exists.
+	// The error can be checked with errors.Is(err, ErrDBAlreadyExists).
 	//
 	// The default value is false.
 	ErrorIfExists bool
 
-	// ErrorIfNotExists is whether it is an error if the database does not
-	// already exist.
+	// ErrorIfNotExists causes an error on Open if the database does not already
+	// exist. The error can be checked with errors.Is(err, ErrDBDoesNotExist).
 	//
 	// The default value is false which will cause a database to be created if it
 	// does not already exist.
 	ErrorIfNotExists bool
+
+	// ErrorIfNotPristine causes an error on Open if the database already exists
+	// and any operations have been performed on the database. The error can be
+	// checked with errors.Is(err, ErrDBNotPristine).
+	//
+	// Note that a database that contained keys that were all subsequently deleted
+	// may or may not trigger the error. Currently, we check if there are any live
+	// SSTs or log records to replay.
+	ErrorIfNotPristine bool
 
 	// EventListener provides hooks to listening to significant DB events such as
 	// flushes, compactions, and table deletion.
@@ -562,10 +573,10 @@ type Options struct {
 		// desired size of each level of the LSM. Defaults to 10.
 		LevelMultiplier int
 
-		// MultiLevelCompaction allows the compaction of SSTs from more than two
-		// levels iff a conventional two level compaction will quickly trigger a
-		// compaction in the output level.
-		MultiLevelCompaction bool
+		// MultiLevelCompactionHueristic determines whether to add an additional
+		// level to a conventional two level compaction. If nil, a multilevel
+		// compaction will never get triggered.
+		MultiLevelCompactionHueristic MultiLevelHeuristic
 
 		// MaxWriterConcurrency is used to indicate the maximum number of
 		// compression workers the compression queue is allowed to use. If
@@ -615,6 +626,21 @@ type Options struct {
 		// Any change in exclusion behavior takes effect only on future written
 		// sstables, and does not start rewriting existing sstables.
 		RequiredInPlaceValueBound UserKeyPrefixBound
+
+		// DisableIngestAsFlushable disables lazy ingestion of sstables through
+		// a WAL write and memtable rotation. Only effectual if the the format
+		// major version is at least `FormatFlushableIngest`.
+		DisableIngestAsFlushable func() bool
+
+		// SharedStorage is a second FS-like storage medium that can be shared
+		// between multiple Pebble instances. It is used to store sstables only, and
+		// is managed by objstorage.Provider. Each sstable might only be written to
+		// by one Pebble instance, but other Pebble instances can possibly read the
+		// same files if they have the path to get to them. The pebble instance that
+		// wrote a file should not delete it if other Pebble instances are known to
+		// be reading this file. This FS is expected to have slower read/write
+		// performance than the default FS above.
+		SharedStorage shared.Storage
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -689,10 +715,15 @@ type Options struct {
 	// options for the last level are used for all subsequent levels.
 	Levels []LevelOptions
 
+	// LoggerAndTracer will be used, if non-nil, else Logger will be used and
+	// tracing will be a noop.
+
 	// Logger used to write log messages.
 	//
 	// The default logger uses the Go standard library log package.
 	Logger Logger
+	// LoggerAndTracer is used for writing log messages and traces.
+	LoggerAndTracer LoggerAndTracer
 
 	// MaxManifestFileSize is the maximum size the MANIFEST file is allowed to
 	// become. When the MANIFEST exceeds this size it is rolled over and a new
@@ -870,6 +901,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Comparer == nil {
 		o.Comparer = DefaultComparer
 	}
+	if o.Experimental.DisableIngestAsFlushable == nil {
+		o.Experimental.DisableIngestAsFlushable = func() bool { return false }
+	}
 	if o.Experimental.L0CompactionConcurrency <= 0 {
 		o.Experimental.L0CompactionConcurrency = 10
 	}
@@ -965,13 +999,7 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 
 	if o.FS == nil {
-		o.FS, o.private.fsCloser = vfs.WithDiskHealthChecks(vfs.Default, 5*time.Second,
-			func(name string, duration time.Duration) {
-				o.EventListener.DiskSlow(DiskSlowInfo{
-					Path:     name,
-					Duration: duration,
-				})
-			})
+		o.WithFSDefaults()
 	}
 	if o.FlushSplitBytes <= 0 {
 		o.FlushSplitBytes = 2 * o.Levels[0].TargetFileSize
@@ -995,7 +1023,24 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Experimental.PointTombstoneWeight = 1
 	}
 
+	if o.Experimental.MultiLevelCompactionHueristic == nil {
+		o.Experimental.MultiLevelCompactionHueristic = NoMultiLevel{}
+	}
+
 	o.initMaps()
+	return o
+}
+
+// WithFSDefaults configures the Options to wrap the configured filesystem with
+// the default virtual file system middleware, like disk-health checking.
+func (o *Options) WithFSDefaults() *Options {
+	if o.FS == nil {
+		o.FS = vfs.Default
+	}
+	o.FS, o.private.fsCloser = vfs.WithDiskHealthChecks(o.FS, 5*time.Second,
+		func(info vfs.DiskSlowInfo) {
+			o.EventListener.DiskSlow(info)
+		})
 	return o
 }
 
@@ -1078,6 +1123,9 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  compaction_debt_concurrency=%d\n", o.Experimental.CompactionDebtConcurrency)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
+	if o.Experimental.DisableIngestAsFlushable != nil && o.Experimental.DisableIngestAsFlushable() {
+		fmt.Fprintf(&buf, "  disable_ingest_as_flushable=%t\n", true)
+	}
 	fmt.Fprintf(&buf, "  flush_delay_delete_range=%s\n", o.FlushDelayDeleteRange)
 	fmt.Fprintf(&buf, "  flush_delay_range_key=%s\n", o.FlushDelayRangeKey)
 	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
@@ -1140,6 +1188,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "[Level \"%d\"]\n", i)
 		fmt.Fprintf(&buf, "  block_restart_interval=%d\n", l.BlockRestartInterval)
 		fmt.Fprintf(&buf, "  block_size=%d\n", l.BlockSize)
+		fmt.Fprintf(&buf, "  block_size_threshold=%d\n", l.BlockSizeThreshold)
 		fmt.Fprintf(&buf, "  compression=%s\n", l.Compression)
 		fmt.Fprintf(&buf, "  filter_policy=%s\n", filterPolicyName(l.FilterPolicy))
 		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
@@ -1278,6 +1327,12 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.private.disableDeleteOnlyCompactions, err = strconv.ParseBool(value)
 			case "disable_elision_only_compactions":
 				o.private.disableElisionOnlyCompactions, err = strconv.ParseBool(value)
+			case "disable_ingest_as_flushable":
+				var v bool
+				v, err = strconv.ParseBool(value)
+				if err == nil {
+					o.Experimental.DisableIngestAsFlushable = func() bool { return v }
+				}
 			case "disable_lazy_combined_iteration":
 				o.private.disableLazyCombinedIteration, err = strconv.ParseBool(value)
 			case "disable_wal":
@@ -1412,6 +1467,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				l.BlockRestartInterval, err = strconv.Atoi(value)
 			case "block_size":
 				l.BlockSize, err = strconv.Atoi(value)
+			case "block_size_threshold":
+				l.BlockSizeThreshold, err = strconv.Atoi(value)
 			case "compression":
 				switch value {
 				case "Default":
@@ -1537,6 +1594,7 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 		if o.Merger != nil {
 			readerOpts.MergerName = o.Merger.Name
 		}
+		readerOpts.LoggerAndTracer = o.LoggerAndTracer
 	}
 	return readerOpts
 }

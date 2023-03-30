@@ -32,7 +32,7 @@ func TestFormatMajorVersion_MigrationDefined(t *testing.T) {
 
 func TestRatchetFormat(t *testing.T) {
 	fs := vfs.NewMem()
-	d, err := Open("", &Options{FS: fs})
+	d, err := Open("", (&Options{FS: fs}).WithFSDefaults())
 	require.NoError(t, err)
 	require.NoError(t, d.Set([]byte("foo"), []byte("bar"), Sync))
 	require.Equal(t, FormatMostCompatible, d.FormatMajorVersion())
@@ -54,16 +54,20 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatMinTableFormatPebblev1, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1Marked))
 	require.Equal(t, FormatPrePebblev1Marked, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1MarkedCompacted))
-	require.Equal(t, FormatPrePebblev1MarkedCompacted, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatUnusedPrePebblev1MarkedCompacted))
+	require.Equal(t, FormatUnusedPrePebblev1MarkedCompacted, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatSSTableValueBlocks))
 	require.Equal(t, FormatSSTableValueBlocks, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatFlushableIngest))
+	require.Equal(t, FormatFlushableIngest, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1MarkedCompacted))
+	require.Equal(t, FormatPrePebblev1MarkedCompacted, d.FormatMajorVersion())
 
 	require.NoError(t, d.Close())
 
 	// If we Open the database again, leaving the default format, the
 	// database should Open using the persisted FormatNewest.
-	d, err = Open("", &Options{FS: fs})
+	d, err = Open("", (&Options{FS: fs}).WithFSDefaults())
 	require.NoError(t, err)
 	require.Equal(t, FormatNewest, d.FormatMajorVersion())
 	require.NoError(t, d.Close())
@@ -74,10 +78,10 @@ func TestRatchetFormat(t *testing.T) {
 	require.NoError(t, m.Move("999999"))
 	require.NoError(t, m.Close())
 
-	_, err = Open("", &Options{
+	_, err = Open("", (&Options{
 		FS:                 fs,
 		FormatMajorVersion: FormatVersioned,
-	})
+	}).WithFSDefaults())
 	require.Error(t, err)
 	require.EqualError(t, err, `pebble: database "" written in format major version 999999`)
 }
@@ -108,10 +112,10 @@ func TestFormatMajorVersions(t *testing.T) {
 	for vers := FormatMostCompatible; vers <= FormatNewest; vers++ {
 		t.Run(fmt.Sprintf("vers=%03d", vers), func(t *testing.T) {
 			fs := vfs.NewStrictMem()
-			opts := &Options{
+			opts := (&Options{
 				FS:                 fs,
 				FormatMajorVersion: vers,
-			}
+			}).WithFSDefaults()
 
 			// Create a database at this format major version and perform
 			// some very basic operations.
@@ -206,19 +210,21 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 	// fixture is intentionally verbose.
 
 	m := map[FormatMajorVersion][2]sstable.TableFormat{
-		FormatDefault:                      {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatMostCompatible:               {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		formatVersionedManifestMarker:      {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatVersioned:                    {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatSetWithDelete:                {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatBlockPropertyCollector:       {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
-		FormatSplitUserKeysMarked:          {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
-		FormatSplitUserKeysMarkedCompacted: {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
-		FormatRangeKeys:                    {sstable.TableFormatLevelDB, sstable.TableFormatPebblev2},
-		FormatMinTableFormatPebblev1:       {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
-		FormatPrePebblev1Marked:            {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
-		FormatPrePebblev1MarkedCompacted:   {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
-		FormatSSTableValueBlocks:           {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		FormatDefault:                          {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatMostCompatible:                   {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		formatVersionedManifestMarker:          {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatVersioned:                        {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatSetWithDelete:                    {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatBlockPropertyCollector:           {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatSplitUserKeysMarked:              {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatSplitUserKeysMarkedCompacted:     {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatRangeKeys:                        {sstable.TableFormatLevelDB, sstable.TableFormatPebblev2},
+		FormatMinTableFormatPebblev1:           {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
+		FormatPrePebblev1Marked:                {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
+		FormatUnusedPrePebblev1MarkedCompacted: {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
+		FormatSSTableValueBlocks:               {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		FormatFlushableIngest:                  {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		FormatPrePebblev1MarkedCompacted:       {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
 	}
 
 	// Valid versions.
@@ -255,7 +261,7 @@ func TestSplitUserKeyMigration(t *testing.T) {
 					}
 					buf.Reset()
 				}
-				opts = &Options{
+				opts = (&Options{
 					FormatMajorVersion: FormatBlockPropertyCollector,
 					EventListener: &EventListener{
 						CompactionEnd: func(info CompactionInfo) {
@@ -267,7 +273,7 @@ func TestSplitUserKeyMigration(t *testing.T) {
 						},
 					},
 					DisableAutomaticCompactions: true,
-				}
+				}).WithFSDefaults()
 				var err error
 				if d, err = runDBDefineCmd(td, opts); err != nil {
 					return err.Error()
@@ -363,10 +369,10 @@ func TestPebblev1Migration(t *testing.T) {
 						return fmt.Sprintf("unknown argument: %s", cmd)
 					}
 				}
-				opts := &Options{
+				opts := (&Options{
 					FS:                 vfs.NewMem(),
 					FormatMajorVersion: FormatMajorVersion(version),
-				}
+				}).WithFSDefaults()
 				d, err = Open("", opts)
 				if err != nil {
 					return err.Error()
@@ -433,14 +439,15 @@ func TestPebblev1Migration(t *testing.T) {
 				for _, l := range v.Levels {
 					iter := l.Iter()
 					for m := iter.First(); m != nil; m = iter.Next() {
-						err := d.tableCache.withReader(m, func(r *sstable.Reader) error {
-							f, err := r.TableFormat()
-							if err != nil {
-								return err
-							}
-							tally[f]++
-							return nil
-						})
+						err := d.tableCache.withReader(m,
+							func(r *sstable.Reader) error {
+								f, err := r.TableFormat()
+								if err != nil {
+									return err
+								}
+								tally[f]++
+								return nil
+							})
 						if err != nil {
 							return err.Error()
 						}
@@ -486,13 +493,13 @@ func TestPebblev1MigrationRace(t *testing.T) {
 	defer cache.Unref()
 	tableCache := NewTableCache(cache, 1, 5)
 	defer tableCache.Unref()
-	d, err := Open("", &Options{
+	d, err := Open("", (&Options{
 		Cache:              cache,
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: FormatMajorVersion(FormatPrePebblev1Marked - 1),
 		TableCache:         tableCache,
 		Levels:             []LevelOptions{{TargetFileSize: 1}},
-	})
+	}).WithFSDefaults())
 	require.NoError(t, err)
 	defer d.Close()
 
@@ -531,7 +538,7 @@ func TestPebblev1MigrationRace(t *testing.T) {
 // Regression test for #2044, where multiple concurrent compactions can lead
 // to an indefinite wait on the compaction goroutine in compactMarkedFilesLocked.
 func TestPebblev1MigrationConcurrencyRace(t *testing.T) {
-	opts := &Options{
+	opts := (&Options{
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: FormatSplitUserKeysMarked,
@@ -539,7 +546,7 @@ func TestPebblev1MigrationConcurrencyRace(t *testing.T) {
 		MaxConcurrentCompactions: func() int {
 			return 4
 		},
-	}
+	}).WithFSDefaults()
 	func() {
 		d, err := Open("", opts)
 		require.NoError(t, err)
@@ -559,9 +566,9 @@ func TestPebblev1MigrationConcurrencyRace(t *testing.T) {
 		require.NoError(t, d.Flush())
 	}()
 
-	opts.FormatMajorVersion = FormatPrePebblev1MarkedCompacted
+	opts.FormatMajorVersion = FormatUnusedPrePebblev1MarkedCompacted
 	d, err := Open("", opts)
 	require.NoError(t, err)
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1MarkedCompacted))
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatUnusedPrePebblev1MarkedCompacted))
 	require.NoError(t, d.Close())
 }

@@ -5,6 +5,7 @@
 package tool
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -15,6 +16,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/tool/logs"
@@ -482,10 +485,19 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 				d.fmtValue.setForComparer(ve.ComparerName, d.comparers)
 			}
 		}
-		v, _, err := bve.Apply(nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes, d.opts.Experimental.ReadCompactionRate)
+		v, err := bve.Apply(
+			nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes,
+			d.opts.Experimental.ReadCompactionRate, nil, /* zombies */
+		)
 		if err != nil {
 			return err
 		}
+
+		objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(d.opts.FS, dirname))
+		if err != nil {
+			return err
+		}
+		defer objProvider.Close()
 
 		// Load and aggregate sstable properties.
 		tw := tabwriter.NewWriter(stdout, 2, 1, 4, ' ', 0)
@@ -495,7 +507,15 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			iter := l.Iter()
 			var level props
 			for t := iter.First(); t != nil; t = iter.Next() {
-				err := d.addProps(dirname, t, &level)
+				if t.Virtual {
+					// TODO(bananabrick): Handle virtual sstables here. We don't
+					// really have any stats or properties at this point. Maybe
+					// we could approximate some of these properties for virtual
+					// sstables by first grabbing properties for the backing
+					// physical sstable, and then extrapolating.
+					continue
+				}
+				err := d.addProps(objProvider, t.PhysicalMeta(), &level)
 				if err != nil {
 					return err
 				}
@@ -639,9 +659,11 @@ func (p *props) update(o props) {
 	p.TopLevelIndexSize += o.TopLevelIndexSize
 }
 
-func (d *dbT) addProps(dir string, m *manifest.FileMetadata, p *props) error {
-	path := base.MakeFilepath(d.opts.FS, dir, base.FileTypeTable, m.FileNum)
-	f, err := d.opts.FS.Open(path)
+func (d *dbT) addProps(
+	objProvider objstorage.Provider, m manifest.PhysicalFileMeta, p *props,
+) error {
+	ctx := context.Background()
+	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileNum, objstorage.OpenOptions{})
 	if err != nil {
 		return err
 	}

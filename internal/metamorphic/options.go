@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -22,15 +23,23 @@ import (
 	"golang.org/x/exp/rand"
 )
 
+const (
+	// The metamorphic test exercises range keys, so we cannot use an older
+	// FormatMajorVersion than pebble.FormatRangeKeys.
+	minimumFormatMajorVersion = pebble.FormatRangeKeys
+	// The format major version to use in the default options configurations. We
+	// default to the last format major version of Cockroach 22.2 so we exercise
+	// the runtime version ratcheting that a cluster upgrading to 23.1 would
+	// experience. The randomized options may still use format major versions
+	// that are less than defaultFormatMajorVersion but are at least
+	// minimumFormatMajorVersion.
+	defaultFormatMajorVersion = pebble.FormatPrePebblev1Marked
+)
+
 func parseOptions(opts *testOptions, data string) error {
 	hooks := &pebble.ParseHooks{
-		NewCache: pebble.NewCache,
-		NewFilterPolicy: func(name string) (pebble.FilterPolicy, error) {
-			if name == "none" {
-				return nil, nil
-			}
-			return bloom.FilterPolicy(10), nil
-		},
+		NewCache:        pebble.NewCache,
+		NewFilterPolicy: filterPolicyFromName,
 		SkipUnknown: func(name, value string) bool {
 			switch name {
 			case "TestOptions":
@@ -60,12 +69,16 @@ func parseOptions(opts *testOptions, data string) error {
 				}
 				opts.threads = v
 				return true
-			case "TestOptions.use_block_property_collector":
-				opts.useBlockPropertyCollector = true
-				opts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
+			case "TestOptions.disable_block_property_collector":
+				opts.disableBlockPropertyCollector = true
+				opts.opts.BlockPropertyCollectors = nil
 				return true
 			case "TestOptions.enable_value_blocks":
+				opts.enableValueBlocks = true
 				opts.opts.Experimental.EnableValueBlocks = func() bool { return true }
+				return true
+			case "TestOptions.async_apply_to_db":
+				opts.asyncApplyToDB = true
 				return true
 			default:
 				return false
@@ -99,8 +112,14 @@ func optionsToString(opts *testOptions) string {
 	if opts.threads != 0 {
 		fmt.Fprintf(&buf, "  threads=%d\n", opts.threads)
 	}
-	if opts.useBlockPropertyCollector {
-		fmt.Fprintf(&buf, "  use_block_property_collector=%t\n", opts.useBlockPropertyCollector)
+	if opts.disableBlockPropertyCollector {
+		fmt.Fprintf(&buf, "  disable_block_property_collector=%t\n", opts.disableBlockPropertyCollector)
+	}
+	if opts.enableValueBlocks {
+		fmt.Fprintf(&buf, "  enable_value_blocks=%t\n", opts.enableValueBlocks)
+	}
+	if opts.asyncApplyToDB {
+		fmt.Fprint(&buf, "  async_apply_to_db=true\n")
 	}
 
 	s := opts.opts.String()
@@ -111,18 +130,19 @@ func optionsToString(opts *testOptions) string {
 }
 
 func defaultTestOptions() *testOptions {
-	return &testOptions{
-		opts:                      defaultOptions(),
-		useBlockPropertyCollector: true,
-		threads:                   16,
+	o := &testOptions{
+		opts:    defaultOptions(),
+		threads: 16,
 	}
+	o.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
+	return o
 }
 
 func defaultOptions() *pebble.Options {
 	opts := &pebble.Options{
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
-		FormatMajorVersion: pebble.FormatNewest,
+		FormatMajorVersion: defaultFormatMajorVersion,
 		Levels: []pebble.LevelOptions{{
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
@@ -146,9 +166,13 @@ type testOptions struct {
 	// A human-readable string describing the initial state of the database.
 	// Empty if the test run begins from an empty database state.
 	initialStateDesc string
-	// Use a block property collector, which may be used by block property
+	// Disable the block property collector, which may be used by block property
 	// filters.
-	useBlockPropertyCollector bool
+	disableBlockPropertyCollector bool
+	// Enable the use of value blocks.
+	enableValueBlocks bool
+	// Use DB.ApplyNoSyncWait for applies that want to sync the WAL.
+	asyncApplyToDB bool
 }
 
 func standardOptions() []*testOptions {
@@ -251,7 +275,7 @@ func standardOptions() []*testOptions {
 `,
 		23: `
 [TestOptions]
-  use_block_property_collector=false
+  disable_block_property_collector=true
 `,
 		24: `
 [TestOptions]
@@ -304,13 +328,9 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.FlushDelayDeleteRange = time.Millisecond * time.Duration(5*rng.Intn(245)) // 5-250ms
 	opts.FlushDelayRangeKey = time.Millisecond * time.Duration(5*rng.Intn(245))    // 5-250ms
 	opts.FlushSplitBytes = 1 << rng.Intn(20)                                       // 1B - 1MB
-	// The metamorphic test exercise range keys, so we cannot use an older
-	// FormatMajorVersion than pebble.FormatRangeKeys.
-	opts.FormatMajorVersion = pebble.FormatRangeKeys
+	opts.FormatMajorVersion = minimumFormatMajorVersion
 	n := int(pebble.FormatNewest - opts.FormatMajorVersion)
-	if n > 0 {
-		opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.Intn(n))
-	}
+	opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.Intn(n + 1))
 	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4)    // 1-4
 	opts.Experimental.LevelMultiplier = 5 << rng.Intn(7)           // 5 - 320
 	opts.Experimental.MinDeletionRate = 1 << uint(20+rng.Intn(10)) // 1MB - 1GB
@@ -339,12 +359,24 @@ func randomOptions(rng *rand.Rand) *testOptions {
 		opts.Experimental.MaxWriterConcurrency = 2
 		opts.Experimental.ForceWriterParallelism = true
 	}
+	if rng.Intn(2) == 0 {
+		opts.Experimental.DisableIngestAsFlushable = func() bool { return true }
+	}
 	var lopts pebble.LevelOptions
 	lopts.BlockRestartInterval = 1 + rng.Intn(64)  // 1 - 64
 	lopts.BlockSize = 1 << uint(rng.Intn(24))      // 1 - 16MB
 	lopts.BlockSizeThreshold = 50 + rng.Intn(50)   // 50 - 100
 	lopts.IndexBlockSize = 1 << uint(rng.Intn(24)) // 1 - 16MB
 	lopts.TargetFileSize = 1 << uint(rng.Intn(28)) // 1 - 256MB
+	// We either use no bloom filter, the default filter, or a filter with
+	// randomized bits-per-key setting.
+	switch rng.Intn(3) {
+	case 0:
+	case 1:
+		lopts.FilterPolicy = bloom.FilterPolicy(10)
+	default:
+		lopts.FilterPolicy = newTestingFilterPolicy(1 << rng.Intn(5))
+	}
 	opts.Levels = []pebble.LevelOptions{lopts}
 	opts.Experimental.PointTombstoneWeight = 1 + 10*rng.Float64() // 1 - 10
 
@@ -359,10 +391,16 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	}
 	testOpts.ingestUsingApply = rng.Intn(2) != 0
 	testOpts.replaceSingleDelete = rng.Intn(2) != 0
-	testOpts.useBlockPropertyCollector = rng.Intn(2) != 0
-	if testOpts.useBlockPropertyCollector {
+	testOpts.disableBlockPropertyCollector = rng.Intn(2) != 0
+	if !testOpts.disableBlockPropertyCollector {
 		testOpts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
 	}
+	testOpts.enableValueBlocks = opts.FormatMajorVersion >= pebble.FormatSSTableValueBlocks &&
+		rng.Intn(2) != 0
+	if testOpts.enableValueBlocks {
+		testOpts.opts.Experimental.EnableValueBlocks = func() bool { return true }
+	}
+	testOpts.asyncApplyToDB = rng.Intn(2) != 0
 	return testOpts
 }
 
@@ -424,4 +462,44 @@ func moveLogs(fs vfs.FS, srcDir, dstDir string) error {
 
 var blockPropertyCollectorConstructors = []func() pebble.BlockPropertyCollector{
 	sstable.NewTestKeysBlockPropertyCollector,
+}
+
+// testingFilterPolicy is used to allow bloom filter policies with non-default
+// bits-per-key setting. It is necessary because the name of the production
+// filter policy is fixed (see bloom.FilterPolicy.Name()); we need to output a
+// custom policy name to the OPTIONS file that the test can then parse.
+type testingFilterPolicy struct {
+	bloom.FilterPolicy
+}
+
+var _ pebble.FilterPolicy = (*testingFilterPolicy)(nil)
+
+func newTestingFilterPolicy(bitsPerKey int) *testingFilterPolicy {
+	return &testingFilterPolicy{
+		FilterPolicy: bloom.FilterPolicy(bitsPerKey),
+	}
+}
+
+const testingFilterPolicyFmt = "testing_bloom_filter/bits_per_key=%d"
+
+// Name implements the pebble.FilterPolicy interface.
+func (t *testingFilterPolicy) Name() string {
+	if t.FilterPolicy == 10 {
+		return "rocksdb.BuiltinBloomFilter"
+	}
+	return fmt.Sprintf(testingFilterPolicyFmt, t.FilterPolicy)
+}
+
+func filterPolicyFromName(name string) (pebble.FilterPolicy, error) {
+	switch name {
+	case "none":
+		return nil, nil
+	case "rocksdb.BuiltinBloomFilter":
+		return bloom.FilterPolicy(10), nil
+	}
+	var bitsPerKey int
+	if _, err := fmt.Sscanf(name, testingFilterPolicyFmt, &bitsPerKey); err != nil {
+		return nil, errors.Errorf("Invalid filter policy name '%s'", name)
+	}
+	return newTestingFilterPolicy(bitsPerKey), nil
 }

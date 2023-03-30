@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -96,6 +97,16 @@ func (s sortCompactionLevelsDecreasingScore) Swap(i, j int) {
 type sublevelInfo struct {
 	manifest.LevelSlice
 	sublevel manifest.Level
+}
+
+func (cl sublevelInfo) Clone() sublevelInfo {
+	return sublevelInfo{
+		sublevel:   cl.sublevel,
+		LevelSlice: cl.LevelSlice.Reslice(func(start, end *manifest.LevelIterator) {}),
+	}
+}
+func (cl sublevelInfo) String() string {
+	return fmt.Sprintf(`Sublevel %s; Levels %s`, cl.sublevel, cl.LevelSlice)
 }
 
 // generateSublevelInfo will generate the level slices for each of the sublevels
@@ -257,6 +268,69 @@ func newPickedCompactionFromL0(
 	return pc
 }
 
+func (pc *pickedCompaction) String() string {
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf(`Score=%f, `, pc.score))
+	builder.WriteString(fmt.Sprintf(`Kind=%s, `, pc.kind))
+	builder.WriteString(fmt.Sprintf(`AdjustedOutputLevel=%d, `, pc.adjustedOutputLevel))
+	builder.WriteString(fmt.Sprintf(`maxOutputFileSize=%d, `, pc.maxOutputFileSize))
+	builder.WriteString(fmt.Sprintf(`maxReadCompactionBytes=%d, `, pc.maxReadCompactionBytes))
+	builder.WriteString(fmt.Sprintf(`smallest=%s, `, pc.smallest))
+	builder.WriteString(fmt.Sprintf(`largest=%s, `, pc.largest))
+	builder.WriteString(fmt.Sprintf(`version=%s, `, pc.version))
+	builder.WriteString(fmt.Sprintf(`inputs=%s, `, pc.inputs))
+	builder.WriteString(fmt.Sprintf(`startlevel=%s, `, pc.startLevel))
+	builder.WriteString(fmt.Sprintf(`outputLevel=%s, `, pc.outputLevel))
+	builder.WriteString(fmt.Sprintf(`extraLevels=%s, `, pc.extraLevels))
+	builder.WriteString(fmt.Sprintf(`l0SublevelInfo=%s, `, pc.l0SublevelInfo))
+	builder.WriteString(fmt.Sprintf(`lcf=%s`, pc.lcf))
+	return builder.String()
+}
+
+// Clone creates a deep copy of the pickedCompaction
+func (pc *pickedCompaction) clone() *pickedCompaction {
+
+	// Quickly copy over fields that do not require special deep copy care, and
+	// set all fields that will require a deep copy to nil.
+	newPC := &pickedCompaction{
+		cmp:                    pc.cmp,
+		score:                  pc.score,
+		kind:                   pc.kind,
+		adjustedOutputLevel:    pc.adjustedOutputLevel,
+		maxOutputFileSize:      pc.maxOutputFileSize,
+		maxOverlapBytes:        pc.maxOverlapBytes,
+		maxReadCompactionBytes: pc.maxReadCompactionBytes,
+		smallest:               pc.smallest.Clone(),
+		largest:                pc.largest.Clone(),
+
+		// Both copies see the same manifest, therefore, it's ok for them to se
+		// share the same pc. version.
+		version: pc.version,
+	}
+
+	newPC.inputs = make([]compactionLevel, len(pc.inputs))
+	newPC.extraLevels = make([]*compactionLevel, 0, len(pc.extraLevels))
+	for i := range pc.inputs {
+		newPC.inputs[i] = pc.inputs[i].Clone()
+		if i == 0 {
+			newPC.startLevel = &newPC.inputs[i]
+		} else if i == len(pc.inputs)-1 {
+			newPC.outputLevel = &newPC.inputs[i]
+		} else {
+			newPC.extraLevels = append(newPC.extraLevels, &newPC.inputs[i])
+		}
+	}
+
+	newPC.l0SublevelInfo = make([]sublevelInfo, len(pc.l0SublevelInfo))
+	for i := range pc.l0SublevelInfo {
+		newPC.l0SublevelInfo[i] = pc.l0SublevelInfo[i].Clone()
+	}
+	if pc.lcf != nil {
+		newPC.lcf = pc.lcf.Clone()
+	}
+	return newPC
+}
+
 // maybeExpandedBounds is a helper function for setupInputs which ensures the
 // pickedCompaction's smallest and largest internal keys are updated iff
 // the candidate keys expand the key span. This avoids a bug for multi-level
@@ -286,6 +360,8 @@ func (pc *pickedCompaction) maybeExpandBounds(smallest InternalKey, largest Inte
 	}
 }
 
+// setupInputs returns true if a compaction has been set up. It returns false if
+// a concurrent compaction is occurring on the start or output level files.
 func (pc *pickedCompaction) setupInputs(
 	opts *Options, diskAvailBytes uint64, startLevel *compactionLevel,
 ) bool {
@@ -362,8 +438,7 @@ func (pc *pickedCompaction) setupInputs(
 				}
 			})
 		}
-
-		oldLcf := *pc.lcf
+		oldLcf := pc.lcf.Clone()
 		if pc.version.L0Sublevels.ExtendL0ForBaseCompactionTo(smallestBaseKey, largestBaseKey, pc.lcf) {
 			var newStartLevelFiles []*fileMetadata
 			iter := pc.version.Levels[0].Iter()
@@ -379,7 +454,7 @@ func (pc *pickedCompaction) setupInputs(
 				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
 					startLevel.files.Iter(), pc.outputLevel.files.Iter())
 			} else {
-				*pc.lcf = oldLcf
+				*pc.lcf = *oldLcf
 			}
 		}
 	} else if pc.grow(pc.smallest, pc.largest, maxExpandedBytes, startLevel) {
@@ -433,12 +508,28 @@ func (pc *pickedCompaction) grow(
 	return true
 }
 
-// initMultiLevelCompaction returns true if it initiated a multilevel input
-// compaction. This currently never inits a multiLevel compaction.
-func (pc *pickedCompaction) initMultiLevelCompaction(
-	opts *Options, vers *version, levelMaxBytes [7]int64, diskAvailBytes uint64,
-) bool {
-	return false
+func (pc *pickedCompaction) compactionSize() uint64 {
+	var bytesToCompact uint64
+	for i := range pc.inputs {
+		bytesToCompact += pc.inputs[i].files.SizeSum()
+	}
+	return bytesToCompact
+}
+
+// setupMultiLevelCandidated returns true if it successfully added another level
+// to the compaction.
+func (pc *pickedCompaction) setupMultiLevelCandidate(opts *Options, diskAvailBytes uint64) bool {
+	pc.inputs = append(pc.inputs, compactionLevel{level: pc.outputLevel.level + 1})
+
+	// Recalibrate startLevel and outputLevel:
+	//  - startLevel and outputLevel pointers may be obsolete after appending to pc.inputs.
+	//  - push outputLevel to extraLevels and move the new level to outputLevel
+	pc.startLevel = &pc.inputs[0]
+	pc.extraLevels = []*compactionLevel{&pc.inputs[1]}
+	pc.outputLevel = &pc.inputs[2]
+
+	pc.adjustedOutputLevel++
+	return pc.setupInputs(opts, diskAvailBytes, pc.extraLevels[len(pc.extraLevels)-1])
 }
 
 // expandToAtomicUnit expands the provided level slice within its level both
@@ -461,18 +552,18 @@ func (pc *pickedCompaction) initMultiLevelCompaction(
 // truncation of range tombstones to atomic compaction unit boundaries.
 // Consider the scenario:
 //
-//   L3:
-//     12:[a#2,15-b#1,1]
-//     13:[b#0,15-d#72057594037927935,15]
+//	L3:
+//	  12:[a#2,15-b#1,1]
+//	  13:[b#0,15-d#72057594037927935,15]
 //
 // These sstables contain a range tombstone [a-d)#2 which spans the two
 // sstables. The two sstables need to always be kept together. Compacting
 // sstable 13 independently of sstable 12 would result in:
 //
-//   L3:
-//     12:[a#2,15-b#1,1]
-//   L4:
-//     14:[b#0,15-d#72057594037927935,15]
+//	L3:
+//	  12:[a#2,15-b#1,1]
+//	L4:
+//	  14:[b#0,15-d#72057594037927935,15]
 //
 // This state is still ok, but when sstable 12 is next compacted, its range
 // tombstones will be truncated at "b" (the largest key in its atomic
@@ -499,6 +590,10 @@ func expandToAtomicUnit(
 		// Nothing to expand.
 		return inputs, false
 	}
+
+	// TODO(jackson): Update to avoid use of LevelIterator.Current(). The
+	// Reslice interface will require some tweaking, because we currently rely
+	// on Reslice having already positioned the LevelIterator appropriately.
 
 	inputs = inputs.Reslice(func(start, end *manifest.LevelIterator) {
 		iter := start.Clone()
@@ -1459,12 +1554,35 @@ func pickAutoLPositive(
 	if !pc.setupInputs(opts, diskAvailBytes(), pc.startLevel) {
 		return nil
 	}
-	if opts.Experimental.MultiLevelCompaction &&
-		pc.initMultiLevelCompaction(opts, vers, levelMaxBytes, diskAvailBytes()) {
-		if !pc.setupInputs(opts, diskAvailBytes(), pc.extraLevels[len(pc.extraLevels)-1]) {
-			return nil
-		}
+	return pc.maybeAddLevel(opts, diskAvailBytes())
+}
+
+// maybeAddLevel maybe adds a level to the picked compaction.
+func (pc *pickedCompaction) maybeAddLevel(opts *Options, diskAvailBytes uint64) *pickedCompaction {
+	if pc.outputLevel.level == numLevels-1 {
+		// Don't add a level if the current output level is in L6
+		return pc
 	}
+	if pc.compactionSize() > expandedCompactionByteSizeLimit(
+		opts, pc.adjustedOutputLevel, diskAvailBytes) {
+		// Don't add a level if the current compaction exceeds the compaction size limit
+		return pc
+	}
+	return opts.Experimental.MultiLevelCompactionHueristic.pick(pc, opts, diskAvailBytes)
+}
+
+// MultiLevelHeuristic evaluates whether to add files from the next level into the compaction.
+type MultiLevelHeuristic interface {
+	// evaluate returns the preferred compaction.
+	pick(pc *pickedCompaction, opts *Options, diskAvailBytes uint64) *pickedCompaction
+}
+
+// NoMultiLevel will never add an additional level to the compaction.
+type NoMultiLevel struct{}
+
+func (nml NoMultiLevel) pick(
+	pc *pickedCompaction, opts *Options, diskAvailBytes uint64,
+) *pickedCompaction {
 	return pc
 }
 
@@ -1588,13 +1706,7 @@ func pickManualHelper(
 	if !pc.setupInputs(opts, diskAvailBytes(), pc.startLevel) {
 		return nil
 	}
-	if opts.Experimental.MultiLevelCompaction && pc.startLevel.level > 0 &&
-		pc.initMultiLevelCompaction(opts, vers, levelMaxBytes, diskAvailBytes()) {
-		if !pc.setupInputs(opts, diskAvailBytes(), pc.extraLevels[len(pc.extraLevels)-1]) {
-			return nil
-		}
-	}
-	return pc
+	return pc.maybeAddLevel(opts, diskAvailBytes())
 }
 
 func (p *compactionPickerByScore) pickReadTriggeredCompaction(

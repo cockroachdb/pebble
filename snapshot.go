@@ -5,8 +5,11 @@
 package pebble
 
 import (
+	"context"
 	"io"
 	"math"
+
+	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // Snapshot provides a read-only point-in-time view of the DB state.
@@ -42,10 +45,41 @@ func (s *Snapshot) Get(key []byte) ([]byte, io.Closer, error) {
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
 func (s *Snapshot) NewIter(o *IterOptions) *Iterator {
+	return s.NewIterWithContext(context.Background(), o)
+}
+
+// NewIterWithContext is like NewIter, and additionally accepts a context for
+// tracing.
+func (s *Snapshot) NewIterWithContext(ctx context.Context, o *IterOptions) *Iterator {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
-	return s.db.newIterInternal(nil /* batch */, s, o)
+	return s.db.newIter(ctx, nil /* batch */, s, o)
+}
+
+// ScanInternal scans all internal keys within the specified bounds, truncating
+// any rangedels and rangekeys to those bounds. For use when an external user
+// needs to be aware of all internal keys that make up a key range.
+//
+// See comment on db.ScanInternal for the behaviour that can be expected of
+// point keys deleted by range dels and keys masked by range keys.
+func (s *Snapshot) ScanInternal(
+	lower, upper []byte,
+	visitPointKey func(key *InternalKey, value LazyValue) error,
+	visitRangeDel func(start, end []byte, seqNum uint64) error,
+	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+) error {
+	if s.db == nil {
+		panic(ErrClosed)
+	}
+	iter := s.db.newInternalIter(s, &IterOptions{
+		KeyTypes:   IterKeyTypePointsAndRanges,
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	defer iter.close()
+
+	return scanInternalImpl(lower, iter, visitPointKey, visitRangeDel, visitRangeKey)
 }
 
 // LogSeqNum returns a sequence number the snapshot is reading at

@@ -119,10 +119,10 @@ const (
 //
 // Seeking (SeekGE, SeekLT) poses an obstacle to defragmentation. A seek may
 // land on a physical fragment in the middle of several fragments that must be
-// defragmented. A seek first degfragments in the opposite direction of
-// iteration to find the beginning of the defragmented span, and then
-// defragments in the iteration direction, ensuring it's found a whole
-// defragmented span.
+// defragmented. A seek that lands in a fragment straddling the seek key must
+// first degfragment in the opposite direction of iteration to find the
+// beginning of the defragmented span, and then defragments in the iteration
+// direction, ensuring it's found a whole defragmented span.
 type DefragmentingIter struct {
 	// DefragmentingBuffers holds buffers used for copying iterator state.
 	*DefragmentingBuffers
@@ -205,8 +205,9 @@ func (i *DefragmentingIter) Close() error {
 	return i.iter.Close()
 }
 
-// SeekGE seeks the iterator to the first span with a start key greater than or
-// equal to key and returns it.
+// SeekGE moves the iterator to the first span covering a key greater than or
+// equal to the given key. This is equivalent to seeking to the first span with
+// an end key greater than the given key.
 func (i *DefragmentingIter) SeekGE(key []byte) *Span {
 	i.iterSpan = i.iter.SeekGE(key)
 	if i.iterSpan == nil {
@@ -216,30 +217,28 @@ func (i *DefragmentingIter) SeekGE(key []byte) *Span {
 		i.iterPos = iterPosCurr
 		return i.iterSpan
 	}
-	// Save the current span and peek backwards.
-	i.saveCurrent()
-	i.iterSpan = i.iter.Prev()
-	if i.iterSpan != nil && i.equal(i.curr.Start, i.iterSpan.End) && i.checkEqual(i.iterSpan, &i.curr) {
-		// A continuation. The span we originally landed on and defragmented
-		// backwards has a true Start key < key. To obey the FragmentIterator
-		// contract, we must not return this defragmented span. Defragment
-		// forward to finish defragmenting the span in the forward direction.
-		i.defragmentForward()
-
-		// Now we must be on a span that truly has a defragmented Start key >
-		// key.
+	// If the span starts strictly after key, we know there mustn't be an
+	// earlier span that ends at i.iterSpan.Start, otherwise i.iter would've
+	// returned that span instead.
+	if i.comparer.Compare(i.iterSpan.Start, key) > 0 {
 		return i.defragmentForward()
 	}
 
-	// The span previous to i.curr does not defragment, so we should return it.
-	// Next the underlying iterator back onto the span we previously saved to
-	// i.curr and then defragment forward.
-	i.iterSpan = i.iter.Next()
+	// The span we landed on has a Start bound ≤ key. There may be additional
+	// fragments before this span. Defragment backward to find the start of the
+	// defragmented span.
+	i.defragmentBackward()
+	if i.iterPos == iterPosPrev {
+		// Next once back onto the span.
+		i.iterSpan = i.iter.Next()
+	}
+	// Defragment the full span from its start.
 	return i.defragmentForward()
 }
 
-// SeekLT seeks the iterator to the last span with a start key less than
-// key and returns it.
+// SeekLT moves the iterator to the last span covering a key less than the
+// given key. This is equivalent to seeking to the last span with a start
+// key less than the given key.
 func (i *DefragmentingIter) SeekLT(key []byte) *Span {
 	i.iterSpan = i.iter.SeekLT(key)
 	if i.iterSpan == nil {
@@ -249,7 +248,16 @@ func (i *DefragmentingIter) SeekLT(key []byte) *Span {
 		i.iterPos = iterPosCurr
 		return i.iterSpan
 	}
-	// Defragment forward to find the end of the defragmented span.
+	// If the span ends strictly before key, we know there mustn't be a later
+	// span that starts at i.iterSpan.End, otherwise i.iter would've returned
+	// that span instead.
+	if i.comparer.Compare(i.iterSpan.End, key) < 0 {
+		return i.defragmentBackward()
+	}
+
+	// The span we landed on has a End bound ≥ key. There may be additional
+	// fragments after this span. Defragment forward to find the end of the
+	// defragmented span.
 	i.defragmentForward()
 	if i.iterPos == iterPosNext {
 		// Prev once back onto the span.

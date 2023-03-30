@@ -13,7 +13,7 @@ tree
        0      LOCK
       96      MANIFEST-000001
      122      MANIFEST-000008
-    1145      OPTIONS-000003
+    1171      OPTIONS-000003
        0      marker.format-version.000007.008
        0      marker.manifest.000002.MANIFEST-000008
             simple/
@@ -24,7 +24,7 @@ tree
       25        000004.log
      795        000005.sst
       96        MANIFEST-000001
-    1145        OPTIONS-000003
+    1171        OPTIONS-000003
        0        marker.format-version.000001.008
        0        marker.manifest.000001.MANIFEST-000001
 
@@ -72,6 +72,7 @@ cat build/OPTIONS-000003
 [Level "0"]
   block_restart_interval=16
   block_size=4096
+  block_size_threshold=90
   compression=Snappy
   filter_policy=none
   filter_type=table
@@ -85,6 +86,7 @@ replay simple unpaced
 
 wait
 ----
+replayed 42 B in writes
 
 # NB: The file sizes are non-deterministic after replay (because compactions are
 # nondeterministic). We don't `tree` here as a result.

@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -24,6 +25,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -87,7 +90,7 @@ func TestIngestLoad(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(f, writerOpts)
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
 			for _, data := range strings.Split(td.Input, "\n") {
 				if strings.HasPrefix(data, "rangekey: ") {
 					data = strings.TrimPrefix(data, "rangekey: ")
@@ -109,12 +112,14 @@ func TestIngestLoad(t *testing.T) {
 					return err.Error()
 				}
 			}
-			w.Close()
+			if err := w.Close(); err != nil {
+				return err.Error()
+			}
 
-			opts := &Options{
+			opts := (&Options{
 				Comparer: DefaultComparer,
 				FS:       mem,
-			}
+			}).WithFSDefaults()
 			meta, _, err := ingestLoad(opts, dbVersion, []string{"ext"}, 0, []FileNum{1})
 			if err != nil {
 				return err.Error()
@@ -175,7 +180,7 @@ func TestIngestLoadRand(t *testing.T) {
 
 			expected[i].ExtendPointKeyBounds(cmp, keys[0], keys[len(keys)-1])
 
-			w := sstable.NewWriter(f, sstable.WriterOptions{
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: version.MaxTableFormat(),
 			})
 			var count uint64
@@ -194,13 +199,14 @@ func TestIngestLoadRand(t *testing.T) {
 			require.NoError(t, err)
 
 			expected[i].Size = meta.Size
+			expected[i].InitPhysicalBacking()
 		}()
 	}
 
-	opts := &Options{
+	opts := (&Options{
 		Comparer: DefaultComparer,
 		FS:       mem,
-	}
+	}).WithFSDefaults()
 	meta, _, err := ingestLoad(opts, version, paths, 0, pending)
 	require.NoError(t, err)
 
@@ -218,10 +224,10 @@ func TestIngestLoadInvalid(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	opts := &Options{
+	opts := (&Options{
 		Comparer: DefaultComparer,
 		FS:       mem,
-	}
+	}).WithFSDefaults()
 	if _, _, err := ingestLoad(opts, FormatNewest, []string{"invalid"}, 0, []FileNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
@@ -259,6 +265,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 						return fmt.Sprintf("range %v-%v is not valid", smallest, largest)
 					}
 					m := (&fileMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
+					m.InitPhysicalBacking()
 					meta = append(meta, m)
 					paths = append(paths, strconv.Itoa(i))
 				}
@@ -286,10 +293,12 @@ func TestIngestLink(t *testing.T) {
 	const count = 10
 	for i := 0; i <= count; i++ {
 		t.Run("", func(t *testing.T) {
-			mem := vfs.NewMem()
-			opts := &Options{FS: mem}
-			opts.EnsureDefaults()
-			require.NoError(t, mem.MkdirAll(dir, 0755))
+			opts := &Options{FS: vfs.NewMem()}
+			opts.EnsureDefaults().WithFSDefaults()
+			require.NoError(t, opts.FS.MkdirAll(dir, 0755))
+			objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(opts.FS, dir))
+			require.NoError(t, err)
+			defer objProvider.Close()
 
 			paths := make([]string, 10)
 			meta := make([]*fileMetadata, len(paths))
@@ -298,7 +307,8 @@ func TestIngestLink(t *testing.T) {
 				paths[j] = fmt.Sprintf("external%d", j)
 				meta[j] = &fileMetadata{}
 				meta[j].FileNum = FileNum(j)
-				f, err := mem.Create(paths[j])
+				meta[j].InitPhysicalBacking()
+				f, err := opts.FS.Create(paths[j])
 				require.NoError(t, err)
 
 				contents[j] = []byte(fmt.Sprintf("data%d", j))
@@ -310,10 +320,10 @@ func TestIngestLink(t *testing.T) {
 			}
 
 			if i < count {
-				mem.Remove(paths[i])
+				opts.FS.Remove(paths[i])
 			}
 
-			err := ingestLink(0 /* jobID */, opts, dir, paths, meta)
+			err = ingestLink(0 /* jobID */, opts, objProvider, paths, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -322,7 +332,7 @@ func TestIngestLink(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			files, err := mem.List(dir)
+			files, err := opts.FS.List(dir)
 			require.NoError(t, err)
 
 			sort.Strings(files)
@@ -337,7 +347,7 @@ func TestIngestLink(t *testing.T) {
 					t.Fatalf("expected %d files, but found:\n%s", count, strings.Join(files, "\n"))
 				}
 				for j := range files {
-					ftype, fileNum, ok := base.ParseFilename(mem, files[j])
+					ftype, fileNum, ok := base.ParseFilename(opts.FS, files[j])
 					if !ok {
 						t.Fatalf("unable to parse filename: %s", files[j])
 					}
@@ -347,7 +357,7 @@ func TestIngestLink(t *testing.T) {
 					if FileNum(j) != fileNum {
 						t.Fatalf("expected table %d, but found %d", j, fileNum)
 					}
-					f, err := mem.Open(mem.PathJoin(dir, files[j]))
+					f, err := opts.FS.Open(opts.FS.PathJoin(dir, files[j]))
 					require.NoError(t, err)
 
 					data, err := io.ReadAll(f)
@@ -369,11 +379,18 @@ func TestIngestLinkFallback(t *testing.T) {
 	src, err := mem.Create("source")
 	require.NoError(t, err)
 
-	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(0))}
-	opts.EnsureDefaults()
+	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(1))}
+	opts.EnsureDefaults().WithFSDefaults()
+	objSettings := objstorageprovider.DefaultSettings(opts.FS, "")
+	// Prevent the provider from listing the dir (where we may get an injected error).
+	objSettings.FSDirInitialListing = []string{}
+	objProvider, err := objstorageprovider.Open(objSettings)
+	require.NoError(t, err)
+	defer objProvider.Close()
 
 	meta := []*fileMetadata{{FileNum: 1}}
-	require.NoError(t, ingestLink(0, opts, "", []string{"source"}, meta))
+	err = ingestLink(0, opts, objProvider, []string{"source"}, meta)
+	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")
 	require.NoError(t, err)
@@ -386,6 +403,172 @@ func TestIngestLinkFallback(t *testing.T) {
 	if len(data) != 0 {
 		t.Fatalf("expected copy, but files appear to be hard linked: [%s] unexpectedly found", data)
 	}
+}
+
+func TestOverlappingIngestedSSTs(t *testing.T) {
+	dir := ""
+	var (
+		mem        vfs.FS
+		d          *DB
+		opts       *Options
+		closed     = false
+		blockFlush = false
+	)
+	defer func() {
+		if !closed {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	reset := func(strictMem bool) {
+		if d != nil && !closed {
+			require.NoError(t, d.Close())
+		}
+		blockFlush = false
+
+		if strictMem {
+			mem = vfs.NewStrictMem()
+		} else {
+			mem = vfs.NewMem()
+		}
+
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+		opts = (&Options{
+			FS:                          mem,
+			MemTableStopWritesThreshold: 4,
+			L0CompactionThreshold:       100,
+			L0StopWritesThreshold:       100,
+			DebugCheck:                  DebugCheckLevels,
+			FormatMajorVersion:          FormatNewest,
+		}).WithFSDefaults()
+		// Disable automatic compactions because otherwise we'll race with
+		// delete-only compactions triggered by ingesting range tombstones.
+		opts.DisableAutomaticCompactions = true
+
+		var err error
+		d, err = Open(dir, opts)
+		require.NoError(t, err)
+	}
+	waitForFlush := func() {
+		if d == nil {
+			return
+		}
+		d.mu.Lock()
+		for d.mu.compact.flushing {
+			d.mu.compact.cond.Wait()
+		}
+		d.mu.Unlock()
+	}
+	reset(false)
+
+	datadriven.RunTest(t, "testdata/flushable_ingest", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			var strictMem bool
+			if len(td.CmdArgs) == 1 && td.CmdArgs[0].String() == "strictMem" {
+				strictMem = true
+			}
+			reset(strictMem)
+			return ""
+
+		case "ignoreSyncs":
+			var ignoreSyncs bool
+			if len(td.CmdArgs) == 1 && td.CmdArgs[0].String() == "true" {
+				ignoreSyncs = true
+			}
+			mem.(*vfs.MemFS).SetIgnoreSyncs(ignoreSyncs)
+			return ""
+
+		case "resetToSynced":
+			mem.(*vfs.MemFS).ResetToSyncedState()
+			files, err := mem.List(dir)
+			sort.Strings(files)
+			require.NoError(t, err)
+			return strings.Join(files, "\n")
+
+		case "batch":
+			b := d.NewIndexedBatch()
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
+			}
+			if err := b.Commit(nil); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest":
+			if err := runIngestCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			if !blockFlush {
+				waitForFlush()
+			}
+			return ""
+
+		case "iter":
+			iter := d.NewIter(nil)
+			return runIterCmd(td, iter, true)
+
+		case "lsm":
+			return runLSMCmd(td, d)
+
+		case "close":
+			if closed {
+				return "already closed"
+			}
+			require.NoError(t, d.Close())
+			closed = true
+			return ""
+
+		case "ls":
+			files, err := mem.List(dir)
+			sort.Strings(files)
+			require.NoError(t, err)
+			return strings.Join(files, "\n")
+
+		case "open":
+			if len(td.CmdArgs) == 1 && td.CmdArgs[0].String() == "readOnly" {
+				opts.ReadOnly = true
+			}
+			var err error
+			d, err = Open(dir, opts)
+			closed = false
+			require.NoError(t, err)
+			waitForFlush()
+			return ""
+
+		case "blockFlush":
+			blockFlush = true
+			d.mu.Lock()
+			d.mu.compact.flushing = true
+			d.mu.Unlock()
+			return ""
+
+		case "allowFlush":
+			blockFlush = false
+			d.mu.Lock()
+			d.mu.compact.flushing = false
+			d.mu.Unlock()
+			return ""
+
+		case "flush":
+			d.maybeScheduleFlush()
+			waitForFlush()
+			return ""
+
+		case "get":
+			return runGetCmd(td, d)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
 }
 
 func TestIngestMemtableOverlaps(t *testing.T) {
@@ -429,6 +612,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					smallest, largest = largest, smallest
 				}
 				meta.ExtendPointKeyBounds(comparer.Compare, smallest, largest)
+				meta.InitPhysicalBacking()
 				return meta
 			}
 
@@ -443,7 +627,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					opts := &Options{
 						Comparer: &comparer,
 					}
-					opts.EnsureDefaults()
+					opts.EnsureDefaults().WithFSDefaults()
 					if len(d.CmdArgs) > 1 {
 						return fmt.Sprintf("%s expects at most 1 argument", d.Cmd)
 					}
@@ -511,7 +695,7 @@ func BenchmarkIngestOverlappingMemtable(b *testing.B) {
 				// Create the overlapping sstable that will force a flush when ingested.
 				f, err := mem.Create("ext")
 				assertNoError(err)
-				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 				assertNoError(w.Set([]byte("a"), nil))
 				assertNoError(w.Close())
 
@@ -556,6 +740,7 @@ func TestIngestTargetLevel(t *testing.T) {
 				InternalKey{UserKey: []byte(parts[1])},
 			)
 		}
+		m.InitPhysicalBacking()
 		return m
 	}
 
@@ -572,6 +757,7 @@ func TestIngestTargetLevel(t *testing.T) {
 			opts := Options{
 				FormatMajorVersion: FormatNewest,
 			}
+			opts.WithFSDefaults()
 			if d, err = runDBDefineCmd(td, &opts); err != nil {
 				return err.Error()
 			}
@@ -737,12 +923,12 @@ func TestIngestError(t *testing.T) {
 
 		f0, err := mem.Create("ext0")
 		require.NoError(t, err)
-		w := sstable.NewWriter(f0, sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f0), sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("d"), nil))
 		require.NoError(t, w.Close())
 		f1, err := mem.Create("ext1")
 		require.NoError(t, err)
-		w = sstable.NewWriter(f1, sstable.WriterOptions{})
+		w = sstable.NewWriter(objstorageprovider.NewFileWritable(f1), sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("d"), nil))
 		require.NoError(t, w.Close())
 
@@ -806,7 +992,7 @@ func TestIngestIdempotence(t *testing.T) {
 	path := fs.PathJoin(dir, "ext")
 	f, err := fs.Create(fs.PathJoin(dir, "ext"))
 	require.NoError(t, err)
-	w := sstable.NewWriter(f, sstable.WriterOptions{})
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	require.NoError(t, w.Set([]byte("d"), nil))
 	require.NoError(t, w.Close())
 
@@ -824,9 +1010,8 @@ func TestIngestIdempotence(t *testing.T) {
 }
 
 func TestIngestCompact(t *testing.T) {
-	var buf syncedBuffer
 	mem := vfs.NewMem()
-	lel := MakeLoggingEventListener(&buf)
+	lel := MakeLoggingEventListener(&base.InMemLogger{})
 	d, err := Open("", &Options{
 		EventListener:         &lel,
 		FS:                    mem,
@@ -841,7 +1026,7 @@ func TestIngestCompact(t *testing.T) {
 	f, err := mem.Create(src(0))
 	require.NoError(t, err)
 
-	w := sstable.NewWriter(f, sstable.WriterOptions{})
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	key := []byte("a")
 	require.NoError(t, w.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil))
 	require.NoError(t, w.Close())
@@ -884,7 +1069,7 @@ func TestConcurrentIngest(t *testing.T) {
 	f, err := mem.Create(src(0))
 	require.NoError(t, err)
 
-	w := sstable.NewWriter(f, sstable.WriterOptions{})
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	require.NoError(t, w.Set([]byte("a"), nil))
 	require.NoError(t, w.Set([]byte("b"), nil))
 	require.NoError(t, w.Close())
@@ -938,7 +1123,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 				f, err := mem.Create("ext")
 				require.NoError(t, err)
 
-				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 				for _, k := range keys {
 					require.NoError(t, w.Set([]byte(k), nil))
 				}
@@ -1058,7 +1243,7 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
@@ -1086,7 +1271,7 @@ func TestIngestStats(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
@@ -1134,7 +1319,7 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
@@ -1172,7 +1357,7 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
@@ -1272,7 +1457,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 		name := fmt.Sprintf("ext%d", i)
 		f, err := fs.Create(fs.PathJoin(dir, name))
 		require.NoError(t, err)
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte(fmt.Sprintf("foo%d", i)), nil))
 		require.NoError(t, w.Close())
 		files = append(files, name)
@@ -1334,7 +1519,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		w := sstable.NewWriter(f, sstable.WriterOptions{
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: sstable.TableFormatMax,
 		})
 		for _, data := range strings.Split(input, "\n") {
@@ -1428,6 +1613,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 					maybeUpdateUpperBound(wm.LargestRangeKey),
 				)
 			}
+			m.InitPhysicalBacking()
 			if err := m.Validate(cmp, base.DefaultFormatter); err != nil {
 				return err.Error()
 			}
@@ -1466,7 +1652,7 @@ func TestIngestCleanup(t *testing.T) {
 	testCases := []struct {
 		closeFiles   []base.FileNum
 		cleanupFiles []base.FileNum
-		wantErr      error
+		wantErr      string
 	}{
 		// Close and remove all files.
 		{
@@ -1477,19 +1663,19 @@ func TestIngestCleanup(t *testing.T) {
 		{
 			closeFiles:   fns,
 			cleanupFiles: []base.FileNum{3},
-			wantErr:      oserror.ErrNotExist,
+			wantErr:      "unknown to the objstorage provider",
 		},
 		// Remove a file that has not been closed.
 		{
 			closeFiles:   []base.FileNum{0, 2},
 			cleanupFiles: fns,
-			wantErr:      oserror.ErrInvalid,
+			wantErr:      oserror.ErrInvalid.Error(),
 		},
 		// Remove all files, one of which is still open, plus a file that does not exist.
 		{
 			closeFiles:   []base.FileNum{0, 2},
 			cleanupFiles: []base.FileNum{0, 1, 2, 3},
-			wantErr:      oserror.ErrInvalid, // The first error encountered is due to the open file.
+			wantErr:      oserror.ErrInvalid.Error(), // The first error encountered is due to the open file.
 		},
 	}
 
@@ -1497,23 +1683,26 @@ func TestIngestCleanup(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			mem := vfs.NewMem()
 			mem.UseWindowsSemantics(true)
+			objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, ""))
+			require.NoError(t, err)
+			defer objProvider.Close()
 
 			// Create the files in the VFS.
-			metaMap := make(map[base.FileNum]vfs.File)
+			metaMap := make(map[base.FileNum]objstorage.Writable)
 			for _, fn := range fns {
-				path := base.MakeFilepath(mem, "", base.FileTypeTable, fn)
-				f, err := mem.Create(path)
-				metaMap[fn] = f
+				w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, fn, objstorage.CreateOptions{})
 				require.NoError(t, err)
+
+				metaMap[fn] = w
 			}
 
 			// Close a select number of files.
 			for _, m := range tc.closeFiles {
-				f, ok := metaMap[m]
+				w, ok := metaMap[m]
 				if !ok {
 					continue
 				}
-				require.NoError(t, f.Close())
+				require.NoError(t, w.Finish())
 			}
 
 			// Cleanup the set of files in the FS.
@@ -1522,9 +1711,10 @@ func TestIngestCleanup(t *testing.T) {
 				toRemove = append(toRemove, &fileMetadata{FileNum: fn})
 			}
 
-			err := ingestCleanup(mem, "", toRemove)
-			if tc.wantErr != nil {
-				require.Equal(t, tc.wantErr, err)
+			err = ingestCleanup(objProvider, toRemove)
+			if tc.wantErr != "" {
+				require.Error(t, err, "got no error, expected %s", tc.wantErr)
+				require.Contains(t, err.Error(), tc.wantErr)
 			} else {
 				require.NoError(t, err)
 			}
@@ -1534,11 +1724,15 @@ func TestIngestCleanup(t *testing.T) {
 
 // fatalCapturingLogger captures a fatal error instead of panicking.
 type fatalCapturingLogger struct {
-	defaultLogger
 	err error
 }
 
-// Fatalf implements the Logger.Fatalf interface.
+// Infof implements the Logger interface.
+func (l *fatalCapturingLogger) Infof(fmt string, args ...interface{}) {
+	base.DefaultLogger.Infof(fmt, args...)
+}
+
+// Fatalf implements the Logger interface.
 func (l *fatalCapturingLogger) Fatalf(_ string, args ...interface{}) {
 	l.err = args[0].(error)
 }
@@ -1622,9 +1816,11 @@ func TestIngestValidation(t *testing.T) {
 			defer func() { require.NoError(t, d.Close()) }()
 
 			corrupt := func(f vfs.File) {
+				readable, err := sstable.NewSimpleReadable(f)
+				require.NoError(t, err)
 				// Compute the layout of the sstable in order to find the
 				// appropriate block locations to corrupt.
-				r, err := sstable.NewReader(f, sstable.ReaderOptions{})
+				r, err := sstable.NewReader(readable, sstable.ReaderOptions{})
 				require.NoError(t, err)
 				l, err := r.Layout()
 				require.NoError(t, err)
@@ -1670,7 +1866,7 @@ func TestIngestValidation(t *testing.T) {
 				require.NoError(t, err)
 				defer func() { _ = tmpFS.Remove(ingestTableName) }()
 
-				w := sstable.NewWriter(f, sstable.WriterOptions{
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 					BlockSize:   blockSize,     // Create many smaller blocks.
 					Compression: NoCompression, // For simpler debugging.
 				})
@@ -1772,7 +1968,7 @@ func BenchmarkManySSTables(b *testing.B) {
 						n := fmt.Sprintf("%07d", i)
 						f, err := mem.Create(n)
 						require.NoError(b, err)
-						w := sstable.NewWriter(f, sstable.WriterOptions{})
+						w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 						require.NoError(b, w.Set([]byte(n), nil))
 						require.NoError(b, w.Close())
 						paths = append(paths, n)
@@ -1783,7 +1979,7 @@ func BenchmarkManySSTables(b *testing.B) {
 						const broadIngest = "broad.sst"
 						f, err := mem.Create(broadIngest)
 						require.NoError(b, err)
-						w := sstable.NewWriter(f, sstable.WriterOptions{})
+						w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 						require.NoError(b, w.Set([]byte("0"), nil))
 						require.NoError(b, w.Set([]byte("Z"), nil))
 						require.NoError(b, w.Close())
@@ -1809,7 +2005,7 @@ func runBenchmarkManySSTablesIngest(b *testing.B, d *DB, fs vfs.FS, count int) {
 		n := fmt.Sprintf("%07d", count+i)
 		f, err := fs.Create(n)
 		require.NoError(b, err)
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(b, w.Set([]byte(n), nil))
 		require.NoError(b, w.Close())
 		require.NoError(b, d.Ingest([]string{n}))

@@ -21,6 +21,10 @@ import (
 // seeks would require introducing key comparisons to switchTo{Min,Max}Heap
 // where there currently are none.
 
+// TODO(jackson): There are several opportunities to use base.Equal in the
+// MergingIter implementation, but will require a bit of plumbing to thread the
+// Equal function.
+
 // Transformer defines a transformation to be applied to a Span.
 type Transformer interface {
 	// Transform takes a Span as input and writes the transformed Span to the
@@ -45,9 +49,9 @@ var noopTransform Transformer = TransformerFunc(func(_ base.Compare, s Span, dst
 	return nil
 })
 
-// visibleTransform filters keys that are invisible at the provided snapshot
+// VisibleTransform filters keys that are invisible at the provided snapshot
 // sequence number.
-func visibleTransform(snapshot uint64) Transformer {
+func VisibleTransform(snapshot uint64) Transformer {
 	return TransformerFunc(func(_ base.Compare, s Span, dst *Span) error {
 		dst.Start, dst.End = s.Start, s.End
 		dst.Keys = dst.Keys[:0]
@@ -76,34 +80,34 @@ func visibleTransform(snapshot uint64) Transformer {
 // trailer descending. If the MergingIter is configured with a Transformer, it's
 // permitted to modify the ordering of the spans' keys returned by MergingIter.
 //
-// Algorithm
+// # Algorithm
 //
 // The merging iterator wraps child iterators, merging and fragmenting spans
 // across levels. The high-level algorithm is:
 //
-//     1. Initialize the heap with bound keys from child iterators' spans.
-//     2. Find the next [or previous] two unique user keys' from bounds.
-//     3. Consider the span formed between the two unique user keys a candidate
-//        span.
-//     4. Determine if any of the child iterators' spans overlap the candidate
-//        span.
-//         4a. If any of the child iterator's current bounds are end keys
-//             (during forward iteration) or start keys (during reverse
-//             iteration), then all the spans with that bound overlap the
-//             candidate span.
-//         4b. Apply the configured transform, which may remove keys.
-//         4b. If no spans overlap, forget the smallest (forward iteration)
-//             or largest (reverse iteration) unique user key and advance
-//             the iterators to the next unique user key. Start again from 3.
+//  1. Initialize the heap with bound keys from child iterators' spans.
+//  2. Find the next [or previous] two unique user keys' from bounds.
+//  3. Consider the span formed between the two unique user keys a candidate
+//     span.
+//  4. Determine if any of the child iterators' spans overlap the candidate
+//     span.
+//     4a. If any of the child iterator's current bounds are end keys
+//     (during forward iteration) or start keys (during reverse
+//     iteration), then all the spans with that bound overlap the
+//     candidate span.
+//     4b. Apply the configured transform, which may remove keys.
+//     4c. If no spans overlap, forget the smallest (forward iteration)
+//     or largest (reverse iteration) unique user key and advance
+//     the iterators to the next unique user key. Start again from 3.
 //
-// Detailed algorithm
+// # Detailed algorithm
 //
 // Each level (i0, i1, ...) has a user-provided input FragmentIterator. The
 // merging iterator steps through individual boundaries of the underlying
 // spans separately. If the underlying FragmentIterator has fragments
 // [a,b){#2,#1} [b,c){#1} the mergingIterLevel.{next,prev} step through:
 //
-//     (a, start), (b, end), (b, start), (c, end)
+//	(a, start), (b, end), (b, start), (c, end)
 //
 // Note that (a, start) and (b, end) are observed ONCE each, despite two keys
 // sharing those bounds. Also note that (b, end) and (b, start) are two distinct
@@ -119,18 +123,18 @@ func visibleTransform(snapshot uint64) Transformer {
 // determine which span is next, but it's also responsible for fragmenting
 // overlapping spans. Consider the example:
 //
-//            i0:     b---d e-----h
-//            i1:   a---c         h-----k
-//            i2:   a------------------------------p
+//	       i0:     b---d e-----h
+//	       i1:   a---c         h-----k
+//	       i2:   a------------------------------p
 //
-//     fragments:   a-b-c-d-e-----h-----k----------p
+//	fragments:   a-b-c-d-e-----h-----k----------p
 //
 // None of the individual child iterators contain a span with the exact bounds
 // [c,d), but the merging iterator must produce a span [c,d). To accomplish
 // this, the merging iterator visits every span between unique boundary user
 // keys. In the above example, this is:
 //
-//     [a,b), [b,c), [c,d), [d,e), [e, h), [h, k), [k, p)
+//	[a,b), [b,c), [c,d), [d,e), [e, h), [h, k), [k, p)
 //
 // The merging iterator first initializes the heap to prepare for iteration.
 // The description below discusses the mechanics of forward iteration after a
@@ -141,9 +145,9 @@ func visibleTransform(snapshot uint64) Transformer {
 // mergingIterLevel to the first bound of the first fragment. In the above
 // example, this seeks the child iterators to:
 //
-//     i0: (b, boundKindFragmentStart, [ [b,d) ])
-//     i1: (a, boundKindFragmentStart, [ [a,c) ])
-//     i2: (a, boundKindFragmentStart, [ [a,p) ])
+//	i0: (b, boundKindFragmentStart, [ [b,d) ])
+//	i1: (a, boundKindFragmentStart, [ [a,c) ])
+//	i2: (a, boundKindFragmentStart, [ [a,p) ])
 //
 // After fixing up the heap, the root of the heap is a boundKey with the
 // smallest user key ('a' in the example). Once the heap is setup for iteration
@@ -160,9 +164,9 @@ func visibleTransform(snapshot uint64) Transformer {
 // In the above example, this results in m.start = 'a', m.end = 'b' and child
 // iterators in the following positions:
 //
-//     i0: (b, boundKindFragmentStart, [ [b,d) ])
-//     i1: (c, boundKindFragmentEnd,   [ [a,c) ])
-//     i2: (p, boundKindFragmentEnd,   [ [a,p) ])
+//	i0: (b, boundKindFragmentStart, [ [b,d) ])
+//	i1: (c, boundKindFragmentEnd,   [ [a,c) ])
+//	i2: (p, boundKindFragmentEnd,   [ [a,p) ])
 //
 // With the user key bounds of the next merged span established,
 // findNextFragmentSet must determine which, if any, fragments overlap the span.
@@ -191,7 +195,7 @@ func visibleTransform(snapshot uint64) Transformer {
 // findNextFragmentSet loops, repeating the above process again until it finds a
 // span that does contain keys.
 //
-// Memory safety
+// # Memory safety
 //
 // The FragmentIterator interface only guarantees stability of a Span and its
 // associated slices until the next positioning method is called. Adjacent Spans
@@ -354,38 +358,70 @@ func (m *MergingIter) AddLevel(iter FragmentIterator) {
 	m.levels = append(m.levels, mergingIterLevel{iter: iter})
 }
 
-// SeekGE moves the iterator to the first span with a start key greater than or
-// equal to key.
+// SeekGE moves the iterator to the first span covering a key greater than
+// or equal to the given key. This is equivalent to seeking to the first
+// span with an end key greater than the given key.
 func (m *MergingIter) SeekGE(key []byte) *Span {
 	m.invalidate() // clear state about current position
+
+	// SeekGE(k) seeks to the first span with an end key greater than the given
+	// key. The merged span M that we're searching for might straddle the seek
+	// `key`. In this case, the M.Start may be a key ≤ the seek key.
+	//
+	// Consider a SeekGE(dog) in the following example.
+	//
+	//            i0:     b---d e-----h
+	//            i1:   a---c         h-----k
+	//            i2:   a------------------------------p
+	//        merged:   a-b-c-d-e-----h-----k----------p
+	//
+	// The merged span M containing 'dog' is [d,e). The 'd' of the merged span
+	// comes from i0's [b,d)'s end boundary. The [b,d) span does not cover any
+	// key >= dog, so we cannot find the span by positioning the child iterators
+	// using a SeekGE(dog).
+	//
+	// Instead, if we take all the child iterators' spans bounds:
+	//                  a b c d e     h     k          p
+	// We want to partition them into keys ≤ `key` and keys > `key`.
+	//                        dog
+	//                         │
+	//                  a b c d│e     h     k          p
+	//                         │
+	// The largest key on the left of the partition forms the merged span's
+	// start key, and the smallest key on the right of the partition forms the
+	// merged span's end key. Recharacterized:
+	//
+	//   M.Start: the largest boundary ≤ k of any child span
+	//   M.End:   the smallest boundary > k of any child span
+	//
+	// The FragmentIterator interface doesn't implement seeking by all bounds,
+	// it implements seeking by containment. A SeekGE(k) will ensure we observe
+	// all start boundaries ≥ k and all end boundaries > k but does not ensure
+	// we observe end boundaries = k or any boundaries < k.  A SeekLT(k) will
+	// ensure we observe all start boundaries < k and all end boundaries ≤ k but
+	// does not ensure we observe any start boundaries = k or any boundaries >
+	// k. This forces us to seek in one direction and step in the other.
+	//
+	// In a SeekGE, we want to end up oriented in the forward direction when
+	// complete, so we begin with searching for M.Start by SeekLT-ing every
+	// child iterator to `k`.  For every child span found, we determine the
+	// largest bound ≤ `k` and use it to initialize our max heap. The resulting
+	// root of the max heap is a preliminary value for `M.Start`.
 	for i := range m.levels {
 		l := &m.levels[i]
-
-		// A SeekGE requires we position each level at the smallest bound ≥ key.
-		// We must search through both inclusive start and exclusive end bounds.
-		// Note that this search requirement differs from FragmentIterator's
-		// .SeekGE'semantics, which returns the span with the smallest start key
-		// ≥ key. To remedy this difference, we find the last span less than
-		// key. If its end boundary is greater than or equal to key, we use it.
-		// Otherwise we use the start boundary of the next span which
-		// necessarily has a start ≥ key.
 		s := l.iter.SeekLT(key)
-		if s != nil && m.cmp(s.End, key) >= 0 {
-			// s.End ≥ key
-			// We need to use this span's end bound.
+		if s == nil {
+			l.heapKey = boundKey{kind: boundKindInvalid}
+		} else if m.cmp(s.End, key) <= 0 {
 			l.heapKey = boundKey{
 				kind: boundKindFragmentEnd,
 				key:  s.End,
 				span: s,
 			}
-			continue
-		}
-		// s.End < key
-		// The span `s` ends before key. Next to the first span with a Start ≥
-		// key, and use that.
-		if s = l.iter.Next(); s == nil {
-			l.heapKey = boundKey{kind: boundKindInvalid}
 		} else {
+			// s.End > key && s.Start < key
+			// We need to use this span's start bound, since that's the largest
+			// bound ≤ key.
 			l.heapKey = boundKey{
 				kind: boundKindFragmentStart,
 				key:  s.Start,
@@ -393,36 +429,201 @@ func (m *MergingIter) SeekGE(key []byte) *Span {
 			}
 		}
 	}
-	m.initMinHeap()
-	return m.findNextFragmentSet()
-}
+	m.initMaxHeap()
+	if m.err != nil {
+		return nil
+	} else if len(m.heap.items) == 0 {
+		// There are no spans covering any key < `key`. There is no span that
+		// straddles the seek key. Reorient the heap into a min heap and return
+		// the first span we find in the forward direction.
+		m.switchToMinHeap()
+		return m.findNextFragmentSet()
+	}
 
-// SeekLT moves the iterator to the last span with a start key less than key.
-func (m *MergingIter) SeekLT(key []byte) *Span {
-	// TODO(jackson): Evaluate whether there's an implementation of SeekLT
-	// independent of SeekGE that is more efficient. It's tricky, because the
-	// span we should return might straddle `key` itself.
+	// The heap root is now the largest boundary key b such that:
+	//   1. b < k
+	//   2. b = k, and b is an end boundary
+	// There's a third case that we will need to consider later, after we've
+	// switched to a min heap:
+	//   3. there exists a start boundary key b such that b = k.
+	// A start boundary key equal to k would not be surfaced when we seeked all
+	// the levels using SeekLT(k), since no key <k would be covered within a
+	// span within an inclusive `k` start boundary.
 	//
-	// Consider the scenario:
-	//       a----------l      #2
-	//         b-----------m   #1
-	//
-	// The merged, fully-fragmented spans that MergingIter exposes to the caller
-	// have bounds:
-	//        a-b              #2
-	//          b--------l     #2
-	//          b--------l     #1
-	//                   l-m   #1
-	//
-	// A call SeekLT(c) must return the largest of the above spans with a
-	// Start user key < key: [b,l)#1. This requires examining bounds both < 'c'
-	// (the 'b' of [b,m)#1's start key) and bounds ≥ 'c' (the 'l' of ([a,l)#2's
-	// end key).
-	if s := m.SeekGE(key); s == nil && m.err != nil {
+	// Assume that the tightest boundary ≤ k is the current heap root (cases 1 &
+	// 2). After we switch to a min heap, we'll check for the third case and
+	// adjust the start boundary if necessary.
+	m.start = m.heap.items[0].boundKey.key
+
+	// Before switching the direction of the heap, save a copy of the start
+	// boundary if it's the end boundary of some child span. Next-ing the child
+	// iterator might switch files and invalidate the memory of the bound.
+	if m.heap.items[0].boundKey.kind == boundKindFragmentEnd {
+		m.buf = append(m.buf[:0], m.start...)
+		m.start = m.buf
+	}
+
+	// Switch to a min heap. This will move each level to the next bound in
+	// every level, and then establish a min heap. This allows us to obtain the
+	// smallest boundary key > `key`, which will serve as our candidate end
+	// bound.
+	m.switchToMinHeap()
+	if m.err != nil {
+		return nil
+	} else if len(m.heap.items) == 0 {
 		return nil
 	}
-	// Prev to the previous span.
-	return m.Prev()
+
+	// Check for the case 3 described above. It's possible that when we switch
+	// heap directions, we discover a start boundary of some child span that is
+	// equal to the seek key `key`. In this case, we want this key to be our
+	// start boundary.
+	if m.heap.items[0].boundKey.kind == boundKindFragmentStart &&
+		m.cmp(m.heap.items[0].boundKey.key, key) == 0 {
+		// Call findNextFragmentSet, which will set m.start to the heap root and
+		// proceed forward.
+		return m.findNextFragmentSet()
+	}
+
+	m.end = m.heap.items[0].boundKey.key
+	if found, s := m.synthesizeKeys(+1); found && s != nil {
+		return s
+	}
+	return m.findNextFragmentSet()
+
+}
+
+// SeekLT moves the iterator to the last span covering a key less than the
+// given key. This is equivalent to seeking to the last span with a start
+// key less than the given key.
+func (m *MergingIter) SeekLT(key []byte) *Span {
+	m.invalidate() // clear state about current position
+
+	// SeekLT(k) seeks to the last span with a start key less than the given
+	// key. The merged span M that we're searching for might straddle the seek
+	// `key`. In this case, the M.End may be a key ≥ the seek key.
+	//
+	// Consider a SeekLT(dog) in the following example.
+	//
+	//            i0:     b---d e-----h
+	//            i1:   a---c         h-----k
+	//            i2:   a------------------------------p
+	//        merged:   a-b-c-d-e-----h-----k----------p
+	//
+	// The merged span M containing the largest key <'dog' is [d,e). The 'e' of
+	// the merged span comes from i0's [e,h)'s start boundary. The [e,h) span
+	// does not cover any key < dog, so we cannot find the span by positioning
+	// the child iterators using a SeekLT(dog).
+	//
+	// Instead, if we take all the child iterators' spans bounds:
+	//                  a b c d e     h     k          p
+	// We want to partition them into keys < `key` and keys ≥ `key`.
+	//                        dog
+	//                         │
+	//                  a b c d│e     h     k          p
+	//                         │
+	// The largest key on the left of the partition forms the merged span's
+	// start key, and the smallest key on the right of the partition forms the
+	// merged span's end key. Recharacterized:
+	//
+	//   M.Start: the largest boundary < k of any child span
+	//   M.End:   the smallest boundary ≥ k of any child span
+	//
+	// The FragmentIterator interface doesn't implement seeking by all bounds,
+	// it implements seeking by containment. A SeekGE(k) will ensure we observe
+	// all start boundaries ≥ k and all end boundaries > k but does not ensure
+	// we observe end boundaries = k or any boundaries < k.  A SeekLT(k) will
+	// ensure we observe all start boundaries < k and all end boundaries ≤ k but
+	// does not ensure we observe any start boundaries = k or any boundaries >
+	// k. This forces us to seek in one direction and step in the other.
+	//
+	// In a SeekLT, we want to end up oriented in the backward direction when
+	// complete, so we begin with searching for M.End by SeekGE-ing every
+	// child iterator to `k`. For every child span found, we determine the
+	// smallest bound ≥ `k` and use it to initialize our min heap. The resulting
+	// root of the min heap is a preliminary value for `M.End`.
+	for i := range m.levels {
+		l := &m.levels[i]
+		s := l.iter.SeekGE(key)
+		if s == nil {
+			l.heapKey = boundKey{kind: boundKindInvalid}
+		} else if m.cmp(s.Start, key) >= 0 {
+			l.heapKey = boundKey{
+				kind: boundKindFragmentStart,
+				key:  s.Start,
+				span: s,
+			}
+		} else {
+			// s.Start < key
+			// We need to use this span's end bound, since that's the smallest
+			// bound > key.
+			l.heapKey = boundKey{
+				kind: boundKindFragmentEnd,
+				key:  s.End,
+				span: s,
+			}
+		}
+	}
+	m.initMinHeap()
+	if m.err != nil {
+		return nil
+	} else if len(m.heap.items) == 0 {
+		// There are no spans covering any key ≥ `key`. There is no span that
+		// straddles the seek key. Reorient the heap into a max heap and return
+		// the first span we find in the reverse direction.
+		m.switchToMaxHeap()
+		return m.findPrevFragmentSet()
+	}
+
+	// The heap root is now the smallest boundary key b such that:
+	//   1. b > k
+	//   2. b = k, and b is a start boundary
+	// There's a third case that we will need to consider later, after we've
+	// switched to a max heap:
+	//   3. there exists an end boundary key b such that b = k.
+	// An end boundary key equal to k would not be surfaced when we seeked all
+	// the levels using SeekGE(k), since k would not be contained within the
+	// exclusive end boundary.
+	//
+	// Assume that the tightest boundary ≥ k is the current heap root (cases 1 &
+	// 2). After we switch to a max heap, we'll check for the third case and
+	// adjust the end boundary if necessary.
+	m.end = m.heap.items[0].boundKey.key
+
+	// Before switching the direction of the heap, save a copy of the end
+	// boundary if it's the start boundary of some child span. Prev-ing the
+	// child iterator might switch files and invalidate the memory of the bound.
+	if m.heap.items[0].boundKey.kind == boundKindFragmentStart {
+		m.buf = append(m.buf[:0], m.end...)
+		m.end = m.buf
+	}
+
+	// Switch to a max heap. This will move each level to the previous bound in
+	// every level, and then establish a max heap. This allows us to obtain the
+	// largest boundary key < `key`, which will serve as our candidate start
+	// bound.
+	m.switchToMaxHeap()
+	if m.err != nil {
+		return nil
+	} else if len(m.heap.items) == 0 {
+		return nil
+	}
+	// Check for the case 3 described above. It's possible that when we switch
+	// heap directions, we discover an end boundary of some child span that is
+	// equal to the seek key `key`. In this case, we want this key to be our end
+	// boundary.
+	if m.heap.items[0].boundKey.kind == boundKindFragmentEnd &&
+		m.cmp(m.heap.items[0].boundKey.key, key) == 0 {
+		// Call findPrevFragmentSet, which will set m.end to the heap root and
+		// proceed backwards.
+		return m.findPrevFragmentSet()
+	}
+
+	m.start = m.heap.items[0].boundKey.key
+	if found, s := m.synthesizeKeys(-1); found && s != nil {
+		return s
+	}
+	return m.findPrevFragmentSet()
 }
 
 // First seeks the iterator to the first span.
@@ -843,7 +1044,7 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, *Span) {
 	// sorted by trailer descending for the range key iteration use case.
 	sort.Sort(&m.keys)
 
-	// Apply the configured transform. See visibleTransform.
+	// Apply the configured transform. See VisibleTransform.
 	m.span = Span{
 		Start:     m.start,
 		End:       m.end,

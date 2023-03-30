@@ -140,9 +140,9 @@ L2
   a.RANGEDEL.1:g
 ----
 0.0:
-  000004:[c#4,SET-g#72057594037927935,RANGEDEL]
+  000004:[c#4,SET-g#inf,RANGEDEL]
 2:
-  000005:[a#1,RANGEDEL-g#72057594037927935,RANGEDEL]
+  000005:[a#1,RANGEDEL-g#inf,RANGEDEL]
 
 # Overlapping cases:
 # - The ingested file overlaps with with [c,c].
@@ -227,7 +227,7 @@ L5
   rangekey:a-c:{(#1,RANGEKEYSET,@t10,foo)}
 ----
 5:
-  000004:[a#1,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+  000004:[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]
 
 target
 a-c
@@ -240,7 +240,7 @@ L5
   rangekey:a-c:{(#1,RANGEKEYSET,@t10,foo)}
 ----
 5:
-  000004:[a#1,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+  000004:[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]
 
 target
 rkey:a-c

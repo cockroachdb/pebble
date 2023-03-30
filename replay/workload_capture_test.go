@@ -1,506 +1,199 @@
 package replay
 
 import (
-	"math/rand"
-	"sync/atomic"
+	"bytes"
+	"crypto/rand"
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
+	"unicode"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
-func newWorkloadCollectorForTest(
-	fs vfs.FS, srcDir string, cleaner base.Cleaner,
-) *WorkloadCollector {
-	collector := NewWorkloadCollector(srcDir)
-	collector.configuration.srcFS = fs
-	collector.configuration.destFS = fs
-	collector.configuration.destDir = "captured"
-	collector.configuration.cleaner = cleaner
+func TestWorkloadCollector(t *testing.T) {
+	const srcDir = `src`
+	const destDir = `dst`
+	datadriven.Walk(t, "testdata/collect", func(t *testing.T, path string) {
+		fs := vfs.NewMem()
+		require.NoError(t, fs.MkdirAll(srcDir, 0755))
+		require.NoError(t, fs.MkdirAll(destDir, 0755))
+		c := NewWorkloadCollector(srcDir)
+		o := &pebble.Options{FS: fs}
+		c.Attach(o)
+		var currentManifest vfs.File
+		var buf bytes.Buffer
+		defer func() {
+			if currentManifest != nil {
+				currentManifest.Close()
+			}
+		}()
+		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
+			buf.Reset()
+			switch td.Cmd {
+			case "cmp-files":
+				if len(td.CmdArgs) != 2 {
+					return fmt.Sprintf("expected exactly 2 args, received %d", len(td.CmdArgs))
+				}
+				b1 := readFile(t, fs, td.CmdArgs[0].String())
+				b2 := readFile(t, fs, td.CmdArgs[1].String())
+				if !bytes.Equal(b1, b2) {
+					return fmt.Sprintf("files are unequal: %s (%s) and %s (%s)",
+						td.CmdArgs[0].String(), humanize.IEC.Uint64(uint64(len(b1))),
+						td.CmdArgs[1].String(), humanize.IEC.Uint64(uint64(len(b2))))
+				}
+				return "equal"
+			case "clean":
+				for _, path := range strings.Fields(td.Input) {
+					typ, _, ok := base.ParseFilename(fs, path)
+					require.True(t, ok)
+					require.NoError(t, o.Cleaner.Clean(fs, typ, path))
+				}
+				return ""
+			case "create-manifest":
+				if currentManifest != nil {
+					require.NoError(t, currentManifest.Close())
+				}
 
-	return collector
-}
+				var fileNum uint64
+				var err error
+				td.ScanArgs(t, "filenum", &fileNum)
+				path := base.MakeFilepath(fs, srcDir, base.FileTypeManifest, base.FileNum(fileNum))
+				currentManifest, err = fs.Create(path)
+				require.NoError(t, err)
+				_, err = currentManifest.Write(randData(100))
+				require.NoError(t, err)
 
-func createCaptureDir(fs vfs.FS, destDir string) {
-	if err := fs.MkdirAll(destDir, 0755); err != nil {
-		panic(err)
-	}
-}
+				c.onManifestCreated(pebble.ManifestCreateInfo{
+					Path:    path,
+					FileNum: base.FileNum(fileNum),
+				})
+				return ""
+			case "flush":
+				flushInfo := pebble.FlushInfo{
+					Done:          true,
+					Input:         1,
+					Duration:      100 * time.Millisecond,
+					TotalDuration: 100 * time.Millisecond,
+				}
+				for _, line := range strings.Split(td.Input, "\n") {
+					if line == "" {
+						continue
+					}
 
-func TestWorkloadCaptureCleanerNotReadyToClean(t *testing.T) {
-	imfs := vfs.NewMem()
-	filePath := base.MakeFilepath(imfs, "", base.FileTypeTable, 1)
-	f, err := imfs.Create(filePath)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
+					parts := strings.FieldsFunc(line, func(r rune) bool { return unicode.IsSpace(r) || r == ':' })
+					tableInfo := pebble.TableInfo{Size: 10 << 10}
+					fileNum, err := strconv.ParseUint(parts[0], 10, 64)
+					require.NoError(t, err)
+					tableInfo.FileNum = base.FileNum(fileNum)
 
-	createCaptureDir(imfs, "captured")
-	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
-	atomic.StoreUint32(&collector.enabled, 1)
-	collector.onFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
-		FileNum: 1,
-		Size:    10,
-	}}})
-	err = collector.clean(imfs, base.FileTypeTable, filePath)
-	require.NoError(t, err)
-	_, err = imfs.Stat(filePath)
-	require.NoError(t, err)
-}
+					p := writeFile(t, fs, srcDir, base.FileTypeTable, tableInfo.FileNum, randData(int(tableInfo.Size)))
+					fmt.Fprintf(&buf, "created %s\n", p)
+					flushInfo.Output = append(flushInfo.Output, tableInfo)
 
-func TestWorkloadCaptureCleanerMarkForClean(t *testing.T) {
-	imfs := vfs.NewMem()
-	filePath := base.MakeFilepath(imfs, "", base.FileTypeTable, 1)
-	f, err := imfs.Create(filePath)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
+					// Simulate a version edit applied to the current manifest.
+					_, err = currentManifest.Write(randData(25))
+					require.NoError(t, err)
+				}
+				fmt.Fprint(&buf, flushInfo.String())
+				c.onFlushEnd(flushInfo)
+				return buf.String()
+			case "ingest":
+				ingestInfo := pebble.TableIngestInfo{}
+				for _, line := range strings.Split(td.Input, "\n") {
+					if line == "" {
+						continue
+					}
 
-	createCaptureDir(imfs, "captured")
-	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
+					parts := strings.FieldsFunc(line, func(r rune) bool { return unicode.IsSpace(r) || r == ':' })
+					tableInfo := pebble.TableInfo{Size: 10 << 10}
+					fileNum, err := strconv.ParseUint(parts[0], 10, 64)
+					require.NoError(t, err)
+					tableInfo.FileNum = base.FileNum(fileNum)
 
-	atomic.StoreUint32(&collector.enabled, 1)
-	ch := make(chan struct{})
-	go func() {
-		collector.filesToProcessWatcher()
-		ch <- struct{}{}
-	}()
+					p := writeFile(t, fs, srcDir, base.FileTypeTable, tableInfo.FileNum, randData(int(tableInfo.Size)))
+					fmt.Fprintf(&buf, "created %s\n", p)
+					ingestInfo.Tables = append(ingestInfo.Tables, struct {
+						pebble.TableInfo
+						Level int
+					}{Level: 0, TableInfo: tableInfo})
 
-	collector.onFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
-		FileNum: 1,
-		Size:    10,
-	}}})
-	collector.mu.Lock()
-	for len(collector.mu.sstablesToProcess) != 0 {
-		collector.mu.Unlock()
-		time.Sleep(time.Microsecond)
-		collector.mu.Lock()
-	}
-	collector.mu.Unlock()
-	collector.Stop()
-	<-ch
-	err = collector.clean(imfs, base.FileTypeTable, filePath)
-	require.NoError(t, err)
-	_, err = imfs.Stat(filePath)
-	require.Errorf(t, err, "stat 000001.sst: file does not exist")
-}
+					// Simulate a version edit applied to the current manifest.
+					_, err = currentManifest.Write(randData(25))
+					require.NoError(t, err)
+				}
+				fmt.Fprint(&buf, ingestInfo.String())
+				c.onTableIngest(ingestInfo)
+				return buf.String()
 
-func TestWorkloadCaptureWatcherDeleteWhenObsolete(t *testing.T) {
-	imfs := vfs.NewMem()
-	filePath := base.MakeFilepath(imfs, "", base.FileTypeTable, 1)
-	f, err := imfs.Create(filePath)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	createCaptureDir(imfs, "captured")
-	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
-
-	collector.mu.fileState[imfs.PathBase(filePath)] |= readyForProcessing
-	err = collector.clean(imfs, base.FileTypeTable, filePath)
-	require.NoError(t, err)
-
-	atomic.StoreUint32(&collector.enabled, 1)
-	ch := make(chan struct{})
-	go func() {
-		collector.filesToProcessWatcher()
-		ch <- struct{}{}
-	}()
-
-	collector.onFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
-		FileNum: 1,
-		Size:    10,
-	}}})
-	collector.mu.Lock()
-	for len(collector.mu.sstablesToProcess) != 0 {
-		collector.mu.Unlock()
-		time.Sleep(time.Microsecond)
-		collector.mu.Lock()
-	}
-	collector.mu.Unlock()
-	collector.Stop()
-	<-ch
-	_, err = imfs.Stat(filePath)
-	require.Errorf(t, err, "stat 000001.sst: file does not exist")
-}
-
-func TestManifestCollection(t *testing.T) {
-	imfs := vfs.NewMem()
-	manifestFilePath := base.MakeFilepath(imfs, "", base.FileTypeManifest, 1)
-	manifestFile, err := imfs.Create(manifestFilePath)
-	require.NoError(t, err)
-
-	const numberOfBytesToWrite = 1024
-	dataToWrite := make([]byte, numberOfBytesToWrite)
-	copyOfFileInputData := make([]byte, numberOfBytesToWrite)
-	rand.Read(dataToWrite)
-	copy(copyOfFileInputData, dataToWrite)
-
-	_, err = manifestFile.Write(dataToWrite)
-	require.NoError(t, err)
-	require.NoError(t, manifestFile.Close())
-
-	tableFilePath := base.MakeFilepath(imfs, "", base.FileTypeTable, 1)
-	tableFile, err := imfs.Create(tableFilePath)
-	require.NoError(t, err)
-	require.NoError(t, tableFile.Close())
-
-	createCaptureDir(imfs, "captured")
-	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
-
-	ch := make(chan struct{})
-	atomic.StoreUint32(&collector.enabled, 1)
-	go func() {
-		collector.filesToProcessWatcher()
-		ch <- struct{}{}
-	}()
-
-	collector.onManifestCreated(pebble.ManifestCreateInfo{
-		Path:    manifestFilePath,
-		FileNum: 1,
-	})
-	collector.onFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
-		FileNum: 1,
-		Size:    10,
-	}}})
-	collector.mu.Lock()
-
-	for len(collector.mu.sstablesToProcess) != 0 {
-		collector.mu.Unlock()
-		time.Sleep(time.Microsecond)
-		collector.mu.Lock()
-	}
-	collector.mu.Unlock()
-	collector.Stop()
-	<-ch
-	destFilepath := imfs.PathJoin("captured", imfs.PathBase(collector.mu.manifests[0].sourceFilepath))
-	stat, err := imfs.Stat(destFilepath)
-	require.NoError(t, err)
-	require.Equal(t, int64(numberOfBytesToWrite), stat.Size())
-	f, err := imfs.Open(destFilepath)
-	require.NoError(t, err)
-	fromOutputFile := make([]byte, numberOfBytesToWrite)
-	_, err = f.Read(fromOutputFile)
-	require.NoError(t, err)
-	require.Equal(t, fromOutputFile, copyOfFileInputData)
-}
-
-func TestManifestNumberCollectionBeforeEnable(t *testing.T) {
-	imfs := vfs.NewMem()
-	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
-	require.Equal(t, uint64(0), collector.curManifest)
-	collector.onManifestCreated(pebble.ManifestCreateInfo{
-		Path:    "",
-		FileNum: 1,
-	})
-	require.Equal(t, uint64(1), collector.curManifest)
-}
-
-func TestManifestCopyingWithChunks(t *testing.T) {
-	imfs := vfs.NewMem()
-	manifestFilePath := base.MakeFilepath(imfs, "", base.FileTypeManifest, 1)
-	manifestFile, err := imfs.Create(manifestFilePath)
-	require.NoError(t, err)
-
-	const numberOfBytesToWrite = 9 << 9
-	dataToWrite := make([]byte, numberOfBytesToWrite)
-	copyOfDataToWrite := make([]byte, numberOfBytesToWrite)
-	rand.Read(dataToWrite)
-	copy(copyOfDataToWrite, dataToWrite)
-
-	_, err = manifestFile.Write(dataToWrite)
-	require.NoError(t, err)
-	require.NoError(t, manifestFile.Close())
-
-	tableFilePath := base.MakeFilepath(imfs, "", base.FileTypeTable, 1)
-	tableFile, err := imfs.Create(tableFilePath)
-	require.NoError(t, err)
-	require.NoError(t, tableFile.Close())
-
-	createCaptureDir(imfs, "captured")
-	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
-
-	ch := make(chan struct{})
-	atomic.StoreUint32(&collector.enabled, 1)
-	go func() {
-		collector.filesToProcessWatcher()
-		ch <- struct{}{}
-	}()
-
-	collector.onManifestCreated(pebble.ManifestCreateInfo{
-		Path:    manifestFilePath,
-		FileNum: 1,
-	})
-	collector.onFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
-		FileNum: 1,
-		Size:    10,
-	}}})
-	collector.mu.Lock()
-
-	for len(collector.mu.sstablesToProcess) != 0 {
-		collector.mu.Unlock()
-		time.Sleep(time.Microsecond)
-		collector.mu.Lock()
-	}
-	collector.mu.Unlock()
-	collector.Stop()
-	<-ch
-	destFilepath := imfs.PathJoin("captured", imfs.PathBase(collector.mu.manifests[0].sourceFilepath))
-	stat, err := imfs.Stat(destFilepath)
-	require.NoError(t, err)
-	require.Equal(t, int64(numberOfBytesToWrite), stat.Size())
-	f, err := imfs.Open(destFilepath)
-	require.NoError(t, err)
-	fromOutputFile := make([]byte, numberOfBytesToWrite)
-	_, err = f.Read(fromOutputFile)
-	require.NoError(t, err)
-	require.Equal(t, fromOutputFile, copyOfDataToWrite)
-}
-
-func TestManifestCopyingWithRotation(t *testing.T) {
-	imfs := vfs.NewMem()
-
-	// Manifest 1
-	manifestFilePath1 := base.MakeFilepath(imfs, "", base.FileTypeManifest, 1)
-	manifestFile1, err := imfs.Create(manifestFilePath1)
-	require.NoError(t, err)
-
-	// Manifest 2
-	manifestFilePath2 := base.MakeFilepath(imfs, "", base.FileTypeManifest, 2)
-	manifestFile2, err := imfs.Create(manifestFilePath2)
-	require.NoError(t, err)
-
-	// Manifest 3
-	manifestFilePath3 := base.MakeFilepath(imfs, "", base.FileTypeManifest, 3)
-	manifestFile3, err := imfs.Create(manifestFilePath3)
-	require.NoError(t, err)
-
-	// Write HALF the data to Manifest 1
-	manifest1DataSize := 8338
-	fileInputData1 := make([]byte, manifest1DataSize)
-	copyOfFileInputData1 := make([]byte, manifest1DataSize)
-	rand.Read(fileInputData1)
-	copy(copyOfFileInputData1, fileInputData1)
-	_, err = manifestFile1.Write(fileInputData1[:manifest1DataSize/2])
-	require.NoError(t, err)
-
-	// Write all the data to Manifest 2
-	manifest2DataSize := 6746
-	fileInputData2 := make([]byte, manifest2DataSize)
-	copyOfFileInputData2 := make([]byte, manifest2DataSize)
-	rand.Read(fileInputData2)
-	copy(copyOfFileInputData2, fileInputData2)
-	_, err = manifestFile2.Write(fileInputData2)
-	require.NoError(t, err)
-
-	// Write all the data to Manifest 3
-	manifest3DataSize := 4378
-	fileInputData3 := make([]byte, manifest3DataSize)
-	copyOfFileInputData3 := make([]byte, manifest3DataSize)
-	rand.Read(fileInputData3)
-	copy(copyOfFileInputData3, fileInputData3)
-	_, err = manifestFile3.Write(fileInputData3)
-	require.NoError(t, err)
-
-	// Create table path to trigger the FileHandler
-	tableFilePath := base.MakeFilepath(imfs, "", base.FileTypeTable, 1)
-	tableFile, err := imfs.Create(tableFilePath)
-	require.NoError(t, err)
-	require.NoError(t, tableFile.Close())
-
-	// Create the collector and file handler
-	createCaptureDir(imfs, "captured")
-	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
-
-	ch := make(chan struct{})
-	atomic.StoreUint32(&collector.enabled, 1)
-	go func() {
-		collector.filesToProcessWatcher()
-		ch <- struct{}{}
-	}()
-
-	// Create the first manifests
-	collector.onManifestCreated(pebble.ManifestCreateInfo{
-		Path:    manifestFilePath1,
-		FileNum: 1,
-	})
-
-	collector.onManifestCreated(pebble.ManifestCreateInfo{
-		Path:    manifestFilePath2,
-		FileNum: 2,
-	})
-
-	// Trigger the Manifest Handler
-	collector.onFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
-		FileNum: 1,
-		Size:    10,
-	}}})
-
-	collector.mu.Lock()
-	for len(collector.mu.sstablesToProcess) != 0 {
-		collector.mu.Unlock()
-		time.Sleep(time.Microsecond)
-		collector.mu.Lock()
-	}
-	collector.mu.Unlock()
-
-	_, err = manifestFile1.Write(fileInputData1[manifest1DataSize/2:])
-	require.NoError(t, err)
-
-	collector.onManifestCreated(pebble.ManifestCreateInfo{
-		Path:    manifestFilePath3,
-		FileNum: 3,
-	})
-
-	collector.onFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
-		FileNum: 1,
-		Size:    10,
-	}}})
-
-	collector.mu.Lock()
-	for len(collector.mu.sstablesToProcess) != 0 {
-		collector.mu.Unlock()
-		time.Sleep(time.Microsecond)
-		collector.mu.Lock()
-	}
-	collector.mu.Unlock()
-
-	collector.onFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
-		FileNum: 1,
-		Size:    10,
-	}}})
-
-	collector.mu.Lock()
-	for len(collector.mu.sstablesToProcess) != 0 {
-		collector.mu.Unlock()
-		time.Sleep(time.Microsecond)
-		collector.mu.Lock()
-	}
-	collector.mu.Unlock()
-
-	collector.Stop()
-	<-ch
-	expectedManifestSize := []int{manifest1DataSize, manifest2DataSize, manifest3DataSize}
-	expectedFileData := [][]byte{copyOfFileInputData1, copyOfFileInputData2, copyOfFileInputData3}
-	require.Len(t, collector.mu.manifests, 3)
-	require.Equal(t, collector.mu.manifestIndex, 2)
-	for i, manifest := range collector.mu.manifests {
-		destFilepath := imfs.PathJoin("captured", imfs.PathBase(manifest.sourceFilepath))
-		manifestStats, err := imfs.Stat(destFilepath)
-		require.NoError(t, err)
-		require.Equal(t, int64(expectedManifestSize[i]), manifestStats.Size())
-		f, err := imfs.Open(destFilepath)
-		require.NoError(t, err)
-		fromOutputFile := make([]byte, expectedManifestSize[i])
-		_, err = f.Read(fromOutputFile)
-		require.NoError(t, err)
-		require.Equal(
-			t,
-			fromOutputFile,
-			expectedFileData[i],
-			"File contents do not match between %s and %s",
-			destFilepath,
-			manifest.sourceFilepath,
-		)
-	}
-}
-
-func TestManifestNotCleanedBeforeOpen(t *testing.T) {
-	imfs := vfs.NewMem()
-	filePath := base.MakeFilepath(imfs, "", base.FileTypeManifest, 1)
-	f, err := imfs.Create(filePath)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	createCaptureDir(imfs, "captured")
-	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
-	atomic.StoreUint32(&collector.enabled, 1)
-	collector.onManifestCreated(pebble.ManifestCreateInfo{
-		Path:    filePath,
-		FileNum: 1,
-	})
-	err = collector.clean(imfs, base.FileTypeManifest, filePath)
-	require.NoError(t, err)
-	_, err = imfs.Stat(filePath)
-	require.NoError(t, err)
-}
-
-func TestAttachCollectorToPebble(t *testing.T) {
-	imfs := vfs.NewMem()
-	manifestFilePath := base.MakeFilepath(imfs, "", base.FileTypeManifest, 1)
-	manifestFile, err := imfs.Create(manifestFilePath)
-	require.NoError(t, err)
-	require.NoError(t, manifestFile.Close())
-
-	tableFilePath := base.MakeFilepath(imfs, "", base.FileTypeTable, 1)
-	tableFile, err := imfs.Create(tableFilePath)
-	require.NoError(t, err)
-	require.NoError(t, tableFile.Close())
-
-	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
-	atomic.StoreUint32(&collector.enabled, 1)
-
-	opts := &pebble.Options{FS: imfs}
-	collector.Attach(opts)
-
-	_, ok := opts.Cleaner.(cleaner)
-	require.True(t, ok)
-	require.NotNil(t, opts.EventListener.TableIngested)
-	require.NotNil(t, opts.EventListener.ManifestCreated)
-	require.NotNil(t, opts.EventListener.FlushEnd)
-}
-
-func TestEnableDisable(t *testing.T) {
-	imfs := vfs.NewMem()
-	createCaptureDir(imfs, "captured")
-	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
-	type testCase struct{ onFlushEndLength, onTableIngestLength, onManifestLength int }
-	testCases := []testCase{
-		{
-			onFlushEndLength:    0,
-			onTableIngestLength: 0,
-			onManifestLength:    0,
-		},
-		{
-			onFlushEndLength:    1,
-			onTableIngestLength: 2,
-			onManifestLength:    1,
-		},
-	}
-	for _, currentTestCase := range testCases {
-		collector.onFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
-			FileNum: 1,
-			Size:    10,
-		}}})
-		require.Len(t, collector.mu.sstablesToProcess, currentTestCase.onFlushEndLength)
-		collector.onTableIngest(pebble.TableIngestInfo{
-			Tables: []struct {
-				pebble.TableInfo
-				Level int
-			}{
-				{TableInfo: pebble.TableInfo{
-					FileNum: 1,
-					Size:    10,
-				}, Level: 0},
-			},
+			case "ls":
+				return runListFiles(t, fs, td)
+			case "start":
+				c.Start(fs, destDir)
+				return ""
+			case "stat":
+				var buf bytes.Buffer
+				for _, arg := range td.CmdArgs {
+					fi, err := fs.Stat(arg.String())
+					if err != nil {
+						fmt.Fprintf(&buf, "%s: %s\n", arg.String(), err)
+						continue
+					}
+					fmt.Fprintf(&buf, "%s:\n", arg.String())
+					fmt.Fprintf(&buf, "  size: %d\n", fi.Size())
+				}
+				return buf.String()
+			case "stop":
+				c.Stop()
+				return ""
+			case "wait":
+				// Wait until all pending sstables have been copied, then list
+				// the files in the destination directory.
+				c.mu.Lock()
+				for c.mu.tablesEnqueued != c.mu.tablesCopied {
+					c.mu.copyCond.Wait()
+				}
+				c.mu.Unlock()
+				listFiles(t, fs, &buf, destDir)
+				return buf.String()
+			default:
+				return fmt.Sprintf("unrecognized command %q", td.Cmd)
+			}
 		})
-		require.Len(t, collector.mu.sstablesToProcess, currentTestCase.onTableIngestLength)
-		collector.onManifestCreated(pebble.ManifestCreateInfo{
-			FileNum: 1,
-		})
-		require.Len(t, collector.mu.manifests, currentTestCase.onManifestLength)
-
-		// Enable the WorkloadCollector for the second iteration
-		atomic.StoreUint32(&collector.enabled, 1)
-	}
+	})
 }
 
-func TestAtomicStartStop(t *testing.T) {
-	imfs := vfs.NewMem()
-	collector := NewWorkloadCollector("")
-	collector.Stop()
-	require.Equal(t, collector.fileListener.stopFileListener, false)
-	atomic.StoreUint32(&collector.enabled, 1)
-	collector.Start(imfs, "captured")
-	require.NotEqual(t, imfs, collector.configuration.destFS)
+func randData(byteCount int) []byte {
+	b := make([]byte, byteCount)
+	rand.Read(b)
+	return b
+}
+
+func writeFile(
+	t *testing.T, fs vfs.FS, dir string, typ base.FileType, num base.FileNum, data []byte,
+) string {
+	path := base.MakeFilepath(fs, dir, typ, num)
+	f, err := fs.Create(path)
+	require.NoError(t, err)
+	_, err = f.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	return path
+}
+
+func readFile(t *testing.T, fs vfs.FS, path string) []byte {
+	r, err := fs.Open(path)
+	require.NoError(t, err)
+	b, err := io.ReadAll(r)
+	require.NoError(t, err)
+	require.NoError(t, r.Close())
+	return b
 }

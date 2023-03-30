@@ -294,6 +294,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 					HasPointKeys:     false,
 					HasRangeKeys:     true,
 				}
+				meta.InitPhysicalBacking()
 				meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
 				metas = append(metas, meta)
 			}
@@ -303,15 +304,22 @@ func TestLevelIterEquivalence(t *testing.T) {
 			}
 			// Add all the fileMetadatas to L6.
 			b := &manifest.BulkVersionEdit{}
-			b.Added[6] = metas
-			v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
+			amap := make(map[base.FileNum]*manifest.FileMetadata)
+			for i := range metas {
+				amap[metas[i].FileNum] = metas[i]
+			}
+			b.Added[6] = amap
+			v, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0, nil)
 			require.NoError(t, err)
-			levelIter.Init(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 0, manifest.KeyTypeRange)
+			levelIter.Init(
+				SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters,
+				v.Levels[6].Iter(), 0, manifest.KeyTypeRange,
+			)
 			levelIters = append(levelIters, &levelIter)
 		}
 
-		iter1.Init(base.DefaultComparer.Compare, visibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), fileIters...)
-		iter2.Init(base.DefaultComparer.Compare, visibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), levelIters...)
+		iter1.Init(base.DefaultComparer.Compare, VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), fileIters...)
+		iter2.Init(base.DefaultComparer.Compare, VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), levelIters...)
 		// Check iter1 and iter2 for equivalence.
 
 		require.Equal(t, iter1.First(), iter2.First(), "failed on test case %q", tc.name)
@@ -369,6 +377,7 @@ func TestLevelIter(t *testing.T) {
 						if len(pointKeys) != 0 {
 							meta.ExtendPointKeyBounds(base.DefaultComparer.Compare, pointKeys[0], pointKeys[len(pointKeys)-1])
 						}
+						meta.InitPhysicalBacking()
 						level = append(level, currentFile)
 						metas = append(metas, meta)
 						rangedels = append(rangedels, currentRangeDels)
@@ -396,6 +405,7 @@ func TestLevelIter(t *testing.T) {
 			meta := &manifest.FileMetadata{
 				FileNum: base.FileNum(len(level) + 1),
 			}
+			meta.InitPhysicalBacking()
 			level = append(level, currentFile)
 			rangedels = append(rangedels, currentRangeDels)
 			if len(currentFile) > 0 {
@@ -423,7 +433,7 @@ func TestLevelIter(t *testing.T) {
 			}
 			if iter == nil {
 				var lastFileNum base.FileNum
-				tableNewIters := func(file *manifest.FileMetadata, iterOptions *SpanIterOptions) (FragmentIterator, error) {
+				tableNewIters := func(file *manifest.FileMetadata, _ *SpanIterOptions) (FragmentIterator, error) {
 					keyType := keyType
 					spans := level[file.FileNum-1]
 					if keyType == manifest.KeyTypePoint {
@@ -433,10 +443,17 @@ func TestLevelIter(t *testing.T) {
 					return NewIter(base.DefaultComparer.Compare, spans), nil
 				}
 				b := &manifest.BulkVersionEdit{}
-				b.Added[6] = metas
-				v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
+				amap := make(map[base.FileNum]*manifest.FileMetadata)
+				for i := range metas {
+					amap[metas[i].FileNum] = metas[i]
+				}
+				b.Added[6] = amap
+				v, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0, nil)
 				require.NoError(t, err)
-				iter = newLevelIter(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 6, keyType)
+				iter = NewLevelIter(
+					SpanIterOptions{}, base.DefaultComparer.Compare,
+					tableNewIters, v.Levels[6].Iter(), 6, keyType,
+				)
 				extraInfo = func() string {
 					return fmt.Sprintf("file = %s.sst", lastFileNum)
 				}

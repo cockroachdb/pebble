@@ -2,14 +2,15 @@ package sstable
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"strings"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +33,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 		// Use a "suffix-aware" Comparer, that will sort suffix-values in
 		// descending order of timestamp, rather than in lexical order.
 		cmp := testkeys.Comparer
-		w := NewWriter(f, WriterOptions{
+		w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
 			Comparer:    cmp,
 			TableFormat: TableFormatPebblev2,
 		})
@@ -82,7 +83,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 			return nil, err
 		}
 
-		r, err = NewReader(f, ReaderOptions{Comparer: cmp})
+		r, err = newReader(f, ReaderOptions{Comparer: cmp})
 		if err != nil {
 			return nil, err
 		}

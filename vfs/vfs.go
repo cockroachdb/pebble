@@ -29,9 +29,52 @@ type File interface {
 	// method *is* allowed to modify the slice passed in, whether temporarily
 	// or permanently. Callers of Write() need to take this into account.
 	io.Writer
+
+	// Preallocate optionally preallocates storage for `length` at `offset`
+	// within the file. Implementations may choose to do nothing.
+	Preallocate(offset, length int64) error
 	Stat() (os.FileInfo, error)
 	Sync() error
+
+	// SyncTo requests that a prefix of the file's data be synced to stable
+	// storage. The caller passes provides a `length`, indicating how many bytes
+	// to sync from the beginning of the file. SyncTo is a no-op for
+	// directories, and therefore always returns false.
+	//
+	// SyncTo returns a fullSync return value, indicating one of two possible
+	// outcomes.
+	//
+	// If fullSync is false, the first `length` bytes of the file was queued to
+	// be synced to stable storage. The syncing of the file prefix may happen
+	// asynchronously. No persistence guarantee is provided.
+	//
+	// If fullSync is true, the entirety of the file's contents were
+	// synchronously synced to stable storage, and a persistence guarantee is
+	// provided. In this outcome, any modified metadata for the file is not
+	// guaranteed to be synced unless that metadata is needed in order to allow
+	// a subsequent data retrieval to be correctly handled.
+	SyncTo(length int64) (fullSync bool, err error)
+
+	// SyncData requires that all written data be persisted. File metadata is
+	// not required to be synced. Unsophisticated implementations may call Sync.
+	SyncData() error
+
+	// Prefetch signals the OS (on supported platforms) to fetch the next length
+	// bytes in file (as returned by os.File.Fd()) after offset into cache. Any
+	// subsequent reads in that range will not issue disk IO.
+	Prefetch(offset int64, length int64) error
+
+	// Fd returns the raw file descriptor when a File is backed by an *os.File.
+	// It can be used for specific functionality like Prefetch.
+	// Returns InvalidFd if not supported.
+	Fd() uintptr
 }
+
+// InvalidFd is a special value returned by File.Fd() when the file is not
+// backed by an OS descriptor.
+// Note: the special value is consistent with what os.File implementation
+// returns on a nil receiver.
+const InvalidFd uintptr = ^(uintptr(0))
 
 // OpenOption provide an interface to do work on file handles in the Open()
 // call.
@@ -144,10 +187,18 @@ var Default FS = defaultFS{}
 
 type defaultFS struct{}
 
+// wrapOSFile takes a standard library OS file and returns a vfs.File. f may be
+// nil, in which case wrapOSFile must not panic. In such cases, it's okay if the
+// returned vfs.File may panic if used.
+func wrapOSFile(f *os.File) File {
+	// See the implementations in default_{linux,unix,windows}.go.
+	return wrapOSFileImpl(f)
+}
+
 func (defaultFS) Create(name string) (File, error) {
 	const openFlags = os.O_RDWR | os.O_CREATE | os.O_EXCL | syscall.O_CLOEXEC
 
-	f, err := os.OpenFile(name, openFlags, 0666)
+	osFile, err := os.OpenFile(name, openFlags, 0666)
 	// If the file already exists, remove it and try again.
 	//
 	// NB: We choose to remove the file instead of truncating it, despite the
@@ -158,11 +209,11 @@ func (defaultFS) Create(name string) (File, error) {
 	// attempting to create the a file at the same path.
 	for oserror.IsExist(err) {
 		if removeErr := os.Remove(name); removeErr != nil && !oserror.IsNotExist(removeErr) {
-			return f, errors.WithStack(removeErr)
+			return wrapOSFile(osFile), errors.WithStack(removeErr)
 		}
-		f, err = os.OpenFile(name, openFlags, 0666)
+		osFile, err = os.OpenFile(name, openFlags, 0666)
 	}
-	return f, errors.WithStack(err)
+	return wrapOSFile(osFile), errors.WithStack(err)
 }
 
 func (defaultFS) Link(oldname, newname string) error {
@@ -170,10 +221,11 @@ func (defaultFS) Link(oldname, newname string) error {
 }
 
 func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
-	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
+	osFile, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	file := wrapOSFile(osFile)
 	for _, opt := range opts {
 		opt.Apply(file)
 	}
@@ -197,7 +249,7 @@ func (fs defaultFS) ReuseForWrite(oldname, newname string) (File, error) {
 		return nil, errors.WithStack(err)
 	}
 	f, err := os.OpenFile(newname, os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC, 0666)
-	return f, errors.WithStack(err)
+	return wrapOSFile(f), errors.WithStack(err)
 }
 
 func (defaultFS) MkdirAll(dir string, perm os.FileMode) error {
@@ -240,11 +292,8 @@ var RandomReadsOption OpenOption = &randomReadsOption{}
 
 // Apply implements the OpenOption interface.
 func (randomReadsOption) Apply(f File) {
-	type fd interface {
-		Fd() uintptr
-	}
-	if fdFile, ok := f.(fd); ok {
-		_ = fadviseRandom(fdFile.Fd())
+	if fd := f.Fd(); fd != InvalidFd {
+		_ = fadviseRandom(fd)
 	}
 }
 
@@ -257,11 +306,8 @@ var SequentialReadsOption OpenOption = &sequentialReadsOption{}
 
 // Apply implements the OpenOption interface.
 func (sequentialReadsOption) Apply(f File) {
-	type fd interface {
-		Fd() uintptr
-	}
-	if fdFile, ok := f.(fd); ok {
-		_ = fadviseSequential(fdFile.Fd())
+	if fd := f.Fd(); fd != InvalidFd {
+		_ = fadviseSequential(fd)
 	}
 }
 

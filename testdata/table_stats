@@ -30,7 +30,7 @@ del-range a c
 flush
 ----
 0.0:
-  000007:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000007:[a#4,RANGEDEL-c#inf,RANGEDEL]
 6:
   000005:[a#1,SET-c#3,DEL]
 
@@ -113,7 +113,7 @@ del-range a c
 flush
 ----
 0.0:
-  000014:[a#7,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000014:[a#7,RANGEDEL-c#inf,RANGEDEL]
 6:
   000012:[a#5,SET-b#6,SET]
 
@@ -149,7 +149,7 @@ L6
   e.SET.5:v
 ----
 4:
-  000004:[a#8,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000004:[a#8,RANGEDEL-f#inf,RANGEDEL]
 5:
   000005:[b#7,SET-b#7,SET]
 6:
@@ -162,11 +162,11 @@ L6
 compact a-b L4
 ----
 5:
-  000011:[a#8,RANGEDEL-b#72057594037927935,RANGEDEL]
-  000012:[b#8,RANGEDEL-c#72057594037927935,RANGEDEL]
-  000013:[c#8,RANGEDEL-d#72057594037927935,RANGEDEL]
-  000014:[d#8,RANGEDEL-e#72057594037927935,RANGEDEL]
-  000015:[e#8,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000011:[a#8,RANGEDEL-b#inf,RANGEDEL]
+  000012:[b#8,RANGEDEL-c#inf,RANGEDEL]
+  000013:[c#8,RANGEDEL-d#inf,RANGEDEL]
+  000014:[d#8,RANGEDEL-e#inf,RANGEDEL]
+  000015:[e#8,RANGEDEL-f#inf,RANGEDEL]
 6:
   000006:[a#1,SET-a#1,SET]
   000007:[b#2,SET-b#2,SET]
@@ -200,7 +200,7 @@ L6
   e.SET.5:e a.RANGEDEL.15:f m.SET.5:m g.RANGEDEL.15:z
 ----
 6:
-  000004:[a#15,RANGEDEL-z#72057594037927935,RANGEDEL]
+  000004:[a#15,RANGEDEL-z#inf,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -232,9 +232,9 @@ L2
   e.SET.0:e h.SET.0:h
 ----
 0.0:
-  000004:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000004:[a#2,RANGEDEL-b#inf,RANGEDEL]
 1:
-  000005:[d#1,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000005:[d#1,RANGEDEL-f#inf,RANGEDEL]
 2:
   000006:[a#0,SET-d#0,SET]
   000007:[e#0,SET-h#0,SET]
@@ -276,7 +276,7 @@ range-key-unset a b @2
 flush
 ----
 0.0:
-  000005:[a#3,RANGEKEYUNSET-b#72057594037927935,RANGEKEYSET]
+  000005:[a#3,RANGEKEYUNSET-b#inf,RANGEKEYSET]
 
 # Add a table that contains only point keys, to the right of the existing table.
 batch
@@ -286,13 +286,13 @@ set c c
 flush
 ----
 0.0:
-  000005:[a#3,RANGEKEYUNSET-b#72057594037927935,RANGEKEYSET]
+  000005:[a#3,RANGEKEYUNSET-b#inf,RANGEKEYSET]
   000007:[c#4,SET-c#4,SET]
 
 compact a-c
 ----
 6:
-  000008:[a#2,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
+  000008:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
 # Add a table that contains a RANGEKEYDEL covering the first table in L6.
@@ -303,9 +303,9 @@ range-key-del a b
 flush
 ----
 0.0:
-  000011:[a#5,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+  000011:[a#5,RANGEKEYDEL-b#inf,RANGEKEYDEL]
 6:
-  000008:[a#2,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
+  000008:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
 # Add one more table containing a RANGEDEL.
@@ -316,11 +316,11 @@ del-range a c
 flush
 ----
 0.1:
-  000013:[a#6,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000013:[a#6,RANGEDEL-c#inf,RANGEDEL]
 0.0:
-  000011:[a#5,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+  000011:[a#5,RANGEKEYDEL-b#inf,RANGEKEYDEL]
 6:
-  000008:[a#2,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
+  000008:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
 # Compute stats on the table containing range key del. It should not show an
@@ -355,17 +355,40 @@ del-range a z
 range-key-del a z
 ----
 0.2:
-  000014:[a#7,RANGEKEYDEL-z#72057594037927935,RANGEDEL]
+  000014:[a#7,RANGEKEYDEL-z#inf,RANGEDEL]
 0.1:
-  000013:[a#6,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000013:[a#6,RANGEDEL-c#inf,RANGEDEL]
 0.0:
-  000011:[a#5,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+  000011:[a#5,RANGEKEYDEL-b#inf,RANGEKEYDEL]
 6:
-  000008:[a#2,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
+  000008:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
 compact a-z
 ----
+
+# Ingest another sstable with range tombstones again, but this time into an
+# empty LSM. The table should ingest into L6. Its table stats should reflect
+# that its range tombstones cannot delete any of the data contained within the
+# file itself.
+ingest ext1
+del-range a z
+range-key-del a z
+set d d
+set e e
+set f f
+----
+6:
+  000015:[a#8,RANGEKEYDEL-z#inf,RANGEDEL]
+
+wait-pending-table-stats
+000015
+----
+num-entries: 4
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
 
 # A hint for exclusively range key deletions that covers a table with point keys
 # should not contain an estimate for point keys.
@@ -409,7 +432,7 @@ range-key-del a z
 flush
 ----
 0.0:
-  000011:[a#4,RANGEKEYDEL-z#72057594037927935,RANGEKEYDEL]
+  000011:[a#4,RANGEKEYDEL-z#inf,RANGEKEYDEL]
 6:
   000008:[b#0,SET-b#0,SET]
   000009:[c#0,SET-c#0,SET]
@@ -438,11 +461,11 @@ L6
   rangekey:c-d:{(#1,RANGEKEYSET,@1,foo)}
 ----
 4:
-  000004:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000004:[a#4,RANGEDEL-c#inf,RANGEDEL]
 5:
-  000005:[a#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000005:[a#2,RANGEDEL-e#inf,RANGEDEL]
 6:
-  000006:[c#1,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
+  000006:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 
 # The table in L5 should not contain an estimate for the table below it, which
 # contains only range keys.

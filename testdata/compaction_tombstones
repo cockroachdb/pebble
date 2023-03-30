@@ -6,7 +6,7 @@ L6
 b.RANGEDEL.230:h h.RANGEDEL.200:r
 ----
 6:
-  000004:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+  000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -28,7 +28,7 @@ L6
 b.RANGEDEL.230:h h.RANGEDEL.200:r
 ----
 6:
-  000004:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+  000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -49,7 +49,7 @@ L6
 a.SET.55:a b.RANGEDEL.5:h
 ----
 6:
-  000004:[a#55,SET-h#72057594037927935,RANGEDEL]
+  000004:[a#55,SET-h#inf,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -58,7 +58,7 @@ num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 26
+range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
@@ -111,7 +111,7 @@ L6
 a.DEL.60: a.SET.55:a b.SET.100:b c.SET.101:c d.SET.102:d b.RANGEDEL.103:z
 ----
 6:
-  000004:[a#60,DEL-z#72057594037927935,RANGEDEL]
+  000004:[a#60,DEL-z#inf,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -167,22 +167,22 @@ close-snapshot
 # automatic compaction compacts before we've closen the snapshot.
 define snapshots=(103) level-max-bytes=(L5 : 1000) auto-compactions=off
 L5
-b.SET.200:<largeval> bb.SET.203:<largeval> cc.SET.204:<largeval>
+b.SET.200:<rand-bytes=4096> bb.SET.203:<rand-bytes=4096> cc.SET.204:<rand-bytes=4096>
 L5
-d.SET.302:<largeval> dd.SET.303:<largeval> de.SET.303:<largeval>
+d.SET.302:<rand-bytes=4096> dd.SET.303:<rand-bytes=4096> de.SET.303:<rand-bytes=4096>
 L5
-m.SET.320:<largeval> n.SET.330:<largeval> o.SET.340:<largeval>
+m.SET.320:<rand-bytes=4096> n.SET.330:<rand-bytes=4096> o.SET.340:<rand-bytes=4096>
 L6
-a.SET.55:<largeval> b.SET.100:<largeval> c.SET.101:<largeval> d.SET.102:<largeval> a.RANGEDEL.103:e
+a.SET.55:<rand-bytes=4096> b.SET.100:<rand-bytes=4096> c.SET.101:<rand-bytes=4096> d.SET.102:<rand-bytes=4096> a.RANGEDEL.103:e
 L6
-f.SET.30:<largeval> z.SET.31:<largeval>
+f.SET.30:<rand-bytes=4096> z.SET.31:<rand-bytes=4096>
 ----
 5:
   000004:[b#200,SET-cc#204,SET]
   000005:[d#302,SET-de#303,SET]
   000006:[m#320,SET-o#340,SET]
 6:
-  000007:[a#103,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000007:[a#103,RANGEDEL-e#inf,RANGEDEL]
   000008:[f#30,SET-z#31,SET]
 
 close-snapshot
@@ -214,11 +214,11 @@ define level-max-bytes=(L5 : 1000) auto-compactions=off
 L5
 a.DEL.101: b.DEL.102: c.DEL.103:
 L5
-m.SET.107:<largeval>
+m.SET.107:<rand-bytes=4096>
 L6
-a.SET.001:<largeval> b.SET.002:<largeval> c.SET.003:<largeval>
+a.SET.001:<rand-bytes=4096> b.SET.002:<rand-bytes=4096> c.SET.003:<rand-bytes=4096>
 L6
-f.SET.007:<largeval> x.SET.008:<largeval> z.SET.009:<largeval>
+f.SET.007:<rand-bytes=4096> x.SET.008:<rand-bytes=4096> z.SET.009:<rand-bytes=4096>
 ----
 5:
   000004:[a#101,DEL-c#103,DEL]
@@ -257,9 +257,9 @@ L6
   rangekey:c-d:{(#3,RANGEKEYSET,@1)}
 ----
 6:
-  000004:[a#1,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
-  000005:[b#2,RANGEKEYUNSET-c#72057594037927935,RANGEKEYUNSET]
-  000006:[c#3,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
+  000004:[a#1,RANGEKEYDEL-b#inf,RANGEKEYDEL]
+  000005:[b#2,RANGEKEYUNSET-c#inf,RANGEKEYUNSET]
+  000006:[c#3,RANGEKEYSET-d#inf,RANGEKEYSET]
 
 wait-pending-table-stats
 000004
@@ -301,7 +301,7 @@ maybe-compact
 # should be deleted. In #90149, the table still had a reference count, and
 # therefore could not be deleted from the filesystem.
 
-define
+define auto-compactions=off
 L6
   rangekey:a-b:{(#1,RANGEKEYDEL)}
   a.SET.2:a
@@ -310,7 +310,7 @@ L6
   c.RANGEDEL.5:z
 ----
 6:
-  000004:[a#2,SET-z#72057594037927935,RANGEDEL]
+  000004:[a#2,SET-z#inf,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -342,9 +342,9 @@ a.DEL.101: b.SET.102:
 L5
 e.RANGEDEL.107:f f.SET.108:
 L6
-a.SET.001:<largeval> b.SET.002:<largeval> c.SET.003:<largeval>
+a.SET.001:<rand-bytes=4096> b.SET.002:<rand-bytes=4096> c.SET.003:<rand-bytes=4096>
 L6
-e.SET.007:<largeval> f.SET.008:<largeval> g.SET.009:<largeval>
+e.SET.007:<rand-bytes=4096> f.SET.008:<rand-bytes=4096> g.SET.009:<rand-bytes=4096>
 ----
 5:
   000004:[a#101,DEL-b#102,SET]
@@ -385,9 +385,9 @@ a.DEL.101: b.SET.102:
 L5
 e.RANGEDEL.107:f f.SET.108:
 L6
-a.SET.001:<largeval> b.SET.002:<largeval> c.SET.003:<largeval>
+a.SET.001:<rand-bytes=4096> b.SET.002:<rand-bytes=4096> c.SET.003:<rand-bytes=4096>
 L6
-e.SET.007:<largeval> f.SET.008:<largeval> g.SET.009:<largeval>
+e.SET.007:<rand-bytes=4096> f.SET.008:<rand-bytes=4096> g.SET.009:<rand-bytes=4096>
 ----
 5:
   000004:[a#101,DEL-b#102,SET]

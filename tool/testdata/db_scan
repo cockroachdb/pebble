@@ -5,7 +5,7 @@ accepts 1 arg(s), received 0
 db scan
 non-existent
 ----
-open non-existent: file does not exist
+pebble: database "non-existent" does not exist
 
 db scan
 ../testdata/db-stage-4

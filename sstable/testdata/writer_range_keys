@@ -108,8 +108,8 @@ d-f:{(#0,RANGEKEYSET,@2,bar)}
 #
 #  ^
 #  |                      •―――――○     [l,o) DEL
-#  |        •―――――――――――――――――――――――○ [e,q) SET   @4=baz
-#  |    •―○                           [c,d) DEL
+#  |        •―――――――――――――○           [e,l) SET   @4=baz
+#  |                              •―○ [p,q) DEL
 #  |    •―――――――――○                   [c,h) UNSET @3
 #  |  •―○                             [b,c) SET   @2=bar
 #  |•―――――――――――――――○                 [a,i) SET   @1=foo
@@ -133,33 +133,3 @@ h-i:{(#0,RANGEKEYSET,@4,baz) (#0,RANGEKEYSET,@1,foo)}
 i-l:{(#0,RANGEKEYSET,@4,baz)}
 l-o:{(#0,RANGEKEYSET,@4,baz) (#0,RANGEKEYDEL)}
 o-q:{(#0,RANGEKEYSET,@4,baz)}
-
-build
-UNSET a-b @1
-SET a-b @1=foo
-----
-a-b:{(#0,RANGEKEYSET,@1,foo)}
-
-# Within the same fragmented span, key kinds do not affect one another. SETs and
-# DELs will have their own records. A SET will eliminate an UNSET as the former
-# sorts before the latter in a fragmented and coalesced span with the same
-# sequence number.
-#
-#  ^
-#  |        •―――――――○        [c,e) SET   @2=bar
-#  |    •―――――――○            [b,d) UNSET @2
-#  |    •―――――――○            [b,d) UNSET @1
-#  |•―――――――○                [a,c) SET   @1=foo
-#  |___________________________________
-#   a   b   c   d   e   f   g   h   i
-
-build
-SET a-c @1=foo
-UNSET b-d @1
-UNSET b-d @2
-SET c-e @2=bar
-----
-a-b:{(#0,RANGEKEYSET,@1,foo)}
-b-c:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@2)}
-c-d:{(#0,RANGEKEYSET,@2,bar) (#0,RANGEKEYUNSET,@1)}
-d-e:{(#0,RANGEKEYSET,@2,bar)}

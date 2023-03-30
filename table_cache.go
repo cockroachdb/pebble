@@ -21,8 +21,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
 )
 
 var emptyIter = &errorIter{err: nil}
@@ -65,12 +65,11 @@ type tableCacheOpts struct {
 		iterCount *int32
 	}
 
-	logger        Logger
-	cacheID       uint64
-	dirname       string
-	fs            vfs.FS
-	opts          sstable.ReaderOptions
-	filterMetrics *FilterMetrics
+	loggerAndTracer LoggerAndTracer
+	cacheID         uint64
+	objProvider     objstorage.Provider
+	opts            sstable.ReaderOptions
+	filterMetrics   *FilterMetrics
 }
 
 // tableCacheContainer contains the table cache and
@@ -86,7 +85,7 @@ type tableCacheContainer struct {
 // newTableCacheContainer will panic if the underlying cache in the table cache
 // doesn't match Options.Cache.
 func newTableCacheContainer(
-	tc *TableCache, cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int,
+	tc *TableCache, cacheID uint64, objProvider objstorage.Provider, opts *Options, size int,
 ) *tableCacheContainer {
 	// We will release a ref to table cache acquired here when tableCacheContainer.close is called.
 	if tc != nil {
@@ -102,10 +101,9 @@ func newTableCacheContainer(
 
 	t := &tableCacheContainer{}
 	t.tableCache = tc
-	t.dbOpts.logger = opts.Logger
+	t.dbOpts.loggerAndTracer = opts.LoggerAndTracer
 	t.dbOpts.cacheID = cacheID
-	t.dbOpts.dirname = dirname
-	t.dbOpts.fs = fs
+	t.dbOpts.objProvider = objProvider
 	t.dbOpts.opts = opts.MakeReaderOptions()
 	t.dbOpts.filterMetrics = &FilterMetrics{}
 	t.dbOpts.atomic.iterCount = new(int32)
@@ -133,9 +131,12 @@ func (c *tableCacheContainer) close() error {
 }
 
 func (c *tableCacheContainer) newIters(
-	file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts,
+	ctx context.Context,
+	file *manifest.FileMetadata,
+	opts *IterOptions,
+	internalOpts internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileNum).newIters(file, opts, internalOpts, &c.dbOpts)
+	return c.tableCache.getShard(file.FileNum).newIters(ctx, file, opts, internalOpts, &c.dbOpts)
 }
 
 func (c *tableCacheContainer) newRangeKeyIter(
@@ -144,8 +145,8 @@ func (c *tableCacheContainer) newRangeKeyIter(
 	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(file, opts, &c.dbOpts)
 }
 
-func (c *tableCacheContainer) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
-	return c.tableCache.getShard(file.FileNum).getTableProperties(file, &c.dbOpts)
+func (c *tableCacheContainer) getTableProperties(file physicalMeta) (*sstable.Properties, error) {
+	return c.tableCache.getShard(file.FileNum).getTableProperties(file.FileMetadata, &c.dbOpts)
 }
 
 func (c *tableCacheContainer) evict(fileNum FileNum) {
@@ -175,7 +176,6 @@ func (c *tableCacheContainer) withReader(meta *fileMetadata, fn func(*sstable.Re
 	v := s.findNode(meta, &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
-		base.MustExist(c.dbOpts.fs, v.filename, c.dbOpts.logger, v.err)
 		return v.err
 	}
 	return fn(v.reader)
@@ -356,11 +356,16 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 }
 
 func (c *tableCacheShard) newIters(
+	ctx context.Context,
 	file *manifest.FileMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
 	dbOpts *tableCacheOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
+	// TODO(sumeer): constructing the Reader should also use a plumbed context,
+	// since parts of the sstable are read during the construction. The Reader
+	// should not remember that context since the Reader can be long-lived.
+
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
@@ -368,7 +373,6 @@ func (c *tableCacheShard) newIters(
 	v := c.findNode(file, dbOpts)
 	if v.err != nil {
 		defer c.unrefValue(v)
-		base.MustExist(dbOpts.fs, v.filename, dbOpts.logger, v.err)
 		return nil, nil, v.err
 	}
 
@@ -424,8 +428,8 @@ func (c *tableCacheShard) newIters(
 	if internalOpts.bytesIterated != nil {
 		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, rp)
 	} else {
-		iter, err = v.reader.NewIterWithBlockPropertyFilters(
-			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp)
+		iter, err = v.reader.NewIterWithBlockPropertyFiltersAndContext(
+			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp)
 	}
 	if err != nil {
 		if rangeDelIter != nil {
@@ -458,7 +462,6 @@ func (c *tableCacheShard) newRangeKeyIter(
 	v := c.findNode(file, dbOpts)
 	if v.err != nil {
 		defer c.unrefValue(v)
-		base.MustExist(dbOpts.fs, v.filename, dbOpts.logger, v.err)
 		return nil, v.err
 	}
 
@@ -489,8 +492,14 @@ func (c *tableCacheShard) newRangeKeyIter(
 	// No need to hold onto a ref of the cache value.
 	c.unrefValue(v)
 
-	if err != nil || iter == nil {
+	if err != nil {
 		return nil, err
+	}
+
+	if iter == nil {
+		// NewRawRangeKeyIter can return nil even if there's no error. However,
+		// the keyspan.LevelIter expects a non-nil iterator if err is nil.
+		return emptyKeyspanIter, nil
 	}
 
 	return iter, nil
@@ -518,7 +527,6 @@ func (rp *tableCacheShardReaderProvider) GetReader() (*sstable.Reader, error) {
 	v := rp.c.findNode(rp.file, rp.dbOpts)
 	if v.err != nil {
 		defer rp.c.unrefValue(v)
-		base.MustExist(rp.dbOpts.fs, v.filename, rp.dbOpts.logger, v.err)
 		return nil, v.err
 	}
 	rp.v = v
@@ -813,7 +821,7 @@ func (c *tableCacheShard) evict(fileNum FileNum, dbOpts *tableCacheOpts, allowLe
 		if v != nil {
 			if !allowLeak {
 				if t := atomic.AddInt32(&v.refCount, -1); t != 0 {
-					dbOpts.logger.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
+					dbOpts.loggerAndTracer.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
 				}
 			}
 			c.releasing.Add(1)
@@ -913,7 +921,6 @@ func (c *tableCacheShard) Close() error {
 type tableCacheValue struct {
 	closeHook func(i sstable.Iterator) error
 	reader    *sstable.Reader
-	filename  string
 	err       error
 	loaded    chan struct{}
 	// Reference count for the value. The reader is closed when the reference
@@ -922,14 +929,14 @@ type tableCacheValue struct {
 }
 
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *tableCacheOpts) {
-	// Try opening the fileTypeTable first.
-	var f vfs.File
-	v.filename = base.MakeFilepath(dbOpts.fs, dbOpts.dirname, fileTypeTable, meta.FileNum)
-	f, v.err = dbOpts.fs.Open(v.filename, vfs.RandomReadsOption)
+	// Try opening the file first.
+	var f objstorage.Readable
+	f, v.err = dbOpts.objProvider.OpenForReading(
+		context.TODO(), fileTypeTable, meta.FileNum, objstorage.OpenOptions{MustExist: true},
+	)
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileNum).(sstable.ReaderOption)
-		reopenOpt := sstable.FileReopenOpt{FS: dbOpts.fs, Filename: v.filename}
-		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics, reopenOpt)
+		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
 	}
 	if v.err == nil {
 		if meta.SmallestSeqNum == meta.LargestSeqNum {

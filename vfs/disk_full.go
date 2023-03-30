@@ -199,10 +199,10 @@ func (fs *enospcFS) Create(name string) (File, error) {
 		f, err = fs.inner.Create(name)
 	}
 	if f != nil {
-		f = WithFd(f, enospcFile{
+		f = &enospcFile{
 			fs:    fs,
 			inner: f,
-		})
+		}
 	}
 	return f, err
 }
@@ -222,10 +222,10 @@ func (fs *enospcFS) Link(oldname, newname string) error {
 func (fs *enospcFS) Open(name string, opts ...OpenOption) (File, error) {
 	f, err := fs.inner.Open(name, opts...)
 	if f != nil {
-		f = WithFd(f, enospcFile{
+		f = &enospcFile{
 			fs:    fs,
 			inner: f,
-		})
+		}
 	}
 	return f, err
 }
@@ -233,10 +233,10 @@ func (fs *enospcFS) Open(name string, opts ...OpenOption) (File, error) {
 func (fs *enospcFS) OpenDir(name string) (File, error) {
 	f, err := fs.inner.OpenDir(name)
 	if f != nil {
-		f = WithFd(f, enospcFile{
+		f = &enospcFile{
 			fs:    fs,
 			inner: f,
-		})
+		}
 	}
 	return f, err
 }
@@ -288,10 +288,10 @@ func (fs *enospcFS) ReuseForWrite(oldname, newname string) (File, error) {
 	}
 
 	if f != nil {
-		f = WithFd(f, enospcFile{
+		f = &enospcFile{
 			fs:    fs,
 			inner: f,
-		})
+		}
 	}
 	return f, err
 }
@@ -349,19 +349,21 @@ type enospcFile struct {
 	inner File
 }
 
-func (f enospcFile) Close() error {
+var _ File = (*enospcFile)(nil)
+
+func (f *enospcFile) Close() error {
 	return f.inner.Close()
 }
 
-func (f enospcFile) Read(p []byte) (n int, err error) {
+func (f *enospcFile) Read(p []byte) (n int, err error) {
 	return f.inner.Read(p)
 }
 
-func (f enospcFile) ReadAt(p []byte, off int64) (n int, err error) {
+func (f *enospcFile) ReadAt(p []byte, off int64) (n int, err error) {
 	return f.inner.ReadAt(p, off)
 }
 
-func (f enospcFile) Write(p []byte) (n int, err error) {
+func (f *enospcFile) Write(p []byte) (n int, err error) {
 	gen := f.fs.waitUntilReady()
 
 	n, err = f.inner.Write(p)
@@ -375,11 +377,19 @@ func (f enospcFile) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-func (f enospcFile) Stat() (os.FileInfo, error) {
+func (f *enospcFile) Prefetch(offset, length int64) error {
+	return f.inner.Prefetch(offset, length)
+}
+
+func (f *enospcFile) Preallocate(offset, length int64) error {
+	return f.inner.Preallocate(offset, length)
+}
+
+func (f *enospcFile) Stat() (os.FileInfo, error) {
 	return f.inner.Stat()
 }
 
-func (f enospcFile) Sync() error {
+func (f *enospcFile) Sync() error {
 	gen := f.fs.waitUntilReady()
 
 	err := f.inner.Sync()
@@ -399,7 +409,18 @@ func (f enospcFile) Sync() error {
 	return err
 }
 
-// Ensure that *enospcFS implements the FS interface.
+func (f *enospcFile) SyncData() error {
+	return f.inner.SyncData()
+}
+
+func (f *enospcFile) SyncTo(length int64) (fullSync bool, err error) {
+	return f.inner.SyncTo(length)
+}
+
+func (f *enospcFile) Fd() uintptr {
+	return f.inner.Fd()
+}
+
 var _ FS = (*enospcFS)(nil)
 
 func isENOSPC(err error) bool {

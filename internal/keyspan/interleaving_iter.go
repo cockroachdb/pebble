@@ -79,13 +79,13 @@ type SpanMask interface {
 // SeekGE or SeekPrefixGE search key. Consider, for example SetBounds('c', 'e'),
 // with an iterator containing the Span [a,z):
 //
-//     First()     = `c#72057594037927935,21`        Span() = [c,e)
-//     SeekGE('d') = `d#72057594037927935,21`        Span() = [c,e)
+//	First()     = `c#72057594037927935,21`        Span() = [c,e)
+//	SeekGE('d') = `d#72057594037927935,21`        Span() = [c,e)
 //
 // InterleavedIter does not interleave synthetic markers for spans that do not
 // contain any keys.
 //
-// SpanMask
+// # SpanMask
 //
 // InterelavingIter takes a SpanMask parameter that may be used to configure the
 // behavior of the iterator. See the documentation on the SpanMask type.
@@ -824,27 +824,16 @@ func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, base.LazyVal
 	}
 }
 
-// keyspanSeekGE seeks the keyspan iterator to the first span covering k ≥ key.
-// Note that this differs from the FragmentIterator.SeekGE semantics, which
-// seek to the first span with a start key ≥ key.
-func (i *InterleavingIter) keyspanSeekGE(key []byte, prefix []byte) {
-	// Seek using SeekLT to look for a span that starts before key, with an end
-	// boundary extending beyond key.
-	i.span = i.keyspanIter.SeekLT(key)
-	if i.span == nil || i.cmp(i.span.End, key) <= 0 {
-		// The iterator is exhausted in the reverse direction, or the span we
-		// found ends before key. Next to the first key with a start ≥ key.
-		i.span = i.keyspanIter.Next()
-	}
+// keyspanSeekGE seeks the keyspan iterator to the first span covering a key ≥ k.
+func (i *InterleavingIter) keyspanSeekGE(k []byte, prefix []byte) {
+	i.span = i.keyspanIter.SeekGE(k)
 	i.checkForwardBound(prefix)
 	i.savedKeyspan()
 }
 
-// keyspanSeekLT seeks the keyspan iterator to the last span covering k < key.
-// Note that this differs from the FragmentIterator.SeekLT semantics, which
-// seek to the last span with a start key < key.
-func (i *InterleavingIter) keyspanSeekLT(key []byte) {
-	i.span = i.keyspanIter.SeekLT(key)
+// keyspanSeekLT seeks the keyspan iterator to the last span covering a key < k.
+func (i *InterleavingIter) keyspanSeekLT(k []byte) {
+	i.span = i.keyspanIter.SeekLT(k)
 	i.checkBackwardBound()
 	// The current span's start key is not guaranteed to be less than key,
 	// because of the bounds enforcement. Consider the following example:
@@ -857,7 +846,7 @@ func (i *InterleavingIter) keyspanSeekLT(key []byte) {
 	//
 	// This problem is a consequence of the SeekLT's exclusive search key and
 	// the fact that we don't perform bounds truncation at every leaf iterator.
-	if i.span != nil && i.truncated && i.cmp(i.truncatedSpan.Start, key) >= 0 {
+	if i.span != nil && i.truncated && i.cmp(i.truncatedSpan.Start, k) >= 0 {
 		i.span = nil
 	}
 	i.savedKeyspan()

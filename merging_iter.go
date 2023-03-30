@@ -80,7 +80,7 @@ type levelIterBoundaryContext struct {
 // property. When one of the child iterators is exhausted during Next/Prev
 // iteration, it is removed from the heap.
 //
-// Range Deletions
+// # Range Deletions
 //
 // A mergingIter can optionally be configured with a slice of range deletion
 // iterators. The range deletion iterator slice must exactly parallel the point
@@ -150,11 +150,11 @@ type levelIterBoundaryContext struct {
 // to skip processing entries in that shadow. For example, consider the
 // scenario:
 //
-//   r0: a---e
-//   r1:    d---h
-//   r2:       g---k
-//   r3:          j---n
-//   r4:             m---q
+//	r0: a---e
+//	r1:    d---h
+//	r2:       g---k
+//	r3:          j---n
+//	r4:             m---q
 //
 // This is showing 5 levels of range deletions. Consider what happens upon
 // SeekGE("b"). We first seek the point iterator for level 0 (the point values
@@ -196,17 +196,17 @@ type levelIterBoundaryContext struct {
 //
 // For a full example, consider the following setup:
 //
-//   p0:               o
-//   r0:             m---q
+//	p0:               o
+//	r0:             m---q
 //
-//   p1:              n p
-//   r1:       g---k
+//	p1:              n p
+//	r1:       g---k
 //
-//   p2:  b d    i
-//   r2: a---e           q----v
+//	p2:  b d    i
+//	r2: a---e           q----v
 //
-//   p3:     e
-//   r3:
+//	p3:     e
+//	r3:
 //
 // If we start iterating from the beginning, the first key we encounter is "b"
 // in p2. When the mergingIter is pointing at a valid entry, the range deletion
@@ -358,7 +358,7 @@ func (m *mergingIter) initMinRangeDelIters(oldTopLevel int) {
 		if l.rangeDelIter == nil {
 			continue
 		}
-		l.tombstone = keyspan.SeekGE(m.heap.cmp, l.rangeDelIter, item.iterKey.UserKey)
+		l.tombstone = l.rangeDelIter.SeekGE(item.iterKey.UserKey)
 	}
 }
 
@@ -671,7 +671,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterLevel) bool {
 			// levelIter in the future cannot contain item.iterKey). Also, it is possible that we
 			// will encounter parts of the range delete that should be ignored -- we handle that
 			// below.
-			l.tombstone = keyspan.SeekGE(m.heap.cmp, l.rangeDelIter, item.iterKey.UserKey)
+			l.tombstone = l.rangeDelIter.SeekGE(item.iterKey.UserKey)
 		}
 		if l.tombstone == nil {
 			continue
@@ -1069,7 +1069,7 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) {
 			// so we can have a sstable with bounds [c#8, i#InternalRangeDelSentinel], and the
 			// tombstone is [b, k)#8 and the seek key is i: levelIter.SeekGE(i) will move past
 			// this sstable since it realizes the largest key is a InternalRangeDelSentinel.
-			l.tombstone = keyspan.SeekGE(m.heap.cmp, rangeDelIter, key)
+			l.tombstone = rangeDelIter.SeekGE(key)
 			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, key) &&
 				(l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, key) <= 0) {
 				// NB: Based on the comment above l.largestUserKey >= key, and based on the

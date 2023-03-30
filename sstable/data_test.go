@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"strconv"
@@ -17,6 +18,9 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -169,7 +173,13 @@ func runBuildRawCmd(
 	td *datadriven.TestData, opts *WriterOptions,
 ) (*WriterMetadata, *Reader, error) {
 	mem := vfs.NewMem()
-	f0, err := mem.Create("test")
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, "" /* dirName */))
+	if err != nil {
+		return nil, nil, err
+	}
+	defer provider.Close()
+
+	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.CreateOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -216,7 +226,7 @@ func runBuildRawCmd(
 		return nil, nil, err
 	}
 
-	f1, err := mem.Open("test")
+	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.OpenOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -329,6 +339,18 @@ func runIterCmd(
 			iter.NextIgnoreResult()
 		case "prev":
 			iter.Prev()
+		case "next-prefix":
+			if len(parts) != 1 {
+				return "next-prefix should have no parameter\n"
+			}
+			if iter.Key() == nil {
+				return "next-prefix cannot be called on exhauster iterator\n"
+			}
+			k := iter.Key().UserKey
+			prefixLen := testkeys.Comparer.Split(k)
+			k = k[:prefixLen]
+			kSucc := testkeys.Comparer.ImmediateSuccessor(nil, k)
+			iter.NextPrefix(kSucc)
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
 				return "set-bounds lower=<lower> upper=<upper>\n"
@@ -354,6 +376,8 @@ func runIterCmd(
 			}
 			iter.SetBounds(lower, upper)
 		case "stats":
+			// The timing is non-deterministic, so set to 0.
+			opts.stats.BlockReadDuration = 0
 			fmt.Fprintf(&b, "%+v\n", *opts.stats)
 			continue
 		case "reset-stats":
@@ -403,7 +427,7 @@ func runRewriteCmd(
 	}
 
 	f := &memFile{}
-	meta, err := rewriteKeySuffixesInBlocks(r, f, opts, from, to, 2)
+	meta, _, err := rewriteKeySuffixesInBlocks(r, f, opts, from, to, 2)
 	if err != nil {
 		return nil, r, errors.Wrap(err, "rewrite failed")
 	}

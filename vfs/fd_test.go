@@ -22,17 +22,15 @@ func TestFileWrappersHaveFd(t *testing.T) {
 
 	// File wrapper case 1: Check if diskHealthCheckingFile has Fd().
 	fs2, closer := WithDiskHealthChecks(Default, 10*time.Second,
-		func(s string, duration time.Duration) {})
+		func(info DiskSlowInfo) {})
 	defer closer.Close()
 	f2, err := fs2.Open(filename)
 	require.NoError(t, err)
-	if _, ok := f2.(fdGetter); !ok {
-		t.Fatal("expected diskHealthCheckingFile to export Fd() method")
-	}
+	require.NotZero(t, f2.Fd())
+	require.NotEqual(t, f2.Fd(), InvalidFd)
 	// File wrapper case 2: Check if syncingFile has Fd().
 	f3 := NewSyncingFile(f2, SyncingFileOptions{BytesPerSync: 8 << 10 /* 8 KB */})
-	if _, ok := f3.(fdGetter); !ok {
-		t.Fatal("expected syncingFile to export Fd() method")
-	}
+	require.NotZero(t, f3.Fd())
+	require.NotEqual(t, f3.Fd(), InvalidFd)
 	require.NoError(t, f2.Close())
 }

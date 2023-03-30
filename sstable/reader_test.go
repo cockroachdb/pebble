@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +26,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -39,7 +41,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		dataH, err := r.readFilter(nil /* stats */)
+		dataH, err := r.readFilter(context.Background(), nil /* stats */)
 		if err != nil {
 			return nil, err
 		}
@@ -137,6 +139,10 @@ func (i *iterAdapter) Last() bool {
 
 func (i *iterAdapter) Next() bool {
 	return i.update(i.Iterator.Next())
+}
+
+func (i *iterAdapter) NextPrefix(succKey []byte) bool {
+	return i.update(i.Iterator.NextPrefix(succKey))
 }
 
 func (i *iterAdapter) NextIgnoreResult() {
@@ -243,7 +249,7 @@ func TestHamletReader(t *testing.T) {
 		f, err := os.Open(filepath.FromSlash(prebuiltSST))
 		require.NoError(t, err)
 
-		r, err := NewReader(f, ReaderOptions{})
+		r, err := newReader(f, ReaderOptions{})
 		require.NoError(t, err)
 
 		t.Run(
@@ -261,6 +267,17 @@ func TestReaderStats(t *testing.T) {
 		IndexBlockSize: 30,
 	}
 	runTestReader(t, tableOpt, "testdata/readerstats", nil, 10000, false, false)
+}
+
+func TestReaderStatsV3(t *testing.T) {
+	writerOpt := WriterOptions{
+		BlockSize:      32 << 10,
+		IndexBlockSize: 32 << 10,
+		Comparer:       testkeys.Comparer,
+		TableFormat:    TableFormatPebblev3,
+	}
+	tdFile := "testdata/readerstats_v3"
+	runTestReader(t, writerOpt, tdFile, nil /* Reader */, 0, true, false)
 }
 
 func TestReaderWithBlockPropertyFilter(t *testing.T) {
@@ -293,9 +310,10 @@ func TestInjectedErrors(t *testing.T) {
 
 	for _, prebuiltSST := range prebuiltSSTs {
 		run := func(i int) (reterr error) {
-			f, err := os.Open(filepath.FromSlash(prebuiltSST))
+			f, err := vfs.Default.Open(filepath.FromSlash(prebuiltSST))
 			require.NoError(t, err)
-			r, err := NewReader(errorfs.WrapFile(f, errorfs.OnIndex(int32(i))), ReaderOptions{})
+
+			r, err := newReader(errorfs.WrapFile(f, errorfs.OnIndex(int32(i))), ReaderOptions{})
 			if err != nil {
 				return firstError(err, f.Close())
 			}
@@ -342,15 +360,19 @@ func TestInjectedErrors(t *testing.T) {
 }
 
 func TestInvalidReader(t *testing.T) {
+	invalid, err := NewSimpleReadable(vfs.NewMemFile([]byte("invalid sst bytes")))
+	if err != nil {
+		t.Fatal(err)
+	}
 	testCases := []struct {
-		file     vfs.File
+		readable objstorage.Readable
 		expected string
 	}{
 		{nil, "nil file"},
-		{vfs.NewMemFile([]byte("invalid sst bytes")), "invalid table"},
+		{invalid, "invalid table"},
 	}
 	for _, tc := range testCases {
-		r, err := NewReader(tc.file, ReaderOptions{})
+		r, err := NewReader(tc.readable, ReaderOptions{})
 		if !strings.Contains(err.Error(), tc.expected) {
 			t.Fatalf("expected %q, but found %q", tc.expected, err.Error())
 		}
@@ -361,7 +383,7 @@ func TestInvalidReader(t *testing.T) {
 }
 
 func indexLayoutString(t *testing.T, r *Reader) string {
-	indexH, err := r.readIndex(nil /* stats */)
+	indexH, err := r.readIndex(context.Background(), nil)
 	require.NoError(t, err)
 	defer indexH.Release()
 	var buf strings.Builder
@@ -377,7 +399,8 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 		require.NoError(t, err)
 		fmt.Fprintf(&buf, " %s: size %d\n", string(key.UserKey), bh.Length)
 		if twoLevelIndex {
-			b, err := r.readBlock(bh.BlockHandle, nil, nil, nil)
+			b, err := r.readBlock(
+				context.Background(), bh.BlockHandle, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
 			iter2, err := newBlockIter(r.Compare, b.Get())
@@ -505,7 +528,7 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 	f0, err := mem.Create(testTable)
 	require.NoError(t, err)
 
-	w := NewWriter(f0, writerOpts)
+	w := NewWriter(objstorageprovider.NewFileWritable(f0), writerOpts)
 	require.NoError(t, w.Set([]byte("test"), nil))
 	require.NoError(t, w.Close())
 
@@ -559,7 +582,8 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 			for _, merger := range c.mergers {
 				mergers[merger.Name] = merger
 			}
-			r, err := NewReader(f1, ReaderOptions{}, comparers, mergers)
+
+			r, err := newReader(f1, ReaderOptions{}, comparers, mergers)
 			if err != nil {
 				if r != nil {
 					t.Fatalf("found non-nil reader returned with non-nil error %q", err.Error())
@@ -636,19 +660,29 @@ func TestBytesIterated(t *testing.T) {
 }
 
 func TestCompactionIteratorSetupForCompaction(t *testing.T) {
+	tmpDir := path.Join(t.TempDir())
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.Default, tmpDir))
+	require.NoError(t, err)
+	defer provider.Close()
 	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
 	for _, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
-				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, DefaultCompression)
+				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, DefaultCompression)
 				var bytesIterated uint64
 				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r})
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
-					require.NotNil(t, i.dataRS.sequentialFile)
+					require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
+					// Each key has one version, so no value block, regardless of
+					// sstable version.
+					require.Nil(t, i.vbRH)
 				case *twoLevelCompactionIterator:
-					require.NotNil(t, i.dataRS.sequentialFile)
+					require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
+					// Each key has one version, so no value block, regardless of
+					// sstable version.
+					require.Nil(t, i.vbRH)
 				default:
 					require.Failf(t, fmt.Sprintf("unknown compaction iterator type: %T", citer), "")
 				}
@@ -659,48 +693,50 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 	}
 }
 
-func TestMaybeReadahead(t *testing.T) {
-	var rs readaheadState
-	datadriven.RunTest(t, "testdata/readahead", func(t *testing.T, d *datadriven.TestData) string {
-		cacheHit := false
-		switch d.Cmd {
-		case "reset":
-			rs.size = initialReadaheadSize
-			rs.limit = 0
-			rs.numReads = 0
-			return ""
+func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
+	tmpDir := path.Join(t.TempDir())
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.Default, tmpDir))
+	require.NoError(t, err)
+	defer provider.Close()
+	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.CreateOptions{})
+	require.NoError(t, err)
 
-		case "cache-read":
-			cacheHit = true
-			fallthrough
-		case "read":
-			args := strings.Split(d.Input, ",")
-			if len(args) != 2 {
-				return "expected 2 args: offset, size"
-			}
-
-			offset, err := strconv.ParseInt(strings.TrimSpace(args[0]), 10, 64)
-			require.NoError(t, err)
-			size, err := strconv.ParseInt(strings.TrimSpace(args[1]), 10, 64)
-			require.NoError(t, err)
-			var raSize int64
-			if cacheHit {
-				rs.recordCacheHit(offset, size)
-			} else {
-				raSize = rs.maybeReadahead(offset, size)
-			}
-
-			var buf strings.Builder
-			fmt.Fprintf(&buf, "readahead:  %d\n", raSize)
-			fmt.Fprintf(&buf, "numReads:   %d\n", rs.numReads)
-			fmt.Fprintf(&buf, "size:       %d\n", rs.size)
-			fmt.Fprintf(&buf, "prevSize:   %d\n", rs.prevSize)
-			fmt.Fprintf(&buf, "limit:      %d", rs.limit)
-			return buf.String()
-		default:
-			return fmt.Sprintf("unknown command: %s", d.Cmd)
-		}
+	w := NewWriter(f0, WriterOptions{
+		TableFormat: TableFormatPebblev3,
+		Comparer:    testkeys.Comparer,
 	})
+	keys := testkeys.Alpha(1)
+	keyBuf := make([]byte, 1+testkeys.MaxSuffixLen)
+	// Write a few keys with multiple timestamps (MVCC versions).
+	for i := 0; i < 2; i++ {
+		for j := 2; j >= 1; j-- {
+			n := testkeys.WriteKeyAt(keyBuf[:], keys, i, j)
+			key := keyBuf[:n]
+			require.NoError(t, w.Set(key, key))
+		}
+	}
+	require.NoError(t, w.Close())
+	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.OpenOptions{})
+	require.NoError(t, err)
+	r, err := NewReader(f1, ReaderOptions{Comparer: testkeys.Comparer})
+	require.NoError(t, err)
+	defer r.Close()
+	{
+		citer, err := r.NewCompactionIter(nil, TrivialReaderProvider{Reader: r})
+		require.NoError(t, err)
+		defer citer.Close()
+		i := citer.(*compactionIterator)
+		require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
+		require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.vbRH))
+	}
+	{
+		iter, err := r.NewIter(nil, nil)
+		require.NoError(t, err)
+		defer iter.Close()
+		i := iter.(*singleLevelIterator)
+		require.False(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
+		require.False(t, objstorageprovider.TestingCheckMaxReadahead(i.vbRH))
+	}
 }
 
 func TestReaderChecksumErrors(t *testing.T) {
@@ -721,7 +757,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 							indexBlockSize = 1
 						}
 
-						w := NewWriter(f, WriterOptions{
+						w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
 							BlockSize:      blockSize,
 							IndexBlockSize: indexBlockSize,
 							Checksum:       checksumType,
@@ -738,7 +774,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 						f, err := mem.Open("test")
 						require.NoError(t, err)
 
-						r, err := NewReader(f, ReaderOptions{})
+						r, err := newReader(f, ReaderOptions{})
 						require.NoError(t, err)
 						layout, err = r.Layout()
 						require.NoError(t, err)
@@ -769,7 +805,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 						corrupted, err = mem.Open("corrupted")
 						require.NoError(t, err)
 
-						r, err := NewReader(corrupted, ReaderOptions{})
+						r, err := newReader(corrupted, ReaderOptions{})
 						require.NoError(t, err)
 
 						iter, err := r.NewIter(nil, nil)
@@ -908,7 +944,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 		require.NoError(t, f.Close())
 
 		filter := bloom.FilterPolicy(10)
-		r, err := NewReader(fCopy, ReaderOptions{
+		r, err := newReader(fCopy, ReaderOptions{
 			Filters: map[string]FilterPolicy{
 				filter.Name(): filter,
 			},
@@ -996,13 +1032,13 @@ func TestReader_TableFormat(t *testing.T) {
 		require.NoError(t, err)
 
 		opts := WriterOptions{TableFormat: want}
-		w := NewWriter(f, opts)
+		w := NewWriter(objstorageprovider.NewFileWritable(f), opts)
 		err = w.Close()
 		require.NoError(t, err)
 
 		f, err = fs.Open("test")
 		require.NoError(t, err)
-		r, err := NewReader(f, ReaderOptions{})
+		r, err := newReader(f, ReaderOptions{})
 		require.NoError(t, err)
 		defer r.Close()
 
@@ -1021,8 +1057,20 @@ func TestReader_TableFormat(t *testing.T) {
 func buildTestTable(
 	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression,
 ) *Reader {
-	mem := vfs.NewMem()
-	f0, err := mem.Create("test")
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.NewMem(), "" /* dirName */))
+	require.NoError(t, err)
+	defer provider.Close()
+	return buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, compression)
+}
+
+func buildTestTableWithProvider(
+	t *testing.T,
+	provider objstorage.Provider,
+	numEntries uint64,
+	blockSize, indexBlockSize int,
+	compression Compression,
+) *Reader {
+	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.CreateOptions{})
 	require.NoError(t, err)
 
 	w := NewWriter(f0, WriterOptions{
@@ -1044,16 +1092,13 @@ func buildTestTable(
 	require.NoError(t, w.Close())
 
 	// Re-open that filename for reading.
-	f1, err := mem.Open("test")
+	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.OpenOptions{})
 	require.NoError(t, err)
 
 	c := cache.New(128 << 20)
 	defer c.Unref()
 	r, err := NewReader(f1, ReaderOptions{
 		Cache: c,
-	}, FileReopenOpt{
-		FS:       mem,
-		Filename: "test",
 	})
 	require.NoError(t, err)
 	return r
@@ -1068,7 +1113,7 @@ func buildBenchmarkTable(
 		b.Fatal(err)
 	}
 
-	w := NewWriter(f0, options)
+	w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
 
 	var keys [][]byte
 	var ikey InternalKey
@@ -1091,7 +1136,7 @@ func buildBenchmarkTable(
 	}
 	c := cache.New(128 << 20)
 	defer c.Unref()
-	r, err := NewReader(f1, ReaderOptions{
+	r, err := newReader(f1, ReaderOptions{
 		Cache: c,
 	})
 	if err != nil {
@@ -1354,7 +1399,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		f0, err := mem.Create("bench")
 		require.NoError(b, err)
 		options.TableFormat = tableFormat
-		w := NewWriter(f0, options)
+		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
 		val := make([]byte, 100)
 		rng := rand.New(rand.NewSource(100))
 		for i := 0; i < keys.Count(); i++ {
@@ -1371,7 +1416,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		// Re-open the filename for reading.
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
-		r, err := NewReader(f0, ReaderOptions{
+		r, err := newReader(f0, ReaderOptions{
 			Cache:    c,
 			Comparer: testkeys.Comparer,
 		})
@@ -1390,21 +1435,209 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 						defer func() {
 							require.NoError(b, r.Close())
 						}()
-						iter, err := r.NewIter(nil, nil)
-						require.NoError(b, err)
-						var k *InternalKey
-						b.ResetTimer()
-						for i := 0; i < b.N; i++ {
-							if k == nil {
-								k, _ = iter.First()
-								if k == nil {
-									b.Fatalf("k is nil")
+						for _, readValue := range []bool{false, true} {
+							b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
+								iter, err := r.NewIter(nil, nil)
+								require.NoError(b, err)
+								var k *InternalKey
+								var v base.LazyValue
+								var valBuf [100]byte
+								b.ResetTimer()
+								for i := 0; i < b.N; i++ {
+									if k == nil {
+										k, _ = iter.First()
+										if k == nil {
+											b.Fatalf("k is nil")
+										}
+									}
+									k, v = iter.Next()
+									if k != nil && readValue {
+										_, callerOwned, err := v.Value(valBuf[:])
+										if err != nil {
+											b.Fatal(err)
+										} else if callerOwned {
+											b.Fatalf("unexpected callerOwned: %t", callerOwned)
+										}
+									}
 								}
-							}
-							k, _ = iter.Next()
+							})
 						}
 					})
 			}
 		})
 	}
+}
+
+func BenchmarkIteratorScanNextPrefix(b *testing.B) {
+	options := WriterOptions{
+		BlockSize:            32 << 10,
+		BlockRestartInterval: 16,
+		FilterPolicy:         nil,
+		Compression:          SnappyCompression,
+		TableFormat:          TableFormatPebblev3,
+		Comparer:             testkeys.Comparer,
+	}
+	const keyCount = 10000
+	const sharedPrefixLen = 32
+	const unsharedPrefixLen = 8
+	val := make([]byte, 100)
+	rand.New(rand.NewSource(100)).Read(val)
+
+	// Take the very large keyspace consisting of alphabetic characters of
+	// lengths up to unsharedPrefixLen and reduce it down to keyCount keys by
+	// picking every 1 key every keyCount keys.
+	keys := testkeys.Alpha(unsharedPrefixLen)
+	keys = keys.EveryN(keys.Count() / keyCount)
+	if keys.Count() < keyCount {
+		b.Fatalf("expected %d keys, found %d", keyCount, keys.Count())
+	}
+	keyBuf := make([]byte, sharedPrefixLen+unsharedPrefixLen+testkeys.MaxSuffixLen)
+	for i := 0; i < sharedPrefixLen; i++ {
+		keyBuf[i] = 'A' + byte(i)
+	}
+	setupBench := func(b *testing.B, versCount int) (r *Reader, succKeys [][]byte) {
+		mem := vfs.NewMem()
+		f0, err := mem.Create("bench")
+		require.NoError(b, err)
+		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
+		for i := 0; i < keys.Count(); i++ {
+			for v := 0; v < versCount; v++ {
+				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, versCount-v+1)
+				key := keyBuf[:n+sharedPrefixLen]
+				require.NoError(b, w.Set(key, val))
+				if v == 0 {
+					prefixLen := testkeys.Comparer.Split(key)
+					prefixKey := key[:prefixLen]
+					succKey := testkeys.Comparer.ImmediateSuccessor(nil, prefixKey)
+					succKeys = append(succKeys, succKey)
+				}
+			}
+		}
+		require.NoError(b, w.Close())
+		// NB: This 200MiB cache is sufficient for even the largest file: 10,000
+		// keys * 100 versions = 1M keys, where each key-value pair is ~140 bytes
+		// = 140MB. So we are not measuring the caching benefit of
+		// TableFormatPebblev3 storing older values in value blocks.
+		c := cache.New(200 << 20)
+		defer c.Unref()
+		// Re-open the filename for reading.
+		f0, err = mem.Open("bench")
+		require.NoError(b, err)
+		r, err = newReader(f0, ReaderOptions{
+			Cache:    c,
+			Comparer: testkeys.Comparer,
+		})
+		require.NoError(b, err)
+		return r, succKeys
+	}
+	// Analysis of some sample results with TableFormatPebblev2:
+	// versions=1/method=seek-ge-10         	22107622	        53.57 ns/op
+	// versions=1/method=next-prefix-10     	36292837	        33.07 ns/op
+	// versions=2/method=seek-ge-10         	14429138	        82.92 ns/op
+	// versions=2/method=next-prefix-10     	19676055	        60.78 ns/op
+	// versions=10/method=seek-ge-10        	 1453726	       825.2 ns/op
+	// versions=10/method=next-prefix-10    	 2450498	       489.6 ns/op
+	// versions=100/method=seek-ge-10       	  965143	      1257 ns/op
+	// versions=100/method=next-prefix-10   	 1000000	      1054 ns/op
+	//
+	// With 1 version, both SeekGE and NextPrefix will be able to complete after
+	// doing a single call to blockIter.Next. However, SeekGE has to do two key
+	// comparisons unlike the one key comparison in NextPrefix. This is because
+	// SeekGE also compares *before* calling Next since it is possible that the
+	// preceding SeekGE is already at the right place.
+	//
+	// With 2 versions, both will do two calls to blockIter.Next. The difference
+	// in the cost is the same as in the 1 version case.
+	//
+	// With 10 versions, it is still likely that the desired key is in the same
+	// data block. NextPrefix will seek only the blockIter. And in the rare case
+	// that the key is in the next data block, it will step the index block (not
+	// seek). In comparison, SeekGE will seek the index block too.
+	//
+	// With 100 versions we more often cross from one data block to the next, so
+	// the difference in cost declines.
+	//
+	// Some sample results with TableFormatPebblev3:
+
+	// versions=1/method=seek-ge-10         	18702609	        53.90 ns/op
+	// versions=1/method=next-prefix-10     	77440167	        15.41 ns/op
+	// versions=2/method=seek-ge-10         	13554286	        87.91 ns/op
+	// versions=2/method=next-prefix-10     	62148526	        19.25 ns/op
+	// versions=10/method=seek-ge-10        	 1316676	       910.5 ns/op
+	// versions=10/method=next-prefix-10    	18829448	        62.61 ns/op
+	// versions=100/method=seek-ge-10       	 1166139	      1025 ns/op
+	// versions=100/method=next-prefix-10   	 4443386	       265.3 ns/op
+	//
+	// NextPrefix is much cheaper than in TableFormatPebblev2 with larger number
+	// of versions. It is also cheaper with 1 and 2 versions since
+	// setHasSamePrefix=false eliminates a key comparison.
+	for _, versionCount := range []int{1, 2, 10, 100} {
+		b.Run(fmt.Sprintf("versions=%d", versionCount), func(b *testing.B) {
+			r, succKeys := setupBench(b, versionCount)
+			defer func() {
+				require.NoError(b, r.Close())
+			}()
+			for _, method := range []string{"seek-ge", "next-prefix"} {
+				b.Run(fmt.Sprintf("method=%s", method), func(b *testing.B) {
+					for _, readValue := range []bool{false, true} {
+						b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
+							iter, err := r.NewIter(nil, nil)
+							require.NoError(b, err)
+							var nextFunc func(index int) (*InternalKey, base.LazyValue)
+							switch method {
+							case "seek-ge":
+								nextFunc = func(index int) (*InternalKey, base.LazyValue) {
+									var flags base.SeekGEFlags
+									return iter.SeekGE(succKeys[index], flags.EnableTrySeekUsingNext())
+								}
+							case "next-prefix":
+								nextFunc = func(index int) (*InternalKey, base.LazyValue) {
+									return iter.NextPrefix(succKeys[index])
+								}
+							default:
+								b.Fatalf("unknown method %s", method)
+							}
+							n := keys.Count()
+							j := n
+							var k *InternalKey
+							var v base.LazyValue
+							var valBuf [100]byte
+							b.ResetTimer()
+							for i := 0; i < b.N; i++ {
+								if k == nil {
+									if j != n {
+										b.Fatalf("unexpected %d != %d", j, n)
+									}
+									k, _ = iter.First()
+									j = 0
+								} else {
+									k, v = nextFunc(j - 1)
+									if k != nil && readValue {
+										_, callerOwned, err := v.Value(valBuf[:])
+										if err != nil {
+											b.Fatal(err)
+										} else if callerOwned {
+											b.Fatalf("unexpected callerOwned: %t", callerOwned)
+										}
+									}
+
+								}
+								if k != nil {
+									j++
+								}
+							}
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+func newReader(r ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+	readable, err := NewSimpleReadable(r)
+	if err != nil {
+		return nil, err
+	}
+	return NewReader(readable, o, extraOpts...)
 }

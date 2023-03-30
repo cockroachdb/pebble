@@ -6,6 +6,7 @@ package rangekey
 
 import (
 	"bytes"
+	"math"
 	"sort"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -15,7 +16,41 @@ import (
 )
 
 // UserIteratorConfig holds state for constructing the range key iterator stack
-// for user iteration.
+// for user iteration. The range key iterator must merge range key spans across
+// the levels of the LSM. This merging is performed by a keyspan.MergingIter
+// on-the-fly. The UserIteratorConfig implements keyspan.Transformer, evaluating
+// range-key semantics and shadowing, so the spans returned by a MergingIter are
+// fully resolved.
+//
+// The MergingIter is wrapped by a BoundedIter, which elides spans that are
+// outside the iterator bounds (or the current prefix's bounds, during prefix
+// iteration mode).
+//
+// To provide determinisim during iteration, the BoundedIter is wrapped by a
+// DefragmentingIter that defragments abutting spans with identical
+// user-observable state.
+//
+// At the top-level an InterleavingIter interleaves range keys with point keys
+// and performs truncation to iterator bounds.
+//
+// Below is an abbreviated diagram illustrating the mechanics of a SeekGE.
+//
+//	               InterleavingIter.SeekGE
+//	                       │
+//	            DefragmentingIter.SeekGE
+//	                       │
+//	               BoundedIter.SeekGE
+//	                       │
+//	      ╭────────────────┴───────────────╮
+//	      │                                ├── defragmentBwd*
+//	MergingIter.SeekGE                     │
+//	      │                                ╰── defragmentFwd
+//	      ╰─╶╶ per level╶╶ ─╮
+//	                        │
+//	                        │
+//	                        ├── <?>.SeekLT
+//	                        │
+//	                        ╰── <?>.Next
 type UserIteratorConfig struct {
 	snapshot   uint64
 	comparer   *base.Comparer
@@ -24,6 +59,7 @@ type UserIteratorConfig struct {
 	diter      keyspan.DefragmentingIter
 	liters     [manifest.NumLevels]keyspan.LevelIter
 	litersUsed int
+	onlySets   bool
 	bufs       *Buffers
 }
 
@@ -32,7 +68,7 @@ type UserIteratorConfig struct {
 type Buffers struct {
 	merging       keyspan.MergingBuffers
 	defragmenting keyspan.DefragmentingBuffers
-	sortBuf       keysBySuffix
+	sortBuf       keyspan.KeysBySuffix
 }
 
 // PrepareForReuse discards any excessively large buffers.
@@ -43,9 +79,9 @@ func (bufs *Buffers) PrepareForReuse() {
 
 // Init initializes the range key iterator stack for user iteration. The
 // resulting fragment iterator applies range key semantics, defragments spans
-// according to their user-observable state and removes all Keys other than
-// RangeKeySets describing the current state of range keys. The resulting spans
-// contain Keys sorted by Suffix.
+// according to their user-observable state and, if onlySets = true, removes all
+// Keys other than RangeKeySets describing the current state of range keys. The
+// resulting spans contain Keys sorted by Suffix.
 //
 // The snapshot sequence number parameter determines which keys are visible. Any
 // keys not visible at the provided snapshot are ignored.
@@ -55,11 +91,13 @@ func (ui *UserIteratorConfig) Init(
 	lower, upper []byte,
 	hasPrefix *bool,
 	prefix *[]byte,
+	onlySets bool,
 	bufs *Buffers,
 	iters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
 	ui.snapshot = snapshot
 	ui.comparer = comparer
+	ui.onlySets = onlySets
 	ui.miter.Init(comparer.Compare, ui, &bufs.merging, iters...)
 	ui.biter.Init(comparer.Compare, comparer.Split, &ui.miter, lower, upper, hasPrefix, prefix)
 	ui.diter.Init(comparer, &ui.biter, ui, keyspan.StaticDefragmentReducer, &bufs.defragmenting)
@@ -103,17 +141,17 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 	// Apply shadowing of keys.
 	dst.Start = s.Start
 	dst.End = s.End
-	ui.bufs.sortBuf = keysBySuffix{
-		cmp:  cmp,
-		keys: ui.bufs.sortBuf.keys[:0],
+	ui.bufs.sortBuf = keyspan.KeysBySuffix{
+		Cmp:  cmp,
+		Keys: ui.bufs.sortBuf.Keys[:0],
 	}
-	if err := coalesce(&ui.bufs.sortBuf, s.Visible(ui.snapshot).Keys); err != nil {
+	if err := coalesce(ui.comparer.Equal, &ui.bufs.sortBuf, ui.snapshot, s.Keys); err != nil {
 		return err
 	}
-	// During user iteration over range keys, unsets and deletes don't
-	// matter. Remove them. This step helps logical defragmentation during
-	// iteration.
-	keys := ui.bufs.sortBuf.keys
+	// During user iteration over range keys, unsets and deletes don't matter.
+	// Remove them if onlySets = true. This step helps logical defragmentation
+	// during iteration.
+	keys := ui.bufs.sortBuf.Keys
 	dst.Keys = dst.Keys[:0]
 	for i := range keys {
 		switch keys[i].Kind() {
@@ -126,11 +164,17 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
 				panic("pebble: keys unexpectedly not in ascending suffix order")
 			}
-			// Skip.
-			continue
+			if ui.onlySets {
+				// Skip.
+				continue
+			}
+			dst.Keys = append(dst.Keys, keys[i])
 		case base.InternalKeyKindRangeKeyDelete:
-			// Skip.
-			continue
+			if ui.onlySets {
+				// Skip.
+				continue
+			}
+			dst.Keys = append(dst.Keys, keys[i])
 		default:
 			return base.CorruptionErrorf("pebble: unrecognized range key kind %s", keys[i].Kind())
 		}
@@ -164,8 +208,8 @@ func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.S
 	ret := true
 	for i := range a.Keys {
 		if invariants.Enabled {
-			if a.Keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
-				b.Keys[i].Kind() != base.InternalKeyKindRangeKeySet {
+			if ui.onlySets && (a.Keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
+				b.Keys[i].Kind() != base.InternalKeyKindRangeKeySet) {
 				panic("pebble: unexpected non-RangeKeySet during defragmentation")
 			}
 			if i > 0 && (ui.comparer.Compare(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0 ||
@@ -209,8 +253,9 @@ func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.S
 //
 // Additionally, internal range keys at the same sequence number have subtle
 // mechanics:
-//   * RANGEKEYSETs shadow RANGEKEYUNSETs of the same suffix.
-//   * RANGEKEYDELs only apply to keys at lower sequence numbers.
+//   - RANGEKEYSETs shadow RANGEKEYUNSETs of the same suffix.
+//   - RANGEKEYDELs only apply to keys at lower sequence numbers.
+//
 // This is required for ingestion. Ingested sstables are assigned a single
 // sequence number for the file, at which all of the file's keys are visible.
 // The RANGEKEYSET, RANGEKEYUNSET and RANGEKEYDEL key kinds are ordered such
@@ -220,95 +265,105 @@ func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.S
 // set or unset but not both.
 //
 // The resulting dst Keys slice is sorted by Trailer.
-func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
+func Coalesce(cmp base.Compare, eq base.Equal, keys []keyspan.Key, dst *[]keyspan.Key) error {
 	// TODO(jackson): Currently, Coalesce doesn't actually perform the sequence
 	// number promotion described in the comment above.
-	keysBySuffix := keysBySuffix{
-		cmp:  cmp,
-		keys: (*dst)[:0],
+	keysBySuffix := keyspan.KeysBySuffix{
+		Cmp:  cmp,
+		Keys: (*dst)[:0],
 	}
-	if err := coalesce(&keysBySuffix, keys); err != nil {
+	if err := coalesce(eq, &keysBySuffix, math.MaxUint64, keys); err != nil {
 		return err
 	}
-	// Update the span with the (potentially reduced) keys slice.  coalesce left
+	// Update the span with the (potentially reduced) keys slice. coalesce left
 	// the keys in *dst sorted by suffix. Re-sort them by trailer.
-	*dst = keysBySuffix.keys
+	*dst = keysBySuffix.Keys
 	keyspan.SortKeysByTrailer(dst)
 	return nil
 }
 
-func coalesce(keysBySuffix *keysBySuffix, keys []keyspan.Key) error {
-	var deleted bool
-	for i := 0; i < len(keys) && !deleted; i++ {
-		k := keys[i]
-		if invariants.Enabled && i > 0 && k.Trailer > keys[i-1].Trailer {
+func coalesce(
+	equal base.Equal, keysBySuffix *keyspan.KeysBySuffix, snapshot uint64, keys []keyspan.Key,
+) error {
+	// First, enforce visibility and RangeKeyDelete mechanics. We only need to
+	// consider the prefix of keys before and including the first
+	// RangeKeyDelete. We also must skip any keys that aren't visible at the
+	// provided snapshot sequence number.
+	//
+	// NB: Within a given sequence number, keys are ordered as:
+	//   RangeKeySet > RangeKeyUnset > RangeKeyDelete
+	// This is significant, because this ensures that a Set or Unset sharing a
+	// sequence number with a Delete do not shadow each other.
+	deleteIdx := -1
+	for i := range keys {
+		if invariants.Enabled && i > 0 && keys[i].Trailer > keys[i-1].Trailer {
 			panic("pebble: invariant violation: span keys unordered")
 		}
-
-		// NB: Within a given sequence number, keys are ordered as:
-		//   RangeKeySet > RangeKeyUnset > RangeKeyDelete
-		// This is significant, because this ensures that none of the range keys
-		// sharing a sequence number shadow each other.
-		switch k.Kind() {
-		case base.InternalKeyKindRangeKeySet:
-			n := len(keysBySuffix.keys)
-
-			if keysBySuffix.get(n, k.Suffix) < n {
-				// This suffix is already set or unset at a higher sequence
-				// number. Skip.
-				continue
-			}
-			keysBySuffix.keys = append(keysBySuffix.keys, k)
-			sort.Sort(keysBySuffix)
-		case base.InternalKeyKindRangeKeyUnset:
-			n := len(keysBySuffix.keys)
-
-			if keysBySuffix.get(n, k.Suffix) < n {
-				// This suffix is already set or unset at a higher sequence
-				// number. Skip.
-				continue
-			}
-			keysBySuffix.keys = append(keysBySuffix.keys, k)
-			sort.Sort(keysBySuffix)
-		case base.InternalKeyKindRangeKeyDelete:
-			// All remaining range keys in this span have been deleted by this
-			// RangeKeyDelete. There's no need to continue looping, because all
-			// the remaining keys are shadowed by this one. The for loop
-			// condition will terminate when it sees the last key is a
-			// range key deletion.
-			keysBySuffix.keys = append(keysBySuffix.keys, k)
-			deleted = true
-		default:
-			return base.CorruptionErrorf("pebble: unexpected range key kind %s", k.Kind())
+		if !keys[i].VisibleAt(snapshot) {
+			continue
 		}
+		// Once a RangeKeyDelete is observed, we know it shadows all subsequent
+		// keys and we can break early. We don't add the RangeKeyDelete key to
+		// keysBySuffix.keys yet, because we don't want a suffix-less key
+		// that appeared earlier in the slice to elide it. It'll be added back
+		// in at the end.
+		if keys[i].Kind() == base.InternalKeyKindRangeKeyDelete {
+			deleteIdx = i
+			break
+		}
+		keysBySuffix.Keys = append(keysBySuffix.Keys, keys[i])
+	}
+
+	// Sort the accumulated keys by suffix. There may be duplicates within a
+	// suffix, in which case the one with a larger trailer survives.
+	//
+	// We use a stable sort so that the first key with a given suffix is the one
+	// that with the highest Trailer (because the input `keys` was sorted by
+	// trailer descending).
+	sort.Stable(keysBySuffix)
+
+	// Grab a handle of the full sorted slice, before reslicing
+	// keysBySuffix.keys to accumulate the final coalesced keys.
+	sorted := keysBySuffix.Keys
+	keysBySuffix.Keys = keysBySuffix.Keys[:0]
+
+	var (
+		// prevSuffix is updated on each iteration of the below loop, and
+		// compared by the subsequent iteration to determine whether adjacent
+		// keys are defined at the same suffix.
+		prevSuffix []byte
+		// shadowing is set to true once any Key is shadowed by another key.
+		// When it's set to true—or after the loop if no keys are shadowed—the
+		// keysBySuffix.keys slice is resliced to contain the prefix of
+		// unshadowed keys. This avoids copying them incrementally in the common
+		// case of no shadowing.
+		shadowing bool
+	)
+	for i := range sorted {
+		if i > 0 && equal(prevSuffix, sorted[i].Suffix) {
+			// Skip; this key is shadowed by the predecessor that had a larger
+			// Trailer. If this is the first shadowed key, set shadowing=true
+			// and reslice keysBySuffix.keys to hold the entire unshadowed
+			// prefix.
+			if !shadowing {
+				keysBySuffix.Keys = keysBySuffix.Keys[:i]
+				shadowing = true
+			}
+			continue
+		}
+		prevSuffix = sorted[i].Suffix
+		if shadowing {
+			keysBySuffix.Keys = append(keysBySuffix.Keys, sorted[i])
+		}
+	}
+	// If there was no shadowing, keysBySuffix.keys is untouched. We can simply
+	// set it to the existing `sorted` slice (also backed by keysBySuffix.keys).
+	if !shadowing {
+		keysBySuffix.Keys = sorted
+	}
+	// If the original input `keys` slice contained a RangeKeyDelete, add it.
+	if deleteIdx >= 0 {
+		keysBySuffix.Keys = append(keysBySuffix.Keys, keys[deleteIdx])
 	}
 	return nil
 }
-
-type keysBySuffix struct {
-	cmp  base.Compare
-	keys []keyspan.Key
-}
-
-// get searches for suffix among the first n keys in keys. If the suffix is
-// found, it returns the index of the item with the suffix. If the suffix is not
-// found, it returns n.
-func (s *keysBySuffix) get(n int, suffix []byte) (i int) {
-	// Binary search for the suffix to see if there's an existing key with the
-	// suffix. Only binary search among the first n items. get is called while
-	// appending new keys with suffixes that may sort before existing keys.
-	// The n parameter indicates what portion of the keys slice is sorted and
-	// may contain relevant keys.
-
-	i = sort.Search(n, func(i int) bool {
-		return s.cmp(s.keys[i].Suffix, suffix) >= 0
-	})
-	if i < n && s.cmp(s.keys[i].Suffix, suffix) == 0 {
-		return i
-	}
-	return n
-}
-
-func (s *keysBySuffix) Len() int           { return len(s.keys) }
-func (s *keysBySuffix) Less(i, j int) bool { return s.cmp(s.keys[i].Suffix, s.keys[j].Suffix) < 0 }
-func (s *keysBySuffix) Swap(i, j int)      { s.keys[i], s.keys[j] = s.keys[j], s.keys[i] }

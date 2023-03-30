@@ -19,12 +19,16 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/cockroachdb/errors/oserror"
+	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/errorfs"
+	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
+	"github.com/cockroachdb/redact"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -64,72 +68,82 @@ func TestOpenSharedTableCache(t *testing.T) {
 }
 
 func TestErrorIfExists(t *testing.T) {
-	for _, b := range [...]bool{false, true} {
-		t.Run(fmt.Sprintf("%t", b), func(t *testing.T) {
-			mem := vfs.NewMem()
-			d0, err := Open("", testingRandomized(&Options{
-				FS: mem,
-			}))
-			if err != nil {
-				t.Errorf("b=%v: d0 Open: %v", b, err)
-				return
-			}
-			if err := d0.Close(); err != nil {
-				t.Errorf("b=%v: d0 Close: %v", b, err)
-				return
-			}
+	opts := testingRandomized(&Options{
+		FS:            vfs.NewMem(),
+		ErrorIfExists: true,
+	})
+	defer ensureFilesClosed(t, opts)()
 
-			opts := testingRandomized(&Options{
-				FS:            mem,
-				ErrorIfExists: b,
-			})
-			defer ensureFilesClosed(t, opts)()
-			d1, err := Open("", opts)
-			if d1 != nil {
-				defer d1.Close()
-			}
-			if got := err != nil; got != b {
-				t.Errorf("b=%v: d1 Open: err is %v, got (err != nil) is %v, want %v", b, err, got, b)
-				return
-			}
-		})
+	d0, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d0.Close())
+
+	if _, err := Open("", opts); !errors.Is(err, ErrDBAlreadyExists) {
+		t.Fatalf("expected db-already-exists error, got %v", err)
 	}
+
+	opts.ErrorIfExists = false
+	d1, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d1.Close())
 }
 
 func TestErrorIfNotExists(t *testing.T) {
-	t.Run("does-not-exist", func(t *testing.T) {
-		opts := testingRandomized(&Options{
-			FS:               vfs.NewMem(),
-			ErrorIfNotExists: true,
-		})
-		defer ensureFilesClosed(t, opts)()
-
-		_, err := Open("", opts)
-		if err == nil {
-			t.Fatalf("expected error, but found success")
-		} else if !strings.HasSuffix(err.Error(), oserror.ErrNotExist.Error()) {
-			t.Fatalf("expected not exists, but found %q", err)
-		}
+	opts := testingRandomized(&Options{
+		FS:               vfs.NewMem(),
+		ErrorIfNotExists: true,
 	})
+	defer ensureFilesClosed(t, opts)()
 
-	t.Run("does-exist", func(t *testing.T) {
-		opts := testingRandomized(&Options{
-			FS:               vfs.NewMem(),
-			ErrorIfNotExists: false,
-		})
-		defer ensureFilesClosed(t, opts)()
+	_, err := Open("", opts)
+	if !errors.Is(err, ErrDBDoesNotExist) {
+		t.Fatalf("expected db-does-not-exist error, got %v", err)
+	}
 
-		// Create the DB and try again.
-		d, err := Open("", opts)
-		require.NoError(t, err)
-		require.NoError(t, d.Close())
+	// Create the DB and try again.
+	opts.ErrorIfNotExists = false
+	d0, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d0.Close())
 
-		opts.ErrorIfNotExists = true
-		// The DB exists, so the setting of ErrorIfNotExists is a no-op.
-		d, err = Open("", opts)
-		require.NoError(t, err)
-		require.NoError(t, d.Close())
+	opts.ErrorIfNotExists = true
+	d1, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d1.Close())
+}
+
+func TestErrorIfNotPristine(t *testing.T) {
+	opts := testingRandomized(&Options{
+		FS:                 vfs.NewMem(),
+		ErrorIfNotPristine: true,
 	})
+	defer ensureFilesClosed(t, opts)()
+
+	d0, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d0.Close())
+
+	// Store is pristine; ok to open.
+	d1, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d1.Set([]byte("foo"), []byte("bar"), Sync))
+	require.NoError(t, d1.Close())
+
+	if _, err := Open("", opts); !errors.Is(err, ErrDBNotPristine) {
+		t.Fatalf("expected db-not-pristine error, got %v", err)
+	}
+
+	// Run compaction and make sure we're still not allowed to open.
+	opts.ErrorIfNotPristine = false
+	d2, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d2.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+	require.NoError(t, d2.Close())
+
+	opts.ErrorIfNotPristine = true
+	if _, err := Open("", opts); !errors.Is(err, ErrDBNotPristine) {
+		t.Fatalf("expected db-already-exists error, got %v", err)
+	}
 }
 
 func TestNewDBFilenames(t *testing.T) {
@@ -147,7 +161,7 @@ func TestNewDBFilenames(t *testing.T) {
 			"LOCK",
 			"MANIFEST-000001",
 			"OPTIONS-000003",
-			"marker.format-version.000011.012",
+			"marker.format-version.000013.014",
 			"marker.manifest.000001.MANIFEST-000001",
 		},
 	}
@@ -370,9 +384,9 @@ func TestOpenReadOnly(t *testing.T) {
 	{
 		// Opening a non-existent DB in read-only mode should result in no mutable
 		// filesystem operations.
-		var buf syncedBuffer
+		var memLog base.InMemLogger
 		_, err := Open("non-existent", testingRandomized(&Options{
-			FS:       loggingFS{mem, &buf},
+			FS:       vfs.WithLogging(mem, memLog.Infof),
 			ReadOnly: true,
 			WALDir:   "non-existent-waldir",
 		}))
@@ -380,7 +394,7 @@ func TestOpenReadOnly(t *testing.T) {
 			t.Fatalf("expected error, but found success")
 		}
 		const expected = `open-dir: non-existent`
-		if trimmed := strings.TrimSpace(buf.String()); expected != trimmed {
+		if trimmed := strings.TrimSpace(memLog.String()); expected != trimmed {
 			t.Fatalf("expected %q, but found %q", expected, trimmed)
 		}
 	}
@@ -388,9 +402,9 @@ func TestOpenReadOnly(t *testing.T) {
 	{
 		// Opening a DB with a non-existent WAL dir in read-only mode should result
 		// in no mutable filesystem operations other than the LOCK.
-		var buf syncedBuffer
+		var memLog base.InMemLogger
 		_, err := Open("", testingRandomized(&Options{
-			FS:       loggingFS{mem, &buf},
+			FS:       vfs.WithLogging(mem, memLog.Infof),
 			ReadOnly: true,
 			WALDir:   "non-existent-waldir",
 		}))
@@ -398,7 +412,7 @@ func TestOpenReadOnly(t *testing.T) {
 			t.Fatalf("expected error, but found success")
 		}
 		const expected = "open-dir: \nopen-dir: non-existent-waldir\nclose:"
-		if trimmed := strings.TrimSpace(buf.String()); expected != trimmed {
+		if trimmed := strings.TrimSpace(memLog.String()); expected != trimmed {
 			t.Fatalf("expected %q, but found %q", expected, trimmed)
 		}
 	}
@@ -558,6 +572,64 @@ func TestOpenWALReplay(t *testing.T) {
 			require.NoError(t, d.Close())
 		})
 	}
+}
+
+// Reproduction for https://github.com/cockroachdb/pebble/issues/2234.
+func TestWALReplaySequenceNumBug(t *testing.T) {
+	mem := vfs.NewMem()
+	d, err := Open("", testingRandomized(&Options{
+		FS: mem,
+	}))
+	require.NoError(t, err)
+
+	d.mu.Lock()
+	// Disable any flushes.
+	d.mu.compact.flushing = true
+	d.mu.Unlock()
+
+	require.NoError(t, d.Set([]byte("1"), nil, nil))
+	require.NoError(t, d.Set([]byte("2"), nil, nil))
+
+	// Write a large batch. This should go to a separate memtable.
+	largeValue := []byte(strings.Repeat("a", d.largeBatchThreshold))
+	require.NoError(t, d.Set([]byte("1"), largeValue, nil))
+
+	// This write should go the mutable memtable after the large batch in the
+	// memtable queue.
+	d.Set([]byte("1"), nil, nil)
+
+	d.mu.Lock()
+	d.mu.compact.flushing = false
+	d.mu.Unlock()
+
+	// Make sure none of the flushables have been flushed.
+	require.Equal(t, 3, len(d.mu.mem.queue))
+
+	// Close the db. This doesn't cause a flush of the memtables, so they'll
+	// have to be replayed when the db is reopened.
+	require.NoError(t, d.Close())
+
+	files, err := mem.List("")
+	require.NoError(t, err)
+	sort.Strings(files)
+	sstCount := 0
+	for _, fname := range files {
+		if strings.HasSuffix(fname, ".sst") {
+			sstCount++
+		}
+	}
+	require.Equal(t, 0, sstCount)
+
+	// Reopen db in read only mode to force read only wal replay.
+	d, err = Open("", &Options{
+		FS:       mem,
+		ReadOnly: true,
+	})
+	require.NoError(t, err)
+	val, c, _ := d.Get([]byte("1"))
+	require.Equal(t, []byte{}, val)
+	c.Close()
+	require.NoError(t, d.Close())
 }
 
 // Similar to TestOpenWALReplay, except we test replay behavior after a
@@ -850,10 +922,11 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 }
 
 // TestOpenWALReplayReadOnlySeqNums tests opening a database:
-// * in read-only mode
-// * with multiple unflushed log files that must replayed
-// * a MANIFEST that sets the last sequence number to a number greater than
-//   the unflushed log files
+//   - in read-only mode
+//   - with multiple unflushed log files that must replayed
+//   - a MANIFEST that sets the last sequence number to a number greater than
+//     the unflushed log files
+//
 // See cockroachdb/cockroach#48660.
 func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 	const root = ""
@@ -1062,9 +1135,9 @@ func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
 //
 // This function is intended to be used in tests with defer.
 //
-//     opts := &Options{FS: vfs.NewMem()}
-//     defer ensureFilesClosed(t, opts)()
-//     /* test code */
+//	opts := &Options{FS: vfs.NewMem()}
+//	defer ensureFilesClosed(t, opts)()
+//	/* test code */
 func ensureFilesClosed(t *testing.T, o *Options) func() {
 	fs := &closeTrackingFS{
 		FS:    o.FS,
@@ -1122,4 +1195,113 @@ type closeTrackingFile struct {
 func (f *closeTrackingFile) Close() error {
 	delete(f.fs.files, f)
 	return f.File.Close()
+}
+
+func TestCheckConsistency(t *testing.T) {
+	const dir = "./test"
+	mem := vfs.NewMem()
+	mem.MkdirAll(dir, 0755)
+
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, dir))
+	require.NoError(t, err)
+	defer provider.Close()
+
+	cmp := base.DefaultComparer.Compare
+	fmtKey := base.DefaultComparer.FormatKey
+	parseMeta := func(s string) (*manifest.FileMetadata, error) {
+		if len(s) == 0 {
+			return nil, nil
+		}
+		parts := strings.Split(s, ":")
+		if len(parts) != 2 {
+			return nil, errors.Errorf("malformed table spec: %q", s)
+		}
+		fileNum, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil {
+			return nil, err
+		}
+		size, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil {
+			return nil, err
+		}
+		m := &manifest.FileMetadata{
+			FileNum: base.FileNum(fileNum),
+			Size:    uint64(size),
+		}
+		m.InitPhysicalBacking()
+		return m, nil
+	}
+
+	datadriven.RunTest(t, "testdata/version_check_consistency",
+		func(t *testing.T, d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "check-consistency":
+				var filesByLevel [manifest.NumLevels][]*manifest.FileMetadata
+				var files *[]*manifest.FileMetadata
+
+				for _, data := range strings.Split(d.Input, "\n") {
+					switch data {
+					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+						level, err := strconv.Atoi(data[1:])
+						if err != nil {
+							return err.Error()
+						}
+						files = &filesByLevel[level]
+
+					default:
+						m, err := parseMeta(data)
+						if err != nil {
+							return err.Error()
+						}
+						if m != nil {
+							*files = append(*files, m)
+						}
+					}
+				}
+
+				redactErr := false
+				for _, arg := range d.CmdArgs {
+					switch v := arg.String(); v {
+					case "redact":
+						redactErr = true
+					default:
+						return fmt.Sprintf("unknown argument: %q", v)
+					}
+				}
+
+				v := manifest.NewVersion(cmp, fmtKey, 0, filesByLevel)
+				err := checkConsistency(v, dir, provider)
+				if err != nil {
+					if redactErr {
+						redacted := redact.Sprint(err).Redact()
+						return string(redacted)
+					}
+					return err.Error()
+				}
+				return "OK"
+
+			case "build":
+				for _, data := range strings.Split(d.Input, "\n") {
+					m, err := parseMeta(data)
+					if err != nil {
+						return err.Error()
+					}
+					path := base.MakeFilepath(mem, dir, base.FileTypeTable, m.FileNum)
+					_ = mem.Remove(path)
+					f, err := mem.Create(path)
+					if err != nil {
+						return err.Error()
+					}
+					_, err = f.Write(make([]byte, m.Size))
+					if err != nil {
+						return err.Error()
+					}
+					f.Close()
+				}
+				return ""
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
 }

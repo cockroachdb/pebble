@@ -19,22 +19,22 @@ metrics
 ----
 __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
     WAL         1    28 B       -    17 B       -       -       -       -    56 B       -       -       -     3.3
-      0         1   771 B    0.25    28 B     0 B       0     0 B       0   771 B       1     0 B       1    27.5
+      0         1   770 B    0.25    28 B     0 B       0     0 B       0   770 B       1     0 B       1    27.5
       1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  total         1   771 B       -    56 B     0 B       0     0 B       0   827 B       1     0 B       1    14.8
-  flush         1
-compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  total         1   770 B       -    56 B     0 B       0     0 B       0   826 B       1     0 B       1    14.8
+  flush         1                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         0     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         0     0 B
- bcache         4   698 B    0.0%  (score == hit-rate)
- tcache         1   712 B    0.0%  (score == hit-rate)
+ bcache         4   697 B    0.0%  (score == hit-rate)
+ tcache         1   696 B    0.0%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         1
  filter         -       -    0.0%  (score == utility)
@@ -73,10 +73,10 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
-  flush         2
-compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+      6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
+  total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
+  flush         2                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         2   512 K
@@ -106,10 +106,10 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
-  flush         2
-compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+      6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
+  total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
+  flush         2                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         1   256 K
@@ -136,16 +136,16 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
-  flush         2
-compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+      6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
+  total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
+  flush         2                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         1   256 K
-   ztbl         1   771 B
- bcache         4   698 B   42.9%  (score == hit-rate)
- tcache         1   712 B   66.7%  (score == hit-rate)
+   ztbl         1   770 B
+ bcache         4   697 B   42.9%  (score == hit-rate)
+ tcache         1   696 B   66.7%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         1
  filter         -       -    0.0%  (score == utility)
@@ -169,10 +169,10 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
-  flush         2
-compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+      6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
+  total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
+  flush         2                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         0     0 B
@@ -186,3 +186,190 @@ zmemtbl         0     0 B
 disk-usage
 ----
 2.1 K
+
+additional-metrics
+----
+block bytes written:
+ __level___data-block__value-block
+      0         54 B          0 B
+      1          0 B          0 B
+      2          0 B          0 B
+      3          0 B          0 B
+      4          0 B          0 B
+      5          0 B          0 B
+      6         33 B          0 B
+
+batch
+set c@20 c20
+set c@19 c19
+set c@18 c18
+set c@17 c17
+set c@16 c16
+set c@15 c15
+set c@14 c14
+----
+
+flush
+----
+0.0:
+  000010:[c@20#3,SET-c@18#5,SET]
+  000011:[c@17#6,SET-c@15#8,SET]
+  000012:[c@14#9,SET-c@14#9,SET]
+6:
+  000008:[a#0,SET-b#0,SET]
+
+metrics
+----
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp__val-bl
+    WAL         1    93 B       -   116 B       -       -       -       -   242 B       -       -       -     2.1
+      0         3   2.5 K    0.25   149 B     0 B       0     0 B       0   4.1 K       5     0 B       1    27.8    38 B
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5     0 B
+  total         4   3.3 K       -   242 B     0 B       0     0 B       0   5.0 K       6   1.5 K       2    21.4    38 B
+  flush         3                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         1   3.3 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+ bcache         0     0 B   42.9%  (score == hit-rate)
+ tcache         0     0 B   66.7%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+additional-metrics
+----
+block bytes written:
+ __level___data-block__value-block
+      0        198 B         38 B
+      1          0 B          0 B
+      2          0 B          0 B
+      3          0 B          0 B
+      4          0 B          0 B
+      5          0 B          0 B
+      6         33 B          0 B
+
+compact a-z
+----
+6:
+  000008:[a#0,SET-b#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+
+metrics
+----
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp__val-bl
+    WAL         1    93 B       -   116 B       -       -       -       -   242 B       -       -       -     2.1
+      0         0     0 B    0.00   149 B     0 B       0     0 B       0   4.1 K       5     0 B       0    27.8     0 B
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      6         3   2.5 K       -   4.1 K     0 B       0     0 B       0   2.5 K       3   4.1 K       1     0.6    41 B
+  total         3   2.5 K       -   242 B     0 B       0     0 B       0   6.8 K       8   4.1 K       1    28.9    41 B
+  flush         3                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         2     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         2       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+ bcache         0     0 B   27.3%  (score == hit-rate)
+ tcache         0     0 B   58.3%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+additional-metrics
+----
+block bytes written:
+ __level___data-block__value-block
+      0        198 B         38 B
+      1          0 B          0 B
+      2          0 B          0 B
+      3          0 B          0 B
+      4          0 B          0 B
+      5          0 B          0 B
+      6        143 B         41 B
+
+# Flushable ingestion metrics. This requires there be data in a memtable that
+# would overlap with the ingested table(s). Delayed flushes are disabled here to
+# prevent the ingestion from immediately triggering a flush of the memtable.
+# Instead, we wish to flush manually _after_ the ingestion of the two tables has
+# completed, linking the two tables into the flushable queue.
+
+delay-flush
+enable
+----
+
+batch
+set d d
+set e e
+set f f
+----
+
+build ext1.sst
+set d d
+----
+
+build ext2.sst
+set e e
+----
+
+ingest ext1.sst ext2.sst
+----
+
+build ext3.sst
+set f f
+----
+
+ingest ext3.sst
+----
+
+delay-flush
+disable
+----
+
+flush
+----
+0.1:
+  000015:[d#13,SET-d#13,SET]
+  000016:[e#14,SET-e#14,SET]
+  000019:[f#15,SET-f#15,SET]
+0.0:
+  000023:[d#10,SET-f#12,SET]
+6:
+  000008:[a#0,SET-b#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+
+# We expect the ingested-as-flushable count to be three (one for each ingested
+# table).
+metrics
+----
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp__val-bl
+    WAL         1    26 B       -   176 B       -       -       -       -   175 B       -       -       -     1.0
+      0         4   3.2 K    0.50   149 B   2.4 K       3     0 B       0   4.8 K       6     0 B       2    33.1     0 B
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
+      6         3   2.5 K       -   4.1 K     0 B       0     0 B       0   2.5 K       3   4.1 K       1     0.6    41 B
+  total         7   5.7 K       -   2.6 K   2.4 K       3     0 B       0    10 K       9   4.1 K       3     3.8    41 B
+  flush         8                           2.4 K       3       2  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         2   5.7 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         2       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   1.0 M
+zmemtbl         0     0 B
+   ztbl         0     0 B
+ bcache        16   2.9 K   34.4%  (score == hit-rate)
+ tcache         3   2.0 K   63.6%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)

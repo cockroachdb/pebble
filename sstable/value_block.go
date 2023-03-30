@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 	"sync"
@@ -132,12 +133,13 @@ const (
 	valueKindIsInPlaceValue valuePrefix = '\x00'
 
 	// 1 bit indicates SET has same key prefix as immediately preceding key that
-	// is also a SET. This is optional, in that if this bit is false, there is
-	// no information.
+	// is also a SET. If the immediately preceding key in the same block is a
+	// SET, AND this bit is 0, the prefix must have changed.
 	//
 	// Note that the current policy of only storing older MVCC versions in value
 	// blocks means that valueKindIsValueHandle => SET has same prefix. But no
-	// code should rely on this behavior.
+	// code should rely on this behavior. Also, SET has same prefix does *not*
+	// imply valueKindIsValueHandle.
 	setHasSameKeyPrefixMask valuePrefix = '\x20'
 
 	// 3 least-significant bits for the user-defined base.ShortAttribute.
@@ -308,7 +310,6 @@ func decodeValueBlocksIndexHandle(src []byte) (valueBlocksIndexHandle, int, erro
 	return vbih, n + 3, nil
 }
 
-// TODO(sumeer): Incorporate into Pebble metrics.
 type valueBlocksAndIndexStats struct {
 	numValueBlocks         uint64
 	numValuesInValueBlocks uint64
@@ -460,9 +461,12 @@ func (w *valueBlockWriter) addValue(v []byte) (valueHandle, error) {
 	}
 	blockLen = int(vh.offsetInBlock + vh.valueLen)
 	if cap(w.buf.b) < blockLen {
-		size := w.blockSize + w.blockSize/2
-		if size < blockLen {
-			size = blockLen + blockLen/2
+		size := 2 * cap(w.buf.b)
+		if size < 1024 {
+			size = 1024
+		}
+		for size < blockLen {
+			size *= 2
 		}
 		buf := make([]byte, blockLen, size)
 		_ = copy(buf, w.buf.b)
@@ -655,7 +659,9 @@ func (ukb *UserKeyPrefixBound) IsEmpty() bool {
 }
 
 type blockProviderWhenOpen interface {
-	readBlockForVBR(h BlockHandle, stats *base.InternalIteratorStats) (cache.Handle, error)
+	readBlockForVBR(
+		ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
+	) (cache.Handle, error)
 }
 
 type blockProviderWhenClosed struct {
@@ -675,9 +681,9 @@ func (bpwc *blockProviderWhenClosed) close() {
 }
 
 func (bpwc blockProviderWhenClosed) readBlockForVBR(
-	h BlockHandle, stats *base.InternalIteratorStats,
+	ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
-	return bpwc.r.readBlock(h, nil, nil, stats)
+	return bpwc.r.readBlock(ctx, h, nil, nil, stats)
 }
 
 // ReaderProvider supports the implementation of blockProviderWhenClosed.
@@ -707,6 +713,7 @@ func (trp TrivialReaderProvider) Close() {}
 // blocks. It is used when the sstable was written with
 // Properties.ValueBlocksAreEnabled.
 type valueBlockReader struct {
+	ctx    context.Context
 	bpOpen blockProviderWhenOpen
 	rp     ReaderProvider
 	vbih   valueBlocksIndexHandle
@@ -727,6 +734,7 @@ type valueBlockReader struct {
 	valueCache    cache.Handle
 	lazyFetcher   base.LazyFetcher
 	closed        bool
+	bufToMangle   []byte
 }
 
 func (r *valueBlockReader) getLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
@@ -738,6 +746,10 @@ func (r *valueBlockReader) getLazyValueForPrefixAndValueHandle(handle []byte) ba
 			ValueLen:       int32(valLen),
 			ShortAttribute: getShortAttribute(valuePrefix(handle[0])),
 		},
+	}
+	if r.stats != nil {
+		r.stats.SeparatedPointValue.Count++
+		r.stats.SeparatedPointValue.ValueBytes += uint64(valLen)
 	}
 	return base.LazyValue{
 		ValueOrHandle: h,
@@ -770,6 +782,9 @@ func (r *valueBlockReader) Fetch(
 ) (val []byte, callerOwned bool, err error) {
 	if !r.closed {
 		val, err := r.getValueInternal(handle, valLen)
+		if invariants.Enabled {
+			val = r.doValueMangling(val)
+		}
 		return val, false, err
 	}
 
@@ -786,18 +801,32 @@ func (r *valueBlockReader) Fetch(
 	if err != nil {
 		return nil, false, err
 	}
-	if invariants.Enabled && callerOwned {
-		panic("callerOwned must be false")
-	}
 	buf = append(buf[:0], v...)
 	return buf, true, nil
+}
+
+// doValueMangling attempts to uncover violations of the contract listed in
+// the declaration comment of LazyValue. It is expensive, hence only called
+// when invariants.Enabled.
+func (r *valueBlockReader) doValueMangling(v []byte) []byte {
+	// Randomly set the bytes in the previous retrieved value to 0, since
+	// property P1 only requires the valueBlockReader to maintain the memory of
+	// one fetched value.
+	if rand.Intn(2) == 0 {
+		for i := range r.bufToMangle {
+			r.bufToMangle[i] = 0
+		}
+	}
+	// Store the current value in a new buffer for future mangling.
+	r.bufToMangle = append([]byte(nil), v...)
+	return r.bufToMangle
 }
 
 func (r *valueBlockReader) getValueInternal(handle []byte, valLen int32) (val []byte, err error) {
 	vh := decodeRemainingValueHandle(handle)
 	vh.valueLen = uint32(valLen)
 	if r.vbiBlock == nil {
-		ch, err := r.bpOpen.readBlockForVBR(r.vbih.h, r.stats)
+		ch, err := r.bpOpen.readBlockForVBR(r.ctx, r.vbih.h, r.stats)
 		if err != nil {
 			return nil, err
 		}
@@ -809,7 +838,7 @@ func (r *valueBlockReader) getValueInternal(handle []byte, valLen int32) (val []
 		if err != nil {
 			return nil, err
 		}
-		vbCacheHandle, err := r.bpOpen.readBlockForVBR(vbh, r.stats)
+		vbCacheHandle, err := r.bpOpen.readBlockForVBR(r.ctx, vbh, r.stats)
 		if err != nil {
 			return nil, err
 		}
@@ -818,6 +847,9 @@ func (r *valueBlockReader) getValueInternal(handle []byte, valLen int32) (val []
 		r.valueCache = vbCacheHandle
 		r.valueBlock = vbCacheHandle.Get()
 		r.valueBlockPtr = unsafe.Pointer(&r.valueBlock[0])
+	}
+	if r.stats != nil {
+		r.stats.SeparatedPointValue.ValueBytesFetched += uint64(valLen)
 	}
 	return r.valueBlock[vh.offsetInBlock : vh.offsetInBlock+vh.valueLen], nil
 }

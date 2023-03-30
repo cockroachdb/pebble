@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
@@ -117,7 +118,7 @@ func (m *simpleMergingIter) positionRangeDels() {
 		if l.rangeDelIter == nil {
 			continue
 		}
-		l.tombstone = keyspan.SeekGE(m.heap.cmp, l.rangeDelIter, item.key.UserKey)
+		l.tombstone = l.rangeDelIter.SeekGE(item.key.UserKey)
 	}
 }
 
@@ -378,7 +379,8 @@ func checkRangeTombstones(c *checkConfig) error {
 			lf := files.Take()
 			atomicUnit, _ := expandToAtomicUnit(c.cmp, lf.Slice(), true /* disableIsCompacting */)
 			lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
-			iterToClose, iter, err := c.newIters(lf.FileMetadata, nil, internalIterOpts{})
+			iterToClose, iter, err := c.newIters(
+				context.Background(), lf.FileMetadata, nil, internalIterOpts{})
 			if err != nil {
 				return err
 			}
@@ -554,11 +556,11 @@ type CheckLevelsStats struct {
 }
 
 // CheckLevels checks:
-// - Every entry in the DB is consistent with the level invariant. See the
-//   comment at the top of the file.
-// - Point keys in sstables are ordered.
-// - Range delete tombstones in sstables are ordered and fragmented.
-// - Successful processing of all MERGE records.
+//   - Every entry in the DB is consistent with the level invariant. See the
+//     comment at the top of the file.
+//   - Point keys in sstables are ordered.
+//   - Range delete tombstones in sstables are ordered and fragmented.
+//   - Successful processing of all MERGE records.
 func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	// Grab and reference the current readState.
 	readState := d.loadReadState()
@@ -638,7 +640,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		manifestIter := current.L0SublevelFiles[sublevel].Iter()
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
+		li.init(context.Background(), iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
 			manifest.L0Sublevel(sublevel), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
@@ -652,7 +654,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, nil /* split */, c.newIters,
+		li.init(context.Background(), iterOpts, c.cmp, nil /* split */, c.newIters,
 			current.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)

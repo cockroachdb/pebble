@@ -5,11 +5,15 @@
 package pebble
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 )
 
@@ -115,22 +119,7 @@ func (i levelInfos) SafeFormat(w redact.SafePrinter, _ rune) {
 
 // DiskSlowInfo contains the info for a disk slowness event when writing to a
 // file.
-type DiskSlowInfo struct {
-	// Path of file being written to.
-	Path string
-	// Duration that has elapsed since this disk operation started.
-	Duration time.Duration
-}
-
-func (i DiskSlowInfo) String() string {
-	return redact.StringWithoutMarkers(i)
-}
-
-// SafeFormat implements redact.SafeFormatter.
-func (i DiskSlowInfo) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("disk slowness detected: write to file %s has been ongoing for %0.1fs",
-		i.Path, redact.Safe(i.Duration.Seconds()))
-}
+type DiskSlowInfo = vfs.DiskSlowInfo
 
 // FlushInfo contains the info for a flush event.
 type FlushInfo struct {
@@ -149,8 +138,14 @@ type FlushInfo struct {
 	// TotalDuration is the total wall-time duration of the flush, including
 	// applying the flush to the database. TotalDuration is always ≥ Duration.
 	TotalDuration time.Duration
-	Done          bool
-	Err           error
+	// Ingest is set to true if the flush is handling tables that were added to
+	// the flushable queue via an ingestion operation.
+	Ingest bool
+	// IngestLevels are the output levels for each ingested table in the flush.
+	// This field is only populated when Ingest is true.
+	IngestLevels []int
+	Done         bool
+	Err          error
 }
 
 func (i FlushInfo) String() string {
@@ -169,20 +164,47 @@ func (i FlushInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		plural = ""
 	}
 	if !i.Done {
-		w.Printf("[JOB %d] flushing %d memtable", redact.Safe(i.JobID), redact.Safe(i.Input))
-		w.SafeString(plural)
-		w.Printf(" to L0")
+		w.Printf("[JOB %d] ", redact.Safe(i.JobID))
+		if !i.Ingest {
+			w.Printf("flushing %d memtable", redact.Safe(i.Input))
+			w.SafeString(plural)
+			w.Printf(" to L0")
+		} else {
+			w.Printf("flushing %d ingested table%s", redact.Safe(i.Input), plural)
+		}
 		return
 	}
 
 	outputSize := tablesTotalSize(i.Output)
-	w.Printf("[JOB %d] flushed %d memtable%s to L0 [%s] (%s), in %.1fs (%.1fs total), output rate %s/s",
-		redact.Safe(i.JobID), redact.Safe(i.Input), plural,
-		redact.Safe(formatFileNums(i.Output)),
-		redact.Safe(humanize.Uint64(outputSize)),
-		redact.Safe(i.Duration.Seconds()),
-		redact.Safe(i.TotalDuration.Seconds()),
-		redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
+	if !i.Ingest {
+		if invariants.Enabled && len(i.IngestLevels) > 0 {
+			panic(errors.AssertionFailedf("pebble: expected len(IngestedLevels) == 0"))
+		}
+		w.Printf("[JOB %d] flushed %d memtable%s to L0 [%s] (%s), in %.1fs (%.1fs total), output rate %s/s",
+			redact.Safe(i.JobID), redact.Safe(i.Input), plural,
+			redact.Safe(formatFileNums(i.Output)),
+			redact.Safe(humanize.Uint64(outputSize)),
+			redact.Safe(i.Duration.Seconds()),
+			redact.Safe(i.TotalDuration.Seconds()),
+			redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
+	} else {
+		if invariants.Enabled && len(i.IngestLevels) == 0 {
+			panic(errors.AssertionFailedf("pebble: expected len(IngestedLevels) > 0"))
+		}
+		w.Printf("[JOB %d] flushed %d ingested flushable%s",
+			redact.Safe(i.JobID), redact.Safe(len(i.Output)), plural)
+		for j, level := range i.IngestLevels {
+			file := i.Output[j]
+			if j > 0 {
+				w.Printf(" +")
+			}
+			w.Printf(" L%d:%s (%s)", level, redact.Safe(file.FileNum), humanize.IEC.Uint64(file.Size))
+		}
+		w.Printf(" in %.1fs (%.1fs total), output rate %s/s",
+			redact.Safe(i.Duration.Seconds()),
+			redact.Safe(i.TotalDuration.Seconds()),
+			redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
+	}
 }
 
 // ManifestCreateInfo contains info about a manifest creation event.
@@ -283,7 +305,10 @@ type TableIngestInfo struct {
 	// GlobalSeqNum is the sequence number that was assigned to all entries in
 	// the ingested table.
 	GlobalSeqNum uint64
-	Err          error
+	// flushable indicates whether the ingested sstable was treated as a
+	// flushable.
+	flushable bool
+	Err       error
 }
 
 func (i TableIngestInfo) String() string {
@@ -297,13 +322,22 @@ func (i TableIngestInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		return
 	}
 
-	w.Printf("[JOB %d] ingested", redact.Safe(i.JobID))
+	if i.flushable {
+		w.Printf("[JOB %d] ingested as flushable", redact.Safe(i.JobID))
+	} else {
+		w.Printf("[JOB %d] ingested", redact.Safe(i.JobID))
+	}
+
 	for j := range i.Tables {
 		t := &i.Tables[j]
 		if j > 0 {
 			w.Printf(",")
 		}
-		w.Printf(" L%d:%s (%s)", redact.Safe(t.Level), redact.Safe(t.FileNum),
+		levelStr := ""
+		if !i.flushable {
+			levelStr = fmt.Sprintf("L%d:", t.Level)
+		}
+		w.Printf(" %s%s (%s)", redact.Safe(levelStr), redact.Safe(t.FileNum),
 			redact.Safe(humanize.Uint64(t.Size)))
 	}
 }
@@ -427,9 +461,14 @@ type EventListener struct {
 	// has been installed.
 	CompactionEnd func(CompactionInfo)
 
-	// DiskSlow is invoked after a disk write operation on a file created
-	// with a disk health checking vfs.FS (see vfs.DefaultWithDiskHealthChecks)
-	// is observed to exceed the specified disk slowness threshold duration.
+	// DiskSlow is invoked after a disk write operation on a file created with a
+	// disk health checking vfs.FS (see vfs.DefaultWithDiskHealthChecks) is
+	// observed to exceed the specified disk slowness threshold duration. DiskSlow
+	// is called on a goroutine that is monitoring slowness/stuckness. The callee
+	// MUST return without doing any IO, or blocking on anything (like a mutex)
+	// that is waiting on IO. This is imperative in order to reliably monitor for
+	// slowness, since if this goroutine gets stuck, the monitoring will stop
+	// working.
 	DiskSlow func(DiskSlowInfo)
 
 	// FlushBegin is invoked after the inputs to a flush have been determined,

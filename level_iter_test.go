@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -32,7 +34,7 @@ func TestLevelIter(t *testing.T) {
 	var files manifest.LevelSlice
 
 	newIters := func(
-		file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
+		_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
 	) (internalIterator, keyspan.FragmentIterator, error) {
 		f := *iters[file.FileNum]
 		f.lower = opts.GetLowerBound()
@@ -61,6 +63,7 @@ func TestLevelIter(t *testing.T) {
 					f.keys[0],
 					f.keys[len(f.keys)-1],
 				)
+				meta.InitPhysicalBacking()
 				metas = append(metas, meta)
 			}
 			files = manifest.NewLevelSliceKeySorted(base.DefaultComparer.Compare, metas)
@@ -119,10 +122,11 @@ func TestLevelIter(t *testing.T) {
 
 			var tableOpts *IterOptions
 			newIters2 := func(
-				file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts,
+				ctx context.Context, file *manifest.FileMetadata, opts *IterOptions,
+				internalOpts internalIterOpts,
 			) (internalIterator, keyspan.FragmentIterator, error) {
 				tableOpts = opts
-				return newIters(file, opts, internalOpts)
+				return newIters(ctx, file, opts, internalOpts)
 			}
 
 			iter := newLevelIter(opts, DefaultComparer.Compare,
@@ -156,11 +160,11 @@ func newLevelIterTest() *levelIterTest {
 }
 
 func (lt *levelIterTest) newIters(
-	file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts,
+	ctx context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
 	lt.itersCreated++
-	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFilters(
-		opts.LowerBound, opts.UpperBound, nil, true, iio.stats,
+	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFiltersAndContext(
+		ctx, opts.LowerBound, opts.UpperBound, nil, true, iio.stats,
 		sstable.TrivialReaderProvider{Reader: lt.readers[file.FileNum]})
 	if err != nil {
 		return nil, nil, err
@@ -203,7 +207,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		}
 	}
 	fp := bloom.FilterPolicy(10)
-	w := sstable.NewWriter(f0, sstable.WriterOptions{
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f0), sstable.WriterOptions{
 		Comparer:     &lt.cmp,
 		FilterPolicy: fp,
 		TableFormat:  tableFormat,
@@ -251,7 +255,11 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	if err != nil {
 		return err.Error()
 	}
-	r, err := sstable.NewReader(f1, sstable.ReaderOptions{
+	readable, err := sstable.NewSimpleReadable(f1)
+	if err != nil {
+		return err.Error()
+	}
+	r, err := sstable.NewReader(readable, sstable.ReaderOptions{
 		Filters: map[string]FilterPolicy{
 			fp.Name(): fp,
 		},
@@ -270,6 +278,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	if meta.HasRangeKeys {
 		m.ExtendRangeKeyBounds(lt.cmp.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
 	}
+	m.InitPhysicalBacking()
 	lt.metas = append(lt.metas, m)
 
 	var buf bytes.Buffer
@@ -361,7 +370,7 @@ func (i *levelIterTestIter) rangeDelSeek(
 		if dir < 0 {
 			t = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key)
 		} else {
-			t = keyspan.SeekGE(i.levelIter.cmp, i.rangeDelIter, key)
+			t = i.rangeDelIter.SeekGE(key)
 		}
 		if t != nil {
 			tombstone = t.Visible(1000)
@@ -419,7 +428,7 @@ func TestLevelIterSeek(t *testing.T) {
 			var stats base.InternalIteratorStats
 			slice := manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas)
 			iter := &levelIterTestIter{levelIter: &levelIter{}}
-			iter.init(IterOptions{}, DefaultComparer.Compare,
+			iter.init(context.Background(), IterOptions{}, DefaultComparer.Compare,
 				func(a []byte) int { return len(a) }, lt.newIters, slice.Iter(),
 				manifest.Level(level), internalIterOpts{stats: &stats})
 			defer iter.Close()
@@ -449,7 +458,7 @@ func buildLevelIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], sstable.WriterOptions{
+		writers[i] = sstable.NewWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          NoCompression,
@@ -479,7 +488,11 @@ func buildLevelIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i], err = sstable.NewReader(f, opts)
+		readable, err := sstable.NewSimpleReadable(f)
+		if err != nil {
+			b.Fatal(err)
+		}
+		readers[i], err = sstable.NewReader(readable, opts)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -500,6 +513,7 @@ func buildLevelIterTables(
 		meta[i].FileNum = FileNum(i)
 		largest, _ := iter.Last()
 		meta[i].ExtendPointKeyBounds(opts.Comparer.Compare, (*smallest).Clone(), (*largest).Clone())
+		meta[i].InitPhysicalBacking()
 	}
 	slice := manifest.NewLevelSliceKeySorted(base.DefaultComparer.Compare, meta)
 	return readers, slice, keys, cleanup
@@ -517,7 +531,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							readers, metas, keys, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
+								_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
 							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
@@ -558,7 +572,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 							// This newIters is cheaper than in practice since it does not do
 							// tableCacheShard.findNode.
 							newIters := func(
-								file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
+								_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
 							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(
 									opts.LowerBound, opts.UpperBound)
@@ -600,7 +614,7 @@ func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
 	// This newIters is cheaper than in practice since it does not do
 	// tableCacheShard.findNode.
 	newIters := func(
-		file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
+		_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
 	) (internalIterator, keyspan.FragmentIterator, error) {
 		iter, err := readers[file.FileNum].NewIter(
 			opts.LowerBound, opts.UpperBound)
@@ -653,7 +667,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							readers, metas, _, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
+								_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
 							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
@@ -687,7 +701,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							readers, metas, _, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
+								_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
 							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err

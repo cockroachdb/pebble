@@ -12,6 +12,8 @@ import (
 
 // SyncingFileOptions holds the options for a syncingFile.
 type SyncingFileOptions struct {
+	// NoSyncOnClose elides the automatic Sync during Close if it's not possible
+	// to sync the remainder of the file in a non-blocking way.
 	NoSyncOnClose   bool
 	BytesPerSync    int
 	PreallocateSize int
@@ -19,9 +21,8 @@ type SyncingFileOptions struct {
 
 type syncingFile struct {
 	File
+	// fd can be InvalidFd if the underlying File does not support it.
 	fd              uintptr
-	useSyncRange    bool
-	closing         bool
 	noSyncOnClose   bool
 	bytesPerSync    int64
 	preallocateSize int64
@@ -36,9 +37,6 @@ type syncingFile struct {
 		syncOffset int64
 	}
 	preallocatedBlocks int64
-	syncData           func() error
-	syncTo             func(offset int64) error
-	timeDiskOp         func(op func())
 }
 
 // NewSyncingFile wraps a writable file and ensures that data is synced
@@ -49,6 +47,7 @@ type syncingFile struct {
 func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	s := &syncingFile{
 		File:            f,
+		fd:              f.Fd(),
 		noSyncOnClose:   bool(opts.NoSyncOnClose),
 		bytesPerSync:    int64(opts.BytesPerSync),
 		preallocateSize: int64(opts.PreallocateSize),
@@ -56,30 +55,7 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	// Ensure a file that is opened and then closed will be synced, even if no
 	// data has been written to it.
 	s.atomic.syncOffset = -1
-
-	type fd interface {
-		Fd() uintptr
-	}
-	if d, ok := f.(fd); ok {
-		s.fd = d.Fd()
-	}
-	type dhChecker interface {
-		timeDiskOp(op func())
-	}
-	if d, ok := f.(dhChecker); ok {
-		s.timeDiskOp = d.timeDiskOp
-	} else {
-		s.timeDiskOp = func(op func()) {
-			op()
-		}
-	}
-
-	s.init()
-
-	if s.syncData == nil {
-		s.syncData = s.File.Sync
-	}
-	return WithFd(f, s)
+	return s
 }
 
 // NB: syncingFile.Write is unsafe for concurrent use!
@@ -100,7 +76,7 @@ func (f *syncingFile) Write(p []byte) (n int, err error) {
 }
 
 func (f *syncingFile) preallocate(offset int64) error {
-	if f.fd == 0 || f.preallocateSize == 0 {
+	if f.fd == InvalidFd || f.preallocateSize == 0 {
 		return nil
 	}
 
@@ -112,7 +88,7 @@ func (f *syncingFile) preallocate(offset int64) error {
 	length := f.preallocateSize * (newPreallocatedBlocks - f.preallocatedBlocks)
 	offset = f.preallocateSize * f.preallocatedBlocks
 	f.preallocatedBlocks = newPreallocatedBlocks
-	return preallocExtend(f.fd, offset, length)
+	return f.Preallocate(offset, length)
 }
 
 func (f *syncingFile) ratchetSyncOffset(offset int64) {
@@ -131,9 +107,10 @@ func (f *syncingFile) Sync() error {
 	// We update syncOffset (atomically) in order to avoid spurious syncs in
 	// maybeSync. Note that even if syncOffset is larger than the current file
 	// offset, we still need to call the underlying file's sync for persistence
-	// guarantees (which are not provided by sync_file_range).
+	// guarantees which are not provided by SyncTo (or by sync_file_range on
+	// Linux).
 	f.ratchetSyncOffset(atomic.LoadInt64(&f.atomic.offset))
-	return f.syncData()
+	return f.SyncData()
 }
 
 func (f *syncingFile) maybeSync() error {
@@ -163,30 +140,78 @@ func (f *syncingFile) maybeSync() error {
 		return nil
 	}
 
-	if f.fd == 0 {
+	if f.fd == InvalidFd {
 		return errors.WithStack(f.Sync())
 	}
 
-	// Note that syncTo will always be called with an offset < atomic.offset. The
-	// syncTo implementation may choose to sync the entire file (i.e. on OSes
-	// which do not support syncing a portion of the file). The syncTo
-	// implementation must call ratchetSyncOffset with as much of the file as it
-	// has synced.
-	return errors.WithStack(f.syncTo(syncToOffset))
+	// Note that SyncTo will always be called with an offset < atomic.offset.
+	// The SyncTo implementation may choose to sync the entire file (i.e. on
+	// OSes which do not support syncing a portion of the file).
+	fullSync, err := f.SyncTo(syncToOffset)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	if fullSync {
+		f.ratchetSyncOffset(offset)
+	} else {
+		f.ratchetSyncOffset(syncToOffset)
+	}
+	return nil
 }
 
 func (f *syncingFile) Close() error {
 	// Sync any data that has been written but not yet synced unless the file
 	// has noSyncOnClose option explicitly set.
-	// Note that if SyncFileRange was used, atomic.syncOffset will be less than
-	// atomic.offset. See syncingFile.syncToRange.
-	f.closing = true
-	if !f.noSyncOnClose || f.useSyncRange {
-		if atomic.LoadInt64(&f.atomic.offset) > atomic.LoadInt64(&f.atomic.syncOffset) {
-			if err := f.Sync(); err != nil {
-				return errors.WithStack(err)
+	//
+	// NB: If the file is capable of non-durability-guarantee SyncTos, and the
+	// caller has not called Sync since the last write, syncOffset is guaranteed
+	// to be less than atomic.offset. This ensures we fall into the below
+	// conditional and perform a full sync to durably persist the file.
+	if off := atomic.LoadInt64(&f.atomic.offset); off > atomic.LoadInt64(&f.atomic.syncOffset) {
+		// There's still remaining dirty data.
+
+		if f.noSyncOnClose {
+			// If NoSyncOnClose is set, only perform a SyncTo. On linux, SyncTo
+			// translates to a non-blocking `sync_file_range` call which
+			// provides no persistence guarantee. Since it's non-blocking,
+			// there's no latency hit of a blocking sync call, but we still
+			// ensure we're not allowing significant dirty data to accumulate.
+			if _, err := f.File.SyncTo(off); err != nil {
+				return err
 			}
+			f.ratchetSyncOffset(off)
+		} else if err := f.Sync(); err != nil {
+			return errors.WithStack(err)
 		}
 	}
 	return errors.WithStack(f.File.Close())
+}
+
+// NewSyncingFS wraps a vfs.FS with one that wraps newly created files with
+// vfs.NewSyncingFile.
+func NewSyncingFS(fs FS, syncOpts SyncingFileOptions) FS {
+	return &syncingFS{
+		FS:       fs,
+		syncOpts: syncOpts,
+	}
+}
+
+type syncingFS struct {
+	FS
+	syncOpts SyncingFileOptions
+}
+
+var _ FS = (*syncingFS)(nil)
+
+func (fs *syncingFS) Create(name string) (File, error) {
+	f, err := fs.FS.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	return NewSyncingFile(f, fs.syncOpts), nil
+}
+
+func (fs *syncingFS) ReuseForWrite(oldname, newname string) (File, error) {
+	// TODO(radu): implement this if needed.
+	panic("unimplemented")
 }

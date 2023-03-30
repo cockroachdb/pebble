@@ -125,12 +125,12 @@ marked-file-count
 disable-automatic-compactions false
 ----
 
-ratchet-format-major-version 011
+ratchet-format-major-version 014
 ----
 
 format-major-version
 ----
-011
+014
 
 min-table-format
 ----
@@ -138,7 +138,7 @@ min-table-format
 
 max-table-format
 ----
-(Pebble,v2)
+(Pebble,v3)
 
 marked-file-count
 ----

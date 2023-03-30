@@ -27,6 +27,17 @@ test:
 testrace: testflags += -race -timeout 20m
 testrace: test
 
+testasan: testflags += -asan -timeout 20m
+testasan: test
+
+testmsan: export CC=clang
+testmsan: testflags += -msan -timeout 20m
+testmsan: test
+
+.PHONY: lint
+lint:
+	${GO} test -tags '$(TAGS)' ${testflags} -run ${TESTS} ./internal/lint
+
 .PHONY: stress stressrace
 stressrace: testflags += -race
 stress stressrace: testflags += -exec 'stress ${STRESSFLAGS}' -timeout 0 -test.v
@@ -48,7 +59,7 @@ crossversion-meta:
 
 .PHONY: stress-crossversion
 stress-crossversion:
-	STRESS=1 ./scripts/run-crossversion-meta.sh crl-release-21.2 crl-release-22.1 crl-release-22.2 master
+	STRESS=1 ./scripts/run-crossversion-meta.sh crl-release-21.2 crl-release-22.1 crl-release-22.2 crl-release-23.1 master
 
 .PHONY: generate
 generate:
@@ -83,9 +94,7 @@ endif
 
 .PHONY: format
 format:
-	for _file in $$(gofmt -s -l .); do \
-		gofmt -s -w $$_file ; \
-	done
+	go install github.com/cockroachdb/crlfmt@latest && crlfmt -w -tab 2 .
 
 .PHONY: format-check
 format-check:

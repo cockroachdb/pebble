@@ -41,10 +41,10 @@ flush
 lsm
 ----
 0.1:
-  000009:[bar#3,DEL-zoo#72057594037927935,RANGEKEYSET]
+  000009:[bar#3,DEL-zoo#inf,RANGEKEYSET]
 0.0:
   000005:[bar#1,SET-bar#1,SET]
-  000007:[bax#2,RANGEKEYSET-zoo#72057594037927935,RANGEKEYSET]
+  000007:[bax#2,RANGEKEYSET-zoo#inf,RANGEKEYSET]
 
 # Assert that First correctly finds [bax,zoo), despite the discovery of
 # [foo,zoo) triggering the switch to combined iteration.
@@ -125,11 +125,11 @@ flush
 lsm
 ----
 0.1:
-  000013:[b#5,RANGEDEL-y#72057594037927935,RANGEDEL]
+  000013:[b#5,RANGEDEL-y#inf,RANGEDEL]
 0.0:
   000005:[a#1,SET-a#1,SET]
-  000009:[d#3,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
-  000011:[l#4,RANGEKEYSET-m#72057594037927935,RANGEKEYSET]
+  000009:[d#3,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000011:[l#4,RANGEKEYSET-m#inf,RANGEKEYSET]
   000007:[z#2,SET-z#2,SET]
 
 combined-iter
@@ -220,3 +220,60 @@ a: (a, .)
 using lazy iterator
 n: (., [m-z) @5=foo UPDATED)
 using combined (non-lazy) iterator
+
+# Regression tests for #2210 metamorphic test failure.
+#
+# Lazy-combined iteration depends on individual point level iterators triggering
+# a switch to combined iteration when they observe a file containing relevant
+# range keys. Previously, this switch did not happen if the observed range
+# keys all lied outside the current iteration prefix.
+#
+# This made it possible for a level to become positioned beyond the file
+# containing range keys, without ever triggering the switch to combined
+# iteration. A subsequent seek that made use of the TrySeekUsingNext
+# optimization would never observe the file containing range keys, and omit the
+# range keys.
+
+define
+L6
+  bax.DEL.9:
+L6
+  rangekey:c-d:{(#0,RANGEKEYSET,@1,foo)}
+L6
+  d@2.SET.2:v
+----
+6:
+  000004:[bax#9,DEL-bax#9,DEL]
+  000005:[c#0,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000006:[d@2#2,SET-d@2#2,SET]
+
+combined-iter
+seek-prefix-ge bax
+seek-prefix-ge cat
+----
+.
+cat: (., [cat-"cat\x00") @1=foo UPDATED)
+
+# Another regression test for the #2210 metamorphic test failure, this one using
+# a MERGE key to force the Iterator to step the internal iterator beyond the
+# range key file.
+
+define
+L6
+  bax.MERGE.9:v
+L6
+  rangekey:c-d:{(#0,RANGEKEYSET,@1,foo)}
+L6
+  d@2.SET.2:v
+----
+6:
+  000004:[bax#9,MERGE-bax#9,MERGE]
+  000005:[c#0,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000006:[d@2#2,SET-d@2#2,SET]
+
+combined-iter
+seek-prefix-ge bax
+seek-prefix-ge cat
+----
+bax: (v, .)
+cat: (., [cat-"cat\x00") @1=foo UPDATED)

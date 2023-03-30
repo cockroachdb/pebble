@@ -18,12 +18,14 @@ import (
 // longer lifetimes but implementations need only guarantee stability until the
 // next positioning method.
 type FragmentIterator interface {
-	// SeekGE moves the iterator to the first span whose start key is greater
-	// than or equal to the given key.
+	// SeekGE moves the iterator to the first span covering a key greater than
+	// or equal to the given key. This is equivalent to seeking to the first
+	// span with an end key greater than the given key.
 	SeekGE(key []byte) *Span
 
-	// SeekLT moves the iterator to the last span whose start key is less than
-	// the given key.
+	// SeekLT moves the iterator to the last span covering a key less than the
+	// given key. This is equivalent to seeking to the last span with a start
+	// key less than the given key.
 	SeekLT(key []byte) *Span
 
 	// First moves the iterator to the first span.
@@ -58,7 +60,8 @@ type FragmentIterator interface {
 	Close() error
 }
 
-// TableNewSpanIter creates a new iterator for spans for the given file.
+// TableNewSpanIter creates a new iterator for range key spans for the given
+// file.
 type TableNewSpanIter func(file *manifest.FileMetadata, iterOptions *SpanIterOptions) (FragmentIterator, error)
 
 // SpanIterOptions is a subset of IterOptions that are necessary to instantiate
@@ -104,6 +107,9 @@ func (i *Iter) Init(cmp base.Compare, spans []Span) {
 func (i *Iter) SeekGE(key []byte) *Span {
 	// NB: manually inlined sort.Search is ~5% faster.
 	//
+	// Define f(j) = false iff the span i.spans[j] is strictly before `key`
+	// (equivalently, i.spans[j].End ≤ key.)
+	//
 	// Define f(-1) == false and f(n) == true.
 	// Invariant: f(index-1) == false, f(upper) == true.
 	i.index = 0
@@ -111,12 +117,13 @@ func (i *Iter) SeekGE(key []byte) *Span {
 	for i.index < upper {
 		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
 		// i.index ≤ h < upper
-		if i.cmp(key, i.spans[h].Start) > 0 {
+		if i.cmp(key, i.spans[h].End) >= 0 {
 			i.index = h + 1 // preserves f(i-1) == false
 		} else {
 			upper = h // preserves f(j) == true
 		}
 	}
+
 	// i.index == upper, f(i.index-1) == false, and f(upper) (= f(i.index)) ==
 	// true => answer is i.index.
 	if i.index >= len(i.spans) {

@@ -49,6 +49,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
 		base.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 	)
+	m1.InitPhysicalBacking()
 
 	m2 := (&FileMetadata{
 		FileNum:             806,
@@ -62,6 +63,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
 		base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 	)
+	m2.InitPhysicalBacking()
 
 	m3 := (&FileMetadata{
 		FileNum:      807,
@@ -72,6 +74,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		base.MakeInternalKey([]byte("aaa"), 0, base.InternalKeyKindRangeKeySet),
 		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("zzz")),
 	)
+	m3.InitPhysicalBacking()
 
 	m4 := (&FileMetadata{
 		FileNum:        809,
@@ -88,6 +91,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
 		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
 	)
+	m4.InitPhysicalBacking()
 
 	testCases := []VersionEdit{
 		// An empty version edit.
@@ -148,6 +152,7 @@ func TestVersionEditDecode(t *testing.T) {
 		base.MakeInternalKey([]byte("bar"), 5, base.InternalKeyKindDelete),
 		base.MakeInternalKey([]byte("foo"), 4, base.InternalKeyKindSet),
 	)
+	m.InitPhysicalBacking()
 
 	testCases := []struct {
 		filename     string
@@ -312,9 +317,11 @@ func TestVersionEditApply(t *testing.T) {
 		if m.SmallestSeqNum > m.LargestSeqNum {
 			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
 		}
+		m.InitPhysicalBacking()
 		return m, nil
 	}
 
+	// TODO(bananabrick): Improve the parsing logic in this test.
 	datadriven.RunTest(t, "testdata/version_edit_apply",
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
@@ -323,7 +330,7 @@ func TestVersionEditApply(t *testing.T) {
 				// avoid repeating it, and make it the inverse of
 				// Version.DebugString().
 				var v *Version
-				ve := &VersionEdit{}
+				var veList []*VersionEdit
 				isVersion := true
 				isDelete := true
 				var level int
@@ -334,6 +341,7 @@ func TestVersionEditApply(t *testing.T) {
 					switch data {
 					case "edit":
 						isVersion = false
+						veList = append(veList, &VersionEdit{})
 					case "delete":
 						isVersion = false
 						isDelete = true
@@ -346,6 +354,10 @@ func TestVersionEditApply(t *testing.T) {
 							return err.Error()
 						}
 					default:
+						var ve *VersionEdit
+						if len(veList) > 0 {
+							ve = veList[len(veList)-1]
+						}
 						if isVersion || !isDelete {
 							meta, err := parseMeta(data)
 							if err != nil {
@@ -359,7 +371,8 @@ func TestVersionEditApply(t *testing.T) {
 									}
 								}
 								versionFiles[meta.FileNum] = &meta
-								v.Levels[level].tree.insert(&meta)
+								v.Levels[level].tree.Insert(&meta)
+								meta.LatestRef()
 							} else {
 								ve.NewFiles =
 									append(ve.NewFiles, NewFileEntry{Level: level, Meta: &meta})
@@ -386,21 +399,28 @@ func TestVersionEditApply(t *testing.T) {
 
 				bve := BulkVersionEdit{}
 				bve.AddedByFileNum = make(map[base.FileNum]*FileMetadata)
-				if err := bve.Accumulate(ve); err != nil {
-					return err.Error()
+				for _, ve := range veList {
+					if err := bve.Accumulate(ve); err != nil {
+						return err.Error()
+					}
 				}
-				newv, zombies, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000)
+				zombies := make(map[base.FileNum]uint64)
+				newv, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000, zombies)
 				if err != nil {
 					return err.Error()
 				}
 
 				zombieFileNums := make([]base.FileNum, 0, len(zombies))
-				for fileNum := range zombies {
-					zombieFileNums = append(zombieFileNums, fileNum)
+				if len(veList) == 1 {
+					// Only care about zombies if a single version edit was
+					// being applied.
+					for fileNum := range zombies {
+						zombieFileNums = append(zombieFileNums, fileNum)
+					}
+					sort.Slice(zombieFileNums, func(i, j int) bool {
+						return zombieFileNums[i] < zombieFileNums[j]
+					})
 				}
-				sort.Slice(zombieFileNums, func(i, j int) bool {
-					return zombieFileNums[i] < zombieFileNums[j]
-				})
 
 				return fmt.Sprintf("%szombies %d\n", newv, zombieFileNums)
 

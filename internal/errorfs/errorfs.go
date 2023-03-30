@@ -47,6 +47,8 @@ const (
 	OpLock
 	// OpList describes a list directory operation.
 	OpList
+	// OpFilePreallocate describes a file preallocate operation.
+	OpFilePreallocate
 	// OpStat describes a path-based stat operation.
 	OpStat
 	// OpGetDiskUsage describes a disk usage operation.
@@ -72,7 +74,7 @@ func (o Op) OpKind() OpKind {
 	switch o {
 	case OpOpen, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat:
 		return OpKindRead
-	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForRewrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileSync, OpFileFlush:
+	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForRewrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileSync, OpFileFlush, OpFilePreallocate:
 		return OpKindWrite
 	default:
 		panic(fmt.Sprintf("unrecognized op %v\n", o))
@@ -363,9 +365,35 @@ func (f *errorFile) Stat() (os.FileInfo, error) {
 	return f.file.Stat()
 }
 
+func (f *errorFile) Prefetch(offset, length int64) error {
+	// TODO(radu): Consider error injection.
+	return f.file.Prefetch(offset, length)
+}
+
+func (f *errorFile) Preallocate(offset, length int64) error {
+	if err := f.inj.MaybeError(OpFilePreallocate, f.path); err != nil {
+		return err
+	}
+	return f.file.Preallocate(offset, length)
+}
+
 func (f *errorFile) Sync() error {
 	if err := f.inj.MaybeError(OpFileSync, f.path); err != nil {
 		return err
 	}
 	return f.file.Sync()
+}
+
+func (f *errorFile) SyncData() error {
+	// TODO(jackson): Consider error injection.
+	return f.file.SyncData()
+}
+
+func (f *errorFile) SyncTo(length int64) (fullSync bool, err error) {
+	// TODO(jackson): Consider error injection.
+	return f.file.SyncTo(length)
+}
+
+func (f *errorFile) Fd() uintptr {
+	return f.file.Fd()
 }

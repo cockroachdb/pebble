@@ -7,9 +7,11 @@ package pebble
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +21,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -159,12 +163,18 @@ func newTableCacheContainerTest(
 	fs := &tableCacheTestFS{
 		FS: vfs.NewMem(),
 	}
+	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, dirname))
+	if err != nil {
+		return nil, nil, err
+	}
+	defer objProvider.Close()
+
 	for i := 0; i < tableCacheTestNumTables; i++ {
-		f, err := fs.Create(base.MakeFilepath(fs, dirname, fileTypeTable, FileNum(i)))
+		w, _, err := objProvider.Create(context.Background(), fileTypeTable, FileNum(i), objstorage.CreateOptions{})
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
-		tw := sstable.NewWriter(f, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
+		tw := sstable.NewWriter(w, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
 		ik := base.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Add(ik, xxx[:i]); err != nil {
 			return nil, nil, errors.Wrap(err, "tw.Set")
@@ -191,7 +201,7 @@ func newTableCacheContainerTest(
 		opts.Cache = tc.cache
 	}
 
-	c := newTableCacheContainer(tc, opts.Cache.NewID(), dirname, fs, opts, tableCacheTestCacheSize)
+	c := newTableCacheContainer(tc, opts.Cache.NewID(), objProvider, opts, tableCacheTestCacheSize)
 	return c, fs, nil
 }
 
@@ -442,10 +452,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Lock()
 			fileNum, sleepTime := rng.Intn(tableCacheTestNumTables), rng.Intn(1000)
 			rngMu.Unlock()
-			iter, _, err := c.newIters(
-				&fileMetadata{FileNum: FileNum(fileNum)},
-				nil, /* iter options */
-				internalIterOpts{})
+			iter, _, err := c.newIters(context.Background(), &fileMetadata{FileNum: FileNum(fileNum)}, nil, internalIterOpts{})
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
@@ -509,10 +516,7 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 					&fileMetadata{FileNum: FileNum(j)},
 					nil /* iter options */)
 			} else {
-				iter, _, err = c.newIters(
-					&fileMetadata{FileNum: FileNum(j)},
-					nil, /* iter options */
-					internalIterOpts{})
+				iter, _, err = c.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 			}
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -556,17 +560,11 @@ func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
-			iter1, _, err := c1.newIters(
-				&fileMetadata{FileNum: FileNum(j)},
-				nil, /* iter options */
-				internalIterOpts{})
+			iter1, _, err := c1.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
-			iter2, _, err := c2.newIters(
-				&fileMetadata{FileNum: FileNum(j)},
-				nil, /* iter options */
-				internalIterOpts{})
+			iter2, _, err := c2.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
@@ -617,10 +615,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 				&fileMetadata{FileNum: FileNum(j)},
 				nil /* iter options */)
 		} else {
-			iter, _, err = c.newIters(
-				&fileMetadata{FileNum: FileNum(j)},
-				nil, /* iter options */
-				internalIterOpts{})
+			iter, _, err = c.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 		}
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -679,18 +674,12 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 	for i := 0; i < N; i++ {
 		j := rng.Intn(tableCacheTestNumTables)
-		iter1, _, err := c1.newIters(
-			&fileMetadata{FileNum: FileNum(j)},
-			nil, /* iter options */
-			internalIterOpts{})
+		iter1, _, err := c1.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
 
-		iter2, _, err := c2.newIters(
-			&fileMetadata{FileNum: FileNum(j)},
-			nil, /* iter options */
-			internalIterOpts{})
+		iter2, _, err := c2.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
@@ -749,10 +738,7 @@ func TestTableCacheIterLeak(t *testing.T) {
 	c, _, err := newTableCacheContainerTest(nil, "")
 	require.NoError(t, err)
 
-	iter, _, err := c.newIters(
-		&fileMetadata{FileNum: 0},
-		nil, /* iter options */
-		internalIterOpts{})
+	iter, _, err := c.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c.close(); err == nil {
@@ -775,10 +761,7 @@ func TestSharedTableCacheIterLeak(t *testing.T) {
 	require.NoError(t, err)
 	tc.Unref()
 
-	iter, _, err := c1.newIters(
-		&fileMetadata{FileNum: 0},
-		nil, /* iter options */
-		internalIterOpts{})
+	iter, _, err := c1.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c1.close(); err == nil {
@@ -812,18 +795,12 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	fs.setOpenError(true /* enabled */)
-	if _, _, err := c.newIters(
-		&fileMetadata{FileNum: 0},
-		nil, /* iter options */
-		internalIterOpts{}); err == nil {
+	if _, _, err := c.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
 	fs.setOpenError(false /* enabled */)
 	var iter internalIterator
-	iter, _, err = c.newIters(
-		&fileMetadata{FileNum: 0},
-		nil, /* iter options */
-		internalIterOpts{})
+	iter, _, err = c.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{})
 	require.NoError(t, err)
 	require.NoError(t, iter.Close())
 	fs.validate(t, c, nil)
@@ -863,9 +840,13 @@ func TestTableCacheClockPro(t *testing.T) {
 	require.NoError(t, err)
 
 	mem := vfs.NewMem()
+	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, ""))
+	require.NoError(t, err)
+	defer objProvider.Close()
+
 	makeTable := func(fileNum FileNum) {
 		require.NoError(t, err)
-		f, err := mem.Create(base.MakeFilepath(mem, "", fileTypeTable, fileNum))
+		f, _, err := objProvider.Create(context.Background(), fileTypeTable, fileNum, objstorage.CreateOptions{})
 		require.NoError(t, err)
 		w := sstable.NewWriter(f, sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("a"), nil))
@@ -882,10 +863,9 @@ func TestTableCacheClockPro(t *testing.T) {
 	// NB: The table cache size of 200 is required for the expected test values.
 	cache.init(200)
 	dbOpts := &tableCacheOpts{}
-	dbOpts.logger = opts.Logger
+	dbOpts.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
 	dbOpts.cacheID = 0
-	dbOpts.dirname = ""
-	dbOpts.fs = mem
+	dbOpts.objProvider = objProvider
 	dbOpts.opts = opts.MakeReaderOptions()
 
 	scanner := bufio.NewScanner(f)
@@ -916,4 +896,56 @@ func TestTableCacheClockPro(t *testing.T) {
 		}
 		line++
 	}
+}
+
+// TestTableCacheNoSuchFileError verifies that when the table cache hits a "no
+// such file" error, it generates a useful fatal message.
+func TestTableCacheNoSuchFileError(t *testing.T) {
+	const dirname = "test"
+	mem := vfs.NewMem()
+	logger := &catchFatalLogger{}
+
+	d, err := Open(dirname, &Options{
+		FS:     mem,
+		Logger: logger,
+	})
+	require.NoError(t, err)
+	defer func() { _ = d.Close() }()
+	require.NoError(t, d.Set([]byte("a"), []byte("val_a"), nil))
+	require.NoError(t, d.Set([]byte("b"), []byte("val_b"), nil))
+	require.NoError(t, d.Flush())
+	ls, err := mem.List(dirname)
+	require.NoError(t, err)
+
+	// Find the sst file.
+	var sst string
+	for _, file := range ls {
+		if strings.HasSuffix(file, ".sst") {
+			if sst != "" {
+				t.Fatalf("multiple SSTs found: %s, %s", sst, file)
+			}
+			sst = file
+		}
+	}
+	if sst == "" {
+		t.Fatalf("no SST found after flush")
+	}
+	require.NoError(t, mem.Remove(path.Join(dirname, sst)))
+
+	_, _, _ = d.Get([]byte("a"))
+	require.NotZero(t, len(logger.fatalMsgs), "no fatal message emitted")
+	require.Equal(t, 1, len(logger.fatalMsgs), "expected one fatal message; got: %v", logger.fatalMsgs)
+	require.Contains(t, logger.fatalMsgs[0], "directory contains 6 files, 0 unknown, 0 tables, 2 logs, 1 manifests")
+}
+
+type catchFatalLogger struct {
+	fatalMsgs []string
+}
+
+var _ Logger = (*catchFatalLogger)(nil)
+
+func (tl *catchFatalLogger) Infof(format string, args ...interface{}) {}
+
+func (tl *catchFatalLogger) Fatalf(format string, args ...interface{}) {
+	tl.fatalMsgs = append(tl.fatalMsgs, fmt.Sprintf(format, args...))
 }

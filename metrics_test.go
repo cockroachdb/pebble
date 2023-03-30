@@ -6,10 +6,13 @@ package pebble
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 	"github.com/stretchr/testify/require"
@@ -33,6 +36,9 @@ func TestMetricsFormat(t *testing.T) {
 	m.Compact.InProgressBytes = 7
 	m.Compact.NumInProgress = 2
 	m.Flush.Count = 8
+	m.Flush.AsIngestBytes = 34
+	m.Flush.AsIngestTableCount = 35
+	m.Flush.AsIngestCount = 36
 	m.Filter.Hits = 9
 	m.Filter.Misses = 10
 	m.MemTable.Size = 11
@@ -84,8 +90,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5       601   602 B  603.00   604 B   604 B     612   606 B     613   1.2 K   1.2 K   607 B       6     2.0
       6       701   702 B       -   704 B   704 B     712   706 B     713   1.4 K   1.4 K   707 B       7     2.0
   total      2807   2.7 K       -   2.8 K   2.8 K   2.9 K   2.8 K   2.9 K   8.4 K   5.7 K   2.8 K      28     3.0
-  flush         8
-compact         5     6 B     7 B       2          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  flush         8                            34 B      35      36  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         5     6 B     7 B       2                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype        27      28      29      30      31      32      33  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl        12    11 B
 zmemtbl        14    13 B
@@ -103,14 +109,22 @@ zmemtbl        14    13 B
 
 func TestMetrics(t *testing.T) {
 	opts := &Options{
+		Comparer:              testkeys.Comparer,
+		FormatMajorVersion:    FormatNewest,
 		FS:                    vfs.NewMem(),
 		L0CompactionThreshold: 8,
 	}
+	opts.Experimental.EnableValueBlocks = func() bool { return true }
+	opts.Levels = append(opts.Levels, LevelOptions{TargetFileSize: 50})
 
 	// Prevent foreground flushes and compactions from triggering asynchronous
 	// follow-up compactions. This avoids asynchronously-scheduled work from
 	// interfering with the expected metrics output and reduces test flakiness.
 	opts.DisableAutomaticCompactions = true
+
+	// Increase the threshold for memtable stalls to allow for more flushable
+	// ingests.
+	opts.MemTableStopWritesThreshold = 4
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -135,6 +149,12 @@ func TestMetrics(t *testing.T) {
 			b.Commit(nil)
 			return ""
 
+		case "build":
+			if err := runBuildCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return ""
+
 		case "compact":
 			if err := runCompactCmd(td, d); err != nil {
 				return err.Error()
@@ -145,6 +165,19 @@ func TestMetrics(t *testing.T) {
 			d.mu.Unlock()
 			return s
 
+		case "delay-flush":
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			switch td.Input {
+			case "enable":
+				d.mu.compact.flushing = true
+			case "disable":
+				d.mu.compact.flushing = false
+			default:
+				return fmt.Sprintf("unknown directive %q (expected 'enable'/'disable')", td.Input)
+			}
+			return ""
+
 		case "flush":
 			if err := d.Flush(); err != nil {
 				return err.Error()
@@ -154,6 +187,12 @@ func TestMetrics(t *testing.T) {
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			return s
+
+		case "ingest":
+			if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return ""
 
 		case "iter-close":
 			if len(td.CmdArgs) != 1 {
@@ -209,6 +248,25 @@ func TestMetrics(t *testing.T) {
 		case "disk-usage":
 			return humanize.IEC.Uint64(d.Metrics().DiskSpaceUsage()).String()
 
+		case "additional-metrics":
+			// The asynchronous loading of table stats can change metrics, so
+			// wait for all the tables' stats to be loaded.
+			d.mu.Lock()
+			d.waitTableStats()
+			d.mu.Unlock()
+
+			m := d.Metrics()
+			var b strings.Builder
+			fmt.Fprintf(&b, "block bytes written:\n")
+			fmt.Fprintf(&b, " __level___data-block__value-block\n")
+			for i := range m.Levels {
+				fmt.Fprintf(&b, "%7d ", i)
+				fmt.Fprintf(&b, "%12s %12s\n",
+					humanize.IEC.Uint64(m.Levels[i].Additional.BytesWrittenDataBlocks),
+					humanize.IEC.Uint64(m.Levels[i].Additional.BytesWrittenValueBlocks))
+			}
+			return b.String()
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
@@ -227,8 +285,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   total         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  flush         0
-compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  flush         0                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         0     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         0     0 B
 zmemtbl         0     0 B
@@ -244,4 +302,23 @@ zmemtbl         0     0 B
 	if s := "\n" + got; expected != s {
 		t.Fatalf("expected%s\nbut found%s", expected, s)
 	}
+}
+
+func TestMetricsWAmpDisableWAL(t *testing.T) {
+	d, err := Open("", &Options{FS: vfs.NewMem(), DisableWAL: true})
+	require.NoError(t, err)
+	ks := testkeys.Alpha(2)
+	wo := WriteOptions{Sync: false}
+	for i := 0; i < 5; i++ {
+		v := []byte(strconv.Itoa(i))
+		for j := 0; j < ks.Count(); j++ {
+			require.NoError(t, d.Set(testkeys.Key(ks, j), v, &wo))
+		}
+		require.NoError(t, d.Flush())
+		require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+	}
+	m := d.Metrics()
+	tot := m.Total()
+	require.Greater(t, tot.WriteAmp(), 1.0)
+	require.NoError(t, d.Close())
 }

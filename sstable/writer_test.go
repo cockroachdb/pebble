@@ -21,6 +21,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -278,7 +280,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			}
 			var buf bytes.Buffer
 			l.Describe(&buf, true, r, func(key *base.InternalKey, value []byte) {
-				fmt.Fprintf(&buf, "%s:%s", key.String(), string(value))
+				fmt.Fprintf(&buf, "  %s:%s\n", key.String(), string(value))
 			})
 			return buf.String()
 
@@ -474,7 +476,7 @@ func TestParallelWriterErrorProp(t *testing.T) {
 		TableFormat: TableFormatPebblev1, BlockSize: 1, Parallelism: true,
 	}
 
-	w := NewWriter(f, opts)
+	w := NewWriter(objstorageprovider.NewFileWritable(f), opts)
 	// Directly testing this, because it's difficult to get the Writer to
 	// encounter an error, precisely when the writeQueue is doing block writes.
 	w.coordination.writeQueue.err = errors.New("write queue write error")
@@ -566,7 +568,7 @@ func TestWriterClearCache(t *testing.T) {
 		f, err := mem.Create(name)
 		require.NoError(t, err)
 
-		w := NewWriter(f, writerOpts, cacheOpts)
+		w := NewWriter(objstorageprovider.NewFileWritable(f), writerOpts, cacheOpts)
 		require.NoError(t, w.Set([]byte("hello"), []byte("world")))
 		require.NoError(t, w.Set([]byte("hello@42"), []byte("world@42")))
 		require.NoError(t, w.Set([]byte("hello@5"), []byte("world@5")))
@@ -580,7 +582,7 @@ func TestWriterClearCache(t *testing.T) {
 	f, err := mem.Open("test")
 	require.NoError(t, err)
 
-	r, err := NewReader(f, opts)
+	r, err := newReader(f, opts)
 	require.NoError(t, err)
 
 	layout, err := r.Layout()
@@ -628,18 +630,20 @@ func TestWriterClearCache(t *testing.T) {
 	require.NoError(t, r.Close())
 }
 
-type discardFile struct{ wrote int64 }
+type discardFile struct {
+	wrote int64
+}
 
-func (f discardFile) Close() error {
+var _ objstorage.Writable = (*discardFile)(nil)
+
+func (f *discardFile) Finish() error {
 	return nil
 }
 
-func (f *discardFile) Write(p []byte) (int, error) {
-	f.wrote += int64(len(p))
-	return len(p), nil
-}
+func (f *discardFile) Abort() {}
 
-func (f discardFile) Sync() error {
+func (f *discardFile) Write(p []byte) error {
+	f.wrote += int64(len(p))
 	return nil
 }
 
@@ -715,7 +719,7 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 			f, err := fs.Create("test")
 			require.NoError(t, err)
 
-			w := NewWriter(f, WriterOptions{
+			w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
 				BlockSize: 1,
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					func() BlockPropertyCollector {
@@ -807,7 +811,7 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 						tc.configureFn(&opts)
 					}
 
-					w := NewWriter(f, opts)
+					w := NewWriter(objstorageprovider.NewFileWritable(f), opts)
 					if tc.writeFn != nil {
 						err = tc.writeFn(w)
 						require.NoError(t, err)
@@ -863,7 +867,7 @@ func TestWriterRace(t *testing.T) {
 			}
 			require.NoError(t, w.Close())
 			require.Equal(t, w.meta.LargestPoint.UserKey, keys[len(keys)-1])
-			r, err := NewMemReader(f.Bytes(), readerOpts)
+			r, err := NewMemReader(f.Data(), readerOpts)
 			require.NoError(t, err)
 			defer r.Close()
 			it, err := r.NewIter(nil, nil)
@@ -893,7 +897,11 @@ func BenchmarkWriter(b *testing.B) {
 		binary.BigEndian.PutUint64(key[16:], uint64(i))
 		keys[i] = key
 	}
-	runWriterBench(b, keys, nil, TableFormatPebblev2)
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
+			runWriterBench(b, keys, nil, format)
+		})
+	}
 }
 
 func BenchmarkWriterWithVersions(b *testing.B) {
@@ -904,13 +912,25 @@ func BenchmarkWriterWithVersions(b *testing.B) {
 		key := keySlab[i*keyLen : i*keyLen+keyLen]
 		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
 		binary.BigEndian.PutUint64(key[8:16], 456)
-		binary.BigEndian.PutUint64(key[16:], uint64(i/2))
+		// @ is ascii value 64. Placing any byte with value 64 in these 8 bytes
+		// will confuse testkeys.Comparer, when we pass it a key after splitting
+		// of the suffix, since Comparer thinks this prefix is also a key with a
+		// suffix. Hence, we print as a base 10 string.
+		require.Equal(b, 8, copy(key[16:], fmt.Sprintf("%8d", i/2)))
 		key[24] = '@'
 		// Ascii representation of single digit integer 2-(i%2).
 		key[25] = byte(48 + 2 - (i % 2))
 		keys[i] = key
 	}
-	runWriterBench(b, keys, testkeys.Comparer, TableFormatPebblev2)
+	// TableFormatPebblev3 can sometimes be ~50% slower than
+	// TableFormatPebblev2, since testkeys.Compare is expensive (mainly due to
+	// split) and with v3 we have to call it twice for 50% of the Set calls,
+	// since they have the same prefix as the preceding key.
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
+			runWriterBench(b, keys, testkeys.Comparer, format)
+		})
+	}
 }
 
 func runWriterBench(b *testing.B, keys [][]byte, comparer *base.Comparer, format TableFormat) {

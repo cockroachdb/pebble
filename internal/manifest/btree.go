@@ -12,6 +12,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // The Annotator type defined below is used by other packages to lazily
@@ -110,7 +111,16 @@ type leafNode struct {
 	ref   int32
 	count int16
 	leaf  bool
-	items [maxItems]*FileMetadata
+	// subtreeCount holds the count of files in the entire subtree formed by
+	// this node. For leaf nodes, subtreeCount is always equal to count. For
+	// non-leaf nodes, it's the sum of count plus all the children's
+	// subtreeCounts.
+	//
+	// NB: We could move this field to the end of the node struct, since leaf =>
+	// count=subtreeCount, however the unsafe casting [leafToNode] performs make
+	// it risky and cumbersome.
+	subtreeCount int
+	items        [maxItems]*FileMetadata
 	// annot contains one annotation per annotator, merged over the entire
 	// node's files (and all descendants for non-leaf nodes).
 	annot []annotation
@@ -167,7 +177,7 @@ func mut(n **node) *node {
 	// reference count to be greater than 1, we might be racing
 	// with another call to decRef on this node.
 	c := (*n).clone()
-	(*n).decRef(true /* recursive */, nil)
+	(*n).decRef(true /* contentsToo */, nil)
 	*n = c
 	// NB: We don't need to clear annotations, because (*node).clone does not
 	// copy them.
@@ -179,19 +189,25 @@ func (n *node) incRef() {
 	atomic.AddInt32(&n.ref, 1)
 }
 
-// decRef releases a reference to the node. If requested, the method
-// will recurse into child nodes and decrease their refcounts as well.
+// decRef releases a reference to the node. If requested, the method will unref
+// its items and recurse into child nodes and decrease their refcounts as well.
+// Some internal codepaths that manually copy the node's items or children to
+// new nodes pass contentsToo=false to preserve existing reference counts during
+// operations that should yield a net-zero change to descendant refcounts.
 // When a node is released, its contained files are dereferenced.
-func (n *node) decRef(recursive bool, obsolete *[]*FileMetadata) {
+func (n *node) decRef(contentsToo bool, obsolete *[]*FileMetadata) {
 	if atomic.AddInt32(&n.ref, -1) > 0 {
 		// Other references remain. Can't free.
 		return
 	}
 
-	// Dereference the node's metadata and release child references.
-	if recursive {
+	// Dereference the node's metadata and release child references if
+	// requested. Some internal callers may not want to propagate the deref
+	// because they're manually copying the filemetadata and children to other
+	// nodes, and they want to preserve the existing reference count.
+	if contentsToo {
 		for _, f := range n.items[:n.count] {
-			if atomic.AddInt32(&f.refs, -1) == 0 {
+			if f.Unref() == 0 {
 				// There are two sources of node dereferences: tree mutations
 				// and Version dereferences. Files should only be made obsolete
 				// during Version dereferences, during which `obsolete` will be
@@ -204,7 +220,7 @@ func (n *node) decRef(recursive bool, obsolete *[]*FileMetadata) {
 		}
 		if !n.leaf {
 			for i := int16(0); i <= n.count; i++ {
-				n.children[i].decRef(true /* recursive */, obsolete)
+				n.children[i].decRef(true /* contentsToo */, obsolete)
 			}
 		}
 	}
@@ -222,9 +238,10 @@ func (n *node) clone() *node {
 	// triggering the race detector and looking like a data race.
 	c.count = n.count
 	c.items = n.items
+	c.subtreeCount = n.subtreeCount
 	// Increase the refcount of each contained item.
 	for _, f := range n.items[:n.count] {
-		atomic.AddInt32(&f.refs, 1)
+		f.Ref()
 	}
 	if !c.leaf {
 		// Copy children and increase each refcount.
@@ -236,6 +253,9 @@ func (n *node) clone() *node {
 	return c
 }
 
+// insertAt inserts the provided file and node at the provided index. This
+// function is for use only as a helper function for internal B-Tree code.
+// Clients should not invoke it directly.
 func (n *node) insertAt(index int, item *FileMetadata, nd *node) {
 	if index < int(n.count) {
 		copy(n.items[index+1:n.count+1], n.items[index:n.count])
@@ -250,6 +270,9 @@ func (n *node) insertAt(index int, item *FileMetadata, nd *node) {
 	n.count++
 }
 
+// pushBack inserts the provided file and node at the tail of the node's items.
+// This function is for use only as a helper function for internal B-Tree code.
+// Clients should not invoke it directly.
 func (n *node) pushBack(item *FileMetadata, nd *node) {
 	n.items[n.count] = item
 	if !n.leaf {
@@ -258,6 +281,9 @@ func (n *node) pushBack(item *FileMetadata, nd *node) {
 	n.count++
 }
 
+// pushFront inserts the provided file and node at the head of the
+// node's items. This function is for use only as a helper function for internal B-Tree
+// code. Clients should not invoke it directly.
 func (n *node) pushFront(item *FileMetadata, nd *node) {
 	if !n.leaf {
 		copy(n.children[1:n.count+2], n.children[:n.count+1])
@@ -269,7 +295,8 @@ func (n *node) pushFront(item *FileMetadata, nd *node) {
 }
 
 // removeAt removes a value at a given index, pulling all subsequent values
-// back.
+// back. This function is for use only as a helper function for internal B-Tree
+// code. Clients should not invoke it directly.
 func (n *node) removeAt(index int) (*FileMetadata, *node) {
 	var child *node
 	if !n.leaf {
@@ -284,7 +311,9 @@ func (n *node) removeAt(index int) (*FileMetadata, *node) {
 	return out, child
 }
 
-// popBack removes and returns the last element in the list.
+// popBack removes and returns the last element in the list. This function is
+// for use only as a helper function for internal B-Tree code. Clients should
+// not invoke it directly.
 func (n *node) popBack() (*FileMetadata, *node) {
 	n.count--
 	out := n.items[n.count]
@@ -297,7 +326,9 @@ func (n *node) popBack() (*FileMetadata, *node) {
 	return out, child
 }
 
-// popFront removes and returns the first element in the list.
+// popFront removes and returns the first element in the list. This function is
+// for use only as a helper function for internal B-Tree code. Clients should
+// not invoke it directly.
 func (n *node) popFront() (*FileMetadata, *node) {
 	n.count--
 	var child *node
@@ -315,6 +346,9 @@ func (n *node) popFront() (*FileMetadata, *node) {
 // find returns the index where the given item should be inserted into this
 // list. 'found' is true if the item already exists in the list at the given
 // index.
+//
+// This function is for use only as a helper function for internal B-Tree code.
+// Clients should not invoke it directly.
 func (n *node) find(cmp btreeCmp, item *FileMetadata) (index int, found bool) {
 	// Logic copied from sort.Search. Inlining this gave
 	// an 11% speedup on BenchmarkBTreeDeleteInsert.
@@ -338,23 +372,34 @@ func (n *node) find(cmp btreeCmp, item *FileMetadata) (index int, found bool) {
 // and this function returns the item that existed at that index and a new
 // node containing all items/children after it.
 //
-// Before:
+// split is called when we want to perform a transformation like the one
+// depicted in the following diagram.
 //
-//          +-----------+
-//          |   x y z   |
-//          +--/-/-\-\--+
+//	Before:
+//	                       +-----------+
+//	             n *node   |   x y z   |
+//	                       +--/-/-\-\--+
 //
-// After:
+//	After:
+//	                       +-----------+
+//	                       |     y     |  n's parent
+//	                       +----/-\----+
+//	                           /   \
+//	                          v     v
+//	              +-----------+     +-----------+
+//	      n *node |         x |     | z         | next *node
+//	              +-----------+     +-----------+
 //
-//          +-----------+
-//          |     y     |
-//          +----/-\----+
-//              /   \
-//             v     v
-// +-----------+     +-----------+
-// |         x |     | z         |
-// +-----------+     +-----------+
+// split does not perform the complete transformation; the caller is responsible
+// for updating the parent appropriately. split splits `n` into two nodes, `n`
+// and `next`, returning `next` and the file that separates them. In the diagram
+// above, `n.split` removes y and z from `n`, returning y in the first return
+// value and `next` in the second return value. The caller is responsible for
+// updating n's parent to now contain `y` as the separator between nodes `n` and
+// `next`.
 //
+// This function is for use only as a helper function for internal B-Tree code.
+// Clients should not invoke it directly.
 func (n *node) split(i int) (*FileMetadata, *node) {
 	out := n.items[i]
 	var next *node
@@ -370,17 +415,27 @@ func (n *node) split(i int) (*FileMetadata, *node) {
 	}
 	if !n.leaf {
 		copy(next.children[:], n.children[i+1:n.count+1])
+		descendantsMoved := 0
 		for j := int16(i + 1); j <= n.count; j++ {
+			descendantsMoved += n.children[j].subtreeCount
 			n.children[j] = nil
 		}
+		n.subtreeCount -= descendantsMoved
+		next.subtreeCount += descendantsMoved
 	}
 	n.count = int16(i)
+	// NB: We subtract one more than `next.count` from n's subtreeCount because
+	// the item at index `i` was removed from `n.items`. We'll return the item
+	// at index `i`, and the caller is responsible for updating the subtree
+	// count of whichever node adopts it.
+	n.subtreeCount -= int(next.count) + 1
+	next.subtreeCount += int(next.count)
 	return out, next
 }
 
-// insert inserts a item into the subtree rooted at this node, making sure no
+// Insert inserts a item into the subtree rooted at this node, making sure no
 // nodes in the subtree exceed maxItems items.
-func (n *node) insert(cmp btreeCmp, item *FileMetadata) error {
+func (n *node) Insert(cmp btreeCmp, item *FileMetadata) error {
 	i, found := n.find(cmp, item)
 	if found {
 		// cmp provides a total ordering of the files within a level.
@@ -391,6 +446,7 @@ func (n *node) insert(cmp btreeCmp, item *FileMetadata) error {
 	}
 	if n.leaf {
 		n.insertAt(i, item, nil)
+		n.subtreeCount++
 		return nil
 	}
 	if n.children[i].count >= maxItems {
@@ -410,14 +466,21 @@ func (n *node) insert(cmp btreeCmp, item *FileMetadata) error {
 				errors.Safe(item.FileNum), errors.Safe(n.items[i].FileNum))
 		}
 	}
-	return mut(&n.children[i]).insert(cmp, item)
+
+	err := mut(&n.children[i]).Insert(cmp, item)
+	if err == nil {
+		n.subtreeCount++
+	}
+	return err
 }
 
-// removeMax removes and returns the maximum item from the subtree rooted
-// at this node.
+// removeMax removes and returns the maximum item from the subtree rooted at
+// this node. This function is for use only as a helper function for internal
+// B-Tree code. Clients should not invoke it directly.
 func (n *node) removeMax() *FileMetadata {
 	if n.leaf {
 		n.count--
+		n.subtreeCount--
 		out := n.items[n.count]
 		n.items[n.count] = nil
 		return out
@@ -427,16 +490,18 @@ func (n *node) removeMax() *FileMetadata {
 		n.rebalanceOrMerge(int(n.count))
 		return n.removeMax()
 	}
+	n.subtreeCount--
 	return child.removeMax()
 }
 
-// remove removes a item from the subtree rooted at this node. Returns
+// Remove removes a item from the subtree rooted at this node. Returns
 // the item that was removed or nil if no matching item was found.
-func (n *node) remove(cmp btreeCmp, item *FileMetadata) (out *FileMetadata) {
+func (n *node) Remove(cmp btreeCmp, item *FileMetadata) (out *FileMetadata) {
 	i, found := n.find(cmp, item)
 	if n.leaf {
 		if found {
 			out, _ = n.removeAt(i)
+			n.subtreeCount--
 			return out
 		}
 		return nil
@@ -444,22 +509,28 @@ func (n *node) remove(cmp btreeCmp, item *FileMetadata) (out *FileMetadata) {
 	if n.children[i].count <= minItems {
 		// Child not large enough to remove from.
 		n.rebalanceOrMerge(i)
-		return n.remove(cmp, item)
+		return n.Remove(cmp, item)
 	}
 	child := mut(&n.children[i])
 	if found {
 		// Replace the item being removed with the max item in our left child.
 		out = n.items[i]
 		n.items[i] = child.removeMax()
+		n.subtreeCount--
 		return out
 	}
-	// Latch is not in this node and child is large enough to remove from.
-	out = child.remove(cmp, item)
+	// File is not in this node and child is large enough to remove from.
+	out = child.Remove(cmp, item)
+	if out != nil {
+		n.subtreeCount--
+	}
 	return out
 }
 
-// rebalanceOrMerge grows child 'i' to ensure it has sufficient room to remove
-// a item from it while keeping it at or above minItems.
+// rebalanceOrMerge grows child 'i' to ensure it has sufficient room to remove a
+// item from it while keeping it at or above minItems. This function is for use
+// only as a helper function for internal B-Tree code. Clients should not invoke
+// it directly.
 func (n *node) rebalanceOrMerge(i int) {
 	switch {
 	case i > 0 && n.children[i-1].count > minItems:
@@ -497,6 +568,12 @@ func (n *node) rebalanceOrMerge(i int) {
 		yLa := n.items[i-1]
 		child.pushFront(yLa, grandChild)
 		n.items[i-1] = xLa
+		child.subtreeCount++
+		left.subtreeCount--
+		if grandChild != nil {
+			child.subtreeCount += grandChild.subtreeCount
+			left.subtreeCount -= grandChild.subtreeCount
+		}
 
 	case i < int(n.count) && n.children[i+1].count > minItems:
 		// Rebalance from right sibling.
@@ -532,6 +609,12 @@ func (n *node) rebalanceOrMerge(i int) {
 		xLa, grandChild := right.popFront()
 		yLa := n.items[i]
 		child.pushBack(yLa, grandChild)
+		child.subtreeCount++
+		right.subtreeCount--
+		if grandChild != nil {
+			child.subtreeCount += grandChild.subtreeCount
+			right.subtreeCount -= grandChild.subtreeCount
+		}
 		n.items[i] = xLa
 
 	default:
@@ -570,12 +653,15 @@ func (n *node) rebalanceOrMerge(i int) {
 			copy(child.children[child.count+1:], mergeChild.children[:mergeChild.count+1])
 		}
 		child.count += mergeChild.count + 1
+		child.subtreeCount += mergeChild.subtreeCount + 1
 
-		mergeChild.decRef(false /* recursive */, nil)
+		mergeChild.decRef(false /* contentsToo */, nil)
 	}
 }
 
-func (n *node) invalidateAnnotation(a Annotator) {
+// InvalidateAnnotation removes any existing cached annotations for the provided
+// annotator from this node's subtree.
+func (n *node) InvalidateAnnotation(a Annotator) {
 	// Find this annotator's annotation on this node.
 	var annot *annotation
 	for i := range n.annot {
@@ -590,12 +676,17 @@ func (n *node) invalidateAnnotation(a Annotator) {
 	}
 	if !n.leaf {
 		for i := int16(0); i <= n.count; i++ {
-			n.children[i].invalidateAnnotation(a)
+			n.children[i].InvalidateAnnotation(a)
 		}
 	}
 }
 
-func (n *node) annotation(a Annotator) (interface{}, bool) {
+// Annotation retrieves, computing if not already computed, the provided
+// annotator's annotation of this node. The second return value indicates
+// whether the future reads of this annotation may use the first return value
+// as-is. If false, the annotation is not stable and may change on a subsequent
+// computation.
+func (n *node) Annotation(a Annotator) (interface{}, bool) {
 	// Find this annotator's annotation on this node.
 	var annot *annotation
 	for i := range n.annot {
@@ -627,7 +718,7 @@ func (n *node) annotation(a Annotator) (interface{}, bool) {
 	annot.valid = true
 	for i := int16(0); i <= n.count; i++ {
 		if !n.leaf {
-			v, ok := n.children[i].annotation(a)
+			v, ok := n.children[i].Annotation(a)
 			annot.v = a.Merge(v, annot.v)
 			annot.valid = annot.valid && ok
 		}
@@ -640,6 +731,20 @@ func (n *node) annotation(a Annotator) (interface{}, bool) {
 	return annot.v, annot.valid
 }
 
+func (n *node) verifyInvariants() {
+	recomputedSubtreeCount := int(n.count)
+	if !n.leaf {
+		for i := int16(0); i <= n.count; i++ {
+			n.children[i].verifyInvariants()
+			recomputedSubtreeCount += n.children[i].subtreeCount
+		}
+	}
+	if recomputedSubtreeCount != n.subtreeCount {
+		panic(fmt.Sprintf("recomputed subtree count (%d) ≠ n.subtreeCount (%d)",
+			recomputedSubtreeCount, n.subtreeCount))
+	}
+}
+
 // btree is an implementation of a B-Tree.
 //
 // btree stores FileMetadata in an ordered structure, allowing easy insertion,
@@ -650,25 +755,23 @@ func (n *node) annotation(a Annotator) (interface{}, bool) {
 // Write operations are not safe for concurrent mutation by multiple
 // goroutines, but Read operations are.
 type btree struct {
-	root   *node
-	length int
-	cmp    btreeCmp
+	root *node
+	cmp  btreeCmp
 }
 
-// release dereferences and clears the root node of the btree, removing all
+// Release dereferences and clears the root node of the btree, removing all
 // items from the btree. In doing so, it decrements contained file counts.
 // It returns a slice of newly obsolete files, if any.
-func (t *btree) release() (obsolete []*FileMetadata) {
+func (t *btree) Release() (obsolete []*FileMetadata) {
 	if t.root != nil {
-		t.root.decRef(true /* recursive */, &obsolete)
+		t.root.decRef(true /* contentsToo */, &obsolete)
 		t.root = nil
 	}
-	t.length = 0
 	return obsolete
 }
 
-// clone clones the btree, lazily. It does so in constant time.
-func (t *btree) clone() btree {
+// Clone clones the btree, lazily. It does so in constant time.
+func (t *btree) Clone() btree {
 	c := *t
 	if c.root != nil {
 		// Incrementing the reference count on the root node is sufficient to
@@ -690,15 +793,17 @@ func (t *btree) clone() btree {
 	return c
 }
 
-// delete removes the provided file from the tree.
+// Delete removes the provided file from the tree.
 // It returns true if the file now has a zero reference count.
-func (t *btree) delete(item *FileMetadata) (obsolete bool) {
+func (t *btree) Delete(item *FileMetadata) (obsolete bool) {
 	if t.root == nil || t.root.count == 0 {
 		return false
 	}
-	if out := mut(&t.root).remove(t.cmp, item); out != nil {
-		t.length--
-		obsolete = atomic.AddInt32(&out.refs, -1) == 0
+	if out := mut(&t.root).Remove(t.cmp, item); out != nil {
+		obsolete = out.Unref() == 0
+	}
+	if invariants.Enabled {
+		t.root.verifyInvariants()
 	}
 	if t.root.count == 0 {
 		old := t.root
@@ -707,14 +812,14 @@ func (t *btree) delete(item *FileMetadata) (obsolete bool) {
 		} else {
 			t.root = t.root.children[0]
 		}
-		old.decRef(false /* recursive */, nil)
+		old.decRef(false /* contentsToo */, nil)
 	}
 	return obsolete
 }
 
-// insert adds the given item to the tree. If a item in the tree already
-// equals the given one, insert panics.
-func (t *btree) insert(item *FileMetadata) error {
+// Insert adds the given item to the tree. If a item in the tree already
+// equals the given one, Insert panics.
+func (t *btree) Insert(item *FileMetadata) error {
 	if t.root == nil {
 		t.root = newLeafNode()
 	} else if t.root.count >= maxItems {
@@ -724,39 +829,36 @@ func (t *btree) insert(item *FileMetadata) error {
 		newRoot.items[0] = splitLa
 		newRoot.children[0] = t.root
 		newRoot.children[1] = splitNode
+		newRoot.subtreeCount = t.root.subtreeCount + splitNode.subtreeCount + 1
 		t.root = newRoot
 	}
-	atomic.AddInt32(&item.refs, 1)
-	err := mut(&t.root).insert(t.cmp, item)
-	t.length++
+	item.Ref()
+	err := mut(&t.root).Insert(t.cmp, item)
+	if invariants.Enabled {
+		t.root.verifyInvariants()
+	}
 	return err
 }
 
-// iter returns a new iterator object. It is not safe to continue using an
+// Iter returns a new iterator object. It is not safe to continue using an
 // iterator after modifications are made to the tree. If modifications are made,
 // create a new iterator.
-func (t *btree) iter() iterator {
+func (t *btree) Iter() iterator {
 	return iterator{r: t.root, pos: -1, cmp: t.cmp}
 }
 
-// height returns the height of the tree.
-func (t *btree) height() int {
+// Count returns the number of files contained within the B-Tree.
+func (t *btree) Count() int {
 	if t.root == nil {
 		return 0
 	}
-	h := 1
-	n := t.root
-	for !n.leaf {
-		n = n.children[0]
-		h++
-	}
-	return h
+	return t.root.subtreeCount
 }
 
 // String returns a string description of the tree. The format is
 // similar to the https://en.wikipedia.org/wiki/Newick_format.
 func (t *btree) String() string {
-	if t.length == 0 {
+	if t.Count() == 0 {
 		return ";"
 	}
 	var b strings.Builder
@@ -873,6 +975,8 @@ type iterator struct {
 	r *node
 	// n and pos make up the current position of the iterator.
 	// If valid, n.items[pos] is the current value of the iterator.
+	//
+	// n may be nil iff i.r is nil.
 	n   *node
 	pos int16
 	// cmp dictates the ordering of the FileMetadata.
@@ -881,6 +985,59 @@ type iterator struct {
 	// taken to arrive at n. If non-empty, the bottommost frame of the stack
 	// will always contain the B-Tree root.
 	s iterStack
+}
+
+// countLeft returns the count of files that are to the left of the current
+// iterator position.
+func (i *iterator) countLeft() int {
+	if i.r == nil {
+		return 0
+	}
+
+	// Each iterator has a stack of frames marking the path from the root node
+	// to the current iterator position. All files (n.items) and all subtrees
+	// (n.children) with indexes less than [pos] are to the left of the current
+	// iterator position.
+	//
+	//     +------------------------+  -
+	//     |  Root            pos:5 |   |
+	//     +------------------------+   | stack
+	//     |  Root/5          pos:3 |   | frames
+	//     +------------------------+   | [i.s]
+	//     |  Root/5/3        pos:9 |   |
+	//     +========================+  -
+	//     |                        |
+	//     | i.n: Root/5/3/9 i.pos:2|
+	//     +------------------------+
+	//
+	var count int
+	// Walk all the ancestors in the iterator stack [i.s], tallying up all the
+	// files and subtrees to the left of the stack frame's position.
+	f, ok := i.s.nth(0)
+	for fi := 0; ok; fi++ {
+		// There are [f.pos] files contained within [f.n.items] that sort to the
+		// left of the subtree the iterator has descended.
+		count += int(f.pos)
+		// Any subtrees that fall before the stack frame's position are entirely
+		// to the left of the iterator's current position.
+		for j := int16(0); j < f.pos; j++ {
+			count += f.n.children[j].subtreeCount
+		}
+		f, ok = i.s.nth(fi + 1)
+	}
+
+	// The bottommost stack frame is inlined within the iterator struct. Again,
+	// [i.pos] files fall to the left of the current iterator position.
+	count += int(i.pos)
+	if !i.n.leaf {
+		// NB: Unlike above, we use a `<= i.pos` comparison. The iterator is
+		// positioned at item `i.n.items[i.pos]`, which sorts after everything
+		// in the subtree at `i.n.children[i.pos]`.
+		for j := int16(0); j <= i.pos; j++ {
+			count += i.n.children[j].subtreeCount
+		}
+	}
+	return count
 }
 
 func (i *iterator) clone() iterator {
@@ -904,7 +1061,7 @@ func (i iterator) String() string {
 		}
 		fmt.Fprintf(&buf, "%p: %02d/%02d\n", f.n, f.pos, f.n.count)
 	}
-	if i.n == nil {
+	if i.r == nil {
 		fmt.Fprintf(&buf, "<nil>: %02d", i.pos)
 	} else {
 		fmt.Fprintf(&buf, "%p: %02d/%02d", i.n, i.pos, i.n.count)
@@ -1034,7 +1191,7 @@ func (i *iterator) ascend() {
 // tree's files, and then true for the (possibly empty) remainder.
 func (i *iterator) seek(fn func(*FileMetadata) bool) {
 	i.reset()
-	if i.n == nil {
+	if i.r == nil {
 		return
 	}
 
@@ -1066,7 +1223,7 @@ func (i *iterator) seek(fn func(*FileMetadata) bool) {
 // first seeks to the first item in the btree.
 func (i *iterator) first() {
 	i.reset()
-	if i.n == nil {
+	if i.r == nil {
 		return
 	}
 	for !i.n.leaf {
@@ -1078,7 +1235,7 @@ func (i *iterator) first() {
 // last seeks to the last item in the btree.
 func (i *iterator) last() {
 	i.reset()
-	if i.n == nil {
+	if i.r == nil {
 		return
 	}
 	for !i.n.leaf {
@@ -1090,7 +1247,7 @@ func (i *iterator) last() {
 // next positions the iterator to the item immediately following
 // its current position.
 func (i *iterator) next() {
-	if i.n == nil {
+	if i.r == nil {
 		return
 	}
 
@@ -1117,7 +1274,7 @@ func (i *iterator) next() {
 // prev positions the iterator to the item immediately preceding
 // its current position.
 func (i *iterator) prev() {
-	if i.n == nil {
+	if i.r == nil {
 		return
 	}
 
@@ -1148,5 +1305,8 @@ func (i *iterator) valid() bool {
 // cur returns the item at the iterator's current position. It is illegal
 // to call cur if the iterator is not valid.
 func (i *iterator) cur() *FileMetadata {
+	if invariants.Enabled && !i.valid() {
+		panic("btree iterator.cur invoked on invalid iterator")
+	}
 	return i.n.items[i.pos]
 }

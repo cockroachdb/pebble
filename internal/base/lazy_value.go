@@ -67,24 +67,26 @@ type AttributeAndLen struct {
 // Memory management:
 // This is subtle, but important for performance.
 //
-// - A LazyValue returned by an InternalIterator or Iterator is unstable in
-//   that repositioning the iterator will invalidate the memory inside it. A
-//   caller wishing to maintain that LazyValue needs to call
-//   LazyValue.Clone(). Note that this does not fetch the value if it is not
-//   in-place. Additionally, Clone() *must* only be called if
-//   LazyValue.Value() has *not* been called, since (a) it only makes a
-//   promise about stability of LazyValue and not the underlying value, (b) if
-//   LazyValue.Value() has been called already, the caller has the value
-//   []byte slice so it is unnecessary to fiddle around with LazyValue.
+// A LazyValue returned by an InternalIterator or Iterator is unstable in that
+// repositioning the iterator will invalidate the memory inside it. A caller
+// wishing to maintain that LazyValue needs to call LazyValue.Clone(). Note
+// that this does not fetch the value if it is not in-place. Clone() should
+// ideally not be called if LazyValue.Value() has been called, since the
+// cloned LazyValue will forget the extracted/fetched value, and calling
+// Value() on this clone will cause the value to be extracted again. That is,
+// Clone() does not make any promise about the memory stability of the
+// underlying value.
 //
-// - A user of an iterator that calls LazyValue.Value() wants as much as
-//   possible for the returned value []byte to point to iterator owned memory.
-//   - [P1] The underlying iterator that owns that memory also needs a promise
+// A user of an iterator that calls LazyValue.Value() wants as much as
+// possible for the returned value []byte to point to iterator owned memory.
+//
+//  1. [P1] The underlying iterator that owns that memory also needs a promise
 //     from that user that at any time there is at most one value []byte slice
 //     that the caller is expecting it to maintain. Otherwise, the underlying
 //     iterator has to maintain multiple such []byte slices which results in
 //     more complicated and inefficient code.
-//   - [P2] The underlying iterator, in order to make the promise that it is
+//
+//  2. [P2] The underlying iterator, in order to make the promise that it is
 //     maintaining the one value []byte slice, also needs a way to know when
 //     it is relieved of that promise. One way it is relieved of that promise
 //     is by being told that it is being repositioned. Typically, the owner of
@@ -102,28 +104,31 @@ type AttributeAndLen struct {
 //     the caller. This will be true if the callee attempted to use buf and
 //     either successfully used it or allocated a new []byte slice.
 //
-//  To ground the above in reality, we consider three examples of callers of
-//  LazyValue.Value():
-//  - Iterator: it calls LazyValue.Value for its own use when merging values.
-//    When merging during reverse iteration, it may have cloned the LazyValue.
-//    In this case it calls LazyValue.Value() on the cloned value, merges it,
-//    and then calls LazyValue.Value() on the current iterator position and
-//    merges it. So it is honoring P1.
-//  - Iterator on behalf of Iterator clients: The Iterator.Value() method
-//    needs to call LazyValue.Value(). The client of Iterator is satisfying P1
-//    because of the inherent Iterator interface constraint, i.e., it is calling
-//    Iterator.Value() on the current Iterator position. It is possible that
-//    the Iterator has cloned this LazyValue (for the reverse iteration case),
-//    which the client is unaware of, so the underlying sstable iterator may
-//    not be able to satisfy P2. This is ok because Iterator will call
-//    LazyValue.Value with its (reusable) owned buffer.
-//  - CockroachDB's pebbleMVCCScanner: This will use LazyValues from Iterator
-//    since during reverse iteration in order to find the highest version that
-//    satisfies a read it needs to clone the LazyValue, step back the iterator
-//    and then decide whether it needs the value from the previously cloned
-//    LazyValue. The pebbleMVCCScanner will satisfy P1. The P2 story is
-//    similar to the previous case in that it will call LazyValue.Value with
-//    its (reusable) owned buffer.
+// To ground the above in reality, we consider three examples of callers of
+// LazyValue.Value():
+//
+//   - Iterator: it calls LazyValue.Value for its own use when merging values.
+//     When merging during reverse iteration, it may have cloned the LazyValue.
+//     In this case it calls LazyValue.Value() on the cloned value, merges it,
+//     and then calls LazyValue.Value() on the current iterator position and
+//     merges it. So it is honoring P1.
+//
+//   - Iterator on behalf of Iterator clients: The Iterator.Value() method
+//     needs to call LazyValue.Value(). The client of Iterator is satisfying P1
+//     because of the inherent Iterator interface constraint, i.e., it is calling
+//     Iterator.Value() on the current Iterator position. It is possible that
+//     the Iterator has cloned this LazyValue (for the reverse iteration case),
+//     which the client is unaware of, so the underlying sstable iterator may
+//     not be able to satisfy P2. This is ok because Iterator will call
+//     LazyValue.Value with its (reusable) owned buffer.
+//
+//   - CockroachDB's pebbleMVCCScanner: This will use LazyValues from Iterator
+//     since during reverse iteration in order to find the highest version that
+//     satisfies a read it needs to clone the LazyValue, step back the iterator
+//     and then decide whether it needs the value from the previously cloned
+//     LazyValue. The pebbleMVCCScanner will satisfy P1. The P2 story is
+//     similar to the previous case in that it will call LazyValue.Value with
+//     its (reusable) owned buffer.
 //
 // Corollary: callers that directly use InternalIterator can know that they
 // have done nothing to interfere with promise P2 can pass in a nil buf and be
@@ -151,15 +156,18 @@ type LazyValue struct {
 }
 
 // LazyFetcher supports fetching a lazy value.
+//
+// Fetcher and Attribute are to be initialized at creation time. The fields
+// are arranged to reduce the sizeof this struct.
 type LazyFetcher struct {
 	// Fetcher, given a handle, returns the value.
 	Fetcher ValueFetcher
+	err     error
+	value   []byte
 	// Attribute includes the short attribute and value length.
 	Attribute   AttributeAndLen
 	fetched     bool
-	value       []byte
 	callerOwned bool
-	err         error
 }
 
 // ValueFetcher is an interface for fetching a value.
@@ -242,21 +250,28 @@ func (lv *LazyValue) TryGetShortAttribute() (ShortAttribute, bool) {
 // not viable since we have no code trigger for returning to the pool
 // (LazyValues are simply GC'd).
 //
-// REQUIRES: LazyValue.Value() has not been called.
-// Ensure that this is only called before LazyValue.Value is called. We don't
-// actually care if it was in-place but we don't want to complicate behavior
-// regarding whether we need to clone the value inside the fetcher.
+// NB: It is highly preferable that LazyValue.Value() has not been called,
+// since the Clone will forget any previously extracted value, and a future
+// call to Value will cause it to be fetched again. We do this since we don't
+// want to reason about whether or not to clone an already extracted value
+// inside the Fetcher (we don't). Property P1 applies here too: if lv1.Value()
+// has been called, and then lv2 is created as a clone of lv1, then calling
+// lv2.Value() can invalidate any backing memory maintained inside the fetcher
+// for lv1 (even though these are the same values). We initially prohibited
+// calling LazyValue.Clone() if LazyValue.Value() has been called, but there
+// is at least one complex caller (pebbleMVCCScanner inside CockroachDB) where
+// it is not easy to prove this invariant.
 func (lv *LazyValue) Clone(buf []byte, fetcher *LazyFetcher) (LazyValue, []byte) {
-	if invariants.Enabled && lv.Fetcher != nil && lv.Fetcher.fetched {
-		panic("value has already been fetched")
-	}
-	// INVARIANT: LazyFetcher.value is nil, so there is nothing to copy there.
-	vLen := len(lv.ValueOrHandle)
 	var lvCopy LazyValue
 	if lv.Fetcher != nil {
-		*fetcher = *lv.Fetcher
+		*fetcher = LazyFetcher{
+			Fetcher:   lv.Fetcher.Fetcher,
+			Attribute: lv.Fetcher.Attribute,
+			// Not copying anything that has been extracted.
+		}
 		lvCopy.Fetcher = fetcher
 	}
+	vLen := len(lv.ValueOrHandle)
 	if vLen == 0 {
 		return lvCopy, buf
 	}
@@ -270,13 +285,3 @@ func (lv *LazyValue) Clone(buf []byte, fetcher *LazyFetcher) (LazyValue, []byte)
 func MakeInPlaceValue(val []byte) LazyValue {
 	return LazyValue{ValueOrHandle: val}
 }
-
-// TODO(sumeer): test that callers are adhering to promise P1. In the sstable
-// iterators, when invariants are enabled, create a testingFetcher struct that
-// contains the sstable name and the []byte backing for the last fetched
-// value. The sstable iterator, instead of returning an in-place value, will
-// return a copy of the key in ValueOrHandle, and a ValueFetcher implemented
-// by testingFetcher.valueFetcher. Each time this method is called, it will
-// mangle the last fetched value []byte slice, allocate a new one, open the
-// sstable, seek to the key, and copy the value into this new byte slice and
-// return.

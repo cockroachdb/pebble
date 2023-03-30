@@ -7,10 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"io"
-	"os"
 	"reflect"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -19,132 +16,27 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 	"github.com/stretchr/testify/require"
 )
 
-type syncedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *syncedBuffer) Reset() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.buf.Reset()
-}
-
-func (b *syncedBuffer) Write(p []byte) (n int, err error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *syncedBuffer) Infof(format string, args ...interface{}) {
-	s := fmt.Sprintf(format, args...)
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.buf.Write([]byte(s))
-	if n := len(s); n == 0 || s[n-1] != '\n' {
-		b.buf.Write([]byte("\n"))
-	}
-}
-
-func (b *syncedBuffer) Fatalf(format string, args ...interface{}) {
-	b.Infof(format, args...)
-	runtime.Goexit()
-}
-
-func (b *syncedBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
-
-type loggingFS struct {
-	vfs.FS
-	w io.Writer
-}
-
-func (fs loggingFS) Create(name string) (vfs.File, error) {
-	fmt.Fprintf(fs.w, "create: %s\n", name)
-	f, err := fs.FS.Create(name)
-	if err != nil {
-		return nil, err
-	}
-	return loggingFile{f, name, fs.w}, nil
-}
-
-func (fs loggingFS) Link(oldname, newname string) error {
-	fmt.Fprintf(fs.w, "link: %s -> %s\n", oldname, newname)
-	return fs.FS.Link(oldname, newname)
-}
-
-func (fs loggingFS) OpenDir(name string) (vfs.File, error) {
-	fmt.Fprintf(fs.w, "open-dir: %s\n", name)
-	f, err := fs.FS.OpenDir(name)
-	if err != nil {
-		return nil, err
-	}
-	return loggingFile{f, name, fs.w}, nil
-}
-
-func (fs loggingFS) Rename(oldname, newname string) error {
-	fmt.Fprintf(fs.w, "rename: %s -> %s\n", oldname, newname)
-	return fs.FS.Rename(oldname, newname)
-}
-
-func (fs loggingFS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
-	fmt.Fprintf(fs.w, "reuseForWrite: %s -> %s\n", oldname, newname)
-	f, err := fs.FS.ReuseForWrite(oldname, newname)
-	if err == nil {
-		f = loggingFile{f, newname, fs.w}
-	}
-	return f, err
-}
-
-func (fs loggingFS) MkdirAll(dir string, perm os.FileMode) error {
-	fmt.Fprintf(fs.w, "mkdir-all: %s %#o\n", dir, perm)
-	return fs.FS.MkdirAll(dir, perm)
-}
-
-func (fs loggingFS) Lock(name string) (io.Closer, error) {
-	fmt.Fprintf(fs.w, "lock: %s\n", name)
-	return fs.FS.Lock(name)
-}
-
-type loggingFile struct {
-	vfs.File
-	name string
-	w    io.Writer
-}
-
-func (f loggingFile) Close() error {
-	fmt.Fprintf(f.w, "close: %s\n", f.name)
-	return f.File.Close()
-}
-
-func (f loggingFile) Sync() error {
-	fmt.Fprintf(f.w, "sync: %s\n", f.name)
-	return f.File.Sync()
-}
-
 // Verify event listener actions, as well as expected filesystem operations.
 func TestEventListener(t *testing.T) {
 	var d *DB
-	var buf syncedBuffer
+	var memLog base.InMemLogger
 	mem := vfs.NewMem()
 	require.NoError(t, mem.MkdirAll("ext", 0755))
 
 	datadriven.RunTest(t, "testdata/event_listener", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "open":
-			buf.Reset()
-			lel := MakeLoggingEventListener(&buf)
+			memLog.Reset()
+			lel := MakeLoggingEventListener(&memLog)
 			opts := &Options{
-				FS:                    loggingFS{mem, &buf},
+				FS:                    vfs.WithLogging(mem, memLog.Infof),
 				FormatMajorVersion:    FormatNewest,
 				EventListener:         &lel,
 				MaxManifestFileSize:   1,
@@ -166,70 +58,70 @@ func TestEventListener(t *testing.T) {
 				t = t.Add(time.Second)
 				return t
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "close":
-			buf.Reset()
+			memLog.Reset()
 			if err := d.Close(); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "flush":
-			buf.Reset()
+			memLog.Reset()
 			if err := d.Set([]byte("a"), nil, nil); err != nil {
 				return err.Error()
 			}
 			if err := d.Flush(); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "compact":
-			buf.Reset()
+			memLog.Reset()
 			if err := d.Set([]byte("a"), nil, nil); err != nil {
 				return err.Error()
 			}
 			if err := d.Compact([]byte("a"), []byte("b"), false); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "checkpoint":
-			buf.Reset()
+			memLog.Reset()
 			if err := d.Checkpoint("checkpoint"); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "disable-file-deletions":
-			buf.Reset()
+			memLog.Reset()
 			d.mu.Lock()
 			d.disableFileDeletions()
 			d.mu.Unlock()
-			return buf.String()
+			return memLog.String()
 
 		case "enable-file-deletions":
-			buf.Reset()
+			memLog.Reset()
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						fmt.Fprint(&buf, r)
+						memLog.Infof("%v", r)
 					}
 				}()
 				d.mu.Lock()
 				defer d.mu.Unlock()
 				d.enableFileDeletions()
 			}()
-			return buf.String()
+			return memLog.String()
 
 		case "ingest":
-			buf.Reset()
+			memLog.Reset()
 			f, err := mem.Create("ext/0")
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(f, sstable.WriterOptions{
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: d.FormatMajorVersion().MaxTableFormat(),
 			})
 			if err := w.Add(base.MakeInternalKey([]byte("a"), 0, InternalKeyKindSet), nil); err != nil {
@@ -241,7 +133,58 @@ func TestEventListener(t *testing.T) {
 			if err := d.Ingest([]string{"ext/0"}); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
+
+		case "ingest-flushable":
+			memLog.Reset()
+
+			// Prevent flushes during this test to ensure determinism.
+			d.mu.Lock()
+			d.mu.compact.flushing = true
+			d.mu.Unlock()
+
+			b := d.NewBatch()
+			if err := b.Set([]byte("a"), nil, nil); err != nil {
+				return err.Error()
+			}
+			if err := d.Apply(b, nil); err != nil {
+				return err.Error()
+			}
+			writeTable := func(name string, key byte) error {
+				f, err := mem.Create(name)
+				if err != nil {
+					return err
+				}
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+					TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+				})
+				if err := w.Add(base.MakeInternalKey([]byte{key}, 0, InternalKeyKindSet), nil); err != nil {
+					return err
+				}
+				if err := w.Close(); err != nil {
+					return err
+				}
+				return nil
+			}
+			tableA, tableB := "ext/a", "ext/b"
+			if err := writeTable(tableA, 'a'); err != nil {
+				return err.Error()
+			}
+			if err := writeTable(tableB, 'b'); err != nil {
+				return err.Error()
+			}
+			if err := d.Ingest([]string{tableA, tableB}); err != nil {
+				return err.Error()
+			}
+
+			// Re-enable flushes, to allow the subsequent flush to proceed.
+			d.mu.Lock()
+			d.mu.compact.flushing = false
+			d.mu.Unlock()
+			if err := d.Flush(); err != nil {
+				return err.Error()
+			}
+			return memLog.String()
 
 		case "metrics":
 			// The asynchronous loading of table stats can change metrics, so
@@ -289,7 +232,7 @@ func TestWriteStallEvents(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			stallEnded := make(chan struct{}, 1)
 			createReleased := make(chan struct{}, flushCount)
-			var buf syncedBuffer
+			var log base.InMemLogger
 			var delayOnce sync.Once
 			listener := &EventListener{
 				TableCreated: func(info TableCreateInfo) {
@@ -300,11 +243,11 @@ func TestWriteStallEvents(t *testing.T) {
 					}
 				},
 				WriteStallBegin: func(info WriteStallBeginInfo) {
-					fmt.Fprintln(&buf, info.String())
+					log.Infof("%s", info.String())
 					createReleased <- struct{}{}
 				},
 				WriteStallEnd: func() {
-					fmt.Fprintln(&buf, writeStallEnd)
+					log.Infof("%s", writeStallEnd)
 					select {
 					case stallEnded <- struct{}{}:
 					default:
@@ -337,13 +280,13 @@ func TestWriteStallEvents(t *testing.T) {
 				if !c.delayFlush {
 					<-ch
 				}
-				if strings.Contains(buf.String(), c.expected) {
+				if strings.Contains(log.String(), c.expected) {
 					break
 				}
 			}
 			<-stallEnded
 
-			events := buf.String()
+			events := log.String()
 			require.Contains(t, events, c.expected)
 			require.Contains(t, events, writeStallEnd)
 			if testing.Verbose() {
@@ -371,7 +314,7 @@ func TestEventListenerRedact(t *testing.T) {
 	// The vast majority of event listener fields logged are safe and do not
 	// need to be redacted. Verify that the rare, unsafe error does appear in
 	// the log redacted.
-	var log syncedBuffer
+	var log base.InMemLogger
 	l := MakeLoggingEventListener(redactLogger{logger: &log})
 	l.WALDeleted(WALDeleteInfo{
 		JobID:   5,

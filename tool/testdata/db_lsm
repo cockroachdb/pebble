@@ -5,7 +5,7 @@ accepts 1 arg(s), received 0
 db lsm
 non-existent
 ----
-open non-existent: file does not exist
+pebble: database "non-existent" does not exist
 
 db lsm
 ../testdata/db-stage-4
@@ -20,8 +20,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   total         1   986 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  flush         0
-compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  flush         0                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         0     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         0     0 B

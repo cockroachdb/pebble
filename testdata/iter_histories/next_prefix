@@ -213,7 +213,7 @@ next-prefix
 p: (., [p-r) @1=foo UPDATED)
 q@100: (q@100, [p-r) @1=foo)
 
-# Test that switching directions via NextPrefix is disallowed.
+# Test switching directions via NextPrefix.
 combined-iter
 seek-ge p@100
 prev
@@ -221,4 +221,72 @@ next-prefix
 ----
 p@100: (p@100, [p-r) @1=foo UPDATED)
 p: (., [p-r) @1=foo)
-p@100: (p@100, [p-r) @1=foo)
+q@100: (q@100, [p-r) @1=foo)
+
+# Test switching directions via NextPrefix when the internal iterator is
+# exhausted (in the reverse direction), but the Iterator is not.
+#  eg, i.pos = iterPosPrev and i.iterKey == nil.
+combined-iter
+seek-ge a@10
+prev
+next-prefix
+----
+a@10: (a@10, .)
+a@100: (a@100, .)
+b@100: (b@100, .)
+
+reset
+----
+
+populate keylen=1 timestamps=(1, 10, 100)
+----
+wrote 78 keys
+
+flush
+----
+
+lsm
+----
+0.0:
+  000005:[a@100#3,SET-z@1#76,SET]
+
+# Test for https://github.com/cockroachdb/pebble/issues/2260. Triggered the
+# bug. The second call to first would return c@100 instead of the correct key,
+# b@1.
+combined-iter upper=b@1
+first
+next-prefix
+next-prefix
+set-bounds lower=b@1 upper=d
+first
+next
+first
+----
+a@100: (a@100, .)
+err=NextPrefix not permitted with upper bound b@1
+err=NextPrefix not permitted with upper bound b@1
+.
+b@1: (b@1, .)
+c@100: (c@100, .)
+b@1: (b@1, .)
+
+# Did not trigger https://github.com/cockroachdb/pebble/issues/2260 since
+# Iterator.NextPrefix first does a Next. So the second call to NextPrefix
+# returned after the Next, since the upper bound was reached, which left the
+# Iterator positioned at b@1.
+combined-iter upper=b@10
+first
+next-prefix
+next-prefix
+set-bounds lower=b@1 upper=d
+first
+next
+first
+----
+a@100: (a@100, .)
+err=NextPrefix not permitted with upper bound b@10
+err=NextPrefix not permitted with upper bound b@10
+.
+b@1: (b@1, .)
+c@100: (c@100, .)
+b@1: (b@1, .)

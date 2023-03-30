@@ -30,7 +30,7 @@ func (p entryType) String() string {
 // Using manual memory management for entries is technically a volation of the
 // Cgo pointer rules:
 //
-//   https://golang.org/cmd/cgo/#hdr-Passing_pointers
+//	https://golang.org/cmd/cgo/#hdr-Passing_pointers
 //
 // Specifically, Go pointers should not be stored in C allocated memory. The
 // reason for this rule is that the Go GC will not look at C allocated memory

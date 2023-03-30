@@ -7,6 +7,7 @@ package sstable
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
@@ -125,7 +127,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 	}
 
-	r, err := NewReader(f, opts)
+	r, err := newReader(f, opts)
 	if err != nil {
 		return err
 	}
@@ -373,7 +375,7 @@ func build(
 		writerOpts.TablePropertyCollectors = append(writerOpts.TablePropertyCollectors, propCollector)
 	}
 
-	w := NewWriter(f0, writerOpts)
+	w := NewWriter(objstorageprovider.NewFileWritable(f0), writerOpts)
 	// Use rangeDelV1Format for testing byte equality with RocksDB.
 	w.rangeDelV1Format = true
 	var rangeDelLength int
@@ -414,7 +416,7 @@ func build(
 
 func testReader(t *testing.T, filename string, comparer *Comparer, fp FilterPolicy) {
 	// Check that we can read a pre-made table.
-	f, err := os.Open(filepath.FromSlash("testdata/" + filename))
+	f, err := vfs.Default.Open(filepath.FromSlash("testdata/" + filename))
 	if err != nil {
 		t.Error(err)
 		return
@@ -499,7 +501,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r, err := NewReader(f, ReaderOptions{
+	r, err := newReader(f, ReaderOptions{
 		Filters: map[string]FilterPolicy{
 			c.Name(): c,
 		},
@@ -613,7 +615,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 						continue
 					}
-					w := NewWriter(wf, WriterOptions{
+					w := NewWriter(objstorageprovider.NewFileWritable(wf), WriterOptions{
 						BlockSize:      blockSize,
 						IndexBlockSize: indexBlockSize,
 					})
@@ -633,7 +635,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 						continue
 					}
-					r, err := NewReader(rf, ReaderOptions{})
+					r, err := newReader(rf, ReaderOptions{})
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
@@ -666,7 +668,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
 	require.NoError(t, err)
 
-	r, err := NewReader(f, ReaderOptions{})
+	r, err := newReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
 	const globalSeqNum = 42
@@ -689,10 +691,10 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 		TableFilter, nil, nil, 4096, 4096)
 	require.NoError(t, err)
 
-	r, err := NewReader(f, ReaderOptions{})
+	r, err := newReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
-	b, err := r.readBlock(r.metaIndexBH, nil /* transform */, nil /* attrs */, nil /* stats */)
+	b, err := r.readBlock(context.Background(), r.metaIndexBH, nil, nil, nil)
 	require.NoError(t, err)
 	defer b.Release()
 
@@ -747,9 +749,12 @@ func TestFooterRoundTrip(t *testing.T) {
 							f, err = mem.Open("test")
 							require.NoError(t, err)
 
-							result, err := readFooter(f)
+							readable, err := NewSimpleReadable(f)
 							require.NoError(t, err)
-							require.NoError(t, f.Close())
+
+							result, err := readFooter(readable)
+							require.NoError(t, err)
+							require.NoError(t, readable.Close())
 
 							if diff := pretty.Diff(footer, result); diff != nil {
 								t.Fatalf("expected %+v, but found %+v\n%s",
@@ -797,7 +802,10 @@ func TestReadFooter(t *testing.T) {
 			f, err = mem.Open("test")
 			require.NoError(t, err)
 
-			if _, err := readFooter(f); err == nil {
+			readable, err := NewSimpleReadable(f)
+			require.NoError(t, err)
+
+			if _, err := readFooter(readable); err == nil {
 				t.Fatalf("expected %q, but found success", c.expected)
 			} else if !strings.Contains(err.Error(), c.expected) {
 				t.Fatalf("expected %q, but found %v", c.expected, err)
@@ -851,7 +859,7 @@ func TestTablePropertyCollectorErrors(t *testing.T) {
 				return errorPropCollector{}
 			})
 
-		w := NewWriter(f, opts)
+		w := NewWriter(objstorageprovider.NewFileWritable(f), opts)
 
 		require.Regexp(t, e, fun(w))
 	}

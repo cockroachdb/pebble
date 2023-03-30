@@ -17,7 +17,7 @@ import (
 func (i *Iterator) constructRangeKeyIter() {
 	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(
 		&i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
-		&i.hasPrefix, &i.prefixOrFullSeekKey, &i.rangeKey.rangeKeyBuffers.internal)
+		&i.hasPrefix, &i.prefixOrFullSeekKey, true /* onlySets */, &i.rangeKey.rangeKeyBuffers.internal)
 
 	// If there's an indexed batch with range keys, include it.
 	if i.batch != nil {
@@ -266,24 +266,24 @@ func (m *rangeKeyMasking) SpanChanged(s *keyspan.Span) {
 // _t_, and there exists a span with suffix _r_ covering a point key with suffix
 // _p_, and
 //
-//     _t_ ≤ _r_ < _p_
+//	_t_ ≤ _r_ < _p_
 //
 // then the point key is elided. Consider the following rendering, where using
 // integer suffixes with higher integers sort before suffixes with lower
 // integers, (for example @7 ≤ @6 < @5):
 //
-//          ^
-//       @9 |        •―――――――――――――――○ [e,m)@9
-//     s  8 |                      • l@8
-//     u  7 |------------------------------------ @7 RangeKeyMasking.Suffix
-//     f  6 |      [h,q)@6 •―――――――――――――――――○            (threshold)
-//     f  5 |              • h@5
-//     f  4 |                          • n@4
-//     i  3 |          •―――――――――――○ [f,l)@3
-//     x  2 |  • b@2
-//        1 |
-//        0 |___________________________________
-//           a b c d e f g h i j k l m n o p q
+//	     ^
+//	  @9 |        •―――――――――――――――○ [e,m)@9
+//	s  8 |                      • l@8
+//	u  7 |------------------------------------ @7 RangeKeyMasking.Suffix
+//	f  6 |      [h,q)@6 •―――――――――――――――――○            (threshold)
+//	f  5 |              • h@5
+//	f  4 |                          • n@4
+//	i  3 |          •―――――――――――○ [f,l)@3
+//	x  2 |  • b@2
+//	   1 |
+//	   0 |___________________________________
+//	      a b c d e f g h i j k l m n o p q
 //
 // An iterator scanning the entire keyspace with the masking threshold set to @7
 // will observe point keys b@2 and l@8. The span keys [h,q)@6 and [f,l)@3 serve
@@ -327,9 +327,9 @@ func (m *rangeKeyMasking) SkipPoint(userKey []byte) bool {
 // Consider the range key [a,m)@10, and an iterator positioned just before the
 // below block, bounded by index separators `c` and `z`:
 //
-//                 c                          z
-//          x      |  c@9 c@5 c@1 d@7 e@4 y@4 | ...
-//       iter pos
+//	          c                          z
+//	   x      |  c@9 c@5 c@1 d@7 e@4 y@4 | ...
+//	iter pos
 //
 // The next block cannot be skipped, despite the range key suffix @10 is greater
 // than all the block's keys' suffixes, because it contains a key (y@4) outside
@@ -498,24 +498,6 @@ func (i *lazyCombinedIter) initCombinedIteration(
 			} else if dir == -1 && i.parent.cmp(seekKey, pointKey.UserKey) < 0 {
 				seekKey = pointKey.UserKey
 			}
-		}
-	}
-
-	if i.parent.hasPrefix {
-		si := i.parent.comparer.Split(seekKey)
-		if i.parent.cmp(seekKey[:si], i.parent.prefixOrFullSeekKey) > 0 {
-			// The earliest possible range key has a start key with a prefix
-			// greater than the current iteration prefix. There's no need to
-			// switch to combined iteration, because there are not any range
-			// keys within the bounds of the prefix. Additionally, using a seek
-			// key that is outside the scope of the prefix can violate
-			// invariants within the range key iterator stack. Optimizations
-			// that exit early due to exhausting the prefix may result in
-			// `seekKey` being larger than the next range key's start key.
-			//
-			// See the testdata/rangekeys test case associated with #1893.
-			i.combinedIterState = combinedIterState{initialized: false}
-			return pointKey, pointValue
 		}
 	}
 

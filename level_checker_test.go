@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -94,7 +96,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 
 	var fileNum FileNum
 	newIters :=
-		func(file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+		func(_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
 			r := readers[file.FileNum]
 			rangeDelIter, err := r.NewRawRangeDelIter()
 			if err != nil {
@@ -139,6 +141,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				m := (&fileMetadata{
 					FileNum: fileNum,
 				}).ExtendPointKeyBounds(cmp, smallestKey, largestKey)
+				m.InitPhysicalBacking()
 				*li = append(*li, m)
 
 				i++
@@ -151,7 +154,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					return err.Error()
 				}
 				writeUnfragmented := false
-				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 				for _, arg := range d.CmdArgs {
 					switch arg.Key {
 					case "disable-key-order-checks":
@@ -203,8 +206,12 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
+				readable, err := sstable.NewSimpleReadable(f)
+				if err != nil {
+					return err.Error()
+				}
 				cacheOpts := private.SSTableCacheOpts(0, fileNum-1).(sstable.ReaderOption)
-				r, err := sstable.NewReader(f, sstable.ReaderOptions{}, cacheOpts)
+				r, err := sstable.NewReader(readable, sstable.ReaderOptions{}, cacheOpts)
 				if err != nil {
 					return err.Error()
 				}

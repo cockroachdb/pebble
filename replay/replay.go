@@ -12,6 +12,7 @@ package replay
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"sort"
@@ -29,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"golang.org/x/perf/benchfmt"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -53,14 +55,14 @@ func computeReadAmp(v *manifest.Version) int {
 // PaceByFixedReadAmp to wait on the dbMetricsNotifier condition variable if the
 // read amplification observed is greater than the specified target (refRAmp).
 func waitForReadAmpLE(r *Runner, rAmp int) {
-	r.dbMetricsNotifier.L.Lock()
+	r.dbMetricsCond.L.Lock()
 	m := r.dbMetrics
 	ra := m.ReadAmp()
 	for ra > rAmp {
-		r.dbMetricsNotifier.Wait()
+		r.dbMetricsCond.Wait()
 		ra = r.dbMetrics.ReadAmp()
 	}
-	r.dbMetricsNotifier.L.Unlock()
+	r.dbMetricsCond.L.Unlock()
 }
 
 // Unpaced implements Pacer by applying each new write as soon as possible. It
@@ -90,55 +92,203 @@ func (pra PaceByFixedReadAmp) pace(r *Runner, _ workloadStep) time.Duration {
 	return time.Since(startTime)
 }
 
+// Metrics holds the various statistics on a replay run and its performance.
+type Metrics struct {
+	CompactionCounts struct {
+		Total       int64
+		Default     int64
+		DeleteOnly  int64
+		ElisionOnly int64
+		Move        int64
+		Read        int64
+		Rewrite     int64
+		MultiLevel  int64
+	}
+	EstimatedDebt SampledMetric
+	Final         *pebble.Metrics
+	Ingest        struct {
+		BytesIntoL0 uint64
+		// BytesWeightedByLevel is calculated as the number of bytes ingested
+		// into a level multiplied by the level's distance from the bottommost
+		// level (L6), summed across all levels. It can be used to guage how
+		// effective heuristics are at ingesting files into lower levels, saving
+		// write amplification.
+		BytesWeightedByLevel uint64
+	}
+	// PaceDuration is the time waiting for the pacer to allow the workload to
+	// continue.
+	PaceDuration time.Duration
+	ReadAmp      SampledMetric
+	// QuiesceDuration is the time between completing application of the workload and
+	// compactions quiescing.
+	QuiesceDuration time.Duration
+	TombstoneCount  SampledMetric
+	// TotalSize holds the total size of the database, sampled after each
+	// workload step.
+	TotalSize           SampledMetric
+	TotalWriteAmp       float64
+	WorkloadDuration    time.Duration
+	WriteBytes          uint64
+	WriteStalls         uint64
+	WriteStallsDuration time.Duration
+	WriteThroughput     SampledMetric
+}
+
+// Plot holds an ascii plot and its name.
+type Plot struct {
+	Name string
+	Plot string
+}
+
+// Plots returns a slice of ascii plots describing metrics change over time.
+func (m *Metrics) Plots(width, height int) []Plot {
+	const scaleMB = 1.0 / float64(1<<20)
+	return []Plot{
+		{Name: "Write throughput (MB/s)", Plot: m.WriteThroughput.PlotIncreasingPerSec(width, height, scaleMB)},
+		{Name: "Estimated compaction debt (MB)", Plot: m.EstimatedDebt.Plot(width, height, scaleMB)},
+		{Name: "Total database size (MB)", Plot: m.TotalSize.Plot(width, height, scaleMB)},
+		{Name: "ReadAmp", Plot: m.ReadAmp.Plot(width, height, 1.0)},
+	}
+}
+
+// WriteBenchmarkString writes the metrics in the form of a series of
+// 'Benchmark' lines understandable by benchstat.
+func (m *Metrics) WriteBenchmarkString(name string, w io.Writer) error {
+	groups := []struct {
+		label  string
+		values []benchfmt.Value
+	}{
+		{label: "CompactionCounts", values: []benchfmt.Value{
+			{Value: float64(m.CompactionCounts.Total), Unit: "compactions"},
+			{Value: float64(m.CompactionCounts.Default), Unit: "default"},
+			{Value: float64(m.CompactionCounts.DeleteOnly), Unit: "delete"},
+			{Value: float64(m.CompactionCounts.ElisionOnly), Unit: "elision"},
+			{Value: float64(m.CompactionCounts.Move), Unit: "move"},
+			{Value: float64(m.CompactionCounts.Read), Unit: "read"},
+			{Value: float64(m.CompactionCounts.Rewrite), Unit: "rewrite"},
+			{Value: float64(m.CompactionCounts.MultiLevel), Unit: "multilevel"},
+		}},
+		// Total database sizes sampled after every workload step and
+		// compaction. This can be used to evaluate the relative LSM space
+		// amplification between runs of the same workload. Calculating the true
+		// space amplification continuously is prohibitvely expensive (it
+		// requires totally compacting a copy of the LSM).
+		{label: "DatabaseSize/mean", values: []benchfmt.Value{
+			{Value: m.TotalSize.Mean(), Unit: "bytes"},
+		}},
+		{label: "DatabaseSize/max", values: []benchfmt.Value{
+			{Value: float64(m.TotalSize.Max()), Unit: "bytes"},
+		}},
+		// Time applying the workload and time waiting for compactions to
+		// quiesce after the workload has completed.
+		{label: "DurationWorkload", values: []benchfmt.Value{
+			{Value: m.WorkloadDuration.Seconds(), Unit: "sec/op"},
+		}},
+		{label: "DurationQuiescing", values: []benchfmt.Value{
+			{Value: m.QuiesceDuration.Seconds(), Unit: "sec/op"},
+		}},
+		{label: "DurationPaceDelay", values: []benchfmt.Value{
+			{Value: m.PaceDuration.Seconds(), Unit: "sec/op"},
+		}},
+		// Estimated compaction debt, sampled after every workload step and
+		// compaction.
+		{label: "EstimatedDebt/mean", values: []benchfmt.Value{
+			{Value: m.EstimatedDebt.Mean(), Unit: "bytes"},
+		}},
+		{label: "EstimatedDebt/max", values: []benchfmt.Value{
+			{Value: float64(m.EstimatedDebt.Max()), Unit: "bytes"},
+		}},
+		{label: "IngestedIntoL0", values: []benchfmt.Value{
+			{Value: float64(m.Ingest.BytesIntoL0), Unit: "bytes"},
+		}},
+		{label: "IngestWeightedByLevel", values: []benchfmt.Value{
+			{Value: float64(m.Ingest.BytesWeightedByLevel), Unit: "bytes"},
+		}},
+		{label: "ReadAmp/mean", values: []benchfmt.Value{
+			{Value: m.ReadAmp.Mean(), Unit: "files"},
+		}},
+		{label: "ReadAmp/max", values: []benchfmt.Value{
+			{Value: float64(m.ReadAmp.Max()), Unit: "files"},
+		}},
+		{label: "TombstoneCount/mean", values: []benchfmt.Value{
+			{Value: m.TombstoneCount.Mean(), Unit: "tombstones"},
+		}},
+		{label: "TombstoneCount/max", values: []benchfmt.Value{
+			{Value: float64(m.TombstoneCount.Max()), Unit: "tombstones"},
+		}},
+		{label: "Throughput", values: []benchfmt.Value{
+			{Value: float64(m.WriteBytes) / (m.WorkloadDuration + m.QuiesceDuration).Seconds(), Unit: "B/s"},
+		}},
+		{label: "WriteAmp", values: []benchfmt.Value{
+			{Value: float64(m.TotalWriteAmp), Unit: "wamp"},
+		}},
+		{label: "WriteStalls", values: []benchfmt.Value{
+			{Value: float64(m.WriteStalls), Unit: "stalls"},
+			{Value: m.WriteStallsDuration.Seconds(), Unit: "stallsec/op"},
+		}},
+	}
+
+	bw := benchfmt.NewWriter(w)
+	for _, grp := range groups {
+		err := bw.Write(&benchfmt.Result{
+			Name:   benchfmt.Name(fmt.Sprintf("BenchmarkReplay/%s/%s", name, grp.label)),
+			Iters:  1,
+			Values: grp.values,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Runner runs a captured workload against a test database, collecting
 // metrics on performance.
 type Runner struct {
-	RunDir       string
-	WorkloadFS   vfs.FS
-	WorkloadPath string
-	Pacer        Pacer
-	Opts         *pebble.Options
+	RunDir        string
+	WorkloadFS    vfs.FS
+	WorkloadPath  string
+	Pacer         Pacer
+	Opts          *pebble.Options
+	MaxWriteBytes uint64
 
 	// Internal state.
-	cancel func()
 
-	// workloadExhausted is a channel that is used by refreshMetrics in order to
-	// receive a single message once all the workload steps have been applied.
-	workloadExhausted chan struct{}
-
-	d        *pebble.DB
-	err      atomic.Value
-	errgroup *errgroup.Group
-	metrics  struct {
-		writeStalls            uint64
-		writeStallDurationNano uint64
-	}
-	readerOpts sstable.ReaderOptions
-	stagingDir string
-	steps      chan workloadStep
-
-	// compactionEnded is a channel used to notify the refreshMetrics method that
-	// a compaction has finished and hence it can update the metrics.
-	compactionEnded            chan struct{}
-	finishedCompactionNotifier sync.Cond
-
-	// compactionEndedCount keeps track of the cumulative number of compactions.
-	// It is guarded by the finishedCompactionNotifier condition variable lock.
-	compactionEndedCount int64
-
-	// compactionStartCount uses atomics to keep track of the previous cumulative
-	// compaction count.
-	compactionStartCount int64
-
-	// compactionsHaveQuiesced is a channel that is closed once compactions have
-	// quiesced allowing the compactionNotified goroutine to complete.
-	compactionsHaveQuiesced chan struct{}
-
-	// dbMetrics and dbMetricsNotifier work in unison to update the metrics and
+	d *pebble.DB
+	// dbMetrics and dbMetricsCond work in unison to update the metrics and
 	// notify (broadcast) to any waiting clients that metrics have been updated.
-	dbMetricsNotifier sync.Cond
-	dbMetrics         *pebble.Metrics
+	dbMetrics     *pebble.Metrics
+	dbMetricsCond sync.Cond
+	cancel        func()
+	err           atomic.Value
+	errgroup      *errgroup.Group
+	readerOpts    sstable.ReaderOptions
+	stagingDir    string
+	steps         chan workloadStep
+	stepsApplied  chan workloadStep
 
+	metrics struct {
+		estimatedDebt           SampledMetric
+		quiesceDuration         time.Duration
+		readAmp                 SampledMetric
+		tombstoneCount          SampledMetric
+		totalSize               SampledMetric
+		paceDurationNano        uint64 // atomic
+		workloadDuration        time.Duration
+		writeBytes              uint64 // atomic
+		writeStalls             uint64 // atomic
+		writeStallsDurationNano uint64 // atomic
+		writeThroughput         SampledMetric
+	}
+	// compactionMu holds state for tracking the number of compactions
+	// started and completed and waking waiting goroutines when a new compaction
+	// completes. See nextCompactionCompletes.
+	compactionMu struct {
+		sync.Mutex
+		ch        chan struct{}
+		started   int64
+		completed int64
+	}
 	workload struct {
 		manifests []string
 		// manifest{Idx,Off} record the starting position of the workload
@@ -173,15 +323,13 @@ func (r *Runner) Run(ctx context.Context) error {
 		return err
 	}
 
-	r.dbMetricsNotifier = sync.Cond{
-		L: &sync.Mutex{},
-	}
-	r.finishedCompactionNotifier = sync.Cond{
+	r.dbMetricsCond = sync.Cond{
 		L: &sync.Mutex{},
 	}
 
 	// Extend the user-provided Options with extensions necessary for replay
 	// mechanics.
+	r.compactionMu.ch = make(chan struct{})
 	r.Opts.AddEventListener(r.eventListener())
 	r.Opts.EnsureDefaults()
 	r.readerOpts = r.Opts.MakeReaderOptions()
@@ -192,9 +340,6 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	r.dbMetrics = r.d.Metrics()
-	r.workloadExhausted = make(chan struct{}, 1)
-	r.compactionEnded = make(chan struct{})
-	r.compactionsHaveQuiesced = make(chan struct{})
 
 	// Use a buffered channel to allow the prepareWorkloadSteps to read ahead,
 	// buffering up to cap(r.steps) steps ahead of the current applied state.
@@ -202,73 +347,192 @@ func (r *Runner) Run(ctx context.Context) error {
 	// pipelining this preparation makes it more likely the step will be ready
 	// to apply when the pacer decides to apply it.
 	r.steps = make(chan workloadStep, 5)
+	r.stepsApplied = make(chan workloadStep, 5)
 
 	ctx, r.cancel = context.WithCancel(ctx)
 	r.errgroup, ctx = errgroup.WithContext(ctx)
 	r.errgroup.Go(func() error { return r.prepareWorkloadSteps(ctx) })
 	r.errgroup.Go(func() error { return r.applyWorkloadSteps(ctx) })
 	r.errgroup.Go(func() error { return r.refreshMetrics(ctx) })
-	r.errgroup.Go(func() error { return r.compactionNotified(ctx) })
 	return nil
 }
 
+// refreshMetrics runs in its own goroutine, collecting metrics from the Pebble
+// instance whenever a) a workload step completes, or b) a compaction completes.
+// The Pacer implementations that pace based on read-amplification rely on these
+// refreshed metrics to decide when to allow the workload to proceed.
 func (r *Runner) refreshMetrics(ctx context.Context) error {
-	workloadExhausted := false
-	done := false
-
-	fetchDoneState := func() {
-		r.finishedCompactionNotifier.L.Lock()
-		done = r.compactionEndedCount == atomic.LoadInt64(&r.compactionStartCount)
-		r.finishedCompactionNotifier.L.Unlock()
-	}
-
-	for !done || !workloadExhausted {
-		select {
-		// r.workloadExhausted receives a single message when the workload is exhausted
-		case <-r.workloadExhausted:
-			workloadExhausted = true
-			fetchDoneState()
-			if done {
-				r.stopCompactionNotifier()
+	startAt := time.Now()
+	var workloadExhausted bool
+	var workloadExhaustedAt time.Time
+	stepsApplied := r.stepsApplied
+	compactionCount, alreadyCompleted, compactionCh := r.nextCompactionCompletes(0)
+	for {
+		if !alreadyCompleted {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-compactionCh:
+				// Fall through to refreshing dbMetrics.
+			case _, ok := <-stepsApplied:
+				if !ok {
+					workloadExhausted = true
+					workloadExhaustedAt = time.Now()
+					// Set the [stepsApplied] channel to nil so that we'll never
+					// hit this case again, and we don't busy loop.
+					stepsApplied = nil
+					// Record the replay time.
+					r.metrics.workloadDuration = workloadExhaustedAt.Sub(startAt)
+				}
+				// Fall through to refreshing dbMetrics.
 			}
-		case <-ctx.Done():
-			r.stopCompactionNotifier()
-			return ctx.Err()
-		case <-r.compactionEnded:
-			r.dbMetricsNotifier.L.Lock()
-			r.dbMetrics = r.d.Metrics()
-			r.dbMetricsNotifier.Broadcast()
-			r.dbMetricsNotifier.L.Unlock()
+		}
 
-			fetchDoneState()
-			if done && workloadExhausted {
-				r.stopCompactionNotifier()
+		m := r.d.Metrics()
+		r.dbMetricsCond.L.Lock()
+		r.dbMetrics = m
+		r.dbMetricsCond.Broadcast()
+		r.dbMetricsCond.L.Unlock()
+
+		// Collect sample metrics. These metrics are calculated by sampling
+		// every time we collect metrics.
+		r.metrics.readAmp.record(int64(m.ReadAmp()))
+		r.metrics.estimatedDebt.record(int64(m.Compact.EstimatedDebt))
+		r.metrics.tombstoneCount.record(int64(m.Keys.TombstoneCount))
+		r.metrics.totalSize.record(int64(m.DiskSpaceUsage()))
+		r.metrics.writeThroughput.record(int64(atomic.LoadUint64(&r.metrics.writeBytes)))
+
+		compactionCount, alreadyCompleted, compactionCh = r.nextCompactionCompletes(compactionCount)
+		// Consider whether replaying is complete. There are two necessary
+		// conditions:
+		//
+		//   1. The workload must be exhausted.
+		//   2. Compactions must have quiesced.
+		//
+		// The first condition is simple. The replay tool is responsible for
+		// applying the workload. The goroutine responsible for applying the
+		// workload closes the `stepsApplied` channel after the last step has
+		// been applied, and we'll flip `workloadExhausted` to true.
+		//
+		// The second condition is tricky. The replay tool doesn't control
+		// compactions and doesn't have visibility into whether the compaction
+		// picker is about to schedule a new compaction. We can tell when
+		// compactions are in progress or may be immeninent (eg, flushes in
+		// progress). If it appears that compactions have quiesced, pause for a
+		// fixed duration to see if a new one is scheduled. If not, consider
+		// compactions quiesced.
+		if workloadExhausted && !alreadyCompleted && r.compactionsAppearQuiesced(m) {
+			select {
+			case <-compactionCh:
+				// A new compaction just finished; compactions have not
+				// quiesced.
+				continue
+			case <-time.After(time.Second):
+				// No compactions completed. If it still looks like they've
+				// quiesced according to the metrics, consider them quiesced.
+				if r.compactionsAppearQuiesced(r.d.Metrics()) {
+					r.metrics.quiesceDuration = time.Since(workloadExhaustedAt)
+					return nil
+				}
 			}
 		}
 	}
-	return nil
 }
 
-func (r *Runner) stopCompactionNotifier() {
-	// Close the channel which will cause the compactionNotified goroutine to exit
-	close(r.compactionsHaveQuiesced)
-
-	// Wake up compaction notifier if it is waiting on the
-	// r.finishedCompactionNotifier condition and make sure it doesn't go back
-	// to sleep
-	r.finishedCompactionNotifier.L.Lock()
-	r.compactionEndedCount++
-	r.finishedCompactionNotifier.Broadcast()
-	r.finishedCompactionNotifier.L.Unlock()
+// compactionsAppearQuiesced returns true if the database may have quiesced, and
+// there likely won't be additional compactions scheduled. Detecting quiescence
+// is a bit fraught: The various signals that Pebble makes available are
+// adjusted at different points in the compaction lifecycle, and database
+// mutexes are dropped and acquired between them. This makes it difficult to
+// reliably identify when compactions quiesce.
+//
+// For example, our call to DB.Metrics() may acquire the DB.mu mutex when a
+// compaction has just successfully completed, but before it's managed to
+// schedule the next compaction (DB.mu is dropped while it attempts to acquire
+// the manifest lock).
+func (r *Runner) compactionsAppearQuiesced(m *pebble.Metrics) bool {
+	r.compactionMu.Lock()
+	defer r.compactionMu.Unlock()
+	if m.Flush.NumInProgress > 0 {
+		return false
+	} else if m.Compact.NumInProgress > 0 && r.compactionMu.started != r.compactionMu.completed {
+		return false
+	}
+	return true
 }
 
-// Wait waits for the workload replay to complete.
-func (r *Runner) Wait() error {
+// nextCompactionCompletes may be used to be notified when new compactions
+// complete. The caller is responsible for holding on to a monotonically
+// increasing count representing the number of compactions that have been
+// observed, beginning at zero.
+//
+// The caller passes their current count as an argument. If a new compaction has
+// already completed since their provided count, nextCompactionCompletes returns
+// the new count and a true boolean return value. If a new compaction has not
+// yet completed, it returns a channel that will be closed when the next
+// compaction completes. This scheme allows the caller to select{...},
+// performing some action on every compaction completion.
+func (r *Runner) nextCompactionCompletes(
+	lastObserved int64,
+) (count int64, alreadyOccurred bool, ch chan struct{}) {
+	r.compactionMu.Lock()
+	defer r.compactionMu.Unlock()
+
+	if lastObserved < r.compactionMu.completed {
+		// There has already been another compaction since the last one observed
+		// by this caller. Return immediately.
+		return r.compactionMu.completed, true, nil
+	}
+
+	// The last observed compaction is still the most recent compaction.
+	// Return a channel that the caller can wait on to be notified when the
+	// next compaction occurs.
+	if r.compactionMu.ch == nil {
+		r.compactionMu.ch = make(chan struct{})
+	}
+	return lastObserved, false, r.compactionMu.ch
+}
+
+// Wait waits for the workload replay to complete. Wait returns once the entire
+// workload has been replayed, and compactions have quiesced.
+func (r *Runner) Wait() (Metrics, error) {
 	err := r.errgroup.Wait()
 	if storedErr := r.err.Load(); storedErr != nil {
 		err = storedErr.(error)
 	}
-	return err
+	pm := r.d.Metrics()
+	total := pm.Total()
+	var ingestBytesWeighted uint64
+	for l := 0; l < len(pm.Levels); l++ {
+		ingestBytesWeighted += pm.Levels[l].BytesIngested * uint64(len(pm.Levels)-l-1)
+	}
+
+	m := Metrics{
+		Final:               pm,
+		EstimatedDebt:       r.metrics.estimatedDebt,
+		PaceDuration:        time.Duration(r.metrics.paceDurationNano),
+		ReadAmp:             r.metrics.readAmp,
+		QuiesceDuration:     r.metrics.quiesceDuration,
+		TombstoneCount:      r.metrics.tombstoneCount,
+		TotalSize:           r.metrics.totalSize,
+		TotalWriteAmp:       total.WriteAmp(),
+		WorkloadDuration:    r.metrics.workloadDuration,
+		WriteBytes:          r.metrics.writeBytes,
+		WriteStalls:         r.metrics.writeStalls,
+		WriteStallsDuration: time.Duration(r.metrics.writeStallsDurationNano),
+		WriteThroughput:     r.metrics.writeThroughput,
+	}
+	m.CompactionCounts.Total = pm.Compact.Count
+	m.CompactionCounts.Default = pm.Compact.DefaultCount
+	m.CompactionCounts.DeleteOnly = pm.Compact.DeleteOnlyCount
+	m.CompactionCounts.ElisionOnly = pm.Compact.ElisionOnlyCount
+	m.CompactionCounts.Move = pm.Compact.MoveCount
+	m.CompactionCounts.Read = pm.Compact.ReadCount
+	m.CompactionCounts.Rewrite = pm.Compact.RewriteCount
+	m.CompactionCounts.MultiLevel = pm.Compact.MultiLevelCount
+	m.Ingest.BytesIntoL0 = pm.Levels[0].BytesIngested
+	m.Ingest.BytesWeightedByLevel = ingestBytesWeighted
+	return m, err
 }
 
 // Close closes remaining open resources, including the database. It must be
@@ -284,18 +548,16 @@ func (r *Runner) Close() error {
 type workloadStep struct {
 	kind stepKind
 	ve   manifest.VersionEdit
-
 	// a Version describing the state of the LSM *before* the workload was
 	// collected.
 	pv *manifest.Version
 	// a Version describing the state of the LSM when the workload was
 	// collected.
 	v *manifest.Version
-
 	// non-nil for flushStepKind
-	flushBatch *pebble.Batch
-
-	tablesToIngest []string
+	flushBatch           *pebble.Batch
+	tablesToIngest       []string
+	cumulativeWriteBytes uint64
 }
 
 type stepKind uint8
@@ -320,17 +582,26 @@ func (r *Runner) eventListener() pebble.EventListener {
 			writeStallBegin = time.Now()
 		},
 		WriteStallEnd: func() {
-			atomic.AddUint64(&r.metrics.writeStallDurationNano,
+			atomic.AddUint64(&r.metrics.writeStallsDurationNano,
 				uint64(time.Since(writeStallBegin).Nanoseconds()))
 		},
 		CompactionBegin: func(_ pebble.CompactionInfo) {
-			atomic.AddInt64(&r.compactionStartCount, 1)
+			r.compactionMu.Lock()
+			defer r.compactionMu.Unlock()
+			r.compactionMu.started++
 		},
 		CompactionEnd: func(_ pebble.CompactionInfo) {
-			r.finishedCompactionNotifier.L.Lock()
-			defer r.finishedCompactionNotifier.L.Unlock()
-			r.compactionEndedCount++
-			r.finishedCompactionNotifier.Broadcast()
+			// Keep track of the number of compactions that complete and notify
+			// anyone waiting for a compaction to complete. See the function
+			// nextCompactionCompletes for the corresponding receiver side.
+			r.compactionMu.Lock()
+			defer r.compactionMu.Unlock()
+			r.compactionMu.completed++
+			if r.compactionMu.ch != nil {
+				// Signal that a compaction has completed.
+				close(r.compactionMu.ch)
+				r.compactionMu.ch = nil
+			}
 		},
 	}
 	l.EnsureDefaults(nil)
@@ -349,31 +620,37 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 		case step, ok = <-r.steps:
 			if !ok {
 				// Exhausted the workload. Exit.
-				r.workloadExhausted <- struct{}{}
+				close(r.stepsApplied)
 				return nil
 			}
 		}
 
-		// TODO(leon,jackson): Make sure to sum the duration statistics
-		r.Pacer.pace(r, step)
+		paceDur := r.Pacer.pace(r, step)
+		atomic.AddUint64(&r.metrics.paceDurationNano, uint64(paceDur))
 
 		switch step.kind {
 		case flushStepKind:
 			if err := step.flushBatch.Commit(&pebble.WriteOptions{Sync: false}); err != nil {
 				return err
 			}
-		case ingestStepKind:
-			// TODO(jackson, leon): Use the stats
-			_, err := r.d.IngestWithStats(step.tablesToIngest)
+			_, err := r.d.AsyncFlush()
 			if err != nil {
 				return err
 			}
-
+			atomic.StoreUint64(&r.metrics.writeBytes, step.cumulativeWriteBytes)
+			r.stepsApplied <- step
+		case ingestStepKind:
+			if err := r.d.Ingest(step.tablesToIngest); err != nil {
+				return err
+			}
+			atomic.StoreUint64(&r.metrics.writeBytes, step.cumulativeWriteBytes)
+			r.stepsApplied <- step
 		case compactionStepKind:
-			// TODO(jackson,leon): Apply the step to runner state.
+			// No-op.
+			// TODO(jackson): Should we elide this earlier?
+		default:
+			panic("unreachable")
 		}
-
-		var _ = step
 	}
 }
 
@@ -385,6 +662,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 
 	idx := r.workload.manifestIdx
 
+	var cumulativeWriteBytes uint64
 	var flushBufs flushBuffers
 	var v *manifest.Version
 	var previousVersion *manifest.Version
@@ -395,16 +673,21 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	}
 	currentVersion := func() (*manifest.Version, error) {
 		var err error
-		v, _, err = bve.Apply(v,
+		v, err = bve.Apply(v,
 			r.Opts.Comparer.Compare,
 			r.Opts.Comparer.FormatKey,
 			r.Opts.FlushSplitBytes,
-			r.Opts.Experimental.ReadCompactionRate)
+			r.Opts.Experimental.ReadCompactionRate,
+			nil /* zombies */)
 		bve = manifest.BulkVersionEdit{AddedByFileNum: bve.AddedByFileNum}
 		return v, err
 	}
 
 	for ; idx < len(r.workload.manifests); idx++ {
+		if r.MaxWriteBytes != 0 && cumulativeWriteBytes > r.MaxWriteBytes {
+			break
+		}
+
 		err := func() error {
 			manifestName := r.workload.manifests[idx]
 			f, err := r.WorkloadFS.Open(r.WorkloadFS.PathJoin(r.WorkloadPath, manifestName))
@@ -517,6 +800,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					if err := loadFlushedSSTableKeys(s.flushBatch, r.WorkloadFS, r.WorkloadPath, newFiles, r.readerOpts, &flushBufs); err != nil {
 						return errors.Wrapf(err, "flush in %q at offset %d", manifestName, rr.Offset())
 					}
+					cumulativeWriteBytes += uint64(s.flushBatch.Len())
 				case ingestStepKind:
 					// Copy the ingested sstables into a staging area within the
 					// run dir. This is necessary for two reasons:
@@ -534,16 +818,26 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 						if err := vfs.CopyAcrossFS(r.WorkloadFS, src, r.Opts.FS, dst); err != nil {
 							return errors.Wrapf(err, "ingest in %q at offset %d", manifestName, rr.Offset())
 						}
+						finfo, err := r.Opts.FS.Stat(dst)
+						if err != nil {
+							return errors.Wrapf(err, "stating %q", dst)
+						}
+						cumulativeWriteBytes += uint64(finfo.Size())
 						s.tablesToIngest = append(s.tablesToIngest, dst)
 					}
 				case compactionStepKind:
 					// Nothing to do.
 				}
+				s.cumulativeWriteBytes = cumulativeWriteBytes
 
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
 				case r.steps <- s:
+				}
+
+				if r.MaxWriteBytes != 0 && cumulativeWriteBytes > r.MaxWriteBytes {
+					break
 				}
 			}
 			return nil
@@ -553,24 +847,6 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-func (r *Runner) compactionNotified(ctx context.Context) error {
-	r.finishedCompactionNotifier.L.Lock()
-	for {
-		if r.compactionEndedCount < r.compactionStartCount {
-			r.finishedCompactionNotifier.Wait()
-		}
-		r.finishedCompactionNotifier.L.Unlock()
-		select {
-		case <-r.compactionsHaveQuiesced:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		case r.compactionEnded <- struct{}{}:
-		}
-		r.finishedCompactionNotifier.L.Lock()
-	}
 }
 
 // findWorkloadFiles finds all manifests and tables in the provided path on fs.
@@ -671,7 +947,12 @@ func loadFlushedSSTableKeys(
 			if err != nil {
 				return err
 			}
-			r, err := sstable.NewReader(f, readOpts)
+			readable, err := sstable.NewSimpleReadable(f)
+			if err != nil {
+				f.Close()
+				return err
+			}
+			r, err := sstable.NewReader(readable, readOpts)
 			if err != nil {
 				return err
 			}

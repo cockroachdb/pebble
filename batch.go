@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -82,7 +83,7 @@ func (d DeferredBatchOp) Finish() error {
 // consumers should use a batch per goroutine or provide their own
 // synchronization.
 //
-// Indexing
+// # Indexing
 //
 // Batches can be optionally indexed (see DB.NewIndexedBatch). An indexed batch
 // allows iteration via an Iterator (see Batch.NewIter). The iterator provides
@@ -104,7 +105,7 @@ func (d DeferredBatchOp) Finish() error {
 // significantly slower than inserting into a non-indexed batch. Only use an
 // indexed batch if you require reading from it.
 //
-// Atomic commit
+// # Atomic commit
 //
 // The operations in a batch are persisted by calling Batch.Commit which is
 // equivalent to calling DB.Apply(batch). A batch is committed atomically by
@@ -115,7 +116,7 @@ func (d DeferredBatchOp) Finish() error {
 // Batch.Commit will guarantee that the batch is persisted to disk before
 // returning. See commitPipeline for more on the implementation details.
 //
-// Large batches
+// # Large batches
 //
 // The size of a batch is limited only by available memory (be aware that
 // indexed batches require considerably additional memory for the skiplist
@@ -140,34 +141,35 @@ func (d DeferredBatchOp) Finish() error {
 // memtable have the same big-O time, but the constant factor dominates
 // here. Sorting is significantly faster and uses significantly less memory.
 //
-// Internal representation
+// # Internal representation
 //
 // The internal batch representation is a contiguous byte buffer with a fixed
 // 12-byte header, followed by a series of records.
 //
-//   +-------------+------------+--- ... ---+
-//   | SeqNum (8B) | Count (4B) |  Entries  |
-//   +-------------+------------+--- ... ---+
+//	+-------------+------------+--- ... ---+
+//	| SeqNum (8B) | Count (4B) |  Entries  |
+//	+-------------+------------+--- ... ---+
 //
 // Each record has a 1-byte kind tag prefix, followed by 1 or 2 length prefixed
 // strings (varstring):
 //
-//   +-----------+-----------------+-------------------+
-//   | Kind (1B) | Key (varstring) | Value (varstring) |
-//   +-----------+-----------------+-------------------+
+//	+-----------+-----------------+-------------------+
+//	| Kind (1B) | Key (varstring) | Value (varstring) |
+//	+-----------+-----------------+-------------------+
 //
 // A varstring is a varint32 followed by N bytes of data. The Kind tags are
 // exactly those specified by InternalKeyKind. The following table shows the
 // format for records of each kind:
 //
-//   InternalKeyKindDelete         varstring
-//   InternalKeyKindLogData        varstring
-//   InternalKeyKindSet            varstring varstring
-//   InternalKeyKindMerge          varstring varstring
-//   InternalKeyKindRangeDelete    varstring varstring
-//   InternalKeyKindRangeKeySet    varstring varstring
-//   InternalKeyKindRangeKeyUnset  varstring varstring
-//   InternalKeyKindRangeKeyDelete varstring varstring
+//	InternalKeyKindDelete         varstring
+//	InternalKeyKindLogData        varstring
+//	InternalKeyKindIngestSST      varstring
+//	InternalKeyKindSet            varstring varstring
+//	InternalKeyKindMerge          varstring varstring
+//	InternalKeyKindRangeDelete    varstring varstring
+//	InternalKeyKindRangeKeySet    varstring varstring
+//	InternalKeyKindRangeKeyUnset  varstring varstring
+//	InternalKeyKindRangeKeyDelete varstring varstring
 //
 // The intuitive understanding here are that the arguments to Delete, Set,
 // Merge, DeleteRange and RangeKeyDelete are encoded into the batch. The
@@ -210,6 +212,8 @@ type Batch struct {
 
 	// The db to which the batch will be committed. Do not change this field
 	// after the batch has been created as it might invalidate internal state.
+	// Batch.memTableSize is only refreshed if Batch.db is set. Setting db to
+	// nil once it has been set implies that the Batch has encountered an error.
 	db *DB
 
 	// The count of records in the batch. This count will be stored in the batch
@@ -255,7 +259,27 @@ type Batch struct {
 	// memtable.
 	flushable *flushableBatch
 
+	// ingestedSSTBatch indicates that the batch contains one or more key kinds
+	// of InternalKeyKindIngestSST. If the batch contains key kinds of IngestSST
+	// then it will only contain key kinds of IngestSST.
+	ingestedSSTBatch bool
+
+	// Synchronous Apply uses the commit WaitGroup for both publishing the
+	// seqnum and waiting for the WAL fsync (if needed). Asynchronous
+	// ApplyNoSyncWait, which implies WriteOptions.Sync is true, uses the commit
+	// WaitGroup for publishing the seqnum and the fsyncWait WaitGroup for
+	// waiting for the WAL fsync.
+	//
+	// TODO(sumeer): if we find that ApplyNoSyncWait in conjunction with
+	// SyncWait is causing higher memory usage because of the time duration
+	// between when the sync is already done, and a goroutine calls SyncWait
+	// (followed by Batch.Close), we could separate out {fsyncWait, commitErr}
+	// into a separate struct that is allocated separately (using another
+	// sync.Pool), and only that struct needs to outlive Batch.Close (which
+	// could then be called immediately after ApplyNoSyncWait).
 	commit    sync.WaitGroup
+	fsyncWait sync.WaitGroup
+
 	commitErr error
 	applied   uint32 // updated atomically
 }
@@ -348,13 +372,16 @@ func (b *Batch) refreshMemTableSize() {
 		if !ok {
 			break
 		}
-		b.memTableSize += memTableEntrySize(len(key), len(value))
 		switch kind {
 		case InternalKeyKindRangeDelete:
 			b.countRangeDels++
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 			b.countRangeKeys++
+		case InternalKeyKindIngestSST:
+			// This key kind doesn't contribute to the memtable size.
+			continue
 		}
+		b.memTableSize += memTableEntrySize(len(key), len(value))
 	}
 }
 
@@ -362,6 +389,9 @@ func (b *Batch) refreshMemTableSize() {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
+	if b.ingestedSSTBatch {
+		panic("pebble: invalid batch application")
+	}
 	if len(batch.data) == 0 {
 		return nil
 	}
@@ -392,6 +422,8 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 				b.countRangeDels++
 			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 				b.countRangeKeys++
+			case InternalKeyKindIngestSST:
+				panic("pebble: invalid key kind for batch")
 			}
 			if b.index != nil {
 				var err error
@@ -797,6 +829,28 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	return nil
 }
 
+// IngestSST adds the FileNum for an sstable to the batch. The data will only be
+// written to the WAL (not added to memtables or sstables).
+func (b *Batch) ingestSST(fileNum base.FileNum) {
+	if b.Empty() {
+		b.ingestedSSTBatch = true
+	} else if !b.ingestedSSTBatch {
+		// Batch contains other key kinds.
+		panic("pebble: invalid call to ingestSST")
+	}
+
+	origMemTableSize := b.memTableSize
+	var buf [binary.MaxVarintLen64]byte
+	length := binary.PutUvarint(buf[:], uint64(fileNum))
+	b.prepareDeferredKeyRecord(length, InternalKeyKindIngestSST)
+	copy(b.deferredOp.Key, buf[:length])
+	// Since IngestSST writes only to the WAL and does not affect the memtable,
+	// we restore b.memTableSize to its original value. Note that Batch.count
+	// is not reset because for the InternalKeyKindIngestSST the count is the
+	// number of sstable paths which have been added to the batch.
+	b.memTableSize = origMemTableSize
+}
+
 // Empty returns true if the batch is empty, and false otherwise.
 func (b *Batch) Empty() bool {
 	return len(b.data) <= batchHeaderLen
@@ -845,10 +899,16 @@ func (b *Batch) SetRepr(data []byte) error {
 // later mutations. Its view can be refreshed via RefreshBatchSnapshot or
 // SetOptions().
 func (b *Batch) NewIter(o *IterOptions) *Iterator {
+	return b.NewIterWithContext(context.Background(), o)
+}
+
+// NewIterWithContext is like NewIter, and additionally accepts a context for
+// tracing.
+func (b *Batch) NewIterWithContext(ctx context.Context, o *IterOptions) *Iterator {
 	if b.index == nil {
 		return &Iterator{err: ErrNotIndexed}
 	}
-	return b.db.newIterInternal(b, nil /* snapshot */, o)
+	return b.db.newIter(ctx, b, nil /* snapshot */, o)
 }
 
 // newInternalIter creates a new internalIterator that iterates over the
@@ -1089,6 +1149,7 @@ func (b *Batch) Reset() {
 	b.rangeKeysSeqNum = 0
 	b.flushable = nil
 	b.commit = sync.WaitGroup{}
+	b.fsyncWait = sync.WaitGroup{}
 	b.commitErr = nil
 	atomic.StoreUint32(&b.applied, 0)
 	if b.data != nil {
@@ -1159,7 +1220,9 @@ func (b *Batch) setCount(v uint32) {
 }
 
 // Count returns the count of memtable-modifying operations in this batch. All
-// operations with the except of LogData increment this count.
+// operations with the except of LogData increment this count. For IngestSSTs,
+// count is only used to indicate the number of SSTs ingested in the record, the
+// batch isn't applied to the memtable.
 func (b *Batch) Count() uint32 {
 	if b.count > math.MaxUint32 {
 		panic(ErrInvalidBatch)
@@ -1203,6 +1266,15 @@ func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
 		return nil, nil, false
 	}
 	return data[v:], data[:v], true
+}
+
+// SyncWait is to be used in conjunction with DB.ApplyNoSyncWait.
+func (b *Batch) SyncWait() error {
+	b.fsyncWait.Wait()
+	if b.commitErr != nil {
+		b.db = nil // prevent batch reuse on error
+	}
+	return b.commitErr
 }
 
 // BatchReader iterates over the entries contained in a batch.

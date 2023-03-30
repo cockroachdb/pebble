@@ -6,42 +6,28 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datatest"
+	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
-
-var expOpts = struct {
-	L0CompactionConcurrency   int
-	CompactionDebtConcurrency int
-	MinDeletionRate           int
-	ReadCompactionRate        int64
-	ReadSamplingMultiplier    int64
-	TableCacheShards          int
-	KeyValidationFunc         func(userKey []byte) error
-	ValidateOnIngest          bool
-	LevelMultiplier           int
-	MultiLevelCompaction      bool
-	MaxWriterConcurrency      int
-	ForceWriterParallelism    bool
-	CPUWorkPermissionGranter  pebble.CPUWorkPermissionGranter
-	PointTombstoneWeight      float64
-	EnableValueBlocks         func() bool
-	ShortAttributeExtractor   pebble.ShortAttributeExtractor
-	RequiredInPlaceValueBound pebble.UserKeyPrefixBound
-}{TableCacheShards: 2}
 
 func runReplayTest(t *testing.T, path string) {
 	fs := vfs.NewMem()
@@ -107,8 +93,8 @@ func runReplayTest(t *testing.T, path string) {
 				Comparer:                  testkeys.Comparer,
 				FormatMajorVersion:        pebble.FormatRangeKeys,
 				L0CompactionFileThreshold: 1,
-				Experimental:              expOpts,
 			}
+			setDefaultExperimentalOpts(opts)
 			ct = datatest.NewCompactionTracker(opts)
 
 			r = Runner{
@@ -146,10 +132,11 @@ func runReplayTest(t *testing.T, path string) {
 			ct.WaitForInflightCompactionsToEqual(target)
 			return ""
 		case "wait":
-			if err := r.Wait(); err != nil {
+			m, err := r.Wait()
+			if err != nil {
 				return err.Error()
 			}
-			return ""
+			return fmt.Sprintf("replayed %s in writes", humanize.Uint64(m.WriteBytes))
 		case "close":
 			if err := r.Close(); err != nil {
 				return err.Error()
@@ -159,6 +146,10 @@ func runReplayTest(t *testing.T, path string) {
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
 	})
+}
+
+func setDefaultExperimentalOpts(opts *pebble.Options) {
+	opts.Experimental.TableCacheShards = 2
 }
 
 func TestReplay(t *testing.T) {
@@ -278,20 +269,23 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			require.NoError(t, d.Flush())
 			return ""
 		case "list-files":
+			if d != nil {
+				d.TestOnlyWaitForCleaning()
+			}
 			return runListFiles(t, fs, td)
 		case "open":
 			wc = NewWorkloadCollector("build")
-			opts := pebble.Options{
+			opts := &pebble.Options{
 				Comparer:                    testkeys.Comparer,
 				DisableAutomaticCompactions: true,
 				FormatMajorVersion:          pebble.FormatRangeKeys,
 				FS:                          fs,
 				MaxManifestFileSize:         96,
-				Experimental:                expOpts,
 			}
-			wc.Attach(&opts)
+			setDefaultExperimentalOpts(opts)
+			wc.Attach(opts)
 			var err error
-			d, err = pebble.Open("build", &opts)
+			d, err = pebble.Open("build", opts)
 			require.NoError(t, err)
 			return ""
 		case "close":
@@ -318,8 +312,12 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			}
 			return buf.String()
 		case "stop":
+			wc.mu.Lock()
+			for wc.mu.tablesEnqueued != wc.mu.tablesCopied {
+				wc.mu.copyCond.Wait()
+			}
+			wc.mu.Unlock()
 			wc.Stop()
-			<-wc.done
 			return "stopped"
 		case "tree":
 			return fs.String()
@@ -410,17 +408,168 @@ func TestCollectCorpus(t *testing.T) {
 func runListFiles(t *testing.T, fs vfs.FS, td *datadriven.TestData) string {
 	var buf bytes.Buffer
 	for _, arg := range td.CmdArgs {
-		name := arg.String()
-		ls, err := fs.List(name)
-		if err != nil {
-			fmt.Fprintf(&buf, "%s: %s\n", name, err)
-			continue
-		}
-		sort.Strings(ls)
-		fmt.Fprintf(&buf, "%s:\n", name)
-		for _, dirent := range ls {
-			fmt.Fprintf(&buf, "  %s\n", dirent)
-		}
+		listFiles(t, fs, &buf, arg.String())
 	}
 	return buf.String()
+}
+
+func TestBenchmarkString(t *testing.T) {
+	m := Metrics{
+		EstimatedDebt:       SampledMetric{samples: []sample{{value: 5 << 25}}},
+		PaceDuration:        time.Second / 4,
+		QuiesceDuration:     time.Second / 2,
+		ReadAmp:             SampledMetric{samples: []sample{{value: 10}}},
+		TombstoneCount:      SampledMetric{samples: []sample{{value: 295}}},
+		TotalSize:           SampledMetric{samples: []sample{{value: 5 << 30}}},
+		TotalWriteAmp:       5.6,
+		WorkloadDuration:    time.Second,
+		WriteBytes:          30 * (1 << 20),
+		WriteStalls:         105,
+		WriteStallsDuration: time.Minute,
+	}
+	m.Ingest.BytesIntoL0 = 5 << 20
+	m.Ingest.BytesWeightedByLevel = 9 << 20
+
+	var buf bytes.Buffer
+	require.NoError(t, m.WriteBenchmarkString("tpcc", &buf))
+	require.Equal(t, strings.TrimSpace(`
+BenchmarkBenchmarkReplay/tpcc/CompactionCounts 1 0 compactions 0 default 0 delete 0 elision 0 move 0 read 0 rewrite 0 multilevel
+BenchmarkBenchmarkReplay/tpcc/DatabaseSize/mean 1 5.36870912e+09 bytes
+BenchmarkBenchmarkReplay/tpcc/DatabaseSize/max 1 5.36870912e+09 bytes
+BenchmarkBenchmarkReplay/tpcc/DurationWorkload 1 1 sec/op
+BenchmarkBenchmarkReplay/tpcc/DurationQuiescing 1 0.5 sec/op
+BenchmarkBenchmarkReplay/tpcc/DurationPaceDelay 1 0.25 sec/op
+BenchmarkBenchmarkReplay/tpcc/EstimatedDebt/mean 1 1.6777216e+08 bytes
+BenchmarkBenchmarkReplay/tpcc/EstimatedDebt/max 1 1.6777216e+08 bytes
+BenchmarkBenchmarkReplay/tpcc/IngestedIntoL0 1 5.24288e+06 bytes
+BenchmarkBenchmarkReplay/tpcc/IngestWeightedByLevel 1 9.437184e+06 bytes
+BenchmarkBenchmarkReplay/tpcc/ReadAmp/mean 1 10 files
+BenchmarkBenchmarkReplay/tpcc/ReadAmp/max 1 10 files
+BenchmarkBenchmarkReplay/tpcc/TombstoneCount/mean 1 295 tombstones
+BenchmarkBenchmarkReplay/tpcc/TombstoneCount/max 1 295 tombstones
+BenchmarkBenchmarkReplay/tpcc/Throughput 1 2.097152e+07 B/s
+BenchmarkBenchmarkReplay/tpcc/WriteAmp 1 5.6 wamp
+BenchmarkBenchmarkReplay/tpcc/WriteStalls 1 105 stalls 60 stallsec/op`),
+		strings.TrimSpace(buf.String()))
+}
+
+func listFiles(t *testing.T, fs vfs.FS, w io.Writer, name string) {
+	ls, err := fs.List(name)
+	if err != nil {
+		fmt.Fprintf(w, "%s: %s\n", name, err)
+		return
+	}
+	sort.Strings(ls)
+	fmt.Fprintf(w, "%s:\n", name)
+	for _, dirent := range ls {
+		fmt.Fprintf(w, "  %s\n", dirent)
+	}
+}
+
+// TestCompactionsQuiesce replays a workload that produces a nontrivial number of
+// compactions several times. It's intended to exercise Waits termination, which
+// is dependent on compactions quiescing.
+func TestCompactionsQuiesce(t *testing.T) {
+	const replayCount = 1
+	workloadFS := getHeavyWorkload(t)
+	fs := vfs.NewMem()
+	var atomicDone [replayCount]uint32
+	for i := 0; i < replayCount; i++ {
+		func(i int) {
+			runDir := fmt.Sprintf("run%d", i)
+			require.NoError(t, fs.MkdirAll(runDir, os.ModePerm))
+			r := Runner{
+				RunDir:       runDir,
+				WorkloadFS:   workloadFS,
+				WorkloadPath: "workload",
+				Pacer:        Unpaced{},
+				Opts: &pebble.Options{
+					Comparer:           testkeys.Comparer,
+					FS:                 fs,
+					FormatMajorVersion: pebble.FormatNewest,
+					LBaseMaxBytes:      1,
+				},
+			}
+			r.Opts.Experimental.LevelMultiplier = 2
+			require.NoError(t, r.Run(context.Background()))
+			defer r.Close()
+
+			var m Metrics
+			var err error
+			go func() {
+				m, err = r.Wait()
+				atomic.StoreUint32(&atomicDone[i], 1)
+			}()
+
+			wait := 30 * time.Second
+			if invariants.Enabled {
+				wait = time.Minute
+			}
+
+			// The above call to [Wait] should eventually return. [Wait] blocks
+			// until the workload has replayed AND compactions have quiesced. A
+			// bug in either could prevent [Wait] from ever returning.
+			require.Eventually(t, func() bool { return atomic.LoadUint32(&atomicDone[i]) == 1 },
+				wait, time.Millisecond, "(*replay.Runner).Wait didn't terminate")
+			require.NoError(t, err)
+			// Require at least 5 compactions.
+			require.Greater(t, m.Final.Compact.Count, int64(5))
+			require.Equal(t, int64(0), m.Final.Compact.NumInProgress)
+			for l := 0; l < len(m.Final.Levels)-1; l++ {
+				require.Less(t, m.Final.Levels[l].Score, 1.0)
+			}
+		}(i)
+	}
+}
+
+// getHeavyWorkload returns a FS containing a workload in the `workload`
+// directory that flushes enough randomly generated keys that replaying it
+// should generate a non-trivial number of compactions.
+func getHeavyWorkload(t *testing.T) vfs.FS {
+	heavyWorkload.Once.Do(func() {
+		t.Run("buildHeavyWorkload", func(t *testing.T) {
+			heavyWorkload.fs = buildHeavyWorkload(t)
+		})
+	})
+	return heavyWorkload.fs
+}
+
+var heavyWorkload struct {
+	sync.Once
+	fs vfs.FS
+}
+
+func buildHeavyWorkload(t *testing.T) vfs.FS {
+	o := &pebble.Options{
+		Comparer:           testkeys.Comparer,
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: pebble.FormatNewest,
+	}
+	wc := NewWorkloadCollector("")
+	wc.Attach(o)
+	d, err := pebble.Open("", o)
+	require.NoError(t, err)
+
+	destFS := vfs.NewMem()
+	require.NoError(t, destFS.MkdirAll("workload", os.ModePerm))
+	wc.Start(destFS, "workload")
+
+	ks := testkeys.Alpha(5)
+	var bufKey = make([]byte, ks.MaxLen())
+	var bufVal [512]byte
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 100; i++ {
+		b := d.NewBatch()
+		for j := 0; j < 1000; j++ {
+			rng.Read(bufVal[:])
+			n := testkeys.WriteKey(bufKey[:], ks, rng.Intn(ks.Count()))
+			require.NoError(t, b.Set(bufKey[:n], bufVal[:], pebble.NoSync))
+		}
+		require.NoError(t, b.Commit(pebble.NoSync))
+		require.NoError(t, d.Flush())
+	}
+	wc.Stop()
+
+	defer d.Close()
+	return destFS
 }

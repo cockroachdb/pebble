@@ -26,10 +26,10 @@ func TestCheckpoint(t *testing.T) {
 		}
 	}()
 
-	var buf syncedBuffer
 	mem := vfs.NewMem()
+	var memLog base.InMemLogger
 	opts := &Options{
-		FS:                    loggingFS{mem, &buf},
+		FS:                    vfs.WithLogging(mem, memLog.Infof),
 		FormatMajorVersion:    FormatNewest,
 		L0CompactionThreshold: 10,
 	}
@@ -40,7 +40,7 @@ func TestCheckpoint(t *testing.T) {
 			if len(td.CmdArgs) != 1 {
 				return "batch <db>"
 			}
-			buf.Reset()
+			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
 			b := d.NewBatch()
 			if err := runBatchDefineCmd(td, b); err != nil {
@@ -49,40 +49,55 @@ func TestCheckpoint(t *testing.T) {
 			if err := b.Commit(Sync); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "checkpoint":
-			if len(td.CmdArgs) != 2 {
-				return "checkpoint <db> <dir>"
+			if !(len(td.CmdArgs) == 2 || (len(td.CmdArgs) == 3 && td.CmdArgs[2].Key == "restrict")) {
+				return "checkpoint <db> <dir> [restrict=(start-end, ...)]"
 			}
-			buf.Reset()
+			var opts []CheckpointOption
+			if len(td.CmdArgs) == 3 {
+				var spans []CheckpointSpan
+				for _, v := range td.CmdArgs[2].Vals {
+					splits := strings.SplitN(v, "-", 2)
+					if len(splits) != 2 {
+						return fmt.Sprintf("invalid restrict range %q", v)
+					}
+					spans = append(spans, CheckpointSpan{
+						Start: []byte(splits[0]),
+						End:   []byte(splits[1]),
+					})
+				}
+				opts = append(opts, WithRestrictToSpans(spans))
+			}
+			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
-			if err := d.Checkpoint(td.CmdArgs[1].String()); err != nil {
+			if err := d.Checkpoint(td.CmdArgs[1].String(), opts...); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "compact":
 			if len(td.CmdArgs) != 1 {
 				return "compact <db>"
 			}
-			buf.Reset()
+			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
 			if err := d.Compact(nil, []byte("\xff"), false); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "flush":
 			if len(td.CmdArgs) != 1 {
 				return "flush <db>"
 			}
-			buf.Reset()
+			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
 			if err := d.Flush(); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "list":
 			if len(td.CmdArgs) != 1 {
@@ -93,9 +108,7 @@ func TestCheckpoint(t *testing.T) {
 				return err.Error()
 			}
 			sort.Strings(paths)
-			buf.Reset()
-			fmt.Fprintf(&buf, "%s\n", strings.Join(paths, "\n"))
-			return buf.String()
+			return fmt.Sprintf("%s\n", strings.Join(paths, "\n"))
 
 		case "open":
 			if len(td.CmdArgs) != 1 && len(td.CmdArgs) != 2 {
@@ -109,30 +122,30 @@ func TestCheckpoint(t *testing.T) {
 				opts.ReadOnly = true
 			}
 
-			buf.Reset()
+			memLog.Reset()
 			dir := td.CmdArgs[0].String()
 			d, err := Open(dir, opts)
 			if err != nil {
 				return err.Error()
 			}
 			dbs[dir] = d
-			return buf.String()
+			return memLog.String()
 
 		case "scan":
 			if len(td.CmdArgs) != 1 {
 				return "scan <db>"
 			}
-			buf.Reset()
+			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
 			iter := d.NewIter(nil)
 			for valid := iter.First(); valid; valid = iter.Next() {
-				fmt.Fprintf(&buf, "%s %s\n", iter.Key(), iter.Value())
+				memLog.Infof("%s %s", iter.Key(), iter.Value())
 			}
-			fmt.Fprintf(&buf, ".\n")
+			memLog.Infof(".")
 			if err := iter.Close(); err != nil {
-				fmt.Fprintf(&buf, "%v\n", err)
+				memLog.Infof("%v\n", err)
 			}
-			return buf.String()
+			return memLog.String()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

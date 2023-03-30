@@ -7,10 +7,15 @@ open-dir: db
 open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
+remove: db/temporary.000001.dbtmp
 create: db/temporary.000001.dbtmp
 sync: db/temporary.000001.dbtmp
 close: db/temporary.000001.dbtmp
 rename: db/temporary.000001.dbtmp -> db/CURRENT
+sync: db
+open-dir: db
+sync: db/MANIFEST-000001
+create: db/000002.log
 sync: db
 create: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
@@ -18,42 +23,58 @@ sync: db
 create: db/marker.format-version.000001.002
 close: db/marker.format-version.000001.002
 sync: db
+remove: db/temporary.000000.dbtmp
 create: db/temporary.000000.dbtmp
 sync: db/temporary.000000.dbtmp
 close: db/temporary.000000.dbtmp
 rename: db/temporary.000000.dbtmp -> db/CURRENT
 create: db/marker.format-version.000002.003
 close: db/marker.format-version.000002.003
+remove: db/marker.format-version.000001.002
 sync: db
 create: db/marker.format-version.000003.004
 close: db/marker.format-version.000003.004
+remove: db/marker.format-version.000002.003
 sync: db
 create: db/marker.format-version.000004.005
 close: db/marker.format-version.000004.005
+remove: db/marker.format-version.000003.004
 sync: db
 create: db/marker.format-version.000005.006
 close: db/marker.format-version.000005.006
+remove: db/marker.format-version.000004.005
 sync: db
 create: db/marker.format-version.000006.007
 close: db/marker.format-version.000006.007
+remove: db/marker.format-version.000005.006
 sync: db
 create: db/marker.format-version.000007.008
 close: db/marker.format-version.000007.008
+remove: db/marker.format-version.000006.007
 sync: db
 create: db/marker.format-version.000008.009
 close: db/marker.format-version.000008.009
+remove: db/marker.format-version.000007.008
 sync: db
 create: db/marker.format-version.000009.010
 close: db/marker.format-version.000009.010
+remove: db/marker.format-version.000008.009
 sync: db
 create: db/marker.format-version.000010.011
 close: db/marker.format-version.000010.011
+remove: db/marker.format-version.000009.010
 sync: db
 create: db/marker.format-version.000011.012
 close: db/marker.format-version.000011.012
+remove: db/marker.format-version.000010.011
 sync: db
-sync: db/MANIFEST-000001
-create: db/000002.log
+create: db/marker.format-version.000012.013
+close: db/marker.format-version.000012.013
+remove: db/marker.format-version.000011.012
+sync: db
+create: db/marker.format-version.000013.014
+close: db/marker.format-version.000013.014
+remove: db/marker.format-version.000012.013
 sync: db
 create: db/temporary.000003.dbtmp
 sync: db/temporary.000003.dbtmp
@@ -66,16 +87,16 @@ set a 1
 set b 2
 set c 3
 ----
-sync: db/000002.log
+sync-data: db/000002.log
 
 flush db
 ----
-sync: db/000002.log
+sync-data: db/000002.log
 close: db/000002.log
 create: db/000004.log
 sync: db
 create: db/000005.sst
-sync: db/000005.sst
+sync-data: db/000005.sst
 close: db/000005.sst
 sync: db
 sync: db/MANIFEST-000001
@@ -85,16 +106,16 @@ set b 5
 set d 7
 set e 8
 ----
-sync: db/000004.log
+sync-data: db/000004.log
 
 flush db
 ----
-sync: db/000004.log
+sync-data: db/000004.log
 close: db/000004.log
 reuseForWrite: db/000002.log -> db/000006.log
 sync: db
 create: db/000007.sst
-sync: db/000007.sst
+sync-data: db/000007.sst
 close: db/000007.sst
 sync: db
 sync: db/MANIFEST-000001
@@ -103,7 +124,7 @@ batch db
 set f 9
 set g 10
 ----
-sync: db/000006.log
+sync-data: db/000006.log
 
 checkpoint db checkpoints/checkpoint1
 ----
@@ -117,24 +138,24 @@ close:
 open-dir: checkpoints/checkpoint1
 link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
-create: checkpoints/checkpoint1/marker.format-version.000001.012
-sync: checkpoints/checkpoint1/marker.format-version.000001.012
-close: checkpoints/checkpoint1/marker.format-version.000001.012
-sync: checkpoints/checkpoint1
-close: checkpoints/checkpoint1
-create: checkpoints/checkpoint1/MANIFEST-000001
-sync: checkpoints/checkpoint1/MANIFEST-000001
-close: checkpoints/checkpoint1/MANIFEST-000001
-open-dir: checkpoints/checkpoint1
-create: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
-sync: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
-close: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
+create: checkpoints/checkpoint1/marker.format-version.000001.014
+sync-data: checkpoints/checkpoint1/marker.format-version.000001.014
+close: checkpoints/checkpoint1/marker.format-version.000001.014
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 link: db/000005.sst -> checkpoints/checkpoint1/000005.sst
 link: db/000007.sst -> checkpoints/checkpoint1/000007.sst
+create: checkpoints/checkpoint1/MANIFEST-000001
+sync-data: checkpoints/checkpoint1/MANIFEST-000001
+close: checkpoints/checkpoint1/MANIFEST-000001
+open-dir: checkpoints/checkpoint1
+create: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint1
+close: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/000006.log
-sync: checkpoints/checkpoint1/000006.log
+sync-data: checkpoints/checkpoint1/000006.log
 close: checkpoints/checkpoint1/000006.log
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
@@ -143,27 +164,93 @@ checkpoint db checkpoints/checkpoint1
 ----
 checkpoint checkpoints/checkpoint1: file already exists
 
+# Create a checkpoint that omits SSTs that don't overlap with the [d - f) range.
+checkpoint db checkpoints/checkpoint2 restrict=(d-f)
+----
+mkdir-all: checkpoints/checkpoint2 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint2
+link: db/OPTIONS-000003 -> checkpoints/checkpoint2/OPTIONS-000003
+open-dir: checkpoints/checkpoint2
+create: checkpoints/checkpoint2/marker.format-version.000001.014
+sync-data: checkpoints/checkpoint2/marker.format-version.000001.014
+close: checkpoints/checkpoint2/marker.format-version.000001.014
+sync: checkpoints/checkpoint2
+close: checkpoints/checkpoint2
+link: db/000007.sst -> checkpoints/checkpoint2/000007.sst
+create: checkpoints/checkpoint2/MANIFEST-000001
+sync-data: checkpoints/checkpoint2/MANIFEST-000001
+close: checkpoints/checkpoint2/MANIFEST-000001
+open-dir: checkpoints/checkpoint2
+create: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint2
+close: checkpoints/checkpoint2
+create: checkpoints/checkpoint2/000006.log
+sync-data: checkpoints/checkpoint2/000006.log
+close: checkpoints/checkpoint2/000006.log
+sync: checkpoints/checkpoint2
+close: checkpoints/checkpoint2
+
+# Create a checkpoint that omits SSTs that don't overlap with [a - e) and [d - f).
+checkpoint db checkpoints/checkpoint3 restrict=(a-e, d-f)
+----
+mkdir-all: checkpoints/checkpoint3 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint3
+link: db/OPTIONS-000003 -> checkpoints/checkpoint3/OPTIONS-000003
+open-dir: checkpoints/checkpoint3
+create: checkpoints/checkpoint3/marker.format-version.000001.014
+sync-data: checkpoints/checkpoint3/marker.format-version.000001.014
+close: checkpoints/checkpoint3/marker.format-version.000001.014
+sync: checkpoints/checkpoint3
+close: checkpoints/checkpoint3
+link: db/000005.sst -> checkpoints/checkpoint3/000005.sst
+link: db/000007.sst -> checkpoints/checkpoint3/000007.sst
+create: checkpoints/checkpoint3/MANIFEST-000001
+sync-data: checkpoints/checkpoint3/MANIFEST-000001
+close: checkpoints/checkpoint3/MANIFEST-000001
+open-dir: checkpoints/checkpoint3
+create: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint3
+close: checkpoints/checkpoint3
+create: checkpoints/checkpoint3/000006.log
+sync-data: checkpoints/checkpoint3/000006.log
+close: checkpoints/checkpoint3/000006.log
+sync: checkpoints/checkpoint3
+close: checkpoints/checkpoint3
+
 compact db
 ----
-sync: db/000006.log
+sync-data: db/000006.log
 close: db/000006.log
 reuseForWrite: db/000004.log -> db/000008.log
 sync: db
 create: db/000009.sst
-sync: db/000009.sst
+sync-data: db/000009.sst
 close: db/000009.sst
 sync: db
 sync: db/MANIFEST-000001
 create: db/000010.sst
-sync: db/000010.sst
+sync-data: db/000010.sst
 close: db/000010.sst
 sync: db
 sync: db/MANIFEST-000001
+remove: db/000005.sst
+remove: db/000007.sst
+remove: db/000009.sst
 
 batch db
 set h 11
 ----
-sync: db/000008.log
+sync-data: db/000008.log
 
 list db
 ----
@@ -174,7 +261,7 @@ CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000011.012
+marker.format-version.000013.014
 marker.manifest.000001.MANIFEST-000001
 
 list checkpoints/checkpoint1
@@ -184,13 +271,14 @@ list checkpoints/checkpoint1
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.012
+marker.format-version.000001.014
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint1 readonly
 ----
 open-dir: checkpoints/checkpoint1
 lock: checkpoints/checkpoint1/LOCK
+open-dir: checkpoints/checkpoint1
 open-dir: checkpoints/checkpoint1
 open-dir: checkpoints/checkpoint1
 
@@ -215,4 +303,61 @@ e 8
 f 9
 g 10
 h 11
+.
+
+# This checkpoint should only contain the second SST.
+list checkpoints/checkpoint2
+----
+000006.log
+000007.sst
+MANIFEST-000001
+OPTIONS-000003
+marker.format-version.000001.014
+marker.manifest.000001.MANIFEST-000001
+
+open checkpoints/checkpoint2 readonly
+----
+open-dir: checkpoints/checkpoint2
+lock: checkpoints/checkpoint2/LOCK
+open-dir: checkpoints/checkpoint2
+open-dir: checkpoints/checkpoint2
+open-dir: checkpoints/checkpoint2
+
+scan checkpoints/checkpoint2
+----
+b 5
+d 7
+e 8
+f 9
+g 10
+.
+
+# This checkpoint should contain both SSTs.
+list checkpoints/checkpoint3
+----
+000005.sst
+000006.log
+000007.sst
+MANIFEST-000001
+OPTIONS-000003
+marker.format-version.000001.014
+marker.manifest.000001.MANIFEST-000001
+
+open checkpoints/checkpoint3 readonly
+----
+open-dir: checkpoints/checkpoint3
+lock: checkpoints/checkpoint3/LOCK
+open-dir: checkpoints/checkpoint3
+open-dir: checkpoints/checkpoint3
+open-dir: checkpoints/checkpoint3
+
+scan checkpoints/checkpoint3
+----
+a 1
+b 5
+c 3
+d 7
+e 8
+f 9
+g 10
 .

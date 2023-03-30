@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -472,7 +473,7 @@ func TestGetIter(t *testing.T) {
 		// m is a map from file numbers to DBs.
 		m := map[FileNum]*memTable{}
 		newIter := func(
-			file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
+			_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
 		) (internalIterator, keyspan.FragmentIterator, error) {
 			d, ok := m[file.FileNum]
 			if !ok {
@@ -489,6 +490,7 @@ func TestGetIter(t *testing.T) {
 			meta := &fileMetadata{
 				FileNum: tt.fileNum,
 			}
+			meta.InitPhysicalBacking()
 			for i, datum := range tt.data {
 				s := strings.Split(datum, " ")
 				ikey := base.ParseInternalKey(s[0])

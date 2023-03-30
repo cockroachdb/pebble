@@ -13,22 +13,15 @@ on:
 jobs:
 
   linux:
-    name: go${{ matrix.go }}-linux
+    name: go-linux
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go:
-          - "1.17"
-          - "1.18"
-          - "1.19"
     steps:
     - uses: actions/checkout@v2
 
-    - name: Set up go${{ matrix.go }}
+    - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: ${{ matrix.go }}
+        go-version: "1.20.1"
 
     - run: make test generate
 
@@ -41,25 +34,22 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.18"
+        go-version: "1.20.1"
 
     - run: make crossversion-meta
 
-  # This job currently (reliably) fails in GitHub actions. Temporarily skip
-  # while the failures are investigated.
-  # See: https://github.com/cockroachdb/pebble/issues/2159
-  #linux-race:
-  #  name: go-linux-race
-  #  runs-on: ubuntu-latest
-  #  steps:
-  #  - uses: actions/checkout@v2
-  #
-  #  - name: Set up Go
-  #    uses: actions/setup-go@v2
-  #    with:
-  #      go-version: "1.18"
-  #
-  #  - run: make testrace TAGS=
+  linux-race:
+    name: go-linux-race
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: "1.20.1"
+
+    - run: make testrace TAGS=
 
   linux-no-invariants:
     name: go-linux-no-invariants
@@ -70,7 +60,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.18"
+        go-version: "1.20.1"
 
     - run: make test TAGS=
 
@@ -83,20 +73,46 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.18"
+        go-version: "1.20.1"
 
     - run: CGO_ENABLED=0 make test TAGS=
 
-  darwin:
-    name: go-macos
-    runs-on: macos-11
+  linux-asan:
+    name: go-linux-asan
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
 
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.18"
+        go-version: "1.20.1"
+
+    - run: make testasan
+
+  linux-msan:
+    name: go-linux-msan
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: "1.20.1"
+
+    - run: make testmsan
+
+  darwin:
+    name: go-macos
+    runs-on: macos-12
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: "1.20.1"
 
     - run: make test
 
@@ -109,12 +125,12 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.18"
+        go-version: "1.20.1"
 
     - run: go test -v ./...
 
-  freebsd:
-    name: go-freebsd
+  bsds:
+    name: go-bsds
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -122,11 +138,16 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.18"
+        go-version: "1.20.1"
 
     - name: FreeBSD build
       env:
         GOOS: freebsd
+      run: go build -v ./...
+
+    - name: NetBSD build
+      env:
+        GOOS: netbsd
       run: go build -v ./...
 
   go-lint-checks:
@@ -138,7 +159,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.18"
+        go-version: "1.20.1"
 
     - name: mod-tidy-check
       run: make mod-tidy-check

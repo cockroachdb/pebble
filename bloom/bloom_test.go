@@ -5,6 +5,7 @@
 package bloom
 
 import (
+	"crypto/rand"
 	"strings"
 	"testing"
 
@@ -195,5 +196,24 @@ func TestHash(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			require.EqualValues(t, tc.expected, hash([]byte(tc.s)))
 		})
+	}
+}
+
+func BenchmarkBloomFilter(b *testing.B) {
+	const keyLen = 128
+	const numKeys = 1024
+	keys := make([][]byte, numKeys)
+	for i := range keys {
+		keys[i] = make([]byte, keyLen)
+		_, _ = rand.Read(keys[i])
+	}
+	b.ResetTimer()
+	policy := FilterPolicy(10)
+	for i := 0; i < b.N; i++ {
+		w := policy.NewWriter(base.TableFilter)
+		for _, key := range keys {
+			w.AddKey(key)
+		}
+		w.Finish(nil)
 	}
 }

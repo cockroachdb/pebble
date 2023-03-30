@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -938,7 +940,7 @@ func TestIteratorStats(t *testing.T) {
 
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
-		opts := &Options{FS: mem}
+		opts := &Options{Comparer: testkeys.Comparer, FS: mem, FormatMajorVersion: FormatNewest}
 		// Automatic compactions may make some testcases non-deterministic.
 		opts.DisableAutomaticCompactions = true
 		var err error
@@ -1064,8 +1066,10 @@ func TestIteratorSeekOpt(t *testing.T) {
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			oldNewIters := d.newIters
-			d.newIters = func(file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
-				iter, rangeIter, err := oldNewIters(file, opts, internalOpts)
+			d.newIters = func(
+				ctx context.Context, file *manifest.FileMetadata, opts *IterOptions,
+				internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+				iter, rangeIter, err := oldNewIters(ctx, file, opts, internalOpts)
 				iterWrapped := &iterSeekOptWrapper{
 					internalIterator:      iter,
 					seekGEUsingNext:       &seekGEUsingNext,
@@ -1705,6 +1709,7 @@ func TestIteratorStatsMerge(t *testing.T) {
 		InternalStats: InternalIteratorStats{
 			BlockBytes:                     9,
 			BlockBytesInCache:              10,
+			BlockReadDuration:              3 * time.Millisecond,
 			KeyBytes:                       11,
 			ValueBytes:                     12,
 			PointCount:                     13,
@@ -1716,7 +1721,10 @@ func TestIteratorStatsMerge(t *testing.T) {
 			SkippedPoints:   17,
 		},
 	}
-	s.Merge(IteratorStats{
+	s.InternalStats.SeparatedPointValue.Count = 1
+	s.InternalStats.SeparatedPointValue.ValueBytes = 5
+	s.InternalStats.SeparatedPointValue.ValueBytesFetched = 3
+	s2 := IteratorStats{
 		ForwardSeekCount: [NumStatsKind]int{1, 2},
 		ReverseSeekCount: [NumStatsKind]int{3, 4},
 		ForwardStepCount: [NumStatsKind]int{5, 6},
@@ -1724,6 +1732,7 @@ func TestIteratorStatsMerge(t *testing.T) {
 		InternalStats: InternalIteratorStats{
 			BlockBytes:                     9,
 			BlockBytesInCache:              10,
+			BlockReadDuration:              4 * time.Millisecond,
 			KeyBytes:                       11,
 			ValueBytes:                     12,
 			PointCount:                     13,
@@ -1734,8 +1743,12 @@ func TestIteratorStatsMerge(t *testing.T) {
 			ContainedPoints: 16,
 			SkippedPoints:   17,
 		},
-	})
-	require.Equal(t, IteratorStats{
+	}
+	s2.InternalStats.SeparatedPointValue.Count = 2
+	s2.InternalStats.SeparatedPointValue.ValueBytes = 10
+	s2.InternalStats.SeparatedPointValue.ValueBytesFetched = 6
+	s.Merge(s2)
+	expected := IteratorStats{
 		ForwardSeekCount: [NumStatsKind]int{2, 4},
 		ReverseSeekCount: [NumStatsKind]int{6, 8},
 		ForwardStepCount: [NumStatsKind]int{10, 12},
@@ -1743,6 +1756,7 @@ func TestIteratorStatsMerge(t *testing.T) {
 		InternalStats: InternalIteratorStats{
 			BlockBytes:                     18,
 			BlockBytesInCache:              20,
+			BlockReadDuration:              7 * time.Millisecond,
 			KeyBytes:                       22,
 			ValueBytes:                     24,
 			PointCount:                     26,
@@ -1753,7 +1767,11 @@ func TestIteratorStatsMerge(t *testing.T) {
 			ContainedPoints: 32,
 			SkippedPoints:   34,
 		},
-	}, s)
+	}
+	expected.InternalStats.SeparatedPointValue.Count = 3
+	expected.InternalStats.SeparatedPointValue.ValueBytes = 15
+	expected.InternalStats.SeparatedPointValue.ValueBytesFetched = 9
+	require.Equal(t, expected, s)
 }
 
 // TestSetOptionsEquivalence tests equivalence between SetOptions to mutate an
@@ -2798,7 +2816,8 @@ func BenchmarkIteratorScan(b *testing.B) {
 }
 
 func BenchmarkIteratorScanNextPrefix(b *testing.B) {
-	setupBench := func(b *testing.B, maxKeysPerLevel, versCount, readAmp int) *DB {
+	setupBench := func(
+		b *testing.B, maxKeysPerLevel, versCount, readAmp int, enableValueBlocks bool) *DB {
 		keyBuf := make([]byte, readAmp+testkeys.MaxSuffixLen)
 		opts := &Options{
 			FS:                 vfs.NewMem(),
@@ -2806,6 +2825,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 			FormatMajorVersion: FormatNewest,
 		}
 		opts.DisableAutomaticCompactions = true
+		opts.Experimental.EnableValueBlocks = func() bool { return enableValueBlocks }
 		d, err := Open("", opts)
 		require.NoError(b, err)
 
@@ -2848,21 +2868,30 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 				b.Run(fmt.Sprintf("versions=%d", versionCount), func(b *testing.B) {
 					for _, readAmp := range []int{1, 3, 7, 10} {
 						b.Run(fmt.Sprintf("ramp=%d", readAmp), func(b *testing.B) {
-							d := setupBench(b, keysPerLevel, versionCount, readAmp)
-							defer func() { require.NoError(b, d.Close()) }()
-							for _, keyTypes := range []IterKeyType{IterKeyTypePointsOnly, IterKeyTypePointsAndRanges} {
-								b.Run(fmt.Sprintf("key-types=%s", keyTypes), func(b *testing.B) {
-									b.ResetTimer()
-									iterOpts := IterOptions{KeyTypes: keyTypes}
-									for i := 0; i < b.N; i++ {
-										b.StartTimer()
-										iter := d.NewIter(&iterOpts)
-										valid := iter.First()
-										for valid {
-											valid = iter.NextPrefix()
-										}
-										b.StopTimer()
-										require.NoError(b, iter.Close())
+							for _, enableValueBlocks := range []bool{false, true} {
+								b.Run(fmt.Sprintf("value-blocks=%t", enableValueBlocks), func(b *testing.B) {
+									d := setupBench(b, keysPerLevel, versionCount, readAmp, enableValueBlocks)
+									defer func() { require.NoError(b, d.Close()) }()
+									for _, keyTypes := range []IterKeyType{
+										IterKeyTypePointsOnly, IterKeyTypePointsAndRanges} {
+										b.Run(fmt.Sprintf("key-types=%s", keyTypes), func(b *testing.B) {
+											iterOpts := IterOptions{KeyTypes: keyTypes}
+											iter := d.NewIter(&iterOpts)
+											var valid bool
+											b.ResetTimer()
+											for i := 0; i < b.N; i++ {
+												if !valid {
+													valid = iter.First()
+													if !valid {
+														b.Fatalf("iter must be valid")
+													}
+												} else {
+													valid = iter.NextPrefix()
+												}
+											}
+											b.StopTimer()
+											require.NoError(b, iter.Close())
+										})
 									}
 								})
 							}
@@ -3046,7 +3075,7 @@ func BenchmarkSeekPrefixTombstones(b *testing.B) {
 			filename := fmt.Sprintf("ext%2d", i)
 			f, err := o.FS.Create(filename)
 			require.NoError(b, err)
-			w := sstable.NewWriter(f, wOpts)
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), wOpts)
 			require.NoError(b, w.DeleteRange(testkeys.Key(ks, i), testkeys.Key(ks, i+1)))
 			require.NoError(b, w.Close())
 			require.NoError(b, d.Ingest([]string{filename}))

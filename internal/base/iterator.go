@@ -4,7 +4,10 @@
 
 package base
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // InternalIterator iterates over a DB's key/value pairs in key order. Unlike
 // the Iterator interface, the returned keys are InternalKeys composed of the
@@ -348,7 +351,11 @@ type InternalIteratorStats struct {
 	BlockBytes uint64
 	// Subset of BlockBytes that were in the block cache.
 	BlockBytesInCache uint64
-
+	// BlockReadDuration accumulates the duration spent fetching blocks
+	// due to block cache misses.
+	// TODO(sumeer): this currently excludes the time spent in Reader creation,
+	// and in reading the rangedel and rangekey blocks. Fix that.
+	BlockReadDuration time.Duration
 	// The following can repeatedly count the same points if they are iterated
 	// over multiple times. Additionally, they may count a point twice when
 	// switching directions. The latter could be improved if needed.
@@ -357,7 +364,7 @@ type InternalIteratorStats struct {
 	// included.
 	KeyBytes uint64
 	// Bytes in values that were iterated over. Currently, only point values are
-	// included.
+	// included. For separated values, this is the size of the handle.
 	ValueBytes uint64
 	// The count of points iterated over.
 	PointCount uint64
@@ -365,14 +372,38 @@ type InternalIteratorStats struct {
 	// can be useful for discovering instances of
 	// https://github.com/cockroachdb/pebble/issues/1070.
 	PointsCoveredByRangeTombstones uint64
+
+	// Stats related to points in value blocks encountered during iteration.
+	// These are useful to understand outliers, since typical user facing
+	// iteration should tend to only look at the latest point, and hence have
+	// the following stats close to 0.
+	SeparatedPointValue struct {
+		// Count is a count of points that were in value blocks. This is not a
+		// subset of PointCount: PointCount is produced by mergingIter and if
+		// positioned once, and successful in returning a point, will have a
+		// PointCount of 1, regardless of how many sstables (and memtables etc.)
+		// in the heap got positioned. The count here includes every sstable
+		// iterator that got positioned in the heap.
+		Count uint64
+		// ValueBytes represent the total byte length of the values (in value
+		// blocks) of the points corresponding to Count.
+		ValueBytes uint64
+		// ValueBytesFetched is the total byte length of the values (in value
+		// blocks) that were retrieved.
+		ValueBytesFetched uint64
+	}
 }
 
 // Merge merges the stats in from into the given stats.
 func (s *InternalIteratorStats) Merge(from InternalIteratorStats) {
 	s.BlockBytes += from.BlockBytes
 	s.BlockBytesInCache += from.BlockBytesInCache
+	s.BlockReadDuration += from.BlockReadDuration
 	s.KeyBytes += from.KeyBytes
 	s.ValueBytes += from.ValueBytes
 	s.PointCount += from.PointCount
 	s.PointsCoveredByRangeTombstones += from.PointsCoveredByRangeTombstones
+	s.SeparatedPointValue.Count += from.SeparatedPointValue.Count
+	s.SeparatedPointValue.ValueBytes += from.SeparatedPointValue.ValueBytes
+	s.SeparatedPointValue.ValueBytesFetched += from.SeparatedPointValue.ValueBytesFetched
 }
