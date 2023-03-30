@@ -1250,6 +1250,7 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 		require.NoError(t, w.Close())
 		stats, err := d.IngestWithStats([]string{"ext"})
 		require.NoError(t, err)
+		require.True(t, stats.OverlappedMemtable)
 		require.Equal(t, stats.ApproxIngestedIntoL0Bytes, stats.Bytes)
 		require.Less(t, uint64(0), stats.Bytes)
 	}

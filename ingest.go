@@ -662,6 +662,10 @@ type IngestOperationStats struct {
 	// be approximate once https://github.com/cockroachdb/pebble/issues/25 is
 	// implemented.
 	ApproxIngestedIntoL0Bytes uint64
+	// OverlappedMemtable is true if one or more of the memtables contained keys
+	// within the bounds of one or more of the ingested sstables. This triggers
+	// an early flush of the mutable memtable.
+	OverlappedMemtable bool
 }
 
 // IngestWithStats does the same as Ingest, and additionally returns
@@ -785,7 +789,7 @@ func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error 
 
 func (d *DB) ingest(
 	paths []string, targetLevelFunc ingestTargetLevelFunc,
-) (IngestOperationStats, error) {
+) (stats IngestOperationStats, err error) {
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted. Note that this causes
 	// the file number ordering to be out of alignment with sequence number
@@ -847,6 +851,7 @@ func (d *DB) ingest(
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
 			if ingestMemtableOverlaps(d.cmp, m, meta) {
+				stats.OverlappedMemtable = true
 				if (len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1) ||
 					d.mu.formatVers.vers < FormatFlushableIngest ||
 					d.opts.Experimental.DisableIngestAsFlushable() {
@@ -919,7 +924,6 @@ func (d *DB) ingest(
 		Err:          err,
 		flushable:    asFlushable,
 	}
-	var stats IngestOperationStats
 	if ve != nil {
 		info.Tables = make([]struct {
 			TableInfo
