@@ -122,10 +122,10 @@ func (q *commitQueue) dequeue() *Batch {
 type commitEnv struct {
 	// The next sequence number to give to a batch. Protected by
 	// commitPipeline.mu.
-	logSeqNum *uint64
+	logSeqNum *atomic.Uint64
 	// The visible sequence number at which reads should be performed. Ratcheted
 	// upwards atomically as batches are applied to the memtable.
-	visibleSeqNum *uint64
+	visibleSeqNum *atomic.Uint64
 
 	// Apply the batch to the specified memtable. Called concurrently.
 	apply func(b *Batch, mem *memTable) error
@@ -381,12 +381,12 @@ func (p *commitPipeline) AllocateSeqNum(
 	// Assign the batch a sequence number. Note that we use atomic operations
 	// here to handle concurrent reads of logSeqNum. commitPipeline.mu provides
 	// mutual exclusion for other goroutines writing to logSeqNum.
-	logSeqNum := atomic.AddUint64(p.env.logSeqNum, uint64(count)) - uint64(count)
+	logSeqNum := p.env.logSeqNum.Add(uint64(count)) - uint64(count)
 	seqNum := logSeqNum
 	if seqNum == 0 {
 		// We can't use the value 0 for the global seqnum during ingestion, because
 		// 0 indicates no global seqnum. So allocate one more seqnum.
-		atomic.AddUint64(p.env.logSeqNum, 1)
+		p.env.logSeqNum.Add(1)
 		seqNum++
 	}
 	b.setSeqNum(seqNum)
@@ -396,7 +396,7 @@ func (p *commitPipeline) AllocateSeqNum(
 	// writes that were sequenced before the ingestion. The spin loop is
 	// unfortunate, but obviates the need for additional synchronization.
 	for {
-		visibleSeqNum := atomic.LoadUint64(p.env.visibleSeqNum)
+		visibleSeqNum := p.env.visibleSeqNum.Load()
 		if visibleSeqNum == logSeqNum {
 			break
 		}
@@ -455,7 +455,7 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool, noSyncWait bool) (*memT
 	// Assign the batch a sequence number. Note that we use atomic operations
 	// here to handle concurrent reads of logSeqNum. commitPipeline.mu provides
 	// mutual exclusion for other goroutines writing to logSeqNum.
-	b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)
+	b.setSeqNum(p.env.logSeqNum.Add(n) - n)
 
 	// Write the data to the WAL.
 	mem, err := p.env.write(b, syncWG, syncErr)
@@ -495,13 +495,13 @@ func (p *commitPipeline) publish(b *Batch) {
 		// number for a subsequent batch. That's ok as all we're guaranteeing is
 		// that the sequence number ratchets up.
 		for {
-			curSeqNum := atomic.LoadUint64(p.env.visibleSeqNum)
+			curSeqNum := p.env.visibleSeqNum.Load()
 			newSeqNum := t.SeqNum() + uint64(t.Count())
 			if newSeqNum <= curSeqNum {
 				// t's sequence number has already been published.
 				break
 			}
-			if atomic.CompareAndSwapUint64(p.env.visibleSeqNum, curSeqNum, newSeqNum) {
+			if p.env.visibleSeqNum.CompareAndSwap(curSeqNum, newSeqNum) {
 				// We successfully published t's sequence number.
 				break
 			}

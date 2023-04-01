@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -568,7 +567,7 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 
 	// Determine the seqnum to read at after grabbing the read state (current and
 	// memtables) above.
-	seqNum := atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
+	seqNum := d.mu.versions.visibleSeqNum.Load()
 
 	checkConfig := &checkConfig{
 		logger:    d.opts.Logger,

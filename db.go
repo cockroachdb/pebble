@@ -539,7 +539,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	if s != nil {
 		seqNum = s.seqNum
 	} else {
-		seqNum = atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
+		seqNum = d.mu.versions.visibleSeqNum.Load()
 	}
 
 	buf := getIterAllocPool.Get().(*getIterAlloc)
@@ -978,7 +978,7 @@ func (d *DB) newIter(ctx context.Context, batch *Batch, s *Snapshot, o *IterOpti
 	if s != nil {
 		seqNum = s.seqNum
 	} else {
-		seqNum = atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
+		seqNum = d.mu.versions.visibleSeqNum.Load()
 	}
 
 	// Bundle various structures under a single umbrella in order to allocate
@@ -1158,7 +1158,7 @@ func (d *DB) newInternalIter(s *Snapshot, o *IterOptions) *scanInternalIterator 
 	// memtables) above.
 	var seqNum uint64
 	if s == nil {
-		seqNum = atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
+		seqNum = d.mu.versions.visibleSeqNum.Load()
 	} else {
 		seqNum = s.seqNum
 	}
@@ -1392,7 +1392,7 @@ func (d *DB) NewSnapshot() *Snapshot {
 	d.mu.Lock()
 	s := &Snapshot{
 		db:     d,
-		seqNum: atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum),
+		seqNum: d.mu.versions.visibleSeqNum.Load(),
 	}
 	d.mu.snapshots.pushBack(s)
 	d.mu.Unlock()
@@ -1720,7 +1720,7 @@ func (d *DB) Metrics() *Metrics {
 	vers := d.mu.versions.currentVersion()
 	*metrics = d.mu.versions.metrics
 	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt(0)
-	metrics.Compact.InProgressBytes = atomic.LoadInt64(&d.mu.versions.atomic.atomicInProgressBytes)
+	metrics.Compact.InProgressBytes = d.mu.versions.atomicInProgressBytes.Load()
 	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount)
 	metrics.Compact.MarkedFiles = vers.Stats.MarkedForCompaction
 	for _, m := range d.mu.mem.queue {
@@ -2120,7 +2120,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				logSeqNum += uint64(b.Count())
 			}
 		} else {
-			logSeqNum = atomic.LoadUint64(&d.mu.versions.atomic.logSeqNum)
+			logSeqNum = d.mu.versions.logSeqNum.Load()
 		}
 		d.rotateMemtable(newLogNum, logSeqNum, immMem)
 		force = false

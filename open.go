@@ -191,8 +191,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}()
 
 	d.commit = newCommitPipeline(commitEnv{
-		logSeqNum:     &d.mu.versions.atomic.logSeqNum,
-		visibleSeqNum: &d.mu.versions.atomic.visibleSeqNum,
+		logSeqNum:     &d.mu.versions.logSeqNum,
+		visibleSeqNum: &d.mu.versions.visibleSeqNum,
 		apply:         d.commitApply,
 		write:         d.commitWrite,
 	})
@@ -212,7 +212,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.mu.snapshots.init()
 	// logSeqNum is the next sequence number that will be assigned. Start
 	// assigning sequence numbers from 1 to match rocksdb.
-	d.mu.versions.atomic.logSeqNum = 1
+	d.mu.versions.logSeqNum.Store(1)
 	d.mu.formatVers.vers = formatVersion
 	d.mu.formatVers.marker = formatVersionMarker
 
@@ -258,7 +258,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// sequence number of the first batch that will be inserted.
 	if !d.opts.ReadOnly {
 		var entry *flushableEntry
-		d.mu.mem.mutable, entry = d.newMemTable(0 /* logNum */, d.mu.versions.atomic.logSeqNum)
+		d.mu.mem.mutable, entry = d.newMemTable(0 /* logNum */, d.mu.versions.logSeqNum.Load())
 		d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	}
 
@@ -374,11 +374,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 		toFlush = append(toFlush, flush...)
 		d.mu.versions.markFileNumUsed(lf.num)
-		if d.mu.versions.atomic.logSeqNum < maxSeqNum {
-			d.mu.versions.atomic.logSeqNum = maxSeqNum
+		if d.mu.versions.logSeqNum.Load() < maxSeqNum {
+			d.mu.versions.logSeqNum.Store(maxSeqNum)
 		}
 	}
-	d.mu.versions.atomic.visibleSeqNum = d.mu.versions.atomic.logSeqNum
+	d.mu.versions.visibleSeqNum.Store(d.mu.versions.logSeqNum.Load())
 
 	if !d.opts.ReadOnly {
 		// Create an empty .log file.
