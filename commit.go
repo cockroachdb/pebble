@@ -33,7 +33,7 @@ type commitQueue struct {
 	//
 	// The head index is stored in the most-significant bits so that we can
 	// atomically add to it and the overflow is harmless.
-	headTail uint64
+	headTail atomic.Uint64
 
 	// slots is a ring buffer of values stored in this queue. The size must be a
 	// power of 2. A slot is in use until *both* the tail index has moved beyond
@@ -58,7 +58,7 @@ func (q *commitQueue) pack(head, tail uint32) uint64 {
 }
 
 func (q *commitQueue) enqueue(b *Batch) {
-	ptrs := atomic.LoadUint64(&q.headTail)
+	ptrs := q.headTail.Load()
 	head, tail := q.unpack(ptrs)
 	if (tail+uint32(len(q.slots)))&(1<<dequeueBits-1) == head {
 		// Queue is full. This should never be reached because commitPipeline.commitQueueSem
@@ -80,12 +80,12 @@ func (q *commitQueue) enqueue(b *Batch) {
 
 	// Increment head. This passes ownership of slot to dequeue and acts as a
 	// store barrier for writing the slot.
-	atomic.AddUint64(&q.headTail, 1<<dequeueBits)
+	q.headTail.Add(1 << dequeueBits)
 }
 
 func (q *commitQueue) dequeue() *Batch {
 	for {
-		ptrs := atomic.LoadUint64(&q.headTail)
+		ptrs := q.headTail.Load()
 		head, tail := q.unpack(ptrs)
 		if tail == head {
 			// Queue is empty.
@@ -103,7 +103,7 @@ func (q *commitQueue) dequeue() *Batch {
 		// Confirm head and tail (for our speculative check above) and increment
 		// tail. If this succeeds, then we own the slot at tail.
 		ptrs2 := q.pack(head, tail+1)
-		if atomic.CompareAndSwapUint64(&q.headTail, ptrs, ptrs2) {
+		if q.headTail.CompareAndSwap(ptrs, ptrs2) {
 			// We now own slot.
 			//
 			// Tell enqueue that we're done with this slot. Zeroing the slot is also
