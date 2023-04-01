@@ -80,7 +80,7 @@ type memTable struct {
 	// inflight mutations that have reserved space in the memtable but not yet
 	// applied. The memtable cannot be flushed to disk until the writer refs
 	// drops to zero.
-	writerRefs int32
+	writerRefs atomic.Int32
 	tombstones keySpanCache
 	rangeKeys  keySpanCache
 	// The current logSeqNum at the time the memtable was created. This is
@@ -115,13 +115,13 @@ func newMemTable(opts memTableOptions) *memTable {
 	}
 
 	m := &memTable{
-		cmp:        opts.Comparer.Compare,
-		formatKey:  opts.Comparer.FormatKey,
-		equal:      opts.Comparer.Equal,
-		arenaBuf:   opts.arenaBuf,
-		writerRefs: 1,
-		logSeqNum:  opts.logSeqNum,
+		cmp:       opts.Comparer.Compare,
+		formatKey: opts.Comparer.FormatKey,
+		equal:     opts.Comparer.Equal,
+		arenaBuf:  opts.arenaBuf,
+		logSeqNum: opts.logSeqNum,
 	}
+	m.writerRefs.Store(1)
 	m.tombstones = keySpanCache{
 		cmp:           m.cmp,
 		formatKey:     m.formatKey,
@@ -147,14 +147,14 @@ func newMemTable(opts memTableOptions) *memTable {
 }
 
 func (m *memTable) writerRef() {
-	switch v := atomic.AddInt32(&m.writerRefs, 1); {
+	switch v := m.writerRefs.Add(1); {
 	case v <= 1:
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
 	}
 }
 
 func (m *memTable) writerUnref() bool {
-	switch v := atomic.AddInt32(&m.writerRefs, -1); {
+	switch v := m.writerRefs.Add(-1); {
 	case v < 0:
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
 	case v == 0:
@@ -165,7 +165,7 @@ func (m *memTable) writerUnref() bool {
 }
 
 func (m *memTable) readyForFlush() bool {
-	return atomic.LoadInt32(&m.writerRefs) == 0
+	return m.writerRefs.Load() == 0
 }
 
 // Prepare reserves space for the batch in the memtable and references the
@@ -265,7 +265,7 @@ func (m *memTable) containsRangeKeys() bool {
 
 func (m *memTable) availBytes() uint32 {
 	a := m.skl.Arena()
-	if atomic.LoadInt32(&m.writerRefs) == 1 {
+	if m.writerRefs.Load() == 1 {
 		// If there are no other concurrent apply operations, we can update the
 		// reserved bytes setting to accurately reflect how many bytes of been
 		// allocated vs the over-estimation present in memTableEntrySize.
