@@ -155,7 +155,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		closedCh:            make(chan struct{}),
 	}
 	d.mu.versions = &versionSet{}
-	d.atomic.diskAvailBytes = math.MaxUint64
+	d.diskAvailBytes.Store(math.MaxUint64)
 	d.mu.versions.diskAvailBytes = d.getDiskAvailableBytesCached
 
 	defer func() {

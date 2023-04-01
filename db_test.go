@@ -815,7 +815,7 @@ func TestMemTableReservation(t *testing.T) {
 
 	checkReserved := func(expected int64) {
 		t.Helper()
-		if reserved := atomic.LoadInt64(&d.atomic.memTableReserved); expected != reserved {
+		if reserved := d.memTableReserved.Load(); expected != reserved {
 			t.Fatalf("expected %d reserved, but found %d", expected, reserved)
 		}
 	}
