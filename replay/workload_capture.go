@@ -58,15 +58,11 @@ type WorkloadCollector struct {
 		tablesCopied   int
 		tablesEnqueued int
 	}
-	atomic struct {
-		// Stores the current manifest that is being used by the database. Updated
-		// atomically.
-		curManifest uint64
-		// A boolean represented as an atomic uint32 that stores whether the workload
-		// collector is enabled.
-		enabled uint32
-	}
-	buffer []byte
+	// Stores the current manifest that is being used by the database.
+	curManifest atomic.Uint64
+	// Stores whether the workload collector is enabled.
+	enabled atomic.Bool
+	buffer  []byte
 	// config contains information that is only set on the creation of the
 	// WorkloadCollector.
 	config struct {
@@ -164,7 +160,7 @@ func (w *WorkloadCollector) clean(fs vfs.FS, fileType base.FileType, path string
 // onTableIngest is attached to a pebble.DB as an EventListener.TableIngested
 // func. It enqueues all ingested tables to be copied.
 func (w *WorkloadCollector) onTableIngest(info pebble.TableIngestInfo) {
-	if atomic.LoadUint32(&w.atomic.enabled) == 0 {
+	if !w.IsRunning() {
 		return
 	}
 	w.mu.Lock()
@@ -193,8 +189,8 @@ func (w *WorkloadCollector) onFlushEnd(info pebble.FlushInfo) {
 // EventListener.ManifestCreated func. It records the the new manifest so that
 // it's copied asynchronously in the background.
 func (w *WorkloadCollector) onManifestCreated(info pebble.ManifestCreateInfo) {
-	atomic.StoreUint64(&w.atomic.curManifest, uint64(info.FileNum))
-	if atomic.LoadUint32(&w.atomic.enabled) == 0 {
+	w.curManifest.Store(uint64(info.FileNum))
+	if !w.enabled.Load() {
 		return
 	}
 	w.mu.Lock()
@@ -358,7 +354,7 @@ func (w *WorkloadCollector) Start(destFS vfs.FS, destPath string) {
 
 	// If the collector not is running then that means w.enabled == 0 so swap it
 	// to 1 and continue else return since it is already running.
-	if !atomic.CompareAndSwapUint32(&w.atomic.enabled, 0, 1) {
+	if !w.enabled.CompareAndSwap(false, true) {
 		return
 	}
 	w.config.destFS = destFS
@@ -374,7 +370,7 @@ func (w *WorkloadCollector) Start(destFS vfs.FS, destPath string) {
 	//      still zero. Once the associated database is opened, it'll invoke
 	//      onManifestCreated which will handle enqueuing the manifest on
 	//      `w.mu.manifests`.
-	fileNum := base.FileNum(atomic.LoadUint64(&w.atomic.curManifest))
+	fileNum := base.FileNum(w.curManifest.Load())
 	if fileNum != 0 {
 		fileName := base.MakeFilename(base.FileTypeManifest, fileNum)
 		w.mu.manifests = append(w.mu.manifests[:0], &manifestDetails{sourceFilepath: w.srcFilepath(fileName)})
@@ -390,9 +386,9 @@ func (w *WorkloadCollector) Start(destFS vfs.FS, destPath string) {
 // Stop stops collection of the workload.
 func (w *WorkloadCollector) Stop() {
 	w.mu.Lock()
-	// If the collector is running then that means w.enabled == 1 so swap it to 0
-	// and continue else return since it is not running.
-	if !atomic.CompareAndSwapUint32(&w.atomic.enabled, 1, 0) {
+	// If the collector is running then that means w.enabled == true so swap it to
+	// false and continue else return since it is not running.
+	if !w.enabled.CompareAndSwap(true, false) {
 		w.mu.Unlock()
 		return
 	}
@@ -404,7 +400,7 @@ func (w *WorkloadCollector) Stop() {
 
 // IsRunning returns whether the WorkloadCollector is currently running.
 func (w *WorkloadCollector) IsRunning() bool {
-	return atomic.LoadUint32(&w.atomic.enabled) == 1
+	return w.enabled.Load()
 }
 
 // srcFilepath returns the file path to the named file in the source directory
