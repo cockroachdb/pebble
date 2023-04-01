@@ -13,7 +13,6 @@ import (
 	"runtime/pprof"
 	"sort"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -1670,16 +1669,16 @@ func (d *DB) removeInProgressCompaction(c *compaction, rollback bool) {
 
 func (d *DB) calculateDiskAvailableBytes() uint64 {
 	if space, err := d.opts.FS.GetDiskUsage(d.dirname); err == nil {
-		atomic.StoreUint64(&d.atomic.diskAvailBytes, space.AvailBytes)
+		d.diskAvailBytes.Store(space.AvailBytes)
 		return space.AvailBytes
 	} else if !errors.Is(err, vfs.ErrUnsupported) {
 		d.opts.EventListener.BackgroundError(err)
 	}
-	return atomic.LoadUint64(&d.atomic.diskAvailBytes)
+	return d.diskAvailBytes.Load()
 }
 
 func (d *DB) getDiskAvailableBytesCached() uint64 {
-	return atomic.LoadUint64(&d.atomic.diskAvailBytes)
+	return d.diskAvailBytes.Load()
 }
 
 func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
