@@ -23,10 +23,9 @@ import (
 )
 
 type testCommitEnv struct {
-	logSeqNum     uint64
-	visibleSeqNum uint64
-	writePos      int64
-	writeCount    uint64
+	logSeqNum     atomic.Uint64
+	visibleSeqNum atomic.Uint64
+	writeCount    atomic.Uint64
 	applyBuf      struct {
 		sync.Mutex
 		buf []uint64
@@ -51,9 +50,7 @@ func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 }
 
 func (e *testCommitEnv) write(b *Batch, wg *sync.WaitGroup, _ *error) (*memTable, error) {
-	n := int64(len(b.data))
-	atomic.AddInt64(&e.writePos, n)
-	atomic.AddUint64(&e.writeCount, 1)
+	e.writeCount.Add(1)
 	if wg != nil {
 		wg.Done()
 		<-e.queueSemChan
@@ -110,17 +107,17 @@ func TestCommitPipeline(t *testing.T) {
 	}
 	wg.Wait()
 
-	if s := atomic.LoadUint64(&e.writeCount); uint64(n) != s {
+	if s := e.writeCount.Load(); uint64(n) != s {
 		t.Fatalf("expected %d written batches, but found %d", n, s)
 	}
 	if n != len(e.applyBuf.buf) {
 		t.Fatalf("expected %d written batches, but found %d",
 			n, len(e.applyBuf.buf))
 	}
-	if s := atomic.LoadUint64(&e.logSeqNum); uint64(n) != s {
+	if s := e.logSeqNum.Load(); uint64(n) != s {
 		t.Fatalf("expected %d, but found %d", n, s)
 	}
-	if s := atomic.LoadUint64(&e.visibleSeqNum); uint64(n) != s {
+	if s := e.visibleSeqNum.Load(); uint64(n) != s {
 		t.Fatalf("expected %d, but found %d", n, s)
 	}
 }
@@ -155,17 +152,17 @@ func TestCommitPipelineSync(t *testing.T) {
 				}(i)
 			}
 			wg.Wait()
-			if s := atomic.LoadUint64(&e.writeCount); uint64(n) != s {
+			if s := e.writeCount.Load(); uint64(n) != s {
 				t.Fatalf("expected %d written batches, but found %d", n, s)
 			}
 			if n != len(e.applyBuf.buf) {
 				t.Fatalf("expected %d written batches, but found %d",
 					n, len(e.applyBuf.buf))
 			}
-			if s := atomic.LoadUint64(&e.logSeqNum); uint64(n) != s {
+			if s := e.logSeqNum.Load(); uint64(n) != s {
 				t.Fatalf("expected %d, but found %d", n, s)
 			}
-			if s := atomic.LoadUint64(&e.visibleSeqNum); uint64(n) != s {
+			if s := e.visibleSeqNum.Load(); uint64(n) != s {
 				t.Fatalf("expected %d, but found %d", n, s)
 			}
 		})
@@ -179,33 +176,33 @@ func TestCommitPipelineAllocateSeqNum(t *testing.T) {
 	const n = 10
 	var wg sync.WaitGroup
 	wg.Add(n)
-	var prepareCount uint64
-	var applyCount uint64
+	var prepareCount atomic.Uint64
+	var applyCount atomic.Uint64
 	for i := 1; i <= n; i++ {
 		go func(i int) {
 			defer wg.Done()
 			p.AllocateSeqNum(i, func(_ uint64) {
-				atomic.AddUint64(&prepareCount, uint64(1))
+				prepareCount.Add(1)
 			}, func(seqNum uint64) {
-				atomic.AddUint64(&applyCount, uint64(1))
+				applyCount.Add(1)
 			})
 		}(i)
 	}
 	wg.Wait()
 
-	if s := atomic.LoadUint64(&prepareCount); n != s {
+	if s := prepareCount.Load(); n != s {
 		t.Fatalf("expected %d prepares, but found %d", n, s)
 	}
-	if s := atomic.LoadUint64(&applyCount); n != s {
+	if s := applyCount.Load(); n != s {
 		t.Fatalf("expected %d applies, but found %d", n, s)
 	}
 	// AllocateSeqNum always returns a non-zero sequence number causing the
 	// values we see to be offset from 1.
 	const total = 1 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
-	if s := atomic.LoadUint64(&e.logSeqNum); total != s {
+	if s := e.logSeqNum.Load(); total != s {
 		t.Fatalf("expected %d, but found %d", total, s)
 	}
-	if s := atomic.LoadUint64(&e.visibleSeqNum); total != s {
+	if s := e.visibleSeqNum.Load(); total != s {
 		t.Fatalf("expected %d, but found %d", total, s)
 	}
 }
@@ -240,8 +237,8 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	var wal *record.LogWriter
 	var walDone sync.WaitGroup
 	testEnv := commitEnv{
-		logSeqNum:     new(uint64),
-		visibleSeqNum: new(uint64),
+		logSeqNum:     new(atomic.Uint64),
+		visibleSeqNum: new(atomic.Uint64),
 		apply: func(b *Batch, mem *memTable) error {
 			// At this point, we've called SyncRecord but the sync is blocked.
 			walDone.Done()
@@ -296,8 +293,8 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					mem := newMemTable(memTableOptions{})
 					var wal *record.LogWriter
 					nullCommitEnv := commitEnv{
-						logSeqNum:     new(uint64),
-						visibleSeqNum: new(uint64),
+						logSeqNum:     new(atomic.Uint64),
+						visibleSeqNum: new(atomic.Uint64),
 						apply: func(b *Batch, mem *memTable) error {
 							err := mem.apply(b, b.SeqNum())
 							if err != nil {

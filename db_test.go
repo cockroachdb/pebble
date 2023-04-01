@@ -390,7 +390,7 @@ func TestLargeBatch(t *testing.T) {
 
 	startLogNum := logNum()
 	startLogStartSize := fileSize(startLogNum)
-	startSeqNum := atomic.LoadUint64(&d.mu.versions.atomic.logSeqNum)
+	startSeqNum := d.mu.versions.logSeqNum.Load()
 
 	// Write a key with a value larger than the memtable size.
 	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("a"), 512), nil))

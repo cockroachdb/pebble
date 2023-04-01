@@ -13,7 +13,6 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -865,7 +864,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		if err != nil {
 			return err
 		}
-		largestSeqNum := atomic.LoadUint64(&d.mu.versions.atomic.logSeqNum)
+		largestSeqNum := d.mu.versions.logSeqNum.Load()
 		for _, f := range newVE.NewFiles {
 			if start != nil {
 				f.Meta.SmallestPointKey = *start
@@ -888,11 +887,11 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		// been ratcheted. Manually ratchet them to the largest sequence
 		// number committed to ensure iterators opened from the database
 		// correctly observe the committed keys.
-		if atomic.LoadUint64(&d.mu.versions.atomic.logSeqNum) < largestSeqNum {
-			atomic.StoreUint64(&d.mu.versions.atomic.logSeqNum, largestSeqNum)
+		if d.mu.versions.logSeqNum.Load() < largestSeqNum {
+			d.mu.versions.logSeqNum.Store(largestSeqNum)
 		}
-		if atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum) < largestSeqNum {
-			atomic.StoreUint64(&d.mu.versions.atomic.visibleSeqNum, largestSeqNum)
+		if d.mu.versions.visibleSeqNum.Load() < largestSeqNum {
+			d.mu.versions.visibleSeqNum.Store(largestSeqNum)
 		}
 		level = -1
 		return nil
