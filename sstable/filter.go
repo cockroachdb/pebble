@@ -7,6 +7,9 @@ package sstable
 import "sync/atomic"
 
 // FilterMetrics holds metrics for the filter policy.
+// TODO(radu): in some contexts, the fields inside are used as atomics; in
+// others they are not (in particular, the struct gets copied around). Split the
+// type into two and use atomic.Int64.
 type FilterMetrics struct {
 	// The number of hits for the filter policy. This is the
 	// number of times the filter policy was successfully used to avoid access
