@@ -46,8 +46,8 @@ func init() {
 
 func runScan(cmd *cobra.Command, args []string) {
 	var (
-		bytes       int64
-		scanned     int64
+		bytes       atomic.Int64
+		scanned     atomic.Int64
 		lastBytes   int64
 		lastScanned int64
 		lastElapsed time.Duration
@@ -119,8 +119,8 @@ func runScan(cmd *cobra.Command, args []string) {
 							log.Fatalf("scanned %d, expected %d\n", count, rows)
 						}
 
-						atomic.AddInt64(&bytes, nbytes)
-						atomic.AddInt64(&scanned, int64(count))
+						bytes.Add(nbytes)
+						scanned.Add(int64(count))
 					}
 				}(i)
 			}
@@ -131,8 +131,8 @@ func runScan(cmd *cobra.Command, args []string) {
 				fmt.Println("_elapsed_______rows/sec_______MB/sec_______ns/row")
 			}
 
-			curBytes := atomic.LoadInt64(&bytes)
-			curScanned := atomic.LoadInt64(&scanned)
+			curBytes := bytes.Load()
+			curScanned := scanned.Load()
 			dur := elapsed - lastElapsed
 			fmt.Printf("%8s %14.1f %12.1f %12.1f\n",
 				time.Duration(elapsed.Seconds()+0.5)*time.Second,
@@ -146,8 +146,8 @@ func runScan(cmd *cobra.Command, args []string) {
 		},
 
 		done: func(elapsed time.Duration) {
-			curBytes := atomic.LoadInt64(&bytes)
-			curScanned := atomic.LoadInt64(&scanned)
+			curBytes := bytes.Load()
+			curScanned := scanned.Load()
 			fmt.Println("\n_elapsed___ops/sec(cum)__MB/sec(cum)__ns/row(avg)")
 			fmt.Printf("%7.1fs %14.1f %12.1f %12.1f\n\n",
 				elapsed.Seconds(),

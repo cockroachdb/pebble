@@ -46,7 +46,8 @@ func init() {
 
 func runSync(cmd *cobra.Command, args []string) {
 	reg := newHistogramRegistry()
-	var bytes, lastBytes uint64
+	var bytes atomic.Uint64
+	var lastBytes uint64
 
 	opts := pebble.Sync
 	if disableWAL {
@@ -97,7 +98,7 @@ func runSync(cmd *cobra.Command, args []string) {
 							log.Fatal(err)
 						}
 						latency.Record(time.Since(start))
-						atomic.AddUint64(&bytes, n)
+						bytes.Add(n)
 					}
 				}()
 			}
@@ -109,7 +110,7 @@ func runSync(cmd *cobra.Command, args []string) {
 			}
 			reg.Tick(func(tick histogramTick) {
 				h := tick.Hist
-				n := atomic.LoadUint64(&bytes)
+				n := bytes.Load()
 				fmt.Printf("%8s %10.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
 					time.Duration(elapsed.Seconds()+0.5)*time.Second,
 					float64(h.TotalCount())/tick.Elapsed.Seconds(),
@@ -130,7 +131,7 @@ func runSync(cmd *cobra.Command, args []string) {
 				fmt.Printf("%7.1fs %12d %12.1f %11.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n\n",
 					elapsed.Seconds(), h.TotalCount(),
 					float64(h.TotalCount())/elapsed.Seconds(),
-					float64(atomic.LoadUint64(&bytes)/(1024.0*1024.0))/elapsed.Seconds(),
+					float64(bytes.Load()/(1024.0*1024.0))/elapsed.Seconds(),
 					time.Duration(h.Mean()).Seconds()*1000,
 					time.Duration(h.ValueAtQuantile(50)).Seconds()*1000,
 					time.Duration(h.ValueAtQuantile(95)).Seconds()*1000,
