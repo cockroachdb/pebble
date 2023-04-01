@@ -209,25 +209,25 @@ func newTableCacheContainerTest(
 func TestTableCacheRefs(t *testing.T) {
 	tc := newTableCacheTest(8<<20, 10, 2)
 
-	v := atomic.LoadInt64(&tc.atomic.refs)
+	v := tc.refs.Load()
 	if v != 1 {
 		require.Equal(t, 1, v)
 	}
 
 	tc.Ref()
-	v = atomic.LoadInt64(&tc.atomic.refs)
+	v = tc.refs.Load()
 	if v != 2 {
 		require.Equal(t, 2, v)
 	}
 
 	tc.Unref()
-	v = atomic.LoadInt64(&tc.atomic.refs)
+	v = tc.refs.Load()
 	if v != 1 {
 		require.Equal(t, 1, v)
 	}
 
 	tc.Unref()
-	v = atomic.LoadInt64(&tc.atomic.refs)
+	v = tc.refs.Load()
 	if v != 0 {
 		require.Equal(t, 0, v)
 	}
@@ -269,7 +269,7 @@ func TestSharedTableCacheUseAfterAllFree(t *testing.T) {
 	require.NoError(t, db1.Close())
 	require.NoError(t, db2.Close())
 
-	v := atomic.LoadInt64(&tc.atomic.refs)
+	v := tc.refs.Load()
 	if v != 0 {
 		t.Fatalf("expected reference count %d, got %d", 0, v)
 	}
@@ -326,7 +326,7 @@ func TestSharedTableCacheUseAfterOneFree(t *testing.T) {
 	// Make db1 release a reference to the cache. It should
 	// still be usable by db2.
 	require.NoError(t, db1.Close())
-	v := atomic.LoadInt64(&tc.atomic.refs)
+	v := tc.refs.Load()
 	if v != 1 {
 		t.Fatalf("expected reference count %d, got %d", 1, v)
 	}
