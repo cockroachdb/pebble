@@ -255,8 +255,8 @@ type ycsb struct {
 	batchDist    randvar.Static
 	scanDist     randvar.Static
 	valueDist    *randvar.BytesFlag
-	readAmpCount uint64
-	readAmpSum   uint64
+	readAmpCount atomic.Uint64
+	readAmpSum   atomic.Uint64
 	keyNum       *ackseq.S
 	numOps       uint64
 	limiter      *rate.Limiter
@@ -478,8 +478,8 @@ func (y *ycsb) read(db DB, buf *ycsbBuf) {
 		Metrics() pebble.IteratorMetrics
 	}
 	if m, ok := iter.(metrics); ok {
-		atomic.AddUint64(&y.readAmpCount, 1)
-		atomic.AddUint64(&y.readAmpSum, uint64(m.Metrics().ReadAmp))
+		y.readAmpCount.Add(1)
+		y.readAmpSum.Add(uint64(m.Metrics().ReadAmp))
 	}
 
 	if err := iter.Close(); err != nil {
@@ -499,8 +499,8 @@ func (y *ycsb) scan(db DB, buf *ycsbBuf, reverse bool) {
 		Metrics() pebble.IteratorMetrics
 	}
 	if m, ok := iter.(metrics); ok {
-		atomic.AddUint64(&y.readAmpCount, 1)
-		atomic.AddUint64(&y.readAmpSum, uint64(m.Metrics().ReadAmp))
+		y.readAmpCount.Add(1)
+		y.readAmpSum.Add(uint64(m.Metrics().ReadAmp))
 	}
 
 	if err := iter.Close(); err != nil {
@@ -568,8 +568,8 @@ func (y *ycsb) done(elapsed time.Duration) {
 	m := y.db.Metrics()
 	total := m.Total()
 
-	readAmpCount := atomic.LoadUint64(&y.readAmpCount)
-	readAmpSum := atomic.LoadUint64(&y.readAmpSum)
+	readAmpCount := y.readAmpCount.Load()
+	readAmpSum := y.readAmpSum.Load()
 	if readAmpCount == 0 {
 		readAmpSum = 0
 		readAmpCount = 1
