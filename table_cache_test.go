@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -885,11 +884,11 @@ func TestTableCacheClockPro(t *testing.T) {
 			tables[key] = true
 		}
 
-		oldHits := atomic.LoadInt64(&cache.atomic.hits)
+		oldHits := cache.hits.Load()
 		v := cache.findNode(&fileMetadata{FileNum: FileNum(key)}, dbOpts)
 		cache.unrefValue(v)
 
-		hit := atomic.LoadInt64(&cache.atomic.hits) != oldHits
+		hit := cache.hits.Load() != oldHits
 		wantHit := fields[1][0] == 'h'
 		if hit != wantHit {
 			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
