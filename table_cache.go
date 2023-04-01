@@ -188,14 +188,7 @@ func (c *tableCacheContainer) iterCount() int64 {
 
 // TableCache is a shareable cache for open sstables.
 type TableCache struct {
-	// atomic contains fields which are accessed atomically. Go allocations
-	// are guaranteed to be 64-bit aligned which we take advantage of by
-	// placing the 64-bit fields which we access atomically at the beginning
-	// of the TableCache struct. For more information, see
-	// https://golang.org/pkg/sync/atomic/#pkg-note-BUG.
-	atomic struct {
-		refs int64
-	}
+	refs atomic.Int64
 
 	cache  *Cache
 	shards []*tableCacheShard
@@ -205,7 +198,7 @@ type TableCache struct {
 // the table cache only remains valid if there is at least one reference
 // to it.
 func (c *TableCache) Ref() {
-	v := atomic.AddInt64(&c.atomic.refs, 1)
+	v := c.refs.Add(1)
 	// We don't want the reference count to ever go from 0 -> 1,
 	// cause a reference count of 0 implies that we've closed the cache.
 	if v <= 1 {
@@ -215,7 +208,7 @@ func (c *TableCache) Ref() {
 
 // Unref removes a reference to the table cache.
 func (c *TableCache) Unref() error {
-	v := atomic.AddInt64(&c.atomic.refs, -1)
+	v := c.refs.Add(-1)
 	switch {
 	case v < 0:
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
@@ -257,7 +250,7 @@ func NewTableCache(cache *Cache, numShards int, size int) *TableCache {
 	}
 
 	// Hold a ref to the cache here.
-	c.atomic.refs = 1
+	c.refs.Store(1)
 
 	return c
 }
