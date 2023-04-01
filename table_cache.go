@@ -59,12 +59,9 @@ var tableCacheLabels = pprof.Labels("pebble", "table-cache")
 // are updated, we could have unnecessary evictions of those
 // fields, and the surrounding fields from the CPU caches.
 type tableCacheOpts struct {
-	atomic struct {
-		// iterCount in the tableCacheOpts keeps track of iterators
-		// opened or closed by a DB. It's used to keep track of
-		// leaked iterators on a per-db level.
-		iterCount *int32
-	}
+	// iterCount keeps track of how many iterators are open. It is used to keep
+	// track of leaked iterators on a per-db level.
+	iterCount *atomic.Int32
 
 	loggerAndTracer LoggerAndTracer
 	cacheID         uint64
@@ -107,7 +104,7 @@ func newTableCacheContainer(
 	t.dbOpts.objProvider = objProvider
 	t.dbOpts.opts = opts.MakeReaderOptions()
 	t.dbOpts.filterMetrics = &FilterMetrics{}
-	t.dbOpts.atomic.iterCount = new(int32)
+	t.dbOpts.iterCount = new(atomic.Int32)
 	return t
 }
 
@@ -118,7 +115,7 @@ func (c *tableCacheContainer) close() error {
 	// by the DB using this container. Note that we'll still perform cleanup
 	// below in the case that there are leaked iterators.
 	var err error
-	if v := atomic.LoadInt32(c.dbOpts.atomic.iterCount); v > 0 {
+	if v := c.dbOpts.iterCount.Load(); v > 0 {
 		err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
 	}
 
@@ -183,7 +180,7 @@ func (c *tableCacheContainer) withReader(meta *fileMetadata, fn func(*sstable.Re
 }
 
 func (c *tableCacheContainer) iterCount() int64 {
-	return int64(atomic.LoadInt32(c.dbOpts.atomic.iterCount))
+	return int64(c.dbOpts.iterCount.Load())
 }
 
 // TableCache is a shareable cache for open sstables.
@@ -438,7 +435,7 @@ func (c *tableCacheShard) newIters(
 	iter.SetCloseHook(v.closeHook)
 
 	atomic.AddInt32(&c.atomic.iterCount, 1)
-	atomic.AddInt32(dbOpts.atomic.iterCount, 1)
+	dbOpts.iterCount.Add(1)
 	if invariants.RaceEnabled {
 		c.mu.Lock()
 		c.mu.iters[iter] = debug.Stack()
@@ -688,7 +685,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 		}
 		c.unrefValue(v)
 		atomic.AddInt32(&c.atomic.iterCount, -1)
-		atomic.AddInt32(dbOpts.atomic.iterCount, -1)
+		dbOpts.iterCount.Add(-1)
 		return nil
 	}
 	n.value = v
