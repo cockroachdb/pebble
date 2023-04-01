@@ -157,8 +157,8 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 		s.mu.RLock()
 		m.Count += int64(len(s.mu.nodes))
 		s.mu.RUnlock()
-		m.Hits += atomic.LoadInt64(&s.atomic.hits)
-		m.Misses += atomic.LoadInt64(&s.atomic.misses)
+		m.Hits += s.hits.Load()
+		m.Misses += s.misses.Load()
 	}
 	m.Size = m.Count * int64(unsafe.Sizeof(sstable.Reader{}))
 	f := FilterMetrics{
@@ -261,16 +261,9 @@ type tableCacheKey struct {
 }
 
 type tableCacheShard struct {
-	// WARNING: The following struct `atomic` contains fields are accessed atomically.
-	//
-	// Go allocations are guaranteed to be 64-bit aligned which we take advantage
-	// of by placing the 64-bit fields which we access atomically at the beginning
-	// of the DB struct. For more information, see https://golang.org/pkg/sync/atomic/#pkg-note-BUG.
-	atomic struct {
-		hits      int64
-		misses    int64
-		iterCount int32
-	}
+	hits      atomic.Int64
+	misses    atomic.Int64
+	iterCount atomic.Int32
 
 	size int
 
@@ -432,7 +425,7 @@ func (c *tableCacheShard) newIters(
 	// care to avoid introducing an allocation here by adding a closure.
 	iter.SetCloseHook(v.closeHook)
 
-	atomic.AddInt32(&c.atomic.iterCount, 1)
+	c.iterCount.Add(1)
 	dbOpts.iterCount.Add(1)
 	if invariants.RaceEnabled {
 		c.mu.Lock()
@@ -601,7 +594,7 @@ func (c *tableCacheShard) clearNode(n *tableCacheNode) {
 // it is present in tableCacheShard.mu.nodes, so a reference count of 0 means
 // the node has already been removed from that map.
 func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
-	if atomic.AddInt32(&v.refCount, -1) == 0 {
+	if v.refCount.Add(-1) == 0 {
 		c.releasing.Add(1)
 		c.releasingCh <- v
 	}
@@ -619,10 +612,10 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 		//
 		// The caller is responsible for decrementing the refCount.
 		v := n.value
-		atomic.AddInt32(&v.refCount, 1)
+		v.refCount.Add(1)
 		c.mu.RUnlock()
-		atomic.StoreInt32(&n.referenced, 1)
-		atomic.AddInt64(&c.atomic.hits, 1)
+		n.referenced.Store(true)
+		c.hits.Add(1)
 		<-v.loaded
 		return v
 	}
@@ -646,9 +639,9 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 		//
 		// The caller is responsible for decrementing the refCount.
 		v := n.value
-		atomic.AddInt32(&v.refCount, 1)
-		atomic.StoreInt32(&n.referenced, 1)
-		atomic.AddInt64(&c.atomic.hits, 1)
+		v.refCount.Add(1)
+		n.referenced.Store(true)
+		c.hits.Add(1)
 		c.mu.Unlock()
 		<-v.loaded
 		return v
@@ -661,18 +654,18 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 			c.mu.coldTarget = c.size
 		}
 
-		atomic.StoreInt32(&n.referenced, 0)
+		n.referenced.Store(false)
 		n.ptype = tableCacheNodeHot
 		c.addNode(n, dbOpts)
 		c.mu.sizeHot++
 	}
 
-	atomic.AddInt64(&c.atomic.misses, 1)
+	c.misses.Add(1)
 
 	v := &tableCacheValue{
-		loaded:   make(chan struct{}),
-		refCount: 2,
+		loaded: make(chan struct{}),
 	}
+	v.refCount.Store(2)
 	// Cache the closure invoked when an iterator is closed. This avoids an
 	// allocation on every call to newIters.
 	v.closeHook = func(i sstable.Iterator) error {
@@ -682,7 +675,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 			c.mu.Unlock()
 		}
 		c.unrefValue(v)
-		atomic.AddInt32(&c.atomic.iterCount, -1)
+		c.iterCount.Add(-1)
 		dbOpts.iterCount.Add(-1)
 		return nil
 	}
@@ -729,8 +722,8 @@ func (c *tableCacheShard) evictNodes() {
 func (c *tableCacheShard) runHandCold() {
 	n := c.mu.handCold
 	if n.ptype == tableCacheNodeCold {
-		if atomic.LoadInt32(&n.referenced) == 1 {
-			atomic.StoreInt32(&n.referenced, 0)
+		if n.referenced.Load() {
+			n.referenced.Store(false)
 			n.ptype = tableCacheNodeHot
 			c.mu.sizeCold--
 			c.mu.sizeHot++
@@ -762,8 +755,8 @@ func (c *tableCacheShard) runHandHot() {
 
 	n := c.mu.handHot
 	if n.ptype == tableCacheNodeHot {
-		if atomic.LoadInt32(&n.referenced) == 1 {
-			atomic.StoreInt32(&n.referenced, 0)
+		if n.referenced.Load() {
+			n.referenced.Store(false)
 		} else {
 			n.ptype = tableCacheNodeCold
 			c.mu.sizeHot--
@@ -810,7 +803,7 @@ func (c *tableCacheShard) evict(fileNum FileNum, dbOpts *tableCacheOpts, allowLe
 		v = n.value
 		if v != nil {
 			if !allowLeak {
-				if t := atomic.AddInt32(&v.refCount, -1); t != 0 {
+				if t := v.refCount.Add(-1); t != 0 {
 					dbOpts.loggerAndTracer.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
 				}
 			}
@@ -864,7 +857,7 @@ func (c *tableCacheShard) Close() error {
 	// Check for leaked iterators. Note that we'll still perform cleanup below in
 	// the case that there are leaked iterators.
 	var err error
-	if v := atomic.LoadInt32(&c.atomic.iterCount); v > 0 {
+	if v := c.iterCount.Load(); v > 0 {
 		if !invariants.RaceEnabled {
 			err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
 		} else {
@@ -879,7 +872,7 @@ func (c *tableCacheShard) Close() error {
 	for c.mu.handHot != nil {
 		n := c.mu.handHot
 		if n.value != nil {
-			if atomic.AddInt32(&n.value.refCount, -1) == 0 {
+			if n.value.refCount.Add(-1) == 0 {
 				c.releasing.Add(1)
 				c.releasingCh <- n.value
 			}
@@ -915,7 +908,7 @@ type tableCacheValue struct {
 	loaded    chan struct{}
 	// Reference count for the value. The reader is closed when the reference
 	// count drops to zero.
-	refCount int32
+	refCount atomic.Int32
 }
 
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *tableCacheOpts) {
@@ -988,7 +981,7 @@ type tableCacheNode struct {
 	ptype tableCacheNodeType
 	// referenced is atomically set to indicate that this entry has been accessed
 	// since the last time one of the clock hands swept it.
-	referenced int32
+	referenced atomic.Bool
 
 	// Storing the cache id associated with the DB instance here
 	// avoids the need to thread the dbOpts struct through many functions.
