@@ -886,20 +886,20 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 	// file is created and after a subsequent directory sync occurs. This
 	// simulates a crash after the new log file is created and synced.
 	{
-		var atomicWALCreated, atomicDirSynced uint32
+		var walCreated, dirSynced atomic.Bool
 		d, err := Open("", &Options{
 			FS: errorfs.Wrap(fs, errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
-				if atomic.LoadUint32(&atomicDirSynced) == 1 {
+				if dirSynced.Load() {
 					fs.SetIgnoreSyncs(true)
 				}
 				if op == errorfs.OpCreate && filepath.Ext(path) == ".log" {
-					atomic.StoreUint32(&atomicWALCreated, 1)
+					walCreated.Store(true)
 				}
 				// Record when there's a sync of the data directory after the
 				// WAL was created. The data directory will have an empty
 				// path because that's what we passed into Open.
-				if op == errorfs.OpFileSync && path == "" && atomic.LoadUint32(&atomicWALCreated) == 1 {
-					atomic.StoreUint32(&atomicDirSynced, 1)
+				if op == errorfs.OpFileSync && path == "" && walCreated.Load() {
+					dirSynced.Store(true)
 				}
 				return nil
 			})),

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -95,7 +94,7 @@ func runTombstoneCmd(cmd *cobra.Command, args []string) error {
 				fmt.Println("________elapsed______queue_size__ops/sec(inst)___ops/sec(cum)__ops/sec(inst)___ops/sec(cum)")
 			}
 
-			curQueueOps := atomic.LoadInt64(queueOps)
+			curQueueOps := queueOps.Load()
 			dur := elapsed - lastElapsed
 			queueOpsPerSec := float64(curQueueOps-lastQueueOps) / dur.Seconds()
 			queueCumOpsPerSec := float64(curQueueOps) / elapsed.Seconds()

@@ -473,7 +473,7 @@ func TestCompactionsQuiesce(t *testing.T) {
 	const replayCount = 1
 	workloadFS := getHeavyWorkload(t)
 	fs := vfs.NewMem()
-	var atomicDone [replayCount]uint32
+	var done [replayCount]atomic.Bool
 	for i := 0; i < replayCount; i++ {
 		func(i int) {
 			runDir := fmt.Sprintf("run%d", i)
@@ -498,7 +498,7 @@ func TestCompactionsQuiesce(t *testing.T) {
 			var err error
 			go func() {
 				m, err = r.Wait()
-				atomic.StoreUint32(&atomicDone[i], 1)
+				done[i].Store(true)
 			}()
 
 			wait := 30 * time.Second
@@ -509,7 +509,7 @@ func TestCompactionsQuiesce(t *testing.T) {
 			// The above call to [Wait] should eventually return. [Wait] blocks
 			// until the workload has replayed AND compactions have quiesced. A
 			// bug in either could prevent [Wait] from ever returning.
-			require.Eventually(t, func() bool { return atomic.LoadUint32(&atomicDone[i]) == 1 },
+			require.Eventually(t, func() bool { return done[i].Load() },
 				wait, time.Millisecond, "(*replay.Runner).Wait didn't terminate")
 			require.NoError(t, err)
 			// Require at least 5 compactions.

@@ -31,14 +31,14 @@ func (f syncErrorFile) Sync() error {
 
 func TestSyncQueue(t *testing.T) {
 	var q syncQueue
-	var closed int32
+	var closed atomic.Bool
 
 	var flusherWG sync.WaitGroup
 	flusherWG.Add(1)
 	go func() {
 		defer flusherWG.Done()
 		for {
-			if atomic.LoadInt32(&closed) == 1 {
+			if closed.Load() {
 				return
 			}
 			head, tail, _ := q.load()
@@ -66,7 +66,7 @@ func TestSyncQueue(t *testing.T) {
 	}
 	doneWG.Wait()
 
-	atomic.StoreInt32(&closed, 1)
+	closed.Store(true)
 	flusherWG.Wait()
 }
 

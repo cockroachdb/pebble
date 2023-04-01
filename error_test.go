@@ -358,14 +358,14 @@ func TestCorruptReadError(t *testing.T) {
 func TestDBWALRotationCrash(t *testing.T) {
 	memfs := vfs.NewStrictMem()
 
-	var index int32
+	var index atomic.Int32
 	inj := errorfs.InjectorFunc(func(op errorfs.Op, _ string) error {
-		if op.OpKind() == errorfs.OpKindWrite && atomic.AddInt32(&index, -1) == -1 {
+		if op.OpKind() == errorfs.OpKindWrite && index.Add(-1) == -1 {
 			memfs.SetIgnoreSyncs(true)
 		}
 		return nil
 	})
-	triggered := func() bool { return atomic.LoadInt32(&index) < 0 }
+	triggered := func() bool { return index.Load() < 0 }
 
 	run := func(fs *errorfs.FS, k int32) (err error) {
 		opts := &Options{
@@ -381,7 +381,7 @@ func TestDBWALRotationCrash(t *testing.T) {
 
 		// Write keys with the FS set up to simulate a crash by ignoring
 		// syncs on the k-th write operation.
-		atomic.StoreInt32(&index, k)
+		index.Store(k)
 		key := []byte("test")
 		for i := 0; i < 10; i++ {
 			v := []byte(strings.Repeat("b", i))
@@ -398,7 +398,7 @@ func TestDBWALRotationCrash(t *testing.T) {
 	for k := int32(0); ; k++ {
 		// Run, simulating a crash by ignoring syncs after the k-th write
 		// operation after Open.
-		atomic.StoreInt32(&index, math.MaxInt32)
+		index.Store(math.MaxInt32)
 		err := run(fs, k)
 		if !triggered() {
 			// Stop when we reach a value of k greater than the number of
@@ -415,7 +415,7 @@ func TestDBWALRotationCrash(t *testing.T) {
 		// "crash", restore syncs, and run again without crashing.
 		memfs.ResetToSyncedState()
 		memfs.SetIgnoreSyncs(false)
-		atomic.StoreInt32(&index, math.MaxInt32)
+		index.Store(math.MaxInt32)
 		require.NoError(t, run(fs, k))
 	}
 }

@@ -208,13 +208,14 @@ func TestMarker_FaultTolerance(t *testing.T) {
 	done := false
 	for i := 1; !done && i < 1000; i++ {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			count := int32(i)
+			var count atomic.Int32
+			count.Store(int32(i))
 			inj := errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
 				// Don't inject on Sync errors. They're fatal.
 				if op == errorfs.OpFileSync {
 					return nil
 				}
-				if v := atomic.AddInt32(&count, -1); v == 0 {
+				if v := count.Add(-1); v == 0 {
 					return errorfs.ErrInjected
 				}
 				return nil
@@ -288,7 +289,7 @@ func TestMarker_FaultTolerance(t *testing.T) {
 
 			// Stop if the number of operations in the test case is
 			// fewer than `i`.
-			done = atomic.LoadInt32(&count) > 0
+			done = count.Load() > 0
 		})
 	}
 }

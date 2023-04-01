@@ -32,8 +32,8 @@ func initQueue(cmd *cobra.Command) {
 		"queue value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
 }
 
-func queueTest() (test, *int64) {
-	ops := new(int64) // atomic
+func queueTest() (test, *atomic.Int64) {
+	ops := new(atomic.Int64) // atomic
 	var (
 		lastOps     int64
 		lastElapsed time.Duration
@@ -87,7 +87,7 @@ func queueTest() (test, *int64) {
 					}
 					_ = b.Close()
 					wait(limiter)
-					atomic.AddInt64(ops, 1)
+					ops.Add(1)
 				}
 			}()
 		},
@@ -96,7 +96,7 @@ func queueTest() (test, *int64) {
 				fmt.Println("Queue___elapsed_______ops/sec")
 			}
 
-			curOps := atomic.LoadInt64(ops)
+			curOps := ops.Load()
 			dur := elapsed - lastElapsed
 			fmt.Printf("%15s %13.1f\n",
 				time.Duration(elapsed.Seconds()+0.5)*time.Second,
@@ -106,7 +106,7 @@ func queueTest() (test, *int64) {
 			lastElapsed = elapsed
 		},
 		done: func(elapsed time.Duration) {
-			curOps := atomic.LoadInt64(ops)
+			curOps := ops.Load()
 			fmt.Println("\nQueue___elapsed___ops/sec(cum)")
 			fmt.Printf("%13.1fs %14.1f\n\n",
 				elapsed.Seconds(),
