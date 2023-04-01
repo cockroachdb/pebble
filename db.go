@@ -772,7 +772,7 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
-	if atomic.LoadUint32(&batch.applied) != 0 {
+	if batch.applied.Load() {
 		panic("pebble: batch already applied")
 	}
 	if d.opts.ReadOnly {

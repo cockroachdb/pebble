@@ -297,7 +297,7 @@ func TestBatchReset(t *testing.T) {
 	require.NoError(t, b.RangeKeySet([]byte(key), []byte(value), []byte(value), []byte(value), nil))
 
 	b.setSeqNum(100)
-	b.applied = 1
+	b.applied.Store(true)
 	b.commitErr = errors.New("test-error")
 	b.commit.Add(1)
 	b.fsyncWait.Add(1)
@@ -326,7 +326,7 @@ func TestBatchReset(t *testing.T) {
 
 	b.Reset()
 	require.Equal(t, db, b.db)
-	require.Equal(t, uint32(0), b.applied)
+	require.Equal(t, false, b.applied.Load())
 	require.Nil(t, b.commitErr)
 	require.Equal(t, uint32(0), b.Count())
 	require.Equal(t, uint64(0), b.countRangeDels)
