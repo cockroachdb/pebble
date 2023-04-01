@@ -90,4 +90,4 @@ p5b2 102
 <shared> delete object "00000000000000000005-000002.sst.ref.00000000000000000006.000102"
 <shared> list (prefix="00000000000000000005-000002.sst.ref.", delimiter="")
 <shared> delete object "00000000000000000005-000002.sst"
-error: checking originator's marker object 00000000000000000005-000002.sst.ref.00000000000000000005.000002: file does not exist
+error: originator marker object "00000000000000000005-000002.sst.ref.00000000000000000005.000002" does not exist; object probably removed from the provider which created the backing
