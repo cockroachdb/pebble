@@ -39,68 +39,66 @@ func OnDiskFull(fs FS, fn func()) FS {
 }
 
 type enospcFS struct {
-	inner  FS
-	atomic struct {
-		// generation is a monotonically increasing number that encodes the
-		// current state of ENOSPC error handling. Incoming writes are
-		// organized into generations to provide strong guarantees on when the
-		// disk full callback is invoked. The callback is invoked once per
-		// write generation.
-		//
-		// Special significance is given to the parity of this generation
-		// field to optimize incoming writes in the normal state, which only
-		// need to perform a single atomic load. If generation is odd, an
-		// ENOSPC error is being actively handled. The generations associated
-		// with writes are always even.
-		//
-		// The lifecycle of a write is:
-		//
-		// 1. Atomically load the current generation.
-		//    a. If it's even, this is the write's generation number.
-		//    b. If it's odd, an ENOSPC was recently encountered and the
-		//       corresponding invocation of the disk full callback has not
-		//       yet completed. The write must wait until the callback has
-		//       completed and generation is updated to an even number, which
-		//       becomes the write's generation number.
-		// 2. Perform the write. If it encounters no error or an error other
-		//    than ENOSPC, the write returns and proceeds no further in this
-		//    lifecycle.
-		// 3. Handle ENOSPC. If the write encounters ENOSPC, the callback must
-		//    be invoked for the write's generation. The write's goroutine
-		//    acquires the FS's mutex.
-		//    a. If the FS's current generation is still equal to the write's
-		//       generation, the write is the first write of its generation to
-		//       encounter ENOSPC. It increments the FS's current generation
-		//       to an odd number, signifying that an ENOSPC is being handled
-		//       and invokes the callback.
-		//    b. If the FS's current generation has changed, some other write
-		//       from the same generation encountered an ENOSPC first. This
-		//       write waits on the condition variable until the FS's current
-		//       generation is updated indicating that the generation's
-		//       callback invocation has completed.
-		// 3. Retry the write once. The callback for the write's generation
-		//    has completed, either by this write's goroutine or another's.
-		//    The write may proceed with the expectation that the callback
-		//    remedied the full disk by freeing up disk space and an ENOSPC
-		//    should not be encountered again for at least a few minutes. If
-		//    we do encounter another ENOSPC on the retry, the callback was
-		//    unable to remedy the full disk and another retry won't be
-		//    useful. Any error, including ENOSPC, during the retry is
-		//    returned without further handling.  None of the retries invoke
-		//    the callback.
-		//
-		// This scheme has a few nice properties:
-		// * Once the disk-full callback completes, it won't be invoked
-		//   again unless a write that started strictly later encounters an
-		//   ENOSPC. This is convenient if the callback strives to 'fix' the
-		//   full disk, for example, by removing a ballast file. A new
-		//   invocation of the callback guarantees a new problem.
-		// * Incoming writes block if there's an unhandled ENOSPC. Some
-		//   writes, like WAL or MANIFEST fsyncs, are fatal if they encounter
-		//   an ENOSPC.
-		generation uint32
-	}
-	mu struct {
+	inner FS
+	// generation is a monotonically increasing number that encodes the
+	// current state of ENOSPC error handling. Incoming writes are
+	// organized into generations to provide strong guarantees on when the
+	// disk full callback is invoked. The callback is invoked once per
+	// write generation.
+	//
+	// Special significance is given to the parity of this generation
+	// field to optimize incoming writes in the normal state, which only
+	// need to perform a single atomic load. If generation is odd, an
+	// ENOSPC error is being actively handled. The generations associated
+	// with writes are always even.
+	//
+	// The lifecycle of a write is:
+	//
+	// 1. Atomically load the current generation.
+	//    a. If it's even, this is the write's generation number.
+	//    b. If it's odd, an ENOSPC was recently encountered and the
+	//       corresponding invocation of the disk full callback has not
+	//       yet completed. The write must wait until the callback has
+	//       completed and generation is updated to an even number, which
+	//       becomes the write's generation number.
+	// 2. Perform the write. If it encounters no error or an error other
+	//    than ENOSPC, the write returns and proceeds no further in this
+	//    lifecycle.
+	// 3. Handle ENOSPC. If the write encounters ENOSPC, the callback must
+	//    be invoked for the write's generation. The write's goroutine
+	//    acquires the FS's mutex.
+	//    a. If the FS's current generation is still equal to the write's
+	//       generation, the write is the first write of its generation to
+	//       encounter ENOSPC. It increments the FS's current generation
+	//       to an odd number, signifying that an ENOSPC is being handled
+	//       and invokes the callback.
+	//    b. If the FS's current generation has changed, some other write
+	//       from the same generation encountered an ENOSPC first. This
+	//       write waits on the condition variable until the FS's current
+	//       generation is updated indicating that the generation's
+	//       callback invocation has completed.
+	// 3. Retry the write once. The callback for the write's generation
+	//    has completed, either by this write's goroutine or another's.
+	//    The write may proceed with the expectation that the callback
+	//    remedied the full disk by freeing up disk space and an ENOSPC
+	//    should not be encountered again for at least a few minutes. If
+	//    we do encounter another ENOSPC on the retry, the callback was
+	//    unable to remedy the full disk and another retry won't be
+	//    useful. Any error, including ENOSPC, during the retry is
+	//    returned without further handling.  None of the retries invoke
+	//    the callback.
+	//
+	// This scheme has a few nice properties:
+	// * Once the disk-full callback completes, it won't be invoked
+	//   again unless a write that started strictly later encounters an
+	//   ENOSPC. This is convenient if the callback strives to 'fix' the
+	//   full disk, for example, by removing a ballast file. A new
+	//   invocation of the callback guarantees a new problem.
+	// * Incoming writes block if there's an unhandled ENOSPC. Some
+	//   writes, like WAL or MANIFEST fsyncs, are fatal if they encounter
+	//   an ENOSPC.
+	generation atomic.Uint32
+	mu         struct {
 		sync.Mutex
 		sync.Cond
 		onDiskFull func()
@@ -119,7 +117,7 @@ func (fs *enospcFS) Unwrap() FS {
 // waitUntilReady blocks until the callback returns. The returned generation
 // is always even.
 func (fs *enospcFS) waitUntilReady() uint32 {
-	gen := atomic.LoadUint32(&fs.atomic.generation)
+	gen := fs.generation.Load()
 	if gen%2 == 0 {
 		// An even generation indicates that we're not currently handling an
 		// ENOSPC. Allow the write to proceed.
@@ -132,10 +130,10 @@ func (fs *enospcFS) waitUntilReady() uint32 {
 	defer fs.mu.Unlock()
 
 	// Load the generation again with fs.mu locked.
-	gen = atomic.LoadUint32(&fs.atomic.generation)
+	gen = fs.generation.Load()
 	for gen%2 == 1 {
 		fs.mu.Wait()
-		gen = atomic.LoadUint32(&fs.atomic.generation)
+		gen = fs.generation.Load()
 	}
 	return gen
 }
@@ -144,7 +142,7 @@ func (fs *enospcFS) handleENOSPC(gen uint32) {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
-	currentGeneration := atomic.LoadUint32(&fs.atomic.generation)
+	currentGeneration := fs.generation.Load()
 
 	// If the current generation is still `gen`, this is the first goroutine
 	// to hit an ENOSPC within this write generation, so this goroutine is
@@ -153,7 +151,7 @@ func (fs *enospcFS) handleENOSPC(gen uint32) {
 		// Increment the generation to an odd number, indicating that the FS
 		// is out-of-disk space and incoming writes should pause and wait for
 		// the next generation before continuing.
-		atomic.StoreUint32(&fs.atomic.generation, gen+1)
+		fs.generation.Store(gen + 1)
 
 		func() {
 			// Drop the mutex while we invoke the callback, re-acquiring
@@ -165,7 +163,7 @@ func (fs *enospcFS) handleENOSPC(gen uint32) {
 
 		// Update the current generation again to an even number, indicating
 		// that the callback has completed for the write generation `gen`.
-		atomic.StoreUint32(&fs.atomic.generation, gen+2)
+		fs.generation.Store(gen + 2)
 		fs.mu.Broadcast()
 		return
 	}
@@ -185,7 +183,7 @@ func (fs *enospcFS) handleENOSPC(gen uint32) {
 	// subsequent generations' callbacks.
 	for currentGeneration == gen+1 {
 		fs.mu.Wait()
-		currentGeneration = atomic.LoadUint32(&fs.atomic.generation)
+		currentGeneration = fs.generation.Load()
 	}
 }
 
