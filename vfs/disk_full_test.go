@@ -114,9 +114,9 @@ func TestOnDiskFull_Concurrent(t *testing.T) {
 		opDelay: 10 * time.Millisecond,
 	}
 	innerFS.atomic.enospcs = 10
-	var callbackInvocations int32
+	var callbackInvocations atomic.Int32
 	fs := OnDiskFull(innerFS, func() {
-		atomic.AddInt32(&callbackInvocations, 1)
+		callbackInvocations.Add(1)
 	})
 
 	var wg sync.WaitGroup
@@ -132,7 +132,7 @@ func TestOnDiskFull_Concurrent(t *testing.T) {
 	wg.Wait()
 	// Since all operations should start before the first one returns an
 	// ENOSPC, the callback should only be invoked once.
-	require.Equal(t, int32(1), atomic.LoadInt32(&callbackInvocations))
+	require.Equal(t, int32(1), callbackInvocations.Load())
 	require.Equal(t, uint32(20), atomic.LoadUint32(&innerFS.atomic.invocations))
 }
 

@@ -483,12 +483,12 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 
 	// Wrap with disk-health checking, counting each stall via stallCount.
 	var expectedOpType OpType
-	var stallCount uint64
+	var stallCount atomic.Uint64
 	fs, closer := WithDiskHealthChecks(filesystemOpsMockFS(sleepDur), stallThreshold,
 		func(info DiskSlowInfo) {
 			require.Equal(t, 0, info.WriteSize)
 			require.Equal(t, expectedOpType, info.OpType)
-			atomic.AddUint64(&stallCount, 1)
+			stallCount.Add(1)
 		})
 	defer closer.Close()
 	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
@@ -496,9 +496,9 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 	for _, o := range ops {
 		t.Run(o.name, func(t *testing.T) {
 			expectedOpType = o.opType
-			before := atomic.LoadUint64(&stallCount)
+			before := stallCount.Load()
 			o.f()
-			after := atomic.LoadUint64(&stallCount)
+			after := stallCount.Load()
 			require.Greater(t, int(after-before), 0)
 		})
 	}

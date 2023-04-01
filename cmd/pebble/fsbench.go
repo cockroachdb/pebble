@@ -208,10 +208,10 @@ func createBench(benchName string, benchDescription string) fsBenchmark {
 		// setup the operation to benchmark, and the cleanup functions.
 		pref := "temp_"
 		var numFiles int
-		var done int32
+		var done atomic.Bool
 
 		bench.run = func(hist *namedHistogram) bool {
-			if atomic.LoadInt32(&done) == 1 {
+			if done.Load() {
 				return false
 			}
 
@@ -226,7 +226,7 @@ func createBench(benchName string, benchDescription string) fsBenchmark {
 		}
 
 		bench.stop = func() {
-			atomic.StoreInt32(&done, 1)
+			done.Store(true)
 		}
 
 		bench.clean = func() {
@@ -274,9 +274,9 @@ func deleteBench(
 		}
 		syncFile(bench.dir)
 
-		var done int32
+		var done atomic.Bool
 		bench.run = func(hist *namedHistogram) bool {
-			if atomic.LoadInt32(&done) == 1 {
+			if done.Load() {
 				return false
 			}
 
@@ -293,7 +293,7 @@ func deleteBench(
 		}
 
 		bench.stop = func() {
-			atomic.StoreInt32(&done, 1)
+			done.Store(true)
 		}
 
 		bench.clean = func() {
@@ -341,9 +341,9 @@ func deleteUniformBench(
 		}
 		syncFile(bench.dir)
 
-		var done int32
+		var done atomic.Bool
 		bench.run = func(hist *namedHistogram) bool {
-			if atomic.LoadInt32(&done) == 1 {
+			if done.Load() {
 				return false
 			}
 
@@ -360,7 +360,7 @@ func deleteUniformBench(
 		}
 
 		bench.stop = func() {
-			atomic.StoreInt32(&done, 1)
+			done.Store(true)
 		}
 
 		bench.clean = func() {
@@ -403,7 +403,7 @@ func writeSyncBench(
 
 		pref := "temp_"
 		var benchData struct {
-			done         int32
+			done         atomic.Bool
 			fh           vfs.File
 			fileNum      int
 			bytesWritten int
@@ -411,7 +411,7 @@ func writeSyncBench(
 		benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
 
 		bench.run = func(hist *namedHistogram) bool {
-			if atomic.LoadInt32(&benchData.done) == 1 {
+			if benchData.done.Load() {
 				return false
 			}
 
@@ -433,7 +433,7 @@ func writeSyncBench(
 		}
 
 		bench.stop = func() {
-			atomic.StoreInt32(&benchData.done, 1)
+			benchData.done.Store(true)
 		}
 
 		bench.clean = func() {
@@ -476,7 +476,7 @@ func diskUsageBench(
 
 		pref := "temp_"
 		var benchData struct {
-			done         int32
+			done         atomic.Bool
 			fh           vfs.File
 			fileNum      int
 			bytesWritten int
@@ -484,7 +484,7 @@ func diskUsageBench(
 		benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
 
 		bench.run = func(hist *namedHistogram) bool {
-			if atomic.LoadInt32(&benchData.done) == 1 {
+			if benchData.done.Load() {
 				return false
 			}
 
@@ -507,7 +507,7 @@ func diskUsageBench(
 		}
 
 		bench.stop = func() {
-			atomic.StoreInt32(&benchData.done, 1)
+			benchData.done.Store(true)
 		}
 
 		bench.clean = func() {
