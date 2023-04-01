@@ -285,7 +285,7 @@ type Batch struct {
 	commitStats BatchCommitStats
 
 	commitErr error
-	applied   uint32 // updated atomically
+	applied   atomic.Bool
 }
 
 // BatchCommitStats exposes stats related to committing a batch.
@@ -1198,7 +1198,7 @@ func (b *Batch) Reset() {
 	b.fsyncWait = sync.WaitGroup{}
 	b.commitStats = BatchCommitStats{}
 	b.commitErr = nil
-	atomic.StoreUint32(&b.applied, 0)
+	b.applied.Store(false)
 	if b.data != nil {
 		if cap(b.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum

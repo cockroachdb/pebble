@@ -70,12 +70,12 @@ func TestCommitQueue(t *testing.T) {
 	if b := q.dequeue(); b != nil {
 		t.Fatalf("unexpectedly dequeued batch: %p", b)
 	}
-	atomic.StoreUint32(&batches[1].applied, 1)
+	batches[1].applied.Store(true)
 	if b := q.dequeue(); b != nil {
 		t.Fatalf("unexpectedly dequeued batch: %p", b)
 	}
 	for i := range batches {
-		atomic.StoreUint32(&batches[i].applied, 1)
+		batches[i].applied.Store(true)
 		if b := q.dequeue(); b != &batches[i] {
 			t.Fatalf("%d: expected batch %p, but found %p", i, &batches[i], b)
 		}

@@ -94,7 +94,7 @@ func (q *commitQueue) dequeue() *Batch {
 
 		slot := &q.slots[tail&uint32(len(q.slots)-1)]
 		b := (*Batch)(atomic.LoadPointer(slot))
-		if b == nil || atomic.LoadUint32(&b.applied) == 0 {
+		if b == nil || !b.applied.Load() {
 			// The batch is not ready to be dequeued, or another goroutine has
 			// already dequeued it.
 			return nil
@@ -467,7 +467,7 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool, noSyncWait bool) (*memT
 
 func (p *commitPipeline) publish(b *Batch) {
 	// Mark the batch as applied.
-	atomic.StoreUint32(&b.applied, 1)
+	b.applied.Store(true)
 
 	// Loop dequeuing applied batches from the pending queue. If our batch was
 	// the head of the pending queue we are guaranteed that either we'll publish
@@ -486,7 +486,7 @@ func (p *commitPipeline) publish(b *Batch) {
 			b.commitStats.CommitWaitDuration += time.Since(now)
 			break
 		}
-		if atomic.LoadUint32(&t.applied) != 1 {
+		if !t.applied.Load() {
 			panic("not reached")
 		}
 
