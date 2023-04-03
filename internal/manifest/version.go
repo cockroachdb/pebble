@@ -698,7 +698,7 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 
 // ParseFileMetadataDebug parses a FileMetadata from its DebugString
 // representation.
-func ParseFileMetadataDebug(s string) (m FileMetadata, err error) {
+func ParseFileMetadataDebug(s string) (*FileMetadata, error) {
 	// Split lines of the form:
 	//  000000:[a#0,SET-z#0,SET] points:[...] ranges:[...]
 	fields := strings.FieldsFunc(s, func(c rune) bool {
@@ -710,8 +710,9 @@ func ParseFileMetadataDebug(s string) (m FileMetadata, err error) {
 		}
 	})
 	if len(fields)%3 != 0 {
-		return m, errors.Newf("malformed input: %s", s)
+		return nil, errors.Newf("malformed input: %s", s)
 	}
+	m := &FileMetadata{}
 	for len(fields) > 0 {
 		prefix := fields[0]
 		smallest := base.ParsePrettyInternalKey(fields[1])
@@ -742,7 +743,7 @@ func ParseFileMetadataDebug(s string) (m FileMetadata, err error) {
 		m.HasPointKeys = true
 	}
 	m.InitPhysicalBacking()
-	return
+	return m, nil
 }
 
 // Validate validates the metadata for consistency with itself, returning an
@@ -1123,7 +1124,7 @@ func ParseVersionDebug(
 				m.SmallestPointKey, m.LargestPointKey = m.Smallest, m.Largest
 				m.HasPointKeys = true
 			}
-			files[level] = append(files[level], &m)
+			files[level] = append(files[level], m)
 		}
 	}
 	// Reverse the order of L0 files. This ensures we construct the same

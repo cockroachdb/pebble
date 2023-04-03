@@ -307,10 +307,10 @@ func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 }
 
 func TestVersionEditApply(t *testing.T) {
-	parseMeta := func(s string) (FileMetadata, error) {
+	parseMeta := func(s string) (*FileMetadata, error) {
 		m, err := ParseFileMetadataDebug(s)
 		if err != nil {
-			return FileMetadata{}, err
+			return nil, err
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
@@ -370,12 +370,12 @@ func TestVersionEditApply(t *testing.T) {
 										v.Levels[l] = makeLevelMetadata(base.DefaultComparer.Compare, l, nil /* files */)
 									}
 								}
-								versionFiles[meta.FileNum] = &meta
-								v.Levels[level].tree.Insert(&meta)
+								versionFiles[meta.FileNum] = meta
+								v.Levels[level].tree.Insert(meta)
 								meta.LatestRef()
 							} else {
 								ve.NewFiles =
-									append(ve.NewFiles, NewFileEntry{Level: level, Meta: &meta})
+									append(ve.NewFiles, NewFileEntry{Level: level, Meta: meta})
 							}
 						} else {
 							fileNum, err := strconv.Atoi(data)

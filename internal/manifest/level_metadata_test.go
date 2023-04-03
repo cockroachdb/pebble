@@ -81,7 +81,7 @@ func TestLevelIteratorFiltered(t *testing.T) {
 				for _, metaStr := range strings.Split(d.Input, "\n") {
 					m, err := ParseFileMetadataDebug(metaStr)
 					require.NoError(t, err)
-					files = append(files, &m)
+					files = append(files, m)
 				}
 				level = NewLevelSliceKeySorted(base.DefaultComparer.Compare, files)
 				return ""
