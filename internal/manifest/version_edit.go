@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"io"
 	"sort"
-	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -885,7 +884,7 @@ func (b *BulkVersionEdit) Apply(
 			if allowedSeeks < 100 {
 				allowedSeeks = 100
 			}
-			atomic.StoreInt64(&f.Atomic.AllowedSeeks, allowedSeeks)
+			f.AllowedSeeks.Store(allowedSeeks)
 			f.InitAllowedSeeks = allowedSeeks
 
 			err := lm.tree.Insert(f)

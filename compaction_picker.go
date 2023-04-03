@@ -706,7 +706,7 @@ func (a compensatedSizeAnnotator) Accumulate(
 ) (v interface{}, cacheOK bool) {
 	vptr := dst.(*uint64)
 	*vptr = *vptr + compensatedSize(f, a.pointTombstoneWeight)
-	return vptr, f.StatsValidLocked()
+	return vptr, f.StatsValid()
 }
 
 func (a compensatedSizeAnnotator) Merge(src interface{}, dst interface{}) interface{} {
@@ -1332,7 +1332,7 @@ func (a elisionOnlyAnnotator) Accumulate(f *fileMetadata, dst interface{}) (inte
 	if f.IsCompacting() {
 		return dst, true
 	}
-	if !f.StatsValidLocked() {
+	if !f.StatsValid() {
 		return dst, false
 	}
 	// Bottommost files are large and not worthwhile to compact just

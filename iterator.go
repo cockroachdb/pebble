@@ -9,7 +9,6 @@ import (
 	"context"
 	"io"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -811,14 +810,14 @@ func (i *Iterator) sampleRead() {
 		return
 	}
 	if numOverlappingLevels >= 2 {
-		allowedSeeks := atomic.AddInt64(&topFile.Atomic.AllowedSeeks, -1)
+		allowedSeeks := topFile.AllowedSeeks.Add(-1)
 		if allowedSeeks == 0 {
 
 			// Since the compaction queue can handle duplicates, we can keep
 			// adding to the queue even once allowedSeeks hits 0.
 			// In fact, we NEED to keep adding to the queue, because the queue
 			// is small and evicts older and possibly useful compactions.
-			atomic.AddInt64(&topFile.Atomic.AllowedSeeks, topFile.InitAllowedSeeks)
+			topFile.AllowedSeeks.Add(topFile.InitAllowedSeeks)
 
 			read := readCompaction{
 				start:   topFile.SmallestPointKey.UserKey,
