@@ -1059,7 +1059,7 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 				continue
 			}
 
-			if !f.StatsValidLocked() {
+			if !f.StatsValid() {
 				d.waitTableStats()
 			}
 

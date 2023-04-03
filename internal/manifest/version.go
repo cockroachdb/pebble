@@ -149,22 +149,15 @@ func (s CompactionState) String() string {
 // FileBacking associated with the physical sst if the backing sst is required
 // by any virtual ssts in any version.
 type FileMetadata struct {
-	// Atomic contains fields which are accessed atomically. Go allocations
-	// are guaranteed to be 64-bit aligned which we take advantage of by
-	// placing the 64-bit fields which we access atomically at the beginning
-	// of the FileMetadata struct. For more information, see
-	// https://golang.org/pkg/sync/atomic/#pkg-note-BUG.
-	Atomic struct {
-		// AllowedSeeks is used to determine if a file should be picked for
-		// a read triggered compaction. It is decremented when read sampling
-		// in pebble.Iterator after every after every positioning operation
-		// that returns a user key (eg. Next, Prev, SeekGE, SeekLT, etc).
-		AllowedSeeks int64
+	// AllowedSeeks is used to determine if a file should be picked for
+	// a read triggered compaction. It is decremented when read sampling
+	// in pebble.Iterator after every after every positioning operation
+	// that returns a user key (eg. Next, Prev, SeekGE, SeekLT, etc).
+	AllowedSeeks atomic.Int64
 
-		// statsValid is 1 if stats have been loaded for the table. The
-		// TableStats structure is populated only if valid is 1.
-		statsValid uint32
-	}
+	// statsValid indicates if stats have been loaded for the table. The
+	// TableStats structure is populated only if valid is true.
+	statsValid atomic.Bool
 
 	// FileBacking is the state which backs either a physical or virtual
 	// sstables.
@@ -482,22 +475,14 @@ func (m *FileMetadata) IsCompacting() bool {
 // returns true, the Stats field may be read (with or without holding the
 // database mutex).
 func (m *FileMetadata) StatsValid() bool {
-	return atomic.LoadUint32(&m.Atomic.statsValid) == 1
-}
-
-// StatsValidLocked returns true if the table stats have been populated.
-// StatsValidLocked requires DB.mu is held when it's invoked, and it avoids the
-// overhead of an atomic load. This is possible because table stats validity is
-// only set while DB.mu is held.
-func (m *FileMetadata) StatsValidLocked() bool {
-	return m.Atomic.statsValid == 1
+	return m.statsValid.Load()
 }
 
 // StatsMarkValid marks the TableStats as valid. The caller must hold DB.mu
 // while populating TableStats and calling StatsMarkValud. Once stats are
 // populated, they must not be mutated.
 func (m *FileMetadata) StatsMarkValid() {
-	atomic.StoreUint32(&m.Atomic.statsValid, 1)
+	m.statsValid.Store(true)
 }
 
 // ExtendPointKeyBounds attempts to extend the lower and upper point key bounds

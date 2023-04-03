@@ -53,7 +53,7 @@ func (d *DB) maybeCollectTableStatsLocked() {
 func (d *DB) updateTableStatsLocked(newFiles []manifest.NewFileEntry) {
 	var needStats bool
 	for _, nf := range newFiles {
-		if !nf.Meta.StatsValidLocked() {
+		if !nf.Meta.StatsValid() {
 			needStats = true
 			break
 		}
@@ -175,7 +175,7 @@ func (d *DB) loadNewFileStats(
 		// collectTableStats updates f.Stats for active files, and we
 		// ensure only one goroutine runs it at a time through
 		// d.mu.tableStats.loading.
-		if nf.Meta.StatsValidLocked() {
+		if nf.Meta.StatsValid() {
 			continue
 		}
 
@@ -222,7 +222,7 @@ func (d *DB) scanReadStateTableStats(
 			// and we ensure only one goroutine runs it at a time through
 			// d.mu.tableStats.loading. This makes it safe to read validity
 			// through f.Stats.ValidLocked despite not holding d.mu.
-			if f.StatsValidLocked() {
+			if f.StatsValid() {
 				continue
 			}
 
@@ -839,7 +839,7 @@ func (a rangeKeySetsAnnotator) Accumulate(
 ) (v interface{}, cacheOK bool) {
 	vptr := dst.(*uint64)
 	*vptr = *vptr + f.Stats.NumRangeKeySets
-	return vptr, f.StatsValidLocked()
+	return vptr, f.StatsValid()
 }
 
 func (a rangeKeySetsAnnotator) Merge(src interface{}, dst interface{}) interface{} {
@@ -886,7 +886,7 @@ func (a tombstonesAnnotator) Accumulate(
 ) (v interface{}, cacheOK bool) {
 	vptr := dst.(*uint64)
 	*vptr = *vptr + f.Stats.NumDeletions
-	return vptr, f.StatsValidLocked()
+	return vptr, f.StatsValid()
 }
 
 func (a tombstonesAnnotator) Merge(src interface{}, dst interface{}) interface{} {
@@ -933,7 +933,7 @@ func (a valueBlocksSizeAnnotator) Accumulate(
 ) (v interface{}, cacheOK bool) {
 	vptr := dst.(*uint64)
 	*vptr = *vptr + f.Stats.ValueBlocksSize
-	return vptr, f.StatsValidLocked()
+	return vptr, f.StatsValid()
 }
 
 func (a valueBlocksSizeAnnotator) Merge(src interface{}, dst interface{}) interface{} {

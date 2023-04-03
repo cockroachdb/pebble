@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -673,7 +672,7 @@ func TestReadSampling(t *testing.T) {
 			d.mu.Lock()
 			for _, l := range d.mu.versions.currentVersion().Levels {
 				l.Slice().Each(func(f *fileMetadata) {
-					atomic.StoreInt64(&f.Atomic.AllowedSeeks, allowedSeeks)
+					f.AllowedSeeks.Store(allowedSeeks)
 				})
 			}
 			d.mu.Unlock()
@@ -704,7 +703,7 @@ func TestReadSampling(t *testing.T) {
 			for _, l := range d.mu.versions.currentVersion().Levels {
 				l.Slice().Each(func(f *fileMetadata) {
 					if f.FileNum == base.FileNum(fileNum) {
-						actualAllowedSeeks := atomic.LoadInt64(&f.Atomic.AllowedSeeks)
+						actualAllowedSeeks := f.AllowedSeeks.Load()
 						foundAllowedSeeks = actualAllowedSeeks
 					}
 				})
