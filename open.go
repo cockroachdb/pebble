@@ -11,6 +11,8 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/user"
+	"path/filepath"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -55,6 +57,19 @@ func TableCacheSize(maxOpenFiles int) int {
 	return tableCacheSize
 }
 
+// In Unix-like systems, use "~" to display the path of the previous user's home directory.
+// When creating a dirname with "~", the dirname creation failure will not be generated.
+func checkTilde(dirname string) (string, error) {
+	if len(dirname) > 0 && dirname[0] == '~' {
+		usr, err := user.Current()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(usr.HomeDir, dirname[1:]), nil
+	}
+	return dirname, nil
+}
+
 // Open opens a DB whose files live in the given directory.
 func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
@@ -67,6 +82,12 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		opts.LoggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
 	} else {
 		opts.Logger = opts.LoggerAndTracer
+	}
+
+	// Check if the dirname contains ~.
+	dirname, err := checkTilde(dirname)
+	if err != nil {
+		return nil, err
 	}
 
 	// In all error cases, we return db = nil; this is used by various
