@@ -149,7 +149,7 @@ func TestLatestRefCounting(t *testing.T) {
 	require.Equal(t, 1, len(d.mu.versions.fileBackingMap))
 	_, ok := d.mu.versions.fileBackingMap[f.FileNum]
 	require.True(t, ok)
-	require.Equal(t, f.Size, m2.FileBacking.Atomic.VirtualizedSize.Load())
+	require.Equal(t, f.Size, m2.FileBacking.VirtualizedSize.Load())
 
 	// Make sure that f is not present in zombie list, because it is not yet a
 	// zombie.
@@ -170,7 +170,7 @@ func TestLatestRefCounting(t *testing.T) {
 	require.Equal(t, 1, len(d.mu.versions.fileBackingMap))
 	_, ok = d.mu.versions.fileBackingMap[f.FileNum]
 	require.True(t, ok)
-	require.Equal(t, m2.Size, m2.FileBacking.Atomic.VirtualizedSize.Load())
+	require.Equal(t, m2.Size, m2.FileBacking.VirtualizedSize.Load())
 
 	// Move m2 from L0 to L6 to test the move compaction case.
 	ve = manifest.VersionEdit{}
@@ -187,7 +187,7 @@ func TestLatestRefCounting(t *testing.T) {
 	require.Equal(t, 1, len(d.mu.versions.fileBackingMap))
 	_, ok = d.mu.versions.fileBackingMap[f.FileNum]
 	require.True(t, ok)
-	require.Equal(t, m2.Size, m2.FileBacking.Atomic.VirtualizedSize.Load())
+	require.Equal(t, m2.Size, m2.FileBacking.VirtualizedSize.Load())
 
 	// Delete m2 from L6.
 	ve = manifest.VersionEdit{}
@@ -203,7 +203,7 @@ func TestLatestRefCounting(t *testing.T) {
 	require.Equal(t, 0, len(d.mu.versions.fileBackingMap))
 	_, ok = d.mu.versions.fileBackingMap[f.FileNum]
 	require.False(t, ok)
-	require.Equal(t, 0, int(m2.FileBacking.Atomic.VirtualizedSize.Load()))
+	require.Equal(t, 0, int(m2.FileBacking.VirtualizedSize.Load()))
 
 	// Make sure that the backing file is added to the obsolete tables list.
 	require.Equal(t, 1, len(d.mu.versions.obsoleteTables))

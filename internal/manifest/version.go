@@ -321,39 +321,37 @@ func (m *FileMetadata) VirtualMeta() VirtualFileMeta {
 //
 // See the comment above the FileMetadata type for sstable terminology.
 type FileBacking struct {
-	Atomic struct {
-		// Reference count for the backing file on disk: incremented when a
-		// physical or virtual sstable which is backed by the FileBacking is
-		// added to a version and decremented when the version is unreferenced.
-		// We ref count in order to determine when it is safe to delete a
-		// backing sst file from disk. The backing file is obsolete when the
-		// reference count falls to zero.
-		refs atomic.Int32
-		// latestVersionRefs are the references to the FileBacking in the
-		// latest version. This reference can be through a single physical
-		// sstable in the latest version, or one or more virtual sstables in the
-		// latest version.
-		//
-		// INVARIANT: latestVersionRefs <= refs.
-		latestVersionRefs atomic.Int32
-		// VirtualizedSize is set iff the backing sst is only referred to by
-		// virtual ssts in the latest version. VirtualizedSize is the sum of the
-		// virtual sstable sizes of all of the virtual sstables in the latest
-		// version which are backed by the physical sstable. When a virtual
-		// sstable is removed from the latest version, we will decrement the
-		// VirtualizedSize. During compaction picking, we'll compensate a
-		// virtual sstable file size by
-		// (FileBacking.Size - FileBacking.VirtualizedSize) / latestVersionRefs.
-		// The intuition is that if FileBacking.Size - FileBacking.VirtualizedSize
-		// is high, then the space amplification due to virtual sstables is
-		// high, and we should pick the virtual sstable with a higher priority.
-		//
-		// TODO(bananabrick): Compensate the virtual sstable file size using
-		// the VirtualizedSize during compaction picking and test.
-		VirtualizedSize atomic.Uint64
-	}
-	FileNum base.FileNum
-	Size    uint64
+	// Reference count for the backing file on disk: incremented when a
+	// physical or virtual sstable which is backed by the FileBacking is
+	// added to a version and decremented when the version is unreferenced.
+	// We ref count in order to determine when it is safe to delete a
+	// backing sst file from disk. The backing file is obsolete when the
+	// reference count falls to zero.
+	refs atomic.Int32
+	// latestVersionRefs are the references to the FileBacking in the
+	// latest version. This reference can be through a single physical
+	// sstable in the latest version, or one or more virtual sstables in the
+	// latest version.
+	//
+	// INVARIANT: latestVersionRefs <= refs.
+	latestVersionRefs atomic.Int32
+	// VirtualizedSize is set iff the backing sst is only referred to by
+	// virtual ssts in the latest version. VirtualizedSize is the sum of the
+	// virtual sstable sizes of all of the virtual sstables in the latest
+	// version which are backed by the physical sstable. When a virtual
+	// sstable is removed from the latest version, we will decrement the
+	// VirtualizedSize. During compaction picking, we'll compensate a
+	// virtual sstable file size by
+	// (FileBacking.Size - FileBacking.VirtualizedSize) / latestVersionRefs.
+	// The intuition is that if FileBacking.Size - FileBacking.VirtualizedSize
+	// is high, then the space amplification due to virtual sstables is
+	// high, and we should pick the virtual sstable with a higher priority.
+	//
+	// TODO(bananabrick): Compensate the virtual sstable file size using
+	// the VirtualizedSize during compaction picking and test.
+	VirtualizedSize atomic.Uint64
+	FileNum         base.FileNum
+	Size            uint64
 }
 
 // InitPhysicalBacking allocates and sets the FileBacking which is required by a
@@ -394,17 +392,17 @@ func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
 
 // Refs returns the refcount of backing sstable.
 func (m *FileMetadata) Refs() int32 {
-	return m.FileBacking.Atomic.refs.Load()
+	return m.FileBacking.refs.Load()
 }
 
 // Ref increments the ref count associated with the backing sstable.
 func (m *FileMetadata) Ref() {
-	m.FileBacking.Atomic.refs.Add(1)
+	m.FileBacking.refs.Add(1)
 }
 
 // Unref decrements the ref count associated with the backing sstable.
 func (m *FileMetadata) Unref() int32 {
-	v := m.FileBacking.Atomic.refs.Add(-1)
+	v := m.FileBacking.refs.Add(-1)
 	if invariants.Enabled && v < 0 {
 		panic("pebble: invalid FileMetadata refcounting")
 	}
@@ -414,10 +412,10 @@ func (m *FileMetadata) Unref() int32 {
 // LatestRef increments the latest ref count associated with the backing
 // sstable.
 func (m *FileMetadata) LatestRef() {
-	m.FileBacking.Atomic.latestVersionRefs.Add(1)
+	m.FileBacking.latestVersionRefs.Add(1)
 
 	if m.Virtual {
-		m.FileBacking.Atomic.VirtualizedSize.Add(m.Size)
+		m.FileBacking.VirtualizedSize.Add(m.Size)
 	}
 }
 
@@ -425,10 +423,10 @@ func (m *FileMetadata) LatestRef() {
 // sstable.
 func (m *FileMetadata) LatestUnref() int32 {
 	if m.Virtual {
-		m.FileBacking.Atomic.VirtualizedSize.Add(-m.Size)
+		m.FileBacking.VirtualizedSize.Add(-m.Size)
 	}
 
-	v := m.FileBacking.Atomic.latestVersionRefs.Add(-1)
+	v := m.FileBacking.latestVersionRefs.Add(-1)
 	if invariants.Enabled && v < 0 {
 		panic("pebble: invalid FileMetadata latest refcounting")
 	}
@@ -437,7 +435,7 @@ func (m *FileMetadata) LatestUnref() int32 {
 
 // LatestRefs returns the latest ref count associated with the backing sstable.
 func (m *FileMetadata) LatestRefs() int32 {
-	return m.FileBacking.Atomic.latestVersionRefs.Load()
+	return m.FileBacking.latestVersionRefs.Load()
 }
 
 // SetCompactionState transitions this file's compaction state to the given
