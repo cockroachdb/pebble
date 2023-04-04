@@ -7,9 +7,6 @@ package sstable
 import "sync/atomic"
 
 // FilterMetrics holds metrics for the filter policy.
-// TODO(radu): in some contexts, the fields inside are used as atomics; in
-// others they are not (in particular, the struct gets copied around). Split the
-// type into two and use atomic.Int64.
 type FilterMetrics struct {
 	// The number of hits for the filter policy. This is the
 	// number of times the filter policy was successfully used to avoid access
@@ -21,11 +18,29 @@ type FilterMetrics struct {
 	Misses int64
 }
 
-var dummyFilterMetrics FilterMetrics
+// AtomicFilterMetrics contains the same metrics as FilterMetrics, but they can
+// be updated atomically. An instance of AtomicFilterMetrics can be passed to a
+// Reader as a ReaderOption.
+type AtomicFilterMetrics struct {
+	// See FilterMetrics.Hits.
+	hits atomic.Int64
+	// See FilterMetrics.Misses.
+	misses atomic.Int64
+}
 
-func (m *FilterMetrics) readerApply(r *Reader) {
+var _ ReaderOption = (*AtomicFilterMetrics)(nil)
+
+func (m *AtomicFilterMetrics) readerApply(r *Reader) {
 	if r.tableFilter != nil {
 		r.tableFilter.metrics = m
+	}
+}
+
+// Load returns the current values as FilterMetrics.
+func (m *AtomicFilterMetrics) Load() FilterMetrics {
+	return FilterMetrics{
+		Hits:   m.hits.Load(),
+		Misses: m.misses.Load(),
 	}
 }
 
@@ -50,22 +65,24 @@ type filterWriter interface {
 
 type tableFilterReader struct {
 	policy  FilterPolicy
-	metrics *FilterMetrics
+	metrics *AtomicFilterMetrics
 }
 
 func newTableFilterReader(policy FilterPolicy) *tableFilterReader {
 	return &tableFilterReader{
 		policy:  policy,
-		metrics: &dummyFilterMetrics,
+		metrics: nil,
 	}
 }
 
 func (f *tableFilterReader) mayContain(data, key []byte) bool {
 	mayContain := f.policy.MayContain(TableFilter, data, key)
-	if mayContain {
-		atomic.AddInt64(&f.metrics.Misses, 1)
-	} else {
-		atomic.AddInt64(&f.metrics.Hits, 1)
+	if f.metrics != nil {
+		if mayContain {
+			f.metrics.misses.Add(1)
+		} else {
+			f.metrics.hits.Add(1)
+		}
 	}
 	return mayContain
 }
