@@ -197,13 +197,16 @@ func (p *provider) AttachSharedObjects(
 			// TODO(radu): clean up references previously created in this loop.
 			return nil, err
 		}
-		// Check the "originator's" reference.
+		// Check the "origin"'s reference.
 		refName := sharedObjectRefName(d.meta, d.refToCheck.creatorID, d.refToCheck.fileNum)
-		if _, err := p.st.Shared.Storage.Size(refName); err != nil {
-			// TODO(radu): better error message if it doesn't exist.
+		if _, err := p.sharedStorage().Size(refName); err != nil {
 			_ = p.sharedUnref(d.meta)
 			// TODO(radu): clean up references previously created in this loop.
-			return nil, errors.Wrapf(err, "checking originator's marker object %s", refName)
+			if p.sharedStorage().IsNotExistError(err) {
+				return nil, errors.Errorf("origin marker object %q does not exist;"+
+					" object probably removed from the provider which created the backing", refName)
+			}
+			return nil, errors.Wrapf(err, "checking origin's marker object %s", refName)
 		}
 	}
 

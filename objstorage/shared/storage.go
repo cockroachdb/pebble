@@ -49,13 +49,12 @@ type Storage interface {
 	List(prefix, delimiter string) ([]string, error)
 
 	// Delete removes the named object from the store.
-	//
-	// TODO(radu): do we get an error when the object isn't there? How can we
-	// check for that error?
 	Delete(basename string) error
 
 	// Size returns the length of the named object in bytesWritten.
-	//
-	// TODO(radu): same as above - how can we tell if it's a "no such object" error?
 	Size(basename string) (int64, error)
+
+	// IsNotExistError returns true if the given error (returned by a method in
+	// this interface) indicates that the object does not exist.
+	IsNotExistError(err error) bool
 }
