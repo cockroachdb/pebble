@@ -181,7 +181,7 @@ func (p *provider) OpenForReading(
 	if !meta.IsShared() {
 		r, err = p.vfsOpenForReading(ctx, fileType, fileNum, opts)
 	} else {
-		r, err = p.sharedOpenForReading(ctx, meta)
+		r, err = p.sharedOpenForReading(ctx, meta, opts)
 	}
 	if err != nil {
 		return nil, err

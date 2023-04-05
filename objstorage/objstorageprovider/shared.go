@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 )
 
 // sharedSubsystem contains the provider fields related to shared storage.
@@ -40,10 +41,14 @@ func (ss *sharedSubsystem) init(creatorID objstorage.CreatorID) {
 	})
 }
 
+func (p *provider) sharedStorage() shared.Storage {
+	return p.st.Shared.Storage
+}
+
 // sharedInit initializes the shared object subsystem (if configured) and finds
 // any shared objects.
 func (p *provider) sharedInit() error {
-	if p.st.Shared.Storage == nil {
+	if p.sharedStorage() == nil {
 		return nil
 	}
 	catalog, contents, err := sharedobjcat.Open(p.st.FS, p.st.FSDirName)
@@ -76,7 +81,7 @@ func (p *provider) sharedInit() error {
 
 // SetCreatorID is part of the objstorage.Provider interface.
 func (p *provider) SetCreatorID(creatorID objstorage.CreatorID) error {
-	if p.st.Shared.Storage == nil {
+	if p.sharedStorage() == nil {
 		return errors.AssertionFailedf("attempt to set CreatorID but shared storage not enabled")
 	}
 	// Note: this call is a cheap no-op if the creator ID was already set. This
@@ -92,7 +97,7 @@ func (p *provider) SetCreatorID(creatorID objstorage.CreatorID) error {
 }
 
 func (p *provider) sharedCheckInitialized() error {
-	if p.st.Shared.Storage == nil {
+	if p.sharedStorage() == nil {
 		return errors.Errorf("shared object support not configured")
 	}
 	if !p.shared.initialized.Load() {
@@ -181,13 +186,13 @@ func (p *provider) sharedCreateRef(meta objstorage.ObjectMetadata) error {
 		return nil
 	}
 	refName := p.sharedObjectRefName(meta)
-	writer, err := p.st.Shared.Storage.CreateObject(refName)
+	writer, err := p.sharedStorage().CreateObject(refName)
 	if err == nil {
 		// The object is empty, just close the writer.
 		err = writer.Close()
 	}
 	if err != nil {
-		return errors.Wrapf(err, "creating marker object %s", refName)
+		return errors.Wrapf(err, "creating marker object %q", refName)
 	}
 	return nil
 }
@@ -207,9 +212,9 @@ func (p *provider) sharedCreate(
 	meta.Shared.CleanupMethod = opts.SharedCleanupMethod
 
 	objName := sharedObjectName(meta)
-	writer, err := p.st.Shared.Storage.CreateObject(objName)
+	writer, err := p.sharedStorage().CreateObject(objName)
 	if err != nil {
-		return nil, objstorage.ObjectMetadata{}, errors.Wrapf(err, "creating object %s", objName)
+		return nil, objstorage.ObjectMetadata{}, errors.Wrapf(err, "creating object %q", objName)
 	}
 	return &sharedWritable{
 		p:             p,
@@ -219,7 +224,7 @@ func (p *provider) sharedCreate(
 }
 
 func (p *provider) sharedOpenForReading(
-	ctx context.Context, meta objstorage.ObjectMetadata,
+	ctx context.Context, meta objstorage.ObjectMetadata, opts objstorage.OpenOptions,
 ) (objstorage.Readable, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
 		return nil, err
@@ -228,17 +233,27 @@ func (p *provider) sharedOpenForReading(
 	// do this in testing scenarios.
 	if p.shared.checkRefsOnOpen && meta.Shared.CleanupMethod == objstorage.SharedRefTracking {
 		refName := p.sharedObjectRefName(meta)
-		if _, err := p.st.Shared.Storage.Size(refName); err != nil {
-			// TODO(radu): assertion error if object doesn't exist.
-			return nil, errors.Wrapf(err, "checking marker object %s", refName)
+		if _, err := p.sharedStorage().Size(refName); err != nil {
+			if p.sharedStorage().IsNotExistError(err) {
+				if opts.MustExist {
+					p.st.Logger.Fatalf("marker object %q does not exist", refName)
+					// TODO(radu): maybe list references for the object.
+				}
+				return nil, errors.Errorf("marker object %q does not exist", refName)
+			}
+			return nil, errors.Wrapf(err, "checking marker object %q", refName)
 		}
 	}
 	objName := sharedObjectName(meta)
-	size, err := p.st.Shared.Storage.Size(objName)
+	size, err := p.sharedStorage().Size(objName)
 	if err != nil {
+		if opts.MustExist && p.sharedStorage().IsNotExistError(err) {
+			p.st.Logger.Fatalf("object %q does not exist", objName)
+			// TODO(radu): maybe list references for the object.
+		}
 		return nil, err
 	}
-	return newSharedReadable(p.st.Shared.Storage, objName, size), nil
+	return newSharedReadable(p.sharedStorage(), objName, size), nil
 }
 
 func (p *provider) sharedSize(meta objstorage.ObjectMetadata) (int64, error) {
@@ -246,7 +261,7 @@ func (p *provider) sharedSize(meta objstorage.ObjectMetadata) (int64, error) {
 		return 0, err
 	}
 	objName := sharedObjectName(meta)
-	return p.st.Shared.Storage.Size(objName)
+	return p.sharedStorage().Size(objName)
 }
 
 // sharedUnref implements object "removal" with the shared backend. The ref
@@ -264,21 +279,19 @@ func (p *provider) sharedUnref(meta objstorage.ObjectMetadata) error {
 	}
 
 	refName := p.sharedObjectRefName(meta)
-	if err := p.st.Shared.Storage.Delete(refName); err != nil {
-		// TODO(radu): continue if it's a not-exist error.
+	// Tolerate a not-exists error.
+	if err := p.sharedStorage().Delete(refName); err != nil && !p.sharedStorage().IsNotExistError(err) {
 		return err
 	}
-	otherRefs, err := p.st.Shared.Storage.List(sharedObjectRefPrefix(meta), "" /* delimiter */)
+	otherRefs, err := p.sharedStorage().List(sharedObjectRefPrefix(meta), "" /* delimiter */)
 	if err != nil {
 		return err
 	}
 	if len(otherRefs) == 0 {
 		objName := sharedObjectName(meta)
-		if err := p.st.Shared.Storage.Delete(objName); err != nil {
-			// TODO(radu): we must tolerate an object-not-exists here: two providers
-			// can race and delete the same object.
+		if err := p.sharedStorage().Delete(objName); err != nil && !p.sharedStorage().IsNotExistError(err) {
 			return err
 		}
 	}
-	return err
+	return nil
 }

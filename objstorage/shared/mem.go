@@ -133,6 +133,10 @@ func (s *inMemStore) Size(basename string) (int64, error) {
 	return int64(len(obj.data)), nil
 }
 
+func (s *inMemStore) IsNotExistError(err error) bool {
+	return err == os.ErrNotExist
+}
+
 func (s *inMemStore) getObj(name string) (*inMemObj, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

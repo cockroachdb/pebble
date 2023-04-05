@@ -121,3 +121,7 @@ func errOrPrintf(err error, format string, args ...interface{}) string {
 	}
 	return fmt.Sprintf(format, args...)
 }
+
+func (l *loggingStore) IsNotExistError(err error) bool {
+	return l.wrapped.IsNotExistError(err)
+}
