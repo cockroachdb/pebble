@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/randvar"
+	"github.com/cockroachdb/pebble/metamorphic"
 )
 
 // TODO(peter):
@@ -102,48 +103,48 @@ func init() {
 // failure, otherwise changes to the metamorphic tests may cause the generated
 // operations and options to differ.
 func TestMeta(t *testing.T) {
-	opts := []RunOption{
-		Seed(*seed),
-		OpCount(ops.Static),
-		MaxThreads(*maxThreads),
+	opts := []metamorphic.RunOption{
+		metamorphic.Seed(*seed),
+		metamorphic.OpCount(ops.Static),
+		metamorphic.MaxThreads(*maxThreads),
 	}
-	onceOpts := []RunOnceOption{
-		MaxThreads(*maxThreads),
+	onceOpts := []metamorphic.RunOnceOption{
+		metamorphic.MaxThreads(*maxThreads),
 	}
 
 	if *keep {
-		opts = append(opts, KeepData{})
-		onceOpts = append(onceOpts, KeepData{})
+		opts = append(opts, metamorphic.KeepData{})
+		onceOpts = append(onceOpts, metamorphic.KeepData{})
 	}
 	if *failRE != "" {
-		opts = append(opts, FailOnMatch{regexp.MustCompile(*failRE)})
-		onceOpts = append(onceOpts, FailOnMatch{regexp.MustCompile(*failRE)})
+		opts = append(opts, metamorphic.FailOnMatch{Regexp: regexp.MustCompile(*failRE)})
+		onceOpts = append(onceOpts, metamorphic.FailOnMatch{Regexp: regexp.MustCompile(*failRE)})
 	}
 	if *errorRate > 0 {
-		opts = append(opts, InjectErrorsRate(*errorRate))
-		onceOpts = append(onceOpts, InjectErrorsRate(*errorRate))
+		opts = append(opts, metamorphic.InjectErrorsRate(*errorRate))
+		onceOpts = append(onceOpts, metamorphic.InjectErrorsRate(*errorRate))
 	}
 	if *traceFile != "" {
-		opts = append(opts, RuntimeTrace(*traceFile))
+		opts = append(opts, metamorphic.RuntimeTrace(*traceFile))
 	}
 	if *previousOps != "" {
-		opts = append(opts, ExtendPreviousRun(*previousOps, *initialStatePath, *initialStateDesc))
+		opts = append(opts, metamorphic.ExtendPreviousRun(*previousOps, *initialStatePath, *initialStateDesc))
 	}
 	// If the filesystem type was forced, all tests will use that value.
 	switch *fs {
 	case "", "rand", "default":
 		// No-op. Use the generated value for the filesystem.
 	case "disk":
-		opts = append(opts, UseDisk)
+		opts = append(opts, metamorphic.UseDisk)
 	case "mem":
-		opts = append(opts, UseInMemory)
+		opts = append(opts, metamorphic.UseInMemory)
 	default:
 		t.Fatalf("unknown forced filesystem type: %q", *fs)
 	}
 
 	if *compare != "" {
 		runDirs := strings.Split(*compare, ",")
-		Compare(t, *dir, *seed, runDirs, onceOpts...)
+		metamorphic.Compare(t, *dir, *seed, runDirs, onceOpts...)
 		return
 	}
 
@@ -151,8 +152,8 @@ func TestMeta(t *testing.T) {
 		// The --run-dir flag is specified either in the child process (see
 		// runOptions() below) or the user specified it manually in order to re-run
 		// a test.
-		RunOnce(t, *runDir, *seed, filepath.Join(*runDir, "history"), onceOpts...)
+		metamorphic.RunOnce(t, *runDir, *seed, filepath.Join(*runDir, "history"), onceOpts...)
 		return
 	}
-	RunAndCompare(t, *dir, opts...)
+	metamorphic.RunAndCompare(t, *dir, opts...)
 }

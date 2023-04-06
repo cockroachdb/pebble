@@ -126,6 +126,7 @@ func TestGenerator(t *testing.T) {
 
 func TestGeneratorRandom(t *testing.T) {
 	seed := uint64(time.Now().UnixNano())
+	ops := randvar.NewUniform(1000, 10000)
 	generateFromSeed := func() string {
 		rng := rand.New(rand.NewSource(seed))
 		count := ops.Uint64(rng)

@@ -25,7 +25,7 @@ import (
 	"unicode"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/metamorphic"
+	"github.com/cockroachdb/pebble/metamorphic"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
