@@ -413,6 +413,9 @@ type DB struct {
 			// compactions which we might have to perform.
 			readCompactions readCompactionQueue
 
+			// The cumulative duration of all completed compactions since Open.
+			// Does not include flushes.
+			duration time.Duration
 			// Flush throughput metric.
 			flushWriteThroughput ThroughputMetric
 			// The idle start time for the flush "loop", i.e., when the flushing
@@ -1718,6 +1721,13 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Compact.InProgressBytes = d.mu.versions.atomicInProgressBytes.Load()
 	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount)
 	metrics.Compact.MarkedFiles = vers.Stats.MarkedForCompaction
+	metrics.Compact.Duration = d.mu.compact.duration
+	for c := range d.mu.compact.inProgress {
+		if c.kind != compactionKindFlush {
+			metrics.Compact.Duration += d.timeNow().Sub(c.beganAt)
+		}
+	}
+
 	for _, m := range d.mu.mem.queue {
 		metrics.MemTable.Size += m.totalBytes()
 	}
