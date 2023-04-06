@@ -230,6 +230,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.mu.formatVers.marker = formatVersionMarker
 
 	d.timeNow = time.Now
+	d.openedAt = d.timeNow()
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
