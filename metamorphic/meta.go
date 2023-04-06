@@ -2,6 +2,10 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
+// Package metamorphic provides a testing framework for running randomized tests
+// over multiple Pebble databases with varying configurations. Logically
+// equivalent operations should result in equivalent output across all
+// configurations.
 package metamorphic
 
 import (
