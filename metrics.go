@@ -179,6 +179,9 @@ type Metrics struct {
 		// compaction. Such files are compacted in a rewrite compaction
 		// when no other compactions are picked.
 		MarkedFiles int
+		// Duration records the cumulative duration of all compactions since the
+		// database was opened.
+		Duration time.Duration
 	}
 
 	Flush struct {

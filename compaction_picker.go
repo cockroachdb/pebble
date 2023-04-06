@@ -47,13 +47,17 @@ type readCompactionEnv struct {
 	flushing                 bool
 }
 
-// Information about in-progress compactions provided to the compaction picker. These are used to
-// constrain the new compactions that will be picked.
+// Information about in-progress compactions provided to the compaction picker.
+// These are used to constrain the new compactions that will be picked.
 type compactionInfo struct {
-	inputs      []compactionLevel
-	outputLevel int
-	smallest    InternalKey
-	largest     InternalKey
+	// versionEditApplied is true if this compaction's version edit has already
+	// been committed. The compaction may still be in-progress deleting newly
+	// obsolete files.
+	versionEditApplied bool
+	inputs             []compactionLevel
+	outputLevel        int
+	smallest           InternalKey
+	largest            InternalKey
 }
 
 func (info compactionInfo) String() string {

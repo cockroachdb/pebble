@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -835,7 +836,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			flushed:   make(chan struct{}),
 		}}
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			d.mu.versions.picker.getBaseLevel(), toFlush)
+			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now())
 		c.disableSpanElision = true
 		// NB: define allows the test to exactly specify which keys go
 		// into which sstables. If the test has a small target file
