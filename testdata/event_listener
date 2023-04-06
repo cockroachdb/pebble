@@ -162,7 +162,7 @@ close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 8] MANIFEST created 000011
-[JOB 8] compacted(default) L0 [000005 000008] (1.5 K) + L6 [] (0 B) -> L6 [000010] (770 B), in 1.0s (2.0s total), output rate 770 B/s
+[JOB 8] compacted(default) L0 [000005 000008] (1.5 K) + L6 [] (0 B) -> L6 [000010] (770 B), in 1.0s (3.0s total), output rate 770 B/s
 remove: db/000005.sst
 [JOB 8] sstable deleted 000005
 remove: db/000008.sst
