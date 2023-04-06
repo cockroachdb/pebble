@@ -403,6 +403,10 @@ type DB struct {
 			// is at the start of the list. New entries are added to the end.
 			manual []*manualCompaction
 			// inProgress is the set of in-progress flushes and compactions.
+			// It's used in the calculation of some metrics and to initialize L0
+			// sublevels' state. Some of the compactions contained within this
+			// map may have already committed an edit to the version but are
+			// lingering performing cleanup, like deleting obsolete files.
 			inProgress map[*compaction]struct{}
 
 			// rescheduleReadCompaction indicates to an iterator that a read compaction
@@ -413,6 +417,9 @@ type DB struct {
 			// compactions which we might have to perform.
 			readCompactions readCompactionQueue
 
+			// The cumulative duration of all completed compactions since Open.
+			// Does not include flushes.
+			duration time.Duration
 			// Flush throughput metric.
 			flushWriteThroughput ThroughputMetric
 			// The idle start time for the flush "loop", i.e., when the flushing
@@ -1718,6 +1725,13 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Compact.InProgressBytes = d.mu.versions.atomicInProgressBytes.Load()
 	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount)
 	metrics.Compact.MarkedFiles = vers.Stats.MarkedForCompaction
+	metrics.Compact.Duration = d.mu.compact.duration
+	for c := range d.mu.compact.inProgress {
+		if c.kind != compactionKindFlush {
+			metrics.Compact.Duration += d.timeNow().Sub(c.beganAt)
+		}
+	}
+
 	for _, m := range d.mu.mem.queue {
 		metrics.MemTable.Size += m.totalBytes()
 	}
@@ -2294,10 +2308,11 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 	for c := range d.mu.compact.inProgress {
 		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
 			info := compactionInfo{
-				inputs:      c.inputs,
-				smallest:    c.smallest,
-				largest:     c.largest,
-				outputLevel: -1,
+				versionEditApplied: c.versionEditApplied,
+				inputs:             c.inputs,
+				smallest:           c.smallest,
+				largest:            c.largest,
+				outputLevel:        -1,
 			}
 			if c.outputLevel != nil {
 				info.outputLevel = c.outputLevel.level
@@ -2311,6 +2326,14 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 func inProgressL0Compactions(inProgress []compactionInfo) []manifest.L0Compaction {
 	var compactions []manifest.L0Compaction
 	for _, info := range inProgress {
+		// Skip in-progress compactions that have already committed; the L0
+		// sublevels initialization code requires the set of in-progress
+		// compactions to be consistent with the current version. Compactions
+		// with versionEditApplied=true are already applied to the current
+		// version and but are performing cleanup without the database mutex.
+		if info.versionEditApplied {
+			continue
+		}
 		l0 := false
 		for _, cl := range info.inputs {
 			l0 = l0 || cl.level == 0
