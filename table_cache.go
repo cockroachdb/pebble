@@ -67,7 +67,7 @@ type tableCacheOpts struct {
 	cacheID         uint64
 	objProvider     objstorage.Provider
 	opts            sstable.ReaderOptions
-	filterMetrics   *FilterMetrics
+	filterMetrics   *sstable.FilterMetricsTracker
 }
 
 // tableCacheContainer contains the table cache and
@@ -103,7 +103,7 @@ func newTableCacheContainer(
 	t.dbOpts.cacheID = cacheID
 	t.dbOpts.objProvider = objProvider
 	t.dbOpts.opts = opts.MakeReaderOptions()
-	t.dbOpts.filterMetrics = &FilterMetrics{}
+	t.dbOpts.filterMetrics = &sstable.FilterMetricsTracker{}
 	t.dbOpts.iterCount = new(atomic.Int32)
 	return t
 }
@@ -162,10 +162,7 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 		m.Misses += s.misses.Load()
 	}
 	m.Size = m.Count * int64(unsafe.Sizeof(sstable.Reader{}))
-	f := FilterMetrics{
-		Hits:   atomic.LoadInt64(&c.dbOpts.filterMetrics.Hits),
-		Misses: atomic.LoadInt64(&c.dbOpts.filterMetrics.Misses),
-	}
+	f := c.dbOpts.filterMetrics.Load()
 	return m, f
 }
 
