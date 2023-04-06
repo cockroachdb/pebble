@@ -107,10 +107,10 @@ set x x
 force-ingest paths=(ab, wx) level=1
 ----
 1:
-  000007:[a#6,SET-b#6,SET] points:[a#6,SET-b#6,SET]
+  000007:[a#10,SET-b#10,SET] points:[a#10,SET-b#10,SET]
   000004:[b#0,SET-c#5,SET] points:[b#0,SET-c#5,SET]
   000005:[l#5,SET-m#0,SET] points:[l#5,SET-m#0,SET]
-  000008:[w#7,SET-x#7,SET] points:[w#7,SET-x#7,SET]
+  000008:[w#11,SET-x#11,SET] points:[w#11,SET-x#11,SET]
   000006:[x#0,SET-y#5,SET] points:[x#0,SET-y#5,SET]
 
 format-major-version

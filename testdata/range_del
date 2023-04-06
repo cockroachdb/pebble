@@ -2,21 +2,21 @@
 
 define
 mem
-  a.SET.1:b
-  a.SET.3:c
-  a.SET.5:d
-  b.MERGE.1:b
-  b.MERGE.3:c
-  b.MERGE.5:d
-  b.RANGEDEL.6:c
-  b.MERGE.7:e
-  c.SET.1:b
-  c.SET.3:c
-  c.SET.5:d
+  a.SET.10:b
+  a.SET.12:c
+  a.SET.14:d
+  b.MERGE.10:b
+  b.MERGE.12:c
+  b.MERGE.14:d
+  b.RANGEDEL.15:c
+  b.MERGE.16:e
+  c.SET.10:b
+  c.SET.12:c
+  c.SET.14:d
 ----
 mem: 1
 
-get seq=2
+get seq=11
 a
 b
 c
@@ -25,7 +25,7 @@ a:b
 b:b
 c:b
 
-get seq=4
+get seq=13
 a
 b
 c
@@ -34,7 +34,7 @@ a:c
 b:bc
 c:c
 
-get seq=6
+get seq=15
 a
 b
 c
@@ -43,7 +43,7 @@ a:d
 b:bcd
 c:d
 
-get seq=7
+get seq=16
 a
 b
 c
@@ -52,7 +52,7 @@ a:d
 b: pebble: not found
 c:d
 
-get seq=8
+get seq=17
 a
 b
 c
@@ -61,7 +61,7 @@ a:d
 b:e
 c:d
 
-get seq=6
+get seq=15
 a
 b
 c
@@ -70,7 +70,7 @@ a:d
 b:bcd
 c:d
 
-iter seq=6
+iter seq=15
 first
 next
 next
@@ -105,7 +105,7 @@ a: (d, .)
 b: (bcd, .)
 c: (d, .)
 
-iter seq=7
+iter seq=16
 first
 next
 next
@@ -140,25 +140,25 @@ c: (d, .)
 
 define
 mem
-  a.SET.1:b
-  b.MERGE.1:b
-  c.SET.1:b
+  a.SET.10:b
+  b.MERGE.10:b
+  c.SET.10:b
 mem
-  a.SET.3:c
-  b.MERGE.3:c
-  c.SET.3:c
+  a.SET.12:c
+  b.MERGE.12:c
+  c.SET.12:c
 mem
-  a.SET.5:d
-  b.MERGE.5:d
-  c.SET.5:d
+  a.SET.14:d
+  b.MERGE.14:d
+  c.SET.14:d
 mem
-  b.RANGEDEL.6:c
+  b.RANGEDEL.15:c
 mem
-  b.MERGE.7:e
+  b.MERGE.16:e
 ----
 mem: 5
 
-get seq=2
+get seq=11
 a
 b
 c
@@ -167,7 +167,7 @@ a:b
 b:b
 c:b
 
-get seq=4
+get seq=13
 a
 b
 c
@@ -176,7 +176,7 @@ a:c
 b:bc
 c:c
 
-get seq=6
+get seq=15
 a
 b
 c
@@ -185,7 +185,7 @@ a:d
 b:bcd
 c:d
 
-get seq=7
+get seq=16
 a
 b
 c
@@ -194,7 +194,7 @@ a:d
 b: pebble: not found
 c:d
 
-get seq=8
+get seq=17
 a
 b
 c
@@ -203,7 +203,7 @@ a:d
 b:e
 c:d
 
-get seq=6
+get seq=15
 a
 b
 c
@@ -212,7 +212,7 @@ a:d
 b:bcd
 c:d
 
-iter seq=6
+iter seq=15
 first
 next
 next
@@ -247,7 +247,7 @@ a: (d, .)
 b: (bcd, .)
 c: (d, .)
 
-iter seq=7
+iter seq=16
 first
 next
 next
@@ -282,32 +282,32 @@ c: (d, .)
 
 define
 mem
-  a.SET.1:1
-  a.SET.3:2
-  a.SET.5:3
-  a.SET.7:4
-  b.SET.1:1
-  b.SET.3:2
-  b.SET.5:3
-  b.SET.7:4
-  c.SET.1:1
-  c.SET.3:2
-  c.SET.5:3
-  c.SET.7:4
-  d.SET.1:1
-  d.SET.3:2
-  d.SET.5:3
-  d.SET.7:4
-  a.RANGEDEL.2:b
-  b.RANGEDEL.4:c
-  b.RANGEDEL.2:c
-  c.RANGEDEL.6:d
-  c.RANGEDEL.4:d
-  c.RANGEDEL.2:d
+  a.SET.10:1
+  a.SET.12:2
+  a.SET.14:3
+  a.SET.16:4
+  b.SET.10:1
+  b.SET.12:2
+  b.SET.14:3
+  b.SET.16:4
+  c.SET.10:1
+  c.SET.12:2
+  c.SET.14:3
+  c.SET.16:4
+  d.SET.10:1
+  d.SET.12:2
+  d.SET.14:3
+  d.SET.16:4
+  a.RANGEDEL.11:b
+  b.RANGEDEL.13:c
+  b.RANGEDEL.11:c
+  c.RANGEDEL.15:d
+  c.RANGEDEL.13:d
+  c.RANGEDEL.11:d
 ----
 mem: 1
 
-get seq=2
+get seq=11
 a
 b
 c
@@ -318,7 +318,7 @@ b:1
 c:1
 d:1
 
-get seq=3
+get seq=12
 a
 b
 c
@@ -329,7 +329,7 @@ b: pebble: not found
 c: pebble: not found
 d:1
 
-get seq=5
+get seq=14
 a
 b
 c
@@ -340,7 +340,7 @@ b: pebble: not found
 c: pebble: not found
 d:2
 
-get seq=7
+get seq=16
 a
 b
 c
@@ -351,7 +351,7 @@ b:3
 c: pebble: not found
 d:3
 
-get seq=9
+get seq=18
 a
 b
 c
@@ -362,7 +362,7 @@ b:4
 c:4
 d:4
 
-iter seq=2
+iter seq=11
 first
 next
 next
@@ -385,7 +385,7 @@ b: (1, .)
 a: (1, .)
 .
 
-iter seq=3
+iter seq=12
 first
 next
 last
@@ -396,7 +396,7 @@ d: (1, .)
 d: (1, .)
 .
 
-iter seq=5
+iter seq=14
 first
 next
 next
@@ -411,7 +411,7 @@ d: (2, .)
 a: (2, .)
 .
 
-iter seq=7
+iter seq=16
 first
 next
 next
@@ -430,7 +430,7 @@ b: (3, .)
 a: (3, .)
 .
 
-iter seq=9
+iter seq=18
 first
 next
 next
@@ -458,32 +458,32 @@ a: (4, .)
 
 define
 mem
-  a.SET.1:1
-  b.SET.1:1
-  c.SET.1:1
-  d.SET.1:1
+  a.SET.10:1
+  b.SET.10:1
+  c.SET.10:1
+  d.SET.10:1
 mem
-  a.SET.3:2
-  b.SET.3:2
-  c.SET.3:2
-  d.SET.3:2
-  a.RANGEDEL.2:d
+  a.SET.12:2
+  b.SET.12:2
+  c.SET.12:2
+  d.SET.12:2
+  a.RANGEDEL.11:d
 mem
-  a.SET.5:3
-  b.SET.5:3
-  c.SET.5:3
-  d.SET.5:3
-  b.RANGEDEL.4:d
+  a.SET.14:3
+  b.SET.14:3
+  c.SET.14:3
+  d.SET.14:3
+  b.RANGEDEL.13:d
 mem
-  a.SET.7:4
-  b.SET.7:4
-  c.SET.7:4
-  d.SET.7:4
-  c.RANGEDEL.4:d
+  a.SET.16:4
+  b.SET.16:4
+  c.SET.16:4
+  d.SET.16:4
+  c.RANGEDEL.13:d
 ----
 mem: 4
 
-get seq=2
+get seq=11
 a
 b
 c
@@ -494,7 +494,7 @@ b:1
 c:1
 d:1
 
-get seq=3
+get seq=12
 a
 b
 c
@@ -505,7 +505,7 @@ b: pebble: not found
 c: pebble: not found
 d:1
 
-get seq=5
+get seq=14
 a
 b
 c
@@ -516,7 +516,7 @@ b: pebble: not found
 c: pebble: not found
 d:2
 
-get seq=7
+get seq=16
 a
 b
 c
@@ -527,7 +527,7 @@ b:3
 c: pebble: not found
 d:3
 
-get seq=9
+get seq=18
 a
 b
 c
@@ -538,7 +538,7 @@ b:4
 c:4
 d:4
 
-iter seq=2
+iter seq=11
 first
 next
 next
@@ -561,7 +561,7 @@ b: (1, .)
 a: (1, .)
 .
 
-iter seq=3
+iter seq=12
 first
 next
 last
@@ -572,7 +572,7 @@ d: (1, .)
 d: (1, .)
 .
 
-iter seq=5
+iter seq=14
 first
 next
 next
@@ -587,7 +587,7 @@ d: (2, .)
 a: (2, .)
 .
 
-iter seq=7
+iter seq=16
 first
 next
 next
@@ -606,7 +606,7 @@ b: (3, .)
 a: (3, .)
 .
 
-iter seq=9
+iter seq=18
 first
 next
 next
@@ -633,39 +633,39 @@ a: (4, .)
 
 define
 L1
-  a.SET.3:3
+  a.SET.12:3
 L1
-  a.SET.2:2
+  a.SET.11:2
 L1
-  a.SET.1:1
+  a.SET.10:1
 ----
 mem: 1
 1:
-  000004:[a#3,SET-a#3,SET]
-  000005:[a#2,SET-a#2,SET]
-  000006:[a#1,SET-a#1,SET]
+  000004:[a#12,SET-a#12,SET]
+  000005:[a#11,SET-a#11,SET]
+  000006:[a#10,SET-a#10,SET]
 
-get seq=1
+get seq=10
 a
 ----
 a: pebble: not found
 
-get seq=2
+get seq=11
 a
 ----
 a:1
 
-get seq=3
+get seq=12
 a
 ----
 a:2
 
-get seq=4
+get seq=13
 a
 ----
 a:3
 
-iter seq=2
+iter seq=11
 first
 seek-ge a
 seek-ge b
@@ -680,7 +680,7 @@ a: (1, .)
 .
 a: (1, .)
 
-iter seq=3
+iter seq=12
 first
 seek-ge a
 seek-ge b
@@ -695,7 +695,7 @@ a: (2, .)
 .
 a: (2, .)
 
-iter seq=4
+iter seq=13
 first
 seek-ge a
 seek-ge b
@@ -712,39 +712,39 @@ a: (3, .)
 
 define
 L1
-  a.MERGE.3:3
+  a.MERGE.12:3
 L1
-  a.MERGE.2:2
+  a.MERGE.11:2
 L1
-  a.MERGE.1:1
+  a.MERGE.10:1
 ----
 mem: 1
 1:
-  000004:[a#3,MERGE-a#3,MERGE]
-  000005:[a#2,MERGE-a#2,MERGE]
-  000006:[a#1,MERGE-a#1,MERGE]
+  000004:[a#12,MERGE-a#12,MERGE]
+  000005:[a#11,MERGE-a#11,MERGE]
+  000006:[a#10,MERGE-a#10,MERGE]
 
-get seq=1
+get seq=10
 a
 ----
 a: pebble: not found
 
-get seq=2
+get seq=11
 a
 ----
 a:1
 
-get seq=3
+get seq=12
 a
 ----
 a:12
 
-get seq=4
+get seq=13
 a
 ----
 a:123
 
-iter seq=2
+iter seq=11
 first
 seek-ge a
 seek-ge b
@@ -759,7 +759,7 @@ a: (1, .)
 .
 a: (1, .)
 
-iter seq=3
+iter seq=12
 first
 seek-ge a
 seek-ge b
@@ -774,7 +774,7 @@ a: (12, .)
 .
 a: (12, .)
 
-iter seq=4
+iter seq=13
 first
 seek-ge a
 seek-ge b
@@ -793,48 +793,48 @@ a: (123, .)
 
 define
 mem
-  a.MERGE.4:4
+  a.MERGE.13:4
 L1
-  a.MERGE.3:3
+  a.MERGE.12:3
 L2
-  a.MERGE.2:2
+  a.MERGE.11:2
 L3
-  a.MERGE.1:1
+  a.MERGE.10:1
 ----
 mem: 1
 1:
-  000004:[a#3,MERGE-a#3,MERGE]
+  000004:[a#12,MERGE-a#12,MERGE]
 2:
-  000005:[a#2,MERGE-a#2,MERGE]
+  000005:[a#11,MERGE-a#11,MERGE]
 3:
-  000006:[a#1,MERGE-a#1,MERGE]
+  000006:[a#10,MERGE-a#10,MERGE]
 
-get seq=1
+get seq=10
 a
 ----
 a: pebble: not found
 
-get seq=2
+get seq=11
 a
 ----
 a:1
 
-get seq=3
+get seq=12
 a
 ----
 a:12
 
-get seq=4
+get seq=13
 a
 ----
 a:123
 
-get seq=5
+get seq=14
 a
 ----
 a:1234
 
-iter seq=2
+iter seq=11
 first
 seek-ge a
 seek-ge b
@@ -849,7 +849,7 @@ a: (1, .)
 .
 a: (1, .)
 
-iter seq=3
+iter seq=12
 first
 seek-ge a
 seek-ge b
@@ -864,7 +864,7 @@ a: (12, .)
 .
 a: (12, .)
 
-iter seq=4
+iter seq=13
 first
 seek-ge a
 seek-ge b
@@ -879,7 +879,7 @@ a: (123, .)
 .
 a: (123, .)
 
-iter seq=5
+iter seq=14
 first
 seek-ge a
 seek-ge b
@@ -897,34 +897,34 @@ a: (1234, .)
 # Range deletions on multiple levels.
 define
 L0
-  a.SET.4:4
-  b.SET.4:4
-  d.SET.4:4
-  c.RANGEDEL.4:d
+  a.SET.13:4
+  b.SET.13:4
+  d.SET.13:4
+  c.RANGEDEL.13:d
 L1
-  a.SET.3:3
-  d.SET.3:3
-  b.RANGEDEL.3:d
+  a.SET.12:3
+  d.SET.12:3
+  b.RANGEDEL.12:d
 L2
-  d.SET.2:2
-  a.RANGEDEL.2:d
+  d.SET.11:2
+  a.RANGEDEL.11:d
 L3
-  a.SET.1:1
-  b.SET.1:1
-  c.SET.1:1
-  d.SET.1:1
+  a.SET.10:1
+  b.SET.10:1
+  c.SET.10:1
+  d.SET.10:1
 ----
 mem: 1
 0.0:
-  000004:[a#4,SET-d#4,SET]
+  000004:[a#13,SET-d#13,SET]
 1:
-  000005:[a#3,SET-d#3,SET]
+  000005:[a#12,SET-d#12,SET]
 2:
-  000006:[a#2,RANGEDEL-d#2,SET]
+  000006:[a#11,RANGEDEL-d#11,SET]
 3:
-  000007:[a#1,SET-d#1,SET]
+  000007:[a#10,SET-d#10,SET]
 
-get seq=2
+get seq=11
 a
 b
 c
@@ -935,7 +935,7 @@ b:1
 c:1
 d:1
 
-get seq=3
+get seq=12
 a
 b
 c
@@ -946,7 +946,7 @@ b: pebble: not found
 c: pebble: not found
 d:2
 
-get seq=4
+get seq=13
 a
 b
 c
@@ -957,7 +957,7 @@ b: pebble: not found
 c: pebble: not found
 d:3
 
-get seq=5
+get seq=14
 a
 b
 c
@@ -968,7 +968,7 @@ b:4
 c: pebble: not found
 d:4
 
-iter seq=2
+iter seq=11
 first
 next
 next
@@ -987,14 +987,14 @@ c: (1, .)
 b: (1, .)
 a: (1, .)
 
-iter seq=3
+iter seq=12
 first
 last
 ----
 d: (2, .)
 d: (2, .)
 
-iter seq=4
+iter seq=13
 first
 next
 last
@@ -1005,7 +1005,7 @@ d: (3, .)
 d: (3, .)
 a: (3, .)
 
-iter seq=5
+iter seq=14
 first
 next
 next
@@ -1024,31 +1024,31 @@ a: (4, .)
 
 define
 mem
-  a.SET.3:3
-  b.SET.3:3
-  c.SET.3:3
-  d.SET.3:3
+  a.SET.12:3
+  b.SET.12:3
+  c.SET.12:3
+  d.SET.12:3
 L1
-  a.RANGEDEL.2:b
+  a.RANGEDEL.11:b
 L1
-  b.RANGEDEL.2:c
+  b.RANGEDEL.11:c
 L1
-  c.RANGEDEL.2:d
+  c.RANGEDEL.11:d
 L2
-  a.SET.1:1
-  b.SET.1:1
-  c.SET.1:1
-  d.SET.1:1
+  a.SET.10:1
+  b.SET.10:1
+  c.SET.10:1
+  d.SET.10:1
 ----
 mem: 1
 1:
-  000004:[a#2,RANGEDEL-b#inf,RANGEDEL]
-  000005:[b#2,RANGEDEL-c#inf,RANGEDEL]
-  000006:[c#2,RANGEDEL-d#inf,RANGEDEL]
+  000004:[a#11,RANGEDEL-b#inf,RANGEDEL]
+  000005:[b#11,RANGEDEL-c#inf,RANGEDEL]
+  000006:[c#11,RANGEDEL-d#inf,RANGEDEL]
 2:
-  000007:[a#1,SET-d#1,SET]
+  000007:[a#10,SET-d#10,SET]
 
-get seq=2
+get seq=11
 a
 b
 c
@@ -1059,7 +1059,7 @@ b:1
 c:1
 d:1
 
-get seq=3
+get seq=12
 a
 b
 c
@@ -1070,7 +1070,7 @@ b: pebble: not found
 c: pebble: not found
 d:1
 
-get seq=4
+get seq=13
 a
 b
 c
@@ -1081,7 +1081,7 @@ b:3
 c:3
 d:3
 
-iter seq=2
+iter seq=11
 first
 next
 next
@@ -1100,14 +1100,14 @@ c: (1, .)
 b: (1, .)
 a: (1, .)
 
-iter seq=3
+iter seq=12
 first
 last
 ----
 d: (1, .)
 d: (1, .)
 
-iter seq=4
+iter seq=13
 first
 next
 next
@@ -1132,17 +1132,17 @@ a: (3, .)
 
 define
 L1
-  a.RANGEDEL.1:b
+  a.RANGEDEL.10:b
 L2
-  a.SET.2:2
+  a.SET.11:2
 ----
 mem: 1
 1:
-  000004:[a#1,RANGEDEL-b#inf,RANGEDEL]
+  000004:[a#10,RANGEDEL-b#inf,RANGEDEL]
 2:
-  000005:[a#2,SET-a#2,SET]
+  000005:[a#11,SET-a#11,SET]
 
-get seq=3
+get seq=12
 a
 ----
 a: pebble: not found
@@ -1155,33 +1155,33 @@ a: pebble: not found
 
 define target-file-sizes=(100, 1) snapshots=(1)
 L0
-  a.RANGEDEL.1:e
+  a.RANGEDEL.10:e
 L0
-  a.SET.2:v
+  a.SET.11:v
 L0
-  c.SET.3:v
+  c.SET.12:v
 ----
 mem: 1
 0.1:
-  000005:[a#2,SET-a#2,SET]
-  000006:[c#3,SET-c#3,SET]
+  000005:[a#11,SET-a#11,SET]
+  000006:[c#12,SET-c#12,SET]
 0.0:
-  000004:[a#1,RANGEDEL-e#inf,RANGEDEL]
+  000004:[a#10,RANGEDEL-e#inf,RANGEDEL]
 
 compact a-e
 ----
 1:
-  000007:[a#2,SET-c#inf,RANGEDEL]
-  000008:[c#3,SET-e#inf,RANGEDEL]
+  000007:[a#11,SET-c#inf,RANGEDEL]
+  000008:[c#12,SET-e#inf,RANGEDEL]
 
 compact d-e
 ----
 1:
-  000007:[a#2,SET-c#inf,RANGEDEL]
+  000007:[a#11,SET-c#inf,RANGEDEL]
 2:
-  000008:[c#3,SET-e#inf,RANGEDEL]
+  000008:[c#12,SET-e#inf,RANGEDEL]
 
-iter seq=4
+iter seq=13
 seek-ge b
 next
 ----
@@ -1193,33 +1193,33 @@ c: (v, .)
 
 define target-file-sizes=(100, 1) snapshots=(1)
 L0
-  a.RANGEDEL.1:e
+  a.RANGEDEL.10:e
 L0
-  a.SET.2:v
+  a.SET.11:v
 L0
-  c.SET.3:v
+  c.SET.12:v
 ----
 mem: 1
 0.1:
-  000005:[a#2,SET-a#2,SET]
-  000006:[c#3,SET-c#3,SET]
+  000005:[a#11,SET-a#11,SET]
+  000006:[c#12,SET-c#12,SET]
 0.0:
-  000004:[a#1,RANGEDEL-e#inf,RANGEDEL]
+  000004:[a#10,RANGEDEL-e#inf,RANGEDEL]
 
 compact a-e
 ----
 1:
-  000007:[a#2,SET-c#inf,RANGEDEL]
-  000008:[c#3,SET-e#inf,RANGEDEL]
+  000007:[a#11,SET-c#inf,RANGEDEL]
+  000008:[c#12,SET-e#inf,RANGEDEL]
 
 compact a-b
 ----
 1:
-  000008:[c#3,SET-e#inf,RANGEDEL]
+  000008:[c#12,SET-e#inf,RANGEDEL]
 2:
-  000007:[a#2,SET-c#inf,RANGEDEL]
+  000007:[a#11,SET-c#inf,RANGEDEL]
 
-iter seq=4
+iter seq=13
 seek-lt d
 prev
 prev
@@ -1237,41 +1237,41 @@ a: (v, .)
 
 define target-file-sizes=(100, 1) snapshots=(1)
 L0
-  a.RANGEDEL.1:e
+  a.RANGEDEL.10:e
 L0
-  a.SET.2:v
+  a.SET.11:v
 L0
-  c.SET.3:v
+  c.SET.12:v
 L2
   d.SET.0:v
 ----
 mem: 1
 0.1:
-  000005:[a#2,SET-a#2,SET]
-  000006:[c#3,SET-c#3,SET]
+  000005:[a#11,SET-a#11,SET]
+  000006:[c#12,SET-c#12,SET]
 0.0:
-  000004:[a#1,RANGEDEL-e#inf,RANGEDEL]
+  000004:[a#10,RANGEDEL-e#inf,RANGEDEL]
 2:
   000007:[d#0,SET-d#0,SET]
 
 compact a-b
 ----
 1:
-  000008:[a#2,SET-c#inf,RANGEDEL]
-  000009:[c#3,SET-d#inf,RANGEDEL]
-  000010:[d#1,RANGEDEL-e#inf,RANGEDEL]
+  000008:[a#11,SET-c#inf,RANGEDEL]
+  000009:[c#12,SET-d#inf,RANGEDEL]
+  000010:[d#10,RANGEDEL-e#inf,RANGEDEL]
 2:
   000007:[d#0,SET-d#0,SET]
 
 compact d-e
 ----
 1:
-  000008:[a#2,SET-c#inf,RANGEDEL]
-  000009:[c#3,SET-d#inf,RANGEDEL]
+  000008:[a#11,SET-c#inf,RANGEDEL]
+  000009:[c#12,SET-d#inf,RANGEDEL]
 3:
-  000011:[d#1,RANGEDEL-e#inf,RANGEDEL]
+  000011:[d#10,RANGEDEL-e#inf,RANGEDEL]
 
-get seq=4
+get seq=13
 c
 ----
 c:v
@@ -1279,13 +1279,13 @@ c:v
 compact a-b L1
 ----
 1:
-  000009:[c#3,SET-d#inf,RANGEDEL]
+  000009:[c#12,SET-d#inf,RANGEDEL]
 2:
-  000008:[a#2,SET-c#inf,RANGEDEL]
+  000008:[a#11,SET-c#inf,RANGEDEL]
 3:
-  000011:[d#1,RANGEDEL-e#inf,RANGEDEL]
+  000011:[d#10,RANGEDEL-e#inf,RANGEDEL]
 
-get seq=4
+get seq=13
 c
 ----
 c:v
@@ -1295,48 +1295,48 @@ c:v
 
 define target-file-sizes=(100, 1) snapshots=(1)
 L0
-  a.RANGEDEL.1:e
+  a.RANGEDEL.10:e
 L0
-  a.SET.2:v
+  a.SET.11:v
 L0
-  c.SET.3:v
+  c.SET.12:v
 L0
-  f.SET.4:v
+  f.SET.13:v
 L2
   d.SET.0:v
 ----
 mem: 1
 0.1:
-  000005:[a#2,SET-a#2,SET]
-  000006:[c#3,SET-c#3,SET]
+  000005:[a#11,SET-a#11,SET]
+  000006:[c#12,SET-c#12,SET]
 0.0:
-  000004:[a#1,RANGEDEL-e#inf,RANGEDEL]
-  000007:[f#4,SET-f#4,SET]
+  000004:[a#10,RANGEDEL-e#inf,RANGEDEL]
+  000007:[f#13,SET-f#13,SET]
 2:
   000008:[d#0,SET-d#0,SET]
 
 compact a-b
 ----
 0.0:
-  000007:[f#4,SET-f#4,SET]
+  000007:[f#13,SET-f#13,SET]
 1:
-  000009:[a#2,SET-c#inf,RANGEDEL]
-  000010:[c#3,SET-d#inf,RANGEDEL]
-  000011:[d#1,RANGEDEL-e#inf,RANGEDEL]
+  000009:[a#11,SET-c#inf,RANGEDEL]
+  000010:[c#12,SET-d#inf,RANGEDEL]
+  000011:[d#10,RANGEDEL-e#inf,RANGEDEL]
 2:
   000008:[d#0,SET-d#0,SET]
 
 compact d-e
 ----
 0.0:
-  000007:[f#4,SET-f#4,SET]
+  000007:[f#13,SET-f#13,SET]
 1:
-  000009:[a#2,SET-c#inf,RANGEDEL]
-  000010:[c#3,SET-d#inf,RANGEDEL]
+  000009:[a#11,SET-c#inf,RANGEDEL]
+  000010:[c#12,SET-d#inf,RANGEDEL]
 3:
-  000012:[d#1,RANGEDEL-e#inf,RANGEDEL]
+  000012:[d#10,RANGEDEL-e#inf,RANGEDEL]
 
-get seq=4
+get seq=13
 c
 ----
 c:v
@@ -1344,46 +1344,46 @@ c:v
 compact f-f L0
 ----
 1:
-  000009:[a#2,SET-c#inf,RANGEDEL]
-  000010:[c#3,SET-d#inf,RANGEDEL]
-  000007:[f#4,SET-f#4,SET]
+  000009:[a#11,SET-c#inf,RANGEDEL]
+  000010:[c#12,SET-d#inf,RANGEDEL]
+  000007:[f#13,SET-f#13,SET]
 3:
-  000012:[d#1,RANGEDEL-e#inf,RANGEDEL]
+  000012:[d#10,RANGEDEL-e#inf,RANGEDEL]
 
 compact a-f L1
 ----
 2:
-  000013:[a#2,SET-c#inf,RANGEDEL]
-  000014:[c#3,SET-d#inf,RANGEDEL]
-  000015:[f#4,SET-f#4,SET]
+  000013:[a#11,SET-c#inf,RANGEDEL]
+  000014:[c#12,SET-d#inf,RANGEDEL]
+  000015:[f#13,SET-f#13,SET]
 3:
-  000012:[d#1,RANGEDEL-e#inf,RANGEDEL]
+  000012:[d#10,RANGEDEL-e#inf,RANGEDEL]
 
-get seq=4
+get seq=13
 c
 ----
 c:v
 
 define
 L0
-  a.RANGEDEL.3:f
+  a.RANGEDEL.12:f
 L0
-  a.RANGEDEL.4:c
-  c.RANGEDEL.4:f
+  a.RANGEDEL.13:c
+  c.RANGEDEL.13:f
 L1
-  b.RANGEDEL.2:e
+  b.RANGEDEL.11:e
 L2
-  c.RANGEDEL.1:d
+  c.RANGEDEL.10:d
 ----
 mem: 1
 0.1:
-  000005:[a#4,RANGEDEL-f#inf,RANGEDEL]
+  000005:[a#13,RANGEDEL-f#inf,RANGEDEL]
 0.0:
-  000004:[a#3,RANGEDEL-f#inf,RANGEDEL]
+  000004:[a#12,RANGEDEL-f#inf,RANGEDEL]
 1:
-  000006:[b#2,RANGEDEL-e#inf,RANGEDEL]
+  000006:[b#11,RANGEDEL-e#inf,RANGEDEL]
 2:
-  000007:[c#1,RANGEDEL-d#inf,RANGEDEL]
+  000007:[c#10,RANGEDEL-d#inf,RANGEDEL]
 
 wait-pending-table-stats
 000007
@@ -1425,32 +1425,32 @@ range-deletions-bytes-estimate: 1672
 # Range deletions with varying overlap.
 define
 L0
-  a.SET.4:4
-  b.SET.4:4
-  d.SET.4:4
-  c.RANGEDEL.4:d
+  a.SET.13:4
+  b.SET.13:4
+  d.SET.13:4
+  c.RANGEDEL.13:d
 L1
-  a.SET.3:3
-  d.SET.3:3
-  b.RANGEDEL.3:d
+  a.SET.12:3
+  d.SET.12:3
+  b.RANGEDEL.12:d
 L2
-  d.SET.2:2
-  a.RANGEDEL.2:d
+  d.SET.11:2
+  a.RANGEDEL.11:d
 L3
-  a.SET.1:1
-  b.SET.1:1
-  c.SET.1:1
-  d.SET.1:1
+  a.SET.10:1
+  b.SET.10:1
+  c.SET.10:1
+  d.SET.10:1
 ----
 mem: 1
 0.0:
-  000004:[a#4,SET-d#4,SET]
+  000004:[a#13,SET-d#13,SET]
 1:
-  000005:[a#3,SET-d#3,SET]
+  000005:[a#12,SET-d#12,SET]
 2:
-  000006:[a#2,RANGEDEL-d#2,SET]
+  000006:[a#11,RANGEDEL-d#11,SET]
 3:
-  000007:[a#1,SET-d#1,SET]
+  000007:[a#10,SET-d#10,SET]
 
 wait-pending-table-stats
 000007
@@ -1491,29 +1491,29 @@ range-deletions-bytes-estimate: 100
 # Multiple Range deletions in a table.
 define
 L0
-  a.RANGEDEL.6:d
-  e.RANGEDEL.6:z
+  a.RANGEDEL.15:d
+  e.RANGEDEL.15:z
 L0
-  a.RANGEDEL.5:d
+  a.RANGEDEL.14:d
 L0
-  e.RANGEDEL.4:z
+  e.RANGEDEL.13:z
 L1
-  a.SET.2:1
-  b.SET.2:1
-  c.SET.2:1
+  a.SET.11:1
+  b.SET.11:1
+  c.SET.11:1
 L2
-  x.SET.1:2
+  x.SET.10:2
 ----
 mem: 1
 0.1:
-  000004:[a#6,RANGEDEL-z#inf,RANGEDEL]
+  000004:[a#15,RANGEDEL-z#inf,RANGEDEL]
 0.0:
-  000005:[a#5,RANGEDEL-d#inf,RANGEDEL]
-  000006:[e#4,RANGEDEL-z#inf,RANGEDEL]
+  000005:[a#14,RANGEDEL-d#inf,RANGEDEL]
+  000006:[e#13,RANGEDEL-z#inf,RANGEDEL]
 1:
-  000007:[a#2,SET-c#2,SET]
+  000007:[a#11,SET-c#11,SET]
 2:
-  000008:[x#1,SET-x#1,SET]
+  000008:[x#10,SET-x#10,SET]
 
 wait-pending-table-stats
 000005

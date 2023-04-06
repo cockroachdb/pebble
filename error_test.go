@@ -188,16 +188,16 @@ func TestRequireReadError(t *testing.T) {
 		if formatVersion < FormatSetWithDelete {
 			expectLSM(`
 0.0:
-  000007:[a1#4,SET-a2#inf,RANGEDEL]
+  000007:[a1#13,SET-a2#inf,RANGEDEL]
 6:
-  000005:[a1#1,SET-a2#2,SET]
+  000005:[a1#10,SET-a2#11,SET]
 `, d, t)
 		} else {
 			expectLSM(`
 0.0:
-  000007:[a1#4,SETWITHDEL-a2#inf,RANGEDEL]
+  000007:[a1#13,SETWITHDEL-a2#inf,RANGEDEL]
 6:
-  000005:[a1#1,SET-a2#2,SET]
+  000005:[a1#10,SET-a2#11,SET]
 `, d, t)
 		}
 
@@ -291,17 +291,17 @@ func TestCorruptReadError(t *testing.T) {
 		if formatVersion < FormatSetWithDelete {
 			expectLSM(`
 0.0:
-  000007:[a1#4,SET-a2#inf,RANGEDEL]
+  000007:[a1#13,SET-a2#inf,RANGEDEL]
 6:
-  000005:[a1#1,SET-a2#2,SET]
+  000005:[a1#10,SET-a2#11,SET]
 `, d, t)
 
 		} else {
 			expectLSM(`
 0.0:
-  000007:[a1#4,SETWITHDEL-a2#inf,RANGEDEL]
+  000007:[a1#13,SETWITHDEL-a2#inf,RANGEDEL]
 6:
-  000005:[a1#1,SET-a2#2,SET]
+  000005:[a1#10,SET-a2#11,SET]
 `, d, t)
 		}
 

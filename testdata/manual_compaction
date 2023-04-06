@@ -6,7 +6,7 @@ set b 2
 compact a-b
 ----
 6:
-  000005:[a#1,SET-b#2,SET]
+  000005:[a#10,SET-b#11,SET]
 
 batch
 set c 3
@@ -16,8 +16,8 @@ set d 4
 compact c-d
 ----
 6:
-  000005:[a#1,SET-b#2,SET]
-  000007:[c#3,SET-d#4,SET]
+  000005:[a#10,SET-b#11,SET]
+  000007:[c#12,SET-d#13,SET]
 
 batch
 set b 5
@@ -313,7 +313,7 @@ set z 1
 compact a-z
 ----
 6:
-  000005:[a#1,SET-z#5,SET]
+  000005:[a#10,SET-z#14,SET]
 
 build ext1
 set a 2
@@ -327,10 +327,10 @@ del-range c z
 ingest ext1 ext2
 ----
 0.0:
-  000006:[a#6,SET-a#6,SET]
-  000007:[b#7,SET-z#inf,RANGEDEL]
+  000006:[a#15,SET-a#15,SET]
+  000007:[b#16,SET-z#inf,RANGEDEL]
 6:
-  000005:[a#1,SET-z#5,SET]
+  000005:[a#10,SET-z#14,SET]
 
 iter
 first
@@ -1133,14 +1133,14 @@ set y y
 flush
 ----
 0.0:
-  000009:[b#2,SET-b#2,SET]
-  000010:[h#3,SET-h#3,SET]
-  000011:[i#4,SET-i#4,SET]
-  000012:[j#5,SET-j#5,SET]
-  000013:[k#6,SET-k#6,SET]
-  000014:[m#7,SET-m#7,SET]
-  000015:[q#8,SET-q#8,SET]
-  000016:[y#9,SET-y#9,SET]
+  000009:[b#10,SET-b#10,SET]
+  000010:[h#11,SET-h#11,SET]
+  000011:[i#12,SET-i#12,SET]
+  000012:[j#13,SET-j#13,SET]
+  000013:[k#14,SET-k#14,SET]
+  000014:[m#15,SET-m#15,SET]
+  000015:[q#16,SET-q#16,SET]
+  000016:[y#17,SET-y#17,SET]
 6:
   000006:[a#1,SET-g#inf,RANGEDEL]
   000007:[m#0,SET-m#0,SET]
@@ -1150,7 +1150,7 @@ flush
 compact g-z
 ----
 0.0:
-  000009:[b#2,SET-b#2,SET]
+  000009:[b#10,SET-b#10,SET]
 6:
   000006:[a#1,SET-g#inf,RANGEDEL]
   000048:[h#0,SET-k#0,SET]
@@ -1163,8 +1163,8 @@ set t t
 flush
 ----
 0.0:
-  000009:[b#2,SET-b#2,SET]
-  000051:[t#10,SET-t#10,SET]
+  000009:[b#10,SET-b#10,SET]
+  000051:[t#18,SET-t#18,SET]
 6:
   000006:[a#1,SET-g#inf,RANGEDEL]
   000048:[h#0,SET-k#0,SET]
