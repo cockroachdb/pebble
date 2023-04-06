@@ -726,7 +726,7 @@ func (d *DB) replayWAL(
 		// TODO(bananabrick): See if we can use the actual base level here,
 		// instead of using 1.
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			1 /* base level */, toFlush)
+			1 /* base level */, toFlush, d.timeNow())
 		newVE, _, _, err := d.runCompaction(jobID, c)
 		if err != nil {
 			return errors.Wrapf(err, "running compaction during WAL replay")
@@ -855,6 +855,7 @@ func (d *DB) replayWAL(
 						d.opts, d.mu.versions.currentVersion(),
 						1, /* base level */
 						[]*flushableEntry{entry},
+						d.timeNow(),
 					)
 					for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
 						ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: 0, Meta: file.FileMetadata})
