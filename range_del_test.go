@@ -314,17 +314,17 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
 		expectLSM(`
 1:
-  000008:[a#3,RANGEDEL-b#inf,RANGEDEL]
-  000009:[b#3,RANGEDEL-d#inf,RANGEDEL]
+  000008:[a#12,RANGEDEL-b#inf,RANGEDEL]
+  000009:[b#12,RANGEDEL-d#inf,RANGEDEL]
 `)
 
 		// Compact again to move one of the tables to L2.
 		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
 		expectLSM(`
 1:
-  000008:[a#3,RANGEDEL-b#inf,RANGEDEL]
+  000008:[a#12,RANGEDEL-b#inf,RANGEDEL]
 2:
-  000009:[b#3,RANGEDEL-d#inf,RANGEDEL]
+  000009:[b#12,RANGEDEL-d#inf,RANGEDEL]
 `)
 
 		// Write "b" and "c" to a new table.
@@ -333,11 +333,11 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		require.NoError(t, d.Flush())
 		expectLSM(`
 0.0:
-  000011:[b#4,SET-c#5,SET]
+  000011:[b#13,SET-c#14,SET]
 1:
-  000008:[a#3,RANGEDEL-b#inf,RANGEDEL]
+  000008:[a#12,RANGEDEL-b#inf,RANGEDEL]
 2:
-  000009:[b#3,RANGEDEL-d#inf,RANGEDEL]
+  000009:[b#12,RANGEDEL-d#inf,RANGEDEL]
 `)
 
 		// "b" is still visible at this point as it should be.
@@ -372,20 +372,20 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		if formatVersion < FormatSetWithDelete {
 			expectLSM(`
 1:
-  000008:[a#3,RANGEDEL-b#inf,RANGEDEL]
+  000008:[a#12,RANGEDEL-b#inf,RANGEDEL]
 2:
-  000012:[b#4,SET-c#inf,RANGEDEL]
+  000012:[b#13,SET-c#inf,RANGEDEL]
 3:
-  000013:[c#5,SET-d#inf,RANGEDEL]
+  000013:[c#14,SET-d#inf,RANGEDEL]
 `)
 		} else {
 			expectLSM(`
 1:
-  000008:[a#3,RANGEDEL-b#inf,RANGEDEL]
+  000008:[a#12,RANGEDEL-b#inf,RANGEDEL]
 2:
-  000012:[b#4,SETWITHDEL-c#inf,RANGEDEL]
+  000012:[b#13,SETWITHDEL-c#inf,RANGEDEL]
 3:
-  000013:[c#5,SET-d#inf,RANGEDEL]
+  000013:[c#14,SET-d#inf,RANGEDEL]
 `)
 		}
 
@@ -464,15 +464,15 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	require.NoError(t, d.Compact([]byte("b"), []byte("b\x00"), false))
 	expectLSM(`
 6:
-  000009:[a#3,RANGEDEL-d#inf,RANGEDEL]
+  000009:[a#12,RANGEDEL-d#inf,RANGEDEL]
 `)
 
 	require.NoError(t, d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil))
 	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
 	expectLSM(`
 6:
-  000012:[a#3,RANGEDEL-c#inf,RANGEDEL]
-  000013:[c#4,SET-d#inf,RANGEDEL]
+  000012:[a#12,RANGEDEL-c#inf,RANGEDEL]
+  000013:[c#13,SET-d#inf,RANGEDEL]
 `)
 }
 
@@ -538,7 +538,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	}
 	expectLSM(`
 3:
-  000009:[a#3,RANGEDEL-d#inf,RANGEDEL]
+  000009:[a#12,RANGEDEL-d#inf,RANGEDEL]
 `)
 
 	require.NoError(t, d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil))
@@ -546,17 +546,17 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
 	expectLSM(`
 3:
-  000013:[a#3,RANGEDEL-c#inf,RANGEDEL]
+  000013:[a#12,RANGEDEL-c#inf,RANGEDEL]
 4:
-  000014:[c#4,SET-d#inf,RANGEDEL]
+  000014:[c#13,SET-d#inf,RANGEDEL]
 `)
 
 	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
 	expectLSM(`
 3:
-  000013:[a#3,RANGEDEL-c#inf,RANGEDEL]
+  000013:[a#12,RANGEDEL-c#inf,RANGEDEL]
 5:
-  000014:[c#4,SET-d#inf,RANGEDEL]
+  000014:[c#13,SET-d#inf,RANGEDEL]
 `)
 
 	if _, _, err := d.Get([]byte("b")); err != ErrNotFound {
@@ -566,9 +566,9 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
 	expectLSM(`
 4:
-  000013:[a#3,RANGEDEL-c#inf,RANGEDEL]
+  000013:[a#12,RANGEDEL-c#inf,RANGEDEL]
 5:
-  000014:[c#4,SET-d#inf,RANGEDEL]
+  000014:[c#13,SET-d#inf,RANGEDEL]
 `)
 
 	if v, _, err := d.Get([]byte("b")); err != ErrNotFound {

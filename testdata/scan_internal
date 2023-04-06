@@ -22,10 +22,10 @@ flush
 
 scan-internal
 ----
-a-c:{(#1,RANGEKEYSET,@5,boop)}
-b#3,1 (d)
-c-e:{(#2,RANGEKEYSET,@5,beep)}
-e#4,1 (foo)
+a-c:{(#10,RANGEKEYSET,@5,boop)}
+b#12,1 (d)
+c-e:{(#11,RANGEKEYSET,@5,beep)}
+e#13,1 (foo)
 
 # Keys deleted by rangedels are elided.
 
@@ -36,41 +36,41 @@ committed 1 keys
 
 scan-internal
 ----
-a-c:{(#1,RANGEKEYSET,@5,boop)}
-b-d#5,RANGEDEL
-c-e:{(#2,RANGEKEYSET,@5,beep)}
-e#4,1 (foo)
+a-c:{(#10,RANGEKEYSET,@5,boop)}
+b-d#14,RANGEDEL
+c-e:{(#11,RANGEKEYSET,@5,beep)}
+e#13,1 (foo)
 
 flush
 ----
 
 scan-internal
 ----
-a-c:{(#1,RANGEKEYSET,@5,boop)}
-b-d#5,RANGEDEL
-c-e:{(#2,RANGEKEYSET,@5,beep)}
-e#4,1 (foo)
+a-c:{(#10,RANGEKEYSET,@5,boop)}
+b-d#14,RANGEDEL
+c-e:{(#11,RANGEKEYSET,@5,beep)}
+e#13,1 (foo)
 
 # Snapshots work with internal iters.
 
 scan-internal snapshot=foo
 ----
-a-c:{(#1,RANGEKEYSET,@5,boop)}
-c-e:{(#2,RANGEKEYSET,@5,beep)}
+a-c:{(#10,RANGEKEYSET,@5,boop)}
+c-e:{(#11,RANGEKEYSET,@5,beep)}
 
 # Range keys and range dels are truncated to [lower,upper).
 
 scan-internal lower=bb upper=dd
 ----
-bb-c:{(#1,RANGEKEYSET,@5,boop)}
-bb-d#5,RANGEDEL
-c-dd:{(#2,RANGEKEYSET,@5,beep)}
+bb-c:{(#10,RANGEKEYSET,@5,boop)}
+bb-d#14,RANGEDEL
+c-dd:{(#11,RANGEKEYSET,@5,beep)}
 
 scan-internal lower=b upper=cc
 ----
-b-c:{(#1,RANGEKEYSET,@5,boop)}
-b-cc#5,RANGEDEL
-c-cc:{(#2,RANGEKEYSET,@5,beep)}
+b-c:{(#10,RANGEKEYSET,@5,boop)}
+b-cc#14,RANGEDEL
+c-cc:{(#11,RANGEKEYSET,@5,beep)}
 
 reset
 ----
@@ -90,7 +90,7 @@ flush
 compact a-z
 ----
 6:
-  000005:[a#1,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000005:[a#10,RANGEKEYSET-e#inf,RANGEKEYSET]
 
 batch commit
 range-key-unset b d @6
@@ -107,10 +107,10 @@ committed 1 keys
 
 scan-internal
 ----
-a-b:{(#4,RANGEKEYDEL)}
-b-c:{(#1,RANGEKEYSET,@8,foo) (#3,RANGEKEYUNSET,@6)}
-c-d:{(#3,RANGEKEYUNSET,@6)}
-d-e:{(#2,RANGEKEYSET,@6,bar)}
+a-b:{(#13,RANGEKEYDEL)}
+b-c:{(#10,RANGEKEYSET,@8,foo) (#12,RANGEKEYUNSET,@6)}
+c-d:{(#12,RANGEKEYUNSET,@6)}
+d-e:{(#11,RANGEKEYSET,@6,bar)}
 
 flush
 ----
@@ -118,17 +118,17 @@ flush
 lsm
 ----
 0.0:
-  000009:[a#4,RANGEKEYDEL-b#inf,RANGEKEYDEL]
-  000007:[b#3,RANGEKEYUNSET-d#inf,RANGEKEYUNSET]
+  000009:[a#13,RANGEKEYDEL-b#inf,RANGEKEYDEL]
+  000007:[b#12,RANGEKEYUNSET-d#inf,RANGEKEYUNSET]
 6:
-  000005:[a#1,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000005:[a#10,RANGEKEYSET-e#inf,RANGEKEYSET]
 
 scan-internal
 ----
-a-b:{(#4,RANGEKEYDEL)}
-b-c:{(#1,RANGEKEYSET,@8,foo) (#3,RANGEKEYUNSET,@6)}
-c-d:{(#3,RANGEKEYUNSET,@6)}
-d-e:{(#2,RANGEKEYSET,@6,bar)}
+a-b:{(#13,RANGEKEYDEL)}
+b-c:{(#10,RANGEKEYSET,@8,foo) (#12,RANGEKEYUNSET,@6)}
+c-d:{(#12,RANGEKEYUNSET,@6)}
+d-e:{(#11,RANGEKEYSET,@6,bar)}
 
 # Range key masking is not exercised, with range keys that could mask point
 # keys being returned alongside point keys.
@@ -149,6 +149,6 @@ committed 2 keys
 
 scan-internal
 ----
-a-c:{(#2,RANGEKEYSET,@5,boop)}
-b@3#1,1 (bar)
-c-e:{(#3,RANGEKEYSET,@5,beep)}
+a-c:{(#11,RANGEKEYSET,@5,boop)}
+b@3#10,1 (bar)
+c-e:{(#12,RANGEKEYSET,@5,beep)}

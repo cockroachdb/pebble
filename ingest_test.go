@@ -1159,11 +1159,11 @@ func TestConcurrentIngestCompact(t *testing.T) {
 
 			expectLSM(`
 0.0:
-  000005:[a#2,SET-a#2,SET]
-  000007:[c#4,SET-c#4,SET]
+  000005:[a#11,SET-a#11,SET]
+  000007:[c#13,SET-c#13,SET]
 6:
-  000004:[a#1,SET-a#1,SET]
-  000006:[c#3,SET-c#3,SET]
+  000004:[a#10,SET-a#10,SET]
+  000006:[c#12,SET-c#12,SET]
 `)
 
 			// At this point ingestion of an sstable containing only key "b" will be
@@ -1186,7 +1186,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 
 				expectLSM(`
 0.0:
-  000009:[b#5,SET-b#5,SET]
+  000009:[b#14,SET-b#14,SET]
 6:
   000008:[a#0,SET-c#0,SET]
 `)

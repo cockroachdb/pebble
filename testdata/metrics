@@ -8,7 +8,7 @@ iter-new a
 flush
 ----
 0.0:
-  000005:[a#1,SET-a#1,SET]
+  000005:[a#10,SET-a#10,SET]
 
 # iter b references both a memtable and sstable 5.
 
@@ -50,8 +50,8 @@ set b 2
 flush
 ----
 0.0:
-  000005:[a#1,SET-a#1,SET]
-  000007:[b#2,SET-b#2,SET]
+  000005:[a#10,SET-a#10,SET]
+  000007:[b#11,SET-b#11,SET]
 
 # iter c references both a memtable and sstables 5 and 7.
 
@@ -212,9 +212,9 @@ set c@14 c14
 flush
 ----
 0.0:
-  000010:[c@20#3,SET-c@18#5,SET]
-  000011:[c@17#6,SET-c@15#8,SET]
-  000012:[c@14#9,SET-c@14#9,SET]
+  000010:[c@20#12,SET-c@18#14,SET]
+  000011:[c@17#15,SET-c@15#17,SET]
+  000012:[c@14#18,SET-c@14#18,SET]
 6:
   000008:[a#0,SET-b#0,SET]
 
@@ -338,11 +338,11 @@ disable
 flush
 ----
 0.1:
-  000015:[d#13,SET-d#13,SET]
-  000016:[e#14,SET-e#14,SET]
-  000019:[f#15,SET-f#15,SET]
+  000015:[d#22,SET-d#22,SET]
+  000016:[e#23,SET-e#23,SET]
+  000019:[f#24,SET-f#24,SET]
 0.0:
-  000023:[d#10,SET-f#12,SET]
+  000023:[d#19,SET-f#21,SET]
 6:
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]

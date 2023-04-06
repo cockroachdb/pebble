@@ -6,7 +6,7 @@ set b 2
 compact a-b
 ----
 6:
-  000005:[a#1,SET-b#2,SET]
+  000005:[a#10,SET-b#11,SET]
 
 batch
 set c 3
@@ -16,8 +16,8 @@ set d 4
 compact c-d
 ----
 6:
-  000005:[a#1,SET-b#2,SET]
-  000007:[c#3,SET-d#4,SET]
+  000005:[a#10,SET-b#11,SET]
+  000007:[c#12,SET-d#13,SET]
 
 batch
 set b 5
@@ -313,7 +313,7 @@ set z 1
 compact a-z
 ----
 6:
-  000005:[a#1,SET-z#5,SET]
+  000005:[a#10,SET-z#14,SET]
 
 build ext1
 set a 2
@@ -327,10 +327,10 @@ del-range c z
 ingest ext1 ext2
 ----
 0.0:
-  000006:[a#6,SET-a#6,SET]
-  000007:[b#7,SET-z#inf,RANGEDEL]
+  000006:[a#15,SET-a#15,SET]
+  000007:[b#16,SET-z#inf,RANGEDEL]
 6:
-  000005:[a#1,SET-z#5,SET]
+  000005:[a#10,SET-z#14,SET]
 
 iter
 first

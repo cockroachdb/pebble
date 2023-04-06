@@ -6,7 +6,7 @@ set c 2
 ingest ext1
 ----
 6:
-  000004:[a#1,MERGE-c#1,SET]
+  000004:[a#10,MERGE-c#10,SET]
 
 iter
 first
@@ -46,8 +46,8 @@ set e@18 e18
 ingest ext2
 ----
 6:
-  000004:[a#1,MERGE-c#1,SET]
-  000005:[d@10#2,SET-e@18#2,SET]
+  000004:[a#10,MERGE-c#10,SET]
+  000005:[d@10#11,SET-e@18#11,SET]
 
 iter
 seek-ge c

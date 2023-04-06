@@ -265,7 +265,14 @@ func (vs *versionSet) load(
 			// (assuming no WALs contain higher sequence numbers than the
 			// manifest's LastSeqNum). Increment LastSeqNum by 1 to get the
 			// next sequence number that will be assigned.
-			vs.logSeqNum.Store(ve.LastSeqNum + 1)
+			//
+			// If LastSeqNum is less than SeqNumStart, increase it to at least
+			// SeqNumStart to leave ample room for reserved sequence numbers.
+			if ve.LastSeqNum+1 < base.SeqNumStart {
+				vs.logSeqNum.Store(base.SeqNumStart)
+			} else {
+				vs.logSeqNum.Store(ve.LastSeqNum + 1)
+			}
 		}
 	}
 	// We have already set vs.nextFileNum = 2 at the beginning of the
