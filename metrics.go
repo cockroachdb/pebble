@@ -256,6 +256,8 @@ type Metrics struct {
 
 	// Count of the number of open sstable iterators.
 	TableIters int64
+	// Uptime is the total time since this DB was opened.
+	Uptime time.Duration
 
 	WAL struct {
 		// Number of live WAL files.

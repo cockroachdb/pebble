@@ -475,6 +475,9 @@ type DB struct {
 
 	// Normally equal to time.Now() but may be overridden in tests.
 	timeNow func() time.Time
+	// the time at database Open; may be used to compute metrics like effective
+	// compaction concurrency
+	openedAt time.Time
 }
 
 var _ Reader = (*DB)(nil)
@@ -1798,6 +1801,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.BlockCache = d.opts.Cache.Metrics()
 	metrics.TableCache, metrics.Filter = d.tableCache.metrics()
 	metrics.TableIters = int64(d.tableCache.iterCount())
+	metrics.Uptime = d.timeNow().Sub(d.openedAt)
 	return metrics
 }
 
