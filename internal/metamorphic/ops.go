@@ -478,7 +478,7 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 		// batch which doesn't do prefix compression.
 		lastUserKey = key.UserKey
 
-		key.SetSeqNum(0)
+		key.SetSeqNum(base.SeqNumZero)
 		if err := w.Add(*key, value.InPlaceValue()); err != nil {
 			return "", err
 		}

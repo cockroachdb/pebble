@@ -41,10 +41,10 @@ flush
 lsm
 ----
 0.1:
-  000009:[bar#3,DEL-zoo#inf,RANGEKEYSET]
+  000009:[bar#12,DEL-zoo#inf,RANGEKEYSET]
 0.0:
-  000005:[bar#1,SET-bar#1,SET]
-  000007:[bax#2,RANGEKEYSET-zoo#inf,RANGEKEYSET]
+  000005:[bar#10,SET-bar#10,SET]
+  000007:[bax#11,RANGEKEYSET-zoo#inf,RANGEKEYSET]
 
 # Assert that First correctly finds [bax,zoo), despite the discovery of
 # [foo,zoo) triggering the switch to combined iteration.
@@ -125,12 +125,12 @@ flush
 lsm
 ----
 0.1:
-  000013:[b#5,RANGEDEL-y#inf,RANGEDEL]
+  000013:[b#14,RANGEDEL-y#inf,RANGEDEL]
 0.0:
-  000005:[a#1,SET-a#1,SET]
-  000009:[d#3,RANGEKEYSET-e#inf,RANGEKEYSET]
-  000011:[l#4,RANGEKEYSET-m#inf,RANGEKEYSET]
-  000007:[z#2,SET-z#2,SET]
+  000005:[a#10,SET-a#10,SET]
+  000009:[d#12,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000011:[l#13,RANGEKEYSET-m#inf,RANGEKEYSET]
+  000007:[z#11,SET-z#11,SET]
 
 combined-iter
 seek-ge k

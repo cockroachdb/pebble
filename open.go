@@ -211,8 +211,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.mu.compact.noOngoingFlushStartTime = time.Now()
 	d.mu.snapshots.init()
 	// logSeqNum is the next sequence number that will be assigned. Start
-	// assigning sequence numbers from 1 to match rocksdb.
-	d.mu.versions.logSeqNum.Store(1)
+	// assigning sequence numbers from base.SeqNumStart to leave room for reserved
+	// sequence numbers (see comments around SeqNumStart).
+	d.mu.versions.logSeqNum.Store(base.SeqNumStart)
 	d.mu.formatVers.vers = formatVersion
 	d.mu.formatVers.marker = formatVersionMarker
 

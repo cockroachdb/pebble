@@ -27,7 +27,7 @@ ingest ext0
 lsm
 ----
 6:
-  000006:[a#1,SET-b#1,SET]
+  000006:[a#10,SET-b#10,SET]
 
 metrics
 ----
@@ -89,9 +89,9 @@ ingest ext1
 lsm
 ----
 0.0:
-  000007:[a#2,SET-b#2,DEL]
+  000007:[a#11,SET-b#11,DEL]
 6:
-  000006:[a#1,SET-b#1,SET]
+  000006:[a#10,SET-b#10,SET]
 
 iter
 seek-ge a
@@ -119,11 +119,11 @@ ingest ext2
 lsm
 ----
 0.1:
-  000008:[a#3,SET-c#3,SET]
+  000008:[a#12,SET-c#12,SET]
 0.0:
-  000007:[a#2,SET-b#2,DEL]
+  000007:[a#11,SET-b#11,DEL]
 6:
-  000006:[a#1,SET-b#1,SET]
+  000006:[a#10,SET-b#10,SET]
 
 iter
 seek-ge a
@@ -154,13 +154,13 @@ ingest ext3
 lsm
 ----
 0.2:
-  000009:[b#4,MERGE-c#4,DEL]
+  000009:[b#13,MERGE-c#13,DEL]
 0.1:
-  000008:[a#3,SET-c#3,SET]
+  000008:[a#12,SET-c#12,SET]
 0.0:
-  000007:[a#2,SET-b#2,DEL]
+  000007:[a#11,SET-b#11,DEL]
 6:
-  000006:[a#1,SET-b#1,SET]
+  000006:[a#10,SET-b#10,SET]
 
 iter
 seek-ge a
@@ -191,14 +191,14 @@ ingest ext4
 lsm
 ----
 0.2:
-  000009:[b#4,MERGE-c#4,DEL]
+  000009:[b#13,MERGE-c#13,DEL]
 0.1:
-  000008:[a#3,SET-c#3,SET]
+  000008:[a#12,SET-c#12,SET]
 0.0:
-  000007:[a#2,SET-b#2,DEL]
+  000007:[a#11,SET-b#11,DEL]
 6:
-  000006:[a#1,SET-b#1,SET]
-  000010:[x#5,SET-y#5,SET]
+  000006:[a#10,SET-b#10,SET]
+  000010:[x#14,SET-y#14,SET]
 
 iter
 seek-lt y
@@ -234,16 +234,16 @@ memtable flushed
 lsm
 ----
 0.2:
-  000009:[b#4,MERGE-c#4,DEL]
+  000009:[b#13,MERGE-c#13,DEL]
 0.1:
-  000008:[a#3,SET-c#3,SET]
-  000011:[k#8,SET-k#8,SET]
+  000008:[a#12,SET-c#12,SET]
+  000011:[k#17,SET-k#17,SET]
 0.0:
-  000007:[a#2,SET-b#2,DEL]
-  000014:[j#6,SET-k#7,SET]
+  000007:[a#11,SET-b#11,DEL]
+  000014:[j#15,SET-k#16,SET]
 6:
-  000006:[a#1,SET-b#1,SET]
-  000010:[x#5,SET-y#5,SET]
+  000006:[a#10,SET-b#10,SET]
+  000010:[x#14,SET-y#14,SET]
 
 iter
 seek-ge j
@@ -275,17 +275,17 @@ ingest ext6
 lsm
 ----
 0.2:
-  000009:[b#4,MERGE-c#4,DEL]
+  000009:[b#13,MERGE-c#13,DEL]
 0.1:
-  000008:[a#3,SET-c#3,SET]
-  000011:[k#8,SET-k#8,SET]
+  000008:[a#12,SET-c#12,SET]
+  000011:[k#17,SET-k#17,SET]
 0.0:
-  000007:[a#2,SET-b#2,DEL]
-  000014:[j#6,SET-k#7,SET]
+  000007:[a#11,SET-b#11,DEL]
+  000014:[j#15,SET-k#16,SET]
 6:
-  000006:[a#1,SET-b#1,SET]
-  000015:[n#10,SET-n#10,SET]
-  000010:[x#5,SET-y#5,SET]
+  000006:[a#10,SET-b#10,SET]
+  000015:[n#19,SET-n#19,SET]
+  000010:[x#14,SET-y#14,SET]
 
 get
 m
@@ -306,20 +306,20 @@ memtable flushed
 lsm
 ----
 0.3:
-  000016:[a#11,RANGEDEL-z#inf,RANGEDEL]
+  000016:[a#20,RANGEDEL-z#inf,RANGEDEL]
 0.2:
-  000009:[b#4,MERGE-c#4,DEL]
+  000009:[b#13,MERGE-c#13,DEL]
 0.1:
-  000008:[a#3,SET-c#3,SET]
-  000011:[k#8,SET-k#8,SET]
+  000008:[a#12,SET-c#12,SET]
+  000011:[k#17,SET-k#17,SET]
 0.0:
-  000007:[a#2,SET-b#2,DEL]
-  000014:[j#6,SET-k#7,SET]
-  000019:[m#9,SET-m#9,SET]
+  000007:[a#11,SET-b#11,DEL]
+  000014:[j#15,SET-k#16,SET]
+  000019:[m#18,SET-m#18,SET]
 6:
-  000006:[a#1,SET-b#1,SET]
-  000015:[n#10,SET-n#10,SET]
-  000010:[x#5,SET-y#5,SET]
+  000006:[a#10,SET-b#10,SET]
+  000015:[n#19,SET-n#19,SET]
+  000010:[x#14,SET-y#14,SET]
 
 get
 a
@@ -384,23 +384,23 @@ ingest ext9
 lsm
 ----
 0.4:
-  000021:[a#13,SET-g#13,SET]
-  000020:[j#12,RANGEDEL-m#12,SET]
+  000021:[a#22,SET-g#22,SET]
+  000020:[j#21,RANGEDEL-m#21,SET]
 0.3:
-  000016:[a#11,RANGEDEL-z#inf,RANGEDEL]
+  000016:[a#20,RANGEDEL-z#inf,RANGEDEL]
 0.2:
-  000009:[b#4,MERGE-c#4,DEL]
+  000009:[b#13,MERGE-c#13,DEL]
 0.1:
-  000008:[a#3,SET-c#3,SET]
-  000011:[k#8,SET-k#8,SET]
+  000008:[a#12,SET-c#12,SET]
+  000011:[k#17,SET-k#17,SET]
 0.0:
-  000007:[a#2,SET-b#2,DEL]
-  000014:[j#6,SET-k#7,SET]
-  000019:[m#9,SET-m#9,SET]
+  000007:[a#11,SET-b#11,DEL]
+  000014:[j#15,SET-k#16,SET]
+  000019:[m#18,SET-m#18,SET]
 6:
-  000006:[a#1,SET-b#1,SET]
-  000015:[n#10,SET-n#10,SET]
-  000010:[x#5,SET-y#5,SET]
+  000006:[a#10,SET-b#10,SET]
+  000015:[n#19,SET-n#19,SET]
+  000010:[x#14,SET-y#14,SET]
 
 # Overlap with sst boundary containing range del sentinel (fileNum 000015) is not considered an overlap since
 # range del's end key is exclusive. Hence ext9 gets ingested into L6.
@@ -437,26 +437,26 @@ d:40
 lsm
 ----
 0.4:
-  000021:[a#13,SET-g#13,SET]
-  000020:[j#12,RANGEDEL-m#12,SET]
+  000021:[a#22,SET-g#22,SET]
+  000020:[j#21,RANGEDEL-m#21,SET]
 0.3:
-  000016:[a#11,RANGEDEL-z#inf,RANGEDEL]
+  000016:[a#20,RANGEDEL-z#inf,RANGEDEL]
 0.2:
-  000009:[b#4,MERGE-c#4,DEL]
+  000009:[b#13,MERGE-c#13,DEL]
 0.1:
-  000008:[a#3,SET-c#3,SET]
-  000011:[k#8,SET-k#8,SET]
+  000008:[a#12,SET-c#12,SET]
+  000011:[k#17,SET-k#17,SET]
 0.0:
-  000007:[a#2,SET-b#2,DEL]
-  000014:[j#6,SET-k#7,SET]
-  000019:[m#9,SET-m#9,SET]
+  000007:[a#11,SET-b#11,DEL]
+  000014:[j#15,SET-k#16,SET]
+  000019:[m#18,SET-m#18,SET]
 6:
-  000006:[a#1,SET-b#1,SET]
-  000023:[d#14,SET-d#14,SET]
-  000024:[i#15,RANGEDEL-j#inf,RANGEDEL]
-  000015:[n#10,SET-n#10,SET]
-  000010:[x#5,SET-y#5,SET]
-  000022:[z#16,SET-z#16,SET]
+  000006:[a#10,SET-b#10,SET]
+  000023:[d#23,SET-d#23,SET]
+  000024:[i#24,RANGEDEL-j#inf,RANGEDEL]
+  000015:[n#19,SET-n#19,SET]
+  000010:[x#14,SET-y#14,SET]
+  000022:[z#25,SET-z#25,SET]
 
 # No overlap between fileNum 000019 that contains point key f, since f is ingested file's range del sentinel.
 
@@ -470,27 +470,27 @@ ingest ext13
 lsm
 ----
 0.4:
-  000021:[a#13,SET-g#13,SET]
-  000020:[j#12,RANGEDEL-m#12,SET]
+  000021:[a#22,SET-g#22,SET]
+  000020:[j#21,RANGEDEL-m#21,SET]
 0.3:
-  000016:[a#11,RANGEDEL-z#inf,RANGEDEL]
+  000016:[a#20,RANGEDEL-z#inf,RANGEDEL]
 0.2:
-  000009:[b#4,MERGE-c#4,DEL]
+  000009:[b#13,MERGE-c#13,DEL]
 0.1:
-  000008:[a#3,SET-c#3,SET]
-  000011:[k#8,SET-k#8,SET]
+  000008:[a#12,SET-c#12,SET]
+  000011:[k#17,SET-k#17,SET]
 0.0:
-  000007:[a#2,SET-b#2,DEL]
-  000014:[j#6,SET-k#7,SET]
-  000019:[m#9,SET-m#9,SET]
+  000007:[a#11,SET-b#11,DEL]
+  000014:[j#15,SET-k#16,SET]
+  000019:[m#18,SET-m#18,SET]
 6:
-  000006:[a#1,SET-b#1,SET]
-  000023:[d#14,SET-d#14,SET]
-  000025:[e#17,RANGEDEL-f#inf,RANGEDEL]
-  000024:[i#15,RANGEDEL-j#inf,RANGEDEL]
-  000015:[n#10,SET-n#10,SET]
-  000010:[x#5,SET-y#5,SET]
-  000022:[z#16,SET-z#16,SET]
+  000006:[a#10,SET-b#10,SET]
+  000023:[d#23,SET-d#23,SET]
+  000025:[e#26,RANGEDEL-f#inf,RANGEDEL]
+  000024:[i#24,RANGEDEL-j#inf,RANGEDEL]
+  000015:[n#19,SET-n#19,SET]
+  000010:[x#14,SET-y#14,SET]
+  000022:[z#25,SET-z#25,SET]
 
 # Overlap with range delete keys in memtable, hence memtable will be flushed.
 
@@ -509,31 +509,31 @@ memtable flushed
 lsm
 ----
 0.6:
-  000026:[b#19,SET-b#19,SET]
+  000026:[b#28,SET-b#28,SET]
 0.5:
-  000029:[a#18,RANGEDEL-d#inf,RANGEDEL]
+  000029:[a#27,RANGEDEL-d#inf,RANGEDEL]
 0.4:
-  000021:[a#13,SET-g#13,SET]
-  000020:[j#12,RANGEDEL-m#12,SET]
+  000021:[a#22,SET-g#22,SET]
+  000020:[j#21,RANGEDEL-m#21,SET]
 0.3:
-  000016:[a#11,RANGEDEL-z#inf,RANGEDEL]
+  000016:[a#20,RANGEDEL-z#inf,RANGEDEL]
 0.2:
-  000009:[b#4,MERGE-c#4,DEL]
+  000009:[b#13,MERGE-c#13,DEL]
 0.1:
-  000008:[a#3,SET-c#3,SET]
-  000011:[k#8,SET-k#8,SET]
+  000008:[a#12,SET-c#12,SET]
+  000011:[k#17,SET-k#17,SET]
 0.0:
-  000007:[a#2,SET-b#2,DEL]
-  000014:[j#6,SET-k#7,SET]
-  000019:[m#9,SET-m#9,SET]
+  000007:[a#11,SET-b#11,DEL]
+  000014:[j#15,SET-k#16,SET]
+  000019:[m#18,SET-m#18,SET]
 6:
-  000006:[a#1,SET-b#1,SET]
-  000023:[d#14,SET-d#14,SET]
-  000025:[e#17,RANGEDEL-f#inf,RANGEDEL]
-  000024:[i#15,RANGEDEL-j#inf,RANGEDEL]
-  000015:[n#10,SET-n#10,SET]
-  000010:[x#5,SET-y#5,SET]
-  000022:[z#16,SET-z#16,SET]
+  000006:[a#10,SET-b#10,SET]
+  000023:[d#23,SET-d#23,SET]
+  000025:[e#26,RANGEDEL-f#inf,RANGEDEL]
+  000024:[i#24,RANGEDEL-j#inf,RANGEDEL]
+  000015:[n#19,SET-n#19,SET]
+  000010:[x#14,SET-y#14,SET]
+  000022:[z#25,SET-z#25,SET]
 
 reset
 ----
@@ -554,7 +554,7 @@ ingest ext15
 lsm
 ----
 6:
-  000004:[a#2,RANGEDEL-b#inf,RANGEDEL]
+  000004:[a#11,RANGEDEL-b#inf,RANGEDEL]
 
 reset
 ----
@@ -573,7 +573,7 @@ ingest ext16
 lsm
 ----
 6:
-  000004:[a#2,RANGEDEL-b#inf,RANGEDEL]
+  000004:[a#11,RANGEDEL-b#inf,RANGEDEL]
 
 reset
 ----
@@ -602,9 +602,9 @@ ingest ext18
 lsm
 ----
 0.0:
-  000005:[a#2,SET-c#2,SET]
+  000005:[a#11,SET-c#11,SET]
 6:
-  000004:[a#1,RANGEDEL-b#inf,RANGEDEL]
+  000004:[a#10,RANGEDEL-b#inf,RANGEDEL]
 
 reset
 ----
@@ -636,10 +636,10 @@ ingest ext21
 lsm
 ----
 0.0:
-  000006:[c#3,SET-c#3,SET]
+  000006:[c#12,SET-c#12,SET]
 6:
-  000005:[a#2,SET-b#2,SET]
-  000004:[c#1,RANGEDEL-d#inf,RANGEDEL]
+  000005:[a#11,SET-b#11,SET]
+  000004:[c#10,RANGEDEL-d#inf,RANGEDEL]
 
 reset
 ----
@@ -665,9 +665,9 @@ ingest ext23
 lsm
 ----
 0.0:
-  000005:[a#2,SET-b#2,SET]
+  000005:[a#11,SET-b#11,SET]
 6:
-  000004:[a#1,RANGEDEL-b#inf,RANGEDEL]
+  000004:[a#10,RANGEDEL-b#inf,RANGEDEL]
 
 reset
 ----
@@ -692,9 +692,9 @@ ingest ext25
 lsm
 ----
 0.0:
-  000005:[a#2,RANGEDEL-b#inf,RANGEDEL]
+  000005:[a#11,RANGEDEL-b#inf,RANGEDEL]
 6:
-  000004:[a#1,RANGEDEL-b#inf,RANGEDEL]
+  000004:[a#10,RANGEDEL-b#inf,RANGEDEL]
 
 # Check for range key ingestion bug fix in
 # https://github.com/cockroachdb/pebble/pull/2082. Without the fix, we expect
@@ -713,7 +713,7 @@ ingest ext1
 lsm
 ----
 6:
-  000004:[d#1,RANGEKEYSET-g#inf,RANGEKEYSET]
+  000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
 
 build ext2
 range-key-set b e 1 val2
@@ -725,9 +725,9 @@ ingest ext2
 lsm
 ----
 0.0:
-  000005:[b#2,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000005:[b#11,RANGEKEYSET-e#inf,RANGEKEYSET]
 6:
-  000004:[d#1,RANGEKEYSET-g#inf,RANGEKEYSET]
+  000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
 
 build ext3
 range-key-del a c
@@ -740,11 +740,11 @@ ingest ext3
 lsm
 ----
 0.1:
-  000006:[a#3,RANGEKEYDEL-c#inf,RANGEKEYDEL]
+  000006:[a#12,RANGEKEYDEL-c#inf,RANGEKEYDEL]
 0.0:
-  000005:[b#2,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000005:[b#11,RANGEKEYSET-e#inf,RANGEKEYSET]
 6:
-  000004:[d#1,RANGEKEYSET-g#inf,RANGEKEYSET]
+  000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
 
 build ext4
 set a a
@@ -756,13 +756,13 @@ ingest ext4
 lsm
 ----
 0.2:
-  000007:[a#4,SET-a#4,SET]
+  000007:[a#13,SET-a#13,SET]
 0.1:
-  000006:[a#3,RANGEKEYDEL-c#inf,RANGEKEYDEL]
+  000006:[a#12,RANGEKEYDEL-c#inf,RANGEKEYDEL]
 0.0:
-  000005:[b#2,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000005:[b#11,RANGEKEYSET-e#inf,RANGEKEYSET]
 6:
-  000004:[d#1,RANGEKEYSET-g#inf,RANGEKEYSET]
+  000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
 
 compact a aa
 ----
@@ -802,7 +802,7 @@ ingest ext1
 lsm
 ----
 6:
-  000004:[c#1,SET-e#1,SET]
+  000004:[c#10,SET-e#10,SET]
 
 
 build ext2
@@ -815,8 +815,8 @@ ingest ext2
 lsm
 ----
 6:
-  000005:[a#2,RANGEKEYSET-c#inf,RANGEKEYSET]
-  000004:[c#1,SET-e#1,SET]
+  000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
+  000004:[c#10,SET-e#10,SET]
 
 # The following test cases will test that files where the end bound is an
 # exclusive sentinel due to range keys are ingested into the correct levels.
@@ -831,9 +831,9 @@ ingest ext3
 lsm
 ----
 6:
-  000005:[a#2,RANGEKEYSET-c#inf,RANGEKEYSET]
-  000004:[c#1,SET-e#1,SET]
-  000006:[f#3,SET-h#3,SET]
+  000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
+  000004:[c#10,SET-e#10,SET]
+  000006:[f#12,SET-h#12,SET]
 
 
 build ext4
@@ -846,10 +846,10 @@ ingest ext4
 lsm
 ----
 6:
-  000005:[a#2,RANGEKEYSET-c#inf,RANGEKEYSET]
-  000004:[c#1,SET-e#1,SET]
-  000007:[eee#4,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
-  000006:[f#3,SET-h#3,SET]
+  000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
+  000004:[c#10,SET-e#10,SET]
+  000007:[eee#13,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
+  000006:[f#12,SET-h#12,SET]
 
 build ext5
 range-key-set ee eee 1 val3
@@ -861,11 +861,11 @@ ingest ext5
 lsm
 ----
 6:
-  000005:[a#2,RANGEKEYSET-c#inf,RANGEKEYSET]
-  000004:[c#1,SET-e#1,SET]
-  000008:[ee#5,RANGEKEYSET-eee#inf,RANGEKEYSET]
-  000007:[eee#4,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
-  000006:[f#3,SET-h#3,SET]
+  000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
+  000004:[c#10,SET-e#10,SET]
+  000008:[ee#14,RANGEKEYSET-eee#inf,RANGEKEYSET]
+  000007:[eee#13,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
+  000006:[f#12,SET-h#12,SET]
 
 build ext6
 set x x
@@ -878,12 +878,12 @@ ingest ext6
 lsm
 ----
 6:
-  000005:[a#2,RANGEKEYSET-c#inf,RANGEKEYSET]
-  000004:[c#1,SET-e#1,SET]
-  000008:[ee#5,RANGEKEYSET-eee#inf,RANGEKEYSET]
-  000007:[eee#4,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
-  000006:[f#3,SET-h#3,SET]
-  000009:[x#6,SET-y#6,SET]
+  000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
+  000004:[c#10,SET-e#10,SET]
+  000008:[ee#14,RANGEKEYSET-eee#inf,RANGEKEYSET]
+  000007:[eee#13,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
+  000006:[f#12,SET-h#12,SET]
+  000009:[x#15,SET-y#15,SET]
 
 build ext7
 range-key-del s x
@@ -895,10 +895,10 @@ ingest ext7
 lsm
 ----
 6:
-  000005:[a#2,RANGEKEYSET-c#inf,RANGEKEYSET]
-  000004:[c#1,SET-e#1,SET]
-  000008:[ee#5,RANGEKEYSET-eee#inf,RANGEKEYSET]
-  000007:[eee#4,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
-  000006:[f#3,SET-h#3,SET]
-  000010:[s#7,RANGEKEYDEL-x#inf,RANGEKEYDEL]
-  000009:[x#6,SET-y#6,SET]
+  000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
+  000004:[c#10,SET-e#10,SET]
+  000008:[ee#14,RANGEKEYSET-eee#inf,RANGEKEYSET]
+  000007:[eee#13,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
+  000006:[f#12,SET-h#12,SET]
+  000010:[s#16,RANGEKEYDEL-x#inf,RANGEKEYDEL]
+  000009:[x#15,SET-y#15,SET]

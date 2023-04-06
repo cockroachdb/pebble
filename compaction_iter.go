@@ -957,7 +957,7 @@ func (i *compactionIter) maybeZeroSeqnum(snapshotIdx int) {
 		// This is not the last snapshot
 		return
 	}
-	i.key.SetSeqNum(0)
+	i.key.SetSeqNum(base.SeqNumZero)
 }
 
 // A frontier is used to monitor a compaction's progression across the user

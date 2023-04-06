@@ -56,12 +56,12 @@ set leveldb leveldb
 lsm
 ----
 0.0:
-  000005:[a#1,SET-a#1,SET]
+  000005:[a#10,SET-a#10,SET]
 6:
-  000009:[leveldb#5,SET-leveldb#5,SET]
-  000007:[pebblev1#3,SET-pebblev1#3,SET]
-  000006:[pebblev2#2,SET-pebblev2#2,SET]
-  000008:[rocksdbv2#4,SET-rocksdbv2#4,SET]
+  000009:[leveldb#14,SET-leveldb#14,SET]
+  000007:[pebblev1#12,SET-pebblev1#12,SET]
+  000006:[pebblev2#11,SET-pebblev2#11,SET]
+  000008:[rocksdbv2#13,SET-rocksdbv2#13,SET]
 
 tally-table-formats
 ----
@@ -150,11 +150,11 @@ marked-file-count
 lsm
 ----
 0.0:
-  000005:[a#1,SET-a#1,SET]
+  000005:[a#10,SET-a#10,SET]
 6:
   000013:[leveldb#0,SET-leveldb#0,SET]
-  000007:[pebblev1#3,SET-pebblev1#3,SET]
-  000006:[pebblev2#2,SET-pebblev2#2,SET]
+  000007:[pebblev1#12,SET-pebblev1#12,SET]
+  000006:[pebblev2#11,SET-pebblev2#11,SET]
   000012:[rocksdbv2#0,SET-rocksdbv2#0,SET]
 
 # Confirm all tables are at least the minimum supported table format version.

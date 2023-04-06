@@ -7,7 +7,7 @@ del c
 flush
 ----
 0.0:
-  000005:[a#1,SET-c#3,DEL]
+  000005:[a#10,SET-c#12,DEL]
 
 wait-pending-table-stats
 000005
@@ -21,7 +21,7 @@ range-deletions-bytes-estimate: 0
 compact a-c
 ----
 6:
-  000005:[a#1,SET-c#3,DEL]
+  000005:[a#10,SET-c#12,DEL]
 
 batch
 del-range a c
@@ -30,9 +30,9 @@ del-range a c
 flush
 ----
 0.0:
-  000007:[a#4,RANGEDEL-c#inf,RANGEDEL]
+  000007:[a#13,RANGEDEL-c#inf,RANGEDEL]
 6:
-  000005:[a#1,SET-c#3,DEL]
+  000005:[a#10,SET-c#12,DEL]
 
 wait-pending-table-stats
 000007
@@ -81,12 +81,12 @@ set b 2
 flush
 ----
 0.0:
-  000012:[a#5,SET-b#6,SET]
+  000012:[a#14,SET-b#15,SET]
 
 compact a-c
 ----
 6:
-  000012:[a#5,SET-b#6,SET]
+  000012:[a#14,SET-b#15,SET]
 
 enable
 ----
@@ -113,9 +113,9 @@ del-range a c
 flush
 ----
 0.0:
-  000014:[a#7,RANGEDEL-c#inf,RANGEDEL]
+  000014:[a#16,RANGEDEL-c#inf,RANGEDEL]
 6:
-  000012:[a#5,SET-b#6,SET]
+  000012:[a#14,SET-b#15,SET]
 
 compact a-c
 ----
@@ -276,7 +276,7 @@ range-key-unset a b @2
 flush
 ----
 0.0:
-  000005:[a#3,RANGEKEYUNSET-b#inf,RANGEKEYSET]
+  000005:[a#12,RANGEKEYUNSET-b#inf,RANGEKEYSET]
 
 # Add a table that contains only point keys, to the right of the existing table.
 batch
@@ -286,13 +286,13 @@ set c c
 flush
 ----
 0.0:
-  000005:[a#3,RANGEKEYUNSET-b#inf,RANGEKEYSET]
-  000007:[c#4,SET-c#4,SET]
+  000005:[a#12,RANGEKEYUNSET-b#inf,RANGEKEYSET]
+  000007:[c#13,SET-c#13,SET]
 
 compact a-c
 ----
 6:
-  000008:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
 # Add a table that contains a RANGEKEYDEL covering the first table in L6.
@@ -303,9 +303,9 @@ range-key-del a b
 flush
 ----
 0.0:
-  000011:[a#5,RANGEKEYDEL-b#inf,RANGEKEYDEL]
+  000011:[a#14,RANGEKEYDEL-b#inf,RANGEKEYDEL]
 6:
-  000008:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
 # Add one more table containing a RANGEDEL.
@@ -316,11 +316,11 @@ del-range a c
 flush
 ----
 0.1:
-  000013:[a#6,RANGEDEL-c#inf,RANGEDEL]
+  000013:[a#15,RANGEDEL-c#inf,RANGEDEL]
 0.0:
-  000011:[a#5,RANGEKEYDEL-b#inf,RANGEKEYDEL]
+  000011:[a#14,RANGEKEYDEL-b#inf,RANGEKEYDEL]
 6:
-  000008:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
 # Compute stats on the table containing range key del. It should not show an
@@ -355,13 +355,13 @@ del-range a z
 range-key-del a z
 ----
 0.2:
-  000014:[a#7,RANGEKEYDEL-z#inf,RANGEDEL]
+  000014:[a#16,RANGEKEYDEL-z#inf,RANGEDEL]
 0.1:
-  000013:[a#6,RANGEDEL-c#inf,RANGEDEL]
+  000013:[a#15,RANGEDEL-c#inf,RANGEDEL]
 0.0:
-  000011:[a#5,RANGEKEYDEL-b#inf,RANGEKEYDEL]
+  000011:[a#14,RANGEKEYDEL-b#inf,RANGEKEYDEL]
 6:
-  000008:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
 compact a-z
@@ -379,7 +379,7 @@ set e e
 set f f
 ----
 6:
-  000015:[a#8,RANGEKEYDEL-z#inf,RANGEDEL]
+  000015:[a#17,RANGEKEYDEL-z#inf,RANGEDEL]
 
 wait-pending-table-stats
 000015
@@ -404,7 +404,7 @@ set b b
 flush
 ----
 0.0:
-  000005:[b#1,SET-b#1,SET]
+  000005:[b#10,SET-b#10,SET]
 
 # A table with a mixture of point and range keys.
 batch
@@ -415,8 +415,8 @@ range-key-set d d @1 foo
 flush
 ----
 0.0:
-  000005:[b#1,SET-b#1,SET]
-  000007:[c#2,SET-c#2,SET]
+  000005:[b#10,SET-b#10,SET]
+  000007:[c#11,SET-c#11,SET]
 
 compact a-z
 ----
@@ -432,7 +432,7 @@ range-key-del a z
 flush
 ----
 0.0:
-  000011:[a#4,RANGEKEYDEL-z#inf,RANGEKEYDEL]
+  000011:[a#13,RANGEKEYDEL-z#inf,RANGEKEYDEL]
 6:
   000008:[b#0,SET-b#0,SET]
   000009:[c#0,SET-c#0,SET]
