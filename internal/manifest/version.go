@@ -1014,7 +1014,7 @@ type Version struct {
 	// usage.
 	//
 	// L0Sublevels.Levels contains L0 files ordered by sublevels. All the files
-	// in Files[0] are in L0Sublevels.Levels. L0SublevelFiles is also set to
+	// in Levels[0] are in L0Sublevels.Levels. L0SublevelFiles is also set to
 	// a reference to that slice, as that slice is necessary for iterator
 	// creation and needs to outlast L0Sublevels.
 	L0Sublevels     *L0Sublevels
