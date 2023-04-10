@@ -99,8 +99,8 @@ type Writable interface {
 
 // ObjectMetadata contains the metadata required to be able to access an object.
 type ObjectMetadata struct {
-	FileNum  base.FileNum
-	FileType base.FileType
+	DiskFileNum base.DiskFileNum
+	FileType    base.FileType
 
 	// The fields below are only set if the object is on shared storage.
 	Shared struct {
@@ -108,7 +108,7 @@ type ObjectMetadata struct {
 		CreatorID CreatorID
 		// CreatorFileNum is the identifier for the object within the context of the
 		// DB instance that originally created the object.
-		CreatorFileNum base.FileNum
+		CreatorFileNum base.DiskFileNum
 
 		CleanupMethod SharedCleanupMethod
 	}
@@ -174,7 +174,7 @@ type CreateOptions struct {
 type Provider interface {
 	// OpenForReading opens an existing object.
 	OpenForReading(
-		ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts OpenOptions,
+		ctx context.Context, fileType base.FileType, FileNum base.DiskFileNum, opts OpenOptions,
 	) (Readable, error)
 
 	// Create creates a new object and opens it for writing.
@@ -182,13 +182,13 @@ type Provider interface {
 	// The object is not guaranteed to be durable (accessible in case of crashes)
 	// until Sync is called.
 	Create(
-		ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts CreateOptions,
+		ctx context.Context, fileType base.FileType, FileNum base.DiskFileNum, opts CreateOptions,
 	) (w Writable, meta ObjectMetadata, err error)
 
 	// Remove removes an object.
 	//
 	// The object is not guaranteed to be durably removed until Sync is called.
-	Remove(fileType base.FileType, fileNum base.FileNum) error
+	Remove(fileType base.FileType, FileNum base.DiskFileNum) error
 
 	// Sync flushes the metadata from creation or removal of objects since the last Sync.
 	// This includes objects that have been Created but for which
@@ -202,12 +202,12 @@ type Provider interface {
 	// The object is not guaranteed to be durable (accessible in case of crashes)
 	// until Sync is called.
 	LinkOrCopyFromLocal(
-		srcFS vfs.FS, srcFilePath string, dstFileType base.FileType, dstFileNum base.FileNum,
+		srcFS vfs.FS, srcFilePath string, dstFileType base.FileType, dstFileNum base.DiskFileNum,
 	) (ObjectMetadata, error)
 
 	// Lookup returns the metadata of an object that is already known to the Provider.
 	// Does not perform any I/O.
-	Lookup(fileType base.FileType, fileNum base.FileNum) (ObjectMetadata, error)
+	Lookup(fileType base.FileType, FileNum base.DiskFileNum) (ObjectMetadata, error)
 
 	// Path returns an internal, implementation-dependent path for the object. It is
 	// meant to be used for informational purposes (like logging).
@@ -260,7 +260,7 @@ type SharedObjectBackingHandle interface {
 type SharedObjectToAttach struct {
 	// FileNum is the file number that will be used to refer to this object (in
 	// the context of this instance).
-	FileNum  base.FileNum
+	FileNum  base.DiskFileNum
 	FileType base.FileType
 	// Backing contains the metadata for the shared object backing (normally
 	// generated from a different instance, but using the same Provider

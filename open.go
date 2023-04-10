@@ -87,7 +87,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}()
 
 	// Lock the database directory.
-	fileLock, err := opts.FS.Lock(base.MakeFilepath(opts.FS, dirname, fileTypeLock, 0))
+	fileLock, err := opts.FS.Lock(base.MakeFilepath(opts.FS, dirname, fileTypeLock, base.FileNum(0).DiskFileNum()))
 	if err != nil {
 		return nil, err
 	}
@@ -242,11 +242,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil, errors.Wrapf(ErrDBAlreadyExists, "dirname=%q", dirname)
 		}
 		// Load the version set.
-		if err := d.mu.versions.load(dirname, opts, manifestFileNum, manifestMarker, setCurrent, &d.mu.Mutex); err != nil {
+		if err := d.mu.versions.load(dirname, opts, manifestFileNum.FileNum(), manifestMarker, setCurrent, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 		if opts.ErrorIfNotPristine {
-			liveFileNums := make(map[FileNum]struct{})
+			liveFileNums := make(map[base.DiskFileNum]struct{})
 			d.mu.versions.addLiveFileNums(liveFileNums)
 			if len(liveFileNums) != 0 {
 				return nil, errors.Wrapf(ErrDBNotPristine, "dirname=%q", dirname)
@@ -319,21 +319,21 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 		// Don't reuse any obsolete file numbers to avoid modifying an
 		// ingested sstable's original external file.
-		if d.mu.versions.nextFileNum <= fn {
-			d.mu.versions.nextFileNum = fn + 1
+		if d.mu.versions.nextFileNum <= fn.FileNum() {
+			d.mu.versions.nextFileNum = fn.FileNum() + 1
 		}
 
 		switch ft {
 		case fileTypeLog:
-			if fn >= d.mu.versions.minUnflushedLogNum {
-				logFiles = append(logFiles, fileNumAndName{fn, filename})
+			if fn.FileNum() >= d.mu.versions.minUnflushedLogNum {
+				logFiles = append(logFiles, fileNumAndName{fn.FileNum(), filename})
 			}
-			if d.logRecycler.minRecycleLogNum <= fn {
-				d.logRecycler.minRecycleLogNum = fn + 1
+			if d.logRecycler.minRecycleLogNum <= fn.FileNum() {
+				d.logRecycler.minRecycleLogNum = fn.FileNum() + 1
 			}
 		case fileTypeOptions:
-			if previousOptionsFileNum < fn {
-				previousOptionsFileNum = fn
+			if previousOptionsFileNum < fn.FileNum() {
+				previousOptionsFileNum = fn.FileNum()
 				previousOptionsFilename = filename
 			}
 		case fileTypeTemp, fileTypeOldTemp:
@@ -405,8 +405,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			entry.readerUnrefLocked(true)
 		}
 
-		newLogName := base.MakeFilepath(opts.FS, d.walDirname, fileTypeLog, newLogNum)
-		d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: 0})
+		newLogName := base.MakeFilepath(opts.FS, d.walDirname, fileTypeLog, newLogNum.DiskFileNum())
+		d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum.DiskFileNum(), fileSize: 0})
 		logFile, err := opts.FS.Create(newLogName)
 		if err != nil {
 			return nil, err
@@ -457,7 +457,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.
-		d.optionsFileNum = d.mu.versions.getNextFileNum()
+		d.optionsFileNum = d.mu.versions.getNextFileNum().DiskFileNum()
 		tmpPath := base.MakeFilepath(opts.FS, dirname, fileTypeTemp, d.optionsFileNum)
 		optionsPath := base.MakeFilepath(opts.FS, dirname, fileTypeOptions, d.optionsFileNum)
 
@@ -601,9 +601,9 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 			// processed, reset version. This is because rocksdb often
 			// writes multiple options files without deleting previous ones.
 			// Otherwise, skip parsing this options file.
-			if fn > lastOptionsSeen {
+			if fn.FileNum() > lastOptionsSeen {
 				version = ""
-				lastOptionsSeen = fn
+				lastOptionsSeen = fn.FileNum()
 			} else {
 				continue
 			}
@@ -761,13 +761,13 @@ func (d *DB) replayWAL(
 		{
 			br := b.Reader()
 			if kind, encodedFileNum, _, _ := br.Next(); kind == InternalKeyKindIngestSST {
-				fileNums := make([]FileNum, 0, b.Count())
+				fileNums := make([]base.DiskFileNum, 0, b.Count())
 				addFileNum := func(encodedFileNum []byte) {
 					fileNum, n := binary.Uvarint(encodedFileNum)
 					if n <= 0 {
 						panic("pebble: ingest sstable file num is invalid.")
 					}
-					fileNums = append(fileNums, base.FileNum(fileNum))
+					fileNums = append(fileNums, base.FileNum(fileNum).DiskFileNum())
 				}
 				addFileNum(encodedFileNum)
 
@@ -992,16 +992,16 @@ func checkConsistency(v *manifest.Version, dirname string, objProvider objstorag
 	var buf bytes.Buffer
 	var args []interface{}
 
-	dedup := make(map[base.FileNum]struct{})
+	dedup := make(map[base.DiskFileNum]struct{})
 	for level, files := range v.Levels {
 		iter := files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
 			backingState := f.FileBacking
-			if _, ok := dedup[backingState.FileNum]; ok {
+			if _, ok := dedup[backingState.DiskFileNum]; ok {
 				continue
 			}
-			dedup[backingState.FileNum] = struct{}{}
-			fileNum := backingState.FileNum
+			dedup[backingState.DiskFileNum] = struct{}{}
+			fileNum := backingState.DiskFileNum
 			fileSize := backingState.Size
 			meta, err := objProvider.Lookup(base.FileTypeTable, fileNum)
 			var size int64

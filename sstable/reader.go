@@ -2522,7 +2522,7 @@ func (m Mergers) readerApply(r *Reader) {
 // number. If not specified, a unique cache ID will be used.
 type cacheOpts struct {
 	cacheID uint64
-	fileNum base.FileNum
+	fileNum base.DiskFileNum
 }
 
 // Marker function to indicate the option should be applied before reading the
@@ -2534,7 +2534,7 @@ func (c *cacheOpts) readerApply(r *Reader) {
 	if r.cacheID == 0 {
 		r.cacheID = c.cacheID
 	}
-	if r.fileNum == 0 {
+	if r.fileNum.FileNum() == 0 {
 		r.fileNum = c.fileNum
 	}
 }
@@ -2543,7 +2543,7 @@ func (c *cacheOpts) writerApply(w *Writer) {
 	if w.cacheID == 0 {
 		w.cacheID = c.cacheID
 	}
-	if w.fileNum == 0 {
+	if w.fileNum.FileNum() == 0 {
 		w.fileNum = c.fileNum
 	}
 }
@@ -2561,7 +2561,7 @@ func (rawTombstonesOpt) readerApply(r *Reader) {
 }
 
 func init() {
-	private.SSTableCacheOpts = func(cacheID uint64, fileNum base.FileNum) interface{} {
+	private.SSTableCacheOpts = func(cacheID uint64, fileNum base.DiskFileNum) interface{} {
 		return &cacheOpts{cacheID, fileNum}
 	}
 	private.SSTableRawTombstonesOpt = rawTombstonesOpt{}
@@ -2571,7 +2571,7 @@ func init() {
 type Reader struct {
 	readable          objstorage.Readable
 	cacheID           uint64
-	fileNum           base.FileNum
+	fileNum           base.DiskFileNum
 	err               error
 	indexBH           BlockHandle
 	filterBH          BlockHandle
@@ -2847,7 +2847,7 @@ func (r *Reader) readBlock(
 		return cache.Handle{}, err
 	}
 
-	if err := checkChecksum(r.checksumType, b, bh, r.fileNum); err != nil {
+	if err := checkChecksum(r.checksumType, b, bh, r.fileNum.FileNum()); err != nil {
 		r.opts.Cache.Free(v)
 		return cache.Handle{}, err
 	}

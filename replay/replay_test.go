@@ -162,13 +162,13 @@ func TestReplayPaced(t *testing.T) {
 
 func TestLoadFlushedSSTableKeys(t *testing.T) {
 	var buf bytes.Buffer
-	var fileNums []base.FileNum
+	var diskFileNums []base.DiskFileNum
 	opts := &pebble.Options{
 		DisableAutomaticCompactions: true,
 		EventListener: &pebble.EventListener{
 			FlushEnd: func(info pebble.FlushInfo) {
 				for _, tbl := range info.Output {
-					fileNums = append(fileNums, tbl.FileNum)
+					diskFileNums = append(diskFileNums, tbl.FileNum.DiskFileNum())
 				}
 			},
 		},
@@ -198,7 +198,7 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 			}
 
 			b := d.NewBatch()
-			err := loadFlushedSSTableKeys(b, opts.FS, "", fileNums, opts.MakeReaderOptions(), &flushBufs)
+			err := loadFlushedSSTableKeys(b, opts.FS, "", diskFileNums, opts.MakeReaderOptions(), &flushBufs)
 			if err != nil {
 				b.Close()
 				return err.Error()
@@ -235,7 +235,7 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 			buf.Reset()
 			require.NoError(t, b.Close())
 
-			fileNums = fileNums[:0]
+			diskFileNums = diskFileNums[:0]
 			return s
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
@@ -333,11 +333,11 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 				fileNum := base.FileNum(fileNumInt)
 				switch fT {
 				case "table":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeTable, fileNum)
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeTable, fileNum.DiskFileNum())
 				case "log":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeLog, fileNum)
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeLog, fileNum.DiskFileNum())
 				case "manifest":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum)
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum.DiskFileNum())
 				}
 			}
 			f, err := fs.Create(filePath)

@@ -7,6 +7,7 @@ package pebble
 import (
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -27,32 +28,32 @@ func TestLogRecycler(t *testing.T) {
 	r := logRecycler{limit: 3, minRecycleLogNum: 4}
 
 	// Logs below the min-recycle number are not recycled.
-	require.False(t, r.add(fileInfo{1, 0}))
-	require.False(t, r.add(fileInfo{2, 0}))
-	require.False(t, r.add(fileInfo{3, 0}))
+	require.False(t, r.add(fileInfo{base.FileNum(1).DiskFileNum(), 0}))
+	require.False(t, r.add(fileInfo{base.FileNum(2).DiskFileNum(), 0}))
+	require.False(t, r.add(fileInfo{base.FileNum(3).DiskFileNum(), 0}))
 
 	// Logs are recycled up to the limit.
-	require.True(t, r.add(fileInfo{4, 0}))
+	require.True(t, r.add(fileInfo{base.FileNum(4).DiskFileNum(), 0}))
 	require.EqualValues(t, []FileNum{4}, r.logNums())
 	require.EqualValues(t, 4, r.maxLogNum())
 	fi, ok := r.peek()
 	require.True(t, ok)
-	require.EqualValues(t, 4, fi.fileNum)
-	require.True(t, r.add(fileInfo{5, 0}))
+	require.EqualValues(t, uint64(4), uint64(fi.fileNum.FileNum()))
+	require.True(t, r.add(fileInfo{base.FileNum(5).DiskFileNum(), 0}))
 	require.EqualValues(t, []FileNum{4, 5}, r.logNums())
 	require.EqualValues(t, 5, r.maxLogNum())
-	require.True(t, r.add(fileInfo{6, 0}))
+	require.True(t, r.add(fileInfo{base.FileNum(6).DiskFileNum(), 0}))
 	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 6, r.maxLogNum())
 
 	// Trying to add a file past the limit fails.
-	require.False(t, r.add(fileInfo{7, 0}))
+	require.False(t, r.add(fileInfo{base.FileNum(7).DiskFileNum(), 0}))
 	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 7, r.maxLogNum())
 
 	// Trying to add a previously recycled file returns success, but the internal
 	// state is unchanged.
-	require.True(t, r.add(fileInfo{4, 0}))
+	require.True(t, r.add(fileInfo{base.FileNum(4).DiskFileNum(), 0}))
 	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 7, r.maxLogNum())
 
@@ -63,10 +64,10 @@ func TestLogRecycler(t *testing.T) {
 	require.EqualValues(t, []FileNum{5, 6}, r.logNums())
 
 	// Log number 7 was already considered, so it won't be recycled.
-	require.True(t, r.add(fileInfo{7, 0}))
+	require.True(t, r.add(fileInfo{base.FileNum(7).DiskFileNum(), 0}))
 	require.EqualValues(t, []FileNum{5, 6}, r.logNums())
 
-	require.True(t, r.add(fileInfo{8, 0}))
+	require.True(t, r.add(fileInfo{base.FileNum(8).DiskFileNum(), 0}))
 	require.EqualValues(t, []FileNum{5, 6, 8}, r.logNums())
 	require.EqualValues(t, 8, r.maxLogNum())
 
@@ -90,7 +91,7 @@ func TestRecycleLogs(t *testing.T) {
 	logNum := func() FileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum
+		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum.FileNum()
 	}
 	logCount := func() int {
 		d.mu.Lock()

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -47,9 +48,9 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 
 	loadFileMeta := func(paths []string) []*fileMetadata {
 		d.mu.Lock()
-		pendingOutputs := make([]FileNum, len(paths))
+		pendingOutputs := make([]base.DiskFileNum, len(paths))
 		for i := range paths {
-			pendingOutputs[i] = d.mu.versions.getNextFileNum()
+			pendingOutputs[i] = d.mu.versions.getNextFileNum().DiskFileNum()
 		}
 		jobID := d.mu.nextJobID
 		d.mu.nextJobID++

@@ -404,13 +404,13 @@ func TestVersionEditApply(t *testing.T) {
 						return err.Error()
 					}
 				}
-				zombies := make(map[base.FileNum]uint64)
+				zombies := make(map[base.DiskFileNum]uint64)
 				newv, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000, zombies)
 				if err != nil {
 					return err.Error()
 				}
 
-				zombieFileNums := make([]base.FileNum, 0, len(zombies))
+				zombieFileNums := make([]base.DiskFileNum, 0, len(zombies))
 				if len(veList) == 1 {
 					// Only care about zombies if a single version edit was
 					// being applied.
@@ -418,7 +418,7 @@ func TestVersionEditApply(t *testing.T) {
 						zombieFileNums = append(zombieFileNums, fileNum)
 					}
 					sort.Slice(zombieFileNums, func(i, j int) bool {
-						return zombieFileNums[i] < zombieFileNums[j]
+						return zombieFileNums[i].FileNum() < zombieFileNums[j].FileNum()
 					})
 				}
 

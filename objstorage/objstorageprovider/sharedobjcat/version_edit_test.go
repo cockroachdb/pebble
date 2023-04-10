@@ -24,42 +24,42 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		{
 			NewObjects: []SharedObjectMetadata{
 				{
-					FileNum:        1,
+					FileNum:        base.FileNum(1).DiskFileNum(),
 					FileType:       base.FileTypeTable,
 					CreatorID:      12,
-					CreatorFileNum: 123,
+					CreatorFileNum: base.FileNum(123).DiskFileNum(),
 					CleanupMethod:  objstorage.SharedNoCleanup,
 				},
 			},
 		},
 		{
-			DeletedObjects: []base.FileNum{1},
+			DeletedObjects: []base.DiskFileNum{base.FileNum(1).DiskFileNum()},
 		},
 		{
 			CreatorID: 12345,
 			NewObjects: []SharedObjectMetadata{
 				{
-					FileNum:        1,
+					FileNum:        base.FileNum(1).DiskFileNum(),
 					FileType:       base.FileTypeTable,
 					CreatorID:      12,
-					CreatorFileNum: 123,
+					CreatorFileNum: base.FileNum(123).DiskFileNum(),
 					CleanupMethod:  objstorage.SharedRefTracking,
 				},
 				{
-					FileNum:        2,
+					FileNum:        base.FileNum(2).DiskFileNum(),
 					FileType:       base.FileTypeTable,
 					CreatorID:      22,
-					CreatorFileNum: 223,
+					CreatorFileNum: base.FileNum(223).DiskFileNum(),
 				},
 				{
-					FileNum:        3,
+					FileNum:        base.FileNum(3).DiskFileNum(),
 					FileType:       base.FileTypeTable,
 					CreatorID:      32,
-					CreatorFileNum: 323,
+					CreatorFileNum: base.FileNum(323).DiskFileNum(),
 					CleanupMethod:  objstorage.SharedRefTracking,
 				},
 			},
-			DeletedObjects: []base.FileNum{4, 5},
+			DeletedObjects: []base.DiskFileNum{base.FileNum(4).DiskFileNum(), base.FileNum(5).DiskFileNum()},
 		},
 	} {
 		if err := checkRoundTrip(ve); err != nil {

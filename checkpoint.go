@@ -191,9 +191,9 @@ func (d *DB) Checkpoint(
 	manifestFileNum := d.mu.versions.manifestFileNum
 	manifestSize := d.mu.versions.manifest.Size()
 	optionsFileNum := d.optionsFileNum
-	virtualBackingFiles := make(map[base.FileNum]struct{})
-	for fileNum := range d.mu.versions.fileBackingMap {
-		virtualBackingFiles[fileNum] = struct{}{}
+	virtualBackingFiles := make(map[base.DiskFileNum]struct{})
+	for diskFileNum := range d.mu.versions.fileBackingMap {
+		virtualBackingFiles[diskFileNum] = struct{}{}
 	}
 	// Release the manifest and DB.mu so we don't block other operations on
 	// the database.
@@ -260,9 +260,9 @@ func (d *DB) Checkpoint(
 	}
 
 	var excludedFiles map[deletedFileEntry]*fileMetadata
-	// Set of FileBacking.FileNum which will be required by virtual sstables in
-	// the checkpoint.
-	requiredVirtualBackingFiles := make(map[base.FileNum]struct{})
+	// Set of FileBacking.DiskFileNum which will be required by virtual sstables
+	// in the checkpoint.
+	requiredVirtualBackingFiles := make(map[base.DiskFileNum]struct{})
 	// Link or copy the sstables.
 	for l := range current.Levels {
 		iter := current.Levels[l].Iter()
@@ -280,13 +280,13 @@ func (d *DB) Checkpoint(
 
 			fileBacking := f.FileBacking
 			if f.Virtual {
-				if _, ok := requiredVirtualBackingFiles[fileBacking.FileNum]; ok {
+				if _, ok := requiredVirtualBackingFiles[fileBacking.DiskFileNum]; ok {
 					continue
 				}
-				requiredVirtualBackingFiles[fileBacking.FileNum] = struct{}{}
+				requiredVirtualBackingFiles[fileBacking.DiskFileNum] = struct{}{}
 			}
 
-			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, fileBacking.FileNum)
+			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, fileBacking.DiskFileNum)
 			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 			ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
 			if ckErr != nil {
@@ -295,17 +295,17 @@ func (d *DB) Checkpoint(
 		}
 	}
 
-	var removeBackingTables []base.FileNum
-	for fileNum := range virtualBackingFiles {
-		if _, ok := requiredVirtualBackingFiles[fileNum]; !ok {
+	var removeBackingTables []base.DiskFileNum
+	for diskFileNum := range virtualBackingFiles {
+		if _, ok := requiredVirtualBackingFiles[diskFileNum]; !ok {
 			// The backing sstable associated with fileNum is no longer
 			// required.
-			removeBackingTables = append(removeBackingTables, fileNum)
+			removeBackingTables = append(removeBackingTables, diskFileNum)
 		}
 	}
 
 	ckErr = d.writeCheckpointManifest(
-		fs, formatVers, destDir, dir, manifestFileNum, manifestSize,
+		fs, formatVers, destDir, dir, manifestFileNum.DiskFileNum(), manifestSize,
 		excludedFiles, removeBackingTables,
 	)
 	if ckErr != nil {
@@ -320,7 +320,7 @@ func (d *DB) Checkpoint(
 		if logNum == 0 {
 			continue
 		}
-		srcPath := base.MakeFilepath(fs, d.walDirname, fileTypeLog, logNum)
+		srcPath := base.MakeFilepath(fs, d.walDirname, fileTypeLog, logNum.DiskFileNum())
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 		ckErr = vfs.Copy(fs, srcPath, destPath)
 		if ckErr != nil {
@@ -343,10 +343,10 @@ func (d *DB) writeCheckpointManifest(
 	formatVers FormatMajorVersion,
 	destDirPath string,
 	destDir vfs.File,
-	manifestFileNum FileNum,
+	manifestFileNum base.DiskFileNum,
 	manifestSize int64,
 	excludedFiles map[deletedFileEntry]*fileMetadata,
-	removeBackingTables []base.FileNum,
+	removeBackingTables []base.DiskFileNum,
 ) error {
 	// Copy the MANIFEST, and create a pointer to it. We copy rather
 	// than link because additional version edits added to the
@@ -409,7 +409,7 @@ func (d *DB) writeCheckpointManifest(
 	if err != nil {
 		return err
 	}
-	if err := setCurrentFunc(formatVers, manifestMarker, fs, destDirPath, destDir)(manifestFileNum); err != nil {
+	if err := setCurrentFunc(formatVers, manifestMarker, fs, destDirPath, destDir)(manifestFileNum.FileNum()); err != nil {
 		return err
 	}
 	return manifestMarker.Close()

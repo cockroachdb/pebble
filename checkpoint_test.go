@@ -215,7 +215,10 @@ func TestCheckpointCompaction(t *testing.T) {
 			tableInfos, _ := d2.SSTables()
 			for _, tables := range tableInfos {
 				for _, tbl := range tables {
-					if _, err := fs.Stat(base.MakeFilepath(fs, dir, base.FileTypeTable, tbl.FileNum)); err != nil {
+					if tbl.Virtual {
+						continue
+					}
+					if _, err := fs.Stat(base.MakeFilepath(fs, dir, base.FileTypeTable, tbl.FileNum.DiskFileNum())); err != nil {
 						t.Error(err)
 						return
 					}

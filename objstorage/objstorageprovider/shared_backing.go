@@ -38,7 +38,7 @@ func (p *provider) encodeSharedObjectBacking(
 	meta *objstorage.ObjectMetadata,
 ) (objstorage.SharedObjectBacking, error) {
 	if !meta.IsShared() {
-		return nil, errors.AssertionFailedf("object %s not on shared storage", meta.FileNum)
+		return nil, errors.AssertionFailedf("object %s not on shared storage", meta.DiskFileNum)
 	}
 
 	buf := make([]byte, 0, binary.MaxVarintLen64*4)
@@ -46,20 +46,20 @@ func (p *provider) encodeSharedObjectBacking(
 	buf = binary.AppendUvarint(buf, uint64(meta.Shared.CreatorID))
 	// TODO(radu): encode file type as well?
 	buf = binary.AppendUvarint(buf, tagCreatorFileNum)
-	buf = binary.AppendUvarint(buf, uint64(meta.Shared.CreatorFileNum))
+	buf = binary.AppendUvarint(buf, uint64(meta.Shared.CreatorFileNum.FileNum()))
 	buf = binary.AppendUvarint(buf, tagCleanupMethod)
 	buf = binary.AppendUvarint(buf, uint64(meta.Shared.CleanupMethod))
 	if meta.Shared.CleanupMethod == objstorage.SharedRefTracking {
 		buf = binary.AppendUvarint(buf, tagRefCheckID)
 		buf = binary.AppendUvarint(buf, uint64(p.shared.creatorID))
-		buf = binary.AppendUvarint(buf, uint64(meta.FileNum))
+		buf = binary.AppendUvarint(buf, uint64(meta.DiskFileNum.FileNum()))
 	}
 	return buf, nil
 }
 
 type sharedObjectBackingHandle struct {
 	backing objstorage.SharedObjectBacking
-	fileNum base.FileNum
+	fileNum base.DiskFileNum
 	p       *provider
 }
 
@@ -87,10 +87,10 @@ func (p *provider) SharedObjectBacking(
 	if err != nil {
 		return nil, err
 	}
-	p.protectObject(meta.FileNum)
+	p.protectObject(meta.DiskFileNum)
 	return &sharedObjectBackingHandle{
 		backing: backing,
-		fileNum: meta.FileNum,
+		fileNum: meta.DiskFileNum,
 		p:       p,
 	}, nil
 }
@@ -100,7 +100,7 @@ type decodedBacking struct {
 	// refToCheck is set only when meta.Shared.CleanupMethod is RefTracking
 	refToCheck struct {
 		creatorID objstorage.CreatorID
-		fileNum   base.FileNum
+		fileNum   base.DiskFileNum
 	}
 }
 
@@ -108,7 +108,7 @@ type decodedBacking struct {
 // Returns the object metadata and (optionally) the creator ID of the provider
 // that encoded the backing whose ref marker needs to be checked.
 func decodeSharedObjectBacking(
-	fileType base.FileType, fileNum base.FileNum, buf objstorage.SharedObjectBacking,
+	fileType base.FileType, fileNum base.DiskFileNum, buf objstorage.SharedObjectBacking,
 ) (decodedBacking, error) {
 	var creatorID, creatorFileNum, cleanupMethod, refCheckCreatorID, refCheckFileNum uint64
 	br := bytes.NewReader(buf)
@@ -158,10 +158,10 @@ func decodeSharedObjectBacking(
 		return decodedBacking{}, errors.Newf("shared object backing missing creator file num")
 	}
 	var res decodedBacking
-	res.meta.FileNum = fileNum
+	res.meta.DiskFileNum = fileNum
 	res.meta.FileType = fileType
 	res.meta.Shared.CreatorID = objstorage.CreatorID(creatorID)
-	res.meta.Shared.CreatorFileNum = base.FileNum(creatorFileNum)
+	res.meta.Shared.CreatorFileNum = base.FileNum(creatorFileNum).DiskFileNum()
 	res.meta.Shared.CleanupMethod = objstorage.SharedCleanupMethod(cleanupMethod)
 
 	if res.meta.Shared.CleanupMethod == objstorage.SharedRefTracking {
@@ -169,7 +169,7 @@ func decodeSharedObjectBacking(
 			return decodedBacking{}, errors.Newf("shared object backing missing ref to check")
 		}
 		res.refToCheck.creatorID = objstorage.CreatorID(refCheckCreatorID)
-		res.refToCheck.fileNum = base.FileNum(refCheckFileNum)
+		res.refToCheck.fileNum = base.FileNum(refCheckFileNum).DiskFileNum()
 	}
 	return res, nil
 }
@@ -215,7 +215,7 @@ func (p *provider) AttachSharedObjects(
 		defer p.mu.Unlock()
 		for _, d := range decoded {
 			p.mu.shared.catalogBatch.AddObject(sharedobjcat.SharedObjectMetadata{
-				FileNum:        d.meta.FileNum,
+				FileNum:        d.meta.DiskFileNum,
 				FileType:       d.meta.FileType,
 				CreatorID:      d.meta.Shared.CreatorID,
 				CreatorFileNum: d.meta.Shared.CreatorFileNum,
@@ -234,7 +234,7 @@ func (p *provider) AttachSharedObjects(
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for _, meta := range metas {
-		p.mu.knownObjects[meta.FileNum] = meta
+		p.mu.knownObjects[meta.DiskFileNum] = meta
 	}
 	return metas, nil
 }

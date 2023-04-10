@@ -13,12 +13,15 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-func (p *provider) vfsPath(fileType base.FileType, fileNum base.FileNum) string {
+func (p *provider) vfsPath(fileType base.FileType, fileNum base.DiskFileNum) string {
 	return base.MakeFilepath(p.st.FS, p.st.FSDirName, fileType, fileNum)
 }
 
 func (p *provider) vfsOpenForReading(
-	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts objstorage.OpenOptions,
+	ctx context.Context,
+	fileType base.FileType,
+	fileNum base.DiskFileNum,
+	opts objstorage.OpenOptions,
 ) (objstorage.Readable, error) {
 	filename := p.vfsPath(fileType, fileNum)
 	file, err := p.st.FS.Open(filename, vfs.RandomReadsOption)
@@ -38,7 +41,7 @@ func (p *provider) vfsOpenForReading(
 }
 
 func (p *provider) vfsCreate(
-	_ context.Context, fileType base.FileType, fileNum base.FileNum,
+	_ context.Context, fileType base.FileType, fileNum base.DiskFileNum,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	filename := p.vfsPath(fileType, fileNum)
 	file, err := p.st.FS.Create(filename)
@@ -50,13 +53,13 @@ func (p *provider) vfsCreate(
 		BytesPerSync:  p.st.BytesPerSync,
 	})
 	meta := objstorage.ObjectMetadata{
-		FileNum:  fileNum,
-		FileType: fileType,
+		DiskFileNum: fileNum,
+		FileType:    fileType,
 	}
 	return newFileBufferedWritable(file), meta, nil
 }
 
-func (p *provider) vfsRemove(fileType base.FileType, fileNum base.FileNum) error {
+func (p *provider) vfsRemove(fileType base.FileType, fileNum base.DiskFileNum) error {
 	return p.st.FSCleaner.Clean(p.st.FS, fileType, p.vfsPath(fileType, fileNum))
 }
 
@@ -75,10 +78,10 @@ func (p *provider) vfsInit() error {
 		fileType, fileNum, ok := base.ParseFilename(p.st.FS, filename)
 		if ok && fileType == base.FileTypeTable {
 			o := objstorage.ObjectMetadata{
-				FileType: fileType,
-				FileNum:  fileNum,
+				FileType:    fileType,
+				DiskFileNum: fileNum,
 			}
-			p.mu.knownObjects[o.FileNum] = o
+			p.mu.knownObjects[o.DiskFileNum] = o
 		}
 	}
 	return nil
@@ -102,7 +105,7 @@ func (p *provider) vfsSync() error {
 	return nil
 }
 
-func (p *provider) vfsSize(fileType base.FileType, fileNum base.FileNum) (int64, error) {
+func (p *provider) vfsSize(fileType base.FileType, fileNum base.DiskFileNum) (int64, error) {
 	filename := p.vfsPath(fileType, fileNum)
 	stat, err := p.st.FS.Stat(filename)
 	if err != nil {

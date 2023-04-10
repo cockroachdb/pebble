@@ -168,7 +168,7 @@ type FileMetadata struct {
 	InitAllowedSeeks int64
 	// FileNum is the file number.
 	//
-	// INVARIANT: when !FileMetadata.Virtual, FileNum == FileBacking.FileNum.
+	// INVARIANT: when !FileMetadata.Virtual, FileNum == FileBacking.DiskFileNum.
 	//
 	// TODO(bananabrick): Consider creating separate types for
 	// FileMetadata.FileNum and FileBacking.FileNum. FileNum is used both as
@@ -350,7 +350,7 @@ type FileBacking struct {
 	// TODO(bananabrick): Compensate the virtual sstable file size using
 	// the VirtualizedSize during compaction picking and test.
 	VirtualizedSize atomic.Uint64
-	FileNum         base.FileNum
+	DiskFileNum     base.DiskFileNum
 	Size            uint64
 }
 
@@ -366,7 +366,7 @@ func (m *FileMetadata) InitPhysicalBacking() {
 		panic("pebble: virtual sstables should use a pre-existing FileBacking")
 	}
 	if m.FileBacking == nil {
-		m.FileBacking = &FileBacking{Size: m.Size, FileNum: m.FileNum}
+		m.FileBacking = &FileBacking{Size: m.Size, DiskFileNum: m.FileNum.DiskFileNum()}
 	}
 }
 
