@@ -323,14 +323,15 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 	}
 
 	if boundLimitedFilter != nil || len(blockPropertyFilters) > 0 {
-		filterer = sstable.NewBlockPropertiesFilterer(blockPropertyFilters, boundLimitedFilter)
-		intersects, err :=
-			filterer.IntersectsUserPropsAndFinishInit(v.reader.Properties.UserProperties)
-		if err != nil {
+		filterer, err = sstable.IntersectsTable(
+			blockPropertyFilters,
+			boundLimitedFilter,
+			v.reader.Properties.UserProperties,
+		)
+		// NB: IntersectsTable will return a nil filterer if the table-level
+		// properties indicate there's no intersection with the provided filters.
+		if filterer == nil || err != nil {
 			return false, nil, err
-		}
-		if !intersects {
-			return false, nil, nil
 		}
 	}
 	return true, filterer, nil

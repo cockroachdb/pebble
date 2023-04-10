@@ -464,9 +464,9 @@ func runTestReader(
 					var filterMin, filterMax uint64
 					d.ScanArgs(t, "block-property-filter", &filterMin, &filterMax)
 					bpf := NewTestKeysBlockPropertyFilter(filterMin, filterMax)
-					filterer = NewBlockPropertiesFilterer([]BlockPropertyFilter{bpf}, nil)
+					filterer = newBlockPropertiesFilterer([]BlockPropertyFilter{bpf}, nil)
 					intersects, err :=
-						filterer.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+						filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 					if err != nil {
 						return err.Error()
 					}
