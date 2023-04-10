@@ -98,6 +98,10 @@ func TestTracing(t *testing.T) {
 	require.Greater(t, num(func(e Event) bool { return e.Reason == objiotracing.ForFlush }), 0)
 	require.Greater(t, num(func(e Event) bool { return e.Reason == objiotracing.ForCompaction }), 0)
 
+	// Check that offset is set on reads & writes as expected.
+	require.Greater(t, num(func(e Event) bool { return e.Op == objiotracing.ReadOp && e.Offset > 0 }), 0)
+	require.Greater(t, num(func(e Event) bool { return e.Op == objiotracing.WriteOp && e.Offset > 0 }), 0)
+
 	// Check that the FileNums are set and that we see at least two different files.
 	fileNums := make(map[base.FileNum]int)
 	for _, e := range events {
