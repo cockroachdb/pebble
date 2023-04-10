@@ -512,32 +512,35 @@ func ingestTargetLevel(
 
 	targetLevel := 0
 
+	// This assertion implicitly checks that we have the current version of
+	// the metadata.
+	if v.L0Sublevels == nil {
+		return 0, errors.AssertionFailedf("could not read L0 sublevels")
+	}
 	// Check for overlap over the keys of L0 by iterating over the sublevels.
-	if v.L0Sublevels != nil {
-		for subLevel := 0; subLevel < len(v.L0SublevelFiles); subLevel++ {
-			iter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
-				v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), nil)
+	for subLevel := 0; subLevel < len(v.L0SublevelFiles); subLevel++ {
+		iter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
+			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), nil)
 
-			var rangeDelIter keyspan.FragmentIterator
-			// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
-			// sets it up for the target file.
-			iter.initRangeDel(&rangeDelIter)
+		var rangeDelIter keyspan.FragmentIterator
+		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
+		// sets it up for the target file.
+		iter.initRangeDel(&rangeDelIter)
 
-			rkeyIter := &keyspan.LevelIter{}
-			rkeyIter.Init(
-				keyspan.SpanIterOptions{}, cmp, newRangeKeyIter,
-				v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), manifest.KeyTypeRange,
-			)
+		rkeyIter := &keyspan.LevelIter{}
+		rkeyIter.Init(
+			keyspan.SpanIterOptions{}, cmp, newRangeKeyIter,
+			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), manifest.KeyTypeRange,
+		)
 
-			overlap := overlapWithIterator(iter, &rangeDelIter, rkeyIter, meta, cmp)
-			err := iter.Close() // Closes range del iter as well.
-			err = firstError(err, rkeyIter.Close())
-			if err != nil {
-				return 0, err
-			}
-			if overlap {
-				return targetLevel, nil
-			}
+		overlap := overlapWithIterator(iter, &rangeDelIter, rkeyIter, meta, cmp)
+		err := iter.Close() // Closes range del iter as well.
+		err = firstError(err, rkeyIter.Close())
+		if err != nil {
+			return 0, err
+		}
+		if overlap {
+			return targetLevel, nil
 		}
 	}
 
