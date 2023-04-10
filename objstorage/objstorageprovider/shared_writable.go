@@ -49,6 +49,6 @@ func (w *sharedWritable) Abort() {
 		_ = w.storageWriter.Close()
 		w.storageWriter = nil
 	}
-	w.p.removeMetadata(w.meta.FileNum)
+	w.p.removeMetadata(w.meta.DiskFileNum)
 	// TODO(radu): delete the object if it was created.
 }

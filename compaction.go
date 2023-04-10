@@ -2033,9 +2033,15 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			info.Err = err
 			// TODO(peter): untested.
 			for _, f := range pendingOutputs {
+				// Note that the FileBacking for the file metadata might not have
+				// been set yet. So, we directly use the FileNum. Since these
+				// files were generated as compaction outputs, these must be
+				// physical files on disk. This property might not hold once
+				// https://github.com/cockroachdb/pebble/issues/389 is
+				// implemented if #389 creates virtual sstables as output files.
 				d.mu.versions.obsoleteTables = append(
 					d.mu.versions.obsoleteTables,
-					fileInfo{f.FileNum, f.Size},
+					fileInfo{f.FileNum.DiskFileNum(), f.Size},
 				)
 			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
@@ -2540,9 +2546,15 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		if err != nil {
 			// TODO(peter): untested.
 			for _, f := range pendingOutputs {
+				// Note that the FileBacking for the file metadata might not have
+				// been set yet. So, we directly use the FileNum. Since these
+				// files were generated as compaction outputs, these must be
+				// physical files on disk. This property might not hold once
+				// https://github.com/cockroachdb/pebble/issues/389 is
+				// implemented if #389 creates virtual sstables as output files.
 				d.mu.versions.obsoleteTables = append(
 					d.mu.versions.obsoleteTables,
-					fileInfo{f.FileNum, f.Size},
+					fileInfo{f.FileNum.DiskFileNum(), f.Size},
 				)
 			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
@@ -2691,7 +2703,7 @@ func (d *DB) runCompaction(
 		c.elideRangeTombstone, d.FormatMajorVersion())
 
 	var (
-		createdFiles    []base.FileNum
+		createdFiles    []base.DiskFileNum
 		tw              *sstable.Writer
 		pinnedKeySize   uint64
 		pinnedValueSize uint64
@@ -2793,7 +2805,7 @@ func (d *DB) runCompaction(
 				ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
 			}
 		}
-		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, fileNum, objstorage.CreateOptions{} /* TODO */)
+		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, fileNum.DiskFileNum(), objstorage.CreateOptions{} /* TODO */)
 		if err != nil {
 			return err
 		}
@@ -2813,8 +2825,8 @@ func (d *DB) runCompaction(
 			versions: d.mu.versions,
 			written:  &c.bytesWritten,
 		}
-		createdFiles = append(createdFiles, fileNum)
-		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
+		createdFiles = append(createdFiles, fileNum.DiskFileNum())
+		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum.DiskFileNum()).(sstable.WriterOption)
 
 		const MaxFileWriteAdditionalCPUTime = time.Millisecond * 100
 		cpuWorkHandle = d.opts.Experimental.CPUWorkPermissionGranter.GetPermission(
@@ -3302,7 +3314,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 		d.mu.compact.cond.Wait()
 	}
 
-	liveFileNums := make(map[FileNum]struct{})
+	liveFileNums := make(map[base.DiskFileNum]struct{})
 	d.mu.versions.addLiveFileNums(liveFileNums)
 	// Protect against files which are only referred to by the ingestedFlushable
 	// from being deleted. These are added to the flushable queue on WAL replay
@@ -3312,7 +3324,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	for _, fEntry := range d.mu.mem.queue {
 		if f, ok := fEntry.flushable.(*ingestedFlushable); ok {
 			for _, file := range f.files {
-				liveFileNums[file.FileNum] = struct{}{}
+				liveFileNums[file.FileBacking.DiskFileNum] = struct{}{}
 			}
 		}
 	}
@@ -3326,34 +3338,34 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	var obsoleteOptions []fileInfo
 
 	for _, filename := range list {
-		fileType, fileNum, ok := base.ParseFilename(d.opts.FS, filename)
+		fileType, diskFileNum, ok := base.ParseFilename(d.opts.FS, filename)
 		if !ok {
 			continue
 		}
 		switch fileType {
 		case fileTypeLog:
-			if fileNum >= minUnflushedLogNum {
+			if diskFileNum.FileNum() >= minUnflushedLogNum {
 				continue
 			}
-			fi := fileInfo{fileNum: fileNum}
+			fi := fileInfo{fileNum: diskFileNum}
 			if stat, err := d.opts.FS.Stat(filename); err == nil {
 				fi.fileSize = uint64(stat.Size())
 			}
 			obsoleteLogs = append(obsoleteLogs, fi)
 		case fileTypeManifest:
-			if fileNum >= manifestFileNum {
+			if diskFileNum.FileNum() >= manifestFileNum {
 				continue
 			}
-			fi := fileInfo{fileNum: fileNum}
+			fi := fileInfo{fileNum: diskFileNum}
 			if stat, err := d.opts.FS.Stat(filename); err == nil {
 				fi.fileSize = uint64(stat.Size())
 			}
 			obsoleteManifests = append(obsoleteManifests, fi)
 		case fileTypeOptions:
-			if fileNum >= d.optionsFileNum {
+			if diskFileNum.FileNum() >= d.optionsFileNum.FileNum() {
 				continue
 			}
-			fi := fileInfo{fileNum: fileNum}
+			fi := fileInfo{fileNum: diskFileNum}
 			if stat, err := d.opts.FS.Stat(filename); err == nil {
 				fi.fileSize = uint64(stat.Size())
 			}
@@ -3369,11 +3381,11 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	for _, obj := range objects {
 		switch obj.FileType {
 		case fileTypeTable:
-			if _, ok := liveFileNums[obj.FileNum]; ok {
+			if _, ok := liveFileNums[obj.DiskFileNum]; ok {
 				continue
 			}
 			fileInfo := fileInfo{
-				fileNum: obj.FileNum,
+				fileNum: obj.DiskFileNum,
 			}
 			if size, err := d.objProvider.Size(obj); err == nil {
 				fileInfo.fileSize = uint64(size)
@@ -3468,13 +3480,13 @@ func (d *DB) deleteObsoleteFiles(jobID int, waitForOngoing bool) {
 // obsoleteFile holds information about a file that needs to be deleted soon.
 type obsoleteFile struct {
 	dir      string
-	fileNum  base.FileNum
+	fileNum  base.DiskFileNum
 	fileType fileType
 	fileSize uint64
 }
 
 type fileInfo struct {
-	fileNum  FileNum
+	fileNum  base.DiskFileNum
 	fileSize uint64
 }
 
@@ -3495,7 +3507,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		// log that has not had its contents flushed to an sstable. We can recycle
 		// the prefix of d.mu.log.queue with log numbers less than
 		// minUnflushedLogNum.
-		if d.mu.log.queue[i].fileNum >= d.mu.versions.minUnflushedLogNum {
+		if d.mu.log.queue[i].fileNum.FileNum() >= d.mu.versions.minUnflushedLogNum {
 			obsoleteLogs = d.mu.log.queue[:i]
 			d.mu.log.queue = d.mu.log.queue[i:]
 			d.mu.versions.metrics.WAL.Files -= int64(len(obsoleteLogs))
@@ -3509,8 +3521,8 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 	// Sort the manifests cause we want to delete some contiguous prefix
 	// of the older manifests.
 	sort.Slice(d.mu.versions.obsoleteManifests, func(i, j int) bool {
-		return d.mu.versions.obsoleteManifests[i].fileNum <
-			d.mu.versions.obsoleteManifests[j].fileNum
+		return d.mu.versions.obsoleteManifests[i].fileNum.FileNum() <
+			d.mu.versions.obsoleteManifests[j].fileNum.FileNum()
 	})
 
 	var obsoleteManifests []fileInfo
@@ -3546,7 +3558,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		// We sort to make the order of deletions deterministic, which is nice for
 		// tests.
 		sort.Slice(f.obsolete, func(i, j int) bool {
-			return f.obsolete[i].fileNum < f.obsolete[j].fileNum
+			return f.obsolete[i].fileNum.FileNum() < f.obsolete[j].fileNum.FileNum()
 		})
 		for _, fi := range f.obsolete {
 			dir := d.dirname
@@ -3627,7 +3639,7 @@ func (d *DB) maybeScheduleObsoleteTableDeletion() {
 	}()
 }
 
-func (d *DB) deleteObsoleteObject(fileType fileType, jobID int, fileNum FileNum) {
+func (d *DB) deleteObsoleteObject(fileType fileType, jobID int, fileNum base.DiskFileNum) {
 	if fileType != fileTypeTable {
 		panic("not an object")
 	}
@@ -3649,14 +3661,16 @@ func (d *DB) deleteObsoleteObject(fileType fileType, jobID int, fileNum FileNum)
 		d.opts.EventListener.TableDeleted(TableDeleteInfo{
 			JobID:   jobID,
 			Path:    path,
-			FileNum: fileNum,
+			FileNum: fileNum.FileNum(),
 			Err:     err,
 		})
 	}
 }
 
 // deleteObsoleteFile deletes a (non-object) file that is no longer needed.
-func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileNum FileNum) {
+func (d *DB) deleteObsoleteFile(
+	fileType fileType, jobID int, path string, fileNum base.DiskFileNum,
+) {
 	// TODO(peter): need to handle this error, probably by re-adding the
 	// file that couldn't be deleted to one of the obsolete slices map.
 	err := d.opts.Cleaner.Clean(d.opts.FS, fileType, path)
@@ -3669,14 +3683,14 @@ func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileN
 		d.opts.EventListener.WALDeleted(WALDeleteInfo{
 			JobID:   jobID,
 			Path:    path,
-			FileNum: fileNum,
+			FileNum: fileNum.FileNum(),
 			Err:     err,
 		})
 	case fileTypeManifest:
 		d.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
 			JobID:   jobID,
 			Path:    path,
-			FileNum: fileNum,
+			FileNum: fileNum.FileNum(),
 			Err:     err,
 		})
 	case fileTypeTable:
@@ -3691,7 +3705,7 @@ func merge(a, b []fileInfo) []fileInfo {
 
 	a = append(a, b...)
 	sort.Slice(a, func(i, j int) bool {
-		return a[i].fileNum < a[j].fileNum
+		return a[i].fileNum.FileNum() < a[j].fileNum.FileNum()
 	})
 
 	n := 0
@@ -3711,7 +3725,7 @@ func mergeFileInfo(a, b []fileInfo) []fileInfo {
 
 	a = append(a, b...)
 	sort.Slice(a, func(i, j int) bool {
-		return a[i].fileNum < a[j].fileNum
+		return a[i].fileNum.FileNum() < a[j].fileNum.FileNum()
 	})
 
 	n := 0

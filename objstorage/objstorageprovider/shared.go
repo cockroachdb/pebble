@@ -68,13 +68,13 @@ func (p *provider) sharedInit() error {
 
 	for _, meta := range contents.Objects {
 		o := objstorage.ObjectMetadata{
-			FileNum:  meta.FileNum,
-			FileType: meta.FileType,
+			DiskFileNum: meta.FileNum,
+			FileType:    meta.FileType,
 		}
 		o.Shared.CreatorID = meta.CreatorID
 		o.Shared.CreatorFileNum = meta.CreatorFileNum
 		o.Shared.CleanupMethod = meta.CleanupMethod
-		p.mu.knownObjects[o.FileNum] = o
+		p.mu.knownObjects[o.DiskFileNum] = o
 	}
 	return nil
 }
@@ -157,11 +157,11 @@ func (p *provider) sharedObjectRefName(meta objstorage.ObjectMetadata) string {
 	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
 		panic("ref object used when ref tracking disabled")
 	}
-	return sharedObjectRefName(meta, p.shared.creatorID, meta.FileNum)
+	return sharedObjectRefName(meta, p.shared.creatorID, meta.DiskFileNum)
 }
 
 func sharedObjectRefName(
-	meta objstorage.ObjectMetadata, refCreatorID objstorage.CreatorID, refFileNum base.FileNum,
+	meta objstorage.ObjectMetadata, refCreatorID objstorage.CreatorID, refFileNum base.DiskFileNum,
 ) string {
 	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
 		panic("ref object used when ref tracking disabled")
@@ -198,14 +198,17 @@ func (p *provider) sharedCreateRef(meta objstorage.ObjectMetadata) error {
 }
 
 func (p *provider) sharedCreate(
-	_ context.Context, fileType base.FileType, fileNum base.FileNum, opts objstorage.CreateOptions,
+	_ context.Context,
+	fileType base.FileType,
+	fileNum base.DiskFileNum,
+	opts objstorage.CreateOptions,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}
 	meta := objstorage.ObjectMetadata{
-		FileNum:  fileNum,
-		FileType: fileType,
+		DiskFileNum: fileNum,
+		FileType:    fileType,
 	}
 	meta.Shared.CreatorID = p.shared.creatorID
 	meta.Shared.CreatorFileNum = fileNum
@@ -272,7 +275,7 @@ func (p *provider) sharedUnref(meta objstorage.ObjectMetadata) error {
 		// Never delete objects in this mode.
 		return nil
 	}
-	if p.isProtected(meta.FileNum) {
+	if p.isProtected(meta.DiskFileNum) {
 		// TODO(radu): we need a mechanism to unref the object when it becomes
 		// unprotected.
 		return nil

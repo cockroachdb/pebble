@@ -119,7 +119,7 @@ func (w *WorkloadCollector) Attach(opts *pebble.Options) {
 
 // enqueueCopyLocked enqueues the sstable with the provided filenum be copied in
 // the background. Requires w.mu.
-func (w *WorkloadCollector) enqueueCopyLocked(fileNum base.FileNum) {
+func (w *WorkloadCollector) enqueueCopyLocked(fileNum base.DiskFileNum) {
 	fileName := base.MakeFilename(base.FileTypeTable, fileNum)
 	w.mu.fileState[fileName] |= readyForProcessing
 	w.mu.pendingSSTables = append(w.mu.pendingSSTables, w.srcFilepath(fileName))
@@ -166,7 +166,7 @@ func (w *WorkloadCollector) onTableIngest(info pebble.TableIngestInfo) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Tables {
-		w.enqueueCopyLocked(table.FileNum)
+		w.enqueueCopyLocked(table.FileNum.DiskFileNum())
 	}
 	w.copier.Broadcast()
 }
@@ -180,7 +180,7 @@ func (w *WorkloadCollector) onFlushEnd(info pebble.FlushInfo) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Output {
-		w.enqueueCopyLocked(table.FileNum)
+		w.enqueueCopyLocked(table.FileNum.DiskFileNum())
 	}
 	w.copier.Broadcast()
 }
@@ -198,7 +198,7 @@ func (w *WorkloadCollector) onManifestCreated(info pebble.ManifestCreateInfo) {
 
 	// mark the manifest file as ready for processing to prevent it from being
 	// cleaned before we process it.
-	fileName := base.MakeFilename(base.FileTypeManifest, info.FileNum)
+	fileName := base.MakeFilename(base.FileTypeManifest, info.FileNum.DiskFileNum())
 	w.mu.fileState[fileName] |= readyForProcessing
 	w.mu.manifests = append(w.mu.manifests, &manifestDetails{
 		sourceFilepath: info.Path,
@@ -372,7 +372,7 @@ func (w *WorkloadCollector) Start(destFS vfs.FS, destPath string) {
 	//      `w.mu.manifests`.
 	fileNum := base.FileNum(w.curManifest.Load())
 	if fileNum != 0 {
-		fileName := base.MakeFilename(base.FileTypeManifest, fileNum)
+		fileName := base.MakeFilename(base.FileTypeManifest, fileNum.DiskFileNum())
 		w.mu.manifests = append(w.mu.manifests[:0], &manifestDetails{sourceFilepath: w.srcFilepath(fileName)})
 		w.mu.fileState[fileName] |= readyForProcessing
 	}

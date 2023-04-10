@@ -119,7 +119,7 @@ type Writer struct {
 	// the cache, providing a defense in depth against bugs which cause cache
 	// collisions.
 	cacheID uint64
-	fileNum base.FileNum
+	fileNum base.DiskFileNum
 	// The following fields are copied from Options.
 	blockSize               int
 	blockSizeThreshold      int
@@ -1660,7 +1660,7 @@ func compressAndChecksum(b []byte, compression Compression, blockBuf *blockBuf) 
 func (w *Writer) writeCompressedBlock(block []byte, blockTrailerBuf []byte) (BlockHandle, error) {
 	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(block))}
 
-	if w.cacheID != 0 && w.fileNum != 0 {
+	if w.cacheID != 0 && w.fileNum.FileNum() != 0 {
 		// Remove the block being written from the cache. This provides defense in
 		// depth against bugs which cause cache collisions.
 		//
@@ -1687,7 +1687,7 @@ func (w *Writer) writeCompressedBlock(block []byte, blockTrailerBuf []byte) (Blo
 // return a BlockHandle.
 func (w *Writer) Write(blockWithTrailer []byte) (n int, err error) {
 	offset := w.meta.Size
-	if w.cacheID != 0 && w.fileNum != 0 {
+	if w.cacheID != 0 && w.fileNum.FileNum() != 0 {
 		// Remove the block being written from the cache. This provides defense in
 		// depth against bugs which cause cache collisions.
 		//

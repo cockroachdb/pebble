@@ -23,11 +23,11 @@ func TestSharedObjectBacking(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			meta := objstorage.ObjectMetadata{
-				FileNum:  1,
-				FileType: base.FileTypeTable,
+				DiskFileNum: base.FileNum(1).DiskFileNum(),
+				FileType:    base.FileTypeTable,
 			}
 			meta.Shared.CreatorID = 100
-			meta.Shared.CreatorFileNum = 200
+			meta.Shared.CreatorFileNum = base.FileNum(200).DiskFileNum()
 			meta.Shared.CleanupMethod = cleanup
 
 			st := DefaultSettings(vfs.NewMem(), "")
@@ -47,17 +47,17 @@ func TestSharedObjectBacking(t *testing.T) {
 			_, err = h.Get()
 			require.Error(t, err)
 
-			d1, err := decodeSharedObjectBacking(base.FileTypeTable, 100, buf)
+			d1, err := decodeSharedObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), buf)
 			require.NoError(t, err)
-			require.Equal(t, base.FileNum(100), d1.meta.FileNum)
+			require.Equal(t, uint64(100), uint64(d1.meta.DiskFileNum.FileNum()))
 			require.Equal(t, base.FileTypeTable, d1.meta.FileType)
 			require.Equal(t, meta.Shared, d1.meta.Shared)
 			if cleanup == objstorage.SharedRefTracking {
 				require.Equal(t, creatorID, d1.refToCheck.creatorID)
-				require.Equal(t, base.FileNum(1), d1.refToCheck.fileNum)
+				require.Equal(t, base.FileNum(1).DiskFileNum(), d1.refToCheck.fileNum)
 			} else {
 				require.Equal(t, objstorage.CreatorID(0), d1.refToCheck.creatorID)
-				require.Equal(t, base.FileNum(0), d1.refToCheck.fileNum)
+				require.Equal(t, base.FileNum(0).DiskFileNum(), d1.refToCheck.fileNum)
 			}
 
 			t.Run("unknown-tags", func(t *testing.T) {
@@ -67,22 +67,22 @@ func TestSharedObjectBacking(t *testing.T) {
 				buf2 = binary.AppendUvarint(buf2, 2)
 				buf2 = append(buf2, 1, 1)
 
-				d2, err := decodeSharedObjectBacking(base.FileTypeTable, 100, buf2)
+				d2, err := decodeSharedObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), buf2)
 				require.NoError(t, err)
-				require.Equal(t, base.FileNum(100), d2.meta.FileNum)
+				require.Equal(t, uint64(100), uint64(d2.meta.DiskFileNum.FileNum()))
 				require.Equal(t, base.FileTypeTable, d2.meta.FileType)
 				require.Equal(t, meta.Shared, d2.meta.Shared)
 				if cleanup == objstorage.SharedRefTracking {
 					require.Equal(t, creatorID, d2.refToCheck.creatorID)
-					require.Equal(t, base.FileNum(1), d2.refToCheck.fileNum)
+					require.Equal(t, base.FileNum(1).DiskFileNum(), d2.refToCheck.fileNum)
 				} else {
 					require.Equal(t, objstorage.CreatorID(0), d2.refToCheck.creatorID)
-					require.Equal(t, base.FileNum(0), d2.refToCheck.fileNum)
+					require.Equal(t, base.FileNum(0).DiskFileNum(), d2.refToCheck.fileNum)
 				}
 
 				buf3 := buf2
 				buf3 = binary.AppendUvarint(buf3, tagNotSafeToIgnoreMask+5)
-				_, err = decodeSharedObjectBacking(meta.FileType, meta.FileNum, buf3)
+				_, err = decodeSharedObjectBacking(meta.FileType, meta.DiskFileNum, buf3)
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "unknown tag")
 			})

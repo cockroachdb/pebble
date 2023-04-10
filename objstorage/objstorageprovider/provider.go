@@ -46,11 +46,11 @@ type provider struct {
 
 		// knownObjects maintains information about objects that are known to the provider.
 		// It is initialized with the list of files in the manifest when we open a DB.
-		knownObjects map[base.FileNum]objstorage.ObjectMetadata
+		knownObjects map[base.DiskFileNum]objstorage.ObjectMetadata
 
 		// protectedObjects are objects that cannot be unreferenced because they
 		// have outstanding SharedObjectBackingHandles. The value is a count of outstanding handles
-		protectedObjects map[base.FileNum]int
+		protectedObjects map[base.DiskFileNum]int
 	}
 }
 
@@ -129,8 +129,8 @@ func open(settings Settings) (p *provider, _ error) {
 		st:    settings,
 		fsDir: fsDir,
 	}
-	p.mu.knownObjects = make(map[base.FileNum]objstorage.ObjectMetadata)
-	p.mu.protectedObjects = make(map[base.FileNum]int)
+	p.mu.knownObjects = make(map[base.DiskFileNum]objstorage.ObjectMetadata)
+	p.mu.protectedObjects = make(map[base.DiskFileNum]int)
 
 	if objiotracing.Enabled {
 		p.tracer = objiotracing.Open(settings.FS, settings.FSDirName)
@@ -167,7 +167,10 @@ func (p *provider) Close() error {
 
 // OpenForReading opens an existing object.
 func (p *provider) OpenForReading(
-	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts objstorage.OpenOptions,
+	ctx context.Context,
+	fileType base.FileType,
+	fileNum base.DiskFileNum,
+	opts objstorage.OpenOptions,
 ) (objstorage.Readable, error) {
 	meta, err := p.Lookup(fileType, fileNum)
 	if err != nil {
@@ -197,7 +200,10 @@ func (p *provider) OpenForReading(
 // The object is not guaranteed to be durable (accessible in case of crashes)
 // until Sync is called.
 func (p *provider) Create(
-	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts objstorage.CreateOptions,
+	ctx context.Context,
+	fileType base.FileType,
+	fileNum base.DiskFileNum,
+	opts objstorage.CreateOptions,
 ) (w objstorage.Writable, meta objstorage.ObjectMetadata, err error) {
 	if opts.PreferSharedStorage && p.st.Shared.Storage != nil {
 		w, meta, err = p.sharedCreate(ctx, fileType, fileNum, opts)
@@ -222,7 +228,7 @@ func (p *provider) Create(
 // it will not be removed.
 //
 // The object is not guaranteed to be durably removed until Sync is called.
-func (p *provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
+func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) error {
 	meta, err := p.Lookup(fileType, fileNum)
 	if err != nil {
 		return err
@@ -268,7 +274,7 @@ func (p *provider) Sync() error {
 // The object is not guaranteed to be durable (accessible in case of crashes)
 // until Sync is called.
 func (p *provider) LinkOrCopyFromLocal(
-	srcFS vfs.FS, srcFilePath string, dstFileType base.FileType, dstFileNum base.FileNum,
+	srcFS vfs.FS, srcFilePath string, dstFileType base.FileType, dstFileNum base.DiskFileNum,
 ) (objstorage.ObjectMetadata, error) {
 	if srcFS == p.st.FS {
 		// Wrap the normal filesystem with one which wraps newly created files with
@@ -283,8 +289,8 @@ func (p *provider) LinkOrCopyFromLocal(
 		}
 
 		meta := objstorage.ObjectMetadata{
-			FileNum:  dstFileNum,
-			FileType: dstFileType,
+			DiskFileNum: dstFileNum,
+			FileType:    dstFileType,
 		}
 		p.addMetadata(meta)
 		return meta, nil
@@ -295,7 +301,7 @@ func (p *provider) LinkOrCopyFromLocal(
 
 // Lookup is part of the objstorage.Provider interface.
 func (p *provider) Lookup(
-	fileType base.FileType, fileNum base.FileNum,
+	fileType base.FileType, fileNum base.DiskFileNum,
 ) (objstorage.ObjectMetadata, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -319,7 +325,7 @@ func (p *provider) Lookup(
 // Path is part of the objstorage.Provider interface.
 func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 	if !meta.IsShared() {
-		return p.vfsPath(meta.FileType, meta.FileNum)
+		return p.vfsPath(meta.FileType, meta.DiskFileNum)
 	}
 	return p.sharedPath(meta)
 }
@@ -327,7 +333,7 @@ func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 // Size returns the size of the object.
 func (p *provider) Size(meta objstorage.ObjectMetadata) (int64, error) {
 	if !meta.IsShared() {
-		return p.vfsSize(meta.FileType, meta.FileNum)
+		return p.vfsSize(meta.FileType, meta.DiskFileNum)
 	}
 	return p.sharedSize(meta)
 }
@@ -341,7 +347,7 @@ func (p *provider) List() []objstorage.ObjectMetadata {
 		res = append(res, meta)
 	}
 	sort.Slice(res, func(i, j int) bool {
-		return res[i].FileNum < res[j].FileNum
+		return res[i].DiskFileNum.FileNum() < res[j].DiskFileNum.FileNum()
 	})
 	return res
 }
@@ -349,10 +355,10 @@ func (p *provider) List() []objstorage.ObjectMetadata {
 func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.mu.knownObjects[meta.FileNum] = meta
+	p.mu.knownObjects[meta.DiskFileNum] = meta
 	if meta.IsShared() {
 		p.mu.shared.catalogBatch.AddObject(sharedobjcat.SharedObjectMetadata{
-			FileNum:        meta.FileNum,
+			FileNum:        meta.DiskFileNum,
 			FileType:       meta.FileType,
 			CreatorID:      meta.Shared.CreatorID,
 			CreatorFileNum: meta.Shared.CreatorFileNum,
@@ -363,7 +369,7 @@ func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
 	}
 }
 
-func (p *provider) removeMetadata(fileNum base.FileNum) {
+func (p *provider) removeMetadata(fileNum base.DiskFileNum) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -381,13 +387,13 @@ func (p *provider) removeMetadata(fileNum base.FileNum) {
 
 // protectObject prevents the unreferencing of a shared object until
 // unprotectObject is called.
-func (p *provider) protectObject(fileNum base.FileNum) {
+func (p *provider) protectObject(fileNum base.DiskFileNum) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.mu.protectedObjects[fileNum] = p.mu.protectedObjects[fileNum] + 1
 }
 
-func (p *provider) unprotectObject(fileNum base.FileNum) {
+func (p *provider) unprotectObject(fileNum base.DiskFileNum) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	v := p.mu.protectedObjects[fileNum]
@@ -403,7 +409,7 @@ func (p *provider) unprotectObject(fileNum base.FileNum) {
 	}
 }
 
-func (p *provider) isProtected(fileNum base.FileNum) bool {
+func (p *provider) isProtected(fileNum base.DiskFileNum) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.mu.protectedObjects[fileNum] > 0

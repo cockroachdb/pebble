@@ -8,7 +8,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 
 // SSTableCacheOpts is a hook for specifying cache options to
 // sstable.NewReader.
-var SSTableCacheOpts func(cacheID uint64, fileNum base.FileNum) interface{}
+var SSTableCacheOpts func(cacheID uint64, fileNum base.DiskFileNum) interface{}
 
 // SSTableRawTombstonesOpt is a sstable.Reader option for disabling
 // fragmentation of the range tombstones returned by

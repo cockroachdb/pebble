@@ -134,20 +134,20 @@ func (c *tableCacheContainer) newIters(
 	opts *IterOptions,
 	internalOpts internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileNum).newIters(ctx, file, opts, internalOpts, &c.dbOpts)
+	return c.tableCache.getShard(file.FileBacking.DiskFileNum).newIters(ctx, file, opts, internalOpts, &c.dbOpts)
 }
 
 func (c *tableCacheContainer) newRangeKeyIter(
 	file *manifest.FileMetadata, opts *keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(file, opts, &c.dbOpts)
+	return c.tableCache.getShard(file.FileBacking.DiskFileNum).newRangeKeyIter(file, opts, &c.dbOpts)
 }
 
 func (c *tableCacheContainer) getTableProperties(file physicalMeta) (*sstable.Properties, error) {
-	return c.tableCache.getShard(file.FileNum).getTableProperties(file.FileMetadata, &c.dbOpts)
+	return c.tableCache.getShard(file.FileBacking.DiskFileNum).getTableProperties(file.FileMetadata, &c.dbOpts)
 }
 
-func (c *tableCacheContainer) evict(fileNum FileNum) {
+func (c *tableCacheContainer) evict(fileNum base.DiskFileNum) {
 	c.tableCache.getShard(fileNum).evict(fileNum, &c.dbOpts, false)
 }
 
@@ -167,7 +167,7 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 }
 
 func (c *tableCacheContainer) withReader(meta *fileMetadata, fn func(*sstable.Reader) error) error {
-	s := c.tableCache.getShard(meta.FileNum)
+	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
 	v := s.findNode(meta, &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
@@ -249,13 +249,13 @@ func NewTableCache(cache *Cache, numShards int, size int) *TableCache {
 	return c
 }
 
-func (c *TableCache) getShard(fileNum FileNum) *tableCacheShard {
-	return c.shards[uint64(fileNum)%uint64(len(c.shards))]
+func (c *TableCache) getShard(fileNum base.DiskFileNum) *tableCacheShard {
+	return c.shards[uint64(fileNum.FileNum())%uint64(len(c.shards))]
 }
 
 type tableCacheKey struct {
 	cacheID uint64
-	fileNum FileNum
+	fileNum base.DiskFileNum
 }
 
 type tableCacheShard struct {
@@ -549,7 +549,7 @@ func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
 //
 // c.mu must be held when calling this.
 func (c *tableCacheShard) unlinkNode(n *tableCacheNode) {
-	key := tableCacheKey{n.cacheID, n.meta.FileNum}
+	key := tableCacheKey{n.cacheID, n.meta.FileBacking.DiskFileNum}
 	delete(c.mu.nodes, key)
 
 	switch n.ptype {
@@ -606,7 +606,7 @@ func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *tableCacheValue {
 	// Fast-path for a hit in the cache.
 	c.mu.RLock()
-	key := tableCacheKey{dbOpts.cacheID, meta.FileNum}
+	key := tableCacheKey{dbOpts.cacheID, meta.FileBacking.DiskFileNum}
 	if n := c.mu.nodes[key]; n != nil && n.value != nil {
 		// Fast-path hit.
 		//
@@ -694,7 +694,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 func (c *tableCacheShard) addNode(n *tableCacheNode, dbOpts *tableCacheOpts) {
 	c.evictNodes()
 	n.cacheID = dbOpts.cacheID
-	key := tableCacheKey{n.cacheID, n.meta.FileNum}
+	key := tableCacheKey{n.cacheID, n.meta.FileBacking.DiskFileNum}
 	c.mu.nodes[key] = n
 
 	n.links.next = n
@@ -788,7 +788,7 @@ func (c *tableCacheShard) runHandTest() {
 	c.mu.handTest = c.mu.handTest.next()
 }
 
-func (c *tableCacheShard) evict(fileNum FileNum, dbOpts *tableCacheOpts, allowLeak bool) {
+func (c *tableCacheShard) evict(fileNum base.DiskFileNum, dbOpts *tableCacheOpts, allowLeak bool) {
 	c.mu.Lock()
 	key := tableCacheKey{dbOpts.cacheID, fileNum}
 	n := c.mu.nodes[key]
@@ -824,7 +824,7 @@ func (c *tableCacheShard) evict(fileNum FileNum, dbOpts *tableCacheOpts, allowLe
 // associated with dbOpts.cacheID. Make sure that there will
 // be no more accesses to the files associated with the DB.
 func (c *tableCacheShard) removeDB(dbOpts *tableCacheOpts) {
-	var fileNums []base.FileNum
+	var fileNums []base.DiskFileNum
 
 	c.mu.RLock()
 	// Collect the fileNums which need to be cleaned.
@@ -836,7 +836,7 @@ func (c *tableCacheShard) removeDB(dbOpts *tableCacheOpts) {
 		}
 
 		if node.cacheID == dbOpts.cacheID {
-			fileNums = append(fileNums, node.meta.FileNum)
+			fileNums = append(fileNums, node.meta.FileBacking.DiskFileNum)
 		}
 		node = node.next()
 	}
@@ -845,8 +845,8 @@ func (c *tableCacheShard) removeDB(dbOpts *tableCacheOpts) {
 	// Evict all the nodes associated with the DB.
 	// This should synchronously close all the files
 	// associated with the DB.
-	for _, fNum := range fileNums {
-		c.evict(fNum, dbOpts, true)
+	for _, fileNum := range fileNums {
+		c.evict(fileNum, dbOpts, true)
 	}
 }
 
@@ -915,10 +915,10 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *t
 	// Try opening the file first.
 	var f objstorage.Readable
 	f, v.err = dbOpts.objProvider.OpenForReading(
-		context.TODO(), fileTypeTable, meta.FileNum, objstorage.OpenOptions{MustExist: true},
+		context.TODO(), fileTypeTable, meta.FileBacking.DiskFileNum, objstorage.OpenOptions{MustExist: true},
 	)
 	if v.err == nil {
-		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileNum).(sstable.ReaderOption)
+		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileBacking.DiskFileNum).(sstable.ReaderOption)
 		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
 	}
 	if v.err == nil {
@@ -931,7 +931,7 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *t
 		defer c.mu.Unlock()
 		// Lookup the node in the cache again as it might have already been
 		// removed.
-		key := tableCacheKey{dbOpts.cacheID, meta.FileNum}
+		key := tableCacheKey{dbOpts.cacheID, meta.FileBacking.DiskFileNum}
 		n := c.mu.nodes[key]
 		if n != nil && n.value == v {
 			c.releaseNode(n)

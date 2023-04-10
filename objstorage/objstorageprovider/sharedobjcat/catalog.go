@@ -29,7 +29,7 @@ type Catalog struct {
 		sync.Mutex
 
 		creatorID objstorage.CreatorID
-		objects   map[base.FileNum]SharedObjectMetadata
+		objects   map[base.DiskFileNum]SharedObjectMetadata
 
 		marker *atomicfs.Marker
 
@@ -48,14 +48,14 @@ type Catalog struct {
 type SharedObjectMetadata struct {
 	// FileNum is the identifier for the object within the context of a single DB
 	// instance.
-	FileNum base.FileNum
+	FileNum base.DiskFileNum
 	// FileType is the type of the object. Only certain FileTypes are possible.
 	FileType base.FileType
 	// CreatorID identifies the DB instance that originally created the object.
 	CreatorID objstorage.CreatorID
 	// CreatorFileNum is the identifier for the object within the context of the
 	// DB instance that originally created the object.
-	CreatorFileNum base.FileNum
+	CreatorFileNum base.DiskFileNum
 
 	CleanupMethod objstorage.SharedCleanupMethod
 }
@@ -83,7 +83,7 @@ func Open(fs vfs.FS, dirname string) (*Catalog, CatalogContents, error) {
 		fs:      fs,
 		dirname: dirname,
 	}
-	c.mu.objects = make(map[base.FileNum]SharedObjectMetadata)
+	c.mu.objects = make(map[base.DiskFileNum]SharedObjectMetadata)
 
 	var err error
 	c.mu.marker, c.mu.catalogFilename, err = atomicfs.LocateMarker(fs, dirname, catalogMarkerName)
@@ -109,7 +109,7 @@ func Open(fs vfs.FS, dirname string) (*Catalog, CatalogContents, error) {
 	}
 	// Sort the objects so the function is deterministic.
 	sort.Slice(res.Objects, func(i, j int) bool {
-		return res.Objects[i].FileNum < res.Objects[j].FileNum
+		return res.Objects[i].FileNum.FileNum() < res.Objects[j].FileNum.FileNum()
 	})
 	return c, res, nil
 }
@@ -171,7 +171,7 @@ func (b *Batch) AddObject(meta SharedObjectMetadata) {
 }
 
 // DeleteObject adds an object removal to the batch.
-func (b *Batch) DeleteObject(fileNum base.FileNum) {
+func (b *Batch) DeleteObject(fileNum base.DiskFileNum) {
 	b.ve.DeletedObjects = append(b.ve.DeletedObjects, fileNum)
 }
 
@@ -194,7 +194,7 @@ func (b *Batch) Copy() Batch {
 		copy(res.ve.NewObjects, b.ve.NewObjects)
 	}
 	if len(b.ve.DeletedObjects) > 0 {
-		res.ve.DeletedObjects = make([]base.FileNum, len(b.ve.DeletedObjects))
+		res.ve.DeletedObjects = make([]base.DiskFileNum, len(b.ve.DeletedObjects))
 		copy(res.ve.DeletedObjects, b.ve.DeletedObjects)
 	}
 	return res

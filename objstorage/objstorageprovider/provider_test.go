@@ -111,7 +111,7 @@ func TestProvider(t *testing.T) {
 				default:
 					d.Fatalf(t, "'%s' should be 'local' or 'shared'", typ)
 				}
-				w, _, err := curProvider.Create(ctx, base.FileTypeTable, fileNum, opts)
+				w, _, err := curProvider.Create(ctx, base.FileTypeTable, fileNum.DiskFileNum(), opts)
 				if err != nil {
 					return err.Error()
 				}
@@ -123,7 +123,7 @@ func TestProvider(t *testing.T) {
 			case "read":
 				var fileNum base.FileNum
 				scanArgs("<file-num>", &fileNum)
-				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum, objstorage.OpenOptions{})
+				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum.DiskFileNum(), objstorage.OpenOptions{})
 				if err != nil {
 					return err.Error()
 				}
@@ -136,14 +136,14 @@ func TestProvider(t *testing.T) {
 			case "remove":
 				var fileNum base.FileNum
 				scanArgs("<file-num>", &fileNum)
-				if err := curProvider.Remove(base.FileTypeTable, fileNum); err != nil {
+				if err := curProvider.Remove(base.FileTypeTable, fileNum.DiskFileNum()); err != nil {
 					return err.Error()
 				}
 				return log.String()
 
 			case "list":
 				for _, meta := range curProvider.List() {
-					log.Infof("%s -> %s", meta.FileNum, curProvider.Path(meta))
+					log.Infof("%s -> %s", meta.DiskFileNum, curProvider.Path(meta))
 				}
 				return log.String()
 
@@ -151,7 +151,7 @@ func TestProvider(t *testing.T) {
 				var key string
 				var fileNum base.FileNum
 				scanArgs("<key> <file-num>", &key, &fileNum)
-				meta, err := curProvider.Lookup(base.FileTypeTable, fileNum)
+				meta, err := curProvider.Lookup(base.FileTypeTable, fileNum.DiskFileNum())
 				require.NoError(t, err)
 				handle, err := curProvider.SharedObjectBacking(&meta)
 				if err != nil {
@@ -186,7 +186,7 @@ func TestProvider(t *testing.T) {
 					}
 					objs = append(objs, objstorage.SharedObjectToAttach{
 						FileType: base.FileTypeTable,
-						FileNum:  fileNum,
+						FileNum:  fileNum.DiskFileNum(),
 						Backing:  b,
 					})
 				}
@@ -195,7 +195,7 @@ func TestProvider(t *testing.T) {
 					return log.String() + "error: " + err.Error()
 				}
 				for _, meta := range metas {
-					log.Infof("%s -> %s", meta.FileNum, curProvider.Path(meta))
+					log.Infof("%s -> %s", meta.DiskFileNum, curProvider.Path(meta))
 				}
 				return log.String()
 
@@ -214,16 +214,16 @@ func TestNotExistError(t *testing.T) {
 	provider, err := Open(DefaultSettings(fs, ""))
 	require.NoError(t, err)
 
-	require.True(t, provider.IsNotExistError(provider.Remove(base.FileTypeTable, 1)))
-	_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, 1, objstorage.OpenOptions{})
+	require.True(t, provider.IsNotExistError(provider.Remove(base.FileTypeTable, base.FileNum(1).DiskFileNum())))
+	_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
 	require.True(t, provider.IsNotExistError(err))
 
-	w, _, err := provider.Create(context.Background(), base.FileTypeTable, 1, objstorage.CreateOptions{})
+	w, _, err := provider.Create(context.Background(), base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.CreateOptions{})
 	require.NoError(t, err)
 	require.NoError(t, w.Write([]byte("foo")))
 	require.NoError(t, w.Finish())
 
 	// Remove the underlying file.
-	require.NoError(t, fs.Remove(base.MakeFilename(base.FileTypeTable, 1)))
-	require.True(t, provider.IsNotExistError(provider.Remove(base.FileTypeTable, 1)))
+	require.NoError(t, fs.Remove(base.MakeFilename(base.FileTypeTable, base.FileNum(1).DiskFileNum())))
+	require.True(t, provider.IsNotExistError(provider.Remove(base.FileTypeTable, base.FileNum(1).DiskFileNum())))
 }

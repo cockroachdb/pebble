@@ -45,7 +45,7 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 }
 
 func ingestLoad1(
-	opts *Options, fmv FormatMajorVersion, path string, cacheID uint64, fileNum FileNum,
+	opts *Options, fmv FormatMajorVersion, path string, cacheID uint64, fileNum base.DiskFileNum,
 ) (*fileMetadata, error) {
 	f, err := opts.FS.Open(path)
 	if err != nil {
@@ -77,7 +77,7 @@ func ingestLoad1(
 	}
 
 	meta := &fileMetadata{}
-	meta.FileNum = fileNum
+	meta.FileNum = fileNum.FileNum()
 	meta.Size = uint64(readable.Size())
 	meta.CreationTime = time.Now().Unix()
 	meta.InitPhysicalBacking()
@@ -195,7 +195,7 @@ func ingestLoad1(
 }
 
 func ingestLoad(
-	opts *Options, fmv FormatMajorVersion, paths []string, cacheID uint64, pending []FileNum,
+	opts *Options, fmv FormatMajorVersion, paths []string, cacheID uint64, pending []base.DiskFileNum,
 ) ([]*fileMetadata, []string, error) {
 	meta := make([]*fileMetadata, 0, len(paths))
 	newPaths := make([]string, 0, len(paths))
@@ -256,7 +256,7 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata, paths []string) erro
 func ingestCleanup(objProvider objstorage.Provider, meta []*fileMetadata) error {
 	var firstErr error
 	for i := range meta {
-		if err := objProvider.Remove(fileTypeTable, meta[i].FileNum); err != nil {
+		if err := objProvider.Remove(fileTypeTable, meta[i].FileBacking.DiskFileNum); err != nil {
 			firstErr = firstError(firstErr, err)
 		}
 	}
@@ -269,7 +269,7 @@ func ingestLink(
 	jobID int, opts *Options, objProvider objstorage.Provider, paths []string, meta []*fileMetadata,
 ) error {
 	for i := range paths {
-		objMeta, err := objProvider.LinkOrCopyFromLocal(opts.FS, paths[i], fileTypeTable, meta[i].FileNum)
+		objMeta, err := objProvider.LinkOrCopyFromLocal(opts.FS, paths[i], fileTypeTable, meta[i].FileBacking.DiskFileNum)
 		if err != nil {
 			if err2 := ingestCleanup(objProvider, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
@@ -798,9 +798,9 @@ func (d *DB) ingest(
 	// ordering. The sorting of L0 tables by sequence number avoids relying on
 	// that (busted) invariant.
 	d.mu.Lock()
-	pendingOutputs := make([]FileNum, len(paths))
+	pendingOutputs := make([]base.DiskFileNum, len(paths))
 	for i := range paths {
-		pendingOutputs[i] = d.mu.versions.getNextFileNum()
+		pendingOutputs[i] = d.mu.versions.getNextFileNum().DiskFileNum()
 	}
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++

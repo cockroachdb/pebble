@@ -755,9 +755,9 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					// flush.
 					s.kind = ingestStepKind
 				}
-				var newFiles []base.FileNum
+				var newFiles []base.DiskFileNum
 				for _, nf := range ve.NewFiles {
-					newFiles = append(newFiles, nf.Meta.FileNum)
+					newFiles = append(newFiles, nf.Meta.FileBacking.DiskFileNum)
 					if s.kind == ingestStepKind && (nf.Meta.SmallestSeqNum != nf.Meta.LargestSeqNum || nf.Level != 0) {
 						s.kind = flushStepKind
 					}
@@ -782,7 +782,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				// corresponding sstables before being terminated.
 				if s.kind == flushStepKind || s.kind == ingestStepKind {
 					for _, fileNum := range newFiles {
-						if _, ok := r.workload.sstables[fileNum]; !ok {
+						if _, ok := r.workload.sstables[fileNum.FileNum()]; !ok {
 							// TODO(jackson,leon): This isn't exactly an error
 							// condition. Give this more thought; do we want to
 							// require graceful exiting of workload collection,
@@ -867,7 +867,7 @@ func findWorkloadFiles(
 		case base.FileTypeManifest:
 			manifests = append(manifests, dirent)
 		case base.FileTypeTable:
-			sstables[fileNum] = struct{}{}
+			sstables[fileNum.FileNum()] = struct{}{}
 		}
 	}
 	if len(manifests) == 0 {
@@ -935,7 +935,7 @@ func loadFlushedSSTableKeys(
 	b *pebble.Batch,
 	fs vfs.FS,
 	path string,
-	fileNums []base.FileNum,
+	fileNums []base.DiskFileNum,
 	readOpts sstable.ReaderOptions,
 	bufs *flushBuffers,
 ) error {

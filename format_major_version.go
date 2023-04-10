@@ -219,7 +219,7 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 		// guaranteed to exist, because we unconditionally locate it
 		// during Open.
 		manifestFileNum := d.mu.versions.manifestFileNum
-		filename := base.MakeFilename(fileTypeManifest, manifestFileNum)
+		filename := base.MakeFilename(fileTypeManifest, manifestFileNum.DiskFileNum())
 		if err := d.mu.versions.manifestMarker.Move(filename); err != nil {
 			return errors.Wrap(err, "moving manifest marker")
 		}
@@ -257,7 +257,7 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 		// version that does not know about format major versions
 		// attempts to open the database, it will error avoiding
 		// accidental corruption.
-		if err := setCurrentFile(d.mu.versions.dirname, d.mu.versions.fs, 0); err != nil {
+		if err := setCurrentFile(d.mu.versions.dirname, d.mu.versions.fs, base.FileNum(0).DiskFileNum()); err != nil {
 			return err
 		}
 		return d.finalizeFormatVersUpgrade(FormatVersioned)

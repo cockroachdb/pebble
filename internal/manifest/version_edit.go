@@ -135,7 +135,7 @@ type VersionEdit struct {
 	// edit also cannot have the same file present in both CreateBackingTables
 	// and RemovedBackingTables. A file must be present in RemovedBackingTables
 	// in exactly one version edit.
-	RemovedBackingTables []base.FileNum
+	RemovedBackingTables []base.DiskFileNum
 }
 
 // Decode decodes an edit from the specified reader.
@@ -590,7 +590,7 @@ type BulkVersionEdit struct {
 	Deleted [NumLevels]map[base.FileNum]*FileMetadata
 
 	AddedFileBacking   []*FileBacking
-	RemovedFileBacking []base.FileNum
+	RemovedFileBacking []base.DiskFileNum
 
 	// AddedByFileNum maps file number to file metadata for all added files
 	// from accumulated version edits. AddedByFileNum is only populated if set
@@ -703,8 +703,8 @@ func AccumulateIncompleteAndApplySingleVE(
 	formatKey base.FormatKey,
 	flushSplitBytes int64,
 	readCompactionRate int64,
-	backingStateMap map[base.FileNum]*FileBacking,
-) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
+	backingStateMap map[base.DiskFileNum]*FileBacking,
+) (_ *Version, zombies map[base.DiskFileNum]uint64, _ error) {
 	if len(ve.RemovedBackingTables) != 0 {
 		panic("pebble: invalid incomplete version edit")
 	}
@@ -713,7 +713,7 @@ func AccumulateIncompleteAndApplySingleVE(
 	if err != nil {
 		return nil, nil, err
 	}
-	zombies = make(map[base.FileNum]uint64)
+	zombies = make(map[base.DiskFileNum]uint64)
 	v, err := b.Apply(
 		curr, cmp, formatKey, flushSplitBytes, readCompactionRate, zombies,
 	)
@@ -722,7 +722,7 @@ func AccumulateIncompleteAndApplySingleVE(
 	}
 
 	for _, s := range b.AddedFileBacking {
-		backingStateMap[s.FileNum] = s
+		backingStateMap[s.DiskFileNum] = s
 	}
 
 	for fileNum := range zombies {
@@ -756,16 +756,16 @@ func (b *BulkVersionEdit) Apply(
 	formatKey base.FormatKey,
 	flushSplitBytes int64,
 	readCompactionRate int64,
-	zombies map[base.FileNum]uint64,
+	zombies map[base.DiskFileNum]uint64,
 ) (*Version, error) {
 	addZombie := func(state *FileBacking) {
 		if zombies != nil {
-			zombies[state.FileNum] = state.Size
+			zombies[state.DiskFileNum] = state.Size
 		}
 	}
 	removeZombie := func(state *FileBacking) {
 		if zombies != nil {
-			delete(zombies, state.FileNum)
+			delete(zombies, state.DiskFileNum)
 		}
 	}
 

@@ -1004,7 +1004,10 @@ func TestCompaction(t *testing.T) {
 		for _, levelMetadata := range v.Levels {
 			iter := levelMetadata.Iter()
 			for meta := iter.First(); meta != nil; meta = iter.Next() {
-				f, err := provider.OpenForReading(context.Background(), base.FileTypeTable, meta.FileNum, objstorage.OpenOptions{})
+				if meta.Virtual {
+					continue
+				}
+				f, err := provider.OpenForReading(context.Background(), base.FileTypeTable, meta.FileBacking.DiskFileNum, objstorage.OpenOptions{})
 				if err != nil {
 					return "", "", errors.WithStack(err)
 				}
