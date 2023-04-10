@@ -675,7 +675,7 @@ func (d *dbT) addProps(
 	objProvider objstorage.Provider, m manifest.PhysicalFileMeta, p *props,
 ) error {
 	ctx := context.Background()
-	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileNum, objstorage.OpenOptions{})
+	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileBacking.DiskFileNum, objstorage.OpenOptions{})
 	if err != nil {
 		return err
 	}

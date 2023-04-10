@@ -25,15 +25,15 @@ func TestCatalog(t *testing.T) {
 
 	var cat *sharedobjcat.Catalog
 	datadriven.RunTest(t, "testdata/catalog", func(t *testing.T, td *datadriven.TestData) string {
-		toInt := func(args ...string) []int {
+		toUInt64 := func(args ...string) []uint64 {
 			t.Helper()
-			var res []int
+			var res []uint64
 			for _, arg := range args {
 				n, err := strconv.Atoi(arg)
 				if err != nil {
 					td.Fatalf(t, "error parsing arg %s as integer: %v", arg, err)
 				}
-				res = append(res, int(n))
+				res = append(res, uint64(n))
 			}
 			return res
 		}
@@ -43,22 +43,22 @@ func TestCatalog(t *testing.T) {
 			if len(args) != 3 {
 				td.Fatalf(t, "add <file-num> <creator-id> <creator-file-num>")
 			}
-			vals := toInt(args...)
+			vals := toUInt64(args...)
 			return sharedobjcat.SharedObjectMetadata{
-				FileNum: base.FileNum(vals[0]),
+				FileNum: base.DiskFileNum{Val: vals[0]},
 				// When we support other file types, we should let the test determine this.
 				FileType:       base.FileTypeTable,
 				CreatorID:      objstorage.CreatorID(vals[1]),
-				CreatorFileNum: base.FileNum(vals[2]),
+				CreatorFileNum: base.DiskFileNum{Val: vals[2]},
 			}
 		}
 
-		parseDel := func(args []string) base.FileNum {
+		parseDel := func(args []string) base.DiskFileNum {
 			t.Helper()
 			if len(args) != 1 {
 				td.Fatalf(t, "delete <file-num>")
 			}
-			return base.FileNum(toInt(args[0])[0])
+			return base.DiskFileNum{Val: toUInt64(args[0])[0]}
 		}
 
 		memLog.Reset()
@@ -91,7 +91,7 @@ func TestCatalog(t *testing.T) {
 			if len(td.CmdArgs) != 1 {
 				td.Fatalf(t, "set-creator-id <id>")
 			}
-			id := objstorage.CreatorID(toInt(td.CmdArgs[0].String())[0])
+			id := objstorage.CreatorID(toUInt64(td.CmdArgs[0].String())[0])
 			if err := cat.SetCreatorID(id); err != nil {
 				return fmt.Sprintf("error setting creator ID: %v", err)
 			}
@@ -126,12 +126,12 @@ func TestCatalog(t *testing.T) {
 				if len(arg.Vals) != 1 {
 					td.Fatalf(t, "random-batches n=<val> size=<val>")
 				}
-				val := toInt(arg.Vals[0])[0]
+				val := toUInt64(arg.Vals[0])[0]
 				switch arg.Key {
 				case "n":
-					n = val
+					n = int(val)
 				case "size":
-					size = val
+					size = int(val)
 				default:
 					td.Fatalf(t, "random-batches n=<val> size=<val>")
 				}
@@ -140,11 +140,11 @@ func TestCatalog(t *testing.T) {
 			for batchIdx := 0; batchIdx < n; batchIdx++ {
 				for i := 0; i < size; i++ {
 					b.AddObject(sharedobjcat.SharedObjectMetadata{
-						FileNum: base.FileNum(rand.Uint64()),
+						FileNum: base.DiskFileNum{Val: rand.Uint64()},
 						// When we support other file types, we should let the test determine this.
 						FileType:       base.FileTypeTable,
 						CreatorID:      objstorage.CreatorID(rand.Uint64()),
-						CreatorFileNum: base.FileNum(rand.Uint64()),
+						CreatorFileNum: base.DiskFileNum{Val: rand.Uint64()},
 					})
 				}
 				if err := cat.ApplyBatch(b); err != nil {

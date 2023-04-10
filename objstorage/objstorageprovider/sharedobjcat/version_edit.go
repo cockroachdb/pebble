@@ -20,7 +20,7 @@ import (
 // TODO(radu): consider adding creation and deletion time for debugging purposes.
 type versionEdit struct {
 	NewObjects     []SharedObjectMetadata
-	DeletedObjects []base.FileNum
+	DeletedObjects []base.DiskFileNum
 	CreatorID      objstorage.CreatorID
 }
 
@@ -69,16 +69,16 @@ func (v *versionEdit) Encode(w io.Writer) error {
 			return err
 		}
 		buf = binary.AppendUvarint(buf, uint64(tagNewObject))
-		buf = binary.AppendUvarint(buf, uint64(meta.FileNum))
+		buf = binary.AppendUvarint(buf, uint64(meta.FileNum.Val))
 		buf = binary.AppendUvarint(buf, objType)
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorID))
-		buf = binary.AppendUvarint(buf, uint64(meta.CreatorFileNum))
+		buf = binary.AppendUvarint(buf, meta.CreatorFileNum.Val)
 		buf = binary.AppendUvarint(buf, uint64(meta.CleanupMethod))
 	}
 
-	for _, fileNum := range v.DeletedObjects {
+	for _, rh := range v.DeletedObjects {
 		buf = binary.AppendUvarint(buf, uint64(tagDeletedObject))
-		buf = binary.AppendUvarint(buf, uint64(fileNum))
+		buf = binary.AppendUvarint(buf, rh.Val)
 	}
 	if v.CreatorID.IsSet() {
 		buf = binary.AppendUvarint(buf, uint64(tagCreatorID))
@@ -127,10 +127,10 @@ func (v *versionEdit) Decode(r io.Reader) error {
 			}
 			if err == nil {
 				v.NewObjects = append(v.NewObjects, SharedObjectMetadata{
-					FileNum:        base.FileNum(fileNum),
+					FileNum:        base.DiskFileNum{Val: fileNum},
 					FileType:       fileType,
 					CreatorID:      objstorage.CreatorID(creatorID),
-					CreatorFileNum: base.FileNum(creatorFileNum),
+					CreatorFileNum: base.DiskFileNum{Val: creatorFileNum},
 					CleanupMethod:  objstorage.SharedCleanupMethod(cleanupMethod),
 				})
 			}
@@ -139,7 +139,7 @@ func (v *versionEdit) Decode(r io.Reader) error {
 			var fileNum uint64
 			fileNum, err = binary.ReadUvarint(br)
 			if err == nil {
-				v.DeletedObjects = append(v.DeletedObjects, base.FileNum(fileNum))
+				v.DeletedObjects = append(v.DeletedObjects, base.DiskFileNum{Val: fileNum})
 			}
 
 		case tagCreatorID:

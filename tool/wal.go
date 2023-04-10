@@ -77,7 +77,7 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 			// anyways (which will likely fail when we try to read the file).
 			_, fileNum, ok := base.ParseFilename(w.opts.FS, arg)
 			if !ok {
-				fileNum = 0
+				fileNum = base.DiskFileNum{Val: 0}
 			}
 
 			f, err := w.opts.FS.Open(arg)
@@ -91,7 +91,7 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 
 			var b pebble.Batch
 			var buf bytes.Buffer
-			rr := record.NewReader(f, fileNum)
+			rr := record.NewReader(f, fileNum.FileNum())
 			for {
 				offset := rr.Offset()
 				r, err := rr.Next()

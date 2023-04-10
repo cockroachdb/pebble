@@ -102,7 +102,7 @@ func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) 
 
 		numStillOpen := 0
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilepath(fs, "", fileTypeTable, FileNum(i))
+			filename := base.MakeFilepath(fs, "", fileTypeTable, base.DiskFileNum{Val: uint64(i)})
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO > gotC {
 				numStillOpen++
@@ -132,7 +132,7 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 		defer fs.mu.Unlock()
 
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilepath(fs, "", fileTypeTable, FileNum(i))
+			filename := base.MakeFilepath(fs, "", fileTypeTable, base.DiskFileNum{Val: uint64(i)})
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO != gotC {
 				return errors.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
@@ -169,7 +169,7 @@ func newTableCacheContainerTest(
 	defer objProvider.Close()
 
 	for i := 0; i < tableCacheTestNumTables; i++ {
-		w, _, err := objProvider.Create(context.Background(), fileTypeTable, FileNum(i), objstorage.CreateOptions{})
+		w, _, err := objProvider.Create(context.Background(), fileTypeTable, base.DiskFileNum{Val: uint64(i)}, objstorage.CreateOptions{})
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
@@ -451,7 +451,9 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Lock()
 			fileNum, sleepTime := rng.Intn(tableCacheTestNumTables), rng.Intn(1000)
 			rngMu.Unlock()
-			iter, _, err := c.newIters(context.Background(), &fileMetadata{FileNum: FileNum(fileNum)}, nil, internalIterOpts{})
+			m := &fileMetadata{FileNum: FileNum(fileNum)}
+			m.InitPhysicalBacking()
+			iter, _, err := c.newIters(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
@@ -510,12 +512,12 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
 			var iter io.Closer
 			var err error
+			m := &fileMetadata{FileNum: FileNum(j)}
+			m.InitPhysicalBacking()
 			if rangeIter {
-				iter, err = c.newRangeKeyIter(
-					&fileMetadata{FileNum: FileNum(j)},
-					nil /* iter options */)
+				iter, err = c.newRangeKeyIter(m, nil /* iter options */)
 			} else {
-				iter, _, err = c.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
+				iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
 			}
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -559,11 +561,13 @@ func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
-			iter1, _, err := c1.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
+			m := &fileMetadata{FileNum: FileNum(j)}
+			m.InitPhysicalBacking()
+			iter1, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
-			iter2, _, err := c2.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
+			iter2, _, err := c2.newIters(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
@@ -609,12 +613,12 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		j := rng.Intn(tableCacheTestNumTables)
 		var iter io.Closer
 		var err error
+		m := &fileMetadata{FileNum: FileNum(j)}
+		m.InitPhysicalBacking()
 		if rangeIter {
-			iter, err = c.newRangeKeyIter(
-				&fileMetadata{FileNum: FileNum(j)},
-				nil /* iter options */)
+			iter, err = c.newRangeKeyIter(m, nil /* iter options */)
 		} else {
-			iter, _, err = c.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
+			iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
 		}
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -623,7 +627,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		c.evict(FileNum(lo + rng.Intn(hi-lo)))
+		c.evict(base.DiskFileNum{Val: lo + rng.Uint64n(hi-lo)})
 	}
 
 	sumEvicted, nEvicted := 0, 0
@@ -673,12 +677,14 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 	for i := 0; i < N; i++ {
 		j := rng.Intn(tableCacheTestNumTables)
-		iter1, _, err := c1.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
+		m := &fileMetadata{FileNum: FileNum(j)}
+		m.InitPhysicalBacking()
+		iter1, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
 
-		iter2, _, err := c2.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
+		iter2, _, err := c2.newIters(context.Background(), m, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
@@ -691,8 +697,8 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		c1.evict(FileNum(lo + rng.Intn(hi-lo)))
-		c2.evict(FileNum(lo + rng.Intn(hi-lo)))
+		c1.evict(base.DiskFileNum{Val: lo + rng.Uint64n(hi-lo)})
+		c2.evict(base.DiskFileNum{Val: lo + rng.Uint64n(hi-lo)})
 	}
 
 	check := func(fs *tableCacheTestFS, c *tableCacheContainer) (float64, float64, float64) {
@@ -737,7 +743,9 @@ func TestTableCacheIterLeak(t *testing.T) {
 	c, _, err := newTableCacheContainerTest(nil, "")
 	require.NoError(t, err)
 
-	iter, _, err := c.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{})
+	m := &fileMetadata{FileNum: 0}
+	m.InitPhysicalBacking()
+	iter, _, err := c.newIters(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c.close(); err == nil {
@@ -760,7 +768,9 @@ func TestSharedTableCacheIterLeak(t *testing.T) {
 	require.NoError(t, err)
 	tc.Unref()
 
-	iter, _, err := c1.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{})
+	m := &fileMetadata{FileNum: 0}
+	m.InitPhysicalBacking()
+	iter, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c1.close(); err == nil {
@@ -794,12 +804,14 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	fs.setOpenError(true /* enabled */)
-	if _, _, err := c.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{}); err == nil {
+	m := &fileMetadata{FileNum: 0}
+	m.InitPhysicalBacking()
+	if _, _, err := c.newIters(context.Background(), m, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
 	fs.setOpenError(false /* enabled */)
 	var iter internalIterator
-	iter, _, err = c.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{})
+	iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 	require.NoError(t, iter.Close())
 	fs.validate(t, c, nil)
@@ -843,9 +855,9 @@ func TestTableCacheClockPro(t *testing.T) {
 	require.NoError(t, err)
 	defer objProvider.Close()
 
-	makeTable := func(fileNum FileNum) {
+	makeTable := func(readHandle base.DiskFileNum) {
 		require.NoError(t, err)
-		f, _, err := objProvider.Create(context.Background(), fileTypeTable, fileNum, objstorage.CreateOptions{})
+		f, _, err := objProvider.Create(context.Background(), fileTypeTable, readHandle, objstorage.CreateOptions{})
 		require.NoError(t, err)
 		w := sstable.NewWriter(f, sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("a"), nil))
@@ -880,12 +892,14 @@ func TestTableCacheClockPro(t *testing.T) {
 		// Ensure that underlying sstables exist on disk, creating each table the
 		// first time it is seen.
 		if !tables[key] {
-			makeTable(FileNum(key))
+			makeTable(base.DiskFileNum{Val: uint64(key)})
 			tables[key] = true
 		}
 
 		oldHits := cache.hits.Load()
-		v := cache.findNode(&fileMetadata{FileNum: FileNum(key)}, dbOpts)
+		m := &fileMetadata{FileNum: FileNum(key)}
+		m.InitPhysicalBacking()
+		v := cache.findNode(m, dbOpts)
 		cache.unrefValue(v)
 
 		hit := cache.hits.Load() != oldHits

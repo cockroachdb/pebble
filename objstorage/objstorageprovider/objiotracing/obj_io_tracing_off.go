@@ -33,7 +33,7 @@ func (*Tracer) Close() {}
 // WrapReadable wraps an objstorage.Readable with one that generates tracing
 // events.
 func (*Tracer) WrapReadable(
-	ctx context.Context, r objstorage.Readable, fileNum base.FileNum,
+	ctx context.Context, r objstorage.Readable, fileNum base.DiskFileNum,
 ) objstorage.Readable {
 	return r
 }
@@ -41,7 +41,7 @@ func (*Tracer) WrapReadable(
 // WrapWritable wraps an objstorage.Writable with one that generates tracing
 // events.
 func (t *Tracer) WrapWritable(
-	ctx context.Context, w objstorage.Writable, fileNum base.FileNum,
+	ctx context.Context, w objstorage.Writable, fileNum base.DiskFileNum,
 ) objstorage.Writable {
 	return w
 }

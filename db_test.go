@@ -372,12 +372,12 @@ func TestLargeBatch(t *testing.T) {
 		}
 	}
 
-	logNum := func() FileNum {
+	logNum := func() base.DiskFileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum
 	}
-	fileSize := func(fileNum FileNum) int64 {
+	fileSize := func(fileNum base.DiskFileNum) int64 {
 		info, err := d.opts.FS.Stat(base.MakeFilepath(d.opts.FS, "", fileTypeLog, fileNum))
 		require.NoError(t, err)
 		return info.Size()
@@ -808,7 +808,7 @@ func TestMemTableReservation(t *testing.T) {
 	helloWorld := []byte("hello world")
 	value := opts.Cache.Alloc(len(helloWorld))
 	copy(value.Buf(), helloWorld)
-	opts.Cache.Set(tmpID, 0, 0, value).Release()
+	opts.Cache.Set(tmpID, base.DiskFileNum{Val: 0}, 0, value).Release()
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -825,7 +825,7 @@ func TestMemTableReservation(t *testing.T) {
 		t.Fatalf("expected 2 refs, but found %d", refs)
 	}
 	// Verify the memtable reservation has caused our test block to be evicted.
-	if h := opts.Cache.Get(tmpID, 0, 0); h.Get() != nil {
+	if h := opts.Cache.Get(tmpID, base.DiskFileNum{Val: 0}, 0); h.Get() != nil {
 		t.Fatalf("expected failure, but found success: %s", h.Get())
 	}
 

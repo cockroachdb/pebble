@@ -147,7 +147,7 @@ func TestLatestRefCounting(t *testing.T) {
 	require.Equal(t, 2, int(m1.LatestRefs()))
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
 	require.Equal(t, 1, len(d.mu.versions.fileBackingMap))
-	_, ok := d.mu.versions.fileBackingMap[f.FileNum]
+	_, ok := d.mu.versions.fileBackingMap[f.FileBacking.DiskFileNum]
 	require.True(t, ok)
 	require.Equal(t, f.Size, m2.FileBacking.VirtualizedSize.Load())
 
@@ -168,7 +168,7 @@ func TestLatestRefCounting(t *testing.T) {
 	require.Equal(t, 0, len(d.mu.versions.zombieTables))
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
 	require.Equal(t, 1, len(d.mu.versions.fileBackingMap))
-	_, ok = d.mu.versions.fileBackingMap[f.FileNum]
+	_, ok = d.mu.versions.fileBackingMap[f.FileBacking.DiskFileNum]
 	require.True(t, ok)
 	require.Equal(t, m2.Size, m2.FileBacking.VirtualizedSize.Load())
 
@@ -185,7 +185,7 @@ func TestLatestRefCounting(t *testing.T) {
 	require.Equal(t, 0, len(d.mu.versions.zombieTables))
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
 	require.Equal(t, 1, len(d.mu.versions.fileBackingMap))
-	_, ok = d.mu.versions.fileBackingMap[f.FileNum]
+	_, ok = d.mu.versions.fileBackingMap[f.FileBacking.DiskFileNum]
 	require.True(t, ok)
 	require.Equal(t, m2.Size, m2.FileBacking.VirtualizedSize.Load())
 
@@ -199,9 +199,9 @@ func TestLatestRefCounting(t *testing.T) {
 	// All virtual sstables are gone.
 	require.Equal(t, 0, int(m2.LatestRefs()))
 	require.Equal(t, 1, len(d.mu.versions.zombieTables))
-	require.Equal(t, f.Size, d.mu.versions.zombieTables[f.FileNum])
+	require.Equal(t, f.Size, d.mu.versions.zombieTables[f.FileBacking.DiskFileNum])
 	require.Equal(t, 0, len(d.mu.versions.fileBackingMap))
-	_, ok = d.mu.versions.fileBackingMap[f.FileNum]
+	_, ok = d.mu.versions.fileBackingMap[f.FileBacking.DiskFileNum]
 	require.False(t, ok)
 	require.Equal(t, 0, int(m2.FileBacking.VirtualizedSize.Load()))
 

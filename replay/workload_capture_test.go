@@ -66,7 +66,7 @@ func TestWorkloadCollector(t *testing.T) {
 				var fileNum uint64
 				var err error
 				td.ScanArgs(t, "filenum", &fileNum)
-				path := base.MakeFilepath(fs, srcDir, base.FileTypeManifest, base.FileNum(fileNum))
+				path := base.MakeFilepath(fs, srcDir, base.FileTypeManifest, base.DiskFileNum{Val: fileNum})
 				currentManifest, err = fs.Create(path)
 				require.NoError(t, err)
 				_, err = currentManifest.Write(randData(100))
@@ -95,7 +95,7 @@ func TestWorkloadCollector(t *testing.T) {
 					require.NoError(t, err)
 					tableInfo.FileNum = base.FileNum(fileNum)
 
-					p := writeFile(t, fs, srcDir, base.FileTypeTable, tableInfo.FileNum, randData(int(tableInfo.Size)))
+					p := writeFile(t, fs, srcDir, base.FileTypeTable, tableInfo.FileNum.DiskFileNum(), randData(int(tableInfo.Size)))
 					fmt.Fprintf(&buf, "created %s\n", p)
 					flushInfo.Output = append(flushInfo.Output, tableInfo)
 
@@ -119,7 +119,7 @@ func TestWorkloadCollector(t *testing.T) {
 					require.NoError(t, err)
 					tableInfo.FileNum = base.FileNum(fileNum)
 
-					p := writeFile(t, fs, srcDir, base.FileTypeTable, tableInfo.FileNum, randData(int(tableInfo.Size)))
+					p := writeFile(t, fs, srcDir, base.FileTypeTable, tableInfo.FileNum.DiskFileNum(), randData(int(tableInfo.Size)))
 					fmt.Fprintf(&buf, "created %s\n", p)
 					ingestInfo.Tables = append(ingestInfo.Tables, struct {
 						pebble.TableInfo
@@ -178,9 +178,9 @@ func randData(byteCount int) []byte {
 }
 
 func writeFile(
-	t *testing.T, fs vfs.FS, dir string, typ base.FileType, num base.FileNum, data []byte,
+	t *testing.T, fs vfs.FS, dir string, typ base.FileType, fileNum base.DiskFileNum, data []byte,
 ) string {
-	path := base.MakeFilepath(fs, dir, typ, num)
+	path := base.MakeFilepath(fs, dir, typ, fileNum)
 	f, err := fs.Create(path)
 	require.NoError(t, err)
 	_, err = f.Write(data)

@@ -179,7 +179,7 @@ func runBuildRawCmd(
 	}
 	defer provider.Close()
 
-	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.CreateOptions{})
+	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, base.DiskFileNum{Val: 0}, objstorage.CreateOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -226,7 +226,7 @@ func runBuildRawCmd(
 		return nil, nil, err
 	}
 
-	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.OpenOptions{})
+	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, base.DiskFileNum{Val: 0}, objstorage.OpenOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

@@ -1050,8 +1050,8 @@ func TestGetVersion(t *testing.T) {
 		}
 		switch ft {
 		case fileTypeOptions:
-			if fn > highestOptionsNum {
-				highestOptionsNum = fn
+			if fn.FileNum() > highestOptionsNum {
+				highestOptionsNum = fn.FileNum()
 			}
 		}
 	}
@@ -1286,7 +1286,7 @@ func TestCheckConsistency(t *testing.T) {
 					if err != nil {
 						return err.Error()
 					}
-					path := base.MakeFilepath(mem, dir, base.FileTypeTable, m.FileNum)
+					path := base.MakeFilepath(mem, dir, base.FileTypeTable, m.FileBacking.DiskFileNum)
 					_ = mem.Remove(path)
 					f, err := mem.Create(path)
 					if err != nil {

@@ -120,7 +120,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}).WithFSDefaults()
-			meta, _, err := ingestLoad(opts, dbVersion, []string{"ext"}, 0, []FileNum{1})
+			meta, _, err := ingestLoad(opts, dbVersion, []string{"ext"}, 0, []base.DiskFileNum{{Val: 1}})
 			if err != nil {
 				return err.Error()
 			}
@@ -153,13 +153,13 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 
 	paths := make([]string, 1+rng.Intn(10))
-	pending := make([]FileNum, len(paths))
+	pending := make([]base.DiskFileNum, len(paths))
 	expected := make([]*fileMetadata, len(paths))
 	for i := range paths {
 		paths[i] = fmt.Sprint(i)
-		pending[i] = FileNum(rng.Int63())
+		pending[i] = base.DiskFileNum{Val: rng.Uint64()}
 		expected[i] = &fileMetadata{
-			FileNum: pending[i],
+			FileNum: pending[i].FileNum(),
 		}
 		expected[i].StatsMarkValid()
 
@@ -228,7 +228,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	if _, _, err := ingestLoad(opts, FormatNewest, []string{"invalid"}, 0, []FileNum{1}); err == nil {
+	if _, _, err := ingestLoad(opts, FormatNewest, []string{"invalid"}, 0, []base.DiskFileNum{{Val: 1}}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -354,7 +354,7 @@ func TestIngestLink(t *testing.T) {
 					if fileTypeTable != ftype {
 						t.Fatalf("expected table, but found %d", ftype)
 					}
-					if FileNum(j) != fileNum {
+					if j != int(fileNum.Val) {
 						t.Fatalf("expected table %d, but found %d", j, fileNum)
 					}
 					f, err := opts.FS.Open(opts.FS.PathJoin(dir, files[j]))
@@ -389,6 +389,7 @@ func TestIngestLinkFallback(t *testing.T) {
 	defer objProvider.Close()
 
 	meta := []*fileMetadata{{FileNum: 1}}
+	meta[0].InitPhysicalBacking()
 	err = ingestLink(0, opts, objProvider, []string{"source"}, meta)
 	require.NoError(t, err)
 
@@ -1700,7 +1701,7 @@ func TestIngestCleanup(t *testing.T) {
 			// Create the files in the VFS.
 			metaMap := make(map[base.FileNum]objstorage.Writable)
 			for _, fn := range fns {
-				w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, fn, objstorage.CreateOptions{})
+				w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, fn.DiskFileNum(), objstorage.CreateOptions{})
 				require.NoError(t, err)
 
 				metaMap[fn] = w
@@ -1718,7 +1719,9 @@ func TestIngestCleanup(t *testing.T) {
 			// Cleanup the set of files in the FS.
 			var toRemove []*fileMetadata
 			for _, fn := range tc.cleanupFiles {
-				toRemove = append(toRemove, &fileMetadata{FileNum: fn})
+				m := &fileMetadata{FileNum: fn}
+				m.InitPhysicalBacking()
+				toRemove = append(toRemove, m)
 			}
 
 			err = ingestCleanup(objProvider, toRemove)

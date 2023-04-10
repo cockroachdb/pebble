@@ -257,7 +257,7 @@ type DB struct {
 	// inserted into a memtable.
 	largeBatchThreshold int
 	// The current OPTIONS file number.
-	optionsFileNum FileNum
+	optionsFileNum base.DiskFileNum
 	// The on-disk size of the current OPTIONS file.
 	optionsFileSize uint64
 
@@ -1863,7 +1863,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 				destTables[j].Properties = p
 			}
 			destTables[j].Virtual = m.Virtual
-			destTables[j].BackingSSTNum = m.FileBacking.FileNum
+			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum.FileNum()
 			j++
 		}
 		destLevels[i] = destTables[:j]
@@ -2180,7 +2180,7 @@ func (d *DB) recycleWAL() (newLogNum FileNum, prevLogSize uint64) {
 	}
 	d.mu.Unlock()
 
-	newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
+	newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum.DiskFileNum())
 
 	// Try to use a recycled log file. Recycling log files is an important
 	// performance optimization as it is faster to sync a file that has
@@ -2237,14 +2237,14 @@ func (d *DB) recycleWAL() (newLogNum FileNum, prevLogSize uint64) {
 	}
 
 	if recycleOK {
-		err = firstError(err, d.logRecycler.pop(recycleLog.fileNum))
+		err = firstError(err, d.logRecycler.pop(recycleLog.fileNum.FileNum()))
 	}
 
 	d.opts.EventListener.WALCreated(WALCreateInfo{
 		JobID:           jobID,
 		Path:            newLogName,
 		FileNum:         newLogNum,
-		RecycledFileNum: recycleLog.fileNum,
+		RecycledFileNum: recycleLog.fileNum.FileNum(),
 		Err:             err,
 	})
 
@@ -2262,7 +2262,7 @@ func (d *DB) recycleWAL() (newLogNum FileNum, prevLogSize uint64) {
 		panic(err)
 	}
 
-	d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: newLogSize})
+	d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum.DiskFileNum(), fileSize: newLogSize})
 	d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum, record.LogWriterConfig{
 		WALFsyncLatency:    d.mu.log.metrics.fsyncLatency,
 		WALMinSyncInterval: d.opts.WALMinSyncInterval,

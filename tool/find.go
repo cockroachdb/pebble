@@ -168,15 +168,15 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 		}
 		switch ft {
 		case base.FileTypeLog:
-			f.logs = append(f.logs, fileNum)
+			f.logs = append(f.logs, fileNum.FileNum())
 		case base.FileTypeManifest:
-			f.manifests = append(f.manifests, fileNum)
+			f.manifests = append(f.manifests, fileNum.FileNum())
 		case base.FileTypeTable:
-			f.tables = append(f.tables, fileNum)
+			f.tables = append(f.tables, fileNum.FileNum())
 		default:
 			return
 		}
-		f.files[fileNum] = path
+		f.files[fileNum.FileNum()] = path
 	})
 
 	sort.Slice(f.logs, func(i, j int) bool {

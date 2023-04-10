@@ -24,42 +24,42 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		{
 			NewObjects: []SharedObjectMetadata{
 				{
-					FileNum:        1,
+					FileNum:        base.DiskFileNum{Val: 1},
 					FileType:       base.FileTypeTable,
 					CreatorID:      12,
-					CreatorFileNum: 123,
+					CreatorFileNum: base.DiskFileNum{Val: 123},
 					CleanupMethod:  objstorage.SharedNoCleanup,
 				},
 			},
 		},
 		{
-			DeletedObjects: []base.FileNum{1},
+			DeletedObjects: []base.DiskFileNum{{Val: 1}},
 		},
 		{
 			CreatorID: 12345,
 			NewObjects: []SharedObjectMetadata{
 				{
-					FileNum:        1,
+					FileNum:        base.DiskFileNum{Val: 1},
 					FileType:       base.FileTypeTable,
 					CreatorID:      12,
-					CreatorFileNum: 123,
+					CreatorFileNum: base.DiskFileNum{Val: 123},
 					CleanupMethod:  objstorage.SharedRefTracking,
 				},
 				{
-					FileNum:        2,
+					FileNum:        base.DiskFileNum{Val: 2},
 					FileType:       base.FileTypeTable,
 					CreatorID:      22,
-					CreatorFileNum: 223,
+					CreatorFileNum: base.DiskFileNum{Val: 223},
 				},
 				{
-					FileNum:        3,
+					FileNum:        base.DiskFileNum{Val: 3},
 					FileType:       base.FileTypeTable,
 					CreatorID:      32,
-					CreatorFileNum: 323,
+					CreatorFileNum: base.DiskFileNum{Val: 323},
 					CleanupMethod:  objstorage.SharedRefTracking,
 				},
 			},
-			DeletedObjects: []base.FileNum{4, 5},
+			DeletedObjects: []base.DiskFileNum{{Val: 4}, {Val: 5}},
 		},
 	} {
 		if err := checkRoundTrip(ve); err != nil {

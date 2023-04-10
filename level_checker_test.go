@@ -210,7 +210,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				cacheOpts := private.SSTableCacheOpts(0, fileNum-1).(sstable.ReaderOption)
+				cacheOpts := private.SSTableCacheOpts(0, base.DiskFileNum{Val: uint64(fileNum) - 1}).(sstable.ReaderOption)
 				r, err := sstable.NewReader(readable, sstable.ReaderOptions{}, cacheOpts)
 				if err != nil {
 					return err.Error()
