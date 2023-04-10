@@ -5,7 +5,6 @@
 package pebble
 
 import (
-	"context"
 	"sort"
 	"time"
 
@@ -513,39 +512,32 @@ func ingestTargetLevel(
 
 	targetLevel := 0
 
-	// Do we overlap with keys in L0?
-	// TODO(bananabrick): Use sublevels to compute overlap.
-	iter := v.Levels[0].Iter()
-	for meta0 := iter.First(); meta0 != nil; meta0 = iter.Next() {
-		c1 := sstableKeyCompare(cmp, meta.Smallest, meta0.Largest)
-		c2 := sstableKeyCompare(cmp, meta.Largest, meta0.Smallest)
-		if c1 > 0 || c2 < 0 {
-			continue
-		}
+	// Check for overlap over the keys of L0 by iterating over the sublevels.
+	if v.L0Sublevels != nil {
+		for subLevel := 0; subLevel < len(v.L0SublevelFiles); subLevel++ {
+			iter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
+				v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), nil)
 
-		// TODO(sumeer): ingest is a user-facing operation, so we should accept a
-		// context and plumb it through, for tracing.
-		iter, rangeDelIter, err := newIters(context.Background(), meta0, nil, internalIterOpts{})
-		if err != nil {
-			return 0, err
-		}
-		rkeyIter, err := newRangeKeyIter(meta0, nil)
-		if err != nil {
-			return 0, err
-		}
-		overlap := overlapWithIterator(iter, &rangeDelIter, rkeyIter, meta, cmp)
-		err = firstError(err, iter.Close())
-		if rangeDelIter != nil {
-			err = firstError(err, rangeDelIter.Close())
-		}
-		if rkeyIter != nil {
+			var rangeDelIter keyspan.FragmentIterator
+			// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
+			// sets it up for the target file.
+			iter.initRangeDel(&rangeDelIter)
+
+			rkeyIter := &keyspan.LevelIter{}
+			rkeyIter.Init(
+				keyspan.SpanIterOptions{}, cmp, newRangeKeyIter,
+				v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), manifest.KeyTypeRange,
+			)
+
+			overlap := overlapWithIterator(iter, &rangeDelIter, rkeyIter, meta, cmp)
+			err := iter.Close() // Closes range del iter as well.
 			err = firstError(err, rkeyIter.Close())
-		}
-		if err != nil {
-			return 0, err
-		}
-		if overlap {
-			return targetLevel, nil
+			if err != nil {
+				return 0, err
+			}
+			if overlap {
+				return targetLevel, nil
+			}
 		}
 	}
 
