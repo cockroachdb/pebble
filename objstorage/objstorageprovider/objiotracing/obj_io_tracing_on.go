@@ -102,6 +102,11 @@ func (w *writable) Write(p []byte) error {
 		Offset:  w.curOffset,
 		Size:    int64(len(p)),
 	})
+	// If w.w.Write(p) returns an error, a new writable
+	// will be used, so even tho all of p may not have
+	// been written to the underlying "file", it is okay
+	// to add len(p) to curOffset.
+	w.curOffset += int64(len(p))
 	return w.w.Write(p)
 }
 
