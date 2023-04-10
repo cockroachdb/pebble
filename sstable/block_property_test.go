@@ -478,8 +478,8 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 				filter := NewBlockIntervalFilter(f.name, f.i.lower, f.i.upper)
 				filters = append(filters, filter)
 			}
-			filterer := NewBlockPropertiesFilterer(filters, nil)
-			intersects, err := filterer.IntersectsUserPropsAndFinishInit(tc.userProps)
+			filterer := newBlockPropertiesFilterer(filters, nil)
+			intersects, err := filterer.intersectsUserPropsAndFinishInit(tc.userProps)
 			require.NoError(t, err)
 			require.Equal(t, tc.intersects, intersects)
 			require.Equal(t, tc.shortIDToFiltersIndex, filterer.shortIDToFiltersIndex)
@@ -916,8 +916,8 @@ func TestBlockProperties(t *testing.T) {
 			var f *BlockPropertiesFilterer
 			buf.WriteString("points: ")
 			if len(points) > 0 {
-				f = NewBlockPropertiesFilterer(points, nil)
-				ok, err := f.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+				f = newBlockPropertiesFilterer(points, nil)
+				ok, err := f.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 				if err != nil {
 					return err.Error()
 				}
@@ -970,8 +970,8 @@ func TestBlockProperties(t *testing.T) {
 			// Range key filter matches.
 			buf.WriteString("ranges: ")
 			if len(ranges) > 0 {
-				f := NewBlockPropertiesFilterer(ranges, nil)
-				ok, err := f.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+				f := newBlockPropertiesFilterer(ranges, nil)
+				ok, err := f.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 				if err != nil {
 					return err.Error()
 				}
@@ -1001,8 +1001,8 @@ func TestBlockProperties(t *testing.T) {
 					filters = append(filters, f)
 				}
 			}
-			filterer := NewBlockPropertiesFilterer(filters, nil)
-			ok, err := filterer.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+			filterer := newBlockPropertiesFilterer(filters, nil)
+			ok, err := filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 			if err != nil {
 				return err.Error()
 			} else if !ok {
@@ -1081,8 +1081,8 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 				return "missing block property filter"
 			}
 
-			filterer := NewBlockPropertiesFilterer(nil, &filter)
-			ok, err := filterer.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+			filterer := newBlockPropertiesFilterer(nil, &filter)
+			ok, err := filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 			if err != nil {
 				return err.Error()
 			} else if !ok {

@@ -239,10 +239,9 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 			defer r.Close()
 
 			filter := sstable.NewTestKeysBlockPropertyFilter(uint64(tsSeparator), math.MaxUint64)
-			filterer := sstable.NewBlockPropertiesFilterer([]BlockPropertyFilter{filter}, nil)
-			ok, err := filterer.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
-			require.True(t, ok)
+			filterer, err := sstable.IntersectsTable([]BlockPropertyFilter{filter}, nil, r.Properties.UserProperties)
 			require.NoError(t, err)
+			require.NotNil(t, filterer)
 
 			var iter sstable.Iterator
 			iter, err = r.NewIterWithBlockPropertyFilters(
