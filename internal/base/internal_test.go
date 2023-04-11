@@ -116,6 +116,17 @@ func TestInternalKeyComparer(t *testing.T) {
 	}
 }
 
+func TestKindsRoundtrip(t *testing.T) {
+	for kindNum, prettied := range internalKeyKindNames {
+		if prettied == "" {
+			continue
+		}
+		kind := InternalKeyKind(kindNum)
+		got := ParseKind(kind.String())
+		require.Equal(t, got, kind)
+	}
+}
+
 func TestInternalKeySeparator(t *testing.T) {
 	testCases := []struct {
 		a        string
@@ -136,6 +147,7 @@ func TestInternalKeySeparator(t *testing.T) {
 		{"AAA1.SET.100", "AAA2.SET.200", "AAA1.SET.100"},
 		{"foo.SET.100", "foobar.SET.200", "foo.SET.100"},
 		{"foobar.SET.100", "foo.SET.200", "foobar.SET.100"},
+		{"foo.INGESTSST.100", "foo.INGESTSST.99", "foo.INGESTSST.100"},
 	}
 	d := DefaultComparer
 	for _, c := range testCases {
