@@ -589,7 +589,9 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 				return humanize.SI.Uint64(p.NumEntries - p.NumDeletions - p.NumMergeOperands)
 			})...)
 		fmt.Fprintf(tw, "  delete\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumDeletions) })...)
+			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumDeletions - p.NumRangeDeletions) })...)
+		fmt.Fprintf(tw, "  delete-sized\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumSizedDeletions) })...)
 		fmt.Fprintf(tw, "  range-delete\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumRangeDeletions) })...)
 		fmt.Fprintf(tw, "  range-key-sets\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
@@ -654,6 +656,7 @@ type props struct {
 	NumDataBlocks           uint64
 	NumIndexBlocks          uint64
 	NumDeletions            uint64
+	NumSizedDeletions       uint64
 	NumEntries              uint64
 	NumMergeOperands        uint64
 	NumRangeDeletions       uint64
@@ -682,6 +685,7 @@ func (p *props) update(o props) {
 	p.NumDataBlocks += o.NumDataBlocks
 	p.NumIndexBlocks += o.NumIndexBlocks
 	p.NumDeletions += o.NumDeletions
+	p.NumSizedDeletions += o.NumSizedDeletions
 	p.NumEntries += o.NumEntries
 	p.NumMergeOperands += o.NumMergeOperands
 	p.NumRangeDeletions += o.NumRangeDeletions
@@ -719,6 +723,7 @@ func (d *dbT) addProps(
 		NumDataBlocks:           r.Properties.NumDataBlocks,
 		NumIndexBlocks:          1 + r.Properties.IndexPartitions,
 		NumDeletions:            r.Properties.NumDeletions,
+		NumSizedDeletions:       r.Properties.NumSizedDeletions,
 		NumEntries:              r.Properties.NumEntries,
 		NumMergeOperands:        r.Properties.NumMergeOperands,
 		NumRangeDeletions:       r.Properties.NumRangeDeletions,

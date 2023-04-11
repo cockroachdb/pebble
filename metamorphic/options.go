@@ -53,6 +53,9 @@ func parseOptions(
 			case "TestOptions.ingest_using_apply":
 				opts.ingestUsingApply = true
 				return true
+			case "TestOptions.delete_sized":
+				opts.deleteSized = true
+				return true
 			case "TestOptions.replace_single_delete":
 				opts.replaceSingleDelete = true
 				return true
@@ -109,6 +112,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.ingestUsingApply {
 		fmt.Fprint(&buf, "  ingest_using_apply=true\n")
+	}
+	if opts.deleteSized {
+		fmt.Fprint(&buf, "  delete_sized=true\n")
 	}
 	if opts.replaceSingleDelete {
 		fmt.Fprint(&buf, "  replace_single_delete=true\n")
@@ -180,6 +186,8 @@ type TestOptions struct {
 	threads    int
 	// Use Batch.Apply rather than DB.Ingest.
 	ingestUsingApply bool
+	// Use Batch.DeleteSized rather than Batch.Delete.
+	deleteSized bool
 	// Replace a SINGLEDEL with a DELETE.
 	replaceSingleDelete bool
 	// The path on the local filesystem where the initial state of the database
@@ -441,6 +449,7 @@ func randomOptions(
 		opts.DisableWAL = false
 	}
 	testOpts.ingestUsingApply = rng.Intn(2) != 0
+	testOpts.deleteSized = rng.Intn(2) != 0
 	testOpts.replaceSingleDelete = rng.Intn(2) != 0
 	testOpts.disableBlockPropertyCollector = rng.Intn(2) != 0
 	if !testOpts.disableBlockPropertyCollector {

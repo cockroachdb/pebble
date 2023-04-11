@@ -29,6 +29,7 @@ size
 records                                                                  
   set                  2       0      0      0      0      0      0      2
   delete               1       0      0      0      0      0      0      1
+  delete-sized         0       0      0      0      0      0      0      0
   range-delete         0       0      0      0      0      0      0      0
   range-key-sets       0       0      0      0      0      0      0      0
   range-key-unsets     0       0      0      0      0      0      0      0
@@ -58,6 +59,7 @@ size
 records                                                                   
   set                  26       0      0      0      0      0      0      26
   delete               0        0      0      0      0      0      0      0
+  delete-sized         0        0      0      0      0      0      0      0
   range-delete         0        0      0      0      0      0      0      0
   range-key-sets       1        0      0      0      0      0      0      1
   range-key-unsets     1        0      0      0      0      0      0      1

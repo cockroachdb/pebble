@@ -12,6 +12,7 @@ package replay
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -1036,6 +1037,15 @@ func loadFlushedSSTableKeys(
 		switch bufs.keys[i].Kind() {
 		case base.InternalKeyKindDelete:
 			err = b.Delete(bufs.keys[i].UserKey, nil)
+		case base.InternalKeyKindDeleteSized:
+			v, _ := binary.Uvarint(bufs.keys[i].value)
+			// Batch.DeleteSized takes just the length of the value being
+			// deleted and adds the key's length to derive the overall entry
+			// size of the value being deleted. This has already been done to
+			// the key we're reading from the sstable, so we must subtract the
+			// key length from the encoded value before calling b.DeleteSized,
+			// which will again add the key length before encoding.
+			err = b.DeleteSized(bufs.keys[i].UserKey, uint32(v-uint64(len(bufs.keys[i].UserKey))), nil)
 		case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
 			err = b.Set(bufs.keys[i].UserKey, bufs.keys[i].value, nil)
 		case base.InternalKeyKindMerge:

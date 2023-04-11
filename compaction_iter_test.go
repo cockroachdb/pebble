@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"sort"
@@ -18,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSnapshotIndex(t *testing.T) {
@@ -90,7 +92,10 @@ func TestCompactionIter(t *testing.T) {
 		if formatVersion < FormatSetWithDelete {
 			return "testdata/compaction_iter"
 		}
-		return "testdata/compaction_iter_set_with_del"
+		if formatVersion < FormatDeleteSized {
+			return "testdata/compaction_iter_set_with_del"
+		}
+		return "testdata/compaction_iter_delete_sized"
 	}
 
 	newIter := func(formatVersion FormatMajorVersion) *compactionIter {
@@ -150,7 +155,16 @@ func TestCompactionIter(t *testing.T) {
 				for _, key := range strings.Split(d.Input, "\n") {
 					j := strings.Index(key, ":")
 					keys = append(keys, base.ParseInternalKey(key[:j]))
-					vals = append(vals, []byte(key[j+1:]))
+
+					if strings.HasPrefix(key[j+1:], "varint(") {
+						valueStr := strings.TrimSuffix(strings.TrimPrefix(key[j+1:], "varint("), ")")
+						v, err := strconv.ParseUint(valueStr, 10, 64)
+						require.NoError(t, err)
+						encodedValue := binary.AppendUvarint([]byte(nil), v)
+						vals = append(vals, encodedValue)
+					} else {
+						vals = append(vals, []byte(key[j+1:]))
+					}
 				}
 				return ""
 
@@ -243,7 +257,16 @@ func TestCompactionIter(t *testing.T) {
 								snapshotPinned = " (pinned)"
 							}
 						}
-						fmt.Fprintf(&b, "%s:%s%s\n", iter.Key(), iter.Value(), snapshotPinned)
+						v := string(iter.Value())
+						if iter.Key().Kind() == base.InternalKeyKindDeleteSized && len(iter.Value()) > 0 {
+							vn, n := binary.Uvarint(iter.Value())
+							if n != len(iter.Value()) {
+								v = fmt.Sprintf("err: %0x value not a uvarint", iter.Value())
+							} else {
+								v = fmt.Sprintf("varint(%d)", vn)
+							}
+						}
+						fmt.Fprintf(&b, "%s:%s%s\n", iter.Key(), v, snapshotPinned)
 						if iter.Key().Kind() == InternalKeyKindRangeDelete {
 							iter.rangeDelFrag.Add(keyspan.Span{
 								Start: append([]byte{}, iter.Key().UserKey...),

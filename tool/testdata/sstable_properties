@@ -22,6 +22,7 @@ size
 records             1727
   set               1710
   delete            0
+  delete-sized      0
   range-delete      17
   range-key-set     0
   range-key-unset   0
@@ -63,6 +64,7 @@ size
 records             1727
   set               1710
   delete            0
+  delete-sized      0
   range-delete      17
   range-key-set     0
   range-key-unset   0
@@ -103,6 +105,7 @@ size
 records             1727
   set               1710
   delete            0
+  delete-sized      0
   range-delete      17
   range-key-set     0
   range-key-unset   0
@@ -222,6 +225,7 @@ size
 records             26
   set               26
   delete            0
+  delete-sized      0
   range-delete      0
   range-key-set     1
   range-key-unset   1

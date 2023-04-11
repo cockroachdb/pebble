@@ -422,7 +422,7 @@ reset format-major-version=6
 batch commit
 range-key-set a   z   @5 boop
 ----
-pebble: range keys require at least format major version 8 (current: 6)
+pebble: batch requires at least format major version 8 (current: 6)
 
 # Constructing iterator over range keys on a DB that doesn't support them
 # results in an error.

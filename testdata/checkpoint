@@ -77,6 +77,10 @@ create: db/marker.format-version.000013.014
 close: db/marker.format-version.000013.014
 remove: db/marker.format-version.000012.013
 sync: db
+create: db/marker.format-version.000014.015
+close: db/marker.format-version.000014.015
+remove: db/marker.format-version.000013.014
+sync: db
 create: db/temporary.000003.dbtmp
 sync: db/temporary.000003.dbtmp
 close: db/temporary.000003.dbtmp
@@ -139,9 +143,9 @@ close:
 open-dir: checkpoints/checkpoint1
 link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
-create: checkpoints/checkpoint1/marker.format-version.000001.014
-sync-data: checkpoints/checkpoint1/marker.format-version.000001.014
-close: checkpoints/checkpoint1/marker.format-version.000001.014
+create: checkpoints/checkpoint1/marker.format-version.000001.015
+sync-data: checkpoints/checkpoint1/marker.format-version.000001.015
+close: checkpoints/checkpoint1/marker.format-version.000001.015
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 link: db/000005.sst -> checkpoints/checkpoint1/000005.sst
@@ -179,9 +183,9 @@ close: checkpoints
 open-dir: checkpoints/checkpoint2
 link: db/OPTIONS-000003 -> checkpoints/checkpoint2/OPTIONS-000003
 open-dir: checkpoints/checkpoint2
-create: checkpoints/checkpoint2/marker.format-version.000001.014
-sync-data: checkpoints/checkpoint2/marker.format-version.000001.014
-close: checkpoints/checkpoint2/marker.format-version.000001.014
+create: checkpoints/checkpoint2/marker.format-version.000001.015
+sync-data: checkpoints/checkpoint2/marker.format-version.000001.015
+close: checkpoints/checkpoint2/marker.format-version.000001.015
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 link: db/000007.sst -> checkpoints/checkpoint2/000007.sst
@@ -214,9 +218,9 @@ close: checkpoints
 open-dir: checkpoints/checkpoint3
 link: db/OPTIONS-000003 -> checkpoints/checkpoint3/OPTIONS-000003
 open-dir: checkpoints/checkpoint3
-create: checkpoints/checkpoint3/marker.format-version.000001.014
-sync-data: checkpoints/checkpoint3/marker.format-version.000001.014
-close: checkpoints/checkpoint3/marker.format-version.000001.014
+create: checkpoints/checkpoint3/marker.format-version.000001.015
+sync-data: checkpoints/checkpoint3/marker.format-version.000001.015
+close: checkpoints/checkpoint3/marker.format-version.000001.015
 sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
 link: db/000005.sst -> checkpoints/checkpoint3/000005.sst
@@ -252,34 +256,34 @@ close: db/000009.sst
 sync: db
 sync: db/MANIFEST-000001
 open: db/000005.sst
-read-at(744, 53): db/000005.sst
-read-at(707, 37): db/000005.sst
-read-at(79, 628): db/000005.sst
-read-at(52, 27): db/000005.sst
+read-at(739, 53): db/000005.sst
+read-at(702, 37): db/000005.sst
+read-at(74, 628): db/000005.sst
+read-at(47, 27): db/000005.sst
 open: db/000005.sst
 close: db/000005.sst
 open: db/000009.sst
-read-at(732, 53): db/000009.sst
-read-at(695, 37): db/000009.sst
-read-at(67, 628): db/000009.sst
-read-at(40, 27): db/000009.sst
+read-at(734, 53): db/000009.sst
+read-at(697, 37): db/000009.sst
+read-at(69, 628): db/000009.sst
+read-at(42, 27): db/000009.sst
 open: db/000009.sst
 close: db/000009.sst
 open: db/000007.sst
-read-at(744, 53): db/000007.sst
-read-at(707, 37): db/000007.sst
-read-at(79, 628): db/000007.sst
-read-at(52, 27): db/000007.sst
+read-at(739, 53): db/000007.sst
+read-at(702, 37): db/000007.sst
+read-at(74, 628): db/000007.sst
+read-at(47, 27): db/000007.sst
 open: db/000007.sst
 close: db/000007.sst
 open: db/000005.sst
-read-at(0, 52): db/000005.sst
+read-at(0, 47): db/000005.sst
 open: db/000007.sst
-read-at(0, 52): db/000007.sst
+read-at(0, 47): db/000007.sst
 create: db/000010.sst
 close: db/000005.sst
 open: db/000009.sst
-read-at(0, 40): db/000009.sst
+read-at(0, 42): db/000009.sst
 close: db/000007.sst
 close: db/000009.sst
 sync-data: db/000010.sst
@@ -307,7 +311,7 @@ CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000013.014
+marker.format-version.000014.015
 marker.manifest.000001.MANIFEST-000001
 
 list checkpoints/checkpoint1
@@ -317,7 +321,7 @@ list checkpoints/checkpoint1
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.014
+marker.format-version.000001.015
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint1 readonly
@@ -337,17 +341,17 @@ close: checkpoints/checkpoint1/000006.log
 scan checkpoints/checkpoint1
 ----
 open: checkpoints/checkpoint1/000007.sst
-read-at(744, 53): checkpoints/checkpoint1/000007.sst
-read-at(707, 37): checkpoints/checkpoint1/000007.sst
-read-at(79, 628): checkpoints/checkpoint1/000007.sst
-read-at(52, 27): checkpoints/checkpoint1/000007.sst
-read-at(0, 52): checkpoints/checkpoint1/000007.sst
+read-at(739, 53): checkpoints/checkpoint1/000007.sst
+read-at(702, 37): checkpoints/checkpoint1/000007.sst
+read-at(74, 628): checkpoints/checkpoint1/000007.sst
+read-at(47, 27): checkpoints/checkpoint1/000007.sst
+read-at(0, 47): checkpoints/checkpoint1/000007.sst
 open: checkpoints/checkpoint1/000005.sst
-read-at(744, 53): checkpoints/checkpoint1/000005.sst
-read-at(707, 37): checkpoints/checkpoint1/000005.sst
-read-at(79, 628): checkpoints/checkpoint1/000005.sst
-read-at(52, 27): checkpoints/checkpoint1/000005.sst
-read-at(0, 52): checkpoints/checkpoint1/000005.sst
+read-at(739, 53): checkpoints/checkpoint1/000005.sst
+read-at(702, 37): checkpoints/checkpoint1/000005.sst
+read-at(74, 628): checkpoints/checkpoint1/000005.sst
+read-at(47, 27): checkpoints/checkpoint1/000005.sst
+read-at(0, 47): checkpoints/checkpoint1/000005.sst
 a 1
 b 5
 c 3
@@ -382,7 +386,7 @@ list checkpoints/checkpoint2
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.014
+marker.format-version.000001.015
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint2 readonly
@@ -402,11 +406,11 @@ close: checkpoints/checkpoint2/000006.log
 scan checkpoints/checkpoint2
 ----
 open: checkpoints/checkpoint2/000007.sst
-read-at(744, 53): checkpoints/checkpoint2/000007.sst
-read-at(707, 37): checkpoints/checkpoint2/000007.sst
-read-at(79, 628): checkpoints/checkpoint2/000007.sst
-read-at(52, 27): checkpoints/checkpoint2/000007.sst
-read-at(0, 52): checkpoints/checkpoint2/000007.sst
+read-at(739, 53): checkpoints/checkpoint2/000007.sst
+read-at(702, 37): checkpoints/checkpoint2/000007.sst
+read-at(74, 628): checkpoints/checkpoint2/000007.sst
+read-at(47, 27): checkpoints/checkpoint2/000007.sst
+read-at(0, 47): checkpoints/checkpoint2/000007.sst
 b 5
 d 7
 e 8
@@ -422,7 +426,7 @@ list checkpoints/checkpoint3
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.014
+marker.format-version.000001.015
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint3 readonly
@@ -442,17 +446,17 @@ close: checkpoints/checkpoint3/000006.log
 scan checkpoints/checkpoint3
 ----
 open: checkpoints/checkpoint3/000007.sst
-read-at(744, 53): checkpoints/checkpoint3/000007.sst
-read-at(707, 37): checkpoints/checkpoint3/000007.sst
-read-at(79, 628): checkpoints/checkpoint3/000007.sst
-read-at(52, 27): checkpoints/checkpoint3/000007.sst
-read-at(0, 52): checkpoints/checkpoint3/000007.sst
+read-at(739, 53): checkpoints/checkpoint3/000007.sst
+read-at(702, 37): checkpoints/checkpoint3/000007.sst
+read-at(74, 628): checkpoints/checkpoint3/000007.sst
+read-at(47, 27): checkpoints/checkpoint3/000007.sst
+read-at(0, 47): checkpoints/checkpoint3/000007.sst
 open: checkpoints/checkpoint3/000005.sst
-read-at(744, 53): checkpoints/checkpoint3/000005.sst
-read-at(707, 37): checkpoints/checkpoint3/000005.sst
-read-at(79, 628): checkpoints/checkpoint3/000005.sst
-read-at(52, 27): checkpoints/checkpoint3/000005.sst
-read-at(0, 52): checkpoints/checkpoint3/000005.sst
+read-at(739, 53): checkpoints/checkpoint3/000005.sst
+read-at(702, 37): checkpoints/checkpoint3/000005.sst
+read-at(74, 628): checkpoints/checkpoint3/000005.sst
+read-at(47, 27): checkpoints/checkpoint3/000005.sst
+read-at(0, 47): checkpoints/checkpoint3/000005.sst
 a 1
 b 5
 c 3
