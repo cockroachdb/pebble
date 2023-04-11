@@ -60,11 +60,11 @@ const (
 	InternalKeyKindRangeKeyUnset InternalKeyKind = 20
 	InternalKeyKindRangeKeySet   InternalKeyKind = 21
 
-	// InternalKeyIngestSST is used to distinguish a batch that corresponds to
+	// InternalKeyKindIngestSST is used to distinguish a batch that corresponds to
 	// the WAL entry for ingested sstables that are added to the flushable
 	// queue. This InternalKeyKind cannot appear, amongst other key kinds in a
 	// batch, or in an sstable.
-	InternalKeyIngestSST InternalKeyKind = 22
+	InternalKeyKindIngestSST InternalKeyKind = 22
 
 	// This maximum value isn't part of the file format. It's unlikely,
 	// but future extensions may increase this value.
@@ -117,7 +117,7 @@ var internalKeyKindNames = []string{
 	InternalKeyKindRangeKeySet:    "RANGEKEYSET",
 	InternalKeyKindRangeKeyUnset:  "RANGEKEYUNSET",
 	InternalKeyKindRangeKeyDelete: "RANGEKEYDEL",
-	InternalKeyIngestSST:          "INGESTSST",
+	InternalKeyKindIngestSST:      "INGESTSST",
 	InternalKeyKindInvalid:        "INVALID",
 }
 
