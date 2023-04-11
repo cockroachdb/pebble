@@ -265,6 +265,13 @@ type Batch struct {
 	// then it will only contain key kinds of IngestSST.
 	ingestedSSTBatch bool
 
+	// minimumFormatMajorVersion indicates the format major version required in
+	// order to commit this batch. If an operation requires a particular format
+	// major version, it ratchets the batch's minimumFormatMajorVersion. When
+	// the batch is committed, this is validated against the database's current
+	// format major version.
+	minimumFormatMajorVersion FormatMajorVersion
+
 	// Synchronous Apply uses the commit WaitGroup for both publishing the
 	// seqnum and waiting for the WAL fsync (if needed). Asynchronous
 	// ApplyNoSyncWait, which implies WriteOptions.Sync is true, uses the commit
@@ -413,6 +420,7 @@ func (b *Batch) refreshMemTableSize() {
 
 	b.countRangeDels = 0
 	b.countRangeKeys = 0
+	b.minimumFormatMajorVersion = 0x00
 	for r := b.Reader(); ; {
 		kind, key, value, ok := r.Next()
 		if !ok {
@@ -423,11 +431,21 @@ func (b *Batch) refreshMemTableSize() {
 			b.countRangeDels++
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 			b.countRangeKeys++
+		case InternalKeyKindDeleteSized:
+			if b.minimumFormatMajorVersion < FormatDeleteSized {
+				b.minimumFormatMajorVersion = FormatDeleteSized
+			}
 		case InternalKeyKindIngestSST:
+			if b.minimumFormatMajorVersion < FormatFlushableIngest {
+				b.minimumFormatMajorVersion = FormatFlushableIngest
+			}
 			// This key kind doesn't contribute to the memtable size.
 			continue
 		}
 		b.memTableSize += memTableEntrySize(len(key), len(value))
+	}
+	if b.countRangeKeys > 0 && b.minimumFormatMajorVersion < FormatRangeKeys {
+		b.minimumFormatMajorVersion = FormatRangeKeys
 	}
 }
 
@@ -680,6 +698,73 @@ func (b *Batch) DeleteDeferred(keyLen int) *DeferredBatchOp {
 	return &b.deferredOp
 }
 
+// DeleteSized behaves identically to Delete, but takes an additional
+// argument indicating the size of the value being deleted. DeleteSized
+// should be preferred when the caller has the expectation that there exists
+// a single internal KV pair for the key (eg, the key has not been
+// overwritten recently), and the caller knows the size of its value.
+//
+// DeleteSized will record the value size within the tombstone and use it
+// inform compaction-picking heuristics which strive to reduce space
+// amplification in the LSM. This "calling your shot" mechanic allows the
+// storage engine to more accurately estimate and reduce space
+// amplification.
+//
+// It is safe to modify the contents of the arguments after DeleteSized
+// returns.
+func (b *Batch) DeleteSized(key []byte, deletedValueSize uint32, _ *WriteOptions) error {
+	deferredOp := b.DeleteSizedDeferred(len(key), deletedValueSize)
+	copy(b.deferredOp.Key, key)
+	// TODO(peter): Manually inline DeferredBatchOp.Finish(). Check if in a
+	// later Go release this is unnecessary.
+	if b.index != nil {
+		if err := b.index.Add(deferredOp.offset); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteSizedDeferred is similar to DeleteSized in that it adds a sized delete
+// operation to the batch, except it only takes in key length instead of a
+// complete key slice, letting the caller encode into the DeferredBatchOp.Key
+// slice and then call Finish() on the returned object.
+func (b *Batch) DeleteSizedDeferred(keyLen int, deletedValueSize uint32) *DeferredBatchOp {
+	if b.minimumFormatMajorVersion < FormatDeleteSized {
+		b.minimumFormatMajorVersion = FormatDeleteSized
+	}
+
+	// Encode the sum of the key length and the value in the value.
+	v := uint64(deletedValueSize) + uint64(keyLen)
+
+	// Encode `v` as a varint.
+	var buf [binary.MaxVarintLen64]byte
+	n := 0
+	{
+		x := v
+		for x >= 0x80 {
+			buf[n] = byte(x) | 0x80
+			x >>= 7
+			n++
+		}
+		buf[n] = byte(x)
+		n++
+	}
+
+	// NB: In batch entries and sstable entries, values are stored as
+	// varstrings. Here, the value is itself a simple varint. This results in an
+	// unnecessary double layer of encoding:
+	//     varint(n) varint(deletedValueSize)
+	// The first varint will always be 1-byte, since a varint-encoded uint64
+	// will never exceed 128 bytes. This unnecessary extra byte and wrapping is
+	// preserved to avoid special casing across the database, and in particular
+	// in sstable block decoding which is performance sensitive.
+	b.prepareDeferredKeyValueRecord(keyLen, n, InternalKeyKindDeleteSized)
+	b.deferredOp.index = b.index
+	copy(b.deferredOp.Value, buf[:n])
+	return &b.deferredOp
+}
+
 // SingleDelete adds an action to the batch that single deletes the entry for key.
 // See Writer.SingleDelete for more details on the semantics of SingleDelete.
 //
@@ -782,6 +867,9 @@ func (b *Batch) rangeKeySetDeferred(startLen, internalValueLen int) *DeferredBat
 
 func (b *Batch) incrementRangeKeysCount() {
 	b.countRangeKeys++
+	if b.minimumFormatMajorVersion < FormatRangeKeys {
+		b.minimumFormatMajorVersion = FormatRangeKeys
+	}
 	if b.index != nil {
 		b.rangeKeys = nil
 		b.rangeKeysSeqNum = 0
@@ -895,6 +983,7 @@ func (b *Batch) ingestSST(fileNum base.FileNum) {
 	// is not reset because for the InternalKeyKindIngestSST the count is the
 	// number of sstable paths which have been added to the batch.
 	b.memTableSize = origMemTableSize
+	b.minimumFormatMajorVersion = FormatFlushableIngest
 }
 
 // Empty returns true if the batch is empty, and false otherwise.
@@ -1199,6 +1288,7 @@ func (b *Batch) Reset() {
 	b.commitStats = BatchCommitStats{}
 	b.commitErr = nil
 	b.applied.Store(false)
+	b.minimumFormatMajorVersion = 0x00
 	if b.data != nil {
 		if cap(b.data) > batchMaxRetainedSize {
 			// If the capacity of the buffer is larger than our maximum
@@ -1365,7 +1455,8 @@ func (r *BatchReader) Next() (kind InternalKeyKind, ukey []byte, value []byte, o
 	}
 	switch kind {
 	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete,
-		InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+		InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete,
+		InternalKeyKindDeleteSized:
 		*r, value, ok = batchDecodeStr(*r)
 		if !ok {
 			return 0, nil, nil, false
@@ -1500,7 +1591,8 @@ func (i *batchIter) value() []byte {
 
 	switch InternalKeyKind(data[offset]) {
 	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete,
-		InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+		InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete,
+		InternalKeyKindDeleteSized:
 		_, value, ok := batchDecodeStr(data[keyEnd:])
 		if !ok {
 			return nil
@@ -1944,7 +2036,8 @@ func (i *flushableBatchIter) value() base.LazyValue {
 	var ok bool
 	switch kind {
 	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete,
-		InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+		InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete,
+		InternalKeyKindDeleteSized:
 		keyEnd := i.offsets[i.index].keyEnd
 		_, value, ok = batchDecodeStr(i.data[keyEnd:])
 		if !ok {

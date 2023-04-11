@@ -6,6 +6,7 @@ package tool
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -145,6 +146,9 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 						fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
 					case base.InternalKeyKindRangeDelete:
 						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtKey.fn(value))
+					case base.InternalKeyKindDeleteSized:
+						v, _ := binary.Uvarint(value)
+						fmt.Fprintf(stdout, "%s,%d", w.fmtKey.fn(ukey), v)
 					}
 					fmt.Fprintf(stdout, ")\n")
 				}

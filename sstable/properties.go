@@ -108,6 +108,9 @@ type Properties struct {
 	// The number of deletion entries in this table, including both point and
 	// range deletions.
 	NumDeletions uint64 `prop:"rocksdb.deleted.keys"`
+	// The number of point deletion entries ("tombstones") in this table that
+	// carry a size hint indicating the size of the value the tombstone deletes.
+	NumSizedDeletions uint64 `prop:"pebble.num.deletions.sized"`
 	// The number of entries in this table.
 	NumEntries uint64 `prop:"rocksdb.num.entries"`
 	// The number of merge operands in the table.
@@ -139,6 +142,10 @@ type Properties struct {
 	// Total raw key size of point deletion tombstones. This value is comparable
 	// to RawKeySize.
 	RawPointTombstoneKeySize uint64 `prop:"pebble.raw.point-tombstone.key.size"`
+	// Sum of the raw value sizes carried by point deletion tombstones
+	// containing size estimates. See the DeleteSized key kind. This value is
+	// comparable to Raw{Key,Value}Size.
+	RawPointTombstoneValueSizeHint uint64 `prop:"pebble.raw.point-tombstone.value.size"`
 	// Total raw rangekey key size.
 	RawRangeKeyKeySize uint64 `prop:"pebble.raw.range-key.key.size"`
 	// Total raw rangekey value size.
@@ -348,14 +355,20 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	p.saveUvarint(m, unsafe.Offsetof(p.NumDataBlocks), p.NumDataBlocks)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumEntries), p.NumEntries)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumDeletions), p.NumDeletions)
+	// NB: We only write out some properties for Pebble formats. This isn't
+	// strictly necessary because unrecognized properties are interpreted as
+	// user-defined properties, however writing them prevents byte-for-byte
+	// equivalence with RocksDB files that some of our testing requires.
+	if p.NumSizedDeletions > 0 && tblFormat >= TableFormatPebblev1 {
+		p.saveUvarint(m, unsafe.Offsetof(p.NumSizedDeletions), p.NumSizedDeletions)
+	}
 	p.saveUvarint(m, unsafe.Offsetof(p.NumMergeOperands), p.NumMergeOperands)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumRangeDeletions), p.NumRangeDeletions)
-	// NB: We only write out the RawTombstoneKeySize for Pebble formats. This
-	// isn't strictly necessary because unrecognized properties are interpreted
-	// as user-defined properties, however writing them prevents byte-for-byte
-	// equivalence with RocksDB files that some of our testing requires.
 	if p.RawPointTombstoneKeySize > 0 && tblFormat >= TableFormatPebblev1 {
 		p.saveUvarint(m, unsafe.Offsetof(p.RawPointTombstoneKeySize), p.RawPointTombstoneKeySize)
+	}
+	if p.RawPointTombstoneValueSizeHint > 0 && tblFormat >= TableFormatPebblev1 {
+		p.saveUvarint(m, unsafe.Offsetof(p.RawPointTombstoneValueSizeHint), p.RawPointTombstoneValueSizeHint)
 	}
 	if p.NumRangeKeys() > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeKeyDels), p.NumRangeKeyDels)

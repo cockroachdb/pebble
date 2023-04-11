@@ -12,6 +12,7 @@ package replay
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -1036,6 +1037,9 @@ func loadFlushedSSTableKeys(
 		switch bufs.keys[i].Kind() {
 		case base.InternalKeyKindDelete:
 			err = b.Delete(bufs.keys[i].UserKey, nil)
+		case base.InternalKeyKindDeleteSized:
+			v, _ := binary.Uvarint(bufs.keys[i].value)
+			err = b.DeleteSized(bufs.keys[i].UserKey, uint32(v-uint64(len(bufs.keys[i].UserKey))), nil)
 		case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
 			err = b.Set(bufs.keys[i].UserKey, bufs.keys[i].value, nil)
 		case base.InternalKeyKindMerge:

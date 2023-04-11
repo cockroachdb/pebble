@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"sort"
@@ -386,7 +387,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 		}
 
 		switch i.iterKey.Kind() {
-		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 			if i.elideTombstone(i.iterKey.UserKey) {
 				if i.curSnapshotIdx == 0 {
 					// If we're at the last snapshot stripe and the tombstone
@@ -409,6 +410,12 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				i.valid = true
 				i.skip = true
 				return &i.key, i.value
+
+			case InternalKeyKindDeleteSized:
+				// We may skip subsequent keys because of this tombstone. Scan
+				// ahead to see just how much data this tombstone drops and if
+				// the tombstone's value should be updated accordingly.
+				return i.deleteSizedNext()
 
 			case InternalKeyKindSingleDelete:
 				if i.singleDeleteNext() {
@@ -686,11 +693,12 @@ func (i *compactionIter) setNext() {
 			i.skip = true
 			return
 		case sameStripeSkippable:
-			// We're still in the same stripe. If this is a DEL/SINGLEDEL, we
-			// stop looking and emit a SETWITHDEL. Subsequent keys are
-			// eligible for skipping.
+			// We're still in the same stripe. If this is a
+			// DEL/SINGLEDEL/DELSIZED, we stop looking and emit a SETWITHDEL.
+			// Subsequent keys are eligible for skipping.
 			if i.iterKey.Kind() == InternalKeyKindDelete ||
-				i.iterKey.Kind() == InternalKeyKindSingleDelete {
+				i.iterKey.Kind() == InternalKeyKindSingleDelete ||
+				i.iterKey.Kind() == InternalKeyKindDeleteSized {
 				i.key.SetKind(InternalKeyKindSetWithDelete)
 				i.skip = true
 				return
@@ -715,7 +723,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 		}
 		key := i.iterKey
 		switch key.Kind() {
-		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 			// We've hit a deletion tombstone. Return everything up to this point and
 			// then skip entries until the next snapshot stripe. We change the kind
 			// of the result key to a Set so that it shadows keys in lower
@@ -802,9 +810,9 @@ func (i *compactionIter) singleDeleteNext() bool {
 
 		key := i.iterKey
 		switch key.Kind() {
-		case InternalKeyKindDelete, InternalKeyKindMerge, InternalKeyKindSetWithDelete:
-			// We've hit a Delete, Merge or SetWithDelete, transform the
-			// SingleDelete into a full Delete.
+		case InternalKeyKindDelete, InternalKeyKindMerge, InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
+			// We've hit a Delete, DeleteSized, Merge, SetWithDelete, transform
+			// the SingleDelete into a full Delete.
 			i.key.SetKind(InternalKeyKindDelete)
 			i.skip = true
 			return true
@@ -823,6 +831,105 @@ func (i *compactionIter) singleDeleteNext() bool {
 			return false
 		}
 	}
+}
+
+// deleteSizedNext processes a DELSIZED point tombstone. Unlike ordinary DELs,
+// these tombstones carry a value that's a varint indicating the size of the
+// entry (len(key)+len(value)) that the tombstone is expected to delete.
+//
+// When a deleteSizedNext is encountered, we skip ahead to see which keys, if
+// any, are elided as a result of the tombstone.
+func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
+	i.saveKey()
+	i.valid = true
+	i.skip = true
+
+	// The DELSIZED tombstone may have no value at all. This happens when the
+	// tombstone has already deleted the key that the user originally predicted.
+	// In this case, we still peek forward in case there's another DELSIZED key
+	// with a lower sequence number, in which case we'll adopt its value.
+	if len(i.value) == 0 {
+		i.value = i.valueBuf[:0]
+	} else {
+		i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
+		i.value = i.valueBuf
+	}
+
+	// Loop through all the keys within this stripe that are skippable,
+	// totalling the size of their keys and values.
+	i.pos = iterPosNext
+	var elidedSize uint64
+	for i.nextInStripe() == sameStripeSkippable {
+		elidedSize += uint64(len(i.iterKey.UserKey)) + uint64(len(i.iterValue))
+
+		if i.iterKey.Kind() == InternalKeyKindDeleteSized {
+			// We encountered a DELSIZED that's deleted by the original
+			// DELSIZED. These tombstones could've been intended to delete two
+			// distinct values, eg:
+			//
+			//     a.DELSIZED.9   a.SET.7   a.DELSIZED.5   a.SET.4
+			//
+			// If a.DELSIZED.9 has already deleted a.SET.7, its size has already
+			// been zeroed out. In this case, we want to adopt the value of the
+			// DELSIZED with the lower sequence number, in case the a.SET.4 key
+			// has not yet been elided.
+			i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
+			i.value = i.valueBuf
+			// Reset the elided total.
+			elidedSize = 0
+		}
+	}
+	if i.iterStripeChange == newStripeNewKey || i.iterStripeChange == newStripeSameKey {
+		i.skip = false
+	}
+
+	if elidedSize == 0 {
+		// If we didn't find any keys that we could elide due to this tombstone
+		// (or at least none since the last DELSIZED encountered), we can return
+		// the key and our existing saved value verbatim.
+		return &i.key, i.value
+	}
+
+	// Some key(s) were elided as a result of this tombstone. Decode the
+	// tombstone's value to see if it matches the amount of data actually
+	// elided.
+	var v uint64
+	if len(i.value) > 0 {
+		var n int
+		v, n = binary.Uvarint(i.value)
+		if n != len(i.value) {
+			i.err = base.CorruptionErrorf("DELSIZED holds invalid value: %x", errors.Safe(i.value))
+			i.valid = false
+			return nil, nil
+		}
+	}
+
+	// If the user's prediction of the value size was correct, then from now on
+	// it's predicted to delete nothing. Return an empty value.
+	//
+	// NB: It's important that we still always return the tombstone, because
+	// DELSIZED's values are a best effort optimization, not a correctness
+	// mechanic. There is no guarantee that this key was only set once before
+	// the DELSIZED was written.
+
+	// If the tombstone carried a larger size than what was actually elided,
+	// it's unclear what to do. The user-provided size was wrong, so it's
+	// unlikely to be accurate or meaningful. We could:
+	//
+	//   1. return the DELSIZED with the original user-provided size unmodified
+	//   2. return the DELZIZED with a zeroed size to reflect that a key was
+	//      elided, even if it wasn't the anticipated size.
+	//   3. subtract the elided size from the estimate and re-encode.
+	//   4. convert the DELSIZED into a value-less DEL, so that ordinary DEL
+	//      heuristics apply.
+	//
+	// We opt for (4) under the rationale that we can't rely on the
+	// user-provided size for accuracy, so ordinary DEL heuristics are safer.
+	i.value = i.valueBuf[:0]
+	if elidedSize != v {
+		i.key.SetKind(InternalKeyKindDelete)
+	}
+	return &i.key, i.value
 }
 
 func (i *compactionIter) saveKey() {

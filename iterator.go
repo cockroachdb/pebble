@@ -568,7 +568,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			i.iterValidityState = IterValid
 			return
 
-		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 			i.nextUserKey()
 			continue
 
@@ -631,7 +631,7 @@ func (i *Iterator) nextPointCurrentUserKey() bool {
 		i.err = base.CorruptionErrorf("pebble: unexpected range key set mid-user key")
 		return false
 
-	case InternalKeyKindDelete, InternalKeyKindSingleDelete:
+	case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 		return false
 
 	case InternalKeyKindSet, InternalKeyKindSetWithDelete:
@@ -929,7 +929,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// return the key even if the MERGE point key is deleted.
 			rangeKeyBoundary = true
 
-		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 			i.value = LazyValue{}
 			i.iterValidityState = IterExhausted
 			valueMerger = nil
@@ -1092,7 +1092,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 			return
 		}
 		switch key.Kind() {
-		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 			// We've hit a deletion tombstone. Return everything up to this
 			// point.
 			return

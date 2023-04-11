@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -190,11 +191,26 @@ type deleteOp struct {
 
 func (o *deleteOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
-	err := w.Delete(o.key, t.writeOpts)
+	var err error
+	if t.testOpts.deleteSized && t.isFMV(pebble.FormatDeleteSized) {
+		// Call DeleteSized with a deterministic size derived from the index.
+		// The size does not need to be accurate for correctness.
+		err = w.DeleteSized(o.key, hashSize(t.idx), t.writeOpts)
+	} else {
+		err = w.Delete(o.key, t.writeOpts)
+	}
 	h.Recordf("%s // %v", o, err)
 }
 
-func (o *deleteOp) String() string       { return fmt.Sprintf("%s.Delete(%q)", o.writerID, o.key) }
+func hashSize(index int) uint32 {
+	const maxSize = 16 << 10 /* 16 KB */
+	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
+	return uint32((11400714819323198485 * uint64(index)) % maxSize)
+}
+
+func (o *deleteOp) String() string {
+	return fmt.Sprintf("%s.Delete(%q)", o.writerID, o.key)
+}
 func (o *deleteOp) receiver() objID      { return o.writerID }
 func (o *deleteOp) syncObjs() objIDSlice { return nil }
 
@@ -591,6 +607,9 @@ func (o *ingestOp) collapseBatch(
 			switch key.Kind() {
 			case pebble.InternalKeyKindDelete:
 				err = collapsed.Delete(key.UserKey, nil)
+			case pebble.InternalKeyKindDeleteSized:
+				v, _ := binary.Uvarint(value.InPlaceValue())
+				err = collapsed.DeleteSized(key.UserKey, uint32(v-uint64(len(key.UserKey))), nil)
 			case pebble.InternalKeyKindSingleDelete:
 				err = collapsed.SingleDelete(key.UserKey, nil)
 			case pebble.InternalKeyKindSet:

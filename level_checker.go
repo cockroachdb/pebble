@@ -165,7 +165,7 @@ func (m *simpleMergingIter) step() bool {
 		if m.valueMerger != nil {
 			// Ongoing series of MERGE records.
 			switch item.key.Kind() {
-			case InternalKeyKindSingleDelete, InternalKeyKindDelete:
+			case InternalKeyKindSingleDelete, InternalKeyKindDelete, InternalKeyKindDeleteSized:
 				var closer io.Closer
 				_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
 				if m.err == nil && closer != nil {

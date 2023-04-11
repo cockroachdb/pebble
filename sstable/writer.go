@@ -932,7 +932,22 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	switch key.Kind() {
 	case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 		w.props.NumDeletions++
-		w.props.RawPointTombstoneKeySize += uint64(key.Size())
+		w.props.RawPointTombstoneKeySize += uint64(len(key.UserKey))
+	case InternalKeyKindDeleteSized:
+		var size uint64
+		if len(value) > 0 {
+			var n int
+			size, n = binary.Uvarint(value)
+			if n <= 0 {
+				w.err = errors.Newf("%s key's value (%x) does not parse as uvarint",
+					errors.Safe(key.Kind().String()), value)
+				return w.err
+			}
+		}
+		w.props.NumDeletions++
+		w.props.NumSizedDeletions++
+		w.props.RawPointTombstoneKeySize += uint64(len(key.UserKey))
+		w.props.RawPointTombstoneValueSizeHint += size
 	case InternalKeyKindMerge:
 		w.props.NumMergeOperands++
 	}

@@ -220,7 +220,7 @@ func (p *pointCollapsingIterator) findNextEntry() (*base.InternalKey, base.LazyV
 			continue
 		}
 		switch p.savedKey.Kind() {
-		case InternalKeyKindSet, InternalKeyKindDelete, InternalKeyKindSetWithDelete:
+		case InternalKeyKindSet, InternalKeyKindDelete, InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
 			p.saveKey()
 			// Note that we return SETs directly, even if they would otherwise get
 			// compacted into a Del to turn into a SetWithDelete. This is a fast

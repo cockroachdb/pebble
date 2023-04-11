@@ -96,6 +96,22 @@ type Writer interface {
 	// It is safe to modify the contents of the arguments after Delete returns.
 	Delete(key []byte, o *WriteOptions) error
 
+	// DeleteSized behaves identically to Delete, but takes an additional
+	// argument indicating the size of the value being deleted. DeleteSized
+	// should be preferred when the caller has the expectation that there exists
+	// a single internal KV pair for the key (eg, the key has not been
+	// overwritten recently), and the caller knows the size of its value.
+	//
+	// DeleteSized will record the value size within the tombstone and use it
+	// inform compaction-picking heuristics which strive to reduce space
+	// amplification in the LSM. This "calling your shot" mechanic allows the
+	// storage engine to more accurately estimate and reduce space
+	// amplification.
+	//
+	// It is safe to modify the contents of the arguments after DeleteSized
+	// returns.
+	DeleteSized(key []byte, valueSize uint32, _ *WriteOptions) error
+
 	// SingleDelete is similar to Delete in that it deletes the value for the given key. Like Delete,
 	// it is a blind operation that will succeed even if the given key does not exist.
 	//
@@ -620,6 +636,31 @@ func (d *DB) Delete(key []byte, opts *WriteOptions) error {
 	return nil
 }
 
+// DeleteSized behaves identically to Delete, but takes an additional
+// argument indicating the size of the value being deleted. DeleteSized
+// should be preferred when the caller has the expectation that there exists
+// a single internal KV pair for the key (eg, the key has not been
+// overwritten recently), and the caller knows the size of its value.
+//
+// DeleteSized will record the value size within the tombstone and use it
+// inform compaction-picking heuristics which strive to reduce space
+// amplification in the LSM. This "calling your shot" mechanic allows the
+// storage engine to more accurately estimate and reduce space
+// amplification.
+//
+// It is safe to modify the contents of the arguments after DeleteSized
+// returns.
+func (d *DB) DeleteSized(key []byte, valueSize uint32, opts *WriteOptions) error {
+	b := newBatch(d)
+	_ = b.DeleteSized(key, valueSize, opts)
+	if err := d.Apply(b, opts); err != nil {
+		return err
+	}
+	// Only release the batch on success.
+	b.release()
+	return nil
+}
+
 // SingleDelete adds an action to the batch that single deletes the entry for key.
 // See Writer.SingleDelete for more details on the semantics of SingleDelete.
 //
@@ -786,17 +827,19 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 		return errors.New("pebble: WAL disabled")
 	}
 
+	if batch.minimumFormatMajorVersion != FormatMostCompatible {
+		if fmv := d.FormatMajorVersion(); fmv < batch.minimumFormatMajorVersion {
+			panic(fmt.Sprintf(
+				"pebble: batch requires at least format major version %d (current: %d)",
+				batch.minimumFormatMajorVersion, fmv,
+			))
+		}
+	}
+
 	if batch.countRangeKeys > 0 {
 		if d.split == nil {
 			return errNoSplit
 		}
-		if d.FormatMajorVersion() < FormatRangeKeys {
-			panic(fmt.Sprintf(
-				"pebble: range keys require at least format major version %d (current: %d)",
-				FormatRangeKeys, d.FormatMajorVersion(),
-			))
-		}
-
 		// TODO(jackson): Assert that all range key operands are suffixless.
 	}
 

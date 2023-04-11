@@ -151,6 +151,12 @@ const (
 	// compactions for files marked for compaction are complete.
 	FormatPrePebblev1MarkedCompacted
 
+	// FormatDeleteSized is a format major version that adds support for
+	// deletion tombstones that encode the size of the value they're expected to
+	// delete. This format major version is required before the associated key
+	// kind may be committed through batch applications or ingests.
+	FormatDeleteSized
+
 	// FormatNewest always contains the most recent format major version.
 	FormatNewest FormatMajorVersion = iota - 1
 )
@@ -170,6 +176,8 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev2
 	case FormatSSTableValueBlocks, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev3
+	case FormatDeleteSized:
+		return sstable.TableFormatPebblev4
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
 	}
@@ -186,7 +194,8 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 		return sstable.TableFormatLevelDB
 	case FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
 		FormatUnusedPrePebblev1MarkedCompacted, FormatSSTableValueBlocks,
-		FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
+		FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
+		FormatDeleteSized:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -318,6 +327,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 			return err
 		}
 		return d.finalizeFormatVersUpgrade(FormatPrePebblev1MarkedCompacted)
+	},
+	FormatDeleteSized: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatDeleteSized)
 	},
 }
 

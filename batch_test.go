@@ -32,6 +32,7 @@ func TestBatch(t *testing.T) {
 	type testCase struct {
 		kind       InternalKeyKind
 		key, value string
+		valueInt   uint32
 	}
 
 	verifyTestCases := func(b *Batch, testCases []testCase) {
@@ -68,31 +69,33 @@ func TestBatch(t *testing.T) {
 	// deferred variants. This is a consequence of these keys' more complex
 	// value encodings.
 	testCases := []testCase{
-		{InternalKeyKindIngestSST, encodeFileNum(1), ""},
-		{InternalKeyKindSet, "roses", "red"},
-		{InternalKeyKindSet, "violets", "blue"},
-		{InternalKeyKindDelete, "roses", ""},
-		{InternalKeyKindSingleDelete, "roses", ""},
-		{InternalKeyKindSet, "", ""},
-		{InternalKeyKindSet, "", "non-empty"},
-		{InternalKeyKindDelete, "", ""},
-		{InternalKeyKindSingleDelete, "", ""},
-		{InternalKeyKindSet, "grass", "green"},
-		{InternalKeyKindSet, "grass", "greener"},
-		{InternalKeyKindSet, "eleventy", strings.Repeat("!!11!", 100)},
-		{InternalKeyKindDelete, "nosuchkey", ""},
-		{InternalKeyKindSingleDelete, "nosuchkey", ""},
-		{InternalKeyKindSet, "binarydata", "\x00"},
-		{InternalKeyKindSet, "binarydata", "\xff"},
-		{InternalKeyKindMerge, "merge", "mergedata"},
-		{InternalKeyKindMerge, "merge", ""},
-		{InternalKeyKindMerge, "", ""},
-		{InternalKeyKindRangeDelete, "a", "b"},
-		{InternalKeyKindRangeDelete, "", ""},
-		{InternalKeyKindLogData, "logdata", ""},
-		{InternalKeyKindLogData, "", ""},
-		{InternalKeyKindRangeKeyDelete, "grass", "green"},
-		{InternalKeyKindRangeKeyDelete, "", ""},
+		{InternalKeyKindIngestSST, encodeFileNum(1), "", 0},
+		{InternalKeyKindSet, "roses", "red", 0},
+		{InternalKeyKindSet, "violets", "blue", 0},
+		{InternalKeyKindDelete, "roses", "", 0},
+		{InternalKeyKindSingleDelete, "roses", "", 0},
+		{InternalKeyKindSet, "", "", 0},
+		{InternalKeyKindSet, "", "non-empty", 0},
+		{InternalKeyKindDelete, "", "", 0},
+		{InternalKeyKindSingleDelete, "", "", 0},
+		{InternalKeyKindSet, "grass", "green", 0},
+		{InternalKeyKindSet, "grass", "greener", 0},
+		{InternalKeyKindSet, "eleventy", strings.Repeat("!!11!", 100), 0},
+		{InternalKeyKindDelete, "nosuchkey", "", 0},
+		{InternalKeyKindDeleteSized, "eleventy", string(binary.AppendUvarint([]byte(nil), 508)), 500},
+		{InternalKeyKindSingleDelete, "nosuchkey", "", 0},
+		{InternalKeyKindSet, "binarydata", "\x00", 0},
+		{InternalKeyKindSet, "binarydata", "\xff", 0},
+		{InternalKeyKindMerge, "merge", "mergedata", 0},
+		{InternalKeyKindMerge, "merge", "", 0},
+		{InternalKeyKindMerge, "", "", 0},
+		{InternalKeyKindRangeDelete, "a", "b", 0},
+		{InternalKeyKindRangeDelete, "", "", 0},
+		{InternalKeyKindLogData, "logdata", "", 0},
+		{InternalKeyKindLogData, "", "", 0},
+		{InternalKeyKindRangeKeyDelete, "grass", "green", 0},
+		{InternalKeyKindRangeKeyDelete, "", "", 0},
+		{InternalKeyKindDeleteSized, "nosuchkey", string(binary.AppendUvarint([]byte(nil), 11)), 2},
 	}
 	var b Batch
 	for _, tc := range testCases {
@@ -103,6 +106,8 @@ func TestBatch(t *testing.T) {
 			_ = b.Merge([]byte(tc.key), []byte(tc.value), nil)
 		case InternalKeyKindDelete:
 			_ = b.Delete([]byte(tc.key), nil)
+		case InternalKeyKindDeleteSized:
+			_ = b.DeleteSized([]byte(tc.key), tc.valueInt, nil)
 		case InternalKeyKindSingleDelete:
 			_ = b.SingleDelete([]byte(tc.key), nil)
 		case InternalKeyKindRangeDelete:
@@ -138,6 +143,10 @@ func TestBatch(t *testing.T) {
 			d := b.DeleteDeferred(len(key))
 			copy(d.Key, key)
 			copy(d.Value, value)
+			d.Finish()
+		case InternalKeyKindDeleteSized:
+			d := b.DeleteSizedDeferred(len(tc.key), tc.valueInt)
+			copy(d.Key, key)
 			d.Finish()
 		case InternalKeyKindSingleDelete:
 			d := b.SingleDeleteDeferred(len(key))
@@ -334,6 +343,7 @@ func TestBatchReset(t *testing.T) {
 	require.Equal(t, batchHeaderLen, len(b.data))
 	require.Equal(t, uint64(0), b.SeqNum())
 	require.Equal(t, uint64(0), b.memTableSize)
+	require.Equal(t, FormatMajorVersion(0x00), b.minimumFormatMajorVersion)
 	require.Equal(t, b.deferredOp, DeferredBatchOp{})
 	_ = b.Repr()
 
