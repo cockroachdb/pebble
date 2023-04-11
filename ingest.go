@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"sort"
 	"time"
 
@@ -522,10 +523,11 @@ func ingestTargetLevel(
 		iter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
 			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), nil)
 
-		var rangeDelIter keyspan.FragmentIterator
-		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
-		// sets it up for the target file.
-		iter.initRangeDel(&rangeDelIter)
+		rangeDelIter := keyspan.LevelIter{}
+		rangeDelIter.Init(keyspan.SpanIterOptions{RangeKeyFilters: iterOps.RangeKeyFilters}, cmp,
+			tableNewRangeDelIter(context.Background(), newIters), v.L0Sublevels.Levels[subLevel].Iter(),
+			manifest.Level(0), manifest.KeyTypePoint)
+		fragmentRangeDelIter := keyspan.FragmentIterator(&rangeDelIter)
 
 		levelIter := keyspan.LevelIter{}
 		levelIter.Init(
@@ -533,8 +535,9 @@ func ingestTargetLevel(
 			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), manifest.KeyTypeRange,
 		)
 
-		overlap := overlapWithIterator(iter, &rangeDelIter, &levelIter, meta, cmp)
-		err := iter.Close() // Closes range del iter as well.
+		overlap := overlapWithIterator(iter, &fragmentRangeDelIter, &levelIter, meta, cmp)
+		err := iter.Close()
+		err = firstError(err, fragmentRangeDelIter.Close())
 		err = firstError(err, levelIter.Close())
 		if err != nil {
 			return 0, err
@@ -548,10 +551,12 @@ func ingestTargetLevel(
 	for ; level < numLevels; level++ {
 		levelIter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
 			v.Levels[level].Iter(), manifest.Level(level), nil)
-		var rangeDelIter keyspan.FragmentIterator
-		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
-		// sets it up for the target file.
-		levelIter.initRangeDel(&rangeDelIter)
+
+		rangeDelIter := keyspan.LevelIter{}
+		rangeDelIter.Init(keyspan.SpanIterOptions{RangeKeyFilters: iterOps.RangeKeyFilters}, cmp,
+			tableNewRangeDelIter(context.Background(), newIters), v.Levels[level].Iter(),
+			manifest.Level(0), manifest.KeyTypePoint)
+		fragmentRangeDelIter := keyspan.FragmentIterator(&rangeDelIter)
 
 		rkeyLevelIter := &keyspan.LevelIter{}
 		rkeyLevelIter.Init(
@@ -559,8 +564,9 @@ func ingestTargetLevel(
 			v.Levels[level].Iter(), manifest.Level(level), manifest.KeyTypeRange,
 		)
 
-		overlap := overlapWithIterator(levelIter, &rangeDelIter, rkeyLevelIter, meta, cmp)
-		err := levelIter.Close() // Closes range del iter as well.
+		overlap := overlapWithIterator(levelIter, &fragmentRangeDelIter, rkeyLevelIter, meta, cmp)
+		err := levelIter.Close()
+		err = firstError(err, fragmentRangeDelIter.Close())
 		err = firstError(err, rkeyLevelIter.Close())
 		if err != nil {
 			return 0, err
