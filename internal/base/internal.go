@@ -194,6 +194,7 @@ var kindsMap = map[string]InternalKeyKind{
 	"DEL":           InternalKeyKindDelete,
 	"SINGLEDEL":     InternalKeyKindSingleDelete,
 	"RANGEDEL":      InternalKeyKindRangeDelete,
+	"LOGDATA":       InternalKeyKindLogData,
 	"SET":           InternalKeyKindSet,
 	"MERGE":         InternalKeyKindMerge,
 	"INVALID":       InternalKeyKindInvalid,
@@ -202,6 +203,7 @@ var kindsMap = map[string]InternalKeyKind{
 	"RANGEKEYSET":   InternalKeyKindRangeKeySet,
 	"RANGEKEYUNSET": InternalKeyKindRangeKeyUnset,
 	"RANGEKEYDEL":   InternalKeyKindRangeKeyDelete,
+	"INGESTSST":     InternalKeyKindIngestSST,
 }
 
 // ParseInternalKey parses the string representation of an internal key. The
