@@ -140,13 +140,15 @@ func (i *retryableIter) withPosition(fn func()) {
 	if !intermediate {
 		// Clear out the previous value stored in the buff.
 		i.rkeyBuff = i.rkeyBuff[:0]
-		if _, hasRange := i.iter.HasPointAndRange(); hasRange {
-			// This is a top level positioning op. We should determine if the iter
-			// is positioned over a range key to later determine if the range key
-			// changed.
-			startTmp, _ := i.iter.RangeBounds()
-			i.rkeyBuff = append(i.rkeyBuff, startTmp...)
+		if i.iter.Valid() {
+			if _, hasRange := i.iter.HasPointAndRange(); hasRange {
+				// This is a top level positioning op. We should determine if the iter
+				// is positioned over a range key to later determine if the range key
+				// changed.
+				startTmp, _ := i.iter.RangeBounds()
+				i.rkeyBuff = append(i.rkeyBuff, startTmp...)
 
+			}
 		}
 		// Set this to false. Any positioning op can set this to true.
 		i.rangeKeyChangeGuess = false
@@ -157,8 +159,10 @@ func (i *retryableIter) withPosition(fn func()) {
 	if !intermediate {
 		// Check if the range key changed.
 		var newStartKey []byte
-		if _, hasRange := i.iter.HasPointAndRange(); hasRange {
-			newStartKey, _ = i.iter.RangeBounds()
+		if i.iter.Valid() {
+			if _, hasRange := i.iter.HasPointAndRange(); hasRange {
+				newStartKey, _ = i.iter.RangeBounds()
+			}
 		}
 
 		i.rangeKeyChanged = !bytes.Equal(newStartKey, i.rkeyBuff)
@@ -166,7 +170,7 @@ func (i *retryableIter) withPosition(fn func()) {
 }
 
 func (i *retryableIter) updateRangeKeyChangedGuess() {
-	i.rangeKeyChangeGuess = i.rangeKeyChangeGuess || i.iter.RangeKeyChanged()
+	i.rangeKeyChangeGuess = i.rangeKeyChangeGuess || (i.iter.Valid() && i.iter.RangeKeyChanged())
 }
 
 func (i *retryableIter) First() bool {
