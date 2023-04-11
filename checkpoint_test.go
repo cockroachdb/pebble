@@ -31,7 +31,7 @@ func TestCheckpoint(t *testing.T) {
 	var memLog base.InMemLogger
 	opts := &Options{
 		FS:                    vfs.WithLogging(mem, memLog.Infof),
-		FormatMajorVersion:    FormatNewest,
+		FormatMajorVersion:    internalFormatNewest,
 		L0CompactionThreshold: 10,
 	}
 
@@ -296,7 +296,7 @@ func TestCheckpointManyFiles(t *testing.T) {
 	const checkpointPath = "checkpoint"
 	opts := &Options{
 		FS:                          vfs.NewMem(),
-		FormatMajorVersion:          FormatNewest,
+		FormatMajorVersion:          internalFormatNewest,
 		DisableAutomaticCompactions: true,
 	}
 	// Disable compression to speed up the test.

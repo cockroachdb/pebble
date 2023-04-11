@@ -66,8 +66,15 @@ const (
 	// batch, or in an sstable.
 	InternalKeyKindIngestSST InternalKeyKind = 22
 
-	// This maximum value isn't part of the file format. It's unlikely,
-	// but future extensions may increase this value.
+	// InternalKeyKindDeleteSized keys behave identically to
+	// InternalKeyKindDelete keys, except that they hold an associated uint64
+	// value indicating the (len(key)+len(value)) of the shadowed entry the
+	// tombstone is expected to delete. This value is used to inform compaction
+	// heuristics, but is not required to be accurate for correctness.
+	InternalKeyKindDeleteSized = 23
+
+	// This maximum value isn't part of the file format. Future extensions may
+	// increase this value.
 	//
 	// When constructing an internal key to pass to DB.Seek{GE,LE},
 	// internalKeyComparer sorts decreasing by kind (after sorting increasing by
@@ -75,7 +82,7 @@ const (
 	// which sorts 'less than or equal to' any other valid internalKeyKind, when
 	// searching for any kind of internal key formed by a certain user key and
 	// seqNum.
-	InternalKeyKindMax InternalKeyKind = 22
+	InternalKeyKindMax InternalKeyKind = 23
 
 	// InternalKeyZeroSeqnumMaxTrailer is the largest trailer with a
 	// zero sequence number.
@@ -118,6 +125,7 @@ var internalKeyKindNames = []string{
 	InternalKeyKindRangeKeyUnset:  "RANGEKEYUNSET",
 	InternalKeyKindRangeKeyDelete: "RANGEKEYDEL",
 	InternalKeyKindIngestSST:      "INGESTSST",
+	InternalKeyKindDeleteSized:    "DELSIZED",
 	InternalKeyKindInvalid:        "INVALID",
 }
 
@@ -204,6 +212,7 @@ var kindsMap = map[string]InternalKeyKind{
 	"RANGEKEYUNSET": InternalKeyKindRangeKeyUnset,
 	"RANGEKEYDEL":   InternalKeyKindRangeKeyDelete,
 	"INGESTSST":     InternalKeyKindIngestSST,
+	"DELSIZED":      InternalKeyKindDeleteSized,
 }
 
 // ParseInternalKey parses the string representation of an internal key. The

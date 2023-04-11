@@ -174,6 +174,10 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions) error {
 	return nil
 }
 
+func (t *test) isFMV(fmv pebble.FormatMajorVersion) bool {
+	return t.db.FormatMajorVersion() >= fmv
+}
+
 func (t *test) restartDB() error {
 	if !t.testOpts.strictFS {
 		return nil

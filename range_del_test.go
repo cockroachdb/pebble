@@ -96,7 +96,7 @@ func TestFlushDelay(t *testing.T) {
 		Comparer:              testkeys.Comparer,
 		FlushDelayDeleteRange: 10 * time.Millisecond,
 		FlushDelayRangeKey:    10 * time.Millisecond,
-		FormatMajorVersion:    FormatNewest,
+		FormatMajorVersion:    internalFormatNewest,
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -195,7 +195,7 @@ func TestFlushDelayStress(t *testing.T) {
 		Comparer:              testkeys.Comparer,
 		FlushDelayDeleteRange: time.Duration(rng.Intn(10)+1) * time.Millisecond,
 		FlushDelayRangeKey:    time.Duration(rng.Intn(10)+1) * time.Millisecond,
-		FormatMajorVersion:    FormatNewest,
+		FormatMajorVersion:    internalFormatNewest,
 		MemTableSize:          8192,
 	}
 

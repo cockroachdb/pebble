@@ -886,7 +886,7 @@ func TestIteratorStats(t *testing.T) {
 
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
-		opts := &Options{Comparer: testkeys.Comparer, FS: mem, FormatMajorVersion: FormatNewest}
+		opts := &Options{Comparer: testkeys.Comparer, FS: mem, FormatMajorVersion: internalFormatNewest}
 		// Automatic compactions may make some testcases non-deterministic.
 		opts.DisableAutomaticCompactions = true
 		var err error
@@ -1263,7 +1263,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 		}
 		opts := &Options{
 			FS:                      mem,
-			FormatMajorVersion:      FormatNewest,
+			FormatMajorVersion:      internalFormatNewest,
 			BlockPropertyCollectors: bpCollectors,
 		}
 		lo := LevelOptions{BlockSize: 1, IndexBlockSize: 1}
@@ -1379,7 +1379,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 	mem := vfs.NewMem()
 	opts := &Options{
 		FS:                 mem,
-		FormatMajorVersion: FormatNewest,
+		FormatMajorVersion: internalFormatNewest,
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
 			func() BlockPropertyCollector {
 				return sstable.NewBlockIntervalCollector(

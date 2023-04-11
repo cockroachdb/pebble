@@ -88,7 +88,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L2 [000005] (784 B) + L3 [000006] (784 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
+  [JOB 100] compacted(delete-only) L2 [000005] (786 B) + L3 [000006] (786 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
 
 # Verify that compaction correctly handles the presence of multiple
 # overlapping hints which might delete a file multiple times. All of the
@@ -127,7 +127,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L2 [000006] (784 B) + L3 [000007] (784 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
+  [JOB 100] compacted(delete-only) L2 [000006] (786 B) + L3 [000007] (786 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
 
 # Test a range tombstone that is already compacted into L6.
 
@@ -206,7 +206,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L2 [000005] (784 B) + L3 [000006] (784 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
+  [JOB 100] compacted(delete-only) L2 [000005] (786 B) + L3 [000006] (786 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
 
 # A deletion hint present on an sstable in a higher level should NOT result in a
 # deletion-only compaction incorrectly removing an sstable in L6 following an

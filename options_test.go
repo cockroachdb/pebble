@@ -26,7 +26,7 @@ func (o *Options) testingRandomized() *Options {
 	if o.FormatMajorVersion == FormatDefault {
 		// Pick a random format major version from the range
 		// [MostCompatible, FormatNewest].
-		o.FormatMajorVersion = FormatMajorVersion(rand.Intn(int(FormatNewest)) + 1)
+		o.FormatMajorVersion = FormatMajorVersion(rand.Intn(int(internalFormatNewest)) + 1)
 	}
 	return o
 }

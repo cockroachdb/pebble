@@ -223,6 +223,10 @@ func TestIsRangeKey(t *testing.T) {
 			want: false,
 		},
 		{
+			kind: base.InternalKeyKindDeleteSized,
+			want: false,
+		},
+		{
 			kind: base.InternalKeyKindSet,
 			want: false,
 		},

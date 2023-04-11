@@ -1374,7 +1374,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				// version is valid right here.
 				var v uint64
 				v, err = strconv.ParseUint(value, 10, 64)
-				if vers := FormatMajorVersion(v); vers > FormatNewest || vers == FormatDefault {
+				if vers := FormatMajorVersion(v); vers > internalFormatNewest || vers == FormatDefault {
 					err = errors.Newf("unknown format major version %d", o.FormatMajorVersion)
 				}
 				if err == nil {
@@ -1594,9 +1594,9 @@ func (o *Options) Validate() error {
 		fmt.Fprintf(&buf, "MemTableStopWritesThreshold (%d) must be >= 2\n",
 			o.MemTableStopWritesThreshold)
 	}
-	if o.FormatMajorVersion > FormatNewest {
+	if o.FormatMajorVersion > internalFormatNewest {
 		fmt.Fprintf(&buf, "FormatMajorVersion (%d) must be <= %d\n",
-			o.FormatMajorVersion, FormatNewest)
+			o.FormatMajorVersion, internalFormatNewest)
 	}
 	if o.TableCache != nil && o.Cache != o.TableCache.cache {
 		fmt.Fprintf(&buf, "underlying cache in the TableCache and the Cache dont match\n")

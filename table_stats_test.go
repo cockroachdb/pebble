@@ -137,6 +137,9 @@ func TestTableStats(t *testing.T) {
 			d.mu.Unlock()
 			return s
 
+		case "properties":
+			return runSSTablePropertiesCmd(t, td, d)
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}

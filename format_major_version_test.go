@@ -62,6 +62,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatFlushableIngest, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1MarkedCompacted))
 	require.Equal(t, FormatPrePebblev1MarkedCompacted, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(ExperimentalFormatDeleteSized))
+	require.Equal(t, ExperimentalFormatDeleteSized, d.FormatMajorVersion())
 
 	require.NoError(t, d.Close())
 
@@ -69,7 +71,7 @@ func TestRatchetFormat(t *testing.T) {
 	// database should Open using the persisted FormatNewest.
 	d, err = Open("", (&Options{FS: fs}).WithFSDefaults())
 	require.NoError(t, err)
-	require.Equal(t, FormatNewest, d.FormatMajorVersion())
+	require.Equal(t, internalFormatNewest, d.FormatMajorVersion())
 	require.NoError(t, d.Close())
 
 	// Move the marker to a version that does not exist.
@@ -225,17 +227,18 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatSSTableValueBlocks:               {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
 		FormatFlushableIngest:                  {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
 		FormatPrePebblev1MarkedCompacted:       {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		ExperimentalFormatDeleteSized:          {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
 	}
 
 	// Valid versions.
-	for fmv := FormatMostCompatible; fmv <= FormatNewest; fmv++ {
+	for fmv := FormatMostCompatible; fmv <= internalFormatNewest; fmv++ {
 		got := [2]sstable.TableFormat{fmv.MinTableFormat(), fmv.MaxTableFormat()}
 		require.Equalf(t, m[fmv], got, "got %s; want %s", got, m[fmv])
 		require.True(t, got[0] <= got[1] /* min <= max */)
 	}
 
 	// Invalid versions.
-	fmv := FormatNewest + 1
+	fmv := internalFormatNewest + 1
 	require.Panics(t, func() { _ = fmv.MaxTableFormat() })
 	require.Panics(t, func() { _ = fmv.MinTableFormat() })
 }

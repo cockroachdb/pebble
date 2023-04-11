@@ -24,7 +24,7 @@ const (
 	TableFormatPebblev1 // Block properties.
 	TableFormatPebblev2 // Range keys.
 	TableFormatPebblev3 // Value blocks.
-	TableFormatPebblev4 // Reserved.
+	TableFormatPebblev4 // DELSIZED tombstones.
 
 	TableFormatMax = TableFormatPebblev4
 )
