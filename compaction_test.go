@@ -1581,7 +1581,7 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_set_with_del",
 			minVersion: FormatSetWithDelete,
-			maxVersion: FormatNewest,
+			maxVersion: internalFormatNewest,
 		},
 		{
 			testData:   "testdata/singledel_manual_compaction",
@@ -1591,18 +1591,23 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/singledel_manual_compaction_set_with_del",
 			minVersion: FormatSetWithDelete,
-			maxVersion: FormatNewest,
+			maxVersion: internalFormatNewest,
 		},
 		{
 			testData:   "testdata/manual_compaction_range_keys",
 			minVersion: FormatRangeKeys,
-			maxVersion: FormatNewest,
+			maxVersion: internalFormatNewest,
 			verbose:    true,
 		},
 		{
 			testData:   "testdata/manual_compaction_file_boundaries",
 			minVersion: FormatMostCompatible,
-			maxVersion: FormatNewest,
+			maxVersion: ExperimentalFormatDeleteSized - 1,
+		},
+		{
+			testData:   "testdata/manual_compaction_file_boundaries_delsized",
+			minVersion: ExperimentalFormatDeleteSized,
+			maxVersion: internalFormatNewest,
 		},
 	}
 
@@ -1948,7 +1953,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					compactInfo = &info
 				},
 			},
-			FormatMajorVersion: FormatNewest,
+			FormatMajorVersion: internalFormatNewest,
 		}).WithFSDefaults()
 
 		// Collection of table stats can trigger compactions. As we want full
@@ -2215,7 +2220,7 @@ func TestCompactionTombstones(t *testing.T) {
 							compactInfo = &info
 						},
 					},
-					FormatMajorVersion: FormatNewest,
+					FormatMajorVersion: internalFormatNewest,
 				}).WithFSDefaults()
 				var err error
 				d, err = runDBDefineCmd(td, opts)
@@ -3695,7 +3700,7 @@ func TestMarkedForCompaction(t *testing.T) {
 		FS:                          mem,
 		DebugCheck:                  DebugCheckLevels,
 		DisableAutomaticCompactions: true,
-		FormatMajorVersion:          FormatNewest,
+		FormatMajorVersion:          internalFormatNewest,
 		EventListener: &EventListener{
 			CompactionEnd: func(info CompactionInfo) {
 				// Fix the job ID and durations for determinism.

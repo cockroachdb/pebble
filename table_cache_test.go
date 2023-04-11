@@ -252,7 +252,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	d, err = Open("",
 		&Options{
 			FS:                 vfs.NewMem(),
-			FormatMajorVersion: FormatNewest,
+			FormatMajorVersion: internalFormatNewest,
 			Comparer:           testkeys.Comparer,
 			// Compactions which conflict with virtual sstable creation can be
 			// picked by Pebble. We disable that.
@@ -1056,7 +1056,7 @@ func TestTableCacheClockPro(t *testing.T) {
 func BenchmarkNewItersAlloc(b *testing.B) {
 	opts := &Options{
 		FS:                 vfs.NewMem(),
-		FormatMajorVersion: FormatNewest,
+		FormatMajorVersion: internalFormatNewest,
 	}
 	d, err := Open("", opts)
 	require.NoError(b, err)

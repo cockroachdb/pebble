@@ -320,10 +320,13 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "  raw-value\t%s\n", humanize.Uint64(r.Properties.RawValueSize))
 		fmt.Fprintf(tw, "  pinned-key\t%d\n", r.Properties.SnapshotPinnedKeySize)
 		fmt.Fprintf(tw, "  pinned-val\t%d\n", r.Properties.SnapshotPinnedValueSize)
+		fmt.Fprintf(tw, "  point-del-key-size\t%d\n", r.Properties.RawPointTombstoneKeySize)
+		fmt.Fprintf(tw, "  point-del-value-size\t%d\n", r.Properties.RawPointTombstoneValueSize)
 		fmt.Fprintf(tw, "records\t%d\n", r.Properties.NumEntries)
 		fmt.Fprintf(tw, "  set\t%d\n", r.Properties.NumEntries-
 			(r.Properties.NumDeletions+r.Properties.NumMergeOperands))
 		fmt.Fprintf(tw, "  delete\t%d\n", r.Properties.NumPointDeletions())
+		fmt.Fprintf(tw, "  delete-sized\t%d\n", r.Properties.NumSizedDeletions)
 		fmt.Fprintf(tw, "  range-delete\t%d\n", r.Properties.NumRangeDeletions)
 		fmt.Fprintf(tw, "  range-key-set\t%d\n", r.Properties.NumRangeKeySets)
 		fmt.Fprintf(tw, "  range-key-unset\t%d\n", r.Properties.NumRangeKeyUnsets)

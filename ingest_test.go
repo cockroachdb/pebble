@@ -146,7 +146,7 @@ func TestIngestLoadRand(t *testing.T) {
 	mem := vfs.NewMem()
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	cmp := DefaultComparer.Compare
-	version := FormatNewest
+	version := internalFormatNewest
 
 	randBytes := func(size int) []byte {
 		data := make([]byte, size)
@@ -232,7 +232,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	if _, _, err := ingestLoad(opts, FormatNewest, []string{"invalid"}, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}); err == nil {
+	if _, _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -444,7 +444,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			L0CompactionThreshold:       100,
 			L0StopWritesThreshold:       100,
 			DebugCheck:                  DebugCheckLevels,
-			FormatMajorVersion:          FormatNewest,
+			FormatMajorVersion:          internalFormatNewest,
 		}).WithFSDefaults()
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -754,7 +754,7 @@ func TestIngestTargetLevel(t *testing.T) {
 
 			var err error
 			opts := Options{
-				FormatMajorVersion: FormatNewest,
+				FormatMajorVersion: internalFormatNewest,
 			}
 			opts.WithFSDefaults()
 			if d, err = runDBDefineCmd(td, &opts); err != nil {
@@ -826,7 +826,7 @@ func TestIngest(t *testing.T) {
 			EventListener: &EventListener{FlushEnd: func(info FlushInfo) {
 				flushed = true
 			}},
-			FormatMajorVersion: FormatNewest,
+			FormatMajorVersion: internalFormatNewest,
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -1220,7 +1220,7 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 
 	// Test with a format major version prior to FormatFlushableIngest and one
 	// after. Both should result in the same statistic calculations.
-	for _, fmv := range []FormatMajorVersion{FormatFlushableIngest - 1, FormatNewest} {
+	for _, fmv := range []FormatMajorVersion{FormatFlushableIngest - 1, internalFormatNewest} {
 		func(fmv FormatMajorVersion) {
 			mem := vfs.NewMem()
 			d, err := Open("", &Options{

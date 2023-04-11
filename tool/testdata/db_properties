@@ -10,57 +10,63 @@ open non-existent/: file does not exist
 db properties
 ../testdata/db-stage-4
 ----
-                       L0      L1     L2     L3     L4     L5     L6     TOTAL
-count                  1       0      0      0      0      0      0      1
-seq num                                                                  
-  smallest             3       0      0      0      0      0      0      3
-  largest              5       0      0      0      0      0      0      5
-size                                                                     
-  data                 62 B    0 B    0 B    0 B    0 B    0 B    0 B    62 B
-    blocks             1       0      0      0      0      0      0      1
-  index                27 B    0 B    0 B    0 B    0 B    0 B    0 B    27 B
-    blocks             1       0      0      0      0      0      0      1
-    top-level          0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
-  filter               0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
-  raw-key              33 B    0 B    0 B    0 B    0 B    0 B    0 B    33 B
-  raw-value            9 B     0 B    0 B    0 B    0 B    0 B    0 B    9 B
-  pinned-key           0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
-  pinned-value         0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
-records                                                                  
-  set                  2       0      0      0      0      0      0      2
-  delete               1       0      0      0      0      0      0      1
-  range-delete         0       0      0      0      0      0      0      0
-  range-key-sets       0       0      0      0      0      0      0      0
-  range-key-unsets     0       0      0      0      0      0      0      0
-  range-key-deletes    0       0      0      0      0      0      0      0
-  merge                0       0      0      0      0      0      0      0
-  pinned               0       0      0      0      0      0      0      0
+                          L0      L1     L2     L3     L4     L5     L6     TOTAL
+count                     1       0      0      0      0      0      0      1
+seq num                                                                     
+  smallest                3       0      0      0      0      0      0      3
+  largest                 5       0      0      0      0      0      0      5
+size                                                                        
+  data                    62 B    0 B    0 B    0 B    0 B    0 B    0 B    62 B
+    blocks                1       0      0      0      0      0      0      1
+  index                   27 B    0 B    0 B    0 B    0 B    0 B    0 B    27 B
+    blocks                1       0      0      0      0      0      0      1
+    top-level             0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  filter                  0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  raw-key                 33 B    0 B    0 B    0 B    0 B    0 B    0 B    33 B
+  raw-value               9 B     0 B    0 B    0 B    0 B    0 B    0 B    9 B
+  pinned-key              0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  pinned-value            0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  point-del-key-size      0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  point-del-value-size    0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
+records                                                                     
+  set                     2       0      0      0      0      0      0      2
+  delete                  1       0      0      0      0      0      0      1
+  delete-sized            0       0      0      0      0      0      0      0
+  range-delete            0       0      0      0      0      0      0      0
+  range-key-sets          0       0      0      0      0      0      0      0
+  range-key-unsets        0       0      0      0      0      0      0      0
+  range-key-deletes       0       0      0      0      0      0      0      0
+  merge                   0       0      0      0      0      0      0      0
+  pinned                  0       0      0      0      0      0      0      0
 
 db properties
 ./testdata/mixed
 ----
-                       L0       L1     L2     L3     L4     L5     L6     TOTAL
-count                  1        0      0      0      0      0      0      1
-seq num                                                                   
-  smallest             1        0      0      0      0      0      0      1
-  largest              29       0      0      0      0      0      0      29
-size                                                                      
-  data                 236 B    0 B    0 B    0 B    0 B    0 B    0 B    236 B
-    blocks             1        0      0      0      0      0      0      1
-  index                29 B     0 B    0 B    0 B    0 B    0 B    0 B    29 B
-    blocks             1        0      0      0      0      0      0      1
-    top-level          0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
-  filter               0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
-  raw-key              286 B    0 B    0 B    0 B    0 B    0 B    0 B    286 B
-  raw-value            0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
-  pinned-key           0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
-  pinned-value         0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
-records                                                                   
-  set                  26       0      0      0      0      0      0      26
-  delete               0        0      0      0      0      0      0      0
-  range-delete         0        0      0      0      0      0      0      0
-  range-key-sets       1        0      0      0      0      0      0      1
-  range-key-unsets     1        0      0      0      0      0      0      1
-  range-key-deletes    1        0      0      0      0      0      0      1
-  merge                0        0      0      0      0      0      0      0
-  pinned               0        0      0      0      0      0      0      0
+                          L0       L1     L2     L3     L4     L5     L6     TOTAL
+count                     1        0      0      0      0      0      0      1
+seq num                                                                      
+  smallest                1        0      0      0      0      0      0      1
+  largest                 29       0      0      0      0      0      0      29
+size                                                                         
+  data                    236 B    0 B    0 B    0 B    0 B    0 B    0 B    236 B
+    blocks                1        0      0      0      0      0      0      1
+  index                   29 B     0 B    0 B    0 B    0 B    0 B    0 B    29 B
+    blocks                1        0      0      0      0      0      0      1
+    top-level             0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  filter                  0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  raw-key                 286 B    0 B    0 B    0 B    0 B    0 B    0 B    286 B
+  raw-value               0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  pinned-key              0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  pinned-value            0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  point-del-key-size      0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  point-del-value-size    0 B      0 B    0 B    0 B    0 B    0 B    0 B    0 B
+records                                                                      
+  set                     26       0      0      0      0      0      0      26
+  delete                  0        0      0      0      0      0      0      0
+  delete-sized            0        0      0      0      0      0      0      0
+  range-delete            0        0      0      0      0      0      0      0
+  range-key-sets          1        0      0      0      0      0      0      1
+  range-key-unsets        1        0      0      0      0      0      0      1
+  range-key-deletes       1        0      0      0      0      0      0      1
+  merge                   0        0      0      0      0      0      0      0
+  pinned                  0        0      0      0      0      0      0      0

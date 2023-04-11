@@ -1095,7 +1095,7 @@ func TestDBClosed(t *testing.T) {
 	require.True(t, errors.Is(catch(func() { _ = d.Ingest(nil) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.LogData(nil, nil) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.Merge(nil, nil, nil) }), ErrClosed))
-	require.True(t, errors.Is(catch(func() { _ = d.RatchetFormatMajorVersion(FormatNewest) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.RatchetFormatMajorVersion(internalFormatNewest) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.Set(nil, nil, nil) }), ErrClosed))
 
 	require.True(t, errors.Is(catch(func() { _ = d.NewSnapshot() }), ErrClosed))

@@ -37,7 +37,7 @@ func TestEventListener(t *testing.T) {
 			lel := MakeLoggingEventListener(&memLog)
 			opts := &Options{
 				FS:                    vfs.WithLogging(mem, memLog.Infof),
-				FormatMajorVersion:    FormatNewest,
+				FormatMajorVersion:    internalFormatNewest,
 				EventListener:         &lel,
 				MaxManifestFileSize:   1,
 				L0CompactionThreshold: 10,

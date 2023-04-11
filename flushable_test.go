@@ -33,7 +33,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
-			FormatMajorVersion:    FormatNewest,
+			FormatMajorVersion:    internalFormatNewest,
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.

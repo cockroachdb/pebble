@@ -327,7 +327,7 @@ layout
        775    rocksdb.raw.key.size (16)
        791    rocksdb.raw.value.size (14)
        805    [restart 98]
-       813    [trailer compression=none checksum=0x89a91fa9]
+       813    [trailer compression=none checksum=0xfb9d6722]
        818  meta-index (32)
        818    rocksdb.properties block:98/715 [restart]
        842    [restart 818]

@@ -353,6 +353,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 					ikey := base.MakeInternalKey(ukey, seqNum, kind)
 					switch kind {
 					case base.InternalKeyKindDelete,
+						base.InternalKeyKindDeleteSized,
 						base.InternalKeyKindSet,
 						base.InternalKeyKindMerge,
 						base.InternalKeyKindSingleDelete,

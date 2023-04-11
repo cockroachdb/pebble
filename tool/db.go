@@ -582,6 +582,10 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			propArgs(all, func(p *props) interface{} { return humanize.Uint64(p.SnapshotPinnedKeySize) })...)
 		fmt.Fprintf(tw, "  pinned-value\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			propArgs(all, func(p *props) interface{} { return humanize.Uint64(p.SnapshotPinnedValueSize) })...)
+		fmt.Fprintf(tw, "  point-del-key-size\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			propArgs(all, func(p *props) interface{} { return humanize.Uint64(p.RawPointTombstoneKeySize) })...)
+		fmt.Fprintf(tw, "  point-del-value-size\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			propArgs(all, func(p *props) interface{} { return humanize.Uint64(p.RawPointTombstoneValueSize) })...)
 
 		fmt.Fprintln(tw, "records\t\t\t\t\t\t\t\t")
 		fmt.Fprintf(tw, "  set\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
@@ -589,7 +593,9 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 				return humanize.SI.Uint64(p.NumEntries - p.NumDeletions - p.NumMergeOperands)
 			})...)
 		fmt.Fprintf(tw, "  delete\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumDeletions) })...)
+			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumDeletions - p.NumRangeDeletions) })...)
+		fmt.Fprintf(tw, "  delete-sized\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumSizedDeletions) })...)
 		fmt.Fprintf(tw, "  range-delete\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumRangeDeletions) })...)
 		fmt.Fprintf(tw, "  range-key-sets\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
@@ -645,27 +651,30 @@ func propArgs(props []props, getProp func(*props) interface{}) []interface{} {
 }
 
 type props struct {
-	Count                   uint64
-	SmallestSeqNum          uint64
-	LargestSeqNum           uint64
-	DataSize                uint64
-	FilterSize              uint64
-	IndexSize               uint64
-	NumDataBlocks           uint64
-	NumIndexBlocks          uint64
-	NumDeletions            uint64
-	NumEntries              uint64
-	NumMergeOperands        uint64
-	NumRangeDeletions       uint64
-	NumRangeKeySets         uint64
-	NumRangeKeyUnSets       uint64
-	NumRangeKeyDeletes      uint64
-	RawKeySize              uint64
-	RawValueSize            uint64
-	SnapshotPinnedKeys      uint64
-	SnapshotPinnedKeySize   uint64
-	SnapshotPinnedValueSize uint64
-	TopLevelIndexSize       uint64
+	Count                      uint64
+	SmallestSeqNum             uint64
+	LargestSeqNum              uint64
+	DataSize                   uint64
+	FilterSize                 uint64
+	IndexSize                  uint64
+	NumDataBlocks              uint64
+	NumIndexBlocks             uint64
+	NumDeletions               uint64
+	NumSizedDeletions          uint64
+	NumEntries                 uint64
+	NumMergeOperands           uint64
+	NumRangeDeletions          uint64
+	NumRangeKeySets            uint64
+	NumRangeKeyUnSets          uint64
+	NumRangeKeyDeletes         uint64
+	RawKeySize                 uint64
+	RawPointTombstoneKeySize   uint64
+	RawPointTombstoneValueSize uint64
+	RawValueSize               uint64
+	SnapshotPinnedKeys         uint64
+	SnapshotPinnedKeySize      uint64
+	SnapshotPinnedValueSize    uint64
+	TopLevelIndexSize          uint64
 }
 
 func (p *props) update(o props) {
@@ -682,6 +691,7 @@ func (p *props) update(o props) {
 	p.NumDataBlocks += o.NumDataBlocks
 	p.NumIndexBlocks += o.NumIndexBlocks
 	p.NumDeletions += o.NumDeletions
+	p.NumSizedDeletions += o.NumSizedDeletions
 	p.NumEntries += o.NumEntries
 	p.NumMergeOperands += o.NumMergeOperands
 	p.NumRangeDeletions += o.NumRangeDeletions
@@ -689,6 +699,8 @@ func (p *props) update(o props) {
 	p.NumRangeKeyUnSets += o.NumRangeKeyUnSets
 	p.NumRangeKeyDeletes += o.NumRangeKeyDeletes
 	p.RawKeySize += o.RawKeySize
+	p.RawPointTombstoneKeySize += o.RawPointTombstoneKeySize
+	p.RawPointTombstoneValueSize += o.RawPointTombstoneValueSize
 	p.RawValueSize += o.RawValueSize
 	p.SnapshotPinnedKeySize += o.SnapshotPinnedKeySize
 	p.SnapshotPinnedValueSize += o.SnapshotPinnedValueSize
@@ -710,27 +722,30 @@ func (d *dbT) addProps(
 		return err
 	}
 	p.update(props{
-		Count:                   1,
-		SmallestSeqNum:          m.SmallestSeqNum,
-		LargestSeqNum:           m.LargestSeqNum,
-		DataSize:                r.Properties.DataSize,
-		FilterSize:              r.Properties.FilterSize,
-		IndexSize:               r.Properties.IndexSize,
-		NumDataBlocks:           r.Properties.NumDataBlocks,
-		NumIndexBlocks:          1 + r.Properties.IndexPartitions,
-		NumDeletions:            r.Properties.NumDeletions,
-		NumEntries:              r.Properties.NumEntries,
-		NumMergeOperands:        r.Properties.NumMergeOperands,
-		NumRangeDeletions:       r.Properties.NumRangeDeletions,
-		NumRangeKeySets:         r.Properties.NumRangeKeySets,
-		NumRangeKeyUnSets:       r.Properties.NumRangeKeyUnsets,
-		NumRangeKeyDeletes:      r.Properties.NumRangeKeyDels,
-		RawKeySize:              r.Properties.RawKeySize,
-		RawValueSize:            r.Properties.RawValueSize,
-		SnapshotPinnedKeySize:   r.Properties.SnapshotPinnedKeySize,
-		SnapshotPinnedValueSize: r.Properties.SnapshotPinnedValueSize,
-		SnapshotPinnedKeys:      r.Properties.SnapshotPinnedKeys,
-		TopLevelIndexSize:       r.Properties.TopLevelIndexSize,
+		Count:                      1,
+		SmallestSeqNum:             m.SmallestSeqNum,
+		LargestSeqNum:              m.LargestSeqNum,
+		DataSize:                   r.Properties.DataSize,
+		FilterSize:                 r.Properties.FilterSize,
+		IndexSize:                  r.Properties.IndexSize,
+		NumDataBlocks:              r.Properties.NumDataBlocks,
+		NumIndexBlocks:             1 + r.Properties.IndexPartitions,
+		NumDeletions:               r.Properties.NumDeletions,
+		NumSizedDeletions:          r.Properties.NumSizedDeletions,
+		NumEntries:                 r.Properties.NumEntries,
+		NumMergeOperands:           r.Properties.NumMergeOperands,
+		NumRangeDeletions:          r.Properties.NumRangeDeletions,
+		NumRangeKeySets:            r.Properties.NumRangeKeySets,
+		NumRangeKeyUnSets:          r.Properties.NumRangeKeyUnsets,
+		NumRangeKeyDeletes:         r.Properties.NumRangeKeyDels,
+		RawKeySize:                 r.Properties.RawKeySize,
+		RawPointTombstoneKeySize:   r.Properties.RawPointTombstoneKeySize,
+		RawPointTombstoneValueSize: r.Properties.RawPointTombstoneValueSize,
+		RawValueSize:               r.Properties.RawValueSize,
+		SnapshotPinnedKeySize:      r.Properties.SnapshotPinnedKeySize,
+		SnapshotPinnedValueSize:    r.Properties.SnapshotPinnedValueSize,
+		SnapshotPinnedKeys:         r.Properties.SnapshotPinnedKeys,
+		TopLevelIndexSize:          r.Properties.TopLevelIndexSize,
 	})
 	return r.Close()
 }

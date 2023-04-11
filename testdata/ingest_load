@@ -143,3 +143,10 @@ rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 1: a#0,21-z#72057594037927935,15
   points: a#0,15-z#72057594037927935,15
   ranges: a#0,21-z#72057594037927935,21
+
+# Loading tables at an unsupported table format results in an error.
+
+load writer-version=15 db-version=14
+a.SET.0:
+----
+pebble: table format (Pebble,v4) is not within range supported at DB format major version 14, ((Pebble,v1),(Pebble,v3))

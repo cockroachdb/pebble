@@ -156,6 +156,9 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 						} else {
 							fmt.Fprintf(stdout, "%s", s.Pretty(w.fmtKey.fn))
 						}
+					case base.InternalKeyKindDeleteSized:
+						v, _ := binary.Uvarint(value)
+						fmt.Fprintf(stdout, "%s,%d", w.fmtKey.fn(ukey), v)
 					}
 					fmt.Fprintf(stdout, ")\n")
 				}

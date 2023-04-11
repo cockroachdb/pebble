@@ -15,7 +15,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 517
+point-deletions-bytes-estimate: 76
 range-deletions-bytes-estimate: 0
 
 compact a-c
@@ -488,3 +488,59 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 26
+
+# Test point tombstone compensation that uses DELSIZED keys.
+
+define format-major-version=15
+L6
+  bar.SET.0:<rand-bytes=10>
+  bax.SET.0:<rand-bytes=10>
+  foo.SET.0:<rand-bytes=100000>
+  moo.SET.0:<rand-bytes=1>
+----
+6:
+  000004:[bar#0,SET-moo#0,SET]
+
+batch
+set a apple
+set b banana
+set c coconut
+del-sized foo 100000
+del moo
+----
+
+flush
+----
+0.0:
+  000006:[a#10,SET-moo#14,DEL]
+6:
+  000004:[bar#0,SET-moo#0,SET]
+
+# The foo DELSIZED tombstone should cause the
+# `pebble.raw.point-tombstone.value.size` property to be 100000 + len(foo) =
+# 100003.
+
+properties file=000006
+num.deletions
+deleted.keys
+raw.point-tombstone
+----
+num.deletions:
+  pebble.num.deletions.sized: 1
+deleted.keys:
+  rocksdb.deleted.keys: 2
+raw.point-tombstone:
+  pebble.raw.point-tombstone.key.size: 6
+  pebble.raw.point-tombstone.value.size: 100003
+
+# And the size hint should then appear in the point-deletions-bytes-estimate,
+# scaled according to the computed 'compression ratio'.
+
+wait-pending-table-stats
+000006
+----
+num-entries: 5
+num-deletions: 2
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 112974
+range-deletions-bytes-estimate: 0

@@ -505,7 +505,15 @@ func (g *generator) dbRatchetFormatMajorVersion() {
 	// metamorphic tests support and the newest. At runtime, the generated
 	// version may be behind the database's format major version, in which case
 	// RatchetFormatMajorVersion should deterministically error.
-	n := int(pebble.FormatNewest - minimumFormatMajorVersion)
+
+	// TODO(jackson): When FormatDeleteSized is stabilized, return this to just
+	// using `FormatNewest`.
+	newestTODO := pebble.FormatNewest
+	if newestTODO < pebble.ExperimentalFormatDeleteSized {
+		newestTODO = pebble.ExperimentalFormatDeleteSized
+	}
+
+	n := int(newestTODO - minimumFormatMajorVersion)
 	vers := pebble.FormatMajorVersion(g.rng.Intn(n + 1))
 	g.add(&dbRatchetFormatMajorVersionOp{vers: vers})
 }

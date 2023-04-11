@@ -23,6 +23,7 @@ const (
 	InternalKeyKindRangeKeyUnset   = base.InternalKeyKindRangeKeyUnset
 	InternalKeyKindRangeKeyDelete  = base.InternalKeyKindRangeKeyDelete
 	InternalKeyKindIngestSST       = base.InternalKeyKindIngestSST
+	InternalKeyKindDeleteSized     = base.InternalKeyKindDeleteSized
 	InternalKeyKindInvalid         = base.InternalKeyKindInvalid
 	InternalKeySeqNumBatch         = base.InternalKeySeqNumBatch
 	InternalKeySeqNumMax           = base.InternalKeySeqNumMax

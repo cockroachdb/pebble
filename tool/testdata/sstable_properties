@@ -6,123 +6,132 @@ sstable properties
 ../sstable/testdata/h.sst
 ----
 h.sst
-version             0
-size                
-  file              15 K
-  data              14 K
-    blocks          14
-  index             325 B
-    blocks          1
-    top-level       0 B
-  filter            0 B
-  raw-key           23 K
-  raw-value         1.9 K
-  pinned-key        0
-  pinned-val        0
-records             1727
-  set               1710
-  delete            0
-  range-delete      17
-  range-key-set     0
-  range-key-unset   0
-  range-key-delete  0
-  merge             0
-  global-seq-num    0
-  pinned            0
-index               
-  key               internal key
-  value             raw encoded
-comparer            leveldb.BytewiseComparator
-merger              -
-filter              -
-  prefix            false
-  whole-key         false
-compression         Snappy
-  options           window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-user properties     
-  collectors        [KeyCountPropertyCollector]
-  test.key-count    1727
+version                 0
+size                    
+  file                  15 K
+  data                  14 K
+    blocks              14
+  index                 325 B
+    blocks              1
+    top-level           0 B
+  filter                0 B
+  raw-key               23 K
+  raw-value             1.9 K
+  pinned-key            0
+  pinned-val            0
+  point-del-key-size    0
+  point-del-value-size  0
+records                 1727
+  set                   1710
+  delete                0
+  delete-sized          0
+  range-delete          17
+  range-key-set         0
+  range-key-unset       0
+  range-key-delete      0
+  merge                 0
+  global-seq-num        0
+  pinned                0
+index                   
+  key                   internal key
+  value                 raw encoded
+comparer                leveldb.BytewiseComparator
+merger                  -
+filter                  -
+  prefix                false
+  whole-key             false
+compression             Snappy
+  options               window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+user properties         
+  collectors            [KeyCountPropertyCollector]
+  test.key-count        1727
 
 sstable properties
 ../sstable/testdata/h.ldb
 ----
 h.ldb
-version             0
-size                
-  file              15 K
-  data              14 K
-    blocks          14
-  index             325 B
-    blocks          1
-    top-level       0 B
-  filter            0 B
-  raw-key           23 K
-  raw-value         1.9 K
-  pinned-key        0
-  pinned-val        0
-records             1727
-  set               1710
-  delete            0
-  range-delete      17
-  range-key-set     0
-  range-key-unset   0
-  range-key-delete  0
-  merge             0
-  global-seq-num    0
-  pinned            0
-index               
-  key               internal key
-  value             raw encoded
-comparer            leveldb.BytewiseComparator
-merger              -
-filter              -
-  prefix            false
-  whole-key         false
-compression         Snappy
-  options           window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-user properties     
-  collectors        []
+version                 0
+size                    
+  file                  15 K
+  data                  14 K
+    blocks              14
+  index                 325 B
+    blocks              1
+    top-level           0 B
+  filter                0 B
+  raw-key               23 K
+  raw-value             1.9 K
+  pinned-key            0
+  pinned-val            0
+  point-del-key-size    0
+  point-del-value-size  0
+records                 1727
+  set                   1710
+  delete                0
+  delete-sized          0
+  range-delete          17
+  range-key-set         0
+  range-key-unset       0
+  range-key-delete      0
+  merge                 0
+  global-seq-num        0
+  pinned                0
+index                   
+  key                   internal key
+  value                 raw encoded
+comparer                leveldb.BytewiseComparator
+merger                  -
+filter                  -
+  prefix                false
+  whole-key             false
+compression             Snappy
+  options               window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+user properties         
+  collectors            []
 
 sstable properties
 ../sstable/testdata/h.no-compression.two_level_index.sst
 ----
 h.no-compression.two_level_index.sst
-version             0
-size                
-  file              28 K
-  data              26 K
-    blocks          14
-  index             408 B
-    blocks          4
-    top-level       70 B
-  filter            0 B
-  raw-key           23 K
-  raw-value         1.9 K
-  pinned-key        0
-  pinned-val        0
-records             1727
-  set               1710
-  delete            0
-  range-delete      17
-  range-key-set     0
-  range-key-unset   0
-  range-key-delete  0
-  merge             0
-  global-seq-num    0
-  pinned            0
-index               
-  key               internal key
-  value             raw encoded
-comparer            leveldb.BytewiseComparator
-merger              -
-filter              -
-  prefix            false
-  whole-key         false
-compression         NoCompression
-  options           window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-user properties     
-  collectors        [KeyCountPropertyCollector]
-  test.key-count    1727
+version                 0
+size                    
+  file                  28 K
+  data                  26 K
+    blocks              14
+  index                 408 B
+    blocks              4
+    top-level           70 B
+  filter                0 B
+  raw-key               23 K
+  raw-value             1.9 K
+  pinned-key            0
+  pinned-val            0
+  point-del-key-size    0
+  point-del-value-size  0
+records                 1727
+  set                   1710
+  delete                0
+  delete-sized          0
+  range-delete          17
+  range-key-set         0
+  range-key-unset       0
+  range-key-delete      0
+  merge                 0
+  global-seq-num        0
+  pinned                0
+index                   
+  key                   internal key
+  value                 raw encoded
+comparer                leveldb.BytewiseComparator
+merger                  -
+filter                  -
+  prefix                false
+  whole-key             false
+compression             NoCompression
+  options               window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+user properties         
+  collectors            [KeyCountPropertyCollector]
+  test.key-count        1727
 
 sstable properties
 -v
@@ -206,38 +215,41 @@ sstable properties
 testdata/mixed/000005.sst
 ----
 000005.sst
-version             0
-size                
-  file              1.1 K
-  data              236 B
-    blocks          1
-  index             29 B
-    blocks          1
-    top-level       0 B
-  filter            0 B
-  raw-key           286 B
-  raw-value         0 B
-  pinned-key        0
-  pinned-val        0
-records             26
-  set               26
-  delete            0
-  range-delete      0
-  range-key-set     1
-  range-key-unset   1
-  range-key-delete  1
-  merge             0
-  global-seq-num    0
-  pinned            0
-index               
-  key               internal key
-  value             raw encoded
-comparer            pebble.internal.testkeys
-merger              pebble.concatenate
-filter              -
-  prefix            false
-  whole-key         false
-compression         Snappy
-  options           window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-user properties     
-  collectors        []
+version                 0
+size                    
+  file                  1.1 K
+  data                  236 B
+    blocks              1
+  index                 29 B
+    blocks              1
+    top-level           0 B
+  filter                0 B
+  raw-key               286 B
+  raw-value             0 B
+  pinned-key            0
+  pinned-val            0
+  point-del-key-size    0
+  point-del-value-size  0
+records                 26
+  set                   26
+  delete                0
+  delete-sized          0
+  range-delete          0
+  range-key-set         1
+  range-key-unset       1
+  range-key-delete      1
+  merge                 0
+  global-seq-num        0
+  pinned                0
+index                   
+  key                   internal key
+  value                 raw encoded
+comparer                pebble.internal.testkeys
+merger                  pebble.concatenate
+filter                  -
+  prefix                false
+  whole-key             false
+compression             Snappy
+  options               window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+user properties         
+  collectors            []
