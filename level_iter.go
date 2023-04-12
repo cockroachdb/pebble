@@ -38,7 +38,7 @@ type tableNewIters func(
 func tableNewRangeDelIter(ctx context.Context, newIters tableNewIters) keyspan.TableNewSpanIter {
 	return func(file *manifest.FileMetadata, iterOptions *keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 		iter, rangeDelIter, err := newIters(
-			ctx, file, &IterOptions{RangeKeyFilters: iterOptions.RangeKeyFilters}, internalIterOpts{})
+			ctx, file, &IterOptions{RangeKeyFilters: iterOptions.RangeKeyFilters, level: iterOptions.Level}, internalIterOpts{})
 		if iter != nil {
 			_ = iter.Close()
 		}

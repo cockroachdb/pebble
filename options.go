@@ -1602,6 +1602,7 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 		readerOpts.Comparer = o.Comparer
 		readerOpts.Filters = o.Filters
 		if o.Merger != nil {
+			readerOpts.Merge = o.Merger.Merge
 			readerOpts.MergerName = o.Merger.Name
 		}
 		readerOpts.LoggerAndTracer = o.LoggerAndTracer

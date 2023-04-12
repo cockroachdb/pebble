@@ -119,6 +119,13 @@ func (meta *ObjectMetadata) IsShared() bool {
 	return meta.Shared.CreatorID.IsSet()
 }
 
+// IsForeign returns true if the object is on shared storage and has a creator
+// ID that doesn't match ours. The creator ID of the current Provider must
+// be passed in.
+func (meta *ObjectMetadata) IsForeign(creatorID CreatorID) bool {
+	return meta.Shared.CreatorID.IsSet() && creatorID.IsSet() && meta.Shared.CreatorID != creatorID
+}
+
 // CreatorID identifies the DB instance that originally created a shared object.
 // This ID is incorporated in backing object names.
 // Must be non-zero.
@@ -225,6 +232,10 @@ type Provider interface {
 	//
 	// Cannot be called if shared storage is not configured for the provider.
 	SetCreatorID(creatorID CreatorID) error
+
+	// GetCreatorID gets the Creator ID, if set or persisted already. Returns
+	// an unset / zero value if unset.
+	GetCreatorID() CreatorID
 
 	// SharedObjectBacking encodes the shared object metadata.
 	SharedObjectBacking(meta *ObjectMetadata) (SharedObjectBackingHandle, error)

@@ -96,6 +96,14 @@ func (p *provider) SetCreatorID(creatorID objstorage.CreatorID) error {
 	return nil
 }
 
+// GetCreatorID is part of the objstorage.Provider interface.
+func (p *provider) GetCreatorID() objstorage.CreatorID {
+	if !p.shared.initialized.Load() {
+		return objstorage.CreatorID(0)
+	}
+	return p.shared.creatorID
+}
+
 func (p *provider) sharedCheckInitialized() error {
 	if p.sharedStorage() == nil {
 		return errors.Errorf("shared object support not configured")
