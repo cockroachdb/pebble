@@ -209,6 +209,11 @@ type Provider interface {
 	// Cannot be called if shared storage is not configured for the provider.
 	SetCreatorID(creatorID CreatorID) error
 
+	// IsForeign returns whether this object is owned by a different node. Return
+	// value undefined if creator ID is not set yet, or if this object does not
+	// exist in this provider.
+	IsForeign(meta ObjectMetadata) bool
+
 	// SharedObjectBacking encodes the shared object metadata.
 	SharedObjectBacking(meta *ObjectMetadata) (SharedObjectBackingHandle, error)
 

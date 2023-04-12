@@ -2709,6 +2709,17 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (It
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
 func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
+	return r.NewFixedSeqnumRangeDelIter(r.Properties.GlobalSeqNum)
+}
+
+// NewFixedSeqnumRangeDelIter returns an internal iterator for the contents of
+// the range-del block of the table, with a custom sequence number to be used as
+// the global sequence number for this block. Returns nil if the table does not
+// contain any range deletions.
+//
+// TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
+// iterator. Add WithContext methods since the existing ones are public.
+func (r *Reader) NewFixedSeqnumRangeDelIter(seqNum uint64) (keyspan.FragmentIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}
@@ -2717,7 +2728,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 		return nil, err
 	}
 	i := &fragmentBlockIter{}
-	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
+	if err := i.blockIter.initHandle(r.Compare, h, seqNum); err != nil {
 		return nil, err
 	}
 	return i, nil

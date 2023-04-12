@@ -7,6 +7,7 @@ package pebble
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -264,6 +265,65 @@ func TestScanInternal(t *testing.T) {
 			return b.String()
 		default:
 			return fmt.Sprintf("unknown command %q", td.Cmd)
+		}
+	})
+}
+
+func TestPointCollapsingIter(t *testing.T) {
+	var def string
+	datadriven.RunTest(t, "testdata/point_collapsing_iter", func(t *testing.T, d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			def = d.Input
+			return ""
+
+		case "iter":
+			var elideRangeDels bool
+			for i := range d.CmdArgs {
+				switch d.CmdArgs[i].Key {
+				case "elide-range-dels":
+					var err error
+					elideRangeDels, err = strconv.ParseBool(d.CmdArgs[i].Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+				}
+			}
+			f := &fakeIter{}
+			var spans []keyspan.Span
+			for _, line := range strings.Split(def, "\n") {
+				for _, key := range strings.Fields(line) {
+					j := strings.Index(key, ":")
+					k := base.ParseInternalKey(key[:j])
+					v := []byte(key[j+1:])
+					if k.Kind() == InternalKeyKindRangeDelete {
+						spans = append(spans, keyspan.Span{
+							Start:     k.UserKey,
+							End:       v,
+							Keys:      []keyspan.Key{{Trailer: k.Trailer}},
+							KeysOrder: 0,
+						})
+						continue
+					}
+					f.keys = append(f.keys, k)
+					f.vals = append(f.vals, v)
+				}
+			}
+
+			ksIter := keyspan.NewIter(base.DefaultComparer.Compare, spans)
+			pcIter := &pointCollapsingIterator{
+				comparer:          base.DefaultComparer,
+				merge:             base.DefaultMerger.Merge,
+				seqNum:            math.MaxUint64,
+				elideRangeDeletes: elideRangeDels,
+			}
+			pcIter.iter.Init(base.DefaultComparer, f, ksIter, nil /* mask */, nil, nil)
+			defer pcIter.Close()
+
+			return runInternalIterCmd(t, d, pcIter, iterCmdVerboseKey)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
 	})
 }
