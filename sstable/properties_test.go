@@ -109,7 +109,7 @@ func TestPropertiesSave(t *testing.T) {
 		// Check that we can save properties and read them back.
 		var w rawBlockWriter
 		w.restartInterval = propertiesBlockRestartInterval
-		expected.save(&w)
+		expected.save(TableFormatPebblev2, &w)
 		var props Properties
 		require.NoError(t, props.load(w.finish(), 0))
 		props.Loaded = nil

@@ -932,6 +932,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	switch key.Kind() {
 	case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 		w.props.NumDeletions++
+		w.props.RawPointTombstoneKeySize += uint64(key.Size())
 	case InternalKeyKindMerge:
 		w.props.NumMergeOperands++
 	}
@@ -1948,7 +1949,7 @@ func (w *Writer) Close() (err error) {
 		// reduces table size without a significant impact on performance.
 		raw.restartInterval = propertiesBlockRestartInterval
 		w.props.CompressionOptions = rocksDBCompressionOptions
-		w.props.save(&raw)
+		w.props.save(w.tableFormat, &raw)
 		bh, err := w.writeBlock(raw.finish(), NoCompression, &w.blockBuf)
 		if err != nil {
 			return err
