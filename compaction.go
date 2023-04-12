@@ -1474,7 +1474,7 @@ func (c *compaction) newInputIter(
 		}
 		if hasRangeKeys {
 			li := &keyspan.LevelIter{}
-			newRangeKeyIterWrapper := func(file *manifest.FileMetadata, iterOptions *keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+			newRangeKeyIterWrapper := func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 				iter, err := newRangeKeyIter(file, iterOptions)
 				if iter != nil {
 					// Ensure that the range key iter is not closed until the compaction is

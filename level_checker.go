@@ -379,7 +379,7 @@ func checkRangeTombstones(c *checkConfig) error {
 			atomicUnit, _ := expandToAtomicUnit(c.cmp, lf.Slice(), true /* disableIsCompacting */)
 			lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
 			iterToClose, iter, err := c.newIters(
-				context.Background(), lf.FileMetadata, nil, internalIterOpts{})
+				context.Background(), lf.FileMetadata, &IterOptions{level: manifest.Level(lsmLevel)}, internalIterOpts{})
 			if err != nil {
 				return err
 			}
