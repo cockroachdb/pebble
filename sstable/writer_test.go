@@ -69,7 +69,15 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 		}
 	}()
 
-	format := func(m *WriterMetadata) string {
+	format := func(td *datadriven.TestData, m *WriterMetadata) string {
+		var requestedProps []string
+		for _, cmdArg := range td.CmdArgs {
+			switch cmdArg.Key {
+			case "props":
+				requestedProps = cmdArg.Vals
+			}
+		}
+
 		var b bytes.Buffer
 		if m.HasPointKeys {
 			fmt.Fprintf(&b, "point:    [%s-%s]\n", m.SmallestPoint, m.LargestPoint)
@@ -81,6 +89,19 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			fmt.Fprintf(&b, "rangekey: [%s-%s]\n", m.SmallestRangeKey, m.LargestRangeKey)
 		}
 		fmt.Fprintf(&b, "seqnums:  [%d-%d]\n", m.SmallestSeqNum, m.LargestSeqNum)
+
+		if len(requestedProps) > 0 {
+			props := strings.Split(r.Properties.String(), "\n")
+			for _, requestedProp := range requestedProps {
+				fmt.Fprintf(&b, "props %q:\n", requestedProp)
+				for _, prop := range props {
+					if strings.Contains(prop, requestedProp) {
+						fmt.Fprintf(&b, "  %s\n", prop)
+					}
+				}
+			}
+		}
+
 		return b.String()
 	}
 
@@ -100,7 +121,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			if err != nil {
 				return err.Error()
 			}
-			return format(meta)
+			return format(td, meta)
 
 		case "build-raw":
 			if r != nil {
@@ -115,7 +136,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			if err != nil {
 				return err.Error()
 			}
-			return format(meta)
+			return format(td, meta)
 
 		case "scan":
 			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
@@ -204,7 +225,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			if err != nil {
 				return err.Error()
 			}
-			return format(meta)
+			return format(td, meta)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

@@ -14,7 +14,7 @@ scan-range-del
 scan-range-key
 ----
 
-build
+build props=(deletions,deleted)
 a.SET.1:a
 b.DEL.2:
 c.MERGE.3:c
@@ -31,6 +31,33 @@ point:    [a#1,1-h#7,2]
 rangedel: [d#4,15-j#72057594037927935,15]
 rangekey: [j#9,19-m#72057594037927935,21]
 seqnums:  [1-11]
+props "deletions":
+  rocksdb.num.range-deletions: 2
+props "deleted":
+  rocksdb.deleted.keys: 4
+
+
+build props=(deletions,deleted)
+a.SET.1:a
+b.DEL.2:
+c.MERGE.3:c
+d.SINGLEDEL.4:
+e.SINGLEDEL.5:
+f.SET.6:f
+g.DEL.7:
+h.SINGLEDEL.8:
+rangekey: j-k:{(#9,RANGEKEYDEL)}
+rangekey: k-l:{(#10,RANGEKEYUNSET,@t5)}
+rangekey: l-m:{(#11,RANGEKEYSET,@t10,foo)}
+----
+point:    [a#1,1-h#8,7]
+rangekey: [j#9,19-m#72057594037927935,21]
+seqnums:  [1-11]
+props "deletions":
+  rocksdb.num.range-deletions: 0
+props "deleted":
+  rocksdb.deleted.keys: 5
+
 
 build
 a.SET.1:a
