@@ -932,7 +932,7 @@ func TestCompactionCPUGranter(t *testing.T) {
 	defer d.Close()
 
 	d.Set([]byte{'a'}, []byte{'a'}, nil)
-	err = d.Compact([]byte{'a'}, []byte{'b'}, true)
+	err = d.Compact([]byte{'a'}, []byte{'b'}, true, 7 /* maxLevel */)
 	if err != nil {
 		t.Fatalf("Compact: %v", err)
 	}
@@ -951,7 +951,7 @@ func TestCompactionCPUGranterDefault(t *testing.T) {
 	defer d.Close()
 
 	d.Set([]byte{'a'}, []byte{'a'}, nil)
-	err = d.Compact([]byte{'a'}, []byte{'b'}, true)
+	err = d.Compact([]byte{'a'}, []byte{'b'}, true, 7 /* maxLevel */)
 	if err != nil {
 		t.Fatalf("Compact: %v", err)
 	}
@@ -2956,7 +2956,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	d.mu.Lock()
 	initialSetupDone = true
 	d.mu.Unlock()
-	err = d.Compact([]byte("a"), []byte("d"), false)
+	err = d.Compact([]byte("a"), []byte("d"), false, 7 /* maxLevel */)
 	require.Error(t, err, "injected error")
 
 	d.mu.Lock()
@@ -3288,7 +3288,7 @@ func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
 		}
 	}
 
-	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
+	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false, 7 /* maxLevel */))
 	d.mu.Lock()
 	require.Equal(t, 1, len(d.mu.mem.queue))
 	d.mu.Unlock()
@@ -3343,7 +3343,7 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 	require.Greater(t, len(d.mu.mem.queue), 1)
 	d.mu.Unlock()
 
-	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
+	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false, 7 /* maxLevel */))
 	d.mu.Lock()
 	require.Equal(t, 1, len(d.mu.mem.queue))
 	d.mu.Unlock()
@@ -3467,9 +3467,9 @@ func TestCompactionInvalidBounds(t *testing.T) {
 	}).WithFSDefaults())
 	require.NoError(t, err)
 	defer db.Close()
-	require.NoError(t, db.Compact([]byte("a"), []byte("b"), false))
-	require.Error(t, db.Compact([]byte("a"), []byte("a"), false))
-	require.Error(t, db.Compact([]byte("b"), []byte("a"), false))
+	require.NoError(t, db.Compact([]byte("a"), []byte("b"), false, 7 /* maxLevel */))
+	require.Error(t, db.Compact([]byte("a"), []byte("a"), false, 7 /* maxLevel */))
+	require.Error(t, db.Compact([]byte("b"), []byte("a"), false, 7 /* maxLevel */))
 }
 
 func Test_calculateInuseKeyRanges(t *testing.T) {

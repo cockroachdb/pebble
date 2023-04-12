@@ -126,7 +126,7 @@ func (d *db) flush() {
 }
 
 func (d *db) compact(start, end string) {
-	if err := d.db.Compact([]byte(start), []byte(end), false); err != nil {
+	if err := d.db.Compact([]byte(start), []byte(end), false, 7 /* maxLevel */); err != nil {
 		log.Fatal(err)
 	}
 }

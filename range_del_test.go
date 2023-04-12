@@ -311,7 +311,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		require.NoError(t, d.DeleteRange([]byte("a"), []byte("d"), nil))
 
 		// Compact to produce the L1 tables.
-		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
+		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false, 7 /* maxLevel */))
 		expectLSM(`
 1:
   000008:[a#12,RANGEDEL-b#inf,RANGEDEL]
@@ -319,7 +319,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 `)
 
 		// Compact again to move one of the tables to L2.
-		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
+		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false, 7 /* maxLevel */))
 		expectLSM(`
 1:
   000008:[a#12,RANGEDEL-b#inf,RANGEDEL]
@@ -368,7 +368,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		// containing "c" will be compacted again with the L2 table creating two
 		// tables in L2. Lastly, the L2 table containing "c" will be compacted
 		// creating the L3 table.
-		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
+		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false, 7 /* maxLevel */))
 		if formatVersion < FormatSetWithDelete {
 			expectLSM(`
 1:
@@ -461,14 +461,14 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	require.NoError(t, d.DeleteRange([]byte("a"), []byte("d"), nil))
 
 	// Compact to produce the L1 tables.
-	require.NoError(t, d.Compact([]byte("b"), []byte("b\x00"), false))
+	require.NoError(t, d.Compact([]byte("b"), []byte("b\x00"), false, 7 /* maxLevel */))
 	expectLSM(`
 6:
   000009:[a#12,RANGEDEL-d#inf,RANGEDEL]
 `)
 
 	require.NoError(t, d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil))
-	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
+	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false, 7 /* maxLevel */))
 	expectLSM(`
 6:
   000012:[a#12,RANGEDEL-c#inf,RANGEDEL]
@@ -534,7 +534,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 
 	// Compact a few times to move the tables down to L3.
 	for i := 0; i < 3; i++ {
-		require.NoError(t, d.Compact([]byte("b"), []byte("b\x00"), false))
+		require.NoError(t, d.Compact([]byte("b"), []byte("b\x00"), false, 7 /* maxLevel */))
 	}
 	expectLSM(`
 3:
@@ -543,7 +543,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 
 	require.NoError(t, d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil))
 
-	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
+	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false, 7 /* maxLevel */))
 	expectLSM(`
 3:
   000013:[a#12,RANGEDEL-c#inf,RANGEDEL]
@@ -551,7 +551,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
   000014:[c#13,SET-d#inf,RANGEDEL]
 `)
 
-	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
+	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false, 7 /* maxLevel */))
 	expectLSM(`
 3:
   000013:[a#12,RANGEDEL-c#inf,RANGEDEL]
@@ -563,7 +563,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 		t.Fatalf("expected not found, but found %v", err)
 	}
 
-	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
+	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false, 7 /* maxLevel */))
 	expectLSM(`
 4:
   000013:[a#12,RANGEDEL-c#inf,RANGEDEL]
@@ -649,7 +649,7 @@ func benchmarkRangeDelIterate(b *testing.B, entries, deleted int, snapshotCompac
 	}
 
 	if snapshotCompact {
-		require.NoError(b, d.Compact(makeKey(0), makeKey(entries), false))
+		require.NoError(b, d.Compact(makeKey(0), makeKey(entries), false, 7 /* maxLevel */))
 	}
 
 	b.ResetTimer()
