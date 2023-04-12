@@ -299,7 +299,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 				metas = append(metas, meta)
 			}
 
-			tableNewIters := func(file *manifest.FileMetadata, iterOptions *SpanIterOptions) (FragmentIterator, error) {
+			tableNewIters := func(file *manifest.FileMetadata, iterOptions SpanIterOptions) (FragmentIterator, error) {
 				return NewIter(base.DefaultComparer.Compare, tc.levels[j][file.FileNum-1]), nil
 			}
 			// Add all the fileMetadatas to L6.
@@ -433,7 +433,7 @@ func TestLevelIter(t *testing.T) {
 			}
 			if iter == nil {
 				var lastFileNum base.FileNum
-				tableNewIters := func(file *manifest.FileMetadata, _ *SpanIterOptions) (FragmentIterator, error) {
+				tableNewIters := func(file *manifest.FileMetadata, _ SpanIterOptions) (FragmentIterator, error) {
 					keyType := keyType
 					spans := level[file.FileNum-1]
 					if keyType == manifest.KeyTypePoint {

@@ -62,7 +62,7 @@ type FragmentIterator interface {
 
 // TableNewSpanIter creates a new iterator for range key spans for the given
 // file.
-type TableNewSpanIter func(file *manifest.FileMetadata, iterOptions *SpanIterOptions) (FragmentIterator, error)
+type TableNewSpanIter func(file *manifest.FileMetadata, iterOptions SpanIterOptions) (FragmentIterator, error)
 
 // SpanIterOptions is a subset of IterOptions that are necessary to instantiate
 // per-sstable span iterators.
@@ -70,6 +70,9 @@ type SpanIterOptions struct {
 	// RangeKeyFilters can be used to avoid scanning tables and blocks in tables
 	// when iterating over range keys.
 	RangeKeyFilters []base.BlockPropertyFilter
+	// Level specifies the level where this sstable is being read. Must be
+	// specified for foreign (i.e. shared not-created-by-this-instance) sstables.
+	Level manifest.Level
 }
 
 // Iter is an iterator over a set of fragmented spans.
