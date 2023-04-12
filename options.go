@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/sstable"
@@ -220,6 +221,17 @@ func (o *IterOptions) getLogger() Logger {
 		return DefaultLogger
 	}
 	return o.logger
+}
+
+// SpanIterOptions creates a SpanIterOptions from this IterOptions.
+func (o *IterOptions) SpanIterOptions(level manifest.Level) keyspan.SpanIterOptions {
+	if o == nil {
+		return keyspan.SpanIterOptions{Level: level}
+	}
+	return keyspan.SpanIterOptions{
+		RangeKeyFilters: o.RangeKeyFilters,
+		Level:           level,
+	}
 }
 
 // scanInternalOptions is similar to IterOptions, meant for use with
@@ -1616,6 +1628,7 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 		readerOpts.Comparer = o.Comparer
 		readerOpts.Filters = o.Filters
 		if o.Merger != nil {
+			readerOpts.Merge = o.Merger.Merge
 			readerOpts.MergerName = o.Merger.Name
 		}
 		readerOpts.LoggerAndTracer = o.LoggerAndTracer

@@ -1455,6 +1455,10 @@ type fragmentBlockIter struct {
 	err       error
 	dir       int8
 	closeHook func(i keyspan.FragmentIterator) error
+
+	// elideSameSeqnum, if true, returns only the first-occurring (in forward
+	// order) Key for each sequence number.
+	elideSameSeqnum bool
 }
 
 func (i *fragmentBlockIter) resetForReuse() fragmentBlockIter {
@@ -1481,6 +1485,24 @@ func (i *fragmentBlockIter) decodeSpanKeys(k *InternalKey, internalValue []byte)
 		i.span = keyspan.Span{}
 		i.err = base.CorruptionErrorf("pebble: corrupt keyspan fragment of kind %d", k.Kind())
 	}
+}
+
+func (i *fragmentBlockIter) elideKeysOfSameSeqNum() {
+	if invariants.Enabled {
+		if !i.elideSameSeqnum || len(i.span.Keys) == 0 {
+			panic("elideKeysOfSameSeqNum called when it should not be")
+		}
+	}
+	lastSeqNum := i.span.Keys[0].SeqNum()
+	k := 1
+	for j := 1; j < len(i.span.Keys); j++ {
+		if lastSeqNum != i.span.Keys[j].SeqNum() {
+			lastSeqNum = i.span.Keys[j].SeqNum()
+			i.span.Keys[k] = i.span.Keys[j]
+			k++
+		}
+	}
+	i.span.Keys = i.span.Keys[:k]
 }
 
 // gatherForward gathers internal keys with identical bounds. Keys defined over
@@ -1531,6 +1553,9 @@ func (i *fragmentBlockIter) gatherForward(k *InternalKey, lazyValue base.LazyVal
 		}
 		k, lazyValue = i.blockIter.Next()
 		internalValue = lazyValue.InPlaceValue()
+	}
+	if i.elideSameSeqnum && len(i.span.Keys) > 0 {
+		i.elideKeysOfSameSeqNum()
 	}
 	// i.blockIter is positioned over the first internal key for the next span.
 	return &i.span
@@ -1591,6 +1616,9 @@ func (i *fragmentBlockIter) gatherBackward(k *InternalKey, lazyValue base.LazyVa
 	// Backwards iteration encounters internal keys in the wrong order.
 	keyspan.SortKeysByTrailer(&i.span.Keys)
 
+	if i.elideSameSeqnum && len(i.span.Keys) > 0 {
+		i.elideKeysOfSameSeqNum()
+	}
 	return &i.span
 }
 

@@ -4,6 +4,8 @@
 
 package base
 
+import "fmt"
+
 // This file defines sequence numbers that are reserved for foreign keys i.e.
 // internal keys coming from other Pebble instances and existing in shared
 // storage, as those will "slot below" any internal keys added by our own Pebble
@@ -52,3 +54,16 @@ const (
 	// ourselves.
 	SeqNumStart = uint64(10)
 )
+
+// PointSeqNumForLevel returns the appropriate reserved sequence number for
+// point keys in foreign sstables at the specified level.
+func PointSeqNumForLevel(level int) uint64 {
+	switch level {
+	case 5:
+		return SeqNumL5Point
+	case 6:
+		return SeqNumL6Point
+	default:
+		panic(fmt.Sprintf("unexpected foreign sstable at level %d", level))
+	}
+}

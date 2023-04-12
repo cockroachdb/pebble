@@ -184,7 +184,7 @@ func (s *ingestedFlushable) newFlushIter(o *IterOptions, bytesFlushed *uint64) i
 }
 
 func (s *ingestedFlushable) constructRangeDelIter(
-	file *manifest.FileMetadata, _ *keyspan.SpanIterOptions,
+	file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
 	// Note that the keyspan level iter expects a non-nil iterator to be
 	// returned even if there is an error. So, we return the emptyKeyspanIter.

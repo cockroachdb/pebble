@@ -107,6 +107,9 @@ type ReaderOptions struct {
 	// The default value uses the same ordering as bytes.Compare.
 	Comparer *Comparer
 
+	// Merge defines the Merge function in use for this keyspace.
+	Merge base.Merge
+
 	// Filters is a map from filter policy name to filter policy. It is used for
 	// debugging tools which may be used on multiple databases configured with
 	// different filter policies. It is not necessary to populate this filters
@@ -125,6 +128,9 @@ type ReaderOptions struct {
 func (o ReaderOptions) ensureDefaults() ReaderOptions {
 	if o.Comparer == nil {
 		o.Comparer = base.DefaultComparer
+	}
+	if o.Merge == nil {
+		o.Merge = base.DefaultMerger.Merge
 	}
 	if o.MergerName == "" {
 		o.MergerName = base.DefaultMerger.Name
