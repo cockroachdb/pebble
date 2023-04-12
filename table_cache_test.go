@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -657,7 +658,7 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 			m := &fileMetadata{FileNum: FileNum(j)}
 			m.InitPhysicalBacking()
 			if rangeIter {
-				iter, err = c.newRangeKeyIter(m, nil /* iter options */)
+				iter, err = c.newRangeKeyIter(m, keyspan.SpanIterOptions{})
 			} else {
 				iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
 			}
@@ -758,7 +759,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		m := &fileMetadata{FileNum: FileNum(j)}
 		m.InitPhysicalBacking()
 		if rangeIter {
-			iter, err = c.newRangeKeyIter(m, nil /* iter options */)
+			iter, err = c.newRangeKeyIter(m, keyspan.SpanIterOptions{})
 		} else {
 			iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
 		}
