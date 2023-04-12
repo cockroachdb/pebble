@@ -367,3 +367,73 @@ func coalesce(
 	}
 	return nil
 }
+
+// ForeignSSTTransformer implements a keyspan.Transformer for range keys in
+// foreign sstables (i.e. shared sstables not created by us). It is largely
+// similar to the Transform function implemented in UserIteratorConfig in that
+// it calls coalesce to remove range keys shadowed by other range keys, but also
+// retains the range key that does the shadowing. In addition, it outputs range
+// keys with sequence numbers that match reserved sequence numbers for that
+// level (i.e. SeqNumL5RangeKeySet for L5 sets, while L6 unsets/dels are elided).
+type ForeignSSTTransformer struct {
+	Comparer *base.Comparer
+	Level    int
+	sortBuf  keyspan.KeysBySuffix
+}
+
+// Transform implements the Transformer interface.
+func (f *ForeignSSTTransformer) Transform(
+	cmp base.Compare, s keyspan.Span, dst *keyspan.Span,
+) error {
+	// Apply shadowing of keys.
+	dst.Start = s.Start
+	dst.End = s.End
+	f.sortBuf = keyspan.KeysBySuffix{
+		Cmp:  cmp,
+		Keys: f.sortBuf.Keys[:0],
+	}
+	if err := coalesce(f.Comparer.Equal, &f.sortBuf, math.MaxUint64, s.Keys); err != nil {
+		return err
+	}
+	keys := f.sortBuf.Keys
+	dst.Keys = dst.Keys[:0]
+	for i := range keys {
+		var seqNum uint64
+		switch keys[i].Kind() {
+		case base.InternalKeyKindRangeKeySet:
+			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
+				panic("pebble: keys unexpectedly not in ascending suffix order")
+			}
+			switch f.Level {
+			case 5:
+				seqNum = base.SeqNumL5RangeKeySet
+			case 6:
+				seqNum = base.SeqNumL6RangeKey
+			}
+		case base.InternalKeyKindRangeKeyUnset:
+			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
+				panic("pebble: keys unexpectedly not in ascending suffix order")
+			}
+			fallthrough
+		case base.InternalKeyKindRangeKeyDelete:
+			switch f.Level {
+			case 5:
+				seqNum = base.SeqNumL5RangeKeyUnsetDel
+			case 6:
+				// Skip this key, as foreign sstable in L6 do not need to emit range key
+				// unsets/dels as they do not apply to any other sstables.
+				continue
+			}
+		default:
+			return base.CorruptionErrorf("pebble: unrecognized range key kind %s", keys[i].Kind())
+		}
+		dst.Keys = append(dst.Keys, keyspan.Key{
+			Trailer: base.MakeTrailer(seqNum, keys[i].Kind()),
+			Suffix:  keys[i].Suffix,
+			Value:   keys[i].Value,
+		})
+	}
+	// coalesce results in dst.Keys being sorted by Suffix.
+	dst.KeysOrder = keyspan.BySuffixAsc
+	return nil
+}

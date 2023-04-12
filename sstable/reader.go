@@ -2947,6 +2947,26 @@ func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 	), nil
 }
 
+// NewFixedSeqnumRangeDelIter wraps Reader.NewFixedSeqnumRangeDelIter.
+func (v *VirtualReader) NewFixedSeqnumRangeDelIter(
+	seqNum uint64,
+) (keyspan.FragmentIterator, error) {
+	iter, err := v.reader.NewFixedSeqnumRangeDelIter(seqNum)
+	if err != nil {
+		return nil, err
+	}
+	if iter == nil {
+		return nil, nil
+	}
+
+	// There should be no spans which cross virtual sstable bounds. So, no
+	// truncation should occur.
+	return keyspan.Truncate(
+		v.reader.Compare, iter, v.vState.lower.UserKey, v.vState.upper.UserKey,
+		&v.vState.lower, &v.vState.upper, true, /* panicOnPartialOverlap */
+	), nil
+}
+
 // NewRawRangeKeyIter wraps Reader.NewRawRangeKeyIter.
 func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 	iter, err := v.reader.NewRawRangeKeyIter()
@@ -3172,6 +3192,17 @@ func (r *Reader) newCompactionIter(
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
 func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
+	return r.NewFixedSeqnumRangeDelIter(r.Properties.GlobalSeqNum)
+}
+
+// NewFixedSeqnumRangeDelIter returns an internal iterator for the contents of
+// the range-del block of the table, with a custom sequence number to be used as
+// the global sequence number for this block. Returns nil if the table does not
+// contain any range deletions.
+//
+// TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
+// iterator. Add WithContext methods since the existing ones are public.
+func (r *Reader) NewFixedSeqnumRangeDelIter(seqNum uint64) (keyspan.FragmentIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}
@@ -3180,7 +3211,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 		return nil, err
 	}
 	i := &fragmentBlockIter{}
-	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
+	if err := i.blockIter.initHandle(r.Compare, h, seqNum); err != nil {
 		return nil, err
 	}
 	return i, nil
