@@ -930,7 +930,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 
 	w.props.NumEntries++
 	switch key.Kind() {
-	case InternalKeyKindDelete:
+	case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 		w.props.NumDeletions++
 	case InternalKeyKindMerge:
 		w.props.NumMergeOperands++
