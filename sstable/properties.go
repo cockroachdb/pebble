@@ -136,6 +136,9 @@ type Properties struct {
 	PropertyCollectorNames string `prop:"rocksdb.property.collectors"`
 	// Total raw key size.
 	RawKeySize uint64 `prop:"rocksdb.raw.key.size"`
+	// Total raw key size of point deletion tombstones. This value is comparable
+	// to RawKeySize.
+	RawPointTombstoneKeySize uint64 `prop:"pebble.raw.point-tombstone.key.size"`
 	// Total raw rangekey key size.
 	RawRangeKeyKeySize uint64 `prop:"pebble.raw.range-key.key.size"`
 	// Total raw rangekey value size.
@@ -297,7 +300,7 @@ func (p *Properties) saveString(m map[string][]byte, offset uintptr, value strin
 	m[propOffsetTagMap[offset]] = []byte(value)
 }
 
-func (p *Properties) save(w *rawBlockWriter) {
+func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	m := make(map[string][]byte)
 	for k, v := range p.UserProperties {
 		m[k] = []byte(v)
@@ -347,6 +350,13 @@ func (p *Properties) save(w *rawBlockWriter) {
 	p.saveUvarint(m, unsafe.Offsetof(p.NumDeletions), p.NumDeletions)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumMergeOperands), p.NumMergeOperands)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumRangeDeletions), p.NumRangeDeletions)
+	// NB: We only write out the RawTombstoneKeySize for Pebble formats. This
+	// isn't strictly necessary because unrecognized properties are interpreted
+	// as user-defined properties, however writing them prevents byte-for-byte
+	// equivalence with RocksDB files that some of our testing requires.
+	if p.RawPointTombstoneKeySize > 0 && tblFormat >= TableFormatPebblev1 {
+		p.saveUvarint(m, unsafe.Offsetof(p.RawPointTombstoneKeySize), p.RawPointTombstoneKeySize)
+	}
 	if p.NumRangeKeys() > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeKeyDels), p.NumRangeKeyDels)
 		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeKeySets), p.NumRangeKeySets)
