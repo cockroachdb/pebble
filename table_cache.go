@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"runtime/debug"
 	"runtime/pprof"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable"
@@ -370,9 +372,34 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, err
 	}
 
+	// Check if this file is a foreign file.
+	provider := dbOpts.objProvider
+	objMeta, err := provider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
+	if err != nil {
+		return nil, nil, err
+	}
+	if objMeta.IsShared() && opts == nil {
+		panic("unexpected nil opts when reading shared file")
+	}
+
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := v.reader.NewRawRangeDelIter()
+	var rangeDelIter keyspan.FragmentIterator
+	if provider.IsForeign(objMeta) {
+		switch manifest.LevelToInt(opts.level) {
+		case 5:
+			rangeDelIter, err = v.reader.NewFixedSeqnumRangeDelIter(base.SeqNumL5RangeDel)
+		case 6:
+		// Let rangeDelIter remain nil. We don't need to return rangedels from
+		// this file as they will not apply to any other files. For the purpose
+		// of collapsing rangedels within this file, we create another rangeDelIter
+		// below for use with the interleaving iter.
+		default:
+			panic(fmt.Sprintf("unexpected level for foreign sstable: %d", manifest.LevelToInt(opts.level)))
+		}
+	} else {
+		rangeDelIter, err = v.reader.NewRawRangeDelIter()
+	}
 	if err != nil {
 		c.unrefValue(v)
 		return nil, nil, err
@@ -424,6 +451,33 @@ func (c *tableCacheShard) newIters(
 	// NB: v.closeHook takes responsibility for calling unrefValue(v) here. Take
 	// care to avoid introducing an allocation here by adding a closure.
 	iter.SetCloseHook(v.closeHook)
+	if provider.IsForeign(objMeta) {
+		// NB: IsForeign() guarantees IsShared, so opts must not be nil as we've
+		// already panicked on the nil case above.
+		pointKeySeqNum := base.PointSeqNumForLevel(manifest.LevelToInt(opts.level))
+		pcIter := pointCollapsingIterator{
+			comparer:          dbOpts.opts.Comparer,
+			merge:             dbOpts.opts.Merge,
+			seqNum:            math.MaxUint64,
+			elideRangeDeletes: true,
+			fixedSeqNum:       pointKeySeqNum,
+		}
+		// Open a second rangedel iter. This is solely for the interleaving iter to
+		// be able to efficiently delete covered range deletes. We don't need to fix
+		// the sequence number in this iter, as these range deletes will not be
+		// exposed to anything other than the interleaving iter and
+		// pointCollapsingIter.
+		rangeDelIter, err := v.reader.NewRawRangeDelIter()
+		if err != nil {
+			c.unrefValue(v)
+			return nil, nil, err
+		}
+		if rangeDelIter == nil {
+			rangeDelIter = emptyKeyspanIter
+		}
+		pcIter.iter.Init(dbOpts.opts.Comparer, iter, rangeDelIter, nil /* mask */, opts.LowerBound, opts.UpperBound)
+		iter = &pointCollapsingSSTIterator{pointCollapsingIterator: pcIter, childIter: iter}
+	}
 
 	c.iterCount.Add(1)
 	dbOpts.iterCount.Add(1)
@@ -483,6 +537,29 @@ func (c *tableCacheShard) newRangeKeyIter(
 		// NewRawRangeKeyIter can return nil even if there's no error. However,
 		// the keyspan.LevelIter expects a non-nil iterator if err is nil.
 		return emptyKeyspanIter, nil
+	}
+
+	objMeta, err := dbOpts.objProvider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
+	if err != nil {
+		return nil, err
+	}
+	if objMeta.IsShared() && opts == nil {
+		panic("unexpected nil opts when reading shared file")
+	}
+	if dbOpts.objProvider.IsForeign(objMeta) {
+		transform := &rangekey.ForeignSSTTransformer{
+			Comparer: dbOpts.opts.Comparer,
+			Level:    manifest.LevelToInt(opts.Level),
+		}
+		if iter == nil {
+			iter = emptyKeyspanIter
+		}
+		transformIter := &keyspan.TransformerIter{
+			FragmentIterator: iter,
+			Transformer:      transform,
+			Compare:          dbOpts.opts.Comparer.Compare,
+		}
+		return transformIter, nil
 	}
 
 	return iter, nil

@@ -96,6 +96,14 @@ func (p *provider) SetCreatorID(creatorID objstorage.CreatorID) error {
 	return nil
 }
 
+// IsForeign is part of the objstorage.Provider interface.
+func (p *provider) IsForeign(meta objstorage.ObjectMetadata) bool {
+	if !p.shared.initialized.Load() {
+		return false
+	}
+	return meta.IsShared() && p.shared.creatorID != meta.Shared.CreatorID
+}
+
 func (p *provider) sharedCheckInitialized() error {
 	if p.sharedStorage() == nil {
 		return errors.Errorf("shared object support not configured")
