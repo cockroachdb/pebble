@@ -154,29 +154,13 @@ func TestScanInternal(t *testing.T) {
 		case "snapshot":
 			s := d.NewSnapshot()
 			var name string
-			for _, arg := range td.CmdArgs {
-				switch arg.Key {
-				case "name":
-					name = arg.Vals[0]
-				default:
-					return fmt.Sprintf("unrecognized command argument %q\n", arg.Key)
-				}
-			}
+			td.ScanArgs(t, "name", &name)
 			snaps[name] = s
 			return ""
 		case "batch":
-			var commit bool
 			var name string
-			for _, arg := range td.CmdArgs {
-				switch arg.Key {
-				case "name":
-					name = arg.Vals[0]
-				case "commit":
-					commit = true
-				default:
-					return fmt.Sprintf("unrecognized command argument %q\n", arg.Key)
-				}
-			}
+			td.MaybeScanArgs(t, "name", &name)
+			commit := td.HasArg("commit")
 			b := d.NewIndexedBatch()
 			require.NoError(t, runBatchDefineCmd(td, b))
 			var err error

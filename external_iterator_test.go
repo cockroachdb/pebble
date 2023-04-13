@@ -100,15 +100,12 @@ func TestSimpleLevelIter(t *testing.T) {
 			return ""
 		case "iter":
 			var files []sstable.ReadableFile
-			for _, arg := range td.CmdArgs {
-				switch arg.Key {
-				case "files":
-					for _, v := range arg.Vals {
-						f, err := mem.Open(v)
-						require.NoError(t, err)
-						files = append(files, f)
-					}
-				}
+			var filenames []string
+			td.ScanArgs(t, "files", &filenames)
+			for _, name := range filenames {
+				f, err := mem.Open(name)
+				require.NoError(t, err)
+				files = append(files, f)
 			}
 			readers, err := openExternalTables(o, files, 0, o.MakeReaderOptions())
 			require.NoError(t, err)

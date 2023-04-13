@@ -841,29 +841,17 @@ func TestCompactionTransform(t *testing.T) {
 		case "transform":
 			var snapshots []uint64
 			var keyRanges []manifest.UserKeyRange
-			disableElision := false
-			for i := range td.CmdArgs {
-				switch td.CmdArgs[i].Key {
-				case "snapshots":
-					for _, snapshot := range td.CmdArgs[i].Vals {
-						s, err := strconv.ParseUint(snapshot, 10, 64)
-						if err != nil {
-							return err.Error()
-						}
-						snapshots = append(snapshots, s)
-					}
-				case "in-use-key-ranges":
-					for _, keyRange := range td.CmdArgs[i].Vals {
-						parts := strings.SplitN(keyRange, "-", 2)
-						start := []byte(strings.TrimSpace(parts[0]))
-						end := []byte(strings.TrimSpace(parts[1]))
-						keyRanges = append(keyRanges, manifest.UserKeyRange{
-							Start: start,
-							End:   end,
-						})
-					}
-				case "disable-elision":
-					disableElision = true
+			disableElision := td.HasArg("disable-elision")
+			td.MaybeScanArgs(t, "snapshots", &snapshots)
+			if arg, ok := td.Arg("in-use-key-ranges"); ok {
+				for _, keyRange := range arg.Vals {
+					parts := strings.SplitN(keyRange, "-", 2)
+					start := []byte(strings.TrimSpace(parts[0]))
+					end := []byte(strings.TrimSpace(parts[1]))
+					keyRanges = append(keyRanges, manifest.UserKeyRange{
+						Start: start,
+						End:   end,
+					})
 				}
 			}
 			span := keyspan.ParseSpan(td.Input)
@@ -1760,16 +1748,9 @@ func TestCompactionFindL0Limit(t *testing.T) {
 				fileMetas := [manifest.NumLevels][]*fileMetadata{}
 				baseLevel := manifest.NumLevels - 1
 				level := 0
+				d.MaybeScanArgs(t, "flush_split_bytes", &flushSplitBytes)
+
 				var err error
-				for _, arg := range d.CmdArgs {
-					switch arg.Key {
-					case "flush_split_bytes":
-						flushSplitBytes, err = strconv.ParseInt(arg.Vals[0], 10, 64)
-						if err != nil {
-							t.Fatal(err)
-						}
-					}
-				}
 				for _, data := range strings.Split(d.Input, "\n") {
 					data = strings.TrimSpace(data)
 					switch data {
@@ -2455,17 +2436,7 @@ func TestCompactionReadTriggered(t *testing.T) {
 
 			case "add-read-compaction":
 				d.mu.Lock()
-				for _, arg := range td.CmdArgs {
-					switch arg.Key {
-					case "flushing":
-						switch arg.Vals[0] {
-						case "true":
-							d.mu.compact.flushing = true
-						default:
-							d.mu.compact.flushing = false
-						}
-					}
-				}
+				td.MaybeScanArgs(t, "flushing", &d.mu.compact.flushing)
 				for _, line := range strings.Split(td.Input, "\n") {
 					if line == "" {
 						continue
