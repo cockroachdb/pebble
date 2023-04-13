@@ -2344,3 +2344,9 @@ func (d *DB) SetCreatorID(creatorID uint64) error {
 	}
 	return d.objProvider.SetCreatorID(objstorage.CreatorID(creatorID))
 }
+
+// ObjProvider returns the objstorage.Provider for this database. Meant to be
+// used for internal purposes only.
+func (d *DB) ObjProvider() objstorage.Provider {
+	return d.objProvider
+}
