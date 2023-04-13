@@ -533,8 +533,7 @@ func TestIterator(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			merge = nil
-			if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "merger" &&
-				len(d.CmdArgs[0].Vals) > 0 && d.CmdArgs[0].Vals[0] == "deletable" {
+			if arg, ok := d.Arg("merger"); ok && len(arg.Vals[0]) > 0 && arg.Vals[0] == "deletable" {
 				merge = newDeletableSumValueMerger
 			}
 			keys = keys[:0]
@@ -547,30 +546,18 @@ func TestIterator(t *testing.T) {
 			return ""
 
 		case "iter":
-			var seqNum int
+			var seqNum uint64
 			var opts IterOptions
-
-			for _, arg := range d.CmdArgs {
-				if len(arg.Vals) != 1 {
-					return fmt.Sprintf("%s: %s=<value>", d.Cmd, arg.Key)
-				}
-				switch arg.Key {
-				case "seq":
-					var err error
-					seqNum, err = strconv.Atoi(arg.Vals[0])
-					if err != nil {
-						return err.Error()
-					}
-				case "lower":
-					opts.LowerBound = []byte(arg.Vals[0])
-				case "upper":
-					opts.UpperBound = []byte(arg.Vals[0])
-				default:
-					return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
-				}
+			d.MaybeScanArgs(t, "seq", &seqNum)
+			var lower, upper string
+			if d.MaybeScanArgs(t, "lower", &lower) {
+				opts.LowerBound = []byte(lower)
+			}
+			if d.MaybeScanArgs(t, "upper", &upper) {
+				opts.UpperBound = []byte(upper)
 			}
 
-			iter := newIter(uint64(seqNum), opts)
+			iter := newIter(seqNum, opts)
 			iterOutput := runIterCmd(d, iter, true)
 			stats := iter.Stats()
 			return fmt.Sprintf("%sstats: %s\n", iterOutput, stats.String())
@@ -654,20 +641,7 @@ func TestReadSampling(t *testing.T) {
 			}
 
 			var allowedSeeks int64
-
-			for _, arg := range td.CmdArgs {
-				if len(arg.Vals) != 1 {
-					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
-				}
-				switch arg.Key {
-				case "allowed-seeks":
-					var err error
-					allowedSeeks, err = strconv.ParseInt(arg.Vals[0], 10, 64)
-					if err != nil {
-						return err.Error()
-					}
-				}
-			}
+			td.ScanArgs(t, "allowed-seeks", &allowedSeeks)
 
 			d.mu.Lock()
 			for _, l := range d.mu.versions.currentVersion().Levels {
@@ -814,25 +788,14 @@ func TestIteratorTableFilter(t *testing.T) {
 			// We're using an iterator table filter to approximate what is done by
 			// snapshots.
 			iterOpts := &IterOptions{}
-			for _, arg := range td.CmdArgs {
-				if len(arg.Vals) != 1 {
-					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
-				}
-				switch arg.Key {
-				case "filter":
-					seqNum, err := strconv.ParseUint(arg.Vals[0], 10, 64)
+			var filterSeqNum uint64
+			if td.MaybeScanArgs(t, "filter", &filterSeqNum) {
+				iterOpts.TableFilter = func(userProps map[string]string) bool {
+					minSeqNum, err := strconv.ParseUint(userProps["test.min-seq-num"], 10, 64)
 					if err != nil {
-						return err.Error()
+						return true
 					}
-					iterOpts.TableFilter = func(userProps map[string]string) bool {
-						minSeqNum, err := strconv.ParseUint(userProps["test.min-seq-num"], 10, 64)
-						if err != nil {
-							return true
-						}
-						return minSeqNum < seqNum
-					}
-				default:
-					return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
+					return minSeqNum < filterSeqNum
 				}
 			}
 
@@ -895,27 +858,11 @@ func TestIteratorNextPrev(t *testing.T) {
 			return runLSMCmd(td, d)
 
 		case "iter":
-			seqNum := InternalKeySeqNumMax
-			for _, arg := range td.CmdArgs {
-				if len(arg.Vals) != 1 {
-					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
-				}
-				switch arg.Key {
-				case "seq":
-					var err error
-					seqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
-					if err != nil {
-						return err.Error()
-					}
-				default:
-					return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
-				}
-			}
-
 			snap := Snapshot{
 				db:     d,
-				seqNum: seqNum,
+				seqNum: InternalKeySeqNumMax,
 			}
+			td.MaybeScanArgs(t, "seq", &snap.seqNum)
 			iter := snap.NewIter(nil)
 			return runIterCmd(td, iter, true)
 
@@ -967,27 +914,11 @@ func TestIteratorStats(t *testing.T) {
 			return runLSMCmd(td, d)
 
 		case "iter":
-			seqNum := InternalKeySeqNumMax
-			for _, arg := range td.CmdArgs {
-				if len(arg.Vals) != 1 {
-					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
-				}
-				switch arg.Key {
-				case "seq":
-					var err error
-					seqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
-					if err != nil {
-						return err.Error()
-					}
-				default:
-					return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
-				}
-			}
-
 			snap := Snapshot{
 				db:     d,
-				seqNum: seqNum,
+				seqNum: InternalKeySeqNumMax,
 			}
+			td.MaybeScanArgs(t, "seq", &snap.seqNum)
 			iter := snap.NewIter(nil)
 			return runIterCmd(td, iter, true)
 

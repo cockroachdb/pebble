@@ -469,11 +469,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 	datadriven.RunTest(t, "testdata/flushable_ingest", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
-			var strictMem bool
-			if len(td.CmdArgs) == 1 && td.CmdArgs[0].String() == "strictMem" {
-				strictMem = true
-			}
-			reset(strictMem)
+			reset(td.HasArg("strictMem"))
 			return ""
 
 		case "ignoreSyncs":
@@ -538,9 +534,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			return strings.Join(files, "\n")
 
 		case "open":
-			if len(td.CmdArgs) == 1 && td.CmdArgs[0].String() == "readOnly" {
-				opts.ReadOnly = true
-			}
+			opts.ReadOnly = td.HasArg("readOnly")
 			var err error
 			d, err = Open(dir, opts)
 			closed = false
@@ -568,7 +562,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			return ""
 
 		case "get":
-			return runGetCmd(td, d)
+			return runGetCmd(t, td, d)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
@@ -882,7 +876,7 @@ func TestIngest(t *testing.T) {
 			return ""
 
 		case "get":
-			return runGetCmd(td, d)
+			return runGetCmd(t, td, d)
 
 		case "iter":
 			iter := d.NewIter(&IterOptions{

@@ -168,11 +168,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				resetCompacting()
 
 				var inProgress []compactionInfo
-				if len(d.CmdArgs) == 1 {
-					arg := d.CmdArgs[0]
-					if arg.Key != "ongoing" {
-						return "unknown arg: " + arg.Key
-					}
+				if arg, ok := d.Arg("ongoing"); ok {
 					var err error
 					inProgress, err = parseInProgress(arg.Vals)
 					if err != nil {
@@ -275,28 +271,11 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				}
 				return fmt.Sprintf("L%d->L%d: %0.1f", pc.startLevel.level, pc.outputLevel.level, pc.score)
 			case "pick_manual":
-				startLevel := 0
-				start := ""
-				end := ""
-
-				if len(d.CmdArgs) > 0 {
-					for _, arg := range d.CmdArgs {
-						switch arg.Key {
-						case "level":
-							startLevel64, err := strconv.ParseInt(arg.Vals[0], 10, 64)
-							if err != nil {
-								return err.Error()
-							}
-							startLevel = int(startLevel64)
-						case "start":
-							start = arg.Vals[0]
-						case "end":
-							end = arg.Vals[0]
-						default:
-							return "unknown arg: " + arg.Key
-						}
-					}
-				}
+				var startLevel int
+				var start, end string
+				d.MaybeScanArgs(t, "level", &startLevel)
+				d.MaybeScanArgs(t, "start", &start)
+				d.MaybeScanArgs(t, "end", &end)
 
 				iStart := base.MakeInternalKey([]byte(start), InternalKeySeqNumMax, InternalKeyKindMax)
 				iEnd := base.MakeInternalKey([]byte(end), 0, 0)
@@ -507,21 +486,8 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 			return buf.String()
 		case "pick-auto":
-			for _, arg := range td.CmdArgs {
-				var err error
-				switch arg.Key {
-				case "l0_compaction_threshold":
-					opts.L0CompactionThreshold, err = strconv.Atoi(arg.Vals[0])
-					if err != nil {
-						return err.Error()
-					}
-				case "l0_compaction_file_threshold":
-					opts.L0CompactionFileThreshold, err = strconv.Atoi(arg.Vals[0])
-					if err != nil {
-						return err.Error()
-					}
-				}
-			}
+			td.MaybeScanArgs(t, "l0_compaction_threshold", &opts.L0CompactionThreshold)
+			td.MaybeScanArgs(t, "l0_compaction_file_threshold", &opts.L0CompactionFileThreshold)
 
 			pc = picker.pickAuto(compactionEnv{
 				earliestUnflushedSeqNum: math.MaxUint64,
@@ -745,26 +711,9 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			return buf.String()
 
 		case "pick-auto":
-			for _, arg := range td.CmdArgs {
-				var err error
-				switch arg.Key {
-				case "l0_compaction_threshold":
-					opts.L0CompactionThreshold, err = strconv.Atoi(arg.Vals[0])
-					if err != nil {
-						return err.Error()
-					}
-				case "l0_compaction_concurrency":
-					opts.Experimental.L0CompactionConcurrency, err = strconv.Atoi(arg.Vals[0])
-					if err != nil {
-						return err.Error()
-					}
-				case "compaction_debt_concurrency":
-					opts.Experimental.CompactionDebtConcurrency, err = strconv.Atoi(arg.Vals[0])
-					if err != nil {
-						return err.Error()
-					}
-				}
-			}
+			td.MaybeScanArgs(t, "l0_compaction_threshold", &opts.L0CompactionThreshold)
+			td.MaybeScanArgs(t, "l0_compaction_concurrency", &opts.Experimental.L0CompactionConcurrency)
+			td.MaybeScanArgs(t, "compaction_debt_concurrency", &opts.Experimental.CompactionDebtConcurrency)
 
 			pc := picker.pickAuto(compactionEnv{
 				earliestUnflushedSeqNum: math.MaxUint64,
