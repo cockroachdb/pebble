@@ -44,27 +44,12 @@ func iterCmdStats(stats *base.InternalIteratorStats) iterCmdOpt {
 	}
 }
 
-func runGetCmd(td *datadriven.TestData, d *DB) string {
+func runGetCmd(t testing.TB, td *datadriven.TestData, d *DB) string {
 	snap := Snapshot{
 		db:     d,
 		seqNum: InternalKeySeqNumMax,
 	}
-
-	for _, arg := range td.CmdArgs {
-		if len(arg.Vals) != 1 {
-			return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
-		}
-		switch arg.Key {
-		case "seq":
-			var err error
-			snap.seqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
-			if err != nil {
-				return err.Error()
-			}
-		default:
-			return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
-		}
-	}
+	td.MaybeScanArgs(t, "seq", &snap.seqNum)
 
 	var buf bytes.Buffer
 	for _, data := range strings.Split(td.Input, "\n") {
@@ -1124,26 +1109,14 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 }
 
 func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
-	var maxKeyLength int
+	var maxKeyLength, valLength int
+	var timestamps []int
 	td.ScanArgs(t, "keylen", &maxKeyLength)
-	timestamps := []int{1}
-	valLength := 0
-	for _, cmdArg := range td.CmdArgs {
-		switch cmdArg.Key {
-		case "timestamps":
-			timestamps = timestamps[:0]
-			for _, timestampVal := range cmdArg.Vals {
-				v, err := strconv.Atoi(timestampVal)
-				require.NoError(t, err)
-				timestamps = append(timestamps, v)
-			}
-		case "vallen":
-			v, err := strconv.Atoi(cmdArg.Vals[0])
-			require.NoError(t, err)
-			valLength = v
-		default:
-			continue
-		}
+	td.MaybeScanArgs(t, "timestamps", &timestamps)
+	td.MaybeScanArgs(t, "vallen", &valLength)
+	// Default to writing timestamps @1.
+	if len(timestamps) == 0 {
+		timestamps = append(timestamps, 1)
 	}
 
 	ks := testkeys.Alpha(maxKeyLength)

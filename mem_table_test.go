@@ -322,14 +322,8 @@ func TestMemTableDeleteRange(t *testing.T) {
 			return ""
 
 		case "scan":
-			if len(td.CmdArgs) > 1 {
-				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
-			}
 			var buf bytes.Buffer
-			if len(td.CmdArgs) == 1 {
-				if td.CmdArgs[0].String() != "range-del" {
-					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
-				}
+			if td.HasArg("range-del") {
 				iter := mem.newRangeDelIter(nil)
 				defer iter.Close()
 				scanKeyspanIterator(&buf, iter)

@@ -883,18 +883,14 @@ func TestBatchRangeOps(t *testing.T) {
 			}
 			var fragmentIter keyspan.FragmentIterator
 			var internalIter base.InternalIterator
-			if len(td.CmdArgs) == 1 {
-				switch td.CmdArgs[0].String() {
-				case "range-del":
-					fragmentIter = b.newRangeDelIter(nil, math.MaxUint64)
-					defer fragmentIter.Close()
-				case "range-key":
-					fragmentIter = b.newRangeKeyIter(nil, math.MaxUint64)
-					defer fragmentIter.Close()
-				default:
-					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
-				}
-			} else {
+			switch {
+			case td.HasArg("range-del"):
+				fragmentIter = b.newRangeDelIter(nil, math.MaxUint64)
+				defer fragmentIter.Close()
+			case td.HasArg("range-key"):
+				fragmentIter = b.newRangeKeyIter(nil, math.MaxUint64)
+				defer fragmentIter.Close()
+			default:
 				internalIter = b.newInternalIter(nil)
 				defer internalIter.Close()
 			}
@@ -1074,13 +1070,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 
 		case "scan":
 			var buf bytes.Buffer
-			if len(td.CmdArgs) > 1 {
-				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
-			}
-			if len(td.CmdArgs) == 1 {
-				if td.CmdArgs[0].String() != "range-del" {
-					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
-				}
+			if td.HasArg("range-del") {
 				fi := fb.newRangeDelIter(nil)
 				defer fi.Close()
 				scanKeyspanIterator(&buf, fi)

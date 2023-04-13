@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -74,30 +73,14 @@ func TestRangeDel(t *testing.T) {
 			return s
 
 		case "get":
-			return runGetCmd(td, d)
+			return runGetCmd(t, td, d)
 
 		case "iter":
 			snap := Snapshot{
 				db:     d,
 				seqNum: InternalKeySeqNumMax,
 			}
-
-			for _, arg := range td.CmdArgs {
-				if len(arg.Vals) != 1 {
-					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
-				}
-				switch arg.Key {
-				case "seq":
-					var err error
-					snap.seqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
-					if err != nil {
-						return err.Error()
-					}
-				default:
-					return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
-				}
-			}
-
+			td.MaybeScanArgs(t, "seq", &snap.seqNum)
 			iter := snap.NewIter(nil)
 			return runIterCmd(td, iter, true)
 

@@ -160,18 +160,9 @@ func TestIterHistories(t *testing.T) {
 				require.NoError(t, b.Commit(nil))
 				return fmt.Sprintf("wrote %d keys\n", count)
 			case "batch":
-				var commit bool
 				var name string
-				for _, arg := range td.CmdArgs {
-					switch arg.Key {
-					case "name":
-						name = arg.Vals[0]
-					case "commit":
-						commit = true
-					default:
-						return fmt.Sprintf("unrecognized command argument %q\n", arg.Key)
-					}
-				}
+				td.MaybeScanArgs(t, "name", &name)
+				commit := td.HasArg("commit")
 				b := d.NewIndexedBatch()
 				require.NoError(t, runBatchDefineCmd(td, b))
 				var err error
@@ -208,16 +199,9 @@ func TestIterHistories(t *testing.T) {
 				return ""
 			case "get":
 				var reader Reader = d
-				for _, cmd := range td.CmdArgs {
-					switch cmd.Key {
-					case "reader":
-						var ok bool
-						reader, ok = batches[cmd.Vals[0]]
-						if !ok {
-							return fmt.Sprintf("unknown reader %q", cmd.Vals[0])
-						}
-					default:
-						return fmt.Sprintf("unrecognized command %q", cmd.Key)
+				if arg, ok := td.Arg("reader"); ok {
+					if reader, ok = batches[arg.Vals[0]]; !ok {
+						return fmt.Sprintf("unknown reader %q", arg.Vals[0])
 					}
 				}
 				var buf bytes.Buffer
@@ -404,10 +388,8 @@ func TestIterHistories(t *testing.T) {
 }
 
 func pluckStringCmdArg(td *datadriven.TestData, key string) string {
-	for i := range td.CmdArgs {
-		if td.CmdArgs[i].Key == key {
-			return td.CmdArgs[i].Vals[0]
-		}
+	if arg, ok := td.Arg(key); ok {
+		return arg.Vals[0]
 	}
 	return ""
 }
