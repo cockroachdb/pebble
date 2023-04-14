@@ -8,6 +8,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -127,4 +128,10 @@ func New(opts ...Option) *T {
 		t.wal.Root,
 	}
 	return t
+}
+
+// EnableSharedStorage updates the options with the shared storage
+// instance.
+func (t *T) EnableSharedStorage(s shared.Storage) {
+	t.opts.Experimental.SharedStorage = s
 }
