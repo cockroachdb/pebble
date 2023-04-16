@@ -325,6 +325,7 @@ func (c *Catalog) createNewCatalogFileLocked() (outErr error) {
 	err = func() error {
 		// Create a versionEdit that gets us from an empty catalog to the current state.
 		var ve versionEdit
+		ve.CreatorID = c.mu.creatorID
 		ve.NewObjects = make([]SharedObjectMetadata, 0, len(c.mu.objects))
 		for _, meta := range c.mu.objects {
 			ve.NewObjects = append(ve.NewObjects, meta)
