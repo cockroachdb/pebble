@@ -16,14 +16,14 @@ import (
 )
 
 func TestWriter_RangeKeys(t *testing.T) {
-	var r *Reader
+	var r *PhysicalReader
 	defer func() {
 		if r != nil {
 			require.NoError(t, r.Close())
 		}
 	}()
 
-	buildFn := func(td *datadriven.TestData) (*Reader, error) {
+	buildFn := func(td *datadriven.TestData) (*PhysicalReader, error) {
 		mem := vfs.NewMem()
 		f, err := mem.Create("test")
 		if err != nil {

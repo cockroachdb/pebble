@@ -952,7 +952,7 @@ func loadFlushedSSTableKeys(
 				f.Close()
 				return err
 			}
-			r, err := sstable.NewReader(readable, readOpts)
+			r, err := sstable.NewPhysicalReader(readable, readOpts)
 			if err != nil {
 				return err
 			}

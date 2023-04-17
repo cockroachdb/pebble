@@ -61,7 +61,7 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 
 func runBuildCmd(
 	td *datadriven.TestData, writerOpts *WriterOptions, cacheSize int,
-) (*WriterMetadata, *Reader, error) {
+) (*WriterMetadata, *PhysicalReader, error) {
 
 	f0 := &memFile{}
 	if err := optsFromArgs(td, writerOpts); err != nil {
@@ -171,7 +171,7 @@ func runBuildCmd(
 
 func runBuildRawCmd(
 	td *datadriven.TestData, opts *WriterOptions,
-) (*WriterMetadata, *Reader, error) {
+) (*WriterMetadata, *PhysicalReader, error) {
 	mem := vfs.NewMem()
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, "" /* dirName */))
 	if err != nil {
@@ -230,7 +230,7 @@ func runBuildRawCmd(
 	if err != nil {
 		return nil, nil, err
 	}
-	r, err := NewReader(f1, ReaderOptions{})
+	r, err := NewPhysicalReader(f1, ReaderOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -406,8 +406,8 @@ func runIterCmd(
 }
 
 func runRewriteCmd(
-	td *datadriven.TestData, r *Reader, writerOpts WriterOptions,
-) (*WriterMetadata, *Reader, error) {
+	td *datadriven.TestData, r *PhysicalReader, writerOpts WriterOptions,
+) (*WriterMetadata, *PhysicalReader, error) {
 	var from, to []byte
 	for _, arg := range td.CmdArgs {
 		switch arg.Key {

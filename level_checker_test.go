@@ -87,7 +87,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 	var levels [][]*fileMetadata
 	formatKey := DefaultComparer.FormatKey
 	// Indexed by fileNum
-	var readers []*sstable.Reader
+	var readers []*sstable.PhysicalReader
 	defer func() {
 		for _, r := range readers {
 			r.Close()
@@ -211,7 +211,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					return err.Error()
 				}
 				cacheOpts := private.SSTableCacheOpts(0, base.FileNum(uint64(fileNum)-1).DiskFileNum()).(sstable.ReaderOption)
-				r, err := sstable.NewReader(readable, sstable.ReaderOptions{}, cacheOpts)
+				r, err := sstable.NewPhysicalReader(readable, sstable.ReaderOptions{}, cacheOpts)
 				if err != nil {
 					return err.Error()
 				}

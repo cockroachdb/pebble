@@ -866,7 +866,7 @@ func (c *suffixIntervalCollector) FinishDataBlock() (lower, upper uint64, err er
 }
 
 func TestBlockProperties(t *testing.T) {
-	var r *Reader
+	var r *PhysicalReader
 	defer func() {
 		if r != nil {
 			require.NoError(t, r.Close())
@@ -1010,7 +1010,7 @@ func TestBlockProperties(t *testing.T) {
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
 				lower, upper, filterer, false /* use (bloom) filter */, &stats,
-				TrivialReaderProvider{Reader: r})
+				TrivialReaderProvider{PhysicalReader: r})
 			if err != nil {
 				return err.Error()
 			}
@@ -1026,7 +1026,7 @@ func TestBlockProperties(t *testing.T) {
 }
 
 func TestBlockProperties_BoundLimited(t *testing.T) {
-	var r *Reader
+	var r *PhysicalReader
 	defer func() {
 		if r != nil {
 			require.NoError(t, r.Close())
@@ -1090,7 +1090,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
 				lower, upper, filterer, false /* use (bloom) filter */, &stats,
-				TrivialReaderProvider{Reader: r})
+				TrivialReaderProvider{PhysicalReader: r})
 			if err != nil {
 				return err.Error()
 			}
@@ -1173,7 +1173,7 @@ func parseIntervalFilter(cmd datadriven.CmdArg) (BlockPropertyFilter, error) {
 	return NewBlockIntervalFilter(name, min, max), nil
 }
 
-func runCollectorsCmd(r *Reader, td *datadriven.TestData) string {
+func runCollectorsCmd(r *PhysicalReader, td *datadriven.TestData) string {
 	var lines []string
 	for k, v := range r.Properties.UserProperties {
 		lines = append(lines, fmt.Sprintf("%d: %s", v[0], k))
@@ -1183,7 +1183,7 @@ func runCollectorsCmd(r *Reader, td *datadriven.TestData) string {
 	return strings.Join(lines, "\n")
 }
 
-func runTablePropsCmd(r *Reader, td *datadriven.TestData) string {
+func runTablePropsCmd(r *PhysicalReader, td *datadriven.TestData) string {
 	var lines []string
 	for _, val := range r.Properties.UserProperties {
 		id := shortID(val[0])
@@ -1198,7 +1198,7 @@ func runTablePropsCmd(r *Reader, td *datadriven.TestData) string {
 	return strings.Join(lines, "\n")
 }
 
-func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string) {
+func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *PhysicalReader, out string) {
 	opts := WriterOptions{
 		TableFormat:    TableFormatPebblev2,
 		IndexBlockSize: math.MaxInt32, // Default to a single level index for simplicity.
@@ -1268,7 +1268,7 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 		meta.SmallestSeqNum, meta.LargestSeqNum)
 }
 
-func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
+func runBlockPropsCmd(r *PhysicalReader, td *datadriven.TestData) string {
 	bh, err := r.readIndex(context.Background(), nil)
 	if err != nil {
 		return err.Error()

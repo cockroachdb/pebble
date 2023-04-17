@@ -161,12 +161,12 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 		m.Hits += s.hits.Load()
 		m.Misses += s.misses.Load()
 	}
-	m.Size = m.Count * int64(unsafe.Sizeof(sstable.Reader{}))
+	m.Size = m.Count * int64(unsafe.Sizeof(sstable.PhysicalReader{}))
 	f := c.dbOpts.filterMetrics.Load()
 	return m, f
 }
 
-func (c *tableCacheContainer) withReader(meta *fileMetadata, fn func(*sstable.Reader) error) error {
+func (c *tableCacheContainer) withReader(meta *fileMetadata, fn func(sstable.Reader) error) error {
 	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
 	v := s.findNode(meta, &c.dbOpts)
 	defer s.unrefValue(v)
@@ -504,7 +504,7 @@ var _ sstable.ReaderProvider = &tableCacheShardReaderProvider{}
 // being deleted.
 //
 // The caller must call tableCacheShardReaderProvider.Close.
-func (rp *tableCacheShardReaderProvider) GetReader() (*sstable.Reader, error) {
+func (rp *tableCacheShardReaderProvider) GetReader() (*sstable.PhysicalReader, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount.
 	v := rp.c.findNode(rp.file, rp.dbOpts)
@@ -903,7 +903,7 @@ func (c *tableCacheShard) Close() error {
 
 type tableCacheValue struct {
 	closeHook func(i sstable.Iterator) error
-	reader    *sstable.Reader
+	reader    *sstable.PhysicalReader
 	err       error
 	loaded    chan struct{}
 	// Reference count for the value. The reader is closed when the reference
@@ -919,7 +919,7 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *t
 	)
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileBacking.DiskFileNum).(sstable.ReaderOption)
-		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
+		v.reader, v.err = sstable.NewPhysicalReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
 	}
 	if v.err == nil {
 		if meta.SmallestSeqNum == meta.LargestSeqNum {

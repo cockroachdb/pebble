@@ -265,15 +265,16 @@ func (d *DB) loadTableStats(
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
 	err := d.tableCache.withReader(
-		meta.FileMetadata, func(r *sstable.Reader) (err error) {
-			stats.NumEntries = r.Properties.NumEntries
-			stats.NumDeletions = r.Properties.NumDeletions
-			if r.Properties.NumPointDeletions() > 0 {
+		meta.FileMetadata, func(r sstable.Reader) (err error) {
+			props := r.Props()
+			stats.NumEntries = props.NumEntries
+			stats.NumDeletions = props.NumDeletions
+			if props.NumPointDeletions() > 0 {
 				if err = d.loadTablePointKeyStats(r, v, level, meta, &stats); err != nil {
 					return
 				}
 			}
-			if r.Properties.NumRangeDeletions > 0 || r.Properties.NumRangeKeyDels > 0 {
+			if props.NumRangeDeletions > 0 || props.NumRangeKeyDels > 0 {
 				if compactionHints, err = d.loadTableRangeDelStats(
 					r, v, level, meta, &stats,
 				); err != nil {
@@ -283,8 +284,8 @@ func (d *DB) loadTableStats(
 			// TODO(travers): Once we have real-world data, consider collecting
 			// additional stats that may provide improved heuristics for compaction
 			// picking.
-			stats.NumRangeKeySets = r.Properties.NumRangeKeySets
-			stats.ValueBlocksSize = r.Properties.ValueBlocksSize
+			stats.NumRangeKeySets = props.NumRangeKeySets
+			stats.ValueBlocksSize = props.ValueBlocksSize
 			return
 		})
 	if err != nil {
@@ -296,7 +297,7 @@ func (d *DB) loadTableStats(
 // loadTablePointKeyStats calculates the point key statistics for the given
 // table. The provided manifest.TableStats are updated.
 func (d *DB) loadTablePointKeyStats(
-	r *sstable.Reader, v *version, level int, meta physicalMeta, stats *manifest.TableStats,
+	r sstable.Reader, v *version, level int, meta physicalMeta, stats *manifest.TableStats,
 ) error {
 	// TODO(jackson): If the file has a wide keyspace, the average
 	// value size beneath the entire file might not be representative
@@ -309,14 +310,14 @@ func (d *DB) loadTablePointKeyStats(
 		return err
 	}
 	stats.PointDeletionsBytesEstimate =
-		pointDeletionsBytesEstimate(&r.Properties, avgKeySize, avgValSize)
+		pointDeletionsBytesEstimate(r.Props(), avgKeySize, avgValSize)
 	return nil
 }
 
 // loadTableRangeDelStats calculates the range deletion and range key deletion
 // statistics for the given table.
 func (d *DB) loadTableRangeDelStats(
-	r *sstable.Reader, v *version, level int, meta physicalMeta, stats *manifest.TableStats,
+	r sstable.Reader, v *version, level int, meta physicalMeta, stats *manifest.TableStats,
 ) ([]deleteCompactionHint, error) {
 	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta.FileMetadata)
 	if err != nil {
@@ -439,11 +440,12 @@ func (d *DB) averageEntrySizeBeneath(
 			} else {
 				err = d.tableCache.withReader(
 					file,
-					func(r *sstable.Reader) (err error) {
+					func(r sstable.Reader) (err error) {
 						fileSum += file.Size
-						entryCount += r.Properties.NumEntries
-						keySum += r.Properties.RawKeySize
-						valSum += r.Properties.RawValueSize
+						props := r.Props()
+						entryCount += props.NumEntries
+						keySum += props.RawKeySize
+						valSum += props.RawValueSize
 						return nil
 					})
 			}
@@ -555,7 +557,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				}
 				var size uint64
 				err := d.tableCache.withReader(
-					file, func(r *sstable.Reader) (err error) {
+					file, func(r sstable.Reader) (err error) {
 						size, err = r.EstimateDiskUsage(start, end)
 						return err
 					})
@@ -710,7 +712,7 @@ func estimateEntrySizes(
 // corresponding to the largest and smallest sequence numbers encountered across
 // the range deletes and range keys deletes that comprised the merged spans.
 func newCombinedDeletionKeyspanIter(
-	comparer *base.Comparer, r *sstable.Reader, m *fileMetadata,
+	comparer *base.Comparer, r sstable.Reader, m *fileMetadata,
 ) (keyspan.FragmentIterator, error) {
 	// The range del iter and range key iter are each wrapped in their own
 	// defragmenting iter. For each iter, abutting spans can always be merged.

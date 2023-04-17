@@ -212,10 +212,10 @@ func BenchmarkRewriteSST(b *testing.B) {
 	sizes := []int{100, 10000, 1e6}
 	compressions := []Compression{NoCompression, SnappyCompression}
 
-	files := make([][]*Reader, len(compressions))
+	files := make([][]*PhysicalReader, len(compressions))
 
 	for comp := range compressions {
-		files[comp] = make([]*Reader, len(sizes))
+		files[comp] = make([]*PhysicalReader, len(sizes))
 
 		for size := range sizes {
 			writerOpts.Compression = compressions[comp]

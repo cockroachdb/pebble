@@ -224,7 +224,7 @@ type Iterator struct {
 	prefixOrFullSeekKey []byte
 	readSampling        readSampling
 	stats               IteratorStats
-	externalReaders     [][]*sstable.Reader
+	externalReaders     [][]*sstable.PhysicalReader
 
 	// Following fields used when constructing an iterator stack, eg, in Clone
 	// and SetOptions or when re-fragmenting a batch's range keys/range dels.

@@ -231,7 +231,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 			readable, err := sstable.NewSimpleReadable(f1)
 			require.NoError(t, err)
 
-			r, err := sstable.NewReader(readable, sstable.ReaderOptions{
+			r, err := sstable.NewPhysicalReader(readable, sstable.ReaderOptions{
 				Cache:    c,
 				Comparer: testkeys.Comparer,
 			})
@@ -246,7 +246,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 			var iter sstable.Iterator
 			iter, err = r.NewIterWithBlockPropertyFilters(
 				nil, nil, filterer, false /* useFilterBlock */, nil, /* stats */
-				sstable.TrivialReaderProvider{Reader: r})
+				sstable.TrivialReaderProvider{PhysicalReader: r})
 			require.NoError(t, err)
 			defer iter.Close()
 			var lastSeekKey, lowerBound, upperBound []byte

@@ -425,7 +425,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			if err != nil {
 				return err
 			}
-			r, err := sstable.NewReader(readable, opts, f.comparers, f.mergers,
+			r, err := sstable.NewPhysicalReader(readable, opts, f.comparers, f.mergers,
 				private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 			if err != nil {
 				return err
@@ -443,9 +443,9 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			defer iter.Close()
 			key, value := iter.SeekGE(searchKey, base.SeekGEFlagsNone)
 
-			// We configured sstable.Reader to return raw tombstones which requires a
-			// bit more work here to put them in a form that can be iterated in
-			// parallel with the point records.
+			// We configured sstable.Physicaleader to return raw tombstones
+			// which requires a bit more work here to put them in a form that
+			// can be iterated in parallel with the point records.
 			rangeDelIter, err := func() (keyspan.FragmentIterator, error) {
 				iter, err := r.NewRawRangeDelIter()
 				if err != nil {

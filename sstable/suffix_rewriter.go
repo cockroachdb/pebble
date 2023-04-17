@@ -67,7 +67,7 @@ func RewriteKeySuffixesAndReturnFormat(
 }
 
 func rewriteKeySuffixesInBlocks(
-	r *Reader, out objstorage.Writable, o WriterOptions, from, to []byte, concurrency int,
+	r *PhysicalReader, out objstorage.Writable, o WriterOptions, from, to []byte, concurrency int,
 ) (*WriterMetadata, TableFormat, error) {
 	if o.Comparer == nil || o.Comparer.Split == nil {
 		return nil, TableFormatUnspecified,
@@ -148,7 +148,7 @@ type blockWithSpan struct {
 }
 
 func rewriteBlocks(
-	r *Reader,
+	r *PhysicalReader,
 	restartInterval int,
 	checksumType ChecksumType,
 	compression Compression,
@@ -256,7 +256,7 @@ func rewriteBlocks(
 }
 
 func rewriteDataBlocksToWriter(
-	r *Reader,
+	r *PhysicalReader,
 	w *Writer,
 	data []BlockHandleWithProperties,
 	from, to []byte,
@@ -380,7 +380,7 @@ func rewriteDataBlocksToWriter(
 	return nil
 }
 
-func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
+func rewriteRangeKeyBlockToWriter(r *PhysicalReader, w *Writer, from, to []byte) error {
 	iter, err := r.NewRawRangeKeyIter()
 	if err != nil {
 		return err
@@ -436,7 +436,7 @@ func (c copyFilterWriter) policyName() string      { return c.origPolicyName }
 // more work to rederive filters, props, etc, however re-doing that work makes
 // it less restrictive -- props no longer need to
 func RewriteKeySuffixesViaWriter(
-	r *Reader, out objstorage.Writable, o WriterOptions, from, to []byte,
+	r *PhysicalReader, out objstorage.Writable, o WriterOptions, from, to []byte,
 ) (*WriterMetadata, error) {
 	if o.Comparer == nil || o.Comparer.Split == nil {
 		return nil, errors.New("a valid splitter is required to rewrite suffixes")
@@ -490,11 +490,11 @@ func RewriteKeySuffixesViaWriter(
 }
 
 // NewMemReader opens a reader over the SST stored in the passed []byte.
-func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
-	return NewReader(newMemReader(sst), o)
+func NewMemReader(sst []byte, o ReaderOptions) (*PhysicalReader, error) {
+	return NewPhysicalReader(newMemReader(sst), o)
 }
 
-func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error) {
+func readBlockBuf(r *PhysicalReader, bh BlockHandle, buf []byte) ([]byte, []byte, error) {
 	raw := r.readable.(*memReader).b[bh.Offset : bh.Offset+bh.Length+blockTrailerLen]
 	if err := checkChecksum(r.checksumType, raw, bh, 0); err != nil {
 		return nil, buf, err

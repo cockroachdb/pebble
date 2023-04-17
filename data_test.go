@@ -1104,7 +1104,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	if err != nil {
 		return err.Error()
 	}
-	r, err := sstable.NewReader(readable, d.opts.MakeReaderOptions())
+	r, err := sstable.NewPhysicalReader(readable, d.opts.MakeReaderOptions())
 	if err != nil {
 		return err.Error()
 	}

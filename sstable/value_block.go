@@ -667,7 +667,7 @@ type blockProviderWhenOpen interface {
 
 type blockProviderWhenClosed struct {
 	rp ReaderProvider
-	r  *Reader
+	r  *PhysicalReader
 }
 
 func (bpwc *blockProviderWhenClosed) open() error {
@@ -691,21 +691,21 @@ func (bpwc blockProviderWhenClosed) readBlockForVBR(
 // ReaderProvider supports the implementation of blockProviderWhenClosed.
 // GetReader and Close can be called multiple times in pairs.
 type ReaderProvider interface {
-	GetReader() (r *Reader, err error)
+	GetReader() (r *PhysicalReader, err error)
 	Close()
 }
 
 // TrivialReaderProvider implements ReaderProvider for a Reader that will
 // outlive the top-level iterator in the iterator tree.
 type TrivialReaderProvider struct {
-	*Reader
+	*PhysicalReader
 }
 
 var _ ReaderProvider = TrivialReaderProvider{}
 
 // GetReader implements ReaderProvider.
-func (trp TrivialReaderProvider) GetReader() (*Reader, error) {
-	return trp.Reader, nil
+func (trp TrivialReaderProvider) GetReader() (*PhysicalReader, error) {
+	return trp.PhysicalReader, nil
 }
 
 // Close implements ReaderProvider.

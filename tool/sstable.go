@@ -140,7 +140,7 @@ inclusive-inclusive range specified by --start and --end.
 	return s
 }
 
-func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
+func (s *sstableT) newReader(f vfs.File) (*sstable.PhysicalReader, error) {
 	readable, err := sstable.NewSimpleReadable(f)
 	if err != nil {
 		return nil, err
@@ -151,7 +151,7 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 		Filters:  s.opts.Filters,
 	}
 	defer o.Cache.Unref()
-	return sstable.NewReader(readable, o, s.comparers, s.mergers,
+	return sstable.NewPhysicalReader(readable, o, s.comparers, s.mergers,
 		private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 }
 
@@ -402,9 +402,9 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		defer iter.Close()
 		key, value := iter.SeekGE(s.start, base.SeekGEFlagsNone)
 
-		// We configured sstable.Reader to return raw tombstones which requires a
-		// bit more work here to put them in a form that can be iterated in
-		// parallel with the point records.
+		// We configured sstable.PhysicalReader to return raw tombstones which
+		// requires a bit more work here to put them in a form that can be
+		// iterated in parallel with the point records.
 		rangeDelIter, err := func() (keyspan.FragmentIterator, error) {
 			iter, err := r.NewRawRangeDelIter()
 			if err != nil {

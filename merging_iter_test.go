@@ -144,7 +144,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 	var v *version
 
 	// Indexed by fileNum.
-	var readers []*sstable.Reader
+	var readers []*sstable.PhysicalReader
 	defer func() {
 		for _, r := range readers {
 			r.Close()
@@ -162,7 +162,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
 				opts.GetLowerBound(), opts.GetUpperBound(), nil, true /* useFilterBlock */, iio.stats,
-				sstable.TrivialReaderProvider{Reader: r})
+				sstable.TrivialReaderProvider{PhysicalReader: r})
 			if err != nil {
 				return nil, nil, err
 			}
@@ -242,7 +242,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				r, err := sstable.NewReader(readable, sstable.ReaderOptions{})
+				r, err := sstable.NewPhysicalReader(readable, sstable.ReaderOptions{})
 				if err != nil {
 					return err.Error()
 				}
@@ -280,7 +280,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 
 func buildMergingIterTables(
 	b *testing.B, blockSize, restartInterval, count int,
-) ([]*sstable.Reader, [][]byte, func()) {
+) ([]*sstable.PhysicalReader, [][]byte, func()) {
 	mem := vfs.NewMem()
 	files := make([]vfs.File, count)
 	for i := range files {
@@ -329,7 +329,7 @@ func buildMergingIterTables(
 	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
 	defer opts.Cache.Unref()
 
-	readers := make([]*sstable.Reader, len(files))
+	readers := make([]*sstable.PhysicalReader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))
 		if err != nil {
@@ -339,7 +339,7 @@ func buildMergingIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i], err = sstable.NewReader(readable, opts)
+		readers[i], err = sstable.NewPhysicalReader(readable, opts)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -473,7 +473,7 @@ func buildLevelsForMergingIterSeqSeek(
 	writeRangeTombstoneToLowestLevel bool,
 	writeBloomFilters bool,
 	forceTwoLevelIndex bool,
-) (readers [][]*sstable.Reader, levelSlices []manifest.LevelSlice, keys [][]byte) {
+) (readers [][]*sstable.PhysicalReader, levelSlices []manifest.LevelSlice, keys [][]byte) {
 	mem := vfs.NewMem()
 	if writeRangeTombstoneToLowestLevel && levelCount != 1 {
 		panic("expect to write only 1 level")
@@ -568,7 +568,7 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 	defer opts.Cache.Unref()
 
-	readers = make([][]*sstable.Reader, levelCount)
+	readers = make([][]*sstable.PhysicalReader, levelCount)
 	for i := range files {
 		for j := range files[i] {
 			f, err := mem.Open(fmt.Sprintf("bench%d_%d", i, j))
@@ -579,7 +579,7 @@ func buildLevelsForMergingIterSeqSeek(
 			if err != nil {
 				b.Fatal(err)
 			}
-			r, err := sstable.NewReader(readable, opts)
+			r, err := sstable.NewPhysicalReader(readable, opts)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -607,7 +607,9 @@ func buildLevelsForMergingIterSeqSeek(
 	return readers, levelSlices, keys
 }
 
-func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelSlice) *mergingIter {
+func buildMergingIter(
+	readers [][]*sstable.PhysicalReader, levelSlices []manifest.LevelSlice,
+) *mergingIter {
 	mils := make([]mergingIterLevel, len(levelSlices))
 	for i := len(readers) - 1; i >= 0; i-- {
 		levelIndex := i
