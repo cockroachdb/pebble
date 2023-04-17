@@ -2051,7 +2051,7 @@ func BenchmarkIteratorPrev(b *testing.B) {
 
 type twoLevelBloomTombstoneState struct {
 	keys        [][]byte
-	readers     [8][][]*sstable.Reader
+	readers     [8][][]*sstable.PhysicalReader
 	levelSlices [8][]manifest.LevelSlice
 	indexFunc   func(twoLevelIndex bool, bloom bool, withTombstone bool) int
 }
@@ -2061,7 +2061,7 @@ func setupForTwoLevelBloomTombstone(b *testing.B, keyOffset int) twoLevelBloomTo
 	const restartInterval = 16
 	const levelCount = 5
 
-	var readers [8][][]*sstable.Reader
+	var readers [8][][]*sstable.PhysicalReader
 	var levelSlices [8][]manifest.LevelSlice
 	var keys [][]byte
 	indexFunc := func(twoLevelIndex bool, bloom bool, withTombstone bool) int {

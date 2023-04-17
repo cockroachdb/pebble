@@ -30,7 +30,7 @@ type FilterMetricsTracker struct {
 
 var _ ReaderOption = (*FilterMetricsTracker)(nil)
 
-func (m *FilterMetricsTracker) readerApply(r *Reader) {
+func (m *FilterMetricsTracker) readerApply(r *PhysicalReader) {
 	if r.tableFilter != nil {
 		r.tableFilter.metrics = m
 	}

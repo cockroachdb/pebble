@@ -440,7 +440,7 @@ func TestPebblev1Migration(t *testing.T) {
 					iter := l.Iter()
 					for m := iter.First(); m != nil; m = iter.Next() {
 						err := d.tableCache.withReader(m,
-							func(r *sstable.Reader) error {
+							func(r sstable.Reader) error {
 								f, err := r.TableFormat()
 								if err != nil {
 									return err

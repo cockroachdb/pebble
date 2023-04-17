@@ -99,7 +99,7 @@ func NewExternalIterWithContext(
 		}
 	}
 
-	var readers [][]*sstable.Reader
+	var readers [][]*sstable.PhysicalReader
 
 	// Ensure we close all the opened readers if we error out.
 	defer func() {
@@ -120,7 +120,7 @@ func NewExternalIterWithContext(
 		seqNumOffset += len(levelFiles)
 	}
 	for _, levelFiles := range files {
-		var subReaders []*sstable.Reader
+		var subReaders []*sstable.PhysicalReader
 		seqNumOffset -= len(levelFiles)
 		subReaders, err = openExternalTables(o, levelFiles, seqNumOffset, o.MakeReaderOptions(), extraReaderOpts...)
 		readers = append(readers, subReaders)
@@ -216,7 +216,7 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 				nil,   /* BlockPropertiesFilterer */
 				false, /* useFilterBlock */
 				&it.stats.InternalStats,
-				sstable.TrivialReaderProvider{Reader: r},
+				sstable.TrivialReaderProvider{PhysicalReader: r},
 			)
 			if err != nil {
 				return nil, err
@@ -332,20 +332,21 @@ func openExternalTables(
 	seqNumOffset int,
 	readerOpts sstable.ReaderOptions,
 	extraReaderOpts ...sstable.ReaderOption,
-) (readers []*sstable.Reader, err error) {
-	readers = make([]*sstable.Reader, 0, len(files))
+) (readers []*sstable.PhysicalReader, err error) {
+	readers = make([]*sstable.PhysicalReader, 0, len(files))
 	for i := range files {
 		readable, err := sstable.NewSimpleReadable(files[i])
 		if err != nil {
 			return readers, err
 		}
-		r, err := sstable.NewReader(readable, readerOpts, extraReaderOpts...)
+		r, err := sstable.NewPhysicalReader(readable, readerOpts, extraReaderOpts...)
 		if err != nil {
 			return readers, err
 		}
 		// Use the index of the file in files as the sequence number for all of
 		// its keys.
-		r.Properties.GlobalSeqNum = uint64(len(files) - i + seqNumOffset)
+		props := r.Props()
+		props.GlobalSeqNum = uint64(len(files) - i + seqNumOffset)
 		readers = append(readers, r)
 	}
 	return readers, err

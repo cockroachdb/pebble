@@ -58,7 +58,7 @@ func ingestLoad1(
 	}
 
 	cacheOpts := private.SSTableCacheOpts(cacheID, fileNum).(sstable.ReaderOption)
-	r, err := sstable.NewReader(readable, opts.MakeReaderOptions(), cacheOpts)
+	r, err := sstable.NewPhysicalReader(readable, opts.MakeReaderOptions(), cacheOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -1152,7 +1152,7 @@ func (d *DB) validateSSTables() {
 		}
 
 		err := d.tableCache.withReader(
-			f.Meta, func(r *sstable.Reader) error {
+			f.Meta, func(r sstable.Reader) error {
 				return r.ValidateBlockChecksums()
 			})
 		if err != nil {

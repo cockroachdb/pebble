@@ -145,7 +145,7 @@ func TestLevelIter(t *testing.T) {
 type levelIterTest struct {
 	cmp          base.Comparer
 	mem          vfs.FS
-	readers      []*sstable.Reader
+	readers      []*sstable.PhysicalReader
 	metas        []*fileMetadata
 	itersCreated int
 }
@@ -165,7 +165,7 @@ func (lt *levelIterTest) newIters(
 	lt.itersCreated++
 	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFiltersAndContext(
 		ctx, opts.LowerBound, opts.UpperBound, nil, true, iio.stats,
-		sstable.TrivialReaderProvider{Reader: lt.readers[file.FileNum]})
+		sstable.TrivialReaderProvider{PhysicalReader: lt.readers[file.FileNum]})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -259,7 +259,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	if err != nil {
 		return err.Error()
 	}
-	r, err := sstable.NewReader(readable, sstable.ReaderOptions{
+	r, err := sstable.NewPhysicalReader(readable, sstable.ReaderOptions{
 		Filters: map[string]FilterPolicy{
 			fp.Name(): fp,
 		},
@@ -445,7 +445,7 @@ func TestLevelIterSeek(t *testing.T) {
 
 func buildLevelIterTables(
 	b *testing.B, blockSize, restartInterval, count int,
-) ([]*sstable.Reader, manifest.LevelSlice, [][]byte, func()) {
+) ([]*sstable.PhysicalReader, manifest.LevelSlice, [][]byte, func()) {
 	mem := vfs.NewMem()
 	files := make([]vfs.File, count)
 	for i := range files {
@@ -482,7 +482,7 @@ func buildLevelIterTables(
 
 	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20), Comparer: DefaultComparer}
 	defer opts.Cache.Unref()
-	readers := make([]*sstable.Reader, len(files))
+	readers := make([]*sstable.PhysicalReader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))
 		if err != nil {
@@ -492,7 +492,7 @@ func buildLevelIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i], err = sstable.NewReader(readable, opts)
+		readers[i], err = sstable.NewPhysicalReader(readable, opts)
 		if err != nil {
 			b.Fatal(err)
 		}

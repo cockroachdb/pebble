@@ -201,12 +201,12 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			var r *sstable.Reader
+			var r *sstable.PhysicalReader
 			readable, err := sstable.NewSimpleReadable(f)
 			if err != nil {
 				return err.Error()
 			}
-			r, err = sstable.NewReader(readable, sstable.ReaderOptions{})
+			r, err = sstable.NewPhysicalReader(readable, sstable.ReaderOptions{})
 			if err != nil {
 				return err.Error()
 			}

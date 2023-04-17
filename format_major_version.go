@@ -521,7 +521,7 @@ var markFilesPrePebblev1 = func(tc *tableCacheContainer) findFilesFunc {
 		for l := numLevels - 1; l > 0; l-- {
 			iter := v.Levels[l].Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				err = tc.withReader(f, func(r *sstable.Reader) error {
+				err = tc.withReader(f, func(r sstable.Reader) error {
 					tf, err := r.TableFormat()
 					if err != nil {
 						return err

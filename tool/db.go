@@ -679,7 +679,7 @@ func (d *dbT) addProps(
 	if err != nil {
 		return err
 	}
-	r, err := sstable.NewReader(f, sstable.ReaderOptions{}, d.mergers, d.comparers)
+	r, err := sstable.NewPhysicalReader(f, sstable.ReaderOptions{}, d.mergers, d.comparers)
 	if err != nil {
 		_ = f.Close()
 		return err

@@ -199,7 +199,7 @@ type singleLevelIterator struct {
 	// because we determined the block lies completely within the bound.
 	blockLower []byte
 	blockUpper []byte
-	reader     *Reader
+	reader     *PhysicalReader
 	index      blockIter
 	data       blockIter
 	dataRH     objstorage.ReadHandle
@@ -385,7 +385,7 @@ func checkRangeKeyFragmentBlockIterator(obj interface{}) {
 // between different Readers.
 func (i *singleLevelIterator) init(
 	ctx context.Context,
-	r *Reader,
+	r *PhysicalReader,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	useFilter bool,
@@ -1671,7 +1671,7 @@ func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 
 func (i *twoLevelIterator) init(
 	ctx context.Context,
-	r *Reader,
+	r *PhysicalReader,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	useFilter bool,
@@ -2485,7 +2485,7 @@ type blockTransform func([]byte) ([]byte, error)
 type ReaderOption interface {
 	// readerApply is called on the reader during opening in order to set internal
 	// parameters.
-	readerApply(*Reader)
+	readerApply(*PhysicalReader)
 }
 
 // Comparers is a map from comparer name to comparer. It is used for debugging
@@ -2494,7 +2494,7 @@ type ReaderOption interface {
 // as a parameter to NewReader.
 type Comparers map[string]*Comparer
 
-func (c Comparers) readerApply(r *Reader) {
+func (c Comparers) readerApply(r *PhysicalReader) {
 	if r.Compare != nil || r.Properties.ComparerName == "" {
 		return
 	}
@@ -2511,7 +2511,7 @@ func (c Comparers) readerApply(r *Reader) {
 // a parameter to NewReader.
 type Mergers map[string]*Merger
 
-func (m Mergers) readerApply(r *Reader) {
+func (m Mergers) readerApply(r *PhysicalReader) {
 	if r.mergerOK || r.Properties.MergerName == "" {
 		return
 	}
@@ -2530,7 +2530,7 @@ type cacheOpts struct {
 // sstable properties.
 func (c *cacheOpts) preApply() {}
 
-func (c *cacheOpts) readerApply(r *Reader) {
+func (c *cacheOpts) readerApply(r *PhysicalReader) {
 	if r.cacheID == 0 {
 		r.cacheID = c.cacheID
 	}
@@ -2556,7 +2556,7 @@ type rawTombstonesOpt struct{}
 
 func (rawTombstonesOpt) preApply() {}
 
-func (rawTombstonesOpt) readerApply(r *Reader) {
+func (rawTombstonesOpt) readerApply(r *PhysicalReader) {
 	r.rawTombstones = true
 }
 
@@ -2567,8 +2567,39 @@ func init() {
 	private.SSTableRawTombstonesOpt = rawTombstonesOpt{}
 }
 
-// Reader is a table reader.
-type Reader struct {
+// Reader is an interface used by both physical and virtual sstable readers.
+type Reader interface {
+	NewIterWithBlockPropertyFilters(
+		lower, upper []byte,
+		filterer *BlockPropertiesFilterer,
+		useFilterBlock bool,
+		stats *base.InternalIteratorStats,
+		rp ReaderProvider,
+	) (Iterator, error)
+	NewIterWithBlockPropertyFiltersAndContext(
+		ctx context.Context,
+		lower, upper []byte,
+		filterer *BlockPropertiesFilterer,
+		useFilterBlock bool,
+		stats *base.InternalIteratorStats,
+		rp ReaderProvider,
+	) (Iterator, error)
+	NewIter(lower, upper []byte) (Iterator, error)
+	NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (Iterator, error)
+	NewRawRangeDelIter() (keyspan.FragmentIterator, error)
+	NewRawRangeKeyIter() (keyspan.FragmentIterator, error)
+	Layout() (*Layout, error)
+	ValidateBlockChecksums() error
+	EstimateDiskUsage(start, end []byte) (uint64, error)
+	TableFormat() (TableFormat, error)
+	Props() *Properties
+	Close() error
+}
+
+var _ Reader = (*PhysicalReader)(nil)
+
+// PhysicalReader is a table PhysicalReader for a physical sstable.
+type PhysicalReader struct {
 	readable          objstorage.Readable
 	cacheID           uint64
 	fileNum           base.DiskFileNum
@@ -2596,8 +2627,13 @@ type Reader struct {
 	checksumType  ChecksumType
 }
 
+// Props implements ReaderI.
+func (r *PhysicalReader) Props() *Properties {
+	return &r.Properties
+}
+
 // Close implements DB.Close, as documented in the pebble package.
-func (r *Reader) Close() error {
+func (r *PhysicalReader) Close() error {
 	r.opts.Cache.Unref()
 
 	if r.readable != nil {
@@ -2616,7 +2652,7 @@ func (r *Reader) Close() error {
 // NewIterWithBlockPropertyFilters returns an iterator for the contents of the
 // table. If an error occurs, NewIterWithBlockPropertyFilters cleans up after
 // itself and returns a nil iterator.
-func (r *Reader) NewIterWithBlockPropertyFilters(
+func (r *PhysicalReader) NewIterWithBlockPropertyFilters(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	useFilterBlock bool,
@@ -2630,7 +2666,7 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 // NewIterWithBlockPropertyFiltersAndContext is similar to
 // NewIterWithBlockPropertyFilters and additionally accepts a context for
 // tracing.
-func (r *Reader) NewIterWithBlockPropertyFiltersAndContext(
+func (r *PhysicalReader) NewIterWithBlockPropertyFiltersAndContext(
 	ctx context.Context,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
@@ -2663,16 +2699,18 @@ func (r *Reader) NewIterWithBlockPropertyFiltersAndContext(
 // occurs, NewIter cleans up after itself and returns a nil iterator. NewIter
 // must only be used when the Reader is guaranteed to outlive any LazyValues
 // returned from the iter.
-func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
+func (r *PhysicalReader) NewIter(lower, upper []byte) (Iterator, error) {
 	return r.NewIterWithBlockPropertyFilters(
 		lower, upper, nil, true /* useFilterBlock */, nil, /* stats */
-		TrivialReaderProvider{Reader: r})
+		TrivialReaderProvider{PhysicalReader: r})
 }
 
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
 // the number of bytes iterated. If an error occurs, NewCompactionIter cleans up
 // after itself and returns a nil iterator.
-func (r *Reader) NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (Iterator, error) {
+func (r *PhysicalReader) NewCompactionIter(
+	bytesIterated *uint64, rp ReaderProvider,
+) (Iterator, error) {
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
 		err := i.init(context.Background(), r, nil /* lower */, nil, /* upper */
@@ -2705,7 +2743,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (It
 //
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
-func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
+func (r *PhysicalReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}
@@ -2726,7 +2764,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 //
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
-func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
+func (r *PhysicalReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
 	}
@@ -2752,26 +2790,26 @@ func (i *rangeKeyFragmentBlockIter) Close() error {
 	return err
 }
 
-func (r *Reader) readIndex(
+func (r *PhysicalReader) readIndex(
 	ctx context.Context, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
 	return r.readBlock(ctx, r.indexBH, nil, nil, stats)
 }
 
-func (r *Reader) readFilter(
+func (r *PhysicalReader) readFilter(
 	ctx context.Context, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.FilterBlock)
 	return r.readBlock(ctx, r.filterBH, nil /* transform */, nil /* readHandle */, stats)
 }
 
-func (r *Reader) readRangeDel(stats *base.InternalIteratorStats) (cache.Handle, error) {
+func (r *PhysicalReader) readRangeDel(stats *base.InternalIteratorStats) (cache.Handle, error) {
 	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
 	return r.readBlock(ctx, r.rangeDelBH, r.rangeDelTransform, nil /* readHandle */, stats)
 }
 
-func (r *Reader) readRangeKey(stats *base.InternalIteratorStats) (cache.Handle, error) {
+func (r *PhysicalReader) readRangeKey(stats *base.InternalIteratorStats) (cache.Handle, error) {
 	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
 	return r.readBlock(ctx, r.rangeKeyBH, nil /* transform */, nil /* readHandle */, stats)
 }
@@ -2799,7 +2837,7 @@ func checkChecksum(
 }
 
 // readBlock reads and decompresses a block from disk into memory.
-func (r *Reader) readBlock(
+func (r *PhysicalReader) readBlock(
 	ctx context.Context,
 	bh BlockHandle,
 	transform blockTransform,
@@ -2889,7 +2927,7 @@ func (r *Reader) readBlock(
 	return h, nil
 }
 
-func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
+func (r *PhysicalReader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// Convert v1 (RocksDB format) range-del blocks to v2 blocks on the fly. The
 	// v1 format range-del blocks have unfragmented and unsorted range
 	// tombstones. We need properly fragmented and sorted range tombstones in
@@ -2932,7 +2970,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	return rangeDelBlock.finish(), nil
 }
 
-func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
+func (r *PhysicalReader) readMetaindex(metaindexBH BlockHandle) error {
 	b, err := r.readBlock(
 		context.Background(), metaindexBH, nil /* transform */, nil /* readHandle */, nil /* stats */)
 	if err != nil {
@@ -3033,7 +3071,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 }
 
 // Layout returns the layout (block organization) for an sstable.
-func (r *Reader) Layout() (*Layout, error) {
+func (r *PhysicalReader) Layout() (*Layout, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -3142,7 +3180,7 @@ func (r *Reader) Layout() (*Layout, error) {
 }
 
 // ValidateBlockChecksums validates the checksums for each block in the SSTable.
-func (r *Reader) ValidateBlockChecksums() error {
+func (r *PhysicalReader) ValidateBlockChecksums() error {
 	// Pre-compute the BlockHandles for the underlying file.
 	l, err := r.Layout()
 	if err != nil {
@@ -3201,7 +3239,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 // TODO(ajkr): account for metablock space usage. Perhaps look at the fraction of
 // data blocks overlapped and add that same fraction of the metadata blocks to the
 // estimate.
-func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
+func (r *PhysicalReader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	if r.err != nil {
 		return 0, r.err
 	}
@@ -3319,18 +3357,20 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 }
 
 // TableFormat returns the format version for the table.
-func (r *Reader) TableFormat() (TableFormat, error) {
+func (r *PhysicalReader) TableFormat() (TableFormat, error) {
 	if r.err != nil {
 		return TableFormatUnspecified, r.err
 	}
 	return r.tableFormat, nil
 }
 
-// NewReader returns a new table reader for the file. Closing the reader will
+// NewPhysicalReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+func NewPhysicalReader(
+	f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption,
+) (*PhysicalReader, error) {
 	o = o.ensureDefaults()
-	r := &Reader{
+	r := &PhysicalReader{
 		readable: f,
 		opts:     o,
 	}
@@ -3431,7 +3471,7 @@ type Layout struct {
 // Describe returns a description of the layout. If the verbose parameter is
 // true, details of the structure of each block are returned as well.
 func (l *Layout) Describe(
-	w io.Writer, verbose bool, r *Reader, fmtRecord func(key *base.InternalKey, value []byte),
+	w io.Writer, verbose bool, r *PhysicalReader, fmtRecord func(key *base.InternalKey, value []byte),
 ) {
 	ctx := context.TODO()
 	type block struct {

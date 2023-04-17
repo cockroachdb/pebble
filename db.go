@@ -1918,7 +1918,7 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				var size uint64
 				err := d.tableCache.withReader(
 					file,
-					func(r *sstable.Reader) (err error) {
+					func(r sstable.Reader) (err error) {
 						size, err = r.EstimateDiskUsage(start, end)
 						return err
 					},

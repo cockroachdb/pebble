@@ -63,7 +63,7 @@ func TestRewriterParallel(t *testing.T) {
 }
 
 func runDataDriven(t *testing.T, file string, tableFormat TableFormat, parallelism bool) {
-	var r *Reader
+	var r *PhysicalReader
 	defer func() {
 		if r != nil {
 			require.NoError(t, r.Close())
@@ -235,7 +235,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 }
 
 func TestWriterWithValueBlocks(t *testing.T) {
-	var r *Reader
+	var r *PhysicalReader
 	defer func() {
 		if r != nil {
 			require.NoError(t, r.Close())

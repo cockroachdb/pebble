@@ -35,7 +35,7 @@ import (
 
 // get is a testing helper that simulates a read and helps verify bloom filters
 // until they are available through iterators.
-func (r *Reader) get(key []byte) (value []byte, err error) {
+func (r *PhysicalReader) get(key []byte) (value []byte, err error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -372,7 +372,7 @@ func TestInvalidReader(t *testing.T) {
 		{invalid, "invalid table"},
 	}
 	for _, tc := range testCases {
-		r, err := NewReader(tc.readable, ReaderOptions{})
+		r, err := NewPhysicalReader(tc.readable, ReaderOptions{})
 		if !strings.Contains(err.Error(), tc.expected) {
 			t.Fatalf("expected %q, but found %q", tc.expected, err.Error())
 		}
@@ -382,7 +382,7 @@ func TestInvalidReader(t *testing.T) {
 	}
 }
 
-func indexLayoutString(t *testing.T, r *Reader) string {
+func indexLayoutString(t *testing.T, r *PhysicalReader) string {
 	indexH, err := r.readIndex(context.Background(), nil)
 	require.NoError(t, err)
 	defer indexH.Release()
@@ -422,7 +422,7 @@ func runTestReader(
 	t *testing.T,
 	o WriterOptions,
 	dir string,
-	r *Reader,
+	r *PhysicalReader,
 	cacheSize int,
 	printLayout bool,
 	printValue bool,
@@ -480,7 +480,7 @@ func runTestReader(
 					filterer,
 					true, /* use filter block */
 					&stats,
-					TrivialReaderProvider{Reader: r},
+					TrivialReaderProvider{PhysicalReader: r},
 				)
 				if err != nil {
 					return err.Error()
@@ -616,7 +616,7 @@ func testBytesIteratedWithCompression(
 			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression)
 				var bytesIterated, prevIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r})
+				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{PhysicalReader: r})
 				require.NoError(t, err)
 
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
@@ -670,7 +670,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
 				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, DefaultCompression)
 				var bytesIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r})
+				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{PhysicalReader: r})
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
@@ -718,11 +718,11 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	require.NoError(t, w.Close())
 	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, base.FileNum(0).DiskFileNum(), objstorage.OpenOptions{})
 	require.NoError(t, err)
-	r, err := NewReader(f1, ReaderOptions{Comparer: testkeys.Comparer})
+	r, err := NewPhysicalReader(f1, ReaderOptions{Comparer: testkeys.Comparer})
 	require.NoError(t, err)
 	defer r.Close()
 	{
-		citer, err := r.NewCompactionIter(nil, TrivialReaderProvider{Reader: r})
+		citer, err := r.NewCompactionIter(nil, TrivialReaderProvider{PhysicalReader: r})
 		require.NoError(t, err)
 		defer citer.Close()
 		i := citer.(*compactionIterator)
@@ -1056,7 +1056,7 @@ func TestReader_TableFormat(t *testing.T) {
 
 func buildTestTable(
 	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression,
-) *Reader {
+) *PhysicalReader {
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.NewMem(), "" /* dirName */))
 	require.NoError(t, err)
 	defer provider.Close()
@@ -1069,7 +1069,7 @@ func buildTestTableWithProvider(
 	numEntries uint64,
 	blockSize, indexBlockSize int,
 	compression Compression,
-) *Reader {
+) *PhysicalReader {
 	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, base.FileNum(0).DiskFileNum(), objstorage.CreateOptions{})
 	require.NoError(t, err)
 
@@ -1097,7 +1097,7 @@ func buildTestTableWithProvider(
 
 	c := cache.New(128 << 20)
 	defer c.Unref()
-	r, err := NewReader(f1, ReaderOptions{
+	r, err := NewPhysicalReader(f1, ReaderOptions{
 		Cache: c,
 	})
 	require.NoError(t, err)
@@ -1106,7 +1106,7 @@ func buildTestTableWithProvider(
 
 func buildBenchmarkTable(
 	b *testing.B, options WriterOptions, confirmTwoLevelIndex bool, offset int,
-) (*Reader, [][]byte) {
+) (*PhysicalReader, [][]byte) {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("bench")
 	if err != nil {
@@ -1394,7 +1394,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 	}
 	// v2 sstable is 115,178,070 bytes. v3 sstable is 107,181,105 bytes with
 	// 99,049,269 bytes in value blocks.
-	setupBench := func(b *testing.B, tableFormat TableFormat, cacheSize int64) *Reader {
+	setupBench := func(b *testing.B, tableFormat TableFormat, cacheSize int64) *PhysicalReader {
 		mem := vfs.NewMem()
 		f0, err := mem.Create("bench")
 		require.NoError(b, err)
@@ -1495,7 +1495,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 	for i := 0; i < sharedPrefixLen; i++ {
 		keyBuf[i] = 'A' + byte(i)
 	}
-	setupBench := func(b *testing.B, versCount int) (r *Reader, succKeys [][]byte) {
+	setupBench := func(b *testing.B, versCount int) (r *PhysicalReader, succKeys [][]byte) {
 		mem := vfs.NewMem()
 		f0, err := mem.Create("bench")
 		require.NoError(b, err)
@@ -1634,10 +1634,12 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 	}
 }
 
-func newReader(r ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+func newReader(
+	r ReadableFile, o ReaderOptions, extraOpts ...ReaderOption,
+) (*PhysicalReader, error) {
 	readable, err := NewSimpleReadable(r)
 	if err != nil {
 		return nil, err
 	}
-	return NewReader(readable, o, extraOpts...)
+	return NewPhysicalReader(readable, o, extraOpts...)
 }
