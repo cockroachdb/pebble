@@ -7,6 +7,8 @@ package objstorageprovider
 import (
 	"context"
 	"fmt"
+	"io"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -205,6 +207,56 @@ func TestProvider(t *testing.T) {
 			}
 		})
 	})
+}
+
+func TestReadableEOF(t *testing.T) {
+	st := DefaultSettings(vfs.NewMem(), "")
+	st.Shared.Storage = shared.NewInMem()
+	provider, err := Open(st)
+	require.NoError(t, err)
+	require.NoError(t, provider.SetCreatorID(1))
+
+	for i, shared := range []bool{false, true} {
+		name := "local"
+		if shared {
+			name = "shared"
+		}
+		fileNum := base.FileNum(i + 1).DiskFileNum()
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			w, _, err := provider.Create(ctx, base.FileTypeTable, fileNum, objstorage.CreateOptions{
+				PreferSharedStorage: shared,
+			})
+			require.NoError(t, err)
+			data := []byte("0123456789")
+			require.NoError(t, w.Write(data))
+			require.NoError(t, w.Finish())
+
+			r, err := provider.OpenForReading(ctx, base.FileTypeTable, fileNum, objstorage.OpenOptions{})
+			require.NoError(t, err)
+			buf := make([]byte, 10)
+
+			for x := 0; x < 20; x++ {
+				ofs := rand.Intn(11)
+				size := 1 + rand.Intn(10)
+
+				n, err := r.ReadAt(ctx, buf[:size], int64(ofs))
+				if testing.Verbose() {
+					t.Logf("ofs=%v size=%v n=%v", ofs, size, n)
+				}
+				if ofs+size <= 10 {
+					require.Equal(t, size, n)
+					require.NoError(t, err)
+				} else {
+					require.Equal(t, 10-ofs, n)
+					require.True(t, err == io.EOF, "%v", err)
+				}
+				for i := 0; i < n; i++ {
+					require.Equal(t, data[ofs+i], buf[i])
+				}
+			}
+		})
+	}
 }
 
 func TestNotExistError(t *testing.T) {
