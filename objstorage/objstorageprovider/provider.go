@@ -253,7 +253,13 @@ func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) erro
 
 // IsNotExistError is part of the objstorage.Provider interface.
 func (p *provider) IsNotExistError(err error) bool {
-	return oserror.IsNotExist(err)
+	if oserror.IsNotExist(err) {
+		return true
+	}
+	if p.sharedStorage() != nil && p.sharedStorage().IsNotExistError(err) {
+		return true
+	}
+	return false
 }
 
 // Sync flushes the metadata from creation or removal of objects since the last Sync.
