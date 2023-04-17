@@ -208,22 +208,50 @@ func TestProvider(t *testing.T) {
 }
 
 func TestNotExistError(t *testing.T) {
-	// TODO(radu): test with shared objects.
-	var log base.InMemLogger
-	fs := vfs.WithLogging(vfs.NewMem(), log.Infof)
-	provider, err := Open(DefaultSettings(fs, ""))
+	fs := vfs.NewMem()
+	st := DefaultSettings(fs, "")
+	st.Shared.Storage = shared.NewInMem()
+	provider, err := Open(st)
 	require.NoError(t, err)
+	require.NoError(t, provider.SetCreatorID(1))
 
-	require.True(t, provider.IsNotExistError(provider.Remove(base.FileTypeTable, base.FileNum(1).DiskFileNum())))
-	_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
-	require.True(t, provider.IsNotExistError(err))
+	for i, shared := range []bool{false, true} {
+		fileNum := base.FileNum(1 + i).DiskFileNum()
+		name := "local"
+		if shared {
+			name = "shared"
+		}
+		t.Run(name, func(t *testing.T) {
+			// Removing or opening an object that the provider doesn't know anything
+			// about should return a not-exist error.
+			err := provider.Remove(base.FileTypeTable, fileNum)
+			require.True(t, provider.IsNotExistError(err))
+			_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, fileNum, objstorage.OpenOptions{})
+			require.True(t, provider.IsNotExistError(err))
 
-	w, _, err := provider.Create(context.Background(), base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.CreateOptions{})
-	require.NoError(t, err)
-	require.NoError(t, w.Write([]byte("foo")))
-	require.NoError(t, w.Finish())
+			w, _, err := provider.Create(context.Background(), base.FileTypeTable, fileNum, objstorage.CreateOptions{
+				PreferSharedStorage: shared,
+			})
+			require.NoError(t, err)
+			require.NoError(t, w.Write([]byte("foo")))
+			require.NoError(t, w.Finish())
 
-	// Remove the underlying file.
-	require.NoError(t, fs.Remove(base.MakeFilename(base.FileTypeTable, base.FileNum(1).DiskFileNum())))
-	require.True(t, provider.IsNotExistError(provider.Remove(base.FileTypeTable, base.FileNum(1).DiskFileNum())))
+			// Remove the underlying file or object.
+			if !shared {
+				require.NoError(t, fs.Remove(base.MakeFilename(base.FileTypeTable, fileNum)))
+			} else {
+				meta, err := provider.Lookup(base.FileTypeTable, fileNum)
+				require.NoError(t, err)
+				require.NoError(t, st.Shared.Storage.Delete(sharedObjectName(meta)))
+			}
+
+			_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, fileNum, objstorage.OpenOptions{})
+			require.True(t, provider.IsNotExistError(err))
+
+			// It's acceptable for Remove to return a not-exist error, or no error at all.
+			if err := provider.Remove(base.FileTypeTable, fileNum); err != nil {
+				require.True(t, provider.IsNotExistError(err))
+			}
+		})
+	}
 }
