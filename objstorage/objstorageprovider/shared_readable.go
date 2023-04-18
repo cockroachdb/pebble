@@ -35,7 +35,7 @@ func newSharedReadable(storage shared.Storage, objName string, size int64) *shar
 	return r
 }
 
-func (r *sharedReadable) ReadAt(ctx context.Context, p []byte, offset int64) (n int, err error) {
+func (r *sharedReadable) ReadAt(ctx context.Context, p []byte, offset int64) error {
 	return r.rh.ReadAt(ctx, p, offset)
 }
 
@@ -62,36 +62,44 @@ type sharedReadHandle struct {
 
 var _ objstorage.ReadHandle = (*sharedReadHandle)(nil)
 
-func (r *sharedReadHandle) ReadAt(_ context.Context, p []byte, offset int64) (n int, err error) {
+func (r *sharedReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error {
 	// See if this continues the previous read so that we can reuse the last reader.
 	if r.lastReader == nil || r.lastOffset != offset {
 		// We need to create a new reader.
-		if r.lastReader != nil {
-			if err := r.lastReader.Close(); err != nil {
-				return 0, err
-			}
-			r.lastReader = nil
-		}
+		r.closeLastReader()
 		reader, _, err := r.readable.storage.ReadObjectAt(r.readable.objName, offset)
 		if err != nil {
-			return 0, err
+			return err
 		}
 		r.lastReader = reader
 		r.lastOffset = offset
 	}
-	n, err = io.ReadFull(r.lastReader, p)
-	r.lastOffset += int64(n)
-	return n, err
+	for n := 0; n < len(p); {
+		nn, err := r.lastReader.Read(p[n:])
+		n += nn
+		if err != nil {
+			// Don't rely on the reader again after hitting an error; some
+			// implementations don't correctly keep track of the current position in
+			// error cases.
+			r.closeLastReader()
+			return err
+		}
+	}
+	r.lastOffset += int64(len(p))
+	return nil
+}
+
+func (r *sharedReadHandle) closeLastReader() {
+	if r.lastReader != nil {
+		_ = r.lastReader.Close()
+		r.lastReader = nil
+	}
 }
 
 func (r *sharedReadHandle) Close() error {
-	var err error
-	if r.lastReader != nil {
-		err = r.lastReader.Close()
-		r.lastReader = nil
-	}
+	r.closeLastReader()
 	r.readable = nil
-	return err
+	return nil
 }
 
 func (r *sharedReadHandle) MaxReadahead() {}

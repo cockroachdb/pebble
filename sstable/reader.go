@@ -2822,9 +2822,9 @@ func (r *Reader) readBlock(
 	readStartTime := time.Now()
 	var err error
 	if readHandle != nil {
-		_, err = readHandle.ReadAt(ctx, b, int64(bh.Offset))
+		err = readHandle.ReadAt(ctx, b, int64(bh.Offset))
 	} else {
-		_, err = r.readable.ReadAt(ctx, b, int64(bh.Offset))
+		err = r.readable.ReadAt(ctx, b, int64(bh.Offset))
 	}
 	readDuration := time.Since(readStartTime)
 	// TODO(sumeer): should the threshold be configurable.
@@ -3495,7 +3495,7 @@ func (l *Layout) Describe(
 
 		if b.name == "footer" || b.name == "leveldb-footer" {
 			trailer, offset := make([]byte, b.Length), b.Offset
-			_, _ = r.readable.ReadAt(ctx, trailer, int64(offset))
+			_ = r.readable.ReadAt(ctx, trailer, int64(offset))
 
 			if b.name == "footer" {
 				checksumType := ChecksumType(trailer[0])
@@ -3568,7 +3568,7 @@ func (l *Layout) Describe(
 		formatTrailer := func() {
 			trailer := make([]byte, blockTrailerLen)
 			offset := int64(b.Offset + b.Length)
-			_, _ = r.readable.ReadAt(ctx, trailer, offset)
+			_ = r.readable.ReadAt(ctx, trailer, offset)
 			bt := blockType(trailer[0])
 			checksum := binary.LittleEndian.Uint32(trailer[1:])
 			fmt.Fprintf(w, "%10d    [trailer compression=%s checksum=0x%04x]\n", offset, bt, checksum)
@@ -3730,8 +3730,12 @@ type simpleReadable struct {
 var _ objstorage.Readable = (*simpleReadable)(nil)
 
 // ReadAt is part of the objstorage.Readable interface.
-func (s *simpleReadable) ReadAt(_ context.Context, p []byte, off int64) (n int, err error) {
-	return s.f.ReadAt(p, off)
+func (s *simpleReadable) ReadAt(_ context.Context, p []byte, off int64) error {
+	n, err := s.f.ReadAt(p, off)
+	if invariants.Enabled && err == nil && n != len(p) {
+		panic("short read")
+	}
+	return err
 }
 
 // Close is part of the objstorage.Readable interface.

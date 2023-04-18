@@ -536,8 +536,12 @@ func newMemReader(b []byte) *memReader {
 }
 
 // ReadAt is part of objstorage.Readable.
-func (m *memReader) ReadAt(_ context.Context, p []byte, off int64) (n int, err error) {
-	return m.r.ReadAt(p, off)
+func (m *memReader) ReadAt(_ context.Context, p []byte, off int64) error {
+	n, err := m.r.ReadAt(p, off)
+	if invariants.Enabled && err == nil && n != len(p) {
+		panic("short read")
+	}
+	return err
 }
 
 // Close is part of objstorage.Readable.

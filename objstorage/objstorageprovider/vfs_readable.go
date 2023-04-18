@@ -49,8 +49,12 @@ func newFileReadable(file vfs.File, fs vfs.FS, filename string) (*fileReadable, 
 }
 
 // ReadAt is part of the objstorage.Readable interface.
-func (r *fileReadable) ReadAt(_ context.Context, p []byte, off int64) (n int, err error) {
-	return r.file.ReadAt(p, off)
+func (r *fileReadable) ReadAt(_ context.Context, p []byte, off int64) error {
+	n, err := r.file.ReadAt(p, off)
+	if invariants.Enabled && err == nil && n != len(p) {
+		panic("short read")
+	}
+	return err
 }
 
 // Close is part of the objstorage.Readable interface.
@@ -110,21 +114,28 @@ func (rh *vfsReadHandle) Close() error {
 }
 
 // ReadAt is part of the objstorage.ReadHandle interface.
-func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) (n int, err error) {
+func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error {
+	var n int
+	var err error
 	if rh.sequentialFile != nil {
 		// Use OS-level read-ahead.
-		return rh.sequentialFile.ReadAt(p, offset)
-	}
-	if readaheadSize := rh.rs.maybeReadahead(offset, int64(len(p))); readaheadSize > 0 {
-		if readaheadSize >= maxReadaheadSize {
-			// We've reached the maximum readahead size. Beyond this point, rely on
-			// OS-level readahead.
-			rh.MaxReadahead()
-		} else {
-			_ = rh.r.file.Prefetch(offset, readaheadSize)
+		n, err = rh.sequentialFile.ReadAt(p, offset)
+	} else {
+		if readaheadSize := rh.rs.maybeReadahead(offset, int64(len(p))); readaheadSize > 0 {
+			if readaheadSize >= maxReadaheadSize {
+				// We've reached the maximum readahead size. Beyond this point, rely on
+				// OS-level readahead.
+				rh.MaxReadahead()
+			} else {
+				_ = rh.r.file.Prefetch(offset, readaheadSize)
+			}
 		}
+		n, err = rh.r.file.ReadAt(p, offset)
 	}
-	return rh.r.file.ReadAt(p, offset)
+	if invariants.Enabled && err == nil && n != len(p) {
+		panic("short read")
+	}
+	return err
 }
 
 // MaxReadahead is part of the objstorage.ReadHandle interface.
@@ -181,8 +192,12 @@ func newGenericFileReadable(file vfs.File) (*genericFileReadable, error) {
 }
 
 // ReadAt is part of the objstorage.Readable interface.
-func (r *genericFileReadable) ReadAt(_ context.Context, p []byte, off int64) (n int, err error) {
-	return r.file.ReadAt(p, off)
+func (r *genericFileReadable) ReadAt(_ context.Context, p []byte, off int64) error {
+	n, err := r.file.ReadAt(p, off)
+	if invariants.Enabled && err == nil && n != len(p) {
+		panic("short read")
+	}
+	return err
 }
 
 // Close is part of the objstorage.Readable interface.
