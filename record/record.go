@@ -248,6 +248,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			r.begin = r.end + headerSize
 			r.end = r.begin + int(length)
 			if r.end > r.n {
+				// The chunk straddles a 32KB boundary (or the end of file).
 				if r.recovering {
 					r.recover()
 					continue
