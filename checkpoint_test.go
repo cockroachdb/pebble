@@ -287,3 +287,50 @@ func TestCheckpointFlushWAL(t *testing.T) {
 		require.NoError(t, d.Close())
 	}
 }
+
+func TestCheckpointManyFiles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping because of short flag")
+	}
+	const checkpointPath = "checkpoint"
+	opts := &Options{
+		FS:                          vfs.NewMem(),
+		FormatMajorVersion:          FormatNewest,
+		DisableAutomaticCompactions: true,
+	}
+
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	for i := 0; i < 4000; i++ {
+		err := d.Set([]byte(fmt.Sprintf("key%06d", i)), nil, nil)
+		require.NoError(t, err)
+		err = d.Flush()
+		require.NoError(t, err)
+	}
+	err = d.Checkpoint(checkpointPath, WithRestrictToSpans([]CheckpointSpan{
+		{
+			Start: []byte(fmt.Sprintf("key%06d", 0)),
+			End:   []byte(fmt.Sprintf("key%06d", 100)),
+		},
+	}))
+	require.NoError(t, err)
+
+	// Open the checkpoint and iterate through all the keys.
+	{
+		d, err := Open(checkpointPath, opts)
+		require.NoError(t, err)
+		iter := d.NewIter(nil)
+		require.True(t, iter.First())
+		require.NoError(t, iter.Error())
+		n := 1
+		for iter.Next() {
+			n++
+		}
+		require.NoError(t, iter.Error())
+		require.NoError(t, iter.Close())
+		require.NoError(t, d.Close())
+		require.Equal(t, 100, n)
+	}
+}
