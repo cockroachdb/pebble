@@ -20,7 +20,7 @@ func MakeNoopReadHandle(r Readable) NoopReadHandle {
 var _ ReadHandle = (*NoopReadHandle)(nil)
 
 // ReadAt is part of the ReadHandle interface.
-func (h *NoopReadHandle) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+func (h *NoopReadHandle) ReadAt(ctx context.Context, p []byte, off int64) error {
 	return h.readable.ReadAt(ctx, p, off)
 }
 

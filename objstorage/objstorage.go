@@ -14,22 +14,11 @@ import (
 
 // Readable is the handle for an object that is open for reading.
 type Readable interface {
-	// ReadAt reads len(p) bytes into p starting at offset off. It returns the
-	// number of bytes read (0 <= n <= len(p)) and any error encountered.
-	//
-	// When ReadAt returns n < len(p), it returns a non-nil error explaining why
-	// more bytes were not returned.
-	//
-	// Even if ReadAt returns n < len(p), it may use all of p as scratch space
-	// during the call. If some data is available but not len(p) bytes, ReadAt
-	// blocks until either all the data is available or an error occurs.
-	//
-	// If the n = len(p) bytes returned by ReadAt are at the end of the input
-	// source, ReadAt may return either err == EOF or err == nil.
+	// ReadAt reads len(p) bytes into p starting at offset off.
 	//
 	// Clients of ReadAt can execute parallel ReadAt calls on the
 	// same Readable.
-	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
+	ReadAt(ctx context.Context, p []byte, off int64) error
 
 	Close() error
 
@@ -48,21 +37,10 @@ type Readable interface {
 // ReadHandle is used to perform reads that are related and might benefit from
 // optimizations like read-ahead.
 type ReadHandle interface {
-	// ReadAt reads len(p) bytes into p starting at offset off. It returns the
-	// number of bytes read (0 <= n <= len(p)) and any error encountered.
-	//
-	// When ReadAt returns n < len(p), it returns a non-nil error explaining why
-	// more bytes were not returned.
-	//
-	// Even if ReadAt returns n < len(p), it may use all of p as scratch space
-	// during the call. If some data is available but not len(p) bytes, ReadAt
-	// blocks until either all the data is available or an error occurs.
-	//
-	// If the n = len(p) bytes returned by ReadAt are at the end of the input
-	// source, ReadAt may return either err == EOF or err == nil.
+	// ReadAt reads len(p) bytes into p starting at offset off.
 	//
 	// Parallel ReadAt calls on the same ReadHandle are not allowed.
-	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
+	ReadAt(ctx context.Context, p []byte, off int64) error
 
 	Close() error
 
