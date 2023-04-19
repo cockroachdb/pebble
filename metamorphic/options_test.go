@@ -42,13 +42,13 @@ func TestSetupInitialState(t *testing.T) {
 
 	// setupInitialState with an initial state path set to the test's TempDir
 	// should populate opts.opts.FS with the directory's contents.
-	opts := &testOptions{
-		opts:             defaultOptions(),
+	opts := &TestOptions{
+		Opts:             defaultOptions(),
 		initialStatePath: initialStatePath,
 		initialStateDesc: "test",
 	}
 	require.NoError(t, setupInitialState("data", opts))
-	copied, err := opts.opts.FS.List("")
+	copied, err := opts.Opts.FS.List("")
 	require.NoError(t, err)
 	require.ElementsMatch(t, ls, copied)
 }
@@ -72,33 +72,33 @@ func TestOptionsRoundtrip(t *testing.T) {
 
 	// Ensure that we unref any caches created, so invariants builds don't
 	// complain about the leaked ref counts.
-	maybeUnref := func(o *testOptions) {
-		if o.opts.Cache != nil {
-			o.opts.Cache.Unref()
+	maybeUnref := func(o *TestOptions) {
+		if o.Opts.Cache != nil {
+			o.Opts.Cache.Unref()
 		}
 	}
 
-	checkOptions := func(t *testing.T, o *testOptions) {
+	checkOptions := func(t *testing.T, o *TestOptions) {
 		s := optionsToString(o)
 		parsed := defaultTestOptions()
-		require.NoError(t, parseOptions(parsed, s))
+		require.NoError(t, parseOptions(parsed, s, nil))
 		maybeUnref(parsed)
 		got := optionsToString(parsed)
 		require.Equal(t, s, got)
 
 		// In some options, the closure obscures the underlying value. Check
 		// that the return values are equal.
-		require.Equal(t, o.opts.Experimental.EnableValueBlocks == nil, parsed.opts.Experimental.EnableValueBlocks == nil)
-		if o.opts.Experimental.EnableValueBlocks != nil {
-			require.Equal(t, o.opts.Experimental.EnableValueBlocks(), parsed.opts.Experimental.EnableValueBlocks())
+		require.Equal(t, o.Opts.Experimental.EnableValueBlocks == nil, parsed.Opts.Experimental.EnableValueBlocks == nil)
+		if o.Opts.Experimental.EnableValueBlocks != nil {
+			require.Equal(t, o.Opts.Experimental.EnableValueBlocks(), parsed.Opts.Experimental.EnableValueBlocks())
 		}
-		require.Equal(t, o.opts.Experimental.DisableIngestAsFlushable == nil, parsed.opts.Experimental.DisableIngestAsFlushable == nil)
-		if o.opts.Experimental.DisableIngestAsFlushable != nil {
-			require.Equal(t, o.opts.Experimental.DisableIngestAsFlushable(), parsed.opts.Experimental.DisableIngestAsFlushable())
+		require.Equal(t, o.Opts.Experimental.DisableIngestAsFlushable == nil, parsed.Opts.Experimental.DisableIngestAsFlushable == nil)
+		if o.Opts.Experimental.DisableIngestAsFlushable != nil {
+			require.Equal(t, o.Opts.Experimental.DisableIngestAsFlushable(), parsed.Opts.Experimental.DisableIngestAsFlushable())
 		}
-		require.Equal(t, o.opts.MaxConcurrentCompactions(), parsed.opts.MaxConcurrentCompactions())
+		require.Equal(t, o.Opts.MaxConcurrentCompactions(), parsed.Opts.MaxConcurrentCompactions())
 
-		diff := pretty.Diff(o.opts, parsed.opts)
+		diff := pretty.Diff(o.Opts, parsed.Opts)
 		cleaned := diff[:0]
 		for _, d := range diff {
 			var ignored bool
@@ -125,9 +125,42 @@ func TestOptionsRoundtrip(t *testing.T) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	for i := 0; i < 100; i++ {
 		t.Run(fmt.Sprintf("random-%03d", i), func(t *testing.T) {
-			o := randomOptions(rng)
+			o := randomOptions(rng, nil)
 			checkOptions(t, o)
 			maybeUnref(o)
 		})
 	}
 }
+
+func TestCustomOptionParser(t *testing.T) {
+	customOptionParsers := map[string]func(string) (CustomOption, bool){
+		"foo": func(value string) (CustomOption, bool) {
+			return testCustomOption{name: "foo", value: value}, true
+		},
+	}
+
+	o1 := defaultTestOptions()
+	o2 := defaultTestOptions()
+
+	require.NoError(t, parseOptions(o1, `
+[TestOptions]
+  foo=bar
+`, customOptionParsers))
+	require.NoError(t, parseOptions(o2, optionsToString(o1), customOptionParsers))
+	defer o2.Opts.Cache.Unref()
+
+	for _, o := range []*TestOptions{o1, o2} {
+		require.Equal(t, 1, len(o.CustomOpts))
+		require.Equal(t, "foo", o.CustomOpts[0].Name())
+		require.Equal(t, "bar", o.CustomOpts[0].Value())
+	}
+}
+
+type testCustomOption struct {
+	name, value string
+}
+
+func (o testCustomOption) Name() string                { return o.name }
+func (o testCustomOption) Value() string               { return o.value }
+func (o testCustomOption) Close(*pebble.Options) error { return nil }
+func (o testCustomOption) Open(*pebble.Options) error  { return nil }

@@ -28,7 +28,7 @@ type test struct {
 	dir       string
 	db        *pebble.DB
 	opts      *pebble.Options
-	testOpts  *testOptions
+	testOpts  *TestOptions
 	writeOpts *pebble.WriteOptions
 	tmpDir    string
 	// The slots for the batches, iterators, and snapshots. These are read and
@@ -44,14 +44,14 @@ func newTest(ops []op) *test {
 	}
 }
 
-func (t *test) init(h *history, dir string, testOpts *testOptions) error {
+func (t *test) init(h *history, dir string, testOpts *TestOptions) error {
 	t.dir = dir
 	t.testOpts = testOpts
 	t.writeOpts = pebble.NoSync
 	if testOpts.strictFS {
 		t.writeOpts = pebble.Sync
 	}
-	t.opts = testOpts.opts.EnsureDefaults()
+	t.opts = testOpts.Opts.EnsureDefaults()
 	t.opts.Logger = h
 	lel := pebble.MakeLoggingEventListener(t.opts.Logger)
 	t.opts.EventListener = &lel
@@ -121,6 +121,12 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 		maybeExit(info.Err)
 	}
 
+	for i := range t.testOpts.CustomOpts {
+		if err := t.testOpts.CustomOpts[i].Open(t.opts); err != nil {
+			return err
+		}
+	}
+
 	var db *pebble.DB
 	var err error
 	err = withRetries(func() error {
@@ -181,11 +187,30 @@ func (t *test) restartDB() error {
 	if err := t.db.Close(); err != nil {
 		return err
 	}
+	// Release any resources held by custom options. This may be used, for
+	// example, by the encryption-at-rest custom option (within the Cockroach
+	// repository) to close the file registry.
+	for i := range t.testOpts.CustomOpts {
+		if err := t.testOpts.CustomOpts[i].Close(t.opts); err != nil {
+			return err
+		}
+	}
 	if ok {
 		fs.ResetToSyncedState()
 		fs.SetIgnoreSyncs(false)
 	}
+
+	// TODO(jackson): Audit errorRate and ensure custom options' hooks semantics
+	// are well defined within the context of retries.
 	err := withRetries(func() (err error) {
+		// Reacquire any resources required by custom options. This may be used, for
+		// example, by the encryption-at-rest custom option (within the Cockroach
+		// repository) to reopen the file registry.
+		for i := range t.testOpts.CustomOpts {
+			if err := t.testOpts.CustomOpts[i].Open(t.opts); err != nil {
+				return err
+			}
+		}
 		t.db, err = pebble.Open(t.dir, t.opts)
 		return err
 	})
