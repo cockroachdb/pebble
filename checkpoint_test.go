@@ -7,6 +7,7 @@ package pebble
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sort"
 	"strings"
 	"sync"
@@ -282,5 +283,64 @@ func TestCheckpointFlushWAL(t *testing.T) {
 		require.False(t, iter.Next())
 		require.NoError(t, iter.Close())
 		require.NoError(t, d.Close())
+	}
+}
+
+func TestCheckpointManyFiles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping because of short flag")
+	}
+	const checkpointPath = "checkpoint"
+	opts := &Options{
+		FS:                          vfs.NewMem(),
+		FormatMajorVersion:          FormatNewest,
+		DisableAutomaticCompactions: true,
+	}
+	// Disable compression to speed up the test.
+	opts.EnsureDefaults()
+	for i := range opts.Levels {
+		opts.Levels[i].Compression = NoCompression
+	}
+
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	mkKey := func(x int) []byte {
+		return []byte(fmt.Sprintf("key%06d", x))
+	}
+	// We want to test the case where the appended record with the excluded files
+	// makes the manifest cross 32KB. This will happen for a range of values
+	// around 450.
+	n := 400 + rand.Intn(100)
+	for i := 0; i < n; i++ {
+		err := d.Set(mkKey(i), nil, nil)
+		require.NoError(t, err)
+		err = d.Flush()
+		require.NoError(t, err)
+	}
+	err = d.Checkpoint(checkpointPath, WithRestrictToSpans([]CheckpointSpan{
+		{
+			Start: mkKey(0),
+			End:   mkKey(10),
+		},
+	}))
+	require.NoError(t, err)
+
+	// Open the checkpoint and iterate through all the keys.
+	{
+		d, err := Open(checkpointPath, opts)
+		require.NoError(t, err)
+		iter := d.NewIter(nil)
+		require.True(t, iter.First())
+		require.NoError(t, iter.Error())
+		n := 1
+		for iter.Next() {
+			n++
+		}
+		require.NoError(t, iter.Error())
+		require.NoError(t, iter.Close())
+		require.NoError(t, d.Close())
+		require.Equal(t, 10, n)
 	}
 }
