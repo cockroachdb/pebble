@@ -371,8 +371,28 @@ func (d *DB) writeCheckpointManifest(
 		}
 		defer dst.Close()
 
-		if _, err := io.Copy(dst, &io.LimitedReader{R: src, N: manifestSize}); err != nil {
-			return err
+		// Copy all existing records. We need to copy at the record level in case we
+		// need to append another record with the excluded files (we cannot simply
+		// append a record after a raw data copy; see
+		// https://github.com/cockroachdb/cockroach/issues/100935).
+		r := record.NewReader(&io.LimitedReader{R: src, N: manifestSize}, manifestFileNum.FileNum())
+		w := record.NewWriter(dst)
+		for {
+			rr, err := r.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return err
+			}
+
+			rw, err := w.Next()
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(rw, rr); err != nil {
+				return err
+			}
 		}
 
 		if len(excludedFiles) > 0 {
@@ -382,17 +402,16 @@ func (d *DB) writeCheckpointManifest(
 				RemovedBackingTables: removeBackingTables,
 			}
 
-			rw := record.NewWriter(dst)
-			w, err := rw.Next()
+			rw, err := w.Next()
 			if err != nil {
 				return err
 			}
-			if err := ve.Encode(w); err != nil {
+			if err := ve.Encode(rw); err != nil {
 				return err
 			}
-			if err := rw.Close(); err != nil {
-				return err
-			}
+		}
+		if err := w.Close(); err != nil {
+			return err
 		}
 		return dst.Sync()
 	}(); err != nil {
