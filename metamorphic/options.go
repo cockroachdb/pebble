@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -36,7 +37,9 @@ const (
 	defaultFormatMajorVersion = pebble.FormatPrePebblev1Marked
 )
 
-func parseOptions(opts *testOptions, data string) error {
+func parseOptions(
+	opts *TestOptions, data string, customOptionParsers map[string]func(string) (CustomOption, bool),
+) error {
 	hooks := &pebble.ParseHooks{
 		NewCache:        pebble.NewCache,
 		NewFilterPolicy: filterPolicyFromName,
@@ -71,25 +74,35 @@ func parseOptions(opts *testOptions, data string) error {
 				return true
 			case "TestOptions.disable_block_property_collector":
 				opts.disableBlockPropertyCollector = true
-				opts.opts.BlockPropertyCollectors = nil
+				opts.Opts.BlockPropertyCollectors = nil
 				return true
 			case "TestOptions.enable_value_blocks":
 				opts.enableValueBlocks = true
-				opts.opts.Experimental.EnableValueBlocks = func() bool { return true }
+				opts.Opts.Experimental.EnableValueBlocks = func() bool { return true }
 				return true
 			case "TestOptions.async_apply_to_db":
 				opts.asyncApplyToDB = true
 				return true
 			default:
+				if customOptionParsers == nil {
+					return false
+				}
+				name = strings.TrimPrefix(name, "TestOptions.")
+				if p, ok := customOptionParsers[name]; ok {
+					if customOpt, ok := p(value); ok {
+						opts.CustomOpts = append(opts.CustomOpts, customOpt)
+						return true
+					}
+				}
 				return false
 			}
 		},
 	}
-	err := opts.opts.Parse(data, hooks)
+	err := opts.Opts.Parse(data, hooks)
 	return err
 }
 
-func optionsToString(opts *testOptions) string {
+func optionsToString(opts *TestOptions) string {
 	var buf bytes.Buffer
 	if opts.strictFS {
 		fmt.Fprint(&buf, "  strictfs=true\n")
@@ -121,20 +134,23 @@ func optionsToString(opts *testOptions) string {
 	if opts.asyncApplyToDB {
 		fmt.Fprint(&buf, "  async_apply_to_db=true\n")
 	}
+	for _, customOpt := range opts.CustomOpts {
+		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
+	}
 
-	s := opts.opts.String()
+	s := opts.Opts.String()
 	if buf.Len() == 0 {
 		return s
 	}
 	return s + "\n[TestOptions]\n" + buf.String()
 }
 
-func defaultTestOptions() *testOptions {
-	o := &testOptions{
-		opts:    defaultOptions(),
+func defaultTestOptions() *TestOptions {
+	o := &TestOptions{
+		Opts:    defaultOptions(),
 		threads: 16,
 	}
-	o.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
+	o.Opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
 	return o
 }
 
@@ -151,11 +167,17 @@ func defaultOptions() *pebble.Options {
 	return opts
 }
 
-type testOptions struct {
-	opts     *pebble.Options
-	useDisk  bool
-	strictFS bool
-	threads  int
+// TestOptions describes the options configuring an individual run of the
+// metamorphic tests.
+type TestOptions struct {
+	// Opts holds the *pebble.Options for the test.
+	Opts *pebble.Options
+	// CustomOptions holds custom test options that are defined outside of this
+	// package.
+	CustomOpts []CustomOption
+	useDisk    bool
+	strictFS   bool
+	threads    int
 	// Use Batch.Apply rather than DB.Ingest.
 	ingestUsingApply bool
 	// Replace a SINGLEDEL with a DELETE.
@@ -175,7 +197,32 @@ type testOptions struct {
 	asyncApplyToDB bool
 }
 
-func standardOptions() []*testOptions {
+// CustomOption defines a custom option that configures the behavior of an
+// individual test run. Like all test options, custom options are serialized to
+// the OPTIONS file even if they're not options ordinarily understood by Pebble.
+type CustomOption interface {
+	// Name returns the name of the custom option. This is the key under which
+	// the option appears in the OPTIONS file, within the [TestOptions] stanza.
+	Name() string
+	// Value returns the value of the custom option, serialized as it should
+	// appear within the OPTIONS file.
+	Value() string
+	// Close is run after the test database has been closed at the end of the
+	// test as well as during restart operations within the test sequence. It's
+	// passed a copy of the *pebble.Options. If the custom options hold on to
+	// any resources outside, Close should release them.
+	Close(*pebble.Options) error
+	// Open is run before the test runs and during a restart operation after the
+	// test database has been closed and Close has been called. It's passed a
+	// copy of the *pebble.Options. If the custom options must acquire any
+	// resources before the test continues, it Open should reacquire them.
+	Open(*pebble.Options) error
+
+	// TODO(jackson): provide additional hooks for custom options changing the
+	// behavior of a run.
+}
+
+func standardOptions() []*TestOptions {
 	// The index labels are not strictly necessary, but they make it easier to
 	// find which options correspond to a failure.
 	stdOpts := []string{
@@ -287,20 +334,24 @@ func standardOptions() []*testOptions {
 `,
 	}
 
-	opts := make([]*testOptions, len(stdOpts))
+	opts := make([]*TestOptions, len(stdOpts))
 	for i := range opts {
 		opts[i] = defaultTestOptions()
-		if err := parseOptions(opts[i], stdOpts[i]); err != nil {
+		// NB: The standard options by definition can never include custom
+		// options, so no need to propagate custom option parsers.
+		if err := parseOptions(opts[i], stdOpts[i], nil /* custom option parsers */); err != nil {
 			panic(err)
 		}
 	}
 	return opts
 }
 
-func randomOptions(rng *rand.Rand) *testOptions {
-	var testOpts = &testOptions{}
+func randomOptions(
+	rng *rand.Rand, customOptionParsers map[string]func(string) (CustomOption, bool),
+) *TestOptions {
+	var testOpts = &TestOptions{}
 	opts := defaultOptions()
-	testOpts.opts = opts
+	testOpts.Opts = opts
 
 	// There are some private options, which we don't want users to fiddle with.
 	// There's no way to set it through the public interface. The only method is
@@ -318,7 +369,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 			fmt.Fprintln(&privateOpts, `  disable_lazy_combined_iteration=true`)
 		}
 		if privateOptsStr := privateOpts.String(); privateOptsStr != `[Options]\n` {
-			parseOptions(testOpts, privateOptsStr)
+			parseOptions(testOpts, privateOptsStr, customOptionParsers)
 		}
 	}
 
@@ -393,22 +444,22 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	testOpts.replaceSingleDelete = rng.Intn(2) != 0
 	testOpts.disableBlockPropertyCollector = rng.Intn(2) != 0
 	if !testOpts.disableBlockPropertyCollector {
-		testOpts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
+		testOpts.Opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
 	}
 	testOpts.enableValueBlocks = opts.FormatMajorVersion >= pebble.FormatSSTableValueBlocks &&
 		rng.Intn(2) != 0
 	if testOpts.enableValueBlocks {
-		testOpts.opts.Experimental.EnableValueBlocks = func() bool { return true }
+		testOpts.Opts.Experimental.EnableValueBlocks = func() bool { return true }
 	}
 	testOpts.asyncApplyToDB = rng.Intn(2) != 0
 	return testOpts
 }
 
-func setupInitialState(dataDir string, testOpts *testOptions) error {
+func setupInitialState(dataDir string, testOpts *TestOptions) error {
 	// Copy (vfs.Default,<initialStatePath>/data) to (testOpts.opts.FS,<dataDir>).
 	ok, err := vfs.Clone(
 		vfs.Default,
-		testOpts.opts.FS,
+		testOpts.Opts.FS,
 		vfs.Default.PathJoin(testOpts.initialStatePath, "data"),
 		dataDir,
 		vfs.CloneSync,
@@ -427,7 +478,7 @@ func setupInitialState(dataDir string, testOpts *testOptions) error {
 	// Tests with wal_dir set store their WALs in a `wal` directory. The source
 	// database (initialStatePath) could've had wal_dir set, or the current test
 	// options (testOpts) could have wal_dir set, or both.
-	fs := testOpts.opts.FS
+	fs := testOpts.Opts.FS
 	walDir := fs.PathJoin(dataDir, "wal")
 	if err := fs.MkdirAll(walDir, os.ModePerm); err != nil {
 		return err
@@ -435,7 +486,7 @@ func setupInitialState(dataDir string, testOpts *testOptions) error {
 
 	// Copy <dataDir>/wal/*.log -> <dataDir>.
 	src, dst := walDir, dataDir
-	if testOpts.opts.WALDir != "" {
+	if testOpts.Opts.WALDir != "" {
 		// Copy <dataDir>/*.log -> <dataDir>/wal.
 		src, dst = dst, src
 	}

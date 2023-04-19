@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"testing"
 	"time"
 
@@ -39,7 +40,8 @@ type runAndCompareOptions struct {
 	initialStatePath  string
 	initialStateDesc  string
 	traceFile         string
-	mutateTestOptions []func(*testOptions)
+	mutateTestOptions []func(*TestOptions)
+	customRuns        map[string]string
 	runOnceOptions
 }
 
@@ -83,12 +85,12 @@ var (
 	// UseDisk configures RunAndCompare to use the physical filesystem for all
 	// generated runs.
 	UseDisk = closureOpt(func(ro *runAndCompareOptions) {
-		ro.mutateTestOptions = append(ro.mutateTestOptions, func(to *testOptions) { to.useDisk = true })
+		ro.mutateTestOptions = append(ro.mutateTestOptions, func(to *TestOptions) { to.useDisk = true })
 	})
 	// UseInMemory configures RunAndCompare to use an in-memory virtual
 	// filesystem for all generated runs.
 	UseInMemory = closureOpt(func(ro *runAndCompareOptions) {
-		ro.mutateTestOptions = append(ro.mutateTestOptions, func(to *testOptions) { to.useDisk = false })
+		ro.mutateTestOptions = append(ro.mutateTestOptions, func(to *TestOptions) { to.useDisk = false })
 	})
 )
 
@@ -104,6 +106,21 @@ func RuntimeTrace(name string) RunOption {
 	return closureOpt(func(ro *runAndCompareOptions) { ro.traceFile = name })
 }
 
+// ParseCustomTestOption adds support for parsing the provided CustomOption from
+// OPTIONS files serialized by the metamorphic tests. This RunOption alone does
+// not cause the metamorphic tests to run with any variant of the provided
+// CustomOption set.
+func ParseCustomTestOption(name string, parseFn func(value string) (CustomOption, bool)) RunOption {
+	return closureOpt(func(ro *runAndCompareOptions) { ro.customOptionParsers[name] = parseFn })
+}
+
+// AddCustomRun adds an additional run of the metamorphic tests, using the
+// provided OPTIONS file contents. The default options will be used, except
+// those options that are overriden by the provided OPTIONS string.
+func AddCustomRun(name string, serializedOptions string) RunOption {
+	return closureOpt(func(ro *runAndCompareOptions) { ro.customRuns[name] = serializedOptions })
+}
+
 type closureOpt func(*runAndCompareOptions)
 
 func (f closureOpt) apply(ro *runAndCompareOptions) { f(ro) }
@@ -111,7 +128,13 @@ func (f closureOpt) apply(ro *runAndCompareOptions) { f(ro) }
 // RunAndCompare runs the metamorphic tests, using the provided root directory
 // to hold test data.
 func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
-	runOpts := runAndCompareOptions{ops: randvar.NewUniform(1000, 10000)}
+	runOpts := runAndCompareOptions{
+		ops:        randvar.NewUniform(1000, 10000),
+		customRuns: map[string]string{},
+		runOnceOptions: runOnceOptions{
+			customOptionParsers: map[string]func(string) (CustomOption, bool){},
+		},
+	}
 	for _, o := range rOpts {
 		o.apply(&runOpts)
 	}
@@ -156,9 +179,9 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 	// runOptions performs a particular test run with the specified options. The
 	// options are written to <run-dir>/OPTIONS and a child process is created to
 	// actually execute the test.
-	runOptions := func(t *testing.T, opts *testOptions) {
-		if opts.opts.Cache != nil {
-			defer opts.opts.Cache.Unref()
+	runOptions := func(t *testing.T, opts *TestOptions) {
+		if opts.Opts.Cache != nil {
+			defer opts.Opts.Cache.Unref()
 		}
 		for _, fn := range runOpts.mutateTestOptions {
 			fn(opts)
@@ -198,14 +221,26 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		}
 	}
 
-	// Create the standard options.
 	var names []string
-	options := map[string]*testOptions{}
+	options := map[string]*TestOptions{}
+
+	// Create the standard options.
 	for i, opts := range standardOptions() {
 		name := fmt.Sprintf("standard-%03d", i)
 		names = append(names, name)
 		options[name] = opts
 	}
+
+	// Create the custom option runs, if any.
+	for name, customOptsStr := range runOpts.customRuns {
+		options[name] = defaultTestOptions()
+		if err := parseOptions(options[name], customOptsStr, runOpts.customOptionParsers); err != nil {
+			t.Fatalf("custom opts %q: %s", name, err)
+		}
+	}
+	// Sort the custom options names for determinism (they're currently in
+	// random order from map iteration).
+	sort.Strings(names[len(names)-len(runOpts.customRuns):])
 
 	// Create random options. We make an arbitrary choice to run with as many
 	// random options as we have standard options.
@@ -213,7 +248,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 	for i := 0; i < nOpts; i++ {
 		name := fmt.Sprintf("random-%03d", i)
 		names = append(names, name)
-		opts := randomOptions(rng)
+		opts := randomOptions(rng, runOpts.customOptionParsers)
 		options[name] = opts
 	}
 
@@ -294,10 +329,11 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 }
 
 type runOnceOptions struct {
-	keep       bool
-	maxThreads int
-	errorRate  float64
-	failRegexp *regexp.Regexp
+	keep                bool
+	maxThreads          int
+	errorRate           float64
+	failRegexp          *regexp.Regexp
+	customOptionParsers map[string]func(string) (CustomOption, bool)
 }
 
 // A RunOnceOption configures the behavior of a single run of the metamorphic
@@ -344,7 +380,9 @@ func (f FailOnMatch) applyOnce(ro *runOnceOptions)   { ro.failRegexp = f.Regexp 
 //
 // The `seed` parameter is not functional; it's used for context in logging.
 func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts ...RunOnceOption) {
-	var runOpts runOnceOptions
+	runOpts := runOnceOptions{
+		customOptionParsers: map[string]func(string) (CustomOption, bool){},
+	}
 	for _, o := range rOpts {
 		o.applyOnce(&runOpts)
 	}
@@ -362,8 +400,8 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	require.NoError(t, err)
 
 	opts := &pebble.Options{}
-	testOpts := &testOptions{opts: opts}
-	require.NoError(t, parseOptions(testOpts, string(optionsData)))
+	testOpts := &TestOptions{Opts: opts}
+	require.NoError(t, parseOptions(testOpts, string(optionsData), runOpts.customOptionParsers))
 
 	// Always use our custom comparer which provides a Split method, splitting
 	// keys at the trailing '@'.
