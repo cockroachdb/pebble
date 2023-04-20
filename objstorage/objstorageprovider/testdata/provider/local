@@ -41,6 +41,28 @@ read 1
 ----
 file 000001 (type 2) unknown to the objstorage provider: file does not exist
 
+link-or-copy 3 local
+three
+----
+<local fs> create: temp-file-1
+<local fs> close: temp-file-1
+<local fs> link: temp-file-1 -> p0/000003.sst
+
+read 3
+----
+data: three
+
+link-or-copy 4 shared
+four
+----
+<local fs> create: temp-file-2
+<local fs> close: temp-file-2
+<local fs> link: temp-file-2 -> p0/000004.sst
+
+read 4
+----
+data: four
+
 close
 ----
 <local fs> sync: p0

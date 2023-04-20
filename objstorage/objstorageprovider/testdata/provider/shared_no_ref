@@ -42,6 +42,20 @@ list
 000001 -> shared://00000000000000000001-000001.sst
 000002 -> shared://00000000000000000001-000002.sst
 
+link-or-copy 3 shared no-ref-tracking
+obj-three
+----
+<local fs> create: temp-file-1
+<local fs> close: temp-file-1
+<shared> create object "00000000000000000001-000003.sst"
+<shared> close writer for "00000000000000000001-000003.sst" after 9 bytes
+
+read 3
+----
+<shared> size of object "00000000000000000001-000003.sst": 9
+<shared> read object "00000000000000000001-000003.sst" at 0: 9 bytes
+data: obj-three
+
 close
 ----
 <local fs> sync: p1/SHARED-CATALOG-000001
@@ -58,6 +72,25 @@ list
 ----
 000001 -> shared://00000000000000000001-000001.sst
 000002 -> shared://00000000000000000001-000002.sst
+000003 -> shared://00000000000000000001-000003.sst
+
+read 1
+----
+<shared> size of object "00000000000000000001-000001.sst": 7
+<shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
+data: obj-one
+
+read 2
+----
+<shared> size of object "00000000000000000001-000002.sst": 7
+<shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
+data: obj-two
+
+read 3
+----
+<shared> size of object "00000000000000000001-000003.sst": 9
+<shared> read object "00000000000000000001-000003.sst" at 0: 9 bytes
+data: obj-three
 
 save-backing b1 1
 ----
