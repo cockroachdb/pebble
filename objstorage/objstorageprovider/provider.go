@@ -6,6 +6,7 @@ package objstorageprovider
 
 import (
 	"context"
+	"io"
 	"os"
 	"sort"
 	"sync"
@@ -280,9 +281,15 @@ func (p *provider) Sync() error {
 // The object is not guaranteed to be durable (accessible in case of crashes)
 // until Sync is called.
 func (p *provider) LinkOrCopyFromLocal(
-	srcFS vfs.FS, srcFilePath string, dstFileType base.FileType, dstFileNum base.DiskFileNum,
+	ctx context.Context,
+	srcFS vfs.FS,
+	srcFilePath string,
+	dstFileType base.FileType,
+	dstFileNum base.DiskFileNum,
+	opts objstorage.CreateOptions,
 ) (objstorage.ObjectMetadata, error) {
-	if srcFS == p.st.FS {
+	shared := opts.PreferSharedStorage && p.st.Shared.Storage != nil
+	if !shared && srcFS == p.st.FS {
 		// Wrap the normal filesystem with one which wraps newly created files with
 		// vfs.NewSyncingFile.
 		fs := vfs.NewSyncingFS(p.st.FS, vfs.SyncingFileOptions{
@@ -301,8 +308,39 @@ func (p *provider) LinkOrCopyFromLocal(
 		p.addMetadata(meta)
 		return meta, nil
 	}
-	// TODO(radu): for the copy case, we should use `p.Create` and do the copy ourselves.
-	panic("unimplemented")
+	// Create the object and copy the data.
+	w, meta, err := p.Create(ctx, dstFileType, dstFileNum, opts)
+	if err != nil {
+		return objstorage.ObjectMetadata{}, err
+	}
+	f, err := srcFS.Open(srcFilePath, vfs.SequentialReadsOption)
+	if err != nil {
+		return objstorage.ObjectMetadata{}, err
+	}
+	defer f.Close()
+	buf := make([]byte, 64*1024)
+	for {
+		n, readErr := f.Read(buf)
+		if readErr != nil && readErr != io.EOF {
+			w.Abort()
+			return objstorage.ObjectMetadata{}, readErr
+		}
+
+		if n > 0 {
+			if err := w.Write(buf[:n]); err != nil {
+				w.Abort()
+				return objstorage.ObjectMetadata{}, err
+			}
+		}
+
+		if readErr == io.EOF {
+			break
+		}
+	}
+	if err := w.Finish(); err != nil {
+		return objstorage.ObjectMetadata{}, err
+	}
+	return meta, nil
 }
 
 // Lookup is part of the objstorage.Provider interface.

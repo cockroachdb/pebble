@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"sort"
 	"time"
 
@@ -269,7 +270,10 @@ func ingestLink(
 	jobID int, opts *Options, objProvider objstorage.Provider, paths []string, meta []*fileMetadata,
 ) error {
 	for i := range paths {
-		objMeta, err := objProvider.LinkOrCopyFromLocal(opts.FS, paths[i], fileTypeTable, meta[i].FileBacking.DiskFileNum)
+		objMeta, err := objProvider.LinkOrCopyFromLocal(
+			context.TODO(), opts.FS, paths[i], fileTypeTable, meta[i].FileBacking.DiskFileNum,
+			objstorage.CreateOptions{PreferSharedStorage: true},
+		)
 		if err != nil {
 			if err2 := ingestCleanup(objProvider, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)

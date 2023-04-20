@@ -180,7 +180,12 @@ type Provider interface {
 	// The object is not guaranteed to be durable (accessible in case of crashes)
 	// until Sync is called.
 	LinkOrCopyFromLocal(
-		srcFS vfs.FS, srcFilePath string, dstFileType base.FileType, dstFileNum base.DiskFileNum,
+		ctx context.Context,
+		srcFS vfs.FS,
+		srcFilePath string,
+		dstFileType base.FileType,
+		dstFileNum base.DiskFileNum,
+		opts CreateOptions,
 	) (ObjectMetadata, error)
 
 	// Lookup returns the metadata of an object that is already known to the Provider.

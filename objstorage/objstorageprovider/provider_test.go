@@ -27,6 +27,7 @@ func TestProvider(t *testing.T) {
 		sharedStore := shared.WithLogging(shared.NewInMem(), func(fmt string, args ...interface{}) {
 			log.Infof("<shared> "+fmt, args...)
 		})
+		tmpFileCounter := 0
 
 		providers := make(map[string]objstorage.Provider)
 		// We maintain both backings and backing handles to allow tests to use the
@@ -118,6 +119,40 @@ func TestProvider(t *testing.T) {
 				require.NoError(t, w.Write([]byte(d.Input)))
 				require.NoError(t, w.Finish())
 
+				return log.String()
+
+			case "link-or-copy":
+				opts := objstorage.CreateOptions{
+					SharedCleanupMethod: objstorage.SharedRefTracking,
+				}
+				if len(d.CmdArgs) == 3 && d.CmdArgs[2].Key == "no-ref-tracking" {
+					d.CmdArgs = d.CmdArgs[:2]
+					opts.SharedCleanupMethod = objstorage.SharedNoCleanup
+				}
+				var fileNum base.FileNum
+				var typ string
+				scanArgs("<file-num> <local|shared> [no-ref-tracking]", &fileNum, &typ)
+				switch typ {
+				case "local":
+				case "shared":
+					opts.PreferSharedStorage = true
+				default:
+					d.Fatalf(t, "'%s' should be 'local' or 'shared'", typ)
+				}
+
+				tmpFileCounter++
+				tmpFilename := fmt.Sprintf("temp-file-%d", tmpFileCounter)
+				f, err := fs.Create(tmpFilename)
+				require.NoError(t, err)
+				n, err := f.Write([]byte(d.Input))
+				require.Equal(t, len(d.Input), n)
+				require.NoError(t, err)
+				require.NoError(t, f.Close())
+
+				_, err = curProvider.LinkOrCopyFromLocal(
+					ctx, fs, tmpFilename, base.FileTypeTable, fileNum.DiskFileNum(), opts,
+				)
+				require.NoError(t, err)
 				return log.String()
 
 			case "read":
