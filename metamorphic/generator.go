@@ -460,7 +460,26 @@ func (g *generator) dbClose() {
 }
 
 func (g *generator) dbCheckpoint() {
-	g.add(&checkpointOp{})
+	// 1/2 of the time we don't restrict the checkpoint;
+	// 1/4 of the time we restrict to 1 span;
+	// 1/8 of the time we restrict to 2 spans; etc.
+	numSpans := 0
+	for g.rng.Intn(2) == 0 {
+		numSpans++
+	}
+	spans := make([]pebble.CheckpointSpan, numSpans)
+	for i := range spans {
+		start := g.randKeyToRead(0.01)
+		end := g.randKeyToRead(0.01)
+		if g.cmp(start, end) > 0 {
+			start, end = end, start
+		}
+		spans[i].Start = start
+		spans[i].End = end
+	}
+	g.add(&checkpointOp{
+		spans: spans,
+	})
 }
 
 func (g *generator) dbCompact() {

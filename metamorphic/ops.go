@@ -96,11 +96,18 @@ func (o *applyOp) syncObjs() objIDSlice {
 }
 
 // checkpointOp models a DB.Checkpoint operation.
-type checkpointOp struct{}
+type checkpointOp struct {
+	// If non-empty, the checkpoint is restricted to these spans.
+	spans []pebble.CheckpointSpan
+}
 
 func (o *checkpointOp) run(t *test, h historyRecorder) {
+	var opts []pebble.CheckpointOption
+	if len(o.spans) > 0 {
+		opts = append(opts, pebble.WithRestrictToSpans(o.spans))
+	}
 	err := withRetries(func() error {
-		return t.db.Checkpoint(o.dir(t.dir, h.op))
+		return t.db.Checkpoint(o.dir(t.dir, h.op), opts...)
 	})
 	h.Recordf("%s // %v", o, err)
 }
@@ -109,7 +116,17 @@ func (o *checkpointOp) dir(dataDir string, idx int) string {
 	return filepath.Join(dataDir, "checkpoints", fmt.Sprintf("op-%06d", idx))
 }
 
-func (o *checkpointOp) String() string       { return "db.Checkpoint()" }
+func (o *checkpointOp) String() string {
+	var spanStr bytes.Buffer
+	for i, span := range o.spans {
+		if i > 0 {
+			spanStr.WriteString(",")
+		}
+		fmt.Fprintf(&spanStr, "%q,%q", span.Start, span.End)
+	}
+	return fmt.Sprintf("db.Checkpoint(%s)", spanStr.String())
+}
+
 func (o *checkpointOp) receiver() objID      { return dbObjID }
 func (o *checkpointOp) syncObjs() objIDSlice { return nil }
 

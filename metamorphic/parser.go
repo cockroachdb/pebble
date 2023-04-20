@@ -46,7 +46,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *applyOp:
 		return &t.writerID, nil, []interface{}{&t.batchID}
 	case *checkpointOp:
-		return nil, nil, nil
+		return nil, nil, []interface{}{&t.spans}
 	case *closeOp:
 		return &t.objID, nil, nil
 	case *compactOp:
@@ -324,6 +324,56 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 				default:
 					panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
 				}
+			}
+
+		case *[]pebble.CheckpointSpan:
+			pos, tok, lit := p.s.Scan()
+			switch tok {
+			case token.RPAREN:
+				// No spans.
+				*t = nil
+				p.scanToken(token.SEMICOLON)
+				return
+
+			case token.STRING:
+				var keys [][]byte
+				for {
+					s, err := strconv.Unquote(lit)
+					if err != nil {
+						panic(p.errorf(pos, "unquoting %q: %v", lit, err))
+					}
+					keys = append(keys, []byte(s))
+
+					pos, tok, lit = p.s.Scan()
+					switch tok {
+					case token.COMMA:
+						pos, tok, lit = p.s.Scan()
+						if tok != token.STRING {
+							panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
+						}
+						continue
+
+					case token.RPAREN:
+						p.scanToken(token.SEMICOLON)
+						if len(keys)%2 == 1 {
+							panic(p.errorf(pos, "expected even number of keys"))
+						}
+						*t = make([]pebble.CheckpointSpan, len(keys)/2)
+						for i := range *t {
+							(*t)[i] = pebble.CheckpointSpan{
+								Start: keys[i*2],
+								End:   keys[i*2+1],
+							}
+						}
+						return
+
+					default:
+						panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
+					}
+				}
+
+			default:
+				panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
 			}
 
 		case *pebble.FormatMajorVersion:
