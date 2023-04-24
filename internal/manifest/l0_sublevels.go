@@ -658,14 +658,18 @@ func (s *L0Sublevels) addFileToSublevels(f *FileMetadata, checkInvariant bool) e
 	// Update state in every fileInterval for this file.
 	for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 		interval := &s.orderedIntervals[i]
-		if len(interval.files) > 0 &&
-			subLevel <= interval.files[len(interval.files)-1].SubLevel {
+		if len(interval.files) > 0 {
 			if checkInvariant && interval.files[len(interval.files)-1].LargestSeqNum > f.LargestSeqNum {
 				// We are sliding this file "underneath" an existing file. Throw away
 				// and start over in NewL0Sublevels.
 				return errInvalidL0SublevelsOpt
 			}
-			subLevel = interval.files[len(interval.files)-1].SubLevel + 1
+			// interval.files is sorted by sublevels, from lowest to highest.
+			// AddL0Files can only add files at sublevels higher than existing files
+			// in the same key intervals.
+			if maxSublevel := interval.files[len(interval.files)-1].SubLevel; subLevel <= maxSublevel {
+				subLevel = maxSublevel + 1
+			}
 		}
 		interval.estimatedBytes += interpolatedBytes
 		if f.minIntervalIndex < interval.filesMinIntervalIndex {
