@@ -15,7 +15,8 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// fileReadable implements objstorage.Readable on top of vfs.File.
+// fileReadable implements objstorage.Readable on top of a vfs.File that
+// supports Prefetch and/or on an FS that supports SequentialReadsOption.
 type fileReadable struct {
 	file vfs.File
 	size int64
@@ -219,5 +220,43 @@ func (r *genericFileReadable) NewReadHandle(_ context.Context) objstorage.ReadHa
 // TestingCheckMaxReadahead returns true if the ReadHandle has switched to
 // OS-level read-ahead.
 func TestingCheckMaxReadahead(rh objstorage.ReadHandle) bool {
-	return rh.(*vfsReadHandle).sequentialFile != nil
+	switch rh := rh.(type) {
+	case *vfsReadHandle:
+		return rh.sequentialFile != nil
+	case *PreallocatedReadHandle:
+		return rh.sequentialFile != nil
+	default:
+		panic("unknown ReadHandle type")
+	}
+}
+
+// PreallocatedReadHandle is used to avoid an allocation in NewReadHandle; see
+// UsePreallocatedReadHandle.
+type PreallocatedReadHandle struct {
+	vfsReadHandle
+}
+
+// Close is part of the objstorage.ReadHandle interface.
+func (rh *PreallocatedReadHandle) Close() error {
+	var err error
+	if rh.sequentialFile != nil {
+		err = rh.sequentialFile.Close()
+	}
+	rh.vfsReadHandle = vfsReadHandle{}
+	return err
+}
+
+// UsePreallocatedReadHandle is equivalent to calling readable.NewReadHandle()
+// but uses the existing storage of a PreallocatedReadHandle when possible
+// (currently this happens if we are reading from a local file).
+// The returned handle still needs to be closed.
+func UsePreallocatedReadHandle(
+	ctx context.Context, readable objstorage.Readable, rh *PreallocatedReadHandle,
+) objstorage.ReadHandle {
+	if r, ok := readable.(*fileReadable); ok {
+		// See fileReadable.NewReadHandle.
+		rh.vfsReadHandle = vfsReadHandle{r: r}
+		return rh
+	}
+	return readable.NewReadHandle(ctx)
 }
