@@ -1683,3 +1683,84 @@ L0.1:     b++++++d evvvvvvvvvvvvvvvj                      rvvvvvvt
 L0.0:  a+++++++++d    fvvvvvvvvvvvvj    l---------o pvvvvvvvvvvvvvvvvvvvvvvvvx
 L6:    a------------------------i          m------------------------------w
        aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt uu vv ww xx
+
+# Regression test for cockroachdb/cockroach#101896. We must return
+# errInvalidL0SublevelOpt in any case where a new L0 file is being AddL0File'd
+# with a largest sequence number below an existing file in the same interval.
+
+define
+L0
+  000004:a.SET.2-e.SET.3
+  000006:a.SET.7-b.SET.8
+  000007:d.SET.12-f.SET.12
+----
+file count: 3, sublevels: 2, intervals: 5
+flush split keys(2): [b, e]
+0.1: file count: 2, bytes: 512, width (mean, max): 1.5, 2, interval range: [0, 3]
+	000006:[a#7,1-b#8,1]
+	000007:[d#12,1-f#12,1]
+0.0: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [0, 2]
+	000004:[a#2,1-e#3,1]
+compacting file count: 0, base compacting intervals: none
+L0.1:  a---b    d------f
+L0.0:  a------------e
+       aa bb cc dd ee ff
+
+# Note that 000006 will bump the sublevel for the incoming file to 2. We
+# should still realize that it's slotting below 000007 and return an error.
+
+add-l0-files
+  000015:a.SET.9-g.SET.10
+----
+pebble: L0 sublevel generation optimization cannot be used
+
+# Fully-regenerated L0 sublevels allow us to pick an intra-L0 compaction that
+# does not violate sublevel ordering.
+
+define
+L0
+  000004:a.SET.2-e.SET.3
+  000006:a.SET.7-b.SET.8
+  000007:d.SET.12-f.SET.12
+  000015:a.SET.9-g.SET.10
+----
+file count: 4, sublevels: 4, intervals: 6
+flush split keys(2): [b, e]
+0.3: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [2, 3]
+	000007:[d#12,1-f#12,1]
+0.2: file count: 1, bytes: 256, width (mean, max): 5.0, 5, interval range: [0, 4]
+	000015:[a#9,1-g#10,1]
+0.1: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
+	000006:[a#7,1-b#8,1]
+0.0: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [0, 2]
+	000004:[a#2,1-e#3,1]
+compacting file count: 0, base compacting intervals: none
+L0.3:           d------f
+L0.2:  a------------------g
+L0.1:  a---b
+L0.0:  a------------e
+       aa bb cc dd ee ff gg
+
+# Exclude the d-f file through earliest_unflushed_seqnum.
+
+pick-intra-l0-compaction min_depth=2 earliest_unflushed_seqnum=11
+----
+compaction picked with stack depth reduction 3
+000015,000006,000004
+seed interval: a-b
+L0.3:           d------f
+L0.2:  a++++++++++++++++++g
+L0.1:  a+++b
+L0.0:  a++++++++++++e
+       aa bb cc dd ee ff gg
+
+pick-intra-l0-compaction min_depth=2
+----
+compaction picked with stack depth reduction 3
+000015,000007,000006,000004
+seed interval: a-b
+L0.3:           d++++++f
+L0.2:  a++++++++++++++++++g
+L0.1:  a+++b
+L0.0:  a++++++++++++e
+       aa bb cc dd ee ff gg
