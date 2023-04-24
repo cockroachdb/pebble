@@ -196,12 +196,13 @@ type singleLevelIterator struct {
 	bpfs  *BlockPropertiesFilterer
 	// Per-block lower/upper bound. Nil if the bound does not apply to the block
 	// because we determined the block lies completely within the bound.
-	blockLower []byte
-	blockUpper []byte
-	reader     *Reader
-	index      blockIter
-	data       blockIter
-	dataRH     objstorage.ReadHandle
+	blockLower     []byte
+	blockUpper     []byte
+	reader         *Reader
+	index          blockIter
+	data           blockIter
+	dataRH         objstorage.ReadHandle
+	dataRHPrealloc objstorage.PreallocatedReadHandle
 	// dataBH refers to the last data block that the iterator considered
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
@@ -209,10 +210,11 @@ type singleLevelIterator struct {
 	vbReader *valueBlockReader
 	// vbRH is the read handle for value blocks, which are in a different
 	// part of the sstable than data blocks.
-	vbRH      objstorage.ReadHandle
-	err       error
-	closeHook func(i Iterator) error
-	stats     *base.InternalIteratorStats
+	vbRH         objstorage.ReadHandle
+	vbRHPrealloc objstorage.PreallocatedReadHandle
+	err          error
+	closeHook    func(i Iterator) error
+	stats        *base.InternalIteratorStats
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
@@ -413,7 +415,7 @@ func (i *singleLevelIterator) init(
 		_ = i.index.Close()
 		return err
 	}
-	i.dataRH = r.readable.NewReadHandle()
+	i.dataRH = objstorage.UsePreallocatedReadHandle(r.readable, &i.dataRHPrealloc)
 	if r.tableFormat == TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
@@ -433,7 +435,7 @@ func (i *singleLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
-			i.vbRH = r.readable.NewReadHandle()
+			i.vbRH = objstorage.UsePreallocatedReadHandle(r.readable, &i.vbRHPrealloc)
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
