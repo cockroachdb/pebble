@@ -36,6 +36,7 @@ type newFileEntry = manifest.NewFileEntry
 type version = manifest.Version
 type versionEdit = manifest.VersionEdit
 type versionList = manifest.VersionList
+type versionEditDecoder = manifest.VersionEditDecoder
 
 // versionSet manages a collection of immutable versions, and manages the
 // creation of a new version from the most recent version. A new version is
@@ -222,6 +223,7 @@ func (vs *versionSet) load(
 	}
 	defer manifest.Close()
 	rr := record.NewReader(manifest, 0 /* logNum */)
+	var ved versionEditDecoder
 	for {
 		r, err := rr.Next()
 		if err == io.EOF || record.IsInvalidRecord(err) {
@@ -231,8 +233,8 @@ func (vs *versionSet) load(
 			return errors.Wrapf(err, "pebble: error when loading manifest file %q",
 				errors.Safe(manifestFilename))
 		}
-		var ve versionEdit
-		err = ve.Decode(r)
+		var ve *versionEdit
+		ve, err = ved.Decode(r)
 		if err != nil {
 			// Break instead of returning an error if the record is corrupted
 			// or invalid.
@@ -248,7 +250,7 @@ func (vs *versionSet) load(
 					errors.Safe(manifestFilename), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName))
 			}
 		}
-		if err := bve.Accumulate(&ve); err != nil {
+		if err := bve.Accumulate(ve); err != nil {
 			return err
 		}
 		if ve.MinUnflushedLogNum != 0 {

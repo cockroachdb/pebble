@@ -147,6 +147,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			var cmp *base.Comparer
 			var editIdx int
 			rr := record.NewReader(f, 0 /* logNum */)
+			var ved manifest.VersionEditDecoder
 			for {
 				offset := rr.Offset()
 				r, err := rr.Next()
@@ -155,18 +156,18 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					break
 				}
 
-				var ve manifest.VersionEdit
-				err = ve.Decode(r)
+				var ve *manifest.VersionEdit
+				ve, err = ved.Decode(r)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)
 					break
 				}
-				if err := bve.Accumulate(&ve); err != nil {
+				if err := bve.Accumulate(ve); err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)
 					break
 				}
 
-				if cmp != nil && !anyOverlap(cmp.Compare, &ve, m.filterStart, m.filterEnd) {
+				if cmp != nil && !anyOverlap(cmp.Compare, ve, m.filterStart, m.filterEnd) {
 					continue
 				}
 
@@ -313,6 +314,7 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 	)
 	bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 	rr := record.NewReader(f, 0 /* logNum */)
+	var ved manifest.VersionEditDecoder
 	for i := 0; ; i++ {
 		r, err := rr.Next()
 		if err == io.EOF {
@@ -321,12 +323,12 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 			return err
 		}
 
-		var ve manifest.VersionEdit
-		err = ve.Decode(r)
+		var ve *manifest.VersionEdit
+		ve, err = ved.Decode(r)
 		if err != nil {
 			return err
 		}
-		if err := bve.Accumulate(&ve); err != nil {
+		if err := bve.Accumulate(ve); err != nil {
 			return err
 		}
 
@@ -498,6 +500,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 			// It accumulates the additions since later edits contain
 			// deletions of earlier added files.
 			addedByFileNum := make(map[base.FileNum]*manifest.FileMetadata)
+			var ved manifest.VersionEditDecoder
 			for {
 				offset := rr.Offset()
 				r, err := rr.Next()
@@ -510,8 +513,8 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					break
 				}
 
-				var ve manifest.VersionEdit
-				err = ve.Decode(r)
+				var ve *manifest.VersionEdit
+				ve, err = ved.Decode(r)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n", arg, offset, err)
 					ok = false
@@ -519,7 +522,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 				}
 				var bve manifest.BulkVersionEdit
 				bve.AddedByFileNum = addedByFileNum
-				if err := bve.Accumulate(&ve); err != nil {
+				if err := bve.Accumulate(ve); err != nil {
 					fmt.Fprintf(stderr, "%s\n", err)
 					ok = false
 					return
