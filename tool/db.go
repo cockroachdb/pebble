@@ -37,6 +37,7 @@ type dbT struct {
 	Scan       *cobra.Command
 	Set        *cobra.Command
 	Space      *cobra.Command
+	IOBench    *cobra.Command
 
 	// Configuration.
 	opts      *pebble.Options
@@ -44,14 +45,18 @@ type dbT struct {
 	mergers   sstable.Mergers
 
 	// Flags.
-	comparerName string
-	mergerName   string
-	fmtKey       keyFormatter
-	fmtValue     valueFormatter
-	start        key
-	end          key
-	count        int64
-	verbose      bool
+	comparerName  string
+	mergerName    string
+	fmtKey        keyFormatter
+	fmtValue      valueFormatter
+	start         key
+	end           key
+	count         int64
+	allLevels     bool
+	ioCount       int
+	ioParallelism int
+	ioSizes       string
+	verbose       bool
 }
 
 func newDB(opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers) *dbT {
@@ -150,8 +155,18 @@ use by another process.
 		Args: cobra.ExactArgs(1),
 		Run:  d.runSpace,
 	}
+	d.IOBench = &cobra.Command{
+		Use:   "io-bench <dir>",
+		Short: "perform sstable IO benchmark",
+		Long: `
+Run a random IO workload with various IO sizes against the sstables in the
+specified database.
+`,
+		Args: cobra.ExactArgs(1),
+		Run:  d.runIOBench,
+	}
 
-	d.Root.AddCommand(d.Check, d.Checkpoint, d.Get, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space)
+	d.Root.AddCommand(d.Check, d.Checkpoint, d.Get, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.IOBench)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
 	for _, cmd := range []*cobra.Command{d.Check, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space} {
@@ -177,6 +192,16 @@ use by another process.
 
 	d.Scan.Flags().Int64Var(
 		&d.count, "count", 0, "key count for scan (0 is unlimited)")
+
+	d.IOBench.Flags().BoolVar(
+		&d.allLevels, "all-levels", false, "if set, benchmark all levels (default is only L5/L6)")
+	d.IOBench.Flags().IntVar(
+		&d.ioCount, "io-count", 10000, "number of IOs (per IO size) to benchmark")
+	d.IOBench.Flags().IntVar(
+		&d.ioParallelism, "io-parallelism", 16, "number of goroutines issuing IO")
+	d.IOBench.Flags().StringVar(
+		&d.ioSizes, "io-sizes-kb", "4,16,64,128,256,512,1024", "comma separated list of IO sizes in KB")
+
 	return d
 }
 
