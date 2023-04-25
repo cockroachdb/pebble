@@ -285,8 +285,9 @@ func TestVersionSetSeqNums(t *testing.T) {
 			break
 		}
 		require.NoError(t, err)
-		var ve versionEdit
-		err = ve.Decode(r)
+		var ve *versionEdit
+		var ved versionEditDecoder
+		ve, err = ved.Decode(r)
 		require.NoError(t, err)
 		if ve.LastSeqNum != 0 {
 			lastSeqNum = ve.LastSeqNum

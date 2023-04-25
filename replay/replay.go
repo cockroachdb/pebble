@@ -683,6 +683,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 		return v, err
 	}
 
+	var ved manifest.VersionEditDecoder
 	for ; idx < len(r.workload.manifests); idx++ {
 		if r.MaxWriteBytes != 0 && cumulativeWriteBytes > r.MaxWriteBytes {
 			break
@@ -707,11 +708,11 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				return err
 			}
 			if idx == r.workload.manifestIdx {
-				var ve manifest.VersionEdit
-				if err := ve.Decode(rec); err != nil {
+				var ve *manifest.VersionEdit
+				if ve, err = ved.Decode(rec); err != nil {
 					return err
 				}
-				if err := applyVE(&ve); err != nil {
+				if err := applyVE(ve); err != nil {
 					return err
 				}
 			}
@@ -724,13 +725,13 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				} else if err != nil {
 					return err
 				}
-				var ve manifest.VersionEdit
-				if err = ve.Decode(rec); err == io.EOF || record.IsInvalidRecord(err) {
+				var ve *manifest.VersionEdit
+				if ve, err = ved.Decode(rec); err == io.EOF || record.IsInvalidRecord(err) {
 					break
 				} else if err != nil {
 					return err
 				}
-				if err := applyVE(&ve); err != nil {
+				if err := applyVE(ve); err != nil {
 					return err
 				}
 				if idx == r.workload.manifestIdx && rr.Offset() <= r.workload.manifestOff {
@@ -745,7 +746,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					continue
 				}
 
-				s := workloadStep{ve: ve}
+				s := workloadStep{ve: *ve}
 				if len(ve.DeletedFiles) > 0 {
 					// If a version edit deletes files, we assume it's a compaction.
 					s.kind = compactionStepKind

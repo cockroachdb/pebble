@@ -48,11 +48,14 @@ const (
 	tagMaxColumnFamily  = 203
 
 	// Pebble tags.
-	tagNewFile5 = 104 // Range keys.
+	tagNewFile5            = 104 // Range keys.
+	tagCreatedBackingTable = 106
+	tagRemovedBackingTable = 107
 
 	// The custom tags sub-format used by tagNewFile4 and above.
 	customTagTerminate         = 1
 	customTagNeedsCompaction   = 2
+	customTagVirtual           = 3
 	customTagCreationTime      = 6
 	customTagPathID            = 65
 	customTagNonSafeIgnoreMask = 1 << 6
@@ -138,69 +141,95 @@ type VersionEdit struct {
 	RemovedBackingTables []base.DiskFileNum
 }
 
-// Decode decodes an edit from the specified reader.
-//
-// TODO(bananabrick): Support decoding of virtual sstable state.
-func (v *VersionEdit) Decode(r io.Reader) error {
+// Decode decodes an edit from the specified reader. All calls to Decode should
+// be made on the same VersionEditDecoder.
+func (d *VersionEditDecoder) Decode(r io.Reader) (*VersionEdit, error) {
+	v := &VersionEdit{}
 	br, ok := r.(byteReader)
 	if !ok {
 		br = bufio.NewReader(r)
 	}
-	d := versionEditDecoder{br}
+	d.byteReader = br
 	for {
 		tag, err := binary.ReadUvarint(br)
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 		switch tag {
 		case tagComparator:
 			s, err := d.readBytes()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			v.ComparerName = string(s)
 
 		case tagLogNumber:
 			n, err := d.readFileNum()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			v.MinUnflushedLogNum = n
 
 		case tagNextFileNumber:
 			n, err := d.readFileNum()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			v.NextFileNum = n
 
 		case tagLastSequence:
 			n, err := d.readUvarint()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			v.LastSeqNum = n
 
 		case tagCompactPointer:
 			if _, err := d.readLevel(); err != nil {
-				return err
+				return nil, err
 			}
 			if _, err := d.readBytes(); err != nil {
-				return err
+				return nil, err
 			}
 			// NB: RocksDB does not use compaction pointers anymore.
 
+		case tagRemovedBackingTable:
+			n, err := d.readUvarint()
+			if err != nil {
+				return nil, err
+			}
+			v.RemovedBackingTables = append(
+				v.RemovedBackingTables, base.FileNum(n).DiskFileNum(),
+			)
+		case tagCreatedBackingTable:
+			dfn, err := d.readUvarint()
+			if err != nil {
+				return nil, err
+			}
+			size, err := d.readUvarint()
+			if err != nil {
+				return nil, err
+			}
+			fileBacking := &FileBacking{
+				DiskFileNum: base.FileNum(dfn).DiskFileNum(),
+				Size:        size,
+			}
+			if d.backingTables == nil {
+				d.backingTables = make(map[base.FileNum]*FileBacking)
+			}
+			d.backingTables[base.FileNum(dfn)] = fileBacking
+			v.CreatedBackingTables = append(v.CreatedBackingTables, fileBacking)
 		case tagDeletedFile:
 			level, err := d.readLevel()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			fileNum, err := d.readFileNum()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if v.DeletedFiles == nil {
 				v.DeletedFiles = make(map[DeletedFileEntry]*FileMetadata)
@@ -210,22 +239,22 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 		case tagNewFile, tagNewFile2, tagNewFile3, tagNewFile4, tagNewFile5:
 			level, err := d.readLevel()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			fileNum, err := d.readFileNum()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if tag == tagNewFile3 {
 				// The pathID field appears unused in RocksDB.
 				_ /* pathID */, err := d.readUvarint()
 				if err != nil {
-					return err
+					return nil, err
 				}
 			}
 			size, err := d.readUvarint()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			// We read the smallest / largest key bounds differently depending on
 			// whether we have point, range or both types of keys present in the
@@ -240,35 +269,35 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				// Range keys not present in the table. Parse the point key bounds.
 				smallestPointKey, err = d.readBytes()
 				if err != nil {
-					return err
+					return nil, err
 				}
 				largestPointKey, err = d.readBytes()
 				if err != nil {
-					return err
+					return nil, err
 				}
 			} else {
 				// Range keys are present in the table. Determine whether we have point
 				// keys to parse, in addition to the bounds.
 				boundsMarker, err = d.ReadByte()
 				if err != nil {
-					return err
+					return nil, err
 				}
 				// Parse point key bounds, if present.
 				if boundsMarker&maskContainsPointKeys > 0 {
 					smallestPointKey, err = d.readBytes()
 					if err != nil {
-						return err
+						return nil, err
 					}
 					largestPointKey, err = d.readBytes()
 					if err != nil {
-						return err
+						return nil, err
 					}
 					parsedPointBounds = true
 				} else {
 					// The table does not have point keys.
 					// Sanity check: the bounds must be range keys.
 					if boundsMarker&maskSmallest != 0 || boundsMarker&maskLargest != 0 {
-						return base.CorruptionErrorf(
+						return nil, base.CorruptionErrorf(
 							"new-file-4-range-keys: table without point keys has point key bounds: marker=%x",
 							boundsMarker,
 						)
@@ -277,11 +306,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				// Parse range key bounds.
 				smallestRangeKey, err = d.readBytes()
 				if err != nil {
-					return err
+					return nil, err
 				}
 				largestRangeKey, err = d.readBytes()
 				if err != nil {
-					return err
+					return nil, err
 				}
 			}
 			var smallestSeqNum uint64
@@ -289,32 +318,41 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if tag != tagNewFile {
 				smallestSeqNum, err = d.readUvarint()
 				if err != nil {
-					return err
+					return nil, err
 				}
 				largestSeqNum, err = d.readUvarint()
 				if err != nil {
-					return err
+					return nil, err
 				}
 			}
 			var markedForCompaction bool
 			var creationTime uint64
+			var virtualFileNum *uint64
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
 					if err != nil {
-						return err
+						return nil, err
 					}
 					if customTag == customTagTerminate {
 						break
+					} else if customTag == customTagVirtual {
+						n, err := d.readUvarint()
+						if err != nil {
+							return nil, err
+						}
+						virtualFileNum = &n
+						continue
 					}
+
 					field, err := d.readBytes()
 					if err != nil {
-						return err
+						return nil, err
 					}
 					switch customTag {
 					case customTagNeedsCompaction:
 						if len(field) != 1 {
-							return base.CorruptionErrorf("new-file4: need-compaction field wrong size")
+							return nil, base.CorruptionErrorf("new-file4: need-compaction field wrong size")
 						}
 						markedForCompaction = (field[0] == 1)
 
@@ -322,15 +360,15 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						var n int
 						creationTime, n = binary.Uvarint(field)
 						if n != len(field) {
-							return base.CorruptionErrorf("new-file4: invalid file creation time")
+							return nil, base.CorruptionErrorf("new-file4: invalid file creation time")
 						}
 
 					case customTagPathID:
-						return base.CorruptionErrorf("new-file4: path-id field not supported")
+						return nil, base.CorruptionErrorf("new-file4: path-id field not supported")
 
 					default:
 						if (customTag & customTagNonSafeIgnoreMask) != 0 {
-							return base.CorruptionErrorf("new-file4: custom field not supported: %d", customTag)
+							return nil, base.CorruptionErrorf("new-file4: custom field not supported: %d", customTag)
 						}
 					}
 				}
@@ -342,6 +380,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				SmallestSeqNum:      smallestSeqNum,
 				LargestSeqNum:       largestSeqNum,
 				MarkedForCompaction: markedForCompaction,
+				Virtual:             virtualFileNum != nil,
 			}
 			if tag != tagNewFile5 { // no range keys present
 				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
@@ -373,7 +412,15 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			m.boundsSet = true
-			m.InitPhysicalBacking()
+			if virtualFileNum == nil {
+				m.InitPhysicalBacking()
+			} else {
+				fb, ok := d.backingTables[base.FileNum(*virtualFileNum)]
+				if !ok {
+					panic("pebble: no FileBacking found for virtual sstable")
+				}
+				m.FileBacking = fb
+			}
 			v.NewFiles = append(v.NewFiles, NewFileEntry{
 				Level: level,
 				Meta:  m,
@@ -382,18 +429,18 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 		case tagPrevLogNumber:
 			n, err := d.readUvarint()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			v.ObsoletePrevLogNum = n
 
 		case tagColumnFamily, tagColumnFamilyAdd, tagColumnFamilyDrop, tagMaxColumnFamily:
-			return base.CorruptionErrorf("column families are not supported")
+			return nil, base.CorruptionErrorf("column families are not supported")
 
 		default:
-			return errCorruptManifest
+			return nil, errCorruptManifest
 		}
 	}
-	return nil
+	return v, nil
 }
 
 // Encode encodes an edit to the specified writer.
@@ -418,6 +465,15 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(tagNextFileNumber)
 		e.writeUvarint(uint64(v.NextFileNum))
 	}
+	for _, dfn := range v.RemovedBackingTables {
+		e.writeUvarint(tagRemovedBackingTable)
+		e.writeUvarint(uint64(dfn.FileNum()))
+	}
+	for _, fileBacking := range v.CreatedBackingTables {
+		e.writeUvarint(tagCreatedBackingTable)
+		e.writeUvarint(uint64(fileBacking.DiskFileNum.FileNum()))
+		e.writeUvarint(fileBacking.Size)
+	}
 	// RocksDB requires LastSeqNum to be encoded for the first MANIFEST entry,
 	// even though its value is zero. We detect this by encoding LastSeqNum when
 	// ComparerName is set.
@@ -431,7 +487,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewFiles {
-		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0
+		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -484,6 +540,10 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
 			}
+			if x.Meta.Virtual {
+				e.writeUvarint(customTagVirtual)
+				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum.FileNum()))
+			}
 			e.writeUvarint(customTagTerminate)
 		}
 	}
@@ -491,11 +551,13 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	return err
 }
 
-type versionEditDecoder struct {
+// VersionEditDecoder should be used to decode version edits.
+type VersionEditDecoder struct {
 	byteReader
+	backingTables map[base.FileNum]*FileBacking
 }
 
-func (d versionEditDecoder) readBytes() ([]byte, error) {
+func (d *VersionEditDecoder) readBytes() ([]byte, error) {
 	n, err := d.readUvarint()
 	if err != nil {
 		return nil, err
@@ -511,7 +573,7 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 	return s, nil
 }
 
-func (d versionEditDecoder) readLevel() (int, error) {
+func (d *VersionEditDecoder) readLevel() (int, error) {
 	u, err := d.readUvarint()
 	if err != nil {
 		return 0, err
@@ -522,7 +584,7 @@ func (d versionEditDecoder) readLevel() (int, error) {
 	return int(u), nil
 }
 
-func (d versionEditDecoder) readFileNum() (base.FileNum, error) {
+func (d *VersionEditDecoder) readFileNum() (base.FileNum, error) {
 	u, err := d.readUvarint()
 	if err != nil {
 		return 0, err
@@ -530,7 +592,7 @@ func (d versionEditDecoder) readFileNum() (base.FileNum, error) {
 	return base.FileNum(u), nil
 }
 
-func (d versionEditDecoder) readUvarint() (uint64, error) {
+func (d *VersionEditDecoder) readUvarint() (uint64, error) {
 	u, err := binary.ReadUvarint(d)
 	if err != nil {
 		if err == io.EOF {

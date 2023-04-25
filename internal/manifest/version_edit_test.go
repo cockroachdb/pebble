@@ -23,13 +23,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func checkRoundTrip(e0 VersionEdit) error {
-	var e1 VersionEdit
+func checkRoundTrip(e0 *VersionEdit) error {
+	var e1 *VersionEdit
+	var dec VersionEditDecoder
+	var err error
 	buf := new(bytes.Buffer)
-	if err := e0.Encode(buf); err != nil {
+	if err = e0.Encode(buf); err != nil {
 		return errors.Wrap(err, "encode")
 	}
-	if err := e1.Decode(buf); err != nil {
+	if e1, err = dec.Decode(buf); err != nil {
 		return errors.Wrap(err, "decode")
 	}
 	if diff := pretty.Diff(e0, e1); diff != nil {
@@ -93,6 +95,54 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	)
 	m4.InitPhysicalBacking()
 
+	m5 := (&FileMetadata{
+		FileNum:        810,
+		Size:           8090,
+		CreationTime:   809060,
+		SmallestSeqNum: 9,
+		LargestSeqNum:  11,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
+	).ExtendRangeKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
+		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
+	)
+	m5.InitPhysicalBacking()
+
+	m6 := (&FileMetadata{
+		FileNum:        811,
+		Size:           8090,
+		CreationTime:   809060,
+		SmallestSeqNum: 9,
+		LargestSeqNum:  11,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
+	).ExtendRangeKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
+		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
+	)
+	m6.InitPhysicalBacking()
+
+	m7 := (&FileMetadata{
+		FileNum:        812,
+		Size:           8090,
+		CreationTime:   809060,
+		SmallestSeqNum: 9,
+		LargestSeqNum:  11,
+		Virtual:        true,
+		FileBacking:    m5.FileBacking,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("c"), 0, base.InternalKeyKindSet),
+	)
+
 	testCases := []VersionEdit{
 		// An empty version edit.
 		{},
@@ -103,6 +153,10 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			ObsoletePrevLogNum: 33,
 			NextFileNum:        44,
 			LastSeqNum:         55,
+			RemovedBackingTables: []base.DiskFileNum{
+				base.FileNum(10).DiskFileNum(), base.FileNum(11).DiskFileNum(),
+			},
+			CreatedBackingTables: []*FileBacking{m5.FileBacking, m6.FileBacking},
 			DeletedFiles: map[DeletedFileEntry]*FileMetadata{
 				{
 					Level:   3,
@@ -130,11 +184,15 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					Level: 6,
 					Meta:  m4,
 				},
+				{
+					Level: 6,
+					Meta:  m7,
+				},
 			},
 		},
 	}
 	for _, tc := range testCases {
-		if err := checkRoundTrip(tc); err != nil {
+		if err := checkRoundTrip(&tc); err != nil {
 			t.Error(err)
 		}
 	}
@@ -230,13 +288,14 @@ func TestVersionEditDecode(t *testing.T) {
 					t.Fatalf("filename=%q i=%d: got encoded %q, want %q", tc.filename, i, s, tc.encodedEdits[i])
 				}
 
-				var edit VersionEdit
-				err = edit.Decode(bytes.NewReader(encodedEdit))
+				var edit *VersionEdit
+				var ved VersionEditDecoder
+				edit, err = ved.Decode(bytes.NewReader(encodedEdit))
 				if err != nil {
 					t.Fatalf("filename=%q i=%d: decode error: %v", tc.filename, i, err)
 				}
-				if !reflect.DeepEqual(edit, tc.edits[i]) {
-					t.Fatalf("filename=%q i=%d: decode\n\tgot  %#v\n\twant %#v\n%s", tc.filename, i, edit, tc.edits[i],
+				if !reflect.DeepEqual(*edit, tc.edits[i]) {
+					t.Fatalf("filename=%q i=%d: decode\n\tgot  %#v\n\twant %#v\n%s", tc.filename, i, *edit, tc.edits[i],
 						strings.Join(pretty.Diff(edit, tc.edits[i]), "\n"))
 				}
 				if err := checkRoundTrip(edit); err != nil {
@@ -276,7 +335,7 @@ func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 			if c.edit.ComparerName != "" {
 				// Manually decode the version edit so that we can verify the contents
 				// even if the LastSeqNum decodes to 0.
-				d := versionEditDecoder{strings.NewReader(c.encoded)}
+				d := VersionEditDecoder{strings.NewReader(c.encoded), nil}
 
 				// Decode ComparerName.
 				tag, err := d.readUvarint()
