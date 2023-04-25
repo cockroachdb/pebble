@@ -1551,7 +1551,8 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 		}
 		require.NoError(t, err)
 		var ve manifest.VersionEdit
-		require.NoError(t, ve.Decode(r))
+		err = ve.Decode(r, nil /* backingTables */)
+		require.NoError(t, err)
 		t.Log(ve.String())
 		for _, f := range ve.NewFiles {
 			if largest != nil {

@@ -51,7 +51,9 @@ const (
 	tagMaxColumnFamily  = 203
 
 	// Pebble tags.
-	tagNewFile5 = 104 // Range keys.
+	tagNewFile5            = 104 // Range keys.
+	tagCreatedBackingTable = 106
+	tagRemovedBackingTable = 107
 
 	// The custom tags sub-format used by tagNewFile4 and above.
 	customTagTerminate         = 1
@@ -59,6 +61,7 @@ const (
 	customTagCreationTime      = 6
 	customTagPathID            = 65
 	customTagNonSafeIgnoreMask = 1 << 6
+	customTagVirtual           = 66
 )
 
 // DeletedFileEntry holds the state for a file deletion from a level. The file
@@ -141,10 +144,11 @@ type VersionEdit struct {
 	RemovedBackingTables []base.DiskFileNum
 }
 
-// Decode decodes an edit from the specified reader.
-//
-// TODO(bananabrick): Support decoding of virtual sstable state.
-func (v *VersionEdit) Decode(r io.Reader) error {
+// Decode decodes an edit from the specified reader. backingTables is used for
+// virtual sstable and FileBacking decoding, and the same map must be passed
+// across multiple calls to Decode. backingTables can be non-nil if no virtual
+// sstables will be decoded.
+func (v *VersionEdit) Decode(r io.Reader, backingTables map[base.FileNum]*FileBacking) error {
 	br, ok := r.(byteReader)
 	if !ok {
 		br = bufio.NewReader(r)
@@ -196,6 +200,32 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 			// NB: RocksDB does not use compaction pointers anymore.
 
+		case tagRemovedBackingTable:
+			n, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			v.RemovedBackingTables = append(
+				v.RemovedBackingTables, base.FileNum(n).DiskFileNum(),
+			)
+		case tagCreatedBackingTable:
+			dfn, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			size, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			fileBacking := &FileBacking{
+				DiskFileNum: base.FileNum(dfn).DiskFileNum(),
+				Size:        size,
+			}
+			if backingTables == nil {
+				panic("pebble: backingTables map not passed in for virtual sstable decoding")
+			}
+			backingTables[base.FileNum(dfn)] = fileBacking
+			v.CreatedBackingTables = append(v.CreatedBackingTables, fileBacking)
 		case tagDeletedFile:
 			level, err := d.readLevel()
 			if err != nil {
@@ -301,6 +331,10 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 			var markedForCompaction bool
 			var creationTime uint64
+			virtualState := struct {
+				virtual        bool
+				backingFileNum uint64
+			}{}
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
@@ -309,7 +343,16 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 					if customTag == customTagTerminate {
 						break
+					} else if customTag == customTagVirtual {
+						virtualState.virtual = true
+						n, err := d.readUvarint()
+						if err != nil {
+							return err
+						}
+						virtualState.backingFileNum = n
+						continue
 					}
+
 					field, err := d.readBytes()
 					if err != nil {
 						return err
@@ -345,6 +388,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				SmallestSeqNum:      smallestSeqNum,
 				LargestSeqNum:       largestSeqNum,
 				MarkedForCompaction: markedForCompaction,
+				Virtual:             virtualState.virtual,
 			}
 			if tag != tagNewFile5 { // no range keys present
 				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
@@ -376,7 +420,15 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			m.boundsSet = true
-			m.InitPhysicalBacking()
+			if !virtualState.virtual {
+				m.InitPhysicalBacking()
+			} else {
+				fb, ok := backingTables[base.FileNum(virtualState.backingFileNum)]
+				if !ok {
+					panic("pebble: no FileBacking found for virtual sstable")
+				}
+				m.FileBacking = fb
+			}
 			v.NewFiles = append(v.NewFiles, NewFileEntry{
 				Level: level,
 				Meta:  m,
@@ -442,8 +494,6 @@ func (v *VersionEdit) String() string {
 }
 
 // Encode encodes an edit to the specified writer.
-//
-// TODO(bananabrick): Support encoding of virtual sstable state.
 func (v *VersionEdit) Encode(w io.Writer) error {
 	e := versionEditEncoder{new(bytes.Buffer)}
 
@@ -463,6 +513,15 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(tagNextFileNumber)
 		e.writeUvarint(uint64(v.NextFileNum))
 	}
+	for _, dfn := range v.RemovedBackingTables {
+		e.writeUvarint(tagRemovedBackingTable)
+		e.writeUvarint(uint64(dfn.FileNum()))
+	}
+	for _, fileBacking := range v.CreatedBackingTables {
+		e.writeUvarint(tagCreatedBackingTable)
+		e.writeUvarint(uint64(fileBacking.DiskFileNum.FileNum()))
+		e.writeUvarint(fileBacking.Size)
+	}
 	// RocksDB requires LastSeqNum to be encoded for the first MANIFEST entry,
 	// even though its value is zero. We detect this by encoding LastSeqNum when
 	// ComparerName is set.
@@ -476,7 +535,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewFiles {
-		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0
+		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -529,6 +588,10 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
 			}
+			if x.Meta.Virtual {
+				e.writeUvarint(customTagVirtual)
+				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum.FileNum()))
+			}
 			e.writeUvarint(customTagTerminate)
 		}
 	}
@@ -536,11 +599,12 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	return err
 }
 
+// versionEditDecoder should be used to decode version edits.
 type versionEditDecoder struct {
 	byteReader
 }
 
-func (d versionEditDecoder) readBytes() ([]byte, error) {
+func (d *versionEditDecoder) readBytes() ([]byte, error) {
 	n, err := d.readUvarint()
 	if err != nil {
 		return nil, err
@@ -556,7 +620,7 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 	return s, nil
 }
 
-func (d versionEditDecoder) readLevel() (int, error) {
+func (d *versionEditDecoder) readLevel() (int, error) {
 	u, err := d.readUvarint()
 	if err != nil {
 		return 0, err
@@ -567,7 +631,7 @@ func (d versionEditDecoder) readLevel() (int, error) {
 	return int(u), nil
 }
 
-func (d versionEditDecoder) readFileNum() (base.FileNum, error) {
+func (d *versionEditDecoder) readFileNum() (base.FileNum, error) {
 	u, err := d.readUvarint()
 	if err != nil {
 		return 0, err
@@ -575,7 +639,7 @@ func (d versionEditDecoder) readFileNum() (base.FileNum, error) {
 	return base.FileNum(u), nil
 }
 
-func (d versionEditDecoder) readUvarint() (uint64, error) {
+func (d *versionEditDecoder) readUvarint() (uint64, error) {
 	u, err := binary.ReadUvarint(d)
 	if err != nil {
 		if err == io.EOF {
