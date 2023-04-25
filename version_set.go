@@ -223,6 +223,7 @@ func (vs *versionSet) load(
 	}
 	defer manifest.Close()
 	rr := record.NewReader(manifest, 0 /* logNum */)
+	backingMap := make(map[base.FileNum]*fileBacking)
 	for {
 		r, err := rr.Next()
 		if err == io.EOF || record.IsInvalidRecord(err) {
@@ -233,7 +234,7 @@ func (vs *versionSet) load(
 				errors.Safe(manifestFilename))
 		}
 		var ve versionEdit
-		err = ve.Decode(r)
+		err = ve.Decode(r, backingMap)
 		if err != nil {
 			// Break instead of returning an error if the record is corrupted
 			// or invalid.
@@ -688,7 +689,6 @@ func (vs *versionSet) createManifest(
 				Level: level,
 				Meta:  meta,
 			})
-			// TODO(bananabrick): Test snapshot changes.
 			if _, ok := dedup[meta.FileBacking.DiskFileNum]; meta.Virtual && !ok {
 				dedup[meta.FileBacking.DiskFileNum] = struct{}{}
 				snapshot.CreatedBackingTables = append(

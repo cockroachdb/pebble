@@ -217,6 +217,12 @@ func (d *DB) scanReadStateTableStats(
 	for l, levelMetadata := range rs.current.Levels {
 		iter := levelMetadata.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
+			if f.Virtual {
+				// TODO(bananabrick): Support stats collection for virtual
+				// sstables.
+				continue
+			}
+
 			// NB: We're not holding d.mu which protects f.Stats, but only the
 			// active stats collection job updates f.Stats for active files,
 			// and we ensure only one goroutine runs it at a time through
