@@ -37,6 +37,7 @@ type newFileEntry = manifest.NewFileEntry
 type version = manifest.Version
 type versionEdit = manifest.VersionEdit
 type versionList = manifest.VersionList
+type versionEditDecoder = manifest.VersionEditDecoder
 
 // versionSet manages a collection of immutable versions, and manages the
 // creation of a new version from the most recent version. A new version is
@@ -223,6 +224,7 @@ func (vs *versionSet) load(
 	}
 	defer manifest.Close()
 	rr := record.NewReader(manifest, 0 /* logNum */)
+	var ved versionEditDecoder
 	for {
 		r, err := rr.Next()
 		if err == io.EOF || record.IsInvalidRecord(err) {
@@ -233,7 +235,7 @@ func (vs *versionSet) load(
 				errors.Safe(manifestFilename))
 		}
 		var ve versionEdit
-		err = ve.Decode(r)
+		ve, err = ved.Decode(r)
 		if err != nil {
 			// Break instead of returning an error if the record is corrupted
 			// or invalid.
@@ -688,7 +690,6 @@ func (vs *versionSet) createManifest(
 				Level: level,
 				Meta:  meta,
 			})
-			// TODO(bananabrick): Test snapshot changes.
 			if _, ok := dedup[meta.FileBacking.DiskFileNum]; meta.Virtual && !ok {
 				dedup[meta.FileBacking.DiskFileNum] = struct{}{}
 				snapshot.CreatedBackingTables = append(

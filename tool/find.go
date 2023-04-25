@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -201,10 +202,13 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 // Read the manifests and populate the editRefs map which is used to determine
 // the provenance and metadata of tables.
 func (f *findT) readManifests(stdout io.Writer) {
+	var ved manifest.VersionEditDecoder
 	for _, fileNum := range f.manifests {
+		var err error
 		func() {
 			path := f.files[fileNum]
-			mf, err := f.opts.FS.Open(path)
+			var mf vfs.File
+			mf, err = f.opts.FS.Open(path)
 			if err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
 				return
@@ -216,8 +220,9 @@ func (f *findT) readManifests(stdout io.Writer) {
 			}
 
 			rr := record.NewReader(mf, 0 /* logNum */)
+			var r io.Reader
 			for {
-				r, err := rr.Next()
+				r, err = rr.Next()
 				if err != nil {
 					if err != io.EOF {
 						fmt.Fprintf(stdout, "%s: %s\n", path, err)
@@ -226,7 +231,7 @@ func (f *findT) readManifests(stdout io.Writer) {
 				}
 
 				var ve manifest.VersionEdit
-				if err := ve.Decode(r); err != nil {
+				if ve, err = ved.Decode(r); err != nil {
 					fmt.Fprintf(stdout, "%s: %s\n", path, err)
 					break
 				}

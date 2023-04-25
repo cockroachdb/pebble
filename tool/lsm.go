@@ -206,6 +206,7 @@ func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 	var edits []*manifest.VersionEdit
 	w := l.Root.OutOrStdout()
 	rr := record.NewReader(f, 0 /* logNum */)
+	var ved manifest.VersionEditDecoder
 	for i := 0; ; i++ {
 		r, err := rr.Next()
 		if err != nil {
@@ -215,13 +216,13 @@ func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 			break
 		}
 
-		ve := &manifest.VersionEdit{}
-		err = ve.Decode(r)
+		var ve manifest.VersionEdit
+		ve, err = ved.Decode(r)
 		if err != nil {
 			fmt.Fprintf(w, "%s\n", err)
 			break
 		}
-		edits = append(edits, ve)
+		edits = append(edits, &ve)
 
 		if ve.ComparerName != "" {
 			l.cmp = l.comparers[ve.ComparerName]

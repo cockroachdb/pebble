@@ -33,6 +33,7 @@ func readManifest(filename string) (*Version, error) {
 	rr := record.NewReader(f, 0 /* logNum */)
 	var v *Version
 	addedByFileNum := make(map[base.FileNum]*FileMetadata)
+	var ved VersionEditDecoder
 	for {
 		r, err := rr.Next()
 		if err == io.EOF {
@@ -42,7 +43,7 @@ func readManifest(filename string) (*Version, error) {
 			return nil, err
 		}
 		var ve VersionEdit
-		if err = ve.Decode(r); err != nil {
+		if ve, err = ved.Decode(r); err != nil {
 			return nil, err
 		}
 		var bve BulkVersionEdit
