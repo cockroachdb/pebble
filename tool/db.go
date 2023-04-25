@@ -463,6 +463,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		var bve manifest.BulkVersionEdit
 		bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 		rr := record.NewReader(f, 0 /* logNum */)
+		var ved manifest.VersionEditDecoder
 		for {
 			r, err := rr.Next()
 			if err == io.EOF {
@@ -471,12 +472,12 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			if err != nil {
 				return errors.Wrapf(err, "pebble: reading manifest %q", manifestFilename)
 			}
-			var ve manifest.VersionEdit
-			err = ve.Decode(r)
+			var ve *manifest.VersionEdit
+			ve, err = ved.Decode(r)
 			if err != nil {
 				return err
 			}
-			if err := bve.Accumulate(&ve); err != nil {
+			if err := bve.Accumulate(ve); err != nil {
 				return err
 			}
 			if ve.ComparerName != "" {
