@@ -182,4 +182,4 @@ sstable properties
 testdata/bad-magic.sst
 ----
 bad-magic.sst
-pebble/table: invalid table (bad magic number)
+pebble/table: invalid table (bad magic number: 0xf6cff485b741e288)

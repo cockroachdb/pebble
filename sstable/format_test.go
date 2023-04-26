@@ -59,7 +59,7 @@ func TestTableFormat_RoundTrip(t *testing.T) {
 		{
 			name:    "Unknown magic string",
 			magic:   "foo",
-			wantErr: "pebble/table: invalid table (bad magic number)",
+			wantErr: "pebble/table: invalid table (bad magic number: 0x666f6f)",
 		},
 	}
 
