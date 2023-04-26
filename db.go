@@ -369,9 +369,6 @@ type DB struct {
 		}
 
 		mem struct {
-			// Condition variable used to serialize memtable switching. See
-			// DB.makeRoomForWrite().
-			cond sync.Cond
 			// The current mutable memTable.
 			mutable *memTable
 			// Queue of flushables (the mutable memtable is at end). Elements are
@@ -2265,7 +2262,6 @@ func (d *DB) recycleWAL() (newLogNum FileNum, prevLogSize uint64) {
 	})
 
 	d.mu.Lock()
-	d.mu.mem.cond.Broadcast()
 
 	d.mu.versions.metrics.WAL.Files++
 
