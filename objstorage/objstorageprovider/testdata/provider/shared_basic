@@ -37,6 +37,7 @@ read 2
 <shared> size of object "00000000000000000001-000002.sst.ref.00000000000000000001.000002": 0
 <shared> size of object "00000000000000000001-000002.sst": 7
 <shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
+<shared> close reader for "00000000000000000001-000002.sst"
 data: obj-two
 
 list
@@ -98,6 +99,7 @@ read 4
 <shared> size of object "00000000000000000001-000004.sst.ref.00000000000000000001.000004": 0
 <shared> size of object "00000000000000000001-000004.sst": 4
 <shared> read object "00000000000000000001-000004.sst" at 0: 4 bytes
+<shared> close reader for "00000000000000000001-000004.sst"
 data: four
 
 close

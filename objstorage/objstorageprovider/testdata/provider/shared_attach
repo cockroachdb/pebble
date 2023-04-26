@@ -122,6 +122,7 @@ read 101
 <shared> size of object "00000000000000000001-000001.sst.ref.00000000000000000002.000101": 0
 <shared> size of object "00000000000000000001-000001.sst": 7
 <shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
+<shared> close reader for "00000000000000000001-000001.sst"
 data: obj-one
 
 read 102
@@ -129,6 +130,7 @@ read 102
 <shared> size of object "00000000000000000001-000002.sst.ref.00000000000000000002.000102": 0
 <shared> size of object "00000000000000000001-000002.sst": 7
 <shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
+<shared> close reader for "00000000000000000001-000002.sst"
 data: obj-two
 
 read 103
@@ -136,4 +138,5 @@ read 103
 <shared> size of object "00000000000000000001-000003.sst.ref.00000000000000000002.000103": 0
 <shared> size of object "00000000000000000001-000003.sst": 9
 <shared> read object "00000000000000000001-000003.sst" at 0: 9 bytes
+<shared> close reader for "00000000000000000001-000003.sst"
 data: obj-three
