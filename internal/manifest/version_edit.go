@@ -8,8 +8,10 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"sort"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -394,6 +396,48 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 		}
 	}
 	return nil
+}
+
+// String implements fmt.Stringer for a VersionEdit.
+func (ve *VersionEdit) String() string {
+	var buf bytes.Buffer
+	if ve.ComparerName != "" {
+		fmt.Fprintf(&buf, "  comparer:     %s", ve.ComparerName)
+	}
+	if ve.MinUnflushedLogNum != 0 {
+		fmt.Fprintf(&buf, "  log-num:       %d\n", ve.MinUnflushedLogNum)
+	}
+	if ve.ObsoletePrevLogNum != 0 {
+		fmt.Fprintf(&buf, "  prev-log-num:  %d\n", ve.ObsoletePrevLogNum)
+	}
+	if ve.NextFileNum != 0 {
+		fmt.Fprintf(&buf, "  next-file-num: %d\n", ve.NextFileNum)
+	}
+	if ve.LastSeqNum != 0 {
+		fmt.Fprintf(&buf, "  last-seq-num:  %d\n", ve.LastSeqNum)
+	}
+	entries := make([]DeletedFileEntry, 0, len(ve.DeletedFiles))
+	for df := range ve.DeletedFiles {
+		entries = append(entries, df)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Level != entries[j].Level {
+			return entries[i].Level < entries[j].Level
+		}
+		return entries[i].FileNum < entries[j].FileNum
+	})
+	for _, df := range entries {
+		fmt.Fprintf(&buf, "  deleted:       L%d %s\n", df.Level, df.FileNum)
+	}
+	for _, nf := range ve.NewFiles {
+		fmt.Fprintf(&buf, "  added:         L%d %s", nf.Level, nf.Meta.String())
+		if nf.Meta.CreationTime != 0 {
+			fmt.Fprintf(&buf, " (%s)",
+				time.Unix(nf.Meta.CreationTime, 0).UTC().Format(time.RFC3339))
+		}
+		fmt.Fprintln(&buf)
+	}
+	return buf.String()
 }
 
 // Encode encodes an edit to the specified writer.
