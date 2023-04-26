@@ -1284,6 +1284,351 @@ func TestSSTables(t *testing.T) {
 	}
 }
 
+func TestMemtableIngestInversion(t *testing.T) {
+	memFS := vfs.NewMem()
+	opts := &Options{
+		FS:                          memFS,
+		MemTableSize:                256 << 10, // 4KB
+		MemTableStopWritesThreshold: 1000,
+		L0StopWritesThreshold:       1000,
+		L0CompactionThreshold:       2,
+		MaxConcurrentCompactions: func() int {
+			return 1000
+		},
+	}
+
+	// if nextBlockedCompaction is non-zero, we must block the next compaction
+	// out of the nextBlockedCompaction - 3 start level. 1 means block the next
+	// intra-L0 compaction and 2 means block the next flush (as flushes have
+	// a -1 start level).
+	var nextBlockedCompaction int32
+	var el EventListener
+	el.EnsureDefaults(DefaultLogger)
+	nextSem := make(chan chan struct{}, 1)
+	blockedCompactions := make(map[int]bool)
+	var blockedCompactionsMu sync.Mutex
+	el.FlushBegin = func(info FlushInfo) {
+		if swapped := atomic.CompareAndSwapInt32(&nextBlockedCompaction, 2, 0); swapped {
+			blockedCompactionsMu.Lock()
+			blockedCompactions[info.JobID] = true
+			blockedCompactionsMu.Unlock()
+		}
+	}
+	el.CompactionBegin = func(info CompactionInfo) {
+		// 0 = block nothing, 1 = block intra-L0 compaction, 2 = block flush,
+		// 3 = block L0 -> LBase compaction, 4 = block compaction out of L1, and so on.
+		casValue := int32(info.Input[0].Level + 3)
+		if info.Input[0].Level == 0 && info.Output.Level == 0 {
+			// Intra L0 compaction, denoted by casValue of 1.
+			casValue = 1
+		}
+		if swapped := atomic.CompareAndSwapInt32(&nextBlockedCompaction, casValue, 0); swapped {
+			blockedCompactionsMu.Lock()
+			blockedCompactions[info.JobID] = true
+			blockedCompactionsMu.Unlock()
+		}
+	}
+	el.TableCreated = func(info TableCreateInfo) {
+		blockedCompactionsMu.Lock()
+		if !blockedCompactions[info.JobID] {
+			blockedCompactionsMu.Unlock()
+			return
+		}
+		blockedCompactions[info.JobID] = false
+		blockedCompactionsMu.Unlock()
+		sem := make(chan struct{})
+		nextSem <- sem
+		<-sem
+	}
+	opts.EventListener = TeeEventListener(MakeLoggingEventListener(DefaultLogger), el)
+	opts.Experimental.L0CompactionConcurrency = 1
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	printLSM := func() {
+		d.mu.Lock()
+		s := d.mu.versions.currentVersion().String()
+		d.mu.Unlock()
+		t.Logf("%s", s)
+	}
+
+	// Create some sstables. These should go into L6. These are irrelevant for
+	// the rest of the test.
+	require.NoError(t, d.Set([]byte("b"), []byte("foo"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("d"), []byte("bar"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact([]byte("a"), []byte("z"), true))
+
+	var baseCompactionSem, flushSem, intraL0Sem chan struct{}
+	// Block an L0 -> LBase compaction. This is necessary to induce intra-L0
+	// compactions later on.
+	atomic.StoreInt32(&nextBlockedCompaction, 3)
+	timeoutSem := time.After(1 * time.Second)
+	t.Log("blocking an L0 -> LBase compaction")
+	// Write an sstable to L0 until we're blocked on an L0 -> LBase compaction.
+	breakLoop := false
+	for !breakLoop {
+		select {
+		case sem := <-nextSem:
+			baseCompactionSem = sem
+			breakLoop = true
+		case <-timeoutSem:
+			t.Fatal("did not get blocked on an LBase compaction")
+		default:
+			require.NoError(t, d.Set([]byte("b"), []byte("foo"), nil))
+			require.NoError(t, d.Set([]byte("g"), []byte("bar"), nil))
+			require.NoError(t, d.Flush())
+		}
+	}
+	printLSM()
+
+	// Do 4 ingests, one with the key cc, one with bb and cc, and two with just bb.
+	// The purpose of the sstable containing cc is to inflate the L0 sublevel
+	// count of the interval at cc, as that's where we want the intra-L0 compaction
+	// to be seeded. However we also need a file left of that interval to have
+	// the same (or higher) sublevel to trigger the bug in
+	// cockroachdb/cockroach#101896. That's why we ingest a file after it to
+	// "bridge" the bb/cc intervals, and then ingest a file at bb. These go
+	// into sublevels like this:
+	//
+	//    bb
+	//    bb
+	//    bb-----cc
+	//           cc
+	//
+	// Eventually, we'll drop an ingested file containing a range del starting at
+	// cc around here:
+	//
+	//    bb
+	//    bb     cc---...
+	//    bb-----cc
+	//           cc
+	{
+		path := "ingest1.sst"
+		f, err := memFS.Create(path)
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{
+			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+		})
+		require.NoError(t, w.Set([]byte("cc"), []byte("foo")))
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{path}))
+	}
+	{
+		path := "ingest2.sst"
+		f, err := memFS.Create(path)
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{
+			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+		})
+		require.NoError(t, w.Set([]byte("bb"), []byte("foo2")))
+		require.NoError(t, w.Set([]byte("cc"), []byte("foo2")))
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{path}))
+	}
+	{
+		path := "ingest3.sst"
+		f, err := memFS.Create(path)
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{
+			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+		})
+		require.NoError(t, w.Set([]byte("bb"), []byte("foo3")))
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{path}))
+	}
+	{
+		path := "ingest4.sst"
+		f, err := memFS.Create(path)
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{
+			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+		})
+		require.NoError(t, w.Set([]byte("bb"), []byte("foo4")))
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{path}))
+	}
+
+	// We now have a base compaction blocked. Block a memtable flush to cause
+	// memtables to queue up.
+	//
+	// Memtable (stuck):
+	//
+	//   b-----------------g
+	//
+	// Relevant L0 ssstables
+	//
+	//    bb
+	//    bb
+	//    bb-----cc
+	//           cc
+	atomic.StoreInt32(&nextBlockedCompaction, 2)
+	t.Log("blocking a flush")
+	require.NoError(t, d.Set([]byte("b"), []byte("foo2"), nil))
+	require.NoError(t, d.Set([]byte("g"), []byte("bar2"), nil))
+	_, _ = d.AsyncFlush()
+	select {
+	case sem := <-nextSem:
+		flushSem = sem
+	case <-time.After(1 * time.Second):
+		t.Fatal("did not get blocked on a flush")
+	}
+	// Add one memtable to flush queue, and finish it off.
+	//
+	// Memtables (stuck):
+	//
+	//   b-----------------g (waiting to flush)
+	//   b-----------------g (flushing, blocked)
+	//
+	// Relevant L0 ssstables
+	//
+	//    bb
+	//    bb
+	//    bb-----cc
+	//           cc
+	require.NoError(t, d.Set([]byte("b"), []byte("foo3"), nil))
+	require.NoError(t, d.Set([]byte("g"), []byte("bar3"), nil))
+	// note: this flush will wait for the earlier, blocked flush, but it closes
+	// off the memtable which is what we want.
+	_, _ = d.AsyncFlush()
+
+	// Open a new mutable memtable. This gets us an earlier earlierUnflushedSeqNum
+	// than the ingest below it.
+	require.NoError(t, d.Set([]byte("c"), []byte("somethingbigishappening"), nil))
+	// Block an intra-L0 compaction, as one might happen around this time.
+	atomic.StoreInt32(&nextBlockedCompaction, 1)
+	t.Log("blocking an intra-L0 compaction")
+	// Ingest a file containing a cc-e rangedel.
+	//
+	// Memtables:
+	//
+	//         c             (mutable)
+	//   b-----------------g (waiting to flush)
+	//   b-----------------g (flushing, blocked)
+	//
+	// Relevant L0 ssstables
+	//
+	//    bb
+	//    bb     cc-----e (just ingested)
+	//    bb-----cc
+	//           cc
+	{
+		path := "ingest5.sst"
+		f, err := memFS.Create(path)
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{
+			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+		})
+		require.NoError(t, w.DeleteRange([]byte("cc"), []byte("e")))
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{path}))
+	}
+	t.Log("main ingest complete")
+	printLSM()
+	t.Logf("%s", d.Metrics().String())
+
+	require.NoError(t, d.Set([]byte("d"), []byte("ThisShouldNotBeDeleted"), nil))
+
+	// Do another ingest with a seqnum newer than d. The purpose of this is to
+	// increase the LargestSeqNum of the intra-L0 compaction output *beyond*
+	// the flush that contains d=ThisShouldNotBeDeleted, therefore causing
+	// that point key to be deleted (in the buggy code).
+	//
+	// Memtables:
+	//
+	//         c             (mutable)
+	//   b-----------------g (waiting to flush)
+	//   b-----------------g (flushing, blocked)
+	//
+	// Relevant L0 ssstables
+	//
+	//    bb     cc
+	//    bb     cc-----e (just ingested)
+	//    bb-----cc
+	//           cc
+	{
+		path := "ingest6.sst"
+		f, err := memFS.Create(path)
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{
+			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+		})
+		require.NoError(t, w.Set([]byte("cc"), []byte("doesntmatter")))
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{path}))
+	}
+
+	// Unblock earlier flushes. We will first finish flushing the blocked
+	// memtable, and end up in this state:
+	//
+	// Relevant L0 ssstables
+	//
+	//  b-------------------g (irrelevant, just flushed)
+	//    bb     cc (has LargestSeqNum > earliestUnflushedSeqNum)
+	//    bb     cc-----e (has a rangedel)
+	//    bb-----cc
+	//           cc
+	//
+	// Note that while b----g is relatively old (and so has a low LargestSeqNum),
+	// it bridges a bunch of intervals. Had we regenerated sublevels from scratch,
+	// it'd have gone below the cc-e sstable. But due to #101896, we just slapped
+	// it on top. Now, as long as our seed interval is the one at cc and our seed
+	// file is the just-flushed L0 sstable, we will go down and include anything
+	// in that interval even if it has a LargestSeqNum > earliestUnflushedSeqNum.
+	//
+	// All asterisked L0 sstables should now get picked in an intra-L0 compaction
+	// right after the flush finishes, that we then block:
+	//
+	//  b-------------------g*
+	//    bb*    cc*
+	//    bb*    cc-----e*
+	//    bb-----cc*
+	//           cc*
+	t.Log("unblocking flush")
+	flushSem <- struct{}{}
+	printLSM()
+
+	select {
+	case sem := <-nextSem:
+		intraL0Sem = sem
+	case <-time.After(1 * time.Second):
+		t.Fatal("did not get blocked on an intra L0 compaction")
+	}
+
+	// Ensure all memtables are flushed. This will mean d=ThisShouldNotBeDeleted
+	// will land in L0 and since that was the last key written to a memtable,
+	// and the ingestion at cc came after it, the output of the intra-L0
+	// compaction will elevate the cc-e rangedel above it and delete it
+	// (if #101896 is not fixed).
+	ch, _ := d.AsyncFlush()
+	<-ch
+
+	// Unblock earlier intra-L0 compaction.
+	t.Log("unblocking intraL0")
+	intraL0Sem <- struct{}{}
+	printLSM()
+
+	// Try reading d a couple times.
+	for i := 0; i < 2; i++ {
+		val, closer, err := d.Get([]byte("d"))
+		require.NoError(t, err)
+		require.Equal(t, []byte("ThisShouldNotBeDeleted"), val)
+		if closer != nil {
+			closer.Close()
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Unblock everything.
+	baseCompactionSem <- struct{}{}
+}
+
 func BenchmarkDelete(b *testing.B) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	const keyCount = 10000
