@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,9 +24,11 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -1414,6 +1418,137 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 	require.NoError(t, d.Flush())
 	require.NoError(t, d.CheckLevels(nil))
 	require.NoError(t, d.Close())
+}
+
+// TestIngestMemtableOverlapRace is a regression test for the race described in
+// #2196. If an ingest that checks for overlap with the mutable memtable and
+// finds no overlap, it must not allow overlapping keys with later sequence
+// numbers to be applied to the memtable and the memtable to be flushed before
+// the ingest completes.
+//
+// This test operates by committing the same key concurrently:
+//   - 1 goroutine repeatedly ingests the same sstable writing the key `foo`
+//   - n goroutines repeatedly apply batches writing the key `foo` and trigger
+//     flushes.
+//
+// After a while, the database is closed and the manifest is verified. Version
+// edits should contain new files with monotonically increasing sequence
+// numbers, since every flush and every ingest conflicts with one another.
+func TestIngestMemtableOverlapRace(t *testing.T) {
+	mem := vfs.NewMem()
+	el := MakeLoggingEventListener(DefaultLogger)
+	d, err := Open("", &Options{
+		FS: mem,
+		// Disable automatic compactions to keep the manifest clean; only
+		// flushes and ingests.
+		DisableAutomaticCompactions: true,
+		// Disable the WAL to speed up batch commits.
+		DisableWAL:    true,
+		EventListener: &el,
+		// We're endlessly appending to L0 without clearing it, so set a maximal
+		// stop writes threshold.
+		L0StopWritesThreshold: math.MaxInt,
+		// Accumulating more than 1 immutable memtable doesn't help us exercise
+		// the bug, since the committed keys need to be flushed promptly.
+		MemTableStopWritesThreshold: 2,
+	})
+	require.NoError(t, err)
+
+	// Prepare a sstable `ext` deleting foo.
+	f, err := mem.Create("ext")
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+	require.NoError(t, w.Delete([]byte("foo")))
+	require.NoError(t, w.Close())
+
+	var done atomic.Bool
+	const numSetters = 2
+	var wg sync.WaitGroup
+	wg.Add(numSetters + 1)
+
+	untilDone := func(fn func()) {
+		defer wg.Done()
+		for !done.Load() {
+			fn()
+		}
+	}
+
+	// Ingest in the background.
+	totalIngests := 0
+	go untilDone(func() {
+		filename := fmt.Sprintf("ext%d", totalIngests)
+		require.NoError(t, mem.Link("ext", filename))
+		require.NoError(t, d.Ingest([]string{filename}))
+		totalIngests++
+	})
+
+	// Apply batches and trigger flushes in the background.
+	wo := &WriteOptions{Sync: false}
+	var localCommits [numSetters]int
+	for i := 0; i < numSetters; i++ {
+		i := i
+		v := []byte(fmt.Sprintf("v%d", i+1))
+		go untilDone(func() {
+			// Commit a batch setting foo=vN.
+			b := d.NewBatch()
+			require.NoError(t, b.Set([]byte("foo"), v, nil))
+			require.NoError(t, b.Commit(wo))
+			localCommits[i]++
+			d.AsyncFlush()
+		})
+	}
+	time.Sleep(100 * time.Millisecond)
+	done.Store(true)
+	wg.Wait()
+
+	var totalCommits int
+	for i := 0; i < numSetters; i++ {
+		totalCommits += localCommits[i]
+	}
+	m := d.Metrics()
+	tot := m.Total()
+	t.Logf("Committed %d batches.", totalCommits)
+	t.Logf("Flushed %d times.", m.Flush.Count)
+	t.Logf("Ingested %d sstables.", tot.TablesIngested)
+	require.NoError(t, d.CheckLevels(nil))
+	require.NoError(t, d.Close())
+
+	// Replay the manifest. Every flush and ingest is a separate version edit.
+	// Since they all write the same key and compactions are disabled, sequence
+	// numbers of new files should be monotonically increasing.
+	//
+	// This check is necessary because most of these sstables are ingested into
+	// L0. The L0 sublevels construction will order them by LargestSeqNum, even
+	// if they're added to L0 out-of-order. The CheckLevels call at the end of
+	// the test may find that the sublevels are all appropriately ordered, but
+	// the manifest may reveal they were added to the LSM out-of-order.
+	dbDesc, err := Peek("", mem)
+	require.NoError(t, err)
+	require.True(t, dbDesc.Exists)
+	f, err = mem.Open(dbDesc.ManifestFilename)
+	require.NoError(t, err)
+	defer f.Close()
+	rr := record.NewReader(f, 0 /* logNum */)
+	var largest *fileMetadata
+	for {
+		r, err := rr.Next()
+		if err == io.EOF || err == record.ErrInvalidChunk {
+			break
+		}
+		require.NoError(t, err)
+		var ve manifest.VersionEdit
+		require.NoError(t, ve.Decode(r))
+		t.Log(ve.String())
+		for _, f := range ve.NewFiles {
+			if largest != nil {
+				require.Equal(t, 0, f.Level)
+				if largest.LargestSeqNum > f.Meta.LargestSeqNum {
+					t.Fatalf("previous largest file %s has sequence number > next file %s", largest, f.Meta)
+				}
+			}
+			largest = f.Meta
+		}
+	}
 }
 
 type ingestCrashFS struct {

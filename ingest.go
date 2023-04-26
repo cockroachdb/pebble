@@ -847,6 +847,7 @@ func (d *DB) ingest(
 	// approximate ingest-into-L0 stats when using flushable ingests.
 	metaFlushableOverlaps := make([]bool, len(meta))
 	var mem *flushableEntry
+	var mut *memTable
 	// asFlushable indicates whether the sstable was ingested as a flushable.
 	var asFlushable bool
 	prepare := func(seqNum uint64) {
@@ -891,8 +892,20 @@ func (d *DB) ingest(
 				d.opts.Logger.Infof("ingest error reading flushable for log %s: %s", m.logNum, err)
 			}
 		}
+
 		if mem == nil {
-			// No overlap with any of the queued flushables.
+			// No overlap with any of the queued flushables, so no need to queue
+			// after them.
+
+			// New writes with higher sequence numbers may be concurrently
+			// committed. We must ensure they don't flush before this ingest
+			// completes. To do that, we ref the mutable memtable as a writer,
+			// preventing its flushing (and the flushing of all subsequent
+			// flushables in the queue). Once we've acquired the manifest lock
+			// to add the ingested sstables to the LSM, we can unref as we're
+			// guaranteed that the flush won't edit the LSM before this ingest.
+			mut = d.mu.mem.mutable
+			mut.writerRef()
 			return
 		}
 		// The ingestion overlaps with some entry in the flushable queue.
@@ -904,6 +917,15 @@ func (d *DB) ingest(
 			if mem.flushable == d.mu.mem.mutable {
 				err = d.makeRoomForWrite(nil)
 			}
+			// New writes with higher sequence numbers may be concurrently
+			// committed. We must ensure they don't flush before this ingest
+			// completes. To do that, we ref the mutable memtable as a writer,
+			// preventing its flushing (and the flushing of all subsequent
+			// flushables in the queue). Once we've acquired the manifest lock
+			// to add the ingested sstables to the LSM, we can unref as we're
+			// guaranteed that the flush won't edit the LSM before this ingest.
+			mut = d.mu.mem.mutable
+			mut.writerRef()
 			mem.flushForced = true
 			d.maybeScheduleFlush()
 			return
@@ -918,6 +940,9 @@ func (d *DB) ingest(
 	apply := func(seqNum uint64) {
 		if err != nil || asFlushable {
 			// An error occurred during prepare.
+			if mut != nil {
+				mut.writerUnref()
+			}
 			return
 		}
 
@@ -928,6 +953,9 @@ func (d *DB) ingest(
 		if err = ingestUpdateSeqNum(
 			d.cmp, d.opts.Comparer.FormatKey, seqNum, meta,
 		); err != nil {
+			if mut != nil {
+				mut.writerUnref()
+			}
 			return
 		}
 
@@ -939,7 +967,7 @@ func (d *DB) ingest(
 
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, err = d.ingestApply(jobID, meta, targetLevelFunc)
+		ve, err = d.ingestApply(jobID, meta, targetLevelFunc, mut)
 	}
 
 	d.commit.AllocateSeqNum(len(meta), prepare, apply)
@@ -1022,7 +1050,7 @@ type ingestTargetLevelFunc func(
 ) (int, error)
 
 func (d *DB) ingestApply(
-	jobID int, meta []*fileMetadata, findTargetLevel ingestTargetLevelFunc,
+	jobID int, meta []*fileMetadata, findTargetLevel ingestTargetLevelFunc, mut *memTable,
 ) (*versionEdit, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -1039,6 +1067,16 @@ func (d *DB) ingestApply(
 	// logAndApply unconditionally releases the manifest lock, but any earlier
 	// returns must unlock the manifest.
 	d.mu.versions.logLock()
+
+	if mut != nil {
+		// Unref the mutable memtable to allows its flush to proceed. Now that we've
+		// acquired the manifest lock, we can be certain that if the mutable
+		// memtable has received more recent conflicting writes, the flush won't
+		// beat us to applying to the manifest resulting in sequence number
+		// inversion.
+		mut.writerUnref()
+	}
+
 	current := d.mu.versions.currentVersion()
 	baseLevel := d.mu.versions.picker.getBaseLevel()
 	iterOps := IterOptions{logger: d.opts.Logger}
