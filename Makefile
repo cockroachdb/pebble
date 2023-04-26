@@ -4,7 +4,7 @@ GOFLAGS :=
 STRESSFLAGS :=
 TAGS := invariants
 TESTS := .
-LATEST_RELEASE := $(shell git fetch origin && git branch -r --list '*/crl-release-*' | grep -o 'crl-release-.*$$' | sort | tail -1)
+LATEST_RELEASE := crl-release-22.1
 
 .PHONY: all
 all:
