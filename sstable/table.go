@@ -363,7 +363,7 @@ func readFooter(f objstorage.Readable) (footer, error) {
 		buf = buf[1:]
 
 	default:
-		return footer, base.CorruptionErrorf("pebble/table: invalid table (bad magic number)")
+		return footer, base.CorruptionErrorf("pebble/table: invalid table (bad magic number: 0x%x)", magic)
 	}
 
 	{
