@@ -644,18 +644,18 @@ func ingestTargetLevel(
 //
 // The steps for ingestion are:
 //
-//   1. Allocate file numbers for every sstable being ingested.
-//   2. Load the metadata for all sstables being ingest.
-//   3. Sort the sstables by smallest key, verifying non overlap.
-//   4. Hard link (or copy) the sstables into the DB directory.
-//   5. Allocate a sequence number to use for all of the entries in the
-//      sstables. This is the step where overlap with memtables is
-//      determined. If there is overlap, we remember the most recent memtable
-//      that overlaps.
-//   6. Update the sequence number in the ingested sstables.
-//   7. Wait for the most recent memtable that overlaps to flush (if any).
-//   8. Add the ingested sstables to the version (DB.ingestApply).
-//   9. Publish the ingestion sequence number.
+//  1. Allocate file numbers for every sstable being ingested.
+//  2. Load the metadata for all sstables being ingest.
+//  3. Sort the sstables by smallest key, verifying non overlap.
+//  4. Hard link (or copy) the sstables into the DB directory.
+//  5. Allocate a sequence number to use for all of the entries in the
+//     sstables. This is the step where overlap with memtables is
+//     determined. If there is overlap, we remember the most recent memtable
+//     that overlaps.
+//  6. Update the sequence number in the ingested sstables.
+//  7. Wait for the most recent memtable that overlaps to flush (if any).
+//  8. Add the ingested sstables to the version (DB.ingestApply).
+//  9. Publish the ingestion sequence number.
 //
 // Note that if the mutable memtable overlaps with ingestion, a flush of the
 // memtable is forced equivalent to DB.Flush. Additionally, subsequent
@@ -750,11 +750,23 @@ func (d *DB) ingest(
 	}
 
 	var mem *flushableEntry
+	var mut *memTable
 	prepare := func() {
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
 
 		d.mu.Lock()
 		defer d.mu.Unlock()
+		defer func() {
+			// New writes with higher sequence numbers may be concurrently
+			// committed. We must ensure they don't flush before this ingest
+			// completes. To do that, we ref the mutable memtable as a writer,
+			// preventing its flushing (and the flushing of all subsequent
+			// flushables in the queue). Once we've acquired the manifest lock
+			// to add the ingested sstables to the LSM, we can unref as we're
+			// guaranteed that the flush won't edit the LSM before this ingest.
+			mut = d.mu.mem.mutable
+			mut.writerRef()
+		}()
 
 		// Check to see if any files overlap with any of the memtables. The queue
 		// is ordered from oldest to newest with the mutable memtable being the
@@ -778,6 +790,9 @@ func (d *DB) ingest(
 	apply := func(seqNum uint64) {
 		if err != nil {
 			// An error occurred during prepare.
+			if mut != nil {
+				mut.writerUnref()
+			}
 			return
 		}
 
@@ -788,6 +803,9 @@ func (d *DB) ingest(
 		if err = ingestUpdateSeqNum(
 			d.cmp, d.opts.Comparer.FormatKey, seqNum, meta,
 		); err != nil {
+			if mut != nil {
+				mut.writerUnref()
+			}
 			return
 		}
 
@@ -799,7 +817,7 @@ func (d *DB) ingest(
 
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, err = d.ingestApply(jobID, meta, targetLevelFunc)
+		ve, err = d.ingestApply(jobID, meta, targetLevelFunc, mut)
 	}
 
 	d.commit.AllocateSeqNum(len(meta), prepare, apply)
@@ -854,7 +872,7 @@ type ingestTargetLevelFunc func(
 ) (int, error)
 
 func (d *DB) ingestApply(
-	jobID int, meta []*fileMetadata, findTargetLevel ingestTargetLevelFunc,
+	jobID int, meta []*fileMetadata, findTargetLevel ingestTargetLevelFunc, mut *memTable,
 ) (*versionEdit, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -871,6 +889,16 @@ func (d *DB) ingestApply(
 	// logAndApply unconditionally releases the manifest lock, but any earlier
 	// returns must unlock the manifest.
 	d.mu.versions.logLock()
+
+	if mut != nil {
+		// Unref the mutable memtable to allows its flush to proceed. Now that we've
+		// acquired the manifest lock, we can be certain that if the mutable
+		// memtable has received more recent conflicting writes, the flush won't
+		// beat us to applying to the manifest resulting in sequence number
+		// inversion.
+		mut.writerUnref()
+	}
+
 	current := d.mu.versions.currentVersion()
 	baseLevel := d.mu.versions.picker.getBaseLevel()
 	iterOps := IterOptions{logger: d.opts.Logger}
