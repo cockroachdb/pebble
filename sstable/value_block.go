@@ -21,10 +21,76 @@ import (
 
 // Value blocks are supported in TableFormatPebblev3.
 //
+// 1. Motivation and overview
+//
 // Value blocks are a mechanism designed for sstables storing MVCC data, where
 // there can be many versions of a key that need to be kept, but only the
-// latest value is typically read. See the documentation for Comparer.Split
-// regarding MVCC keys.
+// latest value is typically read (see the documentation for Comparer.Split
+// regarding MVCC keys). The goal is faster reads. Unlike Pebble versions,
+// which can be eagerly thrown away (except when there are snapshots), MVCC
+// versions are long-lived (e.g. default CockroachDB garbage collection
+// threshold for older versions is 24 hours) and can significantly slow down
+// reads. We have seen CockroachDB production workloads with very slow reads
+// due to:
+// - 100s of versions for each key in a table.
+//
+// - Tables with mostly MVCC garbage consisting of 2 versions per key -- a
+//   real key-value pair, followed by a key-value pair whose value (usually
+//   with zero byte length) indicates it is an MVCC tombstone.
+//
+// The value blocks mechanism attempts to improve read throughput in these
+// cases when the key size is smaller than the value sizes of older versions.
+// This is done by moving the value of an older version to a value block in a
+// different part of the sstable. This improves spatial locality of the data
+// being read by the workload, which increases caching effectiveness.
+//
+// Additionally, even when the key size is not smaller than the value of older
+// versions (e.g. secondary indexes in CockroachDB), TableFormatPebblev3
+// stores the result of key comparisons done at write time inside the sstable,
+// which makes stepping from one key prefix to the next prefix (i.e., skipping
+// over older versions of a MVCC key) more efficient by avoiding key
+// comparisons and key decoding. See the results in
+// https://github.com/cockroachdb/pebble/pull/2149 and more details in the
+// comment inside BenchmarkIteratorScanNextPrefix. These improvements are also
+// visible in end-to-end CockroachDB tests, as outlined in
+// https://github.com/cockroachdb/cockroach/pull/96652.
+//
+// In TableFormatPebblev3, each SET has a one byte value prefix that tells us
+// whether the value is in-place or in a value block. This 1 byte prefix
+// encodes additional information:
+//
+// - ShortAttribute: This is an attribute of the value. Currently, CockroachDB
+//   uses it to represent whether the value is a tombstone or not. This avoids
+//   the need to fetch a value from the value block if the caller only wants
+//   to figure out whether it is an MVCC tombstone. The length of the value is
+//   another attribute that the caller can be interested in, and it is also
+//   accessible without reading the value in the value block (see the value
+//   handle in the details section).
+//
+// - SET-same-prefix: this enables the aforementioned optimization when
+//   stepping from one key prefix to the next key prefix.
+//
+// We further optimize this iteration over prefixes by using the restart
+// points in a block to encode whether the SET at a restart point has the same
+// prefix since the last restart point. This allows us to skip over restart
+// points within the same block. See the comment in blockWriter, and how both
+// SET-same-prefix and the restart point information is used in
+// blockIter.nextPrefixV3.
+//
+// This flexibility of values that are in-place or in value blocks requires
+// flexibility in the iterator interface. The InternalIterator interface
+// returns a LazyValue instead of a byte slice. Additionally, pebble.Iterator
+// allows the caller to ask for a LazyValue. See lazy_value.go for details,
+// including the memory lifetime management.
+//
+// For historical discussions about this feature, see the issue
+// https://github.com/cockroachdb/pebble/issues/1170 and the prototype in
+// https://github.com/cockroachdb/pebble/pull/1443.
+//
+// The code in this file mainly covers value block and related encodings. We
+// discuss these in the next section.
+//
+// 2. Details
 //
 // Note that the notion of the latest value is local to the sstable. It is
 // possible that that latest value has been deleted by a sstable in a higher
@@ -35,7 +101,7 @@ import (
 // read them. The code in this file is agnostic to the policy regarding what
 // should be stored in value blocks -- it allows even the latest MVCC version
 // to be stored in a value block. The policy decision in made in the
-// sstable.Writer. See Writer.makeAddPointDecision.
+// sstable.Writer. See Writer.makeAddPointDecisionV3.
 //
 // Data blocks contain two kinds of SET keys: those with in-place values and
 // those with a value handle. To distinguish these two cases we use a single
