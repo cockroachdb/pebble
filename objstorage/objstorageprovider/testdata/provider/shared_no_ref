@@ -23,6 +23,7 @@ read 1
 ----
 <shared> size of object "00000000000000000001-000001.sst": 7
 <shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
+<shared> close reader for "00000000000000000001-000001.sst"
 data: obj-one
 
 create 2 shared no-ref-tracking
@@ -35,6 +36,7 @@ read 2
 ----
 <shared> size of object "00000000000000000001-000002.sst": 7
 <shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
+<shared> close reader for "00000000000000000001-000002.sst"
 data: obj-two
 
 list
@@ -54,6 +56,7 @@ read 3
 ----
 <shared> size of object "00000000000000000001-000003.sst": 9
 <shared> read object "00000000000000000001-000003.sst" at 0: 9 bytes
+<shared> close reader for "00000000000000000001-000003.sst"
 data: obj-three
 
 close
@@ -78,18 +81,21 @@ read 1
 ----
 <shared> size of object "00000000000000000001-000001.sst": 7
 <shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
+<shared> close reader for "00000000000000000001-000001.sst"
 data: obj-one
 
 read 2
 ----
 <shared> size of object "00000000000000000001-000002.sst": 7
 <shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
+<shared> close reader for "00000000000000000001-000002.sst"
 data: obj-two
 
 read 3
 ----
 <shared> size of object "00000000000000000001-000003.sst": 9
 <shared> read object "00000000000000000001-000003.sst" at 0: 9 bytes
+<shared> close reader for "00000000000000000001-000003.sst"
 data: obj-three
 
 save-backing b1 1
@@ -127,12 +133,14 @@ read 101
 ----
 <shared> size of object "00000000000000000001-000001.sst": 7
 <shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
+<shared> close reader for "00000000000000000001-000001.sst"
 data: obj-one
 
 read 102
 ----
 <shared> size of object "00000000000000000001-000001.sst": 7
 <shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
+<shared> close reader for "00000000000000000001-000001.sst"
 data: obj-one
 
 # In this mode, all removes should be no-ops on the shared backend.

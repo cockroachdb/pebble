@@ -7,7 +7,6 @@ package objstorageprovider
 import (
 	"context"
 	"io"
-	"sync"
 
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/shared"
@@ -19,36 +18,29 @@ type sharedReadable struct {
 	storage shared.Storage
 	objName string
 	size    int64
-
-	mu struct {
-		sync.Mutex
-		// rh is used for direct ReadAt calls without a read handle.
-		rh sharedReadHandle
-	}
 }
 
 var _ objstorage.Readable = (*sharedReadable)(nil)
 
 func newSharedReadable(storage shared.Storage, objName string, size int64) *sharedReadable {
-	r := &sharedReadable{
+	return &sharedReadable{
 		storage: storage,
 		objName: objName,
 		size:    size,
 	}
-	r.mu.rh.readable = r
-	return r
 }
 
 func (r *sharedReadable) ReadAt(ctx context.Context, p []byte, offset int64) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.mu.rh.ReadAt(ctx, p, offset)
+	rh := sharedReadHandle{
+		readable: r,
+	}
+	defer func() { _ = rh.Close() }()
+	return rh.ReadAt(ctx, p, offset)
 }
 
 func (r *sharedReadable) Close() error {
-	err := r.mu.rh.Close()
 	r.storage = nil
-	return err
+	return nil
 }
 
 func (r *sharedReadable) Size() int64 {
