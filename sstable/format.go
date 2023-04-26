@@ -53,7 +53,7 @@ func ParseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 		}
 	default:
 		return TableFormatUnspecified, base.CorruptionErrorf(
-			"pebble/table: invalid table (bad magic number)",
+			"pebble/table: invalid table (bad magic number: 0x%x)", magic,
 		)
 	}
 }
