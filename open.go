@@ -204,7 +204,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if d.mu.mem.nextSize > initialMemTableSize {
 		d.mu.mem.nextSize = initialMemTableSize
 	}
-	d.mu.mem.cond.L = &d.mu.Mutex
 	d.mu.cleaner.cond.L = &d.mu.Mutex
 	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.inProgress = make(map[*compaction]struct{})
