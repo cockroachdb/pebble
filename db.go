@@ -264,7 +264,7 @@ type DB struct {
 	// objProvider is used to access and manage SSTs.
 	objProvider objstorage.Provider
 
-	fileLock io.Closer
+	fileLock *Lock
 	dataDir  vfs.File
 	walDir   vfs.File
 
