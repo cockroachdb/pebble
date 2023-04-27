@@ -146,6 +146,39 @@ func TestErrorIfNotPristine(t *testing.T) {
 	}
 }
 
+func TestOpenAlreadyLocked(t *testing.T) {
+	runTest := func(t *testing.T, dirname string, fs vfs.FS) {
+		opts := testingRandomized(&Options{FS: fs})
+		var err error
+		opts.Lock, err = LockDirectory(dirname, fs)
+		require.NoError(t, err)
+		defer opts.Lock.Close()
+
+		d, err := Open(dirname, opts)
+		require.NoError(t, err)
+		require.NoError(t, d.Set([]byte("foo"), []byte("bar"), Sync))
+
+		// Try to open the same database reusing the Options containing the same
+		// Lock. It should error when it observes that it's already referenced.
+		_, err = Open(dirname, opts)
+		require.Error(t, err)
+
+		// Close the database.
+		require.NoError(t, d.Close())
+
+		// Now Opening should succeed again.
+		d, err = Open(dirname, opts)
+		require.NoError(t, err)
+		require.NoError(t, d.Close())
+	}
+	t.Run("memfs", func(t *testing.T) {
+		runTest(t, "", vfs.NewMem())
+	})
+	t.Run("disk", func(t *testing.T) {
+		runTest(t, t.TempDir(), vfs.Default)
+	})
+}
+
 func TestNewDBFilenames(t *testing.T) {
 	versions := map[FormatMajorVersion][]string{
 		FormatMostCompatible: {
