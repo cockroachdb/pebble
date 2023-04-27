@@ -255,7 +255,7 @@ type DB struct {
 	// The on-disk size of the current OPTIONS file.
 	optionsFileSize uint64
 
-	fileLock io.Closer
+	fileLock *Lock
 	dataDir  vfs.File
 	walDir   vfs.File
 
@@ -1548,14 +1548,14 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 // EstimateDiskUsage returns the estimated filesystem space used in bytes for
 // storing the range `[start, end]`. The estimation is computed as follows:
 //
-// - For sstables fully contained in the range the whole file size is included.
-// - For sstables partially contained in the range the overlapping data block sizes
-//   are included. Even if a data block partially overlaps, or we cannot determine
-//   overlap due to abbreviated index keys, the full data block size is included in
-//   the estimation. Note that unlike fully contained sstables, none of the
-//   meta-block space is counted for partially overlapped files.
-// - There may also exist WAL entries for unflushed keys in this range. This
-//   estimation currently excludes space used for the range in the WAL.
+//   - For sstables fully contained in the range the whole file size is included.
+//   - For sstables partially contained in the range the overlapping data block sizes
+//     are included. Even if a data block partially overlaps, or we cannot determine
+//     overlap due to abbreviated index keys, the full data block size is included in
+//     the estimation. Note that unlike fully contained sstables, none of the
+//     meta-block space is counted for partially overlapped files.
+//   - There may also exist WAL entries for unflushed keys in this range. This
+//     estimation currently excludes space used for the range in the WAL.
 func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
