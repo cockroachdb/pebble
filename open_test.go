@@ -133,6 +133,42 @@ func TestErrorIfNotExists(t *testing.T) {
 	})
 }
 
+func TestOpenAlreadyLocked(t *testing.T) {
+	runTest := func(t *testing.T, dirname string, fs vfs.FS) {
+		opts := testingRandomized(&Options{FS: fs})
+		var err error
+		opts.Lock, err = LockDirectory(dirname, fs)
+		require.NoError(t, err)
+
+		d, err := Open(dirname, opts)
+		require.NoError(t, err)
+		require.NoError(t, d.Set([]byte("foo"), []byte("bar"), Sync))
+
+		// Try to open the same database reusing the Options containing the same
+		// Lock. It should error when it observes that it's already referenced.
+		_, err = Open(dirname, opts)
+		require.Error(t, err)
+
+		// Close the database.
+		require.NoError(t, d.Close())
+
+		// Now Opening should succeed again.
+		d, err = Open(dirname, opts)
+		require.NoError(t, err)
+		require.NoError(t, d.Close())
+
+		require.NoError(t, opts.Lock.Close())
+		// There should be no more remaining references.
+		require.Equal(t, int32(0), atomic.LoadInt32(&opts.Lock.atomic.refs))
+	}
+	t.Run("memfs", func(t *testing.T) {
+		runTest(t, "", vfs.NewMem())
+	})
+	t.Run("disk", func(t *testing.T) {
+		runTest(t, t.TempDir(), vfs.Default)
+	})
+}
+
 func TestNewDBFilenames(t *testing.T) {
 	versions := map[FormatMajorVersion][]string{
 		FormatMostCompatible: {
@@ -909,10 +945,11 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 }
 
 // TestOpenWALReplayReadOnlySeqNums tests opening a database:
-// * in read-only mode
-// * with multiple unflushed log files that must replayed
-// * a MANIFEST that sets the last sequence number to a number greater than
-//   the unflushed log files
+//   - in read-only mode
+//   - with multiple unflushed log files that must replayed
+//   - a MANIFEST that sets the last sequence number to a number greater than
+//     the unflushed log files
+//
 // See cockroachdb/cockroach#48660.
 func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 	const root = ""
@@ -1121,9 +1158,9 @@ func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
 //
 // This function is intended to be used in tests with defer.
 //
-//     opts := &Options{FS: vfs.NewMem()}
-//     defer ensureFilesClosed(t, opts)()
-//     /* test code */
+//	opts := &Options{FS: vfs.NewMem()}
+//	defer ensureFilesClosed(t, opts)()
+//	/* test code */
 func ensureFilesClosed(t *testing.T, o *Options) func() {
 	fs := &closeTrackingFS{
 		FS:    o.FS,

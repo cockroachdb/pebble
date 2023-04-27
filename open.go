@@ -198,16 +198,25 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 
 	// Lock the database directory.
-	fileLock, err := opts.FS.Lock(base.MakeFilepath(opts.FS, dirname, fileTypeLock, 0))
-	if err != nil {
-		d.dataDir.Close()
-		if d.dataDir != d.walDir {
-			d.walDir.Close()
+	var fileLock *Lock
+	if opts.Lock != nil {
+		// The caller already acquired the database lock. Ensure that the
+		// directory matches.
+		if dirname != opts.Lock.dirname {
+			return nil, errors.Newf("pebble: opts.Lock acquired in %q not %q", opts.Lock.dirname, dirname)
 		}
-		return nil, err
+		if err := opts.Lock.refForOpen(); err != nil {
+			return nil, err
+		}
+		fileLock = opts.Lock
+	} else {
+		fileLock, err = LockDirectory(dirname, opts.FS)
+		if err != nil {
+			return nil, err
+		}
 	}
 	defer func() {
-		if fileLock != nil {
+		if db == nil {
 			fileLock.Close()
 		}
 	}()
@@ -784,4 +793,68 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 		desc.ManifestFilename = base.MakeFilepath(fs, dirname, fileTypeManifest, manifestFileNum)
 	}
 	return desc, nil
+}
+
+// LockDirectory acquires the database directory lock in the named directory,
+// preventing another process from opening the database. LockDirectory returns a
+// handle to the held lock that may be passed to Open through Options.Lock to
+// subsequently open the database, skipping lock acquistion during Open.
+//
+// LockDirectory may be used to expand the critical section protected by the
+// database lock to include setup before the call to Open.
+func LockDirectory(dirname string, fs vfs.FS) (*Lock, error) {
+	fileLock, err := fs.Lock(base.MakeFilepath(fs, dirname, fileTypeLock, 0))
+	if err != nil {
+		return nil, err
+	}
+	l := &Lock{dirname: dirname, fileLock: fileLock}
+	atomic.StoreInt32(&l.atomic.refs, 1)
+	invariants.SetFinalizer(l, func(obj interface{}) {
+		if refs := atomic.LoadInt32(&l.atomic.refs); refs > 0 {
+			panic(errors.AssertionFailedf("lock for %q finalized with %d refs", dirname, refs))
+		}
+	})
+	return l, nil
+}
+
+// Lock represents a file lock on a directory. It may be passed to Open through
+// Options.Lock to elide lock aquisition during Open.
+type Lock struct {
+	dirname  string
+	fileLock io.Closer
+	atomic   struct {
+		// refs is a count of the number of handles on the lock. refs must be 0, 1
+		// or 2. It must be accessed atomically.
+		//
+		// When acquired by the client and passed to Open, refs = 1 and the Open
+		// call increments it to 2. When the database is closed, it's decremented to
+		// 1. Finally when the original caller, calls Close on the Lock, it's
+		// drecemented to zero and the underlying file lock is released.
+		//
+		// When Open acquires the file lock, refs remains at 1 until the database is
+		// closed.
+		refs int32
+	}
+}
+
+func (l *Lock) refForOpen() error {
+	// During Open, when a user passed in a lock, the reference count must be
+	// exactly 1. If it's zero, the lock is no longer held and is invalid. If
+	// it's 2, the lock is already in use by another database within the
+	// process.
+	if !atomic.CompareAndSwapInt32(&l.atomic.refs, 1, 2) {
+		return errors.Errorf("pebble: unexpected Lock reference count; is the lock already in use?")
+	}
+	return nil
+}
+
+// Close releases the lock, permitting another process to lock and open the
+// database. Close must not be called until after a database using the Lock has
+// been closed.
+func (l *Lock) Close() error {
+	if atomic.AddInt32(&l.atomic.refs, -1) > 0 {
+		return nil
+	}
+	defer func() { l.fileLock = nil }()
+	return l.fileLock.Close()
 }

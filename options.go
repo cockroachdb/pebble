@@ -635,6 +635,17 @@ type Options struct {
 	// The default value uses the underlying operating system's file system.
 	FS vfs.FS
 
+	// Lock, if set, must be a database lock acquired through LockDirectory for
+	// the same directory passed to Open. If provided, Open will skip locking
+	// the directory. Closing the database will not release the lock, and it's
+	// the responsibility of the caller to release the lock after closing the
+	// database.
+	//
+	// Open will enforce that the Lock passed locks the same directory passed to
+	// Open. Concurrent calls to Open using the same Lock are detected and
+	// prohibited.
+	Lock *Lock
+
 	// The count of L0 files necessary to trigger an L0 compaction.
 	L0CompactionFileThreshold int
 
