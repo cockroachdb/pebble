@@ -27,23 +27,23 @@ data: obj-one
 create 2 shared
 obj-two
 ----
-<shared> create object "00000000000000000001-000002.sst"
-<shared> close writer for "00000000000000000001-000002.sst" after 7 bytes
-<shared> create object "00000000000000000001-000002.sst.ref.00000000000000000001.000002"
-<shared> close writer for "00000000000000000001-000002.sst.ref.00000000000000000001.000002" after 0 bytes
+<shared> create object "a629-00000000000000000001-000002.sst"
+<shared> close writer for "a629-00000000000000000001-000002.sst" after 7 bytes
+<shared> create object "a629-00000000000000000001-000002.sst.ref.00000000000000000001.000002"
+<shared> close writer for "a629-00000000000000000001-000002.sst.ref.00000000000000000001.000002" after 0 bytes
 
 read 2
 ----
-<shared> size of object "00000000000000000001-000002.sst.ref.00000000000000000001.000002": 0
-<shared> size of object "00000000000000000001-000002.sst": 7
-<shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
-<shared> close reader for "00000000000000000001-000002.sst"
+<shared> size of object "a629-00000000000000000001-000002.sst.ref.00000000000000000001.000002": 0
+<shared> size of object "a629-00000000000000000001-000002.sst": 7
+<shared> read object "a629-00000000000000000001-000002.sst" at 0: 7 bytes
+<shared> close reader for "a629-00000000000000000001-000002.sst"
 data: obj-two
 
 list
 ----
 000001 -> p1/000001.sst
-000002 -> shared://00000000000000000001-000002.sst
+000002 -> shared://a629-00000000000000000001-000002.sst
 
 close
 ----
@@ -61,7 +61,7 @@ open p1 1
 list
 ----
 000001 -> p1/000001.sst
-000002 -> shared://00000000000000000001-000002.sst
+000002 -> shared://a629-00000000000000000001-000002.sst
 
 remove 1
 ----
@@ -69,9 +69,9 @@ remove 1
 
 remove 2
 ----
-<shared> delete object "00000000000000000001-000002.sst.ref.00000000000000000001.000002"
-<shared> list (prefix="00000000000000000001-000002.sst.ref.", delimiter="")
-<shared> delete object "00000000000000000001-000002.sst"
+<shared> delete object "a629-00000000000000000001-000002.sst.ref.00000000000000000001.000002"
+<shared> list (prefix="a629-00000000000000000001-000002.sst.ref.", delimiter="")
+<shared> delete object "a629-00000000000000000001-000002.sst"
 
 link-or-copy 3 local
 three
@@ -89,17 +89,17 @@ four
 ----
 <local fs> create: temp-file-2
 <local fs> close: temp-file-2
-<shared> create object "00000000000000000001-000004.sst"
-<shared> close writer for "00000000000000000001-000004.sst" after 4 bytes
-<shared> create object "00000000000000000001-000004.sst.ref.00000000000000000001.000004"
-<shared> close writer for "00000000000000000001-000004.sst.ref.00000000000000000001.000004" after 0 bytes
+<shared> create object "2f2f-00000000000000000001-000004.sst"
+<shared> close writer for "2f2f-00000000000000000001-000004.sst" after 4 bytes
+<shared> create object "2f2f-00000000000000000001-000004.sst.ref.00000000000000000001.000004"
+<shared> close writer for "2f2f-00000000000000000001-000004.sst.ref.00000000000000000001.000004" after 0 bytes
 
 read 4
 ----
-<shared> size of object "00000000000000000001-000004.sst.ref.00000000000000000001.000004": 0
-<shared> size of object "00000000000000000001-000004.sst": 4
-<shared> read object "00000000000000000001-000004.sst" at 0: 4 bytes
-<shared> close reader for "00000000000000000001-000004.sst"
+<shared> size of object "2f2f-00000000000000000001-000004.sst.ref.00000000000000000001.000004": 0
+<shared> size of object "2f2f-00000000000000000001-000004.sst": 4
+<shared> read object "2f2f-00000000000000000001-000004.sst" at 0: 4 bytes
+<shared> close reader for "2f2f-00000000000000000001-000004.sst"
 data: four
 
 close
