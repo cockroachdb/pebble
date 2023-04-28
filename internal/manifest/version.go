@@ -1058,15 +1058,21 @@ func (v *Version) DebugString(format base.FormatKey) string {
 	return v.string(format, true)
 }
 
+func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSlice) string {
+	var buf bytes.Buffer
+	for sublevel := len(sublevels) - 1; sublevel >= 0; sublevel-- {
+		fmt.Fprintf(&buf, "0.%d:\n", sublevel)
+		sublevels[sublevel].Each(func(f *FileMetadata) {
+			fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
+		})
+	}
+	return buf.String()
+}
+
 func (v *Version) string(format base.FormatKey, verbose bool) string {
 	var buf bytes.Buffer
 	if len(v.L0SublevelFiles) > 0 {
-		for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
-			fmt.Fprintf(&buf, "0.%d:\n", sublevel)
-			v.L0SublevelFiles[sublevel].Each(func(f *FileMetadata) {
-				fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
-			})
-		}
+		fmt.Fprintf(&buf, "%s", describeSublevels(format, verbose, v.L0SublevelFiles))
 	}
 	for level := 1; level < NumLevels; level++ {
 		if v.Levels[level].Empty() {
