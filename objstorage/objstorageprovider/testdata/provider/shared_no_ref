@@ -16,47 +16,47 @@ open p1 1
 create 1 shared no-ref-tracking
 obj-one
 ----
-<shared> create object "00000000000000000001-000001.sst"
-<shared> close writer for "00000000000000000001-000001.sst" after 7 bytes
+<shared> create object "61a6-00000000000000000001-000001.sst"
+<shared> close writer for "61a6-00000000000000000001-000001.sst" after 7 bytes
 
 read 1
 ----
-<shared> size of object "00000000000000000001-000001.sst": 7
-<shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
-<shared> close reader for "00000000000000000001-000001.sst"
+<shared> size of object "61a6-00000000000000000001-000001.sst": 7
+<shared> read object "61a6-00000000000000000001-000001.sst" at 0: 7 bytes
+<shared> close reader for "61a6-00000000000000000001-000001.sst"
 data: obj-one
 
 create 2 shared no-ref-tracking
 obj-two
 ----
-<shared> create object "00000000000000000001-000002.sst"
-<shared> close writer for "00000000000000000001-000002.sst" after 7 bytes
+<shared> create object "a629-00000000000000000001-000002.sst"
+<shared> close writer for "a629-00000000000000000001-000002.sst" after 7 bytes
 
 read 2
 ----
-<shared> size of object "00000000000000000001-000002.sst": 7
-<shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
-<shared> close reader for "00000000000000000001-000002.sst"
+<shared> size of object "a629-00000000000000000001-000002.sst": 7
+<shared> read object "a629-00000000000000000001-000002.sst" at 0: 7 bytes
+<shared> close reader for "a629-00000000000000000001-000002.sst"
 data: obj-two
 
 list
 ----
-000001 -> shared://00000000000000000001-000001.sst
-000002 -> shared://00000000000000000001-000002.sst
+000001 -> shared://61a6-00000000000000000001-000001.sst
+000002 -> shared://a629-00000000000000000001-000002.sst
 
 link-or-copy 3 shared no-ref-tracking
 obj-three
 ----
 <local fs> create: temp-file-1
 <local fs> close: temp-file-1
-<shared> create object "00000000000000000001-000003.sst"
-<shared> close writer for "00000000000000000001-000003.sst" after 9 bytes
+<shared> create object "eaac-00000000000000000001-000003.sst"
+<shared> close writer for "eaac-00000000000000000001-000003.sst" after 9 bytes
 
 read 3
 ----
-<shared> size of object "00000000000000000001-000003.sst": 9
-<shared> read object "00000000000000000001-000003.sst" at 0: 9 bytes
-<shared> close reader for "00000000000000000001-000003.sst"
+<shared> size of object "eaac-00000000000000000001-000003.sst": 9
+<shared> read object "eaac-00000000000000000001-000003.sst" at 0: 9 bytes
+<shared> close reader for "eaac-00000000000000000001-000003.sst"
 data: obj-three
 
 close
@@ -73,29 +73,29 @@ open p1 1
 
 list
 ----
-000001 -> shared://00000000000000000001-000001.sst
-000002 -> shared://00000000000000000001-000002.sst
-000003 -> shared://00000000000000000001-000003.sst
+000001 -> shared://61a6-00000000000000000001-000001.sst
+000002 -> shared://a629-00000000000000000001-000002.sst
+000003 -> shared://eaac-00000000000000000001-000003.sst
 
 read 1
 ----
-<shared> size of object "00000000000000000001-000001.sst": 7
-<shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
-<shared> close reader for "00000000000000000001-000001.sst"
+<shared> size of object "61a6-00000000000000000001-000001.sst": 7
+<shared> read object "61a6-00000000000000000001-000001.sst" at 0: 7 bytes
+<shared> close reader for "61a6-00000000000000000001-000001.sst"
 data: obj-one
 
 read 2
 ----
-<shared> size of object "00000000000000000001-000002.sst": 7
-<shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
-<shared> close reader for "00000000000000000001-000002.sst"
+<shared> size of object "a629-00000000000000000001-000002.sst": 7
+<shared> read object "a629-00000000000000000001-000002.sst" at 0: 7 bytes
+<shared> close reader for "a629-00000000000000000001-000002.sst"
 data: obj-two
 
 read 3
 ----
-<shared> size of object "00000000000000000001-000003.sst": 9
-<shared> read object "00000000000000000001-000003.sst" at 0: 9 bytes
-<shared> close reader for "00000000000000000001-000003.sst"
+<shared> size of object "eaac-00000000000000000001-000003.sst": 9
+<shared> read object "eaac-00000000000000000001-000003.sst" at 0: 9 bytes
+<shared> close reader for "eaac-00000000000000000001-000003.sst"
 data: obj-three
 
 save-backing b1 1
@@ -121,26 +121,26 @@ b1 101
 b2 102
 ----
 <local fs> sync: p2/SHARED-CATALOG-000001
-000101 -> shared://00000000000000000001-000001.sst
-000102 -> shared://00000000000000000001-000001.sst
+000101 -> shared://61a6-00000000000000000001-000001.sst
+000102 -> shared://61a6-00000000000000000001-000001.sst
 
 list
 ----
-000101 -> shared://00000000000000000001-000001.sst
-000102 -> shared://00000000000000000001-000001.sst
+000101 -> shared://61a6-00000000000000000001-000001.sst
+000102 -> shared://61a6-00000000000000000001-000001.sst
 
 read 101
 ----
-<shared> size of object "00000000000000000001-000001.sst": 7
-<shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
-<shared> close reader for "00000000000000000001-000001.sst"
+<shared> size of object "61a6-00000000000000000001-000001.sst": 7
+<shared> read object "61a6-00000000000000000001-000001.sst" at 0: 7 bytes
+<shared> close reader for "61a6-00000000000000000001-000001.sst"
 data: obj-one
 
 read 102
 ----
-<shared> size of object "00000000000000000001-000001.sst": 7
-<shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
-<shared> close reader for "00000000000000000001-000001.sst"
+<shared> size of object "61a6-00000000000000000001-000001.sst": 7
+<shared> read object "61a6-00000000000000000001-000001.sst" at 0: 7 bytes
+<shared> close reader for "61a6-00000000000000000001-000001.sst"
 data: obj-one
 
 # In this mode, all removes should be no-ops on the shared backend.

@@ -6,7 +6,6 @@ package objstorageprovider
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -134,50 +133,6 @@ func (p *provider) sharedSync() error {
 
 func (p *provider) sharedPath(meta objstorage.ObjectMetadata) string {
 	return "shared://" + sharedObjectName(meta)
-}
-
-// sharedObjectName returns the name of an object on shared storage.
-//
-// For sstables, the format is: <creator-id>-<file-num>.sst
-// For example: 00000000000000000002-000001.sst
-func sharedObjectName(meta objstorage.ObjectMetadata) string {
-	// TODO(radu): prepend a "shard" value for better distribution within the bucket?
-	return fmt.Sprintf(
-		"%s-%s",
-		meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum),
-	)
-}
-
-// sharedObjectRefName returns the name of the object's ref marker associated
-// with this provider. This name is the object's name concatenated with
-// ".ref.<provider-id>.<local-file-num>".
-//
-// For example: 00000000000000000002-000001.sst.ref.00000000000000000005.000008
-func (p *provider) sharedObjectRefName(meta objstorage.ObjectMetadata) string {
-	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
-		panic("ref object used when ref tracking disabled")
-	}
-	return sharedObjectRefName(meta, p.shared.creatorID, meta.DiskFileNum)
-}
-
-func sharedObjectRefName(
-	meta objstorage.ObjectMetadata, refCreatorID objstorage.CreatorID, refFileNum base.DiskFileNum,
-) string {
-	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
-		panic("ref object used when ref tracking disabled")
-	}
-	return fmt.Sprintf(
-		"%s-%s.ref.%s.%s",
-		meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum), refCreatorID, refFileNum,
-	)
-
-}
-
-func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
-	return fmt.Sprintf(
-		"%s-%s.ref.",
-		meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum),
-	)
 }
 
 // sharedCreateRef creates a reference marker object.
