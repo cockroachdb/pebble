@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // TODO(peter): describe the MANIFEST file format, independently of the C++
@@ -966,6 +967,16 @@ func (b *BulkVersionEdit) Apply(
 				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(addedFiles, flushSplitBytes, &v.Levels[0])
 				if errors.Is(err, errInvalidL0SublevelsOpt) {
 					err = v.InitL0Sublevels(cmp, formatKey, flushSplitBytes)
+				} else if invariants.Enabled && err == nil {
+					copyOfSublevels, err := NewL0Sublevels(&v.Levels[0], cmp, formatKey, flushSplitBytes)
+					if err != nil {
+						panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
+					}
+					s1 := describeSublevels(base.DefaultFormatter, false /* verbose */, copyOfSublevels.Levels)
+					s2 := describeSublevels(base.DefaultFormatter, false /* verbose */, v.L0Sublevels.Levels)
+					if s1 != s2 {
+						panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
+					}
 				}
 				if err != nil {
 					return nil, errors.Wrap(err, "pebble: internal error")
