@@ -105,7 +105,7 @@ type CreatorID uint64
 // IsSet returns true if the CreatorID is not zero.
 func (c CreatorID) IsSet() bool { return c != 0 }
 
-func (c CreatorID) String() string { return fmt.Sprintf("%020d", c) }
+func (c CreatorID) String() string { return fmt.Sprintf("%d", c) }
 
 // SharedCleanupMethod indicates the method for cleaning up unused shared objects.
 type SharedCleanupMethod uint8

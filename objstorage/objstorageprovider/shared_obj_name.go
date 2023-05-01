@@ -19,7 +19,7 @@ func sharedObjectName(meta objstorage.ObjectMetadata) string {
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
-			"%04x-%020d-%06d.sst",
+			"%04x-%d-%06d.sst",
 			objHash(meta), meta.Shared.CreatorID, meta.Shared.CreatorFileNum.FileNum(),
 		)
 	}
@@ -40,7 +40,7 @@ func sharedObjectRefName(
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
-			"%04x-%020d-%06d.sst.ref.%020d.%06d",
+			"%04x-%d-%06d.sst.ref.%d.%06d",
 			objHash(meta), meta.Shared.CreatorID, meta.Shared.CreatorFileNum.FileNum(), refCreatorID, refFileNum.FileNum(),
 		)
 	}
@@ -51,7 +51,7 @@ func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
-			"%04x-%020d-%06d.sst.ref.",
+			"%04x-%d-%06d.sst.ref.",
 			objHash(meta), meta.Shared.CreatorID, meta.Shared.CreatorFileNum.FileNum(),
 		)
 	}
