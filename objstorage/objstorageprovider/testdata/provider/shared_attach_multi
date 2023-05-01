@@ -15,10 +15,10 @@ open p1 1
 create 1 shared
 obj-one
 ----
-<shared> create object "61a6-00000000000000000001-000001.sst"
-<shared> close writer for "61a6-00000000000000000001-000001.sst" after 7 bytes
-<shared> create object "61a6-00000000000000000001-000001.sst.ref.00000000000000000001.000001"
-<shared> close writer for "61a6-00000000000000000001-000001.sst.ref.00000000000000000001.000001" after 0 bytes
+<shared> create object "61a6-1-000001.sst"
+<shared> close writer for "61a6-1-000001.sst" after 7 bytes
+<shared> create object "61a6-1-000001.sst.ref.1.000001"
+<shared> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
 
 save-backing b1 1
 ----
@@ -41,19 +41,19 @@ b1 101
 b1 102
 b1 103
 ----
-<shared> create object "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000101"
-<shared> close writer for "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000101" after 0 bytes
-<shared> size of object "61a6-00000000000000000001-000001.sst.ref.00000000000000000001.000001": 0
-<shared> create object "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000102"
-<shared> close writer for "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000102" after 0 bytes
-<shared> size of object "61a6-00000000000000000001-000001.sst.ref.00000000000000000001.000001": 0
-<shared> create object "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000103"
-<shared> close writer for "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000103" after 0 bytes
-<shared> size of object "61a6-00000000000000000001-000001.sst.ref.00000000000000000001.000001": 0
+<shared> create object "61a6-1-000001.sst.ref.2.000101"
+<shared> close writer for "61a6-1-000001.sst.ref.2.000101" after 0 bytes
+<shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
+<shared> create object "61a6-1-000001.sst.ref.2.000102"
+<shared> close writer for "61a6-1-000001.sst.ref.2.000102" after 0 bytes
+<shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
+<shared> create object "61a6-1-000001.sst.ref.2.000103"
+<shared> close writer for "61a6-1-000001.sst.ref.2.000103" after 0 bytes
+<shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
 <local fs> sync: p2/SHARED-CATALOG-000001
-000101 -> shared://61a6-00000000000000000001-000001.sst
-000102 -> shared://61a6-00000000000000000001-000001.sst
-000103 -> shared://61a6-00000000000000000001-000001.sst
+000101 -> shared://61a6-1-000001.sst
+000102 -> shared://61a6-1-000001.sst
+000103 -> shared://61a6-1-000001.sst
 
 close-backing b1
 ----
@@ -64,30 +64,30 @@ switch p1
 
 remove 1
 ----
-<shared> delete object "61a6-00000000000000000001-000001.sst.ref.00000000000000000001.000001"
-<shared> list (prefix="61a6-00000000000000000001-000001.sst.ref.", delimiter="")
-<shared>  - 61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000101
-<shared>  - 61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000102
-<shared>  - 61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000103
+<shared> delete object "61a6-1-000001.sst.ref.1.000001"
+<shared> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<shared>  - 61a6-1-000001.sst.ref.2.000101
+<shared>  - 61a6-1-000001.sst.ref.2.000102
+<shared>  - 61a6-1-000001.sst.ref.2.000103
 
 switch p2
 ----
 
 remove 101
 ----
-<shared> delete object "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000101"
-<shared> list (prefix="61a6-00000000000000000001-000001.sst.ref.", delimiter="")
-<shared>  - 61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000102
-<shared>  - 61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000103
+<shared> delete object "61a6-1-000001.sst.ref.2.000101"
+<shared> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<shared>  - 61a6-1-000001.sst.ref.2.000102
+<shared>  - 61a6-1-000001.sst.ref.2.000103
 
 remove 103
 ----
-<shared> delete object "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000103"
-<shared> list (prefix="61a6-00000000000000000001-000001.sst.ref.", delimiter="")
-<shared>  - 61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000102
+<shared> delete object "61a6-1-000001.sst.ref.2.000103"
+<shared> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<shared>  - 61a6-1-000001.sst.ref.2.000102
 
 remove 102
 ----
-<shared> delete object "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000102"
-<shared> list (prefix="61a6-00000000000000000001-000001.sst.ref.", delimiter="")
-<shared> delete object "61a6-00000000000000000001-000001.sst"
+<shared> delete object "61a6-1-000001.sst.ref.2.000102"
+<shared> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<shared> delete object "61a6-1-000001.sst"

@@ -44,7 +44,7 @@ set-creator-id 5
 
 set-creator-id 6
 ----
-error setting creator ID: attempt to change CreatorID from 00000000000000000005 to 00000000000000000006
+error setting creator ID: attempt to change CreatorID from 5 to 6
 
 # Bad batches.
 batch
@@ -63,13 +63,13 @@ close: test/SHARED-CATALOG-000001
 
 open test
 ----
-creator-id: 00000000000000000005
+creator-id: 5
 000002: 20/000200
 000003: 30/000300
 
 set-creator-id 6
 ----
-error setting creator ID: attempt to change CreatorID from 00000000000000000005 to 00000000000000000006
+error setting creator ID: attempt to change CreatorID from 5 to 6
 
 batch
 add 4 40 40
@@ -96,7 +96,7 @@ close: test/SHARED-CATALOG-000002
 
 open test
 ----
-creator-id: 00000000000000000005
+creator-id: 5
 000002: 20/000200
 000004: 40/000040
 000008: 80/000080
@@ -133,7 +133,7 @@ close: other-path/SHARED-CATALOG-000001
 
 open test
 ----
-creator-id: 00000000000000000005
+creator-id: 5
 000002: 20/000200
 000004: 40/000040
 000008: 80/000080
