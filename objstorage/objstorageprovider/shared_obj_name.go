@@ -14,12 +14,12 @@ import (
 // sharedObjectName returns the name of an object on shared storage.
 //
 // For sstables, the format is: <hash>-<creator-id>-<file-num>.sst
-// For example: 1a3f-00000000000000000002-000001.sst
+// For example: 1a3f-2-000001.sst
 func sharedObjectName(meta objstorage.ObjectMetadata) string {
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
-			"%04x-%020d-%06d.sst",
+			"%04x-%d-%06d.sst",
 			objHash(meta), meta.Shared.CreatorID, meta.Shared.CreatorFileNum.FileNum(),
 		)
 	}
@@ -30,7 +30,7 @@ func sharedObjectName(meta objstorage.ObjectMetadata) string {
 // with a given referencing provider. This name is the object's name concatenated with
 // ".ref.<ref-creator-id>.<local-file-num>".
 //
-// For example: 1a3f-00000000000000000002-000001.sst.ref.00000000000000000005.000008
+// For example: 1a3f-2-000001.sst.ref.5.000008
 func sharedObjectRefName(
 	meta objstorage.ObjectMetadata, refCreatorID objstorage.CreatorID, refFileNum base.DiskFileNum,
 ) string {
@@ -40,7 +40,7 @@ func sharedObjectRefName(
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
-			"%04x-%020d-%06d.sst.ref.%020d.%06d",
+			"%04x-%d-%06d.sst.ref.%d.%06d",
 			objHash(meta), meta.Shared.CreatorID, meta.Shared.CreatorFileNum.FileNum(), refCreatorID, refFileNum.FileNum(),
 		)
 	}
@@ -51,7 +51,7 @@ func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
-			"%04x-%020d-%06d.sst.ref.",
+			"%04x-%d-%06d.sst.ref.",
 			objHash(meta), meta.Shared.CreatorID, meta.Shared.CreatorFileNum.FileNum(),
 		)
 	}
@@ -62,7 +62,7 @@ func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
 // with this provider. This name is the object's name concatenated with
 // ".ref.<creator-id>.<local-file-num>".
 //
-// For example: 1a3f-00000000000000000002-000001.sst.ref.00000000000000000005.000008
+// For example: 1a3f-2-000001.sst.ref.5.000008
 func (p *provider) sharedObjectRefName(meta objstorage.ObjectMetadata) string {
 	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
 		panic("ref object used when ref tracking disabled")

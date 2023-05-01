@@ -46,13 +46,13 @@ func TestSharedObjectNames(t *testing.T) {
 		meta.FileType = base.FileTypeTable
 		meta.Shared.CreatorID = objstorage.CreatorID(456)
 		meta.Shared.CreatorFileNum = base.FileNum(789).DiskFileNum()
-		require.Equal(t, sharedObjectName(meta), "0e17-00000000000000000456-000789.sst")
-		require.Equal(t, sharedObjectRefPrefix(meta), "0e17-00000000000000000456-000789.sst.ref.")
+		require.Equal(t, sharedObjectName(meta), "0e17-456-000789.sst")
+		require.Equal(t, sharedObjectRefPrefix(meta), "0e17-456-000789.sst.ref.")
 
 		refCreatorID := objstorage.CreatorID(101112)
 		require.Equal(
 			t, sharedObjectRefName(meta, refCreatorID, meta.DiskFileNum),
-			"0e17-00000000000000000456-000789.sst.ref.00000000000000101112.000123",
+			"0e17-456-000789.sst.ref.101112.000123",
 		)
 	})
 }

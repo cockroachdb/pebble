@@ -13,26 +13,26 @@ open p1 1
 create 1 shared
 obj-one
 ----
-<shared> create object "61a6-00000000000000000001-000001.sst"
-<shared> close writer for "61a6-00000000000000000001-000001.sst" after 7 bytes
-<shared> create object "61a6-00000000000000000001-000001.sst.ref.00000000000000000001.000001"
-<shared> close writer for "61a6-00000000000000000001-000001.sst.ref.00000000000000000001.000001" after 0 bytes
+<shared> create object "61a6-1-000001.sst"
+<shared> close writer for "61a6-1-000001.sst" after 7 bytes
+<shared> create object "61a6-1-000001.sst.ref.1.000001"
+<shared> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
 
 create 2 shared
 obj-two
 ----
-<shared> create object "a629-00000000000000000001-000002.sst"
-<shared> close writer for "a629-00000000000000000001-000002.sst" after 7 bytes
-<shared> create object "a629-00000000000000000001-000002.sst.ref.00000000000000000001.000002"
-<shared> close writer for "a629-00000000000000000001-000002.sst.ref.00000000000000000001.000002" after 0 bytes
+<shared> create object "a629-1-000002.sst"
+<shared> close writer for "a629-1-000002.sst" after 7 bytes
+<shared> create object "a629-1-000002.sst.ref.1.000002"
+<shared> close writer for "a629-1-000002.sst.ref.1.000002" after 0 bytes
 
 create 3 shared
 obj-three
 ----
-<shared> create object "eaac-00000000000000000001-000003.sst"
-<shared> close writer for "eaac-00000000000000000001-000003.sst" after 9 bytes
-<shared> create object "eaac-00000000000000000001-000003.sst.ref.00000000000000000001.000003"
-<shared> close writer for "eaac-00000000000000000001-000003.sst.ref.00000000000000000001.000003" after 0 bytes
+<shared> create object "eaac-1-000003.sst"
+<shared> close writer for "eaac-1-000003.sst" after 9 bytes
+<shared> create object "eaac-1-000003.sst.ref.1.000003"
+<shared> close writer for "eaac-1-000003.sst.ref.1.000003" after 0 bytes
 
 save-backing b1 1
 ----
@@ -55,38 +55,38 @@ open p2 2
 create 4 shared
 obj-four
 ----
-<shared> create object "4c52-00000000000000000002-000004.sst"
-<shared> close writer for "4c52-00000000000000000002-000004.sst" after 8 bytes
-<shared> create object "4c52-00000000000000000002-000004.sst.ref.00000000000000000002.000004"
-<shared> close writer for "4c52-00000000000000000002-000004.sst.ref.00000000000000000002.000004" after 0 bytes
+<shared> create object "4c52-2-000004.sst"
+<shared> close writer for "4c52-2-000004.sst" after 8 bytes
+<shared> create object "4c52-2-000004.sst.ref.2.000004"
+<shared> close writer for "4c52-2-000004.sst.ref.2.000004" after 0 bytes
 
 attach
 b1 101
 b2 102
 ----
-<shared> create object "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000101"
-<shared> close writer for "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000101" after 0 bytes
-<shared> size of object "61a6-00000000000000000001-000001.sst.ref.00000000000000000001.000001": 0
-<shared> create object "a629-00000000000000000001-000002.sst.ref.00000000000000000002.000102"
-<shared> close writer for "a629-00000000000000000001-000002.sst.ref.00000000000000000002.000102" after 0 bytes
-<shared> size of object "a629-00000000000000000001-000002.sst.ref.00000000000000000001.000002": 0
+<shared> create object "61a6-1-000001.sst.ref.2.000101"
+<shared> close writer for "61a6-1-000001.sst.ref.2.000101" after 0 bytes
+<shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
+<shared> create object "a629-1-000002.sst.ref.2.000102"
+<shared> close writer for "a629-1-000002.sst.ref.2.000102" after 0 bytes
+<shared> size of object "a629-1-000002.sst.ref.1.000002": 0
 <local fs> sync: p2/SHARED-CATALOG-000001
-000101 -> shared://61a6-00000000000000000001-000001.sst
-000102 -> shared://a629-00000000000000000001-000002.sst
+000101 -> shared://61a6-1-000001.sst
+000102 -> shared://a629-1-000002.sst
 
 # Remove of object with no other refs; backing object should be removed.
 remove 4
 ----
-<shared> delete object "4c52-00000000000000000002-000004.sst.ref.00000000000000000002.000004"
-<shared> list (prefix="4c52-00000000000000000002-000004.sst.ref.", delimiter="")
-<shared> delete object "4c52-00000000000000000002-000004.sst"
+<shared> delete object "4c52-2-000004.sst.ref.2.000004"
+<shared> list (prefix="4c52-2-000004.sst.ref.", delimiter="")
+<shared> delete object "4c52-2-000004.sst"
 
 # Object shared with p2; backing object should not be removed.
 remove 101
 ----
-<shared> delete object "61a6-00000000000000000001-000001.sst.ref.00000000000000000002.000101"
-<shared> list (prefix="61a6-00000000000000000001-000001.sst.ref.", delimiter="")
-<shared>  - 61a6-00000000000000000001-000001.sst.ref.00000000000000000001.000001
+<shared> delete object "61a6-1-000001.sst.ref.2.000101"
+<shared> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<shared>  - 61a6-1-000001.sst.ref.1.000001
 
 switch p1
 ----
@@ -104,6 +104,6 @@ switch p2
 
 remove 102
 ----
-<shared> delete object "a629-00000000000000000001-000002.sst.ref.00000000000000000002.000102"
-<shared> list (prefix="a629-00000000000000000001-000002.sst.ref.", delimiter="")
-<shared>  - a629-00000000000000000001-000002.sst.ref.00000000000000000001.000002
+<shared> delete object "a629-1-000002.sst.ref.2.000102"
+<shared> list (prefix="a629-1-000002.sst.ref.", delimiter="")
+<shared>  - a629-1-000002.sst.ref.1.000002
