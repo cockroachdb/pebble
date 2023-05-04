@@ -504,14 +504,6 @@ func (i *singleLevelIterator) initBounds() {
 	}
 }
 
-func (i *singleLevelIterator) keyOutOfBounds(key []byte, upper []byte, upperInclusive bool) bool {
-	if upper == nil {
-		return false
-	}
-	cmp := i.cmp(key, upper)
-	return (!upperInclusive && cmp >= 0) || cmp > 0
-}
-
 type loadBlockResult int8
 
 const (
@@ -694,9 +686,12 @@ func (i *singleLevelIterator) trySeekGEUsingNextWithinBlock(
 	for j := 0; j < numStepsBeforeSeek; j++ {
 		curKeyCmp := i.cmp(k.UserKey, key)
 		if curKeyCmp >= 0 {
-			if i.keyOutOfBounds(k.UserKey, i.blockUpper, i.endKeyInclusive) {
-				i.exhaustedBounds = +1
-				return nil, base.LazyValue{}, true
+			if i.blockUpper != nil {
+				cmp := i.cmp(k.UserKey, i.blockUpper)
+				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+					i.exhaustedBounds = +1
+					return nil, base.LazyValue{}, true
+				}
 			}
 			return k, v, true
 		}
@@ -854,9 +849,12 @@ func (i *singleLevelIterator) seekGEHelper(
 				less = i.cmp(currKey.UserKey, key) < 0
 			}
 			if !less {
-				if i.keyOutOfBounds(currKey.UserKey, i.blockUpper, i.endKeyInclusive) {
-					i.exhaustedBounds = +1
-					return nil, base.LazyValue{}
+				if i.blockUpper != nil {
+					cmp := i.cmp(currKey.UserKey, i.blockUpper)
+					if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+						i.exhaustedBounds = +1
+						return nil, base.LazyValue{}
+					}
 				}
 				return currKey, value
 			}
@@ -887,9 +885,12 @@ func (i *singleLevelIterator) seekGEHelper(
 			// though this is the block separator, the same user key can span
 			// multiple blocks. If upper is exclusive we use >= below, else
 			// we use >.
-			if i.keyOutOfBounds(ikey.UserKey, i.upper, i.endKeyInclusive) {
-				i.exhaustedBounds = +1
-				return nil, base.LazyValue{}
+			if i.upper != nil {
+				cmp := i.cmp(ikey.UserKey, i.upper)
+				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+					i.exhaustedBounds = +1
+					return nil, base.LazyValue{}
+				}
 			}
 			// Want to skip to the next block.
 			dontSeekWithinBlock = true
@@ -897,9 +898,12 @@ func (i *singleLevelIterator) seekGEHelper(
 	}
 	if !dontSeekWithinBlock {
 		if ikey, val := i.data.SeekGE(key, flags.DisableTrySeekUsingNext()); ikey != nil {
-			if i.keyOutOfBounds(ikey.UserKey, i.blockUpper, i.endKeyInclusive) {
-				i.exhaustedBounds = +1
-				return nil, base.LazyValue{}
+			if i.blockUpper != nil {
+				cmp := i.cmp(ikey.UserKey, i.blockUpper)
+				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+					i.exhaustedBounds = +1
+					return nil, base.LazyValue{}
+				}
 			}
 			return ikey, val
 		}
@@ -1179,9 +1183,12 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, base.LazyValue) {
 	}
 	if result == loadBlockOK {
 		if ikey, val := i.data.First(); ikey != nil {
-			if i.keyOutOfBounds(ikey.UserKey, i.blockUpper, i.endKeyInclusive) {
-				i.exhaustedBounds = +1
-				return nil, base.LazyValue{}
+			if i.blockUpper != nil {
+				cmp := i.cmp(ikey.UserKey, i.blockUpper)
+				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+					i.exhaustedBounds = +1
+					return nil, base.LazyValue{}
+				}
 			}
 			return ikey, val
 		}
@@ -1193,9 +1200,12 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, base.LazyValue) {
 		// ikey.UserKey since even though this is the block separator, the
 		// same user key can span multiple blocks. If upper is exclusive we
 		// use >= below, else we use >.
-		if i.keyOutOfBounds(ikey.UserKey, i.upper, i.endKeyInclusive) {
-			i.exhaustedBounds = +1
-			return nil, base.LazyValue{}
+		if i.upper != nil {
+			cmp := i.cmp(ikey.UserKey, i.upper)
+			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+				i.exhaustedBounds = +1
+				return nil, base.LazyValue{}
+			}
 		}
 		// Else fall through to skipForward.
 	}
@@ -1280,9 +1290,12 @@ func (i *singleLevelIterator) Next() (*InternalKey, base.LazyValue) {
 		return nil, base.LazyValue{}
 	}
 	if key, val := i.data.Next(); key != nil {
-		if i.keyOutOfBounds(key.UserKey, i.blockUpper, i.endKeyInclusive) {
-			i.exhaustedBounds = +1
-			return nil, base.LazyValue{}
+		if i.blockUpper != nil {
+			cmp := i.cmp(key.UserKey, i.blockUpper)
+			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+				i.exhaustedBounds = +1
+				return nil, base.LazyValue{}
+			}
 		}
 		return key, val
 	}
@@ -1302,9 +1315,12 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.Laz
 		return nil, base.LazyValue{}
 	}
 	if key, val := i.data.nextPrefix(succKey); key != nil {
-		if i.keyOutOfBounds(key.UserKey, i.blockUpper, i.endKeyInclusive) {
-			i.exhaustedBounds = +1
-			return nil, base.LazyValue{}
+		if i.blockUpper != nil {
+			cmp := i.cmp(key.UserKey, i.blockUpper)
+			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+				i.exhaustedBounds = +1
+				return nil, base.LazyValue{}
+			}
 		}
 		return key, val
 	}
@@ -1340,14 +1356,20 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.Laz
 		// though this is the block separator, the same user key can span
 		// multiple blocks. If upper is exclusive we use >= below, else we use
 		// >.
-		if i.keyOutOfBounds(ikey.UserKey, i.upper, i.endKeyInclusive) {
-			i.exhaustedBounds = +1
-			return nil, base.LazyValue{}
+		if i.upper != nil {
+			cmp := i.cmp(ikey.UserKey, i.upper)
+			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+				i.exhaustedBounds = +1
+				return nil, base.LazyValue{}
+			}
 		}
 	} else if key, val := i.data.SeekGE(succKey, base.SeekGEFlagsNone); key != nil {
-		if i.keyOutOfBounds(key.UserKey, i.blockUpper, i.endKeyInclusive) {
-			i.exhaustedBounds = +1
-			return nil, base.LazyValue{}
+		if i.blockUpper != nil {
+			cmp := i.cmp(key.UserKey, i.blockUpper)
+			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+				i.exhaustedBounds = +1
+				return nil, base.LazyValue{}
+			}
 		}
 		return key, val
 	}
@@ -1402,16 +1424,22 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			// keys >= key.UserKey since even though this is the block
 			// separator, the same user key can span multiple blocks. If upper
 			// is exclusive we use >= below, else we use >.
-			if i.keyOutOfBounds(key.UserKey, i.upper, i.endKeyInclusive) {
-				i.exhaustedBounds = +1
-				return nil, base.LazyValue{}
+			if i.upper != nil {
+				cmp := i.cmp(key.UserKey, i.upper)
+				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+					i.exhaustedBounds = +1
+					return nil, base.LazyValue{}
+				}
 			}
 			continue
 		}
 		if key, val := i.data.First(); key != nil {
-			if i.keyOutOfBounds(key.UserKey, i.blockUpper, i.endKeyInclusive) {
-				i.exhaustedBounds = +1
-				return nil, base.LazyValue{}
+			if i.blockUpper != nil {
+				cmp := i.cmp(key.UserKey, i.blockUpper)
+				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+					i.exhaustedBounds = +1
+					return nil, base.LazyValue{}
+				}
 			}
 			return key, val
 		}
@@ -1957,8 +1985,11 @@ func (i *twoLevelIterator) SeekGE(
 			// ikey.UserKey since even though this is the block separator, the
 			// same user key can span multiple index blocks. If upper is
 			// exclusive we use >= below, else we use >.
-			if i.keyOutOfBounds(ikey.UserKey, i.upper, i.endKeyInclusive) {
-				i.exhaustedBounds = +1
+			if i.upper != nil {
+				cmp := i.cmp(ikey.UserKey, i.upper)
+				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+					i.exhaustedBounds = +1
+				}
 			}
 			// Fall through to skipForward.
 			dontSeekWithinSingleLevelIter = true
@@ -2142,8 +2173,11 @@ func (i *twoLevelIterator) SeekPrefixGE(
 			// ikey.UserKey since even though this is the block separator, the
 			// same user key can span multiple index blocks. If upper is
 			// exclusive we use >= below, else we use >.
-			if i.keyOutOfBounds(ikey.UserKey, i.upper, i.endKeyInclusive) {
-				i.exhaustedBounds = +1
+			if i.upper != nil {
+				cmp := i.cmp(ikey.UserKey, i.upper)
+				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+					i.exhaustedBounds = +1
+				}
 			}
 			// Fall through to skipForward.
 			dontSeekWithinSingleLevelIter = true
@@ -2364,8 +2398,11 @@ func (i *twoLevelIterator) First() (*InternalKey, base.LazyValue) {
 		// starts with keys >= ikey.UserKey since even though this is the
 		// block separator, the same user key can span multiple index blocks.
 		// If upper is exclusive we use >= below, else we use >.
-		if i.keyOutOfBounds(ikey.UserKey, i.upper, i.endKeyInclusive) {
-			i.exhaustedBounds = +1
+		if i.upper != nil {
+			cmp := i.cmp(ikey.UserKey, i.upper)
+			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+				i.exhaustedBounds = +1
+			}
 		}
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
@@ -2471,8 +2508,11 @@ func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyVa
 		// Note that the next entry starts with keys >= ikey.UserKey since even
 		// though this is the block separator, the same user key can span multiple
 		// index blocks. If upper is exclusive we use >= below, else we use >.
-		if i.keyOutOfBounds(ikey.UserKey, i.upper, i.endKeyInclusive) {
-			i.exhaustedBounds = +1
+		if i.upper != nil {
+			cmp := i.cmp(ikey.UserKey, i.upper)
+			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+				i.exhaustedBounds = +1
+			}
 		}
 	} else if key, val := i.singleLevelIterator.SeekGE(succKey, base.SeekGEFlagsNone); key != nil {
 		return key, val
@@ -2525,9 +2565,12 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			// this is the block separator, the same user key can span
 			// multiple index blocks. If upper is exclusive we use >=
 			// below, else we use >.
-			if i.keyOutOfBounds(ikey.UserKey, i.upper, i.endKeyInclusive) {
-				i.exhaustedBounds = +1
-				// Next iteration will return.
+			if i.upper != nil {
+				cmp := i.cmp(ikey.UserKey, i.upper)
+				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
+					i.exhaustedBounds = +1
+					// Next iteration will return.
+				}
 			}
 		}
 	}

@@ -401,6 +401,7 @@ func (c *tableCacheShard) newIters(
 		) (sstable.Iterator, error)
 	}
 
+	// TODO(bananabrick): We suffer an allocation if file is a virtual sstable.
 	var ic iterCreator = v.reader
 	if file.Virtual {
 		virtualReader := sstable.MakeVirtualReader(
