@@ -383,6 +383,21 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 	}
 }
 
+func TestMemTableReserved(t *testing.T) {
+	m := newMemTable(memTableOptions{size: 5000})
+	// Increase to 2 references.
+	m.writerRef()
+	// The initial reservation accounts for the already allocated bytes from the
+	// arena.
+	require.Equal(t, m.reserved, m.skl.Arena().Size())
+	b := newBatch(nil)
+	b.Set([]byte("blueberry"), []byte("pie"), nil)
+	require.NotEqual(t, 0, int(b.memTableSize))
+	prevReserved := m.reserved
+	m.prepare(b)
+	require.Equal(t, int(m.reserved), int(b.memTableSize)+int(prevReserved))
+}
+
 func buildMemTable(b *testing.B) (*memTable, [][]byte) {
 	m := newMemTable(memTableOptions{})
 	var keys [][]byte
