@@ -143,6 +143,7 @@ func newMemTable(opts memTableOptions) *memTable {
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
 	m.rangeKeySkl.Reset(arena, m.cmp)
+	m.reserved = arena.Size()
 	return m
 }
 
