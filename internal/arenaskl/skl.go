@@ -68,7 +68,7 @@ const (
 // keys.
 var ErrRecordExists = errors.New("record with this key already exists")
 
-// Skiplist is a fast, cocnurrent skiplist implementation that supports forward
+// Skiplist is a fast, concurrent skiplist implementation that supports forward
 // and backward iteration. See batchskl.Skiplist for a non-concurrent
 // skiplist. Keys and values are immutable once added to the skiplist and
 // deletion is not supported. Instead, higher-level code is expected to add new
