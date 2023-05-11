@@ -29,6 +29,8 @@ type File interface {
 	// method *is* allowed to modify the slice passed in, whether temporarily
 	// or permanently. Callers of Write() need to take this into account.
 	io.Writer
+	// WriteAt() is only supported for files that were opened with FS.OpenReadWrite.
+	io.WriterAt
 
 	// Preallocate optionally preallocates storage for `length` at `offset`
 	// within the file. Implementations may choose to do nothing.
@@ -98,6 +100,10 @@ type FS interface {
 
 	// Open opens the named file for reading. openOptions provides
 	Open(name string, opts ...OpenOption) (File, error)
+
+	// OpenReadWrite opens the named file for reading and writing. If the file
+	// does not exist, it is created.
+	OpenReadWrite(name string, opts ...OpenOption) (File, error)
 
 	// OpenDir opens the named directory for syncing.
 	OpenDir(name string) (File, error)
@@ -222,6 +228,18 @@ func (defaultFS) Link(oldname, newname string) error {
 
 func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 	osFile, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	file := wrapOSFile(osFile)
+	for _, opt := range opts {
+		opt.Apply(file)
+	}
+	return file, nil
+}
+
+func (defaultFS) OpenReadWrite(name string, opts ...OpenOption) (File, error) {
+	osFile, err := os.OpenFile(name, os.O_RDWR|syscall.O_CLOEXEC|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

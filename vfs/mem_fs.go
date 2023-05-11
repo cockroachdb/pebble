@@ -302,6 +302,11 @@ func (y *MemFS) Open(fullname string, opts ...OpenOption) (File, error) {
 	return y.open(fullname)
 }
 
+// OpenReadWrite implements FS.OpenReadWrite.
+func (y *MemFS) OpenReadWrite(fullname string, opts ...OpenOption) (File, error) {
+	return y.open(fullname)
+}
+
 // OpenDir implements FS.OpenDir.
 func (y *MemFS) OpenDir(fullname string) (File, error) {
 	return y.open(fullname)
@@ -699,6 +704,29 @@ func (f *memFile) Write(p []byte) (int, error) {
 			p[i] ^= 0xff
 		}
 	}
+	return len(p), nil
+}
+
+func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
+	if !f.write {
+		return 0, errors.New("pebble/vfs: file was not created for writing")
+	}
+	if f.n.isDir {
+		return 0, errors.New("pebble/vfs: cannot write a directory")
+	}
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	f.n.mu.modTime = time.Now()
+
+	for len(f.n.mu.data) < int(ofs)+len(p) {
+		f.n.mu.data = append(f.n.mu.data, 0)
+	}
+
+	n := copy(f.n.mu.data[int(ofs):int(ofs)+len(p)], p)
+	if n != len(p) {
+		panic("stuff")
+	}
+
 	return len(p), nil
 }
 
