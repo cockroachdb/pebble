@@ -228,6 +228,17 @@ func (fs *enospcFS) Open(name string, opts ...OpenOption) (File, error) {
 	return f, err
 }
 
+func (fs *enospcFS) OpenReadWrite(name string, opts ...OpenOption) (File, error) {
+	f, err := fs.inner.OpenReadWrite(name, opts...)
+	if f != nil {
+		f = &enospcFile{
+			fs:    fs,
+			inner: f,
+		}
+	}
+	return f, err
+}
+
 func (fs *enospcFS) OpenDir(name string) (File, error) {
 	f, err := fs.inner.OpenDir(name)
 	if f != nil {
@@ -370,6 +381,20 @@ func (f *enospcFile) Write(p []byte) (n int, err error) {
 		f.fs.handleENOSPC(gen)
 		var n2 int
 		n2, err = f.inner.Write(p[n:])
+		n += n2
+	}
+	return n, err
+}
+
+func (f *enospcFile) WriteAt(p []byte, ofs int64) (n int, err error) {
+	gen := f.fs.waitUntilReady()
+
+	n, err = f.inner.WriteAt(p, ofs)
+
+	if err != nil && isENOSPC(err) {
+		f.fs.handleENOSPC(gen)
+		var n2 int
+		n2, err = f.inner.WriteAt(p[n:], ofs+int64(n))
 		n += n2
 	}
 	return n, err

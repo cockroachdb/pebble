@@ -37,6 +37,11 @@ func (m mockFile) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func (m mockFile) WriteAt(p []byte, ofs int64) (n int, err error) {
+	time.Sleep(m.syncAndWriteDuration)
+	return len(p), nil
+}
+
 func (m mockFile) Prefetch(offset, length int64) error {
 	panic("unimplemented")
 }
@@ -109,6 +114,10 @@ func (m mockFS) Open(name string, opts ...OpenOption) (File, error) {
 		panic("unimplemented")
 	}
 	return m.open(name, opts...)
+}
+
+func (m mockFS) OpenReadWrite(name string, opts ...OpenOption) (File, error) {
+	panic("unimplemented")
 }
 
 func (m mockFS) OpenDir(name string) (File, error) {

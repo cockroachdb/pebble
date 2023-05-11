@@ -61,6 +61,8 @@ const (
 	OpFileReadAt
 	// OpFileWrite describes a file write operation.
 	OpFileWrite
+	// OpFileWriteAt describes a file seek write operation.
+	OpFileWriteAt
 	// OpFileStat describes a file stat operation.
 	OpFileStat
 	// OpFileSync describes a file sync operation.
@@ -74,7 +76,7 @@ func (o Op) OpKind() OpKind {
 	switch o {
 	case OpOpen, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat:
 		return OpKindRead
-	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForRewrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileSync, OpFileFlush, OpFilePreallocate:
+	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForRewrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileFlush, OpFilePreallocate:
 		return OpKindWrite
 	default:
 		panic(fmt.Sprintf("unrecognized op %v\n", o))
@@ -206,6 +208,22 @@ func (fs *FS) Link(oldname, newname string) error {
 
 // Open implements FS.Open.
 func (fs *FS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
+	if err := fs.inj.MaybeError(OpOpen, name); err != nil {
+		return nil, err
+	}
+	f, err := fs.fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	ef := &errorFile{name, f, fs.inj}
+	for _, opt := range opts {
+		opt.Apply(ef)
+	}
+	return ef, nil
+}
+
+// OpenReadWrite implements FS.OpenReadWrite.
+func (fs *FS) OpenReadWrite(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 	if err := fs.inj.MaybeError(OpOpen, name); err != nil {
 		return nil, err
 	}
@@ -356,6 +374,13 @@ func (f *errorFile) Write(p []byte) (int, error) {
 		return 0, err
 	}
 	return f.file.Write(p)
+}
+
+func (f *errorFile) WriteAt(p []byte, ofs int64) (int, error) {
+	if err := f.inj.MaybeError(OpFileWriteAt, f.path); err != nil {
+		return 0, err
+	}
+	return f.file.WriteAt(p, ofs)
 }
 
 func (f *errorFile) Stat() (os.FileInfo, error) {
