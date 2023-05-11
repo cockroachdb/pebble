@@ -3549,11 +3549,6 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 	obsoleteOptions := d.mu.versions.obsoleteOptions
 	d.mu.versions.obsoleteOptions = nil
 
-	// Release d.mu while doing I/O
-	// Note the unusual order: Unlock and then Lock.
-	d.mu.Unlock()
-	defer d.mu.Lock()
-
 	files := [4]struct {
 		fileType fileType
 		obsolete []fileInfo
@@ -3597,6 +3592,10 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		if d.opts.Experimental.MinDeletionRate > 0 {
 			go d.paceAndDeleteObsoleteFiles(jobID, filesToDelete)
 		} else {
+			// Release d.mu while doing I/O
+			// Note the unusual order: Unlock and then Lock.
+			d.mu.Unlock()
+			defer d.mu.Lock()
 			d.paceAndDeleteObsoleteFiles(jobID, filesToDelete)
 		}
 	}
