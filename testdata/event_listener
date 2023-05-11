@@ -215,8 +215,6 @@ close: db/marker.manifest.000006.MANIFEST-000016
 remove: db/marker.manifest.000005.MANIFEST-000014
 sync: db
 [JOB 12] MANIFEST created 000016
-remove: db/MANIFEST-000011
-[JOB 12] MANIFEST deleted 000011
 remove: ext/0
 [JOB 12] ingested L0:000015 (826 B)
 
@@ -283,6 +281,8 @@ close: db/000022.sst
 sync: db
 sync: db/MANIFEST-000016
 [JOB 17] flushed 1 memtable to L0 [000022] (770 B), in 1.0s (2.0s total), output rate 770 B/s
+remove: db/MANIFEST-000011
+[JOB 17] MANIFEST deleted 000011
 [JOB 18] flushing 2 ingested tables
 create: db/MANIFEST-000023
 close: db/MANIFEST-000016
