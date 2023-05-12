@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -376,8 +375,7 @@ func (i DiskSlowInfo) String() string {
 // SafeFormat implements redact.SafeFormatter.
 func (i DiskSlowInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("disk slowness detected: %s on file %s (%d bytes) has been ongoing for %0.1fs",
-		redact.Safe(i.OpType.String()), redact.Safe(filepath.Base(i.Path)),
-		redact.Safe(i.WriteSize), redact.Safe(i.Duration.Seconds()))
+		redact.Safe(i.OpType.String()), i.Path, i.WriteSize, redact.Safe(i.Duration.Seconds()))
 }
 
 // diskHealthCheckingFS adds disk-health checking facilities to a VFS.
