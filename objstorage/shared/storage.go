@@ -4,7 +4,10 @@
 
 package shared
 
-import "io"
+import (
+	"context"
+	"io"
+)
 
 // Storage is an interface for a blob storage driver. This is lower-level
 // than an FS-like interface, however FS/File-like abstractions can be built on
@@ -15,9 +18,9 @@ import "io"
 type Storage interface {
 	io.Closer
 
-	// ReadObjectAt returns a Reader for reading the object at the requested name
-	// and offset, along with the total size of the object.
-	ReadObjectAt(basename string, offset int64) (_ io.ReadCloser, totalSize int64, _ error)
+	// ReadObject returns an ObjectReader that can be used to perform reads on an
+	// object, along with the total size of the object.
+	ReadObject(ctx context.Context, objName string) (_ ObjectReader, objSize int64, _ error)
 
 	// CreateObject returns a writer for the object at the request name. A new
 	// empty object is created if CreateObject is called on an existing object.
@@ -31,7 +34,7 @@ type Storage interface {
 	// TODO(radu): if we encounter some unrelated error while writing to the
 	// WriteCloser, we'd want to abort the whole thing rather than letting Close
 	// finalize the upload.
-	CreateObject(basename string) (io.WriteCloser, error)
+	CreateObject(objName string) (io.WriteCloser, error)
 
 	// List enumerates files within the supplied prefix, returning a list of
 	// objects within that prefix. If delimiter is non-empty, names which have the
@@ -49,12 +52,23 @@ type Storage interface {
 	List(prefix, delimiter string) ([]string, error)
 
 	// Delete removes the named object from the store.
-	Delete(basename string) error
+	Delete(objName string) error
 
 	// Size returns the length of the named object in bytesWritten.
-	Size(basename string) (int64, error)
+	Size(objName string) (int64, error)
 
 	// IsNotExistError returns true if the given error (returned by a method in
 	// this interface) indicates that the object does not exist.
 	IsNotExistError(err error) bool
+}
+
+// ObjectReader is used to perform reads on an object.
+type ObjectReader interface {
+	// ReadAt reads len(p) bytes into p starting at offset off.
+	//
+	// Clients of ReadAt can execute parallel ReadAt calls on the
+	// same ObjectReader.
+	ReadAt(ctx context.Context, p []byte, offset int64) error
+
+	Close() error
 }

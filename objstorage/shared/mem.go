@@ -6,6 +6,7 @@ package shared
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"strings"
@@ -41,39 +42,39 @@ func (s *inMemStore) Close() error {
 	return nil
 }
 
-func (s *inMemStore) ReadObjectAt(basename string, offset int64) (io.ReadCloser, int64, error) {
-	obj, err := s.getObj(basename)
+func (s *inMemStore) ReadObject(
+	ctx context.Context, objName string,
+) (_ ObjectReader, objSize int64, _ error) {
+	obj, err := s.getObj(objName)
 	if err != nil {
 		return nil, 0, err
 	}
-	remaining := int64(len(obj.data)) - offset
-	if remaining < 0 {
-		return nil, 0, io.EOF
-	}
-	return newInMemReader(obj.data[int(offset):]), remaining, nil
+	return &inMemReader{data: obj.data}, int64(len(obj.data)), nil
 }
 
 type inMemReader struct {
-	bytes.Reader
+	data []byte
 }
 
-func newInMemReader(b []byte) *inMemReader {
-	r := &inMemReader{}
-	r.Reset(b)
-	return r
-}
+var _ ObjectReader = (*inMemReader)(nil)
 
-var _ io.ReadCloser = (*inMemReader)(nil)
-
-func (r *inMemReader) Close() error {
-	r.Reset(nil)
+func (r *inMemReader) ReadAt(ctx context.Context, p []byte, offset int64) error {
+	if offset+int64(len(p)) > int64(len(r.data)) {
+		return io.EOF
+	}
+	copy(p, r.data[offset:])
 	return nil
 }
 
-func (s *inMemStore) CreateObject(basename string) (io.WriteCloser, error) {
+func (r *inMemReader) Close() error {
+	r.data = nil
+	return nil
+}
+
+func (s *inMemStore) CreateObject(objName string) (io.WriteCloser, error) {
 	return &inMemWriter{
 		store: s,
-		name:  basename,
+		name:  objName,
 	}, nil
 }
 
@@ -119,14 +120,14 @@ func (s *inMemStore) List(prefix, delimiter string) ([]string, error) {
 	return res, nil
 }
 
-func (s *inMemStore) Delete(basename string) error {
-	s.rmObj(basename)
+func (s *inMemStore) Delete(objName string) error {
+	s.rmObj(objName)
 	return nil
 }
 
 // Size returns the length of the named object in bytesWritten.
-func (s *inMemStore) Size(basename string) (int64, error) {
-	obj, err := s.getObj(basename)
+func (s *inMemStore) Size(objName string) (int64, error) {
+	obj, err := s.getObj(objName)
 	if err != nil {
 		return 0, err
 	}

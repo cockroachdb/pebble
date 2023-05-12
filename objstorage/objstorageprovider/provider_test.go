@@ -163,8 +163,8 @@ func TestProvider(t *testing.T) {
 					return err.Error()
 				}
 				data := make([]byte, int(r.Size()))
-				err = r.ReadAt(ctx, data, 0)
-				require.NoError(t, err)
+				require.NoError(t, r.ReadAt(ctx, data, 0))
+				require.NoError(t, r.Close())
 				return log.String() + fmt.Sprintf("data: %s\n", string(data))
 
 			case "remove":

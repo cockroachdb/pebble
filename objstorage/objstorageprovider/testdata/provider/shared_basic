@@ -35,8 +35,8 @@ obj-two
 read 2
 ----
 <shared> size of object "a629-1-000002.sst.ref.1.000002": 0
-<shared> size of object "a629-1-000002.sst": 7
-<shared> read object "a629-1-000002.sst" at 0: 7 bytes
+<shared> read object "a629-1-000002.sst": 7 bytes
+<shared> read object "a629-1-000002.sst" at 0 (length 7)
 <shared> close reader for "a629-1-000002.sst"
 data: obj-two
 
@@ -97,8 +97,8 @@ four
 read 4
 ----
 <shared> size of object "2f2f-1-000004.sst.ref.1.000004": 0
-<shared> size of object "2f2f-1-000004.sst": 4
-<shared> read object "2f2f-1-000004.sst" at 0: 4 bytes
+<shared> read object "2f2f-1-000004.sst": 4 bytes
+<shared> read object "2f2f-1-000004.sst" at 0 (length 4)
 <shared> close reader for "2f2f-1-000004.sst"
 data: four
 

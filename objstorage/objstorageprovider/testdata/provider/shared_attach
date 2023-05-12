@@ -120,23 +120,23 @@ list
 read 101
 ----
 <shared> size of object "61a6-1-000001.sst.ref.2.000101": 0
-<shared> size of object "61a6-1-000001.sst": 7
-<shared> read object "61a6-1-000001.sst" at 0: 7 bytes
+<shared> read object "61a6-1-000001.sst": 7 bytes
+<shared> read object "61a6-1-000001.sst" at 0 (length 7)
 <shared> close reader for "61a6-1-000001.sst"
 data: obj-one
 
 read 102
 ----
 <shared> size of object "a629-1-000002.sst.ref.2.000102": 0
-<shared> size of object "a629-1-000002.sst": 7
-<shared> read object "a629-1-000002.sst" at 0: 7 bytes
+<shared> read object "a629-1-000002.sst": 7 bytes
+<shared> read object "a629-1-000002.sst" at 0 (length 7)
 <shared> close reader for "a629-1-000002.sst"
 data: obj-two
 
 read 103
 ----
 <shared> size of object "eaac-1-000003.sst.ref.2.000103": 0
-<shared> size of object "eaac-1-000003.sst": 9
-<shared> read object "eaac-1-000003.sst" at 0: 9 bytes
+<shared> read object "eaac-1-000003.sst": 9 bytes
+<shared> read object "eaac-1-000003.sst" at 0 (length 9)
 <shared> close reader for "eaac-1-000003.sst"
 data: obj-three
