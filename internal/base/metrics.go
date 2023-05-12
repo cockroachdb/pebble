@@ -53,6 +53,15 @@ func (tm *ThroughputMetric) Rate() int64 {
 		float64(time.Second))
 }
 
+// Utilization returns a percent [0, 1.0] indicating the percent of time
+// work was performed.
+func (tm *ThroughputMetric) Utilization() float64 {
+	if tm.WorkDuration == 0 {
+		return 0
+	}
+	return float64(tm.WorkDuration) / float64(tm.WorkDuration+tm.IdleDuration)
+}
+
 // GaugeSampleMetric is used to measure a gauge value (e.g. queue length) by
 // accumulating samples of that gauge.
 type GaugeSampleMetric struct {
