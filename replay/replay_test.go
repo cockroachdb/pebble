@@ -415,6 +415,7 @@ func runListFiles(t *testing.T, fs vfs.FS, td *datadriven.TestData) string {
 
 func TestBenchmarkString(t *testing.T) {
 	m := Metrics{
+		Final:               &pebble.Metrics{},
 		EstimatedDebt:       SampledMetric{samples: []sample{{value: 5 << 25}}},
 		PaceDuration:        time.Second / 4,
 		QuiesceDuration:     time.Second / 2,
@@ -441,6 +442,7 @@ BenchmarkBenchmarkReplay/tpcc/DurationQuiescing 1 0.5 sec/op
 BenchmarkBenchmarkReplay/tpcc/DurationPaceDelay 1 0.25 sec/op
 BenchmarkBenchmarkReplay/tpcc/EstimatedDebt/mean 1 1.6777216e+08 bytes
 BenchmarkBenchmarkReplay/tpcc/EstimatedDebt/max 1 1.6777216e+08 bytes
+BenchmarkBenchmarkReplay/tpcc/FlushUtilization 1 0 util
 BenchmarkBenchmarkReplay/tpcc/IngestedIntoL0 1 5.24288e+06 bytes
 BenchmarkBenchmarkReplay/tpcc/IngestWeightedByLevel 1 9.437184e+06 bytes
 BenchmarkBenchmarkReplay/tpcc/ReadAmp/mean 1 10 files

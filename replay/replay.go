@@ -199,6 +199,9 @@ func (m *Metrics) WriteBenchmarkString(name string, w io.Writer) error {
 		{label: "EstimatedDebt/max", values: []benchfmt.Value{
 			{Value: float64(m.EstimatedDebt.Max()), Unit: "bytes"},
 		}},
+		{label: "FlushUtilization", values: []benchfmt.Value{
+			{Value: m.Final.Flush.WriteThroughput.Utilization(), Unit: "util"},
+		}},
 		{label: "IngestedIntoL0", values: []benchfmt.Value{
 			{Value: float64(m.Ingest.BytesIntoL0), Unit: "bytes"},
 		}},
