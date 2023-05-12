@@ -1049,8 +1049,12 @@ func (o *Options) WithFSDefaults() *Options {
 		o.FS = vfs.Default
 	}
 	o.FS, o.private.fsCloser = vfs.WithDiskHealthChecks(o.FS, 5*time.Second,
-		func(info vfs.DiskSlowInfo) {
-			o.EventListener.DiskSlow(info)
+		func(name string, op vfs.OpType, duration time.Duration) {
+			o.EventListener.DiskSlow(DiskSlowInfo{
+				Path:     name,
+				OpType:   op,
+				Duration: duration,
+			})
 		})
 	return o
 }
