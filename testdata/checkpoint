@@ -5,6 +5,7 @@ open-dir: db
 lock: db/LOCK
 open-dir: db
 open-dir: db
+open: db/CURRENT
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
 remove: db/temporary.000001.dbtmp
@@ -145,18 +146,22 @@ sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 link: db/000005.sst -> checkpoints/checkpoint1/000005.sst
 link: db/000007.sst -> checkpoints/checkpoint1/000007.sst
+open: db/MANIFEST-000001
 create: checkpoints/checkpoint1/MANIFEST-000001
 sync-data: checkpoints/checkpoint1/MANIFEST-000001
 close: checkpoints/checkpoint1/MANIFEST-000001
+close: db/MANIFEST-000001
 open-dir: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 sync-data: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
+open: db/000006.log
 create: checkpoints/checkpoint1/000006.log
 sync-data: checkpoints/checkpoint1/000006.log
 close: checkpoints/checkpoint1/000006.log
+close: db/000006.log
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 
@@ -180,18 +185,22 @@ close: checkpoints/checkpoint2/marker.format-version.000001.014
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 link: db/000007.sst -> checkpoints/checkpoint2/000007.sst
+open: db/MANIFEST-000001
 create: checkpoints/checkpoint2/MANIFEST-000001
 sync-data: checkpoints/checkpoint2/MANIFEST-000001
 close: checkpoints/checkpoint2/MANIFEST-000001
+close: db/MANIFEST-000001
 open-dir: checkpoints/checkpoint2
 create: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
 sync-data: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
+open: db/000006.log
 create: checkpoints/checkpoint2/000006.log
 sync-data: checkpoints/checkpoint2/000006.log
 close: checkpoints/checkpoint2/000006.log
+close: db/000006.log
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 
@@ -212,18 +221,22 @@ sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
 link: db/000005.sst -> checkpoints/checkpoint3/000005.sst
 link: db/000007.sst -> checkpoints/checkpoint3/000007.sst
+open: db/MANIFEST-000001
 create: checkpoints/checkpoint3/MANIFEST-000001
 sync-data: checkpoints/checkpoint3/MANIFEST-000001
 close: checkpoints/checkpoint3/MANIFEST-000001
+close: db/MANIFEST-000001
 open-dir: checkpoints/checkpoint3
 create: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
 sync-data: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
+open: db/000006.log
 create: checkpoints/checkpoint3/000006.log
 sync-data: checkpoints/checkpoint3/000006.log
 close: checkpoints/checkpoint3/000006.log
+close: db/000006.log
 sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
 
@@ -238,11 +251,44 @@ sync-data: db/000009.sst
 close: db/000009.sst
 sync: db
 sync: db/MANIFEST-000001
+open: db/000005.sst
+read-at(744, 53): db/000005.sst
+read-at(707, 37): db/000005.sst
+read-at(79, 628): db/000005.sst
+read-at(52, 27): db/000005.sst
+open: db/000005.sst
+close: db/000005.sst
+open: db/000009.sst
+read-at(732, 53): db/000009.sst
+read-at(695, 37): db/000009.sst
+read-at(67, 628): db/000009.sst
+read-at(40, 27): db/000009.sst
+open: db/000009.sst
+close: db/000009.sst
+open: db/000007.sst
+read-at(744, 53): db/000007.sst
+read-at(707, 37): db/000007.sst
+read-at(79, 628): db/000007.sst
+read-at(52, 27): db/000007.sst
+open: db/000007.sst
+close: db/000007.sst
+open: db/000005.sst
+read-at(0, 52): db/000005.sst
+open: db/000007.sst
+read-at(0, 52): db/000007.sst
 create: db/000010.sst
+close: db/000005.sst
+open: db/000009.sst
+read-at(0, 40): db/000009.sst
+close: db/000007.sst
+close: db/000009.sst
 sync-data: db/000010.sst
 close: db/000010.sst
 sync: db
 sync: db/MANIFEST-000001
+close: db/000005.sst
+close: db/000007.sst
+close: db/000009.sst
 remove: db/000005.sst
 remove: db/000007.sst
 remove: db/000009.sst
@@ -280,10 +326,28 @@ open-dir: checkpoints/checkpoint1
 lock: checkpoints/checkpoint1/LOCK
 open-dir: checkpoints/checkpoint1
 open-dir: checkpoints/checkpoint1
+open: checkpoints/checkpoint1/MANIFEST-000001
+close: checkpoints/checkpoint1/MANIFEST-000001
 open-dir: checkpoints/checkpoint1
+open: checkpoints/checkpoint1/OPTIONS-000003
+close: checkpoints/checkpoint1/OPTIONS-000003
+open: checkpoints/checkpoint1/000006.log
+close: checkpoints/checkpoint1/000006.log
 
 scan checkpoints/checkpoint1
 ----
+open: checkpoints/checkpoint1/000007.sst
+read-at(744, 53): checkpoints/checkpoint1/000007.sst
+read-at(707, 37): checkpoints/checkpoint1/000007.sst
+read-at(79, 628): checkpoints/checkpoint1/000007.sst
+read-at(52, 27): checkpoints/checkpoint1/000007.sst
+read-at(0, 52): checkpoints/checkpoint1/000007.sst
+open: checkpoints/checkpoint1/000005.sst
+read-at(744, 53): checkpoints/checkpoint1/000005.sst
+read-at(707, 37): checkpoints/checkpoint1/000005.sst
+read-at(79, 628): checkpoints/checkpoint1/000005.sst
+read-at(52, 27): checkpoints/checkpoint1/000005.sst
+read-at(0, 52): checkpoints/checkpoint1/000005.sst
 a 1
 b 5
 c 3
@@ -295,6 +359,12 @@ g 10
 
 scan db
 ----
+open: db/000010.sst
+read-at(766, 53): db/000010.sst
+read-at(729, 37): db/000010.sst
+read-at(101, 628): db/000010.sst
+read-at(74, 27): db/000010.sst
+read-at(0, 74): db/000010.sst
 a 1
 b 5
 c 3
@@ -321,10 +391,22 @@ open-dir: checkpoints/checkpoint2
 lock: checkpoints/checkpoint2/LOCK
 open-dir: checkpoints/checkpoint2
 open-dir: checkpoints/checkpoint2
+open: checkpoints/checkpoint2/MANIFEST-000001
+close: checkpoints/checkpoint2/MANIFEST-000001
 open-dir: checkpoints/checkpoint2
+open: checkpoints/checkpoint2/OPTIONS-000003
+close: checkpoints/checkpoint2/OPTIONS-000003
+open: checkpoints/checkpoint2/000006.log
+close: checkpoints/checkpoint2/000006.log
 
 scan checkpoints/checkpoint2
 ----
+open: checkpoints/checkpoint2/000007.sst
+read-at(744, 53): checkpoints/checkpoint2/000007.sst
+read-at(707, 37): checkpoints/checkpoint2/000007.sst
+read-at(79, 628): checkpoints/checkpoint2/000007.sst
+read-at(52, 27): checkpoints/checkpoint2/000007.sst
+read-at(0, 52): checkpoints/checkpoint2/000007.sst
 b 5
 d 7
 e 8
@@ -349,10 +431,28 @@ open-dir: checkpoints/checkpoint3
 lock: checkpoints/checkpoint3/LOCK
 open-dir: checkpoints/checkpoint3
 open-dir: checkpoints/checkpoint3
+open: checkpoints/checkpoint3/MANIFEST-000001
+close: checkpoints/checkpoint3/MANIFEST-000001
 open-dir: checkpoints/checkpoint3
+open: checkpoints/checkpoint3/OPTIONS-000003
+close: checkpoints/checkpoint3/OPTIONS-000003
+open: checkpoints/checkpoint3/000006.log
+close: checkpoints/checkpoint3/000006.log
 
 scan checkpoints/checkpoint3
 ----
+open: checkpoints/checkpoint3/000007.sst
+read-at(744, 53): checkpoints/checkpoint3/000007.sst
+read-at(707, 37): checkpoints/checkpoint3/000007.sst
+read-at(79, 628): checkpoints/checkpoint3/000007.sst
+read-at(52, 27): checkpoints/checkpoint3/000007.sst
+read-at(0, 52): checkpoints/checkpoint3/000007.sst
+open: checkpoints/checkpoint3/000005.sst
+read-at(744, 53): checkpoints/checkpoint3/000005.sst
+read-at(707, 37): checkpoints/checkpoint3/000005.sst
+read-at(79, 628): checkpoints/checkpoint3/000005.sst
+read-at(52, 27): checkpoints/checkpoint3/000005.sst
+read-at(0, 52): checkpoints/checkpoint3/000005.sst
 a 1
 b 5
 c 3

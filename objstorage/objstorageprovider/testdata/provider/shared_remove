@@ -10,27 +10,24 @@ open p1 1
 <local fs> sync: p1
 <local fs> sync: p1/SHARED-CATALOG-000001
 
-create 1 shared
-obj-one
+create 1 shared 1 100
 ----
 <shared> create object "61a6-1-000001.sst"
-<shared> close writer for "61a6-1-000001.sst" after 7 bytes
+<shared> close writer for "61a6-1-000001.sst" after 100 bytes
 <shared> create object "61a6-1-000001.sst.ref.1.000001"
 <shared> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
 
-create 2 shared
-obj-two
+create 2 shared 2 100
 ----
 <shared> create object "a629-1-000002.sst"
-<shared> close writer for "a629-1-000002.sst" after 7 bytes
+<shared> close writer for "a629-1-000002.sst" after 100 bytes
 <shared> create object "a629-1-000002.sst.ref.1.000002"
 <shared> close writer for "a629-1-000002.sst.ref.1.000002" after 0 bytes
 
-create 3 shared
-obj-three
+create 3 shared 3 100
 ----
 <shared> create object "eaac-1-000003.sst"
-<shared> close writer for "eaac-1-000003.sst" after 9 bytes
+<shared> close writer for "eaac-1-000003.sst" after 100 bytes
 <shared> create object "eaac-1-000003.sst.ref.1.000003"
 <shared> close writer for "eaac-1-000003.sst.ref.1.000003" after 0 bytes
 
@@ -52,11 +49,10 @@ open p2 2
 <local fs> sync: p2
 <local fs> sync: p2/SHARED-CATALOG-000001
 
-create 4 shared
-obj-four
+create 4 shared 4 100
 ----
 <shared> create object "4c52-2-000004.sst"
-<shared> close writer for "4c52-2-000004.sst" after 8 bytes
+<shared> close writer for "4c52-2-000004.sst" after 100 bytes
 <shared> create object "4c52-2-000004.sst.ref.2.000004"
 <shared> close writer for "4c52-2-000004.sst.ref.2.000004" after 0 bytes
 
