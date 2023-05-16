@@ -606,6 +606,8 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 				tableFormat = sstable.TableFormatPebblev2
 			case "pebblev3":
 				tableFormat = sstable.TableFormatPebblev3
+			case "pebblev4":
+				tableFormat = sstable.TableFormatPebblev4
 			default:
 				return errors.Errorf("unknown format string %s", cmdArg.Vals[0])
 			}

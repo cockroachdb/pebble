@@ -214,7 +214,7 @@ layout
       1255    meta: offset=1185, length=64
       1258    index: offset=264, length=77
       1261    [padding]
-      1295    version: 3
+      1295    version: 4
       1299    magic number: 0xf09faab3f09faab3
       1307  EOF
 
@@ -337,6 +337,6 @@ layout
        856    meta: offset=818, length=32
        859    index: offset=71, length=22
        861    [padding]
-       896    version: 3
+       896    version: 4
        900    magic number: 0xf09faab3f09faab3
        908  EOF
