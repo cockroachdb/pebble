@@ -32,6 +32,12 @@ type readaheadState struct {
 	limit int64
 }
 
+func makeReadaheadState() readaheadState {
+	return readaheadState{
+		size: initialReadaheadSize,
+	}
+}
+
 func (rs *readaheadState) recordCacheHit(offset, blockLength int64) {
 	currentReadEnd := offset + blockLength
 	if rs.numReads >= minFileReadsForReadahead {
