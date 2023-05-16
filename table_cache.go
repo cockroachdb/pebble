@@ -447,7 +447,7 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, err
 	}
 	var rp sstable.ReaderProvider
-	if tableFormat == sstable.TableFormatPebblev3 && v.reader.Properties.NumValueBlocks > 0 {
+	if tableFormat >= sstable.TableFormatPebblev3 && v.reader.Properties.NumValueBlocks > 0 {
 		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
 	}
 

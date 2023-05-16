@@ -2752,17 +2752,16 @@ func (d *DB) runCompaction(
 	// The table is typically written at the maximum allowable format implied by
 	// the current format major version of the DB.
 	tableFormat := formatVers.MaxTableFormat()
-	if tableFormat > sstable.TableFormatPebblev3 {
-		// Since TableFormatPebblev3 does not currently subsume
-		// TableFormatPebblev2, this panic ensures that we have carefully thought
-		// through what we are doing before we introduce a format beyond
-		// TableFormatPebblev3.
-		panic("cannot handle table format beyond TableFormatPebblev3")
-	}
+
+	// In format major versions with maximum table formats of Pebblev3, value
+	// blocks were conditional on an experimental setting. In format major
+	// versions with maximum table formats of Pebblev4 and higher, value blocks
+	// are always enabled.
 	if tableFormat == sstable.TableFormatPebblev3 &&
 		(d.opts.Experimental.EnableValueBlocks == nil || !d.opts.Experimental.EnableValueBlocks()) {
 		tableFormat = sstable.TableFormatPebblev2
 	}
+
 	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
 	if formatVers < FormatBlockPropertyCollector {
 		// Cannot yet write block properties.

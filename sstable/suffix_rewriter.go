@@ -223,7 +223,7 @@ func rewriteBlocks(
 			// in the block, which includes the 1-byte prefix. This is fine since bw
 			// also does not know about the prefix and will preserve it in bw.add.
 			v := val.InPlaceValue()
-			if invariants.Enabled && r.tableFormat == TableFormatPebblev3 &&
+			if invariants.Enabled && r.tableFormat >= TableFormatPebblev3 &&
 				key.Kind() == InternalKeyKindSet {
 				if len(v) < 1 {
 					return errors.Errorf("value has no prefix")
