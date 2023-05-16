@@ -15,8 +15,10 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// fileReadable implements objstorage.Readable on top of a vfs.File that
-// supports Prefetch and/or on an FS that supports SequentialReadsOption.
+// fileReadable implements objstorage.Readable on top of a vfs.File.
+//
+// The implementation might use Prealloc and might reopen the file with
+// SequentialReadsOption.
 type fileReadable struct {
 	file vfs.File
 	size int64
@@ -161,61 +163,6 @@ func (rh *vfsReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {
 		return
 	}
 	rh.rs.recordCacheHit(offset, size)
-}
-
-// genericFileReadable implements objstorage.Readable on top of any vfs.File.
-// This implementation does not support read-ahead.
-type genericFileReadable struct {
-	file vfs.File
-	size int64
-
-	rh objstorage.NoopReadHandle
-}
-
-var _ objstorage.Readable = (*genericFileReadable)(nil)
-
-func newGenericFileReadable(file vfs.File) (*genericFileReadable, error) {
-	info, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	r := &genericFileReadable{
-		file: file,
-		size: info.Size(),
-	}
-	r.rh = objstorage.MakeNoopReadHandle(r)
-	invariants.SetFinalizer(r, func(obj interface{}) {
-		if obj.(*genericFileReadable).file != nil {
-			fmt.Fprintf(os.Stderr, "Readable was not closed")
-			os.Exit(1)
-		}
-	})
-	return r, nil
-}
-
-// ReadAt is part of the objstorage.Readable interface.
-func (r *genericFileReadable) ReadAt(_ context.Context, p []byte, off int64) error {
-	n, err := r.file.ReadAt(p, off)
-	if invariants.Enabled && err == nil && n != len(p) {
-		panic("short read")
-	}
-	return err
-}
-
-// Close is part of the objstorage.Readable interface.
-func (r *genericFileReadable) Close() error {
-	defer func() { r.file = nil }()
-	return r.file.Close()
-}
-
-// Size is part of the objstorage.Readable interface.
-func (r *genericFileReadable) Size() int64 {
-	return r.size
-}
-
-// NewReadHandle is part of the objstorage.Readable interface.
-func (r *genericFileReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
-	return &r.rh
 }
 
 // TestingCheckMaxReadahead returns true if the ReadHandle has switched to

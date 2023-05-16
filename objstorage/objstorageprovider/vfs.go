@@ -31,13 +31,7 @@ func (p *provider) vfsOpenForReading(
 		}
 		return nil, err
 	}
-	// TODO(radu): we use the existence of the file descriptor as an indication
-	// that the File might support Prefetch and SequentialReadsOption. We should
-	// replace this with a cleaner way to obtain the capabilities of the FS / File.
-	if fd := file.Fd(); fd != vfs.InvalidFd {
-		return newFileReadable(file, p.st.FS, filename)
-	}
-	return newGenericFileReadable(file)
+	return newFileReadable(file, p.st.FS, filename)
 }
 
 func (p *provider) vfsCreate(
