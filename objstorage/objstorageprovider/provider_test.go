@@ -98,13 +98,14 @@ func TestProvider(t *testing.T) {
 				opts := objstorage.CreateOptions{
 					SharedCleanupMethod: objstorage.SharedRefTracking,
 				}
-				if len(d.CmdArgs) == 3 && d.CmdArgs[2].Key == "no-ref-tracking" {
-					d.CmdArgs = d.CmdArgs[:2]
+				if len(d.CmdArgs) == 5 && d.CmdArgs[4].Key == "no-ref-tracking" {
+					d.CmdArgs = d.CmdArgs[:4]
 					opts.SharedCleanupMethod = objstorage.SharedNoCleanup
 				}
 				var fileNum base.FileNum
 				var typ string
-				scanArgs("<file-num> <local|shared> [no-ref-tracking]", &fileNum, &typ)
+				var salt, size int
+				scanArgs("<file-num> <local|shared> <salt> <size> [no-ref-tracking]", &fileNum, &typ, &salt, &size)
 				switch typ {
 				case "local":
 				case "shared":
@@ -116,7 +117,10 @@ func TestProvider(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				require.NoError(t, w.Write([]byte(d.Input)))
+				data := make([]byte, size)
+				// TODO(radu): write in chunks?
+				genData(byte(salt), 0, data)
+				require.NoError(t, w.Write(data))
 				require.NoError(t, w.Finish())
 
 				return log.String()
@@ -125,13 +129,14 @@ func TestProvider(t *testing.T) {
 				opts := objstorage.CreateOptions{
 					SharedCleanupMethod: objstorage.SharedRefTracking,
 				}
-				if len(d.CmdArgs) == 3 && d.CmdArgs[2].Key == "no-ref-tracking" {
-					d.CmdArgs = d.CmdArgs[:2]
+				if len(d.CmdArgs) == 5 && d.CmdArgs[4].Key == "no-ref-tracking" {
+					d.CmdArgs = d.CmdArgs[:4]
 					opts.SharedCleanupMethod = objstorage.SharedNoCleanup
 				}
 				var fileNum base.FileNum
 				var typ string
-				scanArgs("<file-num> <local|shared> [no-ref-tracking]", &fileNum, &typ)
+				var salt, size int
+				scanArgs("<file-num> <local|shared> <salt> <size> [no-ref-tracking]", &fileNum, &typ, &salt, &size)
 				switch typ {
 				case "local":
 				case "shared":
@@ -144,8 +149,10 @@ func TestProvider(t *testing.T) {
 				tmpFilename := fmt.Sprintf("temp-file-%d", tmpFileCounter)
 				f, err := fs.Create(tmpFilename)
 				require.NoError(t, err)
-				n, err := f.Write([]byte(d.Input))
-				require.Equal(t, len(d.Input), n)
+				data := make([]byte, size)
+				genData(byte(salt), 0, data)
+				n, err := f.Write(data)
+				require.Equal(t, len(data), n)
 				require.NoError(t, err)
 				require.NoError(t, f.Close())
 
@@ -162,10 +169,23 @@ func TestProvider(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				data := make([]byte, int(r.Size()))
-				err = r.ReadAt(ctx, data, 0)
-				require.NoError(t, err)
-				return log.String() + fmt.Sprintf("data: %s\n", string(data))
+				rh := r.NewReadHandle(ctx)
+				log.Infof("size: %d", r.Size())
+				for _, l := range strings.Split(d.Input, "\n") {
+					var offset, size int
+					fmt.Sscanf(l, "%d %d", &offset, &size)
+					data := make([]byte, size)
+					err := rh.ReadAt(ctx, data, int64(offset))
+					if err != nil {
+						log.Infof("%d %d: %v", offset, size, err)
+					} else {
+						salt := checkData(d, t, offset, data)
+						log.Infof("%d %d: ok (salt %d)", offset, size, salt)
+					}
+				}
+				require.NoError(t, rh.Close())
+				require.NoError(t, r.Close())
+				return log.String()
 
 			case "remove":
 				var fileNum base.FileNum
@@ -288,4 +308,31 @@ func TestNotExistError(t *testing.T) {
 			}
 		})
 	}
+}
+
+// genData generates object data that can be checked later with checkData.
+func genData(salt byte, offset int, p []byte) {
+	for i := range p {
+		p[i] = salt ^ xor(offset+i)
+	}
+}
+
+func checkData(d *datadriven.TestData, t *testing.T, offset int, p []byte) (salt byte) {
+	t.Helper()
+	salt = p[0] ^ xor(offset)
+	for i := range p {
+		if p[i]^xor(offset+i) != salt {
+			d.Fatalf(t, "invalid data")
+		}
+	}
+	return salt
+}
+
+// xor returns the XOR of all bytes representing the integer.
+func xor(n int) byte {
+	v := uint64(n)
+	v ^= v >> 32
+	v ^= v >> 16
+	v ^= v >> 8
+	return byte(v)
 }

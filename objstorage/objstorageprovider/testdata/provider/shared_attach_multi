@@ -12,11 +12,10 @@ open p1 1
 <local fs> sync: p1
 <local fs> sync: p1/SHARED-CATALOG-000001
 
-create 1 shared
-obj-one
+create 1 shared 1 100
 ----
 <shared> create object "61a6-1-000001.sst"
-<shared> close writer for "61a6-1-000001.sst" after 7 bytes
+<shared> close writer for "61a6-1-000001.sst" after 100 bytes
 <shared> create object "61a6-1-000001.sst.ref.1.000001"
 <shared> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
 

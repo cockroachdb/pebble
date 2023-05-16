@@ -1,3 +1,6 @@
+reset
+----
+
 read
 2048, 16
 ----
@@ -136,7 +139,7 @@ limit:      73216
 
 read
 7780, 16
-----
+---
 readahead:  0
 numReads:   4
 size:       131072
@@ -146,17 +149,13 @@ limit:      73216
 read
 7880, 16
 ----
-readahead:  0
-numReads:   5
-size:       131072
-prevSize:   65536
-limit:      73216
+expected 2 args: offset, size
 
 read
 7980, 16
 ----
 readahead:  0
-numReads:   6
+numReads:   4
 size:       131072
 prevSize:   65536
 limit:      73216
@@ -165,7 +164,7 @@ read
 73416, 16
 ----
 readahead:  131072
-numReads:   7
+numReads:   5
 size:       262144
 prevSize:   131072
 limit:      204488
@@ -174,7 +173,7 @@ read
 204488, 16
 ----
 readahead:  262144
-numReads:   8
+numReads:   6
 size:       262144
 prevSize:   262144
 limit:      466632
@@ -185,7 +184,7 @@ read
 466632, 16
 ----
 readahead:  262144
-numReads:   9
+numReads:   7
 size:       262144
 prevSize:   262144
 limit:      728776
@@ -196,7 +195,7 @@ cache-read
 728770, 16
 ----
 readahead:  0
-numReads:   9
+numReads:   7
 size:       262144
 prevSize:   262144
 limit:      728786
@@ -205,7 +204,7 @@ read
 728780, 16
 ----
 readahead:  262144
-numReads:   10
+numReads:   8
 size:       262144
 prevSize:   262144
 limit:      990924

@@ -13,32 +13,37 @@ open p1 1
 <local fs> sync: p1
 <local fs> sync: p1/SHARED-CATALOG-000001
 
-create 1 local
-obj-one
+create 1 local 1 100
 ----
 <local fs> create: p1/000001.sst
 <local fs> sync-data: p1/000001.sst
 <local fs> close: p1/000001.sst
 
 read 1
+0 100
 ----
-data: obj-one
+<local fs> open: p1/000001.sst
+size: 100
+<local fs> read-at(0, 100): p1/000001.sst
+0 100: ok (salt 1)
+<local fs> close: p1/000001.sst
 
-create 2 shared
-obj-two
+create 2 shared 2 100
 ----
 <shared> create object "a629-1-000002.sst"
-<shared> close writer for "a629-1-000002.sst" after 7 bytes
+<shared> close writer for "a629-1-000002.sst" after 100 bytes
 <shared> create object "a629-1-000002.sst.ref.1.000002"
 <shared> close writer for "a629-1-000002.sst.ref.1.000002" after 0 bytes
 
 read 2
+0 100
 ----
 <shared> size of object "a629-1-000002.sst.ref.1.000002": 0
-<shared> size of object "a629-1-000002.sst": 7
-<shared> read object "a629-1-000002.sst" at 0: 7 bytes
+<shared> size of object "a629-1-000002.sst": 100
+size: 100
+<shared> read object "a629-1-000002.sst" at 0: 100 bytes
+0 100: ok (salt 2)
 <shared> close reader for "a629-1-000002.sst"
-data: obj-two
 
 list
 ----
@@ -57,6 +62,8 @@ open p1 1
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
 <local fs> open-dir: p1
+<local fs> open: p1/SHARED-CATALOG-000001
+<local fs> close: p1/SHARED-CATALOG-000001
 
 list
 ----
@@ -73,34 +80,41 @@ remove 2
 <shared> list (prefix="a629-1-000002.sst.ref.", delimiter="")
 <shared> delete object "a629-1-000002.sst"
 
-link-or-copy 3 local
-three
+link-or-copy 3 local 3 100
 ----
 <local fs> create: temp-file-1
 <local fs> close: temp-file-1
 <local fs> link: temp-file-1 -> p1/000003.sst
 
 read 3
+0 100
 ----
-data: three
+<local fs> open: p1/000003.sst
+size: 100
+<local fs> read-at(0, 100): p1/000003.sst
+0 100: ok (salt 3)
+<local fs> close: p1/000003.sst
 
-link-or-copy 4 shared
-four
+link-or-copy 4 shared 4 100
 ----
 <local fs> create: temp-file-2
 <local fs> close: temp-file-2
 <shared> create object "2f2f-1-000004.sst"
-<shared> close writer for "2f2f-1-000004.sst" after 4 bytes
+<local fs> open: temp-file-2
+<shared> close writer for "2f2f-1-000004.sst" after 100 bytes
 <shared> create object "2f2f-1-000004.sst.ref.1.000004"
 <shared> close writer for "2f2f-1-000004.sst.ref.1.000004" after 0 bytes
+<local fs> close: temp-file-2
 
 read 4
+0 100
 ----
 <shared> size of object "2f2f-1-000004.sst.ref.1.000004": 0
-<shared> size of object "2f2f-1-000004.sst": 4
-<shared> read object "2f2f-1-000004.sst" at 0: 4 bytes
+<shared> size of object "2f2f-1-000004.sst": 100
+size: 100
+<shared> read object "2f2f-1-000004.sst" at 0: 100 bytes
+0 100: ok (salt 4)
 <shared> close reader for "2f2f-1-000004.sst"
-data: four
 
 close
 ----
