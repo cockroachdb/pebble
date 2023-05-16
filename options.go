@@ -613,8 +613,11 @@ type Options struct {
 		PointTombstoneWeight float64
 
 		// EnableValueBlocks is used to decide whether to enable writing
-		// TableFormatPebblev3 sstables. WARNING: do not return true yet, since
-		// support for TableFormatPebblev3 is incomplete and not production ready.
+		// TableFormatPebblev3 sstables. This setting is only respected by a
+		// specific subset of format major versions: FormatSSTableValueBlocks,
+		// FormatFlushableIngest and FormatPrePebblev1MarkedCompacted. In lower
+		// format major versions, value blocks are never enabled. In higher
+		// format major versions, value blocks are always enabled.
 		EnableValueBlocks func() bool
 
 		// ShortAttributeExtractor is used iff EnableValueBlocks() returns true

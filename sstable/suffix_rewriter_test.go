@@ -18,9 +18,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 	from, to := []byte("_212"), []byte("_646")
 
 	format := TableFormatPebblev2
-	if rand.Intn(2) != 0 {
-		format = TableFormatPebblev3
-	}
+	format += TableFormat(rand.Intn(int(TableFormatPebblev4 - TableFormatPebblev2)))
 	t.Logf("table format: %s\n", format.String())
 	wOpts := WriterOptions{
 		FilterPolicy: bloom.FilterPolicy(10),
