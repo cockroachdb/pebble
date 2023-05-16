@@ -67,6 +67,7 @@ func (r *fileReadable) Size() int64 {
 func (r *fileReadable) NewReadHandle() ReadHandle {
 	rh := readHandlePool.Get().(*vfsReadHandle)
 	rh.r = r
+	rh.rs = makeReadaheadState()
 	return rh
 }
 
