@@ -1422,6 +1422,18 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 	require.NoError(t, d.Close())
 }
 
+type testLogger struct {
+	t testing.TB
+}
+
+func (l testLogger) Infof(format string, args ...interface{}) {
+	l.t.Logf(format, args...)
+}
+
+func (l testLogger) Fatalf(format string, args ...interface{}) {
+	l.t.Fatalf(format, args...)
+}
+
 // TestIngestMemtableOverlapRace is a regression test for the race described in
 // #2196. If an ingest that checks for overlap with the mutable memtable and
 // finds no overlap, it must not allow overlapping keys with later sequence
@@ -1438,7 +1450,7 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 // numbers, since every flush and every ingest conflicts with one another.
 func TestIngestMemtableOverlapRace(t *testing.T) {
 	mem := vfs.NewMem()
-	el := MakeLoggingEventListener(DefaultLogger)
+	el := MakeLoggingEventListener(testLogger{t: t})
 	d, err := Open("", &Options{
 		FS: mem,
 		// Disable automatic compactions to keep the manifest clean; only

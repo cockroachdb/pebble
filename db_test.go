@@ -1408,7 +1408,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 	var blockedCompactionsMu sync.Mutex // protects the above two variables.
 	nextSem := make(chan chan struct{}, 1)
 	var el EventListener
-	el.EnsureDefaults(DefaultLogger)
+	el.EnsureDefaults(testLogger{t: t})
 	el.FlushBegin = func(info FlushInfo) {
 		blockedCompactionsMu.Lock()
 		defer blockedCompactionsMu.Unlock()
@@ -1444,7 +1444,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 		nextSem <- sem
 		<-sem
 	}
-	tel := TeeEventListener(MakeLoggingEventListener(DefaultLogger), el)
+	tel := TeeEventListener(MakeLoggingEventListener(testLogger{t: t}), el)
 	opts.EventListener = &tel
 	opts.Experimental.L0CompactionConcurrency = 1
 	d, err := Open("", opts)
