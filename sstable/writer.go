@@ -2110,7 +2110,7 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 			Format: o.Comparer.FormatKey,
 		},
 	}
-	if w.tableFormat == TableFormatPebblev3 {
+	if w.tableFormat >= TableFormatPebblev3 {
 		w.shortAttributeExtractor = o.ShortAttributeExtractor
 		w.requiredInPlaceValueBound = o.RequiredInPlaceValueBound
 		w.valueBlockWriter = newValueBlockWriter(

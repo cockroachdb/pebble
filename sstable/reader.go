@@ -435,7 +435,7 @@ func (i *singleLevelIterator) init(
 		return err
 	}
 	i.dataRH = objstorageprovider.UsePreallocatedReadHandle(ctx, r.readable, &i.dataRHPrealloc)
-	if r.tableFormat == TableFormatPebblev3 {
+	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
 			// can outlive the singleLevelIterator due to be being embedded in a
@@ -1874,7 +1874,7 @@ func (i *twoLevelIterator) init(
 		return err
 	}
 	i.dataRH = r.readable.NewReadHandle(ctx)
-	if r.tableFormat == TableFormatPebblev3 {
+	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			i.vbReader = &valueBlockReader{
 				ctx:    ctx,
@@ -4067,7 +4067,7 @@ func (l *Layout) Describe(
 				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
 				if fmtRecord != nil {
 					fmt.Fprintf(w, "              ")
-					if l.Format != TableFormatPebblev3 {
+					if l.Format < TableFormatPebblev3 {
 						fmtRecord(key, value.InPlaceValue())
 					} else {
 						// InPlaceValue() will succeed even for data blocks where the

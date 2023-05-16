@@ -168,8 +168,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	case FormatRangeKeys, FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
 		FormatUnusedPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev2
-	case FormatSSTableValueBlocks, FormatFlushableIngest,
-		FormatPrePebblev1MarkedCompacted:
+	case FormatSSTableValueBlocks, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev3
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
