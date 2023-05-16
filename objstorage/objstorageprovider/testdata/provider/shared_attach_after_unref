@@ -12,11 +12,10 @@ open p5 5
 <local fs> sync: p5
 <local fs> sync: p5/SHARED-CATALOG-000001
 
-create 1 shared
-obj-one
+create 1 shared 1 100
 ----
 <shared> create object "d632-5-000001.sst"
-<shared> close writer for "d632-5-000001.sst" after 7 bytes
+<shared> close writer for "d632-5-000001.sst" after 100 bytes
 <shared> create object "d632-5-000001.sst.ref.5.000001"
 <shared> close writer for "d632-5-000001.sst.ref.5.000001" after 0 bytes
 
@@ -56,11 +55,10 @@ switch p5
 close-backing p5b1
 ----
 
-create 2 shared
-obj-two
+create 2 shared 2 100
 ----
 <shared> create object "1ab5-5-000002.sst"
-<shared> close writer for "1ab5-5-000002.sst" after 7 bytes
+<shared> close writer for "1ab5-5-000002.sst" after 100 bytes
 <shared> create object "1ab5-5-000002.sst.ref.5.000002"
 <shared> close writer for "1ab5-5-000002.sst.ref.5.000002" after 0 bytes
 
