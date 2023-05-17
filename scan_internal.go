@@ -736,10 +736,6 @@ func (d *DB) truncateSharedFile(
 
 	// We will need to truncate file bounds in at least one direction. Open all
 	// relevant iterators.
-	//
-	// TODO(bilal): Once virtual sstables go in, verify that the constraining of
-	// bounds to virtual sstable bounds happens below this method, so we aren't
-	// unintentionally exposing keys we shouldn't be exposing.
 	iter, rangeDelIter, err := d.newIters(ctx, file, &IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
@@ -842,6 +838,10 @@ func (d *DB) truncateSharedFile(
 	// have any keys within those bounds. Skip such files.
 	if len(sst.Smallest.UserKey) == 0 {
 		return nil, true, nil
+	}
+	sst.Size, err = d.tableCache.estimateSize(file, sst.Smallest.UserKey, sst.Largest.UserKey)
+	if err != nil {
+		return nil, false, err
 	}
 	return sst, false, nil
 }

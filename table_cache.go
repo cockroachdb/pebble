@@ -170,6 +170,32 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 	return m, f
 }
 
+func (c *tableCacheContainer) estimateSize(
+	meta *fileMetadata, lower, upper []byte,
+) (size uint64, err error) {
+	if meta.Virtual {
+		err = c.withVirtualReader(
+			meta.VirtualMeta(),
+			func(r sstable.VirtualReader) (err error) {
+				size, err = r.EstimateDiskUsage(lower, upper)
+				return err
+			},
+		)
+	} else {
+		err = c.withReader(
+			meta.PhysicalMeta(),
+			func(r *sstable.Reader) (err error) {
+				size, err = r.EstimateDiskUsage(lower, upper)
+				return err
+			},
+		)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return size, nil
+}
+
 func (c *tableCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
 	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
 	v := s.findNode(meta.FileMetadata, &c.dbOpts)
