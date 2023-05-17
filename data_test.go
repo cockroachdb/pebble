@@ -1151,6 +1151,32 @@ func (d *DB) waitTableStats() {
 	}
 }
 
+func runIngestAndExciseCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
+	var exciseSpan KeyRange
+	paths := make([]string, 0, len(td.CmdArgs))
+	for i, arg := range td.CmdArgs {
+		switch td.CmdArgs[i].Key {
+		case "excise":
+			if len(td.CmdArgs[i].Vals) != 1 {
+				return errors.New("expected 2 values for excise separated by -, eg. ingest-and-excise foo1 excise=\"start-end\"")
+			}
+			fields := strings.Split(td.CmdArgs[i].Vals[0], "-")
+			if len(fields) != 2 {
+				return errors.New("expected 2 values for excise separated by -, eg. ingest-and-excise foo1 excise=\"start-end\"")
+			}
+			exciseSpan.Start = []byte(fields[0])
+			exciseSpan.End = []byte(fields[1])
+		default:
+			paths = append(paths, arg.String())
+		}
+	}
+
+	if _, err := d.IngestAndExcise(paths, nil /* shared */, exciseSpan); err != nil {
+		return err
+	}
+	return nil
+}
+
 func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	paths := make([]string, 0, len(td.CmdArgs))
 	for _, arg := range td.CmdArgs {
@@ -1189,7 +1215,7 @@ func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 		*fileMetadata,
 	) (int, error) {
 		return level, nil
-	})
+	}, nil, KeyRange{})
 	return err
 }
 
