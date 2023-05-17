@@ -804,13 +804,14 @@ func (d *DB) replayWAL(
 					paths[i] = base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, n)
 				}
 
-				var meta []*manifest.FileMetadata
-				meta, _, err = ingestLoad(
-					d.opts, d.mu.formatVers.vers, paths, d.cacheID, fileNums,
+				var lr ingestLoadResult
+				lr, err = ingestLoad(
+					d.opts, d.mu.formatVers.vers, paths, nil /* shared */, d.cacheID, fileNums, d.objProvider,
 				)
 				if err != nil {
 					return nil, 0, err
 				}
+				meta := lr.localMeta
 
 				if uint32(len(meta)) != b.Count() {
 					panic("pebble: couldn't load all files in WAL entry.")
