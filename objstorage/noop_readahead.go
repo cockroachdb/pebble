@@ -27,8 +27,8 @@ func (h *NoopReadHandle) ReadAt(ctx context.Context, p []byte, off int64) error 
 // Close is part of the ReadHandle interface.
 func (*NoopReadHandle) Close() error { return nil }
 
-// MaxReadahead is part of the ReadHandle interface.
-func (*NoopReadHandle) MaxReadahead() {}
+// SetupForCompaction is part of the ReadHandle interface.
+func (*NoopReadHandle) SetupForCompaction() {}
 
 // RecordCacheHit is part of the ReadHandle interface.
 func (*NoopReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {}

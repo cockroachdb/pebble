@@ -464,9 +464,9 @@ func (i *singleLevelIterator) init(
 // setupForCompaction sets up the singleLevelIterator for use with compactionIter.
 // Currently, it skips readahead ramp-up. It should be called after init is called.
 func (i *singleLevelIterator) setupForCompaction() {
-	i.dataRH.MaxReadahead()
+	i.dataRH.SetupForCompaction()
 	if i.vbRH != nil {
-		i.vbRH.MaxReadahead()
+		i.vbRH.SetupForCompaction()
 	}
 }
 
