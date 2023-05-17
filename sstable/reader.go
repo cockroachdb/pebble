@@ -2892,14 +2892,10 @@ func MakeVirtualReader(reader *Reader, meta manifest.VirtualFileMeta) VirtualRea
 		reader: reader,
 	}
 
-	if meta.Stats.NumEntries == 0 {
-		panic("pebble: TableStats.NumEntries not set for virtual sstable")
-	}
-
 	v.Properties.RawKeySize =
-		(reader.Properties.RawKeySize * meta.Stats.NumEntries) / reader.Properties.NumEntries
+		(reader.Properties.RawKeySize * meta.Size) / meta.FileBacking.Size
 	v.Properties.RawValueSize =
-		(reader.Properties.RawValueSize * meta.Stats.NumEntries) / reader.Properties.NumEntries
+		(reader.Properties.RawValueSize * meta.Size) / meta.FileBacking.Size
 
 	return v
 }
