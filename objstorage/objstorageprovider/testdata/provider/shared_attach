@@ -117,12 +117,11 @@ read 101
 15 10
 ----
 <shared> size of object "61a6-1-000001.sst.ref.2.000101": 0
-<shared> size of object "61a6-1-000001.sst": 100
+<shared> create reader for object "61a6-1-000001.sst": 100 bytes
 size: 100
-<shared> read object "61a6-1-000001.sst" at 0: 100 bytes
+<shared> read object "61a6-1-000001.sst" at 0 (length 100)
 0 100: ok (salt 1)
-<shared> close reader for "61a6-1-000001.sst"
-<shared> read object "61a6-1-000001.sst" at 15: 85 bytes
+<shared> read object "61a6-1-000001.sst" at 15 (length 10)
 15 10: ok (salt 1)
 <shared> close reader for "61a6-1-000001.sst"
 
@@ -131,12 +130,11 @@ read 102
 90 100
 ----
 <shared> size of object "a629-1-000002.sst.ref.2.000102": 0
-<shared> size of object "a629-1-000002.sst": 200
+<shared> create reader for object "a629-1-000002.sst": 200 bytes
 size: 200
-<shared> read object "a629-1-000002.sst" at 0: 200 bytes
+<shared> read object "a629-1-000002.sst" at 0 (length 200)
 0 200: ok (salt 2)
-<shared> close reader for "a629-1-000002.sst"
-<shared> read object "a629-1-000002.sst" at 90: 110 bytes
+<shared> read object "a629-1-000002.sst" at 90 (length 100)
 90 100: ok (salt 2)
 <shared> close reader for "a629-1-000002.sst"
 
@@ -144,8 +142,8 @@ read 103
 0 300
 ----
 <shared> size of object "eaac-1-000003.sst.ref.2.000103": 0
-<shared> size of object "eaac-1-000003.sst": 300
+<shared> create reader for object "eaac-1-000003.sst": 300 bytes
 size: 300
-<shared> read object "eaac-1-000003.sst" at 0: 300 bytes
+<shared> read object "eaac-1-000003.sst" at 0 (length 300)
 0 300: ok (salt 3)
 <shared> close reader for "eaac-1-000003.sst"

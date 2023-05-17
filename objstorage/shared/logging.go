@@ -5,6 +5,7 @@
 package shared
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
@@ -33,41 +34,52 @@ func (l *loggingStore) Close() error {
 	return l.wrapped.Close()
 }
 
-func (l *loggingStore) ReadObjectAt(
-	basename string, offset int64,
-) (_ io.ReadCloser, totalSize int64, _ error) {
-	r, totalSize, err := l.wrapped.ReadObjectAt(basename, offset)
-	l.logf("read object %q at %d: %s", basename, offset, errOrPrintf(err, "%d bytes", totalSize))
+func (l *loggingStore) ReadObject(
+	ctx context.Context, objName string,
+) (_ ObjectReader, objSize int64, _ error) {
+	r, size, err := l.wrapped.ReadObject(ctx, objName)
+	l.logf("create reader for object %q: %s", objName, errOrPrintf(err, "%d bytes", size))
 	if err != nil {
 		return nil, 0, err
 	}
 	return &loggingReader{
-		l:          l,
-		name:       basename,
-		ReadCloser: r,
-	}, totalSize, nil
+		l:       l,
+		name:    objName,
+		wrapped: r,
+	}, size, nil
 }
 
 type loggingReader struct {
-	l    *loggingStore
-	name string
-	io.ReadCloser
+	l       *loggingStore
+	name    string
+	wrapped ObjectReader
+}
+
+var _ ObjectReader = (*loggingReader)(nil)
+
+func (l *loggingReader) ReadAt(ctx context.Context, p []byte, offset int64) error {
+	if err := l.wrapped.ReadAt(ctx, p, offset); err != nil {
+		l.l.logf("read object %q at %d (length %d): error %v", l.name, offset, len(p), err)
+		return err
+	}
+	l.l.logf("read object %q at %d (length %d)", l.name, offset, len(p))
+	return nil
 }
 
 func (l *loggingReader) Close() error {
 	l.l.logf("close reader for %q", l.name)
-	return l.ReadCloser.Close()
+	return l.wrapped.Close()
 }
 
-func (l *loggingStore) CreateObject(basename string) (io.WriteCloser, error) {
-	l.logf("create object %q", basename)
-	writer, err := l.wrapped.CreateObject(basename)
+func (l *loggingStore) CreateObject(objName string) (io.WriteCloser, error) {
+	l.logf("create object %q", objName)
+	writer, err := l.wrapped.CreateObject(objName)
 	if err != nil {
 		return nil, err
 	}
 	return &loggingWriter{
 		l:           l,
-		name:        basename,
+		name:        objName,
 		WriteCloser: writer,
 	}, nil
 }
@@ -104,14 +116,14 @@ func (l *loggingStore) List(prefix, delimiter string) ([]string, error) {
 	return res, nil
 }
 
-func (l *loggingStore) Delete(basename string) error {
-	l.logf("delete object %q", basename)
-	return l.wrapped.Delete(basename)
+func (l *loggingStore) Delete(objName string) error {
+	l.logf("delete object %q", objName)
+	return l.wrapped.Delete(objName)
 }
 
-func (l *loggingStore) Size(basename string) (int64, error) {
-	size, err := l.wrapped.Size(basename)
-	l.logf("size of object %q: %s", basename, errOrPrintf(err, "%d", size))
+func (l *loggingStore) Size(objName string) (int64, error) {
+	size, err := l.wrapped.Size(objName)
+	l.logf("size of object %q: %s", objName, errOrPrintf(err, "%d", size))
 	return size, err
 }
 
