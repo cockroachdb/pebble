@@ -203,7 +203,7 @@ func (p *provider) sharedOpenForReading(
 		}
 	}
 	objName := sharedObjectName(meta)
-	size, err := p.sharedStorage().Size(objName)
+	reader, size, err := p.sharedStorage().ReadObject(ctx, objName)
 	if err != nil {
 		if opts.MustExist && p.sharedStorage().IsNotExistError(err) {
 			p.st.Logger.Fatalf("object %q does not exist", objName)
@@ -211,7 +211,7 @@ func (p *provider) sharedOpenForReading(
 		}
 		return nil, err
 	}
-	return newSharedReadable(p.sharedStorage(), objName, size), nil
+	return newSharedReadable(reader, size), nil
 }
 
 func (p *provider) sharedSize(meta objstorage.ObjectMetadata) (int64, error) {

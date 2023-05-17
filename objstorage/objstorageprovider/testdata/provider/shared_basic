@@ -39,9 +39,9 @@ read 2
 0 100
 ----
 <shared> size of object "a629-1-000002.sst.ref.1.000002": 0
-<shared> size of object "a629-1-000002.sst": 100
+<shared> create reader for object "a629-1-000002.sst": 100 bytes
 size: 100
-<shared> read object "a629-1-000002.sst" at 0: 100 bytes
+<shared> read object "a629-1-000002.sst" at 0 (length 100)
 0 100: ok (salt 2)
 <shared> close reader for "a629-1-000002.sst"
 
@@ -110,9 +110,9 @@ read 4
 0 100
 ----
 <shared> size of object "2f2f-1-000004.sst.ref.1.000004": 0
-<shared> size of object "2f2f-1-000004.sst": 100
+<shared> create reader for object "2f2f-1-000004.sst": 100 bytes
 size: 100
-<shared> read object "2f2f-1-000004.sst" at 0: 100 bytes
+<shared> read object "2f2f-1-000004.sst" at 0 (length 100)
 0 100: ok (salt 4)
 <shared> close reader for "2f2f-1-000004.sst"
 
