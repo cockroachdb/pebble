@@ -186,6 +186,11 @@ func (d *DB) loadNewFileStats(
 			continue
 		}
 
+		if nf.Meta.Virtual {
+			// cannot load virtual table stats
+			continue
+		}
+
 		stats, newHints, err := d.loadTableStats(
 			rs.current, nf.Level,
 			nf.Meta.PhysicalMeta(),
@@ -223,6 +228,11 @@ func (d *DB) scanReadStateTableStats(
 			// d.mu.tableStats.loading. This makes it safe to read validity
 			// through f.Stats.ValidLocked despite not holding d.mu.
 			if f.StatsValid() {
+				continue
+			}
+			// TODO(bilal): Remove this guard when table stats collection is
+			// implemented for virtual sstables.
+			if f.Virtual {
 				continue
 			}
 
