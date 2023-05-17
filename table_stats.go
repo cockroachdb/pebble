@@ -186,6 +186,11 @@ func (d *DB) loadNewFileStats(
 			continue
 		}
 
+		if nf.Meta.Virtual {
+			// cannot load virtual table stats
+			continue
+		}
+
 		stats, newHints, err := d.loadTableStats(
 			rs.current, nf.Level,
 			nf.Meta.PhysicalMeta(),

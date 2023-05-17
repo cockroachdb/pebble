@@ -2558,9 +2558,20 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		d.mu.versions.logLock()
-		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, false /* forceRotation */, func() []compactionInfo {
-			return d.getInProgressCompactionInfoLocked(c)
-		})
+		// Confirm if any of this compaction's inputs were deleted while this
+		// compaction was ongoing.
+		for i := range c.inputs {
+			c.inputs[i].files.Each(func(m *manifest.FileMetadata) {
+				if m.Deleted {
+					err = firstError(err, errors.New("pebble: file deleted by a concurrent operation, will retry compaction"))
+				}
+			})
+		}
+		if err == nil {
+			err = d.mu.versions.logAndApply(jobID, ve, c.metrics, false /* forceRotation */, func() []compactionInfo {
+				return d.getInProgressCompactionInfoLocked(c)
+			})
+		}
 		if err != nil {
 			// TODO(peter): untested.
 			for _, f := range pendingOutputs {
