@@ -736,10 +736,6 @@ func (d *DB) truncateSharedFile(
 
 	// We will need to truncate file bounds in at least one direction. Open all
 	// relevant iterators.
-	//
-	// TODO(bilal): Once virtual sstables go in, verify that the constraining of
-	// bounds to virtual sstable bounds happens below this method, so we aren't
-	// unintentionally exposing keys we shouldn't be exposing.
 	iter, rangeDelIter, err := d.newIters(ctx, file, &IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
@@ -843,6 +839,10 @@ func (d *DB) truncateSharedFile(
 	if len(sst.Smallest.UserKey) == 0 {
 		return nil, true, nil
 	}
+	sst.Size, err = d.tableCache.estimateSize(file, sst.Smallest.UserKey, sst.Largest.UserKey)
+	if err != nil {
+		return nil, false, err
+	}
 	return sst, false, nil
 }
 
@@ -875,7 +875,7 @@ func scanInternalImpl(
 			for f := files.SeekGE(cmp, lower); f != nil && cmp(f.Smallest.UserKey, upper) < 0; f = files.Next() {
 				var objMeta objstorage.ObjectMetadata
 				var err error
-				objMeta, err = provider.Lookup(fileTypeTable, f.FileNum.DiskFileNum())
+				objMeta, err = provider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
 				if err != nil {
 					return err
 				}
