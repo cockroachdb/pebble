@@ -805,8 +805,8 @@ func (d *DB) replayWAL(
 				}
 
 				var meta []*manifest.FileMetadata
-				meta, _, err = ingestLoad(
-					d.opts, d.mu.formatVers.vers, paths, d.cacheID, fileNums,
+				meta, _, _, err = ingestLoad(
+					d.opts, d.mu.formatVers.vers, paths, nil /* shared */, d.cacheID, fileNums, d.objProvider,
 				)
 				if err != nil {
 					return nil, 0, err

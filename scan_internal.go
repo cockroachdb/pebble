@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 const (
@@ -477,10 +478,6 @@ func (d *DB) truncateSharedFile(
 
 	// We will need to truncate file bounds in at least one direction. Open all
 	// relevant iterators.
-	//
-	// TODO(bilal): Once virtual sstables go in, verify that the constraining of
-	// bounds to virtual sstable bounds happens below this method, so we aren't
-	// unintentionally exposing keys we shouldn't be exposing.
 	iter, rangeDelIter, err := d.newIters(ctx, file, &IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
@@ -584,6 +581,25 @@ func (d *DB) truncateSharedFile(
 	if len(sst.Smallest.UserKey) == 0 {
 		return nil, true, nil
 	}
+	var size uint64
+	if file.Virtual {
+		err = d.tableCache.withVirtualReader(
+			file.VirtualMeta(),
+			func(r sstable.VirtualReader) (err error) {
+				size, err = r.EstimateDiskUsage(sst.Smallest.UserKey, sst.Largest.UserKey)
+				return err
+			},
+		)
+	} else {
+		err = d.tableCache.withReader(
+			file.PhysicalMeta(),
+			func(r *sstable.Reader) (err error) {
+				size, err = r.EstimateDiskUsage(sst.Smallest.UserKey, sst.Largest.UserKey)
+				return err
+			},
+		)
+	}
+	sst.Size = size
 	return sst, false, nil
 }
 

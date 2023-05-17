@@ -58,8 +58,8 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 
 		// We can reuse the ingestLoad function for this test even if we're
 		// not actually ingesting a file.
-		meta, paths, err := ingestLoad(
-			d.opts, d.FormatMajorVersion(), paths, d.cacheID, pendingOutputs,
+		meta, paths, _, err := ingestLoad(
+			d.opts, d.FormatMajorVersion(), paths, nil /* shared */, d.cacheID, pendingOutputs, d.objProvider,
 		)
 		if err != nil {
 			panic(err)
@@ -70,7 +70,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		}
 
 		// Verify the sstables do not overlap.
-		if err := ingestSortAndVerify(d.cmp, meta, paths); err != nil {
+		if err := ingestSortAndVerify(d.cmp, meta, paths, KeyRange{}); err != nil {
 			panic("unsorted sstables")
 		}
 
