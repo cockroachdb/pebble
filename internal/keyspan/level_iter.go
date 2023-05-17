@@ -98,7 +98,7 @@ func (l *LevelIter) Init(
 ) {
 	l.err = nil
 	l.level = level
-	l.tableOpts.RangeKeyFilters = opts.RangeKeyFilters
+	l.tableOpts = opts
 	l.cmp = cmp
 	l.iterFile = nil
 	l.newIter = newIter

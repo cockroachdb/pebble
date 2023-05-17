@@ -374,7 +374,7 @@ func coalesce(
 // it calls coalesce to remove range keys shadowed by other range keys, but also
 // retains the range key that does the shadowing. In addition, it outputs range
 // keys with sequence numbers that match reserved sequence numbers for that
-// level (i.e. SeqNumL5RangeKeySet for L5 sets, while L6 unsets/dels are elided).
+// level (i.e. SeqNumL5 for L5 sets, while L6 unsets/dels are elided).
 type ForeignSSTTransformer struct {
 	Comparer *base.Comparer
 	Level    int
@@ -406,9 +406,9 @@ func (f *ForeignSSTTransformer) Transform(
 			}
 			switch f.Level {
 			case 5:
-				seqNum = base.SeqNumL5RangeKeySet
+				seqNum = base.SeqNumL5
 			case 6:
-				seqNum = base.SeqNumL6RangeKey
+				seqNum = base.SeqNumL6
 			}
 		case base.InternalKeyKindRangeKeyUnset:
 			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
@@ -418,7 +418,7 @@ func (f *ForeignSSTTransformer) Transform(
 		case base.InternalKeyKindRangeKeyDelete:
 			switch f.Level {
 			case 5:
-				seqNum = base.SeqNumL5RangeKeyUnsetDel
+				seqNum = base.SeqNumL5
 			case 6:
 				// Skip this key, as foreign sstable in L6 do not need to emit range key
 				// unsets/dels as they do not apply to any other sstables.
