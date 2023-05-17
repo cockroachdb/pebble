@@ -14,7 +14,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -306,16 +305,15 @@ func TestVirtualReader(t *testing.T) {
 				Virtual:        true,
 			}
 			// Parse the virtualization bounds.
-			splits := strings.Split(td.CmdArgs[0].String(), ",")
-			bounds := strings.Split(splits[0], "-")
+			bounds := strings.Split(td.CmdArgs[0].String(), "-")
 			vMeta.Smallest = base.ParseInternalKey(bounds[0])
 			vMeta.Largest = base.ParseInternalKey(bounds[1])
 			vMeta.FileNum = nextFileNum()
-			n, err := strconv.Atoi(splits[1])
+			var err error
+			vMeta.Size, err = r.EstimateDiskUsage(vMeta.Smallest.UserKey, vMeta.Largest.UserKey)
 			if err != nil {
 				return err.Error()
 			}
-			vMeta.Stats.NumEntries = uint64(n)
 			vMeta.ValidateVirtual(meta.FileMetadata)
 
 			vMeta1 = vMeta.VirtualMeta()
