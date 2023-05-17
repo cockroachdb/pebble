@@ -6,6 +6,7 @@ package rangekey
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"sort"
 
@@ -372,9 +373,9 @@ func coalesce(
 // foreign sstables (i.e. shared sstables not created by us). It is largely
 // similar to the Transform function implemented in UserIteratorConfig in that
 // it calls coalesce to remove range keys shadowed by other range keys, but also
-// retains the range key that does the shadowing. In addition, it outputs range
-// keys with sequence numbers that match reserved sequence numbers for that
-// level (i.e. SeqNumL5RangeKeySet for L5 sets, while L6 unsets/dels are elided).
+// retains the range key that does the shadowing. In addition, it elides
+// RangeKey unsets/dels in L6 as they are inapplicable when reading from a
+// different Pebble instance.
 type ForeignSSTTransformer struct {
 	Comparer *base.Comparer
 	Level    int
@@ -398,7 +399,7 @@ func (f *ForeignSSTTransformer) Transform(
 	keys := f.sortBuf.Keys
 	dst.Keys = dst.Keys[:0]
 	for i := range keys {
-		var seqNum uint64
+		seqNum := keys[i].SeqNum()
 		switch keys[i].Kind() {
 		case base.InternalKeyKindRangeKeySet:
 			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
@@ -406,9 +407,11 @@ func (f *ForeignSSTTransformer) Transform(
 			}
 			switch f.Level {
 			case 5:
-				seqNum = base.SeqNumL5RangeKeySet
+				fallthrough
 			case 6:
-				seqNum = base.SeqNumL6RangeKey
+				if seqNum != base.SeqNumForLevel(f.Level) {
+					panic(fmt.Sprintf("pebble: expected range key iter to return seqnum %d, got %d", base.SeqNumForLevel(f.Level), seqNum))
+				}
 			}
 		case base.InternalKeyKindRangeKeyUnset:
 			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
@@ -418,7 +421,10 @@ func (f *ForeignSSTTransformer) Transform(
 		case base.InternalKeyKindRangeKeyDelete:
 			switch f.Level {
 			case 5:
-				seqNum = base.SeqNumL5RangeKeyUnsetDel
+				// Emit this key.
+				if seqNum != base.SeqNumForLevel(f.Level) {
+					panic(fmt.Sprintf("pebble: expected range key iter to return seqnum %d, got %d", base.SeqNumForLevel(f.Level), seqNum))
+				}
 			case 6:
 				// Skip this key, as foreign sstable in L6 do not need to emit range key
 				// unsets/dels as they do not apply to any other sstables.
