@@ -388,6 +388,10 @@ func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
 	if createdFrom.FileBacking != nil && createdFrom.FileBacking != m.FileBacking {
 		panic("pebble: invalid physical sstable state for virtual sstable")
 	}
+
+	if m.Size == 0 {
+		panic("pebble: virtual sstable size must be set upon creation")
+	}
 }
 
 // Refs returns the refcount of backing sstable.
