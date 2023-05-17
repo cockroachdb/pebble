@@ -16,124 +16,124 @@ import (
 
 func TestRewriteSuffixProps(t *testing.T) {
 	from, to := []byte("_212"), []byte("_646")
-
-	format := TableFormatPebblev2
-	format += TableFormat(rand.Intn(int(TableFormatPebblev4 - TableFormatPebblev2)))
-	t.Logf("table format: %s\n", format.String())
-	wOpts := WriterOptions{
-		FilterPolicy: bloom.FilterPolicy(10),
-		Comparer:     test4bSuffixComparer,
-		TablePropertyCollectors: []func() TablePropertyCollector{
-			intSuffixTablePropCollectorFn("ts3", 3), intSuffixTablePropCollectorFn("ts2", 2),
-		},
-		BlockPropertyCollectors: []func() BlockPropertyCollector{
-			keyCountCollectorFn("count"),
-			intSuffixIntervalCollectorFn("bp3", 3),
-			intSuffixIntervalCollectorFn("bp2", 2),
-			intSuffixIntervalCollectorFn("bp1", 1),
-		},
-		TableFormat: format,
-	}
-
-	const keyCount = 1e5
-	const rangeKeyCount = 100
-	// Setup our test SST.
-	sst := make4bSuffixTestSST(t, wOpts, []byte(from), keyCount, rangeKeyCount)
-
-	expectedProps := make(map[string]string)
-	expectedProps["ts2.min"] = "46"
-	expectedProps["ts2.max"] = "46"
-	expectedProps["ts3.min"] = "646"
-	expectedProps["ts3.max"] = "646"
-
-	// Also expect to see the aggregated block properties with their updated value
-	// at the correct (new) shortIDs. Seeing the rolled up value here is almost an
-	// end-to-end test since we only fed them each block during rewrite.
-	expectedProps["count"] = string(append([]byte{1}, strconv.Itoa(keyCount+rangeKeyCount)...))
-	expectedProps["bp2"] = string(interval{46, 47}.encode([]byte{2}))
-	expectedProps["bp3"] = string(interval{646, 647}.encode([]byte{0}))
-
-	// Swap the order of two of the props so they have new shortIDs, and remove
-	// one.
-	rwOpts := wOpts
-	rwOpts.TableFormat = TableFormatPebblev2
-	if rand.Intn(2) != 0 {
-		rwOpts.TableFormat = TableFormatPebblev3
-	}
-	fmt.Printf("from format %s, to format %s\n", format.String(), rwOpts.TableFormat.String())
-	rwOpts.BlockPropertyCollectors = rwOpts.BlockPropertyCollectors[:3]
-	rwOpts.BlockPropertyCollectors[0], rwOpts.BlockPropertyCollectors[1] = rwOpts.BlockPropertyCollectors[1], rwOpts.BlockPropertyCollectors[0]
-
-	// Rewrite the SST using updated options and check the returned props.
-	readerOpts := ReaderOptions{
-		Comparer: test4bSuffixComparer,
-		Filters:  map[string]base.FilterPolicy{wOpts.FilterPolicy.Name(): wOpts.FilterPolicy},
-	}
-	r, err := NewMemReader(sst, readerOpts)
-	require.NoError(t, err)
-	defer r.Close()
-
-	var sstBytes [2][]byte
-	for i, byBlocks := range []bool{false, true} {
-		t.Run(fmt.Sprintf("byBlocks=%v", byBlocks), func(t *testing.T) {
-			rewrittenSST := &memFile{}
-			if byBlocks {
-				_, rewriteFormat, err := rewriteKeySuffixesInBlocks(
-					r, rewrittenSST, rwOpts, from, to, 8)
-				// rewriteFormat is equal to the original format, since
-				// rwOpts.TableFormat is ignored.
-				require.Equal(t, wOpts.TableFormat, rewriteFormat)
-				require.NoError(t, err)
-			} else {
-				_, err := RewriteKeySuffixesViaWriter(r, rewrittenSST, rwOpts, from, to)
-				require.NoError(t, err)
+	for format := TableFormatPebblev2; format <= TableFormatMax; format++ {
+		t.Run(format.String(), func(t *testing.T) {
+			wOpts := WriterOptions{
+				FilterPolicy: bloom.FilterPolicy(10),
+				Comparer:     test4bSuffixComparer,
+				TablePropertyCollectors: []func() TablePropertyCollector{
+					intSuffixTablePropCollectorFn("ts3", 3), intSuffixTablePropCollectorFn("ts2", 2),
+				},
+				BlockPropertyCollectors: []func() BlockPropertyCollector{
+					keyCountCollectorFn("count"),
+					intSuffixIntervalCollectorFn("bp3", 3),
+					intSuffixIntervalCollectorFn("bp2", 2),
+					intSuffixIntervalCollectorFn("bp1", 1),
+				},
+				TableFormat: format,
 			}
 
-			sstBytes[i] = rewrittenSST.Data()
-			// Check that a reader on the rewritten STT has the expected props.
-			rRewritten, err := NewMemReader(rewrittenSST.Data(), readerOpts)
-			require.NoError(t, err)
-			defer rRewritten.Close()
-			require.Equal(t, expectedProps, rRewritten.Properties.UserProperties)
+			const keyCount = 1e5
+			const rangeKeyCount = 100
+			// Setup our test SST.
+			sst := make4bSuffixTestSST(t, wOpts, []byte(from), keyCount, rangeKeyCount)
 
-			// Compare the block level props from the data blocks in the layout,
-			// only if we did not do a rewrite from one format to another. If the
-			// format changes, the block boundaries change slightly.
-			if !byBlocks && wOpts.TableFormat != rwOpts.TableFormat {
-				return
+			expectedProps := make(map[string]string)
+			expectedProps["ts2.min"] = "46"
+			expectedProps["ts2.max"] = "46"
+			expectedProps["ts3.min"] = "646"
+			expectedProps["ts3.max"] = "646"
+
+			// Also expect to see the aggregated block properties with their updated value
+			// at the correct (new) shortIDs. Seeing the rolled up value here is almost an
+			// end-to-end test since we only fed them each block during rewrite.
+			expectedProps["count"] = string(append([]byte{1}, strconv.Itoa(keyCount+rangeKeyCount)...))
+			expectedProps["bp2"] = string(interval{46, 47}.encode([]byte{2}))
+			expectedProps["bp3"] = string(interval{646, 647}.encode([]byte{0}))
+
+			// Swap the order of two of the props so they have new shortIDs, and remove
+			// one.
+			rwOpts := wOpts
+			rwOpts.TableFormat = TableFormatPebblev2
+			if rand.Intn(2) != 0 {
+				rwOpts.TableFormat = TableFormatPebblev3
 			}
-			layout, err := r.Layout()
-			require.NoError(t, err)
-			newLayout, err := rRewritten.Layout()
-			require.NoError(t, err)
+			fmt.Printf("from format %s, to format %s\n", format.String(), rwOpts.TableFormat.String())
+			rwOpts.BlockPropertyCollectors = rwOpts.BlockPropertyCollectors[:3]
+			rwOpts.BlockPropertyCollectors[0], rwOpts.BlockPropertyCollectors[1] = rwOpts.BlockPropertyCollectors[1], rwOpts.BlockPropertyCollectors[0]
 
-			ival := interval{}
-			for i := range layout.Data {
-				oldProps := make([][]byte, len(wOpts.BlockPropertyCollectors))
-				oldDecoder := blockPropertiesDecoder{layout.Data[i].Props}
-				for !oldDecoder.done() {
-					id, val, err := oldDecoder.next()
+			// Rewrite the SST using updated options and check the returned props.
+			readerOpts := ReaderOptions{
+				Comparer: test4bSuffixComparer,
+				Filters:  map[string]base.FilterPolicy{wOpts.FilterPolicy.Name(): wOpts.FilterPolicy},
+			}
+			r, err := NewMemReader(sst, readerOpts)
+			require.NoError(t, err)
+			defer r.Close()
+
+			var sstBytes [2][]byte
+			for i, byBlocks := range []bool{false, true} {
+				t.Run(fmt.Sprintf("byBlocks=%v", byBlocks), func(t *testing.T) {
+					rewrittenSST := &memFile{}
+					if byBlocks {
+						_, rewriteFormat, err := rewriteKeySuffixesInBlocks(
+							r, rewrittenSST, rwOpts, from, to, 8)
+						// rewriteFormat is equal to the original format, since
+						// rwOpts.TableFormat is ignored.
+						require.Equal(t, wOpts.TableFormat, rewriteFormat)
+						require.NoError(t, err)
+					} else {
+						_, err := RewriteKeySuffixesViaWriter(r, rewrittenSST, rwOpts, from, to)
+						require.NoError(t, err)
+					}
+
+					sstBytes[i] = rewrittenSST.Data()
+					// Check that a reader on the rewritten STT has the expected props.
+					rRewritten, err := NewMemReader(rewrittenSST.Data(), readerOpts)
 					require.NoError(t, err)
-					oldProps[id] = val
-				}
-				newProps := make([][]byte, len(rwOpts.BlockPropertyCollectors))
-				newDecoder := blockPropertiesDecoder{newLayout.Data[i].Props}
-				for !newDecoder.done() {
-					id, val, err := newDecoder.next()
+					defer rRewritten.Close()
+					require.Equal(t, expectedProps, rRewritten.Properties.UserProperties)
+
+					// Compare the block level props from the data blocks in the layout,
+					// only if we did not do a rewrite from one format to another. If the
+					// format changes, the block boundaries change slightly.
+					if !byBlocks && wOpts.TableFormat != rwOpts.TableFormat {
+						return
+					}
+					layout, err := r.Layout()
 					require.NoError(t, err)
-					newProps[id] = val
-				}
-				require.Equal(t, oldProps[0], newProps[1])
-				ival.decode(newProps[0])
-				require.Equal(t, interval{646, 647}, ival)
-				ival.decode(newProps[2])
-				require.Equal(t, interval{46, 47}, ival)
+					newLayout, err := rRewritten.Layout()
+					require.NoError(t, err)
+
+					ival := interval{}
+					for i := range layout.Data {
+						oldProps := make([][]byte, len(wOpts.BlockPropertyCollectors))
+						oldDecoder := blockPropertiesDecoder{layout.Data[i].Props}
+						for !oldDecoder.done() {
+							id, val, err := oldDecoder.next()
+							require.NoError(t, err)
+							oldProps[id] = val
+						}
+						newProps := make([][]byte, len(rwOpts.BlockPropertyCollectors))
+						newDecoder := blockPropertiesDecoder{newLayout.Data[i].Props}
+						for !newDecoder.done() {
+							id, val, err := newDecoder.next()
+							require.NoError(t, err)
+							newProps[id] = val
+						}
+						require.Equal(t, oldProps[0], newProps[1])
+						ival.decode(newProps[0])
+						require.Equal(t, interval{646, 647}, ival)
+						ival.decode(newProps[2])
+						require.Equal(t, interval{46, 47}, ival)
+					}
+				})
+			}
+			if wOpts.TableFormat == rwOpts.TableFormat {
+				// Both methods of rewriting should produce the same result.
+				require.Equal(t, sstBytes[0], sstBytes[1])
 			}
 		})
-	}
-	if wOpts.TableFormat == rwOpts.TableFormat {
-		// Both methods of rewriting should produce the same result.
-		require.Equal(t, sstBytes[0], sstBytes[1])
 	}
 }
 
