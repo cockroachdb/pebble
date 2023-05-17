@@ -58,9 +58,8 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 
 		// We can reuse the ingestLoad function for this test even if we're
 		// not actually ingesting a file.
-		meta, paths, err := ingestLoad(
-			d.opts, d.FormatMajorVersion(), paths, d.cacheID, pendingOutputs,
-		)
+		lr, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, d.cacheID, pendingOutputs)
+		meta := lr.localMeta
 		if err != nil {
 			panic(err)
 		}
@@ -70,7 +69,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		}
 
 		// Verify the sstables do not overlap.
-		if err := ingestSortAndVerify(d.cmp, meta, paths); err != nil {
+		if err := ingestSortAndVerify(d.cmp, lr, KeyRange{}); err != nil {
 			panic("unsorted sstables")
 		}
 
@@ -79,7 +78,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// (e.g. because the files reside on a different filesystem), ingestLink will
 		// fall back to copying, and if that fails we undo our work and return an
 		// error.
-		if err := ingestLink(jobID, d.opts, d.objProvider, paths, meta); err != nil {
+		if err := ingestLink(jobID, d.opts, d.objProvider, lr, nil /* shared */); err != nil {
 			panic("couldn't hard link sstables")
 		}
 

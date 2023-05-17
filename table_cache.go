@@ -170,6 +170,32 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 	return m, f
 }
 
+func (c *tableCacheContainer) estimateSize(
+	meta *fileMetadata, lower, upper []byte,
+) (size uint64, err error) {
+	if meta.Virtual {
+		err = c.withVirtualReader(
+			meta.VirtualMeta(),
+			func(r sstable.VirtualReader) (err error) {
+				size, err = r.EstimateDiskUsage(lower, upper)
+				return err
+			},
+		)
+	} else {
+		err = c.withReader(
+			meta.PhysicalMeta(),
+			func(r *sstable.Reader) (err error) {
+				size, err = r.EstimateDiskUsage(lower, upper)
+				return err
+			},
+		)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return size, nil
+}
+
 func (c *tableCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
 	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
 	v := s.findNode(meta.FileMetadata, &c.dbOpts)
@@ -408,7 +434,6 @@ func (c *tableCacheShard) newIters(
 	}
 
 	type iterCreator interface {
-		NewFixedSeqnumRangeDelIter(seqNum uint64) (keyspan.FragmentIterator, error)
 		NewRawRangeDelIter() (keyspan.FragmentIterator, error)
 		NewIterWithBlockPropertyFiltersAndContextEtc(ctx context.Context, lower, upper []byte, filterer *sstable.BlockPropertiesFilterer, hideObsoletePoints, useFilterBlock bool, stats *base.InternalIteratorStats, rp sstable.ReaderProvider) (sstable.Iterator, error)
 		NewCompactionIter(
@@ -446,7 +471,7 @@ func (c *tableCacheShard) newIters(
 		}
 		switch manifest.LevelToInt(opts.level) {
 		case 5:
-			rangeDelIter, err = ic.NewFixedSeqnumRangeDelIter(base.SeqNumL5RangeDel)
+			rangeDelIter, err = ic.NewRawRangeDelIter()
 		case 6:
 		// Let rangeDelIter remain nil. We don't need to return rangedels from
 		// this file as they will not apply to any other files. For the purpose
@@ -514,7 +539,7 @@ func (c *tableCacheShard) newIters(
 	if provider.IsForeign(objMeta) {
 		// NB: IsForeign() guarantees IsShared, so opts must not be nil as we've
 		// already panicked on the nil case above.
-		pointKeySeqNum := base.PointSeqNumForLevel(manifest.LevelToInt(opts.level))
+		pointKeySeqNum := base.SeqNumForLevel(manifest.LevelToInt(opts.level))
 		pcIter := pointCollapsingIterator{
 			comparer:          dbOpts.opts.Comparer,
 			merge:             dbOpts.opts.Merge,

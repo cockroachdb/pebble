@@ -227,6 +227,12 @@ type FileMetadata struct {
 	// we'd have to write virtual sstable stats to the version edit.
 	Stats TableStats
 
+	// Deleted is set to true if a VersionEdit gets installed that has deleted
+	// this file. Protected by the manifest lock (see versionSet.logLock()).
+	Deleted bool
+
+	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
+	// pick L0 compactions. Only accurate for the most recent Version.
 	SubLevel         int
 	L0Index          int
 	minIntervalIndex int
@@ -235,9 +241,6 @@ type FileMetadata struct {
 	// NB: the alignment of this struct is 8 bytes. We pack all the bools to
 	// ensure an optimal packing.
 
-	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
-	// pick L0 compactions. Only accurate for the most recent Version.
-	//
 	// IsIntraL0Compacting is set to True if this file is part of an intra-L0
 	// compaction. When it's true, IsCompacting must also return true. If
 	// Compacting is true and IsIntraL0Compacting is false for an L0 file, the
@@ -367,6 +370,17 @@ func (m *FileMetadata) InitPhysicalBacking() {
 	}
 	if m.FileBacking == nil {
 		m.FileBacking = &FileBacking{Size: m.Size, DiskFileNum: m.FileNum.DiskFileNum()}
+	}
+}
+
+// InitProviderBacking creates a new FileBacking for a file backed by
+// an objstorage.Provider.
+func (m *FileMetadata) InitProviderBacking(fileNum base.DiskFileNum) {
+	if !m.Virtual {
+		panic("pebble: provider-backed sstables must be virtual")
+	}
+	if m.FileBacking == nil {
+		m.FileBacking = &FileBacking{DiskFileNum: fileNum}
 	}
 }
 
