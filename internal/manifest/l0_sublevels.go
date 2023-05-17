@@ -894,6 +894,16 @@ type UserKeyRange struct {
 	Start, End []byte
 }
 
+// Valid returns true if the UserKeyRange is defined.
+func (k *UserKeyRange) Valid() bool {
+	return k.Start != nil && k.End != nil
+}
+
+// Contains returns whether the specified key exists in the UserKeyRange.
+func (k *UserKeyRange) Contains(cmp base.Compare, key []byte) bool {
+	return cmp(k.Start, key) <= 0 && cmp(key, k.End) < 0
+}
+
 // InUseKeyRanges returns the merged table bounds of L0 files overlapping the
 // provided user key range. The returned key ranges are sorted and
 // nonoverlapping.
