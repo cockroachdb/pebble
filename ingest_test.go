@@ -30,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -124,12 +125,12 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}).WithFSDefaults()
-			meta, _, err := ingestLoad(opts, dbVersion, []string{"ext"}, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()})
+			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()})
 			if err != nil {
 				return err.Error()
 			}
 			var buf bytes.Buffer
-			for _, m := range meta {
+			for _, m := range lr.localMeta {
 				fmt.Fprintf(&buf, "%d: %s-%s\n", m.FileNum, m.Smallest, m.Largest)
 				fmt.Fprintf(&buf, "  points: %s-%s\n", m.SmallestPointKey, m.LargestPointKey)
 				fmt.Fprintf(&buf, "  ranges: %s-%s\n", m.SmallestRangeKey, m.LargestRangeKey)
@@ -211,13 +212,13 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	meta, _, err := ingestLoad(opts, version, paths, 0, pending)
+	lr, err := ingestLoad(opts, version, paths, nil, 0, pending)
 	require.NoError(t, err)
 
-	for _, m := range meta {
+	for _, m := range lr.localMeta {
 		m.CreationTime = 0
 	}
-	if diff := pretty.Diff(expected, meta); diff != nil {
+	if diff := pretty.Diff(expected, lr.localMeta); diff != nil {
 		t.Fatalf("%s", strings.Join(diff, "\n"))
 	}
 }
@@ -232,7 +233,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	if _, _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}); err == nil {
+	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -273,7 +274,8 @@ func TestIngestSortAndVerify(t *testing.T) {
 					meta = append(meta, m)
 					paths = append(paths, strconv.Itoa(i))
 				}
-				err := ingestSortAndVerify(cmp, meta, paths)
+				lr := ingestLoadResult{localPaths: paths, localMeta: meta}
+				err := ingestSortAndVerify(cmp, lr, KeyRange{})
 				if err != nil {
 					return fmt.Sprintf("%v\n", err)
 				}
@@ -327,7 +329,8 @@ func TestIngestLink(t *testing.T) {
 				opts.FS.Remove(paths[i])
 			}
 
-			err = ingestLink(0 /* jobID */, opts, objProvider, paths, meta)
+			lr := ingestLoadResult{localMeta: meta, localPaths: paths}
+			err = ingestLink(0 /* jobID */, opts, objProvider, lr, nil /* shared */)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -394,7 +397,8 @@ func TestIngestLinkFallback(t *testing.T) {
 
 	meta := []*fileMetadata{{FileNum: 1}}
 	meta[0].InitPhysicalBacking()
-	err = ingestLink(0, opts, objProvider, []string{"source"}, meta)
+	lr := ingestLoadResult{localMeta: meta, localPaths: []string{"source"}}
+	err = ingestLink(0, opts, objProvider, lr, nil /* shared */)
 	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")
@@ -570,6 +574,267 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 	})
 }
 
+func TestExcise(t *testing.T) {
+	var mem vfs.FS
+	var d *DB
+	var flushed bool
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	reset := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+
+		mem = vfs.NewMem()
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+		opts := &Options{
+			FS:                    mem,
+			L0CompactionThreshold: 100,
+			L0StopWritesThreshold: 100,
+			DebugCheck:            DebugCheckLevels,
+			EventListener: &EventListener{FlushEnd: func(info FlushInfo) {
+				flushed = true
+			}},
+			FormatMajorVersion: FormatNewest,
+		}
+		// Disable automatic compactions because otherwise we'll race with
+		// delete-only compactions triggered by ingesting range tombstones.
+		opts.DisableAutomaticCompactions = true
+
+		var err error
+		d, err = Open("", opts)
+		require.NoError(t, err)
+	}
+	reset()
+
+	datadriven.RunTest(t, "testdata/excise", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			reset()
+			return ""
+		case "batch":
+			b := d.NewIndexedBatch()
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
+			}
+			if err := b.Commit(nil); err != nil {
+				return err.Error()
+			}
+			return ""
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "flush":
+			if err := d.Flush(); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest":
+			flushed = false
+			if err := runIngestCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			// Wait for a possible flush.
+			d.mu.Lock()
+			for d.mu.compact.flushing {
+				d.mu.compact.cond.Wait()
+			}
+			d.mu.Unlock()
+			if flushed {
+				return "memtable flushed"
+			}
+			return ""
+
+		case "ingest-and-excise":
+			flushed = false
+			if err := runIngestAndExciseCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			// Wait for a possible flush.
+			d.mu.Lock()
+			for d.mu.compact.flushing {
+				d.mu.compact.cond.Wait()
+			}
+			d.mu.Unlock()
+			if flushed {
+				return "memtable flushed"
+			}
+			return ""
+
+		case "get":
+			return runGetCmd(t, td, d)
+
+		case "iter":
+			iter := d.NewIter(&IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+			})
+			return runIterCmd(td, iter, true)
+
+		case "lsm":
+			return runLSMCmd(td, d)
+
+		case "metrics":
+			// The asynchronous loading of table stats can change metrics, so
+			// wait for all the tables' stats to be loaded.
+			d.mu.Lock()
+			d.waitTableStats()
+			d.mu.Unlock()
+
+			return d.Metrics().String()
+
+		case "wait-pending-table-stats":
+			return runTableStatsCmd(td, d)
+
+		case "excise":
+			ve := &versionEdit{
+				DeletedFiles: map[deletedFileEntry]*fileMetadata{},
+			}
+			var exciseSpan KeyRange
+			if len(td.CmdArgs) != 2 {
+				panic("insufficient args for compact command")
+			}
+			exciseSpan.Start = []byte(td.CmdArgs[0].Key)
+			exciseSpan.End = []byte(td.CmdArgs[1].Key)
+
+			d.mu.Lock()
+			d.mu.versions.logLock()
+			d.mu.Unlock()
+			current := d.mu.versions.currentVersion()
+			for level := range current.Levels {
+				iter := current.Levels[level].Iter()
+				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
+					_, err := d.excise(exciseSpan, m, ve, level)
+					if err != nil {
+						d.mu.Lock()
+						d.mu.versions.logUnlock()
+						d.mu.Unlock()
+						return fmt.Sprintf("error when excising %s: %s", m.FileNum, err.Error())
+					}
+				}
+			}
+			d.mu.Lock()
+			d.mu.versions.logUnlock()
+			d.mu.Unlock()
+			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedFiles), ve.String())
+
+		case "compact":
+			if len(td.CmdArgs) != 2 {
+				panic("insufficient args for compact command")
+			}
+			l := td.CmdArgs[0].Key
+			r := td.CmdArgs[1].Key
+			err := d.Compact([]byte(l), []byte(r), false)
+			if err != nil {
+				return err.Error()
+			}
+			return ""
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
+func TestIngestShared(t *testing.T) {
+	mem := vfs.NewMem()
+	var d *DB
+	var provider2 objstorage.Provider
+	opts2 := Options{FS: vfs.NewMem()}
+	opts2.EnsureDefaults()
+
+	// Create an objProvider where we will fake-create some sstables that can
+	// then be shared back to the db instance.
+	providerSettings := objstorageprovider.Settings{
+		Logger:              opts2.Logger,
+		FS:                  opts2.FS,
+		FSDirName:           "",
+		FSDirInitialListing: nil,
+		FSCleaner:           opts2.Cleaner,
+		NoSyncOnClose:       opts2.NoSyncOnClose,
+		BytesPerSync:        opts2.BytesPerSync,
+	}
+	providerSettings.Shared.Storage = shared.NewInMem()
+
+	provider2, err := objstorageprovider.Open(providerSettings)
+	require.NoError(t, err)
+	creatorIDCounter := uint64(1)
+	provider2.SetCreatorID(objstorage.CreatorID(creatorIDCounter))
+	creatorIDCounter++
+
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	reset := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+
+		mem = vfs.NewMem()
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+		opts := &Options{
+			FS:                    mem,
+			L0CompactionThreshold: 100,
+			L0StopWritesThreshold: 100,
+			FormatMajorVersion:    FormatNewest,
+		}
+		opts.Experimental.SharedStorage = providerSettings.Shared.Storage
+
+		var err error
+		d, err = Open("", opts)
+		require.NoError(t, err)
+		require.NoError(t, d.SetCreatorID(creatorIDCounter))
+		creatorIDCounter++
+	}
+	reset()
+
+	metaMap := map[base.DiskFileNum]objstorage.ObjectMetadata{}
+
+	require.NoError(t, d.Set([]byte("d"), []byte("unexpected"), nil))
+	require.NoError(t, d.Set([]byte("e"), []byte("unexpected"), nil))
+	require.NoError(t, d.Set([]byte("a"), []byte("unexpected"), nil))
+	require.NoError(t, d.Set([]byte("f"), []byte("unexpected"), nil))
+	d.Flush()
+
+	{
+		// Create a shared file.
+		fn := base.FileNum(2)
+		f, meta, err := provider2.Create(context.TODO(), fileTypeTable, fn.DiskFileNum(), objstorage.CreateOptions{PreferSharedStorage: true})
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, d.opts.MakeWriterOptions(0, d.opts.FormatMajorVersion.MaxTableFormat()))
+		w.Set([]byte("d"), []byte("shared"))
+		w.Set([]byte("e"), []byte("shared"))
+		w.Close()
+		metaMap[fn.DiskFileNum()] = meta
+	}
+
+	m := metaMap[base.FileNum(2).DiskFileNum()]
+	handle, err := provider2.SharedObjectBacking(&m)
+	require.NoError(t, err)
+	size, err := provider2.Size(m)
+	require.NoError(t, err)
+
+	sharedSSTMeta := SharedSSTMeta{
+		Backing:          handle,
+		Smallest:         base.MakeInternalKey([]byte("d"), 0, InternalKeyKindSet),
+		Largest:          base.MakeInternalKey([]byte("e"), 0, InternalKeyKindSet),
+		SmallestPointKey: base.MakeInternalKey([]byte("d"), 0, InternalKeyKindSet),
+		LargestPointKey:  base.MakeInternalKey([]byte("e"), 0, InternalKeyKindSet),
+		Level:            6,
+		Size:             uint64(size + 5),
+	}
+	_, err = d.IngestAndExcise([]string{}, []SharedSSTMeta{sharedSSTMeta}, KeyRange{Start: []byte("d"), End: []byte("ee")})
+	require.NoError(t, err)
+
+	// TODO(bilal): Once reading of shared sstables is in, verify that the values
+	// of d and e have been updated.
+}
+
 func TestIngestMemtableOverlaps(t *testing.T) {
 	comparers := []Comparer{
 		{Name: "default", Compare: DefaultComparer.Compare, FormatKey: DefaultComparer.FormatKey},
@@ -660,6 +925,38 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestKeyRangeBasic(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
+	k1 := KeyRange{Start: []byte("b"), End: []byte("c")}
+
+	// Tests for Contains()
+	require.True(t, k1.Contains(cmp, base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet)))
+	require.False(t, k1.Contains(cmp, base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet)))
+	require.True(t, k1.Contains(cmp, base.MakeInternalKey([]byte("bb"), 1, InternalKeyKindSet)))
+	require.True(t, k1.Contains(cmp, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, []byte("c"))))
+
+	m1 := &fileMetadata{
+		Smallest: base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet),
+		Largest:  base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet),
+	}
+	require.True(t, k1.Overlaps(cmp, m1))
+	m2 := &fileMetadata{
+		Smallest: base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet),
+		Largest:  base.MakeInternalKey([]byte("d"), 1, InternalKeyKindSet),
+	}
+	require.False(t, k1.Overlaps(cmp, m2))
+	m3 := &fileMetadata{
+		Smallest: base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
+		Largest:  base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, []byte("b")),
+	}
+	require.False(t, k1.Overlaps(cmp, m3))
+	m4 := &fileMetadata{
+		Smallest: base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
+		Largest:  base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet),
+	}
+	require.True(t, k1.Overlaps(cmp, m4))
 }
 
 func BenchmarkIngestOverlappingMemtable(b *testing.B) {

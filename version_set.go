@@ -569,6 +569,14 @@ func (vs *versionSet) logAndApply(
 	for fileNum, size := range zombies {
 		vs.zombieTables[fileNum] = size
 	}
+	// Update the Deleted bools. We can't use the zombieTables struct for this
+	// as it works on FileBackings, not FileMetadatas.
+	for _, f := range ve.DeletedFiles {
+		f.Deleted = true
+	}
+	for i := range ve.NewFiles {
+		ve.NewFiles[i].Meta.Deleted = false
+	}
 
 	// Install the new version.
 	vs.append(newVersion)
