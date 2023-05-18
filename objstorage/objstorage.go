@@ -16,6 +16,9 @@ import (
 type Readable interface {
 	// ReadAt reads len(p) bytes into p starting at offset off.
 	//
+	// Does not return partial results; if off + len(p) is past the end of the
+	// object, an error is returned.
+	//
 	// Clients of ReadAt can execute parallel ReadAt calls on the
 	// same Readable.
 	ReadAt(ctx context.Context, p []byte, off int64) error
@@ -38,6 +41,9 @@ type Readable interface {
 // optimizations like read-ahead.
 type ReadHandle interface {
 	// ReadAt reads len(p) bytes into p starting at offset off.
+	//
+	// Does not return partial results; if off + len(p) is past the end of the
+	// object, an error is returned.
 	//
 	// Parallel ReadAt calls on the same ReadHandle are not allowed.
 	ReadAt(ctx context.Context, p []byte, off int64) error

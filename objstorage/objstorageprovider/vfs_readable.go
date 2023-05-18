@@ -129,7 +129,7 @@ func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error
 			if readaheadSize >= maxReadaheadSize {
 				// We've reached the maximum readahead size. Beyond this point, rely on
 				// OS-level readahead.
-				rh.SetupForCompaction()
+				rh.switchToOSReadahead()
 			} else {
 				_ = rh.r.file.Prefetch(offset, readaheadSize)
 			}
@@ -144,6 +144,10 @@ func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error
 
 // SetupForCompaction is part of the objstorage.ReadHandle interface.
 func (rh *vfsReadHandle) SetupForCompaction() {
+	rh.switchToOSReadahead()
+}
+
+func (rh *vfsReadHandle) switchToOSReadahead() {
 	if rh.sequentialFile != nil {
 		return
 	}

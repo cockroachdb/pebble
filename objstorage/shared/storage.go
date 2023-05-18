@@ -66,8 +66,11 @@ type Storage interface {
 type ObjectReader interface {
 	// ReadAt reads len(p) bytes into p starting at offset off.
 	//
-	// Clients of ReadAt can execute parallel ReadAt calls on the
-	// same ObjectReader.
+	// Does not return partial results; if offset + len(p) is past the end of the
+	// object, an error is returned.
+	//
+	// Clients of ReadAt can execute parallel ReadAt calls on the same
+	// ObjectReader.
 	ReadAt(ctx context.Context, p []byte, offset int64) error
 
 	Close() error
