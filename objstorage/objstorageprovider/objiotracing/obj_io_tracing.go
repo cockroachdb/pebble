@@ -16,9 +16,9 @@ const (
 	// RecordCacheHitOp happens when a read is satisfied from the block cache. See
 	// objstorage.ReadHandle.RecordCacheHit().
 	RecordCacheHitOp
-	// MaxReadaheadOp is a "meta operation" that configures a read handle for
-	// large sequential reads. See objstorage.ReadHandle.MaxReadahead().
-	MaxReadaheadOp
+	// SetupForCompactionOp is a "meta operation" that configures a read handle
+	// for large sequential reads. See objstorage.ReadHandle.SetupForCompaction().
+	SetupForCompactionOp
 )
 
 // Reason indicates the higher-level context of the operation.

@@ -60,6 +60,6 @@ func (r *sharedReadHandle) Close() error {
 	return nil
 }
 
-func (r *sharedReadHandle) MaxReadahead() {}
+func (r *sharedReadHandle) SetupForCompaction() {}
 
 func (r *sharedReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {}

@@ -44,9 +44,10 @@ type ReadHandle interface {
 
 	Close() error
 
-	// MaxReadahead configures the implementation to expect large sequential
-	// reads. Used to skip any initial read-ahead ramp-up.
-	MaxReadahead()
+	// SetupForCompaction informs the implementation that the read handle will
+	// be used to read data blocks for a compaction. The implementation can expect
+	// sequential reads, and can decide to not retain data in any caches.
+	SetupForCompaction()
 
 	// RecordCacheHit informs the implementation that we were able to retrieve a
 	// block from cache. This is useful for example when the implementation is
