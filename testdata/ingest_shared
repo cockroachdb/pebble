@@ -1,0 +1,499 @@
+
+switch 1
+----
+ok
+
+build ext0
+set a 1
+set l 2
+----
+
+ingest ext0
+----
+
+lsm
+----
+6:
+  000004:[a#10,SET-l#10,SET]
+
+
+batch
+set d foo
+set f bar
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+lsm
+----
+6:
+  000007:[a#0,SET-l#0,SET]
+
+switch 2
+----
+ok
+
+iter
+first
+next
+next
+next
+----
+.
+.
+.
+.
+
+replicate 1 2 d g
+----
+replicated 1 shared SSTs
+
+lsm
+----
+6:
+  000005:[d#1,SET-f#1,SET]
+
+iter
+first
+next
+next
+next
+----
+d: (foo, .)
+f: (bar, .)
+.
+.
+
+batch
+set e bar
+set f bar2
+set g bar3
+----
+
+iter
+first
+next
+next
+next
+----
+d: (foo, .)
+e: (bar, .)
+f: (bar2, .)
+g: (bar3, .)
+
+compact a-z
+----
+ok
+
+iter
+first
+next
+next
+next
+----
+d: (foo, .)
+e: (bar, .)
+f: (bar2, .)
+g: (bar3, .)
+
+# Write a new key at f, but don't compact it down.
+
+batch
+set f bar3
+----
+
+switch 1
+----
+ok
+
+lsm
+----
+6:
+  000007:[a#0,SET-l#0,SET]
+
+excise e gg
+----
+would excise 1 files, use ingest-and-excise to excise.
+  deleted:       L6 000007
+  added:         L6 000008:[a#0,1-d#0,1]
+  added:         L6 000009:[l#0,1-l#0,1]
+
+replicate 2 1 e gg
+----
+replicated 1 shared SSTs
+
+iter
+first
+next
+next
+next
+next
+----
+a: (1, .)
+d: (foo, .)
+e: (bar, .)
+f: (bar3, .)
+g: (bar3, .)
+
+# Range key masking test. Write some masked keys, then replicate before
+# compacting, then compact, then replicate back.
+
+batch
+set h@3 foobar
+set i@5 baz
+range-key-set g j @4 value
+----
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+----
+a: (1, .)
+d: (foo, .)
+e: (bar, .)
+f: (bar3, .)
+g: (bar3, [g-j) @4=value UPDATED)
+h@3: (foobar, [g-j) @4=value)
+i@5: (baz, [g-j) @4=value)
+l: (2, . UPDATED)
+
+iter mask-filter mask-suffix=@6
+first
+next
+next
+next
+next
+next
+next
+----
+a: (1, .)
+d: (foo, .)
+e: (bar, .)
+f: (bar3, .)
+g: (bar3, [g-j) @4=value UPDATED)
+i@5: (baz, [g-j) @4=value)
+l: (2, . UPDATED)
+
+switch 2
+----
+ok
+
+replicate 1 2 a z
+----
+replicated 3 shared SSTs
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+----
+a: (1, .)
+d: (foo, .)
+e: (bar, .)
+f: (bar3, .)
+g: (bar3, [g-j) @4=value UPDATED)
+h@3: (foobar, [g-j) @4=value)
+i@5: (baz, [g-j) @4=value)
+l: (2, . UPDATED)
+
+iter mask-filter mask-suffix=@6
+first
+next
+next
+next
+next
+next
+next
+----
+a: (1, .)
+d: (foo, .)
+e: (bar, .)
+f: (bar3, .)
+g: (bar3, [g-j) @4=value UPDATED)
+i@5: (baz, [g-j) @4=value)
+l: (2, . UPDATED)
+
+compact a-z
+----
+ok
+
+replicate 2 1 a z
+----
+replicated 3 shared SSTs
+
+switch 1
+----
+ok
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a: (1, .)
+d: (foo, .)
+e: (bar, .)
+f: (bar3, .)
+g: (bar3, [g-j) @4=value UPDATED)
+h@3: (foobar, [g-j) @4=value)
+i@5: (baz, [g-j) @4=value)
+l: (2, . UPDATED)
+.
+
+iter mask-filter mask-suffix=@6
+first
+next
+next
+next
+next
+next
+next
+next
+----
+a: (1, .)
+d: (foo, .)
+e: (bar, .)
+f: (bar3, .)
+g: (bar3, [g-j) @4=value UPDATED)
+i@5: (baz, [g-j) @4=value)
+l: (2, . UPDATED)
+.
+
+# Reverse iteration test with masking.
+
+iter mask-filter mask-suffix=@6
+last
+prev
+prev
+prev
+prev
+prev
+prev
+prev
+----
+l: (2, .)
+i@5: (baz, [g-j) @4=value UPDATED)
+g: (bar3, [g-j) @4=value)
+f: (bar3, . UPDATED)
+e: (bar, .)
+d: (foo, .)
+a: (1, .)
+.
+
+# Range del tests.
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+set a@3 o
+set b@5 foo
+set c@6 bar
+set e baz
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+batch
+del-range b d
+----
+
+flush
+----
+
+batch
+set a@3 abc
+set b@7 notdeleted
+set c@9 foobar
+----
+
+flush
+----
+
+lsm
+----
+0.1:
+  000009:[a@3#15,SET-c@9#17,SET]
+0.0:
+  000007:[b#14,RANGEDEL-d#inf,RANGEDEL]
+6:
+  000005:[a@3#10,SET-e#13,SET]
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a@3: (abc, .)
+b@7: (notdeleted, .)
+c@9: (foobar, .)
+e: (baz, .)
+.
+.
+
+replicate 1 2 a z
+----
+replicated 1 shared SSTs
+
+switch 2
+----
+ok
+
+lsm
+----
+0.0:
+  000004:[a@3#10,SET-d#inf,RANGEDEL]
+6:
+  000005:[a@3#1,SET-e#1,SET]
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a@3: (abc, .)
+b@7: (notdeleted, .)
+c@9: (foobar, .)
+e: (baz, .)
+.
+.
+
+# Similar to the above test, except this time we bring the rangedel into
+# L5 using an ingestion.
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+set a@3 o
+set b@5 foo
+set c@6 bar
+set e baz
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+build s1
+del-range b d
+----
+
+ingest s1
+----
+
+lsm
+----
+5:
+  000006:[b#14,RANGEDEL-d#inf,RANGEDEL]
+6:
+  000005:[a@3#10,SET-e#13,SET]
+
+batch
+set a@3 abc
+set b@7 notdeleted
+set c@9 foobar
+----
+
+flush
+----
+
+lsm
+----
+0.0:
+  000008:[a@3#15,SET-c@9#17,SET]
+5:
+  000006:[b#14,RANGEDEL-d#inf,RANGEDEL]
+6:
+  000005:[a@3#10,SET-e#13,SET]
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a@3: (abc, .)
+b@7: (notdeleted, .)
+c@9: (foobar, .)
+e: (baz, .)
+.
+.
+
+replicate 1 2 a z
+----
+replicated 2 shared SSTs
+
+switch 2
+----
+ok
+
+lsm
+----
+0.0:
+  000004:[a@3#10,SET-c@9#10,SET]
+5:
+  000005:[b#2,RANGEDEL-d#2,RANGEDEL]
+6:
+  000006:[a@3#1,SET-e#1,SET]
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a@3: (abc, .)
+b@7: (notdeleted, .)
+c@9: (foobar, .)
+e: (baz, .)
+.
+.
