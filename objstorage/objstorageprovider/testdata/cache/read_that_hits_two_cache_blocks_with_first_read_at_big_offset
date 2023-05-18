@@ -1,0 +1,12 @@
+# Large read that hits two cache blocks, with first read at big offset.
+
+write 32773
+----
+
+read 5 32768
+----
+misses=1
+
+read 5 32768
+----
+misses=1

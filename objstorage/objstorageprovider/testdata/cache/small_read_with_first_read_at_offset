@@ -1,0 +1,16 @@
+# Small read, with first read at offset.
+
+write 10
+----
+
+read 6 4
+----
+misses=1
+
+read 6 4
+----
+misses=1
+
+read 10 0
+----
+misses=1

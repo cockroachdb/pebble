@@ -6,6 +6,7 @@ package objstorageprovider
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -72,7 +73,8 @@ func (p *provider) sharedInit() error {
 		if blockSize == 0 {
 			blockSize = defaultBlockSize
 		}
-		p.shared.cache, err = openSharedCache(p.st.FS, p.st.FSDirName, blockSize, p.st.Shared.CacheSizeBytes)
+		numShards := 2 * runtime.GOMAXPROCS(0)
+		p.shared.cache, err = openSharedCache(p.st.FS, p.st.FSDirName, blockSize, p.st.Shared.CacheSizeBytes, numShards)
 		if err != nil {
 			return errors.Wrapf(err, "pebble: could not open shared object cache")
 		}
