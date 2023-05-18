@@ -209,14 +209,14 @@ func (rh *readHandle) Close() error {
 	return rh.rh.Close()
 }
 
-// MaxReadahead is part of the objstorage.ReadHandle interface.
-func (rh *readHandle) MaxReadahead() {
+// SetupForCompaction is part of the objstorage.ReadHandle interface.
+func (rh *readHandle) SetupForCompaction() {
 	rh.g.add(context.Background(), Event{
-		Op:       MaxReadaheadOp,
+		Op:       SetupForCompactionOp,
 		FileNum:  rh.fileNum,
 		HandleID: rh.handleID,
 	})
-	rh.rh.MaxReadahead()
+	rh.rh.SetupForCompaction()
 }
 
 // RecordCacheHit is part of the objstorage.ReadHandle interface.
