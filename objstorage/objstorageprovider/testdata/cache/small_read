@@ -1,0 +1,16 @@
+# Small read, with one miss then two hits.
+
+write 10
+----
+
+read 10 0
+----
+misses=1
+
+read 10 0
+----
+misses=1
+
+read 6 4
+----
+misses=1

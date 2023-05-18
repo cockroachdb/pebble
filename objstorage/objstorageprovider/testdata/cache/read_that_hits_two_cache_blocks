@@ -1,0 +1,16 @@
+# Large read that hits two cache blocks.
+
+write 32773
+----
+
+read 32773 0
+----
+misses=1
+
+read 32773 0
+----
+misses=1
+
+read 32716 57
+----
+misses=1

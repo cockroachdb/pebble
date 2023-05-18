@@ -1,0 +1,12 @@
+# Large read that hits two cache shards, with first read at offset.
+
+write 1048776
+----
+
+read 1048719 57
+----
+misses=1
+
+read 1048719 57
+----
+misses=1
