@@ -163,13 +163,21 @@ func TestProvider(t *testing.T) {
 				return log.String()
 
 			case "read":
+				forCompaction := false
+				if len(d.CmdArgs) == 2 && d.CmdArgs[1].Key == "for-compaction" {
+					d.CmdArgs = d.CmdArgs[:1]
+					forCompaction = true
+				}
 				var fileNum base.FileNum
-				scanArgs("<file-num>", &fileNum)
+				scanArgs("<file-num> [for-compaction]", &fileNum)
 				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum.DiskFileNum(), objstorage.OpenOptions{})
 				if err != nil {
 					return err.Error()
 				}
 				rh := r.NewReadHandle(ctx)
+				if forCompaction {
+					rh.SetupForCompaction()
+				}
 				log.Infof("size: %d", r.Size())
 				for _, l := range strings.Split(d.Input, "\n") {
 					var offset, size int
