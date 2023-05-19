@@ -719,6 +719,12 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 					return nil, errors.New("Snapshots must be in ascending order")
 				}
 			}
+		case "lbase-max-bytes":
+			lbaseMaxBytes, err := strconv.ParseInt(arg.Vals[0], 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			opts.LBaseMaxBytes = lbaseMaxBytes
 		case "level-max-bytes":
 			levelMaxBytes = map[int]int64{}
 			for i := range arg.Vals {
@@ -757,14 +763,12 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			for _, levelOpts := range opts.Levels {
 				levelOpts.BlockSize = size
 			}
-		case "point-tombstone-weight":
-			w, err := strconv.ParseFloat(arg.Vals[0], 64)
+		case "format-major-version":
+			fmv, err := strconv.Atoi(arg.Vals[0])
 			if err != nil {
-				return nil, errors.Errorf("%s: could not parse %q as float: %s", td.Cmd, arg.Vals[0], err)
+				return nil, err
 			}
-			opts.Experimental.PointTombstoneWeight = w
-		default:
-			return nil, errors.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
+			opts.FormatMajorVersion = FormatMajorVersion(fmv)
 		}
 	}
 	d, err := Open("", opts)
