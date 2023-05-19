@@ -416,4 +416,4 @@ range-deletions-bytes-estimate: 8244
 
 maybe-compact
 ----
-[JOB 100] compacted(default) L5 [000004] (782 B) + L6 [000006] (13 K) -> L6 [000008] (4.8 K), in 1.0s (2.0s total), output rate 4.8 K/s
+[JOB 100] compacted(default) L5 [000005] (849 B) + L6 [000007] (13 K) -> L6 [000008] (4.8 K), in 1.0s (2.0s total), output rate 4.8 K/s

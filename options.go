@@ -596,12 +596,6 @@ type Options struct {
 		// for CPUWorkPermissionGranter for more details.
 		CPUWorkPermissionGranter CPUWorkPermissionGranter
 
-		// PointTombstoneWeight is a float in the range [0, +inf) used to weight the
-		// point tombstone heuristics during compaction picking.
-		//
-		// The default value is 1, which results in no scaling of point tombstones.
-		PointTombstoneWeight float64
-
 		// EnableValueBlocks is used to decide whether to enable writing
 		// TableFormatPebblev3 sstables. WARNING: do not return true yet, since
 		// support for TableFormatPebblev3 is incomplete and not production ready.
@@ -1030,10 +1024,6 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.CPUWorkPermissionGranter == nil {
 		o.Experimental.CPUWorkPermissionGranter = defaultCPUWorkGranter{}
 	}
-	if o.Experimental.PointTombstoneWeight == 0 {
-		o.Experimental.PointTombstoneWeight = 1
-	}
-
 	if o.Experimental.MultiLevelCompactionHueristic == nil {
 		o.Experimental.MultiLevelCompactionHueristic = NoMultiLevel{}
 	}
@@ -1156,7 +1146,6 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
 	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.Experimental.MinDeletionRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
-	fmt.Fprintf(&buf, "  point_tombstone_weight=%f\n", o.Experimental.PointTombstoneWeight)
 	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", o.private.strictWALTail)
@@ -1406,7 +1395,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				// Do nothing; option existed in older versions of pebble, and
 				// may be meaningful again eventually.
 			case "point_tombstone_weight":
-				o.Experimental.PointTombstoneWeight, err = strconv.ParseFloat(value, 64)
+				// Do nothing; deprecated.
 			case "strict_wal_tail":
 				o.private.strictWALTail, err = strconv.ParseBool(value)
 			case "merger":

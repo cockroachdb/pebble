@@ -16,7 +16,10 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1299,43 +1302,25 @@ func TestCompactionPickerCompensatedSize(t *testing.T) {
 		size                  uint64
 		pointDelEstimateBytes uint64
 		rangeDelEstimateBytes uint64
-		pointTombstoneWeight  float64
 		wantBytes             uint64
 	}{
 		{
 			size:                  100,
 			pointDelEstimateBytes: 0,
 			rangeDelEstimateBytes: 0,
-			pointTombstoneWeight:  1,
 			wantBytes:             100,
 		},
 		{
 			size:                  100,
 			pointDelEstimateBytes: 10,
 			rangeDelEstimateBytes: 0,
-			pointTombstoneWeight:  1,
 			wantBytes:             100 + 10,
 		},
 		{
 			size:                  100,
 			pointDelEstimateBytes: 10,
 			rangeDelEstimateBytes: 5,
-			pointTombstoneWeight:  1,
 			wantBytes:             100 + 10 + 5,
-		},
-		{
-			size:                  100,
-			pointDelEstimateBytes: 10,
-			rangeDelEstimateBytes: 5,
-			pointTombstoneWeight:  2,
-			wantBytes:             100 + 20 + 5,
-		},
-		{
-			size:                  100,
-			pointDelEstimateBytes: 10,
-			rangeDelEstimateBytes: 5,
-			pointTombstoneWeight:  0.5,
-			wantBytes:             100 + 5 + 5,
 		},
 	}
 
@@ -1344,10 +1329,78 @@ func TestCompactionPickerCompensatedSize(t *testing.T) {
 			f := &fileMetadata{Size: tc.size}
 			f.Stats.PointDeletionsBytesEstimate = tc.pointDelEstimateBytes
 			f.Stats.RangeDeletionsBytesEstimate = tc.rangeDelEstimateBytes
-			gotBytes := compensatedSize(f, tc.pointTombstoneWeight)
+			gotBytes := compensatedSize(f)
 			require.Equal(t, tc.wantBytes, gotBytes)
 		})
 	}
+}
+
+func TestCompactionPickerScores(t *testing.T) {
+	fs := vfs.NewMem()
+	opts := &Options{
+		Comparer:                    testkeys.Comparer,
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+		FS:                          fs,
+	}
+
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, closeAllSnapshots(d))
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	var buf bytes.Buffer
+	datadriven.RunTest(t, "testdata/compaction_picker_scores", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "disable-table-stats":
+			d.mu.Lock()
+			d.opts.private.disableTableStats = true
+			d.mu.Unlock()
+			return ""
+
+		case "enable-table-stats":
+			d.mu.Lock()
+			d.opts.private.disableTableStats = false
+			d.maybeCollectTableStatsLocked()
+			d.mu.Unlock()
+			return ""
+
+		case "define":
+			require.NoError(t, closeAllSnapshots(d))
+			require.NoError(t, d.Close())
+
+			d, err = runDBDefineCmd(td, opts)
+			if err != nil {
+				return err.Error()
+			}
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
+		case "scores":
+			buf.Reset()
+			fmt.Fprintf(&buf, "L       Size   Score\n")
+			for l, lm := range d.Metrics().Levels {
+				if l < numLevels-1 {
+					fmt.Fprintf(&buf, "L%-3d\t%-7s%.1f\n", l, humanize.IEC.Int64(lm.Size), lm.Score)
+				} else {
+					fmt.Fprintf(&buf, "L%-3d\t%-7s-\n", l, humanize.IEC.Int64(lm.Size))
+				}
+			}
+			return buf.String()
+
+		case "wait-pending-table-stats":
+			return runTableStatsCmd(td, d)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
 }
 
 func fileNums(files manifest.LevelSlice) string {
