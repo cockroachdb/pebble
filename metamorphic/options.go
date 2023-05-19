@@ -437,7 +437,6 @@ func randomOptions(
 		lopts.FilterPolicy = newTestingFilterPolicy(1 << rng.Intn(5))
 	}
 	opts.Levels = []pebble.LevelOptions{lopts}
-	opts.Experimental.PointTombstoneWeight = 1 + 10*rng.Float64() // 1 - 10
 
 	// Explicitly disable disk-backed FS's for the random configurations. The
 	// single standard test configuration that uses a disk-backed FS is

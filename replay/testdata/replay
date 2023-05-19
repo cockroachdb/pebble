@@ -13,7 +13,7 @@ tree
        0      LOCK
       98      MANIFEST-000001
      122      MANIFEST-000008
-    1171      OPTIONS-000003
+    1137      OPTIONS-000003
        0      marker.format-version.000007.008
        0      marker.manifest.000002.MANIFEST-000008
             simple/
@@ -24,7 +24,7 @@ tree
       25        000004.log
      795        000005.sst
       98        MANIFEST-000001
-    1171        OPTIONS-000003
+    1137        OPTIONS-000003
        0        marker.format-version.000001.008
        0        marker.manifest.000001.MANIFEST-000001
 
@@ -57,7 +57,6 @@ cat build/OPTIONS-000003
   mem_table_stop_writes_threshold=2
   min_deletion_rate=0
   merger=pebble.concatenate
-  point_tombstone_weight=1.000000
   read_compaction_rate=16000
   read_sampling_multiplier=16
   strict_wal_tail=true
