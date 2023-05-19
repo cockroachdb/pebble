@@ -1,0 +1,107 @@
+# Ensure that a range deletion in a higher level results in a compensated level
+# size and a higher level score as a result.
+
+define lbase-max-bytes=65536 enable-table-stats=false
+L5
+  a.RANGEDEL.2:f
+L6
+  a.SET.1:<rand-bytes=65536>
+  b.SET.1:<rand-bytes=65536>
+  c.SET.1:<rand-bytes=65536>
+  d.SET.1:<rand-bytes=65536>
+  e.SET.1:<rand-bytes=65536>
+----
+5:
+  000004:[a#2,RANGEDEL-f#72057594037927935,RANGEDEL]
+6:
+  000005:[a#1,SET-e#1,SET]
+
+scores
+----
+L       Size   Score
+L0  	0 B    0.0
+L1  	0 B    0.0
+L2  	0 B    0.0
+L3  	0 B    0.0
+L4  	0 B    0.0
+L5  	834 B  0.0
+L6  	809 B  -
+
+enable-table-stats
+----
+
+wait-pending-table-stats
+000004
+----
+num-entries: 1
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 809
+
+scores
+----
+L       Size   Score
+L0  	0 B    0.0
+L1  	0 B    0.0
+L2  	0 B    0.0
+L3  	0 B    0.0
+L4  	0 B    0.0
+L5  	834 B  0.0
+L6  	809 B  -
+
+# Ensure that point deletions in a higher level result in a compensated level
+# size and higher level scores as a result.
+
+define lbase-max-bytes=65536  enable-table-stats=false
+L5
+  a.DEL.2:
+  b.DEL.2:
+  c.DEL.2:
+  d.DEL.2:
+  e.DEL.2:
+L6
+  a.SET.1:<rand-bytes=65536>
+  b.SET.1:<rand-bytes=65536>
+  c.SET.1:<rand-bytes=65536>
+  d.SET.1:<rand-bytes=65536>
+  e.SET.1:<rand-bytes=65536>
+----
+5:
+  000004:[a#2,DEL-e#2,DEL]
+6:
+  000005:[a#1,SET-e#1,SET]
+
+scores
+----
+L       Size   Score
+L0  	0 B    0.0
+L1  	0 B    0.0
+L2  	0 B    0.0
+L3  	0 B    0.0
+L4  	0 B    0.0
+L5  	785 B  0.0
+L6  	809 B  -
+
+enable-table-stats
+----
+
+wait-pending-table-stats
+000004
+----
+num-entries: 5
+num-deletions: 5
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 1065
+range-deletions-bytes-estimate: 0
+
+scores
+----
+L       Size   Score
+L0  	0 B    0.0
+L1  	0 B    0.0
+L2  	0 B    0.0
+L3  	0 B    0.0
+L4  	0 B    0.0
+L5  	785 B  0.0
+L6  	809 B  -

@@ -152,7 +152,7 @@ zmemtbl         1   256 K
 
 disk-usage
 ----
-2.9 K
+2.8 K
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
