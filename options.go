@@ -626,18 +626,24 @@ type Options struct {
 		ShortAttributeExtractor ShortAttributeExtractor
 
 		// RequiredInPlaceValueBound specifies an optional span of user key
-		// prefixes for which the values must be stored with the key. This is
-		// useful for statically known exclusions to value separation. In
-		// CockroachDB, this will be used for the lock table key space that has
-		// non-empty suffixes, but those locks don't represent actual MVCC
-		// versions (the suffix ordering is arbitrary). We will also need to add
-		// support for dynamically configured exclusions (we want the default to
-		// be to allow Pebble to decide whether to separate the value or not,
-		// hence this is structured as exclusions), for example, for users of
-		// CockroachDB to dynamically exclude certain tables.
+		// prefixes that are not-MVCC, but have a suffix. For these the values
+		// must be stored with the key, since the concept of "older versions" is
+		// not defined. It is also useful for statically known exclusions to value
+		// separation. In CockroachDB, this will be used for the lock table key
+		// space that has non-empty suffixes, but those locks don't represent
+		// actual MVCC versions (the suffix ordering is arbitrary). We will also
+		// need to add support for dynamically configured exclusions (we want the
+		// default to be to allow Pebble to decide whether to separate the value
+		// or not, hence this is structured as exclusions), for example, for users
+		// of CockroachDB to dynamically exclude certain tables.
 		//
 		// Any change in exclusion behavior takes effect only on future written
 		// sstables, and does not start rewriting existing sstables.
+		//
+		// Even ignoring changes in this setting, exclusions are interpreted as a
+		// guidance by Pebble, and not necessarily honored. Specifically, user
+		// keys with multiple Pebble-versions *may* have the older versions stored
+		// in value blocks.
 		RequiredInPlaceValueBound UserKeyPrefixBound
 
 		// DisableIngestAsFlushable disables lazy ingestion of sstables through

@@ -132,6 +132,8 @@ type Writer struct {
 	separator               Separator
 	successor               Successor
 	tableFormat             TableFormat
+	isStrictObsolete        bool
+	writingToLowestLevel    bool
 	cache                   *cache.Cache
 	restartInterval         int
 	checksumType            ChecksumType
@@ -166,6 +168,7 @@ type Writer struct {
 	props               Properties
 	propCollectors      []TablePropertyCollector
 	blockPropCollectors []BlockPropertyCollector
+	obsoleteCollector   obsoleteKeyBlockPropertyCollector
 	blockPropsEncoder   blockPropertiesEncoder
 	// filter accumulates the filter block. If populated, the filter ingests
 	// either the output of w.split (i.e. a prefix extractor) if w.split is not
@@ -195,6 +198,11 @@ type Writer struct {
 	// blockBuf consists of the state which is owned by and used by the Writer client
 	// goroutine.
 	blockBuf blockBuf
+	// lastUserKeyInPrevBlock is a buffer with a copy of the last user key in
+	// the previous block, which is populated when the block is flushed. This is
+	// useful since in this case we cannot rely on
+	// dataBlockBuf.dataBlock.getCurUserKey().
+	lastUserKeyInPrevBlock []byte
 
 	coordination coordinationState
 
@@ -673,7 +681,9 @@ func (w *Writer) Set(key, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindSet), value)
+	// forceObsolete is false based on the assumption that no RANGEDELs in the
+	// sstable that delete the added points.
+	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindSet), value, false)
 }
 
 // Delete deletes the value for the given key. The sequence number is set to
@@ -685,7 +695,9 @@ func (w *Writer) Delete(key []byte) error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil)
+	// forceObsolete is false based on the assumption that no RANGEDELs in the
+	// sstable that delete the added points.
+	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil, false)
 }
 
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
@@ -711,7 +723,10 @@ func (w *Writer) Merge(key, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value)
+	// forceObsolete is false based on the assumption that no RANGEDELs in the
+	// sstable that delete the added points. If the user configured this writer
+	// to be strict-obsolete, addPoint will reject the addition of this MERGE.
+	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value, false)
 }
 
 // Add adds a key/value pair to the table being written. For a given Writer,
@@ -721,6 +736,24 @@ func (w *Writer) Merge(key, value []byte) error {
 // point entries. Additionally, range deletion tombstones must be fragmented
 // (i.e. by keyspan.Fragmenter).
 func (w *Writer) Add(key InternalKey, value []byte) error {
+	if w.isStrictObsolete {
+		return errors.Errorf("use AddWithForceObsolete")
+	}
+	return w.AddWithForceObsolete(key, value, false)
+}
+
+// AddWithForceObsolete should be used when writing a strict-obsolete sstable.
+//
+// forceObsolete indicates whether the caller has determined that this key is
+// obsolete even though it may be the latest point key for this userkey. This
+// should be set to true for keys obsoleted by RANGEDELs, and is required for
+// strict-obsolete sstables.
+//
+// Note that there are two properties, S1 and S2 (see comment in format.go)
+// that strict-obsolete ssts must satisfy. S2, due to RANGEDELs, is solely the
+// responsibility of the caller. S1 is solely the responsibility of the
+// callee.
+func (w *Writer) AddWithForceObsolete(key InternalKey, value []byte, forceObsolete bool) error {
 	if w.err != nil {
 		return w.err
 	}
@@ -735,7 +768,7 @@ func (w *Writer) Add(key InternalKey, value []byte) error {
 			"pebble: range keys must be added via one of the RangeKey* functions")
 		return w.err
 	}
-	return w.addPoint(key, value)
+	return w.addPoint(key, value, forceObsolete)
 }
 
 func (w *Writer) makeAddPointDecisionV2(key InternalKey) error {
@@ -745,12 +778,7 @@ func (w *Writer) makeAddPointDecisionV2(key InternalKey) error {
 		return nil
 	}
 	if !w.disableKeyOrderChecks {
-		prevPointUserKey := w.dataBlockBuf.dataBlock.curKey
-		n := len(prevPointUserKey) - base.InternalTrailerLen
-		if n < 0 {
-			panic("corrupt key in blockWriter buffer")
-		}
-		prevPointUserKey = prevPointUserKey[:n:n]
+		prevPointUserKey := w.dataBlockBuf.dataBlock.getCurUserKey()
 		cmpUser := w.compare(prevPointUserKey, key.UserKey)
 		if cmpUser > 0 || (cmpUser == 0 && prevTrailer <= key.Trailer) {
 			return errors.Errorf(
@@ -762,9 +790,17 @@ func (w *Writer) makeAddPointDecisionV2(key InternalKey) error {
 	return nil
 }
 
+// REQUIRES: at least one point has been written to the Writer.
+func (w *Writer) getLastPointUserKey() []byte {
+	if w.dataBlockBuf.dataBlock.nEntries == 0 {
+		return w.lastUserKeyInPrevBlock
+	}
+	return w.dataBlockBuf.dataBlock.getCurUserKey()
+}
+
 func (w *Writer) makeAddPointDecisionV3(
 	key InternalKey, valueLen int,
-) (setHasSamePrefix bool, writeToValueBlock bool, err error) {
+) (setHasSamePrefix bool, writeToValueBlock bool, isObsolete bool, err error) {
 	prevPointKeyInfo := w.lastPointKeyInfo
 	w.lastPointKeyInfo.userKeyLen = len(key.UserKey)
 	w.lastPointKeyInfo.prefixLen = w.lastPointKeyInfo.userKeyLen
@@ -772,18 +808,15 @@ func (w *Writer) makeAddPointDecisionV3(
 		w.lastPointKeyInfo.prefixLen = w.split(key.UserKey)
 	}
 	w.lastPointKeyInfo.trailer = key.Trailer
-	if w.dataBlockBuf.dataBlock.nEntries == 0 {
-		return false, false, nil
+	if !w.meta.HasPointKeys {
+		return false, false, false, nil
 	}
-	prevPointUserKey := w.dataBlockBuf.dataBlock.curKey
-	n := len(prevPointUserKey) - base.InternalTrailerLen
-	if n < 0 {
-		panic("corrupt key in blockWriter buffer")
-	}
-	prevPointUserKey = prevPointUserKey[:n:n]
+	keyKind := base.TrailerKind(key.Trailer)
+	prevPointUserKey := w.getLastPointUserKey()
 	prevPointKey := InternalKey{UserKey: prevPointUserKey, Trailer: prevPointKeyInfo.trailer}
-	considerWriteToValueBlock := base.TrailerKind(prevPointKeyInfo.trailer) == InternalKeyKindSet &&
-		base.TrailerKind(key.Trailer) == InternalKeyKindSet
+	prevKeyKind := base.TrailerKind(prevPointKeyInfo.trailer)
+	considerWriteToValueBlock := prevKeyKind == InternalKeyKindSet &&
+		keyKind == InternalKeyKindSet
 	if considerWriteToValueBlock && !w.requiredInPlaceValueBound.IsEmpty() {
 		keyPrefix := key.UserKey[:w.lastPointKeyInfo.prefixLen]
 		cmpUpper := w.compare(
@@ -812,14 +845,39 @@ func (w *Writer) makeAddPointDecisionV3(
 	} else {
 		cmpUser = w.compare(prevPointUserKey, key.UserKey)
 	}
+	keyKindIsSetOrMerge := keyKind == InternalKeyKindSet || keyKind == InternalKeyKindSetWithDelete ||
+		keyKind == InternalKeyKindMerge
+	keyKindIsPointDelete := keyKind == InternalKeyKindDelete ||
+		keyKind == InternalKeyKindSingleDelete || keyKind == InternalKeyKindDeleteSized
+	if !keyKindIsSetOrMerge && !keyKindIsPointDelete {
+		panic(errors.AssertionFailedf("unexpected key kind %s", keyKind.String()))
+	}
+	// If same user key, then the current key is obsolete if:
+	// - The prev key was not a MERGE.
+	// - If the prev key was a MERGE, then as long as the current key is not a
+	//   SET or SETWITHDELETE or MERGE, then it is obsolete. SET, SETWITHDELETE,
+	//   MERGE are not obsolete since they will be merged.
+	//
+	// If not the same user key, but it is some kind of point delete, and we are
+	// writing to the lowest level, then it is also obsolete.
+	isObsolete = (cmpUser == 0 && (prevKeyKind != InternalKeyKindMerge || !keyKindIsSetOrMerge)) ||
+		(w.writingToLowestLevel &&
+			(keyKind == InternalKeyKindDelete || keyKind == InternalKeyKindSingleDelete ||
+				keyKind == InternalKeyKindDeleteSized))
+	// TODO(sumeer): storing isObsolete SET and SETWITHDEL in value blocks is
+	// possible, but requires some care in documenting and checking invariants.
+	// There is code that assumes nothing in value blocks because of single MVCC
+	// version (those should be ok). We have to ensure setHasSamePrefix is
+	// correctly initialized here etc.
+
 	if !w.disableKeyOrderChecks &&
 		(cmpUser > 0 || (cmpUser == 0 && prevPointKeyInfo.trailer <= key.Trailer)) {
-		return false, false, errors.Errorf(
+		return false, false, false, errors.Errorf(
 			"pebble: keys must be added in strictly increasing order: %s, %s",
 			prevPointKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
 	}
 	if !considerWriteToValueBlock {
-		return false, false, nil
+		return false, false, isObsolete, nil
 	}
 	// NB: it is possible that cmpUser == 0, i.e., these two SETs have identical
 	// user keys (because of an open snapshot). This should be the rare case.
@@ -832,19 +890,24 @@ func (w *Writer) makeAddPointDecisionV3(
 	if considerWriteToValueBlock && valueLen <= tinyValueThreshold {
 		considerWriteToValueBlock = false
 	}
-	return setHasSamePrefix, considerWriteToValueBlock, nil
+	return setHasSamePrefix, considerWriteToValueBlock, isObsolete, nil
 }
 
-func (w *Writer) addPoint(key InternalKey, value []byte) error {
+func (w *Writer) addPoint(key InternalKey, value []byte, forceObsolete bool) error {
+	if w.isStrictObsolete && key.Kind() == InternalKeyKindMerge {
+		return errors.Errorf("MERGE not supported in a strict-obsolete sstable")
+	}
 	var err error
 	var setHasSameKeyPrefix, writeToValueBlock, addPrefixToValueStoredWithKey bool
+	var isObsolete bool
 	maxSharedKeyLen := len(key.UserKey)
 	if w.valueBlockWriter != nil {
 		// maxSharedKeyLen is limited to the prefix of the preceding key. If the
 		// preceding key was in a different block, then the blockWriter will
 		// ignore this maxSharedKeyLen.
 		maxSharedKeyLen = w.lastPointKeyInfo.prefixLen
-		setHasSameKeyPrefix, writeToValueBlock, err = w.makeAddPointDecisionV3(key, len(value))
+		setHasSameKeyPrefix, writeToValueBlock, isObsolete, err =
+			w.makeAddPointDecisionV3(key, len(value))
 		addPrefixToValueStoredWithKey = base.TrailerKind(key.Trailer) == InternalKeyKindSet
 	} else {
 		err = w.makeAddPointDecisionV2(key)
@@ -852,6 +915,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	if err != nil {
 		return err
 	}
+	isObsolete = w.tableFormat >= TableFormatPebblev4 && (isObsolete || forceObsolete)
 	var valueStoredWithKey []byte
 	var prefix valuePrefix
 	var valueStoredWithKeyLen int
@@ -907,16 +971,19 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 			return err
 		}
 	}
+	if w.tableFormat >= TableFormatPebblev4 {
+		w.obsoleteCollector.AddPoint(isObsolete)
+	}
 
 	w.maybeAddToFilter(key.UserKey)
 	w.dataBlockBuf.dataBlock.addWithOptionalValuePrefix(
-		key, valueStoredWithKey, maxSharedKeyLen, addPrefixToValueStoredWithKey, prefix,
+		key, isObsolete, valueStoredWithKey, maxSharedKeyLen, addPrefixToValueStoredWithKey, prefix,
 		setHasSameKeyPrefix)
 
 	w.meta.updateSeqNum(key.SeqNum())
 
 	if !w.meta.HasPointKeys {
-		k := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
+		k := w.dataBlockBuf.dataBlock.getCurKey()
 		// NB: We need to ensure that SmallestPoint.UserKey is set, so we create
 		// an InternalKey which is semantically identical to the key, but won't
 		// have a nil UserKey. We do this, because key.UserKey could be nil, and
@@ -968,7 +1035,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 	if !w.disableKeyOrderChecks && !w.rangeDelV1Format && w.rangeDelBlock.nEntries > 0 {
 		// Check that tombstones are being added in fragmented order. If the two
 		// tombstones overlap, their start and end keys must be identical.
-		prevKey := base.DecodeInternalKey(w.rangeDelBlock.curKey)
+		prevKey := w.rangeDelBlock.getCurKey()
 		switch c := w.compare(prevKey.UserKey, key.UserKey); {
 		case c > 0:
 			w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
@@ -1164,7 +1231,7 @@ func (w *Writer) encodeRangeKeySpan(span keyspan.Span) {
 
 func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 	if !w.disableKeyOrderChecks && w.rangeKeyBlock.nEntries > 0 {
-		prevStartKey := base.DecodeInternalKey(w.rangeKeyBlock.curKey)
+		prevStartKey := w.rangeKeyBlock.getCurKey()
 		prevEndKey, _, ok := rangekey.DecodeEndKey(prevStartKey.Kind(), w.rangeKeyBlock.curValue)
 		if !ok {
 			// We panic here as we should have previously decoded and validated this
@@ -1310,7 +1377,7 @@ func (w *Writer) flush(key InternalKey) error {
 	// dataBlockBuf is added back to a sync.Pool. In this particular case, the
 	// byte slice which supports "sep" will eventually be copied when "sep" is
 	// added to the index block.
-	prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
+	prevKey := w.dataBlockBuf.dataBlock.getCurKey()
 	sep := w.indexEntrySep(prevKey, key, w.dataBlockBuf)
 	// We determine that we should flush an index block from the Writer client
 	// goroutine, but we actually finish the index block from the writeQueue.
@@ -1341,6 +1408,13 @@ func (w *Writer) flush(key InternalKey) error {
 	// the data block, we can call
 	// BlockPropertyCollector.AddPrevDataBlockToIndexBlock.
 	w.addPrevDataBlockToIndexBlockProps()
+
+	// Copy the prevKey before handing off the blockWriter.
+	//
+	// TODO(sumeer): since we don't pool the Writer itself, this slice will be
+	// allocated at least once per Writer. We can improve the allocation story
+	// here.
+	w.lastUserKeyInPrevBlock = append(w.lastUserKeyInPrevBlock[:0], prevKey.UserKey...)
 
 	// Schedule a write.
 	writeTask := writeTaskPool.Get().(*writeTask)
@@ -1600,7 +1674,7 @@ func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
 		nEntries: indexBuf.block.nEntries, properties: props,
 	}
 	w.indexSepAlloc, part.sep = cloneKeyWithBuf(
-		base.DecodeInternalKey(indexBuf.block.curKey), w.indexSepAlloc,
+		indexBuf.block.getCurKey(), w.indexSepAlloc,
 	)
 	bk := indexBuf.finish()
 	if len(w.indexBlockAlloc) < len(bk) {
@@ -1804,7 +1878,7 @@ func (w *Writer) Close() (err error) {
 	//    however, if a dataBlock is flushed, then we add a key to the new w.dataBlockBuf in the
 	//    addPoint function after the flush occurs.
 	if w.dataBlockBuf.dataBlock.nEntries >= 1 {
-		w.meta.SetLargestPointKey(base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey).Clone())
+		w.meta.SetLargestPointKey(w.dataBlockBuf.dataBlock.getCurKey().Clone())
 	}
 
 	// Finish the last data block, or force an empty data block if there
@@ -1818,7 +1892,7 @@ func (w *Writer) Close() (err error) {
 		if err != nil {
 			return err
 		}
-		prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
+		prevKey := w.dataBlockBuf.dataBlock.getCurKey()
 		if err := w.addIndexEntrySync(prevKey, InternalKey{}, bhp, w.dataBlockBuf.tmp[:]); err != nil {
 			return err
 		}
@@ -1897,7 +1971,7 @@ func (w *Writer) Close() (err error) {
 
 	var rangeKeyBH BlockHandle
 	if w.props.NumRangeKeys() > 0 {
-		key := base.DecodeInternalKey(w.rangeKeyBlock.curKey)
+		key := w.rangeKeyBlock.getCurKey()
 		kind := key.Kind()
 		endKey, _, ok := rangekey.DecodeEndKey(kind, w.rangeKeyBlock.curValue)
 		if !ok {
@@ -2086,7 +2160,7 @@ func (o PreviousPointKeyOpt) UnsafeKey() base.InternalKey {
 	if o.w.dataBlockBuf.dataBlock.nEntries >= 1 {
 		// o.w.dataBlockBuf.dataBlock.curKey is guaranteed to point to the last point key
 		// which was added to the Writer.
-		return base.DecodeInternalKey(o.w.dataBlockBuf.dataBlock.curKey)
+		return o.w.dataBlockBuf.dataBlock.getCurKey()
 	}
 	return base.InternalKey{}
 }
@@ -2115,6 +2189,8 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 		separator:               o.Comparer.Separator,
 		successor:               o.Comparer.Successor,
 		tableFormat:             o.TableFormat,
+		isStrictObsolete:        o.IsStrictObsolete,
+		writingToLowestLevel:    o.WritingToLowestLevel,
 		cache:                   o.Cache,
 		restartInterval:         o.BlockRestartInterval,
 		checksumType:            o.Checksum,
@@ -2188,7 +2264,8 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	w.props.PropertyCollectorNames = "[]"
 	w.props.ExternalFormatVersion = rocksDBExternalFormatVersion
 
-	if len(o.TablePropertyCollectors) > 0 || len(o.BlockPropertyCollectors) > 0 {
+	if len(o.TablePropertyCollectors) > 0 || len(o.BlockPropertyCollectors) > 0 ||
+		w.tableFormat >= TableFormatPebblev4 {
 		var buf bytes.Buffer
 		buf.WriteString("[")
 		if len(o.TablePropertyCollectors) > 0 {
@@ -2201,16 +2278,22 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 				buf.WriteString(w.propCollectors[i].Name())
 			}
 		}
+		numBlockPropertyCollectors := len(o.BlockPropertyCollectors)
+		if w.tableFormat >= TableFormatPebblev4 {
+			numBlockPropertyCollectors++
+		}
+		// shortID is a uint8, so we cannot exceed that number of block
+		// property collectors.
+		if numBlockPropertyCollectors > math.MaxUint8 {
+			w.err = errors.New("pebble: too many block property collectors")
+			return w
+		}
+		if numBlockPropertyCollectors > 0 {
+			w.blockPropCollectors = make([]BlockPropertyCollector, numBlockPropertyCollectors)
+		}
 		if len(o.BlockPropertyCollectors) > 0 {
-			// shortID is a uint8, so we cannot exceed that number of block
-			// property collectors.
-			if len(o.BlockPropertyCollectors) > math.MaxUint8 {
-				w.err = errors.New("pebble: too many block property collectors")
-				return w
-			}
 			// The shortID assigned to a collector is the same as its index in
 			// this slice.
-			w.blockPropCollectors = make([]BlockPropertyCollector, len(o.BlockPropertyCollectors))
 			for i := range o.BlockPropertyCollectors {
 				w.blockPropCollectors[i] = o.BlockPropertyCollectors[i]()
 				if i > 0 || len(o.TablePropertyCollectors) > 0 {
@@ -2218,6 +2301,13 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 				}
 				buf.WriteString(w.blockPropCollectors[i].Name())
 			}
+		}
+		if w.tableFormat >= TableFormatPebblev4 {
+			if numBlockPropertyCollectors > 1 || len(o.TablePropertyCollectors) > 0 {
+				buf.WriteString(",")
+			}
+			w.blockPropCollectors[numBlockPropertyCollectors-1] = &w.obsoleteCollector
+			buf.WriteString(w.obsoleteCollector.Name())
 		}
 		buf.WriteString("]")
 		w.props.PropertyCollectorNames = buf.String()
@@ -2251,4 +2341,83 @@ func init() {
 		w.disableKeyOrderChecks = true
 	}
 	private.SSTableInternalProperties = internalGetProperties
+}
+
+type obsoleteKeyBlockPropertyCollector struct {
+	blockIsNonObsolete bool
+	indexIsNonObsolete bool
+}
+
+func (o *obsoleteKeyBlockPropertyCollector) Name() string {
+	return "obsolete-key"
+}
+
+func (o *obsoleteKeyBlockPropertyCollector) Add(key InternalKey, value []byte) error {
+	// Ignore.
+	return nil
+}
+
+func (o *obsoleteKeyBlockPropertyCollector) AddPoint(isObsolete bool) {
+	o.blockIsNonObsolete = o.blockIsNonObsolete || !isObsolete
+}
+
+func (o *obsoleteKeyBlockPropertyCollector) FinishDataBlock(buf []byte) ([]byte, error) {
+	if o.blockIsNonObsolete {
+		return buf, nil
+	}
+	buf = append(buf, 't')
+	return buf, nil
+}
+
+func (o *obsoleteKeyBlockPropertyCollector) AddPrevDataBlockToIndexBlock() {
+	o.indexIsNonObsolete = o.indexIsNonObsolete || o.blockIsNonObsolete
+	o.blockIsNonObsolete = false
+}
+
+func (o *obsoleteKeyBlockPropertyCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
+	indexIsNonObsolete := o.indexIsNonObsolete
+	o.indexIsNonObsolete = false
+	if indexIsNonObsolete {
+		return buf, nil
+	}
+	buf = append(buf, 't')
+	return buf, nil
+}
+
+func (o *obsoleteKeyBlockPropertyCollector) FinishTable(buf []byte) ([]byte, error) {
+	// Table as a whole is never obsolete.
+	return buf, nil
+}
+
+func (o *obsoleteKeyBlockPropertyCollector) UpdateKeySuffixes(
+	oldProp []byte, oldSuffix, newSuffix []byte,
+) error {
+	isObsolete, err := propToIsObsolete(oldProp)
+	if err != nil {
+		return err
+	}
+	o.blockIsNonObsolete = !isObsolete
+	return nil
+}
+
+type obsoleteKeyBlockPropertyFilter struct{}
+
+func (o obsoleteKeyBlockPropertyFilter) Name() string {
+	return "obsolete-key"
+}
+
+// Intersects returns true if the set represented by prop intersects with
+// the set in the filter.
+func (o obsoleteKeyBlockPropertyFilter) Intersects(prop []byte) (bool, error) {
+	return propToIsObsolete(prop)
+}
+
+func propToIsObsolete(prop []byte) (bool, error) {
+	if len(prop) == 0 {
+		return true, nil
+	}
+	if len(prop) > 1 || prop[0] != 't' {
+		return false, errors.Errorf("unexpected property %x", prop)
+	}
+	return false, nil
 }
