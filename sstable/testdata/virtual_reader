@@ -159,7 +159,7 @@ virtualize dd.SET.5-ddd.SET.6
 ----
 bounds:  [dd#5,1-ddd#6,1]
 filenum: 000008
-props:   8,1
+props:   7,1
 
 # Check lower bound enforcement during SeekPrefixGE.
 iter
@@ -566,7 +566,7 @@ virtualize f.SET.6-h.SET.9
 ----
 bounds:  [f#6,1-h#9,1]
 filenum: 000020
-props:   6,0
+props:   5,0
 
 iter
 seek-lt z

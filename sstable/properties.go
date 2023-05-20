@@ -101,6 +101,9 @@ type Properties struct {
 	IndexType uint32 `prop:"rocksdb.block.based.table.index.type"`
 	// Whether delta encoding is used to encode the index values.
 	IndexValueIsDeltaEncoded uint64 `prop:"rocksdb.index.value.is.delta.encoded"`
+	// For formats >= TableFormatPebblev4, this is set to true if the obsolete
+	// bit is strict for all the point keys.
+	IsStrictObsolete bool `prop:"pebble.obsolete.is_strict"`
 	// The name of the merger used in this table. Empty if no merger is used.
 	MergerName string `prop:"rocksdb.merge.operator"`
 	// The number of blocks in this table.
@@ -349,6 +352,9 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	p.saveUvarint(m, unsafe.Offsetof(p.IndexSize), p.IndexSize)
 	p.saveUint32(m, unsafe.Offsetof(p.IndexType), p.IndexType)
 	p.saveUvarint(m, unsafe.Offsetof(p.IndexValueIsDeltaEncoded), p.IndexValueIsDeltaEncoded)
+	if p.IsStrictObsolete {
+		p.saveBool(m, unsafe.Offsetof(p.IsStrictObsolete), p.IsStrictObsolete)
+	}
 	if p.MergerName != "" {
 		p.saveString(m, unsafe.Offsetof(p.MergerName), p.MergerName)
 	}

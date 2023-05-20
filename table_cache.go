@@ -375,6 +375,26 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, v.err
 	}
 
+	hideObsoletePoints := false
+	if opts != nil {
+		// This code is appending (at most one filter) in-place to
+		// opts.PointKeyFilters even though the slice is shared for iterators in
+		// the same iterator tree. This is acceptable since all the following
+		// properties are true:
+		// - The iterator tree is single threaded, so the shared backing for the
+		//   slice is being mutated in a single threaded manner.
+		// - Each shallow copy of the slice has its own notion of length.
+		// - The appended element is always the obsoleteKeyBlockPropertyFilter
+		//   struct, which is stateless, so overwriting that struct when creating
+		//   one sstable iterator is harmless to other sstable iterators that are
+		//   relying on that struct.
+		//
+		// An alternative would be to have different slices for different sstable
+		// iterators, but that requires more work to avoid allocations.
+		hideObsoletePoints, opts.PointKeyFilters =
+			v.reader.TryAddBlockPropertyFilterForHideObsoletePoints(
+				opts.snapshotForHideObsoletePoints, file.LargestSeqNum, opts.PointKeyFilters)
+	}
 	ok := true
 	var filterer *sstable.BlockPropertiesFilterer
 	var err error
@@ -390,14 +410,7 @@ func (c *tableCacheShard) newIters(
 	type iterCreator interface {
 		NewFixedSeqnumRangeDelIter(seqNum uint64) (keyspan.FragmentIterator, error)
 		NewRawRangeDelIter() (keyspan.FragmentIterator, error)
-		NewIterWithBlockPropertyFiltersAndContext(
-			ctx context.Context,
-			lower, upper []byte,
-			filterer *sstable.BlockPropertiesFilterer,
-			useFilterBlock bool,
-			stats *base.InternalIteratorStats,
-			rp sstable.ReaderProvider,
-		) (sstable.Iterator, error)
+		NewIterWithBlockPropertyFiltersAndContextEtc(ctx context.Context, lower, upper []byte, filterer *sstable.BlockPropertiesFilterer, hideObsoletePoints, useFilterBlock bool, stats *base.InternalIteratorStats, rp sstable.ReaderProvider) (sstable.Iterator, error)
 		NewCompactionIter(
 			bytesIterated *uint64,
 			rp sstable.ReaderProvider,
@@ -484,11 +497,9 @@ func (c *tableCacheShard) newIters(
 	if internalOpts.bytesIterated != nil {
 		iter, err = ic.NewCompactionIter(internalOpts.bytesIterated, rp)
 	} else {
-		iter, err = ic.NewIterWithBlockPropertyFiltersAndContext(
-			ctx,
-			opts.GetLowerBound(), opts.GetUpperBound(),
-			filterer, useFilter, internalOpts.stats, rp,
-		)
+		iter, err = ic.NewIterWithBlockPropertyFiltersAndContextEtc(
+			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, hideObsoletePoints, useFilter,
+			internalOpts.stats, rp)
 	}
 	if err != nil {
 		if rangeDelIter != nil {
