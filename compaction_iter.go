@@ -206,6 +206,21 @@ type compactionIter struct {
 	// compaction iterator was only returned because an open snapshot prevents
 	// its elision. This field only applies to point keys, and not to range
 	// deletions or range keys.
+	//
+	// snapshotPinned is also used to set the forceObsolete value in the call to
+	// Writer.AddWithForceObsolete. Note that in that call, it is sufficient to
+	// mark all keys obsoleted by RANGEDELs as forceObsolete=true and that the
+	// implementation of Writer.AddWithForceObsolete will itself discover other
+	// causes of obsolescence. We mention this since in the presence of MERGE,
+	// obsolescence due to multiple keys at the same user key is not fully
+	// represented by snapshotPinned=true:
+	//
+	// For MERGE, it is possible that doing the merge is interrupted even when
+	// the next point key is in the same stripe. This can happen if the loop in
+	// mergeNext gets interrupted by sameStripeNonSkippable.
+	// sameStripeNonSkippable occurs due to RANGEDELs that sort before
+	// SET/MERGE/DEL with the same seqnum, so the RANGEDEL does not necessarily
+	// delete the subsequent SET/MERGE/DEL keys.
 	snapshotPinned bool
 	// The index of the snapshot for the current key within the snapshots slice.
 	curSnapshotIdx    int
@@ -311,10 +326,10 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	// respect to `iterKey` and related state:
 	//
 	// - `!skip && pos == iterPosNext`: `iterKey` is already at the next key.
-	// - `!skip && pos == iterPosCur`: We are at the key that has been returned.
+	// - `!skip && pos == iterPosCurForward`: We are at the key that has been returned.
 	//   To move forward we advance by one key, even if that lands us in the same
 	//   snapshot stripe.
-	// - `skip && pos == iterPosCur`: We are at the key that has been returned.
+	// - `skip && pos == iterPosCurForward`: We are at the key that has been returned.
 	//   To move forward we skip skippable entries in the stripe.
 	if i.pos == iterPosCurForward {
 		if i.skip {
@@ -383,6 +398,13 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 		} else if cover == keyspan.CoversInvisibly {
 			// i.iterKey would be deleted by a range deletion if there weren't
 			// any open snapshots. Mark it as pinned.
+			//
+			// NB: there are multiple places in this file where we call
+			// i.rangeDelFrag.Covers and this is the only one where we are writing
+			// to i.snapshotPinned. Those other cases occur in mergeNext where the
+			// caller is deciding whether the value should be merged or not, and the
+			// key is in the same snapshot stripe. Hence, snapshotPinned is by
+			// definition false in those cases.
 			i.snapshotPinned = true
 		}
 

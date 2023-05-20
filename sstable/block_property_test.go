@@ -1320,7 +1320,8 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 			if err != nil {
 				return err.Error()
 			}
-			if err := subiter.init(r.Compare, subIndex.Get(), 0 /* globalSeqNum */); err != nil {
+			if err := subiter.init(
+				r.Compare, subIndex.Get(), 0 /* globalSeqNum */, false); err != nil {
 				return err.Error()
 			}
 			for key, value := subiter.First(); key != nil; key, value = subiter.Next() {

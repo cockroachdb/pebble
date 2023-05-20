@@ -24,6 +24,14 @@ const (
 	//InternalKeyKindColumnFamilyDeletion     InternalKeyKind = 4
 	//InternalKeyKindColumnFamilyValue        InternalKeyKind = 5
 	//InternalKeyKindColumnFamilyMerge        InternalKeyKind = 6
+
+	// InternalKeyKindSingleDelete (SINGLEDEL) is a performance optimization
+	// solely for compactions (to reduce write amp and space amp). Readers other
+	// than compactions should treat SINGLEDEL as equivalent to a DEL.
+	// Historically, it was simpler for readers other than compactions to treat
+	// SINGLEDEL as equivalent to DEL, but as of the introduction of
+	// InternalKeyKindSSTableInternalObsoleteBit, this is also necessary for
+	// correctness.
 	InternalKeyKindSingleDelete InternalKeyKind = 7
 	//InternalKeyKindColumnFamilySingleDelete InternalKeyKind = 8
 	//InternalKeyKindBeginPrepareXID          InternalKeyKind = 9
@@ -71,7 +79,7 @@ const (
 	// value indicating the (len(key)+len(value)) of the shadowed entry the
 	// tombstone is expected to delete. This value is used to inform compaction
 	// heuristics, but is not required to be accurate for correctness.
-	InternalKeyKindDeleteSized = 23
+	InternalKeyKindDeleteSized InternalKeyKind = 23
 
 	// This maximum value isn't part of the file format. Future extensions may
 	// increase this value.
@@ -84,12 +92,17 @@ const (
 	// seqNum.
 	InternalKeyKindMax InternalKeyKind = 23
 
+	// Internal to the sstable format. Not exposed by any sstable iterator.
+	// Declared here to prevent definition of valid key kinds that set this bit.
+	InternalKeyKindSSTableInternalObsoleteBit  InternalKeyKind = 64
+	InternalKeyKindSSTableInternalObsoleteMask InternalKeyKind = 191
+
 	// InternalKeyZeroSeqnumMaxTrailer is the largest trailer with a
 	// zero sequence number.
-	InternalKeyZeroSeqnumMaxTrailer = uint64(InternalKeyKindInvalid)
+	InternalKeyZeroSeqnumMaxTrailer = uint64(255)
 
 	// A marker for an invalid key.
-	InternalKeyKindInvalid InternalKeyKind = 255
+	InternalKeyKindInvalid InternalKeyKind = InternalKeyKindSSTableInternalObsoleteMask
 
 	// InternalKeySeqNumBatch is a bit that is set on batch sequence numbers
 	// which prevents those entries from being excluded from iteration.
@@ -111,6 +124,9 @@ const (
 	// there exists no point key.
 	InternalKeyBoundaryRangeKey = (InternalKeySeqNumMax << 8) | uint64(InternalKeyKindRangeKeySet)
 )
+
+// Assert InternalKeyKindSSTableInternalObsoleteBit > InternalKeyKindMax
+const _ = uint(InternalKeyKindSSTableInternalObsoleteBit - InternalKeyKindMax - 1)
 
 var internalKeyKindNames = []string{
 	InternalKeyKindDelete:         "DEL",
