@@ -883,7 +883,7 @@ func TestWriterRace(t *testing.T) {
 					w.Add(base.MakeInternalKey(keys[ki], uint64(ki), InternalKeyKindSet), val),
 				)
 				require.Equal(
-					t, base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey).UserKey, keys[ki],
+					t, w.dataBlockBuf.dataBlock.getCurKey().UserKey, keys[ki],
 				)
 			}
 			require.NoError(t, w.Close())

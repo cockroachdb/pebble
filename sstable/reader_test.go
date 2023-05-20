@@ -414,15 +414,9 @@ func TestVirtualReader(t *testing.T) {
 			}
 
 			var stats base.InternalIteratorStats
-			iter, err := v.NewIterWithBlockPropertyFiltersAndContext(
-				context.Background(),
-				lower,
-				upper,
-				nil,
-				false,
-				&stats,
-				TrivialReaderProvider{Reader: r},
-			)
+			iter, err := v.NewIterWithBlockPropertyFiltersAndContextEtc(
+				context.Background(), lower, upper, nil, false, false,
+				&stats, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
 			}
@@ -473,7 +467,7 @@ func TestReader(t *testing.T) {
 		"prefixFilter": "testdata/prefixreader",
 	}
 
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev4} {
 		for dName, blockSize := range blockSizes {
 			for iName, indexBlockSize := range blockSizes {
 				for lName, tableOpt := range writerOpts {
@@ -494,6 +488,29 @@ func TestReader(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestReaderHideObsolete(t *testing.T) {
+	blockSizes := map[string]int{
+		"1bytes":   1,
+		"5bytes":   5,
+		"10bytes":  10,
+		"25bytes":  25,
+		"Maxbytes": math.MaxInt32,
+	}
+	for dName, blockSize := range blockSizes {
+		opts := WriterOptions{
+			TableFormat:    TableFormatPebblev4,
+			BlockSize:      blockSize,
+			IndexBlockSize: blockSize,
+			Comparer:       testkeys.Comparer,
+		}
+		t.Run(fmt.Sprintf("blockSize=%s", dName), func(t *testing.T) {
+			runTestReader(
+				t, opts, "testdata/reader_hide_obsolete",
+				nil /* Reader */, 0, false, true)
+		})
 	}
 }
 
@@ -722,12 +739,23 @@ func runTestReader(
 				}
 				var stats base.InternalIteratorStats
 				r.Properties.GlobalSeqNum = seqNum
-				var filterer *BlockPropertiesFilterer
+				hideObsoletePoints := false
+				var bpfs []BlockPropertyFilter
+				if d.HasArg("hide-obsolete-points") {
+					d.ScanArgs(t, "hide-obsolete-points", &hideObsoletePoints)
+					if hideObsoletePoints {
+						bpfs = append(bpfs, obsoleteKeyBlockPropertyFilter{})
+					}
+				}
 				if d.HasArg("block-property-filter") {
 					var filterMin, filterMax uint64
 					d.ScanArgs(t, "block-property-filter", &filterMin, &filterMax)
 					bpf := NewTestKeysBlockPropertyFilter(filterMin, filterMax)
-					filterer = newBlockPropertiesFilterer([]BlockPropertyFilter{bpf}, nil)
+					bpfs = append(bpfs, bpf)
+				}
+				var filterer *BlockPropertiesFilterer
+				if len(bpfs) > 0 {
+					filterer = newBlockPropertiesFilterer(bpfs, nil)
 					intersects, err :=
 						filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 					if err != nil {
@@ -737,10 +765,12 @@ func runTestReader(
 						return "table does not intersect BlockPropertyFilter"
 					}
 				}
-				iter, err := r.NewIterWithBlockPropertyFilters(
+				iter, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
+					context.Background(),
 					nil, /* lower */
 					nil, /* upper */
 					filterer,
+					hideObsoletePoints,
 					true, /* use filter block */
 					&stats,
 					TrivialReaderProvider{Reader: r},
@@ -1892,6 +1922,114 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 						})
 					}
 				})
+			}
+		})
+	}
+}
+
+func BenchmarkIteratorScanObsolete(b *testing.B) {
+	options := WriterOptions{
+		BlockSize:            32 << 10,
+		BlockRestartInterval: 16,
+		FilterPolicy:         nil,
+		Compression:          SnappyCompression,
+		Comparer:             testkeys.Comparer,
+	}
+	const keyCount = 1 << 20
+	const keyLen = 10
+
+	// Take the very large keyspace consisting of alphabetic characters of
+	// lengths up to unsharedPrefixLen and reduce it down to keyCount keys by
+	// picking every 1 key every keyCount keys.
+	keys := testkeys.Alpha(keyLen)
+	keys = keys.EveryN(keys.Count() / keyCount)
+	if keys.Count() < keyCount {
+		b.Fatalf("expected %d keys, found %d", keyCount, keys.Count())
+	}
+	expectedKeyCount := keys.Count()
+	keyBuf := make([]byte, keyLen)
+	setupBench := func(b *testing.B, tableFormat TableFormat, cacheSize int64) *Reader {
+		mem := vfs.NewMem()
+		f0, err := mem.Create("bench")
+		require.NoError(b, err)
+		options.TableFormat = tableFormat
+		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
+		val := make([]byte, 100)
+		rng := rand.New(rand.NewSource(100))
+		for i := 0; i < keys.Count(); i++ {
+			n := testkeys.WriteKey(keyBuf, keys, i)
+			key := keyBuf[:n]
+			rng.Read(val)
+			forceObsolete := true
+			if i == 0 {
+				forceObsolete = false
+			}
+			require.NoError(b, w.AddWithForceObsolete(
+				base.MakeInternalKey(key, 0, InternalKeyKindSet), val, forceObsolete))
+		}
+		require.NoError(b, w.Close())
+		c := cache.New(cacheSize)
+		defer c.Unref()
+		// Re-open the filename for reading.
+		f0, err = mem.Open("bench")
+		require.NoError(b, err)
+		r, err := newReader(f0, ReaderOptions{
+			Cache:    c,
+			Comparer: testkeys.Comparer,
+		})
+		require.NoError(b, err)
+		return r
+	}
+	for _, format := range []TableFormat{TableFormatPebblev3, TableFormatPebblev4} {
+		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
+			// 150MiB results in a high cache hit rate for both formats.
+			for _, cacheSize := range []int64{1, 150 << 20} {
+				b.Run(fmt.Sprintf("cache-size=%s", humanize.IEC.Int64(cacheSize)),
+					func(b *testing.B) {
+						r := setupBench(b, format, cacheSize)
+						defer func() {
+							require.NoError(b, r.Close())
+						}()
+						for _, hideObsoletePoints := range []bool{false, true} {
+							b.Run(fmt.Sprintf("hide-obsolete=%t", hideObsoletePoints), func(b *testing.B) {
+								var filterer *BlockPropertiesFilterer
+								if format == TableFormatPebblev4 && hideObsoletePoints {
+									filterer = newBlockPropertiesFilterer(
+										[]BlockPropertyFilter{obsoleteKeyBlockPropertyFilter{}}, nil)
+									intersects, err :=
+										filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+									if err != nil {
+										b.Fatalf("%s", err.Error())
+									}
+									if !intersects {
+										b.Fatalf("sstable does not intersect")
+									}
+								}
+								iter, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
+									context.Background(), nil, nil, filterer, hideObsoletePoints,
+									true, nil, TrivialReaderProvider{Reader: r})
+								require.NoError(b, err)
+								b.ResetTimer()
+								for i := 0; i < b.N; i++ {
+									count := 0
+									k, _ := iter.First()
+									for k != nil {
+										count++
+										k, _ = iter.Next()
+									}
+									if format == TableFormatPebblev4 && hideObsoletePoints {
+										if count != 1 {
+											b.Fatalf("found %d points", count)
+										}
+									} else {
+										if count != expectedKeyCount {
+											b.Fatalf("found %d points", count)
+										}
+									}
+								}
+							})
+						}
+					})
 			}
 		})
 	}

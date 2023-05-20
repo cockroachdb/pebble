@@ -76,6 +76,9 @@ func TestRewriteSuffixProps(t *testing.T) {
 				t.Run(fmt.Sprintf("byBlocks=%v", byBlocks), func(t *testing.T) {
 					rewrittenSST := &memFile{}
 					if byBlocks {
+						if format == TableFormatPebblev4 {
+							expectedProps["obsolete-key"] = string([]byte{3})
+						}
 						_, rewriteFormat, err := rewriteKeySuffixesInBlocks(
 							r, rewrittenSST, rwOpts, from, to, 8)
 						// rewriteFormat is equal to the original format, since
@@ -83,6 +86,9 @@ func TestRewriteSuffixProps(t *testing.T) {
 						require.Equal(t, wOpts.TableFormat, rewriteFormat)
 						require.NoError(t, err)
 					} else {
+						if rwOpts.TableFormat != TableFormatPebblev4 {
+							delete(expectedProps, "obsolete-key")
+						}
 						_, err := RewriteKeySuffixesViaWriter(r, rewrittenSST, rwOpts, from, to)
 						require.NoError(t, err)
 					}
@@ -119,7 +125,9 @@ func TestRewriteSuffixProps(t *testing.T) {
 						for !newDecoder.done() {
 							id, val, err := newDecoder.next()
 							require.NoError(t, err)
-							newProps[id] = val
+							if int(id) < len(newProps) {
+								newProps[id] = val
+							}
 						}
 						require.Equal(t, oldProps[0], newProps[1])
 						ival.decode(newProps[0])

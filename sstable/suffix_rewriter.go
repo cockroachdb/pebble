@@ -184,7 +184,7 @@ func rewriteBlocks(
 		if err != nil {
 			return err
 		}
-		if err := iter.init(r.Compare, inputBlock, r.Properties.GlobalSeqNum); err != nil {
+		if err := iter.init(r.Compare, inputBlock, r.Properties.GlobalSeqNum, false); err != nil {
 			return err
 		}
 
@@ -472,7 +472,8 @@ func RewriteKeySuffixesViaWriter(
 		if err != nil {
 			return nil, err
 		}
-		if w.addPoint(scratch, val); err != nil {
+		// TODO: correct forceObsolete value.
+		if w.addPoint(scratch, val, false); err != nil {
 			return nil, err
 		}
 		k, v = i.Next()

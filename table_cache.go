@@ -387,14 +387,7 @@ func (c *tableCacheShard) newIters(
 
 	type iterCreator interface {
 		NewRawRangeDelIter() (keyspan.FragmentIterator, error)
-		NewIterWithBlockPropertyFiltersAndContext(
-			ctx context.Context,
-			lower, upper []byte,
-			filterer *sstable.BlockPropertiesFilterer,
-			useFilterBlock bool,
-			stats *base.InternalIteratorStats,
-			rp sstable.ReaderProvider,
-		) (sstable.Iterator, error)
+		NewIterWithBlockPropertyFiltersAndContextEtc(ctx context.Context, lower, upper []byte, filterer *sstable.BlockPropertiesFilterer, hideObsoletePoints, useFilterBlock bool, stats *base.InternalIteratorStats, rp sstable.ReaderProvider) (sstable.Iterator, error)
 		NewCompactionIter(
 			bytesIterated *uint64,
 			rp sstable.ReaderProvider,
@@ -454,11 +447,9 @@ func (c *tableCacheShard) newIters(
 	if internalOpts.bytesIterated != nil {
 		iter, err = ic.NewCompactionIter(internalOpts.bytesIterated, rp)
 	} else {
-		iter, err = ic.NewIterWithBlockPropertyFiltersAndContext(
-			ctx,
-			opts.GetLowerBound(), opts.GetUpperBound(),
-			filterer, useFilter, internalOpts.stats, rp,
-		)
+		iter, err = ic.NewIterWithBlockPropertyFiltersAndContextEtc(
+			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, false, useFilter,
+			internalOpts.stats, rp)
 	}
 	if err != nil {
 		if rangeDelIter != nil {
