@@ -383,6 +383,13 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 		} else if cover == keyspan.CoversInvisibly {
 			// i.iterKey would be deleted by a range deletion if there weren't
 			// any open snapshots. Mark it as pinned.
+			//
+			// TODO(sumeer): there are multiple places in this file where we call
+			// i.rangeDelFrag.Covers and this is the only one where we are fiddling
+			// with i.snapshotPinned. i.snapshotPinned was previously being used
+			// only for stats, where a mistake does not lead to corruption. But it
+			// is also now being used for the forceObsolete bit in
+			// Writer.AddWithForceObsolete(). Give this more scrutiny.
 			i.snapshotPinned = true
 		}
 
