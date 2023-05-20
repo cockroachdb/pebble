@@ -88,7 +88,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L2 [000005] (786 B) + L3 [000006] (786 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
+  [JOB 100] compacted(delete-only) L2 [000005] (814 B) + L3 [000006] (814 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
 
 # Verify that compaction correctly handles the presence of multiple
 # overlapping hints which might delete a file multiple times. All of the
@@ -127,7 +127,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L2 [000006] (786 B) + L3 [000007] (786 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
+  [JOB 100] compacted(delete-only) L2 [000006] (814 B) + L3 [000007] (814 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
 
 # Test a range tombstone that is already compacted into L6.
 
@@ -206,7 +206,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L2 [000005] (786 B) + L3 [000006] (786 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
+  [JOB 100] compacted(delete-only) L2 [000005] (814 B) + L3 [000006] (814 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
 
 # A deletion hint present on an sstable in a higher level should NOT result in a
 # deletion-only compaction incorrectly removing an sstable in L6 following an
@@ -255,7 +255,7 @@ L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0, type=point-key-only)
 close-snapshot
 10
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (850 B) + L6 [] (0 B) -> L6 [000005] (771 B), in 1.0s (2.0s total), output rate 771 B/s
+[JOB 100] compacted(elision-only) L6 [000004] (878 B) + L6 [] (0 B) -> L6 [000005] (799 B), in 1.0s (2.0s total), output rate 799 B/s
 
 # The deletion hint was removed by the elision-only compaction.
 get-hints
@@ -414,4 +414,4 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L6 [000006 000007 000008 000009 000011] (4.5 K) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
+  [JOB 100] compacted(delete-only) L6 [000006 000007 000008 000009 000011] (4.6 K) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s

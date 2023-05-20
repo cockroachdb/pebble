@@ -56,7 +56,7 @@ func TestBlockWriterWithPrefix(t *testing.T) {
 		valuePrefix valuePrefix,
 		setHasSameKeyPrefix bool) {
 		w.addWithOptionalValuePrefix(
-			key, value, len(key.UserKey), addValuePrefix, valuePrefix, setHasSameKeyPrefix)
+			key, false, value, len(key.UserKey), addValuePrefix, valuePrefix, setHasSameKeyPrefix)
 	}
 	addAdapter(
 		ikey("apple"), []byte("red"), false, 0, true)

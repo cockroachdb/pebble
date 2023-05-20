@@ -323,6 +323,8 @@ type singleLevelIterator struct {
 	// is high).
 	useFilter              bool
 	lastBloomFilterMatched bool
+
+	hideObsoletePoints bool
 }
 
 // singleLevelIterator implements the base.InternalIterator interface.
@@ -404,7 +406,7 @@ func (i *singleLevelIterator) init(
 	v *virtualState,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilter bool,
+	useFilter, hideObsoletePoints bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) error {
@@ -428,7 +430,8 @@ func (i *singleLevelIterator) init(
 	i.reader = r
 	i.cmp = r.Compare
 	i.stats = stats
-	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum)
+	i.hideObsoletePoints = hideObsoletePoints
+	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum, false)
 	if err != nil {
 		// blockIter.Close releases indexH and always returns a nil error
 		_ = i.index.Close()
@@ -566,7 +569,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum)
+	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum, i.hideObsoletePoints)
 	if i.err != nil {
 		// The block is partially loaded, and we don't want it to appear valid.
 		i.data.invalidate()
@@ -653,12 +656,13 @@ func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 }
 
 func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
-	if i.data.firstKey.UserKey == nil {
+	if i.data.getFirstUserKey() == nil {
 		panic("initBoundsForAlreadyLoadedBlock must not be called on empty or corrupted block")
 	}
 	i.blockLower = i.lower
 	if i.blockLower != nil {
-		if i.data.firstKey.UserKey != nil && i.cmp(i.blockLower, i.data.firstKey.UserKey) < 0 {
+		firstUserKey := i.data.getFirstUserKey()
+		if firstUserKey != nil && i.cmp(i.blockLower, firstUserKey) < 0 {
 			// The lower-bound is less than the first key in the block. No need
 			// to check the lower-bound again for this block.
 			i.blockLower = nil
@@ -1066,7 +1070,7 @@ func (i *singleLevelIterator) SeekLT(
 
 	var dontSeekWithinBlock bool
 	if !i.data.isDataInvalidated() && !i.index.isDataInvalidated() && i.data.valid() && i.index.valid() &&
-		boundsCmp < 0 && i.cmp(i.data.firstKey.UserKey, key) < 0 {
+		boundsCmp < 0 && i.cmp(i.data.getFirstUserKey(), key) < 0 {
 		// Fast-path: The bounds have moved backward, and this SeekLT is
 		// respecting the upper bound (guaranteed by Iterator). We know that
 		// the iterator must already be positioned within or just outside the
@@ -1314,7 +1318,7 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.Laz
 	if i.err != nil {
 		return nil, base.LazyValue{}
 	}
-	if key, val := i.data.nextPrefix(succKey); key != nil {
+	if key, val := i.data.NextPrefix(succKey); key != nil {
 		if i.blockUpper != nil {
 			cmp := i.cmp(key.UserKey, i.blockUpper)
 			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
@@ -1763,8 +1767,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	if i.err = i.index.initHandle(
-		i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum); i.err == nil {
+	if i.err = i.index.initHandle(i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum, false); i.err == nil {
 		return loadBlockOK
 	}
 	return loadBlockFailed
@@ -1842,7 +1845,7 @@ func (i *twoLevelIterator) init(
 	v *virtualState,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilter bool,
+	useFilter, hideObsoletePoints bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) error {
@@ -1867,7 +1870,8 @@ func (i *twoLevelIterator) init(
 	i.reader = r
 	i.cmp = r.Compare
 	i.stats = stats
-	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum)
+	i.hideObsoletePoints = hideObsoletePoints
+	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum, false)
 	if err != nil {
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
 		_ = i.topLevelIndex.Close()
@@ -2907,21 +2911,20 @@ func (v *VirtualReader) NewCompactionIter(
 	return v.reader.newCompactionIter(bytesIterated, rp, &v.vState)
 }
 
-// NewIterWithBlockPropertyFiltersAndContext wraps
+// NewIterWithBlockPropertyFiltersAndContextEtc wraps
 // Reader.NewIterWithBlockPropertyFiltersAndContext. We assume that the passed
 // in [lower, upper) bounds will have at least some overlap with the virtual
 // sstable bounds. No overlap is not currently supported in the iterator.
-func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContext(
+func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	ctx context.Context,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilterBlock bool,
+	hideObsoletePoints, useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return v.reader.newIterWithBlockPropertyFiltersAndContext(
-		ctx,
-		lower, upper, filterer, useFilterBlock, stats, rp, &v.vState,
+		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats, rp, &v.vState,
 	)
 }
 
@@ -3080,31 +3083,51 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 ) (Iterator, error) {
 	return r.newIterWithBlockPropertyFiltersAndContext(
 		context.Background(),
-		lower, upper, filterer, useFilterBlock, stats, rp, nil,
+		lower, upper, filterer, false, useFilterBlock, stats, rp, nil,
 	)
 }
 
-// NewIterWithBlockPropertyFiltersAndContext is similar to
+// NewIterWithBlockPropertyFiltersAndContextEtc is similar to
 // NewIterWithBlockPropertyFilters and additionally accepts a context for
 // tracing.
-func (r *Reader) NewIterWithBlockPropertyFiltersAndContext(
+//
+// If hideObsoletePoints, the callee assumes that filterer already includes
+// obsoleteKeyBlockPropertyFilter. The caller can satisfy this contract by
+// first calling TryAddBlockPropertyFilterForHideObsoletePoints.
+func (r *Reader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	ctx context.Context,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilterBlock bool,
+	hideObsoletePoints, useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.newIterWithBlockPropertyFiltersAndContext(
-		ctx,
-		lower, upper, filterer, useFilterBlock, stats, rp, nil,
+		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats, rp, nil,
 	)
+}
+
+// TryAddBlockPropertyFilterForHideObsoletePoints is expected to be called
+// before the call to NewIterWithBlockPropertyFiltersAndContextEtc, to get the
+// value of hideObsoletePoints and potentially add a block property filter.
+func (r *Reader) TryAddBlockPropertyFilterForHideObsoletePoints(
+	snapshotForHideObsoletePoints uint64,
+	fileLargestSeqNum uint64,
+	pointKeyFilters []BlockPropertyFilter,
+) (hideObsoletePoints bool, filters []BlockPropertyFilter) {
+	hideObsoletePoints = r.tableFormat >= TableFormatPebblev4 &&
+		snapshotForHideObsoletePoints > fileLargestSeqNum
+	if hideObsoletePoints {
+		pointKeyFilters = append(pointKeyFilters, obsoleteKeyBlockPropertyFilter{})
+	}
+	return hideObsoletePoints, pointKeyFilters
 }
 
 func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	ctx context.Context,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
+	hideObsoletePoints bool,
 	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
@@ -3115,7 +3138,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, stats, rp)
+		err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats, rp)
 		if err != nil {
 			return nil, err
 		}
@@ -3123,7 +3146,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, stats, rp)
+	err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats, rp)
 	if err != nil {
 		return nil, err
 	}
@@ -3155,7 +3178,8 @@ func (r *Reader) newCompactionIter(
 		err := i.init(
 			context.Background(),
 			r, v, nil /* lower */, nil /* upper */, nil,
-			false /* useFilter */, nil /* stats */, rp,
+			false /* useFilter */, false, /* hideObsoletePoints */
+			nil /* stats */, rp,
 		)
 		if err != nil {
 			return nil, err
@@ -3169,7 +3193,8 @@ func (r *Reader) newCompactionIter(
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
 		context.Background(), r, v, nil /* lower */, nil, /* upper */
-		nil, false /* useFilter */, nil /* stats */, rp,
+		nil, false /* useFilter */, false, /* hideObsoletePoints */
+		nil /* stats */, rp,
 	)
 	if err != nil {
 		return nil, err
@@ -3207,7 +3232,7 @@ func (r *Reader) NewFixedSeqnumRangeDelIter(seqNum uint64) (keyspan.FragmentIter
 		return nil, err
 	}
 	i := &fragmentBlockIter{elideSameSeqnum: true}
-	if err := i.blockIter.initHandle(r.Compare, h, seqNum); err != nil {
+	if err := i.blockIter.initHandle(r.Compare, h, seqNum, false); err != nil {
 		return nil, err
 	}
 	return i, nil
@@ -3228,7 +3253,7 @@ func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 		return nil, err
 	}
 	i := rangeKeyFragmentBlockIterPool.Get().(*rangeKeyFragmentBlockIter)
-	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
+	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum, false); err != nil {
 		return nil, err
 	}
 	return i, nil
@@ -3388,7 +3413,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// tombstones. We need properly fragmented and sorted range tombstones in
 	// order to serve from them directly.
 	iter := &blockIter{}
-	if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
+	if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum, false); err != nil {
 		return nil, err
 	}
 	var tombstones []keyspan.Span
@@ -3580,7 +3605,8 @@ func (r *Reader) Layout() (*Layout, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := iter.init(r.Compare, subIndex.Get(), 0 /* globalSeqNum */); err != nil {
+			if err := iter.init(r.Compare, subIndex.Get(), 0, /* globalSeqNum */
+				false /* hideObsoletePoints */); err != nil {
 				return nil, err
 			}
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {

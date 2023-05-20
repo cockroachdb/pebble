@@ -160,8 +160,27 @@ The metaindex block also contains block handles as values, with keys being
 the names of the meta blocks.
 
 For a description of value blocks and the meta value index block, see
-value_block.go
+value_block.go.
 
+Data blocks have some additional features:
+- For TableFormatPebblev3 onwards:
+  - For SETs, the value has a 1 byte value prefix, which indicates whether the
+    value is inline, or in a separate value block, and indicates whether the
+    prefix of the userkey (as defined by split) has changed or not. See
+    value_block.go for details.
+  - The most significant bit of the restart points is used to indicate whether
+    userkey prefix has changed since the last restart point. See the detailed
+    comment in blockWriter.
+  - The maximum length of the "shared prefix" when encoding the key, is the
+    length of the prefix of the userkey (as defined by split) of the previous
+    key.
+
+- For TableFormatPebblev4 onwards:
+  - The key kinds may be altered to set the
+    InternalKeyKindSSTableInternalObsoleteBit if the key-value pair is obsolete
+    in the context of that sstable (for a reader that reads at a higher seqnum
+    than the highest seqnum in the sstable). For details, see the comment in
+    format.go.
 */
 
 const (

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -883,7 +884,7 @@ func TestWriterRace(t *testing.T) {
 					w.Add(base.MakeInternalKey(keys[ki], uint64(ki), InternalKeyKindSet), val),
 				)
 				require.Equal(
-					t, base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey).UserKey, keys[ki],
+					t, w.dataBlockBuf.dataBlock.getCurKey().UserKey, keys[ki],
 				)
 			}
 			require.NoError(t, w.Close())
@@ -905,6 +906,70 @@ func TestWriterRace(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestObsoleteBlockPropertyCollectorFilter(t *testing.T) {
+	var c obsoleteKeyBlockPropertyCollector
+	var f obsoleteKeyBlockPropertyFilter
+	require.Equal(t, c.Name(), f.Name())
+	// Data block with 1 obsolete and 1 non-obsolete point.
+	c.AddPoint(false)
+	c.AddPoint(true)
+	finishAndCheck := func(finishFunc func([]byte) ([]byte, error), expectedIntersects bool) {
+		var buf [1]byte
+		prop, err := finishFunc(buf[:0:1])
+		require.NoError(t, err)
+		expectedLength := 1
+		if expectedIntersects {
+			// The common case is encoded in 0 bytes
+			expectedLength = 0
+		}
+		require.Equal(t, expectedLength, len(prop))
+		// Confirm that the collector used the slice.
+		require.Equal(t, unsafe.Pointer(&buf[0]), unsafe.Pointer(&prop[:1][0]))
+		intersects, err := f.Intersects(prop)
+		require.NoError(t, err)
+		require.Equal(t, expectedIntersects, intersects)
+	}
+	finishAndCheck(c.FinishDataBlock, true)
+	c.AddPrevDataBlockToIndexBlock()
+	// Data block with only obsolete points.
+	c.AddPoint(true)
+	c.AddPoint(true)
+	finishAndCheck(c.FinishDataBlock, false)
+	c.AddPrevDataBlockToIndexBlock()
+	// Index block has one obsolete block and one non-obsolete block.
+	finishAndCheck(c.FinishIndexBlock, true)
+
+	// Data block with obsolete point.
+	c.AddPoint(true)
+	finishAndCheck(c.FinishDataBlock, false)
+	c.AddPrevDataBlockToIndexBlock()
+	// Data block with obsolete point.
+	c.AddPoint(true)
+	finishAndCheck(c.FinishDataBlock, false)
+	c.AddPrevDataBlockToIndexBlock()
+	// Index block has only obsolete blocks.
+	finishAndCheck(c.FinishIndexBlock, false)
+	// Table is not obsolete.
+	finishAndCheck(c.FinishTable, true)
+
+	// Reset the collector state.
+	c = obsoleteKeyBlockPropertyCollector{}
+	// Table with only obsolete blocks.
+
+	// Data block with obsolete point.
+	c.AddPoint(true)
+	finishAndCheck(c.FinishDataBlock, false)
+	c.AddPrevDataBlockToIndexBlock()
+	// Data block with obsolete point.
+	c.AddPoint(true)
+	finishAndCheck(c.FinishDataBlock, false)
+	c.AddPrevDataBlockToIndexBlock()
+	// Index block has only obsolete blocks.
+	finishAndCheck(c.FinishIndexBlock, false)
+	// Table is obsolete.
+	finishAndCheck(c.FinishTable, false)
 }
 
 func BenchmarkWriter(b *testing.B) {
