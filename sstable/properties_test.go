@@ -79,6 +79,7 @@ func TestPropertiesSave(t *testing.T) {
 		IndexSize:                11,
 		IndexType:                12,
 		IndexValueIsDeltaEncoded: 13,
+		IsStrictObsolete:         true,
 		MergerName:               "merge operator name",
 		NumDataBlocks:            14,
 		NumDeletions:             15,

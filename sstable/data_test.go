@@ -54,6 +54,10 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 			writerOpts.FilterPolicy = bloom.FilterPolicy(10)
 		case "comparer-split-4b-suffix":
 			writerOpts.Comparer = test4bSuffixComparer
+		case "writing-to-lowest-level":
+			writerOpts.WritingToLowestLevel = true
+		case "is-strict-obsolete":
+			writerOpts.IsStrictObsolete = true
 		}
 	}
 	return nil
@@ -102,11 +106,19 @@ func runBuildCmd(
 			continue
 		}
 
+		forceObsolete := false
+		if strings.HasPrefix(data, "force-obsolete:") {
+			data = strings.TrimSpace(strings.TrimPrefix(data, "force-obsolete:"))
+			forceObsolete = true
+		}
 		j := strings.Index(data, ":")
 		key := base.ParseInternalKey(data[:j])
 		value := []byte(data[j+1:])
 		switch key.Kind() {
 		case InternalKeyKindRangeDelete:
+			if forceObsolete {
+				return nil, nil, errors.Errorf("force-obsolete is not allowed for RANGEDEL")
+			}
 			var err error
 			func() {
 				defer func() {
@@ -124,7 +136,7 @@ func runBuildCmd(
 				return nil, nil, err
 			}
 		default:
-			if err := w.Add(key, value); err != nil {
+			if err := w.AddWithForceObsolete(key, value, forceObsolete); err != nil {
 				return nil, nil, err
 			}
 		}

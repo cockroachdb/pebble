@@ -117,7 +117,7 @@ type BlockPropertyCollector interface {
 }
 
 // SuffixReplaceableBlockCollector is an extension to the BlockPropertyCollector
-// interface that allows a block property collector to indicate the it supports
+// interface that allows a block property collector to indicate that it supports
 // being *updated* during suffix replacement, i.e. when an existing SST in which
 // all keys have the same key suffix is updated to have a new suffix.
 //

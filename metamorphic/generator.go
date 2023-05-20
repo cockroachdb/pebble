@@ -514,8 +514,8 @@ func (g *generator) dbRatchetFormatMajorVersion() {
 	// TODO(jackson): When FormatDeleteSized is stabilized, return this to just
 	// using `FormatNewest`.
 	newestTODO := pebble.FormatNewest
-	if newestTODO < pebble.ExperimentalFormatDeleteSized {
-		newestTODO = pebble.ExperimentalFormatDeleteSized
+	if newestTODO < pebble.ExperimentalFormatDeleteSizedAndObsolete {
+		newestTODO = pebble.ExperimentalFormatDeleteSizedAndObsolete
 	}
 
 	n := int(newestTODO - minimumFormatMajorVersion)

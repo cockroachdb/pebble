@@ -158,7 +158,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			if n := len(g.l0); n > 0 {
 				files := g.l0[n-1].Iter()
 				g.l0 = g.l0[:n-1]
-				iterOpts := IterOptions{logger: g.logger}
+				iterOpts := IterOptions{logger: g.logger, snapshotForHideObsoletePoints: g.snapshot}
 				g.levelIter.init(context.Background(), iterOpts, g.cmp, nil /* split */, g.newIters,
 					files, manifest.L0Sublevel(n), internalIterOpts{})
 				g.levelIter.initRangeDel(&g.rangeDelIter)
@@ -177,7 +177,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			continue
 		}
 
-		iterOpts := IterOptions{logger: g.logger}
+		iterOpts := IterOptions{logger: g.logger, snapshotForHideObsoletePoints: g.snapshot}
 		g.levelIter.init(context.Background(), iterOpts, g.cmp, nil /* split */, g.newIters,
 			g.version.Levels[g.level].Iter(), manifest.Level(g.level), internalIterOpts{})
 		g.levelIter.initRangeDel(&g.rangeDelIter)

@@ -62,8 +62,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatFlushableIngest, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1MarkedCompacted))
 	require.Equal(t, FormatPrePebblev1MarkedCompacted, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(ExperimentalFormatDeleteSized))
-	require.Equal(t, ExperimentalFormatDeleteSized, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(ExperimentalFormatDeleteSizedAndObsolete))
+	require.Equal(t, ExperimentalFormatDeleteSizedAndObsolete, d.FormatMajorVersion())
 
 	require.NoError(t, d.Close())
 
@@ -212,22 +212,22 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 	// fixture is intentionally verbose.
 
 	m := map[FormatMajorVersion][2]sstable.TableFormat{
-		FormatDefault:                          {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatMostCompatible:                   {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		formatVersionedManifestMarker:          {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatVersioned:                        {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatSetWithDelete:                    {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatBlockPropertyCollector:           {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
-		FormatSplitUserKeysMarked:              {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
-		FormatSplitUserKeysMarkedCompacted:     {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
-		FormatRangeKeys:                        {sstable.TableFormatLevelDB, sstable.TableFormatPebblev2},
-		FormatMinTableFormatPebblev1:           {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
-		FormatPrePebblev1Marked:                {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
-		FormatUnusedPrePebblev1MarkedCompacted: {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
-		FormatSSTableValueBlocks:               {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
-		FormatFlushableIngest:                  {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
-		FormatPrePebblev1MarkedCompacted:       {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
-		ExperimentalFormatDeleteSized:          {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
+		FormatDefault:                            {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatMostCompatible:                     {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		formatVersionedManifestMarker:            {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatVersioned:                          {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatSetWithDelete:                      {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatBlockPropertyCollector:             {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatSplitUserKeysMarked:                {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatSplitUserKeysMarkedCompacted:       {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatRangeKeys:                          {sstable.TableFormatLevelDB, sstable.TableFormatPebblev2},
+		FormatMinTableFormatPebblev1:             {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
+		FormatPrePebblev1Marked:                  {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
+		FormatUnusedPrePebblev1MarkedCompacted:   {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
+		FormatSSTableValueBlocks:                 {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		FormatFlushableIngest:                    {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		FormatPrePebblev1MarkedCompacted:         {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		ExperimentalFormatDeleteSizedAndObsolete: {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
 	}
 
 	// Valid versions.

@@ -32,6 +32,9 @@ func TestRewriteSuffixProps(t *testing.T) {
 				},
 				TableFormat: format,
 			}
+			if format >= TableFormatPebblev4 {
+				wOpts.IsStrictObsolete = true
+			}
 
 			const keyCount = 1e5
 			const rangeKeyCount = 100
@@ -52,11 +55,12 @@ func TestRewriteSuffixProps(t *testing.T) {
 			expectedProps["bp3"] = string(interval{646, 647}.encode([]byte{0}))
 
 			// Swap the order of two of the props so they have new shortIDs, and remove
-			// one.
+			// one. rwOpts inherits the IsStrictObsolete value from wOpts.
 			rwOpts := wOpts
-			rwOpts.TableFormat = TableFormatPebblev2
 			if rand.Intn(2) != 0 {
-				rwOpts.TableFormat = TableFormatPebblev3
+				rwOpts.TableFormat = TableFormatPebblev2
+				rwOpts.IsStrictObsolete = false
+				t.Log("table format set to TableFormatPebblev2")
 			}
 			fmt.Printf("from format %s, to format %s\n", format.String(), rwOpts.TableFormat.String())
 			rwOpts.BlockPropertyCollectors = rwOpts.BlockPropertyCollectors[:3]
@@ -72,6 +76,13 @@ func TestRewriteSuffixProps(t *testing.T) {
 			defer r.Close()
 
 			var sstBytes [2][]byte
+			adjustPropsForEffectiveFormat := func(effectiveFormat TableFormat) {
+				if effectiveFormat == TableFormatPebblev4 {
+					expectedProps["obsolete-key"] = string([]byte{3})
+				} else {
+					delete(expectedProps, "obsolete-key")
+				}
+			}
 			for i, byBlocks := range []bool{false, true} {
 				t.Run(fmt.Sprintf("byBlocks=%v", byBlocks), func(t *testing.T) {
 					rewrittenSST := &memFile{}
@@ -82,9 +93,11 @@ func TestRewriteSuffixProps(t *testing.T) {
 						// rwOpts.TableFormat is ignored.
 						require.Equal(t, wOpts.TableFormat, rewriteFormat)
 						require.NoError(t, err)
+						adjustPropsForEffectiveFormat(rewriteFormat)
 					} else {
 						_, err := RewriteKeySuffixesViaWriter(r, rewrittenSST, rwOpts, from, to)
 						require.NoError(t, err)
+						adjustPropsForEffectiveFormat(rwOpts.TableFormat)
 					}
 
 					sstBytes[i] = rewrittenSST.Data()
@@ -93,6 +106,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 					require.NoError(t, err)
 					defer rRewritten.Close()
 					require.Equal(t, expectedProps, rRewritten.Properties.UserProperties)
+					require.False(t, rRewritten.Properties.IsStrictObsolete)
 
 					// Compare the block level props from the data blocks in the layout,
 					// only if we did not do a rewrite from one format to another. If the
@@ -119,7 +133,9 @@ func TestRewriteSuffixProps(t *testing.T) {
 						for !newDecoder.done() {
 							id, val, err := newDecoder.next()
 							require.NoError(t, err)
-							newProps[id] = val
+							if int(id) < len(newProps) {
+								newProps[id] = val
+							}
 						}
 						require.Equal(t, oldProps[0], newProps[1])
 						ival.decode(newProps[0])
@@ -177,7 +193,9 @@ func make4bSuffixTestSST(
 		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
 		binary.BigEndian.PutUint64(key[8:16], 456)
 		binary.BigEndian.PutUint64(key[16:], uint64(i))
-		if err := w.Set(key, key); err != nil {
+		err := w.AddWithForceObsolete(
+			base.MakeInternalKey(key, 0, InternalKeyKindSet), key, false)
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
