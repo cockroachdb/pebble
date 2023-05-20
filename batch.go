@@ -432,8 +432,8 @@ func (b *Batch) refreshMemTableSize() {
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 			b.countRangeKeys++
 		case InternalKeyKindDeleteSized:
-			if b.minimumFormatMajorVersion < ExperimentalFormatDeleteSized {
-				b.minimumFormatMajorVersion = ExperimentalFormatDeleteSized
+			if b.minimumFormatMajorVersion < ExperimentalFormatDeleteSizedAndObsolete {
+				b.minimumFormatMajorVersion = ExperimentalFormatDeleteSizedAndObsolete
 			}
 		case InternalKeyKindIngestSST:
 			if b.minimumFormatMajorVersion < FormatFlushableIngest {
@@ -729,8 +729,8 @@ func (b *Batch) DeleteSized(key []byte, deletedValueSize uint32, _ *WriteOptions
 // complete key slice, letting the caller encode into the DeferredBatchOp.Key
 // slice and then call Finish() on the returned object.
 func (b *Batch) DeleteSizedDeferred(keyLen int, deletedValueSize uint32) *DeferredBatchOp {
-	if b.minimumFormatMajorVersion < ExperimentalFormatDeleteSized {
-		b.minimumFormatMajorVersion = ExperimentalFormatDeleteSized
+	if b.minimumFormatMajorVersion < ExperimentalFormatDeleteSizedAndObsolete {
+		b.minimumFormatMajorVersion = ExperimentalFormatDeleteSizedAndObsolete
 	}
 
 	// Encode the sum of the key length and the value in the value.

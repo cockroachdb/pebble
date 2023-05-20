@@ -1607,11 +1607,11 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_file_boundaries",
 			minVersion: FormatMostCompatible,
-			maxVersion: ExperimentalFormatDeleteSized - 1,
+			maxVersion: ExperimentalFormatDeleteSizedAndObsolete - 1,
 		},
 		{
 			testData:   "testdata/manual_compaction_file_boundaries_delsized",
-			minVersion: ExperimentalFormatDeleteSized,
+			minVersion: ExperimentalFormatDeleteSizedAndObsolete,
 			maxVersion: internalFormatNewest,
 		},
 	}
