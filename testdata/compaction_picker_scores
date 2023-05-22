@@ -105,3 +105,63 @@ L3  	0 B    0.0
 L4  	0 B    0.0
 L5  	785 B  0.0
 L6  	809 B  -
+
+# Run a similar test as above, but this time the table containing the DELs is
+# ingested after the database is initialized, with table stats enabled and
+# automatic compactions enabled. When the ingested sstable's stats are loaded,
+# it should trigger an automatic compaction of the ingested sstable on account
+# of the high point-deletions-bytes-estimate value.
+#
+# This a regression test for an issue where the table stats collector wouldn't
+# attempt to schedule a compaction if a file only had compensation due to point
+# deletions and not range deletions.
+
+define lbase-max-bytes=65536  enable-table-stats=true auto-compactions=on
+L6
+  a.SET.1:<rand-bytes=65536>
+  b.SET.1:<rand-bytes=65536>
+  c.SET.1:<rand-bytes=65536>
+  d.SET.1:<rand-bytes=65536>
+  e.SET.1:<rand-bytes=65536>
+----
+6:
+  000004:[a#1,SET-e#1,SET]
+
+ingest ext1
+del a:
+del b:
+del c:
+del d:
+del e:
+----
+5:
+  000005:[a:#1,DEL-e:#1,DEL]
+6:
+  000004:[a#1,SET-e#1,SET]
+
+wait-pending-table-stats
+000005
+----
+num-entries: 5
+num-deletions: 5
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 1065
+range-deletions-bytes-estimate: 0
+
+scores
+----
+L       Size   Score
+L0  	0 B    0.0
+L1  	0 B    0.0
+L2  	0 B    0.0
+L3  	0 B    0.0
+L4  	0 B    0.0
+L5  	840 B  0.0
+L6  	809 B  -
+
+lsm
+----
+5:
+  000005:[a:#1,DEL-e:#1,DEL]
+6:
+  000004:[a#1,SET-e#1,SET]

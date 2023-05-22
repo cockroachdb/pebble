@@ -1314,6 +1314,18 @@ func TestCompactionPickerScores(t *testing.T) {
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/compaction_picker_scores", func(td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "define":
+			require.NoError(t, d.Close())
+
+			d, err = runDBDefineCmd(td, opts)
+			if err != nil {
+				return err.Error()
+			}
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
 		case "disable-table-stats":
 			d.mu.Lock()
 			d.opts.private.disableTableStats = true
@@ -1327,11 +1339,11 @@ func TestCompactionPickerScores(t *testing.T) {
 			d.mu.Unlock()
 			return ""
 
-		case "define":
-			require.NoError(t, d.Close())
-
-			d, err = runDBDefineCmd(td, opts)
-			if err != nil {
+		case "ingest":
+			if err = runBuildCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			if err = runIngestCmd(td, d, d.opts.FS); err != nil {
 				return err.Error()
 			}
 			d.mu.Lock()
@@ -1339,7 +1351,19 @@ func TestCompactionPickerScores(t *testing.T) {
 			d.mu.Unlock()
 			return s
 
+		case "lsm":
+			return runLSMCmd(td, d)
+
 		case "scores":
+			// Wait for any running compactions to complete before calculating
+			// scores. Otherwise, the output of this command is
+			// nondeterministic.
+			d.mu.Lock()
+			for d.mu.compact.compactingCount > 0 {
+				d.mu.compact.cond.Wait()
+			}
+			d.mu.Unlock()
+
 			buf.Reset()
 			fmt.Fprintf(&buf, "L       Size   Score\n")
 			for l, lm := range d.Metrics().Levels {
