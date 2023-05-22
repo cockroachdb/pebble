@@ -112,7 +112,7 @@ wal dump
 000004.log
 0(42) seq=30 count=4
     SET(test formatter: a@2,test value formatter: )
-    RANGEKEYSET()
-    RANGEKEYUNSET()
-    RANGEKEYDEL()
+    RANGEKEYSET(test formatter: a-test formatter: z:{(#31,RANGEKEYSET,@3)})
+    RANGEKEYUNSET(test formatter: a-test formatter: z:{(#32,RANGEKEYUNSET,@4)})
+    RANGEKEYDEL(test formatter: a-test formatter: b:{(#33,RANGEKEYDEL)})
 EOF
