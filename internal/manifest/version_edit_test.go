@@ -25,17 +25,89 @@ import (
 
 func checkRoundTrip(e0 VersionEdit) error {
 	var e1 VersionEdit
+	var err error
 	buf := new(bytes.Buffer)
-	if err := e0.Encode(buf); err != nil {
+	if err = e0.Encode(buf); err != nil {
 		return errors.Wrap(err, "encode")
 	}
-	if err := e1.Decode(buf); err != nil {
+	if err = e1.Decode(buf); err != nil {
 		return errors.Wrap(err, "decode")
 	}
 	if diff := pretty.Diff(e0, e1); diff != nil {
 		return errors.Errorf("%s", strings.Join(diff, "\n"))
 	}
 	return nil
+}
+
+// Version edits with virtual sstables will not be the same after a round trip
+// as the Decode function will not set the FileBacking for a virtual sstable.
+// We test round trip + bve accumulation here, after which the virtual sstable
+// FileBacking should be set.
+func TestVERoundTripAndAccumulate(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
+	m1 := (&FileMetadata{
+		FileNum:        810,
+		Size:           8090,
+		CreationTime:   809060,
+		SmallestSeqNum: 9,
+		LargestSeqNum:  11,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
+	).ExtendRangeKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
+		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
+	)
+	m1.InitPhysicalBacking()
+
+	m2 := (&FileMetadata{
+		FileNum:        812,
+		Size:           8090,
+		CreationTime:   809060,
+		SmallestSeqNum: 9,
+		LargestSeqNum:  11,
+		Virtual:        true,
+		FileBacking:    m1.FileBacking,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("c"), 0, base.InternalKeyKindSet),
+	)
+
+	ve1 := VersionEdit{
+		ComparerName:         "11",
+		MinUnflushedLogNum:   22,
+		ObsoletePrevLogNum:   33,
+		NextFileNum:          44,
+		LastSeqNum:           55,
+		CreatedBackingTables: []*FileBacking{m1.FileBacking},
+		NewFiles: []NewFileEntry{
+			{
+				Level: 4,
+				Meta:  m2,
+				// Only set for the test.
+				BackingFileNum: m2.FileBacking.DiskFileNum,
+			},
+		},
+	}
+	var err error
+	buf := new(bytes.Buffer)
+	if err = ve1.Encode(buf); err != nil {
+		t.Error(err)
+	}
+	var ve2 VersionEdit
+	if err = ve2.Decode(buf); err != nil {
+		t.Error(err)
+	}
+	// Perform accumulation to set the FileBacking on the files in the Decoded
+	// version edit.
+	var bve BulkVersionEdit
+	require.NoError(t, bve.Accumulate(&ve2))
+	if diff := pretty.Diff(ve1, ve2); diff != nil {
+		t.Error(errors.Errorf("%s", strings.Join(diff, "\n")))
+	}
 }
 
 func TestVersionEditRoundTrip(t *testing.T) {
@@ -93,6 +165,40 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	)
 	m4.InitPhysicalBacking()
 
+	m5 := (&FileMetadata{
+		FileNum:        810,
+		Size:           8090,
+		CreationTime:   809060,
+		SmallestSeqNum: 9,
+		LargestSeqNum:  11,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
+	).ExtendRangeKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
+		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
+	)
+	m5.InitPhysicalBacking()
+
+	m6 := (&FileMetadata{
+		FileNum:        811,
+		Size:           8090,
+		CreationTime:   809060,
+		SmallestSeqNum: 9,
+		LargestSeqNum:  11,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
+	).ExtendRangeKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
+		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
+	)
+	m6.InitPhysicalBacking()
+
 	testCases := []VersionEdit{
 		// An empty version edit.
 		{},
@@ -103,6 +209,10 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			ObsoletePrevLogNum: 33,
 			NextFileNum:        44,
 			LastSeqNum:         55,
+			RemovedBackingTables: []base.DiskFileNum{
+				base.FileNum(10).DiskFileNum(), base.FileNum(11).DiskFileNum(),
+			},
+			CreatedBackingTables: []*FileBacking{m5.FileBacking, m6.FileBacking},
 			DeletedFiles: map[DeletedFileEntry]*FileMetadata{
 				{
 					Level:   3,
