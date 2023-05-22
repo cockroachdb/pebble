@@ -1506,6 +1506,16 @@ func (d *DB) Close() error {
 	d.mu.Unlock()
 	d.deleters.Wait()
 	d.compactionSchedulers.Wait()
+
+	// Sanity check metrics.
+	if invariants.Enabled {
+		m := d.Metrics()
+		if m.Compact.NumInProgress > 0 || m.Compact.InProgressBytes > 0 {
+			d.mu.Lock()
+			panic(fmt.Sprintf("invalid metrics on close:\n%s", m))
+		}
+	}
+
 	d.mu.Lock()
 
 	// As a sanity check, ensure that there are no zombie tables. A non-zero count
