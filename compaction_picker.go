@@ -674,15 +674,16 @@ type candidateLevelInfo struct {
 	file manifest.LevelFile
 }
 
+func fileCompensation(f *fileMetadata) uint64 {
+	return uint64(f.Stats.PointDeletionsBytesEstimate) + f.Stats.RangeDeletionsBytesEstimate
+}
+
 // compensatedSize returns f's file size, inflated according to compaction
 // priorities.
 func compensatedSize(f *fileMetadata) uint64 {
-	sz := f.Size
-	// Add in the estimate of disk space that may be reclaimed by compacting
-	// the file's tombstones.
-	sz += uint64(f.Stats.PointDeletionsBytesEstimate)
-	sz += f.Stats.RangeDeletionsBytesEstimate
-	return sz
+	// Add in the estimate of disk space that may be reclaimed by compacting the
+	// file's tombstones.
+	return f.Size + fileCompensation(f)
 }
 
 // compensatedSizeAnnotator implements manifest.Annotator, annotating B-Tree
