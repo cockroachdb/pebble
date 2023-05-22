@@ -75,8 +75,8 @@ func (sc *sharedCache) ReadAt(
 	// later cache hits may return incorrect zeroed results from the cache. We assume
 	// that all shards have the same block size.
 	blockSize := sc.shards[0].blockSize
-	adjustedOfs := ((ofs+int64(n)) / int64(blockSize)) * int64(blockSize)
-	adjustedP := make([]byte, ((len(p[n:]) + (blockSize - 1)) / blockSize) * blockSize + int(ofs - adjustedOfs))
+	adjustedOfs := ((ofs + int64(n)) / int64(blockSize)) * int64(blockSize)
+	adjustedP := make([]byte, ((len(p[n:])+(blockSize-1))/blockSize)*blockSize+int(ofs-adjustedOfs))
 
 	// Read the rest from the object.
 	sc.misses.Add(1)

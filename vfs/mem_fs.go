@@ -208,6 +208,7 @@ func (y *MemFS) Create(fullname string) (File, error) {
 			ret = &memFile{
 				n:     n,
 				fs:    y,
+				read:  true,
 				write: true,
 			}
 		}
@@ -262,7 +263,7 @@ func (y *MemFS) Link(oldname, newname string) error {
 	})
 }
 
-func (y *MemFS) open(fullname string) (File, error) {
+func (y *MemFS) open(fullname string, openForWrite bool) (File, error) {
 	var ret *memFile
 	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -275,9 +276,10 @@ func (y *MemFS) open(fullname string) (File, error) {
 			}
 			if n := dir.children[frag]; n != nil {
 				ret = &memFile{
-					n:    n,
-					fs:   y,
-					read: true,
+					n:     n,
+					fs:    y,
+					read:  true,
+					write: openForWrite,
 				}
 			}
 		}
@@ -299,17 +301,22 @@ func (y *MemFS) open(fullname string) (File, error) {
 
 // Open implements FS.Open.
 func (y *MemFS) Open(fullname string, opts ...OpenOption) (File, error) {
-	return y.open(fullname)
+	return y.open(fullname, false /* openForWrite */)
 }
 
 // OpenReadWrite implements FS.OpenReadWrite.
 func (y *MemFS) OpenReadWrite(fullname string, opts ...OpenOption) (File, error) {
-	return y.open(fullname)
+	f, err := y.open(fullname, true /* openForWrite */)
+	pathErr, ok := err.(*os.PathError)
+	if ok && pathErr.Err == oserror.ErrNotExist {
+		return y.Create(fullname)
+	}
+	return f, err
 }
 
 // OpenDir implements FS.OpenDir.
 func (y *MemFS) OpenDir(fullname string) (File, error) {
-	return y.open(fullname)
+	return y.open(fullname, false /* openForWrite */)
 }
 
 // Remove implements FS.Remove.
