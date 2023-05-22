@@ -368,6 +368,7 @@ func (s Span) String() string {
 
 // Pretty returns a formatter for the span.
 func (s Span) Pretty(f base.FormatKey) fmt.Formatter {
+	// TODO(jackson): Take a base.FormatValue to format Key.Value too.
 	return prettySpan{s, f}
 }
 

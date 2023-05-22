@@ -6,11 +6,13 @@ package tool
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/spf13/cobra"
@@ -122,7 +124,7 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 				}
 				fmt.Fprintf(stdout, "%d(%d) seq=%d count=%d\n",
 					offset, len(b.Repr()), b.SeqNum(), b.Count())
-				for r := b.Reader(); ; {
+				for r, idx := b.Reader(), 0; ; idx++ {
 					kind, ukey, value, ok := r.Next()
 					if !ok {
 						break
@@ -138,13 +140,22 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 					case base.InternalKeyKindLogData:
 						fmt.Fprintf(stdout, "<%d>", len(value))
 					case base.InternalKeyIngestSST:
-						fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
+						fileNum, _ := binary.Uvarint(ukey)
+						fmt.Fprintf(stdout, "%s", base.FileNum(fileNum))
 					case base.InternalKeyKindSingleDelete:
 						fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
 					case base.InternalKeyKindSetWithDelete:
 						fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
 					case base.InternalKeyKindRangeDelete:
 						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtKey.fn(value))
+					case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
+						ik := base.MakeInternalKey(ukey, b.SeqNum()+uint64(idx), kind)
+						s, err := rangekey.Decode(ik, value, nil)
+						if err != nil {
+							fmt.Fprintf(stdout, "%s: error decoding %s", w.fmtKey.fn(ukey), err)
+						} else {
+							fmt.Fprintf(stdout, "%s", s.Pretty(w.fmtKey.fn))
+						}
 					}
 					fmt.Fprintf(stdout, ")\n")
 				}
