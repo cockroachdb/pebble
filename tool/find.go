@@ -202,7 +202,6 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 // Read the manifests and populate the editRefs map which is used to determine
 // the provenance and metadata of tables.
 func (f *findT) readManifests(stdout io.Writer) {
-	backingTables := make(map[base.FileNum]*manifest.FileBacking)
 	for _, fileNum := range f.manifests {
 		var err error
 		func() {
@@ -231,7 +230,7 @@ func (f *findT) readManifests(stdout io.Writer) {
 				}
 
 				var ve manifest.VersionEdit
-				if err = ve.Decode(r, backingTables); err != nil {
+				if err = ve.Decode(r); err != nil {
 					fmt.Fprintf(stdout, "%s: %s\n", path, err)
 					break
 				}

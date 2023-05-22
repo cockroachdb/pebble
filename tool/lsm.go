@@ -206,7 +206,6 @@ func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 	var edits []*manifest.VersionEdit
 	w := l.Root.OutOrStdout()
 	rr := record.NewReader(f, 0 /* logNum */)
-	backingTables := make(map[base.FileNum]*manifest.FileBacking)
 	for i := 0; ; i++ {
 		r, err := rr.Next()
 		if err != nil {
@@ -217,7 +216,7 @@ func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 		}
 
 		var ve manifest.VersionEdit
-		err = ve.Decode(r, backingTables)
+		err = ve.Decode(r)
 		if err != nil {
 			fmt.Fprintf(w, "%s\n", err)
 			break

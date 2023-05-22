@@ -25,13 +25,12 @@ import (
 
 func checkRoundTrip(e0 VersionEdit) error {
 	var e1 VersionEdit
-	backingTables := make(map[base.FileNum]*FileBacking)
 	var err error
 	buf := new(bytes.Buffer)
 	if err = e0.Encode(buf); err != nil {
 		return errors.Wrap(err, "encode")
 	}
-	if err = e1.Decode(buf, backingTables); err != nil {
+	if err = e1.Decode(buf); err != nil {
 		return errors.Wrap(err, "decode")
 	}
 	if diff := pretty.Diff(e0, e1); diff != nil {
@@ -289,8 +288,7 @@ func TestVersionEditDecode(t *testing.T) {
 				}
 
 				var edit VersionEdit
-				backingTables := make(map[base.FileNum]*FileBacking)
-				err = edit.Decode(bytes.NewReader(encodedEdit), backingTables)
+				err = edit.Decode(bytes.NewReader(encodedEdit))
 				if err != nil {
 					t.Fatalf("filename=%q i=%d: decode error: %v", tc.filename, i, err)
 				}

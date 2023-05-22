@@ -683,7 +683,6 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 		return v, err
 	}
 
-	backingTables := make(map[base.FileNum]*manifest.FileBacking)
 	for ; idx < len(r.workload.manifests); idx++ {
 		if r.MaxWriteBytes != 0 && cumulativeWriteBytes > r.MaxWriteBytes {
 			break
@@ -709,7 +708,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 			}
 			if idx == r.workload.manifestIdx {
 				var ve manifest.VersionEdit
-				if err = ve.Decode(rec, backingTables); err != nil {
+				if err = ve.Decode(rec); err != nil {
 					return err
 				}
 				if err := applyVE(&ve); err != nil {
@@ -726,7 +725,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					return err
 				}
 				var ve manifest.VersionEdit
-				if err = ve.Decode(rec, backingTables); err == io.EOF || record.IsInvalidRecord(err) {
+				if err = ve.Decode(rec); err == io.EOF || record.IsInvalidRecord(err) {
 					break
 				} else if err != nil {
 					return err

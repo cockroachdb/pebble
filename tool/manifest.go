@@ -147,7 +147,6 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			var cmp *base.Comparer
 			var editIdx int
 			rr := record.NewReader(f, 0 /* logNum */)
-			backingTables := make(map[base.FileNum]*manifest.FileBacking)
 			for {
 				offset := rr.Offset()
 				r, err := rr.Next()
@@ -157,7 +156,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 				}
 
 				var ve manifest.VersionEdit
-				err = ve.Decode(r, backingTables)
+				err = ve.Decode(r)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)
 					break
@@ -314,7 +313,6 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 	)
 	bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 	rr := record.NewReader(f, 0 /* logNum */)
-	backingTables := make(map[base.FileNum]*manifest.FileBacking)
 	for i := 0; ; i++ {
 		r, err := rr.Next()
 		if err == io.EOF {
@@ -324,7 +322,7 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 		}
 
 		var ve manifest.VersionEdit
-		err = ve.Decode(r, backingTables)
+		err = ve.Decode(r)
 		if err != nil {
 			return err
 		}
@@ -500,7 +498,6 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 			// It accumulates the additions since later edits contain
 			// deletions of earlier added files.
 			addedByFileNum := make(map[base.FileNum]*manifest.FileMetadata)
-			backingTables := make(map[base.FileNum]*manifest.FileBacking)
 			for {
 				offset := rr.Offset()
 				r, err := rr.Next()
@@ -514,7 +511,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 				}
 
 				var ve manifest.VersionEdit
-				err = ve.Decode(r, backingTables)
+				err = ve.Decode(r)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n", arg, offset, err)
 					ok = false

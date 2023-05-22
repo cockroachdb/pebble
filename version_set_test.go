@@ -472,7 +472,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 		}
 		require.NoError(t, err)
 		var ve versionEdit
-		err = ve.Decode(r, nil /* backingTables */)
+		err = ve.Decode(r)
 		require.NoError(t, err)
 		if ve.LastSeqNum != 0 {
 			lastSeqNum = ve.LastSeqNum

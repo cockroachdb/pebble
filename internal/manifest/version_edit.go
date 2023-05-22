@@ -76,6 +76,9 @@ type DeletedFileEntry struct {
 type NewFileEntry struct {
 	Level int
 	Meta  *FileMetadata
+	// BackingFileNum is only set during manifest replay, and only for virtual
+	// sstables.
+	BackingFileNum base.DiskFileNum
 }
 
 // VersionEdit holds the state for an edit to a Version along with other
@@ -144,11 +147,12 @@ type VersionEdit struct {
 	RemovedBackingTables []base.DiskFileNum
 }
 
-// Decode decodes an edit from the specified reader. backingTables is used for
-// virtual sstable and FileBacking decoding, and the same map must be passed
-// across multiple calls to Decode. backingTables can be non-nil if no virtual
-// sstables will be decoded.
-func (v *VersionEdit) Decode(r io.Reader, backingTables map[base.FileNum]*FileBacking) error {
+// Decode decodes an edit from the specified reader.
+//
+// Note that the Decode step will not set the FileBacking for virtual sstables
+// and the responsibility is left to the caller. However, the Decode step will
+// populate the NewFileEntry.BackingFileNum in VersionEdit.NewFiles.
+func (v *VersionEdit) Decode(r io.Reader) error {
 	br, ok := r.(byteReader)
 	if !ok {
 		br = bufio.NewReader(r)
@@ -221,10 +225,6 @@ func (v *VersionEdit) Decode(r io.Reader, backingTables map[base.FileNum]*FileBa
 				DiskFileNum: base.FileNum(dfn).DiskFileNum(),
 				Size:        size,
 			}
-			if backingTables == nil {
-				panic("pebble: backingTables map not passed in for virtual sstable decoding")
-			}
-			backingTables[base.FileNum(dfn)] = fileBacking
 			v.CreatedBackingTables = append(v.CreatedBackingTables, fileBacking)
 		case tagDeletedFile:
 			level, err := d.readLevel()
@@ -422,17 +422,16 @@ func (v *VersionEdit) Decode(r io.Reader, backingTables map[base.FileNum]*FileBa
 			m.boundsSet = true
 			if !virtualState.virtual {
 				m.InitPhysicalBacking()
-			} else {
-				fb, ok := backingTables[base.FileNum(virtualState.backingFileNum)]
-				if !ok {
-					panic("pebble: no FileBacking found for virtual sstable")
-				}
-				m.FileBacking = fb
 			}
+
 			v.NewFiles = append(v.NewFiles, NewFileEntry{
 				Level: level,
 				Meta:  m,
 			})
+
+			if virtualState.virtual {
+				v.NewFiles[len(v.NewFiles)-1].BackingFileNum = base.FileNum(virtualState.backingFileNum).DiskFileNum()
+			}
 
 		case tagPrevLogNumber:
 			n, err := d.readUvarint()
@@ -698,7 +697,9 @@ type BulkVersionEdit struct {
 	Added   [NumLevels]map[base.FileNum]*FileMetadata
 	Deleted [NumLevels]map[base.FileNum]*FileMetadata
 
-	AddedFileBacking   []*FileBacking
+	// AddedFileBacking is a map to support lookup so that we can populate the
+	// FileBacking of virtual sstables during manifest replay.
+	AddedFileBacking   map[base.DiskFileNum]*FileBacking
 	RemovedFileBacking []base.DiskFileNum
 
 	// AddedByFileNum maps file number to file metadata for all added files
@@ -761,6 +762,16 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		}
 	}
 
+	// Generate state for Added backing files. Note that these must be generated
+	// before we loop through the NewFiles, because we need to populate the
+	// FileBackings which might be used by the NewFiles loop.
+	if b.AddedFileBacking == nil {
+		b.AddedFileBacking = make(map[base.DiskFileNum]*FileBacking)
+	}
+	for _, fb := range ve.CreatedBackingTables {
+		b.AddedFileBacking[fb.DiskFileNum] = fb
+	}
+
 	for _, nf := range ve.NewFiles {
 		// A new file should not have been deleted in this or a preceding
 		// VersionEdit at the same level (though files can move across levels).
@@ -769,6 +780,17 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
 			}
 		}
+		if nf.Meta.Virtual && nf.Meta.FileBacking == nil {
+			// FileBacking for a virtual sstable must only be nil if we're performing
+			// manifest replay.
+			nf.Meta.FileBacking = b.AddedFileBacking[nf.BackingFileNum]
+			if nf.Meta.FileBacking == nil {
+				return errors.Errorf("FileBacking for virtual sstable must not be nil")
+			}
+		} else if nf.Meta.FileBacking == nil {
+			return errors.Errorf("Added file L%d.%s's has no FileBacking", nf.Level, nf.Meta.FileNum)
+		}
+
 		if b.Added[nf.Level] == nil {
 			b.Added[nf.Level] = make(map[base.FileNum]*FileMetadata)
 		}
@@ -780,9 +802,6 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			b.MarkedForCompactionCountDiff++
 		}
 	}
-
-	// Generate state for the backing files.
-	b.AddedFileBacking = append(b.AddedFileBacking, ve.CreatedBackingTables...)
 
 	// Since a file can be removed from backing files in exactly one version
 	// edit it is safe to just append without any de-duplication.
