@@ -26,13 +26,9 @@ func TestSharedCache(t *testing.T) {
 
 		cache, err := openSharedCache(fs, "", 32*1024, size, 32)
 		require.NoError(t, err)
+		defer cache.Close()
 
-		file, err := fs.Create("test")
-		require.NoError(t, err)
-
-		var readable *fileReadable
-		var wrote []byte
-
+		var toWrite []byte
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
 			scanArgs := func(desc string, args ...interface{}) {
 				t.Helper()
@@ -53,18 +49,22 @@ func TestSharedCache(t *testing.T) {
 				var size int
 				scanArgs("<size>", &size)
 
-				wrote = make([]byte, size)
+				file, err := fs.Create("test")
+				require.NoError(t, err)
+				defer file.Close()
+
+				// With invariants on, Write will modify its input buffer.
+				toWrite = make([]byte, size)
+				wrote := make([]byte, size)
 				for i := 0; i < size; i++ {
+					toWrite[i] = byte(i)
 					wrote[i] = byte(i)
 				}
 				n, err := file.Write(wrote)
 				// Writing a file is test setup, and it always is expected to succeed, so we assert
-				// within the test, rather than returning n and/or err here. Ditto below.
+				// within the test, rather than returning n and/or err here.
 				require.NoError(t, err)
 				require.Equal(t, size, n)
-
-				readable, err = newFileReadable(file, fs, "test")
-				require.NoError(t, err)
 
 				return ""
 			case "read":
@@ -72,13 +72,20 @@ func TestSharedCache(t *testing.T) {
 				var offset int64
 				scanArgs("<size> <offset>", &size, &offset)
 
+				file, err := fs.Open("test")
+				require.NoError(t, err)
+
+				readable, err := newFileReadable(file, fs, "test")
+				require.NoError(t, err)
+				defer readable.Close()
+
 				got := make([]byte, size)
 				err = cache.ReadAt(ctx, 1, got, offset, readable)
 				// We always expect cache.ReadAt to succeed.
 				require.NoError(t, err)
 				// It is easier to assert this condition programmatically, rather than returning
 				// got, which may be very large.
-				require.Equal(t, wrote[int(offset):], got)
+				require.Equal(t, toWrite[int(offset):], got)
 
 				// TODO(josh): Not tracing out filesystem activity here, since logging_fs.go
 				// doesn't trace calls to ReadAt or WriteAt. We should consider changing this.
