@@ -2046,7 +2046,6 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c, err != nil)
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
-	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 
 	var flushed flushableList
 	if err == nil {
@@ -2784,10 +2783,12 @@ func (d *DB) runCompaction(
 			Path:    d.objProvider.Path(objMeta),
 			FileNum: fileNum,
 		})
-		writable = &compactionWritable{
-			Writable: writable,
-			versions: d.mu.versions,
-			written:  &c.bytesWritten,
+		if c.kind != compactionKindFlush {
+			writable = &compactionWritable{
+				Writable: writable,
+				versions: d.mu.versions,
+				written:  &c.bytesWritten,
+			}
 		}
 		createdFiles = append(createdFiles, fileNum)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
