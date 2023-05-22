@@ -126,7 +126,7 @@ func (d *DB) collectTableStats() bool {
 	maybeCompact := false
 	for _, c := range collected {
 		c.fileMetadata.Stats = c.TableStats
-		maybeCompact = maybeCompact || c.TableStats.RangeDeletionsBytesEstimate > 0
+		maybeCompact = maybeCompact || fileCompensation(c.fileMetadata) > 0
 		c.fileMetadata.StatsMarkValid()
 	}
 	d.mu.tableStats.cond.Broadcast()
