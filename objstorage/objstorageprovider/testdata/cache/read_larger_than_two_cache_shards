@@ -1,0 +1,12 @@
+# Read larger than two cache shards.
+
+write 3145728
+----
+
+read 3145671 57
+----
+misses=1
+
+read 3145671 57
+----
+misses=1
