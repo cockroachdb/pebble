@@ -76,7 +76,7 @@ func (sc *sharedCache) ReadAt(
 	// that all shards have the same block size.
 	blockSize := sc.shards[0].blockSize
 	adjustedOfs := ((ofs + int64(n)) / int64(blockSize)) * int64(blockSize)
-	adjustedP := make([]byte, ((len(p[n:])+(blockSize-1))/blockSize)*blockSize+int(ofs-adjustedOfs))
+	adjustedP := make([]byte, (((len(p[n:]) + int(ofs-adjustedOfs))+(blockSize-1))/blockSize)*blockSize)
 
 	// Read the rest from the object.
 	sc.misses.Add(1)
@@ -112,7 +112,7 @@ func (sc *sharedCache) Get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ 
 	for {
 		shard := sc.getShard(fileNum, ofs+int64(n))
 		cappedLen := len(p[n:])
-		if toBoundary := int(shardingBlockSize - (ofs % shardingBlockSize)); cappedLen > toBoundary {
+		if toBoundary := int(shardingBlockSize - ((ofs+int64(n)) % shardingBlockSize)); cappedLen > toBoundary {
 			cappedLen = toBoundary
 		}
 		numRead, err := shard.Get(fileNum, p[n:n+cappedLen], ofs+int64(n))
@@ -132,10 +132,17 @@ func (sc *sharedCache) Get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ 
 	}
 }
 
-// Set attempts to write the requested data to the cache.
+// Set attempts to write the requested data to the cache. Both ofs & len(p) must
+// be multiples of the block size.
 //
 // If all of p is not written to the shard, Set returns a non-nil error.
 func (sc *sharedCache) Set(fileNum base.FileNum, p []byte, ofs int64) error {
+	if invariants.Enabled {
+		if ofs % int64(sc.shards[0].blockSize) != 0 || len(p) % sc.shards[0].blockSize != 0 {
+			panic(fmt.Sprintf("Set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
+		}
+	}
+
 	// The data extent might cross shard boundaries, hence the loop. In the hot
 	// path, max two iterations of this loop will be executed, since reads are sized
 	// in units of sstable block size.
@@ -143,7 +150,7 @@ func (sc *sharedCache) Set(fileNum base.FileNum, p []byte, ofs int64) error {
 	for {
 		shard := sc.getShard(fileNum, ofs+int64(n))
 		cappedLen := len(p[n:])
-		if toBoundary := int(shardingBlockSize - (ofs % shardingBlockSize)); cappedLen > toBoundary {
+		if toBoundary := int(shardingBlockSize - ((ofs+int64(n)) % shardingBlockSize)); cappedLen > toBoundary {
 			cappedLen = toBoundary
 		}
 		err := shard.Set(fileNum, p[n:n+cappedLen], ofs+int64(n))
@@ -239,7 +246,7 @@ func (s *sharedCacheShard) Close() error {
 func (s *sharedCacheShard) Get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) {
 	if invariants.Enabled {
 		if ofs/shardingBlockSize != (ofs+int64(len(p))-1)/shardingBlockSize {
-			panic("Get crosses shard boundary")
+			panic(fmt.Sprintf("Get crosses shard boundary: %v %v", ofs, len(p)))
 		}
 	}
 
@@ -292,9 +299,11 @@ func (s *sharedCacheShard) Get(fileNum base.FileNum, p []byte, ofs int64) (n int
 func (s *sharedCacheShard) Set(fileNum base.FileNum, p []byte, ofs int64) error {
 	if invariants.Enabled {
 		if ofs/shardingBlockSize != (ofs+int64(len(p))-1)/shardingBlockSize {
-			panic("Set crosses shard boundary")
+			panic(fmt.Sprintf("Set crosses shard boundary: %v %v", ofs, len(p)))
 		}
-		// TODO(josh): Assert that ofs & len(p) are multiples of the block size.
+		if ofs % int64(s.blockSize) != 0 || len(p) % s.blockSize != 0 {
+			panic(fmt.Sprintf("Set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
+		}
 	}
 
 	// TODO(josh): Make the locking more fine-grained. Do not hold locks during calls
