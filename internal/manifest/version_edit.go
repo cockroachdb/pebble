@@ -51,7 +51,9 @@ const (
 	tagMaxColumnFamily  = 203
 
 	// Pebble tags.
-	tagNewFile5 = 104 // Range keys.
+	tagNewFile5            = 104 // Range keys.
+	tagCreatedBackingTable = 105
+	tagRemovedBackingTable = 106
 
 	// The custom tags sub-format used by tagNewFile4 and above.
 	customTagTerminate         = 1
@@ -59,6 +61,7 @@ const (
 	customTagCreationTime      = 6
 	customTagPathID            = 65
 	customTagNonSafeIgnoreMask = 1 << 6
+	customTagVirtual           = 66
 )
 
 // DeletedFileEntry holds the state for a file deletion from a level. The file
@@ -73,6 +76,9 @@ type DeletedFileEntry struct {
 type NewFileEntry struct {
 	Level int
 	Meta  *FileMetadata
+	// BackingFileNum is only set during manifest replay, and only for virtual
+	// sstables.
+	BackingFileNum base.DiskFileNum
 }
 
 // VersionEdit holds the state for an edit to a Version along with other
@@ -143,7 +149,9 @@ type VersionEdit struct {
 
 // Decode decodes an edit from the specified reader.
 //
-// TODO(bananabrick): Support decoding of virtual sstable state.
+// Note that the Decode step will not set the FileBacking for virtual sstables
+// and the responsibility is left to the caller. However, the Decode step will
+// populate the NewFileEntry.BackingFileNum in VersionEdit.NewFiles.
 func (v *VersionEdit) Decode(r io.Reader) error {
 	br, ok := r.(byteReader)
 	if !ok {
@@ -196,6 +204,28 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 			// NB: RocksDB does not use compaction pointers anymore.
 
+		case tagRemovedBackingTable:
+			n, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			v.RemovedBackingTables = append(
+				v.RemovedBackingTables, base.FileNum(n).DiskFileNum(),
+			)
+		case tagCreatedBackingTable:
+			dfn, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			size, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			fileBacking := &FileBacking{
+				DiskFileNum: base.FileNum(dfn).DiskFileNum(),
+				Size:        size,
+			}
+			v.CreatedBackingTables = append(v.CreatedBackingTables, fileBacking)
 		case tagDeletedFile:
 			level, err := d.readLevel()
 			if err != nil {
@@ -301,6 +331,10 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 			var markedForCompaction bool
 			var creationTime uint64
+			virtualState := struct {
+				virtual        bool
+				backingFileNum uint64
+			}{}
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
@@ -309,7 +343,16 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 					if customTag == customTagTerminate {
 						break
+					} else if customTag == customTagVirtual {
+						virtualState.virtual = true
+						n, err := d.readUvarint()
+						if err != nil {
+							return err
+						}
+						virtualState.backingFileNum = n
+						continue
 					}
+
 					field, err := d.readBytes()
 					if err != nil {
 						return err
@@ -345,6 +388,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				SmallestSeqNum:      smallestSeqNum,
 				LargestSeqNum:       largestSeqNum,
 				MarkedForCompaction: markedForCompaction,
+				Virtual:             virtualState.virtual,
 			}
 			if tag != tagNewFile5 { // no range keys present
 				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
@@ -376,11 +420,18 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			m.boundsSet = true
-			m.InitPhysicalBacking()
-			v.NewFiles = append(v.NewFiles, NewFileEntry{
+			if !virtualState.virtual {
+				m.InitPhysicalBacking()
+			}
+
+			nfe := NewFileEntry{
 				Level: level,
 				Meta:  m,
-			})
+			}
+			if virtualState.virtual {
+				nfe.BackingFileNum = base.FileNum(virtualState.backingFileNum).DiskFileNum()
+			}
+			v.NewFiles = append(v.NewFiles, nfe)
 
 		case tagPrevLogNumber:
 			n, err := d.readUvarint()
@@ -442,8 +493,6 @@ func (v *VersionEdit) String() string {
 }
 
 // Encode encodes an edit to the specified writer.
-//
-// TODO(bananabrick): Support encoding of virtual sstable state.
 func (v *VersionEdit) Encode(w io.Writer) error {
 	e := versionEditEncoder{new(bytes.Buffer)}
 
@@ -463,6 +512,15 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(tagNextFileNumber)
 		e.writeUvarint(uint64(v.NextFileNum))
 	}
+	for _, dfn := range v.RemovedBackingTables {
+		e.writeUvarint(tagRemovedBackingTable)
+		e.writeUvarint(uint64(dfn.FileNum()))
+	}
+	for _, fileBacking := range v.CreatedBackingTables {
+		e.writeUvarint(tagCreatedBackingTable)
+		e.writeUvarint(uint64(fileBacking.DiskFileNum.FileNum()))
+		e.writeUvarint(fileBacking.Size)
+	}
 	// RocksDB requires LastSeqNum to be encoded for the first MANIFEST entry,
 	// even though its value is zero. We detect this by encoding LastSeqNum when
 	// ComparerName is set.
@@ -476,7 +534,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewFiles {
-		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0
+		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -529,6 +587,10 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
 			}
+			if x.Meta.Virtual {
+				e.writeUvarint(customTagVirtual)
+				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum.FileNum()))
+			}
 			e.writeUvarint(customTagTerminate)
 		}
 	}
@@ -536,6 +598,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	return err
 }
 
+// versionEditDecoder should be used to decode version edits.
 type versionEditDecoder struct {
 	byteReader
 }
@@ -634,7 +697,9 @@ type BulkVersionEdit struct {
 	Added   [NumLevels]map[base.FileNum]*FileMetadata
 	Deleted [NumLevels]map[base.FileNum]*FileMetadata
 
-	AddedFileBacking   []*FileBacking
+	// AddedFileBacking is a map to support lookup so that we can populate the
+	// FileBacking of virtual sstables during manifest replay.
+	AddedFileBacking   map[base.DiskFileNum]*FileBacking
 	RemovedFileBacking []base.DiskFileNum
 
 	// AddedByFileNum maps file number to file metadata for all added files
@@ -697,6 +762,16 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		}
 	}
 
+	// Generate state for Added backing files. Note that these must be generated
+	// before we loop through the NewFiles, because we need to populate the
+	// FileBackings which might be used by the NewFiles loop.
+	if b.AddedFileBacking == nil {
+		b.AddedFileBacking = make(map[base.DiskFileNum]*FileBacking)
+	}
+	for _, fb := range ve.CreatedBackingTables {
+		b.AddedFileBacking[fb.DiskFileNum] = fb
+	}
+
 	for _, nf := range ve.NewFiles {
 		// A new file should not have been deleted in this or a preceding
 		// VersionEdit at the same level (though files can move across levels).
@@ -705,6 +780,17 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
 			}
 		}
+		if nf.Meta.Virtual && nf.Meta.FileBacking == nil {
+			// FileBacking for a virtual sstable must only be nil if we're performing
+			// manifest replay.
+			nf.Meta.FileBacking = b.AddedFileBacking[nf.BackingFileNum]
+			if nf.Meta.FileBacking == nil {
+				return errors.Errorf("FileBacking for virtual sstable must not be nil")
+			}
+		} else if nf.Meta.FileBacking == nil {
+			return errors.Errorf("Added file L%d.%s's has no FileBacking", nf.Level, nf.Meta.FileNum)
+		}
+
 		if b.Added[nf.Level] == nil {
 			b.Added[nf.Level] = make(map[base.FileNum]*FileMetadata)
 		}
@@ -716,9 +802,6 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			b.MarkedForCompactionCountDiff++
 		}
 	}
-
-	// Generate state for the backing files.
-	b.AddedFileBacking = append(b.AddedFileBacking, ve.CreatedBackingTables...)
 
 	// Since a file can be removed from backing files in exactly one version
 	// edit it is safe to just append without any de-duplication.
