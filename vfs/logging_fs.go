@@ -47,7 +47,7 @@ func (fs *loggingFS) Open(name string, opts ...OpenOption) (File, error) {
 }
 
 func (fs *loggingFS) OpenReadWrite(name string, opts ...OpenOption) (File, error) {
-	fs.logFn("openreadwrite: %s", name)
+	fs.logFn("open-read-write: %s", name)
 	f, err := fs.FS.OpenReadWrite(name, opts...)
 	if err != nil {
 		return nil, err
