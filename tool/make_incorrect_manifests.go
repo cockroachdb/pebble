@@ -40,13 +40,13 @@ func makeManifest1() {
 	ve.NextFileNum = 5
 	ve.LastSeqNum = 20
 	ve.NewFiles = []manifest.NewFileEntry{
-		{6, &manifest.FileMetadata{
+		{Level: 6, Meta: &manifest.FileMetadata{
 			FileNum: 1, SmallestSeqNum: 2, LargestSeqNum: 5}}}
 	writeVE(writer, &ve)
 
 	ve.MinUnflushedLogNum = 3
 	ve.NewFiles = []manifest.NewFileEntry{
-		{6, &manifest.FileMetadata{
+		{Level: 6, Meta: &manifest.FileMetadata{
 			FileNum: 2, SmallestSeqNum: 1, LargestSeqNum: 4}}}
 	writeVE(writer, &ve)
 

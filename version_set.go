@@ -293,8 +293,8 @@ func (vs *versionSet) load(
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
 
-	// Populate the fileBackingMap since we have finished version
-	// edit accumulation.
+	// Populate the fileBackingMap and the FileBacking for virtual sstables since
+	// we have finished version edit accumulation.
 	for _, s := range bve.AddedFileBacking {
 		vs.fileBackingMap[s.DiskFileNum] = s
 	}
@@ -688,7 +688,6 @@ func (vs *versionSet) createManifest(
 				Level: level,
 				Meta:  meta,
 			})
-			// TODO(bananabrick): Test snapshot changes.
 			if _, ok := dedup[meta.FileBacking.DiskFileNum]; meta.Virtual && !ok {
 				dedup[meta.FileBacking.DiskFileNum] = struct{}{}
 				snapshot.CreatedBackingTables = append(
