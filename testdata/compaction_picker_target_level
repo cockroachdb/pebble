@@ -450,11 +450,9 @@ base: 4
 queue
 ----
 L4->L5: 10.0
-  400001:[0001#1,1-0001#1,1] marked as compacting
-  500001:[0001#1,1-0001#1,1] marked as compacting
+  400007:[0007#7,1-0007#7,1] marked as compacting
 L4->L5: 7.7
-  400002:[0002#2,1-0002#2,1] marked as compacting
-  500002:[0002#2,1-0002#2,1] marked as compacting
+  400008:[0008#8,1-0008#8,1] marked as compacting
 
 pick ongoing=(5,6)
 ----
@@ -499,7 +497,7 @@ L6:
   600008:[0008#8,1-0008#8,1]: 1 bytes (1 B)
   600009:[0009#9,1-0009#9,1]: 1 bytes (1 B)
   600010:[0010#10,1-0010#10,1]: 1 bytes (1 B)
-Picked: no compaction
+Picked: L4->L5: 12.0
 
 pick ongoing=(0,4)
 ----
@@ -638,7 +636,7 @@ L6:
   600008:[0008#8,1-0008#8,1]: 1 bytes (1 B)
   600009:[0009#9,1-0009#9,1]: 1 bytes (1 B)
   600010:[0010#10,1-0010#10,1]: 1 bytes (1 B)
-Picked: no compaction
+Picked: L4->L5: 8.6
 
 init 1
 0: 20
@@ -1048,11 +1046,9 @@ base: 5
 queue
 ----
 L5->L6: 9.2
-  500001:[0001#1,1-0001#1,1] marked as compacting
-  600001:[0001#1,1-0001#1,1] marked as compacting
+  500006:[0006#6,1-0006#6,1] marked as compacting
 L5->L6: 6.9
-  500002:[0002#2,1-0002#2,1] marked as compacting
-  600002:[0002#2,1-0002#2,1] marked as compacting
+  500007:[0007#7,1-0007#7,1] marked as compacting
 
 pick_manual level=0 start=0 end=12
 ----

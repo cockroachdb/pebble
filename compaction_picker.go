@@ -1083,14 +1083,20 @@ func (p *compactionPickerByScore) pickFile(
 
 	for f := startIter.First(); f != nil; f = startIter.Next() {
 		var overlappingBytes uint64
+		compacting := f.IsCompacting()
+		if compacting {
+			// Move on if this file is already being compacted. We'll likely
+			// still need to move past the overlapping output files regardless,
+			// but in cases where all start-level files are compacting we won't.
+			continue
+		}
 
 		// Trim any output-level files smaller than f.
-		for outputFile != nil && base.InternalCompare(cmp, outputFile.Largest, f.Smallest) < 0 {
+		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Largest, f.Smallest) < 0 {
 			outputFile = outputIter.Next()
 		}
 
-		compacting := f.IsCompacting()
-		for outputFile != nil && base.InternalCompare(cmp, outputFile.Smallest, f.Largest) < 0 {
+		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Smallest, f.Largest) <= 0 && !compacting {
 			overlappingBytes += outputFile.Size
 			compacting = compacting || outputFile.IsCompacting()
 
@@ -1109,7 +1115,32 @@ func (p *compactionPickerByScore) pickFile(
 			// If the file in the next level extends beyond f's largest key,
 			// break out and don't advance outputIter because f's successor
 			// might also overlap.
-			if base.InternalCompare(cmp, outputFile.Largest, f.Largest) > 0 {
+			//
+			// Note, we stop as soon as we encounter an output-level file with a
+			// largest key beyond the input-level file's largest bound. We
+			// perform a simple user key comparison here using sstableKeyCompare
+			// which handles the potential for exclusive largest key bounds.
+			// There's some subtlety when the bounds are equal (eg, equal and
+			// inclusive, or equal and exclusive). Current Pebble doesn't split
+			// user keys across sstables within a level (and in format versions
+			// FormatSplitUserKeysMarkedCompacted and later we guarantee no
+			// split user keys exist within the entire LSM). In that case, we're
+			// assured that neither the input level nor the output level's next
+			// file shares the same user key, so compaction expansion will not
+			// include them in any compaction compacting `f`.
+			//
+			// NB: If we /did/ allow split user keys, or we're running on an
+			// old database with an earlier format major version where there are
+			// existing split user keys, this logic would be incorrect. Consider
+			//    L1: [a#120,a#100] [a#80,a#60]
+			//    L2: [a#55,a#45] [a#35,a#25] [a#15,a#5]
+			// While considering the first file in L1, [a#120,a#100], we'd skip
+			// past all of the files in L2. When considering the second file in
+			// L1, we'd improperly conclude that the second file overlaps
+			// nothing in the second level and is cheap to compact, when in
+			// reality we'd need to expand the compaction to include all 5
+			// files.
+			if sstableKeyCompare(cmp, outputFile.Largest, f.Largest) > 0 {
 				break
 			}
 			outputFile = outputIter.Next()
@@ -1124,7 +1155,7 @@ func (p *compactionPickerByScore) pickFile(
 
 		compSz := compensatedSize(f)
 		scaledRatio := overlappingBytes * 1024 / compSz
-		if scaledRatio < smallestRatio && !f.IsCompacting() {
+		if scaledRatio < smallestRatio {
 			smallestRatio = scaledRatio
 			file = startIter.Take()
 		}
