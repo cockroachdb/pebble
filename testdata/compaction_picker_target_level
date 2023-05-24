@@ -195,7 +195,7 @@ L4->L5: 7.7
 
 pick ongoing=(5,6)
 ----
-no compaction
+L4->L5: 12.0
 
 pick ongoing=(0,4)
 ----
@@ -211,7 +211,7 @@ base: 4
 
 pick ongoing=(0,5)
 ----
-no compaction
+L4->L5: 8.6
 
 init 1
 0: 20
