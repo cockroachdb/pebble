@@ -70,13 +70,24 @@ func (sc *sharedCache) ReadAt(
 		// Everything was in cache!
 		return nil
 	}
+	// Note this. The below code does not need the original ofs, as with the earlier
+	// reading from the cache done, the relevant offset is ofs + int64(n).
+	ofs += int64(n)
 
 	// We must do reads with offset & size that are multiples of the block size. Else
 	// later cache hits may return incorrect zeroed results from the cache. We assume
 	// that all shards have the same block size.
 	blockSize := sc.shards[0].blockSize
-	adjustedOfs := ((ofs + int64(n)) / int64(blockSize)) * int64(blockSize)
-	adjustedP := make([]byte, (((len(p[n:])+int(ofs-adjustedOfs))+(blockSize-1))/blockSize)*blockSize)
+
+	firstBlockInd := ofs / int64(blockSize)
+	adjustedOfs := firstBlockInd * int64(blockSize)
+
+	// Take the length of what is left to read plus the length of the adjustment of
+	// the offset plus the size of a block minus one and divide by the size of a block
+	// to get the number of blocks to read from the readable.
+	numBlocksToRead := ((len(p[n:]) + int(ofs-adjustedOfs)) + (blockSize - 1)) / blockSize
+	adjustedLen := numBlocksToRead * blockSize
+	adjustedP := make([]byte, adjustedLen)
 
 	// Read the rest from the object.
 	sc.misses.Add(1)
