@@ -937,6 +937,12 @@ func calculateSizeAdjust(
 	var sizeAdjust [numLevels]int64
 	for i := range inProgressCompactions {
 		c := &inProgressCompactions[i]
+		// If this compaction's version edit has already been applied, there's
+		// no need to adjust: The LSM we'll examine will already reflect the
+		// new LSM state.
+		if c.versionEditApplied {
+			continue
+		}
 
 		for _, input := range c.inputs {
 			real := int64(input.files.SizeSum())
