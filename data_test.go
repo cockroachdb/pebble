@@ -1218,7 +1218,9 @@ func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 
 func runLSMCmd(td *datadriven.TestData, d *DB) string {
 	d.mu.Lock()
-	s := d.mu.versions.currentVersion().String()
-	d.mu.Unlock()
-	return s
+	defer d.mu.Unlock()
+	if td.HasArg("verbose") {
+		return d.mu.versions.currentVersion().DebugString(d.opts.Comparer.FormatKey)
+	}
+	return d.mu.versions.currentVersion().String()
 }
