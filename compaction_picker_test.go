@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1366,9 +1367,41 @@ func TestCompactionPickerPickFile(t *testing.T) {
 	})
 }
 
+type pausableCleaner struct {
+	mu      sync.Mutex
+	cond    sync.Cond
+	paused  bool
+	cleaner Cleaner
+}
+
+func (c *pausableCleaner) Clean(fs vfs.FS, fileType base.FileType, path string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for c.paused {
+		c.cond.Wait()
+	}
+	return c.cleaner.Clean(fs, fileType, path)
+}
+
+func (c *pausableCleaner) pause() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.paused = true
+}
+
+func (c *pausableCleaner) resume() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.paused = false
+	c.cond.Broadcast()
+}
+
 func TestCompactionPickerScores(t *testing.T) {
 	fs := vfs.NewMem()
+	cleaner := pausableCleaner{cleaner: DeleteCleaner{}}
+	cleaner.cond.L = &cleaner.mu
 	opts := &Options{
+		Cleaner:                     &cleaner,
 		Comparer:                    testkeys.Comparer,
 		DisableAutomaticCompactions: true,
 		FormatMajorVersion:          FormatNewest,
@@ -1379,6 +1412,7 @@ func TestCompactionPickerScores(t *testing.T) {
 	require.NoError(t, err)
 	defer func() {
 		if d != nil {
+			cleaner.resume()
 			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
 		}
@@ -1390,6 +1424,10 @@ func TestCompactionPickerScores(t *testing.T) {
 		case "define":
 			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
+
+			if td.HasArg("pause-cleaning") {
+				cleaner.pause()
+			}
 
 			d, err = runDBDefineCmd(td, opts)
 			if err != nil {
@@ -1413,6 +1451,10 @@ func TestCompactionPickerScores(t *testing.T) {
 			d.mu.Unlock()
 			return ""
 
+		case "resume-cleaning":
+			cleaner.resume()
+			return ""
+
 		case "ingest":
 			if err = runBuildCmd(td, d, d.opts.FS); err != nil {
 				return err.Error()
@@ -1428,15 +1470,49 @@ func TestCompactionPickerScores(t *testing.T) {
 		case "lsm":
 			return runLSMCmd(td, d)
 
+		case "maybe-compact":
+			buf.Reset()
+			d.mu.Lock()
+			d.maybeScheduleCompaction()
+			fmt.Fprintf(&buf, "%d compactions in progress:", d.mu.compact.compactingCount)
+			for c := range d.mu.compact.inProgress {
+				fmt.Fprintf(&buf, "\n%s", c)
+			}
+			d.mu.Unlock()
+			return buf.String()
+
 		case "scores":
+			waitFor := "completion"
+			td.MaybeScanArgs(t, "wait-for-compaction", &waitFor)
+
 			// Wait for any running compactions to complete before calculating
 			// scores. Otherwise, the output of this command is
 			// nondeterministic.
-			d.mu.Lock()
-			for d.mu.compact.compactingCount > 0 {
-				d.mu.compact.cond.Wait()
+			switch waitFor {
+			case "completion":
+				d.mu.Lock()
+				for d.mu.compact.compactingCount > 0 {
+					d.mu.compact.cond.Wait()
+				}
+				d.mu.Unlock()
+			case "version-edit":
+				func() {
+					d.mu.Lock()
+					defer d.mu.Unlock()
+					for {
+						wait := len(d.mu.compact.inProgress) > 0
+						for c := range d.mu.compact.inProgress {
+							wait = wait && !c.versionEditApplied
+						}
+						if !wait {
+							return
+						}
+						d.mu.compact.cond.Wait()
+					}
+				}()
+			default:
+				panic(fmt.Sprintf("unrecognized `wait-for-compaction` value: %q", waitFor))
 			}
-			d.mu.Unlock()
 
 			buf.Reset()
 			fmt.Fprintf(&buf, "L       Size   Score\n")

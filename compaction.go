@@ -1682,6 +1682,7 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 	}
 	l0InProgress := inProgressL0Compactions(d.getInProgressCompactionInfoLocked(c))
 	d.mu.versions.currentVersion().L0Sublevels.InitCompactingFileInfo(l0InProgress)
+	d.mu.compact.cond.Broadcast()
 }
 
 func (d *DB) calculateDiskAvailableBytes() uint64 {

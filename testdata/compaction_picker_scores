@@ -163,3 +163,96 @@ lsm
 ----
 6:
   000006:[a#0,SET-e#0,SET]
+
+# Test the adjustment of level sizes to accommodate in-progress compactions. A
+# compaction may be "inProgress" if it's already been applied, but is still
+# deleting obsolete files. These compactions' effects have already been applied
+# to the LSM, so size adjustment should ignore them and not doubly adjust sizes.
+
+define lbase-max-bytes=65536  enable-table-stats=false auto-compactions=on pause-cleaning
+L5
+  aa.SET.2:<rand-bytes=131072>
+  bb.SET.2:<rand-bytes=131072>
+  cc.SET.2:<rand-bytes=131072>
+  dd.SET.2:<rand-bytes=131072>
+L5
+  e.SET.2:<rand-bytes=131072>
+L6
+  a.SET.1:<rand-bytes=65536>
+  b.SET.1:<rand-bytes=65536>
+  c.SET.1:<rand-bytes=65536>
+  d.SET.1:<rand-bytes=65536>
+L6
+  e.SET.1:<rand-bytes=131072>
+----
+5:
+  000004:[aa#2,SET-dd#2,SET]
+  000005:[e#2,SET-e#2,SET]
+6:
+  000006:[a#1,SET-d#1,SET]
+  000007:[e#1,SET-e#1,SET]
+
+scores
+----
+L       Size   Score
+L0  	0 B    0.0
+L1  	0 B    0.0
+L2  	0 B    0.0
+L3  	0 B    0.0
+L4  	0 B    0.0
+L5  	642 K  6.3
+L6  	386 K  -
+
+lsm verbose
+----
+5:
+  000004:[aa#2,SET-dd#2,SET] points:[aa#2,SET-dd#2,SET]
+  000005:[e#2,SET-e#2,SET] points:[e#2,SET-e#2,SET]
+6:
+  000006:[a#1,SET-d#1,SET] points:[a#1,SET-d#1,SET]
+  000007:[e#1,SET-e#1,SET] points:[e#1,SET-e#1,SET]
+
+# Attempting to schedule a compaction should begin a L5->L6 compaction.
+
+maybe-compact
+----
+1 compactions in progress:
+5: 000004:aa#2,1-dd#2,1
+6: 000006:a#1,1-d#1,1
+
+# The scores and sizes should be stable between when the version edit has been
+# applied but the compaction has not completed, and when the compaction is
+# finally complete.
+
+scores wait-for-compaction=version-edit
+----
+L       Size   Score
+L0  	0 B    0.0
+L1  	0 B    0.0
+L2  	0 B    0.0
+L3  	0 B    0.0
+L4  	0 B    0.0
+L5  	129 K  0.5
+L6  	898 K  -
+
+lsm
+----
+5:
+  000005:[e#2,SET-e#2,SET]
+6:
+  000008:[a#0,SET-dd#0,SET]
+  000007:[e#1,SET-e#1,SET]
+
+resume-cleaning
+----
+
+scores wait-for-compaction=completion
+----
+L       Size   Score
+L0  	0 B    0.0
+L1  	0 B    0.0
+L2  	0 B    0.0
+L3  	0 B    0.0
+L4  	0 B    0.0
+L5  	129 K  0.5
+L6  	898 K  -
