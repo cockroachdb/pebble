@@ -111,49 +111,52 @@ func TestSharedCacheRandomized(t *testing.T) {
 	fmt.Printf("seed: %v\n", seed)
 	rand.Seed(seed)
 
-	blockSize := 32 * 1024 // 32 KB
-	if rand.Intn(2) == 0 {
-		blockSize = 1024 * 1024 // 1 MB
+	helper := func(blockSize int) func(t *testing.T) {
+		return func(t *testing.T) {
+			numShards := rand.Intn(64) + 1
+			cacheSize := int64(shardingBlockSize * numShards) // minimum allowed cache size
+
+			cache, err := openSharedCache(fs, "", blockSize, cacheSize, numShards)
+			require.NoError(t, err)
+			defer cache.Close()
+
+			file, err := fs.Create("test")
+			require.NoError(t, err)
+
+			size := rand.Int63n(cacheSize)
+
+			// With invariants on, Write will modify its input buffer.
+			toWrite := make([]byte, size)
+			wrote := make([]byte, size)
+			for i := 0; i < int(size); i++ {
+				toWrite[i] = byte(i)
+				wrote[i] = byte(i)
+			}
+
+			n, err := file.Write(wrote)
+			require.NoError(t, err)
+			require.Equal(t, size, int64(n))
+
+			readable, err := newFileReadable(file, fs, "test")
+			require.NoError(t, err)
+			defer readable.Close()
+
+			const numDistinctReads = 100
+			for i := 0; i < numDistinctReads; i++ {
+				offset := rand.Int63n(size)
+
+				got := make([]byte, size-offset)
+				err = cache.ReadAt(ctx, 1, got, offset, readable)
+				require.NoError(t, err)
+				require.Equal(t, toWrite[int(offset):], got)
+
+				got = make([]byte, size-offset)
+				err = cache.ReadAt(ctx, 1, got, offset, readable)
+				require.NoError(t, err)
+				require.Equal(t, toWrite[int(offset):], got)
+			}
+		}
 	}
-	numShards := rand.Intn(64) + 1
-	cacheSize := int64(shardingBlockSize * numShards) // minimum allowed cache size
-
-	cache, err := openSharedCache(fs, "", blockSize, cacheSize, numShards)
-	require.NoError(t, err)
-	defer cache.Close()
-
-	file, err := fs.Create("test")
-	require.NoError(t, err)
-
-	size := rand.Int63n(cacheSize)
-
-	// With invariants on, Write will modify its input buffer.
-	toWrite := make([]byte, size)
-	wrote := make([]byte, size)
-	for i := 0; i < int(size); i++ {
-		toWrite[i] = byte(i)
-		wrote[i] = byte(i)
-	}
-
-	n, err := file.Write(wrote)
-	require.NoError(t, err)
-	require.Equal(t, size, int64(n))
-
-	readable, err := newFileReadable(file, fs, "test")
-	require.NoError(t, err)
-	defer readable.Close()
-
-	offset := rand.Int63n(size)
-
-	// Cache miss.
-	got := make([]byte, size-offset)
-	err = cache.ReadAt(ctx, 1, got, offset, readable)
-	require.NoError(t, err)
-	require.Equal(t, toWrite[int(offset):], got)
-
-	// Cache hit.
-	got = make([]byte, size-offset)
-	err = cache.ReadAt(ctx, 1, got, offset, readable)
-	require.NoError(t, err)
-	require.Equal(t, toWrite[int(offset):], got)
+	t.Run("32 KB", helper(32*1024))
+	t.Run("1 MB", helper(1024*1024))
 }

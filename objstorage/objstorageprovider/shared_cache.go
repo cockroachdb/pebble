@@ -22,6 +22,8 @@ type sharedCache struct {
 	shards []sharedCacheShard
 	logger base.Logger
 
+	blockSize int
+
 	// TODO(josh): Have a dedicated metrics struct. Right now, this
 	// is just for testing.
 	misses atomic.Int32
@@ -35,7 +37,9 @@ func openSharedCache(
 		return nil, errors.Errorf("cache size %d lower than min %d", sizeBytes, min)
 	}
 
-	sc := &sharedCache{}
+	sc := &sharedCache{
+		blockSize: blockSize,
+	}
 	sc.shards = make([]sharedCacheShard, numShards)
 	blocksPerShard := sizeBytes / int64(numShards) / int64(blockSize)
 	for i := range sc.shards {
@@ -62,21 +66,40 @@ func (sc *sharedCache) Close() error {
 func (sc *sharedCache) ReadAt(
 	ctx context.Context, fileNum base.FileNum, p []byte, ofs int64, readable objstorage.Readable,
 ) error {
-	n, err := sc.Get(fileNum, p, ofs)
-	if err != nil {
-		return err
-	}
-	if n == len(p) {
-		// Everything was in cache!
-		return nil
+	{
+		n, err := sc.Get(fileNum, p, ofs)
+		if err != nil {
+			return err
+		}
+		if n == len(p) {
+			// Everything was in cache!
+			return nil
+		}
+
+		// Note this. The below code does not need the original ofs, as with the earlier
+		// reading from the cache done, the relevant offset is ofs + int64(n). Same with p.
+		ofs += int64(n)
+		p = p[n:]
+
+		if invariants.Enabled {
+			if n != 0 && ofs%int64(sc.blockSize) != 0 {
+				panic(fmt.Sprintf("after non-zero read from cache, ofs is not block-aligned: %v %v", ofs, n))
+			}
+		}
 	}
 
 	// We must do reads with offset & size that are multiples of the block size. Else
-	// later cache hits may return incorrect zeroed results from the cache. We assume
-	// that all shards have the same block size.
-	blockSize := sc.shards[0].blockSize
-	adjustedOfs := ((ofs + int64(n)) / int64(blockSize)) * int64(blockSize)
-	adjustedP := make([]byte, (((len(p[n:])+int(ofs-adjustedOfs))+(blockSize-1))/blockSize)*blockSize)
+	// later cache hits may return incorrect zeroed results from the cache.
+	firstBlockInd := ofs / int64(sc.blockSize)
+	adjustedOfs := firstBlockInd * int64(sc.blockSize)
+
+	// Take the length of what is left to read plus the length of the adjustment of
+	// the offset plus the size of a block minus one and divide by the size of a block
+	// to get the number of blocks to read from the readable.
+	sizeOfOffAdjustment := int(ofs - adjustedOfs)
+	numBlocksToRead := ((len(p) + sizeOfOffAdjustment) + (sc.blockSize - 1)) / sc.blockSize
+	adjustedLen := numBlocksToRead * sc.blockSize
+	adjustedP := make([]byte, adjustedLen)
 
 	// Read the rest from the object.
 	sc.misses.Add(1)
@@ -87,7 +110,7 @@ func (sc *sharedCache) ReadAt(
 	if err := readable.ReadAt(ctx, adjustedP, adjustedOfs); err != nil && err != io.EOF {
 		return err
 	}
-	copy(p[n:], adjustedP[ofs%int64(blockSize):])
+	copy(p, adjustedP[sizeOfOffAdjustment:])
 
 	// TODO(josh): Writing back to the cache should be async with respect to the
 	// call to ReadAt.
@@ -138,7 +161,7 @@ func (sc *sharedCache) Get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ 
 // If all of p is not written to the shard, Set returns a non-nil error.
 func (sc *sharedCache) Set(fileNum base.FileNum, p []byte, ofs int64) error {
 	if invariants.Enabled {
-		if ofs%int64(sc.shards[0].blockSize) != 0 || len(p)%sc.shards[0].blockSize != 0 {
+		if ofs%int64(sc.blockSize) != 0 || len(p)%sc.blockSize != 0 {
 			panic(fmt.Sprintf("Set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
 		}
 	}
