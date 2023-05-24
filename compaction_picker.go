@@ -1083,14 +1083,20 @@ func (p *compactionPickerByScore) pickFile(
 
 	for f := startIter.First(); f != nil; f = startIter.Next() {
 		var overlappingBytes uint64
+		compacting := f.IsCompacting()
+		if compacting {
+			// Move on if this file is already being compacted. We'll likely
+			// still need to move past the overlapping output files regardless,
+			// but in cases where all start-level files are compacting we won't.
+			continue
+		}
 
 		// Trim any output-level files smaller than f.
-		for outputFile != nil && base.InternalCompare(cmp, outputFile.Largest, f.Smallest) < 0 {
+		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Largest, f.Smallest) < 0 {
 			outputFile = outputIter.Next()
 		}
 
-		compacting := f.IsCompacting()
-		for outputFile != nil && base.InternalCompare(cmp, outputFile.Smallest, f.Largest) < 0 {
+		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Smallest, f.Largest) <= 0 && !compacting {
 			overlappingBytes += outputFile.Size
 			compacting = compacting || outputFile.IsCompacting()
 
@@ -1109,7 +1115,7 @@ func (p *compactionPickerByScore) pickFile(
 			// If the file in the next level extends beyond f's largest key,
 			// break out and don't advance outputIter because f's successor
 			// might also overlap.
-			if base.InternalCompare(cmp, outputFile.Largest, f.Largest) > 0 {
+			if sstableKeyCompare(cmp, outputFile.Largest, f.Largest) > 0 {
 				break
 			}
 			outputFile = outputIter.Next()
@@ -1124,7 +1130,7 @@ func (p *compactionPickerByScore) pickFile(
 
 		compSz := compensatedSize(f)
 		scaledRatio := overlappingBytes * 1024 / compSz
-		if scaledRatio < smallestRatio && !f.IsCompacting() {
+		if scaledRatio < smallestRatio {
 			smallestRatio = scaledRatio
 			file = startIter.Take()
 		}
