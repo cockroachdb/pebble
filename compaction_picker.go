@@ -1085,12 +1085,12 @@ func (p *compactionPickerByScore) pickFile(
 		var overlappingBytes uint64
 
 		// Trim any output-level files smaller than f.
-		for outputFile != nil && base.InternalCompare(cmp, outputFile.Largest, f.Smallest) < 0 {
+		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Largest, f.Smallest) < 0 {
 			outputFile = outputIter.Next()
 		}
 
 		compacting := f.IsCompacting()
-		for outputFile != nil && base.InternalCompare(cmp, outputFile.Smallest, f.Largest) < 0 {
+		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Smallest, f.Largest) <= 0 {
 			overlappingBytes += outputFile.Size
 			compacting = compacting || outputFile.IsCompacting()
 
@@ -1109,7 +1109,7 @@ func (p *compactionPickerByScore) pickFile(
 			// If the file in the next level extends beyond f's largest key,
 			// break out and don't advance outputIter because f's successor
 			// might also overlap.
-			if base.InternalCompare(cmp, outputFile.Largest, f.Largest) > 0 {
+			if sstableKeyCompare(cmp, outputFile.Largest, f.Largest) > 0 {
 				break
 			}
 			outputFile = outputIter.Next()

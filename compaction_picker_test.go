@@ -1293,6 +1293,73 @@ func TestCompactionPickerCompensatedSize(t *testing.T) {
 	}
 }
 
+func TestCompactionPickerPickFile(t *testing.T) {
+	fs := vfs.NewMem()
+	opts := &Options{
+		Comparer:           testkeys.Comparer,
+		FormatMajorVersion: FormatNewest,
+		FS:                 fs,
+	}
+
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	datadriven.RunTest(t, "testdata/compaction_picker_pick_file", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			require.NoError(t, d.Close())
+
+			d, err = runDBDefineCmd(td, opts)
+			if err != nil {
+				return err.Error()
+			}
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
+		case "file-sizes":
+			return runTableFileSizesCmd(td, d)
+
+		case "pick-file":
+			s := strings.TrimPrefix(td.CmdArgs[0].String(), "L")
+			level, err := strconv.Atoi(s)
+			if err != nil {
+				return fmt.Sprintf("unable to parse arg %q as level", td.CmdArgs[0].String())
+			}
+			if level == 0 {
+				panic("L0 picking unimplemented")
+			}
+			d.mu.Lock()
+			defer d.mu.Unlock()
+
+			// Use maybeScheduleCompactionPicker to take care of all of the
+			// initialization of the compaction-picking environment, but never
+			// pick a compaction; just call pickFile using the user-provided
+			// level.
+			var lf manifest.LevelFile
+			var ok bool
+			d.maybeScheduleCompactionPicker(func(untypedPicker compactionPicker, env compactionEnv) *pickedCompaction {
+				p := untypedPicker.(*compactionPickerByScore)
+				lf, ok = p.pickFile(level, level+1, env.earliestSnapshotSeqNum)
+				return nil
+			})
+			if !ok {
+				return "(none)"
+			}
+			return lf.FileMetadata.String()
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
 func TestCompactionPickerScores(t *testing.T) {
 	fs := vfs.NewMem()
 	opts := &Options{
