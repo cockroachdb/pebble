@@ -39,7 +39,7 @@ func TestOpenSharedTableCache(t *testing.T) {
 	defer tc.Unref()
 	defer c.Unref()
 
-	d0, err := Open("", testingRandomized(&Options{
+	d0, err := Open("", testingRandomized(t, &Options{
 		FS:         vfs.NewMem(),
 		Cache:      c,
 		TableCache: tc,
@@ -49,7 +49,7 @@ func TestOpenSharedTableCache(t *testing.T) {
 	}
 	defer d0.Close()
 
-	d1, err := Open("", testingRandomized(&Options{
+	d1, err := Open("", testingRandomized(t, &Options{
 		FS:         vfs.NewMem(),
 		Cache:      c,
 		TableCache: tc,
@@ -68,7 +68,7 @@ func TestOpenSharedTableCache(t *testing.T) {
 }
 
 func TestErrorIfExists(t *testing.T) {
-	opts := testingRandomized(&Options{
+	opts := testingRandomized(t, &Options{
 		FS:            vfs.NewMem(),
 		ErrorIfExists: true,
 	})
@@ -89,7 +89,7 @@ func TestErrorIfExists(t *testing.T) {
 }
 
 func TestErrorIfNotExists(t *testing.T) {
-	opts := testingRandomized(&Options{
+	opts := testingRandomized(t, &Options{
 		FS:               vfs.NewMem(),
 		ErrorIfNotExists: true,
 	})
@@ -113,7 +113,7 @@ func TestErrorIfNotExists(t *testing.T) {
 }
 
 func TestErrorIfNotPristine(t *testing.T) {
-	opts := testingRandomized(&Options{
+	opts := testingRandomized(t, &Options{
 		FS:                 vfs.NewMem(),
 		ErrorIfNotPristine: true,
 	})
@@ -148,7 +148,7 @@ func TestErrorIfNotPristine(t *testing.T) {
 
 func TestOpenAlreadyLocked(t *testing.T) {
 	runTest := func(t *testing.T, dirname string, fs vfs.FS) {
-		opts := testingRandomized(&Options{FS: fs})
+		opts := testingRandomized(t, &Options{FS: fs})
 		var err error
 		opts.Lock, err = LockDirectory(dirname, fs)
 		require.NoError(t, err)
@@ -229,7 +229,7 @@ func TestNewDBFilenames(t *testing.T) {
 }
 
 func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
-	opts := testingRandomized(&Options{FS: fs})
+	opts := testingRandomized(t, &Options{FS: fs})
 
 	for _, startFromEmpty := range []bool{false, true} {
 		for _, walDirname := range []string{"", "wal"} {
@@ -421,7 +421,7 @@ func TestOpenReadOnly(t *testing.T) {
 		// Opening a non-existent DB in read-only mode should result in no mutable
 		// filesystem operations.
 		var memLog base.InMemLogger
-		_, err := Open("non-existent", testingRandomized(&Options{
+		_, err := Open("non-existent", testingRandomized(t, &Options{
 			FS:       vfs.WithLogging(mem, memLog.Infof),
 			ReadOnly: true,
 			WALDir:   "non-existent-waldir",
@@ -439,7 +439,7 @@ func TestOpenReadOnly(t *testing.T) {
 		// Opening a DB with a non-existent WAL dir in read-only mode should result
 		// in no mutable filesystem operations other than the LOCK.
 		var memLog base.InMemLogger
-		_, err := Open("", testingRandomized(&Options{
+		_, err := Open("", testingRandomized(t, &Options{
 			FS:       vfs.WithLogging(mem, memLog.Infof),
 			ReadOnly: true,
 			WALDir:   "non-existent-waldir",
@@ -456,7 +456,7 @@ func TestOpenReadOnly(t *testing.T) {
 	var contents []string
 	{
 		// Create a new DB and populate it with a small amount of data.
-		d, err := Open("", testingRandomized(&Options{
+		d, err := Open("", testingRandomized(t, &Options{
 			FS: mem,
 		}))
 		require.NoError(t, err)
@@ -469,7 +469,7 @@ func TestOpenReadOnly(t *testing.T) {
 
 	{
 		// Re-open the DB read-only. The directory contents should be unchanged.
-		d, err := Open("", testingRandomized(&Options{
+		d, err := Open("", testingRandomized(t, &Options{
 			FS:       mem,
 			ReadOnly: true,
 		}))
@@ -555,7 +555,7 @@ func TestOpenWALReplay(t *testing.T) {
 			// Create a new DB and populate it with some data.
 			const dir = ""
 			mem := vfs.NewMem()
-			d, err := Open(dir, testingRandomized(&Options{
+			d, err := Open(dir, testingRandomized(t, &Options{
 				FS:           mem,
 				MemTableSize: 32 << 20,
 			}))
@@ -590,7 +590,7 @@ func TestOpenWALReplay(t *testing.T) {
 			// value for 3 will go in the next memtable; value for 4 will be in a flushable batch
 			// which will cause the previous memtable to be flushed; value for 5 will go in the next
 			// memtable
-			d, err = Open(dir, testingRandomized(&Options{
+			d, err = Open(dir, testingRandomized(t, &Options{
 				FS:           mem,
 				MemTableSize: 300 << 10,
 				ReadOnly:     readOnly,
@@ -613,7 +613,7 @@ func TestOpenWALReplay(t *testing.T) {
 // Reproduction for https://github.com/cockroachdb/pebble/issues/2234.
 func TestWALReplaySequenceNumBug(t *testing.T) {
 	mem := vfs.NewMem()
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: mem,
 	}))
 	require.NoError(t, err)
@@ -677,7 +677,7 @@ func TestOpenWALReplay2(t *testing.T) {
 			for _, reason := range []string{"forced", "size", "large-batch"} {
 				t.Run(reason, func(t *testing.T) {
 					mem := vfs.NewMem()
-					d, err := Open("", testingRandomized(&Options{
+					d, err := Open("", testingRandomized(t, &Options{
 						FS:           mem,
 						MemTableSize: 256 << 10,
 					}))
@@ -716,7 +716,7 @@ func TestOpenWALReplay2(t *testing.T) {
 					// value for 3 will go in the next memtable; value for 4 will be in a flushable batch
 					// which will cause the previous memtable to be flushed; value for 5 will go in the next
 					// memtable
-					d, err = Open("", testingRandomized(&Options{
+					d, err = Open("", testingRandomized(t, &Options{
 						FS:           mem,
 						MemTableSize: 300 << 10,
 						ReadOnly:     readOnly,
@@ -740,7 +740,7 @@ func TestTwoWALReplayCorrupt(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	d, err := Open(dir, testingRandomized(&Options{
+	d, err := Open(dir, testingRandomized(t, &Options{
 		MemTableStopWritesThreshold: 4,
 		MemTableSize:                2048,
 	}))
@@ -800,7 +800,7 @@ func TestTwoWALReplayPermissive(t *testing.T) {
 		MemTableStopWritesThreshold: 4,
 		MemTableSize:                2048,
 	}
-	opts.testingRandomized()
+	opts.testingRandomized(t)
 	opts.EnsureDefaults()
 	d, err := Open(dir, opts)
 	require.NoError(t, err)
@@ -875,7 +875,7 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 	}
 
 	{
-		d, err := Open("", testingRandomized(&Options{FS: fs}))
+		d, err := Open("", testingRandomized(t, &Options{FS: fs}))
 		require.NoError(t, err)
 		require.NoError(t, d.Set([]byte("abc"), nil, Sync))
 
@@ -952,7 +952,7 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 	}
 
 	// Finally, open the database with syncs enabled.
-	d, err := Open("", testingRandomized(&Options{FS: fs}))
+	d, err := Open("", testingRandomized(t, &Options{FS: fs}))
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
 }
@@ -978,7 +978,7 @@ func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 
 	// Create a new database under `/original` with a couple sstables.
 	dir := mem.PathJoin(root, "original")
-	d, err := Open(dir, testingRandomized(&Options{FS: mem}))
+	d, err := Open(dir, testingRandomized(t, &Options{FS: mem}))
 	require.NoError(t, err)
 	require.NoError(t, d.Set([]byte("a"), nil, nil))
 	require.NoError(t, d.Flush())
@@ -1023,7 +1023,7 @@ func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 	// multiple unflushed log files that need to replay. Since the manual
 	// compaction completed, the `logSeqNum` read from the manifest should be
 	// greater than the unflushed log files' sequence numbers.
-	d, err = Open(replayDir, testingRandomized(&Options{
+	d, err = Open(replayDir, testingRandomized(t, &Options{
 		FS:       mem,
 		ReadOnly: true,
 	}))
@@ -1038,7 +1038,7 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 		MemTableSize: memTableSize,
 		FS:           mem,
 	}
-	opts.testingRandomized()
+	opts.testingRandomized(t)
 	func() {
 		db, err := Open("", opts)
 		require.NoError(t, err)
@@ -1060,7 +1060,7 @@ func TestGetVersion(t *testing.T) {
 	opts := &Options{
 		FS: mem,
 	}
-	opts.testingRandomized()
+	opts.testingRandomized(t)
 
 	// Case 1: No options file.
 	version, err := GetVersion("", mem)

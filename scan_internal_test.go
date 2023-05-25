@@ -39,6 +39,7 @@ func TestScanInternal(t *testing.T) {
 	parseOpts := func(td *datadriven.TestData) (*Options, error) {
 		opts := &Options{
 			FS:                 vfs.NewMem(),
+			Logger:             testLogger{t: t},
 			Comparer:           testkeys.Comparer,
 			FormatMajorVersion: FormatRangeKeys,
 			BlockPropertyCollectors: []func() BlockPropertyCollector{

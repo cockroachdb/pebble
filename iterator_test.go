@@ -1391,7 +1391,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 	seed := *seed
 	if seed == 0 {
 		seed = uint64(time.Now().UnixNano())
-		fmt.Printf("seed: %d\n", seed)
+		t.Logf("seed: %d", seed)
 	}
 	rng := rand.New(rand.NewSource(seed))
 	opts.FlushSplitBytes = 1 << rng.Intn(8)            // 1B - 256B
@@ -1446,7 +1446,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 			delete(matchingKeyValues, key)
 		}
 	}
-	fmt.Printf("generated %d keys: %d matching, %d found\n", n, matchingCount, found)
+	t.Logf("generated %d keys: %d matching, %d found", n, matchingCount, found)
 	require.Equal(t, 0, len(matchingKeyValues))
 }
 
@@ -2321,7 +2321,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 	seed := *seed
 	if seed == 0 {
 		seed = uint64(time.Now().UnixNano())
-		fmt.Printf("seed: %d\n", seed)
+		t.Logf("seed: %d", seed)
 	}
 	rng := rand.New(rand.NewSource(seed))
 
