@@ -79,6 +79,8 @@ func TestMetricsFormat(t *testing.T) {
 		l.TablesMoved = base + 13
 	}
 
+	m.Ingest.Count = 4
+
 	const expected = `
 __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
     WAL        22    24 B       -    25 B       -       -       -       -    26 B       -       -       -     1.0
@@ -101,6 +103,7 @@ zmemtbl        14    13 B
   snaps         4       -    1024  (score == earliest seq num)
  titers        21
  filter         -       -   47.4%  (score == utility)
+ ingest         4
 `
 	if s := "\n" + m.String(); expected != s {
 		t.Fatalf("expected%s\nbut found%s", expected, s)
@@ -296,6 +299,7 @@ zmemtbl         0     0 B
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
+ ingest         0
 `
 
 	got := redact.Sprintf("%s", &Metrics{}).Redact()

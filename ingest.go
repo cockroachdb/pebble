@@ -816,6 +816,7 @@ func (d *DB) ingest(
 	if err != nil {
 		return IngestOperationStats{}, err
 	}
+
 	if len(meta) == 0 {
 		// All of the sstables to be ingested were empty. Nothing to do.
 		return IngestOperationStats{}, nil
@@ -1106,6 +1107,9 @@ func (d *DB) ingestApply(
 	}); err != nil {
 		return nil, err
 	}
+
+	d.mu.versions.metrics.Ingest.Count++
+
 	d.updateReadStateLocked(d.opts.DebugCheck)
 	d.updateTableStatsLocked(ve.NewFiles)
 	// The ingestion may have pushed a level over the threshold for compaction,
