@@ -52,6 +52,8 @@ zmemtbl         0     0 B
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
+ ingest         1
+ 
 
 iter
 seek-ge a

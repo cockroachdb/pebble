@@ -38,6 +38,7 @@ zmemtbl         1   256 K
   snaps         0       -       0  (score == earliest seq num)
  titers         1
  filter         -       -    0.0%  (score == utility)
+ ingest         0
 
 disk-usage
 ----
@@ -86,6 +87,7 @@ zmemtbl         2   512 K
   snaps         0       -       0  (score == earliest seq num)
  titers         2
  filter         -       -    0.0%  (score == utility)
+ ingest         0
 
 disk-usage
 ----
@@ -119,6 +121,7 @@ zmemtbl         1   256 K
   snaps         0       -       0  (score == earliest seq num)
  titers         2
  filter         -       -    0.0%  (score == utility)
+ ingest         0
 
 # Closing iter c will release one of the zombie sstables. The other
 # zombie sstable is still referenced by iter b.
@@ -149,6 +152,7 @@ zmemtbl         1   256 K
   snaps         0       -       0  (score == earliest seq num)
  titers         1
  filter         -       -    0.0%  (score == utility)
+ ingest         0
 
 disk-usage
 ----
@@ -182,6 +186,7 @@ zmemtbl         0     0 B
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
+ ingest         0
 
 disk-usage
 ----
@@ -241,6 +246,7 @@ zmemtbl         0     0 B
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
+ ingest         0
 
 additional-metrics
 ----
@@ -284,6 +290,7 @@ zmemtbl         0     0 B
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
+ ingest         0
 
 additional-metrics
 ----
@@ -373,3 +380,4 @@ zmemtbl         0     0 B
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
+ ingest         0

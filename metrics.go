@@ -184,6 +184,11 @@ type Metrics struct {
 		Duration time.Duration
 	}
 
+	Ingest struct {
+		// The total number of ingestions
+		Count uint64
+	}
+
 	Flush struct {
 		// The total number of flushes.
 		Count           int64
@@ -504,6 +509,9 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		notApplicable,
 		notApplicable,
 		redact.Safe(hitRate(m.Filter.Hits, m.Filter.Misses)))
+	w.Printf(" ingest %9d\n",
+		redact.Safe(m.Ingest.Count),
+	)
 }
 
 func hitRate(hits, misses int64) float64 {

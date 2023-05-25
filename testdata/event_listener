@@ -277,6 +277,7 @@ zmemtbl         0     0 B
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
+ ingest         1
 
 # Set up a scenario where the table to be ingested overlaps with the memtable.
 # The table is ingested as a flushable. The flush metrics refect the flushed
@@ -372,6 +373,7 @@ zmemtbl         0     0 B
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
+ ingest         1
 
 sstables
 ----
