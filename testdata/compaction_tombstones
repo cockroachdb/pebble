@@ -44,7 +44,7 @@ maybe-compact
 [JOB 100] compacted(elision-only) L6 [000004] (853 B) + L6 [] (0 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
 
 # Test a table that straddles a snapshot. It should not be compacted.
-define snapshots=(50)
+define snapshots=(50) auto-compactions=off
 L6
 a.SET.55:a b.RANGEDEL.5:h
 ----
@@ -67,7 +67,7 @@ maybe-compact
 # Test a table with a point deletion and a non-deletion entry. The table
 # should be compacted, and a new table with the point tombstone should be
 # written.
-define
+define auto-compactions=off
 L6
 a.SET.55:a b.DEL.5:
 ----
@@ -106,7 +106,7 @@ maybe-compact
 # Test a table that contains both deletions and non-deletions, but whose
 # deletions remove the non-deletions. The compaction should not create a new
 # table, but shouldn't happen until the snapshots are removed.
-define snapshots=(59, 103)
+define snapshots=(59, 103) auto-compactions=off
 L6
 a.DEL.60: a.SET.55:a b.SET.100:b c.SET.101:c d.SET.102:d b.RANGEDEL.103:z
 ----
@@ -139,7 +139,7 @@ close-snapshot
 # Test a table that contains both deletions and non-deletions, but whose
 # non-deletions well outnumber its deletions. The table should not be
 # compacted because it falls beneath the threshold.
-define snapshots=(15)
+define snapshots=(15) auto-compactions=off
 L6
 a.DEL.20: a.SET.1:a b.SET.2:b c.SET.3:c d.SET.4:d e.SET.5:e f.SET.6:f g.SET.7:g h.SET.8:h i.SET.9:i j.SET.10:j
 ----
@@ -248,7 +248,7 @@ maybe-compact
 # A table containing only range keys is not eligible for elision.
 # RANGEKEYDEL or RANGEKEYUNSET.
 
-define
+define auto-compactions=off
 L6
   rangekey:a-b:{(#1,RANGEKEYDEL)}
 L6
