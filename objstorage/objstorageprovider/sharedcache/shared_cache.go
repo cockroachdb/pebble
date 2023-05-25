@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorageprovider
+package sharedcache
 
 import (
 	"context"
@@ -18,29 +18,37 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-type sharedCache struct {
-	shards []sharedCacheShard
+const (
+	// ShardingBlockSize is public to enable testing from sharedcache_test.
+	ShardingBlockSize = 1024 * 1024
+)
+
+// Cache is a persistent cache backed by a local filesystem. It is intended
+// to cache hot data that is in slower shared storage (e.g. S3), hence the
+// package name 'sharedcache'.
+type Cache struct {
+	shards []shard
 	logger base.Logger
 
 	blockSize int
 
 	// TODO(josh): Have a dedicated metrics struct. Right now, this
 	// is just for testing.
-	misses atomic.Int32
+	Misses atomic.Int32
 }
 
-func openSharedCache(
-	fs vfs.FS, fsDir string, blockSize int, sizeBytes int64, numShards int,
-) (*sharedCache, error) {
-	min := shardingBlockSize * int64(numShards)
+// Open opens a cache. If there is no existing cache at fsDir, a new one
+// is created.
+func Open(fs vfs.FS, fsDir string, blockSize int, sizeBytes int64, numShards int) (*Cache, error) {
+	min := ShardingBlockSize * int64(numShards)
 	if sizeBytes < min {
 		return nil, errors.Errorf("cache size %d lower than min %d", sizeBytes, min)
 	}
 
-	sc := &sharedCache{
+	sc := &Cache{
 		blockSize: blockSize,
 	}
-	sc.shards = make([]sharedCacheShard, numShards)
+	sc.shards = make([]shard, numShards)
 	blocksPerShard := sizeBytes / int64(numShards) / int64(blockSize)
 	for i := range sc.shards {
 		if err := sc.shards[i].init(fs, fsDir, i, blocksPerShard, blockSize); err != nil {
@@ -50,24 +58,26 @@ func openSharedCache(
 	return sc, nil
 }
 
-func (sc *sharedCache) Close() error {
+// Close closes the cache. Methods such as ReadAt should not be called after Close is
+// called.
+func (c *Cache) Close() error {
 	var retErr error
-	for i := range sc.shards {
-		if err := sc.shards[i].Close(); err != nil && retErr == nil {
+	for i := range c.shards {
+		if err := c.shards[i].close(); err != nil && retErr == nil {
 			retErr = err
 		}
 	}
-	sc.shards = nil
+	c.shards = nil
 	return retErr
 }
 
 // ReadAt performs a read form an object, attempting to use cached data when
 // possible.
-func (sc *sharedCache) ReadAt(
+func (c *Cache) ReadAt(
 	ctx context.Context, fileNum base.FileNum, p []byte, ofs int64, readable objstorage.Readable,
 ) error {
 	{
-		n, err := sc.Get(fileNum, p, ofs)
+		n, err := c.get(fileNum, p, ofs)
 		if err != nil {
 			return err
 		}
@@ -82,7 +92,7 @@ func (sc *sharedCache) ReadAt(
 		p = p[n:]
 
 		if invariants.Enabled {
-			if n != 0 && ofs%int64(sc.blockSize) != 0 {
+			if n != 0 && ofs%int64(c.blockSize) != 0 {
 				panic(fmt.Sprintf("after non-zero read from cache, ofs is not block-aligned: %v %v", ofs, n))
 			}
 		}
@@ -90,22 +100,22 @@ func (sc *sharedCache) ReadAt(
 
 	// We must do reads with offset & size that are multiples of the block size. Else
 	// later cache hits may return incorrect zeroed results from the cache.
-	firstBlockInd := ofs / int64(sc.blockSize)
-	adjustedOfs := firstBlockInd * int64(sc.blockSize)
+	firstBlockInd := ofs / int64(c.blockSize)
+	adjustedOfs := firstBlockInd * int64(c.blockSize)
 
 	// Take the length of what is left to read plus the length of the adjustment of
 	// the offset plus the size of a block minus one and divide by the size of a block
 	// to get the number of blocks to read from the readable.
 	sizeOfOffAdjustment := int(ofs - adjustedOfs)
-	numBlocksToRead := ((len(p) + sizeOfOffAdjustment) + (sc.blockSize - 1)) / sc.blockSize
-	adjustedLen := numBlocksToRead * sc.blockSize
+	numBlocksToRead := ((len(p) + sizeOfOffAdjustment) + (c.blockSize - 1)) / c.blockSize
+	adjustedLen := numBlocksToRead * c.blockSize
 	adjustedP := make([]byte, adjustedLen)
 
 	// Read the rest from the object.
-	sc.misses.Add(1)
+	c.Misses.Add(1)
 	// TODO(josh): To have proper EOF handling, we will need readable.ReadAt to return
 	// the number of bytes read successfully. As is, we cannot tell if the readable.ReadAt
-	// should be returned from sharedCache.ReadAt. For now, the cache just swallows all
+	// should be returned from cache.ReadAt. For now, the cache just swallows all
 	// io.EOF errors.
 	if err := readable.ReadAt(ctx, adjustedP, adjustedOfs); err != nil && err != io.EOF {
 		return err
@@ -114,31 +124,31 @@ func (sc *sharedCache) ReadAt(
 
 	// TODO(josh): Writing back to the cache should be async with respect to the
 	// call to ReadAt.
-	if err := sc.Set(fileNum, adjustedP, adjustedOfs); err != nil {
+	if err := c.set(fileNum, adjustedP, adjustedOfs); err != nil {
 		// TODO(josh): Would like to log at error severity, but base.Logger doesn't
 		// have error severity.
-		sc.logger.Infof("writing back to cache after miss failed: %v", err)
+		c.logger.Infof("writing back to cache after miss failed: %v", err)
 	}
 	return nil
 }
 
-// Get attempts to read the requested data from the cache.
+// get attempts to read the requested data from the cache.
 //
 // If all data is available, returns n = len(p).
 //
 // If data is partially available, a prefix of the data is read; returns n < len(p)
 // and no error. If no prefix is available, returns n = 0 and no error.
-func (sc *sharedCache) Get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) {
+func (c *Cache) get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) {
 	// The data extent might cross shard boundaries, hence the loop. In the hot
 	// path, max two iterations of this loop will be executed, since reads are sized
 	// in units of sstable block size.
 	for {
-		shard := sc.getShard(fileNum, ofs+int64(n))
+		shard := c.getShard(fileNum, ofs+int64(n))
 		cappedLen := len(p[n:])
-		if toBoundary := int(shardingBlockSize - ((ofs + int64(n)) % shardingBlockSize)); cappedLen > toBoundary {
+		if toBoundary := int(ShardingBlockSize - ((ofs + int64(n)) % ShardingBlockSize)); cappedLen > toBoundary {
 			cappedLen = toBoundary
 		}
-		numRead, err := shard.Get(fileNum, p[n:n+cappedLen], ofs+int64(n))
+		numRead, err := shard.get(fileNum, p[n:n+cappedLen], ofs+int64(n))
 		if err != nil {
 			return n, err
 		}
@@ -155,14 +165,14 @@ func (sc *sharedCache) Get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ 
 	}
 }
 
-// Set attempts to write the requested data to the cache. Both ofs & len(p) must
+// set attempts to write the requested data to the cache. Both ofs & len(p) must
 // be multiples of the block size.
 //
-// If all of p is not written to the shard, Set returns a non-nil error.
-func (sc *sharedCache) Set(fileNum base.FileNum, p []byte, ofs int64) error {
+// If all of p is not written to the shard, set returns a non-nil error.
+func (c *Cache) set(fileNum base.FileNum, p []byte, ofs int64) error {
 	if invariants.Enabled {
-		if ofs%int64(sc.blockSize) != 0 || len(p)%sc.blockSize != 0 {
-			panic(fmt.Sprintf("Set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
+		if ofs%int64(c.blockSize) != 0 || len(p)%c.blockSize != 0 {
+			panic(fmt.Sprintf("set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
 		}
 	}
 
@@ -171,16 +181,16 @@ func (sc *sharedCache) Set(fileNum base.FileNum, p []byte, ofs int64) error {
 	// in units of sstable block size.
 	n := 0
 	for {
-		shard := sc.getShard(fileNum, ofs+int64(n))
+		shard := c.getShard(fileNum, ofs+int64(n))
 		cappedLen := len(p[n:])
-		if toBoundary := int(shardingBlockSize - ((ofs + int64(n)) % shardingBlockSize)); cappedLen > toBoundary {
+		if toBoundary := int(ShardingBlockSize - ((ofs + int64(n)) % ShardingBlockSize)); cappedLen > toBoundary {
 			cappedLen = toBoundary
 		}
-		err := shard.Set(fileNum, p[n:n+cappedLen], ofs+int64(n))
+		err := shard.set(fileNum, p[n:n+cappedLen], ofs+int64(n))
 		if err != nil {
 			return err
 		}
-		// Set returns an error if cappedLen bytes aren't written the the shard.
+		// set returns an error if cappedLen bytes aren't written the the shard.
 		n += cappedLen
 		if n == len(p) {
 			// We are done.
@@ -190,19 +200,17 @@ func (sc *sharedCache) Set(fileNum base.FileNum, p []byte, ofs int64) error {
 	}
 }
 
-const shardingBlockSize = 1024 * 1024
-
-func (sc *sharedCache) getShard(fileNum base.FileNum, ofs int64) *sharedCacheShard {
+func (c *Cache) getShard(fileNum base.FileNum, ofs int64) *shard {
 	const prime64 = 1099511628211
-	hash := uint64(fileNum)*prime64 + uint64(ofs)/shardingBlockSize
+	hash := uint64(fileNum)*prime64 + uint64(ofs)/ShardingBlockSize
 	// TODO(josh): Instance change ops are often run in production. Such an operation
-	// updates len(sc.shards); see openSharedCache. As a result, the behavior of this
+	// updates len(c.shards); see openSharedCache. As a result, the behavior of this
 	// function changes, and the cache empties out at restart time. We may want a better
 	// story here eventually.
-	return &sc.shards[hash%uint64(len(sc.shards))]
+	return &c.shards[hash%uint64(len(c.shards))]
 }
 
-type sharedCacheShard struct {
+type shard struct {
 	file         vfs.File
 	sizeInBlocks int64
 	blockSize    int
@@ -220,14 +228,14 @@ type metadataKey struct {
 	blockIndex int64
 }
 
-func (s *sharedCacheShard) init(
+func (s *shard) init(
 	fs vfs.FS, fsDir string, shardIdx int, sizeInBlocks int64, blockSize int,
 ) error {
-	*s = sharedCacheShard{
+	*s = shard{
 		sizeInBlocks: sizeInBlocks,
 	}
-	if blockSize < 1024 || shardingBlockSize%blockSize != 0 {
-		return errors.Newf("invalid block size %d (must divide %d)", blockSize, shardingBlockSize)
+	if blockSize < 1024 || ShardingBlockSize%blockSize != 0 {
+		return errors.Newf("invalid block size %d (must divide %d)", blockSize, ShardingBlockSize)
 	}
 	s.blockSize = blockSize
 	file, err := fs.OpenReadWrite(fs.PathJoin(fsDir, fmt.Sprintf("SHARED-CACHE-%03d", shardIdx)))
@@ -252,24 +260,24 @@ func (s *sharedCacheShard) init(
 	return nil
 }
 
-func (s *sharedCacheShard) Close() error {
+func (s *shard) close() error {
 	defer func() {
 		s.file = nil
 	}()
 	return s.file.Close()
 }
 
-// Get attempts to read the requested data from the shard. The data must not
+// get attempts to read the requested data from the shard. The data must not
 // cross a shard boundary.
 //
 // If all data is available, returns n = len(p).
 //
 // If data is partially available, a prefix of the data is read; returns n < len(p)
 // and no error. If no prefix is available, returns n = 0 and no error.
-func (s *sharedCacheShard) Get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) {
+func (s *shard) get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) {
 	if invariants.Enabled {
-		if ofs/shardingBlockSize != (ofs+int64(len(p))-1)/shardingBlockSize {
-			panic(fmt.Sprintf("Get crosses shard boundary: %v %v", ofs, len(p)))
+		if ofs/ShardingBlockSize != (ofs+int64(len(p))-1)/ShardingBlockSize {
+			panic(fmt.Sprintf("get crosses shard boundary: %v %v", ofs, len(p)))
 		}
 	}
 
@@ -314,18 +322,18 @@ func (s *sharedCacheShard) Get(fileNum base.FileNum, p []byte, ofs int64) (n int
 	}
 }
 
-// Set attempts to write the requested data to the shard. The data must not
+// set attempts to write the requested data to the shard. The data must not
 // cross a shard boundary, and both ofs & len(p) must be multiples of the
 // block size.
 //
-// If all of p is not written to the shard, Set returns a non-nil error.
-func (s *sharedCacheShard) Set(fileNum base.FileNum, p []byte, ofs int64) error {
+// If all of p is not written to the shard, set returns a non-nil error.
+func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
 	if invariants.Enabled {
-		if ofs/shardingBlockSize != (ofs+int64(len(p))-1)/shardingBlockSize {
-			panic(fmt.Sprintf("Set crosses shard boundary: %v %v", ofs, len(p)))
+		if ofs/ShardingBlockSize != (ofs+int64(len(p))-1)/ShardingBlockSize {
+			panic(fmt.Sprintf("set crosses shard boundary: %v %v", ofs, len(p)))
 		}
 		if ofs%int64(s.blockSize) != 0 || len(p)%s.blockSize != 0 {
-			panic(fmt.Sprintf("Set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
+			panic(fmt.Sprintf("set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
 		}
 	}
 
