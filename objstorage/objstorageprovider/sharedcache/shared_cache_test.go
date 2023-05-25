@@ -1,4 +1,4 @@
-package objstorageprovider
+package sharedcache_test
 
 import (
 	"context"
@@ -8,6 +8,9 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -17,7 +20,7 @@ func TestSharedCache(t *testing.T) {
 	ctx := context.Background()
 
 	numShards := 32
-	size := shardingBlockSize * int64(numShards)
+	size := sharedcache.ShardingBlockSize * int64(numShards)
 
 	datadriven.Walk(t, "testdata/cache", func(t *testing.T, path string) {
 		var log base.InMemLogger
@@ -25,9 +28,12 @@ func TestSharedCache(t *testing.T) {
 			log.Infof("<local fs> "+fmt, args...)
 		})
 
-		cache, err := openSharedCache(fs, "", 32*1024, size, 32)
+		cache, err := sharedcache.Open(fs, "", 32*1024, size, 32)
 		require.NoError(t, err)
 		defer cache.Close()
+
+		provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
+		require.NoError(t, err)
 
 		var toWrite []byte
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
@@ -50,9 +56,9 @@ func TestSharedCache(t *testing.T) {
 				var size int
 				scanArgs("<size>", &size)
 
-				file, err := fs.Create("test")
+				writable, _, err := provider.Create(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.CreateOptions{})
 				require.NoError(t, err)
-				defer file.Close()
+				defer writable.Finish()
 
 				// With invariants on, Write will modify its input buffer.
 				toWrite = make([]byte, size)
@@ -61,11 +67,10 @@ func TestSharedCache(t *testing.T) {
 					toWrite[i] = byte(i)
 					wrote[i] = byte(i)
 				}
-				n, err := file.Write(wrote)
+				err = writable.Write(wrote)
 				// Writing a file is test setup, and it always is expected to succeed, so we assert
 				// within the test, rather than returning n and/or err here.
 				require.NoError(t, err)
-				require.Equal(t, size, n)
 
 				return ""
 			case "read":
@@ -73,10 +78,7 @@ func TestSharedCache(t *testing.T) {
 				var offset int64
 				scanArgs("<size> <offset>", &size, &offset)
 
-				file, err := fs.Open("test")
-				require.NoError(t, err)
-
-				readable, err := newFileReadable(file, fs, "test")
+				readable, err := provider.OpenForReading(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
 				require.NoError(t, err)
 				defer readable.Close()
 
@@ -90,7 +92,7 @@ func TestSharedCache(t *testing.T) {
 
 				// TODO(josh): Not tracing out filesystem activity here, since logging_fs.go
 				// doesn't trace calls to ReadAt or WriteAt. We should consider changing this.
-				return fmt.Sprintf("misses=%d", cache.misses.Load())
+				return fmt.Sprintf("misses=%d", cache.Misses.Load())
 			default:
 				d.Fatalf(t, "unknown command %s", d.Cmd)
 				return ""
@@ -107,6 +109,9 @@ func TestSharedCacheRandomized(t *testing.T) {
 		log.Infof("<local fs> "+fmt, args...)
 	})
 
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
+	require.NoError(t, err)
+
 	seed := uint64(time.Now().UnixNano())
 	fmt.Printf("seed: %v\n", seed)
 	rand.Seed(seed)
@@ -114,18 +119,18 @@ func TestSharedCacheRandomized(t *testing.T) {
 	helper := func(blockSize int) func(t *testing.T) {
 		return func(t *testing.T) {
 			numShards := rand.Intn(64) + 1
-			cacheSize := int64(shardingBlockSize * numShards) // minimum allowed cache size
+			cacheSize := int64(sharedcache.ShardingBlockSize * numShards) // minimum allowed cache size
 
-			cache, err := openSharedCache(fs, "", blockSize, cacheSize, numShards)
+			cache, err := sharedcache.Open(fs, "", blockSize, cacheSize, numShards)
 			require.NoError(t, err)
 			defer cache.Close()
 
-			file, err := fs.Create("test")
+			writable, _, err := provider.Create(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.CreateOptions{})
 			require.NoError(t, err)
-
-			size := rand.Int63n(cacheSize)
+			defer writable.Finish()
 
 			// With invariants on, Write will modify its input buffer.
+			size := rand.Int63n(cacheSize)
 			toWrite := make([]byte, size)
 			wrote := make([]byte, size)
 			for i := 0; i < int(size); i++ {
@@ -133,11 +138,10 @@ func TestSharedCacheRandomized(t *testing.T) {
 				wrote[i] = byte(i)
 			}
 
-			n, err := file.Write(wrote)
+			err = writable.Write(wrote)
 			require.NoError(t, err)
-			require.Equal(t, size, int64(n))
 
-			readable, err := newFileReadable(file, fs, "test")
+			readable, err := provider.OpenForReading(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
 			require.NoError(t, err)
 			defer readable.Close()
 
