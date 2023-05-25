@@ -1544,6 +1544,11 @@ func TestManualCompaction(t *testing.T) {
 
 			case "close-snapshots":
 				d.mu.Lock()
+				// Re-enable automatic compactions if they were disabled so that
+				// closing snapshots can trigger elision-only compactions if
+				// necessary.
+				d.opts.DisableAutomaticCompactions = false
+
 				var ss []*Snapshot
 				l := &d.mu.snapshots
 				for i := l.root.next; i != &l.root; i = i.next {
