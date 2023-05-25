@@ -959,7 +959,7 @@ func TestCompaction(t *testing.T) {
 		DebugCheck:            DebugCheckLevels,
 		L0CompactionThreshold: 8,
 	}
-	opts.testingRandomized().WithFSDefaults()
+	opts.testingRandomized(t).WithFSDefaults()
 	d, err := Open("", opts)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -2911,7 +2911,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	for i := range opts.Levels {
 		opts.Levels[i].TargetFileSize = 1
 	}
-	opts.testingRandomized()
+	opts.testingRandomized(t)
 	d, err := Open("", opts)
 	require.NoError(t, err)
 
@@ -3180,7 +3180,7 @@ func TestFlushInvariant(t *testing.T) {
 				t.Run("", func(t *testing.T) {
 					errCh := make(chan error, 1)
 					defer close(errCh)
-					d, err := Open("", testingRandomized(&Options{
+					d, err := Open("", testingRandomized(t, &Options{
 						DisableWAL: disableWAL,
 						FS:         vfs.NewMem(),
 						EventListener: &EventListener{
@@ -3241,7 +3241,7 @@ func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
 	// Verify that manual compaction forces a flush of a queued memtable.
 
 	mem := vfs.NewMem()
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: mem,
 	}).WithFSDefaults())
 	require.NoError(t, err)
@@ -3302,7 +3302,7 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 	// Verify that compaction forces a flush of a queued large batch.
 
 	mem := vfs.NewMem()
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: mem,
 	}).WithFSDefaults())
 	require.NoError(t, err)
@@ -3336,7 +3336,7 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 // that could previously lead to DB.disableFileDeletions blocking forever even
 // though no cleaning was in progress.
 func TestCleanerCond(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}).WithFSDefaults())
 	require.NoError(t, err)
@@ -3389,7 +3389,7 @@ func TestFlushError(t *testing.T) {
 		}
 		return nil
 	}))
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: fs,
 		EventListener: &EventListener{
 			BackgroundError: func(err error) {
@@ -3443,7 +3443,7 @@ func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 }
 
 func TestCompactionInvalidBounds(t *testing.T) {
-	db, err := Open("", testingRandomized(&Options{
+	db, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}).WithFSDefaults())
 	require.NoError(t, err)
@@ -3882,7 +3882,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 	runTest := func(t *testing.T, addFn func(db *DB) error, bgFn func(*DB, error)) {
 		var db *DB
 		inj := &createManifestErrorInjector{}
-		logger := &fatalCapturingLogger{}
+		logger := &fatalCapturingLogger{t: t}
 		opts := (&Options{
 			FS: errorfs.Wrap(vfs.NewMem(), inj),
 			// Rotate the manifest after each write. This is required to trigger a

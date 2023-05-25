@@ -132,7 +132,7 @@ func TestBasicReads(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: cloneFileSystem failed: %v", tc.dirname, err)
 			}
-			d, err := Open(tc.dirname, testingRandomized(&Options{
+			d, err := Open(tc.dirname, testingRandomized(t, &Options{
 				FS: fs,
 			}))
 			if err != nil {
@@ -159,7 +159,7 @@ func TestBasicReads(t *testing.T) {
 }
 
 func TestBasicWrites(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
 	require.NoError(t, err)
@@ -297,7 +297,7 @@ func TestBasicWrites(t *testing.T) {
 }
 
 func TestRandomWrites(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS:           vfs.NewMem(),
 		MemTableSize: 8 * 1024,
 	}))
@@ -350,7 +350,7 @@ func TestRandomWrites(t *testing.T) {
 }
 
 func TestLargeBatch(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS:                          vfs.NewMem(),
 		MemTableSize:                1400,
 		MemTableStopWritesThreshold: 100,
@@ -439,7 +439,7 @@ func TestGetNoCache(t *testing.T) {
 	cache := NewCache(0)
 	defer cache.Unref()
 
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		Cache: cache,
 		FS:    vfs.NewMem(),
 	}))
@@ -453,7 +453,7 @@ func TestGetNoCache(t *testing.T) {
 }
 
 func TestGetMerge(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
 	require.NoError(t, err)
@@ -486,7 +486,7 @@ func TestGetMerge(t *testing.T) {
 func TestMergeOrderSameAfterFlush(t *testing.T) {
 	// Ensure compaction iterator (used by flush) and user iterator process merge
 	// operands in the same order
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
 	require.NoError(t, err)
@@ -546,7 +546,7 @@ func (m *closableMerger) Close() error {
 func TestMergerClosing(t *testing.T) {
 	m := &closableMerger{}
 
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 		Merger: &Merger{
 			Merge: func(key, value []byte) (base.ValueMerger, error) {
@@ -574,7 +574,7 @@ func TestMergerClosing(t *testing.T) {
 }
 
 func TestLogData(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
 	require.NoError(t, err)
@@ -590,7 +590,7 @@ func TestLogData(t *testing.T) {
 }
 
 func TestSingleDeleteGet(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
 	require.NoError(t, err)
@@ -615,7 +615,7 @@ func TestSingleDeleteGet(t *testing.T) {
 }
 
 func TestSingleDeleteFlush(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
 	require.NoError(t, err)
@@ -648,7 +648,7 @@ func TestSingleDeleteFlush(t *testing.T) {
 }
 
 func TestUnremovableSingleDelete(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS:                    vfs.NewMem(),
 		L0CompactionThreshold: 8,
 	}))
@@ -687,7 +687,7 @@ func TestIterLeak(t *testing.T) {
 		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
 			for _, flush := range []bool{true, false} {
 				t.Run(fmt.Sprintf("flush=%t", flush), func(t *testing.T) {
-					d, err := Open("", testingRandomized(&Options{
+					d, err := Open("", testingRandomized(t, &Options{
 						FS: vfs.NewMem(),
 					}))
 					require.NoError(t, err)
@@ -796,7 +796,7 @@ func TestMemTableReservation(t *testing.T) {
 		MemTableSize: initialMemTableSize,
 		FS:           vfs.NewMem(),
 	}
-	opts.testingRandomized()
+	opts.testingRandomized(t)
 	opts.EnsureDefaults()
 	// We're going to be looking at and asserting the global memtable reservation
 	// amount below so we don't want to race with any triggered stats collections.
@@ -907,7 +907,7 @@ func TestCacheEvict(t *testing.T) {
 }
 
 func TestFlushEmpty(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
 	require.NoError(t, err)
@@ -927,7 +927,7 @@ func TestRollManifest(t *testing.T) {
 		NumPrevManifest:       int(toPreserve),
 	}
 	opts.DisableAutomaticCompactions = true
-	opts.testingRandomized()
+	opts.testingRandomized(t)
 	d, err := Open("", opts)
 	require.NoError(t, err)
 
@@ -1107,7 +1107,7 @@ func TestDBClosed(t *testing.T) {
 }
 
 func TestDBConcurrentCommitCompactFlush(t *testing.T) {
-	d, err := Open("", testingRandomized(&Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
 	require.NoError(t, err)
@@ -1149,7 +1149,7 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 				return 2
 			},
 		}
-		d, err := Open("", testingRandomized(opts))
+		d, err := Open("", testingRandomized(t, opts))
 		require.NoError(t, err)
 
 		// Ingest a series of files containing a single key each. As the outer
@@ -1220,7 +1220,7 @@ func TestDBApplyBatchMismatch(t *testing.T) {
 func TestCloseCleanerRace(t *testing.T) {
 	mem := vfs.NewMem()
 	for i := 0; i < 20; i++ {
-		db, err := Open("", testingRandomized(&Options{FS: mem}))
+		db, err := Open("", testingRandomized(t, &Options{FS: mem}))
 		require.NoError(t, err)
 		require.NoError(t, db.Set([]byte("a"), []byte("something"), Sync))
 		require.NoError(t, db.Flush())

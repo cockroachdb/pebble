@@ -24,9 +24,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, string) {
+func loadVersion(
+	t *testing.T, d *datadriven.TestData,
+) (*version, *Options, [numLevels]int64, string) {
 	var sizes [numLevels]int64
 	opts := &Options{}
+	opts.testingRandomized(t)
 	opts.EnsureDefaults()
 
 	if len(d.CmdArgs) != 1 {
@@ -100,7 +103,7 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
-				vers, opts, sizes, errMsg := loadVersion(d)
+				vers, opts, sizes, errMsg := loadVersion(t, d)
 				if errMsg != "" {
 					return errMsg
 				}
@@ -163,7 +166,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 			switch d.Cmd {
 			case "init":
 				var errMsg string
-				vers, opts, sizes, errMsg = loadVersion(d)
+				vers, opts, sizes, errMsg = loadVersion(t, d)
 				if errMsg != "" {
 					return errMsg
 				}
@@ -309,7 +312,7 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
-				vers, opts, sizes, errMsg := loadVersion(d)
+				vers, opts, sizes, errMsg := loadVersion(t, d)
 				if errMsg != "" {
 					return errMsg
 				}
