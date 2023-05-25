@@ -148,7 +148,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 	seed := *seed
 	if seed == 0 {
 		seed = uint64(time.Now().UnixNano())
-		fmt.Printf("seed: %d\n", seed)
+		t.Logf("seed: %d", seed)
 	}
 	rng := rand.New(rand.NewSource(seed))
 	numKeys := 100 + rng.Intn(5000)

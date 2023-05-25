@@ -19,9 +19,12 @@ import (
 
 // testingRandomized randomizes some default options. Currently, it's
 // used for testing under a random format major version in some tests.
-func (o *Options) testingRandomized() *Options {
+func (o *Options) testingRandomized(t testing.TB) *Options {
 	if o == nil {
 		o = &Options{}
+	}
+	if o.Logger == nil {
+		o.Logger = testLogger{t: t}
 	}
 	if o.FormatMajorVersion == FormatDefault {
 		// Pick a random format major version from the range
@@ -31,8 +34,8 @@ func (o *Options) testingRandomized() *Options {
 	return o
 }
 
-func testingRandomized(o *Options) *Options {
-	o.testingRandomized()
+func testingRandomized(t testing.TB, o *Options) *Options {
+	o.testingRandomized(t)
 	return o
 }
 

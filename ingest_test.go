@@ -1878,12 +1878,13 @@ func TestIngestCleanup(t *testing.T) {
 
 // fatalCapturingLogger captures a fatal error instead of panicking.
 type fatalCapturingLogger struct {
+	t   testing.TB
 	err error
 }
 
 // Infof implements the Logger interface.
 func (l *fatalCapturingLogger) Infof(fmt string, args ...interface{}) {
-	base.DefaultLogger.Infof(fmt, args...)
+	l.t.Logf(fmt, args...)
 }
 
 // Fatalf implements the Logger interface.
@@ -1954,7 +1955,7 @@ func TestIngestValidation(t *testing.T) {
 			wg.Add(1)
 
 			fs := vfs.NewMem()
-			logger := &fatalCapturingLogger{}
+			logger := &fatalCapturingLogger{t: t}
 			opts := &Options{
 				FS:     fs,
 				Logger: logger,
