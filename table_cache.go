@@ -1068,9 +1068,16 @@ type loadInfo struct {
 func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *tableCacheOpts) {
 	// Try opening the file first.
 	var f objstorage.Readable
-	f, v.err = dbOpts.objProvider.OpenForReading(
+	var err error
+	f, err = dbOpts.objProvider.OpenForReading(
 		context.TODO(), fileTypeTable, loadInfo.backingFileNum, objstorage.OpenOptions{MustExist: true},
 	)
+	if err != nil {
+		v.err = errors.Wrap(
+			err,
+			fmt.Sprintf("pebble: could not open backing file %s", errors.Safe(loadInfo.backingFileNum.FileNum())),
+		)
+	}
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, loadInfo.backingFileNum).(sstable.ReaderOption)
 		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)

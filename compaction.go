@@ -1457,6 +1457,8 @@ func (c *compaction) newInputIter(
 		for f := iter.First(); f != nil; f = iter.Next() {
 			rangeDelIter, err := newRangeDelIter(iter.Take(), nil, &c.bytesIterated)
 			if err != nil {
+				// The error will already be annotated with the BackingFileNum, so
+				// we annotate it with the FileNum.
 				return errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
 			}
 			if rangeDelIter != emptyKeyspanIter {
