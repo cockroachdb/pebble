@@ -14,3 +14,10 @@ misses=1
 read 6 4
 ----
 misses=1
+
+reload
+----
+
+read 6 4
+----
+misses=0

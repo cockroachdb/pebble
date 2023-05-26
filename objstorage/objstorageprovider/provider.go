@@ -106,6 +106,11 @@ type Settings struct {
 		// 2*runtime.GOMAXPROCS is used as the shard count.
 		CacheShardCount int
 
+		// If true, metadata on the mapping from logical block indexes to cache block indexes
+		// is persisted, implying that the contents in the cache are usable after a server
+		// restart.
+		PersistMetadata bool
+
 		// TODO(radu): allow the cache to live on another FS/location (e.g. to use
 		// instance-local SSD).
 	}
