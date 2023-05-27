@@ -456,6 +456,11 @@ func (g *generator) dbClose() {
 	for len(g.liveSnapshots) > 0 {
 		g.snapshotClose()
 	}
+	for len(g.liveBatches) > 0 {
+		batchID := g.liveBatches[0]
+		g.batchClose(batchID)
+		g.add(&closeOp{objID: batchID})
+	}
 	g.add(&closeOp{objID: makeObjID(dbTag, 0)})
 }
 
@@ -529,7 +534,9 @@ func (g *generator) dbRestart() {
 	}
 	// Close the batches.
 	for len(g.liveBatches) > 0 {
-		g.batchClose(g.liveBatches[0])
+		batchID := g.liveBatches[0]
+		g.batchClose(batchID)
+		g.add(&closeOp{objID: batchID})
 	}
 	if len(g.liveReaders) != 1 || len(g.liveWriters) != 1 {
 		panic(fmt.Sprintf("unexpected counts: liveReaders %d, liveWriters: %d",
