@@ -246,3 +246,79 @@ target
 rkey:a-c
 ----
 4
+
+# Cases with boundary overlap and no data overlap. With suggest-split off
+# we get a target level of L0, but with suggest-split on, we get suggested
+# a file split.
+
+define
+L6
+  a.SET.2:2
+  d.SET.3:3
+L6
+  f.SET.4:4
+  k.SET.6:6
+----
+6:
+  000004:[a#2,SET-d#3,SET]
+  000005:[f#4,SET-k#6,SET]
+
+target
+b-c
+e-g
+----
+5
+5
+
+target suggest-split
+b-c
+e-g
+----
+6 (split file: 000004)
+5
+
+target suggest-split
+g-i
+----
+6 (split file: 000005)
+
+# suggest-split recognizes and avoids in-progress compactions.
+
+define
+L6
+  a.SET.2:2
+  d.SET.3:3
+L6
+  f.SET.4:4
+  k.SET.6:6
+  compact:f-k
+----
+6:
+  000004:[a#2,SET-d#3,SET]
+  000005:[f#4,SET-k#6,SET]
+
+target suggest-split
+g-i
+----
+5
+
+# Ingestion splitting correctly recognizes data overlap in L6, and suggests
+# split in L5.
+
+define
+L5
+  a.SET.2:2
+  e.SET.3:3
+L6
+  c.SET.1:1
+  k.SET.1:1
+----
+5:
+  000004:[a#2,SET-e#3,SET]
+6:
+  000005:[c#1,SET-k#1,SET]
+
+target suggest-split
+b-c
+----
+5 (split file: 000004)

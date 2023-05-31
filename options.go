@@ -550,6 +550,11 @@ type Options struct {
 		// concurrency slots as determined by the two options is chosen.
 		CompactionDebtConcurrency uint64
 
+		// IngestSplit, if it returns true, allows for ingest-time splitting of
+		// existing sstables into two virtual sstables to allow ingestion sstables to
+		// slot into a lower level than they otherwise would have.
+		IngestSplit func() bool
+
 		// ReadCompactionRate controls the frequency of read triggered
 		// compactions by adjusting `AllowedSeeks` in manifest.FileMetadata:
 		//
