@@ -1855,9 +1855,10 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	var level int
 	var err error
 	for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
-		level, err = ingestTargetLevel(
+		level, _, err = ingestTargetLevel(
 			d.newIters, d.tableNewRangeKeyIter, iterOpts, d.cmp,
 			c.version, baseLevel, d.mu.compact.inProgress, file.FileMetadata,
+			false, /* suggestSplit */
 		)
 		if err != nil {
 			return nil, err

@@ -53,7 +53,7 @@ zmemtbl         0     0 B
  titers         0
  filter         -       -    0.0%  (score == utility)
  ingest         1
- 
+
 
 iter
 seek-ge a
@@ -904,3 +904,137 @@ lsm
   000006:[f#12,SET-h#12,SET]
   000010:[s#16,RANGEKEYDEL-x#inf,RANGEKEYDEL]
   000009:[x#15,SET-y#15,SET]
+
+reset enable-split
+----
+
+build ext10
+set a foo
+set e bar
+----
+
+ingest ext10
+----
+
+lsm
+----
+6:
+  000004:[a#10,SET-e#10,SET]
+
+# The below ingestion should split one existing file.
+
+build ext11
+set b foobar
+set d foobar
+----
+
+ingest ext11
+----
+
+lsm
+----
+6:
+  000006:[a#10,SET-a#10,SET]
+  000005:[b#11,SET-d#11,SET]
+  000007:[e#10,SET-e#10,SET]
+
+iter
+first
+next
+next
+next
+----
+a: (foo, .)
+b: (foobar, .)
+d: (foobar, .)
+e: (bar, .)
+
+# This ingestion should not split any files due to data overlap.
+
+build ext12
+set c foobar
+set e baz
+----
+
+ingest ext12
+----
+
+lsm
+----
+0.0:
+  000008:[c#12,SET-e#12,SET]
+6:
+  000006:[a#10,SET-a#10,SET]
+  000005:[b#11,SET-d#11,SET]
+  000007:[e#10,SET-e#10,SET]
+
+# The below ingestion should fall through one existing file and split another
+# file.
+
+build ext13
+set cc foo
+set ccc foooo
+----
+
+ingest ext13
+----
+
+lsm
+----
+0.0:
+  000008:[c#12,SET-e#12,SET]
+6:
+  000006:[a#10,SET-a#10,SET]
+  000010:[b#11,SET-b#11,SET]
+  000009:[cc#13,SET-ccc#13,SET]
+  000011:[d#11,SET-d#11,SET]
+  000007:[e#10,SET-e#10,SET]
+
+iter
+seek-ge c
+next
+next
+next
+next
+----
+c: (foobar, .)
+cc: (foo, .)
+ccc: (foooo, .)
+d: (foobar, .)
+e: (baz, .)
+
+# Ingestion splitting doesn't kick in at L0.
+
+build ext14
+set d updated
+set dd new
+----
+
+ingest ext14
+----
+
+lsm
+----
+0.1:
+  000012:[d#14,SET-dd#14,SET]
+0.0:
+  000008:[c#12,SET-e#12,SET]
+6:
+  000006:[a#10,SET-a#10,SET]
+  000010:[b#11,SET-b#11,SET]
+  000009:[cc#13,SET-ccc#13,SET]
+  000011:[d#11,SET-d#11,SET]
+  000007:[e#10,SET-e#10,SET]
+
+iter
+seek-lt d
+next
+next
+next
+next
+----
+ccc: (foooo, .)
+d: (updated, .)
+dd: (new, .)
+e: (baz, .)
+.

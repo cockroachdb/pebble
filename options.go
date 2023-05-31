@@ -521,6 +521,11 @@ type Options struct {
 		// concurrency slots as determined by the two options is chosen.
 		CompactionDebtConcurrency int
 
+		// IngestSplit, if true, allows for ingest-time splitting of existing
+		// sstables into two virtual sstables to allow ingestion sstables to slot
+		// into a lower level than they otherwise would have.
+		IngestSplit bool
+
 		// MinDeletionRate is the minimum number of bytes per second that would
 		// be deleted. Deletion pacing is used to slow down deletions when
 		// compactions finish up or readers close, and newly-obsolete files need
