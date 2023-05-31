@@ -1905,15 +1905,27 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	ve := &versionEdit{}
 	var level int
 	var err error
+	var fileToSplit *fileMetadata
+	var ingestSplitFiles []ingestSplitFile
 	for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
-		level, err = ingestTargetLevel(
+		suggestSplit := d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit() &&
+			d.FormatMajorVersion() >= FormatVirtualSSTables
+		level, fileToSplit, err = ingestTargetLevel(
 			d.newIters, d.tableNewRangeKeyIter, iterOpts, d.cmp,
 			c.version, baseLevel, d.mu.compact.inProgress, file.FileMetadata,
+			suggestSplit,
 		)
 		if err != nil {
 			return nil, err
 		}
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: file.FileMetadata})
+		if fileToSplit != nil {
+			ingestSplitFiles = append(ingestSplitFiles, ingestSplitFile{
+				ingestFile: file.FileMetadata,
+				splitFile:  fileToSplit,
+				level:      level,
+			})
+		}
 		levelMetrics := c.metrics[level]
 		if levelMetrics == nil {
 			levelMetrics = &LevelMetrics{}
@@ -1921,6 +1933,28 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		}
 		levelMetrics.BytesIngested += file.Size
 		levelMetrics.TablesIngested++
+	}
+
+	updateLevelMetricsOnExcise := func(m *fileMetadata, level int, added []newFileEntry) {
+		levelMetrics := c.metrics[level]
+		if levelMetrics == nil {
+			levelMetrics = &LevelMetrics{}
+			c.metrics[level] = levelMetrics
+		}
+		levelMetrics.NumFiles--
+		levelMetrics.Size -= int64(m.Size)
+		for i := range added {
+			levelMetrics.NumFiles++
+			levelMetrics.Size += int64(added[i].Meta.Size)
+		}
+	}
+
+	if len(ingestSplitFiles) > 0 {
+		ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
+		replacedFiles := make(map[base.FileNum][]newFileEntry)
+		if err := d.ingestSplit(ve, updateLevelMetricsOnExcise, ingestSplitFiles, replacedFiles); err != nil {
+			return nil, err
+		}
 	}
 
 	return ve, nil
@@ -2091,6 +2125,24 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				metrics := c.metrics[0]
 				for i := 0; i < n; i++ {
 					metrics.BytesIn += d.mu.mem.queue[i].logSize
+				}
+			}
+		} else if len(ve.DeletedFiles) > 0 {
+			// c.kind == compactionKindIngestedFlushable && we have deleted files due
+			// to ingest-time splits.
+			//
+			// Iterate through all other compactions, and check if their inputs have
+			// been replaced due to an ingest-time split. In that case, cancel the
+			// compaction.
+			for c2 := range d.mu.compact.inProgress {
+				for i := range c2.inputs {
+					iter := c2.inputs[i].files.Iter()
+					for f := iter.First(); f != nil; f = iter.Next() {
+						if _, ok := ve.DeletedFiles[deletedFileEntry{FileNum: f.FileNum, Level: c2.inputs[i].level}]; ok {
+							c2.cancel.Store(true)
+							break
+						}
+					}
 				}
 			}
 		}

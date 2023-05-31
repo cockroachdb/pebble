@@ -797,6 +797,10 @@ func overlapWithIterator(
 	return computeOverlapWithSpans(*rangeDelIter)
 }
 
+// ingestTargetLevel returns the target level for a file being ingested.
+// If suggestSplit is true, it accounts for ingest-time splitting as part of
+// its target level calculation, and if a split candidate is found, that file
+// is returned as the splitFile.
 func ingestTargetLevel(
 	newIters tableNewIters,
 	newRangeKeyIter keyspan.TableNewSpanIter,
@@ -806,7 +810,8 @@ func ingestTargetLevel(
 	baseLevel int,
 	compactions map[*compaction]struct{},
 	meta *fileMetadata,
-) (int, error) {
+	suggestSplit bool,
+) (targetLevel int, splitFile *fileMetadata, err error) {
 	// Find the lowest level which does not have any files which overlap meta. We
 	// search from L0 to L6 looking for whether there are any files in the level
 	// which overlap meta. We want the "lowest" level (where lower means
@@ -821,6 +826,14 @@ func ingestTargetLevel(
 	//   violate the sequence number invariant.
 	// - no file boundary overlap with level i, since that will violate the
 	//   invariant that files do not overlap in levels i > 0.
+	//   - if there is only a file overlap at a given level, and no data overlap,
+	//     we can still slot a file at that level. We return the fileMetadata with
+	//     which we have file boundary overlap (must be only one file, as sstable
+	//     bounds are usually tight on user keys) and the caller is expected to split
+	//     that sstable into two virtual sstables, allowing this file to go into that
+	//     level. Note that if we have file boundary overlap with two files, which
+	//     should only happen on rare occasions, we treat it as data overlap and
+	//     don't use this optimization.
 	//
 	// The file boundary overlap check is simpler to conceptualize. Consider the
 	// following example, in which the ingested file lies completely before or
@@ -865,12 +878,10 @@ func ingestTargetLevel(
 	// existing point that falls within the ingested table bounds as being "data
 	// overlap".
 
-	targetLevel := 0
-
 	// This assertion implicitly checks that we have the current version of
 	// the metadata.
 	if v.L0Sublevels == nil {
-		return 0, errors.AssertionFailedf("could not read L0 sublevels")
+		return 0, nil, errors.AssertionFailedf("could not read L0 sublevels")
 	}
 	// Check for overlap over the keys of L0 by iterating over the sublevels.
 	for subLevel := 0; subLevel < len(v.L0SublevelFiles); subLevel++ {
@@ -896,10 +907,10 @@ func ingestTargetLevel(
 		err := iter.Close() // Closes range del iter as well.
 		err = firstError(err, levelIter.Close())
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 		if overlap {
-			return targetLevel, nil
+			return targetLevel, nil, nil
 		}
 	}
 
@@ -926,26 +937,47 @@ func ingestTargetLevel(
 		err := levelIter.Close() // Closes range del iter as well.
 		err = firstError(err, rkeyLevelIter.Close())
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 		if overlap {
-			return targetLevel, nil
+			return targetLevel, splitFile, nil
 		}
 
 		// Check boundary overlap.
+		var candidateSplitFile *fileMetadata
 		boundaryOverlaps := v.Overlaps(level, cmp, meta.Smallest.UserKey,
 			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
 		if !boundaryOverlaps.Empty() {
-			continue
+			// We are already guaranteed to not have any data overlaps with files
+			// in boundaryOverlaps, otherwise we'd have returned in the above if
+			// statements. Use this, plus boundaryOverlaps.Len() == 1 to detect for
+			// the case where we can slot this file into the current level despite
+			// a boundary overlap, by splitting one existing file into two virtual
+			// sstables.
+			if suggestSplit && boundaryOverlaps.Len() == 1 {
+				iter := boundaryOverlaps.Iter()
+				candidateSplitFile = iter.First()
+			} else {
+				// We either don't want to suggest ingest-time splits (i.e.
+				// !suggestSplit), or we boundary-overlapped with more than one file.
+				continue
+			}
 		}
 
-		// Check boundary overlap with any ongoing compactions.
+		// Check boundary overlap with any ongoing compactions. We consider an
+		// overlapping compaction that's writing files to an output level as
+		// equivalent to boundary overlap with files in that output level.
 		//
-		// We cannot check for data overlap with the new SSTs compaction will
-		// produce since compaction hasn't been done yet. However, there's no need
-		// to check since all keys in them will either be from c.startLevel or
-		// c.outputLevel, both levels having their data overlap already tested
-		// negative (else we'd have returned earlier).
+		// We cannot check for data overlap with the new SSTs compaction will produce
+		// since compaction hasn't been done yet. However, there's no need to check
+		// since all keys in them will be from levels in [c.startLevel,
+		// c.outputLevel], and all those levels have already had their data overlap
+		// tested negative (else we'd have returned earlier).
+		//
+		// An alternative approach would be to cancel these compactions and proceed
+		// with an ingest-time split on this level if necessary. However, compaction
+		// cancellation can result in significant wasted effort and is best avoided
+		// unless necessary.
 		overlaps := false
 		for c := range compactions {
 			if c.outputLevel == nil || level != c.outputLevel.level {
@@ -959,9 +991,10 @@ func ingestTargetLevel(
 		}
 		if !overlaps {
 			targetLevel = level
+			splitFile = candidateSplitFile
 		}
 	}
-	return targetLevel, nil
+	return targetLevel, splitFile, nil
 }
 
 // Ingest ingests a set of sstables into the DB. Ingestion of the files is
@@ -1820,7 +1853,124 @@ type ingestTargetLevelFunc func(
 	baseLevel int,
 	compactions map[*compaction]struct{},
 	meta *fileMetadata,
-) (int, error)
+	suggestSplit bool,
+) (int, *fileMetadata, error)
+
+type ingestSplitFile struct {
+	// ingestFile is the file being ingested.
+	ingestFile *fileMetadata
+	// splitFile is the file that needs to be split to allow ingestFile to slot
+	// into `level` level.
+	splitFile *fileMetadata
+	// The level where ingestFile will go (and where splitFile already is).
+	level int
+}
+
+// ingestSplit splits files specified in `files` and updates ve in-place to
+// account for existing files getting split into two virtual sstables. The map
+// `replacedFiles` contains an in-progress map of all files that have been
+// replaced with new virtual sstables in this version edit so far, which is also
+// updated in-place.
+//
+// d.mu as well as the manifest lock must be held when calling this method.
+func (d *DB) ingestSplit(
+	ve *versionEdit,
+	updateMetrics func(*fileMetadata, int, []newFileEntry),
+	files []ingestSplitFile,
+	replacedFiles map[base.FileNum][]newFileEntry,
+) error {
+	for _, s := range files {
+		// replacedFiles can be thought of as a tree, where we start iterating with
+		// s.splitFile and run its fileNum through replacedFiles, then find which of
+		// the replaced files overlaps with s.ingestFile, which becomes the new
+		// splitFile, then we check splitFile's replacements in replacedFiles again
+		// for overlap with s.ingestFile, and so on until we either can't find the
+		// current splitFile in replacedFiles (i.e. that's the file that now needs to
+		// be split), or we don't find a file that overlaps with s.ingestFile, which
+		// means a prior ingest split already produced enough room for s.ingestFile
+		// to go into this level without necessitating another ingest split.
+		splitFile := s.splitFile
+		for splitFile != nil {
+			replaced, ok := replacedFiles[splitFile.FileNum]
+			if !ok {
+				break
+			}
+			updatedSplitFile := false
+			for i := range replaced {
+				if replaced[i].Meta.Overlaps(d.cmp, s.ingestFile.Smallest.UserKey, s.ingestFile.Largest.UserKey, s.ingestFile.Largest.IsExclusiveSentinel()) {
+					if updatedSplitFile {
+						// This should never happen because the earlier ingestTargetLevel
+						// function only finds split file candidates that are guaranteed to
+						// have no data overlap, only boundary overlap. See the comments
+						// in that method to see the definitions of data vs boundary
+						// overlap. That, plus the fact that files in `replaced` are
+						// guaranteed to have file bounds that are tight on user keys
+						// (as that's what `d.excise` produces), means that the only case
+						// where we overlap with two or more files in `replaced` is if we
+						// actually had data overlap all along, or if the ingestion files
+						// were overlapping, either of which is an invariant violation.
+						panic("updated with two files in ingestSplit")
+					}
+					splitFile = replaced[i].Meta
+					updatedSplitFile = true
+				}
+			}
+			if !updatedSplitFile {
+				// None of the replaced files overlapped with the file being ingested.
+				// This can happen if we've already excised a span overlapping with
+				// this file, or if we have consecutive ingested files that can slide
+				// within the same gap between keys in an existing file. For instance,
+				// if an existing file has keys a and g and we're ingesting b-c, d-e,
+				// the first loop iteration will split the existing file into one that
+				// ends in a and another that starts at g, and the second iteration will
+				// fall into this case and require no splitting.
+				//
+				// No splitting necessary.
+				splitFile = nil
+			}
+		}
+		if splitFile == nil {
+			continue
+		}
+		// NB: excise operates on [start, end). We're splitting at [start, end]
+		// (assuming !s.ingestFile.Largest.IsExclusiveSentinel()). The conflation
+		// of exclusive vs inclusive end bounds should not make a difference here
+		// as we're guaranteed to not have any data overlap between splitFile and
+		// s.ingestFile, so panic if we do see a newly added file with an endKey
+		// equalling s.ingestFile.Largest, and !s.ingestFile.Largest.IsExclusiveSentinel()
+		added, err := d.excise(KeyRange{Start: s.ingestFile.Smallest.UserKey, End: s.ingestFile.Largest.UserKey}, splitFile, ve, s.level)
+		if err != nil {
+			return err
+		}
+		if _, ok := ve.DeletedFiles[deletedFileEntry{
+			Level:   s.level,
+			FileNum: splitFile.FileNum,
+		}]; !ok {
+			panic("did not split file that was expected to be split")
+		}
+		replacedFiles[splitFile.FileNum] = added
+		for i := range added {
+			if s.ingestFile.Overlaps(d.cmp, added[i].Meta.Smallest.UserKey, added[i].Meta.Largest.UserKey, added[i].Meta.Largest.IsExclusiveSentinel()) {
+				panic("ingest-time split produced a file that overlaps with ingested file")
+			}
+		}
+		updateMetrics(splitFile, s.level, added)
+	}
+	// Flatten the version edit by removing any entries from ve.NewFiles that
+	// are also in ve.DeletedFiles.
+	newNewFiles := ve.NewFiles[:0]
+	for i := range ve.NewFiles {
+		fn := ve.NewFiles[i].Meta.FileNum
+		deEntry := deletedFileEntry{Level: ve.NewFiles[i].Level, FileNum: fn}
+		if _, ok := ve.DeletedFiles[deEntry]; ok {
+			delete(ve.DeletedFiles, deEntry)
+		} else {
+			newNewFiles = append(newNewFiles, ve.NewFiles[i])
+		}
+	}
+	ve.NewFiles = newNewFiles
+	return nil
+}
 
 func (d *DB) ingestApply(
 	jobID int,
@@ -1835,7 +1985,7 @@ func (d *DB) ingestApply(
 	ve := &versionEdit{
 		NewFiles: make([]newFileEntry, lr.fileCount),
 	}
-	if exciseSpan.Valid() {
+	if exciseSpan.Valid() || (d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit()) {
 		ve.DeletedFiles = map[manifest.DeletedFileEntry]*manifest.FileMetadata{}
 	}
 	metrics := make(map[int]*LevelMetrics)
@@ -1860,9 +2010,17 @@ func (d *DB) ingestApply(
 		}
 	}
 
+	shouldIngestSplit := d.opts.Experimental.IngestSplit != nil &&
+		d.opts.Experimental.IngestSplit() && d.FormatMajorVersion() >= FormatVirtualSSTables
 	current := d.mu.versions.currentVersion()
 	baseLevel := d.mu.versions.picker.getBaseLevel()
 	iterOps := IterOptions{logger: d.opts.Logger}
+	// filesToSplit is a list where each element is a pair consisting of a file
+	// being ingested and a file being split to make room for an ingestion into
+	// that level. Each ingested file will appear at most once in this list. It
+	// is possible for split files to appear twice in this list.
+	filesToSplit := make([]ingestSplitFile, 0)
+	checkCompactions := false
 	for i := 0; i < lr.fileCount; i++ {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
@@ -1895,6 +2053,7 @@ func (d *DB) ingestApply(
 			if externalFile {
 				ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 			}
+			var splitFile *fileMetadata
 			if exciseSpan.Valid() && exciseSpan.Contains(d.cmp, m.Smallest) && exciseSpan.Contains(d.cmp, m.Largest) {
 				// This file fits perfectly within the excise span. We can slot it at
 				// L6, or sharedLevelsStart - 1 if we have shared files.
@@ -1907,7 +2066,31 @@ func (d *DB) ingestApply(
 					f.Level = 6
 				}
 			} else {
-				f.Level, err = findTargetLevel(d.newIters, d.tableNewRangeKeyIter, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
+				// TODO(bilal): findTargetLevel does disk IO (reading files for data
+				// overlap) even though we're holding onto d.mu. Consider unlocking
+				// d.mu while we do this. We already hold versions.logLock so we should
+				// not see any version applications while we're at this. The one
+				// complication here would be pulling out the mu.compact.inProgress
+				// check from findTargetLevel, as that requires d.mu to be held.
+				f.Level, splitFile, err = findTargetLevel(
+					d.newIters, d.tableNewRangeKeyIter, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m, shouldIngestSplit)
+			}
+
+			if splitFile != nil {
+				if invariants.Enabled {
+					if lf := current.Levels[f.Level].Find(d.cmp, splitFile); lf == nil {
+						panic("splitFile returned is not in level it should be")
+					}
+				}
+				// We take advantage of the fact that we won't drop the db mutex
+				// between now and the call to logAndApply. So, no files should
+				// get added to a new in-progress compaction at this point. We can
+				// avoid having to iterate on in-progress compactions to cancel them
+				// if none of the files being split have a compacting state.
+				if splitFile.IsCompacting() {
+					checkCompactions = true
+				}
+				filesToSplit = append(filesToSplit, ingestSplitFile{ingestFile: m, splitFile: splitFile, level: f.Level})
 			}
 		}
 		if err != nil {
@@ -1924,6 +2107,26 @@ func (d *DB) ingestApply(
 		levelMetrics.Size += int64(m.Size)
 		levelMetrics.BytesIngested += m.Size
 		levelMetrics.TablesIngested++
+	}
+	// replacedFiles maps files excised due to exciseSpan (or splitFiles returned
+	// by ingestTargetLevel), to files that were created to replace it. This map
+	// is used to resolve references to split files in filesToSplit, as it is
+	// possible for a file that we want to split to no longer exist or have a
+	// newer fileMetadata due to a split induced by another ingestion file, or an
+	// excise.
+	replacedFiles := make(map[base.FileNum][]newFileEntry)
+	updateLevelMetricsOnExcise := func(m *fileMetadata, level int, added []newFileEntry) {
+		levelMetrics := metrics[level]
+		if levelMetrics == nil {
+			levelMetrics = &LevelMetrics{}
+			metrics[level] = levelMetrics
+		}
+		levelMetrics.NumFiles--
+		levelMetrics.Size -= int64(m.Size)
+		for i := range added {
+			levelMetrics.NumFiles++
+			levelMetrics.Size += int64(added[i].Meta.Size)
+		}
 	}
 	if exciseSpan.Valid() {
 		// Iterate through all levels and find files that intersect with exciseSpan.
@@ -1946,7 +2149,7 @@ func (d *DB) ingestApply(
 			iter := overlaps.Iter()
 
 			for m := iter.First(); m != nil; m = iter.Next() {
-				excised, err := d.excise(exciseSpan, m, ve, level)
+				newFiles, err := d.excise(exciseSpan, m, ve, level)
 				if err != nil {
 					return nil, err
 				}
@@ -1958,19 +2161,19 @@ func (d *DB) ingestApply(
 					// We did not excise this file.
 					continue
 				}
-				levelMetrics := metrics[level]
-				if levelMetrics == nil {
-					levelMetrics = &LevelMetrics{}
-					metrics[level] = levelMetrics
-				}
-				levelMetrics.NumFiles--
-				levelMetrics.Size -= int64(m.Size)
-				for i := range excised {
-					levelMetrics.NumFiles++
-					levelMetrics.Size += int64(excised[i].Meta.Size)
-				}
+				replacedFiles[m.FileNum] = newFiles
+				updateLevelMetricsOnExcise(m, level, newFiles)
 			}
 		}
+	}
+	if len(filesToSplit) > 0 {
+		// For the same reasons as the above call to excise, we hold the db mutex
+		// while calling this method.
+		if err := d.ingestSplit(ve, updateLevelMetricsOnExcise, filesToSplit, replacedFiles); err != nil {
+			return nil, err
+		}
+	}
+	if len(filesToSplit) > 0 || exciseSpan.Valid() {
 		for c := range d.mu.compact.inProgress {
 			if c.versionEditApplied {
 				continue
@@ -1985,22 +2188,41 @@ func (d *DB) ingestApply(
 			if exciseSpan.OverlapsInternalKeyRange(d.cmp, c.smallest, c.largest) {
 				c.cancel.Store(true)
 			}
+			// Check if this compaction's inputs have been replaced due to an
+			// ingest-time split. In that case, cancel the compaction as a newly picked
+			// compaction would need to include any new files that slid in between
+			// previously-existing files. Note that we cancel any compaction that has a
+			// file that was ingest-split as an input, even if it started before this
+			// ingestion.
+			if checkCompactions {
+				for i := range c.inputs {
+					iter := c.inputs[i].files.Iter()
+					for f := iter.First(); f != nil; f = iter.Next() {
+						if _, ok := replacedFiles[f.FileNum]; ok {
+							c.cancel.Store(true)
+							break
+						}
+					}
+				}
+			}
 		}
 		// Check for any EventuallyFileOnlySnapshots that could be watching for
 		// an excise on this span.
-		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
-			if s.efos == nil {
-				continue
-			}
-			efos := s.efos
-			// TODO(bilal): We can make this faster by taking advantage of the sorted
-			// nature of protectedRanges to do a sort.Search, or even maintaining a
-			// global list of all protected ranges instead of having to peer into every
-			// snapshot.
-			for i := range efos.protectedRanges {
-				if efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
-					efos.excised.Store(true)
-					break
+		if exciseSpan.Valid() {
+			for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
+				if s.efos == nil {
+					continue
+				}
+				efos := s.efos
+				// TODO(bilal): We can make this faster by taking advantage of the sorted
+				// nature of protectedRanges to do a sort.Search, or even maintaining a
+				// global list of all protected ranges instead of having to peer into every
+				// snapshot.
+				for i := range efos.protectedRanges {
+					if efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
+						efos.excised.Store(true)
+						break
+					}
 				}
 			}
 		}

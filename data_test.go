@@ -1356,8 +1356,9 @@ func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 		int,
 		map[*compaction]struct{},
 		*fileMetadata,
-	) (int, error) {
-		return level, nil
+		bool,
+	) (int, *fileMetadata, error) {
+		return level, nil, nil
 	}, nil /* shared */, KeyRange{}, nil /* external */)
 	return err
 }
