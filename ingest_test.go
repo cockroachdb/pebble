@@ -1953,16 +1953,28 @@ func TestIngestTargetLevel(t *testing.T) {
 
 		case "target":
 			var buf bytes.Buffer
+			suggestSplit := false
+			for _, cmd := range td.CmdArgs {
+				switch cmd.Key {
+				case "suggest-split":
+					suggestSplit = true
+				}
+			}
 			for _, target := range strings.Split(td.Input, "\n") {
 				meta := parseMeta(target)
-				level, err := ingestTargetLevel(
+				level, overlapFile, err := ingestTargetLevel(
 					d.newIters, d.tableNewRangeKeyIter, IterOptions{logger: d.opts.Logger},
 					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta,
+					suggestSplit,
 				)
 				if err != nil {
 					return err.Error()
 				}
-				fmt.Fprintf(&buf, "%d\n", level)
+				if overlapFile != nil {
+					fmt.Fprintf(&buf, "%d (split file: %s)\n", level, overlapFile.FileNum)
+				} else {
+					fmt.Fprintf(&buf, "%d\n", level)
+				}
 			}
 			return buf.String()
 
@@ -1980,7 +1992,7 @@ func TestIngest(t *testing.T) {
 		require.NoError(t, d.Close())
 	}()
 
-	reset := func() {
+	reset := func(split bool) {
 		if d != nil {
 			require.NoError(t, d.Close())
 		}
@@ -1997,6 +2009,9 @@ func TestIngest(t *testing.T) {
 			}},
 			FormatMajorVersion: internalFormatNewest,
 		}
+		opts.Experimental.IngestSplit = func() bool {
+			return split
+		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
@@ -2005,12 +2020,21 @@ func TestIngest(t *testing.T) {
 		d, err = Open("", opts)
 		require.NoError(t, err)
 	}
-	reset()
+	reset(false /* split */)
 
 	datadriven.RunTest(t, "testdata/ingest", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
-			reset()
+			split := false
+			for _, cmd := range td.CmdArgs {
+				switch cmd.Key {
+				case "enable-split":
+					split = true
+				default:
+					return fmt.Sprintf("unexpected key: %s", cmd.Key)
+				}
+			}
+			reset(split)
 			return ""
 		case "batch":
 			b := d.NewIndexedBatch()

@@ -907,3 +907,272 @@ lsm
   000006:[f#12,SET-h#12,SET]
   000010:[s#16,RANGEKEYDEL-x#inf,RANGEKEYDEL]
   000009:[x#15,SET-y#15,SET]
+
+reset enable-split
+----
+
+build ext10
+set a foo
+set e bar
+----
+
+ingest ext10
+----
+
+lsm
+----
+6:
+  000004:[a#10,SET-e#10,SET]
+
+# The below ingestion should split one existing file.
+
+build ext11
+set b foobar
+set d foobar
+----
+
+ingest ext11
+----
+
+lsm
+----
+6:
+  000006:[a#10,SET-a#10,SET]
+  000005:[b#11,SET-d#11,SET]
+  000007:[e#10,SET-e#10,SET]
+
+iter
+first
+next
+next
+next
+----
+a: (foo, .)
+b: (foobar, .)
+d: (foobar, .)
+e: (bar, .)
+
+# This ingestion should not split any files due to data overlap.
+
+build ext12
+set c foobar
+set e baz
+----
+
+ingest ext12
+----
+
+lsm
+----
+0.0:
+  000008:[c#12,SET-e#12,SET]
+6:
+  000006:[a#10,SET-a#10,SET]
+  000005:[b#11,SET-d#11,SET]
+  000007:[e#10,SET-e#10,SET]
+
+# The below ingestion should fall through one existing file and split another
+# file.
+
+build ext13
+set cc foo
+set ccc foooo
+----
+
+ingest ext13
+----
+
+lsm
+----
+0.0:
+  000008:[c#12,SET-e#12,SET]
+6:
+  000006:[a#10,SET-a#10,SET]
+  000010:[b#11,SET-b#11,SET]
+  000009:[cc#13,SET-ccc#13,SET]
+  000011:[d#11,SET-d#11,SET]
+  000007:[e#10,SET-e#10,SET]
+
+iter
+seek-ge c
+next
+next
+next
+next
+----
+c: (foobar, .)
+cc: (foo, .)
+ccc: (foooo, .)
+d: (foobar, .)
+e: (baz, .)
+
+# Ingestion splitting doesn't kick in at L0.
+
+build ext14
+set d updated
+set dd new
+----
+
+ingest ext14
+----
+
+lsm
+----
+0.1:
+  000012:[d#14,SET-dd#14,SET]
+0.0:
+  000008:[c#12,SET-e#12,SET]
+6:
+  000006:[a#10,SET-a#10,SET]
+  000010:[b#11,SET-b#11,SET]
+  000009:[cc#13,SET-ccc#13,SET]
+  000011:[d#11,SET-d#11,SET]
+  000007:[e#10,SET-e#10,SET]
+
+iter
+seek-lt d
+next
+next
+next
+next
+----
+ccc: (foooo, .)
+d: (updated, .)
+dd: (new, .)
+e: (baz, .)
+.
+
+# Multi-sstable ingestion batches. This exercises logic to find the appropriate
+# file to split for each newly ingested file, as we will be repeatedly splitting
+# files into smaller virtual files.
+
+reset enable-split
+----
+
+build ext10
+set a foo
+set e bar
+set g baz
+----
+
+ingest ext10
+----
+
+lsm
+----
+6:
+  000004:[a#10,SET-g#10,SET]
+
+build ext11
+set b foobar
+set c foobar
+----
+
+build ext12
+set cc foobar
+set d foobar
+----
+
+# This ingestion should slide in the same gap between keys in ext10.
+
+ingest ext11 ext12
+----
+
+lsm
+----
+6:
+  000007:[a#10,SET-a#10,SET]
+  000005:[b#11,SET-c#11,SET]
+  000006:[cc#12,SET-d#12,SET]
+  000008:[e#10,SET-g#10,SET]
+
+# A virtual sstable produced from an ingest split can be ingest split again.
+
+build ext13
+set ee foooo
+set f bar
+----
+
+ingest ext13
+----
+
+lsm
+----
+6:
+  000007:[a#10,SET-a#10,SET]
+  000005:[b#11,SET-c#11,SET]
+  000006:[cc#12,SET-d#12,SET]
+  000010:[e#10,SET-e#10,SET]
+  000009:[ee#13,SET-f#13,SET]
+  000011:[g#10,SET-g#10,SET]
+
+reset enable-split
+----
+
+build ext10
+set a foo
+set e bar
+set g baz
+----
+
+ingest ext10
+----
+
+lsm
+----
+6:
+  000004:[a#10,SET-g#10,SET]
+
+build ext11
+set b foobar
+set c foobar
+----
+
+build ext12
+set cc foobar
+set d foobar
+----
+
+build ext13
+set ee foooo
+set f bar
+----
+
+# This ingestion should split ext10 twice, and land two files on one side
+# of a key in it, and another file on another side of it.
+
+ingest ext11 ext12 ext13
+----
+
+lsm
+----
+6:
+  000008:[a#10,SET-a#10,SET]
+  000005:[b#11,SET-c#11,SET]
+  000006:[cc#12,SET-d#12,SET]
+  000010:[e#10,SET-e#10,SET]
+  000007:[ee#13,SET-f#13,SET]
+  000011:[g#10,SET-g#10,SET]
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (foobar, .)
+c: (foobar, .)
+cc: (foobar, .)
+d: (foobar, .)
+e: (bar, .)
+ee: (foooo, .)
+f: (bar, .)
+g: (baz, .)
+.
