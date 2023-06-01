@@ -289,10 +289,10 @@ layout
        108  index (22)
        135  index (22)
        162  top-index (51)
-       218  properties (717)
-       940  meta-index (33)
-       978  footer (53)
-      1031  EOF
+       218  properties (580)
+       803  meta-index (33)
+       841  footer (53)
+       894  EOF
 
 scan
 ----
@@ -337,7 +337,7 @@ layout
          0  data (8)
         13  index (21)
         39  range-key (82)
-       126  properties (765)
-       896  meta-index (57)
-       958  footer (53)
-      1011  EOF
+       126  properties (628)
+       759  meta-index (57)
+       821  footer (53)
+       874  EOF

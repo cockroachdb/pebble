@@ -3500,7 +3500,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 			return err
 		}
 		r.propertiesBH = bh
-		err := r.Properties.load(b.Get(), bh.Offset)
+		err := r.Properties.load(b.Get(), bh.Offset, r.opts.DeniedUserProperties)
 		b.Release()
 		if err != nil {
 			return err
@@ -3924,6 +3924,7 @@ func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption
 	if r.err != nil {
 		return nil, r.Close()
 	}
+
 	return r, nil
 }
 
