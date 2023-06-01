@@ -9,4 +9,4 @@ misses=1
 
 read 5 32768
 ----
-misses=1
+misses=0

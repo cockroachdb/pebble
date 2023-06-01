@@ -7,7 +7,9 @@ package objstorageprovider
 import (
 	"context"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/objstorage/shared"
 )
 
@@ -16,18 +18,40 @@ import (
 type sharedReadable struct {
 	objReader shared.ObjectReader
 	size      int64
+	fileNum   base.DiskFileNum
+	provider  *provider
 }
 
 var _ objstorage.Readable = (*sharedReadable)(nil)
 
-func newSharedReadable(objReader shared.ObjectReader, size int64) *sharedReadable {
+func (p *provider) newSharedReadable(
+	objReader shared.ObjectReader, size int64, fileNum base.DiskFileNum,
+) *sharedReadable {
 	return &sharedReadable{
 		objReader: objReader,
 		size:      size,
+		fileNum:   fileNum,
+		provider:  p,
 	}
 }
 
+// ReadAt is part of the objstorage.Readable interface.
 func (r *sharedReadable) ReadAt(ctx context.Context, p []byte, offset int64) error {
+	return r.readInternal(ctx, p, offset, false /* forCompaction */)
+}
+
+// readInternal performs a read for the object, using the cache when
+// appropriate.
+func (r *sharedReadable) readInternal(
+	ctx context.Context, p []byte, offset int64, forCompaction bool,
+) error {
+	if cache := r.provider.shared.cache; cache != nil {
+		flags := sharedcache.ReadFlags{
+			// Don't add data to the cache if this read is for a compaction.
+			ReadOnly: forCompaction,
+		}
+		return r.provider.shared.cache.ReadAt(ctx, r.fileNum, p, offset, r.objReader, flags)
+	}
 	return r.objReader.ReadAt(ctx, p, offset)
 }
 
@@ -59,6 +83,7 @@ type sharedReadHandle struct {
 
 var _ objstorage.ReadHandle = (*sharedReadHandle)(nil)
 
+// ReadAt is part of the objstorage.ReadHandle interface.
 func (r *sharedReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) error {
 	readaheadSize := r.maybeReadahead(offset, len(p))
 
@@ -85,7 +110,8 @@ func (r *sharedReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) e
 		} else {
 			r.readahead.data = make([]byte, readaheadSize)
 		}
-		if err := r.readable.ReadAt(ctx, r.readahead.data, offset); err != nil {
+
+		if err := r.readable.readInternal(ctx, r.readahead.data, offset, r.forCompaction); err != nil {
 			// Make sure we don't treat the data as valid next time.
 			r.readahead.data = r.readahead.data[:0]
 			return err
@@ -94,7 +120,7 @@ func (r *sharedReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) e
 		return nil
 	}
 
-	return r.readable.ReadAt(ctx, p, offset)
+	return r.readable.readInternal(ctx, p, offset, r.forCompaction)
 }
 
 func (r *sharedReadHandle) maybeReadahead(offset int64, len int) int {
@@ -105,16 +131,19 @@ func (r *sharedReadHandle) maybeReadahead(offset int64, len int) int {
 	return int(r.readahead.state.maybeReadahead(offset, int64(len)))
 }
 
+// Close is part of the objstorage.ReadHandle interface.
 func (r *sharedReadHandle) Close() error {
 	r.readable = nil
 	r.readahead.data = nil
 	return nil
 }
 
+// SetupForCompaction is part of the objstorage.ReadHandle interface.
 func (r *sharedReadHandle) SetupForCompaction() {
 	r.forCompaction = true
 }
 
+// RecordCacheHit is part of the objstorage.ReadHandle interface.
 func (r *sharedReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {
 	if !r.forCompaction {
 		r.readahead.state.recordCacheHit(offset, size)

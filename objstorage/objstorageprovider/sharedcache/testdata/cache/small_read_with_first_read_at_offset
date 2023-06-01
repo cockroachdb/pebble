@@ -9,8 +9,8 @@ misses=1
 
 read 6 4
 ----
-misses=1
+misses=0
 
 read 10 0
 ----
-misses=1
+misses=0

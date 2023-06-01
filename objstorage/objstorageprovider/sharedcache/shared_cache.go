@@ -14,7 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -71,11 +71,25 @@ func (c *Cache) Close() error {
 	return retErr
 }
 
+// ReadFlags contains options for Cache.ReadAt.
+type ReadFlags struct {
+	// ReadOnly instructs ReadAt to not write any new data into the cache; it is
+	// used when the data is unlikely to be used again.
+	ReadOnly bool
+}
+
 // ReadAt performs a read form an object, attempting to use cached data when
 // possible.
 func (c *Cache) ReadAt(
-	ctx context.Context, fileNum base.FileNum, p []byte, ofs int64, readable objstorage.Readable,
+	ctx context.Context,
+	fileNum base.DiskFileNum,
+	p []byte,
+	ofs int64,
+	objReader shared.ObjectReader,
+	flags ReadFlags,
 ) error {
+	// TODO(radu): for compaction reads, we may not want to read from the cache at
+	// all.
 	{
 		n, err := c.get(fileNum, p, ofs)
 		if err != nil {
@@ -98,6 +112,12 @@ func (c *Cache) ReadAt(
 		}
 	}
 
+	c.Misses.Add(1)
+
+	if flags.ReadOnly {
+		return objReader.ReadAt(ctx, p, ofs)
+	}
+
 	// We must do reads with offset & size that are multiples of the block size. Else
 	// later cache hits may return incorrect zeroed results from the cache.
 	firstBlockInd := ofs / int64(c.blockSize)
@@ -105,19 +125,14 @@ func (c *Cache) ReadAt(
 
 	// Take the length of what is left to read plus the length of the adjustment of
 	// the offset plus the size of a block minus one and divide by the size of a block
-	// to get the number of blocks to read from the readable.
+	// to get the number of blocks to read from the object.
 	sizeOfOffAdjustment := int(ofs - adjustedOfs)
 	numBlocksToRead := ((len(p) + sizeOfOffAdjustment) + (c.blockSize - 1)) / c.blockSize
 	adjustedLen := numBlocksToRead * c.blockSize
 	adjustedP := make([]byte, adjustedLen)
 
 	// Read the rest from the object.
-	c.Misses.Add(1)
-	// TODO(josh): To have proper EOF handling, we will need readable.ReadAt to return
-	// the number of bytes read successfully. As is, we cannot tell if the readable.ReadAt
-	// should be returned from cache.ReadAt. For now, the cache just swallows all
-	// io.EOF errors.
-	if err := readable.ReadAt(ctx, adjustedP, adjustedOfs); err != nil && err != io.EOF {
+	if err := objReader.ReadAt(ctx, adjustedP, adjustedOfs); err != nil && err != io.EOF {
 		return err
 	}
 	copy(p, adjustedP[sizeOfOffAdjustment:])
@@ -132,13 +147,14 @@ func (c *Cache) ReadAt(
 	return nil
 }
 
-// get attempts to read the requested data from the cache.
+// get attempts to read the requested data from the cache, if it is already
+// there.
 //
 // If all data is available, returns n = len(p).
 //
 // If data is partially available, a prefix of the data is read; returns n < len(p)
 // and no error. If no prefix is available, returns n = 0 and no error.
-func (c *Cache) get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) {
+func (c *Cache) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ error) {
 	// The data extent might cross shard boundaries, hence the loop. In the hot
 	// path, max two iterations of this loop will be executed, since reads are sized
 	// in units of sstable block size.
@@ -169,7 +185,7 @@ func (c *Cache) get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) 
 // be multiples of the block size.
 //
 // If all of p is not written to the shard, set returns a non-nil error.
-func (c *Cache) set(fileNum base.FileNum, p []byte, ofs int64) error {
+func (c *Cache) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 	if invariants.Enabled {
 		if ofs%int64(c.blockSize) != 0 || len(p)%c.blockSize != 0 {
 			panic(fmt.Sprintf("set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
@@ -200,9 +216,9 @@ func (c *Cache) set(fileNum base.FileNum, p []byte, ofs int64) error {
 	}
 }
 
-func (c *Cache) getShard(fileNum base.FileNum, ofs int64) *shard {
+func (c *Cache) getShard(fileNum base.DiskFileNum, ofs int64) *shard {
 	const prime64 = 1099511628211
-	hash := uint64(fileNum)*prime64 + uint64(ofs)/ShardingBlockSize
+	hash := uint64(fileNum.FileNum())*prime64 + uint64(ofs)/ShardingBlockSize
 	// TODO(josh): Instance change ops are often run in production. Such an operation
 	// updates len(c.shards); see openSharedCache. As a result, the behavior of this
 	// function changes, and the cache empties out at restart time. We may want a better
@@ -224,7 +240,7 @@ type shard struct {
 }
 
 type metadataKey struct {
-	filenum    base.FileNum
+	fileNum    base.DiskFileNum
 	blockIndex int64
 }
 
@@ -274,7 +290,7 @@ func (s *shard) close() error {
 //
 // If data is partially available, a prefix of the data is read; returns n < len(p)
 // and no error. If no prefix is available, returns n = 0 and no error.
-func (s *shard) get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) {
+func (s *shard) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ error) {
 	if invariants.Enabled {
 		if ofs/ShardingBlockSize != (ofs+int64(len(p))-1)/ShardingBlockSize {
 			panic(fmt.Sprintf("get crosses shard boundary: %v %v", ofs, len(p)))
@@ -291,7 +307,7 @@ func (s *shard) get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) 
 	// in units of sstable block size.
 	for {
 		cacheBlockInd, ok := s.mu.where[metadataKey{
-			filenum:    fileNum,
+			fileNum:    fileNum,
 			blockIndex: (ofs + int64(n)) / int64(s.blockSize),
 		}]
 		if !ok {
@@ -327,7 +343,7 @@ func (s *shard) get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) 
 // block size.
 //
 // If all of p is not written to the shard, set returns a non-nil error.
-func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
+func (s *shard) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 	if invariants.Enabled {
 		if ofs/ShardingBlockSize != (ofs+int64(len(p))-1)/ShardingBlockSize {
 			panic(fmt.Sprintf("set crosses shard boundary: %v %v", ofs, len(p)))
@@ -364,7 +380,7 @@ func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
 		}
 
 		s.mu.where[metadataKey{
-			filenum:    fileNum,
+			fileNum:    fileNum,
 			blockIndex: (ofs + int64(n)) / int64(s.blockSize),
 		}] = cacheBlockInd
 

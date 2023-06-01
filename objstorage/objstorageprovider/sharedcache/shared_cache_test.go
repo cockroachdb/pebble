@@ -1,6 +1,7 @@
 package sharedcache_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -35,7 +36,7 @@ func TestSharedCache(t *testing.T) {
 		provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
 		require.NoError(t, err)
 
-		var toWrite []byte
+		var objData []byte
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
 			scanArgs := func(desc string, args ...interface{}) {
 				t.Helper()
@@ -61,10 +62,10 @@ func TestSharedCache(t *testing.T) {
 				defer writable.Finish()
 
 				// With invariants on, Write will modify its input buffer.
-				toWrite = make([]byte, size)
+				objData = make([]byte, size)
 				wrote := make([]byte, size)
 				for i := 0; i < size; i++ {
-					toWrite[i] = byte(i)
+					objData[i] = byte(i)
 					wrote[i] = byte(i)
 				}
 				err = writable.Write(wrote)
@@ -73,9 +74,11 @@ func TestSharedCache(t *testing.T) {
 				require.NoError(t, err)
 
 				return ""
-			case "read":
+			case "read", "read-for-compaction":
+				missesBefore := cache.Misses.Load()
 				var size int
 				var offset int64
+				// TODO(radu): swap these arguments (the opposite order is typical).
 				scanArgs("<size> <offset>", &size, &offset)
 
 				readable, err := provider.OpenForReading(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
@@ -83,16 +86,20 @@ func TestSharedCache(t *testing.T) {
 				defer readable.Close()
 
 				got := make([]byte, size)
-				err = cache.ReadAt(ctx, 1, got, offset, readable)
+				flags := sharedcache.ReadFlags{
+					ReadOnly: d.Cmd == "read-for-compaction",
+				}
+				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, flags)
 				// We always expect cache.ReadAt to succeed.
 				require.NoError(t, err)
 				// It is easier to assert this condition programmatically, rather than returning
 				// got, which may be very large.
-				require.Equal(t, toWrite[int(offset):], got)
+				require.True(t, bytes.Equal(objData[int(offset):int(offset)+size], got), "incorrect data returned")
 
 				// TODO(josh): Not tracing out filesystem activity here, since logging_fs.go
 				// doesn't trace calls to ReadAt or WriteAt. We should consider changing this.
-				return fmt.Sprintf("misses=%d", cache.Misses.Load())
+				missesAfter := cache.Misses.Load()
+				return fmt.Sprintf("misses=%d", missesAfter-missesBefore)
 			default:
 				d.Fatalf(t, "unknown command %s", d.Cmd)
 				return ""
@@ -131,10 +138,10 @@ func TestSharedCacheRandomized(t *testing.T) {
 
 			// With invariants on, Write will modify its input buffer.
 			size := rand.Int63n(cacheSize)
-			toWrite := make([]byte, size)
+			objData := make([]byte, size)
 			wrote := make([]byte, size)
 			for i := 0; i < int(size); i++ {
-				toWrite[i] = byte(i)
+				objData[i] = byte(i)
 				wrote[i] = byte(i)
 			}
 
@@ -150,14 +157,14 @@ func TestSharedCacheRandomized(t *testing.T) {
 				offset := rand.Int63n(size)
 
 				got := make([]byte, size-offset)
-				err = cache.ReadAt(ctx, 1, got, offset, readable)
+				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, sharedcache.ReadFlags{})
 				require.NoError(t, err)
-				require.Equal(t, toWrite[int(offset):], got)
+				require.Equal(t, objData[int(offset):], got)
 
 				got = make([]byte, size-offset)
-				err = cache.ReadAt(ctx, 1, got, offset, readable)
+				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, sharedcache.ReadFlags{})
 				require.NoError(t, err)
-				require.Equal(t, toWrite[int(offset):], got)
+				require.Equal(t, objData[int(offset):], got)
 			}
 		}
 	}
