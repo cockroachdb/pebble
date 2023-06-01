@@ -167,7 +167,7 @@ layout
        357  value-block (11)
        373  value-block (15)
        393  value-index (8)
-       406  properties (813)
+       406  properties (709)
        406    obsolete-key (16) [restart]
        422    pebble.num.value-blocks (27)
        449    pebble.num.values.in.value-blocks (21)
@@ -175,49 +175,44 @@ layout
        491    rocksdb.block.based.table.index.type (43)
        534    rocksdb.block.based.table.prefix.filtering (20)
        554    rocksdb.block.based.table.whole.key.filtering (23)
-       577    rocksdb.column.family.id (24)
-       601    rocksdb.comparator (35)
-       636    rocksdb.compression (16)
-       652    rocksdb.compression_options (106)
-       758    rocksdb.creation.time (16)
-       774    rocksdb.data.size (14)
-       788    rocksdb.deleted.keys (15)
-       803    rocksdb.external_sst_file.global_seqno (41)
-       844    rocksdb.external_sst_file.version (14)
-       858    rocksdb.filter.size (15)
-       873    rocksdb.fixed.key.length (18)
-       891    rocksdb.format.version (17)
-       908    rocksdb.index.key.is.user.key (25)
-       933    rocksdb.index.partitions (14)
-       947    rocksdb.index.size (9)
-       956    rocksdb.index.value.is.delta.encoded (26)
-       982    rocksdb.merge.operands (18)
-      1000    rocksdb.merge.operator (24)
-      1024    rocksdb.num.data.blocks (19)
-      1043    rocksdb.num.entries (11)
-      1054    rocksdb.num.range-deletions (19)
-      1073    rocksdb.oldest.key.time (19)
-      1092    rocksdb.prefix.extractor.name (31)
-      1123    rocksdb.property.collectors (34)
-      1157    rocksdb.raw.key.size (16)
-      1173    rocksdb.raw.value.size (14)
-      1187    rocksdb.top-level.index.size (24)
-      1211    [restart 406]
-      1219    [trailer compression=none checksum=0xa07c3fa5]
-      1224  meta-index (64)
-      1224    pebble.value_index block:393/8 value-blocks-index-lengths: 1(num), 2(offset), 1(length) [restart]
-      1251    rocksdb.properties block:406/813 [restart]
-      1276    [restart 1224]
-      1280    [restart 1251]
-      1288    [trailer compression=none checksum=0xfe295720]
-      1293  footer (53)
-      1293    checksum type: crc32c
-      1294    meta: offset=1224, length=64
-      1297    index: offset=267, length=85
-      1300    [padding]
-      1334    version: 4
-      1338    magic number: 0xf09faab3f09faab3
-      1346  EOF
+       577    rocksdb.comparator (37)
+       614    rocksdb.compression (16)
+       630    rocksdb.compression_options (106)
+       736    rocksdb.creation.time (16)
+       752    rocksdb.data.size (14)
+       766    rocksdb.deleted.keys (15)
+       781    rocksdb.external_sst_file.global_seqno (41)
+       822    rocksdb.external_sst_file.version (14)
+       836    rocksdb.filter.size (15)
+       851    rocksdb.format.version (17)
+       868    rocksdb.index.partitions (20)
+       888    rocksdb.index.size (9)
+       897    rocksdb.merge.operands (18)
+       915    rocksdb.merge.operator (24)
+       939    rocksdb.num.data.blocks (19)
+       958    rocksdb.num.entries (11)
+       969    rocksdb.num.range-deletions (19)
+       988    rocksdb.prefix.extractor.name (31)
+      1019    rocksdb.property.collectors (34)
+      1053    rocksdb.raw.key.size (16)
+      1069    rocksdb.raw.value.size (14)
+      1083    rocksdb.top-level.index.size (24)
+      1107    [restart 406]
+      1115    [trailer compression=none checksum=0x72032bc4]
+      1120  meta-index (64)
+      1120    pebble.value_index block:393/8 value-blocks-index-lengths: 1(num), 2(offset), 1(length) [restart]
+      1147    rocksdb.properties block:406/709 [restart]
+      1172    [restart 1120]
+      1176    [restart 1147]
+      1184    [trailer compression=none checksum=0xa9123801]
+      1189  footer (53)
+      1189    checksum type: crc32c
+      1190    meta: offset=1120, length=64
+      1193    index: offset=267, length=85
+      1196    [padding]
+      1230    version: 4
+      1234    magic number: 0xf09faab3f09faab3
+      1242  EOF
 
 # Require that [c,e) must be in-place.
 build in-place-bound=(c,e)
@@ -297,48 +292,43 @@ layout
         71    block:0/66 [restart]
         85    [restart 71]
         93    [trailer compression=none checksum=0xf80f5bcf]
-        98  properties (743)
+        98  properties (639)
         98    obsolete-key (16) [restart]
        114    pebble.raw.point-tombstone.key.size (39)
        153    rocksdb.block.based.table.index.type (43)
        196    rocksdb.block.based.table.prefix.filtering (20)
        216    rocksdb.block.based.table.whole.key.filtering (23)
-       239    rocksdb.column.family.id (24)
-       263    rocksdb.comparator (35)
-       298    rocksdb.compression (16)
-       314    rocksdb.compression_options (106)
-       420    rocksdb.creation.time (16)
-       436    rocksdb.data.size (13)
-       449    rocksdb.deleted.keys (15)
-       464    rocksdb.external_sst_file.global_seqno (41)
-       505    rocksdb.external_sst_file.version (14)
-       519    rocksdb.filter.size (15)
-       534    rocksdb.fixed.key.length (18)
-       552    rocksdb.format.version (17)
-       569    rocksdb.index.key.is.user.key (25)
-       594    rocksdb.index.size (8)
-       602    rocksdb.index.value.is.delta.encoded (26)
-       628    rocksdb.merge.operands (18)
-       646    rocksdb.merge.operator (24)
-       670    rocksdb.num.data.blocks (19)
-       689    rocksdb.num.entries (11)
-       700    rocksdb.num.range-deletions (19)
-       719    rocksdb.oldest.key.time (19)
-       738    rocksdb.prefix.extractor.name (31)
-       769    rocksdb.property.collectors (34)
-       803    rocksdb.raw.key.size (16)
-       819    rocksdb.raw.value.size (14)
-       833    [restart 98]
-       841    [trailer compression=none checksum=0x71c150c9]
-       846  meta-index (32)
-       846    rocksdb.properties block:98/743 [restart]
-       870    [restart 846]
-       878    [trailer compression=none checksum=0x545483dc]
-       883  footer (53)
-       883    checksum type: crc32c
-       884    meta: offset=846, length=32
-       887    index: offset=71, length=22
-       889    [padding]
-       924    version: 4
-       928    magic number: 0xf09faab3f09faab3
-       936  EOF
+       239    rocksdb.comparator (37)
+       276    rocksdb.compression (16)
+       292    rocksdb.compression_options (106)
+       398    rocksdb.creation.time (16)
+       414    rocksdb.data.size (13)
+       427    rocksdb.deleted.keys (15)
+       442    rocksdb.external_sst_file.global_seqno (41)
+       483    rocksdb.external_sst_file.version (14)
+       497    rocksdb.filter.size (15)
+       512    rocksdb.format.version (17)
+       529    rocksdb.index.size (14)
+       543    rocksdb.merge.operands (18)
+       561    rocksdb.merge.operator (24)
+       585    rocksdb.num.data.blocks (19)
+       604    rocksdb.num.entries (11)
+       615    rocksdb.num.range-deletions (19)
+       634    rocksdb.prefix.extractor.name (31)
+       665    rocksdb.property.collectors (34)
+       699    rocksdb.raw.key.size (16)
+       715    rocksdb.raw.value.size (14)
+       729    [restart 98]
+       737    [trailer compression=none checksum=0x7cefeacc]
+       742  meta-index (32)
+       742    rocksdb.properties block:98/639 [restart]
+       766    [restart 742]
+       774    [trailer compression=none checksum=0x9a54d7cd]
+       779  footer (53)
+       779    checksum type: crc32c
+       780    meta: offset=742, length=32
+       783    index: offset=71, length=22
+       785    [padding]
+       820    version: 4
+       824    magic number: 0xf09faab3f09faab3
+       832  EOF

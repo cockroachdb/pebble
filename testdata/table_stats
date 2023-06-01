@@ -15,7 +15,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 76
+point-deletions-bytes-estimate: 67
 range-deletions-bytes-estimate: 0
 
 compact a-c
@@ -181,7 +181,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 769
+range-deletions-bytes-estimate: 665
 
 wait-pending-table-stats
 000012
@@ -190,7 +190,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 769
+range-deletions-bytes-estimate: 665
 
 # A table in L6 with two point keys blocks, each covered by distinct range dels.
 # The deletion estimate takes into account the contribution from both deleted
@@ -346,7 +346,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 915
+range-deletions-bytes-estimate: 811
 
 # Drop a range del and a range key del over the entire keyspace. This table can
 # delete everything underneath it.
@@ -542,5 +542,5 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 2
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 113036
+point-deletions-bytes-estimate: 112805
 range-deletions-bytes-estimate: 0

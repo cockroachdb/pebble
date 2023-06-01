@@ -100,6 +100,9 @@ type ReaderOptions struct {
 	// The default cache size is a zero-size cache.
 	Cache *cache.Cache
 
+	// User properties specified in this map will not be added to sst.Properties.UserProperties
+	DeniedUserProperties map[string]struct{}
+
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads
 	// and writes over the lifetime of the DB.
