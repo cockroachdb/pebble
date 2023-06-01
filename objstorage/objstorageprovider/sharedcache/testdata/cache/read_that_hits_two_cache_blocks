@@ -9,8 +9,8 @@ misses=1
 
 read 32773 0
 ----
-misses=1
+misses=0
 
 read 32716 57
 ----
-misses=1
+misses=0
