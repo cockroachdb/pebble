@@ -2181,7 +2181,6 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 		}
 	}
 
-	w.props.ColumnFamilyID = math.MaxInt32
 	w.props.ComparerName = o.Comparer.Name
 	w.props.CompressionName = o.Compression.String()
 	w.props.MergerName = o.MergerName

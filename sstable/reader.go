@@ -3475,7 +3475,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 			return err
 		}
 		r.propertiesBH = bh
-		err := r.Properties.load(b.Get(), bh.Offset)
+		err := r.Properties.load(b.Get(), bh.Offset, make(map[string]struct{}))
 		b.Release()
 		if err != nil {
 			return err

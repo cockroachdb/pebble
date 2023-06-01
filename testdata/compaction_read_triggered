@@ -20,7 +20,7 @@ show-read-compactions
 
 maybe-compact
 ----
-[JOB 100] compacted(read) L5 [000004] (784 B) + L6 [000005] (784 B) -> L6 [000006] (778 B), in 1.0s (2.0s total), output rate 778 B/s
+[JOB 100] compacted(read) L5 [000004] (788 B) + L6 [000005] (788 B) -> L6 [000006] (782 B), in 1.0s (2.0s total), output rate 782 B/s
 
 show-read-compactions
 ----
@@ -81,7 +81,7 @@ show-read-compactions
 
 maybe-compact
 ----
-[JOB 100] compacted(read) L5 [000004] (784 B) + L6 [000005] (784 B) -> L6 [000006] (778 B), in 1.0s (2.0s total), output rate 778 B/s
+[JOB 100] compacted(read) L5 [000004] (788 B) + L6 [000005] (788 B) -> L6 [000006] (782 B), in 1.0s (2.0s total), output rate 782 B/s
 
 show-read-compactions
 ----

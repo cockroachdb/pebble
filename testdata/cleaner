@@ -67,16 +67,16 @@ sync: db/MANIFEST-000001
 mkdir-all: db_wal/archive 0755
 rename: db_wal/000004.log -> db_wal/archive/000004.log
 open: db/000005.sst
-read-at(744, 53): db/000005.sst
-read-at(707, 37): db/000005.sst
-read-at(79, 628): db/000005.sst
+read-at(748, 53): db/000005.sst
+read-at(711, 37): db/000005.sst
+read-at(79, 632): db/000005.sst
 read-at(52, 27): db/000005.sst
 open: db/000005.sst
 close: db/000005.sst
 open: db/000007.sst
-read-at(718, 53): db/000007.sst
-read-at(681, 37): db/000007.sst
-read-at(53, 628): db/000007.sst
+read-at(722, 53): db/000007.sst
+read-at(685, 37): db/000007.sst
+read-at(53, 632): db/000007.sst
 read-at(26, 27): db/000007.sst
 open: db/000007.sst
 close: db/000007.sst

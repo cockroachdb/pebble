@@ -1401,7 +1401,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 836
+range-deletions-bytes-estimate: 840
 
 wait-pending-table-stats
 000004
@@ -1410,7 +1410,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1672
+range-deletions-bytes-estimate: 1680
 
 wait-pending-table-stats
 000005
@@ -1419,7 +1419,7 @@ num-entries: 2
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1672
+range-deletions-bytes-estimate: 1680
 
 
 # Range deletions with varying overlap.
@@ -1522,7 +1522,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 782
+range-deletions-bytes-estimate: 786
 
 wait-pending-table-stats
 000006
@@ -1531,7 +1531,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 771
+range-deletions-bytes-estimate: 775
 
 wait-pending-table-stats
 000004
@@ -1540,4 +1540,4 @@ num-entries: 2
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1553
+range-deletions-bytes-estimate: 1561
