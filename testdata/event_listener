@@ -127,7 +127,7 @@ close: db/marker.manifest.000002.MANIFEST-000006
 remove: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 5] MANIFEST created 000006
-[JOB 5] flushed 1 memtable to L0 [000005] (799 B), in 1.0s (2.0s total), output rate 799 B/s
+[JOB 5] flushed 1 memtable to L0 [000005] (662 B), in 1.0s (2.0s total), output rate 662 B/s
 
 compact
 ----
@@ -151,21 +151,21 @@ close: db/marker.manifest.000003.MANIFEST-000009
 remove: db/marker.manifest.000002.MANIFEST-000006
 sync: db
 [JOB 7] MANIFEST created 000009
-[JOB 7] flushed 1 memtable to L0 [000008] (799 B), in 1.0s (2.0s total), output rate 799 B/s
+[JOB 7] flushed 1 memtable to L0 [000008] (662 B), in 1.0s (2.0s total), output rate 662 B/s
 remove: db/MANIFEST-000001
 [JOB 7] MANIFEST deleted 000001
-[JOB 8] compacting(default) L0 [000005 000008] (1.6 K) + L6 [] (0 B)
+[JOB 8] compacting(default) L0 [000005 000008] (1.3 K) + L6 [] (0 B)
 open: db/000005.sst
-read-at(746, 53): db/000005.sst
-read-at(709, 37): db/000005.sst
-read-at(53, 656): db/000005.sst
+read-at(609, 53): db/000005.sst
+read-at(572, 37): db/000005.sst
+read-at(53, 519): db/000005.sst
 read-at(26, 27): db/000005.sst
 open: db/000005.sst
 close: db/000005.sst
 open: db/000008.sst
-read-at(746, 53): db/000008.sst
-read-at(709, 37): db/000008.sst
-read-at(53, 656): db/000008.sst
+read-at(609, 53): db/000008.sst
+read-at(572, 37): db/000008.sst
+read-at(53, 519): db/000008.sst
 read-at(26, 27): db/000008.sst
 open: db/000008.sst
 close: db/000008.sst
@@ -188,7 +188,7 @@ close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 8] MANIFEST created 000011
-[JOB 8] compacted(default) L0 [000005 000008] (1.6 K) + L6 [] (0 B) -> L6 [000010] (799 B), in 1.0s (3.0s total), output rate 799 B/s
+[JOB 8] compacted(default) L0 [000005 000008] (1.3 K) + L6 [] (0 B) -> L6 [000010] (662 B), in 1.0s (3.0s total), output rate 662 B/s
 close: db/000005.sst
 close: db/000008.sst
 remove: db/000005.sst
@@ -223,7 +223,7 @@ close: db/marker.manifest.000005.MANIFEST-000014
 remove: db/marker.manifest.000004.MANIFEST-000011
 sync: db
 [JOB 10] MANIFEST created 000014
-[JOB 10] flushed 1 memtable to L0 [000013] (799 B), in 1.0s (2.0s total), output rate 799 B/s
+[JOB 10] flushed 1 memtable to L0 [000013] (662 B), in 1.0s (2.0s total), output rate 662 B/s
 
 enable-file-deletions
 ----
@@ -233,9 +233,9 @@ remove: db/MANIFEST-000009
 ingest
 ----
 open: ext/0
-read-at(801, 53): ext/0
-read-at(764, 37): ext/0
-read-at(53, 711): ext/0
+read-at(664, 53): ext/0
+read-at(627, 37): ext/0
+read-at(53, 574): ext/0
 read-at(26, 27): ext/0
 read-at(0, 26): ext/0
 close: ext/0
@@ -243,9 +243,9 @@ link: ext/0 -> db/000015.sst
 [JOB 12] ingesting: sstable created 000015
 sync: db
 open: db/000013.sst
-read-at(746, 53): db/000013.sst
-read-at(709, 37): db/000013.sst
-read-at(53, 656): db/000013.sst
+read-at(609, 53): db/000013.sst
+read-at(572, 37): db/000013.sst
+read-at(53, 519): db/000013.sst
 read-at(26, 27): db/000013.sst
 read-at(0, 26): db/000013.sst
 create: db/MANIFEST-000016
@@ -257,28 +257,28 @@ remove: db/marker.manifest.000005.MANIFEST-000014
 sync: db
 [JOB 12] MANIFEST created 000016
 remove: ext/0
-[JOB 12] ingested L0:000015 (854 B)
+[JOB 12] ingested L0:000015 (717 B)
 
 metrics
 ----
 __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
     WAL         1    27 B       -    48 B       -       -       -       -   108 B       -       -       -     2.2
-      0         2   1.6 K    0.40    81 B   854 B       1     0 B       0   2.3 K       3     0 B       2    29.6
+      0         2   1.3 K    0.40    81 B   717 B       1     0 B       0   1.9 K       3     0 B       2    24.5
       1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   799 B       -   1.6 K     0 B       0     0 B       0   799 B       1   1.6 K       1     0.5
-  total         3   2.4 K       -   962 B   854 B       1     0 B       0   4.1 K       4   1.6 K       3     4.3
+      6         1   662 B       -   1.3 K     0 B       0     0 B       0   662 B       1   1.3 K       1     0.5
+  total         3   2.0 K       -   825 B   717 B       1     0 B       0   3.4 K       4   1.3 K       3     4.2
   flush         3                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         1   2.4 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+compact         1   2.0 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
- bcache         8   1.5 K   11.1%  (score == hit-rate)
- tcache         1   760 B   40.0%  (score == hit-rate)
+ bcache         8   1.2 K   11.1%  (score == hit-rate)
+ tcache         1   680 B   40.0%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
@@ -292,16 +292,16 @@ ingest-flushable
 ----
 sync-data: wal/000012.log
 open: ext/a
-read-at(801, 53): ext/a
-read-at(764, 37): ext/a
-read-at(53, 711): ext/a
+read-at(664, 53): ext/a
+read-at(627, 37): ext/a
+read-at(53, 574): ext/a
 read-at(26, 27): ext/a
 read-at(0, 26): ext/a
 close: ext/a
 open: ext/b
-read-at(801, 53): ext/b
-read-at(764, 37): ext/b
-read-at(53, 711): ext/b
+read-at(664, 53): ext/b
+read-at(627, 37): ext/b
+read-at(53, 574): ext/b
 read-at(26, 27): ext/b
 read-at(0, 26): ext/b
 close: ext/b
@@ -323,7 +323,7 @@ sync: wal
 [JOB 15] WAL created 000020
 remove: ext/a
 remove: ext/b
-[JOB 13] ingested as flushable 000017 (854 B), 000018 (854 B)
+[JOB 13] ingested as flushable 000017 (717 B), 000018 (717 B)
 sync-data: wal/000020.log
 close: wal/000020.log
 create: wal/000021.log
@@ -336,7 +336,7 @@ sync-data: db/000022.sst
 close: db/000022.sst
 sync: db
 sync: db/MANIFEST-000016
-[JOB 17] flushed 1 memtable to L0 [000022] (799 B), in 1.0s (2.0s total), output rate 799 B/s
+[JOB 17] flushed 1 memtable to L0 [000022] (662 B), in 1.0s (2.0s total), output rate 662 B/s
 remove: db/MANIFEST-000011
 [JOB 17] MANIFEST deleted 000011
 [JOB 18] flushing 2 ingested tables
@@ -348,7 +348,7 @@ close: db/marker.manifest.000007.MANIFEST-000023
 remove: db/marker.manifest.000006.MANIFEST-000016
 sync: db
 [JOB 18] MANIFEST created 000023
-[JOB 18] flushed 2 ingested flushables L0:000017 (854 B) + L6:000018 (854 B) in 1.0s (2.0s total), output rate 1.7 K/s
+[JOB 18] flushed 2 ingested flushables L0:000017 (717 B) + L6:000018 (717 B) in 1.0s (2.0s total), output rate 1.4 K/s
 remove: db/MANIFEST-000014
 [JOB 18] MANIFEST deleted 000014
 [JOB 19] flushing 1 memtable to L0
@@ -359,22 +359,22 @@ metrics
 ----
 __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
     WAL         1    29 B       -    82 B       -       -       -       -   110 B       -       -       -     1.3
-      0         4   3.2 K    0.80    81 B   1.7 K       2     0 B       0   3.1 K       4     0 B       4    39.5
+      0         4   2.7 K    0.80    81 B   1.4 K       2     0 B       0   2.6 K       4     0 B       4    32.7
       1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         2   1.6 K       -   1.6 K   854 B       1     0 B       0   799 B       1   1.6 K       1     0.5
-  total         6   4.8 K       -   2.6 K   2.5 K       3     0 B       0   6.5 K       5   1.6 K       5     2.5
-  flush         6                           1.7 K       2       1  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         1   4.8 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+      6         2   1.3 K       -   1.3 K   717 B       1     0 B       0   662 B       1   1.3 K       1     0.5
+  total         6   4.0 K       -   2.2 K   2.1 K       3     0 B       0   5.4 K       5   1.3 K       5     2.5
+  flush         6                           1.4 K       2       1  (ingest = tables-ingested, move = ingested-as-flushable)
+compact         1   4.0 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   512 K
 zmemtbl         0     0 B
    ztbl         0     0 B
- bcache        16   3.0 K   14.3%  (score == hit-rate)
- tcache         1   760 B   50.0%  (score == hit-rate)
+ bcache        16   2.5 K   14.3%  (score == hit-rate)
+ tcache         1   680 B   50.0%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)

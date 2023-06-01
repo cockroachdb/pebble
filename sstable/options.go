@@ -21,6 +21,17 @@ const (
 	NCompression
 )
 
+var ignoredInternalProperties = map[string]struct{}{
+	"rocksdb.column.family.id":             {},
+	"rocksdb.fixed.key.length":             {},
+	"rocksdb.index.key.is.user.key":        {},
+	"rocksdb.index.value.is.delta.encoded": {},
+	"rocksdb.oldest.key.time":              {},
+	"rocksdb.creation.time":                {},
+	"rocksdb.file.creation.time":           {},
+	"rocksdb.format.version":               {},
+}
+
 func (c Compression) String() string {
 	switch c {
 	case DefaultCompression:
@@ -100,6 +111,9 @@ type ReaderOptions struct {
 	// The default cache size is a zero-size cache.
 	Cache *cache.Cache
 
+	// User properties specified in this map will not be added to sst.Properties.UserProperties
+	DeniedUserProperties map[string]struct{}
+
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads
 	// and writes over the lifetime of the DB.
@@ -137,6 +151,9 @@ func (o ReaderOptions) ensureDefaults() ReaderOptions {
 	}
 	if o.LoggerAndTracer == nil {
 		o.LoggerAndTracer = base.NoopLoggerAndTracer{}
+	}
+	if o.DeniedUserProperties == nil {
+		o.DeniedUserProperties = ignoredInternalProperties
 	}
 	return o
 }

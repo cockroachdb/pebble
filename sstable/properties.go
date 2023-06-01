@@ -23,14 +23,6 @@ var propTagMap = make(map[string]reflect.StructField)
 var propBoolTrue = []byte{'1'}
 var propBoolFalse = []byte{'0'}
 
-var columnFamilyIDField = func() reflect.StructField {
-	f, ok := reflect.TypeOf(Properties{}).FieldByName("ColumnFamilyID")
-	if !ok {
-		panic("Properties.ColumnFamilyID field not found")
-	}
-	return f
-}()
-
 var propOffsetTagMap = make(map[uintptr]string)
 
 func init() {
@@ -56,51 +48,32 @@ func init() {
 // automatically populated during sstable creation and load from the properties
 // meta block when an sstable is opened.
 type Properties struct {
-	// ID of column family for this SST file, corresponding to the CF identified
-	// by column_family_name.
-	ColumnFamilyID uint64 `prop:"rocksdb.column.family.id"`
-	// Name of the column family with which this SST file is associated. Empty if
-	// the column family is unknown.
-	ColumnFamilyName string `prop:"rocksdb.column.family.name"`
 	// The name of the comparer used in this table.
 	ComparerName string `prop:"rocksdb.comparator"`
 	// The compression algorithm used to compress blocks.
 	CompressionName string `prop:"rocksdb.compression"`
 	// The compression options used to compress blocks.
 	CompressionOptions string `prop:"rocksdb.compression_options"`
-	// The time when the SST file was created. Since SST files are immutable,
-	// this is equivalent to last modified time.
-	CreationTime uint64 `prop:"rocksdb.creation.time"`
 	// The total size of all data blocks.
 	DataSize uint64 `prop:"rocksdb.data.size"`
 	// The external sstable version format. Version 2 is the one RocksDB has been
 	// using since 5.13. RocksDB only uses the global sequence number for an
 	// sstable if this property has been set.
 	ExternalFormatVersion uint32 `prop:"rocksdb.external_sst_file.version"`
-	// Actual SST file creation time. 0 means unknown.
-	FileCreationTime uint64 `prop:"rocksdb.file.creation.time"`
 	// The name of the filter policy used in this table. Empty if no filter
 	// policy is used.
 	FilterPolicyName string `prop:"rocksdb.filter.policy"`
 	// The size of filter block.
 	FilterSize uint64 `prop:"rocksdb.filter.size"`
-	// If 0, key is variable length. Otherwise number of bytes for each key.
-	FixedKeyLen uint64 `prop:"rocksdb.fixed.key.length"`
-	// Format version, reserved for backward compatibility.
-	FormatVersion uint64 `prop:"rocksdb.format.version"`
 	// The global sequence number to use for all entries in the table. Present if
 	// the table was created externally and ingested whole.
 	GlobalSeqNum uint64 `prop:"rocksdb.external_sst_file.global_seqno"`
-	// Whether the index key is user key or an internal key.
-	IndexKeyIsUserKey uint64 `prop:"rocksdb.index.key.is.user.key"`
 	// Total number of index partitions if kTwoLevelIndexSearch is used.
 	IndexPartitions uint64 `prop:"rocksdb.index.partitions"`
 	// The size of index block.
 	IndexSize uint64 `prop:"rocksdb.index.size"`
 	// The index type. TODO(peter): add a more detailed description.
 	IndexType uint32 `prop:"rocksdb.block.based.table.index.type"`
-	// Whether delta encoding is used to encode the index values.
-	IndexValueIsDeltaEncoded uint64 `prop:"rocksdb.index.value.is.delta.encoded"`
 	// For formats >= TableFormatPebblev4, this is set to true if the obsolete
 	// bit is strict for all the point keys.
 	IsStrictObsolete bool `prop:"pebble.obsolete.is_strict"`
@@ -130,8 +103,6 @@ type Properties struct {
 	NumValueBlocks uint64 `prop:"pebble.num.value-blocks"`
 	// The number of values stored in value blocks. Only serialized if > 0.
 	NumValuesInValueBlocks uint64 `prop:"pebble.num.values.in.value-blocks"`
-	// Timestamp of the earliest key. 0 if unknown.
-	OldestKeyTime uint64 `prop:"rocksdb.oldest.key.time"`
 	// The name of the prefix extractor used in this table. Empty if no prefix
 	// extractor is used.
 	PrefixExtractorName string `prop:"rocksdb.prefix.extractor.name"`
@@ -217,7 +188,7 @@ func (p *Properties) String() string {
 			fmt.Fprintf(&buf, "%d\n", f.Uint())
 		case reflect.Uint64:
 			u := f.Uint()
-			if ft.Offset == columnFamilyIDField.Offset && u == math.MaxInt32 {
+			if u == math.MaxInt32 {
 				fmt.Fprintf(&buf, "-\n")
 			} else {
 				fmt.Fprintf(&buf, "%d\n", f.Uint())
@@ -239,7 +210,9 @@ func (p *Properties) String() string {
 	return buf.String()
 }
 
-func (p *Properties) load(b block, blockOffset uint64) error {
+func (p *Properties) load(
+	b block, blockOffset uint64, deniedUserProperties map[string]struct{},
+) error {
 	i, err := newRawBlockIter(bytes.Compare, b)
 	if err != nil {
 		return err
@@ -247,7 +220,7 @@ func (p *Properties) load(b block, blockOffset uint64) error {
 	p.Loaded = make(map[uintptr]struct{})
 	v := reflect.ValueOf(p).Elem()
 	for valid := i.First(); valid; valid = i.Next() {
-		tag := intern.Bytes(i.Key().UserKey)
+		tag := string(i.Key().UserKey)
 		if f, ok := propTagMap[tag]; ok {
 			p.Loaded[f.Offset] = struct{}{}
 			field := v.FieldByIndex(f.Index)
@@ -274,7 +247,10 @@ func (p *Properties) load(b block, blockOffset uint64) error {
 		if p.UserProperties == nil {
 			p.UserProperties = make(map[string]string)
 		}
-		p.UserProperties[tag] = string(i.Value())
+
+		if _, denied := deniedUserProperties[tag]; !denied {
+			p.UserProperties[intern.Bytes(i.Key().UserKey)] = string(i.Value())
+		}
 	}
 	return nil
 }
@@ -316,10 +292,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 		m[k] = []byte(v)
 	}
 
-	p.saveUvarint(m, unsafe.Offsetof(p.ColumnFamilyID), p.ColumnFamilyID)
-	if p.ColumnFamilyName != "" {
-		p.saveString(m, unsafe.Offsetof(p.ColumnFamilyName), p.ColumnFamilyName)
-	}
 	if p.ComparerName != "" {
 		p.saveString(m, unsafe.Offsetof(p.ComparerName), p.ComparerName)
 	}
@@ -329,29 +301,21 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	if p.CompressionOptions != "" {
 		p.saveString(m, unsafe.Offsetof(p.CompressionOptions), p.CompressionOptions)
 	}
-	p.saveUvarint(m, unsafe.Offsetof(p.CreationTime), p.CreationTime)
 	p.saveUvarint(m, unsafe.Offsetof(p.DataSize), p.DataSize)
 	if p.ExternalFormatVersion != 0 {
 		p.saveUint32(m, unsafe.Offsetof(p.ExternalFormatVersion), p.ExternalFormatVersion)
 		p.saveUint64(m, unsafe.Offsetof(p.GlobalSeqNum), p.GlobalSeqNum)
 	}
-	if p.FileCreationTime > 0 {
-		p.saveUvarint(m, unsafe.Offsetof(p.FileCreationTime), p.FileCreationTime)
-	}
 	if p.FilterPolicyName != "" {
 		p.saveString(m, unsafe.Offsetof(p.FilterPolicyName), p.FilterPolicyName)
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.FilterSize), p.FilterSize)
-	p.saveUvarint(m, unsafe.Offsetof(p.FixedKeyLen), p.FixedKeyLen)
-	p.saveUvarint(m, unsafe.Offsetof(p.FormatVersion), p.FormatVersion)
-	p.saveUvarint(m, unsafe.Offsetof(p.IndexKeyIsUserKey), p.IndexKeyIsUserKey)
 	if p.IndexPartitions != 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.IndexPartitions), p.IndexPartitions)
 		p.saveUvarint(m, unsafe.Offsetof(p.TopLevelIndexSize), p.TopLevelIndexSize)
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.IndexSize), p.IndexSize)
 	p.saveUint32(m, unsafe.Offsetof(p.IndexType), p.IndexType)
-	p.saveUvarint(m, unsafe.Offsetof(p.IndexValueIsDeltaEncoded), p.IndexValueIsDeltaEncoded)
 	if p.IsStrictObsolete {
 		p.saveBool(m, unsafe.Offsetof(p.IsStrictObsolete), p.IsStrictObsolete)
 	}
@@ -389,7 +353,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	if p.NumValuesInValueBlocks > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.NumValuesInValueBlocks), p.NumValuesInValueBlocks)
 	}
-	p.saveUvarint(m, unsafe.Offsetof(p.OldestKeyTime), p.OldestKeyTime)
 	if p.PrefixExtractorName != "" {
 		p.saveString(m, unsafe.Offsetof(p.PrefixExtractorName), p.PrefixExtractorName)
 	}
@@ -408,6 +371,16 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 		p.saveUvarint(m, unsafe.Offsetof(p.ValueBlocksSize), p.ValueBlocksSize)
 	}
 	p.saveBool(m, unsafe.Offsetof(p.WholeKeyFiltering), p.WholeKeyFiltering)
+
+	if tblFormat < TableFormatPebblev1 {
+		m["rocksdb.column.family.id"] = binary.AppendUvarint([]byte(nil), math.MaxInt32)
+		m["rocksdb.fixed.key.length"] = []byte{0x00}
+		m["rocksdb.index.key.is.user.key"] = []byte{0x00}
+		m["rocksdb.index.value.is.delta.encoded"] = []byte{0x00}
+		m["rocksdb.oldest.key.time"] = []byte{0x00}
+		m["rocksdb.creation.time"] = []byte{0x00}
+		m["rocksdb.format.version"] = []byte{0x00}
+	}
 
 	keys := make([]string, 0, len(m))
 	for key := range m {
