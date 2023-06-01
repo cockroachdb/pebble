@@ -12,8 +12,6 @@ import (
 	"reflect"
 	"sort"
 	"unsafe"
-
-	"github.com/cockroachdb/pebble/internal/intern"
 )
 
 const propertiesBlockRestartInterval = math.MaxInt32
@@ -56,12 +54,6 @@ func init() {
 // automatically populated during sstable creation and load from the properties
 // meta block when an sstable is opened.
 type Properties struct {
-	// ID of column family for this SST file, corresponding to the CF identified
-	// by column_family_name.
-	ColumnFamilyID uint64 `prop:"rocksdb.column.family.id"`
-	// Name of the column family with which this SST file is associated. Empty if
-	// the column family is unknown.
-	ColumnFamilyName string `prop:"rocksdb.column.family.name"`
 	// The name of the comparer used in this table.
 	ComparerName string `prop:"rocksdb.comparator"`
 	// The compression algorithm used to compress blocks.
@@ -84,23 +76,17 @@ type Properties struct {
 	FilterPolicyName string `prop:"rocksdb.filter.policy"`
 	// The size of filter block.
 	FilterSize uint64 `prop:"rocksdb.filter.size"`
-	// If 0, key is variable length. Otherwise number of bytes for each key.
-	FixedKeyLen uint64 `prop:"rocksdb.fixed.key.length"`
 	// Format version, reserved for backward compatibility.
 	FormatVersion uint64 `prop:"rocksdb.format.version"`
 	// The global sequence number to use for all entries in the table. Present if
 	// the table was created externally and ingested whole.
 	GlobalSeqNum uint64 `prop:"rocksdb.external_sst_file.global_seqno"`
-	// Whether the index key is user key or an internal key.
-	IndexKeyIsUserKey uint64 `prop:"rocksdb.index.key.is.user.key"`
 	// Total number of index partitions if kTwoLevelIndexSearch is used.
 	IndexPartitions uint64 `prop:"rocksdb.index.partitions"`
 	// The size of index block.
 	IndexSize uint64 `prop:"rocksdb.index.size"`
 	// The index type. TODO(peter): add a more detailed description.
 	IndexType uint32 `prop:"rocksdb.block.based.table.index.type"`
-	// Whether delta encoding is used to encode the index values.
-	IndexValueIsDeltaEncoded uint64 `prop:"rocksdb.index.value.is.delta.encoded"`
 	// The name of the merger used in this table. Empty if no merger is used.
 	MergerName string `prop:"rocksdb.merge.operator"`
 	// The number of blocks in this table.
@@ -127,8 +113,6 @@ type Properties struct {
 	NumValueBlocks uint64 `prop:"pebble.num.value-blocks"`
 	// The number of values stored in value blocks. Only serialized if > 0.
 	NumValuesInValueBlocks uint64 `prop:"pebble.num.values.in.value-blocks"`
-	// Timestamp of the earliest key. 0 if unknown.
-	OldestKeyTime uint64 `prop:"rocksdb.oldest.key.time"`
 	// The name of the prefix extractor used in this table. Empty if no prefix
 	// extractor is used.
 	PrefixExtractorName string `prop:"rocksdb.prefix.extractor.name"`
@@ -236,46 +220,6 @@ func (p *Properties) String() string {
 	return buf.String()
 }
 
-func (p *Properties) load(b block, blockOffset uint64) error {
-	i, err := newRawBlockIter(bytes.Compare, b)
-	if err != nil {
-		return err
-	}
-	p.Loaded = make(map[uintptr]struct{})
-	v := reflect.ValueOf(p).Elem()
-	for valid := i.First(); valid; valid = i.Next() {
-		tag := intern.Bytes(i.Key().UserKey)
-		if f, ok := propTagMap[tag]; ok {
-			p.Loaded[f.Offset] = struct{}{}
-			field := v.FieldByIndex(f.Index)
-			switch f.Type.Kind() {
-			case reflect.Bool:
-				field.SetBool(bytes.Equal(i.Value(), propBoolTrue))
-			case reflect.Uint32:
-				field.SetUint(uint64(binary.LittleEndian.Uint32(i.Value())))
-			case reflect.Uint64:
-				var n uint64
-				if tag == propGlobalSeqnumName {
-					n = binary.LittleEndian.Uint64(i.Value())
-				} else {
-					n, _ = binary.Uvarint(i.Value())
-				}
-				field.SetUint(n)
-			case reflect.String:
-				field.SetString(intern.Bytes(i.Value()))
-			default:
-				panic("not reached")
-			}
-			continue
-		}
-		if p.UserProperties == nil {
-			p.UserProperties = make(map[string]string)
-		}
-		p.UserProperties[tag] = string(i.Value())
-	}
-	return nil
-}
-
 func (p *Properties) saveBool(m map[string][]byte, offset uintptr, value bool) {
 	tag := propOffsetTagMap[offset]
 	if value {
@@ -313,10 +257,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 		m[k] = []byte(v)
 	}
 
-	p.saveUvarint(m, unsafe.Offsetof(p.ColumnFamilyID), p.ColumnFamilyID)
-	if p.ColumnFamilyName != "" {
-		p.saveString(m, unsafe.Offsetof(p.ColumnFamilyName), p.ColumnFamilyName)
-	}
 	if p.ComparerName != "" {
 		p.saveString(m, unsafe.Offsetof(p.ComparerName), p.ComparerName)
 	}
@@ -339,16 +279,13 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 		p.saveString(m, unsafe.Offsetof(p.FilterPolicyName), p.FilterPolicyName)
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.FilterSize), p.FilterSize)
-	p.saveUvarint(m, unsafe.Offsetof(p.FixedKeyLen), p.FixedKeyLen)
 	p.saveUvarint(m, unsafe.Offsetof(p.FormatVersion), p.FormatVersion)
-	p.saveUvarint(m, unsafe.Offsetof(p.IndexKeyIsUserKey), p.IndexKeyIsUserKey)
 	if p.IndexPartitions != 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.IndexPartitions), p.IndexPartitions)
 		p.saveUvarint(m, unsafe.Offsetof(p.TopLevelIndexSize), p.TopLevelIndexSize)
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.IndexSize), p.IndexSize)
 	p.saveUint32(m, unsafe.Offsetof(p.IndexType), p.IndexType)
-	p.saveUvarint(m, unsafe.Offsetof(p.IndexValueIsDeltaEncoded), p.IndexValueIsDeltaEncoded)
 	if p.MergerName != "" {
 		p.saveString(m, unsafe.Offsetof(p.MergerName), p.MergerName)
 	}
@@ -383,7 +320,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	if p.NumValuesInValueBlocks > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.NumValuesInValueBlocks), p.NumValuesInValueBlocks)
 	}
-	p.saveUvarint(m, unsafe.Offsetof(p.OldestKeyTime), p.OldestKeyTime)
 	if p.PrefixExtractorName != "" {
 		p.saveString(m, unsafe.Offsetof(p.PrefixExtractorName), p.PrefixExtractorName)
 	}

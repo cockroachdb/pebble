@@ -336,17 +336,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "  pinned\t%d\n", r.Properties.SnapshotPinnedKeys)
 		fmt.Fprintf(tw, "index\t\n")
 		fmt.Fprintf(tw, "  key\t")
-		if r.Properties.IndexKeyIsUserKey != 0 {
-			fmt.Fprintf(tw, "user key\n")
-		} else {
-			fmt.Fprintf(tw, "internal key\n")
-		}
 		fmt.Fprintf(tw, "  value\t")
-		if r.Properties.IndexValueIsDeltaEncoded != 0 {
-			fmt.Fprintf(tw, "delta encoded\n")
-		} else {
-			fmt.Fprintf(tw, "raw encoded\n")
-		}
 		fmt.Fprintf(tw, "comparer\t%s\n", r.Properties.ComparerName)
 		fmt.Fprintf(tw, "merger\t%s\n", formatNull(r.Properties.MergerName))
 		fmt.Fprintf(tw, "filter\t%s\n", formatNull(r.Properties.FilterPolicyName))

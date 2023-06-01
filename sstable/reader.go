@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/intern"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -3051,6 +3053,49 @@ type Reader struct {
 	checksumType  ChecksumType
 }
 
+func (r *Reader) loadProperties(b block, blockOffset uint64) error {
+	p := r.Properties
+	i, err := newRawBlockIter(bytes.Compare, b)
+	if err != nil {
+		return err
+	}
+	p.Loaded = make(map[uintptr]struct{})
+	v := reflect.ValueOf(p).Elem()
+	for valid := i.First(); valid; valid = i.Next() {
+		tag := intern.Bytes(i.Key().UserKey)
+		if f, ok := propTagMap[tag]; ok {
+			p.Loaded[f.Offset] = struct{}{}
+			field := v.FieldByIndex(f.Index)
+			switch f.Type.Kind() {
+			case reflect.Bool:
+				field.SetBool(bytes.Equal(i.Value(), propBoolTrue))
+			case reflect.Uint32:
+				field.SetUint(uint64(binary.LittleEndian.Uint32(i.Value())))
+			case reflect.Uint64:
+				var n uint64
+				if tag == propGlobalSeqnumName {
+					n = binary.LittleEndian.Uint64(i.Value())
+				} else {
+					n, _ = binary.Uvarint(i.Value())
+				}
+				field.SetUint(n)
+			case reflect.String:
+				field.SetString(intern.Bytes(i.Value()))
+			default:
+				panic("not reached")
+			}
+			continue
+		}
+		if p.UserProperties == nil {
+			p.UserProperties = make(map[string]string)
+		}
+		if _, permitted := r.opts.PermittedUserProperties[tag]; permitted {
+			p.UserProperties[tag] = string(i.Value())
+		}
+	}
+	return nil
+}
+
 // Close implements DB.Close, as documented in the pebble package.
 func (r *Reader) Close() error {
 	r.opts.Cache.Unref()
@@ -3475,7 +3520,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 			return err
 		}
 		r.propertiesBH = bh
-		err := r.Properties.load(b.Get(), bh.Offset)
+		err := r.loadProperties(b.Get(), bh.Offset)
 		b.Release()
 		if err != nil {
 			return err
