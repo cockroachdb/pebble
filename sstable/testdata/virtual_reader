@@ -129,7 +129,7 @@ virtualize a.SET.1-f.SET.1
 ----
 bounds:  [a#1,1-f#1,1]
 filenum: 000006
-props:   2,0
+props:   3,0
 
 scan-range-del
 ----
@@ -159,7 +159,7 @@ virtualize dd.SET.5-ddd.SET.6
 ----
 bounds:  [dd#5,1-ddd#6,1]
 filenum: 000008
-props:   7,1
+props:   9,1
 
 # Check lower bound enforcement during SeekPrefixGE.
 iter
@@ -190,7 +190,7 @@ virtualize c.SET.3-f.SET.6
 ----
 bounds:  [c#3,1-f#6,1]
 filenum: 000010
-props:   7,0
+props:   8,0
 
 # Just test a basic iterator once virtual sstable bounds have been set.
 iter
@@ -290,7 +290,7 @@ virtualize c.SET.3-f.SET.1:ff
 ----
 bounds:  [c#3,1-f#0,1]
 filenum: 000012
-props:   9,1
+props:   10,1
 
 iter
 set-bounds lower=d upper=e
@@ -343,7 +343,7 @@ virtualize f.SET.6-h.SET.9
 ----
 bounds:  [f#6,1-h#9,1]
 filenum: 000013
-props:   9,1
+props:   10,1
 
 iter
 seek-lt z
@@ -413,7 +413,7 @@ virtualize c.SET.3-f.SET.6
 ----
 bounds:  [c#3,1-f#6,1]
 filenum: 000017
-props:   5,0
+props:   6,0
 
 # Just test a basic iterator once virtual sstable bounds have been set.
 iter
@@ -513,7 +513,7 @@ virtualize c.SET.3-f.SET.1:ff
 ----
 bounds:  [c#3,1-f#0,1]
 filenum: 000019
-props:   5,0
+props:   6,0
 
 iter
 set-bounds lower=d upper=e
@@ -566,7 +566,7 @@ virtualize f.SET.6-h.SET.9
 ----
 bounds:  [f#6,1-h#9,1]
 filenum: 000020
-props:   5,0
+props:   6,0
 
 iter
 seek-lt z
@@ -605,7 +605,7 @@ virtualize a.SET.1-e.RANGEDEL.72057594037927935
 ----
 bounds:  [a#1,1-e#72057594037927935,15]
 filenum: 000022
-props:   2,0
+props:   3,0
 
 iter
 first
