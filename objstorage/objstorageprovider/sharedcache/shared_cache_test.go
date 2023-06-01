@@ -83,7 +83,7 @@ func TestSharedCache(t *testing.T) {
 				defer readable.Close()
 
 				got := make([]byte, size)
-				err = cache.ReadAt(ctx, 1, got, offset, readable)
+				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable)
 				// We always expect cache.ReadAt to succeed.
 				require.NoError(t, err)
 				// It is easier to assert this condition programmatically, rather than returning
@@ -150,12 +150,12 @@ func TestSharedCacheRandomized(t *testing.T) {
 				offset := rand.Int63n(size)
 
 				got := make([]byte, size-offset)
-				err = cache.ReadAt(ctx, 1, got, offset, readable)
+				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable)
 				require.NoError(t, err)
 				require.Equal(t, toWrite[int(offset):], got)
 
 				got = make([]byte, size-offset)
-				err = cache.ReadAt(ctx, 1, got, offset, readable)
+				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable)
 				require.NoError(t, err)
 				require.Equal(t, toWrite[int(offset):], got)
 			}

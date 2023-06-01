@@ -240,7 +240,7 @@ func (p *provider) sharedOpenForReading(
 		}
 		return nil, err
 	}
-	return newSharedReadable(reader, size), nil
+	return p.newSharedReadable(reader, size, meta.DiskFileNum), nil
 }
 
 func (p *provider) sharedSize(meta objstorage.ObjectMetadata) (int64, error) {

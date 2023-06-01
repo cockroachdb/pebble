@@ -7,6 +7,7 @@ package objstorageprovider
 import (
 	"context"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/shared"
 )
@@ -16,18 +17,27 @@ import (
 type sharedReadable struct {
 	objReader shared.ObjectReader
 	size      int64
+	fileNum   base.DiskFileNum
+	provider  *provider
 }
 
 var _ objstorage.Readable = (*sharedReadable)(nil)
 
-func newSharedReadable(objReader shared.ObjectReader, size int64) *sharedReadable {
+func (p *provider) newSharedReadable(
+	objReader shared.ObjectReader, size int64, fileNum base.DiskFileNum,
+) *sharedReadable {
 	return &sharedReadable{
 		objReader: objReader,
 		size:      size,
+		fileNum:   fileNum,
+		provider:  p,
 	}
 }
 
 func (r *sharedReadable) ReadAt(ctx context.Context, p []byte, offset int64) error {
+	if r.provider.shared.cache != nil {
+		return r.provider.shared.cache.ReadAt(ctx, r.fileNum, p, offset, r.objReader)
+	}
 	return r.objReader.ReadAt(ctx, p, offset)
 }
 
@@ -85,7 +95,8 @@ func (r *sharedReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) e
 		} else {
 			r.readahead.data = make([]byte, readaheadSize)
 		}
-		if err := r.readable.ReadAt(ctx, r.readahead.data, offset); err != nil {
+
+		if err := r.readInternal(ctx, r.readahead.data, offset); err != nil {
 			// Make sure we don't treat the data as valid next time.
 			r.readahead.data = r.readahead.data[:0]
 			return err
@@ -94,7 +105,33 @@ func (r *sharedReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) e
 		return nil
 	}
 
-	return r.readable.ReadAt(ctx, p, offset)
+	return r.readInternal(ctx, p, offset)
+}
+
+// readInternal performs a read for the object, using the cache when
+// appropriate.
+func (r *sharedReadHandle) readInternal(ctx context.Context, p []byte, offset int64) error {
+	cache := r.readable.provider.shared.cache
+	if !r.forCompaction && cache != nil {
+		// Read through the cache.
+		return cache.ReadAt(ctx, r.readable.fileNum, r.readahead.data, offset, r.readable.objReader)
+	}
+	if cache != nil {
+		// Get whatever prefix of the data is already available in the cache, but
+		// don't populate the cache otherwise.
+		n, err := cache.TryReadPrefix(ctx, r.readable.fileNum, r.readahead.data, offset, r.readable.objReader)
+		if err != nil {
+			return err
+		}
+		if n == len(p) {
+			// Happy case: all the data was already in the cache.
+			return nil
+		}
+		p = p[n:]
+		offset += int64(n)
+	}
+	// Read from the shared object.
+	return r.readable.objReader.ReadAt(ctx, p, offset)
 }
 
 func (r *sharedReadHandle) maybeReadahead(offset int64, len int) int {
