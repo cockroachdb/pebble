@@ -19,8 +19,8 @@ import (
 func TestSharedCache(t *testing.T) {
 	ctx := context.Background()
 
-	numShards := 32
-	size := sharedcache.ShardingBlockSize * int64(numShards)
+	numShards := 4
+	size := int64(sharedcache.ShardingBlockSize * 32)
 
 	datadriven.Walk(t, "testdata/cache", func(t *testing.T, path string) {
 		var log base.InMemLogger
@@ -28,12 +28,12 @@ func TestSharedCache(t *testing.T) {
 			log.Infof("<local fs> "+fmt, args...)
 		})
 
-		cache, err := sharedcache.Open(fs, "", 32*1024, size, 32)
-		require.NoError(t, err)
-		defer cache.Close()
-
 		provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
 		require.NoError(t, err)
+
+		cache, err := sharedcache.Open(fs, "", 32*1024, size, numShards, true)
+		require.NoError(t, err)
+		defer cache.Close()
 
 		var toWrite []byte
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
@@ -93,6 +93,12 @@ func TestSharedCache(t *testing.T) {
 				// TODO(josh): Not tracing out filesystem activity here, since logging_fs.go
 				// doesn't trace calls to ReadAt or WriteAt. We should consider changing this.
 				return fmt.Sprintf("misses=%d", cache.Misses.Load())
+			case "reload":
+				// Cache is persistent, so should be able to reopen & keep getting hits.
+				cache, err = sharedcache.Open(fs, "", 32*1024, size, numShards, true)
+				require.NoError(t, err)
+
+				return ""
 			default:
 				d.Fatalf(t, "unknown command %s", d.Cmd)
 				return ""
@@ -103,25 +109,27 @@ func TestSharedCache(t *testing.T) {
 
 func TestSharedCacheRandomized(t *testing.T) {
 	ctx := context.Background()
-
 	var log base.InMemLogger
-	fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...interface{}) {
-		log.Infof("<local fs> "+fmt, args...)
-	})
-
-	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
-	require.NoError(t, err)
 
 	seed := uint64(time.Now().UnixNano())
 	fmt.Printf("seed: %v\n", seed)
 	rand.Seed(seed)
 
-	helper := func(blockSize int) func(t *testing.T) {
+	helper := func(blockSize int, numShards int, persistMetadata bool) func(t *testing.T) {
 		return func(t *testing.T) {
-			numShards := rand.Intn(64) + 1
-			cacheSize := int64(sharedcache.ShardingBlockSize * numShards) // minimum allowed cache size
+			fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...interface{}) {
+				log.Infof("<local fs> "+fmt, args...)
+			})
 
-			cache, err := sharedcache.Open(fs, "", blockSize, cacheSize, numShards)
+			provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
+			require.NoError(t, err)
+
+			cacheSize := int64(sharedcache.ShardingBlockSize * numShards) // minimum allowed cache size
+			if persistMetadata {
+				cacheSize = cacheSize * 10 // need more space if metadata is persisted
+			}
+
+			cache, err := sharedcache.Open(fs, "", blockSize, cacheSize, numShards, persistMetadata)
 			require.NoError(t, err)
 			defer cache.Close()
 
@@ -159,8 +167,15 @@ func TestSharedCacheRandomized(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, toWrite[int(offset):], got)
 			}
+
+			// Reopen the cache to at least ensure metadata can be read.
+			cache, err = sharedcache.Open(fs, "", blockSize, cacheSize, numShards, persistMetadata)
+			require.NoError(t, err)
+			defer cache.Close()
 		}
 	}
-	t.Run("32 KB", helper(32*1024))
-	t.Run("1 MB", helper(1024*1024))
+	t.Run("32 KB, many shards, with no metadata persistence", helper(32*1024, rand.Intn(64)+1, false))
+	t.Run("1 MB, many shards, with no metadata persistence", helper(1024*1024, rand.Intn(64)+1, false))
+	t.Run("32 KB, one shard, with metadata persistence", helper(32*1024, 1, true))
+	t.Run("1 MB, one shard, with metadata persistence", helper(1024*1024, 1, true))
 }
