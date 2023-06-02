@@ -12,6 +12,8 @@ import (
 	"reflect"
 	"sort"
 	"unsafe"
+
+	"github.com/cockroachdb/pebble/internal/intern"
 )
 
 const propertiesBlockRestartInterval = math.MaxInt32
@@ -218,6 +220,50 @@ func (p *Properties) String() string {
 		fmt.Fprintf(&buf, "%s: %s\n", key, p.UserProperties[key])
 	}
 	return buf.String()
+}
+
+
+func (p *Properties) load(b block, blockOffset uint64, permittedProperties map[string]struct{}) error {
+	i, err := newRawBlockIter(bytes.Compare, b)
+	if err != nil {
+		return err
+	}
+	p.Loaded = make(map[uintptr]struct{})
+	v := reflect.ValueOf(p).Elem()
+	for valid := i.First(); valid; valid = i.Next() {
+		tag := intern.Bytes(i.Key().UserKey)
+		if f, ok := propTagMap[tag]; ok {
+			p.Loaded[f.Offset] = struct{}{}
+			field := v.FieldByIndex(f.Index)
+			switch f.Type.Kind() {
+			case reflect.Bool:
+				field.SetBool(bytes.Equal(i.Value(), propBoolTrue))
+			case reflect.Uint32:
+				field.SetUint(uint64(binary.LittleEndian.Uint32(i.Value())))
+			case reflect.Uint64:
+				var n uint64
+				if tag == propGlobalSeqnumName {
+					n = binary.LittleEndian.Uint64(i.Value())
+				} else {
+					n, _ = binary.Uvarint(i.Value())
+				}
+				field.SetUint(n)
+			case reflect.String:
+				field.SetString(intern.Bytes(i.Value()))
+			default:
+				panic("not reached")
+			}
+			continue
+		}
+		if p.UserProperties == nil {
+			p.UserProperties = make(map[string]string)
+		}
+		if _, permitted := permittedProperties[tag]; permitted {
+			p.UserProperties[tag] = string(i.Value())
+		}
+		p.UserProperties[tag] = string(i.Value())
+	}
+	return nil
 }
 
 func (p *Properties) saveBool(m map[string][]byte, offset uintptr, value bool) {

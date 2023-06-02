@@ -103,12 +103,18 @@ func TestPropertiesSave(t *testing.T) {
 		w.restartInterval = propertiesBlockRestartInterval
 		expected.save(TableFormatPebblev2, &w)
 		var props Properties
-		require.NoError(t, props.load(w.finish(), 0))
+
+    permittedProperties := make(map[string]struct{})
+    permittedProperties["user-prop-a"] = struct{}{}
+    permittedProperties["user-prop-b"] = struct{}{}
+
+		require.NoError(t, props.load(w.finish(), 0, permittedProperties))
 		props.Loaded = nil
 		if diff := pretty.Diff(*expected, props); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
 		}
 	}
+  
 
 	check1(expected)
 
