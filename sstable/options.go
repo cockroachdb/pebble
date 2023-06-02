@@ -95,6 +95,11 @@ type SuffixReplaceableTableCollector interface {
 
 // ReaderOptions holds the parameters needed for reading an sstable.
 type ReaderOptions struct {
+	// Cache is used to cache uncompressed blocks from sstables.
+	//
+	// The default cache size is a zero-size cache.
+	Cache *cache.Cache
+
 	// Only properties specified in this map will be added to sst.Properties.UserProperties
 	PermittedUserProperties map[string]struct{}
 

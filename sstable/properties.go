@@ -23,14 +23,6 @@ var propTagMap = make(map[string]reflect.StructField)
 var propBoolTrue = []byte{'1'}
 var propBoolFalse = []byte{'0'}
 
-var columnFamilyIDField = func() reflect.StructField {
-	f, ok := reflect.TypeOf(Properties{}).FieldByName("ColumnFamilyID")
-	if !ok {
-		panic("Properties.ColumnFamilyID field not found")
-	}
-	return f
-}()
-
 var propOffsetTagMap = make(map[uintptr]string)
 
 func init() {
@@ -200,7 +192,7 @@ func (p *Properties) String() string {
 			fmt.Fprintf(&buf, "%d\n", f.Uint())
 		case reflect.Uint64:
 			u := f.Uint()
-			if ft.Offset == columnFamilyIDField.Offset && u == math.MaxInt32 {
+			if u == math.MaxInt32 {
 				fmt.Fprintf(&buf, "-\n")
 			} else {
 				fmt.Fprintf(&buf, "%d\n", f.Uint())
