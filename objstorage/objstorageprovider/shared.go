@@ -80,7 +80,7 @@ func (p *provider) sharedInit() error {
 			numShards = 2 * runtime.GOMAXPROCS(0)
 		}
 
-		p.shared.cache, err = sharedcache.Open(p.st.FS, p.st.FSDirName, blockSize, p.st.Shared.CacheSizeBytes, numShards)
+		p.shared.cache, err = sharedcache.Open(p.st.FS, p.st.Logger, p.st.FSDirName, blockSize, p.st.Shared.CacheSizeBytes, numShards)
 		if err != nil {
 			return errors.Wrapf(err, "pebble: could not open shared object cache")
 		}

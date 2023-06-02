@@ -3,6 +3,7 @@ package sharedcache_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ func TestSharedCache(t *testing.T) {
 			log.Infof("<local fs> "+fmt, args...)
 		})
 
-		cache, err := sharedcache.Open(fs, "", 32*1024, size, 32)
+		cache, err := sharedcache.Open(fs, base.DefaultLogger, "", 32*1024, size, 32)
 		require.NoError(t, err)
 		defer cache.Close()
 
@@ -116,12 +117,14 @@ func TestSharedCacheRandomized(t *testing.T) {
 	fmt.Printf("seed: %v\n", seed)
 	rand.Seed(seed)
 
-	helper := func(blockSize int) func(t *testing.T) {
+	helper := func(
+		blockSize int,
+		concurrentReads bool) func(t *testing.T) {
 		return func(t *testing.T) {
 			numShards := rand.Intn(64) + 1
 			cacheSize := int64(sharedcache.ShardingBlockSize * numShards) // minimum allowed cache size
 
-			cache, err := sharedcache.Open(fs, "", blockSize, cacheSize, numShards)
+			cache, err := sharedcache.Open(fs, base.DefaultLogger, "", blockSize, cacheSize, numShards)
 			require.NoError(t, err)
 			defer cache.Close()
 
@@ -146,21 +149,36 @@ func TestSharedCacheRandomized(t *testing.T) {
 			defer readable.Close()
 
 			const numDistinctReads = 100
+			wg := sync.WaitGroup{}
 			for i := 0; i < numDistinctReads; i++ {
-				offset := rand.Int63n(size)
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					offset := rand.Int63n(size)
 
-				got := make([]byte, size-offset)
-				err = cache.ReadAt(ctx, 1, got, offset, readable)
-				require.NoError(t, err)
-				require.Equal(t, toWrite[int(offset):], got)
+					got := make([]byte, size-offset)
+					err := cache.ReadAt(ctx, 1, got, offset, readable)
+					require.NoError(t, err)
+					require.Equal(t, toWrite[int(offset):], got)
 
-				got = make([]byte, size-offset)
-				err = cache.ReadAt(ctx, 1, got, offset, readable)
-				require.NoError(t, err)
-				require.Equal(t, toWrite[int(offset):], got)
+					got = make([]byte, size-offset)
+					err = cache.ReadAt(ctx, 1, got, offset, readable)
+					require.NoError(t, err)
+					require.Equal(t, toWrite[int(offset):], got)
+				}()
+				// If concurrent reads, only wait 50% of loop iterations on average.
+				if concurrentReads && rand.Intn(2) == 0 {
+					wg.Wait()
+				}
+				if !concurrentReads {
+					wg.Wait()
+				}
 			}
+			wg.Wait()
 		}
 	}
-	t.Run("32 KB", helper(32*1024))
-	t.Run("1 MB", helper(1024*1024))
+	t.Run("32 KB with serial reads", helper(32*1024, false))
+	t.Run("1 MB with serial reads", helper(1024*1024, false))
+	t.Run("32 KB with concurrent reads", helper(32*1024, true))
+	t.Run("1 MB with concurrent reads", helper(1024*1024, true))
 }

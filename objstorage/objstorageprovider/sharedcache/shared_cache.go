@@ -39,13 +39,14 @@ type Cache struct {
 
 // Open opens a cache. If there is no existing cache at fsDir, a new one
 // is created.
-func Open(fs vfs.FS, fsDir string, blockSize int, sizeBytes int64, numShards int) (*Cache, error) {
+func Open(fs vfs.FS, logger base.Logger, fsDir string, blockSize int, sizeBytes int64, numShards int) (*Cache, error) {
 	min := ShardingBlockSize * int64(numShards)
 	if sizeBytes < min {
 		return nil, errors.Errorf("cache size %d lower than min %d", sizeBytes, min)
 	}
 
 	sc := &Cache{
+		logger: logger,
 		blockSize: blockSize,
 	}
 	sc.shards = make([]shard, numShards)
@@ -279,6 +280,7 @@ func (s *shard) get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) 
 		if ofs/ShardingBlockSize != (ofs+int64(len(p))-1)/ShardingBlockSize {
 			panic(fmt.Sprintf("get crosses shard boundary: %v %v", ofs, len(p)))
 		}
+		s.assertShardStateIsConsistent()
 	}
 
 	// TODO(josh): Make the locking more fine-grained. Do not hold locks during calls
@@ -335,6 +337,7 @@ func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
 		if ofs%int64(s.blockSize) != 0 || len(p)%s.blockSize != 0 {
 			panic(fmt.Sprintf("set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
 		}
+		s.assertShardStateIsConsistent()
 	}
 
 	// TODO(josh): Make the locking more fine-grained. Do not hold locks during calls
@@ -347,6 +350,25 @@ func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
 	// in units of sstable block size.
 	n := 0
 	for {
+		if n == len(p) {
+			return nil
+		}
+		if invariants.Enabled {
+			if n > len(p) {
+				panic(fmt.Sprintf("set with n greater than len(p): %v %v", n, len(p)))
+			}
+		}
+
+		// If the logical block is already in the cache, we should skip doing a set.
+		k := metadataKey{
+			filenum:    fileNum,
+			blockIndex: (ofs + int64(n)) / int64(s.blockSize),
+		}
+		if _, ok := s.mu.where[k]; ok {
+			n += s.blockSize
+			continue
+		}
+
 		var cacheBlockInd int64
 		if len(s.mu.free) == 0 {
 			// TODO(josh): Right now, we do random eviction. Eventually, we will do something
@@ -369,14 +391,12 @@ func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
 		}] = cacheBlockInd
 
 		writeAt := cacheBlockInd * int64(s.blockSize)
-		writeSize := s.blockSize
 
+		writeSize := s.blockSize
 		if len(p[n:]) <= writeSize {
-			// Ignore num written ret value, since if partial write, an error
-			// is returned.
-			_, err := s.file.WriteAt(p[n:], writeAt)
-			return err
+			writeSize = len(p[n:])
 		}
+
 		numWritten, err := s.file.WriteAt(p[n:n+writeSize], writeAt)
 		if err != nil {
 			return err
@@ -384,5 +404,29 @@ func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
 
 		// Note that numWritten == writeSize, since we checked for an error above.
 		n += numWritten
+	}
+}
+
+func (s *shard) assertShardStateIsConsistent() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cacheBlockInds := make(map[int64]bool)
+	for _, v := range s.mu.where {
+		if cacheBlockInds[v] {
+			panic(fmt.Sprintf("repeated cache block index: %v %v %v %v", v, cacheBlockInds, s.mu.where, s.mu.free))
+		}
+		cacheBlockInds[v] = true
+	}
+	for _, v := range s.mu.free {
+		if cacheBlockInds[v] {
+			panic(fmt.Sprintf("repeated cache block index: %v %v %v %v", v, cacheBlockInds, s.mu.where, s.mu.free))
+		}
+		cacheBlockInds[v] = true
+	}
+	for i := int64(0); i < s.sizeInBlocks; i++ {
+		if !cacheBlockInds[i] {
+			panic(fmt.Sprintf("missing cache block index: %v %v %v %v", i, cacheBlockInds, s.mu.where, s.mu.free))
+		}
 	}
 }
