@@ -91,6 +91,10 @@ func TestSharedCache(t *testing.T) {
 				// got, which may be very large.
 				require.Equal(t, toWrite[int(offset):], got)
 
+				// In order to ensure we get a hit on the next read, we must wait for writing to
+				// the cache to complete.
+				cache.WriteBackWaitGroup.Wait()
+
 				// TODO(josh): Not tracing out filesystem activity here, since logging_fs.go
 				// doesn't trace calls to ReadAt or WriteAt. We should consider changing this.
 				return fmt.Sprintf("misses=%d", cache.Misses.Load())

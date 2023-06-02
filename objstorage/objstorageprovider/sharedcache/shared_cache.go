@@ -32,6 +32,9 @@ type Cache struct {
 
 	blockSize int
 
+	// WriteBackWaitGroup is public to enable testing from sharedcache_test.
+	WriteBackWaitGroup sync.WaitGroup
+
 	// TODO(josh): Have a dedicated metrics struct. Right now, this
 	// is just for testing.
 	Misses atomic.Int32
@@ -39,14 +42,16 @@ type Cache struct {
 
 // Open opens a cache. If there is no existing cache at fsDir, a new one
 // is created.
-func Open(fs vfs.FS, logger base.Logger, fsDir string, blockSize int, sizeBytes int64, numShards int) (*Cache, error) {
+func Open(
+	fs vfs.FS, logger base.Logger, fsDir string, blockSize int, sizeBytes int64, numShards int,
+) (*Cache, error) {
 	min := ShardingBlockSize * int64(numShards)
 	if sizeBytes < min {
 		return nil, errors.Errorf("cache size %d lower than min %d", sizeBytes, min)
 	}
 
 	sc := &Cache{
-		logger: logger,
+		logger:    logger,
 		blockSize: blockSize,
 	}
 	sc.shards = make([]shard, numShards)
@@ -62,6 +67,8 @@ func Open(fs vfs.FS, logger base.Logger, fsDir string, blockSize int, sizeBytes 
 // Close closes the cache. Methods such as ReadAt should not be called after Close is
 // called.
 func (c *Cache) Close() error {
+	c.WriteBackWaitGroup.Wait()
+
 	var retErr error
 	for i := range c.shards {
 		if err := c.shards[i].close(); err != nil && retErr == nil {
@@ -123,13 +130,20 @@ func (c *Cache) ReadAt(
 	}
 	copy(p, adjustedP[sizeOfOffAdjustment:])
 
-	// TODO(josh): Writing back to the cache should be async with respect to the
-	// call to ReadAt.
-	if err := c.set(fileNum, adjustedP, adjustedOfs); err != nil {
-		// TODO(josh): Would like to log at error severity, but base.Logger doesn't
-		// have error severity.
-		c.logger.Infof("writing back to cache after miss failed: %v", err)
-	}
+	// TODO(josh): For writing back to the cache, we may want a concurrency-limited approach
+	// that does batching, instead of what is below. I think it's reasonable tho to
+	// run a production experiment with what is below, before making adjustments. Note that
+	// the writes being done are in multiples of the filesystem block size. The filesystem
+	// might do okay with them.
+	c.WriteBackWaitGroup.Add(1)
+	go func() {
+		defer c.WriteBackWaitGroup.Done()
+		if err := c.set(fileNum, adjustedP, adjustedOfs); err != nil {
+			// TODO(josh): Would like to log at error severity, but base.Logger doesn't
+			// have error severity.
+			c.logger.Infof("writing back to cache after miss failed: %v", err)
+		}
+	}()
 	return nil
 }
 
@@ -217,17 +231,26 @@ type shard struct {
 	blockSize    int
 	mu           struct {
 		sync.Mutex
-		// TODO(josh): Neither of these datastructures are space-efficient.
+		// TODO(josh): None of these datastructures are space-efficient.
 		// Focusing on correctness to start.
-		where map[metadataKey]int64
+		where map[whereMapKey]int64
+		locks []lockState
 		free  []int64
 	}
 }
 
-type metadataKey struct {
-	filenum    base.FileNum
-	blockIndex int64
+type whereMapKey struct {
+	filenum         base.FileNum
+	logicalBlockInd int64
 }
+
+type lockState uint8
+
+const (
+	unlocked lockState = iota
+	readLockTaken
+	writeLockTaken
+)
 
 func (s *shard) init(
 	fs vfs.FS, fsDir string, shardIdx int, sizeInBlocks int64, blockSize int,
@@ -253,8 +276,9 @@ func (s *shard) init(
 	// TODO(josh): Right now, the secondary cache is not persistent. All existing
 	// cache contents will be over-written, since all metadata is only stored in
 	// memory.
-	s.mu.where = make(map[metadataKey]int64)
+	s.mu.where = make(map[whereMapKey]int64)
 	for i := int64(0); i < sizeInBlocks; i++ {
+		s.mu.locks = append(s.mu.locks, unlocked)
 		s.mu.free = append(s.mu.free, i)
 	}
 
@@ -283,22 +307,29 @@ func (s *shard) get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) 
 		s.assertShardStateIsConsistent()
 	}
 
-	// TODO(josh): Make the locking more fine-grained. Do not hold locks during calls
-	// to ReadAt.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// The data extent might cross cache block boundaries, hence the loop. In the hot
 	// path, max two iterations of this loop will be executed, since reads are sized
 	// in units of sstable block size.
 	for {
-		cacheBlockInd, ok := s.mu.where[metadataKey{
-			filenum:    fileNum,
-			blockIndex: (ofs + int64(n)) / int64(s.blockSize),
-		}]
+		k := whereMapKey{
+			filenum:         fileNum,
+			logicalBlockInd: (ofs + int64(n)) / int64(s.blockSize),
+		}
+		s.mu.Lock()
+		cacheBlockInd, ok := s.mu.where[k]
 		if !ok {
+			s.mu.Unlock()
 			return n, nil
 		}
+		if s.mu.locks[cacheBlockInd] == writeLockTaken {
+			// We could block on the write completing, but it is not necessary, since if two
+			// reads are done in close succession, we would expect a hit on the second one due
+			// to the in-memory block cache.
+			s.mu.Unlock()
+			return n, nil
+		}
+		s.mu.locks[cacheBlockInd] = readLockTaken
+		s.mu.Unlock()
 
 		readAt := cacheBlockInd * int64(s.blockSize)
 		if n == 0 { // if first read
@@ -312,9 +343,11 @@ func (s *shard) get(fileNum base.FileNum, p []byte, ofs int64) (n int, _ error) 
 
 		if len(p[n:]) <= readSize {
 			numRead, err := s.file.ReadAt(p[n:], readAt)
+			s.dropLock(cacheBlockInd)
 			return n + numRead, err
 		}
 		numRead, err := s.file.ReadAt(p[n:n+readSize], readAt)
+		s.dropLock(cacheBlockInd)
 		if err != nil {
 			return 0, err
 		}
@@ -340,11 +373,6 @@ func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
 		s.assertShardStateIsConsistent()
 	}
 
-	// TODO(josh): Make the locking more fine-grained. Do not hold locks during calls
-	// to WriteAt.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// The data extent might cross cache block boundaries, hence the loop. In the hot
 	// path, max two iterations of this loop will be executed, since reads are sized
 	// in units of sstable block size.
@@ -360,24 +388,44 @@ func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
 		}
 
 		// If the logical block is already in the cache, we should skip doing a set.
-		k := metadataKey{
-			filenum:    fileNum,
-			blockIndex: (ofs + int64(n)) / int64(s.blockSize),
+		k := whereMapKey{
+			filenum:         fileNum,
+			logicalBlockInd: (ofs + int64(n)) / int64(s.blockSize),
 		}
+		s.mu.Lock()
 		if _, ok := s.mu.where[k]; ok {
+			s.mu.Unlock()
 			n += s.blockSize
 			continue
 		}
 
+		// Determine cache block index by looking at the free list and randomly evicting if
+		// it is empty.
 		var cacheBlockInd int64
 		if len(s.mu.free) == 0 {
 			// TODO(josh): Right now, we do random eviction. Eventually, we will do something
 			// more sophisticated, e.g. leverage ClockPro.
-			var k metadataKey
+			foundBlockToEvict := false
+			var k whereMapKey
 			for k1, v := range s.mu.where {
+				// This implies that hot blocks will not be evicted as often, meaning the
+				// eviction scheme is not quite random. I think that's fine for now, since we plan
+				// to leverage a more sophisticated eviction scheme eventually anyway.
+				lock := s.mu.locks[v]
+				if lock == readLockTaken || lock == writeLockTaken {
+					continue
+				}
+				foundBlockToEvict = true
 				cacheBlockInd = v
 				k = k1
 				break
+			}
+			// TODO(josh): We may want to block until a block frees up, instead of returning
+			// an error here. But I think we can do that later on, e.g. after running some production
+			// experiments.
+			if !foundBlockToEvict {
+				s.mu.Unlock()
+				return errors.New("no block to evict so skipping write to cache")
 			}
 			delete(s.mu.where, k)
 		} else {
@@ -385,10 +433,9 @@ func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
 			s.mu.free = s.mu.free[:len(s.mu.free)-1]
 		}
 
-		s.mu.where[metadataKey{
-			filenum:    fileNum,
-			blockIndex: (ofs + int64(n)) / int64(s.blockSize),
-		}] = cacheBlockInd
+		s.mu.where[k] = cacheBlockInd
+		s.mu.locks[cacheBlockInd] = writeLockTaken
+		s.mu.Unlock()
 
 		writeAt := cacheBlockInd * int64(s.blockSize)
 
@@ -399,12 +446,30 @@ func (s *shard) set(fileNum base.FileNum, p []byte, ofs int64) error {
 
 		numWritten, err := s.file.WriteAt(p[n:n+writeSize], writeAt)
 		if err != nil {
+			s.freeBlock(k, cacheBlockInd)
 			return err
 		}
+		s.dropLock(cacheBlockInd)
 
 		// Note that numWritten == writeSize, since we checked for an error above.
 		n += numWritten
 	}
+}
+
+// Should be inlined.
+func (s *shard) dropLock(cacheBlockInd int64) {
+	s.mu.Lock()
+	s.mu.locks[cacheBlockInd] = unlocked
+	s.mu.Unlock()
+}
+
+// Should be inlined.
+func (s *shard) freeBlock(k whereMapKey, cacheBlockInd int64) {
+	s.mu.Lock()
+	delete(s.mu.where, k)
+	s.mu.locks[cacheBlockInd] = unlocked
+	s.mu.free = append(s.mu.free, cacheBlockInd)
+	s.mu.Unlock()
 }
 
 func (s *shard) assertShardStateIsConsistent() {
@@ -428,5 +493,8 @@ func (s *shard) assertShardStateIsConsistent() {
 		if !cacheBlockInds[i] {
 			panic(fmt.Sprintf("missing cache block index: %v %v %v %v", i, cacheBlockInds, s.mu.where, s.mu.free))
 		}
+	}
+	if int64(len(s.mu.locks)) != s.sizeInBlocks {
+		panic(fmt.Sprintf("lock table isn't correct size: %v %v", len(s.mu.locks), s.sizeInBlocks))
 	}
 }
