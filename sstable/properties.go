@@ -214,8 +214,9 @@ func (p *Properties) String() string {
 	return buf.String()
 }
 
-
-func (p *Properties) load(b block, blockOffset uint64, permittedProperties map[string]struct{}) error {
+func (p *Properties) load(
+	b block, blockOffset uint64, permittedProperties map[string]struct{},
+) error {
 	i, err := newRawBlockIter(bytes.Compare, b)
 	if err != nil {
 		return err

@@ -104,9 +104,9 @@ func TestPropertiesSave(t *testing.T) {
 		expected.save(TableFormatPebblev2, &w)
 		var props Properties
 
-    permittedProperties := make(map[string]struct{})
-    permittedProperties["user-prop-a"] = struct{}{}
-    permittedProperties["user-prop-b"] = struct{}{}
+		permittedProperties := make(map[string]struct{})
+		permittedProperties["user-prop-a"] = struct{}{}
+		permittedProperties["user-prop-b"] = struct{}{}
 
 		require.NoError(t, props.load(w.finish(), 0, permittedProperties))
 		props.Loaded = nil
@@ -114,7 +114,6 @@ func TestPropertiesSave(t *testing.T) {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
 		}
 	}
-  
 
 	check1(expected)
 
