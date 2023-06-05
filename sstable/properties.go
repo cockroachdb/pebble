@@ -385,7 +385,7 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 
 	if tblFormat < TableFormatPebblev1 {
 		m["rocksdb.column.family.id"] = []byte{0x00}
-		m["rocksdb.column.family.name"] = []byte{0x00}
+		m["rocksdb.column.family.name"] = []byte{}
 		m["rocksdb.fixed.key.length"] = []byte{0x00}
 		m["rocksdb.index.key.is.user.key"] = []byte{0x00}
 		m["rocksdb.index.value.is.delta.encoded"] = []byte{0x00}
