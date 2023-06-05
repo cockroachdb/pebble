@@ -1080,10 +1080,13 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 }
 
 func runTableFileSizesCmd(td *datadriven.TestData, d *DB) string {
-	var buf bytes.Buffer
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	v := d.mu.versions.currentVersion()
+	return runVersionFileSizes(d.mu.versions.currentVersion())
+}
+
+func runVersionFileSizes(v *version) string {
+	var buf bytes.Buffer
 	for l, levelMetadata := range v.Levels {
 		if levelMetadata.Empty() {
 			continue
@@ -1091,7 +1094,11 @@ func runTableFileSizesCmd(td *datadriven.TestData, d *DB) string {
 		fmt.Fprintf(&buf, "L%d:\n", l)
 		iter := levelMetadata.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			fmt.Fprintf(&buf, "  %s: %d bytes (%s)\n", f, f.Size, humanize.IEC.Uint64(f.Size))
+			fmt.Fprintf(&buf, "  %s: %d bytes (%s)", f, f.Size, humanize.IEC.Uint64(f.Size))
+			if f.IsCompacting() {
+				fmt.Fprintf(&buf, " (IsCompacting)")
+			}
+			fmt.Fprintln(&buf)
 		}
 	}
 	return buf.String()
