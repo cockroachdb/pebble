@@ -22,7 +22,7 @@ func TestSharedCache(t *testing.T) {
 	ctx := context.Background()
 
 	numShards := 32
-	size := sharedcache.ShardingBlockSize * int64(numShards)
+	size := int64(sharedcache.ShardingBlockSize() * numShards)
 
 	datadriven.Walk(t, "testdata/cache", func(t *testing.T, path string) {
 		var log base.InMemLogger
@@ -76,7 +76,7 @@ func TestSharedCache(t *testing.T) {
 
 				return ""
 			case "read", "read-for-compaction":
-				missesBefore := cache.Misses.Load()
+				missesBefore := cache.Misses()
 				var size int
 				var offset int64
 				// TODO(radu): swap these arguments (the opposite order is typical).
@@ -97,9 +97,13 @@ func TestSharedCache(t *testing.T) {
 				// got, which may be very large.
 				require.True(t, bytes.Equal(objData[int(offset):int(offset)+size], got), "incorrect data returned")
 
+				// In order to ensure we get a hit on the next read, we must wait for writing to
+				// the cache to complete.
+				cache.WaitForWritesToComplete()
+
 				// TODO(josh): Not tracing out filesystem activity here, since logging_fs.go
 				// doesn't trace calls to ReadAt or WriteAt. We should consider changing this.
-				missesAfter := cache.Misses.Load()
+				missesAfter := cache.Misses()
 				return fmt.Sprintf("misses=%d", missesAfter-missesBefore)
 			default:
 				d.Fatalf(t, "unknown command %s", d.Cmd)
@@ -129,7 +133,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 		concurrentReads bool) func(t *testing.T) {
 		return func(t *testing.T) {
 			numShards := rand.Intn(64) + 1
-			cacheSize := int64(sharedcache.ShardingBlockSize * numShards) // minimum allowed cache size
+			cacheSize := int64(sharedcache.ShardingBlockSize() * numShards) // minimum allowed cache size
 
 			cache, err := sharedcache.Open(fs, base.DefaultLogger, "", blockSize, cacheSize, numShards)
 			require.NoError(t, err)
@@ -164,7 +168,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 					offset := rand.Int63n(size)
 
 					got := make([]byte, size-offset)
-					err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, sharedcache.ReadFlags{})
+					err := cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, sharedcache.ReadFlags{})
 					require.NoError(t, err)
 					require.Equal(t, objData[int(offset):], got)
 
