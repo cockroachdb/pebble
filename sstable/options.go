@@ -219,6 +219,17 @@ type WriterOptions struct {
 	// by a wider range of tools and libraries.
 	TableFormat TableFormat
 
+	// IsStrictObsolete is only relevant for >= TableFormatPebblev4. See comment
+	// in format.go. Must be false if format < TableFormatPebblev4.
+	//
+	// TODO(bilal): set this when writing shared ssts.
+	IsStrictObsolete bool
+
+	// WritingToLowestLevel is only relevant for >= TableFormatPebblev4. It is
+	// used to set the obsolete bit on DEL/DELSIZED/SINGLEDEL if they are the
+	// youngest for a userkey.
+	WritingToLowestLevel bool
+
 	// TablePropertyCollectors is a list of TablePropertyCollector creation
 	// functions. A new TablePropertyCollector is created for each sstable built
 	// and lives for the lifetime of the table.

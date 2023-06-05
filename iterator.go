@@ -569,6 +569,9 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			return
 
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
+			// NB: treating InternalKeyKindSingleDelete as equivalent to DEL is not
+			// only simpler, but is also necessary for correctness due to
+			// InternalKeyKindSSTableInternalObsoleteBit.
 			i.nextUserKey()
 			continue
 
@@ -632,6 +635,9 @@ func (i *Iterator) nextPointCurrentUserKey() bool {
 		return false
 
 	case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
+		// NB: treating InternalKeyKindSingleDelete as equivalent to DEL is not
+		// only simpler, but is also necessary for correctness due to
+		// InternalKeyKindSSTableInternalObsoleteBit.
 		return false
 
 	case InternalKeyKindSet, InternalKeyKindSetWithDelete:
@@ -1095,6 +1101,10 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 			// We've hit a deletion tombstone. Return everything up to this
 			// point.
+			//
+			// NB: treating InternalKeyKindSingleDelete as equivalent to DEL is not
+			// only simpler, but is also necessary for correctness due to
+			// InternalKeyKindSSTableInternalObsoleteBit.
 			return
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:

@@ -1,0 +1,22 @@
+write 200000
+----
+
+read 10000 1024
+----
+misses=1
+
+# This should be in the cache.
+read-for-compaction 2000 4096
+----
+misses=0
+
+# This should miss the cache.
+read-for-compaction 100000 4096
+----
+misses=1
+
+# This should miss the cache again - we don't populate the cache when doing
+# compaction reads.
+read-for-compaction 100000 4096
+----
+misses=1

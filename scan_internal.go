@@ -977,6 +977,7 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	mlevels = mlevels[:numMergingLevels]
 	levels = levels[:numLevelIters]
 	rangeDelLevels = rangeDelLevels[:numLevelIters]
+	i.opts.IterOptions.snapshotForHideObsoletePoints = i.seqNum
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
 		li := &levels[levelsIndex]
 		rli := &rangeDelLevels[levelsIndex]

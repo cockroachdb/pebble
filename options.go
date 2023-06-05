@@ -119,10 +119,13 @@ type IterOptions struct {
 	// function can be used by multiple iterators, if the iterator is cloned.
 	TableFilter func(userProps map[string]string) bool
 	// PointKeyFilters can be used to avoid scanning tables and blocks in tables
-	// when iterating over point keys. It is requires that this slice is sorted in
-	// increasing order of the BlockPropertyFilter.ShortID. This slice represents
-	// an intersection across all filters, i.e., all filters must indicate that the
-	// block is relevant.
+	// when iterating over point keys. This slice represents an intersection
+	// across all filters, i.e., all filters must indicate that the block is
+	// relevant.
+	//
+	// Performance note: When len(PointKeyFilters) > 0, the caller should ensure
+	// that cap(PointKeyFilters) is at least len(PointKeyFilters)+1. This helps
+	// avoid allocations in Pebble internal code that mutates the slice.
 	PointKeyFilters []BlockPropertyFilter
 	// RangeKeyFilters can be usefd to avoid scanning tables and blocks in tables
 	// when iterating over range keys. The same requirements that apply to
@@ -181,6 +184,10 @@ type IterOptions struct {
 	level manifest.Level
 	// disableLazyCombinedIteration is an internal testing option.
 	disableLazyCombinedIteration bool
+	// snapshotForHideObsoletePoints is specified for/by levelIter when opening
+	// files and is used to decide whether to hide obsolete points. A value of 0
+	// implies obsolete points should not be hidden.
+	snapshotForHideObsoletePoints uint64
 
 	// NB: If adding new Options, you must account for them in iterator
 	// construction and Iterator.SetOptions.
@@ -632,18 +639,24 @@ type Options struct {
 		ShortAttributeExtractor ShortAttributeExtractor
 
 		// RequiredInPlaceValueBound specifies an optional span of user key
-		// prefixes for which the values must be stored with the key. This is
-		// useful for statically known exclusions to value separation. In
-		// CockroachDB, this will be used for the lock table key space that has
-		// non-empty suffixes, but those locks don't represent actual MVCC
-		// versions (the suffix ordering is arbitrary). We will also need to add
-		// support for dynamically configured exclusions (we want the default to
-		// be to allow Pebble to decide whether to separate the value or not,
-		// hence this is structured as exclusions), for example, for users of
-		// CockroachDB to dynamically exclude certain tables.
+		// prefixes that are not-MVCC, but have a suffix. For these the values
+		// must be stored with the key, since the concept of "older versions" is
+		// not defined. It is also useful for statically known exclusions to value
+		// separation. In CockroachDB, this will be used for the lock table key
+		// space that has non-empty suffixes, but those locks don't represent
+		// actual MVCC versions (the suffix ordering is arbitrary). We will also
+		// need to add support for dynamically configured exclusions (we want the
+		// default to be to allow Pebble to decide whether to separate the value
+		// or not, hence this is structured as exclusions), for example, for users
+		// of CockroachDB to dynamically exclude certain tables.
 		//
 		// Any change in exclusion behavior takes effect only on future written
 		// sstables, and does not start rewriting existing sstables.
+		//
+		// Even ignoring changes in this setting, exclusions are interpreted as a
+		// guidance by Pebble, and not necessarily honored. Specifically, user
+		// keys with multiple Pebble-versions *may* have the older versions stored
+		// in value blocks.
 		RequiredInPlaceValueBound UserKeyPrefixBound
 
 		// DisableIngestAsFlushable disables lazy ingestion of sstables through
@@ -1642,6 +1655,9 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	if format >= sstable.TableFormatPebblev3 {
 		writerOpts.ShortAttributeExtractor = o.Experimental.ShortAttributeExtractor
 		writerOpts.RequiredInPlaceValueBound = o.Experimental.RequiredInPlaceValueBound
+		if format >= sstable.TableFormatPebblev4 && level == numLevels-1 {
+			writerOpts.WritingToLowestLevel = true
+		}
 	}
 	levelOpts := o.Level(level)
 	writerOpts.BlockRestartInterval = levelOpts.BlockRestartInterval

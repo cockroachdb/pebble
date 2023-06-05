@@ -151,11 +151,13 @@ const (
 	// compactions for files marked for compaction are complete.
 	FormatPrePebblev1MarkedCompacted
 
-	// ExperimentalFormatDeleteSized is a format major version that adds support for
-	// deletion tombstones that encode the size of the value they're expected to
-	// delete. This format major version is required before the associated key
-	// kind may be committed through batch applications or ingests.
-	ExperimentalFormatDeleteSized
+	// ExperimentalFormatDeleteSizedAndObsolete is a format major version that adds support
+	// for deletion tombstones that encode the size of the value they're
+	// expected to delete. This format major version is required before the
+	// associated key kind may be committed through batch applications or
+	// ingests. It also adds support for keys that are marked obsolete (see
+	// sstable/format.go for details).
+	ExperimentalFormatDeleteSizedAndObsolete
 
 	// internalFormatNewest holds the newest format major version, including
 	// experimental ones excluded from the exported FormatNewest constant until
@@ -182,7 +184,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev2
 	case FormatSSTableValueBlocks, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev3
-	case ExperimentalFormatDeleteSized:
+	case ExperimentalFormatDeleteSizedAndObsolete:
 		return sstable.TableFormatPebblev4
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -201,7 +203,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
 		FormatUnusedPrePebblev1MarkedCompacted, FormatSSTableValueBlocks,
 		FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
-		ExperimentalFormatDeleteSized:
+		ExperimentalFormatDeleteSizedAndObsolete:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -334,8 +336,8 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 		}
 		return d.finalizeFormatVersUpgrade(FormatPrePebblev1MarkedCompacted)
 	},
-	ExperimentalFormatDeleteSized: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(ExperimentalFormatDeleteSized)
+	ExperimentalFormatDeleteSizedAndObsolete: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(ExperimentalFormatDeleteSizedAndObsolete)
 	},
 }
 
