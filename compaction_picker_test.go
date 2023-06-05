@@ -69,6 +69,7 @@ func loadVersion(
 					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
 				}
 				m := (&fileMetadata{
+					FileNum:        base.FileNum(uint64(level)*100_000 + i),
 					SmallestSeqNum: key.SeqNum(),
 					LargestSeqNum:  key.SeqNum(),
 					Size:           1,
@@ -83,6 +84,10 @@ func loadVersion(
 					// TestCompactionPickerLevelMaxBytes and
 					// TestCompactionPickerTargetLevel. Clean this up somehow.
 					m.Size = size
+					if level != 0 {
+						endKey := base.MakeInternalKey([]byte(fmt.Sprintf("%04d", size)), i, InternalKeyKindSet)
+						m.ExtendPointKeyBounds(opts.Comparer.Compare, key, endKey)
+					}
 				}
 				files[level] = append(files[level], m)
 				sizes[level] += int64(m.Size)
@@ -170,7 +175,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				if errMsg != "" {
 					return errMsg
 				}
-				return ""
+				return runVersionFileSizes(vers)
 			case "init_cp":
 				resetCompacting()
 
@@ -204,6 +209,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					inProgress = append(inProgress, compactionInfo{
 						inputs:      pc.inputs,
 						outputLevel: pc.outputLevel.level,
+						smallest:    pc.smallest,
+						largest:     pc.largest,
 					})
 					if pc.outputLevel.level == 0 {
 						// Once we pick one L0->L0 compaction, we'll keep on doing so
@@ -213,6 +220,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					for _, cl := range pc.inputs {
 						cl.files.Each(func(f *fileMetadata) {
 							f.CompactionState = manifest.CompactionStateCompacting
+							fmt.Fprintf(&b, "  %s marked as compacting\n", f)
 						})
 					}
 				}
@@ -238,17 +246,17 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				// Mark files as compacting for each in-progress compaction.
 				for i := range inProgress {
 					c := &inProgress[i]
-					iter := vers.Levels[c.inputs[0].level].Iter()
-					for f := iter.First(); f != nil; f = iter.Next() {
-						if !f.IsCompacting() {
-							f.CompactionState = manifest.CompactionStateCompacting
-							c.inputs[0].files = iter.Take().Slice()
-							break
+					for j, cl := range c.inputs {
+						iter := vers.Levels[cl.level].Iter()
+						for f := iter.First(); f != nil; f = iter.Next() {
+							if !f.IsCompacting() {
+								f.CompactionState = manifest.CompactionStateCompacting
+								c.inputs[j].files = iter.Take().Slice()
+								break
+							}
 						}
 					}
-
-					switch {
-					case c.inputs[0].level == 0 && c.outputLevel != 0:
+					if c.inputs[0].level == 0 && c.outputLevel != 0 {
 						// L0->Lbase: mark all of Lbase as compacting.
 						c.inputs[1].files = vers.Levels[c.outputLevel].Slice()
 						for _, in := range c.inputs {
@@ -256,27 +264,22 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 								f.CompactionState = manifest.CompactionStateCompacting
 							})
 						}
-					case c.inputs[0].level != c.outputLevel:
-						// Ln->Ln+1: mark 1 file in Ln+1 as compacting.
-						iter := vers.Levels[c.outputLevel].Iter()
-						for f := iter.First(); f != nil; f = iter.Next() {
-							if !f.IsCompacting() {
-								f.CompactionState = manifest.CompactionStateCompacting
-								c.inputs[1].files = iter.Take().Slice()
-								break
-							}
-						}
 					}
 				}
 
+				var b strings.Builder
+				fmt.Fprintf(&b, "Initial state before pick:\n%s", runVersionFileSizes(vers))
 				pc := pickerByScore.pickAuto(compactionEnv{
 					earliestUnflushedSeqNum: InternalKeySeqNumMax,
 					inProgressCompactions:   inProgress,
 				})
-				if pc == nil {
-					return "no compaction"
+				if pc != nil {
+					fmt.Fprintf(&b, "Picked: L%d->L%d: %0.1f\n", pc.startLevel.level, pc.outputLevel.level, pc.score)
 				}
-				return fmt.Sprintf("L%d->L%d: %0.1f", pc.startLevel.level, pc.outputLevel.level, pc.score)
+				if pc == nil {
+					fmt.Fprintln(&b, "Picked: no compaction")
+				}
+				return b.String()
 			case "pick_manual":
 				var startLevel int
 				var start, end string
