@@ -350,6 +350,14 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 	y.limiter = maxOpsPerSec.newRateLimiter()
 
 	wg.Add(concurrency)
+
+	// If this workload doesn't produce reads, sample the worst case read-amp
+	// from Metrics() periodically.
+	if y.weights.get(ycsbRead) == 0 && y.weights.get(ycsbScan) == 0 && y.weights.get(ycsbReverseScan) == 0 {
+		wg.Add(1)
+		go y.sampleReadAmp(db, wg)
+	}
+
 	for i := 0; i < concurrency; i++ {
 		go y.run(db, wg)
 	}
@@ -390,6 +398,21 @@ func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 		latency[op].Record(time.Since(start))
 		if ycsbConfig.numOps > 0 &&
 			atomic.AddUint64(&y.numOps, 1) >= ycsbConfig.numOps {
+			break
+		}
+	}
+}
+
+func (y *ycsb) sampleReadAmp(db DB, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	limiter := rate.NewLimiter(rate.Every(time.Second), 0)
+	for {
+		wait(limiter)
+		m := db.Metrics()
+		y.readAmpCount.Add(1)
+		y.readAmpSum.Add(uint64(m.ReadAmp()))
+		if ycsbConfig.numOps > 0 && atomic.LoadUint64(&y.numOps) >= ycsbConfig.numOps {
 			break
 		}
 	}
