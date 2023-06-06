@@ -159,6 +159,13 @@ const (
 	// sstable/format.go for details).
 	ExperimentalFormatDeleteSizedAndObsolete
 
+	// FormatVirtualSSTables is a format major version that adds support for
+	// virtual sstables that can reference a sub-range of keys in an underlying
+	// physical sstables. This information is persisted through new,
+	// backward-incompatible fields in the Manifest, and therefore requires
+	// an FMV.
+	FormatVirtualSSTables
+
 	// internalFormatNewest holds the newest format major version, including
 	// experimental ones excluded from the exported FormatNewest constant until
 	// they've stabilized. Used in tests.
@@ -184,7 +191,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev2
 	case FormatSSTableValueBlocks, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev3
-	case ExperimentalFormatDeleteSizedAndObsolete:
+	case ExperimentalFormatDeleteSizedAndObsolete, FormatVirtualSSTables:
 		return sstable.TableFormatPebblev4
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -203,7 +210,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
 		FormatUnusedPrePebblev1MarkedCompacted, FormatSSTableValueBlocks,
 		FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
-		ExperimentalFormatDeleteSizedAndObsolete:
+		ExperimentalFormatDeleteSizedAndObsolete, FormatVirtualSSTables:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -338,6 +345,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	ExperimentalFormatDeleteSizedAndObsolete: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(ExperimentalFormatDeleteSizedAndObsolete)
+	},
+	FormatVirtualSSTables: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatVirtualSSTables)
 	},
 }
 
