@@ -5,7 +5,7 @@
 //go:build make_incorrect_manifests
 // +build make_incorrect_manifests
 
-// Run using: go run -tags make_incorrect_manifests make_incorrect_manifests.go
+// Run using: go run -tags make_incorrect_manifests ./tool/make_incorrect_manifests.go
 package main
 
 import (
@@ -29,7 +29,7 @@ func writeVE(writer *record.Writer, ve *manifest.VersionEdit) {
 
 func makeManifest1() {
 	fs := vfs.Default
-	f, err := fs.Create("testdata/MANIFEST-invalid")
+	f, err := fs.Create("tool/testdata/MANIFEST-invalid")
 	if err != nil {
 		log.Fatal(err)
 	}

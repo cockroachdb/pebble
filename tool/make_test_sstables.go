@@ -5,7 +5,7 @@
 //go:build make_test_sstables
 // +build make_test_sstables
 
-// Run using: go run -tags make_test_sstables make_test_sstables.go
+// Run using: go run -tags make_test_sstables ./tool/make_test_sstables.go
 package main
 
 import (
@@ -19,7 +19,7 @@ import (
 
 func makeOutOfOrder() {
 	fs := vfs.Default
-	f, err := fs.Create("testdata/out-of-order.sst")
+	f, err := fs.Create("tool/testdata/out-of-order.sst")
 	if err != nil {
 		log.Fatal(err)
 	}

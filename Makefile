@@ -16,6 +16,8 @@ all:
 	@echo "  make stressmeta"
 	@echo "  make crossversion-meta"
 	@echo "  make mod-update"
+	@echo "  make generate"
+	@echo "  make generate-test-data"
 	@echo "  make clean"
 
 override testflags :=
@@ -68,6 +70,16 @@ stress-crossversion:
 .PHONY: generate
 generate:
 	${GO} generate ${PKG}
+
+generate:
+
+# Note that the output of generate-test-data is not deterministic. This should
+# only be run manually as needed.
+.PHONY: generate-test-data
+generate-test-data:
+	${GO} run -tags make_incorrect_manifests ./tool/make_incorrect_manifests.go
+	${GO} run -tags make_test_find_db ./tool/make_test_find_db.go
+	${GO} run -tags make_test_sstables ./tool/make_test_sstables.go
 
 mod-update:
 	${GO} get -u
