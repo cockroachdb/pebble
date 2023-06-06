@@ -41,6 +41,7 @@ func TestLatestRefCounting(t *testing.T) {
 		FS:                          mem,
 		MaxManifestFileSize:         1,
 		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          ExperimentalFormatVirtualSSTables,
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -217,6 +218,7 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 	require.NoError(t, mem.MkdirAll("ext", 0755))
 
 	opts := &Options{
+		FormatMajorVersion:          ExperimentalFormatVirtualSSTables,
 		FS:                          mem,
 		MaxManifestFileSize:         1,
 		DisableAutomaticCompactions: true,

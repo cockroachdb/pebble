@@ -490,6 +490,9 @@ func (vs *versionSet) logAndApply(
 		defer vs.mu.Lock()
 
 		var err error
+		if vs.opts.FormatMajorVersion < ExperimentalFormatVirtualSSTables && len(ve.CreatedBackingTables) > 0 {
+			return errors.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
+		}
 		newVersion, zombies, err = manifest.AccumulateIncompleteAndApplySingleVE(
 			ve, currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
 			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
@@ -516,7 +519,7 @@ func (vs *versionSet) logAndApply(
 			return errors.Wrap(err, "MANIFEST next record write failed")
 		}
 
-		// NB: Any error from this point on is considered fatal as we don't now if
+		// NB: Any error from this point on is considered fatal as we don't know if
 		// the MANIFEST write occurred or not. Trying to determine that is
 		// fraught. Instead we rely on the standard recovery mechanism run when a
 		// database is open. In particular, that mechanism generates a new MANIFEST
