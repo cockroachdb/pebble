@@ -1586,7 +1586,7 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_set_with_del",
 			minVersion: FormatSetWithDelete,
-			maxVersion: internalFormatNewest,
+			maxVersion: FormatPrePebblev1MarkedCompacted,
 		},
 		{
 			testData:   "testdata/singledel_manual_compaction",
@@ -1607,10 +1607,15 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_file_boundaries",
 			minVersion: FormatMostCompatible,
-			maxVersion: ExperimentalFormatDeleteSizedAndObsolete - 1,
+			maxVersion: FormatPrePebblev1MarkedCompacted,
 		},
 		{
 			testData:   "testdata/manual_compaction_file_boundaries_delsized",
+			minVersion: ExperimentalFormatDeleteSizedAndObsolete,
+			maxVersion: internalFormatNewest,
+		},
+		{
+			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev4",
 			minVersion: ExperimentalFormatDeleteSizedAndObsolete,
 			maxVersion: internalFormatNewest,
 		},
