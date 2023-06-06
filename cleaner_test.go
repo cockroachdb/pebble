@@ -107,6 +107,8 @@ func TestCleaner(t *testing.T) {
 					return "open <dir> [archive] [readonly]"
 				}
 			}
+			// Asynchronous table stats retrieval makes the output flaky.
+			opts.private.disableTableStats = true
 			d, err := Open(dir, opts)
 			if err != nil {
 				return err.Error()
