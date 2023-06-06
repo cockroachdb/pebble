@@ -14,10 +14,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-//go:generate go run -tags make_incorrect_manifests make_incorrect_manifests.go
-//go:generate go run -tags make_test_find_db make_test_find_db.go
-//go:generate go run -tags make_test_sstables make_test_sstables.go
-
 // Comparer exports the base.Comparer type.
 type Comparer = base.Comparer
 

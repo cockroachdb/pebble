@@ -5,7 +5,7 @@
 //go:build make_test_find_db
 // +build make_test_find_db
 
-// Run using: go run -tags make_test_find_db make_test_find_db.go
+// Run using: go run -tags make_test_find_db ./tool/make_test_find_db.go
 package main
 
 import (
@@ -86,7 +86,7 @@ func (d *db) deleteRange(start, end string) {
 }
 
 func (d *db) ingest(keyVals ...string) {
-	const path = "testdata/ingest.tmp"
+	const path = "tool/testdata/ingest.tmp"
 
 	if len(keyVals)%2 != 0 {
 		log.Fatalf("even number of key/values required")
@@ -136,7 +136,7 @@ func (d *db) snapshot() *pebble.Snapshot {
 }
 
 func main() {
-	const dir = "testdata/find-db"
+	const dir = "tool/testdata/find-db"
 
 	fs := vfs.Default
 	if err := fs.RemoveAll(dir); err != nil {
