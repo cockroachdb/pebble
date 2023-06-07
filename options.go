@@ -528,17 +528,6 @@ type Options struct {
 		// concurrency slots as determined by the two options is chosen.
 		CompactionDebtConcurrency int
 
-		// MinDeletionRate is the minimum number of bytes per second that would
-		// be deleted. Deletion pacing is used to slow down deletions when
-		// compactions finish up or readers close, and newly-obsolete files need
-		// cleaning up. Deleting lots of files at once can cause disk latency to
-		// go up on some SSDs, which this functionality guards against. This is a
-		// minimum as the maximum is theoretically unlimited; pacing is disabled
-		// when there are too many obsolete files relative to live bytes, or
-		// there isn't enough disk space available. Setting this to 0 disables
-		// deletion pacing, which is also the default.
-		MinDeletionRate int
-
 		// ReadCompactionRate controls the frequency of read triggered
 		// compactions by adjusting `AllowedSeeks` in manifest.FileMetadata:
 		//
@@ -877,6 +866,19 @@ type Options struct {
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
 
+	// TargetByteDeletionRate is the rate (in bytes per second) at which sstable file
+	// deletions are limited to (under normal circumstances).
+	//
+	// Deletion pacing is used to slow down deletions when compactions finish up
+	// or readers close and newly-obsolete files need cleaning up. Deleting lots
+	// of files at once can cause disk latency to go up on some SSDs, which this
+	// functionality guards against. This is only a best-effort target; pacing is
+	// disabled when there are too many obsolete files relative to live bytes, or
+	// there isn't enough disk space available.
+	//
+	// Setting this to 0 disables deletion pacing, which is also the default.
+	TargetByteDeletionRate int
+
 	// private options are only used by internal tests or are used internally
 	// for facilitating upgrade paths of unconfigurable functionality.
 	private struct {
@@ -1182,7 +1184,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
-	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.Experimental.MinDeletionRate)
+	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.TargetByteDeletionRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
 	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
@@ -1428,7 +1430,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				// Do nothing; option existed in older versions of pebble, and
 				// may be meaningful again eventually.
 			case "min_deletion_rate":
-				o.Experimental.MinDeletionRate, err = strconv.Atoi(value)
+				o.TargetByteDeletionRate, err = strconv.Atoi(value)
 			case "min_flush_rate":
 				// Do nothing; option existed in older versions of pebble, and
 				// may be meaningful again eventually.

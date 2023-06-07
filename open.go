@@ -210,8 +210,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		write:         d.commitWrite,
 	})
 	d.deletionLimiter = rate.NewLimiter(
-		rate.Limit(d.opts.Experimental.MinDeletionRate),
-		d.opts.Experimental.MinDeletionRate)
+		rate.Limit(d.opts.TargetByteDeletionRate),
+		d.opts.TargetByteDeletionRate)
 	d.mu.nextJobID = 1
 	d.mu.mem.nextSize = opts.MemTableSize
 	if d.mu.mem.nextSize > initialMemTableSize {

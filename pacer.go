@@ -106,7 +106,7 @@ func (p *deletionPacer) limit(amount uint64, info deletionPacerInfo) error {
 }
 
 // maybeThrottle slows down a deletion of this file if it's faster than
-// opts.Experimental.MinDeletionRate.
+// opts.TargetByteDeletionRate.
 func (p *deletionPacer) maybeThrottle(bytesToDelete uint64) error {
 	return p.limit(bytesToDelete, p.getInfo())
 }
