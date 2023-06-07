@@ -17,7 +17,8 @@ create 1 shared 1 2000000
 <shared> create object "61a6-1-000001.sst.ref.1.000001"
 <shared> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
 
-# We should be seeing larger and larger reads.
+# We should be seeing larger and larger reads. But the last read should be
+# capped to the object size.
 read 1
 0 1000
 1000 15000
@@ -28,6 +29,10 @@ read 1
 150000 20000
 180000 10000
 210000 30000
+300000 10000
+500000 1000
+800000 1000
+1500000 10000
 ----
 <shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
 <shared> create reader for object "61a6-1-000001.sst": 2000000 bytes
@@ -46,6 +51,12 @@ size: 2000000
 <shared> read object "61a6-1-000001.sst" at 187072 (length 255072)
 180000 10000: ok (salt 1)
 210000 30000: ok (salt 1)
+300000 10000: ok (salt 1)
+<shared> read object "61a6-1-000001.sst" at 500000 (length 524288)
+500000 1000: ok (salt 1)
+800000 1000: ok (salt 1)
+<shared> read object "61a6-1-000001.sst" at 1500000 (length 500000)
+1500000 10000: ok (salt 1)
 <shared> close reader for "61a6-1-000001.sst"
 
 # When reading for a compaction, we should be doing large reads from the start.
@@ -63,7 +74,7 @@ read 1 for-compaction
 <shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
 <shared> create reader for object "61a6-1-000001.sst": 2000000 bytes
 size: 2000000
-<shared> read object "61a6-1-000001.sst" at 0 (length 262144)
+<shared> read object "61a6-1-000001.sst" at 0 (length 1048576)
 0 1000: ok (salt 1)
 1000 15000: ok (salt 1)
 16000 30000: ok (salt 1)
