@@ -941,7 +941,11 @@ func (d *DB) ingest(
 		if err != nil || asFlushable {
 			// An error occurred during prepare.
 			if mut != nil {
-				mut.writerUnref()
+				if mut.writerUnref() {
+					d.mu.Lock()
+					d.maybeScheduleFlush()
+					d.mu.Unlock()
+				}
 			}
 			return
 		}
@@ -954,7 +958,11 @@ func (d *DB) ingest(
 			d.cmp, d.opts.Comparer.FormatKey, seqNum, meta,
 		); err != nil {
 			if mut != nil {
-				mut.writerUnref()
+				if mut.writerUnref() {
+					d.mu.Lock()
+					d.maybeScheduleFlush()
+					d.mu.Unlock()
+				}
 			}
 			return
 		}
@@ -1068,13 +1076,14 @@ func (d *DB) ingestApply(
 	// returns must unlock the manifest.
 	d.mu.versions.logLock()
 
+	scheduleFlush := false
 	if mut != nil {
 		// Unref the mutable memtable to allows its flush to proceed. Now that we've
 		// acquired the manifest lock, we can be certain that if the mutable
 		// memtable has received more recent conflicting writes, the flush won't
 		// beat us to applying to the manifest resulting in sequence number
 		// inversion.
-		mut.writerUnref()
+		scheduleFlush = mut.writerUnref()
 	}
 
 	current := d.mu.versions.currentVersion()
@@ -1113,6 +1122,9 @@ func (d *DB) ingestApply(
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.
 	d.maybeScheduleCompaction()
+	if scheduleFlush {
+		d.maybeScheduleFlush()
+	}
 	d.maybeValidateSSTablesLocked(ve.NewFiles)
 	return ve, nil
 }
