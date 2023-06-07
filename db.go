@@ -2136,6 +2136,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 					})
 				}
 				now := time.Now()
+				d.maybeScheduleFlush()
 				d.mu.compact.cond.Wait()
 				if b != nil {
 					b.commitStats.MemTableWriteStallDuration += time.Since(now)
