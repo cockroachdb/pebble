@@ -15,7 +15,7 @@ import (
 )
 
 func TestMaybeReadahead(t *testing.T) {
-	rs := makeReadaheadState()
+	rs := makeReadaheadState(256 * 1024)
 	datadriven.RunTest(t, "testdata/readahead", func(t *testing.T, d *datadriven.TestData) string {
 		cacheHit := false
 		switch d.Cmd {

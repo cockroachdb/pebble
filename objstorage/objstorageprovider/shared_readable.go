@@ -6,12 +6,15 @@ package objstorageprovider
 
 import (
 	"context"
+	"io"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/objstorage/shared"
 )
+
+const sharedMaxReadaheadSize = 1024 * 1024 /* 1MB */
 
 // sharedReadable is a very simple implementation of Readable on top of the
 // ReadCloser returned by shared.Storage.CreateObject.
@@ -67,7 +70,7 @@ func (r *sharedReadable) Size() int64 {
 func (r *sharedReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
 	// TODO(radu): use a pool.
 	rh := &sharedReadHandle{readable: r}
-	rh.readahead.state = makeReadaheadState()
+	rh.readahead.state = makeReadaheadState(sharedMaxReadaheadSize)
 	return rh
 }
 
@@ -103,6 +106,15 @@ func (r *sharedReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) e
 	}
 
 	if readaheadSize > len(p) {
+		// Don't try to read past EOF.
+		if offset+int64(readaheadSize) > r.readable.size {
+			readaheadSize = int(r.readable.size - offset)
+			if readaheadSize <= 0 {
+				// This shouldn't happen in practice (Pebble should never try to read
+				// past EOF).
+				return io.EOF
+			}
+		}
 		r.readahead.offset = offset
 		// TODO(radu): we need to somehow account for this memory.
 		if cap(r.readahead.data) >= readaheadSize {
@@ -124,9 +136,8 @@ func (r *sharedReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) e
 }
 
 func (r *sharedReadHandle) maybeReadahead(offset int64, len int) int {
-	// TODO(radu): maxReadaheadSize is only 256KB, we probably want 1MB+.
 	if r.forCompaction {
-		return maxReadaheadSize
+		return sharedMaxReadaheadSize
 	}
 	return int(r.readahead.state.maybeReadahead(offset, int64(len)))
 }
