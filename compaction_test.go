@@ -32,6 +32,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -3921,4 +3922,60 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 			runTest(t, tc.addFn, tc.backgroundErrorFn)
 		})
 	}
+}
+
+// TestSharedObjectDeletePacing tests that we don't throttle shared object
+// deletes (see the TargetBytesDeletionRate option).
+func TestSharedObjectDeletePacing(t *testing.T) {
+	var opts Options
+	opts.FS = vfs.NewMem()
+	opts.Experimental.SharedStorage = shared.NewInMem()
+	opts.TargetByteDeletionRate = 1
+
+	d, err := Open("", &opts)
+	require.NoError(t, err)
+	require.NoError(t, d.SetCreatorID(1))
+
+	randVal := func() []byte {
+		res := make([]byte, 1024)
+		_, err := crand.Read(res)
+		require.NoError(t, err)
+		return res
+	}
+
+	// We must set up things so that we will have more live bytes than obsolete
+	// bytes, otherwise delete pacing will be disabled anyway.
+	key := func(i int) string {
+		return fmt.Sprintf("k%02d", i)
+	}
+	const numKeys = 20
+	for i := 1; i <= numKeys; i++ {
+		require.NoError(t, d.Set([]byte(key(i)), randVal(), nil))
+		require.NoError(t, d.Compact([]byte(key(i)), []byte(key(i)+"1"), false))
+	}
+
+	done := make(chan struct{})
+	go func() {
+		err = d.DeleteRange([]byte(key(5)), []byte(key(9)), nil)
+		if err == nil {
+			err = d.Compact([]byte(key(5)), []byte(key(9)), false)
+		}
+		// Wait for objects to be deleted.
+		for {
+			time.Sleep(10 * time.Millisecond)
+			if len(d.objProvider.List()) < numKeys-2 {
+				break
+			}
+		}
+		close(done)
+	}()
+
+	select {
+	case <-time.After(60 * time.Second):
+		// Don't close the DB in this case (the goroutine above might panic).
+		t.Fatalf("compaction timed out, possibly due to incorrect deletion pacing")
+	case <-done:
+	}
+	require.NoError(t, err)
+	d.Close()
 }

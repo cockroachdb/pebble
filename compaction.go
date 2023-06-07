@@ -3643,7 +3643,13 @@ func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
 	for _, of := range files {
 		path := base.MakeFilepath(d.opts.FS, of.dir, of.fileType, of.fileNum)
 		if of.fileType == fileTypeTable {
-			_ = pacer.maybeThrottle(of.fileSize)
+			// Don't throttle deletion of shared objects.
+			meta, err := d.objProvider.Lookup(of.fileType, of.fileNum)
+			// If we get an error here, deleteObsoleteObject won't actually delete
+			// anything, so we don't need to throttle.
+			if err == nil && !meta.IsShared() {
+				_ = pacer.maybeThrottle(of.fileSize)
+			}
 			d.mu.Lock()
 			d.mu.versions.metrics.Table.ObsoleteCount--
 			d.mu.versions.metrics.Table.ObsoleteSize -= of.fileSize
