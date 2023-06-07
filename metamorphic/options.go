@@ -390,9 +390,9 @@ func randomOptions(
 	opts.FormatMajorVersion = minimumFormatMajorVersion
 	n := int(pebble.FormatNewest - opts.FormatMajorVersion)
 	opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.Intn(n + 1))
-	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4)    // 1-4
-	opts.Experimental.LevelMultiplier = 5 << rng.Intn(7)           // 5 - 320
-	opts.Experimental.MinDeletionRate = 1 << uint(20+rng.Intn(10)) // 1MB - 1GB
+	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4) // 1-4
+	opts.Experimental.LevelMultiplier = 5 << rng.Intn(7)        // 5 - 320
+	opts.TargetByteDeletionRate = 1 << uint(20+rng.Intn(10))    // 1MB - 1GB
 	opts.Experimental.ValidateOnIngest = rng.Intn(2) != 0
 	opts.L0CompactionThreshold = 1 + rng.Intn(100)     // 1 - 100
 	opts.L0CompactionFileThreshold = 1 << rng.Intn(11) // 1 - 1024
