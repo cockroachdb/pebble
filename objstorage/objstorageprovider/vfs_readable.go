@@ -15,6 +15,8 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+const fileMaxReadaheadSize = 256 * 1024 /* 256KB */
+
 // fileReadable implements objstorage.Readable on top of a vfs.File.
 //
 // The implementation might use Prealloc and might reopen the file with
@@ -75,7 +77,7 @@ func (r *fileReadable) Size() int64 {
 func (r *fileReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
 	rh := readHandlePool.Get().(*vfsReadHandle)
 	rh.r = r
-	rh.rs = makeReadaheadState()
+	rh.rs = makeReadaheadState(fileMaxReadaheadSize)
 	return rh
 }
 
@@ -126,7 +128,7 @@ func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error
 		n, err = rh.sequentialFile.ReadAt(p, offset)
 	} else {
 		if readaheadSize := rh.rs.maybeReadahead(offset, int64(len(p))); readaheadSize > 0 {
-			if readaheadSize >= maxReadaheadSize {
+			if readaheadSize >= fileMaxReadaheadSize {
 				// We've reached the maximum readahead size. Beyond this point, rely on
 				// OS-level readahead.
 				rh.switchToOSReadahead()
