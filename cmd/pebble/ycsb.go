@@ -406,12 +406,13 @@ func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 func (y *ycsb) sampleReadAmp(db DB, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	limiter := rate.NewLimiter(rate.Every(time.Second), 0)
-	for {
-		wait(limiter)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
 		m := db.Metrics()
 		y.readAmpCount.Add(1)
 		y.readAmpSum.Add(uint64(m.ReadAmp()))
+		fmt.Println("sampling")
 		if ycsbConfig.numOps > 0 && atomic.LoadUint64(&y.numOps) >= ycsbConfig.numOps {
 			break
 		}
