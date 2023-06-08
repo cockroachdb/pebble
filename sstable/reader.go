@@ -464,6 +464,19 @@ func (i *singleLevelIterator) init(
 	return nil
 }
 
+// helper function to check if keys returned from iterator are within block and global bounds
+func (i *singleLevelIterator) CheckKeyWithinBounds(iKey *InternalKey) {
+	// used for virtual sstable iterators
+	if invariants.Enabled && i.vState != nil {
+		key := iKey.UserKey
+		withinUpper := i.cmp(key, i.upper) <= 0 && i.cmp(key, i.blockUpper) <= 0
+		withinLower := i.cmp(key, i.lower) >= 0 && i.cmp(key, i.blockLower) >= 0
+		if !withinUpper || !withinLower {
+			panic(fmt.Sprintf("key: %s out of bounds of singleLevelIterator", key))
+		}
+	}
+}
+
 // setupForCompaction sets up the singleLevelIterator for use with compactionIter.
 // Currently, it skips readahead ramp-up. It should be called after init is called.
 func (i *singleLevelIterator) setupForCompaction() {
@@ -932,6 +945,7 @@ func (i *singleLevelIterator) SeekPrefixGE(
 		}
 	}
 	k, v := i.seekPrefixGE(prefix, key, flags, i.useFilter)
+	i.CheckKeyWithinBounds(k)
 	return k, v
 }
 
@@ -1143,7 +1157,9 @@ func (i *singleLevelIterator) SeekLT(
 	// be chosen as "compleu". The SeekGE in the index block will then point
 	// us to the block containing "complexion". If this happens, we want the
 	// last key from the previous data block.
-	return i.skipBackward()
+	ikey, val := i.skipBackward()
+	i.CheckKeyWithinBounds(ikey)
+	return ikey, val
 }
 
 // First implements internalIterator.First, as documented in the pebble
@@ -1163,7 +1179,10 @@ func (i *singleLevelIterator) First() (*InternalKey, base.LazyValue) {
 	}
 	i.positionedUsingLatestBounds = true
 	i.maybeFilteredKeysSingleLevel = false
-	return i.firstInternal()
+
+	key, val := i.firstInternal()
+	i.CheckKeyWithinBounds(key)
+	return key, val
 }
 
 // firstInternal is a helper used for absolute positioning in a single-level
@@ -1231,7 +1250,9 @@ func (i *singleLevelIterator) Last() (*InternalKey, base.LazyValue) {
 	}
 	i.positionedUsingLatestBounds = true
 	i.maybeFilteredKeysSingleLevel = false
-	return i.lastInternal()
+	key, val := i.lastInternal()
+	i.CheckKeyWithinBounds(key)
+	return key, val
 }
 
 // lastInternal is a helper used for absolute positioning in a single-level
@@ -1377,7 +1398,10 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.Laz
 		}
 		return key, val
 	}
-	return i.skipForward()
+
+	k, v := i.skipForward()
+	i.CheckKeyWithinBounds(k)
+	return k, v
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -1401,7 +1425,9 @@ func (i *singleLevelIterator) Prev() (*InternalKey, base.LazyValue) {
 		}
 		return key, val
 	}
-	return i.skipBackward()
+	key, val := i.skipBackward()
+	i.CheckKeyWithinBounds(key)
+	return key, val
 }
 
 func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
@@ -2066,7 +2092,9 @@ func (i *twoLevelIterator) SeekGE(
 			return ikey, val
 		}
 	}
-	return i.skipForward()
+	ikey, val := i.skipForward()
+	i.CheckKeyWithinBounds(ikey)
+	return ikey, val
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -2477,7 +2505,9 @@ func (i *twoLevelIterator) Next() (*InternalKey, base.LazyValue) {
 	if key, val := i.singleLevelIterator.Next(); key != nil {
 		return key, val
 	}
-	return i.skipForward()
+	ikey, val := i.skipForward()
+	i.CheckKeyWithinBounds(ikey)
+	return ikey, val
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
