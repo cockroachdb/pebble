@@ -114,6 +114,21 @@ func TestTableStats(t *testing.T) {
 			d.mu.Unlock()
 			return s
 
+		case "metric":
+			m := d.Metrics()
+			// TODO(jackson): Make a generalized command that uses reflection to
+			// pull out arbitrary Metrics fields.
+			var buf bytes.Buffer
+			for _, arg := range td.CmdArgs {
+				switch arg.String() {
+				case "keys.missized-tombstones-count":
+					fmt.Fprintf(&buf, "%s: %d", arg.String(), m.Keys.MissizedTombstonesCount)
+				default:
+					return fmt.Sprintf("unrecognized metric %s", arg)
+				}
+			}
+			return buf.String()
+
 		case "wait-pending-table-stats":
 			return runTableStatsCmd(td, d)
 

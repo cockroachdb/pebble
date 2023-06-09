@@ -2072,6 +2072,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	bytesFlushed = c.bytesIterated
 	d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
 	d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
+	d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.countMissizedDels
 
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.clearCompactingState(c, err != nil)
@@ -2633,6 +2634,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 type compactStats struct {
 	cumulativePinnedKeys uint64
 	cumulativePinnedSize uint64
+	countMissizedDels    uint64
 }
 
 // runCompactions runs a compaction that produces new on-disk tables from
@@ -3305,6 +3307,11 @@ func (d *DB) runCompaction(
 			}] = f
 		}
 	}
+
+	// The compaction iterator keeps track of a count of the number of DELSIZED
+	// keys that encoded an incorrect size. Propagate it up as a part of
+	// compactStats.
+	stats.countMissizedDels = iter.stats.countMissizedDels
 
 	if err := d.objProvider.Sync(); err != nil {
 		return nil, pendingOutputs, stats, err

@@ -256,6 +256,10 @@ type compactionIter struct {
 	// The on-disk format major version. This informs the types of keys that
 	// may be written to disk during a compaction.
 	formatVersion FormatMajorVersion
+	stats         struct {
+		// count of DELSIZED keys that were missized.
+		countMissizedDels uint64
+	}
 }
 
 func newCompactionIter(
@@ -953,6 +957,7 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 	// user-provided size for accuracy, so ordinary DEL heuristics are safer.
 	i.value = i.valueBuf[:0]
 	if elidedSize != v {
+		i.stats.countMissizedDels++
 		i.key.SetKind(InternalKeyKindDelete)
 	}
 	return &i.key, i.value
