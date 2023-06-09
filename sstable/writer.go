@@ -164,7 +164,7 @@ type Writer struct {
 	indexBlock          *indexBlockBuf
 	rangeDelBlock       blockWriter
 	rangeKeyBlock       blockWriter
-	topLevelIndexBlock  blockWriter
+	topLevelIndexBlock  indexBlockWriter
 	props               Properties
 	propCollectors      []TablePropertyCollector
 	blockPropCollectors []BlockPropertyCollector
@@ -383,17 +383,14 @@ func (s *sizeEstimate) clear() {
 
 type indexBlockBuf struct {
 	// block will only be accessed from the writeQueue.
-	block blockWriter
+	block indexBlockWriter
 
 	size struct {
 		useMutex bool
 		mu       sync.Mutex
 		estimate sizeEstimate
 	}
-
-	// restartInterval matches indexBlockBuf.block.restartInterval. We store it twice, because the `block`
-	// must only be accessed from the writeQueue goroutine.
-	restartInterval int
+	format indexBlockFormat
 }
 
 func (i *indexBlockBuf) clear() {
@@ -403,7 +400,6 @@ func (i *indexBlockBuf) clear() {
 		defer i.size.mu.Unlock()
 	}
 	i.size.estimate.clear()
-	i.restartInterval = 0
 }
 
 var indexBlockBufPool = sync.Pool{
@@ -412,14 +408,11 @@ var indexBlockBufPool = sync.Pool{
 	},
 }
 
-const indexBlockRestartInterval = 1
-
-func newIndexBlockBuf(useMutex bool) *indexBlockBuf {
+func newIndexBlockBuf(useMutex bool, format indexBlockFormat) *indexBlockBuf {
 	i := indexBlockBufPool.Get().(*indexBlockBuf)
 	i.size.useMutex = useMutex
-	i.restartInterval = indexBlockRestartInterval
-	i.block.restartInterval = indexBlockRestartInterval
 	i.size.estimate.init(emptyBlockSize)
+	i.block.format = format
 	return i
 }
 
@@ -431,10 +424,10 @@ func (i *indexBlockBuf) shouldFlush(
 		defer i.size.mu.Unlock()
 	}
 
-	nEntries := i.size.estimate.numTotalEntries()
-	return shouldFlush(
-		sep, valueLen, i.restartInterval, int(i.size.estimate.size()),
-		int(nEntries), targetBlockSize, sizeThreshold)
+	return shouldFlushIndexBlock(
+		sep, valueLen, int(i.size.estimate.size()),
+		int(i.size.estimate.numTotalEntries()), targetBlockSize,
+		sizeThreshold, i.format)
 }
 
 func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) {
@@ -1422,7 +1415,7 @@ func (w *Writer) flush(key InternalKey) error {
 	var flushableIndexBlock *indexBlockBuf
 	if shouldFlushIndexBlock {
 		flushableIndexBlock = w.indexBlock
-		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
+		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled, w.tableFormat.indexBlockFormat())
 		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
 		// flush the index block.
 		indexProps, err = w.finishIndexBlockProps()
@@ -1445,7 +1438,7 @@ func (w *Writer) flush(key InternalKey) error {
 	writeTask.buf = w.dataBlockBuf
 	writeTask.indexEntrySep = sep
 	writeTask.currIndexBlock = w.indexBlock
-	writeTask.indexInflightSize = sep.Size() + encodedBHPEstimatedSize
+	writeTask.indexInflightSize = len(sep.UserKey) + encodedBHPEstimatedSize
 	writeTask.finishedIndexProps = indexProps
 	writeTask.flushableIndexBlock = flushableIndexBlock
 
@@ -1542,7 +1535,7 @@ func (w *Writer) indexEntrySep(prevKey, key InternalKey, dataBlockBuf *dataBlock
 //  2. addIndexEntry must not hold references to the flushIndexBuf, and the writeTo
 //     indexBlockBufs.
 func (w *Writer) addIndexEntry(
-	sep InternalKey,
+	sep base.InternalKey,
 	bhp BlockHandleWithProperties,
 	tmp []byte,
 	flushIndexBuf *indexBlockBuf,
@@ -1600,7 +1593,7 @@ func (w *Writer) addIndexEntrySync(
 	var err error
 	if shouldFlush {
 		flushableIndexBlock = w.indexBlock
-		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
+		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled, w.tableFormat.indexBlockFormat())
 
 		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
 		// flush the index block.
@@ -1692,10 +1685,11 @@ func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 //     That is, it must be safe to reuse indexBuf after finishIndexBlock has been called.
 func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
 	part := indexBlockAndBlockProperties{
-		nEntries: indexBuf.block.nEntries, properties: props,
+		nEntries: indexBuf.block.numEntries(), properties: props,
 	}
+
 	w.indexSepAlloc, part.sep = cloneKeyWithBuf(
-		indexBuf.block.getCurKey(), w.indexSepAlloc,
+		indexBuf.block.curKey, w.indexSepAlloc,
 	)
 	bk := indexBuf.finish()
 	if len(w.indexBlockAlloc) < len(bk) {
@@ -1904,7 +1898,7 @@ func (w *Writer) Close() (err error) {
 
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
-	if w.dataBlockBuf.dataBlock.nEntries > 0 || w.indexBlock.block.nEntries == 0 {
+	if w.dataBlockBuf.dataBlock.nEntries > 0 || w.indexBlock.block.numEntries() == 0 {
 		bh, err := w.writeBlock(w.dataBlockBuf.dataBlock.finish(), w.compression, &w.dataBlockBuf.blockBuf)
 		if err != nil {
 			return err
@@ -1952,7 +1946,7 @@ func (w *Writer) Close() (err error) {
 		// property, though it doesn't include the trailer in the filter size
 		// property.
 		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
-		w.props.NumDataBlocks = uint64(w.indexBlock.block.nEntries)
+		w.props.NumDataBlocks = uint64(w.indexBlock.block.numEntries())
 
 		// Write the single level index block.
 		indexBH, err = w.writeBlock(w.indexBlock.finish(), w.compression, &w.blockBuf)
@@ -2194,6 +2188,7 @@ func (o *PreviousPointKeyOpt) writerApply(w *Writer) {
 // close the file.
 func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...WriterOption) *Writer {
 	o = o.ensureDefaults()
+	indexFormat := o.TableFormat.indexBlockFormat()
 	w := &Writer{
 		writable: writable,
 		meta: WriterMetadata{
@@ -2215,21 +2210,20 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 		cache:                   o.Cache,
 		restartInterval:         o.BlockRestartInterval,
 		checksumType:            o.Checksum,
-		indexBlock:              newIndexBlockBuf(o.Parallelism),
+		indexBlock:              newIndexBlockBuf(o.Parallelism, indexFormat),
 		rangeDelBlock: blockWriter{
 			restartInterval: 1,
 		},
 		rangeKeyBlock: blockWriter{
 			restartInterval: 1,
 		},
-		topLevelIndexBlock: blockWriter{
-			restartInterval: 1,
-		},
+		topLevelIndexBlock: indexBlockWriter{},
 		fragmenter: keyspan.Fragmenter{
 			Cmp:    o.Comparer.Compare,
 			Format: o.Comparer.FormatKey,
 		},
 	}
+	w.topLevelIndexBlock.format = indexFormat
 	if w.tableFormat >= TableFormatPebblev3 {
 		w.shortAttributeExtractor = o.ShortAttributeExtractor
 		w.requiredInPlaceValueBound = o.RequiredInPlaceValueBound

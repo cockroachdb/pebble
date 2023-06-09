@@ -214,6 +214,13 @@ func ParseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 	}
 }
 
+func (f TableFormat) indexBlockFormat() indexBlockFormat {
+	//if f >= TableFormatPebblev4 {
+	//return indexBlockFormatCondensed
+	//}
+	return indexBlockFormatDefault
+}
+
 // AsTuple returns the TableFormat's (Magic String, Version) tuple.
 func (f TableFormat) AsTuple() (string, uint32) {
 	switch f {

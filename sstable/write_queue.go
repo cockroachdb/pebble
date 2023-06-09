@@ -16,7 +16,7 @@ type writeTask struct {
 	flushableIndexBlock *indexBlockBuf
 	// currIndexBlock is the index block on which indexBlock.add must be called.
 	currIndexBlock *indexBlockBuf
-	indexEntrySep  InternalKey
+	indexEntrySep  base.InternalKey
 	// inflightIndexEntrySize is used to decrement Writer.indexBlock.sizeEstimate.inflightSize.
 	indexInflightSize int
 	// If the index block is finished, then we set the finishedIndexProps here.
@@ -27,8 +27,8 @@ type writeTask struct {
 // task.flushableIndexBlock, and task.buf.
 func (task *writeTask) clear() {
 	*task = writeTask{
-		indexEntrySep:   base.InvalidInternalKey,
 		compressionDone: task.compressionDone,
+		indexEntrySep:   base.InvalidInternalKey,
 	}
 }
 
