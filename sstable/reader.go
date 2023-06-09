@@ -464,6 +464,24 @@ func (i *singleLevelIterator) init(
 	return nil
 }
 
+// Helper function to check if keys returned from iterator are within global and virtual bounds.
+func (i *singleLevelIterator) maybeVerifyKey(
+	iKey *InternalKey, val base.LazyValue,
+) (*InternalKey, base.LazyValue) {
+	// maybeVerify key is only used for virtual sstable iterators.
+	if invariants.Enabled && i.vState != nil && iKey != nil {
+		key := iKey.UserKey
+
+		uc, vuc := i.cmp(key, i.upper), i.cmp(key, i.vState.upper.UserKey)
+		lc, vlc := i.cmp(key, i.lower), i.cmp(key, i.vState.lower.UserKey)
+
+		if (!i.endKeyInclusive && (uc == 0 || vuc == 0)) || (uc > 0 || vuc > 0 || lc < 0 || vlc < 0) {
+			panic(fmt.Sprintf("key: %s out of bounds of singleLevelIterator", key))
+		}
+	}
+	return iKey, val
+}
+
 // setupForCompaction sets up the singleLevelIterator for use with compactionIter.
 // Currently, it skips readahead ramp-up. It should be called after init is called.
 func (i *singleLevelIterator) setupForCompaction() {
@@ -931,8 +949,7 @@ func (i *singleLevelIterator) SeekPrefixGE(
 			key = i.lower
 		}
 	}
-	k, v := i.seekPrefixGE(prefix, key, flags, i.useFilter)
-	return k, v
+	return i.seekPrefixGE(prefix, key, flags, i.useFilter)
 }
 
 func (i *singleLevelIterator) seekPrefixGE(
@@ -996,7 +1013,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 	i.boundsCmp = 0
 	i.positionedUsingLatestBounds = true
 	k, value = i.seekGEHelper(key, boundsCmp, flags)
-	return k, value
+	return i.maybeVerifyKey(k, value)
 }
 
 // virtualLast should only be called if i.vReader != nil.
@@ -1143,7 +1160,7 @@ func (i *singleLevelIterator) SeekLT(
 	// be chosen as "compleu". The SeekGE in the index block will then point
 	// us to the block containing "complexion". If this happens, we want the
 	// last key from the previous data block.
-	return i.skipBackward()
+	return i.maybeVerifyKey(i.skipBackward())
 }
 
 // First implements internalIterator.First, as documented in the pebble
@@ -1163,6 +1180,7 @@ func (i *singleLevelIterator) First() (*InternalKey, base.LazyValue) {
 	}
 	i.positionedUsingLatestBounds = true
 	i.maybeFilteredKeysSingleLevel = false
+
 	return i.firstInternal()
 }
 
@@ -1375,8 +1393,9 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.Laz
 				return nil, base.LazyValue{}
 			}
 		}
-		return key, val
+		return i.maybeVerifyKey(key, val)
 	}
+
 	return i.skipForward()
 }
 
@@ -1445,7 +1464,7 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 					return nil, base.LazyValue{}
 				}
 			}
-			return key, val
+			return i.maybeVerifyKey(key, val)
 		}
 	}
 	return nil, base.LazyValue{}
@@ -1488,7 +1507,7 @@ func (i *singleLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 			i.exhaustedBounds = -1
 			return nil, base.LazyValue{}
 		}
-		return key, val
+		return i.maybeVerifyKey(key, val)
 	}
 	return nil, base.LazyValue{}
 }
@@ -2324,7 +2343,7 @@ func (i *twoLevelIterator) SeekLT(
 		}
 		if result == loadBlockOK {
 			if ikey, val := i.singleLevelIterator.lastInternal(); ikey != nil {
-				return ikey, val
+				return i.maybeVerifyKey(ikey, val)
 			}
 			// Fall through to skipBackward since the singleLevelIterator did
 			// not have any blocks that satisfy the block interval
@@ -2338,7 +2357,7 @@ func (i *twoLevelIterator) SeekLT(
 		}
 		if result == loadBlockOK {
 			if ikey, val := i.singleLevelIterator.SeekLT(key, flags); ikey != nil {
-				return ikey, val
+				return i.maybeVerifyKey(ikey, val)
 			}
 			// Fall through to skipBackward since the singleLevelIterator did
 			// not have any blocks that satisfy the block interval
@@ -2519,7 +2538,7 @@ func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyVa
 			}
 		}
 	} else if key, val := i.singleLevelIterator.SeekGE(succKey, base.SeekGEFlagsNone); key != nil {
-		return key, val
+		return i.maybeVerifyKey(key, val)
 	}
 	return i.skipForward()
 }
@@ -2557,7 +2576,7 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 		}
 		if result == loadBlockOK {
 			if ikey, val := i.singleLevelIterator.firstInternal(); ikey != nil {
-				return ikey, val
+				return i.maybeVerifyKey(ikey, val)
 			}
 			// Next iteration will return if singleLevelIterator set
 			// exhaustedBounds = +1.
@@ -2598,7 +2617,7 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 		}
 		if result == loadBlockOK {
 			if ikey, val := i.singleLevelIterator.lastInternal(); ikey != nil {
-				return ikey, val
+				return i.maybeVerifyKey(ikey, val)
 			}
 			// Next iteration will return if singleLevelIterator set
 			// exhaustedBounds = -1.
