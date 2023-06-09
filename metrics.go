@@ -230,6 +230,9 @@ type Metrics struct {
 		// The approximate count of internal tombstones (DEL, SINGLEDEL and
 		// RANGEDEL key kinds) within the database.
 		TombstoneCount uint64
+		// A cumulative total number of missized DELSIZED keys encountered by
+		// compactions since the database was opened.
+		MissizedTombstonesCount uint64
 	}
 
 	Snapshots struct {

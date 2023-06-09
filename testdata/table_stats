@@ -516,6 +516,10 @@ flush
 6:
   000004:[bar#0,SET-moo#0,SET]
 
+metric keys.missized-tombstones-count
+----
+keys.missized-tombstones-count: 0
+
 # The foo DELSIZED tombstone should cause the
 # `pebble.raw.point-tombstone.value.size` property to be 100000 + len(foo) =
 # 100003.
@@ -544,3 +548,24 @@ num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 112732
 range-deletions-bytes-estimate: 0
+
+# Try a missized point tombstone. It should appear in the Metrics after the
+# flush that will elide the a.SET.
+
+batch
+set a boop
+del-sized a 10000
+----
+
+flush
+----
+0.1:
+  000008:[a#16,DEL-a#16,DEL]
+0.0:
+  000006:[a#10,SET-moo#14,DEL]
+6:
+  000004:[bar#0,SET-moo#0,SET]
+
+metric keys.missized-tombstones-count
+----
+keys.missized-tombstones-count: 1
