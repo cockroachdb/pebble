@@ -90,7 +90,7 @@ func TestSharedCache(t *testing.T) {
 				flags := sharedcache.ReadFlags{
 					ReadOnly: d.Cmd == "read-for-compaction",
 				}
-				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, flags)
+				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, readable.Size(), flags)
 				// We always expect cache.ReadAt to succeed.
 				require.NoError(t, err)
 				// It is easier to assert this condition programmatically, rather than returning
@@ -168,12 +168,12 @@ func TestSharedCacheRandomized(t *testing.T) {
 					offset := rand.Int63n(size)
 
 					got := make([]byte, size-offset)
-					err := cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, sharedcache.ReadFlags{})
+					err := cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, readable.Size(), sharedcache.ReadFlags{})
 					require.NoError(t, err)
 					require.Equal(t, objData[int(offset):], got)
 
 					got = make([]byte, size-offset)
-					err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, sharedcache.ReadFlags{})
+					err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, readable.Size(), sharedcache.ReadFlags{})
 					require.NoError(t, err)
 					require.Equal(t, objData[int(offset):], got)
 				}()
