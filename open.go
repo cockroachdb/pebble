@@ -297,7 +297,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		NoSyncOnClose:       opts.NoSyncOnClose,
 		BytesPerSync:        opts.BytesPerSync,
 	}
-	providerSettings.Shared.Storage = opts.Experimental.SharedStorage
+	providerSettings.Shared.StorageFactory = opts.Experimental.SharedStorage
+	providerSettings.Shared.CreateOnShared = opts.Experimental.CreateOnShared
+	providerSettings.Shared.CreateLocator = opts.Experimental.CreateOnSharedLocator
 
 	d.objProvider, err = objstorageprovider.Open(providerSettings)
 	if err != nil {

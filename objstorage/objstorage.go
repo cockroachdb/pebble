@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -96,6 +97,12 @@ type ObjectMetadata struct {
 		CreatorFileNum base.DiskFileNum
 
 		CleanupMethod SharedCleanupMethod
+
+		Locator shared.Locator
+
+		// Storage is the shared.Storage object corresponding to the Locator. Used
+		// to avoid lookups in hot paths.
+		Storage shared.Storage
 	}
 }
 
@@ -225,7 +232,7 @@ type Provider interface {
 	SharedObjectBacking(meta *ObjectMetadata) (SharedObjectBackingHandle, error)
 
 	// AttachSharedObjects registers existing shared objects with this provider.
-	AttachSharedObjects(objs []SharedObjectToAttach) ([]ObjectMetadata, error)
+	AttachSharedObjects(locator shared.Locator, objs []SharedObjectToAttach) ([]ObjectMetadata, error)
 
 	Close() error
 

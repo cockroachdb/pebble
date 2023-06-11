@@ -9,6 +9,20 @@ import (
 	"io"
 )
 
+// Locator is an opaque string identifying a shared.Storage implementation.
+//
+// It is stored in the shared object catalog; any sensitive information within
+// the string will be visible to anyone who has access to the store files.
+//
+// The locator can also appear in error messages.
+type Locator string
+
+// StorageFactory is used to return Storage implementations based on locators. A
+// Pebble store that uses shared storage is configured with a StorageFactory.
+type StorageFactory interface {
+	CreateStorage(locator Locator) (Storage, error)
+}
+
 // Storage is an interface for a blob storage driver. This is lower-level
 // than an FS-like interface, however FS/File-like abstractions can be built on
 // top of these methods.
