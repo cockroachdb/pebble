@@ -53,7 +53,7 @@ func (r *sharedReadable) readInternal(
 			// Don't add data to the cache if this read is for a compaction.
 			ReadOnly: forCompaction,
 		}
-		return r.provider.shared.cache.ReadAt(ctx, r.fileNum, p, offset, r.objReader, flags)
+		return r.provider.shared.cache.ReadAt(ctx, r.fileNum, p, offset, r.objReader, r.size, flags)
 	}
 	return r.objReader.ReadAt(ctx, p, offset)
 }

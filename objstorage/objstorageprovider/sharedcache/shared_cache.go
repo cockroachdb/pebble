@@ -91,8 +91,15 @@ func (c *Cache) ReadAt(
 	p []byte,
 	ofs int64,
 	objReader shared.ObjectReader,
+	objSize int64,
 	flags ReadFlags,
 ) error {
+	if ofs >= objSize {
+		if invariants.Enabled {
+			panic("invalid ReadAt offset")
+		}
+		return io.EOF
+	}
 	// TODO(radu): for compaction reads, we may not want to read from the cache at
 	// all.
 	{
@@ -136,11 +143,12 @@ func (c *Cache) ReadAt(
 	adjustedLen := numBlocksToRead * c.blockSize
 	adjustedP := make([]byte, adjustedLen)
 
-	// Read the rest from the object.
-	// TODO(josh): To have proper EOF handling, we will need to use the Size method of the
-	// readable to limit the size of a read when at the end of a file. For now, the cache
-	// just swallows all io.EOF errors.
-	if err := objReader.ReadAt(ctx, adjustedP, adjustedOfs); err != nil && err != io.EOF {
+	// Read the rest from the object. We may need to cap the length to avoid past EOF reads.
+	eofCap := int64(adjustedLen)
+	if adjustedOfs+eofCap > objSize {
+		eofCap = objSize - adjustedOfs
+	}
+	if err := objReader.ReadAt(ctx, adjustedP[:eofCap], adjustedOfs); err != nil {
 		return err
 	}
 	copy(p, adjustedP[sizeOfOffAdjustment:])
@@ -221,7 +229,7 @@ func (c *Cache) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 		if err != nil {
 			return err
 		}
-		// set returns an error if cappedLen bytes aren't written the the shard.
+		// set returns an error if cappedLen bytes aren't written to the shard.
 		n += cappedLen
 		if n == len(p) {
 			// We are done.
