@@ -3929,7 +3929,10 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 func TestSharedObjectDeletePacing(t *testing.T) {
 	var opts Options
 	opts.FS = vfs.NewMem()
-	opts.Experimental.SharedStorage = shared.NewInMem()
+	opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+		"": shared.NewInMem(),
+	})
+	opts.Experimental.CreateOnShared = true
 	opts.TargetByteDeletionRate = 1
 
 	d, err := Open("", &opts)

@@ -46,7 +46,11 @@ func TestScanInternal(t *testing.T) {
 				sstable.NewTestKeysBlockPropertyCollector,
 			},
 		}
-		opts.Experimental.SharedStorage = shared.NewInMem()
+		opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+			"": shared.NewInMem(),
+		})
+		opts.Experimental.CreateOnShared = true
+		opts.Experimental.CreateOnSharedLocator = ""
 		opts.DisableAutomaticCompactions = true
 		opts.EnsureDefaults()
 		opts.WithFSDefaults()

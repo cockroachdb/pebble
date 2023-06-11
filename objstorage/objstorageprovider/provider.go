@@ -39,6 +39,8 @@ type provider struct {
 			// catalogBatch accumulates shared object creations and deletions until
 			// Sync is called.
 			catalogBatch sharedobjcat.Batch
+
+			storageObjects map[shared.Locator]shared.Storage
 		}
 
 		// localObjectsChanged is set if non-shared objects were created or deleted
@@ -92,7 +94,12 @@ type Settings struct {
 	// Fields here are set only if the provider is to support shared objects
 	// (experimental).
 	Shared struct {
-		Storage shared.Storage
+		StorageFactory shared.StorageFactory
+
+		// If CreateOnShared is true, sstables are created on shared storage using
+		// the CreateLocator (when the PreferSharedStorage create option is true).
+		CreateOnShared bool
+		CreateLocator  shared.Locator
 
 		// CacheSizeBytes is the size of the on-disk block cache for objects
 		// on shared storage. If it is 0, no cache is used.
@@ -201,6 +208,10 @@ func (p *provider) OpenForReading(
 		r, err = p.vfsOpenForReading(ctx, fileType, fileNum, opts)
 	} else {
 		r, err = p.sharedOpenForReading(ctx, meta, opts)
+		if err != nil && p.isNotExistError(meta, err) {
+			// Wrap the error so that IsNotExistError functions properly.
+			err = errors.Mark(err, os.ErrNotExist)
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -221,8 +232,8 @@ func (p *provider) Create(
 	fileNum base.DiskFileNum,
 	opts objstorage.CreateOptions,
 ) (w objstorage.Writable, meta objstorage.ObjectMetadata, err error) {
-	if opts.PreferSharedStorage && p.st.Shared.Storage != nil {
-		w, meta, err = p.sharedCreate(ctx, fileType, fileNum, opts)
+	if opts.PreferSharedStorage && p.st.Shared.CreateOnShared {
+		w, meta, err = p.sharedCreate(ctx, fileType, fileNum, p.st.Shared.CreateLocator, opts)
 	} else {
 		w, meta, err = p.vfsCreate(ctx, fileType, fileNum)
 	}
@@ -255,6 +266,10 @@ func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) erro
 	} else {
 		// TODO(radu): implement shared object removal (i.e. deref).
 		err = p.sharedUnref(meta)
+		if err != nil && p.isNotExistError(meta, err) {
+			// Wrap the error so that IsNotExistError functions properly.
+			err = errors.Mark(err, os.ErrNotExist)
+		}
 	}
 	if err != nil && !p.IsNotExistError(err) {
 		// We want to be able to retry a Remove, so we keep the object in our list.
@@ -267,15 +282,18 @@ func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) erro
 	return err
 }
 
+func (p *provider) isNotExistError(meta objstorage.ObjectMetadata, err error) bool {
+	if meta.Shared.Storage != nil {
+		return meta.Shared.Storage.IsNotExistError(err)
+	}
+	return oserror.IsNotExist(err)
+}
+
 // IsNotExistError is part of the objstorage.Provider interface.
 func (p *provider) IsNotExistError(err error) bool {
-	if oserror.IsNotExist(err) {
-		return true
-	}
-	if p.sharedStorage() != nil && p.sharedStorage().IsNotExistError(err) {
-		return true
-	}
-	return false
+	// We use errors.Mark(err, os.ErrNotExist) for not-exist errors coming from
+	// shared.Storage.
+	return oserror.IsNotExist(err)
 }
 
 // Sync flushes the metadata from creation or removal of objects since the last Sync.
@@ -303,7 +321,7 @@ func (p *provider) LinkOrCopyFromLocal(
 	dstFileNum base.DiskFileNum,
 	opts objstorage.CreateOptions,
 ) (objstorage.ObjectMetadata, error) {
-	shared := opts.PreferSharedStorage && p.st.Shared.Storage != nil
+	shared := opts.PreferSharedStorage && p.st.Shared.CreateOnShared
 	if !shared && srcFS == p.st.FS {
 		// Wrap the normal filesystem with one which wraps newly created files with
 		// vfs.NewSyncingFile.
@@ -421,6 +439,7 @@ func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
 			FileType:       meta.FileType,
 			CreatorID:      meta.Shared.CreatorID,
 			CreatorFileNum: meta.Shared.CreatorFileNum,
+			Locator:        meta.Shared.Locator,
 			CleanupMethod:  meta.Shared.CleanupMethod,
 		})
 	} else {
