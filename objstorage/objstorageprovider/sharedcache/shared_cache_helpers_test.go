@@ -9,5 +9,7 @@ func (c *Cache) Misses() int32 {
 }
 
 func (c *Cache) WaitForWritesToComplete() {
-	c.writeBackWaitGroup.Wait()
+	close(c.writeWorkers.tasksCh)
+	c.writeWorkers.doneWaitGroup.Wait()
+	c.writeWorkers.Start(c, c.writeWorkers.numWorkers)
 }

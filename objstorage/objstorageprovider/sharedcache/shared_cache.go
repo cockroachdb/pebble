@@ -31,11 +31,21 @@ type Cache struct {
 
 	blockSize int
 
-	writeBackWaitGroup sync.WaitGroup
 	// TODO(josh): Have a dedicated metrics struct. Right now, this
 	// is just for testing.
 	misses atomic.Int32
+
+	writeWorkers writeWorkers
 }
+
+const (
+	// writeWorkersPerShard is used to establish the number of worker goroutines
+	// that perform writes to the cache.
+	writeWorkersPerShard = 4
+	// writeTaskPerWorker is used to establish how many tasks can be queued up
+	// until we have to block.
+	writeTasksPerWorker = 4
+)
 
 // Open opens a cache. If there is no existing cache at fsDir, a new one
 // is created.
@@ -58,13 +68,14 @@ func Open(
 			return nil, err
 		}
 	}
+	sc.writeWorkers.Start(sc, numShards*writeWorkersPerShard)
 	return sc, nil
 }
 
 // Close closes the cache. Methods such as ReadAt should not be called after Close is
 // called.
 func (c *Cache) Close() error {
-	c.writeBackWaitGroup.Wait()
+	c.writeWorkers.Stop()
 
 	var retErr error
 	for i := range c.shards {
@@ -145,20 +156,7 @@ func (c *Cache) ReadAt(
 	}
 	copy(p, adjustedP[sizeOfOffAdjustment:])
 
-	// TODO(josh): For writing back to the cache, we may want a concurrency-limited approach
-	// that does batching, instead of what is below. I think it's reasonable though to
-	// run a production experiment with what is below, before making adjustments. Note that
-	// the writes being done are in multiples of the filesystem block size. The filesystem
-	// might do okay with them.
-	c.writeBackWaitGroup.Add(1)
-	go func() {
-		defer c.writeBackWaitGroup.Done()
-		if err := c.set(fileNum, adjustedP, adjustedOfs); err != nil {
-			// TODO(josh): Would like to log at error severity, but base.Logger doesn't
-			// have error severity.
-			c.logger.Infof("writing back to cache after miss failed: %v", err)
-		}
-	}()
+	c.writeWorkers.QueueWrite(fileNum, adjustedP, adjustedOfs)
 	return nil
 }
 
@@ -558,5 +556,73 @@ func (s *shard) assertShardStateIsConsistent() {
 		if ls < writeLockTaken {
 			panic(fmt.Sprintf("lock state %v is not allowed: %v", ls, s.mu.locks))
 		}
+	}
+}
+
+type writeWorkers struct {
+	doneCh        chan struct{}
+	doneWaitGroup sync.WaitGroup
+
+	numWorkers int
+	tasksCh    chan writeTask
+}
+
+type writeTask struct {
+	fileNum base.DiskFileNum
+	p       []byte
+	offset  int64
+}
+
+// Start starts the worker goroutines.
+func (w *writeWorkers) Start(c *Cache, numWorkers int) {
+	doneCh := make(chan struct{})
+	tasksCh := make(chan writeTask, numWorkers*writeTasksPerWorker)
+
+	w.numWorkers = numWorkers
+	w.doneCh = doneCh
+	w.tasksCh = tasksCh
+	w.doneWaitGroup.Add(numWorkers)
+	for i := 0; i < numWorkers; i++ {
+		go func() {
+			defer w.doneWaitGroup.Done()
+			for {
+				select {
+				case <-doneCh:
+					return
+				case task, ok := <-tasksCh:
+					if !ok {
+						// The tasks channel was closed; this is used in testing code to
+						// ensure all writes are completed.
+						return
+					}
+					// TODO(radu): set() can perform multiple writes; perhaps each one
+					// should be its own task.
+					if err := c.set(task.fileNum, task.p, task.offset); err != nil {
+						// TODO(radu): expose as metric.
+						// TODO(radu): throttle logs.
+						c.logger.Infof("writing back to cache after miss failed: %v", err)
+					}
+				}
+			}
+		}()
+	}
+}
+
+// Stop waits for any in-progress writes to complete and stops the worker
+// goroutines and waits for any in-pro. Any queued writes not yet started are
+// discarded.
+func (w *writeWorkers) Stop() {
+	close(w.doneCh)
+	w.doneCh = nil
+	w.tasksCh = nil
+	w.doneWaitGroup.Wait()
+}
+
+// QueueWrite adds a write task to the queue. Can block if the queue is full.
+func (w *writeWorkers) QueueWrite(fileNum base.DiskFileNum, p []byte, offset int64) {
+	w.tasksCh <- writeTask{
+		fileNum: fileNum,
+		p:       p,
+		offset:  offset,
 	}
 }
