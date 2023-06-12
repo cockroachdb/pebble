@@ -43,14 +43,10 @@ func (ss *sharedSubsystem) init(creatorID objstorage.CreatorID) {
 	})
 }
 
-func (p *provider) sharedStorage() shared.Storage {
-	return p.st.Shared.Storage
-}
-
 // sharedInit initializes the shared object subsystem (if configured) and finds
 // any shared objects.
 func (p *provider) sharedInit() error {
-	if p.sharedStorage() == nil {
+	if p.st.Shared.StorageFactory == nil {
 		return nil
 	}
 	catalog, contents, err := sharedobjcat.Open(p.st.FS, p.st.FSDirName)
@@ -94,6 +90,11 @@ func (p *provider) sharedInit() error {
 		o.Shared.CreatorID = meta.CreatorID
 		o.Shared.CreatorFileNum = meta.CreatorFileNum
 		o.Shared.CleanupMethod = meta.CleanupMethod
+		o.Shared.Locator = meta.Locator
+		o.Shared.Storage, err = p.ensureStorageLocked(o.Shared.Locator)
+		if err != nil {
+			return errors.Wrapf(err, "creating shared.Storage object for locator '%s'", o.Shared.Locator)
+		}
 		p.mu.knownObjects[o.DiskFileNum] = o
 	}
 	return nil
@@ -101,7 +102,7 @@ func (p *provider) sharedInit() error {
 
 // SetCreatorID is part of the objstorage.Provider interface.
 func (p *provider) SetCreatorID(creatorID objstorage.CreatorID) error {
-	if p.sharedStorage() == nil {
+	if p.st.Shared.StorageFactory == nil {
 		return errors.AssertionFailedf("attempt to set CreatorID but shared storage not enabled")
 	}
 	// Note: this call is a cheap no-op if the creator ID was already set. This
@@ -125,7 +126,7 @@ func (p *provider) IsForeign(meta objstorage.ObjectMetadata) bool {
 }
 
 func (p *provider) sharedCheckInitialized() error {
-	if p.sharedStorage() == nil {
+	if p.st.Shared.StorageFactory == nil {
 		return errors.Errorf("shared object support not configured")
 	}
 	if !p.shared.initialized.Load() {
@@ -170,7 +171,7 @@ func (p *provider) sharedCreateRef(meta objstorage.ObjectMetadata) error {
 		return nil
 	}
 	refName := p.sharedObjectRefName(meta)
-	writer, err := p.sharedStorage().CreateObject(refName)
+	writer, err := meta.Shared.Storage.CreateObject(refName)
 	if err == nil {
 		// The object is empty, just close the writer.
 		err = writer.Close()
@@ -185,9 +186,14 @@ func (p *provider) sharedCreate(
 	_ context.Context,
 	fileType base.FileType,
 	fileNum base.DiskFileNum,
+	locator shared.Locator,
 	opts objstorage.CreateOptions,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
+		return nil, objstorage.ObjectMetadata{}, err
+	}
+	storage, err := p.ensureStorage(locator)
+	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}
 	meta := objstorage.ObjectMetadata{
@@ -197,9 +203,11 @@ func (p *provider) sharedCreate(
 	meta.Shared.CreatorID = p.shared.creatorID
 	meta.Shared.CreatorFileNum = fileNum
 	meta.Shared.CleanupMethod = opts.SharedCleanupMethod
+	meta.Shared.Locator = locator
+	meta.Shared.Storage = storage
 
 	objName := sharedObjectName(meta)
-	writer, err := p.sharedStorage().CreateObject(objName)
+	writer, err := storage.CreateObject(objName)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, errors.Wrapf(err, "creating object %q", objName)
 	}
@@ -220,8 +228,8 @@ func (p *provider) sharedOpenForReading(
 	// do this in testing scenarios.
 	if p.shared.checkRefsOnOpen && meta.Shared.CleanupMethod == objstorage.SharedRefTracking {
 		refName := p.sharedObjectRefName(meta)
-		if _, err := p.sharedStorage().Size(refName); err != nil {
-			if p.sharedStorage().IsNotExistError(err) {
+		if _, err := meta.Shared.Storage.Size(refName); err != nil {
+			if meta.Shared.Storage.IsNotExistError(err) {
 				if opts.MustExist {
 					p.st.Logger.Fatalf("marker object %q does not exist", refName)
 					// TODO(radu): maybe list references for the object.
@@ -232,9 +240,9 @@ func (p *provider) sharedOpenForReading(
 		}
 	}
 	objName := sharedObjectName(meta)
-	reader, size, err := p.sharedStorage().ReadObject(ctx, objName)
+	reader, size, err := meta.Shared.Storage.ReadObject(ctx, objName)
 	if err != nil {
-		if opts.MustExist && p.sharedStorage().IsNotExistError(err) {
+		if opts.MustExist && meta.Shared.Storage.IsNotExistError(err) {
 			p.st.Logger.Fatalf("object %q does not exist", objName)
 			// TODO(radu): maybe list references for the object.
 		}
@@ -248,7 +256,7 @@ func (p *provider) sharedSize(meta objstorage.ObjectMetadata) (int64, error) {
 		return 0, err
 	}
 	objName := sharedObjectName(meta)
-	return p.sharedStorage().Size(objName)
+	return meta.Shared.Storage.Size(objName)
 }
 
 // sharedUnref implements object "removal" with the shared backend. The ref
@@ -267,18 +275,39 @@ func (p *provider) sharedUnref(meta objstorage.ObjectMetadata) error {
 
 	refName := p.sharedObjectRefName(meta)
 	// Tolerate a not-exists error.
-	if err := p.sharedStorage().Delete(refName); err != nil && !p.sharedStorage().IsNotExistError(err) {
+	if err := meta.Shared.Storage.Delete(refName); err != nil && !meta.Shared.Storage.IsNotExistError(err) {
 		return err
 	}
-	otherRefs, err := p.sharedStorage().List(sharedObjectRefPrefix(meta), "" /* delimiter */)
+	otherRefs, err := meta.Shared.Storage.List(sharedObjectRefPrefix(meta), "" /* delimiter */)
 	if err != nil {
 		return err
 	}
 	if len(otherRefs) == 0 {
 		objName := sharedObjectName(meta)
-		if err := p.sharedStorage().Delete(objName); err != nil && !p.sharedStorage().IsNotExistError(err) {
+		if err := meta.Shared.Storage.Delete(objName); err != nil && !meta.Shared.Storage.IsNotExistError(err) {
 			return err
 		}
 	}
 	return nil
+}
+
+func (p *provider) ensureStorageLocked(locator shared.Locator) (shared.Storage, error) {
+	if p.mu.shared.storageObjects == nil {
+		p.mu.shared.storageObjects = make(map[shared.Locator]shared.Storage)
+	}
+	if res, ok := p.mu.shared.storageObjects[locator]; ok {
+		return res, nil
+	}
+	res, err := p.st.Shared.StorageFactory.CreateStorage(locator)
+	if err != nil {
+		return nil, err
+	}
+
+	p.mu.shared.storageObjects[locator] = res
+	return res, nil
+}
+func (p *provider) ensureStorage(locator shared.Locator) (shared.Storage, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.ensureStorageLocked(locator)
 }

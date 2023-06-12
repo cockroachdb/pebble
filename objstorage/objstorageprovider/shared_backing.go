@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 )
 
 const (
@@ -25,6 +26,9 @@ const (
 	// allows the "target" provider to check that the "source" provider kept its
 	// reference on the object alive.
 	tagRefCheckID = 4
+	// tagLocator encodes the shared.Locator; if absent the locator is "". It is
+	// followed by the locator string length and the locator string.
+	tagLocator = 5
 
 	// Any new tags that don't have the tagNotSafeToIgnoreMask bit set must be
 	// followed by the length of the data (so they can be skipped).
@@ -53,6 +57,11 @@ func (p *provider) encodeSharedObjectBacking(
 		buf = binary.AppendUvarint(buf, tagRefCheckID)
 		buf = binary.AppendUvarint(buf, uint64(p.shared.creatorID))
 		buf = binary.AppendUvarint(buf, uint64(meta.DiskFileNum.FileNum()))
+	}
+	if meta.Shared.Locator != "" {
+		buf = binary.AppendUvarint(buf, tagLocator)
+		buf = binary.AppendUvarint(buf, uint64(len(meta.Shared.Locator)))
+		buf = append(buf, []byte(meta.Shared.Locator)...)
 	}
 	return buf, nil
 }
@@ -105,12 +114,13 @@ type decodedBacking struct {
 }
 
 // decodeSharedObjectBacking decodes the shared object metadata.
-// Returns the object metadata and (optionally) the creator ID of the provider
-// that encoded the backing whose ref marker needs to be checked.
+//
+// Note that the meta.Shared.Storage field is not set.
 func decodeSharedObjectBacking(
 	fileType base.FileType, fileNum base.DiskFileNum, buf objstorage.SharedObjectBacking,
 ) (decodedBacking, error) {
 	var creatorID, creatorFileNum, cleanupMethod, refCheckCreatorID, refCheckFileNum uint64
+	var locator []byte
 	br := bytes.NewReader(buf)
 	for {
 		tag, err := binary.ReadUvarint(br)
@@ -134,6 +144,19 @@ func decodeSharedObjectBacking(
 			refCheckCreatorID, err = binary.ReadUvarint(br)
 			if err == nil {
 				refCheckFileNum, err = binary.ReadUvarint(br)
+			}
+
+		case tagLocator:
+			var length uint64
+			length, err = binary.ReadUvarint(br)
+			if err == nil && length > 0 {
+				locator = make([]byte, length)
+				for i := range locator {
+					locator[i], err = br.ReadByte()
+					if err != nil {
+						break
+					}
+				}
 			}
 
 		default:
@@ -163,7 +186,6 @@ func decodeSharedObjectBacking(
 	res.meta.Shared.CreatorID = objstorage.CreatorID(creatorID)
 	res.meta.Shared.CreatorFileNum = base.FileNum(creatorFileNum).DiskFileNum()
 	res.meta.Shared.CleanupMethod = objstorage.SharedCleanupMethod(cleanupMethod)
-
 	if res.meta.Shared.CleanupMethod == objstorage.SharedRefTracking {
 		if refCheckCreatorID == 0 || refCheckFileNum == 0 {
 			return decodedBacking{}, errors.Newf("shared object backing missing ref to check")
@@ -171,6 +193,7 @@ func decodeSharedObjectBacking(
 		res.refToCheck.creatorID = objstorage.CreatorID(refCheckCreatorID)
 		res.refToCheck.fileNum = base.FileNum(refCheckFileNum).DiskFileNum()
 	}
+	res.meta.Shared.Locator = shared.Locator(locator)
 	return res, nil
 }
 
@@ -182,6 +205,10 @@ func (p *provider) AttachSharedObjects(
 	for i, o := range objs {
 		var err error
 		decoded[i], err = decodeSharedObjectBacking(o.FileType, o.FileNum, o.Backing)
+		if err != nil {
+			return nil, err
+		}
+		decoded[i].meta.Shared.Storage, err = p.ensureStorage(decoded[i].meta.Shared.Locator)
 		if err != nil {
 			return nil, err
 		}
@@ -199,10 +226,10 @@ func (p *provider) AttachSharedObjects(
 		}
 		// Check the "origin"'s reference.
 		refName := sharedObjectRefName(d.meta, d.refToCheck.creatorID, d.refToCheck.fileNum)
-		if _, err := p.sharedStorage().Size(refName); err != nil {
+		if _, err := d.meta.Shared.Storage.Size(refName); err != nil {
 			_ = p.sharedUnref(d.meta)
 			// TODO(radu): clean up references previously created in this loop.
-			if p.sharedStorage().IsNotExistError(err) {
+			if d.meta.Shared.Storage.IsNotExistError(err) {
 				return nil, errors.Errorf("origin marker object %q does not exist;"+
 					" object probably removed from the provider which created the backing", refName)
 			}
@@ -219,6 +246,8 @@ func (p *provider) AttachSharedObjects(
 				FileType:       d.meta.FileType,
 				CreatorID:      d.meta.Shared.CreatorID,
 				CreatorFileNum: d.meta.Shared.CreatorFileNum,
+				CleanupMethod:  d.meta.Shared.CleanupMethod,
+				Locator:        d.meta.Shared.Locator,
 			})
 		}
 	}()

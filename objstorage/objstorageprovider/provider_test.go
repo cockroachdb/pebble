@@ -27,6 +27,9 @@ func TestProvider(t *testing.T) {
 		sharedStore := shared.WithLogging(shared.NewInMem(), func(fmt string, args ...interface{}) {
 			log.Infof("<shared> "+fmt, args...)
 		})
+		sharedFactory := shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+			"": sharedStore,
+		})
 		tmpFileCounter := 0
 
 		providers := make(map[string]objstorage.Provider)
@@ -59,7 +62,9 @@ func TestProvider(t *testing.T) {
 
 				st := DefaultSettings(fs, fsDir)
 				if creatorID != 0 {
-					st.Shared.Storage = sharedStore
+					st.Shared.StorageFactory = sharedFactory
+					st.Shared.CreateOnShared = true
+					st.Shared.CreateOnSharedLocator = ""
 				}
 				require.NoError(t, fs.MkdirAll(fsDir, 0755))
 				p, err := Open(st)
@@ -187,7 +192,7 @@ func TestProvider(t *testing.T) {
 					if err != nil {
 						log.Infof("%d %d: %v", offset, size, err)
 					} else {
-						salt := checkData(d, t, offset, data)
+						salt := checkData(t, offset, data)
 						log.Infof("%d %d: ok (salt %d)", offset, size, salt)
 					}
 				}
@@ -269,10 +274,109 @@ func TestProvider(t *testing.T) {
 	})
 }
 
+func TestSharedMultipleLocators(t *testing.T) {
+	ctx := context.Background()
+	stores := map[shared.Locator]shared.Storage{
+		"foo": shared.NewInMem(),
+		"bar": shared.NewInMem(),
+	}
+	sharedFactory := shared.MakeSimpleFactory(stores)
+
+	st1 := DefaultSettings(vfs.NewMem(), "")
+	st1.Shared.StorageFactory = sharedFactory
+	st1.Shared.CreateOnShared = true
+	st1.Shared.CreateOnSharedLocator = "foo"
+	p1, err := Open(st1)
+	require.NoError(t, err)
+	require.NoError(t, p1.SetCreatorID(1))
+
+	st2 := DefaultSettings(vfs.NewMem(), "")
+	st2.Shared.StorageFactory = sharedFactory
+	st2.Shared.CreateOnShared = true
+	st2.Shared.CreateOnSharedLocator = "bar"
+	p2, err := Open(st2)
+	require.NoError(t, err)
+	require.NoError(t, p2.SetCreatorID(2))
+
+	file1 := base.FileNum(1).DiskFileNum()
+	file2 := base.FileNum(2).DiskFileNum()
+
+	for i, provider := range []objstorage.Provider{p1, p2} {
+		w, _, err := provider.Create(ctx, base.FileTypeTable, file1, objstorage.CreateOptions{
+			PreferSharedStorage: true,
+		})
+		require.NoError(t, err)
+		data := make([]byte, 100)
+		genData(byte(i), 0, data)
+		require.NoError(t, w.Write(data))
+		require.NoError(t, w.Finish())
+	}
+
+	// checkObjects reads the given object and verifies the data matches the salt.
+	checkObject := func(p objstorage.Provider, fileNum base.DiskFileNum, salt byte) {
+		t.Helper()
+		r, err := p.OpenForReading(ctx, base.FileTypeTable, fileNum, objstorage.OpenOptions{})
+		require.NoError(t, err)
+		data := make([]byte, r.Size())
+		require.NoError(t, r.ReadAt(ctx, data, 0))
+		r.Close()
+		require.Equal(t, salt, checkData(t, 0, data))
+	}
+
+	// Now attach p1's object (in the "foo" store) to p2.
+	meta1, err := p1.Lookup(base.FileTypeTable, file1)
+	require.NoError(t, err)
+	h1, err := p1.SharedObjectBacking(&meta1)
+	require.NoError(t, err)
+	b1, err := h1.Get()
+	require.NoError(t, err)
+
+	_, err = p2.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+		FileNum:  file2,
+		FileType: base.FileTypeTable,
+		Backing:  b1,
+	}})
+	require.NoError(t, err)
+	// Close the handle from which we obtained b1.
+	h1.Close()
+	checkObject(p2, file2, 0)
+
+	// Now attach p2's object (in the "bar" store) to p1.
+	meta2, err := p2.Lookup(base.FileTypeTable, file1)
+	require.NoError(t, err)
+	h2, err := p2.SharedObjectBacking(&meta2)
+	require.NoError(t, err)
+	b2, err := h2.Get()
+	require.NoError(t, err)
+	_, err = p1.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+		FileNum:  file2,
+		FileType: base.FileTypeTable,
+		Backing:  b2,
+	}})
+	require.NoError(t, err)
+	// Close the handle from which we obtained b2.
+	h2.Close()
+	checkObject(p1, file2, 1)
+
+	// Check that the object still works after close/reopen.
+	p1.Close()
+	p1, err = Open(st1)
+	require.NoError(t, err)
+	checkObject(p1, file2, 1)
+	p1.Close()
+
+	p2.Close()
+}
+
 func TestNotExistError(t *testing.T) {
 	fs := vfs.NewMem()
 	st := DefaultSettings(fs, "")
-	st.Shared.Storage = shared.NewInMem()
+	sharedStorage := shared.NewInMem()
+	st.Shared.StorageFactory = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+		"": sharedStorage,
+	})
+	st.Shared.CreateOnShared = true
+	st.Shared.CreateOnSharedLocator = ""
 	provider, err := Open(st)
 	require.NoError(t, err)
 	require.NoError(t, provider.SetCreatorID(1))
@@ -304,7 +408,7 @@ func TestNotExistError(t *testing.T) {
 			} else {
 				meta, err := provider.Lookup(base.FileTypeTable, fileNum)
 				require.NoError(t, err)
-				require.NoError(t, st.Shared.Storage.Delete(sharedObjectName(meta)))
+				require.NoError(t, sharedStorage.Delete(sharedObjectName(meta)))
 			}
 
 			_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, fileNum, objstorage.OpenOptions{})
@@ -325,12 +429,12 @@ func genData(salt byte, offset int, p []byte) {
 	}
 }
 
-func checkData(d *datadriven.TestData, t *testing.T, offset int, p []byte) (salt byte) {
+func checkData(t *testing.T, offset int, p []byte) (salt byte) {
 	t.Helper()
 	salt = p[0] ^ xor(offset)
 	for i := range p {
 		if p[i]^xor(offset+i) != salt {
-			d.Fatalf(t, "invalid data")
+			t.Fatalf("invalid data")
 		}
 	}
 	return salt
