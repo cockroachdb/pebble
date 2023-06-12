@@ -18,7 +18,7 @@
           <div class="overview">
             Benchmarks are run nightly using <a class="code"
             href="https://github.com/cockroachdb/pebble/blob/master/cmd/pebble/ycsb.go">pebble
-            bench ycsb</a> on AWS c5d.4xlarge machines equipped with
+            bench ycsb</a> on AWS m6id.4xlarge machines equipped with
             local SSD storage. The AWS instances show remarkably high
             instance to instance performance variability. In order to
             smooth out that variability the benchmarks are run multiple
@@ -68,6 +68,8 @@
         <div class="annotation" data-date="20230516">Infrastructure
             change (#2578)</div>
         <div class="annotation" data-date="20230607">ycsb/F sampling bug</div>
+        <div class="annotation" data-date="20230611">Switched to m6id.4xlarge
+            (from 5d.4xlarge)</div>
       </div>
       <div class="section rows">
         <div>
@@ -145,7 +147,7 @@
           whether the DB has experienced a write stall). These benchmarks are
           run nightly using <a class="code"
           href="https://github.com/cockroachdb/pebble/blob/master/cmd/pebble/write.go">pebble
-          bench write</a> on GCP n1-standard-32 machines equipped with 16 local
+          bench write</a> on GCP n2-standard-32 machines equipped with 16 local
           SSDs in a RAID 0 array.
         </div>
       </div>
