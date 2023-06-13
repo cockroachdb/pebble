@@ -661,7 +661,12 @@ type Options struct {
 		// wrote a file should not delete it if other Pebble instances are known to
 		// be reading this file. This FS is expected to have slower read/write
 		// performance than the default FS above.
-		SharedStorage shared.Storage
+		SharedStorage shared.StorageFactory
+
+		// If CreateOnShred is true, any new sstables are created on shared storage,
+		// using CreateOnSharedLocator. Can only be used when SharedStorage is set.
+		CreateOnShared        bool
+		CreateOnSharedLocator shared.Locator
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
