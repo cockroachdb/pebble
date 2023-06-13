@@ -1254,6 +1254,45 @@ func TestCloseCleanerRace(t *testing.T) {
 	}
 }
 
+func TestFilterSSTablesWithOption(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	// Create two sstables.
+	require.NoError(t, d.Set([]byte("hello"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("world"), nil, nil))
+	require.NoError(t, d.Flush())
+
+	tableInfos, err := d.SSTables(WithKeyFilter([]byte("g"), []byte("i")))
+	require.NoError(t, err)
+
+	totalTables := 0
+	for _, levelTables := range tableInfos {
+		totalTables += len(levelTables)
+	}
+	// with filter
+	require.EqualValues(t, 1, totalTables)
+
+	tableInfos, err = d.SSTables()
+	require.NoError(t, err)
+
+	totalTables = 0
+	for _, levelTables := range tableInfos {
+		totalTables += len(levelTables)
+	}
+
+	// without filter
+	require.EqualValues(t, 2, totalTables)
+}
+
 func TestSSTables(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),

@@ -1876,6 +1876,10 @@ func (d *DB) Metrics() *Metrics {
 type sstablesOptions struct {
 	// set to true will return the sstable properties in TableInfo
 	withProperties bool
+
+	// if set, return sstables that overlap the key range
+	start []byte
+	end   []byte
 }
 
 // SSTablesOption set optional parameter used by `DB.SSTables`.
@@ -1888,6 +1892,13 @@ type SSTablesOption func(*sstablesOptions)
 func WithProperties() SSTablesOption {
 	return func(opt *sstablesOptions) {
 		opt.withProperties = true
+	}
+}
+
+func WithKeyFilter(start, end []byte) SSTablesOption {
+	return func(opt *sstablesOptions) {
+		opt.end = end
+		opt.start = start
 	}
 }
 
@@ -1936,6 +1947,9 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 		iter := srcLevels[i].Iter()
 		j := 0
 		for m := iter.First(); m != nil; m = iter.Next() {
+			if opt.start != nil && opt.end != nil && !m.Overlaps(d.opts.Comparer.Compare, opt.start, opt.end, true) {
+				continue
+			}
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
 				p, err := d.tableCache.getTableProperties(
@@ -1953,6 +1967,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 		destLevels[i] = destTables[:j]
 		destTables = destTables[j:]
 	}
+
 	return destLevels, nil
 }
 
