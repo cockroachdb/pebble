@@ -1108,15 +1108,13 @@ func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *ta
 	f, err = dbOpts.objProvider.OpenForReading(
 		context.TODO(), fileTypeTable, loadInfo.backingFileNum, objstorage.OpenOptions{MustExist: true},
 	)
-	if err != nil {
-		v.err = errors.Wrap(
-			err,
-			fmt.Sprintf("pebble: could not open backing file %s", errors.Safe(loadInfo.backingFileNum.FileNum())),
-		)
-	}
-	if v.err == nil {
+	if err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, loadInfo.backingFileNum).(sstable.ReaderOption)
-		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
+		v.reader, err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
+	}
+	if err != nil {
+		v.err = errors.Wrapf(
+			err, "pebble: backing file %s error", errors.Safe(loadInfo.backingFileNum.FileNum()))
 	}
 	if v.err == nil {
 		if loadInfo.smallestSeqNum == loadInfo.largestSeqNum {
