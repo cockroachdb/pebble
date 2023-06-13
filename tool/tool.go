@@ -126,8 +126,11 @@ func New(opts ...Option) *T {
 	return t
 }
 
-// EnableSharedStorage updates the options with the shared storage
-// instance.
-func (t *T) EnableSharedStorage(s shared.Storage) {
+// ConfigureSharedStorage updates the shared storage options.
+func (t *T) ConfigureSharedStorage(
+	s shared.StorageFactory, createOnShared bool, createOnSharedLocator shared.Locator,
+) {
 	t.opts.Experimental.SharedStorage = s
+	t.opts.Experimental.CreateOnShared = createOnShared
+	t.opts.Experimental.CreateOnSharedLocator = createOnSharedLocator
 }

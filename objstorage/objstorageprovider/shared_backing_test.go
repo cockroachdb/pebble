@@ -22,6 +22,17 @@ func TestSharedObjectBacking(t *testing.T) {
 			name = "no-cleanup"
 		}
 		t.Run(name, func(t *testing.T) {
+			st := DefaultSettings(vfs.NewMem(), "")
+			sharedStorage := shared.NewInMem()
+			st.Shared.StorageFactory = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+				"foo": sharedStorage,
+			})
+			p, err := Open(st)
+			require.NoError(t, err)
+			defer p.Close()
+
+			const creatorID = objstorage.CreatorID(99)
+			require.NoError(t, p.SetCreatorID(creatorID))
 			meta := objstorage.ObjectMetadata{
 				DiskFileNum: base.FileNum(1).DiskFileNum(),
 				FileType:    base.FileTypeTable,
@@ -29,15 +40,8 @@ func TestSharedObjectBacking(t *testing.T) {
 			meta.Shared.CreatorID = 100
 			meta.Shared.CreatorFileNum = base.FileNum(200).DiskFileNum()
 			meta.Shared.CleanupMethod = cleanup
-
-			st := DefaultSettings(vfs.NewMem(), "")
-			st.Shared.Storage = shared.NewInMem()
-			p, err := Open(st)
-			require.NoError(t, err)
-			defer p.Close()
-
-			const creatorID = objstorage.CreatorID(99)
-			require.NoError(t, p.SetCreatorID(creatorID))
+			meta.Shared.Locator = "foo"
+			meta.Shared.Storage = sharedStorage
 
 			h, err := p.SharedObjectBacking(&meta)
 			require.NoError(t, err)
@@ -51,6 +55,7 @@ func TestSharedObjectBacking(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, uint64(100), uint64(d1.meta.DiskFileNum.FileNum()))
 			require.Equal(t, base.FileTypeTable, d1.meta.FileType)
+			d1.meta.Shared.Storage = sharedStorage
 			require.Equal(t, meta.Shared, d1.meta.Shared)
 			if cleanup == objstorage.SharedRefTracking {
 				require.Equal(t, creatorID, d1.refToCheck.creatorID)
@@ -71,6 +76,7 @@ func TestSharedObjectBacking(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, uint64(100), uint64(d2.meta.DiskFileNum.FileNum()))
 				require.Equal(t, base.FileTypeTable, d2.meta.FileType)
+				d2.meta.Shared.Storage = sharedStorage
 				require.Equal(t, meta.Shared, d2.meta.Shared)
 				if cleanup == objstorage.SharedRefTracking {
 					require.Equal(t, creatorID, d2.refToCheck.creatorID)

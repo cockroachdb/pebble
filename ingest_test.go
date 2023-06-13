@@ -758,7 +758,11 @@ func TestIngestShared(t *testing.T) {
 		NoSyncOnClose:       opts2.NoSyncOnClose,
 		BytesPerSync:        opts2.BytesPerSync,
 	}
-	providerSettings.Shared.Storage = shared.NewInMem()
+	providerSettings.Shared.StorageFactory = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+		"": shared.NewInMem(),
+	})
+	providerSettings.Shared.CreateOnShared = true
+	providerSettings.Shared.CreateOnSharedLocator = ""
 
 	provider2, err := objstorageprovider.Open(providerSettings)
 	require.NoError(t, err)
@@ -783,7 +787,9 @@ func TestIngestShared(t *testing.T) {
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 		}
-		opts.Experimental.SharedStorage = providerSettings.Shared.Storage
+		opts.Experimental.SharedStorage = providerSettings.Shared.StorageFactory
+		opts.Experimental.CreateOnShared = providerSettings.Shared.CreateOnShared
+		opts.Experimental.CreateOnSharedLocator = providerSettings.Shared.CreateOnSharedLocator
 
 		var err error
 		d, err = Open("", opts)

@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 )
 
 // versionEdit is a modification to the shared object state which can be encoded
@@ -25,14 +26,17 @@ type versionEdit struct {
 }
 
 const (
-	// tagNewObject is followed by the FileNum, creator ID, creator FileNum, and
-	// cleanup method.
+	// tagNewObject is followed by the FileNum, creator ID, creator FileNum,
+	// cleanup method, optional new object tags, and ending with a 0 byte.
 	tagNewObject = 1
 	// tagDeletedObject is followed by the FileNum.
 	tagDeletedObject = 2
 	// tagCreatorID is followed by the Creator ID for this store. This ID can
 	// never change.
 	tagCreatorID = 3
+	// tagNewObjectLocator is an optional tag inside the tagNewObject payload. It
+	// is followed by the encoded length of the locator string and the string.
+	tagNewObjectLocator = 4
 )
 
 // Object type values. We don't want to encode FileType directly because it is
@@ -62,7 +66,7 @@ func fileTypeToObjType(fileType base.FileType) (uint64, error) {
 
 // Encode encodes an edit to the specified writer.
 func (v *versionEdit) Encode(w io.Writer) error {
-	buf := make([]byte, 0, binary.MaxVarintLen64*(len(v.NewObjects)*4+len(v.DeletedObjects)*2+2))
+	buf := make([]byte, 0, binary.MaxVarintLen64*(len(v.NewObjects)*10+len(v.DeletedObjects)*2+2))
 	for _, meta := range v.NewObjects {
 		objType, err := fileTypeToObjType(meta.FileType)
 		if err != nil {
@@ -74,6 +78,13 @@ func (v *versionEdit) Encode(w io.Writer) error {
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorID))
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorFileNum.FileNum()))
 		buf = binary.AppendUvarint(buf, uint64(meta.CleanupMethod))
+		if meta.Locator != "" {
+			buf = binary.AppendUvarint(buf, uint64(tagNewObjectLocator))
+			buf = binary.AppendUvarint(buf, uint64(len(meta.Locator)))
+			buf = append(buf, []byte(meta.Locator)...)
+		}
+		// Append 0 as the terminator for optional new object tags.
+		buf = binary.AppendUvarint(buf, 0)
 	}
 
 	for _, dfn := range v.DeletedObjects {
@@ -106,7 +117,8 @@ func (v *versionEdit) Decode(r io.Reader) error {
 		err = nil
 		switch tag {
 		case tagNewObject:
-			var fileNum, creatorID, creatorFileNum, cleanupMethod uint64
+			var fileNum, creatorID, creatorFileNum, cleanupMethod, locatorLen uint64
+			var locator []byte
 			var fileType base.FileType
 			fileNum, err = binary.ReadUvarint(br)
 			if err == nil {
@@ -125,6 +137,31 @@ func (v *versionEdit) Decode(r io.Reader) error {
 			if err == nil {
 				cleanupMethod, err = binary.ReadUvarint(br)
 			}
+			for err == nil {
+				var optionalTag uint64
+				optionalTag, err = binary.ReadUvarint(br)
+				if err != nil || optionalTag == 0 {
+					break
+				}
+
+				switch optionalTag {
+				case tagNewObjectLocator:
+					locatorLen, err = binary.ReadUvarint(br)
+					if err == nil && locatorLen > 0 {
+						locator = make([]byte, locatorLen)
+						for i := range locator {
+							locator[i], err = br.ReadByte()
+							if err != nil {
+								break
+							}
+						}
+					}
+
+				default:
+					err = errors.Newf("unknown newObject tag %d", optionalTag)
+				}
+			}
+
 			if err == nil {
 				v.NewObjects = append(v.NewObjects, SharedObjectMetadata{
 					FileNum:        base.FileNum(fileNum).DiskFileNum(),
@@ -132,6 +169,7 @@ func (v *versionEdit) Decode(r io.Reader) error {
 					CreatorID:      objstorage.CreatorID(creatorID),
 					CreatorFileNum: base.FileNum(creatorFileNum).DiskFileNum(),
 					CleanupMethod:  objstorage.SharedCleanupMethod(cleanupMethod),
+					Locator:        shared.Locator(locator),
 				})
 			}
 
@@ -150,8 +188,9 @@ func (v *versionEdit) Decode(r io.Reader) error {
 			}
 
 		default:
-			// Ignore unknown tags.
+			err = errors.Newf("unknown tag %d", tag)
 		}
+
 		if err != nil {
 			if err == io.EOF {
 				return errCorruptCatalog
