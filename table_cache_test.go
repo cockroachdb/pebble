@@ -808,12 +808,13 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	fs.setOpenError(true /* enabled */)
-	if _, _, err := c.newIters(
+	if _, _, err = c.newIters(
 		&fileMetadata{FileNum: 0},
 		nil, /* iter options */
 		internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
+	require.Equal(t, "pebble: backing file 000000 error: injected error", err.Error())
 	fs.setOpenError(false /* enabled */)
 	var iter internalIterator
 	iter, _, err = c.newIters(
@@ -823,6 +824,56 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, iter.Close())
 	fs.validate(t, c, nil)
+}
+
+// memFile is a file-like struct that buffers all data written to it in memory.
+// Implements the sstable.writeCloseSyncer interface.
+type memFile struct {
+	*bytes.Buffer
+}
+
+// Sync is part of the writeCloseSyncer interface.
+func (*memFile) Sync() error {
+	return nil
+}
+
+// Close is part of the writeCloseSynce interface.
+func (*memFile) Close() error {
+	return nil
+}
+
+func TestTableCacheErrorBadMagicNumber(t *testing.T) {
+	file := memFile{Buffer: &bytes.Buffer{}}
+	tw := sstable.NewWriter(&file, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
+	tw.Set([]byte("a"), nil)
+	require.NoError(t, tw.Close())
+	buf := file.Bytes()
+	// Bad magic number.
+	buf[len(buf)-1] = 0
+	fs := &tableCacheTestFS{
+		FS: vfs.NewMem(),
+	}
+	const testFileNum = 3
+	f, err := fs.Create(base.MakeFilepath(fs, "", fileTypeTable, base.FileNum(testFileNum)))
+	require.NoError(t, err)
+	_, err = f.Write(buf)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	opts := &Options{}
+	opts.EnsureDefaults()
+	opts.Cache = NewCache(8 << 20) // 8 MB
+	defer opts.Cache.Unref()
+	c := newTableCacheContainer(nil, opts.Cache.NewID(), "", fs, opts, tableCacheTestCacheSize)
+	require.NoError(t, err)
+	defer c.close()
+
+	m := &fileMetadata{FileNum: testFileNum}
+	if _, _, err = c.newIters(m, nil, internalIterOpts{}); err == nil {
+		t.Fatalf("expected failure, but found success")
+	}
+	require.Equal(t,
+		"pebble: backing file 000003 error: pebble/table: invalid table (bad magic number: 0xf09faab3f09faa00)",
+		err.Error())
 }
 
 func TestTableCacheEvictClose(t *testing.T) {
