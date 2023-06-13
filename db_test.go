@@ -1254,6 +1254,74 @@ func TestCloseCleanerRace(t *testing.T) {
 	}
 }
 
+func TestGetTableMetrics(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	// Create three sstables.
+	require.NoError(t, d.Set([]byte("b"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("d"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("z"), nil, nil))
+	require.NoError(t, d.Flush())
+
+	metricsInfo, err := d.GetTableMetrics([]byte("a"), []byte("e"))
+	require.NoError(t, err)
+	require.EqualValues(t, 2, len(metricsInfo))
+
+	for _, info := range metricsInfo {
+		require.NotNil(t, info.tableInfo)
+	}
+}
+
+func TestFilterSSTablesWithOption(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	// Create two sstables.
+	require.NoError(t, d.Set([]byte("/Table/5"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("/Table/10"), nil, nil))
+	require.NoError(t, d.Flush())
+
+	tableInfos, err := d.SSTables(WithKeyRangeFilter([]byte("/Table/5"), []byte("/Table/6")))
+	require.NoError(t, err)
+
+	totalTables := 0
+	for _, levelTables := range tableInfos {
+		totalTables += len(levelTables)
+	}
+
+	// with filter second sstable should not be returned
+	require.EqualValues(t, 1, totalTables)
+
+	tableInfos, err = d.SSTables()
+	require.NoError(t, err)
+
+	totalTables = 0
+	for _, levelTables := range tableInfos {
+		totalTables += len(levelTables)
+	}
+
+	// without filter
+	require.EqualValues(t, 2, totalTables)
+}
+
 func TestSSTables(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),

@@ -7,6 +7,7 @@ package pebble // import "github.com/cockroachdb/pebble"
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -1876,6 +1877,10 @@ func (d *DB) Metrics() *Metrics {
 type sstablesOptions struct {
 	// set to true will return the sstable properties in TableInfo
 	withProperties bool
+
+	// if set, return sstables that overlap the key range (end-exclusive)
+	start []byte
+	end   []byte
 }
 
 // SSTablesOption set optional parameter used by `DB.SSTables`.
@@ -1888,6 +1893,15 @@ type SSTablesOption func(*sstablesOptions)
 func WithProperties() SSTablesOption {
 	return func(opt *sstablesOptions) {
 		opt.withProperties = true
+	}
+}
+
+// WithKeyRangeFilter ensures returned sstables overlap start and end (end-exclusive)
+// if start and end are both nil these properties have no effect
+func WithKeyRangeFilter(start, end []byte) SSTablesOption {
+	return func(opt *sstablesOptions) {
+		opt.end = end
+		opt.start = start
 	}
 }
 
@@ -1904,6 +1918,45 @@ type SSTableInfo struct {
 	// Properties is the sstable properties of this table. If Virtual is true,
 	// then the Properties are associated with the backing sst.
 	Properties *sstable.Properties
+}
+
+// SSTableMetricsInfo is used with GetTableMetrics (to get information for sstables within a key range)
+type SSTableMetricsInfo struct {
+	tableID   base.FileNum
+	level     int
+	tableInfo []byte
+}
+
+// GetTableMetrics retrieves information for the current sstables that overlap startKey and endKey (end-exclusive)
+func (d *DB) GetTableMetrics(startKey, endKey []byte) ([]SSTableMetricsInfo, error) {
+	tableInfo, err := d.SSTables(WithKeyRangeFilter(startKey, endKey))
+
+	if err != nil {
+		return []SSTableMetricsInfo{}, err
+	}
+
+	var totalTables int
+	for _, info := range tableInfo {
+		totalTables += len(info)
+	}
+
+	metricsInfo := make([]SSTableMetricsInfo, totalTables)
+	i := 0
+
+	for level, sstableInfos := range tableInfo {
+		for _, sstableInfo := range sstableInfos {
+			marshalTableInfo, err := json.Marshal(sstableInfo)
+
+			if err != nil {
+				return []SSTableMetricsInfo{}, err
+			}
+
+			tableID := sstableInfo.TableInfo.FileNum
+			metricsInfo[i] = SSTableMetricsInfo{tableID: tableID, level: level, tableInfo: marshalTableInfo}
+			i++
+		}
+	}
+	return metricsInfo, nil
 }
 
 // SSTables retrieves the current sstables. The returned slice is indexed by
@@ -1936,6 +1989,9 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 		iter := srcLevels[i].Iter()
 		j := 0
 		for m := iter.First(); m != nil; m = iter.Next() {
+			if opt.start != nil && opt.end != nil && !m.Overlaps(d.opts.Comparer.Compare, opt.start, opt.end, true) {
+				continue
+			}
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
 				p, err := d.tableCache.getTableProperties(
@@ -1953,6 +2009,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 		destLevels[i] = destTables[:j]
 		destTables = destTables[j:]
 	}
+
 	return destLevels, nil
 }
 
