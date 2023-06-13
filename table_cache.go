@@ -888,6 +888,9 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *t
 		reopenOpt := sstable.FileReopenOpt{FS: dbOpts.fs, Filename: v.filename}
 		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics, reopenOpt)
 	}
+	if v.err != nil {
+		v.err = errors.Wrapf(v.err, "pebble: file %s error", errors.Safe(meta.FileNum))
+	}
 	if v.err == nil {
 		if meta.SmallestSeqNum == meta.LargestSeqNum {
 			v.reader.Properties.GlobalSeqNum = meta.LargestSeqNum
