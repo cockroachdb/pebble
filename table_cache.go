@@ -937,6 +937,9 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *t
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileNum).(sstable.ReaderOption)
 		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
 	}
+	if v.err != nil {
+		v.err = errors.Wrapf(v.err, "pebble: backing file %s error", errors.Safe(meta.FileNum))
+	}
 	if v.err == nil {
 		if meta.SmallestSeqNum == meta.LargestSeqNum {
 			v.reader.Properties.GlobalSeqNum = meta.LargestSeqNum
