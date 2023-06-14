@@ -1396,7 +1396,7 @@ a.SET.2:d
 b.SET.1:c
 ----
 
-iter
+iter print-missized-dels
 first
 next
 next
@@ -1404,6 +1404,7 @@ next
 a#3,18:3
 b#1,1:c
 .
+missized-dels=0
 
 iter snapshots=3
 first
@@ -1427,7 +1428,7 @@ b.SET.5:helloworld
 c.SET.2:bar
 ----
 
-iter
+iter print-missized-dels
 first
 next
 next
@@ -1435,10 +1436,11 @@ next
 a#9,1:foo
 b#8,23:
 c#2,1:bar
-
+missized-dels=0
 
 # Test two DELSIZEDs meeting. The lower-sequenced number value should carry
-# forward, at the higher sequence number.
+# forward, at the higher sequence number. The first DELSIZED should be consider
+# missized: It never found the key it was supposed to delete.
 
 define
 a.SET.9:foo
@@ -1447,7 +1449,7 @@ b.DELSIZED.8:varint(10)
 c.SET.2:bar
 ----
 
-iter
+iter print-missized-dels
 first
 next
 next
@@ -1455,6 +1457,7 @@ next
 a#9,1:foo
 b#9,23:varint(10)
 c#2,1:bar
+missized-dels=1
 
 # Test a DELSIZED whose encoded value is larger than the size of the deleted
 # key. The DELSIZED should be replaced by an ordinary DEL with the same sequence
@@ -1467,7 +1470,7 @@ b.SET.3:hello
 c.SET.9:bar
 ----
 
-iter
+iter print-missized-dels
 first
 next
 next
@@ -1475,3 +1478,57 @@ next
 a#2,1:foo
 b#8,0:
 c#9,1:bar
+missized-dels=1
+
+# Test two DELSIZED at the same user key, but with correctly sized deleted keys.
+
+define
+a.DELSIZED.9:varint(4)
+a.SET.8:foo
+a.DELSIZED.8:varint(6)
+a.SET.5:hello
+----
+
+iter print-missized-dels
+first
+next
+----
+a#9,23:
+.
+missized-dels=0
+
+# Test the above scenario, except the second DELSIZED is missized. It should
+# still count as missized.
+
+define
+a.DELSIZED.9:varint(4)
+a.SET.8:foo
+a.DELSIZED.8:varint(1)
+a.SET.5:hello
+----
+
+iter print-missized-dels
+first
+next
+----
+a#9,0:
+.
+missized-dels=1
+
+# Test the above scenario, except the second tombstone is a DEL. It should
+# NOT count as missized.
+
+define
+a.DELSIZED.9:varint(4)
+a.SET.8:foo
+a.DEL.8:
+a.SET.5:hello
+----
+
+iter print-missized-dels
+first
+next
+----
+a#9,0:
+.
+missized-dels=0

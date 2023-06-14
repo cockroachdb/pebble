@@ -180,6 +180,7 @@ func TestCompactionIter(t *testing.T) {
 				elideTombstones = false
 				allowZeroSeqnum = false
 				printSnapshotPinned := false
+				printMissizedDels := false
 				for _, arg := range d.CmdArgs {
 					switch arg.Key {
 					case "snapshots":
@@ -204,6 +205,8 @@ func TestCompactionIter(t *testing.T) {
 						}
 					case "print-snapshot-pinned":
 						printSnapshotPinned = true
+					case "print-missized-dels":
+						printMissizedDels = true
 					default:
 						return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
 					}
@@ -284,6 +287,9 @@ func TestCompactionIter(t *testing.T) {
 					} else {
 						fmt.Fprintf(&b, ".\n")
 					}
+				}
+				if printMissizedDels {
+					fmt.Fprintf(&b, "missized-dels=%d\n", iter.stats.countMissizedDels)
 				}
 				return b.String()
 
