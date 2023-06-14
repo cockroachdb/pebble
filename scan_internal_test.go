@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -31,7 +32,7 @@ func TestScanInternal(t *testing.T) {
 			ctx context.Context,
 			lower, upper []byte, visitPointKey func(key *InternalKey, value LazyValue) error,
 			visitRangeDel func(start, end []byte, seqNum uint64) error,
-			visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+			visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 			visitSharedFile func(sst *SharedSSTMeta) error) error
 	}
 	batches := map[string]*Batch{}
@@ -243,7 +244,7 @@ func TestScanInternal(t *testing.T) {
 			}, func(start, end []byte, seqNum uint64) error {
 				fmt.Fprintf(&b, "%s-%s#%d,RANGEDEL\n", start, end, seqNum)
 				return nil
-			}, func(start, end []byte, keys []keyspan.Key) error {
+			}, func(start, end []byte, keys []rangekey.Key) error {
 				s := keyspan.Span{Start: start, End: end, Keys: keys}
 				fmt.Fprintf(&b, "%s\n", s.String())
 				return nil

@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -591,10 +592,10 @@ func (p *pointCollapsingIterator) Next() (*base.InternalKey, base.LazyValue) {
 
 // NextPrefix implements the InternalIterator interface.
 func (p *pointCollapsingIterator) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
-	// TODO(bilal): Implement this. It'll be similar to SeekGE, except we'll call
+	// TODO(bilal): Implement this optimally. It'll be similar to SeekGE, except we'll call
 	// the child iterator's NextPrefix, and have some special logic in case pos
 	// is pcIterPosNext.
-	panic("unimplemented")
+	return p.SeekGE(succKey, base.SeekGEFlagsNone)
 }
 
 // Prev implements the InternalIterator interface.
@@ -852,7 +853,7 @@ func scanInternalImpl(
 	iter *scanInternalIterator,
 	visitPointKey func(key *InternalKey, value LazyValue) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
-	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
 ) error {
 	if visitSharedFile != nil && (lower == nil || upper == nil) {
