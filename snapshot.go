@@ -8,8 +8,6 @@ import (
 	"context"
 	"io"
 	"math"
-
-	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // Snapshot provides a read-only point-in-time view of the DB state.
@@ -68,7 +66,7 @@ func (s *Snapshot) ScanInternal(
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
-	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+	visitRangeKey func(start, end []byte, keys []InternalRangeKey) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
 ) error {
 	if s.db == nil {

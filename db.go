@@ -1183,7 +1183,7 @@ func (d *DB) ScanInternal(
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
-	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+	visitRangeKey func(start, end []byte, keys []InternalRangeKey) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
 ) error {
 	iter := d.newInternalIter(nil /* snapshot */, &scanInternalOptions{

@@ -591,10 +591,10 @@ func (p *pointCollapsingIterator) Next() (*base.InternalKey, base.LazyValue) {
 
 // NextPrefix implements the InternalIterator interface.
 func (p *pointCollapsingIterator) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
-	// TODO(bilal): Implement this. It'll be similar to SeekGE, except we'll call
+	// TODO(bilal): Implement this optimally. It'll be similar to SeekGE, except we'll call
 	// the child iterator's NextPrefix, and have some special logic in case pos
 	// is pcIterPosNext.
-	panic("unimplemented")
+	return p.SeekGE(succKey, base.SeekGEFlagsNone)
 }
 
 // Prev implements the InternalIterator interface.
@@ -846,13 +846,17 @@ func (d *DB) truncateSharedFile(
 	return sst, false, nil
 }
 
+// InternalRangeKey is a type alias that exports keyspan.Key, for use with
+// ScanInternal. Has a helper method to decode the Kind of the trailer.
+type InternalRangeKey = keyspan.Key
+
 func scanInternalImpl(
 	ctx context.Context,
 	lower, upper []byte,
 	iter *scanInternalIterator,
 	visitPointKey func(key *InternalKey, value LazyValue) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
-	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+	visitRangeKey func(start, end []byte, keys []InternalRangeKey) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
 ) error {
 	if visitSharedFile != nil && (lower == nil || upper == nil) {
