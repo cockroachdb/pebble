@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
@@ -305,7 +306,8 @@ type DB struct {
 	closed   *atomic.Value
 	closedCh chan struct{}
 
-	deletionLimiter limiter
+	// deletionLimiter is set when TargetByteDeletionRate is set.
+	deletionLimiter *rate.Limiter
 
 	// Async deletion jobs spawned by cleaners increment this WaitGroup, and
 	// call Done when completed. Once `d.mu.cleaning` is false, the db.Close()

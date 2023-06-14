@@ -13,92 +13,92 @@ import (
 	"time"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/rate"
 )
 
-type mockPrintLimiter struct {
-	buf   bytes.Buffer
-	burst int
-}
-
-func (m *mockPrintLimiter) DelayN(now time.Time, n int) time.Duration {
-	fmt.Fprintf(&m.buf, "wait: %d\n", n)
-	return 0
-}
-
-func (m *mockPrintLimiter) AllowN(now time.Time, n int) bool {
-	fmt.Fprintf(&m.buf, "allow: %d\n", n)
-	return true
-}
-
-func (m *mockPrintLimiter) Burst() int {
-	return m.burst
-}
-
 func TestCompactionPacerMaybeThrottle(t *testing.T) {
+	now := time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	nowFn := func() time.Time {
+		return now
+	}
+	sleepFn := func(d time.Duration) {
+		fmt.Fprintf(&buf, "wait: %s", d)
+		now = now.Add(d)
+	}
+
+	var pacer *deletionPacer
+
 	datadriven.RunTest(t, "testdata/compaction_pacer_maybe_throttle",
 		func(t *testing.T, d *datadriven.TestData) string {
+			buf.Reset()
 			switch d.Cmd {
 			case "init":
-				if len(d.CmdArgs) != 1 {
-					return fmt.Sprintf("%s expects 1 argument", d.Cmd)
-				}
-
 				burst := uint64(1)
-				var bytesIterated uint64
 				var slowdownThreshold uint64
 				var freeBytes, liveBytes, obsoleteBytes uint64
-				if len(d.Input) > 0 {
-					for _, data := range strings.Split(d.Input, "\n") {
-						parts := strings.Split(data, ":")
-						if len(parts) != 2 {
-							return fmt.Sprintf("malformed test:\n%s", d.Input)
-						}
-						varKey := parts[0]
-						varValue, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
-						if err != nil {
-							return err.Error()
-						}
-
-						switch varKey {
-						case "burst":
-							burst = varValue
-						case "bytesIterated":
-							bytesIterated = varValue
-						case "slowdownThreshold":
-							slowdownThreshold = varValue
-						case "freeBytes":
-							freeBytes = varValue
-						case "liveBytes":
-							liveBytes = varValue
-						case "obsoleteBytes":
-							obsoleteBytes = varValue
-						default:
-							return fmt.Sprintf("unknown command: %s", varKey)
-						}
+				for _, data := range strings.Split(d.Input, "\n") {
+					parts := strings.Split(data, ":")
+					if len(parts) != 2 {
+						return fmt.Sprintf("malformed test:\n%s", d.Input)
 					}
-				}
-
-				mockLimiter := mockPrintLimiter{burst: int(burst)}
-				switch d.CmdArgs[0].Key {
-				case "deletion":
-					getInfo := func() deletionPacerInfo {
-						return deletionPacerInfo{
-							freeBytes:     freeBytes,
-							liveBytes:     liveBytes,
-							obsoleteBytes: obsoleteBytes,
-						}
-					}
-					deletionPacer := newDeletionPacer(&mockLimiter, getInfo)
-					deletionPacer.freeSpaceThreshold = slowdownThreshold
-					err := deletionPacer.maybeThrottle(bytesIterated)
+					varKey := parts[0]
+					varValue, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
 					if err != nil {
 						return err.Error()
 					}
 
-					return mockLimiter.buf.String()
-				default:
-					return fmt.Sprintf("unknown command: %s", d.Cmd)
+					switch varKey {
+					case "burst":
+						burst = varValue
+					case "slowdownThreshold":
+						slowdownThreshold = varValue
+					case "freeBytes":
+						freeBytes = varValue
+					case "liveBytes":
+						liveBytes = varValue
+					case "obsoleteBytes":
+						obsoleteBytes = varValue
+					default:
+						return fmt.Sprintf("unknown argument: %s", varKey)
+					}
 				}
+
+				getInfo := func() deletionPacerInfo {
+					return deletionPacerInfo{
+						freeBytes:     freeBytes,
+						liveBytes:     liveBytes,
+						obsoleteBytes: obsoleteBytes,
+					}
+				}
+				mockLimiter := rate.NewLimiterWithCustomTime(float64(burst), float64(burst), nowFn, sleepFn)
+				pacer = newDeletionPacer(mockLimiter, getInfo)
+				pacer.testingSleepFn = sleepFn
+				pacer.freeSpaceThreshold = slowdownThreshold
+				return ""
+
+			case "delete":
+				var bytesToDelete uint64
+				for _, data := range strings.Split(d.Input, "\n") {
+					parts := strings.Split(data, ":")
+					if len(parts) != 2 {
+						return fmt.Sprintf("malformed test:\n%s", d.Input)
+					}
+					varKey := parts[0]
+					varValue, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
+					if err != nil {
+						return err.Error()
+					}
+
+					switch varKey {
+					case "bytesToDelete":
+						bytesToDelete = varValue
+					default:
+						return fmt.Sprintf("unknown command: %s", varKey)
+					}
+				}
+				pacer.maybeThrottle(bytesToDelete)
+				return buf.String()
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)

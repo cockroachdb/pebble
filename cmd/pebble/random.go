@@ -73,12 +73,12 @@ func (f *rateFlag) newRateLimiter() *rate.Limiter {
 		return nil
 	}
 	rng := randvar.NewRand()
-	limiter := rate.NewLimiter(rate.Limit(f.Uint64(rng)), 1)
+	limiter := rate.NewLimiter(float64(f.Uint64(rng)), 1)
 	if f.fluctuateDuration != 0 {
 		go func(limiter *rate.Limiter) {
 			ticker := time.NewTicker(f.fluctuateDuration)
 			for range ticker.C {
-				limiter.SetLimit(rate.Limit(f.Uint64(rng)))
+				limiter.SetRate(float64(f.Uint64(rng)))
 			}
 		}(limiter)
 	}
@@ -86,12 +86,7 @@ func (f *rateFlag) newRateLimiter() *rate.Limiter {
 }
 
 func wait(l *rate.Limiter) {
-	if l == nil {
-		return
-	}
-
-	d := l.DelayN(time.Now(), 1)
-	if d > 0 && d != rate.InfDuration {
-		time.Sleep(d)
+	if l != nil {
+		l.Wait(1)
 	}
 }

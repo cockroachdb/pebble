@@ -439,7 +439,7 @@ func newPauseWriter(y *ycsb, initialRate float64) *pauseWriter {
 	const burst = 1
 	return &pauseWriter{
 		y:        y,
-		limiter:  rate.NewLimiter(rate.Limit(initialRate), burst),
+		limiter:  rate.NewLimiter(float64(initialRate), burst),
 		pauseC:   make(chan struct{}),
 		unpauseC: make(chan struct{}),
 	}
@@ -479,5 +479,5 @@ func (w *pauseWriter) unpause() {
 
 // setRate sets the rate limit for this writer.
 func (w *pauseWriter) setRate(r float64) {
-	w.limiter.SetLimit(rate.Limit(r))
+	w.limiter.SetRate(r)
 }

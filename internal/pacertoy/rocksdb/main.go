@@ -5,7 +5,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"sync"
@@ -54,7 +53,7 @@ func (p *compactionPacer) fill(n int64) {
 }
 
 func (p *compactionPacer) drain(n int64) {
-	p.drainer.WaitN(context.Background(), int(n))
+	p.drainer.Wait(float64(n))
 
 	atomic.AddInt64(&p.level, -n)
 }
@@ -256,15 +255,15 @@ func (db *DB) delayUserWrites() {
 		db.previouslyInDebt = true
 		if compactionDebt > db.prevCompactionDebt {
 			// Debt is growing.
-			drainLimit := db.writeLimiter.Limit() * 0.8
+			drainLimit := db.writeLimiter.Rate() * 0.8
 			if drainLimit > 0 {
-				db.writeLimiter.SetLimit(drainLimit)
+				db.writeLimiter.SetRate(drainLimit)
 			}
 		} else {
 			// Debt is shrinking.
-			drainLimit := db.writeLimiter.Limit() * 1 / 0.8
+			drainLimit := db.writeLimiter.Rate() * 1 / 0.8
 			if drainLimit <= maxWriteRate {
-				db.writeLimiter.SetLimit(drainLimit)
+				db.writeLimiter.SetRate(drainLimit)
 			}
 		}
 	} else if db.previouslyInDebt {
@@ -275,9 +274,9 @@ func (db *DB) delayUserWrites() {
 		// If the DB recovers from delay conditions, we reward with reducing
 		// double the slowdown ratio. This is to balance the long term slowdown
 		// increase signal.
-		drainLimit := db.writeLimiter.Limit() * 1.4
+		drainLimit := db.writeLimiter.Rate() * 1.4
 		if drainLimit <= maxWriteRate {
-			db.writeLimiter.SetLimit(drainLimit)
+			db.writeLimiter.SetRate(drainLimit)
 		}
 		db.previouslyInDebt = false
 	}
@@ -311,7 +310,7 @@ func simulateWrite(db *DB) {
 
 	setRate := func(mb int) {
 		fmt.Printf("filling at %d MB/sec\n", mb)
-		limiter.SetLimit(rate.Limit(mb << 20))
+		limiter.SetRate(float64(mb << 20))
 	}
 
 	go func() {
@@ -328,8 +327,8 @@ func simulateWrite(db *DB) {
 
 	for {
 		size := 1000 + rng.Int63n(50)
-		limiter.WaitN(context.Background(), int(size))
-		db.writeLimiter.WaitN(context.Background(), int(size))
+		limiter.Wait(float64(size))
+		db.writeLimiter.Wait(float64(size))
 		db.fillMemtable(size)
 	}
 }
@@ -362,7 +361,7 @@ func main() {
 		db.compactionMu.Unlock()
 		totalCompactionBytes := atomic.LoadInt64(&db.compactionPacer.level)
 		compactionDebt := math.Max(float64(totalCompactionBytes)-l0CompactionThreshold*memtableSize, 0.0)
-		maxWriteRate := db.writeLimiter.Limit()
+		maxWriteRate := db.writeLimiter.Rate()
 
 		now := time.Now()
 		elapsed := now.Sub(lastNow).Seconds()
