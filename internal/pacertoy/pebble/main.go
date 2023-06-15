@@ -5,7 +5,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"os"
@@ -64,10 +63,10 @@ func (p *compactionPacer) fill(n int64) {
 }
 
 func (p *compactionPacer) drain(n int64, delay bool) bool {
-	p.maxDrainer.WaitN(context.Background(), int(n))
+	p.maxDrainer.Wait(float64(n))
 
 	if delay {
-		p.minDrainer.WaitN(context.Background(), int(n))
+		p.minDrainer.Wait(float64(n))
 	}
 	level := atomic.AddInt64(&p.level, -n)
 	return level <= compactionDebtSlowdownThreshold
@@ -99,10 +98,10 @@ func (p *flushPacer) fill(n int64) {
 }
 
 func (p *flushPacer) drain(n int64, delay bool) bool {
-	p.maxDrainer.WaitN(context.Background(), int(n))
+	p.maxDrainer.Wait(float64(n))
 
 	if delay {
-		p.minDrainer.WaitN(context.Background(), int(n))
+		p.minDrainer.Wait(float64(n))
 	}
 	level := atomic.AddInt64(&p.level, -n)
 	p.fillCond.Signal()
@@ -275,16 +274,16 @@ func (db *DB) delayMemtableDrain() {
 	db.mu.Lock()
 	if compactionDebt > compactionDebtSlowdownThreshold {
 		// Compaction debt is above the threshold and the debt is growing. Throttle memtable flushing.
-		drainLimit := maxFlushRate * rate.Limit(compactionDebtSlowdownThreshold/compactionDebt)
+		drainLimit := maxFlushRate * float64(compactionDebtSlowdownThreshold/compactionDebt)
 		if drainLimit > 0 && drainLimit <= maxFlushRate {
-			db.flushPacer.maxDrainer.SetLimit(drainLimit)
+			db.flushPacer.maxDrainer.SetRate(drainLimit)
 		}
 	} else {
 		// Continuously speed up memtable flushing to make sure that slowdown signal did not
 		// decrease the memtable flush rate by too much.
-		drainLimit := db.flushPacer.maxDrainer.Limit() * 1.05
+		drainLimit := db.flushPacer.maxDrainer.Rate() * 1.05
 		if drainLimit > 0 && drainLimit <= maxFlushRate {
-			db.flushPacer.maxDrainer.SetLimit(drainLimit)
+			db.flushPacer.maxDrainer.SetRate(drainLimit)
 		}
 	}
 
@@ -320,7 +319,7 @@ func simulateWrite(db *DB, measureLatencyMode bool) {
 
 	setRate := func(mb int) {
 		fmt.Printf("filling at %d MB/sec\n", mb)
-		limiter.SetLimit(rate.Limit(mb << 20))
+		limiter.SetRate(float64(mb << 20))
 	}
 
 	if !measureLatencyMode {
@@ -346,7 +345,7 @@ func simulateWrite(db *DB, measureLatencyMode bool) {
 	for totalWrites <= writeAmount {
 		size := 1000 + rng.Int63n(50)
 		if !measureLatencyMode {
-			limiter.WaitN(context.Background(), int(size))
+			limiter.Wait(float64(size))
 		}
 		db.fillMemtable(size)
 
@@ -399,7 +398,7 @@ func main() {
 		db.compactionMu.Unlock()
 		totalCompactionBytes := atomic.LoadInt64(&db.compactionPacer.level)
 		compactionDebt := math.Max(float64(totalCompactionBytes)-l0CompactionThreshold*memtableSize, 0.0)
-		maxFlushRate := db.flushPacer.maxDrainer.Limit()
+		maxFlushRate := db.flushPacer.maxDrainer.Rate()
 
 		now := time.Now()
 		elapsed := now.Sub(lastNow).Seconds()
