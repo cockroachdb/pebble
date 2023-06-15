@@ -1611,14 +1611,16 @@ func (d *DB) ingestApply(
 	// returns must unlock the manifest.
 	d.mu.versions.logLock()
 
-	scheduleFlush := false
 	if mut != nil {
 		// Unref the mutable memtable to allows its flush to proceed. Now that we've
 		// acquired the manifest lock, we can be certain that if the mutable
 		// memtable has received more recent conflicting writes, the flush won't
 		// beat us to applying to the manifest resulting in sequence number
-		// inversion.
-		scheduleFlush = mut.writerUnref()
+		// inversion. Even though we call maybeScheduleFlush right now, this flush
+		// will apply after our ingestion.
+		if mut.writerUnref() {
+			d.maybeScheduleFlush()
+		}
 	}
 
 	current := d.mu.versions.currentVersion()
@@ -1734,9 +1736,6 @@ func (d *DB) ingestApply(
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.
 	d.maybeScheduleCompaction()
-	if scheduleFlush {
-		d.maybeScheduleFlush()
-	}
 	d.maybeValidateSSTablesLocked(ve.NewFiles)
 	return ve, nil
 }
