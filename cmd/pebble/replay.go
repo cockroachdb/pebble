@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode"
 
 	"github.com/cockroachdb/errors"
@@ -71,14 +72,57 @@ type replayConfig struct {
 	cleanUpFuncs []func() error
 }
 
+func (c *replayConfig) args() (args []string) {
+	if c.name != "" {
+		args = append(args, "--name", c.name)
+	}
+	if c.pacer.spec != "" {
+		args = append(args, "--pacer", c.pacer.spec)
+	}
+	if c.runDir != "" {
+		args = append(args, "--run-dir", c.runDir)
+	}
+	if c.count != 0 {
+		args = append(args, "--count", fmt.Sprint(c.count))
+	}
+	if c.maxWritesMB != 0 {
+		args = append(args, "--max-writes", fmt.Sprint(c.maxWritesMB))
+	}
+	if c.streamLogs {
+		args = append(args, "--stream-logs", fmt.Sprint(c.streamLogs))
+	}
+	if c.ignoreCheckpoint {
+		args = append(args, "--ignore-checkpoint", fmt.Sprint(c.ignoreCheckpoint))
+	}
+	if c.optionsString != "" {
+		args = append(args, "--options", c.optionsString)
+	}
+	return args
+}
+
 func (c *replayConfig) runE(cmd *cobra.Command, args []string) error {
 	stdout := cmd.OutOrStdout()
 	workloadPath := args[0]
-	for i := 1; i <= c.count; i++ {
-		fmt.Fprintf(stdout, "Run %d/%d:\n", i, c.count)
-		if err := c.runOnce(stdout, workloadPath); err != nil {
+	if err := c.runOnce(stdout, workloadPath); err != nil {
+		return err
+	}
+	c.count--
+
+	// If necessary, run it again. We run again replacing our existing process
+	// with the next run so that we're truly starting over. This helps avoid the
+	// possibility of state within the Go runtime, the fragmentation of the
+	// heap, or global state within Pebble from interfering with the
+	// independence of individual runs. Previously we called runOnce multiple
+	// times without exec-ing, but we observed less variance between runs from
+	// within the same process.
+	if c.count > 0 {
+		fmt.Printf("%d runs remaining.", c.count)
+		executable, err := os.Executable()
+		if err != nil {
 			return err
 		}
+		execArgs := append(append([]string{executable, "bench", "replay"}, c.args()...), workloadPath)
+		syscall.Exec(executable, execArgs, os.Environ())
 	}
 	return nil
 }
