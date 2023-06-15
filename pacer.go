@@ -7,27 +7,12 @@ package pebble
 import (
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/rate"
 )
 
-var nilPacer = &noopPacer{}
-
-type limiter interface {
-	DelayN(now time.Time, n int) time.Duration
-	AllowN(now time.Time, n int) bool
-	Burst() int
-}
-
-// pacer is the interface for flush and compaction rate limiters. The rate limiter
-// is possible applied on each iteration step of a flush or compaction. This is to
-// limit background IO usage so that it does not contend with foreground traffic.
-type pacer interface {
-	maybeThrottle(bytesIterated uint64) error
-}
-
 // deletionPacerInfo contains any info from the db necessary to make deletion
-// pacing decisions.
+// pacing decisions (to limit background IO usage so that it does not contend
+// with foreground traffic).
 type deletionPacerInfo struct {
 	freeBytes     uint64
 	obsoleteBytes uint64
@@ -40,17 +25,19 @@ type deletionPacerInfo struct {
 // negatively impacted if too many blocks are deleted very quickly, so this
 // mechanism helps mitigate that.
 type deletionPacer struct {
-	limiter               limiter
+	limiter               *rate.Limiter
 	freeSpaceThreshold    uint64
 	obsoleteBytesMaxRatio float64
 
 	getInfo func() deletionPacerInfo
+
+	testingSleepFn func(delay time.Duration)
 }
 
 // newDeletionPacer instantiates a new deletionPacer for use when deleting
 // obsolete files. The limiter passed in must be a singleton shared across this
 // pebble instance.
-func newDeletionPacer(limiter limiter, getInfo func() deletionPacerInfo) *deletionPacer {
+func newDeletionPacer(limiter *rate.Limiter, getInfo func() deletionPacerInfo) *deletionPacer {
 	return &deletionPacer{
 		limiter: limiter,
 		// If there are less than freeSpaceThreshold bytes of free space on
@@ -67,7 +54,7 @@ func newDeletionPacer(limiter limiter, getInfo func() deletionPacerInfo) *deleti
 // limit applies rate limiting if the current free disk space is more than
 // freeSpaceThreshold, and the ratio of obsolete to live bytes is less than
 // obsoleteBytesMaxRatio.
-func (p *deletionPacer) limit(amount uint64, info deletionPacerInfo) error {
+func (p *deletionPacer) limit(amount uint64, info deletionPacerInfo) {
 	obsoleteBytesRatio := float64(1.0)
 	if info.liveBytes > 0 {
 		obsoleteBytesRatio = float64(info.obsoleteBytes) / float64(info.liveBytes)
@@ -75,44 +62,14 @@ func (p *deletionPacer) limit(amount uint64, info deletionPacerInfo) error {
 	paceDeletions := info.freeBytes > p.freeSpaceThreshold &&
 		obsoleteBytesRatio < p.obsoleteBytesMaxRatio
 	if paceDeletions {
-		burst := p.limiter.Burst()
-		for amount > uint64(burst) {
-			d := p.limiter.DelayN(time.Now(), burst)
-			if d == rate.InfDuration {
-				return errors.Errorf("pacing failed")
-			}
-			time.Sleep(d)
-			amount -= uint64(burst)
-		}
-		d := p.limiter.DelayN(time.Now(), int(amount))
-		if d == rate.InfDuration {
-			return errors.Errorf("pacing failed")
-		}
-		time.Sleep(d)
+		p.limiter.Wait(float64(amount))
 	} else {
-		burst := p.limiter.Burst()
-		for amount > uint64(burst) {
-			// AllowN will subtract burst if there are enough tokens available,
-			// else leave the tokens untouched. That is, we are making a
-			// best-effort to account for this activity in the limiter, but by
-			// ignoring the return value, we do the activity instantaneously
-			// anyway.
-			p.limiter.AllowN(time.Now(), burst)
-			amount -= uint64(burst)
-		}
-		p.limiter.AllowN(time.Now(), int(amount))
+		p.limiter.Remove(float64(amount))
 	}
-	return nil
 }
 
 // maybeThrottle slows down a deletion of this file if it's faster than
 // opts.TargetByteDeletionRate.
-func (p *deletionPacer) maybeThrottle(bytesToDelete uint64) error {
-	return p.limit(bytesToDelete, p.getInfo())
-}
-
-type noopPacer struct{}
-
-func (p *noopPacer) maybeThrottle(_ uint64) error {
-	return nil
+func (p *deletionPacer) maybeThrottle(bytesToDelete uint64) {
+	p.limit(bytesToDelete, p.getInfo())
 }
