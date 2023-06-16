@@ -113,6 +113,7 @@ func TestEventListener(t *testing.T) {
 				defer d.mu.Unlock()
 				d.enableFileDeletions()
 			}()
+			d.TestOnlyWaitForCleaning()
 			return memLog.String()
 
 		case "ingest":
