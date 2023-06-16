@@ -1160,7 +1160,7 @@ func (d *DB) ingest(
 			return
 		}
 		// The ingestion overlaps with some entry in the flushable queue.
-		if d.mu.formatVers.vers < FormatFlushableIngest ||
+		if d.FormatMajorVersion() < FormatFlushableIngest ||
 			d.opts.Experimental.DisableIngestAsFlushable() ||
 			len(shared) > 0 || overlapWithExciseSpan ||
 			(len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1) {
