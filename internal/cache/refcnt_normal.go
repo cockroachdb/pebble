@@ -19,7 +19,7 @@ type refcnt int32
 
 // initialize the reference count to the specified value.
 func (v *refcnt) init(val int32) {
-	*v = refcnt(val)
+	atomic.StoreInt32((*int32)(v), val)
 }
 
 func (v *refcnt) refs() int32 {
