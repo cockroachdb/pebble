@@ -19,22 +19,22 @@ import (
 // debugging logic errors in manipulating the reference count. This version is
 // used when the "tracing" build tag is enabled.
 type refcnt struct {
-	val int32
+	val atomic.Int32
 	sync.Mutex
 	msgs []string
 }
 
 func (v *refcnt) init(val int32) {
-	v.val = val
+	v.val.Store(val)
 	v.trace("init")
 }
 
 func (v *refcnt) refs() int32 {
-	return atomic.LoadInt32(&v.val)
+	return v.val.Load()
 }
 
 func (v *refcnt) acquire() {
-	switch n := atomic.AddInt32(&v.val, 1); {
+	switch n := v.val.Add(1); {
 	case n <= 1:
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", n))
 	}
@@ -42,7 +42,7 @@ func (v *refcnt) acquire() {
 }
 
 func (v *refcnt) release() bool {
-	n := atomic.AddInt32(&v.val, -1)
+	n := v.val.Add(-1)
 	switch {
 	case n < 0:
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", n))
