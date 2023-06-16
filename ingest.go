@@ -1732,6 +1732,9 @@ func (d *DB) ingestApply(
 	d.mu.versions.metrics.Ingest.Count++
 
 	d.updateReadStateLocked(d.opts.DebugCheck)
+	// updateReadStateLocked could have generated obsolete tables, schedule a
+	// cleanup job if necessary.
+	d.deleteObsoleteFiles(jobID, true /* waitForCompletion */)
 	d.updateTableStatsLocked(ve.NewFiles)
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.

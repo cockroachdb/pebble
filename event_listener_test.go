@@ -112,6 +112,7 @@ func TestEventListener(t *testing.T) {
 				d.mu.Lock()
 				defer d.mu.Unlock()
 				d.enableFileDeletions()
+				d.TestOnlyWaitForCleaning()
 			}()
 			return memLog.String()
 

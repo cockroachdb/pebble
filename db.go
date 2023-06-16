@@ -21,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
-	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/record"
@@ -307,15 +306,7 @@ type DB struct {
 	closed   *atomic.Value
 	closedCh chan struct{}
 
-	// deletionLimiter is set when TargetByteDeletionRate is set.
-	deletionLimiter *rate.Limiter
-
-	// Async deletion jobs spawned by cleaners increment this WaitGroup, and
-	// call Done when completed. Once `d.mu.cleaning` is false, the db.Close()
-	// goroutine needs to call Wait on this WaitGroup to ensure all cleaning
-	// and deleting goroutines have finished running. As deletion goroutines
-	// could grab db.mu, it must *not* be held while deleters.Wait() is called.
-	deleters sync.WaitGroup
+	cleanupManager *cleanupManager
 
 	// During an iterator close, we may asynchronously schedule read compactions.
 	// We want to wait for those goroutines to finish, before closing the DB.
@@ -443,20 +434,10 @@ type DB struct {
 			noOngoingFlushStartTime time.Time
 		}
 
-		cleaner struct {
-			// Condition variable used to signal the completion of a file cleaning
-			// operation or an increment to the value of disabled. File cleaning operations are
-			// serialized, and a caller trying to do a file cleaning operation may wait
-			// until the ongoing one is complete.
-			cond sync.Cond
-			// True when a file cleaning operation is in progress. False does not necessarily
-			// mean all cleaning jobs have completed; see the comment on d.deleters.
-			cleaning bool
-			// Non-zero when file cleaning is disabled. The disabled count acts as a
-			// reference count to prohibit file cleaning. See
-			// DB.{disable,Enable}FileDeletions().
-			disabled int
-		}
+		// Non-zero when file cleaning is disabled. The disabled count acts as a
+		// reference count to prohibit file cleaning. See
+		// DB.{disable,Enable}FileDeletions().
+		disableFileDeletions int
 
 		snapshots struct {
 			// The list of active snapshots.
@@ -511,11 +492,7 @@ var _ Writer = (*DB)(nil)
 
 // TestOnlyWaitForCleaning MUST only be used in tests.
 func (d *DB) TestOnlyWaitForCleaning() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	for d.mu.cleaner.cleaning {
-		d.mu.cleaner.cond.Wait()
-	}
+	d.cleanupManager.Wait()
 }
 
 // Get gets the value for the given key. It returns ErrNotFound if the DB does
@@ -1555,20 +1532,11 @@ func (d *DB) Close() error {
 		err = firstError(err, errors.Errorf("leaked memtable reservation: %d", errors.Safe(reserved)))
 	}
 
-	// No more cleaning can start. Wait for any async cleaning to complete.
-	for d.mu.cleaner.cleaning {
-		d.mu.cleaner.cond.Wait()
-	}
-	// There may still be obsolete tables if an existing async cleaning job
-	// prevented a new cleaning job when a readState was unrefed. If needed,
-	// synchronously delete obsolete files.
-	if len(d.mu.versions.obsoleteTables) > 0 {
-		d.deleteObsoleteFiles(d.mu.nextJobID, true /* waitForOngoing */)
-	}
-	// Wait for all the deletion goroutines spawned by cleaning jobs to finish.
 	d.mu.Unlock()
-	d.deleters.Wait()
 	d.compactionSchedulers.Wait()
+
+	// Wait for all cleaning jobs to finish.
+	d.cleanupManager.Close()
 
 	// Sanity check metrics.
 	if invariants.Enabled {

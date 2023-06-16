@@ -215,11 +215,7 @@ func (d *DB) Checkpoint(
 		}
 		if ckErr != nil {
 			// Attempt to cleanup on error.
-			paths, _ := fs.List(destDir)
-			for _, path := range paths {
-				_ = fs.Remove(path)
-			}
-			_ = fs.Remove(destDir)
+			_ = fs.RemoveAll(destDir)
 		}
 	}()
 	dir, ckErr = mkdirAllAndSyncParents(fs, destDir)

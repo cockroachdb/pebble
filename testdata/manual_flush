@@ -75,23 +75,3 @@ async-flush
 ----
 0.0:
   000005:[a#10,SET-b#11,SET]
-
-# Test that synchronous flushes can happen even when a cleaning turn is held.
-reset
-----
-
-acquire-cleaning-turn
-----
-
-batch
-set a 1
-set b 2
-----
-
-flush
-----
-0.0:
-  000005:[a#10,SET-b#11,SET]
-
-release-cleaning-turn
-----
