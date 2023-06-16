@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -2220,6 +2221,7 @@ func TestIngestValidation(t *testing.T) {
 
 		ingestTableName = "ext"
 	)
+	ingestPath := filepath.Join(t.TempDir(), ingestTableName)
 
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewSource(seed))
@@ -2298,7 +2300,7 @@ func TestIngestValidation(t *testing.T) {
 				}
 				bh := l.Data[blockIdx]
 
-				osF, err := os.OpenFile(ingestTableName, os.O_RDWR, 0600)
+				osF, err := os.OpenFile(ingestPath, os.O_RDWR, 0600)
 				require.NoError(t, err)
 				defer func() { require.NoError(t, osF.Close()) }()
 
@@ -2320,9 +2322,9 @@ func TestIngestValidation(t *testing.T) {
 				// Create a disk-backed file outside of the DB FS that we can
 				// open as a regular os.File, if required.
 				tmpFS := vfs.Default
-				f, err := tmpFS.Create(ingestTableName)
+				f, err := tmpFS.Create(ingestPath)
 				require.NoError(t, err)
-				defer func() { _ = tmpFS.Remove(ingestTableName) }()
+				defer func() { _ = tmpFS.Remove(ingestPath) }()
 
 				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 					BlockSize:   blockSize,     // Create many smaller blocks.
@@ -2335,13 +2337,13 @@ func TestIngestValidation(t *testing.T) {
 
 				// Possibly corrupt the file.
 				if tc.cLoc != corruptionLocationNone {
-					f, err = tmpFS.Open(ingestTableName)
+					f, err = tmpFS.Open(ingestPath)
 					require.NoError(t, err)
 					corrupt(f)
 				}
 
 				// Copy the file into the DB's FS.
-				_, err = vfs.Clone(tmpFS, fs, ingestTableName, ingestTableName)
+				_, err = vfs.Clone(tmpFS, fs, ingestPath, ingestTableName)
 				require.NoError(t, err)
 
 				// Ingest the external table.
