@@ -1875,8 +1875,8 @@ func (d *DB) Metrics() *Metrics {
 	return metrics
 }
 
-// sstablesOptions hold the optional parameters to retrieve TableInfo for all sstables.
-type sstablesOptions struct {
+// SSTablesOptions hold the optional parameters to retrieve TableInfo for all sstables.
+type SSTablesOptions struct {
 	// set to true will return the sstable properties in TableInfo
 	withProperties bool
 
@@ -1886,14 +1886,14 @@ type sstablesOptions struct {
 }
 
 // SSTablesOption set optional parameter used by `DB.SSTables`.
-type SSTablesOption func(*sstablesOptions)
+type SSTablesOption func(*SSTablesOptions)
 
 // WithProperties enable return sstable properties in each TableInfo.
 //
 // NOTE: if most of the sstable properties need to be read from disk,
 // this options may make method `SSTables` quite slow.
 func WithProperties() SSTablesOption {
-	return func(opt *sstablesOptions) {
+	return func(opt *SSTablesOptions) {
 		opt.withProperties = true
 	}
 }
@@ -1901,7 +1901,7 @@ func WithProperties() SSTablesOption {
 // WithKeyRangeFilter ensures returned sstables overlap start and end (end-exclusive)
 // if start and end are both nil these properties have no effect
 func WithKeyRangeFilter(start, end []byte) SSTablesOption {
-	return func(opt *sstablesOptions) {
+	return func(opt *SSTablesOptions) {
 		opt.end = end
 		opt.start = start
 	}
@@ -1927,7 +1927,7 @@ type SSTableInfo struct {
 // level. Note that this information may be out of date due to concurrent
 // flushes and compactions.
 func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
-	opt := &sstablesOptions{}
+	opt := &SSTablesOptions{}
 	for _, fn := range opts {
 		fn(opt)
 	}
