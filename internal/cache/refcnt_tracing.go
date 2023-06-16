@@ -25,7 +25,7 @@ type refcnt struct {
 }
 
 func (v *refcnt) init(val int32) {
-	v.val = val
+	atomic.StoreInt32(&v.val, val)
 	v.trace("init")
 }
 
