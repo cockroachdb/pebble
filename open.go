@@ -225,7 +225,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// logSeqNum is the next sequence number that will be assigned. Start
 	// assigning sequence numbers from 1 to match rocksdb.
 	d.mu.versions.atomic.logSeqNum = 1
-	d.mu.formatVers.vers = formatVersion
+	d.mu.formatVers.vers.Store(uint64(formatVersion))
 	d.mu.formatVers.marker = formatVersionMarker
 
 	d.timeNow = time.Now
@@ -236,7 +236,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 
-	setCurrent := setCurrentFunc(d.mu.formatVers.vers, manifestMarker, opts.FS, dirname, d.dataDir)
+	setCurrent := setCurrentFunc(d.FormatMajorVersion(), manifestMarker, opts.FS, dirname, d.dataDir)
 
 	if !manifestExists {
 		// DB does not exist.
@@ -460,7 +460,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	//
 	// We ratchet the version this far into Open so that migrations have a read
 	// state available.
-	if !d.opts.ReadOnly && opts.FormatMajorVersion > d.mu.formatVers.vers {
+	if !d.opts.ReadOnly && opts.FormatMajorVersion > d.FormatMajorVersion() {
 		if err := d.ratchetFormatMajorVersionLocked(opts.FormatMajorVersion); err != nil {
 			return nil, err
 		}
@@ -804,7 +804,7 @@ func (d *DB) replayWAL(
 
 				var meta []*manifest.FileMetadata
 				meta, _, err = ingestLoad(
-					d.opts, d.mu.formatVers.vers, paths, d.cacheID, fileNums,
+					d.opts, d.FormatMajorVersion(), paths, d.cacheID, fileNums,
 				)
 				if err != nil {
 					return nil, 0, err

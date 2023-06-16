@@ -184,7 +184,7 @@ func (d *DB) Checkpoint(
 	// file number.
 	memQueue := d.mu.mem.queue
 	current := d.mu.versions.currentVersion()
-	formatVers := d.mu.formatVers.vers
+	formatVers := d.FormatMajorVersion()
 	manifestFileNum := d.mu.versions.manifestFileNum
 	manifestSize := d.mu.versions.manifest.Size()
 	optionsFileNum := d.optionsFileNum
