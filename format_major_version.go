@@ -7,6 +7,7 @@ package pebble
 import (
 	"fmt"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -308,9 +309,7 @@ func lookupFormatMajorVersion(
 // provided in Options when the database was opened if the existing
 // database was written with a higher format version.
 func (d *DB) FormatMajorVersion() FormatMajorVersion {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.mu.formatVers.vers
+	return FormatMajorVersion(atomic.LoadUint64(&d.mu.formatVers.vers))
 }
 
 // RatchetFormatMajorVersion ratchets the opened database's format major
@@ -337,9 +336,9 @@ func (d *DB) ratchetFormatMajorVersionLocked(formatVers FormatMajorVersion) erro
 		// Guard against accidentally forgetting to update FormatNewest.
 		return errors.Errorf("pebble: unknown format version %d", formatVers)
 	}
-	if d.mu.formatVers.vers > formatVers {
+	if currentVers := d.FormatMajorVersion(); currentVers > formatVers {
 		return errors.Newf("pebble: database already at format major version %d; cannot reduce to %d",
-			d.mu.formatVers.vers, formatVers)
+			currentVers, formatVers)
 	}
 	if d.mu.formatVers.ratcheting {
 		return errors.Newf("pebble: database format major version upgrade is in-progress")
@@ -347,7 +346,7 @@ func (d *DB) ratchetFormatMajorVersionLocked(formatVers FormatMajorVersion) erro
 	d.mu.formatVers.ratcheting = true
 	defer func() { d.mu.formatVers.ratcheting = false }()
 
-	for nextVers := d.mu.formatVers.vers + 1; nextVers <= formatVers; nextVers++ {
+	for nextVers := d.FormatMajorVersion() + 1; nextVers <= formatVers; nextVers++ {
 		if err := formatMajorVersionMigrations[nextVers](d); err != nil {
 			return errors.Wrapf(err, "migrating to version %d", nextVers)
 		}
@@ -358,7 +357,7 @@ func (d *DB) ratchetFormatMajorVersionLocked(formatVers FormatMajorVersion) erro
 		// update in-memory state (without ever dropping locks) after
 		// the upgrade is finalized. Here we assert that the upgrade
 		// did occur.
-		if d.mu.formatVers.vers != nextVers {
+		if d.FormatMajorVersion() != nextVers {
 			d.opts.Logger.Fatalf("pebble: successful migration to format version %d never finalized the upgrade", nextVers)
 		}
 	}
@@ -377,7 +376,7 @@ func (d *DB) finalizeFormatVersUpgrade(formatVers FormatMajorVersion) error {
 	if err := d.mu.formatVers.marker.Move(formatVers.String()); err != nil {
 		return err
 	}
-	d.mu.formatVers.vers = formatVers
+	atomic.StoreUint64(&d.mu.formatVers.vers, uint64(formatVers))
 	d.opts.EventListener.FormatUpgrade(formatVers)
 	return nil
 }
