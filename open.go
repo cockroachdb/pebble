@@ -223,10 +223,12 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	// Establish the format major version.
 	{
-		d.mu.formatVers.vers, d.mu.formatVers.marker, err = lookupFormatMajorVersion(opts.FS, dirname)
+		var fmv FormatMajorVersion
+		fmv, d.mu.formatVers.marker, err = lookupFormatMajorVersion(opts.FS, dirname)
 		if err != nil {
 			return nil, err
 		}
+		atomic.StoreUint64(&d.mu.formatVers.vers, uint64(fmv))
 		if !d.opts.ReadOnly {
 			if err := d.mu.formatVers.marker.RemoveObsolete(); err != nil {
 				return nil, err
@@ -238,8 +240,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.mu.nextJobID++
 
 	// Find the currently active manifest, if there is one.
-	manifestMarker, manifestFileNum, exists, err := findCurrentManifest(d.mu.formatVers.vers, opts.FS, dirname)
-	setCurrent := setCurrentFunc(d.mu.formatVers.vers, manifestMarker, opts.FS, dirname, d.dataDir)
+	fmv := d.FormatMajorVersion()
+	manifestMarker, manifestFileNum, exists, err := findCurrentManifest(fmv, opts.FS, dirname)
+	setCurrent := setCurrentFunc(fmv, manifestMarker, opts.FS, dirname, d.dataDir)
 	defer func() {
 		// Ensure we close the manifest marker if we error out for any reason.
 		// If the database is successfully opened, the *versionSet will take
@@ -431,7 +434,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	//
 	// We ratchet the version this far into Open so that migrations have a read
 	// state available.
-	if !d.opts.ReadOnly && opts.FormatMajorVersion > d.mu.formatVers.vers {
+	if !d.opts.ReadOnly && opts.FormatMajorVersion > d.FormatMajorVersion() {
 		if err := d.ratchetFormatMajorVersionLocked(opts.FormatMajorVersion); err != nil {
 			return nil, err
 		}

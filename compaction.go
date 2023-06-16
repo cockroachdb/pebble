@@ -2302,7 +2302,7 @@ func (d *DB) runCompaction(
 	}()
 
 	snapshots := d.mu.snapshots.toSlice()
-	formatVers := d.mu.formatVers.vers
+	formatVers := d.FormatMajorVersion()
 	// The table is written at the maximum allowable format implied by the current
 	// format major version of the DB.
 	tableFormat := formatVers.MaxTableFormat()

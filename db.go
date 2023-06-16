@@ -301,7 +301,12 @@ type DB struct {
 			// Backwards-incompatible features are gated behind new
 			// format major versions and not enabled until a database's
 			// version is ratcheted upwards.
-			vers FormatMajorVersion
+			//
+			// Although this is under the `mu` prefix, readers may read vers
+			// atomically without holding d.mu. Writers must only write to this
+			// value through finalizeFormatVersUpgrade which requires d.mu is
+			// held.
+			vers uint64
 			// marker is the atomic marker for the format major version.
 			// When a database's version is ratcheted upwards, the
 			// marker is moved in order to atomically record the new
