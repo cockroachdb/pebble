@@ -2661,7 +2661,7 @@ func (d *DB) runCompaction(
 	}()
 
 	snapshots := d.mu.snapshots.toSlice()
-	formatVers := d.mu.formatVers.vers
+	formatVers := d.FormatMajorVersion()
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
