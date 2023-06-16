@@ -226,7 +226,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// assigning sequence numbers from base.SeqNumStart to leave room for reserved
 	// sequence numbers (see comments around SeqNumStart).
 	d.mu.versions.logSeqNum.Store(base.SeqNumStart)
-	d.mu.formatVers.vers = formatVersion
+	d.mu.formatVers.vers.Store(uint64(formatVersion))
 	d.mu.formatVers.marker = formatVersionMarker
 
 	d.timeNow = time.Now
@@ -238,7 +238,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 
-	setCurrent := setCurrentFunc(d.mu.formatVers.vers, manifestMarker, opts.FS, dirname, d.dataDir)
+	setCurrent := setCurrentFunc(d.FormatMajorVersion(), manifestMarker, opts.FS, dirname, d.dataDir)
 
 	if !manifestExists {
 		// DB does not exist.
@@ -464,7 +464,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	//
 	// We ratchet the version this far into Open so that migrations have a read
 	// state available.
-	if !d.opts.ReadOnly && opts.FormatMajorVersion > d.mu.formatVers.vers {
+	if !d.opts.ReadOnly && opts.FormatMajorVersion > d.FormatMajorVersion() {
 		if err := d.ratchetFormatMajorVersionLocked(opts.FormatMajorVersion); err != nil {
 			return nil, err
 		}
@@ -807,7 +807,7 @@ func (d *DB) replayWAL(
 				}
 
 				var lr ingestLoadResult
-				lr, err = ingestLoad(d.opts, d.mu.formatVers.vers, paths, nil, d.cacheID, fileNums)
+				lr, err = ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, d.cacheID, fileNums)
 				if err != nil {
 					return nil, 0, err
 				}
