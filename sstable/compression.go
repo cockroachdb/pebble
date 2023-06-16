@@ -53,6 +53,8 @@ func decompressInto(blockType blockType, compressed []byte, buf []byte) ([]byte,
 }
 
 // decompressBlock decompresses an SST block, with space allocated from a cache.
+// NB: If decompressBlock returns (nil, nil), no decompression was necessary and
+// the caller may use `b` directly.
 func decompressBlock(cache *cache.Cache, blockType blockType, b []byte) (*cache.Value, error) {
 	if blockType == noCompressionBlockType {
 		return nil, nil
@@ -62,14 +64,13 @@ func decompressBlock(cache *cache.Cache, blockType blockType, b []byte) (*cache.
 	if err != nil {
 		return nil, err
 	}
-	if prefixLen != 0 {
-		b = b[prefixLen:]
-	}
+	b = b[prefixLen:]
 	// Allocate sufficient space from the cache.
 	decoded := cache.Alloc(decodedLen)
 	decodedBuf := decoded.Buf()
 	if _, err := decompressInto(blockType, b, decodedBuf); err != nil {
 		cache.Free(decoded)
+		return nil, err
 	}
 	return decoded, nil
 }
