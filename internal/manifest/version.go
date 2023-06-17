@@ -1015,7 +1015,7 @@ func NewVersion(
 // key in a higher level table that has both the same user key and a higher
 // sequence number.
 type Version struct {
-	refs int32
+	refs atomic.Int32
 
 	// The level 0 sstables are organized in a series of sublevels. Similar to
 	// the seqnum invariant in normal levels, there is no internal key in a
@@ -1145,12 +1145,12 @@ func ParseVersionDebug(
 
 // Refs returns the number of references to the version.
 func (v *Version) Refs() int32 {
-	return atomic.LoadInt32(&v.refs)
+	return v.refs.Load()
 }
 
 // Ref increments the version refcount.
 func (v *Version) Ref() {
-	atomic.AddInt32(&v.refs, 1)
+	v.refs.Add(1)
 }
 
 // Unref decrements the version refcount. If the last reference to the version
@@ -1158,7 +1158,7 @@ func (v *Version) Ref() {
 // Deleted callback is invoked. Requires that the VersionList mutex is NOT
 // locked.
 func (v *Version) Unref() {
-	if atomic.AddInt32(&v.refs, -1) == 0 {
+	if v.refs.Add(-1) == 0 {
 		l := v.list
 		l.mu.Lock()
 		l.Remove(v)
@@ -1177,7 +1177,7 @@ func (v *Version) Unref() {
 // the Deleted callback is invoked. Requires that the VersionList mutex is
 // already locked.
 func (v *Version) UnrefLocked() {
-	if atomic.AddInt32(&v.refs, -1) == 0 {
+	if v.refs.Add(-1) == 0 {
 		v.list.Remove(v)
 		obsolete := v.unrefFiles()
 		fileBacking := make([]*FileBacking, len(obsolete))
