@@ -261,7 +261,7 @@ func (m *memTable) newRangeKeyIter(*IterOptions) keyspan.FragmentIterator {
 }
 
 func (m *memTable) containsRangeKeys() bool {
-	return atomic.LoadUint32(&m.rangeKeys.atomicCount) > 0
+	return m.rangeKeys.count.Load() > 0
 }
 
 func (m *memTable) availBytes() uint32 {
@@ -355,7 +355,7 @@ func (f *keySpanFrags) get(
 // invalidated whenever a key of the same kind is added to a memTable, and
 // populated when empty when a span iterator of that key kind is created.
 type keySpanCache struct {
-	atomicCount   uint32
+	count         atomic.Uint32
 	frags         unsafe.Pointer
 	cmp           Compare
 	formatKey     base.FormatKey
@@ -366,7 +366,7 @@ type keySpanCache struct {
 // Invalidate the current set of cached spans, indicating the number of
 // spans that were added.
 func (c *keySpanCache) invalidate(count uint32) {
-	newCount := atomic.AddUint32(&c.atomicCount, count)
+	newCount := c.count.Add(count)
 	var frags *keySpanFrags
 
 	for {
