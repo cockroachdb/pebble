@@ -25,29 +25,30 @@ import (
 // distribution.
 type Uniform struct {
 	min uint64
-	max uint64
+	max atomic.Uint64
 }
 
 // NewUniform constructs a new Uniform generator with the given
 // parameters. Returns an error if the parameters are outside the accepted
 // range.
 func NewUniform(min, max uint64) *Uniform {
-	return &Uniform{min: min, max: max}
+	u := &Uniform{min: min}
+	u.max.Store(max)
+	return u
 }
 
 // IncMax increments max.
 func (g *Uniform) IncMax(delta int) {
-	atomic.AddUint64(&g.max, uint64(delta))
+	g.max.Add(uint64(delta))
 }
 
 // Max returns the max value of the distribution.
 func (g *Uniform) Max() uint64 {
-	return atomic.LoadUint64(&g.max)
+	return g.max.Load()
 }
 
 // Uint64 returns a random Uint64 between min and max, drawn from a uniform
 // distribution.
 func (g *Uniform) Uint64(rng *rand.Rand) uint64 {
-	max := atomic.LoadUint64(&g.max)
-	return rng.Uint64n(max-g.min+1) + g.min
+	return rng.Uint64n(g.Max()-g.min+1) + g.min
 }
