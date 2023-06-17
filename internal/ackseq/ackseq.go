@@ -22,7 +22,7 @@ const (
 // S keeps track of the largest sequence number such that all sequence numbers
 // in the range [0,v) have been acknowledged.
 type S struct {
-	next uint64
+	next atomic.Uint64
 	mu   struct {
 		sync.Mutex
 		base   uint64
@@ -34,16 +34,15 @@ type S struct {
 // sequence number. All of the sequence numbers in the range [0,base) are
 // considered acknowledged. Next() will return base upon first call.
 func New(base uint64) *S {
-	s := &S{
-		next: base,
-	}
+	s := &S{}
+	s.next.Store(base)
 	s.mu.base = base
 	return s
 }
 
 // Next returns the next sequence number to use.
 func (s *S) Next() uint64 {
-	return atomic.AddUint64(&s.next, 1) - 1
+	return s.next.Add(1) - 1
 }
 
 // Ack acknowledges the specified seqNum, adjusting base as necessary,
