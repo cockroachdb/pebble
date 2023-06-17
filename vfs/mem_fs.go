@@ -63,7 +63,8 @@ func NewStrictMem() *MemFS {
 // NewMemFile returns a memory-backed File implementation. The memory-backed
 // file takes ownership of data.
 func NewMemFile(data []byte) File {
-	n := &memNode{refs: 1}
+	n := &memNode{}
+	n.refs.Store(1)
 	n.mu.data = data
 	n.mu.modTime = time.Now()
 	return &memFile{
@@ -217,7 +218,7 @@ func (y *MemFS) Create(fullname string) (File, error) {
 	if err != nil {
 		return nil, err
 	}
-	atomic.AddInt32(&ret.n.refs, 1)
+	ret.n.refs.Add(1)
 	return ret, nil
 }
 
@@ -295,7 +296,7 @@ func (y *MemFS) open(fullname string, openForWrite bool) (File, error) {
 			Err:  oserror.ErrNotExist,
 		}
 	}
-	atomic.AddInt32(&ret.n.refs, 1)
+	ret.n.refs.Add(1)
 	return ret, nil
 }
 
@@ -335,7 +336,7 @@ func (y *MemFS) Remove(fullname string) error {
 				// Windows semantics. This ensures that we don't regress in the
 				// ordering of operations and try to remove a file while it is
 				// still open.
-				if n := atomic.LoadInt32(&child.refs); n > 0 {
+				if n := child.refs.Load(); n > 0 {
 					return oserror.ErrInvalid
 				}
 			}
@@ -525,7 +526,7 @@ func (*MemFS) GetDiskUsage(string) (DiskUsage, error) {
 type memNode struct {
 	name  string
 	isDir bool
-	refs  int32
+	refs  atomic.Int32
 
 	// Mutable state.
 	// - For a file: data, syncedDate, modTime: A file is only being mutated by a single goroutine,
@@ -641,7 +642,7 @@ type memFile struct {
 var _ File = (*memFile)(nil)
 
 func (f *memFile) Close() error {
-	if n := atomic.AddInt32(&f.n.refs, -1); n < 0 {
+	if n := f.n.refs.Add(-1); n < 0 {
 		panic(fmt.Sprintf("pebble: close of unopened file: %d", n))
 	}
 	f.n = nil
