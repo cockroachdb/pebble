@@ -4,6 +4,8 @@
 
 package cache
 
+import "sync/atomic"
+
 type entryType int8
 
 const (
@@ -56,7 +58,7 @@ type entry struct {
 	ptype entryType
 	// referenced is atomically set to indicate that this entry has been accessed
 	// since the last time one of the clock hands swept it.
-	referenced int32
+	referenced atomic.Bool
 	shard      *shard
 	// Reference count for the entry. The entry is freed when the reference count
 	// drops to zero.
