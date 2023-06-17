@@ -163,18 +163,18 @@ func TestSyncError(t *testing.T) {
 }
 
 type syncFile struct {
-	writePos int64
-	syncPos  int64
+	writePos atomic.Int64
+	syncPos  atomic.Int64
 }
 
 func (f *syncFile) Write(buf []byte) (int, error) {
 	n := len(buf)
-	atomic.AddInt64(&f.writePos, int64(n))
+	f.writePos.Add(int64(n))
 	return n, nil
 }
 
 func (f *syncFile) Sync() error {
-	atomic.StoreInt64(&f.syncPos, atomic.LoadInt64(&f.writePos))
+	f.syncPos.Store(f.writePos.Load())
 	return nil
 }
 
@@ -190,10 +190,10 @@ func TestSyncRecord(t *testing.T) {
 		require.NoError(t, err)
 		syncWG.Wait()
 		require.NoError(t, syncErr)
-		if v := atomic.LoadInt64(&f.writePos); offset != v {
+		if v := f.writePos.Load(); offset != v {
 			t.Fatalf("expected write pos %d, but found %d", offset, v)
 		}
-		if v := atomic.LoadInt64(&f.syncPos); offset != v {
+		if v := f.syncPos.Load(); offset != v {
 			t.Fatalf("expected sync pos %d, but found %d", offset, v)
 		}
 	}
@@ -281,8 +281,8 @@ func TestMinSyncInterval(t *testing.T) {
 	// Sync one record which will cause the sync timer to kick in.
 	syncRecord(1).Wait()
 
-	startWritePos := atomic.LoadInt64(&f.writePos)
-	startSyncPos := atomic.LoadInt64(&f.syncPos)
+	startWritePos := f.writePos.Load()
+	startSyncPos := f.syncPos.Load()
 
 	// Write a bunch of large records. The sync position should not change
 	// because we haven't triggered the timer. But note that the writes should
@@ -290,12 +290,12 @@ func TestMinSyncInterval(t *testing.T) {
 	var wg *sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg = syncRecord(10000)
-		if v := atomic.LoadInt64(&f.syncPos); startSyncPos != v {
+		if v := f.syncPos.Load(); startSyncPos != v {
 			t.Fatalf("expected syncPos %d, but found %d", startSyncPos, v)
 		}
 		// NB: we can't use syncQueue.load() here as that will return 0,0 while the
 		// syncQueue is blocked.
-		head, tail := w.flusher.syncQ.unpack(atomic.LoadUint64(&w.flusher.syncQ.headTail))
+		head, tail := w.flusher.syncQ.unpack(w.flusher.syncQ.headTail.Load())
 		waiters := head - tail
 		if waiters != uint32(i+1) {
 			t.Fatalf("expected %d waiters, but found %d", i+1, waiters)
@@ -303,7 +303,7 @@ func TestMinSyncInterval(t *testing.T) {
 	}
 
 	err := try(time.Millisecond, 5*time.Second, func() error {
-		v := atomic.LoadInt64(&f.writePos)
+		v := f.writePos.Load()
 		if v > startWritePos {
 			return nil
 		}
@@ -315,7 +315,7 @@ func TestMinSyncInterval(t *testing.T) {
 	timer.f()
 	wg.Wait()
 
-	if w, s := atomic.LoadInt64(&f.writePos), atomic.LoadInt64(&f.syncPos); w != s {
+	if w, s := f.writePos.Load(), f.syncPos.Load(); w != s {
 		t.Fatalf("expected syncPos %d, but found %d", s, w)
 	}
 }
