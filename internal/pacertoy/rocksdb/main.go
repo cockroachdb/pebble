@@ -37,7 +37,7 @@ const (
 )
 
 type compactionPacer struct {
-	level   int64
+	level   atomic.Int64
 	drainer *rate.Limiter
 }
 
@@ -49,17 +49,17 @@ func newCompactionPacer() *compactionPacer {
 }
 
 func (p *compactionPacer) fill(n int64) {
-	atomic.AddInt64(&p.level, n)
+	p.level.Add(n)
 }
 
 func (p *compactionPacer) drain(n int64) {
 	p.drainer.Wait(float64(n))
 
-	atomic.AddInt64(&p.level, -n)
+	p.level.Add(-n)
 }
 
 type flushPacer struct {
-	level                 int64
+	level                 atomic.Int64
 	memtableStopThreshold float64
 	fillCond              sync.Cond
 }
@@ -73,15 +73,15 @@ func newFlushPacer(mu *sync.Mutex) *flushPacer {
 }
 
 func (p *flushPacer) fill(n int64) {
-	for float64(atomic.LoadInt64(&p.level)) >= p.memtableStopThreshold {
+	for float64(p.level.Load()) >= p.memtableStopThreshold {
 		p.fillCond.Wait()
 	}
-	atomic.AddInt64(&p.level, n)
+	p.level.Add(n)
 	p.fillCond.Signal()
 }
 
 func (p *flushPacer) drain(n int64) {
-	atomic.AddInt64(&p.level, -n)
+	p.level.Add(-n)
 }
 
 // DB models a RocksDB DB.
@@ -90,8 +90,8 @@ type DB struct {
 	flushPacer *flushPacer
 	flushCond  sync.Cond
 	memtables  []*int64
-	fill       int64
-	drain      int64
+	fill       atomic.Int64
+	drain      atomic.Int64
 
 	compactionMu    sync.Mutex
 	compactionPacer *compactionPacer
@@ -99,7 +99,7 @@ type DB struct {
 	// is represented as a single integer.
 	L0 []*int64
 	// Non-L0 sstables. sstables[0] == L1.
-	sstables            []int64
+	sstables            []atomic.Int64
 	maxSSTableSizes     []int64
 	compactionFlushCond sync.Cond
 	prevCompactionDebt  float64
@@ -119,6 +119,7 @@ func newDB() *DB {
 	db.compactionPacer = newCompactionPacer()
 
 	db.maxSSTableSizes = make([]int64, numLevels-1)
+	db.sstables = make([]atomic.Int64, numLevels-1)
 	base := int64(levelRatio)
 	for i := uint64(0); i < numLevels-2; i++ {
 		// Each level is 10 times larger than the one above it.
@@ -128,9 +129,9 @@ func newDB() *DB {
 		// Begin with each level full.
 		newLevel := db.maxSSTableSizes[i]
 
-		db.sstables = append(db.sstables, newLevel)
+		db.sstables[i].Store(newLevel)
 	}
-	db.sstables = append(db.sstables, 0)
+	db.sstables[numLevels-2].Store(0)
 	db.maxSSTableSizes[numLevels-2] = math.MaxInt64
 
 	db.writeLimiter = rate.NewLimiter(startingWriteRate, startingWriteRate)
@@ -169,9 +170,9 @@ func (db *DB) drainCompaction() {
 		singleTableSize := int64(memtableSize)
 		tablesToCompact := 0
 		for i := range db.sstables {
-			newSSTableSize := atomic.AddInt64(&db.sstables[i], singleTableSize)
+			newSSTableSize := db.sstables[i].Add(singleTableSize)
 			if newSSTableSize > db.maxSSTableSizes[i] {
-				atomic.AddInt64(&db.sstables[i], -singleTableSize)
+				db.sstables[i].Add(-singleTableSize)
 				tablesToCompact++
 			} else {
 				// Lower levels do not need compaction if level above it did not
@@ -232,7 +233,7 @@ func (db *DB) drainMemtable() {
 				size = *memtable - i
 			}
 			db.flushPacer.drain(size)
-			atomic.AddInt64(&db.drain, size)
+			db.drain.Add(size)
 
 			db.fillCompaction(size)
 		}
@@ -247,7 +248,7 @@ func (db *DB) drainMemtable() {
 
 // delayUserWrites applies write delays depending on compaction debt.
 func (db *DB) delayUserWrites() {
-	totalCompactionBytes := atomic.LoadInt64(&db.compactionPacer.level)
+	totalCompactionBytes := db.compactionPacer.level.Load()
 	compactionDebt := math.Max(float64(totalCompactionBytes)-l0CompactionThreshold*memtableSize, 0.0)
 
 	db.mu.Lock()
@@ -290,7 +291,7 @@ func (db *DB) fillMemtable(size int64) {
 	db.mu.Lock()
 
 	db.flushPacer.fill(size)
-	atomic.AddInt64(&db.fill, size)
+	db.fill.Add(size)
 
 	last := db.memtables[len(db.memtables)-1]
 	if *last+size > memtableSize {
@@ -352,14 +353,14 @@ func main() {
 		db.mu.Lock()
 		memtableCount := len(db.memtables)
 		db.mu.Unlock()
-		dirty := atomic.LoadInt64(&db.flushPacer.level)
-		fill := atomic.LoadInt64(&db.fill)
-		drain := atomic.LoadInt64(&db.drain)
+		dirty := db.flushPacer.level.Load()
+		fill := db.fill.Load()
+		drain := db.drain.Load()
 
 		db.compactionMu.Lock()
 		compactionL0 := len(db.L0)
 		db.compactionMu.Unlock()
-		totalCompactionBytes := atomic.LoadInt64(&db.compactionPacer.level)
+		totalCompactionBytes := db.compactionPacer.level.Load()
 		compactionDebt := math.Max(float64(totalCompactionBytes)-l0CompactionThreshold*memtableSize, 0.0)
 		maxWriteRate := db.writeLimiter.Rate()
 
