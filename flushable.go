@@ -60,7 +60,7 @@ type flushableEntry struct {
 	// flushable is a memTable, when the reader refs drops to zero, the writer
 	// refs will already be zero because the memtable will have been flushed and
 	// that only occurs once the writer refs drops to zero.
-	readerRefs int32
+	readerRefs atomic.Int32
 	// Closure to invoke to release memory accounting.
 	releaseMemAccounting func()
 	// unrefFiles, if not nil, should be invoked to decrease the ref count of
@@ -73,7 +73,7 @@ type flushableEntry struct {
 }
 
 func (e *flushableEntry) readerRef() {
-	switch v := atomic.AddInt32(&e.readerRefs, 1); {
+	switch v := e.readerRefs.Add(1); {
 	case v <= 1:
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
 	}
@@ -92,7 +92,7 @@ func (e *flushableEntry) readerUnrefLocked(deleteFiles bool) {
 func (e *flushableEntry) readerUnrefHelper(
 	deleteFiles bool, deleteFn func(obsolete []*fileBacking),
 ) {
-	switch v := atomic.AddInt32(&e.readerRefs, -1); {
+	switch v := e.readerRefs.Add(-1); {
 	case v < 0:
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
 	case v == 0:
