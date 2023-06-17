@@ -349,7 +349,8 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 
 	const workers = 10
 	eg, _ := errgroup.WithContext(context.Background())
-	seqNum := uint64(1)
+	var seqNum atomic.Uint64
+	seqNum.Store(1)
 	for i := 0; i < workers; i++ {
 		i := i
 		eg.Go(func() error {
@@ -358,7 +359,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 			for j := 0; j < 100; j++ {
 				b := newBatch(nil)
 				b.DeleteRange(start, end, nil)
-				n := atomic.AddUint64(&seqNum, 1) - 1
+				n := seqNum.Add(1) - 1
 				require.NoError(t, m.apply(b, n))
 				b.release()
 
