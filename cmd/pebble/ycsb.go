@@ -258,7 +258,7 @@ type ycsb struct {
 	readAmpCount atomic.Uint64
 	readAmpSum   atomic.Uint64
 	keyNum       *ackseq.S
-	numOps       uint64
+	numOps       atomic.Uint64
 	limiter      *rate.Limiter
 	opsMap       map[string]int
 }
@@ -396,8 +396,7 @@ func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 		}
 
 		latency[op].Record(time.Since(start))
-		if ycsbConfig.numOps > 0 &&
-			atomic.AddUint64(&y.numOps, 1) >= ycsbConfig.numOps {
+		if ycsbConfig.numOps > 0 && y.numOps.Add(1) >= ycsbConfig.numOps {
 			break
 		}
 	}
@@ -412,7 +411,7 @@ func (y *ycsb) sampleReadAmp(db DB, wg *sync.WaitGroup) {
 		m := db.Metrics()
 		y.readAmpCount.Add(1)
 		y.readAmpSum.Add(uint64(m.ReadAmp()))
-		if ycsbConfig.numOps > 0 && atomic.LoadUint64(&y.numOps) >= ycsbConfig.numOps {
+		if ycsbConfig.numOps > 0 && y.numOps.Load() >= ycsbConfig.numOps {
 			break
 		}
 	}
