@@ -9,7 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/cockroachdb/pebble/record"
 )
@@ -39,7 +38,7 @@ type commitQueue struct {
 	// power of 2. A slot is in use until *both* the tail index has moved beyond
 	// it and the slot value has been set to nil. The slot value is set to nil
 	// atomically by the consumer and read atomically by the producer.
-	slots [record.SyncConcurrency]unsafe.Pointer
+	slots [record.SyncConcurrency]atomic.Pointer[Batch]
 }
 
 const dequeueBits = 32
@@ -68,7 +67,7 @@ func (q *commitQueue) enqueue(b *Batch) {
 	slot := &q.slots[head&uint32(len(q.slots)-1)]
 
 	// Check if the head slot has been released by dequeue.
-	for atomic.LoadPointer(slot) != nil {
+	for slot.Load() != nil {
 		// Another goroutine is still cleaning up the tail, so the queue is
 		// actually still full. We spin because this should resolve itself
 		// momentarily.
@@ -76,7 +75,7 @@ func (q *commitQueue) enqueue(b *Batch) {
 	}
 
 	// The head slot is free, so we own it.
-	atomic.StorePointer(slot, unsafe.Pointer(b))
+	slot.Store(b)
 
 	// Increment head. This passes ownership of slot to dequeue and acts as a
 	// store barrier for writing the slot.
@@ -93,7 +92,7 @@ func (q *commitQueue) dequeue() *Batch {
 		}
 
 		slot := &q.slots[tail&uint32(len(q.slots)-1)]
-		b := (*Batch)(atomic.LoadPointer(slot))
+		b := slot.Load()
 		if b == nil || !b.applied.Load() {
 			// The batch is not ready to be dequeued, or another goroutine has
 			// already dequeued it.
@@ -109,7 +108,7 @@ func (q *commitQueue) dequeue() *Batch {
 			// Tell enqueue that we're done with this slot. Zeroing the slot is also
 			// important so we don't leave behind references that could keep this object
 			// live longer than necessary.
-			atomic.StorePointer(slot, nil)
+			slot.Store(nil)
 			// At this point enqueue owns the slot.
 			return b
 		}
