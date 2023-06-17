@@ -328,7 +328,7 @@ func TestConcurrentOneKey(t *testing.T) {
 			}
 			// Wait until at least some write made it such that reads return a value.
 			<-writeDone
-			var sawValue int32
+			var sawValue atomic.Int32
 			for i := 0; i < n; i++ {
 				wg.Add(1)
 				go func() {
@@ -339,14 +339,14 @@ func TestConcurrentOneKey(t *testing.T) {
 					require.True(t, it.Valid())
 					require.True(t, bytes.Equal(key, it.Key().UserKey))
 
-					atomic.AddInt32(&sawValue, 1)
+					sawValue.Add(1)
 					v, err := strconv.Atoi(string(it.Value()[1:]))
 					require.NoError(t, err)
 					require.True(t, 0 <= v && v < n)
 				}()
 			}
 			wg.Wait()
-			require.Equal(t, int32(n), sawValue)
+			require.Equal(t, int32(n), sawValue.Load())
 			require.Equal(t, 1, length(l))
 			require.Equal(t, 1, lengthRev(l))
 		})
