@@ -29,6 +29,9 @@ const (
 	// tagLocator encodes the shared.Locator; if absent the locator is "". It is
 	// followed by the locator string length and the locator string.
 	tagLocator = 5
+	// tagLocator encodes a custom object name (if present). It is followed by the
+	// custom name string length and the string.
+	tagCustomObjectName = 6
 
 	// Any new tags that don't have the tagNotSafeToIgnoreMask bit set must be
 	// followed by the length of the data (so they can be skipped).
@@ -60,8 +63,11 @@ func (p *provider) encodeSharedObjectBacking(
 	}
 	if meta.Shared.Locator != "" {
 		buf = binary.AppendUvarint(buf, tagLocator)
-		buf = binary.AppendUvarint(buf, uint64(len(meta.Shared.Locator)))
-		buf = append(buf, []byte(meta.Shared.Locator)...)
+		buf = encodeString(buf, string(meta.Shared.Locator))
+	}
+	if meta.Shared.CustomObjectName != "" {
+		buf = binary.AppendUvarint(buf, tagCustomObjectName)
+		buf = encodeString(buf, meta.Shared.CustomObjectName)
 	}
 	return buf, nil
 }
@@ -104,6 +110,17 @@ func (p *provider) SharedObjectBacking(
 	}, nil
 }
 
+// CreateSharedObjectBacking is part of the objstorage.Provider interface.
+func (p *provider) CreateSharedObjectBacking(
+	locator shared.Locator, objName string,
+) (objstorage.SharedObjectBacking, error) {
+	var meta objstorage.ObjectMetadata
+	meta.Shared.Locator = locator
+	meta.Shared.CustomObjectName = objName
+	meta.Shared.CleanupMethod = objstorage.SharedNoCleanup
+	return p.encodeSharedObjectBacking(&meta)
+}
+
 type decodedBacking struct {
 	meta objstorage.ObjectMetadata
 	// refToCheck is set only when meta.Shared.CleanupMethod is RefTracking
@@ -120,7 +137,7 @@ func decodeSharedObjectBacking(
 	fileType base.FileType, fileNum base.DiskFileNum, buf objstorage.SharedObjectBacking,
 ) (decodedBacking, error) {
 	var creatorID, creatorFileNum, cleanupMethod, refCheckCreatorID, refCheckFileNum uint64
-	var locator []byte
+	var locator, customObjName string
 	br := bytes.NewReader(buf)
 	for {
 		tag, err := binary.ReadUvarint(br)
@@ -147,17 +164,10 @@ func decodeSharedObjectBacking(
 			}
 
 		case tagLocator:
-			var length uint64
-			length, err = binary.ReadUvarint(br)
-			if err == nil && length > 0 {
-				locator = make([]byte, length)
-				for i := range locator {
-					locator[i], err = br.ReadByte()
-					if err != nil {
-						break
-					}
-				}
-			}
+			locator, err = decodeString(br)
+
+		case tagCustomObjectName:
+			customObjName, err = decodeString(br)
 
 		default:
 			// Ignore unknown tags, unless they're not safe to ignore.
@@ -174,11 +184,13 @@ func decodeSharedObjectBacking(
 			return decodedBacking{}, err
 		}
 	}
-	if creatorID == 0 {
-		return decodedBacking{}, errors.Newf("shared object backing missing creator ID")
-	}
-	if creatorFileNum == 0 {
-		return decodedBacking{}, errors.Newf("shared object backing missing creator file num")
+	if customObjName == "" {
+		if creatorID == 0 {
+			return decodedBacking{}, errors.Newf("shared object backing missing creator ID")
+		}
+		if creatorFileNum == 0 {
+			return decodedBacking{}, errors.Newf("shared object backing missing creator file num")
+		}
 	}
 	var res decodedBacking
 	res.meta.DiskFileNum = fileNum
@@ -194,7 +206,29 @@ func decodeSharedObjectBacking(
 		res.refToCheck.fileNum = base.FileNum(refCheckFileNum).DiskFileNum()
 	}
 	res.meta.Shared.Locator = shared.Locator(locator)
+	res.meta.Shared.CustomObjectName = customObjName
 	return res, nil
+}
+
+func encodeString(buf []byte, s string) []byte {
+	buf = binary.AppendUvarint(buf, uint64(len(s)))
+	buf = append(buf, []byte(s)...)
+	return buf
+}
+
+func decodeString(br io.ByteReader) (string, error) {
+	length, err := binary.ReadUvarint(br)
+	if err != nil || length == 0 {
+		return "", err
+	}
+	buf := make([]byte, length)
+	for i := range buf {
+		buf[i], err = br.ReadByte()
+		if err != nil {
+			return "", err
+		}
+	}
+	return string(buf), nil
 }
 
 // AttachSharedObjects is part of the objstorage.Provider interface.

@@ -91,9 +91,13 @@ func (p *provider) sharedInit() error {
 		o.Shared.CreatorFileNum = meta.CreatorFileNum
 		o.Shared.CleanupMethod = meta.CleanupMethod
 		o.Shared.Locator = meta.Locator
+		o.Shared.CustomObjectName = meta.CustomObjectName
 		o.Shared.Storage, err = p.ensureStorageLocked(o.Shared.Locator)
 		if err != nil {
 			return errors.Wrapf(err, "creating shared.Storage object for locator '%s'", o.Shared.Locator)
+		}
+		if invariants.Enabled {
+			o.AssertValid()
 		}
 		p.mu.knownObjects[o.DiskFileNum] = o
 	}
@@ -122,7 +126,7 @@ func (p *provider) IsForeign(meta objstorage.ObjectMetadata) bool {
 	if !p.shared.initialized.Load() {
 		return false
 	}
-	return meta.IsShared() && p.shared.creatorID != meta.Shared.CreatorID
+	return meta.IsShared() && (meta.Shared.CustomObjectName != "" || meta.Shared.CreatorID != p.shared.creatorID)
 }
 
 func (p *provider) sharedCheckInitialized() error {

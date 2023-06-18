@@ -382,6 +382,81 @@ func TestSharedMultipleLocators(t *testing.T) {
 	p3.Close()
 }
 
+func TestAttachCustomObject(t *testing.T) {
+	ctx := context.Background()
+	storage := shared.NewInMem()
+	sharedFactory := shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+		"foo": storage,
+	})
+
+	st1 := DefaultSettings(vfs.NewMem(), "")
+	st1.Shared.StorageFactory = sharedFactory
+	p1, err := Open(st1)
+	require.NoError(t, err)
+	defer p1.Close()
+	require.NoError(t, p1.SetCreatorID(1))
+
+	w, err := storage.CreateObject("some-obj-name")
+	require.NoError(t, err)
+	data := make([]byte, 100)
+	genData(123, 0, data)
+	_, err = w.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	backing, err := p1.CreateSharedObjectBacking("foo", "some-obj-name")
+	require.NoError(t, err)
+
+	_, err = p1.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+		FileNum:  base.FileNum(1).DiskFileNum(),
+		FileType: base.FileTypeTable,
+		Backing:  backing,
+	}})
+	require.NoError(t, err)
+
+	// Verify the provider can read the object.
+	r, err := p1.OpenForReading(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
+	require.NoError(t, err)
+	require.Equal(t, int64(len(data)), r.Size())
+	buf := make([]byte, r.Size())
+	require.NoError(t, r.ReadAt(ctx, buf, 0))
+	require.Equal(t, byte(123), checkData(t, 0, buf))
+	require.NoError(t, r.Close())
+
+	// Verify that we can extract a correct backing from this provider and attach
+	// the object to another provider.
+	meta, err := p1.Lookup(base.FileTypeTable, base.FileNum(1).DiskFileNum())
+	require.NoError(t, err)
+	handle, err := p1.SharedObjectBacking(&meta)
+	require.NoError(t, err)
+	defer handle.Close()
+	backing, err = handle.Get()
+	require.NoError(t, err)
+
+	st2 := DefaultSettings(vfs.NewMem(), "")
+	st2.Shared.StorageFactory = sharedFactory
+	p2, err := Open(st2)
+	require.NoError(t, err)
+	defer p2.Close()
+	require.NoError(t, p2.SetCreatorID(2))
+
+	_, err = p2.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+		FileNum:  base.FileNum(10).DiskFileNum(),
+		FileType: base.FileTypeTable,
+		Backing:  backing,
+	}})
+	require.NoError(t, err)
+
+	// Verify the provider can read the object.
+	r, err = p2.OpenForReading(ctx, base.FileTypeTable, base.FileNum(10).DiskFileNum(), objstorage.OpenOptions{})
+	require.NoError(t, err)
+	require.Equal(t, int64(len(data)), r.Size())
+	buf = make([]byte, r.Size())
+	require.NoError(t, r.ReadAt(ctx, buf, 0))
+	require.Equal(t, byte(123), checkData(t, 0, buf))
+	require.NoError(t, r.Close())
+}
+
 func TestNotExistError(t *testing.T) {
 	fs := vfs.NewMem()
 	st := DefaultSettings(fs, "")

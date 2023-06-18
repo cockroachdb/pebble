@@ -61,6 +61,9 @@ type SharedObjectMetadata struct {
 	CleanupMethod objstorage.SharedCleanupMethod
 	// Locator identifies a shared.Storage implementation.
 	Locator shared.Locator
+	// CustomObjectName (if it is set) overrides the object name that is normally
+	// derived from the CreatorID and CreatorFileNum.
+	CustomObjectName string
 }
 
 const (
