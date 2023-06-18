@@ -50,8 +50,9 @@ func (s *readState) unref() {
 
 // unrefLocked removes a reference to the readState. If this was the last
 // reference, the reference the readState holds on the version is
-// released. Requires DB.mu is held as version.unrefLocked() requires it. See
-// unref() if DB.mu is NOT held by the caller.
+// released.
+//
+// DB.mu must be held. See unref() if DB.mu is NOT held by the caller.
 func (s *readState) unrefLocked() {
 	if atomic.AddInt32(&s.refcnt, -1) != 0 {
 		return
@@ -61,9 +62,8 @@ func (s *readState) unrefLocked() {
 		mem.readerUnrefLocked(true)
 	}
 
-	// NB: Unlike readState.unref(), we don't attempt to cleanup newly obsolete
-	// tables as unrefLocked() is only called during DB shutdown to release the
-	// current readState.
+	// In this code path, the caller is responsible for scheduling obsolete table
+	// deletion as necessary.
 }
 
 // loadReadState returns the current readState. The returned readState must be
