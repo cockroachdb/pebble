@@ -25,10 +25,16 @@ func TestSharedObjectNames(t *testing.T) {
 			meta.FileType = supportedFileTypes[rand.Int()%len(supportedFileTypes)]
 			meta.Shared.CreatorID = objstorage.CreatorID(rand.Int63())
 			meta.Shared.CreatorFileNum = base.FileNum(rand.Intn(100000)).DiskFileNum()
+			if rand.Intn(4) == 0 {
+				meta.Shared.CustomObjectName = fmt.Sprintf("foo-%d.sst", rand.Intn(10000))
+			}
 
 			obj := sharedObjectName(meta)
 			// Cross-check against cleaner implementations.
-			expObj := fmt.Sprintf("%04x-%s-%s", objHash(meta), meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum))
+			expObj := meta.Shared.CustomObjectName
+			if expObj == "" {
+				expObj = fmt.Sprintf("%04x-%s-%s", objHash(meta), meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum))
+			}
 			require.Equal(t, expObj, obj)
 
 			require.Equal(t, expObj+".ref.", sharedObjectRefPrefix(meta))

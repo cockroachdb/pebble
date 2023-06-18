@@ -37,6 +37,10 @@ const (
 	// tagNewObjectLocator is an optional tag inside the tagNewObject payload. It
 	// is followed by the encoded length of the locator string and the string.
 	tagNewObjectLocator = 4
+	// tagNewObjectCustomName is an optional tag inside the tagNewObject payload.
+	// It is followed by the encoded length of the custom object name string
+	// followed by the string.
+	tagNewObjectCustomName = 5
 )
 
 // Object type values. We don't want to encode FileType directly because it is
@@ -80,8 +84,11 @@ func (v *versionEdit) Encode(w io.Writer) error {
 		buf = binary.AppendUvarint(buf, uint64(meta.CleanupMethod))
 		if meta.Locator != "" {
 			buf = binary.AppendUvarint(buf, uint64(tagNewObjectLocator))
-			buf = binary.AppendUvarint(buf, uint64(len(meta.Locator)))
-			buf = append(buf, []byte(meta.Locator)...)
+			buf = encodeString(buf, string(meta.Locator))
+		}
+		if meta.CustomObjectName != "" {
+			buf = binary.AppendUvarint(buf, uint64(tagNewObjectCustomName))
+			buf = encodeString(buf, meta.CustomObjectName)
 		}
 		// Append 0 as the terminator for optional new object tags.
 		buf = binary.AppendUvarint(buf, 0)
@@ -117,8 +124,8 @@ func (v *versionEdit) Decode(r io.Reader) error {
 		err = nil
 		switch tag {
 		case tagNewObject:
-			var fileNum, creatorID, creatorFileNum, cleanupMethod, locatorLen uint64
-			var locator []byte
+			var fileNum, creatorID, creatorFileNum, cleanupMethod uint64
+			var locator, customName string
 			var fileType base.FileType
 			fileNum, err = binary.ReadUvarint(br)
 			if err == nil {
@@ -146,16 +153,10 @@ func (v *versionEdit) Decode(r io.Reader) error {
 
 				switch optionalTag {
 				case tagNewObjectLocator:
-					locatorLen, err = binary.ReadUvarint(br)
-					if err == nil && locatorLen > 0 {
-						locator = make([]byte, locatorLen)
-						for i := range locator {
-							locator[i], err = br.ReadByte()
-							if err != nil {
-								break
-							}
-						}
-					}
+					locator, err = decodeString(br)
+
+				case tagNewObjectCustomName:
+					customName, err = decodeString(br)
 
 				default:
 					err = errors.Newf("unknown newObject tag %d", optionalTag)
@@ -164,12 +165,13 @@ func (v *versionEdit) Decode(r io.Reader) error {
 
 			if err == nil {
 				v.NewObjects = append(v.NewObjects, SharedObjectMetadata{
-					FileNum:        base.FileNum(fileNum).DiskFileNum(),
-					FileType:       fileType,
-					CreatorID:      objstorage.CreatorID(creatorID),
-					CreatorFileNum: base.FileNum(creatorFileNum).DiskFileNum(),
-					CleanupMethod:  objstorage.SharedCleanupMethod(cleanupMethod),
-					Locator:        shared.Locator(locator),
+					FileNum:          base.FileNum(fileNum).DiskFileNum(),
+					FileType:         fileType,
+					CreatorID:        objstorage.CreatorID(creatorID),
+					CreatorFileNum:   base.FileNum(creatorFileNum).DiskFileNum(),
+					CleanupMethod:    objstorage.SharedCleanupMethod(cleanupMethod),
+					Locator:          shared.Locator(locator),
+					CustomObjectName: customName,
 				})
 			}
 
@@ -199,6 +201,27 @@ func (v *versionEdit) Decode(r io.Reader) error {
 		}
 	}
 	return nil
+}
+
+func encodeString(buf []byte, s string) []byte {
+	buf = binary.AppendUvarint(buf, uint64(len(s)))
+	buf = append(buf, []byte(s)...)
+	return buf
+}
+
+func decodeString(br io.ByteReader) (string, error) {
+	length, err := binary.ReadUvarint(br)
+	if err != nil || length == 0 {
+		return "", err
+	}
+	buf := make([]byte, length)
+	for i := range buf {
+		buf[i], err = br.ReadByte()
+		if err != nil {
+			return "", err
+		}
+	}
+	return string(buf), nil
 }
 
 var errCorruptCatalog = base.CorruptionErrorf("pebble: corrupt shared object catalog")

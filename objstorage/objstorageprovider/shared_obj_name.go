@@ -16,6 +16,9 @@ import (
 // For sstables, the format is: <hash>-<creator-id>-<file-num>.sst
 // For example: 1a3f-2-000001.sst
 func sharedObjectName(meta objstorage.ObjectMetadata) string {
+	if meta.Shared.CustomObjectName != "" {
+		return meta.Shared.CustomObjectName
+	}
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
@@ -37,6 +40,11 @@ func sharedObjectRefName(
 	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
 		panic("ref object used when ref tracking disabled")
 	}
+	if meta.Shared.CustomObjectName != "" {
+		return fmt.Sprintf(
+			"%s.ref.%d.%06d", meta.Shared.CustomObjectName, refCreatorID, refFileNum.FileNum(),
+		)
+	}
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
@@ -48,6 +56,9 @@ func sharedObjectRefName(
 }
 
 func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
+	if meta.Shared.CustomObjectName != "" {
+		return meta.Shared.CustomObjectName + ".ref."
+	}
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(

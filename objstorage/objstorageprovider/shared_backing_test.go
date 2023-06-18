@@ -41,6 +41,7 @@ func TestSharedObjectBacking(t *testing.T) {
 			meta.Shared.CreatorFileNum = base.FileNum(200).DiskFileNum()
 			meta.Shared.CleanupMethod = cleanup
 			meta.Shared.Locator = "foo"
+			meta.Shared.CustomObjectName = "obj-name"
 			meta.Shared.Storage = sharedStorage
 
 			h, err := p.SharedObjectBacking(&meta)
@@ -94,4 +95,27 @@ func TestSharedObjectBacking(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestCreateSharedObjectBacking(t *testing.T) {
+	st := DefaultSettings(vfs.NewMem(), "")
+	sharedStorage := shared.NewInMem()
+	st.Shared.StorageFactory = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+		"foo": sharedStorage,
+	})
+	p, err := Open(st)
+	require.NoError(t, err)
+	defer p.Close()
+
+	require.NoError(t, p.SetCreatorID(1))
+
+	backing, err := p.CreateSharedObjectBacking("foo", "custom-obj-name")
+	require.NoError(t, err)
+	d, err := decodeSharedObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), backing)
+	require.NoError(t, err)
+	require.Equal(t, uint64(100), uint64(d.meta.DiskFileNum.FileNum()))
+	require.Equal(t, base.FileTypeTable, d.meta.FileType)
+	require.Equal(t, shared.Locator("foo"), d.meta.Shared.Locator)
+	require.Equal(t, "custom-obj-name", d.meta.Shared.CustomObjectName)
+	require.Equal(t, objstorage.SharedNoCleanup, d.meta.Shared.CleanupMethod)
 }

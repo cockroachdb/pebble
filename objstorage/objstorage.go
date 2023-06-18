@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/vfs"
@@ -91,15 +92,21 @@ type ObjectMetadata struct {
 	// The fields below are only set if the object is on shared storage.
 	Shared struct {
 		// CreatorID identifies the DB instance that originally created the object.
+		//
+		// Only used when CustomObjectName is not set.
 		CreatorID CreatorID
 		// CreatorFileNum is the identifier for the object within the context of the
 		// DB instance that originally created the object.
+		//
+		// Only used when CustomObjectName is not set.
 		CreatorFileNum base.DiskFileNum
-
+		// CustomObjectName (if it is set) overrides the object name that is normally
+		// derived from the CreatorID and CreatorFileNum.
+		CustomObjectName string
+		// CleanupMethod indicates the method for cleaning up unused shared objects.
 		CleanupMethod SharedCleanupMethod
-
+		// Locator identifies the shared.Storage implementation for this object.
 		Locator shared.Locator
-
 		// Storage is the shared.Storage object corresponding to the Locator. Used
 		// to avoid lookups in hot paths.
 		Storage shared.Storage
@@ -108,7 +115,32 @@ type ObjectMetadata struct {
 
 // IsShared returns true if the object is on shared storage.
 func (meta *ObjectMetadata) IsShared() bool {
-	return meta.Shared.CreatorID.IsSet()
+	return meta.Shared.CreatorID.IsSet() || meta.Shared.CustomObjectName != ""
+}
+
+// AssertValid checks that the metadata is sane.
+func (meta *ObjectMetadata) AssertValid() {
+	if !meta.IsShared() {
+		// Verify all Shared fields are empty.
+		if meta.Shared != (ObjectMetadata{}).Shared {
+			panic(errors.AssertionFailedf("meta.Shared not empty: %#v", meta.Shared))
+		}
+	} else {
+		if meta.Shared.CustomObjectName != "" {
+			if meta.Shared.CreatorID == 0 {
+				panic(errors.AssertionFailedf("CreatorID not set"))
+			}
+			if meta.Shared.CreatorFileNum == base.FileNum(0).DiskFileNum() {
+				panic(errors.AssertionFailedf("CreatorFileNum not set"))
+			}
+		}
+		if meta.Shared.CleanupMethod != SharedNoCleanup && meta.Shared.CleanupMethod != SharedRefTracking {
+			panic(errors.AssertionFailedf("invalid CleanupMethod %d", meta.Shared.CleanupMethod))
+		}
+		if meta.Shared.Storage == nil {
+			panic(errors.AssertionFailedf("Storage not set"))
+		}
+	}
 }
 
 // CreatorID identifies the DB instance that originally created a shared object.
@@ -228,8 +260,13 @@ type Provider interface {
 	// exist in this provider.
 	IsForeign(meta ObjectMetadata) bool
 
-	// SharedObjectBacking encodes the shared object metadata.
+	// SharedObjectBacking encodes the shared object metadata for the given object.
 	SharedObjectBacking(meta *ObjectMetadata) (SharedObjectBackingHandle, error)
+
+	// CreateSharedObjectBacking creates a backing for an existing object with a
+	// custom object name. The object is considered to be managed outside of
+	// Pebble and will never be removed by Pebble.
+	CreateSharedObjectBacking(locator shared.Locator, objName string) (SharedObjectBacking, error)
 
 	// AttachSharedObjects registers existing shared objects with this provider.
 	AttachSharedObjects(objs []SharedObjectToAttach) ([]ObjectMetadata, error)

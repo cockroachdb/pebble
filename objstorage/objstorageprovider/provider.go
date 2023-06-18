@@ -431,6 +431,9 @@ func (p *provider) List() []objstorage.ObjectMetadata {
 }
 
 func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
+	if invariants.Enabled {
+		meta.AssertValid()
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.mu.knownObjects[meta.DiskFileNum] = meta
