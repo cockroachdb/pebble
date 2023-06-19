@@ -497,3 +497,75 @@ c@9: (foobar, .)
 e: (baz, .)
 .
 .
+
+# Test for cases where an excise produces a range key on one side and point keys
+# on the other.
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+range-key-set a aaa @3 foo
+set d foobar
+set e barbaz
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+lsm
+----
+6:
+  000005:[a#10,RANGEKEYSET-e#12,SET]
+
+switch 2
+----
+ok
+
+batch
+set b bcd
+set c cde
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+replicate 2 1 b cc
+----
+replicated 1 shared SSTs
+
+switch 1
+----
+ok
+
+lsm
+----
+6:
+  000008:[a#10,RANGEKEYSET-aaa#inf,RANGEKEYSET]
+  000007:[b#1,SET-c#1,SET]
+  000009:[d#11,SET-e#12,SET]
+
+iter
+first
+next
+next
+next
+next
+----
+a: (., [a-aaa) @3=foo UPDATED)
+b: (bcd, . UPDATED)
+c: (cde, .)
+d: (foobar, .)
+e: (barbaz, .)
