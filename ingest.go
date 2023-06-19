@@ -1368,7 +1368,6 @@ func (d *DB) excise(
 			FileBacking: m.FileBacking,
 			FileNum:     d.mu.versions.getNextFileNum(),
 		}
-		leftFile.Smallest = m.Smallest
 		leftFile.SmallestRangeKey = m.SmallestRangeKey
 		leftFile.SmallestPointKey = m.SmallestPointKey
 		leftFile.HasPointKeys = m.HasPointKeys
@@ -1376,10 +1375,8 @@ func (d *DB) excise(
 		if m.HasPointKeys && exciseSpan.Contains(d.cmp, m.SmallestPointKey) {
 			// This file will not contain any point keys, but will contain range keys.
 			leftFile.HasPointKeys = false
-			leftFile.Smallest = m.SmallestRangeKey
 		} else if m.HasRangeKeys && exciseSpan.Contains(d.cmp, m.SmallestRangeKey) {
 			leftFile.HasRangeKeys = false
-			leftFile.Smallest = m.SmallestPointKey
 		}
 		if leftFile.HasPointKeys {
 			var err error
@@ -1416,7 +1413,11 @@ func (d *DB) excise(
 				// key == nil || lastRangeDel > key.UserKey.
 				leftFile.LargestPointKey = base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel)
 			}
-			leftFile.Largest = leftFile.LargestPointKey
+			// We call ExtendPointKeyBounds so any internal boundType fields are
+			// set correctly. Note that this is mildly wasteful as we'll be comparing
+			// leftFile.{Smallest,Largest}PointKey with themselves, which can be
+			// avoided if we exported ExtendOverallKeyBounds or so.
+			leftFile.ExtendPointKeyBounds(d.cmp, leftFile.SmallestPointKey, leftFile.LargestPointKey)
 		}
 		if leftFile.HasRangeKeys {
 			var err error
@@ -1440,9 +1441,11 @@ func (d *DB) excise(
 			leftFile.HasRangeKeys = lastRangeKey != nil
 			if leftFile.HasRangeKeys {
 				leftFile.LargestRangeKey = base.MakeExclusiveSentinelKey(lastRangeKeyKind, lastRangeKey)
-				if !leftFile.HasPointKeys || base.InternalCompare(d.cmp, leftFile.LargestPointKey, leftFile.LargestRangeKey) < 0 {
-					leftFile.Largest = leftFile.LargestRangeKey
-				}
+				// We call ExtendRangeKeyBounds so any internal boundType fields are
+				// set correctly. Note that this is mildly wasteful as we'll be comparing
+				// leftFile.{Smallest,Largest}RangeKey with themselves, which can be
+				// avoided if we exported ExtendOverallKeyBounds or so.
+				leftFile.ExtendRangeKeyBounds(d.cmp, leftFile.SmallestRangeKey, leftFile.LargestRangeKey)
 			}
 		}
 		if leftFile.HasRangeKeys || leftFile.HasPointKeys {
@@ -1474,7 +1477,6 @@ func (d *DB) excise(
 		FileBacking: m.FileBacking,
 		FileNum:     d.mu.versions.getNextFileNum(),
 	}
-	rightFile.Largest = m.Largest
 	rightFile.LargestRangeKey = m.LargestRangeKey
 	rightFile.LargestPointKey = m.LargestPointKey
 	rightFile.HasPointKeys = m.HasPointKeys
@@ -1482,10 +1484,8 @@ func (d *DB) excise(
 	if m.HasPointKeys && exciseSpan.Contains(d.cmp, m.LargestPointKey) {
 		// This file will not contain any point keys, but will contain range keys.
 		rightFile.HasPointKeys = false
-		rightFile.Largest = m.LargestRangeKey
 	} else if m.HasRangeKeys && exciseSpan.Contains(d.cmp, m.LargestRangeKey) {
 		rightFile.HasRangeKeys = false
-		rightFile.Largest = m.LargestPointKey
 	}
 	if rightFile.HasPointKeys {
 		var err error
@@ -1524,7 +1524,11 @@ func (d *DB) excise(
 			rightFile.SmallestPointKey = rdel.SmallestKey()
 			rightFile.SmallestPointKey.UserKey = firstRangeDel
 		}
-		rightFile.Smallest = rightFile.SmallestPointKey
+		// We call ExtendPointKeyBounds so any internal boundType fields are
+		// set correctly. Note that this is mildly wasteful as we'll be comparing
+		// rightFile.{Smallest,Largest}PointKey with themselves, which can be
+		// avoided if we exported ExtendOverallKeyBounds or so.
+		rightFile.ExtendPointKeyBounds(d.cmp, rightFile.SmallestPointKey, rightFile.LargestPointKey)
 	}
 	if rightFile.HasRangeKeys {
 		if rangeKeyIter == nil {
@@ -1549,9 +1553,11 @@ func (d *DB) excise(
 		if rightFile.HasRangeKeys {
 			rightFile.SmallestRangeKey = rkey.SmallestKey()
 			rightFile.SmallestRangeKey.UserKey = firstRangeKey
-			if !rightFile.HasPointKeys || base.InternalCompare(d.cmp, rightFile.SmallestPointKey, rightFile.SmallestRangeKey) > 0 {
-				rightFile.Smallest = rightFile.SmallestRangeKey
-			}
+			// We call ExtendRangeKeyBounds so any internal boundType fields are
+			// set correctly. Note that this is mildly wasteful as we'll be comparing
+			// rightFile.{Smallest,Largest}RangeKey with themselves, which can be
+			// avoided if we exported ExtendOverallKeyBounds or so.
+			rightFile.ExtendRangeKeyBounds(d.cmp, rightFile.SmallestRangeKey, rightFile.LargestRangeKey)
 		}
 	}
 	if rightFile.HasRangeKeys || rightFile.HasPointKeys {
