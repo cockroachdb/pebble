@@ -1368,20 +1368,9 @@ func (d *DB) excise(
 			FileBacking: m.FileBacking,
 			FileNum:     d.mu.versions.getNextFileNum(),
 		}
-		leftFile.Smallest = m.Smallest
-		leftFile.SmallestRangeKey = m.SmallestRangeKey
-		leftFile.SmallestPointKey = m.SmallestPointKey
-		leftFile.HasPointKeys = m.HasPointKeys
-		leftFile.HasRangeKeys = m.HasRangeKeys
-		if m.HasPointKeys && exciseSpan.Contains(d.cmp, m.SmallestPointKey) {
-			// This file will not contain any point keys, but will contain range keys.
-			leftFile.HasPointKeys = false
-			leftFile.Smallest = m.SmallestRangeKey
-		} else if m.HasRangeKeys && exciseSpan.Contains(d.cmp, m.SmallestRangeKey) {
-			leftFile.HasRangeKeys = false
-			leftFile.Smallest = m.SmallestPointKey
-		}
-		if leftFile.HasPointKeys {
+		if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.SmallestPointKey) {
+			// This file will contain point keys
+			smallestPointKey := m.SmallestPointKey
 			var err error
 			iter, rangeDelIter, err = d.newIters(context.TODO(), m, &IterOptions{level: manifest.Level(level)}, internalIterOpts{})
 			if err != nil {
@@ -1393,6 +1382,9 @@ func (d *DB) excise(
 				key, _ = iter.SeekLT(exciseSpan.Start, base.SeekLTFlagsNone)
 			} else {
 				iter = emptyIter
+			}
+			if key != nil {
+				leftFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, key.Clone())
 			}
 			// Store the min of (exciseSpan.Start, rdel.End) in lastRangeDel. This
 			// needs to be a copy if the key is owned by the range del iter.
@@ -1409,17 +1401,14 @@ func (d *DB) excise(
 			} else {
 				rangeDelIter = emptyKeyspanIter
 			}
-			leftFile.HasPointKeys = key != nil || lastRangeDel != nil
-			if key != nil && (lastRangeDel == nil || d.cmp(lastRangeDel, key.UserKey) <= 0) {
-				leftFile.LargestPointKey = key.Clone()
-			} else if lastRangeDel != nil {
-				// key == nil || lastRangeDel > key.UserKey.
-				leftFile.LargestPointKey = base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel)
+			if lastRangeDel != nil {
+				leftFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel))
 			}
-			leftFile.Largest = leftFile.LargestPointKey
 		}
-		if leftFile.HasRangeKeys {
+		if m.HasRangeKeys && !exciseSpan.Contains(d.cmp, m.SmallestRangeKey) {
+			// This file will contain range keys
 			var err error
+			smallestRangeKey := m.SmallestRangeKey
 			rangeKeyIter, err = d.tableNewRangeKeyIter(m, keyspan.SpanIterOptions{})
 			if err != nil {
 				return nil, err
@@ -1437,12 +1426,8 @@ func (d *DB) excise(
 				}
 				lastRangeKeyKind = rkey.Keys[0].Kind()
 			}
-			leftFile.HasRangeKeys = lastRangeKey != nil
-			if leftFile.HasRangeKeys {
-				leftFile.LargestRangeKey = base.MakeExclusiveSentinelKey(lastRangeKeyKind, lastRangeKey)
-				if !leftFile.HasPointKeys || base.InternalCompare(d.cmp, leftFile.LargestPointKey, leftFile.LargestRangeKey) < 0 {
-					leftFile.Largest = leftFile.LargestRangeKey
-				}
+			if lastRangeKey != nil {
+				leftFile.ExtendRangeKeyBounds(d.cmp, smallestRangeKey, base.MakeExclusiveSentinelKey(lastRangeKeyKind, lastRangeKey))
 			}
 		}
 		if leftFile.HasRangeKeys || leftFile.HasPointKeys {
@@ -1474,20 +1459,9 @@ func (d *DB) excise(
 		FileBacking: m.FileBacking,
 		FileNum:     d.mu.versions.getNextFileNum(),
 	}
-	rightFile.Largest = m.Largest
-	rightFile.LargestRangeKey = m.LargestRangeKey
-	rightFile.LargestPointKey = m.LargestPointKey
-	rightFile.HasPointKeys = m.HasPointKeys
-	rightFile.HasRangeKeys = m.HasRangeKeys
-	if m.HasPointKeys && exciseSpan.Contains(d.cmp, m.LargestPointKey) {
-		// This file will not contain any point keys, but will contain range keys.
-		rightFile.HasPointKeys = false
-		rightFile.Largest = m.LargestRangeKey
-	} else if m.HasRangeKeys && exciseSpan.Contains(d.cmp, m.LargestRangeKey) {
-		rightFile.HasRangeKeys = false
-		rightFile.Largest = m.LargestPointKey
-	}
-	if rightFile.HasPointKeys {
+	if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.LargestPointKey) {
+		// This file will contain point keys
+		largestPointKey := m.LargestPointKey
 		var err error
 		if iter == nil && rangeDelIter == nil {
 			iter, rangeDelIter, err = d.newIters(context.TODO(), m, &IterOptions{level: manifest.Level(level)}, internalIterOpts{})
@@ -1505,9 +1479,12 @@ func (d *DB) excise(
 				rangeDelIter = emptyKeyspanIter
 			}
 		}
+		key, _ := iter.SeekGE(exciseSpan.End, base.SeekGEFlagsNone)
+		if key != nil {
+			rightFile.ExtendPointKeyBounds(d.cmp, key.Clone(), largestPointKey)
+		}
 		// Store the max of (exciseSpan.End, rdel.Start) in firstRangeDel. This
 		// needs to be a copy if the key is owned by the range del iter.
-		key, _ := iter.SeekGE(exciseSpan.End, base.SeekGEFlagsNone)
 		var firstRangeDel []byte
 		rdel := rangeDelIter.SeekGE(exciseSpan.End)
 		if rdel != nil {
@@ -1516,17 +1493,14 @@ func (d *DB) excise(
 				firstRangeDel = exciseSpan.End
 			}
 		}
-		rightFile.HasPointKeys = key != nil || firstRangeDel != nil
-		if key != nil && (firstRangeDel == nil || base.InternalCompare(d.cmp, *key, rdel.SmallestKey()) < 0) {
-			rightFile.SmallestPointKey = key.Clone()
-		} else if firstRangeDel != nil {
-			// key == nil || firstRangeDel <= key.UserKey.
-			rightFile.SmallestPointKey = rdel.SmallestKey()
-			rightFile.SmallestPointKey.UserKey = firstRangeDel
+		if firstRangeDel != nil {
+			smallestPointKey := rdel.SmallestKey()
+			smallestPointKey.UserKey = firstRangeDel
+			rightFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, largestPointKey)
 		}
-		rightFile.Smallest = rightFile.SmallestPointKey
-	}
-	if rightFile.HasRangeKeys {
+	} else if m.HasRangeKeys && !exciseSpan.Contains(d.cmp, m.LargestRangeKey) {
+		// This file will contain range keys.
+		largestRangeKey := m.LargestRangeKey
 		if rangeKeyIter == nil {
 			var err error
 			rangeKeyIter, err = d.tableNewRangeKeyIter(m, keyspan.SpanIterOptions{})
@@ -1545,13 +1519,14 @@ func (d *DB) excise(
 				firstRangeKey = exciseSpan.End
 			}
 		}
-		rightFile.HasRangeKeys = firstRangeKey != nil
-		if rightFile.HasRangeKeys {
-			rightFile.SmallestRangeKey = rkey.SmallestKey()
-			rightFile.SmallestRangeKey.UserKey = firstRangeKey
-			if !rightFile.HasPointKeys || base.InternalCompare(d.cmp, rightFile.SmallestPointKey, rightFile.SmallestRangeKey) > 0 {
-				rightFile.Smallest = rightFile.SmallestRangeKey
-			}
+		if firstRangeKey != nil {
+			smallestRangeKey := rkey.SmallestKey()
+			smallestRangeKey.UserKey = firstRangeKey
+			// We call ExtendRangeKeyBounds so any internal boundType fields are
+			// set correctly. Note that this is mildly wasteful as we'll be comparing
+			// rightFile.{Smallest,Largest}RangeKey with themselves, which can be
+			// avoided if we exported ExtendOverallKeyBounds or so.
+			rightFile.ExtendRangeKeyBounds(d.cmp, smallestRangeKey, largestRangeKey)
 		}
 	}
 	if rightFile.HasRangeKeys || rightFile.HasPointKeys {
