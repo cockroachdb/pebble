@@ -337,6 +337,7 @@ func readFooter(f objstorage.Readable) (footer, error) {
 		off = 0
 		buf = buf[:size]
 	}
+	buf = buf[:size-off]
 	if err := f.ReadAt(context.TODO(), buf, off); err != nil {
 		return footer, errors.Wrap(err, "pebble/table: invalid table (could not read footer)")
 	}
