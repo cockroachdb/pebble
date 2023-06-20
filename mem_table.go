@@ -10,7 +10,6 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
@@ -356,7 +355,7 @@ func (f *keySpanFrags) get(
 // populated when empty when a span iterator of that key kind is created.
 type keySpanCache struct {
 	count         atomic.Uint32
-	frags         unsafe.Pointer
+	frags         atomic.Pointer[keySpanFrags]
 	cmp           Compare
 	formatKey     base.FormatKey
 	constructSpan constructSpan
@@ -370,19 +369,16 @@ func (c *keySpanCache) invalidate(count uint32) {
 	var frags *keySpanFrags
 
 	for {
-		oldPtr := atomic.LoadPointer(&c.frags)
-		if oldPtr != nil {
-			oldFrags := (*keySpanFrags)(oldPtr)
-			if oldFrags.count >= newCount {
-				// Someone else invalidated the cache before us and their invalidation
-				// subsumes ours.
-				break
-			}
+		oldFrags := c.frags.Load()
+		if oldFrags != nil && oldFrags.count >= newCount {
+			// Someone else invalidated the cache before us and their invalidation
+			// subsumes ours.
+			break
 		}
 		if frags == nil {
 			frags = &keySpanFrags{count: newCount}
 		}
-		if atomic.CompareAndSwapPointer(&c.frags, oldPtr, unsafe.Pointer(frags)) {
+		if c.frags.CompareAndSwap(oldFrags, frags) {
 			// We successfully invalidated the cache.
 			break
 		}
@@ -391,7 +387,7 @@ func (c *keySpanCache) invalidate(count uint32) {
 }
 
 func (c *keySpanCache) get() []keyspan.Span {
-	frags := (*keySpanFrags)(atomic.LoadPointer(&c.frags))
+	frags := c.frags.Load()
 	if frags == nil {
 		return nil
 	}
