@@ -98,23 +98,25 @@ const (
 // the (n+1)-th invocation of its MaybeError function. It
 // may be passed to Wrap to inject an error into an FS.
 func OnIndex(index int32) *InjectIndex {
-	return &InjectIndex{index: index}
+	ii := &InjectIndex{}
+	ii.index.Store(index)
+	return ii
 }
 
 // InjectIndex implements Injector, injecting an error at a specific index.
 type InjectIndex struct {
-	index int32
+	index atomic.Int32
 }
 
 // Index returns the index at which the error will be injected.
-func (ii *InjectIndex) Index() int32 { return atomic.LoadInt32(&ii.index) }
+func (ii *InjectIndex) Index() int32 { return ii.index.Load() }
 
 // SetIndex sets the index at which the error will be injected.
-func (ii *InjectIndex) SetIndex(v int32) { atomic.StoreInt32(&ii.index, v) }
+func (ii *InjectIndex) SetIndex(v int32) { ii.index.Store(v) }
 
 // MaybeError implements the Injector interface.
 func (ii *InjectIndex) MaybeError(_ Op, _ string) error {
-	if atomic.AddInt32(&ii.index, -1) == -1 {
+	if ii.index.Add(-1) == -1 {
 		return errors.WithStack(ErrInjected)
 	}
 	return nil
