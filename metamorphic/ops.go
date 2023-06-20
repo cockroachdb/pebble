@@ -423,7 +423,6 @@ type batchCommitOp struct {
 
 func (o *batchCommitOp) run(t *test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
-	t.clearObj(o.batchID)
 	err := b.Commit(t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }

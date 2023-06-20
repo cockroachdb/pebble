@@ -406,7 +406,7 @@ func (g *generator) newIndexedBatch() {
 	})
 }
 
-func (g *generator) batchClose(batchID objID) {
+func (g *generator) removeBatchFromGenerator(batchID objID) {
 	g.liveBatches.remove(batchID)
 	iters := g.batches[batchID]
 	delete(g.batches, batchID)
@@ -429,7 +429,7 @@ func (g *generator) batchAbort() {
 	}
 
 	batchID := g.liveBatches.rand(g.rng)
-	g.batchClose(batchID)
+	g.removeBatchFromGenerator(batchID)
 
 	g.add(&closeOp{objID: batchID})
 }
@@ -440,11 +440,12 @@ func (g *generator) batchCommit() {
 	}
 
 	batchID := g.liveBatches.rand(g.rng)
-	g.batchClose(batchID)
-
+	g.removeBatchFromGenerator(batchID)
 	g.add(&batchCommitOp{
 		batchID: batchID,
 	})
+	g.add(&closeOp{objID: batchID})
+
 }
 
 func (g *generator) dbClose() {
@@ -458,7 +459,7 @@ func (g *generator) dbClose() {
 	}
 	for len(g.liveBatches) > 0 {
 		batchID := g.liveBatches[0]
-		g.batchClose(batchID)
+		g.removeBatchFromGenerator(batchID)
 		g.add(&closeOp{objID: batchID})
 	}
 	g.add(&closeOp{objID: makeObjID(dbTag, 0)})
@@ -535,7 +536,7 @@ func (g *generator) dbRestart() {
 	// Close the batches.
 	for len(g.liveBatches) > 0 {
 		batchID := g.liveBatches[0]
-		g.batchClose(batchID)
+		g.removeBatchFromGenerator(batchID)
 		g.add(&closeOp{objID: batchID})
 	}
 	if len(g.liveReaders) != 1 || len(g.liveWriters) != 1 {
@@ -1049,7 +1050,7 @@ func (g *generator) writerApply() {
 		}
 	}
 
-	g.batchClose(batchID)
+	g.removeBatchFromGenerator(batchID)
 
 	g.add(&applyOp{
 		writerID: writerID,
@@ -1170,7 +1171,7 @@ func (g *generator) writerIngest() {
 		}
 		// After the ingest runs, it either succeeds and the keys are in the
 		// DB, or it fails and these keys never make it to the DB.
-		g.batchClose(batchID)
+		g.removeBatchFromGenerator(batchID)
 		batchIDs = append(batchIDs, batchID)
 		if len(g.liveBatches) == 0 {
 			break
@@ -1180,7 +1181,7 @@ func (g *generator) writerIngest() {
 		// Unable to find multiple batches because of the
 		// canTolerateApplyFailure call above, so just pick one batch.
 		batchID := g.liveBatches.rand(g.rng)
-		g.batchClose(batchID)
+		g.removeBatchFromGenerator(batchID)
 		batchIDs = append(batchIDs, batchID)
 	}
 	g.add(&ingestOp{
