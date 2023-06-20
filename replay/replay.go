@@ -277,11 +277,11 @@ type Runner struct {
 		readAmp                 SampledMetric
 		tombstoneCount          SampledMetric
 		totalSize               SampledMetric
-		paceDurationNano        uint64 // atomic
+		paceDurationNano        atomic.Uint64
 		workloadDuration        time.Duration
-		writeBytes              uint64 // atomic
-		writeStalls             uint64 // atomic
-		writeStallsDurationNano uint64 // atomic
+		writeBytes              atomic.Uint64
+		writeStalls             atomic.Uint64
+		writeStallsDurationNano atomic.Uint64
 		writeThroughput         SampledMetric
 	}
 	// compactionMu holds state for tracking the number of compactions
@@ -404,7 +404,7 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 		r.metrics.estimatedDebt.record(int64(m.Compact.EstimatedDebt))
 		r.metrics.tombstoneCount.record(int64(m.Keys.TombstoneCount))
 		r.metrics.totalSize.record(int64(m.DiskSpaceUsage()))
-		r.metrics.writeThroughput.record(int64(atomic.LoadUint64(&r.metrics.writeBytes)))
+		r.metrics.writeThroughput.record(int64(r.metrics.writeBytes.Load()))
 
 		compactionCount, alreadyCompleted, compactionCh = r.nextCompactionCompletes(compactionCount)
 		// Consider whether replaying is complete. There are two necessary
@@ -514,16 +514,16 @@ func (r *Runner) Wait() (Metrics, error) {
 	m := Metrics{
 		Final:               pm,
 		EstimatedDebt:       r.metrics.estimatedDebt,
-		PaceDuration:        time.Duration(r.metrics.paceDurationNano),
+		PaceDuration:        time.Duration(r.metrics.paceDurationNano.Load()),
 		ReadAmp:             r.metrics.readAmp,
 		QuiesceDuration:     r.metrics.quiesceDuration,
 		TombstoneCount:      r.metrics.tombstoneCount,
 		TotalSize:           r.metrics.totalSize,
 		TotalWriteAmp:       total.WriteAmp(),
 		WorkloadDuration:    r.metrics.workloadDuration,
-		WriteBytes:          r.metrics.writeBytes,
-		WriteStalls:         r.metrics.writeStalls,
-		WriteStallsDuration: time.Duration(r.metrics.writeStallsDurationNano),
+		WriteBytes:          r.metrics.writeBytes.Load(),
+		WriteStalls:         r.metrics.writeStalls.Load(),
+		WriteStallsDuration: time.Duration(r.metrics.writeStallsDurationNano.Load()),
 		WriteThroughput:     r.metrics.writeThroughput,
 	}
 	m.CompactionCounts.Total = pm.Compact.Count
@@ -582,12 +582,11 @@ func (r *Runner) eventListener() pebble.EventListener {
 			r.cancel()
 		},
 		WriteStallBegin: func(pebble.WriteStallBeginInfo) {
-			atomic.AddUint64(&r.metrics.writeStalls, 1)
+			r.metrics.writeStalls.Add(1)
 			writeStallBegin = time.Now()
 		},
 		WriteStallEnd: func() {
-			atomic.AddUint64(&r.metrics.writeStallsDurationNano,
-				uint64(time.Since(writeStallBegin).Nanoseconds()))
+			r.metrics.writeStallsDurationNano.Add(uint64(time.Since(writeStallBegin).Nanoseconds()))
 		},
 		CompactionBegin: func(_ pebble.CompactionInfo) {
 			r.compactionMu.Lock()
@@ -630,7 +629,7 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 		}
 
 		paceDur := r.Pacer.pace(r, step)
-		atomic.AddUint64(&r.metrics.paceDurationNano, uint64(paceDur))
+		r.metrics.paceDurationNano.Add(uint64(paceDur))
 
 		switch step.kind {
 		case flushStepKind:
@@ -641,13 +640,13 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			atomic.StoreUint64(&r.metrics.writeBytes, step.cumulativeWriteBytes)
+			r.metrics.writeBytes.Store(step.cumulativeWriteBytes)
 			r.stepsApplied <- step
 		case ingestStepKind:
 			if err := r.d.Ingest(step.tablesToIngest); err != nil {
 				return err
 			}
-			atomic.StoreUint64(&r.metrics.writeBytes, step.cumulativeWriteBytes)
+			r.metrics.writeBytes.Store(step.cumulativeWriteBytes)
 			r.stepsApplied <- step
 		case compactionStepKind:
 			// No-op.
