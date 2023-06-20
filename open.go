@@ -875,7 +875,7 @@ func (d *DB) replayWAL(
 			entry := d.newFlushableEntry(b.flushable, logNum, b.SeqNum())
 			// Disable memory accounting by adding a reader ref that will never be
 			// removed.
-			entry.readerRefs++
+			entry.readerRefs.Add(1)
 			if d.opts.ReadOnly {
 				d.mu.mem.queue = append(d.mu.mem.queue, entry)
 				// We added the flushable batch to the flushable to the queue.

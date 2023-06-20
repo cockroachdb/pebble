@@ -2103,15 +2103,16 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 }
 
 func (d *DB) newFlushableEntry(f flushable, logNum FileNum, logSeqNum uint64) *flushableEntry {
-	return &flushableEntry{
+	fe := &flushableEntry{
 		flushable:      f,
 		flushed:        make(chan struct{}),
 		logNum:         logNum,
 		logSeqNum:      logSeqNum,
-		readerRefs:     1,
 		deleteFn:       d.mu.versions.addObsolete,
 		deleteFnLocked: d.mu.versions.addObsoleteLocked,
 	}
+	fe.readerRefs.Store(1)
+	return fe
 }
 
 // makeRoomForWrite ensures that the memtable has room to hold the contents of
