@@ -2578,6 +2578,10 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 			err = d.mu.versions.logAndApply(jobID, ve, c.metrics, false /* forceRotation */, func() []compactionInfo {
 				return d.getInProgressCompactionInfoLocked(c)
 			})
+		} else {
+			// logAndApply calls logUnlock. If we didn't call it, we need to call
+			// logUnlock ourselves.
+			d.mu.versions.logUnlock()
 		}
 		if err != nil {
 			// TODO(peter): untested.
