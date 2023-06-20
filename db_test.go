@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -821,7 +820,7 @@ func TestMemTableReservation(t *testing.T) {
 	}
 
 	checkReserved(int64(opts.MemTableSize))
-	if refs := atomic.LoadInt32(&d.mu.mem.queue[len(d.mu.mem.queue)-1].readerRefs); refs != 2 {
+	if refs := d.mu.mem.queue[len(d.mu.mem.queue)-1].readerRefs.Load(); refs != 2 {
 		t.Fatalf("expected 2 refs, but found %d", refs)
 	}
 	// Verify the memtable reservation has caused our test block to be evicted.
