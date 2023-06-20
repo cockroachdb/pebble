@@ -80,7 +80,7 @@ type Skiplist struct {
 	cmp    base.Compare
 	head   *node
 	tail   *node
-	height uint32 // Current height. 1 <= height <= maxHeight. CAS.
+	height atomic.Uint32 // Current height. 1 <= height <= maxHeight. CAS.
 
 	// If set to true by tests, then extra delays are added to make it easier to
 	// detect unusual race conditions.
@@ -140,22 +140,22 @@ func (s *Skiplist) Reset(arena *Arena, cmp base.Compare) {
 	headOffset := arena.getPointerOffset(unsafe.Pointer(head))
 	tailOffset := arena.getPointerOffset(unsafe.Pointer(tail))
 	for i := 0; i < maxHeight; i++ {
-		head.tower[i].nextOffset = tailOffset
-		tail.tower[i].prevOffset = headOffset
+		head.tower[i].nextOffset.Store(tailOffset)
+		tail.tower[i].prevOffset.Store(headOffset)
 	}
 
 	*s = Skiplist{
-		arena:  arena,
-		cmp:    cmp,
-		head:   head,
-		tail:   tail,
-		height: 1,
+		arena: arena,
+		cmp:   cmp,
+		head:  head,
+		tail:  tail,
 	}
+	s.height.Store(1)
 }
 
 // Height returns the height of the highest tower within any of the nodes that
 // have ever been allocated as part of this skiplist.
-func (s *Skiplist) Height() uint32 { return atomic.LoadUint32(&s.height) }
+func (s *Skiplist) Height() uint32 { return s.height.Load() }
 
 // Arena returns the arena backing this skiplist.
 func (s *Skiplist) Arena() *Arena { return s.arena }
@@ -327,7 +327,7 @@ func (s *Skiplist) newNode(
 	// Try to increase s.height via CAS.
 	listHeight := s.Height()
 	for height > listHeight {
-		if atomic.CompareAndSwapUint32(&s.height, listHeight, height) {
+		if s.height.CompareAndSwap(listHeight, height) {
 			// Successfully increased skiplist.height.
 			break
 		}
@@ -469,11 +469,11 @@ func (s *Skiplist) keyIsAfterNode(nd *node, key base.InternalKey) bool {
 }
 
 func (s *Skiplist) getNext(nd *node, h int) *node {
-	offset := atomic.LoadUint32(&nd.tower[h].nextOffset)
+	offset := nd.tower[h].nextOffset.Load()
 	return (*node)(s.arena.getPointer(offset))
 }
 
 func (s *Skiplist) getPrev(nd *node, h int) *node {
-	offset := atomic.LoadUint32(&nd.tower[h].prevOffset)
+	offset := nd.tower[h].prevOffset.Load()
 	return (*node)(s.arena.getPointer(offset))
 }

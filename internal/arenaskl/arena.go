@@ -27,7 +27,7 @@ import (
 
 // Arena is lock-free.
 type Arena struct {
-	n   uint64
+	n   atomic.Uint64
 	buf []byte
 }
 
@@ -46,15 +46,16 @@ var (
 func NewArena(buf []byte) *Arena {
 	// Don't store data at position 0 in order to reserve offset=0 as a kind
 	// of nil pointer.
-	return &Arena{
-		n:   1,
+	a := &Arena{
 		buf: buf,
 	}
+	a.n.Store(1)
+	return a
 }
 
 // Size returns the number of bytes allocated by the arena.
 func (a *Arena) Size() uint32 {
-	s := atomic.LoadUint64(&a.n)
+	s := a.n.Load()
 	if s > math.MaxUint32 {
 		// Saturate at MaxUint32.
 		return math.MaxUint32
@@ -69,7 +70,7 @@ func (a *Arena) Capacity() uint32 {
 
 func (a *Arena) alloc(size, align, overflow uint32) (uint32, uint32, error) {
 	// Verify that the arena isn't already full.
-	origSize := atomic.LoadUint64(&a.n)
+	origSize := a.n.Load()
 	if int(origSize) > len(a.buf) {
 		return 0, 0, ErrArenaFull
 	}
@@ -77,7 +78,7 @@ func (a *Arena) alloc(size, align, overflow uint32) (uint32, uint32, error) {
 	// Pad the allocation with enough bytes to ensure the requested alignment.
 	padded := uint32(size) + align
 
-	newSize := atomic.AddUint64(&a.n, uint64(padded))
+	newSize := a.n.Add(uint64(padded))
 	if int(newSize)+int(overflow) > len(a.buf) {
 		return 0, 0, ErrArenaFull
 	}

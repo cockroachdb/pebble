@@ -33,13 +33,13 @@ func MaxNodeSize(keySize, valueSize uint32) uint64 {
 }
 
 type links struct {
-	nextOffset uint32
-	prevOffset uint32
+	nextOffset atomic.Uint32
+	prevOffset atomic.Uint32
 }
 
 func (l *links) init(prevOffset, nextOffset uint32) {
-	l.nextOffset = nextOffset
-	l.prevOffset = prevOffset
+	l.nextOffset.Store(nextOffset)
+	l.prevOffset.Store(prevOffset)
 }
 
 type node struct {
@@ -115,17 +115,17 @@ func (n *node) getValue(arena *Arena) []byte {
 }
 
 func (n *node) nextOffset(h int) uint32 {
-	return atomic.LoadUint32(&n.tower[h].nextOffset)
+	return n.tower[h].nextOffset.Load()
 }
 
 func (n *node) prevOffset(h int) uint32 {
-	return atomic.LoadUint32(&n.tower[h].prevOffset)
+	return n.tower[h].prevOffset.Load()
 }
 
 func (n *node) casNextOffset(h int, old, val uint32) bool {
-	return atomic.CompareAndSwapUint32(&n.tower[h].nextOffset, old, val)
+	return n.tower[h].nextOffset.CompareAndSwap(old, val)
 }
 
 func (n *node) casPrevOffset(h int, old, val uint32) bool {
-	return atomic.CompareAndSwapUint32(&n.tower[h].prevOffset, old, val)
+	return n.tower[h].prevOffset.CompareAndSwap(old, val)
 }
