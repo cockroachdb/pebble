@@ -26,16 +26,14 @@ type syncingFile struct {
 	noSyncOnClose   bool
 	bytesPerSync    int64
 	preallocateSize int64
-	atomic          struct {
-		// The offset at which dirty data has been written.
-		offset int64
-		// The offset at which data has been synced. Note that if SyncFileRange is
-		// being used, the periodic syncing of data during writing will only ever
-		// sync up to offset-1MB. This is done to avoid rewriting the tail of the
-		// file multiple times, but has the side effect of ensuring that Close will
-		// sync the file's metadata.
-		syncOffset int64
-	}
+	// The offset at which dirty data has been written.
+	offset atomic.Int64
+	// The offset at which data has been synced. Note that if SyncFileRange is
+	// being used, the periodic syncing of data during writing will only ever
+	// sync up to offset-1MB. This is done to avoid rewriting the tail of the
+	// file multiple times, but has the side effect of ensuring that Close will
+	// sync the file's metadata.
+	syncOffset         atomic.Int64
 	preallocatedBlocks int64
 }
 
@@ -54,13 +52,13 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	}
 	// Ensure a file that is opened and then closed will be synced, even if no
 	// data has been written to it.
-	s.atomic.syncOffset = -1
+	s.syncOffset.Store(-1)
 	return s
 }
 
 // NB: syncingFile.Write is unsafe for concurrent use!
 func (f *syncingFile) Write(p []byte) (n int, err error) {
-	_ = f.preallocate(atomic.LoadInt64(&f.atomic.offset))
+	_ = f.preallocate(f.offset.Load())
 
 	n, err = f.File.Write(p)
 	if err != nil {
@@ -68,7 +66,7 @@ func (f *syncingFile) Write(p []byte) (n int, err error) {
 	}
 	// The offset is updated atomically so that it can be accessed safely from
 	// Sync.
-	atomic.AddInt64(&f.atomic.offset, int64(n))
+	f.offset.Add(int64(n))
 	if err := f.maybeSync(); err != nil {
 		return 0, err
 	}
@@ -93,11 +91,11 @@ func (f *syncingFile) preallocate(offset int64) error {
 
 func (f *syncingFile) ratchetSyncOffset(offset int64) {
 	for {
-		syncOffset := atomic.LoadInt64(&f.atomic.syncOffset)
+		syncOffset := f.syncOffset.Load()
 		if syncOffset >= offset {
 			return
 		}
-		if atomic.CompareAndSwapInt64(&f.atomic.syncOffset, syncOffset, offset) {
+		if f.syncOffset.CompareAndSwap(syncOffset, offset) {
 			return
 		}
 	}
@@ -109,7 +107,7 @@ func (f *syncingFile) Sync() error {
 	// offset, we still need to call the underlying file's sync for persistence
 	// guarantees which are not provided by SyncTo (or by sync_file_range on
 	// Linux).
-	f.ratchetSyncOffset(atomic.LoadInt64(&f.atomic.offset))
+	f.ratchetSyncOffset(f.offset.Load())
 	return f.SyncData()
 }
 
@@ -127,7 +125,7 @@ func (f *syncingFile) maybeSync() error {
 	//   Xfs does neighbor page flushing outside of the specified ranges. We
 	//   need to make sure sync range is far from the write offset.
 	const syncRangeBuffer = 1 << 20 // 1 MB
-	offset := atomic.LoadInt64(&f.atomic.offset)
+	offset := f.offset.Load()
 	if offset <= syncRangeBuffer {
 		return nil
 	}
@@ -135,7 +133,7 @@ func (f *syncingFile) maybeSync() error {
 	const syncRangeAlignment = 4 << 10 // 4 KB
 	syncToOffset := offset - syncRangeBuffer
 	syncToOffset -= syncToOffset % syncRangeAlignment
-	syncOffset := atomic.LoadInt64(&f.atomic.syncOffset)
+	syncOffset := f.syncOffset.Load()
 	if syncToOffset < 0 || (syncToOffset-syncOffset) < f.bytesPerSync {
 		return nil
 	}
@@ -167,7 +165,7 @@ func (f *syncingFile) Close() error {
 	// caller has not called Sync since the last write, syncOffset is guaranteed
 	// to be less than atomic.offset. This ensures we fall into the below
 	// conditional and perform a full sync to durably persist the file.
-	if off := atomic.LoadInt64(&f.atomic.offset); off > atomic.LoadInt64(&f.atomic.syncOffset) {
+	if off := f.offset.Load(); off > f.syncOffset.Load() {
 		// There's still remaining dirty data.
 
 		if f.noSyncOnClose {
