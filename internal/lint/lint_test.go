@@ -155,6 +155,21 @@ func TestLint(t *testing.T) {
 		}
 	})
 
+	// Disallow "raw" atomics; wrappers like atomic.Int32 provide much better
+	// safety and alignment guarantees.
+	t.Run("TestRawAtomics", func(t *testing.T) {
+		t.Parallel()
+		if err := stream.ForEach(
+			stream.Sequence(
+				dirCmd(t, pkg.Dir, "git", "grep", `atomic\.\(Load\|Store\|Add\|Swap\|Compare\)`),
+				lintIgnore("lint:ignore RawAtomics"),
+			), func(s string) {
+				t.Errorf("\n%s <- please use atomic wrappers (like atomic.Int32) instead", s)
+			}); err != nil {
+			t.Error(err)
+		}
+	})
+
 	t.Run("TestForbiddenImports", func(t *testing.T) {
 		t.Parallel()
 
