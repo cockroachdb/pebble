@@ -30,13 +30,21 @@ func (l panicLogger) Fatalf(format string, args ...interface{}) {
 // corruptFS injects a corruption in the `index`th byte read.
 type corruptFS struct {
 	vfs.FS
-	index     int32
-	bytesRead int32
+	// index is the index of the byte which we will corrupt.
+	index     atomic.Int32
+	bytesRead atomic.Int32
 }
 
-func (fs corruptFS) maybeCorrupt(n int32, p []byte) {
-	newBytesRead := atomic.AddInt32(&fs.bytesRead, n)
-	pIdx := newBytesRead - 1 - fs.index
+func (fs *corruptFS) maybeCorrupt(n int32, p []byte) {
+	newBytesRead := fs.bytesRead.Add(n)
+	pIdx := newBytesRead - 1 - fs.index.Load()
+	if pIdx >= 0 && pIdx < n {
+		p[pIdx]++
+	}
+}
+
+func (fs *corruptFS) maybeCorruptAt(n int32, p []byte, offset int64) {
+	pIdx := fs.index.Load() - int32(offset)
 	if pIdx >= 0 && pIdx < n {
 		p[pIdx]++
 	}
@@ -67,7 +75,7 @@ func (f corruptFile) Read(p []byte) (int, error) {
 
 func (f corruptFile) ReadAt(p []byte, off int64) (int, error) {
 	n, err := f.File.ReadAt(p, off)
-	f.fs.maybeCorrupt(int32(n), p)
+	f.fs.maybeCorruptAt(int32(n), p, off)
 	return n, err
 }
 
@@ -259,9 +267,9 @@ func TestCorruptReadError(t *testing.T) {
 	run := func(formatVersion FormatMajorVersion, index int32) (err error) {
 		// Perform setup with corruption injection disabled as it involves writes/background ops.
 		fs := &corruptFS{
-			FS:    vfs.NewMem(),
-			index: -1,
+			FS: vfs.NewMem(),
 		}
+		fs.index.Store(-1)
 		opts := &Options{
 			FS:                 fs,
 			Logger:             panicLogger{},
@@ -306,7 +314,7 @@ func TestCorruptReadError(t *testing.T) {
 		}
 
 		// Now perform foreground ops with corruption injection enabled.
-		atomic.StoreInt32(&fs.index, index)
+		fs.index.Store(index)
 		iter := d.NewIter(nil)
 		if err := iter.Error(); err != nil {
 			return err
@@ -333,8 +341,8 @@ func TestCorruptReadError(t *testing.T) {
 		// Reaching here implies all read operations succeeded. This
 		// should only happen when we reached a large enough index at
 		// which `corruptFS` did not inject any corruption.
-		if atomic.LoadInt32(&fs.bytesRead) > fs.index {
-			t.Errorf("corruption error injected at index %d went unreported", fs.index)
+		if bytesRead := fs.bytesRead.Load(); bytesRead > index {
+			t.Errorf("corruption error injected at index %d went unreported", index)
 		}
 		if numFound != 2 {
 			t.Fatalf("expected 2 values; found %d", numFound)

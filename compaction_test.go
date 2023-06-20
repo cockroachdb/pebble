@@ -3391,9 +3391,10 @@ func TestCleanerCond(t *testing.T) {
 
 func TestFlushError(t *testing.T) {
 	// Error the first five times we try to write a sstable.
-	errorOps := int32(3)
+	var errorOps atomic.Int32
+	errorOps.Store(3)
 	fs := errorfs.Wrap(vfs.NewMem(), errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
-		if op == errorfs.OpCreate && filepath.Ext(path) == ".sst" && atomic.AddInt32(&errorOps, -1) >= 0 {
+		if op == errorfs.OpCreate && filepath.Ext(path) == ".sst" && errorOps.Add(-1) >= 0 {
 			return errorfs.ErrInjected
 		}
 		return nil
@@ -3807,17 +3808,17 @@ func TestMarkedForCompaction(t *testing.T) {
 // createManifestErrorInjector injects errors (when enabled) into vfs.FS calls
 // to create MANIFEST files.
 type createManifestErrorInjector struct {
-	enabled uint32 // atomic
+	enabled atomic.Bool
 }
 
 // enable enables error injection for the vfs.FS.
 func (i *createManifestErrorInjector) enable() {
-	atomic.StoreUint32(&i.enabled, 1)
+	i.enabled.Store(true)
 }
 
 // MaybeError implements errorfs.Injector.
 func (i *createManifestErrorInjector) MaybeError(op errorfs.Op, path string) error {
-	if atomic.LoadUint32(&i.enabled) == 0 {
+	if !i.enabled.Load() {
 		return nil
 	}
 	// This necessitates having a MaxManifestSize of 1, to reliably induce
