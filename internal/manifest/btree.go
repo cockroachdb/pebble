@@ -108,7 +108,7 @@ type annotation struct {
 }
 
 type leafNode struct {
-	ref   int32
+	ref   atomic.Int32
 	count int16
 	leaf  bool
 	// subtreeCount holds the count of files in the entire subtree formed by
@@ -139,13 +139,13 @@ func leafToNode(ln *leafNode) *node {
 func newLeafNode() *node {
 	n := leafToNode(new(leafNode))
 	n.leaf = true
-	n.ref = 1
+	n.ref.Store(1)
 	return n
 }
 
 func newNode() *node {
 	n := new(node)
-	n.ref = 1
+	n.ref.Store(1)
 	return n
 }
 
@@ -159,7 +159,7 @@ func newNode() *node {
 // When a node is cloned, the provided pointer will be redirected to the new
 // mutable node.
 func mut(n **node) *node {
-	if atomic.LoadInt32(&(*n).ref) == 1 {
+	if (*n).ref.Load() == 1 {
 		// Exclusive ownership. Can mutate in place.
 
 		// Whenever a node will be mutated, reset its annotations to be marked
@@ -186,7 +186,7 @@ func mut(n **node) *node {
 
 // incRef acquires a reference to the node.
 func (n *node) incRef() {
-	atomic.AddInt32(&n.ref, 1)
+	n.ref.Add(1)
 }
 
 // decRef releases a reference to the node. If requested, the method will unref
@@ -196,7 +196,7 @@ func (n *node) incRef() {
 // operations that should yield a net-zero change to descendant refcounts.
 // When a node is released, its contained files are dereferenced.
 func (n *node) decRef(contentsToo bool, obsolete *[]*FileMetadata) {
-	if atomic.AddInt32(&n.ref, -1) > 0 {
+	if n.ref.Add(-1) > 0 {
 		// Other references remain. Can't free.
 		return
 	}
