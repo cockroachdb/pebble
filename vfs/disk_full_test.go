@@ -41,7 +41,7 @@ func TestOnDiskFull_FS(t *testing.T) {
 	for name, fn := range filesystemWriteOps {
 		t.Run(name, func(t *testing.T) {
 			innerFS := &enospcMockFS{}
-			innerFS.atomic.enospcs = 1
+			innerFS.enospcs.Store(1)
 			var callbackInvocations int
 			fs := OnDiskFull(innerFS, func() {
 				callbackInvocations++
@@ -55,7 +55,7 @@ func TestOnDiskFull_FS(t *testing.T) {
 			require.Equal(t, 1, callbackInvocations)
 			// The inner filesystem should be invoked twice because of the
 			// retry.
-			require.Equal(t, uint32(2), atomic.LoadUint32(&innerFS.atomic.invocations))
+			require.Equal(t, uint32(2), innerFS.invocations.Load())
 		})
 	}
 }
@@ -72,7 +72,7 @@ func TestOnDiskFull_File(t *testing.T) {
 		require.NoError(t, err)
 
 		// The next Write should ENOSPC.
-		atomic.StoreInt32(&innerFS.atomic.enospcs, 1)
+		innerFS.enospcs.Store(1)
 
 		// Call the Write method on the wrapped file. The first call should return
 		// ENOSPC, but also that six bytes were written. Our registered callback
@@ -84,7 +84,7 @@ func TestOnDiskFull_File(t *testing.T) {
 		require.Equal(t, 1, callbackInvocations)
 		// The inner filesystem should be invoked 3 times. Once during Create
 		// and twice during Write.
-		require.Equal(t, uint32(3), atomic.LoadUint32(&innerFS.atomic.invocations))
+		require.Equal(t, uint32(3), innerFS.invocations.Load())
 	})
 	t.Run("Sync", func(t *testing.T) {
 		innerFS := &enospcMockFS{bytesWritten: 6}
@@ -98,14 +98,14 @@ func TestOnDiskFull_File(t *testing.T) {
 
 		// The next Sync should ENOSPC. The callback should be invoked, but a
 		// Sync cannot be retried.
-		atomic.StoreInt32(&innerFS.atomic.enospcs, 1)
+		innerFS.enospcs.Store(1)
 
 		err = f.Sync()
 		require.Error(t, err)
 		require.Equal(t, 1, callbackInvocations)
 		// The inner filesystem should be invoked 2 times. Once during Create
 		// and once during Sync.
-		require.Equal(t, uint32(2), atomic.LoadUint32(&innerFS.atomic.invocations))
+		require.Equal(t, uint32(2), innerFS.invocations.Load())
 	})
 }
 
@@ -113,7 +113,7 @@ func TestOnDiskFull_Concurrent(t *testing.T) {
 	innerFS := &enospcMockFS{
 		opDelay: 10 * time.Millisecond,
 	}
-	innerFS.atomic.enospcs = 10
+	innerFS.enospcs.Store(10)
 	var callbackInvocations atomic.Int32
 	fs := OnDiskFull(innerFS, func() {
 		callbackInvocations.Add(1)
@@ -133,22 +133,20 @@ func TestOnDiskFull_Concurrent(t *testing.T) {
 	// Since all operations should start before the first one returns an
 	// ENOSPC, the callback should only be invoked once.
 	require.Equal(t, int32(1), callbackInvocations.Load())
-	require.Equal(t, uint32(20), atomic.LoadUint32(&innerFS.atomic.invocations))
+	require.Equal(t, uint32(20), innerFS.invocations.Load())
 }
 
 type enospcMockFS struct {
 	FS
 	opDelay      time.Duration
 	bytesWritten int
-	atomic       struct {
-		enospcs     int32
-		invocations uint32
-	}
+	enospcs      atomic.Int32
+	invocations  atomic.Uint32
 }
 
 func (fs *enospcMockFS) maybeENOSPC() error {
-	atomic.AddUint32(&fs.atomic.invocations, 1)
-	v := atomic.AddInt32(&fs.atomic.enospcs, -1)
+	fs.invocations.Add(1)
+	v := fs.enospcs.Add(-1)
 
 	// Sleep before returning so that tests may issue concurrent writes that
 	// fall into the same write generation.

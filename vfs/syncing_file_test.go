@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -45,7 +44,7 @@ func TestSyncingFile(t *testing.T) {
 		_, err := sf.Write(make([]byte, c.n))
 		require.NoError(t, err)
 
-		syncTo := atomic.LoadInt64(&sf.(*syncingFile).atomic.syncOffset)
+		syncTo := sf.(*syncingFile).syncOffset.Load()
 		if c.expectedSyncTo != syncTo {
 			t.Fatalf("%d: expected sync to %d, but found %d", i, c.expectedSyncTo, syncTo)
 		}
@@ -101,7 +100,7 @@ close: test [<nil>]
 			write(mb)
 
 			fmt.Fprintf(&buf, "pre-close: %s [offset=%d sync-offset=%d]\n",
-				lf.name, atomic.LoadInt64(&s.atomic.offset), atomic.LoadInt64(&s.atomic.syncOffset))
+				lf.name, s.offset.Load(), s.syncOffset.Load())
 			require.NoError(t, s.Close())
 
 			if s := buf.String(); c.expected != s {
@@ -167,9 +166,9 @@ func TestSyncingFileNoSyncOnClose(t *testing.T) {
 			write(mb)     // No sync because syncToOffset = 3M-1M = 2M
 			write(128)    // No sync for the same reason
 
-			syncToBefore := atomic.LoadInt64(&s.atomic.syncOffset)
+			syncToBefore := s.syncOffset.Load()
 			require.NoError(t, s.Close())
-			syncToAfter := atomic.LoadInt64(&s.atomic.syncOffset)
+			syncToAfter := s.syncOffset.Load()
 
 			// If we're not able to non-blockingly sync using sync-to,
 			// NoSyncOnClose should elide the sync.
