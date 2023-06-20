@@ -85,7 +85,6 @@ func (o *applyOp) run(t *test, h historyRecorder) {
 	}
 	h.Recordf("%s // %v", o, err)
 	_ = b.Close()
-	t.clearObj(o.batchID)
 }
 
 func (o *applyOp) String() string  { return fmt.Sprintf("%s.Apply(%s)", o.writerID, o.batchID) }
@@ -423,7 +422,6 @@ type batchCommitOp struct {
 
 func (o *batchCommitOp) run(t *test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
-	t.clearObj(o.batchID)
 	err := b.Commit(t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
