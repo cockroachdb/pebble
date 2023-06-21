@@ -227,10 +227,6 @@ type FileMetadata struct {
 	// we'd have to write virtual sstable stats to the version edit.
 	Stats TableStats
 
-	// Deleted is set to true if a VersionEdit gets installed that has deleted
-	// this file. Protected by the manifest lock (see versionSet.logLock()).
-	Deleted bool
-
 	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
 	// pick L0 compactions. Only accurate for the most recent Version.
 	SubLevel         int
