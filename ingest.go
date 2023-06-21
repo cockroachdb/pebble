@@ -50,13 +50,21 @@ func (k *KeyRange) Contains(cmp base.Compare, key InternalKey) bool {
 	return (v < 0 || (v == 0 && key.IsExclusiveSentinel())) && cmp(k.Start, key.UserKey) <= 0
 }
 
+// OverlapsInternalKeyRange checks if the specified internal key range has an
+// overlap with the KeyRange. Note that we aren't checking for full containment
+// of smallest-largest within k, rather just that there's some intersection
+// between the two ranges.
+func (k *KeyRange) OverlapsInternalKeyRange(cmp base.Compare, smallest, largest InternalKey) bool {
+	v := cmp(k.Start, largest.UserKey)
+	return v <= 0 && !(largest.IsExclusiveSentinel() && v == 0) &&
+		cmp(k.End, smallest.UserKey) > 0
+}
+
 // Overlaps checks if the specified file has an overlap with the KeyRange.
 // Note that we aren't checking for full containment of m within k, rather just
 // that there's some intersection between m and k's bounds.
 func (k *KeyRange) Overlaps(cmp base.Compare, m *fileMetadata) bool {
-	v := cmp(k.Start, m.Largest.UserKey)
-	return v <= 0 && !(m.Largest.IsExclusiveSentinel() && v == 0) &&
-		cmp(k.End, m.Smallest.UserKey) > 0
+	return k.OverlapsInternalKeyRange(cmp, m.Smallest, m.Largest)
 }
 
 func ingestValidateKey(opts *Options, key *InternalKey) error {
@@ -1721,6 +1729,18 @@ func (d *DB) ingestApply(
 					levelMetrics.Size += int64(excised[i].Meta.Size)
 				}
 			}
+		}
+	}
+	for c := range d.mu.compact.inProgress {
+		// Check if this compaction overlaps with the excise span. Note that just
+		// checking if the inputs individually overlap with the excise span
+		// isn't sufficient; for instance, a compaction could have [a,b] and [e,f]
+		// as inputs and write it all out as [a,b,e,f] in one sstable. If we're
+		// doing a [c,d) excise at the same time as this compaction, we will have
+		// to error out the whole compaction as we can't guarantee it hasn't/won't
+		// write a file overlapping with the excise span.
+		if exciseSpan.OverlapsInternalKeyRange(d.cmp, c.smallest, c.largest) {
+			c.cancel.Store(true)
 		}
 	}
 	if err := d.mu.versions.logAndApply(jobID, ve, metrics, false /* forceRotation */, func() []compactionInfo {

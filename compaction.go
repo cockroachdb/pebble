@@ -13,6 +13,7 @@ import (
 	"runtime/pprof"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -31,6 +32,7 @@ import (
 
 var errEmptyTable = errors.New("pebble: empty table")
 var errFlushInvariant = errors.New("pebble: flush next log number is unset")
+var errCancelledCompaction = errors.New("pebble: compaction cancelled by a concurrent operation, will retry compaction")
 
 var compactLabels = pprof.Labels("pebble", "compact")
 var flushLabels = pprof.Labels("pebble", "flush")
@@ -547,6 +549,11 @@ func rangeKeyCompactionTransform(
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
 type compaction struct {
+	// cancel is a bool that can be used by other goroutines to signal a compaction
+	// to cancel, such as if a conflicting excise operation raced it to manifest
+	// application. Only holders of the manifest lock will write to this atomic.
+	cancel atomic.Bool
+
 	kind      compactionKind
 	cmp       Compare
 	equal     Equal
@@ -2567,14 +2574,12 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		err = func() error {
 			var err error
 			d.mu.versions.logLock()
-			// Confirm if any of this compaction's inputs were deleted while this
-			// compaction was ongoing.
-			for i := range c.inputs {
-				c.inputs[i].files.Each(func(m *manifest.FileMetadata) {
-					if m.Deleted {
-						err = firstError(err, errors.New("pebble: file deleted by a concurrent operation, will retry compaction"))
-					}
-				})
+			// Check if this compaction had a conflicting operation (eg. a d.excise())
+			// that necessitates it restarting from scratch. Note that since we hold
+			// the manifest lock, we don't expect this bool to change its value
+			// as only the holder of the manifest lock will ever write to it.
+			if c.cancel.Load() {
+				err = firstError(err, errCancelledCompaction)
 			}
 			if err != nil {
 				// logAndApply calls logUnlock. If we didn't call it, we need to call
@@ -2848,6 +2853,10 @@ func (d *DB) runCompaction(
 			default:
 				ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
 			}
+		}
+		// Check if we've been cancelled by a concurrent operation.
+		if c.cancel.Load() {
+			return errCancelledCompaction
 		}
 		// Prefer shared storage if present.
 		//
