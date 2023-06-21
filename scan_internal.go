@@ -770,6 +770,7 @@ func (d *DB) truncateSharedFile(
 		sst.SmallestPointKey.UserKey = sst.SmallestPointKey.UserKey[:0]
 		sst.SmallestPointKey.Trailer = 0
 		key, _ := iter.SeekGE(lower, base.SeekGEFlagsNone)
+		foundPointKey := key != nil
 		if key != nil {
 			sst.SmallestPointKey.CopyFrom(*key)
 		}
@@ -777,7 +778,13 @@ func (d *DB) truncateSharedFile(
 			span := rangeDelIter.SeekGE(lower)
 			if span != nil && (len(sst.SmallestPointKey.UserKey) == 0 || base.InternalCompare(cmp, span.SmallestKey(), sst.SmallestPointKey) < 0) {
 				sst.SmallestPointKey.CopyFrom(span.SmallestKey())
+				foundPointKey = true
 			}
+		}
+		if !foundPointKey {
+			// There are no point keys in the span we're interested in.
+			sst.SmallestPointKey = InternalKey{}
+			sst.LargestPointKey = InternalKey{}
 		}
 		sst.SmallestRangeKey.UserKey = sst.SmallestRangeKey.UserKey[:0]
 		sst.SmallestRangeKey.Trailer = 0
@@ -785,6 +792,10 @@ func (d *DB) truncateSharedFile(
 			span := rangeKeyIter.SeekGE(lower)
 			if span != nil {
 				sst.SmallestRangeKey.CopyFrom(span.SmallestKey())
+			} else {
+				// There are no range keys in the span we're interested in.
+				sst.SmallestRangeKey = InternalKey{}
+				sst.LargestRangeKey = InternalKey{}
 			}
 		}
 	}
@@ -794,6 +805,7 @@ func (d *DB) truncateSharedFile(
 		sst.LargestPointKey.UserKey = sst.LargestPointKey.UserKey[:0]
 		sst.LargestPointKey.Trailer = 0
 		key, _ := iter.SeekLT(upper, base.SeekLTFlagsNone)
+		foundPointKey := key != nil
 		if key != nil {
 			sst.LargestPointKey.CopyFrom(*key)
 		}
@@ -801,7 +813,13 @@ func (d *DB) truncateSharedFile(
 			span := rangeDelIter.SeekLT(upper)
 			if span != nil && (len(sst.LargestPointKey.UserKey) == 0 || base.InternalCompare(cmp, span.LargestKey(), sst.LargestPointKey) > 0) {
 				sst.LargestPointKey.CopyFrom(span.LargestKey())
+				foundPointKey = true
 			}
+		}
+		if !foundPointKey {
+			// There are no point keys in the span we're interested in.
+			sst.SmallestPointKey = InternalKey{}
+			sst.LargestPointKey = InternalKey{}
 		}
 		sst.LargestRangeKey.UserKey = sst.LargestRangeKey.UserKey[:0]
 		sst.LargestRangeKey.Trailer = 0
@@ -809,6 +827,10 @@ func (d *DB) truncateSharedFile(
 			span := rangeKeyIter.SeekLT(upper)
 			if span != nil {
 				sst.LargestRangeKey.CopyFrom(span.LargestKey())
+			} else {
+				// There are no range keys in the span we're interested in.
+				sst.SmallestRangeKey = InternalKey{}
+				sst.LargestRangeKey = InternalKey{}
 			}
 		}
 	}
