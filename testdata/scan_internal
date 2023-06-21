@@ -247,33 +247,33 @@ f@8#13,1 (baz)
 
 scan-internal skip-shared lower=a upper=z
 ----
-shared file: 000005 [a#11,21-e#72057594037927935,15]
+shared file: 000005 [a#11,21-e#72057594037927935,15] [point=b@3#10,1-e#72057594037927935,15] [range=a#11,21-c#72057594037927935,21]
 f@8#13,1 (baz)
 
 scan-internal skip-shared lower=a upper=e
 ----
-shared file: 000005 [a#11,21-e#72057594037927935,15]
+shared file: 000005 [a#11,21-e#72057594037927935,15] [point=b@3#10,1-e#72057594037927935,15] [range=a#11,21-c#72057594037927935,21]
 
 scan-internal skip-shared lower=a upper=d
 ----
-shared file: 000005 [a#11,21-d#72057594037927935,15]
+shared file: 000005 [a#11,21-d#72057594037927935,15] [point=b@3#10,1-d#72057594037927935,15] [range=a#11,21-c#72057594037927935,21]
 
 scan-internal skip-shared lower=a upper=c
 ----
-shared file: 000005 [a#11,21-c#72057594037927935,21]
+shared file: 000005 [a#11,21-c#72057594037927935,21] [point=b@3#10,1-b@3#10,1] [range=a#11,21-c#72057594037927935,21]
 
 scan-internal skip-shared lower=a upper=b
 ----
-shared file: 000005 [a#11,21-b#72057594037927935,21]
+shared file: 000005 [a#11,21-b#72057594037927935,21] [point=#0,0-#0,0] [range=a#11,21-b#72057594037927935,21]
 
 scan-internal skip-shared lower=b upper=z
 ----
-shared file: 000005 [b#11,21-e#72057594037927935,15]
+shared file: 000005 [b#11,21-e#72057594037927935,15] [point=b@3#10,1-e#72057594037927935,15] [range=b#11,21-c#72057594037927935,21]
 f@8#13,1 (baz)
 
 scan-internal skip-shared lower=b upper=bb
 ----
-shared file: 000005 [b#11,21-bb#72057594037927935,21]
+shared file: 000005 [b#11,21-bb#72057594037927935,21] [point=b@3#10,1-b@3#10,1] [range=b#11,21-bb#72057594037927935,21]
 
 scan-internal skip-shared lower=e upper=ff
 ----
@@ -308,24 +308,28 @@ lsm
 scan-internal skip-shared lower=c upper=d
 ----
 
+scan-internal skip-shared lower=a upper=d
+----
+shared file: 000005 [a#10,1-c#72057594037927935,15] [point=a#10,1-c#72057594037927935,15] [range=#0,0-#0,0]
+
 scan-internal skip-shared lower=bb upper=d
 ----
-shared file: 000005 [bb#12,15-c#72057594037927935,15]
+shared file: 000005 [bb#12,15-c#72057594037927935,15] [point=bb#12,15-c#72057594037927935,15] [range=#0,0-#0,0]
 
 scan-internal skip-shared lower=c upper=ea
 ----
-shared file: 000005 [e#13,21-ea#72057594037927935,21]
+shared file: 000005 [e#13,21-ea#72057594037927935,21] [point=#0,0-#0,0] [range=e#13,21-ea#72057594037927935,21]
 
 scan-internal skip-shared lower=c upper=z
 ----
-shared file: 000005 [e#13,21-f#11,1]
+shared file: 000005 [e#13,21-f#11,1] [point=f#11,1-f#11,1] [range=e#13,21-ee#72057594037927935,21]
 
 # An upper bound equalling a file's Largest user key should be reason enough to
 # truncate that file's bounds.
 
 scan-internal skip-shared lower=c upper=f
 ----
-shared file: 000005 [e#13,21-ee#72057594037927935,21]
+shared file: 000005 [e#13,21-ee#72057594037927935,21] [point=#0,0-#0,0] [range=e#13,21-ee#72057594037927935,21]
 
 # Construct a file with an exclusive sentinel as the largest key. Verify that
 # scan-internal with skip-shared and an upper bound at that exclusive sentinel
@@ -351,8 +355,37 @@ compact a-z
 
 scan-internal skip-shared lower=a upper=ee
 ----
-shared file: 000005 [a#10,1-ee#72057594037927935,21]
+shared file: 000005 [a#10,1-ee#72057594037927935,21] [point=a#10,1-c#72057594037927935,15] [range=e#12,21-ee#72057594037927935,21]
 
 scan-internal skip-shared lower=b upper=ee
 ----
-shared file: 000005 [b#11,15-ee#72057594037927935,21]
+shared file: 000005 [b#11,15-ee#72057594037927935,21] [point=b#11,15-c#72057594037927935,15] [range=e#12,21-ee#72057594037927935,21]
+
+# Ensure we don't leave any range key bounds unintentionally set.
+
+reset
+----
+
+batch commit
+range-key-set a aa @5 boop
+set b foo
+set c bar
+set d baz
+----
+committed 4 keys
+
+flush
+----
+
+compact a-z
+----
+6:
+  000005:[a#10,RANGEKEYSET-d#13,SET]
+
+scan-internal skip-shared lower=b upper=e
+----
+shared file: 000005 [b#11,1-d#13,1] [point=b#11,1-d#13,1] [range=#0,0-#0,0]
+
+scan-internal skip-shared lower=a upper=aaa
+----
+shared file: 000005 [a#10,21-aa#72057594037927935,21] [point=#0,0-#0,0] [range=a#10,21-aa#72057594037927935,21]
