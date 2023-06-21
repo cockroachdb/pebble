@@ -76,18 +76,6 @@ func TestManualFlush(t *testing.T) {
 			d.mu.Unlock()
 			return s
 
-		case "acquire-cleaning-turn":
-			d.mu.Lock()
-			d.acquireCleaningTurn(false)
-			d.mu.Unlock()
-			return ""
-
-		case "release-cleaning-turn":
-			d.mu.Lock()
-			d.releaseCleaningTurn()
-			d.mu.Unlock()
-			return ""
-
 		case "reset":
 			if err := d.Close(); err != nil {
 				return err.Error()

@@ -52,6 +52,7 @@ func TestCleaner(t *testing.T) {
 			if err := d.Compact(nil, []byte("\xff"), false); err != nil {
 				return err.Error()
 			}
+			d.TestOnlyWaitForCleaning()
 			return memLog.String()
 
 		case "flush":
