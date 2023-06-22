@@ -1239,7 +1239,9 @@ func (d *DB) ingest(
 		ve, err = d.ingestApply(jobID, loadResult, targetLevelFunc, mut, exciseSpan)
 	}
 
+	d.commit.ingestSem <- struct{}{}
 	d.commit.AllocateSeqNum(len(loadResult.localPaths), prepare, apply)
+	<-d.commit.ingestSem
 
 	if err != nil {
 		if err2 := ingestCleanup(d.objProvider, loadResult.localMeta); err2 != nil {
