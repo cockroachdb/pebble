@@ -913,6 +913,9 @@ func (d *DB) replayWAL(
 		}
 		buf.Reset()
 	}
+
+	d.opts.Logger.Infof("WAL file %s with log number %s stopped reading at offset %d", filename, logNum.String(), offset)
+
 	flushMem()
 	// mem is nil here.
 	if !d.opts.ReadOnly {
