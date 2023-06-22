@@ -1239,7 +1239,14 @@ func (d *DB) ingest(
 		ve, err = d.ingestApply(jobID, loadResult, targetLevelFunc, mut, exciseSpan)
 	}
 
+	// Only one ingest can occur at a time because if not, one would block waiting
+	// for the other to finish applying. This blocking would happen while holding
+	// the commit mutex which would prevent unrelated batches from writing their
+	// changes to the WAL and memtable. This will cause a bigger commit hiccup
+	// during ingestion.
+	d.commit.ingestSem <- struct{}{}
 	d.commit.AllocateSeqNum(len(loadResult.localPaths), prepare, apply)
+	<-d.commit.ingestSem
 
 	if err != nil {
 		if err2 := ingestCleanup(d.objProvider, loadResult.localMeta); err2 != nil {

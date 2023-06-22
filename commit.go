@@ -238,6 +238,7 @@ type commitPipeline struct {
 	// logSyncQSem are used for this reservation.
 	commitQueueSem chan struct{}
 	logSyncQSem    chan struct{}
+	ingestSem      chan struct{}
 	// The mutex to use for synchronizing access to logSeqNum and serializing
 	// calls to commitEnv.write().
 	mu sync.Mutex
@@ -262,6 +263,7 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 		// and sync the WAL.
 		commitQueueSem: make(chan struct{}, record.SyncConcurrency-1),
 		logSyncQSem:    make(chan struct{}, record.SyncConcurrency-1),
+		ingestSem:      make(chan struct{}, 1),
 	}
 	return p
 }
