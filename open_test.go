@@ -1007,6 +1007,7 @@ func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 	}
 	d.mu.Unlock()
 
+	d.TestOnlyWaitForCleaning()
 	// While the MANIFEST is still in this state, copy all the files in the
 	// database to a new directory.
 	replayDir := mem.PathJoin(root, "replay")

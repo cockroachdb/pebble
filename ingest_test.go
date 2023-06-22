@@ -458,6 +458,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 		var err error
 		d, err = Open(dir, opts)
 		require.NoError(t, err)
+		d.TestOnlyWaitForCleaning()
 	}
 	waitForFlush := func() {
 		if d == nil {
@@ -545,6 +546,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			closed = false
 			require.NoError(t, err)
 			waitForFlush()
+			d.TestOnlyWaitForCleaning()
 			return ""
 
 		case "blockFlush":
@@ -564,6 +566,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 		case "flush":
 			d.maybeScheduleFlush()
 			waitForFlush()
+			d.TestOnlyWaitForCleaning()
 			return ""
 
 		case "get":

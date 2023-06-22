@@ -87,6 +87,7 @@ func TestCheckpoint(t *testing.T) {
 			if err := d.Compact(nil, []byte("\xff"), false); err != nil {
 				return err.Error()
 			}
+			d.TestOnlyWaitForCleaning()
 			return memLog.String()
 
 		case "flush":
@@ -189,7 +190,7 @@ func TestCheckpointCompaction(t *testing.T) {
 		defer close(check)
 		defer wg.Done()
 		for i := 0; ctx.Err() == nil && i < 200; i++ {
-			dir := fmt.Sprintf("checkpoint%6d", i)
+			dir := fmt.Sprintf("checkpoint%06d", i)
 			if err := d.Checkpoint(dir); err != nil {
 				t.Error(err)
 				return

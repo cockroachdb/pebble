@@ -113,6 +113,8 @@ func TestCleaner(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
+			d.TestOnlyWaitForCleaning()
+			d.testingAlwaysWaitForCleanup = true
 			dbs[dir] = d
 			return memLog.String()
 
