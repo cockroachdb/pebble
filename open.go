@@ -680,6 +680,8 @@ func (d *DB) replayWAL(
 		rr              = record.NewReader(file, logNum)
 		offset          int64 // byte offset in rr
 		lastFlushOffset int64
+		keysReplayed    int64 // number of keys replayed
+		batchesReplayed int64 // number of batches replayed
 	)
 
 	if d.opts.ReadOnly {
@@ -772,7 +774,8 @@ func (d *DB) replayWAL(
 		b.SetRepr(buf.Bytes())
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + uint64(b.Count())
-
+		keysReplayed += int64(b.Count())
+		batchesReplayed++
 		{
 			br := b.Reader()
 			if kind, encodedFileNum, _, _ := br.Next(); kind == InternalKeyKindIngestSST {
@@ -913,7 +916,10 @@ func (d *DB) replayWAL(
 		}
 		buf.Reset()
 	}
+
+	d.opts.Logger.Infof("[JOB %d] WAL file %s with log number %s stopped reading at offset: %d; replayed %d keys in %d batches", jobID, filename, logNum.String(), offset, keysReplayed, batchesReplayed)
 	flushMem()
+
 	// mem is nil here.
 	if !d.opts.ReadOnly {
 		err = updateVE()
