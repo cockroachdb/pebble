@@ -692,7 +692,7 @@ func (r *Reader) readBlock(
 		} else {
 			decompressed = cacheValueOrBuf{v: cache.Alloc(decodedLen)}
 		}
-		if _, err := decompressInto(typ, compressed.get()[prefixLen:], decompressed.get()); err != nil {
+		if err := decompressInto(typ, compressed.get()[prefixLen:], decompressed.get()); err != nil {
 			compressed.release()
 			return bufferHandle{}, err
 		}
