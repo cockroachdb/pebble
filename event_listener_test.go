@@ -58,6 +58,7 @@ func TestEventListener(t *testing.T) {
 				t = t.Add(time.Second)
 				return t
 			}
+			d.testingAlwaysWaitForCleanup = true
 			return memLog.String()
 
 		case "close":
@@ -113,6 +114,7 @@ func TestEventListener(t *testing.T) {
 				defer d.mu.Unlock()
 				d.enableFileDeletions()
 			}()
+			d.TestOnlyWaitForCleaning()
 			return memLog.String()
 
 		case "ingest":

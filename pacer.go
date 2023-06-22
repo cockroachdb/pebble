@@ -4,12 +4,6 @@
 
 package pebble
 
-import (
-	"time"
-
-	"github.com/cockroachdb/pebble/internal/rate"
-)
-
 // deletionPacerInfo contains any info from the db necessary to make deletion
 // pacing decisions (to limit background IO usage so that it does not contend
 // with foreground traffic).
@@ -25,21 +19,17 @@ type deletionPacerInfo struct {
 // negatively impacted if too many blocks are deleted very quickly, so this
 // mechanism helps mitigate that.
 type deletionPacer struct {
-	limiter               *rate.Limiter
 	freeSpaceThreshold    uint64
 	obsoleteBytesMaxRatio float64
 
 	getInfo func() deletionPacerInfo
-
-	testingSleepFn func(delay time.Duration)
 }
 
 // newDeletionPacer instantiates a new deletionPacer for use when deleting
 // obsolete files. The limiter passed in must be a singleton shared across this
 // pebble instance.
-func newDeletionPacer(limiter *rate.Limiter, getInfo func() deletionPacerInfo) *deletionPacer {
+func newDeletionPacer(getInfo func() deletionPacerInfo) *deletionPacer {
 	return &deletionPacer{
-		limiter: limiter,
 		// If there are less than freeSpaceThreshold bytes of free space on
 		// disk, do not pace deletions at all.
 		freeSpaceThreshold: 16 << 30, // 16 GB
@@ -51,25 +41,14 @@ func newDeletionPacer(limiter *rate.Limiter, getInfo func() deletionPacerInfo) *
 	}
 }
 
-// limit applies rate limiting if the current free disk space is more than
-// freeSpaceThreshold, and the ratio of obsolete to live bytes is less than
-// obsoleteBytesMaxRatio.
-func (p *deletionPacer) limit(amount uint64, info deletionPacerInfo) {
+// shouldPace returns true if we should apply rate limiting; this is the
+// case when the current free disk space is more than freeSpaceThreshold, and
+// the ratio of obsolete to live bytes is less than obsoleteBytesMaxRatio.
+func (p *deletionPacer) shouldPace() bool {
+	info := p.getInfo()
 	obsoleteBytesRatio := float64(1.0)
 	if info.liveBytes > 0 {
 		obsoleteBytesRatio = float64(info.obsoleteBytes) / float64(info.liveBytes)
 	}
-	paceDeletions := info.freeBytes > p.freeSpaceThreshold &&
-		obsoleteBytesRatio < p.obsoleteBytesMaxRatio
-	if paceDeletions {
-		p.limiter.Wait(float64(amount))
-	} else {
-		p.limiter.Remove(float64(amount))
-	}
-}
-
-// maybeThrottle slows down a deletion of this file if it's faster than
-// opts.TargetByteDeletionRate.
-func (p *deletionPacer) maybeThrottle(bytesToDelete uint64) {
-	p.limit(bytesToDelete, p.getInfo())
+	return info.freeBytes > p.freeSpaceThreshold && obsoleteBytesRatio < p.obsoleteBytesMaxRatio
 }

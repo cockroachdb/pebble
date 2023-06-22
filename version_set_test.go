@@ -451,6 +451,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 	d, err = Open("", opts)
 	require.NoError(t, err)
 	defer d.Close()
+	d.TestOnlyWaitForCleaning()
 
 	// Check that the manifest has the correct LastSeqNum, equalling the highest
 	// observed SeqNum.

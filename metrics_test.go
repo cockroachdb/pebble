@@ -211,13 +211,8 @@ func TestMetrics(t *testing.T) {
 			}
 
 			// The deletion of obsolete files happens asynchronously when an iterator
-			// is closed. Wait for the obsolete tables to be deleted. Note that
-			// waiting on cleaner.cond isn't precisely correct.
-			d.mu.Lock()
-			for d.mu.cleaner.cleaning || len(d.mu.versions.obsoleteTables) > 0 {
-				d.mu.cleaner.cond.Wait()
-			}
-			d.mu.Unlock()
+			// is closed. Wait for the obsolete tables to be deleted.
+			d.cleanupManager.Wait()
 			return ""
 
 		case "iter-new":

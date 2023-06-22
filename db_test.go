@@ -987,6 +987,7 @@ func TestRollManifest(t *testing.T) {
 			require.NoError(t, d.Set([]byte("a"), nil, nil))
 			require.NoError(t, d.Flush())
 		}
+		d.TestOnlyWaitForCleaning()
 		num := manifestFileNumber()
 		if lastManifestNum == num {
 			t.Fatalf("manifest failed to roll %d: %d == %d", i, lastManifestNum, num)
