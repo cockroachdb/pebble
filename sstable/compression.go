@@ -33,23 +33,24 @@ func decompressedLen(blockType blockType, b []byte) (int, int, error) {
 	}
 }
 
-func decompressInto(blockType blockType, compressed []byte, buf []byte) ([]byte, error) {
+func decompressInto(blockType blockType, compressed []byte, buf []byte) error {
 	var result []byte
 	var err error
 	switch blockType {
 	case snappyCompressionBlockType:
 		result, err = snappy.Decode(buf, compressed)
 	case zstdCompressionBlockType:
-		result, err = decodeZstd(buf, compressed)
+		err = decodeZstd(buf, compressed)
+		result = buf
 	}
 	if err != nil {
-		return nil, base.MarkCorruptionError(err)
+		return base.MarkCorruptionError(err)
 	}
 	if len(result) != 0 && (len(result) != len(buf) || &result[0] != &buf[0]) {
-		return nil, base.CorruptionErrorf("pebble/table: decompressed into unexpected buffer: %p != %p",
+		return base.CorruptionErrorf("pebble/table: decompressed into unexpected buffer: %p != %p",
 			errors.Safe(result), errors.Safe(buf))
 	}
-	return result, nil
+	return nil
 }
 
 // decompressBlock decompresses an SST block, with manually-allocated space.
@@ -68,7 +69,7 @@ func decompressBlock(blockType blockType, b []byte) (*cache.Value, error) {
 	// Allocate sufficient space from the cache.
 	decoded := cache.Alloc(decodedLen)
 	decodedBuf := decoded.Buf()
-	if _, err := decompressInto(blockType, b, decodedBuf); err != nil {
+	if err := decompressInto(blockType, b, decodedBuf); err != nil {
 		cache.Free(decoded)
 		return nil, err
 	}
