@@ -74,7 +74,7 @@ func openCleanupManager(
 		opts:            opts,
 		objProvider:     objProvider,
 		onTableDeleteFn: onTableDeleteFn,
-		deletePacer:     newDeletionPacer(getDeletePacerInfo),
+		deletePacer:     newDeletionPacer(time.Now(), int64(opts.TargetByteDeletionRate), getDeletePacerInfo),
 		jobsCh:          make(chan *cleanupJob, jobsChLen),
 	}
 	cm.mu.completedJobsCond.L = &cm.mu.Mutex
@@ -102,6 +102,21 @@ func (cm *cleanupManager) EnqueueJob(jobID int, obsoleteFiles []obsoleteFile) {
 		jobID:         jobID,
 		obsoleteFiles: obsoleteFiles,
 	}
+
+	// Report deleted bytes to the pacer, which can use this data to potentially
+	// increase the deletion rate to keep up. We want to do this at enqueue time
+	// rather than when we get to the job, otherwise the reported bytes will be
+	// subject to the throttling rate which defeats the purpose.
+	var pacingBytes uint64
+	for _, of := range obsoleteFiles {
+		if cm.needsPacing(of.fileType, of.fileNum) {
+			pacingBytes += of.fileSize
+		}
+	}
+	if pacingBytes > 0 {
+		cm.deletePacer.ReportDeletion(time.Now(), pacingBytes)
+	}
+
 	cm.mu.Lock()
 	cm.mu.queuedJobs++
 	cm.mu.Unlock()
@@ -130,23 +145,17 @@ func (cm *cleanupManager) Wait() {
 // mainLoop runs the manager's background goroutine.
 func (cm *cleanupManager) mainLoop() {
 	defer cm.waitGroup.Done()
-	useLimiter := false
-	var limiter tokenbucket.TokenBucket
 
-	if r := cm.opts.TargetByteDeletionRate; r != 0 {
-		useLimiter = true
-		limiter.Init(tokenbucket.TokensPerSecond(r), tokenbucket.Tokens(r))
-	}
-
+	var tb tokenbucket.TokenBucket
+	// Use a token bucket with 1 token / second refill rate and 1 token burst.
+	tb.Init(1.0, 1.0)
 	for job := range cm.jobsCh {
 		for _, of := range job.obsoleteFiles {
 			if of.fileType != fileTypeTable {
 				path := base.MakeFilepath(cm.opts.FS, of.dir, of.fileType, of.fileNum)
 				cm.deleteObsoleteFile(of.fileType, job.jobID, path, of.fileNum, of.fileSize)
 			} else {
-				if useLimiter {
-					cm.maybePace(&limiter, of.fileType, of.fileNum, of.fileSize)
-				}
+				cm.maybePace(&tb, of.fileType, of.fileNum, of.fileSize)
 				cm.onTableDeleteFn(of.fileSize)
 				cm.deleteObsoleteObject(fileTypeTable, job.jobID, of.fileNum)
 			}
@@ -158,33 +167,40 @@ func (cm *cleanupManager) mainLoop() {
 	}
 }
 
-// maybePace sleeps before deleting an object if appropriate. It is always
-// called from the background goroutine.
-func (cm *cleanupManager) maybePace(
-	limiter *tokenbucket.TokenBucket,
-	fileType base.FileType,
-	fileNum base.DiskFileNum,
-	fileSize uint64,
-) {
+func (cm *cleanupManager) needsPacing(fileType base.FileType, fileNum base.DiskFileNum) bool {
+	if fileType != fileTypeTable {
+		return false
+	}
 	meta, err := cm.objProvider.Lookup(fileType, fileNum)
 	if err != nil {
 		// The object was already removed from the provider; we won't actually
 		// delete anything, so we don't need to pace.
+		return false
+	}
+	// Don't throttle deletion of shared objects.
+	return !meta.IsShared()
+}
+
+// maybePace sleeps before deleting an object if appropriate. It is always
+// called from the background goroutine.
+func (cm *cleanupManager) maybePace(
+	tb *tokenbucket.TokenBucket, fileType base.FileType, fileNum base.DiskFileNum, fileSize uint64,
+) {
+	if !cm.needsPacing(fileType, fileNum) {
 		return
 	}
-	if meta.IsShared() {
-		// Don't throttle deletion of shared objects.
+
+	tokens := cm.deletePacer.PacingDelay(time.Now(), fileSize)
+	if tokens == 0.0 {
+		// The token bucket might be in debt; it could make us wait even for 0
+		// tokens. We don't want that if the pacer decided throttling should be
+		// disabled.
 		return
 	}
-	if !cm.deletePacer.shouldPace() {
-		// The deletion pacer decided that we shouldn't throttle; account
-		// for the operation but don't wait for tokens.
-		limiter.Adjust(-tokenbucket.Tokens(fileSize))
-		return
-	}
-	// Wait for tokens.
+	// Wait for tokens. We use a token bucket instead of sleeping outright because
+	// the token bucket accumulates up to one second of unused tokens.
 	for {
-		ok, d := limiter.TryToFulfill(tokenbucket.Tokens(fileSize))
+		ok, d := tb.TryToFulfill(tokenbucket.Tokens(tokens))
 		if ok {
 			break
 		}

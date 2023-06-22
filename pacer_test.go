@@ -6,49 +6,78 @@ package pebble
 
 import (
 	"fmt"
+	"math/rand"
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestDeletionPacerMaybeThrottle(t *testing.T) {
+func TestDeletionPacer(t *testing.T) {
+	const MB = 1 << 20
+	const GB = 1 << 30
 	testCases := []struct {
-		freeSpaceThreshold uint64
-		freeBytes          uint64
-		obsoleteBytes      uint64
-		liveBytes          uint64
-		shouldPace         bool
+		freeBytes     uint64
+		obsoleteBytes uint64
+		liveBytes     uint64
+		// history of deletion reporting; first value in the pair is the time,
+		// second value is the deleted bytes. The time of pacing is the same as the
+		// last time in the history.
+		history [][2]int
+		// expected wait time for 100 MB.
+		expected float64
 	}{
 		{
-			freeSpaceThreshold: 10,
-			freeBytes:          100,
-			obsoleteBytes:      1,
-			liveBytes:          100,
-			shouldPace:         true,
+			freeBytes:     160 * GB,
+			obsoleteBytes: 1 * MB,
+			liveBytes:     160 * MB,
+			expected:      1.0,
 		},
-		// As freeBytes < freeSpaceThreshold, there should be no throttling.
+		// As freeBytes < free space threshold, there should be no throttling.
 		{
-			freeSpaceThreshold: 10,
-			freeBytes:          5,
-			obsoleteBytes:      1,
-			liveBytes:          100,
-			shouldPace:         false,
+			freeBytes:     5 * GB,
+			obsoleteBytes: 1 * MB,
+			liveBytes:     100 * MB,
+			expected:      0.0,
 		},
 		// As obsoleteBytesRatio > 0.20, there should be no throttling.
 		{
-			freeSpaceThreshold: 10,
-			freeBytes:          500,
-			obsoleteBytes:      50,
-			liveBytes:          100,
-			shouldPace:         false,
+			freeBytes:     500 * GB,
+			obsoleteBytes: 50 * MB,
+			liveBytes:     100 * MB,
+			expected:      0.0,
 		},
 		// When obsolete ratio unknown, there should be no throttling.
 		{
-			freeSpaceThreshold: 10,
-			freeBytes:          500,
-			obsoleteBytes:      0,
-			liveBytes:          0,
-			shouldPace:         false,
+			freeBytes:     500 * GB,
+			obsoleteBytes: 0,
+			liveBytes:     0,
+			expected:      0.0,
+		},
+		// History shows 200MB/sec deletions on average over last 5 minutes, wait
+		// time should be half.
+		{
+			freeBytes:     160 * GB,
+			obsoleteBytes: 1 * MB,
+			liveBytes:     160 * MB,
+			history:       [][2]int{{0, 5 * 60 * 200 * MB}},
+			expected:      0.5,
+		},
+		{
+			freeBytes:     160 * GB,
+			obsoleteBytes: 1 * MB,
+			liveBytes:     160 * MB,
+			history:       [][2]int{{0, 60 * 1000 * MB}, {3 * 60, 60 * 4 * 1000 * MB}, {4 * 60, 0}},
+			expected:      0.1,
+		},
+		// First entry in history is too old, it should be discarded.
+		{
+			freeBytes:     160 * GB,
+			obsoleteBytes: 1 * MB,
+			liveBytes:     160 * MB,
+			history:       [][2]int{{0, 10 * 60 * 10000 * MB}, {3 * 60, 4 * 60 * 200 * MB}, {7 * 60, 1 * 60 * 200 * MB}},
+			expected:      0.5,
 		},
 	}
 	for tcIdx, tc := range testCases {
@@ -60,10 +89,84 @@ func TestDeletionPacerMaybeThrottle(t *testing.T) {
 					obsoleteBytes: tc.obsoleteBytes,
 				}
 			}
-			pacer := newDeletionPacer(getInfo)
-			pacer.freeSpaceThreshold = tc.freeSpaceThreshold
-			result := pacer.shouldPace()
-			require.Equal(t, tc.shouldPace, result)
+			start := time.Now()
+			last := start
+			pacer := newDeletionPacer(start, 100*MB, getInfo)
+			for _, h := range tc.history {
+				last = start.Add(time.Second * time.Duration(h[0]))
+				pacer.ReportDeletion(last, uint64(h[1]))
+			}
+			result := pacer.PacingDelay(last, 100*MB)
+			require.InDelta(t, tc.expected, result, 1e-7)
 		})
+	}
+}
+
+// TestDeletionPacerHistory tests the history helper by crosschecking Sum()
+// against a naive implementation.
+func TestDeletionPacerHistory(t *testing.T) {
+	type event struct {
+		time time.Time
+		// If report is 0, this event is a Sum(). Otherwise it is an Add().
+		report int64
+	}
+	numEvents := 1 + rand.Intn(200)
+	timeframe := time.Duration(1+rand.Intn(60*100)) * time.Second
+	events := make([]event, numEvents)
+	startTime := time.Now()
+	for i := range events {
+		events[i].time = startTime.Add(time.Duration(rand.Int63n(int64(timeframe))))
+		if rand.Intn(3) == 0 {
+			events[i].report = 0
+		} else {
+			events[i].report = int64(rand.Intn(100000))
+		}
+	}
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].time.Before(events[j].time)
+	})
+
+	var h history
+	h.Init(startTime, timeframe)
+
+	// partialSums[i] := SUM_j<i events[j].report
+	partialSums := make([]int64, len(events)+1)
+	for i := range events {
+		partialSums[i+1] = partialSums[i] + events[i].report
+	}
+
+	for i, e := range events {
+		if e.report != 0 {
+			h.Add(e.time, e.report)
+			continue
+		}
+
+		result := h.Sum(e.time)
+
+		// getIdx returns the largest event index <= i that is before the cutoff
+		// time.
+		getIdx := func(cutoff time.Time) int {
+			for j := i; j >= 0; j-- {
+				if events[j].time.Before(cutoff) {
+					return j
+				}
+			}
+			return -1
+		}
+
+		// Sum all report values in the last timeframe, and see if recent events
+		// (allowing 1% error in the cutoff time) match the result.
+		a := getIdx(e.time.Add(-timeframe * (historyEpochs + 1) / historyEpochs))
+		b := getIdx(e.time.Add(-timeframe * (historyEpochs - 1) / historyEpochs))
+		found := false
+		for j := a; j <= b; j++ {
+			if partialSums[i+1]-partialSums[j+1] == result {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("incorrect Sum() result %d; %v", result, events[a+1:i+1])
+		}
 	}
 }
