@@ -13,11 +13,15 @@ import (
 	"github.com/DataDog/zstd"
 )
 
-// decodeZstd decompresses b with the Zstandard algorithm.
-// It reuses the preallocated capacity of decodedBuf if it is sufficient.
-// On success, it returns the decoded byte slice.
-func decodeZstd(decodedBuf, b []byte) ([]byte, error) {
-	return zstd.Decompress(decodedBuf, b)
+// decodeZstd decompresses src with the Zstandard algorithm. The destination
+// buffer must already be sufficiently sized, otherwise decodeZstd may error.
+func decodeZstd(dst, src []byte) ([]byte, error) {
+	n, err := zstd.DecompressInto(dst, src)
+	// NB: zstd.DecompressInto may return n < 0 if err != nil.
+	if err != nil {
+		return nil, err
+	}
+	return dst[:n], err
 }
 
 // encodeZstd compresses b with the Zstandard algorithm at default compression

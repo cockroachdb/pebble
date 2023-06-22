@@ -52,6 +52,14 @@ func runTestFixtureOutput(fixture TestFixtureInfo) error {
 		return err
 	}
 
+	var rewrite bool
+	for _, arg := range os.Args {
+		rewrite = rewrite || arg == "--rewrite"
+	}
+	if rewrite {
+		return os.WriteFile(filepath.Join("testdata", fixture.Filename), got, 0644)
+	}
+
 	if !bytes.Equal(got, want) {
 		i := 0
 		for ; i < len(got) && i < len(want) && got[i] == want[i]; i++ {
