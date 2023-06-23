@@ -886,7 +886,7 @@ func newCombinedDeletionKeyspanIter(
 		// See docs/range_deletions.md for why this is necessary.
 		iter = keyspan.Truncate(
 			comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey,
-			nil, nil, false, /* panicOnPartialOverlap */
+			nil, nil, false, /* panicOnUpperTruncate */
 		)
 		mIter.AddLevel(iter)
 	}
