@@ -22,8 +22,8 @@ check-ordering
 ----
 L0 files 000001 and 000002 are not properly ordered: <#3-#4> vs <#1-#2>
 0.0:
-  000002:[a#1,SET-b#2,SET] points:[a#1,SET-b#2,SET]
-  000001:[c#3,SET-d#4,SET] points:[c#3,SET-d#4,SET]
+  000002:[a#1,SET-b#2,SET] seqnums:[1-2] points:[a#1,SET-b#2,SET]
+  000001:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
 
 check-ordering
 0:
@@ -79,9 +79,9 @@ check-ordering
 ----
 L0 files 000001 and 000002 are not properly ordered: <#3-#3> vs <#1-#2>
 0.1:
-  000002:[a#1,SET-b#2,SET] points:[a#1,SET-b#2,SET]
+  000002:[a#1,SET-b#2,SET] seqnums:[1-2] points:[a#1,SET-b#2,SET]
 0.0:
-  000001:[a#3,SET-d#3,SET] points:[a#3,SET-d#3,SET]
+  000001:[a#3,SET-d#3,SET] seqnums:[3-3] points:[a#3,SET-d#3,SET]
 
 check-ordering
 0:
@@ -90,9 +90,9 @@ check-ordering
 ----
 L0 files 000001 and 000002 are not properly ordered: <#2-#4> vs <#3-#3>
 0.1:
-  000002:[a#3,SET-b#3,SET] points:[a#3,SET-b#3,SET]
+  000002:[a#3,SET-b#3,SET] seqnums:[3-3] points:[a#3,SET-b#3,SET]
 0.0:
-  000001:[a#2,SET-d#4,SET] points:[a#2,SET-d#4,SET]
+  000001:[a#2,SET-d#4,SET] seqnums:[2-4] points:[a#2,SET-d#4,SET]
 
 check-ordering
 0:
@@ -150,7 +150,7 @@ check-ordering
 ----
 L1 : file 000001 has inconsistent bounds: b#1,SET vs a#2,SET
 1:
-  000001:[b#1,SET-a#2,SET] points:[b#1,SET-a#2,SET]
+  000001:[b#1,SET-a#2,SET] seqnums:[0-0] points:[b#1,SET-a#2,SET]
 
 check-ordering
 1:
@@ -166,8 +166,8 @@ check-ordering
 ----
 L1 : file 000002 has inconsistent bounds: d#3,SET vs c#4,SET
 1:
-  000001:[a#1,SET-b#2,SET] points:[a#1,SET-b#2,SET]
-  000002:[d#3,SET-c#4,SET] points:[d#3,SET-c#4,SET]
+  000001:[a#1,SET-b#2,SET] seqnums:[0-0] points:[a#1,SET-b#2,SET]
+  000002:[d#3,SET-c#4,SET] seqnums:[0-0] points:[d#3,SET-c#4,SET]
 
 check-ordering
 1:
@@ -183,8 +183,8 @@ check-ordering
 ----
 L1 files 000001 and 000002 have overlapping ranges: [a#1,SET-b#2,SET] vs [b#2,SET-d#4,SET]
 1:
-  000001:[a#1,SET-b#2,SET] points:[a#1,SET-b#2,SET]
-  000002:[b#2,SET-d#4,SET] points:[b#2,SET-d#4,SET]
+  000001:[a#1,SET-b#2,SET] seqnums:[0-0] points:[a#1,SET-b#2,SET]
+  000002:[b#2,SET-d#4,SET] seqnums:[0-0] points:[b#2,SET-d#4,SET]
 
 check-ordering
 1:
@@ -193,8 +193,8 @@ check-ordering
 ----
 L1 files 000001 and 000002 have overlapping ranges: [a#1,SET-c#2,SET] vs [b#3,SET-d#4,SET]
 1:
-  000001:[a#1,SET-c#2,SET] points:[a#1,SET-c#2,SET]
-  000002:[b#3,SET-d#4,SET] points:[b#3,SET-d#4,SET]
+  000001:[a#1,SET-c#2,SET] seqnums:[0-0] points:[a#1,SET-c#2,SET]
+  000002:[b#3,SET-d#4,SET] seqnums:[0-0] points:[b#3,SET-d#4,SET]
 
 check-ordering
 1:
@@ -213,10 +213,10 @@ check-ordering
 ----
 L2 files 000002 and 000003 have overlapping ranges: [b#3,SET-d#4,SET] vs [c#5,SET-e#6,SET]
 1:
-  000001:[a#1,SET-c#2,SET] points:[a#1,SET-c#2,SET]
+  000001:[a#1,SET-c#2,SET] seqnums:[0-0] points:[a#1,SET-c#2,SET]
 2:
-  000002:[b#3,SET-d#4,SET] points:[b#3,SET-d#4,SET]
-  000003:[c#5,SET-e#6,SET] points:[c#5,SET-e#6,SET]
+  000002:[b#3,SET-d#4,SET] seqnums:[0-0] points:[b#3,SET-d#4,SET]
+  000003:[c#5,SET-e#6,SET] seqnums:[0-0] points:[c#5,SET-e#6,SET]
 
 # Ordering considers tables with just range keys.
 
@@ -234,8 +234,8 @@ check-ordering
 ----
 L0 files 000001 and 000002 are not properly ordered: <#3-#72057594037927935> vs <#1-#72057594037927935>
 0.0:
-  000001:[a#3,RANGEKEYSET-b#inf,RANGEKEYSET] ranges:[a#3,RANGEKEYSET-b#inf,RANGEKEYSET]
-  000002:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET] ranges:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000001:[a#3,RANGEKEYSET-b#inf,RANGEKEYSET] seqnums:[3-72057594037927935] ranges:[a#3,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000002:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[1-72057594037927935] ranges:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 
 check-ordering
 1:
@@ -251,8 +251,8 @@ check-ordering
 ----
 L1 files 000001 and 000002 are not properly ordered: [c#3,RANGEKEYSET-d#inf,RANGEKEYSET] vs [a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
 1:
-  000001:[c#3,RANGEKEYSET-d#inf,RANGEKEYSET] ranges:[c#3,RANGEKEYSET-d#inf,RANGEKEYSET]
-  000002:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET] ranges:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000001:[c#3,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#3,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000002:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET] seqnums:[0-0] ranges:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
 
 # Ordering considers tables with both point and range keys.
 
@@ -270,9 +270,9 @@ check-ordering
 ----
 L0 files 000001 and 000002 are not properly ordered: <#1-#4> vs <#1-#2>
 0.1:
-  000002:[c#1,RANGEKEYSET-e#2,SET] points:[d#3,SET-e#2,SET] ranges:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000002:[c#1,RANGEKEYSET-e#2,SET] seqnums:[1-2] points:[d#3,SET-e#2,SET] ranges:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 0.0:
-  000001:[a#1,RANGEKEYSET-c#4,SET] points:[b#1,SET-c#4,SET] ranges:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000001:[a#1,RANGEKEYSET-c#4,SET] seqnums:[1-4] points:[b#1,SET-c#4,SET] ranges:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
 
 check-ordering
 1:
@@ -288,5 +288,5 @@ check-ordering
 ----
 L1 files 000001 and 000002 have overlapping ranges: [a#1,RANGEKEYSET-c#2,SET] vs [c#3,RANGEKEYSET-f#4,SET]
 1:
-  000001:[a#1,RANGEKEYSET-c#2,SET] points:[b#1,SET-c#2,SET] ranges:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
-  000002:[c#3,RANGEKEYSET-f#4,SET] points:[e#3,SET-f#4,SET] ranges:[c#3,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000001:[a#1,RANGEKEYSET-c#2,SET] seqnums:[0-0] points:[b#1,SET-c#2,SET] ranges:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000002:[c#3,RANGEKEYSET-f#4,SET] seqnums:[0-0] points:[e#3,SET-f#4,SET] ranges:[c#3,RANGEKEYSET-e#inf,RANGEKEYSET]

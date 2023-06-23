@@ -722,7 +722,7 @@ func TestExcise(t *testing.T) {
 			d.mu.Lock()
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
-			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedFiles), ve.String())
+			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedFiles), ve.DebugString(base.DefaultFormatter))
 
 		case "compact":
 			if len(td.CmdArgs) != 2 {
