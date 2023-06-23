@@ -14,7 +14,7 @@ func Truncate(
 	iter FragmentIterator,
 	lower, upper []byte,
 	start, end *base.InternalKey,
-	panicOnPartialOverlap bool,
+	panicOnUpperTruncate bool,
 ) FragmentIterator {
 	return Filter(iter, func(in *Span, out *Span) (keep bool) {
 		out.Start, out.End = in.Start, in.End
@@ -57,7 +57,6 @@ func Truncate(
 		var truncated bool
 		// Truncate the bounds to lower and upper.
 		if cmp(in.Start, lower) < 0 {
-			truncated = true
 			out.Start = lower
 		}
 		if cmp(in.End, upper) > 0 {
@@ -65,8 +64,8 @@ func Truncate(
 			out.End = upper
 		}
 
-		if panicOnPartialOverlap && truncated {
-			panic("pebble: bounds should not be truncated")
+		if panicOnUpperTruncate && truncated {
+			panic("pebble: upper bound should not be truncated")
 		}
 
 		return !out.Empty() && cmp(out.Start, out.End) < 0
