@@ -747,10 +747,7 @@ func (d *DB) truncateSharedFile(
 	}
 	defer iter.Close()
 	if rangeDelIter != nil {
-		rangeDelIter = keyspan.Truncate(
-			cmp, rangeDelIter, lower, upper, nil, nil,
-			false, /* panicOnPartialOverlap */
-		)
+		rangeDelIter = keyspan.Truncate(cmp, rangeDelIter, lower, upper, nil, nil)
 		defer rangeDelIter.Close()
 	}
 	rangeKeyIter, err := d.tableNewRangeKeyIter(file, keyspan.SpanIterOptions{Level: manifest.Level(level)})
@@ -758,10 +755,7 @@ func (d *DB) truncateSharedFile(
 		return nil, false, err
 	}
 	if rangeKeyIter != nil {
-		rangeKeyIter = keyspan.Truncate(
-			cmp, rangeKeyIter, lower, upper, nil, nil,
-			false, /* panicOnPartialOverlap */
-		)
+		rangeKeyIter = keyspan.Truncate(cmp, rangeKeyIter, lower, upper, nil, nil)
 		defer rangeKeyIter.Close()
 	}
 	// Check if we need to truncate on the left side. This means finding a new
@@ -865,6 +859,12 @@ func (d *DB) truncateSharedFile(
 	sst.Size, err = d.tableCache.estimateSize(file, sst.Smallest.UserKey, sst.Largest.UserKey)
 	if err != nil {
 		return nil, false, err
+	}
+	// On occasion, estimateSize gives us a low estimate, i.e. a 0 file size. This
+	// can cause panics in places where we divide by file sizes. Correct for it
+	// here.
+	if sst.Size == 0 {
+		sst.Size = 1
 	}
 	return sst, false, nil
 }

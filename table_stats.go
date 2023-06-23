@@ -884,10 +884,7 @@ func newCombinedDeletionKeyspanIter(
 		iter = dIter
 		// Truncate tombstones to the containing file's bounds if necessary.
 		// See docs/range_deletions.md for why this is necessary.
-		iter = keyspan.Truncate(
-			comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey,
-			nil, nil, false, /* panicOnPartialOverlap */
-		)
+		iter = keyspan.Truncate(comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey, nil, nil)
 		mIter.AddLevel(iter)
 	}
 

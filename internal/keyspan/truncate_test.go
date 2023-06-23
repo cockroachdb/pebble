@@ -52,9 +52,7 @@ func TestTruncate(t *testing.T) {
 			lower := []byte(parts[0])
 			upper := []byte(parts[1])
 
-			tIter := Truncate(
-				cmp, iter, lower, upper, startKey, endKey, false,
-			)
+			tIter := Truncate(cmp, iter, lower, upper, startKey, endKey)
 			defer tIter.Close()
 			var truncated []Span
 			for s := tIter.First(); s != nil; s = tIter.Next() {

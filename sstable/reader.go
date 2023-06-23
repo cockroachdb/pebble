@@ -2958,10 +2958,7 @@ func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 
 	// There should be no spans which cross virtual sstable bounds. So, no
 	// truncation should occur.
-	return keyspan.Truncate(
-		v.reader.Compare, iter, v.vState.lower.UserKey, v.vState.upper.UserKey,
-		&v.vState.lower, &v.vState.upper, true, /* panicOnPartialOverlap */
-	), nil
+	return keyspan.Truncate(v.reader.Compare, iter, v.vState.lower.UserKey, v.vState.upper.UserKey, &v.vState.lower, &v.vState.upper), nil
 }
 
 // NewRawRangeKeyIter wraps Reader.NewRawRangeKeyIter.
@@ -2976,10 +2973,7 @@ func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 
 	// There should be no spans which cross virtual sstable bounds. So, no
 	// truncation should occur.
-	return keyspan.Truncate(
-		v.reader.Compare, iter, v.vState.lower.UserKey, v.vState.upper.UserKey,
-		&v.vState.lower, &v.vState.upper, true, /* panicOnPartialOverlap */
-	), nil
+	return keyspan.Truncate(v.reader.Compare, iter, v.vState.lower.UserKey, v.vState.upper.UserKey, &v.vState.lower, &v.vState.upper), nil
 }
 
 // Constrain bounds will narrow the start, end bounds if they do not fit within

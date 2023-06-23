@@ -1403,7 +1403,7 @@ func (c *compaction) newInputIter(
 			// any range tombstones completely outside file bounds.
 			rangeDelIter = keyspan.Truncate(
 				c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey,
-				&f.Smallest, &f.Largest, false, /* panicOnPartialOverlap */
+				&f.Smallest, &f.Largest,
 			)
 		}
 		if rangeDelIter == nil {

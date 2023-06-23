@@ -10,11 +10,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // truncated to be contained within the range [lower, upper). If start and end
 // are specified, filter out any spans that are completely outside those bounds.
 func Truncate(
-	cmp base.Compare,
-	iter FragmentIterator,
-	lower, upper []byte,
-	start, end *base.InternalKey,
-	panicOnPartialOverlap bool,
+	cmp base.Compare, iter FragmentIterator, lower, upper []byte, start, end *base.InternalKey,
 ) FragmentIterator {
 	return Filter(iter, func(in *Span, out *Span) (keep bool) {
 		out.Start, out.End = in.Start, in.End
@@ -54,21 +50,13 @@ func Truncate(
 			}
 		}
 
-		var truncated bool
 		// Truncate the bounds to lower and upper.
 		if cmp(in.Start, lower) < 0 {
-			truncated = true
 			out.Start = lower
 		}
 		if cmp(in.End, upper) > 0 {
-			truncated = true
 			out.End = upper
 		}
-
-		if panicOnPartialOverlap && truncated {
-			panic("pebble: bounds should not be truncated")
-		}
-
 		return !out.Empty() && cmp(out.Start, out.End) < 0
 	})
 }
