@@ -479,7 +479,7 @@ lsm
 0.0:
   000004:[a@3#10,SET-c@9#10,SET]
 5:
-  000005:[b#2,RANGEDEL-d#2,RANGEDEL]
+  000005:[b#2,RANGEDEL-d#inf,RANGEDEL]
 6:
   000006:[a@3#1,SET-e#1,SET]
 
@@ -569,3 +569,183 @@ b: (bcd, . UPDATED)
 c: (cde, .)
 d: (foobar, .)
 e: (barbaz, .)
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+set a@3 o
+set b@5 foo
+set c@6 bar
+set e baz
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+build s2
+del-range bb g
+----
+
+ingest s2
+----
+
+lsm
+----
+5:
+  000006:[bb#14,RANGEDEL-g#inf,RANGEDEL]
+6:
+  000005:[a@3#10,SET-e#13,SET]
+
+switch 2
+----
+ok
+
+batch
+set ff notdeleted
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+lsm
+----
+6:
+  000005:[ff#10,SET-ff#10,SET]
+
+# This replication should truncate the range deletion in pebble instance 1
+# at f, leaving ff undeleted.
+
+replicate 1 2 b f
+----
+replicated 2 shared SSTs
+
+lsm
+----
+5:
+  000007:[bb#2,RANGEDEL-f#inf,RANGEDEL]
+6:
+  000008:[b@5#1,SET-e#1,SET]
+  000005:[ff#10,SET-ff#10,SET]
+
+iter
+seek-ge b
+next
+next
+----
+b@5: (foo, .)
+ff: (notdeleted, .)
+.
+
+# Same as above, but with a truncated range key instead of a truncated range del.
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+set a@3 o
+set b@5 foo
+set c@6 bar
+set e baz
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+build s3
+range-key-set bb g @8 foo
+----
+
+ingest s3
+----
+
+lsm
+----
+5:
+  000006:[bb#14,RANGEKEYSET-g#inf,RANGEKEYSET]
+6:
+  000005:[a@3#10,SET-e#13,SET]
+
+switch 2
+----
+ok
+
+batch
+set ff notcovered
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+lsm
+----
+6:
+  000005:[ff#10,SET-ff#10,SET]
+
+# This replication should truncate the range key in pebble instance 1
+# at f, leaving ff uncovered.
+
+replicate 1 2 b f
+----
+replicated 2 shared SSTs
+
+lsm
+----
+5:
+  000007:[bb#2,RANGEKEYSET-f#inf,RANGEKEYSET]
+6:
+  000008:[b@5#1,SET-e#1,SET]
+  000005:[ff#10,SET-ff#10,SET]
+
+iter
+seek-ge b
+next
+next
+next
+next
+next
+----
+b@5: (foo, .)
+bb: (., [bb-f) @8=foo UPDATED)
+c@6: (bar, [bb-f) @8=foo)
+e: (baz, [bb-f) @8=foo)
+ff: (notcovered, . UPDATED)
+.
+
+
+iter mask-filter mask-suffix=@9
+seek-ge b
+next
+next
+next
+next
+----
+b@5: (foo, .)
+bb: (., [bb-f) @8=foo UPDATED)
+e: (baz, [bb-f) @8=foo)
+ff: (notcovered, . UPDATED)
+.

@@ -2956,11 +2956,19 @@ func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 		return nil, nil
 	}
 
-	// There should be no spans which cross virtual sstable bounds. So, no
-	// truncation should occur.
+	// Truncation of spans isn't allowed at a user key that also contains points
+	// in the same virtual sstable, as it would lead to covered points getting
+	// uncovered. Set panicOnUpperTruncate to true if the file's upper bound
+	// is not an exclusive sentinel.
+	//
+	// As an example, if an sstable contains a rangedel a-c and point keys at
+	// a.SET.2 and b.SET.3, the file bounds [a#2,SET-b#RANGEDELSENTINEL] are
+	// allowed (as they exclude b.SET.3), or [a#2,SET-c#RANGEDELSENTINEL] (as it
+	// includes both point keys), but not [a#2,SET-b#3,SET] (as it would truncate
+	// the rangedel at b and lead to the point being uncovered).
 	return keyspan.Truncate(
 		v.reader.Compare, iter, v.vState.lower.UserKey, v.vState.upper.UserKey,
-		&v.vState.lower, &v.vState.upper, true, /* panicOnPartialOverlap */
+		&v.vState.lower, &v.vState.upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnUpperTruncate */
 	), nil
 }
 
@@ -2974,11 +2982,19 @@ func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 		return nil, nil
 	}
 
-	// There should be no spans which cross virtual sstable bounds. So, no
-	// truncation should occur.
+	// Truncation of spans isn't allowed at a user key that also contains points
+	// in the same virtual sstable, as it would lead to covered points getting
+	// uncovered. Set panicOnUpperTruncate to true if the file's upper bound
+	// is not an exclusive sentinel.
+	//
+	// As an example, if an sstable contains a range key a-c and point keys at
+	// a.SET.2 and b.SET.3, the file bounds [a#2,SET-b#RANGEKEYSENTINEL] are
+	// allowed (as they exclude b.SET.3), or [a#2,SET-c#RANGEKEYSENTINEL] (as it
+	// includes both point keys), but not [a#2,SET-b#3,SET] (as it would truncate
+	// the range key at b and lead to the point being uncovered).
 	return keyspan.Truncate(
 		v.reader.Compare, iter, v.vState.lower.UserKey, v.vState.upper.UserKey,
-		&v.vState.lower, &v.vState.upper, true, /* panicOnPartialOverlap */
+		&v.vState.lower, &v.vState.upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnUpperTruncate */
 	), nil
 }
 
