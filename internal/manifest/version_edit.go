@@ -450,8 +450,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 	return nil
 }
 
-// String implements fmt.Stringer for a VersionEdit.
-func (v *VersionEdit) String() string {
+func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	var buf bytes.Buffer
 	if v.ComparerName != "" {
 		fmt.Fprintf(&buf, "  comparer:     %s", v.ComparerName)
@@ -482,7 +481,12 @@ func (v *VersionEdit) String() string {
 		fmt.Fprintf(&buf, "  deleted:       L%d %s\n", df.Level, df.FileNum)
 	}
 	for _, nf := range v.NewFiles {
-		fmt.Fprintf(&buf, "  added:         L%d %s", nf.Level, nf.Meta.String())
+		fmt.Fprintf(&buf, "  added:         L%d", nf.Level)
+		if verbose {
+			fmt.Fprintf(&buf, " %s", nf.Meta.DebugString(fmtKey, true /* verbose */))
+		} else {
+			fmt.Fprintf(&buf, " %s", nf.Meta.String())
+		}
 		if nf.Meta.CreationTime != 0 {
 			fmt.Fprintf(&buf, " (%s)",
 				time.Unix(nf.Meta.CreationTime, 0).UTC().Format(time.RFC3339))
@@ -490,6 +494,16 @@ func (v *VersionEdit) String() string {
 		fmt.Fprintln(&buf)
 	}
 	return buf.String()
+}
+
+// DebugString is a more verbose version of String(). Use this in tests.
+func (v *VersionEdit) DebugString(fmtKey base.FormatKey) string {
+	return v.string(true /* verbose */, fmtKey)
+}
+
+// String implements fmt.Stringer for a VersionEdit.
+func (v *VersionEdit) String() string {
+	return v.string(false /* verbose */, base.DefaultFormatter)
 }
 
 // Encode encodes an edit to the specified writer.

@@ -3,7 +3,7 @@ L1
 d.SET.110:d e.SET.140:e
 ----
 1:
-  000004:[d#110,SET-e#140,SET] points:[d#110,SET-e#140,SET]
+  000004:[d#110,SET-e#140,SET] seqnums:[110-140] points:[d#110,SET-e#140,SET]
 
 reopen
 ----
@@ -21,8 +21,8 @@ set d d
 force-ingest paths=(cd) level=1
 ----
 1:
-  000008:[c#141,SET-d#141,SET] points:[c#141,SET-d#141,SET]
-  000004:[d#110,SET-e#140,SET] points:[d#110,SET-e#140,SET]
+  000008:[c#141,SET-d#141,SET] seqnums:[141-141] points:[c#141,SET-d#141,SET]
+  000004:[d#110,SET-e#140,SET] seqnums:[110-140] points:[d#110,SET-e#140,SET]
 
 format-major-version
 ----
@@ -90,9 +90,9 @@ L1
 x.SET.0:x y.SET.5:y
 ----
 1:
-  000004:[b#0,SET-c#5,SET] points:[b#0,SET-c#5,SET]
-  000005:[l#5,SET-m#0,SET] points:[l#5,SET-m#0,SET]
-  000006:[x#0,SET-y#5,SET] points:[x#0,SET-y#5,SET]
+  000004:[b#0,SET-c#5,SET] seqnums:[0-5] points:[b#0,SET-c#5,SET]
+  000005:[l#5,SET-m#0,SET] seqnums:[0-5] points:[l#5,SET-m#0,SET]
+  000006:[x#0,SET-y#5,SET] seqnums:[0-5] points:[x#0,SET-y#5,SET]
 
 build ab
 set a a
@@ -107,11 +107,11 @@ set x x
 force-ingest paths=(ab, wx) level=1
 ----
 1:
-  000007:[a#10,SET-b#10,SET] points:[a#10,SET-b#10,SET]
-  000004:[b#0,SET-c#5,SET] points:[b#0,SET-c#5,SET]
-  000005:[l#5,SET-m#0,SET] points:[l#5,SET-m#0,SET]
-  000008:[w#11,SET-x#11,SET] points:[w#11,SET-x#11,SET]
-  000006:[x#0,SET-y#5,SET] points:[x#0,SET-y#5,SET]
+  000007:[a#10,SET-b#10,SET] seqnums:[10-10] points:[a#10,SET-b#10,SET]
+  000004:[b#0,SET-c#5,SET] seqnums:[0-5] points:[b#0,SET-c#5,SET]
+  000005:[l#5,SET-m#0,SET] seqnums:[0-5] points:[l#5,SET-m#0,SET]
+  000008:[w#11,SET-x#11,SET] seqnums:[11-11] points:[w#11,SET-x#11,SET]
+  000006:[x#0,SET-y#5,SET] seqnums:[0-5] points:[x#0,SET-y#5,SET]
 
 format-major-version
 ----

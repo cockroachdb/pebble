@@ -1374,6 +1374,10 @@ func (d *DB) excise(
 			Virtual:     true,
 			FileBacking: m.FileBacking,
 			FileNum:     d.mu.versions.getNextFileNum(),
+			// Note that these are loose bounds for smallest/largest seqnums, but they're
+			// sufficient for maintaining correctness.
+			SmallestSeqNum: m.SmallestSeqNum,
+			LargestSeqNum:  m.LargestSeqNum,
 		}
 		if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.SmallestPointKey) {
 			// This file will contain point keys
@@ -1465,6 +1469,10 @@ func (d *DB) excise(
 		Virtual:     true,
 		FileBacking: m.FileBacking,
 		FileNum:     d.mu.versions.getNextFileNum(),
+		// Note that these are loose bounds for smallest/largest seqnums, but they're
+		// sufficient for maintaining correctness.
+		SmallestSeqNum: m.SmallestSeqNum,
+		LargestSeqNum:  m.LargestSeqNum,
 	}
 	if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.LargestPointKey) {
 		// This file will contain point keys

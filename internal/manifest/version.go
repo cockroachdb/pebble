@@ -686,6 +686,7 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 	if !verbose {
 		return b.String()
 	}
+	fmt.Fprintf(&b, " seqnums:[%d-%d]", m.SmallestSeqNum, m.LargestSeqNum)
 	if m.HasPointKeys {
 		fmt.Fprintf(&b, " points:[%s-%s]",
 			m.SmallestPointKey.Pretty(format), m.LargestPointKey.Pretty(format))
@@ -701,7 +702,7 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 // representation.
 func ParseFileMetadataDebug(s string) (*FileMetadata, error) {
 	// Split lines of the form:
-	//  000000:[a#0,SET-z#0,SET] points:[...] ranges:[...]
+	//  000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...]
 	fields := strings.FieldsFunc(s, func(c rune) bool {
 		switch c {
 		case ':', '[', '-', ']':
@@ -716,6 +717,19 @@ func ParseFileMetadataDebug(s string) (*FileMetadata, error) {
 	m := &FileMetadata{}
 	for len(fields) > 0 {
 		prefix := fields[0]
+		if prefix == "seqnums" {
+			smallestSeqNum, err := strconv.ParseUint(fields[1], 10, 64)
+			if err != nil {
+				return m, errors.Newf("malformed input: %s: %s", s, err)
+			}
+			largestSeqNum, err := strconv.ParseUint(fields[2], 10, 64)
+			if err != nil {
+				return m, errors.Newf("malformed input: %s: %s", s, err)
+			}
+			m.SmallestSeqNum, m.LargestSeqNum = smallestSeqNum, largestSeqNum
+			fields = fields[3:]
+			continue
+		}
 		smallest := base.ParsePrettyInternalKey(fields[1])
 		largest := base.ParsePrettyInternalKey(fields[2])
 		switch prefix {
