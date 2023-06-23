@@ -867,6 +867,12 @@ func (d *DB) truncateSharedFile(
 	if err != nil {
 		return nil, false, err
 	}
+	// On occasion, estimateSize gives us a low estimate, i.e. a 0 file size. This
+	// can cause panics in places where we divide by file sizes. Correct for it
+	// here.
+	if sst.Size == 0 {
+		sst.Size = 1
+	}
 	return sst, false, nil
 }
 

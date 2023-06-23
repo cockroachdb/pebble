@@ -2956,11 +2956,13 @@ func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 		return nil, nil
 	}
 
-	// There should be no spans which cross virtual sstable bounds. So, no
-	// truncation should occur.
+	// Truncation of spans isn't allowed at a user key that also contains points
+	// in the same virtual sstable, as it would lead to covered points getting
+	// uncovered. Set panicOnPartialOverlap to true if the file's upper bound
+	// is not an exclusive sentinel.
 	return keyspan.Truncate(
 		v.reader.Compare, iter, v.vState.lower.UserKey, v.vState.upper.UserKey,
-		&v.vState.lower, &v.vState.upper, true, /* panicOnPartialOverlap */
+		&v.vState.lower, &v.vState.upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnPartialOverlap */
 	), nil
 }
 
@@ -2974,11 +2976,13 @@ func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 		return nil, nil
 	}
 
-	// There should be no spans which cross virtual sstable bounds. So, no
-	// truncation should occur.
+	// Truncation of spans isn't allowed at a user key that also contains points
+	// in the same virtual sstable, as it would lead to covered points getting
+	// uncovered. Set panicOnPartialOverlap to true if the file's upper bound
+	// is not an exclusive sentinel.
 	return keyspan.Truncate(
 		v.reader.Compare, iter, v.vState.lower.UserKey, v.vState.upper.UserKey,
-		&v.vState.lower, &v.vState.upper, true, /* panicOnPartialOverlap */
+		&v.vState.lower, &v.vState.upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnPartialOverlap */
 	), nil
 }
 

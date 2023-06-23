@@ -84,6 +84,10 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 func ingestLoad1Shared(
 	opts *Options, sm SharedSSTMeta, fileNum base.DiskFileNum,
 ) (*fileMetadata, error) {
+	if sm.Size == 0 {
+		// Disallow 0 file sizes
+		return nil, errors.New("pebble: cannot ingest shared file with size 0")
+	}
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
 	meta := &fileMetadata{}
@@ -103,7 +107,9 @@ func ingestLoad1Shared(
 		meta.SmallestRangeKey = sm.SmallestRangeKey
 		meta.LargestRangeKey = sm.LargestRangeKey
 		meta.SmallestRangeKey.SetSeqNum(seqNum)
-		meta.LargestRangeKey.SetSeqNum(seqNum)
+		if !meta.LargestRangeKey.IsExclusiveSentinel() {
+			meta.LargestRangeKey.SetSeqNum(seqNum)
+		}
 		meta.SmallestSeqNum = seqNum
 		meta.LargestSeqNum = seqNum
 		// Initialize meta.{Smallest,Largest} and others by calling this.
@@ -114,7 +120,9 @@ func ingestLoad1Shared(
 		meta.SmallestPointKey = sm.SmallestPointKey
 		meta.LargestPointKey = sm.LargestPointKey
 		meta.SmallestPointKey.SetSeqNum(seqNum)
-		meta.LargestPointKey.SetSeqNum(seqNum)
+		if !meta.LargestPointKey.IsExclusiveSentinel() {
+			meta.LargestPointKey.SetSeqNum(seqNum)
+		}
 		meta.SmallestSeqNum = seqNum
 		meta.LargestSeqNum = seqNum
 		// Initialize meta.{Smallest,Largest} and others by calling this.
@@ -356,7 +364,7 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 	for i := range lr.sharedMeta {
 		f := lr.sharedMeta[i]
 		if !exciseSpan.Contains(cmp, f.Smallest) || !exciseSpan.Contains(cmp, f.Largest) {
-			return errors.AssertionFailedf("pebble: shared file outside of excise span")
+			return errors.AssertionFailedf("pebble: shared file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
 		}
 	}
 	if len(lr.localMeta) <= 1 || len(lr.localPaths) <= 1 {
@@ -1455,6 +1463,12 @@ func (d *DB) excise(
 			if err != nil {
 				return nil, err
 			}
+			if leftFile.Size == 0 {
+				// On occasion, estimateSize gives us a low estimate, i.e. a 0 file size. This
+				// can cause panics in places where we divide by file sizes. Correct for it
+				// here.
+				leftFile.Size = 1
+			}
 			if err := leftFile.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
 				return nil, err
 			}
@@ -1557,6 +1571,12 @@ func (d *DB) excise(
 		rightFile.Size, err = d.tableCache.estimateSize(m, rightFile.Smallest.UserKey, rightFile.Largest.UserKey)
 		if err != nil {
 			return nil, err
+		}
+		if rightFile.Size == 0 {
+			// On occasion, estimateSize gives us a low estimate, i.e. a 0 file size. This
+			// can cause panics in places where we divide by file sizes. Correct for it
+			// here.
+			rightFile.Size = 1
 		}
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: rightFile})
 		if !backingTableCreated {
