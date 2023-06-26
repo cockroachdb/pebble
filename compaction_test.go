@@ -1248,9 +1248,6 @@ func TestValidateVersionEdit(t *testing.T) {
 }
 
 func TestManualCompaction(t *testing.T) {
-	// skip flaky test until fixed (https://github.com/cockroachdb/pebble/issues/2613)
-	t.Skip()
-
 	var mem vfs.FS
 	var d *DB
 	defer func() {
@@ -1589,7 +1586,7 @@ func TestManualCompaction(t *testing.T) {
 		},
 		{
 			testData:   "testdata/manual_compaction_set_with_del",
-			minVersion: FormatSetWithDelete,
+			minVersion: FormatBlockPropertyCollector,
 			maxVersion: FormatPrePebblev1MarkedCompacted,
 		},
 		{
