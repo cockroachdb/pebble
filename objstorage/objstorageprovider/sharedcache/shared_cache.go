@@ -19,10 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-const (
-	shardingBlockSize = 1024 * 1024
-)
-
 // Cache is a persistent cache backed by a local filesystem. It is intended
 // to cache data that is in slower shared storage (e.g. S3), hence the
 // package name 'sharedcache'.
@@ -30,7 +26,8 @@ type Cache struct {
 	shards []shard
 	logger base.Logger
 
-	bm blockMath
+	bm                blockMath
+	shardingBlockSize int64
 
 	// TODO(josh): Have a dedicated metrics struct. Right now, this
 	// is just for testing.
@@ -51,7 +48,18 @@ const (
 // Open opens a cache. If there is no existing cache at fsDir, a new one
 // is created.
 func Open(
-	fs vfs.FS, logger base.Logger, fsDir string, blockSize int, sizeBytes int64, numShards int,
+	fs vfs.FS,
+	logger base.Logger,
+	fsDir string,
+	blockSize int,
+	// shardingBlockSize is the size of a shard block. The cache is split into contiguous
+	// shardingBlockSize units. The units are distributed across multiple independent shards
+	// of the cache, via a hash(offset) modulo num shards operation. The cache replacement
+	// policies operate at the level of shard, not whole cache. This is done to reduce lock
+	// contention.
+	shardingBlockSize int64,
+	sizeBytes int64,
+	numShards int,
 ) (*Cache, error) {
 	min := shardingBlockSize * int64(numShards)
 	if sizeBytes < min {
@@ -59,13 +67,14 @@ func Open(
 	}
 
 	sc := &Cache{
-		logger: logger,
-		bm:     makeBlockMath(blockSize),
+		logger:            logger,
+		bm:                makeBlockMath(blockSize),
+		shardingBlockSize: shardingBlockSize,
 	}
 	sc.shards = make([]shard, numShards)
 	blocksPerShard := sizeBytes / int64(numShards) / int64(blockSize)
 	for i := range sc.shards {
-		if err := sc.shards[i].init(fs, fsDir, i, blocksPerShard, blockSize); err != nil {
+		if err := sc.shards[i].init(fs, fsDir, i, blocksPerShard, blockSize, shardingBlockSize); err != nil {
 			return nil, err
 		}
 	}
@@ -108,7 +117,7 @@ func (c *Cache) ReadAt(
 ) error {
 	if ofs >= objSize {
 		if invariants.Enabled {
-			panic("invalid ReadAt offset")
+			panic(fmt.Sprintf("invalid ReadAt offset %v %v", ofs, objSize))
 		}
 		return io.EOF
 	}
@@ -182,7 +191,7 @@ func (c *Cache) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ err
 	for {
 		shard := c.getShard(fileNum, ofs+int64(n))
 		cappedLen := len(p[n:])
-		if toBoundary := int(shardingBlockSize - ((ofs + int64(n)) % shardingBlockSize)); cappedLen > toBoundary {
+		if toBoundary := int(c.shardingBlockSize - ((ofs + int64(n)) % c.shardingBlockSize)); cappedLen > toBoundary {
 			cappedLen = toBoundary
 		}
 		numRead, err := shard.get(fileNum, p[n:n+cappedLen], ofs+int64(n))
@@ -220,7 +229,7 @@ func (c *Cache) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 	for {
 		shard := c.getShard(fileNum, ofs+int64(n))
 		cappedLen := len(p[n:])
-		if toBoundary := int(shardingBlockSize - ((ofs + int64(n)) % shardingBlockSize)); cappedLen > toBoundary {
+		if toBoundary := int(c.shardingBlockSize - ((ofs + int64(n)) % c.shardingBlockSize)); cappedLen > toBoundary {
 			cappedLen = toBoundary
 		}
 		err := shard.set(fileNum, p[n:n+cappedLen], ofs+int64(n))
@@ -239,7 +248,7 @@ func (c *Cache) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 
 func (c *Cache) getShard(fileNum base.DiskFileNum, ofs int64) *shard {
 	const prime64 = 1099511628211
-	hash := uint64(fileNum.FileNum())*prime64 + uint64(ofs)/shardingBlockSize
+	hash := uint64(fileNum.FileNum())*prime64 + uint64(ofs/c.shardingBlockSize)
 	// TODO(josh): Instance change ops are often run in production. Such an operation
 	// updates len(c.shards); see openSharedCache. As a result, the behavior of this
 	// function changes, and the cache empties out at restart time. We may want a better
@@ -248,10 +257,11 @@ func (c *Cache) getShard(fileNum base.DiskFileNum, ofs int64) *shard {
 }
 
 type shard struct {
-	file         vfs.File
-	sizeInBlocks int64
-	bm           blockMath
-	mu           struct {
+	file              vfs.File
+	sizeInBlocks      int64
+	bm                blockMath
+	shardingBlockSize int64
+	mu                struct {
 		sync.Mutex
 		// TODO(josh): None of these datastructures are space-efficient.
 		// Focusing on correctness to start.
@@ -285,15 +295,16 @@ const (
 )
 
 func (s *shard) init(
-	fs vfs.FS, fsDir string, shardIdx int, sizeInBlocks int64, blockSize int,
+	fs vfs.FS, fsDir string, shardIdx int, sizeInBlocks int64, blockSize int, shardingBlockSize int64,
 ) error {
 	*s = shard{
 		sizeInBlocks: sizeInBlocks,
 	}
-	if blockSize < 1024 || shardingBlockSize%blockSize != 0 {
+	if blockSize < 1024 || shardingBlockSize%int64(blockSize) != 0 {
 		return errors.Newf("invalid block size %d (must divide %d)", blockSize, shardingBlockSize)
 	}
 	s.bm = makeBlockMath(blockSize)
+	s.shardingBlockSize = shardingBlockSize
 	file, err := fs.OpenReadWrite(fs.PathJoin(fsDir, fmt.Sprintf("SHARED-CACHE-%03d", shardIdx)))
 	if err != nil {
 		return err
@@ -340,7 +351,7 @@ func (s *shard) close() error {
 // be needed next.
 func (s *shard) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ error) {
 	if invariants.Enabled {
-		if ofs/shardingBlockSize != (ofs+int64(len(p))-1)/shardingBlockSize {
+		if ofs/s.shardingBlockSize != (ofs+int64(len(p))-1)/s.shardingBlockSize {
 			panic(fmt.Sprintf("get crosses shard boundary: %v %v", ofs, len(p)))
 		}
 		s.assertShardStateIsConsistent()
@@ -406,7 +417,7 @@ func (s *shard) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ err
 // If all of p is not written to the shard, set returns a non-nil error.
 func (s *shard) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 	if invariants.Enabled {
-		if ofs/shardingBlockSize != (ofs+int64(len(p))-1)/shardingBlockSize {
+		if ofs/s.shardingBlockSize != (ofs+int64(len(p))-1)/s.shardingBlockSize {
 			panic(fmt.Sprintf("set crosses shard boundary: %v %v", ofs, len(p)))
 		}
 		if s.bm.Remainder(ofs) != 0 || s.bm.Remainder(int64(len(p))) != 0 {

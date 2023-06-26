@@ -109,6 +109,15 @@ type Settings struct {
 		// CacheBlockSize is the block size of the cache; if 0, the default of 32KB is used.
 		CacheBlockSize int
 
+		// ShardingBlockSize is the size of a shard block. The cache is split into contiguous
+		// ShardingBlockSize units. The units are distributed across multiple independent shards
+		// of the cache, via a hash(offset) modulo num shards operation. The cache replacement
+		// policies operate at the level of shard, not whole cache. This is done to reduce lock
+		// contention.
+		//
+		// If ShardingBlockSize is 0, the default of 1 MB is used.
+		ShardingBlockSize int64
+
 		// The number of independent shards the cache leverages. Each shard is the same size,
 		// and a hash of filenum & offset map a read to a certain shard. If set to 0,
 		// 2*runtime.GOMAXPROCS is used as the shard count.
