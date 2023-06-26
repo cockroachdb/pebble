@@ -540,9 +540,8 @@ func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error)
 	if cap(buf) < decompressedLen {
 		buf = make([]byte, decompressedLen)
 	}
-	dst := buf[:decompressedLen]
-	err = decompressInto(typ, raw[prefix:], dst)
-	return dst, buf, err
+	res, err := decompressInto(typ, raw[prefix:], buf[:decompressedLen])
+	return res, buf, err
 }
 
 // memReader is a thin wrapper around a []byte such that it can be passed to
