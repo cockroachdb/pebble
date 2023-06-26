@@ -58,6 +58,24 @@ scan-internal snapshot=foo
 a-c:{(#10,RANGEKEYSET,@5,boop)}
 c-e:{(#11,RANGEKEYSET,@5,beep)}
 
+# Force keys newer than the snapshot into a lower level, then try skip-shared
+# iteration through it. This should return an error as it would expose keys
+# newer than the snapshot in the shared sstable.
+
+compact a-z
+----
+6:
+  000008:[a#10,RANGEKEYSET-e#13,SET]
+
+lsm
+----
+6:
+  000008:[a#10,RANGEKEYSET-e#13,SET]
+
+scan-internal lower=a upper=z skip-shared snapshot=foo
+----
+file 000008 contains keys newer than snapshot: pebble: cannot use skip-shared iteration due to non-shareable files in lower levels
+
 # Range keys and range dels are truncated to [lower,upper).
 
 scan-internal lower=bb upper=dd

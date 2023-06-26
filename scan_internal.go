@@ -28,8 +28,9 @@ const (
 // ErrInvalidSkipSharedIteration is returned by ScanInternal if it was called
 // with a shared file visitor function, and a file in a shareable level (i.e.
 // level >= sharedLevelsStart) was found to not be in shared storage according
-// to objstorage.Provider.
-var ErrInvalidSkipSharedIteration = errors.New("pebble: cannot use skip-shared iteration due to non-shared files in lower levels")
+// to objstorage.Provider, or not shareable for another reason such as for
+// containing keys newer than the snapshot sequence number.
+var ErrInvalidSkipSharedIteration = errors.New("pebble: cannot use skip-shared iteration due to non-shareable files in lower levels")
 
 // SharedSSTMeta represents an sstable on shared storage that can be ingested
 // by another pebble instance. This struct must contain all fields that are
@@ -889,6 +890,7 @@ func scanInternalImpl(
 	cmp := iter.comparer.Compare
 	db := iter.readState.db
 	provider := db.objProvider
+	seqNum := iter.seqNum
 	if visitSharedFile != nil {
 		if provider == nil {
 			panic("expected non-nil Provider in skip-shared iteration mode")
@@ -903,7 +905,10 @@ func scanInternalImpl(
 					return err
 				}
 				if !objMeta.IsShared() {
-					return errors.Wrapf(ErrInvalidSkipSharedIteration, "when processing file %s", objMeta.DiskFileNum)
+					return errors.Wrapf(ErrInvalidSkipSharedIteration, "file %s is not shared", objMeta.DiskFileNum)
+				}
+				if f.LargestSeqNum > seqNum {
+					return errors.Wrapf(ErrInvalidSkipSharedIteration, "file %s contains keys newer than snapshot", objMeta.DiskFileNum)
 				}
 				var sst *SharedSSTMeta
 				var skip bool

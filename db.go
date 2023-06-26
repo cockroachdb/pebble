@@ -1162,10 +1162,12 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 // their metadatas truncated to [lower, upper) and passed into visitSharedFile.
 // ErrInvalidSkipSharedIteration is returned if visitSharedFile is not nil and an
 // sstable in L5 or L6 is found that is not in shared storage according to
-// provider.IsShared. Examples of when this could happen could be if Pebble
-// started writing sstables before a creator ID was set (as creator IDs are
-// necessary to enable shared storage) resulting in some lower level SSTs being
-// on non-shared storage. Skip-shared iteration is invalid in those cases.
+// provider.IsShared, or an sstable in those levels contains a newer key than the
+// snapshot sequence number (only applicable for snapshot.ScanInternal). Examples
+// of when this could happen could be if Pebble started writing sstables before a
+// creator ID was set (as creator IDs are necessary to enable shared storage)
+// resulting in some lower level SSTs being on non-shared storage. Skip-shared
+// iteration is invalid in those cases.
 func (d *DB) ScanInternal(
 	ctx context.Context,
 	lower, upper []byte,
