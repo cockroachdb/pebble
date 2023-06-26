@@ -84,7 +84,6 @@ func (o *applyOp) run(t *test, h historyRecorder) {
 		err = w.Apply(b, t.writeOpts)
 	}
 	h.Recordf("%s // %v", o, err)
-	_ = b.Close()
 }
 
 func (o *applyOp) String() string  { return fmt.Sprintf("%s.Apply(%s)", o.writerID, o.batchID) }
