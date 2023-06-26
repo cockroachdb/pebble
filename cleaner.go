@@ -39,15 +39,16 @@ type cleanupManager struct {
 
 	mu struct {
 		sync.Mutex
-		queuedJobs        int
-		completedJobs     int
-		completedJobsCond sync.Cond
+		// totalJobs is the total number of enqueued jobs (completed or in progress).
+		totalJobs              int
+		completedJobs          int
+		completedJobsCond      sync.Cond
+		jobsQueueWarningIssued bool
 	}
 }
 
-// In practice, we should rarely have more than a couple of jobs (in most cases
-// we Wait() after queueing a job).
-const jobsChLen = 1000
+// We can queue this many jobs before we have to block EnqueueJob.
+const jobsQueueDepth = 1000
 
 // obsoleteFile holds information about a file that needs to be deleted soon.
 type obsoleteFile struct {
@@ -75,7 +76,7 @@ func openCleanupManager(
 		objProvider:     objProvider,
 		onTableDeleteFn: onTableDeleteFn,
 		deletePacer:     newDeletionPacer(getDeletePacerInfo),
-		jobsCh:          make(chan *cleanupJob, jobsChLen),
+		jobsCh:          make(chan *cleanupJob, jobsQueueDepth),
 	}
 	cm.mu.completedJobsCond.L = &cm.mu.Mutex
 	cm.waitGroup.Add(1)
@@ -103,12 +104,14 @@ func (cm *cleanupManager) EnqueueJob(jobID int, obsoleteFiles []obsoleteFile) {
 		obsoleteFiles: obsoleteFiles,
 	}
 	cm.mu.Lock()
-	cm.mu.queuedJobs++
+	cm.mu.totalJobs++
+	cm.maybeLogLocked()
 	cm.mu.Unlock()
 
 	if invariants.Enabled && len(cm.jobsCh) >= cap(cm.jobsCh)-2 {
 		panic("cleanup jobs queue full")
 	}
+
 	cm.jobsCh <- job
 }
 
@@ -121,7 +124,7 @@ func (cm *cleanupManager) EnqueueJob(jobID int, obsoleteFiles []obsoleteFile) {
 func (cm *cleanupManager) Wait() {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	n := cm.mu.queuedJobs
+	n := cm.mu.totalJobs
 	for cm.mu.completedJobs < n {
 		cm.mu.completedJobsCond.Wait()
 	}
@@ -154,6 +157,7 @@ func (cm *cleanupManager) mainLoop() {
 		cm.mu.Lock()
 		cm.mu.completedJobs++
 		cm.mu.completedJobsCond.Broadcast()
+		cm.maybeLogLocked()
 		cm.mu.Unlock()
 	}
 }
@@ -250,5 +254,26 @@ func (cm *cleanupManager) deleteObsoleteObject(
 			FileNum: fileNum.FileNum(),
 			Err:     err,
 		})
+	}
+}
+
+// maybeLogLocked issues a log if the job queue gets 75% full and issues a log
+// when the job queue gets back to less than 10% full.
+//
+// Must be called with cm.mu locked.
+func (cm *cleanupManager) maybeLogLocked() {
+	const highThreshold = jobsQueueDepth * 3 / 4
+	const lowThreshold = jobsQueueDepth / 10
+
+	jobsInQueue := cm.mu.totalJobs - cm.mu.completedJobs
+
+	if !cm.mu.jobsQueueWarningIssued && jobsInQueue > highThreshold {
+		cm.mu.jobsQueueWarningIssued = true
+		cm.opts.Logger.Infof("cleanup falling behind; job queue has over %d jobs", highThreshold)
+	}
+
+	if cm.mu.jobsQueueWarningIssued && jobsInQueue < lowThreshold {
+		cm.mu.jobsQueueWarningIssued = false
+		cm.opts.Logger.Infof("cleanup back to normal; job queue has under %d jobs", lowThreshold)
 	}
 }
