@@ -9,13 +9,13 @@ package sstable
 
 import "github.com/klauspost/compress/zstd"
 
-// decodeZstd decompresses src with the Zstandard algorithm. The destination
-// buffer must already be sufficiently sized, otherwise decodeZstd may error.
-func decodeZstd(dst, src []byte) error {
+// decodeZstd decompresses b with the Zstandard algorithm.
+// It reuses the preallocated capacity of decodedBuf if it is sufficient.
+// On success, it returns the decoded byte slice.
+func decodeZstd(decodedBuf, b []byte) ([]byte, error) {
 	decoder, _ := zstd.NewReader(nil)
 	defer decoder.Close()
-	_, err := decoder.DecodeAll(src, dst[:0])
-	return err
+	return decoder.DecodeAll(b, decodedBuf[:0])
 }
 
 // encodeZstd compresses b with the Zstandard algorithm at default compression
