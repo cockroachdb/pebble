@@ -585,6 +585,13 @@ func (m *FileMetadata) Overlaps(cmp Compare, start []byte, end []byte, exclusive
 	return true
 }
 
+// ContainedWithinSpan returns true if the file key range completely overlaps with the
+// given range ("end" is assumed to exclusive).
+func (m *FileMetadata) ContainedWithinSpan(cmp Compare, start, end []byte) bool {
+	lowerCmp, upperCmp := cmp(m.Smallest.UserKey, start), cmp(m.Largest.UserKey, end)
+	return lowerCmp >= 0 && (upperCmp < 0 || (upperCmp == 0 && m.Largest.IsExclusiveSentinel()))
+}
+
 // ContainsKeyType returns whether or not the file contains keys of the provided
 // type.
 func (m *FileMetadata) ContainsKeyType(kt KeyType) bool {
