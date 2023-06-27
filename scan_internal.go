@@ -907,7 +907,7 @@ func scanInternalImpl(
 				if !objMeta.IsShared() {
 					return errors.Wrapf(ErrInvalidSkipSharedIteration, "file %s is not shared", objMeta.DiskFileNum)
 				}
-				if f.LargestSeqNum > seqNum {
+				if !base.Visible(f.LargestSeqNum, seqNum, base.InternalKeySeqNumMax) {
 					return errors.Wrapf(ErrInvalidSkipSharedIteration, "file %s contains keys newer than snapshot", objMeta.DiskFileNum)
 				}
 				var sst *SharedSSTMeta
