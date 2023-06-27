@@ -1254,6 +1254,53 @@ func TestCloseCleanerRace(t *testing.T) {
 	}
 }
 
+func TestSSTablesWithApproximateSpanBytes(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	// Create two sstables.
+	// sstable is contained within keyspan (fileNum = 5).
+	require.NoError(t, d.Set([]byte("c"), nil, nil))
+	require.NoError(t, d.Set([]byte("d"), nil, nil))
+	require.NoError(t, d.Flush())
+
+	// sstable partially overlaps keyspan (fileNum = 7).
+	require.NoError(t, d.Set([]byte("d"), nil, nil))
+	require.NoError(t, d.Set([]byte("g"), nil, nil))
+	require.NoError(t, d.Flush())
+
+	// cannot use WithApproximateSpanBytes without WithProperties.
+	_, err = d.SSTables(WithKeyRangeFilter([]byte("a"), []byte("e")), WithApproximateSpanBytes())
+	require.Error(t, err)
+
+	// cannot use WithApproximateSpanBytes without WithKeyRangeFilter.
+	_, err = d.SSTables(WithProperties(), WithApproximateSpanBytes())
+	require.Error(t, err)
+
+	tableInfos, err := d.SSTables(WithProperties(), WithKeyRangeFilter([]byte("a"), []byte("e")), WithApproximateSpanBytes())
+	require.NoError(t, err)
+
+	for _, levelTables := range tableInfos {
+		for _, table := range levelTables {
+			approximateSpanBytes, err := strconv.ParseInt(table.Properties.UserProperties["approximate-span-bytes"], 10, 64)
+			require.NoError(t, err)
+			if table.FileNum == 5 {
+				require.Equal(t, uint64(approximateSpanBytes), table.Size)
+			}
+			if table.FileNum == 7 {
+				require.Less(t, uint64(approximateSpanBytes), table.Size)
+			}
+		}
+	}
+}
+
 func TestFilterSSTablesWithOption(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
