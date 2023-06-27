@@ -44,10 +44,11 @@ func (l *links) init(prevOffset, nextOffset uint32) {
 
 type node struct {
 	// Immutable fields, so no need to lock to access key.
-	keyOffset uint32
-	keySize   uint32
-	valueSize uint32
-	allocSize uint32
+	keyOffset  uint32
+	keySize    uint32
+	keyTrailer uint64
+	valueSize  uint32
+	allocSize  uint32
 
 	// Most nodes do not need to use the full height of the tower, since the
 	// probability of each successive level decreases exponentially. Because
@@ -65,7 +66,7 @@ func newNode(
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}
-	keySize := key.Size()
+	keySize := len(key.UserKey)
 	if int64(keySize) > math.MaxUint32 {
 		panic("key is too large")
 	}
@@ -81,8 +82,8 @@ func newNode(
 	if err != nil {
 		return
 	}
-
-	key.Encode(nd.getKeyBytes(arena))
+	nd.keyTrailer = key.Trailer
+	copy(nd.getKeyBytes(arena), key.UserKey)
 	copy(nd.getValue(arena), value)
 	return
 }
