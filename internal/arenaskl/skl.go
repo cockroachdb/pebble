@@ -44,7 +44,6 @@ Key differences:
 package arenaskl // import "github.com/cockroachdb/pebble/internal/arenaskl"
 
 import (
-	"encoding/binary"
 	"math"
 	"runtime"
 	"sync/atomic"
@@ -412,26 +411,19 @@ func (s *Skiplist) findSpliceForLevel(
 
 		offset, size := next.keyOffset, next.keySize
 		nextKey := s.arena.buf[offset : offset+size]
-		n := int32(size) - 8
-		cmp := s.cmp(key.UserKey, nextKey[:n])
+		cmp := s.cmp(key.UserKey, nextKey)
 		if cmp < 0 {
 			// We are done for this level, since prev.key < key < next.key.
 			break
 		}
 		if cmp == 0 {
 			// User-key equality.
-			var nextTrailer uint64
-			if n >= 0 {
-				nextTrailer = binary.LittleEndian.Uint64(nextKey[n:])
-			} else {
-				nextTrailer = uint64(base.InternalKeyKindInvalid)
-			}
-			if key.Trailer == nextTrailer {
+			if key.Trailer == next.keyTrailer {
 				// Internal key equality.
 				found = true
 				break
 			}
-			if key.Trailer > nextTrailer {
+			if key.Trailer > next.keyTrailer {
 				// We are done for this level, since prev.key < key < next.key.
 				break
 			}
@@ -446,8 +438,7 @@ func (s *Skiplist) findSpliceForLevel(
 
 func (s *Skiplist) keyIsAfterNode(nd *node, key base.InternalKey) bool {
 	ndKey := s.arena.buf[nd.keyOffset : nd.keyOffset+nd.keySize]
-	n := int32(nd.keySize) - 8
-	cmp := s.cmp(ndKey[:n], key.UserKey)
+	cmp := s.cmp(ndKey, key.UserKey)
 	if cmp < 0 {
 		return true
 	}
@@ -455,17 +446,11 @@ func (s *Skiplist) keyIsAfterNode(nd *node, key base.InternalKey) bool {
 		return false
 	}
 	// User-key equality.
-	var ndTrailer uint64
-	if n >= 0 {
-		ndTrailer = binary.LittleEndian.Uint64(ndKey[n:])
-	} else {
-		ndTrailer = uint64(base.InternalKeyKindInvalid)
-	}
-	if key.Trailer == ndTrailer {
+	if key.Trailer == nd.keyTrailer {
 		// Internal key equality.
 		return false
 	}
-	return key.Trailer < ndTrailer
+	return key.Trailer < nd.keyTrailer
 }
 
 func (s *Skiplist) getNext(nd *node, h int) *node {

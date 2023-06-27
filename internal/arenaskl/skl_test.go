@@ -970,21 +970,3 @@ func BenchmarkSeekPrefixGE(b *testing.B) {
 // 		})
 // 	}
 // }
-
-func TestInvalidInternalKeyDecoding(t *testing.T) {
-	a := newArena(arenaSize)
-
-	// We synthetically fill the arena with an invalid key
-	// that doesn't have an 8 byte trailer.
-	nd, err := newRawNode(a, 1, 1, 1)
-	require.Nil(t, err)
-
-	l := NewSkiplist(a, bytes.Compare)
-	it := Iterator{
-		list: l,
-		nd:   nd,
-	}
-	it.decodeKey()
-	require.Nil(t, it.key.UserKey)
-	require.Equal(t, uint64(base.InternalKeyKindInvalid), it.key.Trailer)
-}
