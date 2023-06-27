@@ -1254,6 +1254,38 @@ func TestCloseCleanerRace(t *testing.T) {
 	}
 }
 
+func TestSSTablesWithApproximateSpanBytesn(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	// Create two sstables.
+	require.NoError(t, d.Set([]byte("/Table/3"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("/Table/4"), nil, nil))
+	require.NoError(t, d.Flush())
+
+	_, err = d.SSTables(WithApproximateSpanBytes())
+	require.Error(t, err)
+
+	tableInfos, err := d.SSTables(WithKeyRangeFilter([]byte("/Table/1"), []byte("/Table/9")), WithApproximateSpanBytes())
+	require.NoError(t, err)
+
+	for _, levelTables := range tableInfos {
+		for _, table := range levelTables {
+			approximateSpanBytes, err := strconv.ParseInt(table.Properties.UserProperties["approximate-span-bytes"], 10, 64)
+			require.NoError(t, err)
+			require.NotEqual(t, approximateSpanBytes, int64(0))
+		}
+	}
+}
+
 func TestFilterSSTablesWithOption(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),

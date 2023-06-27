@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1861,6 +1862,8 @@ type sstablesOptions struct {
 	// if set, return sstables that overlap the key range (end-exclusive)
 	start []byte
 	end   []byte
+
+	withApproximateSpanBytes bool
 }
 
 // SSTablesOption set optional parameter used by `DB.SSTables`.
@@ -1877,11 +1880,19 @@ func WithProperties() SSTablesOption {
 }
 
 // WithKeyRangeFilter ensures returned sstables overlap start and end (end-exclusive)
-// if start and end are both nil these properties have no effect
+// if start and end are both nil these properties have no effect.
 func WithKeyRangeFilter(start, end []byte) SSTablesOption {
 	return func(opt *sstablesOptions) {
 		opt.end = end
 		opt.start = start
+	}
+}
+
+// WithApproximateSpanBytes enable captures the approximate number of bytes that
+// overlap the provided key span for each sstable.
+func WithApproximateSpanBytes() SSTablesOption {
+	return func(opt *sstablesOptions) {
+		opt.withApproximateSpanBytes = true
 	}
 }
 
@@ -1910,6 +1921,10 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 		fn(opt)
 	}
 
+	if opt.withApproximateSpanBytes && opt.start == nil && opt.end == nil {
+		return nil, errors.Errorf("Cannot using WithApproximateSpanBytes without WithKeyFilter option.")
+	}
+
 	// Grab and reference the current readState.
 	readState := d.loadReadState()
 	defer readState.unref()
@@ -1933,6 +1948,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			if opt.start != nil && opt.end != nil && !m.Overlaps(d.opts.Comparer.Compare, opt.start, opt.end, true /* exclusive end */) {
 				continue
 			}
+
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
 				p, err := d.tableCache.getTableProperties(
@@ -1945,7 +1961,40 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			}
 			destTables[j].Virtual = m.Virtual
 			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum.FileNum()
+
+			if opt.withApproximateSpanBytes {
+				var spanBytes uint64
+				if m.EntirelyOverlaps(d.opts.Comparer.Compare, opt.start, opt.end, true /* exclusive end*/) {
+					spanBytes += m.Size
+				} else if m.Overlaps(d.opts.Comparer.Compare, opt.start, opt.end, true /* exclusive end */) {
+					var size uint64
+					var err error
+					if m.Virtual {
+						err = d.tableCache.withVirtualReader(
+							m.VirtualMeta(),
+							func(r sstable.VirtualReader) (err error) {
+								size, err = r.EstimateDiskUsage(opt.start, opt.end)
+								return err
+							},
+						)
+					} else {
+						err = d.tableCache.withReader(
+							m.PhysicalMeta(),
+							func(r *sstable.Reader) (err error) {
+								size, err = r.EstimateDiskUsage(opt.start, opt.end)
+								return err
+							},
+						)
+					}
+					if err != nil {
+						return nil, err
+					}
+					spanBytes += size
+				}
+				destTables[j].Properties.UserProperties["approximate-span-bytes"] = strconv.FormatUint(spanBytes, 10)
+			}
 			j++
+
 		}
 		destLevels[i] = destTables[:j]
 		destTables = destTables[j:]
