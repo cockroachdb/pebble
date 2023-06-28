@@ -1532,3 +1532,49 @@ next
 a#9,0:
 .
 missized-dels=0
+
+# Test various DELSIZEDs beneath live keys. SETS should be converted to
+# SETWITHDELs when they meet a DELSIZED.
+
+define
+a.SET.7:foo
+a.DELSIZED.5:varint(5)
+b.SET.4:bar
+b.DELSIZED.2:varint(4)
+b.SET.1:bax
+c.SET.9:coconut
+c.DEL.8:del
+c.DELSIZED.5:varint(2)
+d.SET.8:dragonfruit
+----
+
+iter print-missized-dels
+first
+next
+next
+next
+next
+----
+a#7,18:foo
+b#4,18:bar
+c#9,18:coconut
+d#8,1:dragonfruit
+.
+missized-dels=0
+
+# Test a DELSIZED meeting a MERGE. This counts as a missized DEL—The user can't
+# know the value of the most recent MERGE since it's dependent on LSM state.
+
+define
+a.DELSIZED.9:varint(4)
+a.MERGE.8:fo
+a.MERGE.7:o
+----
+
+iter print-missized-dels
+first
+next
+----
+a#9,0:
+.
+missized-dels=1

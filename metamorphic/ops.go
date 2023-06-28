@@ -202,9 +202,8 @@ func (o *deleteOp) run(t *test, h historyRecorder) {
 }
 
 func hashSize(index int) uint32 {
-	const maxSize = 16 << 10 /* 16 KB */
 	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
-	return uint32((11400714819323198485 * uint64(index)) % maxSize)
+	return uint32((11400714819323198485 * uint64(index)) % maxValueSize)
 }
 
 func (o *deleteOp) String() string {

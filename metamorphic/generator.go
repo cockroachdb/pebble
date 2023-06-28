@@ -14,6 +14,8 @@ import (
 	"golang.org/x/exp/rand"
 )
 
+const maxValueSize = 20
+
 type iterOpts struct {
 	lower    []byte
 	upper    []byte
@@ -1124,7 +1126,7 @@ func (g *generator) writerRangeKeySet() {
 		start:    start,
 		end:      end,
 		suffix:   suffix,
-		value:    g.randValue(0, 20),
+		value:    g.randValue(0, maxValueSize),
 	})
 }
 
@@ -1201,7 +1203,7 @@ func (g *generator) writerMerge() {
 		writerID: writerID,
 		// 20% new keys.
 		key:   g.randKeyToWrite(0.2),
-		value: g.randValue(0, 20),
+		value: g.randValue(0, maxValueSize),
 	})
 }
 
@@ -1215,7 +1217,7 @@ func (g *generator) writerSet() {
 		writerID: writerID,
 		// 50% new keys.
 		key:   g.randKeyToWrite(0.5),
-		value: g.randValue(0, 20),
+		value: g.randValue(0, maxValueSize),
 	})
 }
 
