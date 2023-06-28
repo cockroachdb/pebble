@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -24,6 +25,8 @@ type limiter interface {
 // limit background IO usage so that it does not contend with foreground traffic.
 type pacer interface {
 	maybeThrottle(bytesIterated uint64) error
+
+	reportDeletion(bytesToDelete uint64)
 }
 
 // deletionPacerInfo contains any info from the db necessary to make deletion
@@ -40,19 +43,33 @@ type deletionPacerInfo struct {
 // negatively impacted if too many blocks are deleted very quickly, so this
 // mechanism helps mitigate that.
 type deletionPacer struct {
-	limiter               limiter
-	freeSpaceThreshold    uint64
-	obsoleteBytesMaxRatio float64
+	limiter                limiter
+	freeSpaceThreshold     uint64
+	obsoleteBytesMaxRatio  float64
+	targetByteDeletionRate int64
 
 	getInfo func() deletionPacerInfo
+
+	mu struct {
+		sync.Mutex
+
+		// history keeps rack of recent deletion history; it used to increase the
+		// deletion rate to match the pace of deletions.
+		history history
+	}
 }
+
+const deletePacerHistory = 5 * time.Minute
 
 // newDeletionPacer instantiates a new deletionPacer for use when deleting
 // obsolete files. The limiter passed in must be a singleton shared across this
 // pebble instance.
-func newDeletionPacer(limiter limiter, getInfo func() deletionPacerInfo) *deletionPacer {
-	return &deletionPacer{
-		limiter: limiter,
+func newDeletionPacer(
+	targetByteDeletionRate int64, getInfo func() deletionPacerInfo,
+) *deletionPacer {
+	d := &deletionPacer{
+		limiter: rate.NewLimiter(rate.Limit(targetByteDeletionRate), int(targetByteDeletionRate)),
+
 		// If there are less than freeSpaceThreshold bytes of free space on
 		// disk, do not pace deletions at all.
 		freeSpaceThreshold: 16 << 30, // 16 GB
@@ -60,8 +77,12 @@ func newDeletionPacer(limiter limiter, getInfo func() deletionPacerInfo) *deleti
 		// obsoleteBytesMaxRatio, do not pace deletions at all.
 		obsoleteBytesMaxRatio: 0.20,
 
+		targetByteDeletionRate: targetByteDeletionRate,
+
 		getInfo: getInfo,
 	}
+	d.mu.history.Init(time.Now(), deletePacerHistory)
+	return d
 }
 
 // limit applies rate limiting if the current free disk space is more than
@@ -74,6 +95,16 @@ func (p *deletionPacer) limit(amount uint64, info deletionPacerInfo) error {
 	}
 	paceDeletions := info.freeBytes > p.freeSpaceThreshold &&
 		obsoleteBytesRatio < p.obsoleteBytesMaxRatio
+
+	p.mu.Lock()
+	if historyRate := p.mu.history.Sum(time.Now()) / int64(deletePacerHistory/time.Second); historyRate > p.targetByteDeletionRate {
+		// Deletions have been happening at a rate higher than the target rate; we
+		// want to speed up deletions so they match the historic rate. We do this by
+		// decreasing the amount accordingly.
+		amount = uint64(float64(p.targetByteDeletionRate) / float64(historyRate) * float64(amount))
+	}
+	p.mu.Unlock()
+
 	if paceDeletions {
 		burst := p.limiter.Burst()
 		for amount > uint64(burst) {
@@ -111,8 +142,80 @@ func (p *deletionPacer) maybeThrottle(bytesToDelete uint64) error {
 	return p.limit(bytesToDelete, p.getInfo())
 }
 
+// reportDeletion is used to report a deletion to the pacer. The pacer uses it
+// to keep track of the recent rate of deletions and potentially increase the
+// deletion rate accordingly.
+//
+// reportDeletion is thread-safe.
+func (p *deletionPacer) reportDeletion(bytesToDelete uint64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.mu.history.Add(time.Now(), int64(bytesToDelete))
+}
+
 type noopPacer struct{}
 
 func (p *noopPacer) maybeThrottle(_ uint64) error {
 	return nil
+}
+
+func (p *noopPacer) reportDeletion(_ uint64) {}
+
+// history is a helper used to keep track of the recent history of a set of
+// data points (in our case deleted bytes), at limited granularity.
+// Specifically, we split the desired timeframe into 100 "epochs" and all times
+// are effectively rounded down to the nearest epoch boundary.
+type history struct {
+	epochDuration time.Duration
+	startTime     time.Time
+	// currEpoch is the epoch of the most recent operation.
+	currEpoch int64
+	// val contains the recent epoch values.
+	// val[currEpoch % historyEpochs] is the current epoch.
+	// val[(currEpoch + 1) % historyEpochs] is the oldest epoch.
+	val [historyEpochs]int64
+	// sum is always equal to the sum of values in val.
+	sum int64
+}
+
+const historyEpochs = 100
+
+// Init the history helper to keep track of data over the given number of
+// seconds.
+func (h *history) Init(now time.Time, timeframe time.Duration) {
+	*h = history{
+		epochDuration: timeframe / time.Duration(historyEpochs),
+		startTime:     now,
+		currEpoch:     0,
+		sum:           0,
+	}
+}
+
+// Add adds a value for the current time.
+func (h *history) Add(now time.Time, val int64) {
+	h.advance(now)
+	h.val[h.currEpoch%historyEpochs] += val
+	h.sum += val
+}
+
+// Sum returns the sum of recent values. The result is approximate in that the
+// cut-off time is within 1% of the exact one.
+func (h *history) Sum(now time.Time) int64 {
+	h.advance(now)
+	return h.sum
+}
+
+func (h *history) epoch(t time.Time) int64 {
+	return int64(t.Sub(h.startTime) / h.epochDuration)
+}
+
+// advance advances the time to the given time.
+func (h *history) advance(now time.Time) {
+	epoch := h.epoch(now)
+	for h.currEpoch < epoch {
+		h.currEpoch++
+		// Forget the data for the oldest epoch.
+		h.sum -= h.val[h.currEpoch%historyEpochs]
+		h.val[h.currEpoch%historyEpochs] = 0
+	}
 }
