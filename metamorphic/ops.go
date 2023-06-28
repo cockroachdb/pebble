@@ -102,6 +102,16 @@ type checkpointOp struct {
 }
 
 func (o *checkpointOp) run(t *test, h historyRecorder) {
+	// TODO(josh): db.Checkpoint does not work with shared storage yet.
+	// It would be better to filter out ahead of calling run on the op,
+	// by setting the weight that generator.go uses to zero, or similar.
+	// But IIUC the ops are shared for ALL the metamorphic test runs, so
+	// not sure how to do that easily:
+	// https://github.com/cockroachdb/pebble/blob/master/metamorphic/meta.go#L177
+	if t.testOpts.sharedStorageEnabled {
+		h.Recordf("%s // %v", o, nil)
+		return
+	}
 	var opts []pebble.CheckpointOption
 	if len(o.spans) > 0 {
 		opts = append(opts, pebble.WithRestrictToSpans(o.spans))

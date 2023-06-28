@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
@@ -86,6 +87,17 @@ func parseOptions(
 			case "TestOptions.async_apply_to_db":
 				opts.asyncApplyToDB = true
 				return true
+			case "TestOptions.shared_storage_enabled":
+				opts.sharedStorageEnabled = true
+				opts.Opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+					"": shared.NewInMem(),
+				})
+				opts.Opts.Experimental.CreateOnShared = true
+				return true
+			case "TestOptions.secondary_cache_enabled":
+				opts.secondaryCacheEnabled = true
+				opts.Opts.Experimental.SecondaryCacheSize = 1024 * 1024 * 32 // 32 MBs
+				return true
 			default:
 				if customOptionParsers == nil {
 					return false
@@ -139,6 +151,12 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.asyncApplyToDB {
 		fmt.Fprint(&buf, "  async_apply_to_db=true\n")
+	}
+	if opts.sharedStorageEnabled {
+		fmt.Fprint(&buf, "  shared_storage_enabled=true\n")
+	}
+	if opts.secondaryCacheEnabled {
+		fmt.Fprint(&buf, "  secondary_cache_enabled=true\n")
 	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
@@ -203,6 +221,11 @@ type TestOptions struct {
 	enableValueBlocks bool
 	// Use DB.ApplyNoSyncWait for applies that want to sync the WAL.
 	asyncApplyToDB bool
+	// Enable the use of shared storage.
+	sharedStorageEnabled bool
+	// Enable the secondary cache. Only effective if sharedStorageEnabled is
+	// also true.
+	secondaryCacheEnabled bool
 }
 
 // CustomOption defines a custom option that configures the behavior of an
@@ -339,6 +362,11 @@ func standardOptions() []*TestOptions {
 		25: `
 [TestOptions]
   enable_value_blocks=true
+`,
+		26: `
+[TestOptions]
+  shared_storage_enabled=true
+  secondary_cache_enabled=true
 `,
 	}
 
