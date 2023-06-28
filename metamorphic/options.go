@@ -348,6 +348,10 @@ func standardOptions() []*TestOptions {
 [TestOptions]
   enable_value_blocks=true
 `,
+		26: fmt.Sprintf(`
+[Options]
+  format_major_version=%s
+`, newestFormatMajorVersionTODO),
 	}
 
 	opts := make([]*TestOptions, len(stdOpts))
