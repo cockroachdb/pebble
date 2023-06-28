@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
-	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -208,9 +207,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		apply:         d.commitApply,
 		write:         d.commitWrite,
 	})
-	d.deletionLimiter = rate.NewLimiter(
-		rate.Limit(d.opts.Experimental.MinDeletionRate),
-		d.opts.Experimental.MinDeletionRate)
+	if d.opts.Experimental.MinDeletionRate > 0 {
+		d.deletionPacer = newDeletionPacer(int64(d.opts.Experimental.MinDeletionRate), d.getDeletionPacerInfo)
+	} else {
+		d.deletionPacer = nilPacer
+	}
 	d.mu.nextJobID = 1
 	d.mu.mem.nextSize = opts.MemTableSize
 	if d.mu.mem.nextSize > initialMemTableSize {

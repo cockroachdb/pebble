@@ -297,7 +297,7 @@ type DB struct {
 	closed   *atomic.Value
 	closedCh chan struct{}
 
-	deletionLimiter limiter
+	deletionPacer pacer
 
 	// Async deletion jobs spawned by cleaners increment this WaitGroup, and
 	// call Done when completed. Once `d.mu.cleaning` is false, the db.Close()

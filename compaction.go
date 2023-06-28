@@ -3547,6 +3547,13 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		}
 	}
 	if len(filesToDelete) > 0 {
+		var tablesSize uint64
+		for i := range filesToDelete {
+			if filesToDelete[i].fileType == fileTypeTable {
+				tablesSize += filesToDelete[i].fileSize
+			}
+		}
+		d.deletionPacer.reportDeletion(tablesSize)
 		d.deleters.Add(1)
 		// Delete asynchronously if that could get held up in the pacer.
 		if d.opts.Experimental.MinDeletionRate > 0 {
@@ -3561,15 +3568,11 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 // must NOT be held when calling this method.
 func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
 	defer d.deleters.Done()
-	pacer := (pacer)(nilPacer)
-	if d.opts.Experimental.MinDeletionRate > 0 {
-		pacer = newDeletionPacer(d.deletionLimiter, d.getDeletionPacerInfo)
-	}
 
 	for _, of := range files {
 		path := base.MakeFilepath(d.opts.FS, of.dir, of.fileType, of.fileNum)
 		if of.fileType == fileTypeTable {
-			_ = pacer.maybeThrottle(of.fileSize)
+			_ = d.deletionPacer.maybeThrottle(of.fileSize)
 			d.mu.Lock()
 			d.mu.versions.metrics.Table.ObsoleteCount--
 			d.mu.versions.metrics.Table.ObsoleteSize -= of.fileSize

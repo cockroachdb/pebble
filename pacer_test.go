@@ -7,6 +7,8 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -88,7 +90,8 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 							obsoleteBytes: obsoleteBytes,
 						}
 					}
-					deletionPacer := newDeletionPacer(&mockLimiter, getInfo)
+					deletionPacer := newDeletionPacer(100, getInfo)
+					deletionPacer.limiter = &mockLimiter
 					deletionPacer.freeSpaceThreshold = slowdownThreshold
 					err := deletionPacer.maybeThrottle(bytesIterated)
 					if err != nil {
@@ -104,4 +107,73 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
+}
+
+// TestDeletionPacerHistory tests the history helper by crosschecking Sum()
+// against a naive implementation.
+func TestDeletionPacerHistory(t *testing.T) {
+	type event struct {
+		time time.Time
+		// If report is 0, this event is a Sum(). Otherwise it is an Add().
+		report int64
+	}
+	numEvents := 1 + rand.Intn(200)
+	timeframe := time.Duration(1+rand.Intn(60*100)) * time.Second
+	events := make([]event, numEvents)
+	startTime := time.Now()
+	for i := range events {
+		events[i].time = startTime.Add(time.Duration(rand.Int63n(int64(timeframe))))
+		if rand.Intn(3) == 0 {
+			events[i].report = 0
+		} else {
+			events[i].report = int64(rand.Intn(100000))
+		}
+	}
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].time.Before(events[j].time)
+	})
+
+	var h history
+	h.Init(startTime, timeframe)
+
+	// partialSums[i] := SUM_j<i events[j].report
+	partialSums := make([]int64, len(events)+1)
+	for i := range events {
+		partialSums[i+1] = partialSums[i] + events[i].report
+	}
+
+	for i, e := range events {
+		if e.report != 0 {
+			h.Add(e.time, e.report)
+			continue
+		}
+
+		result := h.Sum(e.time)
+
+		// getIdx returns the largest event index <= i that is before the cutoff
+		// time.
+		getIdx := func(cutoff time.Time) int {
+			for j := i; j >= 0; j-- {
+				if events[j].time.Before(cutoff) {
+					return j
+				}
+			}
+			return -1
+		}
+
+		// Sum all report values in the last timeframe, and see if recent events
+		// (allowing 1% error in the cutoff time) match the result.
+		a := getIdx(e.time.Add(-timeframe * (historyEpochs + 1) / historyEpochs))
+		b := getIdx(e.time.Add(-timeframe * (historyEpochs - 1) / historyEpochs))
+		found := false
+		for j := a; j <= b; j++ {
+			if partialSums[i+1]-partialSums[j+1] == result {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("incorrect Sum() result %d; %v", result, events[a+1:i+1])
+		}
+	}
 }
