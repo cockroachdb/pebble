@@ -264,7 +264,7 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 		switch t := args[i].(type) {
 		case *uint32:
 			_, lit := p.scanToken(token.INT)
-			val, err := strconv.ParseUint(lit, 0, 32)
+			val, err := strconv.ParseUint(lit, 10, 32)
 			if err != nil {
 				panic(err)
 			}
@@ -272,7 +272,7 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 
 		case *uint64:
 			_, lit := p.scanToken(token.INT)
-			val, err := strconv.ParseUint(lit, 0, 64)
+			val, err := strconv.ParseUint(lit, 10, 64)
 			if err != nil {
 				panic(err)
 			}
@@ -378,7 +378,7 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 
 		case *pebble.FormatMajorVersion:
 			_, lit := p.scanToken(token.INT)
-			val, err := strconv.ParseUint(lit, 0, 64)
+			val, err := strconv.ParseUint(lit, 10, 64)
 			if err != nil {
 				panic(err)
 			}
