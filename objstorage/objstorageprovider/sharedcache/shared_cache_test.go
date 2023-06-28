@@ -21,21 +21,21 @@ import (
 func TestSharedCache(t *testing.T) {
 	ctx := context.Background()
 
-	numShards := 32
-	size := int64(sharedcache.ShardingBlockSize() * numShards)
-
 	datadriven.Walk(t, "testdata/cache", func(t *testing.T, path string) {
 		var log base.InMemLogger
 		fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...interface{}) {
 			log.Infof("<local fs> "+fmt, args...)
 		})
 
-		cache, err := sharedcache.Open(fs, base.DefaultLogger, "", 32*1024, size, 32)
-		require.NoError(t, err)
-		defer cache.Close()
-
 		provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
 		require.NoError(t, err)
+
+		var cache *sharedcache.Cache
+		defer func() {
+			if cache != nil {
+				cache.Close()
+			}
+		}()
 
 		var objData []byte
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
@@ -54,6 +54,23 @@ func TestSharedCache(t *testing.T) {
 
 			log.Reset()
 			switch d.Cmd {
+			case "init":
+				blockSize := 32 * 1024
+				numShards := 32
+				size := 32 * sharedcache.ShardingBlockSize()
+
+				d.MaybeScanArgs(t, "block-size", &blockSize)
+				d.MaybeScanArgs(t, "num-shards", &numShards)
+				d.MaybeScanArgs(t, "size", &size)
+				if size%(numShards*sharedcache.ShardingBlockSize()) != 0 {
+					d.Fatalf(t, "size (%d) must be a multiple of numShards (%d) * shardingBlockSize(%d)",
+						size, numShards, sharedcache.ShardingBlockSize(),
+					)
+				}
+				cache, err = sharedcache.Open(fs, base.DefaultLogger, "", blockSize, int64(size), numShards)
+				require.NoError(t, err)
+				return fmt.Sprintf("initialized with block-size=%d size=%d num-shards=%d", blockSize, size, numShards)
+
 			case "write":
 				var size int
 				scanArgs("<size>", &size)
