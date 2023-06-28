@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -667,6 +668,15 @@ type Options struct {
 		// using CreateOnSharedLocator. Can only be used when SharedStorage is set.
 		CreateOnShared        bool
 		CreateOnSharedLocator shared.Locator
+
+		// CreatorID identifies the DB instance that originally created a shared object.
+		// This ID is incorporated in backing object names.
+		// Must be non-zero.
+		CreatorID objstorage.CreatorID
+
+		// CacheSizeBytes is the size of the on-disk block cache for objects
+		// on shared storage. If it is 0, no cache is used.
+		SecondaryCacheSize int64
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for

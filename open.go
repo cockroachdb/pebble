@@ -298,10 +298,16 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	providerSettings.Shared.StorageFactory = opts.Experimental.SharedStorage
 	providerSettings.Shared.CreateOnShared = opts.Experimental.CreateOnShared
 	providerSettings.Shared.CreateOnSharedLocator = opts.Experimental.CreateOnSharedLocator
+	providerSettings.Shared.CacheSizeBytes = opts.Experimental.SecondaryCacheSize
 
 	d.objProvider, err = objstorageprovider.Open(providerSettings)
 	if err != nil {
 		return nil, err
+	}
+	if opts.Experimental.CreatorID != 0 {
+		if err := d.objProvider.SetCreatorID(opts.Experimental.CreatorID); err != nil {
+			return nil, errors.Wrapf(err, "setting creator ID failed")
+		}
 	}
 
 	d.cleanupManager = openCleanupManager(opts, d.objProvider, d.onObsoleteTableDelete, d.getDeletionPacerInfo)
