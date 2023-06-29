@@ -566,6 +566,7 @@ type compaction struct {
 	// resulting version has been installed (if successful), but the compaction
 	// goroutine is still cleaning up (eg, deleting obsolete files).
 	versionEditApplied bool
+	bufferPool         sstable.BufferPool
 
 	score float64
 
@@ -1342,7 +1343,10 @@ func (c *compaction) newInputIter(
 		f manifest.LevelFile, _ *IterOptions, l manifest.Level, bytesIterated *uint64,
 	) (keyspan.FragmentIterator, error) {
 		iter, rangeDelIter, err := newIters(context.Background(), f.FileMetadata,
-			&IterOptions{level: l}, internalIterOpts{bytesIterated: &c.bytesIterated})
+			&IterOptions{level: l}, internalIterOpts{
+				bytesIterated: &c.bytesIterated,
+				bufferPool:    &c.bufferPool,
+			})
 		if err == nil {
 			// TODO(peter): It is mildly wasteful to open the point iterator only to
 			// immediately close it. One way to solve this would be to add new
@@ -1427,7 +1431,10 @@ func (c *compaction) newInputIter(
 	// to configure the levelIter at these levels to hide the obsolete points.
 	addItersForLevel := func(level *compactionLevel, l manifest.Level) error {
 		iters = append(iters, newLevelIter(iterOpts, c.cmp, nil /* split */, newIters,
-			level.files.Iter(), l, &c.bytesIterated))
+			level.files.Iter(), l, internalIterOpts{
+				bytesIterated: &c.bytesIterated,
+				bufferPool:    &c.bufferPool,
+			}))
 		// TODO(jackson): Use keyspan.LevelIter to avoid loading all the range
 		// deletions into memory upfront. (See #2015, which reverted this.)
 		// There will be no user keys that are split between sstables
@@ -2744,6 +2751,11 @@ func (d *DB) runCompaction(
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
 	defer d.mu.Lock()
+
+	// Compactions use a pool of buffers to read blocks, avoiding polluting the
+	// block cache with blocks that will not be read again.
+	c.bufferPool.Init(d.opts.Cache, 5)
+	defer c.bufferPool.Release()
 
 	iiter, err := c.newInputIter(d.newIters, d.tableNewRangeKeyIter, snapshots)
 	if err != nil {
