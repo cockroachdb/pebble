@@ -2489,3 +2489,31 @@ func (d *DB) SetCreatorID(creatorID uint64) error {
 func (d *DB) ObjProvider() objstorage.Provider {
 	return d.objProvider
 }
+
+func (d *DB) checkVirtualBounds(m *fileMetadata, opts *IterOptions, iterOpts internalIterOpts) {
+	if !invariants.Enabled {
+		return
+	}
+
+	it, _, err := d.newIters(context.TODO(), m, opts, iterOpts)
+	if err != nil {
+		panic("pebble: error retrieving virtual iterator")
+	}
+
+	// check that virtual sstable bounds are tight from both ends.
+	first, _ := it.First()
+	if d.cmp(first.UserKey, m.Smallest.UserKey) != 0 {
+		panic("pebble: virtual sstable lower bound is not tight")
+	}
+	last, _ := it.Last()
+	if d.cmp(last.UserKey, m.Largest.UserKey) != 0 {
+		panic("pebble: virtual sstable upper bound is not tight")
+	}
+
+	// check that iterator keys are within bounds.
+	for key, _ := it.First(); key != nil; key, _ = it.Next() {
+		if d.cmp(key.UserKey, m.Smallest.UserKey) < 0 || d.cmp(key.UserKey, m.Largest.UserKey) > 0 {
+			panic("pebble: virtual sstable key is not within bounds")
+		}
+	}
+}
