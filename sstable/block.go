@@ -403,7 +403,7 @@ type blockIter struct {
 	cached      []blockEntry
 	cachedBuf   []byte
 	cacheHandle cache.Handle
-	// The first user key in the block. This is used by the caller to set bounds
+	handle      bufferHandle
 	// for block iteration for already loaded blocks.
 	firstUserKey      []byte
 	lazyValueHandling struct {
@@ -458,10 +458,10 @@ func (i *blockIter) init(
 //     ingested.
 //   - Foreign sstable iteration: globalSeqNum is always set.
 func (i *blockIter) initHandle(
-	cmp Compare, block cache.Handle, globalSeqNum uint64, hideObsoletePoints bool,
+	cmp Compare, block bufferHandle, globalSeqNum uint64, hideObsoletePoints bool,
 ) error {
-	i.cacheHandle.Release()
-	i.cacheHandle = block
+	i.handle.Release()
+	i.handle = block
 	return i.init(cmp, block.Get(), globalSeqNum, hideObsoletePoints)
 }
 
@@ -1515,8 +1515,8 @@ func (i *blockIter) Error() error {
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *blockIter) Close() error {
-	i.cacheHandle.Release()
-	i.cacheHandle = cache.Handle{}
+	i.handle.Release()
+	i.handle = bufferHandle{}
 	i.val = nil
 	i.lazyValue = base.LazyValue{}
 	i.lazyValueHandling.vbr = nil

@@ -13,7 +13,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"golang.org/x/exp/rand"
@@ -728,7 +727,7 @@ func (ukb *UserKeyPrefixBound) IsEmpty() bool {
 type blockProviderWhenOpen interface {
 	readBlockForVBR(
 		ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
-	) (cache.Handle, error)
+	) (bufferHandle, error)
 }
 
 type blockProviderWhenClosed struct {
@@ -749,9 +748,9 @@ func (bpwc *blockProviderWhenClosed) close() {
 
 func (bpwc blockProviderWhenClosed) readBlockForVBR(
 	ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
-) (cache.Handle, error) {
+) (bufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.ValueBlock)
-	return bpwc.r.readBlock(ctx, h, nil, nil, stats)
+	return bpwc.r.readBlock(ctx, h, nil, nil, stats, nil /* buffer pool */)
 }
 
 // ReaderProvider supports the implementation of blockProviderWhenClosed.
@@ -790,16 +789,16 @@ type valueBlockReader struct {
 	// The value blocks index is lazily retrieved the first time the reader
 	// needs to read a value that resides in a value block.
 	vbiBlock []byte
-	vbiCache cache.Handle
+	vbiCache bufferHandle
 	// When sequentially iterating through all key-value pairs, the cost of
 	// repeatedly getting a block that is already in the cache and releasing the
-	// cache.Handle can be ~40% of the cpu overhead. So the reader remembers the
+	// bufferHandle can be ~40% of the cpu overhead. So the reader remembers the
 	// last value block it retrieved, in case there is locality of access, and
 	// this value block can be used for the next value retrieval.
 	valueBlockNum uint32
 	valueBlock    []byte
 	valueBlockPtr unsafe.Pointer
-	valueCache    cache.Handle
+	valueCache    bufferHandle
 	lazyFetcher   base.LazyFetcher
 	closed        bool
 	bufToMangle   []byte
@@ -833,12 +832,12 @@ func (r *valueBlockReader) close() {
 	// we were to reopen this valueBlockReader and retrieve the same
 	// Handle.value from the cache, we don't want to accidentally unref it when
 	// attempting to unref the old handle.
-	r.vbiCache = cache.Handle{}
+	r.vbiCache = bufferHandle{}
 	r.valueBlock = nil
 	r.valueBlockPtr = nil
 	r.valueCache.Release()
 	// See comment above.
-	r.valueCache = cache.Handle{}
+	r.valueCache = bufferHandle{}
 	r.closed = true
 	// rp, vbih, stats remain valid, so that LazyFetcher.ValueFetcher can be
 	// implemented.

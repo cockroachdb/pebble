@@ -224,6 +224,7 @@ type singleLevelIterator struct {
 	err          error
 	closeHook    func(i Iterator) error
 	stats        *base.InternalIteratorStats
+	bufferPool   *BufferPool
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
@@ -362,32 +363,32 @@ var rangeKeyFragmentBlockIterPool = sync.Pool{
 
 func checkSingleLevelIterator(obj interface{}) {
 	i := obj.(*singleLevelIterator)
-	if p := i.data.cacheHandle.Get(); p != nil {
-		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.cacheHandle is not nil: %p\n", p)
+	if p := i.data.handle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
-	if p := i.index.cacheHandle.Get(); p != nil {
-		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.cacheHandle is not nil: %p\n", p)
+	if p := i.index.handle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
 }
 
 func checkTwoLevelIterator(obj interface{}) {
 	i := obj.(*twoLevelIterator)
-	if p := i.data.cacheHandle.Get(); p != nil {
-		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.cacheHandle is not nil: %p\n", p)
+	if p := i.data.handle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
-	if p := i.index.cacheHandle.Get(); p != nil {
-		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.cacheHandle is not nil: %p\n", p)
+	if p := i.index.handle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
 }
 
 func checkRangeKeyFragmentBlockIterator(obj interface{}) {
 	i := obj.(*rangeKeyFragmentBlockIter)
-	if p := i.blockIter.cacheHandle.Get(); p != nil {
-		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.cacheHandle is not nil: %p\n", p)
+	if p := i.blockIter.handle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
 }
@@ -408,6 +409,7 @@ func (i *singleLevelIterator) init(
 	useFilter, hideObsoletePoints bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
+	bufferPool *BufferPool,
 ) error {
 	if r.err != nil {
 		return r.err
@@ -430,6 +432,7 @@ func (i *singleLevelIterator) init(
 	i.cmp = r.Compare
 	i.stats = stats
 	i.hideObsoletePoints = hideObsoletePoints
+	i.bufferPool = bufferPool
 	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum, false)
 	if err != nil {
 		// blockIter.Close releases indexH and always returns a nil error
@@ -581,7 +584,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 		// blockIntersects
 	}
 	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.DataBlock)
-	block, err := i.reader.readBlock(ctx, i.dataBH, nil /* transform */, i.dataRH, i.stats)
+	block, err := i.reader.readBlock(ctx, i.dataBH, nil /* transform */, i.dataRH, i.stats, i.bufferPool)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -600,9 +603,9 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 // the valueBlockReader.
 func (i *singleLevelIterator) readBlockForVBR(
 	ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
-) (cache.Handle, error) {
+) (bufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.ValueBlock)
-	return i.reader.readBlock(ctx, h, nil, i.vbRH, stats)
+	return i.reader.readBlock(ctx, h, nil, i.vbRH, stats, i.bufferPool)
 }
 
 // resolveMaybeExcluded is invoked when the block-property filterer has found
@@ -967,7 +970,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 		}
 		i.lastBloomFilterMatched = false
 		// Check prefix bloom filter.
-		var dataH cache.Handle
+		var dataH bufferHandle
 		dataH, i.err = i.reader.readFilter(i.ctx, i.stats)
 		if i.err != nil {
 			i.data.invalidate()
@@ -1780,7 +1783,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 		// blockIntersects
 	}
 	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.MetadataBlock)
-	indexBlock, err := i.reader.readBlock(ctx, bhp.BlockHandle, nil /* transform */, nil /* readHandle */, i.stats)
+	indexBlock, err := i.reader.readBlock(ctx, bhp.BlockHandle, nil /* transform */, nil /* readHandle */, i.stats, i.bufferPool)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -1866,6 +1869,7 @@ func (i *twoLevelIterator) init(
 	useFilter, hideObsoletePoints bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
+	bufferPool *BufferPool,
 ) error {
 	if r.err != nil {
 		return r.err
@@ -1889,6 +1893,7 @@ func (i *twoLevelIterator) init(
 	i.cmp = r.Compare
 	i.stats = stats
 	i.hideObsoletePoints = hideObsoletePoints
+	i.bufferPool = bufferPool
 	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum, false)
 	if err != nil {
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
@@ -2130,7 +2135,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 			flags = flags.DisableTrySeekUsingNext()
 		}
 		i.lastBloomFilterMatched = false
-		var dataH cache.Handle
+		var dataH bufferHandle
 		dataH, i.err = i.reader.readFilter(i.ctx, i.stats)
 		if i.err != nil {
 			i.data.invalidate()
@@ -2924,9 +2929,9 @@ func MakeVirtualReader(reader *Reader, meta manifest.VirtualFileMeta) VirtualRea
 
 // NewCompactionIter is the compaction iterator function for virtual readers.
 func (v *VirtualReader) NewCompactionIter(
-	bytesIterated *uint64, rp ReaderProvider,
+	bytesIterated *uint64, rp ReaderProvider, bufferPool *BufferPool,
 ) (Iterator, error) {
-	return v.reader.newCompactionIter(bytesIterated, rp, &v.vState)
+	return v.reader.newCompactionIter(bytesIterated, rp, &v.vState, bufferPool)
 }
 
 // NewIterWithBlockPropertyFiltersAndContextEtc wraps
@@ -3136,7 +3141,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats, rp)
+		err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats, rp, nil /* bufferPool */)
 		if err != nil {
 			return nil, err
 		}
@@ -3144,7 +3149,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats, rp)
+	err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats, rp, nil /* bufferPool */)
 	if err != nil {
 		return nil, err
 	}
@@ -3164,12 +3169,14 @@ func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
 // the number of bytes iterated. If an error occurs, NewCompactionIter cleans up
 // after itself and returns a nil iterator.
-func (r *Reader) NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (Iterator, error) {
-	return r.newCompactionIter(bytesIterated, rp, nil)
+func (r *Reader) NewCompactionIter(
+	bytesIterated *uint64, rp ReaderProvider, bufferPool *BufferPool,
+) (Iterator, error) {
+	return r.newCompactionIter(bytesIterated, rp, nil, bufferPool)
 }
 
 func (r *Reader) newCompactionIter(
-	bytesIterated *uint64, rp ReaderProvider, v *virtualState,
+	bytesIterated *uint64, rp ReaderProvider, v *virtualState, bufferPool *BufferPool,
 ) (Iterator, error) {
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
@@ -3177,7 +3184,7 @@ func (r *Reader) newCompactionIter(
 			context.Background(),
 			r, v, nil /* lower */, nil /* upper */, nil,
 			false /* useFilter */, false, /* hideObsoletePoints */
-			nil /* stats */, rp,
+			nil /* stats */, rp, bufferPool,
 		)
 		if err != nil {
 			return nil, err
@@ -3192,7 +3199,7 @@ func (r *Reader) newCompactionIter(
 	err := i.init(
 		context.Background(), r, v, nil /* lower */, nil, /* upper */
 		nil, false /* useFilter */, false, /* hideObsoletePoints */
-		nil /* stats */, rp,
+		nil /* stats */, rp, bufferPool,
 	)
 	if err != nil {
 		return nil, err
@@ -3259,26 +3266,26 @@ func (i *rangeKeyFragmentBlockIter) Close() error {
 
 func (r *Reader) readIndex(
 	ctx context.Context, stats *base.InternalIteratorStats,
-) (cache.Handle, error) {
+) (bufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlock(ctx, r.indexBH, nil, nil, stats)
+	return r.readBlock(ctx, r.indexBH, nil, nil, stats, nil /* buffer pool */)
 }
 
 func (r *Reader) readFilter(
 	ctx context.Context, stats *base.InternalIteratorStats,
-) (cache.Handle, error) {
+) (bufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.FilterBlock)
-	return r.readBlock(ctx, r.filterBH, nil /* transform */, nil /* readHandle */, stats)
+	return r.readBlock(ctx, r.filterBH, nil /* transform */, nil /* readHandle */, stats, nil /* buffer pool */)
 }
 
-func (r *Reader) readRangeDel(stats *base.InternalIteratorStats) (cache.Handle, error) {
+func (r *Reader) readRangeDel(stats *base.InternalIteratorStats) (bufferHandle, error) {
 	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
-	return r.readBlock(ctx, r.rangeDelBH, r.rangeDelTransform, nil /* readHandle */, stats)
+	return r.readBlock(ctx, r.rangeDelBH, r.rangeDelTransform, nil /* readHandle */, stats, nil /* buffer pool */)
 }
 
-func (r *Reader) readRangeKey(stats *base.InternalIteratorStats) (cache.Handle, error) {
+func (r *Reader) readRangeKey(stats *base.InternalIteratorStats) (bufferHandle, error) {
 	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
-	return r.readBlock(ctx, r.rangeKeyBH, nil /* transform */, nil /* readHandle */, stats)
+	return r.readBlock(ctx, r.rangeKeyBH, nil /* transform */, nil /* readHandle */, stats, nil /* buffer pool */)
 }
 
 func checkChecksum(
@@ -3303,15 +3310,48 @@ func checkChecksum(
 	return nil
 }
 
-// readBlock reads and decompresses a block from disk into memory.
+type cacheValueOrBuf struct {
+	// buf.Valid() returns true if backed by a BufferPool.
+	buf Buf
+
+	// cache and v are non-nil if backed by the block cache.
+	cache *cache.Cache
+	v     *cache.Value
+}
+
+func (b cacheValueOrBuf) get() []byte {
+	if b.buf.Valid() {
+		return b.buf.p.pool[b.buf.i].b
+	}
+	return b.v.Buf()
+}
+
+func (b cacheValueOrBuf) release() {
+	if b.buf.Valid() {
+		b.buf.Release()
+	} else {
+		b.cache.Free(b.v)
+	}
+}
+
+func (b cacheValueOrBuf) truncate(n int) {
+	if b.buf.Valid() {
+		b.buf.p.pool[b.buf.i].b = b.buf.p.pool[b.buf.i].b[:n]
+	} else {
+		b.v.Truncate(n)
+	}
+}
+
 func (r *Reader) readBlock(
 	ctx context.Context,
 	bh BlockHandle,
 	transform blockTransform,
 	readHandle objstorage.ReadHandle,
 	stats *base.InternalIteratorStats,
-) (handle cache.Handle, _ error) {
+	bufferPool *BufferPool,
+) (handle bufferHandle, _ error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
+		// Cache hit.
 		if readHandle != nil {
 			readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+blockTrailerLen))
 		}
@@ -3319,17 +3359,30 @@ func (r *Reader) readBlock(
 			stats.BlockBytes += bh.Length
 			stats.BlockBytesInCache += bh.Length
 		}
-		return h, nil
+		// This block is already in the cache; return a handle to existing vlaue
+		// in the cache.
+		return bufferHandle{h: h}, nil
 	}
 
-	v := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
-	b := v.Buf()
+	// Cache miss.
+	var compressed cacheValueOrBuf
+	if bufferPool != nil {
+		compressed = cacheValueOrBuf{
+			buf: bufferPool.Alloc(int(bh.Length + blockTrailerLen)),
+		}
+	} else {
+		compressed = cacheValueOrBuf{
+			cache: r.opts.Cache,
+			v:     r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen)),
+		}
+	}
+
 	readStartTime := time.Now()
 	var err error
 	if readHandle != nil {
-		err = readHandle.ReadAt(ctx, b, int64(bh.Offset))
+		err = readHandle.ReadAt(ctx, compressed.get(), int64(bh.Offset))
 	} else {
-		err = r.readable.ReadAt(ctx, b, int64(bh.Offset))
+		err = r.readable.ReadAt(ctx, compressed.get(), int64(bh.Offset))
 	}
 	readDuration := time.Since(readStartTime)
 	// TODO(sumeer): should the threshold be configurable.
@@ -3342,56 +3395,80 @@ func (r *Reader) readBlock(
 	// interface{}, unless necessary.
 	if readDuration >= slowReadTracingThreshold && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
 		r.opts.LoggerAndTracer.Eventf(ctx, "reading %d bytes took %s",
-			bh.Length+blockTrailerLen, readDuration.String())
+			int(bh.Length+blockTrailerLen), readDuration.String())
 	}
 	if stats != nil {
 		stats.BlockReadDuration += readDuration
 	}
 	if err != nil {
-		r.opts.Cache.Free(v)
-		return cache.Handle{}, err
+		compressed.release()
+		return bufferHandle{}, err
+	}
+	if err := checkChecksum(r.checksumType, compressed.get(), bh, r.fileNum.FileNum()); err != nil {
+		compressed.release()
+		return bufferHandle{}, err
 	}
 
-	if err := checkChecksum(r.checksumType, b, bh, r.fileNum.FileNum()); err != nil {
-		r.opts.Cache.Free(v)
-		return cache.Handle{}, err
-	}
+	typ := blockType(compressed.get()[bh.Length])
+	compressed.truncate(int(bh.Length))
 
-	typ := blockType(b[bh.Length])
-	b = b[:bh.Length]
-	v.Truncate(len(b))
+	var decompressed cacheValueOrBuf
+	if typ == noCompressionBlockType {
+		decompressed = compressed
+	} else {
+		// Decode the length of the decompressed value.
+		decodedLen, prefixLen, err := decompressedLen(typ, compressed.get())
+		if err != nil {
+			compressed.release()
+			return bufferHandle{}, err
+		}
 
-	decoded, err := decompressBlock(r.opts.Cache, typ, b)
-	if decoded != nil {
-		r.opts.Cache.Free(v)
-		v = decoded
-		b = v.Buf()
-	} else if err != nil {
-		r.opts.Cache.Free(v)
-		return cache.Handle{}, err
+		if bufferPool != nil {
+			decompressed = cacheValueOrBuf{buf: bufferPool.Alloc(decodedLen)}
+		} else {
+			decompressed = cacheValueOrBuf{
+				cache: r.opts.Cache,
+				v:     r.opts.Cache.Alloc(decodedLen),
+			}
+		}
+		if _, err := decompressInto(typ, compressed.get()[prefixLen:], decompressed.get()); err != nil {
+			compressed.release()
+			return bufferHandle{}, err
+		}
+		compressed.release()
 	}
 
 	if transform != nil {
-		// Transforming blocks is rare, so the extra copy of the transformed data
-		// is not problematic.
-		var err error
-		b, err = transform(b)
+		// Transforming blocks is very rare, so the extra copy of the
+		// transformed data is not problematic.
+		tmpTransformed, err := transform(decompressed.get())
 		if err != nil {
-			r.opts.Cache.Free(v)
-			return cache.Handle{}, err
+			decompressed.release()
+			return bufferHandle{}, err
 		}
-		newV := r.opts.Cache.Alloc(len(b))
-		copy(newV.Buf(), b)
-		r.opts.Cache.Free(v)
-		v = newV
+
+		var transformed cacheValueOrBuf
+		if bufferPool != nil {
+			transformed = cacheValueOrBuf{buf: bufferPool.Alloc(len(tmpTransformed))}
+		} else {
+			transformed = cacheValueOrBuf{
+				cache: r.opts.Cache,
+				v:     r.opts.Cache.Alloc(len(tmpTransformed)),
+			}
+		}
+		copy(transformed.get(), tmpTransformed)
+		decompressed.release()
+		decompressed = transformed
 	}
 
 	if stats != nil {
 		stats.BlockBytes += bh.Length
 	}
-
-	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v)
-	return h, nil
+	if decompressed.buf.Valid() {
+		return bufferHandle{b: decompressed.buf}, nil
+	}
+	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, decompressed.v)
+	return bufferHandle{h: h}, nil
 }
 
 func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
@@ -3439,7 +3516,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	b, err := r.readBlock(
-		context.Background(), metaindexBH, nil /* transform */, nil /* readHandle */, nil /* stats */)
+		context.Background(), metaindexBH, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* buffer pool */)
 	if err != nil {
 		return err
 	}
@@ -3482,7 +3559,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 
 	if bh, ok := meta[metaPropertiesName]; ok {
 		b, err = r.readBlock(
-			context.Background(), bh, nil /* transform */, nil /* readHandle */, nil /* stats */)
+			context.Background(), bh, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* buffer pool */)
 		if err != nil {
 			return err
 		}
@@ -3587,8 +3664,8 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH.BlockHandle)
 
-			subIndex, err := r.readBlock(context.Background(),
-				indexBH.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */)
+			subIndex, err := r.readBlock(context.Background(), indexBH.BlockHandle,
+				nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* buffer pool */)
 			if err != nil {
 				return nil, err
 			}
@@ -3611,7 +3688,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		}
 	}
 	if r.valueBIH.h.Length != 0 {
-		vbiH, err := r.readBlock(context.Background(), r.valueBIH.h, nil, nil, nil)
+		vbiH, err := r.readBlock(context.Background(), r.valueBIH.h, nil, nil, nil, nil /* buffer pool */)
 		if err != nil {
 			return nil, err
 		}
@@ -3682,7 +3759,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 		}
 
 		// Read the block, which validates the checksum.
-		h, err := r.readBlock(context.Background(), bh, nil, rh, nil)
+		h, err := r.readBlock(context.Background(), bh, nil, rh, nil, nil /* buffer pool */)
 		if err != nil {
 			return err
 		}
@@ -3744,8 +3821,8 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if err != nil {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(context.Background(),
-			startIdxBH.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */)
+		startIdxBlock, err := r.readBlock(context.Background(), startIdxBH.BlockHandle,
+			nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* buffer pool */)
 		if err != nil {
 			return 0, err
 		}
@@ -3766,7 +3843,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				return 0, errCorruptIndexEntry
 			}
 			endIdxBlock, err := r.readBlock(context.Background(),
-				endIdxBH.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */)
+				endIdxBH.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* buffer pool */)
 			if err != nil {
 				return 0, err
 			}
@@ -4043,7 +4120,7 @@ func (l *Layout) Describe(
 		}
 
 		h, err := r.readBlock(
-			context.Background(), b.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */)
+			context.Background(), b.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* buffer pool */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue

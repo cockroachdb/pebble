@@ -439,6 +439,7 @@ func (c *tableCacheShard) newIters(
 		NewCompactionIter(
 			bytesIterated *uint64,
 			rp sstable.ReaderProvider,
+			bufferPool *sstable.BufferPool,
 		) (sstable.Iterator, error)
 	}
 
@@ -520,7 +521,7 @@ func (c *tableCacheShard) newIters(
 	}
 
 	if internalOpts.bytesIterated != nil {
-		iter, err = ic.NewCompactionIter(internalOpts.bytesIterated, rp)
+		iter, err = ic.NewCompactionIter(internalOpts.bytesIterated, rp, internalOpts.bufferPool)
 	} else {
 		iter, err = ic.NewIterWithBlockPropertyFiltersAndContextEtc(
 			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, hideObsoletePoints, useFilter,

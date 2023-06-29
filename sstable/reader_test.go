@@ -183,6 +183,7 @@ func TestVirtualReader(t *testing.T) {
 	// Set during the latest build command.
 	var r *Reader
 	var meta manifest.PhysicalFileMeta
+	var bp BufferPool
 
 	// Set during the latest virtualize command.
 	var vMeta1 manifest.VirtualFileMeta
@@ -191,6 +192,7 @@ func TestVirtualReader(t *testing.T) {
 	defer func() {
 		if r != nil {
 			require.NoError(t, r.Close())
+			bp.Release()
 		}
 	}()
 
@@ -251,6 +253,7 @@ func TestVirtualReader(t *testing.T) {
 		switch td.Cmd {
 		case "build":
 			if r != nil {
+				bp.Release()
 				_ = r.Close()
 				r = nil
 				meta.FileMetadata = nil
@@ -275,6 +278,7 @@ func TestVirtualReader(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
+			bp.Init(r.opts.Cache, 5)
 
 			// Create a fake filemetada using the writer meta.
 			meta, err = createPhysicalMeta(wMeta, r)
@@ -330,7 +334,7 @@ func TestVirtualReader(t *testing.T) {
 
 			var rp ReaderProvider
 			var bytesIterated uint64
-			iter, err := v.NewCompactionIter(&bytesIterated, rp)
+			iter, err := v.NewCompactionIter(&bytesIterated, rp, &bp)
 			if err != nil {
 				return err.Error()
 			}
@@ -680,7 +684,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 		fmt.Fprintf(&buf, " %s: size %d\n", string(key.UserKey), bh.Length)
 		if twoLevelIndex {
 			b, err := r.readBlock(
-				context.Background(), bh.BlockHandle, nil, nil, nil)
+				context.Background(), bh.BlockHandle, nil, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
 			iter2, err := newBlockIter(r.Compare, b.Get())
@@ -911,7 +915,9 @@ func testBytesIteratedWithCompression(
 			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression)
 				var bytesIterated, prevIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r})
+				var pool BufferPool
+				pool.Init(r.opts.Cache, 5)
+				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r}, &pool)
 				require.NoError(t, err)
 
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
@@ -930,6 +936,7 @@ func testBytesIteratedWithCompression(
 
 				require.NoError(t, citer.Close())
 				require.NoError(t, r.Close())
+				pool.Release()
 			}
 		}
 	}
@@ -965,7 +972,9 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
 				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, DefaultCompression)
 				var bytesIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r})
+				var pool BufferPool
+				pool.Init(r.opts.Cache, 5)
+				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r}, &pool)
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
@@ -983,6 +992,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				}
 				require.NoError(t, citer.Close())
 				require.NoError(t, r.Close())
+				pool.Release()
 			}
 		}
 	}
@@ -1017,7 +1027,9 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Close()
 	{
-		citer, err := r.NewCompactionIter(nil, TrivialReaderProvider{Reader: r})
+		var pool BufferPool
+		pool.Init(r.opts.Cache, 5)
+		citer, err := r.NewCompactionIter(nil, TrivialReaderProvider{Reader: r}, &pool)
 		require.NoError(t, err)
 		defer citer.Close()
 		i := citer.(*compactionIterator)
