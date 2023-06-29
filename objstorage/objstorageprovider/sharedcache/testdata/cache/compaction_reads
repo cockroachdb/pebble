@@ -2,25 +2,25 @@ init
 ----
 initialized with block-size=32768 size=33554432 num-shards=32
 
-write 200000
+write size=200000
 ----
 
-read 10000 1024
+read offset=1024 size=10000
 ----
 misses=1
 
 # This should be in the cache.
-read-for-compaction 2000 4096
+read-for-compaction offset=4096 size=2000
 ----
 misses=0
 
 # This should miss the cache.
-read-for-compaction 100000 4096
+read-for-compaction offset=4096 size=100000
 ----
 misses=1
 
 # This should miss the cache again - we don't populate the cache when doing
 # compaction reads.
-read-for-compaction 100000 4096
+read-for-compaction offset=4096 size=100000
 ----
 misses=1

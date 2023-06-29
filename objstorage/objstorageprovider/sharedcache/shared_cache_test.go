@@ -40,19 +40,6 @@ func TestSharedCache(t *testing.T) {
 
 		var objData []byte
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
-			scanArgs := func(desc string, args ...interface{}) {
-				t.Helper()
-				if len(d.CmdArgs) != len(args) {
-					d.Fatalf(t, "usage: %s %s", d.Cmd, desc)
-				}
-				for i := range args {
-					_, err := fmt.Sscan(d.CmdArgs[i].String(), args[i])
-					if err != nil {
-						d.Fatalf(t, "%s: error parsing argument '%s'", d.Cmd, d.CmdArgs[i])
-					}
-				}
-			}
-
 			log.Reset()
 			switch d.Cmd {
 			case "init":
@@ -72,8 +59,7 @@ func TestSharedCache(t *testing.T) {
 				return fmt.Sprintf("initialized with block-size=%d size=%d num-shards=%d", blockSize, size, numShards)
 
 			case "write":
-				var size int
-				scanArgs("<size>", &size)
+				size := mustParseBytesArg(t, d, "size")
 
 				writable, _, err := provider.Create(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.CreateOptions{})
 				require.NoError(t, err)
@@ -94,10 +80,8 @@ func TestSharedCache(t *testing.T) {
 				return ""
 			case "read", "read-for-compaction":
 				missesBefore := cache.Misses()
-				var size int
-				var offset int64
-				// TODO(radu): swap these arguments (the opposite order is typical).
-				scanArgs("<size> <offset>", &size, &offset)
+				offset := mustParseBytesArg(t, d, "offset")
+				size := mustParseBytesArg(t, d, "size")
 
 				readable, err := provider.OpenForReading(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
 				require.NoError(t, err)
@@ -107,7 +91,7 @@ func TestSharedCache(t *testing.T) {
 				flags := sharedcache.ReadFlags{
 					ReadOnly: d.Cmd == "read-for-compaction",
 				}
-				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, readable.Size(), flags)
+				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, int64(offset), readable, readable.Size(), flags)
 				// We always expect cache.ReadAt to succeed.
 				require.NoError(t, err)
 				// It is easier to assert this condition programmatically, rather than returning

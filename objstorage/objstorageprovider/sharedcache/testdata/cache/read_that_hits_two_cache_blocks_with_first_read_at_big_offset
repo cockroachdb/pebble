@@ -4,13 +4,13 @@ init
 ----
 initialized with block-size=32768 size=33554432 num-shards=32
 
-write 32773
+write size=32773
 ----
 
-read 5 32768
+read offset=32768 size=5
 ----
 misses=1
 
-read 5 32768
+read offset=32768 size=5
 ----
 misses=0
