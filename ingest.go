@@ -1409,6 +1409,9 @@ func (d *DB) excise(
 			SmallestSeqNum: m.SmallestSeqNum,
 			LargestSeqNum:  m.LargestSeqNum,
 		}
+		leftFile.ValidateVirtual(m)
+		d.checkVirtualBounds(leftFile)
+
 		if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.SmallestPointKey) {
 			// This file will contain point keys
 			smallestPointKey := m.SmallestPointKey
@@ -1511,6 +1514,8 @@ func (d *DB) excise(
 		SmallestSeqNum: m.SmallestSeqNum,
 		LargestSeqNum:  m.LargestSeqNum,
 	}
+	rightFile.ValidateVirtual(m)
+	d.checkVirtualBounds(rightFile)
 	if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.LargestPointKey) {
 		// This file will contain point keys
 		largestPointKey := m.LargestPointKey
