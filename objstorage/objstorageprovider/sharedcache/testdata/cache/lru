@@ -2,32 +2,32 @@ init num-shards=1 size=1M
 ----
 initialized with block-size=32768 size=1048576 num-shards=1
 
-write 1500000
+write size=1500000
 ----
 
-read 32768 0
-----
-misses=1
-
-read 32768 32768
+read offset=0 size=32K
 ----
 misses=1
 
-read 983040 65536
+read offset=32K size=32K
+----
+misses=1
+
+read offset=64K size=960K
 ----
 misses=1
 
 # The cache should now be full with the first MB. Read a new block.
-read 1048576 32768
+read offset=1M size=32K
 ----
 misses=1
 
 # The block that was evicted should have been the one at offset 0.
-read 32768 0
+read offset=0 size=32K
 ----
 misses=1
 
 # The block that was evicted should have been the one at offset 32768.
-read 32768 32768
+read offset=32K size=32K
 ----
 misses=1
