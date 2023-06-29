@@ -1097,6 +1097,10 @@ func (d *DB) ingest(
 	if err := ingestLink(jobID, d.opts, d.objProvider, loadResult, shared); err != nil {
 		return IngestOperationStats{}, err
 	}
+
+	for i, sharedMeta := range loadResult.sharedMeta {
+		d.checkVirtualBounds(sharedMeta, &IterOptions{level: manifest.Level(loadResult.sharedLevels[i])})
+	}
 	// Make the new tables durable. We need to do this at some point before we
 	// update the MANIFEST (via logAndApply), otherwise a crash can have the
 	// tables referenced in the MANIFEST, but not present in the provider.
@@ -1490,6 +1494,8 @@ func (d *DB) excise(
 			if err := leftFile.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
 				return nil, err
 			}
+			leftFile.ValidateVirtual(m)
+			d.checkVirtualBounds(leftFile, &IterOptions{level: manifest.Level(level)} /* iterOptions */)
 			ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: leftFile})
 			ve.CreatedBackingTables = append(ve.CreatedBackingTables, leftFile.FileBacking)
 			backingTableCreated = true
@@ -1597,6 +1603,8 @@ func (d *DB) excise(
 			// for it here.
 			rightFile.Size = 1
 		}
+		rightFile.ValidateVirtual(m)
+		d.checkVirtualBounds(rightFile, &IterOptions{level: manifest.Level(level)} /* iterOptions */)
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: rightFile})
 		if !backingTableCreated {
 			ve.CreatedBackingTables = append(ve.CreatedBackingTables, rightFile.FileBacking)
