@@ -324,7 +324,9 @@ func TestVirtualReadsWiring(t *testing.T) {
 	v2.SmallestPointKey = v2.Smallest
 
 	v1.ValidateVirtual(parentFile)
+	d.checkVirtualBounds(v1, nil /* iterOptions */)
 	v2.ValidateVirtual(parentFile)
+	d.checkVirtualBounds(v2, nil /* iterOptions */)
 
 	// Write the version edit.
 	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {
