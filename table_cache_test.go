@@ -323,8 +323,13 @@ func TestVirtualReadsWiring(t *testing.T) {
 	v2.LargestPointKey = v2.Largest
 	v2.SmallestPointKey = v2.Smallest
 
-	v1.ValidateVirtual(parentFile)
-	v2.ValidateVirtual(parentFile)
+	internalIterator, _, err := d.newIters(context.TODO(), v1, nil, internalIterOpts{})
+	require.NoError(t, err)
+	v1.ValidateVirtual(parentFile, internalIterator, d.cmp)
+
+	internalIterator, _, err = d.newIters(context.TODO(), v2, nil, internalIterOpts{})
+	require.NoError(t, err)
+	v2.ValidateVirtual(parentFile, internalIterator, d.cmp)
 
 	// Write the version edit.
 	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {

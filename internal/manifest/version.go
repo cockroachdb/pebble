@@ -382,7 +382,9 @@ func (m *FileMetadata) InitProviderBacking(fileNum base.DiskFileNum) {
 
 // ValidateVirtual should be called once the FileMetadata for a virtual sstable
 // is created to verify that the fields of the virtual sstable are sound.
-func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
+func (m *FileMetadata) ValidateVirtual(
+	createdFrom *FileMetadata, it base.InternalIterator, cmp Compare,
+) {
 	if !m.Virtual {
 		panic("pebble: invalid virtual sstable")
 	}
@@ -401,6 +403,14 @@ func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
 
 	if m.Size == 0 {
 		panic("pebble: virtual sstable size must be set upon creation")
+	}
+
+	if invariants.Enabled {
+		for key, _ := it.First(); key != nil; key, _ = it.Next() {
+			if cmp(key.UserKey, m.Smallest.UserKey) < 0 || cmp(key.UserKey, m.Largest.UserKey) > 0 {
+				panic("pebble: virtual sstable key is not within bounds")
+			}
+		}
 	}
 }
 

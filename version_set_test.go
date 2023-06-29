@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"io"
 	"testing"
 	"time"
@@ -99,8 +100,13 @@ func TestLatestRefCounting(t *testing.T) {
 	m2.LargestPointKey = m2.Largest
 	m2.SmallestPointKey = m2.Smallest
 
-	m1.ValidateVirtual(f)
-	m2.ValidateVirtual(f)
+	internalIterator, _, err := d.newIters(context.TODO(), m1, nil, internalIterOpts{})
+	require.NoError(t, err)
+	m1.ValidateVirtual(f, internalIterator, d.cmp)
+
+	internalIterator, _, err = d.newIters(context.TODO(), m2, nil, internalIterOpts{})
+	require.NoError(t, err)
+	m2.ValidateVirtual(f, internalIterator, d.cmp)
 
 	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {
 		metrics := newFileMetrics(ve.NewFiles)
@@ -281,8 +287,13 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 	m2.SmallestPointKey = m2.Smallest
 	m2.Stats.NumEntries = 1
 
-	m1.ValidateVirtual(f)
-	m2.ValidateVirtual(f)
+	internalIterator, _, err := d.newIters(context.TODO(), m1, nil, internalIterOpts{})
+	require.NoError(t, err)
+	m1.ValidateVirtual(f, internalIterator, d.cmp)
+
+	internalIterator, _, err = d.newIters(context.TODO(), m2, nil, internalIterOpts{})
+	require.NoError(t, err)
+	m2.ValidateVirtual(f, internalIterator, d.cmp)
 
 	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {
 		metrics := newFileMetrics(ve.NewFiles)
