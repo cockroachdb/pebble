@@ -552,7 +552,7 @@ func ingestTargetLevel(
 	level := baseLevel
 	for ; level < numLevels; level++ {
 		levelIter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
-			v.Levels[level].Iter(), manifest.Level(level), nil)
+			v.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
 		var rangeDelIter keyspan.FragmentIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
 		// sets it up for the target file.

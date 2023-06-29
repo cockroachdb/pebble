@@ -1316,7 +1316,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		// block that bhp points to, along with its block properties.
 		if twoLevelIndex {
 			subiter := &blockIter{}
-			subIndex, err := r.readBlock(context.Background(), bhp.BlockHandle, nil, nil, nil)
+			subIndex, err := r.readBlock(context.Background(), bhp.BlockHandle, nil, nil, nil, nil)
 			if err != nil {
 				return err.Error()
 			}

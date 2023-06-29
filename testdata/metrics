@@ -81,7 +81,7 @@ compact         1     0 B     0 B       0                          (size == esti
  memtbl         1   256 K
 zmemtbl         2   512 K
    ztbl         2   1.5 K
- bcache         8   1.4 K   42.9%  (score == hit-rate)
+ bcache         7   1.3 K   42.9%  (score == hit-rate)
  tcache         2   1.4 K   66.7%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         2
@@ -114,7 +114,7 @@ compact         1     0 B     0 B       0                          (size == esti
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         2   1.5 K
- bcache         8   1.4 K   42.9%  (score == hit-rate)
+ bcache         7   1.3 K   42.9%  (score == hit-rate)
  tcache         2   1.4 K   66.7%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         2

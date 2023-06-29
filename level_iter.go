@@ -51,6 +51,7 @@ func tableNewRangeDelIter(ctx context.Context, newIters tableNewIters) keyspan.T
 
 type internalIterOpts struct {
 	bytesIterated      *uint64
+	bufferPool         *sstable.BufferPool
 	stats              *base.InternalIteratorStats
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter
 }
@@ -241,11 +242,11 @@ func newLevelIter(
 	newIters tableNewIters,
 	files manifest.LevelIterator,
 	level manifest.Level,
-	bytesIterated *uint64,
+	internalOpts internalIterOpts,
 ) *levelIter {
 	l := &levelIter{}
 	l.init(context.Background(), opts, cmp, split, newIters, files, level,
-		internalIterOpts{bytesIterated: bytesIterated})
+		internalOpts)
 	return l
 }
 

@@ -427,7 +427,7 @@ func (c *tableCacheShard) newIters(
 		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
 	}
 	if internalOpts.bytesIterated != nil {
-		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, rp)
+		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, rp, internalOpts.bufferPool)
 	} else {
 		iter, err = v.reader.NewIterWithBlockPropertyFiltersAndContext(
 			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp)
