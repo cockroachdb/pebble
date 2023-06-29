@@ -1075,7 +1075,9 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
 			if *l.rangeDelIterPtr != nil && l.filteredIter != nil &&
 				l.filteredIter.MaybeFilteredKeys() {
 				l.largestBoundary = &l.iterFile.Largest
-				l.boundaryContext.isIgnorableBoundaryKey = true
+				if l.boundaryContext != nil {
+					l.boundaryContext.isIgnorableBoundaryKey = true
+				}
 				return l.largestBoundary, base.LazyValue{}
 			}
 		}
@@ -1164,7 +1166,9 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, base.LazyValue) {
 			// the next file.
 			if *l.rangeDelIterPtr != nil && l.filteredIter != nil && l.filteredIter.MaybeFilteredKeys() {
 				l.smallestBoundary = &l.iterFile.Smallest
-				l.boundaryContext.isIgnorableBoundaryKey = true
+				if l.boundaryContext != nil {
+					l.boundaryContext.isIgnorableBoundaryKey = true
+				}
 				return l.smallestBoundary, base.LazyValue{}
 			}
 		}
