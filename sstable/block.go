@@ -10,7 +10,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manual"
@@ -400,10 +399,9 @@ type blockIter struct {
 	// For a block encoded with a restart interval of 1, cached and cachedBuf
 	// will not be used as there are no prefix compressed entries between the
 	// restart points.
-	cached      []blockEntry
-	cachedBuf   []byte
-	cacheHandle cache.Handle
-	// The first user key in the block. This is used by the caller to set bounds
+	cached    []blockEntry
+	cachedBuf []byte
+	handle    bufferHandle
 	// for block iteration for already loaded blocks.
 	firstUserKey      []byte
 	lazyValueHandling struct {
@@ -458,10 +456,10 @@ func (i *blockIter) init(
 //     ingested.
 //   - Foreign sstable iteration: globalSeqNum is always set.
 func (i *blockIter) initHandle(
-	cmp Compare, block cache.Handle, globalSeqNum uint64, hideObsoletePoints bool,
+	cmp Compare, block bufferHandle, globalSeqNum uint64, hideObsoletePoints bool,
 ) error {
-	i.cacheHandle.Release()
-	i.cacheHandle = block
+	i.handle.Release()
+	i.handle = block
 	return i.init(cmp, block.Get(), globalSeqNum, hideObsoletePoints)
 }
 
@@ -1515,8 +1513,8 @@ func (i *blockIter) Error() error {
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *blockIter) Close() error {
-	i.cacheHandle.Release()
-	i.cacheHandle = cache.Handle{}
+	i.handle.Release()
+	i.handle = bufferHandle{}
 	i.val = nil
 	i.lazyValue = base.LazyValue{}
 	i.lazyValueHandling.vbr = nil

@@ -629,7 +629,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		}
 		l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
 			func(a []byte) int { return len(a) }, newIters, levelSlices[i].Iter(),
-			manifest.Level(level), nil)
+			manifest.Level(level), internalIterOpts{})
 		l.initRangeDel(&mils[level].rangeDelIter)
 		l.initBoundaryContext(&mils[level].levelIterBoundaryContext)
 		mils[level].iter = l
