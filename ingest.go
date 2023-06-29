@@ -729,7 +729,7 @@ func ingestTargetLevel(
 	// Check for overlap over the keys of L0 by iterating over the sublevels.
 	for subLevel := 0; subLevel < len(v.L0SublevelFiles); subLevel++ {
 		iter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
-			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), nil)
+			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), internalIterOpts{})
 
 		var rangeDelIter keyspan.FragmentIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
@@ -760,7 +760,7 @@ func ingestTargetLevel(
 	level := baseLevel
 	for ; level < numLevels; level++ {
 		levelIter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
-			v.Levels[level].Iter(), manifest.Level(level), nil)
+			v.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
 		var rangeDelIter keyspan.FragmentIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
 		// sets it up for the target file.
