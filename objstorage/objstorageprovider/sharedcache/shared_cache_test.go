@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -55,15 +56,10 @@ func TestSharedCache(t *testing.T) {
 			log.Reset()
 			switch d.Cmd {
 			case "init":
-				blockSize := 32 * 1024
-				shardingBlockSize := 1024 * 1024
-				numShards := 32
-				size := numShards * shardingBlockSize
-
-				d.MaybeScanArgs(t, "block-size", &blockSize)
-				d.MaybeScanArgs(t, "sharding-block-size", &shardingBlockSize)
-				d.MaybeScanArgs(t, "num-shards", &numShards)
-				d.MaybeScanArgs(t, "size", &size)
+				blockSize := parseBytesArg(t, d, "block-size", 32*1024)
+				shardingBlockSize := parseBytesArg(t, d, "sharding-block-size", 1024*1024)
+				numShards := parseBytesArg(t, d, "num-shards", 32)
+				size := parseBytesArg(t, d, "size", numShards*shardingBlockSize)
 				if size%(numShards*shardingBlockSize) != 0 {
 					d.Fatalf(t, "size (%d) must be a multiple of numShards (%d) * shardingBlockSize(%d)",
 						size, numShards, shardingBlockSize,
@@ -224,4 +220,54 @@ func TestSharedCacheRandomized(t *testing.T) {
 
 		t.Run("random block and sharding block size", helper(randomBlockSize, randomShardingBlockSize))
 	}
+}
+
+// parseBytesArg parses an optional argument that specifies a byte size; if the
+// argument is not specified the default value is used. K/M/G suffixes are
+// supported.
+func parseBytesArg(t testing.TB, d *datadriven.TestData, argName string, defaultValue int) int {
+	res, ok := tryParseBytesArg(t, d, argName)
+	if !ok {
+		return defaultValue
+	}
+	return res
+}
+
+// parseBytesArg parses a mandatory argument that specifies a byte size; K/M/G
+// suffixes are supported.
+func mustParseBytesArg(t testing.TB, d *datadriven.TestData, argName string) int {
+	res, ok := tryParseBytesArg(t, d, argName)
+	if !ok {
+		t.Fatalf("argument '%s' missing", argName)
+	}
+	return res
+}
+
+func tryParseBytesArg(t testing.TB, d *datadriven.TestData, argName string) (val int, ok bool) {
+	arg, ok := d.Arg(argName)
+	if !ok {
+		return 0, false
+	}
+	if len(arg.Vals) != 1 {
+		t.Fatalf("expected 1 value for '%s'", argName)
+	}
+	v := arg.Vals[0]
+	factor := 1
+	switch v[len(v)-1] {
+	case 'k', 'K':
+		factor = 1024
+	case 'm', 'M':
+		factor = 1024 * 1024
+	case 'g', 'G':
+		factor = 1024 * 1024 * 1024
+	}
+	if factor > 1 {
+		v = v[:len(v)-1]
+	}
+	res, err := strconv.Atoi(v)
+	if err != nil {
+		t.Fatalf("could not parse value '%s' for '%s'", arg.Vals[0], argName)
+	}
+
+	return res * factor, true
 }
