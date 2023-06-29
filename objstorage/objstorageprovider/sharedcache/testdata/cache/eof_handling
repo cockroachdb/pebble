@@ -1,3 +1,7 @@
+init
+----
+initialized with block-size=32768 size=33554432 num-shards=32
+
 write 40000
 ----
 
