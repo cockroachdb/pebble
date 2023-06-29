@@ -1,4 +1,4 @@
-init num-shards=1 size=1048576
+init num-shards=1 size=1M
 ----
 initialized with block-size=32768 size=1048576 num-shards=1
 
