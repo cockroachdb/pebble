@@ -20,6 +20,7 @@ import (
 )
 
 var walSyncLabels = pprof.Labels("pebble", "wal-sync")
+var errClosed = errors.New("pebble/record: closed LogWriter")
 
 type block struct {
 	// buf[:written] has already been filled with fragments. Updated atomically.
@@ -656,7 +657,7 @@ func (w *LogWriter) Close() error {
 			return cerr
 		}
 	}
-	w.err = errors.New("pebble/record: closed LogWriter")
+	w.err = errClosed
 	return err
 }
 
