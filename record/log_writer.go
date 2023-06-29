@@ -20,6 +20,7 @@ import (
 )
 
 var walSyncLabels = pprof.Labels("pebble", "wal-sync")
+var errClosedWriter = errors.New("pebble/record: closed LogWriter")
 
 type block struct {
 	// buf[:written] has already been filled with fragments. Updated atomically.
@@ -656,7 +657,7 @@ func (w *LogWriter) Close() error {
 			return cerr
 		}
 	}
-	w.err = errors.New("pebble/record: closed LogWriter")
+	w.err = errClosedWriter
 	return err
 }
 
@@ -668,7 +669,7 @@ func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
 	return logSize, err
 }
 
-// SyncRecord writes a complete record. If wg!= nil the record will be
+// SyncRecord writes a complete record. If wg != nil the record will be
 // asynchronously persisted to the underlying writer and done will be called on
 // the wait group upon completion. Returns the offset just past the end of the
 // record.
