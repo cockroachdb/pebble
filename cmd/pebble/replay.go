@@ -89,10 +89,10 @@ func (c *replayConfig) args() (args []string) {
 		args = append(args, "--max-writes", fmt.Sprint(c.maxWritesMB))
 	}
 	if c.streamLogs {
-		args = append(args, "--stream-logs", fmt.Sprint(c.streamLogs))
+		args = append(args, "--stream-logs")
 	}
 	if c.ignoreCheckpoint {
-		args = append(args, "--ignore-checkpoint", fmt.Sprint(c.ignoreCheckpoint))
+		args = append(args, "--ignore-checkpoint")
 	}
 	if c.optionsString != "" {
 		args = append(args, "--options", c.optionsString)
