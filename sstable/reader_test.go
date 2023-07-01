@@ -492,6 +492,8 @@ func TestReader(t *testing.T) {
 }
 
 func TestReaderHideObsolete(t *testing.T) {
+	t.Skip("#2705")
+
 	blockSizes := map[string]int{
 		"1bytes":   1,
 		"5bytes":   5,

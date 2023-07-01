@@ -942,7 +942,8 @@ func (w *Writer) addPoint(key InternalKey, value []byte, forceObsolete bool) err
 	if err != nil {
 		return err
 	}
-	isObsolete = w.tableFormat >= TableFormatPebblev4 && (isObsolete || forceObsolete)
+	// Temporarily disable `isObsolete`.
+	isObsolete = false && w.tableFormat >= TableFormatPebblev4 && (isObsolete || forceObsolete)
 	w.lastPointKeyInfo.isObsolete = isObsolete
 	var valueStoredWithKey []byte
 	var prefix valuePrefix
