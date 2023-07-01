@@ -39,10 +39,7 @@ const (
 	// metamorphic tests should use. This may be greater than
 	// pebble.FormatNewest when some format major versions are marked as
 	// experimental.
-	//
-	// TODO(jackson): Ratchet this up to
-	// pebble.ExperimentalFormatVirtualSSTables. Blocked on #2690.
-	newestFormatMajorVersionTODO = pebble.ExperimentalFormatDeleteSizedAndObsolete
+	newestFormatMajorVersionTODO = pebble.ExperimentalFormatVirtualSSTables
 )
 
 func parseOptions(
