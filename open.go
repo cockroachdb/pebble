@@ -1084,6 +1084,10 @@ func checkConsistency(v *manifest.Version, dirname string, objProvider objstorag
 				continue
 			}
 			dedup[backingState.DiskFileNum] = struct{}{}
+			// No need to enforce sizes for virtual sstables.
+			if f.Virtual {
+				continue
+			}
 			fileNum := backingState.DiskFileNum
 			fileSize := backingState.Size
 			meta, err := objProvider.Lookup(base.FileTypeTable, fileNum)
