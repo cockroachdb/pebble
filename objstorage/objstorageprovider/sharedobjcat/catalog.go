@@ -218,28 +218,36 @@ func (c *Catalog) ApplyBatch(b Batch) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for _, n := range b.ve.DeletedObjects {
-		if _, exists := c.mu.objects[n]; !exists {
-			return errors.AssertionFailedf("deleting non-existent object %s", n)
-		}
-	}
+	// Add new objects before deleting any objects. This allows for cases where
+	// the same batch adds and deletes an object.
 	for _, meta := range b.ve.NewObjects {
 		if _, exists := c.mu.objects[meta.FileNum]; exists {
 			return errors.AssertionFailedf("adding existing object %s", meta.FileNum)
 		}
+	}
+	for _, meta := range b.ve.NewObjects {
+		c.mu.objects[meta.FileNum] = meta
+	}
+	removeAddedObjects := func() {
+		for i := range b.ve.NewObjects {
+			delete(c.mu.objects, b.ve.NewObjects[i].FileNum)
+		}
+	}
+	for _, n := range b.ve.DeletedObjects {
+		if _, exists := c.mu.objects[n]; !exists {
+			removeAddedObjects()
+			return errors.AssertionFailedf("deleting non-existent object %s", n)
+		}
+	}
+	// Apply the remainder of the batch to our current state.
+	for _, n := range b.ve.DeletedObjects {
+		delete(c.mu.objects, n)
 	}
 
 	if err := c.writeToCatalogFileLocked(&b.ve); err != nil {
 		return errors.Wrapf(err, "pebble: could not write to shared object catalog: %v", err)
 	}
 
-	// Apply the batch to our current state.
-	for _, n := range b.ve.DeletedObjects {
-		delete(c.mu.objects, n)
-	}
-	for _, meta := range b.ve.NewObjects {
-		c.mu.objects[meta.FileNum] = meta
-	}
 	b.Reset()
 	return nil
 }
