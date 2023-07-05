@@ -1508,11 +1508,13 @@ func TestCompactionPickerScores(t *testing.T) {
 		case "maybe-compact":
 			buf.Reset()
 			d.mu.Lock()
+			d.opts.DisableAutomaticCompactions = false
 			d.maybeScheduleCompaction()
 			fmt.Fprintf(&buf, "%d compactions in progress:", d.mu.compact.compactingCount)
 			for c := range d.mu.compact.inProgress {
 				fmt.Fprintf(&buf, "\n%s", c)
 			}
+			d.opts.DisableAutomaticCompactions = true
 			d.mu.Unlock()
 			return buf.String()
 
