@@ -107,16 +107,16 @@ L5  	687 B  2.3
 L6  	321 K  -
 
 # Run a similar test as above, but this time the table containing the DELs is
-# ingested after the database is initialized, with table stats enabled and
-# automatic compactions enabled. When the ingested sstable's stats are loaded,
-# it should trigger an automatic compaction of the ingested sstable on account
-# of the high point-deletions-bytes-estimate value.
+# ingested after the database is initialized. When the ingested sstable's stats
+# are loaded and automatic compactions are re-enabled, it should trigger an
+# automatic compaction of the ingested sstable on account of the high
+# point-deletions-bytes-estimate value.
 #
 # This a regression test for an issue where the table stats collector wouldn't
 # attempt to schedule a compaction if a file only had compensation due to point
 # deletions and not range deletions.
 
-define lbase-max-bytes=65536  enable-table-stats=true auto-compactions=on
+define lbase-max-bytes=65536  enable-table-stats=true auto-compactions=off
 L6
   a.SET.1:<rand-bytes=65536>
   b.SET.1:<rand-bytes=65536>
@@ -147,6 +147,12 @@ num-deletions: 5
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 164586
 range-deletions-bytes-estimate: 0
+
+maybe-compact
+----
+1 compactions in progress:
+5: 000005:a:#10,0-e:#10,0
+6: 000004:a#1,1-e#1,1
 
 scores
 ----
