@@ -1,0 +1,54 @@
+
+reset
+----
+
+batch commit
+set b d
+set e foo
+----
+committed 2 keys
+
+scan-statistics lower=b upper=e keys=(SET)
+----
+Aggregate:
+  SET key count: 0
+
+flush
+----
+
+scan-statistics lower=b upper=e keys=(SET) levels=(0)
+----
+Level 0:
+  SET key count: 1
+Aggregate:
+  SET key count: 1
+
+scan-statistics lower=b upper=f keys=(SET) levels=(0)
+----
+Level 0:
+  SET key count: 2
+Aggregate:
+  SET key count: 2
+
+scan-statistics lower=f upper=l keys=(SET)
+----
+Aggregate:
+  SET key count: 0
+
+batch commit
+del b
+del e
+----
+committed 2 keys
+
+flush
+----
+
+scan-statistics lower=b upper=f keys=(SET, DEL) levels=(0)
+----
+Level 0:
+  SET key count: 2
+  DEL key count: 2
+Aggregate:
+  SET key count: 2
+  DEL key count: 2
