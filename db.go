@@ -1173,21 +1173,28 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 func (d *DB) ScanInternal(
 	ctx context.Context,
 	lower, upper []byte,
-	visitPointKey func(key *InternalKey, value LazyValue) error,
+	visitPointKey func(key *InternalKey, value LazyValue, iterInfo iterInfo) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
+	includeObsoleteKeys bool,
 ) error {
-	iter := d.newInternalIter(nil /* snapshot */, &scanInternalOptions{
+	scanInternalOpts := &scanInternalOptions{
+		visitPointKey:       visitPointKey,
+		visitRangeDel:       visitRangeDel,
+		visitRangeKey:       visitRangeKey,
+		visitSharedFile:     visitSharedFile,
+		skipSharedLevels:    visitSharedFile != nil,
+		includeObsoleteKeys: includeObsoleteKeys,
 		IterOptions: IterOptions{
 			KeyTypes:   IterKeyTypePointsAndRanges,
 			LowerBound: lower,
 			UpperBound: upper,
 		},
-		skipSharedLevels: visitSharedFile != nil,
-	})
+	}
+	iter := d.newInternalIter(nil /* snapshot */, scanInternalOpts)
 	defer iter.close()
-	return scanInternalImpl(ctx, lower, upper, iter, visitPointKey, visitRangeDel, visitRangeKey, visitSharedFile)
+	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
 }
 
 // newInternalIter constructs and returns a new scanInternalIterator on this db.
@@ -1226,6 +1233,7 @@ func (d *DB) newInternalIter(s *Snapshot, o *scanInternalOptions) *scanInternalI
 		newIters:        d.newIters,
 		newIterRangeKey: d.tableNewRangeKeyIter,
 		seqNum:          seqNum,
+		mergingIter:     &buf.merging,
 	}
 	if o != nil {
 		dbi.opts = *o
@@ -1988,7 +1996,6 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			if opt.start != nil && opt.end != nil && !m.Overlaps(d.opts.Comparer.Compare, opt.start, opt.end, true /* exclusive end */) {
 				continue
 			}
-
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
 				p, err := d.tableCache.getTableProperties(
@@ -2571,6 +2578,68 @@ func (d *DB) SetCreatorID(creatorID uint64) error {
 		return nil
 	}
 	return d.objProvider.SetCreatorID(objstorage.CreatorID(creatorID))
+}
+
+// KeyStatistics keeps track of the number of keys that have been pinned by a
+// snapshot as well as counts of the different key kinds in the lsm.
+type KeyStatistics struct {
+	// snapshotPinnedKeys represents the number of duplicate keys per sstable.
+	// This occurs when a compaction tries to compact ta key but can't due to it being pinned by an open snapshot.
+	snapshotPinnedKeys int
+	// the total number of bytes of all snapshot pinned keys.
+	snapshotPinnedKeysBytes uint64
+	kindsCount              [InternalKeyKindMax + 1]int
+}
+
+// LSMKeyStatistics is used by DB.ScanStatistics.
+type LSMKeyStatistics struct {
+	accumulated KeyStatistics
+	levels      [numLevels]KeyStatistics
+}
+
+// ScanStatistics returns the count of different key kinds within the lsm for a
+// key span [lower, upper) as well as the number of snapshot keys.
+func (d *DB) ScanStatistics(ctx context.Context, lower, upper []byte) (LSMKeyStatistics, error) {
+	stats := LSMKeyStatistics{}
+	var prevKey *InternalKey
+
+	err := d.ScanInternal(ctx, lower, upper,
+		func(key *InternalKey, value LazyValue, iterInfo iterInfo) error {
+			if iterInfo.level == -1 {
+				return nil
+			}
+			// If the previous key is equal to the current point key, the current key was
+			// pinned by a snapshot.
+			if prevKey != nil && d.cmp(prevKey.UserKey, key.UserKey) == 0 {
+				stats.levels[iterInfo.level].snapshotPinnedKeys++
+				stats.levels[iterInfo.level].snapshotPinnedKeysBytes += uint64(key.Size())
+				stats.accumulated.snapshotPinnedKeys++
+				stats.accumulated.snapshotPinnedKeysBytes += uint64(key.Size())
+			}
+			stats.levels[iterInfo.level].kindsCount[key.Kind()]++
+			stats.accumulated.kindsCount[key.Kind()]++
+			prevKey = key
+			return nil
+		},
+		func(start, end []byte, seqNum uint64) error {
+			stats.accumulated.kindsCount[InternalKeyKindRangeDelete]++
+			return nil
+		},
+		func(start, end []byte, keys []rangekey.Key) error {
+			for _, key := range keys {
+				stats.accumulated.kindsCount[key.Kind()]++
+			}
+			return nil
+		},
+		nil,
+		true,
+	)
+
+	if err != nil {
+		return LSMKeyStatistics{}, err
+	}
+
+	return stats, nil
 }
 
 // ObjProvider returns the objstorage.Provider for this database. Meant to be
