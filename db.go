@@ -1171,23 +1171,21 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 // resulting in some lower level SSTs being on non-shared storage. Skip-shared
 // iteration is invalid in those cases.
 func (d *DB) ScanInternal(
-	ctx context.Context,
-	lower, upper []byte,
-	visitPointKey func(key *InternalKey, value LazyValue) error,
-	visitRangeDel func(start, end []byte, seqNum uint64) error,
-	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
-	visitSharedFile func(sst *SharedSSTMeta) error,
+	ctx context.Context, lower, upper []byte, scanInternalOpts scanInternalIterOptions,
 ) error {
-	iter := d.newInternalIter(nil /* snapshot */, &scanInternalOptions{
-		IterOptions: IterOptions{
-			KeyTypes:   IterKeyTypePointsAndRanges,
-			LowerBound: lower,
-			UpperBound: upper,
-		},
-		skipSharedLevels: visitSharedFile != nil,
-	})
+	scanInternalOpts.skipSharedLevels = scanInternalOpts.visitSharedFile != nil
+	scanInternalOpts.IterOptions = IterOptions{
+		KeyTypes:   IterKeyTypePointsAndRanges,
+		LowerBound: lower,
+		UpperBound: upper,
+	}
+	iter := d.newInternalIter(nil /* snapshot */, &scanInternalOpts)
 	defer iter.close()
-	return scanInternalImpl(ctx, lower, upper, iter, visitPointKey, visitRangeDel, visitRangeKey, visitSharedFile)
+	return scanInternalImpl(ctx, lower, upper, iter,
+		scanInternalOpts.visitPointKey,
+		scanInternalOpts.visitRangeDel,
+		scanInternalOpts.visitRangeKey,
+		scanInternalOpts.visitSharedFile)
 }
 
 // newInternalIter constructs and returns a new scanInternalIterator on this db.
@@ -1197,7 +1195,7 @@ func (d *DB) ScanInternal(
 // TODO(bilal): This method has a lot of similarities with db.newIter as well as
 // finishInitializingIter. Both pairs of methods should be refactored to reduce
 // this duplication.
-func (d *DB) newInternalIter(s *Snapshot, o *scanInternalOptions) *scanInternalIterator {
+func (d *DB) newInternalIter(s *Snapshot, o *scanInternalIterOptions) *scanInternalIterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1226,6 +1224,7 @@ func (d *DB) newInternalIter(s *Snapshot, o *scanInternalOptions) *scanInternalI
 		newIters:        d.newIters,
 		newIterRangeKey: d.tableNewRangeKeyIter,
 		seqNum:          seqNum,
+		mergingIter:     &buf.merging,
 	}
 	if o != nil {
 		dbi.opts = *o
@@ -1988,7 +1987,6 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			if opt.start != nil && opt.end != nil && !m.Overlaps(d.opts.Comparer.Compare, opt.start, opt.end, true /* exclusive end */) {
 				continue
 			}
-
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
 				p, err := d.tableCache.getTableProperties(
@@ -2571,6 +2569,67 @@ func (d *DB) SetCreatorID(creatorID uint64) error {
 		return nil
 	}
 	return d.objProvider.SetCreatorID(objstorage.CreatorID(creatorID))
+}
+
+// KeyStatistics keeps track of the number of keys that have been pinned by a
+// snapshot as well as counts of the different key kinds in the lsm.
+type KeyStatistics struct {
+	// snapshotPinnedKeys represents the number of duplicate keys per sstable.
+	// This occurs when a compaction tries to compact ta key but can't due to it being pinned by an open snapshot.
+	snapshotPinnedKeys int
+	// the total number of bytes of all snapshot pinned keys.
+	snapshotPinnedKeysBytes uint64
+	kindsCount              [InternalKeyKindMax + 1]int
+}
+
+// LSMKeyStatistics is used by DB.ScanStatistics.
+type LSMKeyStatistics struct {
+	accumulated KeyStatistics
+	levels      [numLevels]KeyStatistics
+}
+
+// ScanStatistics returns the count of different key kinds within the lsm for a
+// key span [lower, upper) as well as the number of snapshot keys.
+func (d *DB) ScanStatistics(ctx context.Context, lower, upper []byte) (LSMKeyStatistics, error) {
+	stats := LSMKeyStatistics{}
+	var prevKey *InternalKey
+
+	err := d.ScanInternal(ctx, lower, upper, scanInternalIterOptions{
+		visitPointKey: func(key *InternalKey, value LazyValue, iterInfo iterInfo) error {
+			if iterInfo.level == -1 {
+				return nil
+			}
+			// If the previous key is equal to the current point key, the current key was
+			// pinned by a snapshot.
+			if prevKey != nil && d.cmp(prevKey.UserKey, key.UserKey) == 0 {
+				stats.levels[iterInfo.level].snapshotPinnedKeys++
+				stats.levels[iterInfo.level].snapshotPinnedKeysBytes += uint64(key.Size())
+				stats.accumulated.snapshotPinnedKeys++
+				stats.accumulated.snapshotPinnedKeysBytes += uint64(key.Size())
+			}
+			stats.levels[iterInfo.level].kindsCount[key.Kind()]++
+			stats.accumulated.kindsCount[key.Kind()]++
+			prevKey = key
+			return nil
+		},
+		visitRangeDel: func(start, end []byte, seqNum uint64) error {
+			stats.accumulated.kindsCount[InternalKeyKindRangeDelete]++
+			return nil
+		},
+		visitRangeKey: func(start, end []byte, keys []rangekey.Key) error {
+			for _, key := range keys {
+				stats.accumulated.kindsCount[key.Kind()]++
+			}
+			return nil
+		},
+		includeObsoleteKeys: true,
+	})
+
+	if err != nil {
+		return LSMKeyStatistics{}, err
+	}
+
+	return stats, nil
 }
 
 // ObjProvider returns the objstorage.Provider for this database. Meant to be
