@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -243,12 +244,29 @@ func (o *IterOptions) SpanIterOptions(level manifest.Level) keyspan.SpanIterOpti
 
 // scanInternalOptions is similar to IterOptions, meant for use with
 // scanInternalIterator.
-type scanInternalOptions struct {
+type scanInternalIterOptions struct {
 	IterOptions
+
+	visitPointKey   func(key *InternalKey, value LazyValue) error
+	visitRangeDel   func(start, end []byte, seqNum uint64) error
+	visitRangeKey   func(start, end []byte, keys []rangekey.Key) error
+	visitSharedFile func(sst *SharedSSTMeta) error
 
 	// skipSharedLevels skips levels that are shareable (level >=
 	// sharedLevelStart).
 	skipSharedLevels bool
+
+	// includeObsoleteKeys when False indicates that a pointCollapsingIter will be
+	// used.
+	includeObsoleteKeys bool
+
+	// restrictToLevel indicates whether ScanInternal should run on a single level.
+	// Note: memtables are also skipped when restrictToLevel is enabled.
+	// This setting should be used with the level option.
+	restrictToLevel bool
+
+	// level indicates the level which should be iterated on during ScanInternal.
+	level int
 }
 
 // RangeKeyMasking configures automatic hiding of point keys by range keys. A

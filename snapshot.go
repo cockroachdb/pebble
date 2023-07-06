@@ -8,8 +8,6 @@ import (
 	"context"
 	"io"
 	"math"
-
-	"github.com/cockroachdb/pebble/rangekey"
 )
 
 // Snapshot provides a read-only point-in-time view of the DB state.
@@ -64,27 +62,22 @@ func (s *Snapshot) NewIterWithContext(ctx context.Context, o *IterOptions) *Iter
 // See comment on db.ScanInternal for the behaviour that can be expected of
 // point keys deleted by range dels and keys masked by range keys.
 func (s *Snapshot) ScanInternal(
-	ctx context.Context,
-	lower, upper []byte,
-	visitPointKey func(key *InternalKey, value LazyValue) error,
-	visitRangeDel func(start, end []byte, seqNum uint64) error,
-	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
-	visitSharedFile func(sst *SharedSSTMeta) error,
+	ctx context.Context, lower, upper []byte, scanInternalOpts scanInternalIterOptions,
 ) error {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
-	iter := s.db.newInternalIter(s, &scanInternalOptions{
-		IterOptions: IterOptions{
-			KeyTypes:   IterKeyTypePointsAndRanges,
-			LowerBound: lower,
-			UpperBound: upper,
-		},
-		skipSharedLevels: visitSharedFile != nil,
-	})
+	scanInternalOpts.skipSharedLevels = scanInternalOpts.visitSharedFile != nil
+	scanInternalOpts.IterOptions = IterOptions{
+		KeyTypes:   IterKeyTypePointsAndRanges,
+		LowerBound: lower,
+		UpperBound: upper,
+	}
+
+	iter := s.db.newInternalIter(s, &scanInternalOpts)
 	defer iter.close()
 
-	return scanInternalImpl(ctx, lower, upper, iter, visitPointKey, visitRangeDel, visitRangeKey, visitSharedFile)
+	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts.visitPointKey, scanInternalOpts.visitRangeDel, scanInternalOpts.visitRangeKey, scanInternalOpts.visitSharedFile)
 }
 
 // Close closes the snapshot, releasing its resources. Close must be called.
