@@ -249,6 +249,15 @@ type scanInternalOptions struct {
 	// skipSharedLevels skips levels that are shareable (level >=
 	// sharedLevelStart).
 	skipSharedLevels bool
+
+	// includeObsoleteKeys uses a keyspan.InterleavingIter instead of a
+	// pointCollapsingIter ensuring that obsolete keys are included during
+	// iteration.
+	includeObsoleteKeys bool
+
+	// level, when not nil, causes the iterator to skip all other levels
+	// (including memtables) during iteration.
+	level *int
 }
 
 // RangeKeyMasking configures automatic hiding of point keys by range keys. A

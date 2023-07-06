@@ -25,6 +25,175 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestScanStatistics(t *testing.T) {
+	var d *DB
+	type scanInternalReader interface {
+		ScanStatistics(
+			lower, upper []byte,
+		) (*LsmKeyStatistics, error)
+	}
+	batches := map[string]*Batch{}
+	snaps := map[string]*Snapshot{}
+
+	getOpts := func() *Options {
+		opts := &Options{
+			FS:                 vfs.NewMem(),
+			Logger:             testLogger{t: t},
+			Comparer:           testkeys.Comparer,
+			FormatMajorVersion: FormatRangeKeys,
+			BlockPropertyCollectors: []func() BlockPropertyCollector{
+				sstable.NewTestKeysBlockPropertyCollector,
+			},
+		}
+		opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+			"": shared.NewInMem(),
+		})
+		opts.Experimental.CreateOnShared = true
+		opts.Experimental.CreateOnSharedLocator = ""
+		opts.DisableAutomaticCompactions = true
+		opts.EnsureDefaults()
+		opts.WithFSDefaults()
+		return opts
+	}
+	cleanup := func() (err error) {
+		for key, batch := range batches {
+			err = firstError(err, batch.Close())
+			delete(batches, key)
+		}
+		for key, snap := range snaps {
+			err = firstError(err, snap.Close())
+			delete(snaps, key)
+		}
+		if d != nil {
+			err = firstError(err, d.Close())
+			d = nil
+		}
+		return err
+	}
+	defer cleanup()
+
+	datadriven.RunTest(t, "testdata/scan_statistics", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			if err := cleanup(); err != nil {
+				t.Fatal(err)
+				return err.Error()
+			}
+			var err error
+			d, err = Open("", getOpts())
+			require.NoError(t, err)
+			require.NoError(t, d.SetCreatorID(1))
+			return ""
+		case "snapshot":
+			s := d.NewSnapshot()
+			var name string
+			td.ScanArgs(t, "name", &name)
+			snaps[name] = s
+			return ""
+		case "batch":
+			var name string
+			td.MaybeScanArgs(t, "name", &name)
+			commit := td.HasArg("commit")
+			b := d.NewIndexedBatch()
+			require.NoError(t, runBatchDefineCmd(td, b))
+			var err error
+			if commit {
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							err = errors.New(r.(string))
+						}
+					}()
+					err = b.Commit(nil)
+				}()
+			} else if name != "" {
+				batches[name] = b
+			}
+			if err != nil {
+				return err.Error()
+			}
+			count := b.Count()
+			if commit {
+				return fmt.Sprintf("committed %d keys\n", count)
+			}
+			return fmt.Sprintf("wrote %d keys to batch %q\n", count, name)
+		case "compact":
+			if err := runCompactCmd(td, d); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+		case "flush":
+			err := d.Flush()
+			if err != nil {
+				return err.Error()
+			}
+			return ""
+		case "commit":
+			name := pluckStringCmdArg(td, "batch")
+			b := batches[name]
+			defer b.Close()
+			count := b.Count()
+			require.NoError(t, d.Apply(b, nil))
+			delete(batches, name)
+			return fmt.Sprintf("committed %d keys\n", count)
+		case "scan-statistics":
+			var lower, upper []byte
+			var reader scanInternalReader = d
+			var b strings.Builder
+			var showCompactionPinned = false
+			var showKeyKinds []string
+			var showLevels []string
+
+			for _, arg := range td.CmdArgs {
+				switch arg.Key {
+				case "lower":
+					lower = []byte(arg.Vals[0])
+				case "upper":
+					upper = []byte(arg.Vals[0])
+				case "show-compaction-pinned":
+					showCompactionPinned = true
+				case "keys":
+					showKeyKinds = append(showKeyKinds, arg.Vals...)
+				case "levels":
+					showLevels = append(showLevels, arg.Vals...)
+				default:
+					showKeyKinds = append(showKeyKinds, arg.Key)
+				}
+			}
+			stats, err := reader.ScanStatistics(lower, upper)
+			if err != nil {
+				return err.Error()
+			}
+
+			for _, level := range showLevels {
+				lvl, err := strconv.Atoi(level)
+				if err != nil || lvl >= numLevels {
+					return fmt.Sprintf("invalid level %s", level)
+				}
+
+				fmt.Fprintf(&b, "Level %d:\n", lvl)
+				if showCompactionPinned {
+					fmt.Fprintf(&b, "  compaction pinned count: %d\n", stats.levels[lvl].compactionPinnedCount)
+				}
+				for _, keyKindToShow := range showKeyKinds {
+					fmt.Fprintf(&b, "  %s key count: %d\n", keyKindToShow, stats.levels[lvl].kindsCount[keyKindToShow])
+				}
+			}
+
+			fmt.Fprintf(&b, "Aggregate:\n")
+			if showCompactionPinned {
+				fmt.Fprintf(&b, "  compaction pinned count: %d\n", stats.accumulated.compactionPinnedCount)
+			}
+			for _, keyKindToShow := range showKeyKinds {
+				fmt.Fprintf(&b, "  %s key count: %d\n", keyKindToShow, stats.accumulated.kindsCount[keyKindToShow])
+			}
+			return b.String()
+		default:
+			return fmt.Sprintf("unknown command %q", td.Cmd)
+		}
+	})
+}
+
 func TestScanInternal(t *testing.T) {
 	var d *DB
 	type scanInternalReader interface {
@@ -33,7 +202,11 @@ func TestScanInternal(t *testing.T) {
 			lower, upper []byte, visitPointKey func(key *InternalKey, value LazyValue) error,
 			visitRangeDel func(start, end []byte, seqNum uint64) error,
 			visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
-			visitSharedFile func(sst *SharedSSTMeta) error) error
+			visitSharedFile func(sst *SharedSSTMeta) error,
+			visitKey func(key *InternalKey, value LazyValue) error,
+			level *int,
+			includeObsoleteKeys bool,
+		) error
 	}
 	batches := map[string]*Batch{}
 	snaps := map[string]*Snapshot{}
@@ -248,7 +421,7 @@ func TestScanInternal(t *testing.T) {
 				s := keyspan.Span{Start: start, End: end, Keys: keys}
 				fmt.Fprintf(&b, "%s\n", s.String())
 				return nil
-			}, fileVisitor)
+			}, fileVisitor, nil, nil, false)
 			if err != nil {
 				return err.Error()
 			}

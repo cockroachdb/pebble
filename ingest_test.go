@@ -927,7 +927,7 @@ func TestIngestShared(t *testing.T) {
 			}, func(sst *SharedSSTMeta) error {
 				sharedSSTs = append(sharedSSTs, *sst)
 				return nil
-			})
+			}, nil, nil, false)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
