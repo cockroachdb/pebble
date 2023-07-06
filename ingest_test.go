@@ -905,29 +905,34 @@ func TestIngestShared(t *testing.T) {
 			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var sharedSSTs []SharedSSTMeta
-			err = from.ScanInternal(context.TODO(), startKey, endKey, func(key *InternalKey, value LazyValue) error {
-				val, _, err := value.Value(nil)
-				require.NoError(t, err)
-				require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val))
-				return nil
-			}, func(start, end []byte, seqNum uint64) error {
-				require.NoError(t, w.DeleteRange(start, end))
-				return nil
-			}, func(start, end []byte, keys []keyspan.Key) error {
-				s := keyspan.Span{
-					Start:     start,
-					End:       end,
-					Keys:      keys,
-					KeysOrder: 0,
-				}
-				require.NoError(t, rangekey.Encode(&s, func(k base.InternalKey, v []byte) error {
-					return w.AddRangeKey(base.MakeInternalKey(k.UserKey, 0, k.Kind()), v)
-				}))
-				return nil
-			}, func(sst *SharedSSTMeta) error {
-				sharedSSTs = append(sharedSSTs, *sst)
-				return nil
-			})
+			err = from.ScanInternal(context.TODO(), startKey, endKey,
+				func(key *InternalKey, value LazyValue, _ iterInfo) error {
+					val, _, err := value.Value(nil)
+					require.NoError(t, err)
+					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val))
+					return nil
+				},
+				func(start, end []byte, seqNum uint64) error {
+					require.NoError(t, w.DeleteRange(start, end))
+					return nil
+				},
+				func(start, end []byte, keys []keyspan.Key) error {
+					s := keyspan.Span{
+						Start:     start,
+						End:       end,
+						Keys:      keys,
+						KeysOrder: 0,
+					}
+					require.NoError(t, rangekey.Encode(&s, func(k base.InternalKey, v []byte) error {
+						return w.AddRangeKey(base.MakeInternalKey(k.UserKey, 0, k.Kind()), v)
+					}))
+					return nil
+				},
+				func(sst *SharedSSTMeta) error {
+					sharedSSTs = append(sharedSSTs, *sst)
+					return nil
+				},
+				false)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 

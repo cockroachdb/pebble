@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -246,9 +247,18 @@ func (o *IterOptions) SpanIterOptions(level manifest.Level) keyspan.SpanIterOpti
 type scanInternalOptions struct {
 	IterOptions
 
+	visitPointKey   func(key *InternalKey, value LazyValue, iterInfo iterInfo) error
+	visitRangeDel   func(start, end []byte, seqNum uint64) error
+	visitRangeKey   func(start, end []byte, keys []rangekey.Key) error
+	visitSharedFile func(sst *SharedSSTMeta) error
+
 	// skipSharedLevels skips levels that are shareable (level >=
 	// sharedLevelStart).
 	skipSharedLevels bool
+
+	// includeObsoleteKeys specifies whether keys shadowed by newer internal keys
+	// are exposed. If false, only one internal key per user key is exposed.
+	includeObsoleteKeys bool
 }
 
 // RangeKeyMasking configures automatic hiding of point keys by range keys. A
