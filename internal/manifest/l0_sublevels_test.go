@@ -58,8 +58,7 @@ func readManifest(filename string) (*Version, error) {
 }
 
 func TestL0Sublevels_LargeImportL0(t *testing.T) {
-	// TODO(bilal): Fix this test.
-	t.Skip()
+	t.Skip("#2710")
 	v, err := readManifest("testdata/MANIFEST_import")
 	require.NoError(t, err)
 
