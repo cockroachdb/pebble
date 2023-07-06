@@ -185,6 +185,10 @@ type pointCollapsingIterator struct {
 	fixedSeqNum uint64
 }
 
+func (p *pointCollapsingIterator) Span() *keyspan.Span {
+	return p.iter.Span()
+}
+
 // SeekPrefixGE implements the InternalIterator interface.
 func (p *pointCollapsingIterator) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
@@ -671,6 +675,12 @@ func (p *pointCollapsingIterator) String() string {
 
 var _ internalIterator = &pointCollapsingIterator{}
 
+// This is used with scanInternalIterator to surface additional iterator-specific info where possible.
+// Note this is currently only used for point keys.
+type iterInfo struct {
+	level int
+}
+
 // scanInternalIterator is an iterator that returns all internal keys, including
 // tombstones. For instance, an InternalKeyKindDelete would be returned as an
 // InternalKeyKindDelete instead of the iterator skipping over to the next key.
@@ -684,19 +694,21 @@ var _ internalIterator = &pointCollapsingIterator{}
 // *must* return the range delete as well as the range key unset/delete that did
 // the shadowing.
 type scanInternalIterator struct {
-	opts            scanInternalOptions
+	opts            scanInternalIterOptions
 	comparer        *base.Comparer
 	merge           Merge
 	iter            internalIterator
 	readState       *readState
 	rangeKey        *iteratorRangeKeyState
-	pointKeyIter    pointCollapsingIterator
+	pointKeyIter    internalIterator
 	iterKey         *InternalKey
 	iterValue       LazyValue
 	alloc           *iterAlloc
 	newIters        tableNewIters
 	newIterRangeKey keyspan.TableNewSpanIter
 	seqNum          uint64
+	iterInfo        []iterInfo
+	mergingIter     *mergingIter
 
 	// boundsBuf holds two buffers used to store the lower and upper bounds.
 	// Whenever the InternalIterator's bounds change, the new bounds are copied
@@ -880,7 +892,7 @@ func scanInternalImpl(
 	ctx context.Context,
 	lower, upper []byte,
 	iter *scanInternalIterator,
-	visitPointKey func(key *InternalKey, value LazyValue) error,
+	visitPointKey func(key *InternalKey, value LazyValue, iterInfo iterInfo) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
@@ -932,24 +944,37 @@ func scanInternalImpl(
 		}
 	}
 
+	iterIdx := 0
+	if len(iter.mergingIter.heap.items) > 0 {
+		iterIdx = iter.mergingIter.heap.items[0].index
+	}
 	for valid := iter.seekGE(lower); valid && iter.error() == nil; valid = iter.next() {
 		key := iter.unsafeKey()
-
 		switch key.Kind() {
 		case InternalKeyKindRangeKeyDelete, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
-			span := iter.unsafeSpan()
-			if err := visitRangeKey(span.Start, span.End, span.Keys); err != nil {
-				return err
+			if visitRangeKey != nil {
+				span := iter.unsafeSpan()
+				if err := visitRangeKey(span.Start, span.End, span.Keys); err != nil {
+					return err
+				}
 			}
 		case InternalKeyKindRangeDelete:
-			rangeDel := iter.unsafeRangeDel()
-			if err := visitRangeDel(rangeDel.Start, rangeDel.End, rangeDel.LargestSeqNum()); err != nil {
-				return err
+			if visitRangeDel != nil {
+				rangeDel := iter.unsafeRangeDel()
+				if err := visitRangeDel(rangeDel.Start, rangeDel.End, rangeDel.LargestSeqNum()); err != nil {
+					return err
+				}
 			}
 		default:
-			val := iter.lazyValue()
-			if err := visitPointKey(key, val); err != nil {
-				return err
+			if visitPointKey != nil {
+				iterInfo := iter.iterInfo[iterIdx]
+				val := iter.lazyValue()
+				if err := visitPointKey(key, val, iterInfo); err != nil {
+					return err
+				}
+				if len(iter.mergingIter.heap.items) > 0 {
+					iterIdx = iter.mergingIter.heap.items[0].index
+				}
 			}
 		}
 	}
@@ -970,8 +995,10 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	numLevelIters := 0
 
 	current := i.readState.current
+
 	numMergingLevels += len(current.L0SublevelFiles)
 	numLevelIters += len(current.L0SublevelFiles)
+
 	for level := 1; level < len(current.Levels); level++ {
 		if current.Levels[level].Empty() {
 			continue
@@ -994,19 +1021,23 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	rangeDelIters := make([]keyspan.FragmentIterator, 0, numMergingLevels)
 	rangeDelLevels := make([]keyspan.LevelIter, 0, numLevelIters)
 
+	i.iterInfo = make([]iterInfo, numMergingLevels)
+	mlevelsIndex := 0
+
 	// Next are the memtables.
 	for j := len(memtables) - 1; j >= 0; j-- {
 		mem := memtables[j]
 		mlevels = append(mlevels, mergingIterLevel{
 			iter: mem.newIter(&i.opts.IterOptions),
 		})
+		i.iterInfo[mlevelsIndex] = iterInfo{level: -1}
+		mlevelsIndex++
 		if rdi := mem.newRangeDelIter(&i.opts.IterOptions); rdi != nil {
 			rangeDelIters = append(rangeDelIters, rdi)
 		}
 	}
 
 	// Next are the file levels: L0 sub-levels followed by lower levels.
-	mlevelsIndex := len(mlevels)
 	levelsIndex := len(levels)
 	mlevels = mlevels[:numMergingLevels]
 	levels = levels[:numLevelIters]
@@ -1030,12 +1061,10 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		mlevelsIndex++
 	}
 
-	// Add level iterators for the L0 sublevels, iterating from newest to
-	// oldest.
-	for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
-		addLevelIterForFiles(current.L0SublevelFiles[i].Iter(), manifest.L0Sublevel(i))
+	for j := len(current.L0SublevelFiles) - 1; j >= 0; j-- {
+		i.iterInfo[mlevelsIndex] = iterInfo{level: 0}
+		addLevelIterForFiles(current.L0SublevelFiles[j].Iter(), manifest.L0Sublevel(j))
 	}
-
 	// Add level iterators for the non-empty non-L0 levels.
 	for level := 1; level < numLevels; level++ {
 		if current.Levels[level].Empty() {
@@ -1044,18 +1073,28 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
 			continue
 		}
+		i.iterInfo[mlevelsIndex] = iterInfo{level: level}
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
+
 	buf.merging.init(&i.opts.IterOptions, &InternalIteratorStats{}, i.comparer.Compare, i.comparer.Split, mlevels...)
 	buf.merging.snapshot = i.seqNum
 	rangeDelMiter.Init(i.comparer.Compare, keyspan.VisibleTransform(i.seqNum), new(keyspan.MergingBuffers), rangeDelIters...)
-	i.pointKeyIter = pointCollapsingIterator{
-		comparer: i.comparer,
-		merge:    i.merge,
-		seqNum:   i.seqNum,
+
+	if i.opts.includeObsoleteKeys {
+		iiter := &keyspan.InterleavingIter{}
+		iiter.Init(i.comparer, &buf.merging, &rangeDelMiter, nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
+		i.pointKeyIter = iiter
+	} else {
+		pcIter := &pointCollapsingIterator{
+			comparer: i.comparer,
+			merge:    i.merge,
+			seqNum:   i.seqNum,
+		}
+		pcIter.iter.Init(i.comparer, &buf.merging, &rangeDelMiter, nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
+		i.pointKeyIter = pcIter
 	}
-	i.pointKeyIter.iter.Init(i.comparer, &buf.merging, &rangeDelMiter, nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
-	i.iter = &i.pointKeyIter
+	i.iter = i.pointKeyIter
 }
 
 // constructRangeKeyIter constructs the range-key iterator stack, populating
@@ -1142,10 +1181,14 @@ func (i *scanInternalIterator) lazyValue() LazyValue {
 	return i.iterValue
 }
 
+type spanInternalIterator interface {
+	Span() *keyspan.Span
+}
+
 // unsafeRangeDel returns a range key span. Behaviour undefined if UnsafeKey returns
 // a non-rangedel kind.
 func (i *scanInternalIterator) unsafeRangeDel() *keyspan.Span {
-	return i.pointKeyIter.iter.Span()
+	return i.pointKeyIter.(spanInternalIterator).Span()
 }
 
 // unsafeSpan returns a range key span. Behaviour undefined if UnsafeKey returns
