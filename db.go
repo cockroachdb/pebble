@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -1170,23 +1169,17 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 // resulting in some lower level SSTs being on non-shared storage. Skip-shared
 // iteration is invalid in those cases.
 func (d *DB) ScanInternal(
-	ctx context.Context,
-	lower, upper []byte,
-	visitPointKey func(key *InternalKey, value LazyValue) error,
-	visitRangeDel func(start, end []byte, seqNum uint64) error,
-	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
-	visitSharedFile func(sst *SharedSSTMeta) error,
+	ctx context.Context, lower, upper []byte, scanInternalOps scanInternalIterOptions,
 ) error {
-	iter := d.newInternalIter(nil /* snapshot */, &scanInternalOptions{
-		IterOptions: IterOptions{
-			KeyTypes:   IterKeyTypePointsAndRanges,
-			LowerBound: lower,
-			UpperBound: upper,
-		},
-		skipSharedLevels: visitSharedFile != nil,
-	})
+	scanInternalOps.skipSharedLevels = scanInternalOps.visitSharedFile != nil
+	scanInternalOps.IterOptions = IterOptions{
+		KeyTypes:   IterKeyTypePointsAndRanges,
+		LowerBound: lower,
+		UpperBound: upper,
+	}
+	iter := d.newInternalIter(nil /* snapshot */, &scanInternalOps)
 	defer iter.close()
-	return scanInternalImpl(ctx, lower, upper, iter, visitPointKey, visitRangeDel, visitRangeKey, visitSharedFile)
+	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOps.visitPointKey, scanInternalOps.visitRangeDel, scanInternalOps.visitRangeKey, scanInternalOps.visitSharedFile, scanInternalOps.visitKey)
 }
 
 // newInternalIter constructs and returns a new scanInternalIterator on this db.
@@ -1196,7 +1189,7 @@ func (d *DB) ScanInternal(
 // TODO(bilal): This method has a lot of similarities with db.newIter as well as
 // finishInitializingIter. Both pairs of methods should be refactored to reduce
 // this duplication.
-func (d *DB) newInternalIter(s *Snapshot, o *scanInternalOptions) *scanInternalIterator {
+func (d *DB) newInternalIter(s *Snapshot, o *scanInternalIterOptions) *scanInternalIterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1237,15 +1230,18 @@ func (d *DB) newInternalIter(s *Snapshot, o *scanInternalOptions) *scanInternalI
 }
 
 func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *scanInternalIterator {
-	// Short-hand.
-	memtables := i.readState.memtables
-	// We only need to read from memtables which contain sequence numbers older
-	// than seqNum. Trim off newer memtables.
-	for j := len(memtables) - 1; j >= 0; j-- {
-		if logSeqNum := memtables[j].logSeqNum; logSeqNum < i.seqNum {
-			break
+	var memtables flushableList
+	if !i.opts.restrictToLevel {
+		// Short-hand.
+		memtables = i.readState.memtables
+		// We only need to read from memtables which contain sequence numbers older
+		// than seqNum. Trim off newer memtables.
+		for j := len(memtables) - 1; j >= 0; j-- {
+			if logSeqNum := memtables[j].logSeqNum; logSeqNum < i.seqNum {
+				break
+			}
+			memtables = memtables[:j]
 		}
-		memtables = memtables[:j]
 	}
 	i.initializeBoundBufs(i.opts.LowerBound, i.opts.UpperBound)
 
@@ -1953,7 +1949,6 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			if opt.start != nil && opt.end != nil && !m.Overlaps(d.opts.Comparer.Compare, opt.start, opt.end, true /* exclusive end */) {
 				continue
 			}
-
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
 				p, err := d.tableCache.getTableProperties(
@@ -2482,6 +2477,65 @@ func (d *DB) SetCreatorID(creatorID uint64) error {
 		return nil
 	}
 	return d.objProvider.SetCreatorID(objstorage.CreatorID(creatorID))
+}
+
+// KeyStatistics keeps track of the number of keys that have been pinned by a
+// compaction as well as counts of the different key kinds in the lsm.
+type KeyStatistics struct {
+	compactionPinnedCount int
+	kindsCount            map[string]int
+}
+
+// LsmKeyStatistics is used by DB.ScanStatistics.
+type LsmKeyStatistics struct {
+	accumulated *KeyStatistics
+	levels      map[int]*KeyStatistics
+}
+
+// ScanStatistics returns the count of different key kinds within the lsm for a
+// key span [lower, upper) as well as the number of snapshot keys.
+func (d *DB) ScanStatistics(ctx context.Context, lower, upper []byte) (*LsmKeyStatistics, error) {
+	stats := &LsmKeyStatistics{}
+	stats.levels = make(map[int]*KeyStatistics)
+
+	// statistics per level
+	for lvl := 0; lvl < numLevels; lvl++ {
+		stats.levels[lvl] = &KeyStatistics{}
+		stats.levels[lvl].kindsCount = make(map[string]int)
+
+		var prevKey *InternalKey
+		err := d.ScanInternal(ctx, lower, upper, scanInternalIterOptions{
+			visitKey: func(key *InternalKey, _ LazyValue) error {
+				// If the previous key is equal to the current key, the current key was
+				// pinned by a compaction.
+				if prevKey != nil && d.cmp(prevKey.UserKey, key.UserKey) == 0 {
+					stats.levels[lvl].compactionPinnedCount++
+				}
+				stats.levels[lvl].kindsCount[key.Kind().String()]++
+				prevKey = key
+				return nil
+			},
+			includeObsoleteKeys: true,
+			restrictToLevel:     true,
+			level:               lvl,
+		})
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// statistics in aggregate across all levels
+	stats.accumulated = &KeyStatistics{}
+	stats.accumulated.kindsCount = make(map[string]int)
+	for lvl := 0; lvl < numLevels; lvl++ {
+		stats.accumulated.compactionPinnedCount += stats.levels[lvl].compactionPinnedCount
+		for kind, count := range stats.levels[lvl].kindsCount {
+			stats.accumulated.kindsCount[kind] += count
+		}
+	}
+
+	return stats, nil
 }
 
 // ObjProvider returns the objstorage.Provider for this database. Meant to be
