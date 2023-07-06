@@ -684,13 +684,13 @@ var _ internalIterator = &pointCollapsingIterator{}
 // *must* return the range delete as well as the range key unset/delete that did
 // the shadowing.
 type scanInternalIterator struct {
-	opts            scanInternalOptions
+	opts            scanInternalIterOptions
 	comparer        *base.Comparer
 	merge           Merge
 	iter            internalIterator
 	readState       *readState
 	rangeKey        *iteratorRangeKeyState
-	pointKeyIter    pointCollapsingIterator
+	pointKeyIter    internalIterator
 	iterKey         *InternalKey
 	iterValue       LazyValue
 	alloc           *iterAlloc
@@ -934,22 +934,27 @@ func scanInternalImpl(
 
 	for valid := iter.seekGE(lower); valid && iter.error() == nil; valid = iter.next() {
 		key := iter.unsafeKey()
-
 		switch key.Kind() {
 		case InternalKeyKindRangeKeyDelete, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
-			span := iter.unsafeSpan()
-			if err := visitRangeKey(span.Start, span.End, span.Keys); err != nil {
-				return err
+			if visitRangeKey != nil {
+				span := iter.unsafeSpan()
+				if err := visitRangeKey(span.Start, span.End, span.Keys); err != nil {
+					return err
+				}
 			}
 		case InternalKeyKindRangeDelete:
-			rangeDel := iter.unsafeRangeDel()
-			if err := visitRangeDel(rangeDel.Start, rangeDel.End, rangeDel.LargestSeqNum()); err != nil {
-				return err
+			if visitRangeDel != nil {
+				rangeDel := iter.unsafeRangeDel()
+				if err := visitRangeDel(rangeDel.Start, rangeDel.End, rangeDel.LargestSeqNum()); err != nil {
+					return err
+				}
 			}
 		default:
-			val := iter.lazyValue()
-			if err := visitPointKey(key, val); err != nil {
-				return err
+			if visitPointKey != nil {
+				val := iter.lazyValue()
+				if err := visitPointKey(key, val); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -970,13 +975,20 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	numLevelIters := 0
 
 	current := i.readState.current
-	numMergingLevels += len(current.L0SublevelFiles)
-	numLevelIters += len(current.L0SublevelFiles)
+
+	if !i.opts.restrictToLevel || (i.opts.restrictToLevel && i.opts.level == 0) {
+		numMergingLevels += len(current.L0SublevelFiles)
+		numLevelIters += len(current.L0SublevelFiles)
+	}
+
 	for level := 1; level < len(current.Levels); level++ {
 		if current.Levels[level].Empty() {
 			continue
 		}
 		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
+			continue
+		}
+		if i.opts.restrictToLevel && level != i.opts.level {
 			continue
 		}
 		numMergingLevels++
@@ -994,7 +1006,7 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	rangeDelIters := make([]keyspan.FragmentIterator, 0, numMergingLevels)
 	rangeDelLevels := make([]keyspan.LevelIter, 0, numLevelIters)
 
-	// Next are the memtables.
+	// Next are the memtables (will be skipped if i.opts.level is not nil).
 	for j := len(memtables) - 1; j >= 0; j-- {
 		mem := memtables[j]
 		mlevels = append(mlevels, mergingIterLevel{
@@ -1030,12 +1042,11 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		mlevelsIndex++
 	}
 
-	// Add level iterators for the L0 sublevels, iterating from newest to
-	// oldest.
-	for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
-		addLevelIterForFiles(current.L0SublevelFiles[i].Iter(), manifest.L0Sublevel(i))
+	if !i.opts.restrictToLevel || (i.opts.restrictToLevel && i.opts.level == 0) {
+		for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
+			addLevelIterForFiles(current.L0SublevelFiles[i].Iter(), manifest.L0Sublevel(i))
+		}
 	}
-
 	// Add level iterators for the non-empty non-L0 levels.
 	for level := 1; level < numLevels; level++ {
 		if current.Levels[level].Empty() {
@@ -1044,18 +1055,30 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
 			continue
 		}
+		if i.opts.restrictToLevel && level != i.opts.level {
+			continue
+		}
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
+
 	buf.merging.init(&i.opts.IterOptions, &InternalIteratorStats{}, i.comparer.Compare, i.comparer.Split, mlevels...)
 	buf.merging.snapshot = i.seqNum
 	rangeDelMiter.Init(i.comparer.Compare, keyspan.VisibleTransform(i.seqNum), new(keyspan.MergingBuffers), rangeDelIters...)
-	i.pointKeyIter = pointCollapsingIterator{
-		comparer: i.comparer,
-		merge:    i.merge,
-		seqNum:   i.seqNum,
+
+	if i.opts.includeObsoleteKeys {
+		iiter := &keyspan.InterleavingIter{}
+		iiter.Init(i.comparer, &buf.merging, &rangeDelMiter, nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
+		i.pointKeyIter = iiter
+	} else {
+		pcIter := &pointCollapsingIterator{
+			comparer: i.comparer,
+			merge:    i.merge,
+			seqNum:   i.seqNum,
+		}
+		pcIter.iter.Init(i.comparer, &buf.merging, &rangeDelMiter, nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
+		i.pointKeyIter = pcIter
 	}
-	i.pointKeyIter.iter.Init(i.comparer, &buf.merging, &rangeDelMiter, nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
-	i.iter = &i.pointKeyIter
+	i.iter = i.pointKeyIter
 }
 
 // constructRangeKeyIter constructs the range-key iterator stack, populating
@@ -1070,16 +1093,18 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 		nil /* hasPrefix */, nil /* prefix */, false, /* onlySets */
 		&i.rangeKey.rangeKeyBuffers.internal)
 
-	// Next are the flushables: memtables and large batches.
-	for j := len(i.readState.memtables) - 1; j >= 0; j-- {
-		mem := i.readState.memtables[j]
-		// We only need to read from memtables which contain sequence numbers older
-		// than seqNum.
-		if logSeqNum := mem.logSeqNum; logSeqNum >= i.seqNum {
-			continue
-		}
-		if rki := mem.newRangeKeyIter(&i.opts.IterOptions); rki != nil {
-			i.rangeKey.iterConfig.AddLevel(rki)
+	if !i.opts.restrictToLevel {
+		// Next are the flushables: memtables and large batches.
+		for j := len(i.readState.memtables) - 1; j >= 0; j-- {
+			mem := i.readState.memtables[j]
+			// We only need to read from memtables which contain sequence numbers older
+			// than seqNum.
+			if logSeqNum := mem.logSeqNum; logSeqNum >= i.seqNum {
+				continue
+			}
+			if rki := mem.newRangeKeyIter(&i.opts.IterOptions); rki != nil {
+				i.rangeKey.iterConfig.AddLevel(rki)
+			}
 		}
 	}
 
@@ -1096,14 +1121,16 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 	// LargestSeqNum ascending, and we need to add them to the merging iterator
 	// in LargestSeqNum descending to preserve the merging iterator's invariants
 	// around Key Trailer order.
-	iter := current.RangeKeyLevels[0].Iter()
-	for f := iter.Last(); f != nil; f = iter.Prev() {
-		spanIter, err := i.newIterRangeKey(f, i.opts.SpanIterOptions(manifest.Level(0)))
-		if err != nil {
-			i.rangeKey.iterConfig.AddLevel(&errorKeyspanIter{err: err})
-			continue
+	if !i.opts.restrictToLevel || (i.opts.restrictToLevel && i.opts.level == 0) {
+		iter := current.RangeKeyLevels[0].Iter()
+		for f := iter.Last(); f != nil; f = iter.Prev() {
+			spanIter, err := i.newIterRangeKey(f, i.opts.SpanIterOptions(manifest.Level(0)))
+			if err != nil {
+				i.rangeKey.iterConfig.AddLevel(&errorKeyspanIter{err: err})
+				continue
+			}
+			i.rangeKey.iterConfig.AddLevel(spanIter)
 		}
-		i.rangeKey.iterConfig.AddLevel(spanIter)
 	}
 
 	// Add level iterators for the non-empty non-L0 levels.
@@ -1112,6 +1139,9 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 			continue
 		}
 		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
+			continue
+		}
+		if i.opts.restrictToLevel && level != i.opts.level {
 			continue
 		}
 		li := i.rangeKey.iterConfig.NewLevelIter()
@@ -1145,7 +1175,10 @@ func (i *scanInternalIterator) lazyValue() LazyValue {
 // unsafeRangeDel returns a range key span. Behaviour undefined if UnsafeKey returns
 // a non-rangedel kind.
 func (i *scanInternalIterator) unsafeRangeDel() *keyspan.Span {
-	return i.pointKeyIter.iter.Span()
+	if !i.opts.includeObsoleteKeys {
+		return i.pointKeyIter.(*pointCollapsingIterator).iter.Span()
+	}
+	return nil
 }
 
 // unsafeSpan returns a range key span. Behaviour undefined if UnsafeKey returns
