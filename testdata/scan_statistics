@@ -8,10 +8,17 @@ set e foo
 ----
 committed 2 keys
 
+<<<<<<< HEAD
 scan-statistics lower=b upper=f keys=(SET)
 ----
 Aggregate:
   SET key count: 2
+=======
+scan-statistics lower=b upper=e keys=(SET)
+----
+Aggregate:
+  SET key count: 0
+>>>>>>> ba2f425f (pebble: Collect Pebble Key Statistics)
 
 flush
 ----

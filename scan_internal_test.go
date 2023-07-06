@@ -413,7 +413,11 @@ func TestScanInternal(t *testing.T) {
 				}
 			}
 			err := reader.ScanInternal(context.TODO(), lower, upper,
+<<<<<<< HEAD
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
+=======
+				func(key *InternalKey, value LazyValue, _ iterInfo) error {
+>>>>>>> ba2f425f (pebble: Collect Pebble Key Statistics)
 					v := value.InPlaceValue()
 					fmt.Fprintf(&b, "%s (%s)\n", key, v)
 					return nil

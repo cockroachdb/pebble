@@ -354,6 +354,7 @@ func (p *pointCollapsingIterator) String() string {
 
 var _ internalIterator = &pointCollapsingIterator{}
 
+<<<<<<< HEAD
 type iteratorLevelKind int8
 
 const (
@@ -373,6 +374,14 @@ type IteratorLevel struct {
 	Level int
 	// Sublevel is only valid if kind == iteratorLevelLSM and Level == 0.
 	Sublevel int
+=======
+// This is used with scanInternalIterator to surface additional iterator-specific info where possible.
+// Note: this is struct is only provided for point keys.
+type iterInfo struct {
+	// level indicates the level of point key called with visitPointKey (level == -1 indicates an invalid level).
+	// Note: level may be inaccurate if scanInternalOptions.includeObsoleteKeys is False.
+	level int
+>>>>>>> ba2f425f (pebble: Collect Pebble Key Statistics)
 }
 
 // scanInternalIterator is an iterator that returns all internal keys, including
@@ -401,7 +410,11 @@ type scanInternalIterator struct {
 	newIters        tableNewIters
 	newIterRangeKey keyspan.TableNewSpanIter
 	seqNum          uint64
+<<<<<<< HEAD
 	iterLevels      []IteratorLevel
+=======
+	iterInfo        []iterInfo
+>>>>>>> ba2f425f (pebble: Collect Pebble Key Statistics)
 	mergingIter     *mergingIter
 
 	// boundsBuf holds two buffers used to store the lower and upper bounds.
@@ -651,12 +664,24 @@ func scanInternalImpl(
 			}
 		default:
 			if opts.visitPointKey != nil {
+<<<<<<< HEAD
 				var info IteratorLevel
 				if len(iter.mergingIter.heap.items) > 0 {
 					mergingIterIdx := iter.mergingIter.heap.items[0].index
 					info = iter.iterLevels[mergingIterIdx]
 				} else {
 					info = IteratorLevel{kind: iteratorLevelUnknown}
+=======
+				var info iterInfo
+				if len(iter.mergingIter.heap.items) > 0 {
+					mergingIterIdx := iter.mergingIter.heap.items[0].index
+					info = iter.iterInfo[mergingIterIdx]
+				} else {
+					// Point key does not have a valid level (mergingIter heap is empty).
+					info = iterInfo{
+						level: -1,
+					}
+>>>>>>> ba2f425f (pebble: Collect Pebble Key Statistics)
 				}
 				val := iter.lazyValue()
 				if err := opts.visitPointKey(key, val, info); err != nil {
@@ -708,7 +733,11 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	rangeDelIters := make([]keyspan.FragmentIterator, 0, numMergingLevels)
 	rangeDelLevels := make([]keyspan.LevelIter, 0, numLevelIters)
 
+<<<<<<< HEAD
 	i.iterLevels = make([]IteratorLevel, numMergingLevels)
+=======
+	i.iterInfo = make([]iterInfo, numMergingLevels)
+>>>>>>> ba2f425f (pebble: Collect Pebble Key Statistics)
 	mlevelsIndex := 0
 
 	// Next are the memtables.
@@ -717,10 +746,14 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		mlevels = append(mlevels, mergingIterLevel{
 			iter: mem.newIter(&i.opts.IterOptions),
 		})
+<<<<<<< HEAD
 		i.iterLevels[mlevelsIndex] = IteratorLevel{
 			kind:           iteratorLevelFlushable,
 			FlushableIndex: j,
 		}
+=======
+		i.iterInfo[mlevelsIndex] = iterInfo{level: -1}
+>>>>>>> ba2f425f (pebble: Collect Pebble Key Statistics)
 		mlevelsIndex++
 		if rdi := mem.newRangeDelIter(&i.opts.IterOptions); rdi != nil {
 			rangeDelIters = append(rangeDelIters, rdi)
@@ -752,11 +785,15 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	}
 
 	for j := len(current.L0SublevelFiles) - 1; j >= 0; j-- {
+<<<<<<< HEAD
 		i.iterLevels[mlevelsIndex] = IteratorLevel{
 			kind:     iteratorLevelLSM,
 			Level:    0,
 			Sublevel: j,
 		}
+=======
+		i.iterInfo[mlevelsIndex] = iterInfo{level: 0}
+>>>>>>> ba2f425f (pebble: Collect Pebble Key Statistics)
 		addLevelIterForFiles(current.L0SublevelFiles[j].Iter(), manifest.L0Sublevel(j))
 	}
 	// Add level iterators for the non-empty non-L0 levels.
@@ -767,7 +804,11 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
 			continue
 		}
+<<<<<<< HEAD
 		i.iterLevels[mlevelsIndex] = IteratorLevel{kind: iteratorLevelLSM, Level: level}
+=======
+		i.iterInfo[mlevelsIndex] = iterInfo{level: level}
+>>>>>>> ba2f425f (pebble: Collect Pebble Key Statistics)
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
 
