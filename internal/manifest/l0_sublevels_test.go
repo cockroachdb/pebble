@@ -57,56 +57,6 @@ func readManifest(filename string) (*Version, error) {
 	return v, nil
 }
 
-func TestL0Sublevels_LargeImportL0(t *testing.T) {
-	t.Skip("#2710")
-	v, err := readManifest("testdata/MANIFEST_import")
-	require.NoError(t, err)
-
-	sublevels, err := NewL0Sublevels(&v.Levels[0],
-		base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
-	require.NoError(t, err)
-	fmt.Printf("L0Sublevels:\n%s\n\n", sublevels)
-
-	for i := 0; ; i++ {
-		c, err := sublevels.PickBaseCompaction(2, LevelSlice{})
-		require.NoError(t, err)
-		if c == nil {
-			break
-		}
-		fmt.Printf("%d: base compaction: filecount: %d, bytes: %d, interval: [%d, %d], seed depth: %d\n",
-			i, len(c.Files), c.fileBytes, c.minIntervalIndex, c.maxIntervalIndex, c.seedIntervalStackDepthReduction)
-		var files []*FileMetadata
-		for i := range c.Files {
-			if c.FilesIncluded[i] {
-				c.Files[i].CompactionState = CompactionStateCompacting
-				files = append(files, c.Files[i])
-			}
-		}
-		require.NoError(t, sublevels.UpdateStateForStartedCompaction(
-			[]LevelSlice{NewLevelSliceSeqSorted(files)}, true))
-	}
-
-	for i := 0; ; i++ {
-		c, err := sublevels.PickIntraL0Compaction(math.MaxUint64, 2)
-		require.NoError(t, err)
-		if c == nil {
-			break
-		}
-		fmt.Printf("%d: intra-L0 compaction: filecount: %d, bytes: %d, interval: [%d, %d], seed depth: %d\n",
-			i, len(c.Files), c.fileBytes, c.minIntervalIndex, c.maxIntervalIndex, c.seedIntervalStackDepthReduction)
-		var files []*FileMetadata
-		for i := range c.Files {
-			if c.FilesIncluded[i] {
-				c.Files[i].CompactionState = CompactionStateCompacting
-				c.Files[i].IsIntraL0Compacting = true
-				files = append(files, c.Files[i])
-			}
-		}
-		require.NoError(t, sublevels.UpdateStateForStartedCompaction(
-			[]LevelSlice{NewLevelSliceSeqSorted(files)}, false))
-	}
-}
-
 func visualizeSublevels(
 	s *L0Sublevels, compactionFiles bitSet, otherLevels [][]*FileMetadata,
 ) string {
