@@ -3271,10 +3271,7 @@ func (d *DB) runCompaction(
 					return nil, pendingOutputs, stats, err
 				}
 			}
-			// iter.snapshotPinned is broader than whether the point was covered by
-			// a RANGEDEL, but it is harmless to pass true when the callee will also
-			// independently discover that the point is obsolete.
-			if err := tw.AddWithForceObsolete(*key, val, iter.snapshotPinned); err != nil {
+			if err := tw.AddWithForceObsolete(*key, val, iter.forceObsoleteDueToRangeDel); err != nil {
 				return nil, pendingOutputs, stats, err
 			}
 			if iter.snapshotPinned {

@@ -162,8 +162,14 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 				g.levelIter.init(context.Background(), iterOpts, g.cmp, nil /* split */, g.newIters,
 					files, manifest.L0Sublevel(n), internalIterOpts{})
 				g.levelIter.initRangeDel(&g.rangeDelIter)
+				bc := levelIterBoundaryContext{}
+				g.levelIter.initBoundaryContext(&bc)
 				g.iter = &g.levelIter
 				g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
+				if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
+					g.iterKey = nil
+					g.iterValue = base.LazyValue{}
+				}
 				continue
 			}
 			g.level++
@@ -181,9 +187,15 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		g.levelIter.init(context.Background(), iterOpts, g.cmp, nil /* split */, g.newIters,
 			g.version.Levels[g.level].Iter(), manifest.Level(g.level), internalIterOpts{})
 		g.levelIter.initRangeDel(&g.rangeDelIter)
+		bc := levelIterBoundaryContext{}
+		g.levelIter.initBoundaryContext(&bc)
 		g.level++
 		g.iter = &g.levelIter
 		g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
+		if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
+			g.iterKey = nil
+			g.iterValue = base.LazyValue{}
+		}
 	}
 }
 
