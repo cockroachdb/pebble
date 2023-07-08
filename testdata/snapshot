@@ -149,3 +149,32 @@ prev
 a:123
 .
 a:123
+
+# Fix for #2705. levelIter encounters two files where the first has seqnum
+# below snapshot seqnum, so obsolete points can be hidden. The second file has
+# a more recent seqnum so obsolete points cannot be hidden. But if levelIter
+# does not reset the mutation to PointKeyFilters, the obsolete block property
+# filter will be incorrectly applied to the second file.
+define block-size=1
+set a 1
+compact a-b
+set c 2
+snapshot 1
+set c 3
+compact c-d
+----
+
+db-state
+----
+6:
+  000005:[a#10,SET-a#10,SET]
+  000007:[c#12,SET-c#11,SET]
+
+iter snapshot=1
+first
+next
+next
+----
+a:1
+c:2
+.

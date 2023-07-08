@@ -852,32 +852,32 @@ func (w *Writer) makeAddPointDecisionV3(
 	} else {
 		cmpUser = w.compare(prevPointUserKey, key.UserKey)
 	}
-	keyKindIsSetOrMerge := keyKind == InternalKeyKindSet || keyKind == InternalKeyKindSetWithDelete ||
-		keyKind == InternalKeyKindMerge
-	keyKindIsPointDelete := keyKind == InternalKeyKindDelete ||
-		keyKind == InternalKeyKindSingleDelete || keyKind == InternalKeyKindDeleteSized
-	if !keyKindIsSetOrMerge && !keyKindIsPointDelete {
+	if !(keyKind == InternalKeyKindSet || keyKind == InternalKeyKindSetWithDelete ||
+		keyKind == InternalKeyKindMerge || keyKind == InternalKeyKindDelete ||
+		keyKind == InternalKeyKindSingleDelete || keyKind == InternalKeyKindDeleteSized) {
 		panic(errors.AssertionFailedf("unexpected key kind %s", keyKind.String()))
 	}
 	// If same user key, then the current key is obsolete if any of the
 	// following is true:
 	// C1 The prev key was obsolete.
-	// C2 The prev key was not a MERGE
-	// C3 The current key is not a SET or SETWITHDELETE or MERGE, then it is
-	//    obsolete. This rule excludes SET, SETWITHDELETE, MERGE, since they
-	//    will be merged with the previous key.
+	// C2 The prev key was not a MERGE. When the previous key is a MERGE we must
+	//    preserve SET* and MERGE since their values will be merged into the
+	//    previous key. We also must preserve DEL* since there may be an older
+	//    SET*/MERGE in a lower level that must not be merged with the MERGE --
+	//    if we omit the DEL* that lower SET*/MERGE will become visible.
 	//
 	// Regardless of whether it is the same user key or not
-	// C4 The current key is some kind of point delete, and we are writing to
-	//    the lowest level, then it is also obsolete.
+	// C3 The current key is some kind of point delete, and we are writing to
+	//    the lowest level, then it is also obsolete. The correctness of this
+	//    relies on the same user key not spanning multiple sstables in a level.
 	//
 	// C1 ensures that for a user key there is at most one transition from
 	// !obsolete to obsolete. Consider a user key k, for which the first n keys
 	// are not obsolete. We consider the various value of n:
 	//
 	// n = 0: This happens due to forceObsolete being set by the caller, or due
-	// to C4. forceObsolete must only be set due a RANGEDEL, and that RANGEDEL
-	// must also delete all the lower seqnums for the same user key. C4 triggers
+	// to C3. forceObsolete must only be set due a RANGEDEL, and that RANGEDEL
+	// must also delete all the lower seqnums for the same user key. C3 triggers
 	// due to a point delete and that deletes all the lower seqnums for the same
 	// user key.
 	//
@@ -885,9 +885,9 @@ func (w *Writer) makeAddPointDecisionV3(
 	// MERGE, or the current key is some kind of point delete.
 	//
 	// n > 1: This is due to a sequence of MERGE keys, potentially followed by a
-	// single SET or SETWITHDELETE.
+	// single non-MERGE key.
 	isObsolete = (cmpUser == 0 &&
-		(prevKeyKind != InternalKeyKindMerge || prevPointKeyInfo.isObsolete || !keyKindIsSetOrMerge)) ||
+		(prevKeyKind != InternalKeyKindMerge || prevPointKeyInfo.isObsolete)) ||
 		(w.writingToLowestLevel &&
 			(keyKind == InternalKeyKindDelete || keyKind == InternalKeyKindSingleDelete ||
 				keyKind == InternalKeyKindDeleteSized))
@@ -942,8 +942,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte, forceObsolete bool) err
 	if err != nil {
 		return err
 	}
-	// Temporarily disable `isObsolete`.
-	isObsolete = false && w.tableFormat >= TableFormatPebblev4 && (isObsolete || forceObsolete)
+	isObsolete = w.tableFormat >= TableFormatPebblev4 && (isObsolete || forceObsolete)
 	w.lastPointKeyInfo.isObsolete = isObsolete
 	var valueStoredWithKey []byte
 	var prefix valuePrefix

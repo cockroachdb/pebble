@@ -146,15 +146,15 @@ a#3,1:bcd[base]
 b#2,2:ab
 .
 
-iter snapshots=3
+iter snapshots=3 print-snapshot-pinned print-force-obsolete
 first
 next
 next
 next
 ----
-a#3,2:d
-a#2,1:bc[base]
-b#2,2:ab
+a#3,2:d (not pinned) (not force obsolete)
+a#2,1:bc[base] (pinned) (not force obsolete)
+b#2,2:ab (not pinned) (not force obsolete)
 .
 
 define
@@ -282,15 +282,15 @@ a.MERGE.1:c
 a.MERGE.0:d
 ----
 
-iter snapshots=(1,2)
+iter snapshots=(1,2) print-snapshot-pinned print-force-obsolete
 first
 next
 next
 next
 ----
-a#2,2:b
-a#1,2:c
-a#0,2:d
+a#2,2:b (not pinned) (not force obsolete)
+a#1,2:c (pinned) (not force obsolete)
+a#0,2:d (pinned) (not force obsolete)
 .
 
 define
@@ -334,7 +334,7 @@ b-c#1
 c-d#4
 .
 
-iter snapshots=3
+iter snapshots=3 print-snapshot-pinned print-force-obsolete
 first
 next
 next
@@ -342,10 +342,10 @@ next
 next
 tombstones
 ----
-a#2,18:b
-a#1,15:c
-b#4,15:d
-b#2,1:e
+a#2,18:b (not pinned) (not force obsolete)
+a#1,15:c (not pinned) (not force obsolete)
+b#4,15:d (not pinned) (not force obsolete)
+b#2,1:e (pinned) (force obsolete)
 .
 a-b#1
 b-c#4
@@ -353,7 +353,7 @@ b-c#1
 c-d#4
 .
 
-iter snapshots=4
+iter snapshots=4 print-snapshot-pinned print-force-obsolete
 first
 next
 next
@@ -362,11 +362,11 @@ next
 next
 tombstones
 ----
-a#2,18:b
-a#1,15:c
-b#4,15:d
-b#2,1:e
-c#3,1:f
+a#2,18:b (not pinned) (not force obsolete)
+a#1,15:c (not pinned) (not force obsolete)
+b#4,15:d (not pinned) (not force obsolete)
+b#2,1:e (pinned) (force obsolete)
+c#3,1:f (pinned) (force obsolete)
 .
 a-b#1
 b-c#4
@@ -544,18 +544,18 @@ f.SET.9:f
 f.SET.8:f
 ----
 
-iter snapshots=(9,10)
+iter snapshots=(9,10) print-snapshot-pinned print-force-obsolete
 first
 next
 tombstones f
 next
 tombstones
 ----
-a#10,15:k
-f#9,1:f
+a#10,15:k (not pinned) (not force obsolete)
+f#9,1:f (pinned) (force obsolete)
 a-f#10
 .
-f#8,1:f
+f#8,1:f (pinned) (force obsolete)
 f-k#10
 .
 

@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"reflect"
 	"runtime"
 	"strings"
@@ -60,15 +61,29 @@ func TestSnapshot(t *testing.T) {
 	}
 	defer close()
 
+	randVersion := func() FormatMajorVersion {
+		minVersion := FormatUnusedPrePebblev1MarkedCompacted
+		return FormatMajorVersion(int(minVersion) + rand.Intn(
+			int(internalFormatNewest)-int(minVersion)+1))
+	}
 	datadriven.RunTest(t, "testdata/snapshot", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			close()
 
 			var err error
-			d, err = Open("", &Options{
-				FS: vfs.NewMem(),
-			})
+			options := &Options{
+				FS:                 vfs.NewMem(),
+				FormatMajorVersion: randVersion(),
+			}
+			if td.HasArg("block-size") {
+				var blockSize int
+				td.ScanArgs(t, "block-size", &blockSize)
+				options.Levels = make([]LevelOptions, 1)
+				options.Levels[0].BlockSize = blockSize
+				options.Levels[0].IndexBlockSize = blockSize
+			}
+			d, err = Open("", options)
 			if err != nil {
 				return err.Error()
 			}
@@ -118,6 +133,12 @@ func TestSnapshot(t *testing.T) {
 				}
 			}
 			return ""
+
+		case "db-state":
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
 
 		case "iter":
 			var iter *Iterator

@@ -207,14 +207,6 @@ type compactionIter struct {
 	// its elision. This field only applies to point keys, and not to range
 	// deletions or range keys.
 	//
-	// snapshotPinned is also used to set the forceObsolete value in the call to
-	// Writer.AddWithForceObsolete. Note that in that call, it is sufficient to
-	// mark all keys obsoleted by RANGEDELs as forceObsolete=true and that the
-	// implementation of Writer.AddWithForceObsolete will itself discover other
-	// causes of obsolescence. We mention this since in the presence of MERGE,
-	// obsolescence due to multiple keys at the same user key is not fully
-	// represented by snapshotPinned=true:
-	//
 	// For MERGE, it is possible that doing the merge is interrupted even when
 	// the next point key is in the same stripe. This can happen if the loop in
 	// mergeNext gets interrupted by sameStripeNonSkippable.
@@ -222,6 +214,21 @@ type compactionIter struct {
 	// SET/MERGE/DEL with the same seqnum, so the RANGEDEL does not necessarily
 	// delete the subsequent SET/MERGE/DEL keys.
 	snapshotPinned bool
+	// forceObsoleteDueToRangeDel is set to true in a subset of the cases that
+	// snapshotPinned is true. This value is true when the point is obsolete due
+	// to a RANGEDEL but could not be deleted due to a snapshot.
+	//
+	// NB: it may seem that the additional cases that snapshotPinned captures
+	// are harmless in that they can also be used to mark a point as obsolete
+	// (it is merely a duplication of some logic that happens in
+	// Writer.AddWithForceObsolete), but that is not quite accurate as of this
+	// writing -- snapshotPinned originated in stats collection and for a
+	// sequence MERGE, SET, where the MERGE cannot merge with the (older) SET
+	// due to a snapshot, the snapshotPinned value for the SET is true.
+	//
+	// TODO(sumeer,jackson): improve the logic of snapshotPinned and reconsider
+	// whether we need forceObsoleteDueToRangeDel.
+	forceObsoleteDueToRangeDel bool
 	// The index of the snapshot for the current key within the snapshots slice.
 	curSnapshotIdx    int
 	curSnapshotSeqNum uint64
@@ -410,6 +417,9 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			// key is in the same snapshot stripe. Hence, snapshotPinned is by
 			// definition false in those cases.
 			i.snapshotPinned = true
+			i.forceObsoleteDueToRangeDel = true
+		} else {
+			i.forceObsoleteDueToRangeDel = false
 		}
 
 		switch i.iterKey.Kind() {
