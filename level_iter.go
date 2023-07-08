@@ -19,6 +19,13 @@ import (
 // tableNewIters creates a new point and range-del iterator for the given file
 // number.
 //
+// WARNING: the callee can modify opts.PointKeyFilters by appending to it.
+// Most callers either provide a nil opts or a freshly constructed one. One
+// exception is levelIter, which reuses opts across the various files it
+// opens, and performs an undo of this appending before reuse.
+//
+// TODO(sumeer): this is error-prone -- consider alternatives.
+//
 // On success, the internalIterator is not-nil and must be closed; the
 // FragmentIterator can be nil.
 // TODO(radu): always return a non-nil FragmentIterator.
@@ -94,6 +101,12 @@ type levelIter struct {
 	// tableOpts.{Lower,Upper}Bound are nil, the corresponding iteration boundary
 	// does not lie within the table bounds.
 	tableOpts IterOptions
+	// tableOpts is reused for every file opened by this levelIter (at most one
+	// file is open at a time). Also, tableOpts is mostly not mutated by the
+	// callee when opening a file, except for appending to the PointKeyFilters
+	// slice. This length is used to restore that slice before opening another
+	// file.
+	lenPointKeyFilters int
 	// The LSM level this levelIter is initialized for.
 	level manifest.Level
 	// The keys to return when iterating past an sstable boundary and that
@@ -272,6 +285,7 @@ func (l *levelIter) init(
 	l.upper = opts.UpperBound
 	l.tableOpts.TableFilter = opts.TableFilter
 	l.tableOpts.PointKeyFilters = opts.PointKeyFilters
+	l.lenPointKeyFilters = len(opts.PointKeyFilters)
 	if len(opts.PointKeyFilters) == 0 {
 		l.tableOpts.PointKeyFilters = l.filtersBuf[:0:1]
 	}
@@ -675,6 +689,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
+		l.tableOpts.PointKeyFilters = l.tableOpts.PointKeyFilters[:l.lenPointKeyFilters]
 		iter, rangeDelIter, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts)
 		l.iter = iter
 		if l.err != nil {

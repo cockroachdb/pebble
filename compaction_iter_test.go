@@ -181,6 +181,7 @@ func TestCompactionIter(t *testing.T) {
 				allowZeroSeqnum = false
 				printSnapshotPinned := false
 				printMissizedDels := false
+				printForceObsolete := false
 				for _, arg := range d.CmdArgs {
 					switch arg.Key {
 					case "snapshots":
@@ -207,6 +208,8 @@ func TestCompactionIter(t *testing.T) {
 						printSnapshotPinned = true
 					case "print-missized-dels":
 						printMissizedDels = true
+					case "print-force-obsolete":
+						printForceObsolete = true
 					default:
 						return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
 					}
@@ -260,6 +263,13 @@ func TestCompactionIter(t *testing.T) {
 								snapshotPinned = " (pinned)"
 							}
 						}
+						forceObsolete := ""
+						if printForceObsolete {
+							forceObsolete = " (not force obsolete)"
+							if iter.forceObsoleteDueToRangeDel {
+								forceObsolete = " (force obsolete)"
+							}
+						}
 						v := string(iter.Value())
 						if iter.Key().Kind() == base.InternalKeyKindDeleteSized && len(iter.Value()) > 0 {
 							vn, n := binary.Uvarint(iter.Value())
@@ -269,7 +279,7 @@ func TestCompactionIter(t *testing.T) {
 								v = fmt.Sprintf("varint(%d)", vn)
 							}
 						}
-						fmt.Fprintf(&b, "%s:%s%s\n", iter.Key(), v, snapshotPinned)
+						fmt.Fprintf(&b, "%s:%s%s%s\n", iter.Key(), v, snapshotPinned, forceObsolete)
 						if iter.Key().Kind() == InternalKeyKindRangeDelete {
 							iter.rangeDelFrag.Add(keyspan.Span{
 								Start: append([]byte{}, iter.Key().UserKey...),
