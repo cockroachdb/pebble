@@ -861,3 +861,28 @@ compact a-z L1
 2:
   000006:[b#0,SET-b#0,SET]
   000007:[c#0,SET-c#0,SET]
+
+define snapshots=(10)
+L1
+  a.MERGE.15:a15
+L2
+  a.SET.5:a5
+----
+1:
+  000004:[a#15,MERGE-a#15,MERGE]
+2:
+  000005:[a#5,SET-a#5,SET]
+
+compact a-z
+----
+3:
+  000006:[a#15,MERGE-a#0,SET]
+
+# Fix for #2705. When snapshotPinned was used to set force obsolete, the
+# merged value would be a15 since the SET was incorrectly ignored.
+iter
+first
+next
+----
+a: (a5a15, .)
+.
