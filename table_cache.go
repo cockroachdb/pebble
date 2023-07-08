@@ -130,6 +130,7 @@ func (c *tableCacheContainer) close() error {
 	return firstError(err, c.tableCache.Unref())
 }
 
+// newIters is allowed to modify opts.PointKeyFilters by appending to it.
 func (c *tableCacheContainer) newIters(
 	ctx context.Context,
 	file *manifest.FileMetadata,
