@@ -136,16 +136,24 @@ func ingestLoad1Shared(
 }
 
 func ingestLoad1(
-	opts *Options, fmv FormatMajorVersion, path string, cacheID uint64, fileNum base.DiskFileNum,
+	opts *Options,
+	fmv FormatMajorVersion,
+	path string,
+	sharedReadable objstorage.Readable,
+	cacheID uint64,
+	fileNum base.DiskFileNum,
 ) (*fileMetadata, error) {
-	f, err := opts.FS.Open(path)
-	if err != nil {
-		return nil, err
-	}
+	readable := sharedReadable
+	if readable == nil {
+		f, err := opts.FS.Open(path)
+		if err != nil {
+			return nil, err
+		}
 
-	readable, err := sstable.NewSimpleReadable(f)
-	if err != nil {
-		return nil, err
+		readable, err = sstable.NewSimpleReadable(f)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	cacheOpts := private.SSTableCacheOpts(cacheID, fileNum).(sstable.ReaderOption)
@@ -302,7 +310,7 @@ func ingestLoad(
 	meta := make([]*fileMetadata, 0, len(paths))
 	newPaths := make([]string, 0, len(paths))
 	for i := range paths {
-		m, err := ingestLoad1(opts, fmv, paths[i], cacheID, pending[i])
+		m, err := ingestLoad1(opts, fmv, paths[i], nil /* sharedReadable */, cacheID, pending[i])
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
@@ -1107,7 +1115,6 @@ func (d *DB) ingest(
 	var mut *memTable
 	// asFlushable indicates whether the sstable was ingested as a flushable.
 	var asFlushable bool
-	var overlapWithExciseSpan bool
 	prepare := func(seqNum uint64) {
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
 
@@ -1159,7 +1166,6 @@ func (d *DB) ingest(
 					if mem == nil {
 						mem = m
 					}
-					overlapWithExciseSpan = true
 				}
 			}
 			err := iter.Close()
@@ -1192,16 +1198,16 @@ func (d *DB) ingest(
 		// The ingestion overlaps with some entry in the flushable queue.
 		if d.FormatMajorVersion() < FormatFlushableIngest ||
 			d.opts.Experimental.DisableIngestAsFlushable() ||
-			len(shared) > 0 || overlapWithExciseSpan ||
+			len(shared) > 0 || exciseSpan.Valid() ||
 			(len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1) {
 			// We're not able to ingest as a flushable,
 			// so we must synchronously flush.
 			//
 			// TODO(bilal): Currently, if any of the files being ingested are shared or
-			// there's overlap between the memtable and an excise span, we cannot use
-			// flushable ingests and need to wait synchronously. Either remove this
-			// caveat by fleshing out flushable ingest logic to also account for these
-			// cases, or remove this TODO.
+			// there's an excise span present, we cannot use flushable ingests and need
+			// to wait synchronously. Either remove this caveat by fleshing out
+			// flushable ingest logic to also account for these cases, or remove this
+			// comment. Tracking issue: https://github.com/cockroachdb/pebble/issues/2676
 			if mem.flushable == d.mu.mem.mutable {
 				err = d.makeRoomForWrite(nil)
 			}

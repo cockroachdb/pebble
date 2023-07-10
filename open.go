@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -805,17 +806,26 @@ func (d *DB) replayWAL(
 					panic("pebble: invalid number of entries in batch.")
 				}
 
-				paths := make([]string, len(fileNums))
+				meta := make([]*fileMetadata, len(fileNums))
 				for i, n := range fileNums {
-					paths[i] = base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, n)
+					var path string
+					var sharedReadable objstorage.Readable
+					if objMeta, err := d.objProvider.Lookup(fileTypeTable, n); err != nil {
+						return nil, 0, errors.Wrap(err, "pebble: error when looking up ingested SSTs")
+					} else if objMeta.IsShared() {
+						sharedReadable, err = d.objProvider.OpenForReading(context.TODO(), fileTypeTable, n, objstorage.OpenOptions{MustExist: true})
+						if err != nil {
+							return nil, 0, errors.Wrap(err, "pebble: error when opening flushable ingest files")
+						}
+					} else {
+						path = base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, n)
+					}
+					// NB: ingestLoad1 will close sharedReadable.
+					meta[i], err = ingestLoad1(d.opts, d.FormatMajorVersion(), path, sharedReadable, d.cacheID, n)
+					if err != nil {
+						return nil, 0, errors.Wrap(err, "pebble: error when loading flushable ingest files")
+					}
 				}
-
-				var lr ingestLoadResult
-				lr, err = ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, d.cacheID, fileNums)
-				if err != nil {
-					return nil, 0, err
-				}
-				meta := lr.localMeta
 
 				if uint32(len(meta)) != b.Count() {
 					panic("pebble: couldn't load all files in WAL entry.")
