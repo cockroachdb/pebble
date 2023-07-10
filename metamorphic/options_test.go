@@ -66,6 +66,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"MaxConcurrentCompactions:",
 		"Experimental.EnableValueBlocks:",
 		"Experimental.DisableIngestAsFlushable:",
+		"Experimental.SharedStorage:",
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
 	}

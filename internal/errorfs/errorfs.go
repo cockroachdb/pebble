@@ -229,7 +229,7 @@ func (fs *FS) OpenReadWrite(name string, opts ...vfs.OpenOption) (vfs.File, erro
 	if err := fs.inj.MaybeError(OpOpen, name); err != nil {
 		return nil, err
 	}
-	f, err := fs.fs.Open(name)
+	f, err := fs.fs.OpenReadWrite(name)
 	if err != nil {
 		return nil, err
 	}
