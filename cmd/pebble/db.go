@@ -10,6 +10,8 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // DB specifies the minimal interfaces that need to be implemented to support
@@ -98,9 +100,25 @@ func newPebbleDB(dir string) DB {
 		opts.EventListener.WALDeleted = nil
 	}
 
+	if pathToLocalSharedStorage != "" {
+		opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+			// Store all shared objects on local disk, for convenience.
+			"": shared.NewLocalFS(pathToLocalSharedStorage, vfs.Default),
+		})
+		opts.Experimental.CreateOnShared = true
+		if secondaryCacheSize != 0 {
+			opts.Experimental.SecondaryCacheSize = secondaryCacheSize
+		}
+	}
+
 	p, err := pebble.Open(dir, opts)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if pathToLocalSharedStorage != "" {
+		if err := p.SetCreatorID(1); err != nil {
+			log.Fatal(err)
+		}
 	}
 	return pebbleDB{
 		d:       p,
