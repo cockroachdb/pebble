@@ -138,6 +138,16 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions) error {
 	}
 	h.log.Printf("// db.Open() %v", err)
 
+	if t.testOpts.sharedStorageEnabled {
+		err = withRetries(func() error {
+			return db.SetCreatorID(1)
+		})
+		if err != nil {
+			return err
+		}
+		h.log.Printf("// db.SetCreatorID() %v", err)
+	}
+
 	t.tmpDir = t.opts.FS.PathJoin(dir, "tmp")
 	if err = t.opts.FS.MkdirAll(t.tmpDir, 0755); err != nil {
 		return err

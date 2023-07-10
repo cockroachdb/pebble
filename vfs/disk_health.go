@@ -704,7 +704,7 @@ func (d *diskHealthCheckingFS) Open(name string, opts ...OpenOption) (File, erro
 
 // OpenReadWrite implements the FS interface.
 func (d *diskHealthCheckingFS) OpenReadWrite(name string, opts ...OpenOption) (File, error) {
-	return d.fs.Open(name, opts...)
+	return d.fs.OpenReadWrite(name, opts...)
 }
 
 // OpenDir implements the FS interface.
