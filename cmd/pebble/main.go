@@ -15,15 +15,19 @@ import (
 )
 
 var (
-	cacheSize       int64
-	concurrency     int
-	disableWAL      bool
-	duration        time.Duration
-	maxSize         uint64
-	maxOpsPerSec    = newRateFlag("")
-	verbose         bool
-	waitCompactions bool
-	wipe            bool
+	cacheSize                int64
+	concurrency              int
+	disableWAL               bool
+	duration                 time.Duration
+	maxSize                  uint64
+	maxOpsPerSec             = newRateFlag("")
+	verbose                  bool
+	waitCompactions          bool
+	wipe                     bool
+	pathToLocalSharedStorage string
+	// If zero, or if !sharedStorageEnabled, secondary cache is
+	// not used.
+	secondaryCacheSize int64
 )
 
 func main() {
@@ -59,6 +63,10 @@ func main() {
 	for _, cmd := range []*cobra.Command{replayCmd, scanCmd, syncCmd, tombstoneCmd, writeBenchCmd, ycsbCmd} {
 		cmd.Flags().BoolVarP(
 			&verbose, "verbose", "v", false, "enable verbose event logging")
+		cmd.Flags().StringVar(
+			&pathToLocalSharedStorage, "shared-storage", "", "path to local shared storage (empty for no shared storage)")
+		cmd.Flags().Int64Var(
+			&secondaryCacheSize, "secondary-cache", 0, "secondary cache size in bytes")
 	}
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
 		cmd.Flags().Int64Var(
