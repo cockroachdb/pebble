@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -26,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -805,17 +807,36 @@ func (d *DB) replayWAL(
 					panic("pebble: invalid number of entries in batch.")
 				}
 
-				paths := make([]string, len(fileNums))
+				meta := make([]*fileMetadata, len(fileNums))
 				for i, n := range fileNums {
-					paths[i] = base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, n)
-				}
+					var readable objstorage.Readable
+					objMeta, err := d.objProvider.Lookup(fileTypeTable, n)
+					if err != nil {
+						return nil, 0, errors.Wrap(err, "pebble: error when looking up ingested SSTs")
+					}
+					if objMeta.IsShared() {
+						readable, err = d.objProvider.OpenForReading(context.TODO(), fileTypeTable, n, objstorage.OpenOptions{MustExist: true})
+						if err != nil {
+							return nil, 0, errors.Wrap(err, "pebble: error when opening flushable ingest files")
+						}
+					} else {
+						path := base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, n)
+						f, err := d.opts.FS.Open(path)
+						if err != nil {
+							return nil, 0, err
+						}
 
-				var lr ingestLoadResult
-				lr, err = ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, d.cacheID, fileNums)
-				if err != nil {
-					return nil, 0, err
+						readable, err = sstable.NewSimpleReadable(f)
+						if err != nil {
+							return nil, 0, err
+						}
+					}
+					// NB: ingestLoad1 will close readable.
+					meta[i], err = ingestLoad1(d.opts, d.FormatMajorVersion(), readable, d.cacheID, n)
+					if err != nil {
+						return nil, 0, errors.Wrap(err, "pebble: error when loading flushable ingest files")
+					}
 				}
-				meta := lr.localMeta
 
 				if uint32(len(meta)) != b.Count() {
 					panic("pebble: couldn't load all files in WAL entry.")

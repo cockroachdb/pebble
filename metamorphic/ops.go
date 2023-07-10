@@ -1219,11 +1219,6 @@ func (o *dbRatchetFormatMajorVersionOp) syncObjs() objIDSlice { return nil }
 type dbRestartOp struct{}
 
 func (o *dbRestartOp) run(t *test, h historyRecorder) {
-	// TODO(josh): db.Restart does not work with shared storage yet.
-	if t.testOpts.sharedStorageEnabled {
-		h.Recordf("%s", o)
-		return
-	}
 	if err := t.restartDB(); err != nil {
 		h.Recordf("%s // %v", o, err)
 		h.history.err.Store(errors.Wrap(err, "dbRestartOp"))
