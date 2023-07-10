@@ -298,6 +298,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	providerSettings.Shared.StorageFactory = opts.Experimental.SharedStorage
 	providerSettings.Shared.CreateOnShared = opts.Experimental.CreateOnShared
 	providerSettings.Shared.CreateOnSharedLocator = opts.Experimental.CreateOnSharedLocator
+	providerSettings.Shared.CacheSizeBytes = opts.Experimental.SecondaryCacheSize
 
 	d.objProvider, err = objstorageprovider.Open(providerSettings)
 	if err != nil {
