@@ -1543,6 +1543,12 @@ func (d *DB) Close() error {
 		err = firstError(err, errors.Errorf("leaked memtable reservation: %d", errors.Safe(reserved)))
 	}
 
+	// Since we called d.readState.val.unrefLocked() above, we are expected to
+	// manually schedule deletion of obsolete files.
+	if len(d.mu.versions.obsoleteTables) > 0 {
+		d.deleteObsoleteFiles(d.mu.nextJobID)
+	}
+
 	d.mu.Unlock()
 	d.compactionSchedulers.Wait()
 
