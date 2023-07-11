@@ -25,12 +25,16 @@ type deletionPacerInfo struct {
 // mechanism helps mitigate that.
 type deletionPacer struct {
 	// If there are less than freeSpaceThreshold bytes of free space on
-	// disk, do not pace deletions at all.
+	// disk, increase the pace of deletions such that we delete enough bytes to
+	// get back to the threshold within the freeSpaceTimeframe.
 	freeSpaceThreshold uint64
+	freeSpaceTimeframe time.Duration
 
 	// If the ratio of obsolete bytes to live bytes is greater than
-	// obsoleteBytesMaxRatio, do not pace deletions at all.
-	obsoleteBytesMaxRatio float64
+	// obsoleteBytesMaxRatio, increase the pace of deletions such that we delete
+	// enough bytes to get back to the threshold within the obsoleteBytesTimeframe.
+	obsoleteBytesMaxRatio  float64
+	obsoleteBytesTimeframe time.Duration
 
 	mu struct {
 		sync.Mutex
@@ -57,8 +61,11 @@ func newDeletionPacer(
 	now time.Time, targetByteDeletionRate int64, getInfo func() deletionPacerInfo,
 ) *deletionPacer {
 	d := &deletionPacer{
-		freeSpaceThreshold:    16 << 30, // 16 GB
-		obsoleteBytesMaxRatio: 0.20,
+		freeSpaceThreshold: 16 << 30, // 16 GB
+		freeSpaceTimeframe: 10 * time.Second,
+
+		obsoleteBytesMaxRatio:  0.20,
+		obsoleteBytesTimeframe: 5 * time.Minute,
 
 		targetByteDeletionRate: targetByteDeletionRate,
 		getInfo:                getInfo,
@@ -87,28 +94,33 @@ func (p *deletionPacer) PacingDelay(now time.Time, bytesToDelete uint64) (waitSe
 		// Pacing disabled.
 		return 0.0
 	}
+	rate := float64(p.targetByteDeletionRate)
+	maximize := func(r float64) {
+		if rate < r {
+			rate = r
+		}
+	}
 
 	info := p.getInfo()
 	if info.freeBytes <= p.freeSpaceThreshold {
+		// Set the rate high enough so that we can free up enough bytes within the timeframe.
+		maximize(float64(p.freeSpaceThreshold-info.freeBytes) / p.freeSpaceTimeframe.Seconds())
+	}
+	if info.liveBytes == 0 {
+		// We don't know the obsolete bytes ratio. Disable pacing altogether.
 		return 0.0
 	}
-	obsoleteBytesRatio := 1.0
-	if info.liveBytes > 0 {
-		obsoleteBytesRatio = float64(info.obsoleteBytes) / float64(info.liveBytes)
-	}
+	obsoleteBytesRatio := float64(info.obsoleteBytes) / float64(info.liveBytes)
 	if obsoleteBytesRatio >= p.obsoleteBytesMaxRatio {
-		return 0.0
+		// Set the rate high enough so that we can free up enough bytes within the timeframe.
+		maximize((obsoleteBytesRatio - p.obsoleteBytesMaxRatio) * float64(info.liveBytes) / p.obsoleteBytesTimeframe.Seconds())
 	}
 
-	rate := p.targetByteDeletionRate
-
-	// See if recent deletion rate is more than our target; if so, use that as our
-	// target so that we don't fall behind.
+	// If recent deletion rate is more than our target, use that so that we don't
+	// fall behind.
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if historyRate := p.mu.history.Sum(now) / int64(deletePacerHistory/time.Second); rate < historyRate {
-		rate = historyRate
-	}
+	maximize(float64(p.mu.history.Sum(now)) / deletePacerHistory.Seconds())
 
 	return float64(bytesToDelete) / float64(rate)
 }
