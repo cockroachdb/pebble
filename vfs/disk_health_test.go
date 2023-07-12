@@ -493,11 +493,17 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 	// Wrap with disk-health checking, counting each stall via stallCount.
 	var expectedOpType OpType
 	var stallCount atomic.Uint64
+	onStall := make(chan struct{}, 10)
+	var lastOpType OpType
 	fs, closer := WithDiskHealthChecks(filesystemOpsMockFS(sleepDur), stallThreshold,
 		func(info DiskSlowInfo) {
 			require.Equal(t, 0, info.WriteSize)
 			require.Equal(t, expectedOpType, info.OpType)
 			stallCount.Add(1)
+			if lastOpType != info.OpType {
+				lastOpType = info.OpType
+				onStall <- struct{}{}
+			}
 		})
 	defer closer.Close()
 	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
@@ -507,6 +513,11 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 			expectedOpType = o.opType
 			before := stallCount.Load()
 			o.f()
+			select {
+			case <-onStall:
+			case <-time.After(10 * stallThreshold):
+				t.Fatal("timed out waiting for stall")
+			}
 			after := stallCount.Load()
 			require.Greater(t, int(after-before), 0)
 		})
@@ -528,12 +539,18 @@ func TestDiskHealthChecking_Filesystem_Close(t *testing.T) {
 		},
 	}
 
-	stalled := map[string]time.Duration{}
+	files := []string{"foo", "bar", "bax"}
+	var lastPath string
+	stalled := make(chan string, len(files)*3)
 	fs, closer := WithDiskHealthChecks(mockFS, stallThreshold,
-		func(info DiskSlowInfo) { stalled[info.Path] = info.Duration })
+		func(info DiskSlowInfo) {
+			if lastPath != info.Path {
+				lastPath = info.Path
+				stalled <- info.Path
+			}
+		})
 	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
 
-	files := []string{"foo", "bar", "bax"}
 	for _, filename := range files {
 		// Create will stall, and the detector should write to the stalled map
 		// with the filename.
@@ -542,6 +559,11 @@ func TestDiskHealthChecking_Filesystem_Close(t *testing.T) {
 		// exit, but the fs should still be usable and should still detect
 		// subsequent stalls on the next iteration.
 		require.NoError(t, closer.Close())
-		require.Contains(t, stalled, filename)
+		select {
+		case stalledPath := <-stalled:
+			require.Equal(t, filename, stalledPath)
+		case <-time.After(10 * stallThreshold):
+			t.Fatalf("timed out waiting for stall")
+		}
 	}
 }
