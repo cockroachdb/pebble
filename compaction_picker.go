@@ -86,12 +86,29 @@ type sortCompactionLevelsDecreasingScore []candidateLevelInfo
 func (s sortCompactionLevelsDecreasingScore) Len() int {
 	return len(s)
 }
+
+// Less should return true, if s[i] must be places earlier than s[j] in the final
+// sorted list. The candidateLevelInfo for the level placed earlier is more likely
+// to be picked for a compaction.
 func (s sortCompactionLevelsDecreasingScore) Less(i, j int) bool {
+	if s[i].level == 0 {
+		// L0 should sort first if L0 has a higher smoothed compensated score, so
+		// score, than another levels smoothed raw score. Basically, we ignore
+		// another levels level compensation, when comparing with L0. We use
+		// L0s smoothed compensated score rather than the smoothed uncompensated
+		// score, because if L0 has range deletes, it's even better to compact L0
+		// first.
+		return s[i].score >= s[j].rawSmoothed
+	} else if s[j].level == 0 {
+		return s[i].rawSmoothed > s[j].score
+	}
+
 	if s[i].score != s[j].score {
 		return s[i].score > s[j].score
 	}
 	return s[i].level < s[j].level
 }
+
 func (s sortCompactionLevelsDecreasingScore) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
@@ -671,6 +688,8 @@ type candidateLevelInfo struct {
 	// The raw score of the level to be compacted, calculated using
 	// uncompensated file sizes and without any adjustments.
 	rawScore float64
+	// rawSmoothed is the smoothed rawScore(rawScore for the level divided by the next levels rawScore.)
+	rawSmoothed float64
 	level    int
 	// The level to compact to.
 	outputLevel int
@@ -1017,6 +1036,7 @@ func (p *compactionPickerByScore) calculateScores(
 		// during score smoothing down below to prevent excessive
 		// prioritization of reclaiming disk space.
 		scores[level].rawScore = float64(p.levelSizes[level]+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
+		scores[level].rawSmoothed = scores[level].rawScore // will be smoothed later.
 	}
 
 	// Adjust each level's score by the score of the next level. If the next
@@ -1042,14 +1062,21 @@ func (p *compactionPickerByScore) calculateScores(
 	//   L6        0.6        0.6       14 G       24 G
 	var prevLevel int
 	for level := p.baseLevel; level < numLevels; level++ {
+		// Avoid absurdly large scores by placing a floor on the score that we'll
+		// adjust a level by. The value of 0.01 was chosen somewhat arbitrarily
+		const minScore = 0.01
 		if scores[prevLevel].score >= 1 {
-			// Avoid absurdly large scores by placing a floor on the score that we'll
-			// adjust a level by. The value of 0.01 was chosen somewhat arbitrarily
-			const minScore = 0.01
 			if scores[level].rawScore >= minScore {
 				scores[prevLevel].score /= scores[level].rawScore
 			} else {
 				scores[prevLevel].score /= minScore
+			}
+		}
+		if scores[prevLevel].rawSmoothed >= 1 {
+			if scores[level].rawScore >= minScore {
+				scores[prevLevel].rawSmoothed /= scores[level].rawScore
+			} else {
+				scores[prevLevel].rawSmoothed /= minScore
 			}
 		}
 		prevLevel = level
@@ -1292,26 +1319,31 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			pc.startLevel.level, pc.outputLevel.level, buf.String())
 	}
 
-	// Check for a score-based compaction. "scores" has been sorted in order of
-	// decreasing score. For each level with a score >= 1, we attempt to find a
-	// compaction anchored at at that level.
+	// Check for a score-based compaction. For each level with a score >= 1, we
+	// attempt to find a compaction anchored at at that level.
 	for i := range scores {
 		info := &scores[i]
 		if info.score < 1 {
-			break
+			// Continue just in case L0 with a score < 1, was placed before some
+			// level info with score >= 1, becuase L0 score is greater without
+			// compensation. In this case, we still don't need to pick L0, and
+			// can move on and try other levels.
+			continue
 		}
 		if info.level == numLevels-1 {
 			continue
 		}
 
+		// fmt.Println(info)
 		if info.level == 0 {
 			pc = pickL0(env, p.opts, p.vers, p.baseLevel, p.diskAvailBytes)
 			// Fail-safe to protect against compacting the same sstable
 			// concurrently.
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 				pc.score = info.score
+				// fmt.Println("picked l0", scores)
 				// TODO(bananabrick): Create an EventListener for logCompaction.
-				if false {
+				if true {
 					logCompaction(pc)
 				}
 				return pc
@@ -1319,6 +1351,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			continue
 		}
 
+		// fmt.Println("no pick L0", scores)
 		// info.level > 0
 		var ok bool
 		info.file, ok = p.pickFile(info.level, info.outputLevel, env.earliestSnapshotSeqNum)
@@ -1331,7 +1364,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 			pc.score = info.score
 			// TODO(bananabrick): Create an EventListener for logCompaction.
-			if false {
+			if true {
 				logCompaction(pc)
 			}
 			return pc
