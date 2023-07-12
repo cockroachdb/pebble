@@ -184,9 +184,10 @@ func open(settings Settings) (p *provider, _ error) {
 
 // Close is part of the objstorage.Provider interface.
 func (p *provider) Close() error {
-	var err error
 	if p.fsDir != nil {
-		err = p.fsDir.Close()
+		if err := p.fsDir.Close(); err != nil {
+			return err
+		}
 		p.fsDir = nil
 	}
 	if objiotracing.Enabled {
@@ -195,7 +196,13 @@ func (p *provider) Close() error {
 			p.tracer = nil
 		}
 	}
-	return err
+	if p.shared.cache != nil {
+		if err := p.shared.cache.Close(); err != nil {
+			return err
+		}
+		p.shared.cache = nil
+	}
+	return nil
 }
 
 // OpenForReading opens an existing object.
