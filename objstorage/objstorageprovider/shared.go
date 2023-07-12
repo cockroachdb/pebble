@@ -111,6 +111,20 @@ func (p *provider) sharedInit() error {
 	return nil
 }
 
+func (p *provider) sharedClose() error {
+	if p.st.Shared.StorageFactory == nil {
+		return nil
+	}
+	var err error
+	if p.shared.cache != nil {
+		err = p.shared.cache.Close()
+		p.shared.cache = nil
+	}
+	err = firstError(err, p.shared.catalog.Close())
+	p.shared.catalog = nil
+	return err
+}
+
 // SetCreatorID is part of the objstorage.Provider interface.
 func (p *provider) SetCreatorID(creatorID objstorage.CreatorID) error {
 	if p.st.Shared.StorageFactory == nil {

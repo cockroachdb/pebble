@@ -184,9 +184,9 @@ func open(settings Settings) (p *provider, _ error) {
 
 // Close is part of the objstorage.Provider interface.
 func (p *provider) Close() error {
-	var err error
+	err := p.sharedClose()
 	if p.fsDir != nil {
-		err = p.fsDir.Close()
+		err = firstError(err, p.fsDir.Close())
 		p.fsDir = nil
 	}
 	if objiotracing.Enabled {
