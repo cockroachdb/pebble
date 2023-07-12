@@ -67,6 +67,7 @@ size: 100
 close
 ----
 <local fs> sync: p1/SHARED-CATALOG-000001
+<local fs> close: p1/SHARED-CATALOG-000001
 <local fs> close: p1
 
 # Test that the objects are there on re-open.

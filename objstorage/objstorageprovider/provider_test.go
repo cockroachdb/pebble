@@ -359,13 +359,13 @@ func TestSharedMultipleLocators(t *testing.T) {
 	checkObject(p1, file2, 1)
 
 	// Check that the object still works after close/reopen.
-	p1.Close()
+	require.NoError(t, p1.Close())
 	p1, err = Open(st1)
 	require.NoError(t, err)
 	checkObject(p1, file2, 1)
-	p1.Close()
+	require.NoError(t, p1.Close())
 
-	p2.Close()
+	require.NoError(t, p2.Close())
 
 	// Try to attach an object to a provider that doesn't recognize the locator.
 	st3 := DefaultSettings(vfs.NewMem(), "")
@@ -373,13 +373,13 @@ func TestSharedMultipleLocators(t *testing.T) {
 	p3, err := Open(st3)
 	require.NoError(t, err)
 	require.NoError(t, p3.SetCreatorID(3))
-	_, err = p1.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+	_, err = p3.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
 		FileNum:  file2,
 		FileType: base.FileTypeTable,
 		Backing:  b2,
 	}})
 	require.Error(t, err)
-	p3.Close()
+	require.NoError(t, p3.Close())
 }
 
 func TestAttachCustomObject(t *testing.T) {
