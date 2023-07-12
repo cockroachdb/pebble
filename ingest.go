@@ -1732,8 +1732,10 @@ func (d *DB) ingestApply(
 		// for files, and if they are, we should signal those compactions to error
 		// out.
 		for level := range current.Levels {
-			iter := current.Levels[level].Iter()
-			for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
+			overlaps := current.Overlaps(level, d.cmp, exciseSpan.Start, exciseSpan.End, true /* exclusiveEnd */)
+			iter := overlaps.Iter()
+
+			for m := iter.First(); m != nil; m = iter.Next() {
 				excised, err := d.excise(exciseSpan, m, ve, level)
 				if err != nil {
 					return nil, err
