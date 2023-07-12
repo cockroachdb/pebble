@@ -373,7 +373,7 @@ func TestSharedMultipleLocators(t *testing.T) {
 	p3, err := Open(st3)
 	require.NoError(t, err)
 	require.NoError(t, p3.SetCreatorID(3))
-	_, err = p1.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+	_, err = p3.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
 		FileNum:  file2,
 		FileType: base.FileTypeTable,
 		Backing:  b2,
