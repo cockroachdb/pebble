@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"testing"
@@ -25,51 +26,78 @@ func TestDeletionPacer(t *testing.T) {
 		// second value is the deleted bytes. The time of pacing is the same as the
 		// last time in the history.
 		history [][2]int
-		// expected wait time for 100 MB.
+		// expected pacing rate in MB/s.
 		expected float64
 	}{
 		{
 			freeBytes:     160 * GB,
 			obsoleteBytes: 1 * MB,
 			liveBytes:     160 * MB,
-			expected:      1.0,
+			expected:      100.0,
 		},
-		// As freeBytes < free space threshold, there should be no throttling.
+		// As freeBytes is 2GB below the free space threshold, rate should be
+		// increased by 204.8MB/s.
 		{
-			freeBytes:     5 * GB,
+			freeBytes:     14 * GB,
 			obsoleteBytes: 1 * MB,
 			liveBytes:     100 * MB,
-			expected:      0.0,
+			expected:      304.8,
 		},
-		// As obsoleteBytesRatio > 0.20, there should be no throttling.
+		// As freeBytes is 10GB below the free space threshold, rate should be
+		// increased to by 1GB/s.
+		{
+			freeBytes:     6 * GB,
+			obsoleteBytes: 1 * MB,
+			liveBytes:     100 * MB,
+			expected:      1124.0,
+		},
+		// obsoleteBytesRatio is 50%. We need to delete 30GB within 5 minutes.
 		{
 			freeBytes:     500 * GB,
-			obsoleteBytes: 50 * MB,
-			liveBytes:     100 * MB,
-			expected:      0.0,
+			obsoleteBytes: 50 * GB,
+			liveBytes:     100 * GB,
+			expected:      202.4,
 		},
 		// When obsolete ratio unknown, there should be no throttling.
 		{
 			freeBytes:     500 * GB,
 			obsoleteBytes: 0,
 			liveBytes:     0,
-			expected:      0.0,
+			expected:      math.Inf(1),
 		},
-		// History shows 200MB/sec deletions on average over last 5 minutes, wait
-		// time should be half.
+		// History shows 200MB/sec deletions on average over last 5 minutes.
 		{
 			freeBytes:     160 * GB,
 			obsoleteBytes: 1 * MB,
 			liveBytes:     160 * MB,
 			history:       [][2]int{{0, 5 * 60 * 200 * MB}},
-			expected:      0.5,
+			expected:      200.0,
 		},
+		// History shows 200MB/sec deletions on average over last 5 minutes and
+		// freeBytes is 10GB below the threshold.
+		{
+			freeBytes:     6 * GB,
+			obsoleteBytes: 1 * MB,
+			liveBytes:     160 * MB,
+			history:       [][2]int{{0, 5 * 60 * 200 * MB}},
+			expected:      1224.0,
+		},
+		// History shows 200MB/sec deletions on average over last 5 minutes and
+		// obsoleteBytesRatio is 50%.
+		{
+			freeBytes:     500 * GB,
+			obsoleteBytes: 50 * GB,
+			liveBytes:     100 * GB,
+			history:       [][2]int{{0, 5 * 60 * 200 * MB}},
+			expected:      302.4,
+		},
+		// History shows 1000MB/sec deletions on average over last 5 minutes.
 		{
 			freeBytes:     160 * GB,
 			obsoleteBytes: 1 * MB,
 			liveBytes:     160 * MB,
 			history:       [][2]int{{0, 60 * 1000 * MB}, {3 * 60, 60 * 4 * 1000 * MB}, {4 * 60, 0}},
-			expected:      0.1,
+			expected:      1000.0,
 		},
 		// First entry in history is too old, it should be discarded.
 		{
@@ -77,7 +105,7 @@ func TestDeletionPacer(t *testing.T) {
 			obsoleteBytes: 1 * MB,
 			liveBytes:     160 * MB,
 			history:       [][2]int{{0, 10 * 60 * 10000 * MB}, {3 * 60, 4 * 60 * 200 * MB}, {7 * 60, 1 * 60 * 200 * MB}},
-			expected:      0.5,
+			expected:      200.0,
 		},
 	}
 	for tcIdx, tc := range testCases {
@@ -96,7 +124,7 @@ func TestDeletionPacer(t *testing.T) {
 				last = start.Add(time.Second * time.Duration(h[0]))
 				pacer.ReportDeletion(last, uint64(h[1]))
 			}
-			result := pacer.PacingDelay(last, 100*MB)
+			result := 1.0 / pacer.PacingDelay(last, 1*MB)
 			require.InDelta(t, tc.expected, result, 1e-7)
 		})
 	}
