@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/stretchr/testify/require"
 )
 
@@ -586,13 +587,18 @@ func TestAnnotationOrderStatistic(t *testing.T) {
 // operations, checking for equivalence with a map of filenums.
 func TestRandomizedBTree(t *testing.T) {
 	const maxFileNum = 50_000
-	const maxNumOps = 50_000
 
 	seed := time.Now().UnixNano()
 	t.Log("seed", seed)
 	rng := rand.New(rand.NewSource(seed))
 
-	numOps := 10_000 + rng.Intn(maxNumOps-10_000)
+	var numOps int
+	if invariants.RaceEnabled {
+		// Reduce the number of ops in race mode so the test doesn't take very long.
+		numOps = 1_000 + rng.Intn(4_000)
+	} else {
+		numOps = 10_000 + rng.Intn(40_000)
+	}
 
 	var metadataAlloc [maxFileNum]FileMetadata
 	for i := 0; i < len(metadataAlloc); i++ {
