@@ -3055,6 +3055,11 @@ type Reader struct {
 	rawTombstones bool
 	mergerOK      bool
 	checksumType  ChecksumType
+	// metaBufferPool is a buffer pool used exclusively when opening a table and
+	// loading its meta blocks. metaBufferPoolAlloc is used to batch-allocate
+	// the BufferPool.pool slice as a part of the Reader allocation.
+	metaBufferPool      BufferPool
+	metaBufferPoolAlloc [2]allocedBuffer
 }
 
 // Close implements DB.Close, as documented in the pebble package.
@@ -3515,8 +3520,21 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
+	// We use a BufferPool when reading metaindex blocks in order to avoid
+	// populating the block cache with these blocks. In heavy-write workloads,
+	// especially with high compaction concurrency, new tables may be created
+	// frequently. Populating the block cache with these metaindex blocks adds
+	// additional contention on the block cache mutexes (see #1997).
+	// Additionally, these blocks are exceedingly unlikely to be read again
+	// while they're still in the block cache except in misconfigurations with
+	// excessive sstables counts or a table cache that's far too small.
+	r.metaBufferPool.initPreallocated(r.opts.Cache, r.metaBufferPoolAlloc[:0])
+	// When we're finished, release the buffers we've allocated back to memory
+	// allocator. We don't expect to use metaBufferPool again.
+	defer r.metaBufferPool.Release()
+
 	b, err := r.readBlock(
-		context.Background(), metaindexBH, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* buffer pool */)
+		context.Background(), metaindexBH, nil /* transform */, nil /* readHandle */, nil /* stats */, &r.metaBufferPool)
 	if err != nil {
 		return err
 	}
