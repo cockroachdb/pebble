@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/ghemawat/stream"
 	"github.com/stretchr/testify/require"
 )
@@ -47,6 +48,10 @@ func ignoreGoMod() stream.Filter {
 func TestLint(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("lint checks skipped on Windows")
+	}
+	if invariants.RaceEnabled {
+		// We are not interested in race-testing the linters themselves.
+		t.Skip("lint checks skipped on race builds")
 	}
 
 	const root = "github.com/cockroachdb/pebble"
