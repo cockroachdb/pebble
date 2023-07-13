@@ -115,7 +115,7 @@ func runTombstoneCmd(cmd *cobra.Command, args []string) error {
 			}
 			fmt.Printf("%15s %15s %14.1f %14.1f %14.1f %14.1f\n",
 				time.Duration(elapsed.Seconds()+0.5)*time.Second,
-				humanize.Uint64(queueSize),
+				humanize.Bytes.Uint64(queueSize),
 				queueOpsPerSec,
 				queueCumOpsPerSec,
 				ycsbOpsPerSec,
@@ -127,7 +127,7 @@ func runTombstoneCmd(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Printf("%15s %15s\n", elapsed.Truncate(time.Second), humanize.Uint64(queueSize))
+			fmt.Printf("%15s %15s\n", elapsed.Truncate(time.Second), humanize.Bytes.Uint64(queueSize))
 		},
 	})
 	return nil

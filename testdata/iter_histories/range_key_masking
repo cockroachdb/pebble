@@ -154,7 +154,7 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 1.1 K, cached 0 B, read-time 0s)), (points: (count 25, key-bytes 75, value-bytes 75, tombstoned 0))),
+(internal-stats: (block-bytes: (total 1.1KB, cached 0B, read-time 0s)), (points: (count 25, key-bytes 75B, value-bytes 75B, tombstoned 0))),
 (range-key-stats: (count 1), (contained points: (count 25, skipped 25)))
 
 # Repeat the above test, but with an iterator that uses a block-property filter
@@ -169,7 +169,7 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 514 B, cached 514 B, read-time 0s)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned 0))),
+(internal-stats: (block-bytes: (total 514B, cached 514B, read-time 0s)), (points: (count 2, key-bytes 6B, value-bytes 6B, tombstoned 0))),
 (range-key-stats: (count 1), (contained points: (count 2, skipped 2)))
 
 # Perform a similar comparison in reverse.
@@ -182,7 +182,7 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
-(internal-stats: (block-bytes: (total 1.1 K, cached 1.1 K, read-time 0s)), (points: (count 25, key-bytes 75, value-bytes 75, tombstoned 0))),
+(internal-stats: (block-bytes: (total 1.1KB, cached 1.1KB, read-time 0s)), (points: (count 25, key-bytes 75B, value-bytes 75B, tombstoned 0))),
 (range-key-stats: (count 1), (contained points: (count 25, skipped 25)))
 
 combined-iter mask-suffix=@9 mask-filter
@@ -193,7 +193,7 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
-(internal-stats: (block-bytes: (total 514 B, cached 514 B, read-time 0s)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned 0))),
+(internal-stats: (block-bytes: (total 514B, cached 514B, read-time 0s)), (points: (count 2, key-bytes 6B, value-bytes 6B, tombstoned 0))),
 (range-key-stats: (count 1), (contained points: (count 2, skipped 2)))
 
 # Perform similar comparisons with seeks.
@@ -206,7 +206,7 @@ stats
 m: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 789 B, cached 789 B, read-time 0s)), (points: (count 13, key-bytes 39, value-bytes 39, tombstoned 0))),
+(internal-stats: (block-bytes: (total 789B, cached 789B, read-time 0s)), (points: (count 13, key-bytes 39B, value-bytes 39B, tombstoned 0))),
 (range-key-stats: (count 1), (contained points: (count 13, skipped 13)))
 
 combined-iter mask-suffix=@9 mask-filter
@@ -217,7 +217,7 @@ stats
 m: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 514 B, cached 514 B, read-time 0s)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned 0))),
+(internal-stats: (block-bytes: (total 514B, cached 514B, read-time 0s)), (points: (count 2, key-bytes 6B, value-bytes 6B, tombstoned 0))),
 (range-key-stats: (count 1), (contained points: (count 2, skipped 2)))
 
 combined-iter mask-suffix=@9
@@ -228,7 +228,7 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
-(internal-stats: (block-bytes: (total 789 B, cached 789 B, read-time 0s)), (points: (count 12, key-bytes 36, value-bytes 36, tombstoned 0))),
+(internal-stats: (block-bytes: (total 789B, cached 789B, read-time 0s)), (points: (count 12, key-bytes 36B, value-bytes 36B, tombstoned 0))),
 (range-key-stats: (count 1), (contained points: (count 12, skipped 12)))
 
 combined-iter mask-suffix=@9 mask-filter
@@ -239,5 +239,5 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
-(internal-stats: (block-bytes: (total 539 B, cached 539 B, read-time 0s)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned 0))),
+(internal-stats: (block-bytes: (total 539B, cached 539B, read-time 0s)), (points: (count 2, key-bytes 6B, value-bytes 6B, tombstoned 0))),
 (range-key-stats: (count 1), (contained points: (count 2, skipped 2)))

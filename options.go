@@ -1613,7 +1613,7 @@ func (o *Options) Validate() error {
 	}
 	if uint64(o.MemTableSize) >= maxMemTableSize {
 		fmt.Fprintf(&buf, "MemTableSize (%s) must be < %s\n",
-			humanize.Uint64(uint64(o.MemTableSize)), humanize.Uint64(maxMemTableSize))
+			humanize.Bytes.Uint64(uint64(o.MemTableSize)), humanize.Bytes.Uint64(maxMemTableSize))
 	}
 	if o.MemTableStopWritesThreshold < 2 {
 		fmt.Fprintf(&buf, "MemTableStopWritesThreshold (%d) must be >= 2\n",

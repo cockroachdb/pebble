@@ -20,15 +20,15 @@ node: 1, store: 1
      to: 211215 00:01
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L2      L3         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
-flush                L0                                         1   1.0 M       10s
-total                                                           1   1.0 M       10s
+flush                L0                                         1   1.3MB       10s
+total                                                           1   1.3MB       10s
 
 # Same as the previous case, except that the start and end events are are split
 # across multiple files (one log line per file).
@@ -63,15 +63,15 @@ node: 1, store: 1
      to: 211215 00:01
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L2      L3         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
-flush                L0                                         1   1.0 M       10s
-total                                                           1   1.0 M       10s
+flush                L0                                         1   1.3MB       10s
+total                                                           1   1.3MB       10s
 
 # Read amplification from the Cockroach log, one within an existing window,
 # another outside of the existing window. The latter is not included.
@@ -118,8 +118,8 @@ node: 1, store: 1
      to: 211215 00:01
   r-amp: 5.0
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L2      L3         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 
 # Long running compaction.
 
@@ -139,11 +139,11 @@ node: 1, store: 1
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B     2m10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B     2m10s
+compact      L2      L3         1       0       0       0       1    13MB    13MB      0B      0B     2m10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B     2m10s
 long-running events (descending runtime):
 _kind________from________to_______job______type_____start_______end____dur(s)_____bytes:
-compact        L2        L3         1   default  00:01:10  00:03:20       130      13 M
+compact        L2        L3         1   default  00:01:10  00:03:20       130      13MB
 
 # Single node, multiple stores.
 
@@ -166,15 +166,15 @@ node: 1, store: 1
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L2      L3         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 node: 1, store: 2
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L3      L4         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L3      L4         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 
 # Multiple nodes, single stores. Two separate pebble logs.
 
@@ -200,15 +200,15 @@ node: 1, store: 1
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L2      L3         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 node: 2, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L3      L4         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L3      L4         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 
 # Multiple nodes, multiple stores. Two separate pebble logs. Output is sorted by
 # (time, node, store).
@@ -241,29 +241,29 @@ node: 2, store: 1
      to: 211215 00:01
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L3      L4         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L3      L4         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L2      L3         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 node: 1, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L1      L2         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L1      L2         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L4      L5         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L4      L5         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 
 # Log lines with an absent node / store are aggregated.
 
@@ -298,8 +298,8 @@ node: ?, store: ?
      to: 211215 00:02
   r-amp: 5.0
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L2      L3         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 
 # The same Job ID interleaved for multiple nodes / stores.
 
@@ -321,15 +321,15 @@ node: 1, store: 1
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L2      L3         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L4      L5         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L4      L5         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 
 # Read amp matching should remain backwards compatible.
 
@@ -377,8 +377,8 @@ node: 1, store: 1
      to: 220301 00:01
   r-amp: 1.0
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
-total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+compact      L2      L3         1       0       0       0       1    13MB    13MB      0B      0B       10s
+total                           1       0       0       0       1    13MB    13MB      0B      0B       10s
 
 reset
 ----
@@ -421,8 +421,8 @@ node: 24, store: 24
      to: 220228 14:45
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
-flush                L0                                         1    19 M        0s
-total                                                           1    19 M        0s
+flush                L0                                         1    19MB        0s
+total                                                           1    19MB        0s
 
 reset
 ----
@@ -440,16 +440,16 @@ node: 24, store: 24
      to: 220228 15:59
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
-ingest               L0                                         9   140 M
-ingest               L5                                         3   3.0 K
-total                                                          12   140 M        0s
+ingest               L0                                         9   140MB
+ingest               L5                                         3   3.6KB
+total                                                          12   140MB        0s
 node: 24, store: 24
    from: 220228 16:01
      to: 220228 16:02
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
-ingest               L0                                        12   160 M
-total                                                          12   160 M        0s
+ingest               L0                                        12   160MB
+total                                                          12   160MB        0s
 
 reset
 ----
@@ -473,6 +473,6 @@ node: 15, store: 15
      to: 220907 00:28
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L5      L6         1       1       0       0       2   128 M   3.0 M   4.0 M     0 B        1s
-compact      L6      L6         0       0       0       1       1     0 B     0 B     0 B    11 M        0s
-total                           1       1       0       1       3   128 M   3.0 M   4.0 M    11 M        1s
+compact      L5      L6         1       1       0       0       2   128MB   3.6MB   4.0MB      0B        1s
+compact      L6      L6         0       0       0       1       1      0B      0B      0B    11MB        0s
+total                           1       1       0       1       3   128MB   3.6MB   4.0MB    11MB        1s

@@ -227,7 +227,7 @@ func TestMetrics(t *testing.T) {
 			return d.Metrics().String()
 
 		case "disk-usage":
-			return humanize.IEC.Uint64(d.Metrics().DiskSpaceUsage()).String()
+			return humanize.Bytes.Uint64(d.Metrics().DiskSpaceUsage()).String()
 
 		case "additional-metrics":
 			// The asynchronous loading of table stats can change metrics, so
@@ -243,8 +243,8 @@ func TestMetrics(t *testing.T) {
 			for i := range m.Levels {
 				fmt.Fprintf(&b, "%7d ", i)
 				fmt.Fprintf(&b, "%12s %12s\n",
-					humanize.IEC.Uint64(m.Levels[i].Additional.BytesWrittenDataBlocks),
-					humanize.IEC.Uint64(m.Levels[i].Additional.BytesWrittenValueBlocks))
+					humanize.Bytes.Uint64(m.Levels[i].Additional.BytesWrittenDataBlocks),
+					humanize.Bytes.Uint64(m.Levels[i].Additional.BytesWrittenValueBlocks))
 			}
 			return b.String()
 

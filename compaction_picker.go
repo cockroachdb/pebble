@@ -1259,10 +1259,10 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			}
 			fmt.Fprintf(&buf, "  %sL%d: %5.1f  %5.1f  %5.1f %8s  %8s",
 				marker, info.level, info.score, info.origScore, info.rawScore,
-				humanize.Int64(int64(totalCompensatedSize(
+				humanize.Bytes.Int64(int64(totalCompensatedSize(
 					p.vers.Levels[info.level].Iter(),
 				))),
-				humanize.Int64(p.levelMaxBytes[info.level]),
+				humanize.Bytes.Int64(p.levelMaxBytes[info.level]),
 			)
 
 			count := 0

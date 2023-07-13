@@ -47,8 +47,8 @@ func TestWorkloadCollector(t *testing.T) {
 				b2 := readFile(t, fs, td.CmdArgs[1].String())
 				if !bytes.Equal(b1, b2) {
 					return fmt.Sprintf("files are unequal: %s (%s) and %s (%s)",
-						td.CmdArgs[0].String(), humanize.IEC.Uint64(uint64(len(b1))),
-						td.CmdArgs[1].String(), humanize.IEC.Uint64(uint64(len(b2))))
+						td.CmdArgs[0].String(), humanize.Bytes.Uint64(uint64(len(b1))),
+						td.CmdArgs[1].String(), humanize.Bytes.Uint64(uint64(len(b2))))
 				}
 				return "equal"
 			case "clean":

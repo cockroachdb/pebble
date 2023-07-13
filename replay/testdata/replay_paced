@@ -39,7 +39,7 @@ wait-for-compactions
 
 wait
 ----
-replayed 42 B in writes
+replayed 42B in writes
 
 scan-keys
 ----

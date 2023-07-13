@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -50,9 +49,12 @@ var (
 	sentinelPatternSuffixIdx = sentinelPattern.SubexpIndex("suffix")
 
 	// Example compaction start and end log lines:
-	//
+	// 23.1 and older:
 	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s5] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M)
 	//   I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s5] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M) -> L3 [445883 445887] (13 M), in 0.3s, output rate 42 M/s
+	// current:
+	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s5] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
+	//   I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s5] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 	//
 	// NOTE: we use the log timestamp to compute the compaction duration rather
 	// than the Pebble log output.
@@ -61,8 +63,11 @@ var (
 			/* Job ID            */ `\[JOB (?P<job>\d+)]\s` +
 			/* Start / end       */ `compact(?P<suffix>ed|ing)` +
 			/* Compaction type   */ `\((?P<type>.*?)\)\s` +
-			/* Start / end level */ `(?P<levels>L(?P<from>\d)(?:.*(?:\+|->)\sL(?P<to>\d))?` +
-			/* Bytes             */ `(?:.*?\((?P<digit>.*?)\s(?P<unit>.*?)\))?)`,
+
+			/* Start / end level */
+			`(?P<levels>L(?P<from>\d)(?:.*(?:\+|->)\sL(?P<to>\d))?` +
+			/* Bytes             */
+			`(?:.*?\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\)))`,
 	)
 	compactionPatternJobIdx    = compactionPattern.SubexpIndex("job")
 	compactionPatternSuffixIdx = compactionPattern.SubexpIndex("suffix")
@@ -70,13 +75,15 @@ var (
 	compactionPatternLevels    = compactionPattern.SubexpIndex("levels")
 	compactionPatternFromIdx   = compactionPattern.SubexpIndex("from")
 	compactionPatternToIdx     = compactionPattern.SubexpIndex("to")
-	compactionPatternDigitIdx  = compactionPattern.SubexpIndex("digit")
-	compactionPatternUnitIdx   = compactionPattern.SubexpIndex("unit")
+	compactionPatternBytesIdx  = compactionPattern.SubexpIndex("bytes")
 
 	// Example memtable flush log lines:
-	//
+	// 23.1 and older:
 	//   I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n9,pebble,s9] 24 [JOB 10] flushing 2 memtables to L0
 	//   I211213 16:23:49.134464 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s9] 26 [JOB 10] flushed 2 memtables to L0 [1535806] (1.3 M), in 0.2s, output rate 5.8 M/s
+	// current:
+	//   I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n9,pebble,s9] 24 [JOB 10] flushing 2 memtables to L0
+	//   I211213 16:23:49.134464 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s9] 26 [JOB 10] flushed 2 memtables to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s
 	//
 	// NOTE: we use the log timestamp to compute the flush duration rather than
 	// the Pebble log output.
@@ -84,16 +91,17 @@ var (
 		`^..*` +
 			/* Job ID          */ `\[JOB (?P<job>\d+)]\s` +
 			/* Compaction type */ `flush(?P<suffix>ed|ing)` +
-			/* Bytes           */ `(?:.*?\((?P<digit>.*?)\s(?P<unit>.*?)\))?`,
+			/* Bytes           */ `(?:.*?\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\))?`,
 	)
 	flushPatternSuffixIdx = flushPattern.SubexpIndex("suffix")
 	flushPatternJobIdx    = flushPattern.SubexpIndex("job")
-	flushPatternDigitIdx  = flushPattern.SubexpIndex("digit")
-	flushPatternUnitIdx   = flushPattern.SubexpIndex("unit")
+	flushPatternBytesIdx  = flushPattern.SubexpIndex("bytes")
 
 	// Example ingested log lines:
-	//
+	// 23.1 and older:
 	//   I220228 16:01:22.487906 18476248525 3@vendor/github.com/cockroachdb/pebble/ingest.go:637 ⋮ [n24,pebble,s24] 33430782  [JOB 10211226] ingested L0:21818678 (1.8 K), L0:21818683 (1.2 K), L0:21818679 (1.6 K), L0:21818680 (1.1 K), L0:21818681 (1.1 K), L0:21818682 (160 M)
+	// current:
+	//   I220228 16:01:22.487906 18476248525 3@vendor/github.com/cockroachdb/pebble/ingest.go:637 ⋮ [n24,pebble,s24] 33430782  [JOB 10211226] ingested L0:21818678 (1.8KB), L0:21818683 (1.2KB), L0:21818679 (1.6KB), L0:21818680 (1.1KB), L0:21818681 (1.1KB), L0:21818682 (160MB)
 	//
 	ingestedPattern = regexp.MustCompile(
 		`^.*` +
@@ -102,13 +110,12 @@ var (
 	ingestedPatternJobIdx = ingestedPattern.SubexpIndex("job")
 	ingestedFilePattern   = regexp.MustCompile(
 		`L` +
-			/* Level */ `(?P<level>\d):` +
+			/* Level       */ `(?P<level>\d):` +
 			/* File number */ `(?P<file>\d+)\s` +
-			/* Bytes */ `\((?P<value>.*?)\s(?P<unit>.*?)\)`)
+			/* Bytes       */ `\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\)`)
 	ingestedFilePatternLevelIdx = ingestedFilePattern.SubexpIndex("level")
 	ingestedFilePatternFileIdx  = ingestedFilePattern.SubexpIndex("file")
-	ingestedFilePatternValueIdx = ingestedFilePattern.SubexpIndex("value")
-	ingestedFilePatternUnitIdx  = ingestedFilePattern.SubexpIndex("unit")
+	ingestedFilePatternBytesIdx = ingestedFilePattern.SubexpIndex("bytes")
 
 	// Example read-amp log line:
 	// 23.1 and older:
@@ -267,12 +274,8 @@ func parseCompactionEnd(matches []string) (compactionEnd, error) {
 	end = compactionEnd{jobID: jobID}
 
 	// Optionally, if we have compacted bytes.
-	if matches[compactionPatternDigitIdx] != "" {
-		d, e := strconv.ParseFloat(matches[compactionPatternDigitIdx], 64)
-		if e != nil {
-			return end, errors.Newf("could not parse compacted bytes digit: %s", e)
-		}
-		end.writtenBytes = unHumanize(d, matches[compactionPatternUnitIdx])
+	if matches[compactionPatternBytesIdx] != "" {
+		end.writtenBytes = unHumanize(matches[compactionPatternBytesIdx])
 	}
 
 	return end, nil
@@ -309,12 +312,8 @@ func parseFlushEnd(matches []string) (compactionEnd, error) {
 	end = compactionEnd{jobID: jobID}
 
 	// Optionally, if we have flushed bytes.
-	if matches[flushPatternDigitIdx] != "" {
-		d, e := strconv.ParseFloat(matches[flushPatternDigitIdx], 64)
-		if e != nil {
-			return end, errors.Newf("could not parse flushed bytes digit: %s", e)
-		}
-		end.writtenBytes = unHumanize(d, matches[flushPatternUnitIdx])
+	if matches[flushPatternBytesIdx] != "" {
+		end.writtenBytes = unHumanize(matches[flushPatternBytesIdx])
 	}
 
 	return end, nil
@@ -564,7 +563,7 @@ func (s windowSummary) String() string {
 		if s.flushedCount > 0 {
 			maybeWriteHeader()
 			fmt.Fprintf(&sb, "%-7s         %7s                                   %7d %7s %9s\n",
-				"flush", "L0", s.flushedCount, humanize.Uint64(s.flushedBytes),
+				"flush", "L0", s.flushedCount, humanize.Bytes.Uint64(s.flushedBytes),
 				s.flushedTime.Truncate(time.Second))
 		}
 
@@ -577,13 +576,13 @@ func (s windowSummary) String() string {
 			}
 			maybeWriteHeader()
 			fmt.Fprintf(&sb, "%-7s         %7s                                   %7d %7s\n",
-				"ingest", fmt.Sprintf("L%d", l), s.ingestedCount[l], humanize.Uint64(s.ingestedBytes[l]))
+				"ingest", fmt.Sprintf("L%d", l), s.ingestedCount[l], humanize.Bytes.Uint64(s.ingestedBytes[l]))
 			count += s.ingestedCount[l]
 			sum += s.ingestedBytes[l]
 		}
 		if headerWritten {
 			fmt.Fprintf(&sb, "total                                                     %7d %7s %9s\n",
-				count, humanize.Uint64(sum), totalTime.Truncate(time.Second),
+				count, humanize.Bytes.Uint64(sum), totalTime.Truncate(time.Second),
 			)
 		}
 	}
@@ -603,8 +602,8 @@ func (s windowSummary) String() string {
 
 			str := fmt.Sprintf("%-7s %7s %7s   %7d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
 				"compact", p.ft.from, p.ft.to, def, move, elision, del, total,
-				humanize.Uint64(p.bytesIn), humanize.Uint64(p.bytesOut),
-				humanize.Uint64(p.bytesMoved), humanize.Uint64(p.bytesDel),
+				humanize.Bytes.Uint64(p.bytesIn), humanize.Bytes.Uint64(p.bytesOut),
+				humanize.Bytes.Uint64(p.bytesMoved), humanize.Bytes.Uint64(p.bytesDel),
 				p.duration.Truncate(time.Second))
 			sb.WriteString(str)
 
@@ -620,8 +619,8 @@ func (s windowSummary) String() string {
 		}
 		sb.WriteString(fmt.Sprintf("total         %19d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
 			totalDef, totalMove, totalElision, totalDel, s.eventCount,
-			humanize.Uint64(totalBytesIn), humanize.Uint64(totalBytesOut),
-			humanize.Uint64(totalBytesMoved), humanize.Uint64(totalBytesDel),
+			humanize.Bytes.Uint64(totalBytesIn), humanize.Bytes.Uint64(totalBytesOut),
+			humanize.Bytes.Uint64(totalBytesMoved), humanize.Bytes.Uint64(totalBytesDel),
 			totalTime.Truncate(time.Second)))
 	}
 
@@ -638,7 +637,7 @@ func (s windowSummary) String() string {
 			sb.WriteString(fmt.Sprintf("%-7s %9s %9s %9d %9s %9s %9s %9.0f %9s\n",
 				kind, level(c.fromLevel), level(c.toLevel), e.jobID, c.cType,
 				e.timeStart.Format(timeFmtHrMinSec), e.timeEnd.Format(timeFmtHrMinSec),
-				e.timeEnd.Sub(e.timeStart).Seconds(), humanize.Uint64(c.outputBytes)))
+				e.timeEnd.Sub(e.timeStart).Seconds(), humanize.Bytes.Uint64(c.outputBytes)))
 		}
 	}
 
@@ -1046,14 +1045,10 @@ func parseIngest(line string, b *logEventCollector) error {
 		if err != nil {
 			return errors.Newf("could not parse file number: %s", err)
 		}
-		v, err := strconv.ParseFloat(fileMatches[i][ingestedFilePatternValueIdx], 64)
-		if err != nil {
-			return errors.Newf("could not parse file size value: %s", err)
-		}
 		files = append(files, ingestedFile{
 			level:     level,
 			fileNum:   fileNum,
-			sizeBytes: unHumanize(v, fileMatches[i][ingestedFilePatternUnitIdx]),
+			sizeBytes: unHumanize(fileMatches[i][ingestedFilePatternBytesIdx]),
 		})
 	}
 	b.events = append(b.events, event{
@@ -1131,34 +1126,44 @@ func runCompactionLogs(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// unHumanize performs the opposite of humanize.Uint64, converting a
-// human-readable digit and unit into a raw number of bytes.
-func unHumanize(d float64, u string) uint64 {
-	if u == "" {
-		return uint64(d)
+// unHumanize performs the opposite of humanize.Bytes.Uint64 (e.g. "10B",
+// "10MB") or the 23.1 humanize.IEC.Uint64 (e.g. "10 B", "10 M"), converting a
+// human-readable value into a raw number of bytes.
+func unHumanize(s string) uint64 {
+	if len(s) < 2 || !(s[0] >= '0' && s[0] <= '9') {
+		panic(errors.Newf("invalid bytes value %q", s))
+	}
+	if s[len(s)-1] == 'B' {
+		s = s[:len(s)-1]
 	}
 
 	multiplier := uint64(1)
-	switch u {
-	case "B":
-		// no-op: treat as regular bytes.
-	case "K":
+	switch s[len(s)-1] {
+	case 'K':
 		multiplier = 1 << 10
-	case "M":
+	case 'M':
 		multiplier = 1 << 20
-	case "G":
+	case 'G':
 		multiplier = 1 << 30
-	case "T":
+	case 'T':
 		multiplier = 1 << 40
-	case "P":
+	case 'P':
 		multiplier = 1 << 50
-	case "E":
+	case 'E':
 		multiplier = 1 << 60
-	default:
-		panic(errors.Newf("unknown unit %q", u))
+	}
+	if multiplier != 1 {
+		s = s[:len(s)-1]
+	}
+	if s[len(s)-1] == ' ' {
+		s = s[:len(s)-1]
+	}
+	val, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		panic(fmt.Sprintf("parsing %s: %v", s, err))
 	}
 
-	return uint64(d) * multiplier
+	return uint64(val * float64(multiplier))
 }
 
 // sumInputBytes takes a string as input and returns the sum of the
@@ -1167,28 +1172,19 @@ func sumInputBytes(s string) (total uint64, _ error) {
 	var (
 		open bool
 		b    bytes.Buffer
-		prev rune
 	)
 	for _, c := range s {
 		switch c {
 		case '(':
 			open = true
 		case ')':
-			val, err := strconv.ParseFloat(b.String(), 64)
-			if err != nil {
-				return 0, err
-			}
-			total += unHumanize(val, string(prev))
+			total += unHumanize(b.String())
 			b.Reset()
 			open = false
 		default:
-			if !open {
-				break
-			}
-			if unicode.IsDigit(c) || c == '.' {
+			if open {
 				b.WriteRune(c)
 			}
-			prev = c
 		}
 	}
 	return

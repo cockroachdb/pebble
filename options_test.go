@@ -277,7 +277,7 @@ func TestOptionsValidate(t *testing.T) {
 [Options]
   mem_table_size=4294967296
 `,
-			`MemTableSize \(4\.0 G\) must be < 4\.0 G`,
+			`MemTableSize \(4\.0GB\) must be < 4\.0GB`,
 		},
 		{`
 [Options]
