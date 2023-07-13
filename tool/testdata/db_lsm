@@ -10,25 +10,26 @@ pebble: database "non-existent" does not exist
 db lsm
 ../testdata/db-stage-4
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-    WAL         1     0 B       -     0 B       -       -       -       -     0 B       -       -       -     0.0
-      0         1   986 B    0.50     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  total         1   986 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  flush         0                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         0     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl         1   256 K
-zmemtbl         0     0 B
-   ztbl         0     0 B
- bcache         0     0 B    0.0%  (score == hit-rate)
- tcache         0     0 B    0.0%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
- titers         0
- filter         -       -    0.0%  (score == utility)
- ingest         0
+  level |            tables |   score |      in |          ingest |            move |           write |    read |   r-amp   w-amp
+--------+-------------------+---------+---------+-----------------+-----------------+-----------------+---------+----------------
+      0 |         1    986B |    0.50 |      0B |       0      0B |       0      0B |       0      0B |      0B |       0     0.0
+      1 |         0      0B |    0.00 |      0B |       0      0B |       0      0B |       0      0B |      0B |       0     0.0
+      2 |         0      0B |    0.00 |      0B |       0      0B |       0      0B |       0      0B |      0B |       0     0.0
+      3 |         0      0B |    0.00 |      0B |       0      0B |       0      0B |       0      0B |      0B |       0     0.0
+      4 |         0      0B |    0.00 |      0B |       0      0B |       0      0B |       0      0B |      0B |       0     0.0
+      5 |         0      0B |    0.00 |      0B |       0      0B |       0      0B |       0      0B |      0B |       0     0.0
+      6 |         0      0B |       - |      0B |       0      0B |       0      0B |       0      0B |      0B |       0     0.0
+  total |         1    986B |       - |      0B |       0      0B |       0      0B |       0      0B |      0B |       0     0.0
+---------------------------------------------------------------------------------------------------------------------------------
+WAL: 1 (0B)  in: 0B  written: 0B (0% overhead)
+Flushes: 0
+Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (256KB)  zombie: 0 (0B)
+Zombie tables: 0 (0B)
+Block cache: 0 (0B)  hit rate: 0.0%
+Table cache: 0 (0B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
