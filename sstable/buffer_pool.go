@@ -66,6 +66,15 @@ func (p *BufferPool) Init(initialSize int) {
 	}
 }
 
+// initPreallocated is like Init but for internal sstable package use in
+// instances where a pre-allocated slice of []allocedBuffer already exists. It's
+// used to avoid an extra allocation initializing BufferPool.pool.
+func (p *BufferPool) initPreallocated(pool []allocedBuffer) {
+	*p = BufferPool{
+		pool: pool[:0],
+	}
+}
+
 // Release releases all buffers held by the pool and resets the pool to an
 // uninitialized state.
 func (p *BufferPool) Release() {

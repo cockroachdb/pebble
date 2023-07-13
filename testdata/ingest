@@ -47,8 +47,8 @@ compact         0     0 B     0 B       0                          (size == esti
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
- bcache         8   1.2 K   42.9%  (score == hit-rate)
- tcache         1   680 B   50.0%  (score == hit-rate)
+ bcache         6   1.2 K   35.7%  (score == hit-rate)
+ tcache         1   800 B   50.0%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
