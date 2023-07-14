@@ -79,7 +79,7 @@ next
 <c@9:3> MaybeFilteredKeys()=false
 <d@3:4> MaybeFilteredKeys()=false
     filter.Intersects([0, 3)) = (false, <nil>)
-    filter.KeyIsWithinUpperBound(g#72057594037927935,17) = true
+    filter.KeyIsWithinUpperBound(g) = true
     filter.Intersects([3, 9)) = (true, <nil>)
 <g@8:7> MaybeFilteredKeys()=true
 <h@3:8> MaybeFilteredKeys()=false
@@ -106,7 +106,7 @@ next
 <c@9:3> MaybeFilteredKeys()=false
 <d@3:4> MaybeFilteredKeys()=false
     filter.Intersects([0, 3)) = (false, <nil>)
-    filter.KeyIsWithinUpperBound(g#72057594037927935,17) = false
+    filter.KeyIsWithinUpperBound(g) = false
 <e@2:5> MaybeFilteredKeys()=false
 <f@0:6> MaybeFilteredKeys()=false
     filter.Intersects([3, 9)) = (true, <nil>)
@@ -126,14 +126,14 @@ next
 next
 ----
     filter.Intersects([2, 6)) = (false, <nil>)
-    filter.KeyIsWithinUpperBound(c#72057594037927935,17) = true
+    filter.KeyIsWithinUpperBound(c) = true
     filter.Intersects([3, 10)) = (false, <nil>)
-    filter.KeyIsWithinUpperBound(e#72057594037927935,17) = true
+    filter.KeyIsWithinUpperBound(e) = true
     filter.Intersects([0, 3)) = (true, <nil>)
 <e@2:5> MaybeFilteredKeys()=true
 <f@0:6> MaybeFilteredKeys()=false
     filter.Intersects([3, 9)) = (false, <nil>)
-    filter.KeyIsWithinUpperBound(i#72057594037927935,17) = false
+    filter.KeyIsWithinUpperBound(i) = false
 <g@8:7> MaybeFilteredKeys()=false
 <h@3:8> MaybeFilteredKeys()=false
 . MaybeFilteredKeys()=false
@@ -152,9 +152,9 @@ prev
 prev
 ----
     filter.Intersects([3, 9)) = (false, <nil>)
-    filter.KeyIsWithinLowerBound(g#72057594037927935,17) = true
+    filter.KeyIsWithinLowerBound(g) = true
     filter.Intersects([0, 3)) = (false, <nil>)
-    filter.KeyIsWithinLowerBound(e#72057594037927935,17) = true
+    filter.KeyIsWithinLowerBound(e) = true
     filter.Intersects([3, 10)) = (true, <nil>)
 <d@3:4> MaybeFilteredKeys()=true
 <c@9:3> MaybeFilteredKeys()=false

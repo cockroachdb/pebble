@@ -121,6 +121,18 @@ func testBlockCleared(t *testing.T, w, b *blockWriter) {
 	require.True(t, cap(w.curValue) > 0 && cap(b.curValue) == 0)
 }
 
+func testIndexBlockCleared(t *testing.T, w, b *indexBlockWriter) {
+	require.Equal(t, len(w.buf), len(b.buf))
+	require.Equal(t, len(w.restarts), len(b.restarts))
+	require.Equal(t, len(w.curKey.UserKey), len(b.curKey.UserKey))
+	require.Equal(t, w.tmp, b.tmp)
+
+	// Make sure that we didn't lose the allocated byte slices.
+	require.True(t, cap(w.buf) > 0 && cap(b.buf) == 0)
+	require.True(t, cap(w.restarts) > 0 && cap(b.restarts) == 0)
+	require.True(t, cap(w.curKey.UserKey) > 0 && cap(b.curKey.UserKey) == 0)
+}
+
 func TestBlockClear(t *testing.T) {
 	w := blockWriter{restartInterval: 16}
 	w.add(ikey("apple"), nil)

@@ -434,12 +434,12 @@ func TestClearDataBlockBuf(t *testing.T) {
 }
 
 func TestClearIndexBlockBuf(t *testing.T) {
-	i := newIndexBlockBuf(false)
+	i := newIndexBlockBuf(false, indexBlockFormatCondensed)
 	i.block.add(ikey("apple"), nil)
 	i.block.add(ikey("banana"), nil)
 	i.clear()
 
-	testBlockCleared(t, &i.block, &blockWriter{})
+	testIndexBlockCleared(t, &i.block, &indexBlockWriter{})
 	require.Equal(
 		t, i.size.estimate, sizeEstimate{emptySize: emptyBlockSize},
 	)
