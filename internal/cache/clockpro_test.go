@@ -41,7 +41,7 @@ func TestCache(t *testing.T) {
 		var hit bool
 		h := cache.Get(1, base.FileNum(uint64(key)).DiskFileNum(), 0)
 		if v := h.Get(); v == nil {
-			value := cache.Alloc(1)
+			value := Alloc(1)
 			value.Buf()[0] = fields[0][0]
 			cache.Set(1, base.FileNum(uint64(key)).DiskFileNum(), 0, value).Release()
 		} else {
@@ -60,7 +60,7 @@ func TestCache(t *testing.T) {
 
 func testValue(cache *Cache, s string, repeat int) *Value {
 	b := bytes.Repeat([]byte(s), repeat)
-	v := cache.Alloc(len(b))
+	v := Alloc(len(b))
 	copy(v.Buf(), b)
 	return v
 }

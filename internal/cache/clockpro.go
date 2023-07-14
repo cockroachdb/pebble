@@ -785,14 +785,14 @@ func (c *Cache) Size() int64 {
 // manually managed. The caller MUST either add the value to the cache (via
 // Cache.Set), or release the value (via Cache.Free). Failure to do so will
 // result in a memory leak.
-func (c *Cache) Alloc(n int) *Value {
+func Alloc(n int) *Value {
 	return newValue(n)
 }
 
 // Free frees the specified value. The buffer associated with the value will
 // possibly be reused, making it invalid to use the buffer after calling
 // Free. Do not call Free on a value that has been added to the cache.
-func (c *Cache) Free(v *Value) {
+func Free(v *Value) {
 	if n := v.refs(); n > 1 {
 		panic(fmt.Sprintf("pebble: Value has been added to the cache: refs=%d", n))
 	}
