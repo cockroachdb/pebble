@@ -18,8 +18,6 @@ func TestCompressionRoundtrip(t *testing.T) {
 	seed := time.Now().UnixNano()
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewSource(seed))
-	c := cache.New(128 << 10 /* 128 KiB */)
-	defer c.Unref()
 
 	for compression := DefaultCompression + 1; compression < NCompression; compression++ {
 		t.Run(compression.String(), func(t *testing.T) {
@@ -30,13 +28,13 @@ func TestCompressionRoundtrip(t *testing.T) {
 			compressedBuf := make([]byte, rng.Intn(1<<10 /* 1 KiB */))
 
 			btyp, compressed := compressBlock(compression, payload, compressedBuf)
-			v, err := decompressBlock(c, btyp, compressed)
+			v, err := decompressBlock(btyp, compressed)
 			require.NoError(t, err)
 			got := payload
 			if v != nil {
 				got = v.Buf()
 				require.Equal(t, payload, got)
-				c.Free(v)
+				cache.Free(v)
 			}
 		})
 	}
@@ -45,8 +43,6 @@ func TestCompressionRoundtrip(t *testing.T) {
 // TestDecompressionError tests that a decompressing a value that does not
 // decompress returns an error.
 func TestDecompressionError(t *testing.T) {
-	c := cache.New(128 << 10 /* 128 KiB */)
-	defer c.Unref()
 	rng := rand.New(rand.NewSource(1 /* fixed seed */))
 
 	// Create a buffer to represent a faux zstd compressed block. It's prefixed
@@ -57,7 +53,7 @@ func TestDecompressionError(t *testing.T) {
 	fauxCompressed = fauxCompressed[:n+compressedPayloadLen]
 	rng.Read(fauxCompressed[n:])
 
-	v, err := decompressBlock(c, zstdCompressionBlockType, fauxCompressed)
+	v, err := decompressBlock(zstdCompressionBlockType, fauxCompressed)
 	t.Log(err)
 	require.Error(t, err)
 	require.Nil(t, v)

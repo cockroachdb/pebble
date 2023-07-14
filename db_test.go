@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -787,14 +788,12 @@ func TestIterLeakSharedCache(t *testing.T) {
 }
 
 func TestMemTableReservation(t *testing.T) {
-	cache := NewCache(128 << 10 /* 128 KB */)
-	defer cache.Unref()
-
 	opts := &Options{
-		Cache:        cache,
+		Cache:        NewCache(128 << 10 /* 128 KB */),
 		MemTableSize: initialMemTableSize,
 		FS:           vfs.NewMem(),
 	}
+	defer opts.Cache.Unref()
 	opts.testingRandomized(t)
 	opts.EnsureDefaults()
 	// We're going to be looking at and asserting the global memtable reservation
@@ -805,7 +804,7 @@ func TestMemTableReservation(t *testing.T) {
 	// cache size, so opening the DB should cause this block to be evicted.
 	tmpID := opts.Cache.NewID()
 	helloWorld := []byte("hello world")
-	value := opts.Cache.Alloc(len(helloWorld))
+	value := cache.Alloc(len(helloWorld))
 	copy(value.Buf(), helloWorld)
 	opts.Cache.Set(tmpID, base.FileNum(0).DiskFileNum(), 0, value).Release()
 

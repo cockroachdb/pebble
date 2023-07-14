@@ -3338,7 +3338,7 @@ func (r *Reader) readBlock(
 		return h, nil
 	}
 
-	v := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
+	v := cache.Alloc(int(bh.Length + blockTrailerLen))
 	b := v.Buf()
 	readStartTime := time.Now()
 	var err error
@@ -3364,12 +3364,12 @@ func (r *Reader) readBlock(
 		stats.BlockReadDuration += readDuration
 	}
 	if err != nil {
-		r.opts.Cache.Free(v)
+		cache.Free(v)
 		return cache.Handle{}, err
 	}
 
 	if err := checkChecksum(r.checksumType, b, bh, r.fileNum.FileNum()); err != nil {
-		r.opts.Cache.Free(v)
+		cache.Free(v)
 		return cache.Handle{}, err
 	}
 
@@ -3377,13 +3377,13 @@ func (r *Reader) readBlock(
 	b = b[:bh.Length]
 	v.Truncate(len(b))
 
-	decoded, err := decompressBlock(r.opts.Cache, typ, b)
+	decoded, err := decompressBlock(typ, b)
 	if decoded != nil {
-		r.opts.Cache.Free(v)
+		cache.Free(v)
 		v = decoded
 		b = v.Buf()
 	} else if err != nil {
-		r.opts.Cache.Free(v)
+		cache.Free(v)
 		return cache.Handle{}, err
 	}
 
@@ -3393,12 +3393,12 @@ func (r *Reader) readBlock(
 		var err error
 		b, err = transform(b)
 		if err != nil {
-			r.opts.Cache.Free(v)
+			cache.Free(v)
 			return cache.Handle{}, err
 		}
-		newV := r.opts.Cache.Alloc(len(b))
+		newV := cache.Alloc(len(b))
 		copy(newV.Buf(), b)
-		r.opts.Cache.Free(v)
+		cache.Free(v)
 		v = newV
 	}
 
