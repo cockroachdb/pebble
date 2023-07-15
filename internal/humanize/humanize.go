@@ -41,6 +41,12 @@ var IEC = config{1024, []string{" B", " K", " M", " G", " T", " P", " E"}}
 // SI produces human readable representations of integer values in SI units.
 var SI = config{1000, []string{"", " K", " M", " G", " T", " P", " E"}}
 
+// Bytes produces human readable representations of byte values in IEC units.
+var Bytes = config{1024, []string{"B", "KB", "MB", "GB", "TB", "PB", "EB"}}
+
+// Count produces human readable representations of unitless values in SI units.
+var Count = config{1000, []string{"", "K", "M", "G", "T", "P", "E"}}
+
 // Int64 produces a human readable representation of the value.
 func (c *config) Int64(s int64) FormattedString {
 	if s < 0 {

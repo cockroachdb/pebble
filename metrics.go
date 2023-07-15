@@ -6,7 +6,7 @@ package pebble
 
 import (
 	"fmt"
-	"strings"
+	"math"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -27,14 +27,6 @@ type FilterMetrics = sstable.FilterMetrics
 // ThroughputMetric is a cumulative throughput metric. See the detailed
 // comment in base.
 type ThroughputMetric = base.ThroughputMetric
-
-func formatCacheMetrics(w redact.SafePrinter, m *CacheMetrics, name redact.SafeString) {
-	w.Printf("%7s %9s %7s %6.1f%%  (score == hit-rate)\n",
-		name,
-		humanize.SI.Int64(m.Count),
-		humanize.IEC.Int64(m.Size),
-		redact.Safe(hitRate(m.Hits, m.Misses)))
-}
 
 // LevelMetrics holds per-level metrics such as the number of files and total
 // size of the files, and compaction related metrics.
@@ -119,32 +111,6 @@ func (m *LevelMetrics) WriteAmp() float64 {
 		return 0
 	}
 	return float64(m.BytesFlushed+m.BytesCompacted) / float64(m.BytesIn)
-}
-
-// format generates a string of the receiver's metrics, formatting it into the
-// supplied buffer.
-func (m *LevelMetrics) format(
-	w redact.SafePrinter, score redact.SafeValue, includeValueBlocksSize bool,
-) {
-	w.Printf("%9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7d %7.1f",
-		redact.Safe(m.NumFiles),
-		humanize.IEC.Int64(m.Size),
-		score,
-		humanize.IEC.Uint64(m.BytesIn),
-		humanize.IEC.Uint64(m.BytesIngested),
-		humanize.SI.Uint64(m.TablesIngested),
-		humanize.IEC.Uint64(m.BytesMoved),
-		humanize.SI.Uint64(m.TablesMoved),
-		humanize.IEC.Uint64(m.BytesFlushed+m.BytesCompacted),
-		humanize.SI.Uint64(m.TablesFlushed+m.TablesCompacted),
-		humanize.IEC.Uint64(m.BytesRead),
-		redact.Safe(m.Sublevels),
-		redact.Safe(m.WriteAmp()))
-	if includeValueBlocksSize {
-		w.Printf(" %7s\n", humanize.IEC.Uint64(m.Additional.ValueBlocksSize))
-	} else {
-		w.SafeString("\n")
-	}
 }
 
 // Metrics holds metrics for various subsystems of the DB such as the Cache,
@@ -362,59 +328,32 @@ func (m *Metrics) Total() LevelMetrics {
 	return total
 }
 
-const notApplicable = redact.SafeString("-")
-
-func (m *Metrics) formatWAL(w redact.SafePrinter) {
-	var writeAmp float64
-	if m.WAL.BytesIn > 0 {
-		writeAmp = float64(m.WAL.BytesWritten) / float64(m.WAL.BytesIn)
-	}
-	w.Printf("    WAL %9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7.1f\n",
-		redact.Safe(m.WAL.Files),
-		humanize.Uint64(m.WAL.Size),
-		notApplicable,
-		humanize.Uint64(m.WAL.BytesIn),
-		notApplicable,
-		notApplicable,
-		notApplicable,
-		notApplicable,
-		humanize.Uint64(m.WAL.BytesWritten),
-		notApplicable,
-		notApplicable,
-		notApplicable,
-		redact.Safe(writeAmp))
-}
-
-// String pretty-prints the metrics, showing a line for the WAL, a line per-level, and
-// a total:
+// String pretty-prints the metrics as below:
 //
-//	  __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-//	    WAL         1    28 B       -    17 B       -       -       -       -    56 B       -       -       -     3.3
-//	      0         1   770 B    0.25    28 B     0 B       0     0 B       0   770 B       1     0 B       1    27.5
-//	      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-//	      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-//	      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-//	      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-//	      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-//	      6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-//	  total         1   770 B       -    56 B     0 B       0     0 B       0   826 B       1     0 B       1    14.8
-//	  flush         1                             0 B       0       0  (ingest = ingested-as-flushable, move = tables-ingested)
-//	compact         0     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-//	  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
-//	 memtbl         1   256 K
-//	zmemtbl         1   256 K
-//	   ztbl         0     0 B
-//	 bcache         4   697 B    0.0%  (score == hit-rate)
-//	 tcache         1   696 B    0.0%  (score == hit-rate)
-//	  snaps         0       -       0  (score == earliest seq num)
-//	 titers         1
-//	 filter         -       -    0.0%  (score == utility)
-//
-// The WAL "in" metric is the size of the batches written to the WAL. The WAL
-// "write" metric is the size of the physical data written to the WAL which
-// includes record fragment overhead. Write amplification is computed as
-// bytes-written / bytes-in, except for the total row where bytes-in is
-// replaced with WAL-bytes-written + bytes-ingested.
+//	      |                      |       |        |    ingested   |     moved     |    written    |        |     amp
+//	level | tables   size val-bl | score |     in | tables   size | tables   size | tables   size |   read | r-amp w-amp
+//	------+----------------------+-------+--------+---------------+---------------+---------------+--------+------------
+//	    0 |    101   102B     0B | 103.0 |   104B |    112   104B |    113   106B |    221   217B |   107B |     1   2.1
+//	    1 |    201   202B     0B | 203.0 |   204B |    212   204B |    213   206B |    421   417B |   207B |     2   2.0
+//	    2 |    301   302B     0B | 303.0 |   304B |    312   304B |    313   306B |    621   617B |   307B |     3   2.0
+//	    3 |    401   402B     0B | 403.0 |   404B |    412   404B |    413   406B |    821   817B |   407B |     4   2.0
+//	    4 |    501   502B     0B | 503.0 |   504B |    512   504B |    513   506B |   1.0K  1017B |   507B |     5   2.0
+//	    5 |    601   602B     0B | 603.0 |   604B |    612   604B |    613   606B |   1.2K  1.2KB |   607B |     6   2.0
+//	    6 |    701   702B     0B |     - |   704B |    712   704B |    713   706B |   1.4K  1.4KB |   707B |     7   2.0
+//	total |   2.8K  2.7KB     0B |     - |  2.8KB |   2.9K  2.8KB |   2.9K  2.8KB |   5.7K  8.4KB |  2.8KB |    28   3.0
+//	--------------------------------------------------------------------------------------------------------------------
+//	WAL: 22 files (24B)  in: 25B  written: 26B (4% overhead)
+//	Flushes: 8
+//	Compactions: 5  estimated debt: 6B  in progress: 2 (7B)
+//	default: 27  delete: 28  elision: 29  move: 30  read: 31  rewrite: 32  multi-level: 33
+//	MemTables: 12 (11B)  zombie: 14 (13B)
+//	Zombie tables: 16 (15B)
+//	Block cache: 2 entries (1B)  hit rate: 42.9%
+//	Table cache: 18 entries (17B)  hit rate: 48.7%
+//	Snapshots: 4  earliest seq num: 1024
+//	Table iters: 21
+//	Filter utility: 47.4%
+//	Ingestions: 27  as flushable: 36 (34B in 35 tables)
 func (m *Metrics) String() string {
 	return redact.StringWithoutMarkers(m)
 }
@@ -435,29 +374,53 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	// width specifiers. When the issue is fixed, we can convert these to
 	// RedactableStrings. https://github.com/cockroachdb/redact/issues/17
 
-	haveValueBlocks := false
-	var valueBlocksHeading redact.SafeString
-	for level := 0; level < numLevels; level++ {
-		if m.Levels[level].Additional.ValueBlocksSize > 0 {
-			haveValueBlocks = true
-			valueBlocksHeading = "__val-bl"
-			break
+	w.SafeString("      |                      |       |        |    ingested   |     moved     |    written    |        |     amp\n")
+	w.SafeString("level | tables   size val-bl | score |     in | tables   size | tables   size | tables   size |   read | r-amp w-amp\n")
+	w.SafeString("------+----------------------+-------+--------+---------------+---------------+---------------+--------+------------\n")
+
+	// formatRow prints out a row of the table.
+	formatRow := func(m *LevelMetrics, score float64) {
+		scoreStr := "-"
+		if !math.IsNaN(score) {
+			// Try to keep the string no longer than 5 characters.
+			switch {
+			case score < 99.995:
+				scoreStr = fmt.Sprintf("%.2f", score)
+			case score < 999.95:
+				scoreStr = fmt.Sprintf("%.1f", score)
+			default:
+				scoreStr = fmt.Sprintf("%.0f", score)
+			}
 		}
+
+		w.Printf("| %6s %6s %6s | %5s | %6s | %6s %6s | %6s %6s | %6s %6s | %6s | %5d %5.1f\n",
+			humanize.Count.Int64(m.NumFiles),
+			humanize.Bytes.Int64(m.Size),
+			humanize.Bytes.Uint64(m.Additional.ValueBlocksSize),
+			redact.Safe(scoreStr),
+			humanize.Bytes.Uint64(m.BytesIn),
+			humanize.Count.Uint64(m.TablesIngested),
+			humanize.Bytes.Uint64(m.BytesIngested),
+			humanize.Count.Uint64(m.TablesMoved),
+			humanize.Bytes.Uint64(m.BytesMoved),
+			humanize.Count.Uint64(m.TablesFlushed+m.TablesCompacted),
+			humanize.Bytes.Uint64(m.BytesFlushed+m.BytesCompacted),
+			humanize.Bytes.Uint64(m.BytesRead),
+			redact.Safe(m.Sublevels),
+			redact.Safe(m.WriteAmp()))
 	}
+
 	var total LevelMetrics
-	w.Printf("__level_____count____size___score______in__ingest(sz_cnt)"+
-		"____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp%s\n", valueBlocksHeading)
-	m.formatWAL(w)
 	for level := 0; level < numLevels; level++ {
 		l := &m.Levels[level]
-		w.Printf("%7d ", redact.Safe(level))
+		w.Printf("%5d ", redact.Safe(level))
 
 		// Format the score.
-		var score redact.SafeValue = notApplicable
+		score := math.NaN()
 		if level < numLevels-1 {
-			score = redact.Safe(fmt.Sprintf("%0.2f", l.Score))
+			score = l.Score
 		}
-		l.format(w, score, haveValueBlocks)
+		formatRow(l, score)
 		total.Add(l)
 		total.Sublevels += l.Sublevels
 	}
@@ -467,60 +430,75 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	// the bytes written to the log and bytes written externally and then
 	// ingested.
 	total.BytesFlushed += total.BytesIn
-	w.SafeString("  total ")
-	total.format(w, notApplicable, haveValueBlocks)
+	w.SafeString("total ")
+	formatRow(&total, math.NaN())
 
-	w.Printf("  flush %9d %31s %7d %7d  %s\n",
-		redact.Safe(m.Flush.Count),
-		humanize.IEC.Uint64(m.Flush.AsIngestBytes),
-		redact.Safe(m.Flush.AsIngestTableCount),
-		redact.Safe(m.Flush.AsIngestCount),
-		redact.SafeString(`(ingest = tables-ingested, move = ingested-as-flushable)`))
-	w.Printf("compact %9d %7s %7s %7d %s %s\n",
+	w.SafeString("--------------------------------------------------------------------------------------------------------------------\n")
+
+	w.Printf("WAL: %d files (%s)  in: %s  written: %s (%.0f%% overhead)\n",
+		redact.Safe(m.WAL.Files),
+		humanize.Bytes.Uint64(m.WAL.Size),
+		humanize.Bytes.Uint64(m.WAL.BytesIn),
+		humanize.Bytes.Uint64(m.WAL.BytesWritten),
+		redact.Safe(percent(int64(m.WAL.BytesWritten)-int64(m.WAL.BytesIn), int64(m.WAL.BytesIn))))
+
+	w.Printf("Flushes: %d\n", redact.Safe(m.Flush.Count))
+
+	w.Printf("Compactions: %d  estimated debt: %s  in progress: %d (%s)\n",
 		redact.Safe(m.Compact.Count),
-		humanize.IEC.Uint64(m.Compact.EstimatedDebt),
-		humanize.IEC.Int64(m.Compact.InProgressBytes),
+		humanize.Bytes.Uint64(m.Compact.EstimatedDebt),
 		redact.Safe(m.Compact.NumInProgress),
-		redact.SafeString(strings.Repeat(" ", 24)),
-		redact.SafeString(`(size == estimated-debt, score = in-progress-bytes, in = num-in-progress)`))
-	w.Printf("  ctype %9d %7d %7d %7d %7d %7d %7d  %s\n",
+		humanize.Bytes.Int64(m.Compact.InProgressBytes))
+
+	w.Printf("             default: %d  delete: %d  elision: %d  move: %d  read: %d  rewrite: %d  multi-level: %d\n",
 		redact.Safe(m.Compact.DefaultCount),
 		redact.Safe(m.Compact.DeleteOnlyCount),
 		redact.Safe(m.Compact.ElisionOnlyCount),
 		redact.Safe(m.Compact.MoveCount),
 		redact.Safe(m.Compact.ReadCount),
 		redact.Safe(m.Compact.RewriteCount),
-		redact.Safe(m.Compact.MultiLevelCount),
-		redact.SafeString(`(default, delete, elision, move, read, rewrite, multi-level)`))
-	w.Printf(" memtbl %9d %7s\n",
+		redact.Safe(m.Compact.MultiLevelCount))
+
+	w.Printf("MemTables: %d (%s)  zombie: %d (%s)\n",
 		redact.Safe(m.MemTable.Count),
-		humanize.IEC.Uint64(m.MemTable.Size))
-	w.Printf("zmemtbl %9d %7s\n",
+		humanize.Bytes.Uint64(m.MemTable.Size),
 		redact.Safe(m.MemTable.ZombieCount),
-		humanize.IEC.Uint64(m.MemTable.ZombieSize))
-	w.Printf("   ztbl %9d %7s\n",
+		humanize.Bytes.Uint64(m.MemTable.ZombieSize))
+
+	w.Printf("Zombie tables: %d (%s)\n",
 		redact.Safe(m.Table.ZombieCount),
-		humanize.IEC.Uint64(m.Table.ZombieSize))
-	formatCacheMetrics(w, &m.BlockCache, "bcache")
-	formatCacheMetrics(w, &m.TableCache, "tcache")
-	w.Printf("  snaps %9d %7s %7d  (score == earliest seq num)\n",
+		humanize.Bytes.Uint64(m.Table.ZombieSize))
+
+	formatCacheMetrics := func(m *CacheMetrics, name redact.SafeString) {
+		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",
+			name,
+			humanize.Count.Int64(m.Count),
+			humanize.Bytes.Int64(m.Size),
+			redact.Safe(hitRate(m.Hits, m.Misses)))
+	}
+	formatCacheMetrics(&m.BlockCache, "Block cache")
+	formatCacheMetrics(&m.TableCache, "Table cache")
+
+	w.Printf("Snapshots: %d  earliest seq num: %d\n",
 		redact.Safe(m.Snapshots.Count),
-		notApplicable,
 		redact.Safe(m.Snapshots.EarliestSeqNum))
-	w.Printf(" titers %9d\n", redact.Safe(m.TableIters))
-	w.Printf(" filter %9s %7s %6.1f%%  (score == utility)\n",
-		notApplicable,
-		notApplicable,
-		redact.Safe(hitRate(m.Filter.Hits, m.Filter.Misses)))
-	w.Printf(" ingest %9d\n",
+
+	w.Printf("Table iters: %d\n", redact.Safe(m.TableIters))
+	w.Printf("Filter utility: %.1f%%\n", redact.Safe(hitRate(m.Filter.Hits, m.Filter.Misses)))
+	w.Printf("Ingestions: %d  as flushable: %d (%s in %d tables)\n",
 		redact.Safe(m.Ingest.Count),
-	)
+		redact.Safe(m.Flush.AsIngestCount),
+		humanize.Bytes.Uint64(m.Flush.AsIngestBytes),
+		redact.Safe(m.Flush.AsIngestTableCount))
 }
 
 func hitRate(hits, misses int64) float64 {
-	sum := hits + misses
-	if sum == 0 {
+	return percent(hits, hits+misses)
+}
+
+func percent(numerator, denominator int64) float64 {
+	if denominator == 0 {
 		return 0
 	}
-	return 100 * float64(hits) / float64(sum)
+	return 100 * float64(numerator) / float64(denominator)
 }
