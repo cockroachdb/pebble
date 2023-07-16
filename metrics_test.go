@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMetricsFormat(t *testing.T) {
+func exampleMetrics() Metrics {
 	var m Metrics
 	m.BlockCache.Size = 1
 	m.BlockCache.Count = 2
@@ -79,34 +79,7 @@ func TestMetricsFormat(t *testing.T) {
 		l.TablesIngested = base + 12
 		l.TablesMoved = base + 13
 	}
-
-	const expected = `
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-    WAL        22    24 B       -    25 B       -       -       -       -    26 B       -       -       -     1.0
-      0       101   102 B  103.00   104 B   104 B     112   106 B     113   217 B     221   107 B       1     2.1
-      1       201   202 B  203.00   204 B   204 B     212   206 B     213   417 B     421   207 B       2     2.0
-      2       301   302 B  303.00   304 B   304 B     312   306 B     313   617 B     621   307 B       3     2.0
-      3       401   402 B  403.00   404 B   404 B     412   406 B     413   817 B     821   407 B       4     2.0
-      4       501   502 B  503.00   504 B   504 B     512   506 B     513  1017 B   1.0 K   507 B       5     2.0
-      5       601   602 B  603.00   604 B   604 B     612   606 B     613   1.2 K   1.2 K   607 B       6     2.0
-      6       701   702 B       -   704 B   704 B     712   706 B     713   1.4 K   1.4 K   707 B       7     2.0
-  total      2807   2.7 K       -   2.8 K   2.8 K   2.9 K   2.8 K   2.9 K   8.4 K   5.7 K   2.8 K      28     3.0
-  flush         8                            34 B      35      36  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         5     6 B     7 B       2                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype        27      28      29      30      31      32      33  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl        12    11 B
-zmemtbl        14    13 B
-   ztbl        16    15 B
- bcache         2     1 B   42.9%  (score == hit-rate)
- tcache        18    17 B   48.7%  (score == hit-rate)
-  snaps         4       -    1024  (score == earliest seq num)
- titers        21
- filter         -       -   47.4%  (score == utility)
- ingest        27
-`
-	if s := "\n" + m.String(); expected != s {
-		t.Fatalf("expected%s\nbut found%s", expected, s)
-	}
+	return m
 }
 
 func TestMetrics(t *testing.T) {
@@ -143,6 +116,17 @@ func TestMetrics(t *testing.T) {
 
 	datadriven.RunTest(t, "testdata/metrics", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "example":
+			m := exampleMetrics()
+			res := m.String()
+
+			// Nothing in the metrics should be redacted.
+			redacted := string(redact.Sprintf("%s", &m).Redact())
+			if redacted != res {
+				td.Fatalf(t, "redacted metrics don't match\nunredacted:\n%s\nredacted:%s\n", res, redacted)
+			}
+			return res
+
 		case "batch":
 			b := d.NewBatch()
 			if err := runBatchDefineCmd(td, b); err != nil {
@@ -268,38 +252,6 @@ func TestMetrics(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
-}
-
-func TestMetricsRedact(t *testing.T) {
-	const expected = `
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-    WAL         0     0 B       -     0 B       -       -       -       -     0 B       -       -       -     0.0
-      0         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  total         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  flush         0                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         0     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl         0     0 B
-zmemtbl         0     0 B
-   ztbl         0     0 B
- bcache         0     0 B    0.0%  (score == hit-rate)
- tcache         0     0 B    0.0%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
- titers         0
- filter         -       -    0.0%  (score == utility)
- ingest         0
-`
-
-	got := redact.Sprintf("%s", &Metrics{}).Redact()
-	if s := "\n" + got; expected != s {
-		t.Fatalf("expected%s\nbut found%s", expected, s)
-	}
 }
 
 func TestMetricsWAmpDisableWAL(t *testing.T) {

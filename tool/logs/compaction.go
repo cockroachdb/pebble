@@ -115,7 +115,7 @@ var (
 	//   total     31766   188 G       -   257 G   187 G    48 K   3.6 G     744   536 G    49 K   278 G       5     2.1
 	//
 	readAmpPattern = regexp.MustCompile(
-		/* Read-amp     */ `(?:^|\+)\s{2}total.*?(?P<value>\d+).{8}$`,
+		/* Read-amp     */ `(?:^|\+)total \|.*?(?P<value>\d+).{5}$`,
 	)
 	readAmpPatternValueIdx = readAmpPattern.SubexpIndex("value")
 )
