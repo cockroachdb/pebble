@@ -1984,7 +1984,16 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 					}
 					spanBytes = size
 				}
-				destTables[j].Properties.UserProperties["approximate-span-bytes"] = strconv.FormatUint(spanBytes, 10)
+				propertiesCopy := &sstable.Properties{}
+				*propertiesCopy = *destTables[j].Properties
+
+				// Deep copy user properties so approximate span bytes can be added.
+				propertiesCopy.UserProperties = make(map[string]string)
+				for k, v := range destTables[j].Properties.UserProperties {
+					propertiesCopy.UserProperties[k] = v
+				}
+				propertiesCopy.UserProperties["approximate-span-bytes"] = strconv.FormatUint(spanBytes, 10)
+				destTables[j].Properties = propertiesCopy
 			}
 			j++
 		}
