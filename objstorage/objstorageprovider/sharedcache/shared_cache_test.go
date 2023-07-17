@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
@@ -135,7 +136,11 @@ func TestSharedCacheRandomized(t *testing.T) {
 		return func(t *testing.T) {
 			for _, concurrentReads := range []bool{false, true} {
 				t.Run(fmt.Sprintf("concurrentReads=%v", concurrentReads), func(t *testing.T) {
-					numShards := rand.Intn(64) + 1
+					maxShards := 64
+					if invariants.RaceEnabled {
+						maxShards = 8
+					}
+					numShards := rand.Intn(maxShards) + 1
 					cacheSize := shardingBlockSize * int64(numShards) // minimum allowed cache size
 
 					cache, err := sharedcache.Open(fs, base.DefaultLogger, "", blockSize, shardingBlockSize, cacheSize, numShards)
@@ -195,14 +200,16 @@ func TestSharedCacheRandomized(t *testing.T) {
 	t.Run("32 KB block size", helper(32*1024, 1024*1024))
 	t.Run("1 MB block size", helper(1024*1024, 1024*1024))
 
-	for i := 0; i < 5; i++ {
-		exp := rand.Intn(11) + 10   // [10, 20]
-		randomBlockSize := 1 << exp // [1 KB, 1 MB]
+	if !invariants.RaceEnabled {
+		for i := 0; i < 5; i++ {
+			exp := rand.Intn(11) + 10   // [10, 20]
+			randomBlockSize := 1 << exp // [1 KB, 1 MB]
 
-		factor := rand.Intn(10) + 1                                // [1, 10]
-		randomShardingBlockSize := int64(randomBlockSize * factor) // [1 KB, 10 MB]
+			factor := rand.Intn(10) + 1                                // [1, 10]
+			randomShardingBlockSize := int64(randomBlockSize * factor) // [1 KB, 10 MB]
 
-		t.Run("random block and sharding block size", helper(randomBlockSize, randomShardingBlockSize))
+			t.Run("random block and sharding block size", helper(randomBlockSize, randomShardingBlockSize))
+		}
 	}
 }
 
