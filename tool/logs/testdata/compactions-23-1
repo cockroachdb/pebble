@@ -87,19 +87,27 @@ I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 
 log
 I211215 00:00:15.000000 434 kv/kvserver/store.go:3251 ⋮ [n1,s1] 31356
-      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
-------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B |  0.00 |  70GB |   133   77MB |     0     0B |   19K   24GB |  4.2GB |  0  0.3
-    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |     0B |  0  0.0
-    2 |    14   34MB     0B |  0.96 |  18GB |     0     0B |    10   17MB |   14K   49GB |   55GB |  1  2.7
-    3 |    42  207MB     0B |  0.96 |  12GB |     0     0B |   280  939MB |  7.3K   43GB |   46GB |  1  3.4
-    4 |   264  1.5GB     0B |  0.99 | 9.1GB |     6   18MB |   152  824MB |  4.5K   31GB |   35GB |  1  3.4
-    5 |  7.5K   23GB     0B |  1.00 | 2.8GB |   26K  116GB |   301  1.8GB |   604  3.2GB |  3.2GB |  1  1.2
-    6 |   24K  164GB     0B |     - |  98GB |   22K   70GB |     1  1.6KB |  3.8K  128GB |  135GB |  1  1.3
-total |   32K  188GB     0B |     - | 257GB |   48K  187GB |   744  3.6GB |   49K  536GB |  278GB |  5  2.1
------------------------------------------------------------------------------------------------------------
-WAL: 1 files (54MB)  in: 65GB  written: 70B (8% overhead)
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    54 M       -    65 G       -       -       -       -    70 G       -       -       -     1.1
+      0         0     0 B    0.00    70 G    77 M     133     0 B       0    24 G    19 K   4.2 G       0     0.3
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2        14    34 M    0.96    18 G     0 B       0    17 M      10    49 G    14 K    55 G       1     2.7
+      3        42   207 M    0.96    12 G     0 B       0   939 M     280    43 G   7.3 K    46 G       1     3.4
+      4       264   1.5 G    0.99   9.1 G    18 M       6   824 M     152    31 G   4.5 K    35 G       1     3.4
+      5      7474    23 G    1.00   2.8 G   116 G    26 K   1.8 G     301   3.2 G     604   3.2 G       1     1.2
+      6     23972   164 G       -    98 G    70 G    22 K   1.6 K       1   129 G   3.8 K   135 G       1     1.3
+  total     31766   188 G       -   257 G   187 G    48 K   3.6 G     744   536 G    49 K   278 G       5     2.1
+I211215 00:01:15.000000 434 kv/kvserver/store.go:3251 ⋮ [n1,s1] 31356
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    35 M       -    65 G       -       -       -       -    70 G       -       -       -     1.1
+      0         0     0 B    0.00    70 G    77 M     133     0 B       0    24 G    19 K   4.2 G       0     0.3
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2        14    34 M    0.95    18 G     0 B       0    17 M      10    49 G    14 K    55 G       1     2.7
+      3        42   207 M    0.96    12 G     0 B       0   939 M     280    43 G   7.3 K    46 G       1     3.4
+      4       264   1.5 G    0.99   9.1 G    18 M       6   824 M     152    31 G   4.5 K    35 G       1     3.4
+      5      7474    23 G    1.00   2.8 G   116 G    26 K   1.8 G     301   3.2 G     604   3.2 G       1     1.2
+      6     23972   164 G       -    98 G    70 G    22 K   1.6 K       1   129 G   3.8 K   135 G       1     1.3
+  total     31766   188 G       -   257 G   187 G    48 K   3.6 G     744   536 G    49 K   278 G       5     2.1
 ----
 1.log
 
@@ -270,19 +278,16 @@ I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 
 log
 I211215 00:01:15.000000 434 kv/kvserver/store.go:3251 ⋮ [n?,s?] 31356
-      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
-------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B |  0.00 |  70GB |   133   77MB |     0     0B |   19K   24GB |  4.2GB |  0  0.3
-    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |     0B |  0  0.0
-    2 |    14   34MB     0B |  0.96 |  18GB |     0     0B |    10   17MB |   14K   49GB |   55GB |  1  2.7
-    3 |    42  207MB     0B |  0.96 |  12GB |     0     0B |   280  939MB |  7.3K   43GB |   46GB |  1  3.4
-    4 |   264  1.5GB     0B |  0.99 | 9.1GB |     6   18MB |   152  824MB |  4.5K   31GB |   35GB |  1  3.4
-    5 |  7.5K   23GB     0B |  1.00 | 2.8GB |   26K  116GB |   301  1.8GB |   604  3.2GB |  3.2GB |  1  1.2
-    6 |   24K  164GB     0B |     - |  98GB |   22K   70GB |     1  1.6KB |  3.8K  128GB |  135GB |  1  1.3
-total |   32K  188GB     0B |     - | 257GB |   48K  187GB |   744  3.6GB |   49K  536GB |  278GB |  5  2.1
------------------------------------------------------------------------------------------------------------
-WAL: 1 files (54MB)  in: 65GB  written: 70B (8% overhead)
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    54 M       -    65 G       -       -       -       -    70 G       -       -       -     1.1
+      0         0     0 B    0.00    70 G    77 M     133     0 B       0    24 G    19 K   4.2 G       0     0.3
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2        14    34 M    0.96    18 G     0 B       0    17 M      10    49 G    14 K    55 G       1     2.7
+      3        42   207 M    0.96    12 G     0 B       0   939 M     280    43 G   7.3 K    46 G       1     3.4
+      4       264   1.5 G    0.99   9.1 G    18 M       6   824 M     152    31 G   4.5 K    35 G       1     3.4
+      5      7474    23 G    1.00   2.8 G   116 G    26 K   1.8 G     301   3.2 G     604   3.2 G       1     1.2
+      6     23972   164 G       -    98 G    70 G    22 K   1.6 K       1   129 G   3.8 K   135 G       1     1.3
+  total     31766   188 G       -   257 G   187 G    48 K   3.6 G     744   536 G    49 K   278 G       5     2.1
 ----
 1.log
 
@@ -343,30 +348,25 @@ I220301 00:00:30.000000 200 kv/kvserver/stores.go:269 ⋮ [n1] 75  wrote 0 node 
 I220301 00:00:30.000000 319 2@server/status/runtime.go:569 ⋮ [n1] 76  runtime stats: 154 MiB RSS, 273 goroutines (stacks: 2.5 MiB), 42 MiB/71 MiB Go alloc/total (heap fragmentation: 11 MiB, heap reserved: 3.9 MiB, heap released: 4.2 MiB), 3.2 MiB/5.6 MiB CGO alloc/total (0.0 CGO/sec), 0.0/0.0 %(u/s)time, 0.0 %gc (0x), 425 KiB/500 KiB (r/w)net
 I220301 00:00:30.000000 319 2@server/status/runtime.go:569 ⋮ [n1] 77  runtime stats: 159 MiB RSS, 266 goroutines (stacks: 3.3 MiB), 42 MiB/78 MiB Go alloc/total (heap fragmentation: 12 MiB, heap reserved: 6.7 MiB, heap released: 64 MiB), 4.4 MiB/6.8 MiB CGO alloc/total (0.4 CGO/sec), 2.9/2.1 %(u/s)time, 0.0 %gc (0x), 335 KiB/323 KiB (r/w)net
 I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.2KB |    0B |   0 22.6
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +    2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +    3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +    4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +    5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +total |     1   639B     0B |     - |   84B |     0     0B |     0     0B |     3  1.9KB | 1.2KB |   1 23.7
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +-----------------------------------------------------------------------------------------------------------
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +Flushes: 2
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +MemTables: 1 (256KB)  zombie: 2 (512KB)
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +Zombie tables: 2 (1.2KB)
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +Block cache: 5 entries (1.0KB)  hit rate: 42.9%
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +Table cache: 2 entries (1.6KB)  hit rate: 66.7%
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +Snapshots: 0  earliest seq num: 0
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +Table iters: 2
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +Filter utility: 0.0%
-I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +Ingestions: 0  as flushable: 0 (0B in 0 tables)
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +    WAL         3   779 K       -   773 K       -       -       -       -   779 K       -       -       -     1.0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +      0         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +      6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +  total         0     0 B       -   779 K     0 B       0     0 B       0   779 K       0     0 B       1     1.0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +  flush         0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +compact         0     0 B             0 B  (size == estimated-debt, in = in-progress-bytes)
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 + memtbl         3   1.8 M
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +zmemtbl         0     0 B
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +   ztbl         0     0 B
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 + bcache         0     0 B    0.0%  (score == hit-rate)
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 + tcache         0     0 B    0.0%  (score == hit-rate)
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 + titers         0
+I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 + filter         -       -    0.0%  (score == utility)
 ----
 1.log
 

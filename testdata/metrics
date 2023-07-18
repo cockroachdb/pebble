@@ -1,3 +1,30 @@
+example
+----
+      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |   101   102B     0B | 103.0 |  104B |   112   104B |   113   106B |   221   217B |  107B |   1  2.1
+    1 |   201   202B     0B | 203.0 |  204B |   212   204B |   213   206B |   421   417B |  207B |   2  2.0
+    2 |   301   302B     0B | 303.0 |  304B |   312   304B |   313   306B |   621   617B |  307B |   3  2.0
+    3 |   401   402B     0B | 403.0 |  404B |   412   404B |   413   406B |   821   817B |  407B |   4  2.0
+    4 |   501   502B     0B | 503.0 |  504B |   512   504B |   513   506B |  1.0K  1017B |  507B |   5  2.0
+    5 |   601   602B     0B | 603.0 |  604B |   612   604B |   613   606B |  1.2K  1.2KB |  607B |   6  2.0
+    6 |   701   702B     0B |     - |  704B |   712   704B |   713   706B |  1.4K  1.4KB |  707B |   7  2.0
+total |  2.8K  2.7KB     0B |     - | 2.8KB |  2.9K  2.8KB |  2.9K  2.8KB |  5.7K  8.4KB | 2.8KB |  28  3.0
+-----------------------------------------------------------------------------------------------------------
+WAL: 22 files (24B)  in: 25B  written: 26B (4% overhead)
+Flushes: 8
+Compactions: 5  estimated debt: 6B  in progress: 2 (7B)
+             default: 27  delete: 28  elision: 29  move: 30  read: 31  rewrite: 32  multi-level: 33
+MemTables: 12 (11B)  zombie: 14 (13B)
+Zombie tables: 16 (15B)
+Block cache: 2 entries (1B)  hit rate: 42.9%
+Table cache: 18 entries (17B)  hit rate: 48.7%
+Snapshots: 4  earliest seq num: 1024
+Table iters: 21
+Filter utility: 47.4%
+Ingestions: 27  as flushable: 36 (34B in 35 tables)
+
 batch
 set a 1
 ----
@@ -17,28 +44,30 @@ iter-new b
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-    WAL         1    28 B       -    17 B       -       -       -       -    56 B       -       -       -     3.3
-      0         1   633 B    0.25    28 B     0 B       0     0 B       0   633 B       1     0 B       1    22.6
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  total         1   633 B       -    56 B     0 B       0     0 B       0   689 B       1     0 B       1    12.3
-  flush         1                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         0     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl         1   256 K
-zmemtbl         1   256 K
-   ztbl         0     0 B
- bcache         3   528 B    0.0%  (score == hit-rate)
- tcache         1   800 B    0.0%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
- titers         1
- filter         -       -    0.0%  (score == utility)
- ingest         0
+      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     1   633B     0B |  0.25 |   28B |     0     0B |     0     0B |     1   633B |    0B |   1 22.6
+    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     0     0B     0B |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+total |     1   633B     0B |     - |   56B |     0     0B |     0     0B |     1   689B |    0B |   1 12.3
+-----------------------------------------------------------------------------------------------------------
+WAL: 1 files (28B)  in: 17B  written: 56B (229% overhead)
+Flushes: 1
+Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (256KB)  zombie: 1 (256KB)
+Zombie tables: 0 (0B)
+Block cache: 3 entries (528B)  hit rate: 0.0%
+Table cache: 1 entries (800B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 1
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
@@ -66,28 +95,30 @@ compact a-z
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -       -     2.5
-      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.2 K       2     0 B       0    22.6
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   639 B       -   1.2 K     0 B       0     0 B       0   639 B       1   1.2 K       1     0.5
-  total         1   639 B       -    84 B     0 B       0     0 B       0   1.9 K       3   1.2 K       1    23.7
-  flush         2                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl         1   256 K
-zmemtbl         2   512 K
-   ztbl         2   1.2 K
- bcache         5   1.0 K   42.9%  (score == hit-rate)
- tcache         2   1.6 K   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
- titers         2
- filter         -       -    0.0%  (score == utility)
- ingest         0
+      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.2KB |    0B |   0 22.6
+    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
+total |     1   639B     0B |     - |   84B |     0     0B |     0     0B |     3  1.9KB | 1.2KB |   1 23.7
+-----------------------------------------------------------------------------------------------------------
+WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
+Flushes: 2
+Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (256KB)  zombie: 2 (512KB)
+Zombie tables: 2 (1.2KB)
+Block cache: 5 entries (1.0KB)  hit rate: 42.9%
+Table cache: 2 entries (1.6KB)  hit rate: 66.7%
+Snapshots: 0  earliest seq num: 0
+Table iters: 2
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
@@ -100,28 +131,30 @@ iter-close a
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -       -     2.5
-      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.2 K       2     0 B       0    22.6
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   639 B       -   1.2 K     0 B       0     0 B       0   639 B       1   1.2 K       1     0.5
-  total         1   639 B       -    84 B     0 B       0     0 B       0   1.9 K       3   1.2 K       1    23.7
-  flush         2                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl         1   256 K
-zmemtbl         1   256 K
-   ztbl         2   1.2 K
- bcache         5   1.0 K   42.9%  (score == hit-rate)
- tcache         2   1.6 K   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
- titers         2
- filter         -       -    0.0%  (score == utility)
- ingest         0
+      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.2KB |    0B |   0 22.6
+    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
+total |     1   639B     0B |     - |   84B |     0     0B |     0     0B |     3  1.9KB | 1.2KB |   1 23.7
+-----------------------------------------------------------------------------------------------------------
+WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
+Flushes: 2
+Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (256KB)  zombie: 1 (256KB)
+Zombie tables: 2 (1.2KB)
+Block cache: 5 entries (1.0KB)  hit rate: 42.9%
+Table cache: 2 entries (1.6KB)  hit rate: 66.7%
+Snapshots: 0  earliest seq num: 0
+Table iters: 2
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 # Closing iter c will release one of the zombie sstables. The other
 # zombie sstable is still referenced by iter b.
@@ -131,28 +164,30 @@ iter-close c
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -       -     2.5
-      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.2 K       2     0 B       0    22.6
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   639 B       -   1.2 K     0 B       0     0 B       0   639 B       1   1.2 K       1     0.5
-  total         1   639 B       -    84 B     0 B       0     0 B       0   1.9 K       3   1.2 K       1    23.7
-  flush         2                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl         1   256 K
-zmemtbl         1   256 K
-   ztbl         1   633 B
- bcache         3   528 B   42.9%  (score == hit-rate)
- tcache         1   800 B   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
- titers         1
- filter         -       -    0.0%  (score == utility)
- ingest         0
+      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.2KB |    0B |   0 22.6
+    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
+total |     1   639B     0B |     - |   84B |     0     0B |     0     0B |     3  1.9KB | 1.2KB |   1 23.7
+-----------------------------------------------------------------------------------------------------------
+WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
+Flushes: 2
+Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (256KB)  zombie: 1 (256KB)
+Zombie tables: 1 (633B)
+Block cache: 3 entries (528B)  hit rate: 42.9%
+Table cache: 1 entries (800B)  hit rate: 66.7%
+Snapshots: 0  earliest seq num: 0
+Table iters: 1
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
@@ -165,28 +200,30 @@ iter-close b
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-    WAL         1    28 B       -    34 B       -       -       -       -    84 B       -       -       -     2.5
-      0         0     0 B    0.00    56 B     0 B       0     0 B       0   1.2 K       2     0 B       0    22.6
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   639 B       -   1.2 K     0 B       0     0 B       0   639 B       1   1.2 K       1     0.5
-  total         1   639 B       -    84 B     0 B       0     0 B       0   1.9 K       3   1.2 K       1    23.7
-  flush         2                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl         1   256 K
-zmemtbl         0     0 B
-   ztbl         0     0 B
- bcache         0     0 B   42.9%  (score == hit-rate)
- tcache         0     0 B   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
- titers         0
- filter         -       -    0.0%  (score == utility)
- ingest         0
+      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.2KB |    0B |   0 22.6
+    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
+total |     1   639B     0B |     - |   84B |     0     0B |     0     0B |     3  1.9KB | 1.2KB |   1 23.7
+-----------------------------------------------------------------------------------------------------------
+WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
+Flushes: 2
+Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (256KB)  zombie: 0 (0B)
+Zombie tables: 0 (0B)
+Block cache: 0 entries (0B)  hit rate: 42.9%
+Table cache: 0 entries (0B)  hit rate: 66.7%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
@@ -225,28 +262,30 @@ flush
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp__val-bl
-    WAL         1    93 B       -   116 B       -       -       -       -   242 B       -       -       -     2.1
-      0         3   2.1 K    0.25   149 B     0 B       0     0 B       0   3.4 K       5     0 B       1    23.2    38 B
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      6         1   639 B       -   1.2 K     0 B       0     0 B       0   639 B       1   1.2 K       1     0.5     0 B
-  total         4   2.8 K       -   242 B     0 B       0     0 B       0   4.2 K       6   1.2 K       2    18.0    38 B
-  flush         3                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         1   2.8 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl         1   256 K
-zmemtbl         0     0 B
-   ztbl         0     0 B
- bcache         0     0 B   42.9%  (score == hit-rate)
- tcache         0     0 B   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
- titers         0
- filter         -       -    0.0%  (score == utility)
- ingest         0
+      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     3  2.1KB    38B |  0.25 |  149B |     0     0B |     0     0B |     5  3.4KB |    0B |   1 23.2
+    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
+total |     4  2.8KB    38B |     - |  242B |     0     0B |     0     0B |     6  4.2KB | 1.2KB |   2 18.0
+-----------------------------------------------------------------------------------------------------------
+WAL: 1 files (93B)  in: 116B  written: 242B (109% overhead)
+Flushes: 3
+Compactions: 1  estimated debt: 2.8KB  in progress: 0 (0B)
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (256KB)  zombie: 0 (0B)
+Zombie tables: 0 (0B)
+Block cache: 0 entries (0B)  hit rate: 42.9%
+Table cache: 0 entries (0B)  hit rate: 66.7%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 additional-metrics
 ----
@@ -269,28 +308,30 @@ compact a-z
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp__val-bl
-    WAL         1    93 B       -   116 B       -       -       -       -   242 B       -       -       -     2.1
-      0         0     0 B    0.00   149 B     0 B       0     0 B       0   3.4 K       5     0 B       0    23.2     0 B
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      6         3   2.1 K       -   3.4 K     0 B       0     0 B       0   2.1 K       3   3.4 K       1     0.6    41 B
-  total         3   2.1 K       -   242 B     0 B       0     0 B       0   5.8 K       8   3.4 K       1    24.4    41 B
-  flush         3                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         2     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         2       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl         1   256 K
-zmemtbl         0     0 B
-   ztbl         0     0 B
- bcache         0     0 B   27.3%  (score == hit-rate)
- tcache         0     0 B   58.3%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
- titers         0
- filter         -       -    0.0%  (score == utility)
- ingest         0
+      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B |  0.00 |  149B |     0     0B |     0     0B |     5  3.4KB |    0B |   0 23.2
+    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     3  2.1KB    41B |     - | 3.4KB |     0     0B |     0     0B |     3  2.1KB | 3.4KB |   1  0.6
+total |     3  2.1KB    41B |     - |  242B |     0     0B |     0     0B |     8  5.8KB | 3.4KB |   1 24.4
+-----------------------------------------------------------------------------------------------------------
+WAL: 1 files (93B)  in: 116B  written: 242B (109% overhead)
+Flushes: 3
+Compactions: 2  estimated debt: 0B  in progress: 0 (0B)
+             default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (256KB)  zombie: 0 (0B)
+Zombie tables: 0 (0B)
+Block cache: 0 entries (0B)  hit rate: 27.3%
+Table cache: 0 entries (0B)  hit rate: 58.3%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 additional-metrics
 ----
@@ -359,25 +400,27 @@ flush
 # table).
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp__val-bl
-    WAL         1    26 B       -   176 B       -       -       -       -   175 B       -       -       -     1.0
-      0         4   2.7 K    0.50   149 B   2.0 K       3     0 B       0   4.0 K       6     0 B       2    27.6     0 B
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
-      6         3   2.1 K       -   3.4 K     0 B       0     0 B       0   2.1 K       3   3.4 K       1     0.6    41 B
-  total         7   4.8 K       -   2.2 K   2.0 K       3     0 B       0   8.4 K       9   3.4 K       3     3.8    41 B
-  flush         8                           2.0 K       3       2  (ingest = tables-ingested, move = ingested-as-flushable)
-compact         2   4.8 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         2       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
- memtbl         1   1.0 M
-zmemtbl         0     0 B
-   ztbl         0     0 B
- bcache        12   2.3 K   31.1%  (score == hit-rate)
- tcache         3   2.3 K   57.9%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
- titers         0
- filter         -       -    0.0%  (score == utility)
- ingest         0
+      |                     |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     4  2.7KB     0B |  0.50 |  149B |     3  2.0KB |     0     0B |     6  4.0KB |    0B |   2 27.6
+    1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     3  2.1KB    41B |     - | 3.4KB |     0     0B |     0     0B |     3  2.1KB | 3.4KB |   1  0.6
+total |     7  4.8KB    41B |     - | 2.2KB |     3  2.0KB |     0     0B |     9  8.4KB | 3.4KB |   3  3.8
+-----------------------------------------------------------------------------------------------------------
+WAL: 1 files (26B)  in: 176B  written: 175B (-1% overhead)
+Flushes: 8
+Compactions: 2  estimated debt: 4.8KB  in progress: 0 (0B)
+             default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (1.0MB)  zombie: 0 (0B)
+Zombie tables: 0 (0B)
+Block cache: 12 entries (2.3KB)  hit rate: 31.1%
+Table cache: 3 entries (2.3KB)  hit rate: 57.9%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 2 (2.0KB in 3 tables)

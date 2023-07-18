@@ -111,11 +111,12 @@ var (
 	ingestedFilePatternUnitIdx  = ingestedFilePattern.SubexpIndex("unit")
 
 	// Example read-amp log line:
-	//
+	// 23.1 and older:
 	//   total     31766   188 G       -   257 G   187 G    48 K   3.6 G     744   536 G    49 K   278 G       5     2.1
-	//
+	// current:
+	//   total |     1   639B     0B |     - |   84B |     0     0B |     0     0B |     3  1.9KB | 1.2KB |   1 23.7
 	readAmpPattern = regexp.MustCompile(
-		/* Read-amp     */ `(?:^|\+)\s{2}total.*?(?P<value>\d+).{8}$`,
+		/* Read amp */ `(?:^|\+)(?:\s{2}total|total \|).*?\s(?P<value>\d+)\s.{4,7}$`,
 	)
 	readAmpPatternValueIdx = readAmpPattern.SubexpIndex("value")
 )
