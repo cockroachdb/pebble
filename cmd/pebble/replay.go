@@ -20,7 +20,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/replay"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -52,6 +54,8 @@ func initReplayCmd() *cobra.Command {
 		&c.optionsString, "options", "", "Pebble options to override, in the OPTIONS ini format but with any whitespace as field delimiters instead of newlines")
 	cmd.Flags().StringVar(
 		&c.runDir, "run-dir", c.runDir, "the directory to use for the replay data directory; defaults to a random dir in pwd")
+	cmd.Flags().Int64Var(
+		&c.maxCacheSize, "max-cache-size", c.maxCacheSize, "the max size of the block cache")
 	cmd.Flags().BoolVar(
 		&c.streamLogs, "stream-logs", c.streamLogs, "stream the Pebble logs to stdout during replay")
 	cmd.Flags().BoolVar(
@@ -68,6 +72,7 @@ type replayConfig struct {
 	streamLogs       bool
 	ignoreCheckpoint bool
 	optionsString    string
+	maxCacheSize     int64
 
 	cleanUpFuncs []func() error
 }
@@ -87,6 +92,9 @@ func (c *replayConfig) args() (args []string) {
 	}
 	if c.maxWritesMB != 0 {
 		args = append(args, "--max-writes", fmt.Sprint(c.maxWritesMB))
+	}
+	if c.maxCacheSize != 0 {
+		args = append(args, "--max-cache-size", fmt.Sprint(c.maxCacheSize))
 	}
 	if c.streamLogs {
 		args = append(args, "--stream-logs")
@@ -247,15 +255,11 @@ func (c *replayConfig) initOptions(r *replay.Runner) error {
 		if err := f.Close(); err != nil {
 			return err
 		}
-		hooks := &pebble.ParseHooks{
-			NewComparer: makeComparer,
-			NewMerger:   makeMerger,
-		}
-		if err := r.Opts.Parse(string(o), hooks); err != nil {
+		if err := r.Opts.Parse(string(o), c.parseHooks()); err != nil {
 			return err
 		}
 	}
-	if err := parseCustomOptions(c.optionsString, r.Opts); err != nil {
+	if err := c.parseCustomOptions(c.optionsString, r.Opts); err != nil {
 		return err
 	}
 	// TODO(jackson): If r.Opts.Comparer == nil, peek at the workload's
@@ -272,13 +276,36 @@ func (c *replayConfig) initOptions(r *replay.Runner) error {
 	return nil
 }
 
+func (c *replayConfig) parseHooks() *pebble.ParseHooks {
+	return &pebble.ParseHooks{
+		NewCache: func(size int64) *cache.Cache {
+			if c.maxCacheSize != 0 && size > c.maxCacheSize {
+				size = c.maxCacheSize
+			}
+			return cache.New(size)
+		},
+		NewComparer: makeComparer,
+		NewFilterPolicy: func(name string) (pebble.FilterPolicy, error) {
+			switch name {
+			case "none":
+				return nil, nil
+			case "rocksdb.BuiltinBloomFilter":
+				return bloom.FilterPolicy(10), nil
+			default:
+				return nil, errors.Errorf("invalid filter policy name %q", name)
+			}
+		},
+		NewMerger: makeMerger,
+	}
+}
+
 // parseCustomOptions parses Pebble Options passed through a CLI flag.
 // Ordinarily Pebble Options are specified through an INI file with newlines
 // delimiting fields. That doesn't translate well to a CLI interface, so this
 // function accepts fields are that delimited by any whitespace. This is the
 // same format that CockroachDB accepts Pebble Options through the --store flag,
 // and this code is copied from there.
-func parseCustomOptions(optsStr string, opts *pebble.Options) error {
+func (c *replayConfig) parseCustomOptions(optsStr string, opts *pebble.Options) error {
 	if optsStr == "" {
 		return nil
 	}
@@ -309,10 +336,7 @@ func parseCustomOptions(optsStr string, opts *pebble.Options) error {
 			value = strings.TrimSpace(value[i+1:])
 		}
 	}
-	return opts.Parse(buf.String(), &pebble.ParseHooks{
-		NewComparer: makeComparer,
-		NewMerger:   makeMerger,
-	})
+	return opts.Parse(buf.String(), c.parseHooks())
 }
 
 func (c *replayConfig) cleanUp() error {
