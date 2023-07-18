@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -130,8 +131,8 @@ type Metrics struct {
 	TotalWriteAmp       float64
 	WorkloadDuration    time.Duration
 	WriteBytes          uint64
-	WriteStalls         uint64
-	WriteStallsDuration time.Duration
+	WriteStalls         map[string]int
+	WriteStallsDuration map[string]time.Duration
 	WriteThroughput     SampledMetric
 }
 
@@ -155,10 +156,11 @@ func (m *Metrics) Plots(width, height int) []Plot {
 // WriteBenchmarkString writes the metrics in the form of a series of
 // 'Benchmark' lines understandable by benchstat.
 func (m *Metrics) WriteBenchmarkString(name string, w io.Writer) error {
-	groups := []struct {
+	type benchmarkSection struct {
 		label  string
 		values []benchfmt.Value
-	}{
+	}
+	groups := []benchmarkSection{
 		{label: "CompactionCounts", values: []benchfmt.Value{
 			{Value: float64(m.CompactionCounts.Total), Unit: "compactions"},
 			{Value: float64(m.CompactionCounts.Default), Unit: "default"},
@@ -226,10 +228,16 @@ func (m *Metrics) WriteBenchmarkString(name string, w io.Writer) error {
 		{label: "WriteAmp", values: []benchfmt.Value{
 			{Value: float64(m.TotalWriteAmp), Unit: "wamp"},
 		}},
-		{label: "WriteStalls", values: []benchfmt.Value{
-			{Value: float64(m.WriteStalls), Unit: "stalls"},
-			{Value: m.WriteStallsDuration.Seconds(), Unit: "stallsec/op"},
-		}},
+	}
+
+	for reason, count := range m.WriteStalls {
+		groups = append(groups, benchmarkSection{
+			label: fmt.Sprintf("WriteStall/%s", reason),
+			values: []benchfmt.Value{
+				{Value: float64(count), Unit: "stalls"},
+				{Value: float64(m.WriteStallsDuration[reason].Seconds()), Unit: "stallsec/op"},
+			},
+		})
 	}
 
 	bw := benchfmt.NewWriter(w)
@@ -272,17 +280,20 @@ type Runner struct {
 	stepsApplied  chan workloadStep
 
 	metrics struct {
-		estimatedDebt           SampledMetric
-		quiesceDuration         time.Duration
-		readAmp                 SampledMetric
-		tombstoneCount          SampledMetric
-		totalSize               SampledMetric
-		paceDurationNano        atomic.Uint64
-		workloadDuration        time.Duration
-		writeBytes              atomic.Uint64
-		writeStalls             atomic.Uint64
-		writeStallsDurationNano atomic.Uint64
-		writeThroughput         SampledMetric
+		estimatedDebt    SampledMetric
+		quiesceDuration  time.Duration
+		readAmp          SampledMetric
+		tombstoneCount   SampledMetric
+		totalSize        SampledMetric
+		paceDurationNano atomic.Uint64
+		workloadDuration time.Duration
+		writeBytes       atomic.Uint64
+		writeThroughput  SampledMetric
+	}
+	writeStallMetrics struct {
+		sync.Mutex
+		countByReason    map[string]int
+		durationByReason map[string]time.Duration
 	}
 	// compactionMu holds state for tracking the number of compactions
 	// started and completed and waking waiting goroutines when a new compaction
@@ -335,6 +346,8 @@ func (r *Runner) Run(ctx context.Context) error {
 	// mechanics.
 	r.compactionMu.ch = make(chan struct{})
 	r.Opts.AddEventListener(r.eventListener())
+	r.writeStallMetrics.countByReason = make(map[string]int)
+	r.writeStallMetrics.durationByReason = make(map[string]time.Duration)
 	r.Opts.EnsureDefaults()
 	r.readerOpts = r.Opts.MakeReaderOptions()
 	r.Opts.DisableWAL = true
@@ -522,10 +535,19 @@ func (r *Runner) Wait() (Metrics, error) {
 		TotalWriteAmp:       total.WriteAmp(),
 		WorkloadDuration:    r.metrics.workloadDuration,
 		WriteBytes:          r.metrics.writeBytes.Load(),
-		WriteStalls:         r.metrics.writeStalls.Load(),
-		WriteStallsDuration: time.Duration(r.metrics.writeStallsDurationNano.Load()),
+		WriteStalls:         make(map[string]int),
+		WriteStallsDuration: make(map[string]time.Duration),
 		WriteThroughput:     r.metrics.writeThroughput,
 	}
+
+	r.writeStallMetrics.Lock()
+	for reason, count := range r.writeStallMetrics.countByReason {
+		m.WriteStalls[reason] = count
+	}
+	for reason, duration := range r.writeStallMetrics.durationByReason {
+		m.WriteStallsDuration[reason] = duration
+	}
+	r.writeStallMetrics.Unlock()
 	m.CompactionCounts.Total = pm.Compact.Count
 	m.CompactionCounts.Default = pm.Compact.DefaultCount
 	m.CompactionCounts.DeleteOnly = pm.Compact.DeleteOnlyCount
@@ -576,17 +598,28 @@ const (
 // database so that the replay runner has access to internal Pebble events.
 func (r *Runner) eventListener() pebble.EventListener {
 	var writeStallBegin time.Time
+	var writeStallReason string
 	l := pebble.EventListener{
 		BackgroundError: func(err error) {
 			r.err.Store(err)
 			r.cancel()
 		},
-		WriteStallBegin: func(pebble.WriteStallBeginInfo) {
-			r.metrics.writeStalls.Add(1)
+		WriteStallBegin: func(info pebble.WriteStallBeginInfo) {
+			r.writeStallMetrics.Lock()
+			defer r.writeStallMetrics.Unlock()
+			writeStallReason = info.Reason
+			// Take just the first word of the reason.
+			if j := strings.IndexByte(writeStallReason, ' '); j != -1 {
+				writeStallReason = writeStallReason[:j]
+			}
+
+			r.writeStallMetrics.countByReason[writeStallReason]++
 			writeStallBegin = time.Now()
 		},
 		WriteStallEnd: func() {
-			r.metrics.writeStallsDurationNano.Add(uint64(time.Since(writeStallBegin).Nanoseconds()))
+			r.writeStallMetrics.Lock()
+			defer r.writeStallMetrics.Unlock()
+			r.writeStallMetrics.durationByReason[writeStallReason] += time.Since(writeStallBegin)
 		},
 		CompactionBegin: func(_ pebble.CompactionInfo) {
 			r.compactionMu.Lock()

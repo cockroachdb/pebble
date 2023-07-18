@@ -425,8 +425,8 @@ func TestBenchmarkString(t *testing.T) {
 		TotalWriteAmp:       5.6,
 		WorkloadDuration:    time.Second,
 		WriteBytes:          30 * (1 << 20),
-		WriteStalls:         105,
-		WriteStallsDuration: time.Minute,
+		WriteStalls:         map[string]int{"memtable": 1, "L0": 2},
+		WriteStallsDuration: map[string]time.Duration{"memtable": time.Minute, "L0": time.Hour},
 	}
 	m.Ingest.BytesIntoL0 = 5 << 20
 	m.Ingest.BytesWeightedByLevel = 9 << 20
@@ -451,7 +451,8 @@ BenchmarkBenchmarkReplay/tpcc/TombstoneCount/mean 1 295 tombstones
 BenchmarkBenchmarkReplay/tpcc/TombstoneCount/max 1 295 tombstones
 BenchmarkBenchmarkReplay/tpcc/Throughput 1 2.097152e+07 B/s
 BenchmarkBenchmarkReplay/tpcc/WriteAmp 1 5.6 wamp
-BenchmarkBenchmarkReplay/tpcc/WriteStalls 1 105 stalls 60 stallsec/op`),
+BenchmarkBenchmarkReplay/tpcc/WriteStall/memtable 1 1 stalls 60 stallsec/op
+BenchmarkBenchmarkReplay/tpcc/WriteStall/L0 1 2 stalls 3600 stallsec/op`),
 		strings.TrimSpace(buf.String()))
 }
 
