@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unicode"
 
 	"github.com/cockroachdb/errors"
@@ -209,7 +210,7 @@ func (c *replayConfig) initRunDir(r *replay.Runner) error {
 	}
 	if !c.ignoreCheckpoint {
 		checkpointDir := r.WorkloadFS.PathJoin(r.WorkloadPath, `checkpoint`)
-		verbosef("Attempting to initialize with checkpoint %q.\n", checkpointDir)
+		fmt.Printf("%s: Attempting to initialize with checkpoint %q at %s.\n", time.Now().Format(time.RFC3339), checkpointDir)
 		ok, err := vfs.Clone(
 			r.WorkloadFS,
 			vfs.Default,
@@ -222,7 +223,7 @@ func (c *replayConfig) initRunDir(r *replay.Runner) error {
 		if !ok {
 			return errors.Newf("no checkpoint %q exists; you may re-run with --ignore-checkpoint", checkpointDir)
 		}
-		verbosef("Run directory initialized with checkpoint %q.\n", checkpointDir)
+		fmt.Printf("%s: Run directory initialized with checkpoint %q.\n", time.Now().Format(time.RFC3339), checkpointDir)
 	}
 	return nil
 }
