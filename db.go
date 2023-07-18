@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
@@ -1914,6 +1915,11 @@ type SSTableInfo struct {
 	// then BackingSSTNum == FileNum.
 	BackingSSTNum base.FileNum
 
+	// OnSharedStorage indicates whether the backing sstable is on shared storage.
+	OnSharedStorage bool
+	// Locator is set when OnSharedStorage is true.
+	Locator shared.Locator
+
 	// Properties is the sstable properties of this table. If Virtual is true,
 	// then the Properties are associated with the backing sst.
 	Properties *sstable.Properties
@@ -1972,6 +1978,14 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			}
 			destTables[j].Virtual = m.Virtual
 			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum.FileNum()
+			meta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
+			if err != nil {
+				return nil, err
+			}
+			if meta.IsShared() {
+				destTables[j].OnSharedStorage = true
+				destTables[j].Locator = meta.Shared.Locator
+			}
 
 			if opt.withApproximateSpanBytes {
 				var spanBytes uint64
