@@ -60,6 +60,8 @@ func initReplayCmd() *cobra.Command {
 		&c.streamLogs, "stream-logs", c.streamLogs, "stream the Pebble logs to stdout during replay")
 	cmd.Flags().BoolVar(
 		&c.ignoreCheckpoint, "ignore-checkpoint", c.ignoreCheckpoint, "ignore the workload's initial checkpoint")
+	cmd.Flags().StringVar(
+		&c.checkpointDir, "checkpoint-dir", c.checkpointDir, "path to the checkpoint to use if not <WORKLOAD_DIR>/checkpoint")
 	return cmd
 }
 
@@ -70,6 +72,7 @@ type replayConfig struct {
 	count            int
 	maxWritesMB      uint64
 	streamLogs       bool
+	checkpointDir    string
 	ignoreCheckpoint bool
 	optionsString    string
 	maxCacheSize     int64
@@ -99,6 +102,9 @@ func (c *replayConfig) args() (args []string) {
 	if c.streamLogs {
 		args = append(args, "--stream-logs")
 	}
+	if c.checkpointDir != "" {
+		args = append(args, "--checkpoint-dir", c.checkpointDir)
+	}
 	if c.ignoreCheckpoint {
 		args = append(args, "--ignore-checkpoint")
 	}
@@ -109,7 +115,11 @@ func (c *replayConfig) args() (args []string) {
 }
 
 func (c *replayConfig) runE(cmd *cobra.Command, args []string) error {
+	if c.ignoreCheckpoint && c.checkpointDir != "" {
+		return errors.Newf("cannot provide both --checkpoint-dir and --ignore-checkpoint")
+	}
 	stdout := cmd.OutOrStdout()
+
 	workloadPath := args[0]
 	if err := c.runOnce(stdout, workloadPath); err != nil {
 		return err
@@ -208,7 +218,7 @@ func (c *replayConfig) initRunDir(r *replay.Runner) error {
 		})
 	}
 	if !c.ignoreCheckpoint {
-		checkpointDir := r.WorkloadFS.PathJoin(r.WorkloadPath, `checkpoint`)
+		checkpointDir := c.getCheckpointDir(r)
 		fmt.Printf("Attempting to initialize with checkpoint %q.\n", checkpointDir)
 		ok, err := vfs.Clone(
 			r.WorkloadFS,
@@ -231,7 +241,7 @@ func (c *replayConfig) initOptions(r *replay.Runner) error {
 	// If using a workload checkpoint, load the Options from it.
 	// TODO(jackson): Allow overriding the OPTIONS.
 	if !c.ignoreCheckpoint {
-		ls, err := r.WorkloadFS.List(r.WorkloadFS.PathJoin(r.WorkloadPath, "checkpoint"))
+		ls, err := r.WorkloadFS.List(c.getCheckpointDir(r))
 		if err != nil {
 			return err
 		}
@@ -274,6 +284,13 @@ func (c *replayConfig) initOptions(r *replay.Runner) error {
 	}
 	r.Opts.EnsureDefaults()
 	return nil
+}
+
+func (c *replayConfig) getCheckpointDir(r *replay.Runner) string {
+	if c.checkpointDir != "" {
+		return c.checkpointDir
+	}
+	return r.WorkloadFS.PathJoin(r.WorkloadPath, `checkpoint`)
 }
 
 func (c *replayConfig) parseHooks() *pebble.ParseHooks {
