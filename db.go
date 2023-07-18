@@ -1904,7 +1904,30 @@ func WithApproximateSpanBytes() SSTablesOption {
 	}
 }
 
-// SSTableInfo export manifest.TableInfo with sstable.Properties
+// StorageType denotes the type of storage backing a given sstable.
+type StorageType int
+
+const (
+	// StorageTypeLocal denotes an sstable stored on local disk according to the
+	// objprovider. This file is completely owned by us.
+	StorageTypeLocal StorageType = iota
+	// StorageTypeShared denotes an sstable stored on shared storage, created
+	// by this Pebble instance and possibly shared by other Pebble instances.
+	// These types of files have lifecycle managed by Pebble.
+	StorageTypeShared
+	// StorageTypeSharedForeign denotes an sstable stored on shared storage,
+	// created by a Pebble instance other than this one. These types of files have
+	// lifecycle managed by Pebble.
+	StorageTypeSharedForeign
+	// StorageTypeExternal denotes an sstable stored on external storage,
+	// not owned by any Pebble instance and with no refcounting/cleanup methods
+	// or lifecycle management. An example of an external file is a file restored
+	// from a backup.
+	StorageTypeExternal
+)
+
+// SSTableInfo export manifest.TableInfo with sstable.Properties alongside
+// other file backing info.
 type SSTableInfo struct {
 	manifest.TableInfo
 	// Virtual indicates whether the sstable is virtual.
@@ -1913,6 +1936,8 @@ type SSTableInfo struct {
 	// backs the sstable associated with this SSTableInfo. If Virtual is false,
 	// then BackingSSTNum == FileNum.
 	BackingSSTNum base.FileNum
+	// StorageType is the type of storage backing this sstable.
+	StorageType StorageType
 
 	// Properties is the sstable properties of this table. If Virtual is true,
 	// then the Properties are associated with the backing sst.
@@ -1972,6 +1997,20 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			}
 			destTables[j].Virtual = m.Virtual
 			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum.FileNum()
+			destTables[j].StorageType = StorageTypeLocal
+			objMeta, err := d.objProvider.Lookup(fileTypeTable, m.FileBacking.DiskFileNum)
+			if err != nil {
+				return nil, err
+			}
+			if objMeta.IsShared() {
+				destTables[j].StorageType = StorageTypeShared
+				if d.objProvider.IsForeign(objMeta) {
+					destTables[j].StorageType = StorageTypeSharedForeign
+				}
+				if objMeta.Shared.CleanupMethod == objstorage.SharedNoCleanup {
+					destTables[j].StorageType = StorageTypeExternal
+				}
+			}
 
 			if opt.withApproximateSpanBytes {
 				var spanBytes uint64
