@@ -2017,11 +2017,20 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 //   - There may also exist WAL entries for unflushed keys in this range. This
 //     estimation currently excludes space used for the range in the WAL.
 func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
+	bytes, _, _, _, err := d.EstimateDiskUsageAndFiles(start, end)
+	return bytes, err
+}
+
+// EstimateDiskUsageAndFiles is like EstimateDiskUsage but additionally returns
+// the number of files, remote files, and external files in the span.
+func (d *DB) EstimateDiskUsageAndFiles(
+	start, end []byte,
+) (totalSize uint64, totalFiles, remoteFiles, externalFiles int64, _ error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
 	if d.opts.Comparer.Compare(start, end) > 0 {
-		return 0, errors.New("invalid key-range specified (start > end)")
+		return 0, 0, 0, 0, errors.New("invalid key-range specified (start > end)")
 	}
 
 	// Grab and reference the current readState. This prevents the underlying
@@ -2030,7 +2039,6 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	readState := d.loadReadState()
 	defer readState.unref()
 
-	var totalSize uint64
 	for level, files := range readState.current.Levels {
 		iter := files.Iter()
 		if level > 0 {
@@ -2045,6 +2053,17 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				d.opts.Comparer.Compare(file.Largest.UserKey, end) <= 0 {
 				// The range fully contains the file, so skip looking it up in
 				// table cache/looking at its indexes, and add the full file size.
+				totalFiles++
+				if file.Virtual {
+					remoteFiles++
+					meta, err := d.objProvider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
+					if err != nil {
+						return 0, 0, 0, 0, err
+					}
+					if meta.Shared.CleanupMethod == objstorage.SharedNoCleanup {
+						externalFiles++
+					}
+				}
 				totalSize += file.Size
 			} else if d.opts.Comparer.Compare(file.Smallest.UserKey, end) <= 0 &&
 				d.opts.Comparer.Compare(start, file.Largest.UserKey) <= 0 {
@@ -2068,13 +2087,24 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 					)
 				}
 				if err != nil {
-					return 0, err
+					return 0, 0, 0, 0, err
+				}
+				totalFiles++
+				if file.Virtual {
+					remoteFiles++
+					meta, err := d.objProvider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
+					if err != nil {
+						return 0, 0, 0, 0, err
+					}
+					if meta.Shared.CleanupMethod == objstorage.SharedNoCleanup {
+						externalFiles++
+					}
 				}
 				totalSize += size
 			}
 		}
 	}
-	return totalSize, nil
+	return totalSize, totalFiles, remoteFiles, externalFiles, nil
 }
 
 func (d *DB) walPreallocateSize() int {
