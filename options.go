@@ -881,9 +881,10 @@ type Options struct {
 	// Deletion pacing is used to slow down deletions when compactions finish up
 	// or readers close and newly-obsolete files need cleaning up. Deleting lots
 	// of files at once can cause disk latency to go up on some SSDs, which this
-	// functionality guards against. This is only a best-effort target; pacing is
-	// disabled when there are too many obsolete files relative to live bytes, or
-	// there isn't enough disk space available.
+	// functionality guards against.
+	//
+	// This value is only a best-effort target; the effective rate can be
+	// higher if deletions are falling behind or disk space is running low.
 	//
 	// Setting this to 0 disables deletion pacing, which is also the default.
 	TargetByteDeletionRate int
