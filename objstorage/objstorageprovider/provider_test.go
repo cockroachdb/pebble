@@ -35,8 +35,8 @@ func TestProvider(t *testing.T) {
 		providers := make(map[string]objstorage.Provider)
 		// We maintain both backings and backing handles to allow tests to use the
 		// backings after the handles have been closed.
-		backings := make(map[string]objstorage.SharedObjectBacking)
-		backingHandles := make(map[string]objstorage.SharedObjectBackingHandle)
+		backings := make(map[string]objstorage.RemoteObjectBacking)
+		backingHandles := make(map[string]objstorage.RemoteObjectBackingHandle)
 		var curProvider objstorage.Provider
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
 			scanArgs := func(desc string, args ...interface{}) {
@@ -220,7 +220,7 @@ func TestProvider(t *testing.T) {
 				scanArgs("<key> <file-num>", &key, &fileNum)
 				meta, err := curProvider.Lookup(base.FileTypeTable, fileNum.DiskFileNum())
 				require.NoError(t, err)
-				handle, err := curProvider.SharedObjectBacking(&meta)
+				handle, err := curProvider.RemoteObjectBacking(&meta)
 				if err != nil {
 					return err.Error()
 				}
@@ -241,7 +241,7 @@ func TestProvider(t *testing.T) {
 				if len(lines) == 0 {
 					d.Fatalf(t, "at least one row expected; format: <key> <file-num>")
 				}
-				var objs []objstorage.SharedObjectToAttach
+				var objs []objstorage.RemoteObjectToAttach
 				for _, l := range lines {
 					var key string
 					var fileNum base.FileNum
@@ -251,13 +251,13 @@ func TestProvider(t *testing.T) {
 					if !ok {
 						d.Fatalf(t, "unknown backing key %q", key)
 					}
-					objs = append(objs, objstorage.SharedObjectToAttach{
+					objs = append(objs, objstorage.RemoteObjectToAttach{
 						FileType: base.FileTypeTable,
 						FileNum:  fileNum.DiskFileNum(),
 						Backing:  b,
 					})
 				}
-				metas, err := curProvider.AttachSharedObjects(objs)
+				metas, err := curProvider.AttachRemoteObjects(objs)
 				if err != nil {
 					return log.String() + "error: " + err.Error()
 				}
@@ -326,12 +326,12 @@ func TestSharedMultipleLocators(t *testing.T) {
 	// Now attach p1's object (in the "foo" store) to p2.
 	meta1, err := p1.Lookup(base.FileTypeTable, file1)
 	require.NoError(t, err)
-	h1, err := p1.SharedObjectBacking(&meta1)
+	h1, err := p1.RemoteObjectBacking(&meta1)
 	require.NoError(t, err)
 	b1, err := h1.Get()
 	require.NoError(t, err)
 
-	_, err = p2.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+	_, err = p2.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
 		FileNum:  file2,
 		FileType: base.FileTypeTable,
 		Backing:  b1,
@@ -344,11 +344,11 @@ func TestSharedMultipleLocators(t *testing.T) {
 	// Now attach p2's object (in the "bar" store) to p1.
 	meta2, err := p2.Lookup(base.FileTypeTable, file1)
 	require.NoError(t, err)
-	h2, err := p2.SharedObjectBacking(&meta2)
+	h2, err := p2.RemoteObjectBacking(&meta2)
 	require.NoError(t, err)
 	b2, err := h2.Get()
 	require.NoError(t, err)
-	_, err = p1.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+	_, err = p1.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
 		FileNum:  file2,
 		FileType: base.FileTypeTable,
 		Backing:  b2,
@@ -373,7 +373,7 @@ func TestSharedMultipleLocators(t *testing.T) {
 	p3, err := Open(st3)
 	require.NoError(t, err)
 	require.NoError(t, p3.SetCreatorID(3))
-	_, err = p3.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+	_, err = p3.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
 		FileNum:  file2,
 		FileType: base.FileTypeTable,
 		Backing:  b2,
@@ -404,10 +404,10 @@ func TestAttachCustomObject(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
 
-	backing, err := p1.CreateSharedObjectBacking("foo", "some-obj-name")
+	backing, err := p1.CreateExternalObjectBacking("foo", "some-obj-name")
 	require.NoError(t, err)
 
-	_, err = p1.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+	_, err = p1.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
 		FileNum:  base.FileNum(1).DiskFileNum(),
 		FileType: base.FileTypeTable,
 		Backing:  backing,
@@ -427,7 +427,7 @@ func TestAttachCustomObject(t *testing.T) {
 	// the object to another provider.
 	meta, err := p1.Lookup(base.FileTypeTable, base.FileNum(1).DiskFileNum())
 	require.NoError(t, err)
-	handle, err := p1.SharedObjectBacking(&meta)
+	handle, err := p1.RemoteObjectBacking(&meta)
 	require.NoError(t, err)
 	defer handle.Close()
 	backing, err = handle.Get()
@@ -440,7 +440,7 @@ func TestAttachCustomObject(t *testing.T) {
 	defer p2.Close()
 	require.NoError(t, p2.SetCreatorID(2))
 
-	_, err = p2.AttachSharedObjects([]objstorage.SharedObjectToAttach{{
+	_, err = p2.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
 		FileNum:  base.FileNum(10).DiskFileNum(),
 		FileType: base.FileTypeTable,
 		Backing:  backing,

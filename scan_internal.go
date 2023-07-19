@@ -45,7 +45,7 @@ var ErrInvalidSkipSharedIteration = errors.New("pebble: cannot use skip-shared i
 type SharedSSTMeta struct {
 	// Backing is the shared object underlying this SST. Can be attached to an
 	// objstorage.Provider.
-	Backing objstorage.SharedObjectBackingHandle
+	Backing objstorage.RemoteObjectBackingHandle
 
 	// Smallest and Largest internal keys for the overall bounds. The kind and
 	// SeqNum of these will reflect what is physically present on the source Pebble
@@ -725,7 +725,7 @@ func (d *DB) truncateSharedFile(
 	sst = &SharedSSTMeta{}
 	sst.cloneFromFileMeta(file)
 	sst.Level = uint8(level)
-	sst.Backing, err = d.objProvider.SharedObjectBacking(&objMeta)
+	sst.Backing, err = d.objProvider.RemoteObjectBacking(&objMeta)
 	if err != nil {
 		return nil, false, err
 	}

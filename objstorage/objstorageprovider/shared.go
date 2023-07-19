@@ -94,14 +94,14 @@ func (p *provider) sharedInit() error {
 			DiskFileNum: meta.FileNum,
 			FileType:    meta.FileType,
 		}
-		o.Shared.CreatorID = meta.CreatorID
-		o.Shared.CreatorFileNum = meta.CreatorFileNum
-		o.Shared.CleanupMethod = meta.CleanupMethod
-		o.Shared.Locator = meta.Locator
-		o.Shared.CustomObjectName = meta.CustomObjectName
-		o.Shared.Storage, err = p.ensureStorageLocked(o.Shared.Locator)
+		o.Remote.CreatorID = meta.CreatorID
+		o.Remote.CreatorFileNum = meta.CreatorFileNum
+		o.Remote.CleanupMethod = meta.CleanupMethod
+		o.Remote.Locator = meta.Locator
+		o.Remote.CustomObjectName = meta.CustomObjectName
+		o.Remote.Storage, err = p.ensureStorageLocked(o.Remote.Locator)
 		if err != nil {
-			return errors.Wrapf(err, "creating shared.Storage object for locator '%s'", o.Shared.Locator)
+			return errors.Wrapf(err, "creating shared.Storage object for locator '%s'", o.Remote.Locator)
 		}
 		if invariants.Enabled {
 			o.AssertValid()
@@ -149,7 +149,7 @@ func (p *provider) IsForeign(meta objstorage.ObjectMetadata) bool {
 	if !p.shared.initialized.Load() {
 		return false
 	}
-	return meta.IsShared() && (meta.Shared.CustomObjectName != "" || meta.Shared.CreatorID != p.shared.creatorID)
+	return meta.IsRemote() && (meta.Remote.CustomObjectName != "" || meta.Remote.CreatorID != p.shared.creatorID)
 }
 
 func (p *provider) sharedCheckInitialized() error {
@@ -194,11 +194,11 @@ func (p *provider) sharedPath(meta objstorage.ObjectMetadata) string {
 
 // sharedCreateRef creates a reference marker object.
 func (p *provider) sharedCreateRef(meta objstorage.ObjectMetadata) error {
-	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
+	if meta.Remote.CleanupMethod != objstorage.SharedRefTracking {
 		return nil
 	}
 	refName := p.sharedObjectRefName(meta)
-	writer, err := meta.Shared.Storage.CreateObject(refName)
+	writer, err := meta.Remote.Storage.CreateObject(refName)
 	if err == nil {
 		// The object is empty, just close the writer.
 		err = writer.Close()
@@ -227,11 +227,11 @@ func (p *provider) sharedCreate(
 		DiskFileNum: fileNum,
 		FileType:    fileType,
 	}
-	meta.Shared.CreatorID = p.shared.creatorID
-	meta.Shared.CreatorFileNum = fileNum
-	meta.Shared.CleanupMethod = opts.SharedCleanupMethod
-	meta.Shared.Locator = locator
-	meta.Shared.Storage = storage
+	meta.Remote.CreatorID = p.shared.creatorID
+	meta.Remote.CreatorFileNum = fileNum
+	meta.Remote.CleanupMethod = opts.SharedCleanupMethod
+	meta.Remote.Locator = locator
+	meta.Remote.Storage = storage
 
 	objName := sharedObjectName(meta)
 	writer, err := storage.CreateObject(objName)
@@ -253,10 +253,10 @@ func (p *provider) sharedOpenForReading(
 	}
 	// Verify we have a reference on this object; for performance reasons, we only
 	// do this in testing scenarios.
-	if p.shared.checkRefsOnOpen && meta.Shared.CleanupMethod == objstorage.SharedRefTracking {
+	if p.shared.checkRefsOnOpen && meta.Remote.CleanupMethod == objstorage.SharedRefTracking {
 		refName := p.sharedObjectRefName(meta)
-		if _, err := meta.Shared.Storage.Size(refName); err != nil {
-			if meta.Shared.Storage.IsNotExistError(err) {
+		if _, err := meta.Remote.Storage.Size(refName); err != nil {
+			if meta.Remote.Storage.IsNotExistError(err) {
 				if opts.MustExist {
 					p.st.Logger.Fatalf("marker object %q does not exist", refName)
 					// TODO(radu): maybe list references for the object.
@@ -267,9 +267,9 @@ func (p *provider) sharedOpenForReading(
 		}
 	}
 	objName := sharedObjectName(meta)
-	reader, size, err := meta.Shared.Storage.ReadObject(ctx, objName)
+	reader, size, err := meta.Remote.Storage.ReadObject(ctx, objName)
 	if err != nil {
-		if opts.MustExist && meta.Shared.Storage.IsNotExistError(err) {
+		if opts.MustExist && meta.Remote.Storage.IsNotExistError(err) {
 			p.st.Logger.Fatalf("object %q does not exist", objName)
 			// TODO(radu): maybe list references for the object.
 		}
@@ -283,14 +283,14 @@ func (p *provider) sharedSize(meta objstorage.ObjectMetadata) (int64, error) {
 		return 0, err
 	}
 	objName := sharedObjectName(meta)
-	return meta.Shared.Storage.Size(objName)
+	return meta.Remote.Storage.Size(objName)
 }
 
 // sharedUnref implements object "removal" with the shared backend. The ref
 // marker object is removed and the backing object is removed only if there are
 // no other ref markers.
 func (p *provider) sharedUnref(meta objstorage.ObjectMetadata) error {
-	if meta.Shared.CleanupMethod == objstorage.SharedNoCleanup {
+	if meta.Remote.CleanupMethod == objstorage.SharedNoCleanup {
 		// Never delete objects in this mode.
 		return nil
 	}
@@ -302,16 +302,16 @@ func (p *provider) sharedUnref(meta objstorage.ObjectMetadata) error {
 
 	refName := p.sharedObjectRefName(meta)
 	// Tolerate a not-exists error.
-	if err := meta.Shared.Storage.Delete(refName); err != nil && !meta.Shared.Storage.IsNotExistError(err) {
+	if err := meta.Remote.Storage.Delete(refName); err != nil && !meta.Remote.Storage.IsNotExistError(err) {
 		return err
 	}
-	otherRefs, err := meta.Shared.Storage.List(sharedObjectRefPrefix(meta), "" /* delimiter */)
+	otherRefs, err := meta.Remote.Storage.List(sharedObjectRefPrefix(meta), "" /* delimiter */)
 	if err != nil {
 		return err
 	}
 	if len(otherRefs) == 0 {
 		objName := sharedObjectName(meta)
-		if err := meta.Shared.Storage.Delete(objName); err != nil && !meta.Shared.Storage.IsNotExistError(err) {
+		if err := meta.Remote.Storage.Delete(objName); err != nil && !meta.Remote.Storage.IsNotExistError(err) {
 			return err
 		}
 	}

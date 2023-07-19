@@ -37,14 +37,14 @@ func TestSharedObjectBacking(t *testing.T) {
 				DiskFileNum: base.FileNum(1).DiskFileNum(),
 				FileType:    base.FileTypeTable,
 			}
-			meta.Shared.CreatorID = 100
-			meta.Shared.CreatorFileNum = base.FileNum(200).DiskFileNum()
-			meta.Shared.CleanupMethod = cleanup
-			meta.Shared.Locator = "foo"
-			meta.Shared.CustomObjectName = "obj-name"
-			meta.Shared.Storage = sharedStorage
+			meta.Remote.CreatorID = 100
+			meta.Remote.CreatorFileNum = base.FileNum(200).DiskFileNum()
+			meta.Remote.CleanupMethod = cleanup
+			meta.Remote.Locator = "foo"
+			meta.Remote.CustomObjectName = "obj-name"
+			meta.Remote.Storage = sharedStorage
 
-			h, err := p.SharedObjectBacking(&meta)
+			h, err := p.RemoteObjectBacking(&meta)
 			require.NoError(t, err)
 			buf, err := h.Get()
 			require.NoError(t, err)
@@ -56,8 +56,8 @@ func TestSharedObjectBacking(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, uint64(100), uint64(d1.meta.DiskFileNum.FileNum()))
 			require.Equal(t, base.FileTypeTable, d1.meta.FileType)
-			d1.meta.Shared.Storage = sharedStorage
-			require.Equal(t, meta.Shared, d1.meta.Shared)
+			d1.meta.Remote.Storage = sharedStorage
+			require.Equal(t, meta.Remote, d1.meta.Remote)
 			if cleanup == objstorage.SharedRefTracking {
 				require.Equal(t, creatorID, d1.refToCheck.creatorID)
 				require.Equal(t, base.FileNum(1).DiskFileNum(), d1.refToCheck.fileNum)
@@ -77,8 +77,8 @@ func TestSharedObjectBacking(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, uint64(100), uint64(d2.meta.DiskFileNum.FileNum()))
 				require.Equal(t, base.FileTypeTable, d2.meta.FileType)
-				d2.meta.Shared.Storage = sharedStorage
-				require.Equal(t, meta.Shared, d2.meta.Shared)
+				d2.meta.Remote.Storage = sharedStorage
+				require.Equal(t, meta.Remote, d2.meta.Remote)
 				if cleanup == objstorage.SharedRefTracking {
 					require.Equal(t, creatorID, d2.refToCheck.creatorID)
 					require.Equal(t, base.FileNum(1).DiskFileNum(), d2.refToCheck.fileNum)
@@ -109,13 +109,13 @@ func TestCreateSharedObjectBacking(t *testing.T) {
 
 	require.NoError(t, p.SetCreatorID(1))
 
-	backing, err := p.CreateSharedObjectBacking("foo", "custom-obj-name")
+	backing, err := p.CreateExternalObjectBacking("foo", "custom-obj-name")
 	require.NoError(t, err)
 	d, err := decodeSharedObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), backing)
 	require.NoError(t, err)
 	require.Equal(t, uint64(100), uint64(d.meta.DiskFileNum.FileNum()))
 	require.Equal(t, base.FileTypeTable, d.meta.FileType)
-	require.Equal(t, shared.Locator("foo"), d.meta.Shared.Locator)
-	require.Equal(t, "custom-obj-name", d.meta.Shared.CustomObjectName)
-	require.Equal(t, objstorage.SharedNoCleanup, d.meta.Shared.CleanupMethod)
+	require.Equal(t, shared.Locator("foo"), d.meta.Remote.Locator)
+	require.Equal(t, "custom-obj-name", d.meta.Remote.CustomObjectName)
+	require.Equal(t, objstorage.SharedNoCleanup, d.meta.Remote.CleanupMethod)
 }

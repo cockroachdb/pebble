@@ -449,23 +449,23 @@ func ingestLink(
 			})
 		}
 	}
-	sharedObjs := make([]objstorage.SharedObjectToAttach, 0, len(shared))
+	remoteObjs := make([]objstorage.RemoteObjectToAttach, 0, len(shared))
 	for i := range shared {
 		backing, err := shared[i].Backing.Get()
 		if err != nil {
 			return err
 		}
-		sharedObjs = append(sharedObjs, objstorage.SharedObjectToAttach{
+		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
 			FileNum:  lr.sharedMeta[i].FileBacking.DiskFileNum,
 			FileType: fileTypeTable,
 			Backing:  backing,
 		})
 	}
-	sharedObjMetas, err := objProvider.AttachSharedObjects(sharedObjs)
+	remoteObjMetas, err := objProvider.AttachRemoteObjects(remoteObjs)
 	if err != nil {
 		return err
 	}
-	for i := range sharedObjMetas {
+	for i := range remoteObjMetas {
 		// One corner case around file sizes we need to be mindful of, is that
 		// if one of the shareObjs was initially created by us (and has boomeranged
 		// back from another node), we'll need to update the FileBacking's size
@@ -473,8 +473,8 @@ func ingestLink(
 		// open the db again after a crash/restart (see checkConsistency in open.go),
 		// plus it more accurately allows us to prioritize compactions of files
 		// that were originally created by us.
-		if !objProvider.IsForeign(sharedObjMetas[i]) {
-			size, err := objProvider.Size(sharedObjMetas[i])
+		if remoteObjMetas[i].IsShared() && !objProvider.IsForeign(remoteObjMetas[i]) {
+			size, err := objProvider.Size(remoteObjMetas[i])
 			if err != nil {
 				return err
 			}
@@ -484,7 +484,7 @@ func ingestLink(
 			opts.EventListener.TableCreated(TableCreateInfo{
 				JobID:   jobID,
 				Reason:  "ingesting",
-				Path:    objProvider.Path(sharedObjMetas[i]),
+				Path:    objProvider.Path(remoteObjMetas[i]),
 				FileNum: lr.sharedMeta[i].FileNum,
 			})
 		}
@@ -858,7 +858,7 @@ func ingestTargetLevel(
 //     local sstables. This is the step where overlap with memtables is
 //     determined. If there is overlap, we remember the most recent memtable
 //     that overlaps.
-//  6. Update the sequence number in the ingested local sstables. (Shared
+//  6. Update the sequence number in the ingested local sstables. (Remote
 //     sstables get fixed sequence numbers that were determined at load time.)
 //  7. Wait for the most recent memtable that overlaps to flush (if any).
 //  8. Add the ingested sstables to the version (DB.ingestApply).
@@ -1295,7 +1295,7 @@ func (d *DB) ingest(
 		}
 	}
 
-	// NB: Shared-sstable-only ingestions do not assign a sequence number to
+	// NB: Remote-sstable-only ingestions do not assign a sequence number to
 	// any sstables.
 	globalSeqNum := uint64(0)
 	if len(loadResult.localMeta) > 0 {
