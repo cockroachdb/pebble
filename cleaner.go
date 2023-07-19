@@ -181,8 +181,8 @@ func (cm *cleanupManager) needsPacing(fileType base.FileType, fileNum base.DiskF
 		// delete anything, so we don't need to pace.
 		return false
 	}
-	// Don't throttle deletion of shared objects.
-	return !meta.IsShared()
+	// Don't throttle deletion of remote objects.
+	return !meta.IsRemote()
 }
 
 // maybePace sleeps before deleting an object if appropriate. It is always

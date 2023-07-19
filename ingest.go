@@ -449,19 +449,19 @@ func ingestLink(
 			})
 		}
 	}
-	sharedObjs := make([]objstorage.SharedObjectToAttach, 0, len(shared))
+	sharedObjs := make([]objstorage.RemoteObjectToAttach, 0, len(shared))
 	for i := range shared {
 		backing, err := shared[i].Backing.Get()
 		if err != nil {
 			return err
 		}
-		sharedObjs = append(sharedObjs, objstorage.SharedObjectToAttach{
+		sharedObjs = append(sharedObjs, objstorage.RemoteObjectToAttach{
 			FileNum:  lr.sharedMeta[i].FileBacking.DiskFileNum,
 			FileType: fileTypeTable,
 			Backing:  backing,
 		})
 	}
-	sharedObjMetas, err := objProvider.AttachSharedObjects(sharedObjs)
+	sharedObjMetas, err := objProvider.AttachRemoteObjects(sharedObjs)
 	if err != nil {
 		return err
 	}
@@ -473,7 +473,7 @@ func ingestLink(
 		// open the db again after a crash/restart (see checkConsistency in open.go),
 		// plus it more accurately allows us to prioritize compactions of files
 		// that were originally created by us.
-		if !objProvider.IsForeign(sharedObjMetas[i]) {
+		if sharedObjMetas[i].IsShared() && !objProvider.IsForeign(sharedObjMetas[i]) {
 			size, err := objProvider.Size(sharedObjMetas[i])
 			if err != nil {
 				return err

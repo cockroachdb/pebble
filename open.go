@@ -814,7 +814,7 @@ func (d *DB) replayWAL(
 					if err != nil {
 						return nil, 0, errors.Wrap(err, "pebble: error when looking up ingested SSTs")
 					}
-					if objMeta.IsShared() {
+					if objMeta.IsRemote() {
 						readable, err = d.objProvider.OpenForReading(context.TODO(), fileTypeTable, n, objstorage.OpenOptions{MustExist: true})
 						if err != nil {
 							return nil, 0, errors.Wrap(err, "pebble: error when opening flushable ingest files")
