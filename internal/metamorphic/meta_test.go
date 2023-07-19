@@ -106,22 +106,17 @@ func TestMeta(t *testing.T) {
 	opts := []metamorphic.RunOption{
 		metamorphic.Seed(*seed),
 		metamorphic.OpCount(ops.Static),
-		metamorphic.MaxThreads(*maxThreads),
 	}
 	onceOpts := []metamorphic.RunOnceOption{
 		metamorphic.MaxThreads(*maxThreads),
 	}
-
 	if *keep {
-		opts = append(opts, metamorphic.KeepData{})
 		onceOpts = append(onceOpts, metamorphic.KeepData{})
 	}
 	if *failRE != "" {
-		opts = append(opts, metamorphic.FailOnMatch{Regexp: regexp.MustCompile(*failRE)})
 		onceOpts = append(onceOpts, metamorphic.FailOnMatch{Regexp: regexp.MustCompile(*failRE)})
 	}
 	if *errorRate > 0 {
-		opts = append(opts, metamorphic.InjectErrorsRate(*errorRate))
 		onceOpts = append(onceOpts, metamorphic.InjectErrorsRate(*errorRate))
 	}
 	if *traceFile != "" {
@@ -155,5 +150,6 @@ func TestMeta(t *testing.T) {
 		metamorphic.RunOnce(t, *runDir, *seed, filepath.Join(*runDir, "history"), onceOpts...)
 		return
 	}
+	opts = append(opts, metamorphic.RunOnceOptions(onceOpts...))
 	metamorphic.RunAndCompare(t, *dir, opts...)
 }
