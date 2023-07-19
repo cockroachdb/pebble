@@ -28,20 +28,20 @@ a.SET.0-b.SET.0
 b.SET.0-d.SET.0
 e.SET.0-f.SET.0
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges
 
 ingest cmp=default
 c.SET.0-d.SET.0
 d.SET.0-e.SET.0
 a.SET.0-b.SET.0
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges
 
 ingest cmp=default
 a.SET.1-b.SET.1
 b.SET.0-c.SET.0
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges
 
 ingest cmp=default
 a.RANGEDEL.0-b.RANGEDEL.72057594037927935
@@ -74,13 +74,13 @@ ingest cmp=default
 a.RANGEDEL.0-c.RANGEDEL.72057594037927935
 b.SET.0-d.SET.0
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges
 
 ingest cmp=default
 b.RANGEDEL.0-d.RANGEDEL.72057594037927935
 a.SET.0-c.SET.0
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges
 
 ingest cmp=default
 a.RANGEDEL.0-b.RANGEDEL.72057594037927935
@@ -119,20 +119,20 @@ f.SET.0-e.SET.0
 d.SET.0-b.SET.0
 b.SET.0-a.SET.0
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges
 
 ingest cmp=reverse
 b.SET.0-a.SET.0
 e.SET.0-d.SET.0
 d.SET.0-c.SET.0
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges
 
 ingest cmp=reverse
 c.SET.0-b.SET.0
 b.SET.1-a.SET.1
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges
 
 ingest cmp=reverse
 b.RANGEDEL.0-a.RANGEDEL.72057594037927935
@@ -165,16 +165,16 @@ ingest cmp=reverse
 c.RANGEDEL.0-a.RANGEDEL.72057594037927935
 d.SET.0-b.SET.0
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges
 
 ingest cmp=reverse
 d.RANGEDEL.0-b.RANGEDEL.72057594037927935
 c.SET.0-a.SET.0
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges
 
 ingest cmp=reverse
 b.RANGEDEL.0-a.RANGEDEL.72057594037927935
 c.SET.0-b.SET.0
 ----
-pebble: external sstables have overlapping ranges
+pebble: local ingestion sstables have overlapping ranges

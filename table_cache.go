@@ -462,7 +462,7 @@ func (c *tableCacheShard) newIters(
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
 	var rangeDelIter keyspan.FragmentIterator
-	if provider.IsForeign(objMeta) {
+	if provider.IsSharedForeign(objMeta) {
 		if opts == nil {
 			panic("unexpected nil opts when reading foreign file")
 		}
@@ -520,7 +520,7 @@ func (c *tableCacheShard) newIters(
 		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
 	}
 
-	if provider.IsForeign(objMeta) {
+	if provider.IsSharedForeign(objMeta) {
 		if tableFormat < sstable.TableFormatPebblev4 {
 			return nil, nil, errors.New("pebble: shared foreign sstable has a lower table format than expected")
 		}
@@ -616,7 +616,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 	if err != nil {
 		return nil, err
 	}
-	if dbOpts.objProvider.IsForeign(objMeta) {
+	if dbOpts.objProvider.IsSharedForeign(objMeta) {
 		if opts.Level == 0 {
 			panic("unexpected zero level when reading foreign file")
 		}
