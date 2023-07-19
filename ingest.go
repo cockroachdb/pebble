@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -111,6 +112,80 @@ func ingestSynthesizeShared(
 		// Initialize meta.{HasPointKeys,Smallest,Largest}, etc.
 		meta.ExtendPointKeyBounds(opts.Comparer.Compare, sm.SmallestPointKey, sm.LargestPointKey)
 	}
+	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
+		return nil, err
+	}
+	return meta, nil
+}
+
+// ingestLoad1External loads the fileMetadata for one external sstable.
+// Sequence number and target level calculation happens during prepare/apply.
+func ingestLoad1External(
+	opts *Options,
+	e ExternalFile,
+	fileNum base.DiskFileNum,
+	objprovider objstorage.Provider,
+	jobID int,
+) (*fileMetadata, error) {
+	if e.Size == 0 {
+		// Disallow 0 file sizes
+		return nil, errors.New("pebble: cannot ingest external file with size 0")
+	}
+	if !e.HasRangeKey && !e.HasPointKey {
+		return nil, errors.New("pebble: cannot ingest external file with no point or range keys")
+	}
+	// Don't load table stats. Doing a round trip to shared storage, one SST
+	// at a time is not worth it as it slows down ingestion.
+	meta := &fileMetadata{}
+	meta.FileNum = fileNum.FileNum()
+	meta.CreationTime = time.Now().Unix()
+	meta.Virtual = true
+	meta.Size = e.Size
+	meta.InitProviderBacking(fileNum)
+
+	// Try to resolve a reference to the external file.
+	backing, err := objprovider.CreateExternalObjectBacking(e.Locator, e.ObjName)
+	if err != nil {
+		return nil, err
+	}
+	metas, err := objprovider.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
+		FileNum:  fileNum,
+		FileType: fileTypeTable,
+		Backing:  backing,
+	}})
+	if err != nil {
+		return nil, err
+	}
+	if opts.EventListener.TableCreated != nil {
+		opts.EventListener.TableCreated(TableCreateInfo{
+			JobID:   jobID,
+			Reason:  "ingesting",
+			Path:    objprovider.Path(metas[0]),
+			FileNum: fileNum.FileNum(),
+		})
+	}
+	// In the name of keeping this ingestion as fast as possible, we avoid
+	// *all* existence checks and synthesize a file metadata with smallest/largest
+	// keys that overlap whatever the passed-in span was.
+	smallestCopy := make([]byte, len(e.SmallestUserKey))
+	copy(smallestCopy, e.SmallestUserKey)
+	largestCopy := make([]byte, len(e.LargestUserKey))
+	copy(largestCopy, e.LargestUserKey)
+	if e.HasPointKey {
+		meta.ExtendPointKeyBounds(opts.Comparer.Compare, base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
+			base.MakeRangeDeleteSentinelKey(largestCopy))
+	}
+	if e.HasRangeKey {
+		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, base.MakeInternalKey(smallestCopy, 0, InternalKeyKindRangeKeySet),
+			base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyDelete, largestCopy))
+	}
+
+	// Set the underlying FileBacking's size to the same size as the virtualized
+	// view of the sstable. This ensures that we don't over-prioritize this
+	// sstable for compaction just yet, as we do not have a clear sense of
+	// what parts of this sstable are referenced by other nodes.
+	meta.FileBacking.Size = e.Size
+
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
 		return nil, err
 	}
@@ -265,8 +340,10 @@ func ingestLoad1(
 
 type ingestLoadResult struct {
 	localMeta, sharedMeta []*fileMetadata
+	externalMeta          []*fileMetadata
 	localPaths            []string
 	sharedLevels          []uint8
+	fileCount             int
 }
 
 func ingestLoad(
@@ -274,8 +351,11 @@ func ingestLoad(
 	fmv FormatMajorVersion,
 	paths []string,
 	shared []SharedSSTMeta,
+	external []ExternalFile,
 	cacheID uint64,
 	pending []base.DiskFileNum,
+	objProvider objstorage.Provider,
+	jobID int,
 ) (ingestLoadResult, error) {
 	meta := make([]*fileMetadata, 0, len(paths))
 	newPaths := make([]string, 0, len(paths))
@@ -298,8 +378,8 @@ func ingestLoad(
 			newPaths = append(newPaths, paths[i])
 		}
 	}
-	if len(shared) == 0 {
-		return ingestLoadResult{localMeta: meta, localPaths: newPaths}, nil
+	if len(shared) == 0 && len(external) == 0 {
+		return ingestLoadResult{localMeta: meta, localPaths: newPaths, fileCount: len(meta)}, nil
 	}
 
 	// Sort the shared files according to level.
@@ -318,11 +398,21 @@ func ingestLoad(
 		sharedMeta = append(sharedMeta, m)
 		levels = append(levels, shared[i].Level)
 	}
+	externalMeta := make([]*fileMetadata, 0, len(external))
+	for i := range external {
+		m, err := ingestLoad1External(opts, external[i], pending[len(paths)+len(shared)+i], objProvider, jobID)
+		if err != nil {
+			return ingestLoadResult{}, err
+		}
+		externalMeta = append(externalMeta, m)
+	}
 	result := ingestLoadResult{
 		localMeta:    meta,
 		sharedMeta:   sharedMeta,
+		externalMeta: externalMeta,
 		localPaths:   newPaths,
 		sharedLevels: levels,
+		fileCount:    len(meta) + len(sharedMeta) + len(externalMeta),
 	}
 	return result, nil
 }
@@ -346,7 +436,9 @@ func (m metaAndPaths) Less(i, j int) bool {
 
 func (m metaAndPaths) Swap(i, j int) {
 	m.meta[i], m.meta[j] = m.meta[j], m.meta[i]
-	m.paths[i], m.paths[j] = m.paths[j], m.paths[i]
+	if m.paths != nil {
+		m.paths[i], m.paths[j] = m.paths[j], m.paths[i]
+	}
 }
 
 func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) error {
@@ -357,6 +449,23 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 		if !exciseSpan.Contains(cmp, f.Smallest) || !exciseSpan.Contains(cmp, f.Largest) {
 			return errors.AssertionFailedf("pebble: shared file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
 		}
+	}
+	if len(lr.externalMeta) > 0 {
+		if len(lr.localMeta) > 0 || len(lr.sharedMeta) > 0 {
+			// Currently we only support external ingests on their own. If external
+			// files are present alongside local/shared files, return an error.
+			return errors.AssertionFailedf("pebble: external files cannot be ingested atomically alongside other types of files")
+		}
+		sort.Sort(&metaAndPaths{
+			meta: lr.externalMeta,
+			cmp:  cmp,
+		})
+		for i := 1; i < len(lr.externalMeta); i++ {
+			if sstableKeyCompare(cmp, lr.externalMeta[i-1].Largest, lr.externalMeta[i].Smallest) >= 0 {
+				return errors.AssertionFailedf("pebble: external sstables have overlapping ranges")
+			}
+		}
+		return nil
 	}
 	if len(lr.localMeta) <= 1 || len(lr.localPaths) <= 1 {
 		return nil
@@ -370,7 +479,7 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 
 	for i := 1; i < len(lr.localPaths); i++ {
 		if sstableKeyCompare(cmp, lr.localMeta[i-1].Largest, lr.localMeta[i].Smallest) >= 0 {
-			return errors.AssertionFailedf("pebble: external sstables have overlapping ranges")
+			return errors.AssertionFailedf("pebble: local ingestion sstables have overlapping ranges")
 		}
 	}
 	if len(lr.sharedMeta) == 0 {
@@ -459,7 +568,7 @@ func ingestLink(
 		// open the db again after a crash/restart (see checkConsistency in open.go),
 		// plus it more accurately allows us to prioritize compactions of files
 		// that were originally created by us.
-		if sharedObjMetas[i].IsShared() && !objProvider.IsForeign(sharedObjMetas[i]) {
+		if sharedObjMetas[i].IsShared() && !objProvider.IsSharedForeign(sharedObjMetas[i]) {
 			size, err := objProvider.Size(sharedObjMetas[i])
 			if err != nil {
 				return err
@@ -475,6 +584,8 @@ func ingestLink(
 			})
 		}
 	}
+	// We do not need to do anything about lr.externalMetas. Those were already
+	// linked in ingestLoad.
 
 	return nil
 }
@@ -563,6 +674,11 @@ func ingestUpdateSeqNum(
 	}
 	for i := range loadResult.localMeta {
 		if err := updateMetadata(loadResult.localMeta[i]); err != nil {
+			return err
+		}
+	}
+	for i := range loadResult.externalMeta {
+		if err := updateMetadata(loadResult.externalMeta[i]); err != nil {
 			return err
 		}
 	}
@@ -887,7 +1003,7 @@ func (d *DB) Ingest(paths []string) error {
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-	_, err := d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{})
+	_, err := d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{}, nil /* external */)
 	return err
 }
 
@@ -907,6 +1023,32 @@ type IngestOperationStats struct {
 	MemtableOverlappingFiles int
 }
 
+// ExternalFile are external sstables that can be referenced through
+// objprovider and ingested as remote files that will not be refcounted or
+// cleaned up. For use with online restore. Note that the underlying sstable
+// could contain keys outside the [Smallest,Largest) bounds; however Pebble
+// is expected to only read the keys within those bounds.
+type ExternalFile struct {
+	// Locator is the shared.Locator that can be used with objProvider to
+	// resolve a reference to this external sstable.
+	Locator remote.Locator
+	// ObjName is the unique name of this sstable on Locator.
+	ObjName string
+	// Size of the referenced proportion of the virtualized sstable. An estimate
+	// is acceptable in lieu of the backing file size.
+	Size uint64
+	// SmallestUserKey and LargestUserKey are the [smallest,largest) user key
+	// bounds of the sstable. Both these bounds are loose i.e. it's possible for
+	// the sstable to not span the entirety of this range. However, multiple
+	// ExternalFiles in one ingestion must all have non-overlapping
+	// [smallest, largest) spans. Note that this Largest bound is exclusive.
+	SmallestUserKey, LargestUserKey []byte
+	// HasPointKey and HasRangeKey denote whether this file contains point keys
+	// or range keys. If both structs are false, an error is returned during
+	// ingestion.
+	HasPointKey, HasRangeKey bool
+}
+
 // IngestWithStats does the same as Ingest, and additionally returns
 // IngestOperationStats.
 func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {
@@ -916,7 +1058,25 @@ func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{})
+	return d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{}, nil /* external */)
+}
+
+// IngestExternalFiles does the same as IngestWithStats, and additionally
+// accepts external files (with locator info that can be resolved using
+// d.opts.SharedStorage). These files must also be non-overlapping with
+// each other, and must be resolvable through d.objProvider.
+func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats, error) {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+
+	if d.opts.ReadOnly {
+		return IngestOperationStats{}, ErrReadOnly
+	}
+	if d.opts.Experimental.RemoteStorage == nil {
+		return IngestOperationStats{}, errors.New("pebble: cannot ingest external files without shared storage configured")
+	}
+	return d.ingest(nil, ingestTargetLevel, nil /* shared */, KeyRange{}, external)
 }
 
 // IngestAndExcise does the same as IngestWithStats, and additionally accepts a
@@ -938,7 +1098,7 @@ func (d *DB) IngestAndExcise(
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan)
+	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, nil /* external */)
 }
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
@@ -1054,12 +1214,13 @@ func (d *DB) ingest(
 	targetLevelFunc ingestTargetLevelFunc,
 	shared []SharedSSTMeta,
 	exciseSpan KeyRange,
+	external []ExternalFile,
 ) (IngestOperationStats, error) {
 	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
 		panic("cannot ingest shared sstables with nil SharedStorage")
 	}
-	if (exciseSpan.Valid() || len(shared) > 0) && d.opts.FormatMajorVersion < ExperimentalFormatVirtualSSTables {
-		return IngestOperationStats{}, errors.New("pebble: format major version too old for excise or shared sstable ingestion")
+	if (exciseSpan.Valid() || len(shared) > 0 || len(external) > 0) && d.FormatMajorVersion() < ExperimentalFormatVirtualSSTables {
+		return IngestOperationStats{}, errors.New("pebble: format major version too old for excise, shared or external sstable ingestion")
 	}
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted. Note that this causes
@@ -1067,25 +1228,23 @@ func (d *DB) ingest(
 	// ordering. The sorting of L0 tables by sequence number avoids relying on
 	// that (busted) invariant.
 	d.mu.Lock()
-	pendingOutputs := make([]base.DiskFileNum, len(paths)+len(shared))
-	for i := range paths {
+	pendingOutputs := make([]base.DiskFileNum, len(paths)+len(shared)+len(external))
+	for i := 0; i < len(paths)+len(shared)+len(external); i++ {
 		pendingOutputs[i] = d.mu.versions.getNextFileNum().DiskFileNum()
 	}
-	for i := range shared {
-		pendingOutputs[len(paths)+i] = d.mu.versions.getNextFileNum().DiskFileNum()
-	}
+
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	d.mu.Unlock()
 
-	// Load the metadata for all of the files being ingested. This step detects
+	// Load the metadata for all the files being ingested. This step detects
 	// and elides empty sstables.
-	loadResult, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, shared, d.cacheID, pendingOutputs)
+	loadResult, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, shared, external, d.cacheID, pendingOutputs, d.objProvider, jobID)
 	if err != nil {
 		return IngestOperationStats{}, err
 	}
 
-	if len(loadResult.localMeta) == 0 && len(loadResult.sharedMeta) == 0 {
+	if loadResult.fileCount == 0 {
 		// All of the sstables to be ingested were empty. Nothing to do.
 		return IngestOperationStats{}, nil
 	}
@@ -1114,7 +1273,7 @@ func (d *DB) ingest(
 	// metaFlushableOverlaps is a slice parallel to meta indicating which of the
 	// ingested sstables overlap some table in the flushable queue. It's used to
 	// approximate ingest-into-L0 stats when using flushable ingests.
-	metaFlushableOverlaps := make([]bool, len(loadResult.localMeta)+len(loadResult.sharedMeta))
+	metaFlushableOverlaps := make([]bool, loadResult.fileCount)
 	var mem *flushableEntry
 	var mut *memTable
 	// asFlushable indicates whether the sstable was ingested as a flushable.
@@ -1161,6 +1320,9 @@ func (d *DB) ingest(
 			for i := range loadResult.sharedMeta {
 				checkForOverlap(len(loadResult.localMeta)+i, loadResult.sharedMeta[i])
 			}
+			for i := range loadResult.externalMeta {
+				checkForOverlap(len(loadResult.localMeta)+len(loadResult.sharedMeta)+i, loadResult.externalMeta[i])
+			}
 			if exciseSpan.Valid() {
 				kr := internalKeyRange{
 					smallest: base.MakeInternalKey(exciseSpan.Start, InternalKeySeqNumMax, InternalKeyKindMax),
@@ -1202,7 +1364,7 @@ func (d *DB) ingest(
 		// The ingestion overlaps with some entry in the flushable queue.
 		if d.FormatMajorVersion() < FormatFlushableIngest ||
 			d.opts.Experimental.DisableIngestAsFlushable() ||
-			len(shared) > 0 || exciseSpan.Valid() ||
+			len(shared) > 0 || exciseSpan.Valid() || len(external) > 0 ||
 			(len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1) {
 			// We're not able to ingest as a flushable,
 			// so we must synchronously flush.
@@ -1282,7 +1444,7 @@ func (d *DB) ingest(
 	// changes to the WAL and memtable. This will cause a bigger commit hiccup
 	// during ingestion.
 	d.commit.ingestSem <- struct{}{}
-	d.commit.AllocateSeqNum(len(loadResult.localMeta)+len(loadResult.sharedMeta), prepare, apply)
+	d.commit.AllocateSeqNum(loadResult.fileCount, prepare, apply)
 	<-d.commit.ingestSem
 
 	if err != nil {
@@ -1312,8 +1474,10 @@ func (d *DB) ingest(
 	}
 	if len(loadResult.localMeta) > 0 {
 		info.GlobalSeqNum = loadResult.localMeta[0].SmallestSeqNum
-	} else {
+	} else if len(loadResult.sharedMeta) > 0 {
 		info.GlobalSeqNum = loadResult.sharedMeta[0].SmallestSeqNum
+	} else {
+		info.GlobalSeqNum = loadResult.externalMeta[0].SmallestSeqNum
 	}
 	var stats IngestOperationStats
 	if ve != nil {
@@ -1645,7 +1809,7 @@ func (d *DB) ingestApply(
 	defer d.mu.Unlock()
 
 	ve := &versionEdit{
-		NewFiles: make([]newFileEntry, len(lr.localMeta)+len(lr.sharedMeta)),
+		NewFiles: make([]newFileEntry, lr.fileCount),
 	}
 	if exciseSpan.Valid() {
 		ve.DeletedFiles = map[manifest.DeletedFileEntry]*manifest.FileMetadata{}
@@ -1675,18 +1839,25 @@ func (d *DB) ingestApply(
 	current := d.mu.versions.currentVersion()
 	baseLevel := d.mu.versions.picker.getBaseLevel()
 	iterOps := IterOptions{logger: d.opts.Logger}
-	for i := 0; i < len(lr.localMeta)+len(lr.sharedMeta); i++ {
+	for i := 0; i < lr.fileCount; i++ {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
 		var m *fileMetadata
 		sharedIdx := -1
 		sharedLevel := -1
+		externalFile := false
 		if i < len(lr.localMeta) {
+			// local file.
 			m = lr.localMeta[i]
-		} else {
+		} else if (i - len(lr.localMeta)) < len(lr.sharedMeta) {
+			// shared file.
 			sharedIdx = i - len(lr.localMeta)
 			m = lr.sharedMeta[sharedIdx]
 			sharedLevel = int(lr.sharedLevels[sharedIdx])
+		} else {
+			// external file.
+			externalFile = true
+			m = lr.externalMeta[i-(len(lr.localMeta)+len(lr.sharedMeta))]
 		}
 		f := &ve.NewFiles[i]
 		var err error
@@ -1697,6 +1868,9 @@ func (d *DB) ingestApply(
 			}
 			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 		} else {
+			if externalFile {
+				ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
+			}
 			if exciseSpan.Valid() && exciseSpan.Contains(d.cmp, m.Smallest) && exciseSpan.Contains(d.cmp, m.Largest) {
 				// This file fits perfectly within the excise span. We can slot it at
 				// L6, or sharedLevelsStart - 1 if we have shared files.

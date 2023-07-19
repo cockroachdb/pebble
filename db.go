@@ -2046,7 +2046,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			}
 			if objMeta.IsRemote() {
 				if objMeta.IsShared() {
-					if d.objProvider.IsForeign(objMeta) {
+					if d.objProvider.IsSharedForeign(objMeta) {
 						destTables[j].BackingType = BackingTypeSharedForeign
 					} else {
 						destTables[j].BackingType = BackingTypeShared

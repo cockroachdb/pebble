@@ -10,9 +10,16 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 )
 
+// NewRemoteWritable creates an objstorage.Writable out of an io.WriteCloser.
+func NewRemoteWritable(obj io.WriteCloser) objstorage.Writable {
+	return &sharedWritable{storageWriter: obj}
+}
+
 // sharedWritable is a very simple implementation of Writable on top of the
 // WriteCloser returned by remote.Storage.CreateObject.
 type sharedWritable struct {
+	// Either both p and meta must be unset / zero values, or both must be set.
+	// The case where both are unset is true only in tests.
 	p             *provider
 	meta          objstorage.ObjectMetadata
 	storageWriter io.WriteCloser
@@ -36,9 +43,11 @@ func (w *sharedWritable) Finish() error {
 	}
 
 	// Create the marker object.
-	if err := w.p.sharedCreateRef(w.meta); err != nil {
-		w.Abort()
-		return err
+	if w.p != nil {
+		if err := w.p.sharedCreateRef(w.meta); err != nil {
+			w.Abort()
+			return err
+		}
 	}
 	return nil
 }
@@ -49,6 +58,8 @@ func (w *sharedWritable) Abort() {
 		_ = w.storageWriter.Close()
 		w.storageWriter = nil
 	}
-	w.p.removeMetadata(w.meta.DiskFileNum)
+	if w.p != nil {
+		w.p.removeMetadata(w.meta.DiskFileNum)
+	}
 	// TODO(radu): delete the object if it was created.
 }

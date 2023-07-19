@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -587,6 +588,96 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 		}
 	}
 	return nil
+}
+
+func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) error {
+	b := d.NewIndexedBatch()
+	if err := runBatchDefineCmd(td, b); err != nil {
+		return err
+	}
+
+	if len(td.CmdArgs) < 1 {
+		return errors.New("build <path>: argument missing")
+	}
+	path := td.CmdArgs[0].String()
+
+	// Override table format, if provided.
+	tableFormat := d.opts.FormatMajorVersion.MaxTableFormat()
+	for _, cmdArg := range td.CmdArgs[1:] {
+		switch cmdArg.Key {
+		case "format":
+			switch cmdArg.Vals[0] {
+			case "leveldb":
+				tableFormat = sstable.TableFormatLevelDB
+			case "rocksdbv2":
+				tableFormat = sstable.TableFormatRocksDBv2
+			case "pebblev1":
+				tableFormat = sstable.TableFormatPebblev1
+			case "pebblev2":
+				tableFormat = sstable.TableFormatPebblev2
+			case "pebblev3":
+				tableFormat = sstable.TableFormatPebblev3
+			case "pebblev4":
+				tableFormat = sstable.TableFormatPebblev4
+			default:
+				return errors.Errorf("unknown format string %s", cmdArg.Vals[0])
+			}
+		}
+	}
+
+	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
+
+	f, err := storage.CreateObject(path)
+	if err != nil {
+		return err
+	}
+	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(f), writeOpts)
+	iter := b.newInternalIter(nil)
+	for key, val := iter.First(); key != nil; key, val = iter.Next() {
+		tmp := *key
+		tmp.SetSeqNum(0)
+		if err := w.Add(tmp, val.InPlaceValue()); err != nil {
+			return err
+		}
+	}
+	if err := iter.Close(); err != nil {
+		return err
+	}
+
+	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
+		for s := rdi.First(); s != nil; s = rdi.Next() {
+			err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
+				k.SetSeqNum(0)
+				return w.Add(k, v)
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if rki := b.newRangeKeyIter(nil, math.MaxUint64); rki != nil {
+		for s := rki.First(); s != nil; s = rki.Next() {
+			for _, k := range s.Keys {
+				var err error
+				switch k.Kind() {
+				case base.InternalKeyKindRangeKeySet:
+					err = w.RangeKeySet(s.Start, s.End, k.Suffix, k.Value)
+				case base.InternalKeyKindRangeKeyUnset:
+					err = w.RangeKeyUnset(s.Start, s.End, k.Suffix)
+				case base.InternalKeyKindRangeKeyDelete:
+					err = w.RangeKeyDelete(s.Start, s.End)
+				default:
+					panic("not a range key")
+				}
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return w.Close()
 }
 
 func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
@@ -1212,6 +1303,33 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	return nil
 }
 
+func runIngestExternalCmd(td *datadriven.TestData, d *DB, locator string) error {
+	external := make([]ExternalFile, 0)
+	for _, arg := range strings.Split(td.Input, "\n") {
+		fields := strings.Split(arg, ",")
+		if len(fields) != 4 {
+			return errors.New("usage: path,size,smallest,largest")
+		}
+		ef := ExternalFile{}
+		ef.Locator = remote.Locator(locator)
+		ef.ObjName = fields[0]
+		sizeInt, err := strconv.Atoi(fields[1])
+		if err != nil {
+			return err
+		}
+		ef.Size = uint64(sizeInt)
+		ef.SmallestUserKey = []byte(fields[2])
+		ef.LargestUserKey = []byte(fields[3])
+		ef.HasPointKey = true
+		external = append(external, ef)
+	}
+
+	if _, err := d.IngestExternalFiles(external); err != nil {
+		return err
+	}
+	return nil
+}
+
 func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 	var paths []string
 	var level int
@@ -1238,7 +1356,7 @@ func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 		*fileMetadata,
 	) (int, error) {
 		return level, nil
-	}, nil, KeyRange{})
+	}, nil /* shared */, KeyRange{}, nil /* external */)
 	return err
 }
 
