@@ -126,7 +126,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}).WithFSDefaults()
-			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()})
+			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}, nil, 0)
 			if err != nil {
 				return err.Error()
 			}
@@ -213,7 +213,7 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	lr, err := ingestLoad(opts, version, paths, nil, 0, pending)
+	lr, err := ingestLoad(opts, version, paths, nil, nil, 0, pending, nil, 0)
 	require.NoError(t, err)
 
 	for _, m := range lr.localMeta {
@@ -234,7 +234,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}); err == nil {
+	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}, nil, 0); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }

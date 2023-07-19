@@ -1238,7 +1238,7 @@ func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 		*fileMetadata,
 	) (int, error) {
 		return level, nil
-	}, nil, KeyRange{})
+	}, nil /* shared */, KeyRange{}, nil /* external */)
 	return err
 }
 
