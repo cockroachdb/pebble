@@ -497,7 +497,7 @@ func (c *tableCacheShard) newIters(
 		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
 	}
 
-	if provider.IsForeign(objMeta) {
+	if provider.IsSharedForeign(objMeta) {
 		if tableFormat < sstable.TableFormatPebblev4 {
 			return nil, nil, errors.New("pebble: shared foreign sstable has a lower table format than expected")
 		}

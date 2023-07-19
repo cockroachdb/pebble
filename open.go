@@ -1115,7 +1115,7 @@ func checkConsistency(v *manifest.Version, dirname string, objProvider objstorag
 			meta, err := objProvider.Lookup(base.FileTypeTable, fileNum)
 			var size int64
 			if err == nil {
-				if objProvider.IsForeign(meta) {
+				if objProvider.IsSharedForeign(meta) {
 					continue
 				}
 				size, err = objProvider.Size(meta)

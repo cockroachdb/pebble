@@ -58,7 +58,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 
 		// We can reuse the ingestLoad function for this test even if we're
 		// not actually ingesting a file.
-		lr, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, d.cacheID, pendingOutputs)
+		lr, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheID, pendingOutputs, d.objProvider, jobID)
 		meta := lr.localMeta
 		if err != nil {
 			panic(err)
