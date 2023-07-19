@@ -2005,15 +2005,17 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			if err != nil {
 				return nil, err
 			}
-			if objMeta.IsShared() {
-				if d.objProvider.IsForeign(objMeta) {
-					destTables[j].BackingType = BackingTypeSharedForeign
-				} else if objMeta.Shared.CleanupMethod == objstorage.SharedNoCleanup {
-					destTables[j].BackingType = BackingTypeExternal
+			if objMeta.IsRemote() {
+				if objMeta.IsShared() {
+					if d.objProvider.IsForeign(objMeta) {
+						destTables[j].BackingType = BackingTypeSharedForeign
+					} else {
+						destTables[j].BackingType = BackingTypeShared
+					}
 				} else {
-					destTables[j].BackingType = BackingTypeShared
+					destTables[j].BackingType = BackingTypeExternal
 				}
-				destTables[j].Locator = objMeta.Shared.Locator
+				destTables[j].Locator = objMeta.Remote.Locator
 			} else {
 				destTables[j].BackingType = BackingTypeLocal
 			}
@@ -2102,9 +2104,9 @@ func (d *DB) EstimateDiskUsageByBackingType(
 				if err != nil {
 					return 0, 0, 0, err
 				}
-				if meta.IsShared() {
+				if meta.IsRemote() {
 					remoteSize += file.Size
-					if meta.Shared.CleanupMethod == objstorage.SharedNoCleanup {
+					if meta.Remote.CleanupMethod == objstorage.SharedNoCleanup {
 						externalSize += file.Size
 					}
 				}
@@ -2137,9 +2139,9 @@ func (d *DB) EstimateDiskUsageByBackingType(
 				if err != nil {
 					return 0, 0, 0, err
 				}
-				if meta.IsShared() {
+				if meta.IsRemote() {
 					remoteSize += size
-					if meta.Shared.CleanupMethod == objstorage.SharedNoCleanup {
+					if meta.Remote.CleanupMethod == objstorage.SharedNoCleanup {
 						externalSize += size
 					}
 				}

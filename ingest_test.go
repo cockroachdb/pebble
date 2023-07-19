@@ -1092,7 +1092,7 @@ func TestSimpleIngestShared(t *testing.T) {
 	}
 
 	m := metaMap[base.FileNum(2).DiskFileNum()]
-	handle, err := provider2.SharedObjectBacking(&m)
+	handle, err := provider2.RemoteObjectBacking(&m)
 	require.NoError(t, err)
 	size, err := provider2.Size(m)
 	require.NoError(t, err)

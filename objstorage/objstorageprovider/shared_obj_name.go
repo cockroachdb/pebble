@@ -16,14 +16,14 @@ import (
 // For sstables, the format is: <hash>-<creator-id>-<file-num>.sst
 // For example: 1a3f-2-000001.sst
 func sharedObjectName(meta objstorage.ObjectMetadata) string {
-	if meta.Shared.CustomObjectName != "" {
-		return meta.Shared.CustomObjectName
+	if meta.Remote.CustomObjectName != "" {
+		return meta.Remote.CustomObjectName
 	}
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
 			"%04x-%d-%06d.sst",
-			objHash(meta), meta.Shared.CreatorID, meta.Shared.CreatorFileNum.FileNum(),
+			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum.FileNum(),
 		)
 	}
 	panic("unknown FileType")
@@ -37,33 +37,33 @@ func sharedObjectName(meta objstorage.ObjectMetadata) string {
 func sharedObjectRefName(
 	meta objstorage.ObjectMetadata, refCreatorID objstorage.CreatorID, refFileNum base.DiskFileNum,
 ) string {
-	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
+	if meta.Remote.CleanupMethod != objstorage.SharedRefTracking {
 		panic("ref object used when ref tracking disabled")
 	}
-	if meta.Shared.CustomObjectName != "" {
+	if meta.Remote.CustomObjectName != "" {
 		return fmt.Sprintf(
-			"%s.ref.%d.%06d", meta.Shared.CustomObjectName, refCreatorID, refFileNum.FileNum(),
+			"%s.ref.%d.%06d", meta.Remote.CustomObjectName, refCreatorID, refFileNum.FileNum(),
 		)
 	}
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
 			"%04x-%d-%06d.sst.ref.%d.%06d",
-			objHash(meta), meta.Shared.CreatorID, meta.Shared.CreatorFileNum.FileNum(), refCreatorID, refFileNum.FileNum(),
+			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum.FileNum(), refCreatorID, refFileNum.FileNum(),
 		)
 	}
 	panic("unknown FileType")
 }
 
 func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
-	if meta.Shared.CustomObjectName != "" {
-		return meta.Shared.CustomObjectName + ".ref."
+	if meta.Remote.CustomObjectName != "" {
+		return meta.Remote.CustomObjectName + ".ref."
 	}
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
 			"%04x-%d-%06d.sst.ref.",
-			objHash(meta), meta.Shared.CreatorID, meta.Shared.CreatorFileNum.FileNum(),
+			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum.FileNum(),
 		)
 	}
 	panic("unknown FileType")
@@ -75,7 +75,7 @@ func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
 //
 // For example: 1a3f-2-000001.sst.ref.5.000008
 func (p *provider) sharedObjectRefName(meta objstorage.ObjectMetadata) string {
-	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
+	if meta.Remote.CleanupMethod != objstorage.SharedRefTracking {
 		panic("ref object used when ref tracking disabled")
 	}
 	return sharedObjectRefName(meta, p.shared.creatorID, meta.DiskFileNum)
@@ -87,5 +87,5 @@ func (p *provider) sharedObjectRefName(meta objstorage.ObjectMetadata) string {
 func objHash(meta objstorage.ObjectMetadata) uint16 {
 	const prime1 = 7459
 	const prime2 = 17539
-	return uint16(uint64(meta.Shared.CreatorID)*prime1 + uint64(meta.Shared.CreatorFileNum.FileNum())*prime2)
+	return uint16(uint64(meta.Remote.CreatorID)*prime1 + uint64(meta.Remote.CreatorFileNum.FileNum())*prime2)
 }

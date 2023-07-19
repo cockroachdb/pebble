@@ -214,7 +214,7 @@ func (p *provider) OpenForReading(
 	}
 
 	var r objstorage.Readable
-	if !meta.IsShared() {
+	if !meta.IsRemote() {
 		r, err = p.vfsOpenForReading(ctx, fileType, fileNum, opts)
 	} else {
 		r, err = p.sharedOpenForReading(ctx, meta, opts)
@@ -271,7 +271,7 @@ func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) erro
 		return err
 	}
 
-	if !meta.IsShared() {
+	if !meta.IsRemote() {
 		err = p.vfsRemove(fileType, fileNum)
 	} else {
 		// TODO(radu): implement shared object removal (i.e. deref).
@@ -293,8 +293,8 @@ func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) erro
 }
 
 func (p *provider) isNotExistError(meta objstorage.ObjectMetadata, err error) bool {
-	if meta.Shared.Storage != nil {
-		return meta.Shared.Storage.IsNotExistError(err)
+	if meta.Remote.Storage != nil {
+		return meta.Remote.Storage.IsNotExistError(err)
 	}
 	return oserror.IsNotExist(err)
 }
@@ -411,7 +411,7 @@ func (p *provider) Lookup(
 
 // Path is part of the objstorage.Provider interface.
 func (p *provider) Path(meta objstorage.ObjectMetadata) string {
-	if !meta.IsShared() {
+	if !meta.IsRemote() {
 		return p.vfsPath(meta.FileType, meta.DiskFileNum)
 	}
 	return p.sharedPath(meta)
@@ -419,7 +419,7 @@ func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 
 // Size returns the size of the object.
 func (p *provider) Size(meta objstorage.ObjectMetadata) (int64, error) {
-	if !meta.IsShared() {
+	if !meta.IsRemote() {
 		return p.vfsSize(meta.FileType, meta.DiskFileNum)
 	}
 	return p.sharedSize(meta)
@@ -446,14 +446,14 @@ func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.mu.knownObjects[meta.DiskFileNum] = meta
-	if meta.IsShared() {
+	if meta.IsRemote() {
 		p.mu.shared.catalogBatch.AddObject(sharedobjcat.SharedObjectMetadata{
 			FileNum:        meta.DiskFileNum,
 			FileType:       meta.FileType,
-			CreatorID:      meta.Shared.CreatorID,
-			CreatorFileNum: meta.Shared.CreatorFileNum,
-			Locator:        meta.Shared.Locator,
-			CleanupMethod:  meta.Shared.CleanupMethod,
+			CreatorID:      meta.Remote.CreatorID,
+			CreatorFileNum: meta.Remote.CreatorFileNum,
+			Locator:        meta.Remote.Locator,
+			CleanupMethod:  meta.Remote.CleanupMethod,
 		})
 	} else {
 		p.mu.localObjectsChanged = true
@@ -469,7 +469,7 @@ func (p *provider) removeMetadata(fileNum base.DiskFileNum) {
 		return
 	}
 	delete(p.mu.knownObjects, fileNum)
-	if meta.IsShared() {
+	if meta.IsRemote() {
 		p.mu.shared.catalogBatch.DeleteObject(fileNum)
 	} else {
 		p.mu.localObjectsChanged = true
