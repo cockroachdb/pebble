@@ -538,7 +538,10 @@ func (c *tableCacheShard) newIters(
 	// NB: v.closeHook takes responsibility for calling unrefValue(v) here. Take
 	// care to avoid introducing an allocation here by adding a closure.
 	iter.SetCloseHook(v.closeHook)
-	if provider.IsForeign(objMeta) {
+	// If the file was assigned a sequence number in the local seqnum space,
+	// it was an external ingestion, even if its creator ID does not match our
+	// own. Exclude such files from going through pointCollapsingIterator.
+	if provider.IsForeign(objMeta) && file.SmallestSeqNum < base.SeqNumStart {
 		// NB: IsForeign() guarantees IsShared, so opts must not be nil as we've
 		// already panicked on the nil case above.
 		pointKeySeqNum := base.SeqNumForLevel(manifest.LevelToInt(opts.level))

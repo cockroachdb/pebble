@@ -126,7 +126,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}).WithFSDefaults()
-			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()})
+			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}, nil, 0)
 			if err != nil {
 				return err.Error()
 			}
@@ -213,7 +213,7 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	lr, err := ingestLoad(opts, version, paths, nil, 0, pending)
+	lr, err := ingestLoad(opts, version, paths, nil, nil, 0, pending, nil, 0)
 	require.NoError(t, err)
 
 	for _, m := range lr.localMeta {
@@ -234,7 +234,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}); err == nil {
+	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}, nil, 0); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -1111,6 +1111,132 @@ func TestSimpleIngestShared(t *testing.T) {
 
 	// TODO(bilal): Once reading of shared sstables is in, verify that the values
 	// of d and e have been updated.
+}
+
+func TestIngestExternal(t *testing.T) {
+	var mem vfs.FS
+	var d *DB
+	var flushed bool
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	var sharedStorage shared.Storage
+
+	reset := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+
+		mem = vfs.NewMem()
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+		sharedStorage = shared.NewInMem()
+		opts := &Options{
+			FS:                    mem,
+			L0CompactionThreshold: 100,
+			L0StopWritesThreshold: 100,
+			DebugCheck:            DebugCheckLevels,
+			EventListener: &EventListener{FlushEnd: func(info FlushInfo) {
+				flushed = true
+			}},
+			FormatMajorVersion: ExperimentalFormatVirtualSSTables,
+		}
+		opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+			"external-locator": sharedStorage,
+		})
+		opts.Experimental.CreateOnShared = false
+		// Disable automatic compactions because otherwise we'll race with
+		// delete-only compactions triggered by ingesting range tombstones.
+		opts.DisableAutomaticCompactions = true
+
+		var err error
+		d, err = Open("", opts)
+		require.NoError(t, err)
+		require.NoError(t, d.SetCreatorID(1))
+	}
+	reset()
+
+	datadriven.RunTest(t, "testdata/ingest_external", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			reset()
+			return ""
+		case "batch":
+			b := d.NewIndexedBatch()
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
+			}
+			if err := b.Commit(nil); err != nil {
+				return err.Error()
+			}
+			return ""
+		case "build-remote":
+			if err := runBuildRemoteCmd(td, d, sharedStorage); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "flush":
+			if err := d.Flush(); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest-external":
+			flushed = false
+			if err := runIngestExternalCmd(td, d, "external-locator"); err != nil {
+				return err.Error()
+			}
+			// Wait for a possible flush.
+			d.mu.Lock()
+			for d.mu.compact.flushing {
+				d.mu.compact.cond.Wait()
+			}
+			d.mu.Unlock()
+			if flushed {
+				return "memtable flushed"
+			}
+			return ""
+
+		case "get":
+			return runGetCmd(t, td, d)
+
+		case "iter":
+			iter := d.NewIter(&IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+			})
+			return runIterCmd(td, iter, true)
+
+		case "lsm":
+			return runLSMCmd(td, d)
+
+		case "metrics":
+			// The asynchronous loading of table stats can change metrics, so
+			// wait for all the tables' stats to be loaded.
+			d.mu.Lock()
+			d.waitTableStats()
+			d.mu.Unlock()
+
+			return d.Metrics().String()
+
+		case "wait-pending-table-stats":
+			return runTableStatsCmd(td, d)
+
+		case "compact":
+			if len(td.CmdArgs) != 2 {
+				panic("insufficient args for compact command")
+			}
+			l := td.CmdArgs[0].Key
+			r := td.CmdArgs[1].Key
+			err := d.Compact([]byte(l), []byte(r), false)
+			if err != nil {
+				return err.Error()
+			}
+			return ""
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
 }
 
 func TestIngestMemtableOverlaps(t *testing.T) {
