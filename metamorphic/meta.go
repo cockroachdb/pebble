@@ -35,7 +35,7 @@ import (
 
 type runAndCompareOptions struct {
 	seed              uint64
-	ops               randvar.Static
+	ops               StaticRandvar
 	previousOpsPath   string
 	initialStatePath  string
 	initialStateDesc  string
@@ -97,7 +97,7 @@ var (
 
 // OpCount configures the random variable for the number of operations to
 // generate.
-func OpCount(rv randvar.Static) RunOption {
+func OpCount(rv StaticRandvar) RunOption {
 	return closureOpt(func(ro *runAndCompareOptions) { ro.ops = rv })
 }
 
@@ -588,4 +588,17 @@ func readFile(path string) string {
 	}
 
 	return string(history)
+}
+
+// Re-export portions of internal/randvar necessary for users outside of
+// pebble to make use of the package. Exposing these are necessary to allow
+// users to configure op counts.
+
+// StaticRandvar describes a static random variable.
+type StaticRandvar = randvar.Static
+
+// NewUniformRandvar constructs a static random variable that draws from a
+// uniform distribution with the given parameters.
+func NewUniformRandvar(min, max uint64) StaticRandvar {
+	return randvar.NewUniform(min, max)
 }
