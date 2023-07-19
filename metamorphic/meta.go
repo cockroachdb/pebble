@@ -51,6 +51,16 @@ type RunOption interface {
 	apply(*runAndCompareOptions)
 }
 
+// RunOnceOptions constructs a RunOption that propagates the provided
+// RunOnceOptions to all runs.
+func RunOnceOptions(opts ...RunOnceOption) RunOption {
+	return closureOpt(func(ro *runAndCompareOptions) {
+		for _, o := range opts {
+			o.applyOnce(&ro.runOnceOptions)
+		}
+	})
+}
+
 // Seed configures generation to use the provided seed. Seed may be used to
 // deterministically reproduce the same run.
 type Seed uint64
@@ -111,14 +121,6 @@ func RuntimeTrace(name string) RunOption {
 // specified, this binary (os.Args[0]) is called.
 func InnerBinary(path string) RunOption {
 	return closureOpt(func(ro *runAndCompareOptions) { ro.innerBinary = path })
-}
-
-// ParseCustomTestOption adds support for parsing the provided CustomOption from
-// OPTIONS files serialized by the metamorphic tests. This RunOption alone does
-// not cause the metamorphic tests to run with any variant of the provided
-// CustomOption set.
-func ParseCustomTestOption(name string, parseFn func(value string) (CustomOption, bool)) RunOption {
-	return closureOpt(func(ro *runAndCompareOptions) { ro.customOptionParsers[name] = parseFn })
 }
 
 // AddCustomRun adds an additional run of the metamorphic tests, using the
@@ -383,6 +385,22 @@ type FailOnMatch struct {
 
 func (f FailOnMatch) apply(ro *runAndCompareOptions) { ro.failRegexp = f.Regexp }
 func (f FailOnMatch) applyOnce(ro *runOnceOptions)   { ro.failRegexp = f.Regexp }
+
+// ParseCustomTestOption adds support for parsing the provided CustomOption from
+// OPTIONS files serialized by the metamorphic tests. This RunOption alone does
+// not cause the metamorphic tests to run with any variant of the provided
+// CustomOption set.
+type ParseCustomTestOption struct {
+	Name    string
+	ParseFn func(value string) (CustomOption, bool)
+}
+
+func (p ParseCustomTestOption) apply(ro *runAndCompareOptions) {
+	ro.customOptionParsers[p.Name] = p.ParseFn
+}
+func (p ParseCustomTestOption) applyOnce(ro *runOnceOptions) {
+	ro.customOptionParsers[p.Name] = p.ParseFn
+}
 
 // RunOnce performs one run of the metamorphic tests. RunOnce expects the
 // directory named by `runDir` to already exist and contain an `OPTIONS` file
