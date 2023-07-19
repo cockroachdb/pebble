@@ -463,7 +463,7 @@ func (c *tableCacheShard) newIters(
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
 	var rangeDelIter keyspan.FragmentIterator
-	if provider.IsForeign(objMeta) {
+	if provider.IsSharedForeign(objMeta) {
 		if opts == nil {
 			panic("unexpected nil opts when reading foreign file")
 		}
@@ -538,8 +538,8 @@ func (c *tableCacheShard) newIters(
 	// NB: v.closeHook takes responsibility for calling unrefValue(v) here. Take
 	// care to avoid introducing an allocation here by adding a closure.
 	iter.SetCloseHook(v.closeHook)
-	if provider.IsForeign(objMeta) {
-		// NB: IsForeign() guarantees IsShared, so opts must not be nil as we've
+	if provider.IsSharedForeign(objMeta) {
+		// NB: IsSharedForeign() guarantees IsRemote, so opts must not be nil as we've
 		// already panicked on the nil case above.
 		pointKeySeqNum := base.SeqNumForLevel(manifest.LevelToInt(opts.level))
 		pcIter := pointCollapsingIterator{
@@ -640,7 +640,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 	if err != nil {
 		return nil, err
 	}
-	if dbOpts.objProvider.IsForeign(objMeta) {
+	if dbOpts.objProvider.IsSharedForeign(objMeta) {
 		if opts.Level == 0 {
 			panic("unexpected zero level when reading foreign file")
 		}

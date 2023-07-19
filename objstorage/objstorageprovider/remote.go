@@ -150,12 +150,12 @@ func (p *provider) SetCreatorID(creatorID objstorage.CreatorID) error {
 	return nil
 }
 
-// IsForeign is part of the objstorage.Provider interface.
-func (p *provider) IsForeign(meta objstorage.ObjectMetadata) bool {
+// IsSharedForeign is part of the objstorage.Provider interface.
+func (p *provider) IsSharedForeign(meta objstorage.ObjectMetadata) bool {
 	if !p.remote.shared.initialized.Load() {
 		return false
 	}
-	return meta.IsRemote() && (meta.Remote.CustomObjectName != "" || meta.Remote.CreatorID != p.remote.shared.creatorID)
+	return meta.IsRemote() && !meta.IsExternal() && (meta.Remote.CustomObjectName != "" || meta.Remote.CreatorID != p.remote.shared.creatorID)
 }
 
 func (p *provider) remoteCheckInitialized() error {
