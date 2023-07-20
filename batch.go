@@ -318,9 +318,6 @@ type BatchCommitStats struct {
 	// SemaphoreWaitDuration is the wait time for semaphores in
 	// commitPipeline.Commit.
 	SemaphoreWaitDuration time.Duration
-	// WALQueueWaitDuration is the wait time for allocating memory blocks in the
-	// LogWriter (due to the LogWriter not writing fast enough).
-	WALQueueWaitDuration time.Duration
 	// MemTableWriteStallDuration is the wait caused by a write stall due to too
 	// many memtables (due to not flushing fast enough).
 	MemTableWriteStallDuration time.Duration
