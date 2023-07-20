@@ -2567,7 +2567,7 @@ func firstError(err0, err1 error) error {
 // Does nothing if SharedStorage was not set in the options when the DB was
 // opened or if the DB is in read-only mode.
 func (d *DB) SetCreatorID(creatorID uint64) error {
-	if d.opts.Experimental.SharedStorage == nil || d.opts.ReadOnly {
+	if d.opts.Experimental.RemoteStorage == nil || d.opts.ReadOnly {
 		return nil
 	}
 	return d.objProvider.SetCreatorID(objstorage.CreatorID(creatorID))

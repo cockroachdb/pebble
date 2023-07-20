@@ -779,7 +779,7 @@ func TestIngestShared(t *testing.T) {
 			DebugCheck:            DebugCheckLevels,
 			FormatMajorVersion:    ExperimentalFormatVirtualSSTables,
 		}
-		opts1.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
 		})
 		opts1.Experimental.CreateOnShared = true
@@ -790,7 +790,7 @@ func TestIngestShared(t *testing.T) {
 
 		opts2 := &Options{}
 		*opts2 = *opts1
-		opts2.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts2.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
 		})
 		opts2.Experimental.CreateOnShared = true
@@ -1059,7 +1059,7 @@ func TestSimpleIngestShared(t *testing.T) {
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 		}
-		opts.Experimental.SharedStorage = providerSettings.Shared.StorageFactory
+		opts.Experimental.RemoteStorage = providerSettings.Shared.StorageFactory
 		opts.Experimental.CreateOnShared = providerSettings.Shared.CreateOnShared
 		opts.Experimental.CreateOnSharedLocator = providerSettings.Shared.CreateOnSharedLocator
 

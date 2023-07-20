@@ -1049,7 +1049,7 @@ func (d *DB) ingest(
 	shared []SharedSSTMeta,
 	exciseSpan KeyRange,
 ) (IngestOperationStats, error) {
-	if len(shared) > 0 && d.opts.Experimental.SharedStorage == nil {
+	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
 		panic("cannot ingest shared sstables with nil SharedStorage")
 	}
 	if (exciseSpan.Valid() || len(shared) > 0) && d.opts.FormatMajorVersion < ExperimentalFormatVirtualSSTables {

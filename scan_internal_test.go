@@ -47,7 +47,7 @@ func TestScanInternal(t *testing.T) {
 				sstable.NewTestKeysBlockPropertyCollector,
 			},
 		}
-		opts.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": remote.NewInMem(),
 		})
 		opts.Experimental.CreateOnShared = true

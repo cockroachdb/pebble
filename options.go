@@ -653,18 +653,18 @@ type Options struct {
 		// major version is at least `FormatFlushableIngest`.
 		DisableIngestAsFlushable func() bool
 
-		// SharedStorage is a second FS-like storage medium that can be shared
-		// between multiple Pebble instances. It is used to store sstables only, and
-		// is managed by objstorage.Provider. Each sstable might only be written to
-		// by one Pebble instance, but other Pebble instances can possibly read the
-		// same files if they have the path to get to them. The pebble instance that
-		// wrote a file should not delete it if other Pebble instances are known to
-		// be reading this file. This FS is expected to have slower read/write
-		// performance than the default FS above.
-		SharedStorage remote.StorageFactory
+		// RemoteStorage enables use of remote storage (e.g. S3) for storing
+		// sstables. Setting this option enables use of CreateOnShared option and
+		// allows ingestion of external files.
+		RemoteStorage remote.StorageFactory
 
-		// If CreateOnShred is true, any new sstables are created on shared storage,
-		// using CreateOnSharedLocator. Can only be used when SharedStorage is set.
+		// If CreateOnShared is true, any new sstables are created on remote storage
+		// (using CreateOnSharedLocator). These sstables can be shared between
+		// different Pebble instances; the lifecycle of such objects is managed by
+		// the cluster.
+		//
+		// Can only be used when RemoteStorage is set (and recognizes
+		// CreateOnSharedLocator).
 		CreateOnShared        bool
 		CreateOnSharedLocator remote.Locator
 
