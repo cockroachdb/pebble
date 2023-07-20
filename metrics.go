@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/redact"
@@ -28,12 +29,25 @@ type FilterMetrics = sstable.FilterMetrics
 // comment in base.
 type ThroughputMetric = base.ThroughputMetric
 
+// SharedCacheMetrics holds metrics for the persistent secondary cache
+// that caches commonly accessed blocks from blob storage on a local
+// file system.
+type SharedCacheMetrics = sharedcache.Metrics
+
 func formatCacheMetrics(w redact.SafePrinter, m *CacheMetrics, name redact.SafeString) {
 	w.Printf("%7s %9s %7s %6.1f%%  (score == hit-rate)\n",
 		name,
 		humanize.SI.Int64(m.Count),
 		humanize.IEC.Int64(m.Size),
 		redact.Safe(hitRate(m.Hits, m.Misses)))
+}
+
+func formatSharedCacheMetrics(w redact.SafePrinter, m *SharedCacheMetrics, name redact.SafeString) {
+	w.Printf("%7s %9s %7s %6.1f%%  (score == hit-rate)\n",
+		name,
+		humanize.SI.Int64(m.Count),
+		humanize.IEC.Int64(m.Size),
+		redact.Safe(hitRate(m.ReadAtsWithFullHit, m.ReadAtsWithPartialHit + m.ReadAtsWithFullMisses)))
 }
 
 // LevelMetrics holds per-level metrics such as the number of files and total
@@ -294,6 +308,8 @@ type Metrics struct {
 		record.LogWriterMetrics
 	}
 
+	SharedCache SharedCacheMetrics
+
 	private struct {
 		optionsFileSize  uint64
 		manifestFileSize uint64
@@ -406,6 +422,7 @@ func (m *Metrics) formatWAL(w redact.SafePrinter) {
 //	   ztbl         0     0 B
 //	 bcache         4   697 B    0.0%  (score == hit-rate)
 //	 tcache         1   696 B    0.0%  (score == hit-rate)
+//	 scache         1    32 K    0.0%  (score == hit-rate)
 //	  snaps         0       -       0  (score == earliest seq num)
 //	 titers         1
 //	 filter         -       -    0.0%  (score == utility)
@@ -503,6 +520,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		humanize.IEC.Uint64(m.Table.ZombieSize))
 	formatCacheMetrics(w, &m.BlockCache, "bcache")
 	formatCacheMetrics(w, &m.TableCache, "tcache")
+	formatSharedCacheMetrics(w, &m.SharedCache, "scache")
 	w.Printf("  snaps %9d %7s %7d  (score == earliest seq num)\n",
 		redact.Safe(m.Snapshots.Count),
 		notApplicable,

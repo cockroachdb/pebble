@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -276,6 +277,10 @@ type Provider interface {
 	// IsNotExistError indicates whether the error is known to report that a file or
 	// directory does not exist.
 	IsNotExistError(err error) bool
+
+	// Metrics returns metrics about objstorage. Currently, it only returns metrics
+	// about the shared cache.
+	Metrics() sharedcache.Metrics
 }
 
 // SharedObjectBacking encodes the metadata necessary to incorporate a shared

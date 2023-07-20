@@ -80,7 +80,7 @@ func TestSharedCache(t *testing.T) {
 
 				return ""
 			case "read", "read-for-compaction":
-				missesBefore := cache.Misses()
+				missesBefore := cache.Metrics().ReadAtsWithPartialHit + cache.Metrics().ReadAtsWithFullMisses
 				offset := mustParseBytesArg(t, d, "offset")
 				size := mustParseBytesArg(t, d, "size")
 
@@ -105,7 +105,7 @@ func TestSharedCache(t *testing.T) {
 
 				// TODO(josh): Not tracing out filesystem activity here, since logging_fs.go
 				// doesn't trace calls to ReadAt or WriteAt. We should consider changing this.
-				missesAfter := cache.Misses()
+				missesAfter := cache.Metrics().ReadAtsWithPartialHit + cache.Metrics().ReadAtsWithFullMisses
 				return fmt.Sprintf("misses=%d", missesAfter-missesBefore)
 			default:
 				d.Fatalf(t, "unknown command %s", d.Cmd)
