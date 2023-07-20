@@ -313,8 +313,17 @@ type LogWriterConfig struct {
 }
 
 // CapAllocatedBlocks is the maximum number of blocks allocated by the
-// LogWriter.
-const CapAllocatedBlocks = 16
+// LogWriter. With blockSize=32KiB, this allows the LogWriter to allocate up to
+// 16 MiB in blocks. This is 25% of the default memtable size of 64 MiB.
+// However, this is a maximum that will only be allocated if the commit pipeline
+// would otherwise stall.
+//
+// TODO(jackson): Do we need to even cap the number of allocated blocks? The 1:1
+// relationship between memtables and WALs already bounds the amount of memory
+// allocated for log blocks to the size of the memtable. More buffering
+// insulates from the effects of spikes in fsync latency. If we're unable to
+// write to the WAL fast enough, at least command.
+const CapAllocatedBlocks = 512
 
 // NewLogWriter returns a new LogWriter.
 func NewLogWriter(w io.Writer, logNum base.FileNum, logWriterConfig LogWriterConfig) *LogWriter {
@@ -404,8 +413,10 @@ func (w *LogWriter) flushLoop(context.Context) {
 	//   the flush work (atomic.LoadInt32(&w.block.written)).
 
 	// The list of full blocks that need to be written. This is copied from
-	// f.pending on every loop iteration, though the number of elements is small
-	// (usually 1, max 16).
+	// f.pending on every loop iteration, though the number of elements is
+	// usually small (usually 1, max 512). If WAL throughput is high, there may
+	// be a non-neglible number of blocks, but the cost of copying the block
+	// pointers will be a small portion of the overall work performed.
 	pending := make([]*block, 0, cap(f.pending))
 	for {
 		for {
