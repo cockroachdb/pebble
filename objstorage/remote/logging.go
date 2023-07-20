@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package shared
+package remote
 
 import (
 	"context"
@@ -20,7 +20,7 @@ func WithLogging(wrapped Storage, logf func(fmt string, args ...interface{})) St
 	}
 }
 
-// loggingStore wraps a shared.Storage implementation and emits logs of the
+// loggingStore wraps a remote.Storage implementation and emits logs of the
 // operations.
 type loggingStore struct {
 	logf    func(fmt string, args ...interface{})

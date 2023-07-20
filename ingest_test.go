@@ -31,7 +31,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -765,7 +765,7 @@ func TestIngestShared(t *testing.T) {
 			require.NoError(t, d2.Close())
 		}
 
-		sstorage := shared.NewInMem()
+		sstorage := remote.NewInMem()
 		mem1 := vfs.NewMem()
 		mem2 := vfs.NewMem()
 		require.NoError(t, mem1.MkdirAll("ext", 0755))
@@ -779,7 +779,7 @@ func TestIngestShared(t *testing.T) {
 			DebugCheck:            DebugCheckLevels,
 			FormatMajorVersion:    ExperimentalFormatVirtualSSTables,
 		}
-		opts1.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+		opts1.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
 		})
 		opts1.Experimental.CreateOnShared = true
@@ -790,7 +790,7 @@ func TestIngestShared(t *testing.T) {
 
 		opts2 := &Options{}
 		*opts2 = *opts1
-		opts2.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+		opts2.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
 		})
 		opts2.Experimental.CreateOnShared = true
@@ -1030,8 +1030,8 @@ func TestSimpleIngestShared(t *testing.T) {
 		NoSyncOnClose:       opts2.NoSyncOnClose,
 		BytesPerSync:        opts2.BytesPerSync,
 	}
-	providerSettings.Shared.StorageFactory = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
-		"": shared.NewInMem(),
+	providerSettings.Shared.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		"": remote.NewInMem(),
 	})
 	providerSettings.Shared.CreateOnShared = true
 	providerSettings.Shared.CreateOnSharedLocator = ""

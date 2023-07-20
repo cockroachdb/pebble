@@ -18,7 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -40,7 +40,7 @@ type provider struct {
 			// Sync is called.
 			catalogBatch sharedobjcat.Batch
 
-			storageObjects map[shared.Locator]shared.Storage
+			storageObjects map[remote.Locator]remote.Storage
 		}
 
 		// localObjectsChanged is set if non-shared objects were created or deleted
@@ -94,13 +94,13 @@ type Settings struct {
 	// Fields here are set only if the provider is to support shared objects
 	// (experimental).
 	Shared struct {
-		StorageFactory shared.StorageFactory
+		StorageFactory remote.StorageFactory
 
 		// If CreateOnShared is true, sstables are created on shared storage using
 		// the CreateOnSharedLocator (when the PreferSharedStorage create option is
 		// true).
 		CreateOnShared        bool
-		CreateOnSharedLocator shared.Locator
+		CreateOnSharedLocator remote.Locator
 
 		// CacheSizeBytes is the size of the on-disk block cache for objects
 		// on shared storage. If it is 0, no cache is used.
@@ -302,7 +302,7 @@ func (p *provider) isNotExistError(meta objstorage.ObjectMetadata, err error) bo
 // IsNotExistError is part of the objstorage.Provider interface.
 func (p *provider) IsNotExistError(err error) bool {
 	// We use errors.Mark(err, os.ErrNotExist) for not-exist errors coming from
-	// shared.Storage.
+	// remote.Storage.
 	return oserror.IsNotExist(err)
 }
 

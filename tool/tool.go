@@ -8,7 +8,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -128,7 +128,7 @@ func New(opts ...Option) *T {
 
 // ConfigureSharedStorage updates the shared storage options.
 func (t *T) ConfigureSharedStorage(
-	s shared.StorageFactory, createOnShared bool, createOnSharedLocator shared.Locator,
+	s remote.StorageFactory, createOnShared bool, createOnSharedLocator remote.Locator,
 ) {
 	t.opts.Experimental.SharedStorage = s
 	t.opts.Experimental.CreateOnShared = createOnShared

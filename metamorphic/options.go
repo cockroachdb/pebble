@@ -19,7 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
@@ -94,8 +94,8 @@ func parseOptions(
 				return true
 			case "TestOptions.shared_storage_enabled":
 				opts.sharedStorageEnabled = true
-				opts.Opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
-					"": shared.NewInMem(),
+				opts.Opts.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+					"": remote.NewInMem(),
 				})
 				opts.Opts.Experimental.CreateOnShared = true
 				return true
@@ -500,8 +500,8 @@ func randomOptions(
 	// 20% of time, enable shared storage.
 	if rng.Intn(5) == 0 {
 		testOpts.sharedStorageEnabled = true
-		testOpts.Opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
-			"": shared.NewInMem(),
+		testOpts.Opts.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+			"": remote.NewInMem(),
 		})
 		testOpts.Opts.Experimental.CreateOnShared = true
 		// If shared storage is enabled, enable secondary cache 50% of time.

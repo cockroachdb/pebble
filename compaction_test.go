@@ -31,7 +31,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -3881,8 +3881,8 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 func TestSharedObjectDeletePacing(t *testing.T) {
 	var opts Options
 	opts.FS = vfs.NewMem()
-	opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
-		"": shared.NewInMem(),
+	opts.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		"": remote.NewInMem(),
 	})
 	opts.Experimental.CreateOnShared = true
 	opts.TargetByteDeletionRate = 1

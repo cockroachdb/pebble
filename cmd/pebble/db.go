@@ -10,7 +10,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -101,9 +101,9 @@ func newPebbleDB(dir string) DB {
 	}
 
 	if pathToLocalSharedStorage != "" {
-		opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+		opts.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			// Store all shared objects on local disk, for convenience.
-			"": shared.NewLocalFS(pathToLocalSharedStorage, vfs.Default),
+			"": remote.NewLocalFS(pathToLocalSharedStorage, vfs.Default),
 		})
 		opts.Experimental.CreateOnShared = true
 		if secondaryCacheSize != 0 {

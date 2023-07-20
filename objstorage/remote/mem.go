@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package shared
+package remote
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"sync"
 )
 
-// NewInMem returns an in-memory implementation of the shared.Storage
+// NewInMem returns an in-memory implementation of the remote.Storage
 // interface (for testing).
 func NewInMem() Storage {
 	store := &inMemStore{}
@@ -21,7 +21,7 @@ func NewInMem() Storage {
 	return store
 }
 
-// inMemStore is an in-memory implementation of the shared.Storage interface
+// inMemStore is an in-memory implementation of the remote.Storage interface
 // (for testing).
 type inMemStore struct {
 	mu struct {
