@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/batchskl"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -1233,28 +1232,6 @@ func TestBatchCommitStats(t *testing.T) {
 			}
 		}
 
-		// WAL queue stall funcs.
-		//
-		// The LogWriter gets changed when stalling/unstalling the memtable, so we
-		// need to use a hook to tell us about the latest LogWriter.
-		var unstallWALQueue func()
-		stallWALQueue := func() {
-			var unstallLatestWALQueue func()
-			db.mu.Lock()
-			defer db.mu.Unlock()
-			db.mu.log.registerLogWriterForTesting = func(w *record.LogWriter) {
-				// db.mu will be held when this is called.
-				unstallLatestWALQueue = w.ReserveAllFreeBlocksForTesting()
-			}
-			db.mu.log.registerLogWriterForTesting(db.mu.log.LogWriter)
-			unstallWALQueue = func() {
-				db.mu.Lock()
-				defer db.mu.Unlock()
-				db.mu.log.registerLogWriterForTesting = nil
-				unstallLatestWALQueue()
-			}
-		}
-
 		// Commit wait stall funcs.
 		var unstallCommitWait func()
 		stallCommitWait := func() {
@@ -1268,12 +1245,9 @@ func TestBatchCommitStats(t *testing.T) {
 		stallCommitSemaphore()
 		stallMemtable()
 		stallL0ReadAmp()
-		stallWALQueue()
 		stallCommitWait()
 
 		// Exceed initialMemTableSize -- this is needed to make stallMemtable work.
-		// It also exceeds record.blockSize, requiring a new block to be allocated,
-		// which is what we need for stallWALQueue to work.
 		require.NoError(t, b.Set(make([]byte, initialMemTableSize), nil, nil))
 
 		var commitWG sync.WaitGroup
@@ -1291,8 +1265,6 @@ func TestBatchCommitStats(t *testing.T) {
 		time.Sleep(sleepDuration)
 		unstallL0ReadAmp()
 		time.Sleep(sleepDuration)
-		unstallWALQueue()
-		time.Sleep(sleepDuration)
 		unstallCommitWait()
 
 		// Wait for Apply to return.
@@ -1302,10 +1274,6 @@ func TestBatchCommitStats(t *testing.T) {
 		if expectedDuration > stats.SemaphoreWaitDuration {
 			return errors.Errorf("SemaphoreWaitDuration %s is too low",
 				stats.SemaphoreWaitDuration.String())
-		}
-		if expectedDuration > stats.WALQueueWaitDuration {
-			return errors.Errorf("WALQueueWaitDuration %s is too low",
-				stats.WALQueueWaitDuration.String())
 		}
 		if expectedDuration > stats.MemTableWriteStallDuration {
 			return errors.Errorf("MemTableWriteStallDuration %s is too low",

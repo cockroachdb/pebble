@@ -6,6 +6,7 @@ package record
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -14,7 +15,10 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"github.com/cockroachdb/pebble/vfs/vfstest"
 	"github.com/prometheus/client_golang/prometheus"
 	prometheusgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
@@ -148,7 +152,7 @@ func TestSyncError(t *testing.T) {
 		var syncErr error
 		var syncWG sync.WaitGroup
 		syncWG.Add(1)
-		_, _, err = w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		_, err = w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
 		require.NoError(t, err)
 		syncWG.Wait()
 		if injectedErr != syncErr {
@@ -186,7 +190,7 @@ func TestSyncRecord(t *testing.T) {
 	for i := 0; i < 100000; i++ {
 		var syncWG sync.WaitGroup
 		syncWG.Add(1)
-		offset, _, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		offset, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
 		require.NoError(t, err)
 		syncWG.Wait()
 		require.NoError(t, syncErr)
@@ -214,7 +218,7 @@ func TestSyncRecordWithSignalChan(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		var syncWG sync.WaitGroup
 		syncWG.Add(1)
-		_, _, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		_, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
 		require.NoError(t, err)
 		syncWG.Wait()
 		require.NoError(t, syncErr)
@@ -273,7 +277,7 @@ func TestMinSyncInterval(t *testing.T) {
 	syncRecord := func(n int) *sync.WaitGroup {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		_, _, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
+		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
 		require.NoError(t, err)
 		return wg
 	}
@@ -344,7 +348,7 @@ func TestMinSyncIntervalClose(t *testing.T) {
 	syncRecord := func(n int) *sync.WaitGroup {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		_, _, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
+		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
 		require.NoError(t, err)
 		return wg
 	}
@@ -379,7 +383,7 @@ func TestMetricsWithoutSync(t *testing.T) {
 	f := &syncFileWithWait{}
 	f.writeWG.Add(1)
 	w := NewLogWriter(f, 0, LogWriterConfig{WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
-	offset, _, err := w.SyncRecord([]byte("hello"), nil, nil)
+	offset, err := w.SyncRecord([]byte("hello"), nil, nil)
 	require.NoError(t, err)
 	const recordSize = 16
 	require.EqualValues(t, recordSize, offset)
@@ -388,7 +392,7 @@ func TestMetricsWithoutSync(t *testing.T) {
 	// constitutes ~14 blocks (each 32KB).
 	const numRecords = 28 << 10
 	for i := 0; i < numRecords; i++ {
-		_, _, err = w.SyncRecord([]byte("hello"), nil, nil)
+		_, err = w.SyncRecord([]byte("hello"), nil, nil)
 		require.NoError(t, err)
 	}
 	// Unblock the flush loop. It will run once or twice to write these blocks,
@@ -430,7 +434,7 @@ func TestMetricsWithSync(t *testing.T) {
 	wg.Add(100)
 	for i := 0; i < 100; i++ {
 		var syncErr error
-		_, _, err := w.SyncRecord([]byte("hello"), &wg, &syncErr)
+		_, err := w.SyncRecord([]byte("hello"), &wg, &syncErr)
 		require.NoError(t, err)
 	}
 	// Unblock the flush loop. It may have run once or twice for these writes,
@@ -505,4 +509,75 @@ func valueAtQuantileWindowed(histogram *prometheusgo.Histogram, q float64) float
 	}
 
 	return val
+}
+
+// TestQueueWALBlocks tests queueing many un-flushed WAL blocks when syncing is
+// blocked.
+func TestQueueWALBlocks(t *testing.T) {
+	blockWriteCh := make(chan struct{}, 1)
+	f := errorfs.WrapFile(vfstest.DiscardFile, errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
+		if op == errorfs.OpFileWrite {
+			<-blockWriteCh
+		}
+		return nil
+	}))
+	w := NewLogWriter(f, 0, LogWriterConfig{
+		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+	})
+	const numBlocks = 1024
+	var b [blockSize]byte
+	var logSize int64
+	for i := 0; i < numBlocks; i++ {
+		var err error
+		logSize, err = w.SyncRecord(b[:], nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(blockWriteCh)
+	require.NoError(t, w.Close())
+
+	m := w.Metrics()
+	t.Logf("LogSize is %s", humanize.Bytes.Int64(logSize))
+	t.Logf("Mean pending buffer len is %.2f", m.PendingBufferLen.Mean())
+	require.GreaterOrEqual(t, logSize, int64(numBlocks*blockSize))
+}
+
+// BenchmarkQueueWALBlocks exercises queueing within the LogWriter. It can be
+// useful to measure allocations involved when flushing is slow enough to
+// accumulate a large backlog fo queued blocks.
+func BenchmarkQueueWALBlocks(b *testing.B) {
+	const dataVolume = 64 << 20 /* 64 MB */
+	for _, writeSize := range []int64{64, 512, 1024, 2048, 32768} {
+		b.Run(fmt.Sprintf("record-size=%s", humanize.Bytes.Int64(writeSize)), func(b *testing.B) {
+			record := make([]byte, writeSize)
+			numRecords := int(dataVolume / writeSize)
+
+			for j := 0; j < b.N; j++ {
+				b.StopTimer()
+				blockWriteCh := make(chan struct{}, 1)
+				f := errorfs.WrapFile(vfstest.DiscardFile, errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
+					if op == errorfs.OpFileWrite {
+						<-blockWriteCh
+					}
+					return nil
+				}))
+				w := NewLogWriter(f, 0, LogWriterConfig{
+					WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+				})
+
+				b.StartTimer()
+				for n := numRecords; n > 0; n-- {
+					if _, err := w.SyncRecord(record[:], nil, nil); err != nil {
+						b.Fatal(err)
+					}
+				}
+				b.StopTimer()
+
+				b.SetBytes(dataVolume)
+				close(blockWriteCh)
+				require.NoError(b, w.Close())
+			}
+		})
+	}
 }
