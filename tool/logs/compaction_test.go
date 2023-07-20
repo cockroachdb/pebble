@@ -20,15 +20,23 @@ import (
 )
 
 const (
-	compactionStartLine = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s6] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M)`
-	compactionEndLine   = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M) -> L3 [445883 445887] (13 M), in 0.3s, output rate 42 M/s`
-	flushStartLine      = `I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n9,pebble,s8] 24 [JOB 10] flushing 2 memtables to L0`
-	flushEndLine        = `I211213 16:23:49.134464 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s8] 26 [JOB 10] flushed 2 memtables to L0 [1535806] (1.3 M), in 0.2s, output rate 5.8 M/s`
-	readAmpLine23_1     = `  total     31766   188 G       -   257 G   187 G    48 K   3.6 G     744   536 G    49 K   278 G       5     2.1`
-	readAmpLine         = `total |   32K 188GB     0B |     - | 257GB |   48K  187GB |   744  3.6GB |   49K  536GB | 278GB |   5  2.1`
+	compactionStartLine23_1 = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s6] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M)`
+	compactionStartLine     = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s6] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)`
 
-	compactionStartNoNodeStoreLine = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n?,pebble,s?] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M)`
-	flushStartNoNodeStoreLine      = `I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n?,pebble,s?] 24 [JOB 10] flushing 2 memtables to L0`
+	compactionEndLine23_1 = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M) -> L3 [445883 445887] (13 M), in 0.3s, output rate 42 M/s`
+	compactionEndLine     = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s`
+
+	flushStartLine = `I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n9,pebble,s8] 24 [JOB 10] flushing 2 memtables to L0`
+
+	flushEndLine23_1 = `I211213 16:23:49.134464 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s8] 26 [JOB 10] flushed 2 memtables to L0 [1535806] (1.3 M), in 0.2s, output rate 5.8 M/s`
+	flushEndLine     = `I211213 16:23:49.134464 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s8] 26 [JOB 10] flushed 2 memtables to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s`
+
+	readAmpLine23_1 = `  total     31766   188 G       -   257 G   187 G    48 K   3.6 G     744   536 G    49 K   278 G       5     2.1`
+	readAmpLine     = `total |   32K 188GB     0B |     - | 257GB |   48K  187GB |   744  3.6GB |   49K  536GB | 278GB |   5  2.1`
+
+	compactionStartNoNodeStoreLine23_1 = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n?,pebble,s?] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M)`
+	compactionStartNoNodeStoreLine     = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n?,pebble,s?] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4MB)`
+	flushStartNoNodeStoreLine          = `I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n?,pebble,s?] 24 [JOB 10] flushing 2 memtables to L0`
 )
 
 func TestCompactionLogs_Regex(t *testing.T) {
@@ -41,10 +49,28 @@ func TestCompactionLogs_Regex(t *testing.T) {
 		{
 			name: "compaction start - sentinel",
 			re:   sentinelPattern,
+			line: compactionStartLine23_1,
+			matches: map[int]string{
+				sentinelPatternPrefixIdx: "compact",
+				sentinelPatternSuffixIdx: "ing",
+			},
+		},
+		{
+			name: "compaction start - sentinel",
+			re:   sentinelPattern,
 			line: compactionStartLine,
 			matches: map[int]string{
 				sentinelPatternPrefixIdx: "compact",
 				sentinelPatternSuffixIdx: "ing",
+			},
+		},
+		{
+			name: "compaction end - sentinel",
+			re:   sentinelPattern,
+			line: compactionEndLine23_1,
+			matches: map[int]string{
+				sentinelPatternPrefixIdx: "compact",
+				sentinelPatternSuffixIdx: "ed",
 			},
 		},
 		{
@@ -68,10 +94,32 @@ func TestCompactionLogs_Regex(t *testing.T) {
 		{
 			name: "flush end - sentinel",
 			re:   sentinelPattern,
+			line: flushEndLine23_1,
+			matches: map[int]string{
+				sentinelPatternPrefixIdx: "flush",
+				sentinelPatternSuffixIdx: "ed",
+			},
+		},
+		{
+			name: "flush end - sentinel",
+			re:   sentinelPattern,
 			line: flushEndLine,
 			matches: map[int]string{
 				sentinelPatternPrefixIdx: "flush",
 				sentinelPatternSuffixIdx: "ed",
+			},
+		},
+		{
+			name: "compaction start",
+			re:   compactionPattern,
+			line: compactionStartLine23_1,
+			matches: map[int]string{
+				compactionPatternJobIdx:    "284925",
+				compactionPatternSuffixIdx: "ing",
+				compactionPatternTypeIdx:   "default",
+				compactionPatternFromIdx:   "2",
+				compactionPatternToIdx:     "3",
+				compactionPatternLevels:    "L2 [442555] (4.2 M) + L3 [445853] (8.4 M)",
 			},
 		},
 		{
@@ -84,9 +132,7 @@ func TestCompactionLogs_Regex(t *testing.T) {
 				compactionPatternTypeIdx:   "default",
 				compactionPatternFromIdx:   "2",
 				compactionPatternToIdx:     "3",
-				compactionPatternDigitIdx:  "8.4",
-				compactionPatternUnitIdx:   "M",
-				compactionPatternLevels:    "L2 [442555] (4.2 M) + L3 [445853] (8.4 M)",
+				compactionPatternLevels:    "L2 [442555] (4.2MB) + L3 [445853] (8.4MB)",
 			},
 		},
 		{
@@ -99,8 +145,6 @@ func TestCompactionLogs_Regex(t *testing.T) {
 				compactionPatternTypeIdx:   "default",
 				compactionPatternFromIdx:   "2",
 				compactionPatternToIdx:     "3",
-				compactionPatternDigitIdx:  "8.4",
-				compactionPatternUnitIdx:   "M",
 			},
 		},
 		{
@@ -113,8 +157,7 @@ func TestCompactionLogs_Regex(t *testing.T) {
 				compactionPatternTypeIdx:   "default",
 				compactionPatternFromIdx:   "2",
 				compactionPatternToIdx:     "3",
-				compactionPatternDigitIdx:  "13",
-				compactionPatternUnitIdx:   "M",
+				compactionPatternBytesIdx:  "13MB",
 			},
 		},
 		{
@@ -124,8 +167,7 @@ func TestCompactionLogs_Regex(t *testing.T) {
 			matches: map[int]string{
 				flushPatternJobIdx:    "10",
 				flushPatternSuffixIdx: "ing",
-				flushPatternDigitIdx:  "",
-				flushPatternUnitIdx:   "",
+				flushPatternBytesIdx:  "",
 			},
 		},
 		{
@@ -135,8 +177,7 @@ func TestCompactionLogs_Regex(t *testing.T) {
 			matches: map[int]string{
 				flushPatternJobIdx:    "10",
 				flushPatternSuffixIdx: "ing",
-				flushPatternDigitIdx:  "",
-				flushPatternUnitIdx:   "",
+				flushPatternBytesIdx:  "",
 			},
 		},
 		{
@@ -146,8 +187,7 @@ func TestCompactionLogs_Regex(t *testing.T) {
 			matches: map[int]string{
 				flushPatternJobIdx:    "10",
 				flushPatternSuffixIdx: "ed",
-				flushPatternDigitIdx:  "1.3",
-				flushPatternUnitIdx:   "M",
+				flushPatternBytesIdx:  "1.3MB",
 			},
 		},
 		{
@@ -258,8 +298,21 @@ func TestParseInputBytes(t *testing.T) {
 		s    string
 		want uint64
 	}{
+		// Test both 23.1 and current formats.
+		{
+			"(10 B)",
+			10,
+		},
+		{
+			"(10B)",
+			10,
+		},
 		{
 			"(10 M)",
+			10 << 20,
+		},
+		{
+			"(10MB)",
 			10 << 20,
 		},
 		{
@@ -267,7 +320,15 @@ func TestParseInputBytes(t *testing.T) {
 			30 << 20,
 		},
 		{
+			"(10MB) + (20MB)",
+			30 << 20,
+		},
+		{
 			"(10 M) + (20 M) + (30 M)",
+			60 << 20,
+		},
+		{
+			"(10MB) + (20MB) + (30MB)",
 			60 << 20,
 		},
 		{

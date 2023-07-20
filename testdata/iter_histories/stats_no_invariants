@@ -34,14 +34,14 @@ stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 0, 0)), (internal (dir, 
 a: (a, .)
 b: (b, [b-c) @5=boop UPDATED)
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 89 B, cached 0 B, read-time 0s)), (points: (count 2, key-bytes 2, value-bytes 2, tombstoned 0))),
+(internal-stats: (block-bytes: (total 89B, cached 0B, read-time 0s)), (points: (count 2, key-bytes 2B, value-bytes 2B, tombstoned 0))),
 (range-key-stats: (count 1), (contained points: (count 1, skipped 0)))
 c: (c, . UPDATED)
 cat: (., [cat-dog) @3=beep UPDATED)
 d: (d, [cat-dog) @3=beep)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 6), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 89 B, cached 0 B, read-time 0s)), (points: (count 4, key-bytes 4, value-bytes 4, tombstoned 0))),
+(internal-stats: (block-bytes: (total 89B, cached 0B, read-time 0s)), (points: (count 4, key-bytes 4B, value-bytes 4B, tombstoned 0))),
 (range-key-stats: (count 2), (contained points: (count 2, skipped 0)))
 
 # Do the above forward iteration but with a mask suffix. The results should be
@@ -64,7 +64,7 @@ cat: (., [cat-dog) @3=beep UPDATED)
 d: (d, [cat-dog) @3=beep)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 6), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 89 B, cached 89 B, read-time 0s)), (points: (count 4, key-bytes 4, value-bytes 4, tombstoned 0))),
+(internal-stats: (block-bytes: (total 89B, cached 89B, read-time 0s)), (points: (count 4, key-bytes 4B, value-bytes 4B, tombstoned 0))),
 (range-key-stats: (count 2), (contained points: (count 2, skipped 0)))
 
 # Scan backward
@@ -85,7 +85,7 @@ b: (b, [b-c) @5=boop UPDATED)
 a: (a, . UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 5)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 6)),
-(internal-stats: (block-bytes: (total 89 B, cached 89 B, read-time 0s)), (points: (count 4, key-bytes 4, value-bytes 4, tombstoned 0))),
+(internal-stats: (block-bytes: (total 89B, cached 89B, read-time 0s)), (points: (count 4, key-bytes 4B, value-bytes 4B, tombstoned 0))),
 (range-key-stats: (count 2), (contained points: (count 2, skipped 0)))
 
 combined-iter
@@ -108,7 +108,7 @@ d: (d, [cat-dog) @3=beep)
 day: (., [cat-dog) @3=beep)
 .
 stats: (interface (dir, seek, step): (fwd, 8, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 6, 4), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 89 B, cached 89 B, read-time 0s)), (points: (count 4, key-bytes 4, value-bytes 4, tombstoned 0))),
+(internal-stats: (block-bytes: (total 89B, cached 89B, read-time 0s)), (points: (count 4, key-bytes 4B, value-bytes 4B, tombstoned 0))),
 (range-key-stats: (count 2), (contained points: (count 3, skipped 0)))
 
 combined-iter
@@ -135,7 +135,7 @@ d: (d, [cat-dog) @3=beep)
 d: (d, [cat-dog) @3=beep)
 d: (d, [cat-dog) @3=beep)
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 10, 0)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 10, 10)),
-(internal-stats: (block-bytes: (total 267 B, cached 267 B, read-time 0s)), (points: (count 15, key-bytes 15, value-bytes 15, tombstoned 0))),
+(internal-stats: (block-bytes: (total 267B, cached 267B, read-time 0s)), (points: (count 15, key-bytes 15B, value-bytes 15B, tombstoned 0))),
 (range-key-stats: (count 2), (contained points: (count 6, skipped 0)))
 
 rangekey-iter

@@ -136,7 +136,7 @@ func runReplayTest(t *testing.T, path string) {
 			if err != nil {
 				return err.Error()
 			}
-			return fmt.Sprintf("replayed %s in writes", humanize.Uint64(m.WriteBytes))
+			return fmt.Sprintf("replayed %s in writes", humanize.Bytes.Uint64(m.WriteBytes))
 		case "close":
 			if err := r.Close(); err != nil {
 				return err.Error()

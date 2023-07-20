@@ -132,7 +132,7 @@ close: db/marker.manifest.000002.MANIFEST-000006
 remove: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 5] MANIFEST created 000006
-[JOB 5] flushed 1 memtable to L0 [000005] (662 B), in 1.0s (2.0s total), output rate 662 B/s
+[JOB 5] flushed 1 memtable to L0 [000005] (662B), in 1.0s (2.0s total), output rate 662B/s
 
 compact
 ----
@@ -156,10 +156,10 @@ close: db/marker.manifest.000003.MANIFEST-000009
 remove: db/marker.manifest.000002.MANIFEST-000006
 sync: db
 [JOB 7] MANIFEST created 000009
-[JOB 7] flushed 1 memtable to L0 [000008] (662 B), in 1.0s (2.0s total), output rate 662 B/s
+[JOB 7] flushed 1 memtable to L0 [000008] (662B), in 1.0s (2.0s total), output rate 662B/s
 remove: db/MANIFEST-000001
 [JOB 7] MANIFEST deleted 000001
-[JOB 8] compacting(default) L0 [000005 000008] (1.3 K) + L6 [] (0 B)
+[JOB 8] compacting(default) L0 [000005 000008] (1.3KB) + L6 [] (0B)
 open: db/000005.sst
 read-at(609, 53): db/000005.sst
 read-at(572, 37): db/000005.sst
@@ -193,7 +193,7 @@ close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 8] MANIFEST created 000011
-[JOB 8] compacted(default) L0 [000005 000008] (1.3 K) + L6 [] (0 B) -> L6 [000010] (662 B), in 1.0s (3.0s total), output rate 662 B/s
+[JOB 8] compacted(default) L0 [000005 000008] (1.3KB) + L6 [] (0B) -> L6 [000010] (662B), in 1.0s (3.0s total), output rate 662B/s
 close: db/000005.sst
 close: db/000008.sst
 remove: db/000005.sst
@@ -228,7 +228,7 @@ close: db/marker.manifest.000005.MANIFEST-000014
 remove: db/marker.manifest.000004.MANIFEST-000011
 sync: db
 [JOB 10] MANIFEST created 000014
-[JOB 10] flushed 1 memtable to L0 [000013] (662 B), in 1.0s (2.0s total), output rate 662 B/s
+[JOB 10] flushed 1 memtable to L0 [000013] (662B), in 1.0s (2.0s total), output rate 662B/s
 
 enable-file-deletions
 ----
@@ -264,7 +264,7 @@ sync: db
 remove: db/MANIFEST-000011
 [JOB 12] MANIFEST deleted 000011
 remove: ext/0
-[JOB 12] ingested L0:000015 (717 B)
+[JOB 12] ingested L0:000015 (717B)
 
 metrics
 ----
@@ -332,7 +332,7 @@ sync: wal
 [JOB 15] WAL created 000020
 remove: ext/a
 remove: ext/b
-[JOB 13] ingested as flushable 000017 (717 B), 000018 (717 B)
+[JOB 13] ingested as flushable 000017 (717B), 000018 (717B)
 sync-data: wal/000020.log
 close: wal/000020.log
 create: wal/000021.log
@@ -345,7 +345,7 @@ sync-data: db/000022.sst
 close: db/000022.sst
 sync: db
 sync: db/MANIFEST-000016
-[JOB 17] flushed 1 memtable to L0 [000022] (662 B), in 1.0s (2.0s total), output rate 662 B/s
+[JOB 17] flushed 1 memtable to L0 [000022] (662B), in 1.0s (2.0s total), output rate 662B/s
 [JOB 18] flushing 2 ingested tables
 create: db/MANIFEST-000023
 close: db/MANIFEST-000016
@@ -355,7 +355,7 @@ close: db/marker.manifest.000007.MANIFEST-000023
 remove: db/marker.manifest.000006.MANIFEST-000016
 sync: db
 [JOB 18] MANIFEST created 000023
-[JOB 18] flushed 2 ingested flushables L0:000017 (717 B) + L6:000018 (717 B) in 1.0s (2.0s total), output rate 1.4 K/s
+[JOB 18] flushed 2 ingested flushables L0:000017 (717B) + L6:000018 (717B) in 1.0s (2.0s total), output rate 1.4KB/s
 remove: db/MANIFEST-000014
 [JOB 18] MANIFEST deleted 000014
 [JOB 19] flushing 1 memtable to L0

@@ -35,12 +35,6 @@ type config struct {
 	suffix []string
 }
 
-// IEC produces human readable representations of integer values in IEC units.
-var IEC = config{1024, []string{" B", " K", " M", " G", " T", " P", " E"}}
-
-// SI produces human readable representations of integer values in SI units.
-var SI = config{1000, []string{"", " K", " M", " G", " T", " P", " E"}}
-
 // Bytes produces human readable representations of byte values in IEC units.
 var Bytes = config{1024, []string{"B", "KB", "MB", "GB", "TB", "PB", "EB"}}
 
@@ -58,18 +52,6 @@ func (c *config) Int64(s int64) FormattedString {
 // Uint64 produces a human readable representation of the value.
 func (c *config) Uint64(s uint64) FormattedString {
 	return FormattedString(humanate(s, c.base, c.suffix))
-}
-
-// Int64 produces a human readable representation of the value in IEC units
-// (base 1024).
-func Int64(s int64) FormattedString {
-	return IEC.Int64(s)
-}
-
-// Uint64 produces a human readable representation of the value in IEC units
-// (base 1024).
-func Uint64(s uint64) FormattedString {
-	return IEC.Uint64(s)
 }
 
 // FormattedString represents a human readable representation of a value. It

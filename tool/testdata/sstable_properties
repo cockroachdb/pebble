@@ -7,15 +7,15 @@ sstable properties
 ----
 h.sst
 size                    
-  file                  15 K
-  data                  14 K
+  file                  15KB
+  data                  14KB
     blocks              14
-  index                 325 B
+  index                 325B
     blocks              1
-    top-level           0 B
-  filter                0 B
-  raw-key               23 K
-  raw-value             1.9 K
+    top-level           0B
+  filter                0B
+  raw-key               23KB
+  raw-value             1.9KB
   pinned-key            0
   pinned-val            0
   point-del-key-size    0
@@ -48,15 +48,15 @@ sstable properties
 ----
 h.ldb
 size                    
-  file                  15 K
-  data                  14 K
+  file                  15KB
+  data                  14KB
     blocks              14
-  index                 325 B
+  index                 325B
     blocks              1
-    top-level           0 B
-  filter                0 B
-  raw-key               23 K
-  raw-value             1.9 K
+    top-level           0B
+  filter                0B
+  raw-key               23KB
+  raw-value             1.9KB
   pinned-key            0
   pinned-val            0
   point-del-key-size    0
@@ -88,15 +88,15 @@ sstable properties
 ----
 h.no-compression.two_level_index.sst
 size                    
-  file                  28 K
-  data                  26 K
+  file                  28KB
+  data                  26KB
     blocks              14
-  index                 408 B
+  index                 408B
     blocks              4
-    top-level           70 B
-  filter                0 B
-  raw-key               23 K
-  raw-value             1.9 K
+    top-level           70B
+  filter                0B
+  raw-key               23KB
+  raw-value             1.9KB
   pinned-key            0
   pinned-val            0
   point-del-key-size    0
@@ -193,15 +193,15 @@ testdata/mixed/000005.sst
 ----
 000005.sst
 size                    
-  file                  1.1 K
-  data                  236 B
+  file                  1.1KB
+  data                  236B
     blocks              1
-  index                 29 B
+  index                 29B
     blocks              1
-    top-level           0 B
-  filter                0 B
-  raw-key               286 B
-  raw-value             0 B
+    top-level           0B
+  filter                0B
+  raw-key               286B
+  raw-value             0B
   pinned-key            0
   pinned-val            0
   point-del-key-size    0

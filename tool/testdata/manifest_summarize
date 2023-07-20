@@ -18,10 +18,10 @@ manifest summarize
 MANIFEST-000001
                      _______L0_______L1_______L2_______L3_______L4_______L5_______L6_____TOTAL
 2021-04-01T20:24:02Z
-        Ingest+Flush      2.4 K        .        .        .        .        .    808 B    3.2 K
-        Ingest+Flush    2.4 K/s        .        .        .        .        .  808 B/s  3.2 K/s
-       Compact (out)      2.4 K        .        .        .        .        .    898 B    3.3 K
-       Compact (out)    2.4 K/s        .        .        .        .        .  898 B/s  3.3 K/s
+        Ingest+Flush      2.4KB        .        .        .        .        .     808B    3.2KB
+        Ingest+Flush    2.4KB/s        .        .        .        .        .   808B/s  3.2KB/s
+       Compact (out)      2.4KB        .        .        .        .        .     898B    3.3KB
+       Compact (out)    2.4KB/s        .        .        .        .        .   898B/s  3.3KB/s
 2021-04-01T20:24:02Z
 ---
 Estimated start time: 2021-04-01T20:24:02Z
@@ -34,8 +34,8 @@ manifest summarize
 MANIFEST-000001
                      _______L0_______L1_______L2_______L3_______L4_______L5_______L6_____TOTAL
 2022-08-12T23:21:28Z
-        Ingest+Flush      1.1 K        .        .        .        .        .        .    1.1 K
-        Ingest+Flush    1.1 K/s        .        .        .        .        .        .  1.1 K/s
+        Ingest+Flush      1.1KB        .        .        .        .        .        .    1.1KB
+        Ingest+Flush    1.1KB/s        .        .        .        .        .        .  1.1KB/s
        Compact (out)          .        .        .        .        .        .        .        .
        Compact (out)          .        .        .        .        .        .        .        .
 2022-08-12T23:21:28Z
