@@ -148,7 +148,7 @@ func TestSyncError(t *testing.T) {
 		var syncErr error
 		var syncWG sync.WaitGroup
 		syncWG.Add(1)
-		_, _, err = w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		_, err = w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
 		require.NoError(t, err)
 		syncWG.Wait()
 		if injectedErr != syncErr {
@@ -186,7 +186,7 @@ func TestSyncRecord(t *testing.T) {
 	for i := 0; i < 100000; i++ {
 		var syncWG sync.WaitGroup
 		syncWG.Add(1)
-		offset, _, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		offset, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
 		require.NoError(t, err)
 		syncWG.Wait()
 		require.NoError(t, syncErr)
@@ -214,7 +214,7 @@ func TestSyncRecordWithSignalChan(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		var syncWG sync.WaitGroup
 		syncWG.Add(1)
-		_, _, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		_, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
 		require.NoError(t, err)
 		syncWG.Wait()
 		require.NoError(t, syncErr)
@@ -273,7 +273,7 @@ func TestMinSyncInterval(t *testing.T) {
 	syncRecord := func(n int) *sync.WaitGroup {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		_, _, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
+		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
 		require.NoError(t, err)
 		return wg
 	}
@@ -344,7 +344,7 @@ func TestMinSyncIntervalClose(t *testing.T) {
 	syncRecord := func(n int) *sync.WaitGroup {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		_, _, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
+		_, err := w.SyncRecord(bytes.Repeat([]byte{'a'}, n), wg, new(error))
 		require.NoError(t, err)
 		return wg
 	}
@@ -379,7 +379,7 @@ func TestMetricsWithoutSync(t *testing.T) {
 	f := &syncFileWithWait{}
 	f.writeWG.Add(1)
 	w := NewLogWriter(f, 0, LogWriterConfig{WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
-	offset, _, err := w.SyncRecord([]byte("hello"), nil, nil)
+	offset, err := w.SyncRecord([]byte("hello"), nil, nil)
 	require.NoError(t, err)
 	const recordSize = 16
 	require.EqualValues(t, recordSize, offset)
@@ -388,7 +388,7 @@ func TestMetricsWithoutSync(t *testing.T) {
 	// constitutes ~14 blocks (each 32KB).
 	const numRecords = 28 << 10
 	for i := 0; i < numRecords; i++ {
-		_, _, err = w.SyncRecord([]byte("hello"), nil, nil)
+		_, err = w.SyncRecord([]byte("hello"), nil, nil)
 		require.NoError(t, err)
 	}
 	// Unblock the flush loop. It will run once or twice to write these blocks,
@@ -430,7 +430,7 @@ func TestMetricsWithSync(t *testing.T) {
 	wg.Add(100)
 	for i := 0; i < 100; i++ {
 		var syncErr error
-		_, _, err := w.SyncRecord([]byte("hello"), &wg, &syncErr)
+		_, err := w.SyncRecord([]byte("hello"), &wg, &syncErr)
 		require.NoError(t, err)
 	}
 	// Unblock the flush loop. It may have run once or twice for these writes,
