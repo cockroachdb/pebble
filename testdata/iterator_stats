@@ -18,7 +18,7 @@ a: (1, .)
 c: (2, .)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 57 B, cached 57 B, read-time 0s)), (points: (count 2, key-bytes 2, value-bytes 2, tombstoned 0)))
+(internal-stats: (block-bytes: (total 57B, cached 57B, read-time 0s)), (points: (count 2, key-bytes 2B, value-bytes 2B, tombstoned 0)))
 
 # Perform the same operation again with a new iterator. It should yield
 # identical statistics.
@@ -33,7 +33,7 @@ a: (1, .)
 c: (2, .)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 57 B, cached 57 B, read-time 0s)), (points: (count 2, key-bytes 2, value-bytes 2, tombstoned 0)))
+(internal-stats: (block-bytes: (total 57B, cached 57B, read-time 0s)), (points: (count 2, key-bytes 2B, value-bytes 2B, tombstoned 0)))
 
 build ext2
 set d@10 d10
@@ -64,17 +64,17 @@ stats
 ----
 c: (2, .)
 stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 57 B, cached 57 B, read-time 0s)), (points: (count 1, key-bytes 1, value-bytes 1, tombstoned 0)))
+(internal-stats: (block-bytes: (total 57B, cached 57B, read-time 0s)), (points: (count 1, key-bytes 1B, value-bytes 1B, tombstoned 0)))
 d@10: (d10, .)
 d@9: (d9, .)
 stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 157 B, cached 147 B, read-time 0s)), (points: (count 3, key-bytes 8, value-bytes 6, tombstoned 0)), (separated: (count 1, bytes 2 B, fetched 2 B)))
+(internal-stats: (block-bytes: (total 157B, cached 147B, read-time 0s)), (points: (count 3, key-bytes 8B, value-bytes 6B, tombstoned 0)), (separated: (count 1, bytes 2B, fetched 2B)))
 d@8: (d8, .)
 stats: (interface (dir, seek, step): (fwd, 1, 3), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 3), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 157 B, cached 147 B, read-time 0s)), (points: (count 4, key-bytes 11, value-bytes 8, tombstoned 0)), (separated: (count 2, bytes 4 B, fetched 4 B)))
+(internal-stats: (block-bytes: (total 157B, cached 147B, read-time 0s)), (points: (count 4, key-bytes 11B, value-bytes 8B, tombstoned 0)), (separated: (count 2, bytes 4B, fetched 4B)))
 e@20: (e20, .)
 stats: (interface (dir, seek, step): (fwd, 1, 4), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 4), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 157 B, cached 147 B, read-time 0s)), (points: (count 5, key-bytes 15, value-bytes 11, tombstoned 0)), (separated: (count 2, bytes 4 B, fetched 4 B)))
+(internal-stats: (block-bytes: (total 157B, cached 147B, read-time 0s)), (points: (count 5, key-bytes 15B, value-bytes 11B, tombstoned 0)), (separated: (count 2, bytes 4B, fetched 4B)))
 e@18: (e18, .)
 stats: (interface (dir, seek, step): (fwd, 1, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 5), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 157 B, cached 147 B, read-time 0s)), (points: (count 6, key-bytes 19, value-bytes 13, tombstoned 0)), (separated: (count 3, bytes 7 B, fetched 7 B)))
+(internal-stats: (block-bytes: (total 157B, cached 147B, read-time 0s)), (points: (count 6, key-bytes 19B, value-bytes 13B, tombstoned 0)), (separated: (count 3, bytes 7B, fetched 7B)))

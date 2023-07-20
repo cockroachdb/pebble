@@ -71,7 +71,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
-1.9 K
+1.9KB
 
 batch
 set b 2
@@ -122,7 +122,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
-3.2 K
+3.2KB
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -191,7 +191,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
-2.6 K
+2.6KB
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
@@ -227,19 +227,19 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
-2.0 K
+2.0KB
 
 additional-metrics
 ----
 block bytes written:
  __level___data-block__value-block
-      0         54 B          0 B
-      1          0 B          0 B
-      2          0 B          0 B
-      3          0 B          0 B
-      4          0 B          0 B
-      5          0 B          0 B
-      6         33 B          0 B
+      0          54B           0B
+      1           0B           0B
+      2           0B           0B
+      3           0B           0B
+      4           0B           0B
+      5           0B           0B
+      6          33B           0B
 
 batch
 set c@20 c20
@@ -291,13 +291,13 @@ additional-metrics
 ----
 block bytes written:
  __level___data-block__value-block
-      0        198 B         38 B
-      1          0 B          0 B
-      2          0 B          0 B
-      3          0 B          0 B
-      4          0 B          0 B
-      5          0 B          0 B
-      6         33 B          0 B
+      0         198B          38B
+      1           0B           0B
+      2           0B           0B
+      3           0B           0B
+      4           0B           0B
+      5           0B           0B
+      6          33B           0B
 
 compact a-z
 ----
@@ -337,13 +337,13 @@ additional-metrics
 ----
 block bytes written:
  __level___data-block__value-block
-      0        198 B         38 B
-      1          0 B          0 B
-      2          0 B          0 B
-      3          0 B          0 B
-      4          0 B          0 B
-      5          0 B          0 B
-      6        143 B         41 B
+      0         198B          38B
+      1           0B           0B
+      2           0B           0B
+      3           0B           0B
+      4           0B           0B
+      5           0B           0B
+      6         143B          41B
 
 # Flushable ingestion metrics. This requires there be data in a memtable that
 # would overlap with the ingested table(s). Delayed flushes are disabled here to

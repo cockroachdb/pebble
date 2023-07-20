@@ -52,7 +52,7 @@ func (i LevelInfo) String() string {
 // SafeFormat implements redact.SafeFormatter.
 func (i LevelInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("L%d [%s] (%s)", redact.Safe(i.Level), redact.Safe(formatFileNums(i.Tables)),
-		redact.Safe(humanize.Uint64(tablesTotalSize(i.Tables))))
+		redact.Safe(humanize.Bytes.Uint64(tablesTotalSize(i.Tables))))
 }
 
 // CompactionInfo contains the info for a compaction event.
@@ -100,10 +100,10 @@ func (i CompactionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf(" -> L%d [%s] (%s), in %.1fs (%.1fs total), output rate %s/s",
 		redact.Safe(i.Output.Level),
 		redact.Safe(formatFileNums(i.Output.Tables)),
-		redact.Safe(humanize.Uint64(outputSize)),
+		redact.Safe(humanize.Bytes.Uint64(outputSize)),
 		redact.Safe(i.Duration.Seconds()),
 		redact.Safe(i.TotalDuration.Seconds()),
-		redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
+		redact.Safe(humanize.Bytes.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
 }
 
 type levelInfos []LevelInfo
@@ -183,10 +183,10 @@ func (i FlushInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf("[JOB %d] flushed %d memtable%s to L0 [%s] (%s), in %.1fs (%.1fs total), output rate %s/s",
 			redact.Safe(i.JobID), redact.Safe(i.Input), plural,
 			redact.Safe(formatFileNums(i.Output)),
-			redact.Safe(humanize.Uint64(outputSize)),
+			redact.Safe(humanize.Bytes.Uint64(outputSize)),
 			redact.Safe(i.Duration.Seconds()),
 			redact.Safe(i.TotalDuration.Seconds()),
-			redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
+			redact.Safe(humanize.Bytes.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
 	} else {
 		if invariants.Enabled && len(i.IngestLevels) == 0 {
 			panic(errors.AssertionFailedf("pebble: expected len(IngestedLevels) > 0"))
@@ -198,12 +198,12 @@ func (i FlushInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 			if j > 0 {
 				w.Printf(" +")
 			}
-			w.Printf(" L%d:%s (%s)", level, redact.Safe(file.FileNum), humanize.IEC.Uint64(file.Size))
+			w.Printf(" L%d:%s (%s)", level, redact.Safe(file.FileNum), humanize.Bytes.Uint64(file.Size))
 		}
 		w.Printf(" in %.1fs (%.1fs total), output rate %s/s",
 			redact.Safe(i.Duration.Seconds()),
 			redact.Safe(i.TotalDuration.Seconds()),
-			redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
+			redact.Safe(humanize.Bytes.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
 	}
 }
 
@@ -338,7 +338,7 @@ func (i TableIngestInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 			levelStr = fmt.Sprintf("L%d:", t.Level)
 		}
 		w.Printf(" %s%s (%s)", redact.Safe(levelStr), redact.Safe(t.FileNum),
-			redact.Safe(humanize.Uint64(t.Size)))
+			redact.Safe(humanize.Bytes.Uint64(t.Size)))
 	}
 }
 

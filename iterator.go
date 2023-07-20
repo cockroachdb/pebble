@@ -2725,19 +2725,19 @@ func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 		s.SafeString(",\n(internal-stats: ")
 		s.Printf("(block-bytes: (total %s, cached %s, read-time %s)), "+
 			"(points: (count %s, key-bytes %s, value-bytes %s, tombstoned %s))",
-			humanize.IEC.Uint64(stats.InternalStats.BlockBytes),
-			humanize.IEC.Uint64(stats.InternalStats.BlockBytesInCache),
+			humanize.Bytes.Uint64(stats.InternalStats.BlockBytes),
+			humanize.Bytes.Uint64(stats.InternalStats.BlockBytesInCache),
 			humanize.FormattedString(stats.InternalStats.BlockReadDuration.String()),
-			humanize.SI.Uint64(stats.InternalStats.PointCount),
-			humanize.SI.Uint64(stats.InternalStats.KeyBytes),
-			humanize.SI.Uint64(stats.InternalStats.ValueBytes),
-			humanize.SI.Uint64(stats.InternalStats.PointsCoveredByRangeTombstones),
+			humanize.Count.Uint64(stats.InternalStats.PointCount),
+			humanize.Bytes.Uint64(stats.InternalStats.KeyBytes),
+			humanize.Bytes.Uint64(stats.InternalStats.ValueBytes),
+			humanize.Count.Uint64(stats.InternalStats.PointsCoveredByRangeTombstones),
 		)
 		if stats.InternalStats.SeparatedPointValue.Count != 0 {
 			s.Printf(", (separated: (count %s, bytes %s, fetched %s)))",
-				humanize.SI.Uint64(stats.InternalStats.SeparatedPointValue.Count),
-				humanize.IEC.Uint64(stats.InternalStats.SeparatedPointValue.ValueBytes),
-				humanize.IEC.Uint64(stats.InternalStats.SeparatedPointValue.ValueBytesFetched))
+				humanize.Count.Uint64(stats.InternalStats.SeparatedPointValue.Count),
+				humanize.Bytes.Uint64(stats.InternalStats.SeparatedPointValue.ValueBytes),
+				humanize.Bytes.Uint64(stats.InternalStats.SeparatedPointValue.ValueBytesFetched))
 		} else {
 			s.Printf(")")
 		}

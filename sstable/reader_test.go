@@ -1736,7 +1736,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 			// results in a high cache hit rate for the data blocks in
 			// TableFormatPebblev3.
 			for _, cacheSize := range []int64{20 << 20, 150 << 20} {
-				b.Run(fmt.Sprintf("cache-size=%s", humanize.IEC.Int64(cacheSize)),
+				b.Run(fmt.Sprintf("cache-size=%s", humanize.Bytes.Int64(cacheSize)),
 					func(b *testing.B) {
 						r := setupBench(b, format, cacheSize)
 						defer func() {
@@ -1998,7 +1998,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
 			// 150MiB results in a high cache hit rate for both formats.
 			for _, cacheSize := range []int64{1, 150 << 20} {
-				b.Run(fmt.Sprintf("cache-size=%s", humanize.IEC.Int64(cacheSize)),
+				b.Run(fmt.Sprintf("cache-size=%s", humanize.Bytes.Int64(cacheSize)),
 					func(b *testing.B) {
 						r := setupBench(b, format, cacheSize)
 						defer func() {

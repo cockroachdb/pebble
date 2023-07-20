@@ -44,7 +44,7 @@ var ErrNotIndexed = errors.New("pebble: batch not indexed")
 var ErrInvalidBatch = errors.New("pebble: invalid batch")
 
 // ErrBatchTooLarge indicates that a batch is invalid or otherwise corrupted.
-var ErrBatchTooLarge = errors.Newf("pebble: batch too large: >= %s", humanize.Uint64(maxBatchSize))
+var ErrBatchTooLarge = errors.Newf("pebble: batch too large: >= %s", humanize.Bytes.Uint64(maxBatchSize))
 
 // DeferredBatchOp represents a batch operation (eg. set, merge, delete) that is
 // being inserted into the batch. Indexing is not performed on the specified key

@@ -1094,7 +1094,7 @@ func runVersionFileSizes(v *version) string {
 		fmt.Fprintf(&buf, "L%d:\n", l)
 		iter := levelMetadata.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			fmt.Fprintf(&buf, "  %s: %d bytes (%s)", f, f.Size, humanize.IEC.Uint64(f.Size))
+			fmt.Fprintf(&buf, "  %s: %d bytes (%s)", f, f.Size, humanize.Bytes.Uint64(f.Size))
 			if f.IsCompacting() {
 				fmt.Fprintf(&buf, " (IsCompacting)")
 			}

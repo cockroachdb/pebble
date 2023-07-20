@@ -398,7 +398,7 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 		if v == 0 {
 			return "."
 		}
-		return humanize.Uint64(v).String()
+		return humanize.Bytes.Uint64(v).String()
 	}
 	formatRate := func(v uint64, dur time.Duration) string {
 		if v == 0 {
@@ -408,7 +408,7 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 		if secs == 0 {
 			secs = 1
 		}
-		return humanize.Uint64(uint64(float64(v)/secs)).String() + "/s"
+		return humanize.Bytes.Uint64(uint64(float64(v)/secs)).String() + "/s"
 	}
 
 	if newestOverall.IsZero() {

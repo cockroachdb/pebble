@@ -85,7 +85,7 @@ replay simple unpaced
 
 wait
 ----
-replayed 42 B in writes
+replayed 42B in writes
 
 # NB: The file sizes are non-deterministic after replay (because compactions are
 # nondeterministic). We don't `tree` here as a result.
