@@ -3881,7 +3881,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 func TestSharedObjectDeletePacing(t *testing.T) {
 	var opts Options
 	opts.FS = vfs.NewMem()
-	opts.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": remote.NewInMem(),
 	})
 	opts.Experimental.CreateOnShared = true

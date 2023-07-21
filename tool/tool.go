@@ -130,7 +130,7 @@ func New(opts ...Option) *T {
 func (t *T) ConfigureSharedStorage(
 	s remote.StorageFactory, createOnShared bool, createOnSharedLocator remote.Locator,
 ) {
-	t.opts.Experimental.SharedStorage = s
+	t.opts.Experimental.RemoteStorage = s
 	t.opts.Experimental.CreateOnShared = createOnShared
 	t.opts.Experimental.CreateOnSharedLocator = createOnSharedLocator
 }
