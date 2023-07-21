@@ -17,7 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -38,7 +38,7 @@ type provider struct {
 		shared struct {
 			// catalogBatch accumulates shared object creations and deletions until
 			// Sync is called.
-			catalogBatch sharedobjcat.Batch
+			catalogBatch remoteobjcat.Batch
 
 			storageObjects map[remote.Locator]remote.Storage
 		}
@@ -447,7 +447,7 @@ func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
 	defer p.mu.Unlock()
 	p.mu.knownObjects[meta.DiskFileNum] = meta
 	if meta.IsRemote() {
-		p.mu.shared.catalogBatch.AddObject(sharedobjcat.SharedObjectMetadata{
+		p.mu.shared.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{
 			FileNum:        meta.DiskFileNum,
 			FileType:       meta.FileType,
 			CreatorID:      meta.Remote.CreatorID,

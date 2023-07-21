@@ -35,7 +35,7 @@ var ErrInvalidSkipSharedIteration = errors.New("pebble: cannot use skip-shared i
 // SharedSSTMeta represents an sstable on shared storage that can be ingested
 // by another pebble instance. This struct must contain all fields that are
 // required for a Pebble instance to ingest a foreign sstable on shared storage,
-// including constructing any relevant objstorage.Provider / sharedobjcat.Catalog
+// including constructing any relevant objstorage.Provider / remoteobjcat.Catalog
 // data structures, as well as creating virtual FileMetadatas.
 //
 // Note that the Pebble instance creating and returning a SharedSSTMeta might

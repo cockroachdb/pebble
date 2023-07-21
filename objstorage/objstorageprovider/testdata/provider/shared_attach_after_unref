@@ -5,12 +5,12 @@ open p5 5
 <local fs> mkdir-all: p5 0755
 <local fs> open-dir: p5
 <local fs> open-dir: p5
-<local fs> create: p5/SHARED-CATALOG-000001
-<local fs> sync: p5/SHARED-CATALOG-000001
-<local fs> create: p5/marker.shared-catalog.000001.SHARED-CATALOG-000001
-<local fs> close: p5/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> create: p5/REMOTE-OBJ-CATALOG-000001
+<local fs> sync: p5/REMOTE-OBJ-CATALOG-000001
+<local fs> create: p5/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+<local fs> close: p5/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 <local fs> sync: p5
-<local fs> sync: p5/SHARED-CATALOG-000001
+<local fs> sync: p5/REMOTE-OBJ-CATALOG-000001
 
 create 1 shared 1 100
 ----
@@ -31,12 +31,12 @@ open p6 6
 <local fs> mkdir-all: p6 0755
 <local fs> open-dir: p6
 <local fs> open-dir: p6
-<local fs> create: p6/SHARED-CATALOG-000001
-<local fs> sync: p6/SHARED-CATALOG-000001
-<local fs> create: p6/marker.shared-catalog.000001.SHARED-CATALOG-000001
-<local fs> close: p6/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> create: p6/REMOTE-OBJ-CATALOG-000001
+<local fs> sync: p6/REMOTE-OBJ-CATALOG-000001
+<local fs> create: p6/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+<local fs> close: p6/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 <local fs> sync: p6
-<local fs> sync: p6/SHARED-CATALOG-000001
+<local fs> sync: p6/REMOTE-OBJ-CATALOG-000001
 
 # Attach should succeed.
 attach
@@ -45,7 +45,7 @@ p5b1 101
 <shared> create object "d632-5-000001.sst.ref.6.000101"
 <shared> close writer for "d632-5-000001.sst.ref.6.000101" after 0 bytes
 <shared> size of object "d632-5-000001.sst.ref.5.000001": 0
-<local fs> sync: p6/SHARED-CATALOG-000001
+<local fs> sync: p6/REMOTE-OBJ-CATALOG-000001
 000101 -> shared://d632-5-000001.sst
 
 switch p5

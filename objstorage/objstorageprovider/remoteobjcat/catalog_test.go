@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package sharedobjcat_test
+package remoteobjcat_test
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -23,7 +23,7 @@ func TestCatalog(t *testing.T) {
 	mem := vfs.NewMem()
 	var memLog base.InMemLogger
 
-	var cat *sharedobjcat.Catalog
+	var cat *remoteobjcat.Catalog
 	datadriven.RunTest(t, "testdata/catalog", func(t *testing.T, td *datadriven.TestData) string {
 		toUInt64 := func(args ...string) []uint64 {
 			t.Helper()
@@ -38,13 +38,13 @@ func TestCatalog(t *testing.T) {
 			return res
 		}
 
-		parseAdd := func(args []string) sharedobjcat.SharedObjectMetadata {
+		parseAdd := func(args []string) remoteobjcat.RemoteObjectMetadata {
 			t.Helper()
 			if len(args) != 3 {
 				td.Fatalf(t, "add <file-num> <creator-id> <creator-file-num>")
 			}
 			vals := toUInt64(args...)
-			return sharedobjcat.SharedObjectMetadata{
+			return remoteobjcat.RemoteObjectMetadata{
 				FileNum: base.FileNum(vals[0]).DiskFileNum(),
 				// When we support other file types, we should let the test determine this.
 				FileType:       base.FileTypeTable,
@@ -72,8 +72,8 @@ func TestCatalog(t *testing.T) {
 			if err != nil {
 				td.Fatalf(t, "%v", err)
 			}
-			var contents sharedobjcat.CatalogContents
-			cat, contents, err = sharedobjcat.Open(vfs.WithLogging(mem, memLog.Infof), dirname)
+			var contents remoteobjcat.CatalogContents
+			cat, contents, err = remoteobjcat.Open(vfs.WithLogging(mem, memLog.Infof), dirname)
 			if err != nil {
 				return err.Error()
 			}
@@ -98,7 +98,7 @@ func TestCatalog(t *testing.T) {
 			return memLog.String()
 
 		case "batch":
-			var b sharedobjcat.Batch
+			var b remoteobjcat.Batch
 			for _, cmd := range strings.Split(td.Input, "\n") {
 				tokens := strings.Split(cmd, " ")
 				if len(tokens) == 0 {
@@ -136,10 +136,10 @@ func TestCatalog(t *testing.T) {
 					td.Fatalf(t, "random-batches n=<val> size=<val>")
 				}
 			}
-			var b sharedobjcat.Batch
+			var b remoteobjcat.Batch
 			for batchIdx := 0; batchIdx < n; batchIdx++ {
 				for i := 0; i < size; i++ {
-					b.AddObject(sharedobjcat.SharedObjectMetadata{
+					b.AddObject(remoteobjcat.RemoteObjectMetadata{
 						FileNum: base.FileNum(rand.Uint64()).DiskFileNum(),
 						// When we support other file types, we should let the test determine this.
 						FileType:       base.FileTypeTable,

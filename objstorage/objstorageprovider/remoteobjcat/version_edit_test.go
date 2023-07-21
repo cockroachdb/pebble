@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package sharedobjcat
+package remoteobjcat
 
 import (
 	"bytes"
@@ -22,7 +22,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			CreatorID: 12345,
 		},
 		{
-			NewObjects: []SharedObjectMetadata{
+			NewObjects: []RemoteObjectMetadata{
 				{
 					FileNum:          base.FileNum(1).DiskFileNum(),
 					FileType:         base.FileTypeTable,
@@ -39,7 +39,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		},
 		{
 			CreatorID: 12345,
-			NewObjects: []SharedObjectMetadata{
+			NewObjects: []RemoteObjectMetadata{
 				{
 					FileNum:          base.FileNum(1).DiskFileNum(),
 					FileType:         base.FileTypeTable,
