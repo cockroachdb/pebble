@@ -12,7 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
@@ -275,7 +275,7 @@ func (p *provider) AttachRemoteObjects(
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		for _, d := range decoded {
-			p.mu.shared.catalogBatch.AddObject(sharedobjcat.SharedObjectMetadata{
+			p.mu.shared.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{
 				FileNum:        d.meta.DiskFileNum,
 				FileType:       d.meta.FileType,
 				CreatorID:      d.meta.Remote.CreatorID,

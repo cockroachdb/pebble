@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package sharedobjcat
+package remoteobjcat
 
 import (
 	"bufio"
@@ -15,12 +15,12 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
-// versionEdit is a modification to the shared object state which can be encoded
+// versionEdit is a modification to the remote object state which can be encoded
 // into a record.
 //
 // TODO(radu): consider adding creation and deletion time for debugging purposes.
 type versionEdit struct {
-	NewObjects     []SharedObjectMetadata
+	NewObjects     []RemoteObjectMetadata
 	DeletedObjects []base.DiskFileNum
 	CreatorID      objstorage.CreatorID
 }
@@ -164,7 +164,7 @@ func (v *versionEdit) Decode(r io.Reader) error {
 			}
 
 			if err == nil {
-				v.NewObjects = append(v.NewObjects, SharedObjectMetadata{
+				v.NewObjects = append(v.NewObjects, RemoteObjectMetadata{
 					FileNum:          base.FileNum(fileNum).DiskFileNum(),
 					FileType:         fileType,
 					CreatorID:        objstorage.CreatorID(creatorID),
@@ -224,4 +224,4 @@ func decodeString(br io.ByteReader) (string, error) {
 	return string(buf), nil
 }
 
-var errCorruptCatalog = base.CorruptionErrorf("pebble: corrupt shared object catalog")
+var errCorruptCatalog = base.CorruptionErrorf("pebble: corrupt remote object catalog")

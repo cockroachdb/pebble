@@ -3,12 +3,12 @@ open p1 1
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
 <local fs> open-dir: p1
-<local fs> create: p1/SHARED-CATALOG-000001
-<local fs> sync: p1/SHARED-CATALOG-000001
-<local fs> create: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
-<local fs> close: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> create: p1/REMOTE-OBJ-CATALOG-000001
+<local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
+<local fs> create: p1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+<local fs> close: p1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 <local fs> sync: p1
-<local fs> sync: p1/SHARED-CATALOG-000001
+<local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
 
 create 1 local 1 2000000
 ----

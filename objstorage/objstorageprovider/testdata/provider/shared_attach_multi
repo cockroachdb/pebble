@@ -5,12 +5,12 @@ open p1 1
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
 <local fs> open-dir: p1
-<local fs> create: p1/SHARED-CATALOG-000001
-<local fs> sync: p1/SHARED-CATALOG-000001
-<local fs> create: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
-<local fs> close: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> create: p1/REMOTE-OBJ-CATALOG-000001
+<local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
+<local fs> create: p1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+<local fs> close: p1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 <local fs> sync: p1
-<local fs> sync: p1/SHARED-CATALOG-000001
+<local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
 
 create 1 shared 1 100
 ----
@@ -27,12 +27,12 @@ open p2 2
 <local fs> mkdir-all: p2 0755
 <local fs> open-dir: p2
 <local fs> open-dir: p2
-<local fs> create: p2/SHARED-CATALOG-000001
-<local fs> sync: p2/SHARED-CATALOG-000001
-<local fs> create: p2/marker.shared-catalog.000001.SHARED-CATALOG-000001
-<local fs> close: p2/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> create: p2/REMOTE-OBJ-CATALOG-000001
+<local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
+<local fs> create: p2/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+<local fs> close: p2/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 <local fs> sync: p2
-<local fs> sync: p2/SHARED-CATALOG-000001
+<local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
 
 # We should create three ref markers to allow independent removal.
 attach
@@ -49,7 +49,7 @@ b1 103
 <shared> create object "61a6-1-000001.sst.ref.2.000103"
 <shared> close writer for "61a6-1-000001.sst.ref.2.000103" after 0 bytes
 <shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
-<local fs> sync: p2/SHARED-CATALOG-000001
+<local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
 000101 -> shared://61a6-1-000001.sst
 000102 -> shared://61a6-1-000001.sst
 000103 -> shared://61a6-1-000001.sst

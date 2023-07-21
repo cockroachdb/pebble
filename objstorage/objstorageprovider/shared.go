@@ -14,15 +14,15 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
 // sharedSubsystem contains the provider fields related to shared storage.
 // All fields remain unset if shared storage is not configured.
 type sharedSubsystem struct {
-	catalog *sharedobjcat.Catalog
+	catalog *remoteobjcat.Catalog
 	cache   *sharedcache.Cache
 
 	// checkRefsOnOpen controls whether we check the ref marker file when opening
@@ -49,7 +49,7 @@ func (p *provider) sharedInit() error {
 	if p.st.Shared.StorageFactory == nil {
 		return nil
 	}
-	catalog, contents, err := sharedobjcat.Open(p.st.FS, p.st.FSDirName)
+	catalog, contents, err := remoteobjcat.Open(p.st.FS, p.st.FSDirName)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open shared object catalog")
 	}
@@ -163,7 +163,7 @@ func (p *provider) sharedCheckInitialized() error {
 }
 
 func (p *provider) sharedSync() error {
-	batch := func() sharedobjcat.Batch {
+	batch := func() remoteobjcat.Batch {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		res := p.mu.shared.catalogBatch.Copy()
