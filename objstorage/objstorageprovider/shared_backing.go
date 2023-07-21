@@ -13,7 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 	// allows the "target" provider to check that the "source" provider kept its
 	// reference on the object alive.
 	tagRefCheckID = 4
-	// tagLocator encodes the shared.Locator; if absent the locator is "". It is
+	// tagLocator encodes the remote.Locator; if absent the locator is "". It is
 	// followed by the locator string length and the locator string.
 	tagLocator = 5
 	// tagLocator encodes a custom object name (if present). It is followed by the
@@ -112,7 +112,7 @@ func (p *provider) RemoteObjectBacking(
 
 // CreateExternalObjectBacking is part of the objstorage.Provider interface.
 func (p *provider) CreateExternalObjectBacking(
-	locator shared.Locator, objName string,
+	locator remote.Locator, objName string,
 ) (objstorage.RemoteObjectBacking, error) {
 	var meta objstorage.ObjectMetadata
 	meta.Remote.Locator = locator
@@ -205,7 +205,7 @@ func decodeSharedObjectBacking(
 		res.refToCheck.creatorID = objstorage.CreatorID(refCheckCreatorID)
 		res.refToCheck.fileNum = base.FileNum(refCheckFileNum).DiskFileNum()
 	}
-	res.meta.Remote.Locator = shared.Locator(locator)
+	res.meta.Remote.Locator = remote.Locator(locator)
 	res.meta.Remote.CustomObjectName = customObjName
 	return res, nil
 }

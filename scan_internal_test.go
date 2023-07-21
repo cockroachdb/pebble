@@ -18,7 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -47,8 +47,8 @@ func TestScanInternal(t *testing.T) {
 				sstable.NewTestKeysBlockPropertyCollector,
 			},
 		}
-		opts.Experimental.SharedStorage = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
-			"": shared.NewInMem(),
+		opts.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+			"": remote.NewInMem(),
 		})
 		opts.Experimental.CreateOnShared = true
 		opts.Experimental.CreateOnSharedLocator = ""

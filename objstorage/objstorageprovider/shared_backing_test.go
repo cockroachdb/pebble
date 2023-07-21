@@ -10,7 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +23,8 @@ func TestSharedObjectBacking(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			st := DefaultSettings(vfs.NewMem(), "")
-			sharedStorage := shared.NewInMem()
-			st.Shared.StorageFactory = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+			sharedStorage := remote.NewInMem()
+			st.Shared.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 				"foo": sharedStorage,
 			})
 			p, err := Open(st)
@@ -99,8 +99,8 @@ func TestSharedObjectBacking(t *testing.T) {
 
 func TestCreateSharedObjectBacking(t *testing.T) {
 	st := DefaultSettings(vfs.NewMem(), "")
-	sharedStorage := shared.NewInMem()
-	st.Shared.StorageFactory = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+	sharedStorage := remote.NewInMem()
+	st.Shared.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"foo": sharedStorage,
 	})
 	p, err := Open(st)
@@ -115,7 +115,7 @@ func TestCreateSharedObjectBacking(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(100), uint64(d.meta.DiskFileNum.FileNum()))
 	require.Equal(t, base.FileTypeTable, d.meta.FileType)
-	require.Equal(t, shared.Locator("foo"), d.meta.Remote.Locator)
+	require.Equal(t, remote.Locator("foo"), d.meta.Remote.Locator)
 	require.Equal(t, "custom-obj-name", d.meta.Remote.CustomObjectName)
 	require.Equal(t, objstorage.SharedNoCleanup, d.meta.Remote.CleanupMethod)
 }

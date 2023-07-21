@@ -13,7 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -59,8 +59,8 @@ type SharedObjectMetadata struct {
 	CreatorFileNum base.DiskFileNum
 	// CleanupMethod indicates the method for cleaning up unused shared objects.
 	CleanupMethod objstorage.SharedCleanupMethod
-	// Locator identifies a shared.Storage implementation.
-	Locator shared.Locator
+	// Locator identifies a remote.Storage implementation.
+	Locator remote.Locator
 	// CustomObjectName (if it is set) overrides the object name that is normally
 	// derived from the CreatorID and CreatorFileNum.
 	CustomObjectName string

@@ -11,7 +11,7 @@ import (
 )
 
 // sharedWritable is a very simple implementation of Writable on top of the
-// WriteCloser returned by shared.Storage.CreateObject.
+// WriteCloser returned by remote.Storage.CreateObject.
 type sharedWritable struct {
 	p             *provider
 	meta          objstorage.ObjectMetadata

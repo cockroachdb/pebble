@@ -12,7 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
 // versionEdit is a modification to the shared object state which can be encoded
@@ -170,7 +170,7 @@ func (v *versionEdit) Decode(r io.Reader) error {
 					CreatorID:        objstorage.CreatorID(creatorID),
 					CreatorFileNum:   base.FileNum(creatorFileNum).DiskFileNum(),
 					CleanupMethod:    objstorage.SharedCleanupMethod(cleanupMethod),
-					Locator:          shared.Locator(locator),
+					Locator:          remote.Locator(locator),
 					CustomObjectName: customName,
 				})
 			}

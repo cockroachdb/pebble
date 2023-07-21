@@ -15,7 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -111,7 +111,7 @@ func (c *Cache) ReadAt(
 	fileNum base.DiskFileNum,
 	p []byte,
 	ofs int64,
-	objReader shared.ObjectReader,
+	objReader remote.ObjectReader,
 	objSize int64,
 	flags ReadFlags,
 ) error {

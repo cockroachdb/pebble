@@ -11,15 +11,15 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
 const sharedMaxReadaheadSize = 1024 * 1024 /* 1MB */
 
 // sharedReadable is a very simple implementation of Readable on top of the
-// ReadCloser returned by shared.Storage.CreateObject.
+// ReadCloser returned by remote.Storage.CreateObject.
 type sharedReadable struct {
-	objReader shared.ObjectReader
+	objReader remote.ObjectReader
 	size      int64
 	fileNum   base.DiskFileNum
 	provider  *provider
@@ -28,7 +28,7 @@ type sharedReadable struct {
 var _ objstorage.Readable = (*sharedReadable)(nil)
 
 func (p *provider) newSharedReadable(
-	objReader shared.ObjectReader, size int64, fileNum base.DiskFileNum,
+	objReader remote.ObjectReader, size int64, fileNum base.DiskFileNum,
 ) *sharedReadable {
 	return &sharedReadable{
 		objReader: objReader,

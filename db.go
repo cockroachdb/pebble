@@ -23,7 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
@@ -1939,9 +1939,9 @@ type SSTableInfo struct {
 	BackingSSTNum base.FileNum
 	// BackingType is the type of storage backing this sstable.
 	BackingType BackingType
-	// Locator is the shared.Locator backing this sstable, if one was specified
-	// during ingest.
-	Locator shared.Locator
+	// Locator is the remote.Locator backing this sstable, if the backing type is
+	// not BackingTypeLocal.
+	Locator remote.Locator
 
 	// Properties is the sstable properties of this table. If Virtual is true,
 	// then the Properties are associated with the backing sst.
