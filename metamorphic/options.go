@@ -94,7 +94,7 @@ func parseOptions(
 				return true
 			case "TestOptions.shared_storage_enabled":
 				opts.sharedStorageEnabled = true
-				opts.Opts.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+				opts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 					"": remote.NewInMem(),
 				})
 				opts.Opts.Experimental.CreateOnShared = true
@@ -500,7 +500,7 @@ func randomOptions(
 	// 20% of time, enable shared storage.
 	if rng.Intn(5) == 0 {
 		testOpts.sharedStorageEnabled = true
-		testOpts.Opts.Experimental.SharedStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		testOpts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": remote.NewInMem(),
 		})
 		testOpts.Opts.Experimental.CreateOnShared = true

@@ -297,7 +297,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		NoSyncOnClose:       opts.NoSyncOnClose,
 		BytesPerSync:        opts.BytesPerSync,
 	}
-	providerSettings.Shared.StorageFactory = opts.Experimental.SharedStorage
+	providerSettings.Shared.StorageFactory = opts.Experimental.RemoteStorage
 	providerSettings.Shared.CreateOnShared = opts.Experimental.CreateOnShared
 	providerSettings.Shared.CreateOnSharedLocator = opts.Experimental.CreateOnSharedLocator
 	providerSettings.Shared.CacheSizeBytes = opts.Experimental.SecondaryCacheSize
