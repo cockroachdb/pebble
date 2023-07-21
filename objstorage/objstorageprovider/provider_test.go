@@ -13,7 +13,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -24,10 +24,10 @@ func TestProvider(t *testing.T) {
 		fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...interface{}) {
 			log.Infof("<local fs> "+fmt, args...)
 		})
-		sharedStore := shared.WithLogging(shared.NewInMem(), func(fmt string, args ...interface{}) {
+		sharedStore := remote.WithLogging(remote.NewInMem(), func(fmt string, args ...interface{}) {
 			log.Infof("<shared> "+fmt, args...)
 		})
-		sharedFactory := shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+		sharedFactory := remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sharedStore,
 		})
 		tmpFileCounter := 0
@@ -276,11 +276,11 @@ func TestProvider(t *testing.T) {
 
 func TestSharedMultipleLocators(t *testing.T) {
 	ctx := context.Background()
-	stores := map[shared.Locator]shared.Storage{
-		"foo": shared.NewInMem(),
-		"bar": shared.NewInMem(),
+	stores := map[remote.Locator]remote.Storage{
+		"foo": remote.NewInMem(),
+		"bar": remote.NewInMem(),
 	}
-	sharedFactory := shared.MakeSimpleFactory(stores)
+	sharedFactory := remote.MakeSimpleFactory(stores)
 
 	st1 := DefaultSettings(vfs.NewMem(), "")
 	st1.Shared.StorageFactory = sharedFactory
@@ -369,7 +369,7 @@ func TestSharedMultipleLocators(t *testing.T) {
 
 	// Try to attach an object to a provider that doesn't recognize the locator.
 	st3 := DefaultSettings(vfs.NewMem(), "")
-	st3.Shared.StorageFactory = shared.MakeSimpleFactory(nil)
+	st3.Shared.StorageFactory = remote.MakeSimpleFactory(nil)
 	p3, err := Open(st3)
 	require.NoError(t, err)
 	require.NoError(t, p3.SetCreatorID(3))
@@ -384,8 +384,8 @@ func TestSharedMultipleLocators(t *testing.T) {
 
 func TestAttachCustomObject(t *testing.T) {
 	ctx := context.Background()
-	storage := shared.NewInMem()
-	sharedFactory := shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+	storage := remote.NewInMem()
+	sharedFactory := remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"foo": storage,
 	})
 
@@ -460,8 +460,8 @@ func TestAttachCustomObject(t *testing.T) {
 func TestNotExistError(t *testing.T) {
 	fs := vfs.NewMem()
 	st := DefaultSettings(fs, "")
-	sharedStorage := shared.NewInMem()
-	st.Shared.StorageFactory = shared.MakeSimpleFactory(map[shared.Locator]shared.Storage{
+	sharedStorage := remote.NewInMem()
+	st.Shared.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": sharedStorage,
 	})
 	st.Shared.CreateOnShared = true

@@ -10,7 +10,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -105,11 +105,11 @@ type ObjectMetadata struct {
 		CustomObjectName string
 		// CleanupMethod indicates the method for cleaning up unused shared objects.
 		CleanupMethod SharedCleanupMethod
-		// Locator identifies the shared.Storage implementation for this object.
-		Locator shared.Locator
-		// Storage is the shared.Storage object corresponding to the Locator. Used
+		// Locator identifies the remote.Storage implementation for this object.
+		Locator remote.Locator
+		// Storage is the remote.Storage object corresponding to the Locator. Used
 		// to avoid lookups in hot paths.
-		Storage shared.Storage
+		Storage remote.Storage
 	}
 }
 
@@ -207,7 +207,7 @@ type CreateOptions struct {
 // created by the provider, or existing objects the Provider was informed about
 // via AddObjects.
 //
-// Objects are currently backed by a vfs.File or a shared.Storage object.
+// Objects are currently backed by a vfs.File or a remote.Storage object.
 type Provider interface {
 	// OpenForReading opens an existing object.
 	OpenForReading(
@@ -279,7 +279,7 @@ type Provider interface {
 	// CreateExternalObjectBacking creates a backing for an existing object with a
 	// custom object name. The object is considered to be managed outside of
 	// Pebble and will never be removed by Pebble.
-	CreateExternalObjectBacking(locator shared.Locator, objName string) (RemoteObjectBacking, error)
+	CreateExternalObjectBacking(locator remote.Locator, objName string) (RemoteObjectBacking, error)
 
 	// AttachRemoteObjects registers existing remote objects with this provider.
 	AttachRemoteObjects(objs []RemoteObjectToAttach) ([]ObjectMetadata, error)

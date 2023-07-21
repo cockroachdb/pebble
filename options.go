@@ -19,7 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -661,12 +661,12 @@ type Options struct {
 		// wrote a file should not delete it if other Pebble instances are known to
 		// be reading this file. This FS is expected to have slower read/write
 		// performance than the default FS above.
-		SharedStorage shared.StorageFactory
+		SharedStorage remote.StorageFactory
 
 		// If CreateOnShred is true, any new sstables are created on shared storage,
 		// using CreateOnSharedLocator. Can only be used when SharedStorage is set.
 		CreateOnShared        bool
-		CreateOnSharedLocator shared.Locator
+		CreateOnSharedLocator remote.Locator
 
 		// CacheSizeBytes is the size of the on-disk block cache for objects
 		// on shared storage. If it is 0, no cache is used.

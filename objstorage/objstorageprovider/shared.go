@@ -16,7 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
-	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
 // sharedSubsystem contains the provider fields related to shared storage.
@@ -101,7 +101,7 @@ func (p *provider) sharedInit() error {
 		o.Remote.CustomObjectName = meta.CustomObjectName
 		o.Remote.Storage, err = p.ensureStorageLocked(o.Remote.Locator)
 		if err != nil {
-			return errors.Wrapf(err, "creating shared.Storage object for locator '%s'", o.Remote.Locator)
+			return errors.Wrapf(err, "creating remote.Storage object for locator '%s'", o.Remote.Locator)
 		}
 		if invariants.Enabled {
 			o.AssertValid()
@@ -213,7 +213,7 @@ func (p *provider) sharedCreate(
 	_ context.Context,
 	fileType base.FileType,
 	fileNum base.DiskFileNum,
-	locator shared.Locator,
+	locator remote.Locator,
 	opts objstorage.CreateOptions,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
@@ -318,9 +318,9 @@ func (p *provider) sharedUnref(meta objstorage.ObjectMetadata) error {
 	return nil
 }
 
-func (p *provider) ensureStorageLocked(locator shared.Locator) (shared.Storage, error) {
+func (p *provider) ensureStorageLocked(locator remote.Locator) (remote.Storage, error) {
 	if p.mu.shared.storageObjects == nil {
-		p.mu.shared.storageObjects = make(map[shared.Locator]shared.Storage)
+		p.mu.shared.storageObjects = make(map[remote.Locator]remote.Storage)
 	}
 	if res, ok := p.mu.shared.storageObjects[locator]; ok {
 		return res, nil
@@ -333,7 +333,7 @@ func (p *provider) ensureStorageLocked(locator shared.Locator) (shared.Storage, 
 	p.mu.shared.storageObjects[locator] = res
 	return res, nil
 }
-func (p *provider) ensureStorage(locator shared.Locator) (shared.Storage, error) {
+func (p *provider) ensureStorage(locator remote.Locator) (remote.Storage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.ensureStorageLocked(locator)

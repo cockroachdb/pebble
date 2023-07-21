@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package shared
+package remote
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// NewLocalFS returns a vfs-backed implementation of the shared.Storage
+// NewLocalFS returns a vfs-backed implementation of the remote.Storage
 // interface (for testing). All objects will be stored at the directory
 // dirname.
 func NewLocalFS(dirname string, fs vfs.FS) Storage {
@@ -24,7 +24,7 @@ func NewLocalFS(dirname string, fs vfs.FS) Storage {
 	return store
 }
 
-// localFSStore is a vfs-backed implementation of the shared.Storage
+// localFSStore is a vfs-backed implementation of the remote.Storage
 // interface (for testing).
 type localFSStore struct {
 	dirname string
@@ -33,13 +33,13 @@ type localFSStore struct {
 
 var _ Storage = (*localFSStore)(nil)
 
-// Close is part of the shared.Storage interface.
+// Close is part of the remote.Storage interface.
 func (s *localFSStore) Close() error {
 	*s = localFSStore{}
 	return nil
 }
 
-// ReadObject is part of the shared.Storage interface.
+// ReadObject is part of the remote.Storage interface.
 func (s *localFSStore) ReadObject(
 	ctx context.Context, objName string,
 ) (_ ObjectReader, objSize int64, _ error) {
@@ -78,13 +78,13 @@ func (r *localFSReader) Close() error {
 	return nil
 }
 
-// CreateObject is part of the shared.Storage interface.
+// CreateObject is part of the remote.Storage interface.
 func (s *localFSStore) CreateObject(objName string) (io.WriteCloser, error) {
 	file, err := s.vfs.Create(path.Join(s.dirname, objName))
 	return file, err
 }
 
-// List is part of the shared.Storage interface.
+// List is part of the remote.Storage interface.
 func (s *localFSStore) List(prefix, delimiter string) ([]string, error) {
 	// TODO(josh): For the intended use case of localfs.go of running 'pebble bench',
 	// List can always return <nil, nil>, since this indicates a file has only one ref,
@@ -93,12 +93,12 @@ func (s *localFSStore) List(prefix, delimiter string) ([]string, error) {
 	return nil, nil
 }
 
-// Delete is part of the shared.Storage interface.
+// Delete is part of the remote.Storage interface.
 func (s *localFSStore) Delete(objName string) error {
 	return s.vfs.Remove(path.Join(s.dirname, objName))
 }
 
-// Size is part of the shared.Storage interface.
+// Size is part of the remote.Storage interface.
 func (s *localFSStore) Size(objName string) (int64, error) {
 	f, err := s.vfs.Open(path.Join(s.dirname, objName))
 	if err != nil {
@@ -112,7 +112,7 @@ func (s *localFSStore) Size(objName string) (int64, error) {
 	return stat.Size(), nil
 }
 
-// IsNotExistError is part of the shared.Storage interface.
+// IsNotExistError is part of the remote.Storage interface.
 func (s *localFSStore) IsNotExistError(err error) bool {
 	return err == os.ErrNotExist
 }
