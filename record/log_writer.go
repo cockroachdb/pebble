@@ -315,6 +315,13 @@ type LogWriterConfig struct {
 // than this threshold allows.
 const initialAllocatedBlocksCap = 32
 
+// blockPool pools *blocks to avoid allocations. Blocks are only added to the
+// Pool when a LogWriter is closed. Before that, free blocks are maintained
+// within a LogWriter's own internal free list `w.free.blocks`.
+var blockPool = sync.Pool{
+	New: func() any { return &block{} },
+}
+
 // NewLogWriter returns a new LogWriter.
 func NewLogWriter(w io.Writer, logNum base.FileNum, logWriterConfig LogWriterConfig) *LogWriter {
 	c, _ := w.(io.Closer)
@@ -334,7 +341,7 @@ func NewLogWriter(w io.Writer, logNum base.FileNum, logWriterConfig LogWriterCon
 		queueSemChan: logWriterConfig.QueueSemChan,
 	}
 	r.free.blocks = make([]*block, 0, initialAllocatedBlocksCap)
-	r.block = &block{}
+	r.block = blockPool.Get().(*block)
 	r.flusher.ready.init(&r.flusher.Mutex, &r.flusher.syncQ)
 	r.flusher.closed = make(chan struct{})
 	r.flusher.pending = make([]*block, 0, cap(r.free.blocks))
@@ -566,7 +573,7 @@ func (w *LogWriter) queueBlock() {
 	// because w.block is protected by w.flusher.Mutex.
 	w.free.Lock()
 	if len(w.free.blocks) == 0 {
-		w.free.blocks = append(w.free.blocks, &block{})
+		w.free.blocks = append(w.free.blocks, blockPool.Get().(*block))
 	}
 	nextBlock := w.free.blocks[len(w.free.blocks)-1]
 	w.free.blocks = w.free.blocks[:len(w.free.blocks)-1]
@@ -615,6 +622,7 @@ func (w *LogWriter) Close() error {
 	if f.fsyncLatency != nil {
 		f.fsyncLatency.Observe(float64(syncLatency))
 	}
+	free := w.free.blocks
 	f.Unlock()
 
 	if w.c != nil {
@@ -624,6 +632,13 @@ func (w *LogWriter) Close() error {
 			return cerr
 		}
 	}
+
+	for _, b := range free {
+		b.flushed = 0
+		b.written.Store(0)
+		blockPool.Put(b)
+	}
+
 	w.err = errClosedWriter
 	return err
 }
