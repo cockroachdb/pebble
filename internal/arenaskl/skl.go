@@ -183,7 +183,17 @@ func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter
 		runtime.Gosched()
 	}
 
-	nd, height, err := s.newNode(key, value)
+	// Check the lowest level to see if there exists a node that has the same UserKey as the key we are trying to insert.
+	prev := ins.spl[0].prev
+	next := ins.spl[0].next
+	var duplicateNodeIfExists *node
+	if prev != nil && s.cmp(s.arena.buf[prev.keyOffset:prev.keyOffset+prev.keySize], key.UserKey) == 0 {
+		duplicateNodeIfExists = prev
+	} else if next != nil && s.cmp(s.arena.buf[next.keyOffset:next.keyOffset+next.keySize], key.UserKey) == 0 {
+		duplicateNodeIfExists = next
+	}
+
+	nd, height, err := s.newNode(key, value, duplicateNodeIfExists)
 	if err != nil {
 		return err
 	}
@@ -196,8 +206,8 @@ func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter
 	var found bool
 	var invalidateSplice bool
 	for i := 0; i < int(height); i++ {
-		prev := ins.spl[i].prev
-		next := ins.spl[i].next
+		prev = ins.spl[i].prev
+		next = ins.spl[i].next
 
 		if prev == nil {
 			// New node increased the height of the skiplist, so assume that the
@@ -315,10 +325,10 @@ func (s *Skiplist) NewFlushIter(bytesFlushed *uint64) base.InternalIterator {
 }
 
 func (s *Skiplist) newNode(
-	key base.InternalKey, value []byte,
+	key base.InternalKey, value []byte, duplicateNodeIfExists *node,
 ) (nd *node, height uint32, err error) {
 	height = s.randomHeight()
-	nd, err = newNode(s.arena, height, key, value)
+	nd, err = newNode(s.arena, height, key, value, duplicateNodeIfExists)
 	if err != nil {
 		return
 	}
