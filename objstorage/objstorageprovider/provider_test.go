@@ -25,7 +25,7 @@ func TestProvider(t *testing.T) {
 			log.Infof("<local fs> "+fmt, args...)
 		})
 		sharedStore := remote.WithLogging(remote.NewInMem(), func(fmt string, args ...interface{}) {
-			log.Infof("<shared> "+fmt, args...)
+			log.Infof("<remote> "+fmt, args...)
 		})
 		sharedFactory := remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sharedStore,
@@ -58,13 +58,13 @@ func TestProvider(t *testing.T) {
 			case "open":
 				var fsDir string
 				var creatorID objstorage.CreatorID
-				scanArgs("<fs-dir> <shared-creator-id>", &fsDir, &creatorID)
+				scanArgs("<fs-dir> <remote-creator-id>", &fsDir, &creatorID)
 
 				st := DefaultSettings(fs, fsDir)
 				if creatorID != 0 {
-					st.Shared.StorageFactory = sharedFactory
-					st.Shared.CreateOnShared = true
-					st.Shared.CreateOnSharedLocator = ""
+					st.Remote.StorageFactory = sharedFactory
+					st.Remote.CreateOnShared = true
+					st.Remote.CreateOnSharedLocator = ""
 				}
 				require.NoError(t, fs.MkdirAll(fsDir, 0755))
 				p, err := Open(st)
@@ -75,7 +75,7 @@ func TestProvider(t *testing.T) {
 				// Checking refs on open affects the test output. We don't want tests to
 				// only pass when the `invariants` tag is used, so unconditionally
 				// enable ref checking on open.
-				p.(*provider).shared.checkRefsOnOpen = true
+				p.(*provider).remote.shared.checkRefsOnOpen = true
 				providers[fsDir] = p
 				curProvider = p
 
@@ -283,17 +283,17 @@ func TestSharedMultipleLocators(t *testing.T) {
 	sharedFactory := remote.MakeSimpleFactory(stores)
 
 	st1 := DefaultSettings(vfs.NewMem(), "")
-	st1.Shared.StorageFactory = sharedFactory
-	st1.Shared.CreateOnShared = true
-	st1.Shared.CreateOnSharedLocator = "foo"
+	st1.Remote.StorageFactory = sharedFactory
+	st1.Remote.CreateOnShared = true
+	st1.Remote.CreateOnSharedLocator = "foo"
 	p1, err := Open(st1)
 	require.NoError(t, err)
 	require.NoError(t, p1.SetCreatorID(1))
 
 	st2 := DefaultSettings(vfs.NewMem(), "")
-	st2.Shared.StorageFactory = sharedFactory
-	st2.Shared.CreateOnShared = true
-	st2.Shared.CreateOnSharedLocator = "bar"
+	st2.Remote.StorageFactory = sharedFactory
+	st2.Remote.CreateOnShared = true
+	st2.Remote.CreateOnSharedLocator = "bar"
 	p2, err := Open(st2)
 	require.NoError(t, err)
 	require.NoError(t, p2.SetCreatorID(2))
@@ -369,7 +369,7 @@ func TestSharedMultipleLocators(t *testing.T) {
 
 	// Try to attach an object to a provider that doesn't recognize the locator.
 	st3 := DefaultSettings(vfs.NewMem(), "")
-	st3.Shared.StorageFactory = remote.MakeSimpleFactory(nil)
+	st3.Remote.StorageFactory = remote.MakeSimpleFactory(nil)
 	p3, err := Open(st3)
 	require.NoError(t, err)
 	require.NoError(t, p3.SetCreatorID(3))
@@ -390,7 +390,7 @@ func TestAttachCustomObject(t *testing.T) {
 	})
 
 	st1 := DefaultSettings(vfs.NewMem(), "")
-	st1.Shared.StorageFactory = sharedFactory
+	st1.Remote.StorageFactory = sharedFactory
 	p1, err := Open(st1)
 	require.NoError(t, err)
 	defer p1.Close()
@@ -434,7 +434,7 @@ func TestAttachCustomObject(t *testing.T) {
 	require.NoError(t, err)
 
 	st2 := DefaultSettings(vfs.NewMem(), "")
-	st2.Shared.StorageFactory = sharedFactory
+	st2.Remote.StorageFactory = sharedFactory
 	p2, err := Open(st2)
 	require.NoError(t, err)
 	defer p2.Close()
@@ -461,11 +461,11 @@ func TestNotExistError(t *testing.T) {
 	fs := vfs.NewMem()
 	st := DefaultSettings(fs, "")
 	sharedStorage := remote.NewInMem()
-	st.Shared.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+	st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": sharedStorage,
 	})
-	st.Shared.CreateOnShared = true
-	st.Shared.CreateOnSharedLocator = ""
+	st.Remote.CreateOnShared = true
+	st.Remote.CreateOnSharedLocator = ""
 	provider, err := Open(st)
 	require.NoError(t, err)
 	require.NoError(t, provider.SetCreatorID(1))
@@ -474,7 +474,7 @@ func TestNotExistError(t *testing.T) {
 		fileNum := base.FileNum(1 + i).DiskFileNum()
 		name := "local"
 		if shared {
-			name = "shared"
+			name = "remote"
 		}
 		t.Run(name, func(t *testing.T) {
 			// Removing or opening an object that the provider doesn't know anything
@@ -497,7 +497,7 @@ func TestNotExistError(t *testing.T) {
 			} else {
 				meta, err := provider.Lookup(base.FileTypeTable, fileNum)
 				require.NoError(t, err)
-				require.NoError(t, sharedStorage.Delete(sharedObjectName(meta)))
+				require.NoError(t, sharedStorage.Delete(remoteObjectName(meta)))
 			}
 
 			_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, fileNum, objstorage.OpenOptions{})

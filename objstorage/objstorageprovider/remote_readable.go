@@ -14,23 +14,23 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
-const sharedMaxReadaheadSize = 1024 * 1024 /* 1MB */
+const remoteMaxReadaheadSize = 1024 * 1024 /* 1MB */
 
-// sharedReadable is a very simple implementation of Readable on top of the
+// remoteReadable is a very simple implementation of Readable on top of the
 // ReadCloser returned by remote.Storage.CreateObject.
-type sharedReadable struct {
+type remoteReadable struct {
 	objReader remote.ObjectReader
 	size      int64
 	fileNum   base.DiskFileNum
 	provider  *provider
 }
 
-var _ objstorage.Readable = (*sharedReadable)(nil)
+var _ objstorage.Readable = (*remoteReadable)(nil)
 
-func (p *provider) newSharedReadable(
+func (p *provider) newRemoteReadable(
 	objReader remote.ObjectReader, size int64, fileNum base.DiskFileNum,
-) *sharedReadable {
-	return &sharedReadable{
+) *remoteReadable {
+	return &remoteReadable{
 		objReader: objReader,
 		size:      size,
 		fileNum:   fileNum,
@@ -39,43 +39,43 @@ func (p *provider) newSharedReadable(
 }
 
 // ReadAt is part of the objstorage.Readable interface.
-func (r *sharedReadable) ReadAt(ctx context.Context, p []byte, offset int64) error {
+func (r *remoteReadable) ReadAt(ctx context.Context, p []byte, offset int64) error {
 	return r.readInternal(ctx, p, offset, false /* forCompaction */)
 }
 
 // readInternal performs a read for the object, using the cache when
 // appropriate.
-func (r *sharedReadable) readInternal(
+func (r *remoteReadable) readInternal(
 	ctx context.Context, p []byte, offset int64, forCompaction bool,
 ) error {
-	if cache := r.provider.shared.cache; cache != nil {
+	if cache := r.provider.remote.cache; cache != nil {
 		flags := sharedcache.ReadFlags{
 			// Don't add data to the cache if this read is for a compaction.
 			ReadOnly: forCompaction,
 		}
-		return r.provider.shared.cache.ReadAt(ctx, r.fileNum, p, offset, r.objReader, r.size, flags)
+		return r.provider.remote.cache.ReadAt(ctx, r.fileNum, p, offset, r.objReader, r.size, flags)
 	}
 	return r.objReader.ReadAt(ctx, p, offset)
 }
 
-func (r *sharedReadable) Close() error {
+func (r *remoteReadable) Close() error {
 	defer func() { r.objReader = nil }()
 	return r.objReader.Close()
 }
 
-func (r *sharedReadable) Size() int64 {
+func (r *remoteReadable) Size() int64 {
 	return r.size
 }
 
-func (r *sharedReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
+func (r *remoteReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
 	// TODO(radu): use a pool.
-	rh := &sharedReadHandle{readable: r}
-	rh.readahead.state = makeReadaheadState(sharedMaxReadaheadSize)
+	rh := &remoteReadHandle{readable: r}
+	rh.readahead.state = makeReadaheadState(remoteMaxReadaheadSize)
 	return rh
 }
 
-type sharedReadHandle struct {
-	readable  *sharedReadable
+type remoteReadHandle struct {
+	readable  *remoteReadable
 	readahead struct {
 		state  readaheadState
 		data   []byte
@@ -84,10 +84,10 @@ type sharedReadHandle struct {
 	forCompaction bool
 }
 
-var _ objstorage.ReadHandle = (*sharedReadHandle)(nil)
+var _ objstorage.ReadHandle = (*remoteReadHandle)(nil)
 
 // ReadAt is part of the objstorage.ReadHandle interface.
-func (r *sharedReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) error {
+func (r *remoteReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) error {
 	readaheadSize := r.maybeReadahead(offset, len(p))
 
 	// Check if we already have the data from a previous read-ahead.
@@ -135,27 +135,27 @@ func (r *sharedReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) e
 	return r.readable.readInternal(ctx, p, offset, r.forCompaction)
 }
 
-func (r *sharedReadHandle) maybeReadahead(offset int64, len int) int {
+func (r *remoteReadHandle) maybeReadahead(offset int64, len int) int {
 	if r.forCompaction {
-		return sharedMaxReadaheadSize
+		return remoteMaxReadaheadSize
 	}
 	return int(r.readahead.state.maybeReadahead(offset, int64(len)))
 }
 
 // Close is part of the objstorage.ReadHandle interface.
-func (r *sharedReadHandle) Close() error {
+func (r *remoteReadHandle) Close() error {
 	r.readable = nil
 	r.readahead.data = nil
 	return nil
 }
 
 // SetupForCompaction is part of the objstorage.ReadHandle interface.
-func (r *sharedReadHandle) SetupForCompaction() {
+func (r *remoteReadHandle) SetupForCompaction() {
 	r.forCompaction = true
 }
 
 // RecordCacheHit is part of the objstorage.ReadHandle interface.
-func (r *sharedReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {
+func (r *remoteReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {
 	if !r.forCompaction {
 		r.readahead.state.recordCacheHit(offset, size)
 	}

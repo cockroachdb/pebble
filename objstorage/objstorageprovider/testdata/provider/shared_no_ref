@@ -15,54 +15,54 @@ open p1 1
 
 create 1 shared 1 100 no-ref-tracking
 ----
-<shared> create object "61a6-1-000001.sst"
-<shared> close writer for "61a6-1-000001.sst" after 100 bytes
+<remote> create object "61a6-1-000001.sst"
+<remote> close writer for "61a6-1-000001.sst" after 100 bytes
 
 read 1
 0 100
 ----
-<shared> create reader for object "61a6-1-000001.sst": 100 bytes
+<remote> create reader for object "61a6-1-000001.sst": 100 bytes
 size: 100
-<shared> read object "61a6-1-000001.sst" at 0 (length 100)
+<remote> read object "61a6-1-000001.sst" at 0 (length 100)
 0 100: ok (salt 1)
-<shared> close reader for "61a6-1-000001.sst"
+<remote> close reader for "61a6-1-000001.sst"
 
 create 2 shared 2 100 no-ref-tracking
 ----
-<shared> create object "a629-1-000002.sst"
-<shared> close writer for "a629-1-000002.sst" after 100 bytes
+<remote> create object "a629-1-000002.sst"
+<remote> close writer for "a629-1-000002.sst" after 100 bytes
 
 read 2
 0 100
 ----
-<shared> create reader for object "a629-1-000002.sst": 100 bytes
+<remote> create reader for object "a629-1-000002.sst": 100 bytes
 size: 100
-<shared> read object "a629-1-000002.sst" at 0 (length 100)
+<remote> read object "a629-1-000002.sst" at 0 (length 100)
 0 100: ok (salt 2)
-<shared> close reader for "a629-1-000002.sst"
+<remote> close reader for "a629-1-000002.sst"
 
 list
 ----
-000001 -> shared://61a6-1-000001.sst
-000002 -> shared://a629-1-000002.sst
+000001 -> remote://61a6-1-000001.sst
+000002 -> remote://a629-1-000002.sst
 
 link-or-copy 3 shared 3 100 no-ref-tracking
 ----
 <local fs> create: temp-file-1
 <local fs> close: temp-file-1
-<shared> create object "eaac-1-000003.sst"
+<remote> create object "eaac-1-000003.sst"
 <local fs> open: temp-file-1
-<shared> close writer for "eaac-1-000003.sst" after 100 bytes
+<remote> close writer for "eaac-1-000003.sst" after 100 bytes
 <local fs> close: temp-file-1
 
 read 3
 0 100
 ----
-<shared> create reader for object "eaac-1-000003.sst": 100 bytes
+<remote> create reader for object "eaac-1-000003.sst": 100 bytes
 size: 100
-<shared> read object "eaac-1-000003.sst" at 0 (length 100)
+<remote> read object "eaac-1-000003.sst" at 0 (length 100)
 0 100: ok (salt 3)
-<shared> close reader for "eaac-1-000003.sst"
+<remote> close reader for "eaac-1-000003.sst"
 
 close
 ----
@@ -81,36 +81,36 @@ open p1 1
 
 list
 ----
-000001 -> shared://61a6-1-000001.sst
-000002 -> shared://a629-1-000002.sst
-000003 -> shared://eaac-1-000003.sst
+000001 -> remote://61a6-1-000001.sst
+000002 -> remote://a629-1-000002.sst
+000003 -> remote://eaac-1-000003.sst
 
 read 1
 0 100
 ----
-<shared> create reader for object "61a6-1-000001.sst": 100 bytes
+<remote> create reader for object "61a6-1-000001.sst": 100 bytes
 size: 100
-<shared> read object "61a6-1-000001.sst" at 0 (length 100)
+<remote> read object "61a6-1-000001.sst" at 0 (length 100)
 0 100: ok (salt 1)
-<shared> close reader for "61a6-1-000001.sst"
+<remote> close reader for "61a6-1-000001.sst"
 
 read 2
 0 100
 ----
-<shared> create reader for object "a629-1-000002.sst": 100 bytes
+<remote> create reader for object "a629-1-000002.sst": 100 bytes
 size: 100
-<shared> read object "a629-1-000002.sst" at 0 (length 100)
+<remote> read object "a629-1-000002.sst" at 0 (length 100)
 0 100: ok (salt 2)
-<shared> close reader for "a629-1-000002.sst"
+<remote> close reader for "a629-1-000002.sst"
 
 read 3
 0 100
 ----
-<shared> create reader for object "eaac-1-000003.sst": 100 bytes
+<remote> create reader for object "eaac-1-000003.sst": 100 bytes
 size: 100
-<shared> read object "eaac-1-000003.sst" at 0 (length 100)
+<remote> read object "eaac-1-000003.sst" at 0 (length 100)
 0 100: ok (salt 3)
-<shared> close reader for "eaac-1-000003.sst"
+<remote> close reader for "eaac-1-000003.sst"
 
 save-backing b1 1
 ----
@@ -135,31 +135,31 @@ b1 101
 b2 102
 ----
 <local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
-000101 -> shared://61a6-1-000001.sst
-000102 -> shared://61a6-1-000001.sst
+000101 -> remote://61a6-1-000001.sst
+000102 -> remote://61a6-1-000001.sst
 
 list
 ----
-000101 -> shared://61a6-1-000001.sst
-000102 -> shared://61a6-1-000001.sst
+000101 -> remote://61a6-1-000001.sst
+000102 -> remote://61a6-1-000001.sst
 
 read 101
 0 100
 ----
-<shared> create reader for object "61a6-1-000001.sst": 100 bytes
+<remote> create reader for object "61a6-1-000001.sst": 100 bytes
 size: 100
-<shared> read object "61a6-1-000001.sst" at 0 (length 100)
+<remote> read object "61a6-1-000001.sst" at 0 (length 100)
 0 100: ok (salt 1)
-<shared> close reader for "61a6-1-000001.sst"
+<remote> close reader for "61a6-1-000001.sst"
 
 read 102
 0 100
 ----
-<shared> create reader for object "61a6-1-000001.sst": 100 bytes
+<remote> create reader for object "61a6-1-000001.sst": 100 bytes
 size: 100
-<shared> read object "61a6-1-000001.sst" at 0 (length 100)
+<remote> read object "61a6-1-000001.sst" at 0 (length 100)
 0 100: ok (salt 1)
-<shared> close reader for "61a6-1-000001.sst"
+<remote> close reader for "61a6-1-000001.sst"
 
 # In this mode, all removes should be no-ops on the shared backend.
 remove 101

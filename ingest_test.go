@@ -1030,11 +1030,11 @@ func TestSimpleIngestShared(t *testing.T) {
 		NoSyncOnClose:       opts2.NoSyncOnClose,
 		BytesPerSync:        opts2.BytesPerSync,
 	}
-	providerSettings.Shared.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+	providerSettings.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": remote.NewInMem(),
 	})
-	providerSettings.Shared.CreateOnShared = true
-	providerSettings.Shared.CreateOnSharedLocator = ""
+	providerSettings.Remote.CreateOnShared = true
+	providerSettings.Remote.CreateOnSharedLocator = ""
 
 	provider2, err := objstorageprovider.Open(providerSettings)
 	require.NoError(t, err)
@@ -1059,9 +1059,9 @@ func TestSimpleIngestShared(t *testing.T) {
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 		}
-		opts.Experimental.RemoteStorage = providerSettings.Shared.StorageFactory
-		opts.Experimental.CreateOnShared = providerSettings.Shared.CreateOnShared
-		opts.Experimental.CreateOnSharedLocator = providerSettings.Shared.CreateOnSharedLocator
+		opts.Experimental.RemoteStorage = providerSettings.Remote.StorageFactory
+		opts.Experimental.CreateOnShared = providerSettings.Remote.CreateOnShared
+		opts.Experimental.CreateOnSharedLocator = providerSettings.Remote.CreateOnSharedLocator
 
 		var err error
 		d, err = Open("", opts)

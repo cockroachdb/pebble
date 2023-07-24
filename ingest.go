@@ -858,7 +858,7 @@ func ingestTargetLevel(
 //     local sstables. This is the step where overlap with memtables is
 //     determined. If there is overlap, we remember the most recent memtable
 //     that overlaps.
-//  6. Update the sequence number in the ingested local sstables. (Shared
+//  6. Update the sequence number in the ingested local sstables. (Remote
 //     sstables get fixed sequence numbers that were determined at load time.)
 //  7. Wait for the most recent memtable that overlaps to flush (if any).
 //  8. Add the ingested sstables to the version (DB.ingestApply).
@@ -1295,7 +1295,7 @@ func (d *DB) ingest(
 		}
 	}
 
-	// NB: Shared-sstable-only ingestions do not assign a sequence number to
+	// NB: Remote-sstable-only ingestions do not assign a sequence number to
 	// any sstables.
 	globalSeqNum := uint64(0)
 	if len(loadResult.localMeta) > 0 {

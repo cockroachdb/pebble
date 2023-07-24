@@ -2561,7 +2561,7 @@ func firstError(err0, err1 error) error {
 }
 
 // SetCreatorID sets the CreatorID which is needed in order to use shared objects.
-// Shared object usage is disabled until this method is called the first time.
+// Remote object usage is disabled until this method is called the first time.
 // Once set, the Creator ID is persisted and cannot change.
 //
 // Does nothing if SharedStorage was not set in the options when the DB was

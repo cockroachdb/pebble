@@ -24,7 +24,7 @@ func TestSharedObjectBacking(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			st := DefaultSettings(vfs.NewMem(), "")
 			sharedStorage := remote.NewInMem()
-			st.Shared.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+			st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 				"foo": sharedStorage,
 			})
 			p, err := Open(st)
@@ -52,7 +52,7 @@ func TestSharedObjectBacking(t *testing.T) {
 			_, err = h.Get()
 			require.Error(t, err)
 
-			d1, err := decodeSharedObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), buf)
+			d1, err := decodeRemoteObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), buf)
 			require.NoError(t, err)
 			require.Equal(t, uint64(100), uint64(d1.meta.DiskFileNum.FileNum()))
 			require.Equal(t, base.FileTypeTable, d1.meta.FileType)
@@ -73,7 +73,7 @@ func TestSharedObjectBacking(t *testing.T) {
 				buf2 = binary.AppendUvarint(buf2, 2)
 				buf2 = append(buf2, 1, 1)
 
-				d2, err := decodeSharedObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), buf2)
+				d2, err := decodeRemoteObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), buf2)
 				require.NoError(t, err)
 				require.Equal(t, uint64(100), uint64(d2.meta.DiskFileNum.FileNum()))
 				require.Equal(t, base.FileTypeTable, d2.meta.FileType)
@@ -89,7 +89,7 @@ func TestSharedObjectBacking(t *testing.T) {
 
 				buf3 := buf2
 				buf3 = binary.AppendUvarint(buf3, tagNotSafeToIgnoreMask+5)
-				_, err = decodeSharedObjectBacking(meta.FileType, meta.DiskFileNum, buf3)
+				_, err = decodeRemoteObjectBacking(meta.FileType, meta.DiskFileNum, buf3)
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "unknown tag")
 			})
@@ -100,7 +100,7 @@ func TestSharedObjectBacking(t *testing.T) {
 func TestCreateSharedObjectBacking(t *testing.T) {
 	st := DefaultSettings(vfs.NewMem(), "")
 	sharedStorage := remote.NewInMem()
-	st.Shared.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+	st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"foo": sharedStorage,
 	})
 	p, err := Open(st)
@@ -111,7 +111,7 @@ func TestCreateSharedObjectBacking(t *testing.T) {
 
 	backing, err := p.CreateExternalObjectBacking("foo", "custom-obj-name")
 	require.NoError(t, err)
-	d, err := decodeSharedObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), backing)
+	d, err := decodeRemoteObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), backing)
 	require.NoError(t, err)
 	require.Equal(t, uint64(100), uint64(d.meta.DiskFileNum.FileNum()))
 	require.Equal(t, base.FileTypeTable, d.meta.FileType)
