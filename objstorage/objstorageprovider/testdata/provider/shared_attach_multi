@@ -14,10 +14,10 @@ open p1 1
 
 create 1 shared 1 100
 ----
-<shared> create object "61a6-1-000001.sst"
-<shared> close writer for "61a6-1-000001.sst" after 100 bytes
-<shared> create object "61a6-1-000001.sst.ref.1.000001"
-<shared> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
+<remote> create object "61a6-1-000001.sst"
+<remote> close writer for "61a6-1-000001.sst" after 100 bytes
+<remote> create object "61a6-1-000001.sst.ref.1.000001"
+<remote> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
 
 save-backing b1 1
 ----
@@ -40,19 +40,19 @@ b1 101
 b1 102
 b1 103
 ----
-<shared> create object "61a6-1-000001.sst.ref.2.000101"
-<shared> close writer for "61a6-1-000001.sst.ref.2.000101" after 0 bytes
-<shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
-<shared> create object "61a6-1-000001.sst.ref.2.000102"
-<shared> close writer for "61a6-1-000001.sst.ref.2.000102" after 0 bytes
-<shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
-<shared> create object "61a6-1-000001.sst.ref.2.000103"
-<shared> close writer for "61a6-1-000001.sst.ref.2.000103" after 0 bytes
-<shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
+<remote> create object "61a6-1-000001.sst.ref.2.000101"
+<remote> close writer for "61a6-1-000001.sst.ref.2.000101" after 0 bytes
+<remote> size of object "61a6-1-000001.sst.ref.1.000001": 0
+<remote> create object "61a6-1-000001.sst.ref.2.000102"
+<remote> close writer for "61a6-1-000001.sst.ref.2.000102" after 0 bytes
+<remote> size of object "61a6-1-000001.sst.ref.1.000001": 0
+<remote> create object "61a6-1-000001.sst.ref.2.000103"
+<remote> close writer for "61a6-1-000001.sst.ref.2.000103" after 0 bytes
+<remote> size of object "61a6-1-000001.sst.ref.1.000001": 0
 <local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
-000101 -> shared://61a6-1-000001.sst
-000102 -> shared://61a6-1-000001.sst
-000103 -> shared://61a6-1-000001.sst
+000101 -> remote://61a6-1-000001.sst
+000102 -> remote://61a6-1-000001.sst
+000103 -> remote://61a6-1-000001.sst
 
 close-backing b1
 ----
@@ -63,30 +63,30 @@ switch p1
 
 remove 1
 ----
-<shared> delete object "61a6-1-000001.sst.ref.1.000001"
-<shared> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
-<shared>  - 61a6-1-000001.sst.ref.2.000101
-<shared>  - 61a6-1-000001.sst.ref.2.000102
-<shared>  - 61a6-1-000001.sst.ref.2.000103
+<remote> delete object "61a6-1-000001.sst.ref.1.000001"
+<remote> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<remote>  - 61a6-1-000001.sst.ref.2.000101
+<remote>  - 61a6-1-000001.sst.ref.2.000102
+<remote>  - 61a6-1-000001.sst.ref.2.000103
 
 switch p2
 ----
 
 remove 101
 ----
-<shared> delete object "61a6-1-000001.sst.ref.2.000101"
-<shared> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
-<shared>  - 61a6-1-000001.sst.ref.2.000102
-<shared>  - 61a6-1-000001.sst.ref.2.000103
+<remote> delete object "61a6-1-000001.sst.ref.2.000101"
+<remote> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<remote>  - 61a6-1-000001.sst.ref.2.000102
+<remote>  - 61a6-1-000001.sst.ref.2.000103
 
 remove 103
 ----
-<shared> delete object "61a6-1-000001.sst.ref.2.000103"
-<shared> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
-<shared>  - 61a6-1-000001.sst.ref.2.000102
+<remote> delete object "61a6-1-000001.sst.ref.2.000103"
+<remote> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<remote>  - 61a6-1-000001.sst.ref.2.000102
 
 remove 102
 ----
-<shared> delete object "61a6-1-000001.sst.ref.2.000102"
-<shared> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
-<shared> delete object "61a6-1-000001.sst"
+<remote> delete object "61a6-1-000001.sst.ref.2.000102"
+<remote> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<remote> delete object "61a6-1-000001.sst"

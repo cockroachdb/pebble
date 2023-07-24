@@ -15,24 +15,24 @@ open p1 1
 
 create 1 shared 1 100
 ----
-<shared> create object "61a6-1-000001.sst"
-<shared> close writer for "61a6-1-000001.sst" after 100 bytes
-<shared> create object "61a6-1-000001.sst.ref.1.000001"
-<shared> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
+<remote> create object "61a6-1-000001.sst"
+<remote> close writer for "61a6-1-000001.sst" after 100 bytes
+<remote> create object "61a6-1-000001.sst.ref.1.000001"
+<remote> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
 
 create 2 shared 2 200
 ----
-<shared> create object "a629-1-000002.sst"
-<shared> close writer for "a629-1-000002.sst" after 200 bytes
-<shared> create object "a629-1-000002.sst.ref.1.000002"
-<shared> close writer for "a629-1-000002.sst.ref.1.000002" after 0 bytes
+<remote> create object "a629-1-000002.sst"
+<remote> close writer for "a629-1-000002.sst" after 200 bytes
+<remote> create object "a629-1-000002.sst.ref.1.000002"
+<remote> close writer for "a629-1-000002.sst.ref.1.000002" after 0 bytes
 
 create 3 shared 3 300
 ----
-<shared> create object "eaac-1-000003.sst"
-<shared> close writer for "eaac-1-000003.sst" after 300 bytes
-<shared> create object "eaac-1-000003.sst.ref.1.000003"
-<shared> close writer for "eaac-1-000003.sst.ref.1.000003" after 0 bytes
+<remote> create object "eaac-1-000003.sst"
+<remote> close writer for "eaac-1-000003.sst" after 300 bytes
+<remote> create object "eaac-1-000003.sst.ref.1.000003"
+<remote> close writer for "eaac-1-000003.sst.ref.1.000003" after 0 bytes
 
 create 100 local 100 15
 ----
@@ -42,15 +42,15 @@ create 100 local 100 15
 
 list
 ----
-000001 -> shared://61a6-1-000001.sst
-000002 -> shared://a629-1-000002.sst
-000003 -> shared://eaac-1-000003.sst
+000001 -> remote://61a6-1-000001.sst
+000002 -> remote://a629-1-000002.sst
+000003 -> remote://eaac-1-000003.sst
 000100 -> p1/000100.sst
 
 # Can't get backing of local object.
 save-backing foo 100
 ----
-object 000100 not on shared storage
+object 000100 not on remote storage
 
 save-backing b1 1
 ----
@@ -82,69 +82,69 @@ open p2 2
 
 create 100 shared 100 15
 ----
-<shared> create object "fd72-2-000100.sst"
-<shared> close writer for "fd72-2-000100.sst" after 15 bytes
-<shared> create object "fd72-2-000100.sst.ref.2.000100"
-<shared> close writer for "fd72-2-000100.sst.ref.2.000100" after 0 bytes
+<remote> create object "fd72-2-000100.sst"
+<remote> close writer for "fd72-2-000100.sst" after 15 bytes
+<remote> create object "fd72-2-000100.sst.ref.2.000100"
+<remote> close writer for "fd72-2-000100.sst.ref.2.000100" after 0 bytes
 
 attach
 b1 101
 b2 102
 b3 103
 ----
-<shared> create object "61a6-1-000001.sst.ref.2.000101"
-<shared> close writer for "61a6-1-000001.sst.ref.2.000101" after 0 bytes
-<shared> size of object "61a6-1-000001.sst.ref.1.000001": 0
-<shared> create object "a629-1-000002.sst.ref.2.000102"
-<shared> close writer for "a629-1-000002.sst.ref.2.000102" after 0 bytes
-<shared> size of object "a629-1-000002.sst.ref.1.000002": 0
-<shared> create object "eaac-1-000003.sst.ref.2.000103"
-<shared> close writer for "eaac-1-000003.sst.ref.2.000103" after 0 bytes
-<shared> size of object "eaac-1-000003.sst.ref.1.000003": 0
+<remote> create object "61a6-1-000001.sst.ref.2.000101"
+<remote> close writer for "61a6-1-000001.sst.ref.2.000101" after 0 bytes
+<remote> size of object "61a6-1-000001.sst.ref.1.000001": 0
+<remote> create object "a629-1-000002.sst.ref.2.000102"
+<remote> close writer for "a629-1-000002.sst.ref.2.000102" after 0 bytes
+<remote> size of object "a629-1-000002.sst.ref.1.000002": 0
+<remote> create object "eaac-1-000003.sst.ref.2.000103"
+<remote> close writer for "eaac-1-000003.sst.ref.2.000103" after 0 bytes
+<remote> size of object "eaac-1-000003.sst.ref.1.000003": 0
 <local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
-000101 -> shared://61a6-1-000001.sst
-000102 -> shared://a629-1-000002.sst
-000103 -> shared://eaac-1-000003.sst
+000101 -> remote://61a6-1-000001.sst
+000102 -> remote://a629-1-000002.sst
+000103 -> remote://eaac-1-000003.sst
 
 list
 ----
-000100 -> shared://fd72-2-000100.sst
-000101 -> shared://61a6-1-000001.sst
-000102 -> shared://a629-1-000002.sst
-000103 -> shared://eaac-1-000003.sst
+000100 -> remote://fd72-2-000100.sst
+000101 -> remote://61a6-1-000001.sst
+000102 -> remote://a629-1-000002.sst
+000103 -> remote://eaac-1-000003.sst
 
 read 101
 0 100
 15 10
 ----
-<shared> size of object "61a6-1-000001.sst.ref.2.000101": 0
-<shared> create reader for object "61a6-1-000001.sst": 100 bytes
+<remote> size of object "61a6-1-000001.sst.ref.2.000101": 0
+<remote> create reader for object "61a6-1-000001.sst": 100 bytes
 size: 100
-<shared> read object "61a6-1-000001.sst" at 0 (length 100)
+<remote> read object "61a6-1-000001.sst" at 0 (length 100)
 0 100: ok (salt 1)
-<shared> read object "61a6-1-000001.sst" at 15 (length 10)
+<remote> read object "61a6-1-000001.sst" at 15 (length 10)
 15 10: ok (salt 1)
-<shared> close reader for "61a6-1-000001.sst"
+<remote> close reader for "61a6-1-000001.sst"
 
 read 102
 0 200
 90 100
 ----
-<shared> size of object "a629-1-000002.sst.ref.2.000102": 0
-<shared> create reader for object "a629-1-000002.sst": 200 bytes
+<remote> size of object "a629-1-000002.sst.ref.2.000102": 0
+<remote> create reader for object "a629-1-000002.sst": 200 bytes
 size: 200
-<shared> read object "a629-1-000002.sst" at 0 (length 200)
+<remote> read object "a629-1-000002.sst" at 0 (length 200)
 0 200: ok (salt 2)
-<shared> read object "a629-1-000002.sst" at 90 (length 100)
+<remote> read object "a629-1-000002.sst" at 90 (length 100)
 90 100: ok (salt 2)
-<shared> close reader for "a629-1-000002.sst"
+<remote> close reader for "a629-1-000002.sst"
 
 read 103
 0 300
 ----
-<shared> size of object "eaac-1-000003.sst.ref.2.000103": 0
-<shared> create reader for object "eaac-1-000003.sst": 300 bytes
+<remote> size of object "eaac-1-000003.sst.ref.2.000103": 0
+<remote> create reader for object "eaac-1-000003.sst": 300 bytes
 size: 300
-<shared> read object "eaac-1-000003.sst" at 0 (length 300)
+<remote> read object "eaac-1-000003.sst" at 0 (length 300)
 0 300: ok (salt 3)
-<shared> close reader for "eaac-1-000003.sst"
+<remote> close reader for "eaac-1-000003.sst"

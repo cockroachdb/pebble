@@ -30,20 +30,20 @@ type provider struct {
 
 	tracer *objiotracing.Tracer
 
-	shared sharedSubsystem
+	remote remoteSubsystem
 
 	mu struct {
 		sync.RWMutex
 
-		shared struct {
-			// catalogBatch accumulates shared object creations and deletions until
+		remote struct {
+			// catalogBatch accumulates remote object creations and deletions until
 			// Sync is called.
 			catalogBatch remoteobjcat.Batch
 
 			storageObjects map[remote.Locator]remote.Storage
 		}
 
-		// localObjectsChanged is set if non-shared objects were created or deleted
+		// localObjectsChanged is set if non-remote objects were created or deleted
 		// but Sync was not yet called.
 		localObjectsChanged bool
 
@@ -91,19 +91,19 @@ type Settings struct {
 	// out a large chunk of dirty filesystem buffers.
 	BytesPerSync int
 
-	// Fields here are set only if the provider is to support shared objects
+	// Fields here are set only if the provider is to support remote objects
 	// (experimental).
-	Shared struct {
+	Remote struct {
 		StorageFactory remote.StorageFactory
 
-		// If CreateOnShared is true, sstables are created on shared storage using
+		// If CreateOnShared is true, sstables are created on remote storage using
 		// the CreateOnSharedLocator (when the PreferSharedStorage create option is
 		// true).
 		CreateOnShared        bool
 		CreateOnSharedLocator remote.Locator
 
 		// CacheSizeBytes is the size of the on-disk block cache for objects
-		// on shared storage. If it is 0, no cache is used.
+		// on remote storage. If it is 0, no cache is used.
 		CacheSizeBytes int64
 
 		// CacheBlockSize is the block size of the cache; if 0, the default of 32KB is used.
@@ -128,7 +128,7 @@ type Settings struct {
 	}
 }
 
-// DefaultSettings initializes default settings (with no shared storage),
+// DefaultSettings initializes default settings (with no remote storage),
 // suitable for tests and tools.
 func DefaultSettings(fs vfs.FS, dirName string) Settings {
 	return Settings{
@@ -174,8 +174,8 @@ func open(settings Settings) (p *provider, _ error) {
 		return nil, err
 	}
 
-	// Initialize shared subsystem (if configured) and add shared objects.
-	if err := p.sharedInit(); err != nil {
+	// Initialize remote subsystem (if configured) and add remote objects.
+	if err := p.remoteInit(); err != nil {
 		return nil, err
 	}
 
@@ -217,7 +217,7 @@ func (p *provider) OpenForReading(
 	if !meta.IsRemote() {
 		r, err = p.vfsOpenForReading(ctx, fileType, fileNum, opts)
 	} else {
-		r, err = p.sharedOpenForReading(ctx, meta, opts)
+		r, err = p.remoteOpenForReading(ctx, meta, opts)
 		if err != nil && p.isNotExistError(meta, err) {
 			// Wrap the error so that IsNotExistError functions properly.
 			err = errors.Mark(err, os.ErrNotExist)
@@ -242,8 +242,8 @@ func (p *provider) Create(
 	fileNum base.DiskFileNum,
 	opts objstorage.CreateOptions,
 ) (w objstorage.Writable, meta objstorage.ObjectMetadata, err error) {
-	if opts.PreferSharedStorage && p.st.Shared.CreateOnShared {
-		w, meta, err = p.sharedCreate(ctx, fileType, fileNum, p.st.Shared.CreateOnSharedLocator, opts)
+	if opts.PreferSharedStorage && p.st.Remote.CreateOnShared {
+		w, meta, err = p.sharedCreate(ctx, fileType, fileNum, p.st.Remote.CreateOnSharedLocator, opts)
 	} else {
 		w, meta, err = p.vfsCreate(ctx, fileType, fileNum)
 	}
@@ -260,8 +260,8 @@ func (p *provider) Create(
 
 // Remove removes an object.
 //
-// Note that if the object is shared, the object is only (conceptually) removed
-// from this provider. If other providers have references on the shared object,
+// Note that if the object is remote, the object is only (conceptually) removed
+// from this provider. If other providers have references on the remote object,
 // it will not be removed.
 //
 // The object is not guaranteed to be durably removed until Sync is called.
@@ -274,7 +274,7 @@ func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) erro
 	if !meta.IsRemote() {
 		err = p.vfsRemove(fileType, fileNum)
 	} else {
-		// TODO(radu): implement shared object removal (i.e. deref).
+		// TODO(radu): implement remote object removal (i.e. deref).
 		err = p.sharedUnref(meta)
 		if err != nil && p.isNotExistError(meta, err) {
 			// Wrap the error so that IsNotExistError functions properly.
@@ -331,7 +331,7 @@ func (p *provider) LinkOrCopyFromLocal(
 	dstFileNum base.DiskFileNum,
 	opts objstorage.CreateOptions,
 ) (objstorage.ObjectMetadata, error) {
-	shared := opts.PreferSharedStorage && p.st.Shared.CreateOnShared
+	shared := opts.PreferSharedStorage && p.st.Remote.CreateOnShared
 	if !shared && srcFS == p.st.FS {
 		// Wrap the normal filesystem with one which wraps newly created files with
 		// vfs.NewSyncingFile.
@@ -414,7 +414,7 @@ func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 	if !meta.IsRemote() {
 		return p.vfsPath(meta.FileType, meta.DiskFileNum)
 	}
-	return p.sharedPath(meta)
+	return p.remotePath(meta)
 }
 
 // Size returns the size of the object.
@@ -422,7 +422,7 @@ func (p *provider) Size(meta objstorage.ObjectMetadata) (int64, error) {
 	if !meta.IsRemote() {
 		return p.vfsSize(meta.FileType, meta.DiskFileNum)
 	}
-	return p.sharedSize(meta)
+	return p.remoteSize(meta)
 }
 
 // List is part of the objstorage.Provider interface.
@@ -447,7 +447,7 @@ func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
 	defer p.mu.Unlock()
 	p.mu.knownObjects[meta.DiskFileNum] = meta
 	if meta.IsRemote() {
-		p.mu.shared.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{
+		p.mu.remote.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{
 			FileNum:        meta.DiskFileNum,
 			FileType:       meta.FileType,
 			CreatorID:      meta.Remote.CreatorID,
@@ -470,13 +470,13 @@ func (p *provider) removeMetadata(fileNum base.DiskFileNum) {
 	}
 	delete(p.mu.knownObjects, fileNum)
 	if meta.IsRemote() {
-		p.mu.shared.catalogBatch.DeleteObject(fileNum)
+		p.mu.remote.catalogBatch.DeleteObject(fileNum)
 	} else {
 		p.mu.localObjectsChanged = true
 	}
 }
 
-// protectObject prevents the unreferencing of a shared object until
+// protectObject prevents the unreferencing of a remote object until
 // unprotectObject is called.
 func (p *provider) protectObject(fileNum base.DiskFileNum) {
 	p.mu.Lock()

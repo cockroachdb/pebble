@@ -14,10 +14,10 @@ open p5 5
 
 create 1 shared 1 100
 ----
-<shared> create object "d632-5-000001.sst"
-<shared> close writer for "d632-5-000001.sst" after 100 bytes
-<shared> create object "d632-5-000001.sst.ref.5.000001"
-<shared> close writer for "d632-5-000001.sst.ref.5.000001" after 0 bytes
+<remote> create object "d632-5-000001.sst"
+<remote> close writer for "d632-5-000001.sst" after 100 bytes
+<remote> create object "d632-5-000001.sst.ref.5.000001"
+<remote> close writer for "d632-5-000001.sst.ref.5.000001" after 0 bytes
 
 save-backing p5b1 1
 ----
@@ -42,11 +42,11 @@ open p6 6
 attach
 p5b1 101
 ----
-<shared> create object "d632-5-000001.sst.ref.6.000101"
-<shared> close writer for "d632-5-000001.sst.ref.6.000101" after 0 bytes
-<shared> size of object "d632-5-000001.sst.ref.5.000001": 0
+<remote> create object "d632-5-000001.sst.ref.6.000101"
+<remote> close writer for "d632-5-000001.sst.ref.6.000101" after 0 bytes
+<remote> size of object "d632-5-000001.sst.ref.5.000001": 0
 <local fs> sync: p6/REMOTE-OBJ-CATALOG-000001
-000101 -> shared://d632-5-000001.sst
+000101 -> remote://d632-5-000001.sst
 
 switch p5
 ----
@@ -57,10 +57,10 @@ close-backing p5b1
 
 create 2 shared 2 100
 ----
-<shared> create object "1ab5-5-000002.sst"
-<shared> close writer for "1ab5-5-000002.sst" after 100 bytes
-<shared> create object "1ab5-5-000002.sst.ref.5.000002"
-<shared> close writer for "1ab5-5-000002.sst.ref.5.000002" after 0 bytes
+<remote> create object "1ab5-5-000002.sst"
+<remote> close writer for "1ab5-5-000002.sst" after 100 bytes
+<remote> create object "1ab5-5-000002.sst.ref.5.000002"
+<remote> close writer for "1ab5-5-000002.sst.ref.5.000002" after 0 bytes
 
 save-backing p5b2 2
 ----
@@ -71,9 +71,9 @@ close-backing p5b2
 
 remove 2
 ----
-<shared> delete object "1ab5-5-000002.sst.ref.5.000002"
-<shared> list (prefix="1ab5-5-000002.sst.ref.", delimiter="")
-<shared> delete object "1ab5-5-000002.sst"
+<remote> delete object "1ab5-5-000002.sst.ref.5.000002"
+<remote> list (prefix="1ab5-5-000002.sst.ref.", delimiter="")
+<remote> delete object "1ab5-5-000002.sst"
 
 switch p6
 ----
@@ -82,10 +82,10 @@ switch p6
 attach
 p5b2 102
 ----
-<shared> create object "1ab5-5-000002.sst.ref.6.000102"
-<shared> close writer for "1ab5-5-000002.sst.ref.6.000102" after 0 bytes
-<shared> size of object "1ab5-5-000002.sst.ref.5.000002": error: file does not exist
-<shared> delete object "1ab5-5-000002.sst.ref.6.000102"
-<shared> list (prefix="1ab5-5-000002.sst.ref.", delimiter="")
-<shared> delete object "1ab5-5-000002.sst"
+<remote> create object "1ab5-5-000002.sst.ref.6.000102"
+<remote> close writer for "1ab5-5-000002.sst.ref.6.000102" after 0 bytes
+<remote> size of object "1ab5-5-000002.sst.ref.5.000002": error: file does not exist
+<remote> delete object "1ab5-5-000002.sst.ref.6.000102"
+<remote> list (prefix="1ab5-5-000002.sst.ref.", delimiter="")
+<remote> delete object "1ab5-5-000002.sst"
 error: origin marker object "1ab5-5-000002.sst.ref.5.000002" does not exist; object probably removed from the provider which created the backing
