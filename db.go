@@ -256,6 +256,10 @@ type DB struct {
 	// but are still referenced by an inuse readState.
 	memTableCount    atomic.Int64
 	memTableReserved atomic.Int64 // number of bytes reserved in the cache for memtables
+	// memTableRecycle holds a pointer to the arena that backed the most
+	// recently obsolete memtable. The next memtable allocation will use this
+	// memtable if has not already been used for a new memtable.
+	memTableRecycle atomic.Pointer[[]byte]
 
 	// The size of the current log file (i.e. db.mu.log.queue[len(queue)-1].
 	logSize atomic.Uint64
@@ -1580,6 +1584,11 @@ func (d *DB) Close() error {
 		d.opts.private.fsCloser.Close()
 	}
 
+	// If there's an unused, recycled memtable, we need to free it.
+	if obsoleteMemTable := d.memTableRecycle.Swap(nil); obsoleteMemTable != nil {
+		manual.Free(*obsoleteMemTable)
+	}
+
 	// Return an error if the user failed to close all open snapshots.
 	if v := d.mu.snapshots.count(); v > 0 {
 		err = firstError(err, errors.Errorf("leaked snapshots: %d open snapshots on DB %p", v, d))
@@ -2175,13 +2184,35 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 		}
 	}
 
+	// Before attempting to allocate a new memtable, check if there's one
+	// available for recycling in memTableRecycle. Large contiguous allocations
+	// can be costly as fragmentation makes it more difficult to find a large
+	// contiguous free space. We've observed 64MB allocations taking 10ms+.
+	//
+	// To reduce these costly allocations, up to 1 obsolete memtable is stashed
+	// in `d.memTableRecycle` to allow a future memtables to reuse existing
+	// memory.
+	var arenaBuf []byte
+	if recycled := d.memTableRecycle.Swap(nil); recycled != nil {
+		arenaBuf = *recycled
+		// If the recycled memtable is too small, free it and fall through to
+		// allocating.
+		if len(arenaBuf) != size {
+			manual.Free(arenaBuf)
+			arenaBuf = nil
+		}
+	}
+	if arenaBuf == nil {
+		arenaBuf = manual.New(int(size))
+	}
+
 	d.memTableCount.Add(1)
 	d.memTableReserved.Add(int64(size))
 	releaseAccountingReservation := d.opts.Cache.Reserve(size)
 
 	mem := newMemTable(memTableOptions{
 		Options:   d.opts,
-		arenaBuf:  manual.New(int(size)),
+		arenaBuf:  arenaBuf,
 		logSeqNum: logSeqNum,
 	})
 
@@ -2190,7 +2221,16 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 
 	entry := d.newFlushableEntry(mem, logNum, logSeqNum)
 	entry.releaseMemAccounting = func() {
-		manual.Free(mem.arenaBuf)
+		// The next memtable allocation might be able to reuse this memtable.
+		// Stash it on d.memTableRecycle.
+		recycleBuf := new([]byte)
+		*recycleBuf = mem.arenaBuf
+		if unusedBuf := d.memTableRecycle.Swap(recycleBuf); unusedBuf != nil {
+			// There was already a memtable waiting to be recycled. We're not
+			// responsible for freeing it.
+			manual.Free(*unusedBuf)
+		}
+
 		mem.arenaBuf = nil
 		d.memTableCount.Add(-1)
 		d.memTableReserved.Add(-int64(size))

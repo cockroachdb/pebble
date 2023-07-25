@@ -1935,3 +1935,22 @@ func verifyGetNotFound(t *testing.T, r Reader, key []byte) {
 		t.Fatalf("expected nil, but got %s", val)
 	}
 }
+
+func BenchmarkRotateMemtables(b *testing.B) {
+	o := &Options{FS: vfs.NewMem(), MemTableSize: 64 << 20 /* 64 MB */}
+	d, err := Open("", o)
+	require.NoError(b, err)
+
+	// We want to jump to full-sized memtables.
+	d.mu.Lock()
+	d.mu.mem.nextSize = o.MemTableSize
+	d.mu.Unlock()
+	require.NoError(b, d.Flush())
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := d.Flush(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
