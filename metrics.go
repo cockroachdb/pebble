@@ -184,7 +184,10 @@ type Metrics struct {
 		// The count of memtables.
 		Count int64
 		// The number of bytes present in zombie memtables which are no longer
-		// referenced by the current DB state but are still in use by an iterator.
+		// referenced by the current DB state. An unbounded number of memtables
+		// may be zombie if they're still in use by an iterator. One additional
+		// memtable may be zombie if it's no longer in use and waiting to be
+		// recycled.
 		ZombieSize uint64
 		// The count of zombie memtables.
 		ZombieCount int64

@@ -147,7 +147,7 @@ WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
+MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.2KB)
 Block cache: 5 entries (1.0KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
@@ -180,7 +180,7 @@ WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
+MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 1 (633B)
 Block cache: 3 entries (528B)  hit rate: 42.9%
 Table cache: 1 entries (800B)  hit rate: 66.7%
@@ -216,7 +216,7 @@ WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
-MemTables: 1 (256KB)  zombie: 0 (0B)
+MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 42.9%
 Table cache: 0 entries (0B)  hit rate: 66.7%
@@ -278,7 +278,7 @@ WAL: 1 files (93B)  in: 116B  written: 242B (109% overhead)
 Flushes: 3
 Compactions: 1  estimated debt: 2.8KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
-MemTables: 1 (256KB)  zombie: 0 (0B)
+MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 42.9%
 Table cache: 0 entries (0B)  hit rate: 66.7%
@@ -324,7 +324,7 @@ WAL: 1 files (93B)  in: 116B  written: 242B (109% overhead)
 Flushes: 3
 Compactions: 2  estimated debt: 0B  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
-MemTables: 1 (256KB)  zombie: 0 (0B)
+MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 27.3%
 Table cache: 0 entries (0B)  hit rate: 58.3%
@@ -416,7 +416,7 @@ WAL: 1 files (26B)  in: 176B  written: 175B (-1% overhead)
 Flushes: 8
 Compactions: 2  estimated debt: 4.8KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
-MemTables: 1 (1.0MB)  zombie: 0 (0B)
+MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B)
 Block cache: 12 entries (2.3KB)  hit rate: 31.1%
 Table cache: 3 entries (2.3KB)  hit rate: 57.9%
