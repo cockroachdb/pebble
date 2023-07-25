@@ -22,7 +22,7 @@ import (
 // Catalog is used to manage the on-disk remote object catalog.
 //
 // The catalog file is a log of records, where each record is an encoded
-// versionEdit.
+// VersionEdit.
 type Catalog struct {
 	fs      vfs.FS
 	dirname string
@@ -136,7 +136,7 @@ func (c *Catalog) SetCreatorID(id objstorage.CreatorID) error {
 		return nil
 	}
 
-	ve := versionEdit{CreatorID: id}
+	ve := VersionEdit{CreatorID: id}
 	if err := c.writeToCatalogFileLocked(&ve); err != nil {
 		return errors.Wrapf(err, "pebble: could not write to remote object catalog: %v", err)
 	}
@@ -165,7 +165,7 @@ func (c *Catalog) closeCatalogFile() error {
 
 // Batch is used to perform multiple object additions/deletions at once.
 type Batch struct {
-	ve versionEdit
+	ve VersionEdit
 }
 
 // AddObject adds a new object to the batch.
@@ -272,29 +272,21 @@ func (c *Catalog) loadFromCatalogFile(filename string) error {
 			return errors.Wrapf(err, "pebble: error when loading remote object catalog file %q",
 				errors.Safe(filename))
 		}
-		var ve versionEdit
+		var ve VersionEdit
 		err = ve.Decode(r)
 		if err != nil {
 			return errors.Wrapf(err, "pebble: error when loading remote object catalog file %q",
 				errors.Safe(filename))
 		}
 		// Apply the version edit to the current state.
-		if ve.CreatorID.IsSet() {
-			c.mu.creatorID = ve.CreatorID
-		}
-		for _, fileNum := range ve.DeletedObjects {
-			delete(c.mu.objects, fileNum)
-		}
-		for _, meta := range ve.NewObjects {
-			c.mu.objects[meta.FileNum] = meta
-		}
+		ve.Apply(&c.mu.creatorID, c.mu.objects)
 	}
 	return nil
 }
 
-// writeToCatalogFileLocked writes a versionEdit to the catalog file.
+// writeToCatalogFileLocked writes a VersionEdit to the catalog file.
 // Creates a new file if this is the first write.
-func (c *Catalog) writeToCatalogFileLocked(ve *versionEdit) error {
+func (c *Catalog) writeToCatalogFileLocked(ve *VersionEdit) error {
 	c.mu.rotationHelper.AddRecord(int64(len(ve.NewObjects) + len(ve.DeletedObjects)))
 	snapshotSize := int64(len(c.mu.objects))
 
@@ -337,8 +329,8 @@ func (c *Catalog) createNewCatalogFileLocked() (outErr error) {
 	}
 	recWriter := record.NewWriter(file)
 	err = func() error {
-		// Create a versionEdit that gets us from an empty catalog to the current state.
-		var ve versionEdit
+		// Create a VersionEdit that gets us from an empty catalog to the current state.
+		var ve VersionEdit
 		ve.CreatorID = c.mu.creatorID
 		ve.NewObjects = make([]RemoteObjectMetadata, 0, len(c.mu.objects))
 		for _, meta := range c.mu.objects {
@@ -375,7 +367,7 @@ func (c *Catalog) createNewCatalogFileLocked() (outErr error) {
 	return nil
 }
 
-func writeRecord(ve *versionEdit, file vfs.File, recWriter *record.Writer) error {
+func writeRecord(ve *VersionEdit, file vfs.File, recWriter *record.Writer) error {
 	w, err := recWriter.Next()
 	if err != nil {
 		return err
