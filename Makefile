@@ -80,6 +80,7 @@ generate-test-data:
 	${GO} run -tags make_incorrect_manifests ./tool/make_incorrect_manifests.go
 	${GO} run -tags make_test_find_db ./tool/make_test_find_db.go
 	${GO} run -tags make_test_sstables ./tool/make_test_sstables.go
+	${GO} run -tags make_test_remotecat ./tool/make_test_remotecat.go
 
 mod-update:
 	${GO} get -u

@@ -30,6 +30,7 @@ type T struct {
 	find            *findT
 	lsm             *lsmT
 	manifest        *manifestT
+	remotecat       *remoteCatalogT
 	sstable         *sstableT
 	wal             *walT
 	opts            pebble.Options
@@ -113,6 +114,7 @@ func New(opts ...Option) *T {
 	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)
+	t.remotecat = newRemoteCatalog(&t.opts)
 	t.sstable = newSSTable(&t.opts, t.comparers, t.mergers)
 	t.wal = newWAL(&t.opts, t.comparers, t.defaultComparer)
 	t.Commands = []*cobra.Command{
@@ -120,6 +122,7 @@ func New(opts ...Option) *T {
 		t.find.Root,
 		t.lsm.Root,
 		t.manifest.Root,
+		t.remotecat.Root,
 		t.sstable.Root,
 		t.wal.Root,
 	}

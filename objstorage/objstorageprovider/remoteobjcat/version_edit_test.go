@@ -16,7 +16,7 @@ import (
 )
 
 func TestVersionEditRoundTrip(t *testing.T) {
-	for _, ve := range []versionEdit{
+	for _, ve := range []VersionEdit{
 		{},
 		{
 			CreatorID: 12345,
@@ -76,8 +76,8 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	}
 }
 
-func checkRoundTrip(e0 versionEdit) error {
-	var e1 versionEdit
+func checkRoundTrip(e0 VersionEdit) error {
+	var e1 VersionEdit
 	buf := new(bytes.Buffer)
 	if err := e0.Encode(buf); err != nil {
 		return errors.Wrap(err, "encode")
