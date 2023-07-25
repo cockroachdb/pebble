@@ -827,20 +827,34 @@ func TestMemTableReservation(t *testing.T) {
 		t.Fatalf("expected failure, but found success: %s", h.Get())
 	}
 
-	// Flush the memtable. The memtable reservation should be unchanged because a
-	// new memtable will be allocated.
+	// Flush the memtable. The memtable reservation should double because old
+	// memtable will be recycled, saved for the next memtable allocation.
 	require.NoError(t, d.Flush())
-	checkReserved(int64(opts.MemTableSize))
+	checkReserved(int64(2 * opts.MemTableSize))
+	// Flush again. The memtable reservation should be unchanged because at most
+	// 1 memtable may be preserved for recycling.
 
 	// Flush in the presence of an active iterator. The iterator will hold a
 	// reference to a readState which will in turn hold a reader reference to the
-	// memtable. While the iterator is open, there will be the memory for 2
-	// memtables reserved.
+	// memtable.
 	iter := d.NewIter(nil)
 	require.NoError(t, d.Flush())
+	// The flush moved the recycled memtable into position as an active mutable
+	// memtable. There are now two allocated memtables: 1 mutable and 1 pinned
+	// by the iterator's read state.
 	checkReserved(2 * int64(opts.MemTableSize))
+
+	// Flushing again should increase the reservation total to 3x: 1 active
+	// mutable, 1 for recycling, 1 pinned by iterator's read state.
+	require.NoError(t, d.Flush())
+	checkReserved(3 * int64(opts.MemTableSize))
+
+	// Closing the iterator will release the iterator's read state, and the old
+	// memtable will be moved into position as the next memtable to recycle.
+	// There was already a memtable ready to be recycled, so that memtable will
+	// be freed and the overall reservation total is reduced to 2x.
 	require.NoError(t, iter.Close())
-	checkReserved(int64(opts.MemTableSize))
+	checkReserved(2 * int64(opts.MemTableSize))
 
 	require.NoError(t, d.Close())
 }
@@ -1933,5 +1947,24 @@ func verifyGetNotFound(t *testing.T, r Reader, key []byte) {
 	val, _, err := r.Get(key)
 	if err != base.ErrNotFound {
 		t.Fatalf("expected nil, but got %s", val)
+	}
+}
+
+func BenchmarkRotateMemtables(b *testing.B) {
+	o := &Options{FS: vfs.NewMem(), MemTableSize: 64 << 20 /* 64 MB */}
+	d, err := Open("", o)
+	require.NoError(b, err)
+
+	// We want to jump to full-sized memtables.
+	d.mu.Lock()
+	d.mu.mem.nextSize = o.MemTableSize
+	d.mu.Unlock()
+	require.NoError(b, d.Flush())
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := d.Flush(); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

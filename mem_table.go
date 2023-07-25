@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
@@ -84,7 +85,16 @@ type memTable struct {
 	rangeKeys  keySpanCache
 	// The current logSeqNum at the time the memtable was created. This is
 	// guaranteed to be less than or equal to any seqnum stored in the memtable.
-	logSeqNum uint64
+	logSeqNum                    uint64
+	releaseAccountingReservation func()
+}
+
+func (m *memTable) free() {
+	if m != nil {
+		m.releaseAccountingReservation()
+		manual.Free(m.arenaBuf)
+		m.arenaBuf = nil
+	}
 }
 
 // memTableOptions holds configuration used when creating a memTable. All of
@@ -92,9 +102,10 @@ type memTable struct {
 // which is used by tests.
 type memTableOptions struct {
 	*Options
-	arenaBuf  []byte
-	size      int
-	logSeqNum uint64
+	arenaBuf                     []byte
+	size                         int
+	logSeqNum                    uint64
+	releaseAccountingReservation func()
 }
 
 func checkMemTable(obj interface{}) {
@@ -109,16 +120,22 @@ func checkMemTable(obj interface{}) {
 // Options.MemTableSize is used instead.
 func newMemTable(opts memTableOptions) *memTable {
 	opts.Options = opts.Options.EnsureDefaults()
+	m := new(memTable)
+	m.init(opts)
+	return m
+}
+
+func (m *memTable) init(opts memTableOptions) {
 	if opts.size == 0 {
 		opts.size = opts.MemTableSize
 	}
-
-	m := &memTable{
-		cmp:       opts.Comparer.Compare,
-		formatKey: opts.Comparer.FormatKey,
-		equal:     opts.Comparer.Equal,
-		arenaBuf:  opts.arenaBuf,
-		logSeqNum: opts.logSeqNum,
+	*m = memTable{
+		cmp:                          opts.Comparer.Compare,
+		formatKey:                    opts.Comparer.FormatKey,
+		equal:                        opts.Comparer.Equal,
+		arenaBuf:                     opts.arenaBuf,
+		logSeqNum:                    opts.logSeqNum,
+		releaseAccountingReservation: opts.releaseAccountingReservation,
 	}
 	m.writerRefs.Store(1)
 	m.tombstones = keySpanCache{
@@ -143,7 +160,6 @@ func newMemTable(opts memTableOptions) *memTable {
 	m.rangeDelSkl.Reset(arena, m.cmp)
 	m.rangeKeySkl.Reset(arena, m.cmp)
 	m.reserved = arena.Size()
-	return m
 }
 
 func (m *memTable) writerRef() {
