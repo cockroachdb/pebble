@@ -187,7 +187,9 @@ type Iterator struct {
 	comparer  base.Comparer
 	iter      internalIterator
 	pointIter internalIterator
+	// Either readState or version is set, but not both.
 	readState *readState
+	version   *version
 	// rangeKey holds iteration state specific to iteration over range keys.
 	// The range key field may be nil if the Iterator has never been configured
 	// to iterate over range keys. Its non-nilness cannot be used to determine

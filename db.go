@@ -974,12 +974,26 @@ var iterAllocPool = sync.Pool{
 	},
 }
 
+// snapshotIterOpts denotes snapshot-related iterator options when calling
+// newIter. Either a snapshot is specified for classic snapshots in the snapshot
+// list, or a seqnum+version is specified for file-only snapshots. If a readState
+// is specified, that readState is used instead of getting one from the db.
+type snapshotIterOpts struct {
+	snapshot  *Snapshot
+	readState *readState
+	seqNum    uint64
+	vers      *version
+}
+
 // newIter constructs a new iterator, merging in batch iterators as an extra
 // level.
-func (d *DB) newIter(ctx context.Context, batch *Batch, s *Snapshot, o *IterOptions) *Iterator {
+func (d *DB) newIter(
+	ctx context.Context, batch *Batch, sOpts snapshotIterOpts, o *IterOptions,
+) *Iterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
+	s := sOpts.snapshot
 	if o.rangeKeys() {
 		if d.FormatMajorVersion() < FormatRangeKeys {
 			panic(fmt.Sprintf(
@@ -1001,13 +1015,18 @@ func (d *DB) newIter(ctx context.Context, batch *Batch, s *Snapshot, o *IterOpti
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
-	readState := d.loadReadState()
+	readState := sOpts.readState
+	if readState == nil {
+		readState = d.loadReadState()
+	}
 
 	// Determine the seqnum to read at after grabbing the read state (current and
 	// memtables) above.
 	var seqNum uint64
 	if s != nil {
 		seqNum = s.seqNum
+	} else if sOpts.vers != nil {
+		seqNum = sOpts.seqNum
 	} else {
 		seqNum = d.mu.versions.visibleSeqNum.Load()
 	}
@@ -1022,6 +1041,7 @@ func (d *DB) newIter(ctx context.Context, batch *Batch, s *Snapshot, o *IterOpti
 		merge:               d.merge,
 		comparer:            *d.opts.Comparer,
 		readState:           readState,
+		version:             sOpts.vers,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
 		boundsBuf:           buf.boundsBuf,
@@ -1051,7 +1071,10 @@ func (d *DB) newIter(ctx context.Context, batch *Batch, s *Snapshot, o *IterOpti
 func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 	// Short-hand.
 	dbi := &buf.dbi
-	memtables := dbi.readState.memtables
+	var memtables flushableList
+	if dbi.readState != nil {
+		memtables = dbi.readState.memtables
+	}
 	if dbi.opts.OnlyReadGuaranteedDurable {
 		memtables = nil
 	} else {
@@ -1294,7 +1317,10 @@ func (i *Iterator) constructPointIter(
 	}
 	numMergingLevels += len(memtables)
 
-	current := i.readState.current
+	current := i.version
+	if current == nil {
+		current = i.readState.current
+	}
 	numMergingLevels += len(current.L0SublevelFiles)
 	numLevelIters += len(current.L0SublevelFiles)
 	for level := 1; level < len(current.Levels); level++ {
@@ -1423,7 +1449,7 @@ func (d *DB) NewIter(o *IterOptions) *Iterator {
 // NewIterWithContext is like NewIter, and additionally accepts a context for
 // tracing.
 func (d *DB) NewIterWithContext(ctx context.Context, o *IterOptions) *Iterator {
-	return d.newIter(ctx, nil /* batch */, nil /* snapshot */, o)
+	return d.newIter(ctx, nil /* batch */, snapshotIterOpts{}, o)
 }
 
 // NewSnapshot returns a point-in-time view of the current DB state. Iterators
@@ -1447,6 +1473,33 @@ func (d *DB) NewSnapshot() *Snapshot {
 	d.mu.snapshots.pushBack(s)
 	d.mu.Unlock()
 	return s
+}
+
+// NewEventuallyFileOnlySnapshot returns a point-in-time view of the current DB
+// state, similar to NewSnapshot. See the comment at EventuallyFileOnlySnapshot
+// for its semantics.
+func (d *DB) NewEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFileOnlySnapshot {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+
+	d.mu.Lock()
+	s := &Snapshot{
+		db:     d,
+		seqNum: d.mu.versions.visibleSeqNum.Load(),
+	}
+	es := &EventuallyFileOnlySnapshot{
+		db:              d,
+		seqNum:          s.seqNum,
+		protectedRanges: keyRanges,
+		closed:          make(chan struct{}),
+	}
+	s.efos = es
+	es.mu.snap = s
+	es.mu.readState = d.loadReadState()
+	d.mu.snapshots.pushBack(s)
+	d.mu.Unlock()
+	return es
 }
 
 // Close closes the DB.

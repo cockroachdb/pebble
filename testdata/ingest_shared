@@ -749,3 +749,235 @@ bb: (., [bb-f) @8=foo UPDATED)
 e: (baz, [bb-f) @8=foo)
 ff: (notcovered, . UPDATED)
 .
+
+# Eventually File-only snapshots error out when a concurrent excise happens.
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+set a foo
+set b bar
+set c baz
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+switch 2
+----
+ok
+
+batch
+set b foobar
+----
+
+file-only-snapshot s1
+ aa bb
+ e f
+----
+ok
+
+lsm
+----
+
+iter snapshot=s1
+first
+next
+next
+----
+b: (foobar, .)
+.
+.
+
+# The below call should do a flush.
+
+wait-for-file-only-snapshot s1
+----
+ok
+
+lsm
+----
+0.0:
+  000005:[b#10,SET-b#10,SET]
+
+iter snapshot=s1
+first
+next
+next
+----
+b: (foobar, .)
+.
+.
+
+replicate 1 2 a d
+----
+replicated 1 shared SSTs
+
+iter snapshot=s1
+first
+next
+next
+----
+b: (foobar, .)
+.
+.
+
+iter
+first
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+.
+
+switch 1
+----
+ok
+
+batch
+del c
+----
+
+# The below excise and wait should succeed as the flush will end up transitioning
+# the file-only snapshot.
+
+lsm
+----
+6:
+  000005:[a#10,SET-c#12,SET]
+
+file-only-snapshot s2
+ a cc
+----
+ok
+
+iter snapshot=s2
+first
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+.
+.
+.
+
+flush
+----
+
+compact a-z
+----
+ok
+
+wait-for-file-only-snapshot s2
+----
+ok
+
+replicate 2 1 a d
+----
+replicated 1 shared SSTs
+
+wait-for-file-only-snapshot s2
+----
+ok
+
+lsm
+----
+6:
+  000010:[a#1,SET-c#1,SET]
+
+iter snapshot=s2
+first
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+.
+.
+
+
+iter
+first
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+.
+.
+
+batch
+set d foo
+set e bar
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+lsm
+----
+6:
+  000010:[a#1,SET-c#1,SET]
+  000012:[d#14,SET-e#15,SET]
+
+switch 2
+----
+ok
+
+batch
+set f foobar
+----
+
+file-only-snapshot s3
+ c g
+----
+ok
+
+lsm
+----
+6:
+  000007:[a#1,SET-c#1,SET]
+
+iter snapshot=s3
+first
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+f: (foobar, .)
+.
+
+replicate 1 2 b ee
+----
+replicated 2 shared SSTs
+
+wait-for-file-only-snapshot s3
+----
+pebble: snapshot excised before conversion to file-only
