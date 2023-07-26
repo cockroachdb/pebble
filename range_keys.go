@@ -36,19 +36,24 @@ func (i *Iterator) constructRangeKeyIter() {
 	}
 
 	// Next are the flushables: memtables and large batches.
-	for j := len(i.readState.memtables) - 1; j >= 0; j-- {
-		mem := i.readState.memtables[j]
-		// We only need to read from memtables which contain sequence numbers older
-		// than seqNum.
-		if logSeqNum := mem.logSeqNum; logSeqNum >= i.seqNum {
-			continue
-		}
-		if rki := mem.newRangeKeyIter(&i.opts); rki != nil {
-			i.rangeKey.iterConfig.AddLevel(rki)
+	if i.readState != nil {
+		for j := len(i.readState.memtables) - 1; j >= 0; j-- {
+			mem := i.readState.memtables[j]
+			// We only need to read from memtables which contain sequence numbers older
+			// than seqNum.
+			if logSeqNum := mem.logSeqNum; logSeqNum >= i.seqNum {
+				continue
+			}
+			if rki := mem.newRangeKeyIter(&i.opts); rki != nil {
+				i.rangeKey.iterConfig.AddLevel(rki)
+			}
 		}
 	}
 
-	current := i.readState.current
+	current := i.version
+	if current == nil {
+		current = i.readState.current
+	}
 	// Next are the file levels: L0 sub-levels followed by lower levels.
 	//
 	// Add file-specific iterators for L0 files containing range keys. This is less
