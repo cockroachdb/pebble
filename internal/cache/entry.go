@@ -139,9 +139,7 @@ func (e *entry) setValue(v *Value) {
 	}
 	old := e.val
 	e.val = v
-	if old != nil {
-		old.release()
-	}
+	old.release()
 }
 
 func (e *entry) peekValue() *Value {
