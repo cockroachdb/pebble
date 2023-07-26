@@ -67,6 +67,13 @@ func (k *KeyRange) Overlaps(cmp base.Compare, m *fileMetadata) bool {
 	return k.OverlapsInternalKeyRange(cmp, m.Smallest, m.Largest)
 }
 
+// OverlapsKeyRange checks if this span overlaps with the provided KeyRange.
+// Not that we aren't checking for full containment of either span in the other,
+// just that there's a key x that is in both key ranges.
+func (k *KeyRange) OverlapsKeyRange(cmp Compare, span KeyRange) bool {
+	return cmp(k.Start, span.End) < 0 && cmp(k.End, span.Start) > 0
+}
+
 func ingestValidateKey(opts *Options, key *InternalKey) error {
 	if key.Kind() == InternalKeyKindInvalid {
 		return base.CorruptionErrorf("pebble: external sstable has corrupted key: %s",
@@ -493,7 +500,7 @@ func ingestLink(
 	return nil
 }
 
-func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bool {
+func ingestMemtableOverlaps(cmp Compare, mem flushable, keyRanges []internalKeyRange) bool {
 	iter := mem.newIter(nil)
 	rangeDelIter := mem.newRangeDelIter(nil)
 	rkeyIter := mem.newRangeKeyIter(nil)
@@ -509,8 +516,7 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 		return err
 	}
 
-	for _, m := range meta {
-		kr := internalKeyRange{smallest: m.Smallest, largest: m.Largest}
+	for _, kr := range keyRanges {
 		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, kr, cmp) {
 			closeIters()
 			return true
@@ -1177,6 +1183,35 @@ func (d *DB) ingest(
 			}
 		}
 
+		if exciseSpan.Valid() {
+			// Check for the case where our excise overlaps with an
+			// EventuallyFileOnlySnapshot that has yet to be converted to a file-only
+			// snapshot (as it's waiting on a memtable to flush). In that case, wait
+			// on the mutable memtable just to be safe.
+			//
+			// This is a pessimistic case that can cause a significant wait before
+			// this ingestion goes through, however that's okay because it should
+			// only happen on very rare occasions; most excises should match exactly
+			// with the spans of EventuallyFileOnlySnapshot.
+			breakOuter := false
+			for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
+				if s.efos == nil {
+					continue
+				}
+				for j := range s.efos.protectedRanges {
+					if s.efos.protectedRanges[j].OverlapsKeyRange(d.cmp, exciseSpan) {
+						// Set m to the newest (mutable) memtable.
+						mem = d.mu.mem.queue[len(d.mu.mem.queue)-1]
+						breakOuter = true
+						break
+					}
+				}
+				if breakOuter {
+					break
+				}
+			}
+		}
+
 		if mem == nil {
 			// No overlap with any of the queued flushables, so no need to queue
 			// after them.
@@ -1761,20 +1796,33 @@ func (d *DB) ingestApply(
 				}
 			}
 		}
-	}
-	for c := range d.mu.compact.inProgress {
-		if c.versionEditApplied {
-			continue
+		for c := range d.mu.compact.inProgress {
+			if c.versionEditApplied {
+				continue
+			}
+			// Check if this compaction overlaps with the excise span. Note that just
+			// checking if the inputs individually overlap with the excise span
+			// isn't sufficient; for instance, a compaction could have [a,b] and [e,f]
+			// as inputs and write it all out as [a,b,e,f] in one sstable. If we're
+			// doing a [c,d) excise at the same time as this compaction, we will have
+			// to error out the whole compaction as we can't guarantee it hasn't/won't
+			// write a file overlapping with the excise span.
+			if exciseSpan.OverlapsInternalKeyRange(d.cmp, c.smallest, c.largest) {
+				c.cancel.Store(true)
+			}
 		}
-		// Check if this compaction overlaps with the excise span. Note that just
-		// checking if the inputs individually overlap with the excise span
-		// isn't sufficient; for instance, a compaction could have [a,b] and [e,f]
-		// as inputs and write it all out as [a,b,e,f] in one sstable. If we're
-		// doing a [c,d) excise at the same time as this compaction, we will have
-		// to error out the whole compaction as we can't guarantee it hasn't/won't
-		// write a file overlapping with the excise span.
-		if exciseSpan.OverlapsInternalKeyRange(d.cmp, c.smallest, c.largest) {
-			c.cancel.Store(true)
+		// Check for any EventuallyFileOnlySnapshots that could be watching for
+		// an excise on this span.
+		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
+			if s.efos == nil {
+				continue
+			}
+			efos := s.efos
+			for i := range efos.protectedRanges {
+				if efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
+					efos.excised.Store(true)
+				}
+			}
 		}
 	}
 	if err := d.mu.versions.logAndApply(jobID, ve, metrics, false /* forceRotation */, func() []compactionInfo {
