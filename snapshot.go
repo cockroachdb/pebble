@@ -8,15 +8,27 @@ import (
 	"context"
 	"io"
 	"math"
+	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/rangekey"
 )
+
+// ErrSnapshotExcised is returned from WaitForFileOnlySnapshot if an excise
+// overlapping with one of the EventuallyFileOnlySnapshot's KeyRanges gets
+// applied before the transition of that EFOS to a file-only snapshot.
+var ErrSnapshotExcised = errors.New("pebble: snapshot excised before conversion to file-only snapshot")
 
 // Snapshot provides a read-only point-in-time view of the DB state.
 type Snapshot struct {
 	// The db the snapshot was created from.
 	db     *DB
 	seqNum uint64
+
+	// Set if part of an EventuallyFileOnlySnapshot.
+	efos *EventuallyFileOnlySnapshot
 
 	// The list the snapshot is linked into.
 	list *snapshotList
@@ -54,7 +66,7 @@ func (s *Snapshot) NewIterWithContext(ctx context.Context, o *IterOptions) *Iter
 	if s.db == nil {
 		panic(ErrClosed)
 	}
-	return s.db.newIter(ctx, nil /* batch */, s, o)
+	return s.db.newIter(ctx, nil /* batch */, snapshotIterOpts{snapshot: s}, o)
 }
 
 // ScanInternal scans all internal keys within the specified bounds, truncating
@@ -95,15 +107,9 @@ func (s *Snapshot) ScanInternal(
 	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
 }
 
-// Close closes the snapshot, releasing its resources. Close must be called.
-// Failure to do so will result in a tiny memory leak and a large leak of
-// resources on disk due to the entries the snapshot is preventing from being
-// deleted.
-func (s *Snapshot) Close() error {
-	if s.db == nil {
-		panic(ErrClosed)
-	}
-	s.db.mu.Lock()
+// closeLocked is similar to Close(), except it requires that db.mu be held
+// by the caller.
+func (s *Snapshot) closeLocked() error {
 	s.db.mu.snapshots.remove(s)
 
 	// If s was the previous earliest snapshot, we might be able to reclaim
@@ -111,9 +117,24 @@ func (s *Snapshot) Close() error {
 	if e := s.db.mu.snapshots.earliest(); e > s.seqNum {
 		s.db.maybeScheduleCompactionPicker(pickElisionOnly)
 	}
-	s.db.mu.Unlock()
 	s.db = nil
 	return nil
+}
+
+// Close closes the snapshot, releasing its resources. Close must be called.
+// Failure to do so will result in a tiny memory leak and a large leak of
+// resources on disk due to the entries the snapshot is preventing from being
+// deleted.
+//
+// d.mu must NOT be held by the caller.
+func (s *Snapshot) Close() error {
+	db := s.db
+	if db == nil {
+		panic(ErrClosed)
+	}
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	return s.closeLocked()
 }
 
 type snapshotList struct {
@@ -182,4 +203,234 @@ func (l *snapshotList) remove(s *Snapshot) {
 	s.next = nil // avoid memory leaks
 	s.prev = nil // avoid memory leaks
 	s.list = nil // avoid memory leaks
+}
+
+// EventuallyFileOnlySnapshot (aka EFOS) provides a read-only point-in-time view
+// of the DB state, similar to Snapshot. It removes itself from the Snapshot list
+// once all overlapping memtables with seqnums < seqNum have been flushed, and
+// grabs a ref of the current Version once that has happened. If an Excise
+// happens before this point, an error is returned from
+// WaitForFileOnlySnapshot(), and the EFOS retains snapshot behaviour through the
+// readState it obtained at creation time. This setup allows the EFOS to be an
+// Excise-aware version of Snapshots that also doesn't induce greater write-amp
+// in the future, as it holds onto files and memtables like an iterator instead
+// of forcing compactions to hold onto obsolete keys. If there are no overlapping
+// memtables at excise time, we start off with a version ref instead of waiting
+// for the transition.
+//
+// An EventuallyFileOnlySnapshot also takes a list of KeyRanges at
+// instantiation time. These are saved, and any excises that happen during the
+// lifespan of the EFOS before it transitions to a file-only snapshot, that also
+// overlap with one of these key ranges, causes calls to
+// WaitForFileOnlySnapshot() to error out.
+type EventuallyFileOnlySnapshot struct {
+	mu struct {
+		// NB: If both this mutex and db.mu are being grabbed, db.mu should be
+		// grabbed _before_ grabbing this one.
+		sync.Mutex
+
+		// Either the {snap,readState} fields are set below, or the version is set at
+		// any given point of time. If a snapshot is referenced, this is not a
+		// file-only snapshot yet, and if a version is set (and ref'd) this is a
+		// file-only snapshot.
+
+		// The wrapped regular snapshot, if not a file-only snapshot yet. The
+		// readState has already been ref()d once if it's set.
+		snap      *Snapshot
+		readState *readState
+		// The wrapped version reference, if a file-only snapshot.
+		vers *version
+	}
+
+	// Key ranges to watch for an excise on.
+	protectedRanges []KeyRange
+	// excised, if true, signals that the above ranges were excised during the
+	// lifetime of this snapshot.
+	excised atomic.Bool
+
+	// The db the snapshot was created from.
+	db     *DB
+	seqNum uint64
+
+	closed chan struct{}
+}
+
+func (d *DB) makeEventuallyFileOnlySnapshot(
+	keyRanges []KeyRange, internalKeyRanges []internalKeyRange,
+) *EventuallyFileOnlySnapshot {
+	isFileOnly := true
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	seqNum := d.mu.versions.visibleSeqNum.Load()
+	// Check if any of the keyRanges overlap with a memtable.
+	for i := range d.mu.mem.queue {
+		mem := d.mu.mem.queue[i]
+		if ingestMemtableOverlaps(d.cmp, mem, internalKeyRanges) {
+			isFileOnly = false
+			break
+		}
+	}
+	es := &EventuallyFileOnlySnapshot{
+		db:              d,
+		seqNum:          seqNum,
+		protectedRanges: keyRanges,
+		closed:          make(chan struct{}),
+	}
+	if isFileOnly {
+		es.mu.vers = d.mu.versions.currentVersion()
+		es.mu.vers.Ref()
+	} else {
+		s := &Snapshot{
+			db:     d,
+			seqNum: seqNum,
+		}
+		s.efos = es
+		es.mu.snap = s
+		es.mu.readState = d.loadReadState()
+		d.mu.snapshots.pushBack(s)
+	}
+	return es
+}
+
+// Transitions this EventuallyFileOnlySnapshot to a file-only snapshot. Requires
+// earliestUnflushedSeqNum and vers to correspond to the same Version from the
+// current or a past acquisition of db.mu. vers must have been Ref()'d before
+// that mutex was released, if it was released.
+//
+// NB: The caller is expected to check for es.excised before making this
+// call.
+//
+// d.mu must be held when calling this method.
+func (es *EventuallyFileOnlySnapshot) maybeTransitionToFileOnlySnapshot(vers *version) error {
+	es.mu.Lock()
+	select {
+	case <-es.closed:
+		vers.UnrefLocked()
+		es.mu.Unlock()
+		return ErrClosed
+	default:
+	}
+	var oldSnap *Snapshot
+	var oldReadState *readState
+	if es.mu.snap != nil {
+		// The caller has already called Ref() on vers.
+		es.mu.vers = vers
+		// NB: The callers should have already done a check of es.excised.
+		oldSnap = es.mu.snap
+		oldReadState = es.mu.readState
+		es.mu.snap = nil
+		es.mu.readState = nil
+	} else {
+		vers.UnrefLocked()
+	}
+	es.mu.Unlock()
+	// It's okay to close a snapshot even if iterators are already open on it.
+	if oldSnap != nil {
+		oldReadState.unrefLocked()
+		return oldSnap.closeLocked()
+	}
+	return nil
+}
+
+// WaitForFileOnlySnapshot blocks the calling goroutine until this snapshot
+// has been converted into a file-only snapshot (i.e. all memtables containing
+// keys < seqNum are flushed). A duration can be passed in, and if nonzero,
+// a delayed flush will be scheduled at that duration if necessary.
+//
+// Idempotent; can be called multiple times with no side effects.
+func (es *EventuallyFileOnlySnapshot) WaitForFileOnlySnapshot(dur time.Duration) error {
+	es.mu.Lock()
+	if es.mu.vers != nil {
+		// Fast path.
+		es.mu.Unlock()
+		return nil
+	}
+	es.mu.Unlock()
+
+	es.db.mu.Lock()
+	defer es.db.mu.Unlock()
+	earliestUnflushedSeqNum := es.db.getEarliestUnflushedSeqNumLocked()
+	vers := es.db.mu.versions.currentVersion()
+	for earliestUnflushedSeqNum < es.seqNum {
+		select {
+		case <-es.closed:
+			return ErrClosed
+		default:
+		}
+		// Check if the current mutable memtable contains keys less than seqNum.
+		// If so, rotate it.
+		if es.db.mu.mem.mutable.logSeqNum < es.seqNum && dur.Nanoseconds() > 0 {
+			es.db.maybeScheduleDelayedFlush(es.db.mu.mem.mutable, dur)
+		} else {
+			es.db.maybeScheduleFlush()
+		}
+		es.db.mu.compact.cond.Wait()
+
+		earliestUnflushedSeqNum = es.db.getEarliestUnflushedSeqNumLocked()
+		vers = es.db.mu.versions.currentVersion()
+	}
+	if es.excised.Load() {
+		return ErrSnapshotExcised
+	}
+	vers.Ref()
+
+	err := es.maybeTransitionToFileOnlySnapshot(vers)
+	es.db.maybeScheduleObsoleteTableDeletionLocked()
+	return err
+}
+
+// Close closes the file-only snapshot and releases all referenced resources.
+// Not idempotent.
+func (es *EventuallyFileOnlySnapshot) Close() error {
+	close(es.closed)
+	es.db.mu.Lock()
+	defer es.db.mu.Unlock()
+	es.mu.Lock()
+	defer es.mu.Unlock()
+
+	if es.mu.snap != nil {
+		if err := es.mu.snap.closeLocked(); err != nil {
+			return err
+		}
+		es.mu.readState.unrefLocked()
+		es.db.maybeScheduleObsoleteTableDeletionLocked()
+	}
+	if es.mu.vers != nil {
+		es.mu.vers.UnrefLocked()
+	}
+	return nil
+}
+
+// Get implements the Reader interface.
+func (es *EventuallyFileOnlySnapshot) Get(key []byte) (value []byte, closer io.Closer, err error) {
+	panic("unimplemented")
+}
+
+// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
+// return false). The iterator can be positioned via a call to SeekGE,
+// SeekLT, First or Last.
+func (es *EventuallyFileOnlySnapshot) NewIter(o *IterOptions) *Iterator {
+	return es.NewIterWithContext(context.Background(), o)
+}
+
+// NewIterWithContext is like NewIter, and additionally accepts a context for
+// tracing.
+func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
+	ctx context.Context, o *IterOptions,
+) *Iterator {
+	select {
+	case <-es.closed:
+		panic(ErrClosed)
+	default:
+	}
+	es.mu.Lock()
+	defer es.mu.Unlock()
+	if es.mu.snap != nil {
+		sOpts := snapshotIterOpts{snapshot: es.mu.snap, readState: es.mu.readState}
+		return es.db.newIter(ctx, nil /* batch */, sOpts, o)
+	}
+
+	sOpts := snapshotIterOpts{seqNum: es.seqNum, vers: es.mu.vers}
+	return es.db.newIter(ctx, nil /* batch */, sOpts, o)
 }

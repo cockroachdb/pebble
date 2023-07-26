@@ -749,3 +749,340 @@ bb: (., [bb-f) @8=foo UPDATED)
 e: (baz, [bb-f) @8=foo)
 ff: (notcovered, . UPDATED)
 .
+
+# Eventually File-only snapshots error out when a concurrent excise happens.
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+set a foo
+set b bar
+set c baz
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+switch 2
+----
+ok
+
+batch
+set b foobar
+----
+
+file-only-snapshot s1
+ aa bb
+ e f
+----
+ok
+
+lsm
+----
+
+iter snapshot=s1
+first
+next
+next
+----
+b: (foobar, .)
+.
+.
+
+# The below call should do a flush.
+
+wait-for-file-only-snapshot s1
+----
+ok
+
+lsm
+----
+0.0:
+  000005:[b#10,SET-b#10,SET]
+
+iter snapshot=s1
+first
+next
+next
+----
+b: (foobar, .)
+.
+.
+
+replicate 1 2 a d
+----
+replicated 1 shared SSTs
+
+iter snapshot=s1
+first
+next
+next
+----
+b: (foobar, .)
+.
+.
+
+iter
+first
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+.
+
+switch 1
+----
+ok
+
+batch
+del c
+----
+
+# The below excise and wait should succeed as the flush will end up transitioning
+# the file-only snapshot.
+
+lsm
+----
+6:
+  000005:[a#10,SET-c#12,SET]
+
+file-only-snapshot s2
+ a cc
+----
+ok
+
+iter snapshot=s2
+first
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+.
+.
+.
+
+flush
+----
+
+compact a-z
+----
+ok
+
+replicate 2 1 a d
+----
+replicated 1 shared SSTs
+
+wait-for-file-only-snapshot s2
+----
+ok
+
+lsm
+----
+6:
+  000010:[a#1,SET-c#1,SET]
+
+iter snapshot=s2
+first
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+.
+.
+
+
+iter
+first
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+.
+.
+
+batch
+set d foo
+set e bar
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+switch 2
+----
+ok
+
+flush
+----
+
+batch
+set f foobar
+----
+
+# The below file-only snapshot is the more challenging case of a partial overlap
+# between an excise and a file-only snapshot. In this case the EFOS transition
+# blocks on the memtable but the excise proceeds through, causing the EFOS'
+# WaitForFileOnlySnapshot() call to error out. Snapshot consistency is still
+# maintained through the readState.
+
+file-only-snapshot s3
+ c g
+----
+ok
+
+iter snapshot=s3
+first
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+f: (foobar, .)
+.
+
+replicate 1 2 b e
+----
+replicated 2 shared SSTs
+
+wait-for-file-only-snapshot s3
+----
+pebble: snapshot excised before conversion to file-only snapshot
+
+iter snapshot=s3
+first
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+f: (foobar, .)
+.
+
+iter
+first
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+d: (foo, .)
+f: (foobar, .)
+
+# The below example tests for a file-only snapshot that overlaps completely
+# with an excise right after it. The wait succeeds and snapshot consistency is
+# maintained.
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+set a foo
+set b bar
+set c baz
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+switch 2
+----
+ok
+
+batch
+set d foobar
+----
+
+file-only-snapshot s4
+ b e
+----
+ok
+
+iter snapshot=s4
+first
+next
+next
+----
+d: (foobar, .)
+.
+.
+
+replicate 1 2 b e
+----
+replicated 1 shared SSTs
+
+wait-for-file-only-snapshot s4
+----
+ok
+
+iter snapshot=s4
+first
+next
+next
+----
+d: (foobar, .)
+.
+.
+
+compact a-z
+----
+ok
+
+iter snapshot=s4
+first
+next
+next
+----
+d: (foobar, .)
+.
+.
+
+iter
+first
+next
+next
+----
+b: (bar, .)
+c: (baz, .)
+.
