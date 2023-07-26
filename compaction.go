@@ -2114,6 +2114,32 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				d.mu.versions.metrics.Flush.AsIngestTableCount += l.TablesIngested
 			}
 		}
+
+		// Update if any eventually file-only snapshots have now transitioned to
+		// being file-only.
+		earliestUnflushedSeqNum := d.getEarliestUnflushedSeqNumLocked()
+		currentVersion := d.mu.versions.currentVersion()
+		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; {
+			if s.efos == nil {
+				s = s.next
+				continue
+			}
+			if base.Visible(earliestUnflushedSeqNum, s.efos.seqNum, InternalKeySeqNumMax) {
+				s = s.next
+				continue
+			}
+			if s.efos.excised.Load() {
+				s = s.next
+				continue
+			}
+			currentVersion.Ref()
+
+			// NB: s.efos.maybeTransitionToFileOnlySnapshot could close s, in which
+			// case s.next would be nil. Save it before calling it.
+			next := s.next
+			_ = s.efos.maybeTransitionToFileOnlySnapshot(currentVersion)
+			s = next
+		}
 	}
 	// Signal FlushEnd after installing the new readState. This helps for unit
 	// tests that use the callback to trigger a read using an iterator with
