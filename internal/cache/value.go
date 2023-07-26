@@ -40,7 +40,7 @@ func (v *Value) acquire() {
 }
 
 func (v *Value) release() {
-	if v.ref.release() {
+	if v != nil && v.ref.release() {
 		v.free()
 	}
 }
