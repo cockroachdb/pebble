@@ -629,7 +629,7 @@ type Metrics struct {
 // Cache implements Pebble's sharded block cache. The Clock-PRO algorithm is
 // used for page replacement
 // (http://static.usenix.org/event/usenix05/tech/general/full_papers/jiang/jiang_html/html.html). In
-// order to provide better concurrency, 2 x NumCPUs shards are created, with
+// order to provide better concurrency, 4 x NumCPUs shards are created, with
 // each shard being given 1/n of the target cache size. The Clock-PRO algorithm
 // is run independently on each shard.
 //
@@ -685,7 +685,34 @@ type Cache struct {
 //	defer c.Unref()
 //	d, err := pebble.Open(pebble.Options{Cache: c})
 func New(size int64) *Cache {
-	return newShards(size, 2*runtime.GOMAXPROCS(0))
+	// How many cache shards should we create?
+	//
+	// Note that the probability two processors will try to access the same
+	// shard at the same time increases superlinearly with the number of
+	// processors (Eg, consider the brithday problem where each CPU is a person,
+	// and each shard is a possible birthday).
+	//
+	// We could consider growing the number of shards superlinearly, but
+	// increasing the shard count may reduce the effectiveness of the caching
+	// algorithm if frequently-accessed blocks are insufficiently distributed
+	// across shards. If a shard's size is smaller than a single frequently
+	// scanned sstable, then the shard will be unable to hold the entire
+	// frequently-scanned table in memory despite other shards still holding
+	// infrequently accessed blocks.
+	//
+	// Experimentally, we've observed contention contributing to tail latencies
+	// at 2 shards per processor. For now we use 4x, recognizing this may not be
+	// final word.
+	m := 4 * runtime.GOMAXPROCS(0)
+
+	// In tests, we can use large CPU machines with small cache sizes and have
+	// many caches in existence at a time. If sharding into m shards would
+	// produce small of shards, constrain the number of shards to 4.
+	const minimumShardSize = 4 << 20 // 4 MiB
+	if m > 4 && int(size)/m < minimumShardSize {
+		m = 4
+	}
+	return newShards(size, m)
 }
 
 func newShards(size int64, shards int) *Cache {
