@@ -1743,6 +1743,30 @@ func (d *DB) splitManualCompaction(
 	return splitCompactions
 }
 
+// DownloadSpan is a key range passed to the Download method.
+type DownloadSpan struct {
+	StartKey []byte
+	// EndKey is exclusive.
+	EndKey []byte
+}
+
+// Download ensures that the LSM does not use any external sstables for the
+// given key ranges. It does so by performing appropriate compactions so that
+// all external data becomes available locally.
+//
+// Note that calling this method does not imply that all other compactions stop;
+// it simply informs Pebble of a list of spans for which external data should be
+// downloaded with high priority.
+//
+// The method returns once no external sstasbles overlap the given spans, the
+// context is canceled, or an error is hit.
+//
+// TODO(radu): consider passing a priority/impact knob to express how important
+// the download is (versus live traffic performance, LSM health).
+func (d *DB) Download(ctx context.Context, spans []DownloadSpan) error {
+	return errors.Errorf("not implemented")
+}
+
 // Flush the memtable to stable storage.
 func (d *DB) Flush() error {
 	flushDone, err := d.AsyncFlush()
