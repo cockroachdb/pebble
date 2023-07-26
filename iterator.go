@@ -187,7 +187,9 @@ type Iterator struct {
 	comparer  base.Comparer
 	iter      internalIterator
 	pointIter internalIterator
+	// Either readState or version is set, but not both.
 	readState *readState
+	version   *version
 	// rangeKey holds iteration state specific to iteration over range keys.
 	// The range key field may be nil if the Iterator has never been configured
 	// to iterate over range keys. Its non-nilness cannot be used to determine
@@ -2655,11 +2657,17 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 	}
 
 	readState := i.readState
-	if readState == nil {
+	vers := i.version
+	if readState == nil && vers == nil {
 		return nil, errors.Errorf("cannot Clone a closed Iterator")
 	}
 	// i is already holding a ref, so there is no race with unref here.
-	readState.ref()
+	if readState != nil {
+		readState.ref()
+	}
+	if vers != nil {
+		vers.Ref()
+	}
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
 	buf := iterAllocPool.Get().(*iterAlloc)
@@ -2671,6 +2679,7 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 		merge:               i.merge,
 		comparer:            i.comparer,
 		readState:           readState,
+		version:             vers,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
 		boundsBuf:           buf.boundsBuf,

@@ -2114,6 +2114,24 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				d.mu.versions.metrics.Flush.AsIngestTableCount += l.TablesIngested
 			}
 		}
+
+		// Update if any eventually file-only snapshots have now transitioned to
+		// being file-only.
+		earliestUnflushedSeqNum := d.getEarliestUnflushedSeqNumLocked()
+		currentVersion := d.mu.versions.currentVersion()
+		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
+			if s.efos == nil {
+				continue
+			}
+			if base.Visible(earliestUnflushedSeqNum, s.efos.seqNum, InternalKeySeqNumMax) {
+				continue
+			}
+			currentVersion.Ref()
+			// The fact that this transition spins off its own goroutine is
+			// unfortunate, but it's better than having the flush goroutine wait for
+			// acquisition of s.efos' internal mutex while it holds the DB mutex.
+			s.efos.maybeTransitionToFileOnlySnapshotAsync(earliestUnflushedSeqNum, currentVersion)
+		}
 	}
 	// Signal FlushEnd after installing the new readState. This helps for unit
 	// tests that use the callback to trigger a read using an iterator with
