@@ -1081,7 +1081,7 @@ func (b *Batch) NewIterWithContext(ctx context.Context, o *IterOptions) *Iterato
 	if b.index == nil {
 		return &Iterator{err: ErrNotIndexed}
 	}
-	return b.db.newIter(ctx, b, nil /* snapshot */, o)
+	return b.db.newIter(ctx, b, snapshotIterOpts{}, o)
 }
 
 // newInternalIter creates a new internalIterator that iterates over the
