@@ -176,7 +176,9 @@ func (c *shard) Set(id uint64, fileNum base.DiskFileNum, offset uint64, value *V
 		// cache entry was a test page
 		c.sizeTest -= e.size
 		c.countTest--
-		c.metaDel(e)
+		if oldV := c.metaDel(e); oldV != nil {
+			oldV.release()
+		}
 		c.metaCheck(e)
 
 		e.size = int64(len(value.buf))
@@ -233,37 +235,70 @@ func (c *shard) Delete(id uint64, fileNum base.DiskFileNum, offset uint64) {
 		return
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	var deletedValue *Value
+	func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
 
-	e := c.blocks.Get(k)
-	if e == nil {
-		return
-	}
-	c.metaEvict(e)
-
-	c.checkConsistency()
+		e := c.blocks.Get(k)
+		if e == nil {
+			return
+		}
+		deletedValue = c.metaEvict(e)
+		c.checkConsistency()
+	}()
+	// Now that the mutex has been dropped, release the reference which will
+	// potentially free the memory associated with the previous cached value.
+	deletedValue.release()
 }
 
 // EvictFile evicts all of the cache values for the specified file.
 func (c *shard) EvictFile(id uint64, fileNum base.DiskFileNum) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	fkey := key{fileKey{id, fileNum}, 0}
+	for c.evictFileRun(fkey) {
+	}
+}
+
+func (c *shard) evictFileRun(fkey key) (moreRemaining bool) {
+	// If most of the file's blocks are held in the block cache, evicting all
+	// the blocks may take a while. We don't want to block the entire cache
+	// shard, forcing concurrent readers until we're finished. We drop the mutex
+	// every [blocksPerMutexAcquisition] blocks to give other goroutines an
+	// opportunity to make progress.
+	const blocksPerMutexAcquisition = 5
+	c.mu.Lock()
+
+	// Releasing a value may result in free-ing it back to the memory allocator.
+	// This can have a nontrivial cost that we'd prefer to not pay while holding
+	// the shard mutex, so we collect the evicted values in a local slice and
+	// only release them in a defer after dropping the cache mutex.
+	var obsoleteValuesAlloc [blocksPerMutexAcquisition]*Value
+	obsoleteValues := obsoleteValuesAlloc[:0]
+	defer func() {
+		if !moreRemaining {
+			c.checkConsistency()
+		}
+		c.mu.Unlock()
+		for _, v := range obsoleteValues {
+			if v != nil {
+				v.release()
+			}
+		}
+	}()
+
 	blocks := c.files.Get(fkey)
 	if blocks == nil {
-		return
+		return false
 	}
-	for b, n := blocks, (*entry)(nil); ; b = n {
+	for b, n := blocks, (*entry)(nil); len(obsoleteValues) < cap(obsoleteValues); b = n {
 		n = b.fileLink.next
-		c.metaEvict(b)
+		obsoleteValues = append(obsoleteValues, c.metaEvict(b))
 		if b == n {
-			break
+			return false
 		}
 	}
-
-	c.checkConsistency()
+	// Exhausted blocksPerMutexAcquisition.
+	return true
 }
 
 func (c *shard) Free() {
@@ -274,7 +309,9 @@ func (c *shard) Free() {
 	// metaCheck call when the "invariants" build tag is specified.
 	for c.handHot != nil {
 		e := c.handHot
-		c.metaDel(c.handHot)
+		if v := c.metaDel(c.handHot); v != nil {
+			v.release()
+		}
 		e.free()
 	}
 
@@ -359,12 +396,13 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 
 // Remove the entry from the cache. This removes the entry from the blocks map,
 // the files map, and ensures that hand{Hot,Cold,Test} are not pointing at the
-// entry.
-func (c *shard) metaDel(e *entry) {
+// entry. Returns the deleted value that must be released.
+func (c *shard) metaDel(e *entry) (deletedValue *Value) {
 	if value := e.peekValue(); value != nil {
 		value.ref.trace("metaDel")
 	}
-	e.setValue(nil)
+	// Remove the pointer to the value.
+	deletedValue, e.val = e.val, nil
 
 	c.blocks.Delete(e.key)
 	if entriesGoAllocated {
@@ -396,6 +434,7 @@ func (c *shard) metaDel(e *entry) {
 	} else {
 		c.files.Put(fkey, next)
 	}
+	return deletedValue
 }
 
 // Check that the specified entry is not referenced by the cache.
@@ -455,7 +494,7 @@ func (c *shard) metaCheck(e *entry) {
 	}
 }
 
-func (c *shard) metaEvict(e *entry) {
+func (c *shard) metaEvict(e *entry) (evictedValue *Value) {
 	switch e.ptype {
 	case etHot:
 		c.sizeHot -= e.size
@@ -467,9 +506,10 @@ func (c *shard) metaEvict(e *entry) {
 		c.sizeTest -= e.size
 		c.countTest--
 	}
-	c.metaDel(e)
+	evictedValue = c.metaDel(e)
 	c.metaCheck(e)
 	e.free()
+	return evictedValue
 }
 
 func (c *shard) evict() {
@@ -564,7 +604,9 @@ func (c *shard) runHandTest() {
 		if c.coldTarget < 0 {
 			c.coldTarget = 0
 		}
-		c.metaDel(e)
+		if v := c.metaDel(e); v != nil {
+			v.release()
+		}
 		c.metaCheck(e)
 		e.free()
 	}
