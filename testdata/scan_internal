@@ -17,6 +17,20 @@ set e foo
 ----
 committed 2 keys
 
+file-only-snapshot efos1
+  b g
+----
+ok
+
+# EFOS work with scan-internal.
+
+scan-internal file-only-snapshot=efos1
+----
+a-c:{(#10,RANGEKEYSET,@5,boop)}
+b#12,1 (d)
+c-e:{(#11,RANGEKEYSET,@5,beep)}
+e#13,1 (foo)
+
 flush
 ----
 
@@ -51,12 +65,23 @@ b-d#14,RANGEDEL
 c-e:{(#11,RANGEKEYSET,@5,beep)}
 e#13,1 (foo)
 
-# Snapshots work with internal iters.
+# Snapshots work with scan internal.
 
 scan-internal snapshot=foo
 ----
 a-c:{(#10,RANGEKEYSET,@5,boop)}
 c-e:{(#11,RANGEKEYSET,@5,beep)}
+
+wait-for-file-only-snapshot efos1
+----
+ok
+
+scan-internal file-only-snapshot=efos1
+----
+a-c:{(#10,RANGEKEYSET,@5,boop)}
+b#12,1 (d)
+c-e:{(#11,RANGEKEYSET,@5,beep)}
+e#13,1 (foo)
 
 # Force keys newer than the snapshot into a lower level, then try skip-shared
 # iteration through it. This should return an error as it would expose keys
