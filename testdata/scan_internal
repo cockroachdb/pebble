@@ -188,7 +188,7 @@ b@3#10,1 (bar)
 c#11,1 (foo)
 
 batch commit
-merge b@3 foo
+set b@3 barfoo
 ----
 committed 1 keys
 
@@ -200,7 +200,7 @@ c#11,1 (foo)
 batch commit
 set b@3 baz
 del c
-merge d@4 bar
+set d@4 bar
 ----
 committed 3 keys
 
@@ -208,7 +208,7 @@ scan-internal
 ----
 b@3#13,1 (baz)
 c#14,0 ()
-d@4#15,2 (bar)
+d@4#15,1 (bar)
 
 batch commit
 set f barbaz
@@ -219,7 +219,7 @@ scan-internal
 ----
 b@3#13,1 (baz)
 c#14,0 ()
-d@4#15,2 (bar)
+d@4#15,1 (bar)
 f#16,1 (barbaz)
 
 # Skip-shared iteration mode. Test truncation of range key at scan bounds.
