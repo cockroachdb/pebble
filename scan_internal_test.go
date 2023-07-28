@@ -268,17 +268,6 @@ func TestPointCollapsingIter(t *testing.T) {
 			return ""
 
 		case "iter":
-			var elideRangeDels bool
-			for i := range d.CmdArgs {
-				switch d.CmdArgs[i].Key {
-				case "elide-range-dels":
-					var err error
-					elideRangeDels, err = strconv.ParseBool(d.CmdArgs[i].Vals[0])
-					if err != nil {
-						return err.Error()
-					}
-				}
-			}
 			f := &fakeIter{}
 			var spans []keyspan.Span
 			for _, line := range strings.Split(def, "\n") {
@@ -302,10 +291,9 @@ func TestPointCollapsingIter(t *testing.T) {
 
 			ksIter := keyspan.NewIter(base.DefaultComparer.Compare, spans)
 			pcIter := &pointCollapsingIterator{
-				comparer:          base.DefaultComparer,
-				merge:             base.DefaultMerger.Merge,
-				seqNum:            math.MaxUint64,
-				elideRangeDeletes: elideRangeDels,
+				comparer: base.DefaultComparer,
+				merge:    base.DefaultMerger.Merge,
+				seqNum:   math.MaxUint64,
 			}
 			pcIter.iter.Init(base.DefaultComparer, f, ksIter, nil /* mask */, nil, nil)
 			defer pcIter.Close()
