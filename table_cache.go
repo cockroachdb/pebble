@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"runtime/debug"
 	"runtime/pprof"
 	"sync"
@@ -521,6 +520,12 @@ func (c *tableCacheShard) newIters(
 		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
 	}
 
+	if provider.IsForeign(objMeta) {
+		if tableFormat < sstable.TableFormatPebblev4 {
+			return nil, nil, errors.New("pebble: shared foreign sstable has a lower table format than expected")
+		}
+		hideObsoletePoints = true
+	}
 	if internalOpts.bytesIterated != nil {
 		iter, err = ic.NewCompactionIter(internalOpts.bytesIterated, rp, internalOpts.bufferPool)
 	} else {
@@ -538,35 +543,6 @@ func (c *tableCacheShard) newIters(
 	// NB: v.closeHook takes responsibility for calling unrefValue(v) here. Take
 	// care to avoid introducing an allocation here by adding a closure.
 	iter.SetCloseHook(v.closeHook)
-	if provider.IsForeign(objMeta) {
-		// NB: IsForeign() guarantees IsShared, so opts must not be nil as we've
-		// already panicked on the nil case above.
-		pointKeySeqNum := base.SeqNumForLevel(manifest.LevelToInt(opts.level))
-		pcIter := pointCollapsingIterator{
-			comparer:          dbOpts.opts.Comparer,
-			merge:             dbOpts.opts.Merge,
-			seqNum:            math.MaxUint64,
-			elideRangeDeletes: true,
-			fixedSeqNum:       pointKeySeqNum,
-		}
-		// Open a second rangedel iter. This is solely for the interleaving iter to
-		// be able to efficiently delete covered range deletes. We don't need to fix
-		// the sequence number in this iter, as these range deletes will not be
-		// exposed to anything other than the interleaving iter and
-		// pointCollapsingIter.
-		rangeDelIter, err := v.reader.NewRawRangeDelIter()
-		if err != nil {
-			c.unrefValue(v)
-			return nil, nil, err
-		}
-		if rangeDelIter == nil {
-			rangeDelIter = emptyKeyspanIter
-		}
-		pcIter.iter.Init(dbOpts.opts.Comparer, iter, rangeDelIter, nil /* mask */, opts.LowerBound, opts.UpperBound)
-		pcSSTIter := pcSSTIterPool.Get().(*pointCollapsingSSTIterator)
-		*pcSSTIter = pointCollapsingSSTIterator{pointCollapsingIterator: pcIter, childIter: iter}
-		iter = pcSSTIter
-	}
 
 	c.iterCount.Add(1)
 	dbOpts.iterCount.Add(1)
