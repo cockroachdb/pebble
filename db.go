@@ -29,6 +29,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
+	"github.com/cockroachdb/tokenbucket"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -2604,9 +2605,23 @@ type LSMKeyStatistics struct {
 func (d *DB) ScanStatistics(ctx context.Context, lower, upper []byte) (LSMKeyStatistics, error) {
 	stats := LSMKeyStatistics{}
 	var prevKey InternalKey
+	const RATE = 50
+	const BURST = 1000
+	tb := tokenbucket.TokenBucket{}
+	tb.Init(RATE, BURST)
+
+	rateLimit := func() {
+		fulfilled, tryAgainAfter := tb.TryToFulfill(1)
+
+		if !fulfilled {
+			time.Sleep(tryAgainAfter)
+		}
+	}
 
 	err := d.ScanInternal(ctx, lower, upper,
 		func(key *InternalKey, value LazyValue, iterInfo iterInfo) error {
+			rateLimit()
+
 			// iterInfo.level == -1 indicates that the key does not come from a valid level.
 			if iterInfo.level == -1 {
 				return nil
@@ -2628,10 +2643,12 @@ func (d *DB) ScanStatistics(ctx context.Context, lower, upper []byte) (LSMKeySta
 			return nil
 		},
 		func(start, end []byte, seqNum uint64) error {
+			rateLimit()
 			stats.accumulated.kindsCount[InternalKeyKindRangeDelete]++
 			return nil
 		},
 		func(start, end []byte, keys []rangekey.Key) error {
+			rateLimit()
 			for _, key := range keys {
 				stats.accumulated.kindsCount[key.Kind()]++
 			}
