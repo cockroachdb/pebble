@@ -71,6 +71,7 @@ func (s *Snapshot) ScanInternal(
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
 	includeObsoleteKeys bool,
+	rateLimitFunc func(key *InternalKey, value LazyValue),
 ) error {
 	if s.db == nil {
 		panic(ErrClosed)
@@ -82,6 +83,7 @@ func (s *Snapshot) ScanInternal(
 		visitSharedFile:     visitSharedFile,
 		skipSharedLevels:    visitSharedFile != nil,
 		includeObsoleteKeys: includeObsoleteKeys,
+		rateLimitFunc:       rateLimitFunc,
 		IterOptions: IterOptions{
 			KeyTypes:   IterKeyTypePointsAndRanges,
 			LowerBound: lower,
