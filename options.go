@@ -259,6 +259,9 @@ type scanInternalOptions struct {
 	// includeObsoleteKeys specifies whether keys shadowed by newer internal keys
 	// are exposed. If false, only one internal key per user key is exposed.
 	includeObsoleteKeys bool
+
+	// rateLimitFunc is used to limit the amount of bytes read per second.
+	rateLimitFunc func(key *InternalKey, value LazyValue)
 }
 
 // RangeKeyMasking configures automatic hiding of point keys by range keys. A

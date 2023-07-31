@@ -29,6 +29,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
+	"github.com/cockroachdb/tokenbucket"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -1183,6 +1184,7 @@ func (d *DB) ScanInternal(
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
 	includeObsoleteKeys bool,
+	rateLimitFunc func(key *InternalKey, val LazyValue),
 ) error {
 	scanInternalOpts := &scanInternalOptions{
 		visitPointKey:       visitPointKey,
@@ -1191,6 +1193,7 @@ func (d *DB) ScanInternal(
 		visitSharedFile:     visitSharedFile,
 		skipSharedLevels:    visitSharedFile != nil,
 		includeObsoleteKeys: includeObsoleteKeys,
+		rateLimitFunc:       rateLimitFunc,
 		IterOptions: IterOptions{
 			KeyTypes:   IterKeyTypePointsAndRanges,
 			LowerBound: lower,
@@ -2670,11 +2673,35 @@ type LSMKeyStatistics struct {
 	levels      [numLevels]KeyStatistics
 }
 
+type ScanStatisticsOptions struct {
+	rateLimitEnabled bool
+	rate             float64
+	burst            float64
+}
+
 // ScanStatistics returns the count of different key kinds within the lsm for a
 // key span [lower, upper) as well as the number of snapshot keys.
-func (d *DB) ScanStatistics(ctx context.Context, lower, upper []byte) (LSMKeyStatistics, error) {
+func (d *DB) ScanStatistics(
+	ctx context.Context, lower, upper []byte, opts ScanStatisticsOptions,
+) (LSMKeyStatistics, error) {
 	stats := LSMKeyStatistics{}
 	var prevKey InternalKey
+	tb := tokenbucket.TokenBucket{}
+	tb.Init(tokenbucket.TokensPerSecond(opts.rate), tokenbucket.Tokens(opts.burst))
+
+	var rateLimitFunc func(key *InternalKey, val LazyValue)
+	if opts.rateLimitEnabled {
+		rateLimitFunc = func(key *InternalKey, val LazyValue) {
+			for {
+				fulfilled, tryAgainAfter := tb.TryToFulfill(tokenbucket.Tokens(key.Size() + val.Len()))
+
+				if fulfilled {
+					break
+				}
+				time.Sleep(tryAgainAfter)
+			}
+		}
+	}
 
 	err := d.ScanInternal(ctx, lower, upper,
 		func(key *InternalKey, value LazyValue, iterInfo iterInfo) error {
@@ -2710,6 +2737,7 @@ func (d *DB) ScanStatistics(ctx context.Context, lower, upper []byte) (LSMKeySta
 		},
 		nil,
 		true,
+		rateLimitFunc,
 	)
 
 	if err != nil {

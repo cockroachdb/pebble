@@ -932,7 +932,9 @@ func TestIngestShared(t *testing.T) {
 					sharedSSTs = append(sharedSSTs, *sst)
 					return nil
 				},
-				false)
+				false,
+				nil, /* rateLimitFunc */
+			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
