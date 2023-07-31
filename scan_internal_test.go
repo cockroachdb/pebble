@@ -31,6 +31,7 @@ func TestScanStatistics(t *testing.T) {
 		ScanStatistics(
 			ctx context.Context,
 			lower, upper []byte,
+			opts ScanStatisticsOptions,
 		) (LSMKeyStatistics, error)
 	}
 	batches := map[string]*Batch{}
@@ -163,7 +164,7 @@ func TestScanStatistics(t *testing.T) {
 				default:
 				}
 			}
-			stats, err := reader.ScanStatistics(ctx, lower, upper)
+			stats, err := reader.ScanStatistics(ctx, lower, upper, ScanStatisticsOptions{})
 			if err != nil {
 				return err.Error()
 			}
@@ -208,6 +209,7 @@ func TestScanInternal(t *testing.T) {
 			visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 			visitSharedFile func(sst *SharedSSTMeta) error,
 			includeObsoleteKeys bool,
+			rateLimitFunc func(key *InternalKey, val LazyValue),
 		) error
 	}
 	batches := map[string]*Batch{}
@@ -413,11 +415,7 @@ func TestScanInternal(t *testing.T) {
 				}
 			}
 			err := reader.ScanInternal(context.TODO(), lower, upper,
-<<<<<<< HEAD
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
-=======
-				func(key *InternalKey, value LazyValue, _ iterInfo) error {
->>>>>>> ba2f425f (pebble: Collect Pebble Key Statistics)
 					v := value.InPlaceValue()
 					fmt.Fprintf(&b, "%s (%s)\n", key, v)
 					return nil
@@ -433,6 +431,7 @@ func TestScanInternal(t *testing.T) {
 				},
 				fileVisitor,
 				false,
+				nil, /* rateLimitFunc */
 			)
 			if err != nil {
 				return err.Error()
