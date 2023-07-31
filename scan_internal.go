@@ -634,6 +634,11 @@ func scanInternalImpl(
 
 	for valid := iter.seekGE(lower); valid && iter.error() == nil; valid = iter.next() {
 		key := iter.unsafeKey()
+
+		if opts.rateLimitFunc != nil {
+			opts.rateLimitFunc(key, iter.lazyValue())
+		}
+
 		switch key.Kind() {
 		case InternalKeyKindRangeKeyDelete, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
 			if opts.visitRangeKey != nil {
