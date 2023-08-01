@@ -375,7 +375,8 @@ func coalesce(
 // it calls coalesce to remove range keys shadowed by other range keys, but also
 // retains the range key that does the shadowing. In addition, it elides
 // RangeKey unsets/dels in L6 as they are inapplicable when reading from a
-// different Pebble instance.
+// different Pebble instance. Finally, it returns keys sorted in trailer order,
+// not suffix order, as that's what the rest of the iterator stack expects.
 type ForeignSSTTransformer struct {
 	Comparer *base.Comparer
 	Level    int
@@ -439,7 +440,9 @@ func (f *ForeignSSTTransformer) Transform(
 			Value:   keys[i].Value,
 		})
 	}
-	// coalesce results in dst.Keys being sorted by Suffix.
-	dst.KeysOrder = keyspan.BySuffixAsc
+	// coalesce results in dst.Keys being sorted by Suffix. Change it back to
+	// ByTrailerDesc, as that's what the iterator stack will expect.
+	keyspan.SortKeysByTrailer(&dst.Keys)
+	dst.KeysOrder = keyspan.ByTrailerDesc
 	return nil
 }
