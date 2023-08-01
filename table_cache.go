@@ -21,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable"
@@ -610,29 +609,6 @@ func (c *tableCacheShard) newRangeKeyIter(
 		// NewRawRangeKeyIter can return nil even if there's no error. However,
 		// the keyspan.LevelIter expects a non-nil iterator if err is nil.
 		return emptyKeyspanIter, nil
-	}
-
-	objMeta, err := dbOpts.objProvider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
-	if err != nil {
-		return nil, err
-	}
-	if dbOpts.objProvider.IsForeign(objMeta) {
-		if opts.Level == 0 {
-			panic("unexpected zero level when reading foreign file")
-		}
-		transform := &rangekey.ForeignSSTTransformer{
-			Comparer: dbOpts.opts.Comparer,
-			Level:    manifest.LevelToInt(opts.Level),
-		}
-		if iter == nil {
-			iter = emptyKeyspanIter
-		}
-		transformIter := &keyspan.TransformerIter{
-			FragmentIterator: iter,
-			Transformer:      transform,
-			Compare:          dbOpts.opts.Comparer.Compare,
-		}
-		return transformIter, nil
 	}
 
 	return iter, nil
