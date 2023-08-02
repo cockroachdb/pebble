@@ -1212,7 +1212,7 @@ func (d *DB) ScanInternal(
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
 ) error {
-	iter := d.newInternalIter(nil /* snapshot */, &scanInternalOptions{
+	iter := d.newInternalIter(snapshotIterOpts{}, &scanInternalOptions{
 		IterOptions: IterOptions{
 			KeyTypes:   IterKeyTypePointsAndRanges,
 			LowerBound: lower,
@@ -1231,31 +1231,41 @@ func (d *DB) ScanInternal(
 // TODO(bilal): This method has a lot of similarities with db.newIter as well as
 // finishInitializingIter. Both pairs of methods should be refactored to reduce
 // this duplication.
-func (d *DB) newInternalIter(s *Snapshot, o *scanInternalOptions) *scanInternalIterator {
+func (d *DB) newInternalIter(sOpts snapshotIterOpts, o *scanInternalOptions) *scanInternalIterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
-	readState := d.loadReadState()
+	readState := sOpts.readState
+	if readState == nil && sOpts.vers == nil {
+		readState = d.loadReadState()
+	} else if readState != nil {
+		readState.ref()
+	}
+	if sOpts.vers != nil {
+		sOpts.vers.Ref()
+	}
 
 	// Determine the seqnum to read at after grabbing the read state (current and
 	// memtables) above.
-	var seqNum uint64
-	if s == nil {
+	seqNum := sOpts.seqNum
+	if sOpts.snapshot == nil && sOpts.vers == nil {
 		seqNum = d.mu.versions.visibleSeqNum.Load()
-	} else {
-		seqNum = s.seqNum
+	} else if sOpts.snapshot != nil {
+		seqNum = sOpts.snapshot.seqNum
 	}
 
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &scanInternalIterator{
+		db:              d,
 		comparer:        d.opts.Comparer,
 		merge:           d.opts.Merger.Merge,
 		readState:       readState,
+		version:         sOpts.vers,
 		alloc:           buf,
 		newIters:        d.newIters,
 		newIterRangeKey: d.tableNewRangeKeyIter,
@@ -1273,7 +1283,10 @@ func (d *DB) newInternalIter(s *Snapshot, o *scanInternalOptions) *scanInternalI
 
 func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *scanInternalIterator {
 	// Short-hand.
-	memtables := i.readState.memtables
+	var memtables flushableList
+	if i.readState != nil {
+		memtables = i.readState.memtables
+	}
 	// We only need to read from memtables which contain sequence numbers older
 	// than seqNum. Trim off newer memtables.
 	for j := len(memtables) - 1; j >= 0; j-- {
