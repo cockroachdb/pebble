@@ -99,7 +99,7 @@ func (s *Snapshot) ScanInternal(
 		},
 	}
 
-	iter := s.db.newInternalIter(s, scanInternalOpts)
+	iter := s.db.newInternalIter(snapshotIterOpts{snapshot: s}, scanInternalOpts)
 	defer iter.close()
 
 	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
@@ -431,4 +431,53 @@ func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
 
 	sOpts := snapshotIterOpts{seqNum: es.seqNum, vers: es.mu.vers}
 	return es.db.newIter(ctx, nil /* batch */, sOpts, o)
+}
+
+// ScanInternal scans all internal keys within the specified bounds, truncating
+// any rangedels and rangekeys to those bounds. For use when an external user
+// needs to be aware of all internal keys that make up a key range.
+//
+// See comment on db.ScanInternal for the behaviour that can be expected of
+// point keys deleted by range dels and keys masked by range keys.
+func (es *EventuallyFileOnlySnapshot) ScanInternal(
+	ctx context.Context,
+	lower, upper []byte,
+	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
+	visitRangeDel func(start, end []byte, seqNum uint64) error,
+	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
+	visitSharedFile func(sst *SharedSSTMeta) error,
+) error {
+	if es.db == nil {
+		panic(ErrClosed)
+	}
+	var sOpts snapshotIterOpts
+	es.mu.Lock()
+	if es.mu.vers != nil {
+		sOpts = snapshotIterOpts{
+			seqNum: es.seqNum,
+			vers:   es.mu.vers,
+		}
+	} else {
+		sOpts = snapshotIterOpts{
+			snapshot:  es.mu.snap,
+			readState: es.mu.readState,
+		}
+	}
+	es.mu.Unlock()
+	opts := &scanInternalOptions{
+		IterOptions: IterOptions{
+			KeyTypes:   IterKeyTypePointsAndRanges,
+			LowerBound: lower,
+			UpperBound: upper,
+		},
+		visitPointKey:    visitPointKey,
+		visitRangeDel:    visitRangeDel,
+		visitRangeKey:    visitRangeKey,
+		visitSharedFile:  visitSharedFile,
+		skipSharedLevels: visitSharedFile != nil,
+	}
+	iter := es.db.newInternalIter(sOpts, opts)
+	defer iter.close()
+
+	return scanInternalImpl(ctx, lower, upper, iter, opts)
 }
