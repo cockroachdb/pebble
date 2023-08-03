@@ -384,9 +384,13 @@ base: 5
 
 queue
 ----
-L5->L6: 3.2
+L0->L5: 6.2
+  000001:[0001#1,1-0001#1,1] marked as compacting
+  000002:[0001#2,1-0001#2,1] marked as compacting
+  000003:[0001#3,1-0001#3,1] marked as compacting
+  000004:[0001#4,1-0001#4,1] marked as compacting
+  000005:[0001#5,1-0001#5,1] marked as compacting
   500001:[0001#1,1-0001#1,1] marked as compacting
-  600001:[0001#1,1-0001#1,1] marked as compacting
 
 pick
 ----
@@ -411,7 +415,7 @@ L6:
   600008:[0008#8,1-0008#8,1]: 1 bytes (1B)
   600009:[0009#9,1-0009#9,1]: 1 bytes (1B)
   600010:[0010#10,1-0010#10,1]: 1 bytes (1B)
-Picked: L5->L6: 3.2
+Picked: L0->L5: 6.2
 
 pick ongoing=(5,6)
 ----
@@ -491,9 +495,9 @@ base: 4
 
 queue
 ----
-L4->L5: 10.0
+L4->L5: 4.3
   400007:[0007#7,1-0007#7,1] marked as compacting
-L4->L5: 7.7
+L4->L5: 3.3
   400008:[0008#8,1-0008#8,1] marked as compacting
 
 pick ongoing=(5,6)
@@ -539,7 +543,7 @@ L6:
   600008:[0008#8,1-0008#8,1]: 1 bytes (1B)
   600009:[0009#9,1-0009#9,1]: 1 bytes (1B)
   600010:[0010#10,1-0010#10,1]: 1 bytes (1B)
-Picked: L4->L5: 12.0
+Picked: L4->L5: 5.2
 
 pick ongoing=(0,4)
 ----
@@ -584,7 +588,7 @@ L6:
   600008:[0008#8,1-0008#8,1]: 1 bytes (1B)
   600009:[0009#9,1-0009#9,1]: 1 bytes (1B)
   600010:[0010#10,1-0010#10,1]: 1 bytes (1B)
-Picked: L5->L6: 3.3
+Picked: no compaction
 
 pick ongoing=(0,0,0,4)
 ----
@@ -678,7 +682,7 @@ L6:
   600008:[0008#8,1-0008#8,1]: 1 bytes (1B)
   600009:[0009#9,1-0009#9,1]: 1 bytes (1B)
   600010:[0010#10,1-0010#10,1]: 1 bytes (1B)
-Picked: L4->L5: 8.6
+Picked: L4->L5: 3.7
 
 init 1
 0: 20
@@ -719,11 +723,11 @@ L6:
 
 init_cp ongoing=(0,5)
 ----
-base: 4
+base: 5
 
 queue
 ----
-L0->L4: 1000.0
+L0->L5: 1000.0
   000001:[0001#1,1-0001#1,1] marked as compacting
   000002:[0001#2,1-0001#2,1] marked as compacting
   000003:[0001#3,1-0001#3,1] marked as compacting
@@ -780,7 +784,7 @@ L6:
   600008:[0008#8,1-0008#8,1]: 1 bytes (1B)
   600009:[0009#9,1-0009#9,1]: 1 bytes (1B)
   600010:[0010#10,1-0010#10,1]: 1 bytes (1B)
-Picked: L0->L4: 1000.0
+Picked: L0->L5: 1000.0
 
 pick ongoing=(0,4)
 ----
@@ -1081,7 +1085,7 @@ base: 5
 
 queue
 ----
-L0->L5: 5.0
+L0->L5: 10.0
   000001:[0001#1,1-0001#1,1] marked as compacting
   000002:[0001#2,1-0001#2,1] marked as compacting
   000003:[0001#3,1-0001#3,1] marked as compacting
@@ -1093,7 +1097,7 @@ L0->L5: 5.0
   000009:[0001#9,1-0001#9,1] marked as compacting
   000010:[0001#10,1-0001#10,1] marked as compacting
   500001:[0001#1,1-0001#1,1] marked as compacting
-L5->L6: 11.5
+L5->L6: 5.8
   500005:[0005#5,1-0005#5,1] marked as compacting
   600005:[0005#5,1-0005#5,1] marked as compacting
 
@@ -1132,7 +1136,7 @@ base: 5
 
 queue
 ----
-L0->L5: 5.0
+L0->L5: 10.0
   000001:[0001#1,1-0001#1,1] marked as compacting
   000002:[0001#2,1-0001#2,1] marked as compacting
   000003:[0001#3,1-0001#3,1] marked as compacting
@@ -1144,7 +1148,7 @@ L0->L5: 5.0
   000009:[0001#9,1-0001#9,1] marked as compacting
   000010:[0001#10,1-0001#10,1] marked as compacting
   500001:[0001#1,1-0001#1,1] marked as compacting
-L5->L6: 10.8
+L5->L6: 5.4
   500002:[0002#2,1-0002#2,1] marked as compacting
   600002:[0002#2,1-0002#2,1] marked as compacting
 
@@ -1191,10 +1195,20 @@ base: 5
 
 queue
 ----
+L0->L5: 5.0
+  000001:[0001#1,1-0001#1,1] marked as compacting
+  000002:[0001#2,1-0001#2,1] marked as compacting
+  000003:[0001#3,1-0001#3,1] marked as compacting
+  000004:[0001#4,1-0001#4,1] marked as compacting
+  000005:[0001#5,1-0001#5,1] marked as compacting
+  000006:[0001#6,1-0001#6,1] marked as compacting
+  000007:[0001#7,1-0001#7,1] marked as compacting
+  000008:[0001#8,1-0001#8,1] marked as compacting
+  000009:[0001#9,1-0001#9,1] marked as compacting
+  000010:[0001#10,1-0001#10,1] marked as compacting
+  500001:[0001#1,1-0001#1,1] marked as compacting
 L5->L6: 9.2
   500006:[0006#6,1-0006#6,1] marked as compacting
-L5->L6: 6.9
-  500007:[0007#7,1-0007#7,1] marked as compacting
 
 pick_manual level=0 start=0 end=12
 ----
@@ -1231,7 +1245,7 @@ L6:
   600003:[0003#3,1-0003#3,1]: 1 bytes (1B)
   600004:[0004#4,1-0004#4,1]: 1 bytes (1B)
   600005:[0005#5,1-0005#5,1]: 1 bytes (1B)
-Picked: L5->L6: 9.2
+Picked: L0->L5: 5.0
 
 # Assume the above two compactions (one manual L0 -> L5 and one automatic
 # L5 -> L6) have run, and Lbase = L6 now, but the manual compaction code is

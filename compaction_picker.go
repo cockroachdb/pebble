@@ -904,6 +904,26 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 
 	// Compute base level (where L0 data is compacted to).
 	baseBytesMax := p.opts.LBaseMaxBytes
+	// By increasing baseBytesMax to the L0 size, we can reduce write amps, as
+	// the level multiplier will be lower.
+	//
+	// A larger Lbase target size, reduces Lbase scores, which would in turn
+	// prioritize L0 over Lbase for compaction. If L0 is large, then we should
+	// prioritize it for compactions.
+	//
+	// As L0 gets smaller, the Lbase target size will get smaller, and Lbase
+	// score would increase, and Lbase compaction chances would increase. But since
+	// L0 is getting smaller, it makes sense to prioritize Lbase for compactions.
+	//
+	// If we pick tiny compactions out of L0, then a larger Lbase size, could
+	// lead to high write amps for L0->Lbase compactions. To restrict these
+	// we arbitrarily set the max lbase size to 5 * p.opts.LBaseMaxBytes.
+	if baseBytesMax < p.levelSizes[0] {
+		baseBytesMax = p.levelSizes[0]
+	}
+	if baseBytesMax > 5 * p.opts.LBaseMaxBytes {
+		baseBytesMax = 5 * p.opts.LBaseMaxBytes
+	}
 	p.baseLevel = firstNonEmptyLevel
 	for p.baseLevel > 1 && curLevelSize > baseBytesMax {
 		p.baseLevel--
