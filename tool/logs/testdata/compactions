@@ -8,8 +8,8 @@ log
 I211215 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
 I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,pebble] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 
-I211215 00:01:10.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n1,s1,pebble] 24 [JOB 2] flushing 2 memtables to L0
-I211215 00:01:20.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n1,pebble,s1] 26 [JOB 2] flushed 2 memtables to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s
+I211215 00:01:10.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n1,s1,pebble] 24 [JOB 2] flushing 2 memtables (1.5MB) to L0
+I211215 00:01:20.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n1,pebble,s1] 26 [JOB 2] flushed 2 memtables (1.5MB) to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s
 ----
 0.log
 
@@ -47,12 +47,12 @@ I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 1.log
 
 log
-I211215 00:01:10.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n1,s1] 24 [JOB 2] flushing 2 memtables to L0
+I211215 00:01:10.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n1,s1] 24 [JOB 2] flushing 2 memtables (1.5MB) to L0
 ----
 2.log
 
 log
-I211215 00:01:20.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n1,pebble,s1] 26 [JOB 2] flushed 2 memtables to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s
+I211215 00:01:20.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n1,pebble,s1] 26 [JOB 2] flushed 2 memtables (1.5MB) to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s
 ----
 3.log
 
@@ -384,7 +384,7 @@ reset
 ----
 
 log
-I220228 14:44:31.497272 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1366 ⋮ [n24,pebble,s24] 33267888  [JOB 10197855] flushing 1 memtable to L0
+I220228 14:44:31.497272 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1366 ⋮ [n24,pebble,s24] 33267888  [JOB 10197855] flushing 1 memtable (64MB) to L0
 I220228 14:44:31.497485 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267889  [JOB 10197855] flushing: sstable created 21731018
 I220228 14:44:31.527038 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267892  [JOB 10197855] flushing: sstable created 21731020
 I220228 14:44:31.542944 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267894  [JOB 10197855] flushing: sstable created 21731021

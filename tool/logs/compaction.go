@@ -82,16 +82,19 @@ var (
 	//   I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n9,pebble,s9] 24 [JOB 10] flushing 2 memtables to L0
 	//   I211213 16:23:49.134464 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s9] 26 [JOB 10] flushed 2 memtables to L0 [1535806] (1.3 M), in 0.2s, output rate 5.8 M/s
 	// current:
-	//   I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n9,pebble,s9] 24 [JOB 10] flushing 2 memtables to L0
-	//   I211213 16:23:49.134464 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s9] 26 [JOB 10] flushed 2 memtables to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s
+	//   I211213 16:23:48.903751 21136
+	//   3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n9,pebble,s9] 24 [JOB 10] flushing 2 memtables (1.4MB)  to L0
+	//   I211213 16:23:49.134464 21136
+	//   3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s9] 26 [JOB 10] flushed 2 memtables (1.4MB) to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s
 	//
 	// NOTE: we use the log timestamp to compute the flush duration rather than
 	// the Pebble log output.
 	flushPattern = regexp.MustCompile(
 		`^..*` +
-			/* Job ID          */ `\[JOB (?P<job>\d+)]\s` +
-			/* Compaction type */ `flush(?P<suffix>ed|ing)` +
-			/* Bytes           */ `(?:.*?\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\))?`,
+			/* Job ID                       */ `\[JOB (?P<job>\d+)]\s` +
+			/* Compaction type              */ `flush(?P<suffix>ed|ing)\s` +
+			/* Memtable count; size (23.2+) */ `\d+ memtables? (\([^)]+\))?` +
+			/* SSTable Bytes                */ `(?:.*?\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\))?`,
 	)
 	flushPatternSuffixIdx = flushPattern.SubexpIndex("suffix")
 	flushPatternJobIdx    = flushPattern.SubexpIndex("job")

@@ -103,6 +103,7 @@ func TestWorkloadCollector(t *testing.T) {
 					_, err = currentManifest.Write(randData(25))
 					require.NoError(t, err)
 				}
+				flushInfo.InputBytes = 100 // Determinism
 				fmt.Fprint(&buf, flushInfo.String())
 				c.onFlushEnd(flushInfo)
 				return buf.String()

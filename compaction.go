@@ -1940,6 +1940,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	// have the same logNum, the errFlushInvariant check below will trigger and
 	// prevent the flush from continuing.
 	var n, inputs int
+	var inputBytes uint64
 	var ingest bool
 	for ; n < len(d.mu.mem.queue)-1; n++ {
 		if f, ok := d.mu.mem.queue[n].flushable.(*ingestedFlushable); ok {
@@ -1968,6 +1969,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		if !d.mu.mem.queue[n].readyForFlush() {
 			break
 		}
+		inputBytes += d.mu.mem.queue[n].inuseBytes()
 	}
 	if n == 0 {
 		// None of the immutable memtables are ready for flushing.
@@ -1998,9 +2000,10 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	d.opts.EventListener.FlushBegin(FlushInfo{
-		JobID:  jobID,
-		Input:  inputs,
-		Ingest: ingest,
+		JobID:      jobID,
+		Input:      inputs,
+		InputBytes: inputBytes,
+		Ingest:     ingest,
 	})
 	startTime := d.timeNow()
 
@@ -2026,12 +2029,13 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 
 	info := FlushInfo{
-		JobID:    jobID,
-		Input:    inputs,
-		Duration: d.timeNow().Sub(startTime),
-		Done:     true,
-		Ingest:   ingest,
-		Err:      err,
+		JobID:      jobID,
+		Input:      inputs,
+		InputBytes: inputBytes,
+		Duration:   d.timeNow().Sub(startTime),
+		Done:       true,
+		Ingest:     ingest,
+		Err:        err,
 	}
 	if err == nil {
 		for i := range ve.NewFiles {

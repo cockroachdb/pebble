@@ -35,6 +35,17 @@ func TestEventListener(t *testing.T) {
 		case "open":
 			memLog.Reset()
 			lel := MakeLoggingEventListener(&memLog)
+			flushBegin, flushEnd := lel.FlushBegin, lel.FlushEnd
+			lel.FlushBegin = func(info FlushInfo) {
+				// Make deterministic.
+				info.InputBytes = 100
+				flushBegin(info)
+			}
+			lel.FlushEnd = func(info FlushInfo) {
+				// Make deterministic.
+				info.InputBytes = 100
+				flushEnd(info)
+			}
 			opts := &Options{
 				FS:                    vfs.WithLogging(mem, memLog.Infof),
 				FormatMajorVersion:    internalFormatNewest,
