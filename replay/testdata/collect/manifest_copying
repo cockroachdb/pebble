@@ -30,7 +30,7 @@ flush
 000003
 ----
 created src/000003.sst
-[JOB 0] flushed 1 memtable to L0 [000003] (10KB), in 0.1s (0.1s total), output rate 100KB/s
+[JOB 0] flushed 1 memtable (100B) to L0 [000003] (10KB), in 0.1s (0.1s total), output rate 100KB/s
 
 wait
 ----
@@ -62,7 +62,7 @@ flush
 ----
 created src/000005.sst
 created src/000006.sst
-[JOB 0] flushed 1 memtable to L0 [000005 000006] (20KB), in 0.1s (0.1s total), output rate 200KB/s
+[JOB 0] flushed 1 memtable (100B) to L0 [000005 000006] (20KB), in 0.1s (0.1s total), output rate 200KB/s
 
 wait
 ----

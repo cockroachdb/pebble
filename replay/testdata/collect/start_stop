@@ -38,7 +38,7 @@ flush
 ----
 created src/000005.sst
 created src/000006.sst
-[JOB 0] flushed 1 memtable to L0 [000005 000006] (20KB), in 0.1s (0.1s total), output rate 200KB/s
+[JOB 0] flushed 1 memtable (100B) to L0 [000005 000006] (20KB), in 0.1s (0.1s total), output rate 200KB/s
 
 # dst/ should now have the original insgested files (00000{2-4}.sst) and the
 # manifest, but not the more-recently flushed files (00000{5-6}.sst). src/
@@ -82,7 +82,7 @@ flush
 ----
 created src/000007.sst
 created src/000008.sst
-[JOB 0] flushed 1 memtable to L0 [000007 000008] (20KB), in 0.1s (0.1s total), output rate 200KB/s
+[JOB 0] flushed 1 memtable (100B) to L0 [000007 000008] (20KB), in 0.1s (0.1s total), output rate 200KB/s
 
 wait
 ----
