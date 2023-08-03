@@ -118,7 +118,7 @@ close: wal/000002.log
 create: wal/000004.log
 sync: wal
 [JOB 4] WAL created 000004
-[JOB 5] flushing 1 memtable to L0
+[JOB 5] flushing 1 memtable (100B) to L0
 create: db/000005.sst
 [JOB 5] flushing: sstable created 000005
 sync-data: db/000005.sst
@@ -132,7 +132,7 @@ close: db/marker.manifest.000002.MANIFEST-000006
 remove: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 5] MANIFEST created 000006
-[JOB 5] flushed 1 memtable to L0 [000005] (662B), in 1.0s (2.0s total), output rate 662B/s
+[JOB 5] flushed 1 memtable (100B) to L0 [000005] (662B), in 1.0s (2.0s total), output rate 662B/s
 
 compact
 ----
@@ -142,7 +142,7 @@ close: wal/000004.log
 reuseForWrite: wal/000002.log -> wal/000007.log
 sync: wal
 [JOB 6] WAL created 000007 (recycled 000002)
-[JOB 7] flushing 1 memtable to L0
+[JOB 7] flushing 1 memtable (100B) to L0
 create: db/000008.sst
 [JOB 7] flushing: sstable created 000008
 sync-data: db/000008.sst
@@ -156,7 +156,7 @@ close: db/marker.manifest.000003.MANIFEST-000009
 remove: db/marker.manifest.000002.MANIFEST-000006
 sync: db
 [JOB 7] MANIFEST created 000009
-[JOB 7] flushed 1 memtable to L0 [000008] (662B), in 1.0s (2.0s total), output rate 662B/s
+[JOB 7] flushed 1 memtable (100B) to L0 [000008] (662B), in 1.0s (2.0s total), output rate 662B/s
 remove: db/MANIFEST-000001
 [JOB 7] MANIFEST deleted 000001
 [JOB 8] compacting(default) L0 [000005 000008] (1.3KB) + L6 [] (0B)
@@ -214,7 +214,7 @@ close: wal/000007.log
 reuseForWrite: wal/000004.log -> wal/000012.log
 sync: wal
 [JOB 9] WAL created 000012 (recycled 000004)
-[JOB 10] flushing 1 memtable to L0
+[JOB 10] flushing 1 memtable (100B) to L0
 create: db/000013.sst
 [JOB 10] flushing: sstable created 000013
 sync-data: db/000013.sst
@@ -228,7 +228,7 @@ close: db/marker.manifest.000005.MANIFEST-000014
 remove: db/marker.manifest.000004.MANIFEST-000011
 sync: db
 [JOB 10] MANIFEST created 000014
-[JOB 10] flushed 1 memtable to L0 [000013] (662B), in 1.0s (2.0s total), output rate 662B/s
+[JOB 10] flushed 1 memtable (100B) to L0 [000013] (662B), in 1.0s (2.0s total), output rate 662B/s
 
 enable-file-deletions
 ----
@@ -338,14 +338,14 @@ close: wal/000020.log
 create: wal/000021.log
 sync: wal
 [JOB 16] WAL created 000021
-[JOB 17] flushing 1 memtable to L0
+[JOB 17] flushing 1 memtable (100B) to L0
 create: db/000022.sst
 [JOB 17] flushing: sstable created 000022
 sync-data: db/000022.sst
 close: db/000022.sst
 sync: db
 sync: db/MANIFEST-000016
-[JOB 17] flushed 1 memtable to L0 [000022] (662B), in 1.0s (2.0s total), output rate 662B/s
+[JOB 17] flushed 1 memtable (100B) to L0 [000022] (662B), in 1.0s (2.0s total), output rate 662B/s
 [JOB 18] flushing 2 ingested tables
 create: db/MANIFEST-000023
 close: db/MANIFEST-000016
@@ -358,7 +358,7 @@ sync: db
 [JOB 18] flushed 2 ingested flushables L0:000017 (717B) + L6:000018 (717B) in 1.0s (2.0s total), output rate 1.4KB/s
 remove: db/MANIFEST-000014
 [JOB 18] MANIFEST deleted 000014
-[JOB 19] flushing 1 memtable to L0
+[JOB 19] flushing 1 memtable (100B) to L0
 sync: db/MANIFEST-000023
 [JOB 19] flush error: pebble: empty table
 
