@@ -5,6 +5,7 @@ STRESSFLAGS :=
 TAGS := invariants
 TESTS := .
 LATEST_RELEASE := $(shell git fetch origin && git branch -r --list '*/crl-release-*' | grep -o 'crl-release-.*$$' | sort | tail -1)
+COVER_PROFILE := coverprofile.out
 
 .PHONY: all
 all:
@@ -15,6 +16,7 @@ all:
 	@echo "  make stressrace"
 	@echo "  make stressmeta"
 	@echo "  make crossversion-meta"
+	@echo "  make testcoverage"
 	@echo "  make mod-update"
 	@echo "  make generate"
 	@echo "  make generate-test-data"
@@ -24,6 +26,10 @@ override testflags :=
 .PHONY: test
 test:
 	${GO} test -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG}
+
+.PHONY: testcoverage
+testcoverage:
+	${GO} test -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG} -coverprofile ${COVER_PROFILE}
 
 .PHONY: testrace
 testrace: testflags += -race -timeout 20m
