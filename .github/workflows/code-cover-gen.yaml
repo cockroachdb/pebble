@@ -1,0 +1,65 @@
+name: PR code coverage (generate)
+
+on:
+  # This workflow does not have access to secrets because it runs on top of
+  # potentially unsafe changes.
+  pull_request:
+    types: [ opened, reopened, synchronize ]
+    branches: [ master ]
+
+jobs:
+  # The results of this job are uploaded as artifacts. A separate job will
+  # download the artifacts and upload them to a GCS bucket.
+  code-cover-gen:
+    runs-on: ubuntu-latest
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # By default, checkout merges the PR into the current master.
+          # Instead, we want to check out the PR as-is.
+          ref: ${{ github.event.pull_request.head.sha }}
+          # Fetch all branches and history (we'll need the origin/master ref and
+          # the base commit).
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.20"
+
+      - name: Generate "after" coverage
+        shell: bash
+        run: |
+          set -e
+          mkdir -p artifacts
+          make testcoverage COVER_PROFILE=artifacts/cover-after.out
+          go run github.com/cockroachdb/code-cov-utils/gocover2json@latest \
+            --trim-prefix github.com/cockroachdb/pebble \
+            artifacts/cover-after.out artifacts/cover-${PR}-${HEAD_SHA}.json
+
+      # Running the "before" coverage for each PR (rather than in a job that
+      # runs on push) is a little odd, but it allows restricting the packages on
+      # a per-PR basis (if it becomes necessary in the future).
+      - name: Generate "before" coverage
+        shell: bash
+        run: |
+          set -e
+          # Note that github.event.pull_request.base.sha is not what we want -
+          # it is the current master tip, not the commit this PR is actually
+          # based on.
+          BASE_SHA=$(git merge-base origin/master ${HEAD_SHA})
+          git checkout -f ${BASE_SHA}
+          make testcoverage COVER_PROFILE=artifacts/cover-before.out
+          SHA=$(git rev-parse HEAD)
+          go run github.com/cockroachdb/code-cov-utils/gocover2json@latest \
+            --trim-prefix github.com/cockroachdb/pebble \
+            artifacts/cover-before.out artifacts/cover-${PR}-${BASE_SHA}.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: cover
+          path: artifacts/cover-*.json
