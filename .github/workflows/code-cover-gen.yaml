@@ -1,0 +1,47 @@
+name: PR code coverage (generate)
+
+on:
+  pull_request:
+    types: [ opened, reopened, synchronize ]
+    branches: [ master ]
+
+jobs:
+  code-cover-gen:
+    runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: '${{ github.event.pull_request.number }}'
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.20.1"
+
+      - name: Generate "after" coverage
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          make testcoverage COVER_PROFILE=artifacts/cover-after.out
+          SHA=$(git rev-parse HEAD)
+          go run github.com/cockroachdb/code-cov-utils/gocover2json@latest \
+            --trim-prefix github.com/cockroachdb/pebble \
+            artifacts/cover-after.out artifacts/cover-${PR}-${SHA}.json
+
+      - name: Generate "before" coverage
+        shell: bash
+        run: |
+          git checkout -f ${{ github.event.pull_request.base.sha }}
+          make testcoverage COVER_PROFILE=artifacts/cover-before.out
+          SHA=$(git rev-parse HEAD)
+          go run github.com/cockroachdb/code-cov-utils/gocover2json@latest \
+            --trim-prefix github.com/cockroachdb/pebble \
+            artifacts/cover-before.out artifacts/cover-${PR}-${SHA}.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: cover
+          path: artifacts/cover-*.json
