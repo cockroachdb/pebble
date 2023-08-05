@@ -1,3 +1,5 @@
+# Github action artifacts.
+artifacts
 # Profiling artifacts.
 cpu.*.prof
 heap.prof
