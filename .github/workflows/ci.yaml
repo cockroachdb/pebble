@@ -19,9 +19,9 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
-        go-version: "1.20.1"
+        go-version: "1.20"
 
     - run: make test generate
 
@@ -32,9 +32,9 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
-        go-version: "1.20.1"
+        go-version: "1.20"
 
     - run: make crossversion-meta
 
@@ -45,9 +45,9 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
-        go-version: "1.20.1"
+        go-version: "1.20"
 
     - run: make testrace TAGS=
 
@@ -58,9 +58,9 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
-        go-version: "1.20.1"
+        go-version: "1.20"
 
     - run: make test TAGS=
 
@@ -71,9 +71,9 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
-        go-version: "1.20.1"
+        go-version: "1.20"
 
     - run: CGO_ENABLED=0 make test TAGS=
 
@@ -84,9 +84,9 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
-        go-version: "1.20.1"
+        go-version: "1.20"
 
     - run: make test
 
@@ -97,9 +97,9 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
-        go-version: "1.20.1"
+        go-version: "1.20"
 
     - run: go test -v ./...
 
@@ -110,9 +110,9 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
-        go-version: "1.20.1"
+        go-version: "1.20"
 
     - name: FreeBSD build
       env:
@@ -136,9 +136,9 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
-        go-version: "1.20.1"
+        go-version: "1.20"
 
     - name: mod-tidy-check
       run: make mod-tidy-check
