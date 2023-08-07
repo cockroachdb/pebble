@@ -11,6 +11,15 @@ import (
 	"strings"
 )
 
+const (
+	// SeqNumZero is the zero sequence number, set by compactions if they can
+	// guarantee there are no keys underneath an internal key.
+	SeqNumZero = uint64(0)
+	// SeqNumStart is the first sequence number assigned to a key. Sequence
+	// numbers 1-9 are reserved for potential future use.
+	SeqNumStart = uint64(10)
+)
+
 // InternalKeyKind enumerates the kind of key: a deletion tombstone, a set
 // value, a merged value, etc.
 type InternalKeyKind uint8

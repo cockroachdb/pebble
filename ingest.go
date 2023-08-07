@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -79,9 +80,9 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 	return nil
 }
 
-// ingestLoad1Shared loads the fileMetadata for one shared sstable owned or
-// shared by another node. It also sets the sequence numbers for a shared sstable.
-func ingestLoad1Shared(
+// ingestSynthesizeShared constructs a fileMetadata for one shared sstable owned
+// or shared by another node.
+func ingestSynthesizeShared(
 	opts *Options, sm SharedSSTMeta, fileNum base.DiskFileNum,
 ) (*fileMetadata, error) {
 	if sm.Size == 0 {
@@ -90,45 +91,26 @@ func ingestLoad1Shared(
 	}
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
-	meta := &fileMetadata{}
-	meta.FileNum = fileNum.FileNum()
-	meta.CreationTime = time.Now().Unix()
-	meta.Virtual = true
-	meta.Size = sm.Size
+	meta := &fileMetadata{
+		FileNum:      fileNum.FileNum(),
+		CreationTime: time.Now().Unix(),
+		Virtual:      true,
+		Size:         sm.Size,
+	}
 	meta.InitProviderBacking(fileNum)
 	// Set the underlying FileBacking's size to the same size as the virtualized
 	// view of the sstable. This ensures that we don't over-prioritize this
-	// sstable for compaction just yet, as we do not have a clear sense of
-	// what parts of this sstable are referenced by other nodes.
+	// sstable for compaction just yet, as we do not have a clear sense of what
+	// parts of this sstable are referenced by other nodes.
 	meta.FileBacking.Size = sm.Size
-	seqNum := base.SeqNumForLevel(int(sm.Level))
 	if sm.LargestRangeKey.Valid() && sm.LargestRangeKey.UserKey != nil {
-		meta.HasRangeKeys = true
-		meta.SmallestRangeKey = sm.SmallestRangeKey
-		meta.LargestRangeKey = sm.LargestRangeKey
-		meta.SmallestRangeKey.SetSeqNum(seqNum)
-		if !meta.LargestRangeKey.IsExclusiveSentinel() {
-			meta.LargestRangeKey.SetSeqNum(seqNum)
-		}
-		meta.SmallestSeqNum = seqNum
-		meta.LargestSeqNum = seqNum
-		// Initialize meta.{Smallest,Largest} and others by calling this.
-		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
+		// Initialize meta.{HasRangeKeys,Smallest,Largest}, etc.
+		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, sm.SmallestRangeKey, sm.LargestRangeKey)
 	}
 	if sm.LargestPointKey.Valid() && sm.LargestPointKey.UserKey != nil {
-		meta.HasPointKeys = true
-		meta.SmallestPointKey = sm.SmallestPointKey
-		meta.LargestPointKey = sm.LargestPointKey
-		meta.SmallestPointKey.SetSeqNum(seqNum)
-		if !meta.LargestPointKey.IsExclusiveSentinel() {
-			meta.LargestPointKey.SetSeqNum(seqNum)
-		}
-		meta.SmallestSeqNum = seqNum
-		meta.LargestSeqNum = seqNum
-		// Initialize meta.{Smallest,Largest} and others by calling this.
-		meta.ExtendPointKeyBounds(opts.Comparer.Compare, meta.SmallestPointKey, meta.LargestPointKey)
+		// Initialize meta.{HasPointKeys,Smallest,Largest}, etc.
+		meta.ExtendPointKeyBounds(opts.Comparer.Compare, sm.SmallestPointKey, sm.LargestPointKey)
 	}
-
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
 		return nil, err
 	}
@@ -319,10 +301,14 @@ func ingestLoad(
 	if len(shared) == 0 {
 		return ingestLoadResult{localMeta: meta, localPaths: newPaths}, nil
 	}
+
+	// Sort the shared files according to level.
+	sort.Sort(sharedByLevel(shared))
+
 	sharedMeta := make([]*fileMetadata, 0, len(shared))
 	levels := make([]uint8, 0, len(shared))
 	for i := range shared {
-		m, err := ingestLoad1Shared(opts, shared[i], pending[len(paths)+i])
+		m, err := ingestSynthesizeShared(opts, shared[i], pending[len(paths)+i])
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
@@ -522,12 +508,12 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 }
 
 func ingestUpdateSeqNum(
-	cmp Compare, format base.FormatKey, seqNum uint64, meta []*fileMetadata,
+	cmp Compare, format base.FormatKey, seqNum uint64, loadResult ingestLoadResult,
 ) error {
 	setSeqFn := func(k base.InternalKey) base.InternalKey {
 		return base.MakeInternalKey(k.UserKey, seqNum, k.Kind())
 	}
-	for _, m := range meta {
+	updateMetadata := func(m *fileMetadata) error {
 		// NB: we set the fields directly here, rather than via their Extend*
 		// methods, as we are updating sequence numbers.
 		if m.HasPointKeys {
@@ -559,6 +545,26 @@ func ingestUpdateSeqNum(
 			return err
 		}
 		seqNum++
+		return nil
+	}
+
+	// Shared sstables are required to be sorted by level ascending. We then
+	// iterate the shared sstables in reverse, assigning the lower sequence
+	// numbers to the shared sstables that will be ingested into the lower
+	// (larger numbered) levels first. This ensures sequence number shadowing is
+	// correct.
+	for i := len(loadResult.sharedMeta) - 1; i >= 0; i-- {
+		if i-1 >= 0 && loadResult.sharedLevels[i-1] > loadResult.sharedLevels[i] {
+			panic(errors.AssertionFailedf("shared files %s, %s out of order", loadResult.sharedMeta[i-1], loadResult.sharedMeta[i]))
+		}
+		if err := updateMetadata(loadResult.sharedMeta[i]); err != nil {
+			return err
+		}
+	}
+	for i := range loadResult.localMeta {
+		if err := updateMetadata(loadResult.localMeta[i]); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -948,7 +954,7 @@ func (d *DB) newIngestedFlushableEntry(
 	// time, then we'll lose the ingest sequence number information. But this
 	// information will also be reconstructed on node restart.
 	if err := ingestUpdateSeqNum(
-		d.cmp, d.opts.Comparer.FormatKey, seqNum, meta,
+		d.cmp, d.opts.Comparer.FormatKey, seqNum, ingestLoadResult{localMeta: meta},
 	); err != nil {
 		return nil, err
 	}
@@ -1098,9 +1104,6 @@ func (d *DB) ingest(
 		return IngestOperationStats{}, err
 	}
 
-	for i, sharedMeta := range loadResult.sharedMeta {
-		d.checkVirtualBounds(sharedMeta, &IterOptions{level: manifest.Level(loadResult.sharedLevels[i])})
-	}
 	// Make the new tables durable. We need to do this at some point before we
 	// update the MANIFEST (via logAndApply), otherwise a crash can have the
 	// tables referenced in the MANIFEST, but not present in the provider.
@@ -1245,15 +1248,12 @@ func (d *DB) ingest(
 			return
 		}
 
-		// Update the sequence number for all local sstables in the
-		// metadata. Writing the metadata to the manifest when the
-		// version edit is applied is the mechanism that persists the
-		// sequence number. The sstables themselves are left unmodified.
-		//
-		// For shared sstables, we do not need to update sequence numbers. These
-		// sequence numbers are already set in ingestLoad.
+		// Update the sequence numbers for all ingested sstables'
+		// metadata. When the version edit is applied, the metadata is
+		// written to the manifest, persisting the sequence number.
+		// The sstables themselves are left unmodified.
 		if err = ingestUpdateSeqNum(
-			d.cmp, d.opts.Comparer.FormatKey, seqNum, loadResult.localMeta,
+			d.cmp, d.opts.Comparer.FormatKey, seqNum, loadResult,
 		); err != nil {
 			if mut != nil {
 				if mut.writerUnref() {
@@ -1282,7 +1282,7 @@ func (d *DB) ingest(
 	// changes to the WAL and memtable. This will cause a bigger commit hiccup
 	// during ingestion.
 	d.commit.ingestSem <- struct{}{}
-	d.commit.AllocateSeqNum(len(loadResult.localPaths), prepare, apply)
+	d.commit.AllocateSeqNum(len(loadResult.localMeta)+len(loadResult.sharedMeta), prepare, apply)
 	<-d.commit.ingestSem
 
 	if err != nil {
@@ -1299,17 +1299,21 @@ func (d *DB) ingest(
 		}
 	}
 
-	// NB: Remote-sstable-only ingestions do not assign a sequence number to
-	// any sstables.
-	globalSeqNum := uint64(0)
-	if len(loadResult.localMeta) > 0 {
-		globalSeqNum = loadResult.localMeta[0].SmallestSeqNum
+	if invariants.Enabled {
+		for _, sharedMeta := range loadResult.sharedMeta {
+			d.checkVirtualBounds(sharedMeta)
+		}
 	}
+
 	info := TableIngestInfo{
-		JobID:        jobID,
-		GlobalSeqNum: globalSeqNum,
-		Err:          err,
-		flushable:    asFlushable,
+		JobID:     jobID,
+		Err:       err,
+		flushable: asFlushable,
+	}
+	if len(loadResult.localMeta) > 0 {
+		info.GlobalSeqNum = loadResult.localMeta[0].SmallestSeqNum
+	} else {
+		info.GlobalSeqNum = loadResult.sharedMeta[0].SmallestSeqNum
 	}
 	var stats IngestOperationStats
 	if ve != nil {
@@ -1495,7 +1499,7 @@ func (d *DB) excise(
 				return nil, err
 			}
 			leftFile.ValidateVirtual(m)
-			d.checkVirtualBounds(leftFile, &IterOptions{level: manifest.Level(level)} /* iterOptions */)
+			d.checkVirtualBounds(leftFile)
 			ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: leftFile})
 			ve.CreatedBackingTables = append(ve.CreatedBackingTables, leftFile.FileBacking)
 			backingTableCreated = true
@@ -1604,7 +1608,7 @@ func (d *DB) excise(
 			rightFile.Size = 1
 		}
 		rightFile.ValidateVirtual(m)
-		d.checkVirtualBounds(rightFile, &IterOptions{level: manifest.Level(level)} /* iterOptions */)
+		d.checkVirtualBounds(rightFile)
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: rightFile})
 		if !backingTableCreated {
 			ve.CreatedBackingTables = append(ve.CreatedBackingTables, rightFile.FileBacking)

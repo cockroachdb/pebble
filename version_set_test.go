@@ -100,9 +100,9 @@ func TestLatestRefCounting(t *testing.T) {
 	m2.SmallestPointKey = m2.Smallest
 
 	m1.ValidateVirtual(f)
-	d.checkVirtualBounds(m1, nil /* iterOptions */)
+	d.checkVirtualBounds(m1)
 	m2.ValidateVirtual(f)
-	d.checkVirtualBounds(m2, nil /* iterOptions */)
+	d.checkVirtualBounds(m2)
 
 	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {
 		metrics := newFileMetrics(ve.NewFiles)
@@ -284,9 +284,9 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 	m2.Stats.NumEntries = 1
 
 	m1.ValidateVirtual(f)
-	d.checkVirtualBounds(m1, nil /* iterOptions */)
+	d.checkVirtualBounds(m1)
 	m2.ValidateVirtual(f)
-	d.checkVirtualBounds(m2, nil /* iterOptions */)
+	d.checkVirtualBounds(m2)
 
 	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {
 		metrics := newFileMetrics(ve.NewFiles)

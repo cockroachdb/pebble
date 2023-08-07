@@ -2360,7 +2360,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 
 		case "update-files":
 			// Update the bounds across all files.
-			if err = ingestUpdateSeqNum(cmp, base.DefaultFormatter, seqnum, metas); err != nil {
+			if err = ingestUpdateSeqNum(cmp, base.DefaultFormatter, seqnum, ingestLoadResult{localMeta: metas}); err != nil {
 				return err.Error()
 			}
 
