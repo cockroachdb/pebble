@@ -8,7 +8,6 @@ package manual
 import "C"
 
 import (
-	"sync/atomic"
 	"unsafe"
 )
 
@@ -48,7 +47,7 @@ func New(n int) []byte {
 		// it cannot allocate memory.
 		throw("out of memory")
 	}
-	atomic.AddInt64(&manualAllocSize, int64(n))
+	manualAllocSize.Add(int64(n))
 	// Interpret the C pointer as a pointer to a Go array, then slice.
 	return (*[MaxArrayLen]byte)(unsafe.Pointer(ptr))[:n:n]
 }
@@ -59,7 +58,7 @@ func Free(b []byte) {
 		if len(b) == 0 {
 			b = b[:cap(b)]
 		}
-		atomic.AddInt64(&manualAllocSize, -int64(len(b)))
+		manualAllocSize.Add(-int64(len(b)))
 		ptr := unsafe.Pointer(&b[0])
 		C.free(ptr)
 	}
