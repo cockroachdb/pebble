@@ -107,7 +107,7 @@ func newPebbleDB(dir string) DB {
 		})
 		opts.Experimental.CreateOnShared = true
 		if secondaryCacheSize != 0 {
-			opts.Experimental.SecondaryCacheSize = secondaryCacheSize
+			opts.Experimental.SecondaryCacheSizeBytes = secondaryCacheSize
 		}
 	}
 

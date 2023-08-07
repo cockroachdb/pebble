@@ -300,7 +300,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	providerSettings.Remote.StorageFactory = opts.Experimental.RemoteStorage
 	providerSettings.Remote.CreateOnShared = opts.Experimental.CreateOnShared
 	providerSettings.Remote.CreateOnSharedLocator = opts.Experimental.CreateOnSharedLocator
-	providerSettings.Remote.CacheSizeBytes = opts.Experimental.SecondaryCacheSize
+	providerSettings.Remote.CacheSizeBytes = opts.Experimental.SecondaryCacheSizeBytes
 
 	d.objProvider, err = objstorageprovider.Open(providerSettings)
 	if err != nil {

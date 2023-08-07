@@ -101,7 +101,7 @@ func parseOptions(
 				return true
 			case "TestOptions.secondary_cache_enabled":
 				opts.secondaryCacheEnabled = true
-				opts.Opts.Experimental.SecondaryCacheSize = 1024 * 1024 * 32 // 32 MBs
+				opts.Opts.Experimental.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
 				return true
 			default:
 				if customOptionParsers == nil {
@@ -508,7 +508,7 @@ func randomOptions(
 		if rng.Intn(2) == 0 {
 			testOpts.secondaryCacheEnabled = true
 			// TODO(josh): Randomize various secondary cache settings.
-			testOpts.Opts.Experimental.SecondaryCacheSize = 1024 * 1024 * 32 // 32 MBs
+			testOpts.Opts.Experimental.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
 		}
 	}
 	return testOpts
