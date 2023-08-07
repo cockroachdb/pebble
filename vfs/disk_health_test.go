@@ -398,34 +398,36 @@ var (
 	errInjected = errors.New("injected error")
 )
 
-func filesystemOpsMockFS(sleepDur time.Duration) *mockFS {
+// filesystemOpsMockFS returns a filesystem that will block until it reads from
+// the provided channel on filesystem operations.
+func filesystemOpsMockFS(ch chan struct{}) *mockFS {
 	return &mockFS{
 		create: func(name string) (File, error) {
-			time.Sleep(sleepDur)
+			<-ch
 			return nil, errInjected
 		},
 		link: func(oldname, newname string) error {
-			time.Sleep(sleepDur)
+			<-ch
 			return errInjected
 		},
 		mkdirAll: func(string, os.FileMode) error {
-			time.Sleep(sleepDur)
+			<-ch
 			return errInjected
 		},
 		remove: func(name string) error {
-			time.Sleep(sleepDur)
+			<-ch
 			return errInjected
 		},
 		removeAll: func(name string) error {
-			time.Sleep(sleepDur)
+			<-ch
 			return errInjected
 		},
 		rename: func(oldname, newname string) error {
-			time.Sleep(sleepDur)
+			<-ch
 			return errInjected
 		},
 		reuseForWrite: func(oldname, newname string) (File, error) {
-			time.Sleep(sleepDur)
+			<-ch
 			return nil, errInjected
 		},
 	}
@@ -469,7 +471,6 @@ type filesystemOperation struct {
 }
 
 func TestDiskHealthChecking_Filesystem(t *testing.T) {
-	const sleepDur = 50 * time.Millisecond
 	const stallThreshold = 10 * time.Millisecond
 	if runtime.GOOS == "windows" {
 		t.Skipf("skipped on windows due to unreliable runtimes")
@@ -478,18 +479,21 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 	// Wrap with disk-health checking, counting each stall via stallCount.
 	var expectedOpType OpType
 	var stallCount atomic.Uint64
-	onStall := make(chan struct{}, 10)
+	unstall := make(chan struct{})
 	var lastOpType OpType
-	fs, closer := WithDiskHealthChecks(filesystemOpsMockFS(sleepDur), stallThreshold,
+	fs, closer := WithDiskHealthChecks(filesystemOpsMockFS(unstall), stallThreshold,
 		func(info DiskSlowInfo) {
 			require.Equal(t, 0, info.WriteSize)
 			stallCount.Add(1)
 			if lastOpType != info.OpType {
 				require.Equal(t, expectedOpType, info.OpType)
 				lastOpType = info.OpType
-				onStall <- struct{}{}
+				// Sending on `unstall` releases the blocked filesystem
+				// operation, allowing the test to proceed.
+				unstall <- struct{}{}
 			}
 		})
+
 	defer closer.Close()
 	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
 	ops := stallFilesystemOperations(fs)
@@ -497,12 +501,10 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 		t.Run(o.name, func(t *testing.T) {
 			expectedOpType = o.opType
 			before := stallCount.Load()
+			// o.f() will perform the filesystem operation and block within the
+			// mock filesystem until the disk stall detector notices the stall
+			// and sends to the `unstall` channel.
 			o.f()
-			select {
-			case <-onStall:
-			case <-time.After(10 * time.Second):
-				t.Fatal("timed out waiting for stall")
-			}
 			after := stallCount.Load()
 			require.Greater(t, int(after-before), 0)
 		})
