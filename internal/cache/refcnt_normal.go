@@ -10,6 +10,8 @@ package cache
 import (
 	"fmt"
 	"sync/atomic"
+
+	"github.com/cockroachdb/redact"
 )
 
 // refcnt provides an atomic reference count. This version is used when the
@@ -29,14 +31,14 @@ func (v *refcnt) refs() int32 {
 func (v *refcnt) acquire() {
 	switch v := atomic.AddInt32((*int32)(v), 1); {
 	case v <= 1:
-		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+		panic(redact.Safe(fmt.Sprintf("pebble: inconsistent reference count: %d", v)))
 	}
 }
 
 func (v *refcnt) release() bool {
 	switch v := atomic.AddInt32((*int32)(v), -1); {
 	case v < 0:
-		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+		panic(redact.Safe(fmt.Sprintf("pebble: inconsistent reference count: %d", v)))
 	case v == 0:
 		return true
 	default:
