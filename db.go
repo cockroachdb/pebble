@@ -2765,13 +2765,13 @@ func (d *DB) ObjProvider() objstorage.Provider {
 	return d.objProvider
 }
 
-func (d *DB) checkVirtualBounds(m *fileMetadata, iterOpts *IterOptions) {
+func (d *DB) checkVirtualBounds(m *fileMetadata) {
 	if !invariants.Enabled {
 		return
 	}
 
 	if m.HasPointKeys {
-		pointIter, rangeDelIter, err := d.newIters(context.TODO(), m, iterOpts, internalIterOpts{})
+		pointIter, rangeDelIter, err := d.newIters(context.TODO(), m, nil, internalIterOpts{})
 		if err != nil {
 			panic(errors.Wrap(err, "pebble: error creating point iterator"))
 		}
@@ -2829,11 +2829,7 @@ func (d *DB) checkVirtualBounds(m *fileMetadata, iterOpts *IterOptions) {
 		return
 	}
 
-	spanIterOpts := keyspan.SpanIterOptions{}
-	if iterOpts != nil {
-		spanIterOpts.Level = iterOpts.level
-	}
-	rangeKeyIter, err := d.tableNewRangeKeyIter(m, spanIterOpts)
+	rangeKeyIter, err := d.tableNewRangeKeyIter(m, keyspan.SpanIterOptions{})
 	defer rangeKeyIter.Close()
 
 	if err != nil {

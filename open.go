@@ -222,9 +222,10 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.mu.compact.inProgress = make(map[*compaction]struct{})
 	d.mu.compact.noOngoingFlushStartTime = time.Now()
 	d.mu.snapshots.init()
-	// logSeqNum is the next sequence number that will be assigned. Start
-	// assigning sequence numbers from base.SeqNumStart to leave room for reserved
-	// sequence numbers (see comments around SeqNumStart).
+	// logSeqNum is the next sequence number that will be assigned.
+	// Start assigning sequence numbers from base.SeqNumStart to leave
+	// room for reserved sequence numbers (see comments around
+	// SeqNumStart).
 	d.mu.versions.logSeqNum.Store(base.SeqNumStart)
 	d.mu.formatVers.vers.Store(uint64(formatVersion))
 	d.mu.formatVers.marker = formatVersionMarker

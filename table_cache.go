@@ -460,29 +460,7 @@ func (c *tableCacheShard) newIters(
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	var rangeDelIter keyspan.FragmentIterator
-	if provider.IsForeign(objMeta) {
-		if opts == nil {
-			panic("unexpected nil opts when reading foreign file")
-		}
-		if !file.Virtual {
-			// Foreign sstables must be virtual by definition.
-			panic(fmt.Sprintf("sstable is foreign but not virtual: %s", file.FileNum))
-		}
-		switch manifest.LevelToInt(opts.level) {
-		case 5:
-			rangeDelIter, err = ic.NewRawRangeDelIter()
-		case 6:
-		// Let rangeDelIter remain nil. We don't need to return rangedels from
-		// this file as they will not apply to any other files. For the purpose
-		// of collapsing rangedels within this file, we create another rangeDelIter
-		// below for use with the interleaving iter.
-		default:
-			panic(fmt.Sprintf("unexpected level for foreign sstable: %d", manifest.LevelToInt(opts.level)))
-		}
-	} else {
-		rangeDelIter, err = ic.NewRawRangeDelIter()
-	}
+	rangeDelIter, err := ic.NewRawRangeDelIter()
 	if err != nil {
 		c.unrefValue(v)
 		return nil, nil, err
@@ -736,7 +714,23 @@ func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
-func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *tableCacheValue {
+func (c *tableCacheShard) findNode(
+	meta *fileMetadata, dbOpts *tableCacheOpts,
+) (v *tableCacheValue) {
+	// Loading a file before its global sequence number is known (eg,
+	// during ingest before entering the commit pipeline) can pollute
+	// the cache with incorrect state. In invariant builds, verify
+	// that the global sequence number of the returned reader matches.
+	if invariants.Enabled {
+		defer func() {
+			if v.reader != nil && meta.LargestSeqNum == meta.SmallestSeqNum &&
+				v.reader.Properties.GlobalSeqNum != meta.SmallestSeqNum {
+				panic(errors.AssertionFailedf("file %s loaded from table cache with the wrong global sequence number %d",
+					meta, v.reader.Properties.GlobalSeqNum))
+			}
+		}()
+	}
+
 	// Fast-path for a hit in the cache.
 	c.mu.RLock()
 	key := tableCacheKey{dbOpts.cacheID, meta.FileBacking.DiskFileNum}
@@ -744,7 +738,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 		// Fast-path hit.
 		//
 		// The caller is responsible for decrementing the refCount.
-		v := n.value
+		v = n.value
 		v.refCount.Add(1)
 		c.mu.RUnlock()
 		n.referenced.Store(true)
@@ -771,7 +765,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 		// Slow-path hit of a hot or cold node.
 		//
 		// The caller is responsible for decrementing the refCount.
-		v := n.value
+		v = n.value
 		v.refCount.Add(1)
 		n.referenced.Store(true)
 		c.hits.Add(1)
@@ -795,7 +789,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 
 	c.misses.Add(1)
 
-	v := &tableCacheValue{
+	v = &tableCacheValue{
 		loaded: make(chan struct{}),
 	}
 	v.refCount.Store(2)
@@ -1070,10 +1064,8 @@ func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *ta
 		v.err = errors.Wrapf(
 			err, "pebble: backing file %s error", errors.Safe(loadInfo.backingFileNum.FileNum()))
 	}
-	if v.err == nil {
-		if loadInfo.smallestSeqNum == loadInfo.largestSeqNum {
-			v.reader.Properties.GlobalSeqNum = loadInfo.largestSeqNum
-		}
+	if v.err == nil && loadInfo.smallestSeqNum == loadInfo.largestSeqNum {
+		v.reader.Properties.GlobalSeqNum = loadInfo.largestSeqNum
 	}
 	if v.err != nil {
 		c.mu.Lock()

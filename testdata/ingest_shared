@@ -40,13 +40,7 @@ ok
 
 iter
 first
-next
-next
-next
 ----
-.
-.
-.
 .
 
 replicate 1 2 d g
@@ -56,17 +50,15 @@ replicated 1 shared SSTs
 lsm
 ----
 6:
-  000005:[d#1,SET-f#1,SET]
+  000005:[d#10,SET-f#10,SET]
 
 iter
 first
 next
 next
-next
 ----
 d: (foo, .)
 f: (bar, .)
-.
 .
 
 batch
@@ -356,13 +348,11 @@ next
 next
 next
 next
-next
 ----
 a@3: (abc, .)
 b@7: (notdeleted, .)
 c@9: (foobar, .)
 e: (baz, .)
-.
 .
 
 replicate 1 2 a z
@@ -376,13 +366,12 @@ ok
 lsm
 ----
 0.0:
-  000004:[a@3#10,SET-d#inf,RANGEDEL]
+  000004:[a@3#11,SET-d#inf,RANGEDEL]
 6:
-  000005:[a@3#1,SET-e#1,SET]
+  000005:[a@3#10,SET-e#10,SET]
 
 iter
 first
-next
 next
 next
 next
@@ -392,7 +381,6 @@ a@3: (abc, .)
 b@7: (notdeleted, .)
 c@9: (foobar, .)
 e: (baz, .)
-.
 .
 
 # Similar to the above test, except this time we bring the rangedel into
@@ -477,15 +465,14 @@ ok
 lsm
 ----
 0.0:
-  000004:[a@3#10,SET-c@9#10,SET]
+  000004:[a@3#12,SET-c@9#12,SET]
 5:
-  000005:[b#2,RANGEDEL-d#inf,RANGEDEL]
+  000005:[b#11,RANGEDEL-d#inf,RANGEDEL]
 6:
-  000006:[a@3#1,SET-e#1,SET]
+  000006:[a@3#10,SET-e#10,SET]
 
 iter
 first
-next
 next
 next
 next
@@ -495,7 +482,6 @@ a@3: (abc, .)
 b@7: (notdeleted, .)
 c@9: (foobar, .)
 e: (baz, .)
-.
 .
 
 # Test for cases where an excise produces a range key on one side and point keys
@@ -554,7 +540,7 @@ lsm
 ----
 6:
   000008:[a#10,RANGEKEYSET-aaa#inf,RANGEKEYSET]
-  000007:[b#1,SET-c#1,SET]
+  000007:[b#13,SET-c#13,SET]
   000009:[d#11,SET-e#12,SET]
 
 iter
@@ -635,9 +621,9 @@ replicated 2 shared SSTs
 lsm
 ----
 5:
-  000007:[bb#2,RANGEDEL-f#inf,RANGEDEL]
+  000007:[bb#12,RANGEDEL-f#inf,RANGEDEL]
 6:
-  000008:[b@5#1,SET-e#1,SET]
+  000008:[b@5#11,SET-e#11,SET]
   000005:[ff#10,SET-ff#10,SET]
 
 iter
@@ -716,9 +702,9 @@ replicated 2 shared SSTs
 lsm
 ----
 5:
-  000007:[bb#2,RANGEKEYSET-f#inf,RANGEKEYSET]
+  000007:[bb#12,RANGEKEYSET-f#inf,RANGEKEYSET]
 6:
-  000008:[b@5#1,SET-e#1,SET]
+  000008:[b@5#11,SET-e#11,SET]
   000005:[ff#10,SET-ff#10,SET]
 
 iter

@@ -63,7 +63,7 @@ func (i *Iterator) constructRangeKeyIter() {
 	// around Key Trailer order.
 	iter := current.RangeKeyLevels[0].Iter()
 	for f := iter.Last(); f != nil; f = iter.Prev() {
-		spanIter, err := i.newIterRangeKey(f, i.opts.SpanIterOptions(manifest.Level(0)))
+		spanIter, err := i.newIterRangeKey(f, i.opts.SpanIterOptions())
 		if err != nil {
 			i.rangeKey.iterConfig.AddLevel(&errorKeyspanIter{err: err})
 			continue
@@ -77,7 +77,7 @@ func (i *Iterator) constructRangeKeyIter() {
 			continue
 		}
 		li := i.rangeKey.iterConfig.NewLevelIter()
-		spanIterOpts := i.opts.SpanIterOptions(manifest.Level(level))
+		spanIterOpts := i.opts.SpanIterOptions()
 		li.Init(spanIterOpts, i.cmp, i.newIterRangeKey, current.RangeKeyLevels[level].Iter(),
 			manifest.Level(level), manifest.KeyTypeRange)
 		i.rangeKey.iterConfig.AddLevel(li)
