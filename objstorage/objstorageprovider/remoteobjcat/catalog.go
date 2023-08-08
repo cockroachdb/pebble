@@ -208,6 +208,7 @@ func (b *Batch) Copy() Batch {
 
 // Append merges two batches.
 func (b *Batch) Append(other Batch) {
+	// Foo
 	b.ve.NewObjects = append(b.ve.NewObjects, other.ve.NewObjects...)
 	b.ve.DeletedObjects = append(b.ve.DeletedObjects, other.ve.DeletedObjects...)
 }
