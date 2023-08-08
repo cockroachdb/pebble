@@ -70,20 +70,16 @@ func (s *Snapshot) ScanInternal(
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
-	includeObsoleteKeys bool,
-	rateLimitFunc func(key *InternalKey, value LazyValue),
 ) error {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
 	scanInternalOpts := &scanInternalOptions{
-		visitPointKey:       visitPointKey,
-		visitRangeDel:       visitRangeDel,
-		visitRangeKey:       visitRangeKey,
-		visitSharedFile:     visitSharedFile,
-		skipSharedLevels:    visitSharedFile != nil,
-		includeObsoleteKeys: includeObsoleteKeys,
-		rateLimitFunc:       rateLimitFunc,
+		visitPointKey:    visitPointKey,
+		visitRangeDel:    visitRangeDel,
+		visitRangeKey:    visitRangeKey,
+		visitSharedFile:  visitSharedFile,
+		skipSharedLevels: visitSharedFile != nil,
 		IterOptions: IterOptions{
 			KeyTypes:   IterKeyTypePointsAndRanges,
 			LowerBound: lower,

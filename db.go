@@ -1183,17 +1183,13 @@ func (d *DB) ScanInternal(
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
-	includeObsoleteKeys bool,
-	rateLimitFunc func(key *InternalKey, val LazyValue),
 ) error {
 	scanInternalOpts := &scanInternalOptions{
-		visitPointKey:       visitPointKey,
-		visitRangeDel:       visitRangeDel,
-		visitRangeKey:       visitRangeKey,
-		visitSharedFile:     visitSharedFile,
-		skipSharedLevels:    visitSharedFile != nil,
-		includeObsoleteKeys: includeObsoleteKeys,
-		rateLimitFunc:       rateLimitFunc,
+		visitPointKey:    visitPointKey,
+		visitRangeDel:    visitRangeDel,
+		visitRangeKey:    visitRangeKey,
+		visitSharedFile:  visitSharedFile,
+		skipSharedLevels: visitSharedFile != nil,
 		IterOptions: IterOptions{
 			KeyTypes:   IterKeyTypePointsAndRanges,
 			LowerBound: lower,
@@ -2709,8 +2705,8 @@ func (d *DB) ScanStatistics(
 		}
 	}
 
-	err := d.ScanInternal(ctx, lower, upper,
-		func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error {
+	scanInternalOpts := &scanInternalOptions{
+		visitPointKey: func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error {
 			// If the previous key is equal to the current point key, the current key was
 			// pinned by a snapshot.
 			size := uint64(key.Size())
@@ -2730,12 +2726,12 @@ func (d *DB) ScanStatistics(
 			stats.BytesRead += uint64(key.Size() + value.Len())
 			return nil
 		},
-		func(start, end []byte, seqNum uint64) error {
+		visitRangeDel: func(start, end []byte, seqNum uint64) error {
 			stats.Accumulated.KindsCount[InternalKeyKindRangeDelete]++
 			stats.BytesRead += uint64(len(start) + len(end))
 			return nil
 		},
-		func(start, end []byte, keys []rangekey.Key) error {
+		visitRangeKey: func(start, end []byte, keys []rangekey.Key) error {
 			stats.BytesRead += uint64(len(start) + len(end))
 			for _, key := range keys {
 				stats.Accumulated.KindsCount[key.Kind()]++
@@ -2743,10 +2739,18 @@ func (d *DB) ScanStatistics(
 			}
 			return nil
 		},
-		nil,  /* visitSharedFile */
-		true, /* includeObsoleteKeys */
-		rateLimitFunc,
-	)
+		includeObsoleteKeys: true,
+		IterOptions: IterOptions{
+			KeyTypes:   IterKeyTypePointsAndRanges,
+			LowerBound: lower,
+			UpperBound: upper,
+		},
+		rateLimitFunc: rateLimitFunc,
+	}
+	iter := d.newInternalIter(nil /* snapshot */, scanInternalOpts)
+	defer iter.close()
+
+	err := scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
 
 	if err != nil {
 		return LSMKeyStatistics{}, err

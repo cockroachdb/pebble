@@ -208,8 +208,6 @@ func TestScanInternal(t *testing.T) {
 			visitRangeDel func(start, end []byte, seqNum uint64) error,
 			visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 			visitSharedFile func(sst *SharedSSTMeta) error,
-			includeObsoleteKeys bool,
-			rateLimitFunc func(key *InternalKey, val LazyValue),
 		) error
 	}
 	batches := map[string]*Batch{}
@@ -430,8 +428,6 @@ func TestScanInternal(t *testing.T) {
 					return nil
 				},
 				fileVisitor,
-				false,
-				nil, /* rateLimitFunc */
 			)
 			if err != nil {
 				return err.Error()
