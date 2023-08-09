@@ -37,7 +37,7 @@ jobs:
           mkdir -p artifacts
           make testcoverage COVER_PROFILE=artifacts/cover-after.out
           go run github.com/cockroachdb/code-cov-utils/gocover2json@latest \
-            --trim-prefix github.com/cockroachdb/pebble \
+            --trim-prefix github.com/cockroachdb/pebble/ \
             artifacts/cover-after.out artifacts/cover-${PR}-${HEAD_SHA}.json
 
       # Running the "before" coverage for each PR (rather than in a job that
