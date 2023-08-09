@@ -55,7 +55,7 @@ jobs:
           make testcoverage COVER_PROFILE=artifacts/cover-before.out
           SHA=$(git rev-parse HEAD)
           go run github.com/cockroachdb/code-cov-utils/gocover2json@latest \
-            --trim-prefix github.com/cockroachdb/pebble \
+            --trim-prefix github.com/cockroachdb/pebble/ \
             artifacts/cover-before.out artifacts/cover-${PR}-${BASE_SHA}.json
 
       - name: Upload artifacts
