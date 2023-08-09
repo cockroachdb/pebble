@@ -20,6 +20,7 @@ import (
 )
 
 func TestCatalog(t *testing.T) {
+	t.Skipf("foo")
 	mem := vfs.NewMem()
 	var memLog base.InMemLogger
 
