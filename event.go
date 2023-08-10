@@ -39,10 +39,11 @@ func formatFileNums(tables []TableInfo) string {
 	return buf.String()
 }
 
-// LevelInfo contains info pertaining to a partificular level.
+// LevelInfo contains info pertaining to a particular level.
 type LevelInfo struct {
 	Level  int
 	Tables []TableInfo
+	Score  float64
 }
 
 func (i LevelInfo) String() string {
@@ -51,8 +52,11 @@ func (i LevelInfo) String() string {
 
 // SafeFormat implements redact.SafeFormatter.
 func (i LevelInfo) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("L%d [%s] (%s)", redact.Safe(i.Level), redact.Safe(formatFileNums(i.Tables)),
-		redact.Safe(humanize.Bytes.Uint64(tablesTotalSize(i.Tables))))
+	w.Printf("L%d [%s] (%s) Score=%.2f",
+		redact.Safe(i.Level),
+		redact.Safe(formatFileNums(i.Tables)),
+		redact.Safe(humanize.Bytes.Uint64(tablesTotalSize(i.Tables))),
+		redact.Safe(i.Score))
 }
 
 // CompactionInfo contains the info for a compaction event.
@@ -75,6 +79,22 @@ type CompactionInfo struct {
 	TotalDuration time.Duration
 	Done          bool
 	Err           error
+
+	SingleLevelOverlappingRatio float64
+	MultiLevelOverlappingRatio  float64
+
+	// Annotations specifies additional info to appear in a compaction's event log line
+	Annotations compactionAnnotations
+}
+
+type compactionAnnotations []string
+
+// SafeFormat implements redact.SafeFormatter.
+func (ca compactionAnnotations) SafeFormat(w redact.SafePrinter, _ rune) {
+	if len(ca) == 0 {
+		return
+	}
+	w.Printf("%s ", redact.Safe(ca))
 }
 
 func (i CompactionInfo) String() string {
@@ -90,12 +110,17 @@ func (i CompactionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	}
 
 	if !i.Done {
-		w.Printf("[JOB %d] compacting(%s) ", redact.Safe(i.JobID), redact.SafeString(i.Reason))
-		w.Print(levelInfos(i.Input))
+		w.Printf("[JOB %d] compacting(%s) ",
+			redact.Safe(i.JobID),
+			redact.SafeString(i.Reason))
+		w.Printf("%s", i.Annotations)
+		w.Printf("%s; ", levelInfos(i.Input))
+		w.Printf("OverlappingRatio: Single %.2f, Multi %.2f ", i.SingleLevelOverlappingRatio, i.MultiLevelOverlappingRatio)
 		return
 	}
 	outputSize := tablesTotalSize(i.Output.Tables)
 	w.Printf("[JOB %d] compacted(%s) ", redact.Safe(i.JobID), redact.SafeString(i.Reason))
+	w.Printf("%s", i.Annotations)
 	w.Print(levelInfos(i.Input))
 	w.Printf(" -> L%d [%s] (%s), in %.1fs (%.1fs total), output rate %s/s",
 		redact.Safe(i.Output.Level),

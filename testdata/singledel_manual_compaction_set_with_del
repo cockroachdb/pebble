@@ -143,8 +143,8 @@ first
 .
 
 # Define a sequence of SET=>DEL=>SET=>SINGLEDEL, such that the DEL and
-# SINGLEDEL meet in a compaction.
-define snapshots=(9)
+# SINGLEDEL meet in a compaction. Disable multilevel compaction to exercise the proper test case.
+define snapshots=(9) disable-multi-level
 L1
   a.SINGLEDEL.10:
 L2
@@ -213,7 +213,8 @@ first
 
 # Define a sequence of SET=>SINGLEDEL=>SET=>SINGLEDEL, such that the two
 # SINGLEDELs meet in a compaction.
-define snapshots=(9)
+# To test surface the right test case, disable multi level compaction.
+define snapshots=(9) disable-multi-level
 L1
   a.SINGLEDEL.10:
 L2

@@ -613,7 +613,9 @@ func (vs *versionSet) logAndApply(
 	return nil
 }
 
-func (vs *versionSet) incrementCompactions(kind compactionKind, extraLevels []*compactionLevel) {
+func (vs *versionSet) incrementCompactions(
+	kind compactionKind, extraLevels []*compactionLevel, pickerMetrics compactionPickerMetrics,
+) {
 	switch kind {
 	case compactionKindDefault:
 		vs.metrics.Compact.Count++
