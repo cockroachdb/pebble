@@ -11,6 +11,9 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 )
 
+// Fragmenter exports the keyspan.Fragmenter type.
+type Fragmenter = keyspan.Fragmenter
+
 // Key exports the keyspan.Key type.
 type Key = keyspan.Key
 
