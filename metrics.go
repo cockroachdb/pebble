@@ -77,6 +77,18 @@ type LevelMetrics struct {
 	TablesIngested uint64
 	// The number of sstables moved to this level by a "move" compaction.
 	TablesMoved uint64
+
+	MultiLevel struct {
+		// BytesInTop are the total bytes in a multilevel compaction coming from the top level.
+		BytesInTop uint64
+
+		// BytesIn, exclusively for multiLevel compactions.
+		BytesIn uint64
+
+		// BytesRead, exclusively for multilevel compactions.
+		BytesRead uint64
+	}
+
 	// Additional contains misc additional metrics that are not always printed.
 	Additional struct {
 		// The sum of Properties.ValueBlocksSize for all the sstables in this
@@ -105,6 +117,9 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.TablesFlushed += u.TablesFlushed
 	m.TablesIngested += u.TablesIngested
 	m.TablesMoved += u.TablesMoved
+	m.MultiLevel.BytesInTop += u.MultiLevel.BytesInTop
+	m.MultiLevel.BytesRead += u.MultiLevel.BytesRead
+	m.MultiLevel.BytesIn += u.MultiLevel.BytesIn
 	m.Additional.BytesWrittenDataBlocks += u.Additional.BytesWrittenDataBlocks
 	m.Additional.BytesWrittenValueBlocks += u.Additional.BytesWrittenValueBlocks
 	m.Additional.ValueBlocksSize += u.Additional.ValueBlocksSize
@@ -130,14 +145,15 @@ type Metrics struct {
 
 	Compact struct {
 		// The total number of compactions, and per-compaction type counts.
-		Count            int64
-		DefaultCount     int64
-		DeleteOnlyCount  int64
-		ElisionOnlyCount int64
-		MoveCount        int64
-		ReadCount        int64
-		RewriteCount     int64
-		MultiLevelCount  int64
+		Count             int64
+		DefaultCount      int64
+		DeleteOnlyCount   int64
+		ElisionOnlyCount  int64
+		MoveCount         int64
+		ReadCount         int64
+		RewriteCount      int64
+		MultiLevelCount   int64
+		CounterLevelCount int64
 		// An estimate of the number of bytes that need to be compacted for the LSM
 		// to reach a stable state.
 		EstimatedDebt uint64
@@ -378,9 +394,25 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	// width specifiers. When the issue is fixed, we can convert these to
 	// RedactableStrings. https://github.com/cockroachdb/redact/issues/17
 
-	w.SafeString("      |                     |       |       |   ingested   |     moved    |    written   |       |    amp\n")
-	w.SafeString("level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w\n")
-	w.SafeString("------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------\n")
+	multiExists := m.Compact.MultiLevelCount > 0
+	appendIfMulti := func(line redact.SafeString) {
+		if multiExists {
+			w.SafeString(line)
+		}
+	}
+	newline := func() {
+		w.SafeString("\n")
+	}
+
+	w.SafeString("      |                     |       |       |   ingested   |     moved    |    written   |       |    amp")
+	appendIfMulti("   |     multilevel")
+	newline()
+	w.SafeString("level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w")
+	appendIfMulti("  |    top   in  read")
+	newline()
+	w.SafeString("------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------")
+	appendIfMulti("-+------------------")
+	newline()
 
 	// formatRow prints out a row of the table.
 	formatRow := func(m *LevelMetrics, score float64) {
@@ -403,7 +435,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			wampStr = fmt.Sprintf("%.1f", wamp)
 		}
 
-		w.Printf("| %5s %6s %6s | %5s | %5s | %5s %6s | %5s %6s | %5s %6s | %5s | %3d %4s\n",
+		w.Printf("| %5s %6s %6s | %5s | %5s | %5s %6s | %5s %6s | %5s %6s | %5s | %3d %4s",
 			humanize.Count.Int64(m.NumFiles),
 			humanize.Bytes.Int64(m.Size),
 			humanize.Bytes.Uint64(m.Additional.ValueBlocksSize),
@@ -418,6 +450,14 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			humanize.Bytes.Uint64(m.BytesRead),
 			redact.Safe(m.Sublevels),
 			redact.Safe(wampStr))
+
+		if multiExists {
+			w.Printf(" | %5s %5s %5s",
+				humanize.Bytes.Uint64(m.MultiLevel.BytesInTop),
+				humanize.Bytes.Uint64(m.MultiLevel.BytesIn),
+				humanize.Bytes.Uint64(m.MultiLevel.BytesRead))
+		}
+		newline()
 	}
 
 	var total LevelMetrics
@@ -443,8 +483,9 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.SafeString("total ")
 	formatRow(&total, math.NaN())
 
-	w.SafeString("-----------------------------------------------------------------------------------------------------------\n")
-
+	w.SafeString("-----------------------------------------------------------------------------------------------------------")
+	appendIfMulti("--------------------")
+	newline()
 	w.Printf("WAL: %d files (%s)  in: %s  written: %s (%.0f%% overhead)\n",
 		redact.Safe(m.WAL.Files),
 		humanize.Bytes.Uint64(m.WAL.Size),

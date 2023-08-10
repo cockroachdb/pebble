@@ -78,6 +78,9 @@ func exampleMetrics() Metrics {
 		l.TablesFlushed = base + 11
 		l.TablesIngested = base + 12
 		l.TablesMoved = base + 13
+		l.MultiLevel.BytesInTop = base + 4
+		l.MultiLevel.BytesIn = base + 4
+		l.MultiLevel.BytesRead = base + 4
 	}
 	return m
 }

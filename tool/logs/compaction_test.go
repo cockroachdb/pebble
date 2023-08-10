@@ -21,10 +21,13 @@ import (
 
 const (
 	compactionStartLine23_1 = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s6] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M)`
-	compactionStartLine     = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s6] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)`
+	compactionStartLine     = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s6] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05;`
 
 	compactionEndLine23_1 = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M) -> L3 [445883 445887] (13 M), in 0.3s, output rate 42 M/s`
-	compactionEndLine     = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s`
+	compactionEndLine     = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s`
+
+	compactionMultiLevelStartLine = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554 [JOB 11] compacting(default) [multilevel] L2 [250858] (2.1MB) Score=1.09 + L3 [247985 247989 247848] (17MB) Score=0.99 + L4 [250817 250834 238396] (28MB) Score=1.00; OverlappingRatio: Single 3.77, Multi 1.46;`
+	compactionMultiLevelEndline   = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554 [JOB 11] compacted(default) [multilevel] L2 [250858] (2.1MB) Score=1.09 + L3 [247985 247989 247848] (17MB) Score=0.99 + L4 [250817 250834 238396] (28MB) Score=1.00 -> L4 [250859 250860 250861 250862 250863] (46MB), in 0.2s (0.2s total), output rate 185MB/s`
 
 	flushStartLine = `I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n9,pebble,s8] 24 [JOB 10] flushing 2 memtables to L0`
 
@@ -132,7 +135,20 @@ func TestCompactionLogs_Regex(t *testing.T) {
 				compactionPatternTypeIdx:   "default",
 				compactionPatternFromIdx:   "2",
 				compactionPatternToIdx:     "3",
-				compactionPatternLevels:    "L2 [442555] (4.2MB) + L3 [445853] (8.4MB)",
+				compactionPatternLevels:    "L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99",
+			},
+		},
+		{
+			name: "compaction start multilevel",
+			re:   compactionPattern,
+			line: compactionMultiLevelStartLine,
+			matches: map[int]string{
+				compactionPatternJobIdx:    "11",
+				compactionPatternSuffixIdx: "ing",
+				compactionPatternTypeIdx:   "default",
+				compactionPatternFromIdx:   "2",
+				compactionPatternToIdx:     "4",
+				compactionPatternLevels:    "L2 [250858] (2.1MB) Score=1.09 + L3 [247985 247989 247848] (17MB) Score=0.99 + L4 [250817 250834 238396] (28MB) Score=1.00",
 			},
 		},
 		{
@@ -158,6 +174,19 @@ func TestCompactionLogs_Regex(t *testing.T) {
 				compactionPatternFromIdx:   "2",
 				compactionPatternToIdx:     "3",
 				compactionPatternBytesIdx:  "13MB",
+			},
+		},
+		{
+			name: "compaction end",
+			re:   compactionPattern,
+			line: compactionMultiLevelEndline,
+			matches: map[int]string{
+				compactionPatternJobIdx:    "11",
+				compactionPatternSuffixIdx: "ed",
+				compactionPatternTypeIdx:   "default",
+				compactionPatternFromIdx:   "2",
+				compactionPatternToIdx:     "4",
+				compactionPatternBytesIdx:  "46MB",
 			},
 		},
 		{
