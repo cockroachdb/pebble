@@ -947,6 +947,10 @@ func (d alwaysMultiLevel) pick(
 	return pcMulti
 }
 
+func (d alwaysMultiLevel) allowL0() bool {
+	return false
+}
+
 func TestPickedCompactionSetupInputs(t *testing.T) {
 	opts := &Options{}
 	opts.EnsureDefaults()
@@ -1087,6 +1091,8 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				extraLevel := pc.extraLevels[0].level
 				fmt.Fprintf(&buf, "init-multi-level(%d,%d,%d)\n", pc.startLevel.level, extraLevel,
 					pc.outputLevel.level)
+				fmt.Fprintf(&buf, "Original WriteAmp %.2f; ML WriteAmp %.2f\n", origPC.predictedWriteAmp(), pc.predictedWriteAmp())
+				fmt.Fprintf(&buf, "Original OverlappingRatio %.2f; ML OverlappingRatio %.2f\n", origPC.overlappingRatio(), pc.overlappingRatio())
 			}
 			return buf.String()
 
@@ -1095,12 +1101,19 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		}
 	}
 
+	t.Logf("Test basic setup inputs behavior without multi level compactions")
+	opts.Experimental.MultiLevelCompactionHueristic = NoMultiLevel{}
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs",
 		setupInputTest)
 
 	t.Logf("Turning multi level compaction on")
 	opts.Experimental.MultiLevelCompactionHueristic = alwaysMultiLevel{}
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_dummy",
+		setupInputTest)
+
+	t.Logf("Try Write-Amp Heuristic")
+	opts.Experimental.MultiLevelCompactionHueristic = WriteAmpHeuristic{}
+	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_write_amp",
 		setupInputTest)
 }
 

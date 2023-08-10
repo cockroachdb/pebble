@@ -662,13 +662,16 @@ type compaction struct {
 	allowedZeroSeqNum bool
 
 	metrics map[int]*LevelMetrics
+
+	pickerMetrics compactionPickerMetrics
 }
 
 func (c *compaction) makeInfo(jobID int) CompactionInfo {
 	info := CompactionInfo{
-		JobID:  jobID,
-		Reason: c.kind.String(),
-		Input:  make([]LevelInfo, 0, len(c.inputs)),
+		JobID:       jobID,
+		Reason:      c.kind.String(),
+		Input:       make([]LevelInfo, 0, len(c.inputs)),
+		Annotations: []string{},
 	}
 	for _, cl := range c.inputs {
 		inputInfo := LevelInfo{Level: cl.level, Tables: nil}
@@ -693,6 +696,15 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 		// semantic distinction.
 		info.Output.Level = numLevels - 1
 	}
+
+	for i, score := range c.pickerMetrics.scores {
+		info.Input[i].Score = score
+	}
+	info.SingleLevelOverlappingRatio = c.pickerMetrics.singleLevelOverlappingRatio
+	info.MultiLevelOverlappingRatio = c.pickerMetrics.multiLevelOverlappingRatio
+	if len(info.Input) > 2 {
+		info.Annotations = append(info.Annotations, "multilevel")
+	}
 	return info
 }
 
@@ -713,6 +725,7 @@ func newCompaction(pc *pickedCompaction, opts *Options, beganAt time.Time) *comp
 		maxOutputFileSize: pc.maxOutputFileSize,
 		maxOverlapBytes:   pc.maxOverlapBytes,
 		l0SublevelInfo:    pc.l0SublevelInfo,
+		pickerMetrics:     pc.pickerMetrics,
 	}
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
@@ -2103,7 +2116,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.clearCompactingState(c, err != nil)
 	delete(d.mu.compact.inProgress, c)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics)
 
 	var flushed flushableList
 	if err == nil {
@@ -2669,7 +2682,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	// NB: clearing compacting state must occur before updating the read state;
 	// L0Sublevels initialization depends on it.
 	d.clearCompactingState(c, err != nil)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 
 	info.TotalDuration = d.timeNow().Sub(c.beganAt)
@@ -2851,8 +2864,9 @@ func (d *DB) runCompaction(
 		DeletedFiles: map[deletedFileEntry]*fileMetadata{},
 	}
 
+	startLevelBytes := c.startLevel.files.SizeSum()
 	outputMetrics := &LevelMetrics{
-		BytesIn:   c.startLevel.files.SizeSum(),
+		BytesIn:   startLevelBytes,
 		BytesRead: c.outputLevel.files.SizeSum(),
 	}
 	if len(c.extraLevels) > 0 {
@@ -2868,6 +2882,9 @@ func (d *DB) runCompaction(
 	}
 	if len(c.extraLevels) > 0 {
 		c.metrics[c.extraLevels[0].level] = &LevelMetrics{}
+		outputMetrics.MultiLevel.BytesInTop = startLevelBytes
+		outputMetrics.MultiLevel.BytesIn = outputMetrics.BytesIn
+		outputMetrics.MultiLevel.BytesRead = outputMetrics.BytesRead
 	}
 
 	// The table is typically written at the maximum allowable format implied by

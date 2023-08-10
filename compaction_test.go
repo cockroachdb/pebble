@@ -92,7 +92,7 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 	if cInfo.level == 0 {
 		return pickL0(env, p.opts, p.vers, p.baseLevel, diskAvailBytesInf)
 	}
-	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel, diskAvailBytesInf, p.maxLevelBytes)
+	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel, diskAvailBytesInf)
 }
 
 func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
@@ -143,10 +143,11 @@ func TestPickCompaction(t *testing.T) {
 	}
 
 	testCases := []struct {
-		desc    string
-		version *version
-		picker  compactionPickerForTesting
-		want    string
+		desc      string
+		version   *version
+		picker    compactionPickerForTesting
+		want      string
+		wantMulti bool
 	}{
 		{
 			desc: "no compaction",
@@ -404,7 +405,8 @@ func TestPickCompaction(t *testing.T) {
 				level:     1,
 				baseLevel: 1,
 			},
-			want: "200,210,220 300 ",
+			want:      "200,210,220 300  ",
+			wantMulti: true,
 		},
 
 		{
@@ -456,7 +458,8 @@ func TestPickCompaction(t *testing.T) {
 				level:     1,
 				baseLevel: 1,
 			},
-			want: "200 300 ",
+			want:      "200 300  ",
+			wantMulti: true,
 		},
 
 		{
@@ -526,10 +529,19 @@ func TestPickCompaction(t *testing.T) {
 		pc, got := vs.picker.pickAuto(compactionEnv{}), ""
 		if pc != nil {
 			c := newCompaction(pc, opts, time.Now())
-			got0 := fileNums(c.startLevel.files)
-			got1 := fileNums(c.outputLevel.files)
-			got2 := fileNums(c.grandparents)
-			got = got0 + " " + got1 + " " + got2
+			gotStart := fileNums(c.startLevel.files)
+			gotML := ""
+			observedMulti := len(c.extraLevels) > 0
+			if observedMulti {
+				gotML = " " + fileNums(c.extraLevels[0].files)
+			}
+			gotOutput := " " + fileNums(c.outputLevel.files)
+			gotGrandparents := " " + fileNums(c.grandparents)
+			got = gotStart + gotML + gotOutput + gotGrandparents
+			if tc.wantMulti != observedMulti {
+				t.Fatalf("Expected Multi %t; Observed Multi %t, for %s", tc.wantMulti, observedMulti, got)
+			}
+
 		}
 		if got != tc.want {
 			t.Fatalf("%s:\ngot  %q\nwant %q", tc.desc, got, tc.want)
@@ -1617,6 +1629,11 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev4",
 			minVersion: ExperimentalFormatDeleteSizedAndObsolete,
+			maxVersion: internalFormatNewest,
+		},
+		{
+			testData:   "testdata/manual_compaction_multilevel",
+			minVersion: FormatMostCompatible,
 			maxVersion: internalFormatNewest,
 		},
 	}

@@ -62,12 +62,17 @@ var (
 		`^.*` +
 			/* Job ID            */ `\[JOB (?P<job>\d+)]\s` +
 			/* Start / end       */ `compact(?P<suffix>ed|ing)` +
-			/* Compaction type   */ `\((?P<type>.*?)\)\s` +
+
+			/* Compaction type   */
+			`\((?P<type>.*?)\)\s` +
+			/* Optional annotation*/ `?(\s*\[(?P<annotations>.*?)\]\s*)?` +
 
 			/* Start / end level */
-			`(?P<levels>L(?P<from>\d)(?:.*(?:\+|->)\sL(?P<to>\d))?` +
+			`(?P<levels>L(?P<from>\d).*?(?:.*(?:\+|->)\sL(?P<to>\d))?` +
 			/* Bytes             */
-			`(?:.*?\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\)))`,
+			`(?:.*?\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\))` +
+			/* Score */
+			`?(\s*(Score=\d+(\.\d+)))?)`,
 	)
 	compactionPatternJobIdx    = compactionPattern.SubexpIndex("job")
 	compactionPatternSuffixIdx = compactionPattern.SubexpIndex("suffix")

@@ -159,7 +159,7 @@ sync: db
 [JOB 7] flushed 1 memtable (100B) to L0 [000008] (662B), in 1.0s (2.0s total), output rate 662B/s
 remove: db/MANIFEST-000001
 [JOB 7] MANIFEST deleted 000001
-[JOB 8] compacting(default) L0 [000005 000008] (1.3KB) + L6 [] (0B)
+[JOB 8] compacting(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00; OverlappingRatio: Single 0.00, Multi 0.00
 open: db/000005.sst
 read-at(609, 53): db/000005.sst
 read-at(572, 37): db/000005.sst
@@ -193,7 +193,7 @@ close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 8] MANIFEST created 000011
-[JOB 8] compacted(default) L0 [000005 000008] (1.3KB) + L6 [] (0B) -> L6 [000010] (662B), in 1.0s (3.0s total), output rate 662B/s
+[JOB 8] compacted(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (662B), in 1.0s (3.0s total), output rate 662B/s
 close: db/000005.sst
 close: db/000008.sst
 remove: db/000005.sst
