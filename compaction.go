@@ -2137,6 +2137,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// ranges this snapshot is interested in, this EFOS cannot transition to
 				// a file-only snapshot as keys in that range could now be deleted. Move
 				// onto the next snapshot.
+				s.efos.releaseReadState()
 				s = s.next
 				continue
 			}

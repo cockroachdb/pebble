@@ -380,7 +380,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	require.Equal(t, 2, int(d.Metrics().Levels[6].NumFiles))
 
 	// These reads will go through the table cache.
-	iter := d.NewIter(nil)
+	iter, _ := d.NewIter(nil)
 	expected := []byte{'a', 'f', 'z'}
 	for i, x := 0, iter.First(); x; i, x = i+1, iter.Next() {
 		require.Equal(t, []byte{expected[i]}, iter.Value())

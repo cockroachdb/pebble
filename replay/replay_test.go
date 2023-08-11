@@ -111,7 +111,7 @@ func runReplayTest(t *testing.T, path string) {
 			return ""
 		case "scan-keys":
 			var buf bytes.Buffer
-			it := r.d.NewIter(nil)
+			it, _ := r.d.NewIter(nil)
 			defer it.Close()
 			for valid := it.First(); valid; valid = it.Next() {
 				fmt.Fprintf(&buf, "%s: %s\n", it.Key(), it.Value())

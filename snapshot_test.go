@@ -154,9 +154,9 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 				if snapshot == nil {
 					return fmt.Sprintf("unable to find snapshot \"%s\"", name)
 				}
-				iter = snapshot.NewIter(nil)
+				iter, _ = snapshot.NewIter(nil)
 			} else {
-				iter = d.NewIter(nil)
+				iter, _ = d.NewIter(nil)
 			}
 			defer iter.Close()
 
@@ -289,7 +289,7 @@ func TestSnapshotRangeDeletionStress(t *testing.T) {
 			}()
 
 			// Count the keys at this snapshot.
-			iter := snapshots[r].NewIter(nil)
+			iter, _ := snapshots[r].NewIter(nil)
 			var keysFound int
 			for iter.First(); iter.Valid(); iter.Next() {
 				keysFound++
