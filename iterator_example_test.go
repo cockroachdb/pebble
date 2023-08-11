@@ -25,7 +25,7 @@ func ExampleIterator() {
 		}
 	}
 
-	iter := db.NewIter(nil)
+	iter, _ := db.NewIter(nil)
 	for iter.First(); iter.Valid(); iter.Next() {
 		fmt.Printf("%s\n", iter.Key())
 	}
@@ -73,7 +73,7 @@ func ExampleIterator_prefixIteration() {
 		}
 	}
 
-	iter := db.NewIter(prefixIterOptions([]byte("hello")))
+	iter, _ := db.NewIter(prefixIterOptions([]byte("hello")))
 	for iter.First(); iter.Valid(); iter.Next() {
 		fmt.Printf("%s\n", iter.Key())
 	}
@@ -101,7 +101,7 @@ func ExampleIterator_SeekGE() {
 		}
 	}
 
-	iter := db.NewIter(nil)
+	iter, _ := db.NewIter(nil)
 	if iter.SeekGE([]byte("a")); iter.Valid() {
 		fmt.Printf("%s\n", iter.Key())
 	}

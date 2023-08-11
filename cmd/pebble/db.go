@@ -131,7 +131,8 @@ func (p pebbleDB) Flush() error {
 }
 
 func (p pebbleDB) NewIter(opts *pebble.IterOptions) iterator {
-	return p.d.NewIter(opts)
+	iter, _ := p.d.NewIter(opts)
+	return iter
 }
 
 func (p pebbleDB) NewBatch() batch {

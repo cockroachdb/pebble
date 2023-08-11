@@ -493,7 +493,7 @@ func TestMergeOrderSameAfterFlush(t *testing.T) {
 
 	key := []byte("a")
 	verify := func(expected string) {
-		iter := d.NewIter(nil)
+		iter, _ := d.NewIter(nil)
 		if !iter.SeekGE([]byte("a")) {
 			t.Fatal("expected one value, but got empty iterator")
 		}
@@ -696,7 +696,7 @@ func TestIterLeak(t *testing.T) {
 					if flush {
 						require.NoError(t, d.Flush())
 					}
-					iter := d.NewIter(nil)
+					iter, _ := d.NewIter(nil)
 					iter.First()
 					if !leak {
 						require.NoError(t, iter.Close())
@@ -746,7 +746,7 @@ func TestIterLeakSharedCache(t *testing.T) {
 
 					// Check if leak detection works with only one db closing.
 					{
-						iter1 := d1.NewIter(nil)
+						iter1, _ := d1.NewIter(nil)
 						iter1.First()
 						if !leak {
 							require.NoError(t, iter1.Close())
@@ -764,7 +764,7 @@ func TestIterLeakSharedCache(t *testing.T) {
 					}
 
 					{
-						iter2 := d2.NewIter(nil)
+						iter2, _ := d2.NewIter(nil)
 						iter2.First()
 						if !leak {
 							require.NoError(t, iter2.Close())
@@ -837,7 +837,7 @@ func TestMemTableReservation(t *testing.T) {
 	// Flush in the presence of an active iterator. The iterator will hold a
 	// reference to a readState which will in turn hold a reader reference to the
 	// memtable.
-	iter := d.NewIter(nil)
+	iter, _ := d.NewIter(nil)
 	require.NoError(t, d.Flush())
 	// The flush moved the recycled memtable into position as an active mutable
 	// memtable. There are now two allocated memtables: 1 mutable and 1 pinned
@@ -895,7 +895,7 @@ func TestCacheEvict(t *testing.T) {
 	}
 
 	require.NoError(t, d.Flush())
-	iter := d.NewIter(nil)
+	iter, _ := d.NewIter(nil)
 	for iter.First(); iter.Valid(); iter.Next() {
 	}
 	require.NoError(t, iter.Close())
@@ -1116,7 +1116,7 @@ func TestDBClosed(t *testing.T) {
 	b := d.NewIndexedBatch()
 	require.True(t, errors.Is(catch(func() { _ = b.Commit(nil) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.Apply(b, nil) }), ErrClosed))
-	require.True(t, errors.Is(catch(func() { _ = b.NewIter(nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _, _ = b.NewIter(nil) }), ErrClosed))
 }
 
 func TestDBConcurrentCommitCompactFlush(t *testing.T) {
@@ -1238,7 +1238,7 @@ func TestCloseCleanerRace(t *testing.T) {
 		require.NoError(t, db.Set([]byte("a"), []byte("something"), Sync))
 		require.NoError(t, db.Flush())
 		// Ref the sstables so cannot be deleted.
-		it := db.NewIter(nil)
+		it, _ := db.NewIter(nil)
 		require.NotNil(t, it)
 		require.NoError(t, db.DeleteRange([]byte("a"), []byte("b"), Sync))
 		require.NoError(t, db.Compact([]byte("a"), []byte("b"), false))
@@ -1452,14 +1452,14 @@ func TestTracing(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	iter := d.NewIterWithContext(ctx, nil)
+	iter, _ := d.NewIterWithContext(ctx, nil)
 	iter.SeekGE([]byte("hello"))
 	iter.Close()
 	require.Equal(t, iterTraceString, tracer.buf.String())
 
 	tracer.buf.Reset()
 	snap := d.NewSnapshot()
-	iter = snap.NewIterWithContext(ctx, nil)
+	iter, _ = snap.NewIterWithContext(ctx, nil)
 	iter.SeekGE([]byte("hello"))
 	iter.Close()
 	require.Equal(t, iterTraceString, tracer.buf.String())
@@ -1924,7 +1924,7 @@ func BenchmarkNewIterReadAmp(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				b.StartTimer()
-				iter := d.NewIter(nil)
+				iter, _ := d.NewIter(nil)
 				b.StopTimer()
 				require.NoError(b, iter.Close())
 			}

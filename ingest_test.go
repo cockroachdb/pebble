@@ -519,7 +519,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			return ""
 
 		case "iter":
-			iter := d.NewIter(nil)
+			iter, _ := d.NewIter(nil)
 			return runIterCmd(td, iter, true)
 
 		case "lsm":
@@ -675,7 +675,7 @@ func TestExcise(t *testing.T) {
 			return runGetCmd(t, td, d)
 
 		case "iter":
-			iter := d.NewIter(&IterOptions{
+			iter, _ := d.NewIter(&IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
 			})
 			return runIterCmd(td, iter, true)
@@ -970,7 +970,10 @@ func TestIngestShared(t *testing.T) {
 					reader = efos[arg.Vals[0]]
 				}
 			}
-			iter := reader.NewIter(o)
+			iter, err := reader.NewIter(o)
+			if err != nil {
+				return err.Error()
+			}
 			return runIterCmd(td, iter, true)
 
 		case "lsm":
@@ -1252,7 +1255,7 @@ func TestIngestExternal(t *testing.T) {
 			return runGetCmd(t, td, d)
 
 		case "iter":
-			iter := d.NewIter(&IterOptions{
+			iter, _ := d.NewIter(&IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
 			})
 			return runIterCmd(td, iter, true)
@@ -1631,7 +1634,7 @@ func TestIngest(t *testing.T) {
 			return runGetCmd(t, td, d)
 
 		case "iter":
-			iter := d.NewIter(&IterOptions{
+			iter, _ := d.NewIter(&IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
 			})
 			return runIterCmd(td, iter, true)

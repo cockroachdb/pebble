@@ -942,8 +942,8 @@ set f foobar
 # The below file-only snapshot is the more challenging case of a partial overlap
 # between an excise and a file-only snapshot. In this case the EFOS transition
 # blocks on the memtable but the excise proceeds through, causing the EFOS'
-# WaitForFileOnlySnapshot() call to error out. Snapshot consistency is still
-# maintained through the readState.
+# WaitForFileOnlySnapshot() call to error out. Opening iterators also returns
+# the same errors.
 
 file-only-snapshot s3
  c g
@@ -996,11 +996,7 @@ next
 next
 next
 ----
-a: (foo, .)
-b: (bar, .)
-c: (baz, .)
-f: (foobar, .)
-.
+pebble: snapshot excised before conversion to file-only snapshot
 
 iter snapshot=s3
 first
@@ -1011,13 +1007,7 @@ next
 next
 next
 ----
-a: (foo, .)
-b: (bar, .)
-.
-a: (foo, .)
-b: (bar, .)
-c: (baz, .)
-f: (foobar, .)
+pebble: snapshot excised before conversion to file-only snapshot
 
 iter
 first

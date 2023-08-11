@@ -74,7 +74,7 @@ type Reader interface {
 	// NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 	// return false). The iterator can be positioned via a call to SeekGE,
 	// SeekLT, First or Last.
-	NewIter(o *IterOptions) *Iterator
+	NewIter(o *IterOptions) (*Iterator, error)
 
 	// Close closes the Reader. It may or may not close any underlying io.Reader
 	// or io.Writer, depending on how the DB was created.
@@ -1471,14 +1471,14 @@ func (d *DB) NewIndexedBatch() *Batch {
 // to maintain a long-lived point-in-time view of the DB state can lead to an
 // apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
 // point-in-time snapshots which avoids these problems.
-func (d *DB) NewIter(o *IterOptions) *Iterator {
+func (d *DB) NewIter(o *IterOptions) (*Iterator, error) {
 	return d.NewIterWithContext(context.Background(), o)
 }
 
 // NewIterWithContext is like NewIter, and additionally accepts a context for
 // tracing.
-func (d *DB) NewIterWithContext(ctx context.Context, o *IterOptions) *Iterator {
-	return d.newIter(ctx, nil /* batch */, snapshotIterOpts{}, o)
+func (d *DB) NewIterWithContext(ctx context.Context, o *IterOptions) (*Iterator, error) {
+	return d.newIter(ctx, nil /* batch */, snapshotIterOpts{}, o), nil
 }
 
 // NewSnapshot returns a point-in-time view of the current DB state. Iterators
