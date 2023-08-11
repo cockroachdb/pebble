@@ -2694,13 +2694,8 @@ func (d *DB) ScanStatistics(
 		// Each "token" roughly corresponds to a byte that was read.
 		tb.Init(tokenbucket.TokensPerSecond(opts.LimitBytesPerSecond), tokenbucket.Tokens(1024))
 		rateLimitFunc = func(key *InternalKey, val LazyValue) {
-			for {
-				fulfilled, tryAgainAfter := tb.TryToFulfill(tokenbucket.Tokens(key.Size() + val.Len()))
-
-				if fulfilled {
-					break
-				}
-				time.Sleep(tryAgainAfter)
+			if err := tb.WaitCtx(ctx, tokenbucket.Tokens(key.Size()+val.Len())); err != nil {
+				panic(errors.Wrap(err, "pebble: error waiting on token bucket WaitCtx."))
 			}
 		}
 	}
