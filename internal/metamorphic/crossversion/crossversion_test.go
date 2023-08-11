@@ -89,8 +89,9 @@ func reproductionCommand() string {
 //   - run TestMeta on meta-22-2.test;
 //   - retain a random subset of the resulting directories (each directory is a
 //     store after a sequence of operations);
-//   - run TestMeta on meta-23.1.test once for every retained directory from the
-//     previous version (using it as initial state).
+//   - run TestMeta on meta-23.1.test once with no initial state and once for
+//     every retained directory from the previous version (using it as initial
+//     state),
 func TestMetaCrossVersion(t *testing.T) {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
@@ -204,7 +205,10 @@ func runCrossVersion(
 			}
 			nextInitialStates = nextInitialStates[:factor]
 		}
-		initialStates = nextInitialStates
+		// Always include the empty state, in case initialization of the store at a
+		// certain version has a bug (one that only manifests when we upgrade to the
+		// next version).
+		initialStates = append([]initialState{{}}, nextInitialStates...)
 	}
 	return nil
 }
