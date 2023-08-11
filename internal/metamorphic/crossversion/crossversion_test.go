@@ -50,7 +50,7 @@ from one version's run to the subsequent version's runs.`)
 		`a comma-separated 3-tuple defining a Pebble version to test.
 The expected format is <label>,<SHA>,<test-binary-path>.
 The label should be a human-readable label describing the
-version, for example, 'CRDB 22.1'. The SHA indicates the
+version, for example, 'CRDB-22.1'. The SHA indicates the
 exact commit sha of the version, and may be abbreviated.
 The test binary path must point to a test binary of the
 internal/metamorphic package built on the indicated SHA.
@@ -76,6 +76,21 @@ func reproductionCommand() string {
 }
 
 // TestMetaCrossVersion performs cross-version metamorphic testing.
+//
+// It runs tests against the internal/metamorphic test binaries specified with
+// multiple instances of the -version flag, exercising upgrade and migration
+// code paths.
+//
+// More specifically, assume we are passed the following versions:
+//
+//	--version 22.2,<sha>,meta-22-2.test --version 23.1,<sha>,meta-23-1.test
+//
+// TestMetaCrossVersion will:
+//   - run TestMeta on meta-22-2.test;
+//   - retain a random subset of the resulting directories (each directory is a
+//     store after a sequence of operations);
+//   - run TestMeta on meta-23.1.test once for every retained directory from the
+//     previous version (using it as initial state).
 func TestMetaCrossVersion(t *testing.T) {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
@@ -338,8 +353,12 @@ func (v pebbleVersion) String() string {
 	return fmt.Sprintf("%s,%s,%s", v.Label, v.SHA, v.TestBinaryPath)
 }
 
+// pebbleVersions implements flag.Value for the -version flag.
 type pebbleVersions []pebbleVersion
 
+var _ flag.Value = (*pebbleVersions)(nil)
+
+// String returns the SHAs of the versions.
 func (f *pebbleVersions) String() string {
 	var buf bytes.Buffer
 	for i, v := range *f {
@@ -351,6 +370,8 @@ func (f *pebbleVersions) String() string {
 	return buf.String()
 }
 
+// Set is part of the flag.Value interface; it is called once for every
+// occurrence of the version flag.
 func (f *pebbleVersions) Set(value string) error {
 	// Expected format is `<label>,<sha>,<path>`.
 	fields := strings.FieldsFunc(value, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
