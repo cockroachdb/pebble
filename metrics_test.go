@@ -209,7 +209,7 @@ func TestMetrics(t *testing.T) {
 					return err.Error()
 				}
 			}
-			iter := d.NewIter(nil)
+			iter, _ := d.NewIter(nil)
 			// Some iterators (eg. levelIter) do not instantiate the underlying
 			// iterator until the first positioning call. Position the iterator
 			// so that levelIters will have loaded an sstable.

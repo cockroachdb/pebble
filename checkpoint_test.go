@@ -139,7 +139,7 @@ func TestCheckpoint(t *testing.T) {
 			}
 			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
-			iter := d.NewIter(nil)
+			iter, _ := d.NewIter(nil)
 			for valid := iter.First(); valid; valid = iter.Next() {
 				memLog.Infof("%s %s", iter.Key(), iter.Value())
 			}
@@ -280,7 +280,7 @@ func TestCheckpointFlushWAL(t *testing.T) {
 	{
 		d, err := Open(checkpointPath, opts)
 		require.NoError(t, err)
-		iter := d.NewIter(nil)
+		iter, _ := d.NewIter(nil)
 		require.True(t, iter.First())
 		require.Equal(t, key, iter.Key())
 		require.Equal(t, value, iter.Value())
@@ -335,7 +335,7 @@ func TestCheckpointManyFiles(t *testing.T) {
 	{
 		d, err := Open(checkpointPath, opts)
 		require.NoError(t, err)
-		iter := d.NewIter(nil)
+		iter, _ := d.NewIter(nil)
 		require.True(t, iter.First())
 		require.NoError(t, iter.Error())
 		n := 1
