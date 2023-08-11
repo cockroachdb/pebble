@@ -1436,7 +1436,7 @@ func TestManualCompaction(t *testing.T) {
 					db:     d,
 					seqNum: InternalKeySeqNumMax,
 				}
-				iter := snap.NewIter(nil)
+				iter, _ := snap.NewIter(nil)
 				return runIterCmd(td, iter, true)
 
 			case "lsm":
@@ -2148,7 +2148,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					db:     d,
 					seqNum: InternalKeySeqNumMax,
 				}
-				iter := snap.NewIter(nil)
+				iter, _ := snap.NewIter(nil)
 				return runIterCmd(td, iter, true)
 
 			case "reset":

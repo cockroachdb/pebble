@@ -270,7 +270,7 @@ func TestBatchEmpty(t *testing.T) {
 	require.NoError(t, err)
 	defer d.Close()
 	ib := newIndexedBatch(d, DefaultComparer)
-	iter := ib.NewIter(nil)
+	iter, _ := ib.NewIter(nil)
 	require.False(t, iter.First())
 	iter2, err := iter.Clone(CloneOptions{})
 	require.NoError(t, err)
@@ -418,7 +418,7 @@ func TestIndexedBatchReset(t *testing.T) {
 	require.Nil(t, b.rangeKeyIndex)
 
 	count := func(ib *Batch) int {
-		iter := ib.NewIter(nil)
+		iter, _ := ib.NewIter(nil)
 		defer iter.Close()
 		iter2, err := iter.Clone(CloneOptions{})
 		require.NoError(t, err)
@@ -433,7 +433,7 @@ func TestIndexedBatchReset(t *testing.T) {
 		return count[0]
 	}
 	contains := func(ib *Batch, key, value string) bool {
-		iter := ib.NewIter(nil)
+		iter, _ := ib.NewIter(nil)
 		defer iter.Close()
 		iter2, err := iter.Clone(CloneOptions{})
 		require.NoError(t, err)
@@ -497,13 +497,13 @@ func TestIndexedBatchMutation(t *testing.T) {
 			return ""
 		case "new-batch-iter":
 			name := td.CmdArgs[0].String()
-			iters[name] = b.NewIter(&IterOptions{
+			iters[name], _ = b.NewIter(&IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
 			})
 			return ""
 		case "new-db-iter":
 			name := td.CmdArgs[0].String()
-			iters[name] = d.NewIter(&IterOptions{
+			iters[name], _ = d.NewIter(&IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
 			})
 			return ""
@@ -581,7 +581,7 @@ func TestIndexedBatch_GlobalVisibility(t *testing.T) {
 	// Create an iterator over an empty indexed batch.
 	b := newIndexedBatch(d, DefaultComparer)
 	iterOpts := IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
-	iter := b.NewIter(&iterOpts)
+	iter, _ := b.NewIter(&iterOpts)
 	defer iter.Close()
 
 	// Mutate the database's committed state.
@@ -1523,7 +1523,7 @@ func TestBatchSpanCaching(t *testing.T) {
 		case p < .55: /* 45 % */
 			// Create a new iterator directly from the batch and check that it
 			// observes the correct state.
-			iter := b.NewIter(&IterOptions{KeyTypes: IterKeyTypePointsAndRanges})
+			iter, _ := b.NewIter(&IterOptions{KeyTypes: IterKeyTypePointsAndRanges})
 			checkIter(iter, nextWriteKey)
 			iters[nextWriteKey] = append(iters[nextWriteKey], iter)
 		default: /* 45 % */

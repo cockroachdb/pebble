@@ -103,7 +103,7 @@ func testBasicDB(d *DB) error {
 		return err
 	}
 
-	iter := d.NewIter(nil)
+	iter, _ := d.NewIter(nil)
 	for valid := iter.First(); valid; valid = iter.Next() {
 	}
 	if err := iter.Close(); err != nil {
