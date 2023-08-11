@@ -332,6 +332,11 @@ func (i *Iterator) equal(a, b []byte) bool {
 	return i.comparer.Equal(a, b)
 }
 
+// LogSeqNum returns the sequence number of the current record
+func (i *Iterator) LogSeqNum() uint64 {
+       return i.seqNum
+}
+
 // iteratorRangeKeyState holds an iterator's range key iteration state.
 type iteratorRangeKeyState struct {
 	opts  *IterOptions

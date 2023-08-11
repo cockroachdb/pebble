@@ -1461,6 +1461,12 @@ func (d *DB) NewSnapshot() *Snapshot {
 	return s
 }
 
+// LogSeqNum returns the db's current sequence number.
+// See the commit pipeline docs for the details.
+func (d *DB) LogSeqNum() uint64 {
+       return atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
+}
+
 // Close closes the DB.
 //
 // It is not safe to close a DB until all outstanding iterators are closed

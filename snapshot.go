@@ -93,6 +93,11 @@ func (s *Snapshot) ScanInternal(
 	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
 }
 
+// LogSeqNum returns a sequence number the snapshot is reading at
+func (s *Snapshot) LogSeqNum() uint64 {
+       return s.seqNum
+}
+
 // Close closes the snapshot, releasing its resources. Close must be called.
 // Failure to do so will result in a tiny memory leak and a large leak of
 // resources on disk due to the entries the snapshot is preventing from being
