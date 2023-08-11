@@ -129,3 +129,10 @@ eee
 ----
 000004.log
     bbb-eee#10,RANGEDEL
+
+find
+testdata/find-invalid
+eee
+----
+find-invalid/000001.sst: pebble/table: invalid table (file size is too small)
+Invalid sstable: find-invalid/000001.sst

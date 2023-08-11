@@ -66,6 +66,8 @@ type findT struct {
 	tableRefs map[base.FileNum]bool
 	// Map from file num to table metadata.
 	tableMeta map[base.FileNum]*manifest.FileMetadata
+	// List of tables unable to be decoded.
+	errorTables []base.FileNum
 }
 
 func newFind(
@@ -145,6 +147,10 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 		}
 		fmt.Fprintf(stdout, "    ")
 		formatKeyValue(stdout, f.fmtKey, f.fmtValue, &r.key, r.value)
+	}
+
+	for _, fileNum := range f.errorTables {
+		fmt.Fprintf(stdout, "Invalid sstable: %s\n", f.files[fileNum])
 	}
 }
 
@@ -429,7 +435,8 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			r, err := sstable.NewReader(readable, opts, f.comparers, f.mergers,
 				private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 			if err != nil {
-				return err
+				f.errorTables = append(f.errorTables, fileNum)
+				return
 			}
 			defer r.Close()
 
