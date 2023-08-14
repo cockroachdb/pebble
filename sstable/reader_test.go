@@ -471,7 +471,7 @@ func TestReader(t *testing.T) {
 		"prefixFilter": "testdata/prefixreader",
 	}
 
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev4} {
+	for format := TableFormatPebblev2; format <= TableFormatMax; format++ {
 		for dName, blockSize := range blockSizes {
 			for iName, indexBlockSize := range blockSizes {
 				for lName, tableOpt := range writerOpts {
