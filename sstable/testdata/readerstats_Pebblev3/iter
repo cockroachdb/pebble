@@ -1,4 +1,4 @@
-build
+build print-layout=true
 c@10.SET.10:cAT10
 c@9.SET.9:cAT9
 c@8.SET.8:cAT8
