@@ -302,6 +302,12 @@ func disableBoundsOpt(bound []byte, ptr uintptr) bool {
 	return bound[len(bound)-1]&byte(1) == 0 && simpleHash == 0
 }
 
+// ensureBoundsOptDeterminism provides a facility for disabling of the bounds
+// optimizations performed by disableBoundsOpt for tests that require
+// deterministic iterator behavior. Some unit tests examine internal iterator
+// state and require this behavior to be deterministic.
+var ensureBoundsOptDeterminism bool
+
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package. Note that the upper field is exclusive.
 func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
@@ -320,12 +326,14 @@ func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
 		if i.positionedUsingLatestBounds {
 			if i.upper != nil && lower != nil && i.cmp(i.upper, lower) <= 0 {
 				i.boundsCmp = +1
-				if invariants.Enabled && disableBoundsOpt(lower, uintptr(unsafe.Pointer(i))) {
+				if invariants.Enabled && !ensureBoundsOptDeterminism &&
+					disableBoundsOpt(lower, uintptr(unsafe.Pointer(i))) {
 					i.boundsCmp = 0
 				}
 			} else if i.lower != nil && upper != nil && i.cmp(upper, i.lower) <= 0 {
 				i.boundsCmp = -1
-				if invariants.Enabled && disableBoundsOpt(upper, uintptr(unsafe.Pointer(i))) {
+				if invariants.Enabled && !ensureBoundsOptDeterminism &&
+					disableBoundsOpt(upper, uintptr(unsafe.Pointer(i))) {
 					i.boundsCmp = 0
 				}
 			}

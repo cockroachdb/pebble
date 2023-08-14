@@ -1,5 +1,5 @@
 # Two keys in each data block.
-build
+build block-size=30 index-block-size=30 cache-size=10000
 a.SET.1:A
 b.SET.2:B
 c.SET.3:C
