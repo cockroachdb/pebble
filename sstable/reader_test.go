@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -565,19 +566,31 @@ func TestReaderStatsV3(t *testing.T) {
 }
 
 func TestReaderWithBlockPropertyFilter(t *testing.T) {
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
-		writerOpt := WriterOptions{
-			BlockSize:               1,
-			IndexBlockSize:          40,
-			Comparer:                testkeys.Comparer,
-			TableFormat:             format,
-			BlockPropertyCollectors: []func() BlockPropertyCollector{NewTestKeysBlockPropertyCollector},
-		}
-		tdFile := "testdata/reader_bpf"
-		if format == TableFormatPebblev3 {
-			tdFile = "testdata/reader_bpf_v3"
-		}
-		runTestReader(t, writerOpt, tdFile, nil /* Reader */, 0, true, false)
+	previousDir := ""
+	for format := TableFormatPebblev2; format <= TableFormatMax; format++ {
+		t.Run(format.String(), func(t *testing.T) {
+			writerOpt := WriterOptions{
+				Comparer:                testkeys.Comparer,
+				TableFormat:             format,
+				BlockPropertyCollectors: []func() BlockPropertyCollector{NewTestKeysBlockPropertyCollector},
+			}
+
+			// Look to see if there's a new test file for this table format. If
+			// there is, adopt it going forward. Otherwise, continue to use the
+			// previous version's test file.
+			dir := fmt.Sprintf("testdata/reader_bpf/%s", format.String())
+			_, err := os.Stat(dir)
+			if oserror.IsNotExist(err) {
+				t.Logf("A test directory %q does not exist for table format %s; reusing %q",
+					dir, format, previousDir)
+				dir = previousDir
+			} else if err != nil {
+				t.Fatal(err)
+			}
+
+			runTestReader(t, writerOpt, dir, nil /* Reader */, 0, true, false)
+			previousDir = dir
+		})
 	}
 }
 
@@ -726,6 +739,9 @@ func runTestReader(
 					r.Close()
 					r = nil
 				}
+				d.MaybeScanArgs(t, "block-size", &o.BlockSize)
+				d.MaybeScanArgs(t, "index-block-size", &o.IndexBlockSize)
+
 				var err error
 				_, r, err = runBuildCmd(d, &o, cacheSize)
 				if err != nil {

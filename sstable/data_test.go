@@ -395,6 +395,44 @@ func runIterCmd(
 		case "reset-stats":
 			*opts.stats = base.InternalIteratorStats{}
 			continue
+		case "internal-iter-state":
+			fmt.Fprintf(&b, "| %T:\n", origIter)
+			si, _ := origIter.(*singleLevelIterator)
+			if twoLevelIter, ok := origIter.(*twoLevelIterator); ok {
+				si = &twoLevelIter.singleLevelIterator
+				if twoLevelIter.topLevelIndex.valid() {
+					fmt.Fprintf(&b, "|  topLevelIndex.Key() = %q\n", twoLevelIter.topLevelIndex.Key())
+					v := twoLevelIter.topLevelIndex.value()
+					bhp, err := decodeBlockHandleWithProperties(v.InPlaceValue())
+					if err != nil {
+						fmt.Fprintf(&b, "|  topLevelIndex.InPlaceValue() failed to decode as BHP: %s\n", err)
+					} else {
+						fmt.Fprintf(&b, "|  topLevelIndex.InPlaceValue() = (Offset: %d, Length: %d, Props: %x)\n",
+							bhp.Offset, bhp.Length, bhp.Props)
+					}
+				} else {
+					fmt.Fprintf(&b, "|  topLevelIndex iter invalid\n")
+				}
+			}
+			if si.index.valid() {
+				fmt.Fprintf(&b, "|  index.Key() = %q\n", si.index.Key())
+				v := si.index.value()
+				bhp, err := decodeBlockHandleWithProperties(v.InPlaceValue())
+				if err != nil {
+					fmt.Fprintf(&b, "|  index.InPlaceValue() failed to decode as BHP: %s\n", err)
+				} else {
+					fmt.Fprintf(&b, "|  index.InPlaceValue() = (Offset: %d, Length: %d, Props: %x)\n",
+						bhp.Offset, bhp.Length, bhp.Props)
+				}
+			} else {
+				fmt.Fprintf(&b, "|  index iter invalid\n")
+			}
+			fmt.Fprintf(&b, "|  hideObsoletePoints = %t\n", si.hideObsoletePoints)
+			fmt.Fprintf(&b, "|  dataBH = (Offset: %d, Length: %d)\n", si.dataBH.Offset, si.dataBH.Length)
+			fmt.Fprintf(&b, "|  (boundsCmp,positionedUsingLatestBounds) = (%d,%t)\n", si.boundsCmp, si.positionedUsingLatestBounds)
+			fmt.Fprintf(&b, "|  exhaustedBounds = %d\n", si.exhaustedBounds)
+
+			continue
 		}
 		if opts.everyOp != nil {
 			opts.everyOp(&b)
