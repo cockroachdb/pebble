@@ -487,7 +487,7 @@ func TestReader(t *testing.T) {
 								format, oName, lName, dName, iName),
 							func(t *testing.T) {
 								runTestReader(
-									t, tableOpt, testDirs[oName], nil /* Reader */, 0, false, true)
+									t, tableOpt, testDirs[oName], nil /* Reader */, true)
 							})
 					}
 				}
@@ -514,7 +514,7 @@ func TestReaderHideObsolete(t *testing.T) {
 		t.Run(fmt.Sprintf("blockSize=%s", dName), func(t *testing.T) {
 			runTestReader(
 				t, opts, "testdata/reader_hide_obsolete",
-				nil /* Reader */, 0, false, true)
+				nil /* Reader */, true)
 		})
 	}
 }
@@ -540,29 +540,39 @@ func TestHamletReader(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("sst=%s", prebuiltSST),
 			func(t *testing.T) {
-				runTestReader(t, WriterOptions{}, "testdata/hamletreader", r, 0, false, false)
+				runTestReader(t, WriterOptions{}, "testdata/hamletreader", r, false)
 			},
 		)
 	}
 }
 
 func TestReaderStats(t *testing.T) {
-	tableOpt := WriterOptions{
-		BlockSize:      30,
-		IndexBlockSize: 30,
-	}
-	runTestReader(t, tableOpt, "testdata/readerstats", nil, 10000, false, false)
-}
+	previousDir := ""
+	for format := TableFormatLevelDB; format <= TableFormatMax; format++ {
+		t.Run(format.String(), func(t *testing.T) {
+			writerOpt := WriterOptions{
+				BlockSize:      32 << 10,
+				IndexBlockSize: 32 << 10,
+				Comparer:       testkeys.Comparer,
+				TableFormat:    format,
+			}
 
-func TestReaderStatsV3(t *testing.T) {
-	writerOpt := WriterOptions{
-		BlockSize:      32 << 10,
-		IndexBlockSize: 32 << 10,
-		Comparer:       testkeys.Comparer,
-		TableFormat:    TableFormatPebblev3,
+			// Look to see if there's a new test dir for this table format. If
+			// there is, adopt it going forward. Otherwise, continue to use the
+			// previous version's test files.
+			dir := fmt.Sprintf("testdata/readerstats_%s", format.String())
+			_, err := os.Stat(dir)
+			if oserror.IsNotExist(err) {
+				t.Logf("A test directory %q does not exist for table format %s; reusing %q",
+					dir, format, previousDir)
+				dir = previousDir
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			runTestReader(t, writerOpt, dir, nil /* Reader */, false /* printValue */)
+			previousDir = dir
+		})
 	}
-	tdFile := "testdata/readerstats_v3"
-	runTestReader(t, writerOpt, tdFile, nil /* Reader */, 0, true, false)
 }
 
 func TestReaderWithBlockPropertyFilter(t *testing.T) {
@@ -575,9 +585,9 @@ func TestReaderWithBlockPropertyFilter(t *testing.T) {
 				BlockPropertyCollectors: []func() BlockPropertyCollector{NewTestKeysBlockPropertyCollector},
 			}
 
-			// Look to see if there's a new test file for this table format. If
+			// Look to see if there's a new test dir for this table format. If
 			// there is, adopt it going forward. Otherwise, continue to use the
-			// previous version's test file.
+			// previous version's test files.
 			dir := fmt.Sprintf("testdata/reader_bpf/%s", format.String())
 			_, err := os.Stat(dir)
 			if oserror.IsNotExist(err) {
@@ -588,7 +598,7 @@ func TestReaderWithBlockPropertyFilter(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			runTestReader(t, writerOpt, dir, nil /* Reader */, 0, true, false)
+			runTestReader(t, writerOpt, dir, nil /* Reader */, false)
 			previousDir = dir
 		})
 	}
@@ -715,15 +725,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	return buf.String()
 }
 
-func runTestReader(
-	t *testing.T,
-	o WriterOptions,
-	dir string,
-	r *Reader,
-	cacheSize int,
-	printLayout bool,
-	printValue bool,
-) {
+func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printValue bool) {
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
 		defer func() {
 			if r != nil {
@@ -739,6 +741,10 @@ func runTestReader(
 					r.Close()
 					r = nil
 				}
+				var cacheSize int
+				var printLayout bool
+				d.MaybeScanArgs(t, "cache-size", &cacheSize)
+				d.MaybeScanArgs(t, "print-layout", &printLayout)
 				d.MaybeScanArgs(t, "block-size", &o.BlockSize)
 				d.MaybeScanArgs(t, "index-block-size", &o.IndexBlockSize)
 
