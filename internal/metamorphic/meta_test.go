@@ -57,6 +57,9 @@ var (
 the result of the run from the first options file in the list. Example, -compare
 random-003,standard-000. The dir flag should have the directory containing these directories.
 Example, -dir _meta/200610-203012.077`)
+	innerBinary = flag.String("inner-binary", "",
+		`binary to run for each instance of the test (this same binary by default); cannot be used
+with --run-dir or --compare`)
 
 	// The following options may be used for split-version metamorphic testing.
 	// To perform split-version testing, the client runs the metamorphic tests
@@ -79,13 +82,13 @@ func init() {
 	flag.Var(ops, "ops", "")
 }
 
-// TestMeta generates a random set of operations to run, then runs the test
-// with different options. See standardOptions() for the set of options that
-// are always run, and randomOptions() for the randomly generated options. The
-// number of operations to generate is determined by the `--ops` flag. If a
-// failure occurs, the output is kept in `_meta/<test>`, though note that a
-// subsequent invocation will overwrite that output. A test can be re-run by
-// using the `--run-dir` flag. For example:
+// TestMeta generates a random set of operations to run, then runs multiple
+// instances of the test with varying options. See standardOptions() for the set
+// of options that are always run, and randomOptions() for the randomly
+// generated options. The number of operations to generate is determined by the
+// `--ops` flag. If a failure occurs, the output is kept in `_meta/<test>`,
+// though note that a subsequent invocation will overwrite that output. A test
+// can be re-run by using the `--run-dir` flag. For example:
 //
 //	go test -v -run TestMeta --run-dir _meta/standard-017
 //
@@ -102,6 +105,11 @@ func init() {
 // and options. This must be run on the same commit SHA as the original
 // failure, otherwise changes to the metamorphic tests may cause the generated
 // operations and options to differ.
+//
+// Each instance of the test is run in a different process, by executing the
+// same binary (i.e. os.Args[0]) and passing `--run_dir`; the "inner" binary can
+// be customized via the --inner-binary flag (used for code coverage
+// instrumentation).
 func TestMeta(t *testing.T) {
 	opts := []metamorphic.RunOption{
 		metamorphic.Seed(*seed),
@@ -140,6 +148,12 @@ func TestMeta(t *testing.T) {
 		opts = append(opts, metamorphic.UseInMemory)
 	default:
 		t.Fatalf("unknown forced filesystem type: %q", *fs)
+	}
+	if *innerBinary != "" {
+		if *compare != "" || *runDir != "" {
+			t.Fatalf("cannot use --inner-binary with --run-dir or --compare")
+		}
+		opts = append(opts, metamorphic.InnerBinary(*innerBinary))
 	}
 
 	if *compare != "" {
