@@ -46,7 +46,8 @@ type LevelMetrics struct {
 	NumFiles int64
 	// The total size in bytes of the files in the level.
 	Size int64
-	// The level's compaction score.
+	// The level's compaction score. This is the compensatedScoreRatio in the
+	// candidateLevelInfo.
 	Score float64
 	// The number of incoming bytes from other levels read during
 	// compactions. This excludes bytes moved and bytes ingested. For L0 this is
