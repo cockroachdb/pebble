@@ -209,7 +209,7 @@ func TestReader(t *testing.T) {
 		"prefixFilter": "testdata/prefixreader",
 	}
 
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+	for format := TableFormatPebblev2; format <= TableFormatMax; format++ {
 		for dName, blockSize := range blockSizes {
 			for iName, indexBlockSize := range blockSizes {
 				for lName, tableOpt := range writerOpts {
@@ -224,7 +224,7 @@ func TestReader(t *testing.T) {
 								format, oName, lName, dName, iName),
 							func(t *testing.T) {
 								runTestReader(
-									t, tableOpt, testDirs[oName], nil /* Reader */, 0, false, true)
+									t, tableOpt, testDirs[oName], nil /* Reader */, true)
 							})
 					}
 				}
@@ -254,46 +254,74 @@ func TestHamletReader(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("sst=%s", prebuiltSST),
 			func(t *testing.T) {
-				runTestReader(t, WriterOptions{}, "testdata/hamletreader", r, 0, false, false)
+				runTestReader(t, WriterOptions{}, "testdata/hamletreader", r, false)
 			},
 		)
 	}
 }
 
-func TestReaderStats(t *testing.T) {
-	tableOpt := WriterOptions{
-		BlockSize:      30,
-		IndexBlockSize: 30,
+func forEveryTableFormat[I any](
+	t *testing.T, formatTable [NumTableFormats]I, runTest func(*testing.T, TableFormat, I),
+) {
+	t.Helper()
+	for tf := TableFormatUnspecified + 1; tf < TableFormatMax; tf++ {
+		t.Run(tf.String(), func(t *testing.T) {
+			runTest(t, tf, formatTable[tf])
+		})
 	}
-	runTestReader(t, tableOpt, "testdata/readerstats", nil, 10000, false, false)
 }
 
-func TestReaderStatsV3(t *testing.T) {
-	writerOpt := WriterOptions{
-		BlockSize:      32 << 10,
-		IndexBlockSize: 32 << 10,
-		Comparer:       testkeys.Comparer,
-		TableFormat:    TableFormatPebblev3,
-	}
-	tdFile := "testdata/readerstats_v3"
-	runTestReader(t, writerOpt, tdFile, nil /* Reader */, 0, true, false)
+func TestReaderStats(t *testing.T) {
+	forEveryTableFormat[string](t,
+		[NumTableFormats]string{
+			TableFormatUnspecified: "",
+			TableFormatLevelDB:     "testdata/readerstats_LevelDB",
+			TableFormatRocksDBv2:   "testdata/readerstats_LevelDB",
+			TableFormatPebblev1:    "testdata/readerstats_LevelDB",
+			TableFormatPebblev2:    "testdata/readerstats_LevelDB",
+			TableFormatPebblev3:    "testdata/readerstats_Pebblev3",
+		}, func(t *testing.T, format TableFormat, dir string) {
+			if dir == "" {
+				t.Skip()
+			}
+			writerOpt := WriterOptions{
+				BlockSize:      32 << 10,
+				IndexBlockSize: 32 << 10,
+				Comparer:       testkeys.Comparer,
+				TableFormat:    format,
+			}
+			runTestReader(t, writerOpt, dir, nil /* Reader */, false /* printValue */)
+		})
 }
 
 func TestReaderWithBlockPropertyFilter(t *testing.T) {
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
-		writerOpt := WriterOptions{
-			BlockSize:               1,
-			IndexBlockSize:          40,
-			Comparer:                testkeys.Comparer,
-			TableFormat:             format,
-			BlockPropertyCollectors: []func() BlockPropertyCollector{NewTestKeysBlockPropertyCollector},
-		}
-		tdFile := "testdata/reader_bpf"
-		if format == TableFormatPebblev3 {
-			tdFile = "testdata/reader_bpf_v3"
-		}
-		runTestReader(t, writerOpt, tdFile, nil /* Reader */, 0, true, false)
-	}
+	// Some of these tests examine internal iterator state, so they require
+	// determinism. When the invariants tag is set, disableBoundsOpt may disable
+	// the bounds optimization depending on the iterator pointer address. This
+	// can add nondeterminism to the internal iterator statae. Disable this
+	// nondeterminism for the duration of this test.
+	ensureBoundsOptDeterminism = true
+	defer func() { ensureBoundsOptDeterminism = false }()
+
+	forEveryTableFormat[string](t,
+		[NumTableFormats]string{
+			TableFormatUnspecified: "", // Block properties unsupported
+			TableFormatLevelDB:     "", // Block properties unsupported
+			TableFormatRocksDBv2:   "", // Block properties unsupported
+			TableFormatPebblev1:    "", // Block properties unsupported
+			TableFormatPebblev2:    "testdata/reader_bpf/Pebblev2",
+			TableFormatPebblev3:    "testdata/reader_bpf/Pebblev3",
+		}, func(t *testing.T, format TableFormat, dir string) {
+			if dir == "" {
+				t.Skip("Block-properties unsupported")
+			}
+			writerOpt := WriterOptions{
+				Comparer:                testkeys.Comparer,
+				TableFormat:             format,
+				BlockPropertyCollectors: []func() BlockPropertyCollector{NewTestKeysBlockPropertyCollector},
+			}
+			runTestReader(t, writerOpt, dir, nil /* Reader */, false)
+		})
 }
 
 func TestInjectedErrors(t *testing.T) {
@@ -417,15 +445,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	return buf.String()
 }
 
-func runTestReader(
-	t *testing.T,
-	o WriterOptions,
-	dir string,
-	r *Reader,
-	cacheSize int,
-	printLayout bool,
-	printValue bool,
-) {
+func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printValue bool) {
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
 		defer func() {
 			if r != nil {
@@ -441,6 +461,13 @@ func runTestReader(
 					r.Close()
 					r = nil
 				}
+				var cacheSize int
+				var printLayout bool
+				d.MaybeScanArgs(t, "cache-size", &cacheSize)
+				d.MaybeScanArgs(t, "print-layout", &printLayout)
+				d.MaybeScanArgs(t, "block-size", &o.BlockSize)
+				d.MaybeScanArgs(t, "index-block-size", &o.IndexBlockSize)
+
 				var err error
 				_, r, err = runBuildCmd(d, &o, cacheSize)
 				if err != nil {

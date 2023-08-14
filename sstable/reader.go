@@ -1428,6 +1428,12 @@ func disableBoundsOpt(bound []byte, ptr uintptr) bool {
 	return bound[len(bound)-1]&byte(1) == 0 && simpleHash == 0
 }
 
+// ensureBoundsOptDeterminism provides a facility for disabling of the bounds
+// optimizations performed by disableBoundsOpt for tests that require
+// deterministic iterator behavior. Some unit tests examine internal iterator
+// state and require this behavior to be deterministic.
+var ensureBoundsOptDeterminism bool
+
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package.
 func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
@@ -1435,12 +1441,14 @@ func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
 	if i.positionedUsingLatestBounds {
 		if i.upper != nil && lower != nil && i.cmp(i.upper, lower) <= 0 {
 			i.boundsCmp = +1
-			if invariants.Enabled && disableBoundsOpt(lower, uintptr(unsafe.Pointer(i))) {
+			if invariants.Enabled && !ensureBoundsOptDeterminism &&
+				disableBoundsOpt(lower, uintptr(unsafe.Pointer(i))) {
 				i.boundsCmp = 0
 			}
 		} else if i.lower != nil && upper != nil && i.cmp(upper, i.lower) <= 0 {
 			i.boundsCmp = -1
-			if invariants.Enabled && disableBoundsOpt(upper, uintptr(unsafe.Pointer(i))) {
+			if invariants.Enabled && !ensureBoundsOptDeterminism &&
+				disableBoundsOpt(upper, uintptr(unsafe.Pointer(i))) {
 				i.boundsCmp = 0
 			}
 		}
@@ -1572,6 +1580,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 	// Ensure the index data block iterators are invalidated even if loading of
 	// the index fails.
 	i.data.invalidate()
+	i.index.invalidate()
 	if !i.topLevelIndex.valid() {
 		i.index.offset = 0
 		i.index.restarts = 0
@@ -1773,8 +1782,16 @@ func (i *twoLevelIterator) SeekGE(
 	// the position of the two-level index iterator without remembering the
 	// previous value of maybeFilteredKeys.
 
+	// We fall into the slow path if i.index.isDataInvalidated() even if the
+	// top-level iterator is already positioned correctly and all other
+	// conditions are met. An alternative structure could reuse topLevelIndex's
+	// current position and reload the index block to which it points. Arguably,
+	// an index block load is expensive and the index block may still be earlier
+	// than the index block containing the sought key, resulting in a wasteful
+	// block load.
+
 	var dontSeekWithinSingleLevelIter bool
-	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() || err != nil ||
+	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() || i.index.isDataInvalidated() || err != nil ||
 		(i.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
 		// Slow-path: need to position the topLevelIndex.
 
@@ -1947,8 +1964,16 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	// not reuse the position of the two-level index iterator without
 	// remembering the previous value of maybeFilteredKeysTwoLevel.
 
+	// We fall into the slow path if i.index.isDataInvalidated() even if the
+	// top-level iterator is already positioned correctly and all other
+	// conditions are met. An alternative structure could reuse topLevelIndex's
+	// current position and reload the index block to which it points. Arguably,
+	// an index block load is expensive and the index block may still be earlier
+	// than the index block containing the sought key, resulting in a wasteful
+	// block load.
+
 	var dontSeekWithinSingleLevelIter bool
-	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() || err != nil ||
+	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() || !i.index.isDataInvalidated() || err != nil ||
 		(i.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
 		// Slow-path: need to position the topLevelIndex.
 
