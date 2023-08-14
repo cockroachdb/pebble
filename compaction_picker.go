@@ -90,18 +90,23 @@ func (info compactionInfo) String() string {
 	return buf.String()
 }
 
-type sortCompactionLevelsDecreasingScore []candidateLevelInfo
+type sortCompactionLevelsByPriority []candidateLevelInfo
 
-func (s sortCompactionLevelsDecreasingScore) Len() int {
+func (s sortCompactionLevelsByPriority) Len() int {
 	return len(s)
 }
-func (s sortCompactionLevelsDecreasingScore) Less(i, j int) bool {
-	if s[i].score != s[j].score {
-		return s[i].score > s[j].score
+
+// Less should return true, if s[i] must be placed earlier than s[j] in the final
+// sorted list. The candidateLevelInfo for the level placed earlier is more likely
+// to be picked for a compaction.
+func (s sortCompactionLevelsByPriority) Less(i, j int) bool {
+	if s[i].rawSmoothed != s[j].rawSmoothed {
+		return s[i].rawSmoothed > s[j].rawSmoothed
 	}
 	return s[i].level < s[j].level
 }
-func (s sortCompactionLevelsDecreasingScore) Swap(i, j int) {
+
+func (s sortCompactionLevelsByPriority) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
@@ -673,7 +678,10 @@ type candidateLevelInfo struct {
 	// The raw score of the level to be compacted, calculated using
 	// uncompensated file sizes and without any adjustments.
 	rawScore float64
-	level    int
+	// rawSmoothed is the smoothed rawScore(rawScore for the level divided by
+	// the next levels rawScore).
+	rawSmoothed float64
+	level       int
 	// The level to compact to.
 	outputLevel int
 	// The file in level that will be compacted. Additional files may be
@@ -982,6 +990,8 @@ func (p *compactionPickerByScore) calculateLevelScores(
 		outputLevel: p.baseLevel,
 		score:       calculateL0Score(p.vers, p.opts, inProgressCompactions),
 	}
+	scores[0].rawScore = scores[0].score
+	scores[0].rawSmoothed = scores[0].score
 	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
 	for level := 1; level < numLevels; level++ {
 		compensatedLevelSize := levelCompensatedSize(p.vers.Levels[level]) + sizeAdjust[level].compensated()
@@ -993,6 +1003,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 		// during score smoothing down below to prevent excessive
 		// prioritization of reclaiming disk space.
 		scores[level].rawScore = float64(p.vers.Levels[level].Size()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
+		scores[level].rawSmoothed = scores[level].rawScore // will be smoothed later.
 	}
 
 	// Adjust each level's score by the score of the next level. If the next
@@ -1018,20 +1029,26 @@ func (p *compactionPickerByScore) calculateLevelScores(
 	//   L6        0.6        0.6       14 G       24 G
 	var prevLevel int
 	for level := p.baseLevel; level < numLevels; level++ {
+		// Avoid absurdly large scores by placing a floor on the score that we'll
+		// adjust a level by. The value of 0.01 was chosen somewhat arbitrarily
+		const minScore = 0.01
 		if scores[prevLevel].score >= 1 {
-			// Avoid absurdly large scores by placing a floor on the score that we'll
-			// adjust a level by. The value of 0.01 was chosen somewhat arbitrarily
-			const minScore = 0.01
 			if scores[level].rawScore >= minScore {
 				scores[prevLevel].score /= scores[level].rawScore
 			} else {
 				scores[prevLevel].score /= minScore
 			}
 		}
+		if scores[prevLevel].rawSmoothed >= 1 {
+			if scores[level].rawScore >= minScore {
+				scores[prevLevel].rawSmoothed /= scores[level].rawScore
+			} else {
+				scores[prevLevel].rawSmoothed /= minScore
+			}
+		}
 		prevLevel = level
 	}
-
-	sort.Sort(sortCompactionLevelsDecreasingScore(scores[:]))
+	sort.Sort(sortCompactionLevelsByPriority(scores[:]))
 	return scores
 }
 
@@ -1273,13 +1290,16 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			pc.startLevel.level, pc.outputLevel.level, buf.String())
 	}
 
-	// Check for a score-based compaction. "scores" has been sorted in order of
-	// decreasing score. For each level with a score >= 1, we attempt to find a
-	// compaction anchored at at that level.
+	// Check for a score-based compaction. For each level with a score >= 1, we
+	// attempt to find a compaction anchored at that level.
 	for i := range scores {
 		info := &scores[i]
 		if info.score < 1 {
-			break
+			// A level with score less than 1 can be placed earlier than a level
+			// with score > 1, if the earlier level has a higher original score
+			// but a lower compensated score. Say 0.7 vs 0.3, but the compensated
+			// scores are 0.7 vs 1.2.
+			continue
 		}
 		if info.level == numLevels-1 {
 			continue
