@@ -90,18 +90,38 @@ func (info compactionInfo) String() string {
 	return buf.String()
 }
 
-type sortCompactionLevelsDecreasingScore []candidateLevelInfo
+type sortCompactionLevelsByPriority []candidateLevelInfo
 
-func (s sortCompactionLevelsDecreasingScore) Len() int {
+func (s sortCompactionLevelsByPriority) Len() int {
 	return len(s)
 }
-func (s sortCompactionLevelsDecreasingScore) Less(i, j int) bool {
-	if s[i].score != s[j].score {
-		return s[i].score > s[j].score
+
+// A level should be picked for compaction if the compensatedScoreRatio is >= the
+// compactionScoreThreshold.
+const compactionScoreThreshold = 1
+
+// Less should return true if s[i] must be placed earlier than s[j] in the final
+// sorted list. The candidateLevelInfo for the level placed earlier is more likely
+// to be picked for a compaction.
+func (s sortCompactionLevelsByPriority) Less(i, j int) bool {
+	iShouldCompact := s[i].compensatedScoreRatio >= compactionScoreThreshold
+	jShouldCompact := s[j].compensatedScoreRatio >= compactionScoreThreshold
+	// Ordering is defined as decreasing on (shouldCompact, uncompensatedScoreRatio)
+	// where shouldCompact is 1 for true and 0 for false.
+	if iShouldCompact && !jShouldCompact {
+	   return true
+	}
+	if !iShouldCompact && jShouldCompact {
+	   return false
+	}
+
+	if s[i].uncompensatedScoreRatio != s[j].uncompensatedScoreRatio {
+		return s[i].uncompensatedScoreRatio > s[j].uncompensatedScoreRatio
 	}
 	return s[i].level < s[j].level
 }
-func (s sortCompactionLevelsDecreasingScore) Swap(i, j int) {
+
+func (s sortCompactionLevelsByPriority) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
@@ -153,6 +173,7 @@ func generateSublevelInfo(cmp base.Compare, levelFiles manifest.LevelSlice) []su
 
 // compactionPickerMetrics holds metrics related to the compaction picking process
 type compactionPickerMetrics struct {
+	// scores contains the compensatedScoreRatio from the candidateLevelInfo.
 	scores                      []float64
 	singleLevelOverlappingRatio float64
 	multiLevelOverlappingRatio  float64
@@ -164,7 +185,8 @@ type compactionPickerMetrics struct {
 // created.
 type pickedCompaction struct {
 	cmp Compare
-	// score of the chosen compaction. Taken from candidateLevelInfo.
+	// score of the chosen compaction. This is the same as the
+	// compensatedScoreRatio in the candidateLevelInfo.
 	score float64
 	// kind indicates the kind of compaction.
 	kind compactionKind
@@ -664,22 +686,33 @@ func newCompactionPicker(
 // Information about a candidate compaction level that has been identified by
 // the compaction picker.
 type candidateLevelInfo struct {
-	// The score of the level to be compacted, with compensated file sizes and
-	// adjustments.
-	score float64
-	// The original score of the level to be compacted, before adjusting
-	// according to other levels' sizes.
-	origScore float64
-	// The raw score of the level to be compacted, calculated using
-	// uncompensated file sizes and without any adjustments.
-	rawScore float64
-	level    int
+	// The compensatedScore of the level after adjusting according to the other
+	// levels' sizes. For L0, the compensatedScoreRatio is equivalent to the
+	// uncompensatedScoreRatio as we don't account for level size compensation in
+	// L0.
+	compensatedScoreRatio float64
+	// The score of the level after accounting for level size compensation before
+	// adjusting according to other levels' sizes. For L0, the compensatedScore
+	// is equivalent to the uncompensatedScore as we don't account for level
+	// size compensation in L0.
+	compensatedScore float64
+	// The score of the level to be compacted, calculated using uncompensated file
+	// sizes and without any adjustments.
+	uncompensatedScore float64
+	// uncompensatedScoreRatio is the uncompensatedScore adjusted according to
+	// the other levels' sizes.
+	uncompensatedScoreRatio float64
+	level       int
 	// The level to compact to.
 	outputLevel int
 	// The file in level that will be compacted. Additional files may be
 	// picked by the compaction, and a pickedCompaction created for the
 	// compaction.
 	file manifest.LevelFile
+}
+
+func (c *candidateLevelInfo) shouldCompact() bool {
+	return c.compensatedScoreRatio >= compactionScoreThreshold
 }
 
 func fileCompensation(f *fileMetadata) uint64 {
@@ -759,7 +792,7 @@ var _ compactionPicker = &compactionPickerByScore{}
 func (p *compactionPickerByScore) getScores(inProgress []compactionInfo) [numLevels]float64 {
 	var scores [numLevels]float64
 	for _, info := range p.calculateLevelScores(inProgress) {
-		scores[info.level] = info.score
+		scores[info.level] = info.compensatedScoreRatio
 	}
 	return scores
 }
@@ -978,68 +1011,81 @@ func (p *compactionPickerByScore) calculateLevelScores(
 		scores[i].level = i
 		scores[i].outputLevel = i + 1
 	}
+	l0UncompensatedScore := calculateL0UncompensatedScore(p.vers, p.opts, inProgressCompactions)
 	scores[0] = candidateLevelInfo{
-		outputLevel: p.baseLevel,
-		score:       calculateL0Score(p.vers, p.opts, inProgressCompactions),
+		outputLevel:      p.baseLevel,
+		uncompensatedScore: l0UncompensatedScore,
+		compensatedScore: l0UncompensatedScore, /* No level size compensation for L0 */
 	}
 	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
 	for level := 1; level < numLevels; level++ {
 		compensatedLevelSize := levelCompensatedSize(p.vers.Levels[level]) + sizeAdjust[level].compensated()
-		scores[level].score = float64(compensatedLevelSize) / float64(p.levelMaxBytes[level])
-		scores[level].origScore = scores[level].score
-
-		// In addition to the compensated score, we calculate a separate score
-		// that uses actual file sizes, not compensated sizes. This is used
-		// during score smoothing down below to prevent excessive
-		// prioritization of reclaiming disk space.
-		scores[level].rawScore = float64(p.vers.Levels[level].Size()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
+		scores[level].compensatedScore = float64(compensatedLevelSize) / float64(p.levelMaxBytes[level])
+		scores[level].uncompensatedScore = float64(p.vers.Levels[level].Size()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
 	}
 
-	// Adjust each level's score by the score of the next level. If the next
-	// level has a high score, and is thus a priority for compaction, this
-	// reduces the priority for compacting the current level. If the next level
-	// has a low score (i.e. it is below its target size), this increases the
-	// priority for compacting the current level.
+	// Adjust each level's {compensated, uncompensated}Score by the uncompensatedScore
+	// of the next level to get a {compensated, uncompensated}ScoreRatio. If the
+	// next level has a high uncompensatedScore, and is thus a priority for compaction,
+	// this reduces the priority for compacting the current level. If the next level
+	// has a low uncompensatedScore (i.e. it is below its target size), this increases
+	// the priority for compacting the current level.
 	//
 	// The effect of this adjustment is to help prioritize compactions in lower
-	// levels. The following shows the new score and original score. In this
-	// scenario, L0 has 68 sublevels. L3 (a.k.a. Lbase) is significantly above
-	// its target size. The original score prioritizes compactions from those two
-	// levels, but doing so ends up causing a future problem: data piles up in
-	// the higher levels, starving L5->L6 compactions, and to a lesser degree
-	// starving L4->L5 compactions.
+	// levels. The following example shows the compensatedScoreRatio and the
+	// compensatedScore. In this scenario, L0 has 68 sublevels. L3 (a.k.a. Lbase)
+	// is significantly above its target size. The original score prioritizes
+	// compactions from those two levels, but doing so ends up causing a future
+	// problem: data piles up in the higher levels, starving L5->L6 compactions,
+	// and to a lesser degree starving L4->L5 compactions.
 	//
-	//        adjusted   original
-	//           score      score       size   max-size
-	//   L0        3.2       68.0      2.2 G          -
-	//   L3        3.2       21.1      1.3 G       64 M
-	//   L4        3.4        6.7      3.1 G      467 M
-	//   L5        3.4        2.0      6.6 G      3.3 G
-	//   L6        0.6        0.6       14 G       24 G
+	// Note that in the example shown there is no level size compensation so the
+	// compensatedScore and the uncompensatedScore is the same for each level.
+	//
+	//        compensatedScoreRatio   compensatedScore   uncompensatedScore   size   max-size
+	//   L0                     3.2               68.0                 68.0  2.2 G          -
+	//   L3                     3.2               21.1                 21.1  1.3 G       64 M
+	//   L4                     3.4                6.7                  6.7  3.1 G      467 M
+	//   L5                     3.4                2.0                  2.0  6.6 G      3.3 G
+	//   L6                     0.6                0.6                  0.6   14 G       24 G
 	var prevLevel int
 	for level := p.baseLevel; level < numLevels; level++ {
-		if scores[prevLevel].score >= 1 {
-			// Avoid absurdly large scores by placing a floor on the score that we'll
-			// adjust a level by. The value of 0.01 was chosen somewhat arbitrarily
-			const minScore = 0.01
-			if scores[level].rawScore >= minScore {
-				scores[prevLevel].score /= scores[level].rawScore
+		// The compensated scores, and uncompensated scores will be turned into
+		// ratios as they're adjusted according to other levels' sizes.
+		scores[prevLevel].compensatedScoreRatio = scores[prevLevel].compensatedScore
+		scores[prevLevel].uncompensatedScoreRatio = scores[prevLevel].uncompensatedScore
+
+		// Avoid absurdly large scores by placing a floor on the score that we'll
+		// adjust a level by. The value of 0.01 was chosen somewhat arbitrarily.
+		const minScore = 0.01
+		if scores[prevLevel].compensatedScoreRatio >= compactionScoreThreshold {
+			if scores[level].uncompensatedScore >= minScore {
+				scores[prevLevel].compensatedScoreRatio /= scores[level].uncompensatedScore
 			} else {
-				scores[prevLevel].score /= minScore
+				scores[prevLevel].compensatedScoreRatio /= minScore
+			}
+		}
+		if scores[prevLevel].uncompensatedScoreRatio >= compactionScoreThreshold {
+			if scores[level].uncompensatedScore >= minScore {
+				scores[prevLevel].uncompensatedScoreRatio /= scores[level].uncompensatedScore
+			} else {
+				scores[prevLevel].uncompensatedScoreRatio /= minScore
 			}
 		}
 		prevLevel = level
 	}
+	scores[prevLevel].compensatedScoreRatio = scores[prevLevel].compensatedScore
+	scores[prevLevel].uncompensatedScoreRatio = scores[prevLevel].uncompensatedScore
 
-	sort.Sort(sortCompactionLevelsDecreasingScore(scores[:]))
+	sort.Sort(sortCompactionLevelsByPriority(scores[:]))
 	return scores
 }
 
-// calculateL0Score calculates a float score representing the relative priority
-// of compacting L0. Level L0 is special in that files within L0 may overlap one
-// another, so a different set of heuristics that take into account
-// read amplification apply.
-func calculateL0Score(
+// calculateL0UncompensatedScore calculates a float score representing the
+// relative priority of compacting L0. Level L0 is special in that files within
+// L0 may overlap one another, so a different set of heuristics that take into
+// account read amplification apply.
+func calculateL0UncompensatedScore(
 	vers *version, opts *Options, inProgressCompactions []compactionInfo,
 ) float64 {
 	// Use the sublevel count to calculate the score. The base vs intra-L0
@@ -1242,8 +1288,9 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			if pc.startLevel.level == info.level {
 				marker = "*"
 			}
-			fmt.Fprintf(&buf, "  %sL%d: %5.1f  %5.1f  %5.1f %8s  %8s",
-				marker, info.level, info.score, info.origScore, info.rawScore,
+			fmt.Fprintf(&buf, "  %sL%d: %5.1f  %5.1f  %5.1f  %5.1f %8s  %8s",
+				marker, info.level, info.compensatedScoreRatio, info.compensatedScore,
+				info.uncompensatedScoreRatio, info.uncompensatedScore,
 				humanize.Bytes.Int64(int64(totalCompensatedSize(
 					p.vers.Levels[info.level].Iter(),
 				))),
@@ -1273,12 +1320,12 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			pc.startLevel.level, pc.outputLevel.level, buf.String())
 	}
 
-	// Check for a score-based compaction. "scores" has been sorted in order of
-	// decreasing score. For each level with a score >= 1, we attempt to find a
-	// compaction anchored at at that level.
+	// Check for a score-based compaction. candidateLevelInfos are first sorted
+	// by whether they should be compacted, so if we find a level which shouldn't
+	// be compacted, we can break early.
 	for i := range scores {
 		info := &scores[i]
-		if info.score < 1 {
+		if !info.shouldCompact() {
 			break
 		}
 		if info.level == numLevels-1 {
@@ -1291,7 +1338,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			// concurrently.
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 				p.addScoresToPickedCompactionMetrics(pc, scores)
-				pc.score = info.score
+				pc.score = info.compensatedScoreRatio
 				// TODO(bananabrick): Create an EventListener for logCompaction.
 				if false {
 					logCompaction(pc)
@@ -1312,7 +1359,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		// Fail-safe to protect against compacting the same sstable concurrently.
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 			p.addScoresToPickedCompactionMetrics(pc, scores)
-			pc.score = info.score
+			pc.score = info.compensatedScoreRatio
 			// TODO(bananabrick): Create an EventListener for logCompaction.
 			if false {
 				logCompaction(pc)
@@ -1388,7 +1435,7 @@ func (p *compactionPickerByScore) addScoresToPickedCompactionMetrics(
 	inputIdx := 0
 	for i := range infoByLevel {
 		if pc.inputs[inputIdx].level == infoByLevel[i].level {
-			pc.pickerMetrics.scores[inputIdx] = infoByLevel[i].score
+			pc.pickerMetrics.scores[inputIdx] = infoByLevel[i].compensatedScoreRatio
 			inputIdx++
 		}
 		if inputIdx == len(pc.inputs) {
