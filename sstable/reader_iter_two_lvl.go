@@ -32,6 +32,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 	// Ensure the index data block iterators are invalidated even if loading of
 	// the index fails.
 	i.data.invalidate()
+	i.index.invalidate()
 	if !i.topLevelIndex.valid() {
 		i.index.offset = 0
 		i.index.restarts = 0
@@ -260,7 +261,7 @@ func (i *twoLevelIterator) SeekGE(
 	// previous value of maybeFilteredKeys.
 
 	var dontSeekWithinSingleLevelIter bool
-	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() || err != nil ||
+	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() || i.index.isDataInvalidated() || err != nil ||
 		(i.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
 		// Slow-path: need to position the topLevelIndex.
 
@@ -448,7 +449,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	// remembering the previous value of maybeFilteredKeysTwoLevel.
 
 	var dontSeekWithinSingleLevelIter bool
-	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() || err != nil ||
+	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() || i.index.isDataInvalidated() || err != nil ||
 		(i.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
 		// Slow-path: need to position the topLevelIndex.
 
