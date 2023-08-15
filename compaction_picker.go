@@ -1010,13 +1010,23 @@ func (p *compactionPickerByScore) calculateScores(
 	for level := 1; level < numLevels; level++ {
 		compensatedLevelSize := int64(levelCompensatedSize(p.vers.Levels[level])) + sizeAdjust[level].compensated()
 		scores[level].score = float64(compensatedLevelSize) / float64(p.levelMaxBytes[level])
-		scores[level].origScore = scores[level].score
+		// We have the rawScore, and compensated score(score). We cap the scores
+		// due to a compensation to a reasonable constant. We need to do this because
+		// an unusually high compensated score, can unnecessarily take compaction
+		// bandwidth away from L0, which can lead to queueing above Pebble.
+		if scores[level].score > 3 {
+			scores[level].score = 3
+		}
 
 		// In addition to the compensated score, we calculate a separate score
 		// that uses actual file sizes, not compensated sizes. This is used
 		// during score smoothing down below to prevent excessive
 		// prioritization of reclaiming disk space.
 		scores[level].rawScore = float64(p.levelSizes[level]+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
+		if scores[level].rawScore > scores[level].score {
+			scores[level].score = scores[level].rawScore
+		}
+		scores[level].origScore = scores[level].score
 	}
 
 	// Adjust each level's score by the score of the next level. If the next
