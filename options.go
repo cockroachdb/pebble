@@ -260,7 +260,7 @@ type scanInternalOptions struct {
 	includeObsoleteKeys bool
 
 	// rateLimitFunc is used to limit the amount of bytes read per second.
-	rateLimitFunc func(key *InternalKey, value LazyValue) error
+	rateLimitFunc func(key *InternalKey, value LazyValue)
 }
 
 // RangeKeyMasking configures automatic hiding of point keys by range keys. A

@@ -7,7 +7,7 @@ require (
 	github.com/cockroachdb/datadriven v1.0.3-0.20230413201302-be42291fc80f
 	github.com/cockroachdb/errors v1.8.1
 	github.com/cockroachdb/redact v1.0.8
-	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06
+	github.com/cockroachdb/tokenbucket v0.0.0-20230613231145-182959a1fad6
 	github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
 	github.com/golang/snappy v0.0.4
 	github.com/guptarohit/asciigraph v0.5.5

@@ -2756,14 +2756,21 @@ func (d *DB) ScanStatistics(
 ) (LSMKeyStatistics, error) {
 	stats := LSMKeyStatistics{}
 	var prevKey InternalKey
-	var rateLimitFunc func(key *InternalKey, val LazyValue) error
+	var rateLimitFunc func(key *InternalKey, val LazyValue)
 	tb := tokenbucket.TokenBucket{}
 
 	if opts.LimitBytesPerSecond != 0 {
 		// Each "token" roughly corresponds to a byte that was read.
 		tb.Init(tokenbucket.TokensPerSecond(opts.LimitBytesPerSecond), tokenbucket.Tokens(1024))
-		rateLimitFunc = func(key *InternalKey, val LazyValue) error {
-			return tb.WaitCtx(ctx, tokenbucket.Tokens(key.Size()+val.Len()))
+		rateLimitFunc = func(key *InternalKey, val LazyValue) {
+			for {
+				fulfilled, tryAgainAfter := tb.TryToFulfill(tokenbucket.Tokens(key.Size() + val.Len()))
+
+				if fulfilled {
+					break
+				}
+				time.Sleep(tryAgainAfter)
+			}
 		}
 	}
 

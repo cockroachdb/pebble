@@ -652,9 +652,7 @@ func scanInternalImpl(
 		key := iter.unsafeKey()
 
 		if opts.rateLimitFunc != nil {
-			if err := opts.rateLimitFunc(key, iter.lazyValue()); err != nil {
-				return err
-			}
+			opts.rateLimitFunc(key, iter.lazyValue())
 		}
 
 		switch key.Kind() {
