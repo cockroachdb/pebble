@@ -1294,12 +1294,16 @@ func (b *Batch) Indexed() bool {
 	return b.index != nil
 }
 
-func (b *Batch) init(cap int) {
+// init ensures that the batch data slice is initialized to meet the
+// minimum required size and allocates space for the batch header.
+func (b *Batch) init(bytes int) {
 	n := batchInitialSize
-	for n < cap {
+	for n < bytes {
 		n *= 2
 	}
-	b.data = rawalloc.New(batchHeaderLen, n)
+	if cap(b.data) < n {
+		b.data = rawalloc.New(batchHeaderLen, n)
+	}
 	b.setCount(0)
 	b.setSeqNum(0)
 	b.data = b.data[:batchHeaderLen]
