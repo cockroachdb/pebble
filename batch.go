@@ -367,6 +367,14 @@ func newBatch(db *DB) *Batch {
 	return b
 }
 
+func newBatchWithSize(db *DB, size int) *Batch {
+	b := newBatch(db)
+	if cap(b.data) < size {
+		b.data = rawalloc.New(0, size)
+	}
+	return b
+}
+
 func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 	i := indexedBatchPool.Get().(*indexedBatch)
 	i.batch.cmp = comparer.Compare
@@ -376,6 +384,14 @@ func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 	i.batch.index = &i.index
 	i.batch.index.Init(&i.batch.data, i.batch.cmp, i.batch.abbreviatedKey)
 	return &i.batch
+}
+
+func newIndexedBatchWithSize(db *DB, comparer *Comparer, size int) *Batch {
+	b := newIndexedBatch(db, comparer)
+	if cap(b.data) < size {
+		b.data = rawalloc.New(0, size)
+	}
+	return b
 }
 
 // nextSeqNum returns the batch "sequence number" that will be given to the next
@@ -1296,9 +1312,9 @@ func (b *Batch) Indexed() bool {
 
 // init ensures that the batch data slice is initialized to meet the
 // minimum required size and allocates space for the batch header.
-func (b *Batch) init(bytes int) {
+func (b *Batch) init(size int) {
 	n := batchInitialSize
-	for n < bytes {
+	for n < size {
 		n *= 2
 	}
 	if cap(b.data) < n {
