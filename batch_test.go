@@ -249,9 +249,13 @@ func TestBatchLen(t *testing.T) {
 
 	requireLenAndReprEq(43)
 }
-
 func TestBatchEmpty(t *testing.T) {
-	var b Batch
+	testBatchEmpty(t, 0)
+	testBatchEmpty(t, batchInitialSize)
+}
+
+func testBatchEmpty(t *testing.T, size int) {
+	b := newBatchWithSize(nil, size)
 	require.True(t, b.Empty())
 
 	ops := []func(*Batch) error{
@@ -266,26 +270,26 @@ func TestBatchEmpty(t *testing.T) {
 	}
 
 	for _, op := range ops {
-		require.NoError(t, op(&b))
+		require.NoError(t, op(b))
 		require.False(t, b.Empty())
 		b.Reset()
 		require.True(t, b.Empty())
 		// Reset may choose to reuse b.data, so clear it to the zero value in
 		// order to test the lazy initialization of b.data.
-		b = Batch{}
+		b = newBatchWithSize(nil, size)
 	}
 
 	_ = b.Reader()
 	require.True(t, b.Empty())
 	b.Reset()
 	require.True(t, b.Empty())
-	b = Batch{}
+	b = newBatchWithSize(nil, size)
 
 	require.Equal(t, uint64(0), b.SeqNum())
 	require.True(t, b.Empty())
 	b.Reset()
 	require.True(t, b.Empty())
-	b = Batch{}
+	b = newBatchWithSize(nil, size)
 
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
