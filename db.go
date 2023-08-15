@@ -1454,6 +1454,12 @@ func (d *DB) NewBatch() *Batch {
 	return newBatch(d)
 }
 
+// NewBatchWithSize is mostly identical to NewBatch, but it will allocate the
+// the specified memory space for the internal slice in advance.
+func (d *DB) NewBatchWithSize(size int) *Batch {
+	return newBatchWithSize(d, size)
+}
+
 // NewIndexedBatch returns a new empty read-write batch. Any reads on the batch
 // will read from both the batch and the DB. If the batch is committed it will
 // be applied to the DB. An indexed batch is slower that a non-indexed batch
@@ -1461,6 +1467,12 @@ func (d *DB) NewBatch() *Batch {
 // NewBatch instead.
 func (d *DB) NewIndexedBatch() *Batch {
 	return newIndexedBatch(d, d.opts.Comparer)
+}
+
+// NewIndexedBatchWithSize is mostly identical to NewIndexedBatch, but it will
+// allocate the the specified memory space for the internal slice in advance.
+func (d *DB) NewIndexedBatchWithSize(size int) *Batch {
+	return newIndexedBatchWithSize(d, d.opts.Comparer, size)
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
