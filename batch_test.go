@@ -28,6 +28,11 @@ import (
 )
 
 func TestBatch(t *testing.T) {
+	testBatch(t, 0)
+	testBatch(t, batchInitialSize)
+}
+
+func testBatch(t *testing.T, size int) {
 	type testCase struct {
 		kind       InternalKeyKind
 		key, value string
@@ -101,7 +106,7 @@ func TestBatch(t *testing.T) {
 		{InternalKeyKindRangeKeyDelete, "", "", 0},
 		{InternalKeyKindDeleteSized, "nosuchkey", string(binary.AppendUvarint([]byte(nil), 11)), 2},
 	}
-	var b Batch
+	b := newBatchWithSize(nil, size)
 	for _, tc := range testCases {
 		switch tc.kind {
 		case InternalKeyKindSet:
@@ -124,7 +129,7 @@ func TestBatch(t *testing.T) {
 			b.ingestSST(decodeFileNum([]byte(tc.key)))
 		}
 	}
-	verifyTestCases(&b, testCases, false /* indexedKindsOnly */)
+	verifyTestCases(b, testCases, false /* indexedKindsOnly */)
 
 	b.Reset()
 	// Run the same operations, this time using the Deferred variants of each
@@ -173,7 +178,7 @@ func TestBatch(t *testing.T) {
 			d.Finish()
 		}
 	}
-	verifyTestCases(&b, testCases, false /* indexedKindsOnly */)
+	verifyTestCases(b, testCases, false /* indexedKindsOnly */)
 
 	b.Reset()
 	// Run the same operations, this time using AddInternalKey instead of the
@@ -188,7 +193,25 @@ func TestBatch(t *testing.T) {
 		value := []byte(tc.value)
 		b.AddInternalKey(&InternalKey{UserKey: key, Trailer: base.MakeTrailer(0, tc.kind)}, value, nil)
 	}
-	verifyTestCases(&b, testCases, true /* indexedKindsOnly */)
+	verifyTestCases(b, testCases, true /* indexedKindsOnly */)
+}
+
+func TestBatchPreAlloc(t *testing.T) {
+	var cases = []struct {
+		size int
+		exp  int
+	}{
+		{0, batchInitialSize},
+		{batchInitialSize, batchInitialSize},
+		{2 * batchInitialSize, 2 * batchInitialSize},
+	}
+	for _, c := range cases {
+		b := newBatchWithSize(nil, c.size)
+		b.Set([]byte{0x1}, []byte{0x2}, nil)
+		if cap(b.data) != c.exp {
+			t.Errorf("Unexpected memory space, required: %d, got: %d", c.exp, cap(b.data))
+		}
+	}
 }
 
 func TestBatchIngestSST(t *testing.T) {
