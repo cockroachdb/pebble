@@ -45,9 +45,9 @@ func TestSnapshotListToSlice(t *testing.T) {
 	}
 }
 
-func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
+func TestSnapshot(t *testing.T) {
 	var d *DB
-	var snapshots map[string]Reader
+	var snapshots map[string]*Snapshot
 
 	close := func() {
 		for _, s := range snapshots {
@@ -87,7 +87,7 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 			if err != nil {
 				return err.Error()
 			}
-			snapshots = make(map[string]Reader)
+			snapshots = make(map[string]*Snapshot)
 
 			for _, line := range strings.Split(td.Input, "\n") {
 				parts := strings.Fields(line)
@@ -115,7 +115,7 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 					if len(parts) != 2 {
 						return fmt.Sprintf("%s expects 1 argument", parts[0])
 					}
-					snapshots[parts[1]] = newSnapshot(d)
+					snapshots[parts[1]] = d.NewSnapshot()
 				case "compact":
 					if len(parts) != 2 {
 						return fmt.Sprintf("%s expects 1 argument", parts[0])
@@ -201,19 +201,6 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
-	})
-}
-
-func TestSnapshot(t *testing.T) {
-	testSnapshotImpl(t, func(d *DB) Reader {
-		return d.NewSnapshot()
-	})
-}
-
-func TestEventuallyFileOnlySnapshot(t *testing.T) {
-	testSnapshotImpl(t, func(d *DB) Reader {
-		// NB: all keys in testdata/snapshot fall within the ASCII keyrange a-z.
-		return d.NewEventuallyFileOnlySnapshot([]KeyRange{{Start: []byte("a"), End: []byte("z")}})
 	})
 }
 

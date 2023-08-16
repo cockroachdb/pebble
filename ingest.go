@@ -69,13 +69,6 @@ func (k *KeyRange) Overlaps(cmp base.Compare, m *fileMetadata) bool {
 	return k.OverlapsInternalKeyRange(cmp, m.Smallest, m.Largest)
 }
 
-// OverlapsKeyRange checks if this span overlaps with the provided KeyRange.
-// Note that we aren't checking for full containment of either span in the other,
-// just that there's a key x that is in both key ranges.
-func (k *KeyRange) OverlapsKeyRange(cmp Compare, span KeyRange) bool {
-	return cmp(k.Start, span.End) < 0 && cmp(k.End, span.Start) > 0
-}
-
 func ingestValidateKey(opts *Options, key *InternalKey) error {
 	if key.Kind() == InternalKeyKindInvalid {
 		return base.CorruptionErrorf("pebble: external sstable has corrupted key: %s",
@@ -597,7 +590,7 @@ func ingestLink(
 	return nil
 }
 
-func ingestMemtableOverlaps(cmp Compare, mem flushable, keyRanges []internalKeyRange) bool {
+func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bool {
 	iter := mem.newIter(nil)
 	rangeDelIter := mem.newRangeDelIter(nil)
 	rkeyIter := mem.newRangeKeyIter(nil)
@@ -613,7 +606,8 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, keyRanges []internalKeyR
 		return err
 	}
 
-	for _, kr := range keyRanges {
+	for _, m := range meta {
+		kr := internalKeyRange{smallest: m.Smallest, largest: m.Largest}
 		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, kr, cmp) {
 			closeIters()
 			return true
@@ -691,7 +685,6 @@ func ingestUpdateSeqNum(
 	return nil
 }
 
-// Denotes an internal key range. Smallest and largest are both inclusive.
 type internalKeyRange struct {
 	smallest, largest InternalKey
 }
@@ -1954,38 +1947,20 @@ func (d *DB) ingestApply(
 				}
 			}
 		}
-		for c := range d.mu.compact.inProgress {
-			if c.versionEditApplied {
-				continue
-			}
-			// Check if this compaction overlaps with the excise span. Note that just
-			// checking if the inputs individually overlap with the excise span
-			// isn't sufficient; for instance, a compaction could have [a,b] and [e,f]
-			// as inputs and write it all out as [a,b,e,f] in one sstable. If we're
-			// doing a [c,d) excise at the same time as this compaction, we will have
-			// to error out the whole compaction as we can't guarantee it hasn't/won't
-			// write a file overlapping with the excise span.
-			if exciseSpan.OverlapsInternalKeyRange(d.cmp, c.smallest, c.largest) {
-				c.cancel.Store(true)
-			}
+	}
+	for c := range d.mu.compact.inProgress {
+		if c.versionEditApplied {
+			continue
 		}
-		// Check for any EventuallyFileOnlySnapshots that could be watching for
-		// an excise on this span.
-		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
-			if s.efos == nil {
-				continue
-			}
-			efos := s.efos
-			// TODO(bilal): We can make this faster by taking advantage of the sorted
-			// nature of protectedRanges to do a sort.Search, or even maintaining a
-			// global list of all protected ranges instead of having to peer into every
-			// snapshot.
-			for i := range efos.protectedRanges {
-				if efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
-					efos.excised.Store(true)
-					break
-				}
-			}
+		// Check if this compaction overlaps with the excise span. Note that just
+		// checking if the inputs individually overlap with the excise span
+		// isn't sufficient; for instance, a compaction could have [a,b] and [e,f]
+		// as inputs and write it all out as [a,b,e,f] in one sstable. If we're
+		// doing a [c,d) excise at the same time as this compaction, we will have
+		// to error out the whole compaction as we can't guarantee it hasn't/won't
+		// write a file overlapping with the excise span.
+		if exciseSpan.OverlapsInternalKeyRange(d.cmp, c.smallest, c.largest) {
+			c.cancel.Store(true)
 		}
 	}
 	if err := d.mu.versions.logAndApply(jobID, ve, metrics, false /* forceRotation */, func() []compactionInfo {

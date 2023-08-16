@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -213,7 +212,6 @@ func TestScanInternal(t *testing.T) {
 	}
 	batches := map[string]*Batch{}
 	snaps := map[string]*Snapshot{}
-	efos := map[string]*EventuallyFileOnlySnapshot{}
 	parseOpts := func(td *datadriven.TestData) (*Options, error) {
 		opts := &Options{
 			FS:                 vfs.NewMem(),
@@ -296,10 +294,6 @@ func TestScanInternal(t *testing.T) {
 			err = firstError(err, snap.Close())
 			delete(snaps, key)
 		}
-		for key, es := range efos {
-			err = firstError(err, es.Close())
-			delete(efos, key)
-		}
 		if d != nil {
 			err = firstError(err, d.Close())
 			d = nil
@@ -345,34 +339,6 @@ func TestScanInternal(t *testing.T) {
 			td.ScanArgs(t, "name", &name)
 			snaps[name] = s
 			return ""
-		case "wait-for-file-only-snapshot":
-			if len(td.CmdArgs) != 1 {
-				panic("insufficient args for file-only-snapshot command")
-			}
-			name := td.CmdArgs[0].Key
-			es := efos[name]
-			if err := es.WaitForFileOnlySnapshot(1 * time.Millisecond); err != nil {
-				return err.Error()
-			}
-			return "ok"
-		case "file-only-snapshot":
-			if len(td.CmdArgs) != 1 {
-				panic("insufficient args for file-only-snapshot command")
-			}
-			name := td.CmdArgs[0].Key
-			var keyRanges []KeyRange
-			for _, line := range strings.Split(td.Input, "\n") {
-				fields := strings.Fields(line)
-				if len(fields) != 2 {
-					return "expected two fields for file-only snapshot KeyRanges"
-				}
-				kr := KeyRange{Start: []byte(fields[0]), End: []byte(fields[1])}
-				keyRanges = append(keyRanges, kr)
-			}
-
-			s := d.NewEventuallyFileOnlySnapshot(keyRanges)
-			efos[name] = s
-			return "ok"
 		case "batch":
 			var name string
 			td.MaybeScanArgs(t, "name", &name)
@@ -439,13 +405,6 @@ func TestScanInternal(t *testing.T) {
 						return fmt.Sprintf("no snapshot found for name %s", name)
 					}
 					reader = snap
-				case "file-only-snapshot":
-					name := arg.Vals[0]
-					efos, ok := efos[name]
-					if !ok {
-						return fmt.Sprintf("no snapshot found for name %s", name)
-					}
-					reader = efos
 				case "skip-shared":
 					fileVisitor = func(sst *SharedSSTMeta) error {
 						fmt.Fprintf(&b, "shared file: %s [%s-%s] [point=%s-%s] [range=%s-%s]\n", sst.fileNum, sst.Smallest.String(), sst.Largest.String(), sst.SmallestPointKey.String(), sst.LargestPointKey.String(), sst.SmallestRangeKey.String(), sst.LargestRangeKey.String())

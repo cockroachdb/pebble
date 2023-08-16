@@ -746,11 +746,7 @@ func TestExcise(t *testing.T) {
 
 func TestIngestShared(t *testing.T) {
 	var d, d1, d2 *DB
-	var efos map[string]*EventuallyFileOnlySnapshot
 	defer func() {
-		for _, e := range efos {
-			require.NoError(t, e.Close())
-		}
 		if d1 != nil {
 			require.NoError(t, d1.Close())
 		}
@@ -762,16 +758,12 @@ func TestIngestShared(t *testing.T) {
 	replicateCounter := 1
 
 	reset := func() {
-		for _, e := range efos {
-			require.NoError(t, e.Close())
-		}
 		if d1 != nil {
 			require.NoError(t, d1.Close())
 		}
 		if d2 != nil {
 			require.NoError(t, d2.Close())
 		}
-		efos = make(map[string]*EventuallyFileOnlySnapshot)
 
 		sstorage := remote.NewInMem()
 		mem1 := vfs.NewMem()
@@ -787,9 +779,6 @@ func TestIngestShared(t *testing.T) {
 			DebugCheck:            DebugCheckLevels,
 			FormatMajorVersion:    ExperimentalFormatVirtualSSTables,
 		}
-		// lel.
-		lel := MakeLoggingEventListener(DefaultLogger)
-		opts1.EventListener = &lel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
 		})
@@ -956,8 +945,6 @@ func TestIngestShared(t *testing.T) {
 
 		case "iter":
 			o := &IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
-			var reader Reader
-			reader = d
 			for _, arg := range td.CmdArgs {
 				switch arg.Key {
 				case "mask-suffix":
@@ -966,11 +953,9 @@ func TestIngestShared(t *testing.T) {
 					o.RangeKeyMasking.Filter = func() BlockPropertyFilterMask {
 						return sstable.NewTestKeysMaskingFilter()
 					}
-				case "snapshot":
-					reader = efos[arg.Vals[0]]
 				}
 			}
-			iter := reader.NewIter(o)
+			iter := d.NewIter(o)
 			return runIterCmd(td, iter, true)
 
 		case "lsm":
@@ -994,7 +979,7 @@ func TestIngestShared(t *testing.T) {
 			}
 			var exciseSpan KeyRange
 			if len(td.CmdArgs) != 2 {
-				panic("insufficient args for excise command")
+				panic("insufficient args for compact command")
 			}
 			exciseSpan.Start = []byte(td.CmdArgs[0].Key)
 			exciseSpan.End = []byte(td.CmdArgs[1].Key)
@@ -1019,36 +1004,6 @@ func TestIngestShared(t *testing.T) {
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
 			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedFiles), ve.String())
-
-		case "file-only-snapshot":
-			if len(td.CmdArgs) != 1 {
-				panic("insufficient args for file-only-snapshot command")
-			}
-			name := td.CmdArgs[0].Key
-			var keyRanges []KeyRange
-			for _, line := range strings.Split(td.Input, "\n") {
-				fields := strings.Fields(line)
-				if len(fields) != 2 {
-					return "expected two fields for file-only snapshot KeyRanges"
-				}
-				kr := KeyRange{Start: []byte(fields[0]), End: []byte(fields[1])}
-				keyRanges = append(keyRanges, kr)
-			}
-
-			s := d.NewEventuallyFileOnlySnapshot(keyRanges)
-			efos[name] = s
-			return "ok"
-
-		case "wait-for-file-only-snapshot":
-			if len(td.CmdArgs) != 1 {
-				panic("insufficient args for file-only-snapshot command")
-			}
-			name := td.CmdArgs[0].Key
-			err := efos[name].WaitForFileOnlySnapshot(1 * time.Millisecond)
-			if err != nil {
-				return err.Error()
-			}
-			return "ok"
 
 		case "compact":
 			err := runCompactCmd(td, d)
@@ -1365,12 +1320,11 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 				case "overlaps":
 					var buf bytes.Buffer
 					for _, data := range strings.Split(d.Input, "\n") {
-						var keyRanges []internalKeyRange
+						var meta []*fileMetadata
 						for _, part := range strings.Fields(data) {
-							meta := parseMeta(part)
-							keyRanges = append(keyRanges, internalKeyRange{smallest: meta.Smallest, largest: meta.Largest})
+							meta = append(meta, parseMeta(part))
 						}
-						fmt.Fprintf(&buf, "%t\n", ingestMemtableOverlaps(mem.cmp, mem, keyRanges))
+						fmt.Fprintf(&buf, "%t\n", ingestMemtableOverlaps(mem.cmp, mem, meta))
 					}
 					return buf.String()
 

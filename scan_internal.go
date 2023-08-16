@@ -399,13 +399,11 @@ type IteratorLevel struct {
 // *must* return the range delete as well as the range key unset/delete that did
 // the shadowing.
 type scanInternalIterator struct {
-	db              *DB
 	opts            scanInternalOptions
 	comparer        *base.Comparer
 	merge           Merge
 	iter            internalIterator
 	readState       *readState
-	version         *version
 	rangeKey        *iteratorRangeKeyState
 	pointKeyIter    internalIterator
 	iterKey         *InternalKey
@@ -607,18 +605,15 @@ func scanInternalImpl(
 	// of keys. For files that are shared, call visitSharedFile with a truncated
 	// version of that file.
 	cmp := iter.comparer.Compare
-	provider := iter.db.ObjProvider()
+	db := iter.readState.db
+	provider := db.objProvider
 	seqNum := iter.seqNum
-	current := iter.version
-	if current == nil {
-		current = iter.readState.current
-	}
 	if opts.visitSharedFile != nil {
 		if provider == nil {
 			panic("expected non-nil Provider in skip-shared iteration mode")
 		}
 		for level := sharedLevelsStart; level < numLevels; level++ {
-			files := current.Levels[level].Iter()
+			files := iter.readState.current.Levels[level].Iter()
 			for f := files.SeekGE(cmp, lower); f != nil && cmp(f.Smallest.UserKey, upper) < 0; f = files.Next() {
 				var objMeta objstorage.ObjectMetadata
 				var err error
@@ -634,7 +629,7 @@ func scanInternalImpl(
 				}
 				var sst *SharedSSTMeta
 				var skip bool
-				sst, skip, err = iter.db.truncateSharedFile(ctx, lower, upper, level, f, objMeta)
+				sst, skip, err = iter.readState.db.truncateSharedFile(ctx, lower, upper, level, f, objMeta)
 				if err != nil {
 					return err
 				}
@@ -704,10 +699,8 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	numMergingLevels := len(memtables)
 	numLevelIters := 0
 
-	current := i.version
-	if current == nil {
-		current = i.readState.current
-	}
+	current := i.readState.current
+
 	numMergingLevels += len(current.L0SublevelFiles)
 	numLevelIters += len(current.L0SublevelFiles)
 
@@ -829,24 +822,19 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 		&i.rangeKey.rangeKeyBuffers.internal)
 
 	// Next are the flushables: memtables and large batches.
-	if i.readState != nil {
-		for j := len(i.readState.memtables) - 1; j >= 0; j-- {
-			mem := i.readState.memtables[j]
-			// We only need to read from memtables which contain sequence numbers older
-			// than seqNum.
-			if logSeqNum := mem.logSeqNum; logSeqNum >= i.seqNum {
-				continue
-			}
-			if rki := mem.newRangeKeyIter(&i.opts.IterOptions); rki != nil {
-				i.rangeKey.iterConfig.AddLevel(rki)
-			}
+	for j := len(i.readState.memtables) - 1; j >= 0; j-- {
+		mem := i.readState.memtables[j]
+		// We only need to read from memtables which contain sequence numbers older
+		// than seqNum.
+		if logSeqNum := mem.logSeqNum; logSeqNum >= i.seqNum {
+			continue
+		}
+		if rki := mem.newRangeKeyIter(&i.opts.IterOptions); rki != nil {
+			i.rangeKey.iterConfig.AddLevel(rki)
 		}
 	}
 
-	current := i.version
-	if current == nil {
-		current = i.readState.current
-	}
+	current := i.readState.current
 	// Next are the file levels: L0 sub-levels followed by lower levels.
 	//
 	// Add file-specific iterators for L0 files containing range keys. This is less
@@ -937,12 +925,7 @@ func (i *scanInternalIterator) close() error {
 	if err := i.iter.Close(); err != nil {
 		return err
 	}
-	if i.readState != nil {
-		i.readState.unref()
-	}
-	if i.version != nil {
-		i.version.Unref()
-	}
+	i.readState.unref()
 	if i.rangeKey != nil {
 		i.rangeKey.PrepareForReuse()
 		*i.rangeKey = iteratorRangeKeyState{
