@@ -704,7 +704,7 @@ func (o *newIterOp) run(t *test, h historyRecorder) {
 
 	var i *pebble.Iterator
 	for {
-		i, _ = r.NewIter(opts)
+		i = r.NewIter(opts)
 		if err := i.Error(); !errors.Is(err, errorfs.ErrInjected) {
 			break
 		}

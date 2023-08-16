@@ -496,7 +496,7 @@ func TestOpenReadOnly(t *testing.T) {
 			return err
 		}())
 
-		checkIter := func(iter *Iterator, err error) {
+		checkIter := func(iter *Iterator) {
 			t.Helper()
 
 			var keys []string
@@ -536,7 +536,7 @@ func TestOpenReadOnly(t *testing.T) {
 func TestOpenWALReplay(t *testing.T) {
 	largeValue := []byte(strings.Repeat("a", 100<<10))
 	hugeValue := []byte(strings.Repeat("b", 10<<20))
-	checkIter := func(iter *Iterator, err error) {
+	checkIter := func(iter *Iterator) {
 		t.Helper()
 
 		var keys []string

@@ -81,7 +81,7 @@ func TestRangeDel(t *testing.T) {
 				seqNum: InternalKeySeqNumMax,
 			}
 			td.MaybeScanArgs(t, "seq", &snap.seqNum)
-			iter, _ := snap.NewIter(nil)
+			iter := snap.NewIter(nil)
 			return runIterCmd(td, iter, true)
 
 		default:
@@ -331,7 +331,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		}
 
 		keys := func() string {
-			iter, _ := d.NewIter(nil)
+			iter := d.NewIter(nil)
 			defer iter.Close()
 			var buf bytes.Buffer
 			var sep string
@@ -637,7 +637,7 @@ func benchmarkRangeDelIterate(b *testing.B, entries, deleted int, snapshotCompac
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		iter, _ := d.NewIter(nil)
+		iter := d.NewIter(nil)
 		iter.SeekGE(from)
 		if deleted < entries {
 			if !iter.Valid() {

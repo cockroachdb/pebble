@@ -698,7 +698,7 @@ func TestReadSampling(t *testing.T) {
 					db:     d,
 					seqNum: InternalKeySeqNumMax,
 				}
-				iter, _ = snap.NewIter(nil)
+				iter = snap.NewIter(nil)
 				iter.readSampling.forceReadSampling = true
 			}
 			return runIterCmd(td, iter, false)
@@ -806,7 +806,7 @@ func TestIteratorTableFilter(t *testing.T) {
 				db:     d,
 				seqNum: InternalKeySeqNumMax,
 			}
-			iter, _ := snap.NewIter(iterOpts)
+			iter := snap.NewIter(iterOpts)
 			return runIterCmd(td, iter, true)
 
 		default:
@@ -863,7 +863,7 @@ func TestIteratorNextPrev(t *testing.T) {
 				seqNum: InternalKeySeqNumMax,
 			}
 			td.MaybeScanArgs(t, "seq", &snap.seqNum)
-			iter, _ := snap.NewIter(nil)
+			iter := snap.NewIter(nil)
 			return runIterCmd(td, iter, true)
 
 		default:
@@ -919,7 +919,7 @@ func TestIteratorStats(t *testing.T) {
 				seqNum: InternalKeySeqNumMax,
 			}
 			td.MaybeScanArgs(t, "seq", &snap.seqNum)
-			iter, _ := snap.NewIter(nil)
+			iter := snap.NewIter(nil)
 			return runIterCmd(td, iter, true)
 
 		default:
@@ -1018,7 +1018,7 @@ func TestIteratorSeekOpt(t *testing.T) {
 					db:     d,
 					seqNum: InternalKeySeqNumMax,
 				}
-				iter, _ = snap.NewIter(nil)
+				iter = snap.NewIter(nil)
 				iter.readSampling.forceReadSampling = true
 				iter.comparer.Split = func(a []byte) int { return len(a) }
 				iter.forceEnableSeekOpt = true
@@ -1344,7 +1344,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 					opts.PointKeyFilters[i], opts.PointKeyFilters[j] =
 						opts.PointKeyFilters[j], opts.PointKeyFilters[i]
 				})
-				iter, _ := d.NewIter(&opts)
+				iter := d.NewIter(&opts)
 				return runIterCmd(td, iter, true)
 
 			default:
@@ -1430,7 +1430,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 		sstable.NewBlockIntervalFilter("0",
 			uint64(lower), uint64(upper)),
 	}
-	iter, _ := d.NewIter(&iterOpts)
+	iter := d.NewIter(&iterOpts)
 	defer func() {
 		require.NoError(t, iter.Close())
 	}()
@@ -1466,7 +1466,7 @@ func TestIteratorGuaranteedDurable(t *testing.T) {
 			}
 			reader.Close()
 		}()
-		iter, _ := reader.NewIter(&iterOptions)
+		iter := reader.NewIter(&iterOptions)
 		defer iter.Close()
 	}
 	t.Run("snapshot", func(t *testing.T) {
@@ -1478,7 +1478,7 @@ func TestIteratorGuaranteedDurable(t *testing.T) {
 	t.Run("db", func(t *testing.T) {
 		d.Set([]byte("k"), []byte("v"), nil)
 		foundKV := func(o *IterOptions) bool {
-			iter, _ := d.NewIter(o)
+			iter := d.NewIter(o)
 			defer iter.Close()
 			iter.SeekGE([]byte("k"))
 			return iter.Valid()
@@ -1552,7 +1552,7 @@ func TestIteratorBoundsLifetimes(t *testing.T) {
 			var label string
 			td.ScanArgs(t, "label", &label)
 			lower, upper := parseBounds(td)
-			iterators[label], _ = d.NewIter(&IterOptions{
+			iterators[label] = d.NewIter(&IterOptions{
 				LowerBound: lower,
 				UpperBound: upper,
 			})
@@ -1811,9 +1811,9 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 		generateNewOptions()
 		fmt.Fprintf(&history, "new options: %s\n", iterOptionsString(&o))
 
-		newIter, _ = d.NewIter(&o)
+		newIter = d.NewIter(&o)
 		if longLivedIter == nil {
-			longLivedIter, _ = d.NewIter(&o)
+			longLivedIter = d.NewIter(&o)
 		} else {
 			longLivedIter.SetOptions(&o)
 		}
@@ -2301,7 +2301,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 								uint64(0), uint64(1)),
 						}
 					}
-					iter, _ := d.NewIter(&iterOpts)
+					iter := d.NewIter(&iterOpts)
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						valid := iter.First()
@@ -2492,8 +2492,8 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 		},
 	}
 
-	iter1, _ := d1.NewIter(&iter1Opts)
-	iter2, _ := d2.NewIter(&iter2Opts)
+	iter1 := d1.NewIter(&iter1Opts)
+	iter2 := d2.NewIter(&iter2Opts)
 	defer func() {
 		if err := iter1.Close(); err != nil {
 			t.Fatal(err)
@@ -2628,7 +2628,7 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 				b.Run("seekprefix", func(b *testing.B) {
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
-						iter, _ := d.NewIter(&iterOpts)
+						iter := d.NewIter(&iterOpts)
 						count := 0
 						for j := 0; j < len(keys); j++ {
 							if !iter.SeekPrefixGE(keys[j]) {
@@ -2646,7 +2646,7 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 				b.Run("next", func(b *testing.B) {
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
-						iter, _ := d.NewIter(&iterOpts)
+						iter := d.NewIter(&iterOpts)
 						count := 0
 						for valid := iter.First(); valid; valid = iter.Next() {
 							if hasPoint, _ := iter.HasPointAndRange(); hasPoint {
@@ -2662,7 +2662,7 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 			b.Run("backward", func(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					iter, _ := d.NewIter(&iterOpts)
+					iter := d.NewIter(&iterOpts)
 					count := 0
 					for valid := iter.Last(); valid; valid = iter.Prev() {
 						if hasPoint, _ := iter.HasPointAndRange(); hasPoint {
@@ -2730,7 +2730,7 @@ func BenchmarkIteratorScan(b *testing.B) {
 					b.Run(fmt.Sprintf("keys=%d,r-amp=%d,key-types=%s", keyCount, readAmp, keyTypes), func(b *testing.B) {
 						for i := 0; i < b.N; i++ {
 							b.StartTimer()
-							iter, _ := d.NewIter(&iterOpts)
+							iter := d.NewIter(&iterOpts)
 							valid := iter.First()
 							for valid {
 								valid = iter.Next()
@@ -2806,7 +2806,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 										IterKeyTypePointsOnly, IterKeyTypePointsAndRanges} {
 										b.Run(fmt.Sprintf("key-types=%s", keyTypes), func(b *testing.B) {
 											iterOpts := IterOptions{KeyTypes: keyTypes}
-											iter, _ := d.NewIter(&iterOpts)
+											iter := d.NewIter(&iterOpts)
 											var valid bool
 											b.ResetTimer()
 											for i := 0; i < b.N; i++ {
@@ -2867,9 +2867,9 @@ func BenchmarkCombinedIteratorSeek(b *testing.B) {
 						iterOpts := IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
 						var it *Iterator
 						if useBatch {
-							it, _ = batch.NewIter(&iterOpts)
+							it = batch.NewIter(&iterOpts)
 						} else {
-							it, _ = d.NewIter(&iterOpts)
+							it = d.NewIter(&iterOpts)
 						}
 						for j := 0; j < len(keys); j++ {
 							if !it.SeekGE(keys[j]) {
@@ -2900,7 +2900,7 @@ func BenchmarkCombinedIteratorSeek_Bounded(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		it, _ := d.NewIter(&iterOpts)
+		it := d.NewIter(&iterOpts)
 		for j := lower; j < upper; j++ {
 			if !it.SeekGE(keys[j]) {
 				b.Errorf("key %q missing", keys[j])
@@ -2924,7 +2924,7 @@ func BenchmarkCombinedIteratorSeekPrefix(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		it, _ := d.NewIter(&iterOpts)
+		it := d.NewIter(&iterOpts)
 		for j := lower; j < upper; j++ {
 			if !it.SeekPrefixGE(keys[j]) {
 				b.Errorf("key %q missing", keys[j])
@@ -3017,7 +3017,7 @@ func BenchmarkSeekPrefixTombstones(b *testing.B) {
 	d.mu.Unlock()
 
 	seekKey := testkeys.Key(ks, 1)
-	iter, _ := d.NewIter(nil)
+	iter := d.NewIter(nil)
 	defer iter.Close()
 	b.ResetTimer()
 	defer b.StopTimer()
