@@ -516,7 +516,7 @@ func TestPointCollapsingIter(t *testing.T) {
 				merge:    base.DefaultMerger.Merge,
 				seqNum:   math.MaxUint64,
 			}
-			pcIter.iter.Init(base.DefaultComparer, f, ksIter, nil /* mask */, nil, nil)
+			pcIter.iter.Init(base.DefaultComparer, f, ksIter, keyspan.InterleavingIterOpts{})
 			defer pcIter.Close()
 
 			return runInternalIterCmd(t, d, pcIter, iterCmdVerboseKey)
