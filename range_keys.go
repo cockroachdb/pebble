@@ -516,7 +516,11 @@ func (i *lazyCombinedIter) initCombinedIteration(
 	// Initialize the Iterator's interleaving iterator.
 	i.parent.rangeKey.iiter.Init(
 		&i.parent.comparer, i.parent.pointIter, i.parent.rangeKey.rangeKeyIter,
-		&i.parent.rangeKeyMasking, i.parent.opts.LowerBound, i.parent.opts.UpperBound)
+		keyspan.InterleavingIterOpts{
+			Mask:       &i.parent.rangeKeyMasking,
+			LowerBound: i.parent.opts.LowerBound,
+			UpperBound: i.parent.opts.UpperBound,
+		})
 
 	// Set the parent's primary iterator to point to the combined, interleaving
 	// iterator that's now initialized with our current state.

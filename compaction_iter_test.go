@@ -109,7 +109,7 @@ func TestCompactionIter(t *testing.T) {
 			base.DefaultComparer,
 			fi,
 			keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys),
-			nil, nil, nil)
+			keyspan.InterleavingIterOpts{})
 		iter := newInvalidatingIter(interleavingIter)
 		iter.ignoreKind(InternalKeyKindRangeDelete)
 		if merge == nil {

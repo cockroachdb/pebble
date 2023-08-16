@@ -79,11 +79,13 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 		split: testkeys.Comparer.Split,
 	}
 
+	var prevKey *base.InternalKey
 	formatKey := func(k *base.InternalKey, _ base.LazyValue) {
 		if k == nil {
 			fmt.Fprint(&buf, ".")
 			return
 		}
+		prevKey = k
 		s := iter.Span()
 		fmt.Fprintf(&buf, "PointKey: %s\n", k.String())
 		if s != nil {
@@ -107,7 +109,8 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			}
 			keyspanIter.Init(cmp, noopTransform, new(MergingBuffers), NewIter(cmp, spans))
 			hooks.maskSuffix = nil
-			iter.Init(testkeys.Comparer, &pointIter, &keyspanIter, &hooks, nil, nil)
+			iter.Init(testkeys.Comparer, &pointIter, &keyspanIter,
+				InterleavingIterOpts{Mask: &hooks})
 			return "OK"
 		case "define-pointkeys":
 			var points []base.InternalKey
@@ -117,12 +120,14 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			}
 			pointIter = pointIterator{cmp: cmp, keys: points}
 			hooks.maskSuffix = nil
-			iter.Init(testkeys.Comparer, &pointIter, &keyspanIter, &hooks, nil, nil)
+			iter.Init(testkeys.Comparer, &pointIter, &keyspanIter,
+				InterleavingIterOpts{Mask: &hooks})
 			return "OK"
 		case "iter":
 			buf.Reset()
 			// Clear any previous bounds.
 			iter.SetBounds(nil, nil)
+			prevKey = nil
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
 				bufLen := buf.Len()
@@ -139,6 +144,9 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 					formatKey(iter.Last())
 				case "next":
 					formatKey(iter.Next())
+				case "next-prefix":
+					succKey := testkeys.Comparer.ImmediateSuccessor(nil, prevKey.UserKey[:testkeys.Comparer.Split(prevKey.UserKey)])
+					formatKey(iter.NextPrefix(succKey))
 				case "prev":
 					formatKey(iter.Prev())
 				case "seek-ge":
@@ -175,6 +183,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
 	})
+	require.NoError(t, iter.Close())
 }
 
 type pointIterator struct {
