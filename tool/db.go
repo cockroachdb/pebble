@@ -413,7 +413,7 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 	fmtValues := d.fmtValue.spec != "null"
 	var count int64
 
-	iter, _ := db.NewIter(&pebble.IterOptions{
+	iter := db.NewIter(&pebble.IterOptions{
 		UpperBound: d.end,
 	})
 	for valid := iter.SeekGE(d.start); valid; valid = iter.Next() {

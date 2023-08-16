@@ -125,7 +125,7 @@ func TestErrors(t *testing.T) {
 			return err
 		}
 
-		iter, _ := d.NewIter(nil)
+		iter := d.NewIter(nil)
 		for valid := iter.First(); valid; valid = iter.Next() {
 		}
 		if err := iter.Close(); err != nil {
@@ -211,7 +211,7 @@ func TestRequireReadError(t *testing.T) {
 
 		// Now perform foreground ops with error injection enabled.
 		inj.SetIndex(index)
-		iter, _ := d.NewIter(nil)
+		iter := d.NewIter(nil)
 		if err := iter.Error(); err != nil {
 			return err
 		}
@@ -315,7 +315,7 @@ func TestCorruptReadError(t *testing.T) {
 
 		// Now perform foreground ops with corruption injection enabled.
 		fs.index.Store(index)
-		iter, _ := d.NewIter(nil)
+		iter := d.NewIter(nil)
 		if err := iter.Error(); err != nil {
 			return err
 		}

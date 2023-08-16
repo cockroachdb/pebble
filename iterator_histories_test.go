@@ -37,7 +37,7 @@ func TestIterHistories(t *testing.T) {
 		iters := map[string]*Iterator{}
 		batches := map[string]*Batch{}
 		newIter := func(name string, reader Reader, o *IterOptions) *Iterator {
-			it, _ := reader.NewIter(o)
+			it := reader.NewIter(o)
 			iters[name] = it
 			return it
 		}
