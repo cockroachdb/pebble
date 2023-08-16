@@ -490,7 +490,6 @@ PointKey: a#72057594037927935,21
 Span: a-c:{(#1,RANGEKEYSET,@10,apples)}
 -
 -- SpanChanged(nil)
--- SpanChanged(nil)
 PointKey: d@9#3,1
 Span: <invalid>
 -

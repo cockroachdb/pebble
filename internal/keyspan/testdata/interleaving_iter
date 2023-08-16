@@ -239,6 +239,8 @@ iter
 seek-lt tomato
 prev
 seek-lt a
+seek-lt tomato
+seek-lt tomago
 ----
 -- SpanChanged(nil)
 -- SpanChanged(q-z:{(#14,RANGEKEYSET,@9,mangos)})
@@ -252,6 +254,16 @@ Span: <invalid>
 -- SpanChanged(nil)
 -- SpanChanged(nil)
 .
+-- SpanChanged(nil)
+-- SpanChanged(q-z:{(#14,RANGEKEYSET,@9,mangos)})
+PointKey: q#72057594037927935,21
+Span: q-z:{(#14,RANGEKEYSET,@9,mangos)}
+-
+-- SpanChanged(nil)
+-- SpanChanged(q-z:{(#14,RANGEKEYSET,@9,mangos)})
+PointKey: q#72057594037927935,21
+Span: q-z:{(#14,RANGEKEYSET,@9,mangos)}
+-
 
 define-rangekeys
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
@@ -906,6 +918,7 @@ seek-prefix-ge b
 next
 seek-prefix-ge c
 next
+seek-ge c
 ----
 -- SpanChanged(nil)
 -- SpanChanged(b-b\x00:{(#5,RANGEKEYSET,@1,foo)})
@@ -923,3 +936,63 @@ Span: c-c\x00:{(#5,RANGEKEYSET,@1,foo)}
 PointKey: c#8,1
 Span: c-c\x00:{(#5,RANGEKEYSET,@1,foo)}
 -
+-- SpanChanged(nil)
+-- SpanChanged(b-d:{(#5,RANGEKEYSET,@1,foo)})
+PointKey: c#72057594037927935,21
+Span: b-d:{(#5,RANGEKEYSET,@1,foo)}
+-
+
+# Test NextPrefix
+
+define-rangekeys
+b-e:{(#5,RANGEKEYSET,@9,foo)}
+f-g:{(#6,RANGEKEYSET,@9,foo)}
+----
+OK
+
+define-pointkeys
+a@4.SET.8
+c@11.SET.8
+c@3.SET.8
+c@1.SET.4
+d@5.SET.3
+e@9.SET.2
+----
+OK
+
+iter
+first
+next-prefix
+next-prefix
+next-prefix
+next-prefix
+next-prefix
+next-prefix
+next-prefix
+----
+-- SpanChanged(nil)
+-- SpanChanged(nil)
+PointKey: a@4#8,1
+Span: <invalid>
+-
+-- SpanChanged(b-e:{(#5,RANGEKEYSET,@9,foo)})
+PointKey: b#72057594037927935,21
+Span: b-e:{(#5,RANGEKEYSET,@9,foo)}
+-
+PointKey: c@11#8,1
+Span: b-e:{(#5,RANGEKEYSET,@9,foo)}
+-
+PointKey: d@5#3,1
+Span: b-e:{(#5,RANGEKEYSET,@9,foo)}
+-
+-- SpanChanged(nil)
+PointKey: e@9#2,1
+Span: <invalid>
+-
+-- SpanChanged(f-g:{(#6,RANGEKEYSET,@9,foo)})
+PointKey: f#72057594037927935,21
+Span: f-g:{(#6,RANGEKEYSET,@9,foo)}
+-
+-- SpanChanged(nil)
+.
+.

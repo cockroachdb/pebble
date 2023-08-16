@@ -802,7 +802,11 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 
 	if i.opts.includeObsoleteKeys {
 		iiter := &keyspan.InterleavingIter{}
-		iiter.Init(i.comparer, &buf.merging, &rangeDelMiter, nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
+		iiter.Init(i.comparer, &buf.merging, &rangeDelMiter,
+			keyspan.InterleavingIterOpts{
+				LowerBound: i.opts.LowerBound,
+				UpperBound: i.opts.UpperBound,
+			})
 		i.pointKeyIter = iiter
 	} else {
 		pcIter := &pointCollapsingIterator{
@@ -810,7 +814,10 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 			merge:    i.merge,
 			seqNum:   i.seqNum,
 		}
-		pcIter.iter.Init(i.comparer, &buf.merging, &rangeDelMiter, nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
+		pcIter.iter.Init(i.comparer, &buf.merging, &rangeDelMiter, keyspan.InterleavingIterOpts{
+			LowerBound: i.opts.LowerBound,
+			UpperBound: i.opts.UpperBound,
+		})
 		i.pointKeyIter = pcIter
 	}
 	i.iter = i.pointKeyIter

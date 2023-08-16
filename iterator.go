@@ -1762,7 +1762,8 @@ func (i *Iterator) internalNextPrefix(currKeyPrefixLen int) {
 	i.iterKey, i.iterValue = i.iter.NextPrefix(i.prefixOrFullSeekKey)
 	if invariants.Enabled && i.iterKey != nil {
 		if iterKeyPrefixLen := i.split(i.iterKey.UserKey); i.cmp(i.iterKey.UserKey[:iterKeyPrefixLen], i.prefixOrFullSeekKey) < 0 {
-			panic("pebble: iter.NextPrefix did not advance beyond the current prefix")
+			panic(errors.AssertionFailedf("pebble: iter.NextPrefix did not advance beyond the current prefix: now at %q; expected to be geq %q",
+				i.iterKey, i.prefixOrFullSeekKey))
 		}
 	}
 }

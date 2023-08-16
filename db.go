@@ -1168,7 +1168,11 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 			// dbi already had an initialized range key iterator, in case the point
 			// iterator changed or the range key masking suffix changed.
 			dbi.rangeKey.iiter.Init(&dbi.comparer, dbi.iter, dbi.rangeKey.rangeKeyIter,
-				&dbi.rangeKeyMasking, dbi.opts.LowerBound, dbi.opts.UpperBound)
+				keyspan.InterleavingIterOpts{
+					Mask:       &dbi.rangeKeyMasking,
+					LowerBound: dbi.opts.LowerBound,
+					UpperBound: dbi.opts.UpperBound,
+				})
 			dbi.iter = &dbi.rangeKey.iiter
 		}
 	} else {
@@ -1314,7 +1318,10 @@ func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *sc
 	// iterator that interleaves range keys pulled from
 	// i.rangeKey.rangeKeyIter.
 	i.rangeKey.iiter.Init(i.comparer, i.iter, i.rangeKey.rangeKeyIter,
-		nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
+		keyspan.InterleavingIterOpts{
+			LowerBound: i.opts.LowerBound,
+			UpperBound: i.opts.UpperBound,
+		})
 	i.iter = &i.rangeKey.iiter
 
 	return i
