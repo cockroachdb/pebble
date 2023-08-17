@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/redact"
 )
 
@@ -287,20 +286,12 @@ func (d *diskHealthCheckingFile) timeDiskOp(opType OpType, writeSizeInBytes int6
 
 	delta := time.Since(d.createTime)
 	packed := pack(delta, writeSizeInBytes, opType)
-	if invariants.Enabled {
-		if !d.lastWritePacked.CompareAndSwap(0, packed) {
-			panic("concurrent write operations detected on file")
-		}
-	} else {
-		d.lastWritePacked.Store(packed)
+	if d.lastWritePacked.Swap(packed) != 0 {
+		panic("concurrent write operations detected on file")
 	}
 	defer func() {
-		if invariants.Enabled {
-			if !d.lastWritePacked.CompareAndSwap(packed, 0) {
-				panic("concurrent write operations detected on file")
-			}
-		} else {
-			d.lastWritePacked.Store(0)
+		if d.lastWritePacked.Swap(0) != packed {
+			panic("concurrent write operations detected on file")
 		}
 	}()
 	op()
