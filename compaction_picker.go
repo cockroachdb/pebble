@@ -738,6 +738,16 @@ func totalCompensatedSize(iter manifest.LevelIterator) uint64 {
 	return sz
 }
 
+// totalSize computes the size over a file metadata iterator. Note that this
+// function is linear in the files available to the iterator.
+func totalSize(iter manifest.LevelIterator) uint64 {
+	var sz uint64
+	for f := iter.First(); f != nil; f = iter.Next() {
+		sz += f.Size
+	}
+	return sz
+}
+
 // compactionPickerByScore holds the state and logic for picking a compaction. A
 // compaction picker is associated with a single version. A new compaction
 // picker is created and initialized every time a new version is installed.
@@ -1091,6 +1101,8 @@ func (p *compactionPickerByScore) calculateL0Score(
 	if info.score < fileScore {
 		info.score = fileScore
 	}
+	info.origScore = info.score
+	info.rawScore = info.origScore
 	return info
 }
 
@@ -1261,9 +1273,12 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			if pc.startLevel.level == info.level {
 				marker = "*"
 			}
-			fmt.Fprintf(&buf, "  %sL%d: %5.1f  %5.1f  %5.1f %8s  %8s",
+			fmt.Fprintf(&buf, "  %sL%d: %5.1f  %5.1f  %5.1f %8s  %8s  %8s",
 				marker, info.level, info.score, info.origScore, info.rawScore,
 				humanize.Bytes.Int64(int64(totalCompensatedSize(
+					p.vers.Levels[info.level].Iter(),
+				))),
+				humanize.Bytes.Int64(int64(totalSize(
 					p.vers.Levels[info.level].Iter(),
 				))),
 				humanize.Bytes.Int64(p.levelMaxBytes[info.level]),
