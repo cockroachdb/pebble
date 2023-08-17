@@ -1321,7 +1321,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 				pc.score = info.score
 				// TODO(bananabrick): Create an EventListener for logCompaction.
-				if false {
+				if true {
 					logCompaction(pc)
 				}
 				return pc
@@ -1341,7 +1341,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 			pc.score = info.score
 			// TODO(bananabrick): Create an EventListener for logCompaction.
-			if false {
+			if true {
 				logCompaction(pc)
 			}
 			return pc
