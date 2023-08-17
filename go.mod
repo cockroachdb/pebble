@@ -4,7 +4,7 @@ require (
 	github.com/DataDog/zstd v1.4.5
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/cespare/xxhash/v2 v2.2.0
-	github.com/cockroachdb/datadriven v1.0.2
+	github.com/cockroachdb/datadriven v1.0.3-0.20230801171734-e384cf455877
 	github.com/cockroachdb/errors v1.8.1
 	github.com/cockroachdb/redact v1.0.8
 	github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
