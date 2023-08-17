@@ -40,6 +40,7 @@ type runAndCompareOptions struct {
 	initialStatePath  string
 	initialStateDesc  string
 	traceFile         string
+	innerBinary       string
 	mutateTestOptions []func(*TestOptions)
 	customRuns        map[string]string
 	runOnceOptions
@@ -104,6 +105,12 @@ func OpCount(rv randvar.Static) RunOption {
 // it with the provided filename.
 func RuntimeTrace(name string) RunOption {
 	return closureOpt(func(ro *runAndCompareOptions) { ro.traceFile = name })
+}
+
+// InnerBinary configures the binary that is called for each run. If not
+// specified, this binary (os.Args[0]) is called.
+func InnerBinary(path string) RunOption {
+	return closureOpt(func(ro *runAndCompareOptions) { ro.innerBinary = path })
 }
 
 // ParseCustomTestOption adds support for parsing the provided CustomOption from
@@ -202,7 +209,11 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 			args = append(args, "-test.trace="+filepath.Join(runDir, runOpts.traceFile))
 		}
 
-		cmd := exec.Command(os.Args[0], args...)
+		binary := os.Args[0]
+		if runOpts.innerBinary != "" {
+			binary = runOpts.innerBinary
+		}
+		cmd := exec.Command(binary, args...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf(`
