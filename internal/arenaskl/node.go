@@ -29,7 +29,8 @@ import (
 // is used here. If a key/value overflows a uint32, it should not be added to
 // the skiplist.
 func MaxNodeSize(keySize, valueSize uint32) uint64 {
-	return uint64(maxNodeSize) + uint64(keySize) + uint64(valueSize) + align4
+	const maxPadding = nodeAlignment - 1
+	return uint64(maxNodeSize) + uint64(keySize) + uint64(valueSize) + maxPadding
 }
 
 type links struct {
@@ -94,7 +95,7 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	unusedSize := uint32((maxHeight - int(height)) * linksSize)
 	nodeSize := uint32(maxNodeSize) - unusedSize
 
-	nodeOffset, allocSize, err := arena.alloc(nodeSize+keySize+valueSize, align4, unusedSize)
+	nodeOffset, allocSize, err := arena.alloc(nodeSize+keySize+valueSize, nodeAlignment, unusedSize)
 	if err != nil {
 		return
 	}
