@@ -549,7 +549,7 @@ func forEveryTableFormat[I any](
 	t *testing.T, formatTable [NumTableFormats]I, runTest func(*testing.T, TableFormat, I),
 ) {
 	t.Helper()
-	for tf := TableFormatUnspecified + 1; tf < TableFormatMax; tf++ {
+	for tf := TableFormatUnspecified + 1; tf <= TableFormatMax; tf++ {
 		t.Run(tf.String(), func(t *testing.T) {
 			runTest(t, tf, formatTable[tf])
 		})
