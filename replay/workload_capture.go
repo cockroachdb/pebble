@@ -383,6 +383,18 @@ func (w *WorkloadCollector) Start(destFS vfs.FS, destPath string) {
 	go w.copyFiles()
 }
 
+// WaitAndStop waits for all enqueued sstables to be copied over, and then
+// calls Stop. Gracefully ensures that all sstables referenced in the collected
+// manifest's latest version edit will exist in the copy directory.
+func (w *WorkloadCollector) WaitAndStop() {
+	w.mu.Lock()
+	for w.mu.tablesEnqueued != w.mu.tablesCopied {
+		w.mu.copyCond.Wait()
+	}
+	w.mu.Unlock()
+	w.Stop()
+}
+
 // Stop stops collection of the workload.
 func (w *WorkloadCollector) Stop() {
 	w.mu.Lock()

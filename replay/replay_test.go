@@ -571,7 +571,7 @@ func buildHeavyWorkload(t *testing.T) vfs.FS {
 		require.NoError(t, b.Commit(pebble.NoSync))
 		require.NoError(t, d.Flush())
 	}
-	wc.Stop()
+	wc.WaitAndStop()
 
 	defer d.Close()
 	return destFS
