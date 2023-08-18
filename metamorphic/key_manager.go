@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
@@ -144,7 +145,7 @@ type keyManager struct {
 	byObj map[objID][]*keyMeta
 
 	// globalKeys represents all the keys that have been generated so far. Not
-	// all these keys have been written to.
+	// all these keys have been written to. globalKeys is sorted.
 	globalKeys [][]byte
 	// globalKeysMap contains the same keys as globalKeys. It ensures no
 	// duplication, and contains the aggregate state of the key across all
@@ -152,7 +153,7 @@ type keyManager struct {
 	// yet.The keyMeta.objKey is uninitialized.
 	globalKeysMap map[string]*keyMeta
 	// globalKeyPrefixes contains all the key prefixes (as defined by the
-	// comparer's Split) generated so far.
+	// comparer's Split) generated so far. globalKeyPrefixes is sorted.
 	globalKeyPrefixes [][]byte
 	// globalKeyPrefixesMap contains the same keys as globalKeyPrefixes. It
 	// ensures no duplication.
@@ -230,12 +231,12 @@ func (k *keyManager) addNewKey(key []byte) bool {
 		return false
 	}
 	keyString := string(key)
-	k.globalKeys = append(k.globalKeys, key)
+	insertSorted(k.comparer.Compare, &k.globalKeys, key)
 	k.globalKeysMap[keyString] = &keyMeta{objKey: objKey{key: key}}
 
 	prefixLen := k.comparer.Split(key)
 	if _, ok := k.globalKeyPrefixesMap[keyString[:prefixLen]]; !ok {
-		k.globalKeyPrefixes = append(k.globalKeyPrefixes, key[:prefixLen])
+		insertSorted(k.comparer.Compare, &k.globalKeyPrefixes, key[:prefixLen])
 		k.globalKeyPrefixesMap[keyString[:prefixLen]] = struct{}{}
 	}
 	return true
@@ -421,6 +422,22 @@ func (k *keyManager) eligibleReadKeys() (keys [][]byte) {
 	return k.globalKeys
 }
 
+// eligibleReadKeysInRange returns all eligible read keys within the range
+// [start,end). The returned slice is owned by the keyManager and must not be
+// retained.
+func (k *keyManager) eligibleReadKeysInRange(kr pebble.KeyRange) (keys [][]byte) {
+	s := sort.Search(len(k.globalKeys), func(i int) bool {
+		return k.comparer.Compare(k.globalKeys[i], kr.Start) >= 0
+	})
+	e := sort.Search(len(k.globalKeys), func(i int) bool {
+		return k.comparer.Compare(k.globalKeys[i], kr.End) >= 0
+	})
+	if s >= e {
+		return nil
+	}
+	return k.globalKeys[s:e]
+}
+
 func (k *keyManager) prefixes() (prefixes [][]byte) {
 	return k.globalKeyPrefixes
 }
@@ -558,4 +575,17 @@ func loadPrecedingKeys(t TestingT, ops []op, cfg *config, m *keyManager) {
 		// Update key tracking state.
 		m.update(op)
 	}
+}
+
+func insertSorted(cmp base.Compare, dst *[][]byte, k []byte) {
+	s := *dst
+	i := sort.Search(len(*dst), func(i int) bool {
+		return cmp((*dst)[i], k) >= 0
+	})
+	if i == len(s) {
+		*dst = append(*dst, k)
+		return
+	}
+	*dst = append((*dst)[:i+1], (*dst)[i:]...)
+	(*dst)[i] = k
 }

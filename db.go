@@ -1524,8 +1524,9 @@ func (d *DB) NewSnapshot() *Snapshot {
 }
 
 // NewEventuallyFileOnlySnapshot returns a point-in-time view of the current DB
-// state, similar to NewSnapshot. See the comment at EventuallyFileOnlySnapshot
-// for its semantics.
+// state, similar to NewSnapshot, but with consistency constrained to the
+// provided set of key ranges. See the comment at EventuallyFileOnlySnapshot for
+// its semantics.
 func (d *DB) NewEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFileOnlySnapshot {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
