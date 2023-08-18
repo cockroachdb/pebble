@@ -151,7 +151,8 @@ func TestSharedCacheRandomized(t *testing.T) {
 					require.NoError(t, err)
 
 					// With invariants on, Write will modify its input buffer.
-					size := rand.Int63n(cacheSize)
+					// If size == 0, we can see panics below, so force a nonzero size.
+					size := rand.Int63n(cacheSize-1) + 1
 					objData := make([]byte, size)
 					wrote := make([]byte, size)
 					for i := 0; i < int(size); i++ {
