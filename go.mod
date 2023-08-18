@@ -19,10 +19,10 @@ require (
 	github.com/prometheus/client_model v0.2.1-0.20210607210712-147c58e9608a
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/exp v0.0.0-20200513190911-00229845015e
+	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63
 	golang.org/x/perf v0.0.0-20230113213139-801c7ef9e5c5
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
-	golang.org/x/sys v0.3.0
+	golang.org/x/sys v0.11.0
 )
 
 require (
@@ -33,7 +33,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/google/go-cmp v0.5.6 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect

@@ -84,7 +84,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *newIterUsingCloneOp:
 		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMin, &t.filterMax, &t.useL6Filters, &t.maskSuffix}
 	case *newSnapshotOp:
-		return nil, &t.snapID, nil
+		return nil, &t.snapID, []interface{}{&t.bounds}
 	case *iterNextOp:
 		return &t.iterID, nil, []interface{}{&t.limit}
 	case *iterNextPrefixOp:
@@ -254,6 +254,17 @@ func (p *parser) parseObjID(pos token.Pos, str string) objID {
 	return makeObjID(tag, uint32(id))
 }
 
+func unquoteBytes(lit string) []byte {
+	s, err := strconv.Unquote(lit)
+	if err != nil {
+		panic(err)
+	}
+	if len(s) == 0 {
+		return nil
+	}
+	return []byte(s)
+}
+
 func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 	pos, _ := p.scanToken(token.LPAREN)
 	for i := range args {
@@ -280,15 +291,7 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 
 		case *[]byte:
 			_, lit := p.scanToken(token.STRING)
-			s, err := strconv.Unquote(lit)
-			if err != nil {
-				panic(err)
-			}
-			if len(s) == 0 {
-				*t = nil
-			} else {
-				*t = []byte(s)
-			}
+			*t = unquoteBytes(lit)
 
 		case *bool:
 			_, lit := p.scanToken(token.IDENT)
@@ -301,6 +304,38 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 		case *objID:
 			pos, lit := p.scanToken(token.IDENT)
 			*t = p.parseObjID(pos, lit)
+
+		case *[]pebble.KeyRange:
+			var pending pebble.KeyRange
+			for {
+				pos, tok, lit := p.s.Scan()
+				switch tok {
+				case token.STRING:
+					x := unquoteBytes(lit)
+					if pending.Start == nil {
+						pending.Start = x
+					} else {
+						pending.End = x
+						*t = append(*t, pending)
+						pending = pebble.KeyRange{}
+					}
+					pos, tok, lit := p.s.Scan()
+					switch tok {
+					case token.COMMA:
+						continue
+					case token.RPAREN:
+						p.scanToken(token.SEMICOLON)
+						return
+					default:
+						panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
+					}
+				case token.RPAREN:
+					p.scanToken(token.SEMICOLON)
+					return
+				default:
+					panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
+				}
+			}
 
 		case *[]objID:
 			for {

@@ -103,6 +103,13 @@ func parseOptions(
 				opts.secondaryCacheEnabled = true
 				opts.Opts.Experimental.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
 				return true
+			case "TestOptions.seed_efos":
+				v, err := strconv.ParseUint(value, 10, 64)
+				if err != nil {
+					panic(err)
+				}
+				opts.seedEFOS = v
+				return true
 			default:
 				if customOptionParsers == nil {
 					return false
@@ -162,6 +169,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.secondaryCacheEnabled {
 		fmt.Fprint(&buf, "  secondary_cache_enabled=true\n")
+	}
+	if opts.seedEFOS != 0 {
+		fmt.Fprintf(&buf, "  seed_efos=%d\n", opts.seedEFOS)
 	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
@@ -231,6 +241,11 @@ type TestOptions struct {
 	// Enable the secondary cache. Only effective if sharedStorageEnabled is
 	// also true.
 	secondaryCacheEnabled bool
+	// If nonzero, enables the use of EventuallyFileOnlySnapshots for
+	// newSnapshotOps that are keyspan-bounded. The set of which newSnapshotOps
+	// are actually created as EventuallyFileOnlySnapshots is deterministically
+	// derived from the seed and the operation index.
+	seedEFOS uint64
 }
 
 // CustomOption defines a custom option that configures the behavior of an
@@ -511,6 +526,8 @@ func randomOptions(
 			testOpts.Opts.Experimental.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
 		}
 	}
+	testOpts.seedEFOS = rng.Uint64()
+
 	return testOpts
 }
 

@@ -209,7 +209,7 @@ func TestKeyManager_AddKey(t *testing.T) {
 	require.True(t, m.prefixExists([]byte("foo")))
 
 	require.Equal(t, [][]byte{
-		[]byte("foo"), []byte("bar"), []byte("bax"),
+		[]byte("bar"), []byte("bax"), []byte("foo"),
 	}, m.prefixes())
 }
 

@@ -7,47 +7,54 @@ package testkeys
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
 )
 
 func TestGenerateAlphabetKey(t *testing.T) {
 	testCases := []struct {
-		alphabet string
-		i        int
-		depth    int
-		want     string
+		i     int
+		depth int
+		want  string
 	}{
-		{"abc", 0, 1, "a"},
-		{"abc", 0, 2, "a"},
-		{"abc", 0, 3, "a"},
+		{0, 1, "a"},
+		{0, 2, "a"},
+		{0, 3, "a"},
 
-		{"abc", 1, 1, "b"},
-		{"abc", 2, 1, "c"},
+		{1, 1, "b"},
+		{2, 1, "c"},
 
-		{"abc", 0, 2, "a"},
-		{"abc", 1, 2, "aa"},
-		{"abc", 2, 2, "ab"},
-		{"abc", 3, 2, "ac"},
-		{"abc", 4, 2, "b"},
-		{"abc", 5, 2, "ba"},
-		{"abc", 6, 2, "bb"},
-		{"abc", 7, 2, "bc"},
-		{"abc", 8, 2, "c"},
-		{"abc", 9, 2, "ca"},
-		{"abc", 10, 2, "cb"},
-		{"abc", 11, 2, "cc"},
+		{0, 2, "a"},
+		{1, 2, "aa"},
+		{2, 2, "ab"},
+		{3, 2, "ac"},
+		{4, 2, "b"},
+		{5, 2, "ba"},
+		{6, 2, "bb"},
+		{7, 2, "bc"},
+		{8, 2, "c"},
+		{9, 2, "ca"},
+		{10, 2, "cb"},
+		{11, 2, "cc"},
 	}
+	testAlphabet := []byte{byte('a'), byte('b'), byte('c')}
+	testInverseAlphabet := map[byte]int{byte('a'): 0, byte('b'): 1, byte('c'): 2}
 
 	buf := make([]byte, 10)
 	for _, tc := range testCases {
-		kc := keyCount(len(tc.alphabet), tc.depth)
-		n := generateAlphabetKey(buf, []byte(tc.alphabet), tc.i, kc)
+		kc := keyCount(len(testAlphabet), tc.depth)
+		n := generateAlphabetKey(buf, testAlphabet, tc.i, kc)
 		got := string(buf[:n])
 		if got != tc.want {
-			t.Errorf("generateAlphabetKey(%q, %d, %d) = %q, want %q", tc.alphabet, tc.i, kc, got, tc.want)
+			t.Errorf("generateAlphabetKey(%q, %d, %d) = %q, want %q", testAlphabet, tc.i, kc, got, tc.want)
+		}
+		i := computeAlphabetKeyIndex([]byte(got), testInverseAlphabet, tc.depth)
+		if i != tc.i {
+			t.Errorf("computeAlphabetKeyIndex(%q, %d) = %d, want %d", got, tc.depth, i, tc.i)
 		}
 	}
 }
@@ -209,4 +216,38 @@ func keyspaceToString(ks Keyspace) string {
 		buf.Write(b[:n])
 	}
 	return buf.String()
+}
+
+func TestRandomSeparator(t *testing.T) {
+	rng := rand.New(rand.NewSource(0))
+	keys := []string{"a", "zzz@9"}
+	for n := 0; n < 1000; n++ {
+		i := rng.Intn(len(keys))
+		j := rng.Intn(len(keys))
+		for i == j {
+			j = rng.Intn(len(keys))
+		}
+		if i > j {
+			i, j = j, i
+		}
+
+		a := []byte(keys[i])
+		b := []byte(keys[j])
+		suffix := rng.Intn(10)
+		sep := RandomSeparator(nil, a, b, suffix, 3, rng)
+		t.Logf("RandomSeparator(%q, %q, %d) = %q\n", a, b, suffix, sep)
+		if sep == nil {
+			continue
+		}
+		for k := 0; k < len(keys); k++ {
+			v := Comparer.Compare(sep, []byte(keys[k]))
+			if k <= i && v <= 0 || k >= j && v >= 0 {
+				t.Fatalf("RandomSeparator(%q, %q, %d) = %q; but Compare(%q,%q) = %d\n", a, b, suffix, sep, sep, keys[k], v)
+			}
+		}
+		keys = append(keys, string(sep))
+		sort.Slice(keys, func(i, j int) bool {
+			return Comparer.Compare([]byte(keys[i]), []byte(keys[j])) < 0
+		})
+	}
 }

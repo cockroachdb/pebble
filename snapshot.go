@@ -460,7 +460,27 @@ func (es *EventuallyFileOnlySnapshot) Close() error {
 
 // Get implements the Reader interface.
 func (es *EventuallyFileOnlySnapshot) Get(key []byte) (value []byte, closer io.Closer, err error) {
-	panic("unimplemented")
+	// TODO(jackson): Use getInternal.
+	iter, err := es.NewIter(nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	var valid bool
+	if es.db.opts.Comparer.Split != nil {
+		valid = iter.SeekPrefixGE(key)
+	} else {
+		valid = iter.SeekGE(key)
+	}
+	if !valid {
+		if err = firstError(iter.Error(), iter.Close()); err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, ErrNotFound
+	}
+	if !es.db.equal(iter.Key(), key) {
+		return nil, nil, firstError(iter.Close(), ErrNotFound)
+	}
+	return iter.Value(), iter, nil
 }
 
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will

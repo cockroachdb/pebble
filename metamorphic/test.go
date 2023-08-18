@@ -35,7 +35,7 @@ type test struct {
 	// written by the ops to pass state from one op to another.
 	batches   []*pebble.Batch
 	iters     []*retryableIter
-	snapshots []*pebble.Snapshot
+	snapshots []readerCloser
 }
 
 func newTest(ops []op) *test {
@@ -272,7 +272,12 @@ func (t *test) setIter(id objID, i *pebble.Iterator, filterMin, filterMax uint64
 	}
 }
 
-func (t *test) setSnapshot(id objID, s *pebble.Snapshot) {
+type readerCloser interface {
+	pebble.Reader
+	io.Closer
+}
+
+func (t *test) setSnapshot(id objID, s readerCloser) {
 	if id.tag() != snapTag {
 		panic(fmt.Sprintf("invalid snapshot ID: %s", id))
 	}

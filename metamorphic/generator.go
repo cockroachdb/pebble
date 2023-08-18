@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"bytes"
 	"fmt"
+	"sort"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
@@ -89,6 +90,9 @@ type generator struct {
 	// snapshotID -> snapshot iters: used to keep track of the open iterators on
 	// a snapshot. The iter set value will also be indexed by the readers map.
 	snapshots map[objID]objIDSet
+	// snapshotID -> bounds of the snapshot: only populated for snapshots that
+	// are constrained by bounds.
+	snapshotBounds map[objID][]pebble.KeyRange
 	// iterSequenceNumber is the metaTimestamp at which the iter was created.
 	iterCreationTimestamp map[objID]int
 	// iterReaderID is a map from an iterID to a readerID.
@@ -107,6 +111,7 @@ func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 		iters:                 make(map[objID]objIDSet),
 		readers:               make(map[objID]objIDSet),
 		snapshots:             make(map[objID]objIDSet),
+		snapshotBounds:        make(map[objID][]pebble.KeyRange),
 		itersLastOpts:         make(map[objID]iterOpts),
 		iterCreationTimestamp: make(map[objID]int),
 		iterReaderID:          make(map[objID]objID),
@@ -182,7 +187,7 @@ func (g *generator) add(op op) {
 // TODO(peter): make the size and distribution of keys configurable. See
 // keyDist and keySizeDist in config.go.
 func (g *generator) randKeyToWrite(newKey float64) []byte {
-	return g.randKeyHelper(g.keyManager.eligibleWriteKeys(), newKey)
+	return g.randKeyHelper(g.keyManager.eligibleWriteKeys(), newKey, nil)
 }
 
 // prefixKeyRange generates a [start, end) pair consisting of two prefix keys.
@@ -266,10 +271,18 @@ func (g *generator) randKeyToSingleDelete(id objID) []byte {
 
 // randKeyToRead returns a key for read operations.
 func (g *generator) randKeyToRead(newKey float64) []byte {
-	return g.randKeyHelper(g.keyManager.eligibleReadKeys(), newKey)
+	return g.randKeyHelper(g.keyManager.eligibleReadKeys(), newKey, nil)
 }
 
-func (g *generator) randKeyHelper(keys [][]byte, newKey float64) []byte {
+// randKeyToReadInRange returns a key for read operations within the provided
+// key range. The bounds of the provided key range must span a prefix boundary.
+func (g *generator) randKeyToReadInRange(newKey float64, kr pebble.KeyRange) []byte {
+	return g.randKeyHelper(g.keyManager.eligibleReadKeysInRange(kr), newKey, &kr)
+}
+
+func (g *generator) randKeyHelper(
+	keys [][]byte, newKey float64, newKeyBounds *pebble.KeyRange,
+) []byte {
 	switch {
 	case len(keys) > 0 && g.rng.Float64() > newKey:
 		// Use an existing user key.
@@ -278,44 +291,75 @@ func (g *generator) randKeyHelper(keys [][]byte, newKey float64) []byte {
 	case len(keys) > 0 && g.rng.Float64() > g.cfg.newPrefix:
 		// Use an existing prefix but a new suffix, producing a new user key.
 		prefixes := g.keyManager.prefixes()
-		var key []byte
-		for {
-			// Pick a prefix on each iteration in case most or all suffixes are
-			// already in use for any individual prefix.
-			p := g.rng.Intn(len(prefixes))
-			suffix := int(g.cfg.writeSuffixDist.Uint64(g.rng))
 
-			if suffix > 0 {
-				key = resizeBuffer(key, len(prefixes[p]), testkeys.SuffixLen(suffix))
-				n := copy(key, prefixes[p])
-				testkeys.WriteSuffix(key[n:], suffix)
-			} else {
-				key = resizeBuffer(key, len(prefixes[p]), 0)
-				copy(key, prefixes[p])
-			}
-			if g.keyManager.addNewKey(key) {
-				return key
-			}
-
-			// If the generated key already existed, increase the suffix
-			// distribution to make a generating a new user key with an existing
-			// prefix more likely.
-			g.cfg.writeSuffixDist.IncMax(1)
+		// If we're constrained to a key range, find which existing prefixes
+		// fall within that key range.
+		if newKeyBounds != nil {
+			s := sort.Search(len(prefixes), func(i int) bool {
+				return g.cmp(prefixes[i], newKeyBounds.Start) >= 0
+			})
+			e := sort.Search(len(prefixes), func(i int) bool {
+				return g.cmp(prefixes[i], newKeyBounds.End) >= 0
+			})
+			prefixes = prefixes[s:e]
 		}
+
+		if len(prefixes) > 0 {
+			for {
+				// Pick a prefix on each iteration in case most or all suffixes are
+				// already in use for any individual prefix.
+				p := g.rng.Intn(len(prefixes))
+				suffix := int(g.cfg.writeSuffixDist.Uint64(g.rng))
+
+				var key []byte
+				if suffix > 0 {
+					key = resizeBuffer(key, len(prefixes[p]), testkeys.SuffixLen(suffix))
+					n := copy(key, prefixes[p])
+					testkeys.WriteSuffix(key[n:], suffix)
+				} else {
+					key = resizeBuffer(key, len(prefixes[p]), 0)
+					copy(key, prefixes[p])
+				}
+
+				if (newKeyBounds == nil || (g.cmp(key, newKeyBounds.Start) >= 0 && g.cmp(key, newKeyBounds.End) < 0)) &&
+					g.keyManager.addNewKey(key) {
+					return key
+				}
+
+				// If the generated key already existed, or the generated key
+				// fell outside the provided bounds, increase the suffix
+				// distribution and loop.
+				g.cfg.writeSuffixDist.IncMax(1)
+			}
+		}
+		// Otherwise fall through to generating a new prefix.
+		fallthrough
 
 	default:
 		// Use a new prefix, producing a new user key.
-		suffix := int(g.cfg.writeSuffixDist.Uint64(g.rng))
+
 		var key []byte
-		for {
-			key = g.randKeyHelperSuffix(nil, 4, 12, suffix)
-			if !g.keyManager.prefixExists(key[:testkeys.Comparer.Split(key)]) {
-				if !g.keyManager.addNewKey(key) {
-					panic("key must not exist if prefix doesn't exist")
+
+		suffix := int(g.cfg.writeSuffixDist.Uint64(g.rng))
+
+		// If we have bounds in which we need to generate the key, use
+		// testkeys.RandomSeparator to generate a key between the bounds.
+		if newKeyBounds != nil {
+			targetLength := 4 + g.rng.Intn(8)
+			key = testkeys.RandomSeparator(nil, g.prefix(newKeyBounds.Start), g.prefix(newKeyBounds.End),
+				suffix, targetLength, g.rng)
+		} else {
+			for {
+				key = g.randKeyHelperSuffix(nil, 4, 12, suffix)
+				if !g.keyManager.prefixExists(key[:testkeys.Comparer.Split(key)]) {
+					if !g.keyManager.addNewKey(key) {
+						panic("key must not exist if prefix doesn't exist")
+					}
+					break
 				}
-				return key
 			}
 		}
+		return key
 	}
 }
 
@@ -547,6 +591,48 @@ func (g *generator) dbRestart() {
 	g.add(&dbRestartOp{})
 }
 
+// maybeSetSnapshotIterBounds must be called whenever creating a new iterator or
+// modifying the bounds of an iterator. If the iterator is backed by a snapshot
+// that only guarantees consistency within a limited set of key spans, then the
+// iterator must set bounds within one of the snapshot's consistent keyspans. It
+// returns true if the provided readerID is a bounded snapshot and bounds were
+// set.
+func (g *generator) maybeSetSnapshotIterBounds(readerID objID, opts *iterOpts) bool {
+	snapBounds, isBoundedSnapshot := g.snapshotBounds[readerID]
+	if !isBoundedSnapshot {
+		return false
+	}
+	// Pick a random keyrange within one of the snapshot's key ranges.
+	parentBounds := snapBounds[g.rng.Intn(len(snapBounds))]
+	// With 10% probability, use the parent start bound as-is.
+	if g.rng.Float64() <= 0.1 {
+		opts.lower = parentBounds.Start
+	} else {
+		opts.lower = testkeys.RandomSeparator(
+			nil, /* dst */
+			parentBounds.Start,
+			parentBounds.End,
+			0, /* suffix */
+			4+g.rng.Intn(8),
+			g.rng,
+		)
+	}
+	// With 10% probability, use the parent end bound as-is.
+	if g.rng.Float64() <= 0.1 {
+		opts.upper = parentBounds.End
+	} else {
+		opts.upper = testkeys.RandomSeparator(
+			nil, /* dst */
+			opts.lower,
+			parentBounds.End,
+			0, /* suffix */
+			4+g.rng.Intn(8),
+			g.rng,
+		)
+	}
+	return true
+}
+
 func (g *generator) newIter() {
 	iterID := makeObjID(iterTag, g.init.iterSlots)
 	g.init.iterSlots++
@@ -564,17 +650,19 @@ func (g *generator) newIter() {
 	g.iterReaderID[iterID] = readerID
 
 	var opts iterOpts
-	// Generate lower/upper bounds with a 10% probability.
-	if g.rng.Float64() <= 0.1 {
-		// Generate a new key with a .1% probability.
-		opts.lower = g.randKeyToRead(0.001)
-	}
-	if g.rng.Float64() <= 0.1 {
-		// Generate a new key with a .1% probability.
-		opts.upper = g.randKeyToRead(0.001)
-	}
-	if g.cmp(opts.lower, opts.upper) > 0 {
-		opts.lower, opts.upper = opts.upper, opts.lower
+	if !g.maybeSetSnapshotIterBounds(readerID, &opts) {
+		// Generate lower/upper bounds with a 10% probability.
+		if g.rng.Float64() <= 0.1 {
+			// Generate a new key with a .1% probability.
+			opts.lower = g.randKeyToRead(0.001)
+		}
+		if g.rng.Float64() <= 0.1 {
+			// Generate a new key with a .1% probability.
+			opts.upper = g.randKeyToRead(0.001)
+		}
+		if g.cmp(opts.lower, opts.upper) > 0 {
+			opts.lower, opts.upper = opts.upper, opts.lower
+		}
 	}
 	opts.keyTypes, opts.maskSuffix = g.randKeyTypesAndMask()
 
@@ -651,7 +739,7 @@ func (g *generator) newIterUsingClone() {
 
 	var opts iterOpts
 	if g.rng.Intn(2) == 1 {
-		g.maybeMutateOptions(&opts)
+		g.maybeMutateOptions(readerID, &opts)
 		g.itersLastOpts[iterID] = opts
 	} else {
 		g.itersLastOpts[iterID] = g.itersLastOpts[existingIterID]
@@ -684,59 +772,64 @@ func (g *generator) iterClose(iterID objID) {
 
 func (g *generator) iterSetBounds(iterID objID) {
 	iterLastOpts := g.itersLastOpts[iterID]
-	var lower, upper []byte
-	genLower := g.rng.Float64() <= 0.9
-	genUpper := g.rng.Float64() <= 0.9
-	// When one of ensureLowerGE, ensureUpperLE is true, the new bounds
-	// don't overlap with the previous bounds.
-	var ensureLowerGE, ensureUpperLE bool
-	if genLower && iterLastOpts.upper != nil && g.rng.Float64() <= 0.9 {
-		ensureLowerGE = true
-	}
-	if (!ensureLowerGE || g.rng.Float64() < 0.5) && genUpper && iterLastOpts.lower != nil {
-		ensureUpperLE = true
-		ensureLowerGE = false
-	}
-	attempts := 0
-	for {
-		attempts++
-		if genLower {
-			// Generate a new key with a .1% probability.
-			lower = g.randKeyToRead(0.001)
-		}
-		if genUpper {
-			// Generate a new key with a .1% probability.
-			upper = g.randKeyToRead(0.001)
-		}
-		if g.cmp(lower, upper) > 0 {
-			lower, upper = upper, lower
-		}
-		if ensureLowerGE && g.cmp(iterLastOpts.upper, lower) > 0 {
-			if attempts < 25 {
-				continue
-			}
-			lower = iterLastOpts.upper
-			upper = lower
-			break
-		}
-		if ensureUpperLE && g.cmp(upper, iterLastOpts.lower) > 0 {
-			if attempts < 25 {
-				continue
-			}
-			upper = iterLastOpts.lower
-			lower = upper
-			break
-		}
-		break
-	}
 	newOpts := iterLastOpts
-	newOpts.lower = lower
-	newOpts.upper = upper
+	// TODO(jackson): The logic to increase the probability of advancing bounds
+	// monotonically only applies if the snapshot is not bounded. Refactor to
+	// allow bounded snapshots to benefit too, when possible.
+	if !g.maybeSetSnapshotIterBounds(g.iterReaderID[iterID], &newOpts) {
+		var lower, upper []byte
+		genLower := g.rng.Float64() <= 0.9
+		genUpper := g.rng.Float64() <= 0.9
+		// When one of ensureLowerGE, ensureUpperLE is true, the new bounds
+		// don't overlap with the previous bounds.
+		var ensureLowerGE, ensureUpperLE bool
+		if genLower && iterLastOpts.upper != nil && g.rng.Float64() <= 0.9 {
+			ensureLowerGE = true
+		}
+		if (!ensureLowerGE || g.rng.Float64() < 0.5) && genUpper && iterLastOpts.lower != nil {
+			ensureUpperLE = true
+			ensureLowerGE = false
+		}
+		attempts := 0
+		for {
+			attempts++
+			if genLower {
+				// Generate a new key with a .1% probability.
+				lower = g.randKeyToRead(0.001)
+			}
+			if genUpper {
+				// Generate a new key with a .1% probability.
+				upper = g.randKeyToRead(0.001)
+			}
+			if g.cmp(lower, upper) > 0 {
+				lower, upper = upper, lower
+			}
+			if ensureLowerGE && g.cmp(iterLastOpts.upper, lower) > 0 {
+				if attempts < 25 {
+					continue
+				}
+				lower = iterLastOpts.upper
+				upper = lower
+				break
+			}
+			if ensureUpperLE && g.cmp(upper, iterLastOpts.lower) > 0 {
+				if attempts < 25 {
+					continue
+				}
+				upper = iterLastOpts.lower
+				lower = upper
+				break
+			}
+			break
+		}
+		newOpts.lower = lower
+		newOpts.upper = upper
+	}
 	g.itersLastOpts[iterID] = newOpts
 	g.add(&iterSetBoundsOp{
 		iterID: iterID,
-		lower:  lower,
-		upper:  upper,
+		lower:  newOpts.lower,
+		upper:  newOpts.upper,
 	})
 	// Additionally seek the iterator in a manner consistent with the bounds,
 	// and do some steps (Next/Prev). The seeking exercises typical
@@ -744,8 +837,8 @@ func (g *generator) iterSetBounds(iterID objID) {
 	// stress the region near the bounds. Ideally, we should not do this as
 	// part of generating a single op, but this is easier than trying to
 	// control future op generation via generator state.
-	doSeekLT := upper != nil && g.rng.Float64() < 0.5
-	doSeekGE := lower != nil && g.rng.Float64() < 0.5
+	doSeekLT := newOpts.upper != nil && g.rng.Float64() < 0.5
+	doSeekGE := newOpts.lower != nil && g.rng.Float64() < 0.5
 	if doSeekLT && doSeekGE {
 		// Pick the seek.
 		if g.rng.Float64() < 0.5 {
@@ -757,7 +850,7 @@ func (g *generator) iterSetBounds(iterID objID) {
 	if doSeekLT {
 		g.add(&iterSeekLTOp{
 			iterID:          iterID,
-			key:             upper,
+			key:             newOpts.upper,
 			derivedReaderID: g.iterReaderID[iterID],
 		})
 		if g.rng.Float64() < 0.5 {
@@ -772,7 +865,7 @@ func (g *generator) iterSetBounds(iterID objID) {
 	} else if doSeekGE {
 		g.add(&iterSeekGEOp{
 			iterID:          iterID,
-			key:             lower,
+			key:             newOpts.lower,
 			derivedReaderID: g.iterReaderID[iterID],
 		})
 		if g.rng.Float64() < 0.5 {
@@ -789,7 +882,7 @@ func (g *generator) iterSetBounds(iterID objID) {
 
 func (g *generator) iterSetOptions(iterID objID) {
 	opts := g.itersLastOpts[iterID]
-	g.maybeMutateOptions(&opts)
+	g.maybeMutateOptions(g.iterReaderID[iterID], &opts)
 	g.itersLastOpts[iterID] = opts
 	g.add(&iterSetOptionsOp{
 		iterID:          iterID,
@@ -991,10 +1084,43 @@ func (g *generator) readerGet() {
 		return
 	}
 
-	g.add(&getOp{
-		readerID: g.liveReaders.rand(g.rng),
-		key:      g.randKeyToRead(0.001), // 0.1% new keys
+	readerID := g.liveReaders.rand(g.rng)
+
+	// If the chosen reader is a snapshot created with user-specified key
+	// ranges, restrict the read to fall within one of the provided key ranges.
+	var key []byte
+	if bounds := g.snapshotBounds[readerID]; len(bounds) > 0 {
+		kr := bounds[g.rng.Intn(len(bounds))]
+		key = g.randKeyToReadInRange(0.001, kr) // 0.1% new keys
+	} else {
+		key = g.randKeyToRead(0.001) // 0.1% new keys
+	}
+	g.add(&getOp{readerID: readerID, key: key})
+}
+
+// generateDisjointKeyRanges generates n disjoint key ranges.
+func (g *generator) generateDisjointKeyRanges(n int) []pebble.KeyRange {
+	bounds := make([][]byte, 2*n)
+	used := map[string]bool{}
+	for i := 0; i < len(bounds); i++ {
+		k := g.prefix(g.randKeyToRead(0.1))
+		for used[string(k)] {
+			k = g.prefix(g.randKeyToRead(0.1))
+		}
+		bounds[i] = k
+		used[string(k)] = true
+	}
+	sort.Slice(bounds, func(i, j int) bool {
+		return g.cmp(bounds[i], bounds[j]) < 0
 	})
+	keyRanges := make([]pebble.KeyRange, n)
+	for i := range keyRanges {
+		keyRanges[i] = pebble.KeyRange{
+			Start: bounds[i*2],
+			End:   bounds[i*2+1],
+		}
+	}
+	return keyRanges
 }
 
 func (g *generator) newSnapshot() {
@@ -1007,9 +1133,21 @@ func (g *generator) newSnapshot() {
 	g.snapshots[snapID] = iters
 	g.readers[snapID] = iters
 
-	g.add(&newSnapshotOp{
+	s := &newSnapshotOp{
 		snapID: snapID,
-	})
+	}
+
+	// With 75% probability, impose bounds on the keys that may be read with the
+	// snapshot. Setting bounds allows some runs of the metamorphic test to use
+	// a EventuallyFileOnlySnapshot instead of a Snapshot, testing equivalence
+	// between the two for reads within those bounds.
+	if g.rng.Float64() < 0.75 {
+		s.bounds = g.generateDisjointKeyRanges(
+			g.rng.Intn(5) + 1, /* between 1-5 */
+		)
+		g.snapshotBounds[snapID] = s.bounds
+	}
+	g.add(s)
 }
 
 func (g *generator) snapshotClose() {
@@ -1243,29 +1381,31 @@ func (g *generator) writerSingleDelete() {
 	})
 }
 
-func (g *generator) maybeMutateOptions(opts *iterOpts) {
+func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 	// With 95% probability, allow changes to any options at all. This ensures
 	// that in 5% of cases there are no changes, and SetOptions hits its fast
 	// path.
 	if g.rng.Intn(100) >= 5 {
-		// With 1/3 probability, clear existing bounds.
-		if opts.lower != nil && g.rng.Intn(3) == 0 {
-			opts.lower = nil
-		}
-		if opts.upper != nil && g.rng.Intn(3) == 0 {
-			opts.upper = nil
-		}
-		// With 1/3 probability, update the bounds.
-		if g.rng.Intn(3) == 0 {
-			// Generate a new key with a .1% probability.
-			opts.lower = g.randKeyToRead(0.001)
-		}
-		if g.rng.Intn(3) == 0 {
-			// Generate a new key with a .1% probability.
-			opts.upper = g.randKeyToRead(0.001)
-		}
-		if g.cmp(opts.lower, opts.upper) > 0 {
-			opts.lower, opts.upper = opts.upper, opts.lower
+		if !g.maybeSetSnapshotIterBounds(readerID, opts) {
+			// With 1/3 probability, clear existing bounds.
+			if opts.lower != nil && g.rng.Intn(3) == 0 {
+				opts.lower = nil
+			}
+			if opts.upper != nil && g.rng.Intn(3) == 0 {
+				opts.upper = nil
+			}
+			// With 1/3 probability, update the bounds.
+			if g.rng.Intn(3) == 0 {
+				// Generate a new key with a .1% probability.
+				opts.lower = g.randKeyToRead(0.001)
+			}
+			if g.rng.Intn(3) == 0 {
+				// Generate a new key with a .1% probability.
+				opts.upper = g.randKeyToRead(0.001)
+			}
+			if g.cmp(opts.lower, opts.upper) > 0 {
+				opts.lower, opts.upper = opts.upper, opts.lower
+			}
 		}
 
 		// With 1/3 probability, update the key-types/mask.
@@ -1301,6 +1441,18 @@ func (g *generator) pickOneUniform(options ...func(objID)) func(objID) {
 
 func (g *generator) cmp(a, b []byte) int {
 	return g.keyManager.comparer.Compare(a, b)
+}
+
+func (g *generator) equal(a, b []byte) bool {
+	return g.keyManager.comparer.Equal(a, b)
+}
+
+func (g *generator) split(a []byte) int {
+	return g.keyManager.comparer.Split(a)
+}
+
+func (g *generator) prefix(a []byte) []byte {
+	return a[:g.split(a)]
 }
 
 func (g *generator) String() string {

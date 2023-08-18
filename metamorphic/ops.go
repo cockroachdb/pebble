@@ -53,7 +53,7 @@ type initOp struct {
 func (o *initOp) run(t *test, h historyRecorder) {
 	t.batches = make([]*pebble.Batch, o.batchSlots)
 	t.iters = make([]*retryableIter, o.iterSlots)
-	t.snapshots = make([]*pebble.Snapshot, o.snapshotSlots)
+	t.snapshots = make([]readerCloser, o.snapshotSlots)
 	h.Recordf("%s", o)
 }
 
@@ -1178,15 +1178,36 @@ func (o *iterPrevOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReader
 // newSnapshotOp models a DB.NewSnapshot operation.
 type newSnapshotOp struct {
 	snapID objID
+	// If nonempty, this snapshot must not be used to read any keys outside of
+	// the provided bounds. This allows some implementations to use 'Eventually
+	// file-only snapshots,' which require bounds.
+	bounds []pebble.KeyRange
 }
 
 func (o *newSnapshotOp) run(t *test, h historyRecorder) {
-	s := t.db.NewSnapshot()
-	t.setSnapshot(o.snapID, s)
+	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
+	if len(o.bounds) > 0 && ((11400714819323198485*uint64(t.idx)*t.testOpts.seedEFOS)>>63) == 1 {
+		s := t.db.NewEventuallyFileOnlySnapshot(o.bounds)
+		t.setSnapshot(o.snapID, s)
+	} else {
+		s := t.db.NewSnapshot()
+		t.setSnapshot(o.snapID, s)
+	}
 	h.Recordf("%s", o)
 }
 
-func (o *newSnapshotOp) String() string       { return fmt.Sprintf("%s = db.NewSnapshot()", o.snapID) }
+func (o *newSnapshotOp) String() string {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "%s = db.NewSnapshot(", o.snapID)
+	for i := range o.bounds {
+		if i > 0 {
+			fmt.Fprint(&buf, ", ")
+		}
+		fmt.Fprintf(&buf, "%q, %q", o.bounds[i].Start, o.bounds[i].End)
+	}
+	fmt.Fprint(&buf, ")")
+	return buf.String()
+}
 func (o *newSnapshotOp) receiver() objID      { return dbObjID }
 func (o *newSnapshotOp) syncObjs() objIDSlice { return []objID{o.snapID} }
 
