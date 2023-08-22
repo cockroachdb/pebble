@@ -360,28 +360,37 @@ func (es *EventuallyFileOnlySnapshot) releaseReadState() {
 	}
 }
 
-// WaitForFileOnlySnapshot blocks the calling goroutine until this snapshot
-// has been converted into a file-only snapshot (i.e. all memtables containing
-// keys < seqNum are flushed). A duration can be passed in, and if nonzero,
-// a delayed flush will be scheduled at that duration if necessary.
-//
-// Idempotent; can be called multiple times with no side effects.
-func (es *EventuallyFileOnlySnapshot) WaitForFileOnlySnapshot(dur time.Duration) error {
+// hasTransitioned returns true if this EFOS has transitioned to a file-only
+// snapshot. Blocks on the transition if wait is true.
+func (es *EventuallyFileOnlySnapshot) hasTransitioned(wait bool) bool {
 	es.mu.Lock()
+	defer es.mu.Unlock()
 	if es.mu.vers != nil {
-		// Fast path.
-		es.mu.Unlock()
-		return nil
+		return true
 	}
-	es.mu.Unlock()
+	if wait {
+		es.mu.transitioned.Wait()
+		return true
+	}
+	return false
+}
 
+// waitForFlush waits for a flush on any memtables that need to be flushed
+// before this EFOS can transition to a file-only snapshot. If this EFOS is
+// waiting on a flush of the mutable memtable, it forces a rotation within
+// `dur` duration. For immutable memtables, it schedules a flush and waits for
+// it to finish.
+func (es *EventuallyFileOnlySnapshot) waitForFlush(ctx context.Context, dur time.Duration) error {
 	es.db.mu.Lock()
+	defer es.db.mu.Unlock()
+
 	earliestUnflushedSeqNum := es.db.getEarliestUnflushedSeqNumLocked()
 	for earliestUnflushedSeqNum < es.seqNum {
 		select {
 		case <-es.closed:
-			es.db.mu.Unlock()
 			return ErrClosed
+		case <-ctx.Done():
+			return ctx.Err()
 		default:
 		}
 		// Check if the current mutable memtable contains keys less than seqNum.
@@ -389,6 +398,15 @@ func (es *EventuallyFileOnlySnapshot) WaitForFileOnlySnapshot(dur time.Duration)
 		if es.db.mu.mem.mutable.logSeqNum < es.seqNum && dur.Nanoseconds() > 0 {
 			es.db.maybeScheduleDelayedFlush(es.db.mu.mem.mutable, dur)
 		} else {
+			// Find the last memtable that contains seqNums less than es.seqNum,
+			// and force a flush on it.
+			var mem *flushableEntry
+			for i := range es.db.mu.mem.queue {
+				if es.db.mu.mem.queue[i].logSeqNum < es.seqNum {
+					mem = es.db.mu.mem.queue[i]
+				}
+			}
+			mem.flushForced = true
 			es.db.maybeScheduleFlush()
 		}
 		es.db.mu.compact.cond.Wait()
@@ -396,18 +414,30 @@ func (es *EventuallyFileOnlySnapshot) WaitForFileOnlySnapshot(dur time.Duration)
 		earliestUnflushedSeqNum = es.db.getEarliestUnflushedSeqNumLocked()
 	}
 	if es.excised.Load() {
-		es.db.mu.Unlock()
 		return ErrSnapshotExcised
 	}
-	es.db.mu.Unlock()
+	return nil
+}
 
-	es.mu.Lock()
-	defer es.mu.Unlock()
+// WaitForFileOnlySnapshot blocks the calling goroutine until this snapshot
+// has been converted into a file-only snapshot (i.e. all memtables containing
+// keys < seqNum are flushed). A duration can be passed in, and if nonzero,
+// a delayed flush will be scheduled at that duration if necessary.
+//
+// Idempotent; can be called multiple times with no side effects.
+func (es *EventuallyFileOnlySnapshot) WaitForFileOnlySnapshot(
+	ctx context.Context, dur time.Duration,
+) error {
+	if es.hasTransitioned(false /* wait */) {
+		return nil
+	}
+
+	if err := es.waitForFlush(ctx, dur); err != nil {
+		return err
+	}
 
 	// Wait for transition to file-only snapshot.
-	if es.mu.vers == nil {
-		es.mu.transitioned.Wait()
-	}
+	es.hasTransitioned(true /* wait */)
 	return nil
 }
 
