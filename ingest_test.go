@@ -1047,7 +1047,7 @@ func TestIngestShared(t *testing.T) {
 				panic("insufficient args for file-only-snapshot command")
 			}
 			name := td.CmdArgs[0].Key
-			err := efos[name].WaitForFileOnlySnapshot(1 * time.Millisecond)
+			err := efos[name].WaitForFileOnlySnapshot(context.TODO(), 1*time.Millisecond)
 			if err != nil {
 				return err.Error()
 			}
@@ -1519,7 +1519,7 @@ func TestConcurrentExcise(t *testing.T) {
 				panic("insufficient args for file-only-snapshot command")
 			}
 			name := td.CmdArgs[0].Key
-			err := efos[name].WaitForFileOnlySnapshot(1 * time.Millisecond)
+			err := efos[name].WaitForFileOnlySnapshot(context.TODO(), 1*time.Millisecond)
 			if err != nil {
 				return err.Error()
 			}
