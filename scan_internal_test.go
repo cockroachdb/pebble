@@ -351,7 +351,7 @@ func TestScanInternal(t *testing.T) {
 			}
 			name := td.CmdArgs[0].Key
 			es := efos[name]
-			if err := es.WaitForFileOnlySnapshot(1 * time.Millisecond); err != nil {
+			if err := es.WaitForFileOnlySnapshot(context.TODO(), 1*time.Millisecond); err != nil {
 				return err.Error()
 			}
 			return "ok"

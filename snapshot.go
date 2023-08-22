@@ -366,7 +366,9 @@ func (es *EventuallyFileOnlySnapshot) releaseReadState() {
 // a delayed flush will be scheduled at that duration if necessary.
 //
 // Idempotent; can be called multiple times with no side effects.
-func (es *EventuallyFileOnlySnapshot) WaitForFileOnlySnapshot(dur time.Duration) error {
+func (es *EventuallyFileOnlySnapshot) WaitForFileOnlySnapshot(
+	ctx context.Context, dur time.Duration,
+) error {
 	es.mu.Lock()
 	if es.mu.vers != nil {
 		// Fast path.
@@ -384,11 +386,24 @@ func (es *EventuallyFileOnlySnapshot) WaitForFileOnlySnapshot(dur time.Duration)
 			return ErrClosed
 		default:
 		}
+		if err := ctx.Err(); err != nil {
+			es.db.mu.Unlock()
+			return err
+		}
 		// Check if the current mutable memtable contains keys less than seqNum.
 		// If so, rotate it.
 		if es.db.mu.mem.mutable.logSeqNum < es.seqNum && dur.Nanoseconds() > 0 {
 			es.db.maybeScheduleDelayedFlush(es.db.mu.mem.mutable, dur)
 		} else {
+			// Find the last memtable that contains seqNums less than es.seqNum,
+			// and force a flush on it.
+			var mem *flushableEntry
+			for i := range es.db.mu.mem.queue {
+				if es.db.mu.mem.queue[i].logSeqNum < es.seqNum {
+					mem = es.db.mu.mem.queue[i]
+				}
+			}
+			mem.flushForced = true
 			es.db.maybeScheduleFlush()
 		}
 		es.db.mu.compact.cond.Wait()
