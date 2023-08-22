@@ -1827,8 +1827,8 @@ func (d *DB) maybeScheduleDelayedFlush(tbl *memTable, dur time.Duration) {
 				d.makeRoomForWrite(nil)
 			} else {
 				mem.flushForced = true
-				d.maybeScheduleFlush()
 			}
+			d.maybeScheduleFlush()
 		}
 	}()
 }
