@@ -797,7 +797,7 @@ func (l *levelIter) SeekPrefixGE(
 		}
 		return l.verify(l.largestBoundary, base.LazyValue{})
 	}
-	// It is possible that we are here because bloom filter matching failed.  In
+	// It is possible that we are here because bloom filter matching failed. In
 	// that case it is likely that all keys matching the prefix are wholly
 	// within the current file and cannot be in the subsequent file. In that
 	// case we don't want to go to the next file, since loading and seeking in
@@ -805,7 +805,16 @@ func (l *levelIter) SeekPrefixGE(
 	// next file will defeat the optimization for the next SeekPrefixGE that is
 	// called with flags.TrySeekUsingNext(), since for sparse key spaces it is
 	// likely that the next key will also be contained in the current file.
-	if n := l.split(l.iterFile.LargestPointKey.UserKey); l.cmp(prefix, l.iterFile.LargestPointKey.UserKey[:n]) < 0 {
+	var n int
+	if l.split != nil {
+		// If the split function is specified, calculate the prefix length accordingly.
+		n = l.split(l.iterFile.LargestPointKey.UserKey)
+	} else {
+		// If the split function is not specified, the entire key is used as the
+		// prefix. This case can occur when getIter uses SeekPrefixGE.
+		n = len(l.iterFile.LargestPointKey.UserKey)
+	}
+	if l.cmp(prefix, l.iterFile.LargestPointKey.UserKey[:n]) < 0 {
 		return nil, base.LazyValue{}
 	}
 	return l.verify(l.skipEmptyFileForward())
