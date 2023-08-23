@@ -20,6 +20,7 @@ MemTables: 12 (11B)  zombie: 14 (13B)
 Zombie tables: 16 (15B)
 Block cache: 2 entries (1B)  hit rate: 42.9%
 Table cache: 18 entries (17B)  hit rate: 48.7%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 4  earliest seq num: 1024
 Table iters: 21
 Filter utility: 47.4%
@@ -64,6 +65,7 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Block cache: 3 entries (528B)  hit rate: 0.0%
 Table cache: 1 entries (800B)  hit rate: 0.0%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
 Filter utility: 0.0%
@@ -115,6 +117,7 @@ MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.2KB)
 Block cache: 5 entries (1.0KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
 Filter utility: 0.0%
@@ -151,6 +154,7 @@ MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.2KB)
 Block cache: 5 entries (1.0KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
 Filter utility: 0.0%
@@ -184,6 +188,7 @@ MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 1 (633B)
 Block cache: 3 entries (528B)  hit rate: 42.9%
 Table cache: 1 entries (800B)  hit rate: 66.7%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
 Filter utility: 0.0%
@@ -220,6 +225,7 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 42.9%
 Table cache: 0 entries (0B)  hit rate: 66.7%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -282,6 +288,7 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 42.9%
 Table cache: 0 entries (0B)  hit rate: 66.7%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -328,6 +335,7 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 27.3%
 Table cache: 0 entries (0B)  hit rate: 58.3%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -420,6 +428,7 @@ MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B)
 Block cache: 12 entries (2.3KB)  hit rate: 31.1%
 Table cache: 3 entries (2.3KB)  hit rate: 57.9%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%

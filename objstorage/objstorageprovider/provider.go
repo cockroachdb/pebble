@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -437,6 +438,14 @@ func (p *provider) List() []objstorage.ObjectMetadata {
 		return res[i].DiskFileNum.FileNum() < res[j].DiskFileNum.FileNum()
 	})
 	return res
+}
+
+// Metrics is part of the objstorage.Provider interface.
+func (p *provider) Metrics() sharedcache.Metrics {
+	if p.remote.cache != nil {
+		return p.remote.cache.Metrics()
+	}
+	return sharedcache.Metrics{}
 }
 
 func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
