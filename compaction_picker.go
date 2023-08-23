@@ -100,13 +100,18 @@ func (s sortCompactionLevelsByPriority) Len() int {
 // sorted list. The candidateLevelInfo for the level placed earlier is more likely
 // to be picked for a compaction.
 func (s sortCompactionLevelsByPriority) Less(i, j int) bool {
-	// Note: We use the score for the higher level, and the rawSmoothed score
-	// for the lower levels. We want to repsect the deletes in the higher levels
-	// and move them down to the lower levels.
-	if s[i].level < s[j].level {
-		return s[i].score >= s[j].rawSmoothed
+	// Just use raw scored to sort the list.
+	if s[i].rawSmoothed != s[j].rawSmoothed {
+		return s[i].rawSmoothed > s[j].rawSmoothed
 	}
-	return s[i].rawSmoothed > s[j].score
+	return s[i].level < s[j].level
+	// // Note: We use the score for the higher level, and the rawSmoothed score
+	// // for the lower levels. We want to repsect the deletes in the higher levels
+	// // and move them down to the lower levels.
+	// if s[i].level < s[j].level {
+	// 	return s[i].score >= s[j].rawSmoothed
+	// }
+	// return s[i].rawSmoothed > s[j].score
 }
 
 func (s sortCompactionLevelsByPriority) Swap(i, j int) {
