@@ -21,6 +21,7 @@ type getIter struct {
 	logger       Logger
 	cmp          Compare
 	equal        Equal
+	split        Split
 	newIters     tableNewIters
 	snapshot     uint64
 	key          []byte
@@ -159,13 +160,20 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 				files := g.l0[n-1].Iter()
 				g.l0 = g.l0[:n-1]
 				iterOpts := IterOptions{logger: g.logger, snapshotForHideObsoletePoints: g.snapshot}
-				g.levelIter.init(context.Background(), iterOpts, g.cmp, nil /* split */, g.newIters,
+				g.levelIter.init(context.Background(), iterOpts, g.cmp, g.split, g.newIters,
 					files, manifest.L0Sublevel(n), internalIterOpts{})
 				g.levelIter.initRangeDel(&g.rangeDelIter)
 				bc := levelIterBoundaryContext{}
 				g.levelIter.initBoundaryContext(&bc)
 				g.iter = &g.levelIter
-				g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
+
+				// Compute the key prefix for bloom filtering if split function is
+				// specified, or use the user key as default.
+				prefix := g.key
+				if g.split != nil {
+					prefix = g.key[:g.split(g.key)]
+				}
+				g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
 				if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
 					g.iterKey = nil
 					g.iterValue = base.LazyValue{}
@@ -184,14 +192,21 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		}
 
 		iterOpts := IterOptions{logger: g.logger, snapshotForHideObsoletePoints: g.snapshot}
-		g.levelIter.init(context.Background(), iterOpts, g.cmp, nil /* split */, g.newIters,
+		g.levelIter.init(context.Background(), iterOpts, g.cmp, g.split, g.newIters,
 			g.version.Levels[g.level].Iter(), manifest.Level(g.level), internalIterOpts{})
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		bc := levelIterBoundaryContext{}
 		g.levelIter.initBoundaryContext(&bc)
 		g.level++
 		g.iter = &g.levelIter
-		g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
+
+		// Compute the key prefix for bloom filtering if split function is
+		// specified, or use the user key as default.
+		prefix := g.key
+		if g.split != nil {
+			prefix = g.key[:g.split(g.key)]
+		}
+		g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
 		if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
 			g.iterKey = nil
 			g.iterValue = base.LazyValue{}

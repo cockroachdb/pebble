@@ -805,7 +805,11 @@ func (l *levelIter) SeekPrefixGE(
 	// next file will defeat the optimization for the next SeekPrefixGE that is
 	// called with flags.TrySeekUsingNext(), since for sparse key spaces it is
 	// likely that the next key will also be contained in the current file.
-	if n := l.split(l.iterFile.LargestPointKey.UserKey); l.cmp(prefix, l.iterFile.LargestPointKey.UserKey[:n]) < 0 {
+	n := len(l.iterFile.LargestPointKey.UserKey)
+	if l.split != nil {
+		n = l.split(l.iterFile.LargestPointKey.UserKey)
+	}
+	if l.cmp(prefix, l.iterFile.LargestPointKey.UserKey[:n]) < 0 {
 		return nil, base.LazyValue{}
 	}
 	return l.verify(l.skipEmptyFileForward())
