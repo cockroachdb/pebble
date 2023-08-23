@@ -1,9 +1,5 @@
 package sharedcache
 
-func (c *Cache) Misses() int32 {
-	return c.misses.Load()
-}
-
 func (c *Cache) WaitForWritesToComplete() {
 	close(c.writeWorkers.tasksCh)
 	c.writeWorkers.doneWaitGroup.Wait()
