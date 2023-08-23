@@ -11,29 +11,91 @@ import (
 	"math/bits"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Cache is a persistent cache backed by a local filesystem. It is intended
 // to cache data that is in slower shared storage (e.g. S3), hence the
 // package name 'sharedcache'.
 type Cache struct {
-	shards []shard
-	logger base.Logger
+	shards       []shard
+	writeWorkers writeWorkers
 
 	bm                blockMath
 	shardingBlockSize int64
 
-	// TODO(josh): Have a dedicated metrics struct. Right now, this
-	// is just for testing.
-	misses atomic.Int32
+	logger  base.Logger
+	metrics internalMetrics
+}
 
-	writeWorkers writeWorkers
+// Metrics is a struct containing metrics exported by the secondary cache.
+// TODO(josh): Reconsider the set of metrics exported by the secondary cache
+// before we release the secondary cache to users. We choose to export many metrics
+// right now, so we learn a lot from the benchmarking we are doing over the 23.2
+// cycle.
+type Metrics struct {
+	// The number of sstable bytes stored in the cache.
+	Size int64
+	// The count of cache blocks in the cache (not sstable blocks).
+	Count int64
+
+	// The number of calls to ReadAt.
+	TotalReads int64
+	// The number of calls to ReadAt that require reading data from 2+ shards.
+	MultiShardReads int64
+	// The number of calls to ReadAt that require reading data from 2+ cache blocks.
+	MultiBlockReads int64
+	// The number of calls to ReadAt where all data returned was read from the cache.
+	ReadsWithFullHit int64
+	// The number of calls to ReadAt where some data returned was read from the cache.
+	ReadsWithPartialHit int64
+	// The number of calls to ReadAt where no data returned was read from the cache.
+	ReadsWithNoHit int64
+
+	// The number of times a cache block was evicted from the cache.
+	Evictions int64
+	// The number of times writing a cache block to the cache failed.
+	WriteBackFailures int64
+
+	// The latency of calls to get some data from the cache.
+	GetLatency prometheus.Histogram
+	// The latency of reads of a single cache block from disk.
+	DiskReadLatency prometheus.Histogram
+	// The latency of writing data to write back to the cache to a channel.
+	// Generally should be low, but if the channel is full, could be high.
+	QueuePutLatency prometheus.Histogram
+	// The latency of calls to put some data read from block storage into the cache.
+	PutLatency prometheus.Histogram
+	// The latency of writes of a single cache block to disk.
+	DiskWriteLatency prometheus.Histogram
+}
+
+// See docs at Metrics.
+type internalMetrics struct {
+	count atomic.Int64
+
+	totalReads          atomic.Int64
+	multiShardReads     atomic.Int64
+	multiBlockReads     atomic.Int64
+	readsWithFullHit    atomic.Int64
+	readsWithPartialHit atomic.Int64
+	readsWithNoHit      atomic.Int64
+
+	evictions         atomic.Int64
+	writeBackFailures atomic.Int64
+
+	getLatency       prometheus.Histogram
+	diskReadLatency  prometheus.Histogram
+	queuePutLatency  prometheus.Histogram
+	putLatency       prometheus.Histogram
+	diskWriteLatency prometheus.Histogram
 }
 
 const (
@@ -66,20 +128,32 @@ func Open(
 		return nil, errors.Errorf("cache size %d lower than min %d", sizeBytes, min)
 	}
 
-	sc := &Cache{
+	c := &Cache{
 		logger:            logger,
 		bm:                makeBlockMath(blockSize),
 		shardingBlockSize: shardingBlockSize,
 	}
-	sc.shards = make([]shard, numShards)
+	c.shards = make([]shard, numShards)
 	blocksPerShard := sizeBytes / int64(numShards) / int64(blockSize)
-	for i := range sc.shards {
-		if err := sc.shards[i].init(fs, fsDir, i, blocksPerShard, blockSize, shardingBlockSize); err != nil {
+	for i := range c.shards {
+		if err := c.shards[i].init(c, fs, fsDir, i, blocksPerShard, blockSize, shardingBlockSize); err != nil {
 			return nil, err
 		}
 	}
-	sc.writeWorkers.Start(sc, numShards*writeWorkersPerShard)
-	return sc, nil
+
+	c.writeWorkers.Start(c, numShards*writeWorkersPerShard)
+
+	buckets := prometheus.ExponentialBucketsRange(float64(time.Millisecond*1), float64(10*time.Second), 50)
+	c.metrics.getLatency = prometheus.NewHistogram(prometheus.HistogramOpts{Buckets: buckets})
+	c.metrics.diskReadLatency = prometheus.NewHistogram(prometheus.HistogramOpts{Buckets: buckets})
+	c.metrics.putLatency = prometheus.NewHistogram(prometheus.HistogramOpts{Buckets: buckets})
+	c.metrics.diskWriteLatency = prometheus.NewHistogram(prometheus.HistogramOpts{Buckets: buckets})
+
+	// Measures a channel write, so lower min.
+	buckets = prometheus.ExponentialBucketsRange(float64(time.Microsecond*1), float64(10*time.Second), 50)
+	c.metrics.queuePutLatency = prometheus.NewHistogram(prometheus.HistogramOpts{Buckets: buckets})
+
+	return c, nil
 }
 
 // Close closes the cache. Methods such as ReadAt should not be called after Close is
@@ -95,6 +169,28 @@ func (c *Cache) Close() error {
 	}
 	c.shards = nil
 	return retErr
+}
+
+// Metrics return metrics for the cache. Callers should not mutate
+// the returned histograms, which are pointer types.
+func (c *Cache) Metrics() Metrics {
+	return Metrics{
+		Count:               c.metrics.count.Load(),
+		Size:                c.metrics.count.Load() * int64(c.bm.BlockSize()),
+		TotalReads:          c.metrics.totalReads.Load(),
+		MultiShardReads:     c.metrics.multiShardReads.Load(),
+		MultiBlockReads:     c.metrics.multiBlockReads.Load(),
+		ReadsWithFullHit:    c.metrics.readsWithFullHit.Load(),
+		ReadsWithPartialHit: c.metrics.readsWithPartialHit.Load(),
+		ReadsWithNoHit:      c.metrics.readsWithNoHit.Load(),
+		Evictions:           c.metrics.evictions.Load(),
+		WriteBackFailures:   c.metrics.writeBackFailures.Load(),
+		GetLatency:          c.metrics.getLatency,
+		DiskReadLatency:     c.metrics.diskReadLatency,
+		QueuePutLatency:     c.metrics.queuePutLatency,
+		PutLatency:          c.metrics.putLatency,
+		DiskWriteLatency:    c.metrics.diskWriteLatency,
+	}
 }
 
 // ReadFlags contains options for Cache.ReadAt.
@@ -115,6 +211,7 @@ func (c *Cache) ReadAt(
 	objSize int64,
 	flags ReadFlags,
 ) error {
+	c.metrics.totalReads.Add(1)
 	if ofs >= objSize {
 		if invariants.Enabled {
 			panic(fmt.Sprintf("invalid ReadAt offset %v %v", ofs, objSize))
@@ -124,13 +221,21 @@ func (c *Cache) ReadAt(
 	// TODO(radu): for compaction reads, we may not want to read from the cache at
 	// all.
 	{
+		start := time.Now()
 		n, err := c.get(fileNum, p, ofs)
+		c.metrics.getLatency.Observe(float64(time.Since(start)))
 		if err != nil {
 			return err
 		}
 		if n == len(p) {
 			// Everything was in cache!
+			c.metrics.readsWithFullHit.Add(1)
 			return nil
+		}
+		if n == 0 {
+			c.metrics.readsWithNoHit.Add(1)
+		} else {
+			c.metrics.readsWithPartialHit.Add(1)
 		}
 
 		// Note this. The below code does not need the original ofs, as with the earlier
@@ -144,8 +249,6 @@ func (c *Cache) ReadAt(
 			}
 		}
 	}
-
-	c.misses.Add(1)
 
 	if flags.ReadOnly {
 		return objReader.ReadAt(ctx, p, ofs)
@@ -173,7 +276,10 @@ func (c *Cache) ReadAt(
 	}
 	copy(p, adjustedP[sizeOfOffAdjustment:])
 
+	start := time.Now()
 	c.writeWorkers.QueueWrite(fileNum, adjustedP, adjustedOfs)
+	c.metrics.queuePutLatency.Observe(float64(time.Since(start)))
+
 	return nil
 }
 
@@ -188,6 +294,7 @@ func (c *Cache) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ err
 	// The data extent might cross shard boundaries, hence the loop. In the hot
 	// path, max two iterations of this loop will be executed, since reads are sized
 	// in units of sstable block size.
+	var multiShard bool
 	for {
 		shard := c.getShard(fileNum, ofs+int64(n))
 		cappedLen := len(p[n:])
@@ -208,6 +315,10 @@ func (c *Cache) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ err
 			return n, nil
 		}
 		// Data extent crosses shard boundary, continue with next shard.
+		if !multiShard {
+			c.metrics.multiShardReads.Add(1)
+			multiShard = true
+		}
 	}
 }
 
@@ -257,6 +368,7 @@ func (c *Cache) getShard(fileNum base.DiskFileNum, ofs int64) *shard {
 }
 
 type shard struct {
+	cache             *Cache
 	file              vfs.File
 	sizeInBlocks      int64
 	bm                blockMath
@@ -311,9 +423,16 @@ const (
 )
 
 func (s *shard) init(
-	fs vfs.FS, fsDir string, shardIdx int, sizeInBlocks int64, blockSize int, shardingBlockSize int64,
+	cache *Cache,
+	fs vfs.FS,
+	fsDir string,
+	shardIdx int,
+	sizeInBlocks int64,
+	blockSize int,
+	shardingBlockSize int64,
 ) error {
 	*s = shard{
+		cache:        cache,
 		sizeInBlocks: sizeInBlocks,
 	}
 	if blockSize < 1024 || shardingBlockSize%int64(blockSize) != 0 {
@@ -431,6 +550,7 @@ func (s *shard) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ err
 	// The data extent might cross cache block boundaries, hence the loop. In the hot
 	// path, max two iterations of this loop will be executed, since reads are sized
 	// in units of sstable block size.
+	var multiBlock bool
 	for {
 		k := logicalBlockID{
 			filenum:       fileNum,
@@ -469,11 +589,15 @@ func (s *shard) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ err
 		}
 
 		if len(p[n:]) <= readSize {
+			start := time.Now()
 			numRead, err := s.file.ReadAt(p[n:], readAt)
+			s.cache.metrics.diskReadLatency.Observe(float64(time.Since(start)))
 			s.dropReadLock(cacheBlockIdx)
 			return n + numRead, err
 		}
+		start := time.Now()
 		numRead, err := s.file.ReadAt(p[n:n+readSize], readAt)
+		s.cache.metrics.diskReadLatency.Observe(float64(time.Since(start)))
 		s.dropReadLock(cacheBlockIdx)
 		if err != nil {
 			return 0, err
@@ -481,6 +605,11 @@ func (s *shard) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ err
 
 		// Note that numRead == readSize, since we checked for an error above.
 		n += numRead
+
+		if !multiBlock {
+			s.cache.metrics.multiBlockReads.Add(1)
+			multiBlock = true
+		}
 	}
 }
 
@@ -526,8 +655,6 @@ func (s *shard) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 			continue
 		}
 
-		// Determine cache block index by looking at the free list and randomly evicting if
-		// it is empty.
 		var cacheBlockIdx cacheBlockIndex
 		if s.mu.freeHead == invalidBlockIndex {
 			if invariants.Enabled && s.mu.lruHead == invalidBlockIndex {
@@ -550,9 +677,11 @@ func (s *shard) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 					return errors.New("no block to evict so skipping write to cache")
 				}
 			}
+			s.cache.metrics.evictions.Add(1)
 			s.lruUnlink(cacheBlockIdx)
 			delete(s.mu.where, s.mu.blocks[cacheBlockIdx].logical)
 		} else {
+			s.cache.metrics.count.Add(1)
 			cacheBlockIdx = s.freePop()
 		}
 
@@ -569,7 +698,9 @@ func (s *shard) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 			writeSize = len(p[n:])
 		}
 
+		start := time.Now()
 		_, err := s.file.WriteAt(p[n:n+writeSize], writeAt)
+		s.cache.metrics.diskWriteLatency.Observe(float64(time.Since(start)))
 		if err != nil {
 			// Free the block.
 			s.mu.Lock()
@@ -729,8 +860,11 @@ func (w *writeWorkers) Start(c *Cache, numWorkers int) {
 					}
 					// TODO(radu): set() can perform multiple writes; perhaps each one
 					// should be its own task.
-					if err := c.set(task.fileNum, task.p, task.offset); err != nil {
-						// TODO(radu): expose as metric.
+					start := time.Now()
+					err := c.set(task.fileNum, task.p, task.offset)
+					c.metrics.putLatency.Observe(float64(time.Since(start)))
+					if err != nil {
+						c.metrics.writeBackFailures.Add(1)
 						// TODO(radu): throttle logs.
 						c.logger.Infof("writing back to cache after miss failed: %v", err)
 					}
