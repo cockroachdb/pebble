@@ -20,7 +20,7 @@ sep=""
 
 for p in ${packages}; do
   # Check that the path exists and contains Go files.
-  if ls "${p}/*.go" >/dev/null 2>&1; then
+  if ls "${p}"/*.go >/dev/null 2>&1; then
     if [[ $p != "." ]]; then
       p="./$p"
     fi
