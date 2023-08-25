@@ -15,6 +15,7 @@ jobs:
     env:
       PR: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -30,33 +31,38 @@ jobs:
         with:
           go-version: "1.20"
 
+      - name: Get list of changed packages
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # To get the base commit, we get the number of commits in the PR.
+          # Note that github.event.pull_request.base.sha is not what we want,
+          # that is the tip of master and not necessarily the PR fork point.
+          NUM_COMMITS=$(gh pr view $PR --json commits --jq '.commits | length')
+          BASE_SHA=$(git rev-parse HEAD~${NUM_COMMITS})
+          CHANGED_PKGS=$(scripts/changed-go-pkgs.sh ${BASE_SHA} ${HEAD_SHA})
+          echo "BASE_SHA=${BASE_SHA}" >> "${GITHUB_ENV}"
+          echo "CHANGED_PKGS=${CHANGED_PKGS}" >> "${GITHUB_ENV}"
+
       - name: Generate "after" coverage
         shell: bash
         run: |
-          set -e
+          set -euxo pipefail
+          CHANGED_PKGS='${{ env.CHANGED_PKGS }}'
           mkdir -p artifacts
-          make testcoverage COVER_PROFILE=artifacts/cover-after.out
-          go run github.com/cockroachdb/code-cov-utils/gocover2json@latest \
-            --trim-prefix github.com/cockroachdb/pebble/ \
-            artifacts/cover-after.out artifacts/cover-${PR}-${HEAD_SHA}.json
+          # Make a copy of the script so that the "before" run below uses the
+          # same version.
+          cp scripts/pr-codecov-run-tests.sh ${RUNNER_TEMP}/
+          ${RUNNER_TEMP}/pr-codecov-run-tests.sh artifacts/cover-${PR}-${HEAD_SHA}.json "${CHANGED_PKGS}"
 
-      # Running the "before" coverage for each PR (rather than in a job that
-      # runs on push) is a little odd, but it allows restricting the packages on
-      # a per-PR basis (if it becomes necessary in the future).
       - name: Generate "before" coverage
         shell: bash
         run: |
-          set -e
-          # Note that github.event.pull_request.base.sha is not what we want -
-          # it is the current master tip, not the commit this PR is actually
-          # based on.
-          BASE_SHA=$(git merge-base origin/master ${HEAD_SHA})
+          set -euxo pipefail
+          BASE_SHA='${{ env.BASE_SHA }}'
+          CHANGED_PKGS='${{ env.CHANGED_PKGS }}'
           git checkout -f ${BASE_SHA}
-          make testcoverage COVER_PROFILE=artifacts/cover-before.out
-          SHA=$(git rev-parse HEAD)
-          go run github.com/cockroachdb/code-cov-utils/gocover2json@latest \
-            --trim-prefix github.com/cockroachdb/pebble/ \
-            artifacts/cover-before.out artifacts/cover-${PR}-${BASE_SHA}.json
+          ${RUNNER_TEMP}/pr-codecov-run-tests.sh artifacts/cover-${PR}-${BASE_SHA}.json "${CHANGED_PKGS}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
