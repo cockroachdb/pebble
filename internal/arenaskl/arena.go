@@ -43,11 +43,11 @@ var (
 // NewArena allocates a new arena using the specified buffer as the backing
 // store.
 func NewArena(buf []byte) *Arena {
-	if len(buf) > math.MaxUint32 {
+	if len(buf) > math.MaxInt {
 		if invariants.Enabled {
 			panic(errors.AssertionFailedf("attempting to create arena of size %d", len(buf)))
 		}
-		buf = buf[:math.MaxUint32]
+		buf = buf[:math.MaxInt]
 	}
 	a := &Arena{
 		buf: buf,

@@ -70,7 +70,7 @@ const (
 	maxHeight    = 20
 	maxNodeSize  = int(unsafe.Sizeof(node{}))
 	linksSize    = int(unsafe.Sizeof(links{}))
-	maxNodesSize = math.MaxUint32
+	maxNodesSize = math.MaxInt32
 )
 
 var (
@@ -307,7 +307,7 @@ func (s *Skiplist) alloc(size uint32) (uint32, error) {
 			allocSize = minAllocSize
 		}
 		// Cap the allocation at the max allowed size to avoid wasted capacity.
-		if allocSize > maxNodesSize {
+		if uint(allocSize) > maxNodesSize {
 			// The new record may still not fit within the allocation, in which case
 			// we return early with an error. This avoids the panic below when we
 			// resize the slice. It also avoids the allocation and copy.

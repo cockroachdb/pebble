@@ -19,6 +19,7 @@ package arenaskl
 
 import (
 	"math"
+	"math/bits"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -31,6 +32,9 @@ func newArena(n uint32) *Arena {
 // TestArenaSizeOverflow tests that large allocations do not cause Arena's
 // internal size accounting to overflow and produce incorrect results.
 func TestArenaSizeOverflow(t *testing.T) {
+	if bits.UintSize == 32 {
+		t.Skip("32 bit system")
+	}
 	a := newArena(math.MaxUint32)
 
 	// Allocating under the limit throws no error.

@@ -25,7 +25,7 @@ func TestDeletionPacer(t *testing.T) {
 		// history of deletion reporting; first value in the pair is the time,
 		// second value is the deleted bytes. The time of pacing is the same as the
 		// last time in the history.
-		history [][2]int
+		history [][2]int64
 		// expected pacing rate in MB/s.
 		expected float64
 	}{
@@ -70,7 +70,7 @@ func TestDeletionPacer(t *testing.T) {
 			freeBytes:     160 * GB,
 			obsoleteBytes: 1 * MB,
 			liveBytes:     160 * MB,
-			history:       [][2]int{{0, 5 * 60 * 200 * MB}},
+			history:       [][2]int64{{0, 5 * 60 * 200 * MB}},
 			expected:      200.0,
 		},
 		// History shows 200MB/sec deletions on average over last 5 minutes and
@@ -79,7 +79,7 @@ func TestDeletionPacer(t *testing.T) {
 			freeBytes:     6 * GB,
 			obsoleteBytes: 1 * MB,
 			liveBytes:     160 * MB,
-			history:       [][2]int{{0, 5 * 60 * 200 * MB}},
+			history:       [][2]int64{{0, 5 * 60 * 200 * MB}},
 			expected:      1224.0,
 		},
 		// History shows 200MB/sec deletions on average over last 5 minutes and
@@ -88,7 +88,7 @@ func TestDeletionPacer(t *testing.T) {
 			freeBytes:     500 * GB,
 			obsoleteBytes: 50 * GB,
 			liveBytes:     100 * GB,
-			history:       [][2]int{{0, 5 * 60 * 200 * MB}},
+			history:       [][2]int64{{0, 5 * 60 * 200 * MB}},
 			expected:      302.4,
 		},
 		// History shows 1000MB/sec deletions on average over last 5 minutes.
@@ -96,7 +96,7 @@ func TestDeletionPacer(t *testing.T) {
 			freeBytes:     160 * GB,
 			obsoleteBytes: 1 * MB,
 			liveBytes:     160 * MB,
-			history:       [][2]int{{0, 60 * 1000 * MB}, {3 * 60, 60 * 4 * 1000 * MB}, {4 * 60, 0}},
+			history:       [][2]int64{{0, 60 * 1000 * MB}, {3 * 60, 60 * 4 * 1000 * MB}, {4 * 60, 0}},
 			expected:      1000.0,
 		},
 		// First entry in history is too old, it should be discarded.
@@ -104,7 +104,7 @@ func TestDeletionPacer(t *testing.T) {
 			freeBytes:     160 * GB,
 			obsoleteBytes: 1 * MB,
 			liveBytes:     160 * MB,
-			history:       [][2]int{{0, 10 * 60 * 10000 * MB}, {3 * 60, 4 * 60 * 200 * MB}, {7 * 60, 1 * 60 * 200 * MB}},
+			history:       [][2]int64{{0, 10 * 60 * 10000 * MB}, {3 * 60, 4 * 60 * 200 * MB}, {7 * 60, 1 * 60 * 200 * MB}},
 			expected:      200.0,
 		},
 	}

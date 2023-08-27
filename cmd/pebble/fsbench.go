@@ -129,7 +129,7 @@ func deleteFile(filepath string) {
 }
 
 // Write size bytes to the file in batches.
-func writeToFile(fh vfs.File, size int) {
+func writeToFile(fh vfs.File, size int64) {
 	for size > 0 {
 		var toWrite []byte
 		if size >= writeBatchSize {
@@ -144,7 +144,7 @@ func writeToFile(fh vfs.File, size int) {
 		if written != len(toWrite) {
 			log.Fatalf("Couldn't write %d bytes to file\n", size)
 		}
-		size -= len(toWrite)
+		size -= int64(len(toWrite))
 	}
 }
 
@@ -247,7 +247,7 @@ func createBench(benchName string, benchDescription string) fsBenchmark {
 // This benchmark prepopulates a directory with some files of a given size. Then, it creates and deletes
 // a file of some size, while measuring only the performance of the delete.
 func deleteBench(
-	benchName string, benchDescription string, preNumFiles int, preFileSize int, fileSize int,
+	benchName string, benchDescription string, preNumFiles int, preFileSize int64, fileSize int64,
 ) fsBenchmark {
 
 	createBench := func(dirpath string) *fsBench {
@@ -315,7 +315,7 @@ func deleteBench(
 // of the vfs.Remove function.
 // fileSize is in bytes.
 func deleteUniformBench(
-	benchName string, benchDescription string, numFiles int, fileSize int,
+	benchName string, benchDescription string, numFiles int, fileSize int64,
 ) fsBenchmark {
 	createBench := func(dirpath string) *fsBench {
 		bench := &fsBench{}
@@ -382,7 +382,7 @@ func deleteUniformBench(
 // Only measures the sync performance.
 // The writes will be synced after every writeSize bytes have been written.
 func writeSyncBench(
-	benchName string, benchDescription string, maxFileSize int, writeSize int,
+	benchName string, benchDescription string, maxFileSize int64, writeSize int64,
 ) fsBenchmark {
 
 	if writeSize > maxFileSize {
@@ -406,7 +406,7 @@ func writeSyncBench(
 			done         atomic.Bool
 			fh           vfs.File
 			fileNum      int
-			bytesWritten int
+			bytesWritten int64
 		}
 		benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
 
@@ -422,7 +422,7 @@ func writeSyncBench(
 				benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
 			}
 
-			benchData.bytesWritten += writeSize
+			benchData.bytesWritten += int64(writeSize)
 			writeToFile(benchData.fh, writeSize)
 
 			start := time.Now()
@@ -455,7 +455,7 @@ func writeSyncBench(
 // Tests the peformance of calling the vfs.GetDiskUsage call on a directory,
 // as the number of files/total size of files in the directory grows.
 func diskUsageBench(
-	benchName string, benchDescription string, maxFileSize int, writeSize int,
+	benchName string, benchDescription string, maxFileSize int64, writeSize int64,
 ) fsBenchmark {
 
 	if writeSize > maxFileSize {
@@ -479,7 +479,7 @@ func diskUsageBench(
 			done         atomic.Bool
 			fh           vfs.File
 			fileNum      int
-			bytesWritten int
+			bytesWritten int64
 		}
 		benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
 
