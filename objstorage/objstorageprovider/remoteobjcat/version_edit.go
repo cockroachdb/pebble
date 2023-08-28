@@ -229,14 +229,21 @@ var errCorruptCatalog = base.CorruptionErrorf("pebble: corrupt remote object cat
 // Apply the version edit to a creator ID and a map of objects.
 func (v *VersionEdit) Apply(
 	creatorID *objstorage.CreatorID, objects map[base.DiskFileNum]RemoteObjectMetadata,
-) {
+) error {
 	if v.CreatorID.IsSet() {
 		*creatorID = v.CreatorID
 	}
-	for _, fileNum := range v.DeletedObjects {
-		delete(objects, fileNum)
-	}
 	for _, meta := range v.NewObjects {
+		if _, exists := objects[meta.FileNum]; exists {
+			return errors.AssertionFailedf("version edit adds existing object %s", meta.FileNum)
+		}
 		objects[meta.FileNum] = meta
 	}
+	for _, fileNum := range v.DeletedObjects {
+		if _, exists := objects[fileNum]; !exists {
+			return errors.AssertionFailedf("version edit deletes non-existent object %s", fileNum)
+		}
+		delete(objects, fileNum)
+	}
+	return nil
 }
