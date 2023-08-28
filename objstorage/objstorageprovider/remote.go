@@ -24,7 +24,11 @@ import (
 // All fields remain unset if remote storage is not configured.
 type remoteSubsystem struct {
 	catalog *remoteobjcat.Catalog
-	cache   *sharedcache.Cache
+	// catalogSyncMutex is used to correctly serialize two sharedSync operations.
+	// It must be acquired before the provider mutex.
+	catalogSyncMutex sync.Mutex
+
+	cache *sharedcache.Cache
 
 	// shared contains the fields relevant to shared objects, i.e. objects that
 	// are created by Pebble and potentially shared between Pebble instances.
@@ -176,6 +180,12 @@ func (p *provider) sharedCheckInitialized() error {
 }
 
 func (p *provider) sharedSync() error {
+	// Serialize parallel sync operations. Note that ApplyBatch is alrady
+	// serialized internally, but we want to make sure they get called with
+	// batches in the right order.
+	p.remote.catalogSyncMutex.Lock()
+	defer p.remote.catalogSyncMutex.Unlock()
+
 	batch := func() remoteobjcat.Batch {
 		p.mu.Lock()
 		defer p.mu.Unlock()
@@ -188,9 +198,9 @@ func (p *provider) sharedSync() error {
 		return nil
 	}
 
-	err := p.remote.catalog.ApplyBatch(batch)
-	if err != nil {
-		// We have to put back the batch (for the next Sync).
+	if err := p.remote.catalog.ApplyBatch(batch); err != nil {
+		// Put back the batch (for the next Sync), appending any operations that
+		// happened in the meantime.
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		batch.Append(p.mu.remote.catalogBatch)

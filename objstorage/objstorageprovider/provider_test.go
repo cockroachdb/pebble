@@ -7,7 +7,9 @@ package objstorageprovider
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -536,4 +538,62 @@ func xor(n int) byte {
 	v ^= v >> 16
 	v ^= v >> 8
 	return byte(v)
+}
+
+// TestParallelSync checks that multiple goroutines can create and delete
+// objects and sync in parallel.
+func TestParallelSync(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		name := "local"
+		if shared {
+			name = "shared"
+		}
+		t.Run(name, func(t *testing.T) {
+			st := DefaultSettings(vfs.NewMem(), "")
+			st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+				"": remote.NewInMem(),
+			})
+
+			st.Remote.CreateOnShared = true
+			st.Remote.CreateOnSharedLocator = ""
+			p, err := Open(st)
+			require.NoError(t, err)
+			require.NoError(t, p.SetCreatorID(1))
+
+			const numGoroutines = 4
+			const numOps = 100
+			var wg sync.WaitGroup
+			for n := 0; n < numGoroutines; n++ {
+				wg.Add(1)
+				go func(startNum int, shared bool) {
+					rng := rand.New(rand.NewSource(int64(startNum)))
+					for i := 0; i < numOps; i++ {
+						num := base.FileNum(startNum + i).DiskFileNum()
+						w, _, err := p.Create(context.Background(), base.FileTypeTable, num, objstorage.CreateOptions{
+							PreferSharedStorage: shared,
+						})
+						if err != nil {
+							panic(err)
+						}
+						if err := w.Finish(); err != nil {
+							panic(err)
+						}
+						if rng.Intn(2) == 0 {
+							if err := p.Sync(); err != nil {
+								panic(err)
+							}
+						}
+						if err := p.Remove(base.FileTypeTable, num); err != nil {
+							panic(err)
+						}
+						if rng.Intn(2) == 0 {
+							if err := p.Sync(); err != nil {
+								panic(err)
+							}
+						}
+					}
+				}(numOps*n, shared)
+			}
+		})
+	}
 }
