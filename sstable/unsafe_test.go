@@ -18,9 +18,11 @@ import (
 
 func TestGetBytes(t *testing.T) {
 	const size = (1 << 31) - 1
-	block := make([]byte, size)
+	// No need to actually allocate a huge slice, which can cause OOM on small
+	// machines (like the GitHub CI runners).
+	block := make([]byte, 100)
 	data := getBytes(unsafe.Pointer(&block[0]), size)
-	require.EqualValues(t, len(block), len(data))
+	require.EqualValues(t, size, len(data))
 }
 
 func TestDecodeVarint(t *testing.T) {
