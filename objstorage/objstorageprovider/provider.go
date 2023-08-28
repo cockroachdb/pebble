@@ -144,7 +144,13 @@ func DefaultSettings(fs vfs.FS, dirName string) Settings {
 
 // Open creates the provider.
 func Open(settings Settings) (objstorage.Provider, error) {
-	return open(settings)
+	// Note: we can't just `return open(settings)` because in an error case we
+	// would return (*provider)(nil) which is not objstorage.Provider(nil).
+	p, err := open(settings)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 func open(settings Settings) (p *provider, _ error) {

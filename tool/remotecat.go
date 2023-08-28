@@ -110,7 +110,9 @@ func (m *remoteCatalogT) runDumpOne(stdout io.Writer, filename string) error {
 			}
 		}
 		editIdx++
-		ve.Apply(&creatorID, objects)
+		if err := ve.Apply(&creatorID, objects); err != nil {
+			return err
+		}
 	}
 	fmt.Fprintf(stdout, "CreatorID: %v\n", creatorID)
 	var filenums []base.DiskFileNum
