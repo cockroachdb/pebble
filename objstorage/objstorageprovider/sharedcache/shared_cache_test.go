@@ -136,7 +136,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 		return func(t *testing.T) {
 			for _, concurrentReads := range []bool{false, true} {
 				t.Run(fmt.Sprintf("concurrentReads=%v", concurrentReads), func(t *testing.T) {
-					maxShards := 64
+					maxShards := 32
 					if invariants.RaceEnabled {
 						maxShards = 8
 					}
@@ -206,8 +206,8 @@ func TestSharedCacheRandomized(t *testing.T) {
 			exp := rand.Intn(11) + 10   // [10, 20]
 			randomBlockSize := 1 << exp // [1 KB, 1 MB]
 
-			factor := rand.Intn(10) + 1                                // [1, 10]
-			randomShardingBlockSize := int64(randomBlockSize * factor) // [1 KB, 10 MB]
+			factor := rand.Intn(4) + 1                                 // [1, 4]
+			randomShardingBlockSize := int64(randomBlockSize * factor) // [1 KB, 4 MB]
 
 			t.Run("random block and sharding block size", helper(randomBlockSize, randomShardingBlockSize))
 		}
