@@ -218,37 +218,40 @@ func (c *Catalog) ApplyBatch(b Batch) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Add new objects before deleting any objects. This allows for cases where
-	// the same batch adds and deletes an object.
+	// Sanity checks.
+	toAdd := make(map[base.DiskFileNum]struct{}, len(b.ve.NewObjects))
+	exists := func(n base.DiskFileNum) bool {
+		_, ok := c.mu.objects[n]
+		if !ok {
+			_, ok = toAdd[n]
+		}
+		return ok
+	}
 	for _, meta := range b.ve.NewObjects {
-		if _, exists := c.mu.objects[meta.FileNum]; exists {
+		if exists(meta.FileNum) {
 			return errors.AssertionFailedf("adding existing object %s", meta.FileNum)
 		}
-	}
-	for _, meta := range b.ve.NewObjects {
-		c.mu.objects[meta.FileNum] = meta
-	}
-	removeAddedObjects := func() {
-		for i := range b.ve.NewObjects {
-			delete(c.mu.objects, b.ve.NewObjects[i].FileNum)
-		}
+		toAdd[meta.FileNum] = struct{}{}
 	}
 	for _, n := range b.ve.DeletedObjects {
-		if _, exists := c.mu.objects[n]; !exists {
-			removeAddedObjects()
+		if !exists(n) {
 			return errors.AssertionFailedf("deleting non-existent object %s", n)
 		}
-	}
-	// Apply the remainder of the batch to our current state.
-	for _, n := range b.ve.DeletedObjects {
-		delete(c.mu.objects, n)
 	}
 
 	if err := c.writeToCatalogFileLocked(&b.ve); err != nil {
 		return errors.Wrapf(err, "pebble: could not write to remote object catalog: %v", err)
 	}
 
-	b.Reset()
+	// Add new objects before deleting any objects. This allows for cases where
+	// the same batch adds and deletes an object.
+	for _, meta := range b.ve.NewObjects {
+		c.mu.objects[meta.FileNum] = meta
+	}
+	for _, n := range b.ve.DeletedObjects {
+		delete(c.mu.objects, n)
+	}
+
 	return nil
 }
 
@@ -273,13 +276,15 @@ func (c *Catalog) loadFromCatalogFile(filename string) error {
 				errors.Safe(filename))
 		}
 		var ve VersionEdit
-		err = ve.Decode(r)
-		if err != nil {
+		if err := ve.Decode(r); err != nil {
 			return errors.Wrapf(err, "pebble: error when loading remote object catalog file %q",
 				errors.Safe(filename))
 		}
 		// Apply the version edit to the current state.
-		ve.Apply(&c.mu.creatorID, c.mu.objects)
+		if err := ve.Apply(&c.mu.creatorID, c.mu.objects); err != nil {
+			return errors.Wrapf(err, "pebble: error when loading remote object catalog file %q",
+				errors.Safe(filename))
+		}
 	}
 	return nil
 }
