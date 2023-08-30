@@ -189,13 +189,13 @@ type BoundLimitedBlockPropertyFilter interface {
 	// indicates that the filter may be used to filter blocks that exclusively
 	// contain keys ≥ `key`, so long as the blocks' keys also satisfy the upper
 	// bound.
-	KeyIsWithinLowerBound(key *InternalKey) bool
+	KeyIsWithinLowerBound(key []byte) bool
 	// KeyIsWithinUpperBound tests whether the provided internal key falls
 	// within the current upper bound of the filter. A true return value
 	// indicates that the filter may be used to filter blocks that exclusively
 	// contain keys ≤ `key`, so long as the blocks' keys also satisfy the lower
 	// bound.
-	KeyIsWithinUpperBound(key *InternalKey) bool
+	KeyIsWithinUpperBound(key []byte) bool
 }
 
 // BlockIntervalCollector is a helper implementation of BlockPropertyCollector

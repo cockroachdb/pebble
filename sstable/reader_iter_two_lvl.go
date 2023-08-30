@@ -94,7 +94,7 @@ func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	// are ≤ topLevelIndex.Key(). For forward iteration, this is all we need.
 	if dir > 0 {
 		// Forward iteration.
-		if i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(i.topLevelIndex.Key()) {
+		if i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(i.topLevelIndex.Key().UserKey) {
 			return blockExcluded
 		}
 		return blockIntersects
@@ -123,7 +123,7 @@ func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 		// we knew the lower bound for the entire table, it could provide a
 		// lower bound, but the code refactoring necessary to read it doesn't
 		// seem worth the payoff. We fall through to loading the block.
-	} else if i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(peekKey) {
+	} else if i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(peekKey.UserKey) {
 		// The lower-bound on the original index block falls within the filter's
 		// bounds, and we can skip the block (after restoring our current
 		// top-level index position).

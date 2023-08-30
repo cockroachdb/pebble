@@ -1135,11 +1135,11 @@ func (bl *boundLimitedWrapper) Intersects(prop []byte) (bool, error) {
 	return v, err
 }
 
-func (bl *boundLimitedWrapper) KeyIsWithinLowerBound(key *InternalKey) (ret bool) {
+func (bl *boundLimitedWrapper) KeyIsWithinLowerBound(key []byte) (ret bool) {
 	if bl.lower == nil {
 		ret = true
 	} else {
-		ret = base.InternalCompare(bl.cmp, *key, *bl.lower) >= 0
+		ret = bl.cmp(key, bl.lower.UserKey) >= 0
 	}
 	if bl.w != nil {
 		fmt.Fprintf(bl.w, "    filter.KeyIsWithinLowerBound(%s) = %t\n", key, ret)
@@ -1147,11 +1147,11 @@ func (bl *boundLimitedWrapper) KeyIsWithinLowerBound(key *InternalKey) (ret bool
 	return ret
 }
 
-func (bl *boundLimitedWrapper) KeyIsWithinUpperBound(key *InternalKey) (ret bool) {
+func (bl *boundLimitedWrapper) KeyIsWithinUpperBound(key []byte) (ret bool) {
 	if bl.upper == nil {
 		ret = true
 	} else {
-		ret = base.InternalCompare(bl.cmp, *key, *bl.upper) <= 0
+		ret = bl.cmp(key, bl.upper.UserKey) <= 0
 	}
 	if bl.w != nil {
 		fmt.Fprintf(bl.w, "    filter.KeyIsWithinUpperBound(%s) = %t\n", key, ret)
