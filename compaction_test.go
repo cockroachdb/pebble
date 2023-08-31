@@ -64,10 +64,6 @@ func (p *compactionPickerForTesting) getBaseLevel() int {
 	return p.baseLevel
 }
 
-func (p *compactionPickerForTesting) getEstimatedMaxWAmp() float64 {
-	return 0
-}
-
 func (p *compactionPickerForTesting) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
 	return 0
 }
