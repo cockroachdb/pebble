@@ -31,7 +31,6 @@ type compactionEnv struct {
 type compactionPicker interface {
 	getScores([]compactionInfo) [numLevels]float64
 	getBaseLevel() int
-	getEstimatedMaxWAmp() float64
 	estimatedCompactionDebt(l0ExtraSize uint64) uint64
 	pickAuto(env compactionEnv) (pc *pickedCompaction)
 	pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction)
@@ -726,14 +725,9 @@ func totalCompensatedSize(iter manifest.LevelIterator) uint64 {
 type compactionPickerByScore struct {
 	opts *Options
 	vers *version
-
 	// The level to target for L0 compactions. Levels L1 to baseLevel must be
 	// empty.
 	baseLevel int
-	// estimatedMaxWAmp is the estimated maximum write amp per byte that is
-	// added to L0.
-	estimatedMaxWAmp float64
-
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
 	levelMaxBytes [numLevels]int64
@@ -754,10 +748,6 @@ func (p *compactionPickerByScore) getBaseLevel() int {
 		return 1
 	}
 	return p.baseLevel
-}
-
-func (p *compactionPickerByScore) getEstimatedMaxWAmp() float64 {
-	return p.estimatedMaxWAmp
 }
 
 // estimatedCompactionDebt estimates the number of bytes which need to be
@@ -881,8 +871,6 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 			float64(bottomLevelSize)/float64(baseBytesMax),
 			1.0/float64(numLevels-p.baseLevel-1))
 	}
-
-	p.estimatedMaxWAmp = float64(numLevels-p.baseLevel) * (smoothedLevelMultiplier + 1)
 
 	levelSize := float64(baseBytesMax)
 	for level := p.baseLevel; level < numLevels; level++ {
