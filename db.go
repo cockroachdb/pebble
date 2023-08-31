@@ -1992,10 +1992,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// The batch is too large to fit in the memtable so add it directly to
 			// the immutable queue. The flushable batch is associated with the same
 			// log as the immutable memtable, but logically occurs after it in
-			// seqnum space. So give the flushable batch the logNum and clear it from
-			// the immutable log. This is done as a defensive measure to prevent the
-			// WAL containing the large batch from being deleted prematurely if the
-			// corresponding memtable is flushed without flushing the large batch.
+			// seqnum space. We ensure while flushing that the flushable batch
+			// is flushed along with the previous memtable in the flushable
+			// queue. See the top level comment in DB.flush1 to learn how this
+			// is ensured.
 			//
 			// See DB.commitWrite for the special handling of log writes for large
 			// batches. In particular, the large batch has already written to
@@ -2005,7 +2005,6 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// for it until it is flushed.
 			entry.releaseMemAccounting = d.opts.Cache.Reserve(int(b.flushable.totalBytes()))
 			d.mu.mem.queue = append(d.mu.mem.queue, entry)
-			imm.logNum = 0
 		}
 
 		var logSeqNum uint64

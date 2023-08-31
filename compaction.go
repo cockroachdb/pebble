@@ -1636,6 +1636,20 @@ func (d *DB) flush() {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) flush1() (bytesFlushed uint64, err error) {
+	// NB: Large batches placed in the flushable queue share the WAL with the
+	// previous memtable in the queue. We must ensure the property that both the
+	// large batch and the memtable with which it shares a WAL are flushed
+	// together. The property ensures that the minimum unflushed log number
+	// isn't incremented incorrectly. Since a flushableBatch.readyToFlush always
+	// returns true, and since the large batch will always be placed right after
+	// the memtable with which it shares a WAL, the property is naturally
+	// ensured. The large batch will always be placed after the memtable with
+	// which it shares a WAL because we ensure it in DB.commitWrite by holding
+	// the commitPipeline.mu and then holding DB.mu. As an extra defensive
+	// measure, if we try to flush the memtable without also flushing the
+	// flushable batch in the same flush, since the memtable and flushableBatch
+	// have the same logNum, the errFlushInvariant check below will trigger and
+	// prevent the flush from continuing.
 	var n int
 	for ; n < len(d.mu.mem.queue)-1; n++ {
 		if !d.mu.mem.queue[n].readyForFlush() {
