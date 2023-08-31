@@ -90,9 +90,9 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 		file:        iter.Take(),
 	}
 	if cInfo.level == 0 {
-		return pickL0(env, p.opts, p.vers, p.baseLevel, diskAvailBytesInf)
+		return pickL0(env, p.opts, p.vers, p.baseLevel)
 	}
-	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel, diskAvailBytesInf, p.maxLevelBytes)
+	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel, p.maxLevelBytes)
 }
 
 func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
@@ -113,7 +113,7 @@ func (p *compactionPickerForTesting) pickManual(
 	if p == nil {
 		return nil, false
 	}
-	return pickManualHelper(p.opts, manual, p.vers, p.baseLevel, diskAvailBytesInf, p.maxLevelBytes), false
+	return pickManualHelper(p.opts, manual, p.vers, p.baseLevel, env.diskAvailBytes, p.maxLevelBytes), false
 }
 
 func (p *compactionPickerForTesting) pickReadTriggeredCompaction(
@@ -523,7 +523,7 @@ func TestPickCompaction(t *testing.T) {
 		tc.picker.opts = opts
 		tc.picker.vers = tc.version
 		vs.picker = &tc.picker
-		pc, got := vs.picker.pickAuto(compactionEnv{}), ""
+		pc, got := vs.picker.pickAuto(compactionEnv{diskAvailBytes: math.MaxUint64}), ""
 		if pc != nil {
 			c := newCompaction(pc, opts, time.Now())
 			got0 := fileNums(c.startLevel.files)

@@ -1708,10 +1708,6 @@ func (d *DB) calculateDiskAvailableBytes() uint64 {
 	return d.diskAvailBytes.Load()
 }
 
-func (d *DB) getDiskAvailableBytesCached() uint64 {
-	return d.diskAvailBytes.Load()
-}
-
 func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
 	var pacerInfo deletionPacerInfo
 	// Call GetDiskUsage after every file deletion. This may seem inefficient,
@@ -2236,6 +2232,17 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 
 	env := compactionEnv{
+		// diskAvailBytes holds a statistic on the number of bytes available on
+		// disk, as reported by the filesystem. It's used to be more restrictive
+		// in expanding compactions if available disk space is limited.
+		//
+		// The cached value (d.diskAvailBytes) is updated whenever a file is
+		// deleted and whenever a compaction or flush completes. Since file
+		// removal is the primary means of reclaiming space, there is a rough
+		// bound on the statistic's staleness when available bytes is growing.
+		// Compactions and flushes are longer, slower operations and provide a
+		// much looser bound when available bytes is decreasing.
+		diskAvailBytes:          d.diskAvailBytes.Load(),
 		earliestSnapshotSeqNum:  d.mu.snapshots.earliest(),
 		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
 	}
