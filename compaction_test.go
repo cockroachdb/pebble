@@ -107,15 +107,6 @@ func (p *compactionPickerForTesting) pickRewriteCompaction(
 	return nil
 }
 
-func (p *compactionPickerForTesting) pickManual(
-	env compactionEnv, manual *manualCompaction,
-) (pc *pickedCompaction, retryLater bool) {
-	if p == nil {
-		return nil, false
-	}
-	return pickManualHelper(p.opts, manual, p.vers, p.baseLevel, env.diskAvailBytes, p.maxLevelBytes), false
-}
-
 func (p *compactionPickerForTesting) pickReadTriggeredCompaction(
 	env compactionEnv,
 ) (pc *pickedCompaction) {

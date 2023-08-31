@@ -326,9 +326,14 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					end:   iEnd.UserKey,
 				}
 
-				pc, retryLater := pickerByScore.pickManual(compactionEnv{
-					earliestUnflushedSeqNum: InternalKeySeqNumMax,
-				}, manual)
+				pc, retryLater := pickManualCompaction(
+					pickerByScore.vers,
+					opts,
+					compactionEnv{
+						earliestUnflushedSeqNum: InternalKeySeqNumMax,
+					},
+					pickerByScore.getBaseLevel(),
+					manual)
 				if pc == nil {
 					return fmt.Sprintf("nil, retryLater = %v", retryLater)
 				}
