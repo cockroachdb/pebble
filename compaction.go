@@ -1708,10 +1708,6 @@ func (d *DB) calculateDiskAvailableBytes() uint64 {
 	return d.diskAvailBytes.Load()
 }
 
-func (d *DB) getDiskAvailableBytesCached() uint64 {
-	return d.diskAvailBytes.Load()
-}
-
 func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
 	var pacerInfo deletionPacerInfo
 	// Call GetDiskUsage after every file deletion. This may seem inefficient,
@@ -2236,6 +2232,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 
 	env := compactionEnv{
+		diskAvailBytes:          d.diskAvailBytes.Load(),
 		earliestSnapshotSeqNum:  d.mu.snapshots.earliest(),
 		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
 	}

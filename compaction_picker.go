@@ -21,6 +21,17 @@ import (
 const minIntraL0Count = 4
 
 type compactionEnv struct {
+	// diskAvailBytes holds a statistic on the number of bytes available on
+	// disk, as reported by the filesystem. It's used to be more restrictive in
+	// expanding compactions if available disk space is limited.
+	//
+	// The cached value (d.diskAvailBytes) is updated whenever a file is deleted
+	// and whenever a compaction or flush completes. Since file removal is the
+	// primary means of reclaiming space, there is a rough bound on the
+	// statistic's staleness when available bytes is growing. Compactions and
+	// flushes are longer, slower operations and provide a much looser bound
+	// when available bytes is decreasing.
+	diskAvailBytes          uint64
 	earliestUnflushedSeqNum uint64
 	earliestSnapshotSeqNum  uint64
 	inProgressCompactions   []compactionInfo
@@ -631,17 +642,12 @@ func expandToAtomicUnit(
 }
 
 func newCompactionPicker(
-	v *version,
-	opts *Options,
-	inProgressCompactions []compactionInfo,
-	levelSizes [numLevels]int64,
-	diskAvailBytes func() uint64,
+	v *version, opts *Options, inProgressCompactions []compactionInfo, levelSizes [numLevels]int64,
 ) compactionPicker {
 	p := &compactionPickerByScore{
-		opts:           opts,
-		vers:           v,
-		levelSizes:     levelSizes,
-		diskAvailBytes: diskAvailBytes,
+		opts:       opts,
+		vers:       v,
+		levelSizes: levelSizes,
 	}
 	p.initLevelMaxBytes(inProgressCompactions)
 	return p
@@ -736,7 +742,6 @@ type compactionPickerByScore struct {
 	// The level to target for L0 compactions. Levels L1 to baseLevel must be
 	// empty.
 	baseLevel int
-
 	// estimatedMaxWAmp is the estimated maximum write amp per byte that is
 	// added to L0.
 	estimatedMaxWAmp float64
@@ -747,19 +752,6 @@ type compactionPickerByScore struct {
 
 	// levelSizes holds the current size of each level.
 	levelSizes [numLevels]int64
-
-	// diskAvailBytes returns a cached statistic on the number of bytes
-	// available on disk, as reported by the filesystem. It's used to be more
-	// restrictive in expanding compactions if available disk space is
-	// limited.
-	//
-	// The cached value is updated whenever a file is deleted and
-	// whenever a compaction or flush completes. Since file removal is
-	// the primary means of reclaiming space, there is a rough bound on
-	// the statistic's staleness when available bytes is growing.
-	// Compactions and flushes are longer, slower operations and provide
-	// a much looser bound when available bytes is decreasing.
-	diskAvailBytes func() uint64
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -1300,7 +1292,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		}
 
 		if info.level == 0 {
-			pc = pickL0(env, p.opts, p.vers, p.baseLevel, p.diskAvailBytes)
+			pc = pickL0(env, p.opts, p.vers, p.baseLevel)
 			// Fail-safe to protect against compacting the same sstable
 			// concurrently.
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
@@ -1321,7 +1313,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			continue
 		}
 
-		pc := pickAutoLPositive(env, p.opts, p.vers, *info, p.baseLevel, p.diskAvailBytes, p.levelMaxBytes)
+		pc := pickAutoLPositive(env, p.opts, p.vers, *info, p.baseLevel, p.levelMaxBytes)
 		// Fail-safe to protect against compacting the same sstable concurrently.
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 			pc.score = info.score
@@ -1600,7 +1592,6 @@ func pickAutoLPositive(
 	vers *version,
 	cInfo candidateLevelInfo,
 	baseLevel int,
-	diskAvailBytes func() uint64,
 	levelMaxBytes [7]int64,
 ) (pc *pickedCompaction) {
 	if cInfo.level == 0 {
@@ -1623,10 +1614,10 @@ func pickAutoLPositive(
 		}
 	}
 
-	if !pc.setupInputs(opts, diskAvailBytes(), pc.startLevel) {
+	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
 		return nil
 	}
-	return pc.maybeAddLevel(opts, diskAvailBytes())
+	return pc.maybeAddLevel(opts, env.diskAvailBytes)
 }
 
 // maybeAddLevel maybe adds a level to the picked compaction.
@@ -1660,9 +1651,7 @@ func (nml NoMultiLevel) pick(
 
 // Helper method to pick compactions originating from L0. Uses information about
 // sublevels to generate a compaction.
-func pickL0(
-	env compactionEnv, opts *Options, vers *version, baseLevel int, diskAvailBytes func() uint64,
-) (pc *pickedCompaction) {
+func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc *pickedCompaction) {
 	// It is important to pass information about Lbase files to L0Sublevels
 	// so it can pick a compaction that does not conflict with an Lbase => Lbase+1
 	// compaction. Without this, we observed reduced concurrency of L0=>Lbase
@@ -1677,7 +1666,7 @@ func pickL0(
 	}
 	if lcf != nil {
 		pc = newPickedCompactionFromL0(lcf, opts, vers, baseLevel, true)
-		pc.setupInputs(opts, diskAvailBytes(), pc.startLevel)
+		pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel)
 		if pc.startLevel.files.Empty() {
 			opts.Logger.Fatalf("empty compaction chosen")
 		}
@@ -1695,7 +1684,7 @@ func pickL0(
 	}
 	if lcf != nil {
 		pc = newPickedCompactionFromL0(lcf, opts, vers, 0, false)
-		if !pc.setupInputs(opts, diskAvailBytes(), pc.startLevel) {
+		if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
 			return nil
 		}
 		if pc.startLevel.files.Empty() {
@@ -1741,7 +1730,7 @@ func (p *compactionPickerByScore) pickManual(
 	if conflictsWithInProgress(manual, outputLevel, env.inProgressCompactions, p.opts.Comparer.Compare) {
 		return nil, true
 	}
-	pc = pickManualHelper(p.opts, manual, p.vers, p.baseLevel, p.diskAvailBytes, p.levelMaxBytes)
+	pc = pickManualHelper(p.opts, manual, p.vers, p.baseLevel, env.diskAvailBytes, p.levelMaxBytes)
 	if pc == nil {
 		return nil, false
 	}
@@ -1764,7 +1753,7 @@ func pickManualHelper(
 	manual *manualCompaction,
 	vers *version,
 	baseLevel int,
-	diskAvailBytes func() uint64,
+	diskAvailBytes uint64,
 	levelMaxBytes [7]int64,
 ) (pc *pickedCompaction) {
 	pc = newPickedCompaction(opts, vers, manual.level, defaultOutputLevel(manual.level, baseLevel), baseLevel)
@@ -1775,10 +1764,10 @@ func pickManualHelper(
 		// Nothing to do
 		return nil
 	}
-	if !pc.setupInputs(opts, diskAvailBytes(), pc.startLevel) {
+	if !pc.setupInputs(opts, diskAvailBytes, pc.startLevel) {
 		return nil
 	}
-	return pc.maybeAddLevel(opts, diskAvailBytes())
+	return pc.maybeAddLevel(opts, diskAvailBytes)
 }
 
 func (p *compactionPickerByScore) pickReadTriggeredCompaction(
@@ -1826,7 +1815,7 @@ func pickReadTriggeredCompactionHelper(
 	pc = newPickedCompaction(p.opts, p.vers, rc.level, defaultOutputLevel(rc.level, p.baseLevel), p.baseLevel)
 
 	pc.startLevel.files = overlapSlice
-	if !pc.setupInputs(p.opts, p.diskAvailBytes(), pc.startLevel) {
+	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel) {
 		return nil
 	}
 	if inputRangeAlreadyCompacting(env, pc) {
