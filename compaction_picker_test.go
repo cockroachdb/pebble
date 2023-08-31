@@ -1388,7 +1388,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 			var ok bool
 			d.maybeScheduleCompactionPicker(func(untypedPicker compactionPicker, env compactionEnv) *pickedCompaction {
 				p := untypedPicker.(*compactionPickerByScore)
-				lf, ok = p.pickFile(level, level+1, env.earliestSnapshotSeqNum)
+				lf, ok = pickCompactionSeedFile(p.vers, opts, level, level+1, env.earliestSnapshotSeqNum)
 				return nil
 			})
 			if !ok {
