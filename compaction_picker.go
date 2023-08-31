@@ -34,7 +34,6 @@ type compactionPicker interface {
 	getEstimatedMaxWAmp() float64
 	estimatedCompactionDebt(l0ExtraSize uint64) uint64
 	pickAuto(env compactionEnv) (pc *pickedCompaction)
-	pickManual(env compactionEnv, manual *manualCompaction) (c *pickedCompaction, retryLater bool)
 	pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction)
 	pickRewriteCompaction(env compactionEnv) (pc *pickedCompaction)
 	pickReadTriggeredCompaction(env compactionEnv) (pc *pickedCompaction)
@@ -1689,17 +1688,13 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	return pc
 }
 
-func (p *compactionPickerByScore) pickManual(
-	env compactionEnv, manual *manualCompaction,
+func pickManualCompaction(
+	vers *version, opts *Options, env compactionEnv, baseLevel int, manual *manualCompaction,
 ) (pc *pickedCompaction, retryLater bool) {
-	if p == nil {
-		return nil, false
-	}
-
 	outputLevel := manual.level + 1
 	if manual.level == 0 {
-		outputLevel = p.baseLevel
-	} else if manual.level < p.baseLevel {
+		outputLevel = baseLevel
+	} else if manual.level < baseLevel {
 		// The start level for a compaction must be >= Lbase. A manual
 		// compaction could have been created adhering to that condition, and
 		// then an automatic compaction came in and compacted all of the
@@ -1713,11 +1708,22 @@ func (p *compactionPickerByScore) pickManual(
 	// it, the compaction is dropped due to pc.setupInputs returning false since
 	// the input/output range is already being compacted, and the manual
 	// compaction ends with a non-compacted LSM.
-	if conflictsWithInProgress(manual, outputLevel, env.inProgressCompactions, p.opts.Comparer.Compare) {
+	if conflictsWithInProgress(manual, outputLevel, env.inProgressCompactions, opts.Comparer.Compare) {
 		return nil, true
 	}
-	pc = pickManualHelper(p.opts, manual, p.vers, p.baseLevel, env.diskAvailBytes, p.levelMaxBytes)
-	if pc == nil {
+	pc = newPickedCompaction(opts, vers, manual.level, defaultOutputLevel(manual.level, baseLevel), baseLevel)
+	manual.outputLevel = pc.outputLevel.level
+	pc.startLevel.files = vers.Overlaps(manual.level, opts.Comparer.Compare, manual.start, manual.end, false)
+	if pc.startLevel.files.Empty() {
+		// Nothing to do
+		return nil, false
+	}
+	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+		// setupInputs returned false indicating there's a conflicting
+		// concurrent compaction.
+		return nil, true
+	}
+	if pc = pc.maybeAddLevel(opts, env.diskAvailBytes); pc == nil {
 		return nil, false
 	}
 	if pc.outputLevel.level != outputLevel {
@@ -1732,28 +1738,6 @@ func (p *compactionPickerByScore) pickManual(
 		return nil, true
 	}
 	return pc, false
-}
-
-func pickManualHelper(
-	opts *Options,
-	manual *manualCompaction,
-	vers *version,
-	baseLevel int,
-	diskAvailBytes uint64,
-	levelMaxBytes [7]int64,
-) (pc *pickedCompaction) {
-	pc = newPickedCompaction(opts, vers, manual.level, defaultOutputLevel(manual.level, baseLevel), baseLevel)
-	manual.outputLevel = pc.outputLevel.level
-	cmp := opts.Comparer.Compare
-	pc.startLevel.files = vers.Overlaps(manual.level, cmp, manual.start, manual.end, false)
-	if pc.startLevel.files.Empty() {
-		// Nothing to do
-		return nil
-	}
-	if !pc.setupInputs(opts, diskAvailBytes, pc.startLevel) {
-		return nil
-	}
-	return pc.maybeAddLevel(opts, diskAvailBytes)
 }
 
 func (p *compactionPickerByScore) pickReadTriggeredCompaction(
