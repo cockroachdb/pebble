@@ -2255,9 +2255,10 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 
 	for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < maxConcurrentCompactions {
+		v := d.mu.versions.currentVersion()
 		manual := d.mu.compact.manual[0]
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
-		pc, retryLater := d.mu.versions.picker.pickManual(env, manual)
+		pc, retryLater := pickManualCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
 		if pc != nil {
 			c := newCompaction(pc, d.opts, d.timeNow())
 			d.mu.compact.manual = d.mu.compact.manual[1:]
