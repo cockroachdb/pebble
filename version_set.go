@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"math"
 	"sync"
 	"sync/atomic"
 
@@ -61,12 +60,11 @@ type versionSet struct {
 	// Immutable fields.
 	dirname string
 	// Set to DB.mu.
-	mu             *sync.Mutex
-	opts           *Options
-	fs             vfs.FS
-	cmp            Compare
-	cmpName        string
-	diskAvailBytes func() uint64
+	mu      *sync.Mutex
+	opts    *Options
+	fs      vfs.FS
+	cmp     Compare
+	cmpName string
 	// Dynamic base level allows the dynamic base level computation to be
 	// disabled. Used by tests which want to create specific LSM structures.
 	dynamicBaseLevel bool
@@ -144,9 +142,6 @@ func (vs *versionSet) init(
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
 	vs.setCurrent = setCurrent
-	if vs.diskAvailBytes == nil {
-		vs.diskAvailBytes = func() uint64 { return math.MaxUint64 }
-	}
 }
 
 // create creates a version set for a fresh DB.
@@ -163,7 +158,7 @@ func (vs *versionSet) create(
 	vs.append(newVersion)
 	var err error
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes(), vs.diskAvailBytes)
+	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes())
 
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
@@ -320,7 +315,7 @@ func (vs *versionSet) load(
 		l.Size = int64(files.SizeSum())
 	}
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes(), vs.diskAvailBytes)
+	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes())
 	return nil
 }
 
@@ -609,7 +604,7 @@ func (vs *versionSet) logAndApply(
 	}
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress, vs.metrics.levelSizes(), vs.diskAvailBytes)
+	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress, vs.metrics.levelSizes())
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}

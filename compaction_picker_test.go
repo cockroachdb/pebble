@@ -126,10 +126,6 @@ func loadVersion(
 	return vers, opts, sizes, ""
 }
 
-func diskAvailBytesInf() uint64 {
-	return math.MaxUint64
-}
-
 func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_picker_level_max_bytes",
 		func(t *testing.T, d *datadriven.TestData) string {
@@ -140,7 +136,7 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 					return errMsg
 				}
 
-				p, ok := newCompactionPicker(vers, opts, nil, sizes, diskAvailBytesInf).(*compactionPickerByScore)
+				p, ok := newCompactionPicker(vers, opts, nil, sizes).(*compactionPickerByScore)
 				require.True(t, ok)
 				var buf bytes.Buffer
 				for level := p.getBaseLevel(); level < numLevels; level++ {
@@ -224,7 +220,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 				}
 
-				p := newCompactionPicker(vers, opts, inProgress, sizes, diskAvailBytesInf)
+				p := newCompactionPicker(vers, opts, inProgress, sizes)
 				var ok bool
 				pickerByScore, ok = p.(*compactionPickerByScore)
 				require.True(t, ok)
@@ -234,6 +230,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				var inProgress []compactionInfo
 				for {
 					env := compactionEnv{
+						diskAvailBytes:          math.MaxUint64,
 						earliestUnflushedSeqNum: InternalKeySeqNumMax,
 						inProgressCompactions:   inProgress,
 					}
@@ -357,7 +354,7 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 				}
 				opts.MemTableSize = 1000
 
-				p := newCompactionPicker(vers, opts, nil, sizes, diskAvailBytesInf)
+				p := newCompactionPicker(vers, opts, nil, sizes)
 				return fmt.Sprintf("%d\n", p.estimatedCompactionDebt(0))
 
 			default:
@@ -509,10 +506,9 @@ func TestCompactionPickerL0(t *testing.T) {
 			vs.versions.Init(nil)
 			vs.append(version)
 			picker = &compactionPickerByScore{
-				opts:           opts,
-				vers:           version,
-				baseLevel:      baseLevel,
-				diskAvailBytes: diskAvailBytesInf,
+				opts:      opts,
+				vers:      version,
+				baseLevel: baseLevel,
 			}
 			vs.picker = picker
 			for l := 0; l < len(picker.levelSizes); l++ {
@@ -536,6 +532,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			td.MaybeScanArgs(t, "l0_compaction_file_threshold", &opts.L0CompactionFileThreshold)
 
 			pc = picker.pickAuto(compactionEnv{
+				diskAvailBytes:          math.MaxUint64,
 				earliestUnflushedSeqNum: math.MaxUint64,
 				inProgressCompactions:   inProgressCompactions,
 			})
@@ -743,7 +740,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 					sizes[l] += int64(m.Size)
 				})
 			}
-			picker = newCompactionPicker(version, opts, inProgressCompactions, sizes, diskAvailBytesInf).(*compactionPickerByScore)
+			picker = newCompactionPicker(version, opts, inProgressCompactions, sizes).(*compactionPickerByScore)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -867,7 +864,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 				})
 			}
 			var inProgressCompactions []compactionInfo
-			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes, diskAvailBytesInf).(*compactionPickerByScore)
+			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes).(*compactionPickerByScore)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -1268,7 +1265,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 				sizes[l] = int64(slice.SizeSum())
 			}
 			var inProgressCompactions []compactionInfo
-			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes, diskAvailBytesInf).(*compactionPickerByScore)
+			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes).(*compactionPickerByScore)
 			vs.picker = picker
 
 			var buf bytes.Buffer
