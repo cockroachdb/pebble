@@ -32,7 +32,16 @@ type Arena struct {
 	buf []byte
 }
 
-const nodeAlignment = 4
+const (
+	nodeAlignment = 4
+
+	// MaxMemTableSize is limited by the uint32 offsets stored in internal/arenaskl.node,
+	// DeferredBatchOp, and flushableBatchEntry. We limit the size to MaxUint32 so that the exclusive
+	// end of an allocation fits in uint32, and also to the maximum possible contiguous block of
+	// memory that can be allocated. Should be just shy of 4 GiB on 64 bit systems, and exactly 2 GiB
+	// on 32 bit systems.
+	MaxMemTableSize = min(math.MaxUint32, math.MaxInt)
+)
 
 var (
 	// ErrArenaFull indicates that the arena is full and cannot perform any more
@@ -43,11 +52,11 @@ var (
 // NewArena allocates a new arena using the specified buffer as the backing
 // store.
 func NewArena(buf []byte) *Arena {
-	if len(buf) > math.MaxInt {
+	if len(buf) > MaxMemTableSize {
 		if invariants.Enabled {
 			panic(errors.AssertionFailedf("attempting to create arena of size %d", len(buf)))
 		}
-		buf = buf[:math.MaxInt]
+		buf = buf[:MaxMemTableSize]
 	}
 	a := &Arena{
 		buf: buf,

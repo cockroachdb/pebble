@@ -35,17 +35,8 @@ import (
 const (
 	initialMemTableSize = 256 << 10 // 256 KB
 
-	// The max batch size is limited by the uint32 offsets stored in
-	// internal/batchskl.node, DeferredBatchOp, and flushableBatchEntry.
-	// We limit the size to MaxUint32 so that the exclusive end of an allocation
-	// fits in uint32.
-	maxBatchSize = math.MaxInt // just short of 4 GB
-
-	// The max memtable size is limited by the uint32 offsets stored in
-	// internal/arenaskl.node, DeferredBatchOp, and flushableBatchEntry.
-	// We limit the size to MaxUint32 so that the exclusive end of an allocation
-	// fits in uint32.
-	maxMemTableSize = math.MaxUint32 // just short of 4 GB
+	maxBatchSize    = arenaskl.MaxMemTableSize
+	maxMemTableSize = arenaskl.MaxMemTableSize
 )
 
 // TableCacheSize can be used to determine the table

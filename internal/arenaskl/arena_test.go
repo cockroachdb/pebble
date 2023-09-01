@@ -19,7 +19,6 @@ package arenaskl
 
 import (
 	"math"
-	"math/bits"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -32,10 +31,7 @@ func newArena(n uint32) *Arena {
 // TestArenaSizeOverflow tests that large allocations do not cause Arena's
 // internal size accounting to overflow and produce incorrect results.
 func TestArenaSizeOverflow(t *testing.T) {
-	if bits.UintSize == 32 {
-		t.Skip("32 bit system")
-	}
-	a := newArena(math.MaxUint32)
+	a := newArena(MaxMemTableSize)
 
 	// Allocating under the limit throws no error.
 	offset, _, err := a.alloc(math.MaxUint16, 1, 0)
@@ -45,12 +41,12 @@ func TestArenaSizeOverflow(t *testing.T) {
 
 	// Allocating over the limit could cause an accounting
 	// overflow if 32-bit arithmetic was used. It shouldn't.
-	_, _, err = a.alloc(math.MaxUint32, 1, 0)
+	_, _, err = a.alloc(MaxMemTableSize, 1, 0)
 	require.Equal(t, ErrArenaFull, err)
-	require.Equal(t, uint32(math.MaxUint32), a.Size())
+	require.Equal(t, uint32(MaxMemTableSize), a.Size())
 
 	// Continuing to allocate continues to throw an error.
 	_, _, err = a.alloc(math.MaxUint16, 1, 0)
 	require.Equal(t, ErrArenaFull, err)
-	require.Equal(t, uint32(math.MaxUint32), a.Size())
+	require.Equal(t, uint32(MaxMemTableSize), a.Size())
 }
