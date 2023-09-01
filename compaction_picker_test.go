@@ -25,21 +25,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func loadVersion(
-	t *testing.T, d *datadriven.TestData,
-) (*version, *Options, [numLevels]int64, string) {
+func loadVersion(t *testing.T, d *datadriven.TestData) (*version, *Options, string) {
 	var sizes [numLevels]int64
 	opts := &Options{}
 	opts.testingRandomized(t)
 	opts.EnsureDefaults()
 
 	if len(d.CmdArgs) != 1 {
-		return nil, nil, sizes, fmt.Sprintf("%s expects 1 argument", d.Cmd)
+		return nil, nil, fmt.Sprintf("%s expects 1 argument", d.Cmd)
 	}
 	var err error
 	opts.LBaseMaxBytes, err = strconv.ParseInt(d.CmdArgs[0].Key, 10, 64)
 	if err != nil {
-		return nil, nil, sizes, err.Error()
+		return nil, nil, err.Error()
 	}
 
 	var files [numLevels][]*fileMetadata
@@ -56,24 +54,24 @@ func loadVersion(
 			parts := strings.Split(data, " ")
 			parts[0] = strings.TrimSuffix(strings.TrimSpace(parts[0]), ":")
 			if len(parts) < 2 {
-				return nil, nil, sizes, fmt.Sprintf("malformed test:\n%s", d.Input)
+				return nil, nil, fmt.Sprintf("malformed test:\n%s", d.Input)
 			}
 			level, err := strconv.Atoi(parts[0])
 			if err != nil {
-				return nil, nil, sizes, err.Error()
+				return nil, nil, err.Error()
 			}
 			if files[level] != nil {
-				return nil, nil, sizes, fmt.Sprintf("level %d already filled", level)
+				return nil, nil, fmt.Sprintf("level %d already filled", level)
 			}
 			size, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
 			if err != nil {
-				return nil, nil, sizes, err.Error()
+				return nil, nil, err.Error()
 			}
 			var compensation uint64
 			if len(parts) == 3 {
 				compensation, err = strconv.ParseUint(strings.TrimSpace(parts[2]), 10, 64)
 				if err != nil {
-					return nil, nil, sizes, err.Error()
+					return nil, nil, err.Error()
 				}
 			}
 
@@ -123,7 +121,7 @@ func loadVersion(
 	}
 
 	vers := newVersion(opts, files)
-	return vers, opts, sizes, ""
+	return vers, opts, ""
 }
 
 func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
@@ -131,12 +129,12 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
-				vers, opts, sizes, errMsg := loadVersion(t, d)
+				vers, opts, errMsg := loadVersion(t, d)
 				if errMsg != "" {
 					return errMsg
 				}
 
-				p, ok := newCompactionPicker(vers, opts, nil, sizes).(*compactionPickerByScore)
+				p, ok := newCompactionPicker(vers, opts, nil).(*compactionPickerByScore)
 				require.True(t, ok)
 				var buf bytes.Buffer
 				for level := p.getBaseLevel(); level < numLevels; level++ {
@@ -153,7 +151,6 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 func TestCompactionPickerTargetLevel(t *testing.T) {
 	var vers *version
 	var opts *Options
-	var sizes [numLevels]int64
 	var pickerByScore *compactionPickerByScore
 
 	parseInProgress := func(vals []string) ([]compactionInfo, error) {
@@ -203,7 +200,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				// <level>: <size> [compensation]
 				// <level>: <size> [compensation]
 				var errMsg string
-				vers, opts, sizes, errMsg = loadVersion(t, d)
+				vers, opts, errMsg = loadVersion(t, d)
 				if errMsg != "" {
 					return errMsg
 				}
@@ -220,7 +217,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 				}
 
-				p := newCompactionPicker(vers, opts, inProgress, sizes)
+				p := newCompactionPicker(vers, opts, inProgress)
 				var ok bool
 				pickerByScore, ok = p.(*compactionPickerByScore)
 				require.True(t, ok)
@@ -348,13 +345,13 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
-				vers, opts, sizes, errMsg := loadVersion(t, d)
+				vers, opts, errMsg := loadVersion(t, d)
 				if errMsg != "" {
 					return errMsg
 				}
 				opts.MemTableSize = 1000
 
-				p := newCompactionPicker(vers, opts, nil, sizes)
+				p := newCompactionPicker(vers, opts, nil)
 				return fmt.Sprintf("%d\n", p.estimatedCompactionDebt(0))
 
 			default:
@@ -511,11 +508,6 @@ func TestCompactionPickerL0(t *testing.T) {
 				baseLevel: baseLevel,
 			}
 			vs.picker = picker
-			for l := 0; l < len(picker.levelSizes); l++ {
-				version.Levels[l].Slice().Each(func(m *fileMetadata) {
-					picker.levelSizes[l] += int64(m.Size)
-				})
-			}
 			picker.initLevelMaxBytes(inProgressCompactions)
 
 			var buf bytes.Buffer
@@ -734,13 +726,8 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			}
 			vs.versions.Init(nil)
 			vs.append(version)
-			var sizes [numLevels]int64
-			for l := 0; l < len(sizes); l++ {
-				version.Levels[l].Slice().Each(func(m *fileMetadata) {
-					sizes[l] += int64(m.Size)
-				})
-			}
-			picker = newCompactionPicker(version, opts, inProgressCompactions, sizes).(*compactionPickerByScore)
+
+			picker = newCompactionPicker(version, opts, inProgressCompactions).(*compactionPickerByScore)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -857,14 +844,8 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 			}
 			vs.versions.Init(nil)
 			vs.append(vers)
-			var sizes [numLevels]int64
-			for l := 0; l < len(sizes); l++ {
-				vers.Levels[l].Slice().Each(func(m *fileMetadata) {
-					sizes[l] += int64(m.Size)
-				})
-			}
 			var inProgressCompactions []compactionInfo
-			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes).(*compactionPickerByScore)
+			picker = newCompactionPicker(vers, opts, inProgressCompactions).(*compactionPickerByScore)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -1259,13 +1240,8 @@ func TestCompactionOutputFileSize(t *testing.T) {
 			}
 			vs.versions.Init(nil)
 			vs.append(vers)
-			var sizes [numLevels]int64
-			for l := 0; l < len(sizes); l++ {
-				slice := vers.Levels[l].Slice()
-				sizes[l] = int64(slice.SizeSum())
-			}
 			var inProgressCompactions []compactionInfo
-			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes).(*compactionPickerByScore)
+			picker = newCompactionPicker(vers, opts, inProgressCompactions).(*compactionPickerByScore)
 			vs.picker = picker
 
 			var buf bytes.Buffer
