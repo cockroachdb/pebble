@@ -1200,8 +1200,9 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 
 // Removes compaction markers from files in a compaction.
 //
-// DB.mu must be held when calling this method. All writes to the manifest
-// for this compaction should have completed by this point.
+// DB.mu must be held when calling this method, however this method can drop and
+// re-acquire that mutex. All writes to the manifest for this compaction should
+// have completed by this point.
 func (d *DB) removeInProgressCompaction(c *compaction) {
 	for _, cl := range c.inputs {
 		iter := cl.files.Iter()
@@ -1216,7 +1217,17 @@ func (d *DB) removeInProgressCompaction(c *compaction) {
 	delete(d.mu.compact.inProgress, c)
 
 	l0InProgress := inProgressL0Compactions(d.getInProgressCompactionInfoLocked(c))
-	d.mu.versions.currentVersion().L0Sublevels.InitCompactingFileInfo(l0InProgress)
+	func() {
+		// InitCompactingFileInfo requires that no other manifest writes be
+		// happening in parallel with it, i.e. we're not in the midst of installing
+		// another version. Otherwise, it's possible that we've created another
+		// L0Sublevels instance, but not added it to the versions list, causing
+		// all the indices in FileMetadata to be inaccurate. To ensure this,
+		// grab the manifest lock.
+		d.mu.versions.logLock()
+		defer d.mu.versions.logUnlock()
+		d.mu.versions.currentVersion().L0Sublevels.InitCompactingFileInfo(l0InProgress)
+	}()
 }
 
 func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
