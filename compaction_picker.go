@@ -1321,7 +1321,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			// Fail-safe to protect against compacting the same sstable
 			// concurrently.
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
-				pc.pickerMetrics = p.updatePickerMetrics(env, *pc, scores)
+				p.addScoresToPickedCompactionMetrics(pc, scores)
 				pc.score = info.score
 				// TODO(bananabrick): Create an EventListener for logCompaction.
 				if false {
@@ -1341,7 +1341,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		pc := pickAutoLPositive(env, p.opts, p.vers, *info, p.baseLevel, p.diskAvailBytes)
 		// Fail-safe to protect against compacting the same sstable concurrently.
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
-			pc.pickerMetrics = p.updatePickerMetrics(env, *pc, scores)
+			p.addScoresToPickedCompactionMetrics(pc, scores)
 			pc.score = info.score
 			// TODO(bananabrick): Create an EventListener for logCompaction.
 			if false {
@@ -1403,30 +1403,28 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	return nil
 }
 
-func (p *compactionPickerByScore) updatePickerMetrics(
-	env compactionEnv, pc pickedCompaction, candInfo [7]candidateLevelInfo,
-) compactionPickerMetrics {
-	metrics := pc.pickerMetrics
+func (p *compactionPickerByScore) addScoresToPickedCompactionMetrics(
+	pc *pickedCompaction, candInfo [numLevels]candidateLevelInfo,
+) {
 
 	// candInfo is sorted by score, not by compaction level.
-	infoByLevel := [7]candidateLevelInfo{}
+	infoByLevel := [numLevels]candidateLevelInfo{}
 	for i := range candInfo {
 		level := candInfo[i].level
 		infoByLevel[level] = candInfo[i]
 	}
 	// Gather the compaction scores for the levels participating in the compaction.
-	metrics.scores = make([]float64, len(pc.inputs))
+	pc.pickerMetrics.scores = make([]float64, len(pc.inputs))
 	inputIdx := 0
 	for i := range infoByLevel {
 		if pc.inputs[inputIdx].level == infoByLevel[i].level {
-			metrics.scores[inputIdx] = infoByLevel[i].score
+			pc.pickerMetrics.scores[inputIdx] = infoByLevel[i].score
 			inputIdx++
 		}
 		if inputIdx == len(pc.inputs) {
 			break
 		}
 	}
-	return metrics
 }
 
 // elisionOnlyAnnotator implements the manifest.Annotator interface,
@@ -1679,7 +1677,7 @@ func (pc *pickedCompaction) maybeAddLevel(opts *Options, diskAvailBytes uint64) 
 		// Don't add a level if the current output level is in L6
 		return pc
 	}
-	if !opts.Experimental.MultiLevelCompactionHueristic.allowL0() && pc.startLevel.level == 0 {
+	if !opts.Experimental.MultiLevelCompactionHeuristic.allowL0() && pc.startLevel.level == 0 {
 		return pc
 	}
 	if pc.compactionSize() > expandedCompactionByteSizeLimit(
@@ -1687,7 +1685,7 @@ func (pc *pickedCompaction) maybeAddLevel(opts *Options, diskAvailBytes uint64) 
 		// Don't add a level if the current compaction exceeds the compaction size limit
 		return pc
 	}
-	return opts.Experimental.MultiLevelCompactionHueristic.pick(pc, opts, diskAvailBytes)
+	return opts.Experimental.MultiLevelCompactionHeuristic.pick(pc, opts, diskAvailBytes)
 }
 
 // MultiLevelHeuristic evaluates whether to add files from the next level into the compaction.
@@ -1756,6 +1754,11 @@ type WriteAmpHeuristic struct {
 
 var _ MultiLevelHeuristic = (*WriteAmpHeuristic)(nil)
 
+// TODO(msbutler): microbenchmark the extent to which multilevel compaction
+// picking slows down the compaction picking process.  This should be as fast as
+// possible since Compaction-picking holds d.mu, which prevents WAL rotations,
+// in-progress flushes and compactions from completing, etc. Consider ways to
+// deduplicate work, given that setupInputs has already been called.
 func (wa WriteAmpHeuristic) pick(
 	pcOrig *pickedCompaction, opts *Options, diskAvailBytes uint64,
 ) *pickedCompaction {

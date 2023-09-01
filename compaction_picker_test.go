@@ -1102,17 +1102,17 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 	}
 
 	t.Logf("Test basic setup inputs behavior without multi level compactions")
-	opts.Experimental.MultiLevelCompactionHueristic = NoMultiLevel{}
+	opts.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs",
 		setupInputTest)
 
 	t.Logf("Turning multi level compaction on")
-	opts.Experimental.MultiLevelCompactionHueristic = alwaysMultiLevel{}
+	opts.Experimental.MultiLevelCompactionHeuristic = alwaysMultiLevel{}
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_dummy",
 		setupInputTest)
 
 	t.Logf("Try Write-Amp Heuristic")
-	opts.Experimental.MultiLevelCompactionHueristic = WriteAmpHeuristic{}
+	opts.Experimental.MultiLevelCompactionHeuristic = WriteAmpHeuristic{}
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_write_amp",
 		setupInputTest)
 }

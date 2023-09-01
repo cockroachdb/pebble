@@ -5,8 +5,8 @@
 
 
 log
-I211215 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
-I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,pebble] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+I211215 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
+I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,pebble] 1216554  [JOB 1] [JOB 1] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 
 I211215 00:01:10.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n1,s1,pebble] 24 [JOB 2] flushing 2 memtables (1.5MB) to L0
 I211215 00:01:20.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n1,pebble,s1] 26 [JOB 2] flushed 2 memtables (1.5MB) to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s
@@ -37,12 +37,12 @@ reset
 ----
 
 log
-I211215 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,bars,s1,foos] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
+I211215 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,bars,s1,foos] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
 ----
 0.log
 
 log
-I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,foos] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,foos] 1216554  [JOB 1] [JOB 1] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 ----
 1.log
 
@@ -80,8 +80,8 @@ reset
 ----
 
 log
-I211215 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
-I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+I211215 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
+I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] [JOB 1] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 ----
 0.log
 
@@ -119,8 +119,8 @@ reset
 ----
 
 log
-I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,s1,pebble] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
-I211215 00:03:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,s1,pebble] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
+I211215 00:03:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] [JOB 1] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 ----
 0.log
 
@@ -143,8 +143,8 @@ reset
 ----
 
 log
-I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
-I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
+I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] [JOB 1] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 
 I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s2] 1216510  [JOB 2] compacting(default) L3 [442555] (4.2MB) + L4 [445853] (8.4MB)
 I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s2] 1216554  [JOB 2] compacted(default) L3 [442555] (4.2MB) + L4 [445853] (8.4MB) -> L4 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
@@ -174,8 +174,8 @@ reset
 ----
 
 log
-I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
-I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
+I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] [JOB 1] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 ----
 0.log
 
@@ -209,8 +209,8 @@ reset
 ----
 
 log
-I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
-I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
+I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] [JOB 1] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 
 I211215 00:02:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s2] 1216510  [JOB 2] compacting(default) L1 [442555] (4.2MB) + L2 [445853] (8.4MB)
 I211215 00:02:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s2] 1216554  [JOB 2] compacted(default) L1 [442555] (4.2MB) + L2 [445853] (8.4MB) -> L2 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
@@ -263,8 +263,8 @@ reset
 ----
 
 log
-I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n?,pebble,s?] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
-I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n?,pebble,s?] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n?,pebble,s?] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
+I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n?,pebble,s?] 1216554  [JOB 1] [JOB 1] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 ----
 0.log
 
@@ -302,9 +302,9 @@ reset
 ----
 
 log
-I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
-I211215 00:02:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n2,pebble,s2] 1216510  [JOB 1] compacting(default) L4 [442555] (4.2MB) + L5 [445853] (8.4MB)
-I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
+I211215 00:02:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n2,pebble,s2] 1216510  [JOB 1] compacting(default) L4 [442555] (4.2MB) Score=1.01 + L5 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
+I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] [JOB 1] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 I211215 00:02:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n2,pebble,s2] 1216554  [JOB 1] compacted(default) L4 [442555] (4.2MB) + L5 [445853] (8.4MB) -> L5 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 ----
 0.log
@@ -332,8 +332,8 @@ reset
 ----
 
 log
-I220301 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
-I220301 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+I220301 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05
+I220301 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] [JOB 1] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 ----
 0.log
 

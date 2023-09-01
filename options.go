@@ -603,10 +603,10 @@ type Options struct {
 		// desired size of each level of the LSM. Defaults to 10.
 		LevelMultiplier int
 
-		// MultiLevelCompactionHueristic determines whether to add an additional
+		// MultiLevelCompactionHeuristic determines whether to add an additional
 		// level to a conventional two level compaction. If nil, a multilevel
 		// compaction will never get triggered.
-		MultiLevelCompactionHueristic MultiLevelHeuristic
+		MultiLevelCompactionHeuristic MultiLevelHeuristic
 
 		// MaxWriterConcurrency is used to indicate the maximum number of
 		// compression workers the compression queue is allowed to use. If
@@ -1086,8 +1086,8 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.CPUWorkPermissionGranter == nil {
 		o.Experimental.CPUWorkPermissionGranter = defaultCPUWorkGranter{}
 	}
-	if o.Experimental.MultiLevelCompactionHueristic == nil {
-		o.Experimental.MultiLevelCompactionHueristic = WriteAmpHeuristic{}
+	if o.Experimental.MultiLevelCompactionHeuristic == nil {
+		o.Experimental.MultiLevelCompactionHeuristic = WriteAmpHeuristic{}
 	}
 
 	o.initMaps()

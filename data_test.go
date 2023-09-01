@@ -916,7 +916,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			}
 			opts.FormatMajorVersion = FormatMajorVersion(fmv)
 		case "disable-multi-level":
-			opts.Experimental.MultiLevelCompactionHueristic = NoMultiLevel{}
+			opts.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
 		}
 	}
 	d, err := Open("", opts)
