@@ -708,7 +708,7 @@ func (s *L0Sublevels) calculateFlushSplitKeys(flushSplitMaxBytes int64) {
 // InitCompactingFileInfo initializes internal flags relating to compacting
 // files. Must be called after sublevel initialization.
 //
-// Requires DB.mu to be held.
+// Requires DB.mu *and* the manifest lock to be held.
 func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 	for i := range s.orderedIntervals {
 		s.orderedIntervals[i].compactingFileCount = 0
@@ -730,6 +730,13 @@ func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 		}
 		if !f.IsCompacting() {
 			continue
+		}
+		if invariants.Enabled {
+			if s.cmp(s.orderedIntervals[f.minIntervalIndex].startKey.key, f.Smallest.UserKey) != 0 || s.cmp(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, f.Largest.UserKey) != 0 {
+				panic(fmt.Sprintf("file %s has inconsistent L0 Sublevel interval bounds: %s-%s, %s-%s", f.FileNum,
+					s.orderedIntervals[f.minIntervalIndex].startKey.key, s.orderedIntervals[f.maxIntervalIndex+1].startKey.key,
+					f.Smallest.UserKey, f.Largest.UserKey))
+			}
 		}
 		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 			interval := &s.orderedIntervals[i]
