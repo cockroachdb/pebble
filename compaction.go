@@ -1890,8 +1890,6 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 			levelMetrics = &LevelMetrics{}
 			c.metrics[level] = levelMetrics
 		}
-		levelMetrics.NumFiles++
-		levelMetrics.Size += int64(file.Size)
 		levelMetrics.BytesIngested += file.Size
 		levelMetrics.TablesIngested++
 	}
@@ -2735,8 +2733,6 @@ func (d *DB) runCompaction(
 			levelMetrics := &LevelMetrics{}
 			iter := cl.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				levelMetrics.NumFiles--
-				levelMetrics.Size -= int64(f.Size)
 				ve.DeletedFiles[deletedFileEntry{
 					Level:   cl.level,
 					FileNum: f.FileNum,
@@ -2759,13 +2755,7 @@ func (d *DB) runCompaction(
 		iter := c.startLevel.files.Iter()
 		meta := iter.First()
 		c.metrics = map[int]*LevelMetrics{
-			c.startLevel.level: {
-				NumFiles: -1,
-				Size:     -int64(meta.Size),
-			},
 			c.outputLevel.level: {
-				NumFiles:    1,
-				Size:        int64(meta.Size),
 				BytesMoved:  meta.Size,
 				TablesMoved: 1,
 			},
@@ -3390,8 +3380,6 @@ func (d *DB) runCompaction(
 	for _, cl := range c.inputs {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			c.metrics[cl.level].NumFiles--
-			c.metrics[cl.level].Size -= int64(f.Size)
 			ve.DeletedFiles[deletedFileEntry{
 				Level:   cl.level,
 				FileNum: f.FileNum,

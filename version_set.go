@@ -158,8 +158,7 @@ func (vs *versionSet) create(
 	vs.append(newVersion)
 	var err error
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes())
-
+	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextFileNum()
@@ -315,7 +314,7 @@ func (vs *versionSet) load(
 		l.Size = int64(files.SizeSum())
 	}
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes())
+	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
 	return nil
 }
 
@@ -588,6 +587,9 @@ func (vs *versionSet) logAndApply(
 	}
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
+		l.NumFiles = int64(newVersion.Levels[i].Len())
+		l.Size = int64(newVersion.Levels[i].Size())
+
 		l.Sublevels = 0
 		if l.NumFiles > 0 {
 			l.Sublevels = 1
@@ -604,7 +606,7 @@ func (vs *versionSet) logAndApply(
 	}
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress, vs.metrics.levelSizes())
+	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress)
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}

@@ -1027,6 +1027,9 @@ func NewVersion(
 		} else {
 			v.Levels[l].tree.cmp = btreeCmpSmallestKey(cmp)
 		}
+		for _, f := range files[l] {
+			v.Levels[l].totalSize += f.Size
+		}
 	}
 	if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
 		panic(err)
