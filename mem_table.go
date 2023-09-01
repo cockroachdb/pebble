@@ -169,7 +169,8 @@ func (m *memTable) writerRef() {
 	}
 }
 
-func (m *memTable) writerUnref() bool {
+// writerUnref drops a ref on the memtable. Returns true if this was the last ref.
+func (m *memTable) writerUnref() (wasLastRef bool) {
 	switch v := m.writerRefs.Add(-1); {
 	case v < 0:
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
