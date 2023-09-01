@@ -29,7 +29,6 @@ import (
 )
 
 var errEmptyTable = errors.New("pebble: empty table")
-var errFlushInvariant = errors.New("pebble: flush next log number is unset")
 
 var compactLabels = pprof.Labels("pebble", "compact")
 var flushLabels = pprof.Labels("pebble", "flush")
@@ -1648,8 +1647,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	// the commitPipeline.mu and then holding DB.mu. As an extra defensive
 	// measure, if we try to flush the memtable without also flushing the
 	// flushable batch in the same flush, since the memtable and flushableBatch
-	// have the same logNum, the errFlushInvariant check below will trigger and
-	// prevent the flush from continuing.
+	// have the same logNum, the logNum invariant check below will trigger.
 	var n int
 	for ; n < len(d.mu.mem.queue)-1; n++ {
 		if !d.mu.mem.queue[n].readyForFlush() {
@@ -1666,9 +1664,11 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	minUnflushedLogNum := d.mu.mem.queue[n].logNum
 	if !d.opts.DisableWAL {
 		for i := 0; i < n; i++ {
-			logNum := d.mu.mem.queue[i].logNum
-			if logNum >= minUnflushedLogNum {
-				return 0, errFlushInvariant
+			if logNum := d.mu.mem.queue[i].logNum; logNum >= minUnflushedLogNum {
+				panic(errors.AssertionFailedf("logNum invariant violated: flushing %d items; %d:type=%T,logNum=%d; %d:type=%T,logNum=%d",
+					n,
+					i, d.mu.mem.queue[i].flushable, logNum,
+					n, d.mu.mem.queue[n].flushable, minUnflushedLogNum))
 			}
 		}
 	}
