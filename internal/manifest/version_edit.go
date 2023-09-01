@@ -967,7 +967,7 @@ func (b *BulkVersionEdit) Apply(
 		// level.
 
 		for _, f := range deletedFilesMap {
-			if obsolete := v.Levels[level].tree.Delete(f); obsolete {
+			if obsolete := v.Levels[level].remove(f); obsolete {
 				// Deleting a file from the B-Tree may decrement its
 				// reference count. However, because we cloned the
 				// previous level's B-Tree, this should never result in a
@@ -976,7 +976,7 @@ func (b *BulkVersionEdit) Apply(
 				return nil, err
 			}
 			if f.HasRangeKeys {
-				if obsolete := v.RangeKeyLevels[level].tree.Delete(f); obsolete {
+				if obsolete := v.RangeKeyLevels[level].remove(f); obsolete {
 					// Deleting a file from the B-Tree may decrement its
 					// reference count. However, because we cloned the
 					// previous level's B-Tree, this should never result in a
@@ -1029,7 +1029,7 @@ func (b *BulkVersionEdit) Apply(
 			f.AllowedSeeks.Store(allowedSeeks)
 			f.InitAllowedSeeks = allowedSeeks
 
-			err := lm.tree.Insert(f)
+			err := lm.insert(f)
 			// We're adding this file to the new version, so increment the
 			// latest refs count.
 			f.LatestRef()
@@ -1037,7 +1037,7 @@ func (b *BulkVersionEdit) Apply(
 				return nil, errors.Wrap(err, "pebble")
 			}
 			if f.HasRangeKeys {
-				err = lmRange.tree.Insert(f)
+				err = lmRange.insert(f)
 				if err != nil {
 					return nil, errors.Wrap(err, "pebble")
 				}

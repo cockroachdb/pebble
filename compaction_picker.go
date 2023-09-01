@@ -642,12 +642,11 @@ func expandToAtomicUnit(
 }
 
 func newCompactionPicker(
-	v *version, opts *Options, inProgressCompactions []compactionInfo, levelSizes [numLevels]int64,
+	v *version, opts *Options, inProgressCompactions []compactionInfo,
 ) compactionPicker {
 	p := &compactionPickerByScore{
-		opts:       opts,
-		vers:       v,
-		levelSizes: levelSizes,
+		opts: opts,
+		vers: v,
 	}
 	p.initLevelMaxBytes(inProgressCompactions)
 	return p
@@ -749,9 +748,6 @@ type compactionPickerByScore struct {
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
 	levelMaxBytes [numLevels]int64
-
-	// levelSizes holds the current size of each level.
-	levelSizes [numLevels]int64
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -784,8 +780,8 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 
 	// We assume that all the bytes in L0 need to be compacted to Lbase. This is
 	// unlike the RocksDB logic that figures out whether L0 needs compaction.
-	bytesAddedToNextLevel := l0ExtraSize + uint64(p.levelSizes[0])
-	lbaseSize := uint64(p.levelSizes[p.baseLevel])
+	bytesAddedToNextLevel := l0ExtraSize + p.vers.Levels[0].Size()
+	lbaseSize := p.vers.Levels[p.baseLevel].Size()
 
 	var compactionDebt uint64
 	if bytesAddedToNextLevel > 0 && lbaseSize > 0 {
@@ -798,8 +794,8 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 	// loop invariant: At the beginning of the loop, bytesAddedToNextLevel is the
 	// bytes added to `level` in the loop.
 	for level := p.baseLevel; level < numLevels-1; level++ {
-		levelSize := uint64(p.levelSizes[level]) + bytesAddedToNextLevel
-		nextLevelSize := uint64(p.levelSizes[level+1])
+		levelSize := p.vers.Levels[level].Size() + bytesAddedToNextLevel
+		nextLevelSize := p.vers.Levels[level+1].Size()
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
 			if nextLevelSize > 0 {
@@ -839,13 +835,13 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 
 	// Determine the first non-empty level and the total DB size.
 	firstNonEmptyLevel := -1
-	var dbSize int64
+	var dbSize uint64
 	for level := 1; level < numLevels; level++ {
-		if p.levelSizes[level] > 0 {
+		if p.vers.Levels[level].Size() > 0 {
 			if firstNonEmptyLevel == -1 {
 				firstNonEmptyLevel = level
 			}
-			dbSize += p.levelSizes[level]
+			dbSize += p.vers.Levels[level].Size()
 		}
 	}
 	for _, c := range inProgressCompactions {
@@ -874,20 +870,20 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		return
 	}
 
-	dbSize += p.levelSizes[0]
-	bottomLevelSize := dbSize - dbSize/int64(p.opts.Experimental.LevelMultiplier)
+	dbSize += p.vers.Levels[0].Size()
+	bottomLevelSize := dbSize - dbSize/uint64(p.opts.Experimental.LevelMultiplier)
 
 	curLevelSize := bottomLevelSize
 	for level := numLevels - 2; level >= firstNonEmptyLevel; level-- {
-		curLevelSize = int64(float64(curLevelSize) / float64(p.opts.Experimental.LevelMultiplier))
+		curLevelSize = uint64(float64(curLevelSize) / float64(p.opts.Experimental.LevelMultiplier))
 	}
 
 	// Compute base level (where L0 data is compacted to).
-	baseBytesMax := p.opts.LBaseMaxBytes
+	baseBytesMax := uint64(p.opts.LBaseMaxBytes)
 	p.baseLevel = firstNonEmptyLevel
 	for p.baseLevel > 1 && curLevelSize > baseBytesMax {
 		p.baseLevel--
-		curLevelSize = int64(float64(curLevelSize) / float64(p.opts.Experimental.LevelMultiplier))
+		curLevelSize = uint64(float64(curLevelSize) / float64(p.opts.Experimental.LevelMultiplier))
 	}
 
 	smoothedLevelMultiplier := 1.0
@@ -916,16 +912,16 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 }
 
 type levelSizeAdjust struct {
-	incomingActualBytes      int64
-	outgoingActualBytes      int64
-	outgoingCompensatedBytes int64
+	incomingActualBytes      uint64
+	outgoingActualBytes      uint64
+	outgoingCompensatedBytes uint64
 }
 
-func (a levelSizeAdjust) compensated() int64 {
+func (a levelSizeAdjust) compensated() uint64 {
 	return a.incomingActualBytes - a.outgoingCompensatedBytes
 }
 
-func (a levelSizeAdjust) actual() int64 {
+func (a levelSizeAdjust) actual() uint64 {
 	return a.incomingActualBytes - a.outgoingActualBytes
 }
 
@@ -957,8 +953,8 @@ func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]leve
 		}
 
 		for _, input := range c.inputs {
-			actualSize := int64(input.files.SizeSum())
-			compensatedSize := int64(totalCompensatedSize(input.files.Iter()))
+			actualSize := input.files.SizeSum()
+			compensatedSize := totalCompensatedSize(input.files.Iter())
 
 			if input.level != c.outputLevel {
 				sizeAdjust[input.level].outgoingCompensatedBytes += compensatedSize
@@ -990,7 +986,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 	}
 	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
 	for level := 1; level < numLevels; level++ {
-		compensatedLevelSize := int64(levelCompensatedSize(p.vers.Levels[level])) + sizeAdjust[level].compensated()
+		compensatedLevelSize := levelCompensatedSize(p.vers.Levels[level]) + sizeAdjust[level].compensated()
 		scores[level].score = float64(compensatedLevelSize) / float64(p.levelMaxBytes[level])
 		scores[level].origScore = scores[level].score
 
@@ -998,7 +994,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 		// that uses actual file sizes, not compensated sizes. This is used
 		// during score smoothing down below to prevent excessive
 		// prioritization of reclaiming disk space.
-		scores[level].rawScore = float64(p.levelSizes[level]+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
+		scores[level].rawScore = float64(p.vers.Levels[level].Size()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
 	}
 
 	// Adjust each level's score by the score of the next level. If the next
