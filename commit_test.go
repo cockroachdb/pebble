@@ -64,20 +64,20 @@ func TestCommitQueue(t *testing.T) {
 	for i := range batches {
 		q.enqueue(&batches[i])
 	}
-	if b := q.dequeue(); b != nil {
+	if b := q.dequeueApplied(); b != nil {
 		t.Fatalf("unexpectedly dequeued batch: %p", b)
 	}
 	batches[1].applied.Store(true)
-	if b := q.dequeue(); b != nil {
+	if b := q.dequeueApplied(); b != nil {
 		t.Fatalf("unexpectedly dequeued batch: %p", b)
 	}
 	for i := range batches {
 		batches[i].applied.Store(true)
-		if b := q.dequeue(); b != &batches[i] {
+		if b := q.dequeueApplied(); b != &batches[i] {
 			t.Fatalf("%d: expected batch %p, but found %p", i, &batches[i], b)
 		}
 	}
-	if b := q.dequeue(); b != nil {
+	if b := q.dequeueApplied(); b != nil {
 		t.Fatalf("unexpectedly dequeued batch: %p", b)
 	}
 }
