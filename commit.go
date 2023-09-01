@@ -66,7 +66,7 @@ func (q *commitQueue) enqueue(b *Batch) {
 	}
 	slot := &q.slots[head&uint32(len(q.slots)-1)]
 
-	// Check if the head slot has been released by dequeue.
+	// Check if the head slot has been released by dequeueApplied.
 	for slot.Load() != nil {
 		// Another goroutine is still cleaning up the tail, so the queue is
 		// actually still full. We spin because this should resolve itself
@@ -77,12 +77,16 @@ func (q *commitQueue) enqueue(b *Batch) {
 	// The head slot is free, so we own it.
 	slot.Store(b)
 
-	// Increment head. This passes ownership of slot to dequeue and acts as a
+	// Increment head. This passes ownership of slot to dequeueApplied and acts as a
 	// store barrier for writing the slot.
 	q.headTail.Add(1 << dequeueBits)
 }
 
-func (q *commitQueue) dequeue() *Batch {
+// dequeueApplied removes the earliest enqueued Batch, if it is applied.
+//
+// Returns nil if the commit queue is empty or the earliest Batch is not yet
+// applied.
+func (q *commitQueue) dequeueApplied() *Batch {
 	for {
 		ptrs := q.headTail.Load()
 		head, tail := q.unpack(ptrs)
@@ -472,13 +476,13 @@ func (p *commitPipeline) publish(b *Batch) {
 
 	// Loop dequeuing applied batches from the pending queue. If our batch was
 	// the head of the pending queue we are guaranteed that either we'll publish
-	// it or someone else will dequeue and publish it. If our batch is not the
-	// head of the queue then either we'll dequeue applied batches and reach our
+	// it or someone else will dequeueApplied and publish it. If our batch is not the
+	// head of the queue then either we'll dequeueApplied applied batches and reach our
 	// batch or there is an unapplied batch blocking us. When that unapplied
 	// batch applies it will go through the same process and publish our batch
 	// for us.
 	for {
-		t := p.pending.dequeue()
+		t := p.pending.dequeueApplied()
 		if t == nil {
 			// Wait for another goroutine to publish us. We might also be waiting for
 			// the WAL sync to finish.
