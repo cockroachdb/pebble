@@ -1667,8 +1667,9 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 // indicates whether the compaction state should be rolled back to its original
 // state in the case of an unsuccessful compaction.
 //
-// DB.mu must be held when calling this method. All writes to the manifest for
-// this compaction should have completed by this point.
+// DB.mu must be held when calling this method, however this method can drop and
+// re-acquire that mutex. All writes to the manifest for this compaction should
+// have completed by this point.
 func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 	c.versionEditApplied = true
 	for _, cl := range c.inputs {
@@ -1695,7 +1696,17 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 		}
 	}
 	l0InProgress := inProgressL0Compactions(d.getInProgressCompactionInfoLocked(c))
-	d.mu.versions.currentVersion().L0Sublevels.InitCompactingFileInfo(l0InProgress)
+	func() {
+		// InitCompactingFileInfo requires that no other manifest writes be
+		// happening in parallel with it, i.e. we're not in the midst of installing
+		// another version. Otherwise, it's possible that we've created another
+		// L0Sublevels instance, but not added it to the versions list, causing
+		// all the indices in FileMetadata to be inaccurate. To ensure this,
+		// grab the manifest lock.
+		d.mu.versions.logLock()
+		defer d.mu.versions.logUnlock()
+		d.mu.versions.currentVersion().L0Sublevels.InitCompactingFileInfo(l0InProgress)
+	}()
 }
 
 func (d *DB) calculateDiskAvailableBytes() uint64 {
