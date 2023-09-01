@@ -162,6 +162,7 @@ func newIngestedFlushable(
 // TODO(sumeer): ingestedFlushable iters also need to plumb context for
 // tracing.
 
+// newIter is part of the flushable interface.
 func (s *ingestedFlushable) newIter(o *IterOptions) internalIterator {
 	var opts IterOptions
 	if o != nil {
@@ -176,6 +177,7 @@ func (s *ingestedFlushable) newIter(o *IterOptions) internalIterator {
 	)
 }
 
+// newFlushIter is part of the flushable interface.
 func (s *ingestedFlushable) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
 	// newFlushIter is only used for writing memtables to disk as sstables.
 	// Since ingested sstables are already present on disk, they don't need to
@@ -199,6 +201,7 @@ func (s *ingestedFlushable) constructRangeDelIter(
 	return rangeDelIter, nil
 }
 
+// newRangeDelIter is part of the flushable interface.
 // TODO(bananabrick): Using a level iter instead of a keyspan level iter to
 // surface range deletes is more efficient.
 func (s *ingestedFlushable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
@@ -209,6 +212,7 @@ func (s *ingestedFlushable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIter
 	)
 }
 
+// newRangeKeyIter is part of the flushable interface.
 func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIterator {
 	if !s.containsRangeKeys() {
 		return nil
@@ -220,20 +224,24 @@ func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIter
 	)
 }
 
+// containsRangeKeys is part of the flushable interface.
 func (s *ingestedFlushable) containsRangeKeys() bool {
 	return s.hasRangeKeys
 }
 
+// inuseBytes is part of the flushable interface.
 func (s *ingestedFlushable) inuseBytes() uint64 {
 	// inuseBytes is only used when memtables are flushed to disk as sstables.
 	panic("pebble: not implemented")
 }
 
+// totalBytes is part of the flushable interface.
 func (s *ingestedFlushable) totalBytes() uint64 {
 	// We don't allocate additional bytes for the ingestedFlushable.
 	return 0
 }
 
+// readyForFlush is part of the flushable interface.
 func (s *ingestedFlushable) readyForFlush() bool {
 	// ingestedFlushable should always be ready to flush. However, note that
 	// memtables before the ingested sstables in the memtable queue must be
