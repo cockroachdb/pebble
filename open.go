@@ -80,7 +80,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// Open the database and WAL directories first.
 	walDirname, dataDir, walDir, err := prepareAndOpenDirs(dirname, opts)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "error opening database at %q", dirname)
 	}
 	defer func() {
 		if db == nil {
