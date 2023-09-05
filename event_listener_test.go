@@ -206,7 +206,7 @@ func TestEventListener(t *testing.T) {
 			d.waitTableStats()
 			d.mu.Unlock()
 
-			return d.Metrics().String()
+			return d.Metrics().StringForTests()
 
 		case "sstables":
 			var buf bytes.Buffer

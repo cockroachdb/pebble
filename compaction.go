@@ -1769,7 +1769,7 @@ func (d *DB) passedFlushThreshold() bool {
 		if d.mu.mem.queue[n].flushForced {
 			// A flush was forced. Pretend the memtable size is the configured
 			// size. See minFlushSize below.
-			size += uint64(d.opts.MemTableSize)
+			size += d.opts.MemTableSize
 		} else {
 			size += d.mu.mem.queue[n].totalBytes()
 		}
@@ -1783,7 +1783,7 @@ func (d *DB) passedFlushThreshold() bool {
 	// configured memtable size. This prevents flushing of memtables at startup
 	// while we're undergoing the ramp period on the memtable size. See
 	// DB.newMemTable().
-	minFlushSize := uint64(d.opts.MemTableSize) / 2
+	minFlushSize := d.opts.MemTableSize / 2
 	return size >= minFlushSize
 }
 

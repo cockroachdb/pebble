@@ -127,7 +127,7 @@ func newMemTable(opts memTableOptions) *memTable {
 
 func (m *memTable) init(opts memTableOptions) {
 	if opts.size == 0 {
-		opts.size = opts.MemTableSize
+		opts.size = int(opts.MemTableSize)
 	}
 	*m = memTable{
 		cmp:                          opts.Comparer.Compare,

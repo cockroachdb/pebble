@@ -771,7 +771,7 @@ func TestBatchOpDoesIncrement(t *testing.T) {
 func TestBatchGet(t *testing.T) {
 	testCases := []struct {
 		method       string
-		memTableSize int
+		memTableSize uint64
 	}{
 		{"build", 64 << 20},
 		{"build", 2 << 10},

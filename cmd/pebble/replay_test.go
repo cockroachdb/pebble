@@ -35,7 +35,7 @@ func TestParseOptionsStr(t *testing.T) {
 		{
 			c: replayConfig{
 				maxCacheSize:  16 << 20, /* 16 MB */
-				optionsString: fmt.Sprintf(`[Options] cache_size=%d`, 10<<30 /* 10 GB */),
+				optionsString: fmt.Sprintf(`[Options] cache_size=%d`, int64(10<<30 /* 10 GB */)),
 			},
 			options: &pebble.Options{Cache: cache.New(16 << 20 /* 16 MB */)},
 		},

@@ -627,7 +627,7 @@ func TestWALReplaySequenceNumBug(t *testing.T) {
 	require.NoError(t, d.Set([]byte("2"), nil, nil))
 
 	// Write a large batch. This should go to a separate memtable.
-	largeValue := []byte(strings.Repeat("a", d.largeBatchThreshold))
+	largeValue := []byte(strings.Repeat("a", int(d.largeBatchThreshold)))
 	require.NoError(t, d.Set([]byte("1"), largeValue, nil))
 
 	// This write should go the mutable memtable after the large batch in the
@@ -694,7 +694,7 @@ func TestOpenWALReplay2(t *testing.T) {
 						require.NoError(t, d.Set([]byte("2"), largeValue, nil))
 						require.NoError(t, d.Set([]byte("3"), largeValue, nil))
 					case "large-batch":
-						largeValue := []byte(strings.Repeat("a", d.largeBatchThreshold))
+						largeValue := []byte(strings.Repeat("a", int(d.largeBatchThreshold)))
 						require.NoError(t, d.Set([]byte("1"), nil, nil))
 						require.NoError(t, d.Set([]byte("2"), largeValue, nil))
 						require.NoError(t, d.Set([]byte("3"), nil, nil))

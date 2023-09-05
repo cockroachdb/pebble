@@ -63,14 +63,15 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/constants"
 	"golang.org/x/exp/rand"
 )
 
 const (
 	maxHeight    = 20
-	maxNodeSize  = int(unsafe.Sizeof(node{}))
-	linksSize    = int(unsafe.Sizeof(links{}))
-	maxNodesSize = math.MaxUint32
+	maxNodeSize  = uint64(unsafe.Sizeof(node{}))
+	linksSize    = uint64(unsafe.Sizeof(links{}))
+	maxNodesSize = constants.MaxUint32OrInt
 )
 
 var (
@@ -281,7 +282,7 @@ func (s *Skiplist) newNode(
 		panic("height cannot be less than one or greater than the max height")
 	}
 
-	unusedSize := (maxHeight - int(height)) * linksSize
+	unusedSize := uint64(maxHeight-int(height)) * linksSize
 	nodeOffset, err := s.alloc(uint32(maxNodeSize - unusedSize))
 	if err != nil {
 		return 0, err
@@ -296,13 +297,13 @@ func (s *Skiplist) newNode(
 }
 
 func (s *Skiplist) alloc(size uint32) (uint32, error) {
-	offset := len(s.nodes)
+	offset := uint64(len(s.nodes))
 
 	// We only have a need for memory up to offset + size, but we never want
 	// to allocate a node whose tail points into unallocated memory.
 	minAllocSize := offset + maxNodeSize
-	if cap(s.nodes) < minAllocSize {
-		allocSize := cap(s.nodes) * 2
+	if uint64(cap(s.nodes)) < minAllocSize {
+		allocSize := uint64(cap(s.nodes)) * 2
 		if allocSize < minAllocSize {
 			allocSize = minAllocSize
 		}
