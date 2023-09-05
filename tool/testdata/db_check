@@ -8,6 +8,12 @@ non-existent
 open non-existent: file does not exist
 
 db check
+./testdata/corrupt-options-db
+----
+error loading options: invalid key=value syntax: "blargle"
+Custom message in case of corruption error.
+
+db check
 ../testdata/db-stage-4
 ----
 checked 6 points and 0 tombstone

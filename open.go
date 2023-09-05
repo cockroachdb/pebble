@@ -861,3 +861,9 @@ func (l *Lock) Close() error {
 	defer func() { l.fileLock = nil }()
 	return l.fileLock.Close()
 }
+
+// IsCorruptionError returns true if the given error indicates database
+// corruption.
+func IsCorruptionError(err error) bool {
+	return errors.Is(err, base.ErrCorruption)
+}
