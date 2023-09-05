@@ -70,7 +70,7 @@ const (
 	maxHeight    = 20
 	maxNodeSize  = int(unsafe.Sizeof(node{}))
 	linksSize    = int(unsafe.Sizeof(links{}))
-	maxNodesSize = math.MaxUint32
+	maxNodesSize = math.MaxInt32
 )
 
 var (
