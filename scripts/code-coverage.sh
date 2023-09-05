@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# This script runs unit tests and the metamorphic tests with coverage
+# instrumentation and generates three lcov files:
+#  - ./artifacts/profile-tests.lcov
+#  - ./artifacts/profile-meta.lcov
+#  - ./artifacts/profile-tests-and-meta.lcov
+
 set -euxo pipefail
 
 mkdir -p artifacts
@@ -38,5 +44,6 @@ go run github.com/cockroachdb/code-cov-utils/convert@v1.1.0 -out artifacts/profi
   artifacts/profile-tests.gocov artifacts/profile-meta.gocov
 
 if [ $test_failed -eq 1 ]; then
+  # TODO(radu): somehow plumb the error and publish it.
   echo "WARNING: some tests have failed; coverage might be incomplete."
 fi
