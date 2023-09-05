@@ -511,7 +511,7 @@ func TestPebblev1MigrationRace(t *testing.T) {
 
 	ks := testkeys.Alpha(3).EveryN(10)
 	var key [3]byte
-	for i := 0; i < ks.Count(); i++ {
+	for i := int64(0); i < ks.Count(); i++ {
 		n := testkeys.WriteKey(key[:], ks, i)
 		require.NoError(t, d.Set(key[:n], key[:n], nil))
 		require.NoError(t, d.Flush())
@@ -562,7 +562,7 @@ func TestPebblev1MigrationConcurrencyRace(t *testing.T) {
 
 		ks := testkeys.Alpha(3).EveryN(10)
 		var key [3]byte
-		for i := 0; i < ks.Count(); i++ {
+		for i := int64(0); i < ks.Count(); i++ {
 			n := testkeys.WriteKey(key[:], ks, i)
 			require.NoError(t, d.Set(key[:n], key[:n], nil))
 			if i%100 == 0 {

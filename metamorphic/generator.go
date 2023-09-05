@@ -237,7 +237,7 @@ func (g *generator) randSuffixToWrite(incMaxProb float64) []byte {
 	if g.rng.Float64() < incMaxProb {
 		g.cfg.writeSuffixDist.IncMax(1)
 	}
-	return suffixFromInt(int(g.cfg.writeSuffixDist.Uint64(g.rng)))
+	return suffixFromInt(int64(g.cfg.writeSuffixDist.Uint64(g.rng)))
 }
 
 // randSuffixToRead generates a random suffix used during reads. The suffixes
@@ -248,10 +248,10 @@ func (g *generator) randSuffixToRead() []byte {
 	// When reading, don't apply the recency skewing in order to better exercise
 	// a reading a mix of older and newer keys.
 	max := g.cfg.writeSuffixDist.Max()
-	return suffixFromInt(int(g.rng.Uint64n(max)))
+	return suffixFromInt(g.rng.Int63n(int64(max)))
 }
 
-func suffixFromInt(suffix int) []byte {
+func suffixFromInt(suffix int64) []byte {
 	// Treat the zero as no suffix to match the behavior during point key
 	// generation in randKeyHelper.
 	if suffix == 0 {
@@ -309,7 +309,7 @@ func (g *generator) randKeyHelper(
 				// Pick a prefix on each iteration in case most or all suffixes are
 				// already in use for any individual prefix.
 				p := g.rng.Intn(len(prefixes))
-				suffix := int(g.cfg.writeSuffixDist.Uint64(g.rng))
+				suffix := int64(g.cfg.writeSuffixDist.Uint64(g.rng))
 
 				var key []byte
 				if suffix > 0 {
@@ -340,7 +340,7 @@ func (g *generator) randKeyHelper(
 
 		var key []byte
 
-		suffix := int(g.cfg.writeSuffixDist.Uint64(g.rng))
+		suffix := int64(g.cfg.writeSuffixDist.Uint64(g.rng))
 
 		// If we have bounds in which we need to generate the key, use
 		// testkeys.RandomSeparator to generate a key between the bounds.
@@ -365,7 +365,9 @@ func (g *generator) randKeyHelper(
 
 // randKeyHelperSuffix is a helper function for randKeyHelper, and should not be
 // invoked directly.
-func (g *generator) randKeyHelperSuffix(dst []byte, minPrefixLen, maxPrefixLen, suffix int) []byte {
+func (g *generator) randKeyHelperSuffix(
+	dst []byte, minPrefixLen, maxPrefixLen int, suffix int64,
+) []byte {
 	n := minPrefixLen
 	if maxPrefixLen > minPrefixLen {
 		n += g.rng.Intn(maxPrefixLen - minPrefixLen)

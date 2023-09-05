@@ -565,7 +565,7 @@ func buildHeavyWorkload(t *testing.T) vfs.FS {
 		b := d.NewBatch()
 		for j := 0; j < 1000; j++ {
 			rng.Read(bufVal[:])
-			n := testkeys.WriteKey(bufKey[:], ks, rng.Intn(ks.Count()))
+			n := testkeys.WriteKey(bufKey[:], ks, rng.Int63n(ks.Count()))
 			require.NoError(t, b.Set(bufKey[:n], bufVal[:], pebble.NoSync))
 		}
 		require.NoError(t, b.Commit(pebble.NoSync))

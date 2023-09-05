@@ -137,10 +137,10 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 	var buf bytes.Buffer
 	for l := 0; l < len(levels); l++ {
 		fmt.Fprintf(&buf, "level %d: ", l)
-		for keyspaceStartIdx := 0; keyspaceStartIdx < ks.Count(); {
+		for keyspaceStartIdx := int64(0); keyspaceStartIdx < ks.Count(); {
 			// Generate spans of lengths of up to a third of the keyspace.
-			spanStartIdx := keyspaceStartIdx + rng.Intn(ks.Count()/3)
-			spanEndIdx := spanStartIdx + rng.Intn(ks.Count()/3) + 1
+			spanStartIdx := keyspaceStartIdx + rng.Int63n(ks.Count()/3)
+			spanEndIdx := spanStartIdx + rng.Int63n(ks.Count()/3) + 1
 
 			if spanEndIdx < ks.Count() {
 				keyCount := uint64(rng.Intn(3) + 1)
@@ -216,13 +216,13 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 			return "Last()", fragmenterIter.Last(), mergingIter.Last()
 		}},
 		{weight: 5, fn: func() (string, *Span, *Span) {
-			k := testkeys.Key(ks, rng.Intn(ks.Count()))
+			k := testkeys.Key(ks, rng.Int63n(ks.Count()))
 			return fmt.Sprintf("SeekGE(%q)", k),
 				fragmenterIter.SeekGE(k),
 				mergingIter.SeekGE(k)
 		}},
 		{weight: 5, fn: func() (string, *Span, *Span) {
-			k := testkeys.Key(ks, rng.Intn(ks.Count()))
+			k := testkeys.Key(ks, rng.Int63n(ks.Count()))
 			return fmt.Sprintf("SeekLT(%q)", k),
 				fragmenterIter.SeekLT(k),
 				mergingIter.SeekLT(k)
