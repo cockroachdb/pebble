@@ -37,9 +37,10 @@ type dbT struct {
 	Space      *cobra.Command
 
 	// Configuration.
-	opts      *pebble.Options
-	comparers sstable.Comparers
-	mergers   sstable.Mergers
+	opts            *pebble.Options
+	comparers       sstable.Comparers
+	mergers         sstable.Mergers
+	openErrEnhancer func(error) error
 
 	// Flags.
 	comparerName string
@@ -52,11 +53,17 @@ type dbT struct {
 	verbose      bool
 }
 
-func newDB(opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers) *dbT {
+func newDB(
+	opts *pebble.Options,
+	comparers sstable.Comparers,
+	mergers sstable.Mergers,
+	openErrEnhancer func(error) error,
+) *dbT {
 	d := &dbT{
-		opts:      opts,
-		comparers: comparers,
-		mergers:   mergers,
+		opts:            opts,
+		comparers:       comparers,
+		mergers:         mergers,
+		openErrEnhancer: openErrEnhancer,
 	}
 	d.fmtKey.mustSet("quoted")
 	d.fmtValue.mustSet("[%x]")
@@ -254,8 +261,19 @@ type openOption interface {
 }
 
 func (d *dbT) openDB(dir string, openOptions ...openOption) (*pebble.DB, error) {
-	if err := d.loadOptions(dir); err != nil {
+	db, err := d.openDBInternal(dir, openOptions...)
+	if err != nil {
+		if d.openErrEnhancer != nil {
+			err = d.openErrEnhancer(err)
+		}
 		return nil, err
+	}
+	return db, nil
+}
+
+func (d *dbT) openDBInternal(dir string, openOptions ...openOption) (*pebble.DB, error) {
+	if err := d.loadOptions(dir); err != nil {
+		return nil, errors.Wrap(err, "error loading options")
 	}
 	if d.comparerName != "" {
 		d.opts.Comparer = d.comparers[d.comparerName]
@@ -278,24 +296,24 @@ func (d *dbT) openDB(dir string, openOptions ...openOption) (*pebble.DB, error) 
 	return pebble.Open(dir, &opts)
 }
 
-func (d *dbT) closeDB(stdout io.Writer, db *pebble.DB) {
+func (d *dbT) closeDB(stderr io.Writer, db *pebble.DB) {
 	if err := db.Close(); err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 	}
 }
 
 func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
-	stdout := cmd.OutOrStdout()
+	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	db, err := d.openDB(args[0])
 	if err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
-	defer d.closeDB(stdout, db)
+	defer d.closeDB(stderr, db)
 
 	var stats pebble.CheckLevelsStats
 	if err := db.CheckLevels(&stats); err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 	}
 	fmt.Fprintf(stdout, "checked %d %s and %d %s\n",
 		stats.NumPoints, makePlural("point", stats.NumPoints), stats.NumTombstones, makePlural("tombstone", int64(stats.NumTombstones)))
@@ -311,37 +329,37 @@ func (n nonReadOnly) apply(opts *pebble.Options) {
 }
 
 func (d *dbT) runCheckpoint(cmd *cobra.Command, args []string) {
-	stdout := cmd.OutOrStdout()
+	stderr := cmd.ErrOrStderr()
 	db, err := d.openDB(args[0], nonReadOnly{})
 	if err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
-	defer d.closeDB(stdout, db)
+	defer d.closeDB(stderr, db)
 	destDir := args[1]
 
 	if err := db.Checkpoint(destDir); err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 	}
 }
 
 func (d *dbT) runGet(cmd *cobra.Command, args []string) {
-	stdout := cmd.OutOrStdout()
+	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	db, err := d.openDB(args[0])
 	if err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
-	defer d.closeDB(stdout, db)
+	defer d.closeDB(stderr, db)
 	var k key
 	if err := k.Set(args[1]); err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
 
 	val, closer, err := db.Get(k)
 	if err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
 	defer func() {
@@ -355,25 +373,25 @@ func (d *dbT) runGet(cmd *cobra.Command, args []string) {
 }
 
 func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
-	stdout := cmd.OutOrStdout()
+	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	db, err := d.openDB(args[0])
 	if err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
-	defer d.closeDB(stdout, db)
+	defer d.closeDB(stderr, db)
 
 	fmt.Fprintf(stdout, "%s", db.Metrics())
 }
 
 func (d *dbT) runScan(cmd *cobra.Command, args []string) {
-	stdout := cmd.OutOrStdout()
+	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	db, err := d.openDB(args[0])
 	if err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
-	defer d.closeDB(stdout, db)
+	defer d.closeDB(stderr, db)
 
 	// Update the internal formatter if this comparator has one specified.
 	if d.opts.Comparer != nil {
@@ -412,7 +430,7 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 	}
 
 	if err := iter.Close(); err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 	}
 
 	elapsed := timeNow().Sub(start)
@@ -422,7 +440,7 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 }
 
 func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
-	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
+	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	db, err := d.openDB(args[0])
 	if err != nil {
 		fmt.Fprintf(stderr, "%s\n", err)
@@ -439,7 +457,7 @@ func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
 }
 
 func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
-	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
+	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	dirname := args[0]
 	err := func() error {
 		desc, err := pebble.Peek(dirname, d.opts.FS)
@@ -576,25 +594,25 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 }
 
 func (d *dbT) runSet(cmd *cobra.Command, args []string) {
-	stdout := cmd.OutOrStdout()
+	stderr := cmd.ErrOrStderr()
 	db, err := d.openDB(args[0], nonReadOnly{})
 	if err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
-	defer d.closeDB(stdout, db)
+	defer d.closeDB(stderr, db)
 	var k, v key
 	if err := k.Set(args[1]); err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
 	if err := v.Set(args[2]); err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
 
 	if err := db.Set(k, v, nil); err != nil {
-		fmt.Fprintf(stdout, "%s\n", err)
+		fmt.Fprintf(stderr, "%s\n", err)
 	}
 }
 
