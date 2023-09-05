@@ -1486,7 +1486,7 @@ func TestBatchSpanCaching(t *testing.T) {
 
 	ks := testkeys.Alpha(1)
 	b := d.NewIndexedBatch()
-	for i := 0; i < ks.Count(); i++ {
+	for i := int64(0); i < ks.Count(); i++ {
 		k := testkeys.Key(ks, i)
 		require.NoError(t, b.Set(k, k, nil))
 	}
@@ -1508,8 +1508,8 @@ func TestBatchSpanCaching(t *testing.T) {
 	// with narrow bounds from left to right. Iterators are created at random,
 	// sometimes from the batch and sometimes by cloning existing iterators.
 
-	checkIter := func(iter *Iterator, nextKey int) {
-		var i int
+	checkIter := func(iter *Iterator, nextKey int64) {
+		var i int64
 		for valid := iter.First(); valid; valid = iter.Next() {
 			hasPoint, hasRange := iter.HasPointAndRange()
 			require.Equal(t, testkeys.Key(ks, i), iter.Key())
@@ -1538,7 +1538,7 @@ func TestBatchSpanCaching(t *testing.T) {
 	// expected: some prefix of only point keys, followed by a suffix of only
 	// range keys. Iterators created through Clone should observe the point keys
 	// that existed when the cloned iterator was created.
-	for nextWriteKey := 0; nextWriteKey < ks.Count(); {
+	for nextWriteKey := int64(0); nextWriteKey < ks.Count(); {
 		p := rng.Float64()
 		switch {
 		case p < .10: /* 10 % */
@@ -1557,7 +1557,7 @@ func TestBatchSpanCaching(t *testing.T) {
 		default: /* 45 % */
 			// Create a new iterator through cloning a random existing iterator
 			// and check that it observes the right state.
-			readKey := rng.Intn(nextWriteKey + 1)
+			readKey := rng.Int63n(nextWriteKey + 1)
 			itersForReadKey := iters[readKey]
 			if len(itersForReadKey) == 0 {
 				continue

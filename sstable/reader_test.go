@@ -1042,8 +1042,8 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	keys := testkeys.Alpha(1)
 	keyBuf := make([]byte, 1+testkeys.MaxSuffixLen)
 	// Write a few keys with multiple timestamps (MVCC versions).
-	for i := 0; i < 2; i++ {
-		for j := 2; j >= 1; j-- {
+	for i := int64(0); i < 2; i++ {
+		for j := int64(2); j >= 1; j-- {
 			n := testkeys.WriteKeyAt(keyBuf[:], keys, i, j)
 			key := keyBuf[:n]
 			require.NoError(t, w.Set(key, key))
@@ -1738,9 +1738,9 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
 		val := make([]byte, 100)
 		rng := rand.New(rand.NewSource(100))
-		for i := 0; i < keys.Count(); i++ {
+		for i := int64(0); i < keys.Count(); i++ {
 			for v := 0; v < versionCount; v++ {
-				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, versionCount-v+1)
+				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, int64(versionCount-v+1))
 				key := keyBuf[:n+sharedPrefixLen]
 				rng.Read(val)
 				require.NoError(b, w.Set(key, val))
@@ -1836,9 +1836,9 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 		f0, err := mem.Create("bench")
 		require.NoError(b, err)
 		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
-		for i := 0; i < keys.Count(); i++ {
+		for i := int64(0); i < keys.Count(); i++ {
 			for v := 0; v < versCount; v++ {
-				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, versCount-v+1)
+				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, int64(versCount-v+1))
 				key := keyBuf[:n+sharedPrefixLen]
 				require.NoError(b, w.Set(key, val))
 				if v == 0 {
@@ -1947,7 +1947,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 									k, _ = iter.First()
 									j = 0
 								} else {
-									k, v = nextFunc(j - 1)
+									k, v = nextFunc(int(j - 1))
 									if k != nil && readValue {
 										_, callerOwned, err := v.Value(valBuf[:])
 										if err != nil {
@@ -1999,7 +1999,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
 		val := make([]byte, 100)
 		rng := rand.New(rand.NewSource(100))
-		for i := 0; i < keys.Count(); i++ {
+		for i := int64(0); i < keys.Count(); i++ {
 			n := testkeys.WriteKey(keyBuf, keys, i)
 			key := keyBuf[:n]
 			rng.Read(val)
@@ -2054,7 +2054,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 								require.NoError(b, err)
 								b.ResetTimer()
 								for i := 0; i < b.N; i++ {
-									count := 0
+									count := int64(0)
 									k, _ := iter.First()
 									for k != nil {
 										count++

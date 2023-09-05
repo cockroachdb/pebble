@@ -858,7 +858,7 @@ func TestWriterRace(t *testing.T) {
 	ks = ks.EveryN(ks.Count() / 1_000)
 	keys := make([][]byte, ks.Count())
 	for ki := 0; ki < len(keys); ki++ {
-		keys[ki] = testkeys.Key(ks, ki)
+		keys[ki] = testkeys.Key(ks, int64(ki))
 	}
 	readerOpts := ReaderOptions{
 		Comparer: testkeys.Comparer,

@@ -261,7 +261,7 @@ func TestMetricsWAmpDisableWAL(t *testing.T) {
 	wo := WriteOptions{Sync: false}
 	for i := 0; i < 5; i++ {
 		v := []byte(strconv.Itoa(i))
-		for j := 0; j < ks.Count(); j++ {
+		for j := int64(0); j < ks.Count(); j++ {
 			require.NoError(t, d.Set(testkeys.Key(ks, j), v, &wo))
 		}
 		require.NoError(t, d.Flush())

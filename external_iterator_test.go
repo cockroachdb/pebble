@@ -156,7 +156,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 	// We use the first "part" of the keyspace below to write keys >= tsSeparator,
 	// and the second part to write keys < tsSeparator. Successive parts (if any)
 	// will contain keys at random before or after the separator.
-	tsSeparator := 10 + rng.Intn(5000)
+	tsSeparator := 10 + rng.Int63n(5000)
 	const keyLen = 5
 
 	// We split the keyspace into logical "parts" which are disjoint slices of the
@@ -196,7 +196,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 			})
 			buf := make([]byte, alpha.MaxLen()+testkeys.MaxSuffixLen)
 			valBuf := make([]byte, 20)
-			keyIdx := 0
+			keyIdx := int64(0)
 			for i := 0; i < numParts; i++ {
 				// The first two parts of the keyspace are special. The first one has
 				// all keys with timestamps greater than tsSeparator, while the second
@@ -204,15 +204,15 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 				// keys could have timestamps at random before or after the tsSeparator.
 				maxKeysPerPart := numKeys / numParts
 				for j := 0; j < maxKeysPerPart; j++ {
-					ts := 0
+					var ts int64
 					if i == 0 {
-						ts = rng.Intn(5000) + tsSeparator
+						ts = rng.Int63n(5000) + tsSeparator
 					} else if i == 1 {
-						ts = rng.Intn(tsSeparator)
+						ts = rng.Int63n(tsSeparator)
 					} else {
-						ts = rng.Intn(tsSeparator + 5000)
+						ts = rng.Int63n(tsSeparator + 5000)
 					}
-					n := testkeys.WriteKeyAt(buf, alpha, keyIdx*alpha.Count()/numKeys, ts)
+					n := testkeys.WriteKeyAt(buf, alpha, keyIdx*alpha.Count()/int64(numKeys), ts)
 					keys = append(keys, append([]byte(nil), buf[:n]...))
 					randStr(valBuf, rng)
 					require.NoError(t, w.Set(buf[:n], valBuf))
@@ -329,7 +329,7 @@ func BenchmarkExternalIter_NonOverlapping_SeekNextScan(b *testing.B) {
 						require.NoError(b, err)
 						w := sstable.NewWriter(objstorageprovider.NewFileWritable(wf), writeOpts)
 						for j := 0; j < keyCount/fileCount; j++ {
-							key := testkeys.Key(ks, len(keys))
+							key := testkeys.Key(ks, int64(len(keys)))
 							keys = append(keys, key)
 							require.NoError(b, w.Set(key, key))
 						}

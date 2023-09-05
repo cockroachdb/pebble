@@ -1239,9 +1239,9 @@ func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
 	ks := testkeys.Alpha(maxKeyLength)
 	buf := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
 	vbuf := make([]byte, valLength)
-	for i := 0; i < ks.Count(); i++ {
+	for i := int64(0); i < ks.Count(); i++ {
 		for _, ts := range timestamps {
-			n := testkeys.WriteKeyAt(buf, ks, i, ts)
+			n := testkeys.WriteKeyAt(buf, ks, i, int64(ts))
 
 			// Default to using the key as the value, but if the user provided
 			// the vallen argument, generate a random value of the specified

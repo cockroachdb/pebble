@@ -17,7 +17,7 @@ import (
 
 func TestGenerateAlphabetKey(t *testing.T) {
 	testCases := []struct {
-		i     int
+		i     int64
 		depth int
 		want  string
 	}{
@@ -42,7 +42,7 @@ func TestGenerateAlphabetKey(t *testing.T) {
 		{11, 2, "cc"},
 	}
 	testAlphabet := []byte{byte('a'), byte('b'), byte('c')}
-	testInverseAlphabet := map[byte]int{byte('a'): 0, byte('b'): 1, byte('c'): 2}
+	testInverseAlphabet := map[byte]int64{byte('a'): 0, byte('b'): 1, byte('c'): 2}
 
 	buf := make([]byte, 10)
 	for _, tc := range testCases {
@@ -63,7 +63,7 @@ func TestKeyCount(t *testing.T) {
 	type params struct {
 		n, l int
 	}
-	testCases := map[params]int{
+	testCases := map[params]int64{
 		{26, 1}: 26,
 		{52, 1}: 52,
 		{2, 2}:  6,
@@ -113,7 +113,7 @@ func TestFullKeyspaces(t *testing.T) {
 func TestSlice(t *testing.T) {
 	testCases := []struct {
 		orig Keyspace
-		i, j int
+		i, j int64
 		want string
 	}{
 		{Alpha(1), 1, 25, "b c d e f g h i j k l m n o p q r s t u v w x y"},
@@ -143,11 +143,11 @@ func TestSuffix(t *testing.T) {
 		}
 	}
 
-	for i := 1; i < ks.Count(); i++ {
+	for i := int64(1); i < ks.Count(); i++ {
 		assertCmp(-1, KeyAt(ks, i-1, 1), KeyAt(ks, i, 1))
 		assertCmp(-1, Key(ks, i-1), Key(ks, i))
 		assertCmp(0, Key(ks, i), Key(ks, i))
-		for ts := 2; ts < 11; ts++ {
+		for ts := int64(2); ts < 11; ts++ {
 			assertCmp(+1, KeyAt(ks, i, ts-1), KeyAt(ks, i, ts))
 			assertCmp(-1, KeyAt(ks, i-1, ts-1), KeyAt(ks, i, ts))
 		}
@@ -155,7 +155,7 @@ func TestSuffix(t *testing.T) {
 
 	// Suffixes should be comparable on their own too.
 	a, b := make([]byte, MaxSuffixLen), make([]byte, MaxSuffixLen)
-	for ts := 2; ts < 150; ts++ {
+	for ts := int64(2); ts < 150; ts++ {
 		an := WriteSuffix(a, ts-1)
 		bn := WriteSuffix(b, ts)
 		assertCmp(+1, a[:an], b[:bn])
@@ -163,7 +163,7 @@ func TestSuffix(t *testing.T) {
 }
 
 func TestSuffixLen(t *testing.T) {
-	testCases := map[int]int{
+	testCases := map[int64]int{
 		0:    2,
 		1:    2,
 		5:    2,
@@ -190,7 +190,8 @@ func TestDivvy(t *testing.T) {
 		buf.Reset()
 		switch d.Cmd {
 		case "divvy":
-			var alphaLen, portions int
+			var alphaLen int
+			var portions int64
 			d.ScanArgs(t, "alpha", &alphaLen)
 			d.ScanArgs(t, "portions", &portions)
 
@@ -208,7 +209,7 @@ func TestDivvy(t *testing.T) {
 func keyspaceToString(ks Keyspace) string {
 	var buf bytes.Buffer
 	b := make([]byte, ks.MaxLen())
-	for i := 0; i < ks.Count(); i++ {
+	for i := int64(0); i < ks.Count(); i++ {
 		n := ks.key(b, i)
 		if i > 0 {
 			buf.WriteRune(' ')
@@ -233,7 +234,7 @@ func TestRandomSeparator(t *testing.T) {
 
 		a := []byte(keys[i])
 		b := []byte(keys[j])
-		suffix := rng.Intn(10)
+		suffix := rng.Int63n(10)
 		sep := RandomSeparator(nil, a, b, suffix, 3, rng)
 		t.Logf("RandomSeparator(%q, %q, %d) = %q\n", a, b, suffix, sep)
 		if sep == nil {
