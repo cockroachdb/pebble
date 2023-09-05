@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
@@ -105,12 +106,19 @@ func runTests(t *testing.T, path string) {
 					m.Name = "test-merger"
 					return &m
 				}()
+				openErrEnhancer := func(err error) error {
+					if errors.Is(err, base.ErrCorruption) {
+						return base.CorruptionErrorf("%v\nCustom message in case of corruption error.", err)
+					}
+					return err
+				}
 
 				tool := New(
 					DefaultComparer(comparer),
 					Comparers(altComparer, testkeys.Comparer),
 					Mergers(merger),
 					FS(fs),
+					OpenErrEnhancer(openErrEnhancer),
 				)
 
 				c := &cobra.Command{}

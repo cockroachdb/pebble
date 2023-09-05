@@ -5,7 +5,14 @@ accepts 1 arg(s), received 0
 db check
 non-existent
 ----
-pebble: database "non-existent" does not exist
+error opening database at "non-existent": pebble: database "non-existent" does not exist
+
+db check
+./testdata/corrupt-options-db
+----
+error loading options: invalid key=value syntax: "blargle"
+Custom message in case of corruption error.
+
 
 db check
 ../testdata/db-stage-4
