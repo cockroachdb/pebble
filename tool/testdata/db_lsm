@@ -5,7 +5,7 @@ accepts 1 arg(s), received 0
 db lsm
 non-existent
 ----
-pebble: database "non-existent" does not exist
+error opening database at "non-existent": pebble: database "non-existent" does not exist
 
 db lsm
 ../testdata/db-stage-4

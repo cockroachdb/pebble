@@ -39,6 +39,7 @@ type T struct {
 	comparers       sstable.Comparers
 	mergers         sstable.Mergers
 	defaultComparer string
+	openErrEnhancer func(error) error
 }
 
 // A Option configures the Pebble introspection tool.
@@ -90,6 +91,16 @@ func FS(fs vfs.FS) Option {
 	}
 }
 
+// OpenErrEnhancer sets a function that enhances an error encountered when the
+// tool opens a database; used to provide the user additional context, for
+// example that a corruption error might be caused by encryption at rest not
+// being configured properly.
+func OpenErrEnhancer(fn func(error) error) Option {
+	return func(t *T) {
+		t.openErrEnhancer = fn
+	}
+}
+
 // New creates a new introspection tool.
 func New(opts ...Option) *T {
 	t := &T{
@@ -112,7 +123,7 @@ func New(opts ...Option) *T {
 		opt(t)
 	}
 
-	t.db = newDB(&t.opts, t.comparers, t.mergers)
+	t.db = newDB(&t.opts, t.comparers, t.mergers, t.openErrEnhancer)
 	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)
