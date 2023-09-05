@@ -1283,7 +1283,11 @@ func parseOptions(s string, fn func(section, key, value string) error) error {
 
 		pos := strings.Index(line, "=")
 		if pos < 0 {
-			return errors.Errorf("pebble: invalid key=value syntax: %s", errors.Safe(line))
+			const maxLen = 50
+			if len(line) > maxLen {
+				line = line[:maxLen-3] + "..."
+			}
+			return base.CorruptionErrorf("invalid key=value syntax: %q", errors.Safe(line))
 		}
 
 		key := strings.TrimSpace(line[:pos])
