@@ -25,7 +25,7 @@ func TestLazyValue(t *testing.T) {
 	// Both 40 and 48 bytes makes iteration benchmarks like
 	// BenchmarkIteratorScan/keys=1000,r-amp=1,key-types=points-only 75%
 	// slower.
-	require.Equal(t, 32, int(unsafe.Sizeof(LazyValue{})))
+	require.True(t, unsafe.Sizeof(LazyValue{}) <= 32)
 
 	fooBytes1 := []byte("foo")
 	fooLV1 := MakeInPlaceValue(fooBytes1)

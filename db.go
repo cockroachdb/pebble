@@ -280,7 +280,7 @@ type DB struct {
 	abbreviatedKey AbbreviatedKey
 	// The threshold for determining when a batch is "large" and will skip being
 	// inserted into a memtable.
-	largeBatchThreshold int
+	largeBatchThreshold uint64
 	// The current OPTIONS file number.
 	optionsFileNum base.DiskFileNum
 	// The on-disk size of the current OPTIONS file.
@@ -407,7 +407,7 @@ type DB struct {
 			// is allocated up to Options.MemTableSize. This reduces the memory
 			// footprint of memtables when lots of DB instances are used concurrently
 			// in test environments.
-			nextSize int
+			nextSize uint64
 		}
 
 		compact struct {
@@ -842,7 +842,7 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 	if batch.db == nil {
 		batch.refreshMemTableSize()
 	}
-	if int(batch.memTableSize) >= d.largeBatchThreshold {
+	if batch.memTableSize >= d.largeBatchThreshold {
 		batch.flushable = newFlushableBatch(batch, d.opts.Comparer)
 	}
 	if err := d.commit.Commit(batch, sync, noSyncWait); err != nil {
@@ -2296,7 +2296,7 @@ func (d *DB) walPreallocateSize() int {
 	// RocksDB. Could a smaller preallocation block size be used?
 	size := d.opts.MemTableSize
 	size = (size / 10) + size
-	return size
+	return int(size)
 }
 
 func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushableEntry) {
@@ -2323,7 +2323,7 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 	// existing memory.
 	var mem *memTable
 	mem = d.memTableRecycle.Swap(nil)
-	if mem != nil && len(mem.arenaBuf) != size {
+	if mem != nil && uint64(len(mem.arenaBuf)) != size {
 		d.freeMemTable(mem)
 		mem = nil
 	}
@@ -2334,7 +2334,7 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 	} else {
 		mem = new(memTable)
 		memtblOpts.arenaBuf = manual.New(int(size))
-		memtblOpts.releaseAccountingReservation = d.opts.Cache.Reserve(size)
+		memtblOpts.releaseAccountingReservation = d.opts.Cache.Reserve(int(size))
 		d.memTableCount.Add(1)
 		d.memTableReserved.Add(int64(size))
 
@@ -2420,7 +2420,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			for i := range d.mu.mem.queue {
 				size += d.mu.mem.queue[i].totalBytes()
 			}
-			if size >= uint64(d.opts.MemTableStopWritesThreshold)*uint64(d.opts.MemTableSize) {
+			if size >= uint64(d.opts.MemTableStopWritesThreshold)*d.opts.MemTableSize {
 				// We have filled up the current memtable, but already queued memtables
 				// are still flushing, so we wait.
 				if !stalled {
@@ -2474,7 +2474,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// reduces memtable memory pressure when an application is frequently
 		// manually flushing.
 		if (b == nil) && uint64(immMem.availBytes()) > immMem.totalBytes()/2 {
-			d.mu.mem.nextSize = int(immMem.totalBytes())
+			d.mu.mem.nextSize = immMem.totalBytes()
 		}
 
 		if b != nil && b.flushable != nil {

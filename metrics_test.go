@@ -224,7 +224,7 @@ func TestMetrics(t *testing.T) {
 			d.waitTableStats()
 			d.mu.Unlock()
 
-			return d.Metrics().String()
+			return d.Metrics().StringForTests()
 
 		case "disk-usage":
 			return humanize.Bytes.Uint64(d.Metrics().DiskSpaceUsage()).String()

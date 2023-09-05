@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/constants"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
@@ -37,15 +38,23 @@ const (
 
 	// The max batch size is limited by the uint32 offsets stored in
 	// internal/batchskl.node, DeferredBatchOp, and flushableBatchEntry.
-	// We limit the size to MaxUint32 so that the exclusive end of an allocation
-	// fits in uint32.
-	maxBatchSize = math.MaxUint32 // just short of 4 GB
+	//
+	// We limit the size to MaxUint32 (just short of 4GB) so that the exclusive
+	// end of an allocation fits in uint32.
+	//
+	// On 32-bit systems, slices are naturally limited to MaxInt (just short of
+	// 2GB).
+	maxBatchSize = constants.MaxUint32OrInt
 
 	// The max memtable size is limited by the uint32 offsets stored in
 	// internal/arenaskl.node, DeferredBatchOp, and flushableBatchEntry.
-	// We limit the size to MaxUint32 so that the exclusive end of an allocation
-	// fits in uint32.
-	maxMemTableSize = math.MaxUint32 // just short of 4 GB
+	//
+	// We limit the size to MaxUint32 (just short of 4GB) so that the exclusive
+	// end of an allocation fits in uint32.
+	//
+	// On 32-bit systems, slices are naturally limited to MaxInt (just short of
+	// 2GB).
+	maxMemTableSize = constants.MaxUint32OrInt
 )
 
 // TableCacheSize can be used to determine the table
@@ -164,7 +173,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		merge:               opts.Merger.Merge,
 		split:               opts.Comparer.Split,
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
-		largeBatchThreshold: (opts.MemTableSize - int(memTableEmptySize)) / 2,
+		largeBatchThreshold: (opts.MemTableSize - uint64(memTableEmptySize)) / 2,
 		fileLock:            fileLock,
 		dataDir:             dataDir,
 		walDir:              walDir,

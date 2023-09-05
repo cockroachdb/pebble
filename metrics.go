@@ -521,3 +521,16 @@ func percent(numerator, denominator int64) float64 {
 	}
 	return 100 * float64(numerator) / float64(denominator)
 }
+
+// StringForTests is identical to m.String() on 64-bit platforms. It is used to
+// provide a platform-independent result for tests.
+func (m *Metrics) StringForTests() string {
+	mCopy := *m
+	if math.MaxInt == math.MaxInt32 {
+		// This is the difference in Sizeof(sstable.Reader{})) between 64 and 32 bit
+		// platforms.
+		const tableCacheSizeAdjustment = 212
+		mCopy.TableCache.Size += mCopy.TableCache.Count * tableCacheSizeAdjustment
+	}
+	return redact.StringWithoutMarkers(&mCopy)
+}

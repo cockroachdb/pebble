@@ -18,11 +18,11 @@
 package arenaskl
 
 import (
-	"math"
 	"sync/atomic"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/constants"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -43,11 +43,11 @@ var (
 // NewArena allocates a new arena using the specified buffer as the backing
 // store.
 func NewArena(buf []byte) *Arena {
-	if len(buf) > math.MaxUint32 {
+	if len(buf) > constants.MaxUint32OrInt {
 		if invariants.Enabled {
 			panic(errors.AssertionFailedf("attempting to create arena of size %d", len(buf)))
 		}
-		buf = buf[:math.MaxUint32]
+		buf = buf[:constants.MaxUint32OrInt]
 	}
 	a := &Arena{
 		buf: buf,
@@ -61,10 +61,10 @@ func NewArena(buf []byte) *Arena {
 // Size returns the number of bytes allocated by the arena.
 func (a *Arena) Size() uint32 {
 	s := a.n.Load()
-	if s > math.MaxUint32 {
+	if s > constants.MaxUint32OrInt {
 		// The last failed allocation can push the size higher than len(a.buf).
-		// Saturate at MaxUint32.
-		return math.MaxUint32
+		// Saturate at the maximum representable offset.
+		return constants.MaxUint32OrInt
 	}
 	return uint32(s)
 }
@@ -91,16 +91,16 @@ func (a *Arena) alloc(size, alignment, overflow uint32) (uint32, uint32, error) 
 	}
 
 	// Pad the allocation with enough bytes to ensure the requested alignment.
-	padded := size + alignment - 1
+	padded := uint64(size) + uint64(alignment) - 1
 
-	newSize := a.n.Add(uint64(padded))
-	if int(newSize)+int(overflow) > len(a.buf) {
+	newSize := a.n.Add(padded)
+	if newSize+uint64(overflow) > uint64(len(a.buf)) {
 		return 0, 0, ErrArenaFull
 	}
 
 	// Return the aligned offset.
 	offset := (uint32(newSize) - size) & ^(alignment - 1)
-	return offset, padded, nil
+	return offset, uint32(padded), nil
 }
 
 func (a *Arena) getBytes(offset uint32, size uint32) []byte {
