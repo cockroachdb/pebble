@@ -3251,7 +3251,7 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 
 	// Set a record with a large value. This will be transformed into a large
 	// batch and placed in the flushable queue.
-	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("v"), d.largeBatchThreshold), nil))
+	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("v"), int(d.largeBatchThreshold)), nil))
 	d.mu.Lock()
 	require.Greater(t, len(d.mu.mem.queue), 1)
 	d.mu.Unlock()

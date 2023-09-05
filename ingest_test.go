@@ -690,7 +690,7 @@ func TestExcise(t *testing.T) {
 			d.waitTableStats()
 			d.mu.Unlock()
 
-			return d.Metrics().String()
+			return d.Metrics().StringForTests()
 
 		case "wait-pending-table-stats":
 			return runTableStatsCmd(td, d)
@@ -986,7 +986,7 @@ func TestIngestShared(t *testing.T) {
 			d.waitTableStats()
 			d.mu.Unlock()
 
-			return d.Metrics().String()
+			return d.Metrics().StringForTests()
 
 		case "wait-pending-table-stats":
 			return runTableStatsCmd(td, d)
@@ -1458,7 +1458,7 @@ func TestConcurrentExcise(t *testing.T) {
 			d.waitTableStats()
 			d.mu.Unlock()
 
-			return d.Metrics().String()
+			return d.Metrics().StringForTests()
 
 		case "wait-pending-table-stats":
 			return runTableStatsCmd(td, d)
@@ -1684,7 +1684,7 @@ func TestIngestExternal(t *testing.T) {
 			d.waitTableStats()
 			d.mu.Unlock()
 
-			return d.Metrics().String()
+			return d.Metrics().StringForTests()
 
 		case "wait-pending-table-stats":
 			return runTableStatsCmd(td, d)
@@ -2063,7 +2063,7 @@ func TestIngest(t *testing.T) {
 			d.waitTableStats()
 			d.mu.Unlock()
 
-			return d.Metrics().String()
+			return d.Metrics().StringForTests()
 
 		case "wait-pending-table-stats":
 			return runTableStatsCmd(td, d)
@@ -2490,7 +2490,7 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 
 	// Set a record with a large value. This will be transformed into a large
 	// batch and placed in the flushable queue.
-	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("v"), d.largeBatchThreshold), nil))
+	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("v"), int(d.largeBatchThreshold)), nil))
 
 	ingest := func(keys ...string) {
 		t.Helper()

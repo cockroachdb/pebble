@@ -53,7 +53,7 @@ type lsmState struct {
 	Edits     []lsmVersionEdit                 `json:",omitempty"`
 	Files     map[base.FileNum]lsmFileMetadata `json:",omitempty"`
 	Keys      []lsmKey                         `json:",omitempty"`
-	StartEdit int
+	StartEdit int64
 }
 
 type lsmT struct {
@@ -66,9 +66,9 @@ type lsmT struct {
 	fmtKey    keyFormatter
 	embed     bool
 	pretty    bool
-	startEdit int
-	endEdit   int
-	editCount int
+	startEdit int64
+	endEdit   int64
+	editCount int64
 
 	cmp    *base.Comparer
 	state  lsmState
@@ -105,9 +105,9 @@ indicate size).
 	l.Root.Flags().Var(&l.fmtKey, "key", "key formatter")
 	l.Root.Flags().BoolVar(&l.embed, "embed", true, "embed javascript in HTML (disable for development)")
 	l.Root.Flags().BoolVar(&l.pretty, "pretty", false, "pretty JSON output")
-	l.Root.Flags().IntVar(&l.startEdit, "start-edit", 0, "starting edit # to include in visualization")
-	l.Root.Flags().IntVar(&l.endEdit, "end-edit", math.MaxInt64, "ending edit # to include in visualization")
-	l.Root.Flags().IntVar(&l.editCount, "edit-count", math.MaxInt64, "count of edits to include in visualization")
+	l.Root.Flags().Int64Var(&l.startEdit, "start-edit", 0, "starting edit # to include in visualization")
+	l.Root.Flags().Int64Var(&l.endEdit, "end-edit", math.MaxInt64, "ending edit # to include in visualization")
+	l.Root.Flags().Int64Var(&l.editCount, "edit-count", math.MaxInt64, "count of edits to include in visualization")
 	return l
 }
 
@@ -148,10 +148,10 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	if l.endEdit < len(edits) {
+	if l.endEdit < int64(len(edits)) {
 		edits = edits[:l.endEdit-l.startEdit+1]
 	}
-	if l.editCount < len(edits) {
+	if l.editCount < int64(len(edits)) {
 		edits = edits[:l.editCount]
 	}
 
@@ -334,7 +334,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 }
 
 func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.VersionEdit, error) {
-	if l.startEdit >= len(edits) {
+	if l.startEdit >= int64(len(edits)) {
 		return nil, errors.Errorf("start-edit is more than the number of edits, %d", len(edits))
 	}
 

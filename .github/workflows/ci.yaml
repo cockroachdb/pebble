@@ -25,6 +25,19 @@ jobs:
 
     - run: make test generate
 
+  linux-32bit:
+    name: go-linux-32bit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.20"
+
+      - run: GOARCH=386 make test
+
   linux-crossversion:
     name: go-linux-crossversion
     runs-on: ubuntu-latest
