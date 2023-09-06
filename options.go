@@ -797,12 +797,18 @@ type Options struct {
 	// writing the contents of the old one in the
 	// background. MemTableStopWritesThreshold places a hard limit on the size of
 	// the queued MemTables.
+	//
+	// The default value is 4MB.
 	MemTableSize uint64
 
-	// Hard limit on the size of queued of MemTables. Writes are stopped when the
-	// sum of the queued memtable sizes exceeds
-	// MemTableStopWritesThreshold*MemTableSize. This value should be at least 2
-	// or writes will stop whenever a MemTable is being flushed.
+	// Hard limit on the number of queued of MemTables. Writes are stopped when
+	// the sum of the queued memtable sizes exceeds:
+	//   MemTableStopWritesThreshold * MemTableSize.
+	//
+	// This value should be at least 2 or writes will stop whenever a MemTable is
+	// being flushed.
+	//
+	// The default value is 2.
 	MemTableStopWritesThreshold int
 
 	// Merger defines the associative merge operation to use for merging values
@@ -1045,7 +1051,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.MaxOpenFiles = 1000
 	}
 	if o.MemTableSize <= 0 {
-		o.MemTableSize = 4 << 20
+		o.MemTableSize = 4 << 20 // 4 MB
 	}
 	if o.MemTableStopWritesThreshold <= 0 {
 		o.MemTableStopWritesThreshold = 2
