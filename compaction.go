@@ -2795,6 +2795,22 @@ func (d *DB) runCompaction(
 	snapshots := d.mu.snapshots.toSlice()
 	formatVers := d.FormatMajorVersion()
 
+	if c.flushing == nil {
+		// Before dropping the db mutex, grab a ref to the current version. This
+		// prevents any concurrent excises from deleting files that this compaction
+		// needs to read/maintain a reference to.
+		//
+		// Note that unlike user iterators, compactionIter does not maintain a ref
+		// of the version or read state.
+		vers := d.mu.versions.currentVersion()
+		vers.Ref()
+		defer vers.UnrefLocked()
+	}
+
+	if c.cancel.Load() {
+		return ve, nil, stats, errCancelledCompaction
+	}
+
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
