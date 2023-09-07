@@ -94,7 +94,12 @@ func (ca compactionAnnotations) SafeFormat(w redact.SafePrinter, _ rune) {
 	if len(ca) == 0 {
 		return
 	}
-	w.Printf("%s ", redact.Safe(ca))
+	for i := range ca {
+		if i != 0 {
+			w.Print(" ")
+		}
+		w.Printf("%s", redact.SafeString(ca[i]))
+	}
 }
 
 func (i CompactionInfo) String() string {
