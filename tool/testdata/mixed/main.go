@@ -78,7 +78,7 @@ func main() {
 	// Write some point and range keys.
 	ks := testkeys.Alpha(1)
 	b := db.NewBatch()
-	for i := 0; i < ks.Count(); i++ {
+	for i := int64(0); i < ks.Count(); i++ {
 		writePoint(b, testkeys.KeyAt(ks, i, 1))
 	}
 	start, end := testkeys.Key(ks, 0), testkeys.Key(ks, ks.Count()-1)
