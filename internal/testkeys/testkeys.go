@@ -384,13 +384,17 @@ func computeAlphabetKeyIndex(key []byte, alphabet map[byte]int64, n int) int64 {
 	return ret
 }
 
+func abs(a int64) int64 {
+	if a < 0 {
+		return -a
+	}
+	return a
+}
+
 // RandomSeparator returns a random alphabetic key k such that a < k < b,
 // pulling randomness from the provided random number generator. If dst is
 // provided and the generated key fits within dst's capacity, the returned slice
 // will use dst's memory.
-//
-// The keys a and b must be purely alphabetic, consisting only of characters
-// a-z.
 //
 // If a prefix P exists such that Prefix(a) < P < Prefix(b), the generated key
 // will consist of the prefix P appended with the provided suffix. A zero suffix
@@ -405,6 +409,10 @@ func computeAlphabetKeyIndex(key []byte, alphabet map[byte]int64, n int) int64 {
 //
 // RandomSeparator panics if a or b fails to decode.
 func RandomSeparator(dst, a, b []byte, suffix int64, maxLength int, rng *rand.Rand) []byte {
+	if Comparer.Compare(a, b) >= 0 {
+		return nil
+	}
+
 	// Determine both keys' logical prefixes and suffixes.
 	ai := Comparer.Split(a)
 	bi := Comparer.Split(b)
@@ -431,31 +439,56 @@ func RandomSeparator(dst, a, b []byte, suffix int64, maxLength int, rng *rand.Ra
 	diff := bpIdx - apIdx
 	generatedIdx := bpIdx
 	if diff > 0 {
+		var start int64 = diff + 1
+		var base int64 = apIdx
 		if as == 1 {
-			// There's no expressible key with suffix `a` greater than a@1, so
+			// There's no expressible key with prefix a greater than a@1. So,
 			// exclude ap.
-			generatedIdx = rng.Int63n(diff) + apIdx + 1
-		} else {
-			generatedIdx = rng.Int63n(diff+1) + apIdx
+			base = apIdx + 1
+			start = diff
+		}
+		if bs == 0 {
+			// No key with prefix b can sort before b@0. We don't want to pick b.
+			start--
+		}
+		// We're allowing generated id to be in the range [base, base + start - 1].
+		if base > base+start-1 {
+			return nil
+		}
+		// If we can generate a key which is actually in the middle of apIdx
+		// and bpIdx use it so that we don't have to bother about timestamps.
+		generatedIdx = rng.Int63n(start) + base
+		for diff > 1 && generatedIdx == apIdx || generatedIdx == bpIdx {
+			generatedIdx = rng.Int63n(start) + base
 		}
 	}
 
 	switch {
 	case generatedIdx == apIdx && generatedIdx == bpIdx:
-		if bs-as <= 1 {
+		if abs(bs-as) <= 1 {
 			// There's no expressible suffix between the two, and there's no
 			// possible separator key.
 			return nil
 		}
+		// The key b is >= key a, but has the same prefix, so b must have the
+		// smaller timestamp, unless a has timestamp of 0.
+		//
 		// NB: The zero suffix (suffix-less) sorts before all other suffixes, so
 		// any suffix we generate will be greater than it.
-		if (as != 0 && suffix >= as) || suffix <= bs {
-			suffix = rng.Int63n(bs-as-1) + as + 1
+		if as == 0 {
+			// bs > as
+			suffix = bs + rng.Int63n(10) + 1
+		} else {
+			// bs < as.
+			// Generate suffix in range [bs + 1, as - 1]
+			suffix = bs + 1 + rng.Int63n(as-bs-1)
 		}
 	case generatedIdx == apIdx:
 		// NB: The zero suffix (suffix-less) sorts before all other suffixes, so
 		// any suffix we generate will be greater than it.
-		if as != 0 && suffix >= as {
+		if as == 0 && suffix == 0 {
+			suffix++
+		} else if as != 0 && suffix >= as {
 			suffix = rng.Int63n(as)
 		}
 	case generatedIdx == bpIdx:
