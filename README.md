@@ -1,4 +1,4 @@
-# Pebble [![Build Status](https://github.com/cockroachdb/pebble/actions/workflows/ci.yaml/badge.svg?branch=master)](https://github.com/cockroachdb/pebble/actions/workflows/ci.yaml) [![GoDoc](https://godoc.org/github.com/cockroachdb/pebble?status.svg)](https://godoc.org/github.com/cockroachdb/pebble)
+# Pebble [![Build Status](https://github.com/cockroachdb/pebble/actions/workflows/ci.yaml/badge.svg?branch=master)](https://github.com/cockroachdb/pebble/actions/workflows/ci.yaml) [![GoDoc](https://godoc.org/github.com/cockroachdb/pebble?status.svg)](https://godoc.org/github.com/cockroachdb/pebble) <sup><sub><sub>[Coverage](https://storage.googleapis.com/crl-codecover-public/pebble/index.html)</sub></sub></sup>
 
 #### [Nightly benchmarks](https://cockroachdb.github.io/pebble/)
 
