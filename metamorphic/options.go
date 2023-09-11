@@ -103,7 +103,9 @@ func parseOptions(
 				opts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 					"": remote.NewInMem(),
 				})
-				opts.Opts.Experimental.CreateOnShared = true
+				if opts.Opts.Experimental.CreateOnShared == remote.CreateOnSharedNone {
+					opts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+				}
 				return true
 			case "TestOptions.secondary_cache_enabled":
 				opts.secondaryCacheEnabled = true
@@ -548,7 +550,12 @@ func randomOptions(
 		testOpts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": remote.NewInMem(),
 		})
-		testOpts.Opts.Experimental.CreateOnShared = true
+		// If shared storage is enabled, pick between writing all files on shared
+		// vs. lower levels only, 50% of the time.
+		testOpts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+		if rng.Intn(2) == 0 {
+			testOpts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedLower
+		}
 		// If shared storage is enabled, enable secondary cache 50% of time.
 		if rng.Intn(2) == 0 {
 			testOpts.secondaryCacheEnabled = true

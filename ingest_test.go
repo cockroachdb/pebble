@@ -786,7 +786,9 @@ func TestExcise(t *testing.T) {
 	})
 }
 
-func TestIngestShared(t *testing.T) {
+func testIngestSharedImpl(
+	t *testing.T, createOnShared remote.CreateOnSharedStrategy, fileName string,
+) {
 	var d, d1, d2 *DB
 	var efos map[string]*EventuallyFileOnlySnapshot
 	defer func() {
@@ -822,8 +824,8 @@ func TestIngestShared(t *testing.T) {
 		require.NoError(t, mem2.MkdirAll("ext", 0755))
 		opts1 := &Options{
 			Comparer:              testkeys.Comparer,
-			LBaseMaxBytes:         1,
 			FS:                    mem1,
+			LBaseMaxBytes:         1,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
@@ -835,7 +837,7 @@ func TestIngestShared(t *testing.T) {
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
 		})
-		opts1.Experimental.CreateOnShared = true
+		opts1.Experimental.CreateOnShared = createOnShared
 		opts1.Experimental.CreateOnSharedLocator = ""
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -846,7 +848,7 @@ func TestIngestShared(t *testing.T) {
 		opts2.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
 		})
-		opts2.Experimental.CreateOnShared = true
+		opts2.Experimental.CreateOnShared = createOnShared
 		opts2.Experimental.CreateOnSharedLocator = ""
 		opts2.FS = mem2
 
@@ -863,7 +865,7 @@ func TestIngestShared(t *testing.T) {
 	}
 	reset()
 
-	datadriven.RunTest(t, "testdata/ingest_shared", func(t *testing.T, td *datadriven.TestData) string {
+	datadriven.RunTest(t, fmt.Sprintf("testdata/%s", fileName), func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
 			reset()
@@ -1107,6 +1109,22 @@ func TestIngestShared(t *testing.T) {
 	})
 }
 
+func TestIngestShared(t *testing.T) {
+	for _, strategy := range []remote.CreateOnSharedStrategy{remote.CreateOnSharedAll, remote.CreateOnSharedLower} {
+		strategyStr := "all"
+		if strategy == remote.CreateOnSharedLower {
+			strategyStr = "lower"
+		}
+		t.Run(fmt.Sprintf("createOnShared=%s", strategyStr), func(t *testing.T) {
+			fileName := "ingest_shared"
+			if strategy == remote.CreateOnSharedLower {
+				fileName = "ingest_shared_lower"
+			}
+			testIngestSharedImpl(t, strategy, fileName)
+		})
+	}
+}
+
 func TestSimpleIngestShared(t *testing.T) {
 	mem := vfs.NewMem()
 	var d *DB
@@ -1128,7 +1146,7 @@ func TestSimpleIngestShared(t *testing.T) {
 	providerSettings.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": remote.NewInMem(),
 	})
-	providerSettings.Remote.CreateOnShared = true
+	providerSettings.Remote.CreateOnShared = remote.CreateOnSharedAll
 	providerSettings.Remote.CreateOnSharedLocator = ""
 
 	provider2, err := objstorageprovider.Open(providerSettings)
@@ -1307,7 +1325,7 @@ func TestConcurrentExcise(t *testing.T) {
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
 		})
-		opts1.Experimental.CreateOnShared = true
+		opts1.Experimental.CreateOnShared = remote.CreateOnSharedAll
 		opts1.Experimental.CreateOnSharedLocator = ""
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -1318,7 +1336,7 @@ func TestConcurrentExcise(t *testing.T) {
 		opts2.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
 		})
-		opts2.Experimental.CreateOnShared = true
+		opts2.Experimental.CreateOnShared = remote.CreateOnSharedAll
 		opts2.Experimental.CreateOnSharedLocator = ""
 		opts2.FS = mem2
 
@@ -1653,7 +1671,7 @@ func TestIngestExternal(t *testing.T) {
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"external-locator": remoteStorage,
 		})
-		opts.Experimental.CreateOnShared = false
+		opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
