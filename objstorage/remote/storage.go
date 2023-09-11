@@ -22,6 +22,42 @@ type StorageFactory interface {
 	CreateStorage(locator Locator) (Storage, error)
 }
 
+// SharedLevelsStart denotes the highest (i.e. lowest numbered) level that will
+// have sstables shared across Pebble instances when doing skip-shared
+// iteration (see db.ScanInternal) or shared file ingestion (see
+// db.IngestAndExcise).
+const SharedLevelsStart = 5
+
+// CreateOnSharedStrategy specifies what table files should be created on shared
+// storage. For use with CreateOnShared in options.
+type CreateOnSharedStrategy int
+
+const (
+	// CreateOnSharedNone denotes no files being created on shared storage.
+	CreateOnSharedNone CreateOnSharedStrategy = iota
+	// CreateOnSharedLower denotes the creation of files in lower levels of the
+	// LSM (specifically, L5 and L6 as they're below SharedLevelsStart) on
+	// shared storage, and higher levels on local storage.
+	CreateOnSharedLower
+	// CreateOnSharedAll denotes the creation of all sstables on shared storage.
+	CreateOnSharedAll
+)
+
+// ShouldCreateShared returns whether new table files at the specified level
+// should be created on shared storage.
+func ShouldCreateShared(strategy CreateOnSharedStrategy, level int) bool {
+	switch strategy {
+	case CreateOnSharedAll:
+		return true
+	case CreateOnSharedNone:
+		return false
+	case CreateOnSharedLower:
+		return level >= SharedLevelsStart
+	default:
+		panic("unexpected CreateOnSharedStrategy value")
+	}
+}
+
 // Storage is an interface for a blob storage driver. This is lower-level
 // than an FS-like interface, however FS/File-like abstractions can be built on
 // top of these methods.
