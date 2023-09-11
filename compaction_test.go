@@ -516,6 +516,10 @@ func TestPickCompaction(t *testing.T) {
 		pc, got := vs.picker.pickAuto(compactionEnv{diskAvailBytes: math.MaxUint64}), ""
 		if pc != nil {
 			c := newCompaction(pc, opts, time.Now())
+			if err := c.maybeDoMoveCompaction(nil /* provider */); err != nil {
+				t.Fatal(err)
+			}
+
 			gotStart := fileNums(c.startLevel.files)
 			gotML := ""
 			observedMulti := len(c.extraLevels) > 0
@@ -1856,6 +1860,9 @@ func TestCompactionOutputLevel(t *testing.T) {
 				d.ScanArgs(t, "base", &base)
 				pc := newPickedCompaction(opts, version, start, defaultOutputLevel(start, base), base)
 				c := newCompaction(pc, opts, time.Now())
+				if err := c.maybeDoMoveCompaction(nil /* provider */); err != nil {
+					t.Fatal(err)
+				}
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)
 
@@ -3828,7 +3835,7 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": remote.NewInMem(),
 	})
-	opts.Experimental.CreateOnShared = true
+	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 	opts.TargetByteDeletionRate = 1
 
 	d, err := Open("", &opts)

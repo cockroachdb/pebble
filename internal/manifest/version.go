@@ -424,6 +424,44 @@ func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
 	}
 }
 
+// Copy constructs a shallow copy of a FileMetadata into another one. Note that
+// internal keys aren't deep-copied.
+func (m *FileMetadata) Copy() *FileMetadata {
+	mCopy := new(FileMetadata)
+	*mCopy = FileMetadata{
+		FileBacking:         m.FileBacking,
+		InitAllowedSeeks:    m.InitAllowedSeeks,
+		FileNum:             m.FileNum,
+		Size:                m.Size,
+		CreationTime:        m.CreationTime,
+		SmallestSeqNum:      m.SmallestSeqNum,
+		LargestSeqNum:       m.LargestSeqNum,
+		SmallestPointKey:    m.SmallestPointKey,
+		LargestPointKey:     m.LargestPointKey,
+		SmallestRangeKey:    m.SmallestRangeKey,
+		LargestRangeKey:     m.LargestRangeKey,
+		Smallest:            m.Smallest,
+		Largest:             m.Largest,
+		Stats:               m.Stats,
+		SubLevel:            m.SubLevel,
+		L0Index:             m.L0Index,
+		minIntervalIndex:    m.minIntervalIndex,
+		maxIntervalIndex:    m.maxIntervalIndex,
+		IsIntraL0Compacting: m.IsIntraL0Compacting,
+		CompactionState:     m.CompactionState,
+		MarkedForCompaction: m.MarkedForCompaction,
+		HasPointKeys:        m.HasPointKeys,
+		HasRangeKeys:        m.HasRangeKeys,
+		boundsSet:           m.boundsSet,
+		boundTypeSmallest:   m.boundTypeSmallest,
+		boundTypeLargest:    m.boundTypeLargest,
+		Virtual:             m.Virtual,
+	}
+	mCopy.statsValid.Store(m.statsValid.Load())
+	mCopy.AllowedSeeks.Store(m.AllowedSeeks.Load())
+	return mCopy
+}
+
 // Refs returns the refcount of backing sstable.
 func (m *FileMetadata) Refs() int32 {
 	return m.FileBacking.refs.Load()

@@ -52,7 +52,7 @@ func TestScanStatistics(t *testing.T) {
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": remote.NewInMem(),
 		})
-		opts.Experimental.CreateOnShared = true
+		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 		opts.Experimental.CreateOnSharedLocator = ""
 		opts.DisableAutomaticCompactions = true
 		opts.EnsureDefaults()
@@ -227,7 +227,7 @@ func TestScanInternal(t *testing.T) {
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": remote.NewInMem(),
 		})
-		opts.Experimental.CreateOnShared = true
+		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 		opts.Experimental.CreateOnSharedLocator = ""
 		opts.DisableAutomaticCompactions = true
 		opts.EnsureDefaults()

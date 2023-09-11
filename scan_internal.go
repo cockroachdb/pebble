@@ -14,12 +14,13 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
 const (
 	// In skip-shared iteration mode, keys in levels sharedLevelsStart and greater
 	// (i.e. lower in the LSM) are skipped.
-	sharedLevelsStart = 5
+	sharedLevelsStart = remote.SharedLevelsStart
 )
 
 // ErrInvalidSkipSharedIteration is returned by ScanInternal if it was called

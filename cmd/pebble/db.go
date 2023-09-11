@@ -105,7 +105,7 @@ func newPebbleDB(dir string) DB {
 			// Store all shared objects on local disk, for convenience.
 			"": remote.NewLocalFS(pathToLocalSharedStorage, vfs.Default),
 		})
-		opts.Experimental.CreateOnShared = true
+		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 		if secondaryCacheSize != 0 {
 			opts.Experimental.SecondaryCacheSizeBytes = secondaryCacheSize
 		}

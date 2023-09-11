@@ -272,6 +272,10 @@ type Provider interface {
 	// IsSharedForeign returns whether this object is owned by a different node.
 	IsSharedForeign(meta ObjectMetadata) bool
 
+	// ShouldCreateShared returns whether new table files at the specified level
+	// should be created on shared storage.
+	ShouldCreateShared(level int) bool
+
 	// RemoteObjectBacking encodes the remote object metadata for the given object.
 	RemoteObjectBacking(meta *ObjectMetadata) (RemoteObjectBackingHandle, error)
 

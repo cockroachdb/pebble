@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invalidating"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -664,6 +665,10 @@ type compaction struct {
 
 	metrics map[int]*LevelMetrics
 
+	// isTrivialMove is true iff this compaction produces no new files, and all
+	// existing input files are retained in the LSM.
+	isTrivialMove bool
+
 	pickerMetrics compactionPickerMetrics
 }
 
@@ -746,15 +751,39 @@ func newCompaction(pc *pickedCompaction, opts *Options, beganAt time.Time) *comp
 	c.setupInuseKeyRanges()
 
 	c.kind = pc.kind
+	return c
+}
+
+func (c *compaction) maybeDoMoveCompaction(provider objstorage.Provider) error {
 	if c.kind == compactionKindDefault && c.outputLevel.files.Empty() && !c.hasExtraLevelData() &&
 		c.startLevel.files.Len() == 1 && c.grandparents.SizeSum() <= c.maxOverlapBytes {
 		// This compaction can be converted into a trivial move from one level
 		// to the next. We avoid such a move if there is lots of overlapping
 		// grandparent data. Otherwise, the move could create a parent file
-		// that will require a very expensive merge later on.
-		c.kind = compactionKindMove
+		// that will require a very expensive merge later on.'
+		//
+		// Avoid a trivial move if all of these are true, as rewriting a new
+		// file is better:
+		//
+		// 1) The source file is a virtual sstable
+		// 2) The existing file `trivialMoveMeta` is on non-remote storage
+		// 3) The output level prefers shared storage
+		iter := c.startLevel.files.Iter()
+		trivialMoveMeta := iter.First()
+		if provider != nil {
+			objMeta, err := provider.Lookup(fileTypeTable, trivialMoveMeta.FileNum.DiskFileNum())
+			if err != nil {
+				return err
+			}
+			if !trivialMoveMeta.Virtual || objMeta.IsRemote() || !provider.ShouldCreateShared(c.outputLevel.level) {
+				c.kind = compactionKindMove
+			}
+		} else {
+			// We have no provider. This should only be the case in some unit tests.
+			c.kind = compactionKindMove
+		}
 	}
-	return c
+	return nil
 }
 
 func newDeleteOnlyCompaction(
@@ -1700,7 +1729,7 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 				// On success all compactions other than move-compactions transition the
 				// file into the Compacted state. Move-compacted files become eligible
 				// for compaction again and transition back to NotCompacting.
-				if c.kind != compactionKindMove {
+				if !c.isTrivialMove {
 					f.SetCompactionState(manifest.CompactionStateCompacted)
 				} else {
 					f.SetCompactionState(manifest.CompactionStateNotCompacting)
@@ -2295,6 +2324,12 @@ func (d *DB) maybeScheduleCompactionPicker(
 		pc, retryLater := pickManualCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
 		if pc != nil {
 			c := newCompaction(pc, d.opts, d.timeNow())
+			if err := c.maybeDoMoveCompaction(d.objProvider); err != nil {
+				d.opts.EventListener.BackgroundError(err)
+				// Inability to run head blocks later manual compactions.
+				manual.retries++
+				break
+			}
 			d.mu.compact.manual = d.mu.compact.manual[1:]
 			d.mu.compact.compactingCount++
 			d.addInProgressCompaction(c)
@@ -2322,6 +2357,10 @@ func (d *DB) maybeScheduleCompactionPicker(
 			break
 		}
 		c := newCompaction(pc, d.opts, d.timeNow())
+		if err := c.maybeDoMoveCompaction(d.objProvider); err != nil {
+			d.opts.EventListener.BackgroundError(err)
+			break
+		}
 		d.mu.compact.compactingCount++
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
@@ -2725,6 +2764,64 @@ type compactStats struct {
 	countMissizedDels    uint64
 }
 
+// runNonTrivialMoveCompaction runs a non-trivial move compaction where a new
+// FileNum is created that is a byte-for-byte copy of the input file. This
+// is used when the move compaction is happening across the local/remote storage
+// boundary.
+//
+// d.mu must be held when calling this method.
+func (d *DB) runNonTrivialMoveCompaction(
+	jobID int,
+	c *compaction,
+	meta *fileMetadata,
+	objMeta objstorage.ObjectMetadata,
+	versionEdit *versionEdit,
+) (ve *versionEdit, pendingOutputs []physicalMeta, retErr error) {
+	// NB: we expect the input ve to have already been set like a trivial move
+	// compaction. This method just mutates it into that for a non-trivial move.
+	ve = versionEdit
+	// Note that based on logic in the compaction picker, we're guaranteed
+	// trivialMoveMeta.Virtual is false.
+	if meta.Virtual {
+		panic("cannot do a trivial move compaction of a virtual sstable across local/remote storage")
+	}
+	// We are in the relatively more complex case where we need to copy this
+	// file to remote/shared storage. Drop the db mutex while we do the
+	// copy.
+	//
+	// To ease up cleanup of the local file and tracking of refs, we create
+	// a new FileNum. This has the potential of causing greater block cache
+	// utilization, however.
+	metaCopy := meta.Copy()
+	metaCopy.FileNum = d.mu.versions.getNextFileNum()
+	metaCopy.FileBacking = nil
+	metaCopy.SetCompactionState(manifest.CompactionStateNotCompacting)
+	metaCopy.InitPhysicalBacking()
+	c.metrics = map[int]*LevelMetrics{
+		c.outputLevel.level: {
+			BytesIn:         meta.Size,
+			BytesCompacted:  meta.Size,
+			TablesCompacted: 1,
+		},
+	}
+	pendingOutputs = append(pendingOutputs, metaCopy.PhysicalMeta())
+
+	d.mu.Unlock()
+	defer d.mu.Lock()
+	_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
+		d.objProvider.Path(objMeta), fileTypeTable, metaCopy.FileBacking.DiskFileNum,
+		objstorage.CreateOptions{PreferSharedStorage: true})
+	if err != nil {
+		return ve, pendingOutputs, err
+	}
+	ve.NewFiles[0].Meta = metaCopy
+
+	if err := d.objProvider.Sync(); err != nil {
+		return nil, pendingOutputs, err
+	}
+	return ve, pendingOutputs, nil
+}
+
 // runCompactions runs a compaction that produces new on-disk tables from
 // memtables or old on-disk tables.
 //
@@ -2779,20 +2876,37 @@ func (d *DB) runCompaction(
 	// merge later on.
 	if c.kind == compactionKindMove {
 		iter := c.startLevel.files.Iter()
-		meta := iter.First()
+		trivialMoveMeta := iter.First()
+		if invariants.Enabled {
+			if iter.Next() != nil {
+				panic("got more than one file for a move compaction")
+			}
+		}
+		objMeta, err := d.objProvider.Lookup(fileTypeTable, trivialMoveMeta.FileNum.DiskFileNum())
+		if err != nil {
+			return ve, pendingOutputs, stats, err
+		}
 		c.metrics = map[int]*LevelMetrics{
 			c.outputLevel.level: {
-				BytesMoved:  meta.Size,
+				BytesMoved:  trivialMoveMeta.Size,
 				TablesMoved: 1,
 			},
 		}
+		c.isTrivialMove = true
 		ve := &versionEdit{
 			DeletedFiles: map[deletedFileEntry]*fileMetadata{
-				{Level: c.startLevel.level, FileNum: meta.FileNum}: meta,
+				{Level: c.startLevel.level, FileNum: trivialMoveMeta.FileNum}: trivialMoveMeta,
 			},
 			NewFiles: []newFileEntry{
-				{Level: c.outputLevel.level, Meta: meta},
+				{Level: c.outputLevel.level, Meta: trivialMoveMeta},
 			},
+		}
+		if !objMeta.IsRemote() && d.objProvider.ShouldCreateShared(c.outputLevel.level) {
+			c.isTrivialMove = false
+			ve, pendingOutputs, retErr = d.runNonTrivialMoveCompaction(jobID, c, trivialMoveMeta, objMeta, ve)
+			if retErr != nil {
+				return ve, pendingOutputs, stats, retErr
+			}
 		}
 		return ve, nil, stats, nil
 	}
@@ -2974,15 +3088,8 @@ func (d *DB) runCompaction(
 			}
 		}
 		// Prefer shared storage if present.
-		//
-		// TODO(bilal): This might be inefficient for short-lived files in higher
-		// levels if we're only writing to shared storage and not double-writing
-		// to local storage. Either implement double-writing functionality, or
-		// set PreferSharedStorage to c.outputLevel.level >= 5. The latter needs
-		// some careful handling around move compactions to ensure all files in
-		// lower levels are in shared storage.
 		createOpts := objstorage.CreateOptions{
-			PreferSharedStorage: true,
+			PreferSharedStorage: d.objProvider.ShouldCreateShared(c.outputLevel.level),
 		}
 		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, fileNum.DiskFileNum(), createOpts)
 		if err != nil {

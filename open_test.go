@@ -1351,7 +1351,7 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 	memShared := remote.NewInMem()
 
 	opts := &Options{FS: mem}
-	opts.Experimental.CreateOnShared = true
+	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": memShared,
 	})
