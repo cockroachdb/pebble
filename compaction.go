@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invalidating"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -26,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/constraints"
@@ -466,6 +468,7 @@ const (
 	compactionKindRead
 	compactionKindRewrite
 	compactionKindIngestedFlushable
+	compactionKindCopy
 )
 
 func (k compactionKind) String() string {
@@ -486,6 +489,8 @@ func (k compactionKind) String() string {
 		return "rewrite"
 	case compactionKindIngestedFlushable:
 		return "ingested-flushable"
+	case compactionKindCopy:
+		return "copy"
 	}
 	return "?"
 }
@@ -712,7 +717,9 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 	return info
 }
 
-func newCompaction(pc *pickedCompaction, opts *Options, beganAt time.Time) *compaction {
+func newCompaction(
+	pc *pickedCompaction, opts *Options, beganAt time.Time, provider objstorage.Provider,
+) *compaction {
 	c := &compaction{
 		kind:              compactionKindDefault,
 		cmp:               pc.cmp,
@@ -747,15 +754,41 @@ func newCompaction(pc *pickedCompaction, opts *Options, beganAt time.Time) *comp
 			c.smallest.UserKey, c.largest.UserKey, c.largest.IsExclusiveSentinel())
 	}
 	c.setupInuseKeyRanges()
-
 	c.kind = pc.kind
+
 	if c.kind == compactionKindDefault && c.outputLevel.files.Empty() && !c.hasExtraLevelData() &&
 		c.startLevel.files.Len() == 1 && c.grandparents.SizeSum() <= c.maxOverlapBytes {
 		// This compaction can be converted into a trivial move from one level
 		// to the next. We avoid such a move if there is lots of overlapping
 		// grandparent data. Otherwise, the move could create a parent file
 		// that will require a very expensive merge later on.
-		c.kind = compactionKindMove
+		iter := c.startLevel.files.Iter()
+		meta := iter.First()
+		if provider != nil {
+			objMeta, err := provider.Lookup(fileTypeTable, meta.FileNum.DiskFileNum())
+			if err != nil {
+				panic(errors.Wrapf(err, "cannot lookup table %s in provider", meta.FileNum))
+			}
+			// Avoid a trivial move or copy if all of these are true, as rewriting a
+			// new file is better:
+			//
+			// 1) The source file is a virtual sstable
+			// 2) The existing file `meta` is on non-remote storage
+			// 3) The output level prefers shared storage
+			if meta.Virtual && !objMeta.IsRemote() && remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level) {
+				return c
+			}
+			if !objMeta.IsRemote() && remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level) {
+				// This file will be "moving" from local to shared storage. In that
+				// case, we should be copying it into a new file on shared storage.
+				c.kind = compactionKindCopy
+			} else {
+				c.kind = compactionKindMove
+			}
+		} else {
+			// We have no provider. This should only be the case in some unit tests.
+			c.kind = compactionKindMove
+		}
 	}
 	return c
 }
@@ -2349,7 +2382,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
 		pc, retryLater := pickManualCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
 		if pc != nil {
-			c := newCompaction(pc, d.opts, d.timeNow())
+			c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
 			d.mu.compact.manual = d.mu.compact.manual[1:]
 			d.mu.compact.compactingCount++
 			d.addInProgressCompaction(c)
@@ -2376,7 +2409,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 		if pc == nil {
 			break
 		}
-		c := newCompaction(pc, d.opts, d.timeNow())
+		c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
 		d.mu.compact.compactingCount++
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
@@ -2780,6 +2813,74 @@ type compactStats struct {
 	countMissizedDels    uint64
 }
 
+// runCopyCompaction runs a copy compaction where a new FileNum is created that
+// is a byte-for-byte copy of the input file. This is used in lieu of a move
+// compaction when a file is being moved across the local/remote storage
+// boundary.
+//
+// d.mu must be held when calling this method.
+func (d *DB) runCopyCompaction(
+	jobID int,
+	c *compaction,
+	meta *fileMetadata,
+	objMeta objstorage.ObjectMetadata,
+	versionEdit *versionEdit,
+) (ve *versionEdit, pendingOutputs []physicalMeta, retErr error) {
+	ve = versionEdit
+	// Note that based on logic in the compaction picker, we're guaranteed
+	// meta.Virtual is false.
+	if meta.Virtual {
+		panic(errors.AssertionFailedf("cannot do a copy compaction of a virtual sstable across local/remote storage"))
+	}
+	// We are in the relatively more complex case where we need to copy this
+	// file to remote/shared storage. Drop the db mutex while we do the
+	// copy.
+	//
+	// To ease up cleanup of the local file and tracking of refs, we create
+	// a new FileNum. This has the potential of making the block cache less
+	// effective, however.
+	metaCopy := new(fileMetadata)
+	*metaCopy = fileMetadata{
+		Size:           meta.Size,
+		CreationTime:   meta.CreationTime,
+		SmallestSeqNum: meta.SmallestSeqNum,
+		LargestSeqNum:  meta.LargestSeqNum,
+		Stats:          meta.Stats,
+		Virtual:        meta.Virtual,
+	}
+	if meta.HasPointKeys {
+		metaCopy.ExtendPointKeyBounds(c.cmp, meta.SmallestPointKey, meta.LargestPointKey)
+	}
+	if meta.HasRangeKeys {
+		metaCopy.ExtendRangeKeyBounds(c.cmp, meta.SmallestRangeKey, meta.LargestRangeKey)
+	}
+	metaCopy.FileNum = d.mu.versions.getNextFileNum()
+	metaCopy.InitPhysicalBacking()
+	c.metrics = map[int]*LevelMetrics{
+		c.outputLevel.level: {
+			BytesIn:         meta.Size,
+			BytesCompacted:  meta.Size,
+			TablesCompacted: 1,
+		},
+	}
+	pendingOutputs = append(pendingOutputs, metaCopy.PhysicalMeta())
+
+	d.mu.Unlock()
+	defer d.mu.Lock()
+	_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
+		d.objProvider.Path(objMeta), fileTypeTable, metaCopy.FileBacking.DiskFileNum,
+		objstorage.CreateOptions{PreferSharedStorage: true})
+	if err != nil {
+		return ve, pendingOutputs, err
+	}
+	ve.NewFiles[0].Meta = metaCopy
+
+	if err := d.objProvider.Sync(); err != nil {
+		return nil, pendingOutputs, err
+	}
+	return ve, pendingOutputs, nil
+}
+
 // runCompactions runs a compaction that produces new on-disk tables from
 // memtables or old on-disk tables.
 //
@@ -2828,26 +2929,44 @@ func (d *DB) runCompaction(
 		panic("pebble: runCompaction cannot handle compactionKindIngestedFlushable.")
 	}
 
-	// Check for a trivial move of one table from one level to the next. We avoid
+	// Check for a move or copy of one table from one level to the next. We avoid
 	// such a move if there is lots of overlapping grandparent data. Otherwise,
 	// the move could create a parent file that will require a very expensive
 	// merge later on.
-	if c.kind == compactionKindMove {
+	if c.kind == compactionKindMove || c.kind == compactionKindCopy {
 		iter := c.startLevel.files.Iter()
-		meta := iter.First()
+		trivialMoveMeta := iter.First()
+		if invariants.Enabled {
+			if iter.Next() != nil {
+				panic("got more than one file for a move or copy compaction")
+			}
+		}
+		objMeta, err := d.objProvider.Lookup(fileTypeTable, trivialMoveMeta.FileNum.DiskFileNum())
+		if err != nil {
+			return ve, pendingOutputs, stats, err
+		}
 		c.metrics = map[int]*LevelMetrics{
 			c.outputLevel.level: {
-				BytesMoved:  meta.Size,
+				BytesMoved:  trivialMoveMeta.Size,
 				TablesMoved: 1,
 			},
 		}
 		ve := &versionEdit{
 			DeletedFiles: map[deletedFileEntry]*fileMetadata{
-				{Level: c.startLevel.level, FileNum: meta.FileNum}: meta,
+				{Level: c.startLevel.level, FileNum: trivialMoveMeta.FileNum}: trivialMoveMeta,
 			},
 			NewFiles: []newFileEntry{
-				{Level: c.outputLevel.level, Meta: meta},
+				{Level: c.outputLevel.level, Meta: trivialMoveMeta},
 			},
+		}
+		if c.kind == compactionKindCopy {
+			if objMeta.IsRemote() || !remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level) {
+				panic("pebble: scheduled a copy compaction that is not actually moving files to shared storage")
+			}
+			ve, pendingOutputs, retErr = d.runCopyCompaction(jobID, c, trivialMoveMeta, objMeta, ve)
+			if retErr != nil {
+				return ve, pendingOutputs, stats, retErr
+			}
 		}
 		return ve, nil, stats, nil
 	}
@@ -3029,15 +3148,8 @@ func (d *DB) runCompaction(
 			}
 		}
 		// Prefer shared storage if present.
-		//
-		// TODO(bilal): This might be inefficient for short-lived files in higher
-		// levels if we're only writing to shared storage and not double-writing
-		// to local storage. Either implement double-writing functionality, or
-		// set PreferSharedStorage to c.outputLevel.level >= 5. The latter needs
-		// some careful handling around move compactions to ensure all files in
-		// lower levels are in shared storage.
 		createOpts := objstorage.CreateOptions{
-			PreferSharedStorage: true,
+			PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
 		}
 		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, fileNum.DiskFileNum(), createOpts)
 		if err != nil {
