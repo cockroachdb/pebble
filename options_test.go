@@ -106,6 +106,7 @@ func TestOptionsString(t *testing.T) {
   max_writer_concurrency=0
   force_writer_parallelism=false
   secondary_cache_size_bytes=0
+  create_on_shared=0
 
 [Level "0"]
   block_restart_interval=16

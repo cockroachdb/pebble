@@ -142,7 +142,9 @@ func New(opts ...Option) *T {
 
 // ConfigureSharedStorage updates the shared storage options.
 func (t *T) ConfigureSharedStorage(
-	s remote.StorageFactory, createOnShared bool, createOnSharedLocator remote.Locator,
+	s remote.StorageFactory,
+	createOnShared remote.CreateOnSharedStrategy,
+	createOnSharedLocator remote.Locator,
 ) {
 	t.opts.Experimental.RemoteStorage = s
 	t.opts.Experimental.CreateOnShared = createOnShared
