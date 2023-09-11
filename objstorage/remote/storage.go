@@ -22,6 +22,21 @@ type StorageFactory interface {
 	CreateStorage(locator Locator) (Storage, error)
 }
 
+// CreateOnSharedStrategy specifies what table files should be created on shared
+// storage. For use with CreateOnShared in options.
+type CreateOnSharedStrategy int
+
+const (
+	// CreateOnSharedNone denotes no files being created on shared storage.
+	CreateOnSharedNone CreateOnSharedStrategy = iota
+	// CreateOnSharedLower denotes the creation of files in lower levels of the
+	// LSM (specifically, L5 and L6 as they're below sharedLevelsStart) on
+	// shared storage, and higher levels on local storage.
+	CreateOnSharedLower
+	// CreateOnSharedAll denotes the creation of all sstables on shared storage.
+	CreateOnSharedAll
+)
+
 // Storage is an interface for a blob storage driver. This is lower-level
 // than an FS-like interface, however FS/File-like abstractions can be built on
 // top of these methods.

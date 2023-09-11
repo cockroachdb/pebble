@@ -662,6 +662,10 @@ type compaction struct {
 
 	metrics map[int]*LevelMetrics
 
+	// isTrivialMove is true iff this compaction produces no new files, and all
+	// existing input files are retained in the LSM.
+	isTrivialMove bool
+
 	pickerMetrics compactionPickerMetrics
 }
 
@@ -1694,7 +1698,7 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 				// On success all compactions other than move-compactions transition the
 				// file into the Compacted state. Move-compacted files become eligible
 				// for compaction again and transition back to NotCompacting.
-				if c.kind != compactionKindMove {
+				if !c.isTrivialMove {
 					f.SetCompactionState(manifest.CompactionStateCompacted)
 				} else {
 					f.SetCompactionState(manifest.CompactionStateNotCompacting)
@@ -2766,22 +2770,86 @@ func (d *DB) runCompaction(
 	// such a move if there is lots of overlapping grandparent data. Otherwise,
 	// the move could create a parent file that will require a very expensive
 	// merge later on.
-	if c.kind == compactionKindMove {
+	shouldDoTrivialMove := c.kind == compactionKindMove
+	var trivialMoveMeta *fileMetadata
+	if shouldDoTrivialMove {
 		iter := c.startLevel.files.Iter()
-		meta := iter.First()
+		trivialMoveMeta = iter.First()
+		objMeta, err := d.objProvider.Lookup(fileTypeTable, trivialMoveMeta.FileNum.DiskFileNum())
+		if err != nil {
+			return ve, pendingOutputs, stats, err
+		}
+
+		// Avoid a trivial move if all of these are true, as rewriting a new
+		// file is better:
+		//
+		// 1) The source file is a virtual sstable
+		// 2) The existing file `trivialMoveMeta` is on non-remote storage
+		// 3) The output level prefers shared storage
+		shouldDoTrivialMove = !trivialMoveMeta.Virtual || objMeta.IsRemote() || !d.objProvider.ShouldCreateShared(c.outputLevel.level)
+	}
+
+	if shouldDoTrivialMove {
 		c.metrics = map[int]*LevelMetrics{
 			c.outputLevel.level: {
-				BytesMoved:  meta.Size,
+				BytesMoved:  trivialMoveMeta.Size,
 				TablesMoved: 1,
 			},
 		}
+		c.isTrivialMove = true
 		ve := &versionEdit{
 			DeletedFiles: map[deletedFileEntry]*fileMetadata{
-				{Level: c.startLevel.level, FileNum: meta.FileNum}: meta,
+				{Level: c.startLevel.level, FileNum: trivialMoveMeta.FileNum}: trivialMoveMeta,
 			},
 			NewFiles: []newFileEntry{
-				{Level: c.outputLevel.level, Meta: meta},
+				{Level: c.outputLevel.level, Meta: trivialMoveMeta},
 			},
+		}
+		objMeta, err := d.objProvider.Lookup(fileTypeTable, trivialMoveMeta.FileNum.DiskFileNum())
+		if err != nil {
+			return ve, pendingOutputs, stats, err
+		}
+		if !objMeta.IsRemote() && d.objProvider.ShouldCreateShared(c.outputLevel.level) {
+			// Note that based on the logic in the earlier if statement, we're
+			// guaranteed trivialMoveMeta.Virtual is false.
+			if trivialMoveMeta.Virtual {
+				panic("cannot do a trivial move compaction of a virtual sstable across local/remote storage")
+			}
+			// We are in the relatively more complex case where we need to copy this
+			// file to remote/shared storage. Drop the db mutex while we do the
+			// copy.
+			//
+			// To ease up cleanup of the local file and tracking of refs, we create
+			// a new FileNum. This has the potential of causing greater block cache
+			// utilization, however.
+			metaCopy := trivialMoveMeta.Copy()
+			metaCopy.FileNum = d.mu.versions.getNextFileNum()
+			metaCopy.FileBacking = nil
+			metaCopy.SetCompactionState(manifest.CompactionStateNotCompacting)
+			metaCopy.InitPhysicalBacking()
+			c.metrics = map[int]*LevelMetrics{
+				c.outputLevel.level: {
+					BytesIn:         trivialMoveMeta.Size,
+					BytesCompacted:  trivialMoveMeta.Size,
+					TablesCompacted: 1,
+				},
+			}
+			pendingOutputs = append(pendingOutputs, metaCopy.PhysicalMeta())
+			c.isTrivialMove = false
+
+			d.mu.Unlock()
+			defer d.mu.Lock()
+			_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
+				d.objProvider.Path(objMeta), fileTypeTable, metaCopy.FileBacking.DiskFileNum,
+				objstorage.CreateOptions{PreferSharedStorage: true})
+			if err != nil {
+				return ve, pendingOutputs, stats, err
+			}
+			ve.NewFiles[0].Meta = metaCopy
+
+			if err := d.objProvider.Sync(); err != nil {
+				return nil, pendingOutputs, stats, err
+			}
 		}
 		return ve, nil, stats, nil
 	}
@@ -2962,15 +3030,8 @@ func (d *DB) runCompaction(
 			}
 		}
 		// Prefer shared storage if present.
-		//
-		// TODO(bilal): This might be inefficient for short-lived files in higher
-		// levels if we're only writing to shared storage and not double-writing
-		// to local storage. Either implement double-writing functionality, or
-		// set PreferSharedStorage to c.outputLevel.level >= 5. The latter needs
-		// some careful handling around move compactions to ensure all files in
-		// lower levels are in shared storage.
 		createOpts := objstorage.CreateOptions{
-			PreferSharedStorage: true,
+			PreferSharedStorage: d.objProvider.ShouldCreateShared(c.outputLevel.level),
 		}
 		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, fileNum.DiskFileNum(), createOpts)
 		if err != nil {

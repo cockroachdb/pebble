@@ -65,7 +65,7 @@ func TestProvider(t *testing.T) {
 				st := DefaultSettings(fs, fsDir)
 				if creatorID != 0 {
 					st.Remote.StorageFactory = sharedFactory
-					st.Remote.CreateOnShared = true
+					st.Remote.CreateOnShared = remote.CreateOnSharedAll
 					st.Remote.CreateOnSharedLocator = ""
 				}
 				require.NoError(t, fs.MkdirAll(fsDir, 0755))
@@ -286,7 +286,7 @@ func TestSharedMultipleLocators(t *testing.T) {
 
 	st1 := DefaultSettings(vfs.NewMem(), "")
 	st1.Remote.StorageFactory = sharedFactory
-	st1.Remote.CreateOnShared = true
+	st1.Remote.CreateOnShared = remote.CreateOnSharedAll
 	st1.Remote.CreateOnSharedLocator = "foo"
 	p1, err := Open(st1)
 	require.NoError(t, err)
@@ -294,7 +294,7 @@ func TestSharedMultipleLocators(t *testing.T) {
 
 	st2 := DefaultSettings(vfs.NewMem(), "")
 	st2.Remote.StorageFactory = sharedFactory
-	st2.Remote.CreateOnShared = true
+	st2.Remote.CreateOnShared = remote.CreateOnSharedAll
 	st2.Remote.CreateOnSharedLocator = "bar"
 	p2, err := Open(st2)
 	require.NoError(t, err)
@@ -466,7 +466,7 @@ func TestNotExistError(t *testing.T) {
 	st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": sharedStorage,
 	})
-	st.Remote.CreateOnShared = true
+	st.Remote.CreateOnShared = remote.CreateOnSharedAll
 	st.Remote.CreateOnSharedLocator = ""
 	provider, err := Open(st)
 	require.NoError(t, err)
@@ -554,7 +554,7 @@ func TestParallelSync(t *testing.T) {
 				"": remote.NewInMem(),
 			})
 
-			st.Remote.CreateOnShared = true
+			st.Remote.CreateOnShared = remote.CreateOnSharedAll
 			st.Remote.CreateOnSharedLocator = ""
 			p, err := Open(st)
 			require.NoError(t, err)

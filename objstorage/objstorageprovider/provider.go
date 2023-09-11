@@ -97,10 +97,10 @@ type Settings struct {
 	Remote struct {
 		StorageFactory remote.StorageFactory
 
-		// If CreateOnShared is true, sstables are created on remote storage using
+		// If CreateOnShared is non-zero, sstables are created on remote storage using
 		// the CreateOnSharedLocator (when the PreferSharedStorage create option is
 		// true).
-		CreateOnShared        bool
+		CreateOnShared        remote.CreateOnSharedStrategy
 		CreateOnSharedLocator remote.Locator
 
 		// CacheSizeBytes is the size of the on-disk block cache for objects
@@ -249,7 +249,7 @@ func (p *provider) Create(
 	fileNum base.DiskFileNum,
 	opts objstorage.CreateOptions,
 ) (w objstorage.Writable, meta objstorage.ObjectMetadata, err error) {
-	if opts.PreferSharedStorage && p.st.Remote.CreateOnShared {
+	if opts.PreferSharedStorage && p.st.Remote.CreateOnShared != remote.CreateOnSharedNone {
 		w, meta, err = p.sharedCreate(ctx, fileType, fileNum, p.st.Remote.CreateOnSharedLocator, opts)
 	} else {
 		w, meta, err = p.vfsCreate(ctx, fileType, fileNum)
@@ -263,6 +263,21 @@ func (p *provider) Create(
 		w = p.tracer.WrapWritable(ctx, w, fileNum)
 	}
 	return w, meta, nil
+}
+
+// ShouldCreateShared returns whether new table files at the specified level
+// should be created on shared storage.
+func (p *provider) ShouldCreateShared(level int) bool {
+	switch p.st.Remote.CreateOnShared {
+	case remote.CreateOnSharedAll:
+		return true
+	case remote.CreateOnSharedNone:
+		return false
+	case remote.CreateOnSharedLower:
+		return level >= 5
+	default:
+		panic("unexpected CreateOnShared value")
+	}
 }
 
 // Remove removes an object.
@@ -338,7 +353,7 @@ func (p *provider) LinkOrCopyFromLocal(
 	dstFileNum base.DiskFileNum,
 	opts objstorage.CreateOptions,
 ) (objstorage.ObjectMetadata, error) {
-	shared := opts.PreferSharedStorage && p.st.Remote.CreateOnShared
+	shared := opts.PreferSharedStorage && p.st.Remote.CreateOnShared != remote.CreateOnSharedNone
 	if !shared && srcFS == p.st.FS {
 		// Wrap the normal filesystem with one which wraps newly created files with
 		// vfs.NewSyncingFile.

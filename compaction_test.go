@@ -3828,7 +3828,7 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": remote.NewInMem(),
 	})
-	opts.Experimental.CreateOnShared = true
+	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 	opts.TargetByteDeletionRate = 1
 
 	d, err := Open("", &opts)
