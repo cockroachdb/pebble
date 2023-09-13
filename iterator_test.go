@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -224,123 +225,6 @@ func (f *fakeIter) SetBounds(lower, upper []byte) {
 	f.upper = upper
 }
 
-// invalidatingIter tests unsafe key/value slice reuse by modifying the last
-// returned key/value to all 1s.
-type invalidatingIter struct {
-	iter        internalIterator
-	lastKey     *InternalKey
-	lastValue   []byte
-	ignoreKinds [base.InternalKeyKindMax + 1]bool
-	err         error
-}
-
-func newInvalidatingIter(iter internalIterator) *invalidatingIter {
-	return &invalidatingIter{iter: iter}
-}
-
-func (i *invalidatingIter) ignoreKind(kind base.InternalKeyKind) {
-	i.ignoreKinds[kind] = true
-}
-
-func (i *invalidatingIter) update(
-	key *InternalKey, value base.LazyValue,
-) (*InternalKey, base.LazyValue) {
-	i.zeroLast()
-
-	v, _, err := value.Value(nil)
-	if err != nil {
-		i.err = err
-		key = nil
-	}
-	if key == nil {
-		i.lastKey = nil
-		i.lastValue = nil
-		return nil, LazyValue{}
-	}
-
-	i.lastKey = &InternalKey{}
-	*i.lastKey = key.Clone()
-	i.lastValue = make([]byte, len(v))
-	copy(i.lastValue, v)
-	return i.lastKey, base.MakeInPlaceValue(i.lastValue)
-}
-
-func (i *invalidatingIter) zeroLast() {
-	if i.lastKey == nil {
-		return
-	}
-	if i.ignoreKinds[i.lastKey.Kind()] {
-		return
-	}
-
-	if i.lastKey != nil {
-		for j := range i.lastKey.UserKey {
-			i.lastKey.UserKey[j] = 0xff
-		}
-		i.lastKey.Trailer = 0
-	}
-	for j := range i.lastValue {
-		i.lastValue[j] = 0xff
-	}
-}
-
-func (i *invalidatingIter) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*InternalKey, base.LazyValue) {
-	return i.update(i.iter.SeekGE(key, flags))
-}
-
-func (i *invalidatingIter) SeekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
-	return i.update(i.iter.SeekPrefixGE(prefix, key, flags))
-}
-
-func (i *invalidatingIter) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*InternalKey, base.LazyValue) {
-	return i.update(i.iter.SeekLT(key, flags))
-}
-
-func (i *invalidatingIter) First() (*InternalKey, base.LazyValue) {
-	return i.update(i.iter.First())
-}
-
-func (i *invalidatingIter) Last() (*InternalKey, base.LazyValue) {
-	return i.update(i.iter.Last())
-}
-
-func (i *invalidatingIter) Next() (*InternalKey, base.LazyValue) {
-	return i.update(i.iter.Next())
-}
-
-func (i *invalidatingIter) Prev() (*InternalKey, base.LazyValue) {
-	return i.update(i.iter.Prev())
-}
-
-func (i *invalidatingIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
-	return i.update(i.iter.NextPrefix(succKey))
-}
-
-func (i *invalidatingIter) Error() error {
-	if err := i.iter.Error(); err != nil {
-		return err
-	}
-	return i.err
-}
-
-func (i *invalidatingIter) Close() error {
-	return i.iter.Close()
-}
-
-func (i *invalidatingIter) SetBounds(lower, upper []byte) {
-	i.iter.SetBounds(lower, upper)
-}
-
-func (i *invalidatingIter) String() string {
-	return i.iter.String()
-}
-
 // testIterator tests creating a combined iterator from a number of sub-
 // iterators. newFunc is a constructor function. splitFunc returns a random
 // split of the testKeyValuePairs slice such that walking a combined iterator
@@ -394,7 +278,7 @@ func testIterator(
 	}
 	for _, tc := range testCases {
 		var b bytes.Buffer
-		iter := newInvalidatingIter(newFunc(tc.iters...))
+		iter := invalidating.NewIter(newFunc(tc.iters...))
 		for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
 			fmt.Fprintf(&b, "<%s:%d>", key.UserKey, key.SeqNum())
 		}
@@ -418,7 +302,7 @@ func testIterator(
 		for i, split := range splits {
 			iters[i] = newFakeIterator(nil, split...)
 		}
-		iter := newInternalIterAdapter(newInvalidatingIter(newFunc(iters...)))
+		iter := newInternalIterAdapter(invalidating.NewIter(newFunc(iters...)))
 		iter.First()
 
 		j := 0
@@ -525,7 +409,7 @@ func TestIterator(t *testing.T) {
 		iter.snapshot = seqNum
 		// NB: This Iterator cannot be cloned since it is not constructed
 		// with a readState. It suffices for this test.
-		it.iter = newInvalidatingIter(iter)
+		it.iter = invalidating.NewIter(iter)
 		return it
 	}
 
@@ -1131,7 +1015,7 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 			keys:  keys,
 			vals:  vals,
 		}
-		errorIter = errorSeekIter{internalIterator: newInvalidatingIter(iter)}
+		errorIter = errorSeekIter{internalIterator: invalidating.NewIter(iter)}
 		// NB: This Iterator cannot be cloned since it is not constructed
 		// with a readState. It suffices for this test.
 		return &Iterator{
