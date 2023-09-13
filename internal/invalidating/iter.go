@@ -49,7 +49,7 @@ func NewIter(originalIterator base.InternalIterator, opts ...Option) base.Intern
 func (i *iter) update(
 	key *base.InternalKey, value base.LazyValue,
 ) (*base.InternalKey, base.LazyValue) {
-	i.zeroLast()
+	i.trashLastKV()
 
 	v, _, err := value.Value(nil)
 	if err != nil {
@@ -69,7 +69,7 @@ func (i *iter) update(
 	return i.lastKey, base.MakeInPlaceValue(i.lastValue)
 }
 
-func (i *iter) zeroLast() {
+func (i *iter) trashLastKV() {
 	if i.lastKey == nil {
 		return
 	}
@@ -81,7 +81,7 @@ func (i *iter) zeroLast() {
 		for j := range i.lastKey.UserKey {
 			i.lastKey.UserKey[j] = 0xff
 		}
-		i.lastKey.Trailer = 0
+		i.lastKey.Trailer = 0xffffffffffffffff
 	}
 	for j := range i.lastValue {
 		i.lastValue[j] = 0xff
