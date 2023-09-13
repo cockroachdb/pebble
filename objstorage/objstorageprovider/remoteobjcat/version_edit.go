@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 )
@@ -234,14 +235,18 @@ func (v *VersionEdit) Apply(
 		*creatorID = v.CreatorID
 	}
 	for _, meta := range v.NewObjects {
-		if _, exists := objects[meta.FileNum]; exists {
-			return errors.AssertionFailedf("version edit adds existing object %s", meta.FileNum)
+		if invariants.Enabled {
+			if _, exists := objects[meta.FileNum]; exists {
+				return errors.AssertionFailedf("version edit adds existing object %s", meta.FileNum)
+			}
 		}
 		objects[meta.FileNum] = meta
 	}
 	for _, fileNum := range v.DeletedObjects {
-		if _, exists := objects[fileNum]; !exists {
-			return errors.AssertionFailedf("version edit deletes non-existent object %s", fileNum)
+		if invariants.Enabled {
+			if _, exists := objects[fileNum]; !exists {
+				return errors.AssertionFailedf("version edit deletes non-existent object %s", fileNum)
+			}
 		}
 		delete(objects, fileNum)
 	}
