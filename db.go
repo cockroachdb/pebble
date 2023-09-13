@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -1149,6 +1150,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 				},
 			}
 			dbi.iter = &dbi.lazyCombinedIter
+			dbi.iter = invalidating.MaybeWrapIfInvariants(dbi.iter)
 		} else {
 			dbi.lazyCombinedIter.combinedIterState = combinedIterState{
 				initialized: true,
@@ -1426,8 +1428,8 @@ func (i *Iterator) constructPointIter(
 		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
-		mlevels[mlevelsIndex].iter = li
 		mlevels[mlevelsIndex].levelIter = li
+		mlevels[mlevelsIndex].iter = invalidating.MaybeWrapIfInvariants(li)
 
 		levelsIndex++
 		mlevelsIndex++
@@ -1453,7 +1455,7 @@ func (i *Iterator) constructPointIter(
 	buf.merging.snapshot = i.seqNum
 	buf.merging.batchSnapshot = i.batchSeqNum
 	buf.merging.combinedIterState = &i.lazyCombinedIter.combinedIterState
-	i.pointIter = &buf.merging
+	i.pointIter = invalidating.MaybeWrapIfInvariants(&buf.merging)
 	i.merging = &buf.merging
 }
 
