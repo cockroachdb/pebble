@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -110,8 +111,7 @@ func TestCompactionIter(t *testing.T) {
 			fi,
 			keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys),
 			keyspan.InterleavingIterOpts{})
-		iter := newInvalidatingIter(interleavingIter)
-		iter.ignoreKind(InternalKeyKindRangeDelete)
+		iter := invalidating.NewIter(interleavingIter, invalidating.IgnoreKinds(InternalKeyKindRangeDelete))
 		if merge == nil {
 			merge = func(key, value []byte) (base.ValueMerger, error) {
 				m := &debugMerger{}
