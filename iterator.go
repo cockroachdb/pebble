@@ -780,39 +780,41 @@ func (i *Iterator) maybeSampleRead() {
 func (i *Iterator) sampleRead() {
 	var topFile *manifest.FileMetadata
 	topLevel, numOverlappingLevels := numLevels, 0
-	if mi, ok := i.iter.(*mergingIter); ok {
-		if len(mi.levels) > 1 {
-			mi.ForEachLevelIter(func(li *levelIter) bool {
-				l := manifest.LevelToInt(li.level)
-				if f := li.iterFile; f != nil {
-					var containsKey bool
-					if i.pos == iterPosNext || i.pos == iterPosCurForward ||
-						i.pos == iterPosCurForwardPaused {
-						containsKey = i.cmp(f.SmallestPointKey.UserKey, i.key) <= 0
-					} else if i.pos == iterPosPrev || i.pos == iterPosCurReverse ||
-						i.pos == iterPosCurReversePaused {
-						containsKey = i.cmp(f.LargestPointKey.UserKey, i.key) >= 0
-					}
-					// Do nothing if the current key is not contained in f's
-					// bounds. We could seek the LevelIterator at this level
-					// to find the right file, but the performance impacts of
-					// doing that are significant enough to negate the benefits
-					// of read sampling in the first place. See the discussion
-					// at:
-					// https://github.com/cockroachdb/pebble/pull/1041#issuecomment-763226492
-					if containsKey {
-						numOverlappingLevels++
-						if numOverlappingLevels >= 2 {
-							// Terminate the loop early if at least 2 overlapping levels are found.
-							return true
-						}
-						topLevel = l
-						topFile = f
-					}
+	mi := i.merging
+	if mi == nil {
+		return
+	}
+	if len(mi.levels) > 1 {
+		mi.ForEachLevelIter(func(li *levelIter) bool {
+			l := manifest.LevelToInt(li.level)
+			if f := li.iterFile; f != nil {
+				var containsKey bool
+				if i.pos == iterPosNext || i.pos == iterPosCurForward ||
+					i.pos == iterPosCurForwardPaused {
+					containsKey = i.cmp(f.SmallestPointKey.UserKey, i.key) <= 0
+				} else if i.pos == iterPosPrev || i.pos == iterPosCurReverse ||
+					i.pos == iterPosCurReversePaused {
+					containsKey = i.cmp(f.LargestPointKey.UserKey, i.key) >= 0
 				}
-				return false
-			})
-		}
+				// Do nothing if the current key is not contained in f's
+				// bounds. We could seek the LevelIterator at this level
+				// to find the right file, but the performance impacts of
+				// doing that are significant enough to negate the benefits
+				// of read sampling in the first place. See the discussion
+				// at:
+				// https://github.com/cockroachdb/pebble/pull/1041#issuecomment-763226492
+				if containsKey {
+					numOverlappingLevels++
+					if numOverlappingLevels >= 2 {
+						// Terminate the loop early if at least 2 overlapping levels are found.
+						return true
+					}
+					topLevel = l
+					topFile = f
+				}
+			}
+			return false
+		})
 	}
 	if topFile == nil || topLevel >= numLevels {
 		return
