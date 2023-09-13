@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -2847,6 +2848,7 @@ func (d *DB) runCompaction(
 		return nil, pendingOutputs, stats, err
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
+	iiter = invalidating.MaybeWrapIfInvariants(iiter)
 	iter := newCompactionIter(c.cmp, c.equal, c.formatKey, d.merge, iiter, snapshots,
 		&c.rangeDelFrag, &c.rangeKeyFrag, c.allowedZeroSeqNum, c.elideTombstone,
 		c.elideRangeTombstone, d.FormatMajorVersion())
