@@ -598,6 +598,8 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Unlock()
 			m := &fileMetadata{FileNum: FileNum(fileNum)}
 			m.InitPhysicalBacking()
+			m.Ref()
+			defer m.Unref()
 			iter, _, err := c.newIters(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
@@ -659,6 +661,7 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 			var err error
 			m := &fileMetadata{FileNum: FileNum(j)}
 			m.InitPhysicalBacking()
+			m.Ref()
 			if rangeIter {
 				iter, err = c.newRangeKeyIter(m, keyspan.SpanIterOptions{})
 			} else {
@@ -708,6 +711,7 @@ func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
 			m := &fileMetadata{FileNum: FileNum(j)}
 			m.InitPhysicalBacking()
+			m.Ref()
 			iter1, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -760,6 +764,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		var err error
 		m := &fileMetadata{FileNum: FileNum(j)}
 		m.InitPhysicalBacking()
+		m.Ref()
 		if rangeIter {
 			iter, err = c.newRangeKeyIter(m, keyspan.SpanIterOptions{})
 		} else {
@@ -824,6 +829,7 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 		j := rng.Intn(tableCacheTestNumTables)
 		m := &fileMetadata{FileNum: FileNum(j)}
 		m.InitPhysicalBacking()
+		m.Ref()
 		iter1, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -890,6 +896,8 @@ func TestTableCacheIterLeak(t *testing.T) {
 
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
+	m.Ref()
+	defer m.Unref()
 	iter, _, err := c.newIters(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 
@@ -915,6 +923,8 @@ func TestSharedTableCacheIterLeak(t *testing.T) {
 
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
+	m.Ref()
+	defer m.Unref()
 	iter, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 
@@ -951,6 +961,8 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	fs.setOpenError(true /* enabled */)
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
+	m.Ref()
+	defer m.Unref()
 	if _, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
@@ -1013,6 +1025,8 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 
 	m := &fileMetadata{FileNum: testFileNum}
 	m.InitPhysicalBacking()
+	m.Ref()
+	defer m.Unref()
 	if _, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
@@ -1103,6 +1117,7 @@ func TestTableCacheClockPro(t *testing.T) {
 		oldHits := cache.hits.Load()
 		m := &fileMetadata{FileNum: FileNum(key)}
 		m.InitPhysicalBacking()
+		m.Ref()
 		v := cache.findNode(m, dbOpts)
 		cache.unrefValue(v)
 
@@ -1112,6 +1127,7 @@ func TestTableCacheClockPro(t *testing.T) {
 			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
 		}
 		line++
+		m.Unref()
 	}
 }
 

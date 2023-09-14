@@ -59,13 +59,18 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// We can reuse the ingestLoad function for this test even if we're
 		// not actually ingesting a file.
 		lr, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheID, pendingOutputs, d.objProvider, jobID)
-		meta := lr.localMeta
 		if err != nil {
 			panic(err)
 		}
+		meta := lr.localMeta
 		if len(meta) == 0 {
 			// All of the sstables to be ingested were empty. Nothing to do.
 			panic("empty sstable")
+		}
+		// The table cache requires the *fileMetadata to have a positive
+		// reference count. Fake a reference before we try to load the file.
+		for _, f := range meta {
+			f.Ref()
 		}
 
 		// Verify the sstables do not overlap.
