@@ -730,6 +730,10 @@ func (c *tableCacheShard) findNode(
 			}
 		}()
 	}
+	if refs := meta.Refs(); refs <= 0 {
+		panic(errors.AssertionFailedf("attempting to load file %s with refs=%d from table cache",
+			meta, refs))
+	}
 
 	// Fast-path for a hit in the cache.
 	c.mu.RLock()
