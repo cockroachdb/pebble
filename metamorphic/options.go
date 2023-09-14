@@ -488,6 +488,15 @@ func randomOptions(
 	default:
 		lopts.FilterPolicy = newTestingFilterPolicy(1 << rng.Intn(5))
 	}
+	// We use either no compression, snappy compression or zstd compression.
+	switch rng.Intn(3) {
+	case 0:
+		lopts.Compression = pebble.NoCompression
+	case 1:
+		lopts.Compression = pebble.ZstdCompression
+	default:
+		lopts.Compression = pebble.SnappyCompression
+	}
 	opts.Levels = []pebble.LevelOptions{lopts}
 
 	// Explicitly disable disk-backed FS's for the random configurations. The
