@@ -1427,6 +1427,7 @@ func (i *Iterator) constructPointIter(
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
 		mlevels[mlevelsIndex].iter = li
+		mlevels[mlevelsIndex].levelIter = li
 
 		levelsIndex++
 		mlevelsIndex++
