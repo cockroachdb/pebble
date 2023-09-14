@@ -27,6 +27,10 @@ type mergingIterLevel struct {
 	// iterKey and iterValue cache the current key and value iter are pointed at.
 	iterKey   *InternalKey
 	iterValue base.LazyValue
+	// levelIter is non-nil if this level's iter is ultimately backed by a
+	// *levelIter. The handle in iter may have wrapped the levelIter with
+	// intermediary internalIterator implementations.
+	levelIter *levelIter
 
 	// levelIterBoundaryContext's fields are set when using levelIter, in order
 	// to surface sstable boundary keys and file-level context. See levelIter
@@ -1371,9 +1375,9 @@ func (m *mergingIter) DebugString() string {
 }
 
 func (m *mergingIter) ForEachLevelIter(fn func(li *levelIter) bool) {
-	for _, iter := range m.levels {
-		if li, ok := iter.iter.(*levelIter); ok {
-			if done := fn(li); done {
+	for _, ml := range m.levels {
+		if ml.levelIter != nil {
+			if done := fn(ml.levelIter); done {
 				break
 			}
 		}
