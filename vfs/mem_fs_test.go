@@ -5,6 +5,7 @@
 package vfs
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/stretchr/testify/require"
 )
 
@@ -392,4 +394,67 @@ func TestStrictFS(t *testing.T) {
 		"7l: f.close",
 	}
 	runTestCases(t, testCases, fs)
+}
+
+func TestMemFSLock(t *testing.T) {
+	filesystems := map[string]FS{}
+	fileLocks := map[string]io.Closer{}
+
+	datadriven.RunTest(t, "testdata/memfs_lock", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "mkfs":
+			for _, arg := range td.CmdArgs {
+				filesystems[arg.String()] = NewMem()
+			}
+			return "OK"
+
+		// lock fs=<filesystem-name> handle=<handle> path=<path>
+		case "lock":
+			var filesystemName string
+			var path string
+			var handle string
+			td.ScanArgs(t, "fs", &filesystemName)
+			td.ScanArgs(t, "path", &path)
+			td.ScanArgs(t, "handle", &handle)
+			fs := filesystems[filesystemName]
+			if fs == nil {
+				return fmt.Sprintf("filesystem %q doesn't exist", filesystemName)
+			}
+			l, err := fs.Lock(path)
+			if err != nil {
+				return err.Error()
+			}
+			fileLocks[handle] = l
+			return "OK"
+
+		// mkdirall fs=<filesystem-name> path=<path>
+		case "mkdirall":
+			var filesystemName string
+			var path string
+			td.ScanArgs(t, "fs", &filesystemName)
+			td.ScanArgs(t, "path", &path)
+			fs := filesystems[filesystemName]
+			if fs == nil {
+				return fmt.Sprintf("filesystem %q doesn't exist", filesystemName)
+			}
+			err := fs.MkdirAll(path, 0755)
+			if err != nil {
+				return err.Error()
+			}
+			return "OK"
+
+		// close handle=<handle>
+		case "close":
+			var handle string
+			td.ScanArgs(t, "handle", &handle)
+			err := fileLocks[handle].Close()
+			delete(fileLocks, handle)
+			if err != nil {
+				return err.Error()
+			}
+			return "OK"
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
 }
