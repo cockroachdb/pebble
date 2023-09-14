@@ -11,7 +11,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 type iter struct {
 	iter        base.InternalIterator
 	lastKey     *base.InternalKey
-	lastValue   []byte
+	lastValue   base.LazyValue
 	ignoreKinds [base.InternalKeyKindMax + 1]bool
 	err         error
 }
@@ -50,23 +50,23 @@ func (i *iter) update(
 	key *base.InternalKey, value base.LazyValue,
 ) (*base.InternalKey, base.LazyValue) {
 	i.trashLastKV()
-
-	v, _, err := value.Value(nil)
-	if err != nil {
-		i.err = err
-		key = nil
-	}
 	if key == nil {
 		i.lastKey = nil
-		i.lastValue = nil
+		i.lastValue = base.LazyValue{}
 		return nil, base.LazyValue{}
 	}
 
 	i.lastKey = &base.InternalKey{}
 	*i.lastKey = key.Clone()
-	i.lastValue = make([]byte, len(v))
-	copy(i.lastValue, v)
-	return i.lastKey, base.MakeInPlaceValue(i.lastValue)
+	i.lastValue = base.LazyValue{
+		ValueOrHandle: append(make([]byte, 0, len(value.ValueOrHandle)), value.ValueOrHandle...),
+	}
+	if value.Fetcher != nil {
+		fetcher := new(base.LazyFetcher)
+		*fetcher = *value.Fetcher
+		i.lastValue.Fetcher = fetcher
+	}
+	return i.lastKey, i.lastValue
 }
 
 func (i *iter) trashLastKV() {
@@ -83,8 +83,13 @@ func (i *iter) trashLastKV() {
 		}
 		i.lastKey.Trailer = 0xffffffffffffffff
 	}
-	for j := range i.lastValue {
-		i.lastValue[j] = 0xff
+	for j := range i.lastValue.ValueOrHandle {
+		i.lastValue.ValueOrHandle[j] = 0xff
+	}
+	if i.lastValue.Fetcher != nil {
+		// Not all the LazyFetcher fields are visible, so we zero out the last
+		// value's Fetcher struct entirely.
+		*i.lastValue.Fetcher = base.LazyFetcher{}
 	}
 }
 
