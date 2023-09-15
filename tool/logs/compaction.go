@@ -44,6 +44,9 @@ var (
 	//
 	// A memtable flush start / end line resembles:
 	//   "[JOB X] flush(ed|ing)"
+	//
+	// An ingested sstable flush looks like:
+	//   "[JOB 226] flushed 6 ingested flushables"
 	sentinelPattern          = regexp.MustCompile(`\[JOB.*(?P<prefix>compact|flush|ingest)(?P<suffix>ed|ing)[^:]`)
 	sentinelPatternPrefixIdx = sentinelPattern.SubexpIndex("prefix")
 	sentinelPatternSuffixIdx = sentinelPattern.SubexpIndex("suffix")
@@ -124,6 +127,23 @@ var (
 	ingestedFilePatternLevelIdx = ingestedFilePattern.SubexpIndex("level")
 	ingestedFilePatternFileIdx  = ingestedFilePattern.SubexpIndex("file")
 	ingestedFilePatternBytesIdx = ingestedFilePattern.SubexpIndex("bytes")
+
+	// flushable ingestions
+	//
+	// I230831 04:13:28.824280 3780 3@pebble/event.go:685 ⋮ [n10,s10,pebble] 365  [JOB 226] flushed 6 ingested flushables L0:024334 (1.5KB) + L0:024339 (1.0KB) + L0:024335 (1.9KB) + L0:024336 (1.1KB) + L0:024337 (1.1KB) + L0:024338 (12KB) in 0.0s (0.0s total), output rate 67MB/s
+	flushableIngestedPattern = regexp.MustCompile(
+		`^.*` +
+			/* Job ID           */ `\[JOB (?P<job>\d+)]\s` +
+			/* match ingested flushable */ `flushed \d ingested flushable`)
+	flushableIngestedPatternJobIdx = ingestedPattern.SubexpIndex("job")
+	flushableIngestedFilePattern   = regexp.MustCompile(
+		`L` +
+			/* Level       */ `(?P<level>\d):` +
+			/* File number */ `(?P<file>\d+)\s` +
+			/* Bytes       */ `\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\)`)
+	flushableIngestedFilePatternLevelIdx = ingestedFilePattern.SubexpIndex("level")
+	flushableIngestedFilePatternFileIdx  = ingestedFilePattern.SubexpIndex("file")
+	flushableIngestedFilePatternBytesIdx = ingestedFilePattern.SubexpIndex("bytes")
 
 	// Example read-amp log line:
 	// 23.1 and older:
@@ -903,7 +923,6 @@ func parseLog(path string, b *logEventCollector) error {
 	s := bufio.NewScanner(f)
 	for s.Scan() {
 		line := s.Text()
-
 		// Store the log context for the current line, if we have one.
 		if err := parseLogContext(line, b); err != nil {
 			return err
@@ -1031,11 +1050,53 @@ func parseFlush(line string, b *logEventCollector) error {
 	return nil
 }
 
+func parseIngestDuringFlush(line string, b *logEventCollector) error {
+	matches := flushableIngestedPattern.FindStringSubmatch(line)
+	if matches == nil {
+		return nil
+	}
+	// Parse job ID.
+	jobID, err := strconv.Atoi(matches[flushableIngestedPatternJobIdx])
+	if err != nil {
+		return errors.Newf("could not parse jobID: %s", err)
+	}
+	fileMatches := flushableIngestedFilePattern.FindAllStringSubmatch(line, -1)
+	files := make([]ingestedFile, len(fileMatches))
+	fmt.Println(fileMatches, len(fileMatches))
+	for i := range fileMatches {
+		level, err := strconv.Atoi(fileMatches[i][flushableIngestedFilePatternLevelIdx])
+		if err != nil {
+			return errors.Newf("could not parse level: %s", err)
+		}
+		fileNum, err := strconv.Atoi(fileMatches[i][flushableIngestedFilePatternFileIdx])
+		if err != nil {
+			return errors.Newf("could not parse file number: %s", err)
+		}
+		files[i] = ingestedFile{
+			level:     level,
+			fileNum:   fileNum,
+			sizeBytes: unHumanize(fileMatches[i][flushableIngestedFilePatternBytesIdx]),
+		}
+	}
+	b.events = append(b.events, event{
+		nodeID:    b.ctx.node,
+		storeID:   b.ctx.store,
+		jobID:     jobID,
+		timeStart: b.ctx.timestamp,
+		timeEnd:   b.ctx.timestamp,
+		ingest: &ingest{
+			files: files,
+		},
+	})
+	return nil
+}
+
 // parseIngest parses and collects Pebble ingest complete events.
 func parseIngest(line string, b *logEventCollector) error {
 	matches := ingestedPattern.FindStringSubmatch(line)
 	if matches == nil {
-		return nil
+		// Try and parse the other kind of ingest.
+		return parseIngestDuringFlush(line, b)
 	}
 	// Parse job ID.
 	jobID, err := strconv.Atoi(matches[ingestedPatternJobIdx])
@@ -1053,11 +1114,11 @@ func parseIngest(line string, b *logEventCollector) error {
 		if err != nil {
 			return errors.Newf("could not parse file number: %s", err)
 		}
-		files = append(files, ingestedFile{
+		files[i] = ingestedFile{
 			level:     level,
 			fileNum:   fileNum,
 			sizeBytes: unHumanize(fileMatches[i][ingestedFilePatternBytesIdx]),
-		})
+		}
 	}
 	b.events = append(b.events, event{
 		nodeID:    b.ctx.node,
