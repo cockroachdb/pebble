@@ -440,16 +440,16 @@ node: 24, store: 24
      to: 220228 15:59
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
-ingest               L0                                         9   140MB
+ingest               L0                                         3   140MB
 ingest               L5                                         3   3.6KB
-total                                                          12   140MB        0s
+total                                                           6   140MB        0s
 node: 24, store: 24
    from: 220228 16:01
      to: 220228 16:02
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
-ingest               L0                                        12   160MB
-total                                                          12   160MB        0s
+ingest               L0                                         6   160MB
+total                                                           6   160MB        0s
 
 reset
 ----
@@ -476,3 +476,24 @@ _kind______from______to___default____move___elide__delete___count___in(B)__out(B
 compact      L5      L6         1       1       0       0       2   128MB   3.6MB   4.0MB      0B        1s
 compact      L6      L6         0       0       0       1       1      0B      0B      0B    11MB        0s
 total                           1       1       0       1       3   128MB   3.6MB   4.0MB    11MB        1s
+
+reset
+----
+
+log
+I230831 04:13:28.824280 3780 3@pebble/event.go:685 ⋮ [n10,s10,pebble] 365  [JOB 226] flushed 6 ingested flushables L0:024334 (1.5KB) + L0:024339 (1.0KB) + L0:024335 (1.9KB) + L0:024336 (1.1KB) + L0:024337 (1.1KB) + L0:024338 (12KB) in 0.0s (0.0s total), output rate 67MB/s
+
+I230831 04:13:28.689575 3717 3@pebble/event.go:685 ⋮ [n10,s10,pebble] 345  [JOB 219] flushed 6 ingested flushables L0:024323 (1.5KB) + L0:024328 (1.0KB) + L0:024324 (2.0KB) + L2:024325 (1.1KB) + L2:024326 (1.1KB) + L0:024327 (54KB) in 0.0s (0.0s total), output rate 152MB/s
+----
+0.log
+
+summarize
+----
+node: 10, store: 10
+   from: 230831 04:13
+     to: 230831 04:14
+  r-amp: NaN
+_kind______from______to_____________________________________count___bytes______time
+ingest               L0                                        10    77KB
+ingest               L2                                         2   2.2KB
+total                                                          12    79KB        0s
