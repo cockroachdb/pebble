@@ -88,6 +88,10 @@ func (i noCloseIter) Close() error {
 type compactionLevel struct {
 	level int
 	files manifest.LevelSlice
+	// l0SublevelInfo contains information about L0 sublevels being compacted.
+	// It's only set for the start level of a compaction starting out of L0 and
+	// is nil for all other compactions.
+	l0SublevelInfo []sublevelInfo
 }
 
 func (cl compactionLevel) Clone() compactionLevel {
@@ -640,10 +644,6 @@ type compaction struct {
 	// L0Sublevels. If nil, flushes aren't split.
 	l0Limits [][]byte
 
-	// L0 sublevel info is used for compactions out of L0. It is nil for all
-	// other compactions.
-	l0SublevelInfo []sublevelInfo
-
 	// List of disjoint inuse key ranges the compaction overlaps with in
 	// grandparent and lower levels. See setupInuseKeyRanges() for the
 	// construction. Used by elideTombstone() and elideRangeTombstone() to
@@ -724,10 +724,12 @@ func newCompaction(pc *pickedCompaction, opts *Options, beganAt time.Time) *comp
 		beganAt:           beganAt,
 		maxOutputFileSize: pc.maxOutputFileSize,
 		maxOverlapBytes:   pc.maxOverlapBytes,
-		l0SublevelInfo:    pc.l0SublevelInfo,
 		pickerMetrics:     pc.pickerMetrics,
 	}
 	c.startLevel = &c.inputs[0]
+	if pc.l0SublevelInfo != nil {
+		c.startLevel.l0SublevelInfo = pc.l0SublevelInfo
+	}
 	c.outputLevel = &c.inputs[1]
 
 	if len(pc.extraLevels) > 0 {
@@ -1304,11 +1306,10 @@ func (c *compaction) newInputIter(
 	}
 
 	if c.startLevel.level == 0 {
-		if c.l0SublevelInfo == nil {
+		if c.startLevel.l0SublevelInfo == nil {
 			panic("l0SublevelInfo not created for compaction out of L0")
 		}
-
-		for _, info := range c.l0SublevelInfo {
+		for _, info := range c.startLevel.l0SublevelInfo {
 			err := manifest.CheckOrdering(c.cmp, c.formatKey,
 				info.sublevel, info.Iter())
 			if err != nil {
@@ -1534,25 +1535,23 @@ func (c *compaction) newInputIter(
 		return nil
 	}
 
-	if c.startLevel.level != 0 {
-		if err = addItersForLevel(c.startLevel, manifest.Level(c.startLevel.level)); err != nil {
-			return nil, err
-		}
-	} else {
-		for _, info := range c.l0SublevelInfo {
-			if err = addItersForLevel(
-				&compactionLevel{0, info.LevelSlice}, info.sublevel); err != nil {
-				return nil, err
+	for i := range c.inputs {
+		// If the level is annotated with l0SublevelInfo, expand it into one
+		// level per sublevel.
+		// TODO(jackson): Perform this expansion even earlier when we pick the
+		// compaction?
+		if len(c.inputs[i].l0SublevelInfo) > 0 {
+			for _, info := range c.startLevel.l0SublevelInfo {
+				sublevelCompactionLevel := &compactionLevel{0, info.LevelSlice, nil}
+				if err = addItersForLevel(sublevelCompactionLevel, info.sublevel); err != nil {
+					return nil, err
+				}
 			}
+			continue
 		}
-	}
-	if len(c.extraLevels) > 0 {
-		if err = addItersForLevel(c.extraLevels[0], manifest.Level(c.extraLevels[0].level)); err != nil {
+		if err = addItersForLevel(&c.inputs[i], manifest.Level(c.inputs[i].level)); err != nil {
 			return nil, err
 		}
-	}
-	if err = addItersForLevel(c.outputLevel, manifest.Level(c.outputLevel.level)); err != nil {
-		return nil, err
 	}
 
 	// Combine all the rangedel iterators using a keyspan.MergingIterator and a

@@ -3067,7 +3067,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				}
 				if c.startLevel.level == 0 {
 					// We don't change the input files for the compaction beyond this point.
-					c.l0SublevelInfo = generateSublevelInfo(c.cmp, c.startLevel.files)
+					c.startLevel.l0SublevelInfo = generateSublevelInfo(c.cmp, c.startLevel.files)
 				}
 
 				newIters := func(
