@@ -40,6 +40,9 @@ const (
 	compactionStartNoNodeStoreLine23_1 = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n?,pebble,s?] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M)`
 	compactionStartNoNodeStoreLine     = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n?,pebble,s?] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4MB)`
 	flushStartNoNodeStoreLine          = `I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n?,pebble,s?] 24 [JOB 10] flushing 2 memtables to L0`
+
+	flushableIngestionLine23_1 = `I230831 04:13:28.824280 3780 3@pebble/event.go:685 ⋮ [n10,s10,pebble] 365  [JOB 226] flushed 6 ingested flushables L0:024334 (1.5 K) + L0:024339 (1.0 K) + L0:024335 (1.9 K) + L0:024336 (1.1 K) + L0:024337 (1.1 K) + L0:024338 (12 K) in 0.0s (0.0s total), output rate 67 M/s`
+	flushableIngestionLine     = `I230831 04:13:28.824280 3780 3@pebble/event.go:685 ⋮ [n10,s10,pebble] 365  [JOB 226] flushed 6 ingested flushables L0:024334 (1.5KB) + L0:024339 (1.0KB) + L0:024335 (1.9KB) + L0:024336 (1.1KB) + L0:024337 (1.1KB) + L0:024338 (12KB) in 0.0s (0.0s total), output rate 67MB/s`
 )
 
 func TestCompactionLogs_Regex(t *testing.T) {
@@ -233,6 +236,44 @@ func TestCompactionLogs_Regex(t *testing.T) {
 			line: readAmpLine23_1,
 			matches: map[int]string{
 				readAmpPatternValueIdx: "5",
+			},
+		},
+		{
+			name: "ingestion during flush job 23.1",
+			re:   flushableIngestedPattern,
+			line: flushableIngestionLine23_1,
+			matches: map[int]string{
+				flushableIngestedPatternJobIdx: "226",
+			},
+		},
+		{
+			name: "ingestion during flush 23.1",
+			re:   ingestedFilePattern,
+			line: flushableIngestionLine23_1,
+			matches: map[int]string{
+				// Just looking at the first match for these.
+				ingestedFilePatternLevelIdx: "0",
+				ingestedFilePatternFileIdx:  "024334",
+				ingestedFilePatternBytesIdx: "1.5 K",
+			},
+		},
+		{
+			name: "ingestion during flush job",
+			re:   flushableIngestedPattern,
+			line: flushableIngestionLine,
+			matches: map[int]string{
+				flushableIngestedPatternJobIdx: "226",
+			},
+		},
+		{
+			name: "ingestion during flush",
+			re:   ingestedFilePattern,
+			line: flushableIngestionLine,
+			matches: map[int]string{
+				// Just looking at the first match for these.
+				ingestedFilePatternLevelIdx: "0",
+				ingestedFilePatternFileIdx:  "024334",
+				ingestedFilePatternBytesIdx: "1.5KB",
 			},
 		},
 	}
