@@ -2004,26 +2004,29 @@ func (d *DB) ingestApply(
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.
 	d.maybeScheduleCompaction()
-	d.maybeValidateSSTablesLocked(ve.NewFiles)
+	var toValidate []manifest.NewFileEntry
+	dedup := make(map[base.DiskFileNum]struct{})
+	for _, entry := range ve.NewFiles {
+		if _, ok := dedup[entry.Meta.FileBacking.DiskFileNum]; !ok {
+			toValidate = append(toValidate, entry)
+			dedup[entry.Meta.FileBacking.DiskFileNum] = struct{}{}
+		}
+	}
+	d.maybeValidateSSTablesLocked(toValidate)
 	return ve, nil
 }
 
 // maybeValidateSSTablesLocked adds the slice of newFileEntrys to the pending
 // queue of files to be validated, when the feature is enabled.
-// DB.mu must be locked when calling.
 //
-// TODO(bananabrick): Make sure that the ingestion step only passes in the
-// physical sstables for validation here.
+// Note that if two entries with the same backing file are added twice, then the
+// block checksums for the backing file will be validated twice.
+//
+// DB.mu must be locked when calling.
 func (d *DB) maybeValidateSSTablesLocked(newFiles []newFileEntry) {
 	// Only add to the validation queue when the feature is enabled.
 	if !d.opts.Experimental.ValidateOnIngest {
 		return
-	}
-
-	for _, f := range newFiles {
-		if f.Meta.Virtual {
-			panic("pebble: invalid call to maybeValidateSSTablesLocked")
-		}
 	}
 
 	d.mu.tableValidation.pending = append(d.mu.tableValidation.pending, newFiles...)
@@ -2085,10 +2088,19 @@ func (d *DB) validateSSTables() {
 			}
 		}
 
-		err := d.tableCache.withReader(
-			f.Meta.PhysicalMeta(), func(r *sstable.Reader) error {
-				return r.ValidateBlockChecksums()
-			})
+		var err error
+		if f.Meta.Virtual {
+			err = d.tableCache.withVirtualReader(
+				f.Meta.VirtualMeta(), func(v sstable.VirtualReader) error {
+					return v.ValidateBlockChecksumsOnBacking()
+				})
+		} else {
+			err = d.tableCache.withReader(
+				f.Meta.PhysicalMeta(), func(r *sstable.Reader) error {
+					return r.ValidateBlockChecksums()
+				})
+		}
+
 		if err != nil {
 			// TODO(travers): Hook into the corruption reporting pipeline, once
 			// available. See pebble#1192.

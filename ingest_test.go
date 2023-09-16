@@ -606,6 +606,9 @@ func TestExcise(t *testing.T) {
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
+		// Set this to true to add some testing for the virtual sstable validation
+		// code paths.
+		opts.Experimental.ValidateOnIngest = true
 
 		var err error
 		d, err = Open("", opts)
