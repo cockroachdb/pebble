@@ -2004,26 +2004,28 @@ func (d *DB) ingestApply(
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.
 	d.maybeScheduleCompaction()
-	d.maybeValidateSSTablesLocked(ve.NewFiles)
+	var toValidate []manifest.NewFileEntry
+	// We don't need to validate virtual sstables. The virtual sstables created
+	// during ingestion are created from backing files which are present in
+	// the lsm, and don't need block checksum validation any more than any other
+	// backing file in the lsm which isn't being virtualized.
+	for _, entry := range ve.NewFiles {
+		if entry.Meta.Virtual {
+			continue
+		}
+		toValidate = append(toValidate, entry)
+	}
+	d.maybeValidateSSTablesLocked(toValidate)
 	return ve, nil
 }
 
 // maybeValidateSSTablesLocked adds the slice of newFileEntrys to the pending
 // queue of files to be validated, when the feature is enabled.
 // DB.mu must be locked when calling.
-//
-// TODO(bananabrick): Make sure that the ingestion step only passes in the
-// physical sstables for validation here.
 func (d *DB) maybeValidateSSTablesLocked(newFiles []newFileEntry) {
 	// Only add to the validation queue when the feature is enabled.
 	if !d.opts.Experimental.ValidateOnIngest {
 		return
-	}
-
-	for _, f := range newFiles {
-		if f.Meta.Virtual {
-			panic("pebble: invalid call to maybeValidateSSTablesLocked")
-		}
 	}
 
 	d.mu.tableValidation.pending = append(d.mu.tableValidation.pending, newFiles...)
