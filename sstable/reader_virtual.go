@@ -89,6 +89,12 @@ func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	)
 }
 
+// ValidateBlockChecksumsOnBacking will call ValidateBlockChecksumsOnBacking on the underlying reader.
+// Note that block checksum validation is NOT restricted to virtual sstable bounds.
+func (v *VirtualReader) ValidateBlockChecksumsOnBacking() error {
+	return v.reader.ValidateBlockChecksums()
+}
+
 // NewRawRangeDelIter wraps Reader.NewRawRangeDelIter.
 func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 	iter, err := v.reader.NewRawRangeDelIter()
