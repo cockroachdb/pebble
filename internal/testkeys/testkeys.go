@@ -501,7 +501,12 @@ func RandomSeparator(dst, a, b []byte, suffix int64, maxLength int, rng *rand.Ra
 	} else {
 		dst = dst[:cap(dst)]
 	}
-	w := WriteKeyAt(dst, Alpha(maxLength), generatedIdx, suffix)
+	var w int
+	if suffix == 0 {
+		w = WriteKey(dst, Alpha(maxLength), generatedIdx)
+	} else {
+		w = WriteKeyAt(dst, Alpha(maxLength), generatedIdx, suffix)
+	}
 	return dst[:w]
 }
 
