@@ -169,13 +169,6 @@ type FileMetadata struct {
 	// FileNum is the file number.
 	//
 	// INVARIANT: when !FileMetadata.Virtual, FileNum == FileBacking.DiskFileNum.
-	//
-	// TODO(bananabrick): Consider creating separate types for
-	// FileMetadata.FileNum and FileBacking.FileNum. FileNum is used both as
-	// an indentifier for the FileMetadata in Pebble, and also as a handle to
-	// perform reads and writes. We should ensure through types that
-	// FileMetadata.FileNum isn't used to perform reads, and that
-	// FileBacking.FileNum isn't used as an identifier for the FileMetadata.
 	FileNum base.FileNum
 	// Size is the size of the file, in bytes. Size is an approximate value for
 	// virtual sstables.
