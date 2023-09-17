@@ -186,14 +186,9 @@ func (d *DB) loadNewFileStats(
 			continue
 		}
 
-		if nf.Meta.Virtual {
-			// cannot load virtual table stats
-			continue
-		}
-
 		stats, newHints, err := d.loadTableStats(
 			rs.current, nf.Level,
-			nf.Meta.PhysicalMeta(),
+			nf.Meta,
 		)
 		if err != nil {
 			d.opts.EventListener.BackgroundError(err)
@@ -222,23 +217,12 @@ func (d *DB) scanReadStateTableStats(
 	for l, levelMetadata := range rs.current.Levels {
 		iter := levelMetadata.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			if f.Virtual {
-				// TODO(bananabrick): Support stats collection for virtual
-				// sstables.
-				continue
-			}
-
 			// NB: We're not holding d.mu which protects f.Stats, but only the
 			// active stats collection job updates f.Stats for active files,
 			// and we ensure only one goroutine runs it at a time through
 			// d.mu.tableStats.loading. This makes it safe to read validity
 			// through f.Stats.ValidLocked despite not holding d.mu.
 			if f.StatsValid() {
-				continue
-			}
-			// TODO(bilal): Remove this guard when table stats collection is
-			// implemented for virtual sstables.
-			if f.Virtual {
 				continue
 			}
 
@@ -253,7 +237,7 @@ func (d *DB) scanReadStateTableStats(
 			}
 
 			stats, newHints, err := d.loadTableStats(
-				rs.current, l, f.PhysicalMeta(),
+				rs.current, l, f,
 			)
 			if err != nil {
 				// Set `moreRemain` so we'll try again.
@@ -271,25 +255,22 @@ func (d *DB) scanReadStateTableStats(
 	return fill, hints, moreRemain
 }
 
-// loadTableStats currently only supports stats collection for physical
-// sstables.
-//
-// TODO(bananabrick): Support stats collection for virtual sstables.
 func (d *DB) loadTableStats(
-	v *version, level int, meta physicalMeta,
+	v *version, level int, meta *fileMetadata,
 ) (manifest.TableStats, []deleteCompactionHint, error) {
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
-	err := d.tableCache.withReader(
-		meta, func(r *sstable.Reader) (err error) {
-			stats.NumEntries = r.Properties.NumEntries
-			stats.NumDeletions = r.Properties.NumDeletions
-			if r.Properties.NumPointDeletions() > 0 {
-				if err = d.loadTablePointKeyStats(r, v, level, meta, &stats); err != nil {
+	err := d.tableCache.withCommonReader(
+		meta, func(r sstable.CommonReader) (err error) {
+			props := r.CommonProps()
+			stats.NumEntries = props.NumEntries
+			stats.NumDeletions = props.NumDeletions
+			if props.NumPointDeletions() > 0 {
+				if err = d.loadTablePointKeyStats(props, v, level, meta, &stats); err != nil {
 					return
 				}
 			}
-			if r.Properties.NumRangeDeletions > 0 || r.Properties.NumRangeKeyDels > 0 {
+			if props.NumRangeDeletions > 0 || props.NumRangeKeyDels > 0 {
 				if compactionHints, err = d.loadTableRangeDelStats(
 					r, v, level, meta, &stats,
 				); err != nil {
@@ -299,8 +280,8 @@ func (d *DB) loadTableStats(
 			// TODO(travers): Once we have real-world data, consider collecting
 			// additional stats that may provide improved heuristics for compaction
 			// picking.
-			stats.NumRangeKeySets = r.Properties.NumRangeKeySets
-			stats.ValueBlocksSize = r.Properties.ValueBlocksSize
+			stats.NumRangeKeySets = props.NumRangeKeySets
+			stats.ValueBlocksSize = props.ValueBlocksSize
 			return
 		})
 	if err != nil {
@@ -312,7 +293,7 @@ func (d *DB) loadTableStats(
 // loadTablePointKeyStats calculates the point key statistics for the given
 // table. The provided manifest.TableStats are updated.
 func (d *DB) loadTablePointKeyStats(
-	r *sstable.Reader, v *version, level int, meta physicalMeta, stats *manifest.TableStats,
+	props *sstable.CommonProps, v *version, level int, meta *fileMetadata, stats *manifest.TableStats,
 ) error {
 	// TODO(jackson): If the file has a wide keyspace, the average
 	// value size beneath the entire file might not be representative
@@ -320,21 +301,21 @@ func (d *DB) loadTablePointKeyStats(
 	// We could write the ranges of 'clusters' of point tombstones to
 	// a sstable property and call averageValueSizeBeneath for each of
 	// these narrower ranges to improve the estimate.
-	avgValLogicalSize, compressionRatio, err := d.estimateSizesBeneath(v, level, meta)
+	avgValLogicalSize, compressionRatio, err := d.estimateSizesBeneath(v, level, meta, props)
 	if err != nil {
 		return err
 	}
 	stats.PointDeletionsBytesEstimate =
-		pointDeletionsBytesEstimate(meta.Size, &r.Properties, avgValLogicalSize, compressionRatio)
+		pointDeletionsBytesEstimate(meta.Size, props, avgValLogicalSize, compressionRatio)
 	return nil
 }
 
 // loadTableRangeDelStats calculates the range deletion and range key deletion
 // statistics for the given table.
 func (d *DB) loadTableRangeDelStats(
-	r *sstable.Reader, v *version, level int, meta physicalMeta, stats *manifest.TableStats,
+	r sstable.CommonReader, v *version, level int, meta *fileMetadata, stats *manifest.TableStats,
 ) ([]deleteCompactionHint, error) {
-	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta.FileMetadata)
+	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta)
 	if err != nil {
 		return nil, err
 	}
@@ -423,7 +404,7 @@ func (d *DB) loadTableRangeDelStats(
 			hintType:                hintType,
 			start:                   make([]byte, len(start)),
 			end:                     make([]byte, len(end)),
-			tombstoneFile:           meta.FileMetadata,
+			tombstoneFile:           meta,
 			tombstoneLevel:          level,
 			tombstoneLargestSeqNum:  s.LargestSeqNum(),
 			tombstoneSmallestSeqNum: s.SmallestSeqNum(),
@@ -437,12 +418,21 @@ func (d *DB) loadTableRangeDelStats(
 }
 
 func (d *DB) estimateSizesBeneath(
-	v *version, level int, meta physicalMeta,
+	v *version, level int, meta *fileMetadata, fileProps *sstable.CommonProps,
 ) (avgValueLogicalSize, compressionRatio float64, err error) {
 	// Find all files in lower levels that overlap with meta,
 	// summing their value sizes and entry counts.
-	file := meta.FileMetadata
+	file := meta
 	var fileSum, keySum, valSum, entryCount uint64
+	// Include the file itself. This is important because in some instances, the
+	// computed compression ratio is applied to the tombstones contained within
+	// `meta` itself. If there are no files beneath `meta` in the LSM, we would
+	// calculate a compression ratio of 0 which is not accurate for the file's
+	// own tombstones.
+	fileSum += file.Size
+	entryCount += fileProps.NumEntries
+	keySum += fileProps.RawKeySize
+	valSum += fileProps.RawValueSize
 
 	addPhysicalTableStats := func(r *sstable.Reader) (err error) {
 		fileSum += file.Size
@@ -457,15 +447,6 @@ func (d *DB) estimateSizesBeneath(
 		keySum += v.Properties.RawKeySize
 		valSum += v.Properties.RawValueSize
 		return nil
-	}
-
-	// Include the file itself. This is important because in some instances, the
-	// computed compression ratio is applied to the tombstones contained within
-	// `meta` itself. If there are no files beneath `meta` in the LSM, we would
-	// calculate a compression ratio of 0 which is not accurate for the file's
-	// own tombstones.
-	if err = d.tableCache.withReader(meta, addPhysicalTableStats); err != nil {
-		return 0, 0, err
 	}
 
 	for l := level + 1; l < numLevels; l++ {
@@ -637,8 +618,9 @@ func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) b
 		// doesn't require any additional IO and since the number of point
 		// deletions in the file is low, the error introduced by this crude
 		// estimate is expected to be small.
-		avgValSize, compressionRatio := estimatePhysicalSizes(meta.Size, props)
-		pointEstimate = pointDeletionsBytesEstimate(meta.Size, props, avgValSize, compressionRatio)
+		commonProps := sstable.PhysicalToTableProps(props)
+		avgValSize, compressionRatio := estimatePhysicalSizes(meta.Size, commonProps)
+		pointEstimate = pointDeletionsBytesEstimate(meta.Size, commonProps, avgValSize, compressionRatio)
 	}
 
 	meta.Stats.NumEntries = props.NumEntries
@@ -652,7 +634,7 @@ func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) b
 }
 
 func pointDeletionsBytesEstimate(
-	fileSize uint64, props *sstable.Properties, avgValLogicalSize, compressionRatio float64,
+	fileSize uint64, props *sstable.CommonProps, avgValLogicalSize, compressionRatio float64,
 ) (estimate uint64) {
 	if props.NumEntries == 0 {
 		return 0
@@ -675,7 +657,7 @@ func pointDeletionsBytesEstimate(
 	// tombstones' encoded values.
 	//
 	// For un-sized point tombstones (DELs), we estimate assuming that each
-	// point tombstone on average covers 1 key and using average vaue sizes.
+	// point tombstone on average covers 1 key and using average value sizes.
 	// This is almost certainly an overestimate, but that's probably okay
 	// because point tombstones can slow range iterations even when they don't
 	// cover a key.
@@ -739,7 +721,7 @@ func pointDeletionsBytesEstimate(
 }
 
 func estimatePhysicalSizes(
-	fileSize uint64, props *sstable.Properties,
+	fileSize uint64, props *sstable.CommonProps,
 ) (avgValLogicalSize, compressionRatio float64) {
 	// RawKeySize and RawValueSize are uncompressed totals. Scale according to
 	// the data size to account for compression, index blocks and metadata
@@ -812,7 +794,7 @@ func estimatePhysicalSizes(
 // corresponding to the largest and smallest sequence numbers encountered across
 // the range deletes and range keys deletes that comprised the merged spans.
 func newCombinedDeletionKeyspanIter(
-	comparer *base.Comparer, r *sstable.Reader, m *fileMetadata,
+	comparer *base.Comparer, cr sstable.CommonReader, m *fileMetadata,
 ) (keyspan.FragmentIterator, error) {
 	// The range del iter and range key iter are each wrapped in their own
 	// defragmenting iter. For each iter, abutting spans can always be merged.
@@ -874,7 +856,7 @@ func newCombinedDeletionKeyspanIter(
 	})
 	mIter.Init(comparer.Compare, transform, new(keyspan.MergingBuffers))
 
-	iter, err := r.NewRawRangeDelIter()
+	iter, err := cr.NewRawRangeDelIter()
 	if err != nil {
 		return nil, err
 	}
@@ -891,7 +873,7 @@ func newCombinedDeletionKeyspanIter(
 		mIter.AddLevel(iter)
 	}
 
-	iter, err = r.NewRawRangeKeyIter()
+	iter, err = cr.NewRawRangeKeyIter()
 	if err != nil {
 		return nil, err
 	}

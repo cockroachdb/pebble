@@ -44,6 +44,36 @@ func init() {
 	}
 }
 
+// CommonProps holds properties for either a virtual or a physical sstable. This
+// can be used by code which doesn't care to make the distinction between physical
+// and virtual sstables properties.
+//
+// For virtual sstables, fields are constructed through extrapolation upon virtual
+// reader construction. See MakeVirtualReader for implementation details.
+//
+// NB: The values of these properties can affect correctness. For example,
+// if NumRangeKeySets == 0, but the sstable actually contains range keys, then
+// the iterators will behave incorrectly.
+type CommonProps struct {
+	NumEntries                 uint64
+	RawKeySize                 uint64
+	RawValueSize               uint64
+	RawPointTombstoneKeySize   uint64
+	RawPointTombstoneValueSize uint64
+	NumSizedDeletions          uint64
+	NumDeletions               uint64
+	NumRangeDeletions          uint64
+	NumRangeKeyDels            uint64
+	NumRangeKeySets            uint64
+	ValueBlocksSize            uint64
+}
+
+// NumPointDeletions is the number of point deletions in the sstable. For virtual
+// sstables, this is an estimate.
+func (c *CommonProps) NumPointDeletions() uint64 {
+	return c.NumDeletions - c.NumRangeDeletions
+}
+
 // Properties holds the sstable property values. The properties are
 // automatically populated during sstable creation and load from the properties
 // meta block when an sstable is opened.

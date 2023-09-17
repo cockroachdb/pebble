@@ -49,6 +49,8 @@ type TableStats struct {
 	// The number of point and range deletion entries in the table.
 	NumDeletions uint64
 	// NumRangeKeySets is the total number of range key sets in the table.
+	// If there's a chance that the sstable contains any range key sets, then
+	// NumRangeKeySets must be > 0.
 	NumRangeKeySets uint64
 	// Estimate of the total disk space that may be dropped by this table's
 	// point deletions by compacting them.
@@ -180,11 +182,9 @@ type FileMetadata struct {
 	// Size is the size of the file, in bytes. Size is an approximate value for
 	// virtual sstables.
 	//
-	// INVARIANT: when !FileMetadata.Virtual, Size == FileBacking.Size.
-	//
-	// TODO(bananabrick): Size is currently used in metrics, and for many key
-	// Pebble level heuristics. Make sure that the heuristics will still work
-	// appropriately with an approximate value of size.
+	// INVARIANTS:
+	// - When !FileMetadata.Virtual, Size == FileBacking.Size.
+	// - Size should be non-zero. Size 0 virtual sstables must not be created.
 	Size uint64
 	// File creation time in seconds since the epoch (1970-01-01 00:00:00
 	// UTC). For ingested sstables, this corresponds to the time the file was
@@ -309,6 +309,7 @@ type PhysicalFileMeta struct {
 //     The underlying file's size is stored in FileBacking.Size, though it could
 //     also be estimated or could correspond to just the referenced portion of
 //     a file (eg. if the file originated on another node).
+//   - Size must be > 0.
 //   - SmallestSeqNum and LargestSeqNum are loose bounds for virtual sstables.
 //     This means that all keys in the virtual sstable must have seqnums within
 //     [SmallestSeqNum, LargestSeqNum], however there's no guarantee that there's
