@@ -174,6 +174,28 @@ func init() {
 	private.SSTableRawTombstonesOpt = rawTombstonesOpt{}
 }
 
+// CommonReader abstracts functionality over a Reader or a VirtualReader. This
+// can be used by code which doesn't care to distinguish between a reader and a
+// virtual reader.
+type CommonReader interface {
+	NewRawRangeKeyIter() (keyspan.FragmentIterator, error)
+	NewRawRangeDelIter() (keyspan.FragmentIterator, error)
+	NewIterWithBlockPropertyFiltersAndContextEtc(
+		ctx context.Context, lower, upper []byte,
+		filterer *BlockPropertiesFilterer,
+		hideObsoletePoints, useFilterBlock bool,
+		stats *base.InternalIteratorStats,
+		rp ReaderProvider,
+	) (Iterator, error)
+	NewCompactionIter(
+		bytesIterated *uint64,
+		rp ReaderProvider,
+		bufferPool *BufferPool,
+	) (Iterator, error)
+	EstimateDiskUsage(start, end []byte) (uint64, error)
+	CommonProps() *CommonProps
+}
+
 // Reader is a table reader.
 type Reader struct {
 	readable          objstorage.Readable
@@ -925,6 +947,30 @@ func (r *Reader) ValidateBlockChecksums() error {
 	}
 
 	return nil
+}
+
+// PhysicalToTableProps can be used to get a CommonProps from a Properties struct.
+func PhysicalToTableProps(props *Properties) *CommonProps {
+	t := &CommonProps{
+		NumEntries:                 props.NumEntries,
+		RawKeySize:                 props.RawKeySize,
+		RawValueSize:               props.RawValueSize,
+		NumPointDeletions:          props.NumPointDeletions(),
+		RawPointTombstoneKeySize:   props.RawPointTombstoneKeySize,
+		RawPointTombstoneValueSize: props.RawPointTombstoneValueSize,
+		NumSizedDeletions:          props.NumSizedDeletions,
+		NumDeletions:               props.NumDeletions,
+		NumRangeDeletions:          props.NumRangeDeletions,
+		NumRangeKeyDels:            props.NumRangeKeyDels,
+		NumRangeKeySets:            props.NumRangeKeySets,
+		ValueBlocksSize:            props.ValueBlocksSize,
+	}
+	return t
+}
+
+// CommonProps implemented the CommonReader interface.
+func (r *Reader) CommonProps() *CommonProps {
+	return PhysicalToTableProps(&r.Properties)
 }
 
 // EstimateDiskUsage returns the total size of data blocks overlapping the range

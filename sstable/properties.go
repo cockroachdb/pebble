@@ -44,6 +44,24 @@ func init() {
 	}
 }
 
+// CommonProps holds properties for either a virtual or a physical sstable. This
+// can be used by code which doesn't care to make the distinction between physical
+// and virtual sstables properties.
+type CommonProps struct {
+	NumEntries                 uint64
+	RawKeySize                 uint64
+	RawValueSize               uint64
+	NumPointDeletions          uint64
+	RawPointTombstoneKeySize   uint64
+	RawPointTombstoneValueSize uint64
+	NumSizedDeletions          uint64
+	NumDeletions               uint64
+	NumRangeDeletions          uint64
+	NumRangeKeyDels            uint64
+	NumRangeKeySets            uint64
+	ValueBlocksSize            uint64
+}
+
 // Properties holds the sstable property values. The properties are
 // automatically populated during sstable creation and load from the properties
 // meta block when an sstable is opened.

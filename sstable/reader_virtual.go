@@ -12,6 +12,39 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
+// VirtualProperties holds estimates of various properties associated with
+// virtual sstables. Fields are constructed through extrapolation upon virtual
+// reader construction. See MakeVirtualReader for implementation details.
+//
+// NB: The values of these properties can affect correctness. For example,
+// if NumRangeKeySets == 0, but the sstable actually contains range keys, then
+// the iterators will behave incorrectly.
+type VirtualProperties struct {
+	// Note: Any field added here must be supported in MakeVirtualReader, which
+	// is the VirtualReader constructor.
+	//
+	// TODO(bananabrick): Check if any code relies on accurate values of these
+	// properties for correctness. Especially the 0 vs non-0 case. Just wire this
+	// up, and then trace the influence of these variables.
+	RawKeySize                 uint64
+	RawValueSize               uint64
+	NumEntries                 uint64
+	NumDeletions               uint64
+	NumRangeDeletions          uint64
+	NumRangeKeyDels            uint64
+	NumRangeKeySets            uint64
+	ValueBlocksSize            uint64
+	NumSizedDeletions          uint64
+	RawPointTombstoneKeySize   uint64
+	RawPointTombstoneValueSize uint64
+}
+
+// NumPointDeletions returns an estimate of the point deletions in the virtual
+// sstable.
+func (vp *VirtualProperties) NumPointDeletions() uint64 {
+	return vp.NumDeletions - vp.NumRangeDeletions
+}
+
 // VirtualReader wraps Reader. Its purpose is to restrict functionality of the
 // Reader which should be inaccessible to virtual sstables, and enforce bounds
 // invariants associated with virtual sstables. All reads on virtual sstables
@@ -22,13 +55,7 @@ import (
 type VirtualReader struct {
 	vState     virtualState
 	reader     *Reader
-	Properties struct {
-		// RawKeySize, RawValueSize are set upon construction of a
-		// VirtualReader. The values of the fields is extrapolated. See
-		// MakeVirtualReader for implementation details.
-		RawKeySize   uint64
-		RawValueSize uint64
-	}
+	Properties VirtualProperties
 }
 
 // Lightweight virtual sstable state which can be passed to sstable iterators.
@@ -37,6 +64,10 @@ type virtualState struct {
 	upper   InternalKey
 	fileNum base.FileNum
 	Compare Compare
+}
+
+func ceilDiv(a, b uint64) uint64 {
+	return (a + b - 1) / b
 }
 
 // MakeVirtualReader is used to contruct a reader which can read from virtual
@@ -57,11 +88,17 @@ func MakeVirtualReader(reader *Reader, meta manifest.VirtualFileMeta) VirtualRea
 		reader: reader,
 	}
 
-	v.Properties.RawKeySize =
-		(reader.Properties.RawKeySize * meta.Size) / meta.FileBacking.Size
-	v.Properties.RawValueSize =
-		(reader.Properties.RawValueSize * meta.Size) / meta.FileBacking.Size
-
+	v.Properties.RawKeySize = ceilDiv(reader.Properties.RawKeySize*meta.Size, meta.FileBacking.Size)
+	v.Properties.RawValueSize = ceilDiv(reader.Properties.RawValueSize*meta.Size, meta.FileBacking.Size)
+	v.Properties.NumEntries = ceilDiv(reader.Properties.NumEntries*meta.Size, meta.FileBacking.Size)
+	v.Properties.NumDeletions = ceilDiv(reader.Properties.NumDeletions*meta.Size, meta.FileBacking.Size)
+	v.Properties.NumRangeDeletions = ceilDiv(reader.Properties.NumRangeDeletions*meta.Size, meta.FileBacking.Size)
+	v.Properties.NumRangeKeyDels = ceilDiv(reader.Properties.NumRangeKeyDels*meta.Size, meta.FileBacking.Size)
+	v.Properties.NumRangeKeySets = ceilDiv(reader.Properties.NumRangeKeySets*meta.Size, meta.FileBacking.Size)
+	v.Properties.ValueBlocksSize = ceilDiv(reader.Properties.ValueBlocksSize*meta.Size, meta.FileBacking.Size)
+	v.Properties.NumSizedDeletions = ceilDiv(reader.Properties.NumSizedDeletions*meta.Size, meta.FileBacking.Size)
+	v.Properties.RawPointTombstoneKeySize = ceilDiv(reader.Properties.RawPointTombstoneKeySize*meta.Size, meta.FileBacking.Size)
+	v.Properties.RawPointTombstoneValueSize = ceilDiv(reader.Properties.RawPointTombstoneValueSize*meta.Size, meta.FileBacking.Size)
 	return v
 }
 
@@ -180,4 +217,23 @@ func (v *virtualState) constrainBounds(
 func (v *VirtualReader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	_, f, l := v.vState.constrainBounds(start, end, true /* endInclusive */)
 	return v.reader.EstimateDiskUsage(f, l)
+}
+
+// CommonProps implemented the CommonReader interface.
+func (v *VirtualReader) CommonProps() *CommonProps {
+	t := &CommonProps{
+		NumEntries:                 v.Properties.NumEntries,
+		RawKeySize:                 v.Properties.RawKeySize,
+		RawValueSize:               v.Properties.RawValueSize,
+		NumPointDeletions:          v.Properties.NumPointDeletions(),
+		RawPointTombstoneKeySize:   v.Properties.RawPointTombstoneKeySize,
+		RawPointTombstoneValueSize: v.Properties.RawPointTombstoneValueSize,
+		NumSizedDeletions:          v.Properties.NumSizedDeletions,
+		NumDeletions:               v.Properties.NumDeletions,
+		NumRangeDeletions:          v.Properties.NumRangeDeletions,
+		NumRangeKeyDels:            v.Properties.NumRangeKeyDels,
+		NumRangeKeySets:            v.Properties.NumRangeKeySets,
+		ValueBlocksSize:            v.Properties.ValueBlocksSize,
+	}
+	return t
 }
