@@ -194,6 +194,30 @@ func (c *tableCacheContainer) estimateSize(
 	return size, nil
 }
 
+func createCommonReader(v *tableCacheValue, file *fileMetadata) sstable.CommonReader {
+	// TODO(bananabrick): We suffer an allocation if file is a virtual sstable.
+	var cr sstable.CommonReader = v.reader
+	if file.Virtual {
+		virtualReader := sstable.MakeVirtualReader(
+			v.reader, file.VirtualMeta(),
+		)
+		cr = &virtualReader
+	}
+	return cr
+}
+
+func (c *tableCacheContainer) withCommonReader(
+	meta *fileMetadata, fn func(sstable.CommonReader) error,
+) error {
+	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
+	v := s.findNode(meta, &c.dbOpts)
+	defer s.unrefValue(v)
+	if v.err != nil {
+		return v.err
+	}
+	return fn(createCommonReader(v, meta))
+}
+
 func (c *tableCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
 	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
 	v := s.findNode(meta.FileMetadata, &c.dbOpts)
@@ -432,24 +456,8 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, err
 	}
 
-	type iterCreator interface {
-		NewRawRangeDelIter() (keyspan.FragmentIterator, error)
-		NewIterWithBlockPropertyFiltersAndContextEtc(ctx context.Context, lower, upper []byte, filterer *sstable.BlockPropertiesFilterer, hideObsoletePoints, useFilterBlock bool, stats *base.InternalIteratorStats, rp sstable.ReaderProvider) (sstable.Iterator, error)
-		NewCompactionIter(
-			bytesIterated *uint64,
-			rp sstable.ReaderProvider,
-			bufferPool *sstable.BufferPool,
-		) (sstable.Iterator, error)
-	}
-
-	// TODO(bananabrick): We suffer an allocation if file is a virtual sstable.
-	var ic iterCreator = v.reader
-	if file.Virtual {
-		virtualReader := sstable.MakeVirtualReader(
-			v.reader, file.VirtualMeta(),
-		)
-		ic = &virtualReader
-	}
+	// Note: This suffers an allocation for virtual sstables.
+	cr := createCommonReader(v, file)
 
 	provider := dbOpts.objProvider
 	// Check if this file is a foreign file.
@@ -460,7 +468,7 @@ func (c *tableCacheShard) newIters(
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := ic.NewRawRangeDelIter()
+	rangeDelIter, err := cr.NewRawRangeDelIter()
 	if err != nil {
 		c.unrefValue(v)
 		return nil, nil, err
@@ -504,9 +512,9 @@ func (c *tableCacheShard) newIters(
 		hideObsoletePoints = true
 	}
 	if internalOpts.bytesIterated != nil {
-		iter, err = ic.NewCompactionIter(internalOpts.bytesIterated, rp, internalOpts.bufferPool)
+		iter, err = cr.NewCompactionIter(internalOpts.bytesIterated, rp, internalOpts.bufferPool)
 	} else {
-		iter, err = ic.NewIterWithBlockPropertyFiltersAndContextEtc(
+		iter, err = cr.NewIterWithBlockPropertyFiltersAndContextEtc(
 			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, hideObsoletePoints, useFilter,
 			internalOpts.stats, rp)
 	}

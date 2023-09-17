@@ -129,6 +129,18 @@ func TestTableStats(t *testing.T) {
 			}
 			return buf.String()
 
+		case "ingest-and-excise":
+			if err := runIngestAndExciseCmd(td, d, fs); err != nil {
+				return err.Error()
+			}
+			// Wait for a possible flush.
+			d.mu.Lock()
+			for d.mu.compact.flushing {
+				d.mu.compact.cond.Wait()
+			}
+			d.mu.Unlock()
+			return ""
+
 		case "wait-pending-table-stats":
 			return runTableStatsCmd(td, d)
 
