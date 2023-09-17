@@ -174,6 +174,28 @@ func init() {
 	private.SSTableRawTombstonesOpt = rawTombstonesOpt{}
 }
 
+// CommonReader abstracts functionality over a Reader or a VirtualReader. This
+// can be used by code which doesn't care to distinguish between a reader and a
+// virtual reader.
+type CommonReader interface {
+	NewRawRangeKeyIter() (keyspan.FragmentIterator, error)
+	NewRawRangeDelIter() (keyspan.FragmentIterator, error)
+	NewIterWithBlockPropertyFiltersAndContextEtc(
+		ctx context.Context, lower, upper []byte,
+		filterer *BlockPropertiesFilterer,
+		hideObsoletePoints, useFilterBlock bool,
+		stats *base.InternalIteratorStats,
+		rp ReaderProvider,
+	) (Iterator, error)
+	NewCompactionIter(
+		bytesIterated *uint64,
+		rp ReaderProvider,
+		bufferPool *BufferPool,
+	) (Iterator, error)
+	EstimateDiskUsage(start, end []byte) (uint64, error)
+	CommonProperties() *CommonProperties
+}
+
 // Reader is a table reader.
 type Reader struct {
 	readable          objstorage.Readable
@@ -925,6 +947,11 @@ func (r *Reader) ValidateBlockChecksums() error {
 	}
 
 	return nil
+}
+
+// CommonProperties implemented the CommonReader interface.
+func (r *Reader) CommonProperties() *CommonProperties {
+	return &r.Properties.CommonProperties
 }
 
 // EstimateDiskUsage returns the total size of data blocks overlapping the range

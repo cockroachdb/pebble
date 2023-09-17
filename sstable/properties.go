@@ -25,10 +25,14 @@ var propBoolFalse = []byte{'0'}
 
 var propOffsetTagMap = make(map[uintptr]string)
 
-func init() {
-	t := reflect.TypeOf(Properties{})
+func generateTagMaps(t reflect.Type) {
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
+		if f.Type.Kind() == reflect.Struct {
+			// Embedded struct within Properties.
+			generateTagMaps(f.Type)
+			continue
+		}
 		if tag := f.Tag.Get("prop"); tag != "" {
 			switch f.Type.Kind() {
 			case reflect.Bool:
@@ -44,10 +48,75 @@ func init() {
 	}
 }
 
+func init() {
+	t := reflect.TypeOf(Properties{})
+	generateTagMaps(t)
+}
+
+// CommonProperties holds properties for either a virtual or a physical sstable. This
+// can be used by code which doesn't care to make the distinction between physical
+// and virtual sstables properties.
+//
+// For virtual sstables, fields are constructed through extrapolation upon virtual
+// reader construction. See MakeVirtualReader for implementation details.
+//
+// NB: The values of these properties can affect correctness. For example,
+// if NumRangeKeySets == 0, but the sstable actually contains range keys, then
+// the iterators will behave incorrectly.
+type CommonProperties struct {
+	// The number of entries in this table.
+	NumEntries uint64 `prop:"rocksdb.num.entries"`
+	// Total raw key size.
+	RawKeySize uint64 `prop:"rocksdb.raw.key.size"`
+	// Total raw value size.
+	RawValueSize uint64 `prop:"rocksdb.raw.value.size"`
+	// Total raw key size of point deletion tombstones. This value is comparable
+	// to RawKeySize.
+	RawPointTombstoneKeySize uint64 `prop:"pebble.raw.point-tombstone.key.size"`
+	// Sum of the raw value sizes carried by point deletion tombstones
+	// containing size estimates. See the DeleteSized key kind. This value is
+	// comparable to Raw{Key,Value}Size.
+	RawPointTombstoneValueSize uint64 `prop:"pebble.raw.point-tombstone.value.size"`
+	// The number of point deletion entries ("tombstones") in this table that
+	// carry a size hint indicating the size of the value the tombstone deletes.
+	NumSizedDeletions uint64 `prop:"pebble.num.deletions.sized"`
+	// The number of deletion entries in this table, including both point and
+	// range deletions.
+	NumDeletions uint64 `prop:"rocksdb.deleted.keys"`
+	// The number of range deletions in this table.
+	NumRangeDeletions uint64 `prop:"rocksdb.num.range-deletions"`
+	// The number of RANGEKEYDELs in this table.
+	NumRangeKeyDels uint64 `prop:"pebble.num.range-key-dels"`
+	// The number of RANGEKEYSETs in this table.
+	NumRangeKeySets uint64 `prop:"pebble.num.range-key-sets"`
+	// Total size of value blocks and value index block. Only serialized if > 0.
+	ValueBlocksSize uint64 `prop:"pebble.value-blocks.size"`
+}
+
+// String is only used for testing purposes.
+func (c *CommonProperties) String() string {
+	var buf bytes.Buffer
+	v := reflect.ValueOf(*c)
+	loaded := make(map[uintptr]struct{})
+	writeProperties(loaded, v, &buf)
+	return buf.String()
+}
+
+// NumPointDeletions is the number of point deletions in the sstable. For virtual
+// sstables, this is an estimate.
+func (c *CommonProperties) NumPointDeletions() uint64 {
+	return c.NumDeletions - c.NumRangeDeletions
+}
+
 // Properties holds the sstable property values. The properties are
 // automatically populated during sstable creation and load from the properties
 // meta block when an sstable is opened.
 type Properties struct {
+	// CommonProperties needs to be at the top of the Properties struct so that the
+	// offsets of the fields in CommonProperties match the offsets of the embedded
+	// fields of CommonProperties in Properties.
+	CommonProperties
+
 	// The name of the comparer used in this table.
 	ComparerName string `prop:"rocksdb.comparator"`
 	// The compression algorithm used to compress blocks.
@@ -81,22 +150,8 @@ type Properties struct {
 	MergerName string `prop:"rocksdb.merge.operator"`
 	// The number of blocks in this table.
 	NumDataBlocks uint64 `prop:"rocksdb.num.data.blocks"`
-	// The number of deletion entries in this table, including both point and
-	// range deletions.
-	NumDeletions uint64 `prop:"rocksdb.deleted.keys"`
-	// The number of point deletion entries ("tombstones") in this table that
-	// carry a size hint indicating the size of the value the tombstone deletes.
-	NumSizedDeletions uint64 `prop:"pebble.num.deletions.sized"`
-	// The number of entries in this table.
-	NumEntries uint64 `prop:"rocksdb.num.entries"`
 	// The number of merge operands in the table.
 	NumMergeOperands uint64 `prop:"rocksdb.merge.operands"`
-	// The number of range deletions in this table.
-	NumRangeDeletions uint64 `prop:"rocksdb.num.range-deletions"`
-	// The number of RANGEKEYDELs in this table.
-	NumRangeKeyDels uint64 `prop:"pebble.num.range-key-dels"`
-	// The number of RANGEKEYSETs in this table.
-	NumRangeKeySets uint64 `prop:"pebble.num.range-key-sets"`
 	// The number of RANGEKEYUNSETs in this table.
 	NumRangeKeyUnsets uint64 `prop:"pebble.num.range-key-unsets"`
 	// The number of value blocks in this table. Only serialized if > 0.
@@ -111,21 +166,10 @@ type Properties struct {
 	// A comma separated list of names of the property collectors used in this
 	// table.
 	PropertyCollectorNames string `prop:"rocksdb.property.collectors"`
-	// Total raw key size.
-	RawKeySize uint64 `prop:"rocksdb.raw.key.size"`
-	// Total raw key size of point deletion tombstones. This value is comparable
-	// to RawKeySize.
-	RawPointTombstoneKeySize uint64 `prop:"pebble.raw.point-tombstone.key.size"`
-	// Sum of the raw value sizes carried by point deletion tombstones
-	// containing size estimates. See the DeleteSized key kind. This value is
-	// comparable to Raw{Key,Value}Size.
-	RawPointTombstoneValueSize uint64 `prop:"pebble.raw.point-tombstone.value.size"`
 	// Total raw rangekey key size.
 	RawRangeKeyKeySize uint64 `prop:"pebble.raw.range-key.key.size"`
 	// Total raw rangekey value size.
 	RawRangeKeyValueSize uint64 `prop:"pebble.raw.range-key.value.size"`
-	// Total raw value size.
-	RawValueSize uint64 `prop:"rocksdb.raw.value.size"`
 	// The total number of keys in this table that were pinned by open snapshots.
 	SnapshotPinnedKeys uint64 `prop:"pebble.num.snapshot-pinned-keys"`
 	// The cumulative bytes of keys in this table that were pinned by
@@ -138,8 +182,6 @@ type Properties struct {
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
 	// User collected properties.
 	UserProperties map[string]string
-	// Total size of value blocks and value index block. Only serialized if > 0.
-	ValueBlocksSize uint64 `prop:"pebble.value-blocks.size"`
 	// If filtering is enabled, was the filter created on the whole key.
 	WholeKeyFiltering bool `prop:"rocksdb.block.based.table.whole.key.filtering"`
 
@@ -160,12 +202,15 @@ func (p *Properties) NumRangeKeys() uint64 {
 	return p.NumRangeKeyDels + p.NumRangeKeySets + p.NumRangeKeyUnsets
 }
 
-func (p *Properties) String() string {
-	var buf bytes.Buffer
-	v := reflect.ValueOf(*p)
+func writeProperties(loaded map[uintptr]struct{}, v reflect.Value, buf *bytes.Buffer) {
 	vt := v.Type()
 	for i := 0; i < v.NumField(); i++ {
 		ft := vt.Field(i)
+		if ft.Type.Kind() == reflect.Struct {
+			// Embedded struct within the properties.
+			writeProperties(loaded, v.Field(i), buf)
+			continue
+		}
 		tag := ft.Tag.Get("prop")
 		if tag == "" {
 			continue
@@ -175,25 +220,33 @@ func (p *Properties) String() string {
 		// TODO(peter): Use f.IsZero() when we can rely on go1.13.
 		if zero := reflect.Zero(f.Type()); zero.Interface() == f.Interface() {
 			// Skip printing of zero values which were not loaded from disk.
-			if _, ok := p.Loaded[ft.Offset]; !ok {
+			if _, ok := loaded[ft.Offset]; !ok {
 				continue
 			}
 		}
 
-		fmt.Fprintf(&buf, "%s: ", tag)
+		fmt.Fprintf(buf, "%s: ", tag)
 		switch ft.Type.Kind() {
 		case reflect.Bool:
-			fmt.Fprintf(&buf, "%t\n", f.Bool())
+			fmt.Fprintf(buf, "%t\n", f.Bool())
 		case reflect.Uint32:
-			fmt.Fprintf(&buf, "%d\n", f.Uint())
+			fmt.Fprintf(buf, "%d\n", f.Uint())
 		case reflect.Uint64:
-			fmt.Fprintf(&buf, "%d\n", f.Uint())
+			fmt.Fprintf(buf, "%d\n", f.Uint())
 		case reflect.String:
-			fmt.Fprintf(&buf, "%s\n", f.String())
+			fmt.Fprintf(buf, "%s\n", f.String())
 		default:
 			panic("not reached")
 		}
 	}
+}
+
+func (p *Properties) String() string {
+	var buf bytes.Buffer
+	v := reflect.ValueOf(*p)
+	writeProperties(p.Loaded, v, &buf)
+
+	// Write the UserProperties.
 	keys := make([]string, 0, len(p.UserProperties))
 	for key := range p.UserProperties {
 		keys = append(keys, key)
@@ -217,7 +270,7 @@ func (p *Properties) load(
 	for valid := i.First(); valid; valid = i.Next() {
 		if f, ok := propTagMap[string(i.Key().UserKey)]; ok {
 			p.Loaded[f.Offset] = struct{}{}
-			field := v.FieldByIndex(f.Index)
+			field := v.FieldByName(f.Name)
 			switch f.Type.Kind() {
 			case reflect.Bool:
 				field.SetBool(bytes.Equal(i.Value(), propBoolTrue))

@@ -28,18 +28,20 @@ func TestPropertiesLoad(t *testing.T) {
 		IndexSize:              325,
 		MergerName:             "nullptr",
 		NumDataBlocks:          14,
-		NumEntries:             1727,
-		NumDeletions:           17,
-		NumRangeDeletions:      17,
 		PrefixExtractorName:    "nullptr",
 		PropertyCollectorNames: "[KeyCountPropertyCollector]",
-		RawKeySize:             23938,
-		RawValueSize:           1912,
 		UserProperties: map[string]string{
 			"test.key-count": "1727",
 		},
 		WholeKeyFiltering: false,
 	}
+
+	// Part of the CommonProperties embedded struct and must be set separately.
+	expected.NumEntries = 1727
+	expected.NumDeletions = 17
+	expected.NumRangeDeletions = 17
+	expected.RawKeySize = 23938
+	expected.RawValueSize = 1912
 
 	{
 		// Check that we can read properties from a table.
@@ -75,28 +77,29 @@ func TestPropertiesSave(t *testing.T) {
 		IsStrictObsolete:       true,
 		MergerName:             "merge operator name",
 		NumDataBlocks:          14,
-		NumDeletions:           15,
-		NumEntries:             16,
 		NumMergeOperands:       17,
-		NumRangeDeletions:      18,
-		NumRangeKeyDels:        19,
-		NumRangeKeySets:        20,
 		NumRangeKeyUnsets:      21,
 		NumValueBlocks:         22,
 		NumValuesInValueBlocks: 23,
 		PrefixExtractorName:    "prefix extractor name",
 		PrefixFiltering:        true,
 		PropertyCollectorNames: "prefix collector names",
-		RawKeySize:             25,
-		RawValueSize:           26,
 		TopLevelIndexSize:      27,
 		WholeKeyFiltering:      true,
 		UserProperties: map[string]string{
 			"user-prop-a": "1",
 			"user-prop-b": "2",
 		},
-		ValueBlocksSize: 28,
 	}
+
+	// Part of the CommonProps embedded struct and must be set separately.
+	expected.NumDeletions = 15
+	expected.NumEntries = 16
+	expected.NumRangeDeletions = 18
+	expected.NumRangeKeyDels = 19
+	expected.NumRangeKeySets = 20
+	expected.RawKeySize = 25
+	expected.RawValueSize = 26
 
 	check1 := func(expected *Properties) {
 		// Check that we can save properties and read them back.
