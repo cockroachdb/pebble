@@ -242,9 +242,29 @@ func TestVirtualReader(t *testing.T) {
 		fmt.Fprintf(&b, "bounds:  [%s-%s]\n", v.vState.lower, v.vState.upper)
 		fmt.Fprintf(&b, "filenum: %s\n", v.vState.fileNum.String())
 		fmt.Fprintf(
-			&b, "props:   %d,%d\n",
+			&b, "props: %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d\n",
+			"NumEntries",
+			v.Properties.NumEntries,
+			"RawKeySize",
 			v.Properties.RawKeySize,
+			"RawValueSize",
 			v.Properties.RawValueSize,
+			"RawPointTombstoneKeySize",
+			v.Properties.RawPointTombstoneKeySize,
+			"RawPointTombstoneValueSize",
+			v.Properties.RawPointTombstoneValueSize,
+			"NumSizedDeletions",
+			v.Properties.NumSizedDeletions,
+			"NumDeletions",
+			v.Properties.NumDeletions,
+			"NumRangeDeletions",
+			v.Properties.NumRangeDeletions,
+			"NumRangeKeyDels",
+			v.Properties.NumRangeKeyDels,
+			"NumRangeKeySets",
+			v.Properties.NumRangeKeySets,
+			"ValueBlocksSize",
+			v.Properties.ValueBlocksSize,
 		)
 		return b.String()
 	}

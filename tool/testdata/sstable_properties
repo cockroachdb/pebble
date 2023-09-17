@@ -129,6 +129,11 @@ sstable properties
 ../sstable/testdata/h.no-compression.two_level_index.sst
 ----
 h.no-compression.two_level_index.sst
+rocksdb.num.entries: 1727
+rocksdb.raw.key.size: 23938
+rocksdb.raw.value.size: 1912
+rocksdb.deleted.keys: 17
+rocksdb.num.range-deletions: 17
 rocksdb.comparator: leveldb.BytewiseComparator
 rocksdb.compression: NoCompression
 rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
@@ -141,15 +146,10 @@ rocksdb.index.size: 408
 rocksdb.block.based.table.index.type: 2
 rocksdb.merge.operator: nullptr
 rocksdb.num.data.blocks: 14
-rocksdb.deleted.keys: 17
-rocksdb.num.entries: 1727
 rocksdb.merge.operands: 0
-rocksdb.num.range-deletions: 17
 rocksdb.prefix.extractor.name: nullptr
 rocksdb.block.based.table.prefix.filtering: false
 rocksdb.property.collectors: [KeyCountPropertyCollector]
-rocksdb.raw.key.size: 23938
-rocksdb.raw.value.size: 1912
 rocksdb.top-level.index.size: 70
 rocksdb.block.based.table.whole.key.filtering: false
 test.key-count: 1727
@@ -162,6 +162,11 @@ sstable properties
 testdata/find-db/archive/000011.sst
 ----
 000011.sst
+rocksdb.num.entries: 8
+rocksdb.raw.key.size: 88
+rocksdb.raw.value.size: 13
+rocksdb.deleted.keys: 2
+rocksdb.num.range-deletions: 1
 rocksdb.comparator: alt-comparer
 rocksdb.compression: Snappy
 rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
@@ -171,15 +176,10 @@ rocksdb.index.size: 27
 rocksdb.block.based.table.index.type: 0
 rocksdb.merge.operator: test-merger
 rocksdb.num.data.blocks: 1
-rocksdb.deleted.keys: 2
-rocksdb.num.entries: 8
 rocksdb.merge.operands: 1
-rocksdb.num.range-deletions: 1
 rocksdb.prefix.extractor.name: nullptr
 rocksdb.block.based.table.prefix.filtering: false
 rocksdb.property.collectors: []
-rocksdb.raw.key.size: 88
-rocksdb.raw.value.size: 13
 rocksdb.block.based.table.whole.key.filtering: false
 
 sstable properties

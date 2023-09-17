@@ -20,6 +20,13 @@ import (
 
 func TestPropertiesLoad(t *testing.T) {
 	expected := Properties{
+		CommonProperties: CommonProperties{
+			NumEntries:        1727,
+			NumDeletions:      17,
+			NumRangeDeletions: 17,
+			RawKeySize:        23938,
+			RawValueSize:      1912,
+		},
 		ComparerName:           "leveldb.BytewiseComparator",
 		CompressionName:        "Snappy",
 		CompressionOptions:     "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
@@ -28,13 +35,8 @@ func TestPropertiesLoad(t *testing.T) {
 		IndexSize:              325,
 		MergerName:             "nullptr",
 		NumDataBlocks:          14,
-		NumEntries:             1727,
-		NumDeletions:           17,
-		NumRangeDeletions:      17,
 		PrefixExtractorName:    "nullptr",
 		PropertyCollectorNames: "[KeyCountPropertyCollector]",
-		RawKeySize:             23938,
-		RawValueSize:           1912,
 		UserProperties: map[string]string{
 			"test.key-count": "1727",
 		},
@@ -61,6 +63,15 @@ func TestPropertiesLoad(t *testing.T) {
 
 func TestPropertiesSave(t *testing.T) {
 	expected := &Properties{
+		CommonProperties: CommonProperties{
+			NumDeletions:      15,
+			NumEntries:        16,
+			NumRangeDeletions: 18,
+			NumRangeKeyDels:   19,
+			NumRangeKeySets:   20,
+			RawKeySize:        25,
+			RawValueSize:      26,
+		},
 		ComparerName:           "comparator name",
 		CompressionName:        "compression name",
 		CompressionOptions:     "compression option",
@@ -75,27 +86,19 @@ func TestPropertiesSave(t *testing.T) {
 		IsStrictObsolete:       true,
 		MergerName:             "merge operator name",
 		NumDataBlocks:          14,
-		NumDeletions:           15,
-		NumEntries:             16,
 		NumMergeOperands:       17,
-		NumRangeDeletions:      18,
-		NumRangeKeyDels:        19,
-		NumRangeKeySets:        20,
 		NumRangeKeyUnsets:      21,
 		NumValueBlocks:         22,
 		NumValuesInValueBlocks: 23,
 		PrefixExtractorName:    "prefix extractor name",
 		PrefixFiltering:        true,
 		PropertyCollectorNames: "prefix collector names",
-		RawKeySize:             25,
-		RawValueSize:           26,
 		TopLevelIndexSize:      27,
 		WholeKeyFiltering:      true,
 		UserProperties: map[string]string{
 			"user-prop-a": "1",
 			"user-prop-b": "2",
 		},
-		ValueBlocksSize: 28,
 	}
 
 	check1 := func(expected *Properties) {
