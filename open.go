@@ -381,6 +381,15 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	}
 
+	// Ratchet d.mu.versions.nextFileNum ahead of all known objects in the
+	// objProvider. This avoids FileNum collisions with obsolete sstables.
+	objects := d.objProvider.List()
+	for _, obj := range objects {
+		if d.mu.versions.nextFileNum <= obj.DiskFileNum.FileNum() {
+			d.mu.versions.nextFileNum = obj.DiskFileNum.FileNum() + 1
+		}
+	}
+
 	// Validate the most-recent OPTIONS file, if there is one.
 	var strictWALTail bool
 	if previousOptionsFilename != "" {
