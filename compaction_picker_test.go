@@ -1326,6 +1326,7 @@ func TestCompactionPickerCompensatedSize(t *testing.T) {
 	}
 }
 
+// TODO(bananabrick): Add tests for virtual sstable file picking here.
 func TestCompactionPickerPickFile(t *testing.T) {
 	fs := vfs.NewMem()
 	opts := &Options{
