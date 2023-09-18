@@ -300,6 +300,13 @@ var (
 		prometheus.LinearBuckets(0.0, float64(time.Microsecond*100), 50),
 		prometheus.ExponentialBucketsRange(float64(time.Millisecond*5), float64(10*time.Second), 50)...,
 	)
+
+	// SecondaryCacheIOBuckets exported to enable exporting from package pebble to
+	// enable exporting metrics with below buckets in CRDB.
+	SecondaryCacheIOBuckets = sharedcache.IOBuckets
+	// SecondaryCacheChannelWriteBuckets exported to enable exporting from package
+	// pebble to enable exporting metrics with below buckets in CRDB.
+	SecondaryCacheChannelWriteBuckets = sharedcache.ChannelWriteBuckets
 )
 
 // DiskSpaceUsage returns the total disk space used by the database in bytes,
