@@ -2134,6 +2134,9 @@ func (i *Iterator) Value() []byte {
 
 // ValueAndErr returns the value, and any error encountered in extracting the value.
 // REQUIRES: i.Error()==nil and HasPointAndRange() returns true for hasPoint.
+//
+// The caller should not modify the contents of the returned slice, and its
+// contents may change on the next call to Next.
 func (i *Iterator) ValueAndErr() ([]byte, error) {
 	val, callerOwned, err := i.value.Value(i.lazyValueBuf)
 	if err != nil {
