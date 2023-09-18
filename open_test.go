@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -24,7 +25,9 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
@@ -1341,4 +1344,47 @@ func TestCheckConsistency(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
+}
+
+func TestOpenRatchetsNextFileNum(t *testing.T) {
+	mem := vfs.NewMem()
+	memShared := remote.NewInMem()
+
+	opts := &Options{FS: mem}
+	opts.Experimental.CreateOnShared = true
+	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		"": memShared,
+	})
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	d.SetCreatorID(1)
+
+	require.NoError(t, d.Set([]byte("foo"), []byte("value"), nil))
+	require.NoError(t, d.Set([]byte("bar"), []byte("value"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false))
+
+	// Create a shared file with the newest file num and then close the db.
+	d.mu.Lock()
+	nextFileNum := d.mu.versions.getNextFileNum()
+	w, _, err := d.objProvider.Create(context.TODO(), fileTypeTable, nextFileNum.DiskFileNum(), objstorage.CreateOptions{PreferSharedStorage: true})
+	require.NoError(t, err)
+	require.NoError(t, w.Write([]byte("foobar")))
+	require.NoError(t, w.Finish())
+	require.NoError(t, d.objProvider.Sync())
+	d.mu.Unlock()
+
+	// Write one key and then close the db. This write will stay in the memtable,
+	// forcing the reopen to do a compaction on open.
+	require.NoError(t, d.Set([]byte("foo1"), []byte("value"), nil))
+	require.NoError(t, d.Close())
+
+	// Reopen db. Compactions should happen without error.
+	d, err = Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d.Set([]byte("foo2"), []byte("value"), nil))
+	require.NoError(t, d.Set([]byte("bar2"), []byte("value"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false))
+
 }
