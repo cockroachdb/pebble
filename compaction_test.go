@@ -3878,3 +3878,118 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 	require.NoError(t, err)
 	d.Close()
 }
+
+type WriteErrorInjector struct {
+	enabled atomic.Bool
+}
+
+// enable enables error injection for the vfs.FS.
+func (i *WriteErrorInjector) enable() {
+	i.enabled.Store(true)
+}
+
+// disable disabled error injection for the vfs.FS.
+func (i *WriteErrorInjector) disable() {
+	i.enabled.Store(false)
+}
+
+// MaybeError implements errorfs.Injector.
+func (i *WriteErrorInjector) MaybeError(op errorfs.Op, path string) error {
+	if !i.enabled.Load() {
+		return nil
+	}
+	// Fail any future write.
+	if op == errorfs.OpFileWrite {
+		return errorfs.ErrInjected
+	}
+	return nil
+}
+
+var _ errorfs.Injector = &WriteErrorInjector{}
+
+// Cumulative compaction stats shouldn't be updated on compaction error.
+func TestCompactionErrorStats(t *testing.T) {
+	// protected by d.mu
+	var (
+		initialSetupDone bool
+		tablesCreated    []FileNum
+	)
+
+	mem := vfs.NewMem()
+	injector := &WriteErrorInjector{}
+	opts := (&Options{
+		FS:     errorfs.Wrap(mem, injector),
+		Levels: make([]LevelOptions, numLevels),
+		EventListener: &EventListener{
+			TableCreated: func(info TableCreateInfo) {
+				t.Log(info)
+
+				// If the initial setup is over, record tables created and
+				// inject an error immediately after the second table is
+				// created.
+				if initialSetupDone {
+					tablesCreated = append(tablesCreated, info.FileNum)
+					if len(tablesCreated) >= 2 {
+						injector.enable()
+					}
+				}
+			},
+		},
+	}).WithFSDefaults()
+	for i := range opts.Levels {
+		opts.Levels[i].TargetFileSize = 1
+	}
+	opts.testingRandomized(t)
+	d, err := Open("", opts)
+	require.NoError(t, err)
+
+	ingest := func(keys ...string) {
+		t.Helper()
+		f, err := mem.Create("ext")
+		require.NoError(t, err)
+
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+		})
+		for _, k := range keys {
+			require.NoError(t, w.Set([]byte(k), nil))
+		}
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{"ext"}))
+	}
+	ingest("a", "c")
+	// Snapshot will preserve the older "a" key during compaction.
+	snap := d.NewSnapshot()
+	ingest("a", "b")
+
+	// Trigger a manual compaction, which will encounter an injected error
+	// after the second table is created.
+	d.mu.Lock()
+	initialSetupDone = true
+	prevPinnedCount := d.mu.snapshots.cumulativePinnedCount
+	prevPinnedSize := d.mu.snapshots.cumulativePinnedSize
+	d.mu.Unlock()
+	err = d.Compact([]byte("a"), []byte("d"), false)
+	d.mu.Lock()
+	require.Equal(t, prevPinnedCount, d.mu.snapshots.cumulativePinnedCount)
+	require.Equal(t, prevPinnedSize, d.mu.snapshots.cumulativePinnedSize)
+	d.mu.Unlock()
+	require.Error(t, err, "injected error")
+	require.NoError(t, snap.Close())
+	injector.disable()
+
+
+	d.mu.Lock()
+	if len(tablesCreated) < 2 {
+		t.Fatalf("expected 2 output tables created by compaction: found %d", len(tablesCreated))
+	}
+	d.mu.Unlock()
+
+	require.NoError(t, d.Close())
+	for _, fileNum := range tablesCreated {
+		filename := fmt.Sprintf("%s.sst", fileNum)
+		if _, err = mem.Stat(filename); err == nil || !oserror.IsNotExist(err) {
+			t.Errorf("expected %q to not exist: %s", filename, err)
+		}
+	}
+}
