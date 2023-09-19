@@ -2115,11 +2115,16 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 
 	bytesFlushed = c.bytesIterated
-	d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
-	d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
-	d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.countMissizedDels
 
-	d.maybeUpdateDeleteCompactionHints(c)
+	// If err != nil, then the flush will be retried, and we will recalculate
+	// these metrics.
+	if err == nil {
+		d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
+		d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
+		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.countMissizedDels
+		d.maybeUpdateDeleteCompactionHints(c)
+	}
+
 	d.clearCompactingState(c, err != nil)
 	delete(d.mu.compact.inProgress, c)
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics)
@@ -2682,11 +2687,12 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 			e := &ve.NewFiles[i]
 			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo())
 		}
+		d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
+		d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
+		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.countMissizedDels
+		d.maybeUpdateDeleteCompactionHints(c)
 	}
 
-	d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
-	d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
-	d.maybeUpdateDeleteCompactionHints(c)
 	// NB: clearing compacting state must occur before updating the read state;
 	// L0Sublevels initialization depends on it.
 	d.clearCompactingState(c, err != nil)
