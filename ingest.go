@@ -113,11 +113,25 @@ func ingestSynthesizeShared(
 	meta.FileBacking.Size = sm.Size
 	if sm.LargestRangeKey.Valid() && sm.LargestRangeKey.UserKey != nil {
 		// Initialize meta.{HasRangeKeys,Smallest,Largest}, etc.
-		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, sm.SmallestRangeKey, sm.LargestRangeKey)
+		//
+		// NB: We create new internal keys and pass them into ExternalRangeKeyBounds
+		// so that we can sub a zero sequence number into the bounds. We can set
+		// the sequence number to anything here; it'll be reset in ingestUpdateSeqNum
+		// anyway. However we do need to use the same sequence number across all
+		// bound keys at this step so that we end up with bounds that are consistent
+		// across point/range keys.
+		smallestRangeKey := base.MakeInternalKey(sm.SmallestRangeKey.UserKey, 0, sm.SmallestRangeKey.Kind())
+		largestRangeKey := base.MakeInternalKey(sm.LargestRangeKey.UserKey, 0, sm.LargestRangeKey.Kind())
+		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallestRangeKey, largestRangeKey)
 	}
 	if sm.LargestPointKey.Valid() && sm.LargestPointKey.UserKey != nil {
 		// Initialize meta.{HasPointKeys,Smallest,Largest}, etc.
-		meta.ExtendPointKeyBounds(opts.Comparer.Compare, sm.SmallestPointKey, sm.LargestPointKey)
+		//
+		// See point above in the ExtendRangeKeyBounds call on why we use a zero
+		// sequence number here.
+		smallestPointKey := base.MakeInternalKey(sm.SmallestPointKey.UserKey, 0, sm.SmallestPointKey.Kind())
+		largestPointKey := base.MakeInternalKey(sm.LargestPointKey.UserKey, 0, sm.LargestPointKey.Kind())
+		meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallestPointKey, largestPointKey)
 	}
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
 		return nil, err
