@@ -445,6 +445,9 @@ func (o *batchCommitOp) syncObjs() objIDSlice {
 // ingestOp models a DB.Ingest operation.
 type ingestOp struct {
 	batchIDs []objID
+	// exciseSpan.Start != nil, implies that an IngestAndExcise operation must
+	// be done.
+	exciseSpan pebble.KeyRange
 }
 
 func (o *ingestOp) run(t *test, h historyRecorder) {
@@ -484,7 +487,12 @@ func (o *ingestOp) run(t *test, h historyRecorder) {
 	}
 
 	err = firstError(err, withRetries(func() error {
-		return t.db.Ingest(paths)
+		if o.exciseSpan.Start == nil {
+			return t.db.Ingest(paths)
+		} else {
+			_, err := t.db.IngestAndExcise(paths, nil, o.exciseSpan)
+			return err
+		}
 	}))
 
 	h.Recordf("%s // %v", o, err)
@@ -651,6 +659,12 @@ func (o *ingestOp) collapseBatch(
 func (o *ingestOp) String() string {
 	var buf strings.Builder
 	buf.WriteString("db.Ingest(")
+	if o.exciseSpan.Start != nil {
+		fmt.Fprintf(&buf, "excise %q, %q, ", o.exciseSpan.Start, o.exciseSpan.End)
+	} else {
+		fmt.Fprintf(&buf, "noexcise, ")
+	}
+
 	for i, id := range o.batchIDs {
 		if i > 0 {
 			buf.WriteString(", ")
@@ -1178,15 +1192,26 @@ func (o *iterPrevOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReader
 // newSnapshotOp models a DB.NewSnapshot operation.
 type newSnapshotOp struct {
 	snapID objID
-	// If nonempty, this snapshot must not be used to read any keys outside of
-	// the provided bounds. This allows some implementations to use 'Eventually
+	// Snapshot should not be used to read keys outside of bounds.ranges. In some
+	// cases, bounds.ranges will have length 1, and the ranges will span the entire
+	// keyspace. In other cases, bounds will restrict the keyspace which would be
+	// relevant to the snapshot. This allows some implementations to use 'Eventually
 	// file-only snapshots,' which require bounds.
 	bounds []pebble.KeyRange
+	// If suggestNoEfos is true, then the snapshot created will always be a
+	// regular snapshot, unless excising is enabled.
+	suggestNoEfos bool
 }
 
 func (o *newSnapshotOp) run(t *test, h historyRecorder) {
+	if t.testOpts.enableExcising && t.testOpts.seedEFOS == 0 {
+		panic("excising is enabled, but efos is disabled")
+	}
+	if len(o.bounds) == 0 {
+		panic("no bounds set for snapshot")
+	}
 	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
-	if len(o.bounds) > 0 && ((11400714819323198485*uint64(t.idx)*t.testOpts.seedEFOS)>>63) == 1 {
+	if t.testOpts.enableExcising || (!o.suggestNoEfos && ((11400714819323198485*uint64(t.idx)*t.testOpts.seedEFOS)>>63) == 1) {
 		s := t.db.NewEventuallyFileOnlySnapshot(o.bounds)
 		t.setSnapshot(o.snapID, s)
 	} else {
@@ -1198,7 +1223,7 @@ func (o *newSnapshotOp) run(t *test, h historyRecorder) {
 
 func (o *newSnapshotOp) String() string {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "%s = db.NewSnapshot(", o.snapID)
+	fmt.Fprintf(&buf, "%s = db.NewSnapshot(%t, ", o.snapID, o.suggestNoEfos)
 	for i := range o.bounds {
 		if i > 0 {
 			fmt.Fprint(&buf, ", ")

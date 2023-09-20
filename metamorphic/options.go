@@ -110,6 +110,9 @@ func parseOptions(
 				}
 				opts.seedEFOS = v
 				return true
+			case "TestOptions.enable_excise":
+				opts.enableExcising = true
+				return true
 			default:
 				if customOptionParsers == nil {
 					return false
@@ -172,6 +175,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.seedEFOS != 0 {
 		fmt.Fprintf(&buf, "  seed_efos=%d\n", opts.seedEFOS)
+	}
+	if opts.enableExcising {
+		fmt.Fprintf(&buf, "  enable_excise=%t\n", opts.enableExcising)
 	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
@@ -245,7 +251,17 @@ type TestOptions struct {
 	// newSnapshotOps that are keyspan-bounded. The set of which newSnapshotOps
 	// are actually created as EventuallyFileOnlySnapshots is deterministically
 	// derived from the seed and the operation index.
+	//
+	// If seedEFOS != 0, and enableExcising is true, then we will always use an
+	// EFOS. This is because regular snapshots don't interact correctly with
+	// excises.
 	seedEFOS uint64
+	// Note that if excising is enabled, then no operations which create regular
+	// snapshots should exist in the metamorphic test.
+	//
+	// INVARIANT: enableExcising should only be true if seedEFOS != 0. Ensuring
+	// this invariant is left up to the user of TestOptions.
+	enableExcising bool
 }
 
 // CustomOption defines a custom option that configures the behavior of an
@@ -536,6 +552,9 @@ func randomOptions(
 		}
 	}
 	testOpts.seedEFOS = rng.Uint64()
+	if testOpts.seedEFOS > 0 {
+		testOpts.enableExcising = rng.Int31n(2) == 1
+	}
 
 	return testOpts
 }

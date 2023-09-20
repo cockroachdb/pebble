@@ -38,3 +38,17 @@ batch0 = db.NewBatch()
 batch0.First()
 ----
 2:1: batch0.First: First is not a method on batch0
+
+parse
+snap1 = db.NewSnapshot(false, "test", "zzz", "woah", "hi")
+snap2 = db.NewSnapshot(false, "testr", "zzz", "woah", "hie")
+----
+snap1 = db.NewSnapshot(false, "test", "zzz", "woah", "hi")
+snap2 = db.NewSnapshot(false, "testr", "zzz", "woah", "hie")
+
+parse
+db.Ingest(noexcise, batch1)
+db.Ingest(excise "a", "b", batch1)
+----
+db.Ingest(noexcise, batch1)
+db.Ingest(excise "a", "b", batch1)
