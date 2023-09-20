@@ -36,6 +36,10 @@ func makeMethod(i interface{}, tags ...objTag) *methodInfo {
 	}
 }
 
+type ingestExciseSpan struct {
+	span *pebble.KeyRange
+}
+
 // args returns the receiverID, targetID and arguments for the op. The
 // receiverID is the ID of the object the op will be applied to. The targetID
 // is the ID of the object for assignment. If the method does not return a new
@@ -68,7 +72,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *getOp:
 		return &t.readerID, nil, []interface{}{&t.key}
 	case *ingestOp:
-		return nil, nil, []interface{}{&t.batchIDs}
+		ies := &ingestExciseSpan{span: &t.exciseSpan}
+		return nil, nil, []interface{}{ies, &t.batchIDs}
 	case *initOp:
 		return nil, nil, []interface{}{&t.batchSlots, &t.iterSlots, &t.snapshotSlots}
 	case *iterLastOp:
@@ -84,7 +89,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *newIterUsingCloneOp:
 		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMin, &t.filterMax, &t.useL6Filters, &t.maskSuffix}
 	case *newSnapshotOp:
-		return nil, &t.snapID, []interface{}{&t.bounds}
+		return nil, &t.snapID, []interface{}{&t.suggestNoEfos, &t.bounds}
 	case *iterNextOp:
 		return &t.iterID, nil, []interface{}{&t.limit}
 	case *iterNextPrefixOp:
@@ -305,6 +310,32 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 			pos, lit := p.scanToken(token.IDENT)
 			*t = p.parseObjID(pos, lit)
 
+		case *ingestExciseSpan:
+			// Parse excise =
+			pos, tok, lit := p.s.Scan()
+			if lit == "noexcise" {
+				// Parse the ingestion batch ids.
+				continue
+			} else if lit == "excise" {
+				pos, tok, lit := p.s.Scan()
+				if tok != token.STRING {
+					panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
+				}
+				x := unquoteBytes(lit)
+				t.span.Start = x
+				pos, tok, _ = p.s.Scan()
+				if tok != token.COMMA {
+					panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
+				}
+				pos, tok, lit = p.s.Scan()
+				if tok != token.STRING {
+					panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
+				}
+				x = unquoteBytes(lit)
+				t.span.End = x
+			} else {
+				panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
+			}
 		case *[]pebble.KeyRange:
 			var pending pebble.KeyRange
 			for {

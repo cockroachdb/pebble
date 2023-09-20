@@ -90,8 +90,8 @@ type generator struct {
 	// snapshotID -> snapshot iters: used to keep track of the open iterators on
 	// a snapshot. The iter set value will also be indexed by the readers map.
 	snapshots map[objID]objIDSet
-	// snapshotID -> bounds of the snapshot: only populated for snapshots that
-	// are constrained by bounds.
+	// snapshotID -> bounds of the snapshot. Every snapshot is given bounds.
+	// For some snapshots, the bounds are the entire keyspace.
 	snapshotBounds map[objID][]pebble.KeyRange
 	// iterSequenceNumber is the metaTimestamp at which the iter was created.
 	iterCreationTimestamp map[objID]int
@@ -203,6 +203,41 @@ func (g *generator) prefixKeyRange() ([]byte, []byte) {
 	return start, end
 }
 
+const minPrefixLength = 4
+const maxPrefixLength = 12
+
+// Letters used to generate the prefixes.
+//
+// NB: The actual letters are not particularly important. We only use
+// lowercase letters because that makes visual determination of ordering
+// easier, rather than having to remember the lexicographic ordering of
+// uppercase vs lowercase, or letters vs numbers vs punctuation.
+//
+// Letters must be sorted in alphabetical order.
+const letters = "abcdefghijklmnopqrstuvwxyz"
+const lettersLen = len(letters)
+
+func (g *generator) smallestKey() []byte {
+	// No suffix so that the key will sort first.
+	buf := make([]byte, minPrefixLength)
+	for i := 0; i < len(buf); i++ {
+		buf[i] = letters[0]
+	}
+	return buf
+}
+
+func (g *generator) largestKey() []byte {
+	// Use suffix 1 to get the rightmost key for a given prefix.
+	suffixLen := testkeys.SuffixLen(1)
+	// No suffix so that the key will sort first.
+	buf := make([]byte, maxPrefixLength + suffixLen)
+	for i := 0; i < maxPrefixLength; i++ {
+		buf[i] = letters[lettersLen - 1]
+	}
+	testkeys.WriteSuffix(buf[maxPrefixLength:], 1)
+	return buf
+}
+
 // randPrefixToWrite returns a prefix key (a key with no suffix) for a range key
 // write operation.
 func (g *generator) randPrefixToWrite(newPrefix float64) []byte {
@@ -216,7 +251,7 @@ func (g *generator) randPrefixToWrite(newPrefix float64) []byte {
 	// Use a new prefix.
 	var prefix []byte
 	for {
-		prefix = g.randKeyHelperSuffix(nil, 4, 12, 0)
+		prefix = g.randKeyHelperSuffix(nil, minPrefixLength, maxPrefixLength, 0)
 		if !g.keyManager.prefixExists(prefix) {
 			if !g.keyManager.addNewKey(prefix) {
 				panic("key must not exist if prefix doesn't exist")
@@ -350,7 +385,7 @@ func (g *generator) randKeyHelper(
 				suffix, targetLength, g.rng)
 		} else {
 			for {
-				key = g.randKeyHelperSuffix(nil, 4, 12, suffix)
+				key = g.randKeyHelperSuffix(nil, minPrefixLength, maxPrefixLength, suffix)
 				if !g.keyManager.prefixExists(key[:testkeys.Comparer.Split(key)]) {
 					if !g.keyManager.addNewKey(key) {
 						panic("key must not exist if prefix doesn't exist")
@@ -406,12 +441,6 @@ func (g *generator) randValue(min, max int) []byte {
 }
 
 func (g *generator) fillRand(buf []byte) {
-	// NB: The actual random values are not particularly important. We only use
-	// lowercase letters because that makes visual determination of ordering
-	// easier, rather than having to remember the lexicographic ordering of
-	// uppercase vs lowercase, or letters vs numbers vs punctuation.
-	const letters = "abcdefghijklmnopqrstuvwxyz"
-	const lettersLen = uint64(len(letters))
 	const lettersCharsPerRand = 12 // floor(log(math.MaxUint64)/log(lettersLen))
 
 	var r uint64
@@ -421,8 +450,8 @@ func (g *generator) fillRand(buf []byte) {
 			r = g.rng.Uint64()
 			q = lettersCharsPerRand
 		}
-		buf[i] = letters[r%lettersLen]
-		r = r / lettersLen
+		buf[i] = letters[r%uint64(lettersLen)]
+		r = r / uint64(lettersLen)
 		q--
 	}
 }
@@ -1123,6 +1152,8 @@ func (g *generator) generateDisjointKeyRanges(n int) []pebble.KeyRange {
 	return keyRanges
 }
 
+// TODO(bananabrick): Might always have to generate bounds if excising is
+// enabled.
 func (g *generator) newSnapshot() {
 	snapID := makeObjID(snapTag, g.init.snapshotSlots)
 	g.init.snapshotSlots++
@@ -1137,15 +1168,29 @@ func (g *generator) newSnapshot() {
 		snapID: snapID,
 	}
 
-	// With 75% probability, impose bounds on the keys that may be read with the
-	// snapshot. Setting bounds allows some runs of the metamorphic test to use
-	// a EventuallyFileOnlySnapshot instead of a Snapshot, testing equivalence
-	// between the two for reads within those bounds.
+	// We need the ability to transition any snapshot creation into an EFOS
+	// creation when excising is enabled. For this reason we give bounds to every
+	// single snapshot.
+	//
+	// With 75% probability, impose actual bounds on the keys that may be read
+	// with the snapshot. Setting these bounds allows some runs of the metamorphic
+	// test to use a EventuallyFileOnlySnapshot instead of a Snapshot, testing
+	// equivalence between the two for reads within those bounds.
+	//
+	// With 25% probability, we still set a single bound which is the entire
+	// keyspace.
+	//
+	// If excising is disabled for a run, then we ensure that the 25% case will
+	// be regular snapshots and not EFOS.
 	if g.rng.Float64() < 0.75 {
 		s.bounds = g.generateDisjointKeyRanges(
 			g.rng.Intn(5) + 1, /* between 1-5 */
 		)
 		g.snapshotBounds[snapID] = s.bounds
+		s.suggestNoEfos = false
+	} else {
+		s.bounds = []pebble.KeyRange{{Start: g.smallestKey(), End: g.largestKey()}}
+		s.suggestNoEfos = true
 	}
 	g.add(s)
 }
@@ -1161,6 +1206,7 @@ func (g *generator) snapshotClose() {
 	delete(g.snapshots, snapID)
 	g.liveReaders.remove(snapID)
 	delete(g.readers, snapID)
+	delete(g.snapshotBounds, snapID)
 
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
@@ -1326,8 +1372,15 @@ func (g *generator) writerIngest() {
 		g.removeBatchFromGenerator(batchID)
 		batchIDs = append(batchIDs, batchID)
 	}
+
+	var kr pebble.KeyRange
+	// Excise during ingest in 40% of the cases.
+	if g.rng.Int31n(10) <= 3  {
+		kr.Start, kr.End = g.prefixKeyRange()
+	}
 	g.add(&ingestOp{
 		batchIDs: batchIDs,
+		exciseSpan: kr,
 	})
 }
 
