@@ -165,7 +165,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 	// Generate a new set of random ops, writing them to <dir>/ops. These will be
 	// read by the child processes when performing a test run.
 	km := newKeyManager()
-	cfg := defaultConfig()
+	cfg := presetConfigs[rng.Intn(len(presetConfigs))]
 	if runOpts.previousOpsPath != "" {
 		// During cross-version testing, we load keys from an `ops` file
 		// produced by a metamorphic test run of an earlier Pebble version.
