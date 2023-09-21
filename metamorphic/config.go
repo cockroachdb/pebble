@@ -74,6 +74,39 @@ type config struct {
 	// upperBoundFrac float64
 }
 
+func (c config) withNewPrefixProbability(p float64) config {
+	c.newPrefix = p
+	return c
+}
+
+func (c config) withOpWeight(op opType, weight int) config {
+	c.ops[op] = weight
+	return c
+}
+
+var presetConfigs = []config{
+	defaultConfig(),
+	// Generate a configuration that helps exercise code paths dependent on many
+	// versions of keys with the same prefixes. The default configuration does
+	// not tend to generate many versions of the same key. Additionally, its
+	// relatively high weight for deletion write operations makes it less likely
+	// that we'll accumulate enough versions to exercise some code paths (eg,
+	// see #2921 which requires >16 SETs for versions of the same prefix to
+	// reside in a single block to exercise the code path).
+	//
+	// To encourage generation of many versions of the same keys, generate a new
+	// prefix only 4% of the time when generating a new key. The remaining 96%
+	// of new key generations will use an existing prefix. To keep the size of
+	// the database growing, we also reduce the probability of delete write
+	// operations significantly.
+	defaultConfig().
+		withNewPrefixProbability(0.04).
+		withOpWeight(writerDeleteRange, 1).
+		withOpWeight(writerDelete, 5).
+		withOpWeight(writerSingleDelete, 5).
+		withOpWeight(writerMerge, 0),
+}
+
 func defaultConfig() config {
 	return config{
 		// dbClose is not in this list since it is deterministically generated once, at the end of the test.
