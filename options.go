@@ -1038,7 +1038,7 @@ func (o *Options) EnsureDefaults() *Options {
 		}
 	}
 	if o.Logger == nil {
-		o.Logger = DefaultLogger
+		o.Logger = panicLogger{}
 	}
 	if o.EventListener == nil {
 		o.EventListener = &EventListener{}
@@ -1705,4 +1705,13 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
 	return writerOpts
+}
+
+type panicLogger struct{}
+
+func (l panicLogger) Infof(format string, args ...interface{}) {
+}
+
+func (l panicLogger) Fatalf(format string, args ...interface{}) {
+	panic(errors.Errorf("fatal: "+format, args...))
 }

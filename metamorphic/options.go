@@ -201,6 +201,7 @@ func defaultOptions() *pebble.Options {
 		Levels: []pebble.LevelOptions{{
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
+		Logger: pebble.DefaultLogger,
 	}
 	opts.EnsureDefaults()
 	return opts

@@ -788,7 +788,7 @@ func TestIngestShared(t *testing.T) {
 			FormatMajorVersion:    ExperimentalFormatVirtualSSTables,
 		}
 		// lel.
-		lel := MakeLoggingEventListener(DefaultLogger)
+		lel := MakeLoggingEventListener(testLogger{t})
 		opts1.EventListener = &lel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
@@ -1259,7 +1259,7 @@ func TestConcurrentExcise(t *testing.T) {
 			FormatMajorVersion:    ExperimentalFormatVirtualSSTables,
 		}
 		// lel.
-		lel := MakeLoggingEventListener(DefaultLogger)
+		lel := MakeLoggingEventListener(testLogger{t})
 		tel := TeeEventListener(lel, el)
 		opts1.EventListener = &tel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
