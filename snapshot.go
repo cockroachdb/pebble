@@ -205,7 +205,7 @@ func (l *snapshotList) remove(s *Snapshot) {
 }
 
 // EventuallyFileOnlySnapshot (aka EFOS) provides a read-only point-in-time view
-// of the database state, similar to Snapshot. A EventuallyFileOnlySnapshot
+// of the database state, similar to Snapshot. An EventuallyFileOnlySnapshot
 // induces less write amplification than Snapshot, at the cost of increased space
 // amplification. While a Snapshot may increase write amplification across all
 // flushes and compactions for the duration of its lifetime, an
@@ -225,28 +225,21 @@ func (l *snapshotList) remove(s *Snapshot) {
 // with zero write-amp and zero pinning of memtables in memory.
 //
 // EventuallyFileOnlySnapshots interact with the IngestAndExcise operation in
-// subtle ways. Unlike Snapshots, EFOS guarantees that their read-only
-// point-in-time view is unaltered by the excision. However, if a concurrent
-// excise were to happen on one of the protectedRanges, WaitForFileOnlySnapshot()
-// would return ErrSnapshotExcised and the EFOS would maintain a reference to the
-// underlying readState (and by extension, zombie memtables) for its lifetime.
-// This could lead to increased memory utilization, which is why callers should
-// call WaitForFileOnlySnapshot() if they expect an EFOS to be long-lived.
+// subtle ways. No new iterators can be created once
+// EventuallyFileOnlySnapshot.excised is set to true.
 type EventuallyFileOnlySnapshot struct {
 	mu struct {
 		// NB: If both this mutex and db.mu are being grabbed, db.mu should be
 		// grabbed _before_ grabbing this one.
 		sync.Mutex
 
-		// Either the {snap,readState} fields are set below, or the version is set at
-		// any given point of time. If a snapshot is referenced, this is not a
-		// file-only snapshot yet, and if a version is set (and ref'd) this is a
-		// file-only snapshot.
+		// Either the snap field is set below, or the version is set at any given
+		// point of time. If a snapshot is referenced, this is not a file-only
+		// snapshot yet, and if a version is set (and ref'd) this is a file-only
+		// snapshot.
 
-		// The wrapped regular snapshot, if not a file-only snapshot yet. The
-		// readState has already been ref()d once if it's set.
-		snap      *Snapshot
-		readState *readState
+		// The wrapped regular snapshot, if not a file-only snapshot yet.
+		snap *Snapshot
 		// The wrapped version reference, if a file-only snapshot.
 		vers *version
 	}
@@ -296,7 +289,6 @@ func (d *DB) makeEventuallyFileOnlySnapshot(
 		}
 		s.efos = es
 		es.mu.snap = s
-		es.mu.readState = d.loadReadState()
 		d.mu.snapshots.pushBack(s)
 	}
 	return es
@@ -311,6 +303,8 @@ func (d *DB) makeEventuallyFileOnlySnapshot(
 // call.
 //
 // d.mu must be held when calling this method.
+//
+// TODO(bananabrick): Must we also hold the log lock?
 func (es *EventuallyFileOnlySnapshot) transitionToFileOnlySnapshot(vers *version) error {
 	es.mu.Lock()
 	select {
@@ -328,31 +322,9 @@ func (es *EventuallyFileOnlySnapshot) transitionToFileOnlySnapshot(vers *version
 	es.mu.vers = vers
 	// NB: The callers should have already done a check of es.excised.
 	oldSnap := es.mu.snap
-	oldReadState := es.mu.readState
 	es.mu.snap = nil
-	es.mu.readState = nil
 	es.mu.Unlock()
-	// It's okay to close a snapshot even if iterators are already open on it.
-	oldReadState.unrefLocked()
 	return oldSnap.closeLocked()
-}
-
-// releaseReadState is called to release reference to a readState when
-// es.excised == true. This is to free up memory as quickly as possible; all
-// other snapshot resources are kept around until Close() is called. Safe for
-// idempotent calls.
-//
-// d.mu must be held when calling this method.
-func (es *EventuallyFileOnlySnapshot) releaseReadState() {
-	if !es.excised.Load() {
-		panic("pebble: releasing read state of eventually-file-only-snapshot but was not excised")
-	}
-	es.mu.Lock()
-	defer es.mu.Unlock()
-	if es.mu.readState != nil {
-		es.mu.readState.unrefLocked()
-		es.db.maybeScheduleObsoleteTableDeletionLocked()
-	}
 }
 
 // hasTransitioned returns true if this EFOS has transitioned to a file-only
@@ -448,10 +420,6 @@ func (es *EventuallyFileOnlySnapshot) Close() error {
 			return err
 		}
 	}
-	if es.mu.readState != nil {
-		es.mu.readState.unrefLocked()
-		es.db.maybeScheduleObsoleteTableDeletionLocked()
-	}
 	if es.mu.vers != nil {
 		es.mu.vers.UnrefLocked()
 	}
@@ -511,8 +479,15 @@ func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
 	if es.excised.Load() {
 		return nil, ErrSnapshotExcised
 	}
-	sOpts := snapshotIterOpts{seqNum: es.seqNum, readState: es.mu.readState}
-	return es.db.newIter(ctx, nil /* batch */, sOpts, o), nil
+	sOpts := snapshotIterOpts{seqNum: es.seqNum}
+	iter := es.db.newIter(ctx, nil /* batch */, sOpts, o)
+
+	// If excised is true, then keys relevant to the snapshot might not be
+	// present in the readState being used by the iterator. Error out.
+	if es.excised.Load() {
+		return nil, ErrSnapshotExcised
+	}
+	return iter, nil
 }
 
 // ScanInternal scans all internal keys within the specified bounds, truncating
@@ -544,8 +519,7 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 		}
 	} else {
 		sOpts = snapshotIterOpts{
-			seqNum:    es.seqNum,
-			readState: es.mu.readState,
+			seqNum: es.seqNum,
 		}
 	}
 	es.mu.Unlock()
@@ -563,6 +537,12 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 	}
 	iter := es.db.newInternalIter(sOpts, opts)
 	defer iter.close()
+
+	// If excised is true, then keys relevant to the snapshot might not be
+	// present in the readState being used by the iterator. Error out.
+	if es.excised.Load() {
+		return ErrSnapshotExcised
+	}
 
 	return scanInternalImpl(ctx, lower, upper, iter, opts)
 }

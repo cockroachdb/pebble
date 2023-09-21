@@ -987,15 +987,14 @@ var iterAllocPool = sync.Pool{
 //   - No snapshot: All fields are zero values.
 //   - Classic snapshot: Only `seqNum` is set. The latest readState will be used
 //     and the specified seqNum will be used as the snapshot seqNum.
-//   - EventuallyFileOnlySnapshot (EFOS) in pre-file-only state: `readState` and
-//     `seqNum` are set. The specified readState is used with the snapshot
-//     sequence number.
-//   - EFOS in file-only state: Only `seqNum` and `vers` are set. No readState
-//     is referenced, as all the relevant SSTs are referenced by the *version.
+//   - EventuallyFileOnlySnapshot (EFOS) behaving as a classic snapshot. Only
+//     the `seqNum` is set. The latest readState will be used
+//     and the specified seqNum will be used as the snapshot seqNum.
+//   - EFOS in file-only state: Only `seqNum` and `vers` are set. All the
+//     relevant SSTs are referenced by the *version.
 type snapshotIterOpts struct {
-	seqNum    uint64
-	readState *readState
-	vers      *version
+	seqNum uint64
+	vers   *version
 }
 
 // newIter constructs a new iterator, merging in batch iterators as an extra
@@ -1028,12 +1027,10 @@ func (d *DB) newIter(
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
-	readState := sOpts.readState
-	if readState == nil && sOpts.vers == nil {
+	var readState *readState
+	if sOpts.vers == nil {
 		// NB: loadReadState() calls readState.ref().
 		readState = d.loadReadState()
-	} else if readState != nil {
-		readState.ref()
 	} else {
 		// s.vers != nil
 		sOpts.vers.Ref()
@@ -1251,11 +1248,9 @@ func (d *DB) newInternalIter(sOpts snapshotIterOpts, o *scanInternalOptions) *sc
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
-	readState := sOpts.readState
-	if readState == nil && sOpts.vers == nil {
+	var readState *readState
+	if sOpts.vers == nil {
 		readState = d.loadReadState()
-	} else if readState != nil {
-		readState.ref()
 	}
 	if sOpts.vers != nil {
 		sOpts.vers.Ref()
