@@ -48,14 +48,14 @@ metrics
       |                     |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     1   633B     0B |  0.25 |   28B |     0     0B |     0     0B |     1   633B |    0B |   1 22.6
+    0 |     1   661B     0B |  0.25 |   28B |     0     0B |     0     0B |     1   661B |    0B |   1 23.6
     1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     0     0B     0B |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-total |     1   633B     0B |     - |   56B |     0     0B |     0     0B |     1   689B |    0B |   1 12.3
+total |     1   661B     0B |     - |   56B |     0     0B |     0     0B |     1   717B |    0B |   1 12.8
 -----------------------------------------------------------------------------------------------------------
 WAL: 1 files (28B)  in: 17B  written: 56B (229% overhead)
 Flushes: 1
@@ -63,7 +63,7 @@ Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
              default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
-Block cache: 3 entries (528B)  hit rate: 0.0%
+Block cache: 3 entries (556B)  hit rate: 0.0%
 Table cache: 1 entries (800B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -100,22 +100,22 @@ metrics
       |                     |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.2KB |    0B |   0 22.6
+    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.3KB |    0B |   0 23.6
     1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
-total |     1   639B     0B |     - |   84B |     0     0B |     0     0B |     3  1.9KB | 1.2KB |   1 23.7
+    6 |     1   667B     0B |     - | 1.3KB |     0     0B |     0     0B |     1   667B | 1.3KB |   1  0.5
+total |     1   667B     0B |     - |   84B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 24.7
 -----------------------------------------------------------------------------------------------------------
 WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
-Zombie tables: 2 (1.2KB)
-Block cache: 5 entries (1.0KB)  hit rate: 42.9%
+Zombie tables: 2 (1.3KB)
+Block cache: 5 entries (1.1KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -125,7 +125,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
-3.2KB
+3.3KB
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -137,22 +137,22 @@ metrics
       |                     |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.2KB |    0B |   0 22.6
+    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.3KB |    0B |   0 23.6
     1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
-total |     1   639B     0B |     - |   84B |     0     0B |     0     0B |     3  1.9KB | 1.2KB |   1 23.7
+    6 |     1   667B     0B |     - | 1.3KB |     0     0B |     0     0B |     1   667B | 1.3KB |   1  0.5
+total |     1   667B     0B |     - |   84B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 24.7
 -----------------------------------------------------------------------------------------------------------
 WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
-Zombie tables: 2 (1.2KB)
-Block cache: 5 entries (1.0KB)  hit rate: 42.9%
+Zombie tables: 2 (1.3KB)
+Block cache: 5 entries (1.1KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -171,22 +171,22 @@ metrics
       |                     |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.2KB |    0B |   0 22.6
+    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.3KB |    0B |   0 23.6
     1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
-total |     1   639B     0B |     - |   84B |     0     0B |     0     0B |     3  1.9KB | 1.2KB |   1 23.7
+    6 |     1   667B     0B |     - | 1.3KB |     0     0B |     0     0B |     1   667B | 1.3KB |   1  0.5
+total |     1   667B     0B |     - |   84B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 24.7
 -----------------------------------------------------------------------------------------------------------
 WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
-Zombie tables: 1 (633B)
-Block cache: 3 entries (528B)  hit rate: 42.9%
+Zombie tables: 1 (661B)
+Block cache: 3 entries (556B)  hit rate: 42.9%
 Table cache: 1 entries (800B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -196,7 +196,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
-2.6KB
+2.7KB
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
@@ -208,14 +208,14 @@ metrics
       |                     |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.2KB |    0B |   0 22.6
+    0 |     0     0B     0B |  0.00 |   56B |     0     0B |     0     0B |     2  1.3KB |    0B |   0 23.6
     1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
-total |     1   639B     0B |     - |   84B |     0     0B |     0     0B |     3  1.9KB | 1.2KB |   1 23.7
+    6 |     1   667B     0B |     - | 1.3KB |     0     0B |     0     0B |     1   667B | 1.3KB |   1  0.5
+total |     1   667B     0B |     - |   84B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 24.7
 -----------------------------------------------------------------------------------------------------------
 WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
 Flushes: 2
@@ -271,18 +271,18 @@ metrics
       |                     |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     3  2.1KB    38B |  0.25 |  149B |     0     0B |     0     0B |     5  3.4KB |    0B |   1 23.2
+    0 |     3  2.2KB    38B |  0.25 |  149B |     0     0B |     0     0B |     5  3.5KB |    0B |   1 24.2
     1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   639B     0B |     - | 1.2KB |     0     0B |     0     0B |     1   639B | 1.2KB |   1  0.5
-total |     4  2.8KB    38B |     - |  242B |     0     0B |     0     0B |     6  4.2KB | 1.2KB |   2 18.0
+    6 |     1   667B     0B |     - | 1.3KB |     0     0B |     0     0B |     1   667B | 1.3KB |   1  0.5
+total |     4  2.9KB    38B |     - |  242B |     0     0B |     0     0B |     6  4.4KB | 1.3KB |   2 18.6
 -----------------------------------------------------------------------------------------------------------
 WAL: 1 files (93B)  in: 116B  written: 242B (109% overhead)
 Flushes: 3
-Compactions: 1  estimated debt: 2.8KB  in progress: 0 (0B)
+Compactions: 1  estimated debt: 2.9KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
@@ -318,14 +318,14 @@ metrics
       |                     |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B |  0.00 |  149B |     0     0B |     0     0B |     5  3.4KB |    0B |   0 23.2
+    0 |     0     0B     0B |  0.00 |  149B |     0     0B |     0     0B |     5  3.5KB |    0B |   0 24.2
     1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     3  2.1KB    41B |     - | 3.4KB |     0     0B |     0     0B |     3  2.1KB | 3.4KB |   1  0.6
-total |     3  2.1KB    41B |     - |  242B |     0     0B |     0     0B |     8  5.8KB | 3.4KB |   1 24.4
+    6 |     3  2.2KB    41B |     - | 3.5KB |     0     0B |     0     0B |     3  2.2KB | 3.5KB |   1  0.6
+total |     3  2.2KB    41B |     - |  242B |     0     0B |     0     0B |     8  6.0KB | 3.5KB |   1 25.3
 -----------------------------------------------------------------------------------------------------------
 WAL: 1 files (93B)  in: 116B  written: 242B (109% overhead)
 Flushes: 3
@@ -411,25 +411,25 @@ metrics
       |                     |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     4  2.7KB     0B |  0.50 |  149B |     3  2.0KB |     0     0B |     6  4.0KB |    0B |   2 27.6
+    0 |     4  2.8KB     0B |  0.50 |  149B |     3  2.1KB |     0     0B |     6  4.2KB |    0B |   2 28.8
     1 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     3  2.1KB    41B |     - | 3.4KB |     0     0B |     0     0B |     3  2.1KB | 3.4KB |   1  0.6
-total |     7  4.8KB    41B |     - | 2.2KB |     3  2.0KB |     0     0B |     9  8.4KB | 3.4KB |   3  3.8
+    6 |     3  2.2KB    41B |     - | 3.5KB |     0     0B |     0     0B |     3  2.2KB | 3.5KB |   1  0.6
+total |     7  5.0KB    41B |     - | 2.3KB |     3  2.1KB |     0     0B |     9  8.7KB | 3.5KB |   3  3.8
 -----------------------------------------------------------------------------------------------------------
 WAL: 1 files (26B)  in: 176B  written: 175B (-1% overhead)
 Flushes: 8
-Compactions: 2  estimated debt: 4.8KB  in progress: 0 (0B)
+Compactions: 2  estimated debt: 5.0KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B)
-Block cache: 12 entries (2.3KB)  hit rate: 31.1%
+Block cache: 12 entries (2.4KB)  hit rate: 31.1%
 Table cache: 3 entries (2.3KB)  hit rate: 57.9%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
-Ingestions: 0  as flushable: 2 (2.0KB in 3 tables)
+Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
