@@ -172,8 +172,7 @@ const (
 	internalFormatNewest FormatMajorVersion = iota - 1
 
 	// FormatNewest always contains the most recent format major version.
-	// TODO(jackson): restore FormatNewest to internalFormatNewest.
-	FormatNewest FormatMajorVersion = FormatPrePebblev1MarkedCompacted
+	FormatNewest FormatMajorVersion = internalFormatNewest
 )
 
 // MaxTableFormat returns the maximum sstable.TableFormat that can be used at
