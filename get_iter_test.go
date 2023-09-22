@@ -466,7 +466,6 @@ func TestGetIter(t *testing.T) {
 	}
 
 	cmp := testkeys.Comparer.Compare
-	equal := testkeys.Comparer.Equal
 	for _, tc := range testCases {
 		desc := tc.description[:strings.Index(tc.description, ":")]
 
@@ -532,8 +531,7 @@ func TestGetIter(t *testing.T) {
 			}
 
 			get := &buf.get
-			get.cmp = cmp
-			get.equal = equal
+			get.comparer = testkeys.Comparer
 			get.newIters = newIter
 			get.key = ikey.UserKey
 			get.l0 = v.L0SublevelFiles

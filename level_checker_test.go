@@ -83,7 +83,6 @@ func (f *failMerger) Close() error {
 
 func TestCheckLevelsCornerCases(t *testing.T) {
 	memFS := vfs.NewMem()
-	cmp := DefaultComparer.Compare
 	var levels [][]*fileMetadata
 	formatKey := DefaultComparer.FormatKey
 	// Indexed by fileNum
@@ -140,7 +139,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				largestKey := base.ParseInternalKey(keys[1])
 				m := (&fileMetadata{
 					FileNum: fileNum,
-				}).ExtendPointKeyBounds(cmp, smallestKey, largestKey)
+				}).ExtendPointKeyBounds(DefaultComparer.Compare, smallestKey, largestKey)
 				m.InitPhysicalBacking()
 				*li = append(*li, m)
 
@@ -167,7 +166,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				}
 				var tombstones []keyspan.Span
 				frag := keyspan.Fragmenter{
-					Cmp:    cmp,
+					Cmp:    DefaultComparer.Compare,
 					Format: formatKey,
 					Emit: func(fragmented keyspan.Span) {
 						tombstones = append(tombstones, fragmented)
@@ -256,7 +255,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				files)
 			readState := &readState{current: version}
 			c := &checkConfig{
-				cmp:       cmp,
+				comparer:  DefaultComparer,
 				readState: readState,
 				newIters:  newIters,
 				seqNum:    InternalKeySeqNumMax,

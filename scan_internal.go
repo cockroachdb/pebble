@@ -763,7 +763,7 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		rli := &rangeDelLevels[levelsIndex]
 
 		li.init(
-			context.Background(), i.opts.IterOptions, i.comparer.Compare, i.comparer.Split, i.newIters, files, level,
+			context.Background(), i.opts.IterOptions, i.comparer, i.newIters, files, level,
 			internalIterOpts{})
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		mlevels[mlevelsIndex].iter = li
