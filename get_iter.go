@@ -19,9 +19,7 @@ import (
 // lazily.
 type getIter struct {
 	logger       Logger
-	cmp          Compare
-	equal        Equal
-	split        Split
+	comparer     *Comparer
 	newIters     tableNewIters
 	snapshot     uint64
 	key          []byte
@@ -84,7 +82,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			// key. Every call to levelIter.Next() potentially switches to a new
 			// table and thus reinitializes rangeDelIter.
 			if g.rangeDelIter != nil {
-				g.tombstone = keyspan.Get(g.cmp, g.rangeDelIter, g.key)
+				g.tombstone = keyspan.Get(g.comparer.Compare, g.rangeDelIter, g.key)
 				if g.err = g.rangeDelIter.Close(); g.err != nil {
 					return nil, base.LazyValue{}
 				}
@@ -102,7 +100,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 					g.iter = nil
 					return nil, base.LazyValue{}
 				}
-				if g.equal(g.key, key.UserKey) {
+				if g.comparer.Equal(g.key, key.UserKey) {
 					if !key.Visible(g.snapshot, base.InternalKeySeqNumMax) {
 						g.iterKey, g.iterValue = g.iter.Next()
 						continue
@@ -160,7 +158,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 				files := g.l0[n-1].Iter()
 				g.l0 = g.l0[:n-1]
 				iterOpts := IterOptions{logger: g.logger, snapshotForHideObsoletePoints: g.snapshot}
-				g.levelIter.init(context.Background(), iterOpts, g.cmp, g.split, g.newIters,
+				g.levelIter.init(context.Background(), iterOpts, g.comparer, g.newIters,
 					files, manifest.L0Sublevel(n), internalIterOpts{})
 				g.levelIter.initRangeDel(&g.rangeDelIter)
 				bc := levelIterBoundaryContext{}
@@ -170,8 +168,8 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 				// Compute the key prefix for bloom filtering if split function is
 				// specified, or use the user key as default.
 				prefix := g.key
-				if g.split != nil {
-					prefix = g.key[:g.split(g.key)]
+				if g.comparer.Split != nil {
+					prefix = g.key[:g.comparer.Split(g.key)]
 				}
 				g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
 				if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
@@ -192,7 +190,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		}
 
 		iterOpts := IterOptions{logger: g.logger, snapshotForHideObsoletePoints: g.snapshot}
-		g.levelIter.init(context.Background(), iterOpts, g.cmp, g.split, g.newIters,
+		g.levelIter.init(context.Background(), iterOpts, g.comparer, g.newIters,
 			g.version.Levels[g.level].Iter(), manifest.Level(g.level), internalIterOpts{})
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		bc := levelIterBoundaryContext{}
@@ -203,8 +201,8 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		// Compute the key prefix for bloom filtering if split function is
 		// specified, or use the user key as default.
 		prefix := g.key
-		if g.split != nil {
-			prefix = g.key[:g.split(g.key)]
+		if g.comparer.Split != nil {
+			prefix = g.key[:g.comparer.Split(g.key)]
 		}
 		g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
 		if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
