@@ -1340,7 +1340,7 @@ func (c *compaction) newInputIter(
 			// initRangeDel, the levelIter will close and forget the range
 			// deletion iterator when it steps on to a new file. Surfacing range
 			// deletions to compactions are handled below.
-			iters = append(iters, newLevelIter(iterOpts, c.cmp, nil /* split */, newIters,
+			iters = append(iters, newLevelIter(iterOpts, c.comparer, newIters,
 				level.files.Iter(), l, internalIterOpts{
 					bytesIterated: &c.bytesIterated,
 					bufferPool:    &c.bufferPool,
@@ -1914,7 +1914,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		suggestSplit := d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit() &&
 			d.FormatMajorVersion() >= FormatVirtualSSTables
 		level, fileToSplit, err = ingestTargetLevel(
-			d.newIters, d.tableNewRangeKeyIter, iterOpts, d.cmp,
+			d.newIters, d.tableNewRangeKeyIter, iterOpts, d.opts.Comparer,
 			c.version, baseLevel, d.mu.compact.inProgress, file.FileMetadata,
 			suggestSplit,
 		)

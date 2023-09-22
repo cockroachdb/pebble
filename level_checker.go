@@ -345,7 +345,7 @@ func iterateAndCheckTombstones(
 
 type checkConfig struct {
 	logger    Logger
-	cmp       Compare
+	comparer  *Comparer
 	readState *readState
 	newIters  tableNewIters
 	seqNum    uint64
@@ -353,6 +353,9 @@ type checkConfig struct {
 	merge     Merge
 	formatKey base.FormatKey
 }
+
+// cmp is shorthand for comparer.Compare.
+func (c *checkConfig) cmp(a, b []byte) int { return c.comparer.Compare(a, b) }
 
 func checkRangeTombstones(c *checkConfig) error {
 	var level int
@@ -571,7 +574,7 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 
 	checkConfig := &checkConfig{
 		logger:    d.opts.Logger,
-		cmp:       d.cmp,
+		comparer:  d.opts.Comparer,
 		readState: readState,
 		newIters:  d.newIters,
 		seqNum:    seqNum,
@@ -639,7 +642,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		manifestIter := current.L0SublevelFiles[sublevel].Iter()
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(context.Background(), iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
+		li.init(context.Background(), iterOpts, c.comparer, c.newIters, manifestIter,
 			manifest.L0Sublevel(sublevel), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
@@ -653,7 +656,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(context.Background(), iterOpts, c.cmp, nil /* split */, c.newIters,
+		li.init(context.Background(), iterOpts, c.comparer, c.newIters,
 			current.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)

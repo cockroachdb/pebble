@@ -559,9 +559,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	get := &buf.get
 	*get = getIter{
 		logger:   d.opts.Logger,
-		cmp:      d.cmp,
-		equal:    d.equal,
-		split:    d.split,
+		comparer: d.opts.Comparer,
 		newIters: d.newIters,
 		snapshot: seqNum,
 		key:      key,
@@ -1418,8 +1416,7 @@ func (i *Iterator) constructPointIter(
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
 		li := &levels[levelsIndex]
 
-		li.init(
-			ctx, i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level, internalOpts)
+		li.init(ctx, i.opts, &i.comparer, i.newIters, files, level, internalOpts)
 		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
