@@ -6,12 +6,16 @@ package metamorphic
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
@@ -62,6 +66,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"FS:",
 		"TableCache:",
 		// Function pointers
+		"BlockPropertyCollectors:",
 		"EventListener:",
 		"MaxConcurrentCompactions:",
 		"Experimental.EnableValueBlocks:",
@@ -81,11 +86,14 @@ func TestOptionsRoundtrip(t *testing.T) {
 
 	checkOptions := func(t *testing.T, o *TestOptions) {
 		s := optionsToString(o)
+		t.Logf("Serialized options:\n%s\n", s)
+
 		parsed := defaultTestOptions()
 		require.NoError(t, parseOptions(parsed, s, nil))
 		maybeUnref(parsed)
 		got := optionsToString(parsed)
 		require.Equal(t, s, got)
+		t.Logf("Re-serialized options:\n%s\n", got)
 
 		// In some options, the closure obscures the underlying value. Check
 		// that the return values are equal.
@@ -98,6 +106,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 			require.Equal(t, o.Opts.Experimental.DisableIngestAsFlushable(), parsed.Opts.Experimental.DisableIngestAsFlushable())
 		}
 		require.Equal(t, o.Opts.MaxConcurrentCompactions(), parsed.Opts.MaxConcurrentCompactions())
+		require.Equal(t, len(o.Opts.BlockPropertyCollectors), len(parsed.Opts.BlockPropertyCollectors))
 
 		diff := pretty.Diff(o.Opts, parsed.Opts)
 		cleaned := diff[:0]
@@ -119,18 +128,72 @@ func TestOptionsRoundtrip(t *testing.T) {
 	standard := standardOptions()
 	for i := range standard {
 		t.Run(fmt.Sprintf("standard-%03d", i), func(t *testing.T) {
+			defer maybeUnref(standard[i])
 			checkOptions(t, standard[i])
-			maybeUnref(standard[i])
 		})
 	}
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	for i := 0; i < 100; i++ {
 		t.Run(fmt.Sprintf("random-%03d", i), func(t *testing.T) {
 			o := randomOptions(rng, nil)
+			defer maybeUnref(o)
 			checkOptions(t, o)
-			maybeUnref(o)
 		})
 	}
+}
+
+// TestBlockPropertiesParse ensures that the testkeys block property collector
+// is in use by default. It runs a single OPTIONS run of the metamorphic tests
+// and scans the resulting data directory to ensure there's at least one sstable
+// with the property. It runs the test with the archive cleaner to avoid any
+// flakiness from small working sets of keys.
+func TestBlockPropertiesParse(t *testing.T) {
+	const fixedSeed = 1
+	const numOps = 10_000
+	metaDir := t.TempDir()
+
+	rng := rand.New(rand.NewSource(fixedSeed))
+	ops := generate(rng, numOps, presetConfigs[0], newKeyManager())
+	opsPath := filepath.Join(metaDir, "ops")
+	formattedOps := formatOps(ops)
+	require.NoError(t, os.WriteFile(opsPath, []byte(formattedOps), 0644))
+
+	runDir := filepath.Join(metaDir, "run")
+	require.NoError(t, os.MkdirAll(runDir, os.ModePerm))
+	optionsPath := filepath.Join(runDir, "OPTIONS")
+	opts := defaultTestOptions()
+	opts.Opts.EnsureDefaults()
+	opts.Opts.Cleaner = pebble.ArchiveCleaner{}
+	optionsStr := optionsToString(opts)
+	require.NoError(t, os.WriteFile(optionsPath, []byte(optionsStr), 0644))
+
+	RunOnce(t, runDir, fixedSeed, filepath.Join(runDir, "history"), KeepData{})
+	var foundTableBlockProperty bool
+	require.NoError(t, filepath.Walk(filepath.Join(runDir, "data"),
+		func(path string, info fs.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if filepath.Ext(path) != ".sst" {
+				return nil
+			}
+			f, err := vfs.Default.Open(path)
+			if err != nil {
+				return err
+			}
+			readable, err := sstable.NewSimpleReadable(f)
+			if err != nil {
+				return err
+			}
+			r, err := sstable.NewReader(readable, opts.Opts.MakeReaderOptions())
+			if err != nil {
+				return err
+			}
+			_, ok := r.Properties.UserProperties[opts.Opts.BlockPropertyCollectors[0]().Name()]
+			foundTableBlockProperty = foundTableBlockProperty || ok
+			return r.Close()
+		}))
+	require.True(t, foundTableBlockProperty)
 }
 
 func TestCustomOptionParser(t *testing.T) {

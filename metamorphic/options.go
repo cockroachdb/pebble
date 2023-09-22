@@ -82,8 +82,14 @@ func parseOptions(
 				opts.threads = v
 				return true
 			case "TestOptions.disable_block_property_collector":
-				opts.disableBlockPropertyCollector = true
-				opts.Opts.BlockPropertyCollectors = nil
+				v, err := strconv.ParseBool(value)
+				if err != nil {
+					panic(err)
+				}
+				opts.disableBlockPropertyCollector = v
+				if v {
+					opts.Opts.BlockPropertyCollectors = nil
+				}
 				return true
 			case "TestOptions.enable_value_blocks":
 				opts.enableValueBlocks = true
@@ -126,6 +132,7 @@ func parseOptions(
 		},
 	}
 	err := opts.Opts.Parse(data, hooks)
+	opts.Opts.EnsureDefaults()
 	return err
 }
 
@@ -201,8 +208,8 @@ func defaultOptions() *pebble.Options {
 		Levels: []pebble.LevelOptions{{
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
+		BlockPropertyCollectors: blockPropertyCollectorConstructors,
 	}
-	opts.EnsureDefaults()
 	return opts
 }
 
@@ -409,9 +416,8 @@ func standardOptions() []*TestOptions {
 func randomOptions(
 	rng *rand.Rand, customOptionParsers map[string]func(string) (CustomOption, bool),
 ) *TestOptions {
-	var testOpts = &TestOptions{}
-	opts := defaultOptions()
-	testOpts.Opts = opts
+	testOpts := defaultTestOptions()
+	opts := testOpts.Opts
 
 	// There are some private options, which we don't want users to fiddle with.
 	// There's no way to set it through the public interface. The only method is
@@ -479,15 +485,20 @@ func randomOptions(
 	lopts.BlockSizeThreshold = 50 + rng.Intn(50)   // 50 - 100
 	lopts.IndexBlockSize = 1 << uint(rng.Intn(24)) // 1 - 16MB
 	lopts.TargetFileSize = 1 << uint(rng.Intn(28)) // 1 - 256MB
+
 	// We either use no bloom filter, the default filter, or a filter with
-	// randomized bits-per-key setting.
+	// randomized bits-per-key setting. We zero out the Filters map. It'll get
+	// repopulated on EnsureDefaults accordingly.
+	opts.Filters = nil
 	switch rng.Intn(3) {
 	case 0:
+		lopts.FilterPolicy = nil
 	case 1:
 		lopts.FilterPolicy = bloom.FilterPolicy(10)
 	default:
 		lopts.FilterPolicy = newTestingFilterPolicy(1 << rng.Intn(5))
 	}
+
 	// We use either no compression, snappy compression or zstd compression.
 	switch rng.Intn(3) {
 	case 0:
@@ -511,9 +522,9 @@ func randomOptions(
 	testOpts.ingestUsingApply = rng.Intn(2) != 0
 	testOpts.deleteSized = rng.Intn(2) != 0
 	testOpts.replaceSingleDelete = rng.Intn(2) != 0
-	testOpts.disableBlockPropertyCollector = rng.Intn(2) != 0
-	if !testOpts.disableBlockPropertyCollector {
-		testOpts.Opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
+	testOpts.disableBlockPropertyCollector = rng.Intn(2) == 1
+	if testOpts.disableBlockPropertyCollector {
+		testOpts.Opts.BlockPropertyCollectors = nil
 	}
 	testOpts.enableValueBlocks = opts.FormatMajorVersion >= pebble.FormatSSTableValueBlocks &&
 		rng.Intn(2) != 0
@@ -536,7 +547,7 @@ func randomOptions(
 		}
 	}
 	testOpts.seedEFOS = rng.Uint64()
-
+	testOpts.Opts.EnsureDefaults()
 	return testOpts
 }
 

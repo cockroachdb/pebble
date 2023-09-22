@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -410,8 +409,11 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	optionsData, err := os.ReadFile(optionsPath)
 	require.NoError(t, err)
 
-	opts := &pebble.Options{}
-	testOpts := &TestOptions{Opts: opts}
+	// NB: It's important to use defaultTestOptions() here as the base into
+	// which we parse the serialized options. It contains the relevant defaults,
+	// like the appropriate block-property collectors.
+	testOpts := defaultTestOptions()
+	opts := testOpts.Opts
 	require.NoError(t, parseOptions(testOpts, string(optionsData), runOpts.customOptionParsers))
 
 	// Always use our custom comparer which provides a Split method, splitting
