@@ -82,10 +82,11 @@ type levelIter struct {
 	// short-lived (since they pin sstables), (b) plumbing a context into every
 	// method is very painful, (c) they do not (yet) respect context
 	// cancellation and are only used for tracing.
-	ctx    context.Context
-	logger Logger
-	cmp    Compare
-	split  Split
+	ctx      context.Context
+	logger   Logger
+	comparer *Comparer
+	cmp      Compare
+	split    Split
 	// The lower/upper bounds for iteration as specified at creation or the most
 	// recent call to SetBounds.
 	lower []byte
@@ -241,15 +242,14 @@ var _ base.InternalIterator = (*levelIter)(nil)
 // parameter if the caller is never going to call SeekPrefixGE.
 func newLevelIter(
 	opts IterOptions,
-	cmp Compare,
-	split Split,
+	comparer *Comparer,
 	newIters tableNewIters,
 	files manifest.LevelIterator,
 	level manifest.Level,
 	internalOpts internalIterOpts,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(context.Background(), opts, cmp, split, newIters, files, level,
+	l.init(context.Background(), opts, comparer, newIters, files, level,
 		internalOpts)
 	return l
 }
@@ -257,8 +257,7 @@ func newLevelIter(
 func (l *levelIter) init(
 	ctx context.Context,
 	opts IterOptions,
-	cmp Compare,
-	split Split,
+	comparer *Comparer,
 	newIters tableNewIters,
 	files manifest.LevelIterator,
 	level manifest.Level,
@@ -278,8 +277,9 @@ func (l *levelIter) init(
 	l.tableOpts.UseL6Filters = opts.UseL6Filters
 	l.tableOpts.level = l.level
 	l.tableOpts.snapshotForHideObsoletePoints = opts.snapshotForHideObsoletePoints
-	l.cmp = cmp
-	l.split = split
+	l.comparer = comparer
+	l.cmp = comparer.Compare
+	l.split = comparer.Split
 	l.iterFile = nil
 	l.newIters = newIters
 	l.files = files

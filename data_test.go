@@ -1351,7 +1351,7 @@ func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 		tableNewIters,
 		keyspan.TableNewSpanIter,
 		IterOptions,
-		Compare,
+		*Comparer,
 		*version,
 		int,
 		map[*compaction]struct{},

@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -260,7 +261,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 					continue
 				}
 				li := &levelIter{}
-				li.init(context.Background(), IterOptions{}, cmp, func(a []byte) int { return len(a) },
+				li.init(context.Background(), IterOptions{}, testkeys.Comparer,
 					newIters, slice.Iter(), manifest.Level(i), internalIterOpts{stats: &stats})
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
@@ -627,8 +628,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 			}
 			return iter, rdIter, err
 		}
-		l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
-			func(a []byte) int { return len(a) }, newIters, levelSlices[i].Iter(),
+		l := newLevelIter(IterOptions{}, testkeys.Comparer, newIters, levelSlices[i].Iter(),
 			manifest.Level(level), internalIterOpts{})
 		l.initRangeDel(&mils[level].rangeDelIter)
 		l.initBoundaryContext(&mils[level].levelIterBoundaryContext)
@@ -636,7 +636,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 	}
 	var stats base.InternalIteratorStats
 	m := &mergingIter{}
-	m.init(nil /* logger */, &stats, DefaultComparer.Compare,
+	m.init(nil /* logger */, &stats, testkeys.Comparer.Compare,
 		func(a []byte) int { return len(a) }, mils...)
 	return m
 }

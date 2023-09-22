@@ -117,8 +117,7 @@ type flushableList []*flushableEntry
 // ingesting sstables which are added to the flushable list.
 type ingestedFlushable struct {
 	files            []physicalMeta
-	cmp              Compare
-	split            Split
+	comparer         *Comparer
 	newIters         tableNewIters
 	newRangeKeyIters keyspan.TableNewSpanIter
 
@@ -131,8 +130,7 @@ type ingestedFlushable struct {
 
 func newIngestedFlushable(
 	files []*fileMetadata,
-	cmp Compare,
-	split Split,
+	comparer *Comparer,
 	newIters tableNewIters,
 	newRangeKeyIters keyspan.TableNewSpanIter,
 ) *ingestedFlushable {
@@ -147,12 +145,11 @@ func newIngestedFlushable(
 
 	ret := &ingestedFlushable{
 		files:            physicalFiles,
-		cmp:              cmp,
-		split:            split,
+		comparer:         comparer,
 		newIters:         newIters,
 		newRangeKeyIters: newRangeKeyIters,
 		// slice is immutable and can be set once and used many times.
-		slice:        manifest.NewLevelSliceKeySorted(cmp, files),
+		slice:        manifest.NewLevelSliceKeySorted(comparer.Compare, files),
 		hasRangeKeys: hasRangeKeys,
 	}
 
@@ -173,7 +170,7 @@ func (s *ingestedFlushable) newIter(o *IterOptions) internalIterator {
 	// aren't truly levels in the lsm. Right now, the encoding only supports
 	// L0 sublevels, and the rest of the levels in the lsm.
 	return newLevelIter(
-		opts, s.cmp, s.split, s.newIters, s.slice.Iter(), manifest.Level(0), internalIterOpts{},
+		opts, s.comparer, s.newIters, s.slice.Iter(), manifest.Level(0), internalIterOpts{},
 	)
 }
 
@@ -206,7 +203,7 @@ func (s *ingestedFlushable) constructRangeDelIter(
 // surface range deletes is more efficient.
 func (s *ingestedFlushable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
 	return keyspan.NewLevelIter(
-		keyspan.SpanIterOptions{}, s.cmp,
+		keyspan.SpanIterOptions{}, s.comparer.Compare,
 		s.constructRangeDelIter, s.slice.Iter(), manifest.Level(0),
 		manifest.KeyTypePoint,
 	)
@@ -219,7 +216,7 @@ func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIter
 	}
 
 	return keyspan.NewLevelIter(
-		keyspan.SpanIterOptions{}, s.cmp, s.newRangeKeyIters,
+		keyspan.SpanIterOptions{}, s.comparer.Compare, s.newRangeKeyIters,
 		s.slice.Iter(), manifest.Level(0), manifest.KeyTypeRange,
 	)
 }
