@@ -93,7 +93,7 @@ func TestCompactionIter(t *testing.T) {
 		if formatVersion < FormatSetWithDelete {
 			return "testdata/compaction_iter"
 		}
-		if formatVersion < ExperimentalFormatDeleteSizedAndObsolete {
+		if formatVersion < FormatDeleteSizedAndObsolete {
 			return "testdata/compaction_iter_set_with_del"
 		}
 		return "testdata/compaction_iter_delete_sized"

@@ -201,7 +201,7 @@ type deleteOp struct {
 func (o *deleteOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	var err error
-	if t.testOpts.deleteSized && t.isFMV(pebble.ExperimentalFormatDeleteSizedAndObsolete) {
+	if t.testOpts.deleteSized && t.isFMV(pebble.FormatDeleteSizedAndObsolete) {
 		// Call DeleteSized with a deterministic size derived from the index.
 		// The size does not need to be accurate for correctness.
 		err = w.DeleteSized(o.key, hashSize(t.idx), t.writeOpts)

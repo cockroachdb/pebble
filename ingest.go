@@ -1243,7 +1243,7 @@ func (d *DB) ingest(
 	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
 		panic("cannot ingest shared sstables with nil SharedStorage")
 	}
-	if (exciseSpan.Valid() || len(shared) > 0 || len(external) > 0) && d.FormatMajorVersion() < ExperimentalFormatVirtualSSTables {
+	if (exciseSpan.Valid() || len(shared) > 0 || len(external) > 0) && d.FormatMajorVersion() < FormatVirtualSSTables {
 		return IngestOperationStats{}, errors.New("pebble: format major version too old for excise, shared or external sstable ingestion")
 	}
 	// Allocate file numbers for all of the files being ingested and mark them as

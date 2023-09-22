@@ -1610,12 +1610,12 @@ func TestManualCompaction(t *testing.T) {
 		},
 		{
 			testData:   "testdata/manual_compaction_file_boundaries_delsized",
-			minVersion: ExperimentalFormatDeleteSizedAndObsolete,
+			minVersion: FormatDeleteSizedAndObsolete,
 			maxVersion: internalFormatNewest,
 		},
 		{
 			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev4",
-			minVersion: ExperimentalFormatDeleteSizedAndObsolete,
+			minVersion: FormatDeleteSizedAndObsolete,
 			maxVersion: internalFormatNewest,
 		},
 		{

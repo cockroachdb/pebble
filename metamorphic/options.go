@@ -36,11 +36,11 @@ const (
 	// that are less than defaultFormatMajorVersion but are at least
 	// minimumFormatMajorVersion.
 	defaultFormatMajorVersion = pebble.FormatPrePebblev1Marked
-	// newestFormatMajorVersionTODO is the most recent format major version the
-	// metamorphic tests should use. This may be greater than
+	// newestFormatMajorVersionToTest is the most recent format major version
+	// the metamorphic tests should use. This may be greater than
 	// pebble.FormatNewest when some format major versions are marked as
 	// experimental.
-	newestFormatMajorVersionTODO = pebble.ExperimentalFormatVirtualSSTables
+	newestFormatMajorVersionToTest = pebble.FormatNewest
 )
 
 func parseOptions(
@@ -386,7 +386,7 @@ func standardOptions() []*TestOptions {
 		26: fmt.Sprintf(`
 [Options]
   format_major_version=%s
-`, newestFormatMajorVersionTODO),
+`, newestFormatMajorVersionToTest),
 		27: `
 [TestOptions]
   shared_storage_enabled=true
@@ -440,7 +440,7 @@ func randomOptions(
 	opts.FlushDelayRangeKey = time.Millisecond * time.Duration(5*rng.Intn(245))    // 5-250ms
 	opts.FlushSplitBytes = 1 << rng.Intn(20)                                       // 1B - 1MB
 	opts.FormatMajorVersion = minimumFormatMajorVersion
-	n := int(newestFormatMajorVersionTODO - opts.FormatMajorVersion)
+	n := int(newestFormatMajorVersionToTest - opts.FormatMajorVersion)
 	opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.Intn(n + 1))
 	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4) // 1-4
 	opts.Experimental.LevelMultiplier = 5 << rng.Intn(7)        // 5 - 320
