@@ -601,7 +601,7 @@ func TestExcise(t *testing.T) {
 			EventListener: &EventListener{FlushEnd: func(info FlushInfo) {
 				flushed = true
 			}},
-			FormatMajorVersion: ExperimentalFormatVirtualSSTables,
+			FormatMajorVersion: FormatVirtualSSTables,
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -788,7 +788,7 @@ func TestIngestShared(t *testing.T) {
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
-			FormatMajorVersion:    ExperimentalFormatVirtualSSTables,
+			FormatMajorVersion:    FormatVirtualSSTables,
 		}
 		// lel.
 		lel := MakeLoggingEventListener(DefaultLogger)
@@ -1072,7 +1072,7 @@ func TestSimpleIngestShared(t *testing.T) {
 	mem := vfs.NewMem()
 	var d *DB
 	var provider2 objstorage.Provider
-	opts2 := Options{FS: vfs.NewMem(), FormatMajorVersion: ExperimentalFormatVirtualSSTables}
+	opts2 := Options{FS: vfs.NewMem(), FormatMajorVersion: FormatVirtualSSTables}
 	opts2.EnsureDefaults()
 
 	// Create an objProvider where we will fake-create some sstables that can
@@ -1110,7 +1110,7 @@ func TestSimpleIngestShared(t *testing.T) {
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 		opts := &Options{
-			FormatMajorVersion:    ExperimentalFormatVirtualSSTables,
+			FormatMajorVersion:    FormatVirtualSSTables,
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
@@ -1259,7 +1259,7 @@ func TestConcurrentExcise(t *testing.T) {
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
-			FormatMajorVersion:    ExperimentalFormatVirtualSSTables,
+			FormatMajorVersion:    FormatVirtualSSTables,
 		}
 		// lel.
 		lel := MakeLoggingEventListener(DefaultLogger)
@@ -1609,7 +1609,7 @@ func TestIngestExternal(t *testing.T) {
 			EventListener: &EventListener{FlushEnd: func(info FlushInfo) {
 				flushed = true
 			}},
-			FormatMajorVersion: ExperimentalFormatVirtualSSTables,
+			FormatMajorVersion: FormatVirtualSSTables,
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"external-locator": remoteStorage,

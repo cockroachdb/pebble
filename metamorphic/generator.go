@@ -564,9 +564,7 @@ func (g *generator) dbRatchetFormatMajorVersion() {
 	// version may be behind the database's format major version, in which case
 	// RatchetFormatMajorVersion should deterministically error.
 
-	// TODO(jackson): When the latest format major versions ares stabilized,
-	// return this to just using `FormatNewest`.
-	n := int(newestFormatMajorVersionTODO - minimumFormatMajorVersion)
+	n := int(newestFormatMajorVersionToTest - minimumFormatMajorVersion)
 	vers := pebble.FormatMajorVersion(g.rng.Intn(n+1)) + minimumFormatMajorVersion
 	g.add(&dbRatchetFormatMajorVersionOp{vers: vers})
 }

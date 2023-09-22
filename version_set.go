@@ -484,7 +484,7 @@ func (vs *versionSet) logAndApply(
 		defer vs.mu.Lock()
 
 		var err error
-		if vs.opts.FormatMajorVersion < ExperimentalFormatVirtualSSTables && len(ve.CreatedBackingTables) > 0 {
+		if vs.opts.FormatMajorVersion < FormatVirtualSSTables && len(ve.CreatedBackingTables) > 0 {
 			return errors.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
 		}
 		newVersion, zombies, err = manifest.AccumulateIncompleteAndApplySingleVE(
