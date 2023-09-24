@@ -550,6 +550,21 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			return
 		}
 
+		// If the user has configured a SkipPoint function, invoke it to see
+		// whether we should skip over the current user key.
+		if i.opts.SkipPoint != nil && key.Kind() != InternalKeyKindRangeKeySet && i.opts.SkipPoint(i.iterKey.UserKey) {
+			// NB: We could call nextUserKey, but in some cases the SkipPoint
+			// predicate function might be cheaper than nextUserKey's key copy
+			// and key comparison. This should be the case for MVCC suffix
+			// comparisons, for example. In the future, we could expand the
+			// SkipPoint interface to give the implementor more control over
+			// whether we skip over just the internal key, the user key, or even
+			// the key prefix.
+			i.stats.ForwardStepCount[InternalIterCall]++
+			i.iterKey, i.iterValue = i.iter.Next()
+			continue
+		}
+
 		switch key.Kind() {
 		case InternalKeyKindRangeKeySet:
 			// Save the current key.
@@ -911,6 +926,26 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			}
 		}
 
+		// If the user has configured a SkipPoint function, invoke it to see
+		// whether we should skip over the current user key.
+		if i.opts.SkipPoint != nil && key.Kind() != InternalKeyKindRangeKeySet && i.opts.SkipPoint(key.UserKey) {
+			// NB: We could call prevUserKey, but in some cases the SkipPoint
+			// predicate function might be cheaper than prevUserKey's key copy
+			// and key comparison. This should be the case for MVCC suffix
+			// comparisons, for example. In the future, we could expand the
+			// SkipPoint interface to give the implementor more control over
+			// whether we skip over just the internal key, the user key, or even
+			// the key prefix.
+			i.stats.ReverseStepCount[InternalIterCall]++
+			i.iterKey, i.iterValue = i.iter.Prev()
+			if limit != nil && i.iterKey != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
+				i.iterValidityState = IterAtLimit
+				i.pos = iterPosCurReversePaused
+				return
+			}
+			continue
+		}
+
 		switch key.Kind() {
 		case InternalKeyKindRangeKeySet:
 			// Range key start boundary markers are interleaved with the maximum
@@ -948,12 +983,12 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// Compare with the limit. We could optimize by only checking when
 			// we step to the previous user key, but detecting that requires a
 			// comparison too. Note that this position may already passed a
-			// number of versions of this user key, but they are all deleted,
-			// so the fact that a subsequent Prev*() call will not see them is
+			// number of versions of this user key, but they are all deleted, so
+			// the fact that a subsequent Prev*() call will not see them is
 			// harmless. Also note that this is the only place in the loop,
-			// other than the firstLoopIter case above, where we could step
-			// to a different user key and start processing it for returning
-			// to the caller.
+			// other than the firstLoopIter and SkipPoint cases above, where we
+			// could step to a different user key and start processing it for
+			// returning to the caller.
 			if limit != nil && i.iterKey != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
 				i.iterValidityState = IterAtLimit
 				i.pos = iterPosCurReversePaused
@@ -2428,7 +2463,8 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// If either options specify block property filters for an iterator stack,
 	// reconstruct it.
 	if i.pointIter != nil && (closeBoth || len(o.PointKeyFilters) > 0 || len(i.opts.PointKeyFilters) > 0 ||
-		o.RangeKeyMasking.Filter != nil || i.opts.RangeKeyMasking.Filter != nil) {
+		o.RangeKeyMasking.Filter != nil || i.opts.RangeKeyMasking.Filter != nil || o.SkipPoint != nil ||
+		i.opts.SkipPoint != nil) {
 		i.err = firstError(i.err, i.pointIter.Close())
 		i.pointIter = nil
 	}
