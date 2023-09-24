@@ -309,6 +309,17 @@ func TestIterHistories(t *testing.T) {
 						o.PointKeyFilters = []sstable.BlockPropertyFilter{
 							sstable.NewTestKeysBlockPropertyFilter(min, max),
 						}
+						o.SkipPoint = func(k []byte) bool {
+							i := testkeys.Comparer.Split(k)
+							if i == len(k) {
+								return false
+							}
+							v, err := testkeys.ParseSuffix(k[i:])
+							if err != nil {
+								return false
+							}
+							return uint64(v) < min || uint64(v) >= max
+						}
 					case "snapshot":
 						s, err := strconv.ParseUint(arg.Vals[0], 10, 64)
 						if err != nil {

@@ -260,15 +260,13 @@ func (t *test) setBatch(id objID, b *pebble.Batch) {
 	t.batches[id.slot()] = b
 }
 
-func (t *test) setIter(id objID, i *pebble.Iterator, filterMin, filterMax uint64) {
+func (t *test) setIter(id objID, i *pebble.Iterator) {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
 	t.iters[id.slot()] = &retryableIter{
-		iter:      i,
-		lastKey:   nil,
-		filterMin: filterMin,
-		filterMax: filterMax,
+		iter:    i,
+		lastKey: nil,
 	}
 }
 
