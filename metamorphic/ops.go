@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -711,7 +712,7 @@ func (o *newIterOp) run(t *test, h historyRecorder) {
 		// close this iter and retry NewIter
 		_ = i.Close()
 	}
-	t.setIter(o.iterID, i, o.filterMin, o.filterMax)
+	t.setIter(o.iterID, i)
 
 	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
 	// the user-provided bounds.
@@ -763,13 +764,7 @@ func (o *newIterUsingCloneOp) run(t *test, h historyRecorder) {
 	if err != nil {
 		panic(err)
 	}
-	filterMin, filterMax := o.filterMin, o.filterMax
-	if cloneOpts.IterOptions == nil {
-		// We're adopting the same block property filters as iter, so we need to
-		// adopt the same run-time filters to ensure determinism.
-		filterMin, filterMax = iter.filterMin, iter.filterMax
-	}
-	t.setIter(o.iterID, i, filterMin, filterMax)
+	t.setIter(o.iterID, i)
 	h.Recordf("%s // %v", o, i.Error())
 }
 
@@ -853,9 +848,6 @@ func (o *iterSetOptionsOp) run(t *test, h historyRecorder) {
 	rand.Read(opts.LowerBound[:])
 	rand.Read(opts.UpperBound[:])
 
-	// Adjust the iterator's filters.
-	i.filterMin, i.filterMax = o.filterMin, o.filterMax
-
 	h.Recordf("%s // %v", o, i.Error())
 }
 
@@ -892,6 +884,22 @@ func iterOptions(o iterOpts) *pebble.IterOptions {
 	if o.filterMax > 0 {
 		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
 			sstable.NewTestKeysBlockPropertyFilter(o.filterMin, o.filterMax),
+		}
+		// Enforce the timestamp bounds in SkipPoint, so that the iterator never
+		// returns a key outside the filterMin, filterMax bounds. This provides
+		// deterministic iteration.
+		opts.SkipPoint = func(k []byte) (skip bool) {
+			n := testkeys.Comparer.Split(k)
+			if n == len(k) {
+				// No suffix, don't skip it.
+				return false
+			}
+			v, err := testkeys.ParseSuffix(k[n:])
+			if err != nil {
+				panic(err)
+			}
+			ts := uint64(v)
+			return ts < o.filterMin || ts >= o.filterMax
 		}
 	}
 	return opts
