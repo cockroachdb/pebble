@@ -183,3 +183,24 @@ cat: valid (cat, [a-e) @1=foo UPDATED)
 a: valid (., [a-e) @1=foo)
 .
 a: (., [a-e) @1=foo UPDATED)
+
+# Test enforcing limits even while skipping point keys.
+
+reset
+----
+
+batch commit
+set b@9 b@9
+set c@2 c@2
+set d@8 d@8
+----
+committed 3 keys
+
+combined-iter point-key-filter=(6,10)
+last
+prev-limit c
+seek-ge-limit c@9 d
+----
+d@8: (d@8, .)
+. at-limit
+. at-limit
