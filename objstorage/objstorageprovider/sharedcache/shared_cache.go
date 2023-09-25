@@ -130,9 +130,10 @@ func Open(
 	sizeBytes int64,
 	numShards int,
 ) (*Cache, error) {
-	min := shardingBlockSize * int64(numShards)
-	if sizeBytes < min {
-		return nil, errors.Errorf("cache size %d lower than min %d", sizeBytes, min)
+	if minSize := shardingBlockSize * int64(numShards); sizeBytes < minSize {
+		// Up the size so that we have one block per shard. In practice, this should
+		// only happen in tests.
+		sizeBytes = minSize
 	}
 
 	c := &Cache{
