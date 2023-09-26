@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -831,15 +832,6 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	opts = opts.EnsureDefaults()
 	opts.FS = vfs.NewMem()
 
-	if td.Input == "" {
-		// Empty LSM.
-		d, err := Open("", opts)
-		if err != nil {
-			return nil, err
-		}
-		return d, nil
-	}
-
 	var snapshots []uint64
 	var levelMaxBytes map[int]int64
 	for _, arg := range td.CmdArgs {
@@ -919,6 +911,28 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			opts.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
 		}
 	}
+
+	// This is placed after the argument parsing above, because the arguments
+	// to define should be parsed even if td.Input is empty.
+	if td.Input == "" {
+		// Empty LSM.
+		d, err := Open("", opts)
+		if err != nil {
+			return nil, err
+		}
+		d.mu.Lock()
+		for i := range snapshots {
+			s := &Snapshot{db: d}
+			s.seqNum = snapshots[i]
+			d.mu.snapshots.pushBack(s)
+		}
+		for l, maxBytes := range levelMaxBytes {
+			d.mu.versions.picker.(*compactionPickerByScore).levelMaxBytes[l] = maxBytes
+		}
+		d.mu.Unlock()
+		return d, nil
+	}
+
 	d, err := Open("", opts)
 	if err != nil {
 		return nil, err
@@ -1197,10 +1211,59 @@ func runVersionFileSizes(v *version) string {
 	return buf.String()
 }
 
-func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) string {
-	var file string
+// Prints some metadata about some sstable which is currently in the latest
+// version.
+func runMetadataCommand(t *testing.T, td *datadriven.TestData, d *DB) string {
+	var file int
 	td.ScanArgs(t, "file", &file)
-	f, err := d.opts.FS.Open(file + ".sst")
+	var m *fileMetadata
+	d.mu.Lock()
+	currVersion := d.mu.versions.currentVersion()
+	for _, level := range currVersion.Levels {
+		lIter := level.Iter()
+		for f := lIter.First(); f != nil; f = lIter.Next() {
+			if f.FileNum == base.FileNum(uint64(file)) {
+				m = f
+				break
+			}
+		}
+	}
+	d.mu.Unlock()
+	var buf bytes.Buffer
+	// Add more metadata as needed.
+	fmt.Fprintf(&buf, "size: %d\n", m.Size)
+	return buf.String()
+}
+
+func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) string {
+	var file int
+	td.ScanArgs(t, "file", &file)
+
+	// See if we can grab the FileMetadata associated with the file. This is needed
+	// to easily construct virtual sstable properties.
+	var m *fileMetadata
+	d.mu.Lock()
+	currVersion := d.mu.versions.currentVersion()
+	for _, level := range currVersion.Levels {
+		lIter := level.Iter()
+		for f := lIter.First(); f != nil; f = lIter.Next() {
+			if f.FileNum == base.FileNum(uint64(file)) {
+				m = f
+				break
+			}
+		}
+	}
+	d.mu.Unlock()
+
+	// Note that m can be nil here if the sstable exists in the file system, but
+	// not in the lsm. If m is nil just assume that file is not virtual.
+
+	backingFileNum := base.FileNum(uint64(file)).DiskFileNum()
+	if m != nil {
+		backingFileNum = m.FileBacking.DiskFileNum
+	}
+	fileName := base.MakeFilename(fileTypeTable, backingFileNum)
+	f, err := d.opts.FS.Open(fileName)
 	if err != nil {
 		return err.Error()
 	}
@@ -1208,17 +1271,30 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	if err != nil {
 		return err.Error()
 	}
-	r, err := sstable.NewReader(readable, d.opts.MakeReaderOptions())
+	// TODO(bananabrick): cacheOpts is used to set the file number on a Reader,
+	// and virtual sstables expect this file number to be set. Split out the
+	// opts into fileNum opts, and cache opts.
+	cacheOpts := private.SSTableCacheOpts(0, backingFileNum).(sstable.ReaderOption)
+	r, err := sstable.NewReader(readable, d.opts.MakeReaderOptions(), cacheOpts)
 	if err != nil {
 		return err.Error()
 	}
 	defer r.Close()
 
-	props := strings.Split(r.Properties.String(), "\n")
+	var v sstable.VirtualReader
+	props := r.Properties.String()
+	if m != nil && m.Virtual {
+		v = sstable.MakeVirtualReader(r, m.VirtualMeta())
+		props = v.Properties.String()
+	}
+	if len(td.Input) == 0 {
+		return props
+	}
 	var buf bytes.Buffer
+	propsSlice := strings.Split(props, "\n")
 	for _, requestedProp := range strings.Split(td.Input, "\n") {
 		fmt.Fprintf(&buf, "%s:\n", requestedProp)
-		for _, prop := range props {
+		for _, prop := range propsSlice {
 			if strings.Contains(prop, requestedProp) {
 				fmt.Fprintf(&buf, "  %s\n", prop)
 			}
