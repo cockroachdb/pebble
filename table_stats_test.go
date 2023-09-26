@@ -22,11 +22,10 @@ import (
 )
 
 func TestTableStats(t *testing.T) {
-	fs := vfs.NewMem()
 	// loadedInfo is protected by d.mu.
 	var loadedInfo *TableStatsInfo
 	opts := &Options{
-		FS: fs,
+		FS: vfs.NewMem(),
 		EventListener: &EventListener{
 			TableStatsLoaded: func(info TableStatsInfo) {
 				loadedInfo = &info
@@ -129,8 +128,20 @@ func TestTableStats(t *testing.T) {
 			}
 			return buf.String()
 
+		case "lsm":
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
+		case "build":
+			if err := runBuildCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return ""
+
 		case "ingest-and-excise":
-			if err := runIngestAndExciseCmd(td, d, fs); err != nil {
+			if err := runIngestAndExciseCmd(td, d, d.opts.FS); err != nil {
 				return err.Error()
 			}
 			// Wait for a possible flush.
@@ -163,6 +174,11 @@ func TestTableStats(t *testing.T) {
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			return s
+
+		case "metadata-stats":
+			// Prints some metadata about some sstable which is currently in the
+			// latest version.
+			return runMetadataCommand(t, td, d)
 
 		case "properties":
 			return runSSTablePropertiesCmd(t, td, d)
