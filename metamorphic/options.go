@@ -110,6 +110,12 @@ func parseOptions(
 				}
 				opts.seedEFOS = v
 				return true
+			case "TestOptions.ingest_split":
+				opts.ingestSplit = true
+				opts.Opts.Experimental.IngestSplit = func() bool {
+					return true
+				}
+				return true
 			default:
 				if customOptionParsers == nil {
 					return false
@@ -172,6 +178,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.seedEFOS != 0 {
 		fmt.Fprintf(&buf, "  seed_efos=%d\n", opts.seedEFOS)
+	}
+	if opts.ingestSplit {
+		fmt.Fprintf(&buf, "  ingest_split=%v\n", opts.ingestSplit)
 	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
@@ -246,6 +255,9 @@ type TestOptions struct {
 	// are actually created as EventuallyFileOnlySnapshots is deterministically
 	// derived from the seed and the operation index.
 	seedEFOS uint64
+	// Enables ingest splits. Saved here for serialization as Options does not
+	// serialize this.
+	ingestSplit bool
 }
 
 // CustomOption defines a custom option that configures the behavior of an
@@ -536,6 +548,8 @@ func randomOptions(
 		}
 	}
 	testOpts.seedEFOS = rng.Uint64()
+	testOpts.ingestSplit = rng.Intn(2) == 0
+	opts.Experimental.IngestSplit = func() bool { return testOpts.ingestSplit }
 
 	return testOpts
 }
