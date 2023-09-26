@@ -1751,7 +1751,8 @@ func (d *DB) excise(
 			smallestPointKey.UserKey = firstRangeDel
 			rightFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, largestPointKey)
 		}
-	} else if m.HasRangeKeys && !exciseSpan.Contains(d.cmp, m.LargestRangeKey) {
+	}
+	if m.HasRangeKeys && !exciseSpan.Contains(d.cmp, m.LargestRangeKey) {
 		// This file will contain range keys.
 		largestRangeKey := m.LargestRangeKey
 		if rangeKeyIter == nil {
