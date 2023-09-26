@@ -569,3 +569,343 @@ flush
 metric keys.missized-tombstones-count
 ----
 keys.missized-tombstones-count: 1
+
+# Virtual sstables tests. Note that these tests are just for sanity checking
+# purposes. Small sstables lead to inaccurate values during extrapolation.
+define format-major-version=16
+----
+
+batch
+set a 1
+set b 2
+del d
+----
+
+flush
+----
+0.0:
+  000005:[a#10,SET-d#12,DEL]
+
+metadata-stats file=5
+----
+size: 726
+
+# Just grab the physical sstable properties as these are used to construct the
+# virtual sstable properties.
+properties file=5
+rocksdb
+pebble
+----
+rocksdb:
+  rocksdb.num.entries: 3
+  rocksdb.raw.key.size: 27
+  rocksdb.raw.value.size: 2
+  rocksdb.deleted.keys: 1
+  rocksdb.num.range-deletions: 0
+  rocksdb.comparator: pebble.internal.testkeys
+  rocksdb.compression: Snappy
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+  rocksdb.data.size: 53
+  rocksdb.filter.size: 0
+  rocksdb.index.size: 27
+  rocksdb.block.based.table.index.type: 0
+  rocksdb.merge.operator: pebble.concatenate
+  rocksdb.num.data.blocks: 1
+  rocksdb.merge.operands: 0
+  rocksdb.prefix.extractor.name: nullptr
+  rocksdb.block.based.table.prefix.filtering: false
+  rocksdb.property.collectors: [obsolete-key]
+  rocksdb.block.based.table.whole.key.filtering: false
+pebble:
+  pebble.raw.point-tombstone.key.size: 1
+  rocksdb.comparator: pebble.internal.testkeys
+  rocksdb.merge.operator: pebble.concatenate
+
+build ext1
+set f f
+----
+
+ingest-and-excise ext1 excise=b-c
+----
+
+lsm
+----
+0.0:
+  000007:[a#10,SET-a#10,SET]
+  000008:[d#12,DEL-d#12,DEL]
+6:
+  000006:[f#13,SET-f#13,SET]
+
+metadata-stats file=7
+----
+size: 53
+
+metadata-stats file=8
+----
+size: 53
+
+# Note that the backing file size is much larger than the virtual file sizes.
+# For tiny sstables, the metadata contained in the sstable is much larger than
+# the actual sizes.
+
+# While sstable 8 has no point tombstones, because of the nature of extrapolation
+# both file 7 and file 8 will have a point tombstone key size property. Because
+# of this both the files have a point deletion bytes estimate.
+properties file=7
+----
+rocksdb.num.entries: 1
+rocksdb.raw.key.size: 2
+rocksdb.raw.value.size: 1
+pebble.raw.point-tombstone.key.size: 1
+rocksdb.deleted.keys: 1
+
+properties file=8
+----
+rocksdb.num.entries: 1
+rocksdb.raw.key.size: 2
+rocksdb.raw.value.size: 1
+pebble.raw.point-tombstone.key.size: 1
+rocksdb.deleted.keys: 1
+
+wait-pending-table-stats
+000007
+----
+num-entries: 1
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 53
+range-deletions-bytes-estimate: 0
+
+wait-pending-table-stats
+000008
+----
+num-entries: 1
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 53
+range-deletions-bytes-estimate: 0
+
+# Create an sstable with a range key set.
+batch
+set a a
+set b b
+set d d
+range-key-set e ee @1 foo
+----
+
+flush
+----
+0.1:
+  000010:[a#14,SET-ee#inf,RANGEKEYSET]
+0.0:
+  000007:[a#10,SET-a#10,SET]
+  000008:[d#12,DEL-d#12,DEL]
+6:
+  000006:[f#13,SET-f#13,SET]
+
+properties file=10
+rocksdb
+pebble
+----
+rocksdb:
+  rocksdb.num.entries: 3
+  rocksdb.raw.key.size: 27
+  rocksdb.raw.value.size: 3
+  rocksdb.deleted.keys: 0
+  rocksdb.num.range-deletions: 0
+  rocksdb.comparator: pebble.internal.testkeys
+  rocksdb.compression: Snappy
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+  rocksdb.data.size: 47
+  rocksdb.filter.size: 0
+  rocksdb.index.size: 27
+  rocksdb.block.based.table.index.type: 0
+  rocksdb.merge.operator: pebble.concatenate
+  rocksdb.num.data.blocks: 1
+  rocksdb.merge.operands: 0
+  rocksdb.prefix.extractor.name: nullptr
+  rocksdb.block.based.table.prefix.filtering: false
+  rocksdb.property.collectors: [obsolete-key]
+  rocksdb.block.based.table.whole.key.filtering: false
+pebble:
+  pebble.num.range-key-dels: 0
+  pebble.num.range-key-sets: 1
+  rocksdb.comparator: pebble.internal.testkeys
+  rocksdb.merge.operator: pebble.concatenate
+  pebble.num.range-key-unsets: 0
+  pebble.raw.range-key.key.size: 9
+  pebble.raw.range-key.value.size: 10
+
+metadata-stats file=10
+----
+size: 828
+
+build ext2
+set z z
+----
+
+ingest-and-excise ext2 excise=b-c
+----
+
+lsm
+----
+0.1:
+  000012:[a#14,SET-a#14,SET]
+  000013:[d#16,SET-ee#inf,RANGEKEYSET]
+0.0:
+  000007:[a#10,SET-a#10,SET]
+  000008:[d#12,DEL-d#12,DEL]
+6:
+  000006:[f#13,SET-f#13,SET]
+  000011:[z#18,SET-z#18,SET]
+
+metadata-stats file=12
+----
+size: 47
+
+metadata-stats file=13
+----
+size: 47
+
+# range key sets shows up for both files. This is expected.
+properties file=12
+----
+rocksdb.num.entries: 1
+rocksdb.raw.key.size: 2
+rocksdb.raw.value.size: 1
+pebble.num.range-key-sets: 1
+
+properties file=13
+----
+rocksdb.num.entries: 1
+rocksdb.raw.key.size: 2
+rocksdb.raw.value.size: 1
+pebble.num.range-key-sets: 1
+
+wait-pending-table-stats
+000012
+----
+num-entries: 1
+num-deletions: 0
+num-range-key-sets: 1
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+
+wait-pending-table-stats
+000013
+----
+num-entries: 1
+num-deletions: 0
+num-range-key-sets: 1
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+
+# Create an sstable with range deletes to view the range delete byte estimates.
+
+# Compact everything to L6. Range deletion bytes estimate doesn't account for
+# bytes in L0.
+compact a-z
+----
+6:
+  000014:[a#0,SET-a#0,SET]
+  000015:[d#0,SETWITHDEL-d#0,SETWITHDEL]
+  000016:[e#17,RANGEKEYSET-ee#inf,RANGEKEYSET]
+  000006:[f#13,SET-f#13,SET]
+  000011:[z#18,SET-z#18,SET]
+
+batch
+del-range a e
+----
+
+flush
+----
+0.0:
+  000018:[a#19,RANGEDEL-e#inf,RANGEDEL]
+6:
+  000014:[a#0,SET-a#0,SET]
+  000015:[d#0,SETWITHDEL-d#0,SETWITHDEL]
+  000016:[e#17,RANGEKEYSET-ee#inf,RANGEKEYSET]
+  000006:[f#13,SET-f#13,SET]
+  000011:[z#18,SET-z#18,SET]
+
+properties file=18
+rocksdb
+pebble
+----
+rocksdb:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 9
+  rocksdb.raw.value.size: 1
+  rocksdb.deleted.keys: 1
+  rocksdb.num.range-deletions: 1
+  rocksdb.comparator: pebble.internal.testkeys
+  rocksdb.compression: Snappy
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+  rocksdb.data.size: 13
+  rocksdb.filter.size: 0
+  rocksdb.index.size: 29
+  rocksdb.block.based.table.index.type: 0
+  rocksdb.merge.operator: pebble.concatenate
+  rocksdb.num.data.blocks: 1
+  rocksdb.merge.operands: 0
+  rocksdb.prefix.extractor.name: nullptr
+  rocksdb.block.based.table.prefix.filtering: false
+  rocksdb.property.collectors: [obsolete-key]
+  rocksdb.block.based.table.whole.key.filtering: false
+pebble:
+  rocksdb.comparator: pebble.internal.testkeys
+  rocksdb.merge.operator: pebble.concatenate
+
+build ext3
+set zz zz
+----
+
+ingest-and-excise ext3 excise=b-c
+----
+
+lsm
+----
+0.0:
+  000020:[a#19,RANGEDEL-b#inf,RANGEDEL]
+  000021:[c#19,RANGEDEL-e#inf,RANGEDEL]
+6:
+  000014:[a#0,SET-a#0,SET]
+  000015:[d#0,SETWITHDEL-d#0,SETWITHDEL]
+  000016:[e#17,RANGEKEYSET-ee#inf,RANGEKEYSET]
+  000006:[f#13,SET-f#13,SET]
+  000011:[z#18,SET-z#18,SET]
+  000019:[zz#20,SET-zz#20,SET]
+
+properties file=20
+----
+rocksdb.num.entries: 1
+rocksdb.raw.key.size: 1
+rocksdb.raw.value.size: 1
+rocksdb.deleted.keys: 1
+rocksdb.num.range-deletions: 1
+
+properties file=21
+----
+rocksdb.num.entries: 1
+rocksdb.raw.key.size: 1
+rocksdb.raw.value.size: 1
+rocksdb.deleted.keys: 1
+rocksdb.num.range-deletions: 1
+
+wait-pending-table-stats
+000020
+----
+num-entries: 1
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 661
+
+wait-pending-table-stats
+000021
+----
+num-entries: 1
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 660
