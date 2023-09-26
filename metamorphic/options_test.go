@@ -67,6 +67,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Experimental.EnableValueBlocks:",
 		"Experimental.DisableIngestAsFlushable:",
 		"Experimental.RemoteStorage:",
+		"Experimental.IngestSplit:",
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
 	}
@@ -96,6 +97,9 @@ func TestOptionsRoundtrip(t *testing.T) {
 		require.Equal(t, o.Opts.Experimental.DisableIngestAsFlushable == nil, parsed.Opts.Experimental.DisableIngestAsFlushable == nil)
 		if o.Opts.Experimental.DisableIngestAsFlushable != nil {
 			require.Equal(t, o.Opts.Experimental.DisableIngestAsFlushable(), parsed.Opts.Experimental.DisableIngestAsFlushable())
+		}
+		if o.Opts.Experimental.IngestSplit != nil && o.Opts.Experimental.IngestSplit() {
+			require.Equal(t, o.Opts.Experimental.IngestSplit(), parsed.Opts.Experimental.IngestSplit())
 		}
 		require.Equal(t, o.Opts.MaxConcurrentCompactions(), parsed.Opts.MaxConcurrentCompactions())
 
