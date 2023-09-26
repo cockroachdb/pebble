@@ -162,3 +162,37 @@ would excise 2 files, use ingest-and-excise to excise.
   added:         L0 000009:[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
   added:         L0 000010:[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
   added:         L6 000011:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET]
+
+reset
+----
+
+# Create an sstable with a range key set.
+batch
+set a a
+set b b
+set d d
+range-key-set e ee @1 foo
+----
+
+flush
+----
+
+lsm
+----
+0.0:
+  000005:[a#10,SET-ee#inf,RANGEKEYSET]
+
+build ext2
+set z z
+----
+
+ingest-and-excise ext2 excise=b-c
+----
+
+lsm
+----
+0.0:
+  000007:[a#10,SET-a#10,SET]
+  000008:[d#12,SET-ee#inf,RANGEKEYSET]
+6:
+  000006:[z#14,SET-z#14,SET]
