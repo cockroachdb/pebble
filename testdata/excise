@@ -81,26 +81,42 @@ lsm
 6:
   000004:[a#10,SET-l#10,SET]
 
+iter
+first
+next
+next
+next
+next
+----
+a: (1, .)
+d: (foo, .)
+f: (bar, .)
+l: (2, .)
+.
+
 build ext1 format=pebblev2
 set d foo3
 set e bar2
 ----
 
-ingest-and-excise ext1 excise="c-k"
+ingest-and-excise ext1 excise=c-k
 ----
 
 lsm
 ----
 6:
+  000019:[a#10,SET-a#10,SET]
   000018:[d#13,SET-e#13,SET]
-  000019:[l#10,SET-l#10,SET]
+  000020:[l#10,SET-l#10,SET]
 
 iter
 first
 next
 next
 next
+next
 ----
+a: (1, .)
 d: (foo3, .)
 e: (bar2, .)
 l: (2, .)
