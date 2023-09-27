@@ -110,9 +110,10 @@ type versionSet struct {
 	manifestFileNum FileNum
 	manifestMarker  *atomicfs.Marker
 
-	manifestFile vfs.File
-	manifest     *record.Writer
-	setCurrent   func(FileNum) error
+	manifestFile          vfs.File
+	manifest              *record.Writer
+	setCurrent            func(FileNum) error
+	getFormatMajorVersion func() FormatMajorVersion
 
 	writing    bool
 	writerCond sync.Cond
@@ -125,6 +126,7 @@ func (vs *versionSet) init(
 	opts *Options,
 	marker *atomicfs.Marker,
 	setCurrent func(FileNum) error,
+	getFMV func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) {
 	vs.dirname = dirname
@@ -142,6 +144,7 @@ func (vs *versionSet) init(
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
 	vs.setCurrent = setCurrent
+	vs.getFormatMajorVersion = getFMV
 }
 
 // create creates a version set for a fresh DB.
@@ -151,9 +154,10 @@ func (vs *versionSet) create(
 	opts *Options,
 	marker *atomicfs.Marker,
 	setCurrent func(FileNum) error,
+	getFormatMajorVersion func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) error {
-	vs.init(dirname, opts, marker, setCurrent, mu)
+	vs.init(dirname, opts, marker, setCurrent, getFormatMajorVersion, mu)
 	newVersion := &version{}
 	vs.append(newVersion)
 	var err error
@@ -199,9 +203,10 @@ func (vs *versionSet) load(
 	manifestFileNum FileNum,
 	marker *atomicfs.Marker,
 	setCurrent func(FileNum) error,
+	getFormatMajorVersion func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) error {
-	vs.init(dirname, opts, marker, setCurrent, mu)
+	vs.init(dirname, opts, marker, setCurrent, getFormatMajorVersion, mu)
 
 	vs.manifestFileNum = manifestFileNum
 	manifestPath := base.MakeFilepath(opts.FS, dirname, fileTypeManifest, vs.manifestFileNum.DiskFileNum())
@@ -484,7 +489,7 @@ func (vs *versionSet) logAndApply(
 		defer vs.mu.Lock()
 
 		var err error
-		if vs.opts.FormatMajorVersion < FormatVirtualSSTables && len(ve.CreatedBackingTables) > 0 {
+		if vs.getFormatMajorVersion() < FormatVirtualSSTables && len(ve.CreatedBackingTables) > 0 {
 			return errors.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
 		}
 		newVersion, zombies, err = manifest.AccumulateIncompleteAndApplySingleVE(
