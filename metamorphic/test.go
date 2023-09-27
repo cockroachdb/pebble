@@ -73,7 +73,7 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions) error {
 	// difference between in-memory and on-disk which causes different code paths
 	// and timings to be exercised.
 	maybeExit := func(err error) {
-		if err == nil || errors.Is(err, errorfs.ErrInjected) {
+		if err == nil || errors.Is(err, errorfs.ErrInjected) || errors.Is(err, pebble.ErrCancelledCompaction) {
 			return
 		}
 		t.maybeSaveData()

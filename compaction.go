@@ -32,7 +32,10 @@ import (
 )
 
 var errEmptyTable = errors.New("pebble: empty table")
-var errCancelledCompaction = errors.New("pebble: compaction cancelled by a concurrent operation, will retry compaction")
+
+// ErrCancelledCompaction is returned if a compaction is cancelled by a
+// concurrent excise or ingest-split operation.
+var ErrCancelledCompaction = errors.New("pebble: compaction cancelled by a concurrent operation, will retry compaction")
 
 var compactLabels = pprof.Labels("pebble", "compact")
 var flushLabels = pprof.Labels("pebble", "flush")
@@ -2706,7 +2709,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 			// the manifest lock, we don't expect this bool to change its value
 			// as only the holder of the manifest lock will ever write to it.
 			if c.cancel.Load() {
-				err = firstError(err, errCancelledCompaction)
+				err = firstError(err, ErrCancelledCompaction)
 			}
 			if err != nil {
 				// logAndApply calls logUnlock. If we didn't call it, we need to call
@@ -2871,7 +2874,7 @@ func (d *DB) runCompaction(
 	}
 
 	if c.cancel.Load() {
-		return ve, nil, stats, errCancelledCompaction
+		return ve, nil, stats, ErrCancelledCompaction
 	}
 
 	// Release the d.mu lock while doing I/O.
@@ -3004,7 +3007,7 @@ func (d *DB) runCompaction(
 	newOutput := func() error {
 		// Check if we've been cancelled by a concurrent operation.
 		if c.cancel.Load() {
-			return errCancelledCompaction
+			return ErrCancelledCompaction
 		}
 		fileMeta := &fileMetadata{}
 		d.mu.Lock()
