@@ -260,7 +260,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 
 		// Create the DB.
-		if err := d.mu.versions.create(jobID, dirname, opts, manifestMarker, setCurrent, &d.mu.Mutex); err != nil {
+		if err := d.mu.versions.create(jobID, dirname, opts, manifestMarker, setCurrent, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 	} else {
@@ -268,7 +268,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil, errors.Wrapf(ErrDBAlreadyExists, "dirname=%q", dirname)
 		}
 		// Load the version set.
-		if err := d.mu.versions.load(dirname, opts, manifestFileNum.FileNum(), manifestMarker, setCurrent, &d.mu.Mutex); err != nil {
+		if err := d.mu.versions.load(dirname, opts, manifestFileNum.FileNum(), manifestMarker, setCurrent, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 		if opts.ErrorIfNotPristine {
