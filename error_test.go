@@ -12,20 +12,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
 )
-
-type panicLogger struct{}
-
-func (l panicLogger) Infof(format string, args ...interface{}) {
-}
-
-func (l panicLogger) Fatalf(format string, args ...interface{}) {
-	panic(errors.Errorf("fatal: "+format, args...))
-}
 
 // corruptFS injects a corruption in the `index`th byte read.
 type corruptFS struct {
