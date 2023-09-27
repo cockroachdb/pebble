@@ -548,7 +548,7 @@ func randomOptions(
 		}
 	}
 	testOpts.seedEFOS = rng.Uint64()
-	testOpts.ingestSplit = rng.Intn(2) == 0
+	testOpts.ingestSplit = rng.Intn(2) == 0 && opts.FormatMajorVersion >= pebble.FormatVirtualSSTables
 	opts.Experimental.IngestSplit = func() bool { return testOpts.ingestSplit }
 
 	return testOpts
