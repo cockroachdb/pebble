@@ -487,7 +487,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		}
 	}
 
-	var obsolete []*FileMetadata
+	var obsolete []*FileBacking
 	for i := range trees {
 		obsolete = append(obsolete, trees[i].Release()...)
 	}
