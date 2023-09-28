@@ -586,6 +586,7 @@ func TestExcise(t *testing.T) {
 		require.NoError(t, d.Close())
 	}()
 
+	var opts *Options
 	reset := func() {
 		if d != nil {
 			require.NoError(t, d.Close())
@@ -593,7 +594,7 @@ func TestExcise(t *testing.T) {
 
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
-		opts := &Options{
+		opts = &Options{
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
@@ -621,6 +622,13 @@ func TestExcise(t *testing.T) {
 		switch td.Cmd {
 		case "reset":
 			reset()
+			return ""
+		case "reopen":
+			require.NoError(t, d.Close())
+			var err error
+			d, err = Open("", opts)
+			require.NoError(t, err)
+
 			return ""
 		case "batch":
 			b := d.NewIndexedBatch()
@@ -731,6 +739,36 @@ func TestExcise(t *testing.T) {
 			d.mu.Unlock()
 			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedFiles), ve.DebugString(base.DefaultFormatter))
 
+		case "confirm-backing":
+			// Confirms that the files have the same FileBacking.
+			fileNums := make(map[base.FileNum]struct{})
+			for i := range td.CmdArgs {
+				fNum, err := strconv.Atoi(td.CmdArgs[i].Key)
+				if err != nil {
+					panic("invalid file number")
+				}
+				fileNums[base.FileNum(fNum)] = struct{}{}
+			}
+			d.mu.Lock()
+			currVersion := d.mu.versions.currentVersion()
+			var ptr *manifest.FileBacking
+			for _, level := range currVersion.Levels {
+				lIter := level.Iter()
+				for f := lIter.First(); f != nil; f = lIter.Next() {
+					if _, ok := fileNums[f.FileNum]; ok {
+						if ptr == nil {
+							ptr = f.FileBacking
+							continue
+						}
+						if f.FileBacking != ptr {
+							d.mu.Unlock()
+							return "file backings are not the same"
+						}
+					}
+				}
+			}
+			d.mu.Unlock()
+			return "file backings are the same"
 		case "compact":
 			if len(td.CmdArgs) != 2 {
 				panic("insufficient args for compact command")
