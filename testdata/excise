@@ -277,3 +277,47 @@ lsm
 confirm-backing 7 10 11
 ----
 file backings are the same
+
+# Excise one boundary, the file backing should still be set.
+reset
+----
+
+batch
+set a a
+set b b
+set c c
+set d d
+set e e
+----
+
+flush
+----
+
+lsm
+----
+0.0:
+  000005:[a#10,SET-e#14,SET]
+
+build ext2
+set z z
+----
+
+ingest-and-excise ext2 excise=d-f
+----
+
+lsm
+----
+0.0:
+  000007:[a#10,SET-c#12,SET]
+6:
+  000006:[z#15,SET-z#15,SET]
+
+reopen
+----
+
+lsm
+----
+0.0:
+  000007:[a#10,SET-c#12,SET]
+6:
+  000006:[z#15,SET-z#15,SET]

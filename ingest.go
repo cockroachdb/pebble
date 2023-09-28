@@ -1729,6 +1729,13 @@ func (d *DB) excise(
 	// Create a file to the right, if necessary.
 	if exciseSpan.Contains(d.cmp, m.Largest) {
 		// No key exists to the right of the excise span in this file.
+		if needsBacking && !m.Virtual {
+			// If m is virtual, then its file backing is already known to the manifest.
+			// We don't need to create another file backing. Note that there must be
+			// only one CreatedBackingTables entry per backing sstable. This is
+			// indicated by the VersionEdit.CreatedBackingTables invariant.
+			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
+		}
 		return ve.NewFiles[len(ve.NewFiles)-numCreatedFiles:], nil
 	}
 	// Create a new file, rightFile, between [firstKeyAfter(exciseSpan.End), m.Largest].
