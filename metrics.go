@@ -253,6 +253,10 @@ type Metrics struct {
 		ZombieSize uint64
 		// The count of zombie tables.
 		ZombieCount int64
+		// The count of the backing sstables.
+		BackingTableCount uint64
+		// The sum of the sizes of the all of the backing sstables.
+		BackingTableSize uint64
 	}
 
 	TableCache CacheMetrics
@@ -527,6 +531,10 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("Zombie tables: %d (%s)\n",
 		redact.Safe(m.Table.ZombieCount),
 		humanize.Bytes.Uint64(m.Table.ZombieSize))
+
+	w.Printf("Backing tables: %d (%s)\n",
+		redact.Safe(m.Table.BackingTableCount),
+		humanize.Bytes.Uint64(m.Table.BackingTableSize))
 
 	formatCacheMetrics := func(m *CacheMetrics, name redact.SafeString) {
 		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",
