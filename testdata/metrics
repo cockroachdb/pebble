@@ -18,6 +18,7 @@ Compactions: 5  estimated debt: 6B  in progress: 2 (7B)
              default: 27  delete: 28  elision: 29  move: 30  read: 31  rewrite: 32  multi-level: 33
 MemTables: 12 (11B)  zombie: 14 (13B)
 Zombie tables: 16 (15B)
+Backing tables: 1 (2.0MB)
 Block cache: 2 entries (1B)  hit rate: 42.9%
 Table cache: 18 entries (17B)  hit rate: 48.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -63,6 +64,7 @@ Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
              default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
 Block cache: 3 entries (556B)  hit rate: 0.0%
 Table cache: 1 entries (800B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -115,6 +117,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.3KB)
+Backing tables: 0 (0B)
 Block cache: 5 entries (1.1KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -152,6 +155,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.3KB)
+Backing tables: 0 (0B)
 Block cache: 5 entries (1.1KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -186,6 +190,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 1 (661B)
+Backing tables: 0 (0B)
 Block cache: 3 entries (556B)  hit rate: 42.9%
 Table cache: 1 entries (800B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -223,6 +228,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 42.9%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -286,6 +292,7 @@ Compactions: 1  estimated debt: 2.9KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 42.9%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -333,6 +340,7 @@ Compactions: 2  estimated debt: 0B  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 27.3%
 Table cache: 0 entries (0B)  hit rate: 58.3%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -426,6 +434,7 @@ Compactions: 2  estimated debt: 5.0KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
 Block cache: 12 entries (2.4KB)  hit rate: 31.1%
 Table cache: 3 entries (2.3KB)  hit rate: 57.9%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -433,3 +442,97 @@ Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
+
+batch
+set g g
+set h h
+set i i
+set j j
+set k k
+set l l
+set m m
+----
+
+flush
+----
+0.1:
+  000015:[d#22,SET-d#22,SET]
+  000016:[e#23,SET-e#23,SET]
+  000019:[f#24,SET-f#24,SET]
+0.0:
+  000023:[d#19,SET-f#21,SET]
+  000025:[g#25,SET-i#27,SET]
+  000026:[j#28,SET-l#30,SET]
+  000027:[m#31,SET-m#31,SET]
+6:
+  000008:[a#0,SET-b#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+
+build ext1
+set z z
+----
+
+ingest-and-excise ext1 excise=i-k
+----
+
+# sstable 29, 30 were created as virtual when i-k was excised.
+lsm
+----
+0.1:
+  000015:[d#22,SET-d#22,SET]
+  000016:[e#23,SET-e#23,SET]
+  000019:[f#24,SET-f#24,SET]
+0.0:
+  000023:[d#19,SET-f#21,SET]
+  000029:[g#25,SET-h#26,SET]
+  000030:[k#29,SET-l#30,SET]
+  000027:[m#31,SET-m#31,SET]
+6:
+  000008:[a#0,SET-b#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+  000028:[z#32,SET-z#32,SET]
+
+# There should be 2 backing tables.
+metrics-value
+num-backing
+backing-size
+----
+2
+1.3KB
+
+# Virtualize a virtual sstable. The backing table stats shouldn't change.
+build ext1
+set zz zz
+----
+
+ingest-and-excise ext1 excise=k-l
+----
+
+# sstable 32 created when k-l was excised, but no new backing file should be
+#  created.
+lsm
+----
+0.1:
+  000015:[d#22,SET-d#22,SET]
+  000016:[e#23,SET-e#23,SET]
+  000019:[f#24,SET-f#24,SET]
+0.0:
+  000023:[d#19,SET-f#21,SET]
+  000029:[g#25,SET-h#26,SET]
+  000032:[l#30,SET-l#30,SET]
+  000027:[m#31,SET-m#31,SET]
+6:
+  000008:[a#0,SET-b#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+  000028:[z#32,SET-z#32,SET]
+  000031:[zz#33,SET-zz#33,SET]
+
+metrics-value
+num-backing
+backing-size
+----
+2
+1.3KB

@@ -1963,6 +1963,10 @@ func (d *DB) Metrics() *Metrics {
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
+	metrics.Table.BackingTableCount = uint64(len(d.mu.versions.fileBackingMap))
+	for _, backing := range d.mu.versions.fileBackingMap {
+		metrics.Table.BackingTableSize += backing.Size
+	}
 	d.mu.versions.logUnlock()
 
 	metrics.LogWriter.FsyncLatency = d.mu.log.metrics.fsyncLatency
