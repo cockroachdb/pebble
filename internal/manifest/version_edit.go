@@ -783,6 +783,12 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		b.AddedFileBacking = make(map[base.DiskFileNum]*FileBacking)
 	}
 	for _, fb := range ve.CreatedBackingTables {
+		if _, ok := b.AddedFileBacking[fb.DiskFileNum]; ok {
+			// There is already a FileBacking associated with fb.DiskFileNum.
+			// This should never happen. There must always be only one FileBacking
+			// associated with a backing sstable.
+			panic(fmt.Sprintf("pebble: duplicate file backing %s", fb.DiskFileNum.String()))
+		}
 		b.AddedFileBacking[fb.DiskFileNum] = fb
 	}
 
