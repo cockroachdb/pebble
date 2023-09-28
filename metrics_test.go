@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -48,6 +49,8 @@ func exampleMetrics() Metrics {
 	m.Snapshots.Count = 4
 	m.Snapshots.EarliestSeqNum = 1024
 	m.Table.ZombieSize = 15
+	m.Table.BackingTableCount = 1
+	m.Table.BackingTableSize = 2 << 20
 	m.Table.ZombieCount = 16
 	m.TableCache.Size = 17
 	m.TableCache.Count = 18
@@ -183,6 +186,18 @@ func TestMetrics(t *testing.T) {
 			}
 			return ""
 
+		case "lsm":
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
+		case "ingest-and-excise":
+			if err := runIngestAndExciseCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return ""
+
 		case "iter-close":
 			if len(td.CmdArgs) != 1 {
 				return "iter-close <name>"
@@ -228,6 +243,31 @@ func TestMetrics(t *testing.T) {
 			d.mu.Unlock()
 
 			return d.Metrics().StringForTests()
+
+		case "metrics-value":
+			// metrics-value confirms the value of a given metric. Note that there
+			// are some metrics which aren't deterministic and behave differently
+			// for invariant/non-invariant builds. An example of this is cache
+			// hit rates. Under invariant builds, the excising code will try
+			// to create iterators and confirm that the virtual sstable bounds
+			// are accurate. Reads on these iterators will change the cache hit
+			// rates.
+			lines := strings.Split(td.Input, "\n")
+			m := d.Metrics()
+			// TODO(bananabrick): Use reflection to pull the values associated
+			// with the metrics fields.
+			var buf bytes.Buffer
+			for i := range lines {
+				line := lines[i]
+				if line == "num-backing" {
+					buf.WriteString(fmt.Sprintf("%d\n", m.Table.BackingTableCount))
+				} else if line == "backing-size" {
+					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(m.Table.BackingTableSize)))
+				} else {
+					panic(fmt.Sprintf("invalid field: %s", line))
+				}
+			}
+			return buf.String()
 
 		case "disk-usage":
 			return humanize.Bytes.Uint64(d.Metrics().DiskSpaceUsage()).String()
