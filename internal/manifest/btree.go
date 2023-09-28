@@ -195,7 +195,7 @@ func (n *node) incRef() {
 // new nodes pass contentsToo=false to preserve existing reference counts during
 // operations that should yield a net-zero change to descendant refcounts.
 // When a node is released, its contained files are dereferenced.
-func (n *node) decRef(contentsToo bool, obsolete *[]*FileMetadata) {
+func (n *node) decRef(contentsToo bool, obsolete *[]*FileBacking) {
 	if n.ref.Add(-1) > 0 {
 		// Other references remain. Can't free.
 		return
@@ -215,7 +215,13 @@ func (n *node) decRef(contentsToo bool, obsolete *[]*FileMetadata) {
 				if obsolete == nil {
 					panic(fmt.Sprintf("file metadata %s dereferenced to zero during tree mutation", f.FileNum))
 				}
-				*obsolete = append(*obsolete, f)
+				// Reference counting is performed on the FileBacking. In the case
+				// of a virtual sstable, this reference counting is performed on
+				// a FileBacking which is shared by every single virtual sstable
+				// with the same backing sstable. If the reference count hits 0,
+				// then we know that the FileBacking won't be required by any
+				// sstable in Pebble, and that the backing sstable can be deleted.
+				*obsolete = append(*obsolete, f.FileBacking)
 			}
 		}
 		if !n.leaf {
@@ -761,8 +767,8 @@ type btree struct {
 
 // Release dereferences and clears the root node of the btree, removing all
 // items from the btree. In doing so, it decrements contained file counts.
-// It returns a slice of newly obsolete files, if any.
-func (t *btree) Release() (obsolete []*FileMetadata) {
+// It returns a slice of newly obsolete backing files, if any.
+func (t *btree) Release() (obsolete []*FileBacking) {
 	if t.root != nil {
 		t.root.decRef(true /* contentsToo */, &obsolete)
 		t.root = nil

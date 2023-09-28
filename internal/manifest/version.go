@@ -1204,12 +1204,7 @@ func (v *Version) Unref() {
 		l := v.list
 		l.mu.Lock()
 		l.Remove(v)
-		obsolete := v.unrefFiles()
-		fileBacking := make([]*FileBacking, len(obsolete))
-		for i, f := range obsolete {
-			fileBacking[i] = f.FileBacking
-		}
-		v.Deleted(fileBacking)
+		v.Deleted(v.unrefFiles())
 		l.mu.Unlock()
 	}
 }
@@ -1221,17 +1216,12 @@ func (v *Version) Unref() {
 func (v *Version) UnrefLocked() {
 	if v.refs.Add(-1) == 0 {
 		v.list.Remove(v)
-		obsolete := v.unrefFiles()
-		fileBacking := make([]*FileBacking, len(obsolete))
-		for i, f := range obsolete {
-			fileBacking[i] = f.FileBacking
-		}
-		v.Deleted(fileBacking)
+		v.Deleted(v.unrefFiles())
 	}
 }
 
-func (v *Version) unrefFiles() []*FileMetadata {
-	var obsolete []*FileMetadata
+func (v *Version) unrefFiles() []*FileBacking {
+	var obsolete []*FileBacking
 	for _, lm := range v.Levels {
 		obsolete = append(obsolete, lm.release()...)
 	}
