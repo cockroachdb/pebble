@@ -120,7 +120,7 @@ func (i CompactionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 			redact.SafeString(i.Reason))
 		w.Printf("%s", i.Annotations)
 		w.Printf("%s; ", levelInfos(i.Input))
-		w.Printf("OverlappingRatio: Single %.2f, Multi %.2f ", i.SingleLevelOverlappingRatio, i.MultiLevelOverlappingRatio)
+		w.Printf("OverlappingRatio: Single %.2f, Multi %.2f", i.SingleLevelOverlappingRatio, i.MultiLevelOverlappingRatio)
 		return
 	}
 	outputSize := tablesTotalSize(i.Output.Tables)
