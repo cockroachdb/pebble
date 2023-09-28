@@ -49,6 +49,7 @@ Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
              default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 0 (0B)
 Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
 Block cache: 6 entries (1.2KB)  hit rate: 35.7%
 Table cache: 1 entries (800B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
