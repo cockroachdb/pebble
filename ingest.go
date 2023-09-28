@@ -1608,7 +1608,7 @@ func (d *DB) excise(
 	var iter internalIterator
 	var rangeDelIter keyspan.FragmentIterator
 	var rangeKeyIter keyspan.FragmentIterator
-	backingTableCreated := false
+	needsBacking := false
 	// Create a file to the left of the excise span, if necessary.
 	// The bounds of this file will be [m.Smallest, lastKeyBefore(exciseSpan.Start)].
 	//
@@ -1722,14 +1722,20 @@ func (d *DB) excise(
 			leftFile.ValidateVirtual(m)
 			d.checkVirtualBounds(leftFile)
 			ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: leftFile})
-			ve.CreatedBackingTables = append(ve.CreatedBackingTables, leftFile.FileBacking)
-			backingTableCreated = true
+			needsBacking = true
 			numCreatedFiles++
 		}
 	}
 	// Create a file to the right, if necessary.
 	if exciseSpan.Contains(d.cmp, m.Largest) {
 		// No key exists to the right of the excise span in this file.
+		if needsBacking && !m.Virtual {
+			// If m is virtual, then its file backing is already known to the manifest.
+			// We don't need to create another file backing. Note that there must be
+			// only one CreatedBackingTables entry per backing sstable. This is
+			// indicated by the VersionEdit.CreatedBackingTables invariant.
+			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
+		}
 		return ve.NewFiles[len(ve.NewFiles)-numCreatedFiles:], nil
 	}
 	// Create a new file, rightFile, between [firstKeyAfter(exciseSpan.End), m.Largest].
@@ -1832,11 +1838,16 @@ func (d *DB) excise(
 		rightFile.ValidateVirtual(m)
 		d.checkVirtualBounds(rightFile)
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: rightFile})
-		if !backingTableCreated {
-			ve.CreatedBackingTables = append(ve.CreatedBackingTables, rightFile.FileBacking)
-			backingTableCreated = true
-		}
+		needsBacking = true
 		numCreatedFiles++
+	}
+
+	if needsBacking && !m.Virtual {
+		// If m is virtual, then its file backing is already known to the manifest.
+		// We don't need to create another file backing. Note that there must be
+		// only one CreatedBackingTables entry per backing sstable. This is
+		// indicated by the VersionEdit.CreatedBackingTables invariant.
+		ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 	}
 
 	if err := rightFile.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
