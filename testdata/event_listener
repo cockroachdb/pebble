@@ -159,7 +159,7 @@ sync: db
 [JOB 7] flushed 1 memtable (100B) to L0 [000008] (662B), in 1.0s (2.0s total), output rate 662B/s
 remove: db/MANIFEST-000001
 [JOB 7] MANIFEST deleted 000001
-[JOB 8] compacting(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00; OverlappingRatio: Single 0.00, Multi 0.00 
+[JOB 8] compacting(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00; OverlappingRatio: Single 0.00, Multi 0.00
 open: db/000005.sst
 read-at(609, 53): db/000005.sst
 read-at(572, 37): db/000005.sst
