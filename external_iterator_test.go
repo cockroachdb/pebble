@@ -137,8 +137,8 @@ func TestSimpleIterError(t *testing.T) {
 	s.init(IterOptions{})
 	defer s.Close()
 
-	iterKey, _ := s.First()
-	require.Nil(t, iterKey)
+	iterKV := s.First()
+	require.Nil(t, iterKV)
 	require.Error(t, s.Error())
 }
 
@@ -294,12 +294,12 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 				}
 				lastSeekKey = append(lastSeekKey[:0], seekKey...)
 
-				newKey, _ := iter.SeekGE(seekKey, flags)
-				if newKey == nil || !bytes.Equal(newKey.UserKey, seekKey) {
+				newKV := iter.SeekGE(seekKey, flags)
+				if newKV == nil || !bytes.Equal(newKV.UserKey, seekKey) {
 					// We skipped some keys. Check if maybeFilteredKeys is true.
 					formattedNewKey := "<nil>"
-					if newKey != nil {
-						formattedNewKey = fmt.Sprintf("%s", testkeys.Comparer.FormatKey(newKey.UserKey))
+					if newKV != nil {
+						formattedNewKey = fmt.Sprintf("%s", testkeys.Comparer.FormatKey(newKV.UserKey))
 					}
 					require.True(t, iter.MaybeFilteredKeys(), "seeked for key = %s, got key = %s indicating block property filtering but MaybeFilteredKeys = false", testkeys.Comparer.FormatKey(seekKey), formattedNewKey)
 				}

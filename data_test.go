@@ -400,10 +400,13 @@ func runInternalIterCmd(
 		opt(&o)
 	}
 
-	getKV := func(key *InternalKey, val LazyValue) (*InternalKey, []byte) {
-		v, _, err := val.Value(nil)
+	getKV := func(kv *base.InternalKV) (*InternalKey, []byte) {
+		if kv == nil {
+			return nil, nil
+		}
+		v, _, err := kv.Value(nil)
 		require.NoError(t, err)
-		return key, v
+		return &kv.InternalKey, v
 	}
 	var b bytes.Buffer
 	var prefix []byte
@@ -634,10 +637,10 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	}
 	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(f), writeOpts)
 	iter := b.newInternalIter(nil)
-	for key, val := iter.First(); key != nil; key, val = iter.Next() {
-		tmp := *key
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		tmp := kv.InternalKey
 		tmp.SetSeqNum(0)
-		if err := w.Add(tmp, val.InPlaceValue()); err != nil {
+		if err := w.Add(tmp, kv.InPlaceValue()); err != nil {
 			return err
 		}
 	}
@@ -724,10 +727,10 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	}
 	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 	iter := b.newInternalIter(nil)
-	for key, val := iter.First(); key != nil; key, val = iter.Next() {
-		tmp := *key
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		tmp := kv.InternalKey
 		tmp.SetSeqNum(0)
-		if err := w.Add(tmp, val.InPlaceValue()); err != nil {
+		if err := w.Add(tmp, kv.InPlaceValue()); err != nil {
 			return err
 		}
 	}

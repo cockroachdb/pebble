@@ -268,20 +268,20 @@ func ingestLoad1(
 		}
 		defer iter.Close()
 		var smallest InternalKey
-		if key, _ := iter.First(); key != nil {
-			if err := ingestValidateKey(opts, key); err != nil {
+		if kv := iter.First(); kv != nil {
+			if err := ingestValidateKey(opts, &kv.InternalKey); err != nil {
 				return nil, err
 			}
-			smallest = (*key).Clone()
+			smallest = kv.InternalKey.Clone()
 		}
 		if err := iter.Error(); err != nil {
 			return nil, err
 		}
-		if key, _ := iter.Last(); key != nil {
-			if err := ingestValidateKey(opts, key); err != nil {
+		if kv := iter.Last(); kv != nil {
+			if err := ingestValidateKey(opts, &kv.InternalKey); err != nil {
 				return nil, err
 			}
-			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, key.Clone())
+			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, kv.InternalKey.Clone())
 		}
 		if err := iter.Error(); err != nil {
 			return nil, err
@@ -739,9 +739,9 @@ func overlapWithIterator(
 	//    means boundary < L and hence is similar to 1).
 	// 4) boundary == L and L is sentinel,
 	//    we'll always overlap since for any values of i,j ranges [i, k) and [j, k) always overlap.
-	key, _ := iter.SeekGE(keyRange.smallest.UserKey, base.SeekGEFlagsNone)
-	if key != nil {
-		c := sstableKeyCompare(cmp, *key, keyRange.largest)
+	kv := iter.SeekGE(keyRange.smallest.UserKey, base.SeekGEFlagsNone)
+	if kv != nil {
+		c := sstableKeyCompare(cmp, kv.InternalKey, keyRange.largest)
 		if c <= 0 {
 			return true
 		}
@@ -1649,15 +1649,15 @@ func (d *DB) excise(
 			if err != nil {
 				return nil, err
 			}
-			var key *InternalKey
+			var kv *base.InternalKV
 			if iter != nil {
 				defer iter.Close()
-				key, _ = iter.SeekLT(exciseSpan.Start, base.SeekLTFlagsNone)
+				kv = iter.SeekLT(exciseSpan.Start, base.SeekLTFlagsNone)
 			} else {
 				iter = emptyIter
 			}
-			if key != nil {
-				leftFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, key.Clone())
+			if kv != nil {
+				leftFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, kv.InternalKey.Clone())
 			}
 			// Store the min of (exciseSpan.Start, rdel.End) in lastRangeDel. This
 			// needs to be a copy if the key is owned by the range del iter.
@@ -1771,9 +1771,9 @@ func (d *DB) excise(
 				rangeDelIter = emptyKeyspanIter
 			}
 		}
-		key, _ := iter.SeekGE(exciseSpan.End, base.SeekGEFlagsNone)
-		if key != nil {
-			rightFile.ExtendPointKeyBounds(d.cmp, key.Clone(), largestPointKey)
+		kv := iter.SeekGE(exciseSpan.End, base.SeekGEFlagsNone)
+		if kv != nil {
+			rightFile.ExtendPointKeyBounds(d.cmp, kv.InternalKey.Clone(), largestPointKey)
 		}
 		// Store the max of (exciseSpan.End, rdel.Start) in firstRangeDel. This
 		// needs to be a copy if the key is owned by the range del iter.

@@ -32,8 +32,7 @@ type getIter struct {
 	mem          flushableList
 	l0           []manifest.LevelSlice
 	version      *version
-	iterKey      *InternalKey
-	iterValue    base.LazyValue
+	iterKV       *base.InternalKV
 	err          error
 }
 
@@ -47,31 +46,29 @@ func (g *getIter) String() string {
 	return fmt.Sprintf("len(l0)=%d, len(mem)=%d, level=%d", len(g.l0), len(g.mem), g.level)
 }
 
-func (g *getIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, base.LazyValue) {
+func (g *getIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	panic("pebble: SeekGE unimplemented")
 }
 
-func (g *getIter) SeekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (g *getIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-func (g *getIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, base.LazyValue) {
+func (g *getIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	panic("pebble: SeekLT unimplemented")
 }
 
-func (g *getIter) First() (*InternalKey, base.LazyValue) {
+func (g *getIter) First() *base.InternalKV {
 	return g.Next()
 }
 
-func (g *getIter) Last() (*InternalKey, base.LazyValue) {
+func (g *getIter) Last() *base.InternalKV {
 	panic("pebble: Last unimplemented")
 }
 
-func (g *getIter) Next() (*InternalKey, base.LazyValue) {
+func (g *getIter) Next() *base.InternalKV {
 	if g.iter != nil {
-		g.iterKey, g.iterValue = g.iter.Next()
+		g.iterKV = g.iter.Next()
 	}
 
 	for {
@@ -84,13 +81,13 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			if g.rangeDelIter != nil {
 				g.tombstone = keyspan.Get(g.comparer.Compare, g.rangeDelIter, g.key)
 				if g.err = g.rangeDelIter.Close(); g.err != nil {
-					return nil, base.LazyValue{}
+					return nil
 				}
 				g.rangeDelIter = nil
 			}
 
-			if g.iterKey != nil {
-				key := g.iterKey
+			if g.iterKV != nil {
+				key := g.iterKV.InternalKey
 				if g.tombstone != nil && g.tombstone.CoversAt(g.snapshot, key.SeqNum()) {
 					// We have a range tombstone covering this key. Rather than return a
 					// point or range deletion here, we return false and close our
@@ -98,14 +95,14 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 					// effectively stopping iteration.
 					g.err = g.iter.Close()
 					g.iter = nil
-					return nil, base.LazyValue{}
+					return nil
 				}
 				if g.comparer.Equal(g.key, key.UserKey) {
 					if !key.Visible(g.snapshot, base.InternalKeySeqNumMax) {
-						g.iterKey, g.iterValue = g.iter.Next()
+						g.iterKV = g.iter.Next()
 						continue
 					}
-					return g.iterKey, g.iterValue
+					return g.iterKV
 				}
 			}
 			// We've advanced the iterator passed the desired key. Move on to the
@@ -113,7 +110,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			g.err = g.iter.Close()
 			g.iter = nil
 			if g.err != nil {
-				return nil, base.LazyValue{}
+				return nil
 			}
 		}
 
@@ -121,8 +118,8 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		if g.batch != nil {
 			if g.batch.index == nil {
 				g.err = ErrNotIndexed
-				g.iterKey, g.iterValue = nil, base.LazyValue{}
-				return nil, base.LazyValue{}
+				g.iterKV = nil
+				return nil
 			}
 			g.iter = g.batch.newInternalIter(nil)
 			g.rangeDelIter = g.batch.newRangeDelIter(
@@ -131,7 +128,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 				// batch keys should be filtered.
 				base.InternalKeySeqNumMax,
 			)
-			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
+			g.iterKV = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
 			g.batch = nil
 			continue
 		}
@@ -139,7 +136,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		// If we have a tombstone from a previous level it is guaranteed to delete
 		// keys in lower levels.
 		if g.tombstone != nil && g.tombstone.VisibleAt(g.snapshot) {
-			return nil, base.LazyValue{}
+			return nil
 		}
 
 		// Create iterators from memtables from newest to oldest.
@@ -148,7 +145,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			g.iter = m.newIter(nil)
 			g.rangeDelIter = m.newRangeDelIter(nil)
 			g.mem = g.mem[:n-1]
-			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
+			g.iterKV = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
 			continue
 		}
 
@@ -171,10 +168,9 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 				if g.comparer.Split != nil {
 					prefix = g.key[:g.comparer.Split(g.key)]
 				}
-				g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
+				g.iterKV = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
 				if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
-					g.iterKey = nil
-					g.iterValue = base.LazyValue{}
+					g.iterKV = nil
 				}
 				continue
 			}
@@ -182,7 +178,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		}
 
 		if g.level >= numLevels {
-			return nil, base.LazyValue{}
+			return nil
 		}
 		if g.version.Levels[g.level].Empty() {
 			g.level++
@@ -204,24 +200,23 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		if g.comparer.Split != nil {
 			prefix = g.key[:g.comparer.Split(g.key)]
 		}
-		g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
+		g.iterKV = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
 		if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
-			g.iterKey = nil
-			g.iterValue = base.LazyValue{}
+			g.iterKV = nil
 		}
 	}
 }
 
-func (g *getIter) Prev() (*InternalKey, base.LazyValue) {
+func (g *getIter) Prev() *base.InternalKV {
 	panic("pebble: Prev unimplemented")
 }
 
-func (g *getIter) NextPrefix([]byte) (*InternalKey, base.LazyValue) {
+func (g *getIter) NextPrefix([]byte) *base.InternalKV {
 	panic("pebble: NextPrefix unimplemented")
 }
 
 func (g *getIter) Valid() bool {
-	return g.iterKey != nil && g.err == nil
+	return g.iterKV != nil && g.err == nil
 }
 
 func (g *getIter) Error() error {

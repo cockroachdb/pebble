@@ -23,9 +23,14 @@ func newInternalIterAdapter(iter internalIterator) *internalIterAdapter {
 	}
 }
 
-func (i *internalIterAdapter) update(key *InternalKey, val LazyValue) bool {
-	i.key = key
-	if v, _, err := val.Value(nil); err != nil {
+func (i *internalIterAdapter) update(kv *base.InternalKV) bool {
+	if kv == nil {
+		i.key, i.val = nil, nil
+		return false
+	}
+
+	i.key = &kv.InternalKey
+	if v, _, err := kv.Value(nil); err != nil {
 		i.key = nil
 		i.val = nil
 		i.err = err

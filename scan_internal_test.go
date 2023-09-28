@@ -505,8 +505,10 @@ func TestPointCollapsingIter(t *testing.T) {
 						})
 						continue
 					}
-					f.keys = append(f.keys, k)
-					f.vals = append(f.vals, v)
+					f.kvs = append(f.kvs, base.InternalKV{
+						InternalKey: k,
+						LazyValue:   base.MakeInPlaceValue(v),
+					})
 				}
 			}
 

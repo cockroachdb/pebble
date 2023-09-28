@@ -63,18 +63,17 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	var v base.LazyValue
-	ikey, v := i.SeekGE(key, base.SeekGEFlagsNone)
-	value, _, err = v.Value(nil)
-	if err != nil {
-		return nil, err
-	}
+	kv := i.SeekGE(key, base.SeekGEFlagsNone)
 
-	if ikey == nil || r.Compare(key, ikey.UserKey) != 0 {
+	if kv == nil || r.Compare(key, kv.UserKey) != 0 {
 		err := i.Close()
 		if err == nil {
 			err = base.ErrNotFound
 		}
+		return nil, err
+	}
+	value, _, err = kv.Value(nil)
+	if err != nil {
 		return nil, err
 	}
 
@@ -103,15 +102,21 @@ func newIterAdapter(iter Iterator) *iterAdapter {
 	}
 }
 
-func (i *iterAdapter) update(key *InternalKey, val base.LazyValue) bool {
-	i.key = key
-	if v, _, err := val.Value(nil); err != nil {
+func (i *iterAdapter) update(kv *base.InternalKV) bool {
+	if kv == nil {
 		i.key = nil
 		i.val = nil
-	} else {
-		i.val = v
+		return false
 	}
-	return i.key != nil
+	i.key = &kv.InternalKey
+	v, _, err := kv.Value(nil)
+	if err != nil {
+		i.key = nil
+		i.val = nil
+		return false
+	}
+	i.val = v
+	return true
 }
 
 func (i *iterAdapter) String() string {
@@ -148,7 +153,7 @@ func (i *iterAdapter) NextPrefix(succKey []byte) bool {
 
 func (i *iterAdapter) NextIgnoreResult() {
 	i.Iterator.Next()
-	i.update(nil, base.LazyValue{})
+	i.update(nil)
 }
 
 func (i *iterAdapter) Prev() bool {
@@ -360,8 +365,8 @@ func TestVirtualReader(t *testing.T) {
 			}
 
 			var buf bytes.Buffer
-			for key, val := iter.First(); key != nil; key, val = iter.Next() {
-				fmt.Fprintf(&buf, "%s:%s\n", key.String(), val.InPlaceValue())
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
+				fmt.Fprintf(&buf, "%s:%s\n", kv.InternalKey.String(), kv.InPlaceValue())
 			}
 			err = iter.Close()
 			if err != nil {
@@ -663,8 +668,8 @@ func TestInjectedErrors(t *testing.T) {
 				return err
 			}
 			defer func() { reterr = firstError(reterr, iter.Close()) }()
-			for k, v := iter.First(); k != nil; k, v = iter.Next() {
-				val, _, err := v.Value(nil)
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
+				val, _, err := kv.Value(nil)
 				if err != nil {
 					return err
 				}
@@ -728,10 +733,10 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 		require.NoError(t, iter.Close())
 	}()
 	require.NoError(t, err)
-	for key, value := iter.First(); key != nil; key, value = iter.Next() {
-		bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 		require.NoError(t, err)
-		fmt.Fprintf(&buf, " %s: size %d\n", string(key.UserKey), bh.Length)
+		fmt.Fprintf(&buf, " %s: size %d\n", string(kv.UserKey), bh.Length)
 		if twoLevelIndex {
 			b, err := r.readBlock(
 				context.Background(), bh.BlockHandle, nil, nil, nil, nil)
@@ -742,10 +747,10 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 				require.NoError(t, iter2.Close())
 			}()
 			require.NoError(t, err)
-			for key, value := iter2.First(); key != nil; key, value = iter2.Next() {
-				bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
+			for kv := iter2.First(); kv != nil; kv = iter2.Next() {
+				bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 				require.NoError(t, err)
-				fmt.Fprintf(&buf, "   %s: size %d\n", string(key.UserKey), bh.Length)
+				fmt.Fprintf(&buf, "   %s: size %d\n", string(kv.UserKey), bh.Length)
 			}
 		}
 	}
@@ -969,7 +974,7 @@ func testBytesIteratedWithCompression(
 				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r}, &pool)
 				require.NoError(t, err)
 
-				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
+				for kv := citer.First(); kv != nil; kv = citer.Next() {
 					if bytesIterated < prevIterated {
 						t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
 					}
@@ -1166,14 +1171,14 @@ func TestReaderChecksumErrors(t *testing.T) {
 
 						iter, err := r.NewIter(nil, nil)
 						require.NoError(t, err)
-						for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
+						for kv := iter.First(); kv != nil; kv = iter.Next() {
 						}
 						require.Regexp(t, `checksum mismatch`, iter.Error())
 						require.Regexp(t, `checksum mismatch`, iter.Close())
 
 						iter, err = r.NewIter(nil, nil)
 						require.NoError(t, err)
-						for k, _ := iter.Last(); k != nil; k, _ = iter.Prev() {
+						for kv := iter.Last(); kv != nil; kv = iter.Prev() {
 						}
 						require.Regexp(t, `checksum mismatch`, iter.Error())
 						require.Regexp(t, `checksum mismatch`, iter.Close())
@@ -1582,13 +1587,13 @@ func BenchmarkTableIterNext(b *testing.B) {
 
 				b.ResetTimer()
 				var sum int64
-				var key *InternalKey
+				var kv *base.InternalKV
 				for i := 0; i < b.N; i++ {
-					if key == nil {
-						key, _ = it.First()
+					if kv == nil {
+						kv = it.First()
 					}
-					sum += int64(binary.BigEndian.Uint64(key.UserKey))
-					key, _ = it.Next()
+					sum += int64(binary.BigEndian.Uint64(kv.UserKey))
+					kv = it.Next()
 				}
 				if testing.Verbose() {
 					fmt.Fprint(io.Discard, sum)
@@ -1611,13 +1616,13 @@ func BenchmarkTableIterPrev(b *testing.B) {
 
 				b.ResetTimer()
 				var sum int64
-				var key *InternalKey
+				var kv *base.InternalKV
 				for i := 0; i < b.N; i++ {
-					if key == nil {
-						key, _ = it.Last()
+					if kv == nil {
+						kv = it.Last()
 					}
-					sum += int64(binary.BigEndian.Uint64(key.UserKey))
-					key, _ = it.Prev()
+					sum += int64(binary.BigEndian.Uint64(kv.UserKey))
+					kv = it.Prev()
 				}
 				if testing.Verbose() {
 					fmt.Fprint(io.Discard, sum)
@@ -1693,13 +1698,13 @@ func BenchmarkSeqSeekGEExhausted(b *testing.B) {
 						var seekGEFlags SeekGEFlags
 						for i := 0; i < b.N; i++ {
 							seekKey := seekKeys[0]
-							var k *InternalKey
+							var kv *base.InternalKV
 							if prefixSeek {
-								k, _ = it.SeekPrefixGE(seekKey, seekKey, seekGEFlags)
+								kv = it.SeekPrefixGE(seekKey, seekKey, seekGEFlags)
 							} else {
-								k, _ = it.SeekGE(seekKey, seekGEFlags)
+								kv = it.SeekGE(seekKey, seekGEFlags)
 							}
-							if k != nil {
+							if kv != nil {
 								b.Fatal("found a key")
 							}
 							if it.Error() != nil {
@@ -1795,20 +1800,19 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 							b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
 								iter, err := r.NewIter(nil, nil)
 								require.NoError(b, err)
-								var k *InternalKey
-								var v base.LazyValue
+								var kv *base.InternalKV
 								var valBuf [100]byte
 								b.ResetTimer()
 								for i := 0; i < b.N; i++ {
-									if k == nil {
-										k, _ = iter.First()
-										if k == nil {
-											b.Fatalf("k is nil")
+									if kv == nil {
+										kv = iter.First()
+										if kv == nil {
+											b.Fatalf("kv is nil")
 										}
 									}
-									k, v = iter.Next()
-									if k != nil && readValue {
-										_, callerOwned, err := v.Value(valBuf[:])
+									kv = iter.Next()
+									if kv != nil && readValue {
+										_, callerOwned, err := kv.Value(valBuf[:])
 										if err != nil {
 											b.Fatal(err)
 										} else if callerOwned {
@@ -1939,15 +1943,15 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 						b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
 							iter, err := r.NewIter(nil, nil)
 							require.NoError(b, err)
-							var nextFunc func(index int) (*InternalKey, base.LazyValue)
+							var nextFunc func(index int) *base.InternalKV
 							switch method {
 							case "seek-ge":
-								nextFunc = func(index int) (*InternalKey, base.LazyValue) {
+								nextFunc = func(index int) *base.InternalKV {
 									var flags base.SeekGEFlags
 									return iter.SeekGE(succKeys[index], flags.EnableTrySeekUsingNext())
 								}
 							case "next-prefix":
-								nextFunc = func(index int) (*InternalKey, base.LazyValue) {
+								nextFunc = func(index int) *base.InternalKV {
 									return iter.NextPrefix(succKeys[index])
 								}
 							default:
@@ -1955,21 +1959,20 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 							}
 							n := keys.Count()
 							j := n
-							var k *InternalKey
-							var v base.LazyValue
+							var kv *base.InternalKV
 							var valBuf [100]byte
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								if k == nil {
+								if kv == nil {
 									if j != n {
 										b.Fatalf("unexpected %d != %d", j, n)
 									}
-									k, _ = iter.First()
+									kv = iter.First()
 									j = 0
 								} else {
-									k, v = nextFunc(int(j - 1))
-									if k != nil && readValue {
-										_, callerOwned, err := v.Value(valBuf[:])
+									kv = nextFunc(int(j - 1))
+									if kv != nil && readValue {
+										_, callerOwned, err := kv.Value(valBuf[:])
 										if err != nil {
 											b.Fatal(err)
 										} else if callerOwned {
@@ -1978,7 +1981,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 									}
 
 								}
-								if k != nil {
+								if kv != nil {
 									j++
 								}
 							}
@@ -2075,10 +2078,10 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 								b.ResetTimer()
 								for i := 0; i < b.N; i++ {
 									count := int64(0)
-									k, _ := iter.First()
-									for k != nil {
+									kv := iter.First()
+									for kv != nil {
 										count++
-										k, _ = iter.Next()
+										kv = iter.Next()
 									}
 									if format == TableFormatPebblev4 && hideObsoletePoints {
 										if count != 1 {

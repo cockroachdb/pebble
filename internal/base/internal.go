@@ -161,6 +161,12 @@ func (k InternalKeyKind) String() string {
 	return fmt.Sprintf("UNKNOWN:%d", k)
 }
 
+// InternalKV represents a single internal key-value pair.
+type InternalKV struct {
+	InternalKey
+	LazyValue
+}
+
 // InternalKey is a key used for the in-memory and on-disk partial DBs that
 // make up a pebble DB.
 //

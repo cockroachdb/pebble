@@ -28,18 +28,18 @@ import (
 // not contain the key.
 func (m *memTable) get(key []byte) (value []byte, err error) {
 	it := m.skl.NewIter(nil, nil)
-	ikey, val := it.SeekGE(key, base.SeekGEFlagsNone)
-	if ikey == nil {
+	kv := it.SeekGE(key, base.SeekGEFlagsNone)
+	if kv == nil {
 		return nil, ErrNotFound
 	}
-	if !m.equal(key, ikey.UserKey) {
+	if !m.equal(key, kv.UserKey) {
 		return nil, ErrNotFound
 	}
-	switch ikey.Kind() {
+	switch kv.Kind() {
 	case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 		return nil, ErrNotFound
 	default:
-		return val.InPlaceValue(), nil
+		return kv.InPlaceValue(), nil
 	}
 }
 
@@ -428,27 +428,27 @@ func BenchmarkMemTableIterSeekGE(b *testing.B) {
 func BenchmarkMemTableIterNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := m.newIter(nil)
-	_, _ = iter.First()
+	_ = iter.First()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key, _ := iter.Next()
-		if key == nil {
-			key, _ = iter.First()
+		kv := iter.Next()
+		if kv == nil {
+			kv = iter.First()
 		}
-		_ = key
+		_ = kv
 	}
 }
 
 func BenchmarkMemTableIterPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := m.newIter(nil)
-	_, _ = iter.Last()
+	_ = iter.Last()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key, _ := iter.Prev()
-		if key == nil {
-			key, _ = iter.Last()
+		kv := iter.Prev()
+		if kv == nil {
+			kv = iter.Last()
 		}
-		_ = key
+		_ = kv
 	}
 }

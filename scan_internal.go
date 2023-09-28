@@ -116,22 +116,20 @@ type pointCollapsingIterator struct {
 	err      error
 	seqNum   uint64
 	// The current position of `iter`. Always owned by the underlying iter.
-	iterKey *InternalKey
+	iterKV *base.InternalKV
 	// The last saved key. findNextEntry and similar methods are expected to save
-	// the current value of iterKey to savedKey if they're iterating away from the
+	// the current value of iterKV to savedKey if they're iterating away from the
 	// current key but still need to retain it. See comments in findNextEntry on
 	// how this field is used.
 	//
 	// At the end of a positioning call:
-	//  - if pos == pcIterPosNext, iterKey is pointing to the next user key owned
+	//  - if pos == pcIterPosNext, iterKV is pointing to the next user key owned
 	//    by `iter` while savedKey is holding a copy to our current key.
-	//  - If pos == pcIterPosCur, iterKey is pointing to an `iter`-owned current
+	//  - If pos == pcIterPosCur, iterKV is pointing to an `iter`-owned current
 	//    key, and savedKey is either undefined or pointing to a version of the
 	//    current key owned by this iterator (i.e. backed by savedKeyBuf).
 	savedKey    InternalKey
 	savedKeyBuf []byte
-	// Value at the current iterator position, at iterKey.
-	iterValue base.LazyValue
 	// If fixedSeqNum is non-zero, all emitted points are verified to have this
 	// fixed sequence number.
 	fixedSeqNum uint64
@@ -144,80 +142,76 @@ func (p *pointCollapsingIterator) Span() *keyspan.Span {
 // SeekPrefixGE implements the InternalIterator interface.
 func (p *pointCollapsingIterator) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+) *base.InternalKV {
 	p.resetKey()
-	p.iterKey, p.iterValue = p.iter.SeekPrefixGE(prefix, key, flags)
+	p.iterKV = p.iter.SeekPrefixGE(prefix, key, flags)
 	p.pos = pcIterPosCur
-	if p.iterKey == nil {
-		return nil, base.LazyValue{}
+	if p.iterKV == nil {
+		return nil
 	}
 	return p.findNextEntry()
 }
 
 // SeekGE implements the InternalIterator interface.
-func (p *pointCollapsingIterator) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (p *pointCollapsingIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	p.resetKey()
-	p.iterKey, p.iterValue = p.iter.SeekGE(key, flags)
+	p.iterKV = p.iter.SeekGE(key, flags)
 	p.pos = pcIterPosCur
-	if p.iterKey == nil {
-		return nil, base.LazyValue{}
+	if p.iterKV == nil {
+		return nil
 	}
 	return p.findNextEntry()
 }
 
 // SeekLT implements the InternalIterator interface.
-func (p *pointCollapsingIterator) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (p *pointCollapsingIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	panic("unimplemented")
 }
 
 func (p *pointCollapsingIterator) resetKey() {
 	p.savedKey.UserKey = p.savedKeyBuf[:0]
 	p.savedKey.Trailer = 0
-	p.iterKey = nil
+	p.iterKV = nil
 	p.pos = pcIterPosCur
 }
 
-func (p *pointCollapsingIterator) verifySeqNum(key *base.InternalKey) *base.InternalKey {
+func (p *pointCollapsingIterator) verifySeqNum(kv *base.InternalKV) *base.InternalKV {
 	if !invariants.Enabled {
-		return key
+		return kv
 	}
-	if p.fixedSeqNum == 0 || key == nil || key.Kind() == InternalKeyKindRangeDelete {
-		return key
+	if p.fixedSeqNum == 0 || kv == nil || kv.Kind() == InternalKeyKindRangeDelete {
+		return kv
 	}
-	if key.SeqNum() != p.fixedSeqNum {
-		panic(fmt.Sprintf("expected foreign point key to have seqnum %d, got %d", p.fixedSeqNum, key.SeqNum()))
+	if kv.SeqNum() != p.fixedSeqNum {
+		panic(fmt.Sprintf("expected foreign point key to have seqnum %d, got %d", p.fixedSeqNum, kv.SeqNum()))
 	}
-	return key
+	return kv
 }
 
 // findNextEntry is called to return the next key. p.iter must be positioned at the
 // start of the first user key we are interested in.
-func (p *pointCollapsingIterator) findNextEntry() (*base.InternalKey, base.LazyValue) {
+func (p *pointCollapsingIterator) findNextEntry() *base.InternalKV {
 	p.saveKey()
 	// Saves a comparison in the fast path
 	firstIteration := true
-	for p.iterKey != nil {
-		// NB: p.savedKey is either the current key (iff p.iterKey == firstKey),
+	for p.iterKV != nil {
+		// NB: p.savedKey is either the current key (iff p.iterKV == firstKey),
 		// or the previous key.
-		if !firstIteration && !p.comparer.Equal(p.iterKey.UserKey, p.savedKey.UserKey) {
+		if !firstIteration && !p.comparer.Equal(p.iterKV.UserKey, p.savedKey.UserKey) {
 			p.saveKey()
 			continue
 		}
 		firstIteration = false
-		if s := p.iter.Span(); s != nil && s.CoversAt(p.seqNum, p.iterKey.SeqNum()) {
+		if s := p.iter.Span(); s != nil && s.CoversAt(p.seqNum, p.iterKV.SeqNum()) {
 			// All future keys for this user key must be deleted.
 			if p.savedKey.Kind() == InternalKeyKindSingleDelete {
 				panic("cannot process singledel key in point collapsing iterator")
 			}
 			// Fast forward to the next user key.
 			p.saveKey()
-			p.iterKey, p.iterValue = p.iter.Next()
-			for p.iterKey != nil && p.savedKey.SeqNum() >= p.iterKey.SeqNum() && p.comparer.Equal(p.iterKey.UserKey, p.savedKey.UserKey) {
-				p.iterKey, p.iterValue = p.iter.Next()
+			p.iterKV = p.iter.Next()
+			for p.iterKV != nil && p.savedKey.SeqNum() >= p.iterKV.SeqNum() && p.comparer.Equal(p.iterKV.UserKey, p.savedKey.UserKey) {
+				p.iterKV = p.iter.Next()
 			}
 			continue
 		}
@@ -241,7 +235,7 @@ func (p *pointCollapsingIterator) findNextEntry() (*base.InternalKey, base.LazyV
 			// of blocks and can determine user key changes without doing key saves
 			// or comparisons.
 			p.pos = pcIterPosCur
-			return p.verifySeqNum(p.iterKey), p.iterValue
+			return p.verifySeqNum(p.iterKV)
 		case InternalKeyKindSingleDelete:
 			// Panic, as this iterator is not expected to observe single deletes.
 			panic("cannot process singledel key in point collapsing iterator")
@@ -253,84 +247,84 @@ func (p *pointCollapsingIterator) findNextEntry() (*base.InternalKey, base.LazyV
 			// We should pass them as-is, but also account for any points ahead of
 			// them.
 			p.pos = pcIterPosCur
-			return p.verifySeqNum(p.iterKey), p.iterValue
+			return p.verifySeqNum(p.iterKV)
 		default:
-			panic(fmt.Sprintf("unexpected kind: %d", p.iterKey.Kind()))
+			panic(fmt.Sprintf("unexpected kind: %d", p.iterKV.Kind()))
 		}
 	}
 	p.resetKey()
-	return nil, base.LazyValue{}
+	return nil
 }
 
 // First implements the InternalIterator interface.
-func (p *pointCollapsingIterator) First() (*base.InternalKey, base.LazyValue) {
+func (p *pointCollapsingIterator) First() *base.InternalKV {
 	p.resetKey()
-	p.iterKey, p.iterValue = p.iter.First()
+	p.iterKV = p.iter.First()
 	p.pos = pcIterPosCur
-	if p.iterKey == nil {
-		return nil, base.LazyValue{}
+	if p.iterKV == nil {
+		return nil
 	}
 	return p.findNextEntry()
 }
 
 // Last implements the InternalIterator interface.
-func (p *pointCollapsingIterator) Last() (*base.InternalKey, base.LazyValue) {
+func (p *pointCollapsingIterator) Last() *base.InternalKV {
 	panic("unimplemented")
 }
 
 func (p *pointCollapsingIterator) saveKey() {
-	if p.iterKey == nil {
+	if p.iterKV == nil {
 		p.savedKey = InternalKey{UserKey: p.savedKeyBuf[:0]}
 		return
 	}
-	p.savedKeyBuf = append(p.savedKeyBuf[:0], p.iterKey.UserKey...)
-	p.savedKey = InternalKey{UserKey: p.savedKeyBuf, Trailer: p.iterKey.Trailer}
+	p.savedKeyBuf = append(p.savedKeyBuf[:0], p.iterKV.UserKey...)
+	p.savedKey = InternalKey{UserKey: p.savedKeyBuf, Trailer: p.iterKV.Trailer}
 }
 
 // Next implements the InternalIterator interface.
-func (p *pointCollapsingIterator) Next() (*base.InternalKey, base.LazyValue) {
+func (p *pointCollapsingIterator) Next() *base.InternalKV {
 	switch p.pos {
 	case pcIterPosCur:
 		p.saveKey()
-		if p.iterKey != nil && p.iterKey.Kind() == InternalKeyKindRangeDelete {
+		if p.iterKV != nil && p.iterKV.Kind() == InternalKeyKindRangeDelete {
 			// Step over the interleaved range delete and process the very next
 			// internal key, even if it's at the same user key. This is because a
 			// point for that user key has not been returned yet.
-			p.iterKey, p.iterValue = p.iter.Next()
+			p.iterKV = p.iter.Next()
 			break
 		}
 		// Fast forward to the next user key.
-		key, val := p.iter.Next()
-		// p.iterKey.SeqNum() >= key.SeqNum() is an optimization that allows us to
-		// use p.iterKey.SeqNum() < key.SeqNum() as a sign that the user key has
+		kv := p.iter.Next()
+		// p.iterKV.SeqNum() >= key.SeqNum() is an optimization that allows us to
+		// use p.iterKV.SeqNum() < key.SeqNum() as a sign that the user key has
 		// changed, without needing to do the full key comparison.
-		for key != nil && p.savedKey.SeqNum() >= key.SeqNum() &&
-			p.comparer.Equal(p.savedKey.UserKey, key.UserKey) {
-			key, val = p.iter.Next()
+		for kv != nil && p.savedKey.SeqNum() >= kv.SeqNum() &&
+			p.comparer.Equal(p.savedKey.UserKey, kv.UserKey) {
+			kv = p.iter.Next()
 		}
-		if key == nil {
+		if kv == nil {
 			// There are no keys to return.
 			p.resetKey()
-			return nil, base.LazyValue{}
+			return nil
 		}
-		p.iterKey, p.iterValue = key, val
+		p.iterKV = kv
 	case pcIterPosNext:
 		p.pos = pcIterPosCur
 	}
-	if p.iterKey == nil {
+	if p.iterKV == nil {
 		p.resetKey()
-		return nil, base.LazyValue{}
+		return nil
 	}
 	return p.findNextEntry()
 }
 
 // NextPrefix implements the InternalIterator interface.
-func (p *pointCollapsingIterator) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
+func (p *pointCollapsingIterator) NextPrefix(succKey []byte) *base.InternalKV {
 	panic("unimplemented")
 }
 
 // Prev implements the InternalIterator interface.
-func (p *pointCollapsingIterator) Prev() (*base.InternalKey, base.LazyValue) {
+func (p *pointCollapsingIterator) Prev() *base.InternalKV {
 	panic("unimplemented")
 }
 
@@ -408,8 +402,7 @@ type scanInternalIterator struct {
 	version         *version
 	rangeKey        *iteratorRangeKeyState
 	pointKeyIter    internalIterator
-	iterKey         *InternalKey
-	iterValue       LazyValue
+	iterKV          *base.InternalKV
 	alloc           *iterAlloc
 	newIters        tableNewIters
 	newIterRangeKey keyspan.TableNewSpanIter
@@ -489,10 +482,10 @@ func (d *DB) truncateSharedFile(
 	if needsLowerTruncate {
 		sst.SmallestPointKey.UserKey = sst.SmallestPointKey.UserKey[:0]
 		sst.SmallestPointKey.Trailer = 0
-		key, _ := iter.SeekGE(lower, base.SeekGEFlagsNone)
-		foundPointKey := key != nil
-		if key != nil {
-			sst.SmallestPointKey.CopyFrom(*key)
+		kv := iter.SeekGE(lower, base.SeekGEFlagsNone)
+		foundPointKey := kv != nil
+		if kv != nil {
+			sst.SmallestPointKey.CopyFrom(kv.InternalKey)
 		}
 		if rangeDelIter != nil {
 			span := rangeDelIter.SeekGE(lower)
@@ -524,10 +517,10 @@ func (d *DB) truncateSharedFile(
 	if needsUpperTruncate {
 		sst.LargestPointKey.UserKey = sst.LargestPointKey.UserKey[:0]
 		sst.LargestPointKey.Trailer = 0
-		key, _ := iter.SeekLT(upper, base.SeekLTFlagsNone)
-		foundPointKey := key != nil
-		if key != nil {
-			sst.LargestPointKey.CopyFrom(*key)
+		kv := iter.SeekLT(upper, base.SeekLTFlagsNone)
+		foundPointKey := kv != nil
+		if kv != nil {
+			sst.LargestPointKey.CopyFrom(kv.InternalKey)
 		}
 		if rangeDelIter != nil {
 			span := rangeDelIter.SeekLT(upper)
@@ -895,21 +888,21 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 // seekGE seeks this iterator to the first key that's greater than or equal
 // to the specified user key.
 func (i *scanInternalIterator) seekGE(key []byte) bool {
-	i.iterKey, i.iterValue = i.iter.SeekGE(key, base.SeekGEFlagsNone)
-	return i.iterKey != nil
+	i.iterKV = i.iter.SeekGE(key, base.SeekGEFlagsNone)
+	return i.iterKV != nil
 }
 
 // unsafeKey returns the unsafe InternalKey at the current position. The value
 // is nil if the iterator is invalid or exhausted.
 func (i *scanInternalIterator) unsafeKey() *InternalKey {
-	return i.iterKey
+	return &i.iterKV.InternalKey
 }
 
 // lazyValue returns a value pointer to the value at the current iterator
 // position. Behaviour undefined if unsafeKey() returns a Range key or Rangedel
 // kind key.
 func (i *scanInternalIterator) lazyValue() LazyValue {
-	return i.iterValue
+	return i.iterKV.LazyValue
 }
 
 // unsafeRangeDel returns a range key span. Behaviour undefined if UnsafeKey returns
@@ -930,8 +923,8 @@ func (i *scanInternalIterator) unsafeSpan() *keyspan.Span {
 // next advances the iterator in the forward direction, and returns the
 // iterator's new validity state.
 func (i *scanInternalIterator) next() bool {
-	i.iterKey, i.iterValue = i.iter.Next()
-	return i.iterKey != nil
+	i.iterKV = i.iter.Next()
+	return i.iterKV != nil
 }
 
 // error returns an error from the internal iterator, if there's any.

@@ -510,17 +510,17 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 	)
 
 	var lastUserKey []byte
-	for key, value := iter.First(); key != nil; key, value = iter.Next() {
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
 		// Ignore duplicate keys.
-		if equal(lastUserKey, key.UserKey) {
+		if equal(lastUserKey, kv.UserKey) {
 			continue
 		}
 		// NB: We don't have to copy the key or value since we're reading from a
 		// batch which doesn't do prefix compression.
-		lastUserKey = key.UserKey
+		lastUserKey = kv.UserKey
 
-		key.SetSeqNum(base.SeqNumZero)
-		if err := w.Add(*key, value.InPlaceValue()); err != nil {
+		kv.SetSeqNum(base.SeqNumZero)
+		if err := w.Add(kv.InternalKey, kv.InPlaceValue()); err != nil {
 			return "", err
 		}
 	}
@@ -602,21 +602,21 @@ func (o *ingestOp) collapseBatch(
 
 	if pointIter != nil {
 		var lastUserKey []byte
-		for key, value := pointIter.First(); key != nil; key, value = pointIter.Next() {
+		for kv := pointIter.First(); kv != nil; kv = pointIter.Next() {
 			// Ignore duplicate keys.
-			if equal(lastUserKey, key.UserKey) {
+			if equal(lastUserKey, kv.UserKey) {
 				continue
 			}
 			// NB: We don't have to copy the key or value since we're reading from a
 			// batch which doesn't do prefix compression.
-			lastUserKey = key.UserKey
+			lastUserKey = kv.UserKey
 
 			var err error
-			switch key.Kind() {
+			switch kv.Kind() {
 			case pebble.InternalKeyKindDelete:
-				err = collapsed.Delete(key.UserKey, nil)
+				err = collapsed.Delete(kv.UserKey, nil)
 			case pebble.InternalKeyKindDeleteSized:
-				v, _ := binary.Uvarint(value.InPlaceValue())
+				v, _ := binary.Uvarint(kv.InPlaceValue())
 				// Batch.DeleteSized takes just the length of the value being
 				// deleted and adds the key's length to derive the overall entry
 				// size of the value being deleted. This has already been done
@@ -624,17 +624,17 @@ func (o *ingestOp) collapseBatch(
 				// the key length from the encoded value before calling
 				// collapsed.DeleteSized, which will again add the key length
 				// before encoding.
-				err = collapsed.DeleteSized(key.UserKey, uint32(v-uint64(len(key.UserKey))), nil)
+				err = collapsed.DeleteSized(kv.UserKey, uint32(v-uint64(len(kv.UserKey))), nil)
 			case pebble.InternalKeyKindSingleDelete:
-				err = collapsed.SingleDelete(key.UserKey, nil)
+				err = collapsed.SingleDelete(kv.UserKey, nil)
 			case pebble.InternalKeyKindSet:
-				err = collapsed.Set(key.UserKey, value.InPlaceValue(), nil)
+				err = collapsed.Set(kv.UserKey, kv.InPlaceValue(), nil)
 			case pebble.InternalKeyKindMerge:
-				err = collapsed.Merge(key.UserKey, value.InPlaceValue(), nil)
+				err = collapsed.Merge(kv.UserKey, kv.InPlaceValue(), nil)
 			case pebble.InternalKeyKindLogData:
-				err = collapsed.LogData(key.UserKey, nil)
+				err = collapsed.LogData(kv.UserKey, nil)
 			default:
-				err = errors.Errorf("unknown batch record kind: %d", key.Kind())
+				err = errors.Errorf("unknown batch record kind: %d", kv.Kind())
 			}
 			if err != nil {
 				return nil, err

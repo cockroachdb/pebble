@@ -1203,8 +1203,8 @@ func fragmentRangeDels(frag *keyspan.Fragmenter, it internalIterator, count int)
 	// Use a single []keyspan.Key buffer to avoid allocating many
 	// individual []keyspan.Key slices with a single element each.
 	keyBuf := make([]keyspan.Key, 0, count)
-	for key, val := it.First(); key != nil; key, val = it.Next() {
-		s := rangedel.Decode(*key, val.InPlaceValue(), keyBuf)
+	for kv := it.First(); kv != nil; kv = it.Next() {
+		s := rangedel.Decode(kv.InternalKey, kv.InPlaceValue(), keyBuf)
 		keyBuf = s.Keys[len(s.Keys):]
 
 		// Set a fixed capacity to avoid accidental overwriting.
@@ -1278,8 +1278,8 @@ func fragmentRangeKeys(frag *keyspan.Fragmenter, it internalIterator, count int)
 	// Use a single []keyspan.Key buffer to avoid allocating many
 	// individual []keyspan.Key slices with a single element each.
 	keyBuf := make([]keyspan.Key, 0, count)
-	for ik, val := it.First(); ik != nil; ik, val = it.Next() {
-		s, err := rangekey.Decode(*ik, val.InPlaceValue(), keyBuf)
+	for kv := it.First(); kv != nil; kv = it.Next() {
+		s, err := rangekey.Decode(kv.InternalKey, kv.InPlaceValue(), keyBuf)
 		if err != nil {
 			return err
 		}
@@ -1529,6 +1529,7 @@ type batchIter struct {
 	cmp   Compare
 	batch *Batch
 	iter  batchskl.Iterator
+	kv    base.InternalKV
 	err   error
 	// snapshot holds a batch "sequence number" at which the batch is being
 	// read. This sequence number has the InternalKeySeqNumBatch bit set, so it
@@ -1544,7 +1545,7 @@ func (i *batchIter) String() string {
 	return "batch"
 }
 
-func (i *batchIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, base.LazyValue) {
+func (i *batchIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	// Ignore TrySeekUsingNext if the view of the batch changed.
 	if flags.TrySeekUsingNext() && flags.BatchJustRefreshed() {
 		flags = flags.DisableTrySeekUsingNext()
@@ -1556,66 +1557,69 @@ func (i *batchIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 		ikey = i.iter.Next()
 	}
 	if ikey == nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return ikey, base.MakeInPlaceValue(i.value())
+	i.kv = base.InternalKV{InternalKey: *ikey, LazyValue: base.MakeInPlaceValue(i.value())}
+	return &i.kv
 }
 
-func (i *batchIter) SeekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (i *batchIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	return i.SeekGE(key, flags)
 }
 
-func (i *batchIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, base.LazyValue) {
+func (i *batchIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.SeekLT(key)
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Prev()
 	}
 	if ikey == nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return ikey, base.MakeInPlaceValue(i.value())
+	i.kv = base.InternalKV{InternalKey: *ikey, LazyValue: base.MakeInPlaceValue(i.value())}
+	return &i.kv
 }
 
-func (i *batchIter) First() (*InternalKey, base.LazyValue) {
+func (i *batchIter) First() *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.First()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Next()
 	}
 	if ikey == nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return ikey, base.MakeInPlaceValue(i.value())
+	i.kv = base.InternalKV{InternalKey: *ikey, LazyValue: base.MakeInPlaceValue(i.value())}
+	return &i.kv
 }
 
-func (i *batchIter) Last() (*InternalKey, base.LazyValue) {
+func (i *batchIter) Last() *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.Last()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Prev()
 	}
 	if ikey == nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return ikey, base.MakeInPlaceValue(i.value())
+	i.kv = base.InternalKV{InternalKey: *ikey, LazyValue: base.MakeInPlaceValue(i.value())}
+	return &i.kv
 }
 
-func (i *batchIter) Next() (*InternalKey, base.LazyValue) {
+func (i *batchIter) Next() *base.InternalKV {
 	ikey := i.iter.Next()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Next()
 	}
 	if ikey == nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return ikey, base.MakeInPlaceValue(i.value())
+	i.kv = base.InternalKV{InternalKey: *ikey, LazyValue: base.MakeInPlaceValue(i.value())}
+	return &i.kv
 }
 
-func (i *batchIter) NextPrefix(succKey []byte) (*InternalKey, LazyValue) {
+func (i *batchIter) NextPrefix(succKey []byte) *base.InternalKV {
 	// Because NextPrefix was invoked `succKey` must be ≥ the key at i's current
 	// position. Seek the arena iterator using TrySeekUsingNext.
 	ikey := i.iter.SeekGE(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
@@ -1623,20 +1627,22 @@ func (i *batchIter) NextPrefix(succKey []byte) (*InternalKey, LazyValue) {
 		ikey = i.iter.Next()
 	}
 	if ikey == nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return ikey, base.MakeInPlaceValue(i.value())
+	i.kv = base.InternalKV{InternalKey: *ikey, LazyValue: base.MakeInPlaceValue(i.value())}
+	return &i.kv
 }
 
-func (i *batchIter) Prev() (*InternalKey, base.LazyValue) {
+func (i *batchIter) Prev() *base.InternalKV {
 	ikey := i.iter.Prev()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Prev()
 	}
 	if ikey == nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return ikey, base.MakeInPlaceValue(i.value())
+	i.kv = base.InternalKV{InternalKey: *ikey, LazyValue: base.MakeInPlaceValue(i.value())}
+	return &i.kv
 }
 
 func (i *batchIter) value() []byte {
@@ -1943,7 +1949,7 @@ type flushableBatchIter struct {
 	index int
 
 	// For internal use by the implementation.
-	key InternalKey
+	kv  base.InternalKV
 	err error
 
 	// Optionally initialize to bounds of iteration, if any.
@@ -1961,38 +1967,35 @@ func (i *flushableBatchIter) String() string {
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Ignore flags.TrySeekUsingNext() since we don't expect this
 // optimization to provide much benefit here at the moment.
-func (i *flushableBatchIter) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *flushableBatchIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
 	})
 	if i.index >= len(i.offsets) {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	i.key = i.getKey(i.index)
-	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
+	i.kv.InternalKey = i.getKey(i.index)
+	if i.upper != nil && i.cmp(i.kv.UserKey, i.upper) >= 0 {
 		i.index = len(i.offsets)
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return &i.key, i.value()
+	i.kv.LazyValue = i.value()
+	return &i.kv
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package.
 func (i *flushableBatchIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+) *base.InternalKV {
 	return i.SeekGE(key, flags)
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *flushableBatchIter) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *flushableBatchIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
@@ -2000,85 +2003,90 @@ func (i *flushableBatchIter) SeekLT(
 	})
 	i.index--
 	if i.index < 0 {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	i.key = i.getKey(i.index)
-	if i.lower != nil && i.cmp(i.key.UserKey, i.lower) < 0 {
+	i.kv.InternalKey = i.getKey(i.index)
+	if i.lower != nil && i.cmp(i.kv.UserKey, i.lower) < 0 {
 		i.index = -1
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return &i.key, i.value()
+	i.kv.LazyValue = i.value()
+	return &i.kv
 }
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *flushableBatchIter) First() (*InternalKey, base.LazyValue) {
+func (i *flushableBatchIter) First() *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	if len(i.offsets) == 0 {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	i.index = 0
-	i.key = i.getKey(i.index)
-	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
+	i.kv.InternalKey = i.getKey(i.index)
+	if i.upper != nil && i.cmp(i.kv.UserKey, i.upper) >= 0 {
 		i.index = len(i.offsets)
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return &i.key, i.value()
+	i.kv.LazyValue = i.value()
+	return &i.kv
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
 // package.
-func (i *flushableBatchIter) Last() (*InternalKey, base.LazyValue) {
+func (i *flushableBatchIter) Last() *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	if len(i.offsets) == 0 {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	i.index = len(i.offsets) - 1
-	i.key = i.getKey(i.index)
-	if i.lower != nil && i.cmp(i.key.UserKey, i.lower) < 0 {
+	i.kv.InternalKey = i.getKey(i.index)
+	if i.lower != nil && i.cmp(i.kv.UserKey, i.lower) < 0 {
 		i.index = -1
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return &i.key, i.value()
+	i.kv.LazyValue = i.value()
+	return &i.kv
 }
 
 // Note: flushFlushableBatchIter.Next mirrors the implementation of
 // flushableBatchIter.Next due to performance. Keep the two in sync.
-func (i *flushableBatchIter) Next() (*InternalKey, base.LazyValue) {
+func (i *flushableBatchIter) Next() *base.InternalKV {
 	if i.index == len(i.offsets) {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	i.index++
 	if i.index == len(i.offsets) {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	i.key = i.getKey(i.index)
-	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
+	i.kv.InternalKey = i.getKey(i.index)
+	if i.upper != nil && i.cmp(i.kv.UserKey, i.upper) >= 0 {
 		i.index = len(i.offsets)
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return &i.key, i.value()
+	i.kv.LazyValue = i.value()
+	return &i.kv
 }
 
-func (i *flushableBatchIter) Prev() (*InternalKey, base.LazyValue) {
+func (i *flushableBatchIter) Prev() *base.InternalKV {
 	if i.index < 0 {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	i.index--
 	if i.index < 0 {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	i.key = i.getKey(i.index)
-	if i.lower != nil && i.cmp(i.key.UserKey, i.lower) < 0 {
+	i.kv.InternalKey = i.getKey(i.index)
+	if i.lower != nil && i.cmp(i.kv.UserKey, i.lower) < 0 {
 		i.index = -1
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return &i.key, i.value()
+	i.kv.LazyValue = i.value()
+	return &i.kv
 }
 
 // Note: flushFlushableBatchIter.NextPrefix mirrors the implementation of
 // flushableBatchIter.NextPrefix due to performance. Keep the two in sync.
-func (i *flushableBatchIter) NextPrefix(succKey []byte) (*InternalKey, LazyValue) {
+func (i *flushableBatchIter) NextPrefix(succKey []byte) *base.InternalKV {
 	return i.SeekGE(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
 }
 
@@ -2147,56 +2155,53 @@ func (i *flushFlushableBatchIter) String() string {
 	return "flushable-batch"
 }
 
-func (i *flushFlushableBatchIter) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *flushFlushableBatchIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	panic("pebble: SeekGE unimplemented")
 }
 
 func (i *flushFlushableBatchIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+) *base.InternalKV {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-func (i *flushFlushableBatchIter) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *flushFlushableBatchIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	panic("pebble: SeekLT unimplemented")
 }
 
-func (i *flushFlushableBatchIter) First() (*InternalKey, base.LazyValue) {
+func (i *flushFlushableBatchIter) First() *base.InternalKV {
 	i.err = nil // clear cached iteration error
-	key, val := i.flushableBatchIter.First()
-	if key == nil {
-		return nil, base.LazyValue{}
+	kv := i.flushableBatchIter.First()
+	if kv == nil {
+		return nil
 	}
 	entryBytes := i.offsets[i.index].keyEnd - i.offsets[i.index].offset
 	*i.bytesIterated += uint64(entryBytes) + i.valueSize()
-	return key, val
+	return kv
 }
 
-func (i *flushFlushableBatchIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+func (i *flushFlushableBatchIter) NextPrefix(succKey []byte) *base.InternalKV {
 	panic("pebble: Prev unimplemented")
 }
 
 // Note: flushFlushableBatchIter.Next mirrors the implementation of
 // flushableBatchIter.Next due to performance. Keep the two in sync.
-func (i *flushFlushableBatchIter) Next() (*InternalKey, base.LazyValue) {
+func (i *flushFlushableBatchIter) Next() *base.InternalKV {
 	if i.index == len(i.offsets) {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	i.index++
 	if i.index == len(i.offsets) {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	i.key = i.getKey(i.index)
+	i.kv.InternalKey = i.getKey(i.index)
 	entryBytes := i.offsets[i.index].keyEnd - i.offsets[i.index].offset
 	*i.bytesIterated += uint64(entryBytes) + i.valueSize()
-	return &i.key, i.value()
+	i.kv.LazyValue = i.value()
+	return &i.kv
 }
 
-func (i flushFlushableBatchIter) Prev() (*InternalKey, base.LazyValue) {
+func (i flushFlushableBatchIter) Prev() *base.InternalKV {
 	panic("pebble: Prev unimplemented")
 }
 

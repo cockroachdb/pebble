@@ -964,9 +964,9 @@ func TestBatchRangeOps(t *testing.T) {
 					fmt.Fprintln(&buf, s)
 				}
 			} else {
-				for k, v := internalIter.First(); k != nil; k, v = internalIter.Next() {
-					k.SetSeqNum(k.SeqNum() &^ InternalKeySeqNumBatch)
-					fmt.Fprintf(&buf, "%s:%s\n", k, v.InPlaceValue())
+				for kv := internalIter.First(); kv != nil; kv = internalIter.Next() {
+					kv.SetSeqNum(kv.SeqNum() &^ InternalKeySeqNumBatch)
+					fmt.Fprintf(&buf, "%s:%s\n", kv.InternalKey, kv.InPlaceValue())
 				}
 			}
 			return buf.String()
@@ -1145,8 +1145,8 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 }
 
 func scanInternalIter(w io.Writer, ii internalIterator) {
-	for k, v := ii.First(); k != nil; k, v = ii.Next() {
-		fmt.Fprintf(w, "%s:%s\n", k, v.InPlaceValue())
+	for kv := ii.First(); kv != nil; kv = ii.Next() {
+		fmt.Fprintf(w, "%s:%s\n", kv.InternalKey, kv.InPlaceValue())
 	}
 }
 
@@ -1169,7 +1169,7 @@ func TestFlushableBatchBytesIterated(t *testing.T) {
 		it := fb.newFlushIter(nil, &bytesIterated)
 
 		var prevIterated uint64
-		for key, _ := it.First(); key != nil; key, _ = it.Next() {
+		for kv := it.First(); kv != nil; kv = it.Next() {
 			if bytesIterated < prevIterated {
 				t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
 			}

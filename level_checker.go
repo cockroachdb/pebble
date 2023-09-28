@@ -51,8 +51,7 @@ type simpleMergingIterLevel struct {
 	rangeDelIter keyspan.FragmentIterator
 	levelIterBoundaryContext
 
-	iterKey   *InternalKey
-	iterValue base.LazyValue
+	iterKV    *base.InternalKV
 	tombstone *keyspan.Span
 }
 
@@ -89,14 +88,15 @@ func (m *simpleMergingIter) init(
 	m.heap.items = make([]simpleMergingIterItem, 0, len(levels))
 	for i := range m.levels {
 		l := &m.levels[i]
-		l.iterKey, l.iterValue = l.iter.First()
-		if l.iterKey != nil {
+		l.iterKV = l.iter.First()
+		if l.iterKV != nil {
 			item := simpleMergingIterItem{
 				index: i,
-				value: l.iterValue,
+				kv: base.InternalKV{
+					InternalKey: l.iterKV.InternalKey.Clone(),
+					LazyValue:   l.iterKV.LazyValue,
+				},
 			}
-			item.key.Trailer = l.iterKey.Trailer
-			item.key.UserKey = append(item.key.UserKey[:0], l.iterKey.UserKey...)
 			m.heap.items = append(m.heap.items, item)
 		}
 	}
@@ -117,7 +117,7 @@ func (m *simpleMergingIter) positionRangeDels() {
 		if l.rangeDelIter == nil {
 			continue
 		}
-		l.tombstone = l.rangeDelIter.SeekGE(item.key.UserKey)
+		l.tombstone = l.rangeDelIter.SeekGE(item.kv.UserKey)
 	}
 }
 
@@ -129,23 +129,23 @@ func (m *simpleMergingIter) step() bool {
 	item := &m.heap.items[0]
 	l := &m.levels[item.index]
 	// Sentinels are not relevant for this point checking.
-	if !item.key.IsExclusiveSentinel() && item.key.Visible(m.snapshot, base.InternalKeySeqNumMax) {
+	if !item.kv.IsExclusiveSentinel() && item.kv.Visible(m.snapshot, base.InternalKeySeqNumMax) {
 		m.numPoints++
-		keyChanged := m.heap.cmp(item.key.UserKey, m.lastKey.UserKey) != 0
+		keyChanged := m.heap.cmp(item.kv.UserKey, m.lastKey.UserKey) != 0
 		if !keyChanged {
 			// At the same user key. We will see them in decreasing seqnum
 			// order so the lastLevel must not be lower.
 			if m.lastLevel > item.index {
 				m.err = errors.Errorf("found InternalKey %s in %s and InternalKey %s in %s",
-					item.key.Pretty(m.formatKey), l.iter, m.lastKey.Pretty(m.formatKey),
+					item.kv.InternalKey.Pretty(m.formatKey), l.iter, m.lastKey.Pretty(m.formatKey),
 					m.lastIterMsg)
 				return false
 			}
 			m.lastLevel = item.index
 		} else {
 			// The user key has changed.
-			m.lastKey.Trailer = item.key.Trailer
-			m.lastKey.UserKey = append(m.lastKey.UserKey[:0], item.key.UserKey...)
+			m.lastKey.Trailer = item.kv.Trailer
+			m.lastKey.UserKey = append(m.lastKey.UserKey[:0], item.kv.UserKey...)
 			m.lastLevel = item.index
 		}
 		// Ongoing series of MERGE records ends with a MERGE record.
@@ -157,14 +157,14 @@ func (m *simpleMergingIter) step() bool {
 			}
 			m.valueMerger = nil
 		}
-		itemValue, _, err := item.value.Value(nil)
+		itemValue, _, err := item.kv.Value(nil)
 		if err != nil {
 			m.err = err
 			return false
 		}
 		if m.valueMerger != nil {
 			// Ongoing series of MERGE records.
-			switch item.key.Kind() {
+			switch item.kv.Kind() {
 			case InternalKeyKindSingleDelete, InternalKeyKindDelete, InternalKeyKindDeleteSized:
 				var closer io.Closer
 				_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
@@ -186,17 +186,17 @@ func (m *simpleMergingIter) step() bool {
 				m.err = m.valueMerger.MergeOlder(itemValue)
 			default:
 				m.err = errors.Errorf("pebble: invalid internal key kind %s in %s",
-					item.key.Pretty(m.formatKey),
+					item.kv.InternalKey.Pretty(m.formatKey),
 					l.iter)
 				return false
 			}
-		} else if item.key.Kind() == InternalKeyKindMerge && m.err == nil {
+		} else if item.kv.Kind() == InternalKeyKindMerge && m.err == nil {
 			// New series of MERGE records.
-			m.valueMerger, m.err = m.merge(item.key.UserKey, itemValue)
+			m.valueMerger, m.err = m.merge(item.kv.UserKey, itemValue)
 		}
 		if m.err != nil {
 			m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
-				item.key.Pretty(m.formatKey), l.iter)
+				item.kv.InternalKey.Pretty(m.formatKey), l.iter)
 			return false
 		}
 		// Is this point covered by a tombstone at a lower level? Note that all these
@@ -210,11 +210,11 @@ func (m *simpleMergingIter) step() bool {
 			if lvl.rangeDelIter == nil || lvl.tombstone.Empty() {
 				continue
 			}
-			if (lvl.smallestUserKey == nil || m.heap.cmp(lvl.smallestUserKey, item.key.UserKey) <= 0) &&
-				lvl.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
-				if lvl.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
+			if (lvl.smallestUserKey == nil || m.heap.cmp(lvl.smallestUserKey, item.kv.UserKey) <= 0) &&
+				lvl.tombstone.Contains(m.heap.cmp, item.kv.UserKey) {
+				if lvl.tombstone.CoversAt(m.snapshot, item.kv.SeqNum()) {
 					m.err = errors.Errorf("tombstone %s in %s deletes key %s in %s",
-						lvl.tombstone.Pretty(m.formatKey), lvl.iter, item.key.Pretty(m.formatKey),
+						lvl.tombstone.Pretty(m.formatKey), lvl.iter, item.kv.InternalKey.Pretty(m.formatKey),
 						l.iter)
 					return false
 				}
@@ -228,20 +228,20 @@ func (m *simpleMergingIter) step() bool {
 	m.lastIterMsg = l.iter.String()
 
 	// Step to the next point.
-	if l.iterKey, l.iterValue = l.iter.Next(); l.iterKey != nil {
+	if l.iterKV = l.iter.Next(); l.iterKV != nil {
 		// Check point keys in an sstable are ordered. Although not required, we check
 		// for memtables as well. A subtle check here is that successive sstables of
 		// L1 and higher levels are ordered. This happens when levelIter moves to the
 		// next sstable in the level, in which case item.key is previous sstable's
 		// last point key.
-		if base.InternalCompare(m.heap.cmp, item.key, *l.iterKey) >= 0 {
+		if base.InternalCompare(m.heap.cmp, item.kv.InternalKey, l.iterKV.InternalKey) >= 0 {
 			m.err = errors.Errorf("out of order keys %s >= %s in %s",
-				item.key.Pretty(m.formatKey), l.iterKey.Pretty(m.formatKey), l.iter)
+				item.kv.InternalKey.Pretty(m.formatKey), l.iterKV.InternalKey.Pretty(m.formatKey), l.iter)
 			return false
 		}
-		item.key.Trailer = l.iterKey.Trailer
-		item.key.UserKey = append(item.key.UserKey[:0], l.iterKey.UserKey...)
-		item.value = l.iterValue
+		item.kv.Trailer = l.iterKV.Trailer
+		item.kv.UserKey = append(item.kv.UserKey[:0], l.iterKV.UserKey...)
+		item.kv.LazyValue = l.iterKV.LazyValue
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
@@ -263,7 +263,7 @@ func (m *simpleMergingIter) step() bool {
 			}
 			if m.err != nil {
 				m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
-					item.key.Pretty(m.formatKey), m.lastIterMsg)
+					item.kv.InternalKey.Pretty(m.formatKey), m.lastIterMsg)
 			}
 			m.valueMerger = nil
 		}
@@ -681,8 +681,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 
 type simpleMergingIterItem struct {
 	index int
-	key   InternalKey
-	value base.LazyValue
+	kv    base.InternalKV
 }
 
 type simpleMergingIterHeap struct {
@@ -696,7 +695,7 @@ func (h *simpleMergingIterHeap) len() int {
 }
 
 func (h *simpleMergingIterHeap) less(i, j int) bool {
-	ikey, jkey := h.items[i].key, h.items[j].key
+	ikey, jkey := h.items[i].kv.InternalKey, h.items[j].kv.InternalKey
 	if c := h.cmp(ikey.UserKey, jkey.UserKey); c != 0 {
 		if h.reverse {
 			return c > 0

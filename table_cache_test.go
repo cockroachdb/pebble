@@ -605,15 +605,15 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
 			}
-			key, value := iter.SeekGE([]byte("k"), base.SeekGEFlagsNone)
+			kv := iter.SeekGE([]byte("k"), base.SeekGEFlagsNone)
 			if concurrent {
 				time.Sleep(time.Duration(sleepTime) * time.Microsecond)
 			}
-			if key == nil {
+			if kv == nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: valid.0: got false, want true", i, fileNum)
 				return
 			}
-			v, _, err := value.Value(nil)
+			v, _, err := kv.Value(nil)
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: err extracting value: %v", err)
 			}
@@ -621,7 +621,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 				errc <- errors.Errorf("i=%d, fileNum=%d: value: got %d bytes, want %d", i, fileNum, got, fileNum)
 				return
 			}
-			if key, _ := iter.Next(); key != nil {
+			if kv := iter.Next(); kv != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: next.1: got true, want false", i, fileNum)
 				return
 			}

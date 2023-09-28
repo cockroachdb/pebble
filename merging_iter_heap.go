@@ -19,7 +19,7 @@ func (h *mergingIterHeap) clear() {
 }
 
 func (h *mergingIterHeap) less(i, j int) bool {
-	ikey, jkey := h.items[i].iterKey, h.items[j].iterKey
+	ikey, jkey := h.items[i].iterKV.InternalKey, h.items[j].iterKV.InternalKey
 	if c := h.cmp(ikey.UserKey, jkey.UserKey); c != 0 {
 		if h.reverse {
 			return c > 0

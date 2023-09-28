@@ -118,19 +118,19 @@ func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	// the previous block's separator, which provides an inclusive lower bound
 	// on the original index block's keys. Afterwards, we step forward to
 	// restore our top-level index position.
-	if peekKey, _ := i.topLevelIndex.Prev(); peekKey == nil {
+	if peekKV := i.topLevelIndex.Prev(); peekKV == nil {
 		// The original block points to the first index block of this table. If
 		// we knew the lower bound for the entire table, it could provide a
 		// lower bound, but the code refactoring necessary to read it doesn't
 		// seem worth the payoff. We fall through to loading the block.
-	} else if i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(peekKey.UserKey) {
+	} else if i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(peekKV.UserKey) {
 		// The lower-bound on the original index block falls within the filter's
 		// bounds, and we can skip the block (after restoring our current
 		// top-level index position).
-		_, _ = i.topLevelIndex.Next()
+		_ = i.topLevelIndex.Next()
 		return blockExcluded
 	}
-	_, _ = i.topLevelIndex.Next()
+	_ = i.topLevelIndex.Next()
 	return blockIntersects
 }
 
@@ -220,9 +220,7 @@ func (i *twoLevelIterator) MaybeFilteredKeys() bool {
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
-func (i *twoLevelIterator) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *twoLevelIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	if i.vState != nil {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
@@ -244,7 +242,7 @@ func (i *twoLevelIterator) SeekGE(
 		(i.exhaustedBounds == +1 || (i.data.isDataInvalidated() && i.index.isDataInvalidated())) &&
 		err == nil {
 		// Already exhausted, so return nil.
-		return nil, base.LazyValue{}
+		return nil
 	}
 
 	// SeekGE performs various step-instead-of-seeking optimizations: eg enabled
@@ -278,27 +276,27 @@ func (i *twoLevelIterator) SeekGE(
 		i.exhaustedBounds = 0
 		i.maybeFilteredKeysTwoLevel = false
 		flags = flags.DisableTrySeekUsingNext()
-		var ikey *InternalKey
-		if ikey, _ = i.topLevelIndex.SeekGE(key, flags); ikey == nil {
+		var kv *base.InternalKV
+		if kv = i.topLevelIndex.SeekGE(key, flags); kv == nil {
 			i.data.invalidate()
 			i.index.invalidate()
-			return nil, base.LazyValue{}
+			return nil
 		}
 
 		result := i.loadIndex(+1)
 		if result == loadBlockFailed {
 			i.boundsCmp = 0
-			return nil, base.LazyValue{}
+			return nil
 		}
 		if result == loadBlockIrrelevant {
 			// Enforce the upper bound here since don't want to bother moving
 			// to the next entry in the top level index if upper bound is
 			// already exceeded. Note that the next entry starts with keys >=
-			// ikey.UserKey since even though this is the block separator, the
+			// kv.UserKey since even though this is the block separator, the
 			// same user key can span multiple index blocks. If upper is
 			// exclusive we use >= below, else we use >.
 			if i.upper != nil {
-				cmp := i.cmp(ikey.UserKey, i.upper)
+				cmp := i.cmp(kv.UserKey, i.upper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
 				}
@@ -370,8 +368,8 @@ func (i *twoLevelIterator) SeekGE(
 	if !dontSeekWithinSingleLevelIter {
 		// Note that while trySeekUsingNext could be false here, singleLevelIterator
 		// could do its own boundsCmp-based optimization to seek using next.
-		if ikey, val := i.singleLevelIterator.SeekGE(key, flags); ikey != nil {
-			return ikey, val
+		if kv := i.singleLevelIterator.SeekGE(key, flags); kv != nil {
+			return kv
 		}
 	}
 	return i.skipForward()
@@ -382,7 +380,7 @@ func (i *twoLevelIterator) SeekGE(
 // to the caller to ensure that key is greater than or equal to the lower bound.
 func (i *twoLevelIterator) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+) *base.InternalKV {
 	if i.vState != nil {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
@@ -410,7 +408,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		(i.exhaustedBounds == +1 || (i.data.isDataInvalidated() && i.index.isDataInvalidated())) &&
 		err == nil {
 		// Already exhausted, so return nil.
-		return nil, base.LazyValue{}
+		return nil
 	}
 
 	// Check prefix bloom filter.
@@ -424,7 +422,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		dataH, i.err = i.reader.readFilter(i.ctx, i.stats)
 		if i.err != nil {
 			i.data.invalidate()
-			return nil, base.LazyValue{}
+			return nil
 		}
 		mayContain := i.reader.tableFilter.mayContain(dataH.Get(), prefix)
 		dataH.Release()
@@ -435,7 +433,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 			// the caller was allowed to call Next when SeekPrefixGE returned
 			// nil. This is no longer allowed.
 			i.data.invalidate()
-			return nil, base.LazyValue{}
+			return nil
 		}
 		i.lastBloomFilterMatched = true
 	}
@@ -474,27 +472,27 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		i.exhaustedBounds = 0
 		i.maybeFilteredKeysTwoLevel = false
 		flags = flags.DisableTrySeekUsingNext()
-		var ikey *InternalKey
-		if ikey, _ = i.topLevelIndex.SeekGE(key, flags); ikey == nil {
+		var kv *base.InternalKV
+		if kv = i.topLevelIndex.SeekGE(key, flags); kv == nil {
 			i.data.invalidate()
 			i.index.invalidate()
-			return nil, base.LazyValue{}
+			return nil
 		}
 
 		result := i.loadIndex(+1)
 		if result == loadBlockFailed {
 			i.boundsCmp = 0
-			return nil, base.LazyValue{}
+			return nil
 		}
 		if result == loadBlockIrrelevant {
 			// Enforce the upper bound here since don't want to bother moving
 			// to the next entry in the top level index if upper bound is
 			// already exceeded. Note that the next entry starts with keys >=
-			// ikey.UserKey since even though this is the block separator, the
+			// kv.UserKey since even though this is the block separator, the
 			// same user key can span multiple index blocks. If upper is
 			// exclusive we use >= below, else we use >.
 			if i.upper != nil {
-				cmp := i.cmp(ikey.UserKey, i.upper)
+				cmp := i.cmp(kv.UserKey, i.upper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
 				}
@@ -555,9 +553,9 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	}
 
 	if !dontSeekWithinSingleLevelIter {
-		if ikey, val := i.singleLevelIterator.seekPrefixGE(
-			prefix, key, flags, false /* checkFilter */); ikey != nil {
-			return ikey, val
+		if kv := i.singleLevelIterator.seekPrefixGE(
+			prefix, key, flags, false /* checkFilter */); kv != nil {
+			return kv
 		}
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
@@ -566,13 +564,13 @@ func (i *twoLevelIterator) SeekPrefixGE(
 
 // virtualLast should only be called if i.vReader != nil and i.endKeyInclusive
 // is true.
-func (i *twoLevelIterator) virtualLast() (*InternalKey, base.LazyValue) {
+func (i *twoLevelIterator) virtualLast() *base.InternalKV {
 	if i.vState == nil {
 		panic("pebble: invalid call to virtualLast")
 	}
 
-	// Seek to the first internal key.
-	ikey, _ := i.SeekGE(i.upper, base.SeekGEFlagsNone)
+	// Seek to the first internal kv.
+	kv := i.SeekGE(i.upper, base.SeekGEFlagsNone)
 	if i.endKeyInclusive {
 		// Let's say the virtual sstable upper bound is c#1, with the keys c#3, c#2,
 		// c#1, d, e, ... in the sstable. So, the last key in the virtual sstable is
@@ -583,8 +581,8 @@ func (i *twoLevelIterator) virtualLast() (*InternalKey, base.LazyValue) {
 		// with the same user key at the upper bound then this could be slow, but
 		// maybe the odds of having many internal keys with the same user key at the
 		// upper bound are low.
-		for ikey != nil && i.cmp(ikey.UserKey, i.upper) == 0 {
-			ikey, _ = i.Next()
+		for kv != nil && i.cmp(kv.UserKey, i.upper) == 0 {
+			kv = i.Next()
 		}
 		return i.Prev()
 	}
@@ -595,9 +593,7 @@ func (i *twoLevelIterator) virtualLast() (*InternalKey, base.LazyValue) {
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
-func (i *twoLevelIterator) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *twoLevelIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	if i.vState != nil {
 		// Might have to fix upper bound since virtual sstable bounds are not
 		// known to callers of SeekLT.
@@ -618,7 +614,7 @@ func (i *twoLevelIterator) SeekLT(
 	i.boundsCmp = 0
 
 	var result loadBlockResult
-	var ikey *InternalKey
+	var kv *base.InternalKV
 	// NB: Unlike SeekGE, we don't have a fast-path here since we don't know
 	// whether the topLevelIndex is positioned after the position that would
 	// be returned by doing i.topLevelIndex.SeekGE(). To know this we would
@@ -627,20 +623,20 @@ func (i *twoLevelIterator) SeekLT(
 	// externally ensured that the filter is disabled (through returning
 	// Intersects=false irrespective of the block props provided) during seeks.
 	i.maybeFilteredKeysTwoLevel = false
-	if ikey, _ = i.topLevelIndex.SeekGE(key, base.SeekGEFlagsNone); ikey == nil {
-		if ikey, _ = i.topLevelIndex.Last(); ikey == nil {
+	if kv = i.topLevelIndex.SeekGE(key, base.SeekGEFlagsNone); kv == nil {
+		if kv = i.topLevelIndex.Last(); kv == nil {
 			i.data.invalidate()
 			i.index.invalidate()
-			return nil, base.LazyValue{}
+			return nil
 		}
 
 		result = i.loadIndex(-1)
 		if result == loadBlockFailed {
-			return nil, base.LazyValue{}
+			return nil
 		}
 		if result == loadBlockOK {
-			if ikey, val := i.singleLevelIterator.lastInternal(); ikey != nil {
-				return i.maybeVerifyKey(ikey, val)
+			if kv := i.singleLevelIterator.lastInternal(); kv != nil {
+				return i.maybeVerifyKey(kv)
 			}
 			// Fall through to skipBackward since the singleLevelIterator did
 			// not have any blocks that satisfy the block interval
@@ -650,11 +646,11 @@ func (i *twoLevelIterator) SeekLT(
 	} else {
 		result = i.loadIndex(-1)
 		if result == loadBlockFailed {
-			return nil, base.LazyValue{}
+			return nil
 		}
 		if result == loadBlockOK {
-			if ikey, val := i.singleLevelIterator.SeekLT(key, flags); ikey != nil {
-				return i.maybeVerifyKey(ikey, val)
+			if kv := i.singleLevelIterator.SeekLT(key, flags); kv != nil {
+				return i.maybeVerifyKey(kv)
 			}
 			// Fall through to skipBackward since the singleLevelIterator did
 			// not have any blocks that satisfy the block interval
@@ -668,7 +664,7 @@ func (i *twoLevelIterator) SeekLT(
 		// exceeded. Note that the previous entry starts with keys <=
 		// ikey.UserKey since even though this is the current block's
 		// separator, the same user key can span multiple index blocks.
-		if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
+		if i.lower != nil && i.cmp(kv.UserKey, i.lower) < 0 {
 			i.exhaustedBounds = -1
 		}
 	}
@@ -680,7 +676,7 @@ func (i *twoLevelIterator) SeekLT(
 // package. Note that First only checks the upper bound. It is up to the caller
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
-func (i *twoLevelIterator) First() (*InternalKey, base.LazyValue) {
+func (i *twoLevelIterator) First() *base.InternalKV {
 	// If the iterator was created on a virtual sstable, we will SeekGE to the
 	// lower bound instead of using First, because First does not respect
 	// bounds.
@@ -697,29 +693,29 @@ func (i *twoLevelIterator) First() (*InternalKey, base.LazyValue) {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
-	var ikey *InternalKey
-	if ikey, _ = i.topLevelIndex.First(); ikey == nil {
-		return nil, base.LazyValue{}
+	var kv *base.InternalKV
+	if kv = i.topLevelIndex.First(); kv == nil {
+		return nil
 	}
 
 	result := i.loadIndex(+1)
 	if result == loadBlockFailed {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	if result == loadBlockOK {
-		if ikey, val := i.singleLevelIterator.First(); ikey != nil {
-			return ikey, val
+		if kv := i.singleLevelIterator.First(); kv != nil {
+			return kv
 		}
 		// Else fall through to skipForward.
 	} else {
 		// result == loadBlockIrrelevant. Enforce the upper bound here since
 		// don't want to bother moving to the next entry in the top level
 		// index if upper bound is already exceeded. Note that the next entry
-		// starts with keys >= ikey.UserKey since even though this is the
+		// starts with keys >= kv.UserKey since even though this is the
 		// block separator, the same user key can span multiple index blocks.
 		// If upper is exclusive we use >= below, else we use >.
 		if i.upper != nil {
-			cmp := i.cmp(ikey.UserKey, i.upper)
+			cmp := i.cmp(kv.UserKey, i.upper)
 			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 				i.exhaustedBounds = +1
 			}
@@ -733,7 +729,7 @@ func (i *twoLevelIterator) First() (*InternalKey, base.LazyValue) {
 // package. Note that Last only checks the lower bound. It is up to the caller
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
-func (i *twoLevelIterator) Last() (*InternalKey, base.LazyValue) {
+func (i *twoLevelIterator) Last() *base.InternalKV {
 	if i.vState != nil {
 		if i.endKeyInclusive {
 			return i.virtualLast()
@@ -750,28 +746,28 @@ func (i *twoLevelIterator) Last() (*InternalKey, base.LazyValue) {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
-	var ikey *InternalKey
-	if ikey, _ = i.topLevelIndex.Last(); ikey == nil {
-		return nil, base.LazyValue{}
+	var kv *base.InternalKV
+	if kv = i.topLevelIndex.Last(); kv == nil {
+		return nil
 	}
 
 	result := i.loadIndex(-1)
 	if result == loadBlockFailed {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	if result == loadBlockOK {
-		if ikey, val := i.singleLevelIterator.Last(); ikey != nil {
-			return ikey, val
+		if kv := i.singleLevelIterator.Last(); kv != nil {
+			return kv
 		}
 		// Else fall through to skipBackward.
 	} else {
 		// result == loadBlockIrrelevant. Enforce the lower bound here
 		// since don't want to bother moving to the previous entry in the
 		// top level index if lower bound is already exceeded. Note that
-		// the previous entry starts with keys <= ikey.UserKey since even
+		// the previous entry starts with keys <= kv.UserKey since even
 		// though this is the current block's separator, the same user key
 		// can span multiple index blocks.
-		if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
+		if i.lower != nil && i.cmp(kv.UserKey, i.lower) < 0 {
 			i.exhaustedBounds = -1
 		}
 	}
@@ -783,21 +779,21 @@ func (i *twoLevelIterator) Last() (*InternalKey, base.LazyValue) {
 // package.
 // Note: twoLevelCompactionIterator.Next mirrors the implementation of
 // twoLevelIterator.Next due to performance. Keep the two in sync.
-func (i *twoLevelIterator) Next() (*InternalKey, base.LazyValue) {
+func (i *twoLevelIterator) Next() *base.InternalKV {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 	i.maybeFilteredKeysTwoLevel = false
 	if i.err != nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	if key, val := i.singleLevelIterator.Next(); key != nil {
-		return key, val
+	if kv := i.singleLevelIterator.Next(); kv != nil {
+		return kv
 	}
 	return i.skipForward()
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
-func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+func (i *twoLevelIterator) NextPrefix(succKey []byte) *base.InternalKV {
 	if i.exhaustedBounds == +1 {
 		panic("Next called even though exhausted upper bound")
 	}
@@ -805,75 +801,75 @@ func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyVa
 	i.boundsCmp = 0
 	i.maybeFilteredKeysTwoLevel = false
 	if i.err != nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	if key, val := i.singleLevelIterator.NextPrefix(succKey); key != nil {
-		return key, val
+	if kv := i.singleLevelIterator.NextPrefix(succKey); kv != nil {
+		return kv
 	}
 	// Did not find prefix in the existing second-level index block. This is the
 	// slow-path where we seek the iterator.
-	var ikey *InternalKey
-	if ikey, _ = i.topLevelIndex.SeekGE(succKey, base.SeekGEFlagsNone); ikey == nil {
+	var kv *base.InternalKV
+	if kv = i.topLevelIndex.SeekGE(succKey, base.SeekGEFlagsNone); kv == nil {
 		i.data.invalidate()
 		i.index.invalidate()
-		return nil, base.LazyValue{}
+		return nil
 	}
 	result := i.loadIndex(+1)
 	if result == loadBlockFailed {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	if result == loadBlockIrrelevant {
 		// Enforce the upper bound here since don't want to bother moving to the
 		// next entry in the top level index if upper bound is already exceeded.
-		// Note that the next entry starts with keys >= ikey.UserKey since even
+		// Note that the next entry starts with keys >= kv.UserKey since even
 		// though this is the block separator, the same user key can span multiple
 		// index blocks. If upper is exclusive we use >= below, else we use >.
 		if i.upper != nil {
-			cmp := i.cmp(ikey.UserKey, i.upper)
+			cmp := i.cmp(kv.UserKey, i.upper)
 			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 				i.exhaustedBounds = +1
 			}
 		}
-	} else if key, val := i.singleLevelIterator.SeekGE(succKey, base.SeekGEFlagsNone); key != nil {
-		return i.maybeVerifyKey(key, val)
+	} else if kv := i.singleLevelIterator.SeekGE(succKey, base.SeekGEFlagsNone); kv != nil {
+		return i.maybeVerifyKey(kv)
 	}
 	return i.skipForward()
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *twoLevelIterator) Prev() (*InternalKey, base.LazyValue) {
+func (i *twoLevelIterator) Prev() *base.InternalKV {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 	i.maybeFilteredKeysTwoLevel = false
 	if i.err != nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	if key, val := i.singleLevelIterator.Prev(); key != nil {
-		return key, val
+	if kv := i.singleLevelIterator.Prev(); kv != nil {
+		return kv
 	}
 	return i.skipBackward()
 }
 
-func (i *twoLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
+func (i *twoLevelIterator) skipForward() *base.InternalKV {
 	for {
 		if i.err != nil || i.exhaustedBounds > 0 {
-			return nil, base.LazyValue{}
+			return nil
 		}
 		i.exhaustedBounds = 0
-		var ikey *InternalKey
-		if ikey, _ = i.topLevelIndex.Next(); ikey == nil {
+		var kv *base.InternalKV
+		if kv = i.topLevelIndex.Next(); kv == nil {
 			i.data.invalidate()
 			i.index.invalidate()
-			return nil, base.LazyValue{}
+			return nil
 		}
 		result := i.loadIndex(+1)
 		if result == loadBlockFailed {
-			return nil, base.LazyValue{}
+			return nil
 		}
 		if result == loadBlockOK {
-			if ikey, val := i.singleLevelIterator.firstInternal(); ikey != nil {
-				return i.maybeVerifyKey(ikey, val)
+			if kv := i.singleLevelIterator.firstInternal(); kv != nil {
+				return i.maybeVerifyKey(kv)
 			}
 			// Next iteration will return if singleLevelIterator set
 			// exhaustedBounds = +1.
@@ -881,12 +877,12 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			// result == loadBlockIrrelevant. Enforce the upper bound here
 			// since don't want to bother moving to the next entry in the top
 			// level index if upper bound is already exceeded. Note that the
-			// next entry starts with keys >= ikey.UserKey since even though
+			// next entry starts with keys >= kv.UserKey since even though
 			// this is the block separator, the same user key can span
 			// multiple index blocks. If upper is exclusive we use >=
 			// below, else we use >.
 			if i.upper != nil {
-				cmp := i.cmp(ikey.UserKey, i.upper)
+				cmp := i.cmp(kv.UserKey, i.upper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
 					// Next iteration will return.
@@ -896,25 +892,25 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 	}
 }
 
-func (i *twoLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
+func (i *twoLevelIterator) skipBackward() *base.InternalKV {
 	for {
 		if i.err != nil || i.exhaustedBounds < 0 {
-			return nil, base.LazyValue{}
+			return nil
 		}
 		i.exhaustedBounds = 0
-		var ikey *InternalKey
-		if ikey, _ = i.topLevelIndex.Prev(); ikey == nil {
+		var kv *base.InternalKV
+		if kv = i.topLevelIndex.Prev(); kv == nil {
 			i.data.invalidate()
 			i.index.invalidate()
-			return nil, base.LazyValue{}
+			return nil
 		}
 		result := i.loadIndex(-1)
 		if result == loadBlockFailed {
-			return nil, base.LazyValue{}
+			return nil
 		}
 		if result == loadBlockOK {
-			if ikey, val := i.singleLevelIterator.lastInternal(); ikey != nil {
-				return i.maybeVerifyKey(ikey, val)
+			if kv := i.singleLevelIterator.lastInternal(); kv != nil {
+				return i.maybeVerifyKey(kv)
 			}
 			// Next iteration will return if singleLevelIterator set
 			// exhaustedBounds = -1.
@@ -922,10 +918,10 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 			// result == loadBlockIrrelevant. Enforce the lower bound here
 			// since don't want to bother moving to the previous entry in the
 			// top level index if lower bound is already exceeded. Note that
-			// the previous entry starts with keys <= ikey.UserKey since even
+			// the previous entry starts with keys <= kv.UserKey since even
 			// though this is the current block's separator, the same user key
 			// can span multiple index blocks.
-			if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
+			if i.lower != nil && i.cmp(kv.UserKey, i.lower) < 0 {
 				i.exhaustedBounds = -1
 				// Next iteration will return.
 			}
@@ -981,47 +977,43 @@ func (i *twoLevelCompactionIterator) Close() error {
 	return i.twoLevelIterator.Close()
 }
 
-func (i *twoLevelCompactionIterator) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *twoLevelCompactionIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	panic("pebble: SeekGE unimplemented")
 }
 
 func (i *twoLevelCompactionIterator) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+) *base.InternalKV {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-func (i *twoLevelCompactionIterator) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *twoLevelCompactionIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	panic("pebble: SeekLT unimplemented")
 }
 
-func (i *twoLevelCompactionIterator) First() (*InternalKey, base.LazyValue) {
+func (i *twoLevelCompactionIterator) First() *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	return i.skipForward(i.twoLevelIterator.First())
 }
 
-func (i *twoLevelCompactionIterator) Last() (*InternalKey, base.LazyValue) {
+func (i *twoLevelCompactionIterator) Last() *base.InternalKV {
 	panic("pebble: Last unimplemented")
 }
 
 // Note: twoLevelCompactionIterator.Next mirrors the implementation of
 // twoLevelIterator.Next due to performance. Keep the two in sync.
-func (i *twoLevelCompactionIterator) Next() (*InternalKey, base.LazyValue) {
+func (i *twoLevelCompactionIterator) Next() *base.InternalKV {
 	if i.err != nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	return i.skipForward(i.singleLevelIterator.Next())
 }
 
-func (i *twoLevelCompactionIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+func (i *twoLevelCompactionIterator) NextPrefix(succKey []byte) *base.InternalKV {
 	panic("pebble: NextPrefix unimplemented")
 }
 
-func (i *twoLevelCompactionIterator) Prev() (*InternalKey, base.LazyValue) {
+func (i *twoLevelCompactionIterator) Prev() *base.InternalKV {
 	panic("pebble: Prev unimplemented")
 }
 
@@ -1032,12 +1024,10 @@ func (i *twoLevelCompactionIterator) String() string {
 	return i.reader.fileNum.String()
 }
 
-func (i *twoLevelCompactionIterator) skipForward(
-	key *InternalKey, val base.LazyValue,
-) (*InternalKey, base.LazyValue) {
-	if key == nil {
+func (i *twoLevelCompactionIterator) skipForward(kv *base.InternalKV) *base.InternalKV {
+	if kv == nil {
 		for {
-			if key, _ := i.topLevelIndex.Next(); key == nil {
+			if kv := i.topLevelIndex.Next(); kv == nil {
 				break
 			}
 			result := i.loadIndex(+1)
@@ -1058,7 +1048,7 @@ func (i *twoLevelCompactionIterator) skipForward(
 				}
 			}
 			// result == loadBlockOK
-			if key, val = i.singleLevelIterator.First(); key != nil {
+			if kv = i.singleLevelIterator.First(); kv != nil {
 				break
 			}
 		}
@@ -1068,12 +1058,12 @@ func (i *twoLevelCompactionIterator) skipForward(
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
 	i.prevOffset = curOffset
 
-	if i.vState != nil && key != nil {
-		cmp := i.cmp(key.UserKey, i.vState.upper.UserKey)
+	if i.vState != nil && kv != nil {
+		cmp := i.cmp(kv.UserKey, i.vState.upper.UserKey)
 		if cmp > 0 || (i.vState.upper.IsExclusiveSentinel() && cmp == 0) {
-			return nil, base.LazyValue{}
+			return nil
 		}
 	}
 
-	return key, val
+	return kv
 }

@@ -177,7 +177,7 @@ type compactionIter struct {
 	valueBuf []byte
 	// Is the current entry valid?
 	valid            bool
-	iterKey          *InternalKey
+	iterKV           *base.InternalKV
 	iterValue        []byte
 	iterStripeChange stripeChangeType
 	// `skip` indicates whether the remaining skippable entries in the current
@@ -309,15 +309,15 @@ func (i *compactionIter) First() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	var iterValue LazyValue
-	i.iterKey, iterValue = i.iter.First()
-	i.iterValue, _, i.err = iterValue.Value(nil)
+	i.iterKV = i.iter.First()
+	if i.iterKV == nil {
+		return nil, nil
+	}
+	i.iterValue, _, i.err = i.iterKV.Value(nil)
 	if i.err != nil {
 		return nil, nil
 	}
-	if i.iterKey != nil {
-		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iterKey.SeqNum(), i.snapshots)
-	}
+	i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iterKV.SeqNum(), i.snapshots)
 	i.pos = iterPosNext
 	i.iterStripeChange = newStripeNewKey
 	return i.Next()
@@ -353,7 +353,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	i.pos = iterPosCurForward
 	i.valid = false
 
-	for i.iterKey != nil {
+	for i.iterKV != nil {
 		// If we entered a new snapshot stripe with the same key, any key we
 		// return on this iteration is only returned because the open snapshot
 		// prevented it from being elided or merged with the key returned for
@@ -365,7 +365,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 		// stripe.
 		i.snapshotPinned = i.iterStripeChange == newStripeSameKey
 
-		if i.iterKey.Kind() == InternalKeyKindRangeDelete || rangekey.IsRangeKey(i.iterKey.Kind()) {
+		if i.iterKV.Kind() == InternalKeyKindRangeDelete || rangekey.IsRangeKey(i.iterKV.Kind()) {
 			// Return the span so the compaction can use it for file truncation and add
 			// it to the relevant fragmenter. We do not set `skip` to true before
 			// returning as there may be a forthcoming point key with the same user key
@@ -401,7 +401,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			return &i.key, i.value
 		}
 
-		if cover := i.rangeDelFrag.Covers(*i.iterKey, i.curSnapshotSeqNum); cover == keyspan.CoversVisibly {
+		if cover := i.rangeDelFrag.Covers(i.iterKV.InternalKey, i.curSnapshotSeqNum); cover == keyspan.CoversVisibly {
 			// A pending range deletion deletes this key. Skip it.
 			i.saveKey()
 			i.skipInStripe()
@@ -422,9 +422,9 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			i.forceObsoleteDueToRangeDel = false
 		}
 
-		switch i.iterKey.Kind() {
+		switch i.iterKV.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
-			if i.elideTombstone(i.iterKey.UserKey) {
+			if i.elideTombstone(i.iterKV.UserKey) {
 				if i.curSnapshotIdx == 0 {
 					// If we're at the last snapshot stripe and the tombstone
 					// can be elided skip skippable keys in the same stripe.
@@ -439,7 +439,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				}
 			}
 
-			switch i.iterKey.Kind() {
+			switch i.iterKV.Kind() {
 			case InternalKeyKindDelete:
 				i.saveKey()
 				i.value = i.iterValue
@@ -474,7 +474,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			// advances the iterator, adjusting curSnapshotIdx.
 			origSnapshotIdx := i.curSnapshotIdx
 			var valueMerger ValueMerger
-			valueMerger, i.err = i.merge(i.iterKey.UserKey, i.iterValue)
+			valueMerger, i.err = i.merge(i.iterKV.UserKey, i.iterValue)
 			var change stripeChangeType
 			if i.err == nil {
 				change = i.mergeNext(valueMerger)
@@ -517,7 +517,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			return nil, nil
 
 		default:
-			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
+			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
 			i.valid = false
 			return nil, nil
 		}
@@ -566,13 +566,14 @@ func (i *compactionIter) skipInStripe() {
 }
 
 func (i *compactionIter) iterNext() bool {
-	var iterValue LazyValue
-	i.iterKey, iterValue = i.iter.Next()
-	i.iterValue, _, i.err = iterValue.Value(nil)
-	if i.err != nil {
-		i.iterKey = nil
+	i.iterKV = i.iter.Next()
+	if i.iterKV != nil {
+		i.iterValue, _, i.err = i.iterKV.Value(nil)
+		if i.err != nil {
+			i.iterKV = nil
+		}
 	}
-	return i.iterKey != nil
+	return i.iterKV != nil
 }
 
 // stripeChangeType indicates how the snapshot stripe changed relative to the
@@ -608,7 +609,7 @@ func (i *compactionIter) nextInStripeHelper() stripeChangeType {
 	if !i.iterNext() {
 		return newStripeNewKey
 	}
-	key := i.iterKey
+	key := i.iterKV.InternalKey
 
 	// NB: The below conditional is an optimization to avoid a user key
 	// comparison in many cases. Internal keys with the same user key are
@@ -671,7 +672,7 @@ func (i *compactionIter) setNext() {
 	// - If the DB does not SETWITHDEL.
 	// - If this key is already a SETWITHDEL.
 	if i.formatVersion < FormatSetWithDelete ||
-		i.iterKey.Kind() == InternalKeyKindSetWithDelete {
+		i.iterKV.Kind() == InternalKeyKindSetWithDelete {
 		i.skip = true
 		return
 	}
@@ -732,9 +733,9 @@ func (i *compactionIter) setNext() {
 			// We're still in the same stripe. If this is a
 			// DEL/SINGLEDEL/DELSIZED, we stop looking and emit a SETWITHDEL.
 			// Subsequent keys are eligible for skipping.
-			if i.iterKey.Kind() == InternalKeyKindDelete ||
-				i.iterKey.Kind() == InternalKeyKindSingleDelete ||
-				i.iterKey.Kind() == InternalKeyKindDeleteSized {
+			if i.iterKV.Kind() == InternalKeyKindDelete ||
+				i.iterKV.Kind() == InternalKeyKindSingleDelete ||
+				i.iterKV.Kind() == InternalKeyKindDeleteSized {
 				i.key.SetKind(InternalKeyKindSetWithDelete)
 				i.skip = true
 				return
@@ -757,7 +758,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			i.pos = iterPosNext
 			return i.iterStripeChange
 		}
-		key := i.iterKey
+		key := i.iterKV.InternalKey
 		switch key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 			// We've hit a deletion tombstone. Return everything up to this point and
@@ -781,7 +782,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			return sameStripeSkippable
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
-			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
+			if i.rangeDelFrag.Covers(key, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
 				// We change the kind of the result key to a Set so that it shadows
 				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
 				// strictly necessary, but provides consistency with the behavior of
@@ -805,7 +806,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			return sameStripeSkippable
 
 		case InternalKeyKindMerge:
-			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
+			if i.rangeDelFrag.Covers(key, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
 				// We change the kind of the result key to a Set so that it shadows
 				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
 				// strictly necessary, but provides consistency with the behavior of
@@ -824,7 +825,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			}
 
 		default:
-			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
+			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
 			i.valid = false
 			return sameStripeSkippable
 		}
@@ -844,7 +845,7 @@ func (i *compactionIter) singleDeleteNext() bool {
 			return true
 		}
 
-		key := i.iterKey
+		key := i.iterKV.InternalKey
 		switch key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindMerge, InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
 			// We've hit a Delete, DeleteSized, Merge, SetWithDelete, transform
@@ -862,7 +863,7 @@ func (i *compactionIter) singleDeleteNext() bool {
 			continue
 
 		default:
-			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
+			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
 			i.valid = false
 			return false
 		}
@@ -894,7 +895,7 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 	// Loop through all the keys within this stripe that are skippable.
 	i.pos = iterPosNext
 	for i.nextInStripe() == sameStripeSkippable {
-		switch i.iterKey.Kind() {
+		switch i.iterKV.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindDeleteSized:
 			// We encountered a tombstone (DEL, or DELSIZED) that's deleted by
 			// the original DELSIZED tombstone. This can happen in two cases:
@@ -930,14 +931,14 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 			}
 			i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
 			i.value = i.valueBuf
-			if i.iterKey.Kind() == InternalKeyKindDelete {
+			if i.iterKV.Kind() == InternalKeyKindDelete {
 				// Convert the DELSIZED to a DEL—The DEL we're eliding may not
 				// have deleted the key(s) it was intended to yet. The ordinary
 				// DEL compaction heuristics are better suited at that, plus we
 				// don't want to count it as a missized DEL. We early exit in
 				// this case, after skipping the remainder of the snapshot
 				// stripe.
-				i.key.SetKind(i.iterKey.Kind())
+				i.key.SetKind(i.iterKV.Kind())
 				i.skipInStripe()
 				return &i.key, i.value
 			}
@@ -966,7 +967,7 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 				i.valid = false
 				return nil, nil
 			}
-			elidedSize := uint64(len(i.iterKey.UserKey)) + uint64(len(i.iterValue))
+			elidedSize := uint64(len(i.iterKV.UserKey)) + uint64(len(i.iterValue))
 			if elidedSize != expectedSize {
 				// The original DELSIZED key was missized. It's unclear what to
 				// do. The user-provided size was wrong, so it's unlikely to be
@@ -1002,10 +1003,10 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 }
 
 func (i *compactionIter) saveKey() {
-	i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
+	i.keyBuf = append(i.keyBuf[:0], i.iterKV.UserKey...)
 	i.key.UserKey = i.keyBuf
-	i.key.Trailer = i.iterKey.Trailer
-	i.keyTrailer = i.iterKey.Trailer
+	i.key.Trailer = i.iterKV.Trailer
+	i.keyTrailer = i.iterKV.Trailer
 	i.frontiers.Advance(i.key.UserKey)
 }
 

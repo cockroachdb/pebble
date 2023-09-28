@@ -34,21 +34,15 @@ func (it *flushIterator) String() string {
 	return "memtable"
 }
 
-func (it *flushIterator) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (it *flushIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	panic("pebble: SeekGE unimplemented")
 }
 
-func (it *flushIterator) SeekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (it *flushIterator) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-func (it *flushIterator) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (it *flushIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	panic("pebble: SeekLT unimplemented")
 }
 
@@ -56,33 +50,34 @@ func (it *flushIterator) SeekLT(
 // if the iterator is pointing at a valid entry, and (nil, nil) otherwise. Note
 // that First only checks the upper bound. It is up to the caller to ensure
 // that key is greater than or equal to the lower bound.
-func (it *flushIterator) First() (*base.InternalKey, base.LazyValue) {
-	key, val := it.Iterator.First()
-	if key == nil {
-		return nil, base.LazyValue{}
+func (it *flushIterator) First() *base.InternalKV {
+	kv := it.Iterator.First()
+	if kv == nil {
+		return nil
 	}
 	*it.bytesIterated += uint64(it.nd.allocSize)
-	return key, val
+	return kv
 }
 
 // Next advances to the next position. Returns the key and value if the
 // iterator is pointing at a valid entry, and (nil, nil) otherwise.
 // Note: flushIterator.Next mirrors the implementation of Iterator.Next
 // due to performance. Keep the two in sync.
-func (it *flushIterator) Next() (*base.InternalKey, base.LazyValue) {
+func (it *flushIterator) Next() *base.InternalKV {
 	it.nd = it.list.getNext(it.nd, 0)
 	if it.nd == it.list.tail {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	it.decodeKey()
 	*it.bytesIterated += uint64(it.nd.allocSize)
-	return &it.key, base.MakeInPlaceValue(it.value())
+	it.kv.LazyValue = base.MakeInPlaceValue(it.value())
+	return &it.kv
 }
 
-func (it *flushIterator) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
+func (it *flushIterator) NextPrefix(succKey []byte) *base.InternalKV {
 	panic("pebble: NextPrefix unimplemented")
 }
 
-func (it *flushIterator) Prev() (*base.InternalKey, base.LazyValue) {
+func (it *flushIterator) Prev() *base.InternalKV {
 	panic("pebble: Prev unimplemented")
 }

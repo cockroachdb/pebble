@@ -58,8 +58,10 @@ func TestMergingIterSeek(t *testing.T) {
 				f := &fakeIter{}
 				for _, key := range strings.Fields(line) {
 					j := strings.Index(key, ":")
-					f.keys = append(f.keys, base.ParseInternalKey(key[:j]))
-					f.vals = append(f.vals, []byte(key[j+1:]))
+					f.kvs = append(f.kvs, base.InternalKV{
+						InternalKey: base.ParseInternalKey(key[:j]),
+						LazyValue:   base.MakeInPlaceValue([]byte(key[j+1:])),
+					})
 				}
 				iters = append(iters, f)
 			}
@@ -118,8 +120,10 @@ func TestMergingIterNextPrev(t *testing.T) {
 						iters[i] = f
 						for _, key := range strings.Fields(c[i]) {
 							j := strings.Index(key, ":")
-							f.keys = append(f.keys, base.ParseInternalKey(key[:j]))
-							f.vals = append(f.vals, []byte(key[j+1:]))
+							f.kvs = append(f.kvs, base.InternalKV{
+								InternalKey: base.ParseInternalKey(key[:j]),
+								LazyValue:   base.MakeInPlaceValue([]byte(key[j+1:])),
+							})
 						}
 					}
 
@@ -408,11 +412,11 @@ func BenchmarkMergingIterNext(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								key, _ := m.Next()
-								if key == nil {
-									key, _ = m.First()
+								kv := m.Next()
+								if kv == nil {
+									kv = m.First()
 								}
-								_ = key
+								_ = kv
 							}
 							m.Close()
 						})
@@ -444,11 +448,11 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								key, _ := m.Prev()
-								if key == nil {
-									key, _ = m.Last()
+								kv := m.Prev()
+								if kv == nil {
+									kv = m.Last()
 								}
-								_ = key
+								_ = kv
 							}
 							m.Close()
 						})
@@ -593,14 +597,14 @@ func buildLevelsForMergingIterSeqSeek(
 		for j := range readers[i] {
 			iter, err := readers[i][j].NewIter(nil /* lower */, nil /* upper */)
 			require.NoError(b, err)
-			smallest, _ := iter.First()
+			smallestKV := iter.First()
 			meta[j] = &fileMetadata{}
 			// The same FileNum is being reused across different levels, which
 			// is harmless for the benchmark since each level has its own iterator
 			// creation func.
 			meta[j].FileNum = FileNum(j)
-			largest, _ := iter.Last()
-			meta[j].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.Clone(), largest.Clone())
+			largestKV := iter.Last()
+			meta[j].ExtendPointKeyBounds(opts.Comparer.Compare, smallestKV.InternalKey.Clone(), largestKV.InternalKey.Clone())
 			meta[j].InitPhysicalBacking()
 		}
 		levelSlices[i] = manifest.NewLevelSliceSpecificOrder(meta)
@@ -664,9 +668,9 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 					pos := i % (keyCount - 1)
 					m.SetBounds(keys[pos], keys[pos+1])
 					// SeekGE will return keys[pos].
-					k, _ := m.SeekGE(keys[pos], base.SeekGEFlagsNone)
-					for k != nil {
-						k, _ = m.Next()
+					kv := m.SeekGE(keys[pos], base.SeekGEFlagsNone)
+					for kv != nil {
+						kv = m.Next()
 					}
 				}
 				m.Close()

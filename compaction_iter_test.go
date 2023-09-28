@@ -79,9 +79,8 @@ func (m *debugMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 
 func TestCompactionIter(t *testing.T) {
 	var merge Merge
-	var keys []InternalKey
+	var kvs []base.InternalKV
 	var rangeKeys []keyspan.Span
-	var vals [][]byte
 	var snapshots []uint64
 	var elideTombstones bool
 	var allowZeroSeqnum bool
@@ -104,7 +103,7 @@ func TestCompactionIter(t *testing.T) {
 		// SSTables are not released while iterating, and therefore not
 		// susceptible to use-after-free bugs, we skip the zeroing of
 		// RangeDelete keys.
-		fi := &fakeIter{keys: keys, vals: vals}
+		fi := &fakeIter{kvs: kvs}
 		interleavingIter = &keyspan.InterleavingIter{}
 		interleavingIter.Init(
 			base.DefaultComparer,
@@ -149,22 +148,23 @@ func TestCompactionIter(t *testing.T) {
 					len(d.CmdArgs[0].Vals) > 0 && d.CmdArgs[0].Vals[0] == "deletable" {
 					merge = newDeletableSumValueMerger
 				}
-				keys = keys[:0]
-				vals = vals[:0]
+				kvs = kvs[:0]
 				rangeKeys = rangeKeys[:0]
 				for _, key := range strings.Split(d.Input, "\n") {
 					j := strings.Index(key, ":")
-					keys = append(keys, base.ParseInternalKey(key[:j]))
 
+					var kv base.InternalKV
+					kv.InternalKey = base.ParseInternalKey(key[:j])
 					if strings.HasPrefix(key[j+1:], "varint(") {
 						valueStr := strings.TrimSuffix(strings.TrimPrefix(key[j+1:], "varint("), ")")
 						v, err := strconv.ParseUint(valueStr, 10, 64)
 						require.NoError(t, err)
 						encodedValue := binary.AppendUvarint([]byte(nil), v)
-						vals = append(vals, encodedValue)
+						kv.LazyValue = base.MakeInPlaceValue(encodedValue)
 					} else {
-						vals = append(vals, []byte(key[j+1:]))
+						kv.LazyValue = base.MakeInPlaceValue([]byte(key[j+1:]))
 					}
+					kvs = append(kvs, kv)
 				}
 				return ""
 
