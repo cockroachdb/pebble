@@ -44,6 +44,8 @@ type LevelMetrics struct {
 	Sublevels int32
 	// The total number of files in the level.
 	NumFiles int64
+	// The total number of virtual sstables in the level.
+	NumVirtualFiles uint64
 	// The total size in bytes of the files in the level.
 	Size int64
 	// The level's compaction score. This is the compensatedScoreRatio in the
@@ -416,13 +418,13 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.SafeString("\n")
 	}
 
-	w.SafeString("      |                     |       |       |   ingested   |     moved    |    written   |       |    amp")
+	w.SafeString("      |                             |       |       |   ingested   |     moved    |    written   |       |    amp")
 	appendIfMulti("   |     multilevel")
 	newline()
-	w.SafeString("level | tables  size val-bl | score |   in  | tables  size | tables  size | tables  size |  read |   r   w")
+	w.SafeString("level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w")
 	appendIfMulti("  |    top   in  read")
 	newline()
-	w.SafeString("------+---------------------+-------+-------+--------------+--------------+--------------+-------+---------")
+	w.SafeString("------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------")
 	appendIfMulti("-+------------------")
 	newline()
 
@@ -447,10 +449,11 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			wampStr = fmt.Sprintf("%.1f", wamp)
 		}
 
-		w.Printf("| %5s %6s %6s | %5s | %5s | %5s %6s | %5s %6s | %5s %6s | %5s | %3d %4s",
+		w.Printf("| %5s %6s %6s %7s | %5s | %5s | %5s %6s | %5s %6s | %5s %6s | %5s | %3d %4s",
 			humanize.Count.Int64(m.NumFiles),
 			humanize.Bytes.Int64(m.Size),
 			humanize.Bytes.Uint64(m.Additional.ValueBlocksSize),
+			humanize.Count.Uint64(m.NumVirtualFiles),
 			redact.Safe(scoreStr),
 			humanize.Bytes.Uint64(m.BytesIn),
 			humanize.Count.Uint64(m.TablesIngested),
@@ -495,7 +498,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.SafeString("total ")
 	formatRow(&total, math.NaN())
 
-	w.SafeString("-----------------------------------------------------------------------------------------------------------")
+	w.SafeString("-------------------------------------------------------------------------------------------------------------------")
 	appendIfMulti("--------------------")
 	newline()
 	w.Printf("WAL: %d files (%s)  in: %s  written: %s (%.0f%% overhead)\n",
