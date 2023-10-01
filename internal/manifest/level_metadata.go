@@ -17,7 +17,9 @@ import (
 type LevelMetadata struct {
 	level     int
 	totalSize uint64
-	tree      btree
+	// NumVirtual is the number of virtual sstables in the level.
+	NumVirtual uint64
+	tree       btree
 }
 
 // clone makes a copy of the level metadata, implicitly increasing the ref
@@ -26,6 +28,7 @@ func (lm *LevelMetadata) clone() LevelMetadata {
 	return LevelMetadata{
 		level:     lm.level,
 		totalSize: lm.totalSize,
+		NumVirtual: lm.NumVirtual,
 		tree:      lm.tree.Clone(),
 	}
 }
@@ -44,6 +47,9 @@ func makeLevelMetadata(cmp Compare, level int, files []*FileMetadata) LevelMetad
 	lm.tree, _ = makeBTree(bcmp, files)
 	for _, f := range files {
 		lm.totalSize += f.Size
+		if f.Virtual {
+			lm.NumVirtual++
+		}
 	}
 	return lm
 }
@@ -62,11 +68,17 @@ func (lm *LevelMetadata) insert(f *FileMetadata) error {
 		return err
 	}
 	lm.totalSize += f.Size
+	if f.Virtual {
+		lm.NumVirtual++
+	}
 	return nil
 }
 
 func (lm *LevelMetadata) remove(f *FileMetadata) bool {
 	lm.totalSize -= f.Size
+	if f.Virtual {
+		lm.NumVirtual--
+	}
 	return lm.tree.Delete(f)
 }
 
@@ -301,6 +313,19 @@ func (ls *LevelSlice) SizeSum() uint64 {
 		sum += f.Size
 	}
 	return sum
+}
+
+// NumVirtual returns the number of virtual sstables in the level. Its runtime is
+// linear in the length of the slice.
+func (ls *LevelSlice) NumVirtual() uint64 {
+	var n uint64
+	iter := ls.Iter()
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f.Virtual {
+			n++
+		}
+	}
+	return n
 }
 
 // Reslice constructs a new slice backed by the same underlying level, with
