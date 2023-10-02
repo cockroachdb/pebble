@@ -28,6 +28,17 @@ func writeAndIngest(t *testing.T, mem vfs.FS, d *DB, k InternalKey, v []byte, fi
 	require.NoError(t, d.Ingest([]string{path}))
 }
 
+// d.mu should be help. logLock should not be held.
+func checkBackingSize(t *testing.T, d *DB) {
+	d.mu.versions.logLock()
+	var backingSizeSum uint64
+	for _, backing := range d.mu.versions.fileBackingMap {
+		backingSizeSum += backing.Size
+	}
+	require.Equal(t, backingSizeSum, d.mu.versions.fileBackingSize)
+	d.mu.versions.logUnlock()
+}
+
 // TestLatestRefCounting sanity checks the ref counting implementation for
 // FileMetadata.latestRefs, and makes sure that the zombie table implementation
 // works when the version edit contains virtual sstables. It also checks that
@@ -153,6 +164,7 @@ func TestLatestRefCounting(t *testing.T) {
 	_, ok := d.mu.versions.fileBackingMap[f.FileBacking.DiskFileNum]
 	require.True(t, ok)
 	require.Equal(t, f.Size, m2.FileBacking.VirtualizedSize.Load())
+	checkBackingSize(t, d)
 
 	// Make sure that f is not present in zombie list, because it is not yet a
 	// zombie.
@@ -174,6 +186,7 @@ func TestLatestRefCounting(t *testing.T) {
 	_, ok = d.mu.versions.fileBackingMap[f.FileBacking.DiskFileNum]
 	require.True(t, ok)
 	require.Equal(t, m2.Size, m2.FileBacking.VirtualizedSize.Load())
+	checkBackingSize(t, d)
 
 	// Move m2 from L0 to L6 to test the move compaction case.
 	ve = manifest.VersionEdit{}
@@ -183,6 +196,7 @@ func TestLatestRefCounting(t *testing.T) {
 	ve.DeletedFiles[d1] = m2
 	ve.NewFiles = append(ve.NewFiles, n1)
 	require.NoError(t, applyVE(&ve))
+	checkBackingSize(t, d)
 
 	require.Equal(t, 1, int(m2.LatestRefs()))
 	require.Equal(t, 0, len(d.mu.versions.zombieTables))
@@ -198,6 +212,7 @@ func TestLatestRefCounting(t *testing.T) {
 	ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
 	ve.DeletedFiles[d1] = m2
 	require.NoError(t, applyVE(&ve))
+	checkBackingSize(t, d)
 
 	// All virtual sstables are gone.
 	require.Equal(t, 0, int(m2.LatestRefs()))
@@ -207,6 +222,7 @@ func TestLatestRefCounting(t *testing.T) {
 	_, ok = d.mu.versions.fileBackingMap[f.FileBacking.DiskFileNum]
 	require.False(t, ok)
 	require.Equal(t, 0, int(m2.FileBacking.VirtualizedSize.Load()))
+	checkBackingSize(t, d)
 
 	// Make sure that the backing file is added to the obsolete tables list.
 	require.Equal(t, 1, len(d.mu.versions.obsoleteTables))
@@ -328,6 +344,7 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 	ve.CreatedBackingTables = append(ve.CreatedBackingTables, f.FileBacking)
 
 	require.NoError(t, applyVE(&ve))
+	checkBackingSize(t, d)
 	d.mu.Unlock()
 
 	require.Equal(t, 2, int(m1.LatestRefs()))
@@ -361,6 +378,7 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 	_, ok = d.mu.versions.fileBackingMap[f.FileBacking.DiskFileNum]
 	require.True(t, ok)
 	require.Equal(t, f.Size, virtualFile.FileBacking.VirtualizedSize.Load())
+	checkBackingSize(t, d)
 	d.mu.Unlock()
 
 	// Will cause the virtual sstables to be deleted, and the file backing should
@@ -379,6 +397,7 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 	require.Nil(t, virtualFile)
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
 	require.Equal(t, 0, len(d.mu.versions.fileBackingMap))
+	checkBackingSize(t, d)
 	d.mu.Unlock()
 
 	// Close and restart to make sure that the new snapshot written during
@@ -399,6 +418,7 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 	require.Nil(t, virtualFile)
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
 	require.Equal(t, 0, len(d.mu.versions.fileBackingMap))
+	checkBackingSize(t, d)
 	d.mu.Unlock()
 	require.NoError(t, d.Close())
 }

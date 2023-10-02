@@ -97,6 +97,9 @@ type versionSet struct {
 	// during Open in versionSet.load, but it's not used concurrently during
 	// load.
 	fileBackingMap map[base.DiskFileNum]*fileBacking
+	// fileBackingSize is the sum of the sizes of the fileBackings in the
+	// fileBackingMap.
+	fileBackingSize uint64
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
@@ -141,6 +144,7 @@ func (vs *versionSet) init(
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = make(map[base.DiskFileNum]uint64)
 	vs.fileBackingMap = make(map[base.DiskFileNum]*fileBacking)
+	vs.fileBackingSize = 0
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
 	vs.setCurrent = setCurrent
@@ -295,11 +299,15 @@ func (vs *versionSet) load(
 	// Populate the fileBackingMap and the FileBacking for virtual sstables since
 	// we have finished version edit accumulation.
 	for _, s := range bve.AddedFileBacking {
-		vs.fileBackingMap[s.DiskFileNum] = s
+		vs.addFileBacking(s)
 	}
 
 	for _, fileNum := range bve.RemovedFileBacking {
-		delete(vs.fileBackingMap, fileNum)
+		if b, ok := vs.fileBackingMap[fileNum]; ok {
+			vs.removeFileBacking(b.DiskFileNum)
+		} else {
+			panic("pebble: removing unknown file backing")
+		}
 	}
 
 	newVersion, err := bve.Apply(
@@ -360,6 +368,26 @@ func (vs *versionSet) logUnlock() {
 	}
 	vs.writing = false
 	vs.writerCond.Signal()
+}
+
+// Only call if the DiskFileNum doesn't exist in the fileBackingMap.
+func (vs *versionSet) addFileBacking(backing *manifest.FileBacking) {
+	_, ok := vs.fileBackingMap[backing.DiskFileNum]
+	if ok {
+		panic("pebble: trying to add an existing file backing")
+	}
+	vs.fileBackingMap[backing.DiskFileNum] = backing
+	vs.fileBackingSize += backing.Size
+}
+
+// Only call if the the DiskFileNum exists in the fileBackingMap.
+func (vs *versionSet) removeFileBacking(dfn base.DiskFileNum) {
+	backing, ok := vs.fileBackingMap[dfn]
+	if !ok {
+		panic("pebble: trying to remove an unknown file backing")
+	}
+	delete(vs.fileBackingMap, dfn)
+	vs.fileBackingSize -= backing.Size
 }
 
 // logAndApply logs the version edit to the manifest, applies the version edit
@@ -495,7 +523,7 @@ func (vs *versionSet) logAndApply(
 		newVersion, zombies, err = manifest.AccumulateIncompleteAndApplySingleVE(
 			ve, currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
 			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
-			vs.fileBackingMap,
+			vs.fileBackingMap, vs.addFileBacking, vs.removeFileBacking,
 		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
