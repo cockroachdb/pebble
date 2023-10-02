@@ -51,6 +51,8 @@ func exampleMetrics() Metrics {
 	m.Table.ZombieSize = 15
 	m.Table.BackingTableCount = 1
 	m.Table.BackingTableSize = 2 << 20
+	m.Table.VirtualSize = 1 << 20
+	m.Table.NumVirtual = 2
 	m.Table.ZombieCount = 16
 	m.TableCache.Size = 17
 	m.TableCache.Count = 18
@@ -264,8 +266,15 @@ func TestMetrics(t *testing.T) {
 					buf.WriteString(fmt.Sprintf("%d\n", m.Table.BackingTableCount))
 				} else if line == "backing-size" {
 					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(m.Table.BackingTableSize)))
+				} else if line == "virtual-size" {
+					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(m.Table.VirtualSize)))
 				} else if strings.HasPrefix(line, "num-virtual") {
 					splits := strings.Split(line, " ")
+					if len(splits) == 1 {
+						buf.WriteString(fmt.Sprintf("%d\n", m.Table.NumVirtual))
+						continue
+					}
+					// Level is specified.
 					l, err := strconv.Atoi(splits[1])
 					if err != nil {
 						panic(err)

@@ -19,6 +19,7 @@ Compactions: 5  estimated debt: 6B  in progress: 2 (7B)
 MemTables: 12 (11B)  zombie: 14 (13B)
 Zombie tables: 16 (15B)
 Backing tables: 1 (2.0MB)
+Virtual tables: 2 (1.0MB)
 Block cache: 2 entries (1B)  hit rate: 42.9%
 Table cache: 18 entries (17B)  hit rate: 48.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -65,6 +66,7 @@ Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 3 entries (556B)  hit rate: 0.0%
 Table cache: 1 entries (800B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -118,6 +120,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.3KB)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 5 entries (1.1KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -156,6 +159,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.3KB)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 5 entries (1.1KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -191,6 +195,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 1 (661B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 3 entries (556B)  hit rate: 42.9%
 Table cache: 1 entries (800B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -229,6 +234,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 42.9%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -293,6 +299,7 @@ Compactions: 1  estimated debt: 2.9KB  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 42.9%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -341,6 +348,7 @@ Compactions: 2  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 27.3%
 Table cache: 0 entries (0B)  hit rate: 58.3%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -435,6 +443,7 @@ Compactions: 2  estimated debt: 5.0KB  in progress: 0 (0B)
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 12 entries (2.4KB)  hit rate: 31.1%
 Table cache: 3 entries (2.3KB)  hit rate: 57.9%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -494,15 +503,20 @@ lsm
   000014:[c@15#0,SET-c@14#0,SET]
   000028:[z#32,SET-z#32,SET]
 
-# There should be 2 backing tables.
+# There should be 2 backing tables. Note that tiny sstables have inaccurate
+# virtual sstable sizes.
 metrics-value
 num-backing
 backing-size
+num-virtual
 num-virtual 0
+virtual-size
 ----
 2
 1.3KB
 2
+2
+102B
 
 # Virtualize a virtual sstable.
 build ext1
@@ -535,8 +549,36 @@ lsm
 metrics-value
 num-backing
 backing-size
+num-virtual
 num-virtual 0
+virtual-size
 ----
 2
 1.3KB
 2
+2
+102B
+
+compact a-z
+----
+6:
+  000008:[a#0,SET-b#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+  000033:[d#0,SET-m#0,SET]
+  000028:[z#32,SET-z#32,SET]
+  000031:[zz#33,SET-zz#33,SET]
+
+# Virtual sstables metrics should be gone after the compaction.
+metrics-value
+num-backing
+backing-size
+num-virtual
+num-virtual 0
+virtual-size
+----
+0
+0B
+0
+0
+0B

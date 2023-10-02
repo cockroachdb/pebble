@@ -259,6 +259,13 @@ type Metrics struct {
 		BackingTableCount uint64
 		// The sum of the sizes of the all of the backing sstables.
 		BackingTableSize uint64
+		// NumVirtual is the number of virtual sstables in the latest version
+		// summed over every level in the lsm.
+		NumVirtual uint64
+		// VirtualSize is the sum of the sizes of the virtual sstables in the
+		// latest version. BackingTableSize - VirtualSize gives an estimate for
+		// the space amplification caused by not compacting virtual sstables.
+		VirtualSize uint64
 	}
 
 	TableCache CacheMetrics
@@ -538,6 +545,9 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("Backing tables: %d (%s)\n",
 		redact.Safe(m.Table.BackingTableCount),
 		humanize.Bytes.Uint64(m.Table.BackingTableSize))
+	w.Printf("Virtual tables: %d (%s)\n",
+		redact.Safe(m.Table.NumVirtual),
+		humanize.Bytes.Uint64(m.Table.VirtualSize))
 
 	formatCacheMetrics := func(m *CacheMetrics, name redact.SafeString) {
 		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",

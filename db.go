@@ -1966,8 +1966,14 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Table.BackingTableCount = uint64(len(d.mu.versions.fileBackingMap))
 	for _, backing := range d.mu.versions.fileBackingMap {
 		metrics.Table.BackingTableSize += backing.Size
+		metrics.Table.VirtualSize += backing.VirtualizedSize.Load()
 	}
 	d.mu.versions.logUnlock()
+	var totalVirtualFiles uint64
+	for _, level := range metrics.Levels {
+		totalVirtualFiles += level.NumVirtualFiles
+	}
+	metrics.Table.NumVirtual = totalVirtualFiles
 
 	metrics.LogWriter.FsyncLatency = d.mu.log.metrics.fsyncLatency
 	if err := metrics.LogWriter.Merge(&d.mu.log.metrics.LogWriterMetrics); err != nil {
