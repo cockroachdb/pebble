@@ -48,6 +48,8 @@ type LevelMetrics struct {
 	NumVirtualFiles uint64
 	// The total size in bytes of the files in the level.
 	Size int64
+	// The total size of the virtual sstables in the level.
+	VirtualSize uint64
 	// The level's compaction score. This is the compensatedScoreRatio in the
 	// candidateLevelInfo.
 	Score float64
@@ -110,6 +112,7 @@ type LevelMetrics struct {
 func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.NumFiles += u.NumFiles
 	m.NumVirtualFiles += u.NumVirtualFiles
+	m.VirtualSize += u.VirtualSize
 	m.Size += u.Size
 	m.BytesIn += u.BytesIn
 	m.BytesIngested += u.BytesIngested
@@ -334,6 +337,27 @@ func (m *Metrics) DiskSpaceUsage() uint64 {
 	return usageBytes
 }
 
+// NumVirtual is the number of virtual sstables in the latest version
+// summed over every level in the lsm.
+func (m *Metrics) NumVirtual() uint64 {
+	var n uint64
+	for _, level := range m.Levels {
+		n += level.NumVirtualFiles
+	}
+	return n
+}
+
+// VirtualSize is the sum of the sizes of the virtual sstables in the
+// latest version. BackingTableSize - VirtualSize gives an estimate for
+// the space amplification caused by not compacting virtual sstables.
+func (m *Metrics) VirtualSize() uint64 {
+	var size uint64
+	for _, level := range m.Levels {
+		size += level.VirtualSize
+	}
+	return size
+}
+
 // ReadAmp returns the current read amplification of the database.
 // It's computed as the number of sublevels in L0 + the number of non-empty
 // levels below L0.
@@ -540,6 +564,9 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("Backing tables: %d (%s)\n",
 		redact.Safe(m.Table.BackingTableCount),
 		humanize.Bytes.Uint64(m.Table.BackingTableSize))
+	w.Printf("Virtual tables: %d (%s)\n",
+		redact.Safe(m.NumVirtual()),
+		humanize.Bytes.Uint64(m.VirtualSize()))
 
 	formatCacheMetrics := func(m *CacheMetrics, name redact.SafeString) {
 		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",

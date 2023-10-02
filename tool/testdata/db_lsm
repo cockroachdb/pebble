@@ -29,6 +29,7 @@ Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 0 (0B)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
