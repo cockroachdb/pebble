@@ -19,17 +19,20 @@ type LevelMetadata struct {
 	totalSize uint64
 	// NumVirtual is the number of virtual sstables in the level.
 	NumVirtual uint64
-	tree       btree
+	// VirtualSize is the size of the virtual sstables in the level.
+	VirtualSize uint64
+	tree        btree
 }
 
 // clone makes a copy of the level metadata, implicitly increasing the ref
 // count of every file contained within lm.
 func (lm *LevelMetadata) clone() LevelMetadata {
 	return LevelMetadata{
-		level:      lm.level,
-		totalSize:  lm.totalSize,
-		NumVirtual: lm.NumVirtual,
-		tree:       lm.tree.Clone(),
+		level:       lm.level,
+		totalSize:   lm.totalSize,
+		NumVirtual:  lm.NumVirtual,
+		VirtualSize: lm.VirtualSize,
+		tree:        lm.tree.Clone(),
 	}
 }
 
@@ -49,6 +52,7 @@ func makeLevelMetadata(cmp Compare, level int, files []*FileMetadata) LevelMetad
 		lm.totalSize += f.Size
 		if f.Virtual {
 			lm.NumVirtual++
+			lm.VirtualSize += f.Size
 		}
 	}
 	return lm
@@ -70,6 +74,7 @@ func (lm *LevelMetadata) insert(f *FileMetadata) error {
 	lm.totalSize += f.Size
 	if f.Virtual {
 		lm.NumVirtual++
+		lm.VirtualSize += f.Size
 	}
 	return nil
 }
@@ -78,6 +83,7 @@ func (lm *LevelMetadata) remove(f *FileMetadata) bool {
 	lm.totalSize -= f.Size
 	if f.Virtual {
 		lm.NumVirtual--
+		lm.VirtualSize -= f.Size
 	}
 	return lm.tree.Delete(f)
 }
@@ -326,6 +332,19 @@ func (ls *LevelSlice) NumVirtual() uint64 {
 		}
 	}
 	return n
+}
+
+// VirtualSizeSum returns the sum of the sizes of the virtual sstables in the
+// level.
+func (ls *LevelSlice) VirtualSizeSum() uint64 {
+	var sum uint64
+	iter := ls.Iter()
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f.Virtual {
+			sum += f.Size
+		}
+	}
+	return sum
 }
 
 // Reslice constructs a new slice backed by the same underlying level, with
