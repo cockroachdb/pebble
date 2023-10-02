@@ -86,17 +86,21 @@ type versionSet struct {
 	// still referenced by an inuse iterator.
 	zombieTables map[base.DiskFileNum]uint64 // filenum -> size
 
-	// fileBackingMap is a map for the FileBacking which is supporting virtual
-	// sstables in the latest version. Once the file backing is backing no
-	// virtual sstables in the latest version, it is removed from this map and
-	// the corresponding state is added to the zombieTables map. Note that we
-	// don't keep track of file backing which supports a virtual sstable
-	// which is not in the latest version.
-	//
-	// fileBackingMap is protected by the versionSet.logLock. It's populated
+	// backingState is protected by the versionSet.logLock. It's populated
 	// during Open in versionSet.load, but it's not used concurrently during
 	// load.
-	fileBackingMap map[base.DiskFileNum]*fileBacking
+	backingState struct {
+		// fileBackingMap is a map for the FileBacking which is supporting virtual
+		// sstables in the latest version. Once the file backing is backing no
+		// virtual sstables in the latest version, it is removed from this map and
+		// the corresponding state is added to the zombieTables map. Note that we
+		// don't keep track of file backing which supports a virtual sstable
+		// which is not in the latest version.
+		fileBackingMap map[base.DiskFileNum]*fileBacking
+		// fileBackingSize is the sum of the sizes of the fileBackings in the
+		// fileBackingMap.
+		fileBackingSize uint64
+	}
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
@@ -140,7 +144,8 @@ func (vs *versionSet) init(
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = make(map[base.DiskFileNum]uint64)
-	vs.fileBackingMap = make(map[base.DiskFileNum]*fileBacking)
+	vs.backingState.fileBackingMap = make(map[base.DiskFileNum]*fileBacking)
+	vs.backingState.fileBackingSize = 0
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
 	vs.setCurrent = setCurrent
@@ -295,11 +300,11 @@ func (vs *versionSet) load(
 	// Populate the fileBackingMap and the FileBacking for virtual sstables since
 	// we have finished version edit accumulation.
 	for _, s := range bve.AddedFileBacking {
-		vs.fileBackingMap[s.DiskFileNum] = s
+		vs.addFileBacking(s)
 	}
 
 	for _, fileNum := range bve.RemovedFileBacking {
-		delete(vs.fileBackingMap, fileNum)
+		vs.removeFileBacking(fileNum)
 	}
 
 	newVersion, err := bve.Apply(
@@ -360,6 +365,26 @@ func (vs *versionSet) logUnlock() {
 	}
 	vs.writing = false
 	vs.writerCond.Signal()
+}
+
+// Only call if the DiskFileNum doesn't exist in the fileBackingMap.
+func (vs *versionSet) addFileBacking(backing *manifest.FileBacking) {
+	_, ok := vs.backingState.fileBackingMap[backing.DiskFileNum]
+	if ok {
+		panic("pebble: trying to add an existing file backing")
+	}
+	vs.backingState.fileBackingMap[backing.DiskFileNum] = backing
+	vs.backingState.fileBackingSize += backing.Size
+}
+
+// Only call if the the DiskFileNum exists in the fileBackingMap.
+func (vs *versionSet) removeFileBacking(dfn base.DiskFileNum) {
+	backing, ok := vs.backingState.fileBackingMap[dfn]
+	if !ok {
+		panic("pebble: trying to remove an unknown file backing")
+	}
+	delete(vs.backingState.fileBackingMap, dfn)
+	vs.backingState.fileBackingSize -= backing.Size
 }
 
 // logAndApply logs the version edit to the manifest, applies the version edit
@@ -495,7 +520,7 @@ func (vs *versionSet) logAndApply(
 		newVersion, zombies, err = manifest.AccumulateIncompleteAndApplySingleVE(
 			ve, currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
 			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
-			vs.fileBackingMap,
+			vs.backingState.fileBackingMap, vs.addFileBacking, vs.removeFileBacking,
 		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
