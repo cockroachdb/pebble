@@ -619,6 +619,7 @@ func (vs *versionSet) logAndApply(
 		l := &vs.metrics.Levels[i]
 		l.NumFiles = int64(newVersion.Levels[i].Len())
 		l.NumVirtualFiles = newVersion.Levels[i].NumVirtual
+		l.VirtualSize = newVersion.Levels[i].VirtualSize
 		l.Size = int64(newVersion.Levels[i].Size())
 
 		l.Sublevels = 0
@@ -634,6 +635,12 @@ func (vs *versionSet) logAndApply(
 				vs.opts.Logger.Fatalf(
 					"versionSet metrics L%d NumVirtual = %d, actual NumVirtual = %d",
 					i, l.NumVirtualFiles, nVirtual,
+				)
+			}
+			if vSize := levelFiles.VirtualSizeSum(); vSize != l.VirtualSize {
+				vs.opts.Logger.Fatalf(
+					"versionSet metrics L%d Virtual size = %d, actual size = %d",
+					i, l.VirtualSize, vSize,
 				)
 			}
 		}

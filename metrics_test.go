@@ -70,6 +70,8 @@ func exampleMetrics() Metrics {
 		l.Sublevels = int32(i + 1)
 		l.NumFiles = int64(base) + 1
 		l.NumVirtualFiles = uint64(base) / 2
+		l.VirtualSize = 10 << 10
+		l.NumVirtualFiles = 1
 		l.Size = int64(base) + 2
 		l.Score = float64(base) + 3
 		l.BytesIn = base + 4
@@ -264,8 +266,15 @@ func TestMetrics(t *testing.T) {
 					buf.WriteString(fmt.Sprintf("%d\n", m.Table.BackingTableCount))
 				} else if line == "backing-size" {
 					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(m.Table.BackingTableSize)))
+				} else if line == "virtual-size" {
+					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(m.VirtualSize())))
 				} else if strings.HasPrefix(line, "num-virtual") {
 					splits := strings.Split(line, " ")
+					if len(splits) == 1 {
+						buf.WriteString(fmt.Sprintf("%d\n", m.NumVirtual()))
+						continue
+					}
+					// Level is specified.
 					l, err := strconv.Atoi(splits[1])
 					if err != nil {
 						panic(err)

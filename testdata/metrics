@@ -3,14 +3,14 @@ example
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp   |     multilevel
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w  |    top   in  read
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+----------+------------------
-    0 |   101   102B     0B      50 | 103.0 |  104B |   112   104B |   113   106B |   221   217B |  107B |   1  2.1 |  104B  104B  104B
-    1 |   201   202B     0B     100 | 203.0 |  204B |   212   204B |   213   206B |   421   417B |  207B |   2  2.0 |  204B  204B  204B
-    2 |   301   302B     0B     150 | 303.0 |  304B |   312   304B |   313   306B |   621   617B |  307B |   3  2.0 |  304B  304B  304B
-    3 |   401   402B     0B     200 | 403.0 |  404B |   412   404B |   413   406B |   821   817B |  407B |   4  2.0 |  404B  404B  404B
-    4 |   501   502B     0B     250 | 503.0 |  504B |   512   504B |   513   506B |  1.0K  1017B |  507B |   5  2.0 |  504B  504B  504B
-    5 |   601   602B     0B     300 | 603.0 |  604B |   612   604B |   613   606B |  1.2K  1.2KB |  607B |   6  2.0 |  604B  604B  604B
-    6 |   701   702B     0B     350 |     - |  704B |   712   704B |   713   706B |  1.4K  1.4KB |  707B |   7  2.0 |  704B  704B  704B
-total |  2.8K  2.7KB     0B    1.4K |     - | 2.8KB |  2.9K  2.8KB |  2.9K  2.8KB |  5.7K  8.4KB | 2.8KB |  28  3.0 | 2.8KB 2.8KB 2.8KB
+    0 |   101   102B     0B       1 | 103.0 |  104B |   112   104B |   113   106B |   221   217B |  107B |   1  2.1 |  104B  104B  104B
+    1 |   201   202B     0B       1 | 203.0 |  204B |   212   204B |   213   206B |   421   417B |  207B |   2  2.0 |  204B  204B  204B
+    2 |   301   302B     0B       1 | 303.0 |  304B |   312   304B |   313   306B |   621   617B |  307B |   3  2.0 |  304B  304B  304B
+    3 |   401   402B     0B       1 | 403.0 |  404B |   412   404B |   413   406B |   821   817B |  407B |   4  2.0 |  404B  404B  404B
+    4 |   501   502B     0B       1 | 503.0 |  504B |   512   504B |   513   506B |  1.0K  1017B |  507B |   5  2.0 |  504B  504B  504B
+    5 |   601   602B     0B       1 | 603.0 |  604B |   612   604B |   613   606B |  1.2K  1.2KB |  607B |   6  2.0 |  604B  604B  604B
+    6 |   701   702B     0B       1 |     - |  704B |   712   704B |   713   706B |  1.4K  1.4KB |  707B |   7  2.0 |  704B  704B  704B
+total |  2.8K  2.7KB     0B       7 |     - | 2.8KB |  2.9K  2.8KB |  2.9K  2.8KB |  5.7K  8.4KB | 2.8KB |  28  3.0 | 2.8KB 2.8KB 2.8KB
 ---------------------------------------------------------------------------------------------------------------------------------------
 WAL: 22 files (24B)  in: 25B  written: 26B (4% overhead)
 Flushes: 8
@@ -19,6 +19,7 @@ Compactions: 5  estimated debt: 6B  in progress: 2 (7B)
 MemTables: 12 (11B)  zombie: 14 (13B)
 Zombie tables: 16 (15B)
 Backing tables: 1 (2.0MB)
+Virtual tables: 7 (70KB)
 Block cache: 2 entries (1B)  hit rate: 42.9%
 Table cache: 18 entries (17B)  hit rate: 48.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -65,6 +66,7 @@ Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 3 entries (556B)  hit rate: 0.0%
 Table cache: 1 entries (800B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -118,6 +120,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.3KB)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 5 entries (1.1KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -156,6 +159,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.3KB)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 5 entries (1.1KB)  hit rate: 42.9%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -191,6 +195,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 1 (661B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 3 entries (556B)  hit rate: 42.9%
 Table cache: 1 entries (800B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -229,6 +234,7 @@ Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 42.9%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -293,6 +299,7 @@ Compactions: 1  estimated debt: 2.9KB  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 42.9%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -341,6 +348,7 @@ Compactions: 2  estimated debt: 0B  in progress: 0 (0B)
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 0 entries (0B)  hit rate: 27.3%
 Table cache: 0 entries (0B)  hit rate: 58.3%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -435,6 +443,7 @@ Compactions: 2  estimated debt: 5.0KB  in progress: 0 (0B)
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
 Block cache: 12 entries (2.4KB)  hit rate: 31.1%
 Table cache: 3 entries (2.3KB)  hit rate: 57.9%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -494,15 +503,20 @@ lsm
   000014:[c@15#0,SET-c@14#0,SET]
   000028:[z#32,SET-z#32,SET]
 
-# There should be 2 backing tables.
+# There should be 2 backing tables. Note that tiny sstables have inaccurate
+# virtual sstable sizes.
 metrics-value
 num-backing
 backing-size
+num-virtual
 num-virtual 0
+virtual-size
 ----
 2
 1.3KB
 2
+2
+102B
 
 # Virtualize a virtual sstable.
 build ext1
@@ -535,8 +549,36 @@ lsm
 metrics-value
 num-backing
 backing-size
+num-virtual
 num-virtual 0
+virtual-size
 ----
 2
 1.3KB
 2
+2
+102B
+
+compact a-z
+----
+6:
+  000008:[a#0,SET-b#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+  000033:[d#0,SET-m#0,SET]
+  000028:[z#32,SET-z#32,SET]
+  000031:[zz#33,SET-zz#33,SET]
+
+# Virtual sstables metrics should be gone after the compaction.
+metrics-value
+num-backing
+backing-size
+num-virtual
+num-virtual 0
+virtual-size
+----
+0
+0B
+0
+0
+0B
