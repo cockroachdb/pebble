@@ -192,7 +192,7 @@ func (d *DB) Checkpoint(
 	manifestSize := d.mu.versions.manifest.Size()
 	optionsFileNum := d.optionsFileNum
 	virtualBackingFiles := make(map[base.DiskFileNum]struct{})
-	for diskFileNum := range d.mu.versions.fileBackingMap {
+	for diskFileNum := range d.mu.versions.backingState.fileBackingMap {
 		virtualBackingFiles[diskFileNum] = struct{}{}
 	}
 	// Release the manifest and DB.mu so we don't block other operations on

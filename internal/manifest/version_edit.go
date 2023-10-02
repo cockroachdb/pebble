@@ -852,6 +852,8 @@ func AccumulateIncompleteAndApplySingleVE(
 	flushSplitBytes int64,
 	readCompactionRate int64,
 	backingStateMap map[base.DiskFileNum]*FileBacking,
+	addBackingFunc func(*FileBacking),
+	removeBackingFunc func(base.DiskFileNum),
 ) (_ *Version, zombies map[base.DiskFileNum]uint64, _ error) {
 	if len(ve.RemovedBackingTables) != 0 {
 		panic("pebble: invalid incomplete version edit")
@@ -870,7 +872,7 @@ func AccumulateIncompleteAndApplySingleVE(
 	}
 
 	for _, s := range b.AddedFileBacking {
-		backingStateMap[s.DiskFileNum] = s
+		addBackingFunc(s)
 	}
 
 	for fileNum := range zombies {
@@ -881,10 +883,9 @@ func AccumulateIncompleteAndApplySingleVE(
 			ve.RemovedBackingTables = append(
 				ve.RemovedBackingTables, fileNum,
 			)
-			delete(backingStateMap, fileNum)
+			removeBackingFunc(fileNum)
 		}
 	}
-
 	return v, zombies, nil
 }
 
