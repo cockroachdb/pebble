@@ -704,6 +704,8 @@ sync: checkpoints/checkpoint5/temporary.000020.dbtmp
 close: checkpoints/checkpoint5/temporary.000020.dbtmp
 rename: checkpoints/checkpoint5/temporary.000020.dbtmp -> checkpoints/checkpoint5/OPTIONS-000020
 sync: checkpoints/checkpoint5
+remove: checkpoints/checkpoint5/000008.log
+remove: checkpoints/checkpoint5/OPTIONS-000003
 
 print-backing checkpoints/checkpoint5
 ----
@@ -792,6 +794,8 @@ sync: checkpoints/checkpoint6/temporary.000020.dbtmp
 close: checkpoints/checkpoint6/temporary.000020.dbtmp
 rename: checkpoints/checkpoint6/temporary.000020.dbtmp -> checkpoints/checkpoint6/OPTIONS-000020
 sync: checkpoints/checkpoint6
+remove: checkpoints/checkpoint6/000008.log
+remove: checkpoints/checkpoint6/OPTIONS-000003
 
 print-backing checkpoints/checkpoint6
 ----

@@ -39,6 +39,7 @@ func TestCheckpoint(t *testing.T) {
 		DisableAutomaticCompactions: true,
 	}
 	opts.private.disableTableStats = true
+	opts.private.testingAlwaysWaitForCleanup = true
 
 	datadriven.RunTest(t, "testdata/checkpoint", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
