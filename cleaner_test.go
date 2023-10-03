@@ -109,12 +109,12 @@ func TestCleaner(t *testing.T) {
 			}
 			// Asynchronous table stats retrieval makes the output flaky.
 			opts.private.disableTableStats = true
+			opts.private.testingAlwaysWaitForCleanup = true
 			d, err := Open(dir, opts)
 			if err != nil {
 				return err.Error()
 			}
 			d.TestOnlyWaitForCleaning()
-			d.testingAlwaysWaitForCleanup = true
 			dbs[dir] = d
 			return memLog.String()
 

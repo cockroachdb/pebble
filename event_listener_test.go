@@ -69,7 +69,7 @@ func TestEventListener(t *testing.T) {
 				t = t.Add(time.Second)
 				return t
 			}
-			d.testingAlwaysWaitForCleanup = true
+			d.opts.private.testingAlwaysWaitForCleanup = true
 			return memLog.String()
 
 		case "close":

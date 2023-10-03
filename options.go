@@ -955,6 +955,10 @@ type Options struct {
 		// A private option to disable stats collection.
 		disableTableStats bool
 
+		// testingAlwaysWaitForCleanup is set by some tests to force waiting for
+		// obsolete file deletion (to make events deterministic).
+		testingAlwaysWaitForCleanup bool
+
 		// fsCloser holds a closer that should be invoked after a DB using these
 		// Options is closed. This is used to automatically stop the
 		// long-running goroutine associated with the disk-health-checking FS.

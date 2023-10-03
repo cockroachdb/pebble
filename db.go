@@ -316,9 +316,6 @@ type DB struct {
 	closedCh chan struct{}
 
 	cleanupManager *cleanupManager
-	// testingAlwaysWaitForCleanup is set by some tests to force waiting for
-	// obsolete file deletion (to make events deterministic).
-	testingAlwaysWaitForCleanup bool
 
 	// During an iterator close, we may asynchronously schedule read compactions.
 	// We want to wait for those goroutines to finish, before closing the DB.
