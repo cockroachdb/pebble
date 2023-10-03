@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -23,7 +24,9 @@ func TestCheckpoint(t *testing.T) {
 	dbs := make(map[string]*DB)
 	defer func() {
 		for _, db := range dbs {
-			require.NoError(t, db.Close())
+			if db.closed.Load() == nil {
+				require.NoError(t, db.Close())
+			}
 		}
 	}()
 
@@ -33,7 +36,9 @@ func TestCheckpoint(t *testing.T) {
 		FS:                    vfs.WithLogging(mem, memLog.Infof),
 		FormatMajorVersion:    internalFormatNewest,
 		L0CompactionThreshold: 10,
+		DisableAutomaticCompactions: true,
 	}
+	opts.private.disableTableStats = true
 
 	datadriven.RunTest(t, "testdata/checkpoint", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -78,6 +83,33 @@ func TestCheckpoint(t *testing.T) {
 			}
 			return memLog.String()
 
+		case "ingest-and-excise":
+			d := dbs[td.CmdArgs[0].String()]
+
+			// Hacky but the command doesn't expect a db string. Get rid of it.
+			td.CmdArgs = td.CmdArgs[1:]
+			if err := runIngestAndExciseCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "build":
+			d := dbs[td.CmdArgs[0].String()]
+
+			// Hacky but the command doesn't expect a db string. Get rid of it.
+			td.CmdArgs = td.CmdArgs[1:]
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "lsm":
+			d := dbs[td.CmdArgs[0].String()]
+
+			// Hacky but the command doesn't expect a db string. Get rid of it.
+			td.CmdArgs = td.CmdArgs[1:]
+			return runLSMCmd(td, d)
+
 		case "compact":
 			if len(td.CmdArgs) != 1 {
 				return "compact <db>"
@@ -89,6 +121,39 @@ func TestCheckpoint(t *testing.T) {
 			}
 			d.TestOnlyWaitForCleaning()
 			return memLog.String()
+
+		case "print-backing":
+			// prints contents of the file backing map in the version. Used to
+			// test whether the checkpoint removed the filebackings correctly.
+			if len(td.CmdArgs) != 1 {
+				return "print-backing <db>"
+			}
+			d := dbs[td.CmdArgs[0].String()]
+			d.mu.Lock()
+			d.mu.versions.logLock()
+			var fileNums []base.DiskFileNum
+			for _, b := range d.mu.versions.backingState.fileBackingMap {
+				fileNums = append(fileNums, b.DiskFileNum)
+			}
+			d.mu.versions.logUnlock()
+			d.mu.Unlock()
+
+			sort.Slice(fileNums, func(i, j int) bool {
+				return uint64(fileNums[i].FileNum()) < uint64(fileNums[j].FileNum())
+			})
+			var buf bytes.Buffer
+			for _, f := range fileNums {
+				buf.WriteString(fmt.Sprintf("%s\n", f.String()))
+			}
+			return buf.String()
+
+		case "close":
+			if len(td.CmdArgs) != 1 {
+				return "close <db>"
+			}
+			d := dbs[td.CmdArgs[0].String()]
+			require.NoError(t, d.Close())
+			return ""
 
 		case "flush":
 			if len(td.CmdArgs) != 1 {

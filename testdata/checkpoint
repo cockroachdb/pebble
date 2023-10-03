@@ -469,3 +469,339 @@ e 8
 f 9
 g 10
 .
+
+# Test virtual sstable checkpointing. Virtual sstable checkpointing will remove
+# the backing files which won't be required by the checkpoint. Need to make sure
+# that the virtual sstables which are present in the checkpoint manifest are
+# still readable, and that the backing files not required are deleted.
+
+lsm db
+----
+6:
+  000010:[a#0,SET-g#0,SET]
+
+build db ext1 format=pebblev2
+set i i
+set j j
+set k k
+----
+
+ingest-and-excise db ext1 excise=c-d
+----
+
+# 12, 13 are virtual sstables.
+lsm db
+----
+6:
+  000012:[a#0,SET-b#0,SET]
+  000013:[d#0,SET-g#0,SET]
+  000011:[i#19,SET-k#19,SET]
+
+build db ext2 format=pebblev2
+set z z
+----
+
+ingest-and-excise db ext2 excise=j-k
+----
+
+# 12, 13, 15, 16 are virtual.
+lsm db
+----
+6:
+  000012:[a#0,SET-b#0,SET]
+  000013:[d#0,SET-g#0,SET]
+  000015:[i#19,SET-i#19,SET]
+  000016:[k#19,SET-k#19,SET]
+  000014:[z#20,SET-z#20,SET]
+
+# scan db so that it is known what to expect from the checkpoints.
+scan db
+----
+a 1
+b 5
+d 7
+e 8
+f 9
+g 10
+h 11
+i i
+k k
+open: db/000014.sst
+read-at(636, 53): db/000014.sst
+read-at(599, 37): db/000014.sst
+z z
+.
+
+# Create a basic checkpoint to see if virtual sstables can be read.
+checkpoint db checkpoints/checkpoint4
+----
+mkdir-all: checkpoints/checkpoint4 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint4
+link: db/OPTIONS-000003 -> checkpoints/checkpoint4/OPTIONS-000003
+open-dir: checkpoints/checkpoint4
+create: checkpoints/checkpoint4/marker.format-version.000001.016
+sync-data: checkpoints/checkpoint4/marker.format-version.000001.016
+close: checkpoints/checkpoint4/marker.format-version.000001.016
+sync: checkpoints/checkpoint4
+close: checkpoints/checkpoint4
+link: db/000010.sst -> checkpoints/checkpoint4/000010.sst
+link: db/000011.sst -> checkpoints/checkpoint4/000011.sst
+link: db/000014.sst -> checkpoints/checkpoint4/000014.sst
+open: db/MANIFEST-000001
+create: checkpoints/checkpoint4/MANIFEST-000001
+sync-data: checkpoints/checkpoint4/MANIFEST-000001
+close: checkpoints/checkpoint4/MANIFEST-000001
+close: db/MANIFEST-000001
+open-dir: checkpoints/checkpoint4
+create: checkpoints/checkpoint4/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint4/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint4/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint4
+close: checkpoints/checkpoint4
+open: db/000008.log
+create: checkpoints/checkpoint4/000008.log
+sync-data: checkpoints/checkpoint4/000008.log
+close: checkpoints/checkpoint4/000008.log
+close: db/000008.log
+sync: checkpoints/checkpoint4
+close: checkpoints/checkpoint4
+
+open checkpoints/checkpoint4 readonly
+----
+open-dir: checkpoints/checkpoint4
+lock: checkpoints/checkpoint4/LOCK
+open-dir: checkpoints/checkpoint4
+open-dir: checkpoints/checkpoint4
+open: checkpoints/checkpoint4/MANIFEST-000001
+close: checkpoints/checkpoint4/MANIFEST-000001
+open-dir: checkpoints/checkpoint4
+open: checkpoints/checkpoint4/OPTIONS-000003
+close: checkpoints/checkpoint4/OPTIONS-000003
+open: checkpoints/checkpoint4/000008.log
+close: checkpoints/checkpoint4/000008.log
+
+scan checkpoints/checkpoint4
+----
+open: checkpoints/checkpoint4/000010.sst
+read-at(657, 53): checkpoints/checkpoint4/000010.sst
+read-at(620, 37): checkpoints/checkpoint4/000010.sst
+read-at(101, 519): checkpoints/checkpoint4/000010.sst
+read-at(74, 27): checkpoints/checkpoint4/000010.sst
+read-at(0, 74): checkpoints/checkpoint4/000010.sst
+a 1
+b 5
+d 7
+e 8
+f 9
+g 10
+open: checkpoints/checkpoint4/000011.sst
+read-at(653, 53): checkpoints/checkpoint4/000011.sst
+read-at(616, 37): checkpoints/checkpoint4/000011.sst
+read-at(70, 546): checkpoints/checkpoint4/000011.sst
+read-at(43, 27): checkpoints/checkpoint4/000011.sst
+read-at(0, 43): checkpoints/checkpoint4/000011.sst
+h 11
+i i
+k k
+open: checkpoints/checkpoint4/000014.sst
+read-at(636, 53): checkpoints/checkpoint4/000014.sst
+read-at(599, 37): checkpoints/checkpoint4/000014.sst
+read-at(53, 546): checkpoints/checkpoint4/000014.sst
+read-at(26, 27): checkpoints/checkpoint4/000014.sst
+read-at(0, 26): checkpoints/checkpoint4/000014.sst
+z z
+.
+
+close checkpoints/checkpoint4
+----
+
+
+# Backing sst 10 is in the list as it is backing sstables 12, 13.
+list db
+----
+000006.log
+000008.log
+000010.sst
+000011.sst
+000014.sst
+CURRENT
+LOCK
+MANIFEST-000001
+OPTIONS-000003
+marker.format-version.000015.016
+marker.manifest.000001.MANIFEST-000001
+
+
+# Exclude virtual sstable 12. The backing sst should still be present on disk
+# in the checkpoint. See the "link: db/000010.sst" line.
+checkpoint db checkpoints/checkpoint5 restrict=(d-zz)
+----
+mkdir-all: checkpoints/checkpoint5 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint5
+link: db/OPTIONS-000003 -> checkpoints/checkpoint5/OPTIONS-000003
+open-dir: checkpoints/checkpoint5
+create: checkpoints/checkpoint5/marker.format-version.000001.016
+sync-data: checkpoints/checkpoint5/marker.format-version.000001.016
+close: checkpoints/checkpoint5/marker.format-version.000001.016
+sync: checkpoints/checkpoint5
+close: checkpoints/checkpoint5
+link: db/000010.sst -> checkpoints/checkpoint5/000010.sst
+link: db/000011.sst -> checkpoints/checkpoint5/000011.sst
+link: db/000014.sst -> checkpoints/checkpoint5/000014.sst
+open: db/MANIFEST-000001
+create: checkpoints/checkpoint5/MANIFEST-000001
+sync-data: checkpoints/checkpoint5/MANIFEST-000001
+close: checkpoints/checkpoint5/MANIFEST-000001
+close: db/MANIFEST-000001
+open-dir: checkpoints/checkpoint5
+create: checkpoints/checkpoint5/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint5/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint5/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint5
+close: checkpoints/checkpoint5
+open: db/000008.log
+create: checkpoints/checkpoint5/000008.log
+sync-data: checkpoints/checkpoint5/000008.log
+close: checkpoints/checkpoint5/000008.log
+close: db/000008.log
+sync: checkpoints/checkpoint5
+close: checkpoints/checkpoint5
+
+open checkpoints/checkpoint5
+----
+mkdir-all: checkpoints/checkpoint5 0755
+open-dir: checkpoints/checkpoint5
+lock: checkpoints/checkpoint5/LOCK
+open-dir: checkpoints/checkpoint5
+open-dir: checkpoints/checkpoint5
+open: checkpoints/checkpoint5/MANIFEST-000001
+close: checkpoints/checkpoint5/MANIFEST-000001
+open-dir: checkpoints/checkpoint5
+open: checkpoints/checkpoint5/OPTIONS-000003
+close: checkpoints/checkpoint5/OPTIONS-000003
+open: checkpoints/checkpoint5/000008.log
+create: checkpoints/checkpoint5/000017.sst
+sync-data: checkpoints/checkpoint5/000017.sst
+close: checkpoints/checkpoint5/000017.sst
+sync: checkpoints/checkpoint5
+close: checkpoints/checkpoint5/000008.log
+create: checkpoints/checkpoint5/MANIFEST-000019
+sync: checkpoints/checkpoint5/MANIFEST-000019
+create: checkpoints/checkpoint5/marker.manifest.000002.MANIFEST-000019
+close: checkpoints/checkpoint5/marker.manifest.000002.MANIFEST-000019
+remove: checkpoints/checkpoint5/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint5
+create: checkpoints/checkpoint5/000018.log
+sync: checkpoints/checkpoint5
+create: checkpoints/checkpoint5/temporary.000020.dbtmp
+sync: checkpoints/checkpoint5/temporary.000020.dbtmp
+close: checkpoints/checkpoint5/temporary.000020.dbtmp
+rename: checkpoints/checkpoint5/temporary.000020.dbtmp -> checkpoints/checkpoint5/OPTIONS-000020
+sync: checkpoints/checkpoint5
+
+print-backing checkpoints/checkpoint5
+----
+000010
+000011
+
+# sstable 12 is gone.
+lsm checkpoints/checkpoint5
+----
+0.0:
+  000017:[h#18,SET-h#18,SET]
+6:
+  000013:[d#0,SET-g#0,SET]
+  000015:[i#19,SET-i#19,SET]
+  000016:[k#19,SET-k#19,SET]
+  000014:[z#20,SET-z#20,SET]
+
+close checkpoints/checkpoint5
+----
+
+# Exclude both sstables 12 and 13. The backing sstable 10 should not be linked.
+# There should be a remove backing table entry for backing sstable 10.
+checkpoint db checkpoints/checkpoint6 restrict=(i-zz)
+----
+mkdir-all: checkpoints/checkpoint6 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint6
+link: db/OPTIONS-000003 -> checkpoints/checkpoint6/OPTIONS-000003
+open-dir: checkpoints/checkpoint6
+create: checkpoints/checkpoint6/marker.format-version.000001.016
+sync-data: checkpoints/checkpoint6/marker.format-version.000001.016
+close: checkpoints/checkpoint6/marker.format-version.000001.016
+sync: checkpoints/checkpoint6
+close: checkpoints/checkpoint6
+link: db/000011.sst -> checkpoints/checkpoint6/000011.sst
+link: db/000014.sst -> checkpoints/checkpoint6/000014.sst
+open: db/MANIFEST-000001
+create: checkpoints/checkpoint6/MANIFEST-000001
+sync-data: checkpoints/checkpoint6/MANIFEST-000001
+close: checkpoints/checkpoint6/MANIFEST-000001
+close: db/MANIFEST-000001
+open-dir: checkpoints/checkpoint6
+create: checkpoints/checkpoint6/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint6/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint6/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint6
+close: checkpoints/checkpoint6
+open: db/000008.log
+create: checkpoints/checkpoint6/000008.log
+sync-data: checkpoints/checkpoint6/000008.log
+close: checkpoints/checkpoint6/000008.log
+close: db/000008.log
+sync: checkpoints/checkpoint6
+close: checkpoints/checkpoint6
+
+open checkpoints/checkpoint6
+----
+mkdir-all: checkpoints/checkpoint6 0755
+open-dir: checkpoints/checkpoint6
+lock: checkpoints/checkpoint6/LOCK
+open-dir: checkpoints/checkpoint6
+open-dir: checkpoints/checkpoint6
+open: checkpoints/checkpoint6/MANIFEST-000001
+close: checkpoints/checkpoint6/MANIFEST-000001
+open-dir: checkpoints/checkpoint6
+open: checkpoints/checkpoint6/OPTIONS-000003
+close: checkpoints/checkpoint6/OPTIONS-000003
+open: checkpoints/checkpoint6/000008.log
+create: checkpoints/checkpoint6/000017.sst
+sync-data: checkpoints/checkpoint6/000017.sst
+close: checkpoints/checkpoint6/000017.sst
+sync: checkpoints/checkpoint6
+close: checkpoints/checkpoint6/000008.log
+create: checkpoints/checkpoint6/MANIFEST-000019
+sync: checkpoints/checkpoint6/MANIFEST-000019
+create: checkpoints/checkpoint6/marker.manifest.000002.MANIFEST-000019
+close: checkpoints/checkpoint6/marker.manifest.000002.MANIFEST-000019
+remove: checkpoints/checkpoint6/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint6
+create: checkpoints/checkpoint6/000018.log
+sync: checkpoints/checkpoint6
+create: checkpoints/checkpoint6/temporary.000020.dbtmp
+sync: checkpoints/checkpoint6/temporary.000020.dbtmp
+close: checkpoints/checkpoint6/temporary.000020.dbtmp
+rename: checkpoints/checkpoint6/temporary.000020.dbtmp -> checkpoints/checkpoint6/OPTIONS-000020
+sync: checkpoints/checkpoint6
+
+print-backing checkpoints/checkpoint6
+----
+000011
+
+lsm checkpoints/checkpoint6
+----
+0.0:
+  000017:[h#18,SET-h#18,SET]
+6:
+  000015:[i#19,SET-i#19,SET]
+  000016:[k#19,SET-k#19,SET]
+  000014:[z#20,SET-z#20,SET]
