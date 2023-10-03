@@ -3778,7 +3778,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	if len(filesToDelete) > 0 {
 		d.cleanupManager.EnqueueJob(jobID, filesToDelete)
 	}
-	if d.testingAlwaysWaitForCleanup {
+	if d.opts.private.testingAlwaysWaitForCleanup {
 		d.cleanupManager.Wait()
 	}
 }
