@@ -12,7 +12,6 @@ import (
 	"math"
 	"runtime/pprof"
 	"sort"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -576,8 +575,6 @@ type compaction struct {
 	versionEditApplied bool
 	bufferPool         sstable.BufferPool
 
-	score float64
-
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
 	startLevel *compactionLevel
@@ -719,7 +716,6 @@ func newCompaction(pc *pickedCompaction, opts *Options, beganAt time.Time) *comp
 		equal:             opts.equal(),
 		comparer:          opts.Comparer,
 		formatKey:         opts.Comparer.FormatKey,
-		score:             pc.score,
 		inputs:            pc.inputs,
 		smallest:          pc.smallest,
 		largest:           pc.largest,
@@ -1656,31 +1652,6 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 		if err := c.version.L0Sublevels.UpdateStateForStartedCompaction(l0Inputs, isBase); err != nil {
 			d.opts.Logger.Fatalf("could not update state for compaction: %s", err)
 		}
-	}
-
-	if false {
-		// TODO(peter): Do we want to keep this? It is useful for seeing the
-		// concurrent compactions/flushes that are taking place. Right now, this
-		// spams the logs and output to tests. Figure out a way to useful expose
-		// it.
-		strs := make([]string, 0, len(d.mu.compact.inProgress))
-		for c := range d.mu.compact.inProgress {
-			var s string
-			if c.startLevel.level == -1 {
-				s = fmt.Sprintf("mem->L%d", c.outputLevel.level)
-			} else {
-				s = fmt.Sprintf("L%d->L%d:%.1f", c.startLevel.level, c.outputLevel.level, c.score)
-			}
-			strs = append(strs, s)
-		}
-		// This odd sorting function is intended to sort "mem" before "L*".
-		sort.Slice(strs, func(i, j int) bool {
-			if strs[i][0] == strs[j][0] {
-				return strs[i] < strs[j]
-			}
-			return strs[i] > strs[j]
-		})
-		d.opts.Logger.Infof("compactions: %s", strings.Join(strs, " "))
 	}
 }
 
