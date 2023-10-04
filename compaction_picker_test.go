@@ -1585,9 +1585,9 @@ func checkClone(t *testing.T, pc *pickedCompaction) {
 			require.NotEqual(t, &pc.inputs[i], &pcClone.inputs[i])
 		}
 	}
-	for i := range pc.l0SublevelInfo {
-		if pc.l0SublevelInfo[i].Len() > 0 {
-			require.NotEqual(t, &pc.l0SublevelInfo[i], &pcClone.l0SublevelInfo[i])
+	for i := range pc.startLevel.l0SublevelInfo {
+		if pc.startLevel.l0SublevelInfo[i].Len() > 0 {
+			require.NotEqual(t, &pc.startLevel.l0SublevelInfo[i], &pcClone.startLevel.l0SublevelInfo[i])
 		}
 	}
 }

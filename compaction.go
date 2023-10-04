@@ -742,8 +742,8 @@ func newCompaction(
 		pickerMetrics:     pc.pickerMetrics,
 	}
 	c.startLevel = &c.inputs[0]
-	if pc.l0SublevelInfo != nil {
-		c.startLevel.l0SublevelInfo = pc.l0SublevelInfo
+	if pc.startLevel.l0SublevelInfo != nil {
+		c.startLevel.l0SublevelInfo = pc.startLevel.l0SublevelInfo
 	}
 	c.outputLevel = &c.inputs[1]
 
