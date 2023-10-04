@@ -771,9 +771,9 @@ func newCompaction(
 		isRemote := false
 		// We should always be passed a provider, except in some unit tests.
 		if provider != nil {
-			objMeta, err := provider.Lookup(fileTypeTable, meta.FileNum.DiskFileNum())
+			objMeta, err := provider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
 			if err != nil {
-				panic(errors.Wrapf(err, "cannot lookup table %s in provider", meta.FileNum))
+				panic(errors.Wrapf(err, "cannot lookup table %s in provider", meta.FileBacking.DiskFileNum))
 			}
 			isRemote = objMeta.IsRemote()
 		}
@@ -2948,7 +2948,7 @@ func (d *DB) runCompaction(
 				panic("got more than one file for a move or copy compaction")
 			}
 		}
-		objMeta, err := d.objProvider.Lookup(fileTypeTable, meta.FileNum.DiskFileNum())
+		objMeta, err := d.objProvider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
 		if err != nil {
 			return ve, pendingOutputs, stats, err
 		}
