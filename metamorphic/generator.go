@@ -737,13 +737,13 @@ func (g *generator) newIterUsingClone() {
 		refreshBatch = g.rng.Intn(2) == 1
 	}
 
-	var opts iterOpts
+	opts := g.itersLastOpts[existingIterID]
+	// With 50% probability, consider modifying the iterator options used by the
+	// clone.
 	if g.rng.Intn(2) == 1 {
 		g.maybeMutateOptions(readerID, &opts)
-		g.itersLastOpts[iterID] = opts
-	} else {
-		g.itersLastOpts[iterID] = g.itersLastOpts[existingIterID]
 	}
+	g.itersLastOpts[iterID] = opts
 
 	g.iterCreationTimestamp[iterID] = g.keyManager.nextMetaTimestamp()
 	g.iterReaderID[iterID] = g.iterReaderID[existingIterID]
