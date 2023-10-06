@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -3147,6 +3148,13 @@ func TestIngestValidation(t *testing.T) {
 	type keyVal struct {
 		key, val []byte
 	}
+	// The corruptionLocation enum defines where to corrupt an sstable if
+	// anywhere. corruptionLocation{Start,End} describe the start and end
+	// data blocks. corruptionLocationInternal describes a random data block
+	// that's neither the start or end blocks. The Ingest operation does not
+	// read the entire sstable, only the start and end blocks, so corruption
+	// introduced using corruptionLocationInternal will not be discovered until
+	// the asynchronous validation job runs.
 	type corruptionLocation int
 	const (
 		corruptionLocationNone corruptionLocation = iota
@@ -3154,11 +3162,18 @@ func TestIngestValidation(t *testing.T) {
 		corruptionLocationEnd
 		corruptionLocationInternal
 	)
-	type errLocation int
+	// The errReportLocation type defines an enum to allow tests to enforce
+	// expectations about how an error surfaced during ingestion or validation
+	// is reported. Asynchronous validation that uncovers corruption should call
+	// Fatalf on the Logger. Asychronous validation that encounters
+	// non-corruption errors should surface it through the
+	// EventListener.BackgroundError func.
+	type errReportLocation int
 	const (
-		errLocationNone errLocation = iota
-		errLocationIngest
-		errLocationValidation
+		errReportLocationNone errReportLocation = iota
+		errReportLocationIngest
+		errReportLocationFatal
+		errReportLocationBackgroundError
 	)
 	const (
 		nKeys     = 1_000
@@ -3173,49 +3188,91 @@ func TestIngestValidation(t *testing.T) {
 	rng := rand.New(rand.NewSource(seed))
 	t.Logf("rng seed = %d", seed)
 
+	// errfsCounter is used by test cases that make use of an errorfs.Injector
+	// to inject errors into the ingest validation code path.
+	var errfsCounter atomic.Int32
 	testCases := []struct {
-		description string
-		cLoc        corruptionLocation
-		wantErrType errLocation
+		description     string
+		cLoc            corruptionLocation
+		wantErrType     errReportLocation
+		wantErr         error
+		errorfsInjector errorfs.Injector
 	}{
 		{
 			description: "no corruption",
 			cLoc:        corruptionLocationNone,
-			wantErrType: errLocationNone,
+			wantErrType: errReportLocationNone,
 		},
 		{
 			description: "start block",
 			cLoc:        corruptionLocationStart,
-			wantErrType: errLocationIngest,
+			wantErr:     ErrCorruption,
+			wantErrType: errReportLocationIngest,
 		},
 		{
 			description: "end block",
 			cLoc:        corruptionLocationEnd,
-			wantErrType: errLocationIngest,
+			wantErr:     ErrCorruption,
+			wantErrType: errReportLocationIngest,
 		},
 		{
 			description: "non-end block",
 			cLoc:        corruptionLocationInternal,
-			wantErrType: errLocationValidation,
+			wantErr:     ErrCorruption,
+			wantErrType: errReportLocationFatal,
+		},
+		{
+			description: "non-corruption error",
+			cLoc:        corruptionLocationNone,
+			wantErr:     errorfs.ErrInjected,
+			wantErrType: errReportLocationBackgroundError,
+			errorfsInjector: errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
+				// Inject an error on the first read-at operation on an sstable
+				// (excluding the read on the sstable before ingestion has
+				// linked it in).
+				if path != "ext" && op != errorfs.OpFileReadAt || filepath.Ext(path) != ".sst" {
+					return nil
+				}
+				if errfsCounter.Add(1) == 1 {
+					return errorfs.ErrInjected
+				}
+				return nil
+			}),
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
+			errfsCounter.Store(0)
 			var wg sync.WaitGroup
 			wg.Add(1)
 
 			fs := vfs.NewMem()
+			var testFS vfs.FS = fs
+			if tc.errorfsInjector != nil {
+				testFS = errorfs.Wrap(fs, tc.errorfsInjector)
+			}
+
+			// backgroundErr is populated by EventListener.BackgroundError.
+			var backgroundErr error
 			logger := &fatalCapturingLogger{t: t}
 			opts := &Options{
-				FS:     fs,
+				FS:     testFS,
 				Logger: logger,
 				EventListener: &EventListener{
 					TableValidated: func(i TableValidatedInfo) {
 						wg.Done()
 					},
+					BackgroundError: func(err error) {
+						backgroundErr = err
+					},
 				},
 			}
+			// Disable table stats so that injected errors can't be accidentally
+			// injected into the table stats collector read, and so the table
+			// stats collector won't prime the table+block cache such that the
+			// error injection won't trigger at all during ingest validation.
+			opts.private.disableTableStats = true
 			opts.Experimental.ValidateOnIngest = true
 			d, err := Open("", opts)
 			require.NoError(t, err)
@@ -3256,7 +3313,7 @@ func TestIngestValidation(t *testing.T) {
 			}
 
 			type errT struct {
-				errLoc errLocation
+				errLoc errReportLocation
 				err    error
 			}
 			runIngest := func(keyVals []keyVal) (et errT) {
@@ -3283,7 +3340,7 @@ func TestIngestValidation(t *testing.T) {
 				// Ingest the external table.
 				err = d.Ingest([]string{ingestTableName})
 				if err != nil {
-					et.errLoc = errLocationIngest
+					et.errLoc = errReportLocationIngest
 					et.err = err
 					return
 				}
@@ -3293,10 +3350,12 @@ func TestIngestValidation(t *testing.T) {
 
 				// Return any error encountered during validation.
 				if logger.err != nil {
-					et.errLoc = errLocationValidation
+					et.errLoc = errReportLocationFatal
 					et.err = logger.err
+				} else if backgroundErr != nil {
+					et.errLoc = errReportLocationBackgroundError
+					et.err = backgroundErr
 				}
-
 				return
 			}
 
@@ -3324,17 +3383,21 @@ func TestIngestValidation(t *testing.T) {
 
 			// Assert we saw the errors we expect.
 			switch tc.wantErrType {
-			case errLocationNone:
-				require.Equal(t, errLocationNone, et.errLoc)
+			case errReportLocationNone:
+				require.Equal(t, errReportLocationNone, et.errLoc)
 				require.NoError(t, et.err)
-			case errLocationIngest:
-				require.Equal(t, errLocationIngest, et.errLoc)
+			case errReportLocationIngest:
+				require.Equal(t, errReportLocationIngest, et.errLoc)
 				require.Error(t, et.err)
-				require.True(t, errors.Is(et.err, base.ErrCorruption))
-			case errLocationValidation:
-				require.Equal(t, errLocationValidation, et.errLoc)
+				require.True(t, errors.Is(et.err, tc.wantErr))
+			case errReportLocationFatal:
+				require.Equal(t, errReportLocationFatal, et.errLoc)
 				require.Error(t, et.err)
-				require.True(t, errors.Is(et.err, base.ErrCorruption))
+				require.True(t, errors.Is(et.err, tc.wantErr))
+			case errReportLocationBackgroundError:
+				require.Equal(t, errReportLocationBackgroundError, et.errLoc)
+				require.Error(t, et.err)
+				require.True(t, errors.Is(et.err, tc.wantErr))
 			default:
 				t.Fatalf("unknown wantErrType %T", tc.wantErrType)
 			}
