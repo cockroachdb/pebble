@@ -11,7 +11,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -3168,7 +3167,6 @@ func TestIngestValidation(t *testing.T) {
 
 		ingestTableName = "ext"
 	)
-	ingestPath := filepath.Join(t.TempDir(), ingestTableName)
 
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewSource(seed))
@@ -3231,7 +3229,6 @@ func TestIngestValidation(t *testing.T) {
 				require.NoError(t, err)
 				l, err := r.Layout()
 				require.NoError(t, err)
-				require.NoError(t, r.Close())
 
 				// Select an appropriate data block to corrupt.
 				var blockIdx int
@@ -3247,17 +3244,14 @@ func TestIngestValidation(t *testing.T) {
 				}
 				bh := l.Data[blockIdx]
 
-				osF, err := os.OpenFile(ingestPath, os.O_RDWR, 0600)
-				require.NoError(t, err)
-				defer func() { require.NoError(t, osF.Close()) }()
-
 				// Corrupting a key will cause the ingestion to fail due to a
 				// malformed key, rather than a block checksum mismatch.
 				// Instead, we corrupt the last byte in the selected block,
 				// before the trailer, which corresponds to a value.
 				offset := bh.Offset + bh.Length - 1
-				_, err = osF.WriteAt([]byte("\xff"), int64(offset))
+				_, err = f.WriteAt([]byte("\xff"), int64(offset))
 				require.NoError(t, err)
+				require.NoError(t, r.Close())
 			}
 
 			type errT struct {
@@ -3265,13 +3259,9 @@ func TestIngestValidation(t *testing.T) {
 				err    error
 			}
 			runIngest := func(keyVals []keyVal) (et errT) {
-				// The vfs.File does not allow for random reads and writes.
-				// Create a disk-backed file outside of the DB FS that we can
-				// open as a regular os.File, if required.
-				tmpFS := vfs.Default
-				f, err := tmpFS.Create(ingestPath)
+				f, err := fs.Create(ingestTableName)
 				require.NoError(t, err)
-				defer func() { _ = tmpFS.Remove(ingestPath) }()
+				defer func() { _ = fs.Remove(ingestTableName) }()
 
 				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 					BlockSize:   blockSize,     // Create many smaller blocks.
@@ -3284,14 +3274,10 @@ func TestIngestValidation(t *testing.T) {
 
 				// Possibly corrupt the file.
 				if tc.cLoc != corruptionLocationNone {
-					f, err = tmpFS.Open(ingestPath)
+					f, err = fs.OpenReadWrite(ingestTableName)
 					require.NoError(t, err)
 					corrupt(f)
 				}
-
-				// Copy the file into the DB's FS.
-				_, err = vfs.Clone(tmpFS, fs, ingestPath, ingestTableName)
-				require.NoError(t, err)
 
 				// Ingest the external table.
 				err = d.Ingest([]string{ingestTableName})
