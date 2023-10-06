@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/redact"
 	"github.com/stretchr/testify/require"
 )
 
@@ -104,4 +105,10 @@ func TestMustExist(t *testing.T) {
 	require.Equal(t, `000000.sst:
 file does not exist
 directory contains 10 files, 3 unknown, 1 tables, 1 logs, 1 manifests`, buf.buf.String())
+}
+
+func TestRedactFileNum(t *testing.T) {
+	// Ensure that redaction never redacts file numbers.
+	require.Equal(t, redact.RedactableString("000005"), redact.Sprint(FileNum(5)))
+	require.Equal(t, redact.RedactableString("000005"), redact.Sprint(DiskFileNum{fn: 5}))
 }

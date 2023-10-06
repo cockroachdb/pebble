@@ -20,6 +20,11 @@ type FileNum uint64
 // String returns a string representation of the file number.
 func (fn FileNum) String() string { return fmt.Sprintf("%06d", fn) }
 
+// SafeFormat implements redact.SafeFormatter.
+func (fn FileNum) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf("%06d", redact.SafeUint(fn))
+}
+
 // DiskFileNum converts a FileNum to a DiskFileNum. DiskFileNum should only be
 // called if the caller can ensure that the FileNum belongs to a physical file
 // on disk. These could be manifests, log files, physical sstables on disk, the
@@ -39,6 +44,11 @@ type DiskFileNum struct {
 }
 
 func (dfn DiskFileNum) String() string { return dfn.fn.String() }
+
+// SafeFormat implements redact.SafeFormatter.
+func (dfn DiskFileNum) SafeFormat(w redact.SafePrinter, verb rune) {
+	dfn.fn.SafeFormat(w, verb)
+}
 
 // FileNum converts a DiskFileNum to a FileNum. This conversion is always valid.
 func (dfn DiskFileNum) FileNum() FileNum {

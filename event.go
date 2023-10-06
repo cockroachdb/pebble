@@ -232,7 +232,7 @@ func (i FlushInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 			if j > 0 {
 				w.Printf(" +")
 			}
-			w.Printf(" L%d:%s (%s)", level, redact.Safe(file.FileNum), humanize.Bytes.Uint64(file.Size))
+			w.Printf(" L%d:%s (%s)", level, file.FileNum, humanize.Bytes.Uint64(file.Size))
 		}
 		w.Printf(" in %.1fs (%.1fs total), output rate %s/s",
 			redact.Safe(i.Duration.Seconds()),
@@ -261,7 +261,7 @@ func (i ManifestCreateInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf("[JOB %d] MANIFEST create error: %s", redact.Safe(i.JobID), i.Err)
 		return
 	}
-	w.Printf("[JOB %d] MANIFEST created %s", redact.Safe(i.JobID), redact.Safe(i.FileNum))
+	w.Printf("[JOB %d] MANIFEST created %s", redact.Safe(i.JobID), i.FileNum)
 }
 
 // ManifestDeleteInfo contains the info for a Manifest deletion event.
@@ -283,7 +283,7 @@ func (i ManifestDeleteInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf("[JOB %d] MANIFEST delete error: %s", redact.Safe(i.JobID), i.Err)
 		return
 	}
-	w.Printf("[JOB %d] MANIFEST deleted %s", redact.Safe(i.JobID), redact.Safe(i.FileNum))
+	w.Printf("[JOB %d] MANIFEST deleted %s", redact.Safe(i.JobID), i.FileNum)
 }
 
 // TableCreateInfo contains the info for a table creation event.
@@ -303,7 +303,7 @@ func (i TableCreateInfo) String() string {
 // SafeFormat implements redact.SafeFormatter.
 func (i TableCreateInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("[JOB %d] %s: sstable created %s",
-		redact.Safe(i.JobID), redact.Safe(i.Reason), redact.Safe(i.FileNum))
+		redact.Safe(i.JobID), redact.Safe(i.Reason), i.FileNum)
 }
 
 // TableDeleteInfo contains the info for a table deletion event.
@@ -322,10 +322,10 @@ func (i TableDeleteInfo) String() string {
 func (i TableDeleteInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	if i.Err != nil {
 		w.Printf("[JOB %d] sstable delete error %s: %s",
-			redact.Safe(i.JobID), redact.Safe(i.FileNum), i.Err)
+			redact.Safe(i.JobID), i.FileNum, i.Err)
 		return
 	}
-	w.Printf("[JOB %d] sstable deleted %s", redact.Safe(i.JobID), redact.Safe(i.FileNum))
+	w.Printf("[JOB %d] sstable deleted %s", redact.Safe(i.JobID), i.FileNum)
 }
 
 // TableIngestInfo contains the info for a table ingestion event.
@@ -371,7 +371,7 @@ func (i TableIngestInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		if !i.flushable {
 			levelStr = fmt.Sprintf("L%d:", t.Level)
 		}
-		w.Printf(" %s%s (%s)", redact.Safe(levelStr), redact.Safe(t.FileNum),
+		w.Printf(" %s%s (%s)", redact.Safe(levelStr), t.FileNum,
 			redact.Safe(humanize.Bytes.Uint64(t.Size)))
 	}
 }
@@ -433,12 +433,12 @@ func (i WALCreateInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	}
 
 	if i.RecycledFileNum == 0 {
-		w.Printf("[JOB %d] WAL created %s", redact.Safe(i.JobID), redact.Safe(i.FileNum))
+		w.Printf("[JOB %d] WAL created %s", redact.Safe(i.JobID), i.FileNum)
 		return
 	}
 
 	w.Printf("[JOB %d] WAL created %s (recycled %s)",
-		redact.Safe(i.JobID), redact.Safe(i.FileNum), redact.Safe(i.RecycledFileNum))
+		redact.Safe(i.JobID), i.FileNum, i.RecycledFileNum)
 }
 
 // WALDeleteInfo contains the info for a WAL deletion event.
@@ -460,7 +460,7 @@ func (i WALDeleteInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf("[JOB %d] WAL delete error: %s", redact.Safe(i.JobID), i.Err)
 		return
 	}
-	w.Printf("[JOB %d] WAL deleted %s", redact.Safe(i.JobID), redact.Safe(i.FileNum))
+	w.Printf("[JOB %d] WAL deleted %s", redact.Safe(i.JobID), i.FileNum)
 }
 
 // WriteStallBeginInfo contains the info for a write stall begin event.
