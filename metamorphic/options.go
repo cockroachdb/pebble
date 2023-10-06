@@ -254,6 +254,8 @@ type TestOptions struct {
 	asyncApplyToDB bool
 	// Enable the use of shared storage.
 	sharedStorageEnabled bool
+	// Enables the use of shared replication in TestOptions.
+	useSharedReplicate bool
 	// Enable the secondary cache. Only effective if sharedStorageEnabled is
 	// also true.
 	secondaryCacheEnabled bool
@@ -547,8 +549,9 @@ func randomOptions(
 	// 20% of time, enable shared storage.
 	if rng.Intn(5) == 0 {
 		testOpts.sharedStorageEnabled = true
+		inMemShared := remote.NewInMem()
 		testOpts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": remote.NewInMem(),
+			"": inMemShared,
 		})
 		// If shared storage is enabled, pick between writing all files on shared
 		// vs. lower levels only, 50% of the time.
@@ -562,6 +565,8 @@ func randomOptions(
 			// TODO(josh): Randomize various secondary cache settings.
 			testOpts.Opts.Experimental.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
 		}
+		// 50% of the time, enable shared replication.
+		testOpts.useSharedReplicate = rng.Intn(2) == 0
 	}
 	testOpts.seedEFOS = rng.Uint64()
 	testOpts.ingestSplit = rng.Intn(2) == 0

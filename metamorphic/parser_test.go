@@ -42,7 +42,7 @@ func TestParserRandom(t *testing.T) {
 func TestParserNilBounds(t *testing.T) {
 	formatted := formatOps([]op{
 		&newIterOp{
-			readerID: makeObjID(dbTag, 0),
+			readerID: makeObjID(dbTag, 1),
 			iterID:   makeObjID(iterTag, 1),
 			iterOpts: iterOpts{},
 		},
