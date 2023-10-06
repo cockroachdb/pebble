@@ -29,20 +29,29 @@ func TestParser(t *testing.T) {
 }
 
 func TestParserRandom(t *testing.T) {
-	ops := generate(randvar.NewRand(), 10000, defaultConfig(), newKeyManager())
-	src := formatOps(ops)
+	cfgs := []string{"default", "multiInstance"}
+	for i := range cfgs {
+		t.Run(fmt.Sprintf("config=%s", cfgs[i]), func(t *testing.T) {
+			cfg := defaultConfig()
+			if cfgs[i] == "multiInstance" {
+				cfg = multiInstanceConfig()
+			}
+			ops := generate(randvar.NewRand(), 10000, cfg, newKeyManager())
+			src := formatOps(ops)
 
-	parsedOps, err := parse([]byte(src))
-	if err != nil {
-		t.Fatalf("%s\n%s", err, src)
+			parsedOps, err := parse([]byte(src))
+			if err != nil {
+				t.Fatalf("%s\n%s", err, src)
+			}
+			require.Equal(t, ops, parsedOps)
+		})
 	}
-	require.Equal(t, ops, parsedOps)
 }
 
 func TestParserNilBounds(t *testing.T) {
 	formatted := formatOps([]op{
 		&newIterOp{
-			readerID: makeObjID(dbTag, 0),
+			readerID: makeObjID(dbTag, 1),
 			iterID:   makeObjID(iterTag, 1),
 			iterOpts: iterOpts{},
 		},

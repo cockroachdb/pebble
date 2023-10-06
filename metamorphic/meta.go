@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -42,6 +43,7 @@ type runAndCompareOptions struct {
 	innerBinary       string
 	mutateTestOptions []func(*TestOptions)
 	customRuns        map[string]string
+	numInstances      int
 	runOnceOptions
 }
 
@@ -177,6 +179,13 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		require.NoError(t, err)
 		loadPrecedingKeys(t, ops, &cfg, km)
 	}
+	if runOpts.numInstances > 1 {
+		// The multi-instance variant does not support all operations yet.
+		//
+		// TODO(bilal): Address this and use the default configs.
+		cfg = multiInstancePresetConfig
+		cfg.numInstances = runOpts.numInstances
+	}
 	ops := generate(rng, opCount, cfg, km)
 	opsPath := filepath.Join(metaDir, "ops")
 	formattedOps := formatOps(ops)
@@ -203,6 +212,9 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 			"-keep=" + fmt.Sprint(runOpts.keep),
 			"-run-dir=" + runDir,
 			"-test.run=" + t.Name() + "$",
+		}
+		if runOpts.numInstances > 1 {
+			args = append(args, "--num-instances="+strconv.Itoa(runOpts.numInstances))
 		}
 		if runOpts.traceFile != "" {
 			args = append(args, "-test.trace="+filepath.Join(runDir, runOpts.traceFile))
@@ -343,6 +355,7 @@ type runOnceOptions struct {
 	maxThreads          int
 	errorRate           float64
 	failRegexp          *regexp.Regexp
+	numInstances        int
 	customOptionParsers map[string]func(string) (CustomOption, bool)
 }
 
@@ -382,6 +395,12 @@ type FailOnMatch struct {
 
 func (f FailOnMatch) apply(ro *runAndCompareOptions) { ro.failRegexp = f.Regexp }
 func (f FailOnMatch) applyOnce(ro *runOnceOptions)   { ro.failRegexp = f.Regexp }
+
+// MultiInstance configures the number of pebble instances to create.
+type MultiInstance int
+
+func (m MultiInstance) apply(ro *runAndCompareOptions) { ro.numInstances = int(m) }
+func (m MultiInstance) applyOnce(ro *runOnceOptions)   { ro.numInstances = int(m) }
 
 // RunOnce performs one run of the metamorphic tests. RunOnce expects the
 // directory named by `runDir` to already exist and contain an `OPTIONS` file
@@ -456,7 +475,11 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	opts.FS = errorfs.Wrap(opts.FS, errorfs.WithProbability(errorfs.OpIsRead, runOpts.errorRate))
 
 	if opts.WALDir != "" {
-		opts.WALDir = opts.FS.PathJoin(runDir, opts.WALDir)
+		if runOpts.numInstances > 1 {
+			opts.WALDir = ""
+		} else {
+			opts.WALDir = opts.FS.PathJoin(runDir, opts.WALDir)
+		}
 	}
 
 	historyFile, err := os.Create(historyPath)
@@ -470,7 +493,7 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	h := newHistory(runOpts.failRegexp, writers...)
 
 	m := newTest(ops)
-	require.NoError(t, m.init(h, dir, testOpts))
+	require.NoError(t, m.init(h, dir, testOpts, runOpts.numInstances))
 
 	if threads <= 1 {
 		for m.step(h) {

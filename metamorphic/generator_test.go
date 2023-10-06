@@ -5,6 +5,7 @@
 package metamorphic
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -128,29 +129,38 @@ func TestGenerator(t *testing.T) {
 func TestGeneratorRandom(t *testing.T) {
 	seed := uint64(time.Now().UnixNano())
 	ops := randvar.NewUniform(1000, 10000)
-	generateFromSeed := func() string {
+	cfgs := []string{"default", "multiInstance"}
+	generateFromSeed := func(cfg config) string {
 		rng := rand.New(rand.NewSource(seed))
 		count := ops.Uint64(rng)
-		return formatOps(generate(rng, count, defaultConfig(), newKeyManager()))
+		return formatOps(generate(rng, count, cfg, newKeyManager()))
 	}
 
-	// Ensure that generate doesn't use any other source of randomness other
-	// than rng.
-	referenceOps := generateFromSeed()
-	for i := 0; i < 10; i++ {
-		regeneratedOps := generateFromSeed()
-		diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
-			A:       difflib.SplitLines(referenceOps),
-			B:       difflib.SplitLines(regeneratedOps),
-			Context: 1,
+	for i := range cfgs {
+		t.Run(fmt.Sprintf("config=%s", cfgs[i]), func(t *testing.T) {
+			cfg := defaultConfig
+			if cfgs[i] == "multiInstance" {
+				cfg = multiInstanceConfig
+			}
+			// Ensure that generate doesn't use any other source of randomness other
+			// than rng.
+			referenceOps := generateFromSeed(cfg())
+			for i := 0; i < 10; i++ {
+				regeneratedOps := generateFromSeed(cfg())
+				diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+					A:       difflib.SplitLines(referenceOps),
+					B:       difflib.SplitLines(regeneratedOps),
+					Context: 1,
+				})
+				require.NoError(t, err)
+				if len(diff) > 0 {
+					t.Fatalf("Diff:\n%s", diff)
+				}
+			}
+			if testing.Verbose() {
+				t.Logf("\nOps:\n%s", referenceOps)
+			}
 		})
-		require.NoError(t, err)
-		if len(diff) > 0 {
-			t.Fatalf("Diff:\n%s", diff)
-		}
-	}
-	if testing.Verbose() {
-		t.Logf("\nOps:\n%s", referenceOps)
 	}
 }
 
