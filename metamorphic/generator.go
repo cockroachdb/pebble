@@ -400,6 +400,9 @@ func (g *generator) randValue(min, max int) []byte {
 	if max > min {
 		n += g.rng.Intn(max - min)
 	}
+	if n == 0 {
+		return nil
+	}
 	buf := make([]byte, n)
 	g.fillRand(buf)
 	return buf
@@ -522,10 +525,13 @@ func (g *generator) dbCheckpoint() {
 	// 1/4 of the time we restrict to 1 span;
 	// 1/8 of the time we restrict to 2 spans; etc.
 	numSpans := 0
+	var spans []pebble.CheckpointSpan
 	for g.rng.Intn(2) == 0 {
 		numSpans++
 	}
-	spans := make([]pebble.CheckpointSpan, numSpans)
+	if numSpans > 0 {
+		spans = make([]pebble.CheckpointSpan, numSpans)
+	}
 	for i := range spans {
 		start := g.randKeyToRead(0.01)
 		end := g.randKeyToRead(0.01)
