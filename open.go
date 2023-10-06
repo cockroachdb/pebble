@@ -1122,9 +1122,7 @@ func IsCorruptionError(err error) bool {
 }
 
 func checkConsistency(v *manifest.Version, dirname string, objProvider objstorage.Provider) error {
-	var buf bytes.Buffer
-	var args []interface{}
-
+	var errs []error
 	dedup := make(map[base.DiskFileNum]struct{})
 	for level, files := range v.Levels {
 		iter := files.Iter()
@@ -1148,22 +1146,18 @@ func checkConsistency(v *manifest.Version, dirname string, objProvider objstorag
 				size, err = objProvider.Size(meta)
 			}
 			if err != nil {
-				buf.WriteString("L%d: %s: %v\n")
-				args = append(args, errors.Safe(level), errors.Safe(fileNum), err)
+				errs = append(errs, errors.Wrapf(err, "L%d: %s", errors.Safe(level), fileNum))
 				continue
 			}
 
 			if size != int64(fileSize) {
-				buf.WriteString("L%d: %s: object size mismatch (%s): %d (disk) != %d (MANIFEST)\n")
-				args = append(args, errors.Safe(level), errors.Safe(fileNum), objProvider.Path(meta),
-					errors.Safe(size), errors.Safe(fileSize))
+				errs = append(errs, errors.Errorf(
+					"L%d: %s: object size mismatch (%s): %d (disk) != %d (MANIFEST)",
+					errors.Safe(level), fileNum, objProvider.Path(meta),
+					errors.Safe(size), errors.Safe(fileSize)))
 				continue
 			}
 		}
 	}
-
-	if buf.Len() == 0 {
-		return nil
-	}
-	return errors.Errorf(buf.String(), args...)
+	return errors.Join(errs...)
 }
