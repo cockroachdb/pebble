@@ -35,6 +35,9 @@ type CommonFlags struct {
 	Keep bool
 	// MaxThreads used by a single run. See "max-threads" flag below.
 	MaxThreads int
+	// NumInstances is the number of Pebble instances to create in one run. See
+	// "num-instances" flag below.
+	NumInstances int
 }
 
 func initCommonFlags() *CommonFlags {
@@ -64,6 +67,8 @@ func initCommonFlags() *CommonFlags {
 
 	flag.IntVar(&c.MaxThreads, "max-threads", math.MaxInt,
 		"limit execution of a single run to the provided number of threads; must be ≥ 1")
+
+	flag.IntVar(&c.NumInstances, "num-instances", 1, "number of pebble instances to create (default: 1)")
 
 	return c
 }
@@ -179,6 +184,9 @@ func (ro *RunOnceFlags) MakeRunOnceOptions() []metamorphic.RunOnceOption {
 	if ro.ErrorRate > 0 {
 		onceOpts = append(onceOpts, metamorphic.InjectErrorsRate(ro.ErrorRate))
 	}
+	if ro.NumInstances > 1 {
+		onceOpts = append(onceOpts, metamorphic.MultiInstance(ro.NumInstances))
+	}
 	return onceOpts
 }
 
@@ -203,6 +211,9 @@ func (r *RunFlags) MakeRunOptions() []metamorphic.RunOption {
 	}
 	if r.PreviousOps != "" {
 		opts = append(opts, metamorphic.ExtendPreviousRun(r.PreviousOps, r.InitialStatePath, r.InitialStateDesc))
+	}
+	if r.NumInstances > 1 {
+		opts = append(opts, metamorphic.MultiInstance(r.NumInstances))
 	}
 
 	// If the filesystem type was forced, all tests will use that value.

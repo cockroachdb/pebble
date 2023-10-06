@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"sort"
 	"strings"
 
@@ -24,8 +25,11 @@ type test struct {
 	opsWaitOn [][]int         // op index -> op indexes
 	opsDone   []chan struct{} // op index -> done channel
 	idx       int
-	// The DB the test is run on.
 	dir       string
+	// The DB the test is run on.
+	//
+	// TODO(bilal): The DB field is deprecated in favour of the dbs slice. Update
+	// all remaining uses of t.db to use t.dbs[] instead.
 	db        *pebble.DB
 	opts      *pebble.Options
 	testOpts  *TestOptions
@@ -33,6 +37,7 @@ type test struct {
 	tmpDir    string
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
+	dbs       []*pebble.DB
 	batches   []*pebble.Batch
 	iters     []*retryableIter
 	snapshots []readerCloser
@@ -44,7 +49,7 @@ func newTest(ops []op) *test {
 	}
 }
 
-func (t *test) init(h *history, dir string, testOpts *TestOptions) error {
+func (t *test) init(h *history, dir string, testOpts *TestOptions, numInstances int) error {
 	t.dir = dir
 	t.testOpts = testOpts
 	t.writeOpts = pebble.NoSync
@@ -61,6 +66,9 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions) error {
 		return withRetries(func() error {
 			return pebble.DebugCheckLevels(db)
 		})
+	}
+	if numInstances < 1 {
+		numInstances = 1
 	}
 
 	t.opsWaitOn, t.opsDone = computeSynchronizationPoints(t.ops)
@@ -127,28 +135,36 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions) error {
 		}
 	}
 
-	var db *pebble.DB
-	var err error
-	err = withRetries(func() error {
-		db, err = pebble.Open(dir, t.opts)
-		return err
-	})
-	if err != nil {
-		return err
-	}
-	h.log.Printf("// db.Open() %v", err)
-
-	if t.testOpts.sharedStorageEnabled {
+	t.dbs = make([]*pebble.DB, numInstances)
+	for i := range t.dbs {
+		var db *pebble.DB
+		var err error
+		if len(t.dbs) > 1 {
+			dir = path.Join(t.dir, fmt.Sprintf("db%d", i+1))
+		}
 		err = withRetries(func() error {
-			return db.SetCreatorID(1)
+			db, err = pebble.Open(dir, t.opts)
+			return err
 		})
 		if err != nil {
 			return err
 		}
-		h.log.Printf("// db.SetCreatorID() %v", err)
+		t.dbs[i] = db
+		h.log.Printf("// db%d.Open() %v", i+1, err)
+
+		if t.testOpts.sharedStorageEnabled {
+			err = withRetries(func() error {
+				return db.SetCreatorID(uint64(i + 1))
+			})
+			if err != nil {
+				return err
+			}
+			h.log.Printf("// db%d.SetCreatorID() %v", i+1, err)
+		}
 	}
 
-	t.tmpDir = t.opts.FS.PathJoin(dir, "tmp")
+	var err error
+	t.tmpDir = t.opts.FS.PathJoin(t.dir, "tmp")
 	if err = t.opts.FS.MkdirAll(t.tmpDir, 0755); err != nil {
 		return err
 	}
@@ -180,15 +196,17 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions) error {
 		}
 	}
 
-	t.db = db
+	t.db = t.dbs[0]
 	return nil
 }
 
-func (t *test) isFMV(fmv pebble.FormatMajorVersion) bool {
-	return t.db.FormatMajorVersion() >= fmv
+func (t *test) isFMV(dbID objID, fmv pebble.FormatMajorVersion) bool {
+	db := t.getDB(dbID)
+	return db.FormatMajorVersion() >= fmv
 }
 
-func (t *test) restartDB() error {
+func (t *test) restartDB(dbID objID) error {
+	db := t.getDB(dbID)
 	if !t.testOpts.strictFS {
 		return nil
 	}
@@ -198,7 +216,7 @@ func (t *test) restartDB() error {
 	if ok {
 		fs.SetIgnoreSyncs(true)
 	}
-	if err := t.db.Close(); err != nil {
+	if err := db.Close(); err != nil {
 		return err
 	}
 	// Release any resources held by custom options. This may be used, for
@@ -225,7 +243,15 @@ func (t *test) restartDB() error {
 				return err
 			}
 		}
-		t.db, err = pebble.Open(t.dir, t.opts)
+		dir := t.dir
+		if len(t.dbs) > 1 {
+			dir = path.Join(dir, fmt.Sprintf("db%d", dbID.slot()))
+		}
+		t.dbs[dbID.slot()-1], err = pebble.Open(dir, t.opts)
+		if err != nil {
+			return err
+		}
+		t.db = t.dbs[0]
 		return err
 	})
 	t.opts.Cache.Unref()
@@ -285,7 +311,7 @@ func (t *test) setSnapshot(id objID, s readerCloser) {
 func (t *test) clearObj(id objID) {
 	switch id.tag() {
 	case dbTag:
-		t.db = nil
+		t.dbs[id.slot()-1] = nil
 	case batchTag:
 		t.batches[id.slot()] = nil
 	case iterTag:
@@ -305,7 +331,7 @@ func (t *test) getBatch(id objID) *pebble.Batch {
 func (t *test) getCloser(id objID) io.Closer {
 	switch id.tag() {
 	case dbTag:
-		return t.db
+		return t.dbs[id.slot()-1]
 	case batchTag:
 		return t.batches[id.slot()]
 	case iterTag:
@@ -326,7 +352,7 @@ func (t *test) getIter(id objID) *retryableIter {
 func (t *test) getReader(id objID) pebble.Reader {
 	switch id.tag() {
 	case dbTag:
-		return t.db
+		return t.dbs[id.slot()-1]
 	case batchTag:
 		return t.batches[id.slot()]
 	case snapTag:
@@ -338,11 +364,20 @@ func (t *test) getReader(id objID) pebble.Reader {
 func (t *test) getWriter(id objID) pebble.Writer {
 	switch id.tag() {
 	case dbTag:
-		return t.db
+		return t.dbs[id.slot()-1]
 	case batchTag:
 		return t.batches[id.slot()]
 	}
 	panic(fmt.Sprintf("invalid writer ID: %s", id))
+}
+
+func (t *test) getDB(id objID) *pebble.DB {
+	switch id.tag() {
+	case dbTag:
+		return t.dbs[id.slot()-1]
+	default:
+		panic(fmt.Sprintf("invalid writer tag: %v", id.tag()))
+	}
 }
 
 // Compute the synchronization points between operations. When operating
@@ -369,10 +404,14 @@ func computeSynchronizationPoints(ops []op) (opsWaitOn [][]int, opsDone []chan s
 			// Only valid for i=0. For all other operations, the receiver should
 			// have been referenced by some other operation before it's used as
 			// a receiver.
-			if i != 0 {
-				panic(fmt.Sprintf("op %d on receiver %s; first reference of %s", i, receiver, receiver))
+			if i != 0 && receiver.tag() != dbTag {
+				panic(fmt.Sprintf("op %s on receiver %s; first reference of %s", ops[i].String(), receiver, receiver))
 			}
-			continue
+			// The initOp is a little special. We do want to store the objects it's
+			// syncing on, in `lastOpReference`.
+			if i != 0 {
+				continue
+			}
 		}
 
 		// The last operation that referenced `receiver` is the one at index

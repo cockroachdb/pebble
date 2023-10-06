@@ -50,13 +50,13 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *closeOp:
 		return &t.objID, nil, nil
 	case *compactOp:
-		return nil, nil, []interface{}{&t.start, &t.end, &t.parallelize}
+		return &t.dbID, nil, []interface{}{&t.start, &t.end, &t.parallelize}
 	case *batchCommitOp:
 		return &t.batchID, nil, nil
 	case *dbRatchetFormatMajorVersionOp:
-		return nil, nil, []interface{}{&t.vers}
+		return &t.dbID, nil, []interface{}{&t.vers}
 	case *dbRestartOp:
-		return nil, nil, nil
+		return &t.dbID, nil, nil
 	case *deleteOp:
 		return &t.writerID, nil, []interface{}{&t.key}
 	case *deleteRangeOp:
@@ -64,21 +64,21 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *iterFirstOp:
 		return &t.iterID, nil, nil
 	case *flushOp:
-		return nil, nil, nil
+		return &t.db, nil, nil
 	case *getOp:
 		return &t.readerID, nil, []interface{}{&t.key}
 	case *ingestOp:
-		return nil, nil, []interface{}{&t.batchIDs}
+		return &t.dbID, nil, []interface{}{&t.batchIDs}
 	case *initOp:
-		return nil, nil, []interface{}{&t.batchSlots, &t.iterSlots, &t.snapshotSlots}
+		return nil, nil, []interface{}{&t.dbSlots, &t.batchSlots, &t.iterSlots, &t.snapshotSlots}
 	case *iterLastOp:
 		return &t.iterID, nil, nil
 	case *mergeOp:
 		return &t.writerID, nil, []interface{}{&t.key, &t.value}
 	case *newBatchOp:
-		return nil, &t.batchID, nil
+		return &t.dbID, &t.batchID, nil
 	case *newIndexedBatchOp:
-		return nil, &t.batchID, nil
+		return &t.dbID, &t.batchID, nil
 	case *newIterOp:
 		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMin, &t.filterMax, &t.useL6Filters, &t.maskSuffix}
 	case *newIterUsingCloneOp:
@@ -111,6 +111,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.writerID, nil, []interface{}{&t.start, &t.end, &t.suffix, &t.value}
 	case *rangeKeyUnsetOp:
 		return &t.writerID, nil, []interface{}{&t.start, &t.end, &t.suffix}
+	case *replicateOp:
+		return &t.source, nil, []interface{}{&t.dest, &t.start, &t.end}
 	}
 	panic(fmt.Sprintf("unsupported op type: %T", op))
 }
@@ -142,6 +144,7 @@ var methods = map[string]*methodInfo{
 	"RangeKeySet":               makeMethod(rangeKeySetOp{}, dbTag, batchTag),
 	"RangeKeyUnset":             makeMethod(rangeKeyUnsetOp{}, dbTag, batchTag),
 	"RatchetFormatMajorVersion": makeMethod(dbRatchetFormatMajorVersionOp{}, dbTag),
+	"Replicate":                 makeMethod(replicateOp{}, dbTag),
 	"Restart":                   makeMethod(dbRestartOp{}, dbTag),
 	"SeekGE":                    makeMethod(iterSeekGEOp{}, iterTag),
 	"SeekLT":                    makeMethod(iterSeekLTOp{}, iterTag),
@@ -164,7 +167,7 @@ func parse(src []byte) (_ []op, err error) {
 	// look like Go which allows us to use the Go scanner for parsing.
 	p := &parser{
 		fset: token.NewFileSet(),
-		objs: map[objID]bool{makeObjID(dbTag, 0): true},
+		objs: map[objID]bool{makeObjID(dbTag, 1): true, makeObjID(dbTag, 2): true},
 	}
 	file := p.fset.AddFile("", -1, len(src))
 	p.s.Init(file, src, nil /* no error handler */, 0)
@@ -203,7 +206,7 @@ func (p *parser) parseOp() op {
 	}
 	if destLit == "Init" {
 		// <op>(<args>)
-		return p.makeOp(destLit, makeObjID(dbTag, 0), 0, destPos)
+		return p.makeOp(destLit, makeObjID(dbTag, 1), 0, destPos)
 	}
 
 	destID := p.parseObjID(destPos, destLit)
@@ -236,8 +239,11 @@ func (p *parser) parseOp() op {
 func (p *parser) parseObjID(pos token.Pos, str string) objID {
 	var tag objTag
 	switch {
-	case str == "db":
-		return makeObjID(dbTag, 0)
+	case strings.HasPrefix(str, "db"):
+		tag, str = dbTag, str[2:]
+		if str == "" {
+			str = "1"
+		}
 	case strings.HasPrefix(str, "batch"):
 		tag, str = batchTag, str[5:]
 	case strings.HasPrefix(str, "iter"):
@@ -497,13 +503,23 @@ func (p *parser) errorf(pos token.Pos, format string, args ...interface{}) error
 // execution depends on these fields.
 func computeDerivedFields(ops []op) {
 	iterToReader := make(map[objID]objID)
+	objToDB := make(map[objID]objID)
 	for i := range ops {
 		switch v := ops[i].(type) {
 		case *newIterOp:
 			iterToReader[v.iterID] = v.readerID
+			dbReaderID := v.readerID
+			if dbReaderID.tag() != dbTag {
+				dbReaderID = objToDB[dbReaderID]
+			}
+			objToDB[v.iterID] = dbReaderID
+			if v.readerID.tag() == batchTag {
+				v.derivedDBID = dbReaderID
+			}
 		case *newIterUsingCloneOp:
 			v.derivedReaderID = iterToReader[v.existingIterID]
 			iterToReader[v.iterID] = v.derivedReaderID
+			objToDB[v.iterID] = objToDB[v.existingIterID]
 		case *iterSetOptionsOp:
 			v.derivedReaderID = iterToReader[v.iterID]
 		case *iterFirstOp:
@@ -522,6 +538,40 @@ func computeDerivedFields(ops []op) {
 			v.derivedReaderID = iterToReader[v.iterID]
 		case *iterPrevOp:
 			v.derivedReaderID = iterToReader[v.iterID]
+		case *newBatchOp:
+			objToDB[v.batchID] = v.dbID
+		case *newIndexedBatchOp:
+			objToDB[v.batchID] = v.dbID
+		case *applyOp:
+			if derivedDBID, ok := objToDB[v.batchID]; ok && v.writerID.tag() != dbTag {
+				objToDB[v.writerID] = derivedDBID
+			}
+		case *getOp:
+			if derivedDBID, ok := objToDB[v.readerID]; ok {
+				v.derivedDBID = derivedDBID
+			} else if v.readerID.tag() == snapTag {
+				// TODO(bilal): This is legacy behaviour as snapshots aren't supported in
+				// two-instance mode yet. Track snapshots in g.objDB and objToDB and remove this
+				// conditional.
+				v.derivedDBID = dbObjID
+			}
+		case *batchCommitOp:
+			v.dbID = objToDB[v.batchID]
+		case *closeOp:
+			if derivedDBID, ok := objToDB[v.objID]; ok {
+				v.derivedDBID = derivedDBID
+			}
+		case *ingestOp:
+			v.derivedDBIDs = make([]objID, len(v.batchIDs))
+			for i := range v.batchIDs {
+				v.derivedDBIDs[i] = objToDB[v.batchIDs[i]]
+			}
+		case *deleteOp:
+			derivedDBID := v.writerID
+			if v.writerID.tag() != dbTag {
+				derivedDBID = objToDB[v.writerID]
+			}
+			v.derivedDBID = derivedDBID
 		}
 	}
 }

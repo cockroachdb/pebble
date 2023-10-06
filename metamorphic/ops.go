@@ -6,10 +6,12 @@ package metamorphic
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -18,10 +20,10 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 )
 
@@ -46,6 +48,7 @@ type op interface {
 
 // initOp performs test initialization
 type initOp struct {
+	dbSlots       uint32
 	batchSlots    uint32
 	iterSlots     uint32
 	snapshotSlots uint32
@@ -59,12 +62,19 @@ func (o *initOp) run(t *test, h historyRecorder) {
 }
 
 func (o *initOp) String() string {
-	return fmt.Sprintf("Init(%d /* batches */, %d /* iters */, %d /* snapshots */)",
-		o.batchSlots, o.iterSlots, o.snapshotSlots)
+	return fmt.Sprintf("Init(%d /* dbs */, %d /* batches */, %d /* iters */, %d /* snapshots */)",
+		o.dbSlots, o.batchSlots, o.iterSlots, o.snapshotSlots)
 }
 
-func (o *initOp) receiver() objID      { return dbObjID }
-func (o *initOp) syncObjs() objIDSlice { return nil }
+func (o *initOp) receiver() objID { return makeObjID(dbTag, 1) }
+func (o *initOp) syncObjs() objIDSlice {
+	syncObjs := make([]objID, 0)
+	// Add any additional DBs to syncObjs.
+	for i := uint32(2); i < o.dbSlots+1; i++ {
+		syncObjs = append(syncObjs, makeObjID(dbTag, i))
+	}
+	return syncObjs
+}
 
 // applyOp models a Writer.Apply operation.
 type applyOp struct {
@@ -135,7 +145,7 @@ func (o *checkpointOp) String() string {
 		}
 		fmt.Fprintf(&spanStr, "%q,%q", span.Start, span.End)
 	}
-	return fmt.Sprintf("db.Checkpoint(%s)", spanStr.String())
+	return fmt.Sprintf("db1.Checkpoint(%s)", spanStr.String())
 }
 
 func (o *checkpointOp) receiver() objID      { return dbObjID }
@@ -143,7 +153,8 @@ func (o *checkpointOp) syncObjs() objIDSlice { return nil }
 
 // closeOp models a {Batch,Iterator,Snapshot}.Close operation.
 type closeOp struct {
-	objID objID
+	objID       objID
+	derivedDBID objID
 }
 
 func (o *closeOp) run(t *test, h historyRecorder) {
@@ -152,7 +163,7 @@ func (o *closeOp) run(t *test, h historyRecorder) {
 		// Special case: If WAL is disabled, do a flush right before DB Close. This
 		// allows us to reuse this run's data directory as initial state for
 		// future runs without losing any mutations.
-		_ = t.db.Flush()
+		_ = t.getDB(o.objID).Flush()
 	}
 	t.clearObj(o.objID)
 	err := c.Close()
@@ -166,14 +177,20 @@ func (o *closeOp) syncObjs() objIDSlice {
 	// all its iterators, snapshots and batches are closed.
 	// TODO(jackson): It would be nice to relax this so that Close calls can
 	// execute in parallel.
-	if o.objID == dbObjID {
+	if o.objID.tag() == dbTag {
 		return nil
 	}
+	if o.derivedDBID != 0 {
+		return []objID{o.derivedDBID}
+	}
+	// TODO(bilal): Once readers on snapshots are tracked correctly, return nil
+	// in the case below.
 	return []objID{dbObjID}
 }
 
 // compactOp models a DB.Compact operation.
 type compactOp struct {
+	dbID        objID
 	start       []byte
 	end         []byte
 	parallelize bool
@@ -181,28 +198,30 @@ type compactOp struct {
 
 func (o *compactOp) run(t *test, h historyRecorder) {
 	err := withRetries(func() error {
-		return t.db.Compact(o.start, o.end, o.parallelize)
+		return t.getDB(o.dbID).Compact(o.start, o.end, o.parallelize)
 	})
 	h.Recordf("%s // %v", o, err)
 }
 
 func (o *compactOp) String() string {
-	return fmt.Sprintf("db.Compact(%q, %q, %t /* parallelize */)", o.start, o.end, o.parallelize)
+	return fmt.Sprintf("%s.Compact(%q, %q, %t /* parallelize */)", o.dbID, o.start, o.end, o.parallelize)
 }
 
-func (o *compactOp) receiver() objID      { return dbObjID }
+func (o *compactOp) receiver() objID      { return o.dbID }
 func (o *compactOp) syncObjs() objIDSlice { return nil }
 
 // deleteOp models a Write.Delete operation.
 type deleteOp struct {
 	writerID objID
 	key      []byte
+
+	derivedDBID objID
 }
 
 func (o *deleteOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	var err error
-	if t.testOpts.deleteSized && t.isFMV(pebble.FormatDeleteSizedAndObsolete) {
+	if t.testOpts.deleteSized && t.isFMV(o.derivedDBID, pebble.FormatDeleteSizedAndObsolete) {
 		// Call DeleteSized with a deterministic size derived from the index.
 		// The size does not need to be accurate for correctness.
 		err = w.DeleteSized(o.key, hashSize(t.idx), t.writeOpts)
@@ -275,15 +294,17 @@ func (o *deleteRangeOp) syncObjs() objIDSlice { return nil }
 
 // flushOp models a DB.Flush operation.
 type flushOp struct {
+	db objID
 }
 
 func (o *flushOp) run(t *test, h historyRecorder) {
-	err := t.db.Flush()
+	db := t.getDB(dbObjID)
+	err := db.Flush()
 	h.Recordf("%s // %v", o, err)
 }
 
-func (o *flushOp) String() string       { return "db.Flush()" }
-func (o *flushOp) receiver() objID      { return dbObjID }
+func (o *flushOp) String() string       { return fmt.Sprintf("%s.Flush()", o.db) }
+func (o *flushOp) receiver() objID      { return o.db }
 func (o *flushOp) syncObjs() objIDSlice { return nil }
 
 // mergeOp models a Write.Merge operation.
@@ -387,17 +408,18 @@ func (o *rangeKeyUnsetOp) syncObjs() objIDSlice { return nil }
 
 // newBatchOp models a Write.NewBatch operation.
 type newBatchOp struct {
+	dbID    objID
 	batchID objID
 }
 
 func (o *newBatchOp) run(t *test, h historyRecorder) {
-	b := t.db.NewBatch()
+	b := t.getDB(o.dbID).NewBatch()
 	t.setBatch(o.batchID, b)
 	h.Recordf("%s", o)
 }
 
-func (o *newBatchOp) String() string  { return fmt.Sprintf("%s = db.NewBatch()", o.batchID) }
-func (o *newBatchOp) receiver() objID { return dbObjID }
+func (o *newBatchOp) String() string  { return fmt.Sprintf("%s = %s.NewBatch()", o.batchID, o.dbID) }
+func (o *newBatchOp) receiver() objID { return o.dbID }
 func (o *newBatchOp) syncObjs() objIDSlice {
 	// NewBatch should not be concurrent with operations that interact with that
 	// same batch.
@@ -406,19 +428,20 @@ func (o *newBatchOp) syncObjs() objIDSlice {
 
 // newIndexedBatchOp models a Write.NewIndexedBatch operation.
 type newIndexedBatchOp struct {
+	dbID    objID
 	batchID objID
 }
 
 func (o *newIndexedBatchOp) run(t *test, h historyRecorder) {
-	b := t.db.NewIndexedBatch()
+	b := t.getDB(o.dbID).NewIndexedBatch()
 	t.setBatch(o.batchID, b)
 	h.Recordf("%s", o)
 }
 
 func (o *newIndexedBatchOp) String() string {
-	return fmt.Sprintf("%s = db.NewIndexedBatch()", o.batchID)
+	return fmt.Sprintf("%s = %s.NewIndexedBatch()", o.batchID, o.dbID)
 }
-func (o *newIndexedBatchOp) receiver() objID { return dbObjID }
+func (o *newIndexedBatchOp) receiver() objID { return o.dbID }
 func (o *newIndexedBatchOp) syncObjs() objIDSlice {
 	// NewIndexedBatch should not be concurrent with operations that interact
 	// with that same batch.
@@ -427,6 +450,7 @@ func (o *newIndexedBatchOp) syncObjs() objIDSlice {
 
 // batchCommitOp models a Batch.Commit operation.
 type batchCommitOp struct {
+	dbID    objID
 	batchID objID
 }
 
@@ -440,26 +464,29 @@ func (o *batchCommitOp) String() string  { return fmt.Sprintf("%s.Commit()", o.b
 func (o *batchCommitOp) receiver() objID { return o.batchID }
 func (o *batchCommitOp) syncObjs() objIDSlice {
 	// Synchronize on the database so that NewIters wait for the commit.
-	return []objID{dbObjID}
+	return []objID{o.dbID}
 }
 
 // ingestOp models a DB.Ingest operation.
 type ingestOp struct {
+	dbID     objID
 	batchIDs []objID
+
+	derivedDBIDs []objID
 }
 
 func (o *ingestOp) run(t *test, h historyRecorder) {
 	// We can only use apply as an alternative for ingestion if we are ingesting
 	// a single batch. If we are ingesting multiple batches, the batches may
 	// overlap which would cause ingestion to fail but apply would succeed.
-	if t.testOpts.ingestUsingApply && len(o.batchIDs) == 1 {
+	if t.testOpts.ingestUsingApply && len(o.batchIDs) == 1 && o.derivedDBIDs[0] == o.dbID {
 		id := o.batchIDs[0]
 		b := t.getBatch(id)
 		iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
-		c, err := o.collapseBatch(t, iter, rangeDelIter, rangeKeyIter)
+		db := t.getDB(o.dbID)
+		c, err := o.collapseBatch(t, db, iter, rangeDelIter, rangeKeyIter)
 		if err == nil {
-			w := t.getWriter(makeObjID(dbTag, 0))
-			err = w.Apply(c, t.writeOpts)
+			err = db.Apply(c, t.writeOpts)
 		}
 		_ = b.Close()
 		_ = c.Close()
@@ -485,25 +512,25 @@ func (o *ingestOp) run(t *test, h historyRecorder) {
 	}
 
 	err = firstError(err, withRetries(func() error {
-		return t.db.Ingest(paths)
+		return t.getDB(o.dbID).Ingest(paths)
 	}))
 
 	h.Recordf("%s // %v", o, err)
 }
 
 func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (string, error) {
-	rootFS := vfs.Root(t.opts.FS)
-	path := rootFS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d", i))
-	f, err := rootFS.Create(path)
+	path := t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", o.dbID.slot(), i))
+	f, err := t.opts.FS.Create(path)
 	if err != nil {
 		return "", err
 	}
+	db := t.getDB(o.dbID)
 
 	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
 	defer closeIters(iter, rangeDelIter, rangeKeyIter)
 
 	equal := t.opts.Comparer.Equal
-	tableFormat := t.db.FormatMajorVersion().MaxTableFormat()
+	tableFormat := db.FormatMajorVersion().MaxTableFormat()
 	w := sstable.NewWriter(
 		objstorageprovider.NewFileWritable(f),
 		t.opts.MakeWriterOptions(0, tableFormat),
@@ -520,6 +547,13 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 		lastUserKey = key.UserKey
 
 		key.SetSeqNum(base.SeqNumZero)
+		// It's possible that we wrote the key on a batch from a db that supported
+		// DeleteSized, but are now ingesting into a db that does not. Detect
+		// this case and translate the key to an InternalKeyKindDelete.
+		if key.Kind() == pebble.InternalKeyKindDeleteSized && !t.isFMV(o.dbID, pebble.FormatDeleteSizedAndObsolete) {
+			value = pebble.LazyValue{}
+			key.SetKind(pebble.InternalKeyKindDelete)
+		}
 		if err := w.Add(*key, value.InPlaceValue()); err != nil {
 			return "", err
 		}
@@ -550,7 +584,7 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 	return path, nil
 }
 
-func (o *ingestOp) receiver() objID { return dbObjID }
+func (o *ingestOp) receiver() objID { return o.dbID }
 func (o *ingestOp) syncObjs() objIDSlice {
 	// Ingest should not be concurrent with mutating the batches that will be
 	// ingested as sstables.
@@ -579,11 +613,14 @@ func closeIters(
 // performed first in the batch to match the semantics of ingestion where a
 // range deletion does not delete a point record contained in the sstable.
 func (o *ingestOp) collapseBatch(
-	t *test, pointIter base.InternalIterator, rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
+	t *test,
+	db *pebble.DB,
+	pointIter base.InternalIterator,
+	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
 ) (*pebble.Batch, error) {
 	defer closeIters(pointIter, rangeDelIter, rangeKeyIter)
 	equal := t.opts.Comparer.Equal
-	collapsed := t.db.NewBatch()
+	collapsed := db.NewBatch()
 
 	if rangeDelIter != nil {
 		// NB: The range tombstones have already been fragmented by the Batch.
@@ -651,7 +688,8 @@ func (o *ingestOp) collapseBatch(
 
 func (o *ingestOp) String() string {
 	var buf strings.Builder
-	buf.WriteString("db.Ingest(")
+	buf.WriteString(o.dbID.String())
+	buf.WriteString(".Ingest(")
 	for i, id := range o.batchIDs {
 		if i > 0 {
 			buf.WriteString(", ")
@@ -664,8 +702,9 @@ func (o *ingestOp) String() string {
 
 // getOp models a Reader.Get operation.
 type getOp struct {
-	readerID objID
-	key      []byte
+	readerID    objID
+	key         []byte
+	derivedDBID objID
 }
 
 func (o *getOp) run(t *test, h historyRecorder) {
@@ -685,11 +724,14 @@ func (o *getOp) run(t *test, h historyRecorder) {
 func (o *getOp) String() string  { return fmt.Sprintf("%s.Get(%q)", o.readerID, o.key) }
 func (o *getOp) receiver() objID { return o.readerID }
 func (o *getOp) syncObjs() objIDSlice {
-	if o.readerID == dbObjID {
+	if o.readerID.tag() == dbTag {
 		return nil
 	}
 	// batch.Get reads through to the current database state.
-	return []objID{dbObjID}
+	if o.derivedDBID != 0 {
+		return []objID{o.derivedDBID}
+	}
+	return nil
 }
 
 // newIterOp models a Reader.NewIter operation.
@@ -697,6 +739,7 @@ type newIterOp struct {
 	readerID objID
 	iterID   objID
 	iterOpts
+	derivedDBID objID
 }
 
 func (o *newIterOp) run(t *test, h historyRecorder) {
@@ -736,7 +779,7 @@ func (o *newIterOp) syncObjs() objIDSlice {
 	// state, and we must synchronize on the database state for a consistent
 	// view.
 	if o.readerID.tag() == batchTag {
-		objs = append(objs, dbObjID)
+		objs = append(objs, o.derivedDBID)
 	}
 	return objs
 }
@@ -1220,6 +1263,7 @@ func (o *newSnapshotOp) receiver() objID      { return dbObjID }
 func (o *newSnapshotOp) syncObjs() objIDSlice { return []objID{o.snapID} }
 
 type dbRatchetFormatMajorVersionOp struct {
+	dbID objID
 	vers pebble.FormatMajorVersion
 }
 
@@ -1233,22 +1277,24 @@ func (o *dbRatchetFormatMajorVersionOp) run(t *test, h historyRecorder) {
 	//Regardless, subsequent operations should behave identically, which is what
 	//we're really aiming to test by including this format major version ratchet
 	//operation.
-	if t.db.FormatMajorVersion() < o.vers {
-		err = t.db.RatchetFormatMajorVersion(o.vers)
+	if t.getDB(o.dbID).FormatMajorVersion() < o.vers {
+		err = t.getDB(o.dbID).RatchetFormatMajorVersion(o.vers)
 	}
 	h.Recordf("%s // %v", o, err)
 }
 
 func (o *dbRatchetFormatMajorVersionOp) String() string {
-	return fmt.Sprintf("db.RatchetFormatMajorVersion(%s)", o.vers)
+	return fmt.Sprintf("%s.RatchetFormatMajorVersion(%s)", o.dbID, o.vers)
 }
-func (o *dbRatchetFormatMajorVersionOp) receiver() objID      { return dbObjID }
+func (o *dbRatchetFormatMajorVersionOp) receiver() objID      { return o.dbID }
 func (o *dbRatchetFormatMajorVersionOp) syncObjs() objIDSlice { return nil }
 
-type dbRestartOp struct{}
+type dbRestartOp struct {
+	dbID objID
+}
 
 func (o *dbRestartOp) run(t *test, h historyRecorder) {
-	if err := t.restartDB(); err != nil {
+	if err := t.restartDB(o.dbID); err != nil {
 		h.Recordf("%s // %v", o, err)
 		h.history.err.Store(errors.Wrap(err, "dbRestartOp"))
 	} else {
@@ -1256,8 +1302,8 @@ func (o *dbRestartOp) run(t *test, h historyRecorder) {
 	}
 }
 
-func (o *dbRestartOp) String() string       { return "db.Restart()" }
-func (o *dbRestartOp) receiver() objID      { return dbObjID }
+func (o *dbRestartOp) String() string       { return fmt.Sprintf("%s.Restart()", o.dbID) }
+func (o *dbRestartOp) receiver() objID      { return o.dbID }
 func (o *dbRestartOp) syncObjs() objIDSlice { return nil }
 
 func formatOps(ops []op) string {
@@ -1267,3 +1313,128 @@ func formatOps(ops []op) string {
 	}
 	return buf.String()
 }
+
+// replicateOp models an operation that could copy keys from one db to
+// another through either an IngestAndExcise, or an Ingest.
+type replicateOp struct {
+	source, dest objID
+	start, end   []byte
+}
+
+func (r *replicateOp) runSharedReplicate(
+	t *test, h historyRecorder, source, dest *pebble.DB, w *sstable.Writer, sstPath string,
+) {
+	var sharedSSTs []pebble.SharedSSTMeta
+	var err error
+	err = source.ScanInternal(context.TODO(), r.start, r.end,
+		func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
+			val, _, err := value.Value(nil)
+			if err != nil {
+				panic(err)
+			}
+			return w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val)
+		},
+		func(start, end []byte, seqNum uint64) error {
+			return w.DeleteRange(start, end)
+		},
+		func(start, end []byte, keys []keyspan.Key) error {
+			s := keyspan.Span{
+				Start:     start,
+				End:       end,
+				Keys:      keys,
+				KeysOrder: 0,
+			}
+			return rangekey.Encode(&s, func(k base.InternalKey, v []byte) error {
+				return w.AddRangeKey(base.MakeInternalKey(k.UserKey, 0, k.Kind()), v)
+			})
+		},
+		func(sst *pebble.SharedSSTMeta) error {
+			sharedSSTs = append(sharedSSTs, *sst)
+			return nil
+		},
+	)
+	if err != nil {
+		h.Recordf("%s // %v", r, err)
+		return
+	}
+
+	_, err = dest.IngestAndExcise([]string{sstPath}, sharedSSTs, pebble.KeyRange{Start: r.start, End: r.end})
+	h.Recordf("%s // %v", r, err)
+}
+
+func (r *replicateOp) run(t *test, h historyRecorder) {
+	// Shared replication only works if shared storage is enabled.
+	useSharedIngest := t.testOpts.useSharedReplicate
+	if !t.testOpts.sharedStorageEnabled {
+		useSharedIngest = false
+	}
+
+	source := t.getDB(r.source)
+	dest := t.getDB(r.dest)
+	sstPath := path.Join(t.tmpDir, fmt.Sprintf("ext-replicate%d.sst", t.idx))
+	f, err := t.opts.FS.Create(sstPath)
+	if err != nil {
+		h.Recordf("%s // %v", r, err)
+		return
+	}
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), t.opts.MakeWriterOptions(0, dest.FormatMajorVersion().MaxTableFormat()))
+
+	if useSharedIngest {
+		r.runSharedReplicate(t, h, source, dest, w, sstPath)
+		return
+	}
+
+	iter, err := source.NewIter(&pebble.IterOptions{
+		LowerBound: r.start,
+		UpperBound: r.end,
+		KeyTypes:   pebble.IterKeyTypePointsAndRanges,
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer iter.Close()
+
+	// Write rangedels and rangekeydels for the range. This mimics the Excise
+	// that runSharedReplicate would do.
+	if err := w.DeleteRange(r.start, r.end); err != nil {
+		panic(err)
+	}
+	if err := w.RangeKeyDelete(r.start, r.end); err != nil {
+		panic(err)
+	}
+
+	for ok := iter.SeekGE(r.start); ok && iter.Error() != nil; ok = iter.Next() {
+		hasPoint, hasRange := iter.HasPointAndRange()
+		if hasPoint {
+			val, err := iter.ValueAndErr()
+			if err != nil {
+				panic(err)
+			}
+			if err := w.Set(iter.Key(), val); err != nil {
+				panic(err)
+			}
+		}
+		if hasRange && iter.RangeKeyChanged() {
+			rangeKeys := iter.RangeKeys()
+			rkStart, rkEnd := iter.RangeBounds()
+			for i := range rangeKeys {
+				if err := w.RangeKeySet(rkStart, rkEnd, rangeKeys[i].Suffix, rangeKeys[i].Value); err != nil {
+					panic(err)
+				}
+			}
+		}
+	}
+	if err := w.Close(); err != nil {
+		panic(err)
+	}
+
+	err = dest.Ingest([]string{sstPath})
+	h.Recordf("%s // %v", r, err)
+}
+
+func (r *replicateOp) String() string {
+	return fmt.Sprintf("%s.Replicate(%s, %q, %q)", r.source, r.dest, r.start, r.end)
+}
+
+func (r *replicateOp) receiver() objID      { return r.source }
+func (r *replicateOp) syncObjs() objIDSlice { return objIDSlice{r.dest} }

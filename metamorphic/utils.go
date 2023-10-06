@@ -41,7 +41,7 @@ func (i objID) slot() uint32 {
 func (i objID) String() string {
 	switch i.tag() {
 	case dbTag:
-		return "db"
+		return fmt.Sprintf("db%d", i.slot())
 	case batchTag:
 		return fmt.Sprintf("batch%d", i.slot())
 	case iterTag:
