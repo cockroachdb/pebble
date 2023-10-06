@@ -38,6 +38,7 @@ const (
 	newIterUsingClone
 	newSnapshot
 	readerGet
+	replicate
 	snapshotClose
 	writerApply
 	writerDelete
@@ -64,6 +65,10 @@ type config struct {
 	// It's a dynamic randvar to roughly emulate workloads with MVCC timestamps,
 	// skewing towards most recent timestamps.
 	writeSuffixDist randvar.Dynamic
+
+	// numInstances defines the number of pebble instances created for this
+	// metamorphic test run.
+	numInstances int
 
 	// TODO(peter): unimplemented
 	// keyDist        randvar.Dynamic
@@ -107,6 +112,8 @@ var presetConfigs = []config{
 		withOpWeight(writerMerge, 0),
 }
 
+var multiInstancePresetConfig = multiInstanceConfig()
+
 func defaultConfig() config {
 	return config{
 		// dbClose is not in this list since it is deterministically generated once, at the end of the test.
@@ -139,6 +146,7 @@ func defaultConfig() config {
 			newIterUsingClone:           5,
 			newSnapshot:                 10,
 			readerGet:                   100,
+			replicate:                   0,
 			snapshotClose:               10,
 			writerApply:                 10,
 			writerDelete:                100,
@@ -159,6 +167,19 @@ func defaultConfig() config {
 		// for a particular prefix.
 		writeSuffixDist: mustDynamic(randvar.NewSkewedLatest(0, 1, 0.99)),
 	}
+}
+
+func multiInstanceConfig() config {
+	cfg := defaultConfig()
+	cfg.ops[replicate] = 5
+	cfg.ops[writerSingleDelete] = 0
+	cfg.ops[writerMerge] = 0
+	// TODO(bilal): The disabled operations below should also be supported
+	// in the two-instance test, once they're updated to work in multi-instance
+	// mode.
+	cfg.ops[newSnapshot] = 0
+	cfg.ops[snapshotClose] = 0
+	return cfg
 }
 
 func mustDynamic(dyn randvar.Dynamic, err error) randvar.Dynamic {
