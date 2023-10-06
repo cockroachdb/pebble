@@ -2318,6 +2318,11 @@ func (d *DB) validateSSTables() {
 	// where we are starving IO from other tasks due to having to page through
 	// all the blocks in all the sstables in the queue.
 	// TODO(travers): Add some form of pacing to avoid IO starvation.
+
+	// If we fail to validate any files due to reasons other than uncovered
+	// corruption, accumulate them and re-queue them for another attempt.
+	var retry []manifest.NewFileEntry
+
 	for _, f := range pending {
 		// The file may have been moved or deleted since it was ingested, in
 		// which case we skip.
@@ -2353,9 +2358,24 @@ func (d *DB) validateSSTables() {
 		}
 
 		if err != nil {
-			// TODO(travers): Hook into the corruption reporting pipeline, once
-			// available. See pebble#1192.
-			d.opts.Logger.Fatalf("pebble: encountered corruption during ingestion: %s", err)
+			if IsCorruptionError(err) {
+				// TODO(travers): Hook into the corruption reporting pipeline, once
+				// available. See pebble#1192.
+				d.opts.Logger.Fatalf("pebble: encountered corruption during ingestion: %s", err)
+			} else {
+				// If there was some other, possibly transient, error that
+				// caused table validation to fail inform the EventListener and
+				// move on. We remember the table so that we can retry it in a
+				// subsequent table validation job.
+				//
+				// TODO(jackson): If the error is not transient, this will retry
+				// validation indefinitely. While not great, it's the same
+				// behavior as erroring flushes and compactions. We should
+				// address this as a part of #270.
+				d.opts.EventListener.BackgroundError(err)
+				retry = append(retry, f)
+				continue
+			}
 		}
 
 		d.opts.EventListener.TableValidated(TableValidatedInfo{
@@ -2364,9 +2384,9 @@ func (d *DB) validateSSTables() {
 		})
 	}
 	rs.unref()
-
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.mu.tableValidation.pending = append(d.mu.tableValidation.pending, retry...)
 	d.mu.tableValidation.validating = false
 	d.mu.tableValidation.cond.Broadcast()
 	if d.shouldValidateSSTablesLocked() {

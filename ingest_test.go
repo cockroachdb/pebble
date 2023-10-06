@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -3159,6 +3160,7 @@ func TestIngestValidation(t *testing.T) {
 		errLocationNone errLocation = iota
 		errLocationIngest
 		errLocationValidation
+		errLocationBackground
 	)
 	const (
 		nKeys     = 1_000
@@ -3173,10 +3175,15 @@ func TestIngestValidation(t *testing.T) {
 	rng := rand.New(rand.NewSource(seed))
 	t.Logf("rng seed = %d", seed)
 
+	// errfsCounter is used by test cases that make use of an errorfs.Injector
+	// to inject errors into the ingest validation code path.
+	var errfsCounter atomic.Int32
 	testCases := []struct {
-		description string
-		cLoc        corruptionLocation
-		wantErrType errLocation
+		description     string
+		cLoc            corruptionLocation
+		wantErrType     errLocation
+		wantErr         error
+		errorfsInjector errorfs.Injector
 	}{
 		{
 			description: "no corruption",
@@ -3186,36 +3193,71 @@ func TestIngestValidation(t *testing.T) {
 		{
 			description: "start block",
 			cLoc:        corruptionLocationStart,
+			wantErr:     ErrCorruption,
 			wantErrType: errLocationIngest,
 		},
 		{
 			description: "end block",
 			cLoc:        corruptionLocationEnd,
+			wantErr:     ErrCorruption,
 			wantErrType: errLocationIngest,
 		},
 		{
 			description: "non-end block",
 			cLoc:        corruptionLocationInternal,
+			wantErr:     ErrCorruption,
 			wantErrType: errLocationValidation,
+		},
+		{
+			description: "non-corruption error",
+			cLoc:        corruptionLocationNone,
+			wantErr:     errorfs.ErrInjected,
+			wantErrType: errLocationBackground,
+			errorfsInjector: errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
+				// Inject an error on the first read-at operation on an sstable.
+				if op != errorfs.OpFileReadAt || filepath.Ext(path) != ".sst" {
+					return nil
+				}
+				if errfsCounter.Add(1) == 1 {
+					return errorfs.ErrInjected
+				}
+				return nil
+			}),
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
+			errfsCounter.Store(0)
 			var wg sync.WaitGroup
 			wg.Add(1)
 
 			fs := vfs.NewMem()
+			var testFS vfs.FS = fs
+			if tc.errorfsInjector != nil {
+				testFS = errorfs.Wrap(fs, tc.errorfsInjector)
+			}
+
+			// backgroundErr is populated by EventListener.BackgroundError.
+			var backgroundErr error
 			logger := &fatalCapturingLogger{t: t}
 			opts := &Options{
-				FS:     fs,
+				FS:     testFS,
 				Logger: logger,
 				EventListener: &EventListener{
 					TableValidated: func(i TableValidatedInfo) {
 						wg.Done()
 					},
+					BackgroundError: func(err error) {
+						backgroundErr = err
+					},
 				},
 			}
+			// Disable table stats so that injected errors can't be accidentally
+			// injected into the table stats collector read, and so the table
+			// stats collector won't prime the table+block cache such that the
+			// error injection won't trigger at all during ingest validation.
+			opts.private.disableTableStats = true
 			opts.Experimental.ValidateOnIngest = true
 			d, err := Open("", opts)
 			require.NoError(t, err)
@@ -3295,8 +3337,10 @@ func TestIngestValidation(t *testing.T) {
 				if logger.err != nil {
 					et.errLoc = errLocationValidation
 					et.err = logger.err
+				} else if backgroundErr != nil {
+					et.errLoc = errLocationBackground
+					et.err = backgroundErr
 				}
-
 				return
 			}
 
@@ -3330,11 +3374,15 @@ func TestIngestValidation(t *testing.T) {
 			case errLocationIngest:
 				require.Equal(t, errLocationIngest, et.errLoc)
 				require.Error(t, et.err)
-				require.True(t, errors.Is(et.err, base.ErrCorruption))
+				require.True(t, errors.Is(et.err, tc.wantErr))
 			case errLocationValidation:
 				require.Equal(t, errLocationValidation, et.errLoc)
 				require.Error(t, et.err)
-				require.True(t, errors.Is(et.err, base.ErrCorruption))
+				require.True(t, errors.Is(et.err, tc.wantErr))
+			case errLocationBackground:
+				require.Equal(t, errLocationBackground, et.errLoc)
+				require.Error(t, et.err)
+				require.True(t, errors.Is(et.err, tc.wantErr))
 			default:
 				t.Fatalf("unknown wantErrType %T", tc.wantErrType)
 			}
