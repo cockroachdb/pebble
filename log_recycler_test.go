@@ -58,7 +58,7 @@ func TestLogRecycler(t *testing.T) {
 	require.EqualValues(t, 7, r.maxLogNum())
 
 	// An error is returned if we try to pop an element other than the first.
-	require.Regexp(t, `invalid 5 vs \[4 5 6\]`, r.pop(5))
+	require.Regexp(t, `invalid 000005 vs \[000004 000005 000006\]`, r.pop(5))
 
 	require.NoError(t, r.pop(4))
 	require.EqualValues(t, []FileNum{5, 6}, r.logNums())
