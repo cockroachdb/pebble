@@ -70,3 +70,24 @@ func TestMeta(t *testing.T) {
 		metamorphic.RunAndCompare(t, runFlags.Dir, opts...)
 	}
 }
+
+func TestMetaTwoInstance(t *testing.T) {
+	switch {
+	case runOnceFlags.Compare != "":
+		runDirs := strings.Split(runOnceFlags.Compare, ",")
+		onceOpts := runOnceFlags.MakeRunOnceOptions()
+		metamorphic.Compare(t, runOnceFlags.Dir, runOnceFlags.Seed, runDirs, onceOpts...)
+
+	case runOnceFlags.RunDir != "":
+		// The --run-dir flag is specified either in the child process (see
+		// runOptions() below) or the user specified it manually in order to re-run
+		// a test.
+		onceOpts := runOnceFlags.MakeRunOnceOptions()
+		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed, filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
+
+	default:
+		opts := runFlags.MakeRunOptions()
+		opts = append(opts, metamorphic.MultiInstance(2))
+		metamorphic.RunAndCompare(t, runFlags.Dir, opts...)
+	}
+}

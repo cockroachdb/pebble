@@ -14,8 +14,8 @@ func TestObjKey(t *testing.T) {
 		want string
 	}{
 		{
-			key:  makeObjKey(makeObjID(dbTag, 0), []byte("foo")),
-			want: "db:foo",
+			key:  makeObjKey(makeObjID(dbTag, 1), []byte("foo")),
+			want: "db1:foo",
 		},
 		{
 			key:  makeObjKey(makeObjID(batchTag, 1), []byte("bar")),
@@ -31,7 +31,7 @@ func TestObjKey(t *testing.T) {
 }
 
 func TestGlobalStateIndicatesEligibleForSingleDelete(t *testing.T) {
-	key := makeObjKey(makeObjID(dbTag, 0), []byte("foo"))
+	key := makeObjKey(makeObjID(dbTag, 1), []byte("foo"))
 	testCases := []struct {
 		meta keyMeta
 		want bool
@@ -221,7 +221,7 @@ func TestKeyManager_GetOrInit(t *testing.T) {
 	m := newKeyManager()
 	require.NotContains(t, m.byObjKey, o.String())
 	require.NotContains(t, m.byObj, id)
-	require.Contains(t, m.byObj, makeObjID(dbTag, 0)) // Always contains the DB key.
+	require.Contains(t, m.byObj, makeObjID(dbTag, 1)) // Always contains the DB key.
 
 	meta1 := m.getOrInit(id, key)
 	require.Contains(t, m.byObjKey, o.String())
@@ -233,7 +233,7 @@ func TestKeyManager_GetOrInit(t *testing.T) {
 }
 
 func TestKeyManager_Contains(t *testing.T) {
-	id := makeObjID(dbTag, 0)
+	id := makeObjID(dbTag, 1)
 	key := []byte("foo")
 
 	m := newKeyManager()
@@ -245,7 +245,7 @@ func TestKeyManager_Contains(t *testing.T) {
 
 func TestKeyManager_MergeInto(t *testing.T) {
 	fromID := makeObjID(batchTag, 1)
-	toID := makeObjID(dbTag, 0)
+	toID := makeObjID(dbTag, 1)
 
 	m := newKeyManager()
 

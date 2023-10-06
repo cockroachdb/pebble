@@ -56,6 +56,7 @@ type generator struct {
 
 	// keyManager tracks the state of keys a operation generation time.
 	keyManager *keyManager
+	dbs        objIDSlice
 	// Unordered sets of object IDs for live objects. Used to randomly select on
 	// object when generating an operation. There are 4 concrete objects: the DB
 	// (of which there is exactly 1), batches, iterators, and snapshots.
@@ -83,6 +84,9 @@ type generator struct {
 	// iterators. The iter set value will also be indexed by either the batches
 	// or snapshots maps.
 	iters map[objID]objIDSet
+	// objectID -> db: used to keep track of the DB a batch, iter, or snapshot
+	// was created on.
+	objDB map[objID]objID
 	// readerID -> reader iters: used to keep track of the open iterators on a
 	// reader. The iter set value will also be indexed by either the batches or
 	// snapshots maps. This map is the union of batches and snapshots maps.
@@ -103,10 +107,12 @@ func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 	g := &generator{
 		cfg:                   cfg,
 		rng:                   rng,
-		init:                  &initOp{},
+		init:                  &initOp{dbSlots: uint32(cfg.numInstances)},
 		keyManager:            km,
-		liveReaders:           objIDSlice{makeObjID(dbTag, 0)},
-		liveWriters:           objIDSlice{makeObjID(dbTag, 0)},
+		liveReaders:           objIDSlice{makeObjID(dbTag, 1)},
+		liveWriters:           objIDSlice{makeObjID(dbTag, 1)},
+		dbs:                   objIDSlice{makeObjID(dbTag, 1)},
+		objDB:                 make(map[objID]objID),
 		batches:               make(map[objID]objIDSet),
 		iters:                 make(map[objID]objIDSet),
 		readers:               make(map[objID]objIDSet),
@@ -115,6 +121,11 @@ func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 		itersLastOpts:         make(map[objID]iterOpts),
 		iterCreationTimestamp: make(map[objID]int),
 		iterReaderID:          make(map[objID]objID),
+	}
+	for i := 1; i < cfg.numInstances; i++ {
+		g.liveReaders = append(g.liveReaders, makeObjID(dbTag, uint32(i+1)))
+		g.liveWriters = append(g.liveWriters, makeObjID(dbTag, uint32(i+1)))
+		g.dbs = append(g.dbs, makeObjID(dbTag, uint32(i+1)))
 	}
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
@@ -153,6 +164,7 @@ func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
 		newIterUsingClone:           g.newIterUsingClone,
 		newSnapshot:                 g.newSnapshot,
 		readerGet:                   g.readerGet,
+		replicate:                   g.replicate,
 		snapshotClose:               g.snapshotClose,
 		writerApply:                 g.writerApply,
 		writerDelete:                g.writerDelete,
@@ -435,8 +447,11 @@ func (g *generator) newBatch() {
 	g.init.batchSlots++
 	g.liveBatches = append(g.liveBatches, batchID)
 	g.liveWriters = append(g.liveWriters, batchID)
+	dbID := g.dbs.rand(g.rng)
+	g.objDB[batchID] = dbID
 
 	g.add(&newBatchOp{
+		dbID:    dbID,
 		batchID: batchID,
 	})
 }
@@ -451,8 +466,11 @@ func (g *generator) newIndexedBatch() {
 	iters := make(objIDSet)
 	g.batches[batchID] = iters
 	g.readers[batchID] = iters
+	dbID := g.dbs.rand(g.rng)
+	g.objDB[batchID] = dbID
 
 	g.add(&newIndexedBatchOp{
+		dbID:    dbID,
 		batchID: batchID,
 	})
 }
@@ -474,7 +492,7 @@ func (g *generator) removeBatchFromGenerator(batchID objID) {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
-		g.add(&closeOp{objID: id})
+		g.add(&closeOp{objID: id, derivedDBID: g.objDB[batchID]})
 	}
 }
 
@@ -486,7 +504,7 @@ func (g *generator) batchAbort() {
 	batchID := g.liveBatches.rand(g.rng)
 	g.removeBatchFromGenerator(batchID)
 
-	g.add(&closeOp{objID: batchID})
+	g.add(&closeOp{objID: batchID, derivedDBID: g.objDB[batchID]})
 }
 
 func (g *generator) batchCommit() {
@@ -495,11 +513,13 @@ func (g *generator) batchCommit() {
 	}
 
 	batchID := g.liveBatches.rand(g.rng)
+	dbID := g.objDB[batchID]
 	g.removeBatchFromGenerator(batchID)
 	g.add(&batchCommitOp{
+		dbID:    dbID,
 		batchID: batchID,
 	})
-	g.add(&closeOp{objID: batchID})
+	g.add(&closeOp{objID: batchID, derivedDBID: dbID})
 
 }
 
@@ -514,10 +534,15 @@ func (g *generator) dbClose() {
 	}
 	for len(g.liveBatches) > 0 {
 		batchID := g.liveBatches[0]
+		dbID := g.objDB[batchID]
 		g.removeBatchFromGenerator(batchID)
-		g.add(&closeOp{objID: batchID})
+		g.add(&closeOp{objID: batchID, derivedDBID: dbID})
 	}
-	g.add(&closeOp{objID: makeObjID(dbTag, 0)})
+	for len(g.dbs) > 0 {
+		db := g.dbs[0]
+		g.dbs = g.dbs[1:]
+		g.add(&closeOp{objID: db})
+	}
 }
 
 func (g *generator) dbCheckpoint() {
@@ -553,7 +578,9 @@ func (g *generator) dbCompact() {
 	if g.cmp(start, end) > 0 {
 		start, end = end, start
 	}
+	dbID := g.dbs.rand(g.rng)
 	g.add(&compactOp{
+		dbID:        dbID,
 		start:       start,
 		end:         end,
 		parallelize: g.rng.Float64() < 0.5,
@@ -561,7 +588,7 @@ func (g *generator) dbCompact() {
 }
 
 func (g *generator) dbFlush() {
-	g.add(&flushOp{})
+	g.add(&flushOp{dbObjID})
 }
 
 func (g *generator) dbRatchetFormatMajorVersion() {
@@ -570,14 +597,16 @@ func (g *generator) dbRatchetFormatMajorVersion() {
 	// version may be behind the database's format major version, in which case
 	// RatchetFormatMajorVersion should deterministically error.
 
+	dbID := g.dbs.rand(g.rng)
 	n := int(newestFormatMajorVersionToTest - minimumFormatMajorVersion)
 	vers := pebble.FormatMajorVersion(g.rng.Intn(n+1)) + minimumFormatMajorVersion
-	g.add(&dbRatchetFormatMajorVersionOp{vers: vers})
+	g.add(&dbRatchetFormatMajorVersionOp{dbID: dbID, vers: vers})
 }
 
 func (g *generator) dbRestart() {
 	// Close any live iterators and snapshots, so that we can close the DB
 	// cleanly.
+	dbID := g.dbs.rand(g.rng)
 	for len(g.liveIters) > 0 {
 		g.randIter(g.iterClose)()
 	}
@@ -587,14 +616,15 @@ func (g *generator) dbRestart() {
 	// Close the batches.
 	for len(g.liveBatches) > 0 {
 		batchID := g.liveBatches[0]
+		dbID := g.objDB[batchID]
 		g.removeBatchFromGenerator(batchID)
-		g.add(&closeOp{objID: batchID})
+		g.add(&closeOp{objID: batchID, derivedDBID: dbID})
 	}
-	if len(g.liveReaders) != 1 || len(g.liveWriters) != 1 {
+	if len(g.liveReaders) != len(g.dbs) || len(g.liveWriters) != len(g.dbs) {
 		panic(fmt.Sprintf("unexpected counts: liveReaders %d, liveWriters: %d",
 			len(g.liveReaders), len(g.liveWriters)))
 	}
-	g.add(&dbRestartOp{})
+	g.add(&dbRestartOp{dbID: dbID})
 }
 
 // maybeSetSnapshotIterBounds must be called whenever creating a new iterator or
@@ -654,6 +684,7 @@ func (g *generator) newIter() {
 		// closes.
 	}
 	g.iterReaderID[iterID] = readerID
+	g.deriveDB(iterID, readerID)
 
 	var opts iterOpts
 	if !g.maybeSetSnapshotIterBounds(readerID, &opts) {
@@ -694,10 +725,16 @@ func (g *generator) newIter() {
 	g.itersLastOpts[iterID] = opts
 	g.iterCreationTimestamp[iterID] = g.keyManager.nextMetaTimestamp()
 	g.iterReaderID[iterID] = readerID
+	var derivedDBID objID
+	if readerID.tag() == batchTag {
+		g.deriveDB(iterID, readerID)
+		derivedDBID = g.objDB[iterID]
+	}
 	g.add(&newIterOp{
-		readerID: readerID,
-		iterID:   iterID,
-		iterOpts: opts,
+		readerID:    readerID,
+		iterID:      iterID,
+		iterOpts:    opts,
+		derivedDBID: derivedDBID,
 	})
 }
 
@@ -719,6 +756,14 @@ func (g *generator) randKeyTypesAndMask() (keyTypes uint32, maskSuffix []byte) {
 	return keyTypes, maskSuffix
 }
 
+func (g *generator) deriveDB(readerID, parentID objID) {
+	dbParentID := parentID
+	if dbParentID.tag() != dbTag {
+		dbParentID = g.objDB[dbParentID]
+	}
+	g.objDB[readerID] = dbParentID
+}
+
 func (g *generator) newIterUsingClone() {
 	if len(g.liveIters) == 0 {
 		return
@@ -737,6 +782,7 @@ func (g *generator) newIterUsingClone() {
 	}
 	readerID := g.iterReaderID[existingIterID]
 	g.iterReaderID[iterID] = readerID
+	g.deriveDB(iterID, readerID)
 
 	var refreshBatch bool
 	if readerID.tag() == batchTag {
@@ -773,7 +819,7 @@ func (g *generator) iterClose(iterID objID) {
 		// closes.
 	}
 
-	g.add(&closeOp{objID: iterID})
+	g.add(&closeOp{objID: iterID, derivedDBID: g.objDB[iterID]})
 }
 
 func (g *generator) iterSetBounds(iterID objID) {
@@ -1101,7 +1147,44 @@ func (g *generator) readerGet() {
 	} else {
 		key = g.randKeyToRead(0.001) // 0.1% new keys
 	}
-	g.add(&getOp{readerID: readerID, key: key})
+	derivedDBID := objID(0)
+	if dbID, ok := g.objDB[readerID]; ok && readerID.tag() == batchTag {
+		derivedDBID = dbID
+	} else if readerID.tag() == snapTag {
+		// TODO(bilal): This is legacy behaviour as snapshots aren't supported in
+		// two-instance mode yet. Track snapshots in g.objDB and objToDB and remove this
+		// conditional.
+		derivedDBID = dbObjID
+	}
+	g.add(&getOp{readerID: readerID, key: key, derivedDBID: derivedDBID})
+}
+
+func (g *generator) replicate() {
+	if len(g.dbs) < 2 {
+		return
+	}
+
+	source := g.dbs.rand(g.rng)
+	dest := source
+	for dest == source {
+		dest = g.dbs.rand(g.rng)
+	}
+
+	var startKey, endKey []byte
+	startKey = g.randKeyToRead(0.001) // 0.1% new keys
+	endKey = g.randKeyToRead(0.001)   // 0.1% new keys
+	for g.cmp(startKey, endKey) == 0 {
+		endKey = g.randKeyToRead(0.01) // 1% new keys
+	}
+	if g.cmp(startKey, endKey) > 0 {
+		startKey, endKey = endKey, startKey
+	}
+	g.add(&replicateOp{
+		source: source,
+		dest:   dest,
+		start:  startKey,
+		end:    endKey,
+	})
 }
 
 // generateDisjointKeyRanges generates n disjoint key ranges.
@@ -1171,7 +1254,7 @@ func (g *generator) snapshotClose() {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
-		g.add(&closeOp{objID: id})
+		g.add(&closeOp{objID: id, derivedDBID: g.objDB[id]})
 	}
 
 	g.add(&closeOp{objID: snapID})
@@ -1186,11 +1269,19 @@ func (g *generator) writerApply() {
 	}
 
 	batchID := g.liveBatches.rand(g.rng)
+	dbID := g.objDB[batchID]
 
 	var writerID objID
 	for {
+		// NB: The writer we're applying to, as well as the batch we're applying,
+		// must be from the same DB. The writer could be the db itself. Applying
+		// a batch from one DB on another DB results in a panic, so avoid that.
 		writerID = g.liveWriters.rand(g.rng)
-		if writerID != batchID {
+		writerDBID := writerID
+		if writerID.tag() != dbTag {
+			writerDBID = g.objDB[writerID]
+		}
+		if writerID != batchID && writerDBID == dbID {
 			break
 		}
 	}
@@ -1202,7 +1293,8 @@ func (g *generator) writerApply() {
 		batchID:  batchID,
 	})
 	g.add(&closeOp{
-		batchID,
+		objID:       batchID,
+		derivedDBID: dbID,
 	})
 }
 
@@ -1212,9 +1304,14 @@ func (g *generator) writerDelete() {
 	}
 
 	writerID := g.liveWriters.rand(g.rng)
+	derivedDBID := writerID
+	if derivedDBID.tag() != dbTag {
+		derivedDBID = g.objDB[writerID]
+	}
 	g.add(&deleteOp{
-		writerID: writerID,
-		key:      g.randKeyToWrite(0.001), // 0.1% new keys
+		writerID:    writerID,
+		key:         g.randKeyToWrite(0.001), // 0.1% new keys
+		derivedDBID: derivedDBID,
 	})
 }
 
@@ -1309,6 +1406,7 @@ func (g *generator) writerIngest() {
 	// we can tolerate failure or not, and if the ingestOp encounters a
 	// failure, it would retry after splitting into single batch ingests.
 
+	dbID := g.dbs.rand(g.rng)
 	// Ingest between 1 and 3 batches.
 	batchIDs := make([]objID, 0, 1+g.rng.Intn(3))
 	canFail := cap(batchIDs) > 1
@@ -1332,8 +1430,14 @@ func (g *generator) writerIngest() {
 		g.removeBatchFromGenerator(batchID)
 		batchIDs = append(batchIDs, batchID)
 	}
+	derivedDBIDs := make([]objID, len(batchIDs))
+	for i := range batchIDs {
+		derivedDBIDs[i] = g.objDB[batchIDs[i]]
+	}
 	g.add(&ingestOp{
-		batchIDs: batchIDs,
+		dbID:         dbID,
+		batchIDs:     batchIDs,
+		derivedDBIDs: derivedDBIDs,
 	})
 }
 

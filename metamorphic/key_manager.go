@@ -206,7 +206,7 @@ func (k *keyManager) nextMetaTimestamp() int {
 	return ret
 }
 
-var dbObjID objID = makeObjID(dbTag, 0)
+var dbObjID objID = makeObjID(dbTag, 1)
 
 // newKeyManager returns a pointer to a new keyManager. Callers should
 // interact with this using addNewKey, eligible*Keys, update,
@@ -549,6 +549,8 @@ func opWrittenKeys(untypedOp op) [][]byte {
 		return [][]byte{t.key}
 	case *singleDeleteOp:
 		return [][]byte{t.key}
+	case *replicateOp:
+		return [][]byte{t.start, t.end}
 	}
 	return nil
 }
