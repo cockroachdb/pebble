@@ -3670,7 +3670,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 		}
 		switch fileType {
 		case fileTypeLog:
-			if diskFileNum.FileNum() >= minUnflushedLogNum {
+			if diskFileNum >= minUnflushedLogNum {
 				continue
 			}
 			fi := fileInfo{fileNum: diskFileNum}
@@ -3679,7 +3679,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			}
 			obsoleteLogs = append(obsoleteLogs, fi)
 		case fileTypeManifest:
-			if diskFileNum.FileNum() >= manifestFileNum {
+			if diskFileNum >= manifestFileNum {
 				continue
 			}
 			fi := fileInfo{fileNum: diskFileNum}
@@ -3785,7 +3785,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		// log that has not had its contents flushed to an sstable. We can recycle
 		// the prefix of d.mu.log.queue with log numbers less than
 		// minUnflushedLogNum.
-		if d.mu.log.queue[i].fileNum.FileNum() >= d.mu.versions.minUnflushedLogNum {
+		if d.mu.log.queue[i].fileNum >= d.mu.versions.minUnflushedLogNum {
 			obsoleteLogs = d.mu.log.queue[:i]
 			d.mu.log.queue = d.mu.log.queue[i:]
 			d.mu.versions.metrics.WAL.Files -= int64(len(obsoleteLogs))

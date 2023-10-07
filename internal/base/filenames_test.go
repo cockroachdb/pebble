@@ -110,5 +110,5 @@ directory contains 10 files, 3 unknown, 1 tables, 1 logs, 1 manifests`, buf.buf.
 func TestRedactFileNum(t *testing.T) {
 	// Ensure that redaction never redacts file numbers.
 	require.Equal(t, redact.RedactableString("000005"), redact.Sprint(FileNum(5)))
-	require.Equal(t, redact.RedactableString("000005"), redact.Sprint(DiskFileNum{fn: 5}))
+	require.Equal(t, redact.RedactableString("000005"), redact.Sprint(DiskFileNum(5)))
 }

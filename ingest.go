@@ -1160,7 +1160,7 @@ func (d *DB) IngestAndExcise(
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
 func (d *DB) newIngestedFlushableEntry(
-	meta []*fileMetadata, seqNum uint64, logNum FileNum,
+	meta []*fileMetadata, seqNum uint64, logNum base.DiskFileNum,
 ) (*flushableEntry, error) {
 	// Update the sequence number for all of the sstables in the
 	// metadata. Writing the metadata to the manifest when the
