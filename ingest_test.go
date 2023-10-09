@@ -219,9 +219,8 @@ func TestIngestLoadRand(t *testing.T) {
 	for _, m := range lr.localMeta {
 		m.CreationTime = 0
 	}
-	if diff := pretty.Diff(expected, lr.localMeta); diff != nil {
-		t.Fatalf("%s", strings.Join(diff, "\n"))
-	}
+	t.Log(strings.Join(pretty.Diff(expected, lr.localMeta), "\n"))
+	require.Equal(t, expected, lr.localMeta)
 }
 
 func TestIngestLoadInvalid(t *testing.T) {
