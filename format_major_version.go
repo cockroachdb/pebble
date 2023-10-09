@@ -241,7 +241,7 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 		// guaranteed to exist, because we unconditionally locate it
 		// during Open.
 		manifestFileNum := d.mu.versions.manifestFileNum
-		filename := base.MakeFilename(fileTypeManifest, manifestFileNum.DiskFileNum())
+		filename := base.MakeFilename(fileTypeManifest, manifestFileNum)
 		if err := d.mu.versions.manifestMarker.Move(filename); err != nil {
 			return errors.Wrap(err, "moving manifest marker")
 		}

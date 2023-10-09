@@ -51,15 +51,15 @@ type findT struct {
 	verbose      bool
 
 	// Map from file num to path on disk.
-	files map[base.FileNum]string
+	files map[base.DiskFileNum]string
 	// Map from file num to version edit index which references the file num.
 	editRefs map[base.FileNum][]int
 	// List of version edits.
 	edits []manifest.VersionEdit
 	// Sorted list of WAL file nums.
-	logs []base.FileNum
+	logs []base.DiskFileNum
 	// Sorted list of manifest file nums.
-	manifests []base.FileNum
+	manifests []base.DiskFileNum
 	// Sorted list of table file nums.
 	tables []base.FileNum
 	// Set of tables that contains references to the search key.
@@ -135,7 +135,7 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 		r := &refs[i]
 		if lastFileNum != r.fileNum {
 			lastFileNum = r.fileNum
-			fmt.Fprintf(stdout, "%s", f.opts.FS.PathBase(f.files[r.fileNum]))
+			fmt.Fprintf(stdout, "%s", f.opts.FS.PathBase(f.files[r.fileNum.DiskFileNum()]))
 			if m := f.tableMeta[r.fileNum]; m != nil {
 				fmt.Fprintf(stdout, " ")
 				formatKeyRange(stdout, f.fmtKey, &m.Smallest, &m.Largest)
@@ -156,7 +156,7 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 
 // Find all of the manifests, logs, and tables in the specified directory.
 func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
-	f.files = make(map[base.FileNum]string)
+	f.files = make(map[base.DiskFileNum]string)
 	f.editRefs = make(map[base.FileNum][]int)
 	f.logs = nil
 	f.manifests = nil
@@ -174,15 +174,15 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 		}
 		switch ft {
 		case base.FileTypeLog:
-			f.logs = append(f.logs, fileNum.FileNum())
+			f.logs = append(f.logs, fileNum)
 		case base.FileTypeManifest:
-			f.manifests = append(f.manifests, fileNum.FileNum())
+			f.manifests = append(f.manifests, fileNum)
 		case base.FileTypeTable:
 			f.tables = append(f.tables, fileNum.FileNum())
 		default:
 			return
 		}
-		f.files[fileNum.FileNum()] = path
+		f.files[fileNum] = path
 	})
 
 	sort.Slice(f.logs, func(i, j int) bool {
@@ -242,7 +242,7 @@ func (f *findT) readManifests(stdout io.Writer) {
 				if ve.ComparerName != "" {
 					f.comparerName = ve.ComparerName
 				}
-				if num := ve.MinUnflushedLogNum; num != 0 {
+				if num := ve.MinUnflushedLogNum.FileNum(); num != 0 {
 					f.editRefs[num] = append(f.editRefs[num], i)
 				}
 				for df := range ve.DeletedFiles {
@@ -380,7 +380,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 					refs = append(refs, findRef{
 						key:     ikey.Clone(),
 						value:   append([]byte(nil), value...),
-						fileNum: fileNum,
+						fileNum: fileNum.FileNum(),
 					})
 				}
 			}
@@ -397,7 +397,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 	f.tableRefs = make(map[base.FileNum]bool)
 	for _, fileNum := range f.tables {
 		_ = func() (err error) {
-			path := f.files[fileNum]
+			path := f.files[fileNum.DiskFileNum()]
 			tf, err := f.opts.FS.Open(path)
 			if err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
@@ -435,7 +435,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			r, err := sstable.NewReader(readable, opts, f.comparers, f.mergers,
 				private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 			if err != nil {
-				f.errors = append(f.errors, fmt.Sprintf("Unable to decode sstable %s, %s", f.files[fileNum], err.Error()))
+				f.errors = append(f.errors, fmt.Sprintf("Unable to decode sstable %s, %s", f.files[fileNum.DiskFileNum()], err.Error()))
 				// Ensure the error only gets printed once.
 				err = nil
 				return

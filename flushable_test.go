@@ -50,7 +50,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		d.mu.Lock()
 		pendingOutputs := make([]base.DiskFileNum, len(paths))
 		for i := range paths {
-			pendingOutputs[i] = d.mu.versions.getNextFileNum().DiskFileNum()
+			pendingOutputs[i] = d.mu.versions.getNextDiskFileNum()
 		}
 		jobID := d.mu.nextJobID
 		d.mu.nextJobID++

@@ -125,7 +125,7 @@ edit
   000005:[h#3,SET-j#4,SET]
   000010:[j#3,SET-m#2,SET]
   000002:[n#5,SET-q#3,SET]
-zombies [{1} {4}]
+zombies [1 4]
 
 apply
 edit
@@ -153,7 +153,7 @@ edit
   L1
    2
 ----
-zombies [{1} {2}]
+zombies [1 2]
 
 # Deletion of a non-existent table results in an error.
 

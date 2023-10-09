@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -247,7 +248,7 @@ type ManifestCreateInfo struct {
 	JobID int
 	Path  string
 	// The file number of the new Manifest.
-	FileNum FileNum
+	FileNum base.DiskFileNum
 	Err     error
 }
 
@@ -414,7 +415,7 @@ type WALCreateInfo struct {
 	JobID int
 	Path  string
 	// The file number of the new WAL.
-	FileNum FileNum
+	FileNum base.DiskFileNum
 	// The file number of a previous WAL which was recycled to create this
 	// one. Zero if recycling did not take place.
 	RecycledFileNum FileNum

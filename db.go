@@ -2302,7 +2302,7 @@ func (d *DB) walPreallocateSize() int {
 	return int(size)
 }
 
-func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushableEntry) {
+func (d *DB) newMemTable(logNum base.DiskFileNum, logSeqNum uint64) (*memTable, *flushableEntry) {
 	size := d.mu.mem.nextSize
 	if d.mu.mem.nextSize < d.opts.MemTableSize {
 		d.mu.mem.nextSize *= 2
@@ -2373,7 +2373,9 @@ func (d *DB) freeMemTable(m *memTable) {
 	m.free()
 }
 
-func (d *DB) newFlushableEntry(f flushable, logNum FileNum, logSeqNum uint64) *flushableEntry {
+func (d *DB) newFlushableEntry(
+	f flushable, logNum base.DiskFileNum, logSeqNum uint64,
+) *flushableEntry {
 	fe := &flushableEntry{
 		flushable:      f,
 		flushed:        make(chan struct{}),
@@ -2457,7 +2459,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			continue
 		}
 
-		var newLogNum base.FileNum
+		var newLogNum base.DiskFileNum
 		var prevLogSize uint64
 		if !d.opts.DisableWAL {
 			now := time.Now()
@@ -2514,7 +2516,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 }
 
 // Both DB.mu and commitPipeline.mu must be held by the caller.
-func (d *DB) rotateMemtable(newLogNum FileNum, logSeqNum uint64, prev *memTable) {
+func (d *DB) rotateMemtable(newLogNum base.DiskFileNum, logSeqNum uint64, prev *memTable) {
 	// Create a new memtable, scheduling the previous one for flushing. We do
 	// this even if the previous memtable was empty because the DB.Flush
 	// mechanism is dependent on being able to wait for the empty memtable to
@@ -2541,14 +2543,14 @@ func (d *DB) rotateMemtable(newLogNum FileNum, logSeqNum uint64, prev *memTable)
 
 // Both DB.mu and commitPipeline.mu must be held by the caller. Note that DB.mu
 // may be released and reacquired.
-func (d *DB) recycleWAL() (newLogNum FileNum, prevLogSize uint64) {
+func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	if d.opts.DisableWAL {
 		panic("pebble: invalid function call")
 	}
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
-	newLogNum = d.mu.versions.getNextFileNum()
+	newLogNum = d.mu.versions.getNextDiskFileNum()
 
 	prevLogSize = uint64(d.mu.log.Size())
 
@@ -2574,7 +2576,7 @@ func (d *DB) recycleWAL() (newLogNum FileNum, prevLogSize uint64) {
 	}
 	d.mu.Unlock()
 
-	newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum.DiskFileNum())
+	newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
 
 	// Try to use a recycled log file. Recycling log files is an important
 	// performance optimization as it is faster to sync a file that has
@@ -2655,7 +2657,7 @@ func (d *DB) recycleWAL() (newLogNum FileNum, prevLogSize uint64) {
 		panic(err)
 	}
 
-	d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum.DiskFileNum(), fileSize: newLogSize})
+	d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: newLogSize})
 	d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum, record.LogWriterConfig{
 		WALFsyncLatency:    d.mu.log.metrics.fsyncLatency,
 		WALMinSyncInterval: d.opts.WALMinSyncInterval,
