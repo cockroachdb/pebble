@@ -893,7 +893,7 @@ func TestRecycleLog(t *testing.T) {
 			limit:  blocks,
 		}
 
-		w := NewLogWriter(limitedBuf, base.FileNum(i), LogWriterConfig{
+		w := NewLogWriter(limitedBuf, base.DiskFileNum(i), LogWriterConfig{
 			WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
 		sizes := make([]int, 10+rnd.Intn(100))
 		for j := range sizes {
@@ -907,7 +907,7 @@ func TestRecycleLog(t *testing.T) {
 			t.Fatalf("%d: %v", i, err)
 		}
 
-		r := NewReader(bytes.NewReader(backing), base.FileNum(i))
+		r := NewReader(bytes.NewReader(backing), base.DiskFileNum(i))
 		for j := range sizes {
 			rr, err := r.Next()
 			if err != nil {
@@ -937,14 +937,14 @@ func TestRecycleLog(t *testing.T) {
 
 func TestTruncatedLog(t *testing.T) {
 	backing := make([]byte, 2*blockSize)
-	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(1), LogWriterConfig{
+	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.DiskFileNum(1), LogWriterConfig{
 		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
 	// Write a record that spans 2 blocks.
 	_, err := w.WriteRecord(bytes.Repeat([]byte("s"), blockSize+100))
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
 	// Create a reader only for the first block.
-	r := NewReader(bytes.NewReader(backing[:blockSize]), base.FileNum(1))
+	r := NewReader(bytes.NewReader(backing[:blockSize]), base.DiskFileNum(1))
 	rr, err := r.Next()
 	require.NoError(t, err)
 	_, err = io.ReadAll(rr)
@@ -953,7 +953,7 @@ func TestTruncatedLog(t *testing.T) {
 
 func TestRecycleLogWithPartialBlock(t *testing.T) {
 	backing := make([]byte, 27)
-	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(1), LogWriterConfig{
+	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.DiskFileNum(1), LogWriterConfig{
 		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
 	// Will write a chunk with 11 byte header + 5 byte payload.
 	_, err := w.WriteRecord([]byte("aaaaa"))
@@ -961,7 +961,7 @@ func TestRecycleLogWithPartialBlock(t *testing.T) {
 	// Close will write a 11-byte EOF chunk.
 	require.NoError(t, w.Close())
 
-	w = NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(2), LogWriterConfig{
+	w = NewLogWriter(bytes.NewBuffer(backing[:0]), base.DiskFileNum(2), LogWriterConfig{
 		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
 	// Will write a chunk with 11 byte header + 1 byte payload.
 	_, err = w.WriteRecord([]byte("a"))
@@ -969,7 +969,7 @@ func TestRecycleLogWithPartialBlock(t *testing.T) {
 	// Close will write a 11-byte EOF chunk.
 	require.NoError(t, w.Close())
 
-	r := NewReader(bytes.NewReader(backing), base.FileNum(2))
+	r := NewReader(bytes.NewReader(backing), base.DiskFileNum(2))
 	_, err = r.Next()
 	require.NoError(t, err)
 	// 4 bytes left, which are not enough for even the legacy header.
@@ -984,7 +984,7 @@ func TestRecycleLogNumberOverflow(t *testing.T) {
 	// interpreted correctly.
 
 	backing := make([]byte, 27)
-	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(math.MaxUint32), LogWriterConfig{
+	w := NewLogWriter(bytes.NewBuffer(backing[:0]), base.DiskFileNum(math.MaxUint32), LogWriterConfig{
 		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
 	// Will write a chunk with 11 byte header + 5 byte payload.
 	_, err := w.WriteRecord([]byte("aaaaa"))
@@ -992,7 +992,7 @@ func TestRecycleLogNumberOverflow(t *testing.T) {
 	// Close will write a 11-byte EOF chunk.
 	require.NoError(t, w.Close())
 
-	w = NewLogWriter(bytes.NewBuffer(backing[:0]), base.FileNum(math.MaxUint32+1), LogWriterConfig{
+	w = NewLogWriter(bytes.NewBuffer(backing[:0]), base.DiskFileNum(math.MaxUint32+1), LogWriterConfig{
 		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
 	// Will write a chunk with 11 byte header + 1 byte payload.
 	_, err = w.WriteRecord([]byte("a"))
@@ -1000,7 +1000,7 @@ func TestRecycleLogNumberOverflow(t *testing.T) {
 	// Close will write a 11-byte EOF chunk.
 	require.NoError(t, w.Close())
 
-	r := NewReader(bytes.NewReader(backing), base.FileNum(math.MaxUint32+1))
+	r := NewReader(bytes.NewReader(backing), base.DiskFileNum(math.MaxUint32+1))
 	_, err = r.Next()
 	require.NoError(t, err)
 	// 4 bytes left, which are not enough for even the legacy header.
@@ -1014,7 +1014,7 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 
 	// Write a record that is larger than the log block size.
 	backing1 := make([]byte, 2*blockSize)
-	w := NewLogWriter(bytes.NewBuffer(backing1[:0]), base.FileNum(1), LogWriterConfig{
+	w := NewLogWriter(bytes.NewBuffer(backing1[:0]), base.DiskFileNum(1), LogWriterConfig{
 		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
 	_, err := w.WriteRecord(bytes.Repeat([]byte("a"), recordSize))
 	require.NoError(t, err)
@@ -1023,7 +1023,7 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 	// Write another record to a new incarnation of the WAL that is larger than
 	// the block size.
 	backing2 := make([]byte, 2*blockSize)
-	w = NewLogWriter(bytes.NewBuffer(backing2[:0]), base.FileNum(2), LogWriterConfig{
+	w = NewLogWriter(bytes.NewBuffer(backing2[:0]), base.DiskFileNum(2), LogWriterConfig{
 		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
 	_, err = w.WriteRecord(bytes.Repeat([]byte("b"), recordSize))
 	require.NoError(t, err)
@@ -1035,7 +1035,7 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 	copy(backing2[blockSize:], backing1[blockSize:])
 
 	// Verify that we can't read a partial record from the second WAL.
-	r := NewReader(bytes.NewReader(backing2), base.FileNum(2))
+	r := NewReader(bytes.NewReader(backing2), base.DiskFileNum(2))
 	rr, err := r.Next()
 	require.NoError(t, err)
 

@@ -1160,7 +1160,7 @@ func (d *DB) IngestAndExcise(
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
 func (d *DB) newIngestedFlushableEntry(
-	meta []*fileMetadata, seqNum uint64, logNum FileNum,
+	meta []*fileMetadata, seqNum uint64, logNum base.DiskFileNum,
 ) (*flushableEntry, error) {
 	// Update the sequence number for all of the sstables in the
 	// metadata. Writing the metadata to the manifest when the
@@ -1287,7 +1287,7 @@ func (d *DB) ingest(
 	d.mu.Lock()
 	pendingOutputs := make([]base.DiskFileNum, len(paths)+len(shared)+len(external))
 	for i := 0; i < len(paths)+len(shared)+len(external); i++ {
-		pendingOutputs[i] = d.mu.versions.getNextFileNum().DiskFileNum()
+		pendingOutputs[i] = d.mu.versions.getNextDiskFileNum()
 	}
 
 	jobID := d.mu.nextJobID

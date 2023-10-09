@@ -198,7 +198,7 @@ func (w *WorkloadCollector) onManifestCreated(info pebble.ManifestCreateInfo) {
 
 	// mark the manifest file as ready for processing to prevent it from being
 	// cleaned before we process it.
-	fileName := base.MakeFilename(base.FileTypeManifest, info.FileNum.DiskFileNum())
+	fileName := base.MakeFilename(base.FileTypeManifest, info.FileNum)
 	w.mu.fileState[fileName] |= readyForProcessing
 	w.mu.manifests = append(w.mu.manifests, &manifestDetails{
 		sourceFilepath: info.Path,

@@ -94,7 +94,7 @@ type VersionEdit struct {
 	// mutations that have not been flushed to an sstable.
 	//
 	// This is an optional field, and 0 represents it is not set.
-	MinUnflushedLogNum base.FileNum
+	MinUnflushedLogNum base.DiskFileNum
 
 	// ObsoletePrevLogNum is a historic artifact from LevelDB that is not used by
 	// Pebble, RocksDB, or even LevelDB. Its use in LevelDB was deprecated in
@@ -104,7 +104,7 @@ type VersionEdit struct {
 
 	// The next file number. A single counter is used to assign file numbers
 	// for the WAL, MANIFEST, sstable, and OPTIONS files.
-	NextFileNum base.FileNum
+	NextFileNum uint64
 
 	// LastSeqNum is an upper bound on the sequence numbers that have been
 	// assigned in flushed WALs. Unflushed WALs (that will be replayed during
@@ -175,14 +175,14 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			v.ComparerName = string(s)
 
 		case tagLogNumber:
-			n, err := d.readFileNum()
+			n, err := d.readUvarint()
 			if err != nil {
 				return err
 			}
-			v.MinUnflushedLogNum = n
+			v.MinUnflushedLogNum = base.DiskFileNum(n)
 
 		case tagNextFileNumber:
-			n, err := d.readFileNum()
+			n, err := d.readUvarint()
 			if err != nil {
 				return err
 			}

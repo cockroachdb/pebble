@@ -93,7 +93,7 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 
 			var b pebble.Batch
 			var buf bytes.Buffer
-			rr := record.NewReader(f, fileNum.FileNum())
+			rr := record.NewReader(f, fileNum)
 			for {
 				offset := rr.Offset()
 				r, err := rr.Next()

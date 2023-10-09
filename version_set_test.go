@@ -73,7 +73,7 @@ func TestLatestRefCounting(t *testing.T) {
 
 	// Grab some new file nums.
 	d.mu.Lock()
-	f1 := d.mu.versions.nextFileNum
+	f1 := FileNum(d.mu.versions.nextFileNum)
 	f2 := f1 + 1
 	d.mu.versions.nextFileNum += 2
 	d.mu.Unlock()
@@ -260,7 +260,7 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 
 	// Grab some new file nums.
 	d.mu.Lock()
-	f1 := d.mu.versions.nextFileNum
+	f1 := FileNum(d.mu.versions.nextFileNum)
 	f2 := f1 + 1
 	d.mu.versions.nextFileNum += 2
 	d.mu.Unlock()

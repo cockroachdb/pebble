@@ -66,7 +66,7 @@ func TestWorkloadCollector(t *testing.T) {
 				var fileNum uint64
 				var err error
 				td.ScanArgs(t, "filenum", &fileNum)
-				path := base.MakeFilepath(fs, srcDir, base.FileTypeManifest, base.FileNum(fileNum).DiskFileNum())
+				path := base.MakeFilepath(fs, srcDir, base.FileTypeManifest, base.DiskFileNum(fileNum))
 				currentManifest, err = fs.Create(path)
 				require.NoError(t, err)
 				_, err = currentManifest.Write(randData(100))
@@ -74,7 +74,7 @@ func TestWorkloadCollector(t *testing.T) {
 
 				c.onManifestCreated(pebble.ManifestCreateInfo{
 					Path:    path,
-					FileNum: base.FileNum(fileNum),
+					FileNum: base.DiskFileNum(fileNum),
 				})
 				return ""
 			case "flush":

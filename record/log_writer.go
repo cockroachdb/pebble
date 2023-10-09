@@ -323,7 +323,9 @@ var blockPool = sync.Pool{
 }
 
 // NewLogWriter returns a new LogWriter.
-func NewLogWriter(w io.Writer, logNum base.FileNum, logWriterConfig LogWriterConfig) *LogWriter {
+func NewLogWriter(
+	w io.Writer, logNum base.DiskFileNum, logWriterConfig LogWriterConfig,
+) *LogWriter {
 	c, _ := w.(io.Closer)
 	s, _ := w.(syncer)
 	r := &LogWriter{

@@ -943,7 +943,7 @@ func TestRollManifest(t *testing.T) {
 	d, err := Open("", opts)
 	require.NoError(t, err)
 
-	manifestFileNumber := func() FileNum {
+	manifestFileNumber := func() base.DiskFileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		return d.mu.versions.manifestFileNum
@@ -961,7 +961,7 @@ func TestRollManifest(t *testing.T) {
 	}
 
 	lastManifestNum := manifestFileNumber()
-	manifestNums := []base.FileNum{lastManifestNum}
+	manifestNums := []base.DiskFileNum{lastManifestNum}
 	for i := 0; i < 5; i++ {
 		// MaxManifestFileSize is 1, but the rollover logic also counts edits
 		// since the last snapshot to decide on rollover, so do as many flushes as
