@@ -9,6 +9,8 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,7 +21,10 @@ import (
 )
 
 // ErrInjected is an error artificially injected for testing fs error paths.
-var ErrInjected = errors.New("injected error")
+var ErrInjected = LabelledError{
+	error: errors.New("injected error"),
+	label: "ErrInjected",
+}
 
 // Op is an enum describing the type of operation.
 type Op int
@@ -94,11 +99,47 @@ const (
 	OpKindWrite
 )
 
-// OnIndex constructs an injector that returns an error on
+// String implements fmt.Stringer.
+func (kind OpKind) String() string {
+	switch kind {
+	case OpKindRead:
+		return "reads"
+	case OpKindWrite:
+		return "writes"
+	default:
+		panic(fmt.Sprintf("unrecognized OpKind %d", kind))
+	}
+}
+
+// Reads wraps an injector, calling the inner Injector only if an operation is a
+// read operation.
+func Reads(next Injector) Injector { return opKindInj{kind: OpKindRead, next: next} }
+
+// Writes wraps an injector, calling the inner Injector only if an operation is
+// a write operation.
+func Writes(next Injector) Injector { return opKindInj{kind: OpKindWrite, next: next} }
+
+type opKindInj struct {
+	kind OpKind
+	next Injector
+}
+
+func (inj opKindInj) String() string {
+	return fmt.Sprintf("%s(%s)", inj.kind, inj.next.String())
+}
+
+func (inj opKindInj) MaybeError(op Op, path string) error {
+	if inj.kind == op.OpKind() {
+		return inj.next.MaybeError(op, path)
+	}
+	return nil
+}
+
+// OnIndex wraps an injector, calling into the injector on
 // the (n+1)-th invocation of its MaybeError function. It
 // may be passed to Wrap to inject an error into an FS.
-func OnIndex(index int32) *InjectIndex {
-	ii := &InjectIndex{}
+func OnIndex(index int32, next Injector) *InjectIndex {
+	ii := &InjectIndex{next: next}
 	ii.index.Store(index)
 	return ii
 }
@@ -106,6 +147,12 @@ func OnIndex(index int32) *InjectIndex {
 // InjectIndex implements Injector, injecting an error at a specific index.
 type InjectIndex struct {
 	index atomic.Int32
+	next  Injector
+}
+
+// String implements fmt.Stringer.
+func (ii *InjectIndex) String() string {
+	return fmt.Sprintf("onIndex(%d, %s)", ii.index.Load(), ii.next.String())
 }
 
 // Index returns the index at which the error will be injected.
@@ -115,11 +162,11 @@ func (ii *InjectIndex) Index() int32 { return ii.index.Load() }
 func (ii *InjectIndex) SetIndex(v int32) { ii.index.Store(v) }
 
 // MaybeError implements the Injector interface.
-func (ii *InjectIndex) MaybeError(_ Op, _ string) error {
-	if ii.index.Add(-1) == -1 {
-		return errors.WithStack(ErrInjected)
+func (ii *InjectIndex) MaybeError(op Op, path string) error {
+	if ii.index.Add(-1) != -1 {
+		return nil
 	}
-	return nil
+	return ii.next.MaybeError(op, path)
 }
 
 // WithProbability returns a function that returns an error with the provided
@@ -143,16 +190,77 @@ func WithProbability(op OpKind, p float64) Injector {
 // MaybeError's signature.
 type InjectorFunc func(Op, string) error
 
+// String implements fmt.Stringer.
+func (f InjectorFunc) String() string { return "<opaque func>" }
+
 // MaybeError implements the Injector interface.
 func (f InjectorFunc) MaybeError(op Op, path string) error { return f(op, path) }
 
 // Injector injects errors into FS operations.
 type Injector interface {
+	fmt.Stringer
 	// MaybeError is invoked by an errorfs before an operation is executed. It
 	// is passed an enum indicating the type of operation and a path of the
 	// subject file or directory. If the operation takes two paths (eg,
 	// Rename, Link), the original source path is provided.
 	MaybeError(op Op, path string) error
+}
+
+// Any returns an injector that injects an error if any the provided injectors
+// inject an error.
+func Any(injectors ...Injector) Injector {
+	return anyInjector(injectors)
+}
+
+type anyInjector []Injector
+
+func (a anyInjector) String() string {
+	var sb strings.Builder
+	sb.WriteString("any(")
+	for i, inj := range a {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(inj.String())
+	}
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (a anyInjector) MaybeError(op Op, path string) error {
+	for _, inj := range a {
+		if err := inj.MaybeError(op, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PathMatch returns an injector that injects an error on file paths that
+// match the provided pattern (according to filepath.Match) and for which the
+// provided next injector injects an error.
+func PathMatch(pattern string, next Injector) Injector {
+	return &pathMatch{pattern: pattern, next: next}
+}
+
+type pathMatch struct {
+	pattern string
+	next    Injector
+}
+
+func (pm *pathMatch) String() string {
+	return fmt.Sprintf("pathMatch(%q, %s)", pm.pattern, pm.next.String())
+}
+
+func (pm *pathMatch) MaybeError(op Op, path string) error {
+	if matched, err := filepath.Match(pm.pattern, path); err != nil {
+		// Only possible error is ErrBadPattern, indicating an issue with
+		// the test itself.
+		panic(err)
+	} else if matched {
+		return pm.next.MaybeError(op, path)
+	}
+	return nil
 }
 
 // FS implements vfs.FS, injecting errors into

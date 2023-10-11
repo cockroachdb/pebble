@@ -386,7 +386,7 @@ func TestIngestLinkFallback(t *testing.T) {
 	src, err := mem.Create("source")
 	require.NoError(t, err)
 
-	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(1))}
+	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(1, errorfs.ErrInjected))}
 	opts.EnsureDefaults().WithFSDefaults()
 	objSettings := objstorageprovider.DefaultSettings(opts.FS, "")
 	// Prevent the provider from listing the dir (where we may get an injected error).
@@ -2182,7 +2182,7 @@ func TestIngestError(t *testing.T) {
 		require.NoError(t, w.Set([]byte("d"), nil))
 		require.NoError(t, w.Close())
 
-		inj := errorfs.OnIndex(-1)
+		inj := errorfs.OnIndex(-1, errorfs.ErrInjected)
 		d, err := Open("", &Options{
 			FS:                    errorfs.Wrap(mem, inj),
 			Logger:                panicLogger{},

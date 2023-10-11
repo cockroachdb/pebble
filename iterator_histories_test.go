@@ -13,8 +13,6 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
@@ -41,8 +39,9 @@ func TestIterHistories(t *testing.T) {
 			iters[name] = it
 			return it
 		}
+		var opts *Options
 		parseOpts := func(td *datadriven.TestData) (*Options, error) {
-			opts := &Options{
+			opts = &Options{
 				FS:                 vfs.NewMem(),
 				Comparer:           testkeys.Comparer,
 				FormatMajorVersion: FormatRangeKeys,
@@ -50,61 +49,12 @@ func TestIterHistories(t *testing.T) {
 					sstable.NewTestKeysBlockPropertyCollector,
 				},
 			}
+
 			opts.DisableAutomaticCompactions = true
 			opts.EnsureDefaults()
 			opts.WithFSDefaults()
-
-			for _, cmdArg := range td.CmdArgs {
-				switch cmdArg.Key {
-				case "format-major-version":
-					v, err := strconv.Atoi(cmdArg.Vals[0])
-					if err != nil {
-						return nil, err
-					}
-					// Override the DB version.
-					opts.FormatMajorVersion = FormatMajorVersion(v)
-				case "block-size":
-					v, err := strconv.Atoi(cmdArg.Vals[0])
-					if err != nil {
-						return nil, err
-					}
-					for i := range opts.Levels {
-						opts.Levels[i].BlockSize = v
-					}
-				case "index-block-size":
-					v, err := strconv.Atoi(cmdArg.Vals[0])
-					if err != nil {
-						return nil, err
-					}
-					for i := range opts.Levels {
-						opts.Levels[i].IndexBlockSize = v
-					}
-				case "target-file-size":
-					v, err := strconv.Atoi(cmdArg.Vals[0])
-					if err != nil {
-						return nil, err
-					}
-					for i := range opts.Levels {
-						opts.Levels[i].TargetFileSize = int64(v)
-					}
-				case "bloom-bits-per-key":
-					v, err := strconv.Atoi(cmdArg.Vals[0])
-					if err != nil {
-						return nil, err
-					}
-					fp := bloom.FilterPolicy(v)
-					opts.Filters = map[string]FilterPolicy{fp.Name(): fp}
-					for i := range opts.Levels {
-						opts.Levels[i].FilterPolicy = fp
-					}
-				case "merger":
-					switch cmdArg.Vals[0] {
-					case "appender":
-						opts.Merger = base.DefaultMerger
-					default:
-						return nil, errors.Newf("unrecognized Merger %q\n", cmdArg.Vals[0])
-					}
-				}
+			if err := parseDBOptionsArgs(opts, td.CmdArgs); err != nil {
+				return nil, err
 			}
 			return opts, nil
 		}
@@ -128,10 +78,11 @@ func TestIterHistories(t *testing.T) {
 		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
+				var err error
 				if err := cleanup(); err != nil {
 					return err.Error()
 				}
-				opts, err := parseOpts(td)
+				opts, err = parseOpts(td)
 				if err != nil {
 					return err.Error()
 				}
@@ -140,12 +91,23 @@ func TestIterHistories(t *testing.T) {
 					return err.Error()
 				}
 				return runLSMCmd(td, d)
-
-			case "reset":
+			case "reopen":
+				var err error
 				if err := cleanup(); err != nil {
 					return err.Error()
 				}
-				opts, err := parseOpts(td)
+				if err := parseDBOptionsArgs(opts, td.CmdArgs); err != nil {
+					return err.Error()
+				}
+				d, err = Open("", opts)
+				require.NoError(t, err)
+				return ""
+			case "reset":
+				var err error
+				if err := cleanup(); err != nil {
+					return err.Error()
+				}
+				opts, err = parseOpts(td)
 				if err != nil {
 					return err.Error()
 				}

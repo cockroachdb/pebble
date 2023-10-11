@@ -2898,7 +2898,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	)
 
 	mem := vfs.NewMem()
-	ii := errorfs.OnIndex(math.MaxInt32) // start disabled
+	ii := errorfs.OnIndex(math.MaxInt32, errorfs.ErrInjected) // start disabled
 	opts := (&Options{
 		FS:     errorfs.Wrap(mem, ii),
 		Levels: make([]LevelOptions, numLevels),
@@ -3704,6 +3704,11 @@ type createManifestErrorInjector struct {
 	enabled atomic.Bool
 }
 
+// TODO(jackson): Replace the createManifestErrorInjector with the composition
+// of primitives defined in errorfs. This may require additional primitives.
+
+func (i *createManifestErrorInjector) String() string { return "MANIFEST-Creates" }
+
 // enable enables error injection for the vfs.FS.
 func (i *createManifestErrorInjector) enable() {
 	i.enabled.Store(true)
@@ -3883,6 +3888,11 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 type WriteErrorInjector struct {
 	enabled atomic.Bool
 }
+
+// TODO(jackson): Replace WriteErrorInjector with use of primitives in errorfs,
+// adding new primitives as necessary.
+
+func (i *WriteErrorInjector) String() string { return "FileWrites(ErrInjected)" }
 
 // enable enables error injection for the vfs.FS.
 func (i *WriteErrorInjector) enable() {

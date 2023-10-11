@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -29,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1446,4 +1448,70 @@ func runLSMCmd(td *datadriven.TestData, d *DB) string {
 		return d.mu.versions.currentVersion().DebugString(d.opts.Comparer.FormatKey)
 	}
 	return d.mu.versions.currentVersion().String()
+}
+
+func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
+	for _, cmdArg := range args {
+		switch cmdArg.Key {
+		case "inject-errors":
+			injs := make([]errorfs.Injector, len(cmdArg.Vals))
+			for i := 0; i < len(cmdArg.Vals); i++ {
+				inj, err := errorfs.ParseInjectorFromDSL(cmdArg.Vals[i])
+				if err != nil {
+					return err
+				}
+				injs[i] = inj
+			}
+			opts.FS = errorfs.Wrap(opts.FS, errorfs.Any(injs...))
+		case "format-major-version":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
+			if err != nil {
+				return err
+			}
+			// Override the DB version.
+			opts.FormatMajorVersion = FormatMajorVersion(v)
+		case "block-size":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
+			if err != nil {
+				return err
+			}
+			for i := range opts.Levels {
+				opts.Levels[i].BlockSize = v
+			}
+		case "index-block-size":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
+			if err != nil {
+				return err
+			}
+			for i := range opts.Levels {
+				opts.Levels[i].IndexBlockSize = v
+			}
+		case "target-file-size":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
+			if err != nil {
+				return err
+			}
+			for i := range opts.Levels {
+				opts.Levels[i].TargetFileSize = int64(v)
+			}
+		case "bloom-bits-per-key":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
+			if err != nil {
+				return err
+			}
+			fp := bloom.FilterPolicy(v)
+			opts.Filters = map[string]FilterPolicy{fp.Name(): fp}
+			for i := range opts.Levels {
+				opts.Levels[i].FilterPolicy = fp
+			}
+		case "merger":
+			switch cmdArg.Vals[0] {
+			case "appender":
+				opts.Merger = base.DefaultMerger
+			default:
+				return errors.Newf("unrecognized Merger %q\n", cmdArg.Vals[0])
+			}
+		}
+	}
+	return nil
 }
