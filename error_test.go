@@ -136,7 +136,7 @@ func TestErrors(t *testing.T) {
 
 	errorCounts := make(map[string]int)
 	for i := int32(0); ; i++ {
-		fs := errorfs.Wrap(vfs.NewMem(), errorfs.OnIndex(i))
+		fs := errorfs.Wrap(vfs.NewMem(), errorfs.OnIndex(i, errorfs.ErrInjected))
 		err := run(fs)
 		if err == nil {
 			t.Logf("success %d\n", i)
@@ -166,7 +166,7 @@ func TestErrors(t *testing.T) {
 func TestRequireReadError(t *testing.T) {
 	run := func(formatVersion FormatMajorVersion, index int32) (err error) {
 		// Perform setup with error injection disabled as it involves writes/background ops.
-		inj := errorfs.OnIndex(-1)
+		inj := errorfs.OnIndex(-1, errorfs.ErrInjected)
 		fs := errorfs.Wrap(vfs.NewMem(), inj)
 		opts := &Options{
 			FS:                 fs,
@@ -367,8 +367,8 @@ func TestDBWALRotationCrash(t *testing.T) {
 	memfs := vfs.NewStrictMem()
 
 	var index atomic.Int32
-	inj := errorfs.InjectorFunc(func(op errorfs.Op, _ string) error {
-		if op.OpKind() == errorfs.OpKindWrite && index.Add(-1) == -1 {
+	inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if op.Kind.ReadOrWrite() == errorfs.OpIsWrite && index.Add(-1) == -1 {
 			memfs.SetIgnoreSyncs(true)
 		}
 		return nil

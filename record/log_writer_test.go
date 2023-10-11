@@ -515,8 +515,8 @@ func valueAtQuantileWindowed(histogram *prometheusgo.Histogram, q float64) float
 // blocked.
 func TestQueueWALBlocks(t *testing.T) {
 	blockWriteCh := make(chan struct{}, 1)
-	f := errorfs.WrapFile(vfstest.DiscardFile, errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
-		if op == errorfs.OpFileWrite {
+	f := errorfs.WrapFile(vfstest.DiscardFile, errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if op.Kind == errorfs.OpFileWrite {
 			<-blockWriteCh
 		}
 		return nil
@@ -556,8 +556,8 @@ func BenchmarkQueueWALBlocks(b *testing.B) {
 			for j := 0; j < b.N; j++ {
 				b.StopTimer()
 				blockWriteCh := make(chan struct{}, 1)
-				f := errorfs.WrapFile(vfstest.DiscardFile, errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
-					if op == errorfs.OpFileWrite {
+				f := errorfs.WrapFile(vfstest.DiscardFile, errorfs.InjectorFunc(func(op errorfs.Op) error {
+					if op.Kind == errorfs.OpFileWrite {
 						<-blockWriteCh
 					}
 					return nil

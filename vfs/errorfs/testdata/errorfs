@@ -1,0 +1,41 @@
+parse-dsl
+ErrInjected
+(PathMatch "foo/*.sst"  ErrInjected)
+(OnIndex 1  ErrInjected)
+(PathMatch "foo/bar/*.sst" (OnIndex 1 ErrInjected))
+(Any ErrInjected ErrInjected ErrInjected)
+(Any (OnIndex 2 ErrInjected) (PathMatch "*.sst" ErrInjected))
+(Reads (PathMatch "*.sst" ErrInjected))
+(Writes (PathMatch "*.sst" ErrInjected))
+----
+ErrInjected
+(PathMatch "foo/*.sst" ErrInjected)
+(OnIndex 1 ErrInjected)
+(PathMatch "foo/bar/*.sst" (OnIndex 1 ErrInjected))
+(Any ErrInjected ErrInjected ErrInjected)
+(Any (OnIndex 2 ErrInjected) (PathMatch "*.sst" ErrInjected))
+(Reads (PathMatch "*.sst" ErrInjected))
+(Writes (PathMatch "*.sst" ErrInjected))
+
+parse-dsl
+errInjected
+ErrInjected()
+(PathMatch foo/*.sst ErrInjected)
+(PathMatch "foo/*.sst" alwoes)
+(PathMatch "foo/*.sst" "" ErrInjected)
+(PathMatch ErrInjected "foo/*.sst")
+(OnIndex ErrInjected "foo/*.sst")
+(Any 1 4 5)
+(Any ErrInjected ErrInjected ErrInjected
+(OnIndex foo ErrInjected)
+----
+parsing err: errorfs: unknown ident "errInjected"
+parsing err: errorfs: unexpected token ( ("") at char 12
+parsing err: errorfs: unexpected token IDENT ("foo") at char 12
+parsing err: errorfs: unknown ident "alwoes"
+parsing err: errorfs: unexpected token STRING ("\"\"") at char 24
+parsing err: errorfs: unexpected token IDENT ("ErrInjected") at char 12
+parsing err: errorfs: unexpected token IDENT ("ErrInjected") at char 10
+parsing err: errorfs: unexpected token INT ("1") at char 6
+parsing err: errorfs: unexpected token ; ("\n") at char 41
+parsing err: errorfs: unexpected token IDENT ("foo") at char 10

@@ -2898,7 +2898,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	)
 
 	mem := vfs.NewMem()
-	ii := errorfs.OnIndex(math.MaxInt32) // start disabled
+	ii := errorfs.OnIndex(math.MaxInt32, errorfs.ErrInjected) // start disabled
 	opts := (&Options{
 		FS:     errorfs.Wrap(mem, ii),
 		Levels: make([]LevelOptions, numLevels),
@@ -3286,8 +3286,8 @@ func TestFlushError(t *testing.T) {
 	// Error the first five times we try to write a sstable.
 	var errorOps atomic.Int32
 	errorOps.Store(3)
-	fs := errorfs.Wrap(vfs.NewMem(), errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
-		if op == errorfs.OpCreate && filepath.Ext(path) == ".sst" && errorOps.Add(-1) >= 0 {
+	fs := errorfs.Wrap(vfs.NewMem(), errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if op.Kind == errorfs.OpCreate && filepath.Ext(op.Path) == ".sst" && errorOps.Add(-1) >= 0 {
 			return errorfs.ErrInjected
 		}
 		return nil
@@ -3704,19 +3704,24 @@ type createManifestErrorInjector struct {
 	enabled atomic.Bool
 }
 
+// TODO(jackson): Replace the createManifestErrorInjector with the composition
+// of primitives defined in errorfs. This may require additional primitives.
+
+func (i *createManifestErrorInjector) String() string { return "MANIFEST-Creates" }
+
 // enable enables error injection for the vfs.FS.
 func (i *createManifestErrorInjector) enable() {
 	i.enabled.Store(true)
 }
 
 // MaybeError implements errorfs.Injector.
-func (i *createManifestErrorInjector) MaybeError(op errorfs.Op, path string) error {
+func (i *createManifestErrorInjector) MaybeError(op errorfs.Op) error {
 	if !i.enabled.Load() {
 		return nil
 	}
 	// This necessitates having a MaxManifestSize of 1, to reliably induce
 	// logAndApply errors.
-	if strings.Contains(path, "MANIFEST") && op == errorfs.OpCreate {
+	if strings.Contains(op.Path, "MANIFEST") && op.Kind == errorfs.OpCreate {
 		return errorfs.ErrInjected
 	}
 	return nil
@@ -3884,6 +3889,11 @@ type WriteErrorInjector struct {
 	enabled atomic.Bool
 }
 
+// TODO(jackson): Replace WriteErrorInjector with use of primitives in errorfs,
+// adding new primitives as necessary.
+
+func (i *WriteErrorInjector) String() string { return "FileWrites(ErrInjected)" }
+
 // enable enables error injection for the vfs.FS.
 func (i *WriteErrorInjector) enable() {
 	i.enabled.Store(true)
@@ -3895,12 +3905,12 @@ func (i *WriteErrorInjector) disable() {
 }
 
 // MaybeError implements errorfs.Injector.
-func (i *WriteErrorInjector) MaybeError(op errorfs.Op, path string) error {
+func (i *WriteErrorInjector) MaybeError(op errorfs.Op) error {
 	if !i.enabled.Load() {
 		return nil
 	}
 	// Fail any future write.
-	if op == errorfs.OpFileWrite {
+	if op.Kind == errorfs.OpFileWrite {
 		return errorfs.ErrInjected
 	}
 	return nil
