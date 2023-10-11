@@ -136,7 +136,7 @@ func TestErrors(t *testing.T) {
 
 	errorCounts := make(map[string]int)
 	for i := int32(0); ; i++ {
-		fs := errorfs.Wrap(vfs.NewMem(), errorfs.OnIndex(i))
+		fs := errorfs.Wrap(vfs.NewMem(), errorfs.ErrInjected.If(errorfs.OnIndex(i)))
 		err := run(fs)
 		if err == nil {
 			t.Logf("success %d\n", i)
@@ -166,8 +166,8 @@ func TestErrors(t *testing.T) {
 func TestRequireReadError(t *testing.T) {
 	run := func(formatVersion FormatMajorVersion, index int32) (err error) {
 		// Perform setup with error injection disabled as it involves writes/background ops.
-		inj := errorfs.OnIndex(-1)
-		fs := errorfs.Wrap(vfs.NewMem(), inj)
+		ii := errorfs.OnIndex(-1)
+		fs := errorfs.Wrap(vfs.NewMem(), errorfs.ErrInjected.If(ii))
 		opts := &Options{
 			FS:                 fs,
 			Logger:             panicLogger{},
@@ -210,7 +210,7 @@ func TestRequireReadError(t *testing.T) {
 		}
 
 		// Now perform foreground ops with error injection enabled.
-		inj.SetIndex(index)
+		ii.SetIndex(index)
 		iter, _ := d.NewIter(nil)
 		if err := iter.Error(); err != nil {
 			return err
@@ -237,7 +237,7 @@ func TestRequireReadError(t *testing.T) {
 		// Reaching here implies all read operations succeeded. This
 		// should only happen when we reached a large enough index at
 		// which `errorfs.FS` did not return any error.
-		if i := inj.Index(); i < 0 {
+		if i := ii.Index(); i < 0 {
 			t.Errorf("FS error injected %d ops ago went unreported", -i)
 		}
 		if numFound != 2 {
@@ -367,8 +367,8 @@ func TestDBWALRotationCrash(t *testing.T) {
 	memfs := vfs.NewStrictMem()
 
 	var index atomic.Int32
-	inj := errorfs.InjectorFunc(func(op errorfs.Op, _ string) error {
-		if op.OpKind() == errorfs.OpKindWrite && index.Add(-1) == -1 {
+	inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if op.Kind.ReadOrWrite() == errorfs.OpIsWrite && index.Add(-1) == -1 {
 			memfs.SetIgnoreSyncs(true)
 		}
 		return nil

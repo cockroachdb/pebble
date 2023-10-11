@@ -927,17 +927,17 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 	{
 		var walCreated, dirSynced atomic.Bool
 		d, err := Open("", &Options{
-			FS: errorfs.Wrap(fs, errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
+			FS: errorfs.Wrap(fs, errorfs.InjectorFunc(func(op errorfs.Op) error {
 				if dirSynced.Load() {
 					fs.SetIgnoreSyncs(true)
 				}
-				if op == errorfs.OpCreate && filepath.Ext(path) == ".log" {
+				if op.Kind == errorfs.OpCreate && filepath.Ext(op.Path) == ".log" {
 					walCreated.Store(true)
 				}
 				// Record when there's a sync of the data directory after the
 				// WAL was created. The data directory will have an empty
 				// path because that's what we passed into Open.
-				if op == errorfs.OpFileSync && path == "" && walCreated.Load() {
+				if op.Kind == errorfs.OpFileSync && op.Path == "" && walCreated.Load() {
 					dirSynced.Store(true)
 				}
 				return nil

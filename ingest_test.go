@@ -386,7 +386,7 @@ func TestIngestLinkFallback(t *testing.T) {
 	src, err := mem.Create("source")
 	require.NoError(t, err)
 
-	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(1))}
+	opts := &Options{FS: errorfs.Wrap(mem, errorfs.ErrInjected.If(errorfs.OnIndex(1)))}
 	opts.EnsureDefaults().WithFSDefaults()
 	objSettings := objstorageprovider.DefaultSettings(opts.FS, "")
 	// Prevent the provider from listing the dir (where we may get an injected error).
@@ -2182,9 +2182,9 @@ func TestIngestError(t *testing.T) {
 		require.NoError(t, w.Set([]byte("d"), nil))
 		require.NoError(t, w.Close())
 
-		inj := errorfs.OnIndex(-1)
+		ii := errorfs.OnIndex(-1)
 		d, err := Open("", &Options{
-			FS:                    errorfs.Wrap(mem, inj),
+			FS:                    errorfs.Wrap(mem, errorfs.ErrInjected.If(ii)),
 			Logger:                panicLogger{},
 			L0CompactionThreshold: 8,
 		})
@@ -2211,7 +2211,7 @@ func TestIngestError(t *testing.T) {
 				}
 			}()
 
-			inj.SetIndex(i)
+			ii.SetIndex(i)
 			err1 := d.Ingest([]string{"ext0"})
 			err2 := d.Ingest([]string{"ext1"})
 			err := firstError(err1, err2)
@@ -2225,7 +2225,7 @@ func TestIngestError(t *testing.T) {
 
 		// If the injector's index is non-negative, the i-th filesystem
 		// operation was never executed.
-		if inj.Index() >= 0 {
+		if ii.Index() >= 0 {
 			break
 		}
 	}
@@ -3225,11 +3225,11 @@ func TestIngestValidation(t *testing.T) {
 			cLoc:        corruptionLocationNone,
 			wantErr:     errorfs.ErrInjected,
 			wantErrType: errReportLocationBackgroundError,
-			errorfsInjector: errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
+			errorfsInjector: errorfs.InjectorFunc(func(op errorfs.Op) error {
 				// Inject an error on the first read-at operation on an sstable
 				// (excluding the read on the sstable before ingestion has
 				// linked it in).
-				if path != "ext" && op != errorfs.OpFileReadAt || filepath.Ext(path) != ".sst" {
+				if op.Path != "ext" && op.Kind != errorfs.OpFileReadAt || filepath.Ext(op.Path) != ".sst" {
 					return nil
 				}
 				if errfsCounter.Add(1) == 1 {
