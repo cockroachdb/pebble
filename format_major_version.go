@@ -28,10 +28,13 @@ import (
 // FormatVersion that the default corresponds to may change with time.
 type FormatMajorVersion uint64
 
+// SafeValue implements redact.SafeValue.
+func (v FormatMajorVersion) SafeValue() {}
+
 // String implements fmt.Stringer.
 func (v FormatMajorVersion) String() string {
-	// NB: This must not change. It's used as the value for the the
-	// on-disk version marker file.
+	// NB: This must not change. It's used as the value for the on-disk
+	// version marker file.
 	//
 	// Specifically, this value must always parse as a base 10 integer
 	// that fits in a uint64. We format it as zero-padded, 3-digit
