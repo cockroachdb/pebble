@@ -210,9 +210,9 @@ func TestMarker_FaultTolerance(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var count atomic.Int32
 			count.Store(int32(i))
-			inj := errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
+			inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
 				// Don't inject on Sync errors. They're fatal.
-				if op == errorfs.OpFileSync {
+				if op.Kind == errorfs.OpFileSync {
 					return nil
 				}
 				if v := count.Add(-1); v == 0 {
