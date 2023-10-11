@@ -6,9 +6,14 @@ package errorfs
 
 import (
 	"fmt"
+	"go/scanner"
+	"go/token"
 	"io"
 	"math/rand"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -97,8 +102,8 @@ const (
 // OnIndex constructs an injector that returns an error on
 // the (n+1)-th invocation of its MaybeError function. It
 // may be passed to Wrap to inject an error into an FS.
-func OnIndex(index int32) *InjectIndex {
-	ii := &InjectIndex{}
+func OnIndex(index int32, next Injector) *InjectIndex {
+	ii := &InjectIndex{next: next}
 	ii.index.Store(index)
 	return ii
 }
@@ -106,6 +111,7 @@ func OnIndex(index int32) *InjectIndex {
 // InjectIndex implements Injector, injecting an error at a specific index.
 type InjectIndex struct {
 	index atomic.Int32
+	next  Injector
 }
 
 // Index returns the index at which the error will be injected.
@@ -115,11 +121,11 @@ func (ii *InjectIndex) Index() int32 { return ii.index.Load() }
 func (ii *InjectIndex) SetIndex(v int32) { ii.index.Store(v) }
 
 // MaybeError implements the Injector interface.
-func (ii *InjectIndex) MaybeError(_ Op, _ string) error {
-	if ii.index.Add(-1) == -1 {
-		return errors.WithStack(ErrInjected)
+func (ii *InjectIndex) MaybeError(op Op, path string) error {
+	if ii.index.Add(-1) != -1 {
+		return nil
 	}
-	return nil
+	return ii.next.MaybeError(op, path)
 }
 
 // WithProbability returns a function that returns an error with the provided
@@ -153,6 +159,165 @@ type Injector interface {
 	// subject file or directory. If the operation takes two paths (eg,
 	// Rename, Link), the original source path is provided.
 	MaybeError(op Op, path string) error
+}
+
+// Always returns an injector that always injects an error.
+func Always() Injector { return InjectorFunc(func(Op, string) error { return ErrInjected }) }
+
+// Any returns an injector that injects an error if any the provided injectors
+// inject an error.
+func Any(injectors ...Injector) Injector {
+	return InjectorFunc(func(op Op, path string) error {
+		for _, inj := range injectors {
+			if err := inj.MaybeError(op, path); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// PathMatch returns an injector that injects an error on file paths that
+// match the provided pattern (according to filepath.Match) and for which the
+// provided next injector injects an error.
+func PathMatch(pattern string, next Injector) Injector {
+	return InjectorFunc(func(op Op, path string) error {
+		if matched, err := filepath.Match(pattern, path); err != nil {
+			// Only possible error is ErrBadPattern, indicating an issue with
+			// the test itself.
+			panic(err)
+		} else if matched {
+			return next.MaybeError(op, path)
+		}
+		return nil
+	})
+}
+
+// ParseInjectorFromDSL parses a string encoding a ruleset describing when
+// errors should be injected. There are a handful of supported functions and
+// primitives:
+//   - "always" is a primitive that injects an error every time
+//   - "any(injector, [injector]...)" injects an error if any of the provided
+//     injectors inject an error
+//   - "pathMatch(pattern, injector)" injects an error if an operation's file path
+//     matches the provided shell pattern and the provided injector injects an
+//     error.
+//   - "onIndex(idx, injector)" injects an error on the idx-th operation if the
+//     provided injector injects an error.
+//   - "reads(injector)" injects an error on all read operations for which
+//     the provided injector injects an error.
+//   - "writes(injector)" injects an error on all write operations for which
+//     the provided injector injects an error.
+//
+// Example: pathMatch("*.sst", onIndex(5, always)) is a rule set that will
+// inject an error on the 5-th I/O operation involving an sstable.
+func ParseInjectorFromDSL(d string) (inj Injector, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok = r.(error)
+			if !ok {
+				panic(r)
+			}
+		}
+	}()
+
+	fset := token.NewFileSet()
+	file := fset.AddFile("", -1, len(d))
+	var s scanner.Scanner
+	s.Init(file, []byte(strings.TrimSpace(d)), nil /* no error handler */, 0)
+	inj = parseInjectorDSLFunc(&s)
+	consumeTok(&s, token.SEMICOLON)
+	consumeTok(&s, token.EOF)
+	return inj, err
+}
+
+var dslParsers map[string]func(*scanner.Scanner) Injector
+
+func init() {
+	dslParsers = map[string]func(*scanner.Scanner) Injector{
+		"always": func(*scanner.Scanner) Injector { return Always() },
+		"any": func(s *scanner.Scanner) Injector {
+			var injs []Injector
+			consumeTok(s, token.LPAREN)
+			injs = append(injs, parseInjectorDSLFunc(s))
+			pos, tok, lit := s.Scan()
+			for tok == token.COMMA {
+				injs = append(injs, parseInjectorDSLFunc(s))
+				pos, tok, lit = s.Scan()
+			}
+			if tok != token.RPAREN {
+				panic(errors.Errorf("errorfs: unexpected token %s (%q) at %#v", tok, lit, pos))
+			}
+			return Any(injs...)
+		},
+		"pathMatch": func(s *scanner.Scanner) Injector {
+			consumeTok(s, token.LPAREN)
+			pattern := mustUnquote(consumeTok(s, token.STRING))
+			consumeTok(s, token.COMMA)
+			next := parseInjectorDSLFunc(s)
+			consumeTok(s, token.RPAREN)
+			return PathMatch(pattern, next)
+		},
+		"onIndex": func(s *scanner.Scanner) Injector {
+			consumeTok(s, token.LPAREN)
+			i, err := strconv.ParseInt(consumeTok(s, token.INT), 10, 32)
+			if err != nil {
+				panic(err)
+			}
+			consumeTok(s, token.COMMA)
+			next := parseInjectorDSLFunc(s)
+			consumeTok(s, token.RPAREN)
+			return OnIndex(int32(i), next)
+		},
+		"reads": func(s *scanner.Scanner) Injector {
+			consumeTok(s, token.LPAREN)
+			next := parseInjectorDSLFunc(s)
+			consumeTok(s, token.RPAREN)
+			return InjectorFunc(func(o Op, path string) error {
+				if o.OpKind() == OpKindRead {
+					return next.MaybeError(o, path)
+				}
+				return nil
+			})
+		},
+		"writes": func(s *scanner.Scanner) Injector {
+			consumeTok(s, token.LPAREN)
+			next := parseInjectorDSLFunc(s)
+			consumeTok(s, token.RPAREN)
+			return InjectorFunc(func(o Op, path string) error {
+				if o.OpKind() == OpKindWrite {
+					return next.MaybeError(o, path)
+				}
+				return nil
+			})
+		},
+	}
+}
+
+func parseInjectorDSLFunc(s *scanner.Scanner) Injector {
+	fn := consumeTok(s, token.IDENT)
+	p, ok := dslParsers[fn]
+	if !ok {
+		panic(errors.Errorf("errorfs: unknown func %q", fn))
+	}
+	return p(s)
+}
+
+func consumeTok(s *scanner.Scanner, expected token.Token) (lit string) {
+	pos, tok, lit := s.Scan()
+	if tok != expected {
+		panic(errors.Errorf("errorfs: unexpected token %s (%q) at %#v", tok, lit, pos))
+	}
+	return lit
+}
+
+func mustUnquote(lit string) string {
+	s, err := strconv.Unquote(lit)
+	if err != nil {
+		panic(errors.Newf("errorfs: unquoting %q: %v", lit, err))
+	}
+	return s
 }
 
 // FS implements vfs.FS, injecting errors into

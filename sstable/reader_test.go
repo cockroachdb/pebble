@@ -647,7 +647,7 @@ func TestInjectedErrors(t *testing.T) {
 			f, err := vfs.Default.Open(filepath.FromSlash(prebuiltSST))
 			require.NoError(t, err)
 
-			r, err := newReader(errorfs.WrapFile(f, errorfs.OnIndex(int32(i))), ReaderOptions{})
+			r, err := newReader(errorfs.WrapFile(f, errorfs.OnIndex(int32(i), errorfs.Always())), ReaderOptions{})
 			if err != nil {
 				return firstError(err, f.Close())
 			}

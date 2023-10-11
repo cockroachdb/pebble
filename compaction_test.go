@@ -2898,7 +2898,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	)
 
 	mem := vfs.NewMem()
-	ii := errorfs.OnIndex(math.MaxInt32) // start disabled
+	ii := errorfs.OnIndex(math.MaxInt32, errorfs.Always()) // start disabled
 	opts := (&Options{
 		FS:     errorfs.Wrap(mem, ii),
 		Levels: make([]LevelOptions, numLevels),
