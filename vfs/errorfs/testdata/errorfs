@@ -1,0 +1,47 @@
+parse-dsl
+ErrInjected
+(ErrInjected Reads)
+(ErrInjected (PathMatch "foo/*.sst"))
+(ErrInjected (OnIndex 1))
+(ErrInjected (Or Reads Writes))
+(ErrInjected (And (PathMatch "foo/bar/*.sst") (OnIndex 1)))
+(Any ErrInjected ErrInjected ErrInjected)
+(ErrInjected (Or (OnIndex 2) (PathMatch "*.sst")))
+(ErrInjected (And Reads (PathMatch "*.sst")))
+(ErrInjected (Or Writes (PathMatch "*.sst")))
+----
+ErrInjected
+(ErrInjected Reads)
+(ErrInjected (PathMatch "foo/*.sst"))
+(ErrInjected (OnIndex 1))
+(ErrInjected (Or Reads Writes))
+(ErrInjected (And (PathMatch "foo/bar/*.sst") (OnIndex 1)))
+(Any ErrInjected ErrInjected ErrInjected)
+(ErrInjected (Or (OnIndex 2) (PathMatch "*.sst")))
+(ErrInjected (And Reads (PathMatch "*.sst")))
+(ErrInjected (Or Writes (PathMatch "*.sst")))
+
+parse-dsl
+errInjected
+ErrInjected()
+(ErrInjected (PathMatch foo/*.sst))
+(alwoes (PathMatch "foo/*.sst"))
+(ErrInjected (PathMatch "foo/*.sst" ""))
+(ErrInjected PathMatch "foo/*.sst")
+(ErrInjected (OnIndex ErrInjected))
+(Any 1 4 5)
+(Any ErrInjected ErrInjected ErrInjected
+(ErrInjected (OnIndex foo))
+(ErrInjected (OnIndex 9223372036854775807))
+----
+parsing err: errorfs: unknown ident "errInjected"
+parsing err: errorfs: unexpected token ( ("") at char 12; expected EOF
+parsing err: errorfs: unexpected token IDENT ("foo") at char 25; expected STRING
+parsing err: errorfs: unknown ident ""
+parsing err: errorfs: unexpected token STRING ("\"\"") at char 37; expected )
+parsing err: errorfs: unknown ident "PathMatch"
+parsing err: errorfs: unexpected token IDENT ("ErrInjected") at char 23; expected INT
+parsing err: errorfs: unexpected token INT ("1") at char 6; expected RPAREN
+parsing err: errorfs: unexpected token ; ("\n") at char 41; expected RPAREN
+parsing err: errorfs: unexpected token IDENT ("foo") at char 23; expected INT
+parsing err: strconv.ParseInt: parsing "9223372036854775807": value out of range

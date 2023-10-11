@@ -1,0 +1,59 @@
+reset
+----
+
+batch commit
+set a a
+set b b
+set c c
+set d d
+----
+committed 4 keys
+
+# Scan forward
+
+combined-iter
+seek-ge a
+next
+next
+next
+next
+----
+a: (a, .)
+b: (b, .)
+c: (c, .)
+d: (d, .)
+.
+
+reopen
+----
+
+combined-iter
+first
+next
+next
+next
+next
+----
+a: (a, .)
+b: (b, .)
+c: (c, .)
+d: (d, .)
+.
+
+reopen enable-table-stats=false inject-errors=((ErrInjected (And Reads (PathMatch "*.sst") (OnIndex 4))))
+----
+
+combined-iter
+first
+first
+next
+next
+next
+next
+----
+err=pebble: backing file 000004 error: injected error
+a: (a, .)
+b: (b, .)
+c: (c, .)
+d: (d, .)
+.
