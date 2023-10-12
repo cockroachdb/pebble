@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -1556,4 +1557,203 @@ func TestWriteAmpWithBlobs(t *testing.T) {
 	d.opts.Logger.Infof("%+v", iter.Stats())
 	iter.Close()
 	d.Close()
+}
+
+/*
+The benchmark is a scan and the iterators "cache" the current block, so locality is high
+even without a block cache. Also, the blocks are not compressible so compression is rarely
+used and decompression does not show up as significant in the profile.
+
+BenchmarkReadWithBlobs/write-blobs=false/read-value=false/has-cache=false-10         	 5000000	       202.7 ns/op	         0.03244 misses/op	       0 B/op	       0 allocs/op
+BenchmarkReadWithBlobs/write-blobs=false/read-value=false/has-cache=true-10          	 5000000	       169.5 ns/op	         0 misses/op	       0 B/op	       0 allocs/op
+BenchmarkReadWithBlobs/write-blobs=false/read-value=true/has-cache=false-10          	 5000000	       207.1 ns/op	         0.03244 misses/op	       0 B/op	       0 allocs/op
+BenchmarkReadWithBlobs/write-blobs=false/read-value=true/has-cache=true-10           	 5000000	       172.4 ns/op	         0 misses/op	       0 B/op	       0 allocs/op
+
+BenchmarkReadWithBlobs/write-blobs=true/read-value=false/has-cache=false-10          	 5000000	        72.07 ns/op	         0.001193 misses/op	       0 B/op	       0 allocs/op
+BenchmarkReadWithBlobs/write-blobs=true/read-value=false/has-cache=true-10           	 5000000	        44.26 ns/op	         0 misses/op	       0 B/op	       0 allocs/op
+BenchmarkReadWithBlobs/write-blobs=true/read-value=true/has-cache=false-10           	 5000000	       251.5 ns/op	         0.03252 misses/op	       0 B/op	       0 allocs/op
+BenchmarkReadWithBlobs/write-blobs=true/read-value=true/has-cache=true-10            	 5000000	       127.6 ns/op	         0.003208 misses/op	       0 B/op	       0 allocs/op
+
+NB: the 127.6 ns/op in the last bench with write-blobs=true versus its counterpart with 172.4 ns/op.
+Surprisingly, write-blobs=true is faster even though read-value-true.
+Nothing stood out in the CPU profiles. With blob files the calls to
+findNextEntry and nextUserKey are much faster. It may be a CPU caching effect,
+since the 1000 byte value is not inline when write-blobs=true.
+
+With 10 byte values and 25M keys (i.e., we've kept the total LSM size the
+same), we get 50.79 ns/op instead of 172.4 ns/op. This reinforces the idea
+that this is possibly a CPU caching effect.
+BenchmarkReadWithBlobs/write-blobs=false/read-value=false/has-cache=true-10         	 5000000	        50.79 ns/op	         0 misses/op	       0 B/op	       0 allocs/op
+BenchmarkReadWithBlobs/write-blobs=false/read-value=true/has-cache=true-10         	 5000000	        50.93 ns/op	         0 misses/op	       0 B/op	       0 allocs/op
+
+The same workload with write-blobs=true:
+BenchmarkReadWithBlobs/write-blobs=true/read-value=false/has-cache=true-10         	 5000000	        49.55 ns/op	         0 misses/op	       0 B/op	       0 allocs/op
+BenchmarkReadWithBlobs/write-blobs=true/read-value=true/has-cache=true-10         	 5000000	        75.98 ns/op	         0.0003076 misses/op	       0 B/op	       0 allocs/op
+Now write-blobs=true/read-value=true is slower than write-blobs=false/read-value=false.
+*/
+func BenchmarkReadWithBlobs(b *testing.B) {
+	setupDB := func(writeBlobs bool, hasCache bool) *DB {
+		var lel EventListener
+		if false {
+			lel := MakeLoggingEventListener(nil)
+			lel.BlobFileDeleted = nil
+			lel.BlobFileCreated = nil
+			lel.TableDeleted = nil
+			lel.TableCreated = nil
+			lel.WALDeleted = nil
+			lel.WALCreated = nil
+			lel.WriteStallBegin = nil
+			lel.WriteStallEnd = nil
+		}
+		opts := &Options{
+			FS: vfs.NewMem(),
+			EventListener: &lel,
+			MemTableSize: 8 << 20,
+			MemTableStopWritesThreshold: 2,
+			L0StopWritesThreshold: 4,
+			LBaseMaxBytes: 10 << 20,
+			FormatMajorVersion: FormatNewest,
+			// Try to ensure compactions keep up.
+			MaxConcurrentCompactions: func() int { return 6 },
+		}
+		if hasCache {
+			opts.Cache = cache.New(2<<30)
+		}
+		// Ditto
+		opts.Experimental.L0CompactionConcurrency = 1
+		opts.Experimental.CompactionDebtConcurrency = 1
+
+		opts.Experimental.EnableValueBlocks = func() bool { return true }
+		opts.Levels = make([]LevelOptions, numLevels)
+		opts.Levels[0] = LevelOptions{
+			BlockSize: 32<<10,
+			TargetFileSize:                         1 << 20,
+			TargetFileSizeIncludingBlobValueSize:   2 << 20,
+			// I think I increased this to prevent blob rollover before
+			// TargetFileSizeIncludingBlobValueSize and then a small blob file getting
+			// created.
+			TargetBlobFileSizeBasedOnBlobValueSize: (3 << 20)/2,
+		}
+		if writeBlobs {
+			opts.Experimental.BlobValueSizeThreshold = 1
+		}
+		for i := 1; i < numLevels; i++ {
+			opts.Levels[i] = opts.Levels[i-1]
+			opts.Levels[i].TargetFileSize *= 2
+			opts.Levels[i].TargetFileSizeIncludingBlobValueSize *= 2
+			opts.Levels[i].TargetBlobFileSizeBasedOnBlobValueSize *= 2
+		}
+		d, err := Open("", opts)
+		require.NoError(b, err)
+
+		rng := rand.New(rand.NewSource(123))
+
+		numKeysWritten := 0
+		var buf [1000]byte
+		writeBatchFunc := func() {
+			batch := d.NewBatch()
+			for i := 0; i < 100; i++ {
+				k := rng.Uint64()
+				key := fmt.Sprintf("%8d", k)
+				n, err := rng.Read(buf[:])
+				require.Equal(b, len(buf), n)
+				require.NoError(b, err)
+				batch.Set([]byte(key), buf[:], nil)
+				numKeysWritten++
+			}
+			require.NoError(b, d.Apply(batch, nil))
+
+		}
+		waitForLowScore := func(scoreThreshold float64) {
+			done := false
+			for !done {
+				m := d.Metrics()
+				done = true
+				for i := range m.Levels {
+					if m.Levels[i].Score > scoreThreshold {
+						time.Sleep(time.Second)
+						done = false
+						break
+					}
+				}
+			}
+		}
+		for numKeysWritten < 500 << 10 {
+			before := numKeysWritten/(256<<10)
+			writeBatchFunc()
+			after := numKeysWritten/(256<<10)
+			if before != after {
+				waitForLowScore(2.0)
+			}
+		}
+		printFunc := func(prefix string) {
+			fmt.Printf("\n%s\n=========\n", prefix)
+			notReuseDBReasons.log(d.opts.Logger)
+			for i := 0; i < numLevels; i++ {
+				d.opts.Logger.Infof("Blob Files %d: created %s, rolled over %s", i,
+					humanize.SI.Uint64(atomic.LoadUint64(&BlobFileCreationCount[i])),
+					humanize.SI.Uint64(atomic.LoadUint64(&BlobFileRolloverCountDueToSize[i])))
+			}
+			metrics := d.Metrics()
+			fmt.Printf("\n%s\n", metrics.String())
+			fmt.Printf("\nblobs\n%s\n", d.BlobsDebugString())
+		}
+		if false {
+			printFunc("before compaction")
+		}
+		require.NoError(b, d.Compact([]byte(""), []byte("\xFF"), false))
+		if false {
+			printFunc("after compaction")
+		}
+		return d
+	}
+
+	for _, writeBlobs := range []bool{false, true} {
+		b.Run(fmt.Sprintf("write-blobs=%t", writeBlobs), func(b *testing.B) {
+			for _, readValue := range []bool{false, true} {
+				b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
+					for _, hasCache := range []bool{false, true} {
+						b.Run(fmt.Sprintf("has-cache=%t", hasCache), func(b *testing.B) {
+
+							d := setupDB(writeBlobs, hasCache)
+							defer d.Close()
+
+							iter := d.NewIter(&IterOptions{KeyTypes: IterKeyTypePointsOnly})
+							defer iter.Close()
+							hasPoint := iter.First()
+							require.True(b, hasPoint)
+							// Scan once to populate the cache.
+							for hasPoint {
+								hasPoint = iter.Next()
+							}
+							hasPoint = iter.First()
+							beforeCacheMetrics := d.Metrics().BlockCache
+							b.ResetTimer()
+							realBenchIter(b, readValue, iter)
+							afterCacheMetrics := d.Metrics().BlockCache
+							missDelta := afterCacheMetrics.Misses-beforeCacheMetrics.Misses
+							b.ReportMetric(float64(missDelta)/float64(b.N), "misses/op")
+							// fmt.Printf("miss-delta: %d\n", afterCacheMetrics.Misses-beforeCacheMetrics.Misses)
+							// fmt.Printf("numFirstCalls: %d\n", numFirstCalls)
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+func realBenchIter(b *testing.B, readValue bool, iter *Iterator) {
+	for i := 0; i < b.N; i++ {
+		if readValue {
+			_, err := iter.ValueAndErr()
+			if err != nil {
+				b.Fatalf("%s", err.Error())
+			}
+		}
+		hasPoint := iter.Next()
+		if !hasPoint {
+			iter.First()
+		}
+	}
 }
