@@ -138,7 +138,7 @@ func (c *Catalog) SetCreatorID(id objstorage.CreatorID) error {
 
 	ve := VersionEdit{CreatorID: id}
 	if err := c.writeToCatalogFileLocked(&ve); err != nil {
-		return errors.Wrapf(err, "pebble: could not write to remote object catalog: %v", err)
+		return errors.Wrapf(err, "pebble: could not write to remote object catalog")
 	}
 	c.mu.creatorID = id
 	return nil
@@ -240,7 +240,7 @@ func (c *Catalog) ApplyBatch(b Batch) error {
 	}
 
 	if err := c.writeToCatalogFileLocked(&b.ve); err != nil {
-		return errors.Wrapf(err, "pebble: could not write to remote object catalog: %v", err)
+		return errors.Wrapf(err, "pebble: could not write to remote object catalog")
 	}
 
 	// Add new objects before deleting any objects. This allows for cases where
