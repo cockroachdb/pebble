@@ -255,7 +255,7 @@ func (p *provider) Create(
 		w, meta, err = p.vfsCreate(ctx, fileType, fileNum)
 	}
 	if err != nil {
-		err = errors.Wrapf(err, "creating object %s", errors.Safe(fileNum))
+		err = errors.Wrapf(err, "creating object %s", fileNum)
 		return nil, objstorage.ObjectMetadata{}, err
 	}
 	p.addMetadata(meta)
@@ -292,7 +292,7 @@ func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) erro
 		// We want to be able to retry a Remove, so we keep the object in our list.
 		// TODO(radu): we should mark the object as "zombie" and not allow any other
 		// operations.
-		return errors.Wrapf(err, "removing object %s", errors.Safe(fileNum))
+		return errors.Wrapf(err, "removing object %s", fileNum)
 	}
 
 	p.removeMetadata(fileNum)
@@ -404,13 +404,13 @@ func (p *provider) Lookup(
 		return objstorage.ObjectMetadata{}, errors.Wrapf(
 			os.ErrNotExist,
 			"file %s (type %d) unknown to the objstorage provider",
-			errors.Safe(fileNum), errors.Safe(fileType),
+			fileNum, errors.Safe(fileType),
 		)
 	}
 	if meta.FileType != fileType {
 		return objstorage.ObjectMetadata{}, errors.AssertionFailedf(
 			"file %s type mismatch (known type %d, expected type %d)",
-			errors.Safe(fileNum), errors.Safe(meta.FileType), errors.Safe(fileType),
+			fileNum, errors.Safe(meta.FileType), errors.Safe(fileType),
 		)
 	}
 	return meta, nil
