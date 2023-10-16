@@ -3725,7 +3725,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 
 	d.mu.log.queue = merge(d.mu.log.queue, obsoleteLogs)
 	d.mu.versions.metrics.WAL.Files = int64(len(d.mu.log.queue))
-	d.mu.versions.obsoleteTables = mergeFileInfo(d.mu.versions.obsoleteTables, obsoleteTables)
+	d.mu.versions.obsoleteTables = merge(d.mu.versions.obsoleteTables, obsoleteTables)
 	d.mu.versions.updateObsoleteTableMetricsLocked()
 	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
@@ -3885,26 +3885,6 @@ func (d *DB) maybeScheduleObsoleteTableDeletionLocked() {
 }
 
 func merge(a, b []fileInfo) []fileInfo {
-	if len(b) == 0 {
-		return a
-	}
-
-	a = append(a, b...)
-	sort.Slice(a, func(i, j int) bool {
-		return a[i].fileNum.FileNum() < a[j].fileNum.FileNum()
-	})
-
-	n := 0
-	for i := 0; i < len(a); i++ {
-		if n == 0 || a[i].fileNum != a[n-1].fileNum {
-			a[n] = a[i]
-			n++
-		}
-	}
-	return a[:n]
-}
-
-func mergeFileInfo(a, b []fileInfo) []fileInfo {
 	if len(b) == 0 {
 		return a
 	}
