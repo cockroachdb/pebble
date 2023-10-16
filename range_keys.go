@@ -55,25 +55,40 @@ func (i *Iterator) constructRangeKeyIter() {
 		current = i.readState.current
 	}
 	// Next are the file levels: L0 sub-levels followed by lower levels.
+
+	// Add file-specific iterators for L0 files containing range keys. We
+	// maintain a separate manifest.LevelMetadata for each level containing only
+	// files that contain range keys, however we don't compute a separate
+	// L0Sublevels data structure too.
 	//
-	// Add file-specific iterators for L0 files containing range keys. This is less
-	// efficient than using levelIters for sublevels of L0 files containing
-	// range keys, but range keys are expected to be sparse anyway, reducing the
-	// cost benefit of maintaining a separate L0Sublevels instance for range key
-	// files and then using it here.
-	//
-	// NB: We iterate L0's files in reverse order. They're sorted by
-	// LargestSeqNum ascending, and we need to add them to the merging iterator
-	// in LargestSeqNum descending to preserve the merging iterator's invariants
-	// around Key Trailer order.
-	iter := current.RangeKeyLevels[0].Iter()
-	for f := iter.Last(); f != nil; f = iter.Prev() {
-		spanIter, err := i.newIterRangeKey(f, i.opts.SpanIterOptions())
-		if err != nil {
-			i.rangeKey.iterConfig.AddLevel(&errorKeyspanIter{err: err})
-			continue
+	// We first use L0's LevelMetadata to peek and see whether L0 contains any
+	// range keys at all. If it does, we create a range key level iterator per
+	// level that contains range keys using the information from L0Sublevels.
+	// Some sublevels may not contain any range keys, and we need to iterate
+	// through the fileMetadata to determine that. Since L0's file count should
+	// not significantly exceed ~1000 files (see L0CompactionFileThreshold),
+	// this should be okay.
+	if !current.RangeKeyLevels[0].Empty() {
+		// L0 contains at least 1 file containing range keys.
+		// Add level iterators for the L0 sublevels, iterating from newest to
+		// oldest.
+		for j := len(current.L0SublevelFiles) - 1; j >= 0; j-- {
+			iter := current.L0SublevelFiles[j].Iter()
+			if !containsAnyRangeKeys(iter) {
+				continue
+			}
+
+			li := i.rangeKey.iterConfig.NewLevelIter()
+			li.Init(
+				i.opts.SpanIterOptions(),
+				i.cmp,
+				i.newIterRangeKey,
+				iter.Filter(manifest.KeyTypeRange),
+				manifest.L0Sublevel(j),
+				manifest.KeyTypeRange,
+			)
+			i.rangeKey.iterConfig.AddLevel(li)
 		}
-		i.rangeKey.iterConfig.AddLevel(spanIter)
 	}
 
 	// Add level iterators for the non-empty non-L0 levels.
@@ -87,6 +102,15 @@ func (i *Iterator) constructRangeKeyIter() {
 			manifest.Level(level), manifest.KeyTypeRange)
 		i.rangeKey.iterConfig.AddLevel(li)
 	}
+}
+
+func containsAnyRangeKeys(iter manifest.LevelIterator) bool {
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f.HasRangeKeys {
+			return true
+		}
+	}
+	return false
 }
 
 // Range key masking

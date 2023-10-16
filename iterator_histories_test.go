@@ -32,6 +32,7 @@ func TestIterHistories(t *testing.T) {
 		}
 
 		var d *DB
+		var buf bytes.Buffer
 		iters := map[string]*Iterator{}
 		batches := map[string]*Batch{}
 		newIter := func(name string, reader Reader, o *IterOptions) *Iterator {
@@ -76,6 +77,7 @@ func TestIterHistories(t *testing.T) {
 		defer cleanup()
 
 		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
+			buf.Reset()
 			switch td.Cmd {
 			case "define":
 				var err error
@@ -166,7 +168,6 @@ func TestIterHistories(t *testing.T) {
 						return fmt.Sprintf("unknown reader %q", arg.Vals[0])
 					}
 				}
-				var buf bytes.Buffer
 				for _, l := range strings.Split(td.Input, "\n") {
 					v, closer, err := reader.Get([]byte(l))
 					if err != nil {
@@ -187,6 +188,30 @@ func TestIterHistories(t *testing.T) {
 					return err.Error()
 				}
 				return ""
+			case "layout":
+				var verbose bool
+				var filename string
+				td.ScanArgs(t, "filename", &filename)
+				td.MaybeScanArgs(t, "verbose", &verbose)
+				f, err := opts.FS.Open(filename)
+				if err != nil {
+					return err.Error()
+				}
+				readable, err := sstable.NewSimpleReadable(f)
+				if err != nil {
+					return err.Error()
+				}
+				r, err := sstable.NewReader(readable, opts.MakeReaderOptions())
+				if err != nil {
+					return err.Error()
+				}
+				defer r.Close()
+				l, err := r.Layout()
+				if err != nil {
+					return err.Error()
+				}
+				l.Describe(&buf, verbose, r, nil)
+				return buf.String()
 			case "lsm":
 				return runLSMCmd(td, d)
 			case "metrics":
@@ -328,7 +353,6 @@ func TestIterHistories(t *testing.T) {
 				iter := newIter(name, d, &IterOptions{KeyTypes: IterKeyTypeRangesOnly})
 				return runIterCmd(td, iter, name == "" /* close iter */)
 			case "scan-rangekeys":
-				var buf bytes.Buffer
 				iter := newIter(
 					pluckStringCmdArg(td, "name"),
 					d,

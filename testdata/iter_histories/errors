@@ -57,3 +57,43 @@ b: (b, .)
 c: (c, .)
 d: (d, .)
 .
+
+# Regression test for #2994.
+#
+# Previously, an error while loading an L0 sstable's range key block could
+# result in an iterator that would always return the same error. Now, the IO is
+# deferred to the first seek. If a seek encounters an IO error, re-seeking the
+# iterator should re-attempt the failed IO operation, potentially succeeding if
+# the IO error was transient.
+
+define auto-compactions=off
+L0
+  a.SET.9:a
+  rangekey:c-d:{(#0,RANGEKEYSET,@1,foo)}
+  e@2.SET.2:e@2
+----
+0.0:
+  000004:[a#9,SET-e@2#2,SET]
+
+layout filename=000004.sst
+----
+         0  data (38)
+        43  index (35)
+        83  range-key (29)
+       117  properties (645)
+       767  meta-index (57)
+       829  footer (53)
+       882  EOF
+
+# Inject an error on the first `ReadAt` call on 000004.sst's range key block
+# (which is at offset 83).
+
+reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 83) (OnIndex 0))))
+----
+
+combined-iter
+first
+first
+----
+err=injected error
+a: (a, .)
