@@ -1453,6 +1453,15 @@ func runLSMCmd(td *datadriven.TestData, d *DB) string {
 func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 	for _, cmdArg := range args {
 		switch cmdArg.Key {
+		case "auto-compactions":
+			switch cmdArg.Vals[0] {
+			case "off":
+				opts.DisableAutomaticCompactions = true
+			case "on":
+				opts.DisableAutomaticCompactions = false
+			default:
+				return errors.Errorf("Unrecognized %q arg value: %q", cmdArg.Key, cmdArg.Vals[0])
+			}
 		case "inject-errors":
 			injs := make([]errorfs.Injector, len(cmdArg.Vals))
 			for i := 0; i < len(cmdArg.Vals); i++ {
