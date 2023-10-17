@@ -31,6 +31,9 @@ type Op struct {
 	Kind OpKind
 	// Path is the path of the file of the file being operated on.
 	Path string
+	// Offset is the offset of an operation. It's set for OpFileReadAt and
+	// OpFileWriteAt operations.
+	Offset int64
 }
 
 // OpKind is an enum describing the type of operation.
@@ -423,7 +426,11 @@ func (f *errorFile) Read(p []byte) (int, error) {
 }
 
 func (f *errorFile) ReadAt(p []byte, off int64) (int, error) {
-	if err := f.inj.MaybeError(Op{Kind: OpFileReadAt, Path: f.path}); err != nil {
+	if err := f.inj.MaybeError(Op{
+		Kind:   OpFileReadAt,
+		Path:   f.path,
+		Offset: off,
+	}); err != nil {
 		return 0, err
 	}
 	return f.file.ReadAt(p, off)
@@ -436,11 +443,15 @@ func (f *errorFile) Write(p []byte) (int, error) {
 	return f.file.Write(p)
 }
 
-func (f *errorFile) WriteAt(p []byte, ofs int64) (int, error) {
-	if err := f.inj.MaybeError(Op{Kind: OpFileWriteAt, Path: f.path}); err != nil {
+func (f *errorFile) WriteAt(p []byte, off int64) (int, error) {
+	if err := f.inj.MaybeError(Op{
+		Kind:   OpFileWriteAt,
+		Path:   f.path,
+		Offset: off,
+	}); err != nil {
 		return 0, err
 	}
-	return f.file.WriteAt(p, ofs)
+	return f.file.WriteAt(p, off)
 }
 
 func (f *errorFile) Stat() (os.FileInfo, error) {
