@@ -1663,7 +1663,7 @@ func pickAutoLPositive(
 	vers *version,
 	cInfo candidateLevelInfo,
 	baseLevel int,
-	levelMaxBytes [7]int64,
+	levelMaxBytes [numLevels]int64,
 ) (pc *pickedCompaction) {
 	if cInfo.level == 0 {
 		panic("pebble: pickAutoLPositive called for L0")

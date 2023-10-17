@@ -19,8 +19,11 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/spf13/cobra"
 )
+
+const numLevels = manifest.NumLevels
 
 var (
 	// Captures a common logging prefix that can be used as the context for the
@@ -514,8 +517,8 @@ type windowSummary struct {
 	compactionBytesMoved map[fromTo]uint64
 	compactionBytesDel   map[fromTo]uint64
 	compactionTime       map[fromTo]time.Duration
-	ingestedCount        [7]int
-	ingestedBytes        [7]uint64
+	ingestedCount        [numLevels]int
+	ingestedBytes        [numLevels]uint64
 	readAmps             []readAmp
 	longRunning          []event
 }
