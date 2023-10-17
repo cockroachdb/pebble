@@ -55,6 +55,20 @@ var (
 	Writes Predicate = opKindPred{kind: OpIsWrite}
 )
 
+type opFileReadAt struct {
+	// offset configures the predicate to evaluate to true only if the
+	// operation's offset exactly matches offset.
+	offset int64
+}
+
+func (o *opFileReadAt) String() string {
+	return fmt.Sprintf("(FileReadAt %d)", o.offset)
+}
+
+func (o *opFileReadAt) evaluate(op Op) bool {
+	return op.Kind == OpFileReadAt && o.offset == op.Offset
+}
+
 type opKindPred struct {
 	kind OpReadWrite
 }
@@ -144,6 +158,9 @@ func OnIndex(index int32) *InjectIndex {
 //   - (Or <PREDICATE> [PREDICATE]...) is a predicate that evaluates to true iff
 //     at least one of the provided predicates evaluates to true. Or short
 //     circuits on the first predicate to evaluate to true.
+//   - Operation-specific:
+//     (OpFileReadAt <INTEGER>) is a predicate that evaluates to true iff
+//     an operation is a file ReadAt call with an offset that's exactly equal.
 //
 // Example: (ErrInjected (And (PathMatch "*.sst") (OnIndex 5))) is a rule set
 // that will inject an error on the 5-th I/O operation involving an sstable.
@@ -248,6 +265,9 @@ func init() {
 		"Or": func(s *scanner.Scanner) Predicate {
 			return Or(parseVariadicPredicate(s)...)
 		},
+		"OpFileReadAt": func(s *scanner.Scanner) Predicate {
+			return parseFileReadAtOp(s)
+		},
 	}
 	AddError(ErrInjected)
 }
@@ -336,4 +356,14 @@ func mustUnquote(lit string) string {
 		panic(errors.Newf("errorfs: unquoting %q: %v", lit, err))
 	}
 	return s
+}
+
+func parseFileReadAtOp(s *scanner.Scanner) *opFileReadAt {
+	lit := consumeTok(s, token.INT)
+	off, err := strconv.ParseInt(lit, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	consumeTok(s, token.RPAREN)
+	return &opFileReadAt{offset: off}
 }

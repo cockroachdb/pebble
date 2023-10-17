@@ -45,3 +45,12 @@ parsing err: errorfs: unknown error "And"
 parsing err: errorfs: unknown error "Or"
 parsing err: errorfs: unexpected token IDENT ("foo") at char 23; expected INT
 parsing err: strconv.ParseInt: parsing "9223372036854775807": value out of range
+
+parse-dsl
+(ErrInjected (OpFileReadAt _))
+(ErrInjected (OpFileReadAt foo))
+(ErrInjected (OpFileReadAt 1052363))
+----
+parsing err: errorfs: unexpected token IDENT ("_") at char 28; expected INT
+parsing err: errorfs: unexpected token IDENT ("foo") at char 28; expected INT
+(ErrInjected (FileReadAt 1052363))
