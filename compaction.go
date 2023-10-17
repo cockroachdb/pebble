@@ -2336,7 +2336,6 @@ func (d *DB) maybeScheduleCompactionPicker(
 	// cheap and reduce future compaction work.
 	if !d.opts.private.disableDeleteOnlyCompactions &&
 		len(d.mu.compact.deletionHints) > 0 &&
-		d.mu.compact.compactingCount < maxConcurrentCompactions &&
 		!d.opts.DisableAutomaticCompactions {
 		v := d.mu.versions.currentVersion()
 		snapshots := d.mu.snapshots.toSlice()
