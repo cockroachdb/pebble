@@ -12,11 +12,11 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-//go:build 386 || amd64p32 || arm || armbe || ppc || sparc
-// +build 386 amd64p32 arm armbe ppc sparc
+//go:build mips || mipsle || mips64p32 || mips64p32le
+// +build mips mipsle mips64p32 mips64p32le
 
 package rawalloc
 
 const (
-	maxArrayLen = 1<<31 - 1
+	maxArrayLen = 1 << 30
 )
