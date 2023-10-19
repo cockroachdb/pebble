@@ -1088,16 +1088,16 @@ func (b *Batch) SetRepr(data []byte) error {
 // later mutations. Its view can be refreshed via RefreshBatchSnapshot or
 // SetOptions().
 func (b *Batch) NewIter(o *IterOptions) (*Iterator, error) {
-	return b.NewIterWithContext(context.Background(), o), nil
+	return b.NewIterWithContext(context.Background(), o)
 }
 
 // NewIterWithContext is like NewIter, and additionally accepts a context for
 // tracing.
-func (b *Batch) NewIterWithContext(ctx context.Context, o *IterOptions) *Iterator {
+func (b *Batch) NewIterWithContext(ctx context.Context, o *IterOptions) (*Iterator, error) {
 	if b.index == nil {
-		return &Iterator{err: ErrNotIndexed}
+		return &Iterator{err: ErrNotIndexed}, nil
 	}
-	return b.db.newIter(ctx, b, snapshotIterOpts{}, o)
+	return b.db.newIter(ctx, b, snapshotIterOpts{}, o), nil
 }
 
 // newInternalIter creates a new internalIterator that iterates over the

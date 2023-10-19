@@ -1467,7 +1467,8 @@ func TestTracing(t *testing.T) {
 
 	tracer.buf.Reset()
 	b := d.NewIndexedBatch()
-	iter = b.NewIterWithContext(ctx, nil)
+	iter, err = b.NewIterWithContext(ctx, nil)
+	require.NoError(t, err)
 	iter.SeekGE([]byte("hello"))
 	iter.Close()
 	require.Equal(t, iterTraceString, tracer.buf.String())
