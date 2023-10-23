@@ -7,12 +7,9 @@ package errorfs
 import (
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"strings"
-	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -148,23 +145,6 @@ func (ii *InjectIndex) MaybeError(op Op) error {
 		return nil
 	}
 	return ErrInjected
-}
-
-// WithProbability returns a function that returns an error with the provided
-// probability when passed op. It may be passed to Wrap to inject an error
-// into an ErrFS with the provided probability. p should be within the range
-// [0.0,1.0].
-func WithProbability(op OpReadWrite, p float64) Injector {
-	mu := new(sync.Mutex)
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return InjectorFunc(func(currOp Op) error {
-		mu.Lock()
-		defer mu.Unlock()
-		if currOp.Kind.ReadOrWrite() == op && rnd.Float64() < p {
-			return errors.WithStack(ErrInjected)
-		}
-		return nil
-	})
 }
 
 // InjectorFunc implements the Injector interface for a function with
