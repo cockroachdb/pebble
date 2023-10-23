@@ -5,12 +5,16 @@
 package errorfs
 
 import (
+	"encoding/binary"
 	"fmt"
 	"go/scanner"
 	"go/token"
+	"hash/maphash"
+	"math/rand"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 )
@@ -131,6 +135,62 @@ func OnIndex(index int32) *InjectIndex {
 	return ii
 }
 
+// Randomly constructs a new predicate that pseudorandomly evaluates to true
+// with probability p using randomness determinstically derived from seed.
+//
+// The predicate is deterministic with respect to file paths: its behavior for a
+// particular file is deterministic regardless of intervening evaluations for
+// operations on other files. This can be used to ensure determinism despite
+// nondeterministic concurrency if the concurrency is constrained to separate
+// files.
+func Randomly(p float64, seed int64) Predicate {
+	rs := &randomSeed{p: p, rootSeed: seed}
+	rs.mu.perFilePrng = make(map[string]*rand.Rand)
+	return rs
+}
+
+type randomSeed struct {
+	// p defines the probability of an error being injected.
+	p        float64
+	rootSeed int64
+	mu       struct {
+		sync.Mutex
+		h           maphash.Hash
+		perFilePrng map[string]*rand.Rand
+	}
+}
+
+func (rs *randomSeed) String() string {
+	if rs.rootSeed == 0 {
+		return fmt.Sprintf("(Randomly %.2f)", rs.p)
+	}
+	return fmt.Sprintf("(Randomly %.2f %d)", rs.p, rs.rootSeed)
+}
+
+func (rs *randomSeed) evaluate(op Op) bool {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	prng, ok := rs.mu.perFilePrng[op.Path]
+	if !ok {
+		// This is the first time an operation has been performed on the file at
+		// this path. Initialize the per-file prng by computing a deterministic
+		// hash of the path.
+		rs.mu.h.Reset()
+		var b [8]byte
+		binary.LittleEndian.PutUint64(b[:], uint64(rs.rootSeed))
+		if _, err := rs.mu.h.Write(b[:]); err != nil {
+			panic(err)
+		}
+		if _, err := rs.mu.h.WriteString(op.Path); err != nil {
+			panic(err)
+		}
+		seed := rs.mu.h.Sum64()
+		prng = rand.New(rand.NewSource(int64(seed)))
+		rs.mu.perFilePrng[op.Path] = prng
+	}
+	return prng.Float64() < rs.p
+}
+
 // ParseInjectorFromDSL parses a string encoding a lisp-like DSL describing when
 // errors should be injected.
 //
@@ -158,6 +218,10 @@ func OnIndex(index int32) *InjectIndex {
 //   - (Or <PREDICATE> [PREDICATE]...) is a predicate that evaluates to true iff
 //     at least one of the provided predicates evaluates to true. Or short
 //     circuits on the first predicate to evaluate to true.
+//   - (Randomly <FLOAT> [INTEGER]) is a predicate that pseudorandomly evaluates
+//     to true. The probability of evaluating to true is determined by the
+//     required float argument (must be ≤1). The optional second parameter is a
+//     pseudorandom seed, for adjusting the deterministic randomness.
 //   - Operation-specific:
 //     (OpFileReadAt <INTEGER>) is a predicate that evaluates to true iff
 //     an operation is a file ReadAt call with an offset that's exactly equal.
@@ -268,6 +332,9 @@ func init() {
 		"OpFileReadAt": func(s *scanner.Scanner) Predicate {
 			return parseFileReadAtOp(s)
 		},
+		"Randomly": func(s *scanner.Scanner) Predicate {
+			return parseRandomly(s)
+		},
 	}
 	AddError(ErrInjected)
 }
@@ -366,4 +433,31 @@ func parseFileReadAtOp(s *scanner.Scanner) *opFileReadAt {
 	}
 	consumeTok(s, token.RPAREN)
 	return &opFileReadAt{offset: off}
+}
+
+func parseRandomly(s *scanner.Scanner) Predicate {
+	lit := consumeTok(s, token.FLOAT)
+	p, err := strconv.ParseFloat(lit, 64)
+	if err != nil {
+		panic(err)
+	} else if p > 1.0 {
+		// NB: It's not possible for p to be less than zero because we don't
+		// try to parse the '-' token.
+		panic(errors.Newf("errorfs: Randomly proability p must be within p ≤ 1.0"))
+	}
+
+	var seed int64
+	pos, tok, lit := s.Scan()
+	switch tok {
+	case token.RPAREN:
+	case token.INT:
+		seed, err = strconv.ParseInt(lit, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		consumeTok(s, token.RPAREN)
+	default:
+		panic(errors.Errorf("errorfs: unexpected token %s (%q) at char %v; expected RPAREN | FLOAT", tok, lit, pos))
+	}
+	return Randomly(p, seed)
 }
