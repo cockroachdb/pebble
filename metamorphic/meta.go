@@ -453,7 +453,9 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 
 	// Wrap the filesystem with one that will inject errors into read
 	// operations with *errorRate probability.
-	opts.FS = errorfs.Wrap(opts.FS, errorfs.WithProbability(errorfs.OpIsRead, runOpts.errorRate))
+	opts.FS = errorfs.Wrap(opts.FS, errorfs.ErrInjected.If(
+		errorfs.And(errorfs.Reads, errorfs.Randomly(runOpts.errorRate, int64(seed))),
+	))
 
 	if opts.WALDir != "" {
 		opts.WALDir = opts.FS.PathJoin(runDir, opts.WALDir)
