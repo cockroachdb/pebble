@@ -1759,9 +1759,15 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 	}
 
 	for level := 0; level < maxLevelWithFiles; {
-		if err := d.manualCompact(
-			iStart.UserKey, iEnd.UserKey, level, parallelize); err != nil {
-			return err
+		for {
+			if err := d.manualCompact(
+				iStart.UserKey, iEnd.UserKey, level, parallelize); err != nil {
+				if errors.Is(err, ErrCancelledCompaction) {
+					continue
+				}
+				return err
+			}
+			break
 		}
 		level++
 		if level == numLevels-1 {
