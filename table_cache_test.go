@@ -1211,7 +1211,8 @@ type catchFatalLogger struct {
 
 var _ Logger = (*catchFatalLogger)(nil)
 
-func (tl *catchFatalLogger) Infof(format string, args ...interface{}) {}
+func (tl *catchFatalLogger) Infof(format string, args ...interface{})  {}
+func (tl *catchFatalLogger) Errorf(format string, args ...interface{}) {}
 
 func (tl *catchFatalLogger) Fatalf(format string, args ...interface{}) {
 	tl.fatalMsgs = append(tl.fatalMsgs, fmt.Sprintf(format, args...))

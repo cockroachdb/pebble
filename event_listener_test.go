@@ -318,6 +318,11 @@ func (l redactLogger) Infof(format string, args ...interface{}) {
 	l.logger.Infof("%s", redact.Sprintf(format, args...).Redact())
 }
 
+// Errorf implements the Logger.Errorf interface.
+func (l redactLogger) Errorf(format string, args ...interface{}) {
+	l.logger.Errorf("%s", redact.Sprintf(format, args...).Redact())
+}
+
 // Fatalf implements the Logger.Fatalf interface.
 func (l redactLogger) Fatalf(format string, args ...interface{}) {
 	l.logger.Fatalf("%s", redact.Sprintf(format, args...).Redact())

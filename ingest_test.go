@@ -2681,6 +2681,10 @@ func (l testLogger) Infof(format string, args ...interface{}) {
 	l.t.Logf(format, args...)
 }
 
+func (l testLogger) Errorf(format string, args ...interface{}) {
+	l.t.Logf(format, args...)
+}
+
 func (l testLogger) Fatalf(format string, args ...interface{}) {
 	l.t.Fatalf(format, args...)
 }
@@ -3135,6 +3139,11 @@ type fatalCapturingLogger struct {
 
 // Infof implements the Logger interface.
 func (l *fatalCapturingLogger) Infof(fmt string, args ...interface{}) {
+	l.t.Logf(fmt, args...)
+}
+
+// Errorf implements the Logger interface.
+func (l *fatalCapturingLogger) Errorf(fmt string, args ...interface{}) {
 	l.t.Logf(fmt, args...)
 }
 

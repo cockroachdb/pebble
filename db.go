@@ -1979,7 +1979,7 @@ func (d *DB) Metrics() *Metrics {
 
 	metrics.LogWriter.FsyncLatency = d.mu.log.metrics.fsyncLatency
 	if err := metrics.LogWriter.Merge(&d.mu.log.metrics.LogWriterMetrics); err != nil {
-		d.opts.Logger.Infof("metrics error: %s", err)
+		d.opts.Logger.Errorf("metrics error: %s", err)
 	}
 	metrics.Flush.WriteThroughput = d.mu.compact.flushWriteThroughput
 	if d.mu.compact.flushing {
@@ -2576,7 +2576,7 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	metrics := d.mu.log.LogWriter.Metrics()
 	d.mu.Lock()
 	if err := d.mu.log.metrics.Merge(metrics); err != nil {
-		d.opts.Logger.Infof("metrics error: %s", err)
+		d.opts.Logger.Errorf("metrics error: %s", err)
 	}
 	d.mu.Unlock()
 
