@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -307,6 +308,12 @@ func testBatchEmpty(t *testing.T, size int) {
 	require.True(t, err != nil)
 	require.False(t, iter2.First())
 	require.NoError(t, iter2.Close())
+	iter3, err := ib.NewBatchOnlyIter(context.Background(), nil)
+	require.NoError(t, err)
+	require.False(t, iter3.First())
+	_, err = iter3.Clone(CloneOptions{})
+	require.Error(t, err)
+	require.NoError(t, iter3.Close())
 }
 
 func TestBatchApplyNoSyncWait(t *testing.T) {
@@ -451,13 +458,17 @@ func TestIndexedBatchReset(t *testing.T) {
 		iter2, err := iter.Clone(CloneOptions{})
 		require.NoError(t, err)
 		defer iter2.Close()
-		var count [2]int
-		for i, it := range []*Iterator{iter, iter2} {
+		iter3, err := ib.NewBatchOnlyIter(context.Background(), nil)
+		require.NoError(t, err)
+		defer iter3.Close()
+		var count [3]int
+		for i, it := range []*Iterator{iter, iter2, iter3} {
 			for it.First(); it.Valid(); it.Next() {
 				count[i]++
 			}
 		}
 		require.Equal(t, count[0], count[1])
+		require.Equal(t, count[0], count[2])
 		return count[0]
 	}
 	contains := func(ib *Batch, key, value string) bool {
@@ -466,8 +477,11 @@ func TestIndexedBatchReset(t *testing.T) {
 		iter2, err := iter.Clone(CloneOptions{})
 		require.NoError(t, err)
 		defer iter2.Close()
-		var found [2]bool
-		for i, it := range []*Iterator{iter, iter2} {
+		iter3, err := ib.NewBatchOnlyIter(context.Background(), nil)
+		require.NoError(t, err)
+		defer iter3.Close()
+		var found [3]bool
+		for i, it := range []*Iterator{iter, iter2, iter3} {
 			for it.First(); it.Valid(); it.Next() {
 				if string(it.Key()) == key &&
 					string(it.Value()) == value {
@@ -476,6 +490,7 @@ func TestIndexedBatchReset(t *testing.T) {
 			}
 		}
 		require.Equal(t, found[0], found[1])
+		require.Equal(t, found[0], found[2])
 		return found[0]
 	}
 	// Set a key and check whether the key-value pair is visible.
@@ -526,6 +541,12 @@ func TestIndexedBatchMutation(t *testing.T) {
 		case "new-batch-iter":
 			name := td.CmdArgs[0].String()
 			iters[name], _ = b.NewIter(&IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+			})
+			return ""
+		case "new-batch-only-iter":
+			name := td.CmdArgs[0].String()
+			iters[name], _ = b.NewBatchOnlyIter(context.Background(), &IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
 			})
 			return ""

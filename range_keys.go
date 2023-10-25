@@ -35,72 +35,74 @@ func (i *Iterator) constructRangeKeyIter() {
 		}
 	}
 
-	// Next are the flushables: memtables and large batches.
-	if i.readState != nil {
-		for j := len(i.readState.memtables) - 1; j >= 0; j-- {
-			mem := i.readState.memtables[j]
-			// We only need to read from memtables which contain sequence numbers older
-			// than seqNum.
-			if logSeqNum := mem.logSeqNum; logSeqNum >= i.seqNum {
-				continue
-			}
-			if rki := mem.newRangeKeyIter(&i.opts); rki != nil {
-				i.rangeKey.iterConfig.AddLevel(rki)
+	if !i.batchOnlyIter {
+		// Next are the flushables: memtables and large batches.
+		if i.readState != nil {
+			for j := len(i.readState.memtables) - 1; j >= 0; j-- {
+				mem := i.readState.memtables[j]
+				// We only need to read from memtables which contain sequence numbers older
+				// than seqNum.
+				if logSeqNum := mem.logSeqNum; logSeqNum >= i.seqNum {
+					continue
+				}
+				if rki := mem.newRangeKeyIter(&i.opts); rki != nil {
+					i.rangeKey.iterConfig.AddLevel(rki)
+				}
 			}
 		}
-	}
 
-	current := i.version
-	if current == nil {
-		current = i.readState.current
-	}
-	// Next are the file levels: L0 sub-levels followed by lower levels.
+		current := i.version
+		if current == nil {
+			current = i.readState.current
+		}
+		// Next are the file levels: L0 sub-levels followed by lower levels.
 
-	// Add file-specific iterators for L0 files containing range keys. We
-	// maintain a separate manifest.LevelMetadata for each level containing only
-	// files that contain range keys, however we don't compute a separate
-	// L0Sublevels data structure too.
-	//
-	// We first use L0's LevelMetadata to peek and see whether L0 contains any
-	// range keys at all. If it does, we create a range key level iterator per
-	// level that contains range keys using the information from L0Sublevels.
-	// Some sublevels may not contain any range keys, and we need to iterate
-	// through the fileMetadata to determine that. Since L0's file count should
-	// not significantly exceed ~1000 files (see L0CompactionFileThreshold),
-	// this should be okay.
-	if !current.RangeKeyLevels[0].Empty() {
-		// L0 contains at least 1 file containing range keys.
-		// Add level iterators for the L0 sublevels, iterating from newest to
-		// oldest.
-		for j := len(current.L0SublevelFiles) - 1; j >= 0; j-- {
-			iter := current.L0SublevelFiles[j].Iter()
-			if !containsAnyRangeKeys(iter) {
+		// Add file-specific iterators for L0 files containing range keys. We
+		// maintain a separate manifest.LevelMetadata for each level containing only
+		// files that contain range keys, however we don't compute a separate
+		// L0Sublevels data structure too.
+		//
+		// We first use L0's LevelMetadata to peek and see whether L0 contains any
+		// range keys at all. If it does, we create a range key level iterator per
+		// level that contains range keys using the information from L0Sublevels.
+		// Some sublevels may not contain any range keys, and we need to iterate
+		// through the fileMetadata to determine that. Since L0's file count should
+		// not significantly exceed ~1000 files (see L0CompactionFileThreshold),
+		// this should be okay.
+		if !current.RangeKeyLevels[0].Empty() {
+			// L0 contains at least 1 file containing range keys.
+			// Add level iterators for the L0 sublevels, iterating from newest to
+			// oldest.
+			for j := len(current.L0SublevelFiles) - 1; j >= 0; j-- {
+				iter := current.L0SublevelFiles[j].Iter()
+				if !containsAnyRangeKeys(iter) {
+					continue
+				}
+
+				li := i.rangeKey.iterConfig.NewLevelIter()
+				li.Init(
+					i.opts.SpanIterOptions(),
+					i.cmp,
+					i.newIterRangeKey,
+					iter.Filter(manifest.KeyTypeRange),
+					manifest.L0Sublevel(j),
+					manifest.KeyTypeRange,
+				)
+				i.rangeKey.iterConfig.AddLevel(li)
+			}
+		}
+
+		// Add level iterators for the non-empty non-L0 levels.
+		for level := 1; level < len(current.RangeKeyLevels); level++ {
+			if current.RangeKeyLevels[level].Empty() {
 				continue
 			}
-
 			li := i.rangeKey.iterConfig.NewLevelIter()
-			li.Init(
-				i.opts.SpanIterOptions(),
-				i.cmp,
-				i.newIterRangeKey,
-				iter.Filter(manifest.KeyTypeRange),
-				manifest.L0Sublevel(j),
-				manifest.KeyTypeRange,
-			)
+			spanIterOpts := i.opts.SpanIterOptions()
+			li.Init(spanIterOpts, i.cmp, i.newIterRangeKey, current.RangeKeyLevels[level].Iter(),
+				manifest.Level(level), manifest.KeyTypeRange)
 			i.rangeKey.iterConfig.AddLevel(li)
 		}
-	}
-
-	// Add level iterators for the non-empty non-L0 levels.
-	for level := 1; level < len(current.RangeKeyLevels); level++ {
-		if current.RangeKeyLevels[level].Empty() {
-			continue
-		}
-		li := i.rangeKey.iterConfig.NewLevelIter()
-		spanIterOpts := i.opts.SpanIterOptions()
-		li.Init(spanIterOpts, i.cmp, i.newIterRangeKey, current.RangeKeyLevels[level].Iter(),
-			manifest.Level(level), manifest.KeyTypeRange)
-		i.rangeKey.iterConfig.AddLevel(li)
 	}
 }
 

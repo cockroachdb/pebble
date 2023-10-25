@@ -1097,7 +1097,20 @@ func (b *Batch) NewIterWithContext(ctx context.Context, o *IterOptions) (*Iterat
 	if b.index == nil {
 		return &Iterator{err: ErrNotIndexed}, nil
 	}
-	return b.db.newIter(ctx, b, snapshotIterOpts{}, o), nil
+	return b.db.newIter(ctx, b, newIterOpts{}, o), nil
+}
+
+// NewBatchOnlyIter constructs an iterator that only reads the contents of the
+// batch, and does not overlay the batch mutations on top of the DB state.
+//
+// The returned Iterator observes all of the Batch's existing mutations, but
+// no later mutations. Its view can be refreshed via RefreshBatchSnapshot or
+// SetOptions().
+func (b *Batch) NewBatchOnlyIter(ctx context.Context, o *IterOptions) (*Iterator, error) {
+	if b.index == nil {
+		return &Iterator{err: ErrNotIndexed}, nil
+	}
+	return b.db.newIter(ctx, b, newIterOpts{batch: batchIterOpts{batchOnly: true}}, o), nil
 }
 
 // newInternalIter creates a new internalIterator that iterates over the
