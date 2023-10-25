@@ -996,15 +996,31 @@ type snapshotIterOpts struct {
 	vers   *version
 }
 
+type batchIterOpts struct {
+	batchOnly bool
+}
+type newIterOpts struct {
+	snapshot snapshotIterOpts
+	batch    batchIterOpts
+}
+
 // newIter constructs a new iterator, merging in batch iterators as an extra
 // level.
 func (d *DB) newIter(
-	ctx context.Context, batch *Batch, sOpts snapshotIterOpts, o *IterOptions,
+	ctx context.Context, batch *Batch, internalOpts newIterOpts, o *IterOptions,
 ) *Iterator {
+	if internalOpts.batch.batchOnly {
+		if batch == nil {
+			panic("batchOnly is true, but batch is nil")
+		}
+		if internalOpts.snapshot.vers != nil {
+			panic("batchOnly is true, but snapshotIterOpts is initialized")
+		}
+	}
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
-	seqNum := sOpts.seqNum
+	seqNum := internalOpts.snapshot.seqNum
 	if o.rangeKeys() {
 		if d.FormatMajorVersion() < FormatRangeKeys {
 			panic(fmt.Sprintf(
@@ -1023,22 +1039,28 @@ func (d *DB) newIter(
 		// DB.mem.queue[0].logSeqNum.
 		panic("OnlyReadGuaranteedDurable is not supported for batches or snapshots")
 	}
-	// Grab and reference the current readState. This prevents the underlying
-	// files in the associated version from being deleted if there is a current
-	// compaction. The readState is unref'd by Iterator.Close().
 	var readState *readState
-	if sOpts.vers == nil {
-		// NB: loadReadState() calls readState.ref().
-		readState = d.loadReadState()
-	} else {
-		// s.vers != nil
-		sOpts.vers.Ref()
-	}
+	var newIters tableNewIters
+	var newIterRangeKey keyspan.TableNewSpanIter
+	if !internalOpts.batch.batchOnly {
+		// Grab and reference the current readState. This prevents the underlying
+		// files in the associated version from being deleted if there is a current
+		// compaction. The readState is unref'd by Iterator.Close().
+		if internalOpts.snapshot.vers == nil {
+			// NB: loadReadState() calls readState.ref().
+			readState = d.loadReadState()
+		} else {
+			// vers != nil
+			internalOpts.snapshot.vers.Ref()
+		}
 
-	// Determine the seqnum to read at after grabbing the read state (current and
-	// memtables) above.
-	if seqNum == 0 {
-		seqNum = d.mu.versions.visibleSeqNum.Load()
+		// Determine the seqnum to read at after grabbing the read state (current and
+		// memtables) above.
+		if seqNum == 0 {
+			seqNum = d.mu.versions.visibleSeqNum.Load()
+		}
+		newIters = d.newIters
+		newIterRangeKey = d.tableNewRangeKeyIter
 	}
 
 	// Bundle various structures under a single umbrella in order to allocate
@@ -1051,14 +1073,15 @@ func (d *DB) newIter(
 		merge:               d.merge,
 		comparer:            *d.opts.Comparer,
 		readState:           readState,
-		version:             sOpts.vers,
+		version:             internalOpts.snapshot.vers,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
 		boundsBuf:           buf.boundsBuf,
 		batch:               batch,
-		newIters:            d.newIters,
-		newIterRangeKey:     d.tableNewRangeKeyIter,
+		newIters:            newIters,
+		newIterRangeKey:     newIterRangeKey,
 		seqNum:              seqNum,
+		batchOnlyIter:       internalOpts.batch.batchOnly,
 	}
 	if o != nil {
 		dbi.opts = *o
@@ -1348,20 +1371,24 @@ func (i *Iterator) constructPointIter(
 	if i.batch != nil {
 		numMergingLevels++
 	}
-	numMergingLevels += len(memtables)
 
-	current := i.version
-	if current == nil {
-		current = i.readState.current
-	}
-	numMergingLevels += len(current.L0SublevelFiles)
-	numLevelIters += len(current.L0SublevelFiles)
-	for level := 1; level < len(current.Levels); level++ {
-		if current.Levels[level].Empty() {
-			continue
+	var current *version
+	if !i.batchOnlyIter {
+		numMergingLevels += len(memtables)
+
+		current = i.version
+		if current == nil {
+			current = i.readState.current
 		}
-		numMergingLevels++
-		numLevelIters++
+		numMergingLevels += len(current.L0SublevelFiles)
+		numLevelIters += len(current.L0SublevelFiles)
+		for level := 1; level < len(current.Levels); level++ {
+			if current.Levels[level].Empty() {
+				continue
+			}
+			numMergingLevels++
+			numLevelIters++
+		}
 	}
 
 	if numMergingLevels > cap(mlevels) {
@@ -1399,47 +1426,49 @@ func (i *Iterator) constructPointIter(
 		}
 	}
 
-	// Next are the memtables.
-	for j := len(memtables) - 1; j >= 0; j-- {
-		mem := memtables[j]
-		mlevels = append(mlevels, mergingIterLevel{
-			iter:         mem.newIter(&i.opts),
-			rangeDelIter: mem.newRangeDelIter(&i.opts),
-		})
-	}
-
-	// Next are the file levels: L0 sub-levels followed by lower levels.
-	mlevelsIndex := len(mlevels)
-	levelsIndex := len(levels)
-	mlevels = mlevels[:numMergingLevels]
-	levels = levels[:numLevelIters]
-	i.opts.snapshotForHideObsoletePoints = buf.dbi.seqNum
-	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
-		li := &levels[levelsIndex]
-
-		li.init(ctx, i.opts, &i.comparer, i.newIters, files, level, internalOpts)
-		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
-		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
-		li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
-		mlevels[mlevelsIndex].levelIter = li
-		mlevels[mlevelsIndex].iter = invalidating.MaybeWrapIfInvariants(li)
-
-		levelsIndex++
-		mlevelsIndex++
-	}
-
-	// Add level iterators for the L0 sublevels, iterating from newest to
-	// oldest.
-	for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
-		addLevelIterForFiles(current.L0SublevelFiles[i].Iter(), manifest.L0Sublevel(i))
-	}
-
-	// Add level iterators for the non-empty non-L0 levels.
-	for level := 1; level < len(current.Levels); level++ {
-		if current.Levels[level].Empty() {
-			continue
+	if !i.batchOnlyIter {
+		// Next are the memtables.
+		for j := len(memtables) - 1; j >= 0; j-- {
+			mem := memtables[j]
+			mlevels = append(mlevels, mergingIterLevel{
+				iter:         mem.newIter(&i.opts),
+				rangeDelIter: mem.newRangeDelIter(&i.opts),
+			})
 		}
-		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
+
+		// Next are the file levels: L0 sub-levels followed by lower levels.
+		mlevelsIndex := len(mlevels)
+		levelsIndex := len(levels)
+		mlevels = mlevels[:numMergingLevels]
+		levels = levels[:numLevelIters]
+		i.opts.snapshotForHideObsoletePoints = buf.dbi.seqNum
+		addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
+			li := &levels[levelsIndex]
+
+			li.init(ctx, i.opts, &i.comparer, i.newIters, files, level, internalOpts)
+			li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
+			li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
+			li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
+			mlevels[mlevelsIndex].levelIter = li
+			mlevels[mlevelsIndex].iter = invalidating.MaybeWrapIfInvariants(li)
+
+			levelsIndex++
+			mlevelsIndex++
+		}
+
+		// Add level iterators for the L0 sublevels, iterating from newest to
+		// oldest.
+		for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
+			addLevelIterForFiles(current.L0SublevelFiles[i].Iter(), manifest.L0Sublevel(i))
+		}
+
+		// Add level iterators for the non-empty non-L0 levels.
+		for level := 1; level < len(current.Levels); level++ {
+			if current.Levels[level].Empty() {
+				continue
+			}
+			addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
+		}
 	}
 	buf.merging.init(&i.opts, &i.stats.InternalStats, i.comparer.Compare, i.comparer.Split, mlevels...)
 	if len(mlevels) <= cap(buf.levelsPositioned) {
@@ -1494,7 +1523,7 @@ func (d *DB) NewIter(o *IterOptions) (*Iterator, error) {
 // NewIterWithContext is like NewIter, and additionally accepts a context for
 // tracing.
 func (d *DB) NewIterWithContext(ctx context.Context, o *IterOptions) (*Iterator, error) {
-	return d.newIter(ctx, nil /* batch */, snapshotIterOpts{}, o), nil
+	return d.newIter(ctx, nil /* batch */, newIterOpts{}, o), nil
 }
 
 // NewSnapshot returns a point-in-time view of the current DB state. Iterators

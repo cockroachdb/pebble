@@ -302,6 +302,8 @@ type Iterator struct {
 	// Used for an optimization in external iterators to reduce the number of
 	// merging levels.
 	forwardOnly bool
+	// batchOnlyIter is set to true for Batch.NewBatchOnlyIter.
+	batchOnlyIter bool
 	// closePointIterOnce is set to true if this point iter can only be Close()d
 	// once, _and_ closing i.iter and then i.pointIter would close i.pointIter
 	// twice. This is necessary to track if the point iter is an internal iterator
@@ -2708,7 +2710,9 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 	if opts.IterOptions == nil {
 		opts.IterOptions = &i.opts
 	}
-
+	if i.batchOnlyIter {
+		return nil, errors.Errorf("cannot Clone a batch-only Iterator")
+	}
 	readState := i.readState
 	vers := i.version
 	if readState == nil && vers == nil {

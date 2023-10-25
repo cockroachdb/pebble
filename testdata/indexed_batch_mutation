@@ -17,6 +17,17 @@ next
 foo: (foo, .)
 .
 
+# Same behavior with a batch-only iterator.
+new-batch-only-iter i-bo0
+----
+
+iter iter=i-bo0
+first
+next
+----
+foo: (foo, .)
+.
+
 # Set a new key, while the above iterator is still open.
 
 mutate
@@ -32,10 +43,30 @@ next
 foo: (foo, .)
 .
 
+# Same behavior with a batch-only iterator.
+iter iter=i-bo0
+prev
+next
+----
+foo: (foo, .)
+.
+
 # A set-options operation should refresh the Iterator's view of the batch. The
 # bar key should now be visibile.
 
 iter iter=i0
+set-options
+first
+next
+next
+----
+.
+bar: (bar, .)
+foo: (foo, .)
+.
+
+# Same behavior with a batch-only iterator.
+iter iter=i-bo0
 set-options
 first
 next
@@ -61,9 +92,27 @@ prev
 foo: (foo, .)
 bar: (bar, .)
 
+# Same behavior with a batch-only iterator.
+iter iter=i-bo0
+prev
+prev
+----
+foo: (foo, .)
+bar: (bar, .)
+
 # After refreshing the iterator's view of the batch, foo should be deleted.
 
 iter iter=i0
+set-options
+seek-ge foo
+seek-lt foo
+----
+.
+.
+bar: (bar, .)
+
+# Same behavior with a batch-only iterator.
+iter iter=i-bo0
 set-options
 seek-ge foo
 seek-lt foo
@@ -88,9 +137,29 @@ next
 .
 bar: (bar, .)
 
+# Same behavior with a batch-only iterator.
+iter iter=i-bo0
+prev
+next
+----
+.
+bar: (bar, .)
+
 # But refreshing the batch through a call to SetOptions should surface them.
 
 iter iter=i0
+set-options
+first
+next
+next
+----
+.
+a: (., [a-c) @1=boop UPDATED)
+b: (b, [a-c) @1=boop)
+bar: (bar, [a-c) @1=boop)
+
+# Same behavior with a batch-only iterator.
+iter iter=i-bo0
 set-options
 first
 next
@@ -120,7 +189,35 @@ b: (b, [a-c) @1=boop)
 a: (., [a-c) @1=boop)
 .
 
+# Same behavior with a batch-only iterator.
+iter iter=i-bo0
+next
+prev
+prev
+prev
+prev
+----
+.
+bar: (bar, [a-c) @1=boop UPDATED)
+b: (b, [a-c) @1=boop)
+a: (., [a-c) @1=boop)
+.
+
 iter iter=i0
+set-options
+first
+next
+next
+next
+----
+.
+a: (., [a-ace) @1=boop UPDATED)
+arc: (., [arc-c) @1=boop UPDATED)
+b: (b, [arc-c) @1=boop)
+bar: (bar, [arc-c) @1=boop)
+
+# Same behavior with a batch-only iterator.
+iter iter=i-bo0
 set-options
 first
 next
@@ -322,6 +419,19 @@ apple: (apple, [a-z) @5=poi, @2=bax, @1=boop)
 foo: (foo, [a-z) @5=poi, @2=bax, @1=boop)
 .
 
+# The batch-only iter only sees the contents of the batch.
+new-batch-only-iter i-bo1
+----
+
+iter iter=i-bo1
+first
+next
+next
+----
+a: (., [a-z) @2=bax, @1=boop UPDATED)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+
 # Mutate all the open iterators' underlying batch.
 
 mutate
@@ -357,6 +467,27 @@ foo: (foo, [a-z) @2=bax, @1=boop)
 a: (., [a-z) @6=yaya, @2=bax, @1=boop UPDATED)
 c: (c, [a-z) @6=yaya, @2=bax, @1=boop)
 foo: (foo, [a-z) @6=yaya, @2=bax, @1=boop)
+
+
+# The batch-only iter sees the more recent batch writes after refreshing.
+iter iter=i-bo1
+first
+next
+next
+set-options
+first
+next
+next
+next
+----
+a: (., [a-z) @2=bax, @1=boop UPDATED)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+.
+a: (., [a-z) @6=yaya, @2=bax, @1=boop UPDATED)
+c: (c, [a-z) @6=yaya, @2=bax, @1=boop)
+foo: (foo, [a-z) @6=yaya, @2=bax, @1=boop)
+.
 
 # Test a scenario where constructing an Iterator should NOT use the cached
 # fragmented tombstones / range keys, because the new Iterator is a Clone which

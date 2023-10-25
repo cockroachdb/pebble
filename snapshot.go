@@ -67,7 +67,9 @@ func (s *Snapshot) NewIterWithContext(ctx context.Context, o *IterOptions) (*Ite
 	if s.db == nil {
 		panic(ErrClosed)
 	}
-	return s.db.newIter(ctx, nil /* batch */, snapshotIterOpts{seqNum: s.seqNum}, o), nil
+	return s.db.newIter(ctx, nil /* batch */, newIterOpts{
+		snapshot: snapshotIterOpts{seqNum: s.seqNum},
+	}, o), nil
 }
 
 // ScanInternal scans all internal keys within the specified bounds, truncating
@@ -471,14 +473,14 @@ func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
 	defer es.mu.Unlock()
 	if es.mu.vers != nil {
 		sOpts := snapshotIterOpts{seqNum: es.seqNum, vers: es.mu.vers}
-		return es.db.newIter(ctx, nil /* batch */, sOpts, o), nil
+		return es.db.newIter(ctx, nil /* batch */, newIterOpts{snapshot: sOpts}, o), nil
 	}
 
 	if es.excised.Load() {
 		return nil, ErrSnapshotExcised
 	}
 	sOpts := snapshotIterOpts{seqNum: es.seqNum}
-	iter := es.db.newIter(ctx, nil /* batch */, sOpts, o)
+	iter := es.db.newIter(ctx, nil /* batch */, newIterOpts{snapshot: sOpts}, o)
 
 	// If excised is true, then keys relevant to the snapshot might not be
 	// present in the readState being used by the iterator. Error out.
