@@ -101,6 +101,10 @@ func (l noFatalLogger) Infof(format string, args ...interface{}) {
 	l.t.Logf(format, args...)
 }
 
+func (l noFatalLogger) Errorf(format string, args ...interface{}) {
+	l.t.Logf(format, args...)
+}
+
 func (l noFatalLogger) Fatalf(format string, args ...interface{}) {
 	l.t.Logf(format, args...)
 }

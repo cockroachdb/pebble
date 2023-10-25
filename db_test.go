@@ -1396,6 +1396,7 @@ type testTracer struct {
 }
 
 func (t *testTracer) Infof(format string, args ...interface{})  {}
+func (t *testTracer) Errorf(format string, args ...interface{}) {}
 func (t *testTracer) Fatalf(format string, args ...interface{}) {}
 
 func (t *testTracer) Eventf(ctx context.Context, format string, args ...interface{}) {

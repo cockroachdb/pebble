@@ -83,6 +83,12 @@ func (h *history) Infof(format string, args ...interface{}) {
 	_ = h.log.Output(2, h.format("// INFO: ", format, args...))
 }
 
+// Errorf implements the pebble.Logger interface. Note that the output is
+// commented.
+func (h *history) Errorf(format string, args ...interface{}) {
+	_ = h.log.Output(2, h.format("// ERROR: ", format, args...))
+}
+
 // Fatalf implements the pebble.Logger interface. Note that the output is
 // commented.
 func (h *history) Fatalf(format string, args ...interface{}) {

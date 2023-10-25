@@ -555,7 +555,7 @@ func ingestLink(
 		)
 		if err != nil {
 			if err2 := ingestCleanup(objProvider, lr.localMeta[:i]); err2 != nil {
-				opts.Logger.Infof("ingest cleanup failed: %v", err2)
+				opts.Logger.Errorf("ingest cleanup failed: %v", err2)
 			}
 			return err
 		}
@@ -1399,7 +1399,7 @@ func (d *DB) ingest(
 				err = firstError(err, rkeyIter.Close())
 			}
 			if err != nil {
-				d.opts.Logger.Infof("ingest error reading flushable for log %s: %s", m.logNum, err)
+				d.opts.Logger.Errorf("ingest error reading flushable for log %s: %s", m.logNum, err)
 			}
 		}
 
@@ -1506,14 +1506,14 @@ func (d *DB) ingest(
 
 	if err != nil {
 		if err2 := ingestCleanup(d.objProvider, loadResult.localMeta); err2 != nil {
-			d.opts.Logger.Infof("ingest cleanup failed: %v", err2)
+			d.opts.Logger.Errorf("ingest cleanup failed: %v", err2)
 		}
 	} else {
 		// Since we either created a hard link to the ingesting files, or copied
 		// them over, it is safe to remove the originals paths.
 		for _, path := range loadResult.localPaths {
 			if err2 := d.opts.FS.Remove(path); err2 != nil {
-				d.opts.Logger.Infof("ingest failed to remove original file: %s", err2)
+				d.opts.Logger.Errorf("ingest failed to remove original file: %s", err2)
 			}
 		}
 	}
