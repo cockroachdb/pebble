@@ -330,7 +330,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 
 	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
-	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, d.objProvider, d.opts, tableCacheSize)
+	d.tableCache = newTableCacheContainer(
+		opts.TableCache, d.cacheID, d.objProvider, d.opts, tableCacheSize,
+		&sstable.CategoryStatsCollector{})
 	d.newIters = d.tableCache.newIters
 	d.tableNewRangeKeyIter = d.tableCache.newRangeKeyIter
 

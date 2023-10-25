@@ -63,11 +63,12 @@ type tableCacheOpts struct {
 	// track of leaked iterators on a per-db level.
 	iterCount *atomic.Int32
 
-	loggerAndTracer LoggerAndTracer
-	cacheID         uint64
-	objProvider     objstorage.Provider
-	opts            sstable.ReaderOptions
-	filterMetrics   *sstable.FilterMetricsTracker
+	loggerAndTracer   LoggerAndTracer
+	cacheID           uint64
+	objProvider       objstorage.Provider
+	opts              sstable.ReaderOptions
+	filterMetrics     *sstable.FilterMetricsTracker
+	sstStatsCollector *sstable.CategoryStatsCollector
 }
 
 // tableCacheContainer contains the table cache and
@@ -83,7 +84,12 @@ type tableCacheContainer struct {
 // newTableCacheContainer will panic if the underlying cache in the table cache
 // doesn't match Options.Cache.
 func newTableCacheContainer(
-	tc *TableCache, cacheID uint64, objProvider objstorage.Provider, opts *Options, size int,
+	tc *TableCache,
+	cacheID uint64,
+	objProvider objstorage.Provider,
+	opts *Options,
+	size int,
+	sstStatsCollector *sstable.CategoryStatsCollector,
 ) *tableCacheContainer {
 	// We will release a ref to table cache acquired here when tableCacheContainer.close is called.
 	if tc != nil {
@@ -105,6 +111,7 @@ func newTableCacheContainer(
 	t.dbOpts.opts = opts.MakeReaderOptions()
 	t.dbOpts.filterMetrics = &sstable.FilterMetricsTracker{}
 	t.dbOpts.iterCount = new(atomic.Int32)
+	t.dbOpts.sstStatsCollector = sstStatsCollector
 	return t
 }
 
@@ -512,11 +519,12 @@ func (c *tableCacheShard) newIters(
 		hideObsoletePoints = true
 	}
 	if internalOpts.bytesIterated != nil {
-		iter, err = cr.NewCompactionIter(internalOpts.bytesIterated, rp, internalOpts.bufferPool)
+		iter, err = cr.NewCompactionIter(
+			internalOpts.bytesIterated, dbOpts.sstStatsCollector, rp, internalOpts.bufferPool)
 	} else {
 		iter, err = cr.NewIterWithBlockPropertyFiltersAndContextEtc(
 			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, hideObsoletePoints, useFilter,
-			internalOpts.stats, rp)
+			internalOpts.stats, dbOpts.sstStatsCollector, rp)
 	}
 	if err != nil {
 		if rangeDelIter != nil {

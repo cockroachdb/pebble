@@ -1228,7 +1228,7 @@ func (d *DB) ScanInternal(
 			UpperBound: upper,
 		},
 	}
-	iter := d.newInternalIter(snapshotIterOpts{} /* snapshot */, scanInternalOpts)
+	iter := d.newInternalIter(ctx, snapshotIterOpts{} /* snapshot */, scanInternalOpts)
 	defer iter.close()
 	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
 }
@@ -1240,7 +1240,9 @@ func (d *DB) ScanInternal(
 // TODO(bilal): This method has a lot of similarities with db.newIter as well as
 // finishInitializingIter. Both pairs of methods should be refactored to reduce
 // this duplication.
-func (d *DB) newInternalIter(sOpts snapshotIterOpts, o *scanInternalOptions) *scanInternalIterator {
+func (d *DB) newInternalIter(
+	ctx context.Context, sOpts snapshotIterOpts, o *scanInternalOptions,
+) *scanInternalIterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1266,6 +1268,7 @@ func (d *DB) newInternalIter(sOpts snapshotIterOpts, o *scanInternalOptions) *sc
 	// them together.
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &scanInternalIterator{
+		ctx:             ctx,
 		db:              d,
 		comparer:        d.opts.Comparer,
 		merge:           d.opts.Merger.Merge,
@@ -1994,6 +1997,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.BlockCache = d.opts.Cache.Metrics()
 	metrics.TableCache, metrics.Filter = d.tableCache.metrics()
 	metrics.TableIters = int64(d.tableCache.iterCount())
+	metrics.CategoryStats = d.tableCache.dbOpts.sstStatsCollector.GetStats()
 
 	metrics.SecondaryCacheMetrics = d.objProvider.Metrics()
 
@@ -2843,7 +2847,7 @@ func (d *DB) ScanStatistics(
 		},
 		rateLimitFunc: rateLimitFunc,
 	}
-	iter := d.newInternalIter(snapshotIterOpts{}, scanInternalOpts)
+	iter := d.newInternalIter(ctx, snapshotIterOpts{}, scanInternalOpts)
 	defer iter.close()
 
 	err := scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)

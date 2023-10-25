@@ -1373,8 +1373,10 @@ func (c *compaction) newInputIter(
 			// initRangeDel, the levelIter will close and forget the range
 			// deletion iterator when it steps on to a new file. Surfacing range
 			// deletions to compactions are handled below.
-			iters = append(iters, newLevelIter(iterOpts, c.comparer, newIters,
-				level.files.Iter(), l, internalIterOpts{
+			iters = append(iters, newLevelIter(
+				sstable.ContextWithCategory(
+					context.Background(), "pebble-compaction", sstable.NonLatencySensitiveQosLevel),
+				iterOpts, c.comparer, newIters, level.files.Iter(), l, internalIterOpts{
 					bytesIterated: &c.bytesIterated,
 					bufferPool:    &c.bufferPool,
 				}))
