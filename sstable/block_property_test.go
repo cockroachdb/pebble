@@ -928,7 +928,7 @@ func TestBlockProperties(t *testing.T) {
 
 				// Enumerate point key data blocks encoded into the index.
 				if f != nil {
-					indexH, err := r.readIndex(context.Background(), nil)
+					indexH, err := r.readIndex(context.Background(), nil, nil)
 					if err != nil {
 						return err.Error()
 					}
@@ -1010,7 +1010,7 @@ func TestBlockProperties(t *testing.T) {
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
 				lower, upper, filterer, false /* use (bloom) filter */, &stats,
-				TrivialReaderProvider{Reader: r})
+				CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
 			}
@@ -1090,7 +1090,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
 				lower, upper, filterer, false /* use (bloom) filter */, &stats,
-				TrivialReaderProvider{Reader: r})
+				CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
 			}
@@ -1269,7 +1269,7 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 }
 
 func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
-	bh, err := r.readIndex(context.Background(), nil)
+	bh, err := r.readIndex(context.Background(), nil, nil)
 	if err != nil {
 		return err.Error()
 	}
@@ -1316,7 +1316,8 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		// block that bhp points to, along with its block properties.
 		if twoLevelIndex {
 			subiter := &blockIter{}
-			subIndex, err := r.readBlock(context.Background(), bhp.BlockHandle, nil, nil, nil, nil)
+			subIndex, err := r.readBlock(
+				context.Background(), bhp.BlockHandle, nil, nil, nil, nil, nil)
 			if err != nil {
 				return err.Error()
 			}

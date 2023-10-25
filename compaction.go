@@ -1342,7 +1342,13 @@ func (c *compaction) newInputIter(
 			}
 		}
 	}()
-	iterOpts := IterOptions{logger: c.logger}
+	iterOpts := IterOptions{
+		CategoryAndQoS: sstable.CategoryAndQoS{
+			Category: "pebble-compaction",
+			QoSLevel: sstable.NonLatencySensitiveQoSLevel,
+		},
+		logger: c.logger,
+	}
 
 	// Populate iters, rangeDelIters and rangeKeyIters with the appropriate
 	// constituent iterators. This depends on whether this is a flush or a
@@ -1367,8 +1373,8 @@ func (c *compaction) newInputIter(
 			// initRangeDel, the levelIter will close and forget the range
 			// deletion iterator when it steps on to a new file. Surfacing range
 			// deletions to compactions are handled below.
-			iters = append(iters, newLevelIter(iterOpts, c.comparer, newIters,
-				level.files.Iter(), l, internalIterOpts{
+			iters = append(iters, newLevelIter(context.Background(),
+				iterOpts, c.comparer, newIters, level.files.Iter(), l, internalIterOpts{
 					bytesIterated: &c.bytesIterated,
 					bufferPool:    &c.bufferPool,
 				}))
@@ -1409,7 +1415,8 @@ func (c *compaction) newInputIter(
 			// mergingIter.
 			iter := level.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				rangeDelIter, closer, err := c.newRangeDelIter(newIters, iter.Take(), nil, l, &c.bytesIterated)
+				rangeDelIter, closer, err := c.newRangeDelIter(
+					newIters, iter.Take(), iterOpts, l, &c.bytesIterated)
 				if err != nil {
 					// The error will already be annotated with the BackingFileNum, so
 					// we annotate it with the FileNum.
@@ -1525,12 +1532,13 @@ func (c *compaction) newInputIter(
 func (c *compaction) newRangeDelIter(
 	newIters tableNewIters,
 	f manifest.LevelFile,
-	_ *IterOptions,
+	opts IterOptions,
 	l manifest.Level,
 	bytesIterated *uint64,
 ) (keyspan.FragmentIterator, io.Closer, error) {
+	opts.level = l
 	iter, rangeDelIter, err := newIters(context.Background(), f.FileMetadata,
-		&IterOptions{level: l}, internalIterOpts{
+		&opts, internalIterOpts{
 			bytesIterated: &c.bytesIterated,
 			bufferPool:    &c.bufferPool,
 		})

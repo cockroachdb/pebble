@@ -884,10 +884,14 @@ func ingestTargetLevel(
 	if v.L0Sublevels == nil {
 		return 0, nil, errors.AssertionFailedf("could not read L0 sublevels")
 	}
+	iterOps.CategoryAndQoS = sstable.CategoryAndQoS{
+		Category: "pebble-ingest",
+		QoSLevel: sstable.LatencySensitiveQoSLevel,
+	}
 	// Check for overlap over the keys of L0 by iterating over the sublevels.
 	for subLevel := 0; subLevel < len(v.L0SublevelFiles); subLevel++ {
-		iter := newLevelIter(iterOps, comparer, newIters,
-			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), internalIterOpts{})
+		iter := newLevelIter(context.Background(),
+			iterOps, comparer, newIters, v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), internalIterOpts{})
 
 		var rangeDelIter keyspan.FragmentIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
@@ -917,8 +921,8 @@ func ingestTargetLevel(
 
 	level := baseLevel
 	for ; level < numLevels; level++ {
-		levelIter := newLevelIter(iterOps, comparer, newIters,
-			v.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
+		levelIter := newLevelIter(context.Background(),
+			iterOps, comparer, newIters, v.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
 		var rangeDelIter keyspan.FragmentIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
 		// sets it up for the target file.
@@ -1336,6 +1340,12 @@ func (d *DB) ingest(
 	var mut *memTable
 	// asFlushable indicates whether the sstable was ingested as a flushable.
 	var asFlushable bool
+	iterOps := IterOptions{
+		CategoryAndQoS: sstable.CategoryAndQoS{
+			Category: "pebble-ingest",
+			QoSLevel: sstable.LatencySensitiveQoSLevel,
+		},
+	}
 	prepare := func(seqNum uint64) {
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
 
@@ -1349,9 +1359,9 @@ func (d *DB) ingest(
 
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
-			iter := m.newIter(nil)
-			rangeDelIter := m.newRangeDelIter(nil)
-			rkeyIter := m.newRangeKeyIter(nil)
+			iter := m.newIter(&iterOps)
+			rangeDelIter := m.newRangeDelIter(&iterOps)
+			rkeyIter := m.newRangeKeyIter(&iterOps)
 
 			checkForOverlap := func(i int, meta *fileMetadata) {
 				if metaFlushableOverlaps[i] {
@@ -1646,7 +1656,13 @@ func (d *DB) excise(
 			// This file will contain point keys
 			smallestPointKey := m.SmallestPointKey
 			var err error
-			iter, rangeDelIter, err = d.newIters(context.TODO(), m, &IterOptions{level: manifest.Level(level)}, internalIterOpts{})
+			iter, rangeDelIter, err = d.newIters(context.TODO(), m, &IterOptions{
+				CategoryAndQoS: sstable.CategoryAndQoS{
+					Category: "pebble-ingest",
+					QoSLevel: sstable.LatencySensitiveQoSLevel,
+				},
+				level: manifest.Level(level),
+			}, internalIterOpts{})
 			if err != nil {
 				return nil, err
 			}
@@ -1757,7 +1773,13 @@ func (d *DB) excise(
 		largestPointKey := m.LargestPointKey
 		var err error
 		if iter == nil && rangeDelIter == nil {
-			iter, rangeDelIter, err = d.newIters(context.TODO(), m, &IterOptions{level: manifest.Level(level)}, internalIterOpts{})
+			iter, rangeDelIter, err = d.newIters(context.TODO(), m, &IterOptions{
+				CategoryAndQoS: sstable.CategoryAndQoS{
+					Category: "pebble-ingest",
+					QoSLevel: sstable.LatencySensitiveQoSLevel,
+				},
+				level: manifest.Level(level),
+			}, internalIterOpts{})
 			if err != nil {
 				return nil, err
 			}
