@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 const (
@@ -400,6 +401,7 @@ type IteratorLevel struct {
 // *must* return the range delete as well as the range key unset/delete that did
 // the shadowing.
 type scanInternalIterator struct {
+	ctx             context.Context
 	db              *DB
 	opts            scanInternalOptions
 	comparer        *base.Comparer
@@ -694,7 +696,9 @@ func scanInternalImpl(
 }
 
 // constructPointIter constructs a merging iterator and sets i.iter to it.
-func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
+func (i *scanInternalIterator) constructPointIter(
+	categoryAndQoS sstable.CategoryAndQoS, memtables flushableList, buf *iterAlloc,
+) {
 	// Merging levels and levels from iterAlloc.
 	mlevels := buf.mlevels[:0]
 	levels := buf.levels[:0]
@@ -759,17 +763,18 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	levels = levels[:numLevelIters]
 	rangeDelLevels = rangeDelLevels[:numLevelIters]
 	i.opts.IterOptions.snapshotForHideObsoletePoints = i.seqNum
+	i.opts.IterOptions.CategoryAndQoS = categoryAndQoS
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
 		li := &levels[levelsIndex]
 		rli := &rangeDelLevels[levelsIndex]
 
 		li.init(
-			context.Background(), i.opts.IterOptions, i.comparer, i.newIters, files, level,
+			i.ctx, i.opts.IterOptions, i.comparer, i.newIters, files, level,
 			internalIterOpts{})
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		mlevels[mlevelsIndex].iter = li
 		rli.Init(keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
-			i.comparer.Compare, tableNewRangeDelIter(context.Background(), i.newIters), files, level,
+			i.comparer.Compare, tableNewRangeDelIter(i.ctx, i.newIters), files, level,
 			manifest.KeyTypePoint)
 		rangeDelIters = append(rangeDelIters, rli)
 

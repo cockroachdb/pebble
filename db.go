@@ -1233,6 +1233,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 // iteration is invalid in those cases.
 func (d *DB) ScanInternal(
 	ctx context.Context,
+	categoryAndQoS sstable.CategoryAndQoS,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
@@ -1240,6 +1241,7 @@ func (d *DB) ScanInternal(
 	visitSharedFile func(sst *SharedSSTMeta) error,
 ) error {
 	scanInternalOpts := &scanInternalOptions{
+		CategoryAndQoS:   categoryAndQoS,
 		visitPointKey:    visitPointKey,
 		visitRangeDel:    visitRangeDel,
 		visitRangeKey:    visitRangeKey,
@@ -1251,7 +1253,7 @@ func (d *DB) ScanInternal(
 			UpperBound: upper,
 		},
 	}
-	iter := d.newInternalIter(snapshotIterOpts{} /* snapshot */, scanInternalOpts)
+	iter := d.newInternalIter(ctx, snapshotIterOpts{} /* snapshot */, scanInternalOpts)
 	defer iter.close()
 	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
 }
@@ -1263,7 +1265,9 @@ func (d *DB) ScanInternal(
 // TODO(bilal): This method has a lot of similarities with db.newIter as well as
 // finishInitializingIter. Both pairs of methods should be refactored to reduce
 // this duplication.
-func (d *DB) newInternalIter(sOpts snapshotIterOpts, o *scanInternalOptions) *scanInternalIterator {
+func (d *DB) newInternalIter(
+	ctx context.Context, sOpts snapshotIterOpts, o *scanInternalOptions,
+) *scanInternalIterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1289,6 +1293,7 @@ func (d *DB) newInternalIter(sOpts snapshotIterOpts, o *scanInternalOptions) *sc
 	// them together.
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &scanInternalIterator{
+		ctx:             ctx,
 		db:              d,
 		comparer:        d.opts.Comparer,
 		merge:           d.opts.Merger.Merge,
@@ -1300,9 +1305,7 @@ func (d *DB) newInternalIter(sOpts snapshotIterOpts, o *scanInternalOptions) *sc
 		seqNum:          seqNum,
 		mergingIter:     &buf.merging,
 	}
-	if o != nil {
-		dbi.opts = *o
-	}
+	dbi.opts = *o
 	dbi.opts.logger = d.opts.Logger
 	if d.opts.private.disableLazyCombinedIteration {
 		dbi.opts.disableLazyCombinedIteration = true
@@ -1326,7 +1329,7 @@ func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *sc
 	}
 	i.initializeBoundBufs(i.opts.LowerBound, i.opts.UpperBound)
 
-	i.constructPointIter(memtables, buf)
+	i.constructPointIter(i.opts.CategoryAndQoS, memtables, buf)
 
 	// For internal iterators, we skip the lazy combined iteration optimization
 	// entirely, and create the range key iterator stack directly.
@@ -2029,6 +2032,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.BlockCache = d.opts.Cache.Metrics()
 	metrics.TableCache, metrics.Filter = d.tableCache.metrics()
 	metrics.TableIters = int64(d.tableCache.iterCount())
+	metrics.CategoryStats = d.tableCache.dbOpts.sstStatsCollector.GetStats()
 
 	metrics.SecondaryCacheMetrics = d.objProvider.Metrics()
 
@@ -2878,7 +2882,7 @@ func (d *DB) ScanStatistics(
 		},
 		rateLimitFunc: rateLimitFunc,
 	}
-	iter := d.newInternalIter(snapshotIterOpts{}, scanInternalOpts)
+	iter := d.newInternalIter(ctx, snapshotIterOpts{}, scanInternalOpts)
 	defer iter.close()
 
 	err := scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)

@@ -204,6 +204,7 @@ func TestScanInternal(t *testing.T) {
 	type scanInternalReader interface {
 		ScanInternal(
 			ctx context.Context,
+			categoryAndQoS sstable.CategoryAndQoS,
 			lower, upper []byte,
 			visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
 			visitRangeDel func(start, end []byte, seqNum uint64) error,
@@ -453,7 +454,7 @@ func TestScanInternal(t *testing.T) {
 					}
 				}
 			}
-			err := reader.ScanInternal(context.TODO(), lower, upper,
+			err := reader.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, lower, upper,
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					v := value.InPlaceValue()
 					fmt.Fprintf(&b, "%s (%s)\n", key, v)

@@ -12,8 +12,10 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 	"github.com/stretchr/testify/require"
@@ -91,11 +93,16 @@ func exampleMetrics() Metrics {
 }
 
 func TestMetrics(t *testing.T) {
+	c := cache.New(cacheDefaultSize)
+	defer c.Unref()
 	opts := &Options{
+		Cache:                 c,
 		Comparer:              testkeys.Comparer,
 		FormatMajorVersion:    FormatNewest,
 		FS:                    vfs.NewMem(),
 		L0CompactionThreshold: 8,
+		// Large value for determinism.
+		MaxOpenFiles: 10000,
 	}
 	opts.Experimental.EnableValueBlocks = func() bool { return true }
 	opts.Levels = append(opts.Levels, LevelOptions{TargetFileSize: 50})
@@ -220,7 +227,7 @@ func TestMetrics(t *testing.T) {
 			return ""
 
 		case "iter-new":
-			if len(td.CmdArgs) != 1 {
+			if len(td.CmdArgs) < 1 {
 				return "iter-new <name>"
 			}
 			name := td.CmdArgs[0].String()
@@ -229,7 +236,18 @@ func TestMetrics(t *testing.T) {
 					return err.Error()
 				}
 			}
-			iter, _ := d.NewIter(nil)
+			var categoryAndQoS sstable.CategoryAndQoS
+			if td.HasArg("category") {
+				var s string
+				td.ScanArgs(t, "category", &s)
+				categoryAndQoS.Category = sstable.Category(s)
+			}
+			if td.HasArg("qos") {
+				var qos string
+				td.ScanArgs(t, "qos", &qos)
+				categoryAndQoS.QoSLevel = sstable.StringToQoSForTesting(qos)
+			}
+			iter, _ := d.NewIter(&IterOptions{CategoryAndQoS: categoryAndQoS})
 			// Some iterators (eg. levelIter) do not instantiate the underlying
 			// iterator until the first positioning call. Position the iterator
 			// so that levelIters will have loaded an sstable.
@@ -244,7 +262,28 @@ func TestMetrics(t *testing.T) {
 			d.waitTableStats()
 			d.mu.Unlock()
 
-			return d.Metrics().StringForTests()
+			m := d.Metrics()
+			if td.HasArg("zero-cache-hits-misses") {
+				// Avoid non-determinism.
+				m.TableCache.Hits = 0
+				m.TableCache.Misses = 0
+				m.BlockCache.Hits = 0
+				m.BlockCache.Misses = 0
+				// Empirically, the unknown stats are also non-deterministic.
+				if n := len(m.CategoryStats); n > 0 {
+					m.CategoryStats[n-1].CategoryStats = sstable.CategoryStats{}
+				}
+			}
+			var buf strings.Builder
+			fmt.Fprintf(&buf, "%s", m.StringForTests())
+			if len(m.CategoryStats) > 0 {
+				fmt.Fprintf(&buf, "Iter category stats:\n")
+				for _, stats := range m.CategoryStats {
+					fmt.Fprintf(&buf, "%20s, %11s: %+v\n", stats.Category,
+						redact.StringWithoutMarkers(stats.QoSLevel), stats.CategoryStats)
+				}
+			}
+			return buf.String()
 
 		case "metrics-value":
 			// metrics-value confirms the value of a given metric. Note that there

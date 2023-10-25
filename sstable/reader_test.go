@@ -42,7 +42,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		dataH, err := r.readFilter(context.Background(), nil /* stats */)
+		dataH, err := r.readFilter(context.Background(), nil /* stats */, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -354,7 +354,7 @@ func TestVirtualReader(t *testing.T) {
 
 			var rp ReaderProvider
 			var bytesIterated uint64
-			iter, err := v.NewCompactionIter(&bytesIterated, rp, &bp)
+			iter, err := v.NewCompactionIter(&bytesIterated, CategoryAndQoS{}, nil, rp, &bp)
 			if err != nil {
 				return err.Error()
 			}
@@ -440,7 +440,7 @@ func TestVirtualReader(t *testing.T) {
 			var stats base.InternalIteratorStats
 			iter, err := v.NewIterWithBlockPropertyFiltersAndContextEtc(
 				context.Background(), lower, upper, nil, false, false,
-				&stats, TrivialReaderProvider{Reader: r})
+				&stats, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
 			}
@@ -717,7 +717,7 @@ func TestInvalidReader(t *testing.T) {
 }
 
 func indexLayoutString(t *testing.T, r *Reader) string {
-	indexH, err := r.readIndex(context.Background(), nil)
+	indexH, err := r.readIndex(context.Background(), nil, nil)
 	require.NoError(t, err)
 	defer indexH.Release()
 	var buf strings.Builder
@@ -734,7 +734,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 		fmt.Fprintf(&buf, " %s: size %d\n", string(key.UserKey), bh.Length)
 		if twoLevelIndex {
 			b, err := r.readBlock(
-				context.Background(), bh.BlockHandle, nil, nil, nil, nil)
+				context.Background(), bh.BlockHandle, nil, nil, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
 			iter2, err := newBlockIter(r.Compare, b.Get())
@@ -828,6 +828,8 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					hideObsoletePoints,
 					true, /* use filter block */
 					&stats,
+					CategoryAndQoS{},
+					nil,
 					TrivialReaderProvider{Reader: r},
 				)
 				if err != nil {
@@ -966,7 +968,8 @@ func testBytesIteratedWithCompression(
 				var bytesIterated, prevIterated uint64
 				var pool BufferPool
 				pool.Init(5)
-				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r}, &pool)
+				citer, err := r.NewCompactionIter(
+					&bytesIterated, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
 				require.NoError(t, err)
 
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
@@ -1023,7 +1026,8 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				var bytesIterated uint64
 				var pool BufferPool
 				pool.Init(5)
-				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r}, &pool)
+				citer, err := r.NewCompactionIter(
+					&bytesIterated, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
@@ -1078,7 +1082,8 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	{
 		var pool BufferPool
 		pool.Init(5)
-		citer, err := r.NewCompactionIter(nil, TrivialReaderProvider{Reader: r}, &pool)
+		citer, err := r.NewCompactionIter(
+			nil, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
 		require.NoError(t, err)
 		defer citer.Close()
 		i := citer.(*compactionIterator)
@@ -2070,7 +2075,8 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 								}
 								iter, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
 									context.Background(), nil, nil, filterer, hideObsoletePoints,
-									true, nil, TrivialReaderProvider{Reader: r})
+									true, nil, CategoryAndQoS{}, nil,
+									TrivialReaderProvider{Reader: r})
 								require.NoError(b, err)
 								b.ResetTimer()
 								for i := 0; i < b.N; i++ {

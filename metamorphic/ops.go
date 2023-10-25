@@ -1326,7 +1326,7 @@ func (r *replicateOp) runSharedReplicate(
 ) {
 	var sharedSSTs []pebble.SharedSSTMeta
 	var err error
-	err = source.ScanInternal(context.TODO(), r.start, r.end,
+	err = source.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, r.start, r.end,
 		func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
 			val, _, err := value.Value(nil)
 			if err != nil {

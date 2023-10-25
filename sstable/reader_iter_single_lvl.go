@@ -52,8 +52,18 @@ type singleLevelIterator struct {
 	vbRHPrealloc objstorageprovider.PreallocatedReadHandle
 	err          error
 	closeHook    func(i Iterator) error
-	stats        *base.InternalIteratorStats
-	bufferPool   *BufferPool
+	// stats and iterStats are slightly different. stats is a shared struct
+	// supplied from the outside, and represents stats for the whole iterator
+	// tree and can be reset from the outside (e.g. when the pebble.Iterator is
+	// being reused). It is currently only provided when the iterator tree is
+	// rooted at pebble.Iterator. iterStats is this sstable iterators private
+	// stats that are not reported to a CategoryStatsCollector when this
+	// iterator is closed. More paths are instrumented with this as the
+	// CategoryStatsCollector needed for this is provided by the
+	// tableCacheContainer (which is more universally used).
+	stats      *base.InternalIteratorStats
+	iterStats  iterStatsAccumulator
+	bufferPool *BufferPool
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
@@ -174,13 +184,16 @@ func (i *singleLevelIterator) init(
 	filterer *BlockPropertiesFilterer,
 	useFilter, hideObsoletePoints bool,
 	stats *base.InternalIteratorStats,
+	categoryAndQoS CategoryAndQoS,
+	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *BufferPool,
 ) error {
 	if r.err != nil {
 		return r.err
 	}
-	indexH, err := r.readIndex(ctx, stats)
+	i.iterStats.init(categoryAndQoS, statsCollector)
+	indexH, err := r.readIndex(ctx, stats, &i.iterStats)
 	if err != nil {
 		return err
 	}
@@ -395,7 +408,8 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 		// blockIntersects
 	}
 	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.DataBlock)
-	block, err := i.reader.readBlock(ctx, i.dataBH, nil /* transform */, i.dataRH, i.stats, i.bufferPool)
+	block, err := i.reader.readBlock(
+		ctx, i.dataBH, nil /* transform */, i.dataRH, i.stats, &i.iterStats, i.bufferPool)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -416,7 +430,7 @@ func (i *singleLevelIterator) readBlockForVBR(
 	ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
 ) (bufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.ValueBlock)
-	return i.reader.readBlock(ctx, h, nil, i.vbRH, stats, i.bufferPool)
+	return i.reader.readBlock(ctx, h, nil, i.vbRH, stats, &i.iterStats, i.bufferPool)
 }
 
 // resolveMaybeExcluded is invoked when the block-property filterer has found
@@ -782,7 +796,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 		i.lastBloomFilterMatched = false
 		// Check prefix bloom filter.
 		var dataH bufferHandle
-		dataH, i.err = i.reader.readFilter(i.ctx, i.stats)
+		dataH, i.err = i.reader.readFilter(i.ctx, i.stats, &i.iterStats)
 		if i.err != nil {
 			i.data.invalidate()
 			return nil, base.LazyValue{}
@@ -1357,6 +1371,7 @@ func firstError(err0, err1 error) error {
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *singleLevelIterator) Close() error {
+	i.iterStats.close()
 	var err error
 	if i.closeHook != nil {
 		err = firstError(err, i.closeHook(i))

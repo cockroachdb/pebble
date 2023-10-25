@@ -186,6 +186,14 @@ type IterOptions struct {
 	// existing is not low or if we just expect a one-time Seek (where loading the
 	// data block directly is better).
 	UseL6Filters bool
+	// CategoryAndQoS is used for categorized iterator stats. This should not be
+	// changed by calling SetOptions.
+	//
+	// TODO(sumeer): Some of the other options can also not be changed in an
+	// existing iterator, such as OnlyReadGuaranteedDurable, UseL6Filters, if
+	// the point iterator has already been initialized. Add comments regarding
+	// which can be changed.
+	sstable.CategoryAndQoS
 
 	// Internal options.
 
@@ -254,6 +262,7 @@ func (o *IterOptions) SpanIterOptions() keyspan.SpanIterOptions {
 // scanInternalOptions is similar to IterOptions, meant for use with
 // scanInternalIterator.
 type scanInternalOptions struct {
+	sstable.CategoryAndQoS
 	IterOptions
 
 	visitPointKey   func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error

@@ -241,6 +241,7 @@ var _ base.InternalIterator = (*levelIter)(nil)
 // newLevelIter returns a levelIter. It is permissible to pass a nil split
 // parameter if the caller is never going to call SeekPrefixGE.
 func newLevelIter(
+	ctx context.Context,
 	opts IterOptions,
 	comparer *Comparer,
 	newIters tableNewIters,
@@ -249,8 +250,7 @@ func newLevelIter(
 	internalOpts internalIterOpts,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(context.Background(), opts, comparer, newIters, files, level,
-		internalOpts)
+	l.init(ctx, opts, comparer, newIters, files, level, internalOpts)
 	return l
 }
 
@@ -275,6 +275,7 @@ func (l *levelIter) init(
 		l.tableOpts.PointKeyFilters = l.filtersBuf[:0:1]
 	}
 	l.tableOpts.UseL6Filters = opts.UseL6Filters
+	l.tableOpts.CategoryAndQoS = opts.CategoryAndQoS
 	l.tableOpts.level = l.level
 	l.tableOpts.snapshotForHideObsoletePoints = opts.snapshotForHideObsoletePoints
 	l.comparer = comparer

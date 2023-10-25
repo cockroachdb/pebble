@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // getIter is an internal iterator used to perform gets. It iterates through
@@ -157,7 +158,14 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			if n := len(g.l0); n > 0 {
 				files := g.l0[n-1].Iter()
 				g.l0 = g.l0[:n-1]
-				iterOpts := IterOptions{logger: g.logger, snapshotForHideObsoletePoints: g.snapshot}
+				iterOpts := IterOptions{
+					// TODO(sumeer): replace with a parameter provided by the caller.
+					CategoryAndQoS: sstable.CategoryAndQoS{
+						Category: "pebble-get",
+						QoSLevel: sstable.LatencySensitiveQoSLevel,
+					},
+					logger:                        g.logger,
+					snapshotForHideObsoletePoints: g.snapshot}
 				g.levelIter.init(context.Background(), iterOpts, g.comparer, g.newIters,
 					files, manifest.L0Sublevel(n), internalIterOpts{})
 				g.levelIter.initRangeDel(&g.rangeDelIter)
@@ -189,7 +197,12 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			continue
 		}
 
-		iterOpts := IterOptions{logger: g.logger, snapshotForHideObsoletePoints: g.snapshot}
+		iterOpts := IterOptions{
+			// TODO(sumeer): replace with a parameter provided by the caller.
+			CategoryAndQoS: sstable.CategoryAndQoS{
+				Category: "pebble-get",
+				QoSLevel: sstable.LatencySensitiveQoSLevel,
+			}, logger: g.logger, snapshotForHideObsoletePoints: g.snapshot}
 		g.levelIter.init(context.Background(), iterOpts, g.comparer, g.newIters,
 			g.version.Levels[g.level].Iter(), manifest.Level(g.level), internalIterOpts{})
 		g.levelIter.initRangeDel(&g.rangeDelIter)
