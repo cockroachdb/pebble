@@ -203,7 +203,8 @@ func newTableCacheContainerTest(
 		opts.Cache = tc.cache
 	}
 
-	c := newTableCacheContainer(tc, opts.Cache.NewID(), objProvider, opts, tableCacheTestCacheSize)
+	c := newTableCacheContainer(tc, opts.Cache.NewID(), objProvider, opts, tableCacheTestCacheSize,
+		&sstable.CategoryStatsCollector{})
 	return c, fs, nil
 }
 
@@ -1019,7 +1020,8 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 	opts.EnsureDefaults()
 	opts.Cache = NewCache(8 << 20) // 8 MB
 	defer opts.Cache.Unref()
-	c := newTableCacheContainer(nil, opts.Cache.NewID(), objProvider, opts, tableCacheTestCacheSize)
+	c := newTableCacheContainer(nil, opts.Cache.NewID(), objProvider, opts, tableCacheTestCacheSize,
+		&sstable.CategoryStatsCollector{})
 	require.NoError(t, err)
 	defer c.close()
 

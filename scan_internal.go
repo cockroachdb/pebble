@@ -400,6 +400,7 @@ type IteratorLevel struct {
 // *must* return the range delete as well as the range key unset/delete that did
 // the shadowing.
 type scanInternalIterator struct {
+	ctx             context.Context
 	db              *DB
 	opts            scanInternalOptions
 	comparer        *base.Comparer
@@ -764,12 +765,12 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		rli := &rangeDelLevels[levelsIndex]
 
 		li.init(
-			context.Background(), i.opts.IterOptions, i.comparer, i.newIters, files, level,
+			i.ctx, i.opts.IterOptions, i.comparer, i.newIters, files, level,
 			internalIterOpts{})
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		mlevels[mlevelsIndex].iter = li
 		rli.Init(keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
-			i.comparer.Compare, tableNewRangeDelIter(context.Background(), i.newIters), files, level,
+			i.comparer.Compare, tableNewRangeDelIter(i.ctx, i.newIters), files, level,
 			manifest.KeyTypePoint)
 		rangeDelIters = append(rangeDelIters, rli)
 

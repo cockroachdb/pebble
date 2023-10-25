@@ -75,9 +75,12 @@ func MakeVirtualReader(reader *Reader, meta manifest.VirtualFileMeta) VirtualRea
 
 // NewCompactionIter is the compaction iterator function for virtual readers.
 func (v *VirtualReader) NewCompactionIter(
-	bytesIterated *uint64, rp ReaderProvider, bufferPool *BufferPool,
+	bytesIterated *uint64,
+	statsCollector *CategoryStatsCollector,
+	rp ReaderProvider,
+	bufferPool *BufferPool,
 ) (Iterator, error) {
-	return v.reader.newCompactionIter(bytesIterated, rp, &v.vState, bufferPool)
+	return v.reader.newCompactionIter(bytesIterated, statsCollector, rp, &v.vState, bufferPool)
 }
 
 // NewIterWithBlockPropertyFiltersAndContextEtc wraps
@@ -90,11 +93,12 @@ func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	filterer *BlockPropertiesFilterer,
 	hideObsoletePoints, useFilterBlock bool,
 	stats *base.InternalIteratorStats,
+	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return v.reader.newIterWithBlockPropertyFiltersAndContext(
-		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats, rp, &v.vState,
-	)
+		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats, statsCollector, rp,
+		&v.vState)
 }
 
 // ValidateBlockChecksumsOnBacking will call ValidateBlockChecksumsOnBacking on the underlying reader.

@@ -87,8 +87,7 @@ func TestLevelIter(t *testing.T) {
 				}
 			}
 
-			iter := newLevelIter(opts, testkeys.Comparer, newIters, files.Iter(), manifest.Level(level),
-				internalIterOpts{})
+			iter := newLevelIter(context.Background(), opts, testkeys.Comparer, newIters, files.Iter(), manifest.Level(level), internalIterOpts{})
 			defer iter.Close()
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(keyspan.FragmentIterator))
@@ -129,8 +128,7 @@ func TestLevelIter(t *testing.T) {
 				return newIters(ctx, file, opts, internalOpts)
 			}
 
-			iter := newLevelIter(opts, testkeys.Comparer, newIters2, files.Iter(),
-				manifest.Level(level), internalIterOpts{})
+			iter := newLevelIter(context.Background(), opts, testkeys.Comparer, newIters2, files.Iter(), manifest.Level(level), internalIterOpts{})
 			iter.SeekGE([]byte(key), base.SeekGEFlagsNone)
 			lower, upper := tableOpts.GetLowerBound(), tableOpts.GetUpperBound()
 			return fmt.Sprintf("[%s,%s]\n", lower, upper)
@@ -163,7 +161,7 @@ func (lt *levelIterTest) newIters(
 ) (internalIterator, keyspan.FragmentIterator, error) {
 	lt.itersCreated++
 	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFiltersAndContextEtc(
-		ctx, opts.LowerBound, opts.UpperBound, nil, false, true, iio.stats,
+		ctx, opts.LowerBound, opts.UpperBound, nil, false, true, iio.stats, nil,
 		sstable.TrivialReaderProvider{Reader: lt.readers[file.FileNum]})
 	if err != nil {
 		return nil, nil, err
@@ -323,8 +321,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 			}
 			if iter == nil {
 				slice := manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas)
-				iter = newLevelIter(IterOptions{}, testkeys.Comparer, lt.newIters, slice.Iter(),
-					manifest.Level(level), internalIterOpts{})
+				iter = newLevelIter(context.Background(), IterOptions{}, testkeys.Comparer, lt.newIters, slice.Iter(), manifest.Level(level), internalIterOpts{})
 				// Fake up the range deletion initialization.
 				iter.initRangeDel(new(keyspan.FragmentIterator))
 			}
@@ -533,7 +530,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
 							}
-							l := newLevelIter(IterOptions{}, DefaultComparer, newIters, metas.Iter(), manifest.Level(level), internalIterOpts{})
+							l := newLevelIter(context.Background(), IterOptions{}, DefaultComparer, newIters, metas.Iter(), manifest.Level(level), internalIterOpts{})
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 							b.ResetTimer()
@@ -575,7 +572,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 									opts.LowerBound, opts.UpperBound)
 								return iter, nil, err
 							}
-							l := newLevelIter(IterOptions{}, DefaultComparer, newIters, metas.Iter(), manifest.Level(level), internalIterOpts{})
+							l := newLevelIter(context.Background(), IterOptions{}, DefaultComparer, newIters, metas.Iter(), manifest.Level(level), internalIterOpts{})
 							// Fake up the range deletion initialization, to resemble the usage
 							// in a mergingIter.
 							l.initRangeDel(new(keyspan.FragmentIterator))
@@ -622,8 +619,7 @@ func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
 		for _, useNext := range []bool{false, true} {
 			b.Run(fmt.Sprintf("skip=%d/use-next=%t", skip, useNext),
 				func(b *testing.B) {
-					l := newLevelIter(IterOptions{}, testkeys.Comparer, newIters, metas.Iter(),
-						manifest.Level(level), internalIterOpts{})
+					l := newLevelIter(context.Background(), IterOptions{}, testkeys.Comparer, newIters, metas.Iter(), manifest.Level(level), internalIterOpts{})
 					// Fake up the range deletion initialization, to resemble the usage
 					// in a mergingIter.
 					l.initRangeDel(new(keyspan.FragmentIterator))
@@ -668,7 +664,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
 							}
-							l := newLevelIter(IterOptions{}, testkeys.Comparer, newIters, metas.Iter(), manifest.Level(level), internalIterOpts{})
+							l := newLevelIter(context.Background(), IterOptions{}, testkeys.Comparer, newIters, metas.Iter(), manifest.Level(level), internalIterOpts{})
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -702,7 +698,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
 							}
-							l := newLevelIter(IterOptions{}, DefaultComparer, newIters, metas.Iter(), manifest.Level(level), internalIterOpts{})
+							l := newLevelIter(context.Background(), IterOptions{}, DefaultComparer, newIters, metas.Iter(), manifest.Level(level), internalIterOpts{})
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
