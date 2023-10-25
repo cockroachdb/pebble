@@ -983,7 +983,7 @@ func testIngestSharedImpl(
 			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var sharedSSTs []SharedSSTMeta
-			err = from.ScanInternal(context.TODO(), startKey, endKey,
+			err = from.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, startKey, endKey,
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
@@ -1471,7 +1471,7 @@ func TestConcurrentExcise(t *testing.T) {
 			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var sharedSSTs []SharedSSTMeta
-			err = from.ScanInternal(context.TODO(), startKey, endKey,
+			err = from.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, startKey, endKey,
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)

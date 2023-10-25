@@ -60,7 +60,8 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 		// blockIntersects
 	}
 	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.MetadataBlock)
-	indexBlock, err := i.reader.readBlock(ctx, bhp.BlockHandle, nil /* transform */, nil /* readHandle */, i.stats, i.bufferPool)
+	indexBlock, err := i.reader.readBlock(
+		ctx, bhp.BlockHandle, nil /* transform */, nil /* readHandle */, i.stats, &i.iterStats, i.bufferPool)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -145,13 +146,16 @@ func (i *twoLevelIterator) init(
 	filterer *BlockPropertiesFilterer,
 	useFilter, hideObsoletePoints bool,
 	stats *base.InternalIteratorStats,
+	categoryAndQoS CategoryAndQoS,
+	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *BufferPool,
 ) error {
 	if r.err != nil {
 		return r.err
 	}
-	topLevelIndexH, err := r.readIndex(ctx, stats)
+	i.iterStats.init(categoryAndQoS, statsCollector)
+	topLevelIndexH, err := r.readIndex(ctx, stats, &i.iterStats)
 	if err != nil {
 		return err
 	}
@@ -420,7 +424,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		}
 		i.lastBloomFilterMatched = false
 		var dataH bufferHandle
-		dataH, i.err = i.reader.readFilter(i.ctx, i.stats)
+		dataH, i.err = i.reader.readFilter(i.ctx, i.stats, &i.iterStats)
 		if i.err != nil {
 			i.data.invalidate()
 			return nil, base.LazyValue{}
@@ -935,6 +939,7 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *twoLevelIterator) Close() error {
+	i.iterStats.close()
 	var err error
 	if i.closeHook != nil {
 		err = firstError(err, i.closeHook(i))

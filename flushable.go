@@ -171,7 +171,8 @@ func (s *ingestedFlushable) newIter(o *IterOptions) internalIterator {
 	// aren't truly levels in the lsm. Right now, the encoding only supports
 	// L0 sublevels, and the rest of the levels in the lsm.
 	return newLevelIter(
-		opts, s.comparer, s.newIters, s.slice.Iter(), manifest.Level(0), internalIterOpts{},
+		context.Background(), opts, s.comparer, s.newIters, s.slice.Iter(), manifest.Level(0),
+		internalIterOpts{},
 	)
 }
 
@@ -202,6 +203,9 @@ func (s *ingestedFlushable) constructRangeDelIter(
 // newRangeDelIter is part of the flushable interface.
 // TODO(bananabrick): Using a level iter instead of a keyspan level iter to
 // surface range deletes is more efficient.
+//
+// TODO(sumeer): *IterOptions are being ignored, so the index block load for
+// the point iterator in constructRangeDeIter is not tracked.
 func (s *ingestedFlushable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
 	return keyspan.NewLevelIter(
 		keyspan.SpanIterOptions{}, s.comparer.Compare,

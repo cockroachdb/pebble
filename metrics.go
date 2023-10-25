@@ -296,6 +296,8 @@ type Metrics struct {
 		record.LogWriterMetrics
 	}
 
+	CategoryStats []sstable.CategoryStatsAggregate
+
 	SecondaryCacheMetrics SecondaryCacheMetrics
 
 	private struct {

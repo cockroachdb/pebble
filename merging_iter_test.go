@@ -163,7 +163,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
 				opts.GetLowerBound(), opts.GetUpperBound(), nil, true /* useFilterBlock */, iio.stats,
-				sstable.TrivialReaderProvider{Reader: r})
+				sstable.CategoryAndQoS{}, nil, sstable.TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return nil, nil, err
 			}
@@ -632,7 +632,8 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 			}
 			return iter, rdIter, err
 		}
-		l := newLevelIter(IterOptions{}, testkeys.Comparer, newIters, levelSlices[i].Iter(),
+		l := newLevelIter(
+			context.Background(), IterOptions{}, testkeys.Comparer, newIters, levelSlices[i].Iter(),
 			manifest.Level(level), internalIterOpts{})
 		l.initRangeDel(&mils[level].rangeDelIter)
 		l.initBoundaryContext(&mils[level].levelIterBoundaryContext)
