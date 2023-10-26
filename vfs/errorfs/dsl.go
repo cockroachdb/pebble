@@ -19,6 +19,18 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+// MustParse parses an Injector from the DSL, panicking if parsing fails.
+func MustParse(s string) Injector {
+	inj, err := ParseInjectorFromDSL(s)
+	if err != nil {
+		panic(err)
+	}
+	return inj
+}
+
+// MustParsef parses an Injector from the DSL, panicking if parsing fails.
+func MustParsef(s string, args ...interface{}) Injector { return MustParse(fmt.Sprintf(s, args...)) }
+
 // Predicate encodes conditional logic that determines whether to inject an
 // error.
 type Predicate interface {
@@ -79,6 +91,16 @@ type opKindPred struct {
 
 func (p opKindPred) String() string      { return p.kind.String() }
 func (p opKindPred) evaluate(op Op) bool { return p.kind == op.Kind.ReadOrWrite() }
+
+// Not returns a predicate that negates the provided predicate.
+func Not(p Predicate) Predicate { return not{Predicate: p} }
+
+type not struct {
+	Predicate
+}
+
+func (n not) String() string     { return fmt.Sprintf("(Not %s)", n.Predicate.String()) }
+func (n not) evaluate(o Op) bool { return !n.Predicate.evaluate(o) }
 
 // And returns a predicate that returns true if all its operands return true.
 func And(preds ...Predicate) Predicate { return and(preds) }
@@ -208,10 +230,13 @@ func (rs *randomSeed) evaluate(op Op) bool {
 //     read operation (eg, Open, Read, ReadAt, Stat)
 //   - Writes is a constant predicate that evaluates to true iff the operation is
 //     a write operation (eg, Create, Rename, Write, WriteAt, etc).
+//   - <OpKind> : any op kind is a constant predicate that evaluates to true iff
+//     the operation is an operation of that kind.
 //   - (PathMatch <STRING>) is a predicate that evalutes to true iff the
 //     operation's file path matches the provided shell pattern.
 //   - (OnIndex <INTEGER>) is a predicate that evaluates to true only on the n-th
 //     invocation.
+//   - (Not <PREDICATE>) is a predicate that negates another predicate.
 //   - (And <PREDICATE> [PREDICATE]...) is a predicate that evaluates to true
 //     iff all the provided predicates evaluate to true. And short circuits on
 //     the first predicate to evaluate to false.
@@ -308,6 +333,13 @@ func init() {
 		"Reads":  func(s *scanner.Scanner) Predicate { return Reads },
 		"Writes": func(s *scanner.Scanner) Predicate { return Writes },
 	}
+	for i, name := range opNames {
+		opKind := OpKind(i)
+		dslPredicateConstants[name] = func(s *scanner.Scanner) Predicate {
+			// An OpKind implements Predicate.
+			return opKind
+		}
+	}
 	// Parsers for predicate exprs of the form `(ident ...)`.
 	dslPredicateExprs = map[string]func(*scanner.Scanner) Predicate{
 		"PathMatch": func(s *scanner.Scanner) Predicate {
@@ -328,6 +360,13 @@ func init() {
 		},
 		"Or": func(s *scanner.Scanner) Predicate {
 			return Or(parseVariadicPredicate(s)...)
+		},
+		"Not": func(s *scanner.Scanner) Predicate {
+			preds := parseVariadicPredicate(s)
+			if len(preds) != 1 {
+				panic(errors.Newf("not accepts exactly 1 argument, given %d", len(preds)))
+			}
+			return not{Predicate: preds[0]}
 		},
 		"OpFileReadAt": func(s *scanner.Scanner) Predicate {
 			return parseFileReadAtOp(s)

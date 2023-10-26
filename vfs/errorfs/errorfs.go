@@ -51,8 +51,8 @@ const (
 	OpRemoveAll
 	// OpRename describes a rename operation.
 	OpRename
-	// OpReuseForRewrite describes a reuse for rewriting operation.
-	OpReuseForRewrite
+	// OpReuseForWrite describes a reuse for rewriting operation.
+	OpReuseForWrite
 	// OpMkdirAll describes a make directory including parents operation.
 	OpMkdirAll
 	// OpLock describes a lock file operation.
@@ -81,14 +81,45 @@ const (
 	OpFileSync
 	// OpFileFlush describes a file flush operation.
 	OpFileFlush
+	numOps
 )
+
+var opNames [numOps]string = [numOps]string{
+	OpCreate:          "OpCreate",
+	OpLink:            "OpLink",
+	OpOpen:            "OpOpen",
+	OpOpenDir:         "OpOpenDir",
+	OpRemove:          "OpRemove",
+	OpRemoveAll:       "OpRemoveAll",
+	OpRename:          "OpRename",
+	OpReuseForWrite:   "OpReuseForWrite",
+	OpMkdirAll:        "OpMkdirAll",
+	OpLock:            "OpLock",
+	OpList:            "OpList",
+	OpFilePreallocate: "OpFilePreallocate",
+	OpStat:            "OpStat",
+	OpGetDiskUsage:    "OpGetDiskUage",
+	OpFileClose:       "OpFileClose",
+	OpFileRead:        "OpFileRead",
+	OpFileReadAt:      "OpFileReadAt",
+	OpFileWrite:       "OpFileWrite",
+	OpFileWriteAt:     "OpFileWriteAt",
+	OpFileStat:        "OpFileStat",
+	OpFileSync:        "OpFileSync",
+	OpFileFlush:       "OpFileFlush",
+}
+
+// String imlements fmt.Stringer.
+func (o OpKind) String() string { return opNames[o] }
+
+func (o OpKind) evaluate(op Op) bool { return op.Kind == o }
 
 // ReadOrWrite returns the operation's kind.
 func (o OpKind) ReadOrWrite() OpReadWrite {
 	switch o {
 	case OpOpen, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat:
 		return OpIsRead
-	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForRewrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileFlush, OpFilePreallocate:
+	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForWrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileFlush, OpFilePreallocate:
 		return OpIsWrite
 	default:
 		panic(fmt.Sprintf("unrecognized op %v\n", o))
@@ -195,6 +226,55 @@ func (a anyInjector) MaybeError(op Op) error {
 	}
 	return nil
 }
+
+// Counter wraps an Injector, counting the number of errors injected. It may be
+// used in tests to ensure that when an error is injected, the error is
+// surfaced through the user interface.
+type Counter struct {
+	Injector
+	atomic.Uint64
+}
+
+// String implements fmt.Stringer.
+func (c *Counter) String() string {
+	return c.Injector.String()
+}
+
+// MaybeError implements Injector.
+func (c *Counter) MaybeError(op Op) error {
+	err := c.Injector.MaybeError(op)
+	if err != nil {
+		c.Uint64.Add(1)
+	}
+	return err
+}
+
+// Toggle wraps an Injector. By default, Toggle injects nothing. When toggled on
+// through its On method, it begins injecting errors when the contained injector
+// injects them. It may be returned to its original state through Off.
+type Toggle struct {
+	Injector
+	on atomic.Bool
+}
+
+// String implements fmt.Stringer.
+func (t *Toggle) String() string {
+	return t.Injector.String()
+}
+
+// MaybeError implements Injector.
+func (t *Toggle) MaybeError(op Op) error {
+	if !t.on.Load() {
+		return nil
+	}
+	return t.Injector.MaybeError(op)
+}
+
+// On enables error injection.
+func (t *Toggle) On() { t.on.Store(true) }
+
+// Off disables error injection.
+func (t *Toggle) Off() { t.on.Store(false) }
 
 // FS implements vfs.FS, injecting errors into
 // its operations.
@@ -346,7 +426,7 @@ func (fs *FS) Rename(oldname, newname string) error {
 
 // ReuseForWrite implements FS.ReuseForWrite.
 func (fs *FS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
-	if err := fs.inj.MaybeError(Op{Kind: OpReuseForRewrite, Path: oldname}); err != nil {
+	if err := fs.inj.MaybeError(Op{Kind: OpReuseForWrite, Path: oldname}); err != nil {
 		return nil, err
 	}
 	return fs.fs.ReuseForWrite(oldname, newname)

@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -208,21 +207,9 @@ func TestMarker_FaultTolerance(t *testing.T) {
 	done := false
 	for i := 1; !done && i < 1000; i++ {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			var count atomic.Int32
-			count.Store(int32(i))
-			inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
-				// Don't inject on Sync errors. They're fatal.
-				if op.Kind == errorfs.OpFileSync {
-					return nil
-				}
-				if v := count.Add(-1); v == 0 {
-					return errorfs.ErrInjected
-				}
-				return nil
-			})
-
+			inj := errorfs.Counter{Injector: errorfs.MustParsef("(ErrInjected (And (Not OpFileSync) (OnIndex %d)))", i)}
 			mem := vfs.NewMem()
-			fs := errorfs.Wrap(mem, inj)
+			fs := errorfs.Wrap(mem, &inj)
 			markers := map[string]*Marker{}
 			ops := []struct {
 				op    string
@@ -289,7 +276,7 @@ func TestMarker_FaultTolerance(t *testing.T) {
 
 			// Stop if the number of operations in the test case is
 			// fewer than `i`.
-			done = count.Load() > 0
+			done = inj.Load() == 0
 		})
 	}
 }

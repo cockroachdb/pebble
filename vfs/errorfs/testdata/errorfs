@@ -73,3 +73,16 @@ parsing err: errorfs: unexpected token - ("") at char 24; expected FLOAT
 parsing err: errorfs: unexpected token INT ("18520850252") at char 24; expected FLOAT
 (ErrInjected (And (PathMatch "*.sst") (Randomly 0.05 185957252)))
 (ErrInjected (And (PathMatch "*.sst") (Randomly 0.05)))
+
+parse-dsl
+(ErrInjected OpCreate)
+(ErrInjected OpFileReadAt)
+(ErrInjected OpOpen)
+(ErrInjected (Or OpOpen OpFileRead OpFileWrite OpFileReadAt))
+(ErrInjected (Not (Or OpOpen OpFileRead OpFileWrite OpFileReadAt)))
+----
+(ErrInjected OpCreate)
+(ErrInjected OpFileReadAt)
+(ErrInjected OpOpen)
+(ErrInjected (Or OpOpen OpFileRead OpFileWrite OpFileReadAt))
+(ErrInjected (Not (Or OpOpen OpFileRead OpFileWrite OpFileReadAt)))

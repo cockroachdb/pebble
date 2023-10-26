@@ -3699,37 +3699,6 @@ func TestMarkedForCompaction(t *testing.T) {
 	})
 }
 
-// createManifestErrorInjector injects errors (when enabled) into vfs.FS calls
-// to create MANIFEST files.
-type createManifestErrorInjector struct {
-	enabled atomic.Bool
-}
-
-// TODO(jackson): Replace the createManifestErrorInjector with the composition
-// of primitives defined in errorfs. This may require additional primitives.
-
-func (i *createManifestErrorInjector) String() string { return "MANIFEST-Creates" }
-
-// enable enables error injection for the vfs.FS.
-func (i *createManifestErrorInjector) enable() {
-	i.enabled.Store(true)
-}
-
-// MaybeError implements errorfs.Injector.
-func (i *createManifestErrorInjector) MaybeError(op errorfs.Op) error {
-	if !i.enabled.Load() {
-		return nil
-	}
-	// This necessitates having a MaxManifestSize of 1, to reliably induce
-	// logAndApply errors.
-	if strings.Contains(op.Path, "MANIFEST") && op.Kind == errorfs.OpCreate {
-		return errorfs.ErrInjected
-	}
-	return nil
-}
-
-var _ errorfs.Injector = &createManifestErrorInjector{}
-
 // TestCompaction_LogAndApplyFails exercises a flush or ingest encountering an
 // unrecoverable error during logAndApply.
 //
@@ -3790,10 +3759,11 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 
 	runTest := func(t *testing.T, addFn func(db *DB) error, bgFn func(*DB, error)) {
 		var db *DB
-		inj := &createManifestErrorInjector{}
+
+		inj := errorfs.Toggle{Injector: errorfs.MustParse(`(ErrInjected (And OpCreate (PathMatch "MANIFEST-*")))`)}
 		logger := &fatalCapturingLogger{t: t}
 		opts := (&Options{
-			FS: errorfs.Wrap(vfs.NewMem(), inj),
+			FS: errorfs.Wrap(vfs.NewMem(), &inj),
 			// Rotate the manifest after each write. This is required to trigger a
 			// file creation, into which errors can be injected.
 			MaxManifestFileSize: 1,
@@ -3812,7 +3782,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = db.Close() }()
 
-		inj.enable()
+		inj.On()
 		err = addFn(db)
 		require.True(t, errors.Is(err, errorfs.ErrInjected))
 
@@ -3886,39 +3856,6 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 	d.Close()
 }
 
-type WriteErrorInjector struct {
-	enabled atomic.Bool
-}
-
-// TODO(jackson): Replace WriteErrorInjector with use of primitives in errorfs,
-// adding new primitives as necessary.
-
-func (i *WriteErrorInjector) String() string { return "FileWrites(ErrInjected)" }
-
-// enable enables error injection for the vfs.FS.
-func (i *WriteErrorInjector) enable() {
-	i.enabled.Store(true)
-}
-
-// disable disabled error injection for the vfs.FS.
-func (i *WriteErrorInjector) disable() {
-	i.enabled.Store(false)
-}
-
-// MaybeError implements errorfs.Injector.
-func (i *WriteErrorInjector) MaybeError(op errorfs.Op) error {
-	if !i.enabled.Load() {
-		return nil
-	}
-	// Fail any future write.
-	if op.Kind == errorfs.OpFileWrite {
-		return errorfs.ErrInjected
-	}
-	return nil
-}
-
-var _ errorfs.Injector = &WriteErrorInjector{}
-
 // Cumulative compaction stats shouldn't be updated on compaction error.
 func TestCompactionErrorStats(t *testing.T) {
 	// protected by d.mu
@@ -3928,9 +3865,9 @@ func TestCompactionErrorStats(t *testing.T) {
 	)
 
 	mem := vfs.NewMem()
-	injector := &WriteErrorInjector{}
+	injector := errorfs.Toggle{Injector: errorfs.MustParse("(ErrInjected OpFileWrite)")}
 	opts := (&Options{
-		FS:     errorfs.Wrap(mem, injector),
+		FS:     errorfs.Wrap(mem, &injector),
 		Levels: make([]LevelOptions, numLevels),
 		EventListener: &EventListener{
 			TableCreated: func(info TableCreateInfo) {
@@ -3942,7 +3879,7 @@ func TestCompactionErrorStats(t *testing.T) {
 					// the injector after the first two files have been written to.
 					tablesCreated = append(tablesCreated, info.FileNum)
 					if len(tablesCreated) >= 2 {
-						injector.enable()
+						injector.On()
 					}
 				}
 			},
@@ -3990,7 +3927,7 @@ func TestCompactionErrorStats(t *testing.T) {
 	useInjector = false
 	d.mu.Unlock()
 
-	injector.disable()
+	injector.Off()
 
 	// The following compaction won't error, but snapshot is open, so snapshot
 	// pinned stats should update.
