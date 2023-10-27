@@ -372,7 +372,7 @@ func TestDiskHealthChecking_File_Underflow(t *testing.T) {
 		// Given the packing scheme, 35 years of process uptime will lead to a delta
 		// that is too large to fit in the packed int64.
 		tCreate := time.Now().Add(-35 * time.Hour * 24 * 365)
-		hcFile.createTime = tCreate
+		hcFile.createTimeNanos = tCreate.UnixNano()
 
 		// Assert that the time since tCreate (in milliseconds) is indeed greater
 		// than the max delta that can fit.
@@ -387,7 +387,7 @@ func TestDiskHealthChecking_File_Underflow(t *testing.T) {
 		// Given the packing scheme, 34 years of process uptime will lead to a delta
 		// that is just small enough to fit in the packed int64.
 		tCreate := time.Now().Add(-34 * time.Hour * 24 * 365)
-		hcFile.createTime = tCreate
+		hcFile.createTimeNanos = tCreate.UnixNano()
 
 		require.True(t, time.Since(tCreate).Milliseconds() < 1<<deltaBits-1)
 		require.NotPanics(t, func() { _, _ = hcFile.Write([]byte("should be fine")) })
