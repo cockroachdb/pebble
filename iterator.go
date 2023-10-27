@@ -2211,7 +2211,13 @@ func (i *Iterator) RangeKeys() []RangeKeyData {
 // Valid returns true if the iterator is positioned at a valid key/value pair
 // and false otherwise.
 func (i *Iterator) Valid() bool {
-	return i.iterValidityState == IterValid && !i.requiresReposition
+	valid := i.iterValidityState == IterValid && !i.requiresReposition
+	if invariants.Enabled {
+		if err := i.Error(); valid && err != nil {
+			panic(errors.WithSecondaryError(errors.AssertionFailedf("pebble: iterator is valid with non-nil Error"), err))
+		}
+	}
+	return valid
 }
 
 // Error returns any accumulated error.
