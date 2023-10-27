@@ -29,7 +29,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
-	"golang.org/x/exp/constraints"
 )
 
 var errEmptyTable = errors.New("pebble: empty table")
@@ -306,19 +305,12 @@ func (f *fileSizeSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Write
 		// NB: Subtract 1 from `boundariesObserved` to account for the current
 		// boundary we're considering splitting at. `reached` will have
 		// incremented it at the same time it set `atGrandparentBoundary`.
-		minimumPctOfTargetSize := 50 + 5*minUint64(f.boundariesObserved-1, 8)
+		minimumPctOfTargetSize := 50 + 5*min(f.boundariesObserved-1, 8)
 		if estSize < (minimumPctOfTargetSize*f.targetFileSize)/100 {
 			return noSplit
 		}
 		return splitNow
 	}
-}
-
-func minUint64(a, b uint64) uint64 {
-	if b < a {
-		a = b
-	}
-	return a
 }
 
 func (f *fileSizeSplitter) onNewOutput(key []byte) []byte {
@@ -1329,7 +1321,7 @@ func (c *compaction) newInputIter(
 	// numInputLevels is an approximation of the number of iterator levels. Due
 	// to idiosyncrasies in iterator construction, we may (rarely) exceed this
 	// initial capacity.
-	numInputLevels := max[int](len(c.flushing), len(c.inputs))
+	numInputLevels := max(len(c.flushing), len(c.inputs))
 	iters := make([]internalIterator, 0, numInputLevels)
 	rangeDelIters := make([]keyspan.FragmentIterator, 0, numInputLevels)
 	rangeKeyIters := make([]keyspan.FragmentIterator, 0, numInputLevels)
@@ -3901,11 +3893,4 @@ func merge(a, b []fileInfo) []fileInfo {
 		}
 	}
 	return a[:n]
-}
-
-func max[I constraints.Ordered](a, b I) I {
-	if b > a {
-		return b
-	}
-	return a
 }
