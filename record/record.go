@@ -549,9 +549,7 @@ func (w *Writer) Next() (io.Writer, error) {
 	// Check if there is room in the block for the header.
 	if w.j > blockSize {
 		// Fill in the rest of the block with zeroes.
-		for k := w.i; k < blockSize; k++ {
-			w.buf[k] = 0
-		}
+		clear(w.buf[w.i:])
 		w.writeBlock()
 		if w.err != nil {
 			return nil, w.err

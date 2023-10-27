@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/rand"
 )
 
@@ -418,7 +417,7 @@ func RandomSeparator(dst, a, b []byte, suffix int64, maxLength int, rng *rand.Ra
 	bi := Comparer.Split(b)
 	ap := a[:ai]
 	bp := b[:bi]
-	maxLength = max[int](maxLength, max[int](len(ap), len(bp)))
+	maxLength = max(maxLength, len(ap), len(bp))
 	var as, bs int64
 	var err error
 	if ai != len(a) {
@@ -508,11 +507,4 @@ func RandomSeparator(dst, a, b []byte, suffix int64, maxLength int, rng *rand.Ra
 		w = WriteKeyAt(dst, Alpha(maxLength), generatedIdx, suffix)
 	}
 	return dst[:w]
-}
-
-func max[I constraints.Ordered](a, b I) I {
-	if b > a {
-		return b
-	}
-	return a
 }
