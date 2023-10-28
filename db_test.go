@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1031,10 +1031,7 @@ func TestRollManifest(t *testing.T) {
 			manifests = append(manifests, filename)
 		}
 	}
-
-	sort.Slice(manifests, func(i, j int) bool {
-		return manifests[i] < manifests[j]
-	})
+	slices.Sort(manifests)
 
 	var expected []string
 	for i := len(manifestNums) - int(toPreserve) - 1; i < len(manifestNums); i++ {

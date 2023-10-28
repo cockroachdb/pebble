@@ -7,7 +7,7 @@ package metamorphic
 import (
 	"bytes"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
@@ -295,12 +295,8 @@ func (g *generator) randKeyHelper(
 		// If we're constrained to a key range, find which existing prefixes
 		// fall within that key range.
 		if newKeyBounds != nil {
-			s := sort.Search(len(prefixes), func(i int) bool {
-				return g.cmp(prefixes[i], newKeyBounds.Start) >= 0
-			})
-			e := sort.Search(len(prefixes), func(i int) bool {
-				return g.cmp(prefixes[i], newKeyBounds.End) >= 0
-			})
+			s, _ := slices.BinarySearchFunc(prefixes, newKeyBounds.Start, g.cmp)
+			e, _ := slices.BinarySearchFunc(prefixes, newKeyBounds.End, g.cmp)
 			prefixes = prefixes[s:e]
 		}
 
@@ -1116,9 +1112,7 @@ func (g *generator) generateDisjointKeyRanges(n int) []pebble.KeyRange {
 		bounds[i] = k
 		used[string(k)] = true
 	}
-	sort.Slice(bounds, func(i, j int) bool {
-		return g.cmp(bounds[i], bounds[j]) < 0
-	})
+	slices.SortFunc(bounds, g.cmp)
 	keyRanges := make([]pebble.KeyRange, n)
 	for i := range keyRanges {
 		keyRanges[i] = pebble.KeyRange{

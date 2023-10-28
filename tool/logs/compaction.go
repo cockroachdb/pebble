@@ -7,11 +7,13 @@ package logs
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -546,12 +548,11 @@ func (s windowSummary) String() string {
 			duration:   s.compactionTime[k],
 		})
 	}
-	sort.Slice(pairs, func(i, j int) bool {
-		l, r := pairs[i], pairs[j]
-		if l.ft.from == r.ft.from {
-			return l.ft.to < r.ft.to
+	slices.SortFunc(pairs, func(l, r fromToCount) int {
+		if v := cmp.Compare(l.ft.from, r.ft.from); v != 0 {
+			return v
 		}
-		return l.ft.from < r.ft.from
+		return cmp.Compare(l.ft.to, r.ft.to)
 	})
 
 	nodeID, storeID := "?", "?"
@@ -812,10 +813,8 @@ func (a *aggregator) aggregate() []windowSummary {
 		cur.readAmps = readAmps
 
 		// Sort long running compactions in descending order of duration.
-		sort.Slice(cur.longRunning, func(i, j int) bool {
-			l := cur.longRunning[i]
-			r := cur.longRunning[j]
-			return l.timeEnd.Sub(l.timeStart) > r.timeEnd.Sub(r.timeStart)
+		slices.SortFunc(cur.longRunning, func(l, r event) int {
+			return cmp.Compare(l.timeEnd.Sub(l.timeStart), r.timeEnd.Sub(r.timeStart))
 		})
 
 		// Add the completed window to the set of windows.

@@ -6,13 +6,14 @@ package pebble
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"sort"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -400,8 +401,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	}
 
-	sort.Slice(logFiles, func(i, j int) bool {
-		return logFiles[i].num < logFiles[j].num
+	slices.SortFunc(logFiles, func(a, b fileNumAndName) int {
+		return cmp.Compare(a.num, b.num)
 	})
 
 	var ve versionEdit
@@ -922,7 +923,7 @@ func (d *DB) replayWAL(
 			flushMem()
 			// Make a copy of the data slice since it is currently owned by buf and will
 			// be reused in the next iteration.
-			b.data = append([]byte(nil), b.data...)
+			b.data = slices.Clone(b.data)
 			b.flushable = newFlushableBatch(&b, d.opts.Comparer)
 			entry := d.newFlushableEntry(b.flushable, logNum, b.SeqNum())
 			// Disable memory accounting by adding a reader ref that will never be

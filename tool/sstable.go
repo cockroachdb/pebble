@@ -10,7 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"text/tabwriter"
 
 	"github.com/cockroachdb/pebble"
@@ -349,7 +349,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		for key := range r.Properties.UserProperties {
 			keys = append(keys, key)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, key := range keys {
 			fmt.Fprintf(tw, "  %s\t%s\n", key, r.Properties.UserProperties[key])
 		}
@@ -420,8 +420,8 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				tombstones = append(tombstones, t.ShallowClone())
 			}
 
-			sort.Slice(tombstones, func(i, j int) bool {
-				return r.Compare(tombstones[i].Start, tombstones[j].Start) < 0
+			slices.SortFunc(tombstones, func(a, b keyspan.Span) int {
+				return r.Compare(a.Start, b.Start)
 			})
 			return keyspan.NewIter(r.Compare, tombstones), nil
 		}()

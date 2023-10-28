@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -279,7 +280,7 @@ func performIOs(readables []objstorage.Readable, ios []benchIO) error {
 
 // getStats calculates various statistics given a list of elapsed times.
 func getStats(d []time.Duration) string {
-	sort.Slice(d, func(i, j int) bool { return d[i] < d[j] })
+	slices.Sort(d)
 
 	factor := 1.0 / float64(len(d))
 	var mean float64

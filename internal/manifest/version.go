@@ -6,6 +6,7 @@ package manifest
 
 import (
 	"bytes"
+	stdcmp "cmp"
 	"fmt"
 	"sort"
 	"strconv"
@@ -866,30 +867,19 @@ func (m *FileMetadata) TableInfo() TableInfo {
 	}
 }
 
-func cmpUint64(a, b uint64) int {
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return +1
-	default:
-		return 0
-	}
-}
-
 func (m *FileMetadata) cmpSeqNum(b *FileMetadata) int {
 	// NB: This is the same ordering that RocksDB uses for L0 files.
 
 	// Sort first by largest sequence number.
-	if m.LargestSeqNum != b.LargestSeqNum {
-		return cmpUint64(m.LargestSeqNum, b.LargestSeqNum)
+	if v := stdcmp.Compare(m.LargestSeqNum, b.LargestSeqNum); v != 0 {
+		return v
 	}
 	// Then by smallest sequence number.
-	if m.SmallestSeqNum != b.SmallestSeqNum {
-		return cmpUint64(m.SmallestSeqNum, b.SmallestSeqNum)
+	if v := stdcmp.Compare(m.SmallestSeqNum, b.SmallestSeqNum); v != 0 {
+		return v
 	}
 	// Break ties by file number.
-	return cmpUint64(uint64(m.FileNum), uint64(b.FileNum))
+	return stdcmp.Compare(m.FileNum, b.FileNum)
 }
 
 func (m *FileMetadata) lessSeqNum(b *FileMetadata) bool {

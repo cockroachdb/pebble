@@ -10,7 +10,7 @@ import (
 	"io"
 	"os"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -526,9 +526,7 @@ func TestVersionEditApply(t *testing.T) {
 					for fileNum := range zombies {
 						zombieFileNums = append(zombieFileNums, fileNum)
 					}
-					sort.Slice(zombieFileNums, func(i, j int) bool {
-						return zombieFileNums[i].FileNum() < zombieFileNums[j].FileNum()
-					})
+					slices.Sort(zombieFileNums)
 				}
 
 				return fmt.Sprintf("%szombies %d\n", newv, zombieFileNums)

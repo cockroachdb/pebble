@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2669,8 +2670,8 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 				}
 				files[l] = append(files[l], makeFile(l, s, e))
 			}
-			sort.Slice(files[l], func(i, j int) bool {
-				return opts.Comparer.Compare(files[l][i].Smallest.UserKey, files[l][j].Smallest.UserKey) < 0
+			slices.SortFunc(files[l], func(a, b *fileMetadata) int {
+				return opts.Comparer.Compare(a.Smallest.UserKey, b.Smallest.UserKey)
 			})
 		}
 		v := newVersion(opts, files)

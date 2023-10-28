@@ -7,7 +7,7 @@ package testkeys
 import (
 	"bytes"
 	"fmt"
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -221,7 +221,7 @@ func keyspaceToString(ks Keyspace) string {
 
 func TestRandomSeparator(t *testing.T) {
 	rng := rand.New(rand.NewSource(0))
-	keys := []string{"a", "zzz@9"}
+	keys := [][]byte{[]byte("a"), []byte("zzz@9")}
 	for n := 0; n < 1000; n++ {
 		i := rng.Intn(len(keys))
 		j := rng.Intn(len(keys))
@@ -232,8 +232,8 @@ func TestRandomSeparator(t *testing.T) {
 			i, j = j, i
 		}
 
-		a := []byte(keys[i])
-		b := []byte(keys[j])
+		a := keys[i]
+		b := keys[j]
 		suffix := rng.Int63n(10)
 		sep := RandomSeparator(nil, a, b, suffix, 3, rng)
 		t.Logf("RandomSeparator(%q, %q, %d) = %q\n", a, b, suffix, sep)
@@ -241,14 +241,12 @@ func TestRandomSeparator(t *testing.T) {
 			continue
 		}
 		for k := 0; k < len(keys); k++ {
-			v := Comparer.Compare(sep, []byte(keys[k]))
+			v := Comparer.Compare(sep, keys[k])
 			if k <= i && v <= 0 || k >= j && v >= 0 {
 				t.Fatalf("RandomSeparator(%q, %q, %d) = %q; but Compare(%q,%q) = %d\n", a, b, suffix, sep, sep, keys[k], v)
 			}
 		}
-		keys = append(keys, string(sep))
-		sort.Slice(keys, func(i, j int) bool {
-			return Comparer.Compare([]byte(keys[i]), []byte(keys[j])) < 0
-		})
+		keys = append(keys, sep)
+		slices.SortFunc(keys, Comparer.Compare)
 	}
 }
