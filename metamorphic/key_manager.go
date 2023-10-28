@@ -1,8 +1,9 @@
 package metamorphic
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -280,11 +281,11 @@ func (k *keyManager) mergeKeysInto(from, to objID) {
 	}
 
 	// Sort to facilitate a merge.
-	sort.Slice(msFrom, func(i, j int) bool {
-		return msFrom[i].String() < msFrom[j].String()
+	slices.SortFunc(msFrom, func(a, b *keyMeta) int {
+		return cmp.Compare(a.String(), b.String())
 	})
-	sort.Slice(msTo, func(i, j int) bool {
-		return msTo[i].String() < msTo[j].String()
+	slices.SortFunc(msTo, func(a, b *keyMeta) int {
+		return cmp.Compare(a.String(), b.String())
 	})
 
 	var msNew []*keyMeta
@@ -426,12 +427,8 @@ func (k *keyManager) eligibleReadKeys() (keys [][]byte) {
 // [start,end). The returned slice is owned by the keyManager and must not be
 // retained.
 func (k *keyManager) eligibleReadKeysInRange(kr pebble.KeyRange) (keys [][]byte) {
-	s := sort.Search(len(k.globalKeys), func(i int) bool {
-		return k.comparer.Compare(k.globalKeys[i], kr.Start) >= 0
-	})
-	e := sort.Search(len(k.globalKeys), func(i int) bool {
-		return k.comparer.Compare(k.globalKeys[i], kr.End) >= 0
-	})
+	s, _ := slices.BinarySearchFunc(k.globalKeys, kr.Start, k.comparer.Compare)
+	e, _ := slices.BinarySearchFunc(k.globalKeys, kr.End, k.comparer.Compare)
 	if s >= e {
 		return nil
 	}
@@ -458,9 +455,7 @@ func (k *keyManager) eligibleWriteKeys() (keys [][]byte) {
 		}
 		keys = append(keys, v.key)
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return k.comparer.Compare(keys[i], keys[j]) < 0
-	})
+	slices.SortFunc(keys, k.comparer.Compare)
 	return keys
 }
 
@@ -480,9 +475,7 @@ func (k *keyManager) eligibleSingleDeleteKeys(id objID) (keys [][]byte) {
 	if id != dbObjID {
 		addForObjID(dbObjID)
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return k.comparer.Compare(keys[i], keys[j]) < 0
-	})
+	slices.SortFunc(keys, k.comparer.Compare)
 	return keys
 }
 
@@ -579,13 +572,6 @@ func loadPrecedingKeys(t TestingT, ops []op, cfg *config, m *keyManager) {
 
 func insertSorted(cmp base.Compare, dst *[][]byte, k []byte) {
 	s := *dst
-	i := sort.Search(len(*dst), func(i int) bool {
-		return cmp((*dst)[i], k) >= 0
-	})
-	if i == len(s) {
-		*dst = append(*dst, k)
-		return
-	}
-	*dst = append((*dst)[:i+1], (*dst)[i:]...)
-	(*dst)[i] = k
+	i, _ := slices.BinarySearchFunc(s, k, cmp)
+	*dst = slices.Insert(s, i, k)
 }

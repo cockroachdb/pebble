@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"time"
 
@@ -517,8 +518,8 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 				filesInLevel = append(filesInLevel, lr.sharedMeta[i])
 			}
 		}
-		sort.Slice(filesInLevel, func(i, j int) bool {
-			return cmp(filesInLevel[i].Smallest.UserKey, filesInLevel[j].Smallest.UserKey) < 0
+		slices.SortFunc(filesInLevel, func(a, b *fileMetadata) int {
+			return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
 		})
 		for i := 1; i < len(filesInLevel); i++ {
 			if sstableKeyCompare(cmp, filesInLevel[i-1].Largest, filesInLevel[i].Smallest) >= 0 {

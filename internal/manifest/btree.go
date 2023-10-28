@@ -6,6 +6,7 @@ package manifest
 
 import (
 	"bytes"
+	stdcmp "cmp"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -80,14 +81,7 @@ func btreeCmpSpecificOrder(files []*FileMetadata) btreeCmp {
 		if !aok || !bok {
 			panic("btreeCmpSliceOrder called with unknown files")
 		}
-		switch {
-		case ai < bi:
-			return -1
-		case ai > bi:
-			return +1
-		default:
-			return 0
-		}
+		return stdcmp.Compare(ai, bi)
 	}
 }
 
@@ -1138,15 +1132,11 @@ func cmpIter(a, b iterator) int {
 		if af.n != bf.n {
 			panic("nonmatching nodes during btree iterator comparison")
 		}
-		switch {
-		case af.pos < bf.pos:
-			return -1
-		case af.pos > bf.pos:
-			return +1
-		default:
-			// Continue up both iterators' stacks (equivalently, down the
-			// B-Tree away from the root).
+		if v := stdcmp.Compare(af.pos, bf.pos); v != 0 {
+			return v
 		}
+		// Otherwise continue up both iterators' stacks (equivalently, down the
+		// B-Tree away from the root).
 	}
 
 	if aok && bok {
@@ -1155,24 +1145,20 @@ func cmpIter(a, b iterator) int {
 	if an != bn {
 		panic("nonmatching nodes during btree iterator comparison")
 	}
+	if v := stdcmp.Compare(apos, bpos); v != 0 {
+		return v
+	}
 	switch {
-	case apos < bpos:
+	case aok:
+		// a is positioned at a leaf child at this position and b is at an
+		// end sentinel state.
 		return -1
-	case apos > bpos:
+	case bok:
+		// b is positioned at a leaf child at this position and a is at an
+		// end sentinel state.
 		return +1
 	default:
-		switch {
-		case aok:
-			// a is positioned at a leaf child at this position and b is at an
-			// end sentinel state.
-			return -1
-		case bok:
-			// b is positioned at a leaf child at this position and a is at an
-			// end sentinel state.
-			return +1
-		default:
-			return 0
-		}
+		return 0
 	}
 }
 

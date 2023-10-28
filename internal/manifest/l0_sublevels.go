@@ -6,8 +6,10 @@ package manifest
 
 import (
 	"bytes"
+	stdcmp "cmp"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 
@@ -760,11 +762,11 @@ func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 	for _, c := range inProgress {
 		startIK := intervalKey{key: c.Smallest.UserKey, isLargest: false}
 		endIK := intervalKey{key: c.Largest.UserKey, isLargest: !c.Largest.IsExclusiveSentinel()}
-		start := sort.Search(len(s.orderedIntervals), func(i int) bool {
-			return intervalKeyCompare(s.cmp, s.orderedIntervals[i].startKey, startIK) >= 0
+		start, _ := slices.BinarySearchFunc(s.orderedIntervals, startIK, func(a fileInterval, b intervalKey) int {
+			return intervalKeyCompare(s.cmp, a.startKey, b)
 		})
-		end := sort.Search(len(s.orderedIntervals), func(i int) bool {
-			return intervalKeyCompare(s.cmp, s.orderedIntervals[i].startKey, endIK) >= 0
+		end, _ := slices.BinarySearchFunc(s.orderedIntervals, endIK, func(a fileInterval, b intervalKey) int {
+			return intervalKeyCompare(s.cmp, a.startKey, b)
 		})
 		for i := start; i < end && i < len(s.orderedIntervals); i++ {
 			interval := &s.orderedIntervals[i]
@@ -1047,8 +1049,8 @@ func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 		if fileIntervalsByLevel[level].max > max {
 			max = fileIntervalsByLevel[level].max
 		}
-		index := sort.Search(len(s.levelFiles[level]), func(i int) bool {
-			return s.levelFiles[level][i].maxIntervalIndex >= min
+		index, _ := slices.BinarySearchFunc(s.levelFiles[level], min, func(a *FileMetadata, b int) int {
+			return stdcmp.Compare(a.maxIntervalIndex, b)
 		})
 		// start := index
 		for ; index < len(s.levelFiles[level]); index++ {
@@ -1565,8 +1567,8 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 func (s *L0Sublevels) extendFiles(
 	sl int, earliestUnflushedSeqNum uint64, cFiles *L0CompactionFiles,
 ) bool {
-	index := sort.Search(len(s.levelFiles[sl]), func(i int) bool {
-		return s.levelFiles[sl][i].maxIntervalIndex >= cFiles.minIntervalIndex
+	index, _ := slices.BinarySearchFunc(s.levelFiles[sl], cFiles.minIntervalIndex, func(a *FileMetadata, b int) int {
+		return stdcmp.Compare(a.maxIntervalIndex, b)
 	})
 	for ; index < len(s.levelFiles[sl]); index++ {
 		f := s.levelFiles[sl][index]

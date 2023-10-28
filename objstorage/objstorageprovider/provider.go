@@ -5,10 +5,11 @@
 package objstorageprovider
 
 import (
+	"cmp"
 	"context"
 	"io"
 	"os"
-	"sort"
+	"slices"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -440,8 +441,8 @@ func (p *provider) List() []objstorage.ObjectMetadata {
 	for _, meta := range p.mu.knownObjects {
 		res = append(res, meta)
 	}
-	sort.Slice(res, func(i, j int) bool {
-		return res[i].DiskFileNum.FileNum() < res[j].DiskFileNum.FileNum()
+	slices.SortFunc(res, func(a, b objstorage.ObjectMetadata) int {
+		return cmp.Compare(a.DiskFileNum, b.DiskFileNum)
 	})
 	return res
 }

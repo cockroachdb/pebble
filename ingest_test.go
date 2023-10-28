@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -180,8 +181,8 @@ func TestIngestLoadRand(t *testing.T) {
 					0,
 					InternalKeyKindSet)
 			}
-			sort.Slice(keys, func(i, j int) bool {
-				return base.InternalCompare(cmp, keys[i], keys[j]) < 0
+			slices.SortFunc(keys, func(a, b base.InternalKey) int {
+				return base.InternalCompare(cmp, a, b)
 			})
 
 			expected[i].ExtendPointKeyBounds(cmp, keys[0], keys[len(keys)-1])
@@ -3382,9 +3383,7 @@ func TestIngestValidation(t *testing.T) {
 			}
 
 			// Keys must be sorted.
-			sort.Slice(keyVals, func(i, j int) bool {
-				return d.cmp(keyVals[i].key, keyVals[j].key) <= 0
-			})
+			slices.SortFunc(keyVals, func(a, b keyVal) int { return d.cmp(a.key, b.key) })
 
 			// Run the ingestion.
 			et := runIngest(keyVals)

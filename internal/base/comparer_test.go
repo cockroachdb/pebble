@@ -6,7 +6,7 @@ package base
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -69,9 +69,7 @@ func TestAbbreviatedKey(t *testing.T) {
 	for i := range keys {
 		keys[i] = randBytes(rng.Intn(16))
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return DefaultComparer.Compare(keys[i], keys[j]) < 0
-	})
+	slices.SortFunc(keys, DefaultComparer.Compare)
 
 	for i := 1; i < len(keys); i++ {
 		last := DefaultComparer.AbbreviatedKey(keys[i-1])

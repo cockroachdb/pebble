@@ -5,10 +5,11 @@
 package manifest
 
 import (
+	stdcmp "cmp"
 	"fmt"
 	"math/rand"
 	"reflect"
-	"sort"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -348,8 +349,8 @@ func TestIterCmpRand(t *testing.T) {
 
 	// All the iterators should be positioned, so sorting them by items and by
 	// iterator comparisons should equal identical orderings.
-	sort.SliceStable(iters1, func(i, j int) bool { return cmpIter(iters1[i].iter, iters1[j].iter) < 0 })
-	sort.SliceStable(iters2, func(i, j int) bool { return cmp(iters2[i].iter.cur(), iters2[j].iter.cur()) < 0 })
+	slices.SortStableFunc(iters1, func(a, b *LevelIterator) int { return cmpIter(a.iter, b.iter) })
+	slices.SortStableFunc(iters2, func(a, b *LevelIterator) int { return cmp(a.iter.cur(), b.iter.cur()) })
 	for i := 0; i < iterCount; i++ {
 		if iters1[i] != iters2[i] {
 			t.Fatalf("seed %d: iters out of order at index %d:\n%s\n\n%s",
@@ -610,14 +611,7 @@ func TestRandomizedBTree(t *testing.T) {
 	// prevent duplicates or overlaps.
 	tree := btree{
 		cmp: func(a *FileMetadata, b *FileMetadata) int {
-			switch {
-			case a.FileNum < b.FileNum:
-				return -1
-			case a.FileNum > b.FileNum:
-				return +1
-			default:
-				return 0
-			}
+			return stdcmp.Compare(a.FileNum, b.FileNum)
 		},
 	}
 

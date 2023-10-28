@@ -14,6 +14,7 @@ package testkeys
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"math"
 	"strconv"
@@ -132,14 +133,7 @@ func compareTimestamps(a, b []byte) int {
 	if err != nil {
 		panic(fmt.Sprintf("invalid test mvcc timestamp %q", b))
 	}
-	switch {
-	case ai < bi:
-		return +1
-	case ai > bi:
-		return -1
-	default:
-		return 0
-	}
+	return cmp.Compare(bi, ai)
 }
 
 // Keyspace describes a finite keyspace of unsuffixed test keys.

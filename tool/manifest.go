@@ -5,9 +5,10 @@
 package tool
 
 import (
+	"cmp"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -144,7 +145,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 
 			var bve manifest.BulkVersionEdit
 			bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
-			var cmp *base.Comparer
+			var comparer *base.Comparer
 			var editIdx int
 			rr := record.NewReader(f, 0 /* logNum */)
 			for {
@@ -166,7 +167,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					break
 				}
 
-				if cmp != nil && !anyOverlap(cmp.Compare, &ve, m.filterStart, m.filterEnd) {
+				if comparer != nil && !anyOverlap(comparer.Compare, &ve, m.filterStart, m.filterEnd) {
 					continue
 				}
 
@@ -175,8 +176,8 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 				if ve.ComparerName != "" {
 					empty = false
 					fmt.Fprintf(stdout, "  comparer:     %s", ve.ComparerName)
-					cmp = m.comparers[ve.ComparerName]
-					if cmp == nil {
+					comparer = m.comparers[ve.ComparerName]
+					if comparer == nil {
 						fmt.Fprintf(stdout, " (unknown)")
 					}
 					fmt.Fprintf(stdout, "\n")
@@ -203,11 +204,11 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					empty = false
 					entries = append(entries, df)
 				}
-				sort.Slice(entries, func(i, j int) bool {
-					if entries[i].Level != entries[j].Level {
-						return entries[i].Level < entries[j].Level
+				slices.SortFunc(entries, func(a, b manifest.DeletedFileEntry) int {
+					if v := cmp.Compare(a.Level, b.Level); v != 0 {
+						return v
 					}
-					return entries[i].FileNum < entries[j].FileNum
+					return cmp.Compare(a.FileNum, b.FileNum)
 				})
 				for _, df := range entries {
 					fmt.Fprintf(stdout, "  deleted:       L%d %s\n", df.Level, df.FileNum)
@@ -233,9 +234,9 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 				editIdx++
 			}
 
-			if cmp != nil {
+			if comparer != nil {
 				v, err := bve.Apply(
-					nil /* version */, cmp.Compare, m.fmtKey.fn, 0,
+					nil /* version */, comparer.Compare, m.fmtKey.fn, 0,
 					m.opts.Experimental.ReadCompactionRate,
 					nil, /* zombies */
 				)
@@ -243,7 +244,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "%s\n", err)
 					return
 				}
-				m.printLevels(cmp.Compare, stdout, v)
+				m.printLevels(comparer.Compare, stdout, v)
 			}
 		}()
 	}

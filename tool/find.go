@@ -6,8 +6,10 @@ package tool
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 
 	"github.com/cockroachdb/pebble"
@@ -185,15 +187,9 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 		f.files[fileNum] = path
 	})
 
-	sort.Slice(f.logs, func(i, j int) bool {
-		return f.logs[i] < f.logs[j]
-	})
-	sort.Slice(f.manifests, func(i, j int) bool {
-		return f.manifests[i] < f.manifests[j]
-	})
-	sort.Slice(f.tables, func(i, j int) bool {
-		return f.tables[i] < f.tables[j]
-	})
+	slices.Sort(f.logs)
+	slices.Sort(f.manifests)
+	slices.Sort(f.tables)
 
 	if f.verbose {
 		fmt.Fprintf(stdout, "%s\n", dir)
@@ -288,8 +284,8 @@ func (f *findT) search(stdout io.Writer, key []byte) []findRef {
 	// "b" without causing "a" to be flushed. Then I can write key "c" to the
 	// log. Ideally, we'd show the key "a" from the log, then the key "b" from
 	// the ingested sstable, then key "c" from the log.
-	sort.SliceStable(refs, func(i, j int) bool {
-		return refs[i].fileNum < refs[j].fileNum
+	slices.SortStableFunc(refs, func(a, b findRef) int {
+		return cmp.Compare(a.fileNum, b.fileNum)
 	})
 	return refs
 }
@@ -474,8 +470,8 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 					tombstones = append(tombstones, t.ShallowClone())
 				}
 
-				sort.Slice(tombstones, func(i, j int) bool {
-					return r.Compare(tombstones[i].Start, tombstones[j].Start) < 0
+				slices.SortFunc(tombstones, func(a, b keyspan.Span) int {
+					return r.Compare(a.Start, b.Start)
 				})
 				return keyspan.NewIter(r.Compare, tombstones), nil
 			}()
@@ -574,9 +570,7 @@ func (f *findT) tableProvenance(fileNum base.FileNum) string {
 				fmt.Fprintf(&buf, "compacted")
 				for _, level := range sourceLevels {
 					files := levels[level]
-					sort.Slice(files, func(i, j int) bool {
-						return files[i] < files[j]
-					})
+					slices.Sort(files)
 
 					fmt.Fprintf(&buf, "%sL%d [", sep, level)
 					sep = ""

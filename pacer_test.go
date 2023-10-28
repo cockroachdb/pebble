@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -150,9 +150,7 @@ func TestDeletionPacerHistory(t *testing.T) {
 			events[i].report = int64(rand.Intn(100000))
 		}
 	}
-	sort.Slice(events, func(i, j int) bool {
-		return events[i].time.Before(events[j].time)
-	})
+	slices.SortFunc(events, func(a, b event) int { return a.time.Compare(b.time) })
 
 	var h history
 	h.Init(startTime, timeframe)
