@@ -1,6 +1,9 @@
 package main
 
-import "sort"
+import (
+	"cmp"
+	"slices"
+)
 
 const increment = 50 // ops/sec
 
@@ -36,12 +39,8 @@ func findOptimalSplit(pass, fail []int) int {
 	copy(f, fail)
 
 	// Sort the inputs.
-	sort.Slice(p, func(i, j int) bool {
-		return p[i] < p[j]
-	})
-	sort.Slice(f, func(i, j int) bool {
-		return f[i] < f[j]
-	})
+	slices.Sort(p)
+	slices.Sort(f)
 
 	// Find the global min and max.
 	min, max := p[0], f[len(fail)-1]
@@ -69,11 +68,11 @@ func findOptimalSplit(pass, fail []int) int {
 
 	// Sort the (x, score) result slice by score ascending. Tie-break by x
 	// ascending.
-	sort.Slice(result, func(i, j int) bool {
-		if result[i][1] == result[j][1] {
-			return result[i][0] < result[j][0]
+	slices.SortFunc(result, func(a, b []int) int {
+		if v := cmp.Compare(a[1], b[1]); v != 0 {
+			return v
 		}
-		return result[i][1] < result[j][1]
+		return cmp.Compare(a[0], b[0])
 	})
 
 	// If there is more than one interval, split the difference between the min

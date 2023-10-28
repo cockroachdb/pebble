@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -139,9 +140,7 @@ func TestCheckpoint(t *testing.T) {
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
 
-			sort.Slice(fileNums, func(i, j int) bool {
-				return uint64(fileNums[i].FileNum()) < uint64(fileNums[j].FileNum())
-			})
+			slices.Sort(fileNums)
 			var buf bytes.Buffer
 			for _, f := range fileNums {
 				buf.WriteString(fmt.Sprintf("%s\n", f.String()))

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"compress/bzip2"
 	"compress/gzip"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -516,8 +518,8 @@ func (l *writeLoader) cookSummary() error {
 		} else {
 			// We must merge and re-sort by date.
 			existing = append(existing, cooked...)
-			sort.Slice(existing, func(i, j int) bool {
-				return existing[i].Date < existing[j].Date
+			slices.SortFunc(existing, func(a, b writeRunSummary) int {
+				return cmp.Compare(a.Date, b.Date)
 			})
 			summary[name] = existing
 		}

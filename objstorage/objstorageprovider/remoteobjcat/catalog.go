@@ -5,9 +5,10 @@
 package remoteobjcat
 
 import (
+	"cmp"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -114,8 +115,8 @@ func Open(fs vfs.FS, dirname string) (*Catalog, CatalogContents, error) {
 		res.Objects = append(res.Objects, meta)
 	}
 	// Sort the objects so the function is deterministic.
-	sort.Slice(res.Objects, func(i, j int) bool {
-		return res.Objects[i].FileNum.FileNum() < res.Objects[j].FileNum.FileNum()
+	slices.SortFunc(res.Objects, func(a, b RemoteObjectMetadata) int {
+		return cmp.Compare(a.FileNum, b.FileNum)
 	})
 	return c, res, nil
 }

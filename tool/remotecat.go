@@ -7,7 +7,7 @@ package tool
 import (
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -119,9 +119,7 @@ func (m *remoteCatalogT) runDumpOne(stdout io.Writer, filename string) error {
 	for n := range objects {
 		filenums = append(filenums, n)
 	}
-	sort.Slice(filenums, func(i, j int) bool {
-		return filenums[i].FileNum() < filenums[j].FileNum()
-	})
+	slices.Sort(filenums)
 	fmt.Fprintf(stdout, "Objects:\n")
 	for _, n := range filenums {
 		m := objects[n]

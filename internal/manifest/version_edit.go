@@ -7,10 +7,11 @@ package manifest
 import (
 	"bufio"
 	"bytes"
+	stdcmp "cmp"
 	"encoding/binary"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -471,11 +472,11 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	for df := range v.DeletedFiles {
 		entries = append(entries, df)
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Level != entries[j].Level {
-			return entries[i].Level < entries[j].Level
+	slices.SortFunc(entries, func(a, b DeletedFileEntry) int {
+		if v := stdcmp.Compare(a.Level, b.Level); v != 0 {
+			return v
 		}
-		return entries[i].FileNum < entries[j].FileNum
+		return stdcmp.Compare(a.FileNum, b.FileNum)
 	})
 	for _, df := range entries {
 		fmt.Fprintf(&buf, "  deleted:       L%d %s\n", df.Level, df.FileNum)
@@ -1018,8 +1019,8 @@ func (b *BulkVersionEdit) Apply(
 		// Sort addedFiles by file number. This isn't necessary, but tests which
 		// replay invalid manifests check the error output, and the error output
 		// depends on the order in which files are added to the btree.
-		sort.Slice(addedFiles, func(i, j int) bool {
-			return addedFiles[i].FileNum < addedFiles[j].FileNum
+		slices.SortFunc(addedFiles, func(a, b *FileMetadata) int {
+			return stdcmp.Compare(a.FileNum, b.FileNum)
 		})
 
 		var sm, la *FileMetadata

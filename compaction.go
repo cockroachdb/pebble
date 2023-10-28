@@ -6,11 +6,13 @@ package pebble
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
 	"math"
 	"runtime/pprof"
+	"slices"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -3793,9 +3795,8 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 
 	// Sort the manifests cause we want to delete some contiguous prefix
 	// of the older manifests.
-	sort.Slice(d.mu.versions.obsoleteManifests, func(i, j int) bool {
-		return d.mu.versions.obsoleteManifests[i].fileNum.FileNum() <
-			d.mu.versions.obsoleteManifests[j].fileNum.FileNum()
+	slices.SortFunc(d.mu.versions.obsoleteManifests, func(a, b fileInfo) int {
+		return cmp.Compare(a.fileNum, b.fileNum)
 	})
 
 	var obsoleteManifests []fileInfo
@@ -3830,8 +3831,8 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	for _, f := range files {
 		// We sort to make the order of deletions deterministic, which is nice for
 		// tests.
-		sort.Slice(f.obsolete, func(i, j int) bool {
-			return f.obsolete[i].fileNum.FileNum() < f.obsolete[j].fileNum.FileNum()
+		slices.SortFunc(f.obsolete, func(a, b fileInfo) int {
+			return cmp.Compare(a.fileNum, b.fileNum)
 		})
 		for _, fi := range f.obsolete {
 			dir := d.dirname
@@ -3881,16 +3882,10 @@ func merge(a, b []fileInfo) []fileInfo {
 	}
 
 	a = append(a, b...)
-	sort.Slice(a, func(i, j int) bool {
-		return a[i].fileNum.FileNum() < a[j].fileNum.FileNum()
+	slices.SortFunc(a, func(a, b fileInfo) int {
+		return cmp.Compare(a.fileNum, b.fileNum)
 	})
-
-	n := 0
-	for i := 0; i < len(a); i++ {
-		if n == 0 || a[i].fileNum != a[n-1].fileNum {
-			a[n] = a[i]
-			n++
-		}
-	}
-	return a[:n]
+	return slices.CompactFunc(a, func(a, b fileInfo) bool {
+		return a.fileNum == b.fileNum
+	})
 }

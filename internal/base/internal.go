@@ -5,6 +5,7 @@
 package base // import "github.com/cockroachdb/pebble/internal/base"
 
 import (
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"strconv"
@@ -299,13 +300,8 @@ func InternalCompare(userCmp Compare, a, b InternalKey) int {
 	if x := userCmp(a.UserKey, b.UserKey); x != 0 {
 		return x
 	}
-	if a.Trailer > b.Trailer {
-		return -1
-	}
-	if a.Trailer < b.Trailer {
-		return 1
-	}
-	return 0
+	// Reverse order for trailer comparison.
+	return cmp.Compare(b.Trailer, a.Trailer)
 }
 
 // Encode encodes the receiver into the buffer. The buffer must be large enough

@@ -6,11 +6,12 @@ package sstable
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"io"
 	"os"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -923,8 +924,8 @@ func (r *Reader) ValidateBlockChecksums() error {
 
 	// Sorting by offset ensures we are performing a sequential scan of the
 	// file.
-	sort.Slice(blocks, func(i, j int) bool {
-		return blocks[i].Offset < blocks[j].Offset
+	slices.SortFunc(blocks, func(a, b BlockHandle) int {
+		return cmp.Compare(a.Offset, b.Offset)
 	})
 
 	// Check all blocks sequentially. Make use of read-ahead, given we are

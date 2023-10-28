@@ -10,7 +10,7 @@ import (
 	"io"
 	"log"
 	"math"
-	"sort"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
@@ -249,8 +249,8 @@ func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 
 	l.keyMap = make(map[lsmKey]int)
 
-	sort.Slice(keys, func(i, j int) bool {
-		return base.InternalCompare(l.cmp.Compare, keys[i], keys[j]) < 0
+	slices.SortFunc(keys, func(a, b base.InternalKey) int {
+		return base.InternalCompare(l.cmp.Compare, a, b)
 	})
 
 	for i := range keys {

@@ -6,10 +6,12 @@ package sstable
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"unsafe"
 
@@ -86,10 +88,9 @@ func (l *Layout) Describe(
 		}
 	}
 
-	sort.Slice(blocks, func(i, j int) bool {
-		return blocks[i].Offset < blocks[j].Offset
+	slices.SortFunc(blocks, func(a, b block) int {
+		return cmp.Compare(a.Offset, b.Offset)
 	})
-
 	for i := range blocks {
 		b := &blocks[i]
 		fmt.Fprintf(w, "%10d  %s (%d)\n", b.Offset, b.name, b.Length)

@@ -9,7 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -214,9 +214,7 @@ func TestCompactionIter(t *testing.T) {
 						return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
 					}
 				}
-				sort.Slice(snapshots, func(i, j int) bool {
-					return snapshots[i] < snapshots[j]
-				})
+				slices.Sort(snapshots)
 
 				iter := newIter(formatVersion)
 				var b bytes.Buffer

@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -522,9 +523,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 				keys = append(keys, newKey)
 			}
 		}
-		sort.Slice(keys, func(i, j int) bool {
-			return bytes.Compare(keys[i], keys[j]) < 0
-		})
+		slices.SortFunc(keys, bytes.Compare)
 		for j := 0; j < numFiles; j++ {
 			startKey := keys[j*2]
 			endKey := keys[j*2+1]
