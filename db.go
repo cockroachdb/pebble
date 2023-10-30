@@ -804,6 +804,9 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
+	if batch.committing {
+		panic("pebble: batch already committing")
+	}
 	if batch.applied.Load() {
 		panic("pebble: batch already applied")
 	}
@@ -834,6 +837,7 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 		}
 		// TODO(jackson): Assert that all range key operands are suffixless.
 	}
+	batch.committing = true
 
 	if batch.db == nil {
 		batch.refreshMemTableSize()
