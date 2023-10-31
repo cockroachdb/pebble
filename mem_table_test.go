@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -287,7 +288,7 @@ func TestMemTableIter(t *testing.T) {
 				}
 				iter := mem.newIter(&options)
 				defer iter.Close()
-				return runInternalIterCmd(t, d, iter)
+				return itertest.RunInternalIterCmd(t, d, iter)
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)

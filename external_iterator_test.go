@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -123,7 +124,7 @@ func TestSimpleLevelIter(t *testing.T) {
 			it := &simpleLevelIter{cmp: o.Comparer.Compare, iters: internalIters}
 			it.init(IterOptions{})
 
-			response := runInternalIterCmd(t, td, it)
+			response := itertest.RunInternalIterCmd(t, td, it)
 			require.NoError(t, it.Close())
 			return response
 		default:
