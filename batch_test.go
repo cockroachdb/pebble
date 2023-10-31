@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/batchskl"
+	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
@@ -913,7 +914,7 @@ func TestBatchIter(t *testing.T) {
 						}
 						iter := b.newInternalIter(&options)
 						defer iter.Close()
-						return runInternalIterCmd(t, d, iter)
+						return itertest.RunInternalIterCmd(t, d, iter)
 
 					default:
 						return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -1030,7 +1031,7 @@ func TestFlushableBatchIter(t *testing.T) {
 		case "iter":
 			iter := b.newIter(nil)
 			defer iter.Close()
-			return runInternalIterCmd(t, d, iter)
+			return itertest.RunInternalIterCmd(t, d, iter)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -1086,7 +1087,7 @@ func TestFlushableBatch(t *testing.T) {
 
 			iter := b.newIter(&opts)
 			defer iter.Close()
-			return runInternalIterCmd(t, d, iter)
+			return itertest.RunInternalIterCmd(t, d, iter)
 
 		case "dump":
 			if len(d.CmdArgs) != 1 || len(d.CmdArgs[0].Vals) != 1 || d.CmdArgs[0].Key != "seq" {

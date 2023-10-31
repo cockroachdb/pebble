@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -524,8 +525,7 @@ func TestPointCollapsingIter(t *testing.T) {
 			}
 			pcIter.iter.Init(base.DefaultComparer, f, ksIter, keyspan.InterleavingIterOpts{})
 			defer pcIter.Close()
-
-			return runInternalIterCmd(t, d, pcIter, iterCmdVerboseKey)
+			return itertest.RunInternalIterCmd(t, d, pcIter, itertest.Verbose)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)

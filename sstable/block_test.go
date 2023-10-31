@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -253,43 +254,7 @@ func TestBlockIter2(t *testing.T) {
 					if err != nil {
 						return err.Error()
 					}
-
-					var b bytes.Buffer
-					for _, line := range strings.Split(d.Input, "\n") {
-						parts := strings.Fields(line)
-						if len(parts) == 0 {
-							continue
-						}
-						switch parts[0] {
-						case "seek-ge":
-							if len(parts) != 2 {
-								return "seek-ge <key>\n"
-							}
-							iter.SeekGE([]byte(strings.TrimSpace(parts[1])), base.SeekGEFlagsNone)
-						case "seek-lt":
-							if len(parts) != 2 {
-								return "seek-lt <key>\n"
-							}
-							iter.SeekLT([]byte(strings.TrimSpace(parts[1])), base.SeekLTFlagsNone)
-						case "first":
-							iter.First()
-						case "last":
-							iter.Last()
-						case "next":
-							iter.Next()
-						case "prev":
-							iter.Prev()
-						}
-						if iter.valid() {
-							fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
-						} else if err := iter.Error(); err != nil {
-							fmt.Fprintf(&b, "<err=%v>", err)
-						} else {
-							fmt.Fprintf(&b, ".")
-						}
-					}
-					b.WriteString("\n")
-					return b.String()
+					return itertest.RunInternalIterCmd(t, d, iter, itertest.Condensed)
 
 				default:
 					return fmt.Sprintf("unknown command: %s", d.Cmd)

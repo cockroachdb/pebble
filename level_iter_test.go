@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -93,7 +94,7 @@ func TestLevelIter(t *testing.T) {
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(keyspan.FragmentIterator))
 			iter.disableInvariants = true
-			return runInternalIterCmd(t, d, iter, iterCmdVerboseKey)
+			return itertest.RunInternalIterCmd(t, d, iter, itertest.Verbose)
 
 		case "load":
 			// The "load" command allows testing the iterator options passed to load
@@ -334,7 +335,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 					iter = nil
 				}()
 			}
-			return runInternalIterCmd(t, d, iter, iterCmdVerboseKey)
+			return itertest.RunInternalIterCmd(t, d, iter, itertest.Verbose)
 
 		case "file-pos":
 			// Returns the FileNum at which the iterator is positioned.
@@ -430,7 +431,7 @@ func TestLevelIterSeek(t *testing.T) {
 				manifest.Level(level), internalIterOpts{stats: &stats})
 			defer iter.Close()
 			iter.initRangeDel(&iter.rangeDelIter)
-			return runInternalIterCmd(t, d, iter, iterCmdVerboseKey, iterCmdStats(&stats))
+			return itertest.RunInternalIterCmd(t, d, iter, itertest.Verbose, itertest.WithStats(&stats))
 
 		case "iters-created":
 			return fmt.Sprintf("%d", lt.itersCreated)

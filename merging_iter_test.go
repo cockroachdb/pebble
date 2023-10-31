@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -68,7 +69,7 @@ func TestMergingIterSeek(t *testing.T) {
 			iter := newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 				func(a []byte) int { return len(a) }, iters...)
 			defer iter.Close()
-			return runInternalIterCmd(t, d, iter)
+			return itertest.RunInternalIterCmd(t, d, iter)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -127,7 +128,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 					iter := newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 						func(a []byte) int { return len(a) }, iters...)
 					defer iter.Close()
-					return runInternalIterCmd(t, d, iter)
+					return itertest.RunInternalIterCmd(t, d, iter)
 
 				default:
 					return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -276,7 +277,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 			// (https://github.com/cockroachdb/pebble/pull/3037 caused a SIGSEGV due
 			// to a nil pointer dereference).
 			miter.SetContext(context.Background())
-			return runInternalIterCmd(t, d, miter, iterCmdVerboseKey, iterCmdStats(&stats))
+			return itertest.RunInternalIterCmd(t, d, miter,
+				itertest.Verbose, itertest.WithStats(&stats))
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
