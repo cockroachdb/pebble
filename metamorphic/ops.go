@@ -108,6 +108,7 @@ func (o *applyOp) syncObjs() objIDSlice {
 
 // checkpointOp models a DB.Checkpoint operation.
 type checkpointOp struct {
+	dbID objID
 	// If non-empty, the checkpoint is restricted to these spans.
 	spans []pebble.CheckpointSpan
 }
@@ -127,8 +128,9 @@ func (o *checkpointOp) run(t *test, h historyRecorder) {
 	if len(o.spans) > 0 {
 		opts = append(opts, pebble.WithRestrictToSpans(o.spans))
 	}
+	db := t.getDB(o.dbID)
 	err := withRetries(func() error {
-		return t.db.Checkpoint(o.dir(t.dir, h.op), opts...)
+		return db.Checkpoint(o.dir(t.dir, h.op), opts...)
 	})
 	h.Recordf("%s // %v", o, err)
 }
@@ -145,10 +147,10 @@ func (o *checkpointOp) String() string {
 		}
 		fmt.Fprintf(&spanStr, "%q,%q", span.Start, span.End)
 	}
-	return fmt.Sprintf("db1.Checkpoint(%s)", spanStr.String())
+	return fmt.Sprintf("%s.Checkpoint(%s)", o.dbID, spanStr.String())
 }
 
-func (o *checkpointOp) receiver() objID      { return dbObjID }
+func (o *checkpointOp) receiver() objID      { return o.dbID }
 func (o *checkpointOp) syncObjs() objIDSlice { return nil }
 
 // closeOp models a {Batch,Iterator,Snapshot}.Close operation.
@@ -183,9 +185,7 @@ func (o *closeOp) syncObjs() objIDSlice {
 	if o.derivedDBID != 0 {
 		return []objID{o.derivedDBID}
 	}
-	// TODO(bilal): Once readers on snapshots are tracked correctly, return nil
-	// in the case below.
-	return []objID{dbObjID}
+	return nil
 }
 
 // compactOp models a DB.Compact operation.
@@ -298,7 +298,7 @@ type flushOp struct {
 }
 
 func (o *flushOp) run(t *test, h historyRecorder) {
-	db := t.getDB(dbObjID)
+	db := t.getDB(o.db)
 	err := db.Flush()
 	h.Recordf("%s // %v", o, err)
 }
@@ -775,10 +775,10 @@ func (o *newIterOp) receiver() objID { return o.readerID }
 func (o *newIterOp) syncObjs() objIDSlice {
 	// Prevent o.iterID ops from running before it exists.
 	objs := []objID{o.iterID}
-	// If reading through a batch, the new iterator will also observe database
+	// If reading through a batch or snapshot, the new iterator will also observe database
 	// state, and we must synchronize on the database state for a consistent
 	// view.
-	if o.readerID.tag() == batchTag {
+	if o.readerID.tag() == batchTag || o.readerID.tag() == snapTag {
 		objs = append(objs, o.derivedDBID)
 	}
 	return objs
@@ -1228,6 +1228,7 @@ func (o *iterPrevOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReader
 
 // newSnapshotOp models a DB.NewSnapshot operation.
 type newSnapshotOp struct {
+	dbID   objID
 	snapID objID
 	// If nonempty, this snapshot must not be used to read any keys outside of
 	// the provided bounds. This allows some implementations to use 'Eventually
@@ -1237,11 +1238,11 @@ type newSnapshotOp struct {
 
 func (o *newSnapshotOp) run(t *test, h historyRecorder) {
 	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
-	if len(o.bounds) > 0 && ((11400714819323198485*uint64(t.idx)*t.testOpts.seedEFOS)>>63) == 1 {
-		s := t.db.NewEventuallyFileOnlySnapshot(o.bounds)
+	if len(t.dbs) > 1 || (len(o.bounds) > 0 && ((11400714819323198485*uint64(t.idx)*t.testOpts.seedEFOS)>>63) == 1) {
+		s := t.getDB(o.dbID).NewEventuallyFileOnlySnapshot(o.bounds)
 		t.setSnapshot(o.snapID, s)
 	} else {
-		s := t.db.NewSnapshot()
+		s := t.getDB(o.dbID).NewSnapshot()
 		t.setSnapshot(o.snapID, s)
 	}
 	h.Recordf("%s", o)
@@ -1249,7 +1250,7 @@ func (o *newSnapshotOp) run(t *test, h historyRecorder) {
 
 func (o *newSnapshotOp) String() string {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "%s = db.NewSnapshot(", o.snapID)
+	fmt.Fprintf(&buf, "%s = %s.NewSnapshot(", o.snapID, o.dbID)
 	for i := range o.bounds {
 		if i > 0 {
 			fmt.Fprint(&buf, ", ")
@@ -1259,7 +1260,7 @@ func (o *newSnapshotOp) String() string {
 	fmt.Fprint(&buf, ")")
 	return buf.String()
 }
-func (o *newSnapshotOp) receiver() objID      { return dbObjID }
+func (o *newSnapshotOp) receiver() objID      { return o.dbID }
 func (o *newSnapshotOp) syncObjs() objIDSlice { return []objID{o.snapID} }
 
 type dbRatchetFormatMajorVersionOp struct {

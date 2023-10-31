@@ -157,7 +157,7 @@ func TestBlockPropertiesParse(t *testing.T) {
 	metaDir := t.TempDir()
 
 	rng := rand.New(rand.NewSource(fixedSeed))
-	ops := generate(rng, numOps, presetConfigs[0], newKeyManager())
+	ops := generate(rng, numOps, presetConfigs[0], newKeyManager(1 /* numInstances */))
 	opsPath := filepath.Join(metaDir, "ops")
 	formattedOps := formatOps(ops)
 	require.NoError(t, os.WriteFile(opsPath, []byte(formattedOps), 0644))
