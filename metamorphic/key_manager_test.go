@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var dbObjID objID = makeObjID(dbTag, 1)
+
 func TestObjKey(t *testing.T) {
 	testCases := []struct {
 		key  objKey
@@ -83,7 +85,7 @@ func TestGlobalStateIndicatesEligibleForSingleDelete(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		k := newKeyManager()
+		k := newKeyManager(1)
 		t.Run("", func(t *testing.T) {
 			k.globalKeysMap[string(key.key)] = &tc.meta
 			require.Equal(t, tc.want, k.globalStateIndicatesEligibleForSingleDelete(key.key))
@@ -164,7 +166,7 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 		},
 	}
 
-	keyManager := newKeyManager()
+	keyManager := newKeyManager(1 /* numInstances */)
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
 			tc.toMerge.mergeInto(keyManager, &tc.existing)
@@ -174,7 +176,7 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 }
 
 func TestKeyManager_AddKey(t *testing.T) {
-	m := newKeyManager()
+	m := newKeyManager(1 /* numInstances */)
 	require.Empty(t, m.globalKeys)
 
 	k1 := []byte("foo")
@@ -218,7 +220,7 @@ func TestKeyManager_GetOrInit(t *testing.T) {
 	key := []byte("foo")
 	o := makeObjKey(id, key)
 
-	m := newKeyManager()
+	m := newKeyManager(1 /* numInstances */)
 	require.NotContains(t, m.byObjKey, o.String())
 	require.NotContains(t, m.byObj, id)
 	require.Contains(t, m.byObj, makeObjID(dbTag, 1)) // Always contains the DB key.
@@ -236,7 +238,7 @@ func TestKeyManager_Contains(t *testing.T) {
 	id := makeObjID(dbTag, 1)
 	key := []byte("foo")
 
-	m := newKeyManager()
+	m := newKeyManager(1 /* numInstances */)
 	require.False(t, m.contains(id, key))
 
 	m.getOrInit(id, key)
@@ -247,7 +249,7 @@ func TestKeyManager_MergeInto(t *testing.T) {
 	fromID := makeObjID(batchTag, 1)
 	toID := makeObjID(dbTag, 1)
 
-	m := newKeyManager()
+	m := newKeyManager(1 /* numInstances */)
 
 	// Two keys in "from".
 	a := m.getOrInit(fromID, []byte("foo"))
@@ -309,7 +311,7 @@ func eligibleWrite(key []byte, val bool) seqFn {
 
 func eligibleSingleDelete(key []byte, val bool, id objID) seqFn {
 	return func(t *testing.T, k *keyManager) {
-		require.Equal(t, val, contains(key, k.eligibleSingleDeleteKeys(id)))
+		require.Equal(t, val, contains(key, k.eligibleSingleDeleteKeys(id, dbObjID)))
 	}
 }
 
@@ -482,7 +484,7 @@ func TestKeyManager(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			m := newKeyManager()
+			m := newKeyManager(1 /* numInstances */)
 			tFunc := func() {
 				for _, op := range tc.ops {
 					op(t, m)
@@ -510,11 +512,11 @@ func TestOpWrittenKeys(t *testing.T) {
 func TestLoadPrecedingKeys(t *testing.T) {
 	rng := randvar.NewRand()
 	cfg := defaultConfig()
-	km := newKeyManager()
+	km := newKeyManager(1 /* numInstances */)
 	ops := generate(rng, 1000, cfg, km)
 
 	cfg2 := defaultConfig()
-	km2 := newKeyManager()
+	km2 := newKeyManager(1 /* numInstances */)
 	loadPrecedingKeys(t, ops, &cfg2, km2)
 
 	// NB: We can't assert equality, because the original run may not have

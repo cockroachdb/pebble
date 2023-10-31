@@ -272,8 +272,8 @@ func suffixFromInt(suffix int64) []byte {
 	return testkeys.Suffix(suffix)
 }
 
-func (g *generator) randKeyToSingleDelete(id objID) []byte {
-	keys := g.keyManager.eligibleSingleDeleteKeys(id)
+func (g *generator) randKeyToSingleDelete(id, dbID objID) []byte {
+	keys := g.keyManager.eligibleSingleDeleteKeys(id, dbID)
 	length := len(keys)
 	if length == 0 {
 		return nil
@@ -562,7 +562,9 @@ func (g *generator) dbCheckpoint() {
 		spans[i].Start = start
 		spans[i].End = end
 	}
+	dbID := g.dbs.rand(g.rng)
 	g.add(&checkpointOp{
+		dbID:  dbID,
 		spans: spans,
 	})
 }
@@ -584,7 +586,7 @@ func (g *generator) dbCompact() {
 }
 
 func (g *generator) dbFlush() {
-	g.add(&flushOp{dbObjID})
+	g.add(&flushOp{g.dbs.rand(g.rng)})
 }
 
 func (g *generator) dbRatchetFormatMajorVersion() {
@@ -680,7 +682,7 @@ func (g *generator) newIter() {
 		// closes.
 	}
 	g.iterReaderID[iterID] = readerID
-	g.deriveDB(iterID, readerID)
+	dbID := g.deriveDB(iterID)
 
 	var opts iterOpts
 	if !g.maybeSetSnapshotIterBounds(readerID, &opts) {
@@ -721,16 +723,11 @@ func (g *generator) newIter() {
 	g.itersLastOpts[iterID] = opts
 	g.iterCreationTimestamp[iterID] = g.keyManager.nextMetaTimestamp()
 	g.iterReaderID[iterID] = readerID
-	var derivedDBID objID
-	if readerID.tag() == batchTag {
-		g.deriveDB(iterID, readerID)
-		derivedDBID = g.objDB[iterID]
-	}
 	g.add(&newIterOp{
 		readerID:    readerID,
 		iterID:      iterID,
 		iterOpts:    opts,
-		derivedDBID: derivedDBID,
+		derivedDBID: dbID,
 	})
 }
 
@@ -752,12 +749,16 @@ func (g *generator) randKeyTypesAndMask() (keyTypes uint32, maskSuffix []byte) {
 	return keyTypes, maskSuffix
 }
 
-func (g *generator) deriveDB(readerID, parentID objID) {
-	dbParentID := parentID
+func (g *generator) deriveDB(readerID objID) objID {
+	if readerID.tag() == iterTag {
+		readerID = g.iterReaderID[readerID]
+	}
+	dbParentID := readerID
 	if dbParentID.tag() != dbTag {
 		dbParentID = g.objDB[dbParentID]
 	}
 	g.objDB[readerID] = dbParentID
+	return dbParentID
 }
 
 func (g *generator) newIterUsingClone() {
@@ -778,7 +779,7 @@ func (g *generator) newIterUsingClone() {
 	}
 	readerID := g.iterReaderID[existingIterID]
 	g.iterReaderID[iterID] = readerID
-	g.deriveDB(iterID, readerID)
+	g.deriveDB(iterID)
 
 	var refreshBatch bool
 	if readerID.tag() == batchTag {
@@ -815,7 +816,8 @@ func (g *generator) iterClose(iterID objID) {
 		// closes.
 	}
 
-	g.add(&closeOp{objID: iterID, derivedDBID: g.objDB[iterID]})
+	readerID := g.iterReaderID[iterID]
+	g.add(&closeOp{objID: iterID, derivedDBID: g.objDB[readerID]})
 }
 
 func (g *generator) iterSetBounds(iterID objID) {
@@ -1003,7 +1005,7 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 	// random key.
 	if g.rng.Intn(10) >= 1 {
 		possibleKeys := make([][]byte, 0, 100)
-		inRangeKeys := g.randKeyToReadWithinBounds(lower, upper, dbObjID)
+		inRangeKeys := g.randKeyToReadWithinBounds(lower, upper, g.objDB[iterID])
 		for _, keyMeta := range inRangeKeys {
 			posKey := keyMeta.key
 			var foundWriteWithoutDelete bool
@@ -1144,13 +1146,8 @@ func (g *generator) readerGet() {
 		key = g.randKeyToRead(0.001) // 0.1% new keys
 	}
 	derivedDBID := objID(0)
-	if dbID, ok := g.objDB[readerID]; ok && readerID.tag() == batchTag {
-		derivedDBID = dbID
-	} else if readerID.tag() == snapTag {
-		// TODO(bilal): This is legacy behaviour as snapshots aren't supported in
-		// two-instance mode yet. Track snapshots in g.objDB and objToDB and remove this
-		// conditional.
-		derivedDBID = dbObjID
+	if readerID.tag() == batchTag || readerID.tag() == snapTag {
+		derivedDBID = g.deriveDB(readerID)
 	}
 	g.add(&getOp{readerID: readerID, key: key, derivedDBID: derivedDBID})
 }
@@ -1211,12 +1208,15 @@ func (g *generator) newSnapshot() {
 	g.init.snapshotSlots++
 	g.liveSnapshots = append(g.liveSnapshots, snapID)
 	g.liveReaders = append(g.liveReaders, snapID)
+	dbID := g.dbs.rand(g.rng)
+	g.objDB[snapID] = dbID
 
 	iters := make(objIDSet)
 	g.snapshots[snapID] = iters
 	g.readers[snapID] = iters
 
 	s := &newSnapshotOp{
+		dbID:   dbID,
 		snapID: snapID,
 	}
 
@@ -1224,13 +1224,24 @@ func (g *generator) newSnapshot() {
 	// snapshot. Setting bounds allows some runs of the metamorphic test to use
 	// a EventuallyFileOnlySnapshot instead of a Snapshot, testing equivalence
 	// between the two for reads within those bounds.
-	if g.rng.Float64() < 0.75 {
+	//
+	// If we're in multi-instance mode, we must always create bounds, as we will
+	// always create EventuallyFileOnlySnapshots to allow commands that use excises
+	// (eg. replicateOp) to work.
+	if g.rng.Float64() < 0.75 || g.dbs.Len() > 1 {
 		s.bounds = g.generateDisjointKeyRanges(
 			g.rng.Intn(5) + 1, /* between 1-5 */
 		)
 		g.snapshotBounds[snapID] = s.bounds
 	}
 	g.add(s)
+	if g.dbs.Len() > 1 {
+		// Do a flush after each EFOS, if we're in multi-instance mode. This limits
+		// the testing area of EFOS, but allows them to be used alongside operations
+		// that do an excise (eg. replicateOp). This will be revisited when
+		// https://github.com/cockroachdb/pebble/issues/2885 is implemented.
+		g.add(&flushOp{dbID})
+	}
 }
 
 func (g *generator) snapshotClose() {
@@ -1248,10 +1259,10 @@ func (g *generator) snapshotClose() {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
-		g.add(&closeOp{objID: id, derivedDBID: g.objDB[id]})
+		g.add(&closeOp{objID: id, derivedDBID: g.objDB[snapID]})
 	}
 
-	g.add(&closeOp{objID: snapID})
+	g.add(&closeOp{objID: snapID, derivedDBID: g.objDB[snapID]})
 }
 
 func (g *generator) writerApply() {
@@ -1469,7 +1480,8 @@ func (g *generator) writerSingleDelete() {
 	}
 
 	writerID := g.liveWriters.rand(g.rng)
-	key := g.randKeyToSingleDelete(writerID)
+	dbID := g.objDB[writerID]
+	key := g.randKeyToSingleDelete(writerID, dbID)
 	if key == nil {
 		return
 	}

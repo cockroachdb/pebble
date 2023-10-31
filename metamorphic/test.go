@@ -26,18 +26,14 @@ type test struct {
 	opsDone   []chan struct{} // op index -> done channel
 	idx       int
 	dir       string
-	// The DB the test is run on.
-	//
-	// TODO(bilal): The DB field is deprecated in favour of the dbs slice. Update
-	// all remaining uses of t.db to use t.dbs[] instead.
-	db        *pebble.DB
 	opts      *pebble.Options
 	testOpts  *TestOptions
 	writeOpts *pebble.WriteOptions
 	tmpDir    string
+	// The DBs the test is run on.
+	dbs []*pebble.DB
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
-	dbs       []*pebble.DB
 	batches   []*pebble.Batch
 	iters     []*retryableIter
 	snapshots []readerCloser
@@ -196,7 +192,6 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 		}
 	}
 
-	t.db = t.dbs[0]
 	return nil
 }
 
@@ -251,7 +246,6 @@ func (t *test) restartDB(dbID objID) error {
 		if err != nil {
 			return err
 		}
-		t.db = t.dbs[0]
 		return err
 	})
 	t.opts.Cache.Unref()
@@ -426,7 +420,7 @@ func computeSynchronizationPoints(ops []op) (opsWaitOn [][]int, opsDone []chan s
 		// In additional to synchronizing on the operation's receiver operation,
 		// we may need to synchronize on additional objects. For example,
 		// batch0.Commit() must synchronize its receiver, batch0, but also on
-		// dbObjID since it mutates database state.
+		// the DB since it mutates database state.
 		for _, syncObjID := range o.syncObjs() {
 			if vi, vok := lastOpReference[syncObjID]; vok {
 				opsWaitOn[i] = append(opsWaitOn[i], vi)

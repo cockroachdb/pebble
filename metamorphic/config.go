@@ -172,13 +172,10 @@ func defaultConfig() config {
 func multiInstanceConfig() config {
 	cfg := defaultConfig()
 	cfg.ops[replicate] = 5
+	// Single deletes and merges are disabled in multi-instance mode, as
+	// replicateOp doesn't support them.
 	cfg.ops[writerSingleDelete] = 0
 	cfg.ops[writerMerge] = 0
-	// TODO(bilal): The disabled operations below should also be supported
-	// in the two-instance test, once they're updated to work in multi-instance
-	// mode.
-	cfg.ops[newSnapshot] = 0
-	cfg.ops[snapshotClose] = 0
 	return cfg
 }
 
