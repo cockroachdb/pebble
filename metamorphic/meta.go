@@ -165,7 +165,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 
 	// Generate a new set of random ops, writing them to <dir>/ops. These will be
 	// read by the child processes when performing a test run.
-	km := newKeyManager()
+	km := newKeyManager(runOpts.numInstances)
 	cfg := presetConfigs[rng.Intn(len(presetConfigs))]
 	if runOpts.previousOpsPath != "" {
 		// During cross-version testing, we load keys from an `ops` file

@@ -207,12 +207,10 @@ func (k *keyManager) nextMetaTimestamp() int {
 	return ret
 }
 
-var dbObjID objID = makeObjID(dbTag, 1)
-
 // newKeyManager returns a pointer to a new keyManager. Callers should
 // interact with this using addNewKey, eligible*Keys, update,
 // canTolerateApplyFailure methods only.
-func newKeyManager() *keyManager {
+func newKeyManager(numInstances int) *keyManager {
 	m := &keyManager{
 		comparer:             testkeys.Comparer,
 		byObjKey:             make(map[string]*keyMeta),
@@ -220,7 +218,9 @@ func newKeyManager() *keyManager {
 		globalKeysMap:        make(map[string]*keyMeta),
 		globalKeyPrefixesMap: make(map[string]struct{}),
 	}
-	m.byObj[dbObjID] = []*keyMeta{}
+	for i := 1; i <= max(numInstances, 1); i++ {
+		m.byObj[makeObjID(dbTag, uint32(i))] = []*keyMeta{}
+	}
 	return m
 }
 
@@ -345,8 +345,8 @@ func (k *keyManager) checkForDelOrSingleDelTransition(dbMeta *keyMeta, globalMet
 	}
 }
 
-func (k *keyManager) checkForDelOrSingleDelTransitionInDB() {
-	keys := k.byObj[dbObjID]
+func (k *keyManager) checkForDelOrSingleDelTransitionInDB(dbID objID) {
+	keys := k.byObj[dbID]
 	for _, dbMeta := range keys {
 		globalMeta := k.globalKeysMap[string(dbMeta.key)]
 		k.checkForDelOrSingleDelTransition(dbMeta, globalMeta)
@@ -385,7 +385,7 @@ func (k *keyManager) update(o op) {
 		meta.dels++
 		globalMeta.dels++
 		meta.updateOps = append(meta.updateOps, keyUpdate{true, k.nextMetaTimestamp()})
-		if s.writerID == dbObjID {
+		if s.writerID.tag() == dbTag {
 			k.checkForDelOrSingleDelTransition(meta, globalMeta)
 		}
 	case *singleDeleteOp:
@@ -397,25 +397,25 @@ func (k *keyManager) update(o op) {
 		meta.singleDel = true
 		globalMeta.singleDel = true
 		meta.updateOps = append(meta.updateOps, keyUpdate{true, k.nextMetaTimestamp()})
-		if s.writerID == dbObjID {
+		if s.writerID.tag() == dbTag {
 			k.checkForDelOrSingleDelTransition(meta, globalMeta)
 		}
 	case *ingestOp:
 		// For each batch, merge all keys with the keys in the DB.
 		for _, batchID := range s.batchIDs {
-			k.mergeKeysInto(batchID, dbObjID)
+			k.mergeKeysInto(batchID, s.dbID)
 		}
-		k.checkForDelOrSingleDelTransitionInDB()
+		k.checkForDelOrSingleDelTransitionInDB(s.dbID)
 	case *applyOp:
 		// Merge the keys from this writer into the parent writer.
 		k.mergeKeysInto(s.batchID, s.writerID)
-		if s.writerID == dbObjID {
-			k.checkForDelOrSingleDelTransitionInDB()
+		if s.writerID.tag() == dbTag {
+			k.checkForDelOrSingleDelTransitionInDB(s.writerID)
 		}
 	case *batchCommitOp:
 		// Merge the keys from the batch with the keys from the DB.
-		k.mergeKeysInto(s.batchID, dbObjID)
-		k.checkForDelOrSingleDelTransitionInDB()
+		k.mergeKeysInto(s.batchID, s.dbID)
+		k.checkForDelOrSingleDelTransitionInDB(s.dbID)
 	}
 }
 
@@ -461,7 +461,7 @@ func (k *keyManager) eligibleWriteKeys() (keys [][]byte) {
 
 // eligibleSingleDeleteKeys returns a slice of keys that can be safely single
 // deleted, given the writer id.
-func (k *keyManager) eligibleSingleDeleteKeys(id objID) (keys [][]byte) {
+func (k *keyManager) eligibleSingleDeleteKeys(id, dbID objID) (keys [][]byte) {
 	// Creating and sorting this slice of keys is wasteful given that the
 	// caller will pick one, but makes it simpler for unit testing.
 	addForObjID := func(id objID) {
@@ -472,8 +472,8 @@ func (k *keyManager) eligibleSingleDeleteKeys(id objID) (keys [][]byte) {
 		}
 	}
 	addForObjID(id)
-	if id != dbObjID {
-		addForObjID(dbObjID)
+	if id.tag() != dbTag {
+		addForObjID(dbID)
 	}
 	slices.SortFunc(keys, k.comparer.Compare)
 	return keys
