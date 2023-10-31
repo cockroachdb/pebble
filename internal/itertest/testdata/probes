@@ -1,0 +1,146 @@
+# Create a probe that ignores the inner iterator's return values
+# and instead returns a specific KV. It should apply to all internal
+# iterator operations because there's no conditional logic.
+
+new
+(ReturnKV "bar.SET.2" "value")
+----
+
+iter
+first
+next
+seek-ge foo
+seek-lt bar
+last
+prev
+----
+bar#2,1:value
+bar#2,1:value
+bar#2,1:value
+bar#2,1:value
+bar#2,1:value
+bar#2,1:value
+
+# Create an identical probe as above, and then wrap it in a "noop" probe.
+# A noop probe does nothing; it passes through the child iterator's results
+# verbatim, so the iteration results should be the same.
+
+new
+(ReturnKV "bar.SET.2" "value")
+noop
+----
+
+iter
+first
+next
+seek-ge foo
+seek-lt bar
+last
+prev
+----
+bar#2,1:value
+bar#2,1:value
+bar#2,1:value
+bar#2,1:value
+bar#2,1:value
+bar#2,1:value
+
+# Again, create an iterator with similar probes but this time with an additional
+# probe level that ignores the inner return values and injects errors.
+
+new
+(ReturnKV "bar.SET.2" "value")
+noop
+ErrInjected
+----
+
+iter
+first
+next
+seek-ge foo
+seek-lt bar
+last
+prev
+----
+err=injected error
+err=injected error
+err=injected error
+err=injected error
+err=injected error
+err=injected error
+
+# Create a probe that returns a specific KV on seeks and errors on
+# Next and Prev.
+
+new
+(If (Or OpNext OpPrev) ErrInjected (ReturnKV "bar.SET.2" "value"))
+----
+
+iter
+first
+next
+seek-ge foo
+seek-lt bar
+last
+prev
+----
+bar#2,1:value
+err=injected error
+bar#2,1:value
+bar#2,1:value
+bar#2,1:value
+err=injected error
+
+# Create a probe that returns an error on the 3rd seek-ge.
+
+new
+(If (And OpSeekGE (OnIndex 2)) ErrInjected (ReturnKV "ok.SET.1" "ok"))
+----
+
+iter
+first
+next
+seek-ge foo
+seek-lt bar
+last
+prev
+seek-ge bar
+seek-ge bax
+seek-ge bop
+----
+ok#1,1:ok
+ok#1,1:ok
+ok#1,1:ok
+ok#1,1:ok
+ok#1,1:ok
+ok#1,1:ok
+ok#1,1:ok
+err=injected error
+ok#1,1:ok
+
+# Create a probe that always returns nil, except for on the 3rd seek-ge.
+
+new
+(If (And OpSeekGE (OnIndex 2)) (ReturnKV "ok.SET.1" "ok") Nil)
+----
+
+iter
+first
+next
+seek-ge foo
+seek-lt bar
+last
+prev
+seek-ge bar
+seek-ge bax
+seek-ge bop
+----
+.
+.
+.
+.
+.
+.
+.
+ok#1,1:ok
+.
