@@ -7,21 +7,20 @@ package errorfs
 import (
 	"encoding/binary"
 	"fmt"
-	"go/scanner"
 	"go/token"
 	"hash/maphash"
 	"math/rand"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/dsl"
 )
 
 // MustParse parses an Injector from the DSL, panicking if parsing fails.
 func MustParse(s string) Injector {
-	inj, err := ParseInjectorFromDSL(s)
+	inj, err := Parse(s)
 	if err != nil {
 		panic(err)
 	}
@@ -33,10 +32,7 @@ func MustParsef(s string, args ...interface{}) Injector { return MustParse(fmt.S
 
 // Predicate encodes conditional logic that determines whether to inject an
 // error.
-type Predicate interface {
-	evaluate(Op) bool
-	String() string
-}
+type Predicate = dsl.Predicate[Op]
 
 // PathMatch returns a predicate that returns true if an operation's file path
 // matches the provided pattern according to filepath.Match.
@@ -52,7 +48,7 @@ func (pm *pathMatch) String() string {
 	return fmt.Sprintf("(PathMatch %q)", pm.pattern)
 }
 
-func (pm *pathMatch) evaluate(op Op) bool {
+func (pm *pathMatch) Evaluate(op Op) bool {
 	matched, err := filepath.Match(pm.pattern, op.Path)
 	if err != nil {
 		// Only possible error is ErrBadPattern, indicating an issue with
@@ -65,7 +61,7 @@ func (pm *pathMatch) evaluate(op Op) bool {
 var (
 	// Reads is a predicate that returns true iff an operation is a read
 	// operation.
-	Reads Predicate = opKindPred{kind: OpIsRead}
+	Reads dsl.Predicate[Op] = opKindPred{kind: OpIsRead}
 	// Writes is a predicate that returns true iff an operation is a write
 	// operation.
 	Writes Predicate = opKindPred{kind: OpIsWrite}
@@ -81,7 +77,7 @@ func (o *opFileReadAt) String() string {
 	return fmt.Sprintf("(FileReadAt %d)", o.offset)
 }
 
-func (o *opFileReadAt) evaluate(op Op) bool {
+func (o *opFileReadAt) Evaluate(op Op) bool {
 	return op.Kind == OpFileReadAt && o.offset == op.Offset
 }
 
@@ -90,71 +86,11 @@ type opKindPred struct {
 }
 
 func (p opKindPred) String() string      { return p.kind.String() }
-func (p opKindPred) evaluate(op Op) bool { return p.kind == op.Kind.ReadOrWrite() }
-
-// Not returns a predicate that negates the provided predicate.
-func Not(p Predicate) Predicate { return not{Predicate: p} }
-
-type not struct {
-	Predicate
-}
-
-func (n not) String() string     { return fmt.Sprintf("(Not %s)", n.Predicate.String()) }
-func (n not) evaluate(o Op) bool { return !n.Predicate.evaluate(o) }
-
-// And returns a predicate that returns true if all its operands return true.
-func And(preds ...Predicate) Predicate { return and(preds) }
-
-type and []Predicate
-
-func (a and) String() string {
-	var sb strings.Builder
-	sb.WriteString("(And")
-	for i := 0; i < len(a); i++ {
-		sb.WriteRune(' ')
-		sb.WriteString(a[i].String())
-	}
-	sb.WriteRune(')')
-	return sb.String()
-}
-
-func (a and) evaluate(o Op) bool {
-	ok := true
-	for _, p := range a {
-		ok = ok && p.evaluate(o)
-	}
-	return ok
-}
-
-// Or returns a predicate that returns true if any of its operands return true.
-func Or(preds ...Predicate) Predicate { return or(preds) }
-
-type or []Predicate
-
-func (e or) String() string {
-	var sb strings.Builder
-	sb.WriteString("(Or")
-	for i := 0; i < len(e); i++ {
-		sb.WriteRune(' ')
-		sb.WriteString(e[i].String())
-	}
-	sb.WriteRune(')')
-	return sb.String()
-}
-
-func (e or) evaluate(o Op) bool {
-	ok := false
-	for _, p := range e {
-		ok = ok || p.evaluate(o)
-	}
-	return ok
-}
+func (p opKindPred) Evaluate(op Op) bool { return p.kind == op.Kind.ReadOrWrite() }
 
 // OnIndex returns a predicate that returns true on its (n+1)-th invocation.
 func OnIndex(index int32) *InjectIndex {
-	ii := &InjectIndex{}
-	ii.index.Store(index)
-	return ii
+	return &InjectIndex{Index: dsl.OnIndex[Op](index)}
 }
 
 // Randomly constructs a new predicate that pseudorandomly evaluates to true
@@ -189,7 +125,7 @@ func (rs *randomSeed) String() string {
 	return fmt.Sprintf("(Randomly %.2f %d)", rs.p, rs.rootSeed)
 }
 
-func (rs *randomSeed) evaluate(op Op) bool {
+func (rs *randomSeed) Evaluate(op Op) bool {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	prng, ok := rs.mu.perFilePrng[op.Path]
@@ -213,8 +149,8 @@ func (rs *randomSeed) evaluate(op Op) bool {
 	return prng.Float64() < rs.p
 }
 
-// ParseInjectorFromDSL parses a string encoding a lisp-like DSL describing when
-// errors should be injected.
+// Parse parses a string encoding a lisp-like DSL describing when errors should
+// be injected.
 //
 // Errors:
 // - ErrInjected is the only error currently supported by the DSL.
@@ -253,34 +189,8 @@ func (rs *randomSeed) evaluate(op Op) bool {
 //
 // Example: (ErrInjected (And (PathMatch "*.sst") (OnIndex 5))) is a rule set
 // that will inject an error on the 5-th I/O operation involving an sstable.
-func ParseInjectorFromDSL(d string) (inj Injector, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			var ok bool
-			err, ok = r.(error)
-			if !ok {
-				panic(r)
-			}
-		}
-	}()
-
-	fset := token.NewFileSet()
-	file := fset.AddFile("", -1, len(d))
-	var s scanner.Scanner
-	s.Init(file, []byte(strings.TrimSpace(d)), nil /* no error handler */, 0)
-	pos, tok, lit := s.Scan()
-	inj, err = parseDSLInjectorFromPos(&s, pos, tok, lit)
-	if err != nil {
-		return nil, err
-	}
-	pos, tok, lit = s.Scan()
-	if tok == token.SEMICOLON {
-		pos, tok, lit = s.Scan()
-	}
-	if tok != token.EOF {
-		return nil, errors.Errorf("errorfs: unexpected token %s (%q) at char %v; expected EOF", tok, lit, pos)
-	}
-	return inj, err
+func Parse(d string) (inj Injector, err error) {
+	return dslInjectorParser.Parse(d)
 }
 
 // LabelledError is an error that also implements Injector, unconditionally
@@ -302,7 +212,7 @@ func (le LabelledError) String() string {
 
 // MaybeError implements Injector.
 func (le LabelledError) MaybeError(op Op) error {
-	if le.predicate == nil || le.predicate.evaluate(op) {
+	if le.predicate == nil || le.predicate.Evaluate(op) {
 		return le
 	}
 	return nil
@@ -310,7 +220,7 @@ func (le LabelledError) MaybeError(op Op) error {
 
 // If returns an Injector that returns the receiver error if the provided
 // predicate evalutes to true.
-func (le LabelledError) If(p Predicate) Injector {
+func (le LabelledError) If(p Predicate) LabelledError {
 	le.predicate = p
 	return le
 }
@@ -318,142 +228,52 @@ func (le LabelledError) If(p Predicate) Injector {
 // AddError defines a new error that may be used within the DSL parsed by
 // ParseInjectorFromDSL and will inject the provided error.
 func AddError(le LabelledError) {
-	dslKnownErrors[le.label] = le
-}
-
-var (
-	dslPredicateExprs     map[string]func(*scanner.Scanner) Predicate
-	dslPredicateConstants map[string]func(*scanner.Scanner) Predicate
-	dslKnownErrors        map[string]LabelledError
-)
-
-func init() {
-	dslKnownErrors = map[string]LabelledError{}
-	dslPredicateConstants = map[string]func(*scanner.Scanner) Predicate{
-		"Reads":  func(s *scanner.Scanner) Predicate { return Reads },
-		"Writes": func(s *scanner.Scanner) Predicate { return Writes },
-	}
-	for i, name := range opNames {
-		opKind := OpKind(i)
-		dslPredicateConstants[name] = func(s *scanner.Scanner) Predicate {
-			// An OpKind implements Predicate.
-			return opKind
-		}
-	}
-	// Parsers for predicate exprs of the form `(ident ...)`.
-	dslPredicateExprs = map[string]func(*scanner.Scanner) Predicate{
-		"PathMatch": func(s *scanner.Scanner) Predicate {
-			pattern := mustUnquote(consumeTok(s, token.STRING))
-			consumeTok(s, token.RPAREN)
-			return PathMatch(pattern)
-		},
-		"OnIndex": func(s *scanner.Scanner) Predicate {
-			i, err := strconv.ParseInt(consumeTok(s, token.INT), 10, 32)
+	// Define the error both as a constant that unconditionally injects the
+	// error, and as a function that injects the error only if the provided
+	// predicate evaluates to true.
+	dslInjectorParser.DefineConstant(le.label, func() LabelledError { return le })
+	dslInjectorParser.DefineFunc(le.label,
+		func(p *dsl.Parser[LabelledError], s *dsl.Scanner) LabelledError {
+			pred, err := dslPredicateParser.ParseFromPos(s, s.Scan())
 			if err != nil {
 				panic(err)
 			}
-			consumeTok(s, token.RPAREN)
-			return OnIndex(int32(i))
-		},
-		"And": func(s *scanner.Scanner) Predicate {
-			return And(parseVariadicPredicate(s)...)
-		},
-		"Or": func(s *scanner.Scanner) Predicate {
-			return Or(parseVariadicPredicate(s)...)
-		},
-		"Not": func(s *scanner.Scanner) Predicate {
-			preds := parseVariadicPredicate(s)
-			if len(preds) != 1 {
-				panic(errors.Newf("not accepts exactly 1 argument, given %d", len(preds)))
-			}
-			return not{Predicate: preds[0]}
-		},
-		"OpFileReadAt": func(s *scanner.Scanner) Predicate {
-			return parseFileReadAtOp(s)
-		},
-		"Randomly": func(s *scanner.Scanner) Predicate {
-			return parseRandomly(s)
-		},
-	}
+			s.Consume(token.RPAREN)
+			return le.If(pred)
+		})
+}
+
+var (
+	dslInjectorParser  *dsl.Parser[LabelledError]     = dsl.NewParser[LabelledError]()
+	dslPredicateParser *dsl.Parser[dsl.Predicate[Op]] = dsl.NewPredicateParser[Op]()
+)
+
+func init() {
 	AddError(ErrInjected)
-}
 
-func parseVariadicPredicate(s *scanner.Scanner) (ret []Predicate) {
-	pos, tok, lit := s.Scan()
-	for tok == token.LPAREN || tok == token.IDENT {
-		pred, err := parseDSLPredicateFromPos(s, pos, tok, lit)
-		if err != nil {
-			panic(err)
-		}
-		ret = append(ret, pred)
-		pos, tok, lit = s.Scan()
+	dslPredicateParser.DefineConstant("Reads", func() dsl.Predicate[Op] { return Reads })
+	dslPredicateParser.DefineConstant("Writes", func() dsl.Predicate[Op] { return Writes })
+	for i, name := range opNames {
+		opKind := OpKind(i)
+		dslPredicateParser.DefineConstant(name, func() dsl.Predicate[Op] {
+			// An OpKind implements dsl.Predicate[Op].
+			return opKind
+		})
 	}
-	if tok != token.RPAREN {
-		panic(errors.Errorf("errorfs: unexpected token %s (%q) at char %v; expected RPAREN", tok, lit, pos))
-	}
-	return ret
-}
-
-func parseDSLInjectorFromPos(
-	s *scanner.Scanner, pos token.Pos, tok token.Token, lit string,
-) (Injector, error) {
-	switch tok {
-	case token.IDENT:
-		// It's an injector of the form `ErrInjected`.
-		le, ok := dslKnownErrors[lit]
-		if !ok {
-			return nil, errors.Errorf("errorfs: unknown error %q", lit)
-		}
-		return le, nil
-	case token.LPAREN:
-		// Otherwise it's an expression, eg: (ErrInjected (And ...))
-		lit = consumeTok(s, token.IDENT)
-		le, ok := dslKnownErrors[lit]
-		if !ok {
-			return nil, errors.Errorf("errorfs: unknown error %q", lit)
-		}
-		pos, tok, lit := s.Scan()
-		pred, err := parseDSLPredicateFromPos(s, pos, tok, lit)
-		if err != nil {
-			panic(err)
-		}
-		consumeTok(s, token.RPAREN)
-		return le.If(pred), nil
-	default:
-		return nil, errors.Errorf("errorfs: unexpected token %s (%q) at char %v; expected IDENT or LPAREN", tok, lit, pos)
-	}
-}
-
-func parseDSLPredicateFromPos(
-	s *scanner.Scanner, pos token.Pos, tok token.Token, lit string,
-) (Predicate, error) {
-	switch tok {
-	case token.IDENT:
-		// It's a predicate of the form `Reads`.
-		p, ok := dslPredicateConstants[lit]
-		if !ok {
-			return nil, errors.Errorf("errorfs: unknown predicate constant %q", lit)
-		}
-		return p(s), nil
-	case token.LPAREN:
-		// Otherwise it's an expression, eg: (OnIndex 1)
-		lit = consumeTok(s, token.IDENT)
-		p, ok := dslPredicateExprs[lit]
-		if !ok {
-			return nil, errors.Errorf("errorfs: unknown predicate func %q", lit)
-		}
-		return p(s), nil
-	default:
-		return nil, errors.Errorf("errorfs: unexpected token %s (%q) at char %v; expected IDENT or LPAREN", tok, lit, pos)
-	}
-}
-
-func consumeTok(s *scanner.Scanner, expected token.Token) (lit string) {
-	pos, tok, lit := s.Scan()
-	if tok != expected {
-		panic(errors.Errorf("errorfs: unexpected token %s (%q) at char %v; expected %s", tok, lit, pos, expected))
-	}
-	return lit
+	dslPredicateParser.DefineFunc("PathMatch",
+		func(p *dsl.Parser[dsl.Predicate[Op]], s *dsl.Scanner) dsl.Predicate[Op] {
+			pattern := mustUnquote(s.Consume(token.STRING).Lit)
+			s.Consume(token.RPAREN)
+			return PathMatch(pattern)
+		})
+	dslPredicateParser.DefineFunc("OpFileReadAt",
+		func(p *dsl.Parser[dsl.Predicate[Op]], s *dsl.Scanner) dsl.Predicate[Op] {
+			return parseFileReadAtOp(s)
+		})
+	dslPredicateParser.DefineFunc("Randomly",
+		func(p *dsl.Parser[dsl.Predicate[Op]], s *dsl.Scanner) dsl.Predicate[Op] {
+			return parseRandomly(s)
+		})
 }
 
 func mustUnquote(lit string) string {
@@ -464,19 +284,17 @@ func mustUnquote(lit string) string {
 	return s
 }
 
-func parseFileReadAtOp(s *scanner.Scanner) *opFileReadAt {
-	lit := consumeTok(s, token.INT)
-	off, err := strconv.ParseInt(lit, 10, 64)
+func parseFileReadAtOp(s *dsl.Scanner) *opFileReadAt {
+	off, err := strconv.ParseInt(s.Consume(token.INT).Lit, 10, 64)
 	if err != nil {
 		panic(err)
 	}
-	consumeTok(s, token.RPAREN)
+	s.Consume(token.RPAREN)
 	return &opFileReadAt{offset: off}
 }
 
-func parseRandomly(s *scanner.Scanner) Predicate {
-	lit := consumeTok(s, token.FLOAT)
-	p, err := strconv.ParseFloat(lit, 64)
+func parseRandomly(s *dsl.Scanner) Predicate {
+	p, err := strconv.ParseFloat(s.Consume(token.FLOAT).Lit, 64)
 	if err != nil {
 		panic(err)
 	} else if p > 1.0 {
@@ -486,17 +304,17 @@ func parseRandomly(s *scanner.Scanner) Predicate {
 	}
 
 	var seed int64
-	pos, tok, lit := s.Scan()
-	switch tok {
+	tok := s.Scan()
+	switch tok.Kind {
 	case token.RPAREN:
 	case token.INT:
-		seed, err = strconv.ParseInt(lit, 10, 64)
+		seed, err = strconv.ParseInt(tok.Lit, 10, 64)
 		if err != nil {
 			panic(err)
 		}
-		consumeTok(s, token.RPAREN)
+		s.Consume(token.RPAREN)
 	default:
-		panic(errors.Errorf("errorfs: unexpected token %s (%q) at char %v; expected RPAREN | FLOAT", tok, lit, pos))
+		panic(errors.Errorf("errorfs: unexpected token %s; expected RPAREN | FLOAT", tok))
 	}
 	return Randomly(p, seed)
 }

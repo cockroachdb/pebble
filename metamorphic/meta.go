@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/dsl"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
@@ -473,7 +474,7 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	// Wrap the filesystem with one that will inject errors into read
 	// operations with *errorRate probability.
 	opts.FS = errorfs.Wrap(opts.FS, errorfs.ErrInjected.If(
-		errorfs.And(errorfs.Reads, errorfs.Randomly(runOpts.errorRate, int64(seed))),
+		dsl.And[errorfs.Op](errorfs.Reads, errorfs.Randomly(runOpts.errorRate, int64(seed))),
 	))
 
 	if opts.WALDir != "" {

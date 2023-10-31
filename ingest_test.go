@@ -2212,7 +2212,7 @@ func TestIngestError(t *testing.T) {
 				}
 			}()
 
-			ii.SetIndex(i)
+			ii.Store(i)
 			err1 := d.Ingest([]string{"ext0"})
 			err2 := d.Ingest([]string{"ext1"})
 			err := firstError(err1, err2)
@@ -2226,7 +2226,7 @@ func TestIngestError(t *testing.T) {
 
 		// If the injector's index is non-negative, the i-th filesystem
 		// operation was never executed.
-		if ii.Index() >= 0 {
+		if ii.Load() >= 0 {
 			break
 		}
 	}

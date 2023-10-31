@@ -1465,7 +1465,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 		case "inject-errors":
 			injs := make([]errorfs.Injector, len(cmdArg.Vals))
 			for i := 0; i < len(cmdArg.Vals); i++ {
-				inj, err := errorfs.ParseInjectorFromDSL(cmdArg.Vals[i])
+				inj, err := errorfs.Parse(cmdArg.Vals[i])
 				if err != nil {
 					return err
 				}

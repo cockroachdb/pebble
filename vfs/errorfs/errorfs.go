@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
+	"github.com/cockroachdb/pebble/internal/dsl"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -112,7 +113,8 @@ var opNames [numOps]string = [numOps]string{
 // String imlements fmt.Stringer.
 func (o OpKind) String() string { return opNames[o] }
 
-func (o OpKind) evaluate(op Op) bool { return op.Kind == o }
+// Evaluate implements Predicate.
+func (o OpKind) Evaluate(op Op) bool { return op.Kind == o }
 
 // ReadOrWrite returns the operation's kind.
 func (o OpKind) ReadOrWrite() OpReadWrite {
@@ -151,28 +153,15 @@ func (kind OpReadWrite) String() string {
 
 // InjectIndex implements Injector, injecting an error at a specific index.
 type InjectIndex struct {
-	index atomic.Int32
+	*dsl.Index[Op]
 }
-
-// String implements fmt.Stringer.
-func (ii *InjectIndex) String() string {
-	return fmt.Sprintf("(OnIndex %d)", ii.index.Load())
-}
-
-// Index returns the index at which the error will be injected.
-func (ii *InjectIndex) Index() int32 { return ii.index.Load() }
-
-// SetIndex sets the index at which the error will be injected.
-func (ii *InjectIndex) SetIndex(v int32) { ii.index.Store(v) }
-
-func (ii *InjectIndex) evaluate(op Op) bool { return ii.index.Add(-1) == -1 }
 
 // MaybeError implements the Injector interface.
 //
 // TODO(jackson): Remove this implementation and update callers to compose it
 // with other injectors.
 func (ii *InjectIndex) MaybeError(op Op) error {
-	if !ii.evaluate(op) {
+	if !ii.Evaluate(op) {
 		return nil
 	}
 	return ErrInjected
