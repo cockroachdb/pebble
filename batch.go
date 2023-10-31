@@ -1381,7 +1381,7 @@ func (b *Batch) countData() []byte {
 
 func (b *Batch) grow(n int) {
 	newSize := len(b.data) + n
-	if uint64(newSize) >= maxBatchSize {
+	if uint64(newSize) > maxBatchSize {
 		panic(ErrBatchTooLarge)
 	}
 	if newSize > cap(b.data) {
