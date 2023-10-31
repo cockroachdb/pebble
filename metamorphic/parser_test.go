@@ -37,7 +37,7 @@ func TestParserRandom(t *testing.T) {
 				cfg = multiInstanceConfig()
 				cfg.numInstances = 2
 			}
-			ops := generate(randvar.NewRand(), 10000, cfg, newKeyManager())
+			ops := generate(randvar.NewRand(), 10000, cfg, newKeyManager(cfg.numInstances))
 			src := formatOps(ops)
 
 			parsedOps, err := parse([]byte(src))
