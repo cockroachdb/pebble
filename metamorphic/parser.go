@@ -46,7 +46,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *applyOp:
 		return &t.writerID, nil, []interface{}{&t.batchID}
 	case *checkpointOp:
-		return nil, nil, []interface{}{&t.spans}
+		return &t.dbID, nil, []interface{}{&t.spans}
 	case *closeOp:
 		return &t.objID, nil, nil
 	case *compactOp:
@@ -84,7 +84,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *newIterUsingCloneOp:
 		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMin, &t.filterMax, &t.useL6Filters, &t.maskSuffix}
 	case *newSnapshotOp:
-		return nil, &t.snapID, []interface{}{&t.bounds}
+		return &t.dbID, &t.snapID, []interface{}{&t.bounds}
 	case *iterNextOp:
 		return &t.iterID, nil, []interface{}{&t.limit}
 	case *iterNextPrefixOp:
@@ -506,6 +506,8 @@ func computeDerivedFields(ops []op) {
 	objToDB := make(map[objID]objID)
 	for i := range ops {
 		switch v := ops[i].(type) {
+		case *newSnapshotOp:
+			objToDB[v.snapID] = v.dbID
 		case *newIterOp:
 			iterToReader[v.iterID] = v.readerID
 			dbReaderID := v.readerID
@@ -513,7 +515,7 @@ func computeDerivedFields(ops []op) {
 				dbReaderID = objToDB[dbReaderID]
 			}
 			objToDB[v.iterID] = dbReaderID
-			if v.readerID.tag() == batchTag {
+			if v.readerID.tag() == batchTag || v.readerID.tag() == snapTag {
 				v.derivedDBID = dbReaderID
 			}
 		case *newIterUsingCloneOp:
@@ -549,11 +551,6 @@ func computeDerivedFields(ops []op) {
 		case *getOp:
 			if derivedDBID, ok := objToDB[v.readerID]; ok {
 				v.derivedDBID = derivedDBID
-			} else if v.readerID.tag() == snapTag {
-				// TODO(bilal): This is legacy behaviour as snapshots aren't supported in
-				// two-instance mode yet. Track snapshots in g.objDB and objToDB and remove this
-				// conditional.
-				v.derivedDBID = dbObjID
 			}
 		case *batchCommitOp:
 			v.dbID = objToDB[v.batchID]
