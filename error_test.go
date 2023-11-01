@@ -210,7 +210,7 @@ func TestRequireReadError(t *testing.T) {
 		}
 
 		// Now perform foreground ops with error injection enabled.
-		ii.SetIndex(index)
+		ii.Store(index)
 		iter, _ := d.NewIter(nil)
 		if err := iter.Error(); err != nil {
 			return err
@@ -237,7 +237,7 @@ func TestRequireReadError(t *testing.T) {
 		// Reaching here implies all read operations succeeded. This
 		// should only happen when we reached a large enough index at
 		// which `errorfs.FS` did not return any error.
-		if i := ii.Index(); i < 0 {
+		if i := ii.Load(); i < 0 {
 			t.Errorf("FS error injected %d ops ago went unreported", -i)
 		}
 		if numFound != 2 {
