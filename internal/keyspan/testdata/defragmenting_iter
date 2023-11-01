@@ -14,12 +14,12 @@ last
 prev
 prev
 ----
-first     a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-next      c-d:{(#4,RANGEKEYSET,@3,bananas)}
-next      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
-last      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
-prev      c-d:{(#4,RANGEKEYSET,@3,bananas)}
-prev      a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+c-d:{(#4,RANGEKEYSET,@3,bananas)}
+d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
+d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
+c-d:{(#4,RANGEKEYSET,@3,bananas)}
+a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
 
 iter
 first
@@ -31,14 +31,14 @@ prev
 prev
 prev
 ----
-first     a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-next      c-d:{(#4,RANGEKEYSET,@3,bananas)}
-next      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
-next      .
-last      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
-prev      c-d:{(#4,RANGEKEYSET,@3,bananas)}
-prev      a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-prev      .
+a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+c-d:{(#4,RANGEKEYSET,@3,bananas)}
+d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
+<nil>
+d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
+c-d:{(#4,RANGEKEYSET,@3,bananas)}
+a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+<nil>
 
 # Test a scenario that SHOULD result in internal defragmentation ([a,c) and
 # [c,d) should be merged.
@@ -54,9 +54,9 @@ first
 next
 next
 ----
-first     a-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-next      d-e:{(#1,RANGEKEYSET,@3,bananas)}
-next      .
+a-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+d-e:{(#1,RANGEKEYSET,@3,bananas)}
+<nil>
 
 # Test defragmenting in both directions at seek keys.
 
@@ -77,23 +77,23 @@ next
 seeklt d
 prev
 ----
-seekge b  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-prev      .
-seekge b  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-next      f-t:{(#3,RANGEKEYSET,@3,bananas)}
-seeklt d  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-next      f-t:{(#3,RANGEKEYSET,@3,bananas)}
-seeklt d  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-prev      .
+a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+<nil>
+a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+<nil>
 
 iter
 seeklt d
 next
 prev
 ----
-seeklt d  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-next      f-t:{(#3,RANGEKEYSET,@3,bananas)}
-prev      a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
 
 # Test next-ing and prev-ing around seek keys.
 
@@ -111,10 +111,10 @@ prev
 next
 next
 ----
-seekge r  f-t:{(#3,RANGEKEYSET,@3,bananas)}
-prev      a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-next      f-t:{(#3,RANGEKEYSET,@3,bananas)}
-next      t-z:{(#4,RANGEKEYSET,@2,oranges)}
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+t-z:{(#4,RANGEKEYSET,@2,oranges)}
 
 iter
 seekge f
@@ -125,13 +125,13 @@ seekge u
 seekge v
 seekge z
 ----
-seekge f  f-t:{(#3,RANGEKEYSET,@3,bananas)}
-seekge h  f-t:{(#3,RANGEKEYSET,@3,bananas)}
-seekge p  f-t:{(#3,RANGEKEYSET,@3,bananas)}
-seekge t  t-z:{(#4,RANGEKEYSET,@2,oranges)}
-seekge u  t-z:{(#4,RANGEKEYSET,@2,oranges)}
-seekge v  t-z:{(#4,RANGEKEYSET,@2,oranges)}
-seekge z  .
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+t-z:{(#4,RANGEKEYSET,@2,oranges)}
+t-z:{(#4,RANGEKEYSET,@2,oranges)}
+t-z:{(#4,RANGEKEYSET,@2,oranges)}
+<nil>
 
 iter
 seeklt f
@@ -141,12 +141,12 @@ seeklt t
 seeklt u
 seeklt z
 ----
-seeklt f  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-seeklt h  f-t:{(#3,RANGEKEYSET,@3,bananas)}
-seeklt p  f-t:{(#3,RANGEKEYSET,@3,bananas)}
-seeklt t  f-t:{(#3,RANGEKEYSET,@3,bananas)}
-seeklt u  t-z:{(#4,RANGEKEYSET,@2,oranges)}
-seeklt z  t-z:{(#4,RANGEKEYSET,@2,oranges)}
+a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+f-t:{(#3,RANGEKEYSET,@3,bananas)}
+t-z:{(#4,RANGEKEYSET,@2,oranges)}
+t-z:{(#4,RANGEKEYSET,@2,oranges)}
 
 # Test iteration with a reducer that collects keys across all spans that
 # constitute a defragmented span. Abutting spans are always combined.
@@ -167,12 +167,12 @@ last
 prev
 prev
 ----
-first     a-d:{(#5,RANGEDEL) (#4,RANGEDEL) (#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
-next      e-g:{(#2,RANGEDEL) (#1,RANGEDEL)}
-next      .
-last      e-g:{(#2,RANGEDEL) (#1,RANGEDEL)}
-prev      a-d:{(#5,RANGEDEL) (#4,RANGEDEL) (#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
-prev      .
+a-d:{(#5,RANGEDEL) (#4,RANGEDEL) (#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+e-g:{(#2,RANGEDEL) (#1,RANGEDEL)}
+<nil>
+e-g:{(#2,RANGEDEL) (#1,RANGEDEL)}
+a-d:{(#5,RANGEDEL) (#4,RANGEDEL) (#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+<nil>
 
 # Test defragmentation of non-empty (i.e. more than one value) fragments, while
 # empty fragments are left untouched.
@@ -192,11 +192,11 @@ next
 next
 next
 ----
-first     a-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-next      d-e:{}
-next      e-f:{}
-next      g-h:{(#1,RANGEKEYSET,@3,bananas)}
-next      .
+a-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+d-e:{}
+e-f:{}
+g-h:{(#1,RANGEKEYSET,@3,bananas)}
+<nil>
 
 iter
 last
@@ -205,11 +205,11 @@ prev
 prev
 prev
 ----
-last      g-h:{(#1,RANGEKEYSET,@3,bananas)}
-prev      e-f:{}
-prev      d-e:{}
-prev      a-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-prev      .
+g-h:{(#1,RANGEKEYSET,@3,bananas)}
+e-f:{}
+d-e:{}
+a-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+<nil>
 
 iter
 seekge d
@@ -221,14 +221,14 @@ prev
 prev
 prev
 ----
-seekge d  d-e:{}
-next      e-f:{}
-prev      d-e:{}
-seekge e  e-f:{}
-next      g-h:{(#1,RANGEKEYSET,@3,bananas)}
-prev      e-f:{}
-prev      d-e:{}
-prev      a-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+d-e:{}
+e-f:{}
+d-e:{}
+e-f:{}
+g-h:{(#1,RANGEKEYSET,@3,bananas)}
+e-f:{}
+d-e:{}
+a-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
 
 iter
 seeklt e
@@ -240,11 +240,11 @@ prev
 prev
 prev
 ----
-seeklt e  d-e:{}
-next      e-f:{}
-prev      d-e:{}
-seeklt f  e-f:{}
-next      g-h:{(#1,RANGEKEYSET,@3,bananas)}
-prev      e-f:{}
-prev      d-e:{}
-prev      a-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+d-e:{}
+e-f:{}
+d-e:{}
+e-f:{}
+g-h:{(#1,RANGEKEYSET,@3,bananas)}
+e-f:{}
+d-e:{}
+a-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}

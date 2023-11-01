@@ -12,7 +12,6 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/stretchr/testify/require"
 )
 
 func TestBoundedIter(t *testing.T) {
@@ -61,34 +60,7 @@ func TestBoundedIter(t *testing.T) {
 			buf.Reset()
 			lower, upper := getBounds(td)
 			iter.SetBounds(lower, upper)
-
-			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
-			for _, line := range lines {
-				line = strings.TrimSpace(line)
-				i := strings.IndexByte(line, ' ')
-				iterCmd := line
-				if i > 0 {
-					iterCmd = string(line[:i])
-				}
-				switch iterCmd {
-				case "first":
-					fmt.Fprintln(&buf, iter.First())
-				case "last":
-					fmt.Fprintln(&buf, iter.Last())
-				case "next":
-					fmt.Fprintln(&buf, iter.Next())
-				case "prev":
-					fmt.Fprintln(&buf, iter.Prev())
-				case "seek-ge":
-					fmt.Fprintln(&buf, iter.SeekGE([]byte(strings.TrimSpace(line[i:]))))
-				case "seek-lt":
-					fmt.Fprintln(&buf, iter.SeekLT([]byte(strings.TrimSpace(line[i:]))))
-				default:
-					return fmt.Sprintf("unrecognized iter command %q", iterCmd)
-				}
-				require.NoError(t, iter.Error())
-			}
-			return strings.TrimSpace(buf.String())
+			return runIterCmd(t, td, &iter)
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
