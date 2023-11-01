@@ -2794,14 +2794,40 @@ func (d *DB) SetCreatorID(creatorID uint64) error {
 
 // KeyStatistics keeps track of the number of keys that have been pinned by a
 // snapshot as well as counts of the different key kinds in the lsm.
+//
+// One way of using the accumulated stats, when we only have sets and dels,
+// and say the counts are represented as del_count, set_count,
+// del_latest_count, set_latest_count, snapshot_pinned_count.
+//
+//   - del_latest_count + set_latest_count is the set of unique user keys
+//     (unique).
+//
+//   - set_latest_count is the set of live unique user keys (live_unique).
+//
+//   - Garbage is del_count + set_count - live_unique.
+//
+//   - If everything were in the LSM, del_count+set_count-snapshot_pinned_count
+//     would also be the set of unique user keys (note that
+//     snapshot_pinned_count is counting something different -- see comment below).
+//     But snapshot_pinned_count only counts keys in the LSM so the excess here
+//     must be keys in memtables.
 type KeyStatistics struct {
-	// when a compaction determines a key is obsolete, but cannot elide the key
-	// because it's required by an open snapshot.
+	// TODO(sumeer): the SnapshotPinned* are incorrect in that these older
+	// versions can be in a different level. Either fix the accounting or
+	// rename these fields.
+
+	// SnapshotPinnedKeys represents obsolete keys that cannot be elided during
+	// a compaction, because they are required by an open snapshot.
 	SnapshotPinnedKeys int
-	// the total number of bytes of all snapshot pinned keys.
+	// SnapshotPinnedKeysBytes is the total number of bytes of all snapshot
+	// pinned keys.
 	SnapshotPinnedKeysBytes uint64
-	// Note: these fields are currently only populated for point keys (including range deletes).
+	// KindsCount is the count for each kind of key. It includes point keys,
+	// range deletes and range keys.
 	KindsCount [InternalKeyKindMax + 1]int
+	// LatestKindsCount is the count for each kind of key when it is the latest
+	// kind for a user key. It is only populated for point keys.
+	LatestKindsCount [InternalKeyKindMax + 1]int
 }
 
 // LSMKeyStatistics is used by DB.ScanStatistics.
@@ -2846,7 +2872,8 @@ func (d *DB) ScanStatistics(
 			// pinned by a snapshot.
 			size := uint64(key.Size())
 			kind := key.Kind()
-			if iterInfo.Kind == IteratorLevelLSM && d.equal(prevKey.UserKey, key.UserKey) {
+			sameKey := d.equal(prevKey.UserKey, key.UserKey)
+			if iterInfo.Kind == IteratorLevelLSM && sameKey {
 				stats.Levels[iterInfo.Level].SnapshotPinnedKeys++
 				stats.Levels[iterInfo.Level].SnapshotPinnedKeysBytes += size
 				stats.Accumulated.SnapshotPinnedKeys++
@@ -2854,6 +2881,12 @@ func (d *DB) ScanStatistics(
 			}
 			if iterInfo.Kind == IteratorLevelLSM {
 				stats.Levels[iterInfo.Level].KindsCount[kind]++
+			}
+			if !sameKey {
+				if iterInfo.Kind == IteratorLevelLSM {
+					stats.Levels[iterInfo.Level].LatestKindsCount[kind]++
+				}
+				stats.Accumulated.LatestKindsCount[kind]++
 			}
 
 			stats.Accumulated.KindsCount[kind]++
