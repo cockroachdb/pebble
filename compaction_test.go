@@ -2913,7 +2913,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 				if initialSetupDone {
 					tablesCreated = append(tablesCreated, info.FileNum)
 					if len(tablesCreated) >= 2 {
-						ii.SetIndex(0)
+						ii.Store(0)
 					}
 				}
 			},

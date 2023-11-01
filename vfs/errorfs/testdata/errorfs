@@ -33,17 +33,17 @@ ErrInjected()
 (ErrInjected (OnIndex foo))
 (ErrInjected (OnIndex 9223372036854775807))
 ----
-parsing err: errorfs: unknown error "errInjected"
-parsing err: errorfs: unexpected token ( ("") at char 12; expected EOF
-parsing err: errorfs: unexpected token IDENT ("foo") at char 25; expected STRING
-parsing err: errorfs: unknown error "alwoes"
-parsing err: errorfs: unexpected token STRING ("\"\"") at char 37; expected )
-parsing err: errorfs: unknown predicate constant "PathMatch"
-parsing err: errorfs: unexpected token IDENT ("ErrInjected") at char 23; expected INT
-parsing err: errorfs: unknown error "Or"
-parsing err: errorfs: unknown error "And"
-parsing err: errorfs: unknown error "Or"
-parsing err: errorfs: unexpected token IDENT ("foo") at char 23; expected INT
+parsing err: dsl: unknown constant "errInjected"
+parsing err: dsl: unexpected token ( at pos 12; expected EOF
+parsing err: dsl: unexpected token (IDENT, "foo") at pos 25; expected STRING
+parsing err: dsl: unknown func "alwoes"
+parsing err: dsl: unexpected token (STRING, "\"\"") at pos 37; expected )
+parsing err: dsl: unknown constant "PathMatch"
+parsing err: dsl: unexpected token (IDENT, "ErrInjected") at pos 23; expected INT
+parsing err: dsl: unknown func "Or"
+parsing err: dsl: unknown func "And"
+parsing err: dsl: unknown func "Or"
+parsing err: dsl: unexpected token (IDENT, "foo") at pos 23; expected INT
 parsing err: strconv.ParseInt: parsing "9223372036854775807": value out of range
 
 parse-dsl
@@ -51,8 +51,8 @@ parse-dsl
 (ErrInjected (OpFileReadAt foo))
 (ErrInjected (OpFileReadAt 1052363))
 ----
-parsing err: errorfs: unexpected token IDENT ("_") at char 28; expected INT
-parsing err: errorfs: unexpected token IDENT ("foo") at char 28; expected INT
+parsing err: dsl: unexpected token (IDENT, "_") at pos 28; expected INT
+parsing err: dsl: unexpected token (IDENT, "foo") at pos 28; expected INT
 (ErrInjected (FileReadAt 1052363))
 
 parse-dsl
@@ -65,11 +65,11 @@ parse-dsl
 (ErrInjected (And (PathMatch "*.sst") (Randomly 0.05 185957252)))
 (ErrInjected (And (PathMatch "*.sst") (Randomly 0.05)))
 ----
-parsing err: errorfs: unexpected token INT ("0") at char 24; expected FLOAT
+parsing err: dsl: unexpected token (INT, "0") at pos 24; expected FLOAT
 (ErrInjected (Randomly 0.10))
 (ErrInjected (Randomly 0.20 18520850252))
 parsing err: errorfs: Randomly proability p must be within p ≤ 1.0
-parsing err: errorfs: unexpected token - ("") at char 24; expected FLOAT
-parsing err: errorfs: unexpected token INT ("18520850252") at char 24; expected FLOAT
+parsing err: dsl: unexpected token - at pos 24; expected FLOAT
+parsing err: dsl: unexpected token (INT, "18520850252") at pos 24; expected FLOAT
 (ErrInjected (And (PathMatch "*.sst") (Randomly 0.05 185957252)))
 (ErrInjected (And (PathMatch "*.sst") (Randomly 0.05)))
