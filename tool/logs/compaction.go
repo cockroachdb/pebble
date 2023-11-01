@@ -26,12 +26,12 @@ var (
 	// Captures a common logging prefix that can be used as the context for the
 	// surrounding information captured by other expressions. Example:
 	//
-	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s5] ...
+	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [T1,n5,pebble,s5] ...
 	//
 	logContextPattern = regexp.MustCompile(
 		`^.*` +
 			/* Timestamp        */ `(?P<timestamp>\d{6} \d{2}:\d{2}:\d{2}.\d{6}).*` +
-			/* Node / Store     */ `\[n(?P<node>\d+|\?).*,s(?P<store>\d+|\?).*?\].*`,
+			/* Node / Store     */ `\[(T(\d+|\?),)?n(?P<node>\d+|\?).*,s(?P<store>\d+|\?).*?\].*`,
 	)
 	logContextPatternTimestampIdx = logContextPattern.SubexpIndex("timestamp")
 	logContextPatternNodeIdx      = logContextPattern.SubexpIndex("node")
