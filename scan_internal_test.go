@@ -182,6 +182,9 @@ func TestScanStatistics(t *testing.T) {
 				}
 				for _, kind := range keyKindsToDisplay {
 					fmt.Fprintf(&b, "  %s key count: %d\n", kind.String(), stats.Levels[lvl].KindsCount[kind])
+					if stats.Levels[lvl].LatestKindsCount[kind] > 0 {
+						fmt.Fprintf(&b, "  %s latest count: %d\n", kind.String(), stats.Levels[lvl].LatestKindsCount[kind])
+					}
 				}
 			}
 
@@ -191,6 +194,9 @@ func TestScanStatistics(t *testing.T) {
 			}
 			for _, kind := range keyKindsToDisplay {
 				fmt.Fprintf(&b, "  %s key count: %d\n", kind.String(), stats.Accumulated.KindsCount[kind])
+				if stats.Accumulated.LatestKindsCount[kind] > 0 {
+					fmt.Fprintf(&b, "  %s latest count: %d\n", kind.String(), stats.Accumulated.LatestKindsCount[kind])
+				}
 			}
 			return b.String()
 		default:
