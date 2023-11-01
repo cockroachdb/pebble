@@ -289,6 +289,57 @@ func TestCompactionLogs_Regex(t *testing.T) {
 	}
 }
 
+func TestParseLogContext(t *testing.T) {
+	testCases := []struct {
+		line      string
+		timestamp string
+		node      int
+		store     int
+	}{
+		{
+			line:      `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s6] foo`,
+			timestamp: "211215 14:26:56.012382",
+			node:      5,
+			store:     6,
+		},
+		{
+			line:      `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [T?,n5,pebble,s6] foo`,
+			timestamp: "211215 14:26:56.012382",
+			node:      5,
+			store:     6,
+		},
+		{
+			line:      `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [T15,n5,pebble,s6] foo`,
+			timestamp: "211215 14:26:56.012382",
+			node:      5,
+			store:     6,
+		},
+		{
+			line:      `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [T1,n?,pebble,s6] foo`,
+			timestamp: "211215 14:26:56.012382",
+			node:      -1,
+			store:     6,
+		},
+		{
+			line:      `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s?] foo`,
+			timestamp: "211215 14:26:56.012382",
+			node:      5,
+			store:     -1,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run("", func(t *testing.T) {
+			var b logEventCollector
+			require.NoError(t, parseLogContext(tc.line, &b))
+			expT, err := time.Parse(timeFmt, tc.timestamp)
+			require.NoError(t, err)
+			require.Equal(t, expT, b.ctx.timestamp)
+			require.Equal(t, tc.node, b.ctx.node)
+			require.Equal(t, tc.store, b.ctx.store)
+		})
+	}
+}
+
 func TestCompactionLogs(t *testing.T) {
 	dir := t.TempDir()
 	datadriven.Walk(t, "testdata", func(t *testing.T, path string) {
