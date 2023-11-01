@@ -7,7 +7,6 @@ package keyspan
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"math/rand"
 	"sort"
 	"strings"
@@ -83,6 +82,7 @@ func TestDefragmentingIter(t *testing.T) {
 			iter.Init(comparer, &innerIter, equal, reducer, new(DefragmentingBuffers))
 			for _, line := range strings.Split(td.Input, "\n") {
 				runIterOp(&buf, &iter, line)
+				fmt.Fprintln(&buf)
 			}
 			return strings.TrimSpace(buf.String())
 		default:
@@ -214,6 +214,8 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 			t.Fatal(debugContext(cmp, formatKey, original, fragmented,
 				referenceHistory.String(), fragmentedHistory.String()))
 		}
+		fmt.Fprintln(&referenceHistory)
+		fmt.Fprintln(&fragmentedHistory)
 	}
 }
 
@@ -262,33 +264,4 @@ func debugContext(
 	}
 	fmt.Fprintln(&buf, diff)
 	return buf.String()
-}
-
-var iterDelim = map[rune]bool{',': true, ' ': true, '(': true, ')': true, '"': true}
-
-func runIterOp(w io.Writer, it FragmentIterator, op string) {
-	fields := strings.FieldsFunc(op, func(r rune) bool { return iterDelim[r] })
-	var s *Span
-	switch strings.ToLower(fields[0]) {
-	case "first":
-		s = it.First()
-	case "last":
-		s = it.Last()
-	case "seekge":
-		s = it.SeekGE([]byte(fields[1]))
-	case "seeklt":
-		s = it.SeekLT([]byte(fields[1]))
-	case "next":
-		s = it.Next()
-	case "prev":
-		s = it.Prev()
-	default:
-		panic(fmt.Sprintf("unrecognized iter op %q", fields[0]))
-	}
-	fmt.Fprintf(w, "%-10s", op)
-	if s == nil {
-		fmt.Fprintln(w, ".")
-		return
-	}
-	fmt.Fprintln(w, s)
 }
