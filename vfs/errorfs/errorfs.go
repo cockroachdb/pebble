@@ -9,17 +9,17 @@ import (
 	"io"
 	"os"
 	"strings"
-	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
+	"github.com/cockroachdb/pebble/internal/dsl"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
 // ErrInjected is an error artificially injected for testing fs error paths.
 var ErrInjected = LabelledError{
 	error: errors.New("injected error"),
-	label: "ErrInjected",
+	Label: "ErrInjected",
 }
 
 // Op describes a filesystem operation.
@@ -51,8 +51,8 @@ const (
 	OpRemoveAll
 	// OpRename describes a rename operation.
 	OpRename
-	// OpReuseForRewrite describes a reuse for rewriting operation.
-	OpReuseForRewrite
+	// OpReuseForWrite describes a reuse for write operation.
+	OpReuseForWrite
 	// OpMkdirAll describes a make directory including parents operation.
 	OpMkdirAll
 	// OpLock describes a lock file operation.
@@ -88,7 +88,7 @@ func (o OpKind) ReadOrWrite() OpReadWrite {
 	switch o {
 	case OpOpen, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat:
 		return OpIsRead
-	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForRewrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileFlush, OpFilePreallocate:
+	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForWrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileFlush, OpFilePreallocate:
 		return OpIsWrite
 	default:
 		panic(fmt.Sprintf("unrecognized op %v\n", o))
@@ -118,30 +118,23 @@ func (kind OpReadWrite) String() string {
 	}
 }
 
+// OnIndex is a convenience function for constructing a dsl.OnIndex for use with
+// an error-injecting filesystem.
+func OnIndex(index int32) *InjectIndex {
+	return &InjectIndex{dsl.OnIndex[Op](index)}
+}
+
 // InjectIndex implements Injector, injecting an error at a specific index.
 type InjectIndex struct {
-	index atomic.Int32
+	*dsl.Index[Op]
 }
-
-// String implements fmt.Stringer.
-func (ii *InjectIndex) String() string {
-	return fmt.Sprintf("(OnIndex %d)", ii.index.Load())
-}
-
-// Index returns the index at which the error will be injected.
-func (ii *InjectIndex) Index() int32 { return ii.index.Load() }
-
-// SetIndex sets the index at which the error will be injected.
-func (ii *InjectIndex) SetIndex(v int32) { ii.index.Store(v) }
-
-func (ii *InjectIndex) evaluate(op Op) bool { return ii.index.Add(-1) == -1 }
 
 // MaybeError implements the Injector interface.
 //
 // TODO(jackson): Remove this implementation and update callers to compose it
 // with other injectors.
 func (ii *InjectIndex) MaybeError(op Op) error {
-	if !ii.evaluate(op) {
+	if !ii.Evaluate(op) {
 		return nil
 	}
 	return ErrInjected
@@ -346,7 +339,7 @@ func (fs *FS) Rename(oldname, newname string) error {
 
 // ReuseForWrite implements FS.ReuseForWrite.
 func (fs *FS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
-	if err := fs.inj.MaybeError(Op{Kind: OpReuseForRewrite, Path: oldname}); err != nil {
+	if err := fs.inj.MaybeError(Op{Kind: OpReuseForWrite, Path: oldname}); err != nil {
 		return nil, err
 	}
 	return fs.fs.ReuseForWrite(oldname, newname)
