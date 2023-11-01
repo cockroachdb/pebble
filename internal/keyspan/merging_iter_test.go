@@ -21,10 +21,7 @@ import (
 
 func TestMergingIter(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
-	var buf bytes.Buffer
 	var iter MergingIter
-
-	formatSpan := func(s *Span) { fmt.Fprintln(&buf, s) }
 
 	datadriven.RunTest(t, "testdata/merging_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -58,34 +55,7 @@ func TestMergingIter(t *testing.T) {
 			iter.Init(cmp, VisibleTransform(snapshot), new(MergingBuffers), iters...)
 			return fmt.Sprintf("%d levels", len(iters))
 		case "iter":
-			buf.Reset()
-			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
-			for _, line := range lines {
-				line = strings.TrimSpace(line)
-				i := strings.IndexByte(line, ' ')
-				iterCmd := line
-				if i > 0 {
-					iterCmd = string(line[:i])
-				}
-				switch iterCmd {
-				case "first":
-					formatSpan(iter.First())
-				case "last":
-					formatSpan(iter.Last())
-				case "next":
-					formatSpan(iter.Next())
-				case "prev":
-					formatSpan(iter.Prev())
-				case "seek-ge":
-					formatSpan(iter.SeekGE([]byte(strings.TrimSpace(line[i:]))))
-				case "seek-lt":
-					formatSpan(iter.SeekLT([]byte(strings.TrimSpace(line[i:]))))
-				default:
-					return fmt.Sprintf("unrecognized iter command %q", iterCmd)
-				}
-				require.NoError(t, iter.Error())
-			}
-			return strings.TrimSpace(buf.String())
+			return runIterCmd(t, td, &iter)
 
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
