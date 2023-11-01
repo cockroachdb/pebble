@@ -804,6 +804,7 @@ func testIngestSharedImpl(
 	}()
 	creatorIDCounter := uint64(1)
 	replicateCounter := 1
+	var opts1, opts2 *Options
 
 	reset := func() {
 		for _, e := range efos {
@@ -822,7 +823,7 @@ func testIngestSharedImpl(
 		mem2 := vfs.NewMem()
 		require.NoError(t, mem1.MkdirAll("ext", 0755))
 		require.NoError(t, mem2.MkdirAll("ext", 0755))
-		opts1 := &Options{
+		opts1 = &Options{
 			Comparer:              testkeys.Comparer,
 			FS:                    mem1,
 			LBaseMaxBytes:         1,
@@ -843,7 +844,7 @@ func testIngestSharedImpl(
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts1.DisableAutomaticCompactions = true
 
-		opts2 := &Options{}
+		opts2 = &Options{}
 		*opts2 = *opts1
 		opts2.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
@@ -867,6 +868,28 @@ func testIngestSharedImpl(
 
 	datadriven.RunTest(t, fmt.Sprintf("testdata/%s", fileName), func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "restart":
+			for _, e := range efos {
+				require.NoError(t, e.Close())
+			}
+			if d1 != nil {
+				require.NoError(t, d1.Close())
+			}
+			if d2 != nil {
+				require.NoError(t, d2.Close())
+			}
+
+			var err error
+			d1, err = Open("", opts1)
+			if err != nil {
+				return err.Error()
+			}
+			d2, err = Open("", opts2)
+			if err != nil {
+				return err.Error()
+			}
+			d = d1
+			return "ok, note that the active db has been set to 1 (use 'switch' to change)"
 		case "reset":
 			reset()
 			return ""

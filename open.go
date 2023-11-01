@@ -1141,13 +1141,12 @@ func checkConsistency(v *manifest.Version, dirname string, objProvider objstorag
 			dedup[backingState.DiskFileNum] = struct{}{}
 			fileNum := backingState.DiskFileNum
 			fileSize := backingState.Size
-			// We allow foreign objects to have a mismatch between sizes. This is
-			// because we might skew the backing size stored by our objprovider
-			// to prevent us from over-prioritizing this file for compaction.
+			// We skip over remote objects; those are instead checked asynchronously
+			// by the table stats loading job.
 			meta, err := objProvider.Lookup(base.FileTypeTable, fileNum)
 			var size int64
 			if err == nil {
-				if objProvider.IsSharedForeign(meta) {
+				if meta.IsRemote() {
 					continue
 				}
 				size, err = objProvider.Size(meta)

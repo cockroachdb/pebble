@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -214,6 +215,7 @@ func (d *DB) scanReadStateTableStats(
 ) ([]collectedStats, []deleteCompactionHint, bool) {
 	moreRemain := false
 	var hints []deleteCompactionHint
+	sizesChecked := make(map[base.DiskFileNum]struct{})
 	for l, levelMetadata := range rs.current.Levels {
 		iter := levelMetadata.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
@@ -234,6 +236,41 @@ func (d *DB) scanReadStateTableStats(
 			if len(fill) == cap(fill) {
 				moreRemain = true
 				return fill, hints, moreRemain
+			}
+
+			// If the file is remote and not SharedForeign, we should check if its size
+			// matches. This is because checkConsistency skips over remote files.
+			// SharedForeign files are skipped as their sizes are allowed to have a
+			// mismatch; the size stored in the FileBacking is just the part of the
+			// file that is referenced by this Pebble instance, not the size of the
+			// whole object.
+			objMeta, err := d.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+			if err != nil {
+				// Set `moreRemain` so we'll try again.
+				moreRemain = true
+				d.opts.EventListener.BackgroundError(err)
+				continue
+			}
+			if _, ok := sizesChecked[f.FileBacking.DiskFileNum]; !ok && objMeta.IsRemote() &&
+				!d.objProvider.IsSharedForeign(objMeta) {
+
+				size, err := d.objProvider.Size(objMeta)
+				fileSize := f.FileBacking.Size
+				if err != nil {
+					moreRemain = true
+					d.opts.EventListener.BackgroundError(err)
+					continue
+				}
+				if size != int64(fileSize) {
+					err := errors.Errorf(
+						"during consistency check in loadTableStats: L%d: %s: object size mismatch (%s): %d (provider) != %d (MANIFEST)",
+						errors.Safe(l), f.FileNum, d.objProvider.Path(objMeta),
+						errors.Safe(size), errors.Safe(fileSize))
+					d.opts.EventListener.BackgroundError(err)
+					d.opts.Logger.Fatalf("%s", err)
+				}
+
+				sizesChecked[f.FileBacking.DiskFileNum] = struct{}{}
 			}
 
 			stats, newHints, err := d.loadTableStats(
