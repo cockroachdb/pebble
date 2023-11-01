@@ -229,9 +229,9 @@ replicate 2 1 a z
 ----
 replicated 3 shared SSTs
 
-switch 1
+restart
 ----
-ok
+ok, note that the active db has been set to 1 (use 'switch' to change)
 
 iter
 first
@@ -625,6 +625,23 @@ lsm
 6:
   000008:[b@5#11,SET-e#11,SET]
   000005:[ff#10,SET-ff#10,SET]
+
+iter
+seek-ge b
+next
+next
+----
+b@5: (foo, .)
+ff: (notdeleted, .)
+.
+
+restart
+----
+ok, note that the active db has been set to 1 (use 'switch' to change)
+
+switch 2
+----
+ok
 
 iter
 seek-ge b
