@@ -12,6 +12,7 @@ scan-statistics lower=b upper=f keys=(SET)
 ----
 Aggregate:
   SET key count: 2
+  SET latest count: 2
 
 flush
 ----
@@ -20,15 +21,19 @@ scan-statistics lower=b upper=e keys=(SET) levels=(0)
 ----
 Level 0:
   SET key count: 1
+  SET latest count: 1
 Aggregate:
   SET key count: 1
+  SET latest count: 1
 
 scan-statistics lower=b upper=f keys=(SET) levels=(0)
 ----
 Level 0:
   SET key count: 2
+  SET latest count: 2
 Aggregate:
   SET key count: 2
+  SET latest count: 2
 
 scan-statistics lower=f upper=l keys=(SET)
 ----
@@ -49,9 +54,11 @@ scan-statistics lower=b upper=f keys=(SET, DEL) levels=(0)
 Level 0:
   SET key count: 2
   DEL key count: 2
+  DEL latest count: 2
 Aggregate:
   SET key count: 2
   DEL key count: 2
+  DEL latest count: 2
 
 reset
 ----
@@ -81,8 +88,10 @@ scan-statistics lower=b upper=f keys=(SET) levels=(6)
 ----
 Level 6:
   SET key count: 1
+  SET latest count: 1
 Aggregate:
   SET key count: 1
+  SET latest count: 1
 
 batch commit
 set c a
@@ -96,10 +105,13 @@ scan-statistics lower=b upper=f keys=(SET) levels=(0, 6)
 ----
 Level 0:
   SET key count: 1
+  SET latest count: 1
 Level 6:
   SET key count: 1
+  SET latest count: 1
 Aggregate:
   SET key count: 2
+  SET latest count: 2
 
 reset
 ----
