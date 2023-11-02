@@ -5,7 +5,6 @@
 package keyspan
 
 import (
-	"bytes"
 	"fmt"
 	"go/token"
 	"io"
@@ -377,14 +376,13 @@ func (p *probeIterator) Close() error {
 }
 
 // runIterCmd evaluates a datadriven command controlling an internal
-// keyspan.FragmentIterator, returning a string with the results of the iterator
-// operations.
-func runIterCmd(t *testing.T, td *datadriven.TestData, iter FragmentIterator) string {
-	var buf bytes.Buffer
+// keyspan.FragmentIterator, writing the results of the iterator operations to
+// the provided writer.
+func runIterCmd(t *testing.T, td *datadriven.TestData, iter FragmentIterator, w io.Writer) {
 	lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 	for i, line := range lines {
 		if i > 0 {
-			fmt.Fprintln(&buf)
+			fmt.Fprintln(w)
 		}
 		line = strings.TrimSpace(line)
 		i := strings.IndexByte(line, '#')
@@ -392,9 +390,8 @@ func runIterCmd(t *testing.T, td *datadriven.TestData, iter FragmentIterator) st
 		if i > 0 {
 			iterCmd = string(line[:i])
 		}
-		runIterOp(&buf, iter, iterCmd)
+		runIterOp(w, iter, iterCmd)
 	}
-	return buf.String()
 }
 
 var iterDelim = map[rune]bool{',': true, ' ': true, '(': true, ')': true, '"': true}
