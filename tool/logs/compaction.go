@@ -36,7 +36,7 @@ var (
 	logContextPattern = regexp.MustCompile(
 		`^.*` +
 			/* Timestamp        */ `(?P<timestamp>\d{6} \d{2}:\d{2}:\d{2}.\d{6}).*` +
-			/* Node / Store     */ `\[n(?P<node>\d+|\?).*,s(?P<store>\d+|\?).*?\].*`,
+			/* Node / Store     */ `\[.*n(?P<node>\d+|\?).*,s(?P<store>\d+|\?).*?\].*`,
 	)
 	logContextPatternTimestampIdx = logContextPattern.SubexpIndex("timestamp")
 	logContextPatternNodeIdx      = logContextPattern.SubexpIndex("node")
