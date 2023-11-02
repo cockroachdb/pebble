@@ -112,7 +112,22 @@ type InterleavingIter struct {
 	nextPrefixBuf []byte
 	pointKey      *base.InternalKey
 	pointVal      base.LazyValue
-	err           error
+	// err holds an iterator error from either pointIter or keyspanIter. It's
+	// reset to nil on seeks. An overview of error-handling mechanics:
+	//
+	// Whenever either pointIter or keyspanIter is respositioned and a nil
+	// key/span is returned, the code performing the positioning is responsible
+	// for checking the iterator's Error() value. This happens in savePoint and
+	// saveSpan[Forward,Backward].
+	//
+	// Once i.err is non-nil, the computation of i.pos must set i.pos =
+	// posExhausted. This happens in compute[Smallest|Largest]Pos and
+	// [next|prev]Pos.Setting i.pos to posExhausted ensures we'll yield nil to
+	// the caller, which they'll interpret as a signal they must check Error().
+	//
+	// INVARIANTS:
+	// i.err != nil => i.pos = posExhausted
+	err error
 	// prefix records the iterator's current prefix if the iterator is in prefix
 	// mode. During prefix mode, Pebble will truncate spans to the next prefix.
 	// If the iterator subsequently leaves prefix mode, the existing span cached
@@ -600,6 +615,16 @@ func (i *InterleavingIter) computeLargestPos() {
 
 // nextPos advances the iterator one position in the forward direction.
 func (i *InterleavingIter) nextPos() {
+	// NB: If i.err != nil or any of the positioning methods perfomred in this
+	// function result in i.err != nil, we must set i.pos = posExhausted. We
+	// perform this check explicitly here, but if any of the branches below
+	// advance either iterator, they must also check i.err and set posExhausted
+	// if necessary.
+	if i.err != nil {
+		i.pos = posExhausted
+		return
+	}
+
 	switch i.pos {
 	case posExhausted:
 		i.savePoint(i.pointIter.Next())
@@ -653,6 +678,16 @@ func (i *InterleavingIter) nextPos() {
 
 // prevPos advances the iterator one position in the reverse direction.
 func (i *InterleavingIter) prevPos() {
+	// NB: If i.err != nil or any of the positioning methods perfomred in this
+	// function result in i.err != nil, we must set i.pos = posExhausted. We
+	// perform this check explicitly here, but if any of the branches below
+	// advance either iterator, they must also check i.err and set posExhausted
+	// if necessary.
+	if i.err != nil {
+		i.pos = posExhausted
+		return
+	}
+
 	switch i.pos {
 	case posExhausted:
 		i.savePoint(i.pointIter.Prev())
@@ -971,6 +1006,10 @@ func (i *InterleavingIter) verify(
 			panic("pebble: invariant violation: key < lower bound")
 		case k != nil && i.upper != nil && i.cmp(k.UserKey, i.upper) >= 0:
 			panic("pebble: invariant violation: key ≥ upper bound")
+		case i.err != nil && k != nil:
+			panic("pebble: invariant violation: error swallowed")
+		case i.err == nil && (i.pointIter.Error() != nil || i.keyspanIter.Error() != nil):
+			panic("pebble: invariant violation: error swallowed")
 		}
 	}
 	return k, v
