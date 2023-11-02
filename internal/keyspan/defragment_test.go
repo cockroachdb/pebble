@@ -46,6 +46,7 @@ func TestDefragmentingIter(t *testing.T) {
 		case "iter":
 			equal := internalEqual
 			reducer := staticReducer
+			var probes []probe
 			for _, cmdArg := range td.CmdArgs {
 				switch cmd := cmdArg.Key; cmd {
 				case "equal":
@@ -72,14 +73,17 @@ func TestDefragmentingIter(t *testing.T) {
 					default:
 						return fmt.Sprintf("unknown reducer %s", val)
 					}
+				case "probes":
+					probes = parseProbes(cmdArg.Vals...)
 				default:
 					return fmt.Sprintf("unknown command: %s", cmd)
 				}
 			}
-			var innerIter MergingIter
-			innerIter.Init(cmp, noopTransform, new(MergingBuffers), NewIter(cmp, spans))
+			var miter MergingIter
+			miter.Init(cmp, noopTransform, new(MergingBuffers), NewIter(cmp, spans))
+			innerIter := attachProbes(&miter, probeContext{log: &buf}, probes...)
 			var iter DefragmentingIter
-			iter.Init(comparer, &innerIter, equal, reducer, new(DefragmentingBuffers))
+			iter.Init(comparer, innerIter, equal, reducer, new(DefragmentingBuffers))
 			for _, line := range strings.Split(td.Input, "\n") {
 				runIterOp(&buf, &iter, line)
 				fmt.Fprintln(&buf)
