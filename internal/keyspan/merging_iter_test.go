@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,42 +22,55 @@ import (
 
 func TestMergingIter(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
-	var iter MergingIter
 
+	var definedIters []FragmentIterator
+	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/merging_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
-			snapshot := base.InternalKeySeqNumMax
-			for _, cmdArg := range td.CmdArgs {
-				switch cmdArg.Key {
-				case "snapshot":
-					var err error
-					snapshot, err = strconv.ParseUint(cmdArg.Vals[0], 10, 64)
-					require.NoError(t, err)
-				default:
-					return fmt.Sprintf("unrecognized arg %q", cmdArg.Key)
-				}
-			}
-
-			var iters []FragmentIterator
-			var spans []Span
+			definedIters = definedIters[:0]
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
+			var spans []Span
 			for _, line := range lines {
 				if line == "--" {
-					iters = append(iters, NewIter(cmp, spans))
+					definedIters = append(definedIters, &invalidatingIter{iter: NewIter(cmp, spans)})
 					spans = nil
 					continue
 				}
 				spans = append(spans, ParseSpan(line))
 			}
 			if len(spans) > 0 {
-				iters = append(iters, &invalidatingIter{iter: NewIter(cmp, spans)})
+				definedIters = append(definedIters, &invalidatingIter{iter: NewIter(cmp, spans)})
 			}
-			iter.Init(cmp, VisibleTransform(snapshot), new(MergingBuffers), iters...)
-			return fmt.Sprintf("%d levels", len(iters))
+			return fmt.Sprintf("%d levels", len(definedIters))
 		case "iter":
-			return runIterCmd(t, td, &iter)
-
+			buf.Reset()
+			pctx := probeContext{log: &buf}
+			snapshot := base.InternalKeySeqNumMax
+			iters := slices.Clone(definedIters)
+			for _, cmdArg := range td.CmdArgs {
+				switch cmdArg.Key {
+				case "snapshot":
+					var err error
+					snapshot, err = strconv.ParseUint(cmdArg.Vals[0], 10, 64)
+					require.NoError(t, err)
+				case "probes":
+					// The first value indicates which of the merging iterator's
+					// child iterators is the target.
+					i, err := strconv.Atoi(cmdArg.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+					// The remaining values define probes to attach.
+					iters[i] = attachProbes(iters[i], pctx, parseProbes(cmdArg.Vals[1:]...)...)
+				default:
+					return fmt.Sprintf("unrecognized arg %q", cmdArg.Key)
+				}
+			}
+			var iter MergingIter
+			iter.Init(cmp, VisibleTransform(snapshot), new(MergingBuffers), iters...)
+			runIterCmd(t, td, &iter, &buf)
+			return buf.String()
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
