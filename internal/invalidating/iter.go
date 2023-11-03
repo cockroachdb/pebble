@@ -5,6 +5,8 @@
 package invalidating
 
 import (
+	"context"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/fastrand"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -155,6 +157,10 @@ func (i *iter) Close() error {
 
 func (i *iter) SetBounds(lower, upper []byte) {
 	i.iter.SetBounds(lower, upper)
+}
+
+func (i *iter) SetContext(ctx context.Context) {
+	i.iter.SetContext(ctx)
 }
 
 func (i *iter) String() string {

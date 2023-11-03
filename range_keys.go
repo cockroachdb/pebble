@@ -5,6 +5,8 @@
 package pebble
 
 import (
+	"context"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -691,6 +693,14 @@ func (i *lazyCombinedIter) SetBounds(lower, upper []byte) {
 		return
 	}
 	i.pointIter.SetBounds(lower, upper)
+}
+
+func (i *lazyCombinedIter) SetContext(ctx context.Context) {
+	if i.combinedIterState.initialized {
+		i.parent.rangeKey.iiter.SetContext(ctx)
+		return
+	}
+	i.pointIter.SetContext(ctx)
 }
 
 func (i *lazyCombinedIter) String() string {

@@ -172,6 +172,10 @@ func (i *iterAdapter) SetBounds(lower, upper []byte) {
 	i.key = nil
 }
 
+func (i *iterAdapter) SetContext(ctx context.Context) {
+	i.Iterator.SetContext(ctx)
+}
+
 func TestVirtualReader(t *testing.T) {
 	// A faux filenum used to create fake filemetadata for testing.
 	var fileNum int = 1

@@ -347,6 +347,10 @@ func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
 	i.blockUpper = nil
 }
 
+func (i *singleLevelIterator) SetContext(ctx context.Context) {
+	i.ctx = ctx
+}
+
 // loadBlock loads the block at the current index position and leaves i.data
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.

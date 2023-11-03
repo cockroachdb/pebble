@@ -18,6 +18,7 @@
 package arenaskl
 
 import (
+	"context"
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -237,6 +238,9 @@ func (it *Iterator) SetBounds(lower, upper []byte) {
 	it.lower = lower
 	it.upper = upper
 }
+
+// SetContext implements base.InternalIterator.
+func (it *Iterator) SetContext(_ context.Context) {}
 
 func (it *Iterator) decodeKey() {
 	it.key.UserKey = it.list.arena.getBytes(it.nd.keyOffset, it.nd.keySize)

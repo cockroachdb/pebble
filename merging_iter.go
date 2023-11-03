@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"runtime/debug"
 	"unsafe"
@@ -1356,6 +1357,12 @@ func (m *mergingIter) SetBounds(lower, upper []byte) {
 		m.levels[i].iter.SetBounds(lower, upper)
 	}
 	m.heap.clear()
+}
+
+func (m *mergingIter) SetContext(ctx context.Context) {
+	for i := range m.levels {
+		m.levels[i].iter.SetContext(ctx)
+	}
 }
 
 func (m *mergingIter) DebugString() string {
