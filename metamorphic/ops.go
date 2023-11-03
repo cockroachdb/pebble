@@ -518,13 +518,15 @@ func (o *ingestOp) run(t *test, h historyRecorder) {
 	h.Recordf("%s // %v", o, err)
 }
 
-func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (string, error) {
-	path := t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", o.dbID.slot(), i))
+func buildForIngest(
+	t *test, dbID objID, h historyRecorder, b *pebble.Batch, i int,
+) (string, error) {
+	path := t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
 	f, err := t.opts.FS.Create(path)
 	if err != nil {
 		return "", err
 	}
-	db := t.getDB(o.dbID)
+	db := t.getDB(dbID)
 
 	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
 	defer closeIters(iter, rangeDelIter, rangeKeyIter)
@@ -550,7 +552,7 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 		// It's possible that we wrote the key on a batch from a db that supported
 		// DeleteSized, but are now ingesting into a db that does not. Detect
 		// this case and translate the key to an InternalKeyKindDelete.
-		if key.Kind() == pebble.InternalKeyKindDeleteSized && !t.isFMV(o.dbID, pebble.FormatDeleteSizedAndObsolete) {
+		if key.Kind() == pebble.InternalKeyKindDeleteSized && !t.isFMV(dbID, pebble.FormatDeleteSizedAndObsolete) {
 			value = pebble.LazyValue{}
 			key.SetKind(pebble.InternalKeyKindDelete)
 		}
@@ -619,6 +621,10 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 		return "", err
 	}
 	return path, nil
+}
+
+func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (string, error) {
+	return buildForIngest(t, o.dbID, h, b, i)
 }
 
 func (o *ingestOp) receiver() objID { return o.dbID }
@@ -781,6 +787,69 @@ func (o *ingestOp) String() string {
 	}
 	buf.WriteString(")")
 	return buf.String()
+}
+
+type ingestAndExciseOp struct {
+	dbID                   objID
+	batchID                objID
+	exciseStart, exciseEnd []byte
+}
+
+func (o *ingestAndExciseOp) run(t *test, h historyRecorder) {
+	var err error
+	b := t.getBatch(o.batchID)
+	t.clearObj(o.batchID)
+	if b.Empty() || t.testOpts.Opts.Comparer.Compare(o.exciseEnd, o.exciseStart) <= 0 {
+		// No-op.
+		h.Recordf("%s // %v", o, err)
+		return
+	}
+	if !t.testOpts.useExcise {
+		// Do a rangedel and rangekeydel before the ingestion. This mimics the
+		// behaviour of an excise.
+		db := t.getDB(o.dbID)
+		err = firstError(err, db.DeleteRange(o.exciseStart, o.exciseEnd, t.writeOpts))
+		err = firstError(err, db.RangeKeyDelete(o.exciseStart, o.exciseEnd, t.writeOpts))
+	}
+	path, err2 := o.build(t, h, b, 0 /* i */)
+	if err2 != nil {
+		h.Recordf("Build(%s) // %v", o.batchID, err2)
+	}
+	err = firstError(err, err2)
+	err = firstError(err, b.Close())
+
+	if t.testOpts.useExcise {
+		err = firstError(err, withRetries(func() error {
+			_, err := t.getDB(o.dbID).IngestAndExcise([]string{path}, nil /* sharedSSTs */, pebble.KeyRange{
+				Start: o.exciseStart,
+				End:   o.exciseEnd,
+			})
+			return err
+		}))
+	} else {
+		err = firstError(err, withRetries(func() error {
+			return t.getDB(o.dbID).Ingest([]string{path})
+		}))
+	}
+
+	h.Recordf("%s // %v", o, err)
+}
+
+func (o *ingestAndExciseOp) build(
+	t *test, h historyRecorder, b *pebble.Batch, i int,
+) (string, error) {
+	return buildForIngest(t, o.dbID, h, b, i)
+}
+
+func (o *ingestAndExciseOp) receiver() objID { return o.dbID }
+func (o *ingestAndExciseOp) syncObjs() objIDSlice {
+	// Ingest should not be concurrent with mutating the batches that will be
+	// ingested as sstables.
+	return []objID{o.batchID}
+}
+
+func (o *ingestAndExciseOp) String() string {
+	return fmt.Sprintf("%s.IngestAndExcise(%s, %q, %q)", o.dbID, o.batchID, o.exciseStart, o.exciseEnd)
 }
 
 // getOp models a Reader.Get operation.
@@ -1320,10 +1389,28 @@ type newSnapshotOp struct {
 }
 
 func (o *newSnapshotOp) run(t *test, h historyRecorder) {
+	bounds := o.bounds
+	if len(bounds) == 0 {
+		panic("bounds unexpectedly unset for newSnapshotOp")
+	}
 	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
-	if len(t.dbs) > 1 || (len(o.bounds) > 0 && ((11400714819323198485*uint64(t.idx)*t.testOpts.seedEFOS)>>63) == 1) {
-		s := t.getDB(o.dbID).NewEventuallyFileOnlySnapshot(o.bounds)
+	createEfos := ((11400714819323198485 * uint64(t.idx) * t.testOpts.seedEFOS) >> 63) == 1
+	// If either of these options is true, an EFOS _must_ be created, regardless
+	// of what the fibonacci hash returned.
+	excisePossible := t.testOpts.useSharedReplicate || t.testOpts.useExcise
+	if createEfos || excisePossible {
+		s := t.getDB(o.dbID).NewEventuallyFileOnlySnapshot(bounds)
 		t.setSnapshot(o.snapID, s)
+		// If the EFOS isn't guaranteed to always create iterators, we must force
+		// a flush on this DB so it transitions this EFOS into a file-only snapshot.
+		if excisePossible && !t.testOpts.efosAlwaysCreatesIters {
+			err := t.getDB(o.dbID).Flush()
+			if err != nil {
+				h.Recordf("%s // %v", o, err)
+				h.history.err.Store(errors.Wrap(err, "newSnapshotOp"))
+				return
+			}
+		}
 	} else {
 		s := t.getDB(o.dbID).NewSnapshot()
 		t.setSnapshot(o.snapID, s)
@@ -1423,20 +1510,23 @@ func (r *replicateOp) runSharedReplicate(
 		},
 		func(start, end []byte, keys []keyspan.Key) error {
 			s := keyspan.Span{
-				Start:     start,
-				End:       end,
-				Keys:      keys,
-				KeysOrder: 0,
+				Start: start,
+				End:   end,
+				Keys:  keys,
 			}
-			return rangekey.Encode(&s, func(k base.InternalKey, v []byte) error {
-				return w.AddRangeKey(base.MakeInternalKey(k.UserKey, 0, k.Kind()), v)
-			})
+			return rangekey.Encode(&s, w.AddRangeKey)
 		},
 		func(sst *pebble.SharedSSTMeta) error {
 			sharedSSTs = append(sharedSSTs, *sst)
 			return nil
 		},
 	)
+	if err != nil {
+		h.Recordf("%s // %v", r, err)
+		return
+	}
+
+	err = w.Close()
 	if err != nil {
 		h.Recordf("%s // %v", r, err)
 		return
@@ -1468,6 +1558,15 @@ func (r *replicateOp) run(t *test, h historyRecorder) {
 		return
 	}
 
+	// First, do a RangeKeyDelete and DeleteRange on the whole span.
+	if err := dest.RangeKeyDelete(r.start, r.end, t.writeOpts); err != nil {
+		h.Recordf("%s // %v", r, err)
+		return
+	}
+	if err := dest.DeleteRange(r.start, r.end, t.writeOpts); err != nil {
+		h.Recordf("%s // %v", r, err)
+		return
+	}
 	iter, err := source.NewIter(&pebble.IterOptions{
 		LowerBound: r.start,
 		UpperBound: r.end,
@@ -1478,16 +1577,7 @@ func (r *replicateOp) run(t *test, h historyRecorder) {
 	}
 	defer iter.Close()
 
-	// Write rangedels and rangekeydels for the range. This mimics the Excise
-	// that runSharedReplicate would do.
-	if err := w.DeleteRange(r.start, r.end); err != nil {
-		panic(err)
-	}
-	if err := w.RangeKeyDelete(r.start, r.end); err != nil {
-		panic(err)
-	}
-
-	for ok := iter.SeekGE(r.start); ok && iter.Error() != nil; ok = iter.Next() {
+	for ok := iter.SeekGE(r.start); ok && iter.Error() == nil; ok = iter.Next() {
 		hasPoint, hasRange := iter.HasPointAndRange()
 		if hasPoint {
 			val, err := iter.ValueAndErr()
@@ -1501,12 +1591,24 @@ func (r *replicateOp) run(t *test, h historyRecorder) {
 		if hasRange && iter.RangeKeyChanged() {
 			rangeKeys := iter.RangeKeys()
 			rkStart, rkEnd := iter.RangeBounds()
+
+			span := &keyspan.Span{Start: rkStart, End: rkEnd, Keys: make([]keyspan.Key, len(rangeKeys))}
 			for i := range rangeKeys {
-				if err := w.RangeKeySet(rkStart, rkEnd, rangeKeys[i].Suffix, rangeKeys[i].Value); err != nil {
-					panic(err)
+				span.Keys[i] = keyspan.Key{
+					Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeKeySet),
+					Suffix:  rangeKeys[i].Suffix,
+					Value:   rangeKeys[i].Value,
 				}
 			}
+			keyspan.SortKeysByTrailer(&span.Keys)
+			if err := rangekey.Encode(span, w.AddRangeKey); err != nil {
+				panic(err)
+			}
 		}
+	}
+	if err := iter.Error(); err != nil {
+		h.Recordf("%s // %v", r, err)
+		return
 	}
 	if err := w.Close(); err != nil {
 		panic(err)

@@ -170,6 +170,7 @@ func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
 		writerDelete:                g.writerDelete,
 		writerDeleteRange:           g.writerDeleteRange,
 		writerIngest:                g.writerIngest,
+		writerIngestAndExcise:       g.writerIngestAndExcise,
 		writerMerge:                 g.writerMerge,
 		writerRangeKeyDelete:        g.writerRangeKeyDelete,
 		writerRangeKeySet:           g.writerRangeKeySet,
@@ -1220,28 +1221,15 @@ func (g *generator) newSnapshot() {
 		snapID: snapID,
 	}
 
-	// With 75% probability, impose bounds on the keys that may be read with the
-	// snapshot. Setting bounds allows some runs of the metamorphic test to use
-	// a EventuallyFileOnlySnapshot instead of a Snapshot, testing equivalence
-	// between the two for reads within those bounds.
-	//
-	// If we're in multi-instance mode, we must always create bounds, as we will
-	// always create EventuallyFileOnlySnapshots to allow commands that use excises
-	// (eg. replicateOp) to work.
-	if g.rng.Float64() < 0.75 || g.dbs.Len() > 1 {
-		s.bounds = g.generateDisjointKeyRanges(
-			g.rng.Intn(5) + 1, /* between 1-5 */
-		)
-		g.snapshotBounds[snapID] = s.bounds
-	}
+	// Impose bounds on the keys that may be read with the snapshot. Setting bounds
+	// allows some runs of the metamorphic test to use a EventuallyFileOnlySnapshot
+	// instead of a Snapshot, testing equivalence between the two for reads within
+	// those bounds.
+	s.bounds = g.generateDisjointKeyRanges(
+		g.rng.Intn(5) + 1, /* between 1-5 */
+	)
+	g.snapshotBounds[snapID] = s.bounds
 	g.add(s)
-	if g.dbs.Len() > 1 {
-		// Do a flush after each EFOS, if we're in multi-instance mode. This limits
-		// the testing area of EFOS, but allows them to be used alongside operations
-		// that do an excise (eg. replicateOp). This will be revisited when
-		// https://github.com/cockroachdb/pebble/issues/2885 is implemented.
-		g.add(&flushOp{dbID})
-	}
 }
 
 func (g *generator) snapshotClose() {
@@ -1443,6 +1431,30 @@ func (g *generator) writerIngest() {
 		dbID:         dbID,
 		batchIDs:     batchIDs,
 		derivedDBIDs: derivedDBIDs,
+	})
+}
+
+func (g *generator) writerIngestAndExcise() {
+	if len(g.liveBatches) == 0 {
+		return
+	}
+
+	dbID := g.dbs.rand(g.rng)
+	// Ingest between 1 and 3 batches.
+	batchID := g.liveBatches.rand(g.rng)
+	g.removeBatchFromGenerator(batchID)
+
+	start := g.randKeyToWrite(0.001)
+	end := g.randKeyToWrite(0.001)
+	if g.cmp(start, end) > 0 {
+		start, end = end, start
+	}
+
+	g.add(&ingestAndExciseOp{
+		dbID:        dbID,
+		batchID:     batchID,
+		exciseStart: start,
+		exciseEnd:   end,
 	})
 }
 
