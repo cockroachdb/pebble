@@ -969,6 +969,11 @@ type Options struct {
 		// against the FS are made after the DB is closed, the FS may leak a
 		// goroutine indefinitely.
 		fsCloser io.Closer
+
+		// efosAlwaysCreatesIterators is set by some tests to force
+		// EventuallyFileOnlySnapshots to always create iterators, even after a
+		// conflicting excise.
+		efosAlwaysCreatesIterators bool
 	}
 }
 
@@ -1140,6 +1145,13 @@ func (o *Options) AddEventListener(l EventListener) {
 		l = TeeEventListener(l, *o.EventListener)
 	}
 	o.EventListener = &l
+}
+
+// TestingAlwaysCreateEFOSIterators is used to toggle a private option for
+// having EventuallyFileOnlySnapshots always create iterators. Meant to only
+// be used in tests.
+func (o *Options) TestingAlwaysCreateEFOSIterators(value bool) {
+	o.private.efosAlwaysCreatesIterators = value
 }
 
 func (o *Options) equal() Equal {

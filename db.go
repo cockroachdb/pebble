@@ -995,9 +995,12 @@ var iterAllocPool = sync.Pool{
 //     and the specified seqNum will be used as the snapshot seqNum.
 //   - EFOS in file-only state: Only `seqNum` and `vers` are set. All the
 //     relevant SSTs are referenced by the *version.
+//   - EFOS that has been excised but is in alwaysCreateIters mode (tests only).
+//     Only `seqNum` and `readState` are set.
 type snapshotIterOpts struct {
-	seqNum uint64
-	vers   *version
+	seqNum    uint64
+	vers      *version
+	readState *readState
 }
 
 type batchIterOpts struct {
@@ -1051,8 +1054,12 @@ func (d *DB) newIter(
 		// files in the associated version from being deleted if there is a current
 		// compaction. The readState is unref'd by Iterator.Close().
 		if internalOpts.snapshot.vers == nil {
-			// NB: loadReadState() calls readState.ref().
-			readState = d.loadReadState()
+			if internalOpts.snapshot.readState != nil {
+				readState = internalOpts.snapshot.readState
+			} else {
+				// NB: loadReadState() calls readState.ref().
+				readState = d.loadReadState()
+			}
 		} else {
 			// vers != nil
 			internalOpts.snapshot.vers.Ref()
@@ -1276,7 +1283,11 @@ func (d *DB) newInternalIter(sOpts snapshotIterOpts, o *scanInternalOptions) *sc
 	// compaction. The readState is unref'd by Iterator.Close().
 	var readState *readState
 	if sOpts.vers == nil {
-		readState = d.loadReadState()
+		if sOpts.readState != nil {
+			readState = sOpts.readState
+		} else {
+			readState = d.loadReadState()
+		}
 	}
 	if sOpts.vers != nil {
 		sOpts.vers.Ref()
