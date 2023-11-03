@@ -247,6 +247,10 @@ type EventuallyFileOnlySnapshot struct {
 		snap *Snapshot
 		// The wrapped version reference, if a file-only snapshot.
 		vers *version
+
+		// The readState corresponding to when this EFOS was created. Only set
+		// if alwaysCreateIters is true.
+		rs *readState
 	}
 
 	// Key ranges to watch for an excise on.
@@ -258,6 +262,12 @@ type EventuallyFileOnlySnapshot struct {
 	// The db the snapshot was created from.
 	db     *DB
 	seqNum uint64
+
+	// If true, this EventuallyFileOnlySnapshot will always generate iterators that
+	// retain snapshot semantics, by holding onto the readState if a conflicting
+	// excise were to happen. Only used in some tests to enforce deterministic
+	// behaviour around excises.
+	alwaysCreateIters bool
 
 	closed chan struct{}
 }
@@ -279,10 +289,14 @@ func (d *DB) makeEventuallyFileOnlySnapshot(
 		}
 	}
 	es := &EventuallyFileOnlySnapshot{
-		db:              d,
-		seqNum:          seqNum,
-		protectedRanges: keyRanges,
-		closed:          make(chan struct{}),
+		db:                d,
+		seqNum:            seqNum,
+		protectedRanges:   keyRanges,
+		closed:            make(chan struct{}),
+		alwaysCreateIters: d.opts.private.efosAlwaysCreatesIterators,
+	}
+	if es.alwaysCreateIters {
+		es.mu.rs = d.loadReadState()
 	}
 	if isFileOnly {
 		es.mu.vers = d.mu.versions.currentVersion()
@@ -426,6 +440,9 @@ func (es *EventuallyFileOnlySnapshot) Close() error {
 	if es.mu.vers != nil {
 		es.mu.vers.UnrefLocked()
 	}
+	if es.mu.rs != nil {
+		es.mu.rs.unrefLocked()
+	}
 	return nil
 }
 
@@ -472,6 +489,12 @@ func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
 	default:
 	}
 
+	if es.alwaysCreateIters {
+		// Grab the db mutex. This avoids races down below, where we could get
+		// excised between the es.excised.Load() call, and the newIter call.
+		es.db.mu.Lock()
+		defer es.db.mu.Unlock()
+	}
 	es.mu.Lock()
 	defer es.mu.Unlock()
 	if es.mu.vers != nil {
@@ -479,15 +502,22 @@ func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
 		return es.db.newIter(ctx, nil /* batch */, newIterOpts{snapshot: sOpts}, o), nil
 	}
 
-	if es.excised.Load() {
-		return nil, ErrSnapshotExcised
-	}
 	sOpts := snapshotIterOpts{seqNum: es.seqNum}
+	if es.excised.Load() {
+		if !es.alwaysCreateIters {
+			return nil, ErrSnapshotExcised
+		}
+		if es.mu.rs == nil {
+			return nil, errors.AssertionFailedf("unexpected nil readState in EFOS' alwaysCreateIters mode")
+		}
+		sOpts.readState = es.mu.rs
+	}
 	iter := es.db.newIter(ctx, nil /* batch */, newIterOpts{snapshot: sOpts}, o)
 
 	// If excised is true, then keys relevant to the snapshot might not be
-	// present in the readState being used by the iterator. Error out.
-	if es.excised.Load() {
+	// present in the readState being used by the iterator. Error out if
+	// !alwaysCreateIters.
+	if es.excised.Load() && !es.alwaysCreateIters {
 		iter.Close()
 		return nil, ErrSnapshotExcised
 	}
@@ -512,10 +542,15 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 	if es.db == nil {
 		panic(ErrClosed)
 	}
-	if es.excised.Load() {
+	if es.excised.Load() && !es.alwaysCreateIters {
 		return ErrSnapshotExcised
 	}
 	var sOpts snapshotIterOpts
+	if es.alwaysCreateIters {
+		// Grab the db mutex. This avoids races down below as it prevents excises
+		// from taking effect until the iterator is instantiated.
+		es.db.mu.Lock()
+	}
 	es.mu.Lock()
 	if es.mu.vers != nil {
 		sOpts = snapshotIterOpts{
@@ -523,8 +558,15 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 			vers:   es.mu.vers,
 		}
 	} else {
-		sOpts = snapshotIterOpts{
-			seqNum: es.seqNum,
+		if es.excised.Load() && es.alwaysCreateIters {
+			sOpts = snapshotIterOpts{
+				readState: es.mu.rs,
+				seqNum:    es.seqNum,
+			}
+		} else {
+			sOpts = snapshotIterOpts{
+				seqNum: es.seqNum,
+			}
 		}
 	}
 	es.mu.Unlock()
@@ -543,10 +585,14 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 	}
 	iter := es.db.newInternalIter(ctx, sOpts, opts)
 	defer iter.close()
+	if es.alwaysCreateIters {
+		// See the similar conditional above where we grab this mutex.
+		es.db.mu.Unlock()
+	}
 
 	// If excised is true, then keys relevant to the snapshot might not be
 	// present in the readState being used by the iterator. Error out.
-	if es.excised.Load() {
+	if es.excised.Load() && !es.alwaysCreateIters {
 		return ErrSnapshotExcised
 	}
 
