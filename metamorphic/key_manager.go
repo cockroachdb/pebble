@@ -406,6 +406,10 @@ func (k *keyManager) update(o op) {
 			k.mergeKeysInto(batchID, s.dbID)
 		}
 		k.checkForDelOrSingleDelTransitionInDB(s.dbID)
+	case *ingestAndExciseOp:
+		// Merge all keys in the batch with the keys in the DB.
+		k.mergeKeysInto(s.batchID, s.dbID)
+		k.checkForDelOrSingleDelTransitionInDB(s.dbID)
 	case *applyOp:
 		// Merge the keys from this writer into the parent writer.
 		k.mergeKeysInto(s.batchID, s.writerID)
@@ -517,6 +521,8 @@ func opWrittenKeys(untypedOp op) [][]byte {
 	case *flushOp:
 	case *getOp:
 	case *ingestOp:
+	case *ingestAndExciseOp:
+		return [][]byte{t.exciseStart, t.exciseEnd}
 	case *initOp:
 	case *iterFirstOp:
 	case *iterLastOp:
