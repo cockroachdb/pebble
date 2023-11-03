@@ -1232,6 +1232,13 @@ func (l *levelIter) SetBounds(lower, upper []byte) {
 	l.iter.SetBounds(l.tableOpts.LowerBound, l.tableOpts.UpperBound)
 }
 
+func (l *levelIter) SetContext(ctx context.Context) {
+	l.ctx = ctx
+	// TODO(sumeer): this is losing the ctx = objiotracing.WithLevel(ctx,
+	// manifest.LevelToInt(opts.level)) that happens in table_cache.go.
+	l.iter.SetContext(ctx)
+}
+
 func (l *levelIter) String() string {
 	if l.iterFile != nil {
 		return fmt.Sprintf("%s: fileNum=%s", l.level, l.iter.String())

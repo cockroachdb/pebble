@@ -5,6 +5,7 @@
 package base
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -203,6 +204,10 @@ type InternalIterator interface {
 	// implementations may compare old and new bounds to apply low-level
 	// optimizations.
 	SetBounds(lower, upper []byte)
+
+	// SetContext replaces the context provided at iterator creation, or the
+	// last one provided by SetContext.
+	SetContext(ctx context.Context)
 
 	fmt.Stringer
 }

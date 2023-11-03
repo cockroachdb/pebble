@@ -354,6 +354,10 @@ func (p *pointCollapsingIterator) SetBounds(lower, upper []byte) {
 	p.iter.SetBounds(lower, upper)
 }
 
+func (p *pointCollapsingIterator) SetContext(ctx context.Context) {
+	p.iter.SetContext(ctx)
+}
+
 // String implements the InternalIterator interface.
 func (p *pointCollapsingIterator) String() string {
 	return p.iter.String()

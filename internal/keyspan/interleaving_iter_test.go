@@ -6,6 +6,7 @@ package keyspan
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"sort"
@@ -287,3 +288,4 @@ func (i *pointIterator) String() string { return "test-point-iterator" }
 func (i *pointIterator) SetBounds(lower, upper []byte) {
 	i.lower, i.upper = lower, upper
 }
+func (i *pointIterator) SetContext(_ context.Context) {}

@@ -225,6 +225,8 @@ func (f *fakeIter) SetBounds(lower, upper []byte) {
 	f.upper = upper
 }
 
+func (f *fakeIter) SetContext(_ context.Context) {}
+
 // testIterator tests creating a combined iterator from a number of sub-
 // iterators. newFunc is a constructor function. splitFunc returns a random
 // split of the testKeyValuePairs slice such that walking a combined iterator

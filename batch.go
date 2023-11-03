@@ -1702,6 +1702,8 @@ func (i *batchIter) SetBounds(lower, upper []byte) {
 	i.iter.SetBounds(lower, upper)
 }
 
+func (i *batchIter) SetContext(_ context.Context) {}
+
 type flushableBatchEntry struct {
 	// offset is the byte offset of the record within the batch repr.
 	offset uint32
@@ -2160,6 +2162,8 @@ func (i *flushableBatchIter) SetBounds(lower, upper []byte) {
 	i.lower = lower
 	i.upper = upper
 }
+
+func (i *flushableBatchIter) SetContext(_ context.Context) {}
 
 // flushFlushableBatchIter is similar to flushableBatchIter but it keeps track
 // of number of bytes iterated.

@@ -241,3 +241,5 @@ func (g *getIter) Close() error {
 func (g *getIter) SetBounds(lower, upper []byte) {
 	panic("pebble: SetBounds unimplemented")
 }
+
+func (g *getIter) SetContext(_ context.Context) {}

@@ -2392,6 +2392,22 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	i.invalidate()
 }
 
+// SetContext replaces the context provided at iterator creation, or the last
+// one provided by SetContext. Even though iterators are expected to be
+// short-lived, there are some cases where either (a) iterators are used far
+// from the code that created them, (b) iterators are reused (while being
+// short-lived) for processing different requests. For such scenarios, we
+// allow the caller to replace the context.
+func (i *Iterator) SetContext(ctx context.Context) {
+	i.ctx = ctx
+	i.iter.SetContext(ctx)
+	// If the iterator has an open point iterator that's not currently being
+	// used, propagate the new context to it.
+	if i.pointIter != nil && !i.opts.pointKeys() {
+		i.pointIter.SetContext(i.ctx)
+	}
+}
+
 // Initialization and changing of the bounds must call processBounds.
 // processBounds saves the bounds and computes derived state from those
 // bounds.

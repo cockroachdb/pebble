@@ -545,6 +545,8 @@ func (s *simpleLevelIter) SetBounds(lower, upper []byte) {
 	s.resetFilteredIters()
 }
 
+func (s *simpleLevelIter) SetContext(_ context.Context) {}
+
 func (s *simpleLevelIter) String() string {
 	if s.currentIdx < 0 || s.currentIdx >= len(s.filtered) {
 		return "simpleLevelIter: current=<nil>"
