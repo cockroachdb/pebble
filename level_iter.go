@@ -1234,9 +1234,11 @@ func (l *levelIter) SetBounds(lower, upper []byte) {
 
 func (l *levelIter) SetContext(ctx context.Context) {
 	l.ctx = ctx
-	// TODO(sumeer): this is losing the ctx = objiotracing.WithLevel(ctx,
-	// manifest.LevelToInt(opts.level)) that happens in table_cache.go.
-	l.iter.SetContext(ctx)
+	if l.iter != nil {
+		// TODO(sumeer): this is losing the ctx = objiotracing.WithLevel(ctx,
+		// manifest.LevelToInt(opts.level)) that happens in table_cache.go.
+		l.iter.SetContext(ctx)
+	}
 }
 
 func (l *levelIter) String() string {

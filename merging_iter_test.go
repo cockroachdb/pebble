@@ -272,6 +272,10 @@ func TestMergingIterCornerCases(t *testing.T) {
 			miter.init(nil /* opts */, &stats, cmp, func(a []byte) int { return len(a) }, levelIters...)
 			defer miter.Close()
 			miter.forceEnableSeekOpt = true
+			// Exercise SetContext for fun
+			// (https://github.com/cockroachdb/pebble/pull/3037 caused a SIGSEGV due
+			// to a nil pointer dereference).
+			miter.SetContext(context.Background())
 			return runInternalIterCmd(t, d, miter, iterCmdVerboseKey, iterCmdStats(&stats))
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
