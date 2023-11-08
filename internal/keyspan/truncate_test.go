@@ -17,15 +17,16 @@ func TestTruncate(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
 	var iter FragmentIterator
+	var savedIter FragmentIterator
+	defer func() {
+		if savedIter != nil {
+			savedIter.Close()
+			savedIter = nil
+		}
+	}()
 
 	datadriven.RunTest(t, "testdata/truncate", func(t *testing.T, d *datadriven.TestData) string {
-		switch d.Cmd {
-		case "build":
-			tombstones := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
-			iter = NewIter(cmp, tombstones)
-			return formatAlphabeticSpans(tombstones)
-
-		case "truncate":
+		doTruncate := func() FragmentIterator {
 			if len(d.Input) > 0 {
 				t.Fatalf("unexpected input: %s", d.Input)
 			}
@@ -55,12 +56,33 @@ func TestTruncate(t *testing.T) {
 			tIter := Truncate(
 				cmp, iter, lower, upper, startKey, endKey, false,
 			)
+			return tIter
+		}
+
+		switch d.Cmd {
+		case "build":
+			tombstones := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
+			iter = NewIter(cmp, tombstones)
+			return formatAlphabeticSpans(tombstones)
+
+		case "truncate":
+			tIter := doTruncate()
 			defer tIter.Close()
 			var truncated []Span
 			for s := tIter.First(); s != nil; s = tIter.Next() {
 				truncated = append(truncated, s.ShallowClone())
 			}
 			return formatAlphabeticSpans(truncated)
+
+		case "truncate-and-save-iter":
+			if savedIter != nil {
+				savedIter.Close()
+			}
+			savedIter = doTruncate()
+			return "ok"
+
+		case "saved-iter":
+			return runIterCmd(t, d, savedIter)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)

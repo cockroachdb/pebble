@@ -931,7 +931,7 @@ func newCombinedDeletionKeyspanIter(
 				out.Keys = append(out.Keys, k)
 			}
 			return len(out.Keys) > 0
-		})
+		}, comparer.Compare)
 		dIter := &keyspan.DefragmentingIter{}
 		dIter.Init(comparer, iter, equal, reducer, new(keyspan.DefragmentingBuffers))
 		iter = dIter
