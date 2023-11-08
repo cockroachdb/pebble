@@ -196,3 +196,123 @@ truncate g-g
 truncate g-h
 ----
 3:       gh
+
+# Regression test for https://github.com/cockroachdb/cockroach/issues/113973.
+
+truncate-and-save-iter a-dd
+----
+ok
+
+saved-iter
+first
+next
+next
+next
+----
+b-d:{(#1,RANGEDEL)}
+d-dd:{(#2,RANGEDEL)}
+<nil>
+<nil>
+
+saved-iter
+seek-ge e
+next
+next
+----
+<nil>
+<nil>
+<nil>
+
+saved-iter
+seek-ge e
+prev
+prev
+----
+<nil>
+d-dd:{(#2,RANGEDEL)}
+b-d:{(#1,RANGEDEL)}
+
+saved-iter
+seek-lt e
+prev
+prev
+----
+d-dd:{(#2,RANGEDEL)}
+b-d:{(#1,RANGEDEL)}
+<nil>
+
+saved-iter
+seek-lt e
+next
+next
+----
+d-dd:{(#2,RANGEDEL)}
+<nil>
+<nil>
+
+truncate-and-save-iter ee-h
+----
+ok
+
+saved-iter
+first
+next
+next
+next
+----
+ee-f:{(#2,RANGEDEL)}
+f-h:{(#3,RANGEDEL)}
+<nil>
+<nil>
+
+saved-iter
+seek-ge e
+next
+next
+----
+ee-f:{(#2,RANGEDEL)}
+f-h:{(#3,RANGEDEL)}
+<nil>
+
+saved-iter
+seek-ge e
+prev
+prev
+----
+ee-f:{(#2,RANGEDEL)}
+<nil>
+<nil>
+
+saved-iter
+seek-lt e
+prev
+prev
+----
+<nil>
+<nil>
+<nil>
+
+saved-iter
+seek-lt e
+next
+next
+----
+<nil>
+ee-f:{(#2,RANGEDEL)}
+f-h:{(#3,RANGEDEL)}
+
+
+truncate-and-save-iter a-g
+----
+ok
+
+saved-iter
+seek-ge h
+prev
+seek-lt h
+next
+----
+<nil>
+f-g:{(#3,RANGEDEL)}
+f-g:{(#3,RANGEDEL)}
+<nil>
