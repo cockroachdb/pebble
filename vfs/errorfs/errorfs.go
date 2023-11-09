@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -188,6 +189,55 @@ func (a anyInjector) MaybeError(op Op) error {
 	}
 	return nil
 }
+
+// Counter wraps an Injector, counting the number of errors injected. It may be
+// used in tests to ensure that when an error is injected, the error is
+// surfaced through the user interface.
+type Counter struct {
+	Injector
+	atomic.Uint64
+}
+
+// String implements fmt.Stringer.
+func (c *Counter) String() string {
+	return c.Injector.String()
+}
+
+// MaybeError implements Injector.
+func (c *Counter) MaybeError(op Op) error {
+	err := c.Injector.MaybeError(op)
+	if err != nil {
+		c.Uint64.Add(1)
+	}
+	return err
+}
+
+// Toggle wraps an Injector. By default, Toggle injects nothing. When toggled on
+// through its On method, it begins injecting errors when the contained injector
+// injects them. It may be returned to its original state through Off.
+type Toggle struct {
+	Injector
+	on atomic.Bool
+}
+
+// String implements fmt.Stringer.
+func (t *Toggle) String() string {
+	return t.Injector.String()
+}
+
+// MaybeError implements Injector.
+func (t *Toggle) MaybeError(op Op) error {
+	if !t.on.Load() {
+		return nil
+	}
+	return t.Injector.MaybeError(op)
+}
+
+// On enables error injection.
+func (t *Toggle) On() { t.on.Store(true) }
+
+// Off disables error injection.
+func (t *Toggle) Off() { t.on.Store(false) }
 
 // FS implements vfs.FS, injecting errors into
 // its operations.

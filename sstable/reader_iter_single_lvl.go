@@ -1139,6 +1139,8 @@ func (i *singleLevelIterator) Next() (*InternalKey, base.LazyValue) {
 	i.boundsCmp = 0
 
 	if i.err != nil {
+		// TODO(jackson): Can this case be turned into a panic? Once an error is
+		// encountered, the iterator must be re-seeked.
 		return nil, base.LazyValue{}
 	}
 	if key, val := i.data.Next(); key != nil {
@@ -1164,6 +1166,8 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.Laz
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 	if i.err != nil {
+		// TODO(jackson): Can this case be turned into a panic? Once an error is
+		// encountered, the iterator must be re-seeked.
 		return nil, base.LazyValue{}
 	}
 	if key, val := i.data.NextPrefix(succKey); key != nil {
