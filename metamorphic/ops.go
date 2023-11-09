@@ -578,6 +578,32 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 		rangeDelIter = nil
 	}
 
+	if rangeKeyIter != nil {
+		for span := rangeKeyIter.First(); span != nil; span = rangeKeyIter.Next() {
+			// Zero the sequence numbers of keys in this span.
+			zeroedSpan := &keyspan.Span{
+				Start: span.Start,
+				End:   span.End,
+				Keys:  make([]keyspan.Key, len(span.Keys)),
+			}
+			for i := range span.Keys {
+				zeroedSpan.Keys[i] = span.Keys[i]
+				zeroedSpan.Keys[i].Trailer = base.MakeTrailer(0, span.Keys[i].Kind())
+			}
+			keyspan.SortKeysByTrailer(&zeroedSpan.Keys)
+			if err := rangekey.Encode(zeroedSpan, w.AddRangeKey); err != nil {
+				return "", err
+			}
+		}
+		if err := rangeKeyIter.Error(); err != nil {
+			return "", err
+		}
+		if err := rangeKeyIter.Close(); err != nil {
+			return "", err
+		}
+		rangeKeyIter = nil
+	}
+
 	if err := w.Close(); err != nil {
 		return "", err
 	}
@@ -681,6 +707,34 @@ func (o *ingestOp) collapseBatch(
 			return nil, err
 		}
 		pointIter = nil
+	}
+
+	if rangeKeyIter != nil {
+		for span := rangeKeyIter.First(); span != nil; span = rangeKeyIter.Next() {
+			for i := range span.Keys {
+				var err error
+				switch span.Keys[i].Kind() {
+				case pebble.InternalKeyKindRangeKeyDelete:
+					err = collapsed.RangeKeyDelete(span.Start, span.End, t.writeOpts)
+				case pebble.InternalKeyKindRangeKeySet:
+					err = collapsed.RangeKeySet(span.Start, span.End, span.Keys[i].Suffix, span.Keys[i].Value, t.writeOpts)
+				case pebble.InternalKeyKindRangeKeyUnset:
+					err = collapsed.RangeKeyUnset(span.Start, span.End, span.Keys[i].Suffix, t.writeOpts)
+				default:
+					err = errors.Errorf("unknown batch range key record kind: %d", span.Keys[i].Kind())
+				}
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		if err := rangeKeyIter.Error(); err != nil {
+			return nil, err
+		}
+		if err := rangeKeyIter.Close(); err != nil {
+			return nil, err
+		}
+		rangeKeyIter = nil
 	}
 
 	return collapsed, nil
