@@ -791,6 +791,8 @@ func (i *twoLevelIterator) Next() (*InternalKey, base.LazyValue) {
 	i.boundsCmp = 0
 	i.maybeFilteredKeysTwoLevel = false
 	if i.err != nil {
+		// TODO(jackson): Can this case be turned into a panic? Once an error is
+		// encountered, the iterator must be re-seeked.
 		return nil, base.LazyValue{}
 	}
 	if key, val := i.singleLevelIterator.Next(); key != nil {
@@ -808,6 +810,8 @@ func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyVa
 	i.boundsCmp = 0
 	i.maybeFilteredKeysTwoLevel = false
 	if i.err != nil {
+		// TODO(jackson): Can this case be turned into a panic? Once an error is
+		// encountered, the iterator must be re-seeked.
 		return nil, base.LazyValue{}
 	}
 	if key, val := i.singleLevelIterator.NextPrefix(succKey); key != nil {
