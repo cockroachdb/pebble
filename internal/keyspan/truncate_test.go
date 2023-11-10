@@ -5,6 +5,7 @@
 package keyspan
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -82,7 +83,9 @@ func TestTruncate(t *testing.T) {
 			return "ok"
 
 		case "saved-iter":
-			return runIterCmd(t, d, savedIter)
+			var buf bytes.Buffer
+			runIterCmd(t, d, savedIter, &buf)
+			return buf.String()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
