@@ -53,6 +53,19 @@ e#10,1:10
 g#20,1:20
 .
 
+iter probe-rangedels=(000000,(Log "#  000000.rangeDelIter.")) probe-rangedels=(000001,(If (Equal SeekKey (Bytes "g")) ErrInjected noop),(Log "#  000001.rangeDelIter."))
+seek-ge d
+next
+----
+#  000000.rangeDelIter.opSpanSeekGE("d") = a-f:{(#8,RANGEDEL)}
+#  000001.rangeDelIter.opSpanSeekGE("e") = e-f:{(#8,RANGEDEL)}
+#  000000.rangeDelIter.opSpanSeekGE("e") = a-f:{(#8,RANGEDEL)}
+#  000000.rangeDelIter.opSpanClose() = nil
+#  000001.rangeDelIter.opSpanSeekGE("e") = e-f:{(#8,RANGEDEL)}
+e#10,1:10
+#  000001.rangeDelIter.opSpanSeekGE("g") = nil <err="injected error">
+err=injected error
+
 # isPrevEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
 # that are after it.
 iter
@@ -347,6 +360,20 @@ d#6,1:6
 d#6,1:6
 d#4,1:4
 
+# Test the above but an error is encounted when Prev-ing to establish the min
+# heap. The error should be propagated up.
+iter probe-points=(000011,(If OpPrev ErrInjected noop),(Log "# L1.000011.")) probe-points=(000012,(Log "# L2.000012."))
+set-bounds lower=d
+seek-ge d
+prev
+----
+# L1.000011.SeekGE("d") = (d#6,1,"6")
+# L2.000012.SeekGE("d") = (d#4,1,"4")
+d#6,1:6
+# L2.000012.Prev() = nil
+# L1.000011.Prev() = nil <err="injected error">
+err=injected error
+
 # Check the behavior of reverse prefix iteration.
 
 iter
@@ -387,6 +414,19 @@ c#3,1:3
 .
 c#3,1:3
 c#9,1:9
+
+# Test the above scenario, but an error is encountered when Next-ing to switch
+# to a max heap. The error should be propagated to the caller.
+iter probe-points=(000013,(If OpNext ErrInjected noop),(Log "# L1.000013.")) probe-points=(000014,(Log "# L2.000014."))
+set-bounds upper=d
+seek-lt d
+next
+----
+# L1.000013.SeekLT("d") = (c#9,1,"9")
+# L2.000014.SeekLT("d") = (c#3,1,"3")
+c#3,1:3
+# L1.000013.Next() = nil <err="injected error">
+err=injected error
 
 # Verify that the tombstone for the current level is updated correctly
 # when we advance the iterator on the level and step into a new
@@ -508,6 +548,21 @@ next
 iwoeionch#792,1:792
 .
 
+# Test the above case, but injecting an error when we re-seek the iterator in
+# accordance with the lower bound. The error should be propagated.
+
+iter probe-points=(000022,(Log "#  000022.")) probe-points=(000023,(If OpSeekGE ErrInjected noop),(Log "#  000023.")) probe-points=(000024,(Log "#  000024."))
+set-bounds lower=cz upper=jd
+seek-lt jd
+next
+----
+#  000022.SeekLT("jd") = (iwoeionch#792,1,"792")
+#  000023.SeekLT("c") = nil
+#  000024.SeekLT("c") = nil
+iwoeionch#792,1:792
+#  000023.SeekGE("cz") = nil <err="injected error">
+err=injected error
+
 # Exercise the early stopping behavior for prefix iteration when encountering
 # range deletion tombstones. Keys a, d are not deleted, while the rest are.
 define
@@ -590,3 +645,198 @@ f#21,1:21
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:6 ValueBytes:10 PointCount:6 PointsCoveredByRangeTombstones:4 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 .
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:6 ValueBytes:10 PointCount:6 PointsCoveredByRangeTombstones:4 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+
+# Test a dead simple error handling case of a 1-level seek erroring.
+
+define
+L
+a.SET.30 g.RANGEDEL.72057594037927935
+a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
+----
+1:
+  000027:[a#30,SET-g#inf,RANGEDEL]
+
+iter probe-points=(000027,ErrInjected,(Log "#  L1.000027."))
+first
+last
+seek-ge boo
+seek-lt coo
+seek-prefix-ge b
+----
+#  L1.000027.First() = nil <err="injected error">
+err=injected error
+#  L1.000027.Last() = nil <err="injected error">
+err=injected error
+#  L1.000027.SeekGE("boo") = nil <err="injected error">
+err=injected error
+#  L1.000027.SeekLT("coo") = nil <err="injected error">
+err=injected error
+#  L1.000027.SeekPrefixGE("b") = nil <err="injected error">
+err=injected error
+
+# Test error injection with two simple levels.
+
+define
+L
+a.SET.30 c.SET.27
+a.SET.30:30 c.SET.27:27
+L
+e.SET.10 g.SET.20
+e.SET.10:10 g.SET.20:20
+----
+1:
+  000028:[a#30,SET-c#27,SET]
+2:
+  000029:[e#10,SET-g#20,SET]
+
+# Inject errors for each of the L1 operations.
+
+iter probe-points=(000028,ErrInjected,(Log "# L1.000028.")) probe-points=(000029,(Log "# L2.000029."))
+first
+last
+seek-ge boo
+seek-lt coo
+seek-prefix-ge b
+----
+# L1.000028.First() = nil <err="injected error">
+err=injected error
+# L1.000028.Last() = nil <err="injected error">
+err=injected error
+# L1.000028.SeekGE("boo") = nil <err="injected error">
+err=injected error
+# L1.000028.SeekLT("coo") = nil <err="injected error">
+err=injected error
+# L1.000028.SeekPrefixGE("b") = nil <err="injected error">
+err=injected error
+
+# Inject errors for each of the L2 operations.
+
+iter probe-points=(000028,(Log "# L1.000028.")) probe-points=(000029,ErrInjected,(Log "# L2.000029."))
+first
+last
+seek-ge boo
+seek-lt coo
+seek-prefix-ge b
+----
+# L1.000028.First() = (a#30,1,"30")
+# L2.000029.First() = nil <err="injected error">
+err=injected error
+# L1.000028.Last() = (c#27,1,"27")
+# L2.000029.Last() = nil <err="injected error">
+err=injected error
+# L1.000028.SeekGE("boo") = (c#27,1,"27")
+# L2.000029.SeekGE("boo") = nil <err="injected error">
+err=injected error
+# L1.000028.SeekLT("coo") = (c#27,1,"27")
+# L2.000029.Close() = nil <err="injected error">
+err=injected error
+# L1.000028.SeekPrefixGE("b") = (c#27,1,"27")
+# L2.000029.SeekPrefixGE("b") = nil <err="injected error">
+err=injected error
+
+# Inject errors during L1.{Next,NextPrefix,Prev}.
+
+iter probe-points=(000028,(If (Or OpNext OpNextPrefix OpPrev) ErrInjected noop),(Log "# L1.000028.")) probe-points=(000029,(Log "# L2.000029."))
+first
+next
+first
+next-prefix
+last
+prev
+prev
+prev
+----
+# L1.000028.First() = (a#30,1,"30")
+# L2.000029.First() = (e#10,1,"10")
+a#30,1:30
+# L1.000028.Next() = nil <err="injected error">
+err=injected error
+# L1.000028.First() = (a#30,1,"30")
+# L2.000029.First() = (e#10,1,"10")
+a#30,1:30
+# L1.000028.NextPrefix("a\x00") = nil <err="injected error">
+err=injected error
+# L1.000028.Last() = (c#27,1,"27")
+# L2.000029.Last() = (g#20,1,"20")
+g#20,1:20
+# L2.000029.Prev() = (e#10,1,"10")
+e#10,1:10
+# L2.000029.Prev() = nil
+# L2.000029.Close() = nil
+c#27,1:27
+# L1.000028.Prev() = nil <err="injected error">
+err=injected error
+
+# Inject errors during L2.{Next,NextPrefix,Prev}.
+
+iter probe-points=(000028,(Log "# L1.000028.")) probe-points=(000029,(If (Or OpNext OpNextPrefix OpPrev) ErrInjected noop),(Log "# L2.000029."))
+first
+next
+next
+next
+first
+next-prefix
+next-prefix
+next-prefix
+last
+prev
+----
+# L1.000028.First() = (a#30,1,"30")
+# L2.000029.First() = (e#10,1,"10")
+a#30,1:30
+# L1.000028.Next() = (c#27,1,"27")
+c#27,1:27
+# L1.000028.Next() = nil
+# L1.000028.Close() = nil
+e#10,1:10
+# L2.000029.Next() = nil <err="injected error">
+err=injected error
+# L1.000028.First() = (a#30,1,"30")
+# L2.000029.First() = (e#10,1,"10")
+a#30,1:30
+# L1.000028.NextPrefix("a\x00") = (c#27,1,"27")
+c#27,1:27
+# L1.000028.NextPrefix("c\x00") = nil
+# L1.000028.Close() = nil
+e#10,1:10
+# L2.000029.NextPrefix("e\x00") = nil <err="injected error">
+err=injected error
+# L1.000028.Last() = (c#27,1,"27")
+# L2.000029.Last() = (g#20,1,"20")
+g#20,1:20
+# L2.000029.Prev() = nil <err="injected error">
+err=injected error
+
+# Test errors reading the range deletion block of an sstable with a simple
+# single-sstable version that contains a range deletion deleting keys within the
+# same table.
+define
+L
+a.SET.30 g.RANGEDEL.72057594037927935
+a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
+----
+1:
+  000030:[a#30,SET-g#inf,RANGEDEL]
+
+iter probe-points=(000030,(Log "#  iter.")) probe-rangedels=(000030,ErrInjected,(Log "#  rangedelIter."))
+first
+last
+seek-ge boo
+seek-lt coo
+seek-prefix-ge b
+----
+#  iter.First() = (a#30,1,"30")
+#  rangedelIter.opSpanSeekGE("a") = nil <err="injected error">
+err=injected error
+#  iter.Last() = (f#21,1,"21")
+#  rangedelIter.opSpanSeekLT("f") = nil <err="injected error">
+err=injected error
+#  iter.SeekGE("boo") = (c#18,1,"18")
+#  rangedelIter.opSpanSeekGE("boo") = nil <err="injected error">
+err=injected error
+#  iter.SeekLT("coo") = (c#18,1,"18")
+#  rangedelIter.opSpanSeekLT("coo") = nil <err="injected error">
+err=injected error
+#  iter.SeekPrefixGE("b") = (b#19,1,"19")
+#  rangedelIter.opSpanSeekGE("b") = nil <err="injected error">
+err=injected error

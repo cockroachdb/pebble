@@ -5,8 +5,10 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -144,6 +146,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 	fmtKey := DefaultComparer.FormatKey
 	opts := (*Options)(nil).EnsureDefaults()
 	var v *version
+	var buf bytes.Buffer
 
 	// Indexed by fileNum.
 	var readers []*sstable.Reader
@@ -152,8 +155,13 @@ func TestMergingIterCornerCases(t *testing.T) {
 			r.Close()
 		}
 	}()
+	parser := itertest.NewParser()
 
-	var fileNum base.FileNum
+	var (
+		pointProbes    map[base.FileNum][]itertest.Probe
+		rangeDelProbes map[base.FileNum][]keyspanProbe
+		fileNum        base.FileNum
+	)
 	newIters :=
 		func(_ context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts,
 		) (internalIterator, keyspan.FragmentIterator, error) {
@@ -168,7 +176,9 @@ func TestMergingIterCornerCases(t *testing.T) {
 			if err != nil {
 				return nil, nil, err
 			}
-			return iter, rangeDelIter, nil
+			return itertest.Attach(iter, itertest.ProbeState{Log: &buf}, pointProbes[file.FileNum]...),
+				attachKeyspanProbes(rangeDelIter, keyspanProbeContext{log: &buf}, rangeDelProbes[file.FileNum]...),
+				nil
 		}
 
 	datadriven.RunTest(t, "testdata/merging_iter", func(t *testing.T, d *datadriven.TestData) string {
@@ -254,6 +264,29 @@ func TestMergingIterCornerCases(t *testing.T) {
 			v = newVersion(opts, files)
 			return v.String()
 		case "iter":
+			buf.Reset()
+			pointProbes = make(map[base.FileNum][]itertest.Probe, len(v.Levels))
+			rangeDelProbes = make(map[base.FileNum][]keyspanProbe, len(v.Levels))
+			for _, cmdArg := range d.CmdArgs {
+				switch key := cmdArg.Key; key {
+				case "probe-points":
+					i, err := strconv.Atoi(cmdArg.Vals[0][1:])
+					if err != nil {
+						require.NoError(t, err)
+					}
+					pointProbes[base.FileNum(i)] = itertest.MustParseProbes(parser, cmdArg.Vals[1:]...)
+				case "probe-rangedels":
+					i, err := strconv.Atoi(cmdArg.Vals[0][1:])
+					if err != nil {
+						require.NoError(t, err)
+					}
+					rangeDelProbes[base.FileNum(i)] = parseKeyspanProbes(cmdArg.Vals[1:]...)
+				default:
+					// Might be a command understood by the RunInternalIterCmd
+					// command, so don't error.
+				}
+			}
+
 			levelIters := make([]mergingIterLevel, 0, len(v.Levels))
 			var stats base.InternalIteratorStats
 			for i, l := range v.Levels {
@@ -264,6 +297,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				li := &levelIter{}
 				li.init(context.Background(), IterOptions{}, testkeys.Comparer,
 					newIters, slice.Iter(), manifest.Level(i), internalIterOpts{stats: &stats})
+
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
 				li.initRangeDel(&levelIters[i].rangeDelIter)
@@ -277,8 +311,9 @@ func TestMergingIterCornerCases(t *testing.T) {
 			// (https://github.com/cockroachdb/pebble/pull/3037 caused a SIGSEGV due
 			// to a nil pointer dereference).
 			miter.SetContext(context.Background())
-			return itertest.RunInternalIterCmd(t, d, miter,
+			itertest.RunInternalIterCmdWriter(t, &buf, d, miter,
 				itertest.Verbose, itertest.WithStats(&stats))
+			return buf.String()
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}

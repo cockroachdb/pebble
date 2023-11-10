@@ -23,12 +23,14 @@ func SeekLE(cmp base.Compare, iter FragmentIterator, key []byte) *Span {
 	iterSpan := iter.SeekLT(key)
 
 	if iterSpan == nil {
-		// Advance the iterator once to see if the next span has a start key
-		// equal to key.
-		iterSpan = iter.Next()
-		if iterSpan == nil || cmp(key, iterSpan.Start) < 0 {
-			// The iterator is exhausted or we've hit the next span.
-			return nil
+		if iter.Error() == nil {
+			// Advance the iterator once to see if the next span has a start key
+			// equal to key.
+			iterSpan = iter.Next()
+			if iterSpan == nil || cmp(key, iterSpan.Start) < 0 {
+				// The iterator is exhausted or we've hit the next span.
+				return nil
+			}
 		}
 	} else {
 		// Invariant: key > iterSpan.Start
@@ -37,7 +39,7 @@ func SeekLE(cmp base.Compare, iter FragmentIterator, key []byte) *Span {
 			// the next span contains the search key. If it doesn't, we'll backup
 			// and return to our earlier candidate.
 			iterSpan = iter.Next()
-			if iterSpan == nil || cmp(key, iterSpan.Start) < 0 {
+			if (iterSpan == nil && iter.Error() == nil) || cmp(key, iterSpan.Start) < 0 {
 				// The next span is past our search key or there is no next span. Go
 				// back.
 				iterSpan = iter.Prev()
