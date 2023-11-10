@@ -614,7 +614,17 @@ func (o *ingestOp) receiver() objID { return o.dbID }
 func (o *ingestOp) syncObjs() objIDSlice {
 	// Ingest should not be concurrent with mutating the batches that will be
 	// ingested as sstables.
-	return o.batchIDs
+	objs := make([]objID, 0, len(o.batchIDs)+1)
+	objs = append(objs, o.batchIDs...)
+	addedDBs := make(map[objID]struct{})
+	for i := range o.derivedDBIDs {
+		_, ok := addedDBs[o.derivedDBIDs[i]]
+		if !ok && o.derivedDBIDs[i] != o.dbID {
+			objs = append(objs, o.derivedDBIDs[i])
+			addedDBs[o.derivedDBIDs[i]] = struct{}{}
+		}
+	}
+	return objs
 }
 
 func closeIters(
