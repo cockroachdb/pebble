@@ -1129,22 +1129,30 @@ func pickCompactionSeedFile(
 	vers *version, opts *Options, level, outputLevel int, earliestSnapshotSeqNum uint64,
 ) (manifest.LevelFile, bool) {
 	// Select the file within the level to compact. We want to minimize write
-	// amplification, but also ensure that deletes are propagated to the
-	// bottom level in a timely fashion so as to reclaim disk space. A table's
-	// smallest sequence number provides a measure of its age. The ratio of
+	// amplification, ensure that deletes are propagated to the bottom level in
+	// a timely fashion so as to reclaim disk space, and also ensure that virtual
+	// sstable's which are contributing to a high space amplification are compacted.
+	// A table's smallest sequence number provides a measure of its age. The ratio of
 	// overlapping-bytes / table-size gives an indication of write
 	// amplification (a smaller ratio is preferrable).
 	//
-	// The current heuristic is based off the the RocksDB kMinOverlappingRatio
-	// heuristic. It chooses the file with the minimum overlapping ratio with
-	// the target level, which minimizes write amplification.
+	// The heuristic is based off the the RocksDB kMinOverlappingRatio heuristic.
+	// It chooses the file with the minimum overlapping ratio with the target
+	// level, which minimizes write amplification.
 	//
-	// It uses a "compensated size" for the denominator, which is the file
-	// size but artificially inflated by an estimate of the space that may be
-	// reclaimed through compaction. Currently, we only compensate for range
-	// deletions and only with a rough estimate of the reclaimable bytes. This
-	// differs from RocksDB which only compensates for point tombstones and
-	// only if they exceed the number of non-deletion entries in table.
+	// We uses a "compensated size" in the denominator. In addition to this size,
+	// we also add a "virtual space amp" to the denominator.
+	//
+	// "compensated size" is the file size but artificially inflated by an estimate
+	// of the space that may be reclaimed through compaction. Currently, we only
+	// compensate for range deletions and only with a rough estimate of the
+	// reclaimable bytes. This differs from RocksDB which only compensates for
+	// point tombstones and only if they exceed the number of non-deletion entries
+	// in table.
+	//
+	// "virtual space amp" is the contribution to space amplification due to a
+	// virtual sstable. See the comment above FileBacking.VirtualizedSize to
+	// see how this is computed.
 	//
 	// TODO(peter): For concurrent compactions, we may want to try harder to
 	// pick a seed file whose resulting compaction bounds do not overlap with
@@ -1232,7 +1240,7 @@ func pickCompactionSeedFile(
 		}
 
 		compSz := compensatedSize(f)
-		scaledRatio := overlappingBytes * 1024 / compSz
+		scaledRatio := overlappingBytes * 1024 / (compSz + f.VirtualSpaceAmpProportion())
 		if scaledRatio < smallestRatio {
 			smallestRatio = scaledRatio
 			file = startIter.Take()

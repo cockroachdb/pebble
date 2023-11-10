@@ -368,9 +368,6 @@ type FileBacking struct {
 	// The intuition is that if FileBacking.Size - FileBacking.VirtualizedSize
 	// is high, then the space amplification due to virtual sstables is
 	// high, and we should pick the virtual sstable with a higher priority.
-	//
-	// TODO(bananabrick): Compensate the virtual sstable file size using
-	// the VirtualizedSize during compaction picking and test.
 	VirtualizedSize atomic.Uint64
 	DiskFileNum     base.DiskFileNum
 	Size            uint64
@@ -454,6 +451,18 @@ func (m *FileMetadata) LatestRef() {
 	if m.Virtual {
 		m.FileBacking.VirtualizedSize.Add(m.Size)
 	}
+}
+
+// VirtualSpaceAmpProportion computes a virtual sstable's contribution to space
+// amplification. See comment above FileBacking.VirtualizedSize for the
+// reasoning behind this computation.
+func (m *FileMetadata) VirtualSpaceAmpProportion() uint64 {
+	if !m.Virtual {
+		return 0
+	}
+	virtualizedSize := m.FileBacking.VirtualizedSize.Load()
+	latestRefs := m.LatestRefs()
+	return (m.FileBacking.Size - virtualizedSize) / uint64(latestRefs)
 }
 
 // LatestUnref decrements the latest ref count associated with the backing
