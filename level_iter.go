@@ -771,6 +771,9 @@ func (l *levelIter) SeekPrefixGE(
 	if key, val := l.iter.SeekPrefixGE(prefix, key, flags); key != nil {
 		return l.verify(key, val)
 	}
+	if err := l.iter.Error(); err != nil {
+		return nil, base.LazyValue{}
+	}
 	// When SeekPrefixGE returns nil, we have not necessarily reached the end of
 	// the sstable. All we know is that a key with prefix does not exist in the
 	// current sstable. We do know that the key lies within the bounds of the
@@ -948,6 +951,9 @@ func (l *levelIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
 		if key, val := l.iter.NextPrefix(succKey); key != nil {
 			return l.verify(key, val)
 		}
+		if l.iter.Error() != nil {
+			return nil, base.LazyValue{}
+		}
 		// Fall through to seeking.
 	}
 
@@ -1008,6 +1014,10 @@ func (l *levelIter) Prev() (*InternalKey, base.LazyValue) {
 }
 
 func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
+	if l.iter.Error() != nil {
+		return nil, base.LazyValue{}
+	}
+
 	var key *InternalKey
 	var val base.LazyValue
 	// The first iteration of this loop starts with an already exhausted
@@ -1101,6 +1111,10 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
 }
 
 func (l *levelIter) skipEmptyFileBackward() (*InternalKey, base.LazyValue) {
+	if l.iter.Error() != nil {
+		return nil, base.LazyValue{}
+	}
+
 	var key *InternalKey
 	var val base.LazyValue
 	// The first iteration of this loop starts with an already exhausted
