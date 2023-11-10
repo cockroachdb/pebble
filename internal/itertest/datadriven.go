@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
 
@@ -90,12 +91,18 @@ func RunInternalIterCmdWriter(
 		opt(&o)
 	}
 
+	var prefix []byte
+	var prevKey []byte
 	getKV := func(key *base.InternalKey, val base.LazyValue) (*base.InternalKey, []byte) {
+		if key != nil {
+			prevKey = key.UserKey
+		} else {
+			prevKey = nil
+		}
 		v, _, err := val.Value(nil)
 		require.NoError(t, err)
 		return key, v
 	}
-	var prefix []byte
 	for _, line := range strings.Split(d.Input, "\n") {
 		parts := strings.Fields(line)
 		if len(parts) == 0 {
@@ -151,6 +158,9 @@ func RunInternalIterCmdWriter(
 			key, value = getKV(iter.Last())
 		case "next":
 			key, value = getKV(iter.Next())
+		case "next-prefix":
+			succKey := testkeys.Comparer.ImmediateSuccessor(prevKey[:testkeys.Comparer.Split(prevKey)], nil)
+			key, value = getKV(iter.NextPrefix(succKey))
 		case "prev":
 			key, value = getKV(iter.Prev())
 		case "set-bounds":
