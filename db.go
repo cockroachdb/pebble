@@ -1263,7 +1263,10 @@ func (d *DB) ScanInternal(
 			UpperBound: upper,
 		},
 	}
-	iter := d.newInternalIter(ctx, snapshotIterOpts{} /* snapshot */, scanInternalOpts)
+	iter, err := d.newInternalIter(ctx, snapshotIterOpts{} /* snapshot */, scanInternalOpts)
+	if err != nil {
+		return err
+	}
 	defer iter.close()
 	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
 }
@@ -1277,7 +1280,7 @@ func (d *DB) ScanInternal(
 // this duplication.
 func (d *DB) newInternalIter(
 	ctx context.Context, sOpts snapshotIterOpts, o *scanInternalOptions,
-) *scanInternalIterator {
+) (*scanInternalIterator, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1323,7 +1326,9 @@ func (d *DB) newInternalIter(
 	return finishInitializingInternalIter(buf, dbi)
 }
 
-func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *scanInternalIterator {
+func finishInitializingInternalIter(
+	buf *iterAlloc, i *scanInternalIterator,
+) (*scanInternalIterator, error) {
 	// Short-hand.
 	var memtables flushableList
 	if i.readState != nil {
@@ -1345,7 +1350,9 @@ func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *sc
 	// entirely, and create the range key iterator stack directly.
 	i.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 	i.rangeKey.init(i.comparer.Compare, i.comparer.Split, &i.opts.IterOptions)
-	i.constructRangeKeyIter()
+	if err := i.constructRangeKeyIter(); err != nil {
+		return nil, err
+	}
 
 	// Wrap the point iterator (currently i.iter) with an interleaving
 	// iterator that interleaves range keys pulled from
@@ -1357,7 +1364,7 @@ func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *sc
 		})
 	i.iter = &i.rangeKey.iiter
 
-	return i
+	return i, nil
 }
 
 func (i *Iterator) constructPointIter(
@@ -1414,12 +1421,8 @@ func (i *Iterator) constructPointIter(
 	// Top-level is the batch, if any.
 	if i.batch != nil {
 		if i.batch.index == nil {
-			// This isn't an indexed batch. Include an error iterator so that
-			// the resulting iterator correctly surfaces ErrIndexed.
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         newErrorIter(ErrNotIndexed),
-				rangeDelIter: newErrorKeyspanIter(ErrNotIndexed),
-			})
+			// This isn't an indexed batch. We shouldn't have gotten this far.
+			panic(errors.AssertionFailedf("creating an iterator over an unindexed batch"))
 		} else {
 			i.batch.initInternalIter(&i.opts, &i.batchPointIter)
 			i.batch.initRangeDelIter(&i.opts, &i.batchRangeDelIter, i.batchSeqNum)
@@ -2925,10 +2928,13 @@ func (d *DB) ScanStatistics(
 		},
 		rateLimitFunc: rateLimitFunc,
 	}
-	iter := d.newInternalIter(ctx, snapshotIterOpts{}, scanInternalOpts)
+	iter, err := d.newInternalIter(ctx, snapshotIterOpts{}, scanInternalOpts)
+	if err != nil {
+		return LSMKeyStatistics{}, err
+	}
 	defer iter.close()
 
-	err := scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
+	err = scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
 
 	if err != nil {
 		return LSMKeyStatistics{}, err

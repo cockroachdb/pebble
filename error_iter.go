@@ -18,10 +18,6 @@ type errorIter struct {
 // errorIter implements the base.InternalIterator interface.
 var _ internalIterator = (*errorIter)(nil)
 
-func newErrorIter(err error) *errorIter {
-	return &errorIter{err: err}
-}
-
 func (c *errorIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, base.LazyValue) {
 	return nil, base.LazyValue{}
 }
@@ -78,10 +74,6 @@ type errorKeyspanIter struct {
 
 // errorKeyspanIter implements the keyspan.FragmentIterator interface.
 var _ keyspan.FragmentIterator = (*errorKeyspanIter)(nil)
-
-func newErrorKeyspanIter(err error) *errorKeyspanIter {
-	return &errorKeyspanIter{err: err}
-}
 
 func (*errorKeyspanIter) SeekGE(key []byte) *keyspan.Span { return nil }
 func (*errorKeyspanIter) SeekLT(key []byte) *keyspan.Span { return nil }

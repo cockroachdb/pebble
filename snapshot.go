@@ -105,7 +105,10 @@ func (s *Snapshot) ScanInternal(
 		},
 	}
 
-	iter := s.db.newInternalIter(ctx, snapshotIterOpts{seqNum: s.seqNum}, scanInternalOpts)
+	iter, err := s.db.newInternalIter(ctx, snapshotIterOpts{seqNum: s.seqNum}, scanInternalOpts)
+	if err != nil {
+		return err
+	}
 	defer iter.close()
 
 	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
@@ -541,7 +544,10 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 		visitSharedFile:  visitSharedFile,
 		skipSharedLevels: visitSharedFile != nil,
 	}
-	iter := es.db.newInternalIter(ctx, sOpts, opts)
+	iter, err := es.db.newInternalIter(ctx, sOpts, opts)
+	if err != nil {
+		return err
+	}
 	defer iter.close()
 
 	// If excised is true, then keys relevant to the snapshot might not be
