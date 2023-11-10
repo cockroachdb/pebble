@@ -164,7 +164,10 @@ func NewExternalIterWithContext(
 	for i := range extraOpts {
 		extraOpts[i].iterApply(dbi)
 	}
-	finishInitializingExternal(ctx, dbi)
+	if err := finishInitializingExternal(ctx, dbi); err != nil {
+		dbi.Close()
+		return nil, err
+	}
 	return dbi, nil
 }
 
@@ -272,13 +275,12 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 	return &it.alloc.merging, nil
 }
 
-func finishInitializingExternal(ctx context.Context, it *Iterator) {
+func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 	pointIter, err := createExternalPointIter(ctx, it)
 	if err != nil {
-		it.pointIter = &errorIter{err: err}
-	} else {
-		it.pointIter = pointIter
+		return err
 	}
+	it.pointIter = pointIter
 	it.iter = it.pointIter
 
 	if it.opts.rangeKeys() {
@@ -297,7 +299,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) {
 			for _, readers := range it.externalReaders {
 				for _, r := range readers {
 					if rki, err := r.NewRawRangeKeyIter(); err != nil {
-						rangeKeyIters = append(rangeKeyIters, &errorKeyspanIter{err: err})
+						return err
 					} else if rki != nil {
 						rangeKeyIters = append(rangeKeyIters, rki)
 					}
@@ -328,6 +330,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) {
 			it.iter = &it.rangeKey.iiter
 		}
 	}
+	return nil
 }
 
 func openExternalTables(

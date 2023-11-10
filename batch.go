@@ -1118,7 +1118,7 @@ func (b *Batch) NewIter(o *IterOptions) (*Iterator, error) {
 // tracing.
 func (b *Batch) NewIterWithContext(ctx context.Context, o *IterOptions) (*Iterator, error) {
 	if b.index == nil {
-		return &Iterator{err: ErrNotIndexed}, nil
+		return nil, ErrNotIndexed
 	}
 	return b.db.newIter(ctx, b, newIterOpts{}, o), nil
 }
@@ -1131,7 +1131,7 @@ func (b *Batch) NewIterWithContext(ctx context.Context, o *IterOptions) (*Iterat
 // SetOptions().
 func (b *Batch) NewBatchOnlyIter(ctx context.Context, o *IterOptions) (*Iterator, error) {
 	if b.index == nil {
-		return &Iterator{err: ErrNotIndexed}, nil
+		return nil, ErrNotIndexed
 	}
 	return b.db.newIter(ctx, b, newIterOpts{batch: batchIterOpts{batchOnly: true}}, o), nil
 }
