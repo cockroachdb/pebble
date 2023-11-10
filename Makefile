@@ -4,7 +4,6 @@ GOFLAGS :=
 STRESSFLAGS :=
 TAGS := invariants
 TESTS := .
-LATEST_RELEASE := $(shell git fetch origin && git branch -r --list '*/crl-release-*' | grep -o 'crl-release-.*$$' | sort | tail -1)
 COVER_PROFILE := coverprofile.out
 
 .PHONY: all
@@ -63,6 +62,7 @@ stressmeta: stress
 
 .PHONY: crossversion-meta
 crossversion-meta:
+	$(eval LATEST_RELEASE := $(shell git fetch origin && git branch -r --list '*/crl-release-*' | grep -o 'crl-release-.*$$' | sort | tail -1))
 	git checkout ${LATEST_RELEASE}; \
 		${GO} test -c ./internal/metamorphic -o './internal/metamorphic/crossversion/${LATEST_RELEASE}.test'; \
 		git checkout -; \
