@@ -239,8 +239,13 @@ func hashSize(index int) uint32 {
 func (o *deleteOp) String() string {
 	return fmt.Sprintf("%s.Delete(%q)", o.writerID, o.key)
 }
-func (o *deleteOp) receiver() objID      { return o.writerID }
-func (o *deleteOp) syncObjs() objIDSlice { return nil }
+func (o *deleteOp) receiver() objID { return o.writerID }
+func (o *deleteOp) syncObjs() objIDSlice {
+	if o.writerID.tag() != dbTag {
+		return []objID{o.derivedDBID}
+	}
+	return nil
+}
 
 // singleDeleteOp models a Write.SingleDelete operation.
 type singleDeleteOp struct {
