@@ -847,7 +847,7 @@ func (i *scanInternalIterator) constructPointIter(
 // i.rangeKey.rangeKeyIter with the resulting iterator. This is similar to
 // Iterator.constructRangeKeyIter, except it doesn't handle batches and ensures
 // iterConfig does *not* elide unsets/deletes.
-func (i *scanInternalIterator) constructRangeKeyIter() {
+func (i *scanInternalIterator) constructRangeKeyIter() error {
 	// We want the bounded iter from iterConfig, but not the collapsing of
 	// RangeKeyUnsets and RangeKeyDels.
 	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(
@@ -890,8 +890,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 	for f := iter.Last(); f != nil; f = iter.Prev() {
 		spanIter, err := i.newIterRangeKey(f, i.opts.SpanIterOptions())
 		if err != nil {
-			i.rangeKey.iterConfig.AddLevel(&errorKeyspanIter{err: err})
-			continue
+			return err
 		}
 		i.rangeKey.iterConfig.AddLevel(spanIter)
 	}
@@ -910,6 +909,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 			manifest.Level(level), manifest.KeyTypeRange)
 		i.rangeKey.iterConfig.AddLevel(li)
 	}
+	return nil
 }
 
 // seekGE seeks this iterator to the first key that's greater than or equal
