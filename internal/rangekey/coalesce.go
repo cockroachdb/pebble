@@ -212,8 +212,10 @@ func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.S
 				b.Keys[i].Kind() != base.InternalKeyKindRangeKeySet) {
 				panic("pebble: unexpected non-RangeKeySet during defragmentation")
 			}
-			if i > 0 && (ui.comparer.Compare(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0 ||
-				ui.comparer.Compare(b.Keys[i].Suffix, b.Keys[i-1].Suffix) < 0) {
+			// Don't do a comparison with RangeKeyDeletes, as those will always sort
+			// to the end and have no prefix.
+			if i > 0 && ((a.Keys[i].Kind() != base.InternalKeyKindRangeKeyDelete && ui.comparer.Compare(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0) ||
+				(b.Keys[i].Kind() != base.InternalKeyKindRangeKeyDelete && ui.comparer.Compare(b.Keys[i].Suffix, b.Keys[i-1].Suffix) < 0)) {
 				panic("pebble: range keys not ordered by suffix during defragmentation")
 			}
 		}
