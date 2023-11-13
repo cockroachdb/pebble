@@ -1671,6 +1671,19 @@ type readCompaction struct {
 	fileNum base.FileNum
 }
 
+type downloadSpan struct {
+	start []byte
+	end   []byte
+	// doneChans contains a list of channels passed into compactions as done
+	// channels. Each channel has a buffer size of 1 and is only passed into
+	// one compaction. This slice can grow over the lifetime of a downloadSpan.
+	doneChans []chan error
+	// compactionsStarted is the number of compactions started for this
+	// downloadSpan. Must be equal to len(doneChans)-1, i.e. there's one spare
+	// doneChan created each time a compaction starts up, for the next compaction.
+	compactionsStarted int
+}
+
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
@@ -2305,6 +2318,70 @@ func pickElisionOnly(picker compactionPicker, env compactionEnv) *pickedCompacti
 	return picker.pickElisionOnlyCompaction(env)
 }
 
+// maybeScheduleDownloadCompaction schedules a download compaction.
+//
+// Requires d.mu to be held.
+func (d *DB) maybeScheduleDownloadCompaction(env compactionEnv, maxConcurrentCompactions int) {
+	for len(d.mu.compact.downloads) > 0 && d.mu.compact.compactingCount < maxConcurrentCompactions {
+		v := d.mu.versions.currentVersion()
+		download := d.mu.compact.downloads[0]
+		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+		var externalFile *fileMetadata
+		var err error
+		var level int
+		for i := range v.Levels {
+			overlaps := v.Overlaps(i, d.cmp, download.start, download.end, true /* exclusiveEnd */)
+			iter := overlaps.Iter()
+			provider := d.objProvider
+			for f := iter.First(); f != nil; f = iter.Next() {
+				var objMeta objstorage.ObjectMetadata
+				objMeta, err = provider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+				if err != nil {
+					break
+				}
+				if objMeta.IsExternal() {
+					if f.IsCompacting() {
+						continue
+					}
+					externalFile = f
+					level = i
+					break
+				}
+			}
+			if externalFile != nil || err != nil {
+				break
+			}
+		}
+		if err != nil {
+			d.mu.compact.downloads = d.mu.compact.downloads[1:]
+			download.doneChans[download.compactionsStarted] <- err
+			// We can't close the done channel, as we might still have other
+			// compactions ongoing. Try the next download span.
+			continue
+		}
+		if externalFile == nil {
+			// The entirety of this span is downloaded, or is being downloaded right
+			// now. No need to schedule additional downloads for this span.
+			d.mu.compact.downloads = d.mu.compact.downloads[1:]
+			// NB: We can't close download.done if `externalFileIsCompacting`, as
+			// those compactions could write to it.
+			continue
+		}
+		pc := pickDownloadCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), download, level, externalFile)
+		if pc != nil {
+			doneCh := download.doneChans[download.compactionsStarted]
+			download.compactionsStarted++
+			// Create another doneChan for the next compaction.
+			download.doneChans = append(download.doneChans, make(chan error, 1))
+
+			c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+			d.mu.compact.compactingCount++
+			d.addInProgressCompaction(c)
+			go d.compact(c, doneCh)
+		}
+	}
+}
+
 // maybeScheduleCompactionPicker schedules a compaction if necessary,
 // calling `pickFunc` to pick automatic compactions.
 //
@@ -2399,6 +2476,8 @@ func (d *DB) maybeScheduleCompactionPicker(
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
 	}
+
+	d.maybeScheduleDownloadCompaction(env, maxConcurrentCompactions)
 }
 
 // deleteCompactionHintType indicates whether the deleteCompactionHint was

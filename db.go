@@ -427,6 +427,9 @@ type DB struct {
 			// The list of manual compactions. The next manual compaction to perform
 			// is at the start of the list. New entries are added to the end.
 			manual []*manualCompaction
+			// downloads is the list of suggested download tasks. The next download to
+			// perform is at the start of the list. New entries are added to the end.
+			downloads []*downloadSpan
 			// inProgress is the set of in-progress flushes and compactions.
 			// It's used in the calculation of some metrics and to initialize L0
 			// sublevels' state. Some of the compactions contained within this
@@ -1906,6 +1909,108 @@ type DownloadSpan struct {
 	EndKey []byte
 }
 
+func (d *DB) downloadSpan(ctx context.Context, span DownloadSpan) error {
+	dSpan := &downloadSpan{
+		start: span.StartKey,
+		end:   span.EndKey,
+		// Protected by d.mu.
+		doneChans: make([]chan error, 1),
+	}
+	dSpan.doneChans[0] = make(chan error, 1)
+	doneChan := dSpan.doneChans[0]
+	compactionIdx := 0
+
+	func() {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		d.mu.compact.downloads = append(d.mu.compact.downloads, dSpan)
+		d.maybeScheduleCompaction()
+	}()
+
+	// Requires d.mu to be held.
+	noExternalFilesInSpan := func() (noExternalFiles bool) {
+		vers := d.mu.versions.currentVersion()
+
+		for i := 0; i < len(vers.Levels); i++ {
+			if vers.Levels[i].Empty() {
+				continue
+			}
+			overlap := vers.Overlaps(i, d.cmp, span.StartKey, span.EndKey, true /* exclusiveEnd */)
+			foundExternalFile := false
+			overlap.Each(func(metadata *manifest.FileMetadata) {
+				objMeta, err := d.objProvider.Lookup(fileTypeTable, metadata.FileBacking.DiskFileNum)
+				if err != nil {
+					return
+				}
+				if objMeta.IsExternal() {
+					foundExternalFile = true
+				}
+			})
+			if foundExternalFile {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Requires d.mu to be held.
+	removeUsFromList := func() {
+		// Check where we are in d.mu.compact.downloads. Remove us from the
+		// list.
+		for i := range d.mu.compact.downloads {
+			if d.mu.compact.downloads[i] != dSpan {
+				continue
+			}
+			copy(d.mu.compact.downloads[i:], d.mu.compact.downloads[i+1:])
+			d.mu.compact.downloads = d.mu.compact.downloads[:len(d.mu.compact.downloads)-1]
+			break
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			removeUsFromList()
+			return ctx.Err()
+		case err := <-doneChan:
+			if err != nil {
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				removeUsFromList()
+				return err
+			}
+			compactionIdx++
+			// Grab the next doneCh to wait on.
+			func() {
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				doneChan = dSpan.doneChans[compactionIdx]
+			}()
+		default:
+			doneSpan := func() bool {
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				// It's possible to have downloaded all files without writing to any
+				// doneChans. This is expected if there are a significant amount
+				// of overlapping writes that schedule regular, non-download compactions.
+				if noExternalFilesInSpan() {
+					removeUsFromList()
+					return true
+				}
+				d.maybeScheduleCompaction()
+				d.mu.compact.cond.Wait()
+				return false
+			}()
+			if doneSpan {
+				return nil
+			}
+		}
+	}
+}
+
 // Download ensures that the LSM does not use any external sstables for the
 // given key ranges. It does so by performing appropriate compactions so that
 // all external data becomes available locally.
@@ -1920,7 +2025,23 @@ type DownloadSpan struct {
 // TODO(radu): consider passing a priority/impact knob to express how important
 // the download is (versus live traffic performance, LSM health).
 func (d *DB) Download(ctx context.Context, spans []DownloadSpan) error {
-	return errors.Errorf("not implemented")
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+	if d.opts.ReadOnly {
+		return ErrReadOnly
+	}
+	for i := range spans {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := d.downloadSpan(ctx, spans[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Flush the memtable to stable storage.
