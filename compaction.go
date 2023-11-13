@@ -1662,6 +1662,17 @@ type readCompaction struct {
 	fileNum base.FileNum
 }
 
+type downloadSpan struct {
+	start []byte
+	end   []byte
+	// done is passed to runCompaction for each download/rewrite compaction as the
+	// errChannel. It'll be closed by the compaction picker once no external files
+	// are observed in the channel. Every successful rewrite compaction for this
+	// downloadSpan is expected to send a nil error into the channel. Zero or more
+	// nil errors followed by a channel close denotes success.
+	done chan error
+}
+
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
@@ -2389,6 +2400,58 @@ func (d *DB) maybeScheduleCompactionPicker(
 		d.mu.compact.compactingCount++
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
+	}
+
+	for len(d.mu.compact.downloads) > 0 && d.mu.compact.compactingCount < maxConcurrentCompactions {
+		v := d.mu.versions.currentVersion()
+		download := d.mu.compact.downloads[0]
+		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+		var externalFile *fileMetadata
+		var err error
+		var level int
+		for i := range v.Levels {
+			overlaps := v.Overlaps(i, d.cmp, download.start, download.end, true /* exclusiveEnd */)
+			iter := overlaps.Iter()
+			provider := d.objProvider
+			for f := iter.First(); f != nil; f = iter.Next() {
+				if f.IsCompacting() {
+					continue
+				}
+				var objMeta objstorage.ObjectMetadata
+				objMeta, err = provider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+				if err != nil {
+					break
+				}
+				if objMeta.IsExternal() {
+					externalFile = f
+					level = i
+					break
+				}
+			}
+			if externalFile != nil || err != nil {
+				break
+			}
+		}
+		if err != nil {
+			d.mu.compact.downloads = d.mu.compact.downloads[1:]
+			download.done <- err
+			close(download.done)
+			// Try the next download span.
+			continue
+		}
+		if externalFile == nil {
+			// The entirety of this span is downloaded. No need to do anything.
+			d.mu.compact.downloads = d.mu.compact.downloads[1:]
+			close(download.done)
+			continue
+		}
+		pc := pickDownloadCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), download, level, externalFile)
+		if pc != nil {
+			c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+			d.mu.compact.compactingCount++
+			d.addInProgressCompaction(c)
+			go d.compact(c, download.done)
+		}
 	}
 }
 
