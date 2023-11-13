@@ -1906,6 +1906,38 @@ func pickManualCompaction(
 	return pc, false
 }
 
+func pickDownloadCompaction(
+	vers *version,
+	opts *Options,
+	env compactionEnv,
+	baseLevel int,
+	download *downloadSpan,
+	level int,
+	file *fileMetadata,
+) (pc *pickedCompaction) {
+	// Check if the file is compacting already. In that case we don't need to do
+	// anything as it'll be downloaded in the process.
+	if file.CompactionState == manifest.CompactionStateCompacting {
+		return nil
+	}
+	pc = newPickedCompaction(opts, vers, level, level, baseLevel)
+	pc.kind = compactionKindRewrite
+	pc.startLevel.files = manifest.NewLevelSliceKeySorted(opts.Comparer.Compare, []*fileMetadata{file})
+	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+		// setupInputs returned false indicating there's a conflicting
+		// concurrent compaction.
+		return nil
+	}
+	if pc.outputLevel.level != level {
+		panic("pebble: download compaction picked unexpected output level")
+	}
+	// Fail-safe to protect against compacting the same sstable concurrently.
+	if inputRangeAlreadyCompacting(env, pc) {
+		return nil
+	}
+	return pc
+}
+
 func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 	env compactionEnv,
 ) (pc *pickedCompaction) {
