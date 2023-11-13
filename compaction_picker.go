@@ -1906,6 +1906,46 @@ func pickManualCompaction(
 	return pc, false
 }
 
+func pickDownloadCompaction(
+	vers *version,
+	opts *Options,
+	env compactionEnv,
+	baseLevel int,
+	download *downloadSpan,
+	file *fileMetadata,
+) (pc *pickedCompaction) {
+	outputLevel := download.level
+	if download.level < baseLevel && download.level != 0 {
+		// The start level for a compaction must be >= Lbase. A download could have
+		// been created adhering to that condition, and then an automatic compaction
+		// came in and compacted all of the sstables in Lbase to Lbase+1 which caused
+		// Lbase to change. That's good for us as it means we don't have anything
+		// else to do to download these files.
+		return nil
+	}
+	// Check if the file is compacting already. In that case we don't need to do
+	// anything as it'll be downloaded in the process.
+	if file.CompactionState == manifest.CompactionStateCompacting {
+		return nil
+	}
+	pc = newPickedCompaction(opts, vers, download.level, download.level, baseLevel)
+	pc.kind = compactionKindRewrite
+	pc.startLevel.files = manifest.NewLevelSliceKeySorted(opts.Comparer.Compare, []*fileMetadata{file})
+	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+		// setupInputs returned false indicating there's a conflicting
+		// concurrent compaction.
+		return nil
+	}
+	if pc.outputLevel.level != outputLevel {
+		panic("pebble: download compaction picked unexpected output level")
+	}
+	// Fail-safe to protect against compacting the same sstable concurrently.
+	if inputRangeAlreadyCompacting(env, pc) {
+		return nil
+	}
+	return pc
+}
+
 func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 	env compactionEnv,
 ) (pc *pickedCompaction) {

@@ -1654,6 +1654,13 @@ type readCompaction struct {
 	fileNum base.FileNum
 }
 
+type downloadSpan struct {
+	start []byte
+	end   []byte
+	level int
+	done  chan error
+}
+
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
@@ -2381,6 +2388,41 @@ func (d *DB) maybeScheduleCompactionPicker(
 		d.mu.compact.compactingCount++
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
+	}
+
+	for len(d.mu.compact.downloads) > 0 && d.mu.compact.compactingCount < maxConcurrentCompactions {
+		v := d.mu.versions.currentVersion()
+		download := d.mu.compact.downloads[0]
+		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+		overlaps := v.Overlaps(download.level, d.cmp, download.start, download.end, true /* exclusiveEnd */)
+		iter := overlaps.Iter()
+		provider := d.objProvider
+		var externalFile *fileMetadata
+		for f := iter.First(); f != nil; f = iter.Next() {
+			objMeta, err := provider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+			if err != nil {
+				download.done <- err
+				d.mu.compact.downloads = d.mu.compact.downloads[1:]
+				break
+			}
+			if objMeta.IsExternal() {
+				externalFile = f
+				break
+			}
+		}
+		if externalFile == nil {
+			// The entirety of this span is downloaded. No need to do anything.
+			d.mu.compact.downloads = d.mu.compact.downloads[1:]
+			close(download.done)
+			continue
+		}
+		pc := pickDownloadCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), download, externalFile)
+		if pc != nil {
+			c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+			d.mu.compact.compactingCount++
+			d.addInProgressCompaction(c)
+			go d.compact(c, download.done)
+		}
 	}
 }
 

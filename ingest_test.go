@@ -1698,6 +1698,8 @@ func TestIngestExternal(t *testing.T) {
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
+		lel := MakeLoggingEventListener(DefaultLogger)
+		opts.EventListener = &lel
 
 		var err error
 		d, err = Open("", opts)
@@ -1747,6 +1749,21 @@ func TestIngestExternal(t *testing.T) {
 				return "memtable flushed"
 			}
 			return ""
+
+		case "download":
+			if len(td.CmdArgs) != 2 {
+				panic("insufficient args for download command")
+			}
+			l := []byte(td.CmdArgs[0].Key)
+			r := []byte(td.CmdArgs[1].Key)
+			spans := []DownloadSpan{{StartKey: l, EndKey: r}}
+			ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Minute)
+			defer cancel()
+			err := d.Download(ctx, spans)
+			if err != nil {
+				return err.Error()
+			}
+			return "ok"
 
 		case "get":
 			return runGetCmd(t, td, d)
