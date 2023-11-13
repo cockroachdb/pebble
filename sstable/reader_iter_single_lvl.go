@@ -218,7 +218,6 @@ func (i *singleLevelIterator) init(
 			// separated to their callers, they can put this valueBlockReader into a
 			// sync.Pool.
 			i.vbReader = &valueBlockReader{
-				ctx:    ctx,
 				bpOpen: i,
 				rp:     rp,
 				vbih:   r.valueBIH,
@@ -417,9 +416,9 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 // readBlockForVBR implements the blockProviderWhenOpen interface for use by
 // the valueBlockReader.
 func (i *singleLevelIterator) readBlockForVBR(
-	ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
+	h BlockHandle, stats *base.InternalIteratorStats,
 ) (bufferHandle, error) {
-	ctx = objiotracing.WithBlockType(ctx, objiotracing.ValueBlock)
+	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.ValueBlock)
 	return i.reader.readBlock(ctx, h, nil, i.vbRH, stats, i.bufferPool)
 }
 
