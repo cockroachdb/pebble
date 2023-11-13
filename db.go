@@ -427,6 +427,9 @@ type DB struct {
 			// The list of manual compactions. The next manual compaction to perform
 			// is at the start of the list. New entries are added to the end.
 			manual []*manualCompaction
+			// downloads is the list of suggested download spans. The next download to
+			// perform is at the start of the list. New entries are added to the end.
+			downloads []*downloadSpan
 			// inProgress is the set of in-progress flushes and compactions.
 			// It's used in the calculation of some metrics and to initialize L0
 			// sublevels' state. Some of the compactions contained within this
@@ -1899,7 +1902,113 @@ type DownloadSpan struct {
 // TODO(radu): consider passing a priority/impact knob to express how important
 // the download is (versus live traffic performance, LSM health).
 func (d *DB) Download(ctx context.Context, spans []DownloadSpan) error {
-	return errors.Errorf("not implemented")
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+	if d.opts.ReadOnly {
+		return ErrReadOnly
+	}
+	var addedSpans []*downloadSpan
+	func() {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		vers := d.mu.versions.currentVersion()
+		for i := 0; i < len(vers.Levels); i++ {
+			if vers.Levels[i].Empty() {
+				continue
+			}
+			for j := range spans {
+				dSpan := &downloadSpan{level: i, start: spans[j].StartKey, end: spans[j].EndKey, done: make(chan error, d.opts.MaxConcurrentCompactions())}
+				addedSpans = append(addedSpans, dSpan)
+			}
+		}
+		d.mu.compact.downloads = append(d.mu.compact.downloads, addedSpans...)
+		d.maybeScheduleCompaction()
+	}()
+
+	if len(addedSpans) == 0 {
+		return nil
+	}
+
+	noExternalFilesInSpan := func() bool {
+		d.mu.Lock()
+		vers := d.mu.versions.currentVersion()
+		vers.Ref()
+		d.mu.Unlock()
+		defer vers.Unref()
+
+		done := true
+		for i := 0; i < len(vers.Levels); i++ {
+			if vers.Levels[i].Empty() {
+				continue
+			}
+			for j := range spans {
+				overlap := vers.Overlaps(i, d.cmp, spans[j].StartKey, spans[j].EndKey, true /* exclusiveEnd */)
+				overlap.Each(func(metadata *manifest.FileMetadata) {
+					objMeta, err := d.objProvider.Lookup(fileTypeTable, metadata.FileBacking.DiskFileNum)
+					if err != nil {
+						return
+					}
+					if objMeta.IsExternal() {
+						done = false
+					}
+				})
+				if !done {
+					break
+				}
+			}
+			if !done {
+				break
+			}
+		}
+		return done
+	}
+
+	allDone := make(chan error, 10)
+	wg.Add(1)
+	// Spawn a goroutine to filter the done channels for actual errors, and pass
+	// errors into allDone.
+	go func() {
+		defer wg.Done()
+		for i := range addedSpans {
+			done := false
+			for !done {
+				select {
+				case err, ok := <-addedSpans[i].done:
+					if err != nil {
+						allDone <- err
+					}
+					if !ok {
+						done = true
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+		close(allDone)
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-allDone:
+			return err
+		case <-time.After(1 * time.Minute):
+			// It's possible to have downloaded all files without closing off the
+			// relevant channels. This is expected if there are a significant amount
+			// of overlapping writes.
+			if noExternalFilesInSpan() {
+				// TODO(bilal): Consider cleaning off addedSpans from d.mu.compact.download
+				return nil
+			}
+		}
+	}
 }
 
 // Flush the memtable to stable storage.
