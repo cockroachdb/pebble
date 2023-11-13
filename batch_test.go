@@ -45,8 +45,7 @@ func testBatch(t *testing.T, size int) {
 
 		for _, tc := range testCases {
 			if indexedPointKindsOnly && (tc.kind == InternalKeyKindLogData || tc.kind == InternalKeyKindIngestSST ||
-				tc.kind == InternalKeyKindRangeKeyUnset || tc.kind == InternalKeyKindRangeKeySet ||
-				tc.kind == InternalKeyKindRangeKeyDelete || tc.kind == InternalKeyKindRangeDelete) {
+				tc.kind == InternalKeyKindRangeDelete) {
 				continue
 			}
 			kind, k, v, ok := r.Next()
@@ -186,8 +185,7 @@ func testBatch(t *testing.T, size int) {
 	// Kind-specific methods.
 	for _, tc := range testCases {
 		if tc.kind == InternalKeyKindLogData || tc.kind == InternalKeyKindIngestSST ||
-			tc.kind == InternalKeyKindRangeKeyUnset || tc.kind == InternalKeyKindRangeKeySet ||
-			tc.kind == InternalKeyKindRangeKeyDelete || tc.kind == InternalKeyKindRangeDelete {
+			tc.kind == InternalKeyKindRangeDelete {
 			continue
 		}
 		key := []byte(tc.key)

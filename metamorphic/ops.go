@@ -484,7 +484,7 @@ func (o *ingestOp) run(t *test, h historyRecorder) {
 		b := t.getBatch(id)
 		iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
 		db := t.getDB(o.dbID)
-		c, err := o.collapseBatch(t, db, iter, rangeDelIter, rangeKeyIter)
+		c, err := o.collapseBatch(t, db, iter, rangeDelIter, rangeKeyIter, b)
 		if err == nil {
 			err = db.Apply(c, t.writeOpts)
 		}
@@ -580,18 +580,29 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 
 	if rangeKeyIter != nil {
 		for span := rangeKeyIter.First(); span != nil; span = rangeKeyIter.Next() {
-			// Zero the sequence numbers of keys in this span.
-			zeroedSpan := &keyspan.Span{
+			// Coalesce the keys of this span and then zero the sequence
+			// numbers. This is necessary in order to make the range keys within
+			// the ingested sstable internally consistent at the sequence number
+			// it's ingested at. The individual keys within a batch are
+			// committed at unique sequence numbers, whereas all the keys of an
+			// ingested sstable are given the same sequence number. A span
+			// contaning keys that both set and unset the same suffix at the
+			// same sequence number is nonsensical, so we "coalesce" or collapse
+			// the keys.
+			collapsed := keyspan.Span{
 				Start: span.Start,
 				End:   span.End,
-				Keys:  make([]keyspan.Key, len(span.Keys)),
+				Keys:  make([]keyspan.Key, 0, len(span.Keys)),
 			}
-			for i := range span.Keys {
-				zeroedSpan.Keys[i] = span.Keys[i]
-				zeroedSpan.Keys[i].Trailer = base.MakeTrailer(0, span.Keys[i].Kind())
+			err = rangekey.Coalesce(t.opts.Comparer.Compare, equal, span.Keys, &collapsed.Keys)
+			if err != nil {
+				return "", err
 			}
-			keyspan.SortKeysByTrailer(&zeroedSpan.Keys)
-			if err := rangekey.Encode(zeroedSpan, w.AddRangeKey); err != nil {
+			for i := range collapsed.Keys {
+				collapsed.Keys[i].Trailer = base.MakeTrailer(0, collapsed.Keys[i].Kind())
+			}
+			keyspan.SortKeysByTrailer(&collapsed.Keys)
+			if err := rangekey.Encode(&collapsed, w.AddRangeKey); err != nil {
 				return "", err
 			}
 		}
@@ -643,6 +654,7 @@ func (o *ingestOp) collapseBatch(
 	db *pebble.DB,
 	pointIter base.InternalIterator,
 	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
+	b *pebble.Batch,
 ) (*pebble.Batch, error) {
 	defer closeIters(pointIter, rangeDelIter, rangeKeyIter)
 	equal := t.opts.Comparer.Equal
@@ -667,6 +679,12 @@ func (o *ingestOp) collapseBatch(
 		var lastUserKey []byte
 		for key, value := pointIter.First(); key != nil; key, value = pointIter.Next() {
 			// Ignore duplicate keys.
+			//
+			// Note: this is necessary due to MERGE keys, otherwise it would be
+			// fine to include all the keys in the batch and let the normal
+			// sequence number precedence determine which of the keys "wins".
+			// But the code to build the ingested sstable will only keep the
+			// most recent internal key and will not merge across internal keys.
 			if equal(lastUserKey, key.UserKey) {
 				continue
 			}
@@ -709,27 +727,28 @@ func (o *ingestOp) collapseBatch(
 		pointIter = nil
 	}
 
+	// There's no equivalent of a MERGE operator for range keys, so there's no
+	// need to collapse the range keys here. Rather than reading the range keys
+	// from `rangeKeyIter`, which will already be fragmented, read the range
+	// keys from the batch and copy them verbatim. This marginally improves our
+	// test coverage over the alternative approach of pre-fragmenting and
+	// pre-coalescing before writing to the batch.
+	//
+	// The `rangeKeyIter` is used only to determine if there are any range keys
+	// in the batch at all, and only because we already have it handy from
+	// private.BatchSort.
 	if rangeKeyIter != nil {
-		for span := rangeKeyIter.First(); span != nil; span = rangeKeyIter.Next() {
-			for i := range span.Keys {
-				var err error
-				switch span.Keys[i].Kind() {
-				case pebble.InternalKeyKindRangeKeyDelete:
-					err = collapsed.RangeKeyDelete(span.Start, span.End, t.writeOpts)
-				case pebble.InternalKeyKindRangeKeySet:
-					err = collapsed.RangeKeySet(span.Start, span.End, span.Keys[i].Suffix, span.Keys[i].Value, t.writeOpts)
-				case pebble.InternalKeyKindRangeKeyUnset:
-					err = collapsed.RangeKeyUnset(span.Start, span.End, span.Keys[i].Suffix, t.writeOpts)
-				default:
-					err = errors.Errorf("unknown batch range key record kind: %d", span.Keys[i].Kind())
-				}
-				if err != nil {
-					return nil, err
-				}
+		for r := b.Reader(); ; {
+			kind, key, value, ok := r.Next()
+			if !ok {
+				break
+			} else if !rangekey.IsRangeKey(kind) {
+				continue
 			}
-		}
-		if err := rangeKeyIter.Error(); err != nil {
-			return nil, err
+			ik := base.MakeInternalKey(key, 0, kind)
+			if err := collapsed.AddInternalKey(&ik, value, nil); err != nil {
+				return nil, err
+			}
 		}
 		if err := rangeKeyIter.Close(); err != nil {
 			return nil, err
