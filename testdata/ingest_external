@@ -120,3 +120,35 @@ lsm
   000004:[a#10,DELSIZED-c#inf,RANGEDEL]
   000007:[c#11,DELSIZED-f#inf,RANGEDEL]
   000008:[f#12,DELSIZED-hh#inf,RANGEDEL]
+
+download a j
+----
+ok
+
+lsm
+----
+6:
+  000009:[a#0,SET-b#0,SET]
+  000010:[c#0,SET-e#0,SET]
+  000011:[f#0,SET-h#0,SET]
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (foobarbaz, .)
+d: (haha, .)
+e: (something, .)
+f: (foo, .)
+g: (foo, .)
+h: (foo, .)
+.
