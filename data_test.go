@@ -447,14 +447,18 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 			}
 			err = b.Merge([]byte(parts[1]), []byte(parts[2]), nil)
 		case "range-key-set":
-			if len(parts) != 5 {
-				return errors.Errorf("%s expects 4 arguments", parts[0])
+			if len(parts) < 4 || len(parts) > 5 {
+				return errors.Errorf("%s expects 3 or 4 arguments", parts[0])
+			}
+			var val []byte
+			if len(parts) == 5 {
+				val = []byte(parts[4])
 			}
 			err = b.RangeKeySet(
 				[]byte(parts[1]),
 				[]byte(parts[2]),
 				[]byte(parts[3]),
-				[]byte(parts[4]),
+				val,
 				nil)
 		case "range-key-unset":
 			if len(parts) != 4 {
