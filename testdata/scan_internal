@@ -122,8 +122,8 @@ reset
 # the unset/del must also be returned to the user.
 
 batch commit
-range-key-set a c @8 foo
-range-key-set b e @6 bar
+range-key-set a c @8
+range-key-set b e @6
 ----
 committed 2 keys
 
@@ -151,9 +151,9 @@ committed 1 keys
 scan-internal
 ----
 a-b:{(#0,RANGEKEYDEL)}
-b-c:{(#0,RANGEKEYSET,@8,foo) (#0,RANGEKEYUNSET,@6)}
+b-c:{(#0,RANGEKEYSET,@8) (#0,RANGEKEYUNSET,@6)}
 c-d:{(#0,RANGEKEYUNSET,@6)}
-d-e:{(#0,RANGEKEYSET,@6,bar)}
+d-e:{(#0,RANGEKEYSET,@6)}
 
 flush
 ----
@@ -169,9 +169,39 @@ lsm
 scan-internal
 ----
 a-b:{(#0,RANGEKEYDEL)}
-b-c:{(#0,RANGEKEYSET,@8,foo) (#0,RANGEKEYUNSET,@6)}
+b-c:{(#0,RANGEKEYSET,@8) (#0,RANGEKEYUNSET,@6)}
 c-d:{(#0,RANGEKEYUNSET,@6)}
-d-e:{(#0,RANGEKEYSET,@6,bar)}
+d-e:{(#0,RANGEKEYSET,@6)}
+
+batch ingest
+range-key-set e f @3
+range-key-unset f g @3
+----
+wrote 2 keys to batch ""
+
+scan-internal
+----
+a-b:{(#0,RANGEKEYDEL)}
+b-c:{(#0,RANGEKEYSET,@8) (#0,RANGEKEYUNSET,@6)}
+c-d:{(#0,RANGEKEYUNSET,@6)}
+d-e:{(#0,RANGEKEYSET,@6)}
+e-f:{(#0,RANGEKEYSET,@3)}
+f-g:{(#0,RANGEKEYUNSET,@3)}
+
+batch ingest
+range-key-unset e f @3
+range-key-set f g @3
+----
+wrote 2 keys to batch ""
+
+scan-internal
+----
+a-b:{(#0,RANGEKEYDEL)}
+b-c:{(#0,RANGEKEYSET,@8) (#0,RANGEKEYUNSET,@6)}
+c-d:{(#0,RANGEKEYUNSET,@6)}
+d-e:{(#0,RANGEKEYSET,@6)}
+e-f:{(#0,RANGEKEYUNSET,@3)}
+f-g:{(#0,RANGEKEYSET,@3)}
 
 # Range key masking is not exercised, with range keys that could mask point
 # keys being returned alongside point keys.

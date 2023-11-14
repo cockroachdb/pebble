@@ -59,7 +59,6 @@ type UserIteratorConfig struct {
 	diter      keyspan.DefragmentingIter
 	liters     [manifest.NumLevels]keyspan.LevelIter
 	litersUsed int
-	onlySets   bool
 	bufs       *Buffers
 }
 
@@ -79,9 +78,9 @@ func (bufs *Buffers) PrepareForReuse() {
 
 // Init initializes the range key iterator stack for user iteration. The
 // resulting fragment iterator applies range key semantics, defragments spans
-// according to their user-observable state and, if onlySets = true, removes all
-// Keys other than RangeKeySets describing the current state of range keys. The
-// resulting spans contain Keys sorted by Suffix.
+// according to their user-observable state and removes all Keys other than
+// RangeKeySets describing the current state of range keys. The resulting spans
+// contain Keys sorted by Suffix.
 //
 // The snapshot sequence number parameter determines which keys are visible. Any
 // keys not visible at the provided snapshot are ignored.
@@ -91,13 +90,11 @@ func (ui *UserIteratorConfig) Init(
 	lower, upper []byte,
 	hasPrefix *bool,
 	prefix *[]byte,
-	onlySets bool,
 	bufs *Buffers,
 	iters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
 	ui.snapshot = snapshot
 	ui.comparer = comparer
-	ui.onlySets = onlySets
 	ui.miter.Init(comparer.Compare, ui, &bufs.merging, iters...)
 	ui.biter.Init(comparer.Compare, comparer.Split, &ui.miter, lower, upper, hasPrefix, prefix)
 	ui.diter.Init(comparer, &ui.biter, ui, keyspan.StaticDefragmentReducer, &bufs.defragmenting)
@@ -149,8 +146,7 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 		return err
 	}
 	// During user iteration over range keys, unsets and deletes don't matter.
-	// Remove them if onlySets = true. This step helps logical defragmentation
-	// during iteration.
+	// Remove them. This step helps logical defragmentation during iteration.
 	keys := ui.bufs.sortBuf.Keys
 	dst.Keys = dst.Keys[:0]
 	for i := range keys {
@@ -164,17 +160,11 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
 				panic("pebble: keys unexpectedly not in ascending suffix order")
 			}
-			if ui.onlySets {
-				// Skip.
-				continue
-			}
-			dst.Keys = append(dst.Keys, keys[i])
+			// Skip.
+			continue
 		case base.InternalKeyKindRangeKeyDelete:
-			if ui.onlySets {
-				// Skip.
-				continue
-			}
-			dst.Keys = append(dst.Keys, keys[i])
+			// Skip.
+			continue
 		default:
 			return base.CorruptionErrorf("pebble: unrecognized range key kind %s", keys[i].Kind())
 		}
@@ -208,14 +198,12 @@ func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.S
 	ret := true
 	for i := range a.Keys {
 		if invariants.Enabled {
-			if ui.onlySets && (a.Keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
-				b.Keys[i].Kind() != base.InternalKeyKindRangeKeySet) {
+			if a.Keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
+				b.Keys[i].Kind() != base.InternalKeyKindRangeKeySet {
 				panic("pebble: unexpected non-RangeKeySet during defragmentation")
 			}
-			// Don't do a comparison with RangeKeyDeletes, as those will always sort
-			// to the end and have no suffix.
-			if i > 0 && ((a.Keys[i].Kind() != base.InternalKeyKindRangeKeyDelete && ui.comparer.Compare(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0) ||
-				(b.Keys[i].Kind() != base.InternalKeyKindRangeKeyDelete && ui.comparer.Compare(b.Keys[i].Suffix, b.Keys[i-1].Suffix) < 0)) {
+			if i > 0 && (ui.comparer.Compare(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0 ||
+				ui.comparer.Compare(b.Keys[i].Suffix, b.Keys[i-1].Suffix) < 0) {
 				panic("pebble: range keys not ordered by suffix during defragmentation")
 			}
 		}
