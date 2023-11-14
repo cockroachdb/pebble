@@ -833,7 +833,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 	// RangeKeyUnsets and RangeKeyDels.
 	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(
 		i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
-		nil /* hasPrefix */, nil /* prefix */, false, /* onlySets */
+		nil /* hasPrefix */, nil /* prefix */, true, /* internalKeys */
 		&i.rangeKey.rangeKeyBuffers.internal)
 
 	// Next are the flushables: memtables and large batches.
