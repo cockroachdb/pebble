@@ -151,7 +151,7 @@ func TestDefragmenting(t *testing.T) {
 			var userIterCfg UserIteratorConfig
 			iter := userIterCfg.Init(testkeys.Comparer, base.InternalKeySeqNumMax,
 				nil /* lower */, nil, /* upper */
-				&hasPrefix, &prefix, true /* onlySets */, new(Buffers),
+				&hasPrefix, &prefix, false /* internalKeys */, new(Buffers),
 				keyspan.NewIter(cmp, spans))
 			for _, line := range strings.Split(td.Input, "\n") {
 				runIterOp(&buf, iter, line)
@@ -233,11 +233,11 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	var referenceCfg, fragmentedCfg UserIteratorConfig
 	referenceIter := referenceCfg.Init(testkeys.Comparer, base.InternalKeySeqNumMax,
 		nil /* lower */, nil, /* upper */
-		new(bool), new([]byte), true /* ßonlySets */, new(Buffers),
+		new(bool), new([]byte), false /* internalKeys */, new(Buffers),
 		keyspan.NewIter(cmp, original))
 	fragmentedIter := fragmentedCfg.Init(testkeys.Comparer, base.InternalKeySeqNumMax,
 		nil /* lower */, nil, /* upper */
-		new(bool), new([]byte), true /* onlySets */, new(Buffers),
+		new(bool), new([]byte), false /* internalKeys */, new(Buffers),
 		keyspan.NewIter(cmp, fragmented))
 
 	// Generate 100 random operations and run them against both iterators.
@@ -370,7 +370,7 @@ func BenchmarkTransform(b *testing.B) {
 	var ui UserIteratorConfig
 	reinit := func() {
 		bufs.PrepareForReuse()
-		_ = ui.Init(testkeys.Comparer, math.MaxUint64, nil, nil, new(bool), nil, false /* onlySets */, &bufs)
+		_ = ui.Init(testkeys.Comparer, math.MaxUint64, nil, nil, new(bool), nil, true /* internalKeys */, &bufs)
 	}
 
 	for _, shadowing := range []bool{false, true} {
