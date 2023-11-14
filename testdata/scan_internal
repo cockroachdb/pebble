@@ -151,7 +151,7 @@ committed 1 keys
 scan-internal
 ----
 a-b:{(#13,RANGEKEYDEL)}
-b-c:{(#10,RANGEKEYSET,@8,foo) (#12,RANGEKEYUNSET,@6)}
+b-c:{(#12,RANGEKEYUNSET,@6) (#10,RANGEKEYSET,@8,foo)}
 c-d:{(#12,RANGEKEYUNSET,@6)}
 d-e:{(#11,RANGEKEYSET,@6,bar)}
 
@@ -169,9 +169,39 @@ lsm
 scan-internal
 ----
 a-b:{(#13,RANGEKEYDEL)}
-b-c:{(#10,RANGEKEYSET,@8,foo) (#12,RANGEKEYUNSET,@6)}
+b-c:{(#12,RANGEKEYUNSET,@6) (#10,RANGEKEYSET,@8,foo)}
 c-d:{(#12,RANGEKEYUNSET,@6)}
 d-e:{(#11,RANGEKEYSET,@6,bar)}
+
+batch ingest
+range-key-set e f @3 foo
+range-key-unset f g @3
+----
+wrote 2 keys to batch ""
+
+scan-internal
+----
+a-b:{(#13,RANGEKEYDEL)}
+b-c:{(#12,RANGEKEYUNSET,@6) (#10,RANGEKEYSET,@8,foo)}
+c-d:{(#12,RANGEKEYUNSET,@6)}
+d-e:{(#11,RANGEKEYSET,@6,bar)}
+e-f:{(#14,RANGEKEYSET,@3,foo)}
+f-g:{(#14,RANGEKEYUNSET,@3)}
+
+batch ingest
+range-key-unset e f @3
+range-key-set f g @3 foo
+----
+wrote 2 keys to batch ""
+
+scan-internal
+----
+a-b:{(#13,RANGEKEYDEL)}
+b-c:{(#12,RANGEKEYUNSET,@6) (#10,RANGEKEYSET,@8,foo)}
+c-d:{(#12,RANGEKEYUNSET,@6)}
+d-e:{(#11,RANGEKEYSET,@6,bar)}
+e-f:{(#15,RANGEKEYUNSET,@3)}
+f-g:{(#15,RANGEKEYSET,@3,foo)}
 
 # Range key masking is not exercised, with range keys that could mask point
 # keys being returned alongside point keys.

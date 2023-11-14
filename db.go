@@ -1337,14 +1337,13 @@ func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *sc
 
 	// For internal iterators, we skip the lazy combined iteration optimization
 	// entirely, and create the range key iterator stack directly.
-	i.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-	i.rangeKey.init(i.comparer.Compare, i.comparer.Split, &i.opts.IterOptions)
+	i.rangeKey = scanInternalRangeKeyIter{}
 	i.constructRangeKeyIter()
 
 	// Wrap the point iterator (currently i.iter) with an interleaving
 	// iterator that interleaves range keys pulled from
 	// i.rangeKey.rangeKeyIter.
-	i.rangeKey.iiter.Init(i.comparer, i.iter, i.rangeKey.rangeKeyIter,
+	i.rangeKey.iiter.Init(i.comparer, i.iter, i.rangeKeyIter,
 		keyspan.InterleavingIterOpts{
 			LowerBound: i.opts.LowerBound,
 			UpperBound: i.opts.UpperBound,

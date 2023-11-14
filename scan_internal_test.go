@@ -18,7 +18,10 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/private"
+	rkeyinternal "github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
@@ -226,7 +229,7 @@ func TestScanInternal(t *testing.T) {
 			FS:                 vfs.NewMem(),
 			Logger:             testLogger{t: t},
 			Comparer:           testkeys.Comparer,
-			FormatMajorVersion: FormatRangeKeys,
+			FormatMajorVersion: FormatVirtualSSTables,
 			BlockPropertyCollectors: []func() BlockPropertyCollector{
 				sstable.NewTestKeysBlockPropertyCollector,
 			},
@@ -384,6 +387,7 @@ func TestScanInternal(t *testing.T) {
 			var name string
 			td.MaybeScanArgs(t, "name", &name)
 			commit := td.HasArg("commit")
+			ingest := td.HasArg("ingest")
 			b := d.NewIndexedBatch()
 			require.NoError(t, runBatchDefineCmd(td, b))
 			var err error
@@ -396,6 +400,35 @@ func TestScanInternal(t *testing.T) {
 					}()
 					err = b.Commit(nil)
 				}()
+			} else if ingest {
+				points, rangeDels, rangeKeys := private.BatchSort(b)
+				file, err := d.opts.FS.Create("temp0.sst")
+				require.NoError(t, err)
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(file), d.opts.MakeWriterOptions(0, sstable.TableFormatPebblev4))
+				for span := rangeDels.First(); span != nil; span = rangeDels.Next() {
+					require.NoError(t, w.DeleteRange(span.Start, span.End))
+				}
+				rangeDels.Close()
+				for span := rangeKeys.First(); span != nil; span = rangeKeys.Next() {
+					keys := []keyspan.Key{}
+					for i := range span.Keys {
+						keys = append(keys, span.Keys[i])
+						keys[i].Trailer = base.MakeTrailer(0, keys[i].Kind())
+					}
+					keyspan.SortKeysByTrailer(&keys)
+					newSpan := &keyspan.Span{Start: span.Start, End: span.End, Keys: keys}
+					rkeyinternal.Encode(newSpan, w.AddRangeKey)
+				}
+				rangeKeys.Close()
+				for key, val := points.First(); key != nil; key, val = points.Next() {
+					var value []byte
+					value, _, err = val.Value(value)
+					require.NoError(t, err)
+					require.NoError(t, w.Add(*key, value))
+				}
+				points.Close()
+				require.NoError(t, w.Close())
+				require.NoError(t, d.Ingest([]string{"temp0.sst"}))
 			} else if name != "" {
 				batches[name] = b
 			}

@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -392,6 +393,73 @@ type IteratorLevel struct {
 	Sublevel int
 }
 
+// scanInternalRangeKeyIter holds rangeKey-relevant state for a
+// scanInternalIterator.
+type scanInternalRangeKeyIter struct {
+	snapshot   uint64
+	comparer   *base.Comparer
+	miter      keyspan.MergingIter
+	biter      keyspan.BoundedIter
+	diter      keyspan.DefragmentingIter
+	iiter      keyspan.InterleavingIter
+	liters     [manifest.NumLevels]keyspan.LevelIter
+	litersUsed int
+	mbufs      keyspan.MergingBuffers
+	dbufs      keyspan.DefragmentingBuffers
+}
+
+func (s *scanInternalRangeKeyIter) Transform(
+	cmp base.Compare, in keyspan.Span, out *keyspan.Span,
+) error {
+	// in.Keys are in descending seqnum order. Call rangekey.Coalesce on the
+	// suffix of in.Keys that is visible to s.snapshot.
+	out.Start = in.Start
+	out.End = in.End
+	out.Keys = out.Keys[:0]
+	start := 0
+	for start < len(in.Keys) && !base.Visible(in.Keys[start].SeqNum(), s.snapshot, base.InternalKeySeqNumMax) {
+		// in.Keys[start] is not visible to the current seqNum.
+		start++
+	}
+	if start < len(in.Keys) {
+		keysDst := out.Keys[:cap(out.Keys)]
+		if err := rangekey.Coalesce(cmp, s.comparer.Equal, in.Keys[start:], &keysDst); err != nil {
+			return err
+		}
+		out.Keys = append(out.Keys, keysDst...)
+	}
+	return nil
+}
+
+func (s *scanInternalRangeKeyIter) init(
+	snapshot uint64, comparer *base.Comparer, lower, upper []byte, iters ...keyspan.FragmentIterator,
+) keyspan.FragmentIterator {
+	s.snapshot = snapshot
+	s.comparer = comparer
+	s.miter.Init(comparer.Compare, s, &s.mbufs, iters...)
+	s.biter.Init(comparer.Compare, comparer.Split, &s.miter, lower, upper, nil /* hasPrefix */, nil /* prefix */)
+	s.diter.Init(comparer, &s.biter, keyspan.DefragmentInternal, keyspan.StaticDefragmentReducer, &s.dbufs)
+	s.litersUsed = 0
+	return &s.diter
+}
+
+// addLevel adds a new level to the bottom of the iterator stack. AddLevel
+// must be called after init and before any other method on the iterator.
+func (s *scanInternalRangeKeyIter) addLevel(iter keyspan.FragmentIterator) {
+	s.miter.AddLevel(iter)
+}
+
+// newLevelIter returns a pointer to a newly allocated or reused
+// keyspan.LevelIter. The caller is responsible for calling Init() on this
+// instance.
+func (s *scanInternalRangeKeyIter) newLevelIter() *keyspan.LevelIter {
+	if s.litersUsed >= len(s.liters) {
+		return &keyspan.LevelIter{}
+	}
+	s.litersUsed++
+	return &s.liters[s.litersUsed-1]
+}
+
 // scanInternalIterator is an iterator that returns all internal keys, including
 // tombstones. For instance, an InternalKeyKindDelete would be returned as an
 // InternalKeyKindDelete instead of the iterator skipping over to the next key.
@@ -413,7 +481,8 @@ type scanInternalIterator struct {
 	iter            internalIterator
 	readState       *readState
 	version         *version
-	rangeKey        *iteratorRangeKeyState
+	rangeKey        scanInternalRangeKeyIter
+	rangeKeyIter    keyspan.FragmentIterator
 	pointKeyIter    internalIterator
 	iterKey         *InternalKey
 	iterValue       LazyValue
@@ -838,12 +907,8 @@ func (i *scanInternalIterator) constructPointIter(
 // Iterator.constructRangeKeyIter, except it doesn't handle batches and ensures
 // iterConfig does *not* elide unsets/deletes.
 func (i *scanInternalIterator) constructRangeKeyIter() {
-	// We want the bounded iter from iterConfig, but not the collapsing of
-	// RangeKeyUnsets and RangeKeyDels.
-	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(
-		i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
-		nil /* hasPrefix */, nil /* prefix */, false, /* onlySets */
-		&i.rangeKey.rangeKeyBuffers.internal)
+	i.rangeKeyIter = i.rangeKey.init(
+		i.seqNum, i.comparer, i.opts.LowerBound, i.opts.UpperBound)
 
 	// Next are the flushables: memtables and large batches.
 	if i.readState != nil {
@@ -855,7 +920,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 				continue
 			}
 			if rki := mem.newRangeKeyIter(&i.opts.IterOptions); rki != nil {
-				i.rangeKey.iterConfig.AddLevel(rki)
+				i.rangeKey.addLevel(rki)
 			}
 		}
 	}
@@ -880,10 +945,10 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 	for f := iter.Last(); f != nil; f = iter.Prev() {
 		spanIter, err := i.newIterRangeKey(f, i.opts.SpanIterOptions())
 		if err != nil {
-			i.rangeKey.iterConfig.AddLevel(&errorKeyspanIter{err: err})
+			i.rangeKey.addLevel(&errorKeyspanIter{err: err})
 			continue
 		}
-		i.rangeKey.iterConfig.AddLevel(spanIter)
+		i.rangeKey.addLevel(spanIter)
 	}
 
 	// Add level iterators for the non-empty non-L0 levels.
@@ -894,11 +959,11 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
 			continue
 		}
-		li := i.rangeKey.iterConfig.NewLevelIter()
+		li := i.rangeKey.newLevelIter()
 		spanIterOpts := i.opts.SpanIterOptions()
 		li.Init(spanIterOpts, i.comparer.Compare, i.newIterRangeKey, current.RangeKeyLevels[level].Iter(),
 			manifest.Level(level), manifest.KeyTypeRange)
-		i.rangeKey.iterConfig.AddLevel(li)
+		i.rangeKey.addLevel(li)
 	}
 }
 
@@ -959,14 +1024,6 @@ func (i *scanInternalIterator) close() error {
 	}
 	if i.version != nil {
 		i.version.Unref()
-	}
-	if i.rangeKey != nil {
-		i.rangeKey.PrepareForReuse()
-		*i.rangeKey = iteratorRangeKeyState{
-			rangeKeyBuffers: i.rangeKey.rangeKeyBuffers,
-		}
-		iterRangeKeyStateAllocPool.Put(i.rangeKey)
-		i.rangeKey = nil
 	}
 	if alloc := i.alloc; alloc != nil {
 		for j := range i.boundsBuf {
