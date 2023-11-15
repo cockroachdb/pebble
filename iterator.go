@@ -1901,6 +1901,89 @@ func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 	return i.iterValidityState
 }
 
+// InternalNextValidity enumerates the potential outcomes of a call to
+// InternalNext.
+type InternalNextValidity int8
+
+const (
+	// InternalNextError is returned by InternalNext when an error occurred and
+	// the caller is responsible for checking iter.Error().
+	InternalNextError InternalNextValidity = iota
+	// InternalNextExhausted is returned by InternalNext when the next internal
+	// key is an internal key with a different user key than Iterator.Key().
+	InternalNextExhausted
+	// InternalNextValid is returned by InternalNext when the internal next
+	// found a shadowed internal key with a user key equal to Iterator.Key().
+	InternalNextValid
+)
+
+// InternalNext advances internal Iterator state forward to expose the
+// InternalKeyKind of the next internal key with a user key equal to Key().
+//
+// InternalNext is a highly specialized operation and is unlikely to be
+// generally useful. See Iterator.Next for how to reposition the iterator to the
+// next key. InternalNext requires the Iterator to be at a valid position in the
+// forward direction (the last positioning operation must've been a First, a
+// Seek[Prefix]GE, or a Next[Prefix][WithLmit] and Valid() must return true).
+//
+// InternalNext, unlike all other Iterator methods, exposes internal LSM state.
+// InternalNext advances the Iterator's internal iterator to the next shadowed
+// key with the a user key equal to Key(). When a key is overwritten or deleted,
+// its removal from the LSM occurs lazily as a part of compactions. InternalNext
+// allows the caller to see whether an obsolete internal key exists with the
+// current Key(), and what it's key kind is. Note that the existence of an
+// internal key is nondeterministic and depedent on internal LSM state. These
+// semantics are unlikely to be applicable to almost all use cases.
+//
+// If InternalNext finds a key that shares the same user key as Key(), it
+// returns InternalNextValid and the internal key's kind. If InternalNext
+// encounters an error, it returns InternalNextError and the caller is expected
+// to call Iteraotr.Error() to retrieve it. In all other circumstances,
+// InternalNext returns InternalNextExhausted, indicating that there are no more
+// additional internal keys with the user key Key().
+func (i *Iterator) InternalNext() (InternalNextValidity, base.InternalKeyKind) {
+	i.stats.ForwardStepCount[InterfaceCall]++
+	if i.err != nil {
+		return InternalNextError, base.InternalKeyKindInvalid
+	} else if i.iterValidityState != IterValid {
+		return InternalNextExhausted, base.InternalKeyKindInvalid
+	}
+	i.lastPositioningOp = unknownLastPositionOp
+
+	switch i.pos {
+	case iterPosCurForward:
+		i.iterKey, i.iterValue = i.iter.Next()
+		if i.iterKey == nil {
+			// We check i.iter.Error() here and return an InternalNextError enum
+			// variant so that the caller does not need to check i.iter.Error()
+			// in the common case that the next internal key has a new user key.
+			if i.err = firstError(i.err, i.iter.Error()); i.err != nil {
+				return InternalNextError, base.InternalKeyKindInvalid
+			}
+			return InternalNextExhausted, base.InternalKeyKindInvalid
+		} else if i.comparer.Equal(i.iterKey.UserKey, i.key) {
+			return InternalNextValid, i.iterKey.Kind()
+		}
+		i.pos = iterPosNext
+		return InternalNextExhausted, base.InternalKeyKindInvalid
+	case iterPosCurReverse, iterPosCurReversePaused, iterPosPrev:
+		i.err = errors.New("switching from reverse to forward via peeking is prohibited")
+		i.iterValidityState = IterExhausted
+		return InternalNextError, base.InternalKeyKindInvalid
+	case iterPosNext, iterPosCurForwardPaused:
+		// The previous method already moved onto the next user key. This is
+		// only possible if
+		//   - the last positioning method was a call to InternalNext, and we
+		//     advanced to a new user key.
+		//   - the previous non-InternalNext iterator operation encountered a
+		//     range key or merge, forcing an internal Next that found a new
+		//     user key that's not equal to i.Iterator.Key().
+		return InternalNextExhausted, base.InternalKeyKindInvalid
+	default:
+		panic("unreachable")
+	}
+}
+
 // Prev moves the iterator to the previous key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Prev() bool {
