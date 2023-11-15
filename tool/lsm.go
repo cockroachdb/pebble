@@ -275,7 +275,12 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 	l.state.Files = make(map[base.FileNum]lsmFileMetadata)
 	var currentFiles [manifest.NumLevels][]*manifest.FileMetadata
 
+	backings := make(map[base.DiskFileNum]*manifest.FileBacking)
+
 	for _, ve := range edits {
+		for _, i := range ve.CreatedBackingTables {
+			backings[i.DiskFileNum] = i
+		}
 		if len(ve.DeletedFiles) == 0 && len(ve.NewFiles) == 0 {
 			continue
 		}
@@ -288,6 +293,9 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 
 		for j := range ve.NewFiles {
 			nf := &ve.NewFiles[j]
+			if b, ok := backings[nf.BackingFileNum]; ok {
+				nf.Meta.FileBacking = b
+			}
 			if _, ok := l.state.Files[nf.Meta.FileNum]; !ok {
 				l.state.Files[nf.Meta.FileNum] = lsmFileMetadata{
 					Size:           nf.Meta.Size,
