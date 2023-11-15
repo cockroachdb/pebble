@@ -345,7 +345,7 @@ func TestVirtualReader(t *testing.T) {
 			vMeta.ValidateVirtual(meta.FileMetadata)
 
 			vMeta1 = vMeta.VirtualMeta()
-			v = MakeVirtualReader(r, vMeta1)
+			v = MakeVirtualReader(r, vMeta1, false /* isForeign */)
 			return formatVirtualReader(&v)
 
 		case "citer":
