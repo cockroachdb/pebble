@@ -721,7 +721,7 @@ let version = {
         reason.text(
             "[" +
                 this.levelsInfo[i].levelString +
-                " " +
+                (data.Files[fileNum].Virtual? " v":" ") +
                 fileNum +
                 " (" +
                 humanize(data.Files[fileNum].Size) +
