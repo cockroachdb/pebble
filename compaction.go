@@ -2746,6 +2746,12 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
 		}
+	} else if c.cancel.Load() {
+		// We got an error from runCompaction _and_ we got cancelled by a concurrent
+		// operation. It's possible the error returned by runCompaction is due to a
+		// missing file that has been excised away. Replace it with
+		// ErrCancelledCompaction.
+		err = ErrCancelledCompaction
 	}
 
 	info.Done = true
