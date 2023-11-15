@@ -201,12 +201,17 @@ func (c *tableCacheContainer) estimateSize(
 	return size, nil
 }
 
-func createCommonReader(v *tableCacheValue, file *fileMetadata) sstable.CommonReader {
+// createCommonReader creates a Reader for this file. isForeign, if true for
+// virtual sstables, is passed into the vSSTable reader so its iterators can
+// collapse obsolete points accordingly.
+func createCommonReader(
+	v *tableCacheValue, file *fileMetadata, isForeign bool,
+) sstable.CommonReader {
 	// TODO(bananabrick): We suffer an allocation if file is a virtual sstable.
 	var cr sstable.CommonReader = v.reader
 	if file.Virtual {
 		virtualReader := sstable.MakeVirtualReader(
-			v.reader, file.VirtualMeta(),
+			v.reader, file.VirtualMeta(), isForeign,
 		)
 		cr = &virtualReader
 	}
@@ -222,7 +227,12 @@ func (c *tableCacheContainer) withCommonReader(
 	if v.err != nil {
 		return v.err
 	}
-	return fn(createCommonReader(v, meta))
+	provider := c.dbOpts.objProvider
+	objMeta, err := provider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
+	if err != nil {
+		return err
+	}
+	return fn(createCommonReader(v, meta, provider.IsSharedForeign(objMeta)))
 }
 
 func (c *tableCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
@@ -245,7 +255,12 @@ func (c *tableCacheContainer) withVirtualReader(
 	if v.err != nil {
 		return v.err
 	}
-	return fn(sstable.MakeVirtualReader(v.reader, meta))
+	provider := c.dbOpts.objProvider
+	objMeta, err := provider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
+	if err != nil {
+		return err
+	}
+	return fn(sstable.MakeVirtualReader(v.reader, meta, provider.IsSharedForeign(objMeta)))
 }
 
 func (c *tableCacheContainer) iterCount() int64 {
@@ -463,15 +478,15 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, err
 	}
 
-	// Note: This suffers an allocation for virtual sstables.
-	cr := createCommonReader(v, file)
-
 	provider := dbOpts.objProvider
 	// Check if this file is a foreign file.
 	objMeta, err := provider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Note: This suffers an allocation for virtual sstables.
+	cr := createCommonReader(v, file, provider.IsSharedForeign(objMeta))
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
@@ -588,10 +603,15 @@ func (c *tableCacheShard) newRangeKeyIter(
 
 	var iter keyspan.FragmentIterator
 	if file.Virtual {
-		virtualReader := sstable.MakeVirtualReader(
-			v.reader, file.VirtualMeta(),
-		)
-		iter, err = virtualReader.NewRawRangeKeyIter()
+		provider := dbOpts.objProvider
+		var objMeta objstorage.ObjectMetadata
+		objMeta, err = provider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
+		if err == nil {
+			virtualReader := sstable.MakeVirtualReader(
+				v.reader, file.VirtualMeta(), provider.IsSharedForeign(objMeta),
+			)
+			iter, err = virtualReader.NewRawRangeKeyIter()
+		}
 	} else {
 		iter, err = v.reader.NewRawRangeKeyIter()
 	}

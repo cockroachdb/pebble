@@ -380,7 +380,7 @@ func (r *Reader) newCompactionIter(
 		err := i.init(
 			context.Background(),
 			r, v, nil /* lower */, nil /* upper */, nil,
-			false /* useFilter */, false, /* hideObsoletePoints */
+			false /* useFilter */, v != nil && v.isForeign, /* hideObsoletePoints */
 			nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 		)
 		if err != nil {
@@ -395,7 +395,7 @@ func (r *Reader) newCompactionIter(
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
 		context.Background(), r, v, nil /* lower */, nil, /* upper */
-		nil, false /* useFilter */, false, /* hideObsoletePoints */
+		nil, false /* useFilter */, v != nil && v.isForeign, /* hideObsoletePoints */
 		nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 	)
 	if err != nil {
