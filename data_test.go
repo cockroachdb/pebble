@@ -145,6 +145,27 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			}
 			validityState = iter.NextWithLimit([]byte(parts[1]))
 			printValidityState = true
+		case "internal-next":
+			validity, keyKind := iter.internalNext()
+			switch validity {
+			case internalNextError:
+				fmt.Fprintf(&b, "err: %s\n", iter.Error())
+			case internalNextExhausted:
+				fmt.Fprint(&b, ".\n")
+			case internalNextValid:
+				fmt.Fprintf(&b, "%s\n", keyKind)
+			default:
+				panic("unreachable")
+			}
+			continue
+		case "can-deterministically-single-delete":
+			ok, err := CanDeterministicallySingleDelete(iter)
+			if err != nil {
+				fmt.Fprintf(&b, "err: %s\n", err)
+			} else {
+				fmt.Fprintf(&b, "%t\n", ok)
+			}
+			continue
 		case "prev-limit":
 			if len(parts) != 2 {
 				return "prev-limit <limit>\n"
@@ -531,7 +552,7 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 			err = b.Delete([]byte(parts[1]), nil)
 		case "del-sized":
 			if len(parts) != 3 {
-				return errors.Errorf("%s expects 1 argument", parts[0])
+				return errors.Errorf("%s expects 2 arguments", parts[0])
 			}
 			var valSize uint64
 			valSize, err = strconv.ParseUint(parts[2], 10, 32)
