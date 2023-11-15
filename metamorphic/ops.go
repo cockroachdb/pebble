@@ -1154,6 +1154,36 @@ func (o *iterNextPrefixOp) String() string       { return fmt.Sprintf("%s.NextPr
 func (o *iterNextPrefixOp) receiver() objID      { return o.iterID }
 func (o *iterNextPrefixOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
+// iterCanSingleDelOp models a call to CanDeterministicallySingleDelete with an
+// Iterator.
+type iterCanSingleDelOp struct {
+	iterID objID
+
+	derivedReaderID objID
+}
+
+func (o *iterCanSingleDelOp) run(t *test, h historyRecorder) {
+	// TODO(jackson): When we perform error injection, we'll need to rethink
+	// this.
+	_, err := pebble.CanDeterministicallySingleDelete(t.getIter(o.iterID).iter)
+	// The return value of CanDeterministicallySingleDelete is dependent on
+	// internal LSM state and non-deterministic, so we don't record it.
+	// Including the operation within the metamorphic test at all helps ensure
+	// that it does not change the result of any other Iterator operation that
+	// should be deterministic, regardless of its own outcome.
+	//
+	// We still record the value of the error because it's deterministic, at
+	// least for now. The possible error cases are:
+	//  - The iterator was already in an error state when the operation ran.
+	//  - The operation is deterministically invalid (like using an InternalNext
+	//    to change directions.)
+	h.Recordf("%s // %v", o, err)
+}
+
+func (o *iterCanSingleDelOp) String() string       { return fmt.Sprintf("%s.InternalNext()", o.iterID) }
+func (o *iterCanSingleDelOp) receiver() objID      { return o.iterID }
+func (o *iterCanSingleDelOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
+
 // iterPrevOp models an Iterator.Prev[WithLimit] operation.
 type iterPrevOp struct {
 	iterID objID

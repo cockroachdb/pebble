@@ -138,6 +138,7 @@ func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
 		iterNext:                    g.randIter(g.iterNext),
 		iterNextWithLimit:           g.randIter(g.iterNextWithLimit),
 		iterNextPrefix:              g.randIter(g.iterNextPrefix),
+		iterCanSingleDelete:         g.randIter(g.iterCanSingleDelete),
 		iterPrev:                    g.randIter(g.iterPrev),
 		iterPrevWithLimit:           g.randIter(g.iterPrevWithLimit),
 		iterSeekGE:                  g.randIter(g.iterSeekGE),
@@ -1072,6 +1073,13 @@ func (g *generator) iterNextWithLimit(iterID objID) {
 
 func (g *generator) iterNextPrefix(iterID objID) {
 	g.add(&iterNextPrefixOp{
+		iterID:          iterID,
+		derivedReaderID: g.iterReaderID[iterID],
+	})
+}
+
+func (g *generator) iterCanSingleDelete(iterID objID) {
+	g.add(&iterCanSingleDelOp{
 		iterID:          iterID,
 		derivedReaderID: g.iterReaderID[iterID],
 	})
