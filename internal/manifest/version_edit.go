@@ -421,7 +421,10 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			m.boundsSet = true
-			if !virtualState.virtual {
+
+			if virtualState.virtual {
+				m.InitProviderBacking(base.DiskFileNum(virtualState.backingFileNum))
+			} else {
 				m.InitPhysicalBacking()
 			}
 
