@@ -2942,6 +2942,15 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 		return
 	}
 
+	objMeta, err := d.objProvider.Lookup(fileTypeTable, m.FileBacking.DiskFileNum)
+	if err != nil {
+		panic(err)
+	}
+	if objMeta.IsExternal() {
+		// Nothing to do; bounds are expected to be loose.
+		return
+	}
+
 	if m.HasPointKeys {
 		pointIter, rangeDelIter, err := d.newIters(context.TODO(), m, nil, internalIterOpts{})
 		if err != nil {

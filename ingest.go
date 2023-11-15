@@ -1529,9 +1529,11 @@ func (d *DB) ingest(
 		}
 	}
 
-	if invariants.Enabled {
-		for _, sharedMeta := range loadResult.sharedMeta {
-			d.checkVirtualBounds(sharedMeta)
+	if invariants.Enabled && ve != nil {
+		for i := range ve.NewFiles {
+			if ve.NewFiles[i].Meta.Virtual {
+				d.checkVirtualBounds(ve.NewFiles[i].Meta)
+			}
 		}
 	}
 
@@ -1737,7 +1739,6 @@ func (d *DB) excise(
 				return nil, err
 			}
 			leftFile.ValidateVirtual(m)
-			d.checkVirtualBounds(leftFile)
 			ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: leftFile})
 			needsBacking = true
 			numCreatedFiles++
@@ -1859,7 +1860,6 @@ func (d *DB) excise(
 			rightFile.Size = 1
 		}
 		rightFile.ValidateVirtual(m)
-		d.checkVirtualBounds(rightFile)
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: rightFile})
 		needsBacking = true
 		numCreatedFiles++
