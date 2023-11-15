@@ -26,9 +26,9 @@ ok
 
 scan-internal file-only-snapshot=efos1
 ----
-a-c:{(#10,RANGEKEYSET,@5,boop)}
+a-c:{(#0,RANGEKEYSET,@5,boop)}
 b#12,1 (d)
-c-e:{(#11,RANGEKEYSET,@5,beep)}
+c-e:{(#0,RANGEKEYSET,@5,beep)}
 e#13,1 (foo)
 
 flush
@@ -36,9 +36,9 @@ flush
 
 scan-internal
 ----
-a-c:{(#10,RANGEKEYSET,@5,boop)}
+a-c:{(#0,RANGEKEYSET,@5,boop)}
 b#12,1 (d)
-c-e:{(#11,RANGEKEYSET,@5,beep)}
+c-e:{(#0,RANGEKEYSET,@5,beep)}
 e#13,1 (foo)
 
 # Keys deleted by rangedels are elided.
@@ -50,9 +50,9 @@ committed 1 keys
 
 scan-internal
 ----
-a-c:{(#10,RANGEKEYSET,@5,boop)}
+a-c:{(#0,RANGEKEYSET,@5,boop)}
 b-d#14,RANGEDEL
-c-e:{(#11,RANGEKEYSET,@5,beep)}
+c-e:{(#0,RANGEKEYSET,@5,beep)}
 e#13,1 (foo)
 
 flush
@@ -60,17 +60,17 @@ flush
 
 scan-internal
 ----
-a-c:{(#10,RANGEKEYSET,@5,boop)}
+a-c:{(#0,RANGEKEYSET,@5,boop)}
 b-d#14,RANGEDEL
-c-e:{(#11,RANGEKEYSET,@5,beep)}
+c-e:{(#0,RANGEKEYSET,@5,beep)}
 e#13,1 (foo)
 
 # Snapshots work with scan internal.
 
 scan-internal snapshot=foo
 ----
-a-c:{(#10,RANGEKEYSET,@5,boop)}
-c-e:{(#11,RANGEKEYSET,@5,beep)}
+a-c:{(#0,RANGEKEYSET,@5,boop)}
+c-e:{(#0,RANGEKEYSET,@5,beep)}
 
 wait-for-file-only-snapshot efos1
 ----
@@ -78,9 +78,9 @@ ok
 
 scan-internal file-only-snapshot=efos1
 ----
-a-c:{(#10,RANGEKEYSET,@5,boop)}
+a-c:{(#0,RANGEKEYSET,@5,boop)}
 b#12,1 (d)
-c-e:{(#11,RANGEKEYSET,@5,beep)}
+c-e:{(#0,RANGEKEYSET,@5,beep)}
 e#13,1 (foo)
 
 # Force keys newer than the snapshot into a lower level, then try skip-shared
@@ -105,15 +105,15 @@ file 000008 contains keys newer than snapshot: pebble: cannot use skip-shared it
 
 scan-internal lower=bb upper=dd
 ----
-bb-c:{(#10,RANGEKEYSET,@5,boop)}
+bb-c:{(#0,RANGEKEYSET,@5,boop)}
 bb-d#14,RANGEDEL
-c-dd:{(#11,RANGEKEYSET,@5,beep)}
+c-dd:{(#0,RANGEKEYSET,@5,beep)}
 
 scan-internal lower=b upper=cc
 ----
-b-c:{(#10,RANGEKEYSET,@5,boop)}
+b-c:{(#0,RANGEKEYSET,@5,boop)}
 b-cc#14,RANGEDEL
-c-cc:{(#11,RANGEKEYSET,@5,beep)}
+c-cc:{(#0,RANGEKEYSET,@5,beep)}
 
 reset
 ----
@@ -150,10 +150,10 @@ committed 1 keys
 
 scan-internal
 ----
-a-b:{(#13,RANGEKEYDEL)}
-b-c:{(#12,RANGEKEYUNSET,@6) (#10,RANGEKEYSET,@8)}
-c-d:{(#12,RANGEKEYUNSET,@6)}
-d-e:{(#11,RANGEKEYSET,@6)}
+a-b:{(#0,RANGEKEYDEL)}
+b-c:{(#0,RANGEKEYSET,@8) (#0,RANGEKEYUNSET,@6)}
+c-d:{(#0,RANGEKEYUNSET,@6)}
+d-e:{(#0,RANGEKEYSET,@6)}
 
 flush
 ----
@@ -168,10 +168,10 @@ lsm
 
 scan-internal
 ----
-a-b:{(#13,RANGEKEYDEL)}
-b-c:{(#12,RANGEKEYUNSET,@6) (#10,RANGEKEYSET,@8)}
-c-d:{(#12,RANGEKEYUNSET,@6)}
-d-e:{(#11,RANGEKEYSET,@6)}
+a-b:{(#0,RANGEKEYDEL)}
+b-c:{(#0,RANGEKEYSET,@8) (#0,RANGEKEYUNSET,@6)}
+c-d:{(#0,RANGEKEYUNSET,@6)}
+d-e:{(#0,RANGEKEYSET,@6)}
 
 batch ingest
 range-key-set e f @3
@@ -181,12 +181,12 @@ wrote 2 keys to batch ""
 
 scan-internal
 ----
-a-b:{(#13,RANGEKEYDEL)}
-b-c:{(#12,RANGEKEYUNSET,@6) (#10,RANGEKEYSET,@8)}
-c-d:{(#12,RANGEKEYUNSET,@6)}
-d-e:{(#11,RANGEKEYSET,@6)}
-e-f:{(#14,RANGEKEYSET,@3)}
-f-g:{(#14,RANGEKEYUNSET,@3)}
+a-b:{(#0,RANGEKEYDEL)}
+b-c:{(#0,RANGEKEYSET,@8) (#0,RANGEKEYUNSET,@6)}
+c-d:{(#0,RANGEKEYUNSET,@6)}
+d-e:{(#0,RANGEKEYSET,@6)}
+e-f:{(#0,RANGEKEYSET,@3)}
+f-g:{(#0,RANGEKEYUNSET,@3)}
 
 batch ingest
 range-key-unset e f @3
@@ -196,12 +196,12 @@ wrote 2 keys to batch ""
 
 scan-internal
 ----
-a-b:{(#13,RANGEKEYDEL)}
-b-c:{(#12,RANGEKEYUNSET,@6) (#10,RANGEKEYSET,@8)}
-c-d:{(#12,RANGEKEYUNSET,@6)}
-d-e:{(#11,RANGEKEYSET,@6)}
-e-f:{(#15,RANGEKEYUNSET,@3)}
-f-g:{(#15,RANGEKEYSET,@3)}
+a-b:{(#0,RANGEKEYDEL)}
+b-c:{(#0,RANGEKEYSET,@8) (#0,RANGEKEYUNSET,@6)}
+c-d:{(#0,RANGEKEYUNSET,@6)}
+d-e:{(#0,RANGEKEYSET,@6)}
+e-f:{(#0,RANGEKEYUNSET,@3)}
+f-g:{(#0,RANGEKEYSET,@3)}
 
 # Range key masking is not exercised, with range keys that could mask point
 # keys being returned alongside point keys.
@@ -222,9 +222,9 @@ committed 2 keys
 
 scan-internal
 ----
-a-c:{(#11,RANGEKEYSET,@5,boop)}
+a-c:{(#0,RANGEKEYSET,@5,boop)}
 b@3#10,1 (bar)
-c-e:{(#12,RANGEKEYSET,@5,beep)}
+c-e:{(#0,RANGEKEYSET,@5,beep)}
 
 # Point keys are collapsed in a way similar to a compaction.
 
@@ -313,7 +313,7 @@ lsm
 
 scan-internal
 ----
-a-c:{(#11,RANGEKEYSET,@5,boop)}
+a-c:{(#0,RANGEKEYSET,@5,boop)}
 b@3#10,1 (bar)
 c-e#12,RANGEDEL
 f@8#13,1 (baz)
