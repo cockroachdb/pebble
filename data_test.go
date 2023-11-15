@@ -132,6 +132,19 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			}
 			validityState = iter.NextWithLimit([]byte(parts[1]))
 			printValidityState = true
+		case "internal-next":
+			validity, keyKind := iter.InternalNext()
+			switch validity {
+			case InternalNextError:
+				fmt.Fprintf(&b, "err: %s\n", iter.Error())
+			case InternalNextExhausted:
+				fmt.Fprint(&b, ".\n")
+			case InternalNextValid:
+				fmt.Fprintf(&b, "%s\n", keyKind)
+			default:
+				panic("unreachable")
+			}
+			continue
 		case "prev-limit":
 			if len(parts) != 2 {
 				return "prev-limit <limit>\n"

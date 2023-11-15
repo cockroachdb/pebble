@@ -1280,6 +1280,28 @@ func (o *iterNextPrefixOp) String() string       { return fmt.Sprintf("%s.NextPr
 func (o *iterNextPrefixOp) receiver() objID      { return o.iterID }
 func (o *iterNextPrefixOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
+// iterInternalNextOp models an Iterator.InternalNext operation.
+type iterInternalNextOp struct {
+	iterID objID
+
+	derivedReaderID objID
+}
+
+func (o *iterInternalNextOp) run(t *test, h historyRecorder) {
+	i := t.getIter(o.iterID)
+	_, _ = i.InternalNext()
+	// The return value of an InternalNext is dependent on internal LSM state
+	// and non-deterministic, so we don't record it. Including the operation
+	// within the metamorphic test at all helps ensure that InternalNext does
+	// not change the result of any other Iterator operation that should be
+	// deterministic, regardless of the outcome of InternalNext.
+	h.Recordf("%s // %v", o, i.Error())
+}
+
+func (o *iterInternalNextOp) String() string       { return fmt.Sprintf("%s.InternalNext()", o.iterID) }
+func (o *iterInternalNextOp) receiver() objID      { return o.iterID }
+func (o *iterInternalNextOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
+
 // iterPrevOp models an Iterator.Prev[WithLimit] operation.
 type iterPrevOp struct {
 	iterID objID

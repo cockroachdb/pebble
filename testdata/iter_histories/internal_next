@@ -1,0 +1,158 @@
+reset
+----
+
+# For all prefixes a-z, write 3 keys at timestamps @1, @10, @100.
+# This populates a total of 26 * 3 = 78 keys.
+
+populate keylen=1 timestamps=(1, 10, 100)
+----
+wrote 78 keys
+
+combined-iter
+first
+next-prefix
+internal-next
+internal-next
+next
+next-prefix
+internal-next
+internal-next
+next
+internal-next
+next
+internal-next
+----
+a@100: (a@100, .)
+b@100: (b@100, .)
+.
+.
+b@10: (b@10, .)
+c@100: (c@100, .)
+.
+.
+c@10: (c@10, .)
+.
+c@1: (c@1, .)
+.
+
+# The start boundaries of range keys are interleaved and can cause the internal
+# iterator to be advanced ahead to look for a point at the same user key. This
+# is one of the few situations in which InternalNext may find the iterator is
+# already positioned at iterPosNext. Test this scenario.
+
+batch commit
+range-key-set a b @1 foo
+range-key-set bb c @2 bar
+----
+committed 2 keys
+
+combined-iter
+first
+internal-next
+next
+internal-next
+seek-ge b@10
+internal-next
+next
+internal-next
+internal-next
+next
+----
+a: (., [a-b) @1=foo UPDATED)
+.
+a@100: (a@100, [a-b) @1=foo)
+.
+b@10: (b@10, . UPDATED)
+.
+b@1: (b@1, .)
+.
+.
+bb: (., [bb-c) @2=bar UPDATED)
+
+reset
+----
+
+batch commit
+set a a
+set b b
+range-key-set b c @1 foo
+set d d
+----
+committed 4 keys
+
+combined-iter
+first
+internal-next
+next
+internal-next
+next
+prev
+internal-next
+----
+a: (a, .)
+.
+b: (b, [b-c) @1=foo UPDATED)
+.
+d: (d, . UPDATED)
+b: (b, [b-c) @1=foo UPDATED)
+err: switching from reverse to forward via peeking is prohibited
+
+reset
+----
+
+populate keylen=1 timestamps=(1, 10, 100)
+----
+wrote 78 keys
+
+flush
+----
+
+populate keylen=1 timestamps=(1, 10, 100)
+----
+wrote 78 keys
+
+combined-iter
+first
+next-prefix
+internal-next
+internal-next
+next
+next-prefix
+internal-next
+internal-next
+next
+internal-next
+next
+internal-next
+----
+a@100: (a@100, .)
+b@100: (b@100, .)
+SET
+.
+b@10: (b@10, .)
+c@100: (c@100, .)
+SET
+.
+c@10: (c@10, .)
+SET
+c@1: (c@1, .)
+SET
+
+combined-iter
+seek-ge z
+internal-next
+next
+next
+internal-next
+internal-next
+next
+internal-next
+----
+z@100: (z@100, .)
+SET
+z@10: (z@10, .)
+z@1: (z@1, .)
+SET
+.
+.
+.

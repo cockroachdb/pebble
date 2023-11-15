@@ -118,6 +118,15 @@ func (i *retryableIter) NextPrefix() bool {
 	return valid
 }
 
+func (i *retryableIter) InternalNext() (pebble.InternalNextValidity, pebble.InternalKeyKind) {
+	var validity pebble.InternalNextValidity
+	var kind pebble.InternalKeyKind
+	i.withRetry(func() {
+		validity, kind = i.iter.InternalNext()
+	})
+	return validity, kind
+}
+
 func (i *retryableIter) Prev() bool {
 	var valid bool
 	i.withRetry(func() {

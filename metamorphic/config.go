@@ -23,6 +23,7 @@ const (
 	iterNext
 	iterNextWithLimit
 	iterNextPrefix
+	iterInternalNext
 	iterPrev
 	iterPrevWithLimit
 	iterSeekGE
@@ -131,6 +132,7 @@ func defaultConfig() config {
 			iterNext:                    100,
 			iterNextWithLimit:           20,
 			iterNextPrefix:              20,
+			iterInternalNext:            20,
 			iterPrev:                    100,
 			iterPrevWithLimit:           20,
 			iterSeekGE:                  100,

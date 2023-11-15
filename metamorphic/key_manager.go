@@ -522,6 +522,7 @@ func opWrittenKeys(untypedOp op) [][]byte {
 	case *iterLastOp:
 	case *iterNextOp:
 	case *iterNextPrefixOp:
+	case *iterInternalNextOp:
 	case *iterPrevOp:
 	case *iterSeekGEOp:
 	case *iterSeekLTOp:
