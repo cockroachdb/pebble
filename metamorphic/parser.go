@@ -89,6 +89,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.iterID, nil, []interface{}{&t.limit}
 	case *iterNextPrefixOp:
 		return &t.iterID, nil, nil
+	case *iterCanSingleDelOp:
+		return &t.iterID, nil, []interface{}{}
 	case *iterPrevOp:
 		return &t.iterID, nil, []interface{}{&t.limit}
 	case *iterSeekLTOp:
@@ -139,6 +141,7 @@ var methods = map[string]*methodInfo{
 	"NewSnapshot":               makeMethod(newSnapshotOp{}, dbTag),
 	"Next":                      makeMethod(iterNextOp{}, iterTag),
 	"NextPrefix":                makeMethod(iterNextPrefixOp{}, iterTag),
+	"InternalNext":              makeMethod(iterCanSingleDelOp{}, iterTag),
 	"Prev":                      makeMethod(iterPrevOp{}, iterTag),
 	"RangeKeyDelete":            makeMethod(rangeKeyDeleteOp{}, dbTag, batchTag),
 	"RangeKeySet":               makeMethod(rangeKeySetOp{}, dbTag, batchTag),
@@ -535,6 +538,8 @@ func computeDerivedFields(ops []op) {
 		case *iterNextOp:
 			v.derivedReaderID = iterToReader[v.iterID]
 		case *iterNextPrefixOp:
+			v.derivedReaderID = iterToReader[v.iterID]
+		case *iterCanSingleDelOp:
 			v.derivedReaderID = iterToReader[v.iterID]
 		case *iterPrevOp:
 			v.derivedReaderID = iterToReader[v.iterID]
