@@ -2843,6 +2843,12 @@ func (d *DB) runCopyCompaction(
 		},
 	}
 	pendingOutputs = append(pendingOutputs, metaCopy.PhysicalMeta())
+	// Before dropping the db mutex, grab a ref to the current version. This
+	// prevents any concurrent excises from deleting files that this compaction
+	// needs to read/maintain a reference to.
+	vers := d.mu.versions.currentVersion()
+	vers.Ref()
+	defer vers.UnrefLocked()
 
 	d.mu.Unlock()
 	defer d.mu.Lock()
@@ -2919,6 +2925,9 @@ func (d *DB) runCompaction(
 			if iter.Next() != nil {
 				panic("got more than one file for a move or copy compaction")
 			}
+		}
+		if c.cancel.Load() {
+			return ve, nil, stats, ErrCancelledCompaction
 		}
 		objMeta, err := d.objProvider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
 		if err != nil {
