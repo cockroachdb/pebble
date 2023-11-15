@@ -288,6 +288,9 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 
 		for j := range ve.NewFiles {
 			nf := &ve.NewFiles[j]
+			if nf.Meta.Virtual {
+				nf.Meta.InitProviderBacking(nf.BackingFileNum)
+			}
 			if _, ok := l.state.Files[nf.Meta.FileNum]; !ok {
 				l.state.Files[nf.Meta.FileNum] = lsmFileMetadata{
 					Size:           nf.Meta.Size,
