@@ -1529,12 +1529,6 @@ func (d *DB) ingest(
 		}
 	}
 
-	if invariants.Enabled {
-		for _, sharedMeta := range loadResult.sharedMeta {
-			d.checkVirtualBounds(sharedMeta)
-		}
-	}
-
 	info := TableIngestInfo{
 		JobID:     jobID,
 		Err:       err,
@@ -1737,7 +1731,6 @@ func (d *DB) excise(
 				return nil, err
 			}
 			leftFile.ValidateVirtual(m)
-			d.checkVirtualBounds(leftFile)
 			ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: leftFile})
 			needsBacking = true
 			numCreatedFiles++
@@ -1859,7 +1852,6 @@ func (d *DB) excise(
 			rightFile.Size = 1
 		}
 		rightFile.ValidateVirtual(m)
-		d.checkVirtualBounds(rightFile)
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: rightFile})
 		needsBacking = true
 		numCreatedFiles++
