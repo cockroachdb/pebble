@@ -29,6 +29,7 @@ type lsmFileMetadata struct {
 	Largest        int // ID of largest key
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
+	Virtual        bool
 }
 
 type lsmVersionEdit struct {
@@ -294,6 +295,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 					Largest:        l.findKey(nf.Meta.Largest),
 					SmallestSeqNum: nf.Meta.SmallestSeqNum,
 					LargestSeqNum:  nf.Meta.LargestSeqNum,
+					Virtual:        nf.Meta.Virtual,
 				}
 			}
 			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.FileNum)

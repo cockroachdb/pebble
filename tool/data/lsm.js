@@ -518,13 +518,13 @@ let version = {
 
             // Render the sstables for the level.
             let level = g.selectAll("rect." + this.levelsInfo[i].levelClass).data(this.levelsInfo[i].files);
-            level.attr("fill", "#555").attr("x", (fileNum, i) => i);
+            level.attr("fill", fileNum => (data.Files[fileNum].Virtual?"#8A9":"#555")).attr("x", (fileNum, i) => i);
             level
                 .enter()
                 .append("rect")
                 .attr("class", this.levelsInfo[i].levelClass + " sstable")
                 .attr("id", fileNum => fileNum)
-                .attr("fill", "red")
+                .attr("fill",  fileNum => (data.Files[fileNum].Virtual?"orange":"red"))
                 .attr("x", (fileNum, i) => i)
                 .attr("y", 0)
                 .attr("width", 1)
