@@ -240,10 +240,11 @@ func (d *DB) scanReadStateTableStats(
 
 			// If the file is remote and not SharedForeign, we should check if its size
 			// matches. This is because checkConsistency skips over remote files.
-			// SharedForeign files are skipped as their sizes are allowed to have a
-			// mismatch; the size stored in the FileBacking is just the part of the
-			// file that is referenced by this Pebble instance, not the size of the
-			// whole object.
+			//
+			// SharedForeign and External files are skipped as their sizes are allowed
+			// to have a mismatch; the size stored in the FileBacking is just the part
+			// of the file that is referenced by this Pebble instance, not the size of
+			// the whole object.
 			objMeta, err := d.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
 			if err != nil {
 				// Set `moreRemain` so we'll try again.
@@ -251,9 +252,11 @@ func (d *DB) scanReadStateTableStats(
 				d.opts.EventListener.BackgroundError(err)
 				continue
 			}
-			if _, ok := sizesChecked[f.FileBacking.DiskFileNum]; !ok && objMeta.IsRemote() &&
-				!d.objProvider.IsSharedForeign(objMeta) {
 
+			shouldCheckSize := objMeta.IsRemote() &&
+				!d.objProvider.IsSharedForeign(objMeta) &&
+				!objMeta.IsExternal()
+			if _, ok := sizesChecked[f.FileBacking.DiskFileNum]; !ok && shouldCheckSize {
 				size, err := d.objProvider.Size(objMeta)
 				fileSize := f.FileBacking.Size
 				if err != nil {
