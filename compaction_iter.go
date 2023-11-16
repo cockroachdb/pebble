@@ -332,7 +332,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	// Prior to this call to `Next()` we are in one of three situations with
+	// Prior to this call to `Next()` we are in one of four situations with
 	// respect to `iterKey` and related state:
 	//
 	// - `!skip && pos == iterPosNext`: `iterKey` is already at the next key.
@@ -341,11 +341,33 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	//   snapshot stripe.
 	// - `skip && pos == iterPosCurForward`: We are at the key that has been returned.
 	//   To move forward we skip skippable entries in the stripe.
+	// - `skip && pos == iterPosNext && i.iterStripeChange == sameStripeNonSkippable`:
+	//    This case may occur when skipping within a snapshot stripe and we
+	//    encounter either:
+	//      a) an invalid key kind; The previous call will have returned
+	//         whatever key it was processing and deferred handling of the
+	//         invalid key to this invocation of Next(). We're responsible for
+	//         ignoring skip=true and falling into the invalid key kind case
+	//         down below.
+	//      b) an interleaved range delete; This is a wart of the current code
+	//         structure. While skipping within a snapshot stripe, a range
+	//         delete interleaved at its start key and sequence number
+	//         interrupts the sequence of point keys. After we return the range
+	//         delete to the caller, we need to pick up skipping at where we
+	//         left off, so we preserve skip=true.
+	//    TODO(jackson): This last case is confusing and can be removed if we
+	//    interleave range deletions at the maximal sequence number using the
+	//    keyspan interleaving iterator. This is the treatment given to range
+	//    keys today.
 	if i.pos == iterPosCurForward {
 		if i.skip {
 			i.skipInStripe()
 		} else {
 			i.nextInStripe()
+		}
+	} else if i.skip {
+		if i.iterStripeChange != sameStripeNonSkippable {
+			panic(errors.AssertionFailedf("compaction iterator has skip=true, but iterator is at iterPosNext"))
 		}
 	}
 
@@ -429,6 +451,12 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 					// can be elided skip skippable keys in the same stripe.
 					i.saveKey()
 					i.skipInStripe()
+					if i.iterStripeChange == newStripeSameKey {
+						panic(errors.AssertionFailedf("pebble: skipInStripe in last stripe found a new stripe within the same key"))
+					}
+					if !i.skip && i.iterStripeChange != newStripeNewKey {
+						panic(errors.AssertionFailedf("pebble: skipInStripe in last stripe disabled skip without advancing to new key"))
+					}
 					continue
 				} else {
 					// We're not at the last snapshot stripe, so the tombstone
@@ -830,6 +858,16 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 	}
 }
 
+// singleDeleteNext processes a SingleDelete point tombstone. A SingleDelete, or
+// SINGLEDEL, is unique in that it deletes exactly 1 internal key. It's a
+// performance optimization when the client knows a user key has not been
+// overwritten, allowing the elision of the tombstone earlier, avoiding write
+// amplification.
+//
+// singleDeleteNext returns a boolean indicating whether or not the caller
+// should yield the SingleDelete key to the consumer of the compactionIter. If
+// singleDeleteNext returns false, the caller may consume/elide the
+// SingleDelete.
 func (i *compactionIter) singleDeleteNext() bool {
 	// Save the current key.
 	i.saveKey()
@@ -838,6 +876,8 @@ func (i *compactionIter) singleDeleteNext() bool {
 
 	// Loop until finds a key to be passed to the next level.
 	for {
+		// If we find a key that can't be skipped, return true so that the
+		// caller yields the SingleDelete to the caller.
 		if i.nextInStripe() != sameStripeSkippable {
 			i.pos = iterPosNext
 			return true
@@ -853,11 +893,26 @@ func (i *compactionIter) singleDeleteNext() bool {
 			return true
 
 		case InternalKeyKindSet:
+			// This SingleDelete deletes the Set, and we can now elide the
+			// SingleDel as well. We advance past the Set and return false to
+			// indicate to the main compaction loop that we should NOT yield the
+			// current SingleDel key to the compaction loop.
 			i.nextInStripe()
+			// TODO(jackson): We could assert that nextInStripe either a)
+			// stepped onto a new key, or b) stepped on to a Delete, DeleteSized
+			// or SingleDel key. This would detect improper uses of SingleDel,
+			// but only when all three internal keys meet in the same compaction
+			// which is not likely.
 			i.valid = false
 			return false
 
 		case InternalKeyKindSingleDelete:
+			// Two single deletes met in a compaction. With proper deterministic
+			// use of SingleDelete, this should never happen. The expectation is
+			// that there's exactly 1 set beneath a single delete. Currently, we
+			// opt to skip it.
+			// TODO(jackson): Should we make this an error? This would also
+			// allow us to simplify the code a bit by removing the for loop.
 			continue
 
 		default:
@@ -894,7 +949,7 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 	i.pos = iterPosNext
 	for i.nextInStripe() == sameStripeSkippable {
 		switch i.iterKey.Kind() {
-		case InternalKeyKindDelete, InternalKeyKindDeleteSized:
+		case InternalKeyKindDelete, InternalKeyKindDeleteSized, InternalKeyKindSingleDelete:
 			// We encountered a tombstone (DEL, or DELSIZED) that's deleted by
 			// the original DELSIZED tombstone. This can happen in two cases:
 			//
@@ -929,14 +984,17 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 			}
 			i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
 			i.value = i.valueBuf
-			if i.iterKey.Kind() == InternalKeyKindDelete {
-				// Convert the DELSIZED to a DEL—The DEL we're eliding may not
-				// have deleted the key(s) it was intended to yet. The ordinary
-				// DEL compaction heuristics are better suited at that, plus we
-				// don't want to count it as a missized DEL. We early exit in
-				// this case, after skipping the remainder of the snapshot
-				// stripe.
+			if i.iterKey.Kind() != InternalKeyKindDeleteSized {
+				// Convert the DELSIZED to a DEL—The DEL/SINGLEDEL we're eliding
+				// may not have deleted the key(s) it was intended to yet. The
+				// ordinary DEL compaction heuristics are better suited at that,
+				// plus we don't want to count it as a missized DEL. We early
+				// exit in this case, after skipping the remainder of the
+				// snapshot stripe.
 				i.key.SetKind(i.iterKey.Kind())
+				// NB: We skipInStripe now, rather than returning leaving
+				// i.skip=true and returning early, because Next() requires
+				// that i.skip=true only if i.iterPos = iterPosCurForward.
 				i.skipInStripe()
 				return &i.key, i.value
 			}
@@ -954,6 +1012,9 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 			// the snapshot stripe and return.
 			if len(i.value) == 0 {
 				i.key.SetKind(InternalKeyKindDelete)
+				// NB: We skipInStripe now, rather than returning leaving
+				// i.skip=true and returning early, because Next() requires
+				// that i.skip=true only if i.iterPos = iterPosCurForward.
 				i.skipInStripe()
 				return &i.key, i.value
 			}
@@ -981,8 +1042,11 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 				// We opt for (4) under the rationale that we can't rely on the
 				// user-provided size for accuracy, so ordinary DEL heuristics
 				// are safer.
-				i.key.SetKind(InternalKeyKindDelete)
 				i.stats.countMissizedDels++
+				i.key.SetKind(InternalKeyKindDelete)
+				i.value = i.valueBuf[:0]
+				i.skipInStripe()
+				return &i.key, i.value
 			}
 			// NB: We remove the value regardless of whether the key was sized
 			// appropriately. The size encoded is 'consumed' the first time it
