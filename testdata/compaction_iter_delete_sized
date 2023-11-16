@@ -1578,3 +1578,257 @@ next
 a#9,0:
 .
 missized-dels=1
+
+# Test a DELSIZED that shadows a SINGLEDEL'd key.
+
+define
+a.DELSIZED.4:varint(4)
+b.SINGLEDEL.3:
+b.SET.1:val
+----
+
+iter
+first
+next
+tombstones
+----
+a#4,23:varint(4)
+.
+.
+
+# Repeat the above but with elision of tombstones.
+
+iter elide-tombstones=t
+first
+tombstones
+----
+.
+.
+
+# Test DELSIZED shadowing SINGLEDEL.
+
+define
+a.DELSIZED.4:varint(4)
+a.SET.2:foo
+b.SINGLEDEL.3:
+b.SET.1:val
+----
+
+iter
+first
+next
+tombstones
+----
+a#4,23:
+.
+.
+
+# Repeat the above but with elision of tombstones.
+
+iter elide-tombstones=t
+first
+tombstones
+----
+.
+.
+
+# Test a very subtle sequence where a elision of tombstones is active, and a
+# unskippable RANGEDEL sits between a DELSIZED and the key it was intended to
+# delete. The unskippable RANGEDEL breaks the skipping of keys within the
+# snapshot stripe, but it's ultimately okay because we preserve skip=true across
+# the RANGEDEL return.
+
+define
+a.DELSIZED.5:varint(4)
+a.RANGEDEL.4:d
+a.SET.3:foo
+----
+
+iter elide-tombstones=t
+first
+next
+tombstones
+----
+a#4,15:d
+.
+.
+
+# Try the same test as above, but with allowing sequence number zeroing as well.
+
+iter elide-tombstones=t allow-zero-seqnum=t
+first
+next
+tombstones
+----
+a#4,15:d
+.
+.
+
+# Perform a variant of the above test but with a DEL key.
+
+define
+a.DEL.5:
+a.RANGEDEL.4:d
+a.SET.3:foo
+----
+
+iter elide-tombstones=t
+first
+next
+tombstones
+----
+a#4,15:d
+.
+.
+
+# Perform a variant of the above test but with a SINGLEDEL key.
+
+define
+a.SINGLEDEL.5:
+a.RANGEDEL.4:d
+a.SET.3:foo
+----
+
+iter elide-tombstones=t
+first
+next
+tombstones
+----
+a#4,15:d
+.
+.
+
+# Perform a few variants of the above but with a range del with a seqnum equal to
+# keys. NB: When seqnums are equal, the order of keys with various kinds is:
+#
+# DeleteSized < RangeKey{Delete,Unset,Set} < SetWithDelete < RangeDelete < SingleDelete < Set < Delete
+#
+# NB: Range keys are interleaved always at the maximal sequence number, so the
+# compaction iterator should always observe them first.
+
+define
+a.SINGLEDEL.6:
+a.SETWITHDEL.5:foo
+a.RANGEDEL.5:z
+----
+
+define-range-keys
+a-z:{(#5,RANGEKEYDEL)}
+----
+
+# In the following case, the SINGLEDEL meets a SETWITHDEL, promoting the
+# SINGLEDEL into a DEL.
+
+iter
+first
+next
+next
+next
+tombstones
+----
+a#72057594037927935,19:
+a#6,0:
+a#5,15:z
+.
+a-z#5
+.
+
+# In this case, SINGLEDEL is elided (despite its transformation into a DEL) due
+# to elide-tombstones=t.
+
+iter elide-tombstones=t
+first
+next
+next
+tombstones
+----
+a#72057594037927935,19:
+a#5,15:z
+.
+.
+
+define
+a.SINGLEDEL.6:
+a.RANGEDEL.5:d
+a.SET.5:foo
+----
+
+# NB: In this case, the RANGEDEL acts as an unintentional snapshot stripe
+# change. This is a code artifact, and we will be able to remove this behavior
+# when range deletes are interleaved at the maximal sequence number by an
+# interleaving iterator (like range keys are).
+
+iter
+first
+next
+next
+next
+tombstones
+----
+a#6,7:
+a#5,15:d
+a#5,1:foo
+.
+a-d#5
+.
+
+iter elide-tombstones=t allow-zero-seqnum=t
+first
+next
+tombstones
+----
+a#5,15:d
+.
+.
+
+define
+a.SINGLEDEL.6:
+a.SETWITHDEL.5:foo
+a.RANGEDEL.5:d
+----
+
+# When the SINGLEDEL and SETWITHDEL meet, the SINGLEDEL is promoted into a DEL.
+
+iter
+first
+next
+tombstones
+----
+a#6,0:
+a#5,15:d
+a-d#5
+.
+
+iter elide-tombstones=t
+first
+next
+tombstones
+----
+a#5,15:d
+.
+.
+
+define
+a.DELSIZED.6:varint(3)
+a.RANGEDEL.5:d
+a.SET.5:foo
+----
+
+iter
+first
+next
+tombstones
+----
+a#6,23:varint(3)
+a#5,15:d
+a-d#5
+.
+
+iter elide-tombstones=t
+first
+next
+tombstones
+----
+a#5,15:d
+.
+.
