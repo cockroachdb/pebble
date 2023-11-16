@@ -276,12 +276,13 @@ func (p *provider) AttachRemoteObjects(
 		defer p.mu.Unlock()
 		for _, d := range decoded {
 			p.mu.remote.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{
-				FileNum:        d.meta.DiskFileNum,
-				FileType:       d.meta.FileType,
-				CreatorID:      d.meta.Remote.CreatorID,
-				CreatorFileNum: d.meta.Remote.CreatorFileNum,
-				CleanupMethod:  d.meta.Remote.CleanupMethod,
-				Locator:        d.meta.Remote.Locator,
+				FileNum:          d.meta.DiskFileNum,
+				FileType:         d.meta.FileType,
+				CreatorID:        d.meta.Remote.CreatorID,
+				CreatorFileNum:   d.meta.Remote.CreatorFileNum,
+				CleanupMethod:    d.meta.Remote.CleanupMethod,
+				Locator:          d.meta.Remote.Locator,
+				CustomObjectName: d.meta.Remote.CustomObjectName,
 			})
 		}
 	}()

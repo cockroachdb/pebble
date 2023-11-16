@@ -593,7 +593,7 @@ func TestParallelSync(t *testing.T) {
 							}
 						}
 					}
-				}(numOps*n, shared)
+				}(numOps*(n+1), shared)
 			}
 			wg.Wait()
 		})

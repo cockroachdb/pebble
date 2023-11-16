@@ -141,7 +141,7 @@ func (meta *ObjectMetadata) AssertValid() {
 			panic(errors.AssertionFailedf("meta.Remote not empty: %#v", meta.Remote))
 		}
 	} else {
-		if meta.Remote.CustomObjectName != "" {
+		if meta.Remote.CustomObjectName == "" {
 			if meta.Remote.CreatorID == 0 {
 				panic(errors.AssertionFailedf("CreatorID not set"))
 			}
