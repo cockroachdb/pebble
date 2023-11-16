@@ -464,12 +464,13 @@ func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
 	p.mu.knownObjects[meta.DiskFileNum] = meta
 	if meta.IsRemote() {
 		p.mu.remote.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{
-			FileNum:        meta.DiskFileNum,
-			FileType:       meta.FileType,
-			CreatorID:      meta.Remote.CreatorID,
-			CreatorFileNum: meta.Remote.CreatorFileNum,
-			Locator:        meta.Remote.Locator,
-			CleanupMethod:  meta.Remote.CleanupMethod,
+			FileNum:          meta.DiskFileNum,
+			FileType:         meta.FileType,
+			CreatorID:        meta.Remote.CreatorID,
+			CreatorFileNum:   meta.Remote.CreatorFileNum,
+			Locator:          meta.Remote.Locator,
+			CleanupMethod:    meta.Remote.CleanupMethod,
+			CustomObjectName: meta.Remote.CustomObjectName,
 		})
 	} else {
 		p.mu.localObjectsChanged = true

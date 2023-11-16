@@ -119,3 +119,40 @@ func TestCreateSharedObjectBacking(t *testing.T) {
 	require.Equal(t, "custom-obj-name", d.meta.Remote.CustomObjectName)
 	require.Equal(t, objstorage.SharedNoCleanup, d.meta.Remote.CleanupMethod)
 }
+
+func TestAttachRemoteObjects(t *testing.T) {
+	st := DefaultSettings(vfs.NewMem(), "")
+	sharedStorage := remote.NewInMem()
+	st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		"foo": sharedStorage,
+	})
+	p, err := Open(st)
+	require.NoError(t, err)
+	defer p.Close()
+	require.NoError(t, p.SetCreatorID(1))
+	backing, err := p.CreateExternalObjectBacking("foo", "custom-obj-name")
+	require.NoError(t, err)
+	_, err = p.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
+		FileType: base.FileTypeTable,
+		FileNum:  base.FileNum(100).DiskFileNum(),
+		Backing:  backing,
+	}})
+	require.NoError(t, err)
+
+	// Sync, close, and reopen the provider and expect that we see
+	// our object.
+	require.NoError(t, p.Sync())
+	require.NoError(t, p.Close())
+
+	p, err = Open(st)
+	require.NoError(t, err)
+	defer p.Close()
+	require.NoError(t, p.SetCreatorID(1))
+	objs := p.List()
+	require.Len(t, objs, 1)
+	o := objs[0]
+	require.Equal(t, remote.Locator("foo"), o.Remote.Locator)
+	require.Equal(t, "custom-obj-name", o.Remote.CustomObjectName)
+	require.Equal(t, uint64(100), uint64(o.DiskFileNum.FileNum()))
+	require.Equal(t, base.FileTypeTable, o.FileType)
+}
