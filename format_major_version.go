@@ -219,6 +219,18 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	}
 }
 
+// orderingInvariants returns an enum encoding the set of invariants that must
+// hold within the receiver format major version. Invariants only get stricter
+// as the format major version advances, so it is okay to retrieve the
+// invariants from the current format major version and by the time the
+// invariants are enforced, the format major version has advanced.
+func (v FormatMajorVersion) orderingInvariants() manifest.OrderingInvariants {
+	if v < FormatSplitUserKeysMarkedCompacted {
+		return manifest.AllowSplitUserKeys
+	}
+	return manifest.ProhibitSplitUserKeys
+}
+
 // formatMajorVersionMigrations defines the migrations from one format
 // major version to the next. Each migration is defined as a closure
 // which will be invoked on the database before the new format major

@@ -117,7 +117,7 @@ L0.0
   a.SET.1-b.SET.2
   b.SET.1-d.SET.5
 ----
-OK
+L0.0 files 000001 and 000002 have overlapping ranges: [a#1,SET-b#2,SET] vs [b#1,SET-d#5,SET]
 
 # Single sublevel, ordering is incorrect.
 check-ordering
@@ -158,4 +158,4 @@ L0.1
   a.SET.5-b.SET.6
   b.SET.7-d.SET.8
 ----
-L0.1 files 000003 and 000004 have overlapping ranges: [a#5,SET-b#6,SET] vs [b#7,SET-d#8,SET]
+L0.0 files 000001 and 000002 have overlapping ranges: [a#1,SET-b#2,SET] vs [b#1,SET-d#4,SET]

@@ -1283,16 +1283,22 @@ func (c *compaction) newInputIter(
 	newIters tableNewIters, newRangeKeyIter keyspan.TableNewSpanIter, snapshots []uint64,
 ) (_ internalIterator, retErr error) {
 	// Validate the ordering of compaction input files for defense in depth.
+	// TODO(jackson): Some of the CheckOrdering calls may be adapted to pass
+	// ProhibitSplitUserKeys if we thread the active format major version in. Or
+	// if we remove support for earlier FMVs, we can remove the parameter
+	// altogether.
 	if len(c.flushing) == 0 {
 		if c.startLevel.level >= 0 {
 			err := manifest.CheckOrdering(c.cmp, c.formatKey,
-				manifest.Level(c.startLevel.level), c.startLevel.files.Iter())
+				manifest.Level(c.startLevel.level), c.startLevel.files.Iter(),
+				manifest.AllowSplitUserKeys)
 			if err != nil {
 				return nil, err
 			}
 		}
 		err := manifest.CheckOrdering(c.cmp, c.formatKey,
-			manifest.Level(c.outputLevel.level), c.outputLevel.files.Iter())
+			manifest.Level(c.outputLevel.level), c.outputLevel.files.Iter(),
+			manifest.AllowSplitUserKeys)
 		if err != nil {
 			return nil, err
 		}
@@ -1302,7 +1308,9 @@ func (c *compaction) newInputIter(
 			}
 			for _, info := range c.startLevel.l0SublevelInfo {
 				err := manifest.CheckOrdering(c.cmp, c.formatKey,
-					info.sublevel, info.Iter())
+					info.sublevel, info.Iter(),
+					// NB: L0 sublevels have never allowed split user keys.
+					manifest.ProhibitSplitUserKeys)
 				if err != nil {
 					return nil, err
 				}
@@ -1314,7 +1322,8 @@ func (c *compaction) newInputIter(
 			}
 			interLevel := c.extraLevels[0]
 			err := manifest.CheckOrdering(c.cmp, c.formatKey,
-				manifest.Level(interLevel.level), interLevel.files.Iter())
+				manifest.Level(interLevel.level), interLevel.files.Iter(),
+				manifest.AllowSplitUserKeys)
 			if err != nil {
 				return nil, err
 			}

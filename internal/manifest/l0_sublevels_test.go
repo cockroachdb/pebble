@@ -50,7 +50,7 @@ func readManifest(filename string) (*Version, error) {
 		if err := bve.Accumulate(&ve); err != nil {
 			return nil, err
 		}
-		if v, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000, nil); err != nil {
+		if v, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000, nil, ProhibitSplitUserKeys); err != nil {
 			return nil, err
 		}
 	}
@@ -447,7 +447,7 @@ func TestL0Sublevels(t *testing.T) {
 			for sublevel, files := range sublevels.levelFiles {
 				slice := NewLevelSliceSpecificOrder(files)
 				err := CheckOrdering(base.DefaultComparer.Compare, base.DefaultFormatter,
-					L0Sublevel(sublevel), slice.Iter())
+					L0Sublevel(sublevel), slice.Iter(), ProhibitSplitUserKeys)
 				if err != nil {
 					return err.Error()
 				}
