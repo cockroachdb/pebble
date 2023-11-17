@@ -110,7 +110,7 @@ range-deletions-bytes-estimate: 776
 
 # Same as above, except range tombstone covers multiple grandparent file boundaries.
 
-define target-file-sizes=(1, 1, 1, 1)
+define target-file-sizes=(1, 1, 1, 1) format-major-version=1
 L1
   a.SET.3:v
 L2

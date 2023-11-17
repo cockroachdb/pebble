@@ -515,7 +515,7 @@ func TestGetIter(t *testing.T) {
 			files[tt.level] = append(files[tt.level], meta)
 		}
 		v := manifest.NewVersion(cmp, base.DefaultFormatter, 10<<20, files)
-		err := v.CheckOrdering(cmp, base.DefaultFormatter)
+		err := v.CheckOrdering(cmp, base.DefaultFormatter, manifest.AllowSplitUserKeys)
 		if tc.badOrdering && err == nil {
 			t.Errorf("desc=%q: want bad ordering, got nil error", desc)
 			continue
