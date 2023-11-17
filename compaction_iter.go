@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
@@ -638,28 +637,28 @@ func (i *compactionIter) nextInStripeHelper() stripeChangeType {
 	}
 	key := i.iterKey
 
-	// NB: The below conditional is an optimization to avoid a user key
-	// comparison in many cases. Internal keys with the same user key are
-	// ordered in (strictly) descending order by trailer. If the new key has a
-	// greater or equal trailer, or the previous key had a zero sequence number,
-	// the new key must have a new user key.
-	//
-	// A couple things make these cases common:
-	// - Sequence-number zeroing ensures ~all of the keys in L6 have a zero
-	//   sequence number.
-	// - Ingested sstables' keys all adopt the same sequence number.
-	if i.keyTrailer <= base.InternalKeyZeroSeqnumMaxTrailer || key.Trailer >= i.keyTrailer {
-		if invariants.Enabled && i.equal(i.key.UserKey, key.UserKey) {
-			prevKey := i.key
-			prevKey.Trailer = i.keyTrailer
-			panic(fmt.Sprintf("pebble: invariant violation: %s and %s out of order", key, prevKey))
-		}
-		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
-		return newStripeNewKey
-	} else if !i.equal(i.key.UserKey, key.UserKey) {
+	if !i.equal(i.key.UserKey, key.UserKey) {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 		return newStripeNewKey
 	}
+
+	// If i.key and key have the same user key, then
+	//   1. i.key must not have had a zero sequence number (or it would've be the last
+	//      key with its user key).
+	//   2. i.key must have a strictly larger sequence number
+	// There's an exception in that either key may be a range delete. Range
+	// deletes may share a sequence number with a point key if the keys were
+	// ingested together. Range keys may also share the sequence number if they
+	// were ingested, but range keys are interleaved into the compaction
+	// iterator's input iterator at the maximal sequence number so their
+	// original sequence number will not be observed here.
+	if prevSeqNum := base.SeqNumFromTrailer(i.keyTrailer); (prevSeqNum == 0 || prevSeqNum <= i.iterKey.SeqNum()) &&
+		i.key.Kind() != InternalKeyKindRangeDelete && i.iterKey.Kind() != InternalKeyKindRangeDelete {
+		prevKey := i.key
+		prevKey.Trailer = i.keyTrailer
+		panic(errors.AssertionFailedf("pebble: invariant violation: %s and %s out of order", prevKey, key))
+	}
+
 	origSnapshotIdx := i.curSnapshotIdx
 	i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 	switch key.Kind() {
