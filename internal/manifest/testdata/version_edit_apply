@@ -102,11 +102,11 @@ zombies []
 
 apply
  L2
-  3:[a#1,SET-c#2,SET]
+  3:[b#1,SET-c#2,SET]
   4:[d#3,SET-f#4,SET]
-  5:[h#3,SET-j#4,SET]
+  5:[h#3,SET-h#2,SET]
   2:[n#5,SET-q#3,SET]
-  1:[q#2,SET-t#1,SET]
+  1:[r#2,SET-t#1,SET]
 edit
  delete
   L2
@@ -120,9 +120,9 @@ edit
 ----
 2:
   000006:[a#10,SET-a#7,SET]
-  000003:[a#1,SET-c#2,SET]
+  000003:[b#1,SET-c#2,SET]
   000007:[e#1,SET-g#2,SET]
-  000005:[h#3,SET-j#4,SET]
+  000005:[h#3,SET-h#2,SET]
   000010:[j#3,SET-m#2,SET]
   000002:[n#5,SET-q#3,SET]
 zombies [{1} {4}]
