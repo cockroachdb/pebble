@@ -374,6 +374,11 @@ func (k InternalKey) SeqNum() uint64 {
 	return k.Trailer >> 8
 }
 
+// SeqNumFromTrailer returns the sequence number component of a trailer.
+func SeqNumFromTrailer(t uint64) uint64 {
+	return t >> 8
+}
+
 // Visible returns true if the key is visible at the specified snapshot
 // sequence number.
 func (k InternalKey) Visible(snapshot, batchSnapshot uint64) bool {
