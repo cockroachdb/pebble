@@ -125,7 +125,7 @@ L3
   e.SET.0:v
   f.SET.1:v
 L3
-  f.SET.0:v
+  g.SET.1:v
   g.SET.0:v
 ----
 1:
@@ -136,20 +136,19 @@ L3
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
   000008:[e#0,SET-f#1,SET]
-  000009:[f#0,SET-g#0,SET]
+  000009:[g#1,SET-g#1,SET]
 
 compact a-e L1
 ----
 2:
   000010:[a#3,SETWITHDEL-c#inf,RANGEDEL]
   000011:[c#2,RANGEDEL-e#inf,RANGEDEL]
-  000012:[e#2,RANGEDEL-f#inf,RANGEDEL]
-  000013:[f#2,RANGEDEL-g#inf,RANGEDEL]
+  000012:[e#2,RANGEDEL-g#inf,RANGEDEL]
 3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
   000008:[e#0,SET-f#1,SET]
-  000009:[f#0,SET-g#0,SET]
+  000009:[g#1,SET-g#1,SET]
 
 # A range tombstone covers multiple grandparent file boundaries between point keys,
 # rather than after all point keys.
@@ -257,41 +256,6 @@ compact a-h L1
 3:
   000007:[grandparent#0,SET-grandparent#0,SET]
   000008:[m#0,SET-m#0,SET]
-
-# Setup such that grandparent overlap limit is exceeded multiple times at the same user key ("b").
-# Ensures the compaction output files are non-overlapping.
-
-define target-file-sizes=(1, 1, 1, 1)
-L1
-  a.SET.2:v
-  c.SET.2:v
-L2
-  a.RANGEDEL.3:c
-L3
-  b.SET.2:v
-L3
-  b.SET.1:v
-L3
-  b.SET.0:v
-----
-1:
-  000004:[a#2,SET-c#2,SET]
-2:
-  000005:[a#3,RANGEDEL-c#inf,RANGEDEL]
-3:
-  000006:[b#2,SET-b#2,SET]
-  000007:[b#1,SET-b#1,SET]
-  000008:[b#0,SET-b#0,SET]
-
-compact a-c L1
-----
-2:
-  000009:[a#3,RANGEDEL-b#inf,RANGEDEL]
-  000010:[b#3,RANGEDEL-c#2,SET]
-3:
-  000006:[b#2,SET-b#2,SET]
-  000007:[b#1,SET-b#1,SET]
-  000008:[b#0,SET-b#0,SET]
 
 # Regression test for a bug where compaction would stop process range
 # tombstones for an input level upon finding an sstable in the input
@@ -770,47 +734,6 @@ compact a-r L1
   000007:[q#8,RANGEDEL-r#inf,RANGEDEL]
 3:
   000006:[q#6,SET-q#6,SET]
-
-define target-file-sizes=(100, 100, 100)
-L1
-  a.RANGEDEL.10:b
-  b.SET.0:foo
-  d.RANGEDEL.0:e
-  j.SET.10:foo
-L2
-  f.RANGEDEL.7:g
-L3
-  c.SET.6:6
-L3
-  c.SET.5:5
-L3
-  c.SET.4:4
-L4
-  a.SET.0:0
-  f.SET.0:0
-----
-1:
-  000004:[a#10,RANGEDEL-j#10,SET]
-2:
-  000005:[f#7,RANGEDEL-g#inf,RANGEDEL]
-3:
-  000006:[c#6,SET-c#6,SET]
-  000007:[c#5,SET-c#5,SET]
-  000008:[c#4,SET-c#4,SET]
-4:
-  000009:[a#0,SET-f#0,SET]
-
-compact a-r L1
-----
-2:
-  000010:[a#10,RANGEDEL-b#0,SET]
-  000011:[d#0,RANGEDEL-j#10,SET]
-3:
-  000006:[c#6,SET-c#6,SET]
-  000007:[c#5,SET-c#5,SET]
-  000008:[c#4,SET-c#4,SET]
-4:
-  000009:[a#0,SET-f#0,SET]
 
 # Test a snapshot that separates a range deletion from all the data that it
 # deletes. Ensure that we respect the target-file-size and split into multiple

@@ -219,6 +219,13 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	}
 }
 
+func (v FormatMajorVersion) orderingInvariants() manifest.OrderingInvariants {
+	if v < FormatSplitUserKeysMarkedCompacted {
+		return manifest.AllowSplitUserKeys
+	}
+	return manifest.ProhibitSplitUserKeys
+}
+
 // formatMajorVersionMigrations defines the migrations from one format
 // major version to the next. Each migration is defined as a closure
 // which will be invoked on the database before the new format major
