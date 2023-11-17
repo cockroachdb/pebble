@@ -310,6 +310,7 @@ func (vs *versionSet) load(
 	newVersion, err := bve.Apply(
 		nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes,
 		opts.Experimental.ReadCompactionRate, nil, /* zombies */
+		getFormatMajorVersion().orderingInvariants(),
 	)
 	if err != nil {
 		return err
@@ -444,6 +445,8 @@ func (vs *versionSet) logAndApply(
 	}
 
 	currentVersion := vs.currentVersion()
+	fmv := vs.getFormatMajorVersion()
+	orderingInvariants := fmv.orderingInvariants()
 	var newVersion *version
 
 	// Generate a new manifest if we don't currently have one, or forceRotation
@@ -521,6 +524,7 @@ func (vs *versionSet) logAndApply(
 			ve, currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
 			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
 			vs.backingState.fileBackingMap, vs.addFileBacking, vs.removeFileBacking,
+			orderingInvariants,
 		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")

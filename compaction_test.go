@@ -1587,7 +1587,8 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_set_with_del",
 			minVersion: FormatBlockPropertyCollector,
-			maxVersion: FormatPrePebblev1MarkedCompacted,
+			// This test exercises split user keys.
+			maxVersion: FormatSplitUserKeysMarkedCompacted - 1,
 		},
 		{
 			testData:   "testdata/singledel_manual_compaction",
@@ -1608,7 +1609,8 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_file_boundaries",
 			minVersion: FormatBlockPropertyCollector,
-			maxVersion: FormatPrePebblev1MarkedCompacted,
+			// This test exercises split user keys.
+			maxVersion: FormatSplitUserKeysMarkedCompacted - 1,
 		},
 		{
 			testData:   "testdata/manual_compaction_file_boundaries_delsized",
