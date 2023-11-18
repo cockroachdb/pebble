@@ -992,7 +992,7 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 				// plus we don't want to count it as a missized DEL. We early
 				// exit in this case, after skipping the remainder of the
 				// snapshot stripe.
-				i.key.SetKind(i.iterKey.Kind())
+				i.key.SetKind(InternalKeyKindDelete)
 				// NB: We skipInStripe now, rather than returning leaving
 				// i.skip=true and returning early, because Next() requires
 				// that i.skip=true only if i.iterPos = iterPosCurForward.
