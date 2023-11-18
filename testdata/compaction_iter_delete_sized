@@ -1860,3 +1860,22 @@ next
 a#5,0:
 .
 missized-dels=0
+
+# Regression test for #3087.
+#
+# Whne a DELSIZED and a SINGLEDEL meet in a compaction, a DEL key should be
+# emitted.
+
+define
+a.DELSIZED.5:
+a.SINGLEDEL.3:
+a.SET.2:foo
+a.SET.1:bar
+----
+
+iter
+first
+next
+----
+a#5,0:
+.
