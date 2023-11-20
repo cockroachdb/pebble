@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/redact"
 )
 
 // compactionIter provides a forward-only iterator that encapsulates the logic
@@ -484,8 +485,14 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			case InternalKeyKindSingleDelete:
 				if i.singleDeleteNext() {
 					return &i.key, i.value
+				} else if i.err != nil {
+					return nil, nil
 				}
 				continue
+
+			default:
+				panic(errors.AssertionFailedf(
+					"unexpected kind %s", redact.SafeString(i.iterKey.Kind().String())))
 			}
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
@@ -495,6 +502,9 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			// preserving the original value, and potentially mutating the key
 			// kind.
 			i.setNext()
+			if i.err != nil {
+				return nil, nil
+			}
 			return &i.key, i.value
 
 		case InternalKeyKindMerge:
@@ -511,7 +521,15 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			if i.err == nil {
 				// includesBase is true whenever we've transformed the MERGE record
 				// into a SET.
-				includesBase := i.key.Kind() == InternalKeyKindSet
+				var includesBase bool
+				switch i.key.Kind() {
+				case InternalKeyKindSet:
+					includesBase = true
+				case InternalKeyKindMerge:
+				default:
+					panic(errors.AssertionFailedf(
+						"unexpected kind %s", redact.SafeString(i.key.Kind().String())))
+				}
 				i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, includesBase)
 			}
 			if i.err == nil {
@@ -540,6 +558,8 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			}
 			if i.err != nil {
 				i.valid = false
+				// TODO(sumeer): why is MarkCorruptionError only being called for
+				// MERGE?
 				i.err = base.MarkCorruptionError(i.err)
 			}
 			return nil, nil
@@ -580,9 +600,15 @@ func snapshotIndex(seq uint64, snapshots []uint64) (int, uint64) {
 }
 
 // skipInStripe skips over skippable keys in the same stripe and user key.
+//
+// TODO(sumeer): skipInStripe() can return with i.err != nil and i.iterKey set
+// to nil, but callers don't look at i.err.
 func (i *compactionIter) skipInStripe() {
 	i.skip = true
 	for i.nextInStripe() == sameStripeSkippable {
+		if i.err != nil {
+			panic(i.err)
+		}
 	}
 	// Reset skip if we landed outside the original stripe. Otherwise, we landed
 	// in the same stripe on a non-skippable key. In that case we should preserve
@@ -625,6 +651,9 @@ const (
 // proceed with a reference to the original key. Care should be taken to avoid
 // overwriting or mutating the saved key or value before they have been returned
 // to the caller of the exported function (i.e. the caller of Next, First, etc.)
+//
+// nextInStripe may set i.err, in which case the return value will be
+// newStripeNewKey, and i.iterKey will be nil.
 func (i *compactionIter) nextInStripe() stripeChangeType {
 	i.iterStripeChange = i.nextInStripeHelper()
 	return i.iterStripeChange
@@ -680,6 +709,14 @@ func (i *compactionIter) nextInStripeHelper() stripeChangeType {
 			return sameStripeNonSkippable
 		}
 		return newStripeSameKey
+	case InternalKeyKindDelete, InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindSingleDelete,
+		InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
+		// Fall through
+	default:
+		i.iterKey = nil
+		i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
+		i.valid = false
+		return newStripeNewKey
 	}
 	if i.curSnapshotIdx == origSnapshotIdx {
 		return sameStripeSkippable
@@ -760,12 +797,16 @@ func (i *compactionIter) setNext() {
 			// We're still in the same stripe. If this is a
 			// DEL/SINGLEDEL/DELSIZED, we stop looking and emit a SETWITHDEL.
 			// Subsequent keys are eligible for skipping.
-			if i.iterKey.Kind() == InternalKeyKindDelete ||
-				i.iterKey.Kind() == InternalKeyKindSingleDelete ||
-				i.iterKey.Kind() == InternalKeyKindDeleteSized {
+			switch i.iterKey.Kind() {
+			case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 				i.key.SetKind(InternalKeyKindSetWithDelete)
 				i.skip = true
 				return
+			case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindSetWithDelete:
+				// Do nothing
+			default:
+				i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
+				i.valid = false
 			}
 		default:
 			panic("pebble: unexpected stripeChangeType: " + strconv.Itoa(int(i.iterStripeChange)))
@@ -784,6 +825,9 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 		if i.nextInStripe() != sameStripeSkippable {
 			i.pos = iterPosNext
 			return i.iterStripeChange
+		}
+		if i.err != nil {
+			panic(i.err)
 		}
 		key := i.iterKey
 		switch key.Kind() {
@@ -881,9 +925,11 @@ func (i *compactionIter) singleDeleteNext() bool {
 		// caller yields the SingleDelete to the caller.
 		if i.nextInStripe() != sameStripeSkippable {
 			i.pos = iterPosNext
-			return true
+			return i.err == nil
 		}
-
+		if i.err != nil {
+			panic(i.err)
+		}
 		key := i.iterKey
 		switch key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindMerge, InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
@@ -949,6 +995,9 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 	// Loop through all the keys within this stripe that are skippable.
 	i.pos = iterPosNext
 	for i.nextInStripe() == sameStripeSkippable {
+		if i.err != nil {
+			panic(i.err)
+		}
 		switch i.iterKey.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindDeleteSized, InternalKeyKindSingleDelete:
 			// We encountered a tombstone (DEL, or DELSIZED) that's deleted by
@@ -1001,7 +1050,8 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 			}
 			// Continue, in case we uncover another DELSIZED or a key this
 			// DELSIZED deletes.
-		default:
+
+		case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindSetWithDelete:
 			// If the DELSIZED is value-less, it already deleted the key that it
 			// was intended to delete. This is possible with a sequence like:
 			//
@@ -1053,6 +1103,11 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 			// appropriately. The size encoded is 'consumed' the first time it
 			// meets a key that it deletes.
 			i.value = i.valueBuf[:0]
+
+		default:
+			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
+			i.valid = false
+			return nil, nil
 		}
 	}
 	// Reset skip if we landed outside the original stripe. Otherwise, we landed
@@ -1061,6 +1116,9 @@ func (i *compactionIter) deleteSizedNext() (*base.InternalKey, []byte) {
 	// skipped.
 	if i.iterStripeChange == newStripeNewKey || i.iterStripeChange == newStripeSameKey {
 		i.skip = false
+	}
+	if i.err != nil {
+		return nil, nil
 	}
 	return &i.key, i.value
 }
