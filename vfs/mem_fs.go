@@ -117,11 +117,11 @@ func (y *MemFS) String() string {
 // SetIgnoreSyncs sets the MemFS.ignoreSyncs field. See the usage comment with NewStrictMem() for
 // details.
 func (y *MemFS) SetIgnoreSyncs(ignoreSyncs bool) {
-	y.mu.Lock()
 	if !y.strict {
 		// noop
 		return
 	}
+	y.mu.Lock()
 	y.ignoreSyncs = ignoreSyncs
 	y.mu.Unlock()
 }
