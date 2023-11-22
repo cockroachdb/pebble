@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -67,7 +66,7 @@ func NewStrictMem() *MemFS {
 func NewMemFile(data []byte) File {
 	n := &memNode{}
 	n.refs.Store(1)
-	n.mu.data = data
+	n.mu.data.data = data
 	n.mu.modTime = time.Now()
 	return &memFile{
 		n:    n,
@@ -563,9 +562,8 @@ type memNode struct {
 	//   these are protected using MemFS.mu.
 	mu struct {
 		sync.Mutex
-		data       []byte
-		syncedData []byte
-		modTime    time.Time
+		data    sliceWithSync
+		modTime time.Time
 	}
 
 	children       map[string]*memNode
@@ -584,7 +582,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 		w.WriteString("          ")
 	} else {
 		f.mu.Lock()
-		fmt.Fprintf(w, "%8d  ", len(f.mu.data))
+		fmt.Fprintf(w, "%8d  ", len(f.mu.data.data))
 		f.mu.Unlock()
 	}
 	for i := 0; i < level; i++ {
@@ -620,7 +618,7 @@ func (f *memNode) resetToSyncedState() {
 		}
 	} else {
 		f.mu.Lock()
-		f.mu.data = slices.Clone(f.mu.syncedData)
+		f.mu.data.reset()
 		f.mu.Unlock()
 	}
 }
@@ -656,10 +654,10 @@ func (f *memFile) Read(p []byte) (int, error) {
 	}
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
-	if f.rpos >= len(f.n.mu.data) {
+	if f.rpos >= len(f.n.mu.data.data) {
 		return 0, io.EOF
 	}
-	n := copy(p, f.n.mu.data[f.rpos:])
+	n := copy(p, f.n.mu.data.data[f.rpos:])
 	f.rpos += n
 	return n, nil
 }
@@ -673,10 +671,10 @@ func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
 	}
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
-	if off >= int64(len(f.n.mu.data)) {
+	if off >= int64(len(f.n.mu.data.data)) {
 		return 0, io.EOF
 	}
-	n := copy(p, f.n.mu.data[off:])
+	n := copy(p, f.n.mu.data.data[off:])
 	if n < len(p) {
 		return n, io.EOF
 	}
@@ -693,14 +691,7 @@ func (f *memFile) Write(p []byte) (int, error) {
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
 	f.n.mu.modTime = time.Now()
-	if f.wpos+len(p) <= len(f.n.mu.data) {
-		n := copy(f.n.mu.data[f.wpos:f.wpos+len(p)], p)
-		if n != len(p) {
-			panic("stuff")
-		}
-	} else {
-		f.n.mu.data = append(f.n.mu.data[:f.wpos], p...)
-	}
+	f.n.mu.data.writeAt(p, f.wpos)
 	f.wpos += len(p)
 
 	if invariants.Enabled {
@@ -723,16 +714,8 @@ func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
 	f.n.mu.modTime = time.Now()
-
-	for len(f.n.mu.data) < int(ofs)+len(p) {
-		f.n.mu.data = append(f.n.mu.data, 0)
-	}
-
-	n := copy(f.n.mu.data[int(ofs):int(ofs)+len(p)], p)
-	if n != len(p) {
-		panic("stuff")
-	}
-
+	f.n.mu.data.grow(int(ofs) + len(p))
+	f.n.mu.data.writeAt(p, int(ofs))
 	return len(p), nil
 }
 
@@ -744,7 +727,7 @@ func (f *memFile) Stat() (os.FileInfo, error) {
 	defer f.n.mu.Unlock()
 	return &memFileInfo{
 		name:    f.name,
-		size:    int64(len(f.n.mu.data)),
+		size:    int64(len(f.n.mu.data.data)),
 		modTime: f.n.mu.modTime,
 		isDir:   f.n.isDir,
 	}, nil
@@ -766,7 +749,7 @@ func (f *memFile) Sync() error {
 		}
 	} else {
 		f.n.mu.Lock()
-		f.n.mu.syncedData = slices.Clone(f.n.mu.data)
+		f.n.mu.data.sync()
 		f.n.mu.Unlock()
 	}
 	return nil
@@ -844,4 +827,65 @@ func (l *memFileLock) Close() error {
 	l.y.lockedFiles.Delete(l.fullname)
 	l.y = nil
 	return l.f.Close()
+}
+
+// sliceWithSync is a []byte slice that can sync and rollback to the last synced
+// version. It is most efficient for append-only workloads (as efficient as a
+// regular slice).
+type sliceWithSync struct {
+	data   []byte
+	synced []byte
+
+	// INVARIANT: forked == false iff synced is a prefix of data, and is backed by
+	// the same slice.
+	//
+	// If forked == false, it is only safe to modify the data slice starting from
+	// index len(synced). The data slice is immutable up to len(synced).
+	//
+	// If forked == true, it is safe to modify the data slice freely at any index.
+	forked bool
+}
+
+func (s *sliceWithSync) writeAt(data []byte, at int) {
+	if at > len(s.data) {
+		panic(fmt.Sprintf("index %d out of bounds (len = %d)", at, len(data)))
+	} else if len(data) == 0 {
+		return // nothing to write
+	}
+	var suffix []byte
+	if end := at + len(data); end < len(s.data) {
+		suffix = s.data[end:]
+	}
+	if !s.forked && at < len(s.synced) {
+		s.data = append(append(s.data[:at:at], data...), suffix...)
+		s.forked = true
+		return
+	}
+	if len(suffix) == 0 {
+		s.data = append(s.data[:at], data...)
+	} else {
+		copy(s.data[at:], data)
+	}
+}
+
+func (s *sliceWithSync) grow(size int) {
+	if size <= len(s.data) {
+		return
+	}
+	for i := len(s.data); i < size; i++ {
+		s.data = append(s.data, 0)
+	}
+}
+
+// sync checkpoints the slice at the current state.
+func (s *sliceWithSync) sync() {
+	s.synced = s.data
+	s.forked = false
+}
+
+// reset rollbacks the slice to the last sync-ed state, or empty if there was no
+// sync before.
+func (s *sliceWithSync) reset() {
+	s.data = s.synced
+	s.forked = false
 }
