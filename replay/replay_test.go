@@ -507,6 +507,9 @@ func TestCompactionsQuiesce(t *testing.T) {
 			wait := 30 * time.Second
 			if invariants.Enabled {
 				wait = time.Minute
+				if invariants.RaceEnabled {
+					wait = 5 * time.Minute
+				}
 			}
 
 			// The above call to [Wait] should eventually return. [Wait] blocks
