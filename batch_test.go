@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -17,6 +18,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -49,8 +51,11 @@ func testBatch(t *testing.T, size int) {
 				tc.kind == InternalKeyKindRangeDelete) {
 				continue
 			}
-			kind, k, v, ok := r.Next()
+			kind, k, v, ok, err := r.Next()
 			if !ok {
+				if err != nil {
+					t.Fatal(err)
+				}
 				t.Fatalf("next returned !ok: test case = %v", tc)
 			}
 			key, value := string(k), string(v)
@@ -673,7 +678,9 @@ func TestIndexedBatch_GlobalVisibility(t *testing.T) {
 
 func TestFlushableBatchReset(t *testing.T) {
 	var b Batch
-	b.flushable = newFlushableBatch(&b, DefaultComparer)
+	var err error
+	b.flushable, err = newFlushableBatch(&b, DefaultComparer)
+	require.NoError(t, err)
 
 	b.Reset()
 	require.Nil(t, b.flushable)
@@ -1023,7 +1030,9 @@ func TestFlushableBatchIter(t *testing.T) {
 				value := []byte(fmt.Sprint(ikey.SeqNum()))
 				batch.Set(ikey.UserKey, value, nil)
 			}
-			b = newFlushableBatch(batch, DefaultComparer)
+			var err error
+			b, err = newFlushableBatch(batch, DefaultComparer)
+			require.NoError(t, err)
 			return ""
 
 		case "iter":
@@ -1064,7 +1073,9 @@ func TestFlushableBatch(t *testing.T) {
 					require.NoError(t, batch.RangeKeyUnset(ikey.UserKey, value, value, nil))
 				}
 			}
-			b = newFlushableBatch(batch, DefaultComparer)
+			var err error
+			b, err = newFlushableBatch(batch, DefaultComparer)
+			require.NoError(t, err)
 			return ""
 
 		case "iter":
@@ -1142,7 +1153,9 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			if err := runBatchDefineCmd(td, b); err != nil {
 				return err.Error()
 			}
-			fb = newFlushableBatch(b, DefaultComparer)
+			var err error
+			fb, err = newFlushableBatch(b, DefaultComparer)
+			require.NoError(t, err)
 			return ""
 
 		case "scan":
@@ -1183,7 +1196,8 @@ func TestFlushableBatchBytesIterated(t *testing.T) {
 		value := make([]byte, 7+j%5)
 		batch.Set(key, value, nil)
 
-		fb := newFlushableBatch(batch, DefaultComparer)
+		fb, err := newFlushableBatch(batch, DefaultComparer)
+		require.NoError(t, err)
 
 		var bytesIterated uint64
 		it := fb.newFlushIter(nil, &bytesIterated)
@@ -1205,7 +1219,8 @@ func TestFlushableBatchBytesIterated(t *testing.T) {
 
 func TestEmptyFlushableBatch(t *testing.T) {
 	// Verify that we can create a flushable batch on an empty batch.
-	fb := newFlushableBatch(newBatch(nil), DefaultComparer)
+	fb, err := newFlushableBatch(newBatch(nil), DefaultComparer)
+	require.NoError(t, err)
 	it := newInternalIterAdapter(fb.newIter(nil))
 	require.False(t, it.First())
 }
@@ -1350,6 +1365,52 @@ func TestBatchCommitStats(t *testing.T) {
 		}
 	}
 	require.NoError(t, err)
+}
+
+func TestBatchReader(t *testing.T) {
+	datadriven.RunTest(t, "testdata/batch_reader", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "scan":
+			var repr bytes.Buffer
+			for i, l := range strings.Split(td.Input, "\n") {
+				// Remove any trailing comments behind #.
+				if i := strings.IndexRune(l, '#'); i >= 0 {
+					l = l[:i]
+				}
+				// Strip all whitespace from the line.
+				l = strings.Map(func(r rune) rune {
+					if unicode.IsSpace(r) {
+						return -1
+					}
+					return r
+				}, l)
+				b, err := hex.DecodeString(l)
+				if err != nil {
+					return fmt.Sprintf("failed to decode hex; line %d", i)
+				}
+				repr.Write(b)
+			}
+			r, count := ReadBatch(repr.Bytes())
+			var out strings.Builder
+			fmt.Fprintf(&out, "Count: %d\n", count)
+			for {
+				kind, ukey, value, ok, err := r.Next()
+				if !ok {
+					if err != nil {
+						fmt.Fprintf(&out, "err: %s\n", err)
+					} else {
+						fmt.Fprint(&out, "eof")
+					}
+					break
+				}
+				fmt.Fprintf(&out, "%s: %q: %q\n", kind, ukey, value)
+			}
+			return out.String()
+
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
 }
 
 func BenchmarkBatchSet(b *testing.B) {

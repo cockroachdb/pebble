@@ -749,8 +749,11 @@ func (o *ingestOp) collapseBatch(
 	// private.BatchSort.
 	if rangeKeyIter != nil {
 		for r := b.Reader(); ; {
-			kind, key, value, ok := r.Next()
+			kind, key, value, ok, err := r.Next()
 			if !ok {
+				if err != nil {
+					return nil, err
+				}
 				break
 			} else if !rangekey.IsRangeKey(kind) {
 				continue

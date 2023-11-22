@@ -844,10 +844,16 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 	batch.committing = true
 
 	if batch.db == nil {
-		batch.refreshMemTableSize()
+		if err := batch.refreshMemTableSize(); err != nil {
+			return err
+		}
 	}
 	if batch.memTableSize >= d.largeBatchThreshold {
-		batch.flushable = newFlushableBatch(batch, d.opts.Comparer)
+		var err error
+		batch.flushable, err = newFlushableBatch(batch, d.opts.Comparer)
+		if err != nil {
+			return err
+		}
 	}
 	if err := d.commit.Commit(batch, sync, noSyncWait); err != nil {
 		// There isn't much we can do on an error here. The commit pipeline will be
