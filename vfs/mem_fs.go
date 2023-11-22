@@ -773,22 +773,23 @@ func (f *memFile) Stat() (os.FileInfo, error) {
 }
 
 func (f *memFile) Sync() error {
-	if f.fs != nil && f.fs.strict {
-		f.fs.mu.Lock()
-		defer f.fs.mu.Unlock()
-		if f.fs.ignoreSyncs {
-			return nil
+	if f.fs == nil || !f.fs.strict {
+		return nil
+	}
+	f.fs.mu.Lock()
+	defer f.fs.mu.Unlock()
+	if f.fs.ignoreSyncs {
+		return nil
+	}
+	if f.n.isDir {
+		f.n.syncedChildren = make(map[string]*memNode)
+		for k, v := range f.n.children {
+			f.n.syncedChildren[k] = v
 		}
-		if f.n.isDir {
-			f.n.syncedChildren = make(map[string]*memNode)
-			for k, v := range f.n.children {
-				f.n.syncedChildren[k] = v
-			}
-		} else {
-			f.n.mu.Lock()
-			f.n.mu.syncedData = slices.Clone(f.n.mu.data)
-			f.n.mu.Unlock()
-		}
+	} else {
+		f.n.mu.Lock()
+		f.n.mu.syncedData = slices.Clone(f.n.mu.data)
+		f.n.mu.Unlock()
 	}
 	return nil
 }
