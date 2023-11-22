@@ -119,14 +119,17 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 
 				b = pebble.Batch{}
 				if err := b.SetRepr(buf.Bytes()); err != nil {
-					fmt.Fprintf(stdout, "corrupt log file %q: %v", arg, err)
+					fmt.Fprintf(stdout, "corrupt batch within log file %q: %v", arg, err)
 					return
 				}
 				fmt.Fprintf(stdout, "%d(%d) seq=%d count=%d\n",
 					offset, len(b.Repr()), b.SeqNum(), b.Count())
 				for r, idx := b.Reader(), 0; ; idx++ {
-					kind, ukey, value, ok := r.Next()
+					kind, ukey, value, ok, err := r.Next()
 					if !ok {
+						if err != nil {
+							fmt.Fprintf(stdout, "corrupt batch within log file %q: %v", arg, err)
+						}
 						break
 					}
 					fmt.Fprintf(stdout, "    %s(", kind)

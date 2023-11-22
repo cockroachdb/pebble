@@ -238,7 +238,7 @@ a.SET.1:c
 iter
 first
 ----
-err=invalid internal key kind: 191
+err=invalid internal key kind: INVALID
 
 define
 a.SET.2:b
@@ -250,7 +250,7 @@ first
 next
 ----
 a#2,1:b
-err=invalid internal key kind: 191
+err=invalid internal key kind: INVALID
 
 define
 a.MERGE.2:b
@@ -262,7 +262,7 @@ first
 next
 ----
 a#2,2:b
-err=invalid internal key kind: 191
+err=invalid internal key kind: INVALID
 
 define
 a.INVALID.2:c
@@ -273,7 +273,7 @@ iter
 first
 tombstones
 ----
-err=invalid internal key kind: 191
+err=invalid internal key kind: INVALID
 .
 
 define
