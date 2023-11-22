@@ -118,8 +118,7 @@ func (y *MemFS) String() string {
 // details.
 func (y *MemFS) SetIgnoreSyncs(ignoreSyncs bool) {
 	if !y.strict {
-		// noop
-		return
+		panic("SetIgnoreSyncs can only be used on a strict MemFS")
 	}
 	y.mu.Lock()
 	y.ignoreSyncs = ignoreSyncs
@@ -130,8 +129,7 @@ func (y *MemFS) SetIgnoreSyncs(ignoreSyncs bool) {
 // NewStrictMem() for details.
 func (y *MemFS) ResetToSyncedState() {
 	if !y.strict {
-		// noop
-		return
+		panic("ResetToSyncedState can only be used on a strict MemFS")
 	}
 	y.mu.Lock()
 	y.root.resetToSyncedState()
