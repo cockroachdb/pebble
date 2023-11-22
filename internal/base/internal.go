@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/cockroachdb/redact"
 )
 
 const (
@@ -160,6 +162,11 @@ func (k InternalKeyKind) String() string {
 		return internalKeyKindNames[k]
 	}
 	return fmt.Sprintf("UNKNOWN:%d", k)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (k InternalKeyKind) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Print(redact.SafeString(k.String()))
 }
 
 // InternalKey is a key used for the in-memory and on-disk partial DBs that
