@@ -717,6 +717,11 @@ func (d *DB) replayWAL(
 		batchesReplayed int64 // number of batches replayed
 	)
 
+	// TODO(jackson): This function is interspersed with panics, in addition to
+	// corruption error propagation. Audit them to ensure we're truly only
+	// panicking where the error points to Pebble bug and not user or
+	// hardware-induced corruption.
+
 	if d.opts.ReadOnly {
 		// In read-only mode, we replay directly into the mutable memtable which will
 		// never be flushed.
@@ -771,6 +776,11 @@ func (d *DB) replayWAL(
 		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
 		return nil
 	}
+	defer func() {
+		if err != nil {
+			err = errors.WithDetailf(err, "replaying log %s, offset %d", logNum, offset)
+		}
+	}()
 
 	for {
 		offset = rr.Offset()
@@ -812,7 +822,9 @@ func (d *DB) replayWAL(
 		batchesReplayed++
 		{
 			br := b.Reader()
-			if kind, encodedFileNum, _, _ := br.Next(); kind == InternalKeyKindIngestSST {
+			if kind, encodedFileNum, _, ok, err := br.Next(); err != nil {
+				return nil, 0, err
+			} else if ok && kind == InternalKeyKindIngestSST {
 				fileNums := make([]base.DiskFileNum, 0, b.Count())
 				addFileNum := func(encodedFileNum []byte) {
 					fileNum, n := binary.Uvarint(encodedFileNum)
@@ -824,7 +836,10 @@ func (d *DB) replayWAL(
 				addFileNum(encodedFileNum)
 
 				for i := 1; i < int(b.Count()); i++ {
-					kind, encodedFileNum, _, ok := br.Next()
+					kind, encodedFileNum, _, ok, err := br.Next()
+					if err != nil {
+						return nil, 0, err
+					}
 					if kind != InternalKeyKindIngestSST {
 						panic("pebble: invalid batch key kind.")
 					}
@@ -834,7 +849,9 @@ func (d *DB) replayWAL(
 					addFileNum(encodedFileNum)
 				}
 
-				if _, _, _, ok := br.Next(); ok {
+				if _, _, _, ok, err := br.Next(); err != nil {
+					return nil, 0, err
+				} else if ok {
 					panic("pebble: invalid number of entries in batch.")
 				}
 
@@ -927,7 +944,10 @@ func (d *DB) replayWAL(
 			// Make a copy of the data slice since it is currently owned by buf and will
 			// be reused in the next iteration.
 			b.data = slices.Clone(b.data)
-			b.flushable = newFlushableBatch(&b, d.opts.Comparer)
+			b.flushable, err = newFlushableBatch(&b, d.opts.Comparer)
+			if err != nil {
+				return nil, 0, err
+			}
 			entry := d.newFlushableEntry(b.flushable, logNum, b.SeqNum())
 			// Disable memory accounting by adding a reader ref that will never be
 			// removed.

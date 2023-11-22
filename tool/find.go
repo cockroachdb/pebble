@@ -348,8 +348,12 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 				}
 				seqNum := b.SeqNum()
 				for r := b.Reader(); ; seqNum++ {
-					kind, ukey, value, ok := r.Next()
+					kind, ukey, value, ok, err := r.Next()
 					if !ok {
+						if err != nil {
+							fmt.Fprintf(stdout, "%s: corrupt log file: %v", path, err)
+							break
+						}
 						break
 					}
 					ikey := base.MakeInternalKey(ukey, seqNum, kind)

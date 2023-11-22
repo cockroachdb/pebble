@@ -205,7 +205,8 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 			}
 
 			br, _ := pebble.ReadBatch(b.Repr())
-			for kind, ukey, v, ok := br.Next(); ok; kind, ukey, v, ok = br.Next() {
+			kind, ukey, v, ok, err := br.Next()
+			for ; ok; kind, ukey, v, ok, err = br.Next() {
 				fmt.Fprintf(&buf, "%s.%s", ukey, kind)
 				switch kind {
 				case base.InternalKeyKindRangeDelete,
@@ -229,6 +230,9 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 					fmt.Fprintf(&buf, ": %x", v)
 				}
 				fmt.Fprintln(&buf)
+			}
+			if err != nil {
+				fmt.Fprintf(&buf, "err: %s\n", err)
 			}
 
 			s := buf.String()
