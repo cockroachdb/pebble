@@ -70,8 +70,8 @@ func NewMemFile(data []byte) File {
 	n.mu.data = data
 	n.mu.modTime = time.Now()
 	return &memFile{
-		n:    n,
-		read: true,
+		memNode: n,
+		read:    true,
 	}
 }
 
@@ -110,7 +110,7 @@ func (y *MemFS) String() string {
 	defer y.mu.Unlock()
 
 	s := new(bytes.Buffer)
-	y.root.dump(s, 0)
+	y.root.dump(s, 0, "/")
 	return s.String()
 }
 
@@ -211,13 +211,14 @@ func (y *MemFS) Create(fullname string) (File, error) {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			n := &memNode{name: frag}
+			n := &memNode{}
 			dir.children[frag] = n
 			ret = &memFile{
-				n:     n,
-				fs:    y,
-				read:  true,
-				write: true,
+				memNode: n,
+				name:    frag,
+				fs:      y,
+				read:    true,
+				write:   true,
 			}
 		}
 		return nil
@@ -225,7 +226,7 @@ func (y *MemFS) Create(fullname string) (File, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret.n.refs.Add(1)
+	ret.refs.Add(1)
 	return ret, nil
 }
 
@@ -277,17 +278,19 @@ func (y *MemFS) open(fullname string, openForWrite bool) (File, error) {
 		if final {
 			if frag == "" {
 				ret = &memFile{
-					n:  dir,
-					fs: y,
+					memNode: dir,
+					name:    "", // FIXME
+					fs:      y,
 				}
 				return nil
 			}
 			if n := dir.children[frag]; n != nil {
 				ret = &memFile{
-					n:     n,
-					fs:    y,
-					read:  true,
-					write: openForWrite,
+					memNode: n,
+					name:    frag,
+					fs:      y,
+					read:    true,
+					write:   openForWrite,
 				}
 			}
 		}
@@ -303,7 +306,7 @@ func (y *MemFS) open(fullname string, openForWrite bool) (File, error) {
 			Err:  oserror.ErrNotExist,
 		}
 	}
-	ret.n.refs.Add(1)
+	ret.refs.Add(1)
 	return ret, nil
 }
 
@@ -408,7 +411,6 @@ func (y *MemFS) Rename(oldname, newname string) error {
 				return errors.New("pebble/vfs: empty file name")
 			}
 			dir.children[frag] = n
-			n.name = frag
 		}
 		return nil
 	})
@@ -444,7 +446,6 @@ func (y *MemFS) MkdirAll(dirname string, perm os.FileMode) error {
 		child := dir.children[frag]
 		if child == nil {
 			dir.children[frag] = &memNode{
-				name:     frag,
 				children: make(map[string]*memNode),
 				isDir:    true,
 			}
@@ -553,7 +554,6 @@ func (*MemFS) GetDiskUsage(string) (DiskUsage, error) {
 
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
 type memNode struct {
-	name  string
 	isDir bool
 	refs  atomic.Int32
 
@@ -576,7 +576,6 @@ type memNode struct {
 
 func newRootMemNode() *memNode {
 	return &memNode{
-		name:     "/", // set the name to match what file systems do
 		children: make(map[string]*memNode),
 		isDir:    true,
 	}
@@ -599,7 +598,7 @@ func (f *memNode) Mode() os.FileMode {
 	return 0755
 }
 
-func (f *memNode) Name() string {
+func (f *memFile) Name() string {
 	return f.name
 }
 
@@ -613,7 +612,7 @@ func (f *memNode) Sys() interface{} {
 	return nil
 }
 
-func (f *memNode) dump(w *bytes.Buffer, level int) {
+func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 	if f.isDir {
 		w.WriteString("          ")
 	} else {
@@ -624,7 +623,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 	for i := 0; i < level; i++ {
 		w.WriteString("  ")
 	}
-	w.WriteString(f.name)
+	w.WriteString(name)
 	if !f.isDir {
 		w.WriteByte('\n')
 		return
@@ -639,7 +638,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		f.children[name].dump(w, level+1)
+		f.children[name].dump(w, level+1, name)
 	}
 }
 
@@ -661,7 +660,8 @@ func (f *memNode) resetToSyncedState() {
 
 // memFile is a reader or writer of a node's data, and implements File.
 type memFile struct {
-	n           *memNode
+	*memNode
+	name        string
 	fs          *MemFS // nil for a standalone memFile
 	rpos        int
 	wpos        int
@@ -671,10 +671,10 @@ type memFile struct {
 var _ File = (*memFile)(nil)
 
 func (f *memFile) Close() error {
-	if n := f.n.refs.Add(-1); n < 0 {
+	if n := f.refs.Add(-1); n < 0 {
 		panic(fmt.Sprintf("pebble: close of unopened file: %d", n))
 	}
-	f.n = nil
+	f.memNode = nil
 	return nil
 }
 
@@ -682,15 +682,15 @@ func (f *memFile) Read(p []byte) (int, error) {
 	if !f.read {
 		return 0, errors.New("pebble/vfs: file was not opened for reading")
 	}
-	if f.n.isDir {
+	if f.isDir {
 		return 0, errors.New("pebble/vfs: cannot read a directory")
 	}
-	f.n.mu.Lock()
-	defer f.n.mu.Unlock()
-	if f.rpos >= len(f.n.mu.data) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rpos >= len(f.mu.data) {
 		return 0, io.EOF
 	}
-	n := copy(p, f.n.mu.data[f.rpos:])
+	n := copy(p, f.mu.data[f.rpos:])
 	f.rpos += n
 	return n, nil
 }
@@ -699,15 +699,15 @@ func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
 	if !f.read {
 		return 0, errors.New("pebble/vfs: file was not opened for reading")
 	}
-	if f.n.isDir {
+	if f.isDir {
 		return 0, errors.New("pebble/vfs: cannot read a directory")
 	}
-	f.n.mu.Lock()
-	defer f.n.mu.Unlock()
-	if off >= int64(len(f.n.mu.data)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if off >= int64(len(f.mu.data)) {
 		return 0, io.EOF
 	}
-	n := copy(p, f.n.mu.data[off:])
+	n := copy(p, f.mu.data[off:])
 	if n < len(p) {
 		return n, io.EOF
 	}
@@ -718,19 +718,19 @@ func (f *memFile) Write(p []byte) (int, error) {
 	if !f.write {
 		return 0, errors.New("pebble/vfs: file was not created for writing")
 	}
-	if f.n.isDir {
+	if f.isDir {
 		return 0, errors.New("pebble/vfs: cannot write a directory")
 	}
-	f.n.mu.Lock()
-	defer f.n.mu.Unlock()
-	f.n.mu.modTime = time.Now()
-	if f.wpos+len(p) <= len(f.n.mu.data) {
-		n := copy(f.n.mu.data[f.wpos:f.wpos+len(p)], p)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mu.modTime = time.Now()
+	if f.wpos+len(p) <= len(f.mu.data) {
+		n := copy(f.mu.data[f.wpos:f.wpos+len(p)], p)
 		if n != len(p) {
 			panic("stuff")
 		}
 	} else {
-		f.n.mu.data = append(f.n.mu.data[:f.wpos], p...)
+		f.mu.data = append(f.mu.data[:f.wpos], p...)
 	}
 	f.wpos += len(p)
 
@@ -748,18 +748,18 @@ func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
 	if !f.write {
 		return 0, errors.New("pebble/vfs: file was not created for writing")
 	}
-	if f.n.isDir {
+	if f.isDir {
 		return 0, errors.New("pebble/vfs: cannot write a directory")
 	}
-	f.n.mu.Lock()
-	defer f.n.mu.Unlock()
-	f.n.mu.modTime = time.Now()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mu.modTime = time.Now()
 
-	for len(f.n.mu.data) < int(ofs)+len(p) {
-		f.n.mu.data = append(f.n.mu.data, 0)
+	for len(f.mu.data) < int(ofs)+len(p) {
+		f.mu.data = append(f.mu.data, 0)
 	}
 
-	n := copy(f.n.mu.data[int(ofs):int(ofs)+len(p)], p)
+	n := copy(f.mu.data[int(ofs):int(ofs)+len(p)], p)
 	if n != len(p) {
 		panic("stuff")
 	}
@@ -771,7 +771,7 @@ func (f *memFile) Prefetch(offset int64, length int64) error { return nil }
 func (f *memFile) Preallocate(offset, length int64) error    { return nil }
 
 func (f *memFile) Stat() (os.FileInfo, error) {
-	return f.n, nil
+	return f, nil
 }
 
 func (f *memFile) Sync() error {
@@ -781,15 +781,15 @@ func (f *memFile) Sync() error {
 		if f.fs.ignoreSyncs {
 			return nil
 		}
-		if f.n.isDir {
-			f.n.syncedChildren = make(map[string]*memNode)
-			for k, v := range f.n.children {
-				f.n.syncedChildren[k] = v
+		if f.isDir {
+			f.syncedChildren = make(map[string]*memNode)
+			for k, v := range f.children {
+				f.syncedChildren[k] = v
 			}
 		} else {
-			f.n.mu.Lock()
-			f.n.mu.syncedData = slices.Clone(f.n.mu.data)
-			f.n.mu.Unlock()
+			f.mu.Lock()
+			f.mu.syncedData = slices.Clone(f.mu.data)
+			f.mu.Unlock()
 		}
 	}
 	return nil
