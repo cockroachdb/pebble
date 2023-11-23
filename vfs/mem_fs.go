@@ -180,7 +180,7 @@ func (y *MemFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 		if final {
 			break
 		}
-		child := dir.children[frag]
+		child := dir.find(frag)
 		if child == nil {
 			return &os.PathError{
 				Op:   "open",
@@ -209,7 +209,7 @@ func (y *MemFS) Create(fullname string) (File, error) {
 				return errors.New("pebble/vfs: empty file name")
 			}
 			n := &memNode{}
-			dir.children[frag] = n
+			dir.editedChildren[frag] = n
 			ret = &memFile{
 				name:  frag,
 				n:     n,
@@ -235,7 +235,7 @@ func (y *MemFS) Link(oldname, newname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			n = dir.children[frag]
+			n = dir.find(frag)
 		}
 		return nil
 	})
@@ -255,7 +255,7 @@ func (y *MemFS) Link(oldname, newname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			if _, ok := dir.children[frag]; ok {
+			if dir.find(frag) != nil {
 				return &os.LinkError{
 					Op:  "link",
 					Old: oldname,
@@ -263,7 +263,7 @@ func (y *MemFS) Link(oldname, newname string) error {
 					Err: oserror.ErrExist,
 				}
 			}
-			dir.children[frag] = n
+			dir.editedChildren[frag] = n
 		}
 		return nil
 	})
@@ -281,7 +281,7 @@ func (y *MemFS) open(fullname string, openForWrite bool) (File, error) {
 				}
 				return nil
 			}
-			if n := dir.children[frag]; n != nil {
+			if n := dir.find(frag); n != nil {
 				ret = &memFile{
 					name:  frag,
 					n:     n,
@@ -334,8 +334,8 @@ func (y *MemFS) Remove(fullname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			child, ok := dir.children[frag]
-			if !ok {
+			child := dir.find(frag)
+			if child == nil {
 				return oserror.ErrNotExist
 			}
 			if y.windowsSemantics {
@@ -347,10 +347,10 @@ func (y *MemFS) Remove(fullname string) error {
 					return oserror.ErrInvalid
 				}
 			}
-			if len(child.children) > 0 {
+			if !child.empty() {
 				return errNotEmpty
 			}
-			delete(dir.children, frag)
+			dir.remove(frag)
 		}
 		return nil
 	})
@@ -363,11 +363,10 @@ func (y *MemFS) RemoveAll(fullname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			_, ok := dir.children[frag]
-			if !ok {
+			if dir.find(frag) == nil {
 				return nil
 			}
-			delete(dir.children, frag)
+			dir.remove(frag)
 		}
 		return nil
 	})
@@ -387,8 +386,10 @@ func (y *MemFS) Rename(oldname, newname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			n = dir.children[frag]
-			delete(dir.children, frag)
+			if n = dir.find(frag); n == nil {
+				return nil
+			}
+			dir.remove(frag)
 		}
 		return nil
 	})
@@ -407,7 +408,7 @@ func (y *MemFS) Rename(oldname, newname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			dir.children[frag] = n
+			dir.editedChildren[frag] = n
 		}
 		return nil
 	})
@@ -440,11 +441,12 @@ func (y *MemFS) MkdirAll(dirname string, perm os.FileMode) error {
 			}
 			return errors.New("pebble/vfs: empty file name")
 		}
-		child := dir.children[frag]
+		child := dir.find(frag)
 		if child == nil {
-			dir.children[frag] = &memNode{
-				children: make(map[string]*memNode),
-				isDir:    true,
+			dir.editedChildren[frag] = &memNode{
+				syncedChildren: make(map[string]*memNode),
+				editedChildren: make(map[string]*memNode),
+				isDir:          true,
 			}
 			return nil
 		}
@@ -500,10 +502,7 @@ func (y *MemFS) List(dirname string) ([]string, error) {
 			if frag != "" {
 				panic("unreachable")
 			}
-			ret = make([]string, 0, len(dir.children))
-			for s := range dir.children {
-				ret = append(ret, s)
-			}
+			ret = dir.children()
 		}
 		return nil
 	})
@@ -566,15 +565,60 @@ type memNode struct {
 		modTime time.Time
 	}
 
-	children       map[string]*memNode
+	// INVARIANT: editedChildren[k] == (nil, ok) only if syncedChildren[k] != nil
 	syncedChildren map[string]*memNode
+	editedChildren map[string]*memNode
 }
 
 func newRootMemNode() *memNode {
 	return &memNode{
-		children: make(map[string]*memNode),
-		isDir:    true,
+		syncedChildren: make(map[string]*memNode),
+		editedChildren: make(map[string]*memNode),
+		isDir:          true,
 	}
+}
+
+func (f *memNode) find(name string) *memNode {
+	child, found := f.editedChildren[name]
+	if !found {
+		child = f.syncedChildren[name]
+	}
+	return child
+}
+
+func (f *memNode) remove(name string) {
+	if _, existed := f.syncedChildren[name]; existed {
+		f.editedChildren[name] = nil // tombstone
+	} else {
+		delete(f.editedChildren, name)
+	}
+}
+
+func (f *memNode) children() []string {
+	names := make([]string, 0, len(f.syncedChildren)+len(f.editedChildren))
+	for name := range f.syncedChildren {
+		if _, updated := f.editedChildren[name]; !updated {
+			names = append(names, name)
+		}
+	}
+	for name, n := range f.editedChildren {
+		if n != nil { // skip tombstones
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func (f *memNode) empty() bool {
+	for _, n := range f.editedChildren {
+		if n != nil {
+			return false
+		}
+	}
+	// All editedChildren contain a tombstone. By the invariant, they all existed
+	// before in syncedChildren. If there were no more children other than those,
+	// then the current list is empty.
+	return len(f.editedChildren) == len(f.syncedChildren)
 }
 
 func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
@@ -597,23 +641,17 @@ func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 		w.WriteByte(sep[0])
 	}
 	w.WriteByte('\n')
-	names := make([]string, 0, len(f.children))
-	for name := range f.children {
-		names = append(names, name)
-	}
+	names := f.children()
 	sort.Strings(names)
 	for _, name := range names {
-		f.children[name].dump(w, level+1, name)
+		f.find(name).dump(w, level+1, name)
 	}
 }
 
 func (f *memNode) resetToSyncedState() {
 	if f.isDir {
-		f.children = make(map[string]*memNode)
-		for k, v := range f.syncedChildren {
-			f.children[k] = v
-		}
-		for _, v := range f.children {
+		clear(f.editedChildren)
+		for _, v := range f.syncedChildren {
 			v.resetToSyncedState()
 		}
 	} else {
@@ -743,10 +781,14 @@ func (f *memFile) Sync() error {
 		return nil
 	}
 	if f.n.isDir {
-		f.n.syncedChildren = make(map[string]*memNode)
-		for k, v := range f.n.children {
-			f.n.syncedChildren[k] = v
+		for k, v := range f.n.editedChildren {
+			if v == nil {
+				delete(f.n.syncedChildren, k)
+			} else {
+				f.n.syncedChildren[k] = v
+			}
 		}
+		clear(f.n.editedChildren)
 	} else {
 		f.n.mu.Lock()
 		f.n.mu.data.sync()
