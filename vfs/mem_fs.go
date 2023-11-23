@@ -114,6 +114,46 @@ func (y *MemFS) String() string {
 	return s.String()
 }
 
+// Sync makes the entire filesystem persistent. This is equivalent to calling
+// Sync() on every file and directory.
+//
+// This method can be used in conjunction with others to emulate a restart after
+// a process crash, as follows:
+//
+//	fs.Sync()                        // capture/snapshot the filesystem
+//	fs.SetIgnoreSyncs(true)          // prevent changes from taking effect
+//	db.Close()                       // shutdown, with no writes taking effect
+//	fs.ResetToSyncedState()          // rollback to the snapshot
+//	strictFS.SetIgnoreSyncs(false)   // allow changes again
+//	db = Open(..., &Options{FS: fs}) // reopen on top of the reverted data
+//
+// Without the fs.Sync() step above, the sequence emulates a power outage / OS
+// crash: everything that was not synced will be lost. With the fs.Sync(), only
+// data that was not flushed to the FS will be lost, but things that were
+// flushed and not synced will survive the process restart.
+//
+// For non-strict MemFS, Sync() is effectively a no-op because the latter anyway
+// behaves as if every operation is synced immediately.
+//
+// On the contrary, a strict MemFS does not sync at all by default. A
+// coarse-grained "global" Sync() allows bridging the gap between the two
+// behaviours. If a more fine-grained behaviour is needed, a test should
+// selectively sync individual files/directories.
+func (y *MemFS) Sync() {
+	if !y.strict {
+		return
+	}
+	y.mu.Lock()
+	defer y.mu.Unlock()
+	if !y.ignoreSyncs {
+		y.root.traverse(func(n *memNode) { n.sync() })
+		// TODO(pavelkalinnikov): add an option of setting ignoreSyncs=true here, to
+		// make Sync()+SetIgnoreSyncs(true) atomic. Alternatively, add this option
+		// to SetIgnoreSyncs, or make a more general "batch" API for making multiple
+		// operations atomically.
+	}
+}
+
 // SetIgnoreSyncs sets the MemFS.ignoreSyncs field. See the usage comment with NewStrictMem() for
 // details.
 func (y *MemFS) SetIgnoreSyncs(ignoreSyncs bool) {
@@ -611,6 +651,26 @@ func (f *memNode) Sys() interface{} {
 	return nil
 }
 
+func (f *memNode) traverse(visit func(*memNode)) {
+	visit(f)
+	for _, node := range f.children {
+		node.traverse(visit)
+	}
+}
+
+func (f *memNode) sync() {
+	if f.isDir {
+		f.syncedChildren = make(map[string]*memNode)
+		for k, v := range f.children {
+			f.syncedChildren[k] = v
+		}
+	} else {
+		f.mu.Lock()
+		f.mu.syncedData = slices.Clone(f.mu.data)
+		f.mu.Unlock()
+	}
+}
+
 func (f *memNode) dump(w *bytes.Buffer, level int) {
 	if f.isDir {
 		w.WriteString("          ")
@@ -778,18 +838,8 @@ func (f *memFile) Sync() error {
 	}
 	f.fs.mu.Lock()
 	defer f.fs.mu.Unlock()
-	if f.fs.ignoreSyncs {
-		return nil
-	}
-	if f.n.isDir {
-		f.n.syncedChildren = make(map[string]*memNode)
-		for k, v := range f.n.children {
-			f.n.syncedChildren[k] = v
-		}
-	} else {
-		f.n.mu.Lock()
-		f.n.mu.syncedData = slices.Clone(f.n.mu.data)
-		f.n.mu.Unlock()
+	if !f.fs.ignoreSyncs {
+		f.n.sync()
 	}
 	return nil
 }

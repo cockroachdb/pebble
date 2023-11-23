@@ -54,6 +54,8 @@ func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
 			err = fs.Rename(s[1], s[2])
 		case "reuseForWrite":
 			g, err = fs.ReuseForWrite(s[1], s[2])
+		case "sync":
+			fs.Sync()
 		case "resetToSynced":
 			fs.ResetToSyncedState()
 		case "ignoreSyncs":
@@ -392,6 +394,24 @@ func TestStrictFS(t *testing.T) {
 		"7j: f.read 1 = a",
 		"7k: f.read 1 fails",
 		"7l: f.close",
+
+		// Global sync.
+		"8a: mkdirall /aba/c/aba",
+		"8b: create /aba/c/aba/x",
+		"8c: mkdirall /aba/d",
+		"8d: create /aba/d/y",
+		"8e: create /aba/d/z",
+		"8f: sync",
+		"8g: ignoreSyncs",
+		"8h: create /aba/c/aba/gone",
+		"8i: resetToSynced",
+		"8j: stopIgnoringSyncs",
+		"8k: openDir /aba/c/aba",
+		"8l: open /aba/c/aba/x",
+		"8m: open /aba/c/aba/gone fails",
+		"8n: open /aba/d/y",
+		"8o: open /aba/d/z",
+		"8p: open /aba/d/none fails",
 	}
 	runTestCases(t, testCases, fs)
 }
