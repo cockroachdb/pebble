@@ -220,15 +220,62 @@ type deleteOp struct {
 
 func (o *deleteOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
-	var err error
-	if t.testOpts.deleteSized && t.isFMV(o.derivedDBID, pebble.FormatDeleteSizedAndObsolete) {
+
+	// Under some circumstances, we can perform a single delete instead.
+	canSingleDelete, err := canSingleDeleteInstead(t, o.writerID, o.key)
+	if err != nil {
+		h.Recordf("%s // %v", o, err)
+		return
+	}
+
+	switch {
+	case canSingleDelete:
+		// A single delete should be equivalent to a delete.
+		err = w.SingleDelete(o.key, t.writeOpts)
+	case t.testOpts.deleteSized && t.isFMV(o.derivedDBID, pebble.FormatDeleteSizedAndObsolete):
 		// Call DeleteSized with a deterministic size derived from the index.
 		// The size does not need to be accurate for correctness.
 		err = w.DeleteSized(o.key, hashSize(t.idx), t.writeOpts)
-	} else {
+	default:
 		err = w.Delete(o.key, t.writeOpts)
 	}
 	h.Recordf("%s // %v", o, err)
+}
+
+func canSingleDeleteInstead(t *test, writerID objID, key []byte) (bool, error) {
+	// We can only perform a single delete if writing a delete operation
+	// directly to a *pebble.DB. If we're writing to a batch, the DB state may
+	// change by the time the batch is committed, or the batch may be committed
+	// to a different DB altogether during multi-instance runs.
+	if writerID.tag() != dbTag {
+		return false, nil
+	}
+	// We perform the mutation into a single delete only some of the time, using
+	// the below hash derived from the index and a per-options seed to
+	// deterministically decide when.
+	//
+	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
+	if ((11400714819323198485 * uint64(t.idx) * t.testOpts.seedDeleteAsSingleDelete) >> 63) != 1 {
+		return false, nil
+	}
+
+	var canSingleDelete bool
+	if err := withRetries(func() error {
+		it, err := t.getDB(writerID).NewIter(nil)
+		if err != nil {
+			return err
+		}
+		defer it.Close()
+		valid := it.SeekPrefixGE(key)
+		if !valid {
+			return it.Error()
+		}
+		canSingleDelete, err = pebble.CanDeterministicallySingleDelete(it)
+		return err
+	}); err != nil {
+		return false, err
+	}
+	return canSingleDelete, nil
 }
 
 func hashSize(index int) uint32 {

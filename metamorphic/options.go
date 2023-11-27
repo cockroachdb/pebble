@@ -111,6 +111,13 @@ func parseOptions(
 				opts.secondaryCacheEnabled = true
 				opts.Opts.Experimental.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
 				return true
+			case "TestOptions.seed_delete_as_single_delete":
+				v, err := strconv.ParseUint(value, 10, 64)
+				if err != nil {
+					panic(err)
+				}
+				opts.seedDeleteAsSingleDelete = v
+				return true
 			case "TestOptions.seed_efos":
 				v, err := strconv.ParseUint(value, 10, 64)
 				if err != nil {
@@ -184,6 +191,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.secondaryCacheEnabled {
 		fmt.Fprint(&buf, "  secondary_cache_enabled=true\n")
+	}
+	if opts.seedDeleteAsSingleDelete != 0 {
+		fmt.Fprintf(&buf, "  seed_delete_as_single_delete=%d\n", opts.seedDeleteAsSingleDelete)
 	}
 	if opts.seedEFOS != 0 {
 		fmt.Fprintf(&buf, "  seed_efos=%d\n", opts.seedEFOS)
@@ -259,6 +269,13 @@ type TestOptions struct {
 	// Enable the secondary cache. Only effective if sharedStorageEnabled is
 	// also true.
 	secondaryCacheEnabled bool
+	// If nonzero, enables the replacement of Delete[Sized]s with SingleDeletes
+	// at runtime when it can be proven to be equivalent. The set of which
+	// Delete ops where this is attempted is deterministically derived from the
+	// seed and the operation index. This mutation can only be performed when
+	// the Writer exposes a reader (eg, an indexed batch or the database
+	// object).
+	seedDeleteAsSingleDelete uint64
 	// If nonzero, enables the use of EventuallyFileOnlySnapshots for
 	// newSnapshotOps that are keyspan-bounded. The set of which newSnapshotOps
 	// are actually created as EventuallyFileOnlySnapshots is deterministically
@@ -568,6 +585,7 @@ func randomOptions(
 		// 50% of the time, enable shared replication.
 		testOpts.useSharedReplicate = rng.Intn(2) == 0
 	}
+	testOpts.seedDeleteAsSingleDelete = rng.Uint64()
 	testOpts.seedEFOS = rng.Uint64()
 	testOpts.ingestSplit = rng.Intn(2) == 0
 	opts.Experimental.IngestSplit = func() bool { return testOpts.ingestSplit }
