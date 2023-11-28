@@ -2,8 +2,12 @@ package metamorphic
 
 import (
 	"bytes"
+	"fmt"
+	"io"
+	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/stretchr/testify/require"
 )
@@ -283,220 +287,78 @@ func TestKeyManager_MergeInto(t *testing.T) {
 	require.NotContains(t, m.byObj, fromID)
 }
 
-type seqFn func(t *testing.T, k *keyManager)
-
-func updateForOp(op op) seqFn {
-	return func(t *testing.T, k *keyManager) {
-		k.update(op)
+func mustParseObjID(s string) objID {
+	id, err := parseObjID(s)
+	if err != nil {
+		panic(err)
 	}
+	return id
 }
 
-func addKey(key []byte, expected bool) seqFn {
-	return func(t *testing.T, k *keyManager) {
-		require.Equal(t, expected, k.addNewKey(key))
+func printKeys(w io.Writer, keys [][]byte) {
+	if len(keys) == 0 {
+		fmt.Fprintln(w, "(none)")
+		return
 	}
-}
-
-func eligibleRead(key []byte, val bool) seqFn {
-	return func(t *testing.T, k *keyManager) {
-		require.Equal(t, val, contains(key, k.eligibleReadKeys()))
-	}
-}
-
-func eligibleWrite(key []byte, val bool) seqFn {
-	return func(t *testing.T, k *keyManager) {
-		require.Equal(t, val, contains(key, k.eligibleWriteKeys()))
-	}
-}
-
-func eligibleSingleDelete(key []byte, val bool, id objID) seqFn {
-	return func(t *testing.T, k *keyManager) {
-		require.Equal(t, val, contains(key, k.eligibleSingleDeleteKeys(id, dbObjID)))
-	}
-}
-
-func contains(key []byte, keys [][]byte) bool {
-	for _, k := range keys {
-		if bytes.Equal(key, k) {
-			return true
+	for i, key := range keys {
+		if i > 0 {
+			fmt.Fprint(w, ", ")
 		}
+		fmt.Fprintf(w, "%q", key)
 	}
-	return false
+	fmt.Fprintln(w)
 }
 
 func TestKeyManager(t *testing.T) {
-	var (
-		id1  = makeObjID(batchTag, 0)
-		id2  = makeObjID(batchTag, 1)
-		key1 = []byte("foo")
-	)
-
-	testCases := []struct {
-		description string
-		ops         []seqFn
-		wantPanic   bool
-	}{
-		{
-			description: "set, single del, on db",
-			ops: []seqFn{
-				addKey(key1, true),
-				addKey(key1, false),
-				eligibleRead(key1, true),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-				eligibleSingleDelete(key1, false, id1),
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				eligibleRead(key1, true),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, true, dbObjID),
-				eligibleSingleDelete(key1, true, id1),
-				updateForOp(&singleDeleteOp{writerID: dbObjID, key: key1}),
-				eligibleRead(key1, true),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-			},
-		},
-		{
-			description: "set, single del, on batch",
-			ops: []seqFn{
-				addKey(key1, true),
-				updateForOp(&setOp{writerID: id1, key: key1}),
-				eligibleRead(key1, true),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-				eligibleSingleDelete(key1, true, id1),
-				eligibleSingleDelete(key1, false, id2),
-				updateForOp(&singleDeleteOp{writerID: id1, key: key1}),
-				eligibleRead(key1, true),
-				eligibleWrite(key1, false),
-				eligibleSingleDelete(key1, false, dbObjID),
-				eligibleSingleDelete(key1, false, id1),
-				updateForOp(&applyOp{batchID: id1, writerID: dbObjID}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-			},
-		},
-		{
-			description: "set on db, single del on batch",
-			ops: []seqFn{
-				addKey(key1, true),
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, true, dbObjID),
-				eligibleSingleDelete(key1, true, id1),
-				updateForOp(&singleDeleteOp{writerID: id1, key: key1}),
-				eligibleWrite(key1, false),
-				eligibleSingleDelete(key1, false, dbObjID),
-				eligibleSingleDelete(key1, false, id1),
-				updateForOp(&applyOp{batchID: id1, writerID: dbObjID}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				eligibleSingleDelete(key1, true, dbObjID),
-				eligibleSingleDelete(key1, true, id1),
-			},
-		},
-		{
-			description: "set, del, set, single del, on db",
-			ops: []seqFn{
-				addKey(key1, true),
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				updateForOp(&deleteOp{writerID: dbObjID, key: key1}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, true, dbObjID),
-				updateForOp(&singleDeleteOp{writerID: dbObjID, key: key1}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-			},
-		},
-		{
-			description: "set, del, set, del, on batches",
-			ops: []seqFn{
-				addKey(key1, true),
-				updateForOp(&setOp{writerID: id1, key: key1}),
-				updateForOp(&deleteOp{writerID: id1, key: key1}),
-				updateForOp(&setOp{writerID: id1, key: key1}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, id1),
-				updateForOp(&applyOp{batchID: id1, writerID: dbObjID}),
-				eligibleWrite(key1, true),
-				// Not eligible for single del since the set count is 2.
-				eligibleSingleDelete(key1, false, dbObjID),
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				// Not eligible for single del since the set count is 3.
-				eligibleSingleDelete(key1, false, dbObjID),
-				updateForOp(&deleteOp{writerID: id2, key: key1}),
-				updateForOp(&applyOp{batchID: id2, writerID: dbObjID}),
-				// Set count is 0.
-				eligibleSingleDelete(key1, false, dbObjID),
-				// Set count is 1.
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				eligibleSingleDelete(key1, true, dbObjID),
-			},
-		},
-		{
-			description: "set, merge, del, set, single del, on db",
-			ops: []seqFn{
-				addKey(key1, true),
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				eligibleSingleDelete(key1, true, dbObjID),
-				updateForOp(&mergeOp{writerID: dbObjID, key: key1}),
-				eligibleSingleDelete(key1, false, dbObjID),
-				updateForOp(&deleteOp{writerID: dbObjID, key: key1}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, true, dbObjID),
-				updateForOp(&singleDeleteOp{writerID: dbObjID, key: key1}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-			},
-		},
-		{
-			description: "set, del on db, set, single del on batch",
-			ops: []seqFn{
-				addKey(key1, true),
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				eligibleSingleDelete(key1, true, dbObjID),
-				updateForOp(&deleteOp{writerID: dbObjID, key: key1}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-				updateForOp(&setOp{writerID: id1, key: key1}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-				eligibleSingleDelete(key1, true, id1),
-				updateForOp(&singleDeleteOp{writerID: id1, key: key1}),
-				eligibleWrite(key1, false),
-				eligibleSingleDelete(key1, false, id1),
-				eligibleSingleDelete(key1, false, dbObjID),
-				updateForOp(&applyOp{batchID: id1, writerID: dbObjID}),
-				eligibleWrite(key1, true),
-				eligibleSingleDelete(key1, false, dbObjID),
-				updateForOp(&setOp{writerID: dbObjID, key: key1}),
-				eligibleSingleDelete(key1, true, dbObjID),
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.description, func(t *testing.T) {
-			m := newKeyManager(1 /* numInstances */)
-			tFunc := func() {
-				for _, op := range tc.ops {
-					op(t, m)
+	var buf bytes.Buffer
+	km := newKeyManager(1 /* numInstances */)
+	datadriven.RunTest(t, "testdata/key_manager", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			km = newKeyManager(1 /* numInstances */)
+			return ""
+		case "run":
+			buf.Reset()
+			for _, line := range strings.Split(td.Input, "\n") {
+				fields := strings.Fields(line)
+				switch fields[0] {
+				case "add-new-key":
+					if km.addNewKey([]byte(fields[1])) {
+						fmt.Fprintf(&buf, "%q is new\n", fields[1])
+					} else {
+						fmt.Fprintf(&buf, "%q already tracked\n", fields[1])
+					}
+				case "keys":
+				case "read-keys":
+					fmt.Fprintf(&buf, "read keys: ")
+					printKeys(&buf, km.eligibleReadKeys())
+				case "write-keys":
+					fmt.Fprintf(&buf, "write keys: ")
+					printKeys(&buf, km.eligibleWriteKeys())
+				case "singledel-keys":
+					fmt.Fprintf(&buf, "singledel keys: ")
+					printKeys(&buf, km.eligibleSingleDeleteKeys(
+						mustParseObjID(fields[1]), mustParseObjID(fields[2])))
+				case "op":
+					ops, err := parse([]byte(strings.TrimPrefix(line, "op")), parserOpts{
+						allowUndefinedObjs: true,
+					})
+					if err != nil {
+						t.Fatal(err)
+					} else if len(ops) != 1 {
+						t.Fatalf("expected 1 op but found %d", len(ops))
+					}
+					km.update(ops[0])
+					fmt.Fprintf(&buf, "[%s]\n", ops[0])
+				default:
+					return fmt.Sprintf("unrecognized subcommand %q", fields[0])
 				}
 			}
-			if tc.wantPanic {
-				require.Panics(t, tFunc)
-			} else {
-				tFunc()
-			}
-		})
-	}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
 }
 
 func TestOpWrittenKeys(t *testing.T) {
