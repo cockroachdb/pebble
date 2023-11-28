@@ -176,7 +176,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		opsPath := filepath.Join(filepath.Dir(filepath.Clean(runOpts.previousOpsPath)), "ops")
 		opsData, err := os.ReadFile(opsPath)
 		require.NoError(t, err)
-		ops, err := parse(opsData)
+		ops, err := parse(opsData, parserOpts{})
 		require.NoError(t, err)
 		loadPrecedingKeys(t, ops, &cfg, km)
 	}
@@ -421,7 +421,7 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	opsData, err := os.ReadFile(opsPath)
 	require.NoError(t, err)
 
-	ops, err := parse(opsData)
+	ops, err := parse(opsData, parserOpts{})
 	require.NoError(t, err)
 	_ = ops
 

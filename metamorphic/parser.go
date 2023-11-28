@@ -159,16 +159,22 @@ var methods = map[string]*methodInfo{
 }
 
 type parser struct {
+	opts parserOpts
 	fset *token.FileSet
 	s    scanner.Scanner
 	objs map[objID]bool
 }
 
-func parse(src []byte) (_ []op, err error) {
+type parserOpts struct {
+	allowUndefinedObjs bool
+}
+
+func parse(src []byte, opts parserOpts) (_ []op, err error) {
 	// Various bits of magic incantation to set up a scanner for Go compatible
 	// syntax. We arranged for the textual format of ops (e.g. op.String()) to
 	// look like Go which allows us to use the Go scanner for parsing.
 	p := &parser{
+		opts: opts,
 		fset: token.NewFileSet(),
 		objs: map[objID]bool{makeObjID(dbTag, 1): true, makeObjID(dbTag, 2): true},
 	}
@@ -219,7 +225,11 @@ func (p *parser) parseOp() op {
 	case token.PERIOD:
 		// <obj>.<op>(<args>)
 		if !p.objs[destID] {
-			panic(p.errorf(destPos, "unknown object: %s", destID))
+			if p.opts.allowUndefinedObjs {
+				p.objs[destID] = true
+			} else {
+				panic(p.errorf(destPos, "unknown object: %s", destID))
+			}
 		}
 		_, methodLit := p.scanToken(token.IDENT)
 		return p.makeOp(methodLit, destID, 0, destPos)
@@ -229,7 +239,11 @@ func (p *parser) parseOp() op {
 		srcPos, srcLit := p.scanToken(token.IDENT)
 		srcID := p.parseObjID(srcPos, srcLit)
 		if !p.objs[srcID] {
-			panic(p.errorf(srcPos, "unknown object %q", srcLit))
+			if p.opts.allowUndefinedObjs {
+				p.objs[srcID] = true
+			} else {
+				panic(p.errorf(srcPos, "unknown object %q", srcLit))
+			}
 		}
 		p.scanToken(token.PERIOD)
 		_, methodLit := p.scanToken(token.IDENT)
@@ -239,7 +253,7 @@ func (p *parser) parseOp() op {
 	panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
 }
 
-func (p *parser) parseObjID(pos token.Pos, str string) objID {
+func parseObjID(str string) (objID, error) {
 	var tag objTag
 	switch {
 	case strings.HasPrefix(str, "db"):
@@ -254,13 +268,21 @@ func (p *parser) parseObjID(pos token.Pos, str string) objID {
 	case strings.HasPrefix(str, "snap"):
 		tag, str = snapTag, str[4:]
 	default:
-		panic(p.errorf(pos, "unable to parse objectID: %q", str))
+		return 0, errors.Newf("unable to parse objectID: %q", str)
 	}
 	id, err := strconv.ParseInt(str, 10, 32)
 	if err != nil {
+		return 0, err
+	}
+	return makeObjID(tag, uint32(id)), nil
+}
+
+func (p *parser) parseObjID(pos token.Pos, str string) objID {
+	id, err := parseObjID(str)
+	if err != nil {
 		panic(p.errorf(pos, "%s", err))
 	}
-	return makeObjID(tag, uint32(id))
+	return id
 }
 
 func unquoteBytes(lit string) []byte {
