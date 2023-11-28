@@ -1,0 +1,288 @@
+# run subcommands
+#
+# add-new-key <key>
+# read-keys
+# write-keys
+# singledel-keys <writerID> <dbID>
+# op <operation string as printed to ops files>
+
+run
+add-new-key foo
+add-new-key foo
+----
+"foo" is new
+"foo" already tracked
+
+# Test SET; SINGLEDEL on DB.
+
+run
+read-keys
+write-keys
+singledel-keys db1 db1
+singledel-keys batch1 db1
+op db1.Set("foo", "foo")
+read-keys
+write-keys
+singledel-keys db1 db1
+singledel-keys batch1 db1
+op db1.SingleDelete("foo", false)
+read-keys
+write-keys
+singledel-keys db1 db1
+----
+read keys: "foo"
+write keys: "foo"
+singledel keys: (none)
+singledel keys: (none)
+[db1.Set("foo", "foo")]
+read keys: "foo"
+write keys: "foo"
+singledel keys: "foo"
+singledel keys: "foo"
+[db1.SingleDelete("foo", false /* maybeReplaceDelete */)]
+read keys: "foo"
+write keys: "foo"
+singledel keys: (none)
+
+
+# Test SET; SINGLEDEL on batch on separate key.
+
+run
+add-new-key bar
+op batch1.Set("bar", "bar")
+read-keys
+write-keys
+singledel-keys db1 db1
+singledel-keys batch1 db1
+singledel-keys batch2 db1
+op batch1.SingleDelete("bar", false)
+read-keys
+write-keys
+singledel-keys db1 db1
+singledel-keys batch1 db1
+op db1.Apply(batch1)
+write-keys
+singledel-keys db1 db1
+----
+"bar" is new
+[batch1.Set("bar", "bar")]
+read keys: "bar", "foo"
+write keys: "bar", "foo"
+singledel keys: (none)
+singledel keys: "bar"
+singledel keys: (none)
+[batch1.SingleDelete("bar", false /* maybeReplaceDelete */)]
+read keys: "bar", "foo"
+write keys: "foo"
+singledel keys: (none)
+singledel keys: (none)
+[db1.Apply(batch1)]
+write keys: "bar", "foo"
+singledel keys: (none)
+
+# Test SET on db; SINGLEDEL on batch.
+
+reset
+----
+
+run
+add-new-key foo
+op db1.Set("foo", "foo")
+write-keys
+singledel-keys db1 db1
+singledel-keys batch1 db1
+op batch1.SingleDelete("foo", false)
+write-keys
+singledel-keys db1 db1
+singledel-keys batch1 db1
+op db1.Apply(batch1)
+write-keys
+singledel-keys db1 db1
+op db1.Set("foo", "foo")
+singledel-keys db1 db1
+singledel-keys batch1 db1
+----
+"foo" is new
+[db1.Set("foo", "foo")]
+write keys: "foo"
+singledel keys: "foo"
+singledel keys: "foo"
+[batch1.SingleDelete("foo", false /* maybeReplaceDelete */)]
+write keys: (none)
+singledel keys: (none)
+singledel keys: (none)
+[db1.Apply(batch1)]
+write keys: "foo"
+singledel keys: (none)
+[db1.Set("foo", "foo")]
+singledel keys: "foo"
+singledel keys: "foo"
+
+# Test SET; DEL; SET; SingleDelete on db.
+
+reset
+----
+
+run
+add-new-key foo
+op db1.Set("foo", "foo")
+op db1.Delete("foo")
+write-keys
+singledel-keys db1 db1
+op db1.Set("foo", "foo")
+write-keys
+singledel-keys db1 db1
+op db1.SingleDelete("foo", false)
+write-keys
+singledel-keys db1 db1
+----
+"foo" is new
+[db1.Set("foo", "foo")]
+[db1.Delete("foo")]
+write keys: "foo"
+singledel keys: (none)
+[db1.Set("foo", "foo")]
+write keys: "foo"
+singledel keys: "foo"
+[db1.SingleDelete("foo", false /* maybeReplaceDelete */)]
+write keys: "foo"
+singledel keys: (none)
+
+# Test SET; DEL; SET; DEL on batches.
+
+reset
+----
+
+run
+add-new-key foo
+op batch1.Set("foo", "foo")
+op batch1.Delete("foo")
+op batch1.Set("foo", "foo")
+write-keys
+singledel-keys batch1 db1
+op db1.Apply(batch1)
+write-keys
+----
+"foo" is new
+[batch1.Set("foo", "foo")]
+[batch1.Delete("foo")]
+[batch1.Set("foo", "foo")]
+write keys: "foo"
+singledel keys: (none)
+[db1.Apply(batch1)]
+write keys: "foo"
+
+# "foo" should not be eliible for single delete because set count is 2.
+
+run
+singledel-keys db1 db1
+----
+singledel keys: (none)
+
+run
+op db1.Set("foo", "foo")
+----
+[db1.Set("foo", "foo")]
+
+# "foo" should still not be eliible for single delete because set count is 3.
+
+run
+singledel-keys db1 db1
+----
+singledel keys: (none)
+
+
+run
+op batch2.Delete("foo")
+op db1.Apply(batch2)
+singledel-keys db1 db1
+op db1.Set("foo", "foo")
+singledel-keys db1 db1
+----
+[batch2.Delete("foo")]
+[db1.Apply(batch2)]
+singledel keys: (none)
+[db1.Set("foo", "foo")]
+singledel keys: "foo"
+
+# Test SET; MERGE; DEL; SINGLEDEL on DB.
+
+reset
+----
+
+run
+add-new-key foo
+op db.Set("foo", "foo")
+singledel-keys db1 db1
+op db1.Merge("foo", "foo")
+singledel-keys db1 db1
+op db1.Delete("foo")
+write-keys
+singledel-keys db1 db1
+op db1.Set("foo", "foo")
+write-keys
+singledel-keys db1 db1
+op db1.SingleDelete("foo", false)
+write-keys
+singledel-keys db1 db1
+----
+"foo" is new
+[db1.Set("foo", "foo")]
+singledel keys: "foo"
+[db1.Merge("foo", "foo")]
+singledel keys: (none)
+[db1.Delete("foo")]
+write keys: "foo"
+singledel keys: (none)
+[db1.Set("foo", "foo")]
+write keys: "foo"
+singledel keys: "foo"
+[db1.SingleDelete("foo", false /* maybeReplaceDelete */)]
+write keys: "foo"
+singledel keys: (none)
+
+# Test SET; DEL (db); SET; SINGLEDEL (batch)
+
+reset
+----
+
+run
+add-new-key foo
+op db1.Set("foo", "foo")
+singledel-keys db1 db1
+op db1.Delete("foo")
+write-keys
+singledel-keys db1 db1
+op db1.Set("foo", "foo")
+write-keys
+singledel-keys db1 db1
+singledel-keys batch1 db1
+op batch1.SingleDelete("foo", false)
+write-keys
+singledel-keys db1 db1
+singledel-keys batch1 db1
+op db1.Apply(batch1)
+write-keys
+singledel-keys db1 db1
+op db1.Set("foo", "foo")
+singledel-keys db1 db1
+----
+"foo" is new
+[db1.Set("foo", "foo")]
+singledel keys: "foo"
+[db1.Delete("foo")]
+write keys: "foo"
+singledel keys: (none)
+[db1.Set("foo", "foo")]
+write keys: "foo"
+singledel keys: "foo"
+singledel keys: "foo"
+[batch1.SingleDelete("foo", false /* maybeReplaceDelete */)]
+write keys: (none)
+singledel keys: (none)
+singledel keys: (none)
+[db1.Apply(batch1)]
+write keys: "foo"
+singledel keys: (none)
+[db1.Set("foo", "foo")]
+singledel keys: "foo"
