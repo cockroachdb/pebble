@@ -34,149 +34,6 @@ func TestObjKey(t *testing.T) {
 	}
 }
 
-func TestGlobalStateIndicatesEligibleForSingleDelete(t *testing.T) {
-	key := makeObjKey(makeObjID(dbTag, 1), []byte("foo"))
-	testCases := []struct {
-		meta keyMeta
-		want bool
-	}{
-		{
-			meta: keyMeta{
-				objKey: key,
-			},
-			want: false,
-		},
-		{
-			meta: keyMeta{
-				objKey: key,
-				sets:   1,
-			},
-			want: true,
-		},
-		{
-			meta: keyMeta{
-				objKey: key,
-				sets:   2,
-			},
-			want: false,
-		},
-		{
-			meta: keyMeta{
-				objKey: key,
-				sets:   1,
-				merges: 1,
-			},
-			want: false,
-		},
-		{
-			meta: keyMeta{
-				objKey: key,
-				sets:   1,
-				dels:   1,
-			},
-			want: false,
-		},
-		{
-			meta: keyMeta{
-				objKey:    key,
-				sets:      1,
-				singleDel: true,
-			},
-			want: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		k := newKeyManager(1)
-		t.Run("", func(t *testing.T) {
-			k.globalKeysMap[string(key.key)] = &tc.meta
-			require.Equal(t, tc.want, k.globalStateIndicatesEligibleForSingleDelete(key.key))
-		})
-	}
-}
-
-func TestKeyMeta_MergeInto(t *testing.T) {
-	testCases := []struct {
-		existing keyMeta
-		toMerge  keyMeta
-		expected keyMeta
-	}{
-		{
-			existing: keyMeta{
-				sets:      1,
-				merges:    0,
-				singleDel: false,
-			},
-			toMerge: keyMeta{
-				sets:      0,
-				merges:    0,
-				singleDel: true,
-			},
-			expected: keyMeta{
-				sets:      1,
-				merges:    0,
-				singleDel: true,
-				updateOps: []keyUpdate{
-					{deleted: true, metaTimestamp: 0},
-				},
-			},
-		},
-		{
-			existing: keyMeta{
-				sets:   3,
-				merges: 1,
-				dels:   7,
-			},
-			toMerge: keyMeta{
-				sets:   4,
-				merges: 2,
-				dels:   8,
-				del:    true,
-			},
-			expected: keyMeta{
-				sets:   7,
-				merges: 3,
-				dels:   15,
-				del:    true,
-				updateOps: []keyUpdate{
-					{deleted: true, metaTimestamp: 1},
-				},
-			},
-		},
-		{
-			existing: keyMeta{
-				sets:   3,
-				merges: 1,
-				dels:   7,
-				del:    true,
-			},
-			toMerge: keyMeta{
-				sets:   1,
-				merges: 0,
-				dels:   8,
-				del:    false,
-			},
-			expected: keyMeta{
-				sets:   4,
-				merges: 1,
-				dels:   15,
-				del:    false,
-				updateOps: []keyUpdate{
-					{deleted: false, metaTimestamp: 2},
-				},
-			},
-		},
-	}
-
-	keyManager := newKeyManager(1 /* numInstances */)
-	for _, tc := range testCases {
-		t.Run("", func(t *testing.T) {
-			tc.toMerge.mergeInto(keyManager, &tc.existing)
-			require.Equal(t, tc.expected, tc.existing)
-		})
-	}
-}
-
 func TestKeyManager_AddKey(t *testing.T) {
 	m := newKeyManager(1 /* numInstances */)
 	require.Empty(t, m.globalKeys)
@@ -236,55 +93,6 @@ func TestKeyManager_GetOrInit(t *testing.T) {
 	require.Equal(t, meta1, meta2)
 }
 
-func TestKeyManager_Contains(t *testing.T) {
-	id := makeObjID(dbTag, 1)
-	key := []byte("foo")
-
-	m := newKeyManager(1 /* numInstances */)
-	require.False(t, m.contains(id, key))
-
-	m.getOrInit(id, key)
-	require.True(t, m.contains(id, key))
-}
-
-func TestKeyManager_MergeInto(t *testing.T) {
-	fromID := makeObjID(batchTag, 1)
-	toID := makeObjID(dbTag, 1)
-
-	m := newKeyManager(1 /* numInstances */)
-
-	// Two keys in "from".
-	a := m.getOrInit(fromID, []byte("foo"))
-	a.sets = 1
-	b := m.getOrInit(fromID, []byte("bar"))
-	b.merges = 2
-
-	// One key in "to", with same value as a key in "from", that will be merged.
-	m.getOrInit(toID, []byte("foo"))
-
-	// Before, there are two sets.
-	require.Len(t, m.byObj[fromID], 2)
-	require.Len(t, m.byObj[toID], 1)
-
-	m.mergeKeysInto(fromID, toID)
-
-	// Keys in "from" sets are moved to "to" set.
-	require.Len(t, m.byObj[toID], 2)
-
-	// Key "foo" was merged into "to".
-	foo := m.getOrInit(toID, []byte("foo"))
-	require.Equal(t, 1, foo.sets) // value was merged.
-
-	// Key "bar" was merged into "to".
-	bar := m.getOrInit(toID, []byte("bar"))
-	require.Equal(t, 2, bar.merges) // value was unchanged.
-
-	// Keys in "from" sets are removed from maps.
-	require.NotContains(t, m.byObjKey, makeObjKey(fromID, a.key))
-	require.NotContains(t, m.byObjKey, makeObjKey(fromID, b.key))
-	require.NotContains(t, m.byObj, fromID)
-}
-
 func mustParseObjID(s string) objID {
 	id, err := parseObjID(s)
 	if err != nil {
@@ -327,22 +135,23 @@ func TestKeyManager(t *testing.T) {
 						fmt.Fprintf(&buf, "%q already tracked\n", fields[1])
 					}
 				case "keys":
-				case "read-keys":
-					fmt.Fprintf(&buf, "read keys: ")
-					printKeys(&buf, km.eligibleReadKeys())
-				case "write-keys":
-					fmt.Fprintf(&buf, "write keys: ")
-					printKeys(&buf, km.eligibleWriteKeys())
+					fmt.Fprintf(&buf, "keys: ")
+					printKeys(&buf, km.globalKeys)
 				case "singledel-keys":
-					fmt.Fprintf(&buf, "singledel keys: ")
-					printKeys(&buf, km.eligibleSingleDeleteKeys(
-						mustParseObjID(fields[1]), mustParseObjID(fields[2])))
+					objID := mustParseObjID(fields[1])
+					fmt.Fprintf(&buf, "can singledel on %s: ", objID)
+					printKeys(&buf, km.eligibleSingleDeleteKeys(objID))
+				case "conflicts":
+					src := mustParseObjID(fields[1])
+					dst := mustParseObjID(fields[2])
+					fmt.Fprintf(&buf, "conflicts merging %s into %s: ", src, dst)
+					printKeys(&buf, km.checkForSingleDelConflicts(src, dst))
 				case "op":
 					ops, err := parse([]byte(strings.TrimPrefix(line, "op")), parserOpts{
 						allowUndefinedObjs: true,
 					})
 					if err != nil {
-						t.Fatal(err)
+						t.Fatalf("parsing line %q: %s", line, err)
 					} else if len(ops) != 1 {
 						t.Fatalf("expected 1 op but found %d", len(ops))
 					}
