@@ -236,17 +236,6 @@ func TestKeyManager_GetOrInit(t *testing.T) {
 	require.Equal(t, meta1, meta2)
 }
 
-func TestKeyManager_Contains(t *testing.T) {
-	id := makeObjID(dbTag, 1)
-	key := []byte("foo")
-
-	m := newKeyManager(1 /* numInstances */)
-	require.False(t, m.contains(id, key))
-
-	m.getOrInit(id, key)
-	require.True(t, m.contains(id, key))
-}
-
 func TestKeyManager_MergeInto(t *testing.T) {
 	fromID := makeObjID(batchTag, 1)
 	toID := makeObjID(dbTag, 1)

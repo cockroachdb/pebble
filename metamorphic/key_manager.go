@@ -1,7 +1,7 @@
 package metamorphic
 
 import (
-	"cmp"
+	"bytes"
 	"fmt"
 	"slices"
 
@@ -106,15 +106,8 @@ func (m *keyMeta) mergeInto(keyManager *keyManager, other *keyMeta) {
 	// to the DB, since we only use key updates to determine if an iterator
 	// can read a key in the DB. We could extend the timestamp system to add
 	// support for iterators created on batches.
-	if other.del || other.singleDel {
-		other.updateOps = append(
-			other.updateOps, keyUpdate{true, keyManager.nextMetaTimestamp()},
-		)
-	} else {
-		other.updateOps = append(
-			other.updateOps, keyUpdate{false, keyManager.nextMetaTimestamp()},
-		)
-	}
+	other.updateOps = append(other.updateOps,
+		keyUpdate{other.del || other.singleDel, keyManager.nextMetaTimestamp()})
 }
 
 // keyManager tracks the write operations performed on keys in the generation
@@ -259,12 +252,6 @@ func (k *keyManager) getOrInit(id objID, key []byte) *keyMeta {
 	return m
 }
 
-// contains returns true if the (objID, key) pair is tracked by the keyManager.
-func (k *keyManager) contains(id objID, key []byte) bool {
-	_, ok := k.byObjKey[makeObjKey(id, key).String()]
-	return ok
-}
-
 // mergeKeysInto merges all metadata for all keys associated with the "from" ID
 // with the metadata for keys associated with the "to" ID.
 func (k *keyManager) mergeKeysInto(from, to objID) {
@@ -282,23 +269,23 @@ func (k *keyManager) mergeKeysInto(from, to objID) {
 
 	// Sort to facilitate a merge.
 	slices.SortFunc(msFrom, func(a, b *keyMeta) int {
-		return cmp.Compare(a.String(), b.String())
+		return bytes.Compare(a.key, b.key)
 	})
 	slices.SortFunc(msTo, func(a, b *keyMeta) int {
-		return cmp.Compare(a.String(), b.String())
+		return bytes.Compare(a.key, b.key)
 	})
 
 	var msNew []*keyMeta
 	var iTo int
 	for _, m := range msFrom {
 		// Move cursor on mTo forward.
-		for iTo < len(msTo) && string(msTo[iTo].key) < string(m.key) {
+		for iTo < len(msTo) && bytes.Compare(msTo[iTo].key, m.key) < 0 {
 			msNew = append(msNew, msTo[iTo])
 			iTo++
 		}
 
 		var mTo *keyMeta
-		if iTo < len(msTo) && string(msTo[iTo].key) == string(m.key) {
+		if iTo < len(msTo) && bytes.Equal(msTo[iTo].key, m.key) {
 			mTo = msTo[iTo]
 			iTo++
 		} else {
