@@ -9,7 +9,7 @@ tombstones, table-level bloom filters, and updates to the MANIFEST
 format.
 
 Pebble intentionally does not aspire to include every feature in
-RocksDB and is specifically targetting the use case and feature set
+RocksDB and is specifically targeting the use case and feature set
 needed by CockroachDB:
 
 * Block-based tables
