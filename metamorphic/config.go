@@ -53,6 +53,10 @@ const (
 	writerSingleDelete
 )
 
+func (o opType) isDelete() bool {
+	return o == writerDelete || o == writerDeleteRange || o == writerSingleDelete
+}
+
 type config struct {
 	// Weights for the operation mix to generate. ops[i] corresponds to the
 	// weight for opType(i).
