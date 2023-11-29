@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"slices"
 
 	"github.com/cockroachdb/pebble"
@@ -182,6 +183,13 @@ func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
 	// TPCC-style deck of cards randomization. Every time the end of the deck is
 	// reached, we shuffle the deck.
 	deck := randvar.NewDeck(g.rng, cfg.ops...)
+
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintln(os.Stderr, formatOps(g.ops))
+			panic(r)
+		}
+	}()
 	for i := uint64(0); i < count; i++ {
 		generators[deck.Int()]()
 	}
@@ -200,7 +208,7 @@ func (g *generator) add(op op) {
 // TODO(peter): make the size and distribution of keys configurable. See
 // keyDist and keySizeDist in config.go.
 func (g *generator) randKeyToWrite(newKey float64) []byte {
-	return g.randKeyHelper(g.keyManager.eligibleWriteKeys(), newKey, nil)
+	return g.randKeyHelper(g.keyManager.knownKeys(), newKey, nil)
 }
 
 // prefixKeyRange generates a [start, end) pair consisting of two prefix keys.
@@ -273,8 +281,8 @@ func suffixFromInt(suffix int64) []byte {
 	return testkeys.Suffix(suffix)
 }
 
-func (g *generator) randKeyToSingleDelete(id, dbID objID) []byte {
-	keys := g.keyManager.eligibleSingleDeleteKeys(id, dbID)
+func (g *generator) randKeyToSingleDelete(id objID) []byte {
+	keys := g.keyManager.eligibleSingleDeleteKeys(id)
 	length := len(keys)
 	if length == 0 {
 		return nil
@@ -284,13 +292,13 @@ func (g *generator) randKeyToSingleDelete(id, dbID objID) []byte {
 
 // randKeyToRead returns a key for read operations.
 func (g *generator) randKeyToRead(newKey float64) []byte {
-	return g.randKeyHelper(g.keyManager.eligibleReadKeys(), newKey, nil)
+	return g.randKeyHelper(g.keyManager.knownKeys(), newKey, nil)
 }
 
 // randKeyToReadInRange returns a key for read operations within the provided
 // key range. The bounds of the provided key range must span a prefix boundary.
 func (g *generator) randKeyToReadInRange(newKey float64, kr pebble.KeyRange) []byte {
-	return g.randKeyHelper(g.keyManager.eligibleReadKeysInRange(kr), newKey, &kr)
+	return g.randKeyHelper(g.keyManager.knownKeysInRange(kr), newKey, &kr)
 }
 
 func (g *generator) randKeyHelper(
@@ -512,6 +520,23 @@ func (g *generator) batchCommit() {
 	batchID := g.liveBatches.rand(g.rng)
 	dbID := g.objDB[batchID]
 	g.removeBatchFromGenerator(batchID)
+
+	// The batch we're applying may contain single delete tombstones that when
+	// applied to the writer result in nondeterminism in the deleted key. If
+	// that's the case, we can restore determinism by first deleting the key
+	// from the writer.
+	//
+	// Generating additional operations here is not ideal, but it simplifies
+	// single delete invariants significantly.
+	singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(batchID, dbID, false /* collapsed */)
+	for _, conflict := range singleDeleteConflicts {
+		g.add(&deleteOp{
+			writerID:    dbID,
+			key:         conflict,
+			derivedDBID: dbID,
+		})
+	}
+
 	g.add(&batchCommitOp{
 		dbID:    dbID,
 		batchID: batchID,
@@ -1008,21 +1033,13 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 		possibleKeys := make([][]byte, 0, 100)
 		inRangeKeys := g.randKeyToReadWithinBounds(lower, upper, g.objDB[iterID])
 		for _, keyMeta := range inRangeKeys {
-			posKey := keyMeta.key
-			var foundWriteWithoutDelete bool
-			for _, update := range keyMeta.updateOps {
-				if update.metaTimestamp > iterCreationTimestamp {
-					break
-				}
+			visibleHistory := keyMeta.history.before(iterCreationTimestamp)
 
-				if update.deleted {
-					foundWriteWithoutDelete = false
-				} else {
-					foundWriteWithoutDelete = true
-				}
-			}
-			if foundWriteWithoutDelete {
-				possibleKeys = append(possibleKeys, posKey)
+			// Check if the last op on this key set a value, (eg SETs, MERGEs).
+			// If the key should be visible to the iterator and it would make a
+			// good candidate for a SeekPrefixGE.
+			if visibleHistory.hasVisibleValue() {
+				possibleKeys = append(possibleKeys, keyMeta.key)
 			}
 		}
 
@@ -1299,6 +1316,22 @@ func (g *generator) writerApply() {
 		}
 	}
 
+	// The batch we're applying may contain single delete tombstones that when
+	// applied to the writer result in nondeterminism in the deleted key. If
+	// that's the case, we can restore determinism by first deleting the key
+	// from the writer.
+	//
+	// Generating additional operations here is not ideal, but it simplifies
+	// single delete invariants significantly.
+	singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(batchID, writerID, false /* collapsed */)
+	for _, conflict := range singleDeleteConflicts {
+		g.add(&deleteOp{
+			writerID:    writerID,
+			key:         conflict,
+			derivedDBID: dbID,
+		})
+	}
+
 	g.removeBatchFromGenerator(batchID)
 
 	g.add(&applyOp{
@@ -1443,6 +1476,25 @@ func (g *generator) writerIngest() {
 		g.removeBatchFromGenerator(batchID)
 		batchIDs = append(batchIDs, batchID)
 	}
+
+	// The batches we're ingesting may contain single delete tombstones that
+	// when applied to the writer result in nondeterminism in the deleted key.
+	// If that's the case, we can restore determinism by first deleting the keys
+	// from the writer.
+	//
+	// Generating additional operations here is not ideal, but it simplifies
+	// single delete invariants significantly.
+	for _, batchID := range batchIDs {
+		singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(batchID, dbID, true /* collapsed */)
+		for _, conflict := range singleDeleteConflicts {
+			g.add(&deleteOp{
+				writerID:    dbID,
+				key:         conflict,
+				derivedDBID: dbID,
+			})
+		}
+	}
+
 	derivedDBIDs := make([]objID, len(batchIDs))
 	for i := range batchIDs {
 		derivedDBIDs[i] = g.objDB[batchIDs[i]]
@@ -1488,8 +1540,7 @@ func (g *generator) writerSingleDelete() {
 	}
 
 	writerID := g.liveWriters.rand(g.rng)
-	dbID := g.objDB[writerID]
-	key := g.randKeyToSingleDelete(writerID, dbID)
+	key := g.randKeyToSingleDelete(writerID)
 	if key == nil {
 		return
 	}
