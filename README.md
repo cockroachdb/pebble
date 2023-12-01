@@ -172,7 +172,6 @@ versions for CockroachDB releases.
 | 22.2                | FormatMostCompatible               | FormatPrePebblev1Marked   |
 | 23.1                | FormatSplitUserKeysMarkedCompacted | FormatFlushableIngest     |
 | 23.2                | FormatSplitUserKeysMarkedCompacted | FormatVirtualSSTables     |
-| 24.1 plan           | FormatSSTableValueBlocks           |                           |
 
 ## Pedigree
 
