@@ -786,7 +786,7 @@ iter
 first
 next
 ----
-a#6,1:b[base]
+a#6,18:b[base]
 .
 
 # Non-deterministic use of SINGLEDEL where there are two older SETs that have
@@ -802,7 +802,7 @@ iter
 first
 next
 ----
-a#6,1:b[base]
+a#6,18:b[base]
 .
 
 define
@@ -1066,21 +1066,21 @@ iter
 first
 next
 ----
-a#5,1:5[base]
+a#5,18:5[base]
 .
 
 iter allow-zero-seqnum=true
 first
 next
 ----
-a#0,1:5[base]
+a#0,18:5[base]
 .
 
 iter elide-tombstones=true
 first
 next
 ----
-a#5,1:5[base]
+a#5,18:5[base]
 .
 
 iter snapshots=2
@@ -1088,7 +1088,7 @@ first
 next
 next
 ----
-a#5,1:5[base]
+a#5,18:5[base]
 a#1,2:1
 .
 
@@ -1097,7 +1097,7 @@ first
 next
 next
 ----
-a#5,1:5[base]
+a#5,18:5[base]
 a#1,2:1
 .
 
