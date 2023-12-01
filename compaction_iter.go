@@ -522,7 +522,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				// into a SET.
 				var includesBase bool
 				switch i.key.Kind() {
-				case InternalKeyKindSet:
+				case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 					includesBase = true
 				case InternalKeyKindMerge:
 				default:
@@ -832,7 +832,8 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			// We've hit a deletion tombstone. Return everything up to this point and
 			// then skip entries until the next snapshot stripe. We change the kind
 			// of the result key to a Set so that it shadows keys in lower
-			// levels. That is, MERGE+DEL -> SET.
+			// levels. That is, MERGE+DEL -> SETWITHDEL.
+			//
 			// We do the same for SingleDelete since SingleDelete is only
 			// permitted (with deterministic behavior) for keys that have been
 			// set once since the last SingleDelete/Delete, so everything
@@ -845,7 +846,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			// single Set, and then merge in any following Sets, but that is
 			// complicated wrt code and unnecessary given the narrow permitted
 			// use of SingleDelete.
-			i.key.SetKind(InternalKeyKindSet)
+			i.key.SetKind(InternalKeyKindSetWithDelete)
 			i.skip = true
 			return sameStripeSkippable
 
