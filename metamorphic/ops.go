@@ -519,7 +519,7 @@ func (o *ingestOp) run(t *test, h historyRecorder) {
 }
 
 func buildForIngest(
-	t *test, dbID objID, h historyRecorder, b *pebble.Batch, i int,
+	t *test, dbID objID, h historyRecorder, b *pebble.Batch, i int, removeSingleDel bool,
 ) (string, *sstable.WriterMetadata, error) {
 	path := t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
 	f, err := t.opts.FS.Create(path)
@@ -554,6 +554,9 @@ func buildForIngest(
 		// this case and translate the key to an InternalKeyKindDelete.
 		if key.Kind() == pebble.InternalKeyKindDeleteSized && !t.isFMV(dbID, pebble.FormatDeleteSizedAndObsolete) {
 			value = pebble.LazyValue{}
+			key.SetKind(pebble.InternalKeyKindDelete)
+		}
+		if removeSingleDel && key.Kind() == pebble.InternalKeyKindSingleDelete {
 			key.SetKind(pebble.InternalKeyKindDelete)
 		}
 		if err := w.Add(*key, value.InPlaceValue()); err != nil {
@@ -625,7 +628,7 @@ func buildForIngest(
 }
 
 func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (string, error) {
-	path, _, err := buildForIngest(t, o.dbID, h, b, i)
+	path, _, err := buildForIngest(t, o.dbID, h, b, i, false /* removeSingleDel */)
 	return path, err
 }
 
@@ -821,7 +824,7 @@ func (o *ingestAndExciseOp) run(t *test, h historyRecorder) {
 	err = firstError(err, err2)
 	err = firstError(err, b.Close())
 
-	if writerMeta.Properties.NumEntries == 0 {
+	if writerMeta.Properties.NumEntries == 0 && writerMeta.Properties.NumRangeKeys() == 0 {
 		// No-op.
 		h.Recordf("%s // %v", o, err)
 		return
@@ -854,7 +857,7 @@ func (o *ingestAndExciseOp) run(t *test, h historyRecorder) {
 func (o *ingestAndExciseOp) build(
 	t *test, h historyRecorder, b *pebble.Batch, i int,
 ) (string, *sstable.WriterMetadata, error) {
-	return buildForIngest(t, o.dbID, h, b, i)
+	return buildForIngest(t, o.dbID, h, b, i, true /* removeSingleDel */)
 }
 
 func (o *ingestAndExciseOp) receiver() objID { return o.dbID }
@@ -1585,7 +1588,7 @@ func (r *replicateOp) runSharedReplicate(
 		h.Recordf("%s // %v", r, err)
 		return
 	}
-	if len(sharedSSTs) == 0 && meta.Properties.NumEntries == 0 {
+	if len(sharedSSTs) == 0 && meta.Properties.NumEntries == 0 && meta.Properties.NumRangeKeys() == 0 {
 		// IngestAndExcise below will be a no-op. We should do a
 		// DeleteRange+RangeKeyDel to mimic the behaviour of the non-shared-replicate
 		// case.
