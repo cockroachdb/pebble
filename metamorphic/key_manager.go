@@ -406,13 +406,7 @@ func (k *keyManager) update(o op) {
 			k.mergeKeysInto(batchID, s.dbID)
 		}
 		k.checkForDelOrSingleDelTransitionInDB(s.dbID)
-	case *ingestAndExciseOp:
-		// Merge all keys in the batch with the keys in the DB.
-		k.mergeKeysInto(s.batchID, s.dbID)
-		k.checkForDelOrSingleDelTransitionInDB(s.dbID)
-	case *replicateOp:
-		k.mergeKeysInto(s.source, s.dest)
-		k.checkForDelOrSingleDelTransitionInDB(s.dest)
+	// TODO(bilal): Handle replicateOp and ingestAndExciseOp here.
 	case *applyOp:
 		// Merge the keys from this writer into the parent writer.
 		k.mergeKeysInto(s.batchID, s.writerID)
