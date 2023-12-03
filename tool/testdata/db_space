@@ -7,7 +7,7 @@ accepts 1 arg(s), received 0
 db space --start=a --end=z
 ../testdata/db-stage-4
 ----
-986
+709
 
 # covers from left of 4.sst to its only data block
 

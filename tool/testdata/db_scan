@@ -30,7 +30,7 @@ db scan
 ../testdata/db-stage-4
 --comparer=test-comparer
 ----
-pebble: manifest file "MANIFEST-000005" for DB "db-stage-4": comparer name from file "leveldb.BytewiseComparator" != comparer name from Options "test-comparer"
+pebble: manifest file "MANIFEST-000006" for DB "db-stage-4": comparer name from file "leveldb.BytewiseComparator" != comparer name from Options "test-comparer"
 
 db scan
 ../testdata/db-stage-4
@@ -38,15 +38,11 @@ db scan
 ----
 unknown merger "foo"
 
-# TODO(peter): this DB does not have any merge records and the merge
-# operator in the OPTIONS file is "nullptr".
 db scan
 ../testdata/db-stage-4
 --merger=test-merger
 ----
-foo [66697665]
-quux [736978]
-scanned 2 records in 1.0s
+pebble: merger name from file "pebble.concatenate" != merger name from options "test-merger"
 
 db scan
 ../testdata/db-stage-4

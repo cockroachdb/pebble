@@ -7,25 +7,37 @@ manifest dump
 ----
 MANIFEST-000001
 0/0
+  comparer:     leveldb.BytewiseComparator
   next-file-num: 2
+39/1
+  log-num:       2
+  next-file-num: 3
+  last-seq-num:  9
 EOF
+--- L0 ---
+--- L1 ---
+--- L2 ---
+--- L3 ---
+--- L4 ---
+--- L5 ---
+--- L6 ---
 
 manifest dump
-../testdata/db-stage-4/MANIFEST-000005
+../testdata/db-stage-4/MANIFEST-000006
 ----
-MANIFEST-000005
+MANIFEST-000006
 0/0
   comparer:     leveldb.BytewiseComparator
-35/1
-  <empty>
-44/2
-  log-num:       4
+  log-num:       2
+  next-file-num: 7
+41/1
+  log-num:       5
   next-file-num: 6
-  last-seq-num:  5
-  added:         L0 000004:986<#3-#5>[bar#5,DEL-foo#4,SET]
+  last-seq-num:  14
+  added:         L0 000004:709<#12-#14>[bar#14,DEL-foo#13,SET] (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
-  000004:986<#3-#5>[bar#5,DEL-foo#4,SET]
+  000004:709<#12-#14>[bar#14,DEL-foo#13,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -34,11 +46,13 @@ EOF
 --- L6 ---
 
 manifest dump --filter-start=zoo
-../testdata/db-stage-4/MANIFEST-000005
+../testdata/db-stage-4/MANIFEST-000006
 ----
-MANIFEST-000005
+MANIFEST-000006
 0/0
   comparer:     leveldb.BytewiseComparator
+  log-num:       2
+  next-file-num: 7
 EOF
 --- L0.0 ---
 --- L1 ---
@@ -49,11 +63,13 @@ EOF
 --- L6 ---
 
 manifest dump --filter-end=a
-../testdata/db-stage-4/MANIFEST-000005
+../testdata/db-stage-4/MANIFEST-000006
 ----
-MANIFEST-000005
+MANIFEST-000006
 0/0
   comparer:     leveldb.BytewiseComparator
+  log-num:       2
+  next-file-num: 7
 EOF
 --- L0.0 ---
 --- L1 ---
@@ -64,19 +80,21 @@ EOF
 --- L6 ---
 
 manifest dump --filter-start=a --filter-end=d
-../testdata/db-stage-4/MANIFEST-000005
+../testdata/db-stage-4/MANIFEST-000006
 ----
-MANIFEST-000005
+MANIFEST-000006
 0/0
   comparer:     leveldb.BytewiseComparator
-44/1
-  log-num:       4
+  log-num:       2
+  next-file-num: 7
+41/1
+  log-num:       5
   next-file-num: 6
-  last-seq-num:  5
-  added:         L0 000004:986<#3-#5>[bar#5,DEL-foo#4,SET]
+  last-seq-num:  14
+  added:         L0 000004:709<#12-#14>[bar#14,DEL-foo#13,SET] (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
-  000004:986<#3-#5>[bar#5,DEL-foo#4,SET]
+  000004:709<#12-#14>[bar#14,DEL-foo#13,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -85,22 +103,22 @@ EOF
 --- L6 ---
 
 manifest dump
-../testdata/db-stage-4/MANIFEST-000005
+../testdata/db-stage-4/MANIFEST-000006
 --key=%x
 ----
-MANIFEST-000005
+MANIFEST-000006
 0/0
   comparer:     leveldb.BytewiseComparator
-35/1
-  <empty>
-44/2
-  log-num:       4
+  log-num:       2
+  next-file-num: 7
+41/1
+  log-num:       5
   next-file-num: 6
-  last-seq-num:  5
-  added:         L0 000004:986<#3-#5>[626172#5,DEL-666f6f#4,SET]
+  last-seq-num:  14
+  added:         L0 000004:709<#12-#14>[626172#14,DEL-666f6f#13,SET] (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
-  000004:986<#3-#5>[626172#5,DEL-666f6f#4,SET]
+  000004:709<#12-#14>[626172#14,DEL-666f6f#13,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -109,22 +127,22 @@ EOF
 --- L6 ---
 
 manifest dump
-../testdata/db-stage-4/MANIFEST-000005
+../testdata/db-stage-4/MANIFEST-000006
 --key=null
 ----
-MANIFEST-000005
+MANIFEST-000006
 0/0
   comparer:     leveldb.BytewiseComparator
-35/1
-  <empty>
-44/2
-  log-num:       4
+  log-num:       2
+  next-file-num: 7
+41/1
+  log-num:       5
   next-file-num: 6
-  last-seq-num:  5
-  added:         L0 000004:986<#3-#5>
+  last-seq-num:  14
+  added:         L0 000004:709<#12-#14> (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
-  000004:986<#3-#5>
+  000004:709<#12-#14>
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -133,22 +151,22 @@ EOF
 --- L6 ---
 
 manifest dump
-../testdata/db-stage-4/MANIFEST-000005
+../testdata/db-stage-4/MANIFEST-000006
 --key=pretty
 ----
-MANIFEST-000005
+MANIFEST-000006
 0/0
   comparer:     leveldb.BytewiseComparator
-35/1
-  <empty>
-44/2
-  log-num:       4
+  log-num:       2
+  next-file-num: 7
+41/1
+  log-num:       5
   next-file-num: 6
-  last-seq-num:  5
-  added:         L0 000004:986<#3-#5>[bar#5,DEL-foo#4,SET]
+  last-seq-num:  14
+  added:         L0 000004:709<#12-#14>[bar#14,DEL-foo#13,SET] (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
-  000004:986<#3-#5>[bar#5,DEL-foo#4,SET]
+  000004:709<#12-#14>[bar#14,DEL-foo#13,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -157,22 +175,22 @@ EOF
 --- L6 ---
 
 manifest dump
-../testdata/db-stage-4/MANIFEST-000005
+../testdata/db-stage-4/MANIFEST-000006
 --key=pretty:test-comparer
 ----
-MANIFEST-000005
+MANIFEST-000006
 0/0
   comparer:     leveldb.BytewiseComparator
-35/1
-  <empty>
-44/2
-  log-num:       4
+  log-num:       2
+  next-file-num: 7
+41/1
+  log-num:       5
   next-file-num: 6
-  last-seq-num:  5
-  added:         L0 000004:986<#3-#5>[test formatter: bar#5,DEL-test formatter: foo#4,SET]
+  last-seq-num:  14
+  added:         L0 000004:709<#12-#14>[test formatter: bar#14,DEL-test formatter: foo#13,SET] (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
-  000004:986<#3-#5>[test formatter: bar#5,DEL-test formatter: foo#4,SET]
+  000004:709<#12-#14>[test formatter: bar#14,DEL-test formatter: foo#13,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---
@@ -197,10 +215,10 @@ OK
 manifest check
 ../testdata/db-stage-3/MANIFEST-000005
 ----
-OK
+open ../testdata/db-stage-3/MANIFEST-000005: file does not exist
 
 manifest check
-../testdata/db-stage-4/MANIFEST-000005
+../testdata/db-stage-4/MANIFEST-000006
 ----
 OK
 

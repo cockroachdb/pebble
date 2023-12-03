@@ -104,7 +104,7 @@ func TestMustExist(t *testing.T) {
 	MustExist(fs, filename, &buf, err)
 	require.Equal(t, `000000.sst:
 file does not exist
-directory contains 10 files, 3 unknown, 1 tables, 1 logs, 1 manifests`, buf.buf.String())
+directory contains 9 files, 2 unknown, 1 tables, 1 logs, 2 manifests`, buf.buf.String())
 }
 
 func TestRedactFileNum(t *testing.T) {

@@ -13,8 +13,8 @@ db properties
                           L0     L1    L2    L3    L4    L5    L6    TOTAL
 count                     1      0     0     0     0     0     0     1
 seq num                                                              
-  smallest                3      0     0     0     0     0     0     3
-  largest                 5      0     0     0     0     0     0     5
+  smallest                12     0     0     0     0     0     0     12
+  largest                 14     0     0     0     0     0     0     14
 size                                                                 
   data                    62B    0B    0B    0B    0B    0B    0B    62B
     blocks                1      0     0     0     0     0     0     1
@@ -26,7 +26,7 @@ size
   raw-value               9B     0B    0B    0B    0B    0B    0B    9B
   pinned-key              0B     0B    0B    0B    0B    0B    0B    0B
   pinned-value            0B     0B    0B    0B    0B    0B    0B    0B
-  point-del-key-size      0B     0B    0B    0B    0B    0B    0B    0B
+  point-del-key-size      3B     0B    0B    0B    0B    0B    0B    3B
   point-del-value-size    0B     0B    0B    0B    0B    0B    0B    0B
 records                                                              
   set                     2      0     0     0     0     0     0     2
