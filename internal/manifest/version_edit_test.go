@@ -250,16 +250,19 @@ func TestVersionEditRoundTrip(t *testing.T) {
 }
 
 func TestVersionEditDecode(t *testing.T) {
+	// TODO(radu): these should be datadriven tests that output the encoded and
+	// decoded edits.
 	cmp := base.DefaultComparer.Compare
 	m := (&FileMetadata{
 		FileNum:        4,
-		Size:           986,
-		SmallestSeqNum: 3,
-		LargestSeqNum:  5,
+		Size:           709,
+		SmallestSeqNum: 12,
+		LargestSeqNum:  14,
+		CreationTime:   1701712644,
 	}).ExtendPointKeyBounds(
 		cmp,
-		base.MakeInternalKey([]byte("bar"), 5, base.InternalKeyKindDelete),
-		base.MakeInternalKey([]byte("foo"), 4, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("bar"), 14, base.InternalKeyKindDelete),
+		base.MakeInternalKey([]byte("foo"), 13, base.InternalKeyKindSet),
 	)
 	m.InitPhysicalBacking()
 
@@ -272,34 +275,38 @@ func TestVersionEditDecode(t *testing.T) {
 		{
 			filename: "db-stage-1/MANIFEST-000001",
 			encodedEdits: []string{
-				"\x02\x00\x03\x02\x04\x00",
+				"\x01\x1aleveldb.BytewiseComparator\x03\x02\x04\x00",
+				"\x02\x02\x03\x03\x04\t",
 			},
 			edits: []VersionEdit{
 				{
-					NextFileNum: 2,
+					ComparerName: "leveldb.BytewiseComparator",
+					NextFileNum:  2,
+				},
+				{
+					MinUnflushedLogNum: 0x2,
+					NextFileNum:        0x3,
+					LastSeqNum:         0x9,
 				},
 			},
 		},
 		// db-stage-3 and db-stage-4 have the same manifest.
 		{
-			filename: "db-stage-3/MANIFEST-000005",
+			filename: "db-stage-3/MANIFEST-000006",
 			encodedEdits: []string{
-				"\x01\x1aleveldb.BytewiseComparator",
-				"\x02\x00",
-				"\x02\x04\t\x00\x03\x06\x04\x05d\x00\x04\xda\a\vbar" +
-					"\x00\x05\x00\x00\x00\x00\x00\x00\vfoo\x01\x04\x00" +
-					"\x00\x00\x00\x00\x00\x03\x05",
+				"\x01\x1aleveldb.BytewiseComparator\x02\x02\x03\a\x04\x00",
+				"\x02\x05\x03\x06\x04\x0eg\x00\x04\xc5\x05\vbar\x00\x0e\x00\x00\x00\x00\x00\x00\vfoo\x01\r\x00\x00\x00\x00\x00\x00\f\x0e\x06\x05\x84\xa6\xb8\xab\x06\x01",
 			},
 			edits: []VersionEdit{
 				{
-					ComparerName: "leveldb.BytewiseComparator",
+					ComparerName:       "leveldb.BytewiseComparator",
+					MinUnflushedLogNum: 0x2,
+					NextFileNum:        0x7,
 				},
-				{},
 				{
-					MinUnflushedLogNum: 4,
-					ObsoletePrevLogNum: 0,
-					NextFileNum:        6,
-					LastSeqNum:         5,
+					MinUnflushedLogNum: 0x5,
+					NextFileNum:        0x6,
+					LastSeqNum:         0xe,
 					NewFiles: []NewFileEntry{
 						{
 							Level: 0,

@@ -29,7 +29,7 @@ db check
 ../testdata/db-stage-4
 --comparer=test-comparer
 ----
-pebble: manifest file "MANIFEST-000005" for DB "db-stage-4": comparer name from file "leveldb.BytewiseComparator" != comparer name from Options "test-comparer"
+pebble: manifest file "MANIFEST-000006" for DB "db-stage-4": comparer name from file "leveldb.BytewiseComparator" != comparer name from Options "test-comparer"
 
 db check
 ../testdata/db-stage-4
@@ -37,10 +37,8 @@ db check
 ----
 unknown merger "foo"
 
-# TODO(peter): this DB does not have any merge records and the merge
-# operator in the OPTIONS file is "nullptr".
 db check
 ../testdata/db-stage-4
 --merger=test-merger
 ----
-checked 6 points and 0 tombstone
+pebble: merger name from file "pebble.concatenate" != merger name from options "test-merger"
