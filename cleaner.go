@@ -27,10 +27,11 @@ type DeleteCleaner = base.DeleteCleaner
 type ArchiveCleaner = base.ArchiveCleaner
 
 type cleanupManager struct {
-	opts            *Options
-	objProvider     objstorage.Provider
-	onTableDeleteFn func(fileSize uint64)
-	deletePacer     *deletionPacer
+	opts                       *Options
+	objProvider                objstorage.Provider
+	onTableDeleteFn            func(fileSize uint64)
+	deletePacer                *deletionPacer
+	deletedFileSizePendingSync uint64
 
 	// jobsCh is used as the cleanup job queue.
 	jobsCh chan *cleanupJob
@@ -160,7 +161,7 @@ func (cm *cleanupManager) mainLoop() {
 			} else {
 				cm.maybePace(&tb, of.fileType, of.fileNum, of.fileSize)
 				cm.onTableDeleteFn(of.fileSize)
-				cm.deleteObsoleteObject(fileTypeTable, job.jobID, of.fileNum)
+				cm.deleteObsoleteObjectAndSyncIfRequired(job.jobID, of.fileNum, of.fileSize)
 			}
 		}
 		cm.mu.Lock()
@@ -168,6 +169,24 @@ func (cm *cleanupManager) mainLoop() {
 		cm.mu.completedJobsCond.Broadcast()
 		cm.maybeLogLocked()
 		cm.mu.Unlock()
+	}
+}
+
+func (cm *cleanupManager) deleteObsoleteObjectAndSyncIfRequired(jobID int, fileNum base.DiskFileNum, fileSize uint64) {
+	var deleteThresholdForSync uint64 = 64 * 1024 * 1024 // 64 MB
+
+	deleted := cm.deleteObsoleteObject(fileTypeTable, jobID, fileNum)
+	if !deleted {
+		return
+	}
+
+	cm.deletedFileSizePendingSync += fileSize
+	if cm.deletedFileSizePendingSync < deleteThresholdForSync {
+		return
+	}
+
+	if err := cm.objProvider.Sync(); err == nil {
+		cm.deletedFileSizePendingSync = 0
 	}
 }
 
@@ -245,7 +264,7 @@ func (cm *cleanupManager) deleteObsoleteFile(
 
 func (cm *cleanupManager) deleteObsoleteObject(
 	fileType fileType, jobID int, fileNum base.DiskFileNum,
-) {
+) bool {
 	if fileType != fileTypeTable {
 		panic("not an object")
 	}
@@ -258,8 +277,9 @@ func (cm *cleanupManager) deleteObsoleteObject(
 		path = cm.objProvider.Path(meta)
 		err = cm.objProvider.Remove(fileType, fileNum)
 	}
+
 	if cm.objProvider.IsNotExistError(err) {
-		return
+		return false
 	}
 
 	switch fileType {
@@ -271,6 +291,7 @@ func (cm *cleanupManager) deleteObsoleteObject(
 			Err:     err,
 		})
 	}
+	return true
 }
 
 // maybeLogLocked issues a log if the job queue gets 75% full and issues a log

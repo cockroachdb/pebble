@@ -187,7 +187,7 @@ create: db1/000123.sst
 sync: db1/000123.sst
 close: db1/000123.sst
 
-create-bogus-file db1/000456.sst
+create-bogus-file db1/000456.sst 100000000
 ----
 create: db1/000456.sst
 sync: db1/000456.sst
@@ -231,6 +231,7 @@ remove: db1_wal/000002.log
 remove: db1_wal/000004.log
 remove: db1/000123.sst
 remove: db1/000456.sst
+sync: db1
 remove: db1/OPTIONS-000003
 
 list db1
