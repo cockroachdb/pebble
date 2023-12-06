@@ -61,45 +61,48 @@ func TestPropertiesLoad(t *testing.T) {
 	}
 }
 
+var testProps = Properties{
+	CommonProperties: CommonProperties{
+		NumDeletions:      15,
+		NumEntries:        16,
+		NumRangeDeletions: 18,
+		NumRangeKeyDels:   19,
+		NumRangeKeySets:   20,
+		RawKeySize:        25,
+		RawValueSize:      26,
+	},
+	ComparerName:           "comparator name",
+	CompressionName:        "compression name",
+	CompressionOptions:     "compression option",
+	DataSize:               3,
+	ExternalFormatVersion:  4,
+	FilterPolicyName:       "filter policy name",
+	FilterSize:             5,
+	GlobalSeqNum:           8,
+	IndexPartitions:        10,
+	IndexSize:              11,
+	IndexType:              12,
+	IsStrictObsolete:       true,
+	MergerName:             "merge operator name",
+	NumDataBlocks:          14,
+	NumMergeOperands:       17,
+	NumRangeKeyUnsets:      21,
+	NumValueBlocks:         22,
+	NumValuesInValueBlocks: 23,
+	PrefixExtractorName:    "prefix extractor name",
+	PrefixFiltering:        true,
+	PropertyCollectorNames: "prefix collector names",
+	TopLevelIndexSize:      27,
+	WholeKeyFiltering:      true,
+	UserProperties: map[string]string{
+		"user-prop-a": "1",
+		"user-prop-b": "2",
+	},
+}
+
 func TestPropertiesSave(t *testing.T) {
-	expected := &Properties{
-		CommonProperties: CommonProperties{
-			NumDeletions:      15,
-			NumEntries:        16,
-			NumRangeDeletions: 18,
-			NumRangeKeyDels:   19,
-			NumRangeKeySets:   20,
-			RawKeySize:        25,
-			RawValueSize:      26,
-		},
-		ComparerName:           "comparator name",
-		CompressionName:        "compression name",
-		CompressionOptions:     "compression option",
-		DataSize:               3,
-		ExternalFormatVersion:  4,
-		FilterPolicyName:       "filter policy name",
-		FilterSize:             5,
-		GlobalSeqNum:           8,
-		IndexPartitions:        10,
-		IndexSize:              11,
-		IndexType:              12,
-		IsStrictObsolete:       true,
-		MergerName:             "merge operator name",
-		NumDataBlocks:          14,
-		NumMergeOperands:       17,
-		NumRangeKeyUnsets:      21,
-		NumValueBlocks:         22,
-		NumValuesInValueBlocks: 23,
-		PrefixExtractorName:    "prefix extractor name",
-		PrefixFiltering:        true,
-		PropertyCollectorNames: "prefix collector names",
-		TopLevelIndexSize:      27,
-		WholeKeyFiltering:      true,
-		UserProperties: map[string]string{
-			"user-prop-a": "1",
-			"user-prop-b": "2",
-		},
-	}
+	expected := &Properties{}
+	*expected = testProps
 
 	check1 := func(expected *Properties) {
 		// Check that we can save properties and read them back.
@@ -125,5 +128,19 @@ func TestPropertiesSave(t *testing.T) {
 			props.TopLevelIndexSize = 0
 		}
 		check1(&props)
+	}
+}
+
+func BenchmarkPropertiesLoad(b *testing.B) {
+	var w rawBlockWriter
+	w.restartInterval = propertiesBlockRestartInterval
+	testProps.save(TableFormatPebblev2, &w)
+	block := w.finish()
+
+	b.ResetTimer()
+	p := &Properties{}
+	for i := 0; i < b.N; i++ {
+		*p = Properties{}
+		require.NoError(b, p.load(block, 0, nil))
 	}
 }
