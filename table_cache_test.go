@@ -1207,6 +1207,48 @@ func TestTableCacheNoSuchFileError(t *testing.T) {
 	require.Contains(t, logger.fatalMsgs[0], "directory contains 6 files, 0 unknown, 0 tables, 2 logs, 1 manifests")
 }
 
+func BenchmarkTableCacheHotPath(b *testing.B) {
+	mem := vfs.NewMem()
+	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, ""))
+	require.NoError(b, err)
+	defer objProvider.Close()
+
+	makeTable := func(dfn base.DiskFileNum) {
+		require.NoError(b, err)
+		f, _, err := objProvider.Create(context.Background(), fileTypeTable, dfn, objstorage.CreateOptions{})
+		require.NoError(b, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		require.NoError(b, w.Set([]byte("a"), nil))
+		require.NoError(b, w.Close())
+	}
+
+	opts := &Options{
+		Cache: NewCache(8 << 20), // 8 MB
+	}
+	opts.EnsureDefaults()
+	defer opts.Cache.Unref()
+
+	cache := &tableCacheShard{}
+	cache.init(2)
+	dbOpts := &tableCacheOpts{}
+	dbOpts.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
+	dbOpts.cacheID = 0
+	dbOpts.objProvider = objProvider
+	dbOpts.opts = opts.MakeReaderOptions()
+
+	makeTable(1)
+
+	m := &fileMetadata{FileNum: 1}
+	m.InitPhysicalBacking()
+	m.Ref()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v := cache.findNode(m, dbOpts)
+		cache.unrefValue(v)
+	}
+}
+
 type catchFatalLogger struct {
 	fatalMsgs []string
 }
