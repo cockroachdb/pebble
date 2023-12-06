@@ -755,27 +755,30 @@ func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
-func (c *tableCacheShard) findNode(
-	meta *fileMetadata, dbOpts *tableCacheOpts,
-) (v *tableCacheValue) {
+func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *tableCacheValue {
+	v := c.findNodeInternal(meta, dbOpts)
+
 	// Loading a file before its global sequence number is known (eg,
 	// during ingest before entering the commit pipeline) can pollute
 	// the cache with incorrect state. In invariant builds, verify
 	// that the global sequence number of the returned reader matches.
 	if invariants.Enabled {
-		defer func() {
-			if v.reader != nil && meta.LargestSeqNum == meta.SmallestSeqNum &&
-				v.reader.Properties.GlobalSeqNum != meta.SmallestSeqNum {
-				panic(errors.AssertionFailedf("file %s loaded from table cache with the wrong global sequence number %d",
-					meta, v.reader.Properties.GlobalSeqNum))
-			}
-		}()
+		if v.reader != nil && meta.LargestSeqNum == meta.SmallestSeqNum &&
+			v.reader.Properties.GlobalSeqNum != meta.SmallestSeqNum {
+			panic(errors.AssertionFailedf("file %s loaded from table cache with the wrong global sequence number %d",
+				meta, v.reader.Properties.GlobalSeqNum))
+		}
 	}
+	return v
+}
+
+func (c *tableCacheShard) findNodeInternal(
+	meta *fileMetadata, dbOpts *tableCacheOpts,
+) *tableCacheValue {
 	if refs := meta.Refs(); refs <= 0 {
 		panic(errors.AssertionFailedf("attempting to load file %s with refs=%d from table cache",
 			meta, refs))
 	}
-
 	// Fast-path for a hit in the cache.
 	c.mu.RLock()
 	key := tableCacheKey{dbOpts.cacheID, meta.FileBacking.DiskFileNum}
@@ -783,7 +786,7 @@ func (c *tableCacheShard) findNode(
 		// Fast-path hit.
 		//
 		// The caller is responsible for decrementing the refCount.
-		v = n.value
+		v := n.value
 		v.refCount.Add(1)
 		c.mu.RUnlock()
 		n.referenced.Store(true)
@@ -810,7 +813,7 @@ func (c *tableCacheShard) findNode(
 		// Slow-path hit of a hot or cold node.
 		//
 		// The caller is responsible for decrementing the refCount.
-		v = n.value
+		v := n.value
 		v.refCount.Add(1)
 		n.referenced.Store(true)
 		c.hits.Add(1)
@@ -834,7 +837,7 @@ func (c *tableCacheShard) findNode(
 
 	c.misses.Add(1)
 
-	v = &tableCacheValue{
+	v := &tableCacheValue{
 		loaded: make(chan struct{}),
 	}
 	v.refCount.Store(2)
