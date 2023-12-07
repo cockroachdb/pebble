@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -3225,26 +3226,28 @@ func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
 			d.mu.Unlock()
 			// Flush metrics are updated after and non-atomically with the memtable
 			// being removed from the queue.
-			func() {
-				begin := time.Now()
-				for {
-					metrics := d.Metrics()
-					require.NotNil(t, metrics)
-					if int64(50<<10) < metrics.Flush.WriteThroughput.Bytes {
-						// The writes (during which the flush is idle) and the flush work
-						// should not be so fast as to be unrealistic. If these turn out to be
-						// flaky we could instead inject a clock.
-						tinyInterval := int64(50 * time.Microsecond)
-						require.Less(t, tinyInterval, int64(metrics.Flush.WriteThroughput.WorkDuration))
-						require.Less(t, tinyInterval, int64(metrics.Flush.WriteThroughput.IdleDuration))
-						return
+			for begin := time.Now(); ; {
+				metrics := d.Metrics()
+				require.NotNil(t, metrics)
+				if metrics.Flush.WriteThroughput.Bytes >= 50*1024 {
+					// The writes (during which the flush is idle) and the flush work
+					// should not be so fast as to be unrealistic. If these turn out to be
+					// flaky we could instead inject a clock.
+					//
+					// Windows timer precision is on the order of milliseconds, so we
+					// disable this check on Windows.
+					if runtime.GOOS != "windows" {
+						tinyInterval := 50 * time.Microsecond
+						require.Less(t, tinyInterval, metrics.Flush.WriteThroughput.WorkDuration)
+						require.Less(t, tinyInterval, metrics.Flush.WriteThroughput.IdleDuration)
 					}
-					if time.Since(begin) > 2*time.Second {
-						t.Fatal()
-					}
-					time.Sleep(time.Millisecond)
+					break
 				}
-			}()
+				if time.Since(begin) > 2*time.Second {
+					t.Fatal("flush did not happen")
+				}
+				time.Sleep(time.Millisecond)
+			}
 			require.NoError(t, d.Close())
 		})
 	}
