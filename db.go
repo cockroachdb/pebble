@@ -1494,14 +1494,14 @@ func (i *Iterator) constructPointIter(
 
 // NewBatch returns a new empty write-only batch. Any reads on the batch will
 // return an error. If the batch is committed it will be applied to the DB.
-func (d *DB) NewBatch() *Batch {
-	return newBatch(d)
+func (d *DB) NewBatch(opts ...BatchOption) *Batch {
+	return newBatch(d, opts...)
 }
 
 // NewBatchWithSize is mostly identical to NewBatch, but it will allocate the
 // the specified memory space for the internal slice in advance.
-func (d *DB) NewBatchWithSize(size int) *Batch {
-	return newBatchWithSize(d, size)
+func (d *DB) NewBatchWithSize(size int, opts ...BatchOption) *Batch {
+	return newBatchWithSize(d, size, opts...)
 }
 
 // NewIndexedBatch returns a new empty read-write batch. Any reads on the batch
