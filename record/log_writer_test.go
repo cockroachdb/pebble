@@ -411,7 +411,6 @@ func TestMetricsWithoutSync(t *testing.T) {
 func TestMetricsWithSync(t *testing.T) {
 	f := &syncFileWithWait{}
 	f.syncWG.Add(1)
-	writeTo := &prometheusgo.Metric{}
 	syncLatencyMicros := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Buckets: []float64{0,
 			float64(time.Millisecond),
@@ -437,21 +436,32 @@ func TestMetricsWithSync(t *testing.T) {
 		_, err := w.SyncRecord([]byte("hello"), &wg, &syncErr)
 		require.NoError(t, err)
 	}
-	// Unblock the flush loop. It may have run once or twice for these writes,
-	// plus may run one more time due to the Close, so up to 3 runs. So 100
-	// elements in the sync queue, spread over up to 3 runs.
-	syncLatency := 10 * time.Millisecond
-	time.Sleep(syncLatency)
-	f.syncWG.Done()
-	w.Close()
+
+	const syncLatency = 100 * time.Millisecond
+	go func() {
+		time.Sleep(syncLatency)
+		// Unblock the flush loop. It may have run once or twice for these writes,
+		// plus may run one more time due to the Close, so up to 3 runs. So 100
+		// elements in the sync queue, spread over up to 3 runs.
+		f.syncWG.Done()
+	}()
+
+	// Close() will only return after flushing is finished.
+	require.NoError(t, w.Close())
+
 	m := w.Metrics()
 	require.LessOrEqual(t, float64(30), m.SyncQueueLen.Mean())
-	syncLatencyMicros.Write(writeTo)
+
+	writeTo := &prometheusgo.Metric{}
+	require.NoError(t, syncLatencyMicros.Write(writeTo))
+	for i := 0; i < 100; i += 10 {
+		t.Logf("%d%%: %v", i, valueAtQuantileWindowed(writeTo.Histogram, float64(i)))
+	}
 	// Allow for some inaccuracy in sleep and for two syncs, one of which was
 	// fast.
 	require.LessOrEqual(t, float64(syncLatency/(2*time.Microsecond)),
 		valueAtQuantileWindowed(writeTo.Histogram, 90))
-	require.LessOrEqual(t, int64(syncLatency/2), int64(m.WriteThroughput.WorkDuration))
+	require.LessOrEqual(t, syncLatency/2, m.WriteThroughput.WorkDuration)
 }
 
 func valueAtQuantileWindowed(histogram *prometheusgo.Histogram, q float64) float64 {
