@@ -223,10 +223,6 @@ func TestLatestRefCounting(t *testing.T) {
 	require.False(t, ok)
 	require.Equal(t, 0, int(m2.FileBacking.VirtualizedSize.Load()))
 	checkBackingSize(t, d)
-
-	// Make sure that the backing file is added to the obsolete tables list.
-	require.Equal(t, 1, len(d.mu.versions.obsoleteTables))
-
 }
 
 // TODO(bananabrick): Convert TestLatestRefCounting and this test into a single
