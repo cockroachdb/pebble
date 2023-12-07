@@ -33,7 +33,7 @@ import (
 
 func TestBatch(t *testing.T) {
 	testBatch(t, 0)
-	testBatch(t, batchInitialSize)
+	testBatch(t, defaultBatchInitialSize)
 }
 
 func testBatch(t *testing.T, size int) {
@@ -206,9 +206,9 @@ func TestBatchPreAlloc(t *testing.T) {
 		size int
 		exp  int
 	}{
-		{0, batchInitialSize},
-		{batchInitialSize, batchInitialSize},
-		{2 * batchInitialSize, 2 * batchInitialSize},
+		{0, defaultBatchInitialSize},
+		{defaultBatchInitialSize, defaultBatchInitialSize},
+		{2 * defaultBatchInitialSize, 2 * defaultBatchInitialSize},
 	}
 	for _, c := range cases {
 		b := newBatchWithSize(nil, c.size)
@@ -257,11 +257,12 @@ func TestBatchLen(t *testing.T) {
 
 func TestBatchEmpty(t *testing.T) {
 	testBatchEmpty(t, 0)
-	testBatchEmpty(t, batchInitialSize)
+	testBatchEmpty(t, defaultBatchInitialSize)
+	testBatchEmpty(t, 0, WithInitialSizeBytes(2<<10), WithMaxRetainedSizeBytes(2<<20))
 }
 
-func testBatchEmpty(t *testing.T, size int) {
-	b := newBatchWithSize(nil, size)
+func testBatchEmpty(t *testing.T, size int, opts ...BatchOption) {
+	b := newBatchWithSize(nil, size, opts...)
 	require.True(t, b.Empty())
 
 	ops := []func(*Batch) error{
@@ -408,6 +409,8 @@ func TestBatchReset(t *testing.T) {
 	var expected Batch
 	require.NoError(t, expected.SetRepr(b.data))
 	expected.db = db
+	// Batch options should remain same after reset.
+	expected.opts = b.opts
 	require.Equal(t, &expected, b)
 
 	// Reset batch can be used to write and commit a new record.
@@ -1648,5 +1651,56 @@ func TestBatchSpanCaching(t *testing.T) {
 			checkIter(iter, readKey)
 			iters[readKey] = append(iters[readKey], iter)
 		}
+	}
+}
+
+func TestBatchOption(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		opts     []BatchOption
+		expected *Batch
+	}{
+		{
+			name: "default",
+			opts: nil,
+			expected: &Batch{batchInternal: batchInternal{
+				opts: &batchOptions{
+					initialSizeBytes:     defaultBatchInitialSize,
+					maxRetainedSizeBytes: defaultBatchMaxRetainedSize,
+				},
+			}},
+		},
+		{
+			name: "with_invalid_values",
+			opts: []BatchOption{WithInitialSizeBytes(0), WithMaxRetainedSizeBytes(-1)},
+			expected: &Batch{batchInternal: batchInternal{
+				opts: &batchOptions{
+					initialSizeBytes:     defaultBatchInitialSize,
+					maxRetainedSizeBytes: defaultBatchMaxRetainedSize,
+				},
+			}},
+		},
+		{
+			name: "with_custom_initial_size",
+			opts: []BatchOption{WithInitialSizeBytes(2 << 10)},
+			expected: &Batch{batchInternal: batchInternal{
+				opts: &batchOptions{
+					initialSizeBytes:     2 << 10,
+					maxRetainedSizeBytes: defaultBatchMaxRetainedSize,
+				},
+			}},
+		},
+		{
+			name: "with_custom_max_retained_size",
+			opts: []BatchOption{WithMaxRetainedSizeBytes(2 << 10)},
+			expected: &Batch{batchInternal: batchInternal{
+				opts: &batchOptions{
+					initialSizeBytes:     defaultBatchInitialSize,
+					maxRetainedSizeBytes: 2 << 10,
+				},
+			}},
+		},
+	} {
+		require.Equal(t, tc.expected, newBatch(nil, tc.opts...))
 	}
 }
