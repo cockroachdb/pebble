@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -3187,68 +3186,68 @@ func TestCompactionOutputSplitters(t *testing.T) {
 }
 
 func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test is flaky on windows")
-	}
+	for i := 0; i < 1000; i++ {
+		t.Run("", func(t *testing.T) {
+			// Verify that manual compaction forces a flush of a queued memtable.
 
-	// Verify that manual compaction forces a flush of a queued memtable.
+			mem := vfs.NewMem()
+			d, err := Open("", testingRandomized(t, &Options{
+				FS: mem,
+			}).WithFSDefaults())
+			require.NoError(t, err)
 
-	mem := vfs.NewMem()
-	d, err := Open("", testingRandomized(t, &Options{
-		FS: mem,
-	}).WithFSDefaults())
-	require.NoError(t, err)
-
-	// Add the key "a" to the memtable, then fill up the memtable with the key
-	// prefix "b". The compaction will only overlap with the queued memtable,
-	// not the mutable memtable.
-	// NB: The initial memtable size is 256KB, which is filled up with random
-	// values which typically don't compress well. The test also appends the
-	// random value to the "b" key to limit overwriting of the same key, which
-	// would get collapsed at flush time since there are no open snapshots.
-	value := make([]byte, 50)
-	_, err = crand.Read(value)
-	require.NoError(t, err)
-	require.NoError(t, d.Set([]byte("a"), value, nil))
-	for {
-		_, err = crand.Read(value)
-		require.NoError(t, err)
-		require.NoError(t, d.Set(append([]byte("b"), value...), value, nil))
-		d.mu.Lock()
-		done := len(d.mu.mem.queue) == 2
-		d.mu.Unlock()
-		if done {
-			break
-		}
-	}
-
-	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
-	d.mu.Lock()
-	require.Equal(t, 1, len(d.mu.mem.queue))
-	d.mu.Unlock()
-	// Flush metrics are updated after and non-atomically with the memtable
-	// being removed from the queue.
-	func() {
-		begin := time.Now()
-		for {
-			metrics := d.Metrics()
-			require.NotNil(t, metrics)
-			if int64(50<<10) < metrics.Flush.WriteThroughput.Bytes {
-				// The writes (during which the flush is idle) and the flush work
-				// should not be so fast as to be unrealistic. If these turn out to be
-				// flaky we could instead inject a clock.
-				tinyInterval := int64(50 * time.Microsecond)
-				require.Less(t, tinyInterval, int64(metrics.Flush.WriteThroughput.WorkDuration))
-				require.Less(t, tinyInterval, int64(metrics.Flush.WriteThroughput.IdleDuration))
-				return
+			// Add the key "a" to the memtable, then fill up the memtable with the key
+			// prefix "b". The compaction will only overlap with the queued memtable,
+			// not the mutable memtable.
+			// NB: The initial memtable size is 256KB, which is filled up with random
+			// values which typically don't compress well. The test also appends the
+			// random value to the "b" key to limit overwriting of the same key, which
+			// would get collapsed at flush time since there are no open snapshots.
+			value := make([]byte, 50)
+			_, err = crand.Read(value)
+			require.NoError(t, err)
+			require.NoError(t, d.Set([]byte("a"), value, nil))
+			for {
+				_, err = crand.Read(value)
+				require.NoError(t, err)
+				require.NoError(t, d.Set(append([]byte("b"), value...), value, nil))
+				d.mu.Lock()
+				done := len(d.mu.mem.queue) == 2
+				d.mu.Unlock()
+				if done {
+					break
+				}
 			}
-			if time.Since(begin) > 2*time.Second {
-				t.Fatal()
-			}
-			time.Sleep(time.Millisecond)
-		}
-	}()
-	require.NoError(t, d.Close())
+
+			require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
+			d.mu.Lock()
+			require.Equal(t, 1, len(d.mu.mem.queue))
+			d.mu.Unlock()
+			// Flush metrics are updated after and non-atomically with the memtable
+			// being removed from the queue.
+			func() {
+				begin := time.Now()
+				for {
+					metrics := d.Metrics()
+					require.NotNil(t, metrics)
+					if int64(50<<10) < metrics.Flush.WriteThroughput.Bytes {
+						// The writes (during which the flush is idle) and the flush work
+						// should not be so fast as to be unrealistic. If these turn out to be
+						// flaky we could instead inject a clock.
+						tinyInterval := int64(50 * time.Microsecond)
+						require.Less(t, tinyInterval, int64(metrics.Flush.WriteThroughput.WorkDuration))
+						require.Less(t, tinyInterval, int64(metrics.Flush.WriteThroughput.IdleDuration))
+						return
+					}
+					if time.Since(begin) > 2*time.Second {
+						t.Fatal()
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}()
+			require.NoError(t, d.Close())
+		})
+	}
 }
 
 func TestCompactFlushQueuedLargeBatch(t *testing.T) {
