@@ -30,10 +30,11 @@ import (
 )
 
 const (
-	batchInitialSize     = 1 << 10 // 1 KB
-	batchMaxRetainedSize = 1 << 20 // 1 MB
-	invalidBatchCount    = 1<<32 - 1
-	maxVarintLen32       = 5
+	invalidBatchCount = 1<<32 - 1
+	maxVarintLen32    = 5
+
+	defaultBatchInitialSize     = 1 << 10 // 1 KB
+	defaultBatchMaxRetainedSize = 1 << 20 // 1 MB
 )
 
 // ErrNotIndexed means that a read operation on a batch failed because the
@@ -271,6 +272,7 @@ type batchInternal struct {
 	cmp            Compare
 	formatKey      base.FormatKey
 	abbreviatedKey AbbreviatedKey
+	opts           batchOptions
 
 	// An upper bound on required space to add this batch to a memtable.
 	// Note that although batches are limited to 4 GiB in size, that limit
@@ -440,14 +442,18 @@ var indexedBatchPool = sync.Pool{
 	},
 }
 
-func newBatch(db *DB) *Batch {
+func newBatch(db *DB, opts ...BatchOption) *Batch {
 	b := batchPool.Get().(*Batch)
 	b.db = db
+	b.opts.ensureDefaults()
+	for _, opt := range opts {
+		opt(&b.opts)
+	}
 	return b
 }
 
-func newBatchWithSize(db *DB, size int) *Batch {
-	b := newBatch(db)
+func newBatchWithSize(db *DB, size int, opts ...BatchOption) *Batch {
+	b := newBatch(db, opts...)
 	if cap(b.data) < size {
 		b.data = rawalloc.New(0, size)
 	}
@@ -462,6 +468,7 @@ func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 	i.batch.db = db
 	i.batch.index = &i.index
 	i.batch.index.Init(&i.batch.data, i.batch.cmp, i.batch.abbreviatedKey)
+	i.batch.opts.ensureDefaults()
 	return &i.batch
 }
 
@@ -1510,7 +1517,8 @@ func (b *Batch) Indexed() bool {
 // init ensures that the batch data slice is initialized to meet the
 // minimum required size and allocates space for the batch header.
 func (b *Batch) init(size int) {
-	n := batchInitialSize
+	b.opts.ensureDefaults()
+	n := b.opts.initialSizeBytes
 	for n < size {
 		n *= 2
 	}
@@ -1547,12 +1555,13 @@ func (b *Batch) reset() {
 		cmp:            b.cmp,
 		formatKey:      b.formatKey,
 		abbreviatedKey: b.abbreviatedKey,
+		opts:           b.opts,
 		index:          b.index,
 		db:             b.db,
 	}
 	b.applied.Store(false)
 	if b.data != nil {
-		if cap(b.data) > batchMaxRetainedSize {
+		if cap(b.data) > b.opts.maxRetainedSizeBytes {
 			// If the capacity of the buffer is larger than our maximum
 			// retention size, don't re-use it. Let it be GC-ed instead.
 			// This prevents the memory from an unusually large batch from
@@ -2400,6 +2409,42 @@ func (i flushFlushableBatchIter) valueSize() uint64 {
 		length = v + uint64(n)
 	}
 	return length
+}
+
+// batchOptions holds the parameters to configure batch.
+type batchOptions struct {
+	initialSizeBytes     int
+	maxRetainedSizeBytes int
+}
+
+// ensureDefaults creates batch options with default values.
+func (o *batchOptions) ensureDefaults() {
+	if o.initialSizeBytes <= 0 {
+		o.initialSizeBytes = defaultBatchInitialSize
+	}
+	if o.maxRetainedSizeBytes <= 0 {
+		o.maxRetainedSizeBytes = defaultBatchMaxRetainedSize
+	}
+}
+
+// BatchOption allows customizing the batch.
+type BatchOption func(*batchOptions)
+
+// WithInitialSizeBytes sets a custom initial size for the batch. Defaults
+// to 1KB.
+func WithInitialSizeBytes(s int) BatchOption {
+	return func(opts *batchOptions) {
+		opts.initialSizeBytes = s
+	}
+}
+
+// WithMaxRetainedSizeBytes sets a custom max size for the batch to be
+// re-used. Any batch which exceeds the max retained size would be GC-ed.
+// Defaults to 1MB.
+func WithMaxRetainedSizeBytes(s int) BatchOption {
+	return func(opts *batchOptions) {
+		opts.maxRetainedSizeBytes = s
+	}
 }
 
 // batchSort returns iterators for the sorted contents of the batch. It is
