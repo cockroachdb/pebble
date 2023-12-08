@@ -76,7 +76,6 @@ func TestMetaTwoInstance(t *testing.T) {
 	case runOnceFlags.Compare != "":
 		runDirs := strings.Split(runOnceFlags.Compare, ",")
 		onceOpts := runOnceFlags.MakeRunOnceOptions()
-		onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
 		metamorphic.Compare(t, runOnceFlags.Dir, runOnceFlags.Seed, runDirs, onceOpts...)
 
 	case runOnceFlags.RunDir != "":
@@ -84,7 +83,6 @@ func TestMetaTwoInstance(t *testing.T) {
 		// runOptions() below) or the user specified it manually in order to re-run
 		// a test.
 		onceOpts := runOnceFlags.MakeRunOnceOptions()
-		onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
 		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed, filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
 
 	default:

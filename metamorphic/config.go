@@ -45,7 +45,6 @@ const (
 	writerDelete
 	writerDeleteRange
 	writerIngest
-	writerIngestAndExcise
 	writerMerge
 	writerRangeKeyDelete
 	writerRangeKeySet
@@ -155,7 +154,6 @@ func defaultConfig() config {
 			writerDelete:                100,
 			writerDeleteRange:           50,
 			writerIngest:                100,
-			writerIngestAndExcise:       50,
 			writerMerge:                 100,
 			writerRangeKeySet:           10,
 			writerRangeKeyUnset:         10,

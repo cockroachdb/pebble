@@ -124,16 +124,6 @@ func parseOptions(
 					return true
 				}
 				return true
-			case "TestOptions.use_shared_replicate":
-				opts.useSharedReplicate = true
-				return true
-			case "TestOptions.use_excise":
-				opts.useExcise = true
-				return true
-			case "TestOptions.efos_always_creates_iterators":
-				opts.efosAlwaysCreatesIters = true
-				opts.Opts.TestingAlwaysCreateEFOSIterators(true /* value */)
-				return true
 			default:
 				if customOptionParsers == nil {
 					return false
@@ -200,15 +190,6 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.ingestSplit {
 		fmt.Fprintf(&buf, "  ingest_split=%v\n", opts.ingestSplit)
-	}
-	if opts.useSharedReplicate {
-		fmt.Fprintf(&buf, "  use_shared_replicate=%v\n", opts.useSharedReplicate)
-	}
-	if opts.useExcise {
-		fmt.Fprintf(&buf, "  use_excise=%v\n", opts.useExcise)
-	}
-	if opts.efosAlwaysCreatesIters {
-		fmt.Fprintf(&buf, "  efos_always_creates_iterators=%v\n", opts.efosAlwaysCreatesIters)
 	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
@@ -286,16 +267,6 @@ type TestOptions struct {
 	// Enables ingest splits. Saved here for serialization as Options does not
 	// serialize this.
 	ingestSplit bool
-	// Enables operations that do excises. Note that a false value for this does
-	// not guarantee the lack of excises, as useSharedReplicate can also cause
-	// excises. However !useExcise && !useSharedReplicate can be used to guarantee
-	// lack of excises.
-	useExcise bool
-	// Enables EFOS to always create iterators, even if a conflicting excise
-	// happens. Used to guarantee EFOS determinism when conflicting excises are
-	// in play. If false, EFOS determinism is maintained by having the DB do a
-	// flush after every new EFOS.
-	efosAlwaysCreatesIters bool
 }
 
 // CustomOption defines a custom option that configures the behavior of an
@@ -600,14 +571,6 @@ func randomOptions(
 	testOpts.seedEFOS = rng.Uint64()
 	testOpts.ingestSplit = rng.Intn(2) == 0
 	opts.Experimental.IngestSplit = func() bool { return testOpts.ingestSplit }
-	testOpts.useExcise = rng.Intn(2) == 0
-	if testOpts.useExcise || testOpts.useSharedReplicate {
-		testOpts.efosAlwaysCreatesIters = rng.Intn(2) == 0
-		opts.TestingAlwaysCreateEFOSIterators(testOpts.efosAlwaysCreatesIters)
-		if testOpts.Opts.FormatMajorVersion < pebble.FormatVirtualSSTables {
-			testOpts.Opts.FormatMajorVersion = pebble.FormatVirtualSSTables
-		}
-	}
 	testOpts.Opts.EnsureDefaults()
 	return testOpts
 }

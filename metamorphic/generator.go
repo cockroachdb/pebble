@@ -171,7 +171,6 @@ func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
 		writerDelete:                g.writerDelete,
 		writerDeleteRange:           g.writerDeleteRange,
 		writerIngest:                g.writerIngest,
-		writerIngestAndExcise:       g.writerIngestAndExcise,
 		writerMerge:                 g.writerMerge,
 		writerRangeKeyDelete:        g.writerRangeKeyDelete,
 		writerRangeKeySet:           g.writerRangeKeySet,
@@ -1175,7 +1174,7 @@ func (g *generator) replicate() {
 	var startKey, endKey []byte
 	startKey = g.randKeyToRead(0.001) // 0.1% new keys
 	endKey = g.randKeyToRead(0.001)   // 0.1% new keys
-	for g.equal(startKey, endKey) {
+	for g.cmp(startKey, endKey) == 0 {
 		endKey = g.randKeyToRead(0.01) // 1% new keys
 	}
 	if g.cmp(startKey, endKey) > 0 {
@@ -1229,15 +1228,28 @@ func (g *generator) newSnapshot() {
 		snapID: snapID,
 	}
 
-	// Impose bounds on the keys that may be read with the snapshot. Setting bounds
-	// allows some runs of the metamorphic test to use a EventuallyFileOnlySnapshot
-	// instead of a Snapshot, testing equivalence between the two for reads within
-	// those bounds.
-	s.bounds = g.generateDisjointKeyRanges(
-		g.rng.Intn(5) + 1, /* between 1-5 */
-	)
-	g.snapshotBounds[snapID] = s.bounds
+	// With 75% probability, impose bounds on the keys that may be read with the
+	// snapshot. Setting bounds allows some runs of the metamorphic test to use
+	// a EventuallyFileOnlySnapshot instead of a Snapshot, testing equivalence
+	// between the two for reads within those bounds.
+	//
+	// If we're in multi-instance mode, we must always create bounds, as we will
+	// always create EventuallyFileOnlySnapshots to allow commands that use excises
+	// (eg. replicateOp) to work.
+	if g.rng.Float64() < 0.75 || g.dbs.Len() > 1 {
+		s.bounds = g.generateDisjointKeyRanges(
+			g.rng.Intn(5) + 1, /* between 1-5 */
+		)
+		g.snapshotBounds[snapID] = s.bounds
+	}
 	g.add(s)
+	if g.dbs.Len() > 1 {
+		// Do a flush after each EFOS, if we're in multi-instance mode. This limits
+		// the testing area of EFOS, but allows them to be used alongside operations
+		// that do an excise (eg. replicateOp). This will be revisited when
+		// https://github.com/cockroachdb/pebble/issues/2885 is implemented.
+		g.add(&flushOp{dbID})
+	}
 }
 
 func (g *generator) snapshotClose() {
@@ -1439,34 +1451,6 @@ func (g *generator) writerIngest() {
 		dbID:         dbID,
 		batchIDs:     batchIDs,
 		derivedDBIDs: derivedDBIDs,
-	})
-}
-
-func (g *generator) writerIngestAndExcise() {
-	if len(g.liveBatches) == 0 {
-		return
-	}
-
-	dbID := g.dbs.rand(g.rng)
-	batchID := g.liveBatches.rand(g.rng)
-	g.removeBatchFromGenerator(batchID)
-
-	start := g.randKeyToWrite(0.001)
-	end := g.randKeyToWrite(0.001)
-	for g.equal(start, end) {
-		end = g.randKeyToWrite(0.001)
-	}
-	if g.cmp(start, end) > 0 {
-		start, end = end, start
-	}
-	derivedDBID := g.objDB[batchID]
-
-	g.add(&ingestAndExciseOp{
-		dbID:        dbID,
-		batchID:     batchID,
-		derivedDBID: derivedDBID,
-		exciseStart: start,
-		exciseEnd:   end,
 	})
 }
 
