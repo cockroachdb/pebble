@@ -99,6 +99,12 @@ func TestCompactionIter(t *testing.T) {
 		return "testdata/compaction_iter_delete_sized"
 	}
 
+	var ineffectualSingleDeleteKeys []string
+	var invariantViolationSingleDeleteKeys []string
+	resetSingleDelStats := func() {
+		ineffectualSingleDeleteKeys = ineffectualSingleDeleteKeys[:0]
+		invariantViolationSingleDeleteKeys = invariantViolationSingleDeleteKeys[:0]
+	}
 	newIter := func(formatVersion FormatMajorVersion) *compactionIter {
 		// To adhere to the existing assumption that range deletion blocks in
 		// SSTables are not released while iterating, and therefore not
@@ -119,7 +125,7 @@ func TestCompactionIter(t *testing.T) {
 				return m, nil
 			}
 		}
-
+		resetSingleDelStats()
 		return newCompactionIter(
 			DefaultComparer.Compare,
 			DefaultComparer.Equal,
@@ -135,6 +141,12 @@ func TestCompactionIter(t *testing.T) {
 			},
 			func(_, _ []byte) bool {
 				return elideTombstones
+			},
+			func(userKey []byte) {
+				ineffectualSingleDeleteKeys = append(ineffectualSingleDeleteKeys, string(userKey))
+			},
+			func(userKey []byte) {
+				invariantViolationSingleDeleteKeys = append(invariantViolationSingleDeleteKeys, string(userKey))
 			},
 			formatVersion,
 		)
@@ -300,6 +312,14 @@ func TestCompactionIter(t *testing.T) {
 				}
 				if printMissizedDels {
 					fmt.Fprintf(&b, "missized-dels=%d\n", iter.stats.countMissizedDels)
+				}
+				if len(ineffectualSingleDeleteKeys) > 0 {
+					fmt.Fprintf(&b, "ineffectual-single-deletes: %s\n",
+						strings.Join(ineffectualSingleDeleteKeys, ","))
+				}
+				if len(invariantViolationSingleDeleteKeys) > 0 {
+					fmt.Fprintf(&b, "invariant-violation-single-deletes: %s\n",
+						strings.Join(invariantViolationSingleDeleteKeys, ","))
 				}
 				return b.String()
 

@@ -682,6 +682,7 @@ iter elide-tombstones=true
 first
 ----
 .
+ineffectual-single-deletes: a
 
 define
 a.SINGLEDEL.2:
@@ -694,6 +695,7 @@ next
 ----
 a#2,7:
 .
+ineffectual-single-deletes: a
 
 define
 a.SINGLEDEL.3:
@@ -705,6 +707,7 @@ iter
 first
 ----
 .
+ineffectual-single-deletes: a
 
 define
 a.SET.3:a
@@ -720,6 +723,7 @@ next
 a#3,1:a
 b#2,0:
 .
+ineffectual-single-deletes: b
 
 define
 a.SINGLEDEL.2:
@@ -732,11 +736,13 @@ next
 ----
 a#2,0:
 .
+ineffectual-single-deletes: a
 
 iter elide-tombstones=true
 first
 ----
 .
+ineffectual-single-deletes: a
 
 define
 a.SINGLEDEL.2:
@@ -745,9 +751,7 @@ a.MERGE.1:
 
 iter
 first
-next
 ----
-a#2,0:
 .
 
 iter elide-tombstones=true
@@ -777,6 +781,15 @@ next
 a#2,1:b
 .
 
+# We don't notice the ineffectual single delete since the SET causes all
+# SingleDelete error checking to be skipped.
+iter elide-tombstones=true
+first
+next
+----
+a#2,1:b
+.
+
 define
 a.MERGE.6:b
 a.SINGLEDEL.5:
@@ -791,7 +804,8 @@ a#6,18:b[base]
 .
 
 # Non-deterministic use of SINGLEDEL where there are two older SETs that have
-# not been deleted or single deleted. It is permitted to shadow both.
+# not been deleted or single deleted. It is permitted to shadow both, since
+# MERGE turns into a SETWITHDELETE when it meets the SINGLEDEL.
 define
 a.MERGE.6:b
 a.SINGLEDEL.5:
@@ -831,6 +845,7 @@ next
 ----
 a#1,1:a
 .
+invariant-violation-single-deletes: a
 
 define
 a.SINGLEDEL.3:
@@ -838,12 +853,14 @@ a.MERGE.2:b
 a.MERGE.1:a
 ----
 
+# SINGLEDEL consumes the first MERGE.
 iter
 first
 next
 ----
-a#3,0:
+a#1,2:a
 .
+invariant-violation-single-deletes: a
 
 define
 a.SINGLEDEL.4:
@@ -918,6 +935,7 @@ next
 ----
 a#2,1:ab[base]
 .
+invariant-violation-single-deletes: a
 
 iter snapshots=2
 first
@@ -927,6 +945,7 @@ next
 a#2,2:b
 a#1,1:a
 .
+invariant-violation-single-deletes: a
 
 iter snapshots=3
 first
@@ -934,6 +953,7 @@ next
 ----
 a#2,1:ab[base]
 .
+invariant-violation-single-deletes: a
 
 iter snapshots=(2,3,4)
 first

@@ -69,10 +69,12 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"BlockPropertyCollectors:",
 		"EventListener:",
 		"MaxConcurrentCompactions:",
-		"Experimental.EnableValueBlocks:",
 		"Experimental.DisableIngestAsFlushable:",
-		"Experimental.RemoteStorage:",
+		"Experimental.EnableValueBlocks:",
+		"Experimental.IneffectualSingleDeleteCallback:",
 		"Experimental.IngestSplit:",
+		"Experimental.RemoteStorage:",
+		"Experimental.SingleDeleteInvariantViolationCallback:",
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
 	}

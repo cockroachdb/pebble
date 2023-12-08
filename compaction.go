@@ -3019,7 +3019,9 @@ func (d *DB) runCompaction(
 	iiter = invalidating.MaybeWrapIfInvariants(iiter)
 	iter := newCompactionIter(c.cmp, c.equal, c.formatKey, d.merge, iiter, snapshots,
 		&c.rangeDelFrag, &c.rangeKeyFrag, c.allowedZeroSeqNum, c.elideTombstone,
-		c.elideRangeTombstone, d.FormatMajorVersion())
+		c.elideRangeTombstone, d.opts.Experimental.IneffectualSingleDeleteCallback,
+		d.opts.Experimental.SingleDeleteInvariantViolationCallback,
+		d.FormatMajorVersion())
 
 	var (
 		createdFiles    []base.DiskFileNum
