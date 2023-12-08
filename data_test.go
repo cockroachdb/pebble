@@ -578,7 +578,7 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 }
 
 func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
-	b := newIndexedBatch(nil, d.opts.Comparer)
+	b := d.NewIndexedBatch()
 	if err := runBatchDefineCmd(td, b); err != nil {
 		return err
 	}

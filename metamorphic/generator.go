@@ -1172,7 +1172,15 @@ func (g *generator) replicate() {
 		dest = g.dbs.rand(g.rng)
 	}
 
-	startKey, endKey := g.prefixKeyRange()
+	var startKey, endKey []byte
+	startKey = g.randKeyToRead(0.001) // 0.1% new keys
+	endKey = g.randKeyToRead(0.001)   // 0.1% new keys
+	for g.equal(startKey, endKey) {
+		endKey = g.randKeyToRead(0.01) // 1% new keys
+	}
+	if g.cmp(startKey, endKey) > 0 {
+		startKey, endKey = endKey, startKey
+	}
 	g.add(&replicateOp{
 		source: source,
 		dest:   dest,
@@ -1443,7 +1451,14 @@ func (g *generator) writerIngestAndExcise() {
 	batchID := g.liveBatches.rand(g.rng)
 	g.removeBatchFromGenerator(batchID)
 
-	start, end := g.prefixKeyRange()
+	start := g.randKeyToWrite(0.001)
+	end := g.randKeyToWrite(0.001)
+	for g.equal(start, end) {
+		end = g.randKeyToWrite(0.001)
+	}
+	if g.cmp(start, end) > 0 {
+		start, end = end, start
+	}
 	derivedDBID := g.objDB[batchID]
 
 	g.add(&ingestAndExciseOp{
