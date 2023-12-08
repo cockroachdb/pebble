@@ -423,6 +423,10 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			return &i.key, i.value
 		}
 
+		// TODO(sumeer): we could avoid calling Covers if i.iterStripeChange ==
+		// sameStripeSameKey since that check has already been done in
+		// nextInStripeHelper. However, we also need to handle the case of
+		// CoversInvisibly below.
 		if cover := i.rangeDelFrag.Covers(*i.iterKey, i.curSnapshotSeqNum); cover == keyspan.CoversVisibly {
 			// A pending range deletion deletes this key. Skip it.
 			i.saveKey()
@@ -602,6 +606,8 @@ func snapshotIndex(seq uint64, snapshots []uint64) (int, uint64) {
 // may set i.err, in which case i.iterKey will be nil.
 func (i *compactionIter) skipInStripe() {
 	i.skip = true
+	// TODO(sumeer): we can avoid the overhead of calling i.rangeDelFrag.Covers,
+	// in this case of nextInStripe, since we are skipping all of them anyway.
 	for i.nextInStripe() == sameStripeSkippable {
 		if i.err != nil {
 			panic(i.err)
@@ -643,6 +649,9 @@ const (
 // nextInStripe advances the iterator and returns one of the above const ints
 // indicating how its state changed.
 //
+// All sameStripeSkippable keys that are covered by a RANGEDEL will be skipped
+// and not returned.
+//
 // Calls to nextInStripe must be preceded by a call to saveKey to retain a
 // temporary reference to the original key, so that forward iteration can
 // proceed with a reference to the original key. Care should be taken to avoid
@@ -659,66 +668,72 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 // nextInStripeHelper is an internal helper for nextInStripe; callers should use
 // nextInStripe and not call nextInStripeHelper.
 func (i *compactionIter) nextInStripeHelper() stripeChangeType {
-	if !i.iterNext() {
-		return newStripeNewKey
-	}
-	key := i.iterKey
-
-	if !i.equal(i.key.UserKey, key.UserKey) {
-		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
-		return newStripeNewKey
-	}
-
-	// If i.key and key have the same user key, then
-	//   1. i.key must not have had a zero sequence number (or it would've be the last
-	//      key with its user key).
-	//   2. i.key must have a strictly larger sequence number
-	// There's an exception in that either key may be a range delete. Range
-	// deletes may share a sequence number with a point key if the keys were
-	// ingested together. Range keys may also share the sequence number if they
-	// were ingested, but range keys are interleaved into the compaction
-	// iterator's input iterator at the maximal sequence number so their
-	// original sequence number will not be observed here.
-	if prevSeqNum := base.SeqNumFromTrailer(i.keyTrailer); (prevSeqNum == 0 || prevSeqNum <= key.SeqNum()) &&
-		i.key.Kind() != InternalKeyKindRangeDelete && key.Kind() != InternalKeyKindRangeDelete {
-		prevKey := i.key
-		prevKey.Trailer = i.keyTrailer
-		panic(errors.AssertionFailedf("pebble: invariant violation: %s and %s out of order", prevKey, key))
-	}
-
 	origSnapshotIdx := i.curSnapshotIdx
-	i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
-	switch key.Kind() {
-	case InternalKeyKindRangeDelete:
-		// Range tombstones need to be exposed by the compactionIter to the upper level
-		// `compaction` object, so return them regardless of whether they are in the same
-		// snapshot stripe.
+	for {
+		if !i.iterNext() {
+			return newStripeNewKey
+		}
+		key := i.iterKey
+
+		if !i.equal(i.key.UserKey, key.UserKey) {
+			i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
+			return newStripeNewKey
+		}
+
+		// If i.key and key have the same user key, then
+		//   1. i.key must not have had a zero sequence number (or it would've be the last
+		//      key with its user key).
+		//   2. i.key must have a strictly larger sequence number
+		// There's an exception in that either key may be a range delete. Range
+		// deletes may share a sequence number with a point key if the keys were
+		// ingested together. Range keys may also share the sequence number if they
+		// were ingested, but range keys are interleaved into the compaction
+		// iterator's input iterator at the maximal sequence number so their
+		// original sequence number will not be observed here.
+		if prevSeqNum := base.SeqNumFromTrailer(i.keyTrailer); (prevSeqNum == 0 || prevSeqNum <= key.SeqNum()) &&
+			i.key.Kind() != InternalKeyKindRangeDelete && key.Kind() != InternalKeyKindRangeDelete {
+			prevKey := i.key
+			prevKey.Trailer = i.keyTrailer
+			panic(errors.AssertionFailedf("pebble: invariant violation: %s and %s out of order", prevKey, key))
+		}
+
+		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
+		switch key.Kind() {
+		case InternalKeyKindRangeDelete:
+			// Range tombstones need to be exposed by the compactionIter to the upper level
+			// `compaction` object, so return them regardless of whether they are in the same
+			// snapshot stripe.
+			if i.curSnapshotIdx == origSnapshotIdx {
+				return sameStripeNonSkippable
+			}
+			return newStripeSameKey
+		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+			// Range keys are interleaved at the max sequence number for a given user
+			// key, so we should not see any more range keys in this stripe.
+			panic("unreachable")
+		case InternalKeyKindInvalid:
+			if i.curSnapshotIdx == origSnapshotIdx {
+				return sameStripeNonSkippable
+			}
+			return newStripeSameKey
+		case InternalKeyKindDelete, InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindSingleDelete,
+			InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
+			// Fall through
+		default:
+			i.iterKey = nil
+			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
+			i.valid = false
+			return newStripeNewKey
+		}
 		if i.curSnapshotIdx == origSnapshotIdx {
-			return sameStripeNonSkippable
+			// Same snapshot.
+			if i.rangeDelFrag.Covers(*i.iterKey, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
+				continue
+			}
+			return sameStripeSkippable
 		}
 		return newStripeSameKey
-	case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-		// Range keys are interleaved at the max sequence number for a given user
-		// key, so we should not see any more range keys in this stripe.
-		panic("unreachable")
-	case InternalKeyKindInvalid:
-		if i.curSnapshotIdx == origSnapshotIdx {
-			return sameStripeNonSkippable
-		}
-		return newStripeSameKey
-	case InternalKeyKindDelete, InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindSingleDelete,
-		InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
-		// Fall through
-	default:
-		i.iterKey = nil
-		i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
-		i.valid = false
-		return newStripeNewKey
 	}
-	if i.curSnapshotIdx == origSnapshotIdx {
-		return sameStripeSkippable
-	}
-	return newStripeSameKey
 }
 
 func (i *compactionIter) setNext() {
@@ -744,6 +759,10 @@ func (i *compactionIter) setNext() {
 
 	// Else, we continue to loop through entries in the stripe looking for a
 	// DEL. Note that we may stop *before* encountering a DEL, if one exists.
+	//
+	// NB: nextInStripe will skip sameStripeSkippable keys that are visibly
+	// covered by a RANGEDEL. This can include DELs -- this is fine since such
+	// DELs don't need to be combined with SET to make SETWITHDEL.
 	for {
 		switch i.nextInStripe() {
 		case newStripeNewKey, newStripeSameKey:
@@ -826,6 +845,13 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 		if i.err != nil {
 			panic(i.err)
 		}
+		// NB: MERGE#10+RANGEDEL#9 stays a MERGE, since nextInStripe skips
+		// sameStripeSkippable keys that are visibly covered by a RANGEDEL. There
+		// may be MERGE#7 that is invisibly covered and will be preserved, but
+		// there is no risk that MERGE#10 and MERGE#7 will get merged in the
+		// future as the RANGEDEL still exists and will be used in user-facing
+		// reads that see MERGE#10, and will also eventually cause MERGE#7 to be
+		// deleted in a compaction.
 		key := i.iterKey
 		switch key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
@@ -851,16 +877,6 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			return sameStripeSkippable
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
-			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
-				// We change the kind of the result key to a Set so that it shadows
-				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
-				// strictly necessary, but provides consistency with the behavior of
-				// MERGE+DEL.
-				i.key.SetKind(InternalKeyKindSet)
-				i.skip = true
-				return sameStripeSkippable
-			}
-
 			// We've hit a Set or SetWithDel value. Merge with the existing
 			// value and return. We change the kind of the resulting key to a
 			// Set so that it shadows keys in lower levels. That is:
@@ -875,16 +891,6 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			return sameStripeSkippable
 
 		case InternalKeyKindMerge:
-			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
-				// We change the kind of the result key to a Set so that it shadows
-				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
-				// strictly necessary, but provides consistency with the behavior of
-				// MERGE+DEL.
-				i.key.SetKind(InternalKeyKindSet)
-				i.skip = true
-				return sameStripeSkippable
-			}
-
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
 			i.err = valueMerger.MergeOlder(i.iterValue)

@@ -447,7 +447,7 @@ next
 tombstones
 ----
 a#3,15:c
-b#5,1:de[base]
+b#5,2:de
 d#5,2:bc
 d#3,15:f
 .
@@ -1102,8 +1102,7 @@ a#5,18:5[base]
 a#1,2:1
 .
 
-# Verify that we transform merge+rangedel -> set. This isn't strictly
-# necessary, but provides consistency with the behavior for merge+del.
+# Verify that merge+rangedel -> merge.
 
 define
 a.RANGEDEL.3:c
@@ -1118,7 +1117,7 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5[base]
+b#5,2:5
 .
 
 iter allow-zero-seqnum=true
@@ -1127,7 +1126,7 @@ next
 next
 ----
 a#3,15:c
-b#0,1:5[base]
+b#0,2:5
 .
 
 iter snapshots=2
@@ -1136,7 +1135,7 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5[base]
+b#5,2:5
 b#1,2:1
 
 define
@@ -1152,7 +1151,7 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5[base]
+b#5,2:5
 .
 
 iter snapshots=2
@@ -1161,7 +1160,7 @@ next
 next
 ----
 a#3,15:c
-b#5,1:5[base]
+b#5,2:5
 b#1,2:1
 
 # NB: Zero values are skipped by deletable merger.
