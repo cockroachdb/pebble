@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/batchskl"
 	"github.com/cockroachdb/pebble/internal/humanize"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -932,15 +931,6 @@ func (b *Batch) DeleteRangeDeferred(startLen, endLen int) *DeferredBatchOp {
 //
 // It is safe to modify the contents of the arguments after RangeKeySet returns.
 func (b *Batch) RangeKeySet(start, end, suffix, value []byte, _ *WriteOptions) error {
-	if invariants.Enabled && b.db != nil && b.db.opts.Comparer.Split != nil {
-		// RangeKeySet is only supported on prefix keys.
-		if b.db.opts.Comparer.Split(start) != len(start) {
-			panic("RangeKeySet called with suffixed start key")
-		}
-		if b.db.opts.Comparer.Split(end) != len(end) {
-			panic("RangeKeySet called with suffixed end key")
-		}
-	}
 	suffixValues := [1]rangekey.SuffixValue{{Suffix: suffix, Value: value}}
 	internalValueLen := rangekey.EncodedSetValueLen(end, suffixValues[:])
 
@@ -991,15 +981,6 @@ func (b *Batch) incrementRangeKeysCount() {
 // It is safe to modify the contents of the arguments after RangeKeyUnset
 // returns.
 func (b *Batch) RangeKeyUnset(start, end, suffix []byte, _ *WriteOptions) error {
-	if invariants.Enabled && b.db != nil && b.db.opts.Comparer.Split != nil {
-		// RangeKeyUnset is only supported on prefix keys.
-		if b.db.opts.Comparer.Split(start) != len(start) {
-			panic("RangeKeyUnset called with suffixed start key")
-		}
-		if b.db.opts.Comparer.Split(end) != len(end) {
-			panic("RangeKeyUnset called with suffixed end key")
-		}
-	}
 	suffixes := [1][]byte{suffix}
 	internalValueLen := rangekey.EncodedUnsetValueLen(end, suffixes[:])
 
@@ -1033,15 +1014,6 @@ func (b *Batch) rangeKeyUnsetDeferred(startLen, internalValueLen int) *DeferredB
 // It is safe to modify the contents of the arguments after RangeKeyDelete
 // returns.
 func (b *Batch) RangeKeyDelete(start, end []byte, _ *WriteOptions) error {
-	if invariants.Enabled && b.db != nil && b.db.opts.Comparer.Split != nil {
-		// RangeKeyDelete is only supported on prefix keys.
-		if b.db.opts.Comparer.Split(start) != len(start) {
-			panic("RangeKeyDelete called with suffixed start key")
-		}
-		if b.db.opts.Comparer.Split(end) != len(end) {
-			panic("RangeKeyDelete called with suffixed end key")
-		}
-	}
 	deferredOp := b.RangeKeyDeleteDeferred(len(start), len(end))
 	copy(deferredOp.Key, start)
 	copy(deferredOp.Value, end)
