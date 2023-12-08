@@ -25,6 +25,9 @@ jobs:
 
     - run: make test generate
 
+    - name: Assert workspace clean
+      run: scripts/check-workspace-clean.sh
+
   linux-32bit:
     name: go-linux-32bit
     runs-on: ubuntu-latest
