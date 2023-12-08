@@ -1,0 +1,208 @@
+define
+----
+
+elide start-level=5
+a
+b
+c
+d
+e
+f
+g
+h
+i
+j
+k
+----
+elideTombstone("a") = true
+elideTombstone("b") = true
+elideTombstone("c") = true
+elideTombstone("d") = true
+elideTombstone("e") = true
+elideTombstone("f") = true
+elideTombstone("g") = true
+elideTombstone("h") = true
+elideTombstone("i") = true
+elideTombstone("j") = true
+elideTombstone("k") = true
+
+elide start-level=1
+a
+b
+c
+d
+e
+f
+g
+h
+i
+j
+k
+----
+elideTombstone("a") = true
+elideTombstone("b") = true
+elideTombstone("c") = true
+elideTombstone("d") = true
+elideTombstone("e") = true
+elideTombstone("f") = true
+elideTombstone("g") = true
+elideTombstone("h") = true
+elideTombstone("i") = true
+elideTombstone("j") = true
+elideTombstone("k") = true
+
+define
+L1
+  c.SET.801:c
+  g.SET.800:g
+L1
+  x.SET.701:x
+  y.SET.700:y
+L2
+  d.SET.601:d
+  h.SET.600:h
+L2
+  r.SET.501:r
+  t.SET.500:t
+L3
+  f.SET.401:f
+  g.SET.400:g
+L3
+  w.SET.301:w
+  x.SET.300:x
+L4
+  f.SET.201:f
+  m.SET.200:m
+L4
+  t.SET.101:t
+  t.SET.100:t
+----
+1:
+  000004:[c#801,SET-g#800,SET]
+  000005:[x#701,SET-y#700,SET]
+2:
+  000006:[d#601,SET-h#600,SET]
+  000007:[r#501,SET-t#500,SET]
+3:
+  000008:[f#401,SET-g#400,SET]
+  000009:[w#301,SET-x#300,SET]
+4:
+  000010:[f#201,SET-m#200,SET]
+  000011:[t#101,SET-t#101,SET]
+
+elide start-level=1
+b
+c
+d
+e
+f
+g
+h
+i
+j
+k
+l
+m
+n
+o
+p
+q
+r
+s
+t
+u
+v
+w
+x
+y
+z
+----
+elideTombstone("b") = true
+elideTombstone("c") = true
+elideTombstone("d") = true
+elideTombstone("e") = true
+elideTombstone("f") = false
+elideTombstone("g") = false
+elideTombstone("h") = false
+elideTombstone("i") = false
+elideTombstone("j") = false
+elideTombstone("k") = false
+elideTombstone("l") = false
+elideTombstone("m") = false
+elideTombstone("n") = true
+elideTombstone("o") = true
+elideTombstone("p") = true
+elideTombstone("q") = true
+elideTombstone("r") = true
+elideTombstone("s") = true
+elideTombstone("t") = false
+elideTombstone("u") = true
+elideTombstone("v") = true
+elideTombstone("w") = false
+elideTombstone("x") = false
+elideTombstone("y") = true
+elideTombstone("z") = true
+
+define
+L1
+  a.SET.3:v
+L2
+  a.RANGEDEL.2:g
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+  d.SET.0:v
+L3
+  e.SET.0:v
+  f.SET.1:v
+L3
+  g.SET.1:v
+  g.SET.0:v
+----
+1:
+  000004:[a#3,SET-a#3,SET]
+2:
+  000005:[a#2,RANGEDEL-g#inf,RANGEDEL]
+3:
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
+  000008:[e#0,SET-f#1,SET]
+  000009:[g#1,SET-g#1,SET]
+
+elide start-level=0
+b
+c
+d
+e
+f
+g
+----
+elideTombstone("b") = false
+elideTombstone("c") = false
+elideTombstone("d") = false
+elideTombstone("e") = false
+elideTombstone("f") = false
+elideTombstone("g") = false
+
+define
+L6
+  g.SET.0:g
+  h.RANGEDEL.1:z
+----
+6:
+  000004:[g#0,SET-z#inf,RANGEDEL]
+
+elide start-level=1
+a
+b
+g
+goo
+z
+----
+elideTombstone("a") = true
+elideTombstone("b") = true
+elideTombstone("g") = false
+elideTombstone("goo") = false
+elideTombstone("z") = false
