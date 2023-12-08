@@ -71,11 +71,13 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"MaxConcurrentCompactions:",
 		"Experimental.EnableValueBlocks:",
 		"Experimental.DisableIngestAsFlushable:",
+		"Experimental.IneffectualSingleDeleteCallback:",
 		"Experimental.RemoteStorage:",
 		"Experimental.IngestSplit:",
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
 		"Experimental.MultiLevelCompactionHeuristic.AddPropensity",
+		"Experimental.SingleDeleteInvariantViolationCallback:",
 	}
 
 	// Ensure that we unref any caches created, so invariants builds don't
