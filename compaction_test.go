@@ -29,6 +29,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -539,153 +540,57 @@ func TestPickCompaction(t *testing.T) {
 }
 
 func TestElideTombstone(t *testing.T) {
-	opts := (&Options{}).EnsureDefaults().WithFSDefaults()
-
-	newFileMeta := func(smallest, largest base.InternalKey) *fileMetadata {
-		m := (&fileMetadata{}).ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
-		m.InitPhysicalBacking()
-		return m
-	}
-
-	type want struct {
-		key      string
-		expected bool
-	}
-
-	testCases := []struct {
-		desc    string
-		level   int
-		version *version
-		wants   []want
-	}{
-		{
-			desc:    "empty",
-			level:   1,
-			version: newVersion(opts, [numLevels][]*fileMetadata{}),
-			wants: []want{
-				{"x", true},
-			},
-		},
-		{
-			desc:  "non-empty",
-			level: 1,
-			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: {
-					newFileMeta(
-						base.ParseInternalKey("c.SET.801"),
-						base.ParseInternalKey("g.SET.800"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("x.SET.701"),
-						base.ParseInternalKey("y.SET.700"),
-					),
-				},
-				2: {
-					newFileMeta(
-						base.ParseInternalKey("d.SET.601"),
-						base.ParseInternalKey("h.SET.600"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("r.SET.501"),
-						base.ParseInternalKey("t.SET.500"),
-					),
-				},
-				3: {
-					newFileMeta(
-						base.ParseInternalKey("f.SET.401"),
-						base.ParseInternalKey("g.SET.400"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("w.SET.301"),
-						base.ParseInternalKey("x.SET.300"),
-					),
-				},
-				4: {
-					newFileMeta(
-						base.ParseInternalKey("f.SET.201"),
-						base.ParseInternalKey("m.SET.200"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("t.SET.101"),
-						base.ParseInternalKey("t.SET.100"),
-					),
-				},
-			}),
-			wants: []want{
-				{"b", true},
-				{"c", true},
-				{"d", true},
-				{"e", true},
-				{"f", false},
-				{"g", false},
-				{"h", false},
-				{"l", false},
-				{"m", false},
-				{"n", true},
-				{"q", true},
-				{"r", true},
-				{"s", true},
-				{"t", false},
-				{"u", true},
-				{"v", true},
-				{"w", false},
-				{"x", false},
-				{"y", true},
-				{"z", true},
-			},
-		},
-		{
-			desc:  "repeated ukey",
-			level: 1,
-			version: newVersion(opts, [numLevels][]*fileMetadata{
-				6: {
-					newFileMeta(
-						base.ParseInternalKey("i.SET.401"),
-						base.ParseInternalKey("i.SET.400"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("i.SET.301"),
-						base.ParseInternalKey("k.SET.300"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("k.SET.201"),
-						base.ParseInternalKey("m.SET.200"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("m.SET.101"),
-						base.ParseInternalKey("m.SET.100"),
-					),
-				},
-			}),
-			wants: []want{
-				{"h", true},
-				{"i", false},
-				{"j", false},
-				{"k", false},
-				{"l", false},
-				{"m", false},
-				{"n", true},
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		c := compaction{
-			cmp:      DefaultComparer.Compare,
-			comparer: DefaultComparer,
-			version:  tc.version,
-			inputs:   []compactionLevel{{level: tc.level}, {level: tc.level + 1}},
-			smallest: base.ParseInternalKey("a.SET.0"),
-			largest:  base.ParseInternalKey("z.SET.0"),
+	var d *DB
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
 		}
-		c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
-		c.setupInuseKeyRanges()
-		for _, w := range tc.wants {
-			if got := c.elideTombstone([]byte(w.key)); got != w.expected {
-				t.Errorf("%s: ukey=%q: got %v, want %v", tc.desc, w.key, got, w.expected)
+	}()
+	var buf bytes.Buffer
+	datadriven.RunTest(t, "testdata/compaction_elide_tombstone",
+		func(t *testing.T, td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "define":
+				if d != nil {
+					if err := d.Close(); err != nil {
+						return err.Error()
+					}
+				}
+				var err error
+				if d, err = runDBDefineCmd(td, (&Options{
+					FS:                          vfs.NewMem(),
+					DebugCheck:                  DebugCheckLevels,
+					FormatMajorVersion:          FormatNewest,
+					DisableAutomaticCompactions: true,
+				}).WithFSDefaults()); err != nil {
+					return err.Error()
+				}
+				if td.HasArg("verbose") {
+					return d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				}
+				return d.mu.versions.currentVersion().String()
+			case "elide":
+				buf.Reset()
+				var startLevel int
+				td.ScanArgs(t, "start-level", &startLevel)
+				c := compaction{
+					cmp:      testkeys.Comparer.Compare,
+					comparer: testkeys.Comparer,
+					version:  d.mu.versions.currentVersion(),
+					inputs:   []compactionLevel{{level: startLevel}, {level: startLevel + 1}},
+					smallest: base.ParseInternalKey("a.SET.0"),
+					largest:  base.ParseInternalKey("z.SET.0"),
+				}
+				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
+				c.setupInuseKeyRanges()
+				for _, ukey := range strings.Split(td.Input, "\n") {
+					fmt.Fprintf(&buf, "elideTombstone(%q) = %t\n", ukey, c.elideTombstone([]byte(ukey)))
+				}
+				return buf.String()
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
-		}
-	}
+		})
 }
 
 func TestElideRangeTombstone(t *testing.T) {
