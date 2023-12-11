@@ -5,6 +5,7 @@
 package metamorphic
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -261,6 +262,41 @@ func (t *test) maybeSaveData() {
 	_ = os.RemoveAll(t.dir)
 	if _, err := vfs.Clone(rootFS, vfs.Default, t.dir, t.dir); err != nil {
 		t.opts.Logger.Infof("unable to clone: %s: %v", t.dir, err)
+	}
+	if t.testOpts.sharedStorageEnabled {
+		fs := t.testOpts.sharedStorageFS
+		outputDir := vfs.Default.PathJoin(t.dir, "shared", string(t.testOpts.Opts.Experimental.CreateOnSharedLocator))
+		vfs.Default.MkdirAll(outputDir, 0755)
+		objs, err := fs.List("", "")
+		if err != nil {
+			t.opts.Logger.Infof("unable to clone shared storage: %s: %v", t.dir, err)
+		}
+		for i := range objs {
+			reader, readSize, err := fs.ReadObject(context.TODO(), objs[i])
+			if err != nil {
+				t.opts.Logger.Infof("unable to clone shared storage: %s: %v", t.dir, err)
+				return
+			}
+			buf := make([]byte, readSize)
+			if err := reader.ReadAt(context.TODO(), buf, 0); err != nil {
+				t.opts.Logger.Infof("unable to clone shared storage: %s: %v", t.dir, err)
+				return
+			}
+			outputPath := vfs.Default.PathJoin(outputDir, objs[i])
+			outputFile, err := vfs.Default.Create(outputPath)
+			if err != nil {
+				t.opts.Logger.Infof("unable to clone shared storage: %s: %v", t.dir, err)
+				return
+			}
+			if _, err := outputFile.Write(buf); err != nil {
+				t.opts.Logger.Infof("unable to clone shared storage: %s: %v", t.dir, err)
+				return
+			}
+			if err := outputFile.Close(); err != nil {
+				t.opts.Logger.Infof("unable to clone shared storage: %s: %v", t.dir, err)
+				return
+			}
+		}
 	}
 }
 
