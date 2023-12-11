@@ -75,6 +75,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Experimental.IngestSplit:",
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
+		"Experimental.MultiLevelCompactionHeuristic.AddPropensity",
 	}
 
 	// Ensure that we unref any caches created, so invariants builds don't

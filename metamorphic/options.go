@@ -527,6 +527,23 @@ func randomOptions(
 	if rng.Intn(2) == 0 {
 		opts.Experimental.DisableIngestAsFlushable = func() bool { return true }
 	}
+
+	// We either use no multilevel compactions, multilevel compactions with the
+	// default (zero) additional propensity, or multilevel compactions with an
+	// additional propensity to encourage more multilevel compactions than we
+	// ohterwise would.
+	switch rng.Intn(3) {
+	case 0:
+		opts.Experimental.MultiLevelCompactionHeuristic = pebble.NoMultiLevel{}
+	case 1:
+		opts.Experimental.MultiLevelCompactionHeuristic = pebble.WriteAmpHeuristic{}
+	default:
+		opts.Experimental.MultiLevelCompactionHeuristic = pebble.WriteAmpHeuristic{
+			AddPropensity: rng.Float64() * float64(rng.Intn(3)), // [0,3.0)
+			AllowL0:       rng.Intn(4) == 1,                     // 25% of the time
+		}
+	}
+
 	var lopts pebble.LevelOptions
 	lopts.BlockRestartInterval = 1 + rng.Intn(64)  // 1 - 64
 	lopts.BlockSize = 1 << uint(rng.Intn(24))      // 1 - 16MB
