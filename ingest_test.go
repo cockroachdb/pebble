@@ -587,7 +587,7 @@ func TestExcise(t *testing.T) {
 	}()
 
 	var opts *Options
-	reset := func() {
+	reset := func(blockSize int) {
 		if d != nil {
 			require.NoError(t, d.Close())
 		}
@@ -595,6 +595,10 @@ func TestExcise(t *testing.T) {
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 		opts = &Options{
+			BlockPropertyCollectors: []func() BlockPropertyCollector{
+				sstable.NewTestKeysBlockPropertyCollector,
+			},
+			Comparer:              testkeys.Comparer,
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
@@ -603,7 +607,9 @@ func TestExcise(t *testing.T) {
 				flushed = true
 			}},
 			FormatMajorVersion: FormatVirtualSSTables,
-			Comparer:           testkeys.Comparer,
+		}
+		if blockSize != 0 {
+			opts.Levels = append(opts.Levels, LevelOptions{BlockSize: blockSize, IndexBlockSize: 32 << 10})
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -616,12 +622,21 @@ func TestExcise(t *testing.T) {
 		d, err = Open("", opts)
 		require.NoError(t, err)
 	}
-	reset()
+	reset(0 /* blockSize */)
 
 	datadriven.RunTest(t, "testdata/excise", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
-			reset()
+			var blockSize int
+			for i := range td.CmdArgs {
+				switch td.CmdArgs[i].Key {
+				case "tiny-blocks":
+					blockSize = 1
+				default:
+					return fmt.Sprintf("unexpected arg: %s", td.CmdArgs[i].Key)
+				}
+			}
+			reset(blockSize)
 			return ""
 		case "reopen":
 			require.NoError(t, d.Close())
@@ -687,9 +702,23 @@ func TestExcise(t *testing.T) {
 			return runGetCmd(t, td, d)
 
 		case "iter":
-			iter, _ := d.NewIter(&IterOptions{
+			opts := &IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
-			})
+			}
+			for i := range td.CmdArgs {
+				switch td.CmdArgs[i].Key {
+				case "range-key-masking":
+					opts.RangeKeyMasking = RangeKeyMasking{
+						Suffix: []byte(td.CmdArgs[i].Vals[0]),
+						Filter: func() BlockPropertyFilterMask {
+							return sstable.NewTestKeysMaskingFilter()
+						},
+					}
+				default:
+					return fmt.Sprintf("unexpected argument: %s", td.CmdArgs[i].Key)
+				}
+			}
+			iter, _ := d.NewIter(opts)
 			return runIterCmd(td, iter, true)
 
 		case "lsm":
