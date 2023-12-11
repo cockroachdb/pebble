@@ -1160,6 +1160,15 @@ func (d *DB) IngestAndExcise(
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
+	if invariants.Enabled && d.opts.Comparer.Split != nil {
+		// Excise is only supported on prefix keys.
+		if d.opts.Comparer.Split(exciseSpan.Start) != len(exciseSpan.Start) {
+			panic("IngestAndExcise called with suffixed start key")
+		}
+		if d.opts.Comparer.Split(exciseSpan.End) != len(exciseSpan.End) {
+			panic("IngestAndExcise called with suffixed end key")
+		}
+	}
 	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, nil /* external */)
 }
 

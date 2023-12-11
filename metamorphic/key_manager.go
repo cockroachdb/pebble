@@ -650,8 +650,6 @@ func opWrittenKeys(untypedOp op) [][]byte {
 	case *flushOp:
 	case *getOp:
 	case *ingestOp:
-	case *ingestAndExciseOp:
-		return [][]byte{t.exciseStart, t.exciseEnd}
 	case *initOp:
 	case *iterFirstOp:
 	case *iterLastOp:
