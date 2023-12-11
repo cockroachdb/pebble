@@ -604,7 +604,10 @@ func randomOptions(
 		testOpts.useSharedReplicate = rng.Intn(2) == 0
 	}
 	testOpts.seedEFOS = rng.Uint64()
-	testOpts.ingestSplit = rng.Intn(2) == 0
+	// TODO(bilal): Enable ingestSplit when known bugs with virtual sstables
+	// are addressed.
+	//
+	// testOpts.ingestSplit = rng.Intn(2) == 0
 	opts.Experimental.IngestSplit = func() bool { return testOpts.ingestSplit }
 	testOpts.useExcise = rng.Intn(2) == 0
 	if testOpts.useExcise || testOpts.useSharedReplicate {
