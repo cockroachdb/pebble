@@ -159,7 +159,7 @@ func defaultConfig() config {
 			writerDelete:                100,
 			writerDeleteRange:           50,
 			writerIngest:                100,
-			writerIngestAndExcise:       50,
+			writerIngestAndExcise:       0, // TODO(bilal): Enable this.
 			writerMerge:                 100,
 			writerRangeKeySet:           10,
 			writerRangeKeyUnset:         10,
@@ -180,6 +180,7 @@ func defaultConfig() config {
 func multiInstanceConfig() config {
 	cfg := defaultConfig()
 	cfg.ops[replicate] = 5
+	cfg.ops[writerIngestAndExcise] = 50
 	// Single deletes and merges are disabled in multi-instance mode, as
 	// replicateOp doesn't support them.
 	cfg.ops[writerSingleDelete] = 0
