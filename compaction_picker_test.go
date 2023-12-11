@@ -930,9 +930,8 @@ func (d alwaysMultiLevel) pick(
 	return pcMulti
 }
 
-func (d alwaysMultiLevel) allowL0() bool {
-	return false
-}
+func (d alwaysMultiLevel) allowL0() bool  { return false }
+func (d alwaysMultiLevel) String() string { return "always" }
 
 func TestPickedCompactionSetupInputs(t *testing.T) {
 	opts := &Options{}

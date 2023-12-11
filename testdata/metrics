@@ -77,7 +77,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
-1.9KB
+2.0KB
 
 batch
 set b 2
@@ -133,7 +133,7 @@ Iter category stats:
 
 disk-usage
 ----
-3.3KB
+3.4KB
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -256,7 +256,7 @@ Iter category stats:
 
 disk-usage
 ----
-2.0KB
+2.1KB
 
 additional-metrics
 ----
