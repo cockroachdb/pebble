@@ -1716,6 +1716,9 @@ type MultiLevelHeuristic interface {
 
 	// Returns if the heuristic allows L0 to be involved in ML compaction
 	allowL0() bool
+
+	// String implements fmt.Stringer.
+	String() string
 }
 
 // NoMultiLevel will never add an additional level to the compaction.
@@ -1729,9 +1732,8 @@ func (nml NoMultiLevel) pick(
 	return pc
 }
 
-func (nml NoMultiLevel) allowL0() bool {
-	return false
-}
+func (nml NoMultiLevel) allowL0() bool  { return false }
+func (nml NoMultiLevel) String() string { return "none" }
 
 func (pc *pickedCompaction) predictedWriteAmp() float64 {
 	var bytesToCompact uint64
@@ -1798,6 +1800,11 @@ func (wa WriteAmpHeuristic) pick(
 
 func (wa WriteAmpHeuristic) allowL0() bool {
 	return wa.AllowL0
+}
+
+// String implements fmt.Stringer.
+func (wa WriteAmpHeuristic) String() string {
+	return fmt.Sprintf("wamp(%.2f, %t)", wa.AddPropensity, wa.AllowL0)
 }
 
 // Helper method to pick compactions originating from L0. Uses information about
