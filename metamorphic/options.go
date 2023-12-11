@@ -100,9 +100,11 @@ func parseOptions(
 				return true
 			case "TestOptions.shared_storage_enabled":
 				opts.sharedStorageEnabled = true
+				sharedStorage := remote.NewInMem()
 				opts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-					"": remote.NewInMem(),
+					"": sharedStorage,
 				})
+				opts.sharedStorageFS = sharedStorage
 				if opts.Opts.Experimental.CreateOnShared == remote.CreateOnSharedNone {
 					opts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 				}
@@ -254,6 +256,9 @@ type TestOptions struct {
 	asyncApplyToDB bool
 	// Enable the use of shared storage.
 	sharedStorageEnabled bool
+	// sharedStorageFS stores the remote.Storage that is being used with shared
+	// storage.
+	sharedStorageFS remote.Storage
 	// Enables the use of shared replication in TestOptions.
 	useSharedReplicate bool
 	// Enable the secondary cache. Only effective if sharedStorageEnabled is
@@ -553,6 +558,7 @@ func randomOptions(
 		testOpts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": inMemShared,
 		})
+		testOpts.sharedStorageFS = inMemShared
 		// If shared storage is enabled, pick between writing all files on shared
 		// vs. lower levels only, 50% of the time.
 		testOpts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll

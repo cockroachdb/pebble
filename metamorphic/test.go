@@ -5,6 +5,7 @@
 package metamorphic
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -252,15 +253,55 @@ func (t *test) restartDB(dbID objID) error {
 	return err
 }
 
-// If an in-memory FS is being used, save the contents to disk.
-func (t *test) maybeSaveData() {
+func (t *test) maybeSaveDataInternal() error {
 	rootFS := vfs.Root(t.opts.FS)
 	if rootFS == vfs.Default {
-		return
+		return nil
 	}
-	_ = os.RemoveAll(t.dir)
+	if err := os.RemoveAll(t.dir); err != nil {
+		return err
+	}
 	if _, err := vfs.Clone(rootFS, vfs.Default, t.dir, t.dir); err != nil {
-		t.opts.Logger.Infof("unable to clone: %s: %v", t.dir, err)
+		return err
+	}
+	if t.testOpts.sharedStorageEnabled {
+		fs := t.testOpts.sharedStorageFS
+		outputDir := vfs.Default.PathJoin(t.dir, "shared", string(t.testOpts.Opts.Experimental.CreateOnSharedLocator))
+		vfs.Default.MkdirAll(outputDir, 0755)
+		objs, err := fs.List("", "")
+		if err != nil {
+			return err
+		}
+		for i := range objs {
+			reader, readSize, err := fs.ReadObject(context.TODO(), objs[i])
+			if err != nil {
+				return err
+			}
+			buf := make([]byte, readSize)
+			if err := reader.ReadAt(context.TODO(), buf, 0); err != nil {
+				return err
+			}
+			outputPath := vfs.Default.PathJoin(outputDir, objs[i])
+			outputFile, err := vfs.Default.Create(outputPath)
+			if err != nil {
+				return err
+			}
+			if _, err := outputFile.Write(buf); err != nil {
+				outputFile.Close()
+				return err
+			}
+			if err := outputFile.Close(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// If an in-memory FS is being used, save the contents to disk.
+func (t *test) maybeSaveData() {
+	if err := t.maybeSaveDataInternal(); err != nil {
+		t.opts.Logger.Infof("unable to save data: %s: %v", t.dir, err)
 	}
 }
 
