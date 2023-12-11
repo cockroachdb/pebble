@@ -32,13 +32,15 @@ func open(fs vfs.FS, dir string) *db {
 	m.Name = "test-merger"
 
 	lel := pebble.MakeLoggingEventListener(pebble.DefaultLogger)
-	d, err := pebble.Open(dir, &pebble.Options{
-		Cleaner:       pebble.ArchiveCleaner{},
-		Comparer:      &c,
-		EventListener: &lel,
-		FS:            fs,
-		Merger:        &m,
-	})
+	opts := pebble.Options{
+		Cleaner:            pebble.ArchiveCleaner{},
+		Comparer:           &c,
+		EventListener:      &lel,
+		FS:                 fs,
+		Merger:             &m,
+		FormatMajorVersion: pebble.FormatFlushableIngest,
+	}
+	d, err := pebble.Open(dir, &opts)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -17,15 +17,15 @@ manifest summarize
 ----
 MANIFEST-000001
                      _______L0_______L1_______L2_______L3_______L4_______L5_______L6_____TOTAL
-2021-04-01T20:24:02Z
-        Ingest+Flush      2.4KB        .        .        .        .        .     808B    3.2KB
-        Ingest+Flush    2.4KB/s        .        .        .        .        .   808B/s  3.2KB/s
-       Compact (out)      2.4KB        .        .        .        .        .     898B    3.3KB
-       Compact (out)    2.4KB/s        .        .        .        .        .   898B/s  3.3KB/s
-2021-04-01T20:24:02Z
+2023-12-11T18:54:19Z
+        Ingest+Flush       647B        .        .        .        .        .        .     647B
+        Ingest+Flush     647B/s        .        .        .        .        .        .   647B/s
+       Compact (out)       647B        .        .        .        .        .        .     647B
+       Compact (out)     647B/s        .        .        .        .        .        .   647B/s
+2023-12-11T18:54:19Z
 ---
-Estimated start time: 2021-04-01T20:24:02Z
-Estimated end time:   2021-04-01T20:24:02Z
+Estimated start time: 2023-12-11T18:54:19Z
+Estimated end time:   2023-12-11T18:54:19Z
 Estimated duration:   0s
 
 manifest summarize
