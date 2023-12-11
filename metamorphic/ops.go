@@ -821,7 +821,7 @@ func (o *ingestAndExciseOp) run(t *test, h historyRecorder) {
 	err = firstError(err, err2)
 	err = firstError(err, b.Close())
 
-	if writerMeta.Properties.NumEntries == 0 {
+	if writerMeta.Properties.NumEntries == 0 && writerMeta.Properties.NumRangeKeys() == 0 {
 		// No-op.
 		h.Recordf("%s // %v", o, err)
 		return
@@ -1585,7 +1585,7 @@ func (r *replicateOp) runSharedReplicate(
 		h.Recordf("%s // %v", r, err)
 		return
 	}
-	if len(sharedSSTs) == 0 && meta.Properties.NumEntries == 0 {
+	if len(sharedSSTs) == 0 && meta.Properties.NumEntries == 0 && meta.Properties.NumRangeKeys() == 0 {
 		// IngestAndExcise below will be a no-op. We should do a
 		// DeleteRange+RangeKeyDel to mimic the behaviour of the non-shared-replicate
 		// case.
