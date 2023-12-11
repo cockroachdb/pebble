@@ -330,14 +330,15 @@ MANIFEST-000001
 37/1
   log-num:       2
   next-file-num: 3
-48/2
+  last-seq-num:  9
+50/2
   log-num:       4
   next-file-num: 6
-  last-seq-num:  29
-  added:         L0 000005:1166<#1-#29>[a#29,RANGEKEYDEL-z@1#26,SET] (2022-08-12T23:21:28Z)
+  last-seq-num:  38
+  added:         L0 000005:1056<#10-#38>[a#38,RANGEKEYDEL-z@1#35,SET] (2023-12-11T18:59:04Z)
 EOF
 --- L0.0 ---
-  000005:1166<#1-#29>[a#29,RANGEKEYDEL-z@1#26,SET]
+  000005:1056<#10-#38>[a#38,RANGEKEYDEL-z@1#35,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---
