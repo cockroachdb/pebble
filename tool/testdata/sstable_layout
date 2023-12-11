@@ -3837,49 +3837,42 @@ out-of-order.sst
         33    block:0/28 [restart]
         47    [restart 33]
         55    [trailer compression=none checksum=0xc316e0d2]
-        60  properties (678)
+        60  properties (541)
         60    rocksdb.block.based.table.index.type (43) [restart]
        103    rocksdb.block.based.table.prefix.filtering (20)
        123    rocksdb.block.based.table.whole.key.filtering (23)
-       146    rocksdb.column.family.id (24)
-       170    rocksdb.comparator (37)
-       207    rocksdb.compression (16)
-       223    rocksdb.compression_options (106)
-       329    rocksdb.creation.time (16)
-       345    rocksdb.data.size (13)
-       358    rocksdb.deleted.keys (15)
-       373    rocksdb.external_sst_file.global_seqno (41)
-       414    rocksdb.external_sst_file.version (14)
-       428    rocksdb.filter.size (15)
-       443    rocksdb.fixed.key.length (18)
-       461    rocksdb.format.version (17)
-       478    rocksdb.index.key.is.user.key (25)
-       503    rocksdb.index.size (8)
-       511    rocksdb.index.value.is.delta.encoded (26)
-       537    rocksdb.merge.operands (18)
-       555    rocksdb.merge.operator (24)
-       579    rocksdb.num.data.blocks (19)
-       598    rocksdb.num.entries (11)
-       609    rocksdb.num.range-deletions (19)
-       628    rocksdb.oldest.key.time (19)
-       647    rocksdb.prefix.extractor.name (31)
-       678    rocksdb.property.collectors (22)
-       700    rocksdb.raw.key.size (16)
-       716    rocksdb.raw.value.size (14)
-       730    [restart 60]
-       738    [trailer compression=none checksum=0xbbcd4fc4]
-       743  meta-index (32)
-       743    rocksdb.properties block:60/678 [restart]
-       767    [restart 743]
-       775    [trailer compression=none checksum=0x1a67e403]
-       780  footer (53)
-       780    checksum type: crc32c
-       781    meta: offset=743, length=32
-       784    index: offset=33, length=22
-       786    [padding]
-       821    version: 2
-       825    magic number: 0xf7cff485b741e288
-       833  EOF
+       146    rocksdb.comparator (39)
+       185    rocksdb.compression (16)
+       201    rocksdb.compression_options (106)
+       307    rocksdb.data.size (13)
+       320    rocksdb.deleted.keys (15)
+       335    rocksdb.external_sst_file.global_seqno (41)
+       376    rocksdb.external_sst_file.version (14)
+       390    rocksdb.filter.size (15)
+       405    rocksdb.index.size (14)
+       419    rocksdb.merge.operands (18)
+       437    rocksdb.merge.operator (24)
+       461    rocksdb.num.data.blocks (19)
+       480    rocksdb.num.entries (11)
+       491    rocksdb.num.range-deletions (19)
+       510    rocksdb.prefix.extractor.name (31)
+       541    rocksdb.property.collectors (22)
+       563    rocksdb.raw.key.size (16)
+       579    rocksdb.raw.value.size (14)
+       593    [restart 60]
+       601    [trailer compression=none checksum=0x4ed23e12]
+       606  meta-index (32)
+       606    rocksdb.properties block:60/541 [restart]
+       630    [restart 606]
+       638    [trailer compression=none checksum=0xbba76d3c]
+       643  footer (53)
+       643    checksum type: crc32c
+       644    meta: offset=606, length=32
+       647    index: offset=33, length=22
+       649    [padding]
+       684    version: 1
+       688    magic number: 0xf09faab3f09faab3
+       696  EOF
 
 sstable layout
 ./testdata/mixed/000005.sst
