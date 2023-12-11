@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"unsafe"
@@ -440,7 +441,7 @@ func (i *singleLevelIterator) readBlockForVBR(
 // that a block is excluded according to its properties but only if its bounds
 // fall within the filter's current bounds.  This function consults the
 // apprioriate bound, depending on the iteration direction, and returns either
-// `blockIntersects` or `blockMaybeExcluded`.
+// `blockIntersects` or `blockExcluded`.
 func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	// TODO(jackson): We could first try comparing to top-level index block's
 	// key, and if within bounds avoid per-data block key comparisons.
@@ -852,26 +853,68 @@ func (i *singleLevelIterator) virtualLast() (*InternalKey, base.LazyValue) {
 		panic("pebble: invalid call to virtualLast")
 	}
 
+	if !i.endKeyInclusive {
+		// Trivial case.
+		return i.SeekLT(i.upper, base.SeekLTFlagsNone)
+	}
 	// Seek to the first internal key.
-	ikey, _ := i.SeekGE(i.upper, base.SeekGEFlagsNone)
-	if i.endKeyInclusive {
-		// Let's say the virtual sstable upper bound is c#1, with the keys c#3, c#2,
-		// c#1, d, e, ... in the sstable. So, the last key in the virtual sstable is
-		// c#1. We can perform SeekGE(i.upper) and then keep nexting until we find
-		// the last key with userkey == i.upper.
-		//
-		// TODO(bananabrick): Think about how to improve this. If many internal keys
-		// with the same user key at the upper bound then this could be slow, but
-		// maybe the odds of having many internal keys with the same user key at the
-		// upper bound are low.
-		for ikey != nil && i.cmp(ikey.UserKey, i.upper) == 0 {
-			ikey, _ = i.Next()
+	return i.virtualLastSeekLE(i.upper)
+}
+
+// virtualLastSeekLE is called by virtualLast to do a SeekLE as part of a
+// virtualLast. Consider generalizing this into a SeekLE() if there are other
+// uses of this method in the future.
+func (i *singleLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.LazyValue) {
+	// Callers of SeekLE don't know about virtual sstable bounds, so we may
+	// have to internally restrict the bounds.
+	//
+	// TODO(bananabrick): We can optimize this check away for the level iter
+	// if necessary.
+	if i.cmp(key, i.upper) >= 0 {
+		if !i.endKeyInclusive {
+			panic("unexpected virtualLastSeekLE with exclusive upper bounds")
 		}
-		return i.Prev()
+		key = i.upper
 	}
 
-	// We seeked to the first key >= i.upper.
-	return i.Prev()
+	i.exhaustedBounds = 0
+	i.err = nil // clear cached iteration error
+	// Seek optimization only applies until iterator is first positioned with a
+	// SeekGE or SeekLT after SetBounds.
+	i.boundsCmp = 0
+	i.positionedUsingLatestBounds = true
+	i.maybeFilteredKeysSingleLevel = false
+
+	ikey, _ := i.index.SeekGE(key, base.SeekGEFlagsNone)
+	// NB: We can avoid this Next()ing if we just implement a blockIter.SeekLE().
+	// This might be challenging to do correctly, so impose regular operations
+	// for now.
+	for ikey != nil && bytes.Equal(ikey.UserKey, key) {
+		ikey, _ = i.index.Next()
+	}
+	if ikey == nil {
+		return i.skipBackward()
+	}
+	result := i.loadBlock(-1)
+	if result == loadBlockFailed {
+		return nil, base.LazyValue{}
+	}
+	if result == loadBlockIrrelevant {
+		// Want to skip to the previous block.
+		return i.skipBackward()
+	}
+	ikey, _ = i.data.SeekGE(key, base.SeekGEFlagsNone)
+	var val base.LazyValue
+	// Go to the last user key that matches key, and then Prev() on the data
+	// block.
+	for ikey != nil && bytes.Equal(ikey.UserKey, key) {
+		ikey, _ = i.data.Next()
+	}
+	ikey, val = i.data.Prev()
+	if ikey != nil {
+		return ikey, val
+	}
+	return i.skipBackward()
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
