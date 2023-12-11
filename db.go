@@ -842,7 +842,6 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 		if d.split == nil {
 			return errNoSplit
 		}
-		// TODO(jackson): Assert that all range key operands are suffixless.
 	}
 	batch.committing = true
 
