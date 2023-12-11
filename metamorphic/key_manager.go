@@ -461,6 +461,7 @@ func (k *keyManager) update(o op) {
 				collapsedSrc.mergeInto(dst, ts)
 			})
 		}
+		// TODO(bilal): Handle ingestAndExciseOp and replicateOp here.
 	case *applyOp:
 		// Merge the keys from this writer into the parent writer.
 		k.mergeKeysInto(s.batchID, s.writerID, (*keyMeta).mergeInto)
@@ -649,6 +650,8 @@ func opWrittenKeys(untypedOp op) [][]byte {
 	case *flushOp:
 	case *getOp:
 	case *ingestOp:
+	case *ingestAndExciseOp:
+		return [][]byte{t.exciseStart, t.exciseEnd}
 	case *initOp:
 	case *iterFirstOp:
 	case *iterLastOp:
