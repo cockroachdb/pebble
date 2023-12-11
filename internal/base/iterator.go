@@ -220,6 +220,7 @@ const (
 	seekGEFlagTrySeekUsingNext uint8 = iota
 	seekGEFlagRelativeSeek
 	seekGEFlagBatchJustRefreshed
+	seekGEFlagDontAssumeDir
 )
 
 // SeekGEFlagsNone is the default value of SeekGEFlags, with all flags disabled.
@@ -271,6 +272,11 @@ func (s SeekGEFlags) RelativeSeek() bool { return (s & (1 << seekGEFlagRelativeS
 // position. See (pebble.Iterator).batchJustRefreshed.
 func (s SeekGEFlags) BatchJustRefreshed() bool { return (s & (1 << seekGEFlagBatchJustRefreshed)) != 0 }
 
+// DontAssumeDir is set by SeekLT if it ever calls SeekGE, such as when finding
+// the largest key in a virtual sstable. It serves as a signal to not assume
+// that the rest of the iterator stack is iterating forward.
+func (s SeekGEFlags) DontAssumeDir() bool { return (s & (1 << seekGEFlagDontAssumeDir)) != 0 }
+
 // EnableTrySeekUsingNext returns the provided flags with the
 // try-seek-using-next optimization enabled. See TrySeekUsingNext for an
 // explanation of this optimization.
@@ -307,6 +313,19 @@ func (s SeekGEFlags) EnableBatchJustRefreshed() SeekGEFlags {
 // batch-just-refreshed bit unset.
 func (s SeekGEFlags) DisableBatchJustRefreshed() SeekGEFlags {
 	return s &^ (1 << seekGEFlagBatchJustRefreshed)
+}
+
+// EnableDontAssumeDir returns the provided flags with the
+// dont-assume-dir bit set. See DontAssumeDir for an explanation of
+// this flag.
+func (s SeekGEFlags) EnableDontAssumeDir() SeekGEFlags {
+	return s | (1 << seekGEFlagDontAssumeDir)
+}
+
+// DisableDontAssumeDir returns the provided flags with the
+// dont-assume-dir bit unset.
+func (s SeekGEFlags) DisableDontAssumeDir() SeekGEFlags {
+	return s &^ (1 << seekGEFlagDontAssumeDir)
 }
 
 // SeekLTFlags holds flags that may configure the behavior of a reverse seek.

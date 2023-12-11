@@ -337,3 +337,97 @@ lsm
   000007:[a#10,SET-c#12,SET]
 6:
   000006:[z#15,SET-z#15,SET]
+
+# Regression test for #3128. A key at the upper bound of a virtual sstable
+# should not be skipped in reverse iteration with range key masking enabled.
+# bbsomethinglong@4 is not covered by the range key [bd-f) (which gets truncated
+# into a [cc-f) with an excise) and so should not be range key masked in both
+# iteration directions at the bottom.
+
+reset tiny-blocks
+----
+
+batch
+set a@3 foo
+merge b@5 bar
+merge bbsomethinglong@4 bazz
+merge bg@3 something
+merge d@6 baz
+merge z something
+----
+
+flush
+----
+
+batch
+set c foobar
+----
+
+flush
+----
+
+lsm
+----
+0.1:
+  000007:[c#16,SET-c#16,SET]
+0.0:
+  000005:[a@3#10,SET-z#15,MERGE]
+
+compact a z
+----
+
+build ext4
+range-key-set bd f @7 foo
+merge f something
+----
+
+ingest ext4
+----
+
+lsm
+----
+0.0:
+  000009:[bd#17,RANGEKEYSET-f#17,MERGE]
+6:
+  000008:[a@3#0,SET-z#0,MERGE]
+
+build ext3
+set z updated
+----
+
+ingest-and-excise ext3 excise=bd-cc
+----
+
+lsm
+----
+0.0:
+  000011:[cc#17,RANGEKEYSET-f#17,MERGE]
+  000010:[z#18,SET-z#18,SET]
+6:
+  000012:[a@3#0,SET-bbsomethinglong@4#0,MERGE]
+  000013:[d@6#0,MERGE-z#0,MERGE]
+
+iter range-key-masking=@10
+first
+next
+next
+next
+next
+----
+a@3: (foo, .)
+b@5: (bar, .)
+bbsomethinglong@4: (bazz, .)
+cc: (., [cc-f) @7=foo UPDATED)
+f: (something, . UPDATED)
+
+
+iter range-key-masking=@10
+set-bounds lower=a upper=f
+seek-lt f
+prev
+prev
+----
+.
+cc: (., [cc-f) @7=foo UPDATED)
+bbsomethinglong@4: (bazz, . UPDATED)
+b@5: (bar, .)

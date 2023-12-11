@@ -468,6 +468,14 @@ func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 		}
 		return blockIntersects
 	}
+	if dir == 0 {
+		// Ambiguous direction. Check both bounds.
+		if i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(i.index.Key().UserKey) &&
+			i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(i.index.Key().UserKey) {
+			return blockExcluded
+		}
+		return blockIntersects
+	}
 
 	// Reverse iteration.
 	//
@@ -658,6 +666,10 @@ func (i *singleLevelIterator) seekGEHelper(
 	// maybeFilteredKeys.
 
 	var dontSeekWithinBlock bool
+	dir := int8(+1)
+	if flags.DontAssumeDir() {
+		dir = 0
+	}
 	if !i.data.isDataInvalidated() && !i.index.isDataInvalidated() && i.data.valid() && i.index.valid() &&
 		boundsCmp > 0 && i.cmp(key, i.index.Key().UserKey) <= 0 {
 		// Fast-path: The bounds have moved forward and this SeekGE is
@@ -726,7 +738,7 @@ func (i *singleLevelIterator) seekGEHelper(
 			i.data.invalidate()
 			return nil, base.LazyValue{}
 		}
-		result := i.loadBlock(+1)
+		result := i.loadBlock(dir)
 		if result == loadBlockFailed {
 			return nil, base.LazyValue{}
 		}
@@ -760,7 +772,7 @@ func (i *singleLevelIterator) seekGEHelper(
 			return ikey, val
 		}
 	}
-	return i.skipForward()
+	return i.skipForward(dir)
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -853,7 +865,9 @@ func (i *singleLevelIterator) virtualLast() (*InternalKey, base.LazyValue) {
 	}
 
 	// Seek to the first internal key.
-	ikey, _ := i.SeekGE(i.upper, base.SeekGEFlagsNone)
+	var flags base.SeekGEFlags
+	flags = flags.EnableDontAssumeDir()
+	ikey, _ := i.SeekGE(i.upper, flags)
 	if i.endKeyInclusive {
 		// Let's say the virtual sstable upper bound is c#1, with the keys c#3, c#2,
 		// c#1, d, e, ... in the sstable. So, the last key in the virtual sstable is
@@ -1062,7 +1076,7 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, base.LazyValue) {
 		// Else fall through to skipForward.
 	}
 
-	return i.skipForward()
+	return i.skipForward(+1)
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -1153,7 +1167,7 @@ func (i *singleLevelIterator) Next() (*InternalKey, base.LazyValue) {
 		}
 		return key, val
 	}
-	return i.skipForward()
+	return i.skipForward(+1)
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
@@ -1230,7 +1244,7 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.Laz
 		return i.maybeVerifyKey(key, val)
 	}
 
-	return i.skipForward()
+	return i.skipForward(+1)
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -1257,14 +1271,14 @@ func (i *singleLevelIterator) Prev() (*InternalKey, base.LazyValue) {
 	return i.skipBackward()
 }
 
-func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
+func (i *singleLevelIterator) skipForward(dir int8) (*InternalKey, base.LazyValue) {
 	for {
 		var key *InternalKey
 		if key, _ = i.index.Next(); key == nil {
 			i.data.invalidate()
 			break
 		}
-		result := i.loadBlock(+1)
+		result := i.loadBlock(dir)
 		if result != loadBlockOK {
 			if i.err != nil {
 				break
