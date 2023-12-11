@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -1250,6 +1251,9 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
 	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.TargetByteDeletionRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
+	if o.Experimental.MultiLevelCompactionHeuristic != nil {
+		fmt.Fprintf(&buf, "  multilevel_compaction_heuristic=%s\n", o.Experimental.MultiLevelCompactionHeuristic.String())
+	}
 	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", o.private.strictWALTail)
@@ -1504,6 +1508,32 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "min_flush_rate":
 				// Do nothing; option existed in older versions of pebble, and
 				// may be meaningful again eventually.
+			case "multilevel_compaction_heuristic":
+				switch {
+				case value == "none":
+					o.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
+				case strings.HasPrefix(value, "wamp"):
+					fields := strings.FieldsFunc(strings.TrimPrefix(value, "wamp"), func(r rune) bool {
+						return unicode.IsSpace(r) || r == ',' || r == '(' || r == ')'
+					})
+					if len(fields) != 2 {
+						err = errors.Newf("require 2 arguments")
+					}
+					var h WriteAmpHeuristic
+					if err == nil {
+						h.AddPropensity, err = strconv.ParseFloat(fields[0], 64)
+					}
+					if err == nil {
+						h.AllowL0, err = strconv.ParseBool(fields[1])
+					}
+					if err == nil {
+						o.Experimental.MultiLevelCompactionHeuristic = h
+					} else {
+						err = errors.Wrapf(err, "unexpected wamp heuristic arguments: %s", value)
+					}
+				default:
+					err = errors.Newf("unrecognized multilevel compaction heuristic: %s", value)
+				}
 			case "point_tombstone_weight":
 				// Do nothing; deprecated.
 			case "strict_wal_tail":

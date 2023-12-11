@@ -95,6 +95,7 @@ func TestOptionsString(t *testing.T) {
   mem_table_stop_writes_threshold=2
   min_deletion_rate=0
   merger=pebble.concatenate
+  multilevel_compaction_heuristic=wamp(0.00, false)
   read_compaction_rate=16000
   read_sampling_multiplier=16
   strict_wal_tail=true
