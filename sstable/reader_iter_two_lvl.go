@@ -76,8 +76,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 // that an index block is excluded according to its properties but only if its
 // bounds fall within the filter's current bounds. This function consults the
 // apprioriate bound, depending on the iteration direction, and returns either
-// `blockIntersects` or
-// `blockMaybeExcluded`.
+// `blockIntersects` or `blockExcluded`.
 func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	// This iterator is configured with a bound-limited block property filter.
 	// The bpf determined this entire index block could be excluded from
@@ -93,46 +92,50 @@ func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	// The index separator in topLevelIndex.Key() provides an inclusive
 	// upper-bound for the index block's keys, guaranteeing that all its keys
 	// are ≤ topLevelIndex.Key(). For forward iteration, this is all we need.
-	if dir > 0 {
+	if dir >= 0 {
 		// Forward iteration.
-		if i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(i.topLevelIndex.Key().UserKey) {
-			return blockExcluded
+		if !i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(i.topLevelIndex.Key().UserKey) {
+			return blockIntersects
 		}
-		return blockIntersects
+	}
+	if dir <= 0 {
+		// Reverse iteration.
+		//
+		// Because we're iterating in the reverse direction, we don't yet have
+		// enough context available to determine if the block is wholly contained
+		// within its bounds. This case arises only during backward iteration,
+		// because of the way the index is structured.
+		//
+		// Consider a bound-limited bpf limited to the bounds [b,d), loading the
+		// block with separator `c`. During reverse iteration, the guarantee that
+		// all the block's keys are < `d` is externally provided, but no guarantee
+		// is made on the bpf's lower bound. The separator `c` only provides an
+		// inclusive upper bound on the block's keys, indicating that the
+		// corresponding block handle points to a block containing only keys ≤ `c`.
+		//
+		// To establish a lower bound, we step the top-level index backwards to read
+		// the previous block's separator, which provides an inclusive lower bound
+		// on the original index block's keys. Afterwards, we step forward to
+		// restore our top-level index position.
+		if peekKey, _ := i.topLevelIndex.Prev(); peekKey == nil {
+			// The original block points to the first index block of this table. If
+			// we knew the lower bound for the entire table, it could provide a
+			// lower bound, but the code refactoring necessary to read it doesn't
+			// seem worth the payoff. We load the block.
+			_, _ = i.topLevelIndex.Next()
+			return blockIntersects
+		} else if !i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(peekKey.UserKey) {
+			// The lower-bound on the original index block falls outside the filter's
+			// bounds, so we must load the block (after restoring our current
+			// top-level index position).
+			_, _ = i.topLevelIndex.Next()
+			return blockIntersects
+		}
+		_, _ = i.topLevelIndex.Next()
 	}
 
-	// Reverse iteration.
-	//
-	// Because we're iterating in the reverse direction, we don't yet have
-	// enough context available to determine if the block is wholly contained
-	// within its bounds. This case arises only during backward iteration,
-	// because of the way the index is structured.
-	//
-	// Consider a bound-limited bpf limited to the bounds [b,d), loading the
-	// block with separator `c`. During reverse iteration, the guarantee that
-	// all the block's keys are < `d` is externally provided, but no guarantee
-	// is made on the bpf's lower bound. The separator `c` only provides an
-	// inclusive upper bound on the block's keys, indicating that the
-	// corresponding block handle points to a block containing only keys ≤ `c`.
-	//
-	// To establish a lower bound, we step the top-level index backwards to read
-	// the previous block's separator, which provides an inclusive lower bound
-	// on the original index block's keys. Afterwards, we step forward to
-	// restore our top-level index position.
-	if peekKey, _ := i.topLevelIndex.Prev(); peekKey == nil {
-		// The original block points to the first index block of this table. If
-		// we knew the lower bound for the entire table, it could provide a
-		// lower bound, but the code refactoring necessary to read it doesn't
-		// seem worth the payoff. We fall through to loading the block.
-	} else if i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(peekKey.UserKey) {
-		// The lower-bound on the original index block falls within the filter's
-		// bounds, and we can skip the block (after restoring our current
-		// top-level index position).
-		_, _ = i.topLevelIndex.Next()
-		return blockExcluded
-	}
-	_, _ = i.topLevelIndex.Next()
-	return blockIntersects
+	// The entirety of the block falls within the boundLimitedFilter's bounds.
+	return blockExcluded
 }
 
 // Note that lower, upper passed into init has nothing to do with virtual sstable
@@ -226,6 +229,12 @@ func (i *twoLevelIterator) MaybeFilteredKeys() bool {
 func (i *twoLevelIterator) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) (*InternalKey, base.LazyValue) {
+	return i.seekGEHelper(key, flags, +1)
+}
+
+func (i *twoLevelIterator) seekGEHelper(
+	key []byte, flags base.SeekGEFlags, dir int8,
+) (*InternalKey, base.LazyValue) {
 	if i.vState != nil {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
@@ -287,8 +296,7 @@ func (i *twoLevelIterator) SeekGE(
 			i.index.invalidate()
 			return nil, base.LazyValue{}
 		}
-
-		result := i.loadIndex(+1)
+		result := i.loadIndex(dir)
 		if result == loadBlockFailed {
 			i.boundsCmp = 0
 			return nil, base.LazyValue{}
@@ -377,7 +385,7 @@ func (i *twoLevelIterator) SeekGE(
 			return ikey, val
 		}
 	}
-	return i.skipForward()
+	return i.skipForward(dir)
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -564,7 +572,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		}
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
-	return i.skipForward()
+	return i.skipForward(+1)
 }
 
 // virtualLast should only be called if i.vReader != nil and i.endKeyInclusive
@@ -575,7 +583,7 @@ func (i *twoLevelIterator) virtualLast() (*InternalKey, base.LazyValue) {
 	}
 
 	// Seek to the first internal key.
-	ikey, _ := i.SeekGE(i.upper, base.SeekGEFlagsNone)
+	ikey, _ := i.virtualLastSeekGE(i.upper)
 	if i.endKeyInclusive {
 		// Let's say the virtual sstable upper bound is c#1, with the keys c#3, c#2,
 		// c#1, d, e, ... in the sstable. So, the last key in the virtual sstable is
@@ -587,12 +595,39 @@ func (i *twoLevelIterator) virtualLast() (*InternalKey, base.LazyValue) {
 		// maybe the odds of having many internal keys with the same user key at the
 		// upper bound are low.
 		for ikey != nil && i.cmp(ikey.UserKey, i.upper) == 0 {
-			ikey, _ = i.Next()
+			ikey, _ = i.virtualLastNext()
 		}
 		return i.Prev()
 	}
 	// We seeked to the first key >= i.upper.
 	return i.Prev()
+}
+
+// virtualLastSeekGE implements a variant of SeekGE() that does not assume
+// forward iteration by the rest of the iterator stack, and can be used as part
+// of reverse-iteration calls such as a Last() or a SeekLT() on a virtual
+// sstable.
+func (i *twoLevelIterator) virtualLastSeekGE(key []byte) (*InternalKey, base.LazyValue) {
+	return i.seekGEHelper(key, base.SeekGEFlagsNone, 0 /* dir */)
+}
+
+// virtualLastNext implements a variant of Next() that does not assume
+// forward iteration by the rest of the iterator stack, and can be used as part
+// of reverse-iteration calls such as a Last() or a SeekLT() on a virtual
+// sstable.
+func (i *twoLevelIterator) virtualLastNext() (*InternalKey, base.LazyValue) {
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+	i.maybeFilteredKeysTwoLevel = false
+	if i.err != nil {
+		// TODO(jackson): Can this case be turned into a panic? Once an error is
+		// encountered, the iterator must be re-seeked.
+		return nil, base.LazyValue{}
+	}
+	if key, val := i.singleLevelIterator.virtualLastNext(); key != nil {
+		return key, val
+	}
+	return i.skipForward(0 /* dir */)
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -729,7 +764,7 @@ func (i *twoLevelIterator) First() (*InternalKey, base.LazyValue) {
 		}
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
-	return i.skipForward()
+	return i.skipForward(+1)
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -798,7 +833,7 @@ func (i *twoLevelIterator) Next() (*InternalKey, base.LazyValue) {
 	if key, val := i.singleLevelIterator.Next(); key != nil {
 		return key, val
 	}
-	return i.skipForward()
+	return i.skipForward(+1)
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
@@ -849,7 +884,7 @@ func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyVa
 	} else if key, val := i.singleLevelIterator.SeekGE(succKey, base.SeekGEFlagsNone); key != nil {
 		return i.maybeVerifyKey(key, val)
 	}
-	return i.skipForward()
+	return i.skipForward(+1)
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -867,7 +902,12 @@ func (i *twoLevelIterator) Prev() (*InternalKey, base.LazyValue) {
 	return i.skipBackward()
 }
 
-func (i *twoLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
+// skipForward skips to the next relevant block forward.
+//
+// dir specifies what direction the rest of the iterator stack is going in;
+// a positive value denotes forward iteration, and a zero value indicates an
+// ambiguous direction.
+func (i *twoLevelIterator) skipForward(dir int8) (*InternalKey, base.LazyValue) {
 	for {
 		if i.err != nil || i.exhaustedBounds > 0 {
 			return nil, base.LazyValue{}
@@ -879,7 +919,7 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			i.index.invalidate()
 			return nil, base.LazyValue{}
 		}
-		result := i.loadIndex(+1)
+		result := i.loadIndex(dir)
 		if result == loadBlockFailed {
 			return nil, base.LazyValue{}
 		}
