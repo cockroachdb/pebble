@@ -45,12 +45,12 @@ db properties
                           L0      L1    L2    L3    L4    L5    L6    TOTAL
 count                     1       0     0     0     0     0     0     1
 seq num                                                               
-  smallest                1       0     0     0     0     0     0     1
-  largest                 29      0     0     0     0     0     0     29
+  smallest                10      0     0     0     0     0     0     10
+  largest                 38      0     0     0     0     0     0     38
 size                                                                  
   data                    236B    0B    0B    0B    0B    0B    0B    236B
     blocks                1       0     0     0     0     0     0     1
-  index                   29B     0B    0B    0B    0B    0B    0B    29B
+  index                   28B     0B    0B    0B    0B    0B    0B    28B
     blocks                1       0     0     0     0     0     0     1
     top-level             0B      0B    0B    0B    0B    0B    0B    0B
   filter                  0B      0B    0B    0B    0B    0B    0B    0B

@@ -337,37 +337,37 @@ sstable scan
 ./testdata/mixed/000005.sst
 ----
 000005.sst
-a@1#1,SET []
-b@1#2,SET []
-c@1#3,SET []
-d@1#4,SET []
-e@1#5,SET []
-f@1#6,SET []
-g@1#7,SET []
-h@1#8,SET []
-i@1#9,SET []
-j@1#10,SET []
-k@1#11,SET []
-l@1#12,SET []
-m@1#13,SET []
-n@1#14,SET []
-o@1#15,SET []
-p@1#16,SET []
-q@1#17,SET []
-r@1#18,SET []
-s@1#19,SET []
-t@1#20,SET []
-u@1#21,SET []
-v@1#22,SET []
-w@1#23,SET []
-x@1#24,SET []
-y@1#25,SET []
-z@1#26,SET []
+a@1#10,SET []
+b@1#11,SET []
+c@1#12,SET []
+d@1#13,SET []
+e@1#14,SET []
+f@1#15,SET []
+g@1#16,SET []
+h@1#17,SET []
+i@1#18,SET []
+j@1#19,SET []
+k@1#20,SET []
+l@1#21,SET []
+m@1#22,SET []
+n@1#23,SET []
+o@1#24,SET []
+p@1#25,SET []
+q@1#26,SET []
+r@1#27,SET []
+s@1#28,SET []
+t@1#29,SET []
+u@1#30,SET []
+v@1#31,SET []
+w@1#32,SET []
+x@1#33,SET []
+y@1#34,SET []
+z@1#35,SET []
 [a-b):
-  #29,RANGEKEYDEL
+  #38,RANGEKEYDEL
 [b-z):
-  #28,RANGEKEYUNSET: @2
-  #27,RANGEKEYSET: @1 []
+  #37,RANGEKEYUNSET: @2
+  #36,RANGEKEYSET: @1 []
 
 sstable scan
 --start=b
@@ -375,20 +375,20 @@ sstable scan
 ./testdata/mixed/000005.sst
 ----
 000005.sst
-b@1#2,SET []
-c@1#3,SET []
-d@1#4,SET []
+b@1#11,SET []
+c@1#12,SET []
+d@1#13,SET []
 [b-z):
-  #28,RANGEKEYUNSET: @2
-  #27,RANGEKEYSET: @1 []
+  #37,RANGEKEYUNSET: @2
+  #36,RANGEKEYSET: @1 []
 
 sstable scan
 --filter=a
 ./testdata/mixed/000005.sst
 ----
-000005.sst: a@1#1,SET []
+000005.sst: a@1#10,SET []
 000005.sst: [a-b):
-  #29,RANGEKEYDEL
+  #38,RANGEKEYDEL
 
 sstable scan
 --filter=b
@@ -396,7 +396,7 @@ sstable scan
 --end=d
 ./testdata/mixed/000005.sst
 ----
-000005.sst: b@1#2,SET []
+000005.sst: b@1#11,SET []
 000005.sst: [b-z):
-  #28,RANGEKEYUNSET: @2
-  #27,RANGEKEYSET: @1 []
+  #37,RANGEKEYUNSET: @2
+  #36,RANGEKEYSET: @1 []
