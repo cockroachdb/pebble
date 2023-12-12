@@ -428,7 +428,6 @@ func testReader(t *testing.T, filename string, comparer *Comparer, fp FilterPoli
 	}
 }
 
-func TestReaderLevelDB(t *testing.T)            { testReader(t, "h.ldb", nil, nil) }
 func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil, nil) }
 func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil, nil) }
 func TestReaderBlockBloomIgnored(t *testing.T) {

@@ -28,31 +28,6 @@ h.sst
      15432  EOF
 
 sstable layout
-../sstable/testdata/h.ldb
-----
-h.ldb
-         0  data (1094)
-      1099  data (1057)
-      2161  data (1074)
-      3240  data (1051)
-      4296  data (1046)
-      5347  data (1091)
-      6443  data (996)
-      7444  data (1060)
-      8509  data (1051)
-      9565  data (1016)
-     10586  data (1026)
-     11617  data (1100)
-     12722  data (1025)
-     13752  data (156)
-     13913  index (245)
-     14163  range-del (421)
-     14589  properties (673)
-     15267  meta-index (61)
-     15333  leveldb-footer (48)
-     15381  EOF
-
-sstable layout
 ../sstable/testdata/h.table-bloom.no-compression.sst
 ----
 h.table-bloom.no-compression.sst
