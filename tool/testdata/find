@@ -136,5 +136,5 @@ hex:636363
 --value=null
 ----
 000002.sst
-    test formatter: ccc#0,SET
+    test formatter: ccc#14,MERGE
 Unable to decode sstable find-mixed/000001.sst, pebble/table: invalid table (file size is too small)
