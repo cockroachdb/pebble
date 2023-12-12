@@ -45,7 +45,7 @@ sstable check
 testdata/corrupted.sst
 ----
 corrupted.sst
-pebble/table: invalid table 000000 (checksum mismatch at 0/57)
+pebble/table: invalid table 000000 (checksum mismatch at 87/465)
 
 sstable check
 testdata/bad-magic.sst
