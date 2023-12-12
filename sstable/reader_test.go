@@ -543,24 +543,15 @@ func TestReaderHideObsolete(t *testing.T) {
 }
 
 func TestHamletReader(t *testing.T) {
-	prebuiltSSTs := []string{
-		"testdata/h.sst",
-		"testdata/h.no-compression.sst",
-		"testdata/h.no-compression.two_level_index.sst",
-		"testdata/h.block-bloom.no-compression.sst",
-		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
-		"testdata/h.table-bloom.no-compression.sst",
-	}
-
-	for _, prebuiltSST := range prebuiltSSTs {
-		f, err := os.Open(filepath.FromSlash(prebuiltSST))
+	for _, fixture := range TestFixtures {
+		f, err := os.Open(filepath.Join("testdata", fixture.Filename))
 		require.NoError(t, err)
 
 		r, err := newReader(f, ReaderOptions{})
 		require.NoError(t, err)
 
 		t.Run(
-			fmt.Sprintf("sst=%s", prebuiltSST),
+			fmt.Sprintf("sst=%s", fixture.Filename),
 			func(t *testing.T) {
 				runTestReader(t, WriterOptions{}, "testdata/hamletreader", r, false)
 			},
@@ -635,18 +626,9 @@ func TestReaderWithBlockPropertyFilter(t *testing.T) {
 }
 
 func TestInjectedErrors(t *testing.T) {
-	prebuiltSSTs := []string{
-		"testdata/h.sst",
-		"testdata/h.no-compression.sst",
-		"testdata/h.no-compression.two_level_index.sst",
-		"testdata/h.block-bloom.no-compression.sst",
-		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
-		"testdata/h.table-bloom.no-compression.sst",
-	}
-
-	for _, prebuiltSST := range prebuiltSSTs {
+	for _, fixture := range TestFixtures {
 		run := func(i int) (reterr error) {
-			f, err := vfs.Default.Open(filepath.FromSlash(prebuiltSST))
+			f, err := vfs.Default.Open(filepath.Join("testdata", fixture.Filename))
 			require.NoError(t, err)
 
 			r, err := newReader(errorfs.WrapFile(f, errorfs.ErrInjected.If(errorfs.OnIndex(int32(i)))), ReaderOptions{})
@@ -682,14 +664,14 @@ func TestInjectedErrors(t *testing.T) {
 		for i := 0; ; i++ {
 			err := run(i)
 			if errors.Is(err, errorfs.ErrInjected) {
-				t.Logf("%q, index %d: %s", prebuiltSST, i, err)
+				t.Logf("%q, index %d: %s", fixture.Filename, i, err)
 				continue
 			}
 			if err != nil {
-				t.Errorf("%q, index %d: non-injected error: %+v", prebuiltSST, i, err)
+				t.Errorf("%q, index %d: non-injected error: %+v", fixture.Filename, i, err)
 				break
 			}
-			t.Logf("%q: no error at index %d", prebuiltSST, i)
+			t.Logf("%q: no error at index %d", fixture.Filename, i)
 			break
 		}
 	}
@@ -1198,14 +1180,9 @@ func TestValidateBlockChecksums(t *testing.T) {
 	rng := rand.New(rand.NewSource(seed))
 	t.Logf("using seed = %d", seed)
 
-	allFiles := []string{
-		"testdata/h.no-compression.sst",
-		"testdata/h.no-compression.two_level_index.sst",
-		"testdata/h.sst",
-		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
-		"testdata/h.table-bloom.no-compression.sst",
-		"testdata/h.table-bloom.sst",
-		"testdata/h.zstd-compression.sst",
+	var allFiles []string
+	for _, fixture := range TestFixtures {
+		allFiles = append(allFiles, fixture.Filename)
 	}
 
 	type corruptionLocation int
@@ -1243,7 +1220,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 		{
 			name: "top index block corruption",
 			files: []string{
-				"testdata/h.no-compression.two_level_index.sst",
+				"h.no-compression.two_level_index.sst",
 			},
 			corruptionLocations: []corruptionLocation{
 				corruptionLocationTopIndex,
@@ -1252,9 +1229,9 @@ func TestValidateBlockChecksums(t *testing.T) {
 		{
 			name: "filter block corruption",
 			files: []string{
-				"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
-				"testdata/h.table-bloom.no-compression.sst",
-				"testdata/h.table-bloom.sst",
+				"h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
+				"h.table-bloom.no-compression.sst",
+				"h.table-bloom.sst",
 			},
 			corruptionLocations: []corruptionLocation{
 				corruptionLocationFilter,
@@ -1292,7 +1269,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 
 	testFn := func(t *testing.T, file string, corruptionLocations []corruptionLocation) {
 		// Create a copy of the SSTable that we can freely corrupt.
-		f, err := os.Open(filepath.FromSlash(file))
+		f, err := os.Open(filepath.Join("testdata", file))
 		require.NoError(t, err)
 
 		pathCopy := path.Join(t.TempDir(), path.Base(file))
@@ -1375,16 +1352,18 @@ func TestValidateBlockChecksums(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		// By default, test across all files, unless overridden.
-		files := tc.files
-		if files == nil {
-			files = allFiles
-		}
-		for _, file := range files {
-			t.Run(tc.name+" "+path.Base(file), func(t *testing.T) {
-				testFn(t, file, tc.corruptionLocations)
-			})
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			// By default, test across all files, unless overridden.
+			files := tc.files
+			if files == nil {
+				files = allFiles
+			}
+			for _, file := range files {
+				t.Run(file, func(t *testing.T) {
+					testFn(t, file, tc.corruptionLocations)
+				})
+			}
+		})
 	}
 }
 
@@ -1454,7 +1433,7 @@ func buildTestTableWithProvider(
 
 	require.NoError(t, w.Close())
 
-	// Re-open that filename for reading.
+	// Re-open that Filename for reading.
 	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, base.FileNum(0).DiskFileNum(), objstorage.OpenOptions{})
 	require.NoError(t, err)
 
@@ -1492,7 +1471,7 @@ func buildBenchmarkTable(
 		b.Fatal(err)
 	}
 
-	// Re-open that filename for reading.
+	// Re-open that Filename for reading.
 	f1, err := mem.Open("bench")
 	if err != nil {
 		b.Fatal(err)
@@ -1776,7 +1755,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		require.NoError(b, w.Close())
 		c := cache.New(cacheSize)
 		defer c.Unref()
-		// Re-open the filename for reading.
+		// Re-open the Filename for reading.
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
 		r, err := newReader(f0, ReaderOptions{
@@ -1883,7 +1862,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 		// TableFormatPebblev3 storing older values in value blocks.
 		c := cache.New(200 << 20)
 		defer c.Unref()
-		// Re-open the filename for reading.
+		// Re-open the Filename for reading.
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
 		r, err = newReader(f0, ReaderOptions{
@@ -2040,7 +2019,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 		require.NoError(b, w.Close())
 		c := cache.New(cacheSize)
 		defer c.Unref()
-		// Re-open the filename for reading.
+		// Re-open the Filename for reading.
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
 		r, err := newReader(f0, ReaderOptions{
