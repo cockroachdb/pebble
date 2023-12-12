@@ -308,8 +308,6 @@ sstable scan
 --filter=beard
 ../sstable/testdata/
 ----
-testdata/h.block-bloom.no-compression.sst: beard-bearers#0,RANGEDEL
-testdata/h.block-bloom.no-compression.sst: beard#0,SET [31]
 testdata/h.no-compression.sst: beard-bearers#0,RANGEDEL
 testdata/h.no-compression.sst: beard#0,SET [31]
 testdata/h.no-compression.two_level_index.sst: beard-bearers#0,RANGEDEL

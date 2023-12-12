@@ -1,8 +1,8 @@
 all: rebuild
 
 .PHONY: rebuild
-rebuild: make-table h.txt
-	./make-table
+rebuild: make-table.go h.txt
+	go run ./make-table.go
 
 h.txt: hamlet-act-1.txt
 	cat hamlet-act-1.txt | \
@@ -12,6 +12,3 @@ h.txt: hamlet-act-1.txt
 		uniq -c | \
 		awk '{printf "%7s %s\n", $$1, $$2}' \
 		> h.txt
-
-make-table: make-table.cc
-	g++ -std=c++14 -o make-table make-table.cc -lrocksdb
