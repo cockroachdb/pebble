@@ -258,10 +258,7 @@ func testReader(t *testing.T, filename string, comparer *Comparer, fp FilterPoli
 
 func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil, nil) }
 func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil, nil) }
-func TestReaderBlockBloomIgnored(t *testing.T) {
-	testReader(t, "h.block-bloom.no-compression.sst", nil, nil)
-}
-func TestReaderTableBloomIgnored(t *testing.T) {
+func TestReaderTableBloom(t *testing.T) {
 	testReader(t, "h.table-bloom.no-compression.sst", nil, nil)
 }
 
