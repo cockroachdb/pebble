@@ -544,7 +544,6 @@ func TestReaderHideObsolete(t *testing.T) {
 
 func TestHamletReader(t *testing.T) {
 	prebuiltSSTs := []string{
-		"testdata/h.ldb",
 		"testdata/h.sst",
 		"testdata/h.no-compression.sst",
 		"testdata/h.no-compression.two_level_index.sst",
@@ -637,7 +636,6 @@ func TestReaderWithBlockPropertyFilter(t *testing.T) {
 
 func TestInjectedErrors(t *testing.T) {
 	prebuiltSSTs := []string{
-		"testdata/h.ldb",
 		"testdata/h.sst",
 		"testdata/h.no-compression.sst",
 		"testdata/h.no-compression.two_level_index.sst",
