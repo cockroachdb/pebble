@@ -20,18 +20,6 @@ func TestTableFormat_RoundTrip(t *testing.T) {
 	}{
 		// Valid cases.
 		{
-			name:    "LevelDB",
-			magic:   levelDBMagic,
-			version: 0,
-			want:    TableFormatLevelDB,
-		},
-		{
-			name:    "RocksDBv2",
-			magic:   rocksDBMagic,
-			version: 2,
-			want:    TableFormatRocksDBv2,
-		},
-		{
 			name:    "PebbleDBv1",
 			magic:   pebbleDBMagic,
 			version: 1,
@@ -57,10 +45,9 @@ func TestTableFormat_RoundTrip(t *testing.T) {
 		},
 		// Invalid cases.
 		{
-			name:    "Invalid RocksDB version",
+			name:    "Deprecated RocksDB magic",
 			magic:   rocksDBMagic,
-			version: 1,
-			wantErr: "pebble/table: unsupported rocksdb format version 1",
+			wantErr: "pebble/table: invalid table (bad magic number: 0xf7cff485b741e288)",
 		},
 		{
 			name:    "Invalid PebbleDB version",
@@ -72,6 +59,16 @@ func TestTableFormat_RoundTrip(t *testing.T) {
 			name:    "Unknown magic string",
 			magic:   "foo",
 			wantErr: "pebble/table: invalid table (bad magic number: 0x666f6f)",
+		},
+		{
+			name:    "LevelDB",
+			magic:   levelDBMagic,
+			wantErr: "pebble/table: invalid table (bad magic number: 0x57fb808b247547db)",
+		},
+		{
+			name:    "RocksDBv2",
+			magic:   rocksDBMagic,
+			wantErr: "pebble/table: invalid table (bad magic number: 0xf7cff485b741e288)",
 		},
 	}
 

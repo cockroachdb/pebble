@@ -411,17 +411,12 @@ func (d *DB) writeCheckpointManifest(
 		return err
 	}
 
-	// Recent format versions use an atomic marker for setting the
-	// active manifest. Older versions use the CURRENT file. The
-	// setCurrentFunc function will return a closure that will
-	// take the appropriate action for the database's format
-	// version.
 	var manifestMarker *atomicfs.Marker
 	manifestMarker, _, err := atomicfs.LocateMarker(fs, destDirPath, manifestMarkerName)
 	if err != nil {
 		return err
 	}
-	if err := setCurrentFunc(formatVers, manifestMarker, fs, destDirPath, destDir)(manifestFileNum); err != nil {
+	if err := manifestMarker.Move(base.MakeFilename(fileTypeManifest, manifestFileNum)); err != nil {
 		return err
 	}
 	return manifestMarker.Close()

@@ -743,12 +743,9 @@ func (i *compactionIter) setNext() {
 	i.valid = true
 	i.maybeZeroSeqnum(i.curSnapshotIdx)
 
-	// There are two cases where we can early return and skip the remaining
+	// If this key is already a SETWITHDEL we can early return and skip the remaining
 	// records in the stripe:
-	// - If the DB does not SETWITHDEL.
-	// - If this key is already a SETWITHDEL.
-	if i.formatVersion < FormatSetWithDelete ||
-		i.iterKey.Kind() == InternalKeyKindSetWithDelete {
+	if i.iterKey.Kind() == InternalKeyKindSetWithDelete {
 		i.skip = true
 		return
 	}

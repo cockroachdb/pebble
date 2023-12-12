@@ -1480,63 +1480,41 @@ func TestManualCompaction(t *testing.T) {
 
 	testCases := []struct {
 		testData   string
-		minVersion FormatMajorVersion
-		maxVersion FormatMajorVersion // inclusive
+		minVersion FormatMajorVersion // inclusive, FormatMinSupported if unspecified.
+		maxVersion FormatMajorVersion // inclusive, internalFormatNewest if unspecified.
 		verbose    bool
 	}{
 		{
-			testData:   "testdata/manual_compaction",
-			minVersion: FormatMostCompatible,
-			maxVersion: FormatSetWithDelete - 1,
+			testData: "testdata/singledel_manual_compaction_set_with_del",
 		},
 		{
-			testData:   "testdata/manual_compaction_set_with_del",
-			minVersion: FormatBlockPropertyCollector,
-			// This test exercises split user keys.
-			maxVersion: FormatSplitUserKeysMarkedCompacted - 1,
-		},
-		{
-			testData:   "testdata/singledel_manual_compaction",
-			minVersion: FormatMostCompatible,
-			maxVersion: FormatSetWithDelete - 1,
-		},
-		{
-			testData:   "testdata/singledel_manual_compaction_set_with_del",
-			minVersion: FormatSetWithDelete,
-			maxVersion: internalFormatNewest,
-		},
-		{
-			testData:   "testdata/manual_compaction_range_keys",
-			minVersion: FormatRangeKeys,
-			maxVersion: internalFormatNewest,
-			verbose:    true,
-		},
-		{
-			testData:   "testdata/manual_compaction_file_boundaries",
-			minVersion: FormatBlockPropertyCollector,
-			// This test exercises split user keys.
-			maxVersion: FormatSplitUserKeysMarkedCompacted - 1,
+			testData: "testdata/manual_compaction_range_keys",
+			verbose:  true,
 		},
 		{
 			testData:   "testdata/manual_compaction_file_boundaries_delsized",
 			minVersion: FormatDeleteSizedAndObsolete,
-			maxVersion: internalFormatNewest,
 		},
 		{
 			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev4",
 			minVersion: FormatDeleteSizedAndObsolete,
-			maxVersion: internalFormatNewest,
 		},
 		{
-			testData:   "testdata/manual_compaction_multilevel",
-			minVersion: FormatMostCompatible,
-			maxVersion: internalFormatNewest,
+			testData: "testdata/manual_compaction_multilevel",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.testData, func(t *testing.T) {
-			runTest(t, tc.testData, tc.minVersion, tc.maxVersion, tc.verbose)
+			minVersion, maxVersion := tc.minVersion, tc.maxVersion
+			if minVersion == 0 {
+				minVersion = FormatMinSupported
+			}
+			if maxVersion == 0 {
+				maxVersion = internalFormatNewest
+			}
+
+			runTest(t, tc.testData, minVersion, maxVersion, tc.verbose)
 		})
 	}
 }

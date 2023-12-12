@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -42,98 +41,104 @@ func (v FormatMajorVersion) String() string {
 	return fmt.Sprintf("%03d", v)
 }
 
+/*
+	  Deprecated versions are retained in this comment for reference.
+
+		// 21.2 versions.
+
+		// FormatMostCompatible maintains the most backwards compatibility,
+		// maintaining bi-directional compatibility with RocksDB 6.2.1 in
+		// the particular configuration described in the Pebble README.
+		FormatMostCompatible
+
+		// formatVersionedManifestMarker is the first
+		// backwards-incompatible change made to Pebble, introducing the
+		// format-version marker file for handling backwards-incompatible
+		// changes more broadly, and replacing the `CURRENT` file with a
+		// marker file.
+		//
+		// This format version is intended as an intermediary version state.
+		// It is deliberately unexported to discourage direct use of this
+		// format major version.  Clients should use FormatVersioned which
+		// also ensures earlier versions of Pebble fail to open a database
+		// written in a future format major version.
+		formatVersionedManifestMarker
+
+		// FormatVersioned is a new format major version that replaces the
+		// old `CURRENT` file with a new 'marker' file scheme.  Previous
+		// Pebble versions will be unable to open the database unless
+		// they're aware of format versions.
+		FormatVersioned
+
+		// FormatSetWithDelete is a format major version that introduces a new key
+		// kind, base.InternalKeyKindSetWithDelete. Previous Pebble versions will be
+		// unable to open this database.
+		FormatSetWithDelete
+
+		// 22.1 versions.
+
+		// FormatBlockPropertyCollector is a format major version that introduces
+		// BlockPropertyCollectors.
+		FormatBlockPropertyCollector
+
+		// FormatSplitUserKeysMarked is a format major version that guarantees that
+		// all files that share user keys with neighbors are marked for compaction
+		// in the manifest. Ratcheting to FormatSplitUserKeysMarked will block
+		// (without holding mutexes) until the scan of the LSM is complete and the
+		// manifest has been rotated.
+		// Deprecated.
+		FormatSplitUserKeysMarked
+
+		// 22.2 versions.
+
+		// FormatSplitUserKeysMarkedCompacted is a format major version that
+		// guarantees that all files explicitly marked for compaction in the manifest
+		// have been compacted. Combined with the FormatSplitUserKeysMarked format
+		// major version, this version guarantees that there are no user keys split
+		// across multiple files within a level L1+. Ratcheting to this format version
+		// will block (without holding mutexes) until all necessary compactions for
+		// files marked for compaction are complete.
+		// Deprecated.
+		FormatSplitUserKeysMarkedCompacted
+
+		// FormatRangeKeys is a format major version that introduces range keys.
+		// Deprecated.
+		FormatRangeKeys
+
+		// FormatMinTableFormatPebblev1 is a format major version that guarantees that
+		// tables created by or ingested into the DB at or above this format major
+		// version will have a table format version of at least Pebblev1 (Block
+		// Properties).
+		// Deprecated.
+		FormatMinTableFormatPebblev1
+
+		// FormatPrePebblev1Marked is a format major version that guarantees that all
+		// sstables with a table format version pre-Pebblev1 (i.e. those that are
+		// guaranteed to not contain block properties) are marked for compaction in
+		// the manifest. Ratcheting to FormatPrePebblev1Marked will block (without
+		// holding mutexes) until the scan of the LSM is complete and the manifest has
+		// been rotated.
+		// Deprecated.
+		FormatPrePebblev1Marked
+
+		// 23.1 versions.
+
+		// formatUnusedPrePebblev1MarkedCompacted is an unused format major version.
+		// This format major version was originally intended to ship in the 23.1
+		// release. It was later decided that this should be deferred until a
+		// subsequent release. The original ordering is preserved so as not to
+		// introduce breaking changes in Cockroach.
+		formatUnusedPrePebblev1MarkedCompacted
+
+		// FormatSSTableValueBlocks is a format major version that adds support for
+		// storing values in value blocks in the sstable. Value block support is not
+		// necessarily enabled when writing sstables, when running with this format
+		// major version.
+		FormatSSTableValueBlocks
+*/
+const numDeprecatedVersions = 12
+
 const (
-	// 21.2 versions.
-
-	// FormatDefault leaves the format version unspecified. The
-	// FormatDefault constant may be ratcheted upwards over time.
-	FormatDefault FormatMajorVersion = iota
-	// FormatMostCompatible maintains the most backwards compatibility,
-	// maintaining bi-directional compatibility with RocksDB 6.2.1 in
-	// the particular configuration described in the Pebble README.
-	FormatMostCompatible
-	// formatVersionedManifestMarker is the first
-	// backwards-incompatible change made to Pebble, introducing the
-	// format-version marker file for handling backwards-incompatible
-	// changes more broadly, and replacing the `CURRENT` file with a
-	// marker file.
-	//
-	// This format version is intended as an intermediary version state.
-	// It is deliberately unexported to discourage direct use of this
-	// format major version.  Clients should use FormatVersioned which
-	// also ensures earlier versions of Pebble fail to open a database
-	// written in a future format major version.
-	formatVersionedManifestMarker
-	// FormatVersioned is a new format major version that replaces the
-	// old `CURRENT` file with a new 'marker' file scheme.  Previous
-	// Pebble versions will be unable to open the database unless
-	// they're aware of format versions.
-	FormatVersioned
-	// FormatSetWithDelete is a format major version that introduces a new key
-	// kind, base.InternalKeyKindSetWithDelete. Previous Pebble versions will be
-	// unable to open this database.
-	FormatSetWithDelete
-
-	// 22.1 versions.
-
-	// FormatBlockPropertyCollector is a format major version that introduces
-	// BlockPropertyCollectors.
-	FormatBlockPropertyCollector
-	// FormatSplitUserKeysMarked is a format major version that guarantees that
-	// all files that share user keys with neighbors are marked for compaction
-	// in the manifest. Ratcheting to FormatSplitUserKeysMarked will block
-	// (without holding mutexes) until the scan of the LSM is complete and the
-	// manifest has been rotated.
-	FormatSplitUserKeysMarked
-
-	// 22.2 versions.
-
-	// FormatSplitUserKeysMarkedCompacted is a format major version that
-	// guarantees that all files explicitly marked for compaction in the manifest
-	// have been compacted. Combined with the FormatSplitUserKeysMarked format
-	// major version, this version guarantees that there are no user keys split
-	// across multiple files within a level L1+. Ratcheting to this format version
-	// will block (without holding mutexes) until all necessary compactions for
-	// files marked for compaction are complete.
-	FormatSplitUserKeysMarkedCompacted
-	// FormatRangeKeys is a format major version that introduces range keys.
-	FormatRangeKeys
-	// FormatMinTableFormatPebblev1 is a format major version that guarantees that
-	// tables created by or ingested into the DB at or above this format major
-	// version will have a table format version of at least Pebblev1 (Block
-	// Properties).
-	FormatMinTableFormatPebblev1
-	// FormatPrePebblev1Marked is a format major version that guarantees that all
-	// sstables with a table format version pre-Pebblev1 (i.e. those that are
-	// guaranteed to not contain block properties) are marked for compaction in
-	// the manifest. Ratcheting to FormatPrePebblev1Marked will block (without
-	// holding mutexes) until the scan of the LSM is complete and the manifest has
-	// been rotated.
-	FormatPrePebblev1Marked
-
-	// 23.1 versions.
-
-	// formatUnusedPrePebblev1MarkedCompacted is an unused format major version.
-	// This format major version was originally intended to ship in the 23.1
-	// release. It was later decided that this should be deferred until a
-	// subsequent release. The original ordering is preserved so as not to
-	// introduce breaking changes in Cockroach.
-	formatUnusedPrePebblev1MarkedCompacted
-
-	// FormatSSTableValueBlocks is a format major version that adds support for
-	// storing values in value blocks in the sstable. Value block support is not
-	// necessarily enabled when writing sstables, when running with this format
-	// major version.
-	//
-	// WARNING: In development, so no production code should upgrade to this
-	// format, since a DB with this format major version will not actually
-	// interoperate correctly with another DB with the same format major
-	// version. This format major version is introduced so that tests can start
-	// being executed up to this version. Note that these tests succeed despite
-	// the incomplete support since they do not enable value blocks and use
-	// TableFormatPebblev2.
-	FormatSSTableValueBlocks
-
 	// FormatFlushableIngest is a format major version that enables lazy
 	// addition of ingested sstables into the LSM structure. When an ingest
 	// overlaps with a memtable, a record of the ingest is written to the WAL
@@ -143,7 +148,7 @@ const (
 	//
 	// This feature is behind a format major version because it required
 	// breaking changes to the WAL format.
-	FormatFlushableIngest
+	FormatFlushableIngest FormatMajorVersion = numDeprecatedVersions + 1 + iota
 
 	// 23.2 versions.
 
@@ -169,29 +174,40 @@ const (
 	// a format major version.
 	FormatVirtualSSTables
 
-	// internalFormatNewest holds the newest format major version, including
-	// experimental ones excluded from the exported FormatNewest constant until
-	// they've stabilized. Used in tests.
-	internalFormatNewest FormatMajorVersion = iota - 1
+	// -- Add new versions here --
 
-	// FormatNewest always contains the most recent format major version.
-	FormatNewest FormatMajorVersion = internalFormatNewest
+	// FormatNewest is the most recent format major version.
+	FormatNewest FormatMajorVersion = numDeprecatedVersions + iota
+
+	// Experimental versions, which are excluded by FormatNewest (but can be used
+	// in tests) can be defined here.
+
+	// -- Add experimental versions here --
+
+	// internalFormatNewest is the most recent, possibly experimental format major
+	// version.
+	internalFormatNewest FormatMajorVersion = numDeprecatedVersions + iota - 1
 )
+
+// FormatDefault leaves the format version unspecified. When used to create a
+// new store, Pebble will choose the earliest format version it supports.
+const FormatDefault FormatMajorVersion = 0
+
+// FormatMinSupported is the minimum format version that is supported by this
+// Pebble version.
+const FormatMinSupported = FormatFlushableIngest
+
+// IsSupported returns true if the version is supported by the current Pebble
+// version.
+func (v FormatMajorVersion) IsSupported() bool {
+	return v == FormatDefault && v >= FormatMinSupported && v <= internalFormatNewest
+}
 
 // MaxTableFormat returns the maximum sstable.TableFormat that can be used at
 // this FormatMajorVersion.
 func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	switch v {
-	case FormatDefault, FormatMostCompatible, formatVersionedManifestMarker,
-		FormatVersioned, FormatSetWithDelete:
-		return sstable.TableFormatRocksDBv2
-	case FormatBlockPropertyCollector, FormatSplitUserKeysMarked,
-		FormatSplitUserKeysMarkedCompacted:
-		return sstable.TableFormatPebblev1
-	case FormatRangeKeys, FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
-		formatUnusedPrePebblev1MarkedCompacted:
-		return sstable.TableFormatPebblev2
-	case FormatSSTableValueBlocks, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
+	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev3
 	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables:
 		return sstable.TableFormatPebblev4
@@ -204,31 +220,12 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 // this FormatMajorVersion.
 func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	switch v {
-	case FormatDefault, FormatMostCompatible, formatVersionedManifestMarker,
-		FormatVersioned, FormatSetWithDelete, FormatBlockPropertyCollector,
-		FormatSplitUserKeysMarked, FormatSplitUserKeysMarkedCompacted,
-		FormatRangeKeys:
-		return sstable.TableFormatLevelDB
-	case FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
-		formatUnusedPrePebblev1MarkedCompacted, FormatSSTableValueBlocks,
-		FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
+	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
 	}
-}
-
-// orderingInvariants returns an enum encoding the set of invariants that must
-// hold within the receiver format major version. Invariants only get stricter
-// as the format major version advances, so it is okay to retrieve the
-// invariants from the current format major version and by the time the
-// invariants are enforced, the format major version has advanced.
-func (v FormatMajorVersion) orderingInvariants() manifest.OrderingInvariants {
-	if v < FormatSplitUserKeysMarkedCompacted {
-		return manifest.AllowSplitUserKeys
-	}
-	return manifest.ProhibitSplitUserKeys
 }
 
 // formatMajorVersionMigrations defines the migrations from one format
@@ -242,112 +239,7 @@ func (v FormatMajorVersion) orderingInvariants() manifest.OrderingInvariants {
 // panic if a migration returns a nil error but fails to finalize the
 // new format major version.
 var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
-	FormatMostCompatible: func(d *DB) error { return nil },
-	formatVersionedManifestMarker: func(d *DB) error {
-		// formatVersionedManifestMarker introduces the use of a marker
-		// file for pointing to the current MANIFEST file.
-
-		// Lock the manifest.
-		d.mu.versions.logLock()
-		defer d.mu.versions.logUnlock()
-
-		// Construct the filename of the currently active manifest and
-		// move the manifest marker to that filename. The marker is
-		// guaranteed to exist, because we unconditionally locate it
-		// during Open.
-		manifestFileNum := d.mu.versions.manifestFileNum
-		filename := base.MakeFilename(fileTypeManifest, manifestFileNum)
-		if err := d.mu.versions.manifestMarker.Move(filename); err != nil {
-			return errors.Wrap(err, "moving manifest marker")
-		}
-
-		// Now that we have a manifest marker file in place and pointing
-		// to the current MANIFEST, finalize the upgrade. If we fail for
-		// some reason, a retry of this migration is guaranteed to again
-		// move the manifest marker file to the latest manifest. If
-		// we're unable to finalize the upgrade, a subsequent call to
-		// Open will ignore the manifest marker.
-		if err := d.finalizeFormatVersUpgrade(formatVersionedManifestMarker); err != nil {
-			return err
-		}
-
-		// We've finalized the upgrade. All subsequent Open calls will
-		// ignore the CURRENT file and instead read the manifest marker.
-		// Before we unlock the manifest, we need to update versionSet
-		// to use the manifest marker on future rotations.
-		d.mu.versions.setCurrent = setCurrentFuncMarker(
-			d.mu.versions.manifestMarker,
-			d.mu.versions.fs,
-			d.mu.versions.dirname)
-		return nil
-	},
-	// The FormatVersioned version is split into two, each with their
-	// own migration to ensure the post-migration cleanup happens even
-	// if there's a crash immediately after finalizing the version. Once
-	// a new format major version is finalized, its migration will never
-	// run again. Post-migration cleanup like the one in the migration
-	// below must be performed in a separate migration or every time the
-	// database opens.
-	FormatVersioned: func(d *DB) error {
-		// Replace the `CURRENT` file with one that points to the
-		// nonexistent `MANIFEST-000000` file. If an earlier Pebble
-		// version that does not know about format major versions
-		// attempts to open the database, it will error avoiding
-		// accidental corruption.
-		if err := setCurrentFile(d.mu.versions.dirname, d.mu.versions.fs, base.FileNum(0).DiskFileNum()); err != nil {
-			return err
-		}
-		return d.finalizeFormatVersUpgrade(FormatVersioned)
-	},
-	// As SetWithDelete is a new key kind, there is nothing to migrate. We can
-	// simply finalize the format version and we're done.
-	FormatSetWithDelete: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatSetWithDelete)
-	},
-	FormatBlockPropertyCollector: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatBlockPropertyCollector)
-	},
-	FormatSplitUserKeysMarked: func(d *DB) error {
-		// Mark any unmarked files with split-user keys. Note all format major
-		// versions migrations are invoked with DB.mu locked.
-		if err := d.markFilesLocked(markFilesWithSplitUserKeys(d.opts.Comparer.Equal)); err != nil {
-			return err
-		}
-		return d.finalizeFormatVersUpgrade(FormatSplitUserKeysMarked)
-	},
-	FormatSplitUserKeysMarkedCompacted: func(d *DB) error {
-		// Before finalizing the format major version, rewrite any sstables
-		// still marked for compaction. Note all format major versions
-		// migrations are invoked with DB.mu locked.
-		if err := d.compactMarkedFilesLocked(); err != nil {
-			return err
-		}
-		return d.finalizeFormatVersUpgrade(FormatSplitUserKeysMarkedCompacted)
-	},
-	FormatRangeKeys: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatRangeKeys)
-	},
-	FormatMinTableFormatPebblev1: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatMinTableFormatPebblev1)
-	},
-	FormatPrePebblev1Marked: func(d *DB) error {
-		// Mark any unmarked files that contain only table properties. Note all
-		// format major versions migrations are invoked with DB.mu locked.
-		if err := d.markFilesLocked(markFilesPrePebblev1(d.tableCache)); err != nil {
-			return err
-		}
-		return d.finalizeFormatVersUpgrade(FormatPrePebblev1Marked)
-	},
-	formatUnusedPrePebblev1MarkedCompacted: func(d *DB) error {
-		// Intentional no-op.
-		return d.finalizeFormatVersUpgrade(formatUnusedPrePebblev1MarkedCompacted)
-	},
-	FormatSSTableValueBlocks: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatSSTableValueBlocks)
-	},
-	FormatFlushableIngest: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatFlushableIngest)
-	},
+	FormatFlushableIngest: func(d *DB) error { return nil },
 	FormatPrePebblev1MarkedCompacted: func(d *DB) error {
 		// Before finalizing the format major version, rewrite any sstables
 		// still marked for compaction. Note all format major versions
@@ -367,6 +259,12 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 
 const formatVersionMarkerName = `format-version`
 
+// lookupFormatMajorVersion retrieves the format version from the format version
+// marker file.
+//
+// If such a file does not exist, returns FormatDefault. Note that this case is
+// only acceptable if we are creating a new store (we no longer support
+// FormatMostCompatible which is the only one with no version marker file).
 func lookupFormatMajorVersion(
 	fs vfs.FS, dirname string,
 ) (FormatMajorVersion, *atomicfs.Marker, error) {
@@ -375,7 +273,7 @@ func lookupFormatMajorVersion(
 		return 0, nil, err
 	}
 	if versString == "" {
-		return FormatMostCompatible, m, nil
+		return FormatDefault, m, nil
 	}
 	v, err := strconv.ParseUint(versString, 10, 64)
 	if err != nil {
@@ -386,7 +284,10 @@ func lookupFormatMajorVersion(
 		return 0, nil, errors.Newf("pebble: default format major version should not persisted", vers)
 	}
 	if vers > internalFormatNewest {
-		return 0, nil, errors.Newf("pebble: database %q written in format major version %d", dirname, vers)
+		return 0, nil, errors.Newf("pebble: database %q written in unknown format major version %d", dirname, vers)
+	}
+	if vers < FormatMinSupported {
+		return 0, nil, errors.Newf("pebble: database %q written in format major version %d which is no longer supported", dirname, vers)
 	}
 	return vers, m, nil
 }
@@ -456,16 +357,20 @@ func (d *DB) ratchetFormatMajorVersionLocked(formatVers FormatMajorVersion) erro
 //
 // See formatMajorVersionMigrations.
 func (d *DB) finalizeFormatVersUpgrade(formatVers FormatMajorVersion) error {
-	// We use the marker to encode the active format version in the
-	// marker filename. Unlike other uses of the atomic marker, there is
-	// no file with the filename `formatVers.String()` on the
-	// filesystem.
-	if err := d.mu.formatVers.marker.Move(formatVers.String()); err != nil {
+	if err := d.writeFormatVersionMarker(formatVers); err != nil {
 		return err
 	}
 	d.mu.formatVers.vers.Store(uint64(formatVers))
 	d.opts.EventListener.FormatUpgrade(formatVers)
 	return nil
+}
+
+func (d *DB) writeFormatVersionMarker(formatVers FormatMajorVersion) error {
+	// We use the marker to encode the active format version in the
+	// marker filename. Unlike other uses of the atomic marker, there is
+	// no file with the filename `formatVers.String()` on the
+	// filesystem.
+	return d.mu.formatVers.marker.Move(formatVers.String())
 }
 
 // compactMarkedFilesLocked performs a migration that schedules rewrite
@@ -523,73 +428,11 @@ func (d *DB) compactMarkedFilesLocked() error {
 // level.
 type findFilesFunc func(v *version) (found bool, files [numLevels][]*fileMetadata, _ error)
 
-// markFilesWithSplitUserKeys scans the LSM's levels 1 through 6 for adjacent
-// files that contain the same user key. Such arrangements of files were
-// permitted in RocksDB and in Pebble up to SHA a860bbad.
-var markFilesWithSplitUserKeys = func(equal Equal) findFilesFunc {
-	return func(v *version) (found bool, files [numLevels][]*fileMetadata, _ error) {
-		// Files with split user keys are expected to be rare and performing key
-		// comparisons for every file within the LSM is expensive, so drop the
-		// database lock while scanning the file metadata.
-		for l := numLevels - 1; l > 0; l-- {
-			iter := v.Levels[l].Iter()
-			var prevFile *fileMetadata
-			var prevUserKey []byte
-			for f := iter.First(); f != nil; f = iter.Next() {
-				if prevUserKey != nil && equal(prevUserKey, f.Smallest.UserKey) {
-					// NB: We may append a file twice, once as prevFile and once
-					// as f. That's okay, and handled below.
-					files[l] = append(files[l], prevFile, f)
-					found = true
-				}
-				if f.Largest.IsExclusiveSentinel() {
-					prevUserKey = nil
-					prevFile = nil
-				} else {
-					prevUserKey = f.Largest.UserKey
-					prevFile = f
-				}
-			}
-		}
-		return
-	}
-}
+// This method is not used currently, but it will be useful the next time we need
+// to mark files for compaction.
+var _ = (*DB)(nil).markFilesLocked
 
-// markFilesPrePebblev1 scans the LSM for files that do not support block
-// properties (i.e. a table format version pre-Pebblev1).
-var markFilesPrePebblev1 = func(tc *tableCacheContainer) findFilesFunc {
-	return func(v *version) (found bool, files [numLevels][]*fileMetadata, err error) {
-		for l := numLevels - 1; l > 0; l-- {
-			iter := v.Levels[l].Iter()
-			for f := iter.First(); f != nil; f = iter.Next() {
-				if f.Virtual {
-					// Any physical sstable which has been virtualized must
-					// have already undergone this migration, and we don't
-					// need to worry about the virtual sstable themselves.
-					panic("pebble: unexpected virtual sstable during migration")
-				}
-				err = tc.withReader(
-					f.PhysicalMeta(), func(r *sstable.Reader) error {
-						tf, err := r.TableFormat()
-						if err != nil {
-							return err
-						}
-						if tf < sstable.TableFormatPebblev1 {
-							found = true
-							files[l] = append(files[l], f)
-						}
-						return nil
-					})
-				if err != nil {
-					return
-				}
-			}
-		}
-		return
-	}
-}
-
-// markFilesLock durably marks the files that match the given findFilesFunc for
+// markFilesLocked durably marks the files that match the given findFilesFunc for
 // compaction.
 func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 	jobID := d.mu.nextJobID

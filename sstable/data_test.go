@@ -27,11 +27,6 @@ import (
 func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 	for _, arg := range td.CmdArgs {
 		switch arg.Key {
-		case "leveldb":
-			if len(arg.Vals) != 0 {
-				return errors.Errorf("%s: arg %s expects 0 values", td.Cmd, arg.Key)
-			}
-			writerOpts.TableFormat = TableFormatLevelDB
 		case "block-size":
 			if len(arg.Vals) != 1 {
 				return errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)

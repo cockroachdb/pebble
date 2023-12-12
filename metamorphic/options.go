@@ -26,16 +26,13 @@ import (
 )
 
 const (
-	// The metamorphic test exercises range keys, so we cannot use an older
-	// FormatMajorVersion than pebble.FormatRangeKeys.
-	minimumFormatMajorVersion = pebble.FormatRangeKeys
+	minimumFormatMajorVersion = pebble.FormatMinSupported
 	// The format major version to use in the default options configurations. We
-	// default to the last format major version of Cockroach 22.2 so we exercise
-	// the runtime version ratcheting that a cluster upgrading to 23.1 would
-	// experience. The randomized options may still use format major versions
-	// that are less than defaultFormatMajorVersion but are at least
-	// minimumFormatMajorVersion.
-	defaultFormatMajorVersion = pebble.FormatPrePebblev1Marked
+	// default to the minimum supported format so we exercise the runtime version
+	// ratcheting that a cluster upgrading would experience. The randomized
+	// options may still use format major versions that are less than
+	// defaultFormatMajorVersion but are at least minimumFormatMajorVersion.
+	defaultFormatMajorVersion = pebble.FormatMinSupported
 	// newestFormatMajorVersionToTest is the most recent format major version
 	// the metamorphic tests should use. This may be greater than
 	// pebble.FormatNewest when some format major versions are marked as
@@ -574,8 +571,7 @@ func randomOptions(
 	if testOpts.disableBlockPropertyCollector {
 		testOpts.Opts.BlockPropertyCollectors = nil
 	}
-	testOpts.enableValueBlocks = opts.FormatMajorVersion >= pebble.FormatSSTableValueBlocks &&
-		rng.Intn(2) != 0
+	testOpts.enableValueBlocks = rng.Intn(2) != 0
 	if testOpts.enableValueBlocks {
 		testOpts.Opts.Experimental.EnableValueBlocks = func() bool { return true }
 	}

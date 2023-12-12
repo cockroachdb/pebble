@@ -1751,11 +1751,11 @@ func iterOptionsString(o *IterOptions) string {
 
 func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace, rng *rand.Rand) *DB {
 	dbOpts := &Options{
-		Comparer:           testkeys.Comparer,
-		FS:                 vfs.NewMem(),
-		FormatMajorVersion: FormatRangeKeys,
-		Logger:             panicLogger{},
+		Comparer: testkeys.Comparer,
+		FS:       vfs.NewMem(),
+		Logger:   panicLogger{},
 	}
+	dbOpts.testingRandomized(t)
 	d, err := Open("", dbOpts)
 	require.NoError(t, err)
 
@@ -1804,8 +1804,8 @@ func newPointTestkeysDatabase(t *testing.T, ks testkeys.Keyspace) *DB {
 	dbOpts := &Options{
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
-		FormatMajorVersion: FormatRangeKeys,
 	}
+	dbOpts.testingRandomized(t)
 	d, err := Open("", dbOpts)
 	require.NoError(t, err)
 

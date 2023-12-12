@@ -5,11 +5,10 @@ list-files build
 ----
 build:
   000002.log
-  CURRENT
   LOCK
   MANIFEST-000001
   OPTIONS-000003
-  marker.format-version.000007.008
+  marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 
 commit
@@ -27,11 +26,10 @@ build:
   000002.log
   000004.log
   000005.sst
-  CURRENT
   LOCK
   MANIFEST-000001
   OPTIONS-000003
-  marker.format-version.000007.008
+  marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 
 start
@@ -50,7 +48,7 @@ simple/checkpoint:
   000005.sst
   MANIFEST-000001
   OPTIONS-000003
-  marker.format-version.000001.008
+  marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 
 commit
