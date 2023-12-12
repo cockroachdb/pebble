@@ -267,46 +267,43 @@ MANIFEST-000001
 25/1
   log-num:       2
   next-file-num: 3
-36/2
+  last-seq-num:  9
+38/2
   log-num:       4
   next-file-num: 6
-  last-seq-num:  5
-  added:         L0 000005:784<#1-#5>[aaa#1,SET-ccc#5,MERGE] (2021-04-01T20:24:02Z)
-88/3
+  last-seq-num:  14
+  added:         L0 000005:647<#10-#14>[aaa#10,SET-ccc#14,MERGE] (2023-12-12T18:55:00Z)
+90/3
   next-file-num: 6
-  last-seq-num:  5
+  last-seq-num:  14
   deleted:       L0 000005
-  added:         L6 000005:784<#1-#5>[aaa#1,SET-ccc#5,MERGE] (2021-04-01T20:24:02Z)
-141/4
+  added:         L6 000005:647<#10-#14>[aaa#10,SET-ccc#14,MERGE] (2023-12-12T18:55:00Z)
+143/4
   next-file-num: 7
-  last-seq-num:  6
-  added:         L0 000006:817<#6-#6>[bbb#6,SET-ccc#6,SET] (2021-04-01T20:24:02Z)
-191/5
+  last-seq-num:  15
+  added:         L0 000006:680<#15-#15>[bbb#15,SET-ccc#15,SET] (2023-12-12T18:55:00Z)
+193/5
   next-file-num: 8
-  last-seq-num:  7
-  added:         L6 000007:808<#7-#7>[ddd#7,SET-ddd#7,SET] (2021-04-01T20:24:02Z)
-241/6
+  last-seq-num:  16
+  added:         L6 000007:671<#16-#16>[ddd#16,SET-ddd#16,SET] (2023-12-12T18:55:00Z)
+243/6
   next-file-num: 9
-  last-seq-num:  7
+  last-seq-num:  16
   deleted:       L0 000006
   deleted:       L6 000005
-  added:         L6 000008:791<#0-#6>[aaa#0,SET-ccc#0,MERGE] (2021-04-01T20:24:02Z)
-297/7
+  added:         L6 000008:738<#0-#15>[aaa#0,SET-ccc#0,MERGE] (2023-12-12T18:55:00Z)
+299/7
   log-num:       9
   next-file-num: 11
-  last-seq-num:  10
-  added:         L0 000010:834<#8-#10>[aaa#8,DEL-eee#inf,RANGEDEL] (2021-04-01T20:24:02Z)
-349/8
+  last-seq-num:  19
+  added:         L0 000010:736<#17-#19>[aaa#17,DEL-eee#inf,RANGEDEL] (2023-12-12T18:55:00Z)
+351/8
   next-file-num: 12
-  last-seq-num:  10
+  last-seq-num:  19
   deleted:       L0 000010
   deleted:       L6 000007
   deleted:       L6 000008
-  added:         L6 000011:898<#0-#10>[aaa#8,DEL-eee#inf,RANGEDEL] (2021-04-01T20:24:02Z)
-408/9
-  next-file-num: 12
-  last-seq-num:  10
-  deleted:       L6 000011
+  added:         L6 000011:870<#0-#19>[aaa#17,DEL-eee#inf,RANGEDEL] (2023-12-12T18:55:00Z)
 EOF
 --- L0 ---
 --- L1 ---
@@ -315,6 +312,7 @@ EOF
 --- L4 ---
 --- L5 ---
 --- L6 ---
+  000011:870<#0-#19>[aaa#17,DEL-eee#inf,RANGEDEL]
 
 manifest dump --filter-start=bat --filter-end=cat
 ./testdata/find-db/MANIFEST-000001
@@ -323,42 +321,38 @@ MANIFEST-000001
 0/0
   comparer:     alt-comparer
   next-file-num: 2
-36/1
+38/1
   log-num:       4
   next-file-num: 6
-  last-seq-num:  5
-  added:         L0 000005:784<#1-#5>[aaa#1,SET-ccc#5,MERGE] (2021-04-01T20:24:02Z)
-88/2
+  last-seq-num:  14
+  added:         L0 000005:647<#10-#14>[aaa#10,SET-ccc#14,MERGE] (2023-12-12T18:55:00Z)
+90/2
   next-file-num: 6
-  last-seq-num:  5
+  last-seq-num:  14
   deleted:       L0 000005
-  added:         L6 000005:784<#1-#5>[aaa#1,SET-ccc#5,MERGE] (2021-04-01T20:24:02Z)
-141/3
+  added:         L6 000005:647<#10-#14>[aaa#10,SET-ccc#14,MERGE] (2023-12-12T18:55:00Z)
+143/3
   next-file-num: 7
-  last-seq-num:  6
-  added:         L0 000006:817<#6-#6>[bbb#6,SET-ccc#6,SET] (2021-04-01T20:24:02Z)
-241/4
+  last-seq-num:  15
+  added:         L0 000006:680<#15-#15>[bbb#15,SET-ccc#15,SET] (2023-12-12T18:55:00Z)
+243/4
   next-file-num: 9
-  last-seq-num:  7
+  last-seq-num:  16
   deleted:       L0 000006
   deleted:       L6 000005
-  added:         L6 000008:791<#0-#6>[aaa#0,SET-ccc#0,MERGE] (2021-04-01T20:24:02Z)
-297/5
+  added:         L6 000008:738<#0-#15>[aaa#0,SET-ccc#0,MERGE] (2023-12-12T18:55:00Z)
+299/5
   log-num:       9
   next-file-num: 11
-  last-seq-num:  10
-  added:         L0 000010:834<#8-#10>[aaa#8,DEL-eee#inf,RANGEDEL] (2021-04-01T20:24:02Z)
-349/6
+  last-seq-num:  19
+  added:         L0 000010:736<#17-#19>[aaa#17,DEL-eee#inf,RANGEDEL] (2023-12-12T18:55:00Z)
+351/6
   next-file-num: 12
-  last-seq-num:  10
+  last-seq-num:  19
   deleted:       L0 000010
   deleted:       L6 000007
   deleted:       L6 000008
-  added:         L6 000011:898<#0-#10>[aaa#8,DEL-eee#inf,RANGEDEL] (2021-04-01T20:24:02Z)
-408/7
-  next-file-num: 12
-  last-seq-num:  10
-  deleted:       L6 000011
+  added:         L6 000011:870<#0-#19>[aaa#17,DEL-eee#inf,RANGEDEL] (2023-12-12T18:55:00Z)
 EOF
 --- L0 ---
 --- L1 ---
@@ -367,6 +361,7 @@ EOF
 --- L4 ---
 --- L5 ---
 --- L6 ---
+  000011:870<#0-#19>[aaa#17,DEL-eee#inf,RANGEDEL]
 
 manifest check
 ./testdata/mixed/MANIFEST-000001

@@ -5,11 +5,15 @@
   bytes_per_sync=524288
   cache_size=8388608
   cleaner=archive
+  compaction_debt_concurrency=1073741824
   comparer=alt-comparer
-  delete_range_flush_delay=0s
   disable_wal=false
+  flush_delay_delete_range=0s
+  flush_delay_range_key=0s
   flush_split_bytes=4194304
+  format_major_version=13
   l0_compaction_concurrency=10
+  l0_compaction_file_threshold=500
   l0_compaction_threshold=4
   l0_stop_writes_threshold=12
   lbase_max_bytes=67108864
@@ -18,17 +22,25 @@
   max_open_files=1000
   mem_table_size=4194304
   mem_table_stop_writes_threshold=2
-  min_compaction_rate=4194304
-  min_flush_rate=1048576
+  min_deletion_rate=0
   merger=test-merger
+  read_compaction_rate=16000
+  read_sampling_multiplier=16
   strict_wal_tail=true
+  table_cache_shards=10
   table_property_collectors=[]
+  validate_on_ingest=false
   wal_dir=
   wal_bytes_per_sync=0
+  max_writer_concurrency=0
+  force_writer_parallelism=false
+  secondary_cache_size_bytes=0
+  create_on_shared=0
 
 [Level "0"]
   block_restart_interval=16
   block_size=4096
+  block_size_threshold=90
   compression=Snappy
   filter_policy=none
   filter_type=table

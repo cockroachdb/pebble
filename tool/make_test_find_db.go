@@ -32,13 +32,15 @@ func open(fs vfs.FS, dir string) *db {
 	m.Name = "test-merger"
 
 	lel := pebble.MakeLoggingEventListener(pebble.DefaultLogger)
-	d, err := pebble.Open(dir, &pebble.Options{
-		Cleaner:       pebble.ArchiveCleaner{},
-		Comparer:      &c,
-		EventListener: &lel,
-		FS:            fs,
-		Merger:        &m,
-	})
+	opts := pebble.Options{
+		Cleaner:            pebble.ArchiveCleaner{},
+		Comparer:           &c,
+		EventListener:      &lel,
+		FS:                 fs,
+		Merger:             &m,
+		FormatMajorVersion: pebble.FormatFlushableIngest,
+	}
+	d, err := pebble.Open(dir, &opts)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -98,8 +100,9 @@ func (d *db) ingest(keyVals ...string) {
 		log.Fatal(err)
 	}
 	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
-		Comparer:   d.comparer,
-		MergerName: d.merger.Name,
+		Comparer:    d.comparer,
+		MergerName:  d.merger.Name,
+		TableFormat: sstable.TableFormatPebblev1,
 	})
 
 	for i := 0; i < len(keyVals); i += 2 {
