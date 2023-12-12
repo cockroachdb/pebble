@@ -144,6 +144,7 @@ func buildHamletTestSST(
 		FilterType:     ftype,
 		IndexBlockSize: indexBlockSize,
 		MergerName:     "nullptr",
+		TableFormat:    fixtureFormat,
 	}
 	if propCollector != nil {
 		writerOpts.TablePropertyCollectors = append(writerOpts.TablePropertyCollectors, propCollector)
@@ -286,6 +287,7 @@ func (tf TestFixtureInfo) Build(fs vfs.FS, filename string) error {
 const fixtureDefaultIndexBlockSize = math.MaxInt32
 const fixtureSmallIndexBlockSize = 128
 const fixtureBlockSize = 2048
+const fixtureFormat = TableFormatPebblev1
 
 type keyCountPropertyCollector struct {
 	count int
