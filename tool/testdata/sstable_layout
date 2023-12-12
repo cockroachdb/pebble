@@ -3879,9 +3879,9 @@ sstable layout
 ----
 000005.sst
          0  data (231)
-       236  index (24)
-       265  range-key (64)
-       334  properties (710)
-      1049  meta-index (59)
-      1113  footer (53)
-      1166  EOF
+       236  index (23)
+       264  range-key (64)
+       333  properties (601)
+       939  meta-index (59)
+      1003  footer (53)
+      1056  EOF
