@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
@@ -905,6 +906,15 @@ func newCombinedDeletionKeyspanIter(
 		return nil, err
 	}
 	if iter != nil {
+		// Assert expected bounds in tests.
+		if invariants.Enabled {
+			// TODO(radu): we should be using AssertBounds, but it currently fails in
+			// some cases.
+			iter = keyspan.AssertUserKeyBounds(
+				iter, m.SmallestPointKey.UserKey, m.LargestPointKey.UserKey, comparer.Compare,
+				fmt.Sprintf("rangeDelIter for table stats for virtual %s", m),
+			)
+		}
 		dIter := &keyspan.DefragmentingIter{}
 		dIter.Init(comparer, iter, equal, reducer, new(keyspan.DefragmentingBuffers))
 		iter = dIter
@@ -922,6 +932,15 @@ func newCombinedDeletionKeyspanIter(
 		return nil, err
 	}
 	if iter != nil {
+		// Assert expected bounds in tests.
+		if invariants.Enabled {
+			// TODO(radu): we should be using AssertBounds, but it currently fails in
+			// some cases.
+			iter = keyspan.AssertUserKeyBounds(
+				iter, m.SmallestRangeKey.UserKey, m.LargestRangeKey.UserKey, comparer.Compare,
+				fmt.Sprintf("rangeKeyIter for table stats for %s", m),
+			)
+		}
 		// Wrap the range key iterator in a filter that elides keys other than range
 		// key deletions.
 		iter = keyspan.Filter(iter, func(in *keyspan.Span, out *keyspan.Span) (keep bool) {
