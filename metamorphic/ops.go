@@ -469,8 +469,9 @@ func (o *batchCommitOp) syncObjs() objIDSlice {
 
 // ingestOp models a DB.Ingest operation.
 type ingestOp struct {
-	dbID     objID
-	batchIDs []objID
+	dbID       objID
+	successful bool
+	batchIDs   []objID
 
 	derivedDBIDs []objID
 }
@@ -784,10 +785,13 @@ func (o *ingestOp) String() string {
 	var buf strings.Builder
 	buf.WriteString(o.dbID.String())
 	buf.WriteString(".Ingest(")
-	for i, id := range o.batchIDs {
-		if i > 0 {
-			buf.WriteString(", ")
-		}
+	if o.successful {
+		buf.WriteString("true")
+	} else {
+		buf.WriteString("false")
+	}
+	for _, id := range o.batchIDs {
+		buf.WriteString(", ")
 		buf.WriteString(id.String())
 	}
 	buf.WriteString(")")

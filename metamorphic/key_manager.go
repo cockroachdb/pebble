@@ -78,6 +78,43 @@ func (m *keyMeta) mergeInto(dst *keyMeta, ts int) {
 	}
 }
 
+type bounds struct {
+	smallest    []byte
+	largest     []byte
+	largestExcl bool // is largest exclusive?
+}
+
+func (b *bounds) String() string {
+	if b.largestExcl {
+		return fmt.Sprintf("[%q,%q)", b.smallest, b.largest)
+	}
+	return fmt.Sprintf("[%q,%q]", b.smallest, b.largest)
+}
+
+// overlaps returns true iff the bounds intersect.
+func (b *bounds) overlaps(cmp base.Compare, other *bounds) bool {
+	// Is b strictly before other?
+	if v := cmp(b.largest, other.smallest); v < 0 || (v == 0 && b.largestExcl) {
+		return false
+	}
+	// Is b strictly after other?
+	if v := cmp(b.smallest, other.largest); v > 0 || (v == 0 && other.largestExcl) {
+		return false
+	}
+	return true
+}
+
+// mergeInto merges the receiver bounds into other, mutating other.
+func (b bounds) mergeInto(cmp base.Compare, other *bounds) {
+	if cmp(other.smallest, b.smallest) > 0 {
+		other.smallest = b.smallest
+	}
+	if v := cmp(other.largest, b.largest); v < 0 || (v == 0 && other.largestExcl) {
+		other.largest = b.largest
+		other.largestExcl = b.largestExcl
+	}
+}
+
 // keyManager tracks the write operations performed on keys in the generation
 // phase of the metamorphic test. It maintains histories of operations performed
 // against every unique user key on every writer object. These histories inform
@@ -154,6 +191,10 @@ type keyManager struct {
 	// List of keys per writer, and what has happened to it in that writer.
 	// Will be transferred when needed.
 	byObj map[objID][]*keyMeta
+	// boundsByObj holds user key bounds encompassing all the keys set within an
+	// object. It's updated within `update` when a new op is generated. It's
+	// used when determining whether an ingestion should succeed or not.
+	boundsByObj map[objID]*bounds
 
 	// globalKeys represents all the keys that have been generated so far. Not
 	// all these keys have been written to. globalKeys is sorted.
@@ -176,13 +217,13 @@ func (k *keyManager) nextMetaTimestamp() int {
 }
 
 // newKeyManager returns a pointer to a new keyManager. Callers should
-// interact with this using addNewKey, knownKeys, update,
-// canTolerateApplyFailure methods only.
+// interact with this using addNewKey, knownKeys, update methods only.
 func newKeyManager(numInstances int) *keyManager {
 	m := &keyManager{
 		comparer:             testkeys.Comparer,
 		byObjKey:             make(map[string]*keyMeta),
 		byObj:                make(map[objID][]*keyMeta),
+		boundsByObj:          make(map[objID]*bounds),
 		globalKeysMap:        make(map[string]bool),
 		globalKeyPrefixesMap: make(map[string]struct{}),
 	}
@@ -222,6 +263,12 @@ func (k *keyManager) getOrInit(id objID, key []byte) *keyMeta {
 	k.byObjKey[o.String()] = m
 	// Add to the id-to-metas slide.
 	k.byObj[o.id] = append(k.byObj[o.id], m)
+
+	// Expand the object's bounds to contain this key if they don't already.
+	k.expandBounds(id, bounds{
+		smallest: key,
+		largest:  key,
+	})
 	return m
 }
 
@@ -278,8 +325,48 @@ func (k *keyManager) mergeKeysInto(from, to objID, mergeFunc func(src, dst *keyM
 		iTo++
 	}
 
-	k.byObj[to] = msNew   // Update "to".
-	delete(k.byObj, from) // Unlink "from".
+	// All the keys in `from` have been merged into `to`. Expand `to`'s bounds
+	// to be at least as wide as `from`'s.
+	if fromBounds := k.boundsByObj[from]; fromBounds != nil {
+		k.expandBounds(to, *fromBounds)
+	}
+	k.byObj[to] = msNew         // Update "to" obj.
+	delete(k.byObj, from)       // Unlink "from" obj.
+	delete(k.boundsByObj, from) // Unlink "from" bounds.
+}
+
+// expandBounds expands the incrementally maintained bounds of o to be at least
+// as wide as `b`.
+func (k *keyManager) expandBounds(o objID, b bounds) {
+	existing, ok := k.boundsByObj[o]
+	if !ok {
+		existing = new(bounds)
+		*existing = b
+		k.boundsByObj[o] = existing
+		return
+	}
+	b.mergeInto(k.comparer.Compare, existing)
+}
+
+// doObjectBoundsOverlap returns true iff any of the named objects have key
+// bounds that overlap any other named object.
+func (k *keyManager) doObjectBoundsOverlap(objIDs []objID) bool {
+	for i := range objIDs {
+		ib, iok := k.boundsByObj[objIDs[i]]
+		if !iok {
+			continue
+		}
+		for j := i + 1; j < len(objIDs); j++ {
+			jb, jok := k.boundsByObj[objIDs[j]]
+			if !jok {
+				continue
+			}
+			if ib.overlaps(k.comparer.Compare, jb) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // checkForSingleDelConflicts examines all the keys written to srcObj, and
@@ -440,13 +527,28 @@ func (k *keyManager) update(o op) {
 				})
 			}
 		}
+		k.expandBounds(s.writerID, bounds{
+			smallest:    s.start,
+			largest:     s.end,
+			largestExcl: true,
+		})
 	case *singleDeleteOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		meta.history = append(meta.history, keyHistoryItem{
 			opType:        writerSingleDelete,
 			metaTimestamp: k.nextMetaTimestamp(),
 		})
+
 	case *ingestOp:
+		// Some ingestion operations may attempt to ingest overlapping sstables
+		// which is prohibited. We know at generation time whether these
+		// ingestions will be successful. If they won't be successful, we should
+		// not update the key state because both the batch(es) and target DB
+		// will be left unmodified.
+		if !s.successful {
+			return
+		}
+
 		// For each batch, merge the keys into the DB. We can't call
 		// keyMeta.mergeInto directly to merge, because ingest operations first
 		// "flatten" the batch (because you can't set the same key twice at a
@@ -518,26 +620,6 @@ func (k *keyManager) eligibleSingleDeleteKeys(o objID) (keys [][]byte) {
 		}
 	}
 	return keys
-}
-
-// canTolerateApplyFailure is called with a batch ID and returns true iff a
-// failure to apply this batch to the DB can be tolerated.
-func (k *keyManager) canTolerateApplyFailure(id objID) bool {
-	if id.tag() != batchTag {
-		panic("called with an objID that is not a batch")
-	}
-	ms, ok := k.byObj[id]
-	if !ok {
-		return true
-	}
-	for _, m := range ms {
-		for i := len(m.history) - 1; i >= 0; i-- {
-			if m.history[i].opType.isDelete() {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // a keyHistoryItem describes an individual operation performed on a key.

@@ -134,6 +134,11 @@ func TestKeyManager(t *testing.T) {
 					} else {
 						fmt.Fprintf(&buf, "%q already tracked\n", fields[1])
 					}
+				case "bounds":
+					for i := 1; i < len(fields); i++ {
+						objID := mustParseObjID(fields[1])
+						fmt.Fprintf(&buf, "%s: %s\n", objID, km.boundsByObj[objID])
+					}
 				case "keys":
 					fmt.Fprintf(&buf, "keys: ")
 					printKeys(&buf, km.globalKeys)
