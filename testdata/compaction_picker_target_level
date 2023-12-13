@@ -863,3 +863,48 @@ base: 5
 pick_manual level=5 start=0 end=12
 ----
 nil, retryLater = false
+
+# Initialize with LbaseMaxBytes of 5, and give L5 a compensated size of 10000.
+# Prior to prioritizing levels by the score instead of rawSmoothed score, L5
+# would be picked for compaction over L0, because of its absurdly high compensated
+# score.
+init 5
+0: 7
+5: 4 10000
+6: 5
+----
+L0:
+  000001:[0001#1,1-0001#1,1]: 1 bytes (1 B)
+  000002:[0001#2,1-0001#2,1]: 1 bytes (1 B)
+  000003:[0001#3,1-0001#3,1]: 1 bytes (1 B)
+  000004:[0001#4,1-0001#4,1]: 1 bytes (1 B)
+  000005:[0001#5,1-0001#5,1]: 1 bytes (1 B)
+  000006:[0001#6,1-0001#6,1]: 1 bytes (1 B)
+  000007:[0001#7,1-0001#7,1]: 1 bytes (1 B)
+L5:
+  500001:[0001#1,1-0001#1,1]: 1 bytes (1 B)
+  500002:[0002#2,1-0002#2,1]: 1 bytes (1 B)
+  500003:[0003#3,1-0003#3,1]: 1 bytes (1 B)
+  500004:[0004#4,1-0004#4,1]: 1 bytes (1 B)
+L6:
+  600001:[0001#1,1-0001#1,1]: 1 bytes (1 B)
+  600002:[0002#2,1-0002#2,1]: 1 bytes (1 B)
+  600003:[0003#3,1-0003#3,1]: 1 bytes (1 B)
+  600004:[0004#4,1-0004#4,1]: 1 bytes (1 B)
+  600005:[0005#5,1-0005#5,1]: 1 bytes (1 B)
+
+init_cp
+----
+base: 5
+
+queue
+----
+L0->L5: 4.4
+  000001:[0001#1,1-0001#1,1] marked as compacting
+  000002:[0001#2,1-0001#2,1] marked as compacting
+  000003:[0001#3,1-0001#3,1] marked as compacting
+  000004:[0001#4,1-0001#4,1] marked as compacting
+  000005:[0001#5,1-0001#5,1] marked as compacting
+  000006:[0001#6,1-0001#6,1] marked as compacting
+  000007:[0001#7,1-0001#7,1] marked as compacting
+  500001:[0001#1,1-0001#1,1] marked as compacting
