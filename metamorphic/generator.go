@@ -1427,57 +1427,41 @@ func (g *generator) writerIngest() {
 		return
 	}
 
-	// TODO(nicktrav): this is resulting in too many single batch ingests.
-	// Consider alternatives. One possibility would be to pass through whether
-	// we can tolerate failure or not, and if the ingestOp encounters a
-	// failure, it would retry after splitting into single batch ingests.
-
-	dbID := g.dbs.rand(g.rng)
 	// Ingest between 1 and 3 batches.
-	batchIDs := make([]objID, 0, 1+g.rng.Intn(3))
-	canFail := cap(batchIDs) > 1
-	for i := 0; i < cap(batchIDs); i++ {
+	dbID := g.dbs.rand(g.rng)
+	n := min(1+g.rng.Intn(3), len(g.liveBatches))
+	batchIDs := make([]objID, n)
+	derivedDBIDs := make([]objID, n)
+	for i := 0; i < n; i++ {
 		batchID := g.liveBatches.rand(g.rng)
-		if canFail && !g.keyManager.canTolerateApplyFailure(batchID) {
-			continue
-		}
-		// After the ingest runs, it either succeeds and the keys are in the
-		// DB, or it fails and these keys never make it to the DB.
-		g.removeBatchFromGenerator(batchID)
-		batchIDs = append(batchIDs, batchID)
-		if len(g.liveBatches) == 0 {
-			break
-		}
-	}
-	if len(batchIDs) == 0 && len(g.liveBatches) > 0 {
-		// Unable to find multiple batches because of the
-		// canTolerateApplyFailure call above, so just pick one batch.
-		batchID := g.liveBatches.rand(g.rng)
-		g.removeBatchFromGenerator(batchID)
-		batchIDs = append(batchIDs, batchID)
-	}
-
-	// The batches we're ingesting may contain single delete tombstones that
-	// when applied to the writer result in nondeterminism in the deleted key.
-	// If that's the case, we can restore determinism by first deleting the keys
-	// from the writer.
-	//
-	// Generating additional operations here is not ideal, but it simplifies
-	// single delete invariants significantly.
-	for _, batchID := range batchIDs {
-		singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(batchID, dbID, true /* collapsed */)
-		for _, conflict := range singleDeleteConflicts {
-			g.add(&deleteOp{
-				writerID:    dbID,
-				key:         conflict,
-				derivedDBID: dbID,
-			})
-		}
-	}
-
-	derivedDBIDs := make([]objID, len(batchIDs))
-	for i := range batchIDs {
+		batchIDs[i] = batchID
 		derivedDBIDs[i] = g.objDB[batchIDs[i]]
+		g.removeBatchFromGenerator(batchID)
+	}
+
+	// Ingestions may fail if the ingested sstables overlap one another.
+	// Either it succeeds and its keys are committed to the DB, or it fails and
+	// the keys are not committed.
+	if !g.keyManager.doObjectBoundsOverlap(batchIDs) {
+		// This ingestion will succeed.
+		//
+		// The batches we're ingesting may contain single delete tombstones that
+		// when applied to the writer result in nondeterminism in the deleted key.
+		// If that's the case, we can restore determinism by first deleting the keys
+		// from the writer.
+		//
+		// Generating additional operations here is not ideal, but it simplifies
+		// single delete invariants significantly.
+		for _, batchID := range batchIDs {
+			singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(batchID, dbID, true /* collapsed */)
+			for _, conflict := range singleDeleteConflicts {
+				g.add(&deleteOp{
+					writerID:    dbID,
+					key:         conflict,
+					derivedDBID: dbID,
+				})
+			}
+		}
 	}
 	g.add(&ingestOp{
 		dbID:         dbID,

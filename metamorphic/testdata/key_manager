@@ -22,6 +22,7 @@ op db1.Set("foo", "foo")
 keys
 singledel-keys db1
 singledel-keys batch1
+bounds db1
 op db1.SingleDelete("foo", false)
 keys
 singledel-keys db1
@@ -33,6 +34,7 @@ can singledel on batch1: "foo"
 keys: "foo"
 can singledel on db1: "foo"
 can singledel on batch1: "foo"
+db1: ["foo","foo"]
 [db1.SingleDelete("foo", false /* maybeReplaceDelete */)]
 keys: "foo"
 can singledel on db1: "foo"
@@ -302,6 +304,7 @@ op db1.Ingest(batch1)
 singledel-keys db1
 op db1.Set("foo", "foo")
 singledel-keys db1
+bounds db1
 ----
 "foo" is new
 "bar" is new
@@ -314,6 +317,43 @@ conflicts merging batch1 (collapsed) into db1: (none)
 can singledel on db1: "bar", "foo"
 [db1.Set("foo", "foo")]
 can singledel on db1: "bar"
+db1: ["a","z")
+
+# Repeat the above test, but this time with an ingestion that should fail due to
+# overlapping key ranges.
+
+run
+add-new-key foo
+add-new-key bar
+op db1.Set("foo", "foo")
+singledel-keys db1
+op batch1.Set("foo", "foo")
+bounds batch1
+op batch1.DeleteRange("a", "z")
+bounds batch1
+op batch2.DeleteRange("y", "z")
+conflicts collapsed batch1 db1
+op db1.Ingest(batch1, batch2)
+singledel-keys db1
+op db1.Set("foo", "foo")
+singledel-keys db1
+bounds db1
+----
+"foo" already tracked
+"bar" already tracked
+[db1.Set("foo", "foo")]
+can singledel on db1: "bar"
+[batch1.Set("foo", "foo")]
+batch1: ["foo","foo"]
+[batch1.DeleteRange("a", "z")]
+batch1: ["a","z")
+[batch2.DeleteRange("y", "z")]
+conflicts merging batch1 (collapsed) into db1: (none)
+[db1.Ingest(batch1, batch2)]
+can singledel on db1: "bar"
+[db1.Set("foo", "foo")]
+can singledel on db1: "bar"
+db1: ["a","z")
 
 # Since ingestion flattens keys, foo should be single-deletable on the db after
 # ingest, even though it couldn't be single deleted from the batch before
