@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
@@ -905,6 +906,11 @@ func newCombinedDeletionKeyspanIter(
 		return nil, err
 	}
 	if iter != nil {
+		// Assert expected bounds in tests.
+		// TODO(radu): investigate failure.
+		if invariants.Enabled {
+			iter = keyspan.AssertBounds(iter, m.SmallestPointKey, m.LargestPointKey.UserKey, comparer.Compare)
+		}
 		dIter := &keyspan.DefragmentingIter{}
 		dIter.Init(comparer, iter, equal, reducer, new(keyspan.DefragmentingBuffers))
 		iter = dIter
@@ -922,6 +928,11 @@ func newCombinedDeletionKeyspanIter(
 		return nil, err
 	}
 	if iter != nil {
+		// Assert expected bounds in tests.
+		// TODO(radu): investigate failure.
+		if invariants.Enabled {
+			iter = keyspan.AssertBounds(iter, m.SmallestRangeKey, m.LargestRangeKey.UserKey, comparer.Compare)
+		}
 		// Wrap the range key iterator in a filter that elides keys other than range
 		// key deletions.
 		iter = keyspan.Filter(iter, func(in *keyspan.Span, out *keyspan.Span) (keep bool) {

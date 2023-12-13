@@ -496,6 +496,17 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, err
 	}
 
+	// Assert expected bounds in tests.
+	if invariants.Enabled && rangeDelIter != nil {
+		cmp := base.DefaultComparer.Compare
+		if dbOpts.opts.Comparer != nil {
+			cmp = dbOpts.opts.Comparer.Compare
+		}
+		rangeDelIter = keyspan.AssertBounds(
+			rangeDelIter, file.SmallestPointKey, file.LargestPointKey.UserKey, cmp,
+		)
+	}
+
 	if !ok {
 		c.unrefValue(v)
 		// Return an empty iterator. This iterator has no mutable state, so
