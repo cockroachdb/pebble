@@ -152,3 +152,40 @@ f: (foo, .)
 g: (foo, .)
 h: (foo, .)
 .
+
+build-remote f5
+set ef foo
+set eg foo
+set eh foo
+----
+
+ingest-external prefix-replace=(e,f)
+f5,10,ff,fi
+----
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (foobarbaz, .)
+d: (haha, .)
+e: (something, .)
+f: (foo, .)
+ff: (foo, .)
+fg: (foo, .)
+fh: (foo, .)
+g: (foo, .)
+h: (foo, .)
+.

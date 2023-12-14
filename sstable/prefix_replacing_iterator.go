@@ -182,9 +182,6 @@ type prefixReplacingFragmentIterator struct {
 	out1, out2 []byte
 }
 
-// TODO(dt): wire this up.
-var _ = newPrefixReplacingFragmentIterator
-
 // newPrefixReplacingFragmentIterator wraps a FragmentIterator over some reader
 // that contains range keys in some key span to make those range keys appear to
 // be remapped into some other key-span.
