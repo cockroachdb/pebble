@@ -18,7 +18,7 @@ import (
 
 func TestGenerator(t *testing.T) {
 	rng := randvar.NewRand()
-	g := newGenerator(rng, defaultConfig(), newKeyManager(1 /* numInstances */))
+	g := newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
 
 	g.newBatch()
 	g.newBatch()
@@ -63,7 +63,7 @@ func TestGenerator(t *testing.T) {
 		t.Logf("\n%s", g)
 	}
 
-	g = newGenerator(rng, defaultConfig(), newKeyManager(1 /* numInstances */))
+	g = newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
 
 	g.newSnapshot()
 	g.newSnapshot()
@@ -96,7 +96,7 @@ func TestGenerator(t *testing.T) {
 		t.Logf("\n%s", g)
 	}
 
-	g = newGenerator(rng, defaultConfig(), newKeyManager(1 /* numInstances */))
+	g = newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
 
 	g.newIndexedBatch()
 	g.newIndexedBatch()
@@ -130,7 +130,7 @@ func TestGeneratorRandom(t *testing.T) {
 	seed := uint64(time.Now().UnixNano())
 	ops := randvar.NewUniform(1000, 10000)
 	cfgs := []string{"default", "multiInstance"}
-	generateFromSeed := func(cfg config) string {
+	generateFromSeed := func(cfg OpConfig) string {
 		rng := rand.New(rand.NewSource(seed))
 		count := ops.Uint64(rng)
 		return formatOps(generate(rng, count, cfg, newKeyManager(cfg.numInstances)))
@@ -138,9 +138,9 @@ func TestGeneratorRandom(t *testing.T) {
 
 	for i := range cfgs {
 		t.Run(fmt.Sprintf("config=%s", cfgs[i]), func(t *testing.T) {
-			cfg := defaultConfig
+			cfg := DefaultOpConfig
 			if cfgs[i] == "multiInstance" {
-				cfg = func() config {
+				cfg = func() OpConfig {
 					cfg := multiInstanceConfig()
 					cfg.numInstances = 2
 					return cfg
@@ -170,7 +170,7 @@ func TestGeneratorRandom(t *testing.T) {
 
 func TestGenerateRandKeyToReadInRange(t *testing.T) {
 	rng := randvar.NewRand()
-	g := newGenerator(rng, defaultConfig(), newKeyManager(1 /* numInstances */))
+	g := newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
 	// Seed 100 initial keys.
 	for i := 0; i < 100; i++ {
 		_ = g.randKeyToWrite(1.0)
@@ -199,7 +199,7 @@ func TestGenerateRandKeyToReadInRange(t *testing.T) {
 
 func TestGenerateDisjointKeyRanges(t *testing.T) {
 	rng := randvar.NewRand()
-	g := newGenerator(rng, defaultConfig(), newKeyManager(1 /* numInstances */))
+	g := newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
 
 	for i := 0; i < 10; i++ {
 		keyRanges := g.generateDisjointKeyRanges(5)

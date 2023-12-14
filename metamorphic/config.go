@@ -6,62 +6,67 @@ package metamorphic
 
 import "github.com/cockroachdb/pebble/internal/randvar"
 
-type opType int
+// OpType is an enum of possible operation types.
+type OpType int
 
+// These constants define the set of possible operation types performed by the
+// metamorphic test.
 const (
-	batchAbort opType = iota
-	batchCommit
-	dbCheckpoint
-	dbClose
-	dbCompact
-	dbFlush
-	dbRatchetFormatMajorVersion
-	dbRestart
-	iterClose
-	iterFirst
-	iterLast
-	iterNext
-	iterNextWithLimit
-	iterNextPrefix
-	iterCanSingleDelete
-	iterPrev
-	iterPrevWithLimit
-	iterSeekGE
-	iterSeekGEWithLimit
-	iterSeekLT
-	iterSeekLTWithLimit
-	iterSeekPrefixGE
-	iterSetBounds
-	iterSetOptions
-	newBatch
-	newIndexedBatch
-	newIter
-	newIterUsingClone
-	newSnapshot
-	readerGet
-	replicate
-	snapshotClose
-	writerApply
-	writerDelete
-	writerDeleteRange
-	writerIngest
-	writerIngestAndExcise
-	writerMerge
-	writerRangeKeyDelete
-	writerRangeKeySet
-	writerRangeKeyUnset
-	writerSet
-	writerSingleDelete
+	OpBatchAbort OpType = iota
+	OpBatchCommit
+	OpDBCheckpoint
+	OpDBClose
+	OpDBCompact
+	OpDBFlush
+	OpDBRatchetFormatMajorVersion
+	OpDBRestart
+	OpIterClose
+	OpIterFirst
+	OpIterLast
+	OpIterNext
+	OpIterNextWithLimit
+	OpIterNextPrefix
+	OpIterCanSingleDelete
+	OpIterPrev
+	OpIterPrevWithLimit
+	OpIterSeekGE
+	OpIterSeekGEWithLimit
+	OpIterSeekLT
+	OpIterSeekLTWithLimit
+	OpIterSeekPrefixGE
+	OpIterSetBounds
+	OpIterSetOptions
+	OpNewBatch
+	OpNewIndexedBatch
+	OpNewIter
+	OpNewIterUsingClone
+	OpNewSnapshot
+	OpReaderGet
+	OpReplicate
+	OpSnapshotClose
+	OpWriterApply
+	OpWriterDelete
+	OpWriterDeleteRange
+	OpWriterIngest
+	OpWriterIngestAndExcise
+	OpWriterMerge
+	OpWriterRangeKeyDelete
+	OpWriterRangeKeySet
+	OpWriterRangeKeyUnset
+	OpWriterSet
+	OpWriterSingleDelete
+	NumOpTypes
 )
 
-func (o opType) isDelete() bool {
-	return o == writerDelete || o == writerDeleteRange || o == writerSingleDelete
+func (o OpType) isDelete() bool {
+	return o == OpWriterDelete || o == OpWriterDeleteRange || o == OpWriterSingleDelete
 }
 
-type config struct {
+// OpConfig describes the distribution of operations and their attributes.
+type OpConfig struct {
 	// Weights for the operation mix to generate. ops[i] corresponds to the
 	// weight for opType(i).
-	ops []int
+	ops [NumOpTypes]int
 
 	// newPrefix configures the probability that when generating a new user key,
 	// the generated key uses a new key prefix rather than an existing prefix
@@ -85,18 +90,23 @@ type config struct {
 	// upperBoundFrac float64
 }
 
-func (c config) withNewPrefixProbability(p float64) config {
+// WithNewPrefixProbability returns a modified op configuration with the
+// probability of generating a new key prefix set to the provided value in
+// [0,1.0].
+func (c OpConfig) WithNewPrefixProbability(p float64) OpConfig {
 	c.newPrefix = p
 	return c
 }
 
-func (c config) withOpWeight(op opType, weight int) config {
+// WithOpWeight returns a modified op configuration with the weight of the
+// provided operation type overidden.
+func (c OpConfig) WithOpWeight(op OpType, weight int) OpConfig {
 	c.ops[op] = weight
 	return c
 }
 
-var presetConfigs = []config{
-	defaultConfig(),
+var presetConfigs = []OpConfig{
+	DefaultOpConfig(),
 	// Generate a configuration that helps exercise code paths dependent on many
 	// versions of keys with the same prefixes. The default configuration does
 	// not tend to generate many versions of the same key. Additionally, its
@@ -110,62 +120,63 @@ var presetConfigs = []config{
 	// of new key generations will use an existing prefix. To keep the size of
 	// the database growing, we also reduce the probability of delete write
 	// operations significantly.
-	defaultConfig().
-		withNewPrefixProbability(0.04).
-		withOpWeight(writerDeleteRange, 1).
-		withOpWeight(writerDelete, 5).
-		withOpWeight(writerSingleDelete, 5).
-		withOpWeight(writerMerge, 0),
+	DefaultOpConfig().
+		WithNewPrefixProbability(0.04).
+		WithOpWeight(OpWriterDeleteRange, 1).
+		WithOpWeight(OpWriterDelete, 5).
+		WithOpWeight(OpWriterSingleDelete, 5).
+		WithOpWeight(OpWriterMerge, 0),
 }
 
 var multiInstancePresetConfig = multiInstanceConfig()
 
-func defaultConfig() config {
-	return config{
+// DefaultOpConfig returns the default distribution of operations.
+func DefaultOpConfig() OpConfig {
+	return OpConfig{
 		// dbClose is not in this list since it is deterministically generated once, at the end of the test.
-		ops: []int{
-			batchAbort:                  5,
-			batchCommit:                 5,
-			dbCheckpoint:                1,
-			dbCompact:                   1,
-			dbFlush:                     2,
-			dbRatchetFormatMajorVersion: 1,
-			dbRestart:                   2,
-			iterClose:                   5,
-			iterFirst:                   100,
-			iterLast:                    100,
-			iterNext:                    100,
-			iterNextWithLimit:           20,
-			iterNextPrefix:              20,
-			iterCanSingleDelete:         20,
-			iterPrev:                    100,
-			iterPrevWithLimit:           20,
-			iterSeekGE:                  100,
-			iterSeekGEWithLimit:         20,
-			iterSeekLT:                  100,
-			iterSeekLTWithLimit:         20,
-			iterSeekPrefixGE:            100,
-			iterSetBounds:               100,
-			iterSetOptions:              10,
-			newBatch:                    5,
-			newIndexedBatch:             5,
-			newIter:                     10,
-			newIterUsingClone:           5,
-			newSnapshot:                 10,
-			readerGet:                   100,
-			replicate:                   0,
-			snapshotClose:               10,
-			writerApply:                 10,
-			writerDelete:                100,
-			writerDeleteRange:           50,
-			writerIngest:                100,
-			writerIngestAndExcise:       0, // TODO(bilal): Enable this.
-			writerMerge:                 100,
-			writerRangeKeySet:           10,
-			writerRangeKeyUnset:         10,
-			writerRangeKeyDelete:        5,
-			writerSet:                   100,
-			writerSingleDelete:          50,
+		ops: [NumOpTypes]int{
+			OpBatchAbort:                  5,
+			OpBatchCommit:                 5,
+			OpDBCheckpoint:                1,
+			OpDBCompact:                   1,
+			OpDBFlush:                     2,
+			OpDBRatchetFormatMajorVersion: 1,
+			OpDBRestart:                   2,
+			OpIterClose:                   5,
+			OpIterFirst:                   100,
+			OpIterLast:                    100,
+			OpIterNext:                    100,
+			OpIterNextWithLimit:           20,
+			OpIterNextPrefix:              20,
+			OpIterCanSingleDelete:         20,
+			OpIterPrev:                    100,
+			OpIterPrevWithLimit:           20,
+			OpIterSeekGE:                  100,
+			OpIterSeekGEWithLimit:         20,
+			OpIterSeekLT:                  100,
+			OpIterSeekLTWithLimit:         20,
+			OpIterSeekPrefixGE:            100,
+			OpIterSetBounds:               100,
+			OpIterSetOptions:              10,
+			OpNewBatch:                    5,
+			OpNewIndexedBatch:             5,
+			OpNewIter:                     10,
+			OpNewIterUsingClone:           5,
+			OpNewSnapshot:                 10,
+			OpReaderGet:                   100,
+			OpReplicate:                   0,
+			OpSnapshotClose:               10,
+			OpWriterApply:                 10,
+			OpWriterDelete:                100,
+			OpWriterDeleteRange:           50,
+			OpWriterIngest:                100,
+			OpWriterIngestAndExcise:       0, // TODO(bilal): Enable this.
+			OpWriterMerge:                 100,
+			OpWriterRangeKeySet:           10,
+			OpWriterRangeKeyUnset:         10,
+			OpWriterRangeKeyDelete:        5,
+			OpWriterSet:                   100,
+			OpWriterSingleDelete:          50,
 		},
 		// Use a new prefix 75% of the time (and 25% of the time use an existing
 		// prefix with an alternative suffix).
@@ -177,14 +188,14 @@ func defaultConfig() config {
 	}
 }
 
-func multiInstanceConfig() config {
-	cfg := defaultConfig()
-	cfg.ops[replicate] = 5
-	cfg.ops[writerIngestAndExcise] = 50
+func multiInstanceConfig() OpConfig {
+	cfg := DefaultOpConfig()
+	cfg.ops[OpReplicate] = 5
+	cfg.ops[OpWriterIngestAndExcise] = 50
 	// Single deletes and merges are disabled in multi-instance mode, as
 	// replicateOp doesn't support them.
-	cfg.ops[writerSingleDelete] = 0
-	cfg.ops[writerMerge] = 0
+	cfg.ops[OpWriterSingleDelete] = 0
+	cfg.ops[OpWriterMerge] = 0
 	return cfg
 }
 

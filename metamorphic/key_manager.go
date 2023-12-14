@@ -420,13 +420,13 @@ func (k *keyManager) checkForSingleDelConflicts(srcObj, dstObj objID, srcCollaps
 	srcloop:
 		for _, item := range srcHistory {
 			switch item.opType {
-			case writerDelete, writerDeleteRange:
+			case OpWriterDelete, OpWriterDeleteRange:
 				// We found a DEL or RANGEDEL before any single delete. If src
 				// contains additional single deletes, their effects are limited
 				// to applying to later keys. Combining the two object histories
 				// doesn't pose any determinism risk.
 				break srcloop
-			case writerSingleDelete:
+			case OpWriterSingleDelete:
 				// We found a single delete. Since we found this single delete
 				// before a DEL or RANGEDEL, this delete has the potential to
 				// affect the visibility of keys in `dstObj`. We'll need to look
@@ -437,7 +437,7 @@ func (k *keyManager) checkForSingleDelConflicts(srcObj, dstObj objID, srcCollaps
 						srcValuesBeforeSingleDelete, srcObj))
 				}
 				break srcloop
-			case writerSet, writerMerge:
+			case OpWriterSet, OpWriterMerge:
 				// We found a SET or MERGE operation for this key. If there's a
 				// subsequent single delete, we'll need to make sure there's not
 				// a SET or MERGE in the dst too.
@@ -463,7 +463,7 @@ func (k *keyManager) checkForSingleDelConflicts(srcObj, dstObj objID, srcCollaps
 	dstloop:
 		for i := len(dst.history) - 1; i >= 0; i-- {
 			switch dst.history[i].opType {
-			case writerSet, writerMerge:
+			case OpWriterSet, OpWriterMerge:
 				// A SET/MERGE may conflict if there's more than 1 consecutive
 				// SET/MERGEs.
 				consecutiveValues++
@@ -471,7 +471,7 @@ func (k *keyManager) checkForSingleDelConflicts(srcObj, dstObj objID, srcCollaps
 					conflicts = append(conflicts, src.key)
 					break dstloop
 				}
-			case writerDelete, writerSingleDelete, writerDeleteRange:
+			case OpWriterDelete, OpWriterSingleDelete, OpWriterDeleteRange:
 				// Dels clear the history, enabling use of single delete.
 				break dstloop
 			default:
@@ -489,13 +489,13 @@ func (k *keyManager) update(o op) {
 	case *setOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		meta.history = append(meta.history, keyHistoryItem{
-			opType:        writerSet,
+			opType:        OpWriterSet,
 			metaTimestamp: k.nextMetaTimestamp(),
 		})
 	case *mergeOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		meta.history = append(meta.history, keyHistoryItem{
-			opType:        writerMerge,
+			opType:        OpWriterMerge,
 			metaTimestamp: k.nextMetaTimestamp(),
 		})
 	case *deleteOp:
@@ -504,7 +504,7 @@ func (k *keyManager) update(o op) {
 			meta.clear()
 		} else {
 			meta.history = append(meta.history, keyHistoryItem{
-				opType:        writerDelete,
+				opType:        OpWriterDelete,
 				metaTimestamp: k.nextMetaTimestamp(),
 			})
 		}
@@ -522,7 +522,7 @@ func (k *keyManager) update(o op) {
 				meta.clear()
 			} else {
 				meta.history = append(meta.history, keyHistoryItem{
-					opType:        writerDeleteRange,
+					opType:        OpWriterDeleteRange,
 					metaTimestamp: ts,
 				})
 			}
@@ -535,7 +535,7 @@ func (k *keyManager) update(o op) {
 	case *singleDeleteOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		meta.history = append(meta.history, keyHistoryItem{
-			opType:        writerSingleDelete,
+			opType:        OpWriterSingleDelete,
 			metaTimestamp: k.nextMetaTimestamp(),
 		})
 
@@ -627,7 +627,7 @@ func (k *keyManager) eligibleSingleDeleteKeys(o objID) (keys [][]byte) {
 type keyHistoryItem struct {
 	// opType may be writerSet, writerDelete, writerSingleDelete,
 	// writerDeleteRange or writerMerge only. No other opTypes may appear here.
-	opType        opType
+	opType        OpType
 	metaTimestamp int
 }
 
@@ -650,9 +650,9 @@ func (h keyHistory) canSingleDelete() bool {
 		return true
 	}
 	switch o := h[len(h)-1].opType; o {
-	case writerDelete, writerDeleteRange, writerSingleDelete:
+	case OpWriterDelete, OpWriterDeleteRange, OpWriterSingleDelete:
 		return true
-	case writerSet, writerMerge:
+	case OpWriterSet, OpWriterMerge:
 		if len(h) == 1 {
 			return true
 		}
@@ -669,15 +669,15 @@ func (h keyHistory) String() string {
 			fmt.Fprint(&sb, ", ")
 		}
 		switch it.opType {
-		case writerDelete:
+		case OpWriterDelete:
 			fmt.Fprint(&sb, "del")
-		case writerDeleteRange:
+		case OpWriterDeleteRange:
 			fmt.Fprint(&sb, "delrange")
-		case writerSingleDelete:
+		case OpWriterSingleDelete:
 			fmt.Fprint(&sb, "singledel")
-		case writerSet:
+		case OpWriterSet:
 			fmt.Fprint(&sb, "set")
-		case writerMerge:
+		case OpWriterMerge:
 			fmt.Fprint(&sb, "merge")
 		default:
 			fmt.Fprintf(&sb, "optype[v=%d]", it.opType)
@@ -703,14 +703,14 @@ func (h keyHistory) collapsed() keyHistory {
 	// When collapsing a batch, any range deletes are semantically applied
 	// first. Look for any range deletes and apply them.
 	for _, op := range h {
-		if op.opType == writerDeleteRange {
+		if op.opType == OpWriterDeleteRange {
 			ret = append(ret, op)
 			break
 		}
 	}
 	// Among point keys, the most recently written key wins.
 	for i := len(h) - 1; i >= 0; i-- {
-		if h[i].opType != writerDeleteRange {
+		if h[i].opType != OpWriterDeleteRange {
 			ret = append(ret, h[i])
 			break
 		}
@@ -765,7 +765,7 @@ func opWrittenKeys(untypedOp op) [][]byte {
 	return nil
 }
 
-func loadPrecedingKeys(t TestingT, ops []op, cfg *config, m *keyManager) {
+func loadPrecedingKeys(t TestingT, ops []op, cfg *OpConfig, m *keyManager) {
 	for _, op := range ops {
 		// Pretend we're generating all the operation's keys as potential new
 		// key, so that we update the key manager's keys and prefix sets.
