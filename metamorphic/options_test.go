@@ -142,7 +142,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	for i := 0; i < 100; i++ {
 		t.Run(fmt.Sprintf("random-%03d", i), func(t *testing.T) {
-			o := randomOptions(rng, nil)
+			o := RandomOptions(rng, nil)
 			defer maybeUnref(o)
 			checkOptions(t, o)
 		})

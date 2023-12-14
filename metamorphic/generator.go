@@ -48,6 +48,15 @@ func (o iterOpts) IsZero() bool {
 		o.maskSuffix == nil && o.filterMin == 0 && o.filterMax == 0 && !o.useL6Filters
 }
 
+// GenerateOps generates n random operations, drawing randomness from the
+// provided pseudorandom generator and using cfg to determine the distribution
+// of op types.
+func GenerateOps(rng *rand.Rand, n uint64, cfg OpConfig) Ops {
+	// Generate a new set of random ops, writing them to <dir>/ops. These will be
+	// read by the child processes when performing a test run.
+	return generate(rng, n, cfg, newKeyManager(1 /* num instances */))
+}
+
 type generator struct {
 	cfg OpConfig
 	rng *rand.Rand

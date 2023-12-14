@@ -27,11 +27,14 @@ import (
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 )
 
+// Ops holds a sequence of operations to be executed by the metamorphic tests.
+type Ops []op
+
 // op defines the interface for a single operation, such as creating a batch,
 // or advancing an iterator.
 type op interface {
 	String() string
-	run(t *test, h historyRecorder)
+	run(t *Test, h historyRecorder)
 
 	// receiver returns the object ID of the object the operation is performed
 	// on. Every operation has a receiver (eg, batch0.Set(...) has `batch0` as
@@ -54,7 +57,7 @@ type initOp struct {
 	snapshotSlots uint32
 }
 
-func (o *initOp) run(t *test, h historyRecorder) {
+func (o *initOp) run(t *Test, h historyRecorder) {
 	t.batches = make([]*pebble.Batch, o.batchSlots)
 	t.iters = make([]*retryableIter, o.iterSlots)
 	t.snapshots = make([]readerCloser, o.snapshotSlots)
@@ -82,7 +85,7 @@ type applyOp struct {
 	batchID  objID
 }
 
-func (o *applyOp) run(t *test, h historyRecorder) {
+func (o *applyOp) run(t *Test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
 	w := t.getWriter(o.writerID)
 	var err error
@@ -113,7 +116,7 @@ type checkpointOp struct {
 	spans []pebble.CheckpointSpan
 }
 
-func (o *checkpointOp) run(t *test, h historyRecorder) {
+func (o *checkpointOp) run(t *Test, h historyRecorder) {
 	// TODO(josh): db.Checkpoint does not work with shared storage yet.
 	// It would be better to filter out ahead of calling run on the op,
 	// by setting the weight that generator.go uses to zero, or similar.
@@ -159,7 +162,7 @@ type closeOp struct {
 	derivedDBID objID
 }
 
-func (o *closeOp) run(t *test, h historyRecorder) {
+func (o *closeOp) run(t *Test, h historyRecorder) {
 	c := t.getCloser(o.objID)
 	if o.objID.tag() == dbTag && t.opts.DisableWAL {
 		// Special case: If WAL is disabled, do a flush right before DB Close. This
@@ -196,7 +199,7 @@ type compactOp struct {
 	parallelize bool
 }
 
-func (o *compactOp) run(t *test, h historyRecorder) {
+func (o *compactOp) run(t *Test, h historyRecorder) {
 	err := withRetries(func() error {
 		return t.getDB(o.dbID).Compact(o.start, o.end, o.parallelize)
 	})
@@ -218,7 +221,7 @@ type deleteOp struct {
 	derivedDBID objID
 }
 
-func (o *deleteOp) run(t *test, h historyRecorder) {
+func (o *deleteOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	var err error
 	if t.testOpts.deleteSized && t.isFMV(o.derivedDBID, pebble.FormatDeleteSizedAndObsolete) {
@@ -249,7 +252,7 @@ type singleDeleteOp struct {
 	maybeReplaceDelete bool
 }
 
-func (o *singleDeleteOp) run(t *test, h historyRecorder) {
+func (o *singleDeleteOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	var err error
 	if t.testOpts.replaceSingleDelete && o.maybeReplaceDelete {
@@ -279,7 +282,7 @@ type deleteRangeOp struct {
 	end      []byte
 }
 
-func (o *deleteRangeOp) run(t *test, h historyRecorder) {
+func (o *deleteRangeOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.DeleteRange(o.start, o.end, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -297,7 +300,7 @@ type flushOp struct {
 	db objID
 }
 
-func (o *flushOp) run(t *test, h historyRecorder) {
+func (o *flushOp) run(t *Test, h historyRecorder) {
 	db := t.getDB(o.db)
 	err := db.Flush()
 	h.Recordf("%s // %v", o, err)
@@ -314,7 +317,7 @@ type mergeOp struct {
 	value    []byte
 }
 
-func (o *mergeOp) run(t *test, h historyRecorder) {
+func (o *mergeOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.Merge(o.key, o.value, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -331,7 +334,7 @@ type setOp struct {
 	value    []byte
 }
 
-func (o *setOp) run(t *test, h historyRecorder) {
+func (o *setOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.Set(o.key, o.value, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -348,7 +351,7 @@ type rangeKeyDeleteOp struct {
 	end      []byte
 }
 
-func (o *rangeKeyDeleteOp) run(t *test, h historyRecorder) {
+func (o *rangeKeyDeleteOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.RangeKeyDelete(o.start, o.end, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -370,7 +373,7 @@ type rangeKeySetOp struct {
 	value    []byte
 }
 
-func (o *rangeKeySetOp) run(t *test, h historyRecorder) {
+func (o *rangeKeySetOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.RangeKeySet(o.start, o.end, o.suffix, o.value, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -392,7 +395,7 @@ type rangeKeyUnsetOp struct {
 	suffix   []byte
 }
 
-func (o *rangeKeyUnsetOp) run(t *test, h historyRecorder) {
+func (o *rangeKeyUnsetOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.RangeKeyUnset(o.start, o.end, o.suffix, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -412,7 +415,7 @@ type newBatchOp struct {
 	batchID objID
 }
 
-func (o *newBatchOp) run(t *test, h historyRecorder) {
+func (o *newBatchOp) run(t *Test, h historyRecorder) {
 	b := t.getDB(o.dbID).NewBatch()
 	t.setBatch(o.batchID, b)
 	h.Recordf("%s", o)
@@ -432,7 +435,7 @@ type newIndexedBatchOp struct {
 	batchID objID
 }
 
-func (o *newIndexedBatchOp) run(t *test, h historyRecorder) {
+func (o *newIndexedBatchOp) run(t *Test, h historyRecorder) {
 	b := t.getDB(o.dbID).NewIndexedBatch()
 	t.setBatch(o.batchID, b)
 	h.Recordf("%s", o)
@@ -454,7 +457,7 @@ type batchCommitOp struct {
 	batchID objID
 }
 
-func (o *batchCommitOp) run(t *test, h historyRecorder) {
+func (o *batchCommitOp) run(t *Test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
 	err := b.Commit(t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -475,7 +478,7 @@ type ingestOp struct {
 	derivedDBIDs []objID
 }
 
-func (o *ingestOp) run(t *test, h historyRecorder) {
+func (o *ingestOp) run(t *Test, h historyRecorder) {
 	// We can only use apply as an alternative for ingestion if we are ingesting
 	// a single batch. If we are ingesting multiple batches, the batches may
 	// overlap which would cause ingestion to fail but apply would succeed.
@@ -519,7 +522,7 @@ func (o *ingestOp) run(t *test, h historyRecorder) {
 }
 
 func buildForIngest(
-	t *test, dbID objID, h historyRecorder, b *pebble.Batch, i int,
+	t *Test, dbID objID, h historyRecorder, b *pebble.Batch, i int,
 ) (string, *sstable.WriterMetadata, error) {
 	path := t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
 	f, err := t.opts.FS.Create(path)
@@ -624,7 +627,7 @@ func buildForIngest(
 	return path, meta, err
 }
 
-func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (string, error) {
+func (o *ingestOp) build(t *Test, h historyRecorder, b *pebble.Batch, i int) (string, error) {
 	path, _, err := buildForIngest(t, o.dbID, h, b, i)
 	return path, err
 }
@@ -668,7 +671,7 @@ func closeIters(
 // performed first in the batch to match the semantics of ingestion where a
 // range deletion does not delete a point record contained in the sstable.
 func (o *ingestOp) collapseBatch(
-	t *test,
+	t *Test,
 	db *pebble.DB,
 	pointIter base.InternalIterator,
 	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
@@ -801,7 +804,7 @@ type ingestAndExciseOp struct {
 	exciseStart, exciseEnd []byte
 }
 
-func (o *ingestAndExciseOp) run(t *test, h historyRecorder) {
+func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 	var err error
 	b := t.getBatch(o.batchID)
 	t.clearObj(o.batchID)
@@ -852,7 +855,7 @@ func (o *ingestAndExciseOp) run(t *test, h historyRecorder) {
 }
 
 func (o *ingestAndExciseOp) build(
-	t *test, h historyRecorder, b *pebble.Batch, i int,
+	t *Test, h historyRecorder, b *pebble.Batch, i int,
 ) (string, *sstable.WriterMetadata, error) {
 	return buildForIngest(t, o.dbID, h, b, i)
 }
@@ -879,7 +882,7 @@ type getOp struct {
 	derivedDBID objID
 }
 
-func (o *getOp) run(t *test, h historyRecorder) {
+func (o *getOp) run(t *Test, h historyRecorder) {
 	r := t.getReader(o.readerID)
 	var val []byte
 	var closer io.Closer
@@ -914,7 +917,7 @@ type newIterOp struct {
 	derivedDBID objID
 }
 
-func (o *newIterOp) run(t *test, h historyRecorder) {
+func (o *newIterOp) run(t *Test, h historyRecorder) {
 	r := t.getReader(o.readerID)
 	opts := iterOptions(o.iterOpts)
 
@@ -969,7 +972,7 @@ type newIterUsingCloneOp struct {
 	derivedReaderID objID
 }
 
-func (o *newIterUsingCloneOp) run(t *test, h historyRecorder) {
+func (o *newIterUsingCloneOp) run(t *Test, h historyRecorder) {
 	iter := t.getIter(o.existingIterID)
 	cloneOpts := pebble.CloneOptions{
 		IterOptions:      iterOptions(o.iterOpts),
@@ -1012,7 +1015,7 @@ type iterSetBoundsOp struct {
 	upper  []byte
 }
 
-func (o *iterSetBoundsOp) run(t *test, h historyRecorder) {
+func (o *iterSetBoundsOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	var lower, upper []byte
 	if o.lower != nil {
@@ -1049,7 +1052,7 @@ type iterSetOptionsOp struct {
 	derivedReaderID objID
 }
 
-func (o *iterSetOptionsOp) run(t *test, h historyRecorder) {
+func (o *iterSetOptionsOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 
 	opts := iterOptions(o.iterOpts)
@@ -1186,7 +1189,7 @@ func validityStateToStr(validity pebble.IterValidityState) (bool, string) {
 	}
 }
 
-func (o *iterSeekGEOp) run(t *test, h historyRecorder) {
+func (o *iterSeekGEOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	var valid bool
 	var validStr string
@@ -1227,7 +1230,7 @@ type iterSeekPrefixGEOp struct {
 	derivedReaderID objID
 }
 
-func (o *iterSeekPrefixGEOp) run(t *test, h historyRecorder) {
+func (o *iterSeekPrefixGEOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	valid := i.SeekPrefixGE(o.key)
 	if valid {
@@ -1252,7 +1255,7 @@ type iterSeekLTOp struct {
 	derivedReaderID objID
 }
 
-func (o *iterSeekLTOp) run(t *test, h historyRecorder) {
+func (o *iterSeekLTOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	var valid bool
 	var validStr string
@@ -1283,7 +1286,7 @@ type iterFirstOp struct {
 	derivedReaderID objID
 }
 
-func (o *iterFirstOp) run(t *test, h historyRecorder) {
+func (o *iterFirstOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	valid := i.First()
 	if valid {
@@ -1304,7 +1307,7 @@ type iterLastOp struct {
 	derivedReaderID objID
 }
 
-func (o *iterLastOp) run(t *test, h historyRecorder) {
+func (o *iterLastOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	valid := i.Last()
 	if valid {
@@ -1326,7 +1329,7 @@ type iterNextOp struct {
 	derivedReaderID objID
 }
 
-func (o *iterNextOp) run(t *test, h historyRecorder) {
+func (o *iterNextOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	var valid bool
 	var validStr string
@@ -1354,7 +1357,7 @@ type iterNextPrefixOp struct {
 	derivedReaderID objID
 }
 
-func (o *iterNextPrefixOp) run(t *test, h historyRecorder) {
+func (o *iterNextPrefixOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	valid := i.NextPrefix()
 	validStr := validBoolToStr(valid)
@@ -1377,7 +1380,7 @@ type iterCanSingleDelOp struct {
 	derivedReaderID objID
 }
 
-func (o *iterCanSingleDelOp) run(t *test, h historyRecorder) {
+func (o *iterCanSingleDelOp) run(t *Test, h historyRecorder) {
 	// TODO(jackson): When we perform error injection, we'll need to rethink
 	// this.
 	_, err := pebble.CanDeterministicallySingleDelete(t.getIter(o.iterID).iter)
@@ -1407,7 +1410,7 @@ type iterPrevOp struct {
 	derivedReaderID objID
 }
 
-func (o *iterPrevOp) run(t *test, h historyRecorder) {
+func (o *iterPrevOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	var valid bool
 	var validStr string
@@ -1438,7 +1441,7 @@ type newSnapshotOp struct {
 	bounds []pebble.KeyRange
 }
 
-func (o *newSnapshotOp) run(t *test, h historyRecorder) {
+func (o *newSnapshotOp) run(t *Test, h historyRecorder) {
 	bounds := o.bounds
 	if len(bounds) == 0 {
 		panic("bounds unexpectedly unset for newSnapshotOp")
@@ -1487,7 +1490,7 @@ type dbRatchetFormatMajorVersionOp struct {
 	vers pebble.FormatMajorVersion
 }
 
-func (o *dbRatchetFormatMajorVersionOp) run(t *test, h historyRecorder) {
+func (o *dbRatchetFormatMajorVersionOp) run(t *Test, h historyRecorder) {
 	var err error
 	// NB: We no-op the operation if we're already at or above the provided
 	// format major version. Different runs start at different format major
@@ -1513,7 +1516,7 @@ type dbRestartOp struct {
 	dbID objID
 }
 
-func (o *dbRestartOp) run(t *test, h historyRecorder) {
+func (o *dbRestartOp) run(t *Test, h historyRecorder) {
 	if err := t.restartDB(o.dbID); err != nil {
 		h.Recordf("%s // %v", o, err)
 		h.history.err.Store(errors.Wrap(err, "dbRestartOp"))
@@ -1542,7 +1545,7 @@ type replicateOp struct {
 }
 
 func (r *replicateOp) runSharedReplicate(
-	t *test, h historyRecorder, source, dest *pebble.DB, w *sstable.Writer, sstPath string,
+	t *Test, h historyRecorder, source, dest *pebble.DB, w *sstable.Writer, sstPath string,
 ) {
 	var sharedSSTs []pebble.SharedSSTMeta
 	var err error
@@ -1604,7 +1607,7 @@ func (r *replicateOp) runSharedReplicate(
 	h.Recordf("%s // %v", r, err)
 }
 
-func (r *replicateOp) run(t *test, h historyRecorder) {
+func (r *replicateOp) run(t *Test, h historyRecorder) {
 	// Shared replication only works if shared storage is enabled.
 	useSharedIngest := t.testOpts.useSharedReplicate
 	if !t.testOpts.sharedStorageEnabled {
