@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -76,7 +77,7 @@ func parseOptions(
 				if err != nil {
 					panic(err)
 				}
-				opts.threads = v
+				opts.Threads = v
 				return true
 			case "TestOptions.disable_block_property_collector":
 				v, err := strconv.ParseBool(value)
@@ -176,8 +177,8 @@ func optionsToString(opts *TestOptions) string {
 	if opts.initialStateDesc != "" {
 		fmt.Fprintf(&buf, "  initial_state_desc=%s\n", opts.initialStateDesc)
 	}
-	if opts.threads != 0 {
-		fmt.Fprintf(&buf, "  threads=%d\n", opts.threads)
+	if opts.Threads != 0 {
+		fmt.Fprintf(&buf, "  threads=%d\n", opts.Threads)
 	}
 	if opts.disableBlockPropertyCollector {
 		fmt.Fprintf(&buf, "  disable_block_property_collector=%t\n", opts.disableBlockPropertyCollector)
@@ -223,12 +224,16 @@ func optionsToString(opts *TestOptions) string {
 func defaultTestOptions() *TestOptions {
 	return &TestOptions{
 		Opts:    defaultOptions(),
-		threads: 16,
+		Threads: 16,
 	}
 }
 
 func defaultOptions() *pebble.Options {
 	opts := &pebble.Options{
+		// Use an archive cleaner to ease post-mortem debugging.
+		Cleaner: base.ArchiveCleaner{},
+		// Always use our custom comparer which provides a Split method,
+		// splitting keys at the trailing '@'.
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: defaultFormatMajorVersion,
@@ -252,12 +257,20 @@ func defaultOptions() *pebble.Options {
 type TestOptions struct {
 	// Opts holds the *pebble.Options for the test.
 	Opts *pebble.Options
+	// Threads configures the parallelism of the test. Each thread will run in
+	// an independent goroutine and be responsible for executing operations
+	// against an independent set of objects. The outcome of any individual
+	// operation will still be deterministic, with the metamorphic test
+	// inserting synchronization where necessary.
+	Threads int
 	// CustomOptions holds custom test options that are defined outside of this
 	// package.
 	CustomOpts []CustomOption
-	useDisk    bool
-	strictFS   bool
-	threads    int
+
+	// internal
+
+	useDisk  bool
+	strictFS bool
 	// Use Batch.Apply rather than DB.Ingest.
 	ingestUsingApply bool
 	// Use Batch.DeleteSized rather than Batch.Delete.
@@ -465,7 +478,9 @@ func standardOptions() []*TestOptions {
 	return opts
 }
 
-func randomOptions(
+// RandomOptions generates a random set of operations, drawing randomness from
+// rng.
+func RandomOptions(
 	rng *rand.Rand, customOptionParsers map[string]func(string) (CustomOption, bool),
 ) *TestOptions {
 	testOpts := defaultTestOptions()
@@ -584,7 +599,7 @@ func randomOptions(
 	// sufficient.
 	testOpts.useDisk = false
 	testOpts.strictFS = rng.Intn(2) != 0 // Only relevant for MemFS.
-	testOpts.threads = rng.Intn(runtime.GOMAXPROCS(0)) + 1
+	testOpts.Threads = rng.Intn(runtime.GOMAXPROCS(0)) + 1
 	if testOpts.strictFS {
 		opts.DisableWAL = false
 	}

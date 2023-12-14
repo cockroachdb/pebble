@@ -19,7 +19,24 @@ import (
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 )
 
-type test struct {
+// New constructs a new metamorphic test that runs the provided operations
+// against a database using the provided TestOptions and outputs the history of
+// events to an io.Writer.
+//
+// dir specifies the path within opts.Opts.FS to open the database.
+func New(ops Ops, opts *TestOptions, dir string, w io.Writer) (*Test, error) {
+	t := newTest(ops)
+	h := newHistory(nil /* failRegexp */, w)
+	if err := t.init(h, dir, opts, 1 /* num instances */); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// A Test configures an individual test run consisting of a set of operations,
+// TestOptions configuring the target database to which the operations should be
+// applied, and a sink for outputting test history.
+type Test struct {
 	// The list of ops to execute. The ops refer to slots in the batches, iters,
 	// and snapshots slices.
 	ops       []op
@@ -27,6 +44,7 @@ type test struct {
 	opsDone   []chan struct{} // op index -> done channel
 	idx       int
 	dir       string
+	h         *history
 	opts      *pebble.Options
 	testOpts  *TestOptions
 	writeOpts *pebble.WriteOptions
@@ -40,19 +58,25 @@ type test struct {
 	snapshots []readerCloser
 }
 
-func newTest(ops []op) *test {
-	return &test{
+func newTest(ops []op) *Test {
+	return &Test{
 		ops: ops,
 	}
 }
 
-func (t *test) init(h *history, dir string, testOpts *TestOptions, numInstances int) error {
+func (t *Test) init(h *history, dir string, testOpts *TestOptions, numInstances int) error {
 	t.dir = dir
+	t.h = h
 	t.testOpts = testOpts
 	t.writeOpts = pebble.NoSync
 	if testOpts.strictFS {
 		t.writeOpts = pebble.Sync
+		testOpts.Opts.FS = vfs.NewStrictMem()
+	} else {
+		t.writeOpts = pebble.NoSync
+		testOpts.Opts.FS = vfs.NewMem()
 	}
+	testOpts.Opts.WithFSDefaults()
 	t.opts = testOpts.Opts.EnsureDefaults()
 	t.opts.Logger = h
 	lel := pebble.MakeLoggingEventListener(t.opts.Logger)
@@ -196,12 +220,12 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 	return nil
 }
 
-func (t *test) isFMV(dbID objID, fmv pebble.FormatMajorVersion) bool {
+func (t *Test) isFMV(dbID objID, fmv pebble.FormatMajorVersion) bool {
 	db := t.getDB(dbID)
 	return db.FormatMajorVersion() >= fmv
 }
 
-func (t *test) restartDB(dbID objID) error {
+func (t *Test) restartDB(dbID objID) error {
 	db := t.getDB(dbID)
 	if !t.testOpts.strictFS {
 		return nil
@@ -253,7 +277,7 @@ func (t *test) restartDB(dbID objID) error {
 	return err
 }
 
-func (t *test) maybeSaveDataInternal() error {
+func (t *Test) maybeSaveDataInternal() error {
 	rootFS := vfs.Root(t.opts.FS)
 	if rootFS == vfs.Default {
 		return nil
@@ -299,13 +323,13 @@ func (t *test) maybeSaveDataInternal() error {
 }
 
 // If an in-memory FS is being used, save the contents to disk.
-func (t *test) maybeSaveData() {
+func (t *Test) maybeSaveData() {
 	if err := t.maybeSaveDataInternal(); err != nil {
 		t.opts.Logger.Infof("unable to save data: %s: %v", t.dir, err)
 	}
 }
 
-func (t *test) step(h *history) bool {
+func (t *Test) step(h *history) bool {
 	if t.idx >= len(t.ops) {
 		return false
 	}
@@ -314,14 +338,14 @@ func (t *test) step(h *history) bool {
 	return true
 }
 
-func (t *test) setBatch(id objID, b *pebble.Batch) {
+func (t *Test) setBatch(id objID, b *pebble.Batch) {
 	if id.tag() != batchTag {
 		panic(fmt.Sprintf("invalid batch ID: %s", id))
 	}
 	t.batches[id.slot()] = b
 }
 
-func (t *test) setIter(id objID, i *pebble.Iterator) {
+func (t *Test) setIter(id objID, i *pebble.Iterator) {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
@@ -336,14 +360,14 @@ type readerCloser interface {
 	io.Closer
 }
 
-func (t *test) setSnapshot(id objID, s readerCloser) {
+func (t *Test) setSnapshot(id objID, s readerCloser) {
 	if id.tag() != snapTag {
 		panic(fmt.Sprintf("invalid snapshot ID: %s", id))
 	}
 	t.snapshots[id.slot()] = s
 }
 
-func (t *test) clearObj(id objID) {
+func (t *Test) clearObj(id objID) {
 	switch id.tag() {
 	case dbTag:
 		t.dbs[id.slot()-1] = nil
@@ -356,14 +380,14 @@ func (t *test) clearObj(id objID) {
 	}
 }
 
-func (t *test) getBatch(id objID) *pebble.Batch {
+func (t *Test) getBatch(id objID) *pebble.Batch {
 	if id.tag() != batchTag {
 		panic(fmt.Sprintf("invalid batch ID: %s", id))
 	}
 	return t.batches[id.slot()]
 }
 
-func (t *test) getCloser(id objID) io.Closer {
+func (t *Test) getCloser(id objID) io.Closer {
 	switch id.tag() {
 	case dbTag:
 		return t.dbs[id.slot()-1]
@@ -377,14 +401,14 @@ func (t *test) getCloser(id objID) io.Closer {
 	panic(fmt.Sprintf("cannot close ID: %s", id))
 }
 
-func (t *test) getIter(id objID) *retryableIter {
+func (t *Test) getIter(id objID) *retryableIter {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
 	return t.iters[id.slot()]
 }
 
-func (t *test) getReader(id objID) pebble.Reader {
+func (t *Test) getReader(id objID) pebble.Reader {
 	switch id.tag() {
 	case dbTag:
 		return t.dbs[id.slot()-1]
@@ -396,7 +420,7 @@ func (t *test) getReader(id objID) pebble.Reader {
 	panic(fmt.Sprintf("invalid reader ID: %s", id))
 }
 
-func (t *test) getWriter(id objID) pebble.Writer {
+func (t *Test) getWriter(id objID) pebble.Writer {
 	switch id.tag() {
 	case dbTag:
 		return t.dbs[id.slot()-1]
@@ -406,7 +430,7 @@ func (t *test) getWriter(id objID) pebble.Writer {
 	panic(fmt.Sprintf("invalid writer ID: %s", id))
 }
 
-func (t *test) getDB(id objID) *pebble.DB {
+func (t *Test) getDB(id objID) *pebble.DB {
 	switch id.tag() {
 	case dbTag:
 		return t.dbs[id.slot()-1]
