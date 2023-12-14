@@ -320,6 +320,24 @@ func disableBoundsOpt(bound []byte, ptr uintptr) bool {
 // state and require this behavior to be deterministic.
 var ensureBoundsOptDeterminism bool
 
+// SetBoundsMaterialized indicates whether this iterator, if wrapped by a prefix
+// rewriting iterator and virtual state, requires keys passed to its SetBounds()
+// method to *not* be rewritten into the "backing" key space, that would match
+// the actual iterator contents. If it returns true, this iterator instead
+// expects bounds to still be in terms of of "materialized" prefix.
+//
+// This allows an optimization in vState, whereby when this iterator passes it
+// bounds to constrain, since bounds are kept in terms of materialized keys, the
+// vState does not need to convert them from the "backing" prefix before it can
+// combine them with the virtual bounds, which are always in terms of
+// materialized keys. The vState then converts its constrained bounds to backing
+// bounds which are what SetBounds will ultimately apply, so essentially this is
+// just indicating that constrainBounds is responsible for the rewriting, rather
+// than the caller of SetBounds (the wrapping PrefixRewritingIterator).
+func (i singleLevelIterator) SetBoundsMaterialized() bool {
+	return i.vState != nil
+}
+
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package. Note that the upper field is exclusive.
 func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
