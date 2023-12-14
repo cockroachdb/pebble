@@ -277,8 +277,7 @@ func (m *simpleMergingIter) step() bool {
 // See the overview comment at the top of the file.
 //
 // We do this check as follows:
-// - For each level that can have untruncated tombstones, compute the atomic compaction
-//   bounds (getAtomicUnitBounds()) and use them to truncate tombstones.
+// - For each level that can have untruncated tombstones, truncate the tombstones.
 // - Now that we have a set of truncated tombstones for each level, put them into one
 //   pool of tombstones along with their level information (addTombstonesFromIter()).
 // - Collect the start and end user keys from all these tombstones (collectAllUserKey()) and use
@@ -379,8 +378,7 @@ func checkRangeTombstones(c *checkConfig) error {
 	addTombstonesFromLevel := func(files manifest.LevelIterator, lsmLevel int) error {
 		for f := files.First(); f != nil; f = files.Next() {
 			lf := files.Take()
-			atomicUnit, _ := expandToAtomicUnit(c.cmp, lf.Slice(), true /* disableIsCompacting */)
-			lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
+			//lower, upper := manifest.KeyRange(c.cmp, lf.Iter())
 			iterToClose, iter, err := c.newIters(
 				context.Background(), lf.FileMetadata, &IterOptions{level: manifest.Level(lsmLevel)}, internalIterOpts{})
 			if err != nil {
@@ -391,17 +389,17 @@ func checkRangeTombstones(c *checkConfig) error {
 				continue
 			}
 			truncate := func(t keyspan.Span) keyspan.Span {
-				// Same checks as in keyspan.Truncate.
-				if c.cmp(t.Start, lower.UserKey) < 0 {
-					t.Start = lower.UserKey
-				}
-				if c.cmp(t.End, upper.UserKey) > 0 {
-					t.End = upper.UserKey
-				}
-				if c.cmp(t.Start, t.End) >= 0 {
-					// Remove the keys.
-					t.Keys = t.Keys[:0]
-				}
+				//// Same checks as in keyspan.Truncate.
+				//if c.cmp(t.Start, lower.UserKey) < 0 {
+				//	t.Start = lower.UserKey
+				//}
+				//if c.cmp(t.End, upper.UserKey) > 0 {
+				//	t.End = upper.UserKey
+				//}
+				//if c.cmp(t.Start, t.End) >= 0 {
+				//	// Remove the keys.
+				//	t.Keys = t.Keys[:0]
+				//}
 				return t
 			}
 			if tombstones, err = addTombstonesFromIter(iter, level, lsmLevel, f.FileNum,
