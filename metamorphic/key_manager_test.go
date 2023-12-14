@@ -195,11 +195,11 @@ func TestOpWrittenKeys(t *testing.T) {
 
 func TestLoadPrecedingKeys(t *testing.T) {
 	rng := randvar.NewRand()
-	cfg := defaultConfig()
+	cfg := DefaultOpConfig()
 	km := newKeyManager(1 /* numInstances */)
 	ops := generate(rng, 1000, cfg, km)
 
-	cfg2 := defaultConfig()
+	cfg2 := DefaultOpConfig()
 	km2 := newKeyManager(1 /* numInstances */)
 	loadPrecedingKeys(t, ops, &cfg2, km2)
 

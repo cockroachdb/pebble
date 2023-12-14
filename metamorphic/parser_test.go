@@ -32,7 +32,7 @@ func TestParserRandom(t *testing.T) {
 	cfgs := []string{"default", "multiInstance"}
 	for i := range cfgs {
 		t.Run(fmt.Sprintf("config=%s", cfgs[i]), func(t *testing.T) {
-			cfg := defaultConfig()
+			cfg := DefaultOpConfig()
 			if cfgs[i] == "multiInstance" {
 				cfg = multiInstanceConfig()
 				cfg.numInstances = 2

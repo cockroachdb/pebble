@@ -49,7 +49,7 @@ func (o iterOpts) IsZero() bool {
 }
 
 type generator struct {
-	cfg config
+	cfg OpConfig
 	rng *rand.Rand
 
 	init *initOp
@@ -104,7 +104,7 @@ type generator struct {
 	iterReaderID map[objID]objID
 }
 
-func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
+func newGenerator(rng *rand.Rand, cfg OpConfig, km *keyManager) *generator {
 	g := &generator{
 		cfg:                   cfg,
 		rng:                   rng,
@@ -133,57 +133,57 @@ func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 	return g
 }
 
-func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
+func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 	g := newGenerator(rng, cfg, km)
 
 	generators := []func(){
-		batchAbort:                  g.batchAbort,
-		batchCommit:                 g.batchCommit,
-		dbCheckpoint:                g.dbCheckpoint,
-		dbCompact:                   g.dbCompact,
-		dbFlush:                     g.dbFlush,
-		dbRatchetFormatMajorVersion: g.dbRatchetFormatMajorVersion,
-		dbRestart:                   g.dbRestart,
-		iterClose:                   g.randIter(g.iterClose),
-		iterFirst:                   g.randIter(g.iterFirst),
-		iterLast:                    g.randIter(g.iterLast),
-		iterNext:                    g.randIter(g.iterNext),
-		iterNextWithLimit:           g.randIter(g.iterNextWithLimit),
-		iterNextPrefix:              g.randIter(g.iterNextPrefix),
-		iterCanSingleDelete:         g.randIter(g.iterCanSingleDelete),
-		iterPrev:                    g.randIter(g.iterPrev),
-		iterPrevWithLimit:           g.randIter(g.iterPrevWithLimit),
-		iterSeekGE:                  g.randIter(g.iterSeekGE),
-		iterSeekGEWithLimit:         g.randIter(g.iterSeekGEWithLimit),
-		iterSeekLT:                  g.randIter(g.iterSeekLT),
-		iterSeekLTWithLimit:         g.randIter(g.iterSeekLTWithLimit),
-		iterSeekPrefixGE:            g.randIter(g.iterSeekPrefixGE),
-		iterSetBounds:               g.randIter(g.iterSetBounds),
-		iterSetOptions:              g.randIter(g.iterSetOptions),
-		newBatch:                    g.newBatch,
-		newIndexedBatch:             g.newIndexedBatch,
-		newIter:                     g.newIter,
-		newIterUsingClone:           g.newIterUsingClone,
-		newSnapshot:                 g.newSnapshot,
-		readerGet:                   g.readerGet,
-		replicate:                   g.replicate,
-		snapshotClose:               g.snapshotClose,
-		writerApply:                 g.writerApply,
-		writerDelete:                g.writerDelete,
-		writerDeleteRange:           g.writerDeleteRange,
-		writerIngest:                g.writerIngest,
-		writerIngestAndExcise:       g.writerIngestAndExcise,
-		writerMerge:                 g.writerMerge,
-		writerRangeKeyDelete:        g.writerRangeKeyDelete,
-		writerRangeKeySet:           g.writerRangeKeySet,
-		writerRangeKeyUnset:         g.writerRangeKeyUnset,
-		writerSet:                   g.writerSet,
-		writerSingleDelete:          g.writerSingleDelete,
+		OpBatchAbort:                  g.batchAbort,
+		OpBatchCommit:                 g.batchCommit,
+		OpDBCheckpoint:                g.dbCheckpoint,
+		OpDBCompact:                   g.dbCompact,
+		OpDBFlush:                     g.dbFlush,
+		OpDBRatchetFormatMajorVersion: g.dbRatchetFormatMajorVersion,
+		OpDBRestart:                   g.dbRestart,
+		OpIterClose:                   g.randIter(g.iterClose),
+		OpIterFirst:                   g.randIter(g.iterFirst),
+		OpIterLast:                    g.randIter(g.iterLast),
+		OpIterNext:                    g.randIter(g.iterNext),
+		OpIterNextWithLimit:           g.randIter(g.iterNextWithLimit),
+		OpIterNextPrefix:              g.randIter(g.iterNextPrefix),
+		OpIterCanSingleDelete:         g.randIter(g.iterCanSingleDelete),
+		OpIterPrev:                    g.randIter(g.iterPrev),
+		OpIterPrevWithLimit:           g.randIter(g.iterPrevWithLimit),
+		OpIterSeekGE:                  g.randIter(g.iterSeekGE),
+		OpIterSeekGEWithLimit:         g.randIter(g.iterSeekGEWithLimit),
+		OpIterSeekLT:                  g.randIter(g.iterSeekLT),
+		OpIterSeekLTWithLimit:         g.randIter(g.iterSeekLTWithLimit),
+		OpIterSeekPrefixGE:            g.randIter(g.iterSeekPrefixGE),
+		OpIterSetBounds:               g.randIter(g.iterSetBounds),
+		OpIterSetOptions:              g.randIter(g.iterSetOptions),
+		OpNewBatch:                    g.newBatch,
+		OpNewIndexedBatch:             g.newIndexedBatch,
+		OpNewIter:                     g.newIter,
+		OpNewIterUsingClone:           g.newIterUsingClone,
+		OpNewSnapshot:                 g.newSnapshot,
+		OpReaderGet:                   g.readerGet,
+		OpReplicate:                   g.replicate,
+		OpSnapshotClose:               g.snapshotClose,
+		OpWriterApply:                 g.writerApply,
+		OpWriterDelete:                g.writerDelete,
+		OpWriterDeleteRange:           g.writerDeleteRange,
+		OpWriterIngest:                g.writerIngest,
+		OpWriterIngestAndExcise:       g.writerIngestAndExcise,
+		OpWriterMerge:                 g.writerMerge,
+		OpWriterRangeKeyDelete:        g.writerRangeKeyDelete,
+		OpWriterRangeKeySet:           g.writerRangeKeySet,
+		OpWriterRangeKeyUnset:         g.writerRangeKeyUnset,
+		OpWriterSet:                   g.writerSet,
+		OpWriterSingleDelete:          g.writerSingleDelete,
 	}
 
 	// TPCC-style deck of cards randomization. Every time the end of the deck is
 	// reached, we shuffle the deck.
-	deck := randvar.NewDeck(g.rng, cfg.ops...)
+	deck := randvar.NewDeck(g.rng, cfg.ops[:]...)
 
 	defer func() {
 		if r := recover(); r != nil {
