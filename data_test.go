@@ -1271,6 +1271,20 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 
 func runIngestExternalCmd(td *datadriven.TestData, d *DB, locator string) error {
 	external := make([]ExternalFile, 0)
+	usePrefixChange := false
+	var fromPrefix, toPrefix []byte
+	for i := range td.CmdArgs {
+		switch td.CmdArgs[i].Key {
+		case "prefix-replace":
+			vals := td.CmdArgs[i].Vals
+			if len(vals) != 2 {
+				return errors.New("usage: prefix-replace=(from,to)")
+			}
+			fromPrefix = []byte(vals[0])
+			toPrefix = []byte(vals[1])
+			usePrefixChange = true
+		}
+	}
 	for _, arg := range strings.Split(td.Input, "\n") {
 		fields := strings.Split(arg, ",")
 		if len(fields) != 4 {
@@ -1287,6 +1301,10 @@ func runIngestExternalCmd(td *datadriven.TestData, d *DB, locator string) error 
 		ef.SmallestUserKey = []byte(fields[2])
 		ef.LargestUserKey = []byte(fields[3])
 		ef.HasPointKey = true
+		if usePrefixChange {
+			ef.ContentPrefix = fromPrefix
+			ef.SyntheticPrefix = toPrefix
+		}
 		external = append(external, ef)
 	}
 
