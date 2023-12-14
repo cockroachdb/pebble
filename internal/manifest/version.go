@@ -269,6 +269,15 @@ type FileMetadata struct {
 	boundTypeSmallest, boundTypeLargest boundType
 	// Virtual is true if the FileMetadata belongs to a virtual sstable.
 	Virtual bool
+
+	// PrefixReplacement is used for virtual files where the backing file has a
+	// different prefix on its keys than the span in which it is being exposed.
+	PrefixReplacement *PrefixReplacement
+}
+
+// PrefixReplacement represents a read-time replacement of a key prefix.
+type PrefixReplacement struct {
+	ContentPrefix, VirtualPrefix []byte
 }
 
 // PhysicalFileMeta is used by functions which want a guarantee that their input
@@ -849,6 +858,18 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	// Ensure that FileMetadata.Init was called.
 	if m.FileBacking == nil {
 		return base.CorruptionErrorf("file metadata FileBacking not set")
+	}
+
+	if m.PrefixReplacement != nil {
+		if !m.Virtual {
+			return base.CorruptionErrorf("prefix replacement rule set with non-virtual file")
+		}
+		if !bytes.HasPrefix(m.Smallest.UserKey, m.PrefixReplacement.VirtualPrefix) {
+			return base.CorruptionErrorf("virtual file with prefix replacement rules has smallest key with a different prefix: %s", m.Smallest.Pretty(formatKey))
+		}
+		if !bytes.HasPrefix(m.Largest.UserKey, m.PrefixReplacement.VirtualPrefix) {
+			return base.CorruptionErrorf("virtual file with prefix replacement rules has largest key with a different prefix: %s", m.Largest.Pretty(formatKey))
+		}
 	}
 
 	return nil

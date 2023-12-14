@@ -63,6 +63,7 @@ const (
 	customTagPathID            = 65
 	customTagNonSafeIgnoreMask = 1 << 6
 	customTagVirtual           = 66
+	customTagPrefixRewrite     = 67
 )
 
 // DeletedFileEntry holds the state for a file deletion from a level. The file
@@ -336,6 +337,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				virtual        bool
 				backingFileNum uint64
 			}{}
+			var virtualPrefix *PrefixReplacement
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
@@ -351,6 +353,20 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 							return err
 						}
 						virtualState.backingFileNum = n
+						continue
+					} else if customTag == customTagPrefixRewrite {
+						content, err := d.readBytes()
+						if err != nil {
+							return err
+						}
+						virtual, err := d.readBytes()
+						if err != nil {
+							return err
+						}
+						virtualPrefix = &PrefixReplacement{
+							ContentPrefix: content,
+							VirtualPrefix: virtual,
+						}
 						continue
 					}
 
@@ -390,6 +406,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				LargestSeqNum:       largestSeqNum,
 				MarkedForCompaction: markedForCompaction,
 				Virtual:             virtualState.virtual,
+				PrefixReplacement:   virtualPrefix,
 			}
 			if tag != tagNewFile5 { // no range keys present
 				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
@@ -605,6 +622,11 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			if x.Meta.Virtual {
 				e.writeUvarint(customTagVirtual)
 				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum.FileNum()))
+			}
+			if x.Meta.PrefixReplacement != nil {
+				e.writeUvarint(customTagPrefixRewrite)
+				e.writeBytes(x.Meta.PrefixReplacement.ContentPrefix)
+				e.writeBytes(x.Meta.PrefixReplacement.VirtualPrefix)
 			}
 			e.writeUvarint(customTagTerminate)
 		}
