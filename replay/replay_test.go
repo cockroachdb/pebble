@@ -91,7 +91,7 @@ func runReplayTest(t *testing.T, path string) {
 			opts := &pebble.Options{
 				FS:                        fs,
 				Comparer:                  testkeys.Comparer,
-				FormatMajorVersion:        pebble.FormatRangeKeys,
+				FormatMajorVersion:        pebble.FormatMinSupported,
 				L0CompactionFileThreshold: 1,
 			}
 			setDefaultExperimentalOpts(opts)
@@ -174,7 +174,7 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 		},
 		FS:                 vfs.NewMem(),
 		Comparer:           testkeys.Comparer,
-		FormatMajorVersion: pebble.FormatRangeKeys,
+		FormatMajorVersion: pebble.FormatMinSupported,
 	}
 	d, err := pebble.Open("", opts)
 	require.NoError(t, err)
@@ -282,7 +282,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			opts := &pebble.Options{
 				Comparer:                    testkeys.Comparer,
 				DisableAutomaticCompactions: true,
-				FormatMajorVersion:          pebble.FormatRangeKeys,
+				FormatMajorVersion:          pebble.FormatMinSupported,
 				FS:                          fs,
 				MaxManifestFileSize:         96,
 			}

@@ -28,8 +28,9 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 	}
 	if o.FormatMajorVersion == FormatDefault {
 		// Pick a random format major version from the range
-		// [MostCompatible, FormatNewest].
-		o.FormatMajorVersion = FormatMajorVersion(rand.Intn(int(internalFormatNewest)) + 1)
+		// [FormatMinSupported, FormatNewest].
+		n := rand.Intn(int(internalFormatNewest - FormatMinSupported + 1))
+		o.FormatMajorVersion = FormatMinSupported + FormatMajorVersion(n)
 		t.Logf("Running %s with format major version %s", t.Name(), o.FormatMajorVersion.String())
 	}
 	return o
@@ -82,7 +83,7 @@ func TestOptionsString(t *testing.T) {
   flush_delay_delete_range=0s
   flush_delay_range_key=0s
   flush_split_bytes=4194304
-  format_major_version=1
+  format_major_version=13
   l0_compaction_concurrency=10
   l0_compaction_file_threshold=500
   l0_compaction_threshold=4
@@ -122,9 +123,7 @@ func TestOptionsString(t *testing.T) {
 
 	var opts *Options
 	opts = opts.EnsureDefaults()
-	if v := opts.String(); expected != v {
-		t.Fatalf("expected\n%s\nbut found\n%s", expected, v)
-	}
+	require.Equal(t, expected, opts.String())
 }
 
 func TestOptionsCheck(t *testing.T) {

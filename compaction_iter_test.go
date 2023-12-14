@@ -87,18 +87,6 @@ func TestCompactionIter(t *testing.T) {
 	var allowZeroSeqnum bool
 	var interleavingIter *keyspan.InterleavingIter
 
-	// The input to the data-driven test is dependent on the format major
-	// version we are testing against.
-	fileFunc := func(formatVersion FormatMajorVersion) string {
-		if formatVersion < FormatSetWithDelete {
-			return "testdata/compaction_iter"
-		}
-		if formatVersion < FormatDeleteSizedAndObsolete {
-			return "testdata/compaction_iter_set_with_del"
-		}
-		return "testdata/compaction_iter_delete_sized"
-	}
-
 	var ineffectualSingleDeleteKeys []string
 	var invariantViolationSingleDeleteKeys []string
 	resetSingleDelStats := func() {
@@ -153,7 +141,7 @@ func TestCompactionIter(t *testing.T) {
 	}
 
 	runTest := func(t *testing.T, formatVersion FormatMajorVersion) {
-		datadriven.RunTest(t, fileFunc(formatVersion), func(t *testing.T, d *datadriven.TestData) string {
+		datadriven.RunTest(t, "testdata/compaction_iter_delete_sized", func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
 				merge = nil
@@ -330,9 +318,7 @@ func TestCompactionIter(t *testing.T) {
 	// Rather than testing against all format version, we test against the
 	// significant boundaries.
 	formatVersions := []FormatMajorVersion{
-		FormatMostCompatible,
-		FormatSetWithDelete - 1,
-		FormatSetWithDelete,
+		FormatMinSupported,
 		internalFormatNewest,
 	}
 	for _, formatVersion := range formatVersions {

@@ -521,7 +521,7 @@ func TestVersionEditApply(t *testing.T) {
 					}
 				}
 				zombies := make(map[base.DiskFileNum]uint64)
-				newv, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000, zombies, ProhibitSplitUserKeys)
+				newv, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000, zombies)
 				if err != nil {
 					return err.Error()
 				}

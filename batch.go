@@ -485,9 +485,6 @@ func (b *Batch) refreshMemTableSize() error {
 		}
 		b.memTableSize += memTableEntrySize(len(key), len(value))
 	}
-	if b.countRangeKeys > 0 && b.minimumFormatMajorVersion < FormatRangeKeys {
-		b.minimumFormatMajorVersion = FormatRangeKeys
-	}
 	return nil
 }
 
@@ -968,9 +965,6 @@ func (b *Batch) rangeKeySetDeferred(startLen, internalValueLen int) *DeferredBat
 
 func (b *Batch) incrementRangeKeysCount() {
 	b.countRangeKeys++
-	if b.minimumFormatMajorVersion < FormatRangeKeys {
-		b.minimumFormatMajorVersion = FormatRangeKeys
-	}
 	if b.index != nil {
 		b.rangeKeys = nil
 		b.rangeKeysSeqNum = 0

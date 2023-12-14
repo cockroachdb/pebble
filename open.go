@@ -71,7 +71,7 @@ func TableCacheSize(maxOpenFiles int) int {
 }
 
 // Open opens a DB whose files live in the given directory.
-func Open(dirname string, opts *Options) (db *DB, _ error) {
+func Open(dirname string, opts *Options) (db *DB, err error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
 	opts = opts.Clone()
 	opts = opts.EnsureDefaults()
@@ -136,8 +136,28 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	}()
 
+	noFormatVersionMarker := formatVersion == FormatDefault
+	if noFormatVersionMarker {
+		// There is no format version marker file. There are three cases:
+		//  - we are trying to open an existing store that was created at
+		//    FormatMostCompatible (the only one without a version marker file)
+		//  - we are creating a new store;
+		//  - we are retrying a failed creation.
+		//
+		// To error in the first case, we set ErrorIfPristine.
+		opts.ErrorIfNotPristine = true
+		formatVersion = FormatMinSupported
+		defer func() {
+			if err != nil && errors.Is(err, ErrDBNotPristine) {
+				// We must be trying to open an existing store at FormatMostCompatible.
+				// Correct the error in this case -we
+				err = errors.Newf("pebble: database %q written in format major version 1 which is no longer supported", dirname)
+			}
+		}()
+	}
+
 	// Find the currently active manifest, if there is one.
-	manifestMarker, manifestFileNum, manifestExists, err := findCurrentManifest(formatVersion, opts.FS, dirname)
+	manifestMarker, manifestFileNum, manifestExists, err := findCurrentManifest(opts.FS, dirname)
 	if err != nil {
 		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
 	}
@@ -252,8 +272,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 
-	setCurrent := setCurrentFunc(d.FormatMajorVersion(), manifestMarker, opts.FS, dirname, d.dataDir)
-
 	if !manifestExists {
 		// DB does not exist.
 		if d.opts.ErrorIfNotExists || d.opts.ReadOnly {
@@ -261,7 +279,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 
 		// Create the DB.
-		if err := d.mu.versions.create(jobID, dirname, opts, manifestMarker, setCurrent, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
+		if err := d.mu.versions.create(jobID, dirname, opts, manifestMarker, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 	} else {
@@ -269,7 +287,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil, errors.Wrapf(ErrDBAlreadyExists, "dirname=%q", dirname)
 		}
 		// Load the version set.
-		if err := d.mu.versions.load(dirname, opts, manifestFileNum, manifestMarker, setCurrent, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
+		if err := d.mu.versions.load(dirname, opts, manifestFileNum, manifestMarker, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 		if opts.ErrorIfNotPristine {
@@ -485,20 +503,27 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
 
-	// If the Options specify a format major version higher than the
-	// loaded database's, upgrade it. If this is a new database, this
-	// code path also performs an initial upgrade from the starting
-	// implicit MostCompatible version.
-	//
-	// We ratchet the version this far into Open so that migrations have a read
-	// state available.
-	if !d.opts.ReadOnly && opts.FormatMajorVersion > d.FormatMajorVersion() {
-		if err := d.ratchetFormatMajorVersionLocked(opts.FormatMajorVersion); err != nil {
-			return nil, err
-		}
-	}
-
 	if !d.opts.ReadOnly {
+		// If the Options specify a format major version higher than the
+		// loaded database's, upgrade it. If this is a new database, this
+		// code path also performs an initial upgrade from the starting
+		// implicit MinSupported version.
+		//
+		// We ratchet the version this far into Open so that migrations have a read
+		// state available. Note that this also results in creating/updating the
+		// format version marker file.
+		if opts.FormatMajorVersion > d.FormatMajorVersion() {
+			if err := d.ratchetFormatMajorVersionLocked(opts.FormatMajorVersion); err != nil {
+				return nil, err
+			}
+		} else if noFormatVersionMarker {
+			// We are creating a new store at MinSupported. Create the format version
+			// marker file.
+			if err := d.writeFormatVersionMarker(d.FormatMajorVersion()); err != nil {
+				return nil, err
+			}
+		}
+
 		// Write the current options to disk.
 		d.optionsFileNum = d.mu.versions.getNextDiskFileNum()
 		tmpPath := base.MakeFilepath(opts.FS, dirname, fileTypeTemp, d.optionsFileNum)
@@ -994,7 +1019,7 @@ func (d *DB) replayWAL(
 	flushMem()
 
 	// mem is nil here.
-	if !d.opts.ReadOnly {
+	if !d.opts.ReadOnly && batchesReplayed > 0 {
 		err = updateVE()
 		if err != nil {
 			return nil, 0, err
@@ -1044,7 +1069,7 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 	}
 
 	// Find the currently active manifest, if there is one.
-	manifestMarker, manifestFileNum, exists, err := findCurrentManifest(vers, fs, dirname)
+	manifestMarker, manifestFileNum, exists, err := findCurrentManifest(fs, dirname)
 	if err != nil {
 		return nil, err
 	}

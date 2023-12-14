@@ -829,13 +829,11 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 		return errors.New("pebble: WAL disabled")
 	}
 
-	if batch.minimumFormatMajorVersion != FormatMostCompatible {
-		if fmv := d.FormatMajorVersion(); fmv < batch.minimumFormatMajorVersion {
-			panic(fmt.Sprintf(
-				"pebble: batch requires at least format major version %d (current: %d)",
-				batch.minimumFormatMajorVersion, fmv,
-			))
-		}
+	if fmv := d.FormatMajorVersion(); fmv < batch.minimumFormatMajorVersion {
+		panic(fmt.Sprintf(
+			"pebble: batch requires at least format major version %d (current: %d)",
+			batch.minimumFormatMajorVersion, fmv,
+		))
 	}
 
 	if batch.countRangeKeys > 0 {
@@ -1036,14 +1034,6 @@ func (d *DB) newIter(
 		panic(err)
 	}
 	seqNum := internalOpts.snapshot.seqNum
-	if o.rangeKeys() {
-		if d.FormatMajorVersion() < FormatRangeKeys {
-			panic(fmt.Sprintf(
-				"pebble: range keys require at least format major version %d (current: %d)",
-				FormatRangeKeys, d.FormatMajorVersion(),
-			))
-		}
-	}
 	if o != nil && o.RangeKeyMasking.Suffix != nil && o.KeyTypes != IterKeyTypePointsAndRanges {
 		panic("pebble: range key masking requires IterKeyTypePointsAndRanges")
 	}

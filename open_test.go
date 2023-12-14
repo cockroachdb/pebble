@@ -28,6 +28,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
@@ -187,20 +188,12 @@ func TestOpenAlreadyLocked(t *testing.T) {
 
 func TestNewDBFilenames(t *testing.T) {
 	versions := map[FormatMajorVersion][]string{
-		FormatMostCompatible: {
-			"000002.log",
-			"CURRENT",
-			"LOCK",
-			"MANIFEST-000001",
-			"OPTIONS-000003",
-		},
 		internalFormatNewest: {
 			"000002.log",
-			"CURRENT",
 			"LOCK",
 			"MANIFEST-000001",
 			"OPTIONS-000003",
-			"marker.format-version.000015.016",
+			"marker.format-version.000003.016",
 			"marker.manifest.000001.MANIFEST-000001",
 		},
 	}
@@ -1115,42 +1108,45 @@ func TestGetVersion(t *testing.T) {
 	require.Equal(t, "rocksdb v6.2.1", version)
 }
 
-func TestRocksDBNoFlushManifest(t *testing.T) {
+// TestOpenNeverFlushed verifies that we can open a database that had an
+// ingestion but no other operations.
+func TestOpenNeverFlushed(t *testing.T) {
 	mem := vfs.NewMem()
-	// Have the comparer and merger names match what's in the testdata
-	// directory.
-	comparer := *DefaultComparer
-	merger := *DefaultMerger
-	comparer.Name = "cockroach_comparator"
-	merger.Name = "cockroach_merge_operator"
-	opts := &Options{
-		FS:       mem,
-		Comparer: &comparer,
-		Merger:   &merger,
+
+	sstFile, err := mem.Create("to-ingest.sst")
+	require.NoError(t, err)
+
+	writerOpts := sstable.WriterOptions{}
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(sstFile), writerOpts)
+	for _, key := range []string{"a", "b", "c", "d"} {
+		require.NoError(t, w.Set([]byte(key), []byte("val-"+key)))
 	}
+	require.NoError(t, w.Close())
 
-	// rocksdb-ingest-only is a RocksDB-generated db directory that has not had
-	// a single flush yet, only ingestion operations. The manifest contains
-	// a next-log-num but no log-num entry. Ensure that pebble can read these
-	// directories without an issue.
-	_, err := vfs.Clone(vfs.Default, mem, "testdata/rocksdb-ingest-only", "testdata")
+	opts := &Options{
+		FS: mem,
+	}
+	db, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, db.Ingest([]string{"to-ingest.sst"}))
+	require.NoError(t, db.Close())
+
+	db, err = Open("", opts)
 	require.NoError(t, err)
 
-	db, err := Open("testdata", opts)
+	val, closer, err := db.Get([]byte("b"))
 	require.NoError(t, err)
-	defer db.Close()
-
-	val, closer, err := db.Get([]byte("ajulxeiombjiyw\x00\x00\x00\x00\x00\x00\x00\x01\x12\x09"))
-	require.NoError(t, err)
-	require.NotEmpty(t, val)
+	require.Equal(t, "val-b", string(val))
 	require.NoError(t, closer.Close())
+
+	require.NoError(t, db.Close())
 }
 
 func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
 	fs := vfs.NewMem()
 	d, err := Open("", &Options{
 		FS:                 fs,
-		FormatMajorVersion: FormatVersioned,
+		FormatMajorVersion: FormatMinSupported,
 	})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
@@ -1163,10 +1159,10 @@ func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
 
 	_, err = Open("", &Options{
 		FS:                 fs,
-		FormatMajorVersion: FormatVersioned,
+		FormatMajorVersion: FormatMinSupported,
 	})
 	require.Error(t, err)
-	require.EqualError(t, err, `pebble: database "" written in format major version 999999`)
+	require.EqualError(t, err, `pebble: database "" written in unknown format major version 999999`)
 }
 
 // ensureFilesClosed updates the provided Options to wrap the filesystem. It
