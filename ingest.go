@@ -211,6 +211,13 @@ func ingestLoad1External(
 	// what parts of this sstable are referenced by other nodes.
 	meta.FileBacking.Size = e.Size
 
+	if len(e.VirtualPrefix) != 0 {
+		meta.PrefixReplacement = &manifest.PrefixReplacement{
+			ContentPrefix: e.ContentPrefix,
+			VirtualPrefix: e.VirtualPrefix,
+		}
+	}
+
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
 		return nil, err
 	}
@@ -1109,6 +1116,11 @@ type ExternalFile struct {
 	// or range keys. If both structs are false, an error is returned during
 	// ingestion.
 	HasPointKey, HasRangeKey bool
+	// ContentPrefix and VirtualPrefix denote a prefix replacement rule causing a
+	// file, in which all keys have prefix ContentPrefix, to appear whenever it is
+	// accessed as if those keys all instead have prefix VirtualPrefix.
+	// VirtualPrefix must be a prefix of both SmallestUserKey and LargestUserKey.
+	ContentPrefix, VirtualPrefix []byte
 }
 
 // IngestWithStats does the same as Ingest, and additionally returns
