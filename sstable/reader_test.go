@@ -1397,7 +1397,11 @@ func TestReader_TableFormat(t *testing.T) {
 }
 
 func buildTestTable(
-	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression, prefix []byte,
+	t *testing.T,
+	numEntries uint64,
+	blockSize, indexBlockSize int,
+	compression Compression,
+	prefix []byte,
 ) *Reader {
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.NewMem(), "" /* dirName */))
 	require.NoError(t, err)
