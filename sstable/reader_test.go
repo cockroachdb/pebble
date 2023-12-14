@@ -948,7 +948,7 @@ func testBytesIteratedWithCompression(
 	for i, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
 			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
-				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression)
+				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression, nil)
 				var bytesIterated, prevIterated uint64
 				var pool BufferPool
 				pool.Init(5)
@@ -1006,7 +1006,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 	for _, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
-				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, DefaultCompression)
+				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, DefaultCompression, nil)
 				var bytesIterated uint64
 				var pool BufferPool
 				pool.Init(5)
@@ -1397,12 +1397,12 @@ func TestReader_TableFormat(t *testing.T) {
 }
 
 func buildTestTable(
-	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression,
+	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression, prefix []byte,
 ) *Reader {
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.NewMem(), "" /* dirName */))
 	require.NoError(t, err)
 	defer provider.Close()
-	return buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, compression)
+	return buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, compression, prefix)
 }
 
 func buildTestTableWithProvider(
@@ -1411,6 +1411,7 @@ func buildTestTableWithProvider(
 	numEntries uint64,
 	blockSize, indexBlockSize int,
 	compression Compression,
+	prefix []byte,
 ) *Reader {
 	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, base.FileNum(0).DiskFileNum(), objstorage.CreateOptions{})
 	require.NoError(t, err)
@@ -1424,9 +1425,10 @@ func buildTestTableWithProvider(
 
 	var ikey InternalKey
 	for i := uint64(0); i < numEntries; i++ {
-		key := make([]byte, 8+i%3)
+		key := make([]byte, len(prefix), uint64(len(prefix))+8+i%3)
+		copy(key, prefix)
 		value := make([]byte, i%100)
-		binary.BigEndian.PutUint64(key, i)
+		key = binary.BigEndian.AppendUint64(key, i)
 		ikey.UserKey = key
 		w.Add(ikey, value)
 	}
