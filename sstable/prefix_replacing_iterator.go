@@ -154,7 +154,7 @@ func (p *prefixReplacingIterator) SetBounds(lower, upper []byte) {
 	// Check if the underlying iterator requires un-rewritten bounds, i.e. if it
 	// is going to rewrite them itself or pass them to something e.g. vState that
 	// will rewrite them.
-	if x, ok := p.i.(interface{ SetBoundsWithVirtualPrefix() bool }); ok && x.SetBoundsWithVirtualPrefix() {
+	if x, ok := p.i.(interface{ SetBoundsWithSyntheticPrefix() bool }); ok && x.SetBoundsWithSyntheticPrefix() {
 		p.i.SetBounds(lower, upper)
 		return
 	}
@@ -216,9 +216,6 @@ func (p *prefixReplacingFragmentIterator) rewriteSpan(sp *keyspan.Span) *keyspan
 	}
 	sp.Start = append(p.out1[:len(p.dst)], sp.Start[len(p.src):]...)
 	sp.End = append(p.out2[:len(p.dst)], sp.End[len(p.src):]...)
-
-	// TODO(dt): RESOLVE DURING CODE REVIEW
-	// do I need to touch sp.Keys? is sp.Start/End actually assured to both have dst prefix?
 	return sp
 }
 
