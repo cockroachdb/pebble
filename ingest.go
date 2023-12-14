@@ -211,6 +211,13 @@ func ingestLoad1External(
 	// what parts of this sstable are referenced by other nodes.
 	meta.FileBacking.Size = e.Size
 
+	if e.HasPrefixRule {
+		meta.PrefixReplacement = &manifest.PrefixReplacement{
+			Backing:      e.Backing,
+			Materialized: e.Materialized,
+		}
+	}
+
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
 		return nil, err
 	}
@@ -1109,6 +1116,12 @@ type ExternalFile struct {
 	// or range keys. If both structs are false, an error is returned during
 	// ingestion.
 	HasPointKey, HasRangeKey bool
+	// HasPrefixRule denotes whether this file has a prefix replacement rule.
+	HasPrefixRule bool
+	// Backing and Materialized denote a prefix replacement rule, where the
+	// external file contains the Backing prefix and Materialized contains the
+	// prefix that iterators are expected to return.
+	Backing, Materialized []byte
 }
 
 // IngestWithStats does the same as Ingest, and additionally returns
