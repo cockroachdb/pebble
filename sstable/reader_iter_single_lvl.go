@@ -321,6 +321,23 @@ func disableBoundsOpt(bound []byte, ptr uintptr) bool {
 // state and require this behavior to be deterministic.
 var ensureBoundsOptDeterminism bool
 
+// SetBoundsWithSyntheticPrefix indicates whether this iterator requires keys
+// passed to its SetBounds() method by a prefix rewriting wrapper to be *not*
+// rewritten to be in terms of this iterator's content, but instead be passed
+// as-is, i.e. with the synthetic prefix still on them.
+//
+// This allows an optimization when this iterator is passing these bounds on to
+// a vState to additionally constrain them. In said vState, passed bounds are
+// combined with the vState bounds which are in terms of the rewritten prefix.
+// If the caller rewrote bounds to be in terms of content prefix and SetBounds
+// passed those to vState, the vState would need to *un*rewrite them back to the
+// synthetic prefix in order to combine them with the vState bounds. Thus, if
+// this iterator knows bounds will be passed to vState, it can signal that it
+// they should be passed without being rewritten to skip converting to and fro.
+func (i singleLevelIterator) SetBoundsWithSyntheticPrefix() bool {
+	return i.vState != nil
+}
+
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package. Note that the upper field is exclusive.
 func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
