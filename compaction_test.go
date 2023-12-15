@@ -2589,7 +2589,7 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 			maxWidth := rng.Intn(endKeyspace-s) + 1
 			e := rng.Intn(maxWidth) + s
 			sKey, eKey := makeUserKey(s), makeUserKey(e)
-			keyRanges := calculateInuseKeyRanges(v, opts.Comparer.Compare, l, numLevels-1, sKey, eKey)
+			keyRanges := v.CalculateInuseKeyRanges(opts.Comparer.Compare, l, numLevels-1, sKey, eKey)
 
 			for level := l; level < numLevels; level++ {
 				for _, f := range files[level] {
@@ -3495,8 +3495,8 @@ func Test_calculateInuseKeyRanges(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := calculateInuseKeyRanges(tt.v, cmp, tt.level, tt.depth, tt.smallest, tt.largest); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("calculateInuseKeyRanges() = %v, want %v", got, tt.want)
+			if got := tt.v.CalculateInuseKeyRanges(cmp, tt.level, tt.depth, tt.smallest, tt.largest); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("CalculateInuseKeyRanges() = %v, want %v", got, tt.want)
 			}
 		})
 	}
