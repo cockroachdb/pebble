@@ -1879,7 +1879,7 @@ func (d *DB) splitManualCompaction(
 	if level == 0 {
 		endLevel = baseLevel
 	}
-	keyRanges := calculateInuseKeyRanges(curr, d.cmp, level, endLevel, start, end)
+	keyRanges := curr.CalculateInuseKeyRanges(d.cmp, level, endLevel, start, end)
 	for _, keyRange := range keyRanges {
 		splitCompactions = append(splitCompactions, &manualCompaction{
 			level: level,
