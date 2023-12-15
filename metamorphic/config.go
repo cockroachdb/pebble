@@ -188,6 +188,63 @@ func DefaultOpConfig() OpConfig {
 	}
 }
 
+// WriteOpConfig builds an OpConfig suitable for generating a random test
+// database. It generates Writer operations and some meta database operations
+// like flushes and manual compactions, but it does not generate any reads.
+func WriteOpConfig() OpConfig {
+	return OpConfig{
+		// dbClose is not in this list since it is deterministically generated once, at the end of the test.
+		ops: [NumOpTypes]int{
+			OpBatchAbort:                  0,
+			OpBatchCommit:                 5,
+			OpDBCheckpoint:                0,
+			OpDBCompact:                   1,
+			OpDBFlush:                     2,
+			OpDBRatchetFormatMajorVersion: 1,
+			OpDBRestart:                   2,
+			OpIterClose:                   0,
+			OpIterFirst:                   0,
+			OpIterLast:                    0,
+			OpIterNext:                    0,
+			OpIterNextWithLimit:           0,
+			OpIterNextPrefix:              0,
+			OpIterPrev:                    0,
+			OpIterPrevWithLimit:           0,
+			OpIterSeekGE:                  0,
+			OpIterSeekGEWithLimit:         0,
+			OpIterSeekLT:                  0,
+			OpIterSeekLTWithLimit:         0,
+			OpIterSeekPrefixGE:            0,
+			OpIterSetBounds:               0,
+			OpIterSetOptions:              0,
+			OpNewBatch:                    10,
+			OpNewIndexedBatch:             0,
+			OpNewIter:                     0,
+			OpNewIterUsingClone:           0,
+			OpNewSnapshot:                 10,
+			OpReaderGet:                   0,
+			OpSnapshotClose:               10,
+			OpWriterApply:                 10,
+			OpWriterDelete:                100,
+			OpWriterDeleteRange:           20,
+			OpWriterIngest:                100,
+			OpWriterMerge:                 100,
+			OpWriterRangeKeySet:           10,
+			OpWriterRangeKeyUnset:         10,
+			OpWriterRangeKeyDelete:        5,
+			OpWriterSet:                   100,
+			OpWriterSingleDelete:          50,
+		},
+		// Use a new prefix 75% of the time (and 25% of the time use an existing
+		// prefix with an alternative suffix).
+		newPrefix: 0.75,
+		// Use a skewed distribution of suffixes to mimic MVCC timestamps. The
+		// range will be widened whenever a suffix is found to already be in use
+		// for a particular prefix.
+		writeSuffixDist: mustDynamic(randvar.NewSkewedLatest(0, 1, 0.99)),
+	}
+}
+
 func multiInstanceConfig() OpConfig {
 	cfg := DefaultOpConfig()
 	cfg.ops[OpReplicate] = 5
