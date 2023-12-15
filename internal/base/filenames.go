@@ -62,7 +62,6 @@ const (
 	FileTypeLock
 	FileTypeTable
 	FileTypeManifest
-	FileTypeCurrent
 	FileTypeOptions
 	FileTypeOldTemp
 	FileTypeTemp
@@ -79,8 +78,6 @@ func MakeFilename(fileType FileType, dfn DiskFileNum) string {
 		return fmt.Sprintf("%s.sst", dfn)
 	case FileTypeManifest:
 		return fmt.Sprintf("MANIFEST-%s", dfn)
-	case FileTypeCurrent:
-		return "CURRENT"
 	case FileTypeOptions:
 		return fmt.Sprintf("OPTIONS-%s", dfn)
 	case FileTypeOldTemp:
@@ -100,8 +97,6 @@ func MakeFilepath(fs vfs.FS, dirname string, fileType FileType, dfn DiskFileNum)
 func ParseFilename(fs vfs.FS, filename string) (fileType FileType, dfn DiskFileNum, ok bool) {
 	filename = fs.PathBase(filename)
 	switch {
-	case filename == "CURRENT":
-		return FileTypeCurrent, 0, true
 	case filename == "LOCK":
 		return FileTypeLock, 0, true
 	case strings.HasPrefix(filename, "MANIFEST-"):
