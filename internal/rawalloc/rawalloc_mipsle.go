@@ -13,7 +13,6 @@
 // permissions and limitations under the License.
 
 //go:build mips || mipsle || mips64p32 || mips64p32le
-// +build mips mipsle mips64p32 mips64p32le
 
 package rawalloc
 
