@@ -2,8 +2,8 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-//go:build mipsle
-// +build mipsle
+//go:build mips || mips64p32 || mips64p32le
+// +build mips mips64p32 mips64p32le
 
 package manual
 

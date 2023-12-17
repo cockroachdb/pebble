@@ -12,8 +12,8 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-//go:build mipsle
-// +build mipsle
+//go:build mips || mips64p32 || mips64p32le
+// +build mips mips64p32 mips64p32le
 
 package rawalloc
 
