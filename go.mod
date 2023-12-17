@@ -1,7 +1,7 @@
 module github.com/cockroachdb/pebble
 
 require (
-	github.com/DataDog/zstd v1.4.5
+	github.com/DataDog/zstd v0.0.0-20160706220725-2bf71ec48360
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/cockroachdb/datadriven v1.0.3-0.20230413201302-be42291fc80f
