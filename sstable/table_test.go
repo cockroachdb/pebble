@@ -549,10 +549,10 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 
 func TestFooterRoundTrip(t *testing.T) {
 	buf := make([]byte, 100+maxFooterLen)
-	for format := TableFormatLevelDB; format < TableFormatMax; format++ {
+	for format := TableFormatMinSupported; format < TableFormatMax; format++ {
 		t.Run(fmt.Sprintf("format=%s", format), func(t *testing.T) {
 			checksums := []ChecksumType{ChecksumTypeCRC32c}
-			if format != TableFormatLevelDB {
+			if format != TableFormatMinSupported {
 				checksums = []ChecksumType{ChecksumTypeCRC32c, ChecksumTypeXXHash64}
 			}
 			for _, checksum := range checksums {
@@ -603,14 +603,6 @@ func TestFooterRoundTrip(t *testing.T) {
 }
 
 func TestReadFooter(t *testing.T) {
-	encode := func(format TableFormat, checksum ChecksumType) string {
-		f := footer{
-			format:   format,
-			checksum: checksum,
-		}
-		return string(f.encode(make([]byte, maxFooterLen)))
-	}
-
 	testCases := []struct {
 		encoded  string
 		expected string
@@ -618,10 +610,6 @@ func TestReadFooter(t *testing.T) {
 		{strings.Repeat("a", minFooterLen-1), "file size is too small"},
 		{strings.Repeat("a", levelDBFooterLen), "bad magic number"},
 		{strings.Repeat("a", rocksDBFooterLen), "bad magic number"},
-		{encode(TableFormatLevelDB, 0)[1:], "file size is too small"},
-		{encode(TableFormatRocksDBv2, 0)[1:], "footer too short"},
-		{encode(TableFormatRocksDBv2, ChecksumTypeNone), "unsupported checksum type"},
-		{encode(TableFormatRocksDBv2, ChecksumTypeXXHash), "unsupported checksum type"},
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {

@@ -352,17 +352,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		// tables in L2. Lastly, the L2 table containing "c" will be compacted
 		// creating the L3 table.
 		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
-		if formatVersion < FormatSetWithDelete {
-			expectLSM(`
-1:
-  000008:[a#12,RANGEDEL-b#inf,RANGEDEL]
-2:
-  000012:[b#13,SET-c#inf,RANGEDEL]
-3:
-  000013:[c#14,SET-d#inf,RANGEDEL]
-`)
-		} else {
-			expectLSM(`
+		expectLSM(`
 1:
   000008:[a#12,RANGEDEL-b#inf,RANGEDEL]
 2:
@@ -370,7 +360,6 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 3:
   000013:[c#14,SET-d#inf,RANGEDEL]
 `)
-		}
 
 		// The L1 table still contains a tombstone from [a,d) which will improperly
 		// delete the newer version of "b" in L2.
@@ -386,9 +375,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 	}
 
 	versions := []FormatMajorVersion{
-		FormatMostCompatible,
-		FormatSetWithDelete - 1,
-		FormatSetWithDelete,
+		FormatMinSupported,
 		FormatNewest,
 	}
 	for _, version := range versions {

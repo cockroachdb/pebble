@@ -290,10 +290,6 @@ func TestCheckOrdering(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "check-ordering":
-				orderingInvariants := ProhibitSplitUserKeys
-				if d.HasArg("allow-split-user-keys") {
-					orderingInvariants = AllowSplitUserKeys
-				}
 				v, err := ParseVersionDebug(cmp, fmtKey, 10<<20, d.Input)
 				if err != nil {
 					return err.Error()
@@ -304,7 +300,7 @@ func TestCheckOrdering(t *testing.T) {
 					m.SmallestSeqNum = m.Smallest.SeqNum()
 					m.LargestSeqNum = m.Largest.SeqNum()
 				})
-				if err = v.CheckOrdering(cmp, base.DefaultFormatter, orderingInvariants); err != nil {
+				if err = v.CheckOrdering(cmp, base.DefaultFormatter); err != nil {
 					return err.Error()
 				}
 				return "OK"

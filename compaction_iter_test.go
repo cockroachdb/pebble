@@ -90,9 +90,6 @@ func TestCompactionIter(t *testing.T) {
 	// The input to the data-driven test is dependent on the format major
 	// version we are testing against.
 	fileFunc := func(formatVersion FormatMajorVersion) string {
-		if formatVersion < FormatSetWithDelete {
-			return "testdata/compaction_iter"
-		}
 		if formatVersion < FormatDeleteSizedAndObsolete {
 			return "testdata/compaction_iter_set_with_del"
 		}
@@ -330,9 +327,7 @@ func TestCompactionIter(t *testing.T) {
 	// Rather than testing against all format version, we test against the
 	// significant boundaries.
 	formatVersions := []FormatMajorVersion{
-		FormatMostCompatible,
-		FormatSetWithDelete - 1,
-		FormatSetWithDelete,
+		FormatMinSupported,
 		internalFormatNewest,
 	}
 	for _, formatVersion := range formatVersions {

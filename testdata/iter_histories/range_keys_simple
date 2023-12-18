@@ -414,26 +414,6 @@ z@10: (z@10, .)
 z@1: (z@1, .)
 za@100: (za@100, .)
 
-# Applying range keys to a DB running with a version that doesn't support them
-# results in an error. Range keys were added in version 7.
-reset format-major-version=6
-----
-
-batch commit
-range-key-set a   z   @5 boop
-----
-pebble: batch requires at least format major version 8 (current: 6)
-
-# Constructing iterator over range keys on a DB that doesn't support them
-# results in an error.
-
-reset format-major-version=6
-----
-
-combined-iter
-----
-pebble: range keys require at least format major version 8 (current: 6)
-
 # Test Prev-ing back over a synthetic range key marker. Synthetic range-key
 # markers (the keys interleaved at 'c' during a SeekGE(c) when there's a
 # straddling range key) are ephemeral, and Prev-ing back must move back the

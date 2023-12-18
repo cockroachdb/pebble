@@ -504,10 +504,6 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 		switch cmdArg.Key {
 		case "format":
 			switch cmdArg.Vals[0] {
-			case "leveldb":
-				tableFormat = sstable.TableFormatLevelDB
-			case "rocksdbv2":
-				tableFormat = sstable.TableFormatRocksDBv2
 			case "pebblev1":
 				tableFormat = sstable.TableFormatPebblev1
 			case "pebblev2":
@@ -594,10 +590,6 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		switch cmdArg.Key {
 		case "format":
 			switch cmdArg.Vals[0] {
-			case "leveldb":
-				tableFormat = sstable.TableFormatLevelDB
-			case "rocksdbv2":
-				tableFormat = sstable.TableFormatRocksDBv2
 			case "pebblev1":
 				tableFormat = sstable.TableFormatPebblev1
 			case "pebblev2":
@@ -1302,37 +1294,6 @@ func runIngestExternalCmd(td *datadriven.TestData, d *DB, locator string) error 
 		return err
 	}
 	return nil
-}
-
-func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
-	var paths []string
-	var level int
-	for _, arg := range td.CmdArgs {
-		switch arg.Key {
-		case "paths":
-			paths = append(paths, arg.Vals...)
-		case "level":
-			var err error
-			level, err = strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return err
-			}
-		}
-	}
-	_, err := d.ingest(paths, func(
-		tableNewIters,
-		keyspan.TableNewSpanIter,
-		IterOptions,
-		*Comparer,
-		*version,
-		int,
-		map[*compaction]struct{},
-		*fileMetadata,
-		bool,
-	) (int, *fileMetadata, error) {
-		return level, nil, nil
-	}, nil /* shared */, KeyRange{}, nil /* external */)
-	return err
 }
 
 func runLSMCmd(td *datadriven.TestData, d *DB) string {
