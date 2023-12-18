@@ -135,9 +135,31 @@ const (
 //
 // Note that we do not need to do anything special at write time for
 // SETWITHDEL and SINGLEDEL. This is because these key kinds are treated
-// specially only by compactions, which do not hide obsolete points. For
-// regular reads, SETWITHDEL behaves the same as SET and SINGLEDEL behaves the
-// same as DEL.
+// specially only by compactions, which typically do not hide obsolete points
+// (see exception below). For regular reads, SETWITHDEL behaves the same as
+// SET and SINGLEDEL behaves the same as DEL.
+//
+// 2.1.1 Compaction reads of a foreign sstable
+//
+// Compaction reads of a foreign sstable behave like regular reads in that
+// only non-obsolete points are exposed. Consider a L5 foreign sstable with
+// b.SINGLEDEL that is non-obsolete followed by obsolete b.DEL. And a L6
+// foreign sstable with two b.SETs. The SINGLEDEL will be exposed, and not the
+// DEL, but this is not a correctness issue since only one of the SETs in the
+// L6 sstable will be exposed. However, this works only because we have
+// limited the number of foreign sst levels to two, and is extremely fragile.
+// For robust correctness, non-obsolete SINGLEDELs in foreign sstables should
+// be exposed as DELs.
+//
+// Additionally, to avoid false positive accounting errors in DELSIZED, we
+// should expose them as DEL.
+//
+// NB: as of writing this comment, we do not have end-to-end support for
+// SINGLEDEL for disaggregated storage since pointCollapsingIterator (used by
+// ScanInternal) does not support SINGLEDEL. So the disaggregated key spans
+// are required to never have SINGLEDELs (which is fine for CockroachDB since
+// only the MVCC key space uses disaggregated storage, and SINGLEDELs are only
+// used for the non-MVCC locks and intents).
 //
 // 2.2 Strictness and MERGE
 //
