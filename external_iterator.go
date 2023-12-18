@@ -101,16 +101,6 @@ func NewExternalIterWithContext(
 
 	var readers [][]*sstable.Reader
 
-	// Ensure we close all the opened readers if we error out.
-	defer func() {
-		if err != nil {
-			for i := range readers {
-				for j := range readers[i] {
-					_ = readers[i][j].Close()
-				}
-			}
-		}
-	}()
 	seqNumOffset := 0
 	var extraReaderOpts []sstable.ReaderOption
 	for i := range extraOpts {
@@ -120,13 +110,18 @@ func NewExternalIterWithContext(
 		seqNumOffset += len(levelFiles)
 	}
 	for _, levelFiles := range files {
-		var subReaders []*sstable.Reader
 		seqNumOffset -= len(levelFiles)
-		subReaders, err = openExternalTables(o, levelFiles, seqNumOffset, o.MakeReaderOptions(), extraReaderOpts...)
+		subReaders, err := openExternalTables(o, levelFiles, seqNumOffset, o.MakeReaderOptions(), extraReaderOpts...)
 		readers = append(readers, subReaders)
-	}
-	if err != nil {
-		return nil, err
+		if err != nil {
+			// Close all the opened readers.
+			for i := range readers {
+				for j := range readers[i] {
+					_ = readers[i][j].Close()
+				}
+			}
+			return nil, err
+		}
 	}
 
 	buf := iterAllocPool.Get().(*iterAlloc)
