@@ -142,14 +142,17 @@ func TestErrors(t *testing.T) {
 			t.Logf("success %d\n", i)
 			break
 		}
-		errorCounts[err.Error()]++
+		errMsg := err.Error()
+		if !strings.Contains(errMsg, "injected error") {
+			t.Fatalf("unexpected errors: %v", err)
+		}
+		errorCounts[errMsg]++
 	}
 
 	expectedErrors := []string{
 		"fatal: MANIFEST flush failed: injected error",
 		"fatal: MANIFEST sync failed: injected error",
 		"fatal: MANIFEST set current failed: injected error",
-		"fatal: MANIFEST dirsync failed: injected error",
 	}
 	for _, expected := range expectedErrors {
 		if errorCounts[expected] == 0 {
@@ -193,21 +196,12 @@ func TestRequireReadError(t *testing.T) {
 		require.NoError(t, d.DeleteRange(key1, key2, nil))
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Flush())
-		if formatVersion < FormatSetWithDelete {
-			expectLSM(`
-0.0:
-  000007:[a1#13,SET-a2#inf,RANGEDEL]
-6:
-  000005:[a1#10,SET-a2#11,SET]
-`, d, t)
-		} else {
-			expectLSM(`
+		expectLSM(`
 0.0:
   000007:[a1#13,SETWITHDEL-a2#inf,RANGEDEL]
 6:
   000005:[a1#10,SET-a2#11,SET]
 `, d, t)
-		}
 
 		// Now perform foreground ops with error injection enabled.
 		ii.Store(index)
@@ -246,7 +240,7 @@ func TestRequireReadError(t *testing.T) {
 		return nil
 	}
 
-	versions := []FormatMajorVersion{FormatMostCompatible, FormatSetWithDelete}
+	versions := []FormatMajorVersion{FormatMinSupported, internalFormatNewest}
 	for _, version := range versions {
 		t.Run(fmt.Sprintf("version-%s", version), func(t *testing.T) {
 			for i := int32(0); ; i++ {
@@ -296,22 +290,12 @@ func TestCorruptReadError(t *testing.T) {
 		require.NoError(t, d.DeleteRange(key1, key2, nil))
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Flush())
-		if formatVersion < FormatSetWithDelete {
-			expectLSM(`
-0.0:
-  000007:[a1#13,SET-a2#inf,RANGEDEL]
-6:
-  000005:[a1#10,SET-a2#11,SET]
-`, d, t)
-
-		} else {
-			expectLSM(`
+		expectLSM(`
 0.0:
   000007:[a1#13,SETWITHDEL-a2#inf,RANGEDEL]
 6:
   000005:[a1#10,SET-a2#11,SET]
 `, d, t)
-		}
 
 		// Now perform foreground ops with corruption injection enabled.
 		fs.index.Store(index)
@@ -349,7 +333,7 @@ func TestCorruptReadError(t *testing.T) {
 		}
 		return nil
 	}
-	versions := []FormatMajorVersion{FormatMostCompatible, FormatSetWithDelete}
+	versions := []FormatMajorVersion{FormatMinSupported, internalFormatNewest}
 	for _, version := range versions {
 		t.Run(fmt.Sprintf("version-%s", version), func(t *testing.T) {
 			for i := int32(0); ; i++ {

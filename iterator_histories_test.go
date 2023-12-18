@@ -45,7 +45,7 @@ func TestIterHistories(t *testing.T) {
 			opts = &Options{
 				FS:                 vfs.NewMem(),
 				Comparer:           testkeys.Comparer,
-				FormatMajorVersion: FormatRangeKeys,
+				FormatMajorVersion: FormatMinSupported,
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					sstable.NewTestKeysBlockPropertyCollector,
 				},

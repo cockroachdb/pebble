@@ -193,12 +193,10 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 
-	tableFormat := sstable.TableFormatRocksDBv2
+	tableFormat := sstable.TableFormatMinSupported
 	for _, arg := range d.CmdArgs {
 		if arg.Key == "format" {
 			switch arg.Vals[0] {
-			case "rocksdbv2":
-				tableFormat = sstable.TableFormatRocksDBv2
 			case "pebblev2":
 				tableFormat = sstable.TableFormatPebblev2
 			}

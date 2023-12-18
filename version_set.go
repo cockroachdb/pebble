@@ -5,14 +5,12 @@
 package pebble
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -116,7 +114,6 @@ type versionSet struct {
 
 	manifestFile          vfs.File
 	manifest              *record.Writer
-	setCurrent            func(base.DiskFileNum) error
 	getFormatMajorVersion func() FormatMajorVersion
 
 	writing    bool
@@ -129,7 +126,6 @@ func (vs *versionSet) init(
 	dirname string,
 	opts *Options,
 	marker *atomicfs.Marker,
-	setCurrent func(base.DiskFileNum) error,
 	getFMV func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) {
@@ -148,7 +144,6 @@ func (vs *versionSet) init(
 	vs.backingState.fileBackingSize = 0
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
-	vs.setCurrent = setCurrent
 	vs.getFormatMajorVersion = getFMV
 }
 
@@ -158,11 +153,10 @@ func (vs *versionSet) create(
 	dirname string,
 	opts *Options,
 	marker *atomicfs.Marker,
-	setCurrent func(base.DiskFileNum) error,
 	getFormatMajorVersion func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) error {
-	vs.init(dirname, opts, marker, setCurrent, getFormatMajorVersion, mu)
+	vs.init(dirname, opts, marker, getFormatMajorVersion, mu)
 	newVersion := &version{}
 	vs.append(newVersion)
 	var err error
@@ -183,8 +177,8 @@ func (vs *versionSet) create(
 		}
 	}
 	if err == nil {
-		// NB: setCurrent is responsible for syncing the data directory.
-		if err = vs.setCurrent(vs.manifestFileNum); err != nil {
+		// NB: Move() is responsible for syncing the data directory.
+		if err = vs.manifestMarker.Move(base.MakeFilename(fileTypeManifest, vs.manifestFileNum)); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
 		}
 	}
@@ -207,11 +201,10 @@ func (vs *versionSet) load(
 	opts *Options,
 	manifestFileNum base.DiskFileNum,
 	marker *atomicfs.Marker,
-	setCurrent func(base.DiskFileNum) error,
 	getFormatMajorVersion func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) error {
-	vs.init(dirname, opts, marker, setCurrent, getFormatMajorVersion, mu)
+	vs.init(dirname, opts, marker, getFormatMajorVersion, mu)
 
 	vs.manifestFileNum = manifestFileNum
 	manifestPath := base.MakeFilepath(opts.FS, dirname, fileTypeManifest, vs.manifestFileNum)
@@ -310,7 +303,6 @@ func (vs *versionSet) load(
 	newVersion, err := bve.Apply(
 		nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes,
 		opts.Experimental.ReadCompactionRate, nil, /* zombies */
-		getFormatMajorVersion().orderingInvariants(),
 	)
 	if err != nil {
 		return err
@@ -445,8 +437,6 @@ func (vs *versionSet) logAndApply(
 	}
 
 	currentVersion := vs.currentVersion()
-	fmv := vs.getFormatMajorVersion()
-	orderingInvariants := fmv.orderingInvariants()
 	var newVersion *version
 
 	// Generate a new manifest if we don't currently have one, or forceRotation
@@ -524,7 +514,6 @@ func (vs *versionSet) logAndApply(
 			ve, currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
 			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
 			vs.backingState.fileBackingMap, vs.addFileBacking, vs.removeFileBacking,
-			orderingInvariants,
 		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
@@ -562,8 +551,8 @@ func (vs *versionSet) logAndApply(
 			return errors.Wrap(err, "MANIFEST sync failed")
 		}
 		if newManifestFileNum != 0 {
-			// NB: setCurrent is responsible for syncing the data directory.
-			if err := vs.setCurrent(newManifestFileNum); err != nil {
+			// NB: Move() is responsible for syncing the data directory.
+			if err := vs.manifestMarker.Move(base.MakeFilename(fileTypeManifest, newManifestFileNum)); err != nil {
 				return errors.Wrap(err, "MANIFEST set current failed")
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
@@ -883,68 +872,15 @@ func (vs *versionSet) updateObsoleteTableMetricsLocked() {
 	}
 }
 
-func setCurrentFunc(
-	vers FormatMajorVersion, marker *atomicfs.Marker, fs vfs.FS, dirname string, dir vfs.File,
-) func(base.DiskFileNum) error {
-	if vers < formatVersionedManifestMarker {
-		// Pebble versions before `formatVersionedManifestMarker` used
-		// the CURRENT file to signal which MANIFEST is current. Ignore
-		// the filename read during LocateMarker.
-		return func(manifestFileNum base.DiskFileNum) error {
-			if err := setCurrentFile(dirname, fs, manifestFileNum); err != nil {
-				return err
-			}
-			if err := dir.Sync(); err != nil {
-				// This is a panic here, rather than higher in the call
-				// stack, for parity with the atomicfs.Marker behavior.
-				// A panic is always necessary because failed Syncs are
-				// unrecoverable.
-				panic(errors.Wrap(err, "fatal: MANIFEST dirsync failed"))
-			}
-			return nil
-		}
-	}
-	return setCurrentFuncMarker(marker, fs, dirname)
-}
-
-func setCurrentFuncMarker(
-	marker *atomicfs.Marker, fs vfs.FS, dirname string,
-) func(base.DiskFileNum) error {
-	return func(manifestFileNum base.DiskFileNum) error {
-		return marker.Move(base.MakeFilename(fileTypeManifest, manifestFileNum))
-	}
-}
-
 func findCurrentManifest(
-	vers FormatMajorVersion, fs vfs.FS, dirname string,
+	fs vfs.FS, dirname string,
 ) (marker *atomicfs.Marker, manifestNum base.DiskFileNum, exists bool, err error) {
-	// NB: We always locate the manifest marker, even if we might not
-	// actually use it (because we're opening the database at an earlier
-	// format major version that uses the CURRENT file).  Locating a
-	// marker should succeed even if the marker has never been placed.
+	// Locating a marker should succeed even if the marker has never been placed.
 	var filename string
 	marker, filename, err = atomicfs.LocateMarker(fs, dirname, manifestMarkerName)
 	if err != nil {
 		return nil, base.FileNum(0).DiskFileNum(), false, err
 	}
-
-	if vers < formatVersionedManifestMarker {
-		// Pebble versions before `formatVersionedManifestMarker` used
-		// the CURRENT file to signal which MANIFEST is current. Ignore
-		// the filename read during LocateMarker.
-
-		manifestNum, err = readCurrentFile(fs, dirname)
-		if oserror.IsNotExist(err) {
-			return marker, base.FileNum(0).DiskFileNum(), false, nil
-		} else if err != nil {
-			return marker, base.FileNum(0).DiskFileNum(), false, err
-		}
-		return marker, manifestNum, true, nil
-	}
-
-	// The current format major version is >=
-	// formatVersionedManifestMarker indicating that the
-	// atomicfs.Marker is the source of truth on the current manifest.
 
 	if filename == "" {
 		// The marker hasn't been set yet. This database doesn't exist.
@@ -957,41 +893,6 @@ func findCurrentManifest(
 		return marker, base.FileNum(0).DiskFileNum(), false, base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(filename))
 	}
 	return marker, manifestNum, true, nil
-}
-
-func readCurrentFile(fs vfs.FS, dirname string) (base.DiskFileNum, error) {
-	// Read the CURRENT file to find the current manifest file.
-	current, err := fs.Open(base.MakeFilepath(fs, dirname, fileTypeCurrent, base.FileNum(0).DiskFileNum()))
-	if err != nil {
-		return base.FileNum(0).DiskFileNum(), errors.Wrapf(err, "pebble: could not open CURRENT file for DB %q", dirname)
-	}
-	defer current.Close()
-	stat, err := current.Stat()
-	if err != nil {
-		return base.FileNum(0).DiskFileNum(), err
-	}
-	n := stat.Size()
-	if n == 0 {
-		return base.FileNum(0).DiskFileNum(), errors.Errorf("pebble: CURRENT file for DB %q is empty", dirname)
-	}
-	if n > 4096 {
-		return base.FileNum(0).DiskFileNum(), errors.Errorf("pebble: CURRENT file for DB %q is too large", dirname)
-	}
-	b := make([]byte, n)
-	_, err = current.ReadAt(b, 0)
-	if err != nil {
-		return base.FileNum(0).DiskFileNum(), err
-	}
-	if b[n-1] != '\n' {
-		return base.FileNum(0).DiskFileNum(), base.CorruptionErrorf("pebble: CURRENT file for DB %q is malformed", dirname)
-	}
-	b = bytes.TrimSpace(b)
-
-	_, manifestFileNum, ok := base.ParseFilename(fs, string(b))
-	if !ok {
-		return base.FileNum(0).DiskFileNum(), base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
-	}
-	return manifestFileNum, nil
 }
 
 func newFileMetrics(newFiles []manifest.NewFileEntry) map[int]*LevelMetrics {

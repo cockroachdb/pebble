@@ -274,8 +274,8 @@ func (cfg *randomTableConfig) readerOpts() ReaderOptions {
 func (cfg *randomTableConfig) randomize() {
 	if cfg.wopts == nil {
 		cfg.wopts = &WriterOptions{
-			// Test all table formats in [TableFormatLevelDB, TableFormatMax].
-			TableFormat:             TableFormat(cfg.rng.Intn(int(TableFormatMax)) + 1),
+			// Test all table formats in [TableFormatMinSupported, TableFormatMax].
+			TableFormat:             TableFormatMinSupported + TableFormat(cfg.rng.Intn(int(TableFormatMax-TableFormatMinSupported+1))),
 			BlockRestartInterval:    (1 << cfg.rng.Intn(6)),             // {1, 2, 4, ..., 32}
 			BlockSizeThreshold:      min(int(100*cfg.rng.Float64()), 1), // 1-100%
 			BlockSize:               (1 << cfg.rng.Intn(18)),            // {1, 2, 4, ..., 128 KiB}

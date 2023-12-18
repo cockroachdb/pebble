@@ -89,15 +89,15 @@ a.RANGEDEL.0:b
   ranges: #0,0-#0,0
 
 # Loading tables at an unsupported table format results in an error.
-# Write a table at version 7 (Pebble,v2) into a DB at version 6 (Pebble,v1).
-load writer-version=8 db-version=7
+# Write a table at version 15 (Pebble,v4) into a DB at version 14 (Pebble,v3).
+load writer-version=15 db-version=14
 a.SET.1:
 ----
-pebble: table format (Pebble,v2) is not within range supported at DB format major version 7, ((LevelDB),(Pebble,v1))
+pebble: table format (Pebble,v4) is not within range supported at DB format major version 14, ((Pebble,v1),(Pebble,v3))
 
 # Tables with range keys only.
 
-load writer-version=10 db-version=10
+load writer-version=16 db-version=16
 rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,21-z#72057594037927935,21
@@ -106,7 +106,7 @@ rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 
 # Tables with a mixture of point and range keys.
 
-load writer-version=10 db-version=10
+load writer-version=16 db-version=16
 a.SET.0:
 b.SET.0:
 c.SET.0:
@@ -118,7 +118,7 @@ rangekey: y-z:{(#0,RANGEKEYSET,@3,baz)}
   points: a#0,1-c#0,1
   ranges: w#0,21-z#72057594037927935,21
 
-load writer-version=10 db-version=10
+load writer-version=16 db-version=16
 c.SET.0:d
 rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
@@ -126,7 +126,7 @@ rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
   points: c#0,1-c#0,1
   ranges: a#0,21-z#72057594037927935,21
 
-load writer-version=10 db-version=10
+load writer-version=16 db-version=16
 a.SET.0:z
 rangekey: c-d:{(#0,RANGEKEYSET,@1,foo)}
 ----
@@ -136,7 +136,7 @@ rangekey: c-d:{(#0,RANGEKEYSET,@1,foo)}
 
 # NB: range dels sort before range keys
 
-load writer-version=10 db-version=10
+load writer-version=16 db-version=16
 a.RANGEDEL.0:z
 rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----

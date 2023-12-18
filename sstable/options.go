@@ -228,9 +228,7 @@ type WriterOptions struct {
 	MergerName string
 
 	// TableFormat specifies the format version for writing sstables. The default
-	// is TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
-	// TableFormatLevelDB to create LevelDB compatible sstable which can be used
-	// by a wider range of tools and libraries.
+	// is TableFormatMinSupported.
 	TableFormat TableFormat
 
 	// IsStrictObsolete is only relevant for >= TableFormatPebblev4. See comment
@@ -299,7 +297,7 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	// By default, if the table format is not specified, fall back to using the
 	// most compatible format.
 	if o.TableFormat == TableFormatUnspecified {
-		o.TableFormat = TableFormatRocksDBv2
+		o.TableFormat = TableFormatMinSupported
 	}
 	return o
 }

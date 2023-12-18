@@ -56,12 +56,11 @@ ls
 000006.sst
 000007.log
 000008.log
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000015.016
+marker.format-version.000003.016
 marker.manifest.000001.MANIFEST-000001
 
 # Test basic WAL replay
@@ -78,12 +77,11 @@ ls
 000006.sst
 000007.log
 000008.log
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000015.016
+marker.format-version.000003.016
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -387,12 +385,11 @@ ls
 000006.sst
 000007.log
 000008.log
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000015.016
+marker.format-version.000003.016
 marker.manifest.000001.MANIFEST-000001
 
 close
@@ -408,12 +405,11 @@ ls
 000006.sst
 000007.log
 000008.log
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000015.016
+marker.format-version.000003.016
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -440,13 +436,12 @@ ls
 000009.sst
 000010.sst
 000011.log
-CURRENT
 LOCK
 MANIFEST-000001
 MANIFEST-000012
 OPTIONS-000013
 ext
-marker.format-version.000015.016
+marker.format-version.000003.016
 marker.manifest.000002.MANIFEST-000012
 
 # Make sure that the new mutable memtable can accept writes.
@@ -585,12 +580,11 @@ ls
 000005.log
 000006.log
 000007.sst
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000015.016
+marker.format-version.000003.016
 marker.manifest.000001.MANIFEST-000001
 
 close
@@ -604,13 +598,12 @@ resetToSynced
 000004.sst
 000005.log
 000006.log
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
 ext1
-marker.format-version.000015.016
+marker.format-version.000003.016
 marker.manifest.000001.MANIFEST-000001
 
 ignoreSyncs false

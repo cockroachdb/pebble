@@ -1204,7 +1204,7 @@ func TestTableCacheNoSuchFileError(t *testing.T) {
 	_, _, _ = d.Get([]byte("a"))
 	require.NotZero(t, len(logger.fatalMsgs), "no fatal message emitted")
 	require.Equal(t, 1, len(logger.fatalMsgs), "expected one fatal message; got: %v", logger.fatalMsgs)
-	require.Contains(t, logger.fatalMsgs[0], "directory contains 6 files, 0 unknown, 0 tables, 2 logs, 1 manifests")
+	require.Contains(t, logger.fatalMsgs[0], "directory contains 7 files, 2 unknown, 0 tables, 2 logs, 1 manifests")
 }
 
 func BenchmarkTableCacheHotPath(b *testing.B) {
