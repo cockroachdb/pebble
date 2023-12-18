@@ -1308,6 +1308,13 @@ func (d *DB) ingest(
 	if (exciseSpan.Valid() || len(shared) > 0 || len(external) > 0) && d.FormatMajorVersion() < FormatVirtualSSTables {
 		return IngestOperationStats{}, errors.New("pebble: format major version too old for excise, shared or external sstable ingestion")
 	}
+	if len(external) > 0 && d.FormatMajorVersion() < FormatSyntheticPrefixes {
+		for i := range external {
+			if len(external[i].SyntheticPrefix) > 0 {
+				return IngestOperationStats{}, errors.New("pebble: format major version too old for synthetic prefix ingestion")
+			}
+		}
+	}
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted. Note that this causes
 	// the file number ordering to be out of alignment with sequence number
