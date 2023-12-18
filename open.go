@@ -680,10 +680,17 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 	return version, nil
 }
 
-// replayWAL replays the edits in the specified log file. If the DB is in
-// read only mode, then the WALs are replayed into memtables and not flushed. If
-// the DB is not in read only mode, then the contents of the WAL are guaranteed
-// to be flushed.
+// replayWAL replays the edits in the specified log file. If the DB is in read
+// only mode, then the WALs are replayed into memtables and not flushed. If
+// the DB is not in read only mode, then the contents of the WAL are
+// guaranteed to be flushed. Note that this flushing is very important for
+// guaranteeing durability: the application may have had a number of pending
+// fsyncs to the WAL before the process crashed, and those fsyncs may not have
+// happened but the corresponding data may now be readable from the WAL (while
+// sitting in write-back caches in the kernel or the storage device). By
+// reading the WAL (including the non-fsynced data) and then flushing all
+// these changes (flush does fsyncs), we are able to guarantee that the
+// initial state of the DB is durable.
 //
 // The toFlush return value is a list of flushables associated with the WAL
 // being replayed which will be flushed. Once the version edit has been applied
