@@ -166,6 +166,8 @@ func NewExternalIterWithContext(
 	}
 	if err := finishInitializingExternal(ctx, dbi); err != nil {
 		dbi.Close()
+		// Empty out readers so we don't double-close readers in the defer.
+		readers = readers[:0]
 		return nil, err
 	}
 	return dbi, nil
