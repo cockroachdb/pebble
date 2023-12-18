@@ -1689,7 +1689,7 @@ func TestIngestExternal(t *testing.T) {
 			EventListener: &EventListener{FlushEnd: func(info FlushInfo) {
 				flushed = true
 			}},
-			FormatMajorVersion: FormatVirtualSSTables,
+			FormatMajorVersion: FormatNewest,
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"external-locator": remoteStorage,

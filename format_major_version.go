@@ -169,6 +169,13 @@ const (
 	// a format major version.
 	FormatVirtualSSTables
 
+	// FormatSyntheticPrefixes is a format major version that adds support for
+	// sstables to have their content exposed in a different prefix of keyspace
+	// than the actual prefix persisted in the keys in such sstables. The prefix
+	// replacement information is stored in new fields in the Manifest and thus
+	// requires a format major version.
+	FormatSyntheticPrefixes
+
 	// internalFormatNewest holds the newest format major version, including
 	// experimental ones excluded from the exported FormatNewest constant until
 	// they've stabilized. Used in tests.
@@ -193,7 +200,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev2
 	case FormatSSTableValueBlocks, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev3
-	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables:
+	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixes:
 		return sstable.TableFormatPebblev4
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -212,7 +219,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
 		formatUnusedPrePebblev1MarkedCompacted, FormatSSTableValueBlocks,
 		FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
-		FormatDeleteSizedAndObsolete, FormatVirtualSSTables:
+		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixes:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -362,6 +369,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatVirtualSSTables: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatVirtualSSTables)
+	},
+	FormatSyntheticPrefixes: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatSyntheticPrefixes)
 	},
 }
 
