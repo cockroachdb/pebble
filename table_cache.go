@@ -462,6 +462,11 @@ func (c *tableCacheShard) newIters(
 		//
 		// An alternative would be to have different slices for different sstable
 		// iterators, but that requires more work to avoid allocations.
+		//
+		// TODO(bilal): for compaction reads of foreign sstables, we do hide
+		// obsolete points (see sstable.Reader.newCompactionIter) but we don't
+		// apply the obsolete block property filter. We could optimize this by
+		// applying the filter.
 		hideObsoletePoints, pointKeyFilters =
 			v.reader.TryAddBlockPropertyFilterForHideObsoletePoints(
 				opts.snapshotForHideObsoletePoints, file.LargestSeqNum, opts.PointKeyFilters)
