@@ -145,7 +145,7 @@ func (meta *ObjectMetadata) AssertValid() {
 			if meta.Remote.CreatorID == 0 {
 				panic(errors.AssertionFailedf("CreatorID not set"))
 			}
-			if meta.Remote.CreatorFileNum == base.FileNum(0).DiskFileNum() {
+			if meta.Remote.CreatorFileNum == 0 {
 				panic(errors.AssertionFailedf("CreatorFileNum not set"))
 			}
 		}

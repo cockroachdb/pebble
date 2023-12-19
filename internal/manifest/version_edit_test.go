@@ -203,14 +203,12 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		{},
 		// A complete version edit.
 		{
-			ComparerName:       "11",
-			MinUnflushedLogNum: 22,
-			ObsoletePrevLogNum: 33,
-			NextFileNum:        44,
-			LastSeqNum:         55,
-			RemovedBackingTables: []base.DiskFileNum{
-				base.FileNum(10).DiskFileNum(), base.FileNum(11).DiskFileNum(),
-			},
+			ComparerName:         "11",
+			MinUnflushedLogNum:   22,
+			ObsoletePrevLogNum:   33,
+			NextFileNum:          44,
+			LastSeqNum:           55,
+			RemovedBackingTables: []base.DiskFileNum{10, 11},
 			CreatedBackingTables: []*FileBacking{m5.FileBacking, m6.FileBacking},
 			DeletedFiles: map[DeletedFileEntry]*FileMetadata{
 				{

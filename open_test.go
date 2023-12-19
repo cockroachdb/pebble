@@ -1073,7 +1073,7 @@ func TestGetVersion(t *testing.T) {
 	require.Equal(t, "0.1", version)
 
 	// Case 3: Manually created OPTIONS file with a higher number.
-	highestOptionsNum := FileNum(0)
+	highestOptionsNum := base.DiskFileNum(0)
 	ls, err := mem.List("")
 	require.NoError(t, err)
 	for _, filename := range ls {
@@ -1083,8 +1083,8 @@ func TestGetVersion(t *testing.T) {
 		}
 		switch ft {
 		case fileTypeOptions:
-			if fn.FileNum() > highestOptionsNum {
-				highestOptionsNum = fn.FileNum()
+			if fn > highestOptionsNum {
+				highestOptionsNum = fn
 			}
 		}
 	}
@@ -1362,8 +1362,8 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 
 	// Create a shared file with the newest file num and then close the db.
 	d.mu.Lock()
-	nextFileNum := d.mu.versions.getNextFileNum()
-	w, _, err := d.objProvider.Create(context.TODO(), fileTypeTable, nextFileNum.DiskFileNum(), objstorage.CreateOptions{PreferSharedStorage: true})
+	nextFileNum := d.mu.versions.getNextDiskFileNum()
+	w, _, err := d.objProvider.Create(context.TODO(), fileTypeTable, nextFileNum, objstorage.CreateOptions{PreferSharedStorage: true})
 	require.NoError(t, err)
 	require.NoError(t, w.Write([]byte("foobar")))
 	require.NoError(t, w.Finish())

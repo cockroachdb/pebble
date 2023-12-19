@@ -336,7 +336,7 @@ func TestEventListenerRedact(t *testing.T) {
 	l := MakeLoggingEventListener(redactLogger{logger: &log})
 	l.WALDeleted(WALDeleteInfo{
 		JobID:   5,
-		FileNum: FileNum(20),
+		FileNum: base.DiskFileNum(20),
 		Err:     errors.Errorf("unredacted error: %s", "unredacted string"),
 	})
 	require.Equal(t, "[JOB 5] WAL delete error: unredacted error: ‹×›\n", log.String())

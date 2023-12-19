@@ -45,11 +45,11 @@ func TestCatalog(t *testing.T) {
 			}
 			vals := toUInt64(args...)
 			return remoteobjcat.RemoteObjectMetadata{
-				FileNum: base.FileNum(vals[0]).DiskFileNum(),
+				FileNum: base.DiskFileNum(vals[0]),
 				// When we support other file types, we should let the test determine this.
 				FileType:       base.FileTypeTable,
 				CreatorID:      objstorage.CreatorID(vals[1]),
-				CreatorFileNum: base.FileNum(vals[2]).DiskFileNum(),
+				CreatorFileNum: base.DiskFileNum(vals[2]),
 			}
 		}
 
@@ -140,11 +140,11 @@ func TestCatalog(t *testing.T) {
 			for batchIdx := 0; batchIdx < n; batchIdx++ {
 				for i := 0; i < size; i++ {
 					b.AddObject(remoteobjcat.RemoteObjectMetadata{
-						FileNum: base.FileNum(rand.Uint64()).DiskFileNum(),
+						FileNum: base.DiskFileNum(rand.Uint64()),
 						// When we support other file types, we should let the test determine this.
 						FileType:       base.FileTypeTable,
 						CreatorID:      objstorage.CreatorID(rand.Uint64()),
-						CreatorFileNum: base.FileNum(rand.Uint64()).DiskFileNum(),
+						CreatorFileNum: base.DiskFileNum(rand.Uint64()),
 					})
 				}
 				if err := cat.ApplyBatch(b); err != nil {

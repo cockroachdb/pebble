@@ -1146,7 +1146,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	// Note that m can be nil here if the sstable exists in the file system, but
 	// not in the lsm. If m is nil just assume that file is not virtual.
 
-	backingFileNum := base.FileNum(uint64(file)).DiskFileNum()
+	backingFileNum := base.DiskFileNum(file)
 	if m != nil {
 		backingFileNum = m.FileBacking.DiskFileNum
 	}

@@ -361,7 +361,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		name string
 	}
 	var logFiles []fileNumAndName
-	var previousOptionsFileNum FileNum
+	var previousOptionsFileNum base.DiskFileNum
 	var previousOptionsFilename string
 	for _, filename := range ls {
 		ft, fn, ok := base.ParseFilename(opts.FS, filename)
@@ -371,8 +371,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 		// Don't reuse any obsolete file numbers to avoid modifying an
 		// ingested sstable's original external file.
-		if d.mu.versions.nextFileNum <= uint64(fn.FileNum()) {
-			d.mu.versions.nextFileNum = uint64(fn.FileNum()) + 1
+		if d.mu.versions.nextFileNum <= uint64(fn) {
+			d.mu.versions.nextFileNum = uint64(fn) + 1
 		}
 
 		switch ft {
@@ -380,12 +380,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			if fn >= d.mu.versions.minUnflushedLogNum {
 				logFiles = append(logFiles, fileNumAndName{fn, filename})
 			}
-			if d.logRecycler.minRecycleLogNum <= fn.FileNum() {
-				d.logRecycler.minRecycleLogNum = fn.FileNum() + 1
+			if d.logRecycler.minRecycleLogNum <= fn {
+				d.logRecycler.minRecycleLogNum = fn + 1
 			}
 		case fileTypeOptions:
-			if previousOptionsFileNum < fn.FileNum() {
-				previousOptionsFileNum = fn.FileNum()
+			if previousOptionsFileNum < fn {
+				previousOptionsFileNum = fn
 				previousOptionsFilename = filename
 			}
 		case fileTypeTemp, fileTypeOldTemp:
@@ -657,7 +657,7 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 		return "", err
 	}
 	var version string
-	lastOptionsSeen := FileNum(0)
+	lastOptionsSeen := base.DiskFileNum(0)
 	for _, filename := range ls {
 		ft, fn, ok := base.ParseFilename(fs, filename)
 		if !ok {
@@ -669,9 +669,9 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 			// processed, reset version. This is because rocksdb often
 			// writes multiple options files without deleting previous ones.
 			// Otherwise, skip parsing this options file.
-			if fn.FileNum() > lastOptionsSeen {
+			if fn > lastOptionsSeen {
 				version = ""
-				lastOptionsSeen = fn.FileNum()
+				lastOptionsSeen = fn
 			} else {
 				continue
 			}
@@ -856,7 +856,7 @@ func (d *DB) replayWAL(
 					if n <= 0 {
 						panic("pebble: ingest sstable file num is invalid.")
 					}
-					fileNums = append(fileNums, base.FileNum(fileNum).DiskFileNum())
+					fileNums = append(fileNums, base.DiskFileNum(fileNum))
 				}
 				addFileNum(encodedFileNum)
 
@@ -1097,7 +1097,7 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 // LockDirectory may be used to expand the critical section protected by the
 // database lock to include setup before the call to Open.
 func LockDirectory(dirname string, fs vfs.FS) (*Lock, error) {
-	fileLock, err := fs.Lock(base.MakeFilepath(fs, dirname, fileTypeLock, base.FileNum(0).DiskFileNum()))
+	fileLock, err := fs.Lock(base.MakeFilepath(fs, dirname, fileTypeLock, base.DiskFileNum(0)))
 	if err != nil {
 		return nil, err
 	}

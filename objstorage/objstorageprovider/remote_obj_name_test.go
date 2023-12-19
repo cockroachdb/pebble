@@ -21,10 +21,10 @@ func TestSharedObjectNames(t *testing.T) {
 		}
 		for it := 0; it < 100; it++ {
 			var meta objstorage.ObjectMetadata
-			meta.DiskFileNum = base.FileNum(rand.Intn(100000)).DiskFileNum()
+			meta.DiskFileNum = base.DiskFileNum(rand.Intn(100000))
 			meta.FileType = supportedFileTypes[rand.Int()%len(supportedFileTypes)]
 			meta.Remote.CreatorID = objstorage.CreatorID(rand.Int63())
-			meta.Remote.CreatorFileNum = base.FileNum(rand.Intn(100000)).DiskFileNum()
+			meta.Remote.CreatorFileNum = base.DiskFileNum(rand.Intn(100000))
 			if rand.Intn(4) == 0 {
 				meta.Remote.CustomObjectName = fmt.Sprintf("foo-%d.sst", rand.Intn(10000))
 			}
@@ -48,10 +48,10 @@ func TestSharedObjectNames(t *testing.T) {
 
 	t.Run("example", func(t *testing.T) {
 		var meta objstorage.ObjectMetadata
-		meta.DiskFileNum = base.FileNum(123).DiskFileNum()
+		meta.DiskFileNum = base.DiskFileNum(123)
 		meta.FileType = base.FileTypeTable
 		meta.Remote.CreatorID = objstorage.CreatorID(456)
-		meta.Remote.CreatorFileNum = base.FileNum(789).DiskFileNum()
+		meta.Remote.CreatorFileNum = base.DiskFileNum(789)
 		require.Equal(t, remoteObjectName(meta), "0e17-456-000789.sst")
 		require.Equal(t, sharedObjectRefPrefix(meta), "0e17-456-000789.sst.ref.")
 

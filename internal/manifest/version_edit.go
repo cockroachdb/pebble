@@ -211,7 +211,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				return err
 			}
 			v.RemovedBackingTables = append(
-				v.RemovedBackingTables, base.FileNum(n).DiskFileNum(),
+				v.RemovedBackingTables, base.DiskFileNum(n),
 			)
 		case tagCreatedBackingTable:
 			dfn, err := d.readUvarint()
@@ -223,7 +223,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				return err
 			}
 			fileBacking := &FileBacking{
-				DiskFileNum: base.FileNum(dfn).DiskFileNum(),
+				DiskFileNum: base.DiskFileNum(dfn),
 				Size:        size,
 			}
 			v.CreatedBackingTables = append(v.CreatedBackingTables, fileBacking)
@@ -430,7 +430,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				Meta:  m,
 			}
 			if virtualState.virtual {
-				nfe.BackingFileNum = base.FileNum(virtualState.backingFileNum).DiskFileNum()
+				nfe.BackingFileNum = base.DiskFileNum(virtualState.backingFileNum)
 			}
 			v.NewFiles = append(v.NewFiles, nfe)
 
@@ -529,11 +529,11 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	for _, dfn := range v.RemovedBackingTables {
 		e.writeUvarint(tagRemovedBackingTable)
-		e.writeUvarint(uint64(dfn.FileNum()))
+		e.writeUvarint(uint64(dfn))
 	}
 	for _, fileBacking := range v.CreatedBackingTables {
 		e.writeUvarint(tagCreatedBackingTable)
-		e.writeUvarint(uint64(fileBacking.DiskFileNum.FileNum()))
+		e.writeUvarint(uint64(fileBacking.DiskFileNum))
 		e.writeUvarint(fileBacking.Size)
 	}
 	// RocksDB requires LastSeqNum to be encoded for the first MANIFEST entry,
@@ -604,7 +604,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			}
 			if x.Meta.Virtual {
 				e.writeUvarint(customTagVirtual)
-				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum.FileNum()))
+				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum))
 			}
 			e.writeUvarint(customTagTerminate)
 		}

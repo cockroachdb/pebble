@@ -765,7 +765,7 @@ func (c *Cache) getShard(id uint64, fileNum base.DiskFileNum, offset uint64) *sh
 		h ^= uint64(id & 0xff)
 		id >>= 8
 	}
-	fileNumVal := uint64(fileNum.FileNum())
+	fileNumVal := uint64(fileNum)
 	for i := 0; i < 8; i++ {
 		h *= prime64
 		h ^= uint64(fileNumVal) & 0xff

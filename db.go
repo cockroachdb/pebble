@@ -2812,14 +2812,14 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	}
 
 	if recycleOK {
-		err = firstError(err, d.logRecycler.pop(recycleLog.fileNum.FileNum()))
+		err = firstError(err, d.logRecycler.pop(recycleLog.fileNum))
 	}
 
 	d.opts.EventListener.WALCreated(WALCreateInfo{
 		JobID:           jobID,
 		Path:            newLogName,
 		FileNum:         newLogNum,
-		RecycledFileNum: recycleLog.fileNum.FileNum(),
+		RecycledFileNum: recycleLog.fileNum,
 		Err:             err,
 	})
 

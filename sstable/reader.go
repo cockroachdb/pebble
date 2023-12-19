@@ -142,7 +142,7 @@ func (c *cacheOpts) readerApply(r *Reader) {
 	if r.cacheID == 0 {
 		r.cacheID = c.cacheID
 	}
-	if r.fileNum.FileNum() == 0 {
+	if r.fileNum == 0 {
 		r.fileNum = c.fileNum
 	}
 }
@@ -151,7 +151,7 @@ func (c *cacheOpts) writerApply(w *Writer) {
 	if w.cacheID == 0 {
 		w.cacheID = c.cacheID
 	}
-	if w.fileNum.FileNum() == 0 {
+	if w.fileNum == 0 {
 		w.fileNum = c.fileNum
 	}
 }
@@ -490,7 +490,7 @@ func (r *Reader) readRangeKey(
 }
 
 func checkChecksum(
-	checksumType ChecksumType, b []byte, bh BlockHandle, fileNum base.FileNum,
+	checksumType ChecksumType, b []byte, bh BlockHandle, fileNum base.DiskFileNum,
 ) error {
 	expectedChecksum := binary.LittleEndian.Uint32(b[bh.Length+1:])
 	var computedChecksum uint32
@@ -506,7 +506,7 @@ func checkChecksum(
 	if expectedChecksum != computedChecksum {
 		return base.CorruptionErrorf(
 			"pebble/table: invalid table %s (checksum mismatch at %d/%d)",
-			errors.Safe(fileNum), errors.Safe(bh.Offset), errors.Safe(bh.Length))
+			fileNum, errors.Safe(bh.Offset), errors.Safe(bh.Length))
 	}
 	return nil
 }
@@ -606,7 +606,7 @@ func (r *Reader) readBlock(
 		compressed.release()
 		return bufferHandle{}, err
 	}
-	if err := checkChecksum(r.checksumType, compressed.get(), bh, r.fileNum.FileNum()); err != nil {
+	if err := checkChecksum(r.checksumType, compressed.get(), bh, r.fileNum); err != nil {
 		compressed.release()
 		return bufferHandle{}, err
 	}

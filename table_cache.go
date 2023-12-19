@@ -337,7 +337,7 @@ func NewTableCache(cache *Cache, numShards int, size int) *TableCache {
 }
 
 func (c *TableCache) getShard(fileNum base.DiskFileNum) *tableCacheShard {
-	return c.shards[uint64(fileNum.FileNum())%uint64(len(c.shards))]
+	return c.shards[uint64(fileNum)%uint64(len(c.shards))]
 }
 
 type tableCacheKey struct {
@@ -1123,7 +1123,7 @@ func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *ta
 	}
 	if err != nil {
 		v.err = errors.Wrapf(
-			err, "pebble: backing file %s error", errors.Safe(loadInfo.backingFileNum.FileNum()))
+			err, "pebble: backing file %s error", loadInfo.backingFileNum)
 	}
 	if v.err == nil && loadInfo.smallestSeqNum == loadInfo.largestSeqNum {
 		v.reader.Properties.GlobalSeqNum = loadInfo.largestSeqNum
