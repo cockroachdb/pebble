@@ -261,7 +261,6 @@ func TestVirtualReadsWiring(t *testing.T) {
 			DisableAutomaticCompactions: true,
 		})
 	require.NoError(t, err)
-	defer d.Close()
 
 	b := newBatch(d)
 	// Some combination of sets, range deletes, and range key sets/unsets, so
@@ -311,7 +310,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 		Size:           parentFile.Size / 2,
 		SmallestSeqNum: parentFile.SmallestSeqNum,
 		LargestSeqNum:  parentFile.LargestSeqNum,
-		Smallest:       base.MakeInternalKey([]byte{'d'}, parentFile.Smallest.SeqNum()+1, InternalKeyKindSet),
+		Smallest:       base.MakeInternalKey([]byte{'d'}, parentFile.Smallest.SeqNum()+2, InternalKeyKindRangeDelete),
 		Largest:        base.MakeInternalKey([]byte{'z'}, parentFile.Largest.SeqNum(), InternalKeyKindSet),
 		HasPointKeys:   true,
 		Virtual:        true,
@@ -387,6 +386,9 @@ func TestVirtualReadsWiring(t *testing.T) {
 		require.Equal(t, []byte{expected[i]}, iter.Value())
 	}
 	iter.Close()
+
+	// We don't defer this Close in case we get a panic while holding d.mu.
+	d.Close()
 }
 
 // The table cache shouldn't be usable after all the dbs close.
