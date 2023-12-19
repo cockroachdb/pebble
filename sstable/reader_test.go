@@ -563,7 +563,7 @@ func forEveryTableFormat[I any](
 	t *testing.T, formatTable [NumTableFormats]I, runTest func(*testing.T, TableFormat, I),
 ) {
 	t.Helper()
-	for tf := TableFormatUnspecified + 1; tf <= TableFormatMax; tf++ {
+	for tf := TableFormatMinSupported; tf <= TableFormatMax; tf++ {
 		t.Run(tf.String(), func(t *testing.T) {
 			runTest(t, tf, formatTable[tf])
 		})
@@ -574,8 +574,6 @@ func TestReaderStats(t *testing.T) {
 	forEveryTableFormat[string](t,
 		[NumTableFormats]string{
 			TableFormatUnspecified: "",
-			TableFormatLevelDB:     "testdata/readerstats_LevelDB",
-			TableFormatRocksDBv2:   "testdata/readerstats_LevelDB",
 			TableFormatPebblev1:    "testdata/readerstats_LevelDB",
 			TableFormatPebblev2:    "testdata/readerstats_LevelDB",
 			TableFormatPebblev3:    "testdata/readerstats_Pebblev3",
@@ -606,8 +604,6 @@ func TestReaderWithBlockPropertyFilter(t *testing.T) {
 	forEveryTableFormat[string](t,
 		[NumTableFormats]string{
 			TableFormatUnspecified: "", // Block properties unsupported
-			TableFormatLevelDB:     "", // Block properties unsupported
-			TableFormatRocksDBv2:   "", // Block properties unsupported
 			TableFormatPebblev1:    "", // Block properties unsupported
 			TableFormatPebblev2:    "testdata/reader_bpf/Pebblev2",
 			TableFormatPebblev3:    "testdata/reader_bpf/Pebblev3",
@@ -1389,7 +1385,7 @@ func TestReader_TableFormat(t *testing.T) {
 		require.Equal(t, want, got)
 	}
 
-	for tf := TableFormatLevelDB; tf <= TableFormatMax; tf++ {
+	for tf := TableFormatMinSupported; tf <= TableFormatMax; tf++ {
 		t.Run(tf.String(), func(t *testing.T) {
 			test(t, tf)
 		})

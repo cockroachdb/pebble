@@ -34,7 +34,7 @@ func TestTableStats(t *testing.T) {
 	}
 	opts.DisableAutomaticCompactions = true
 	opts.Comparer = testkeys.Comparer
-	opts.FormatMajorVersion = FormatRangeKeys
+	opts.FormatMajorVersion = FormatMinSupported
 
 	d, err := Open("", opts)
 	require.NoError(t, err)

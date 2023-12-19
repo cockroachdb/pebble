@@ -462,6 +462,11 @@ func (c *tableCacheShard) newIters(
 		//
 		// An alternative would be to have different slices for different sstable
 		// iterators, but that requires more work to avoid allocations.
+		//
+		// TODO(bilal): for compaction reads of foreign sstables, we do hide
+		// obsolete points (see sstable.Reader.newCompactionIter) but we don't
+		// apply the obsolete block property filter. We could optimize this by
+		// applying the filter.
 		hideObsoletePoints, pointKeyFilters =
 			v.reader.TryAddBlockPropertyFilterForHideObsoletePoints(
 				opts.snapshotForHideObsoletePoints, file.LargestSeqNum, opts.PointKeyFilters)
@@ -494,6 +499,19 @@ func (c *tableCacheShard) newIters(
 	if err != nil {
 		c.unrefValue(v)
 		return nil, nil, err
+	}
+
+	// Assert expected bounds in tests.
+	if invariants.Enabled && rangeDelIter != nil {
+		cmp := base.DefaultComparer.Compare
+		if dbOpts.opts.Comparer != nil {
+			cmp = dbOpts.opts.Comparer.Compare
+		}
+		// TODO(radu): we should be using AssertBounds, but it currently fails in
+		// some cases (#3167).
+		rangeDelIter = keyspan.AssertUserKeyBounds(
+			rangeDelIter, file.SmallestPointKey.UserKey, file.LargestPointKey.UserKey, cmp,
+		)
 	}
 
 	if !ok {

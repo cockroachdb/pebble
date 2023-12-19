@@ -211,7 +211,7 @@ func (i *InterleavingIter) Init(
 		cmp:         comparer.Compare,
 		comparer:    comparer,
 		pointIter:   pointIter,
-		keyspanIter: keyspanIter,
+		keyspanIter: MaybeAssert(keyspanIter, comparer.Compare),
 		mask:        opts.Mask,
 		lower:       opts.LowerBound,
 		upper:       opts.UpperBound,

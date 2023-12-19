@@ -36,7 +36,7 @@ var _ FragmentIterator = (*filteringIter)(nil)
 // Filter returns a new filteringIter that will filter the Spans from the
 // provided child iterator using the provided FilterFunc.
 func Filter(iter FragmentIterator, filter FilterFunc, cmp base.Compare) FragmentIterator {
-	return &filteringIter{iter: iter, filterFn: filter, cmp: cmp}
+	return MaybeAssert(&filteringIter{iter: iter, filterFn: filter, cmp: cmp}, cmp)
 }
 
 // SeekGE implements FragmentIterator.

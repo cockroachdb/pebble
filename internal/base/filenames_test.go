@@ -24,8 +24,7 @@ func TestParseFilename(t *testing.T) {
 		"abcdef.log":             false,
 		"000001ldb":              false,
 		"000001.sst":             true,
-		"CURRENT":                true,
-		"CURRaNT":                false,
+		"CURRENT":                false,
 		"LOCK":                   true,
 		"xLOCK":                  false,
 		"x.LOCK":                 false,
@@ -55,9 +54,8 @@ func TestParseFilename(t *testing.T) {
 
 func TestFilenameRoundTrip(t *testing.T) {
 	testCases := map[FileType]bool{
-		// CURRENT and LOCK files aren't numbered.
-		FileTypeCurrent: false,
-		FileTypeLock:    false,
+		// LOCK files aren't numbered.
+		FileTypeLock: false,
 		// The remaining file types are numbered.
 		FileTypeLog:      true,
 		FileTypeManifest: true,
@@ -104,7 +102,7 @@ func TestMustExist(t *testing.T) {
 	MustExist(fs, filename, &buf, err)
 	require.Equal(t, `000000.sst:
 file does not exist
-directory contains 9 files, 2 unknown, 1 tables, 1 logs, 2 manifests`, buf.buf.String())
+directory contains 9 files, 3 unknown, 1 tables, 1 logs, 2 manifests`, buf.buf.String())
 }
 
 func TestRedactFileNum(t *testing.T) {

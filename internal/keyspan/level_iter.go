@@ -180,6 +180,7 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 	}
 	if indicator != fileAlreadyLoaded {
 		l.iter, l.err = l.newIter(file, l.tableOpts)
+		l.iter = MaybeAssert(l.iter, l.cmp)
 		indicator = newFileLoaded
 	}
 	if l.err != nil {

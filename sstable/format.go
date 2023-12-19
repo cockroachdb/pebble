@@ -19,15 +19,16 @@ type TableFormat uint32
 // Pebble (i.e. the history is linear).
 const (
 	TableFormatUnspecified TableFormat = iota
-	TableFormatLevelDB
-	TableFormatRocksDBv2
-	TableFormatPebblev1 // Block properties.
-	TableFormatPebblev2 // Range keys.
-	TableFormatPebblev3 // Value blocks.
-	TableFormatPebblev4 // DELSIZED tombstones.
+	_                                  // TableFormatLevelDB; deprecated.
+	_                                  // TableFormatRocksDBv2; deprecated.
+	TableFormatPebblev1                // Block properties.
+	TableFormatPebblev2                // Range keys.
+	TableFormatPebblev3                // Value blocks.
+	TableFormatPebblev4                // DELSIZED tombstones.
 	NumTableFormats
 
-	TableFormatMax = NumTableFormats - 1
+	TableFormatMax          = NumTableFormats - 1
+	TableFormatMinSupported = TableFormatPebblev1
 )
 
 // TableFormatPebblev4, in addition to DELSIZED, introduces the use of
@@ -134,9 +135,31 @@ const (
 //
 // Note that we do not need to do anything special at write time for
 // SETWITHDEL and SINGLEDEL. This is because these key kinds are treated
-// specially only by compactions, which do not hide obsolete points. For
-// regular reads, SETWITHDEL behaves the same as SET and SINGLEDEL behaves the
-// same as DEL.
+// specially only by compactions, which typically do not hide obsolete points
+// (see exception below). For regular reads, SETWITHDEL behaves the same as
+// SET and SINGLEDEL behaves the same as DEL.
+//
+// 2.1.1 Compaction reads of a foreign sstable
+//
+// Compaction reads of a foreign sstable behave like regular reads in that
+// only non-obsolete points are exposed. Consider a L5 foreign sstable with
+// b.SINGLEDEL that is non-obsolete followed by obsolete b.DEL. And a L6
+// foreign sstable with two b.SETs. The SINGLEDEL will be exposed, and not the
+// DEL, but this is not a correctness issue since only one of the SETs in the
+// L6 sstable will be exposed. However, this works only because we have
+// limited the number of foreign sst levels to two, and is extremely fragile.
+// For robust correctness, non-obsolete SINGLEDELs in foreign sstables should
+// be exposed as DELs.
+//
+// Additionally, to avoid false positive accounting errors in DELSIZED, we
+// should expose them as DEL.
+//
+// NB: as of writing this comment, we do not have end-to-end support for
+// SINGLEDEL for disaggregated storage since pointCollapsingIterator (used by
+// ScanInternal) does not support SINGLEDEL. So the disaggregated key spans
+// are required to never have SINGLEDELs (which is fine for CockroachDB since
+// only the MVCC key space uses disaggregated storage, and SINGLEDELs are only
+// used for the non-MVCC locks and intents).
 //
 // 2.2 Strictness and MERGE
 //
@@ -185,15 +208,6 @@ const (
 // corresponding internal TableFormat.
 func ParseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 	switch string(magic) {
-	case levelDBMagic:
-		return TableFormatLevelDB, nil
-	case rocksDBMagic:
-		if version != rocksDBFormatVersion2 {
-			return TableFormatUnspecified, base.CorruptionErrorf(
-				"pebble/table: unsupported rocksdb format version %d", errors.Safe(version),
-			)
-		}
-		return TableFormatRocksDBv2, nil
 	case pebbleDBMagic:
 		switch version {
 		case 1:
@@ -219,10 +233,6 @@ func ParseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 // AsTuple returns the TableFormat's (Magic String, Version) tuple.
 func (f TableFormat) AsTuple() (string, uint32) {
 	switch f {
-	case TableFormatLevelDB:
-		return levelDBMagic, 0
-	case TableFormatRocksDBv2:
-		return rocksDBMagic, 2
 	case TableFormatPebblev1:
 		return pebbleDBMagic, 1
 	case TableFormatPebblev2:
@@ -239,10 +249,6 @@ func (f TableFormat) AsTuple() (string, uint32) {
 // String returns the TableFormat (Magic String,Version) tuple.
 func (f TableFormat) String() string {
 	switch f {
-	case TableFormatLevelDB:
-		return "(LevelDB)"
-	case TableFormatRocksDBv2:
-		return "(RocksDB,v2)"
 	case TableFormatPebblev1:
 		return "(Pebble,v1)"
 	case TableFormatPebblev2:

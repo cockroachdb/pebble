@@ -179,13 +179,6 @@ L1 files 000001 and 000002 have overlapping ranges: [a#1,SET-b#2,SET] vs [b#1,SE
   000001:[a#1,SET-b#2,SET] seqnums:[0-0] points:[a#1,SET-b#2,SET]
   000002:[b#1,SET-d#4,SET] seqnums:[0-0] points:[b#1,SET-d#4,SET]
 
-check-ordering allow-split-user-keys
-1:
-  000001:[a#1,SET-b#2,SET]
-  000002:[b#1,SET-d#4,SET]
-----
-OK
-
 check-ordering
 1:
   000001:[a#1,SET-b#2,SET]

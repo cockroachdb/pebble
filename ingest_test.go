@@ -587,7 +587,7 @@ func TestExcise(t *testing.T) {
 	}()
 
 	var opts *Options
-	reset := func() {
+	reset := func(blockSize int) {
 		if d != nil {
 			require.NoError(t, d.Close())
 		}
@@ -595,6 +595,10 @@ func TestExcise(t *testing.T) {
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 		opts = &Options{
+			BlockPropertyCollectors: []func() BlockPropertyCollector{
+				sstable.NewTestKeysBlockPropertyCollector,
+			},
+			Comparer:              testkeys.Comparer,
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
@@ -603,7 +607,9 @@ func TestExcise(t *testing.T) {
 				flushed = true
 			}},
 			FormatMajorVersion: FormatVirtualSSTables,
-			Comparer:           testkeys.Comparer,
+		}
+		if blockSize != 0 {
+			opts.Levels = append(opts.Levels, LevelOptions{BlockSize: blockSize, IndexBlockSize: 32 << 10})
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -616,12 +622,21 @@ func TestExcise(t *testing.T) {
 		d, err = Open("", opts)
 		require.NoError(t, err)
 	}
-	reset()
+	reset(0 /* blockSize */)
 
 	datadriven.RunTest(t, "testdata/excise", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
-			reset()
+			var blockSize int
+			for i := range td.CmdArgs {
+				switch td.CmdArgs[i].Key {
+				case "tiny-blocks":
+					blockSize = 1
+				default:
+					return fmt.Sprintf("unexpected arg: %s", td.CmdArgs[i].Key)
+				}
+			}
+			reset(blockSize)
 			return ""
 		case "reopen":
 			require.NoError(t, d.Close())
@@ -687,9 +702,23 @@ func TestExcise(t *testing.T) {
 			return runGetCmd(t, td, d)
 
 		case "iter":
-			iter, _ := d.NewIter(&IterOptions{
+			opts := &IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
-			})
+			}
+			for i := range td.CmdArgs {
+				switch td.CmdArgs[i].Key {
+				case "range-key-masking":
+					opts.RangeKeyMasking = RangeKeyMasking{
+						Suffix: []byte(td.CmdArgs[i].Vals[0]),
+						Filter: func() BlockPropertyFilterMask {
+							return sstable.NewTestKeysMaskingFilter()
+						},
+					}
+				default:
+					return fmt.Sprintf("unexpected argument: %s", td.CmdArgs[i].Key)
+				}
+			}
+			iter, _ := d.NewIter(opts)
 			return runIterCmd(td, iter, true)
 
 		case "lsm":
@@ -2510,54 +2539,47 @@ func TestConcurrentIngestCompact(t *testing.T) {
 func TestIngestFlushQueuedMemTable(t *testing.T) {
 	// Verify that ingestion forces a flush of a queued memtable.
 
-	// Test with a format major version prior to FormatFlushableIngest and one
-	// after. Both should result in the same statistic calculations.
-	for _, fmv := range []FormatMajorVersion{FormatFlushableIngest - 1, internalFormatNewest} {
-		func(fmv FormatMajorVersion) {
-			mem := vfs.NewMem()
-			d, err := Open("", &Options{
-				FS:                 mem,
-				FormatMajorVersion: fmv,
-			})
-			require.NoError(t, err)
+	mem := vfs.NewMem()
+	o := &Options{FS: mem}
+	o.testingRandomized(t)
+	d, err := Open("", o)
+	require.NoError(t, err)
 
-			// Add the key "a" to the memtable, then fill up the memtable with the key
-			// "b". The ingested sstable will only overlap with the queued memtable.
-			require.NoError(t, d.Set([]byte("a"), nil, nil))
-			for {
-				require.NoError(t, d.Set([]byte("b"), nil, nil))
-				d.mu.Lock()
-				done := len(d.mu.mem.queue) == 2
-				d.mu.Unlock()
-				if done {
-					break
-				}
-			}
-
-			ingest := func(keys ...string) {
-				t.Helper()
-				f, err := mem.Create("ext")
-				require.NoError(t, err)
-
-				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
-					TableFormat: fmv.MinTableFormat(),
-				})
-				for _, k := range keys {
-					require.NoError(t, w.Set([]byte(k), nil))
-				}
-				require.NoError(t, w.Close())
-				stats, err := d.IngestWithStats([]string{"ext"})
-				require.NoError(t, err)
-				require.Equal(t, stats.ApproxIngestedIntoL0Bytes, stats.Bytes)
-				require.Equal(t, stats.MemtableOverlappingFiles, 1)
-				require.Less(t, uint64(0), stats.Bytes)
-			}
-
-			ingest("a")
-
-			require.NoError(t, d.Close())
-		}(fmv)
+	// Add the key "a" to the memtable, then fill up the memtable with the key
+	// "b". The ingested sstable will only overlap with the queued memtable.
+	require.NoError(t, d.Set([]byte("a"), nil, nil))
+	for {
+		require.NoError(t, d.Set([]byte("b"), nil, nil))
+		d.mu.Lock()
+		done := len(d.mu.mem.queue) == 2
+		d.mu.Unlock()
+		if done {
+			break
+		}
 	}
+
+	ingest := func(keys ...string) {
+		t.Helper()
+		f, err := mem.Create("ext")
+		require.NoError(t, err)
+
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+			TableFormat: o.FormatMajorVersion.MinTableFormat(),
+		})
+		for _, k := range keys {
+			require.NoError(t, w.Set([]byte(k), nil))
+		}
+		require.NoError(t, w.Close())
+		stats, err := d.IngestWithStats([]string{"ext"})
+		require.NoError(t, err)
+		require.Equal(t, stats.ApproxIngestedIntoL0Bytes, stats.Bytes)
+		require.Equal(t, stats.MemtableOverlappingFiles, 1)
+		require.Less(t, uint64(0), stats.Bytes)
+	}
+
+	ingest("a")
+
+	require.NoError(t, d.Close())
 }
 
 func TestIngestStats(t *testing.T) {

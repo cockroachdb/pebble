@@ -5,85 +5,25 @@ open-dir: db
 lock: db/LOCK
 open-dir: db
 open-dir: db
-open: db/CURRENT
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
-remove: db/temporary.000001.dbtmp
-create: db/temporary.000001.dbtmp
-sync: db/temporary.000001.dbtmp
-close: db/temporary.000001.dbtmp
-rename: db/temporary.000001.dbtmp -> db/CURRENT
+create: db/marker.manifest.000001.MANIFEST-000001
+close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 open-dir: db
 sync: db/MANIFEST-000001
 create: db/000002.log
 sync: db
-create: db/marker.manifest.000001.MANIFEST-000001
-close: db/marker.manifest.000001.MANIFEST-000001
+create: db/marker.format-version.000001.014
+close: db/marker.format-version.000001.014
 sync: db
-create: db/marker.format-version.000001.002
-close: db/marker.format-version.000001.002
+create: db/marker.format-version.000002.015
+close: db/marker.format-version.000002.015
+remove: db/marker.format-version.000001.014
 sync: db
-remove: db/temporary.000000.dbtmp
-create: db/temporary.000000.dbtmp
-sync: db/temporary.000000.dbtmp
-close: db/temporary.000000.dbtmp
-rename: db/temporary.000000.dbtmp -> db/CURRENT
-create: db/marker.format-version.000002.003
-close: db/marker.format-version.000002.003
-remove: db/marker.format-version.000001.002
-sync: db
-create: db/marker.format-version.000003.004
-close: db/marker.format-version.000003.004
-remove: db/marker.format-version.000002.003
-sync: db
-create: db/marker.format-version.000004.005
-close: db/marker.format-version.000004.005
-remove: db/marker.format-version.000003.004
-sync: db
-create: db/marker.format-version.000005.006
-close: db/marker.format-version.000005.006
-remove: db/marker.format-version.000004.005
-sync: db
-create: db/marker.format-version.000006.007
-close: db/marker.format-version.000006.007
-remove: db/marker.format-version.000005.006
-sync: db
-create: db/marker.format-version.000007.008
-close: db/marker.format-version.000007.008
-remove: db/marker.format-version.000006.007
-sync: db
-create: db/marker.format-version.000008.009
-close: db/marker.format-version.000008.009
-remove: db/marker.format-version.000007.008
-sync: db
-create: db/marker.format-version.000009.010
-close: db/marker.format-version.000009.010
-remove: db/marker.format-version.000008.009
-sync: db
-create: db/marker.format-version.000010.011
-close: db/marker.format-version.000010.011
-remove: db/marker.format-version.000009.010
-sync: db
-create: db/marker.format-version.000011.012
-close: db/marker.format-version.000011.012
-remove: db/marker.format-version.000010.011
-sync: db
-create: db/marker.format-version.000012.013
-close: db/marker.format-version.000012.013
-remove: db/marker.format-version.000011.012
-sync: db
-create: db/marker.format-version.000013.014
-close: db/marker.format-version.000013.014
-remove: db/marker.format-version.000012.013
-sync: db
-create: db/marker.format-version.000014.015
-close: db/marker.format-version.000014.015
-remove: db/marker.format-version.000013.014
-sync: db
-create: db/marker.format-version.000015.016
-close: db/marker.format-version.000015.016
-remove: db/marker.format-version.000014.015
+create: db/marker.format-version.000003.016
+close: db/marker.format-version.000003.016
+remove: db/marker.format-version.000002.015
 sync: db
 create: db/temporary.000003.dbtmp
 sync: db/temporary.000003.dbtmp
@@ -311,11 +251,10 @@ list db
 000006.log
 000008.log
 000010.sst
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000015.016
+marker.format-version.000003.016
 marker.manifest.000001.MANIFEST-000001
 
 list checkpoints/checkpoint1
@@ -627,11 +566,10 @@ list db
 000010.sst
 000011.sst
 000014.sst
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000015.016
+marker.format-version.000003.016
 marker.manifest.000001.MANIFEST-000001
 
 

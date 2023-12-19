@@ -1122,7 +1122,7 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 
 	if o.FormatMajorVersion == FormatDefault {
-		o.FormatMajorVersion = FormatMostCompatible
+		o.FormatMajorVersion = FormatMinSupported
 	}
 
 	if o.FS == nil {
@@ -1489,7 +1489,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				var v uint64
 				v, err = strconv.ParseUint(value, 10, 64)
 				if vers := FormatMajorVersion(v); vers > internalFormatNewest || vers == FormatDefault {
-					err = errors.Newf("unknown format major version %d", o.FormatMajorVersion)
+					err = errors.Newf("unsupported format major version %d", o.FormatMajorVersion)
 				}
 				if err == nil {
 					o.FormatMajorVersion = FormatMajorVersion(v)
@@ -1740,9 +1740,9 @@ func (o *Options) Validate() error {
 		fmt.Fprintf(&buf, "MemTableStopWritesThreshold (%d) must be >= 2\n",
 			o.MemTableStopWritesThreshold)
 	}
-	if o.FormatMajorVersion > internalFormatNewest {
-		fmt.Fprintf(&buf, "FormatMajorVersion (%d) must be <= %d\n",
-			o.FormatMajorVersion, internalFormatNewest)
+	if o.FormatMajorVersion < FormatMinSupported || o.FormatMajorVersion > internalFormatNewest {
+		fmt.Fprintf(&buf, "FormatMajorVersion (%d) must be between %d and %d\n",
+			o.FormatMajorVersion, FormatMinSupported, internalFormatNewest)
 	}
 	if o.TableCache != nil && o.Cache != o.TableCache.cache {
 		fmt.Fprintf(&buf, "underlying cache in the TableCache and the Cache dont match\n")

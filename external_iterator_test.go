@@ -27,10 +27,10 @@ import (
 func TestExternalIterator(t *testing.T) {
 	mem := vfs.NewMem()
 	o := &Options{
-		FS:                 mem,
-		Comparer:           testkeys.Comparer,
-		FormatMajorVersion: FormatRangeKeys,
+		FS:       mem,
+		Comparer: testkeys.Comparer,
 	}
+	o.testingRandomized(t)
 	o.EnsureDefaults()
 	d, err := Open("", o)
 	require.NoError(t, err)
@@ -80,10 +80,10 @@ func TestExternalIterator(t *testing.T) {
 func TestSimpleLevelIter(t *testing.T) {
 	mem := vfs.NewMem()
 	o := &Options{
-		FS:                 mem,
-		Comparer:           testkeys.Comparer,
-		FormatMajorVersion: FormatRangeKeys,
+		FS:       mem,
+		Comparer: testkeys.Comparer,
 	}
+	o.testingRandomized(t)
 	o.EnsureDefaults()
 	d, err := Open("", o)
 	require.NoError(t, err)

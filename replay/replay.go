@@ -718,8 +718,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 			r.Opts.Comparer.FormatKey,
 			r.Opts.FlushSplitBytes,
 			r.Opts.Experimental.ReadCompactionRate,
-			nil, /* zombies */
-			manifest.ProhibitSplitUserKeys)
+			nil /* zombies */)
 		bve = manifest.BulkVersionEdit{AddedByFileNum: bve.AddedByFileNum}
 		return v, err
 	}
