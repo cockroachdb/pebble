@@ -545,10 +545,11 @@ func (c *tableCacheShard) newIters(
 		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
 	}
 
-	if provider.IsSharedForeign(objMeta) {
+	if objMeta.IsShared() && v.reader.Properties.GlobalSeqNum != 0 {
 		if tableFormat < sstable.TableFormatPebblev4 {
-			return nil, nil, errors.New("pebble: shared foreign sstable has a lower table format than expected")
+			return nil, nil, errors.New("pebble: shared ingested sstable has a lower table format than expected")
 		}
+		// The table is shared and ingested.
 		hideObsoletePoints = true
 	}
 	var categoryAndQoS sstable.CategoryAndQoS
