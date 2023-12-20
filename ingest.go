@@ -1184,6 +1184,12 @@ func (d *DB) IngestAndExcise(
 			panic("IngestAndExcise called with suffixed end key")
 		}
 	}
+	if v := d.FormatMajorVersion(); v < FormatMinForSharedObjects {
+		return IngestOperationStats{}, errors.Errorf(
+			"store has format major version %d; IngestAndExise requires at least %d",
+			v, FormatMinForSharedObjects,
+		)
+	}
 	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, nil /* external */)
 }
 

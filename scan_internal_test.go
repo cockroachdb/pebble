@@ -46,7 +46,7 @@ func TestScanStatistics(t *testing.T) {
 			FS:                 vfs.NewMem(),
 			Logger:             testLogger{t: t},
 			Comparer:           testkeys.Comparer,
-			FormatMajorVersion: FormatMinSupported,
+			FormatMajorVersion: FormatMinForSharedObjects,
 			BlockPropertyCollectors: []func() BlockPropertyCollector{
 				sstable.NewTestKeysBlockPropertyCollector,
 			},

@@ -1123,6 +1123,9 @@ func (o *Options) EnsureDefaults() *Options {
 
 	if o.FormatMajorVersion == FormatDefault {
 		o.FormatMajorVersion = FormatMinSupported
+		if o.Experimental.CreateOnShared != remote.CreateOnSharedNone {
+			o.FormatMajorVersion = FormatMinForSharedObjects
+		}
 	}
 
 	if o.FS == nil {
@@ -1743,6 +1746,11 @@ func (o *Options) Validate() error {
 	if o.FormatMajorVersion < FormatMinSupported || o.FormatMajorVersion > internalFormatNewest {
 		fmt.Fprintf(&buf, "FormatMajorVersion (%d) must be between %d and %d\n",
 			o.FormatMajorVersion, FormatMinSupported, internalFormatNewest)
+	}
+	if o.Experimental.CreateOnShared != remote.CreateOnSharedNone && o.FormatMajorVersion < FormatMinForSharedObjects {
+		fmt.Fprintf(&buf, "FormatMajorVersion (%d) when CreateOnShared is set must be at least %d\n",
+			o.FormatMajorVersion, FormatMinForSharedObjects)
+
 	}
 	if o.TableCache != nil && o.Cache != o.TableCache.cache {
 		fmt.Fprintf(&buf, "underlying cache in the TableCache and the Cache dont match\n")
