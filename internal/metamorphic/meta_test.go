@@ -85,6 +85,10 @@ func TestMetaTwoInstance(t *testing.T) {
 		// a test.
 		onceOpts := runOnceFlags.MakeRunOnceOptions()
 		onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
+		if runOnceFlags.TryToReduce {
+			tryToReduce(t, runOnceFlags.Dir, runOnceFlags.RunDir)
+			return
+		}
 		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed, filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
 
 	default:

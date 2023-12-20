@@ -81,6 +81,10 @@ type RunOnceFlags struct {
 	RunDir string
 	// Compare applies to metamorphic.Compare. See "compare" flag below.
 	Compare string
+	// TryToReduce enables a mode where we try to find a minimal subset of
+	// operations that reproduce a problem during a test run (e.g. panic or
+	// internal error).
+	TryToReduce bool
 }
 
 func initRunOnceFlags(c *CommonFlags) *RunOnceFlags {
@@ -93,6 +97,11 @@ func initRunOnceFlags(c *CommonFlags) *RunOnceFlags {
 the result of the run from the first options file in the list. Example, -compare
 random-003,standard-000. The dir flag should have the directory containing these directories.
 Example, -dir _meta/200610-203012.077`)
+
+	flag.BoolVar(&ro.TryToReduce, "try-to-reduce", false,
+		`if set, we will try to reduce the number of operations that cause a failure. The
+verbose flag should be used with this flag.`)
+
 	return ro
 }
 

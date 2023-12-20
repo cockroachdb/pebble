@@ -357,8 +357,8 @@ func (t *test) clearObj(id objID) {
 }
 
 func (t *test) getBatch(id objID) *pebble.Batch {
-	if id.tag() != batchTag {
-		panic(fmt.Sprintf("invalid batch ID: %s", id))
+	if id.tag() != batchTag || t.batches[id.slot()] == nil {
+		panic(fmt.Sprintf("metamorphic test internal error: invalid batch ID: %s", id))
 	}
 	return t.batches[id.slot()]
 }
