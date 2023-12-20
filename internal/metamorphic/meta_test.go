@@ -63,6 +63,10 @@ func TestMeta(t *testing.T) {
 		// runOptions() below) or the user specified it manually in order to re-run
 		// a test.
 		onceOpts := runOnceFlags.MakeRunOnceOptions()
+		if runOnceFlags.TryToReduce {
+			tryToReduce(t, runOnceFlags.Dir, runOnceFlags.RunDir)
+			return
+		}
 		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed, filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
 
 	default:
@@ -85,6 +89,10 @@ func TestMetaTwoInstance(t *testing.T) {
 		// a test.
 		onceOpts := runOnceFlags.MakeRunOnceOptions()
 		onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
+		if runOnceFlags.TryToReduce {
+			tryToReduce(t, runOnceFlags.Dir, runOnceFlags.RunDir)
+			return
+		}
 		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed, filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
 
 	default:
