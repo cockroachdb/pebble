@@ -446,11 +446,13 @@ func standardOptions() []*TestOptions {
 [Options]
   format_major_version=%s
 `, newestFormatMajorVersionToTest),
-		27: `
+		27: fmt.Sprintf(`
+[Options]
+  format_major_version=%s
 [TestOptions]
   shared_storage_enabled=true
   secondary_cache_enabled=true
-`,
+`, pebble.FormatMinForSharedObjects),
 	}
 
 	opts := make([]*TestOptions, len(stdOpts))
@@ -603,6 +605,9 @@ func randomOptions(
 	// 20% of time, enable shared storage.
 	if rng.Intn(5) == 0 {
 		testOpts.sharedStorageEnabled = true
+		if testOpts.Opts.FormatMajorVersion < pebble.FormatMinForSharedObjects {
+			testOpts.Opts.FormatMajorVersion = pebble.FormatMinForSharedObjects
+		}
 		inMemShared := remote.NewInMem()
 		testOpts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": inMemShared,
@@ -630,12 +635,14 @@ func randomOptions(
 	// testOpts.ingestSplit = rng.Intn(2) == 0
 	opts.Experimental.IngestSplit = func() bool { return testOpts.ingestSplit }
 	testOpts.useExcise = rng.Intn(2) == 0
-	if testOpts.useExcise || testOpts.useSharedReplicate {
-		testOpts.efosAlwaysCreatesIters = rng.Intn(2) == 0
-		opts.TestingAlwaysCreateEFOSIterators(testOpts.efosAlwaysCreatesIters)
+	if testOpts.useExcise {
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatVirtualSSTables {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatVirtualSSTables
 		}
+	}
+	if testOpts.useExcise || testOpts.useSharedReplicate {
+		testOpts.efosAlwaysCreatesIters = rng.Intn(2) == 0
+		opts.TestingAlwaysCreateEFOSIterators(testOpts.efosAlwaysCreatesIters)
 	}
 	testOpts.Opts.EnsureDefaults()
 	return testOpts

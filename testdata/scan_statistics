@@ -143,4 +143,4 @@ compact a-z
 scan-statistics lower=a upper=z show-snapshot-pinned
 ----
 Aggregate:
-  snapshot pinned count: 1
+  snapshot pinned count: 0

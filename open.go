@@ -28,6 +28,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -138,6 +139,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	noFormatVersionMarker := formatVersion == FormatDefault
 	if noFormatVersionMarker {
+		// We will initialize the store at the minimum possible format, then upgrade
+		// the format to the desired one. This helps test the format upgrade code.
+		formatVersion = FormatMinSupported
+		if opts.Experimental.CreateOnShared != remote.CreateOnSharedNone {
+			formatVersion = FormatMinForSharedObjects
+		}
 		// There is no format version marker file. There are three cases:
 		//  - we are trying to open an existing store that was created at
 		//    FormatMostCompatible (the only one without a version marker file)
@@ -146,14 +153,21 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		//
 		// To error in the first case, we set ErrorIfNotPristine.
 		opts.ErrorIfNotPristine = true
-		formatVersion = FormatMinSupported
 		defer func() {
 			if err != nil && errors.Is(err, ErrDBNotPristine) {
 				// We must be trying to open an existing store at FormatMostCompatible.
 				// Correct the error in this case -we
-				err = errors.Newf("pebble: database %q written in format major version 1 which is no longer supported", dirname)
+				err = errors.Newf(
+					"pebble: database %q written in format major version 1 which is no longer supported",
+					dirname)
 			}
 		}()
+	} else {
+		if opts.Experimental.CreateOnShared != remote.CreateOnSharedNone && formatVersion < FormatMinForSharedObjects {
+			return nil, errors.Newf(
+				"pebble: database %q configured with shared objects but written in too old format major version %d",
+				formatVersion)
+		}
 	}
 
 	// Find the currently active manifest, if there is one.
@@ -517,8 +531,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 				return nil, err
 			}
 		} else if noFormatVersionMarker {
-			// We are creating a new store at MinSupported. Create the format version
-			// marker file.
+			// We are creating a new store. Create the format version marker file.
 			if err := d.writeFormatVersionMarker(d.FormatMajorVersion()); err != nil {
 				return nil, err
 			}

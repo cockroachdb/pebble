@@ -197,6 +197,10 @@ const (
 // Pebble version.
 const FormatMinSupported = FormatFlushableIngest
 
+// FormatMinForSharedObjects it the minimum format version that supports shared
+// objects (see CreateOnShared option).
+const FormatMinForSharedObjects = FormatVirtualSSTables
+
 // IsSupported returns true if the version is supported by the current Pebble
 // version.
 func (v FormatMajorVersion) IsSupported() bool {
