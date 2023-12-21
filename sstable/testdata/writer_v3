@@ -313,17 +313,14 @@ seqnums:  [1-1]
 
 layout
 ----
-         0  data (22)
-        27  data (22)
-        54  data (22)
-        81  index (22)
-       108  index (22)
-       135  index (22)
-       162  top-index (51)
-       218  properties (580)
-       803  meta-index (33)
-       841  footer (53)
-       894  EOF
+         0  data (21)
+        26  data (21)
+        52  data (21)
+        78  index (47)
+       130  properties (678)
+       813  meta-index (33)
+       851  leveldb-footer (48)
+       899  EOF
 
 # Range keys, if present, are shown in the layout.
 

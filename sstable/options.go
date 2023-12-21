@@ -295,7 +295,7 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 		o.Checksum = ChecksumTypeCRC32c
 	}
 	// By default, if the table format is not specified, fall back to using the
-	// most compatible format.
+	// most compatible format that is supported by Pebble.
 	if o.TableFormat == TableFormatUnspecified {
 		o.TableFormat = TableFormatMinSupported
 	}

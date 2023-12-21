@@ -19,15 +19,19 @@ type TableFormat uint32
 // Pebble (i.e. the history is linear).
 const (
 	TableFormatUnspecified TableFormat = iota
-	_                                  // TableFormatLevelDB; deprecated.
-	_                                  // TableFormatRocksDBv2; deprecated.
-	TableFormatPebblev1                // Block properties.
-	TableFormatPebblev2                // Range keys.
-	TableFormatPebblev3                // Value blocks.
-	TableFormatPebblev4                // DELSIZED tombstones.
+	TableFormatLevelDB
+	TableFormatRocksDBv2
+	TableFormatPebblev1 // Block properties.
+	TableFormatPebblev2 // Range keys.
+	TableFormatPebblev3 // Value blocks.
+	TableFormatPebblev4 // DELSIZED tombstones.
 	NumTableFormats
 
-	TableFormatMax          = NumTableFormats - 1
+	TableFormatMax = NumTableFormats - 1
+
+	// TableFormatMinSupported is the minimum format supported by Pebble.  This
+	// package still supports older formats for uses outside of Pebble
+	// (CockroachDB uses it to read data from backups that could be old).
 	TableFormatMinSupported = TableFormatPebblev1
 )
 
@@ -208,6 +212,15 @@ const (
 // corresponding internal TableFormat.
 func ParseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 	switch string(magic) {
+	case levelDBMagic:
+		return TableFormatLevelDB, nil
+	case rocksDBMagic:
+		if version != rocksDBFormatVersion2 {
+			return TableFormatUnspecified, base.CorruptionErrorf(
+				"pebble/table: unsupported rocksdb format version %d", errors.Safe(version),
+			)
+		}
+		return TableFormatRocksDBv2, nil
 	case pebbleDBMagic:
 		switch version {
 		case 1:
@@ -233,6 +246,10 @@ func ParseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 // AsTuple returns the TableFormat's (Magic String, Version) tuple.
 func (f TableFormat) AsTuple() (string, uint32) {
 	switch f {
+	case TableFormatLevelDB:
+		return levelDBMagic, 0
+	case TableFormatRocksDBv2:
+		return rocksDBMagic, 2
 	case TableFormatPebblev1:
 		return pebbleDBMagic, 1
 	case TableFormatPebblev2:
@@ -249,6 +266,10 @@ func (f TableFormat) AsTuple() (string, uint32) {
 // String returns the TableFormat (Magic String,Version) tuple.
 func (f TableFormat) String() string {
 	switch f {
+	case TableFormatLevelDB:
+		return "(LevelDB)"
+	case TableFormatRocksDBv2:
+		return "(RocksDB,v2)"
 	case TableFormatPebblev1:
 		return "(Pebble,v1)"
 	case TableFormatPebblev2:
