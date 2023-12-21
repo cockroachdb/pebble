@@ -438,7 +438,6 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 
 	ops, err := parse(opsData, parserOpts{})
 	require.NoError(t, err)
-	_ = ops
 
 	optionsPath := filepath.Join(runDir, "OPTIONS")
 	optionsData, err := os.ReadFile(optionsPath)
