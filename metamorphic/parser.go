@@ -523,7 +523,7 @@ func (p *parser) tokenf(tok token.Token, lit string) string {
 }
 
 func (p *parser) errorf(pos token.Pos, format string, args ...interface{}) error {
-	return errors.New(p.fset.Position(pos).String() + ": " + fmt.Sprintf(format, args...))
+	return errors.New("metamorphic test internal error: " + p.fset.Position(pos).String() + ": " + fmt.Sprintf(format, args...))
 }
 
 // computeDerivedFields makes one pass through the provided operations, filling
