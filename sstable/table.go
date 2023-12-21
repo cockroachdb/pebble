@@ -206,6 +206,9 @@ const (
 	minFooterLen = levelDBFooterLen
 	maxFooterLen = rocksDBFooterLen
 
+	levelDBFormatVersion  = 0
+	rocksDBFormatVersion2 = 2
+
 	metaRangeKeyName   = "pebble.range_key"
 	metaValueIndexName = "pebble.value_index"
 	metaPropertiesName = "rocksdb.properties"
@@ -339,7 +342,18 @@ func readFooter(f objstorage.Readable) (footer, error) {
 	}
 
 	switch magic := buf[len(buf)-len(rocksDBMagic):]; string(magic) {
-	case pebbleDBMagic:
+	case levelDBMagic:
+		if len(buf) < levelDBFooterLen {
+			return footer, base.CorruptionErrorf(
+				"pebble/table: invalid table (footer too short): %d", errors.Safe(len(buf)))
+		}
+		footer.footerBH.Offset = uint64(off+int64(len(buf))) - levelDBFooterLen
+		buf = buf[len(buf)-levelDBFooterLen:]
+		footer.footerBH.Length = uint64(len(buf))
+		footer.format = TableFormatLevelDB
+		footer.checksum = ChecksumTypeCRC32c
+
+	case rocksDBMagic, pebbleDBMagic:
 		// NOTE: The Pebble magic string implies the same footer format as that used
 		// by the RocksDBv2 table format.
 		if len(buf) < rocksDBFooterLen {
@@ -390,7 +404,14 @@ func readFooter(f objstorage.Readable) (footer, error) {
 
 func (f footer) encode(buf []byte) []byte {
 	switch magic, version := f.format.AsTuple(); magic {
-	case pebbleDBMagic:
+	case levelDBMagic:
+		buf = buf[:levelDBFooterLen]
+		clear(buf)
+		n := encodeBlockHandle(buf[0:], f.metaindexBH)
+		encodeBlockHandle(buf[n:], f.indexBH)
+		copy(buf[len(buf)-len(levelDBMagic):], levelDBMagic)
+
+	case rocksDBMagic, pebbleDBMagic:
 		buf = buf[:rocksDBFooterLen]
 		clear(buf)
 		switch f.checksum {
@@ -419,5 +440,12 @@ func (f footer) encode(buf []byte) []byte {
 }
 
 func supportsTwoLevelIndex(format TableFormat) bool {
-	return format >= TableFormatMinSupported
+	switch format {
+	case TableFormatLevelDB:
+		return false
+	case TableFormatRocksDBv2, TableFormatPebblev1, TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev4:
+		return true
+	default:
+		panic("sstable: unspecified table format version")
+	}
 }

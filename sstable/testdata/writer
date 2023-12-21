@@ -343,14 +343,11 @@ layout
          0  data (21)
         26  data (21)
         52  data (21)
-        78  index (22)
-       105  index (22)
-       132  index (22)
-       159  top-index (50)
-       214  properties (580)
-       799  meta-index (33)
-       837  footer (53)
-       890  EOF
+        78  index (47)
+       130  properties (678)
+       813  meta-index (33)
+       851  leveldb-footer (48)
+       899  EOF
 
 # Range keys, if present, are shown in the layout.
 

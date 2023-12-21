@@ -822,7 +822,7 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			for tf := TableFormatMinSupported; tf <= TableFormatMax; tf++ {
+			for tf := TableFormatLevelDB; tf <= TableFormatMax; tf++ {
 				t.Run(tf.String(), func(t *testing.T) {
 					fs := vfs.NewMem()
 					f, err := fs.Create("sst")
