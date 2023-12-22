@@ -11,7 +11,9 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"os"
 	"regexp"
+	"strings"
 
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/metamorphic"
@@ -90,13 +92,13 @@ type RunOnceFlags struct {
 func initRunOnceFlags(c *CommonFlags) *RunOnceFlags {
 	ro := &RunOnceFlags{CommonFlags: c}
 	flag.StringVar(&ro.RunDir, "run-dir", "",
-		"the specific configuration to (re-)run (used for post-mortem debugging)")
+		`directory containing the specific configuration to (re-)run (used for post-mortem debugging).
+Example: --run-dir _meta/231220-164251.3552792807512/random-003`)
 
 	flag.StringVar(&ro.Compare, "compare", "",
-		`comma separated list of options files to compare. The result of each run is compared with
-the result of the run from the first options file in the list. Example, -compare
-random-003,standard-000. The dir flag should have the directory containing these directories.
-Example, -dir _meta/200610-203012.077`)
+		`runs to compare, in the format _meta/test-root-dir/{run1,run2,...}. The result
+of each run is compared with the result of the first run.
+Example, --compare '_meta/231220-164251.3552792807512/{standard-000,random-025}'`)
 
 	flag.BoolVar(&ro.TryToReduce, "try-to-reduce", false,
 		`if set, we will try to reduce the number of operations that cause a failure. The
@@ -197,6 +199,35 @@ func (ro *RunOnceFlags) MakeRunOnceOptions() []metamorphic.RunOnceOption {
 		onceOpts = append(onceOpts, metamorphic.MultiInstance(ro.NumInstances))
 	}
 	return onceOpts
+}
+
+// ParseCompare parses the value of the compare flag, in format
+// "test-root-dir/{run1,run2,...}". Exits if the value is not valid.
+//
+// Returns the common test root dir (e.g. "test-root-dir") and a list of
+// subdirectories (e.g. {"run1", "run2"}).
+func (ro *RunOnceFlags) ParseCompare() (testRootDir string, runSubdirs []string) {
+	testRootDir, runSubdirs, ok := ro.tryParseCompare()
+	if !ok {
+		fmt.Fprintf(os.Stderr, `cannot parse compare flag value %q; format is "test-root-dir/{run1,run2,..}"`, ro.Compare)
+		os.Exit(1)
+	}
+	return testRootDir, runSubdirs
+}
+
+func (ro *RunOnceFlags) tryParseCompare() (testRootDir string, runSubdirs []string, ok bool) {
+	value := ro.Compare
+	brace := strings.Index(value, "{")
+	if brace == -1 || !strings.HasSuffix(value, "}") {
+		return "", nil, false
+	}
+
+	testRootDir = value[:brace]
+	runSubdirs = strings.Split(value[brace+1:len(value)-1], ",")
+	if len(runSubdirs) < 2 {
+		return "", nil, false
+	}
+	return testRootDir, runSubdirs, true
 }
 
 // MakeRunOptions constructs RunOptions based on the flags.
