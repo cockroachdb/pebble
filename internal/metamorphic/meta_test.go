@@ -66,6 +66,10 @@ func runTestMeta(t *testing.T, multiInstance bool) {
 			onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
 		}
 		testRootDir, runSubdirs := runOnceFlags.ParseCompare()
+		if runOnceFlags.TryToReduce {
+			tryToReduceCompare(t, runOnceFlags.Dir, testRootDir, runSubdirs)
+			return
+		}
 		metamorphic.Compare(t, testRootDir, runOnceFlags.Seed, runSubdirs, onceOpts...)
 
 	case runOnceFlags.RunDir != "":
