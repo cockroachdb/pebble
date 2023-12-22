@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -18,79 +19,136 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// tryToReduce starts with a run that reproduces a failure of t.Name() and tries
-// to reduce the number of ops to find a minimal reproduction.
+// tryToReduce starts with a run that reproduces a "run once" failure of
+// t.Name() and tries to reduce the number of ops to find a minimal
+// reproduction.
 //
 // Sample usage:
 //
 //	go test -run TestMetaTwoInstance ./internal/metamorphic \
 //	  --run-dir _meta/231220-073015.8533726292752/random-027 \
-//	  --tags invariants --try-to-reduce -v
+//	  -tags invariants --try-to-reduce -v
 //
 // The test will save the smallest reproduction found and print out the relevant
 // information.
-func tryToReduce(t *testing.T, rootDir string, runDir string) {
-	r := makeReducer(t, rootDir, runDir)
+func tryToReduce(t *testing.T, testStateDir string, runDir string) {
+	testRootDir := filepath.Dir(runDir)
+	runSubdir := filepath.Base(runDir)
+	r := makeReducer(t, testStateDir, testRootDir, []string{runSubdir})
+	r.Run(t)
+}
+
+// tryToReduceCompare starts with a run that reproduces a compare failure of
+// t.Name() and tries to reduce the number of ops to find a minimal
+// reproduction.
+//
+// Sample usage:
+//
+//	go test -run TestMetaTwoInstance ./internal/metamorphic \
+//	  --compare '_meta/231220-073015.8533726292752/{standard-001,random-027}' \
+//	  -tags invariants --try-to-reduce -v
+//
+// The test will save the smallest reproduction found and print out the relevant
+// information.
+func tryToReduceCompare(
+	t *testing.T, testStateDir string, testRootDir string, runSubdirs []string,
+) {
+	r := makeReducer(t, testStateDir, testRootDir, runSubdirs)
 	r.Run(t)
 }
 
 // reducer is a helper that starts with a reproduction of a RunOnce failure and
 // tries to reduce the number of operations.
 type reducer struct {
-	optionsData []byte
-	ops         []string
+	// testRootDir is the directory of the test, which contains the "ops" file.
+	testRootDir string
+	configs     []testConfig
+
+	ops []string
 
 	// rootDir is the directory storing test state (normally _meta). See
 	// CommonFlags.Dir.
-	rootDir string
+	testStateDir string
 
+	// lastSavedDir keeps track of the last saved test root directory, so we can
+	// delete it once we save a new one.
 	lastSavedDir string
 }
 
-func makeReducer(t *testing.T, rootDir string, runDir string) *reducer {
-	runDir = filepath.Clean(runDir)
-	opsPath := filepath.Join(filepath.Dir(runDir), "ops")
-	opsData, err := os.ReadFile(opsPath)
+type testConfig struct {
+	// name of the test; matches the basename of the run dir path.
+	name        string
+	optionsData []byte
+}
+
+func makeReducer(
+	t *testing.T, testStateDir string, testRootDir string, runSubdirs []string,
+) *reducer {
+	// All run dirs should have the same parent path.
+	opsData, err := os.ReadFile(filepath.Join(testRootDir, "ops"))
 	require.NoError(t, err)
 	ops := strings.Split(strings.TrimSpace(string(opsData)), "\n")
 
-	// Load options file.
-	options, err := os.ReadFile(filepath.Join(runDir, "OPTIONS"))
-	require.NoError(t, err)
+	tc := make([]testConfig, len(runSubdirs))
+	for i := range runSubdirs {
+		// Load options file.
+		optionsData, err := os.ReadFile(filepath.Join(testRootDir, runSubdirs[i], "OPTIONS"))
+		require.NoError(t, err)
+		tc[i] = testConfig{
+			name:        runSubdirs[i],
+			optionsData: optionsData,
+		}
+	}
 
 	t.Logf("Starting with %d operations", len(ops))
 
 	return &reducer{
-		optionsData: options,
-		ops:         ops,
-		rootDir:     rootDir,
+		testRootDir:  testRootDir,
+		configs:      tc,
+		ops:          ops,
+		testStateDir: testStateDir,
 	}
 }
 
-// setupRunDir creates a run directory with the given ops and returns it.
-func (r *reducer) setupRunDir(t *testing.T, ops []string) (metaDir, testDir string) {
-	metaDir, err := os.MkdirTemp(r.rootDir, "reduce-"+time.Now().Format("060102-150405.000"))
+// setupRunDirs creates a test root directory with the given ops and a
+// subdirectory for each config.
+func (r *reducer) setupRunDirs(
+	t *testing.T, ops []string,
+) (testRootDir string, runSubdirs []string) {
+	testRootDir, err := os.MkdirTemp(r.testStateDir, "reduce-"+time.Now().Format("060102-150405.000"))
 	require.NoError(t, err)
-	testDir = filepath.Join(metaDir, "run")
-	require.NoError(t, os.MkdirAll(testDir, 0755))
-
-	// Write the OPTIONS file.
-	require.NoError(t, os.WriteFile(filepath.Join(testDir, "OPTIONS"), r.optionsData, 0644))
 	// Write the ops file.
-	require.NoError(t, os.WriteFile(filepath.Join(metaDir, "ops"), []byte(strings.Join(ops, "\n")), 0644))
-	return metaDir, testDir
+	require.NoError(t, os.WriteFile(filepath.Join(testRootDir, "ops"), []byte(strings.Join(ops, "\n")), 0644))
+
+	for _, c := range r.configs {
+		runDir := filepath.Join(testRootDir, c.name)
+		require.NoError(t, os.MkdirAll(runDir, 0755))
+
+		// Write the OPTIONS file.
+		require.NoError(t, os.WriteFile(filepath.Join(runDir, "OPTIONS"), c.optionsData, 0644))
+		runSubdirs = append(runSubdirs, c.name)
+	}
+	return testRootDir, runSubdirs
 }
 
 func (r *reducer) try(t *testing.T, ops []string) bool {
-	metaDir, testDir := r.setupRunDir(t, ops)
+	testRootDir, runSubdirs := r.setupRunDirs(t, ops)
 
 	args := []string{
 		"-test.run", t.Name() + "$",
 		"-test.v",
 		"--keep",
-		"--dir", metaDir,
-		"--run-dir", testDir,
 	}
+
+	var runFlags []string
+	if len(runSubdirs) == 1 {
+		// RunOnce mode.
+		runFlags = []string{"--run-dir", filepath.Join(testRootDir, runSubdirs[0])}
+	} else {
+		// Compare mode.
+		runFlags = []string{"--compare", filepath.Join(testRootDir, fmt.Sprintf("{%s}", strings.Join(runSubdirs, ",")))}
+	}
+	args = append(args, runFlags...)
 
 	var output bytes.Buffer
 	cmd := exec.CommandContext(context.Background(), os.Args[0], args...)
@@ -99,19 +157,23 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 	err := cmd.Run()
 	// If the test succeeds or fails with an internal test error, we removed
 	// important ops.
-	if err == nil || strings.Contains(output.String(), "metamorphic test internal error") {
-		require.NoError(t, os.RemoveAll(metaDir))
+	if err == nil ||
+		strings.Contains(output.String(), "metamorphic test internal error") ||
+		strings.Contains(output.String(), "leaked iterators") ||
+		strings.Contains(output.String(), "leaked snapshots") {
+		require.NoError(t, os.RemoveAll(testRootDir))
 		return false
 	}
 
-	logFile := filepath.Join(metaDir, "log")
+	logFile := filepath.Join(testRootDir, "log")
 	require.NoError(t, os.WriteFile(logFile, output.Bytes(), 0644))
-	t.Logf("Reduced to %d ops; saved log %v and run dir %v", len(ops), logFile, testDir)
-	// Only keep one saved dir.
+	t.Logf("Reduced to %d ops.", len(ops))
+	t.Logf("  Log: %v", logFile)
+	t.Logf("  %s %q", runFlags[0], runFlags[1])
 	if r.lastSavedDir != "" {
 		require.NoError(t, os.RemoveAll(r.lastSavedDir))
 	}
-	r.lastSavedDir = metaDir
+	r.lastSavedDir = testRootDir
 	return true
 }
 
