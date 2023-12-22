@@ -1037,6 +1037,14 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				}
 			}
 
+			for _, levelFiles := range files {
+				for i := 1; i < len(levelFiles); i++ {
+					if !checkTableBoundary(levelFiles[i-1], levelFiles[i], opts.Comparer.Compare) {
+						d.Fatalf(t, "overlapping tables: %s and %s", levelFiles[i-1], levelFiles[i])
+					}
+				}
+			}
+
 			if pc.outputLevel.level == -1 {
 				pc.outputLevel.level = pc.startLevel.level + 1
 			}
@@ -1133,6 +1141,12 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 					files = append(files, meta)
 				}
 				manifest.SortBySmallest(files, cmp)
+				// Verify that the tables have no user key overlap.
+				for i := 1; i < len(files); i++ {
+					if !checkTableBoundary(files[i-1], files[i], cmp) {
+						d.Fatalf(t, "overlapping tables: %s and %s", files[i-1], files[i])
+					}
+				}
 				return ""
 
 			case "expand-inputs":
@@ -1589,4 +1603,9 @@ func checkClone(t *testing.T, pc *pickedCompaction) {
 			require.NotEqual(t, &pc.startLevel.l0SublevelInfo[i], &pcClone.startLevel.l0SublevelInfo[i])
 		}
 	}
+}
+
+func checkTableBoundary(a, b *fileMetadata, cmp base.Compare) (ok bool) {
+	c := cmp(a.LargestPointKey.UserKey, b.SmallestPointKey.UserKey)
+	return c < 0 || (c == 0 && a.LargestPointKey.IsExclusiveSentinel())
 }
