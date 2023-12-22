@@ -6,7 +6,6 @@ package metamorphic
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/metamorphic/metaflags"
@@ -52,43 +51,31 @@ var runOnceFlags, runFlags = metaflags.InitAllFlags()
 // be customized via the --inner-binary flag (used for code coverage
 // instrumentation).
 func TestMeta(t *testing.T) {
-	switch {
-	case runOnceFlags.Compare != "":
-		runDirs := strings.Split(runOnceFlags.Compare, ",")
-		onceOpts := runOnceFlags.MakeRunOnceOptions()
-		metamorphic.Compare(t, runOnceFlags.Dir, runOnceFlags.Seed, runDirs, onceOpts...)
-
-	case runOnceFlags.RunDir != "":
-		// The --run-dir flag is specified either in the child process (see
-		// runOptions() below) or the user specified it manually in order to re-run
-		// a test.
-		onceOpts := runOnceFlags.MakeRunOnceOptions()
-		if runOnceFlags.TryToReduce {
-			tryToReduce(t, runOnceFlags.Dir, runOnceFlags.RunDir)
-			return
-		}
-		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed, filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
-
-	default:
-		opts := runFlags.MakeRunOptions()
-		metamorphic.RunAndCompare(t, runFlags.Dir, opts...)
-	}
+	runTestMeta(t, false /* multiInstance */)
 }
 
 func TestMetaTwoInstance(t *testing.T) {
+	runTestMeta(t, true /* multiInstance */)
+}
+
+func runTestMeta(t *testing.T, multiInstance bool) {
 	switch {
 	case runOnceFlags.Compare != "":
-		runDirs := strings.Split(runOnceFlags.Compare, ",")
 		onceOpts := runOnceFlags.MakeRunOnceOptions()
-		onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
-		metamorphic.Compare(t, runOnceFlags.Dir, runOnceFlags.Seed, runDirs, onceOpts...)
+		if multiInstance {
+			onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
+		}
+		testRootDir, runSubdirs := runOnceFlags.ParseCompare()
+		metamorphic.Compare(t, testRootDir, runOnceFlags.Seed, runSubdirs, onceOpts...)
 
 	case runOnceFlags.RunDir != "":
 		// The --run-dir flag is specified either in the child process (see
 		// runOptions() below) or the user specified it manually in order to re-run
 		// a test.
 		onceOpts := runOnceFlags.MakeRunOnceOptions()
-		onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
+		if multiInstance {
+			onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
+		}
 		if runOnceFlags.TryToReduce {
 			tryToReduce(t, runOnceFlags.Dir, runOnceFlags.RunDir)
 			return
@@ -97,7 +84,9 @@ func TestMetaTwoInstance(t *testing.T) {
 
 	default:
 		opts := runFlags.MakeRunOptions()
-		opts = append(opts, metamorphic.MultiInstance(2))
+		if multiInstance {
+			opts = append(opts, metamorphic.MultiInstance(2))
+		}
 		metamorphic.RunAndCompare(t, runFlags.Dir, opts...)
 	}
 }

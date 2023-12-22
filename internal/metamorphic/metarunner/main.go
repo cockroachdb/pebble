@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/cockroachdb/pebble/internal/metamorphic/metaflags"
 	"github.com/cockroachdb/pebble/metamorphic"
@@ -27,8 +26,8 @@ func main() {
 	t := &mockT{}
 	switch {
 	case runOnceFlags.Compare != "":
-		runDirs := strings.Split(runOnceFlags.Compare, ",")
-		metamorphic.Compare(t, runOnceFlags.Dir, runOnceFlags.Seed, runDirs, onceOpts...)
+		testRootDir, runSubdirs := runOnceFlags.ParseCompare()
+		metamorphic.Compare(t, testRootDir, runOnceFlags.Seed, runSubdirs, onceOpts...)
 
 	case runOnceFlags.RunDir != "":
 		// The --run-dir flag is specified either in the child process (see
