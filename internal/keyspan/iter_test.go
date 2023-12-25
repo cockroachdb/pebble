@@ -145,3 +145,6 @@ func (i *invalidatingIter) Next() *Span             { return i.invalidate(i.iter
 func (i *invalidatingIter) Prev() *Span             { return i.invalidate(i.iter.Prev()) }
 func (i *invalidatingIter) Close() error            { return i.iter.Close() }
 func (i *invalidatingIter) Error() error            { return i.iter.Error() }
+func (i *invalidatingIter) WrapChildren(wrap WrapFn) {
+	i.iter = wrap(i.iter)
+}

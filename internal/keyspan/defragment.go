@@ -537,3 +537,8 @@ func (i *DefragmentingIter) saveBytes(b []byte) []byte {
 	i.currBuf, b = i.currBuf.Copy(b)
 	return b
 }
+
+// WrapChildren implements FragmentIterator.
+func (i *DefragmentingIter) WrapChildren(wrap WrapFn) {
+	i.iter = wrap(i.iter)
+}

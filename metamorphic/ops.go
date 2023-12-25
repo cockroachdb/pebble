@@ -917,9 +917,15 @@ type newIterOp struct {
 	derivedDBID objID
 }
 
+// Enable this to enable debug logging of range key iterator operations.
+const debugIterators = false
+
 func (o *newIterOp) run(t *Test, h historyRecorder) {
 	r := t.getReader(o.readerID)
 	opts := iterOptions(o.iterOpts)
+	if debugIterators {
+		opts.DebugRangeKeyStack = true
+	}
 
 	var i *pebble.Iterator
 	for {

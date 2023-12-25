@@ -266,3 +266,8 @@ func (i *BoundedIter) checkBackwardBound(span *Span) *Span {
 	}
 	return span
 }
+
+// WrapChildren implements FragmentIterator.
+func (i *BoundedIter) WrapChildren(wrap WrapFn) {
+	i.iter = wrap(i.iter)
+}

@@ -60,6 +60,11 @@ type FragmentIterator interface {
 	// multiple times. Other methods should not be called after the iterator has
 	// been closed.
 	Close() error
+
+	// WrapChildren wraps any child iterators using the given function. The
+	// function can call WrapChildren to recursively wrap an entire iterator
+	// stack. Used only for debug logging.
+	WrapChildren(wrap WrapFn)
 }
 
 // TableNewSpanIter creates a new iterator for range key spans for the given
@@ -218,3 +223,6 @@ func (i *Iter) Close() error {
 func (i *Iter) String() string {
 	return "fragmented-spans"
 }
+
+// WrapChildren implements FragmentIterator.
+func (i *Iter) WrapChildren(wrap WrapFn) {}

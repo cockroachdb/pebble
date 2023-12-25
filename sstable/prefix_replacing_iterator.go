@@ -263,3 +263,8 @@ func (p *prefixReplacingFragmentIterator) Error() error {
 func (p *prefixReplacingFragmentIterator) Close() error {
 	return p.i.Close()
 }
+
+// WrapChildren implements FragmentIterator.
+func (p *prefixReplacingFragmentIterator) WrapChildren(wrap keyspan.WrapFn) {
+	p.i = wrap(p.i)
+}

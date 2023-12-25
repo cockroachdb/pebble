@@ -171,3 +171,8 @@ func (i *assertIter) Error() error {
 func (i *assertIter) Close() error {
 	return i.iter.Close()
 }
+
+// WrapChildren implements FragmentIterator.
+func (i *assertIter) WrapChildren(wrap WrapFn) {
+	i.iter = wrap(i.iter)
+}

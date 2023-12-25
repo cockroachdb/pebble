@@ -213,6 +213,7 @@ type MergingBuffers struct {
 	// prefer use of its `manifest.NumLevels+3` array, so this slice will be
 	// longer if set.
 	levels []mergingIterLevel
+	wrapFn WrapFn
 	// heap holds a slice for the merging iterator heap allocated by
 	// MergingIter.init. The MergingIter will prefer use of its
 	// `manifest.NumLevels+3` items array, so this slice will be longer if set.
@@ -306,12 +307,18 @@ func (m *MergingIter) Init(
 	}
 	for i := range m.levels {
 		m.levels[i] = mergingIterLevel{iter: iters[i]}
+		if m.wrapFn != nil {
+			m.levels[i].iter = m.wrapFn(m.levels[i].iter)
+		}
 	}
 }
 
 // AddLevel adds a new level to the bottom of the merging iterator. AddLevel
 // must be called after Init and before any other method.
 func (m *MergingIter) AddLevel(iter FragmentIterator) {
+	if m.wrapFn != nil {
+		iter = m.wrapFn(iter)
+	}
 	m.levels = append(m.levels, mergingIterLevel{iter: iter})
 }
 
@@ -1073,6 +1080,14 @@ func (m *MergingIter) DebugString() string {
 		fmt.Fprintf(&buf, "%d: heap key %s\n", i, m.levels[i].heapKey)
 	}
 	return buf.String()
+}
+
+// WrapChildren implements FragmentIterator.
+func (m *MergingIter) WrapChildren(wrap WrapFn) {
+	for i := range m.levels {
+		m.levels[i].iter = wrap(m.levels[i].iter)
+	}
+	m.wrapFn = wrap
 }
 
 type mergingIterItem struct {

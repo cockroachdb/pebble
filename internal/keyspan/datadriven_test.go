@@ -375,6 +375,10 @@ func (p *probeIterator) Close() error {
 	return p.err
 }
 
+func (p *probeIterator) WrapChildren(wrap WrapFn) {
+	p.iter = wrap(p.iter)
+}
+
 // runIterCmd evaluates a datadriven command controlling an internal
 // keyspan.FragmentIterator, writing the results of the iterator operations to
 // the provided writer.

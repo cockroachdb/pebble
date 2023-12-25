@@ -1861,3 +1861,6 @@ func (i *fragmentBlockIter) String() string {
 func (i *fragmentBlockIter) SetCloseHook(fn func(i keyspan.FragmentIterator) error) {
 	i.closeHook = fn
 }
+
+// WrapChildren implements FragmentIterator.
+func (i *fragmentBlockIter) WrapChildren(wrap keyspan.WrapFn) {}
