@@ -56,7 +56,8 @@ type LevelIter struct {
 	//   next file (in the straddleDir direction).
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
-	iter FragmentIterator
+	iter   FragmentIterator
+	wrapFn WrapFn
 	// iterFile holds the current file.
 	// INVARIANT: iterFile = files.Current()
 	iterFile *manifest.FileMetadata
@@ -180,6 +181,9 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 	}
 	if indicator != fileAlreadyLoaded {
 		l.iter, l.err = l.newIter(file, l.tableOpts)
+		if l.wrapFn != nil {
+			l.iter = l.wrapFn(l.iter)
+		}
 		l.iter = MaybeAssert(l.iter, l.cmp)
 		indicator = newFileLoaded
 	}
@@ -519,4 +523,10 @@ func (l *LevelIter) String() string {
 		return fmt.Sprintf("%s: fileNum=%s", l.level, l.iterFile.FileNum)
 	}
 	return fmt.Sprintf("%s: fileNum=<nil>", l.level)
+}
+
+// WrapChildren implements FragmentIterator.
+func (l *LevelIter) WrapChildren(wrap WrapFn) {
+	l.iter = wrap(l.iter)
+	l.wrapFn = wrap
 }

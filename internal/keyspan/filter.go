@@ -113,3 +113,8 @@ func (i *filteringIter) filter(span *Span, dir int8) *Span {
 	}
 	return span
 }
+
+// WrapChildren implements FragmentIterator.
+func (i *filteringIter) WrapChildren(wrap WrapFn) {
+	i.iter = wrap(i.iter)
+}

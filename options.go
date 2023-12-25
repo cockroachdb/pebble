@@ -191,6 +191,8 @@ type IterOptions struct {
 	// changed by calling SetOptions.
 	sstable.CategoryAndQoS
 
+	DebugRangeKeyStack bool
+
 	// Internal options.
 
 	logger Logger
