@@ -855,7 +855,7 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 			return err
 		}
 	}
-	if err := d.commit.Commit(batch, sync, noSyncWait); err != nil {
+	if err := d.commit.Commit(batch, syncWrite, noSyncWait); err != nil {
 		// There isn't much we can do on an error here. The commit pipeline will be
 		// horked at this point.
 		d.opts.Logger.Fatalf("pebble: fatal commit error: %v", err)
