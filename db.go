@@ -824,8 +824,8 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 		panic(fmt.Sprintf("pebble: batch db mismatch: %p != %p", batch.db, d))
 	}
 
-	sync := opts.GetSync()
-	if sync && d.opts.DisableWAL {
+	syncWrite := opts.GetSync()
+	if syncWrite && d.opts.DisableWAL {
 		return errors.New("pebble: WAL disabled")
 	}
 
