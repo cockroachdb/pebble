@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,9 @@ import (
 
 // Verify event listener actions, as well as expected filesystem operations.
 func TestEventListener(t *testing.T) {
+	if runtime.GOARCH == "386" {
+		t.Skip("skipped on 32-bit due to slightly varied output")
+	}
 	var d *DB
 	var memLog base.InMemLogger
 	mem := vfs.NewMem()

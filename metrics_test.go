@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -93,6 +94,9 @@ func exampleMetrics() Metrics {
 }
 
 func TestMetrics(t *testing.T) {
+	if runtime.GOARCH == "386" {
+		t.Skip("skipped on 32-bit due to slightly varied output")
+	}
 	c := cache.New(cacheDefaultSize)
 	defer c.Unref()
 	opts := &Options{
