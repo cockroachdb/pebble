@@ -201,17 +201,17 @@ func (c *tableCacheContainer) estimateSize(
 	return size, nil
 }
 
-// createCommonReader creates a Reader for this file. isForeign, if true for
+// createCommonReader creates a Reader for this file. isShared, if true for
 // virtual sstables, is passed into the vSSTable reader so its iterators can
 // collapse obsolete points accordingly.
 func createCommonReader(
-	v *tableCacheValue, file *fileMetadata, isForeign bool,
+	v *tableCacheValue, file *fileMetadata, isShared bool,
 ) sstable.CommonReader {
 	// TODO(bananabrick): We suffer an allocation if file is a virtual sstable.
 	var cr sstable.CommonReader = v.reader
 	if file.Virtual {
 		virtualReader := sstable.MakeVirtualReader(
-			v.reader, file.VirtualMeta(), isForeign,
+			v.reader, file.VirtualMeta(), isShared,
 		)
 		cr = &virtualReader
 	}
@@ -232,7 +232,7 @@ func (c *tableCacheContainer) withCommonReader(
 	if err != nil {
 		return err
 	}
-	return fn(createCommonReader(v, meta, provider.IsSharedForeign(objMeta)))
+	return fn(createCommonReader(v, meta, objMeta.IsShared()))
 }
 
 func (c *tableCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
@@ -260,7 +260,7 @@ func (c *tableCacheContainer) withVirtualReader(
 	if err != nil {
 		return err
 	}
-	return fn(sstable.MakeVirtualReader(v.reader, meta, provider.IsSharedForeign(objMeta)))
+	return fn(sstable.MakeVirtualReader(v.reader, meta, objMeta.IsShared()))
 }
 
 func (c *tableCacheContainer) iterCount() int64 {
@@ -491,7 +491,7 @@ func (c *tableCacheShard) newIters(
 	}
 
 	// Note: This suffers an allocation for virtual sstables.
-	cr := createCommonReader(v, file, provider.IsSharedForeign(objMeta))
+	cr := createCommonReader(v, file, objMeta.IsShared())
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
@@ -627,7 +627,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 		objMeta, err = provider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
 		if err == nil {
 			virtualReader := sstable.MakeVirtualReader(
-				v.reader, file.VirtualMeta(), provider.IsSharedForeign(objMeta),
+				v.reader, file.VirtualMeta(), objMeta.IsShared(),
 			)
 			iter, err = virtualReader.NewRawRangeKeyIter()
 		}

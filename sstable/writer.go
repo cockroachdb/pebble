@@ -137,10 +137,10 @@ type Writer struct {
 	cache                   *cache.Cache
 	restartInterval         int
 	checksumType            ChecksumType
-	// disableKeyOrderChecks disables the checks that keys are added to an
+	// testingDisableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
-	disableKeyOrderChecks bool
+	testingDisableKeyOrderChecks bool
 	// With two level indexes, the index/filter of a SST file is partitioned into
 	// smaller blocks with an additional top-level index on them. When reading an
 	// index/filter, only the top-level index is loaded into memory. The two level
@@ -204,6 +204,7 @@ type Writer struct {
 	// Information (other than the byte slice) about the last point key, to
 	// avoid extracting it again.
 	lastPointKeyInfo pointKeyInfo
+	lastSpanDeleted  bool
 
 	// For value blocks.
 	shortAttributeExtractor   base.ShortAttributeExtractor
@@ -783,7 +784,7 @@ func (w *Writer) makeAddPointDecisionV2(key InternalKey) error {
 	if w.dataBlockBuf.dataBlock.nEntries == 0 {
 		return nil
 	}
-	if !w.disableKeyOrderChecks {
+	if !w.testingDisableKeyOrderChecks {
 		prevPointUserKey := w.dataBlockBuf.dataBlock.getCurUserKey()
 		cmpUser := w.compare(prevPointUserKey, key.UserKey)
 		if cmpUser > 0 || (cmpUser == 0 && prevTrailer <= key.Trailer) {
@@ -901,7 +902,7 @@ func (w *Writer) makeAddPointDecisionV3(
 	// version (those should be ok). We have to ensure setHasSamePrefix is
 	// correctly initialized here etc.
 
-	if !w.disableKeyOrderChecks &&
+	if !w.testingDisableKeyOrderChecks &&
 		(cmpUser > 0 || (cmpUser == 0 && prevPointKeyInfo.trailer <= key.Trailer)) {
 		return false, false, false, errors.Errorf(
 			"pebble: keys must be added in strictly increasing order: %s, %s",
@@ -1064,7 +1065,7 @@ func (w *Writer) prettyTombstone(k InternalKey, value []byte) fmt.Formatter {
 }
 
 func (w *Writer) addTombstone(key InternalKey, value []byte) error {
-	if !w.disableKeyOrderChecks && !w.rangeDelV1Format && w.rangeDelBlock.nEntries > 0 {
+	if !w.testingDisableKeyOrderChecks && !w.rangeDelV1Format && w.rangeDelBlock.nEntries > 0 {
 		// Check that tombstones are being added in fragmented order. If the two
 		// tombstones overlap, their start and end keys must be identical.
 		prevKey := w.rangeDelBlock.getCurKey()
@@ -1261,10 +1262,13 @@ func (w *Writer) encodeRangeKeySpan(span keyspan.Span) {
 	w.err = firstError(w.err, w.rangeKeyEncoder.Encode(&w.rangeKeySpan))
 }
 
+// NB: Just like AddRangeKey(), this can only be called with fragmented range
+// keys.
 func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
-	if !w.disableKeyOrderChecks && w.rangeKeyBlock.nEntries > 0 {
+	var isObsolete bool
+	if !w.testingDisableKeyOrderChecks && w.rangeKeyBlock.nEntries > 0 {
 		prevStartKey := w.rangeKeyBlock.getCurKey()
-		prevEndKey, _, ok := rangekey.DecodeEndKey(prevStartKey.Kind(), w.rangeKeyBlock.curValue)
+		prevEndKey, prevValue, ok := rangekey.DecodeEndKey(prevStartKey.Kind(), w.rangeKeyBlock.curValue)
 		if !ok {
 			// We panic here as we should have previously decoded and validated this
 			// key and value when it was first added to the range key block.
@@ -1273,7 +1277,7 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 		}
 
 		curStartKey := key
-		curEndKey, _, ok := rangekey.DecodeEndKey(curStartKey.Kind(), value)
+		curEndKey, curValue, ok := rangekey.DecodeEndKey(curStartKey.Kind(), value)
 		if !ok {
 			w.err = errors.Errorf("pebble: invalid end key for span: %s",
 				curStartKey.Pretty(w.formatKey))
@@ -1297,6 +1301,26 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 					curStartKey.Pretty(w.formatKey))
 				return w.err
 			}
+			// There are two cases in which the current internal key is obsolete.
+			// Either we've already written a RangeKeyDelete for this span (w.lastSpanDeleted)
+			// or the current key's prefix matches that of the previous key.
+			isObsoleteC2 := false
+			if prevStartKey.Kind() != base.InternalKeyKindRangeKeyDelete && key.Kind() != base.InternalKeyKindRangeKeyDelete {
+				prevSuffix, _, ok := rangekey.DecodeSuffix(prevValue)
+				if !ok {
+					w.err = errors.Errorf("pebble: unexpected range key value: %q",
+						prevValue)
+					return w.err
+				}
+				curSuffix, _, ok := rangekey.DecodeSuffix(curValue)
+				if !ok {
+					w.err = errors.Errorf("pebble: unexpected range key value: %q",
+						curValue)
+					return w.err
+				}
+				isObsoleteC2 = bytes.Equal(prevSuffix, curSuffix)
+			}
+			isObsolete = w.lastSpanDeleted || isObsoleteC2
 		} else if w.compare(prevEndKey, curStartKey.UserKey) > 0 {
 			// If the start user keys are NOT equal, the spans must be disjoint (i.e.
 			// no overlap).
@@ -1307,6 +1331,9 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 				prevStartKey.Pretty(w.formatKey),
 				curStartKey.Pretty(w.formatKey))
 			return w.err
+		} else {
+			// The start key has changed. Reset lastSpanDeleted.
+			w.lastSpanDeleted = false
 		}
 	}
 
@@ -1347,7 +1374,9 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 	}
 
 	// Add the key to the block.
-	w.rangeKeyBlock.add(key, value)
+	w.rangeKeyBlock.addWithOptionalValuePrefix(
+		key, isObsolete, value, len(key.UserKey), false, 0, false)
+	w.lastSpanDeleted = w.lastSpanDeleted || key.Kind() == base.InternalKeyKindRangeKeyDelete
 	return nil
 }
 
@@ -2362,7 +2391,7 @@ func internalGetProperties(w *Writer) *Properties {
 func init() {
 	private.SSTableWriterDisableKeyOrderChecks = func(i interface{}) {
 		w := i.(*Writer)
-		w.disableKeyOrderChecks = true
+		w.testingDisableKeyOrderChecks = true
 	}
 	private.SSTableInternalProperties = internalGetProperties
 }

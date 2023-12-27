@@ -380,7 +380,7 @@ func (r *Reader) newCompactionIter(
 		err := i.init(
 			context.Background(),
 			r, v, nil /* lower */, nil /* upper */, nil,
-			false /* useFilter */, v != nil && v.isForeign, /* hideObsoletePoints */
+			false /* useFilter */, v != nil && v.isSharedIngested, /* hideObsoletePoints */
 			nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 		)
 		if err != nil {
@@ -395,7 +395,7 @@ func (r *Reader) newCompactionIter(
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
 		context.Background(), r, v, nil /* lower */, nil, /* upper */
-		nil, false /* useFilter */, v != nil && v.isForeign, /* hideObsoletePoints */
+		nil, false /* useFilter */, v != nil && v.isSharedIngested, /* hideObsoletePoints */
 		nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 	)
 	if err != nil {
@@ -423,7 +423,26 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 		return nil, err
 	}
 	i := &fragmentBlockIter{elideSameSeqnum: true}
+	// It's okay for hideObsoletePoints to be false here, even for shared ingested
+	// sstables. This is because rangedels do not apply to points in the same
+	// sstable at the same sequence number anyway, so exposing obsolete rangedels
+	// is harmless.
 	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum, false); err != nil {
+		return nil, err
+	}
+	return i, nil
+}
+
+func (r *Reader) newRawRangeKeyIter(vState *virtualState) (keyspan.FragmentIterator, error) {
+	if r.rangeKeyBH.Length == 0 {
+		return nil, nil
+	}
+	h, err := r.readRangeKey(nil /* stats */, nil /* iterStats */)
+	if err != nil {
+		return nil, err
+	}
+	i := rangeKeyFragmentBlockIterPool.Get().(*rangeKeyFragmentBlockIter)
+	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum, vState != nil && vState.isSharedIngested); err != nil {
 		return nil, err
 	}
 	return i, nil
@@ -436,18 +455,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
 func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
-	if r.rangeKeyBH.Length == 0 {
-		return nil, nil
-	}
-	h, err := r.readRangeKey(nil /* stats */, nil /* iterStats */)
-	if err != nil {
-		return nil, err
-	}
-	i := rangeKeyFragmentBlockIterPool.Get().(*rangeKeyFragmentBlockIter)
-	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum, false); err != nil {
-		return nil, err
-	}
-	return i, nil
+	return r.newRawRangeKeyIter(nil /* vState */)
 }
 
 type rangeKeyFragmentBlockIter struct {

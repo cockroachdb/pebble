@@ -1123,3 +1123,72 @@ next
 b: (bar, .)
 c: (baz, .)
 .
+
+# Regression test for #3174. Obsolete range keys in shared ingested SSTs should
+# not be surfaced.
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+range-key-set c h @5 foo
+----
+
+file-only-snapshot s9
+ a z
+----
+ok
+
+batch
+range-key-del d f
+----
+
+iter snapshot=s9
+first
+next
+next
+----
+c: (., [c-h) @5=foo UPDATED)
+.
+.
+
+compact a-z
+----
+ok
+
+iter
+first
+next
+next
+----
+c: (., [c-d) @5=foo UPDATED)
+f: (., [f-h) @5=foo UPDATED)
+.
+
+lsm
+----
+6:
+  000005:[c#10,RANGEKEYSET-h#inf,RANGEKEYSET]
+
+replicate 1 2 a f
+----
+replicated 1 shared SSTs
+
+switch 2
+----
+ok
+
+iter
+first
+next
+next
+next
+----
+c: (., [c-d) @5=foo UPDATED)
+.
+.
+.
