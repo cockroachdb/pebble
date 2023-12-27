@@ -6,7 +6,6 @@ package rangekey
 
 import (
 	"bytes"
-	"fmt"
 	"math"
 	"sort"
 
@@ -381,16 +380,17 @@ func coalesce(
 }
 
 // ForeignSSTTransformer implements a keyspan.Transformer for range keys in
-// foreign sstables (i.e. shared sstables not created by us). It is largely
-// similar to the Transform function implemented in UserIteratorConfig in that
-// it calls coalesce to remove range keys shadowed by other range keys, but also
-// retains the range key that does the shadowing. In addition, it elides
-// RangeKey unsets/dels in L6 as they are inapplicable when reading from a
-// different Pebble instance.
+// shared ingested sstables. It is largely similar to the Transform function
+// implemented in UserIteratorConfig in that it calls coalesce to remove range
+// keys shadowed by other range keys, but also retains the range key that does
+// the shadowing. In addition, it elides RangeKey unsets/dels in L6 as they are
+// inapplicable when reading from a different Pebble instance. Finally, it
+// returns keys sorted in trailer order, not suffix order, as that's what the
+// rest of the iterator stack expects.
 type ForeignSSTTransformer struct {
-	Comparer *base.Comparer
-	Level    int
-	sortBuf  keyspan.KeysBySuffix
+	Equal   base.Equal
+	SeqNum  uint64
+	sortBuf keyspan.KeysBySuffix
 }
 
 // Transform implements the Transformer interface.
@@ -404,53 +404,35 @@ func (f *ForeignSSTTransformer) Transform(
 		Cmp:  cmp,
 		Keys: f.sortBuf.Keys[:0],
 	}
-	if err := coalesce(f.Comparer.Equal, &f.sortBuf, math.MaxUint64, s.Keys); err != nil {
+	if err := coalesce(f.Equal, &f.sortBuf, math.MaxUint64, s.Keys); err != nil {
 		return err
 	}
 	keys := f.sortBuf.Keys
 	dst.Keys = dst.Keys[:0]
 	for i := range keys {
-		seqNum := keys[i].SeqNum()
 		switch keys[i].Kind() {
 		case base.InternalKeyKindRangeKeySet:
 			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
 				panic("pebble: keys unexpectedly not in ascending suffix order")
 			}
-			switch f.Level {
-			case 5:
-				fallthrough
-			case 6:
-				if seqNum != base.SeqNumForLevel(f.Level) {
-					panic(fmt.Sprintf("pebble: expected range key iter to return seqnum %d, got %d", base.SeqNumForLevel(f.Level), seqNum))
-				}
-			}
 		case base.InternalKeyKindRangeKeyUnset:
 			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
 				panic("pebble: keys unexpectedly not in ascending suffix order")
 			}
-			fallthrough
 		case base.InternalKeyKindRangeKeyDelete:
-			switch f.Level {
-			case 5:
-				// Emit this key.
-				if seqNum != base.SeqNumForLevel(f.Level) {
-					panic(fmt.Sprintf("pebble: expected range key iter to return seqnum %d, got %d", base.SeqNumForLevel(f.Level), seqNum))
-				}
-			case 6:
-				// Skip this key, as foreign sstable in L6 do not need to emit range key
-				// unsets/dels as they do not apply to any other sstables.
-				continue
-			}
+			// Nothing to do.
 		default:
 			return base.CorruptionErrorf("pebble: unrecognized range key kind %s", keys[i].Kind())
 		}
 		dst.Keys = append(dst.Keys, keyspan.Key{
-			Trailer: base.MakeTrailer(seqNum, keys[i].Kind()),
+			Trailer: base.MakeTrailer(f.SeqNum, keys[i].Kind()),
 			Suffix:  keys[i].Suffix,
 			Value:   keys[i].Value,
 		})
 	}
-	// coalesce results in dst.Keys being sorted by Suffix.
-	dst.KeysOrder = keyspan.BySuffixAsc
+	// coalesce results in dst.Keys being sorted by Suffix. Change it back to
+	// ByTrailerDesc, as that's what the iterator stack will expect.
+	keyspan.SortKeysByTrailer(&dst.Keys)
+	dst.KeysOrder = keyspan.ByTrailerDesc
 	return nil
 }

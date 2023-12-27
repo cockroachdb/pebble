@@ -193,7 +193,7 @@ func Decode(ik base.InternalKey, v []byte, keysDst []keyspan.Key) (keyspan.Span,
 	case base.InternalKeyKindRangeKeyUnset:
 		for len(v) > 0 {
 			var suffix []byte
-			suffix, v, ok = decodeSuffix(v)
+			suffix, v, ok = DecodeSuffix(v)
 			if !ok {
 				return keyspan.Span{}, base.CorruptionErrorf("pebble: unable to decode range key unset suffix")
 			}
@@ -370,10 +370,10 @@ func EncodeUnsetValue(dst []byte, endKey []byte, suffixes [][]byte) int {
 	return n
 }
 
-// decodeSuffix decodes a single suffix from the beginning of data. If decoding
+// DecodeSuffix decodes a single suffix from the beginning of data. If decoding
 // suffixes from a RangeKeyUnset's value, the end key must have already been
 // stripped from the RangeKeyUnset's value (see DecodeEndKey).
-func decodeSuffix(data []byte) (suffix, rest []byte, ok bool) {
+func DecodeSuffix(data []byte) (suffix, rest []byte, ok bool) {
 	return decodeVarstring(data)
 }
 
