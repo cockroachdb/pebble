@@ -137,7 +137,7 @@ func TestUnsetSuffixes_RoundTrip(t *testing.T) {
 		// Decode.
 		var ss suffixes
 		for len(b) > 0 {
-			s, rest, ok := decodeSuffix(b)
+			s, rest, ok := DecodeSuffix(b)
 			require.True(t, ok)
 			ss = append(ss, s)
 			b = rest
@@ -192,7 +192,7 @@ func TestUnsetValue_Roundtrip(t *testing.T) {
 		for len(rest) > 0 {
 			var ok bool
 			var suffix []byte
-			suffix, rest, ok = decodeSuffix(rest)
+			suffix, rest, ok = DecodeSuffix(rest)
 			require.True(t, ok)
 			suffixes = append(suffixes, suffix)
 		}
