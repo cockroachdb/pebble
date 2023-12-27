@@ -204,6 +204,7 @@ type Writer struct {
 	// Information (other than the byte slice) about the last point key, to
 	// avoid extracting it again.
 	lastPointKeyInfo pointKeyInfo
+	lastSpanDeleted  bool
 
 	// For value blocks.
 	shortAttributeExtractor   base.ShortAttributeExtractor
@@ -1262,9 +1263,10 @@ func (w *Writer) encodeRangeKeySpan(span keyspan.Span) {
 }
 
 func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
+	var isObsolete bool
 	if !w.disableKeyOrderChecks && w.rangeKeyBlock.nEntries > 0 {
 		prevStartKey := w.rangeKeyBlock.getCurKey()
-		prevEndKey, _, ok := rangekey.DecodeEndKey(prevStartKey.Kind(), w.rangeKeyBlock.curValue)
+		prevEndKey, prevValue, ok := rangekey.DecodeEndKey(prevStartKey.Kind(), w.rangeKeyBlock.curValue)
 		if !ok {
 			// We panic here as we should have previously decoded and validated this
 			// key and value when it was first added to the range key block.
@@ -1273,7 +1275,7 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 		}
 
 		curStartKey := key
-		curEndKey, _, ok := rangekey.DecodeEndKey(curStartKey.Kind(), value)
+		curEndKey, curValue, ok := rangekey.DecodeEndKey(curStartKey.Kind(), value)
 		if !ok {
 			w.err = errors.Errorf("pebble: invalid end key for span: %s",
 				curStartKey.Pretty(w.formatKey))
@@ -1297,6 +1299,26 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 					curStartKey.Pretty(w.formatKey))
 				return w.err
 			}
+			// There are two cases in which the current internal key is obsolete.
+			// Either we've already written a RangeKeyDelete for this span (w.lastSpanDeleted)
+			// or the current key's prefix matches that of the previous key.
+			isObsoleteC2 := false
+			if prevStartKey.Kind() != base.InternalKeyKindRangeKeyDelete && key.Kind() != base.InternalKeyKindRangeKeyDelete {
+				prevSuffix, _, ok := rangekey.DecodeSuffix(prevValue)
+				if !ok {
+					w.err = errors.Errorf("pebble: unexpected range key value: %q",
+						prevValue)
+					return w.err
+				}
+				curSuffix, _, ok := rangekey.DecodeSuffix(curValue)
+				if !ok {
+					w.err = errors.Errorf("pebble: unexpected range key value: %q",
+						curValue)
+					return w.err
+				}
+				isObsoleteC2 = bytes.Equal(prevSuffix, curSuffix)
+			}
+			isObsolete = w.lastSpanDeleted || isObsoleteC2
 		} else if w.compare(prevEndKey, curStartKey.UserKey) > 0 {
 			// If the start user keys are NOT equal, the spans must be disjoint (i.e.
 			// no overlap).
@@ -1307,6 +1329,9 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 				prevStartKey.Pretty(w.formatKey),
 				curStartKey.Pretty(w.formatKey))
 			return w.err
+		} else {
+			// The start key has changed. Reset lastSpanDeleted.
+			w.lastSpanDeleted = false
 		}
 	}
 
@@ -1347,7 +1372,9 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 	}
 
 	// Add the key to the block.
-	w.rangeKeyBlock.add(key, value)
+	w.rangeKeyBlock.addWithOptionalValuePrefix(
+		key, isObsolete, value, len(key.UserKey), false, 0, false)
+	w.lastSpanDeleted = w.lastSpanDeleted || key.Kind() == base.InternalKeyKindRangeKeyDelete
 	return nil
 }
 

@@ -28,12 +28,12 @@ type VirtualReader struct {
 
 // Lightweight virtual sstable state which can be passed to sstable iterators.
 type virtualState struct {
-	lower        InternalKey
-	upper        InternalKey
-	fileNum      base.FileNum
-	Compare      Compare
-	isForeign    bool
-	prefixChange *manifest.PrefixReplacement
+	lower            InternalKey
+	upper            InternalKey
+	fileNum          base.FileNum
+	Compare          Compare
+	isSharedIngested bool
+	prefixChange     *manifest.PrefixReplacement
 }
 
 func ceilDiv(a, b uint64) uint64 {
@@ -42,20 +42,18 @@ func ceilDiv(a, b uint64) uint64 {
 
 // MakeVirtualReader is used to contruct a reader which can read from virtual
 // sstables.
-func MakeVirtualReader(
-	reader *Reader, meta manifest.VirtualFileMeta, isForeign bool,
-) VirtualReader {
+func MakeVirtualReader(reader *Reader, meta manifest.VirtualFileMeta, isShared bool) VirtualReader {
 	if reader.fileNum != meta.FileBacking.DiskFileNum {
 		panic("pebble: invalid call to MakeVirtualReader")
 	}
 
 	vState := virtualState{
-		lower:        meta.Smallest,
-		upper:        meta.Largest,
-		fileNum:      meta.FileNum,
-		Compare:      reader.Compare,
-		isForeign:    isForeign,
-		prefixChange: meta.PrefixReplacement,
+		lower:            meta.Smallest,
+		upper:            meta.Largest,
+		fileNum:          meta.FileNum,
+		Compare:          reader.Compare,
+		isSharedIngested: isShared && reader.Properties.GlobalSeqNum != 0,
+		prefixChange:     meta.PrefixReplacement,
 	}
 	v := VirtualReader{
 		vState: vState,
@@ -167,7 +165,7 @@ func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 
 // NewRawRangeKeyIter wraps Reader.NewRawRangeKeyIter.
 func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
-	iter, err := v.reader.NewRawRangeKeyIter()
+	iter, err := v.reader.newRawRangeKeyIter(&v.vState)
 	if err != nil {
 		return nil, err
 	}

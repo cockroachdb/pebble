@@ -380,7 +380,7 @@ func (r *Reader) newCompactionIter(
 		err := i.init(
 			context.Background(),
 			r, v, nil /* lower */, nil /* upper */, nil,
-			false /* useFilter */, v != nil && v.isForeign, /* hideObsoletePoints */
+			false /* useFilter */, v != nil && v.isSharedIngested, /* hideObsoletePoints */
 			nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 		)
 		if err != nil {
@@ -395,7 +395,7 @@ func (r *Reader) newCompactionIter(
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
 		context.Background(), r, v, nil /* lower */, nil, /* upper */
-		nil, false /* useFilter */, v != nil && v.isForeign, /* hideObsoletePoints */
+		nil, false /* useFilter */, v != nil && v.isSharedIngested, /* hideObsoletePoints */
 		nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 	)
 	if err != nil {
@@ -429,13 +429,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 	return i, nil
 }
 
-// NewRawRangeKeyIter returns an internal iterator for the contents of the
-// range-key block for the table. Returns nil if the table does not contain any
-// range keys.
-//
-// TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
-// iterator. Add WithContext methods since the existing ones are public.
-func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
+func (r *Reader) newRawRangeKeyIter(vState *virtualState) (keyspan.FragmentIterator, error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
 	}
@@ -444,10 +438,20 @@ func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 		return nil, err
 	}
 	i := rangeKeyFragmentBlockIterPool.Get().(*rangeKeyFragmentBlockIter)
-	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum, false); err != nil {
+	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum, vState != nil && vState.isSharedIngested); err != nil {
 		return nil, err
 	}
 	return i, nil
+}
+
+// NewRawRangeKeyIter returns an internal iterator for the contents of the
+// range-key block for the table. Returns nil if the table does not contain any
+// range keys.
+//
+// TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
+// iterator. Add WithContext methods since the existing ones are public.
+func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
+	return r.newRawRangeKeyIter(nil /* vState */)
 }
 
 type rangeKeyFragmentBlockIter struct {
