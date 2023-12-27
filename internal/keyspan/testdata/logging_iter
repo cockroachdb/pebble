@@ -15,39 +15,39 @@ last
 prev
 ----
 *keyspan.assertIter: SeekGE("a")
-  *keyspan.Iter: SeekGE("a")
-  *keyspan.Iter: SeekGE("a") = a-b:{(#2,SET) (#1,SET)}
-*keyspan.assertIter: SeekGE("a") = a-b:{(#2,SET) (#1,SET)}
+ ├── *keyspan.Iter: SeekGE("a")
+ │    └── a-b:{(#2,SET) (#1,SET)}
+ └── a-b:{(#2,SET) (#1,SET)}
 *keyspan.assertIter: Next()
-  *keyspan.Iter: Next()
-  *keyspan.Iter: Next() = b-c:{(#2,SET) (#1,SET)}
-*keyspan.assertIter: Next() = b-c:{(#2,SET) (#1,SET)}
+ ├── *keyspan.Iter: Next()
+ │    └── b-c:{(#2,SET) (#1,SET)}
+ └── b-c:{(#2,SET) (#1,SET)}
 *keyspan.assertIter: Next()
-  *keyspan.Iter: Next()
-  *keyspan.Iter: Next() = c-d:{(#2,SET) (#1,SET)}
-*keyspan.assertIter: Next() = c-d:{(#2,SET) (#1,SET)}
+ ├── *keyspan.Iter: Next()
+ │    └── c-d:{(#2,SET) (#1,SET)}
+ └── c-d:{(#2,SET) (#1,SET)}
 *keyspan.assertIter: Prev()
-  *keyspan.Iter: Prev()
-  *keyspan.Iter: Prev() = b-c:{(#2,SET) (#1,SET)}
-*keyspan.assertIter: Prev() = b-c:{(#2,SET) (#1,SET)}
+ ├── *keyspan.Iter: Prev()
+ │    └── b-c:{(#2,SET) (#1,SET)}
+ └── b-c:{(#2,SET) (#1,SET)}
 *keyspan.assertIter: First()
-  *keyspan.Iter: First()
-  *keyspan.Iter: First() = a-b:{(#2,SET) (#1,SET)}
-*keyspan.assertIter: First() = a-b:{(#2,SET) (#1,SET)}
+ ├── *keyspan.Iter: First()
+ │    └── a-b:{(#2,SET) (#1,SET)}
+ └── a-b:{(#2,SET) (#1,SET)}
 *keyspan.assertIter: Next()
-  *keyspan.Iter: Next()
-  *keyspan.Iter: Next() = b-c:{(#2,SET) (#1,SET)}
-*keyspan.assertIter: Next() = b-c:{(#2,SET) (#1,SET)}
+ ├── *keyspan.Iter: Next()
+ │    └── b-c:{(#2,SET) (#1,SET)}
+ └── b-c:{(#2,SET) (#1,SET)}
 *keyspan.assertIter: Last()
-  *keyspan.Iter: Last()
-  *keyspan.Iter: Last() = c-d:{(#2,SET) (#1,SET)}
-*keyspan.assertIter: Last() = c-d:{(#2,SET) (#1,SET)}
+ ├── *keyspan.Iter: Last()
+ │    └── c-d:{(#2,SET) (#1,SET)}
+ └── c-d:{(#2,SET) (#1,SET)}
 *keyspan.assertIter: Prev()
-  *keyspan.Iter: Prev()
-  *keyspan.Iter: Prev() = b-c:{(#2,SET) (#1,SET)}
-*keyspan.assertIter: Prev() = b-c:{(#2,SET) (#1,SET)}
+ ├── *keyspan.Iter: Prev()
+ │    └── b-c:{(#2,SET) (#1,SET)}
+ └── b-c:{(#2,SET) (#1,SET)}
 *keyspan.assertIter: Close()
-  *keyspan.Iter: Close()
+ └── *keyspan.Iter: Close()
 
 iter
 seek-lt a
@@ -56,20 +56,20 @@ next
 next
 ----
 *keyspan.assertIter: SeekLT("a")
-  *keyspan.Iter: SeekLT("a")
-  *keyspan.Iter: SeekLT("a") = <nil>
-*keyspan.assertIter: SeekLT("a") = <nil>
+ ├── *keyspan.Iter: SeekLT("a")
+ │    └── <nil>
+ └── <nil>
 *keyspan.assertIter: SeekLT("c")
-  *keyspan.Iter: SeekLT("c")
-  *keyspan.Iter: SeekLT("c") = b-c:{(#2,SET) (#1,SET)}
-*keyspan.assertIter: SeekLT("c") = b-c:{(#2,SET) (#1,SET)}
+ ├── *keyspan.Iter: SeekLT("c")
+ │    └── b-c:{(#2,SET) (#1,SET)}
+ └── b-c:{(#2,SET) (#1,SET)}
 *keyspan.assertIter: Next()
-  *keyspan.Iter: Next()
-  *keyspan.Iter: Next() = c-d:{(#2,SET) (#1,SET)}
-*keyspan.assertIter: Next() = c-d:{(#2,SET) (#1,SET)}
+ ├── *keyspan.Iter: Next()
+ │    └── c-d:{(#2,SET) (#1,SET)}
+ └── c-d:{(#2,SET) (#1,SET)}
 *keyspan.assertIter: Next()
-  *keyspan.Iter: Next()
-  *keyspan.Iter: Next() = <nil>
-*keyspan.assertIter: Next() = <nil>
+ ├── *keyspan.Iter: Next()
+ │    └── <nil>
+ └── <nil>
 *keyspan.assertIter: Close()
-  *keyspan.Iter: Close()
+ └── *keyspan.Iter: Close()
