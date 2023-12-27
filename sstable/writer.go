@@ -2014,7 +2014,7 @@ func (w *Writer) Close() (err error) {
 	}
 
 	if w.valueBlockWriter != nil {
-		vbiHandle, vbStats, err := w.valueBlockWriter.finish(w, w.meta.Size)
+		vbiHandle, vbStats, err := w.valueBlockWriter.finish(w)
 		if err != nil {
 			return err
 		}
@@ -2234,13 +2234,18 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 			Format: o.Comparer.FormatKey,
 		},
 	}
+
+	w.coordination.init(o.Parallelism, w)
+
 	if w.tableFormat >= TableFormatPebblev3 {
 		w.shortAttributeExtractor = o.ShortAttributeExtractor
 		w.requiredInPlaceValueBound = o.RequiredInPlaceValueBound
 		w.valueBlockWriter = newValueBlockWriter(
-			w.blockSize, w.blockSizeThreshold, w.compression, w.checksumType, func(compressedSize int) {
+			w.blockSize, w.blockSizeThreshold, o.ValueBlockBufferLimit, w.compression, w.checksumType,
+			func(compressedSize int) {
 				w.coordination.sizeEstimate.dataBlockCompressed(compressedSize, 0)
-			})
+			},
+			w.coordination.writeQueue)
 	}
 
 	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)
@@ -2248,8 +2253,6 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	w.blockBuf = blockBuf{
 		checksummer: checksummer{checksumType: o.Checksum},
 	}
-
-	w.coordination.init(o.Parallelism, w)
 
 	if writable == nil {
 		w.err = errors.New("pebble: nil writable")

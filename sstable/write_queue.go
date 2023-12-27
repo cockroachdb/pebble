@@ -32,14 +32,22 @@ func (task *writeTask) clear() {
 	}
 }
 
+// writeQueue represents a queue of writes to the underlying writer.
+//
+// writes to the underlying writer are performed only while holding the writerMu
+// mutex, in case other other users of the underlying writer need to serialize
+// operations on the underlying writer with a running writeQueue.
+//
 // Note that only the Writer client goroutine will be adding tasks to the writeQueue.
 // Both the Writer client and the compression goroutines will be able to write to
 // writeTask.compressionDone to indicate that the compression job associated with
 // a writeTask has finished.
 type writeQueue struct {
-	tasks  chan *writeTask
-	wg     sync.WaitGroup
-	writer *Writer
+	tasks chan *writeTask
+	wg    sync.WaitGroup
+
+	writeMu sync.Mutex
+	writer  *Writer
 
 	// err represents an error which is encountered when the write queue attempts
 	// to write a block to disk. The error is stored here to skip unnecessary block
@@ -59,6 +67,9 @@ func newWriteQueue(size int, writer *Writer) *writeQueue {
 }
 
 func (w *writeQueue) performWrite(task *writeTask) error {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
+
 	var bh BlockHandle
 	var bhp BlockHandleWithProperties
 
@@ -111,8 +122,7 @@ func (w *writeQueue) add(task *writeTask) {
 	w.tasks <- task
 }
 
-// addSync will perform the writeTask synchronously with the caller goroutine. Calls to addSync
-// are no longer valid once writeQueue.add has been called at least once.
+// addSync will perform the writeTask synchronously with the caller goroutine.
 func (w *writeQueue) addSync(task *writeTask) error {
 	// This should instantly return without blocking.
 	<-task.compressionDone

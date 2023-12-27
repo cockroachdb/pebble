@@ -267,6 +267,16 @@ type WriterOptions struct {
 	// RequiredInPlaceValueBound mirrors
 	// Options.Experimental.RequiredInPlaceValueBound.
 	RequiredInPlaceValueBound UserKeyPrefixBound
+
+	// ValueBlockBufferLimit is the number of value blocks to buffer in-memory
+	// before flushing them to the underlying writer. Buffering these blocks and
+	// flushing them in groups, rather than interleaved block-by-block with data
+	// blocks, potentially improves locality of scans over data blocks in the
+	// presence of prefetching/read-ahead, page caching, etc.
+	//
+	// A value of 0 implies the default of max(8MB/BlockSize, 16) while a value of
+	// less than 0 disables buffering entirely.
+	ValueBlockBufferLimit int
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {
@@ -287,6 +297,9 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize
+	}
+	if o.ValueBlockBufferLimit == 0 {
+		o.ValueBlockBufferLimit = max(16, 8<<20/o.BlockSize)
 	}
 	if o.MergerName == "" {
 		o.MergerName = base.DefaultMerger.Name
