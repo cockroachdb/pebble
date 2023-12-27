@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
 // VirtualReader wraps Reader. Its purpose is to restrict functionality of the
@@ -28,12 +29,12 @@ type VirtualReader struct {
 
 // Lightweight virtual sstable state which can be passed to sstable iterators.
 type virtualState struct {
-	lower        InternalKey
-	upper        InternalKey
-	fileNum      base.FileNum
-	Compare      Compare
-	isForeign    bool
-	prefixChange *manifest.PrefixReplacement
+	lower            InternalKey
+	upper            InternalKey
+	fileNum          base.FileNum
+	Compare          Compare
+	isSharedIngested bool
+	prefixChange     *manifest.PrefixReplacement
 }
 
 func ceilDiv(a, b uint64) uint64 {
@@ -42,20 +43,18 @@ func ceilDiv(a, b uint64) uint64 {
 
 // MakeVirtualReader is used to contruct a reader which can read from virtual
 // sstables.
-func MakeVirtualReader(
-	reader *Reader, meta manifest.VirtualFileMeta, isForeign bool,
-) VirtualReader {
+func MakeVirtualReader(reader *Reader, meta manifest.VirtualFileMeta, isShared bool) VirtualReader {
 	if reader.fileNum != meta.FileBacking.DiskFileNum {
 		panic("pebble: invalid call to MakeVirtualReader")
 	}
 
 	vState := virtualState{
-		lower:        meta.Smallest,
-		upper:        meta.Largest,
-		fileNum:      meta.FileNum,
-		Compare:      reader.Compare,
-		isForeign:    isForeign,
-		prefixChange: meta.PrefixReplacement,
+		lower:            meta.Smallest,
+		upper:            meta.Largest,
+		fileNum:          meta.FileNum,
+		Compare:          reader.Compare,
+		isSharedIngested: isShared && reader.Properties.GlobalSeqNum != 0,
+		prefixChange:     meta.PrefixReplacement,
 	}
 	v := VirtualReader{
 		vState: vState,
@@ -167,7 +166,7 @@ func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 
 // NewRawRangeKeyIter wraps Reader.NewRawRangeKeyIter.
 func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
-	iter, err := v.reader.NewRawRangeKeyIter()
+	iter, err := v.reader.newRawRangeKeyIter(&v.vState)
 	if err != nil {
 		return nil, err
 	}
@@ -176,6 +175,24 @@ func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 	}
 	lower := &v.vState.lower
 	upper := &v.vState.upper
+
+	if v.vState.isSharedIngested {
+		// We need to coalesce range keys within each sstable, and then apply the
+		// global sequence number. For this, we use ForeignSSTTransformer.
+		//
+		// TODO(bilal): Avoid these allocations by hoisting the transformer and
+		// transform iter into VirtualReader.
+		transform := &rangekey.ForeignSSTTransformer{
+			Equal:  v.reader.Equal,
+			SeqNum: v.reader.Properties.GlobalSeqNum,
+		}
+		transformIter := &keyspan.TransformerIter{
+			FragmentIterator: iter,
+			Transformer:      transform,
+			Compare:          v.reader.Compare,
+		}
+		iter = transformIter
+	}
 
 	if v.vState.prefixChange != nil {
 		lower = &InternalKey{UserKey: v.vState.prefixChange.ReplaceArg(lower.UserKey), Trailer: lower.Trailer}
