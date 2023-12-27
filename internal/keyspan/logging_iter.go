@@ -6,9 +6,9 @@ package keyspan
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // WrapFn is the prototype for a function that wraps a FragmentIterator.
@@ -19,8 +19,7 @@ type WrapFn func(in FragmentIterator) FragmentIterator
 func InjectLogging(iter FragmentIterator, logger base.Logger) FragmentIterator {
 	// All iterators in the stack will use the same logging state.
 	state := &loggingState{
-		depth: 0,
-		log:   logger,
+		log: logger,
 	}
 	var wrap WrapFn
 	wrap = func(in FragmentIterator) FragmentIterator {
@@ -52,23 +51,34 @@ type loggingIter struct {
 
 // loggingState is shared by all iterators in a stack.
 type loggingState struct {
-	depth int
-	log   base.Logger
+	node treeprinter.Node
+	log  base.Logger
 }
 
 func (i *loggingIter) opStartf(format string, args ...any) func(results ...any) {
-	op := fmt.Sprintf(format, args...)
-	msg := fmt.Sprintf("%s%s %s", strings.Repeat("  ", i.state.depth), i.context, op)
+	savedNode := i.state.node
 
-	i.state.log.Infof("%s", msg)
-	savedDepth := i.state.depth
-	i.state.depth++
+	n := i.state.node
+	topLevelOp := false
+	if n == (treeprinter.Node{}) {
+		n = treeprinter.New()
+		topLevelOp = true
+	}
+	op := fmt.Sprintf(format, args...)
+
+	child := n.Childf("%s %s", i.context, op)
+	i.state.node = child
 
 	return func(results ...any) {
-		i.state.depth = savedDepth
 		if len(results) > 0 {
-			i.state.log.Infof("%s = %s", msg, fmt.Sprint(results...))
+			child.Childf("%s", fmt.Sprint(results...))
 		}
+		if topLevelOp {
+			for _, row := range n.FormattedRows() {
+				i.state.log.Infof("%s\n", row)
+			}
+		}
+		i.state.node = savedNode
 	}
 }
 
