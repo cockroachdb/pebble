@@ -715,7 +715,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	var buf strings.Builder
 	twoLevelIndex := r.Properties.IndexType == twoLevelIndex
 	buf.WriteString("index entries:\n")
-	iter, err := newBlockIter(r.Compare, indexH.Get())
+	iter, err := newBlockIter(r.Compare, indexH.Get(), r.syntheticPrefix)
 	defer func() {
 		require.NoError(t, iter.Close())
 	}()
@@ -729,7 +729,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 				context.Background(), bh.BlockHandle, nil, nil, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
-			iter2, err := newBlockIter(r.Compare, b.Get())
+			iter2, err := newBlockIter(r.Compare, b.Get(), r.syntheticPrefix)
 			defer func() {
 				require.NoError(t, iter2.Close())
 			}()
@@ -1410,11 +1410,12 @@ func buildTestTable(
 	blockSize, indexBlockSize int,
 	compression Compression,
 	prefix []byte,
+	readerOpts ...ReaderOption,
 ) *Reader {
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.NewMem(), "" /* dirName */))
 	require.NoError(t, err)
 	defer provider.Close()
-	return buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, compression, prefix)
+	return buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, compression, prefix, readerOpts...)
 }
 
 func buildTestTableWithProvider(
@@ -1424,6 +1425,7 @@ func buildTestTableWithProvider(
 	blockSize, indexBlockSize int,
 	compression Compression,
 	prefix []byte,
+	readerOpts ...ReaderOption,
 ) *Reader {
 	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, base.DiskFileNum(0), objstorage.CreateOptions{})
 	require.NoError(t, err)
@@ -1455,7 +1457,9 @@ func buildTestTableWithProvider(
 	defer c.Unref()
 	r, err := NewReader(f1, ReaderOptions{
 		Cache: c,
-	})
+	},
+		readerOpts...,
+	)
 	require.NoError(t, err)
 	return r
 }

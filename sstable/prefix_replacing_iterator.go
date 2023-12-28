@@ -113,7 +113,9 @@ func (p *prefixReplacingIterator) SeekLT(
 		p.i.First()
 		return p.rewriteResult(p.i.Prev())
 	}
-	return p.rewriteResult(p.i.SeekLT(p.rewriteArg(key), flags))
+	key = p.rewriteArg(key)
+	resKey, resResult := p.i.SeekLT(key, flags)
+	return p.rewriteResult(resKey, resResult)
 }
 
 // First implements the Iterator interface.
