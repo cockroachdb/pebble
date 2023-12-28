@@ -24,7 +24,11 @@ func TestPrefixReplacingIterator(t *testing.T) {
 		{from: []byte("zzz"), to: []byte("aa")},
 	} {
 		t.Run(fmt.Sprintf("%s_%s", tc.from, tc.to), func(t *testing.T) {
-			r := buildTestTable(t, 20, 256, 256, DefaultCompression, tc.from)
+			var readerOpts []ReaderOption
+			if len(tc.from) == 0 {
+				readerOpts = append(readerOpts, WithSyntheticPrefix(tc.to))
+			}
+			r := buildTestTable(t, 20, 256, 256, DefaultCompression, tc.from, readerOpts...)
 			defer r.Close()
 			rawIter, err := r.NewIter(nil, nil)
 			require.NoError(t, err)
@@ -32,7 +36,12 @@ func TestPrefixReplacingIterator(t *testing.T) {
 
 			raw := rawIter.(*singleLevelIterator)
 
-			it := newPrefixReplacingIterator(raw, tc.from, tc.to, DefaultComparer.Compare)
+			var it Iterator
+			if r.syntheticPrefix != nil {
+				it = raw
+			} else {
+				it = newPrefixReplacingIterator(raw, tc.from, tc.to, DefaultComparer.Compare)
+			}
 
 			kMin, kMax, k := []byte{0}, []byte("~"), func(i uint64) []byte {
 				return binary.BigEndian.AppendUint64(tc.to[:len(tc.to):len(tc.to)], i)

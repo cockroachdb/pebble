@@ -90,7 +90,7 @@ func (v *VirtualReader) NewCompactionIter(
 ) (Iterator, error) {
 	i, err := v.reader.newCompactionIter(
 		bytesIterated, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
-	if err == nil && v.vState.prefixChange != nil {
+	if err == nil && v.vState.prefixChange != nil && !v.reader.syntheticPrefix.Implements(v.vState.prefixChange) {
 		i = newPrefixReplacingIterator(i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix, v.reader.Compare)
 	}
 	return i, err
@@ -113,7 +113,7 @@ func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	i, err := v.reader.newIterWithBlockPropertyFiltersAndContext(
 		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats,
 		categoryAndQoS, statsCollector, rp, &v.vState)
-	if err == nil && v.vState.prefixChange != nil {
+	if err == nil && v.vState.prefixChange != nil && !v.reader.syntheticPrefix.Implements(v.vState.prefixChange) {
 		i = newPrefixReplacingIterator(i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix, v.reader.Compare)
 	}
 	return i, err

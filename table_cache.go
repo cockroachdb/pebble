@@ -880,11 +880,16 @@ func (c *tableCacheShard) findNodeInternal(
 	// Note adding to the cache lists must complete before we begin loading the
 	// table as a failure during load will result in the node being unlinked.
 	pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+		var prefix []byte
+		if meta.PrefixReplacement != nil && len(meta.PrefixReplacement.ContentPrefix) == 0 {
+			prefix = meta.PrefixReplacement.SyntheticPrefix
+		}
 		v.load(
 			loadInfo{
-				backingFileNum: meta.FileBacking.DiskFileNum,
-				smallestSeqNum: meta.SmallestSeqNum,
-				largestSeqNum:  meta.LargestSeqNum,
+				backingFileNum:  meta.FileBacking.DiskFileNum,
+				smallestSeqNum:  meta.SmallestSeqNum,
+				largestSeqNum:   meta.LargestSeqNum,
+				syntheticPrefix: prefix,
 			}, c, dbOpts)
 	})
 	return v
@@ -1111,9 +1116,10 @@ type tableCacheValue struct {
 }
 
 type loadInfo struct {
-	backingFileNum base.DiskFileNum
-	largestSeqNum  uint64
-	smallestSeqNum uint64
+	backingFileNum  base.DiskFileNum
+	largestSeqNum   uint64
+	smallestSeqNum  uint64
+	syntheticPrefix []byte
 }
 
 func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *tableCacheOpts) {
@@ -1125,7 +1131,7 @@ func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *ta
 	)
 	if err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, loadInfo.backingFileNum).(sstable.ReaderOption)
-		v.reader, err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
+		v.reader, err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics, sstable.WithSyntheticPrefix(loadInfo.syntheticPrefix))
 	}
 	if err != nil {
 		v.err = errors.Wrapf(
