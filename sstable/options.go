@@ -230,6 +230,12 @@ type WriterOptions struct {
 	// 750MB sstables -- see
 	// https://github.com/cockroachdb/cockroach/issues/117113).
 	DisableValueBlocks bool
+
+	// ElidePrefix is a common prefix that will be present in and removed from all
+	// keys and keyspans passed to the Add* methods of the writer. The writer will
+	// confirm all passed keys do indeed have the prefix before removing it and
+	// will return and error if they do not. The elided prefix is noted in a prop.
+	ElidePrefix []byte
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {

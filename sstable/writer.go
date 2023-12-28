@@ -127,6 +127,7 @@ type Writer struct {
 	indexBlockSizeThreshold int
 	compare                 Compare
 	split                   Split
+	elidePrefix             []byte
 	formatKey               base.FormatKey
 	compression             Compression
 	separator               Separator
@@ -926,6 +927,10 @@ func (w *Writer) makeAddPointDecisionV3(
 }
 
 func (w *Writer) addPoint(key InternalKey, value []byte, forceObsolete bool) error {
+	if !bytes.HasPrefix(key.UserKey, w.elidePrefix) {
+		return errBadElidePrefix
+	}
+	key.UserKey = key.UserKey[len(w.elidePrefix):]
 	if w.isStrictObsolete && key.Kind() == InternalKeyKindMerge {
 		return errors.Errorf("MERGE not supported in a strict-obsolete sstable")
 	}
@@ -1059,6 +1064,16 @@ func (w *Writer) prettyTombstone(k InternalKey, value []byte) fmt.Formatter {
 }
 
 func (w *Writer) addTombstone(key InternalKey, value []byte) error {
+	if !bytes.HasPrefix(key.UserKey, w.elidePrefix) {
+		return errBadElidePrefix
+	}
+	key.UserKey = key.UserKey[len(w.elidePrefix):]
+
+	if !bytes.HasPrefix(value, w.elidePrefix) {
+		return errBadElidePrefix
+	}
+	value = value[len(w.elidePrefix):]
+
 	if !w.disableKeyOrderChecks && !w.rangeDelV1Format && w.rangeDelBlock.nEntries > 0 {
 		// Check that tombstones are being added in fragmented order. If the two
 		// tombstones overlap, their start and end keys must be identical.
@@ -1199,6 +1214,8 @@ func (w *Writer) RangeKeyDelete(start, end []byte) error {
 	})
 }
 
+var errBadElidePrefix = fmt.Errorf("key does not match writer's common prefix")
+
 // AddRangeKey adds a range key set, unset, or delete key/value pair to the
 // table being written.
 //
@@ -1212,10 +1229,23 @@ func (w *Writer) AddRangeKey(key InternalKey, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
+	if len(w.elidePrefix) != 0 {
+		if !bytes.HasPrefix(key.UserKey, w.elidePrefix) {
+			return errBadElidePrefix
+		}
+		key.UserKey = key.UserKey[len(w.elidePrefix):]
+	}
+
 	return w.addRangeKey(key, value)
 }
 
 func (w *Writer) addRangeKeySpan(span keyspan.Span) error {
+	if len(w.elidePrefix) != 0 {
+		if !bytes.HasPrefix(span.Start, w.elidePrefix) || !bytes.HasPrefix(span.End, w.elidePrefix) {
+			return errBadElidePrefix
+		}
+		span.Start, span.End = span.Start[len(w.elidePrefix):], span.End[len(w.elidePrefix):]
+	}
 	if w.compare(span.Start, span.End) >= 0 {
 		return errors.Errorf(
 			"pebble: start key must be strictly less than end key",
@@ -2201,6 +2231,7 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 		writingToLowestLevel:    o.WritingToLowestLevel,
 		cache:                   o.Cache,
 		restartInterval:         o.BlockRestartInterval,
+		elidePrefix:             o.ElidePrefix,
 		checksumType:            o.Checksum,
 		indexBlock:              newIndexBlockBuf(o.Parallelism),
 		rangeDelBlock: blockWriter{

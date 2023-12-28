@@ -368,3 +368,21 @@ layout
        759  meta-index (57)
        821  footer (53)
        874  EOF
+
+build elide-prefix=foo_
+foo_a.SET.1:a
+foo_b.DEL.2:
+foo_c.MERGE.3:c
+foo_d.RANGEDEL.4:foo_e
+foo_f.SET.5:f
+foo_g.DEL.6:
+foo_h.MERGE.7:h
+foo_i.RANGEDEL.8:foo_j
+rangekey: foo_j-foo_k:{(#9,RANGEKEYDEL)}
+rangekey: foo_k-foo_l:{(#10,RANGEKEYUNSET,@t5)}
+rangekey: foo_l-foo_m:{(#11,RANGEKEYSET,@t10,foo)}
+----
+point:    [a#1,1-h#7,2]
+rangedel: [d#4,15-j#72057594037927935,15]
+rangekey: [j#9,19-m#72057594037927935,21]
+seqnums:  [1-11]
