@@ -67,7 +67,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	if i.err = i.index.initHandle(i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum, false); i.err == nil {
+	if i.err = i.index.initHandle(i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum, false, i.reader.syntheticPrefix); i.err == nil {
 		return loadBlockOK
 	}
 	return loadBlockFailed
@@ -175,7 +175,7 @@ func (i *twoLevelIterator) init(
 	i.stats = stats
 	i.hideObsoletePoints = hideObsoletePoints
 	i.bufferPool = bufferPool
-	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum, false)
+	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum, false, r.syntheticPrefix)
 	if err != nil {
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
 		_ = i.topLevelIndex.Close()
