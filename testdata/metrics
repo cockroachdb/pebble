@@ -68,7 +68,7 @@ Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Block cache: 3 entries (556B)  hit rate: 0.0%
-Table cache: 1 entries (808B)  hit rate: 0.0%
+Table cache: 1 entries (832B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1

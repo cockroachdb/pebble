@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -157,6 +158,34 @@ func (c *cacheOpts) writerApply(w *Writer) {
 	}
 }
 
+type noopOpt struct{}
+
+func (noopOpt) preApply() {}
+
+func (noopOpt) readerApply(_ *Reader) {}
+
+func WithSyntheticPrefix(prefix []byte) ReaderOption {
+	if len(prefix) == 0 {
+		return noopOpt{}
+	}
+	return SyntheticPrefix(prefix)
+}
+
+type SyntheticPrefix []byte
+
+func (p SyntheticPrefix) Implements(r *manifest.PrefixReplacement) bool {
+	if p == nil {
+		return r == nil || (len(r.ContentPrefix) == 0 && len(r.SyntheticPrefix) == 0)
+	}
+	return len(r.ContentPrefix) == 0 && bytes.Equal(r.SyntheticPrefix, p)
+}
+
+func (SyntheticPrefix) preApply() {}
+
+func (p SyntheticPrefix) readerApply(r *Reader) {
+	r.syntheticPrefix = p[:len(p):len(p)]
+}
+
 // rawTombstonesOpt is a Reader open option for specifying that range
 // tombstones returned by Reader.NewRangeDelIter() should not be
 // fragmented. Used by debug tools to get a raw view of the tombstones
@@ -222,6 +251,7 @@ type Reader struct {
 	Equal             Equal
 	FormatKey         base.FormatKey
 	Split             Split
+	syntheticPrefix   SyntheticPrefix
 	tableFilter       *tableFilterReader
 	// Keep types that are not multiples of 8 bytes at the end and with
 	// decreasing size.
@@ -429,7 +459,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 	// sstables. This is because rangedels do not apply to points in the same
 	// sstable at the same sequence number anyway, so exposing obsolete rangedels
 	// is harmless.
-	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum, false); err != nil {
+	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum, false, r.syntheticPrefix); err != nil {
 		return nil, err
 	}
 	return i, nil
@@ -451,7 +481,7 @@ func (r *Reader) newRawRangeKeyIter(vState *virtualState) (keyspan.FragmentItera
 	if vState == nil || !vState.isSharedIngested {
 		globalSeqNum = r.Properties.GlobalSeqNum
 	}
-	if err := i.blockIter.initHandle(r.Compare, h, globalSeqNum, false /* hideObsoletePoints */); err != nil {
+	if err := i.blockIter.initHandle(r.Compare, h, globalSeqNum, false /* hideObsoletePoints */, r.syntheticPrefix); err != nil {
 		return nil, err
 	}
 	return i, nil
@@ -706,7 +736,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// tombstones. We need properly fragmented and sorted range tombstones in
 	// order to serve from them directly.
 	iter := &blockIter{}
-	if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum, false); err != nil {
+	if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum, false, r.syntheticPrefix); err != nil {
 		return nil, err
 	}
 	var tombstones []keyspan.Span
@@ -886,7 +916,7 @@ func (r *Reader) Layout() (*Layout, error) {
 
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.indexBH)
-		iter, _ := newBlockIter(r.Compare, indexH.Get())
+		iter, _ := newBlockIter(r.Compare, indexH.Get(), r.syntheticPrefix)
 		for key, value := iter.First(); key != nil; key, value = iter.Next() {
 			dataBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 			if err != nil {
@@ -899,8 +929,8 @@ func (r *Reader) Layout() (*Layout, error) {
 		}
 	} else {
 		l.TopIndex = r.indexBH
-		topIter, _ := newBlockIter(r.Compare, indexH.Get())
-		iter := &blockIter{}
+		topIter, _ := newBlockIter(r.Compare, indexH.Get(), r.syntheticPrefix)
+		iter := &blockIter{SyntheticPrefix: r.syntheticPrefix}
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
 			indexBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 			if err != nil {
@@ -914,7 +944,7 @@ func (r *Reader) Layout() (*Layout, error) {
 				return nil, err
 			}
 			if err := iter.init(r.Compare, subIndex.Get(), 0, /* globalSeqNum */
-				false /* hideObsoletePoints */); err != nil {
+				false /* hideObsoletePoints */, r.syntheticPrefix); err != nil {
 				return nil, err
 			}
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
@@ -1049,14 +1079,14 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	// to the same blockIter over the single index in the unpartitioned case.
 	var startIdxIter, endIdxIter *blockIter
 	if r.Properties.IndexPartitions == 0 {
-		iter, err := newBlockIter(r.Compare, indexH.Get())
+		iter, err := newBlockIter(r.Compare, indexH.Get(), r.syntheticPrefix)
 		if err != nil {
 			return 0, err
 		}
 		startIdxIter = iter
 		endIdxIter = iter
 	} else {
-		topIter, err := newBlockIter(r.Compare, indexH.Get())
+		topIter, err := newBlockIter(r.Compare, indexH.Get(), r.syntheticPrefix)
 		if err != nil {
 			return 0, err
 		}
@@ -1076,7 +1106,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, err
 		}
 		defer startIdxBlock.Release()
-		startIdxIter, err = newBlockIter(r.Compare, startIdxBlock.Get())
+		startIdxIter, err = newBlockIter(r.Compare, startIdxBlock.Get(), r.syntheticPrefix)
 		if err != nil {
 			return 0, err
 		}
@@ -1097,7 +1127,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				return 0, err
 			}
 			defer endIdxBlock.Release()
-			endIdxIter, err = newBlockIter(r.Compare, endIdxBlock.Get())
+			endIdxIter, err = newBlockIter(r.Compare, endIdxBlock.Get(), r.syntheticPrefix)
 			if err != nil {
 				return 0, err
 			}

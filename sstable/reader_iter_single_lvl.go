@@ -218,7 +218,7 @@ func (i *singleLevelIterator) init(
 	i.stats = stats
 	i.hideObsoletePoints = hideObsoletePoints
 	i.bufferPool = bufferPool
-	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum, false)
+	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum, false, r.syntheticPrefix)
 	if err != nil {
 		// blockIter.Close releases indexH and always returns a nil error
 		_ = i.index.Close()
@@ -441,7 +441,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum, i.hideObsoletePoints)
+	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum, i.hideObsoletePoints, i.reader.syntheticPrefix)
 	if i.err != nil {
 		// The block is partially loaded, and we don't want it to appear valid.
 		i.data.invalidate()
@@ -827,6 +827,9 @@ func (i *singleLevelIterator) seekPrefixGE(
 		if i.err != nil {
 			i.data.invalidate()
 			return nil, base.LazyValue{}
+		}
+		if i.reader.syntheticPrefix != nil {
+			prefix = bytes.TrimPrefix(prefix, i.reader.syntheticPrefix)
 		}
 		mayContain := i.reader.tableFilter.mayContain(dataH.Get(), prefix)
 		dataH.Release()

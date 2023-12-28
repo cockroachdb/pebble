@@ -1,15 +1,15 @@
 open
 ----
 mkdir-all: db 0755
-open-dir: 
-sync: 
-close: 
+open-dir:
+sync:
+close:
 open-dir: db
 close: db
 mkdir-all: wal 0755
-open-dir: 
-sync: 
-close: 
+open-dir:
+sync:
+close:
 open-dir: wal
 close: wal
 open-dir: db
@@ -227,8 +227,8 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 6 entries (1.1KB)  hit rate: 0.0%
-Table cache: 1 entries (808B)  hit rate: 40.0%
+Block cache: 6 entries (1.1KB)  hit rate: 11.1%
+Table cache: 1 entries (832B)  hit rate: 40.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
