@@ -53,7 +53,7 @@ func TestPrefixReplacingIterator(t *testing.T) {
 				require.Equal(t, k(19), got.UserKey)
 			})
 
-			t.Run("Sets", func(t *testing.T) {
+			t.Run("SetBounds", func(t *testing.T) {
 				it.SetBounds(k(5), k(15))
 				defer it.SetBounds(nil, nil)
 
@@ -64,9 +64,7 @@ func TestPrefixReplacingIterator(t *testing.T) {
 				require.Equal(t, k(14), got.UserKey)
 
 				got, _ = it.SeekLT(k(100), base.SeekLTFlagsNone)
-				// TODO(dt): Shouldn't this be upper-1? why is it nil?
-				// i.e. require.Equal(t, k(14), got.UserKey) ?
-				require.Nil(t, got)
+				require.Equal(t, k(19), got.UserKey)
 			})
 
 			t.Run("SetHookAndCtx", func(t *testing.T) {
