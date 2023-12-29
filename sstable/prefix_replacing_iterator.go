@@ -163,7 +163,13 @@ func (p *prefixReplacingIterator) SetBounds(lower, upper []byte) {
 		p.i.SetBounds(lower, upper)
 		return
 	}
-	p.i.SetBounds(p.rewriteArg(lower), p.rewriteArg2(upper))
+	if lower != nil {
+		lower = append([]byte{}, p.rewriteArg(lower)...)
+	}
+	if upper != nil {
+		upper = append([]byte{}, p.rewriteArg(upper)...)
+	}
+	p.i.SetBounds(lower, upper)
 }
 
 func (p *prefixReplacingIterator) MaybeFilteredKeys() bool {
