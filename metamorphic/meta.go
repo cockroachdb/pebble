@@ -539,7 +539,7 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 // sink.
 func Execute(m *Test) error {
 	if m.testOpts.Threads <= 1 {
-		for m.step(m.h) {
+		for m.step(m.h, nil /* optionalRecordf */) {
 			if err := m.h.Error(); err != nil {
 				return err
 			}
@@ -574,7 +574,7 @@ func Execute(m *Test) error {
 					}
 				}
 
-				m.ops[idx].run(m, m.h.recorder(t, idx))
+				m.ops[idx].run(m, m.h.recorder(t, idx, nil /* optionalRecordf */))
 
 				// If this operation has a done channel, close it so that
 				// other operations that synchronize on this operation know

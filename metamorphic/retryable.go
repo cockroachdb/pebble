@@ -10,12 +10,23 @@ import (
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 )
 
-// withRetries executes fn, retrying it whenever an errorfs.ErrInjected error
-// is returned.  It returns the first nil or non-errorfs.ErrInjected error
-// returned by fn.
-func withRetries(fn func() error) error {
+// A RetryPolicy determines what error values should trigger a retry of an
+// operation.
+type RetryPolicy func(error) bool
+
+var (
+	// NeverRetry implements a RetryPolicy that never retries.
+	NeverRetry = func(error) bool { return false }
+	// RetryInjected implements a RetryPolicy that retries whenever an
+	// errorfs.ErrInjected error is returned.
+	RetryInjected RetryPolicy = func(err error) bool {
+		return errors.Is(err, errorfs.ErrInjected)
+	}
+)
+
+func withRetries(fn func() error, retryPolicy RetryPolicy) error {
 	for {
-		if err := fn(); !errors.Is(err, errorfs.ErrInjected) {
+		if err := fn(); !retryPolicy(err) {
 			return err
 		}
 	}
@@ -26,21 +37,18 @@ func withRetries(fn func() error) error {
 // iterator operations by running them again on a non-error iterator with the
 // same pre-operation state.
 type retryableIter struct {
-	iter    *pebble.Iterator
-	lastKey []byte
-}
-
-func (i *retryableIter) needRetry() bool {
-	return errors.Is(i.iter.Error(), errorfs.ErrInjected)
+	iter      *pebble.Iterator
+	lastKey   []byte
+	needRetry RetryPolicy
 }
 
 func (i *retryableIter) withRetry(fn func()) {
 	for {
 		fn()
-		if !i.needRetry() {
+		if !i.needRetry(i.iter.Error()) {
 			break
 		}
-		for i.needRetry() {
+		for i.needRetry(i.iter.Error()) {
 			i.iter.SeekGE(i.lastKey)
 		}
 	}

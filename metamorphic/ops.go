@@ -149,7 +149,7 @@ func (o *checkpointOp) run(t *Test, h historyRecorder) {
 		opts = append(opts, pebble.WithRestrictToSpans(o.spans))
 	}
 	db := t.getDB(o.dbID)
-	err := withRetries(func() error {
+	err := t.withRetries(func() error {
 		return db.Checkpoint(o.dir(t.dir, h.op), opts...)
 	})
 	h.Recordf("%s // %v", o, err)
@@ -239,7 +239,7 @@ type compactOp struct {
 }
 
 func (o *compactOp) run(t *Test, h historyRecorder) {
-	err := withRetries(func() error {
+	err := t.withRetries(func() error {
 		return t.getDB(o.dbID).Compact(o.start, o.end, o.parallelize)
 	})
 	h.Recordf("%s // %v", o, err)
@@ -636,7 +636,7 @@ func (o *ingestOp) run(t *Test, h historyRecorder) {
 		err = firstError(err, b.Close())
 	}
 
-	err = firstError(err, withRetries(func() error {
+	err = firstError(err, t.withRetries(func() error {
 		return t.getDB(o.dbID).Ingest(paths)
 	}))
 
@@ -963,7 +963,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 	}
 
 	if t.testOpts.useExcise {
-		err = firstError(err, withRetries(func() error {
+		err = firstError(err, t.withRetries(func() error {
 			_, err := t.getDB(o.dbID).IngestAndExcise([]string{path}, nil /* sharedSSTs */, pebble.KeyRange{
 				Start: o.exciseStart,
 				End:   o.exciseEnd,
@@ -971,7 +971,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 			return err
 		}))
 	} else {
-		err = firstError(err, withRetries(func() error {
+		err = firstError(err, t.withRetries(func() error {
 			return t.getDB(o.dbID).Ingest([]string{path})
 		}))
 	}
@@ -1019,7 +1019,7 @@ func (o *getOp) run(t *Test, h historyRecorder) {
 	r := t.getReader(o.readerID)
 	var val []byte
 	var closer io.Closer
-	err := withRetries(func() (err error) {
+	err := t.withRetries(func() (err error) {
 		val, closer, err = r.Get(o.key)
 		return err
 	})
@@ -1666,7 +1666,6 @@ func (o *newSnapshotOp) run(t *Test, h historyRecorder) {
 			err := t.getDB(o.dbID).Flush()
 			if err != nil {
 				h.Recordf("%s // %v", o, err)
-				panic(errors.Wrap(err, "newSnapshotOp"))
 			}
 		}
 	} else {

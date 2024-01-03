@@ -96,23 +96,33 @@ func (h *history) Fatalf(format string, args ...interface{}) {
 	h.err.Store(errors.Errorf(format, args...))
 }
 
-func (h *history) recorder(thread int, op int) historyRecorder {
+func (h *history) recorder(
+	thread int, op int, optionalRecordf func(format string, args ...interface{}),
+) historyRecorder {
 	return historyRecorder{
-		history: h,
-		op:      op,
+		history:         h,
+		op:              op,
+		optionalRecordf: optionalRecordf,
 	}
 }
 
 // historyRecorder pairs a history with an operation, annotating all lines
 // recorded through it with the operation number.
 type historyRecorder struct {
-	history *history
-	op      int
+	history         *history
+	op              int
+	optionalRecordf func(string, ...interface{})
 }
 
 // Recordf records the results of a single operation.
 func (h historyRecorder) Recordf(format string, args ...interface{}) {
 	h.history.Recordf(h.op, format, args...)
+	// If the history recorder was configured with an additional record func,
+	// invoke it. This can be used to collect the per-operation output when
+	// manually stepping the metamorphic test.
+	if h.optionalRecordf != nil {
+		h.optionalRecordf(format, args...)
+	}
 }
 
 // Error returns an error if the test has failed from log output, either a
