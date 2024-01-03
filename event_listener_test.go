@@ -47,6 +47,11 @@ func TestEventListener(t *testing.T) {
 				flushEnd(info)
 			}
 			opts := &Options{
+				// The table stats collector runs asynchronously and its
+				// timing is less predictable. It increments nextJobID, which
+				// can make these tests flaky. The TableStatsLoaded event is
+				// tested separately in TestTableStats.
+				DisableTableStats:     true,
 				FS:                    vfs.WithLogging(mem, memLog.Infof),
 				FormatMajorVersion:    internalFormatNewest,
 				EventListener:         &lel,
@@ -54,11 +59,6 @@ func TestEventListener(t *testing.T) {
 				L0CompactionThreshold: 10,
 				WALDir:                "wal",
 			}
-			// The table stats collector runs asynchronously and its
-			// timing is less predictable. It increments nextJobID, which
-			// can make these tests flaky. The TableStatsLoaded event is
-			// tested separately in TestTableStats.
-			opts.private.disableTableStats = true
 			var err error
 			d, err = Open("db", opts)
 			if err != nil {

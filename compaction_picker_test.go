@@ -1465,13 +1465,13 @@ func TestCompactionPickerScores(t *testing.T) {
 
 		case "disable-table-stats":
 			d.mu.Lock()
-			d.opts.private.disableTableStats = true
+			d.opts.DisableTableStats = true
 			d.mu.Unlock()
 			return ""
 
 		case "enable-table-stats":
 			d.mu.Lock()
-			d.opts.private.disableTableStats = false
+			d.opts.DisableTableStats = false
 			d.maybeCollectTableStatsLocked()
 			d.mu.Unlock()
 			return ""

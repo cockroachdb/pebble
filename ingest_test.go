@@ -3328,8 +3328,13 @@ func TestIngestValidation(t *testing.T) {
 			var backgroundErr error
 			logger := &fatalCapturingLogger{t: t}
 			opts := &Options{
-				FS:     testFS,
-				Logger: logger,
+				// Disable table stats so that injected errors can't be accidentally
+				// injected into the table stats collector read, and so the table
+				// stats collector won't prime the table+block cache such that the
+				// error injection won't trigger at all during ingest validation.
+				DisableTableStats: true,
+				FS:                testFS,
+				Logger:            logger,
 				EventListener: &EventListener{
 					TableValidated: func(i TableValidatedInfo) {
 						wg.Done()
@@ -3339,11 +3344,6 @@ func TestIngestValidation(t *testing.T) {
 					},
 				},
 			}
-			// Disable table stats so that injected errors can't be accidentally
-			// injected into the table stats collector read, and so the table
-			// stats collector won't prime the table+block cache such that the
-			// error injection won't trigger at all during ingest validation.
-			opts.private.disableTableStats = true
 			opts.Experimental.ValidateOnIngest = true
 			d, err := Open("", opts)
 			require.NoError(t, err)

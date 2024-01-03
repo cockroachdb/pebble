@@ -1846,6 +1846,9 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 		opts := (&Options{
 			FS:         vfs.NewMem(),
 			DebugCheck: DebugCheckLevels,
+			// Collection of table stats can trigger compactions. As we want full
+			// control over when compactions are run, disable stats by default.
+			DisableTableStats: true,
 			EventListener: &EventListener{
 				CompactionEnd: func(info CompactionInfo) {
 					if compactInfo != nil {
@@ -1856,10 +1859,6 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 			},
 			FormatMajorVersion: internalFormatNewest,
 		}).WithFSDefaults()
-
-		// Collection of table stats can trigger compactions. As we want full
-		// control over when compactions are run, disable stats by default.
-		opts.private.disableTableStats = true
 
 		return opts, nil
 	}
@@ -1953,10 +1952,10 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				// Force collection of table stats. This requires re-enabling the
 				// collection flag. We also do not want compactions to run as part of
 				// the stats collection job, so we disable it temporarily.
-				d.opts.private.disableTableStats = false
+				d.opts.DisableTableStats = false
 				d.opts.DisableAutomaticCompactions = true
 				defer func() {
-					d.opts.private.disableTableStats = true
+					d.opts.DisableTableStats = true
 					d.opts.DisableAutomaticCompactions = false
 				}()
 

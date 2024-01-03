@@ -789,16 +789,16 @@ func TestIterLeakSharedCache(t *testing.T) {
 
 func TestMemTableReservation(t *testing.T) {
 	opts := &Options{
-		Cache:        NewCache(128 << 10 /* 128 KB */),
-		MemTableSize: initialMemTableSize,
-		FS:           vfs.NewMem(),
+		Cache: NewCache(128 << 10 /* 128 KB */),
+		// We're going to be looking at and asserting the global memtable reservation
+		// amount below so we don't want to race with any triggered stats collections.
+		DisableTableStats: true,
+		MemTableSize:      initialMemTableSize,
+		FS:                vfs.NewMem(),
 	}
 	defer opts.Cache.Unref()
 	opts.testingRandomized(t)
 	opts.EnsureDefaults()
-	// We're going to be looking at and asserting the global memtable reservation
-	// amount below so we don't want to race with any triggered stats collections.
-	opts.private.disableTableStats = true
 
 	// Add a block to the cache. Note that the memtable size is larger than the
 	// cache size, so opening the DB should cause this block to be evicted.

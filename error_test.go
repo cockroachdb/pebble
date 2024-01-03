@@ -172,11 +172,11 @@ func TestRequireReadError(t *testing.T) {
 		ii := errorfs.OnIndex(-1)
 		fs := errorfs.Wrap(vfs.NewMem(), errorfs.ErrInjected.If(ii))
 		opts := &Options{
+			DisableTableStats:  true,
 			FS:                 fs,
 			Logger:             panicLogger{},
 			FormatMajorVersion: formatVersion,
 		}
-		opts.private.disableTableStats = true
 		d, err := Open("", opts)
 		require.NoError(t, err)
 
@@ -265,11 +265,11 @@ func TestCorruptReadError(t *testing.T) {
 		}
 		fs.index.Store(-1)
 		opts := &Options{
+			DisableTableStats:  true,
 			FS:                 fs,
 			Logger:             panicLogger{},
 			FormatMajorVersion: formatVersion,
 		}
-		opts.private.disableTableStats = true
 		d, err := Open("", opts)
 		if err != nil {
 			t.Fatalf("%v", err)
@@ -361,11 +361,11 @@ func TestDBWALRotationCrash(t *testing.T) {
 
 	run := func(fs *errorfs.FS, k int32) (err error) {
 		opts := &Options{
-			FS:           fs,
-			Logger:       panicLogger{},
-			MemTableSize: 2048,
+			DisableTableStats: true,
+			FS:                fs,
+			Logger:            panicLogger{},
+			MemTableSize:      2048,
 		}
-		opts.private.disableTableStats = true
 		d, err := Open("", opts)
 		if err != nil || triggered() {
 			return err

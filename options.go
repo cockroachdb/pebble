@@ -875,6 +875,15 @@ type Options struct {
 	// externally when running a manual compaction, and internally for tests.
 	DisableAutomaticCompactions bool
 
+	// DisableTableStats dictates whether tables should be loaded asynchronously
+	// to compute statistics that inform compaction heuristics. The collection
+	// of table stats improves compaction of tombstones, reclaiming disk space
+	// more quickly and in some cases reducing write amplification in the
+	// presence of tombstones. Disabling table stats may be useful in tests
+	// that require determinism as the asynchronicity of table stats collection
+	// introduces significant nondeterminism.
+	DisableTableStats bool
+
 	// NoSyncOnClose decides whether the Pebble instance will enforce a
 	// close-time synchronization (e.g., fdatasync() or sync_file_range())
 	// on files it writes to. Setting this to true removes the guarantee for a
@@ -981,9 +990,6 @@ type Options struct {
 		// option to avoid littering the public interface with options that we
 		// do not want to allow users to actually configure.
 		disableLazyCombinedIteration bool
-
-		// A private option to disable stats collection.
-		disableTableStats bool
 
 		// testingAlwaysWaitForCleanup is set by some tests to force waiting for
 		// obsolete file deletion (to make events deterministic).
