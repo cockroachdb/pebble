@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
@@ -195,7 +196,11 @@ func (a anyInjector) MaybeError(op Op) error {
 // surfaced through the user interface.
 type Counter struct {
 	Injector
-	atomic.Uint64
+	mu struct {
+		sync.Mutex
+		v       uint64
+		lastErr error
+	}
 }
 
 // String implements fmt.Stringer.
@@ -207,8 +212,27 @@ func (c *Counter) String() string {
 func (c *Counter) MaybeError(op Op) error {
 	err := c.Injector.MaybeError(op)
 	if err != nil {
-		c.Uint64.Add(1)
+		c.mu.Lock()
+		c.mu.v++
+		c.mu.lastErr = err
+		c.mu.Unlock()
 	}
+	return err
+}
+
+// Load returns the number of errors injected.
+func (c *Counter) Load() uint64 {
+	c.mu.Lock()
+	v := c.mu.v
+	c.mu.Unlock()
+	return v
+}
+
+// LastError returns the last non-nil error injected.
+func (c *Counter) LastError() error {
+	c.mu.Lock()
+	err := c.mu.lastErr
+	c.mu.Unlock()
 	return err
 }
 

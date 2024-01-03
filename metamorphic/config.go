@@ -188,6 +188,61 @@ func DefaultOpConfig() OpConfig {
 	}
 }
 
+// ReadOpConfig builds an OpConfig that performs only read operations.
+func ReadOpConfig() OpConfig {
+	return OpConfig{
+		// dbClose is not in this list since it is deterministically generated once, at the end of the test.
+		ops: [NumOpTypes]int{
+			OpBatchAbort:                  0,
+			OpBatchCommit:                 0,
+			OpDBCheckpoint:                0,
+			OpDBCompact:                   0,
+			OpDBFlush:                     0,
+			OpDBRatchetFormatMajorVersion: 0,
+			OpDBRestart:                   0,
+			OpIterClose:                   5,
+			OpIterFirst:                   100,
+			OpIterLast:                    100,
+			OpIterNext:                    100,
+			OpIterNextWithLimit:           20,
+			OpIterNextPrefix:              20,
+			OpIterPrev:                    100,
+			OpIterPrevWithLimit:           20,
+			OpIterSeekGE:                  100,
+			OpIterSeekGEWithLimit:         20,
+			OpIterSeekLT:                  100,
+			OpIterSeekLTWithLimit:         20,
+			OpIterSeekPrefixGE:            100,
+			OpIterSetBounds:               100,
+			OpIterSetOptions:              10,
+			OpNewBatch:                    0,
+			OpNewIndexedBatch:             0,
+			OpNewIter:                     10,
+			OpNewIterUsingClone:           5,
+			OpNewSnapshot:                 10,
+			OpReaderGet:                   100,
+			OpSnapshotClose:               10,
+			OpWriterApply:                 0,
+			OpWriterDelete:                0,
+			OpWriterDeleteRange:           0,
+			OpWriterIngest:                0,
+			OpWriterMerge:                 0,
+			OpWriterRangeKeySet:           0,
+			OpWriterRangeKeyUnset:         0,
+			OpWriterRangeKeyDelete:        0,
+			OpWriterSet:                   0,
+			OpWriterSingleDelete:          0,
+		},
+		// Use a new prefix 75% of the time (and 25% of the time use an existing
+		// prefix with an alternative suffix).
+		newPrefix: 0.75,
+		// Use a skewed distribution of suffixes to mimic MVCC timestamps. The
+		// range will be widened whenever a suffix is found to already be in use
+		// for a particular prefix.
+		writeSuffixDist: mustDynamic(randvar.NewSkewedLatest(0, 1, 0.99)),
+	}
+}
+
 // WriteOpConfig builds an OpConfig suitable for generating a random test
 // database. It generates Writer operations and some meta database operations
 // like flushes and manual compactions, but it does not generate any reads.

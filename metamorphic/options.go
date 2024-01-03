@@ -53,6 +53,7 @@ func parseOptions(
 				return true
 			case "TestOptions.strictfs":
 				opts.strictFS = true
+				opts.Opts.FS = vfs.NewStrictMem()
 				return true
 			case "TestOptions.ingest_using_apply":
 				opts.ingestUsingApply = true
@@ -65,6 +66,7 @@ func parseOptions(
 				return true
 			case "TestOptions.use_disk":
 				opts.useDisk = true
+				opts.Opts.FS = vfs.Default
 				return true
 			case "TestOptions.initial_state_desc":
 				opts.initialStateDesc = value
@@ -223,8 +225,9 @@ func optionsToString(opts *TestOptions) string {
 
 func defaultTestOptions() *TestOptions {
 	return &TestOptions{
-		Opts:    defaultOptions(),
-		Threads: 16,
+		Opts:        defaultOptions(),
+		Threads:     16,
+		RetryPolicy: NeverRetry,
 	}
 }
 
@@ -235,6 +238,7 @@ func defaultOptions() *pebble.Options {
 		// Always use our custom comparer which provides a Split method,
 		// splitting keys at the trailing '@'.
 		Comparer:           testkeys.Comparer,
+		DebugCheck:         pebble.DebugCheckLevels,
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: defaultFormatMajorVersion,
 		Levels: []pebble.LevelOptions{{
@@ -256,6 +260,8 @@ type TestOptions struct {
 	// operation will still be deterministic, with the metamorphic test
 	// inserting synchronization where necessary.
 	Threads int
+	// RetryPolicy configures which errors should be retried.
+	RetryPolicy RetryPolicy
 	// CustomOptions holds custom test options that are defined outside of this
 	// package.
 	CustomOpts []CustomOption
@@ -597,6 +603,9 @@ func RandomOptions(
 	testOpts.Threads = rng.Intn(runtime.GOMAXPROCS(0)) + 1
 	if testOpts.strictFS {
 		opts.DisableWAL = false
+		opts.FS = vfs.NewStrictMem()
+	} else if !testOpts.useDisk {
+		opts.FS = vfs.NewMem()
 	}
 	testOpts.ingestUsingApply = rng.Intn(2) != 0
 	testOpts.deleteSized = rng.Intn(2) != 0
