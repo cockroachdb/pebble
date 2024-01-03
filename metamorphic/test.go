@@ -71,22 +71,20 @@ func (t *Test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 	t.writeOpts = pebble.NoSync
 	if testOpts.strictFS {
 		t.writeOpts = pebble.Sync
-		testOpts.Opts.FS = vfs.NewStrictMem()
 	} else {
 		t.writeOpts = pebble.NoSync
-		testOpts.Opts.FS = vfs.NewMem()
 	}
 	testOpts.Opts.WithFSDefaults()
 	t.opts = testOpts.Opts.EnsureDefaults()
 	t.opts.Logger = h
 	lel := pebble.MakeLoggingEventListener(t.opts.Logger)
 	t.opts.EventListener = &lel
-	t.opts.DebugCheck = func(db *pebble.DB) error {
-		// Wrap the ordinary DebugCheckLevels with retrying
-		// of injected errors.
-		return withRetries(func() error {
-			return pebble.DebugCheckLevels(db)
-		})
+	// If the test options set a DebugCheck func, wrap it with retrying of
+	// retriable errors (according to the test's retry policy).
+	if debugCheck := t.opts.DebugCheck; debugCheck != nil {
+		t.opts.DebugCheck = func(db *pebble.DB) error {
+			return t.withRetries(func() error { return debugCheck(db) })
+		}
 	}
 	if numInstances < 1 {
 		numInstances = 1
@@ -163,7 +161,7 @@ func (t *Test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 		if len(t.dbs) > 1 {
 			dir = path.Join(t.dir, fmt.Sprintf("db%d", i+1))
 		}
-		err = withRetries(func() error {
+		err = t.withRetries(func() error {
 			db, err = pebble.Open(dir, t.opts)
 			return err
 		})
@@ -174,7 +172,7 @@ func (t *Test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 		h.log.Printf("// db%d.Open() %v", i+1, err)
 
 		if t.testOpts.sharedStorageEnabled {
-			err = withRetries(func() error {
+			err = t.withRetries(func() error {
 				return db.SetCreatorID(uint64(i + 1))
 			})
 			if err != nil {
@@ -220,6 +218,10 @@ func (t *Test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 	return nil
 }
 
+func (t *Test) withRetries(fn func() error) error {
+	return withRetries(fn, t.testOpts.RetryPolicy)
+}
+
 func (t *Test) isFMV(dbID objID, fmv pebble.FormatMajorVersion) bool {
 	db := t.getDB(dbID)
 	return db.FormatMajorVersion() >= fmv
@@ -254,7 +256,7 @@ func (t *Test) restartDB(dbID objID) error {
 
 	// TODO(jackson): Audit errorRate and ensure custom options' hooks semantics
 	// are well defined within the context of retries.
-	err := withRetries(func() (err error) {
+	err := t.withRetries(func() (err error) {
 		// Reacquire any resources required by custom options. This may be used, for
 		// example, by the encryption-at-rest custom option (within the Cockroach
 		// repository) to reopen the file registry.
@@ -329,11 +331,25 @@ func (t *Test) maybeSaveData() {
 	}
 }
 
-func (t *Test) step(h *history) bool {
+// Step runs one single operation, returning whether or not there are additional
+// operations, the operation's output and an error if any occurred while running
+// the operation.
+//
+// Step may be used in stead of Execute to advance a test one operation at a
+// time.
+func (t *Test) Step() (more bool, operationOutput string, err error) {
+	more = t.step(t.h, func(format string, args ...interface{}) {
+		operationOutput = fmt.Sprintf(format, args...)
+	})
+	err = t.h.Error()
+	return more, operationOutput, err
+}
+
+func (t *Test) step(h *history, optionalRecordf func(string, ...interface{})) bool {
 	if t.idx >= len(t.ops) {
 		return false
 	}
-	t.ops[t.idx].run(t, h.recorder(-1 /* thread */, t.idx))
+	t.ops[t.idx].run(t, h.recorder(-1 /* thread */, t.idx, optionalRecordf))
 	t.idx++
 	return true
 }
@@ -350,8 +366,9 @@ func (t *Test) setIter(id objID, i *pebble.Iterator) {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
 	t.iters[id.slot()] = &retryableIter{
-		iter:    i,
-		lastKey: nil,
+		iter:      i,
+		lastKey:   nil,
+		needRetry: t.testOpts.RetryPolicy,
 	}
 }
 

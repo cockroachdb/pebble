@@ -22,6 +22,12 @@ import (
 // error.
 type Predicate = dsl.Predicate[Op]
 
+// And returns a predicate that evaluates to true if all of the operands
+// evaluate to true.
+func And(operands ...Predicate) Predicate {
+	return dsl.And[Op](operands...)
+}
+
 // PathMatch returns a predicate that returns true if an operation's file path
 // matches the provided pattern according to filepath.Match.
 func PathMatch(pattern string) Predicate {
@@ -250,7 +256,7 @@ func (le LabelledError) String() string {
 // MaybeError implements Injector.
 func (le LabelledError) MaybeError(op Op) error {
 	if le.predicate == nil || le.predicate.Evaluate(op) {
-		return le
+		return errors.WithStack(le)
 	}
 	return nil
 }
