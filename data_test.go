@@ -780,7 +780,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			if err != nil {
 				return nil, errors.Errorf("%s: could not parse %q as bool: %s", td.Cmd, arg.Vals[0], err)
 			}
-			opts.private.disableTableStats = !enable
+			opts.DisableTableStats = !enable
 		case "block-size":
 			size, err := strconv.Atoi(arg.Vals[0])
 			if err != nil {
@@ -1350,7 +1350,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			if err != nil {
 				return errors.Errorf("%s: could not parse %q as bool: %s", cmdArg.Key, cmdArg.Vals[0], err)
 			}
-			opts.private.disableTableStats = !enable
+			opts.DisableTableStats = !enable
 		case "format-major-version":
 			v, err := strconv.Atoi(cmdArg.Vals[0])
 			if err != nil {

@@ -108,7 +108,7 @@ func TestCleaner(t *testing.T) {
 				}
 			}
 			// Asynchronous table stats retrieval makes the output flaky.
-			opts.private.disableTableStats = true
+			opts.DisableTableStats = true
 			opts.private.testingAlwaysWaitForCleanup = true
 			d, err := Open(dir, opts)
 			if err != nil {

@@ -25,16 +25,16 @@ func TestTableStats(t *testing.T) {
 	// loadedInfo is protected by d.mu.
 	var loadedInfo *TableStatsInfo
 	opts := &Options{
-		FS: vfs.NewMem(),
+		Comparer:                    testkeys.Comparer,
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatMinSupported,
+		FS:                          vfs.NewMem(),
 		EventListener: &EventListener{
 			TableStatsLoaded: func(info TableStatsInfo) {
 				loadedInfo = &info
 			},
 		},
 	}
-	opts.DisableAutomaticCompactions = true
-	opts.Comparer = testkeys.Comparer
-	opts.FormatMajorVersion = FormatMinSupported
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -49,13 +49,13 @@ func TestTableStats(t *testing.T) {
 		switch td.Cmd {
 		case "disable":
 			d.mu.Lock()
-			d.opts.private.disableTableStats = true
+			d.opts.DisableTableStats = true
 			d.mu.Unlock()
 			return ""
 
 		case "enable":
 			d.mu.Lock()
-			d.opts.private.disableTableStats = false
+			d.opts.DisableTableStats = false
 			d.maybeCollectTableStatsLocked()
 			d.mu.Unlock()
 			return ""

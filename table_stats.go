@@ -71,7 +71,7 @@ func (d *DB) updateTableStatsLocked(newFiles []manifest.NewFileEntry) {
 func (d *DB) shouldCollectTableStatsLocked() bool {
 	return !d.mu.tableStats.loading &&
 		d.closed.Load() == nil &&
-		!d.opts.private.disableTableStats &&
+		!d.opts.DisableTableStats &&
 		(len(d.mu.tableStats.pending) > 0 || !d.mu.tableStats.loadedInitial)
 }
 
