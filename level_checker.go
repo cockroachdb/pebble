@@ -273,22 +273,23 @@ func (m *simpleMergingIter) step() bool {
 	return true
 }
 
-// Checking that range tombstones are mutually consistent is performed by checkRangeTombstones().
-// See the overview comment at the top of the file.
+// Checking that range tombstones are mutually consistent is performed by
+// checkRangeTombstones(). See the overview comment at the top of the file.
 //
 // We do this check as follows:
-// - For each level that can have untruncated tombstones, compute the atomic compaction
-//   bounds (getAtomicUnitBounds()) and use them to truncate tombstones.
-// - Now that we have a set of truncated tombstones for each level, put them into one
-//   pool of tombstones along with their level information (addTombstonesFromIter()).
-// - Collect the start and end user keys from all these tombstones (collectAllUserKey()) and use
-//   them to fragment all the tombstones (fragmentUsingUserKey()).
-// - Sort tombstones by start key and decreasing seqnum (tombstonesByStartKeyAndSeqnum) -- all
-//   tombstones that have the same start key will have the same end key because they have been
-//   fragmented.
+// - Collect the tombstones for each level, put them into one pool of tombstones
+//   along with their level information (addTombstonesFromIter()).
+// - Collect the start and end user keys from all these tombstones
+//   (collectAllUserKey()) and use them to fragment all the tombstones
+//   (fragmentUsingUserKey()).
+// - Sort tombstones by start key and decreasing seqnum
+//   (tombstonesByStartKeyAndSeqnum) - all tombstones that have the same start
+//   key will have the same end key because they have been fragmented.
 // - Iterate and check (iterateAndCheckTombstones()).
-// Note that this simple approach requires holding all the tombstones across all levels in-memory.
-// A more sophisticated incremental approach could be devised, if necessary.
+//
+// Note that this simple approach requires holding all the tombstones across all
+// levels in-memory. A more sophisticated incremental approach could be devised,
+// if necessary.
 
 // A tombstone and the corresponding level it was found in.
 type tombstoneWithLevel struct {
@@ -368,8 +369,10 @@ func checkRangeTombstones(c *checkConfig) error {
 		if iter == nil {
 			continue
 		}
-		if tombstones, err = addTombstonesFromIter(iter, level, -1, 0, tombstones,
-			c.seqNum, c.cmp, c.formatKey, nil); err != nil {
+		tombstones, err = addTombstonesFromIter(
+			iter, level, -1, 0, tombstones, c.seqNum, c.cmp, c.formatKey,
+		)
+		if err != nil {
 			return err
 		}
 		level++
@@ -379,8 +382,7 @@ func checkRangeTombstones(c *checkConfig) error {
 	addTombstonesFromLevel := func(files manifest.LevelIterator, lsmLevel int) error {
 		for f := files.First(); f != nil; f = files.Next() {
 			lf := files.Take()
-			atomicUnit, _ := expandToAtomicUnit(c.cmp, lf.Slice(), true /* disableIsCompacting */)
-			lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
+			//lower, upper := manifest.KeyRange(c.cmp, lf.Iter())
 			iterToClose, iter, err := c.newIters(
 				context.Background(), lf.FileMetadata, &IterOptions{level: manifest.Level(lsmLevel)}, internalIterOpts{})
 			if err != nil {
@@ -390,22 +392,8 @@ func checkRangeTombstones(c *checkConfig) error {
 			if iter == nil {
 				continue
 			}
-			truncate := func(t keyspan.Span) keyspan.Span {
-				// Same checks as in keyspan.Truncate.
-				if c.cmp(t.Start, lower.UserKey) < 0 {
-					t.Start = lower.UserKey
-				}
-				if c.cmp(t.End, upper.UserKey) > 0 {
-					t.End = upper.UserKey
-				}
-				if c.cmp(t.Start, t.End) >= 0 {
-					// Remove the keys.
-					t.Keys = t.Keys[:0]
-				}
-				return t
-			}
 			if tombstones, err = addTombstonesFromIter(iter, level, lsmLevel, f.FileNum,
-				tombstones, c.seqNum, c.cmp, c.formatKey, truncate); err != nil {
+				tombstones, c.seqNum, c.cmp, c.formatKey); err != nil {
 				return err
 			}
 		}
@@ -454,7 +442,6 @@ func addTombstonesFromIter(
 	seqNum uint64,
 	cmp Compare,
 	formatKey base.FormatKey,
-	truncate func(tombstone keyspan.Span) keyspan.Span,
 ) (_ []tombstoneWithLevel, err error) {
 	defer func() {
 		err = firstError(err, iter.Close())
@@ -476,12 +463,6 @@ func addTombstonesFromIter(
 		}
 		prevTombstone = t
 
-		// Truncation of a tombstone must happen after checking its ordering,
-		// fragmentation wrt previous tombstone. Since it is possible that after
-		// truncation the tombstone is ordered, fragmented when it originally wasn't.
-		if truncate != nil {
-			t = truncate(t)
-		}
 		if !t.Empty() {
 			tombstones = append(tombstones, tombstoneWithLevel{
 				Span:     t,
