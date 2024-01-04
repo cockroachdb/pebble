@@ -2713,7 +2713,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	// protected by d.mu
 	var (
 		initialSetupDone bool
-		tablesCreated    []FileNum
+		tablesCreated    []base.DiskFileNum
 	)
 
 	mem := vfs.NewMem()
@@ -3742,7 +3742,7 @@ func TestCompactionErrorStats(t *testing.T) {
 	// protected by d.mu
 	var (
 		useInjector   bool
-		tablesCreated []FileNum
+		tablesCreated []base.DiskFileNum
 	)
 
 	mem := vfs.NewMem()

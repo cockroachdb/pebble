@@ -105,7 +105,7 @@ func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) 
 
 		numStillOpen := 0
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilepath(fs, "", fileTypeTable, base.FileNum(uint64(i)).DiskFileNum())
+			filename := base.MakeFilepath(fs, "", fileTypeTable, base.DiskFileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO > gotC {
 				numStillOpen++
@@ -135,7 +135,7 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 		defer fs.mu.Unlock()
 
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilepath(fs, "", fileTypeTable, base.FileNum(uint64(i)).DiskFileNum())
+			filename := base.MakeFilepath(fs, "", fileTypeTable, base.DiskFileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO != gotC {
 				return errors.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
@@ -172,7 +172,7 @@ func newTableCacheContainerTest(
 	defer objProvider.Close()
 
 	for i := 0; i < tableCacheTestNumTables; i++ {
-		w, _, err := objProvider.Create(context.Background(), fileTypeTable, base.FileNum(uint64(i)).DiskFileNum(), objstorage.CreateOptions{})
+		w, _, err := objProvider.Create(context.Background(), fileTypeTable, base.DiskFileNum(i), objstorage.CreateOptions{})
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
@@ -786,7 +786,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		c.evict(base.FileNum(lo + rng.Uint64n(hi-lo)).DiskFileNum())
+		c.evict(base.DiskFileNum(lo + rng.Uint64n(hi-lo)))
 	}
 
 	sumEvicted, nEvicted := 0, 0
@@ -857,8 +857,8 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		c1.evict(base.FileNum(lo + rng.Uint64n(hi-lo)).DiskFileNum())
-		c2.evict(base.FileNum(lo + rng.Uint64n(hi-lo)).DiskFileNum())
+		c1.evict(base.DiskFileNum(lo + rng.Uint64n(hi-lo)))
+		c2.evict(base.DiskFileNum(lo + rng.Uint64n(hi-lo)))
 	}
 
 	check := func(fs *tableCacheTestFS, c *tableCacheContainer) (float64, float64, float64) {
@@ -1120,7 +1120,7 @@ func TestTableCacheClockPro(t *testing.T) {
 		// Ensure that underlying sstables exist on disk, creating each table the
 		// first time it is seen.
 		if !tables[key] {
-			makeTable(base.FileNum(uint64(key)).DiskFileNum())
+			makeTable(base.DiskFileNum(key))
 			tables[key] = true
 		}
 

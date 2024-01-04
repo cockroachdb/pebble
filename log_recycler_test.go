@@ -12,13 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func (r *logRecycler) logNums() []FileNum {
+func (r *logRecycler) logNums() []base.DiskFileNum {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return fileInfoNums(r.mu.logs)
 }
 
-func (r *logRecycler) maxLogNum() FileNum {
+func (r *logRecycler) maxLogNum() base.DiskFileNum {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.mu.maxLogNum
@@ -28,55 +28,55 @@ func TestLogRecycler(t *testing.T) {
 	r := logRecycler{limit: 3, minRecycleLogNum: 4}
 
 	// Logs below the min-recycle number are not recycled.
-	require.False(t, r.add(fileInfo{base.FileNum(1).DiskFileNum(), 0}))
-	require.False(t, r.add(fileInfo{base.FileNum(2).DiskFileNum(), 0}))
-	require.False(t, r.add(fileInfo{base.FileNum(3).DiskFileNum(), 0}))
+	require.False(t, r.add(fileInfo{base.DiskFileNum(1), 0}))
+	require.False(t, r.add(fileInfo{base.DiskFileNum(2), 0}))
+	require.False(t, r.add(fileInfo{base.DiskFileNum(3), 0}))
 
 	// Logs are recycled up to the limit.
-	require.True(t, r.add(fileInfo{base.FileNum(4).DiskFileNum(), 0}))
-	require.EqualValues(t, []FileNum{4}, r.logNums())
+	require.True(t, r.add(fileInfo{base.DiskFileNum(4), 0}))
+	require.EqualValues(t, []base.DiskFileNum{4}, r.logNums())
 	require.EqualValues(t, 4, r.maxLogNum())
 	fi, ok := r.peek()
 	require.True(t, ok)
-	require.EqualValues(t, uint64(4), uint64(fi.fileNum.FileNum()))
-	require.True(t, r.add(fileInfo{base.FileNum(5).DiskFileNum(), 0}))
-	require.EqualValues(t, []FileNum{4, 5}, r.logNums())
+	require.EqualValues(t, uint64(4), uint64(fi.fileNum))
+	require.True(t, r.add(fileInfo{base.DiskFileNum(5), 0}))
+	require.EqualValues(t, []base.DiskFileNum{4, 5}, r.logNums())
 	require.EqualValues(t, 5, r.maxLogNum())
-	require.True(t, r.add(fileInfo{base.FileNum(6).DiskFileNum(), 0}))
-	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
+	require.True(t, r.add(fileInfo{base.DiskFileNum(6), 0}))
+	require.EqualValues(t, []base.DiskFileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 6, r.maxLogNum())
 
 	// Trying to add a file past the limit fails.
-	require.False(t, r.add(fileInfo{base.FileNum(7).DiskFileNum(), 0}))
-	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
+	require.False(t, r.add(fileInfo{base.DiskFileNum(7), 0}))
+	require.EqualValues(t, []base.DiskFileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 7, r.maxLogNum())
 
 	// Trying to add a previously recycled file returns success, but the internal
 	// state is unchanged.
-	require.True(t, r.add(fileInfo{base.FileNum(4).DiskFileNum(), 0}))
-	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
+	require.True(t, r.add(fileInfo{base.DiskFileNum(4), 0}))
+	require.EqualValues(t, []base.DiskFileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 7, r.maxLogNum())
 
 	// An error is returned if we try to pop an element other than the first.
 	require.Regexp(t, `invalid 000005 vs \[000004 000005 000006\]`, r.pop(5))
 
 	require.NoError(t, r.pop(4))
-	require.EqualValues(t, []FileNum{5, 6}, r.logNums())
+	require.EqualValues(t, []base.DiskFileNum{5, 6}, r.logNums())
 
 	// Log number 7 was already considered, so it won't be recycled.
-	require.True(t, r.add(fileInfo{base.FileNum(7).DiskFileNum(), 0}))
-	require.EqualValues(t, []FileNum{5, 6}, r.logNums())
+	require.True(t, r.add(fileInfo{base.DiskFileNum(7), 0}))
+	require.EqualValues(t, []base.DiskFileNum{5, 6}, r.logNums())
 
-	require.True(t, r.add(fileInfo{base.FileNum(8).DiskFileNum(), 0}))
-	require.EqualValues(t, []FileNum{5, 6, 8}, r.logNums())
+	require.True(t, r.add(fileInfo{base.DiskFileNum(8), 0}))
+	require.EqualValues(t, []base.DiskFileNum{5, 6, 8}, r.logNums())
 	require.EqualValues(t, 8, r.maxLogNum())
 
 	require.NoError(t, r.pop(5))
-	require.EqualValues(t, []FileNum{6, 8}, r.logNums())
+	require.EqualValues(t, []base.DiskFileNum{6, 8}, r.logNums())
 	require.NoError(t, r.pop(6))
-	require.EqualValues(t, []FileNum{8}, r.logNums())
+	require.EqualValues(t, []base.DiskFileNum{8}, r.logNums())
 	require.NoError(t, r.pop(8))
-	require.EqualValues(t, []FileNum(nil), r.logNums())
+	require.EqualValues(t, []base.DiskFileNum(nil), r.logNums())
 
 	require.Regexp(t, `empty`, r.pop(9))
 }
@@ -88,10 +88,10 @@ func TestRecycleLogs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	logNum := func() FileNum {
+	logNum := func() base.DiskFileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum.FileNum()
+		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum
 	}
 	logCount := func() int {
 		d.mu.Lock()
@@ -101,17 +101,17 @@ func TestRecycleLogs(t *testing.T) {
 
 	// Flush the memtable a few times, forcing rotation of the WAL. We should see
 	// the recycled logs change as expected.
-	require.EqualValues(t, []FileNum(nil), d.logRecycler.logNums())
+	require.EqualValues(t, []base.DiskFileNum(nil), d.logRecycler.logNums())
 	curLog := logNum()
 
 	require.NoError(t, d.Flush())
 
-	require.EqualValues(t, []FileNum{curLog}, d.logRecycler.logNums())
+	require.EqualValues(t, []base.DiskFileNum{curLog}, d.logRecycler.logNums())
 	curLog = logNum()
 
 	require.NoError(t, d.Flush())
 
-	require.EqualValues(t, []FileNum{curLog}, d.logRecycler.logNums())
+	require.EqualValues(t, []base.DiskFileNum{curLog}, d.logRecycler.logNums())
 
 	require.NoError(t, d.Close())
 

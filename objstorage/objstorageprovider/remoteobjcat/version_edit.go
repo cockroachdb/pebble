@@ -78,10 +78,10 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			return err
 		}
 		buf = binary.AppendUvarint(buf, uint64(tagNewObject))
-		buf = binary.AppendUvarint(buf, uint64(meta.FileNum.FileNum()))
+		buf = binary.AppendUvarint(buf, uint64(meta.FileNum))
 		buf = binary.AppendUvarint(buf, objType)
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorID))
-		buf = binary.AppendUvarint(buf, uint64(meta.CreatorFileNum.FileNum()))
+		buf = binary.AppendUvarint(buf, uint64(meta.CreatorFileNum))
 		buf = binary.AppendUvarint(buf, uint64(meta.CleanupMethod))
 		if meta.Locator != "" {
 			buf = binary.AppendUvarint(buf, uint64(tagNewObjectLocator))
@@ -97,7 +97,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 
 	for _, dfn := range v.DeletedObjects {
 		buf = binary.AppendUvarint(buf, uint64(tagDeletedObject))
-		buf = binary.AppendUvarint(buf, uint64(dfn.FileNum()))
+		buf = binary.AppendUvarint(buf, uint64(dfn))
 	}
 	if v.CreatorID.IsSet() {
 		buf = binary.AppendUvarint(buf, uint64(tagCreatorID))
@@ -166,10 +166,10 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 
 			if err == nil {
 				v.NewObjects = append(v.NewObjects, RemoteObjectMetadata{
-					FileNum:          base.FileNum(fileNum).DiskFileNum(),
+					FileNum:          base.DiskFileNum(fileNum),
 					FileType:         fileType,
 					CreatorID:        objstorage.CreatorID(creatorID),
-					CreatorFileNum:   base.FileNum(creatorFileNum).DiskFileNum(),
+					CreatorFileNum:   base.DiskFileNum(creatorFileNum),
 					CleanupMethod:    objstorage.SharedCleanupMethod(cleanupMethod),
 					Locator:          remote.Locator(locator),
 					CustomObjectName: customName,
@@ -180,7 +180,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			var fileNum uint64
 			fileNum, err = binary.ReadUvarint(br)
 			if err == nil {
-				v.DeletedObjects = append(v.DeletedObjects, base.FileNum(fileNum).DiskFileNum())
+				v.DeletedObjects = append(v.DeletedObjects, base.DiskFileNum(fileNum))
 			}
 
 		case tagCreatorID:

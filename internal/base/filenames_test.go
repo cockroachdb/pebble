@@ -66,18 +66,18 @@ func TestFilenameRoundTrip(t *testing.T) {
 	}
 	fs := vfs.NewMem()
 	for fileType, numbered := range testCases {
-		fileNums := []FileNum{0}
+		fileNums := []DiskFileNum{0}
 		if numbered {
-			fileNums = []FileNum{0, 1, 2, 3, 10, 42, 99, 1001}
+			fileNums = []DiskFileNum{0, 1, 2, 3, 10, 42, 99, 1001}
 		}
 		for _, fileNum := range fileNums {
-			filename := MakeFilepath(fs, "foo", fileType, fileNum.DiskFileNum())
+			filename := MakeFilepath(fs, "foo", fileType, fileNum)
 			gotFT, gotFN, gotOK := ParseFilename(fs, filename)
 			if !gotOK {
 				t.Errorf("could not parse %q", filename)
 				continue
 			}
-			if gotFT != fileType || gotFN.FileNum() != fileNum {
+			if gotFT != fileType || gotFN != fileNum {
 				t.Errorf("filename=%q: got %v, %v, want %v, %v", filename, gotFT, gotFN, fileType, fileNum)
 				continue
 			}

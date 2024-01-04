@@ -128,7 +128,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}).WithFSDefaults()
-			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}, nil, 0)
+			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.DiskFileNum{base.DiskFileNum(1)}, nil, 0)
 			if err != nil {
 				return err.Error()
 			}
@@ -165,7 +165,7 @@ func TestIngestLoadRand(t *testing.T) {
 	expected := make([]*fileMetadata, len(paths))
 	for i := range paths {
 		paths[i] = fmt.Sprint(i)
-		pending[i] = base.FileNum(rng.Uint64()).DiskFileNum()
+		pending[i] = base.DiskFileNum(rng.Uint64())
 		expected[i] = &fileMetadata{
 			FileNum: pending[i].FileNum(),
 		}
@@ -235,7 +235,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}, nil, 0); err == nil {
+	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.DiskFileNum{base.DiskFileNum(1)}, nil, 0); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -363,7 +363,7 @@ func TestIngestLink(t *testing.T) {
 					if fileTypeTable != ftype {
 						t.Fatalf("expected table, but found %d", ftype)
 					}
-					if j != int(fileNum.FileNum()) {
+					if j != int(fileNum) {
 						t.Fatalf("expected table %d, but found %d", j, fileNum)
 					}
 					f, err := opts.FS.Open(opts.FS.PathJoin(dir, files[j]))
@@ -1257,7 +1257,7 @@ func TestSimpleIngestShared(t *testing.T) {
 		metaMap[fn.DiskFileNum()] = meta
 	}
 
-	m := metaMap[base.FileNum(2).DiskFileNum()]
+	m := metaMap[base.DiskFileNum(2)]
 	handle, err := provider2.RemoteObjectBacking(&m)
 	require.NoError(t, err)
 	size, err := provider2.Size(m)

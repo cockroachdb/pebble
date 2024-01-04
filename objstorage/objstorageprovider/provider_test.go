@@ -300,8 +300,8 @@ func TestSharedMultipleLocators(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, p2.SetCreatorID(2))
 
-	file1 := base.FileNum(1).DiskFileNum()
-	file2 := base.FileNum(2).DiskFileNum()
+	file1 := base.DiskFileNum(1)
+	file2 := base.DiskFileNum(2)
 
 	for i, provider := range []objstorage.Provider{p1, p2} {
 		w, _, err := provider.Create(ctx, base.FileTypeTable, file1, objstorage.CreateOptions{
@@ -410,14 +410,14 @@ func TestAttachCustomObject(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = p1.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
-		FileNum:  base.FileNum(1).DiskFileNum(),
+		FileNum:  base.DiskFileNum(1),
 		FileType: base.FileTypeTable,
 		Backing:  backing,
 	}})
 	require.NoError(t, err)
 
 	// Verify the provider can read the object.
-	r, err := p1.OpenForReading(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
+	r, err := p1.OpenForReading(ctx, base.FileTypeTable, base.DiskFileNum(1), objstorage.OpenOptions{})
 	require.NoError(t, err)
 	require.Equal(t, int64(len(data)), r.Size())
 	buf := make([]byte, r.Size())
@@ -427,7 +427,7 @@ func TestAttachCustomObject(t *testing.T) {
 
 	// Verify that we can extract a correct backing from this provider and attach
 	// the object to another provider.
-	meta, err := p1.Lookup(base.FileTypeTable, base.FileNum(1).DiskFileNum())
+	meta, err := p1.Lookup(base.FileTypeTable, base.DiskFileNum(1))
 	require.NoError(t, err)
 	handle, err := p1.RemoteObjectBacking(&meta)
 	require.NoError(t, err)
@@ -443,14 +443,14 @@ func TestAttachCustomObject(t *testing.T) {
 	require.NoError(t, p2.SetCreatorID(2))
 
 	_, err = p2.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
-		FileNum:  base.FileNum(10).DiskFileNum(),
+		FileNum:  base.DiskFileNum(10),
 		FileType: base.FileTypeTable,
 		Backing:  backing,
 	}})
 	require.NoError(t, err)
 
 	// Verify the provider can read the object.
-	r, err = p2.OpenForReading(ctx, base.FileTypeTable, base.FileNum(10).DiskFileNum(), objstorage.OpenOptions{})
+	r, err = p2.OpenForReading(ctx, base.FileTypeTable, base.DiskFileNum(10), objstorage.OpenOptions{})
 	require.NoError(t, err)
 	require.Equal(t, int64(len(data)), r.Size())
 	buf = make([]byte, r.Size())
@@ -473,7 +473,7 @@ func TestNotExistError(t *testing.T) {
 	require.NoError(t, provider.SetCreatorID(1))
 
 	for i, shared := range []bool{false, true} {
-		fileNum := base.FileNum(1 + i).DiskFileNum()
+		fileNum := base.DiskFileNum(1 + i)
 		name := "local"
 		if shared {
 			name = "remote"
