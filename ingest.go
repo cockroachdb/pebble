@@ -189,7 +189,7 @@ func ingestLoad1External(
 			JobID:   jobID,
 			Reason:  "ingesting",
 			Path:    objprovider.Path(metas[0]),
-			FileNum: fileNum.FileNum(),
+			FileNum: fileNum,
 		})
 	}
 	// In the name of keeping this ingestion as fast as possible, we avoid
@@ -575,7 +575,7 @@ func ingestLink(
 				JobID:   jobID,
 				Reason:  "ingesting",
 				Path:    objProvider.Path(objMeta),
-				FileNum: lr.localMeta[i].FileNum,
+				FileNum: lr.localMeta[i].FileNum.DiskFileNum(),
 			})
 		}
 	}
@@ -615,7 +615,7 @@ func ingestLink(
 				JobID:   jobID,
 				Reason:  "ingesting",
 				Path:    objProvider.Path(sharedObjMetas[i]),
-				FileNum: lr.sharedMeta[i].FileNum,
+				FileNum: lr.sharedMeta[i].FileNum.DiskFileNum(),
 			})
 		}
 	}

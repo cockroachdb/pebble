@@ -62,7 +62,7 @@ func TestSharedCache(t *testing.T) {
 			case "write":
 				size := mustParseBytesArg(t, d, "size")
 
-				writable, _, err := provider.Create(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.CreateOptions{})
+				writable, _, err := provider.Create(ctx, base.FileTypeTable, base.DiskFileNum(1), objstorage.CreateOptions{})
 				require.NoError(t, err)
 				defer writable.Finish()
 
@@ -84,7 +84,7 @@ func TestSharedCache(t *testing.T) {
 				offset := mustParseBytesArg(t, d, "offset")
 				size := mustParseBytesArg(t, d, "size")
 
-				readable, err := provider.OpenForReading(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
+				readable, err := provider.OpenForReading(ctx, base.FileTypeTable, base.DiskFileNum(1), objstorage.OpenOptions{})
 				require.NoError(t, err)
 				defer readable.Close()
 
@@ -92,7 +92,7 @@ func TestSharedCache(t *testing.T) {
 				flags := sharedcache.ReadFlags{
 					ReadOnly: d.Cmd == "read-for-compaction",
 				}
-				err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, int64(offset), readable, readable.Size(), flags)
+				err = cache.ReadAt(ctx, base.DiskFileNum(1), got, int64(offset), readable, readable.Size(), flags)
 				// We always expect cache.ReadAt to succeed.
 				require.NoError(t, err)
 				// It is easier to assert this condition programmatically, rather than returning
@@ -147,7 +147,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 					require.NoError(t, err)
 					defer cache.Close()
 
-					writable, _, err := provider.Create(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.CreateOptions{})
+					writable, _, err := provider.Create(ctx, base.FileTypeTable, base.DiskFileNum(1), objstorage.CreateOptions{})
 					require.NoError(t, err)
 
 					// With invariants on, Write will modify its input buffer.
@@ -163,7 +163,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 					require.NoError(t, writable.Write(wrote))
 					require.NoError(t, writable.Finish())
 
-					readable, err := provider.OpenForReading(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
+					readable, err := provider.OpenForReading(ctx, base.FileTypeTable, base.DiskFileNum(1), objstorage.OpenOptions{})
 					require.NoError(t, err)
 					defer readable.Close()
 
@@ -176,12 +176,12 @@ func TestSharedCacheRandomized(t *testing.T) {
 							offset := rand.Int63n(size)
 
 							got := make([]byte, size-offset)
-							err := cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, readable.Size(), sharedcache.ReadFlags{})
+							err := cache.ReadAt(ctx, base.DiskFileNum(1), got, offset, readable, readable.Size(), sharedcache.ReadFlags{})
 							require.NoError(t, err)
 							require.Equal(t, objData[int(offset):], got)
 
 							got = make([]byte, size-offset)
-							err = cache.ReadAt(ctx, base.FileNum(1).DiskFileNum(), got, offset, readable, readable.Size(), sharedcache.ReadFlags{})
+							err = cache.ReadAt(ctx, base.DiskFileNum(1), got, offset, readable, readable.Size(), sharedcache.ReadFlags{})
 							require.NoError(t, err)
 							require.Equal(t, objData[int(offset):], got)
 						}()

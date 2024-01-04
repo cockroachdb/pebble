@@ -228,14 +228,14 @@ func (cm *cleanupManager) deleteObsoleteFile(
 		cm.opts.EventListener.WALDeleted(WALDeleteInfo{
 			JobID:   jobID,
 			Path:    path,
-			FileNum: fileNum.FileNum(),
+			FileNum: fileNum,
 			Err:     err,
 		})
 	case fileTypeManifest:
 		cm.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
 			JobID:   jobID,
 			Path:    path,
-			FileNum: fileNum.FileNum(),
+			FileNum: fileNum,
 			Err:     err,
 		})
 	case fileTypeTable:
@@ -267,7 +267,7 @@ func (cm *cleanupManager) deleteObsoleteObject(
 		cm.opts.EventListener.TableDeleted(TableDeleteInfo{
 			JobID:   jobID,
 			Path:    path,
-			FileNum: fileNum.FileNum(),
+			FileNum: fileNum,
 			Err:     err,
 		})
 	}

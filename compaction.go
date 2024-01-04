@@ -3113,7 +3113,7 @@ func (d *DB) runCompaction(
 			JobID:   jobID,
 			Reason:  reason,
 			Path:    d.objProvider.Path(objMeta),
-			FileNum: fileNum,
+			FileNum: fileNum.DiskFileNum(),
 		})
 		if c.kind != compactionKindFlush {
 			writable = &compactionWritable{
@@ -3662,7 +3662,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			}
 			obsoleteManifests = append(obsoleteManifests, fi)
 		case fileTypeOptions:
-			if diskFileNum.FileNum() >= d.optionsFileNum.FileNum() {
+			if diskFileNum >= d.optionsFileNum {
 				continue
 			}
 			fi := fileInfo{fileNum: diskFileNum}

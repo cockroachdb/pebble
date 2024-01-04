@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 type logRecycler struct {
@@ -19,12 +20,12 @@ type logRecycler struct {
 	// recycling a log written by a previous instance of the DB which may not
 	// have had log recycling enabled. If that previous instance of the DB was
 	// RocksDB, the old non-recyclable log record headers will be present.
-	minRecycleLogNum FileNum
+	minRecycleLogNum base.DiskFileNum
 
 	mu struct {
 		sync.Mutex
 		logs      []fileInfo
-		maxLogNum FileNum
+		maxLogNum base.DiskFileNum
 	}
 }
 
@@ -32,14 +33,14 @@ type logRecycler struct {
 // the log file should not be deleted (i.e. the log is being recycled), and
 // false otherwise.
 func (r *logRecycler) add(logInfo fileInfo) bool {
-	if logInfo.fileNum.FileNum() < r.minRecycleLogNum {
+	if logInfo.fileNum < r.minRecycleLogNum {
 		return false
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if logInfo.fileNum.FileNum() <= r.mu.maxLogNum {
+	if logInfo.fileNum <= r.mu.maxLogNum {
 		// The log file number was already considered for recycling. Don't consider
 		// it again. This avoids a race between adding the same log file for
 		// recycling multiple times, and removing the log file for actual
@@ -49,7 +50,7 @@ func (r *logRecycler) add(logInfo fileInfo) bool {
 		// shouldn't be deleted.
 		return true
 	}
-	r.mu.maxLogNum = logInfo.fileNum.FileNum()
+	r.mu.maxLogNum = logInfo.fileNum
 	if len(r.mu.logs) >= r.limit {
 		return false
 	}
@@ -82,27 +83,27 @@ func (r *logRecycler) stats() (count int, size uint64) {
 // pop removes the log number at the head of the recycling queue, enforcing
 // that it matches the specified logNum. An error is returned of the recycling
 // queue is empty or the head log number does not match the specified one.
-func (r *logRecycler) pop(logNum FileNum) error {
+func (r *logRecycler) pop(logNum base.DiskFileNum) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if len(r.mu.logs) == 0 {
 		return errors.New("pebble: log recycler empty")
 	}
-	if r.mu.logs[0].fileNum.FileNum() != logNum {
-		return errors.Errorf("pebble: log recycler invalid %d vs %d", errors.Safe(logNum), errors.Safe(fileInfoNums(r.mu.logs)))
+	if r.mu.logs[0].fileNum != logNum {
+		return errors.Errorf("pebble: log recycler invalid %d vs %v", logNum, errors.Safe(fileInfoNums(r.mu.logs)))
 	}
 	r.mu.logs = r.mu.logs[1:]
 	return nil
 }
 
-func fileInfoNums(finfos []fileInfo) []FileNum {
+func fileInfoNums(finfos []fileInfo) []base.DiskFileNum {
 	if len(finfos) == 0 {
 		return nil
 	}
-	nums := make([]FileNum, len(finfos))
+	nums := make([]base.DiskFileNum, len(finfos))
 	for i := range finfos {
-		nums[i] = finfos[i].fileNum.FileNum()
+		nums[i] = finfos[i].fileNum
 	}
 	return nums
 }

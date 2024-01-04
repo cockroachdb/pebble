@@ -879,18 +879,18 @@ func findCurrentManifest(
 	var filename string
 	marker, filename, err = atomicfs.LocateMarker(fs, dirname, manifestMarkerName)
 	if err != nil {
-		return nil, base.FileNum(0).DiskFileNum(), false, err
+		return nil, 0, false, err
 	}
 
 	if filename == "" {
 		// The marker hasn't been set yet. This database doesn't exist.
-		return marker, base.FileNum(0).DiskFileNum(), false, nil
+		return marker, 0, false, nil
 	}
 
 	var ok bool
 	_, manifestNum, ok = base.ParseFilename(fs, filename)
 	if !ok {
-		return marker, base.FileNum(0).DiskFileNum(), false, base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(filename))
+		return marker, 0, false, base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(filename))
 	}
 	return marker, manifestNum, true, nil
 }
