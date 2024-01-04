@@ -290,30 +290,36 @@ func TestVirtualReadsWiring(t *testing.T) {
 	d.mu.versions.nextFileNum += 2
 
 	v1 := &manifest.FileMetadata{
-		FileBacking:    parentFile.FileBacking,
-		FileNum:        f1,
-		CreationTime:   time.Now().Unix(),
-		Size:           parentFile.Size / 2,
-		SmallestSeqNum: parentFile.SmallestSeqNum,
-		LargestSeqNum:  parentFile.LargestSeqNum,
-		Smallest:       base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
-		Largest:        base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
-		HasPointKeys:   true,
-		Virtual:        true,
+		FileBacking:      parentFile.FileBacking,
+		FileNum:          f1,
+		CreationTime:     time.Now().Unix(),
+		Size:             parentFile.Size / 2,
+		SmallestSeqNum:   parentFile.SmallestSeqNum,
+		LargestSeqNum:    parentFile.LargestSeqNum,
+		Smallest:         base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
+		Largest:          base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
+		SmallestPointKey: base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
+		LargestPointKey:  base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
+		HasPointKeys:     true,
+		Virtual:          true,
 	}
 	v1.Stats.NumEntries = 1
 
 	v2 := &manifest.FileMetadata{
-		FileBacking:    parentFile.FileBacking,
-		FileNum:        f2,
-		CreationTime:   time.Now().Unix(),
-		Size:           parentFile.Size / 2,
-		SmallestSeqNum: parentFile.SmallestSeqNum,
-		LargestSeqNum:  parentFile.LargestSeqNum,
-		Smallest:       base.MakeInternalKey([]byte{'d'}, parentFile.Smallest.SeqNum()+2, InternalKeyKindRangeDelete),
-		Largest:        base.MakeInternalKey([]byte{'z'}, parentFile.Largest.SeqNum(), InternalKeyKindSet),
-		HasPointKeys:   true,
-		Virtual:        true,
+		FileBacking:      parentFile.FileBacking,
+		FileNum:          f2,
+		CreationTime:     time.Now().Unix(),
+		Size:             parentFile.Size / 2,
+		SmallestSeqNum:   parentFile.SmallestSeqNum,
+		LargestSeqNum:    parentFile.LargestSeqNum,
+		Smallest:         base.MakeInternalKey([]byte{'d'}, parentFile.Smallest.SeqNum()+2, InternalKeyKindRangeDelete),
+		Largest:          base.MakeInternalKey([]byte{'z'}, parentFile.Largest.SeqNum(), InternalKeyKindSet),
+		SmallestPointKey: base.MakeInternalKey([]byte{'d'}, parentFile.Smallest.SeqNum()+2, InternalKeyKindRangeDelete),
+		LargestPointKey:  base.MakeInternalKey([]byte{'z'}, parentFile.Largest.SeqNum(), InternalKeyKindSet),
+		SmallestRangeKey: base.MakeInternalKey([]byte{'f'}, parentFile.Smallest.SeqNum()+2, InternalKeyKindRangeKeySet),
+		LargestRangeKey:  base.MakeInternalKey([]byte{'k'}, parentFile.Largest.SeqNum(), InternalKeyKindRangeKeyUnset),
+		HasPointKeys:     true,
+		Virtual:          true,
 	}
 	v2.Stats.NumEntries = 6
 
