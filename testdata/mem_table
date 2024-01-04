@@ -1,0 +1,35 @@
+new size=10000
+----
+
+prepare name=batch1
+set foo foo
+set bar bar
+----
+0 of 10000 bytes in-use; 8475 available
+
+apply name=batch1 seq=1
+----
+82 of 10000 bytes in-use; 8475 available
+
+computePossibleOverlaps
+a-f
+a-bar
+a-foo
+bar-foo
+foo-zoo
+goo-zoo
+----
+{a f}
+{a foo}
+{bar foo}
+{foo zoo}
+
+computePossibleOverlaps stop-after-first
+a-f
+a-bar
+a-foo
+bar-foo
+foo-zoo
+goo-zoo
+----
+{a f}
