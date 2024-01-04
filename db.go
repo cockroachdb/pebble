@@ -1578,19 +1578,12 @@ func (d *DB) NewEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFile
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
-
-	internalKeyRanges := make([]internalKeyRange, len(keyRanges))
 	for i := range keyRanges {
 		if i > 0 && d.cmp(keyRanges[i-1].End, keyRanges[i].Start) > 0 {
 			panic("pebble: key ranges for eventually-file-only-snapshot not in order")
 		}
-		internalKeyRanges[i] = internalKeyRange{
-			smallest: base.MakeInternalKey(keyRanges[i].Start, InternalKeySeqNumMax, InternalKeyKindMax),
-			largest:  base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, keyRanges[i].End),
-		}
 	}
-
-	return d.makeEventuallyFileOnlySnapshot(keyRanges, internalKeyRanges)
+	return d.makeEventuallyFileOnlySnapshot(keyRanges)
 }
 
 // Close closes the DB.
@@ -1751,7 +1744,6 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 	iStart := base.MakeInternalKey(start, InternalKeySeqNumMax, InternalKeyKindMax)
 	iEnd := base.MakeInternalKey(end, 0, 0)
 	m := (&fileMetadata{}).ExtendPointKeyBounds(d.cmp, iStart, iEnd)
-	meta := []*fileMetadata{m}
 
 	d.mu.Lock()
 	maxLevelWithFiles := 1
@@ -1763,10 +1755,6 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 		}
 	}
 
-	keyRanges := make([]internalKeyRange, len(meta))
-	for i := range meta {
-		keyRanges[i] = internalKeyRange{smallest: m.Smallest, largest: m.Largest}
-	}
 	// Determine if any memtable overlaps with the compaction range. We wait for
 	// any such overlap to flush (initiating a flush if necessary).
 	mem, err := func() (*flushableEntry, error) {
@@ -1776,25 +1764,30 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 		// overlaps.
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			mem := d.mu.mem.queue[i]
-			if ingestMemtableOverlaps(d.cmp, mem, keyRanges) {
-				var err error
-				if mem.flushable == d.mu.mem.mutable {
-					// We have to hold both commitPipeline.mu and DB.mu when calling
-					// makeRoomForWrite(). Lock order requirements elsewhere force us to
-					// unlock DB.mu in order to grab commitPipeline.mu first.
-					d.mu.Unlock()
-					d.commit.mu.Lock()
-					d.mu.Lock()
-					defer d.commit.mu.Unlock()
-					if mem.flushable == d.mu.mem.mutable {
-						// Only flush if the active memtable is unchanged.
-						err = d.makeRoomForWrite(nil)
-					}
-				}
-				mem.flushForced = true
-				d.maybeScheduleFlush()
-				return mem, err
+			var anyOverlaps bool
+			mem.computePossibleOverlaps(func(b bounded) {
+				anyOverlaps = true
+			}, m)
+			if !anyOverlaps {
+				continue
 			}
+			var err error
+			if mem.flushable == d.mu.mem.mutable {
+				// We have to hold both commitPipeline.mu and DB.mu when calling
+				// makeRoomForWrite(). Lock order requirements elsewhere force us to
+				// unlock DB.mu in order to grab commitPipeline.mu first.
+				d.mu.Unlock()
+				d.commit.mu.Lock()
+				d.mu.Lock()
+				defer d.commit.mu.Unlock()
+				if mem.flushable == d.mu.mem.mutable {
+					// Only flush if the active memtable is unchanged.
+					err = d.makeRoomForWrite(nil)
+				}
+			}
+			mem.flushForced = true
+			d.maybeScheduleFlush()
+			return mem, err
 		}
 		return nil, nil
 	}()

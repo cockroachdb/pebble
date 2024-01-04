@@ -313,6 +313,11 @@ func (m *memTable) empty() bool {
 	return m.skl.Size() == memTableEmptySize
 }
 
+// computePossibleOverlaps is part of the flushable interface.
+func (m *memTable) computePossibleOverlaps(fn func(bounded), bounded ...bounded) {
+	computePossibleOverlapsGenericImpl[*memTable](m, m.cmp, fn, bounded)
+}
+
 // A keySpanFrags holds a set of fragmented keyspan.Spans with a particular key
 // kind at a particular moment for a memtable.
 //

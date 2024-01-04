@@ -53,6 +53,13 @@ func (k *KeyRange) Contains(cmp base.Compare, key InternalKey) bool {
 	return (v < 0 || (v == 0 && key.IsExclusiveSentinel())) && cmp(k.Start, key.UserKey) <= 0
 }
 
+// InternalKeyBounds returns the key range as internal key bounds, with the end
+// boundary represented as an exclusive range delete sentinel key.
+func (k KeyRange) InternalKeyBounds() (InternalKey, InternalKey) {
+	return base.MakeInternalKey(k.Start, InternalKeySeqNumMax, InternalKeyKindMax),
+		base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, k.End)
+}
+
 // OverlapsInternalKeyRange checks if the specified internal key range has an
 // overlap with the KeyRange. Note that we aren't checking for full containment
 // of smallest-largest within k, rather just that there's some intersection
@@ -625,33 +632,6 @@ func ingestLink(
 	return nil
 }
 
-func ingestMemtableOverlaps(cmp Compare, mem flushable, keyRanges []internalKeyRange) bool {
-	iter := mem.newIter(nil)
-	rangeDelIter := mem.newRangeDelIter(nil)
-	rkeyIter := mem.newRangeKeyIter(nil)
-
-	closeIters := func() error {
-		err := iter.Close()
-		if rangeDelIter != nil {
-			err = firstError(err, rangeDelIter.Close())
-		}
-		if rkeyIter != nil {
-			err = firstError(err, rkeyIter.Close())
-		}
-		return err
-	}
-
-	for _, kr := range keyRanges {
-		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, kr, cmp) {
-			closeIters()
-			return true
-		}
-	}
-
-	// Assume overlap if any iterator errored out.
-	return closeIters() != nil
-}
-
 func ingestUpdateSeqNum(
 	cmp Compare, format base.FormatKey, seqNum uint64, loadResult ingestLoadResult,
 ) error {
@@ -722,6 +702,10 @@ func ingestUpdateSeqNum(
 // Denotes an internal key range. Smallest and largest are both inclusive.
 type internalKeyRange struct {
 	smallest, largest InternalKey
+}
+
+func (i *internalKeyRange) InternalKeyBounds() (InternalKey, InternalKey) {
+	return i.smallest, i.largest
 }
 
 func overlapWithIterator(
@@ -1372,19 +1356,26 @@ func (d *DB) ingest(
 	// metaFlushableOverlaps is a slice parallel to meta indicating which of the
 	// ingested sstables overlap some table in the flushable queue. It's used to
 	// approximate ingest-into-L0 stats when using flushable ingests.
-	metaFlushableOverlaps := make([]bool, loadResult.fileCount)
+	metaFlushableOverlaps := make(map[FileNum]bool, loadResult.fileCount)
 	var mem *flushableEntry
 	var mut *memTable
 	// asFlushable indicates whether the sstable was ingested as a flushable.
 	var asFlushable bool
-	iterOps := IterOptions{
-		CategoryAndQoS: sstable.CategoryAndQoS{
-			Category: "pebble-ingest",
-			QoSLevel: sstable.LatencySensitiveQoSLevel,
-		},
-	}
 	prepare := func(seqNum uint64) {
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
+
+		// Determine the set of bounds we care about for the purpose of checking
+		// for overlap among the flushables. If there's an excise span, we need
+		// to check for overlap with its bounds as well.
+		overlapBounds := make([]bounded, 0, loadResult.fileCount+1)
+		for _, metas := range [3][]*fileMetadata{loadResult.localMeta, loadResult.sharedMeta, loadResult.externalMeta} {
+			for _, m := range metas {
+				overlapBounds = append(overlapBounds, m)
+			}
+		}
+		if exciseSpan.Valid() {
+			overlapBounds = append(overlapBounds, &exciseSpan)
+		}
 
 		d.mu.Lock()
 		defer d.mu.Unlock()
@@ -1396,59 +1387,23 @@ func (d *DB) ingest(
 
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
-			iter := m.newIter(&iterOps)
-			rangeDelIter := m.newRangeDelIter(&iterOps)
-			rkeyIter := m.newRangeKeyIter(&iterOps)
+			m.computePossibleOverlaps(func(b bounded) {
+				// If this is the first table to overlap a flushable, save
+				// the flushable. This ingest must be ingested or flushed
+				// after it.
+				if mem == nil {
+					mem = m
+				}
 
-			checkForOverlap := func(i int, meta *fileMetadata) {
-				if metaFlushableOverlaps[i] {
-					// This table already overlapped a more recent flushable.
-					return
+				switch v := b.(type) {
+				case *fileMetadata:
+					metaFlushableOverlaps[v.FileNum] = true
+				case *KeyRange:
+					// An excise span; not a file.
+				default:
+					panic("unreachable")
 				}
-				kr := internalKeyRange{
-					smallest: meta.Smallest,
-					largest:  meta.Largest,
-				}
-				if overlapWithIterator(iter, &rangeDelIter, rkeyIter, kr, d.cmp) {
-					// If this is the first table to overlap a flushable, save
-					// the flushable. This ingest must be ingested or flushed
-					// after it.
-					if mem == nil {
-						mem = m
-					}
-					metaFlushableOverlaps[i] = true
-				}
-			}
-			for i := range loadResult.localMeta {
-				checkForOverlap(i, loadResult.localMeta[i])
-			}
-			for i := range loadResult.sharedMeta {
-				checkForOverlap(len(loadResult.localMeta)+i, loadResult.sharedMeta[i])
-			}
-			for i := range loadResult.externalMeta {
-				checkForOverlap(len(loadResult.localMeta)+len(loadResult.sharedMeta)+i, loadResult.externalMeta[i])
-			}
-			if exciseSpan.Valid() {
-				kr := internalKeyRange{
-					smallest: base.MakeInternalKey(exciseSpan.Start, InternalKeySeqNumMax, InternalKeyKindMax),
-					largest:  base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, exciseSpan.End),
-				}
-				if overlapWithIterator(iter, &rangeDelIter, rkeyIter, kr, d.cmp) {
-					if mem == nil {
-						mem = m
-					}
-				}
-			}
-			err := iter.Close()
-			if rangeDelIter != nil {
-				err = firstError(err, rangeDelIter.Close())
-			}
-			if rkeyIter != nil {
-				err = firstError(err, rkeyIter.Close())
-			}
-			if err != nil {
-				d.opts.Logger.Errorf("ingest error reading flushable for log %s: %s", m.logNum, err)
-			}
+			}, overlapBounds...)
 		}
 
 		if mem == nil {
@@ -1592,7 +1547,7 @@ func (d *DB) ingest(
 			if e.Level == 0 {
 				stats.ApproxIngestedIntoL0Bytes += e.Meta.Size
 			}
-			if i < len(metaFlushableOverlaps) && metaFlushableOverlaps[i] {
+			if metaFlushableOverlaps[e.Meta.FileNum] {
 				stats.MemtableOverlappingFiles++
 			}
 		}
@@ -1614,7 +1569,7 @@ func (d *DB) ingest(
 			// before entering the commit pipeline, we can use that overlap to
 			// improve our approximation by incorporating overlap with L0, not
 			// just memtables.
-			if metaFlushableOverlaps[i] {
+			if metaFlushableOverlaps[f.FileNum] {
 				stats.ApproxIngestedIntoL0Bytes += f.Size
 				stats.MemtableOverlappingFiles++
 			}
