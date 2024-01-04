@@ -242,13 +242,6 @@ func defaultOptions() *pebble.Options {
 		}},
 		BlockPropertyCollectors: blockPropertyCollectorConstructors,
 	}
-	// TODO(sumeer): add IneffectualSingleDeleteCallback that panics by
-	// supporting a test option that does not generate ineffectual single
-	// deletes.
-	opts.Experimental.SingleDeleteInvariantViolationCallback = func(
-		userKey []byte) {
-		panic(errors.AssertionFailedf("single del invariant violations on key %q", userKey))
-	}
 	return opts
 }
 
