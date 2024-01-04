@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -398,6 +399,70 @@ func TestMemTableReserved(t *testing.T) {
 	prevReserved := m.reserved
 	m.prepare(b)
 	require.Equal(t, int(m.reserved), int(b.memTableSize)+int(prevReserved))
+}
+
+func TestMemTable(t *testing.T) {
+	var m *memTable
+	var buf bytes.Buffer
+	batches := map[string]*Batch{}
+
+	summary := func() string {
+		return fmt.Sprintf("%d of %d bytes available",
+			m.availBytes(), m.totalBytes())
+	}
+
+	datadriven.RunTest(t, "testdata/mem_table", func(t *testing.T, td *datadriven.TestData) string {
+		buf.Reset()
+		switch td.Cmd {
+		case "new":
+			var o memTableOptions
+			td.MaybeScanArgs(t, "size", &o.size)
+			m = newMemTable(o)
+			return ""
+		case "prepare":
+			var name string
+			td.ScanArgs(t, "name", &name)
+			b := newBatch(nil)
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
+			}
+			batches[name] = b
+			if err := m.prepare(b); err != nil {
+				return err.Error()
+			}
+			return summary()
+		case "apply":
+			var name string
+			var seqNum uint64
+			td.ScanArgs(t, "name", &name)
+			td.ScanArgs(t, "seq", &seqNum)
+			if err := m.apply(batches[name], seqNum); err != nil {
+				return err.Error()
+			}
+			delete(batches, name)
+			return summary()
+		case "computePossibleOverlaps":
+			stopAfterFirst := td.HasArg("stop-after-first")
+
+			var keyRanges []bounded
+			for _, l := range strings.Split(td.Input, "\n") {
+				s := strings.FieldsFunc(l, func(r rune) bool { return unicode.IsSpace(r) || r == '-' })
+				keyRanges = append(keyRanges, KeyRange{Start: []byte(s[0]), End: []byte(s[1])})
+			}
+
+			m.computePossibleOverlaps(func(b bounded) shouldContinue {
+				fmt.Fprintf(&buf, "%s\n", b)
+				if stopAfterFirst {
+					return stopIteration
+				}
+				return continueIteration
+			}, keyRanges...)
+
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
 }
 
 func buildMemTable(b *testing.B) (*memTable, [][]byte) {
