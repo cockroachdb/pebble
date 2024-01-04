@@ -53,13 +53,13 @@ func (p *provider) encodeRemoteObjectBacking(
 	buf = binary.AppendUvarint(buf, uint64(meta.Remote.CreatorID))
 	// TODO(radu): encode file type as well?
 	buf = binary.AppendUvarint(buf, tagCreatorFileNum)
-	buf = binary.AppendUvarint(buf, uint64(meta.Remote.CreatorFileNum.FileNum()))
+	buf = binary.AppendUvarint(buf, uint64(meta.Remote.CreatorFileNum))
 	buf = binary.AppendUvarint(buf, tagCleanupMethod)
 	buf = binary.AppendUvarint(buf, uint64(meta.Remote.CleanupMethod))
 	if meta.Remote.CleanupMethod == objstorage.SharedRefTracking {
 		buf = binary.AppendUvarint(buf, tagRefCheckID)
 		buf = binary.AppendUvarint(buf, uint64(p.remote.shared.creatorID))
-		buf = binary.AppendUvarint(buf, uint64(meta.DiskFileNum.FileNum()))
+		buf = binary.AppendUvarint(buf, uint64(meta.DiskFileNum))
 	}
 	if meta.Remote.Locator != "" {
 		buf = binary.AppendUvarint(buf, tagLocator)
@@ -196,14 +196,14 @@ func decodeRemoteObjectBacking(
 	res.meta.DiskFileNum = fileNum
 	res.meta.FileType = fileType
 	res.meta.Remote.CreatorID = objstorage.CreatorID(creatorID)
-	res.meta.Remote.CreatorFileNum = base.FileNum(creatorFileNum).DiskFileNum()
+	res.meta.Remote.CreatorFileNum = base.DiskFileNum(creatorFileNum)
 	res.meta.Remote.CleanupMethod = objstorage.SharedCleanupMethod(cleanupMethod)
 	if res.meta.Remote.CleanupMethod == objstorage.SharedRefTracking {
 		if refCheckCreatorID == 0 || refCheckFileNum == 0 {
 			return decodedBacking{}, errors.Newf("remote object backing missing ref to check")
 		}
 		res.refToCheck.creatorID = objstorage.CreatorID(refCheckCreatorID)
-		res.refToCheck.fileNum = base.FileNum(refCheckFileNum).DiskFileNum()
+		res.refToCheck.fileNum = base.DiskFileNum(refCheckFileNum)
 	}
 	res.meta.Remote.Locator = remote.Locator(locator)
 	res.meta.Remote.CustomObjectName = customObjName

@@ -334,14 +334,14 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			if fT != "file" {
 				fileNumInt, err := strconv.Atoi(td.CmdArgs[2].String())
 				require.NoError(t, err)
-				fileNum := base.FileNum(fileNumInt)
+				fileNum := base.DiskFileNum(fileNumInt)
 				switch fT {
 				case "table":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeTable, fileNum.DiskFileNum())
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeTable, fileNum)
 				case "log":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeLog, fileNum.DiskFileNum())
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeLog, fileNum)
 				case "manifest":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum.DiskFileNum())
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum)
 				}
 			}
 			f, err := fs.Create(filePath)

@@ -79,7 +79,7 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 			// anyways (which will likely fail when we try to read the file).
 			_, fileNum, ok := base.ParseFilename(w.opts.FS, arg)
 			if !ok {
-				fileNum = base.FileNum(0).DiskFileNum()
+				fileNum = 0
 			}
 
 			f, err := w.opts.FS.Open(arg)

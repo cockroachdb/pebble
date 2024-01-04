@@ -238,8 +238,8 @@ func (f *findT) readManifests(stdout io.Writer) {
 				if ve.ComparerName != "" {
 					f.comparerName = ve.ComparerName
 				}
-				if num := ve.MinUnflushedLogNum.FileNum(); num != 0 {
-					f.editRefs[num] = append(f.editRefs[num], i)
+				if num := ve.MinUnflushedLogNum; num != 0 {
+					f.editRefs[num.FileNum()] = append(f.editRefs[num.FileNum()], i)
 				}
 				for df := range ve.DeletedFiles {
 					f.editRefs[df.FileNum] = append(f.editRefs[df.FileNum], i)

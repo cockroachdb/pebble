@@ -1040,7 +1040,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.Default, tmpDir))
 	require.NoError(t, err)
 	defer provider.Close()
-	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, base.FileNum(0).DiskFileNum(), objstorage.CreateOptions{})
+	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, base.DiskFileNum(0), objstorage.CreateOptions{})
 	require.NoError(t, err)
 
 	w := NewWriter(f0, WriterOptions{
@@ -1058,7 +1058,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		}
 	}
 	require.NoError(t, w.Close())
-	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, base.FileNum(0).DiskFileNum(), objstorage.OpenOptions{})
+	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, base.DiskFileNum(0), objstorage.OpenOptions{})
 	require.NoError(t, err)
 	r, err := NewReader(f1, ReaderOptions{Comparer: testkeys.Comparer})
 	require.NoError(t, err)
@@ -1417,7 +1417,7 @@ func buildTestTableWithProvider(
 	compression Compression,
 	prefix []byte,
 ) *Reader {
-	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, base.FileNum(0).DiskFileNum(), objstorage.CreateOptions{})
+	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, base.DiskFileNum(0), objstorage.CreateOptions{})
 	require.NoError(t, err)
 
 	w := NewWriter(f0, WriterOptions{
@@ -1440,7 +1440,7 @@ func buildTestTableWithProvider(
 	require.NoError(t, w.Close())
 
 	// Re-open that Filename for reading.
-	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, base.FileNum(0).DiskFileNum(), objstorage.OpenOptions{})
+	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, base.DiskFileNum(0), objstorage.OpenOptions{})
 	require.NoError(t, err)
 
 	c := cache.New(128 << 20)

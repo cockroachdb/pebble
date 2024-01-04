@@ -578,7 +578,7 @@ func TestWriterClearCache(t *testing.T) {
 		Comparer:    testkeys.Comparer,
 		TableFormat: TableFormatPebblev3,
 	}
-	cacheOpts := &cacheOpts{cacheID: 1, fileNum: base.FileNum(1).DiskFileNum()}
+	cacheOpts := &cacheOpts{cacheID: 1, fileNum: 1}
 	invalidData := func() *cache.Value {
 		invalid := []byte("invalid data")
 		v := cache.Alloc(len(invalid))
