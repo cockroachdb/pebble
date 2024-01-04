@@ -275,9 +275,7 @@ type EventuallyFileOnlySnapshot struct {
 	closed chan struct{}
 }
 
-func (d *DB) makeEventuallyFileOnlySnapshot(
-	keyRanges []KeyRange, internalKeyRanges []internalKeyRange,
-) *EventuallyFileOnlySnapshot {
+func (d *DB) makeEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFileOnlySnapshot {
 	isFileOnly := true
 
 	d.mu.Lock()
@@ -285,11 +283,10 @@ func (d *DB) makeEventuallyFileOnlySnapshot(
 	seqNum := d.mu.versions.visibleSeqNum.Load()
 	// Check if any of the keyRanges overlap with a memtable.
 	for i := range d.mu.mem.queue {
-		mem := d.mu.mem.queue[i]
-		if ingestMemtableOverlaps(d.cmp, mem, internalKeyRanges) {
+		d.mu.mem.queue[i].computePossibleOverlaps(func(bounded) shouldContinue {
 			isFileOnly = false
-			break
-		}
+			return stopIteration
+		}, sliceAsBounded(keyRanges)...)
 	}
 	es := &EventuallyFileOnlySnapshot{
 		db:                d,

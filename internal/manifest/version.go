@@ -275,6 +275,11 @@ type FileMetadata struct {
 	PrefixReplacement *PrefixReplacement
 }
 
+// InternalKeyBounds returns the set of overall table bounds.
+func (m *FileMetadata) InternalKeyBounds() (InternalKey, InternalKey) {
+	return m.Smallest, m.Largest
+}
+
 // PrefixReplacement represents a read-time replacement of a key prefix.
 type PrefixReplacement struct {
 	ContentPrefix, SyntheticPrefix []byte

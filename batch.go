@@ -2005,6 +2005,13 @@ func (b *flushableBatch) readyForFlush() bool {
 	return true
 }
 
+// computePossibleOverlaps is part of the flushable interface.
+func (b *flushableBatch) computePossibleOverlaps(
+	fn func(bounded) shouldContinue, bounded ...bounded,
+) {
+	computePossibleOverlapsGenericImpl[*flushableBatch](b, b.cmp, fn, bounded)
+}
+
 // Note: flushableBatchIter mirrors the implementation of batchIter. Keep the
 // two in sync.
 type flushableBatchIter struct {
