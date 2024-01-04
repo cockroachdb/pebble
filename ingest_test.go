@@ -1912,12 +1912,14 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 				case "overlaps":
 					var buf bytes.Buffer
 					for _, data := range strings.Split(d.Input, "\n") {
-						var keyRanges []internalKeyRange
+						var keyRanges []bounded
 						for _, part := range strings.Fields(data) {
 							meta := parseMeta(part)
-							keyRanges = append(keyRanges, internalKeyRange{smallest: meta.Smallest, largest: meta.Largest})
+							keyRanges = append(keyRanges, meta)
 						}
-						fmt.Fprintf(&buf, "%t\n", ingestMemtableOverlaps(mem.cmp, mem, keyRanges))
+						var overlaps bool
+						mem.computePossibleOverlaps(func(bounded) { overlaps = true }, keyRanges...)
+						fmt.Fprintf(&buf, "%t\n", overlaps)
 					}
 					return buf.String()
 
@@ -2563,7 +2565,6 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 	}
 
 	ingest := func(keys ...string) {
-		t.Helper()
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
@@ -2577,7 +2578,7 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 		stats, err := d.IngestWithStats([]string{"ext"})
 		require.NoError(t, err)
 		require.Equal(t, stats.ApproxIngestedIntoL0Bytes, stats.Bytes)
-		require.Equal(t, stats.MemtableOverlappingFiles, 1)
+		require.Equal(t, 1, stats.MemtableOverlappingFiles)
 		require.Less(t, uint64(0), stats.Bytes)
 	}
 
