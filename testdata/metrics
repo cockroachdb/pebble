@@ -466,15 +466,14 @@ MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 12 entries (2.4KB)  hit rate: 31.1%
-Table cache: 3 entries (2.4KB)  hit rate: 57.9%
+Block cache: 12 entries (2.4KB)  hit rate: 24.5%
+Table cache: 1 entries (808B)  hit rate: 60.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
-            _unknown,     latency: {BlockBytes:88 BlockBytesInCache:88}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44}
    pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154}
@@ -528,15 +527,14 @@ MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 12 entries (2.4KB)  hit rate: 31.1%
-Table cache: 3 entries (2.4KB)  hit rate: 57.9%
+Block cache: 12 entries (2.4KB)  hit rate: 24.5%
+Table cache: 1 entries (808B)  hit rate: 60.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
-            _unknown,     latency: {BlockBytes:88 BlockBytesInCache:88}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44}
    pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154}
@@ -605,14 +603,13 @@ Zombie tables: 0 (0B)
 Backing tables: 2 (1.3KB)
 Virtual tables: 2 (102B)
 Block cache: 21 entries (4.1KB)  hit rate: 0.0%
-Table cache: 5 entries (3.9KB)  hit rate: 0.0%
+Table cache: 3 entries (2.4KB)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
 Ingestions: 1  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
-            _unknown,     latency: {BlockBytes:0 BlockBytesInCache:0}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44}
    pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154}
@@ -713,7 +710,6 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 2  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
-            _unknown,     latency: {BlockBytes:0 BlockBytesInCache:0}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44}
    pebble-compaction, non-latency: {BlockBytes:941 BlockBytesInCache:640}
