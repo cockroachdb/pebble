@@ -144,3 +144,81 @@ prev
 e: (e9, .)
 d: (d9, .)
 err=injected error
+
+reset
+----
+
+# Test the case of switching from reverse to forward iteration. During reverse
+# iteration, the underlying iterator may be positioned at an internal key with a
+# user key less than the current Key() [i.pos = iterPosPrev]. When switching
+# back to the forward direction, the iterator must be stepped forward to a user
+# key representing the current Key().
+#
+# Previously, if this step errored with the invariants tag enabled, a nil
+# pointer panic was possible as an invariant assertion assumed that i.iterKey
+# became non-nil (based on the knowledge that there must exist internal keys
+# that represent the current Key()). This test exercises this case for both
+# Next and NextPrefix.
+#
+# We set the cache-size to 1 so that no unused blocks are held in the cache, and
+# we know the Next of the internal iterator will need to read from disk.
+
+define auto-compactions=off cache-size=1 block-size=1
+L1
+  a.SET.1:a1
+  b.SET.1:b1
+  c.SET.1:c1
+  d.SET.1:d1
+  e.SET.1:e1
+----
+1:
+  000004:[a#1,SET-e#1,SET]
+
+layout filename=000004.sst
+----
+         0  data (22)
+        27  data (22)
+        54  data (22)
+        81  data (22)
+       108  data (22)
+       135  index (84)
+       224  properties (567)
+       796  meta-index (33)
+       834  footer (53)
+       887  EOF
+
+# NB: Block offset to key contained:
+#  0 -> a, 27 -> b, 54 -> c, 81 -> d, 108 -> e
+#
+# After the last prev in the below cases, the top-level pebble.Iterator is
+# positioned at c, but the underlying internal iterator is positioned at b.
+# We set up error injection to error when loading the block corresponding to 'c'
+# but only on the second tim the block is loaded.
+
+reopen cache-size=1 auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 54) (OnIndex 1))))
+----
+
+combined-iter
+last
+prev
+prev
+next-prefix
+----
+e: (e1, .)
+d: (d1, .)
+c: (c1, .)
+err=injected error
+
+reopen cache-size=1 auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 54) (OnIndex 1))))
+----
+
+combined-iter
+last
+prev
+prev
+next
+----
+e: (e1, .)
+d: (d1, .)
+c: (c1, .)
+err=injected error

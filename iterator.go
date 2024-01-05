@@ -1772,6 +1772,17 @@ func (i *Iterator) nextPrefix() IterValidityState {
 			// key with the user key less than i.key, so we're guaranteed to
 			// land on the correct key with a single Next.
 			i.iterKey, i.iterValue = i.iter.Next()
+			if i.iterKey == nil {
+				// This should only be possible if i.iter.Next() encountered an
+				// error.
+				if err := i.iter.Error(); err == nil {
+					i.opts.logger.Fatalf("pebble: invariant violation: Nexting internal iterator from iterPosPrev found nothing")
+				}
+				// NB: Iterator.Error() will return i.iter.Error() if it's
+				// non-nil.
+				i.iterValidityState = IterExhausted
+				return i.iterValidityState
+			}
 			if invariants.Enabled && !i.equal(i.iterKey.UserKey, i.key) {
 				i.opts.logger.Fatalf("pebble: invariant violation: Nexting internal iterator from iterPosPrev landed on %q, not %q",
 					i.iterKey.UserKey, i.key)

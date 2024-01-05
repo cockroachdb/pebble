@@ -1368,6 +1368,16 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			for i := range opts.Levels {
 				opts.Levels[i].BlockSize = v
 			}
+		case "cache-size":
+			if opts.Cache != nil {
+				opts.Cache.Unref()
+				opts.Cache = nil
+			}
+			size, err := strconv.ParseInt(cmdArg.Vals[0], 10, 64)
+			if err != nil {
+				return err
+			}
+			opts.Cache = NewCache(size)
 		case "index-block-size":
 			v, err := strconv.Atoi(cmdArg.Vals[0])
 			if err != nil {
