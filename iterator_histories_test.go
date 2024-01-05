@@ -32,6 +32,7 @@ func TestIterHistories(t *testing.T) {
 		}
 
 		var d *DB
+		var refedCache bool
 		var buf bytes.Buffer
 		iters := map[string]*Iterator{}
 		batches := map[string]*Batch{}
@@ -54,9 +55,13 @@ func TestIterHistories(t *testing.T) {
 			opts.DisableAutomaticCompactions = true
 			opts.EnsureDefaults()
 			opts.WithFSDefaults()
+			originalCache := opts.Cache
 			if err := parseDBOptionsArgs(opts, td.CmdArgs); err != nil {
 				return nil, err
 			}
+			// If the test replaced the cache, we'll need to unref the
+			// new cache later.
+			refedCache = opts.Cache != originalCache
 			return opts, nil
 		}
 		cleanup := func() (err error) {
@@ -85,6 +90,12 @@ func TestIterHistories(t *testing.T) {
 				err = firstError(err, d.Close())
 				d = nil
 			}
+
+			if refedCache {
+				opts.Cache.Unref()
+				opts.Cache = nil
+				refedCache = false
+			}
 			return err
 		}
 		defer cleanup()
@@ -111,9 +122,13 @@ func TestIterHistories(t *testing.T) {
 				if err := cleanup(); err != nil {
 					return err.Error()
 				}
+				originalCache := opts.Cache
 				if err := parseDBOptionsArgs(opts, td.CmdArgs); err != nil {
 					return err.Error()
 				}
+				// If the test replaced the cache, we'll need to unref the
+				// new cache later.
+				refedCache = originalCache != opts.Cache
 				d, err = Open("", opts)
 				require.NoError(t, err)
 				return ""
