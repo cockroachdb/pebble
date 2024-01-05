@@ -1147,6 +1147,9 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 		i.iterKey, i.iterValue = i.iter.Next()
 		i.stats.ForwardStepCount[InternalIterCall]++
 		if i.iterKey == nil {
+			if i.err = i.iter.Error(); i.err != nil {
+				return
+			}
 			i.pos = iterPosNext
 			return
 		}
