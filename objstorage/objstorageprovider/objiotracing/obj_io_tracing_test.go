@@ -103,7 +103,7 @@ func TestTracing(t *testing.T) {
 	require.Greater(t, num(func(e Event) bool { return e.Op == objiotracing.WriteOp && e.Offset > 0 }), 0)
 
 	// Check that the FileNums are set and that we see at least two different files.
-	fileNums := make(map[base.FileNum]int)
+	fileNums := make(map[base.DiskFileNum]int)
 	for _, e := range events {
 		require.NotZero(t, e.FileNum)
 		fileNums[e.FileNum] += 1

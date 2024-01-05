@@ -59,7 +59,7 @@ type Event struct {
 	LevelPlusOne uint8
 	// Hardcoded padding so that struct layout doesn't depend on architecture.
 	_       uint32
-	FileNum base.FileNum
+	FileNum base.DiskFileNum
 	// HandleID is a unique identifier corresponding to an objstorage.ReadHandle;
 	// only set for read operations performed through a ReadHandle.
 	HandleID uint64

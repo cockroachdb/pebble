@@ -23,7 +23,7 @@ jobs:
       with:
         go-version: "1.21"
 
-    - run: make test generate
+    - run: make test testobjiotracing generate
 
     - name: Assert workspace clean
       run: scripts/check-workspace-clean.sh
