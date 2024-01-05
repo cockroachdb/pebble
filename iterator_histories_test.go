@@ -68,7 +68,20 @@ func TestIterHistories(t *testing.T) {
 				err = firstError(err, iter.Close())
 				delete(iters, key)
 			}
+
 			if d != nil {
+				// Close all open snapshots.
+				d.mu.Lock()
+				var ss []*Snapshot
+				l := &d.mu.snapshots
+				for i := l.root.next; i != &l.root; i = i.next {
+					ss = append(ss, i)
+				}
+				d.mu.Unlock()
+				for i := range ss {
+					err = firstError(err, ss[i].Close())
+				}
+
 				err = firstError(err, d.Close())
 				d = nil
 			}

@@ -1088,8 +1088,14 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			return
 		}
 	}
-
 	// i.iterKey == nil, so broke out of the preceding loop.
+
+	// Is iterKey nil due to an error?
+	if i.err = i.iter.Error(); i.err != nil {
+		i.iterValidityState = IterExhausted
+		return
+	}
+
 	if i.iterValidityState == IterValid {
 		i.pos = iterPosPrev
 		if valueMerger != nil {
