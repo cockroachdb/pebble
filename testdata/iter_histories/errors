@@ -222,3 +222,39 @@ e: (e1, .)
 d: (d1, .)
 c: (c1, .)
 err=injected error
+
+# Test a simple MERGE scenario where an error occurs while the top-level
+# Iterator is merging MERGE keys.
+
+define auto-compactions=off block-size=1 snapshots=(1,2,3,4)
+L1
+    a.MERGE.1:a1
+    a.MERGE.2:a2
+    a.MERGE.3:a3
+    a.MERGE.4:a4
+----
+1:
+  000004:[a#4,MERGE-a#1,MERGE]
+
+layout filename=000004.sst
+----
+         0  data (22)
+        27  data (22)
+        54  data (22)
+        81  data (22)
+       108  index (71)
+       184  properties (642)
+       831  meta-index (33)
+       869  footer (53)
+       922  EOF
+
+
+reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 54))))
+----
+
+combined-iter
+first
+last
+----
+err=injected error
+err=injected error
