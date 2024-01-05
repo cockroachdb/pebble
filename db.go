@@ -2249,10 +2249,9 @@ type SSTableInfo struct {
 	manifest.TableInfo
 	// Virtual indicates whether the sstable is virtual.
 	Virtual bool
-	// BackingSSTNum is the file number associated with backing sstable which
-	// backs the sstable associated with this SSTableInfo. If Virtual is false,
-	// then BackingSSTNum == FileNum.
-	BackingSSTNum base.FileNum
+	// BackingSSTNum is the disk file number associated with the backing sstable.
+	// If Virtual is false, BackingSSTNum == FileNum.DiskFileNum().
+	BackingSSTNum base.DiskFileNum
 	// BackingType is the type of storage backing this sstable.
 	BackingType BackingType
 	// Locator is the remote.Locator backing this sstable, if the backing type is
@@ -2315,7 +2314,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 				destTables[j].Properties = p
 			}
 			destTables[j].Virtual = m.Virtual
-			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum.FileNum()
+			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum
 			objMeta, err := d.objProvider.Lookup(fileTypeTable, m.FileBacking.DiskFileNum)
 			if err != nil {
 				return nil, err

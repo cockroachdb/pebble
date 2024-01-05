@@ -188,7 +188,7 @@ func (d *dbT) openBenchTables(db *pebble.DB) ([]objstorage.Readable, error) {
 	numsMap := make(map[base.DiskFileNum]struct{})
 	for l := startLevel; l < len(tables); l++ {
 		for _, t := range tables[l] {
-			n := t.BackingSSTNum.DiskFileNum()
+			n := t.BackingSSTNum
 			if _, ok := numsMap[n]; !ok {
 				nums = append(nums, n)
 				numsMap[n] = struct{}{}
