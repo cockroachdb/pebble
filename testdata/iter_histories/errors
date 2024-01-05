@@ -97,3 +97,50 @@ first
 ----
 err=injected error
 a: (a, .)
+
+# Test a scenario where an error occurs while the top-level Iterator is
+# Prev()-ing backwards through many versions of the same user key. In the below
+# test, reading the first block of the sstable (containing c.SET.13) fails. The
+# iterator must surface the error. Previously a bug existed that would allow the
+# iterator to mistakenly surface c.SET.12.
+
+define auto-compactions=off block-size=1 snapshots=(10,11,12,13)
+L1
+  c.SET.13:c13
+  c.SET.12:c12
+  c.SET.11:c11
+  c.SET.10:c10
+  c.SET.9:c9
+  c.SET.8:c8
+  d.SET.9:d9
+  e.SET.9:e9
+----
+1:
+  000004:[c#13,SET-e#9,SET]
+
+layout filename=000004.sst
+----
+         0  data (23)
+        28  data (23)
+        56  data (23)
+        84  data (23)
+       112  data (22)
+       139  data (22)
+       166  data (22)
+       193  index (113)
+       311  properties (643)
+       959  meta-index (33)
+       997  footer (53)
+      1050  EOF
+
+reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 0))))
+----
+
+combined-iter
+last
+prev
+prev
+----
+e: (e9, .)
+d: (d9, .)
+err=injected error

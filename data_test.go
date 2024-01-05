@@ -337,9 +337,7 @@ func printIterState(
 			validityStateStr = " at-limit"
 		}
 	}
-	if err := iter.Error(); err != nil {
-		fmt.Fprintf(b, "err=%v\n", err)
-	} else if validity == IterValid {
+	if validity == IterValid {
 		switch {
 		case iter.opts.pointKeys():
 			hasPoint, hasRange := iter.HasPointAndRange()
@@ -378,7 +376,11 @@ func printIterState(
 		}
 		fmt.Fprintln(b)
 	} else {
-		fmt.Fprintf(b, ".%s\n", validityStateStr)
+		if err := iter.Error(); err != nil {
+			fmt.Fprintf(b, "err=%v\n", err)
+		} else {
+			fmt.Fprintf(b, ".%s\n", validityStateStr)
+		}
 	}
 }
 
