@@ -123,7 +123,6 @@ func buildHamletTestSST(
 	fp FilterPolicy,
 	ftype FilterType,
 	comparer *Comparer,
-	propCollector func() TablePropertyCollector,
 	blockSize int,
 	indexBlockSize int,
 ) error {
@@ -145,9 +144,6 @@ func buildHamletTestSST(
 		IndexBlockSize: indexBlockSize,
 		MergerName:     "nullptr",
 		TableFormat:    fixtureFormat,
-	}
-	if propCollector != nil {
-		writerOpts.TablePropertyCollectors = append(writerOpts.TablePropertyCollectors, propCollector)
 	}
 
 	w := NewWriter(objstorageprovider.NewFileWritable(f0), writerOpts)
@@ -182,79 +178,71 @@ func buildHamletTestSST(
 
 // TestFixtureInfo contains all metadata necessary to generate a test sstable.
 type TestFixtureInfo struct {
-	Filename                  string
-	Compression               Compression
-	FullKeyFilter             bool
-	PrefixFilter              bool
-	IndexBlockSize            int
-	UseFixtureComparer        bool
-	KeyCountPropertyCollector bool
+	Filename           string
+	Compression        Compression
+	FullKeyFilter      bool
+	PrefixFilter       bool
+	IndexBlockSize     int
+	UseFixtureComparer bool
 }
 
 // TestFixtures contains all metadata necessary to generate the test SSTs.
 var TestFixtures = []TestFixtureInfo{
 	{
-		Filename:                  "h.sst",
-		Compression:               SnappyCompression,
-		FullKeyFilter:             false,
-		PrefixFilter:              false,
-		IndexBlockSize:            fixtureDefaultIndexBlockSize,
-		UseFixtureComparer:        false,
-		KeyCountPropertyCollector: true,
+		Filename:           "h.sst",
+		Compression:        SnappyCompression,
+		FullKeyFilter:      false,
+		PrefixFilter:       false,
+		IndexBlockSize:     fixtureDefaultIndexBlockSize,
+		UseFixtureComparer: false,
 	},
 	{
-		Filename:                  "h.no-compression.sst",
-		Compression:               NoCompression,
-		FullKeyFilter:             false,
-		PrefixFilter:              false,
-		IndexBlockSize:            fixtureDefaultIndexBlockSize,
-		UseFixtureComparer:        false,
-		KeyCountPropertyCollector: true,
+		Filename:           "h.no-compression.sst",
+		Compression:        NoCompression,
+		FullKeyFilter:      false,
+		PrefixFilter:       false,
+		IndexBlockSize:     fixtureDefaultIndexBlockSize,
+		UseFixtureComparer: false,
 	},
 	{
-		Filename:                  "h.table-bloom.sst",
-		Compression:               SnappyCompression,
-		FullKeyFilter:             true,
-		PrefixFilter:              false,
-		IndexBlockSize:            fixtureDefaultIndexBlockSize,
-		UseFixtureComparer:        false,
-		KeyCountPropertyCollector: false,
+		Filename:           "h.table-bloom.sst",
+		Compression:        SnappyCompression,
+		FullKeyFilter:      true,
+		PrefixFilter:       false,
+		IndexBlockSize:     fixtureDefaultIndexBlockSize,
+		UseFixtureComparer: false,
 	},
 	{
-		Filename:                  "h.table-bloom.no-compression.sst",
-		Compression:               NoCompression,
-		FullKeyFilter:             true,
-		PrefixFilter:              false,
-		IndexBlockSize:            fixtureDefaultIndexBlockSize,
-		UseFixtureComparer:        false,
-		KeyCountPropertyCollector: false,
+		Filename:           "h.table-bloom.no-compression.sst",
+		Compression:        NoCompression,
+		FullKeyFilter:      true,
+		PrefixFilter:       false,
+		IndexBlockSize:     fixtureDefaultIndexBlockSize,
+		UseFixtureComparer: false,
 	},
 	{
-		Filename:                  "h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
-		Compression:               NoCompression,
-		FullKeyFilter:             false,
-		PrefixFilter:              true,
-		IndexBlockSize:            fixtureDefaultIndexBlockSize,
-		UseFixtureComparer:        true,
-		KeyCountPropertyCollector: false,
+		Filename:           "h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
+		Compression:        NoCompression,
+		FullKeyFilter:      false,
+		PrefixFilter:       true,
+		IndexBlockSize:     fixtureDefaultIndexBlockSize,
+		UseFixtureComparer: true,
 	},
 	{
-		Filename:                  "h.no-compression.two_level_index.sst",
-		Compression:               NoCompression,
-		FullKeyFilter:             false,
-		PrefixFilter:              false,
-		IndexBlockSize:            fixtureSmallIndexBlockSize,
-		UseFixtureComparer:        false,
-		KeyCountPropertyCollector: true,
+		Filename:           "h.no-compression.two_level_index.sst",
+		Compression:        NoCompression,
+		FullKeyFilter:      false,
+		PrefixFilter:       false,
+		IndexBlockSize:     fixtureSmallIndexBlockSize,
+		UseFixtureComparer: false,
 	},
 	{
-		Filename:                  "h.zstd-compression.sst",
-		Compression:               ZstdCompression,
-		FullKeyFilter:             false,
-		PrefixFilter:              false,
-		IndexBlockSize:            fixtureDefaultIndexBlockSize,
-		UseFixtureComparer:        false,
-		KeyCountPropertyCollector: true,
+		Filename:           "h.zstd-compression.sst",
+		Compression:        ZstdCompression,
+		FullKeyFilter:      false,
+		PrefixFilter:       false,
+		IndexBlockSize:     fixtureDefaultIndexBlockSize,
+		UseFixtureComparer: false,
 	},
 }
 
@@ -268,17 +256,10 @@ func (tf TestFixtureInfo) Build(fs vfs.FS, filename string) error {
 	if tf.UseFixtureComparer {
 		comparer = fixtureComparer
 	}
-	var propCollector func() TablePropertyCollector
-	if tf.KeyCountPropertyCollector {
-		propCollector = func() TablePropertyCollector {
-			return &keyCountPropertyCollector{}
-		}
-	}
 
 	return buildHamletTestSST(
 		fs, filename, tf.Compression, fp, base.TableFilter,
 		comparer,
-		propCollector,
 		fixtureBlockSize,
 		tf.IndexBlockSize,
 	)
@@ -288,24 +269,6 @@ const fixtureDefaultIndexBlockSize = math.MaxInt32
 const fixtureSmallIndexBlockSize = 128
 const fixtureBlockSize = 2048
 const fixtureFormat = TableFormatPebblev1
-
-type keyCountPropertyCollector struct {
-	count int
-}
-
-func (c *keyCountPropertyCollector) Add(key InternalKey, value []byte) error {
-	c.count++
-	return nil
-}
-
-func (c *keyCountPropertyCollector) Finish(userProps map[string]string) error {
-	userProps["test.key-count"] = fmt.Sprint(c.count)
-	return nil
-}
-
-func (c *keyCountPropertyCollector) Name() string {
-	return "KeyCountPropertyCollector"
-}
 
 var fixtureComparer = func() *Comparer {
 	c := *base.DefaultComparer

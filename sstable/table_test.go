@@ -418,7 +418,7 @@ func TestWriterRoundTrip(t *testing.T) {
 					fs := vfs.NewMem()
 					err := buildHamletTestSST(
 						fs, "test.sst", DefaultCompression, fp, TableFilter,
-						nil /* comparer */, nil /* propCollector */, blockSize, indexBlockSize,
+						nil /* comparer */, blockSize, indexBlockSize,
 					)
 					require.NoError(t, err)
 					// Check that we can read a freshly made table.
@@ -519,7 +519,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 func TestMetaIndexEntriesSorted(t *testing.T) {
 	fs := vfs.NewMem()
 	err := buildHamletTestSST(fs, "test.sst", DefaultCompression, nil, /* filter policy */
-		TableFilter, nil, nil, 4096, 4096)
+		TableFilter, nil, 4096, 4096)
 	require.NoError(t, err)
 	f, err := fs.Open("test.sst")
 	require.NoError(t, err)

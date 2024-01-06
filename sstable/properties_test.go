@@ -36,11 +36,8 @@ func TestPropertiesLoad(t *testing.T) {
 		MergerName:             "nullptr",
 		NumDataBlocks:          14,
 		PrefixExtractorName:    "nullptr",
-		PropertyCollectorNames: "[KeyCountPropertyCollector]",
-		UserProperties: map[string]string{
-			"test.key-count": "1727",
-		},
-		WholeKeyFiltering: false,
+		PropertyCollectorNames: "[]",
+		WholeKeyFiltering:      false,
 	}
 
 	{
