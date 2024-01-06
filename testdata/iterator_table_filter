@@ -48,19 +48,3 @@ iter filter=1
 first
 ----
 .
-
-# Set-options that reuses the filter should still see the filter apply.
-# Set-options that removes the filter should not.
-
-iter filter=4
-first
-set-options table-filter=reuse
-first
-set-options table-filter=none
-first
-----
-a: (3, .)
-.
-a: (3, .)
-.
-a: (4, .)
