@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"io"
@@ -458,6 +459,12 @@ type minSeqNumPropertyCollector struct {
 	minSeqNum uint64
 }
 
+var _ BlockPropertyCollector = (*minSeqNumPropertyCollector)(nil)
+
+func (c *minSeqNumPropertyCollector) Name() string {
+	return "minSeqNumPropertyCollector"
+}
+
 func (c *minSeqNumPropertyCollector) Add(key InternalKey, value []byte) error {
 	if c.minSeqNum == 0 || c.minSeqNum > key.SeqNum() {
 		c.minSeqNum = key.SeqNum()
@@ -465,13 +472,42 @@ func (c *minSeqNumPropertyCollector) Add(key InternalKey, value []byte) error {
 	return nil
 }
 
-func (c *minSeqNumPropertyCollector) Finish(userProps map[string]string) error {
-	userProps["test.min-seq-num"] = fmt.Sprint(c.minSeqNum)
-	return nil
+func (c *minSeqNumPropertyCollector) FinishDataBlock(buf []byte) ([]byte, error) {
+	return nil, nil
 }
 
-func (c *minSeqNumPropertyCollector) Name() string {
-	return "minSeqNumPropertyCollector"
+func (c *minSeqNumPropertyCollector) AddPrevDataBlockToIndexBlock() {}
+
+func (c *minSeqNumPropertyCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (c *minSeqNumPropertyCollector) FinishTable(buf []byte) ([]byte, error) {
+	return binary.AppendUvarint(buf, c.minSeqNum), nil
+}
+
+// minSeqNumFilter is a BlockPropertyFilter that uses the
+// minSeqNumPropertyCollector data to filter out entire tables.
+type minSeqNumFilter struct {
+	seqNumUpperBound uint64
+}
+
+var _ BlockPropertyFilter = (*minSeqNumFilter)(nil)
+
+func (*minSeqNumFilter) Name() string {
+	return (&minSeqNumPropertyCollector{}).Name()
+}
+
+func (f *minSeqNumFilter) Intersects(prop []byte) (bool, error) {
+	// Blocks will have no data.
+	if len(prop) == 0 {
+		return true, nil
+	}
+	minSeqNum, n := binary.Uvarint(prop)
+	if n <= 0 {
+		return false, errors.Errorf("invalid block property data %v", prop)
+	}
+	return minSeqNum < f.seqNumUpperBound, nil
 }
 
 func TestReadSampling(t *testing.T) {
@@ -504,10 +540,11 @@ func TestReadSampling(t *testing.T) {
 			}
 
 			opts := &Options{}
-			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
-				func() TablePropertyCollector {
+			opts.BlockPropertyCollectors = []func() BlockPropertyCollector{
+				func() BlockPropertyCollector {
 					return &minSeqNumPropertyCollector{}
-				})
+				},
+			}
 
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -653,10 +690,11 @@ func TestIteratorTableFilter(t *testing.T) {
 			}
 
 			opts := &Options{}
-			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
-				func() TablePropertyCollector {
+			opts.BlockPropertyCollectors = []func() BlockPropertyCollector{
+				func() BlockPropertyCollector {
 					return &minSeqNumPropertyCollector{}
-				})
+				},
+			}
 
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -676,12 +714,8 @@ func TestIteratorTableFilter(t *testing.T) {
 			iterOpts := &IterOptions{}
 			var filterSeqNum uint64
 			if td.MaybeScanArgs(t, "filter", &filterSeqNum) {
-				iterOpts.TableFilter = func(userProps map[string]string) bool {
-					minSeqNum, err := strconv.ParseUint(userProps["test.min-seq-num"], 10, 64)
-					if err != nil {
-						return true
-					}
-					return minSeqNum < filterSeqNum
+				iterOpts.PointKeyFilters = []BlockPropertyFilter{
+					&minSeqNumFilter{seqNumUpperBound: filterSeqNum},
 				}
 			}
 
@@ -868,10 +902,11 @@ func TestIteratorSeekOpt(t *testing.T) {
 			seekPrefixGEUsingNext = 0
 
 			opts := &Options{}
-			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
-				func() TablePropertyCollector {
+			opts.BlockPropertyCollectors = []func() BlockPropertyCollector{
+				func() BlockPropertyCollector {
 					return &minSeqNumPropertyCollector{}
-				})
+				},
+			}
 
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
