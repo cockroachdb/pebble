@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/metamorphic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -137,6 +138,7 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 	args := []string{
 		"-test.run", t.Name() + "$",
 		"-test.v",
+		"-test.timeout", "10s",
 		"--keep",
 	}
 
@@ -155,12 +157,13 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 	cmd.Stderr = &output
 	cmd.Stdout = &output
 	err := cmd.Run()
-	// If the test succeeds or fails with an internal test error, we removed
-	// important ops.
+	// If the test succeeds or fails with an internal test error or a timeout, we
+	// removed important ops.
 	if err == nil ||
 		strings.Contains(output.String(), "metamorphic test internal error") ||
 		strings.Contains(output.String(), "leaked iterators") ||
-		strings.Contains(output.String(), "leaked snapshots") {
+		strings.Contains(output.String(), "leaked snapshots") ||
+		strings.Contains(output.String(), "test timed out") {
 		require.NoError(t, os.RemoveAll(testRootDir))
 		return false
 	}
@@ -169,7 +172,17 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 	require.NoError(t, os.WriteFile(logFile, output.Bytes(), 0644))
 	t.Logf("Reduced to %d ops.", len(ops))
 	t.Logf("  Log: %v", logFile)
-	t.Logf("  %s %q", runFlags[0], runFlags[1])
+
+	// Try to generate a diagram.
+	diagram, err := metamorphic.TryToGenerateDiagram([]byte(strings.Join(ops, "\n")))
+	require.NoError(t, err)
+	if diagram != "" {
+		diagramPath := filepath.Join(testRootDir, "diagram")
+		require.NoError(t, os.WriteFile(diagramPath, []byte(diagram+"\n"), 0644))
+		t.Logf("  Diagram: %s", diagramPath)
+	}
+
+	t.Logf(`  go test ./internal/metamorphic -run "%s$" -v %s %q`, t.Name(), runFlags[0], runFlags[1])
 	if r.lastSavedDir != "" {
 		require.NoError(t, os.RemoveAll(r.lastSavedDir))
 	}
@@ -182,17 +195,21 @@ func (r *reducer) Run(t *testing.T) {
 	// We start with a high probability of removing elements, and once we can't
 	// find any reductions we decrease it. This works well even if the problem is
 	// not deterministic and isn't reproduced on every run.
-	for removeProbability := 0.1; removeProbability > 1e-5; removeProbability *= 0.5 {
+	for removeProbability := 0.1; removeProbability > 1e-5 && removeProbability > 0.1/float64(len(ops)); removeProbability *= 0.5 {
 		t.Logf("removeProbability %.2f", removeProbability)
 		for i := 0; i < 100; i++ {
-			o := randomSubset(t, ops, removeProbability)
-			if r.try(t, o) {
+			if o := randomSubset(t, ops, removeProbability); r.try(t, o) {
 				ops = o
 				// Reset the counter.
 				i = -1
 			}
 		}
 	}
+	// Try to simplify the keys.
+	newOpsData, err := metamorphic.TryToSimplifyKeys([]byte(strings.Join(ops, "\n")))
+	require.NoError(t, err)
+	o := strings.Split(strings.TrimSpace(string(newOpsData)), "\n")
+	r.try(t, o)
 }
 
 func randomSubset(t *testing.T, ops []string, removeProbability float64) []string {
