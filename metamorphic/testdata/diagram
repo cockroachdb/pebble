@@ -1,0 +1,31 @@
+diagram
+Init(2 /* dbs */, 49 /* batches */, 63 /* iters */, 45 /* snapshots */)
+db2.RangeKeySet("c", "h", "@6", "foo")
+snap9 = db2.NewSnapshot("a", "z")
+db2.RangeKeyDelete("d", "f")
+db2.Compact("g", "i", true /* parallelize */)
+db2.Replicate(db1, "b", "f")
+iter25 = db1.NewIter("", "", 2 /* key types */, 0, 0, false /* use L6 filters */, "@7" /* masking suffix */)
+iter25.SeekGE("e", "")
+----
+                                                        Init(2 /* dbs */, 49 /* batches */, 63 /* iters */, 45 /* snapshots */)
+            |-----------------------------|             db2.RangeKeySet("c", "h", "@6", "foo")
+|-----------------------------------------------------| snap9 = db2.NewSnapshot("a", "z")
+                  |-----------|                         db2.RangeKeyDelete("d", "f")
+                                    |-----------|       db2.Compact("g", "i", true /* parallelize */)
+      |-----------------------|                         db2.Replicate(db1, "b", "f")
+                                                        iter25 = db1.NewIter("", "", 2 /* key types */, 0, 0, false /* use L6 filters */, "@7" /* masking suffix */)
+                        |                               iter25.SeekGE("e", "")
+|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+a     b     c     d     e     f     g     h     i     z
+
+diagram
+db2.RangeKeySet("apple", "raspberry", "", "")
+snap9 = db2.NewSnapshot("banana", "durian", "guanabana", "pineapple")
+db2.Compact("cranberry", "pear", true /* parallelize */)
+----
+|-------------------------------------------------------------| db2.RangeKeySet("apple", "raspberry", "", "")
+       |------------------|       |----------------|            snap9 = db2.NewSnapshot("banana", "durian", "guanabana", "pineapple")
+               |-----------------------------|                  db2.Compact("cranberry", "pear", true /* parallelize */)
+|------|-------|----------|-------|----------|-----|----------|
+apple  banana  cranberry  durian  guanabana  pear  pineapple  raspberry

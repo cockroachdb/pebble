@@ -1,0 +1,17 @@
+simplify-keys
+db2.RangeKeySet("apple", "raspberry", "", "")
+snap9 = db2.NewSnapshot("banana", "durian", "guanabana", "pineapple")
+db2.Compact("cranberry", "pear", true /* parallelize */)
+----
+db2.RangeKeySet("a", "h", "", "")
+snap9 = db2.NewSnapshot("b", "d", "e", "g")
+db2.Compact("c", "f", true /* parallelize */)
+
+simplify-keys
+db2.RangeKeySet("apple", "raspberry", "", "")
+snap9 = db2.NewSnapshot("apple", "raspberry")
+db2.Compact("apple", "raspberry", true /* parallelize */)
+----
+db2.RangeKeySet("a", "b", "", "")
+snap9 = db2.NewSnapshot("a", "b")
+db2.Compact("a", "b", true /* parallelize */)
