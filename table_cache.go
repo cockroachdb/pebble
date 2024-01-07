@@ -668,10 +668,8 @@ func (c *tableCacheShard) newRangeDelIter(
 		if dbOpts.opts.Comparer != nil {
 			cmp = dbOpts.opts.Comparer.Compare
 		}
-		// TODO(radu): we should be using AssertBounds, but it currently fails in
-		// some cases (#3167).
-		rangeDelIter = keyspan.AssertUserKeyBounds(
-			rangeDelIter, file.SmallestPointKey.UserKey, file.LargestPointKey.UserKey, cmp,
+		rangeDelIter = keyspan.AssertBounds(
+			rangeDelIter, file.SmallestPointKey, file.LargestPointKey.UserKey, cmp,
 		)
 	}
 	return rangeDelIter, nil
