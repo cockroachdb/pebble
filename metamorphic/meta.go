@@ -165,6 +165,11 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		}
 	}()
 
+	topLevelTestName := t.Name()
+	for path.Dir(topLevelTestName) != "." {
+		topLevelTestName = path.Dir(topLevelTestName)
+	}
+
 	rng := rand.New(rand.NewSource(runOpts.seed))
 	opCount := runOpts.ops.Uint64(rng)
 
@@ -244,7 +249,16 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 ===== OPS =====
 %s
 ===== HISTORY =====
-%s`, runOpts.seed, err, out, optionsStr, formattedOps, readFile(filepath.Join(runDir, "history")))
+%s
+To reduce:  go test ./internal/metamorphic -tags invariants -run '%s$' --run-dir %s --try-to-reduce -v`,
+				runOpts.seed,
+				err,
+				out,
+				optionsStr,
+				formattedOps,
+				readFile(filepath.Join(runDir, "history")),
+				topLevelTestName, runDir,
+			)
 		}
 	}
 
@@ -300,18 +314,25 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 					optionsStrB := optionsToString(options[names[i]])
 
 					fmt.Printf(`
-		===== SEED =====
-		%d
-		===== DIFF =====
-		%s/{%s,%s}
-		%s
-		===== OPTIONS %s =====
-		%s
-		===== OPTIONS %s =====
-		%s
-		===== OPS =====
-		%s
-		`, runOpts.seed, metaDir, names[0], names[i], text, names[0], optionsStrA, names[i], optionsStrB, formattedOps)
+===== SEED =====
+%d
+===== DIFF =====
+%s/{%s,%s}
+%s
+===== OPTIONS %s =====
+%s
+===== OPTIONS %s =====
+%s
+===== OPS =====
+%s
+To reduce:  go test ./internal/metamorphic -tags invariants -run '%s$' --compare "%s/{%s,%s}" --try-to-reduce -v
+`,
+						runOpts.seed,
+						metaDir, names[0], names[i], text,
+						names[0], optionsStrA,
+						names[i], optionsStrB,
+						formattedOps,
+						topLevelTestName, metaDir, names[0], names[i])
 					os.Exit(1)
 				}
 			})
