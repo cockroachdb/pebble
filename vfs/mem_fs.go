@@ -579,33 +579,6 @@ func newRootMemNode() *memNode {
 	}
 }
 
-func (f *memFile) IsDir() bool {
-	return f.n.isDir
-}
-
-func (f *memFile) ModTime() time.Time {
-	f.n.mu.Lock()
-	defer f.n.mu.Unlock()
-	return f.n.mu.modTime
-}
-
-func (f *memFile) Mode() os.FileMode {
-	if f.n.isDir {
-		return os.ModeDir | 0755
-	}
-	return 0755
-}
-
-func (f *memFile) Size() int64 {
-	f.n.mu.Lock()
-	defer f.n.mu.Unlock()
-	return int64(len(f.n.mu.data))
-}
-
-func (f *memFile) Sys() interface{} {
-	return nil
-}
-
 func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 	if f.isDir {
 		w.WriteString("          ")
@@ -665,6 +638,33 @@ type memFile struct {
 
 var _ os.FileInfo = (*memFile)(nil)
 var _ File = (*memFile)(nil)
+
+func (f *memFile) IsDir() bool {
+	return f.n.isDir
+}
+
+func (f *memFile) ModTime() time.Time {
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	return f.n.mu.modTime
+}
+
+func (f *memFile) Mode() os.FileMode {
+	if f.n.isDir {
+		return os.ModeDir | 0755
+	}
+	return 0755
+}
+
+func (f *memFile) Size() int64 {
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	return int64(len(f.n.mu.data))
+}
+
+func (f *memFile) Sys() interface{} {
+	return nil
+}
 
 func (f *memFile) Close() error {
 	if n := f.n.refs.Add(-1); n < 0 {
