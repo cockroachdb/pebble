@@ -110,7 +110,7 @@ func (y *MemFS) String() string {
 	defer y.mu.Unlock()
 
 	s := new(bytes.Buffer)
-	y.root.dump(s, 0)
+	y.root.dump(s, 0, sep)
 	return s.String()
 }
 
@@ -209,9 +209,10 @@ func (y *MemFS) Create(fullname string) (File, error) {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			n := &memNode{name: frag}
+			n := &memNode{}
 			dir.children[frag] = n
 			ret = &memFile{
+				name:  frag,
 				n:     n,
 				fs:    y,
 				read:  true,
@@ -275,13 +276,15 @@ func (y *MemFS) open(fullname string, openForWrite bool) (File, error) {
 		if final {
 			if frag == "" {
 				ret = &memFile{
-					n:  dir,
-					fs: y,
+					name: sep, // this is the root directory
+					n:    dir,
+					fs:   y,
 				}
 				return nil
 			}
 			if n := dir.children[frag]; n != nil {
 				ret = &memFile{
+					name:  frag,
 					n:     n,
 					fs:    y,
 					read:  true,
@@ -406,7 +409,6 @@ func (y *MemFS) Rename(oldname, newname string) error {
 				return errors.New("pebble/vfs: empty file name")
 			}
 			dir.children[frag] = n
-			n.name = frag
 		}
 		return nil
 	})
@@ -442,7 +444,6 @@ func (y *MemFS) MkdirAll(dirname string, perm os.FileMode) error {
 		child := dir.children[frag]
 		if child == nil {
 			dir.children[frag] = &memNode{
-				name:     frag,
 				children: make(map[string]*memNode),
 				isDir:    true,
 			}
@@ -549,9 +550,8 @@ func (*MemFS) GetDiskUsage(string) (DiskUsage, error) {
 	return DiskUsage{}, ErrUnsupported
 }
 
-// memNode holds a file's data or a directory's children, and implements os.FileInfo.
+// memNode holds a file's data or a directory's children.
 type memNode struct {
-	name  string
 	isDir bool
 	refs  atomic.Int32
 
@@ -574,44 +574,39 @@ type memNode struct {
 
 func newRootMemNode() *memNode {
 	return &memNode{
-		name:     "/", // set the name to match what file systems do
 		children: make(map[string]*memNode),
 		isDir:    true,
 	}
 }
 
-func (f *memNode) IsDir() bool {
-	return f.isDir
+func (f *memFile) IsDir() bool {
+	return f.n.isDir
 }
 
-func (f *memNode) ModTime() time.Time {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.mu.modTime
+func (f *memFile) ModTime() time.Time {
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	return f.n.mu.modTime
 }
 
-func (f *memNode) Mode() os.FileMode {
-	if f.isDir {
+func (f *memFile) Mode() os.FileMode {
+	if f.n.isDir {
 		return os.ModeDir | 0755
 	}
 	return 0755
 }
 
-func (f *memNode) Name() string {
-	return f.name
+func (f *memFile) Size() int64 {
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	return int64(len(f.n.mu.data))
 }
 
-func (f *memNode) Size() int64 {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return int64(len(f.mu.data))
-}
-
-func (f *memNode) Sys() interface{} {
+func (f *memFile) Sys() interface{} {
 	return nil
 }
 
-func (f *memNode) dump(w *bytes.Buffer, level int) {
+func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 	if f.isDir {
 		w.WriteString("          ")
 	} else {
@@ -622,7 +617,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 	for i := 0; i < level; i++ {
 		w.WriteString("  ")
 	}
-	w.WriteString(f.name)
+	w.WriteString(name)
 	if !f.isDir {
 		w.WriteByte('\n')
 		return
@@ -637,7 +632,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		f.children[name].dump(w, level+1)
+		f.children[name].dump(w, level+1, name)
 	}
 }
 
@@ -657,8 +652,10 @@ func (f *memNode) resetToSyncedState() {
 	}
 }
 
-// memFile is a reader or writer of a node's data, and implements File.
+// memFile is a reader or writer of a node's data. It implements os.FileInfo and
+// File interfaces.
 type memFile struct {
+	name        string
 	n           *memNode
 	fs          *MemFS // nil for a standalone memFile
 	rpos        int
@@ -666,13 +663,17 @@ type memFile struct {
 	read, write bool
 }
 
+var _ os.FileInfo = (*memFile)(nil)
 var _ File = (*memFile)(nil)
 
 func (f *memFile) Close() error {
 	if n := f.n.refs.Add(-1); n < 0 {
 		panic(fmt.Sprintf("pebble: close of unopened file: %d", n))
 	}
-	f.n = nil
+	// TODO(pav-kv): set f.n to nil here, to automatically catch use-after-close
+	// and double-close errors. It it unsafe to do so currently, because f is
+	// returns from Stat(), and may outlive the Close() call. Add a separate type
+	// for holding stats.
 	return nil
 }
 
@@ -768,8 +769,14 @@ func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
 func (f *memFile) Prefetch(offset int64, length int64) error { return nil }
 func (f *memFile) Preallocate(offset, length int64) error    { return nil }
 
+func (f *memFile) Name() string {
+	return f.name
+}
+
 func (f *memFile) Stat() (os.FileInfo, error) {
-	return f.n, nil
+	// TODO(pav-kv): introduce a separate type for FileInfo implementation. The
+	// returned stats must not outlive the opened file.
+	return f, nil
 }
 
 func (f *memFile) Sync() error {
