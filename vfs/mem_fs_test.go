@@ -232,14 +232,12 @@ func TestList(t *testing.T) {
 
 	{
 		got := fs.String()
-		// TODO(pav-kv): fix the bar/link-to-3 and bar/another-link-to-3 link names.
-		// Currently String() erroneously prints the name of the linked file.
 		const want = `          /
        0    a
             bar/
-       0      3
+       0      another-link-to-3
        0      baz
-       0      3
+       0      link-to-3
             foo/
        0      0
        0      1
