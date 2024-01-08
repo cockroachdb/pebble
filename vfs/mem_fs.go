@@ -110,7 +110,7 @@ func (y *MemFS) String() string {
 	defer y.mu.Unlock()
 
 	s := new(bytes.Buffer)
-	y.root.dump(s, 0)
+	y.root.dump(s, 0, sep)
 	return s.String()
 }
 
@@ -209,9 +209,10 @@ func (y *MemFS) Create(fullname string) (File, error) {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			n := &memNode{name: frag}
+			n := &memNode{}
 			dir.children[frag] = n
 			ret = &memFile{
+				name:  frag,
 				n:     n,
 				fs:    y,
 				read:  true,
@@ -275,13 +276,15 @@ func (y *MemFS) open(fullname string, openForWrite bool) (File, error) {
 		if final {
 			if frag == "" {
 				ret = &memFile{
-					n:  dir,
-					fs: y,
+					name: sep, // this is the root directory
+					n:    dir,
+					fs:   y,
 				}
 				return nil
 			}
 			if n := dir.children[frag]; n != nil {
 				ret = &memFile{
+					name:  frag,
 					n:     n,
 					fs:    y,
 					read:  true,
@@ -406,7 +409,6 @@ func (y *MemFS) Rename(oldname, newname string) error {
 				return errors.New("pebble/vfs: empty file name")
 			}
 			dir.children[frag] = n
-			n.name = frag
 		}
 		return nil
 	})
@@ -442,7 +444,6 @@ func (y *MemFS) MkdirAll(dirname string, perm os.FileMode) error {
 		child := dir.children[frag]
 		if child == nil {
 			dir.children[frag] = &memNode{
-				name:     frag,
 				children: make(map[string]*memNode),
 				isDir:    true,
 			}
@@ -551,9 +552,6 @@ func (*MemFS) GetDiskUsage(string) (DiskUsage, error) {
 
 // memNode holds a file's data or a directory's children.
 type memNode struct {
-	// TODO(pav-kv): file name is a property of a file, not of a node. Multiple
-	// files with different names can hard link to the same node.
-	name  string // protected by MemFS.mu
 	isDir bool
 	refs  atomic.Int32
 
@@ -576,13 +574,12 @@ type memNode struct {
 
 func newRootMemNode() *memNode {
 	return &memNode{
-		name:     "/", // set the name to match what file systems do
 		children: make(map[string]*memNode),
 		isDir:    true,
 	}
 }
 
-func (f *memNode) dump(w *bytes.Buffer, level int) {
+func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 	if f.isDir {
 		w.WriteString("          ")
 	} else {
@@ -593,7 +590,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 	for i := 0; i < level; i++ {
 		w.WriteString("  ")
 	}
-	w.WriteString(f.name)
+	w.WriteString(name)
 	if !f.isDir {
 		w.WriteByte('\n')
 		return
@@ -608,7 +605,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		f.children[name].dump(w, level+1)
+		f.children[name].dump(w, level+1, name)
 	}
 }
 
@@ -630,6 +627,7 @@ func (f *memNode) resetToSyncedState() {
 
 // memFile is a reader or writer of a node's data. Implements File.
 type memFile struct {
+	name        string
 	n           *memNode
 	fs          *MemFS // nil for a standalone memFile
 	rpos        int
@@ -643,9 +641,9 @@ func (f *memFile) Close() error {
 	if n := f.n.refs.Add(-1); n < 0 {
 		panic(fmt.Sprintf("pebble: close of unopened file: %d", n))
 	}
-	// TODO(pav-kv): set f.n to nil here, to detect double-close and
-	// use-after-close errors automatically. Currently this is not possible
-	// because the lifetime of Stat() can outlive the Close() of this file.
+	// Set node pointer to nil, to cause panic on any subsequent method call. This
+	// is a defence-in-depth to catch use-after-close or double-close bugs.
+	f.n = nil
 	return nil
 }
 
@@ -741,24 +739,11 @@ func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
 func (f *memFile) Prefetch(offset int64, length int64) error { return nil }
 func (f *memFile) Preallocate(offset, length int64) error    { return nil }
 
-// name returns the current file name.
-func (f *memFile) name() string {
-	// NB: the file name must be accessed under MemFS.mu lock.
-	if fs := f.fs; fs != nil {
-		fs.mu.Lock()
-		defer fs.mu.Unlock()
-	}
-	return f.n.name
-}
-
 func (f *memFile) Stat() (os.FileInfo, error) {
-	// NB: can not inline f.name() below because it would violate the locking
-	// order: MemFS.mu can not be locked after the f.n.mu lock.
-	name := f.name()
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
 	return &memFileInfo{
-		name:    name,
+		name:    f.name,
 		size:    int64(len(f.n.mu.data)),
 		modTime: f.n.mu.modTime,
 		isDir:   f.n.isDir,
