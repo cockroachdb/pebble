@@ -227,12 +227,19 @@ func TestList(t *testing.T) {
 		}
 	}
 
+	require.NoError(t, fs.Link("/foo/3", "/bar/link-to-3"))
+	require.NoError(t, fs.Link("/foo/3", "/bar/another-link-to-3"))
+
 	{
 		got := fs.String()
+		// TODO(pav-kv): fix the bar/link-to-3 and bar/another-link-to-3 link names.
+		// Currently String() erroneously prints the name of the linked file.
 		const want = `          /
        0    a
             bar/
+       0      3
        0      baz
+       0      3
             foo/
        0      0
        0      1
@@ -249,8 +256,8 @@ func TestList(t *testing.T) {
 
 	testCases := []string{
 		"/:a bar foo foot",
-		"/bar:baz",
-		"/bar/:baz",
+		"/bar:another-link-to-3 baz link-to-3",
+		"/bar/:another-link-to-3 baz link-to-3",
 		"/baz:",
 		"/baz/:",
 		"/foo:0 1 2 3",
