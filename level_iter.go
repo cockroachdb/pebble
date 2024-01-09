@@ -1014,10 +1014,6 @@ func (l *levelIter) Prev() (*InternalKey, base.LazyValue) {
 }
 
 func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
-	if l.iter.Error() != nil {
-		return nil, base.LazyValue{}
-	}
-
 	var key *InternalKey
 	var val base.LazyValue
 	// The first iteration of this loop starts with an already exhausted
@@ -1036,6 +1032,9 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
 	// that key, else the behavior described above if there is a corresponding
 	// rangeDelIterPtr.
 	for ; key == nil; key, val = l.iter.First() {
+		if l.iter.Error() != nil {
+			return nil, base.LazyValue{}
+		}
 		if l.rangeDelIterPtr != nil {
 			// We're being used as part of a mergingIter and we've exhausted the
 			// current sstable. If an upper bound is present and the upper bound lies
@@ -1111,10 +1110,6 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
 }
 
 func (l *levelIter) skipEmptyFileBackward() (*InternalKey, base.LazyValue) {
-	if l.iter.Error() != nil {
-		return nil, base.LazyValue{}
-	}
-
 	var key *InternalKey
 	var val base.LazyValue
 	// The first iteration of this loop starts with an already exhausted
@@ -1132,6 +1127,9 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, base.LazyValue) {
 	// that key, else the behavior described above if there is a corresponding
 	// rangeDelIterPtr.
 	for ; key == nil; key, val = l.iter.Last() {
+		if l.iter.Error() != nil {
+			return nil, base.LazyValue{}
+		}
 		if l.rangeDelIterPtr != nil {
 			// We're being used as part of a mergingIter and we've exhausted the
 			// current sstable. If a lower bound is present and the lower bound lies

@@ -840,3 +840,45 @@ err=injected error
 #  iter.SeekPrefixGE("b") = (b#19,1,"19")
 #  rangedelIter.opSpanSeekGE("b") = nil <err="injected error">
 err=injected error
+
+# Ensure that when a level iterator is progressing to the next, it propagates
+# errors on First/Last.
+
+define
+L
+a.SET.10 c.SET.10
+a.SET.10:a10 c.SET.10:c10
+d.SET.10 g.SET.10
+d.SET.10:d10 g.SET.10:g10
+----
+1:
+  000031:[a#10,SET-c#10,SET]
+  000032:[d#10,SET-g#10,SET]
+
+iter probe-points=(000031,(Log "#  000031.")) probe-points=(000032,(If OpFirst ErrInjected noop),(Log "#  000032."))
+first
+next
+next
+----
+#  000031.First() = (a#10,1,"a10")
+a#10,1:a10
+#  000031.Next() = (c#10,1,"c10")
+c#10,1:c10
+#  000031.Next() = nil
+#  000031.Close() = nil
+#  000032.First() = nil <err="injected error">
+err=injected error
+
+iter probe-points=(000031,(If OpLast ErrInjected noop),(Log "#  000031.")) probe-points=(000032,(Log "#  000032."))
+last
+prev
+prev
+----
+#  000032.Last() = (g#10,1,"g10")
+g#10,1:g10
+#  000032.Prev() = (d#10,1,"d10")
+d#10,1:d10
+#  000032.Prev() = nil
+#  000032.Close() = nil
+#  000031.Last() = nil <err="injected error">
+err=injected error
