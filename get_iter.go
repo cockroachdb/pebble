@@ -83,8 +83,9 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			// key. Every call to levelIter.Next() potentially switches to a new
 			// table and thus reinitializes rangeDelIter.
 			if g.rangeDelIter != nil {
-				g.tombstone = keyspan.Get(g.comparer.Compare, g.rangeDelIter, g.key)
-				if g.err = g.rangeDelIter.Close(); g.err != nil {
+				g.tombstone, g.err = keyspan.Get(g.comparer.Compare, g.rangeDelIter, g.key)
+				g.err = firstError(g.err, g.rangeDelIter.Close())
+				if g.err != nil {
 					return nil, base.LazyValue{}
 				}
 				g.rangeDelIter = nil
