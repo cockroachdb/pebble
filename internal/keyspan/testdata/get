@@ -1,0 +1,56 @@
+define
+a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+c-d:{(#4,RANGEKEYSET,@3,bananas)}
+d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
+----
+
+
+
+get
+a
+cat
+d
+dog
+e
+f
+----
+Get("a") = a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+Get("cat") = c-d:{(#4,RANGEKEYSET,@3,bananas)}
+Get("d") = d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
+Get("dog") = d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
+Get("e") = <nil>
+Get("f") = <nil>
+
+get probes=(ErrInjected, (Log "#  iter."))
+a
+cat
+d
+dog
+e
+f
+----
+#  iter.SeekGE("a") = nil <err="injected error">
+Get("a") = nil <err="injected error">
+#  iter.SeekGE("cat") = nil <err="injected error">
+Get("cat") = nil <err="injected error">
+#  iter.SeekGE("d") = nil <err="injected error">
+Get("d") = nil <err="injected error">
+#  iter.SeekGE("dog") = nil <err="injected error">
+Get("dog") = nil <err="injected error">
+#  iter.SeekGE("e") = nil <err="injected error">
+Get("e") = nil <err="injected error">
+#  iter.SeekGE("f") = nil <err="injected error">
+Get("f") = nil <err="injected error">
+
+define
+c-e:{(#1,RANGEDEL)}
+----
+
+get
+boo
+foo
+cat
+----
+Get("boo") = <nil>
+Get("foo") = <nil>
+Get("cat") = c-e:{(#1,RANGEDEL)}
