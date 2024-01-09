@@ -131,7 +131,8 @@ func TestFragmenter(t *testing.T) {
 	// number. This is a simple version of what full processing of range
 	// tombstones looks like.
 	deleted := func(key []byte, seq, readSeq uint64) bool {
-		s := Get(cmp, iter, key)
+		s, err := Get(cmp, iter, key)
+		require.NoError(t, err)
 		return s != nil && s.CoversAt(readSeq, seq)
 	}
 
