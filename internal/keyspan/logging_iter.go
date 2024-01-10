@@ -85,61 +85,51 @@ func (i *loggingIter) opStartf(format string, args ...any) func(results ...any) 
 var _ FragmentIterator = (*loggingIter)(nil)
 
 // SeekGE implements FragmentIterator.
-func (i *loggingIter) SeekGE(key []byte) *Span {
+func (i *loggingIter) SeekGE(key []byte) (*Span, error) {
 	opEnd := i.opStartf("SeekGE(%q)", key)
-	span := i.iter.SeekGE(key)
-	opEnd(span)
-	return span
+	span, err := i.iter.SeekGE(key)
+	opEnd(span, err)
+	return span, err
 }
 
 // SeekLT implements FragmentIterator.
-func (i *loggingIter) SeekLT(key []byte) *Span {
+func (i *loggingIter) SeekLT(key []byte) (*Span, error) {
 	opEnd := i.opStartf("SeekLT(%q)", key)
-	span := i.iter.SeekLT(key)
-	opEnd(span)
-	return span
+	span, err := i.iter.SeekLT(key)
+	opEnd(span, err)
+	return span, err
 }
 
 // First implements FragmentIterator.
-func (i *loggingIter) First() *Span {
+func (i *loggingIter) First() (*Span, error) {
 	opEnd := i.opStartf("First()")
-	span := i.iter.First()
-	opEnd(span)
-	return span
+	span, err := i.iter.First()
+	opEnd(span, err)
+	return span, err
 }
 
 // Last implements FragmentIterator.
-func (i *loggingIter) Last() *Span {
+func (i *loggingIter) Last() (*Span, error) {
 	opEnd := i.opStartf("Last()")
-	span := i.iter.Last()
-	opEnd(span)
-	return span
+	span, err := i.iter.Last()
+	opEnd(span, err)
+	return span, err
 }
 
 // Next implements FragmentIterator.
-func (i *loggingIter) Next() *Span {
+func (i *loggingIter) Next() (*Span, error) {
 	opEnd := i.opStartf("Next()")
-	span := i.iter.Next()
-	opEnd(span)
-	return span
+	span, err := i.iter.Next()
+	opEnd(span, err)
+	return span, err
 }
 
 // Prev implements FragmentIterator.
-func (i *loggingIter) Prev() *Span {
+func (i *loggingIter) Prev() (*Span, error) {
 	opEnd := i.opStartf("Prev()")
-	span := i.iter.Prev()
-	opEnd(span)
-	return span
-}
-
-// Error implements FragmentIterator.
-func (i *loggingIter) Error() error {
-	err := i.iter.Error()
-	if err != nil {
-		opEnd := i.opStartf("Error()")
-		opEnd(err)
-	}
-	return err
+	span, err := i.iter.Prev()
+	opEnd(span, err)
+	return span, err
 }
 
 // Close implements FragmentIterator.

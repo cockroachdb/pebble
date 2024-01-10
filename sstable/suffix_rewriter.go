@@ -402,7 +402,8 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
 	}
 	defer iter.Close()
 
-	for s := iter.First(); s != nil; s = iter.Next() {
+	s, err := iter.First()
+	for ; s != nil; s, err = iter.Next() {
 		if !s.Valid() {
 			break
 		}
@@ -416,7 +417,7 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
 			s.Keys[i].Suffix = to
 		}
 
-		err := rangekey.Encode(s, func(k base.InternalKey, v []byte) error {
+		err = rangekey.Encode(s, func(k base.InternalKey, v []byte) error {
 			// Calling AddRangeKey instead of addRangeKeySpan bypasses the fragmenter.
 			// This is okay because the raw fragments off of `iter` are already
 			// fragmented, and suffix replacement should not affect fragmentation.
@@ -426,8 +427,7 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
 			return err
 		}
 	}
-
-	return nil
+	return err
 }
 
 type copyFilterWriter struct {

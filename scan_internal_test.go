@@ -404,21 +404,29 @@ func TestScanInternal(t *testing.T) {
 				file, err := d.opts.FS.Create("temp0.sst")
 				require.NoError(t, err)
 				w := sstable.NewWriter(objstorageprovider.NewFileWritable(file), d.opts.MakeWriterOptions(0, sstable.TableFormatPebblev4))
-				for span := rangeDels.First(); span != nil; span = rangeDels.Next() {
-					require.NoError(t, w.DeleteRange(span.Start, span.End))
-				}
-				rangeDels.Close()
-				for span := rangeKeys.First(); span != nil; span = rangeKeys.Next() {
-					keys := []keyspan.Key{}
-					for i := range span.Keys {
-						keys = append(keys, span.Keys[i])
-						keys[i].Trailer = base.MakeTrailer(0, keys[i].Kind())
+				{
+					span, err := rangeDels.First()
+					for ; span != nil; span, err = rangeDels.Next() {
+						require.NoError(t, w.DeleteRange(span.Start, span.End))
 					}
-					keyspan.SortKeysByTrailer(&keys)
-					newSpan := &keyspan.Span{Start: span.Start, End: span.End, Keys: keys}
-					rangekey.Encode(newSpan, w.AddRangeKey)
+					require.NoError(t, err)
+					require.NoError(t, rangeDels.Close())
 				}
-				rangeKeys.Close()
+				{
+					span, err := rangeKeys.First()
+					for ; span != nil; span, err = rangeKeys.Next() {
+						keys := []keyspan.Key{}
+						for i := range span.Keys {
+							keys = append(keys, span.Keys[i])
+							keys[i].Trailer = base.MakeTrailer(0, keys[i].Kind())
+						}
+						keyspan.SortKeysByTrailer(&keys)
+						newSpan := &keyspan.Span{Start: span.Start, End: span.End, Keys: keys}
+						require.NoError(t, rangekey.Encode(newSpan, w.AddRangeKey))
+					}
+					require.NoError(t, err)
+				}
+				require.NoError(t, rangeKeys.Close())
 				for key, val := points.First(); key != nil; key, val = points.Next() {
 					var value []byte
 					value, _, err = val.Value(value)

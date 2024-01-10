@@ -11,22 +11,14 @@ import "github.com/cockroachdb/pebble/internal/base"
 func SeekLE(cmp base.Compare, iter FragmentIterator, key []byte) (*Span, error) {
 	// Seek to the smallest span that contains a key ≥ key. If some span
 	// contains the key `key`, SeekGE will return it.
-	iterSpan := iter.SeekGE(key)
-	if iterSpan == nil {
-		if err := iter.Error(); err != nil {
-			return nil, err
-		}
-		// Fallthrough to Prev()-ing.
-	} else if cmp(key, iterSpan.Start) >= 0 {
+	iterSpan, err := iter.SeekGE(key)
+	if err != nil {
+		return nil, err
+	}
+	if iterSpan != nil && cmp(key, iterSpan.Start) >= 0 {
 		return iterSpan, nil
 	}
-
 	// No span covers exactly `key`. Step backwards to move onto the largest
 	// span < key.
-	iterSpan = iter.Prev()
-	if iterSpan == nil {
-		// NB: iter.Error() may be nil or non-nil.
-		return iterSpan, iter.Error()
-	}
-	return iterSpan, nil
+	return iter.Prev()
 }

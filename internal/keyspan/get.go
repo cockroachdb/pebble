@@ -16,11 +16,11 @@ func Get(cmp base.Compare, iter FragmentIterator, key []byte) (*Span, error) {
 	// NB: FragmentIterator.SeekGE moves the iterator to the first span covering
 	// a key greater than or equal to the given key. This is equivalent to
 	// seeking to the first span with an end key greater than the given key.
-	iterSpan := iter.SeekGE(key)
+	iterSpan, err := iter.SeekGE(key)
 	switch {
-	case iterSpan == nil:
-		return nil, iter.Error()
-	case cmp(iterSpan.Start, key) > 0:
+	case err != nil:
+		return nil, err
+	case iterSpan != nil && cmp(iterSpan.Start, key) > 0:
 		return nil, nil
 	default:
 		return iterSpan, nil

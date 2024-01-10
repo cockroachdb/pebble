@@ -22,38 +22,40 @@ func runFragmentIteratorCmd(iter FragmentIterator, input string, extraInfo func(
 			continue
 		}
 		var span *Span
+		var err error
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) != 2 {
 				return "seek-ge <key>\n"
 			}
-			span = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+			span, err = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-lt":
 			if len(parts) != 2 {
 				return "seek-lt <key>\n"
 			}
-			span = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+			span, err = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
 		case "first":
-			span = iter.First()
+			span, err = iter.First()
 		case "last":
-			span = iter.Last()
+			span, err = iter.Last()
 		case "next":
-			span = iter.Next()
+			span, err = iter.Next()
 		case "prev":
-			span = iter.Prev()
+			span, err = iter.Prev()
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
-		if span != nil {
+		switch {
+		case err != nil:
+			fmt.Fprintf(&b, "err=%v\n", err)
+		case span == nil:
+			fmt.Fprintf(&b, ".\n")
+		default:
 			fmt.Fprintf(&b, "%s", span)
 			if extraInfo != nil {
 				fmt.Fprintf(&b, " (%s)", extraInfo())
 			}
 			b.WriteByte('\n')
-		} else if err := iter.Error(); err != nil {
-			fmt.Fprintf(&b, "err=%v\n", err)
-		} else {
-			fmt.Fprintf(&b, ".\n")
 		}
 	}
 	return b.String()
@@ -94,7 +96,7 @@ type invalidatingIter struct {
 // invalidatingIter implements FragmentIterator.
 var _ FragmentIterator = (*invalidatingIter)(nil)
 
-func (i *invalidatingIter) invalidate(s *Span) *Span {
+func (i *invalidatingIter) invalidate(s *Span, err error) (*Span, error) {
 	// Zero the entirety of the byte bufs and the keys slice.
 	for j := range i.bufs {
 		for k := range i.bufs[j] {
@@ -106,7 +108,7 @@ func (i *invalidatingIter) invalidate(s *Span) *Span {
 		i.keys[j] = Key{}
 	}
 	if s == nil {
-		return nil
+		return nil, err
 	}
 
 	// Copy all of the span's slices into slices owned by the invalidating iter
@@ -125,7 +127,7 @@ func (i *invalidatingIter) invalidate(s *Span) *Span {
 		})
 	}
 	i.span.Keys = i.keys
-	return &i.span
+	return &i.span, err
 }
 
 func (i *invalidatingIter) saveBytes(b []byte) []byte {
@@ -137,14 +139,13 @@ func (i *invalidatingIter) saveBytes(b []byte) []byte {
 	return saved
 }
 
-func (i *invalidatingIter) SeekGE(key []byte) *Span { return i.invalidate(i.iter.SeekGE(key)) }
-func (i *invalidatingIter) SeekLT(key []byte) *Span { return i.invalidate(i.iter.SeekLT(key)) }
-func (i *invalidatingIter) First() *Span            { return i.invalidate(i.iter.First()) }
-func (i *invalidatingIter) Last() *Span             { return i.invalidate(i.iter.Last()) }
-func (i *invalidatingIter) Next() *Span             { return i.invalidate(i.iter.Next()) }
-func (i *invalidatingIter) Prev() *Span             { return i.invalidate(i.iter.Prev()) }
-func (i *invalidatingIter) Close() error            { return i.iter.Close() }
-func (i *invalidatingIter) Error() error            { return i.iter.Error() }
+func (i *invalidatingIter) SeekGE(key []byte) (*Span, error) { return i.invalidate(i.iter.SeekGE(key)) }
+func (i *invalidatingIter) SeekLT(key []byte) (*Span, error) { return i.invalidate(i.iter.SeekLT(key)) }
+func (i *invalidatingIter) First() (*Span, error)            { return i.invalidate(i.iter.First()) }
+func (i *invalidatingIter) Last() (*Span, error)             { return i.invalidate(i.iter.Last()) }
+func (i *invalidatingIter) Next() (*Span, error)             { return i.invalidate(i.iter.Next()) }
+func (i *invalidatingIter) Prev() (*Span, error)             { return i.invalidate(i.iter.Prev()) }
+func (i *invalidatingIter) Close() error                     { return i.iter.Close() }
 func (i *invalidatingIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
 }

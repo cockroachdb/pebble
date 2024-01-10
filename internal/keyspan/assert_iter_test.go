@@ -49,8 +49,11 @@ func TestAssertBoundsIter(t *testing.T) {
 						res = fmt.Sprintf("%v", r)
 					}
 				}()
-				for span := iter.First(); span != nil; span = iter.Next() {
+				var span *Span
+				var err error
+				for span, err = iter.First(); span != nil; span, err = iter.Next() {
 				}
+				require.NoError(t, err)
 				return "OK"
 			}()
 

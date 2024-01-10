@@ -192,30 +192,34 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 		weight int
 		fn     func() (str string, f *Span, m *Span)
 	}
+	must := func(s *Span, err error) *Span {
+		require.NoError(t, err)
+		return s
+	}
 	ops := []opKind{
 		{weight: 2, fn: func() (string, *Span, *Span) {
-			return "First()", fragmenterIter.First(), mergingIter.First()
+			return "First()", must(fragmenterIter.First()), must(mergingIter.First())
 		}},
 		{weight: 2, fn: func() (string, *Span, *Span) {
-			return "Last()", fragmenterIter.Last(), mergingIter.Last()
+			return "Last()", must(fragmenterIter.Last()), must(mergingIter.Last())
 		}},
 		{weight: 5, fn: func() (string, *Span, *Span) {
 			k := testkeys.Key(ks, rng.Int63n(ks.Count()))
 			return fmt.Sprintf("SeekGE(%q)", k),
-				fragmenterIter.SeekGE(k),
-				mergingIter.SeekGE(k)
+				must(fragmenterIter.SeekGE(k)),
+				must(mergingIter.SeekGE(k))
 		}},
 		{weight: 5, fn: func() (string, *Span, *Span) {
 			k := testkeys.Key(ks, rng.Int63n(ks.Count()))
 			return fmt.Sprintf("SeekLT(%q)", k),
-				fragmenterIter.SeekLT(k),
-				mergingIter.SeekLT(k)
+				must(fragmenterIter.SeekLT(k)),
+				must(mergingIter.SeekLT(k))
 		}},
 		{weight: 50, fn: func() (string, *Span, *Span) {
-			return "Next()", fragmenterIter.Next(), mergingIter.Next()
+			return "Next()", must(fragmenterIter.Next()), must(mergingIter.Next())
 		}},
 		{weight: 50, fn: func() (string, *Span, *Span) {
-			return "Prev()", fragmenterIter.Prev(), mergingIter.Prev()
+			return "Prev()", must(fragmenterIter.Prev()), must(mergingIter.Prev())
 		}},
 	}
 	var totalWeight int

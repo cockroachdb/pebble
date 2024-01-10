@@ -502,8 +502,9 @@ func (d *DB) truncateSharedFile(
 			sst.SmallestPointKey.CopyFrom(*key)
 		}
 		if rangeDelIter != nil {
-			span := rangeDelIter.SeekGE(lower)
-			if span != nil && (len(sst.SmallestPointKey.UserKey) == 0 || base.InternalCompare(cmp, span.SmallestKey(), sst.SmallestPointKey) < 0) {
+			if span, err := rangeDelIter.SeekGE(lower); err != nil {
+				return nil, false, err
+			} else if span != nil && (len(sst.SmallestPointKey.UserKey) == 0 || base.InternalCompare(cmp, span.SmallestKey(), sst.SmallestPointKey) < 0) {
 				sst.SmallestPointKey.CopyFrom(span.SmallestKey())
 				foundPointKey = true
 			}
@@ -516,10 +517,13 @@ func (d *DB) truncateSharedFile(
 		sst.SmallestRangeKey.UserKey = sst.SmallestRangeKey.UserKey[:0]
 		sst.SmallestRangeKey.Trailer = 0
 		if rangeKeyIter != nil {
-			span := rangeKeyIter.SeekGE(lower)
-			if span != nil {
+			span, err := rangeKeyIter.SeekGE(lower)
+			switch {
+			case err != nil:
+				return nil, false, err
+			case span != nil:
 				sst.SmallestRangeKey.CopyFrom(span.SmallestKey())
-			} else {
+			default:
 				// There are no range keys in the span we're interested in.
 				sst.SmallestRangeKey = InternalKey{}
 				sst.LargestRangeKey = InternalKey{}
@@ -537,8 +541,9 @@ func (d *DB) truncateSharedFile(
 			sst.LargestPointKey.CopyFrom(*key)
 		}
 		if rangeDelIter != nil {
-			span := rangeDelIter.SeekLT(upper)
-			if span != nil && (len(sst.LargestPointKey.UserKey) == 0 || base.InternalCompare(cmp, span.LargestKey(), sst.LargestPointKey) > 0) {
+			if span, err := rangeDelIter.SeekLT(upper); err != nil {
+				return nil, false, err
+			} else if span != nil && (len(sst.LargestPointKey.UserKey) == 0 || base.InternalCompare(cmp, span.LargestKey(), sst.LargestPointKey) > 0) {
 				sst.LargestPointKey.CopyFrom(span.LargestKey())
 				foundPointKey = true
 			}
@@ -551,10 +556,13 @@ func (d *DB) truncateSharedFile(
 		sst.LargestRangeKey.UserKey = sst.LargestRangeKey.UserKey[:0]
 		sst.LargestRangeKey.Trailer = 0
 		if rangeKeyIter != nil {
-			span := rangeKeyIter.SeekLT(upper)
-			if span != nil {
+			span, err := rangeKeyIter.SeekLT(upper)
+			switch {
+			case err != nil:
+				return nil, false, err
+			case span != nil:
 				sst.LargestRangeKey.CopyFrom(span.LargestKey())
-			} else {
+			default:
 				// There are no range keys in the span we're interested in.
 				sst.SmallestRangeKey = InternalKey{}
 				sst.LargestRangeKey = InternalKey{}

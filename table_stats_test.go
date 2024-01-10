@@ -263,8 +263,12 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			}
 			defer iter.Close()
 			var buf bytes.Buffer
-			for s := iter.First(); s != nil; s = iter.Next() {
+			s, err := iter.First()
+			for ; s != nil; s, err = iter.Next() {
 				buf.WriteString(s.String() + "\n")
+			}
+			if err != nil {
+				return err.Error()
 			}
 			if buf.Len() == 0 {
 				return "(none)"

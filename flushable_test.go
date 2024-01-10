@@ -133,22 +133,30 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 			iter := flushable.newRangeKeyIter(nil)
 			var buf bytes.Buffer
 			if iter != nil {
-				for span := iter.First(); span != nil; span = iter.Next() {
+				span, err := iter.First()
+				for ; span != nil; span, err = iter.Next() {
 					buf.WriteString(span.String())
 					buf.WriteString("\n")
 				}
-				iter.Close()
+				err = firstError(err, iter.Close())
+				if err != nil {
+					fmt.Fprintf(&buf, "err=%q", err.Error())
+				}
 			}
 			return buf.String()
 		case "rangedelIter":
 			iter := flushable.newRangeDelIter(nil)
 			var buf bytes.Buffer
 			if iter != nil {
-				for span := iter.First(); span != nil; span = iter.Next() {
+				span, err := iter.First()
+				for ; span != nil; span, err = iter.Next() {
 					buf.WriteString(span.String())
 					buf.WriteString("\n")
 				}
-				iter.Close()
+				err = firstError(err, iter.Close())
+				if err != nil {
+					fmt.Fprintf(&buf, "err=%q", err.Error())
+				}
 			}
 			return buf.String()
 		case "readyForFlush":

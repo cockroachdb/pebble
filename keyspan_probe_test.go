@@ -297,7 +297,6 @@ func (s seekKey) value(pctx *keyspanProbeContext) any {
 
 type probeKeyspanIterator struct {
 	iter     keyspan.FragmentIterator
-	err      error
 	probe    keyspanProbe
 	probeCtx keyspanProbeContext
 }
@@ -305,67 +304,62 @@ type probeKeyspanIterator struct {
 // Assert that probeIterator implements the fragment iterator interface.
 var _ keyspan.FragmentIterator = (*probeKeyspanIterator)(nil)
 
-func (p *probeKeyspanIterator) handleOp(preProbeOp keyspanOp) *keyspan.Span {
+func (p *probeKeyspanIterator) handleOp(preProbeOp keyspanOp) (*keyspan.Span, error) {
 	p.probeCtx.keyspanOp = preProbeOp
-	if preProbeOp.Span == nil && p.iter != nil {
-		p.probeCtx.keyspanOp.Err = p.iter.Error()
-	}
-
 	p.probe.probe(&p.probeCtx)
-	p.err = p.probeCtx.keyspanOp.Err
-	return p.probeCtx.keyspanOp.Span
+	return p.probeCtx.keyspanOp.Span, p.probeCtx.keyspanOp.Err
 }
 
-func (p *probeKeyspanIterator) SeekGE(key []byte) *keyspan.Span {
+func (p *probeKeyspanIterator) SeekGE(key []byte) (*keyspan.Span, error) {
 	op := keyspanOp{
 		Kind:    opSpanSeekGE,
 		SeekKey: key,
 	}
 	if p.iter != nil {
-		op.Span = p.iter.SeekGE(key)
+		op.Span, op.Err = p.iter.SeekGE(key)
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeKeyspanIterator) SeekLT(key []byte) *keyspan.Span {
+func (p *probeKeyspanIterator) SeekLT(key []byte) (*keyspan.Span, error) {
 	op := keyspanOp{
 		Kind:    opSpanSeekLT,
 		SeekKey: key,
 	}
 	if p.iter != nil {
-		op.Span = p.iter.SeekLT(key)
+		op.Span, op.Err = p.iter.SeekLT(key)
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeKeyspanIterator) First() *keyspan.Span {
+func (p *probeKeyspanIterator) First() (*keyspan.Span, error) {
 	op := keyspanOp{Kind: opSpanFirst}
 	if p.iter != nil {
-		op.Span = p.iter.First()
+		op.Span, op.Err = p.iter.First()
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeKeyspanIterator) Last() *keyspan.Span {
+func (p *probeKeyspanIterator) Last() (*keyspan.Span, error) {
 	op := keyspanOp{Kind: opSpanLast}
 	if p.iter != nil {
-		op.Span = p.iter.Last()
+		op.Span, op.Err = p.iter.Last()
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeKeyspanIterator) Next() *keyspan.Span {
+func (p *probeKeyspanIterator) Next() (*keyspan.Span, error) {
 	op := keyspanOp{Kind: opSpanNext}
 	if p.iter != nil {
-		op.Span = p.iter.Next()
+		op.Span, op.Err = p.iter.Next()
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeKeyspanIterator) Prev() *keyspan.Span {
+func (p *probeKeyspanIterator) Prev() (*keyspan.Span, error) {
 	op := keyspanOp{Kind: opSpanPrev}
 	if p.iter != nil {
-		op.Span = p.iter.Prev()
+		op.Span, op.Err = p.iter.Prev()
 	}
 	return p.handleOp(op)
 }
@@ -374,18 +368,11 @@ func (p *probeKeyspanIterator) WrapChildren(wrap keyspan.WrapFn) {
 	p.iter = wrap(p.iter)
 }
 
-func (p *probeKeyspanIterator) Error() error {
-	return p.err
-}
-
 func (p *probeKeyspanIterator) Close() error {
 	op := keyspanOp{Kind: opSpanClose}
 	if p.iter != nil {
 		op.Err = p.iter.Close()
 	}
-
-	p.probeCtx.keyspanOp = op
-	p.probe.probe(&p.probeCtx)
-	p.err = p.probeCtx.keyspanOp.Err
-	return p.err
+	_, err := p.handleOp(op)
+	return err
 }

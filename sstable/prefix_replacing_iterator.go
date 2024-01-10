@@ -187,7 +187,6 @@ func (p *prefixReplacingIterator) SetCloseHook(fn func(i Iterator) error) {
 
 type prefixReplacingFragmentIterator struct {
 	i          keyspan.FragmentIterator
-	err        error
 	src, dst   []byte
 	arg        []byte
 	out1, out2 []byte
@@ -208,61 +207,61 @@ func newPrefixReplacingFragmentIterator(
 	}
 }
 
-func (p *prefixReplacingFragmentIterator) rewriteArg(key []byte) []byte {
+func (p *prefixReplacingFragmentIterator) rewriteArg(key []byte) ([]byte, error) {
 	if !bytes.HasPrefix(key, p.dst) {
-		p.err = errInputPrefixMismatch
-		return key
+		return nil, errInputPrefixMismatch
 	}
 	p.arg = append(p.arg[:len(p.src)], key[len(p.dst):]...)
-	return p.arg
+	return p.arg, nil
 }
 
-func (p *prefixReplacingFragmentIterator) rewriteSpan(sp *keyspan.Span) *keyspan.Span {
+func (p *prefixReplacingFragmentIterator) rewriteSpan(
+	sp *keyspan.Span, err error,
+) (*keyspan.Span, error) {
 	if !bytes.HasPrefix(sp.Start, p.src) || !bytes.HasPrefix(sp.End, p.src) {
-		p.err = errInputPrefixMismatch
-		return sp
+		return nil, errInputPrefixMismatch
 	}
 	sp.Start = append(p.out1[:len(p.dst)], sp.Start[len(p.src):]...)
 	sp.End = append(p.out2[:len(p.dst)], sp.End[len(p.src):]...)
-	return sp
+	return sp, nil
 }
 
 // SeekGE implements the FragmentIterator interface.
-func (p *prefixReplacingFragmentIterator) SeekGE(key []byte) *keyspan.Span {
-	return p.rewriteSpan(p.i.SeekGE(p.rewriteArg(key)))
+func (p *prefixReplacingFragmentIterator) SeekGE(key []byte) (*keyspan.Span, error) {
+	rewrittenKey, err := p.rewriteArg(key)
+	if err != nil {
+		return nil, err
+	}
+	return p.rewriteSpan(p.i.SeekGE(rewrittenKey))
 }
 
 // SeekLT implements the FragmentIterator interface.
-func (p *prefixReplacingFragmentIterator) SeekLT(key []byte) *keyspan.Span {
-	return p.rewriteSpan(p.i.SeekLT(p.rewriteArg(key)))
+func (p *prefixReplacingFragmentIterator) SeekLT(key []byte) (*keyspan.Span, error) {
+	rewrittenKey, err := p.rewriteArg(key)
+	if err != nil {
+		return nil, err
+	}
+	return p.rewriteSpan(p.i.SeekLT(rewrittenKey))
 }
 
 // First implements the FragmentIterator interface.
-func (p *prefixReplacingFragmentIterator) First() *keyspan.Span {
+func (p *prefixReplacingFragmentIterator) First() (*keyspan.Span, error) {
 	return p.rewriteSpan(p.i.First())
 }
 
 // Last implements the FragmentIterator interface.
-func (p *prefixReplacingFragmentIterator) Last() *keyspan.Span {
+func (p *prefixReplacingFragmentIterator) Last() (*keyspan.Span, error) {
 	return p.rewriteSpan(p.i.Last())
 }
 
 // Close implements the FragmentIterator interface.
-func (p *prefixReplacingFragmentIterator) Next() *keyspan.Span {
+func (p *prefixReplacingFragmentIterator) Next() (*keyspan.Span, error) {
 	return p.rewriteSpan(p.i.Next())
 }
 
 // Prev implements the FragmentIterator interface.
-func (p *prefixReplacingFragmentIterator) Prev() *keyspan.Span {
+func (p *prefixReplacingFragmentIterator) Prev() (*keyspan.Span, error) {
 	return p.rewriteSpan(p.i.Prev())
-}
-
-// Error implements the FragmentIterator interface.
-func (p *prefixReplacingFragmentIterator) Error() error {
-	if p.err != nil {
-		return p.err
-	}
-	return p.i.Error()
 }
 
 // Close implements the FragmentIterator interface.

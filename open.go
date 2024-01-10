@@ -812,8 +812,11 @@ func (d *DB) replayWAL(
 	updateVE := func() error {
 		// TODO(bananabrick): See if we can use the actual base level here,
 		// instead of using 1.
-		c := newFlush(d.opts, d.mu.versions.currentVersion(),
+		c, err := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, toFlush, d.timeNow())
+		if err != nil {
+			return err
+		}
 		newVE, _, _, err := d.runCompaction(jobID, c)
 		if err != nil {
 			return errors.Wrapf(err, "running compaction during WAL replay")
@@ -970,12 +973,15 @@ func (d *DB) replayWAL(
 					// the application of ve to the manifest into chunks and is
 					// not pretty w/o a refactor to this function and how it's
 					// used.
-					c := newFlush(
+					c, err := newFlush(
 						d.opts, d.mu.versions.currentVersion(),
 						1, /* base level */
 						[]*flushableEntry{entry},
 						d.timeNow(),
 					)
+					if err != nil {
+						return nil, 0, err
+					}
 					for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
 						ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: 0, Meta: file.FileMetadata})
 					}

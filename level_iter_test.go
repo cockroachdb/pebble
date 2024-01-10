@@ -355,24 +355,28 @@ type levelIterTestIter struct {
 	rangeDelIter keyspan.FragmentIterator
 }
 
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
 func (i *levelIterTestIter) rangeDelSeek(
 	key []byte, ikey *InternalKey, val base.LazyValue, dir int,
 ) (*InternalKey, base.LazyValue) {
 	var tombstone keyspan.Span
 	if i.rangeDelIter != nil {
 		var t *keyspan.Span
+		var err error
 		if dir < 0 {
-			var err error
 			t, err = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key)
-			// TODO(jackson): Clean this up when the FragmentIterator interface
-			// is refactored to return an error return value from all
-			// positioning methods.
-			if err != nil {
-				panic(err)
-			}
 		} else {
-			t = i.rangeDelIter.SeekGE(key)
+			t, err = i.rangeDelIter.SeekGE(key)
 		}
+		// TODO(jackson): Clean this up when the InternalIterator interface
+		// is refactored to return an error return value from all
+		// positioning methods.
+		must(err)
 		if t != nil {
 			tombstone = t.Visible(1000)
 		}
