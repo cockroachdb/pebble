@@ -362,7 +362,14 @@ func (i *levelIterTestIter) rangeDelSeek(
 	if i.rangeDelIter != nil {
 		var t *keyspan.Span
 		if dir < 0 {
-			t = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key)
+			var err error
+			t, err = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key)
+			// TODO(jackson): Clean this up when the FragmentIterator interface
+			// is refactored to return an error return value from all
+			// positioning methods.
+			if err != nil {
+				panic(err)
+			}
 		} else {
 			t = i.rangeDelIter.SeekGE(key)
 		}
