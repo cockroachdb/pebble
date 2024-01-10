@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -133,7 +134,11 @@ func TestMetrics(t *testing.T) {
 		}
 	}()
 
-	datadriven.RunTest(t, "testdata/metrics", func(t *testing.T, td *datadriven.TestData) string {
+	testdataFile := "testdata/metrics"
+	if invariants.Enabled {
+		testdataFile = "testdata/metrics_invariants_enabled"
+	}
+	datadriven.RunTest(t, testdataFile, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "example":
 			m := exampleMetrics()
@@ -276,6 +281,14 @@ func TestMetrics(t *testing.T) {
 				// Empirically, the unknown stats are also non-deterministic.
 				if len(m.CategoryStats) > 0 && m.CategoryStats[0].Category == "_unknown" {
 					m.CategoryStats[0].CategoryStats = sstable.CategoryStats{}
+				}
+			}
+			// CategoryStats.BlockReadDuration is deterministic when run with go
+			// test -tags 'invariants', as sstable.Reader.readBlock provides a
+			// deterministic value for testing.
+			if !invariants.Enabled {
+				for i := range m.CategoryStats {
+					m.CategoryStats[i].BlockReadDuration = 0
 				}
 			}
 			var buf strings.Builder

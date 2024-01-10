@@ -1,7 +1,6 @@
-# Keep these test cases in sync with those in metrics_invariants_enabled. The
-# only difference difference in output is that with invariants enabled, there
-# are deterministic non-zero values in the BlockReadDuration of category
-# stats.
+# Keep these test cases in sync with those in metrics. The only difference
+# difference in output is that with invariants enabled, there are
+# deterministic non-zero values in the BlockReadDuration of category stats.
 
 example
 ----
@@ -134,7 +133,7 @@ Table iters: 2
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:0s}
+   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:10ms}
 
 disk-usage
 ----
@@ -175,7 +174,7 @@ Table iters: 2
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:0s}
+   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:10ms}
 
 # Closing iter c will release one of the zombie sstables. The other
 # zombie sstable is still referenced by iter b.
@@ -214,7 +213,7 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:0s}
+   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:10ms}
 
 disk-usage
 ----
@@ -255,9 +254,9 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
-                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:0s}
+   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:10ms}
 
 disk-usage
 ----
@@ -324,9 +323,9 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
-                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:0s}
+   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:10ms}
 
 additional-metrics
 ----
@@ -377,9 +376,9 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
-                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:0s}
+   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:60ms}
 
 additional-metrics
 ----
@@ -479,10 +478,10 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
-                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:0s}
-       pebble-ingest,     latency: {BlockBytes:192 BlockBytesInCache:128 BlockReadDuration:0s}
+   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:60ms}
+       pebble-ingest,     latency: {BlockBytes:192 BlockBytesInCache:128 BlockReadDuration:10ms}
 
 batch
 set g g
@@ -540,10 +539,10 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
-                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:0s}
-       pebble-ingest,     latency: {BlockBytes:192 BlockBytesInCache:128 BlockReadDuration:0s}
+   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:60ms}
+       pebble-ingest,     latency: {BlockBytes:192 BlockBytesInCache:128 BlockReadDuration:10ms}
 
 build ext1
 set z z
@@ -615,10 +614,10 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 1  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
-                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:0s}
-       pebble-ingest,     latency: {BlockBytes:328 BlockBytesInCache:128 BlockReadDuration:0s}
+   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:60ms}
+       pebble-ingest,     latency: {BlockBytes:328 BlockBytesInCache:128 BlockReadDuration:30ms}
 
 # Virtualize a virtual sstable.
 build ext1
@@ -715,7 +714,7 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 2  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
-                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:941 BlockBytesInCache:640 BlockReadDuration:0s}
-       pebble-ingest,     latency: {BlockBytes:400 BlockBytesInCache:200 BlockReadDuration:0s}
+   pebble-compaction, non-latency: {BlockBytes:941 BlockBytesInCache:640 BlockReadDuration:70ms}
+       pebble-ingest,     latency: {BlockBytes:400 BlockBytesInCache:200 BlockReadDuration:30ms}
