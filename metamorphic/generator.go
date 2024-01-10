@@ -205,6 +205,8 @@ func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 	}
 
 	g.dbClose()
+
+	computeDerivedFields(g.ops)
 	return g.ops
 }
 
@@ -507,7 +509,7 @@ func (g *generator) removeBatchFromGenerator(batchID objID) {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
-		g.add(&closeOp{objID: id, derivedDBID: g.objDB[batchID]})
+		g.add(&closeOp{objID: id})
 	}
 }
 
@@ -519,7 +521,7 @@ func (g *generator) batchAbort() {
 	batchID := g.liveBatches.rand(g.rng)
 	g.removeBatchFromGenerator(batchID)
 
-	g.add(&closeOp{objID: batchID, derivedDBID: g.objDB[batchID]})
+	g.add(&closeOp{objID: batchID})
 }
 
 func (g *generator) batchCommit() {
@@ -551,7 +553,7 @@ func (g *generator) batchCommit() {
 		dbID:    dbID,
 		batchID: batchID,
 	})
-	g.add(&closeOp{objID: batchID, derivedDBID: dbID})
+	g.add(&closeOp{objID: batchID})
 
 }
 
@@ -566,9 +568,8 @@ func (g *generator) dbClose() {
 	}
 	for len(g.liveBatches) > 0 {
 		batchID := g.liveBatches[0]
-		dbID := g.objDB[batchID]
 		g.removeBatchFromGenerator(batchID)
-		g.add(&closeOp{objID: batchID, derivedDBID: dbID})
+		g.add(&closeOp{objID: batchID})
 	}
 	for len(g.dbs) > 0 {
 		db := g.dbs[0]
@@ -650,9 +651,8 @@ func (g *generator) dbRestart() {
 	// Close the batches.
 	for len(g.liveBatches) > 0 {
 		batchID := g.liveBatches[0]
-		dbID := g.objDB[batchID]
 		g.removeBatchFromGenerator(batchID)
-		g.add(&closeOp{objID: batchID, derivedDBID: dbID})
+		g.add(&closeOp{objID: batchID})
 	}
 	if len(g.liveReaders) != len(g.dbs) || len(g.liveWriters) != len(g.dbs) {
 		panic(fmt.Sprintf("unexpected counts: liveReaders %d, liveWriters: %d",
@@ -846,14 +846,9 @@ func (g *generator) iterClose(iterID objID) {
 	if readerIters, ok := g.iters[iterID]; ok {
 		delete(g.iters, iterID)
 		delete(readerIters, iterID)
-		//lint:ignore SA9003 - readability
-	} else {
-		// NB: the DB object does not track its open iterators because it never
-		// closes.
 	}
 
-	readerID := g.iterReaderID[iterID]
-	g.add(&closeOp{objID: iterID, derivedDBID: g.objDB[readerID]})
+	g.add(&closeOp{objID: iterID})
 }
 
 func (g *generator) iterSetBounds(iterID objID) {
@@ -1273,10 +1268,10 @@ func (g *generator) snapshotClose() {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
-		g.add(&closeOp{objID: id, derivedDBID: g.objDB[snapID]})
+		g.add(&closeOp{objID: id})
 	}
 
-	g.add(&closeOp{objID: snapID, derivedDBID: g.objDB[snapID]})
+	g.add(&closeOp{objID: snapID})
 }
 
 func (g *generator) writerApply() {
@@ -1328,8 +1323,7 @@ func (g *generator) writerApply() {
 		batchID:  batchID,
 	})
 	g.add(&closeOp{
-		objID:       batchID,
-		derivedDBID: dbID,
+		objID: batchID,
 	})
 }
 

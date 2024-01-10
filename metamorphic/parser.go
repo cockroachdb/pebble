@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"golang.org/x/exp/slices"
 )
 
 type methodInfo struct {
@@ -583,9 +584,29 @@ func computeDerivedFields(ops []op) {
 		case *batchCommitOp:
 			v.dbID = objToDB[v.batchID]
 		case *closeOp:
-			if derivedDBID, ok := objToDB[v.objID]; ok && v.objID.tag() != dbTag {
-				v.derivedDBID = derivedDBID
+			if v.objID.tag() == dbTag {
+				// Find all objects that use this db.
+				v.affectedObjects = nil
+				for obj, db := range objToDB {
+					if db == v.objID {
+						v.affectedObjects = append(v.affectedObjects, obj)
+					}
+				}
+				// Sort so the output is deterministic.
+				slices.Sort(v.affectedObjects)
+			} else if dbID, ok := objToDB[v.objID]; ok {
+				v.affectedObjects = objIDSlice{dbID}
 			}
+		case *dbRestartOp:
+			// Find all objects that use this db.
+			v.affectedObjects = nil
+			for obj, db := range objToDB {
+				if db == v.dbID {
+					v.affectedObjects = append(v.affectedObjects, obj)
+				}
+			}
+			// Sort so the output is deterministic.
+			slices.Sort(v.affectedObjects)
 		case *ingestOp:
 			v.derivedDBIDs = make([]objID, len(v.batchIDs))
 			for i := range v.batchIDs {

@@ -194,8 +194,12 @@ func (o *checkpointOp) diagramKeyRanges() []pebble.KeyRange {
 
 // closeOp models a {Batch,Iterator,Snapshot}.Close operation.
 type closeOp struct {
-	objID       objID
-	derivedDBID objID
+	objID objID
+
+	// affectedObjects is the list of additional objects that are affected by this
+	// operation, and which syncObjs() must return so that we don't perform the
+	// close in parallel with other operations to affected objects.
+	affectedObjects []objID
 }
 
 func (o *closeOp) run(t *Test, h historyRecorder) {
@@ -214,17 +218,7 @@ func (o *closeOp) run(t *Test, h historyRecorder) {
 func (o *closeOp) String() string  { return fmt.Sprintf("%s.Close()", o.objID) }
 func (o *closeOp) receiver() objID { return o.objID }
 func (o *closeOp) syncObjs() objIDSlice {
-	// Synchronize on the database so that we don't close the database before
-	// all its iterators, snapshots and batches are closed.
-	// TODO(jackson): It would be nice to relax this so that Close calls can
-	// execute in parallel.
-	if o.objID.tag() == dbTag {
-		return nil
-	}
-	if o.derivedDBID != 0 {
-		return []objID{o.derivedDBID}
-	}
-	return nil
+	return o.affectedObjects
 }
 
 func (o *closeOp) keys() []*[]byte                     { return nil }
@@ -1734,6 +1728,11 @@ func (o *dbRatchetFormatMajorVersionOp) diagramKeyRanges() []pebble.KeyRange { r
 
 type dbRestartOp struct {
 	dbID objID
+
+	// affectedObjects is the list of additional objects that are affected by this
+	// operation, and which syncObjs() must return so that we don't perform the
+	// restart in parallel with other operations to affected objects.
+	affectedObjects []objID
 }
 
 func (o *dbRestartOp) run(t *Test, h historyRecorder) {
@@ -1747,7 +1746,7 @@ func (o *dbRestartOp) run(t *Test, h historyRecorder) {
 
 func (o *dbRestartOp) String() string       { return fmt.Sprintf("%s.Restart()", o.dbID) }
 func (o *dbRestartOp) receiver() objID      { return o.dbID }
-func (o *dbRestartOp) syncObjs() objIDSlice { return nil }
+func (o *dbRestartOp) syncObjs() objIDSlice { return o.affectedObjects }
 
 func (o *dbRestartOp) keys() []*[]byte                     { return nil }
 func (o *dbRestartOp) diagramKeyRanges() []pebble.KeyRange { return nil }
