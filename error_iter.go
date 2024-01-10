@@ -75,13 +75,12 @@ type errorKeyspanIter struct {
 // errorKeyspanIter implements the keyspan.FragmentIterator interface.
 var _ keyspan.FragmentIterator = (*errorKeyspanIter)(nil)
 
-func (*errorKeyspanIter) SeekGE(key []byte) *keyspan.Span  { return nil }
-func (*errorKeyspanIter) SeekLT(key []byte) *keyspan.Span  { return nil }
-func (*errorKeyspanIter) First() *keyspan.Span             { return nil }
-func (*errorKeyspanIter) Last() *keyspan.Span              { return nil }
-func (*errorKeyspanIter) Next() *keyspan.Span              { return nil }
-func (*errorKeyspanIter) Prev() *keyspan.Span              { return nil }
-func (i *errorKeyspanIter) Error() error                   { return i.err }
-func (i *errorKeyspanIter) Close() error                   { return i.err }
-func (*errorKeyspanIter) String() string                   { return "error" }
-func (*errorKeyspanIter) WrapChildren(wrap keyspan.WrapFn) {}
+func (i *errorKeyspanIter) SeekGE(key []byte) (*keyspan.Span, error) { return nil, i.err }
+func (i *errorKeyspanIter) SeekLT(key []byte) (*keyspan.Span, error) { return nil, i.err }
+func (i *errorKeyspanIter) First() (*keyspan.Span, error)            { return nil, i.err }
+func (i *errorKeyspanIter) Last() (*keyspan.Span, error)             { return nil, i.err }
+func (i *errorKeyspanIter) Next() (*keyspan.Span, error)             { return nil, i.err }
+func (i *errorKeyspanIter) Prev() (*keyspan.Span, error)             { return nil, i.err }
+func (i *errorKeyspanIter) Close() error                             { return i.err }
+func (*errorKeyspanIter) String() string                             { return "error" }
+func (*errorKeyspanIter) WrapChildren(wrap keyspan.WrapFn)           {}

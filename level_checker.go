@@ -117,7 +117,9 @@ func (m *simpleMergingIter) positionRangeDels() {
 		if l.rangeDelIter == nil {
 			continue
 		}
-		l.tombstone = l.rangeDelIter.SeekGE(item.key.UserKey)
+		t, err := l.rangeDelIter.SeekGE(item.key.UserKey)
+		m.err = firstError(m.err, err)
+		l.tombstone = t
 	}
 }
 
@@ -448,7 +450,8 @@ func addTombstonesFromIter(
 	}()
 
 	var prevTombstone keyspan.Span
-	for tomb := iter.First(); tomb != nil; tomb = iter.Next() {
+	tomb, err := iter.First()
+	for ; tomb != nil; tomb, err = iter.Next() {
 		t := tomb.Visible(seqNum)
 		if t.Empty() {
 			continue
@@ -471,6 +474,9 @@ func addTombstonesFromIter(
 				fileNum:  fileNum,
 			})
 		}
+	}
+	if err != nil {
+		return nil, err
 	}
 	return tombstones, nil
 }

@@ -373,11 +373,10 @@ func (m *mergingIter) initMinRangeDelIters(oldTopLevel int) error {
 		if l.rangeDelIter == nil {
 			continue
 		}
-		l.tombstone = l.rangeDelIter.SeekGE(item.iterKey.UserKey)
-		if l.tombstone == nil {
-			if err := l.rangeDelIter.Error(); err != nil {
-				return err
-			}
+		var err error
+		l.tombstone, err = l.rangeDelIter.SeekGE(item.iterKey.UserKey)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -728,11 +727,10 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterLevel) (bool, error) {
 			// levelIter in the future cannot contain item.iterKey). Also, it is possible that we
 			// will encounter parts of the range delete that should be ignored -- we handle that
 			// below.
-			l.tombstone = l.rangeDelIter.SeekGE(item.iterKey.UserKey)
-			if l.tombstone == nil {
-				if err := l.rangeDelIter.Error(); err != nil {
-					return false, err
-				}
+			var err error
+			l.tombstone, err = l.rangeDelIter.SeekGE(item.iterKey.UserKey)
+			if err != nil {
+				return false, err
 			}
 		}
 		if l.tombstone == nil {
@@ -1174,11 +1172,10 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 			// so we can have a sstable with bounds [c#8, i#InternalRangeDelSentinel], and the
 			// tombstone is [b, k)#8 and the seek key is i: levelIter.SeekGE(i) will move past
 			// this sstable since it realizes the largest key is a InternalRangeDelSentinel.
-			l.tombstone = rangeDelIter.SeekGE(key)
-			if l.tombstone == nil {
-				if err := rangeDelIter.Error(); err != nil {
-					return err
-				}
+			var err error
+			l.tombstone, err = rangeDelIter.SeekGE(key)
+			if err != nil {
+				return err
 			}
 			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, key) &&
 				(l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, key) <= 0) {

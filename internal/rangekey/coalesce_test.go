@@ -101,23 +101,24 @@ func TestIter(t *testing.T) {
 					iterCmd = string(line[:i])
 				}
 				var s *keyspan.Span
+				var err error
 				switch iterCmd {
 				case "first":
-					s = iter.First()
+					s, err = iter.First()
 				case "last":
-					s = iter.Last()
+					s, err = iter.Last()
 				case "next":
-					s = iter.Next()
+					s, err = iter.Next()
 				case "prev":
-					s = iter.Prev()
+					s, err = iter.Prev()
 				case "seek-ge":
-					s = iter.SeekGE([]byte(strings.TrimSpace(line[i:])))
+					s, err = iter.SeekGE([]byte(strings.TrimSpace(line[i:])))
 				case "seek-lt":
-					s = iter.SeekLT([]byte(strings.TrimSpace(line[i:])))
+					s, err = iter.SeekLT([]byte(strings.TrimSpace(line[i:])))
 				default:
 					return fmt.Sprintf("unrecognized iter command %q", iterCmd)
 				}
-				require.NoError(t, iter.Error())
+				require.NoError(t, err)
 				fmt.Fprint(&buf, s)
 				if buf.Len() > 0 {
 					fmt.Fprintln(&buf)
@@ -341,28 +342,32 @@ var iterDelim = map[rune]bool{',': true, ' ': true, '(': true, ')': true, '"': t
 func runIterOp(w io.Writer, it keyspan.FragmentIterator, op string) {
 	fields := strings.FieldsFunc(op, func(r rune) bool { return iterDelim[r] })
 	var s *keyspan.Span
+	var err error
 	switch strings.ToLower(fields[0]) {
 	case "first":
-		s = it.First()
+		s, err = it.First()
 	case "last":
-		s = it.Last()
+		s, err = it.Last()
 	case "seekge":
-		s = it.SeekGE([]byte(fields[1]))
+		s, err = it.SeekGE([]byte(fields[1]))
 	case "seeklt":
-		s = it.SeekLT([]byte(fields[1]))
+		s, err = it.SeekLT([]byte(fields[1]))
 	case "next":
-		s = it.Next()
+		s, err = it.Next()
 	case "prev":
-		s = it.Prev()
+		s, err = it.Prev()
 	default:
 		panic(fmt.Sprintf("unrecognized iter op %q", fields[0]))
 	}
 	fmt.Fprintf(w, "%-10s", op)
-	if s == nil {
+	switch {
+	case err != nil:
+		fmt.Fprintf(w, "<err=%q>", err)
+	case s == nil:
 		fmt.Fprintln(w, ".")
-		return
+	default:
+		fmt.Fprintln(w, s)
 	}
-	fmt.Fprintln(w, s)
 }
 
 func BenchmarkTransform(b *testing.B) {

@@ -687,12 +687,16 @@ func buildForIngest(
 
 	if rangeDelIter != nil {
 		// NB: The range tombstones have already been fragmented by the Batch.
-		for t := rangeDelIter.First(); t != nil; t = rangeDelIter.Next() {
+		t, err := rangeDelIter.First()
+		for ; t != nil; t, err = rangeDelIter.Next() {
 			// NB: We don't have to copy the key or value since we're reading from a
 			// batch which doesn't do prefix compression.
 			if err := w.DeleteRange(t.Start, t.End); err != nil {
 				return "", nil, err
 			}
+		}
+		if err != nil {
+			return "", nil, err
 		}
 		if err := rangeDelIter.Close(); err != nil {
 			return "", nil, err
@@ -701,7 +705,8 @@ func buildForIngest(
 	}
 
 	if rangeKeyIter != nil {
-		for span := rangeKeyIter.First(); span != nil; span = rangeKeyIter.Next() {
+		span, err := rangeKeyIter.First()
+		for ; span != nil; span, err = rangeKeyIter.Next() {
 			// Coalesce the keys of this span and then zero the sequence
 			// numbers. This is necessary in order to make the range keys within
 			// the ingested sstable internally consistent at the sequence number
@@ -728,7 +733,7 @@ func buildForIngest(
 				return "", nil, err
 			}
 		}
-		if err := rangeKeyIter.Error(); err != nil {
+		if err != nil {
 			return "", nil, err
 		}
 		if err := rangeKeyIter.Close(); err != nil {
@@ -800,12 +805,16 @@ func (o *ingestOp) collapseBatch(
 
 	if rangeDelIter != nil {
 		// NB: The range tombstones have already been fragmented by the Batch.
-		for t := rangeDelIter.First(); t != nil; t = rangeDelIter.Next() {
+		t, err := rangeDelIter.First()
+		for ; t != nil; t, err = rangeDelIter.Next() {
 			// NB: We don't have to copy the key or value since we're reading from a
 			// batch which doesn't do prefix compression.
 			if err := collapsed.DeleteRange(t.Start, t.End, nil); err != nil {
 				return nil, err
 			}
+		}
+		if err != nil {
+			return nil, err
 		}
 		if err := rangeDelIter.Close(); err != nil {
 			return nil, err

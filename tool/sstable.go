@@ -408,7 +408,8 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			defer iter.Close()
 
 			var tombstones []keyspan.Span
-			for t := iter.First(); t != nil; t = iter.Next() {
+			t, err := iter.First()
+			for ; t != nil; t, err = iter.Next() {
 				if s.end != nil && r.Compare(s.end, t.Start) <= 0 {
 					// The range tombstone lies after the scan range.
 					continue
@@ -418,6 +419,9 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 					continue
 				}
 				tombstones = append(tombstones, t.ShallowClone())
+			}
+			if err != nil {
+				return nil, err
 			}
 
 			slices.SortFunc(tombstones, func(a, b keyspan.Span) int {
@@ -431,7 +435,11 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 
 		defer rangeDelIter.Close()
-		rangeDel := rangeDelIter.First()
+		rangeDel, err := rangeDelIter.First()
+		if err != nil {
+			fmt.Fprintf(stdout, "%s%s\n", prefix, err)
+			return
+		}
 		count := s.count
 
 		var lastKey base.InternalKey
@@ -476,7 +484,11 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 						os.Exit(1)
 					}
 				}
-				rangeDel = rangeDelIter.Next()
+				rangeDel, err = rangeDelIter.Next()
+				if err != nil {
+					fmt.Fprintf(stdout, "%s\n", err)
+					os.Exit(1)
+				}
 			}
 
 			if count > 0 {
@@ -495,7 +507,8 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 		if rkIter != nil {
 			defer rkIter.Close()
-			for span := rkIter.SeekGE(s.start); span != nil; span = rkIter.Next() {
+			span, err := rkIter.SeekGE(s.start)
+			for ; span != nil; span, err = rkIter.Next() {
 				// By default, emit the key, unless there is a filter.
 				emit := s.filter == nil
 				// Skip spans that start after the end key (if provided). End keys are
@@ -512,6 +525,10 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				if emit {
 					formatSpan(stdout, s.fmtKey, s.fmtValue, span)
 				}
+			}
+			if err != nil {
+				fmt.Fprintf(stdout, "%s\n", err)
+				os.Exit(1)
 			}
 		}
 

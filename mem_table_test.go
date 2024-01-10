@@ -367,11 +367,15 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 
 				var count int
 				it := m.newRangeDelIter(nil)
-				for s := it.SeekGE(start); s != nil; s = it.Next() {
+				s, err := it.SeekGE(start)
+				for ; s != nil; s, err = it.Next() {
 					if m.cmp(s.Start, end) >= 0 {
 						break
 					}
 					count += len(s.Keys)
+				}
+				if err != nil {
+					return err
 				}
 				if j+1 != count {
 					return errors.Errorf("%d: expected %d tombstones, but found %d", i, j+1, count)

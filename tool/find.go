@@ -469,11 +469,15 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				defer iter.Close()
 
 				var tombstones []keyspan.Span
-				for t := iter.First(); t != nil; t = iter.Next() {
+				t, err := iter.First()
+				for ; t != nil; t, err = iter.Next() {
 					if !t.Contains(r.Compare, searchKey) {
 						continue
 					}
 					tombstones = append(tombstones, t.ShallowClone())
+				}
+				if err != nil {
+					return nil, err
 				}
 
 				slices.SortFunc(tombstones, func(a, b keyspan.Span) int {
@@ -486,7 +490,10 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			}
 
 			defer rangeDelIter.Close()
-			rangeDel := rangeDelIter.First()
+			rangeDel, err := rangeDelIter.First()
+			if err != nil {
+				return err
+			}
 
 			foundRef := false
 			for key != nil || rangeDel != nil {
@@ -520,7 +527,10 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 					if err != nil {
 						return err
 					}
-					rangeDel = rangeDelIter.Next()
+					rangeDel, err = rangeDelIter.Next()
+					if err != nil {
+						return err
+					}
 				}
 				foundRef = true
 			}

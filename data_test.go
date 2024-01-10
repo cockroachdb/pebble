@@ -531,8 +531,9 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	}
 
 	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
-		for s := rdi.First(); s != nil; s = rdi.Next() {
-			err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
+		s, err := rdi.First()
+		for ; s != nil && err == nil; s, err = rdi.Next() {
+			err = rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
 				k.SetSeqNum(0)
 				return w.Add(k, v)
 			})
@@ -540,10 +541,14 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 				return err
 			}
 		}
+		if err != nil {
+			return err
+		}
 	}
 
 	if rki := b.newRangeKeyIter(nil, math.MaxUint64); rki != nil {
-		for s := rki.First(); s != nil; s = rki.Next() {
+		s, err := rki.First()
+		for ; s != nil; s, err = rki.Next() {
 			for _, k := range s.Keys {
 				var err error
 				switch k.Kind() {
@@ -560,6 +565,9 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 					return err
 				}
 			}
+		}
+		if err != nil {
+			return err
 		}
 	}
 
@@ -617,8 +625,9 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	}
 
 	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
-		for s := rdi.First(); s != nil; s = rdi.Next() {
-			err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
+		s, err := rdi.First()
+		for ; s != nil && err == nil; s, err = rdi.Next() {
+			err = rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
 				k.SetSeqNum(0)
 				return w.Add(k, v)
 			})
@@ -626,10 +635,14 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 				return err
 			}
 		}
+		if err != nil {
+			return err
+		}
 	}
 
 	if rki := b.newRangeKeyIter(nil, math.MaxUint64); rki != nil {
-		for s := rki.First(); s != nil; s = rki.Next() {
+		s, err := rki.First()
+		for ; s != nil; s, err = rki.Next() {
 			for _, k := range s.Keys {
 				var err error
 				switch k.Kind() {
@@ -646,6 +659,9 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 					return err
 				}
 			}
+		}
+		if err != nil {
+			return err
 		}
 	}
 
@@ -841,8 +857,11 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			flushable: mem,
 			flushed:   make(chan struct{}),
 		}}
-		c := newFlush(d.opts, d.mu.versions.currentVersion(),
+		c, err := newFlush(d.opts, d.mu.versions.currentVersion(),
 			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now())
+		if err != nil {
+			return err
+		}
 		c.disableSpanElision = true
 		// NB: define allows the test to exactly specify which keys go
 		// into which sstables. If the test has a small target file

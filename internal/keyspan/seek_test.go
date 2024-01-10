@@ -40,10 +40,7 @@ func TestSeek(t *testing.T) {
 			seek := SeekLE
 			if d.Cmd == "seek-ge" {
 				seek = func(_ base.Compare, iter FragmentIterator, key []byte) (*Span, error) {
-					if s := iter.SeekGE(key); s != nil {
-						return s, nil
-					}
-					return nil, iter.Error()
+					return iter.SeekGE(key)
 				}
 			}
 

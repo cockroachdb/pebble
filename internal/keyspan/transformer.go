@@ -62,89 +62,78 @@ type TransformerIter struct {
 	Compare base.Compare
 
 	span Span
-	err  error
 }
 
-func (t *TransformerIter) applyTransform(span *Span) *Span {
+func (t *TransformerIter) applyTransform(span *Span) (*Span, error) {
+	if span == nil {
+		return nil, nil
+	}
 	t.span = Span{
 		Start: t.span.Start[:0],
 		End:   t.span.End[:0],
 		Keys:  t.span.Keys[:0],
 	}
 	if err := t.Transformer.Transform(t.Compare, *span, &t.span); err != nil {
-		t.err = err
-		return nil
+		return nil, err
 	}
-	return &t.span
+	return &t.span, nil
 }
 
 // SeekGE implements the FragmentIterator interface.
-func (t *TransformerIter) SeekGE(key []byte) *Span {
-	span := t.FragmentIterator.SeekGE(key)
-	if span == nil {
-		return nil
+func (t *TransformerIter) SeekGE(key []byte) (*Span, error) {
+	span, err := t.FragmentIterator.SeekGE(key)
+	if err != nil {
+		return nil, err
 	}
 	return t.applyTransform(span)
 }
 
 // SeekLT implements the FragmentIterator interface.
-func (t *TransformerIter) SeekLT(key []byte) *Span {
-	span := t.FragmentIterator.SeekLT(key)
-	if span == nil {
-		return nil
+func (t *TransformerIter) SeekLT(key []byte) (*Span, error) {
+	span, err := t.FragmentIterator.SeekLT(key)
+	if err != nil {
+		return nil, err
 	}
 	return t.applyTransform(span)
 }
 
 // First implements the FragmentIterator interface.
-func (t *TransformerIter) First() *Span {
-	span := t.FragmentIterator.First()
-	if span == nil {
-		return nil
+func (t *TransformerIter) First() (*Span, error) {
+	span, err := t.FragmentIterator.First()
+	if err != nil {
+		return nil, err
 	}
 	return t.applyTransform(span)
 }
 
 // Last implements the FragmentIterator interface.
-func (t *TransformerIter) Last() *Span {
-	span := t.FragmentIterator.Last()
-	if span == nil {
-		return nil
+func (t *TransformerIter) Last() (*Span, error) {
+	span, err := t.FragmentIterator.Last()
+	if err != nil {
+		return nil, err
 	}
 	return t.applyTransform(span)
 }
 
 // Next implements the FragmentIterator interface.
-func (t *TransformerIter) Next() *Span {
-	span := t.FragmentIterator.Next()
-	if span == nil {
-		return nil
+func (t *TransformerIter) Next() (*Span, error) {
+	span, err := t.FragmentIterator.Next()
+	if err != nil {
+		return nil, err
 	}
 	return t.applyTransform(span)
 }
 
 // Prev implements the FragmentIterator interface.
-func (t *TransformerIter) Prev() *Span {
-	span := t.FragmentIterator.Prev()
-	if span == nil {
-		return nil
+func (t *TransformerIter) Prev() (*Span, error) {
+	span, err := t.FragmentIterator.Prev()
+	if err != nil {
+		return nil, err
 	}
 	return t.applyTransform(span)
 }
 
-// Error implements the FragmentIterator interface.
-func (t *TransformerIter) Error() error {
-	if t.err != nil {
-		return t.err
-	}
-	return t.FragmentIterator.Error()
-}
-
 // Close implements the FragmentIterator interface.
 func (t *TransformerIter) Close() error {
-	err := t.FragmentIterator.Close()
-	if err != nil {
-		return err
-	}
-	return t.err
+	return t.FragmentIterator.Close()
 }

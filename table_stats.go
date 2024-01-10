@@ -371,7 +371,8 @@ func (d *DB) loadTableRangeDelStats(
 	// numbers. Also, merging abutting tombstones reduces the number of calls to
 	// estimateReclaimedSizeBeneath which is costly, and improves the accuracy of
 	// our overall estimate.
-	for s := iter.First(); s != nil; s = iter.Next() {
+	s, err := iter.First()
+	for ; s != nil; s, err = iter.Next() {
 		start, end := s.Start, s.End
 		// We only need to consider deletion size estimates for tables that contain
 		// RANGEDELs.
@@ -459,7 +460,10 @@ func (d *DB) loadTableRangeDelStats(
 		copy(hint.end, end)
 		compactionHints = append(compactionHints, hint)
 	}
-	return compactionHints, err
+	if err != nil {
+		return nil, err
+	}
+	return compactionHints, nil
 }
 
 func (d *DB) estimateSizesBeneath(

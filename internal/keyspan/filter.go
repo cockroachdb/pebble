@@ -40,52 +40,77 @@ func Filter(iter FragmentIterator, filter FilterFunc, cmp base.Compare) Fragment
 }
 
 // SeekGE implements FragmentIterator.
-func (i *filteringIter) SeekGE(key []byte) *Span {
-	span := i.filter(i.iter.SeekGE(key), +1)
+func (i *filteringIter) SeekGE(key []byte) (*Span, error) {
+	s, err := i.iter.SeekGE(key)
+	if err != nil {
+		return nil, err
+	}
+	s, err = i.filter(s, +1)
+	if err != nil {
+		return nil, err
+	}
 	// i.filter could return a span that's less than key, _if_ the filterFunc
 	// (which has no knowledge of the seek key) mutated the span to end at a key
 	// less than or equal to `key`. Detect this case and next/invalidate the iter.
-	if span != nil && i.cmp(span.End, key) <= 0 {
+	if s != nil && i.cmp(s.End, key) <= 0 {
 		return i.Next()
 	}
-	return span
+	return s, nil
 }
 
 // SeekLT implements FragmentIterator.
-func (i *filteringIter) SeekLT(key []byte) *Span {
-	span := i.filter(i.iter.SeekLT(key), -1)
+func (i *filteringIter) SeekLT(key []byte) (*Span, error) {
+	span, err := i.iter.SeekLT(key)
+	if err != nil {
+		return nil, err
+	}
+	span, err = i.filter(span, -1)
+	if err != nil {
+		return nil, err
+	}
 	// i.filter could return a span that's >= key, _if_ the filterFunc (which has
 	// no knowledge of the seek key) mutated the span to start at a key greater
 	// than or equal to `key`. Detect this case and prev/invalidate the iter.
 	if span != nil && i.cmp(span.Start, key) >= 0 {
 		return i.Prev()
 	}
-	return span
+	return span, nil
 }
 
 // First implements FragmentIterator.
-func (i *filteringIter) First() *Span {
-	return i.filter(i.iter.First(), +1)
+func (i *filteringIter) First() (*Span, error) {
+	s, err := i.iter.First()
+	if err != nil {
+		return nil, err
+	}
+	return i.filter(s, +1)
 }
 
 // Last implements FragmentIterator.
-func (i *filteringIter) Last() *Span {
-	return i.filter(i.iter.Last(), -1)
+func (i *filteringIter) Last() (*Span, error) {
+	s, err := i.iter.Last()
+	if err != nil {
+		return nil, err
+	}
+	return i.filter(s, -1)
 }
 
 // Next implements FragmentIterator.
-func (i *filteringIter) Next() *Span {
-	return i.filter(i.iter.Next(), +1)
+func (i *filteringIter) Next() (*Span, error) {
+	s, err := i.iter.Next()
+	if err != nil {
+		return nil, err
+	}
+	return i.filter(s, +1)
 }
 
 // Prev implements FragmentIterator.
-func (i *filteringIter) Prev() *Span {
-	return i.filter(i.iter.Prev(), -1)
-}
-
-// Error implements FragmentIterator.
-func (i *filteringIter) Error() error {
-	return i.iter.Error()
+func (i *filteringIter) Prev() (*Span, error) {
+	s, err := i.iter.Prev()
+	if err != nil {
+		return nil, err
+	}
+	return i.filter(s, -1)
 }
 
 // Close implements FragmentIterator.
@@ -97,21 +122,23 @@ func (i *filteringIter) Close() error {
 // given Span. If the current Span is to be skipped, the iterator continues
 // iterating in the given direction until it lands on a Span that should be
 // returned, or the iterator becomes invalid.
-func (i *filteringIter) filter(span *Span, dir int8) *Span {
+func (i *filteringIter) filter(span *Span, dir int8) (*Span, error) {
 	if i.filterFn == nil {
-		return span
+		return span, nil
 	}
-	for i.Error() == nil && span != nil {
+	var err error
+	for span != nil {
 		if keep := i.filterFn(span, &i.span); keep {
-			return &i.span
+			return &i.span, nil
 		}
 		if dir == +1 {
-			span = i.iter.Next()
+			span, err = i.iter.Next()
 		} else {
-			span = i.iter.Prev()
+			span, err = i.iter.Prev()
 		}
 	}
-	return span
+	// NB: err may be nil or non-nil.
+	return span, err
 }
 
 // WrapChildren implements FragmentIterator.
