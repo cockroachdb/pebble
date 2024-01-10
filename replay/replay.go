@@ -1023,7 +1023,8 @@ func loadFlushedSSTableKeys(
 				return err
 			} else if iter != nil {
 				defer iter.Close()
-				for s := iter.First(); s != nil; s = iter.Next() {
+				s, err := iter.First()
+				for ; s != nil; s, err = iter.Next() {
 					if err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
 						var key flushedKey
 						key.Trailer = k.Trailer
@@ -1035,6 +1036,9 @@ func loadFlushedSSTableKeys(
 						return err
 					}
 				}
+				if err != nil {
+					return err
+				}
 			}
 
 			// Load all the range keys.
@@ -1042,7 +1046,8 @@ func loadFlushedSSTableKeys(
 				return err
 			} else if iter != nil {
 				defer iter.Close()
-				for s := iter.First(); s != nil; s = iter.Next() {
+				s, err := iter.First()
+				for ; s != nil; s, err = iter.Next() {
 					if err := rangekey.Encode(s, func(k base.InternalKey, v []byte) error {
 						var key flushedKey
 						key.Trailer = k.Trailer
@@ -1053,6 +1058,9 @@ func loadFlushedSSTableKeys(
 					}); err != nil {
 						return err
 					}
+				}
+				if err != nil {
+					return err
 				}
 			}
 			return nil

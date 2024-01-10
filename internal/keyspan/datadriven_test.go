@@ -286,7 +286,6 @@ func (s startKey) value(pctx *probeContext) any {
 
 type probeIterator struct {
 	iter     FragmentIterator
-	err      error
 	probe    probe
 	probeCtx probeContext
 }
@@ -294,73 +293,64 @@ type probeIterator struct {
 // Assert that probeIterator implements the fragment iterator interface.
 var _ FragmentIterator = (*probeIterator)(nil)
 
-func (p *probeIterator) handleOp(preProbeOp op) *Span {
+func (p *probeIterator) handleOp(preProbeOp op) (*Span, error) {
 	p.probeCtx.op = preProbeOp
-	if preProbeOp.Span == nil && p.iter != nil {
-		p.probeCtx.op.Err = p.iter.Error()
-	}
-
 	p.probe.probe(&p.probeCtx)
-	p.err = p.probeCtx.op.Err
-	return p.probeCtx.op.Span
+	return p.probeCtx.op.Span, p.probeCtx.op.Err
 }
 
-func (p *probeIterator) SeekGE(key []byte) *Span {
+func (p *probeIterator) SeekGE(key []byte) (*Span, error) {
 	op := op{
 		Kind:    OpSeekGE,
 		SeekKey: key,
 	}
 	if p.iter != nil {
-		op.Span = p.iter.SeekGE(key)
+		op.Span, op.Err = p.iter.SeekGE(key)
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) SeekLT(key []byte) *Span {
+func (p *probeIterator) SeekLT(key []byte) (*Span, error) {
 	op := op{
 		Kind:    OpSeekLT,
 		SeekKey: key,
 	}
 	if p.iter != nil {
-		op.Span = p.iter.SeekLT(key)
+		op.Span, op.Err = p.iter.SeekLT(key)
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) First() *Span {
+func (p *probeIterator) First() (*Span, error) {
 	op := op{Kind: OpFirst}
 	if p.iter != nil {
-		op.Span = p.iter.First()
+		op.Span, op.Err = p.iter.First()
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) Last() *Span {
+func (p *probeIterator) Last() (*Span, error) {
 	op := op{Kind: OpLast}
 	if p.iter != nil {
-		op.Span = p.iter.Last()
+		op.Span, op.Err = p.iter.Last()
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) Next() *Span {
+func (p *probeIterator) Next() (*Span, error) {
 	op := op{Kind: OpNext}
 	if p.iter != nil {
-		op.Span = p.iter.Next()
+		op.Span, op.Err = p.iter.Next()
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) Prev() *Span {
+func (p *probeIterator) Prev() (*Span, error) {
 	op := op{Kind: OpPrev}
 	if p.iter != nil {
-		op.Span = p.iter.Prev()
+		op.Span, op.Err = p.iter.Prev()
 	}
 	return p.handleOp(op)
-}
-
-func (p *probeIterator) Error() error {
-	return p.err
 }
 
 func (p *probeIterator) Close() error {
@@ -368,11 +358,8 @@ func (p *probeIterator) Close() error {
 	if p.iter != nil {
 		op.Err = p.iter.Close()
 	}
-
-	p.probeCtx.op = op
-	p.probe.probe(&p.probeCtx)
-	p.err = p.probeCtx.op.Err
-	return p.err
+	_, err := p.handleOp(op)
+	return err
 }
 
 func (p *probeIterator) WrapChildren(wrap WrapFn) {
@@ -403,34 +390,35 @@ var iterDelim = map[rune]bool{',': true, ' ': true, '(': true, ')': true, '"': t
 func runIterOp(w io.Writer, it FragmentIterator, op string) {
 	fields := strings.FieldsFunc(op, func(r rune) bool { return iterDelim[r] })
 	var s *Span
+	var err error
 	switch strings.ToLower(fields[0]) {
 	case "first":
-		s = it.First()
+		s, err = it.First()
 	case "last":
-		s = it.Last()
+		s, err = it.Last()
 	case "seekge", "seek-ge":
 		if len(fields) == 1 {
 			panic(fmt.Sprintf("unable to parse iter op %q", op))
 		}
-		s = it.SeekGE([]byte(fields[1]))
+		s, err = it.SeekGE([]byte(fields[1]))
 	case "seeklt", "seek-lt":
 		if len(fields) == 1 {
 			panic(fmt.Sprintf("unable to parse iter op %q", op))
 		}
-		s = it.SeekLT([]byte(fields[1]))
+		s, err = it.SeekLT([]byte(fields[1]))
 	case "next":
-		s = it.Next()
+		s, err = it.Next()
 	case "prev":
-		s = it.Prev()
+		s, err = it.Prev()
 	default:
 		panic(fmt.Sprintf("unrecognized iter op %q", fields[0]))
 	}
-	if s == nil {
+	switch {
+	case err != nil:
+		fmt.Fprintf(w, "<nil> err=<%s>", err)
+	case s == nil:
 		fmt.Fprint(w, "<nil>")
-		if err := it.Error(); err != nil {
-			fmt.Fprintf(w, " err=<%s>", it.Error())
-		}
-		return
+	default:
+		fmt.Fprint(w, s)
 	}
-	fmt.Fprint(w, s)
 }

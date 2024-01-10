@@ -871,7 +871,7 @@ func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) 
 
 func newFlush(
 	opts *Options, cur *version, baseLevel int, flushing flushableList, beganAt time.Time,
-) *compaction {
+) (*compaction, error) {
 	c := &compaction{
 		kind:              compactionKindFlush,
 		cmp:               opts.Comparer.Compare,
@@ -895,7 +895,7 @@ func newFlush(
 				panic("pebble: ingestedFlushable must be flushed one at a time.")
 			}
 			c.kind = compactionKindIngestedFlushable
-			return c
+			return c, nil
 		}
 	}
 
@@ -929,24 +929,29 @@ func newFlush(
 		}
 	}
 
-	updateRangeBounds := func(iter keyspan.FragmentIterator) {
+	updateRangeBounds := func(iter keyspan.FragmentIterator) error {
 		// File bounds require s != nil && !s.Empty(). We only need to check for
 		// s != nil here, as the memtable's FragmentIterator would never surface
 		// empty spans.
-		if s := iter.First(); s != nil {
+		if s, err := iter.First(); err != nil {
+			return err
+		} else if s != nil {
 			if key := s.SmallestKey(); !smallestSet ||
 				base.InternalCompare(c.cmp, c.smallest, key) > 0 {
 				smallestSet = true
 				c.smallest = key.Clone()
 			}
 		}
-		if s := iter.Last(); s != nil {
+		if s, err := iter.Last(); err != nil {
+			return err
+		} else if s != nil {
 			if key := s.LargestKey(); !largestSet ||
 				base.InternalCompare(c.cmp, c.largest, key) < 0 {
 				largestSet = true
 				c.largest = key.Clone()
 			}
 		}
+		return nil
 	}
 
 	var flushingBytes uint64
@@ -954,10 +959,14 @@ func newFlush(
 		f := flushing[i]
 		updatePointBounds(f.newIter(nil))
 		if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
-			updateRangeBounds(rangeDelIter)
+			if err := updateRangeBounds(rangeDelIter); err != nil {
+				return nil, err
+			}
 		}
 		if rangeKeyIter := f.newRangeKeyIter(nil); rangeKeyIter != nil {
-			updateRangeBounds(rangeKeyIter)
+			if err := updateRangeBounds(rangeKeyIter); err != nil {
+				return nil, err
+			}
 		}
 		flushingBytes += f.inuseBytes()
 	}
@@ -971,7 +980,7 @@ func newFlush(
 	}
 
 	c.setupInuseKeyRanges()
-	return c
+	return c, nil
 }
 
 func (c *compaction) hasExtraLevelData() bool {
@@ -1909,8 +1918,11 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		}
 	}
 
-	c := newFlush(d.opts, d.mu.versions.currentVersion(),
+	c, err := newFlush(d.opts, d.mu.versions.currentVersion(),
 		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], d.timeNow())
+	if err != nil {
+		return 0, err
+	}
 	d.addInProgressCompaction(c)
 
 	jobID := d.mu.nextJobID

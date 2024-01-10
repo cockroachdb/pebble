@@ -981,7 +981,8 @@ func TestBatchRangeOps(t *testing.T) {
 
 			var buf bytes.Buffer
 			if fragmentIter != nil {
-				for s := fragmentIter.First(); s != nil; s = fragmentIter.Next() {
+				s, err := fragmentIter.First()
+				for ; s != nil; s, err = fragmentIter.Next() {
 					for i := range s.Keys {
 						s.Keys[i].Trailer = base.MakeTrailer(
 							s.Keys[i].SeqNum()&^base.InternalKeySeqNumBatch,
@@ -989,6 +990,9 @@ func TestBatchRangeOps(t *testing.T) {
 						)
 					}
 					fmt.Fprintln(&buf, s)
+				}
+				if err != nil {
+					return err.Error()
 				}
 			} else {
 				for k, v := internalIter.First(); k != nil; k, v = internalIter.Next() {
@@ -1184,8 +1188,12 @@ func scanInternalIter(w io.Writer, ii internalIterator) {
 }
 
 func scanKeyspanIterator(w io.Writer, ki keyspan.FragmentIterator) {
-	for s := ki.First(); s != nil; s = ki.Next() {
+	s, err := ki.First()
+	for ; s != nil; s, err = ki.Next() {
 		fmt.Fprintln(w, s)
+	}
+	if err != nil {
+		fmt.Fprintf(w, "err=%q", err.Error())
 	}
 }
 

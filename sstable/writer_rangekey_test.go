@@ -112,8 +112,12 @@ func TestWriter_RangeKeys(t *testing.T) {
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for s := iter.First(); s != nil; s = iter.Next() {
+			s, err := iter.First()
+			for ; s != nil; s, err = iter.Next() {
 				_, _ = fmt.Fprintf(&buf, "%s\n", s)
+			}
+			if err != nil {
+				return err.Error()
 			}
 			return buf.String()
 

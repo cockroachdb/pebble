@@ -109,62 +109,57 @@ func (i *assertIter) check(span *Span) {
 }
 
 // SeekGE implements FragmentIterator.
-func (i *assertIter) SeekGE(key []byte) *Span {
-	span := i.iter.SeekGE(key)
+func (i *assertIter) SeekGE(key []byte) (*Span, error) {
+	span, err := i.iter.SeekGE(key)
 	if span != nil && i.cmp(span.End, key) <= 0 {
 		i.panicf("incorrect SeekGE(%q) span %s", key, span)
 	}
 	i.check(span)
-	return span
+	return span, err
 }
 
 // SeekLT implements FragmentIterator.
-func (i *assertIter) SeekLT(key []byte) *Span {
-	span := i.iter.SeekLT(key)
+func (i *assertIter) SeekLT(key []byte) (*Span, error) {
+	span, err := i.iter.SeekLT(key)
 	if span != nil && i.cmp(span.Start, key) >= 0 {
 		i.panicf("incorrect SeekLT(%q) span %s", key, span)
 	}
 	i.check(span)
-	return span
+	return span, err
 }
 
 // First implements FragmentIterator.
-func (i *assertIter) First() *Span {
-	span := i.iter.First()
+func (i *assertIter) First() (*Span, error) {
+	span, err := i.iter.First()
 	i.check(span)
-	return span
+	return span, err
 }
 
 // Last implements FragmentIterator.
-func (i *assertIter) Last() *Span {
-	span := i.iter.Last()
+func (i *assertIter) Last() (*Span, error) {
+	span, err := i.iter.Last()
 	i.check(span)
-	return span
+	return span, err
 }
 
 // Next implements FragmentIterator.
-func (i *assertIter) Next() *Span {
-	span := i.iter.Next()
+func (i *assertIter) Next() (*Span, error) {
+	span, err := i.iter.Next()
 	if span != nil && len(i.lastSpanEnd) > 0 && i.cmp(i.lastSpanEnd, span.Start) > 0 {
 		i.panicf("Next span %s not after last span end %q", span, i.lastSpanEnd)
 	}
 	i.check(span)
-	return span
+	return span, err
 }
 
 // Prev implements FragmentIterator.
-func (i *assertIter) Prev() *Span {
-	span := i.iter.Prev()
+func (i *assertIter) Prev() (*Span, error) {
+	span, err := i.iter.Prev()
 	if span != nil && len(i.lastSpanStart) > 0 && i.cmp(i.lastSpanStart, span.End) < 0 {
 		i.panicf("Prev span %s not before last span start %q", span, i.lastSpanStart)
 	}
 	i.check(span)
-	return span
-}
-
-// Error implements FragmentIterator.
-func (i *assertIter) Error() error {
-	return i.iter.Error()
+	return span, err
 }
 
 // Close implements FragmentIterator.

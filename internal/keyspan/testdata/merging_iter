@@ -368,40 +368,28 @@ seek-ge k
 seek-ge z
 ----
 #  a.SeekLT("a") = nil <err="injected error">
-#  b.SeekLT("a") = nil
 <nil> err=<injected error>
 #  a.SeekLT("b") = nil <err="injected error">
-#  b.SeekLT("b") = a-c:{(#3,RANGEKEYUNSET,@1)}
 <nil> err=<injected error>
 #  a.SeekLT("c") = nil <err="injected error">
-#  b.SeekLT("c") = a-c:{(#3,RANGEKEYUNSET,@1)}
 <nil> err=<injected error>
 #  a.SeekLT("d") = nil <err="injected error">
-#  b.SeekLT("d") = a-c:{(#3,RANGEKEYUNSET,@1)}
 <nil> err=<injected error>
 #  a.SeekLT("e") = nil <err="injected error">
-#  b.SeekLT("e") = a-c:{(#3,RANGEKEYUNSET,@1)}
 <nil> err=<injected error>
 #  a.SeekLT("f") = nil <err="injected error">
-#  b.SeekLT("f") = a-c:{(#3,RANGEKEYUNSET,@1)}
 <nil> err=<injected error>
 #  a.SeekLT("g") = nil <err="injected error">
-#  b.SeekLT("g") = a-c:{(#3,RANGEKEYUNSET,@1)}
 <nil> err=<injected error>
 #  a.SeekLT("h") = nil <err="injected error">
-#  b.SeekLT("h") = a-c:{(#3,RANGEKEYUNSET,@1)}
 <nil> err=<injected error>
 #  a.SeekLT("i") = nil <err="injected error">
-#  b.SeekLT("i") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekLT("j") = nil <err="injected error">
-#  b.SeekLT("j") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekLT("k") = nil <err="injected error">
-#  b.SeekLT("k") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekLT("z") = nil <err="injected error">
-#  b.SeekLT("z") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 
 # Test the same as above, but with errors injected on the second iterator.
@@ -474,40 +462,28 @@ seek-lt k
 seek-lt z
 ----
 #  a.SeekGE("a") = nil <err="injected error">
-#  b.SeekGE("a") = a-c:{(#3,RANGEKEYUNSET,@1)}
 <nil> err=<injected error>
 #  a.SeekGE("b") = nil <err="injected error">
-#  b.SeekGE("b") = a-c:{(#3,RANGEKEYUNSET,@1)}
 <nil> err=<injected error>
 #  a.SeekGE("c") = nil <err="injected error">
-#  b.SeekGE("c") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekGE("d") = nil <err="injected error">
-#  b.SeekGE("d") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekGE("e") = nil <err="injected error">
-#  b.SeekGE("e") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekGE("f") = nil <err="injected error">
-#  b.SeekGE("f") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekGE("g") = nil <err="injected error">
-#  b.SeekGE("g") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekGE("h") = nil <err="injected error">
-#  b.SeekGE("h") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekGE("i") = nil <err="injected error">
-#  b.SeekGE("i") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekGE("j") = nil <err="injected error">
-#  b.SeekGE("j") = h-k:{(#5,RANGEKEYDEL)}
 <nil> err=<injected error>
 #  a.SeekGE("k") = nil <err="injected error">
-#  b.SeekGE("k") = nil
 <nil> err=<injected error>
 #  a.SeekGE("z") = nil <err="injected error">
-#  b.SeekGE("z") = nil
 <nil> err=<injected error>
 
 # Test SeekLTs with errors injected on the second iterator.

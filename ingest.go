@@ -326,17 +326,18 @@ func ingestLoad1(
 	if iter != nil {
 		defer iter.Close()
 		var smallest InternalKey
-		if s := iter.First(); s != nil {
+		if s, err := iter.First(); err != nil {
+			return nil, err
+		} else if s != nil {
 			key := s.SmallestKey()
 			if err := ingestValidateKey(opts, &key); err != nil {
 				return nil, err
 			}
 			smallest = key.Clone()
 		}
-		if err := iter.Error(); err != nil {
+		if s, err := iter.Last(); err != nil {
 			return nil, err
-		}
-		if s := iter.Last(); s != nil {
+		} else if s != nil {
 			k := s.SmallestKey()
 			if err := ingestValidateKey(opts, &k); err != nil {
 				return nil, err
@@ -355,17 +356,18 @@ func ingestLoad1(
 		if iter != nil {
 			defer iter.Close()
 			var smallest InternalKey
-			if s := iter.First(); s != nil {
+			if s, err := iter.First(); err != nil {
+				return nil, err
+			} else if s != nil {
 				key := s.SmallestKey()
 				if err := ingestValidateKey(opts, &key); err != nil {
 					return nil, err
 				}
 				smallest = key.Clone()
 			}
-			if err := iter.Error(); err != nil {
+			if s, err := iter.Last(); err != nil {
 				return nil, err
-			}
-			if s := iter.Last(); s != nil {
+			} else if s != nil {
 				k := s.SmallestKey()
 				if err := ingestValidateKey(opts, &k); err != nil {
 					return nil, err
@@ -374,9 +376,6 @@ func ingestLoad1(
 				// the table provides the upper bound for the table.
 				largest := s.LargestKey().Clone()
 				meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallest, largest)
-			}
-			if err := iter.Error(); err != nil {
-				return nil, err
 			}
 		}
 	}
@@ -755,13 +754,18 @@ func overlapWithIterator(
 		return true
 	}
 
-	computeOverlapWithSpans := func(rIter keyspan.FragmentIterator) bool {
+	computeOverlapWithSpans := func(rIter keyspan.FragmentIterator) (bool, error) {
 		// NB: The spans surfaced by the fragment iterator are non-overlapping.
-		span := rIter.SeekLT(keyRange.smallest.UserKey)
-		if span == nil {
-			span = rIter.Next()
+		span, err := rIter.SeekLT(keyRange.smallest.UserKey)
+		if err != nil {
+			return false, err
+		} else if span == nil {
+			span, err = rIter.Next()
+			if err != nil {
+				return false, err
+			}
 		}
-		for ; span != nil; span = rIter.Next() {
+		for ; span != nil; span, err = rIter.Next() {
 			if span.Empty() {
 				continue
 			}
@@ -770,26 +774,26 @@ func overlapWithIterator(
 			if c > 0 {
 				// The start of the span is after the largest key in the
 				// ingested table.
-				return false
+				return false, nil
 			}
 			if cmp(span.End, keyRange.smallest.UserKey) > 0 {
 				// The end of the span is greater than the smallest in the
 				// table. Note that the span end key is exclusive, thus ">0"
 				// instead of ">=0".
-				return true
+				return true, nil
 			}
 		}
-		// Assume overlap if iterator errored.
-		if err := rIter.Error(); err != nil {
-			return true
+		if err != nil {
+			return false, err
 		}
-		return false
+		return false, nil
 	}
 
 	// rkeyIter is either a range key level iter, or a range key iterator
 	// over a single file.
 	if rkeyIter != nil {
-		if computeOverlapWithSpans(rkeyIter) {
+		// If an error occurs, assume overlap.
+		if overlap, err := computeOverlapWithSpans(rkeyIter); overlap || err != nil {
 			return true
 		}
 	}
@@ -798,7 +802,9 @@ func overlapWithIterator(
 	if rangeDelIter == nil || *rangeDelIter == nil {
 		return false
 	}
-	return computeOverlapWithSpans(*rangeDelIter)
+	overlap, err := computeOverlapWithSpans(*rangeDelIter)
+	// If an error occurs, assume overlap.
+	return overlap || err != nil
 }
 
 // ingestTargetLevel returns the target level for a file being ingested.
@@ -1685,8 +1691,9 @@ func (d *DB) excise(
 			var lastRangeDel []byte
 			if rangeDelIter != nil {
 				defer rangeDelIter.Close()
-				rdel := rangeDelIter.SeekLT(exciseSpan.Start)
-				if rdel != nil {
+				if rdel, err := rangeDelIter.SeekLT(exciseSpan.Start); err != nil {
+					return nil, err
+				} else if rdel != nil {
 					lastRangeDel = append(lastRangeDel[:0], rdel.End...)
 					if d.cmp(lastRangeDel, exciseSpan.Start) > 0 {
 						lastRangeDel = exciseSpan.Start
@@ -1712,8 +1719,9 @@ func (d *DB) excise(
 			var lastRangeKey []byte
 			var lastRangeKeyKind InternalKeyKind
 			defer rangeKeyIter.Close()
-			rkey := rangeKeyIter.SeekLT(exciseSpan.Start)
-			if rkey != nil {
+			if rkey, err := rangeKeyIter.SeekLT(exciseSpan.Start); err != nil {
+				return nil, err
+			} else if rkey != nil {
 				lastRangeKey = append(lastRangeKey[:0], rkey.End...)
 				if d.cmp(lastRangeKey, exciseSpan.Start) > 0 {
 					lastRangeKey = exciseSpan.Start
@@ -1804,8 +1812,10 @@ func (d *DB) excise(
 		// Store the max of (exciseSpan.End, rdel.Start) in firstRangeDel. This
 		// needs to be a copy if the key is owned by the range del iter.
 		var firstRangeDel []byte
-		rdel := rangeDelIter.SeekGE(exciseSpan.End)
-		if rdel != nil {
+		rdel, err := rangeDelIter.SeekGE(exciseSpan.End)
+		if err != nil {
+			return nil, err
+		} else if rdel != nil {
 			firstRangeDel = append(firstRangeDel[:0], rdel.Start...)
 			if d.cmp(firstRangeDel, exciseSpan.End) < 0 {
 				firstRangeDel = exciseSpan.End
@@ -1831,8 +1841,10 @@ func (d *DB) excise(
 		// Store the max of (exciseSpan.End, rkey.Start) in firstRangeKey. This
 		// needs to be a copy if the key is owned by the range key iter.
 		var firstRangeKey []byte
-		rkey := rangeKeyIter.SeekGE(exciseSpan.End)
-		if rkey != nil {
+		rkey, err := rangeKeyIter.SeekGE(exciseSpan.End)
+		if err != nil {
+			return nil, err
+		} else if rkey != nil {
 			firstRangeKey = append(firstRangeKey[:0], rkey.Start...)
 			if d.cmp(firstRangeKey, exciseSpan.End) < 0 {
 				firstRangeKey = exciseSpan.End

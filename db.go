@@ -3090,7 +3090,10 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 		pointKey, _ := pointIter.First()
 		var rangeDel *keyspan.Span
 		if rangeDelIter != nil {
-			rangeDel = rangeDelIter.First()
+			rangeDel, err = rangeDelIter.First()
+			if err != nil {
+				panic(err)
+			}
 		}
 
 		// Check that the lower bound is tight.
@@ -3102,7 +3105,10 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 		pointKey, _ = pointIter.Last()
 		rangeDel = nil
 		if rangeDelIter != nil {
-			rangeDel = rangeDelIter.Last()
+			rangeDel, err = rangeDelIter.Last()
+			if err != nil {
+				panic(err)
+			}
 		}
 
 		// Check that the upper bound is tight.
@@ -3119,14 +3125,17 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 		}
 
 		if rangeDelIter != nil {
-			for key := rangeDelIter.First(); key != nil; key = rangeDelIter.Next() {
-				if d.cmp(key.SmallestKey().UserKey, m.SmallestPointKey.UserKey) < 0 {
-					panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, key.SmallestKey().UserKey))
+			s, err := rangeDelIter.First()
+			for ; s != nil; s, err = rangeDelIter.Next() {
+				if d.cmp(s.SmallestKey().UserKey, m.SmallestPointKey.UserKey) < 0 {
+					panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, s.SmallestKey().UserKey))
 				}
-
-				if d.cmp(key.LargestKey().UserKey, m.LargestPointKey.UserKey) > 0 {
-					panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, key.LargestKey().UserKey))
+				if d.cmp(s.LargestKey().UserKey, m.LargestPointKey.UserKey) > 0 {
+					panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, s.LargestKey().UserKey))
 				}
+			}
+			if err != nil {
+				panic(err)
 			}
 		}
 	}
@@ -3136,28 +3145,35 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 	}
 
 	rangeKeyIter, err := d.tableNewRangeKeyIter(m, keyspan.SpanIterOptions{})
-	defer rangeKeyIter.Close()
-
 	if err != nil {
 		panic(errors.Wrap(err, "pebble: error creating range key iterator"))
 	}
+	defer rangeKeyIter.Close()
 
 	// Check that the lower bound is tight.
-	if d.cmp(rangeKeyIter.First().SmallestKey().UserKey, m.SmallestRangeKey.UserKey) != 0 {
+	if s, err := rangeKeyIter.First(); err != nil {
+		panic(err)
+	} else if d.cmp(s.SmallestKey().UserKey, m.SmallestRangeKey.UserKey) != 0 {
 		panic(errors.Newf("pebble: virtual sstable %s lower range key bound is not tight", m.FileNum))
 	}
 
 	// Check that upper bound is tight.
-	if d.cmp(rangeKeyIter.Last().LargestKey().UserKey, m.LargestRangeKey.UserKey) != 0 {
+	if s, err := rangeKeyIter.Last(); err != nil {
+		panic(err)
+	} else if d.cmp(s.LargestKey().UserKey, m.LargestRangeKey.UserKey) != 0 {
 		panic(errors.Newf("pebble: virtual sstable %s upper range key bound is not tight", m.FileNum))
 	}
 
-	for key := rangeKeyIter.First(); key != nil; key = rangeKeyIter.Next() {
-		if d.cmp(key.SmallestKey().UserKey, m.SmallestRangeKey.UserKey) < 0 {
-			panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, key.SmallestKey().UserKey))
+	s, err := rangeKeyIter.First()
+	for ; s != nil; s, err = rangeKeyIter.Next() {
+		if d.cmp(s.SmallestKey().UserKey, m.SmallestRangeKey.UserKey) < 0 {
+			panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, s.SmallestKey().UserKey))
 		}
-		if d.cmp(key.LargestKey().UserKey, m.LargestRangeKey.UserKey) > 0 {
-			panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, key.LargestKey().UserKey))
+		if d.cmp(s.LargestKey().UserKey, m.LargestRangeKey.UserKey) > 0 {
+			panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, s.LargestKey().UserKey))
 		}
+	}
+	if err != nil {
+		panic(err)
 	}
 }

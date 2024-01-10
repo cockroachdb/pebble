@@ -320,24 +320,29 @@ func TestLevelIterEquivalence(t *testing.T) {
 
 		iter1.Init(base.DefaultComparer.Compare, VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), fileIters...)
 		iter2.Init(base.DefaultComparer.Compare, VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), levelIters...)
-		// Check iter1 and iter2 for equivalence.
 
-		require.Equal(t, iter1.First(), iter2.First(), "failed on test case %q", tc.name)
+		// Check iter1 and iter2 for equivalence.
+		s1, err1 := iter1.First()
+		s2, err2 := iter2.First()
+		require.NoError(t, err1)
+		require.NoError(t, err2)
+		require.Equal(t, s1, s2, "failed on test case %q", tc.name)
 		valid := true
 		for valid {
-			f1 := iter1.Next()
-			var f2 *Span
+			s1, err1 = iter1.Next()
+			require.NoError(t, err1)
 			for {
-				f2 = iter2.Next()
+				s2, err2 = iter2.Next()
+				require.NoError(t, err2)
 				// The level iter could produce empty spans that straddle between
 				// files. Ignore those.
-				if f2 == nil || !f2.Empty() {
+				if s2 == nil || !s2.Empty() {
 					break
 				}
 			}
 
-			require.Equal(t, f1, f2, "failed on test case %q", tc.name)
-			valid = f1 != nil && f2 != nil
+			require.Equal(t, s1, s2, "failed on test case %q", tc.name)
+			valid = s1 != nil && s2 != nil
 		}
 	}
 }

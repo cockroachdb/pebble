@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTruncate(t *testing.T) {
@@ -70,9 +71,12 @@ func TestTruncate(t *testing.T) {
 			tIter := doTruncate()
 			defer tIter.Close()
 			var truncated []Span
-			for s := tIter.First(); s != nil; s = tIter.Next() {
+			var s *Span
+			var err error
+			for s, err = tIter.First(); s != nil; s, err = tIter.Next() {
 				truncated = append(truncated, s.ShallowClone())
 			}
+			require.NoError(t, err)
 			return formatAlphabeticSpans(truncated)
 
 		case "truncate-and-save-iter":
