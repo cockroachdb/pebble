@@ -370,6 +370,10 @@ func (p *probeKeyspanIterator) Prev() *keyspan.Span {
 	return p.handleOp(op)
 }
 
+func (p *probeKeyspanIterator) WrapChildren(wrap keyspan.WrapFn) {
+	p.iter = wrap(p.iter)
+}
+
 func (p *probeKeyspanIterator) Error() error {
 	return p.err
 }
