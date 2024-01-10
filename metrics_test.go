@@ -277,6 +277,9 @@ func TestMetrics(t *testing.T) {
 				if len(m.CategoryStats) > 0 && m.CategoryStats[0].Category == "_unknown" {
 					m.CategoryStats[0].CategoryStats = sstable.CategoryStats{}
 				}
+				// CategoryStats.BlockReadDuration is deterministic when run with go
+				// test -tags 'invariants', as sstable.Reader.readBlock provides a
+				// deterministic value for testing.
 			}
 			var buf strings.Builder
 			fmt.Fprintf(&buf, "%s", m.StringForTests())

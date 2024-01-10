@@ -577,7 +577,7 @@ func (r *Reader) readBlock(
 			stats.BlockBytesInCache += bh.Length
 		}
 		if iterStats != nil {
-			iterStats.reportStats(bh.Length, bh.Length)
+			iterStats.reportStats(bh.Length, bh.Length, 0)
 		}
 		// This block is already in the cache; return a handle to existing vlaue
 		// in the cache.
@@ -678,7 +678,7 @@ func (r *Reader) readBlock(
 		stats.BlockBytes += bh.Length
 	}
 	if iterStats != nil {
-		iterStats.reportStats(bh.Length, 0)
+		iterStats.reportStats(bh.Length, 0, readDuration)
 	}
 	if decompressed.buf.Valid() {
 		return bufferHandle{b: decompressed.buf}, nil
