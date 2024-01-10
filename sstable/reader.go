@@ -558,6 +558,19 @@ func (b cacheValueOrBuf) truncate(n int) {
 	}
 }
 
+// DeterministicReadBlockDurationForTesting is for tests that want a
+// deterministic value of the time to read a block (that is not in the cache).
+// The return value is a function that must be called before the test exits.
+func DeterministicReadBlockDurationForTesting() func() {
+	drbdForTesting := deterministicReadBlockDurationForTesting
+	deterministicReadBlockDurationForTesting = true
+	return func() {
+		deterministicReadBlockDurationForTesting = drbdForTesting
+	}
+}
+
+var deterministicReadBlockDurationForTesting = false
+
 func (r *Reader) readBlock(
 	ctx context.Context,
 	bh BlockHandle,
@@ -577,7 +590,7 @@ func (r *Reader) readBlock(
 			stats.BlockBytesInCache += bh.Length
 		}
 		if iterStats != nil {
-			iterStats.reportStats(bh.Length, bh.Length)
+			iterStats.reportStats(bh.Length, bh.Length, 0)
 		}
 		// This block is already in the cache; return a handle to existing vlaue
 		// in the cache.
@@ -606,8 +619,8 @@ func (r *Reader) readBlock(
 	readDuration := time.Since(readStartTime)
 	// TODO(sumeer): should the threshold be configurable.
 	const slowReadTracingThreshold = 5 * time.Millisecond
-	// The invariants.Enabled path is for deterministic testing.
-	if invariants.Enabled {
+	// For deterministic testing.
+	if deterministicReadBlockDurationForTesting {
 		readDuration = slowReadTracingThreshold
 	}
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
@@ -678,7 +691,7 @@ func (r *Reader) readBlock(
 		stats.BlockBytes += bh.Length
 	}
 	if iterStats != nil {
-		iterStats.reportStats(bh.Length, 0)
+		iterStats.reportStats(bh.Length, 0, readDuration)
 	}
 	if decompressed.buf.Valid() {
 		return bufferHandle{b: decompressed.buf}, nil

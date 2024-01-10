@@ -97,6 +97,7 @@ func TestMetrics(t *testing.T) {
 	if runtime.GOARCH == "386" {
 		t.Skip("skipped on 32-bit due to slightly varied output")
 	}
+	defer sstable.DeterministicReadBlockDurationForTesting()()
 	c := cache.New(cacheDefaultSize)
 	defer c.Unref()
 	opts := &Options{
@@ -267,6 +268,7 @@ func TestMetrics(t *testing.T) {
 			d.mu.Unlock()
 
 			m := d.Metrics()
+			// Some subset of cases show non-determinism in cache hits/misses.
 			if td.HasArg("zero-cache-hits-misses") {
 				// Avoid non-determinism.
 				m.TableCache.Hits = 0
