@@ -93,6 +93,9 @@ func parseOptions(
 				opts.enableValueBlocks = true
 				opts.Opts.Experimental.EnableValueBlocks = func() bool { return true }
 				return true
+			case "TestOptions.disable_value_blocks_for_ingest_sstables":
+				opts.disableValueBlocksForIngestSSTables = true
+				return true
 			case "TestOptions.async_apply_to_db":
 				opts.asyncApplyToDB = true
 				return true
@@ -185,6 +188,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.enableValueBlocks {
 		fmt.Fprintf(&buf, "  enable_value_blocks=%t\n", opts.enableValueBlocks)
+	}
+	if opts.disableValueBlocksForIngestSSTables {
+		fmt.Fprintf(&buf, "  disable_value_blocks_for_ingest_sstables=%t\n", opts.disableValueBlocksForIngestSSTables)
 	}
 	if opts.asyncApplyToDB {
 		fmt.Fprint(&buf, "  async_apply_to_db=true\n")
@@ -281,6 +287,8 @@ type TestOptions struct {
 	disableBlockPropertyCollector bool
 	// Enable the use of value blocks.
 	enableValueBlocks bool
+	// Disables value blocks in the sstables written for ingest.
+	disableValueBlocksForIngestSSTables bool
 	// Use DB.ApplyNoSyncWait for applies that want to sync the WAL.
 	asyncApplyToDB bool
 	// Enable the use of shared storage.
@@ -609,6 +617,7 @@ func RandomOptions(
 	if testOpts.enableValueBlocks {
 		testOpts.Opts.Experimental.EnableValueBlocks = func() bool { return true }
 	}
+	testOpts.disableValueBlocksForIngestSSTables = rng.Intn(2) == 0
 	testOpts.asyncApplyToDB = rng.Intn(2) != 0
 	// 20% of time, enable shared storage.
 	if rng.Intn(5) == 0 {

@@ -34,6 +34,32 @@ scan-cloned-lazy-values
 3(in-place: len 4): bat3
 4(lazy: len 5, attr: 5): vbat2
 
+# Same data as previous, with disable-value-blocks set to true
+build disable-value-blocks=true
+a@2.SET.1:a2
+b@5.SET.7:b5
+b@4.DEL.3:
+b@3.SET.2:bat3
+b@2.SET.1:vbat2
+----
+value-blocks: num-values 0, num-blocks: 0, size: 0
+
+scan-raw
+----
+a@2#1,1:in-place a2, same-pre false
+b@5#7,1:in-place b5, same-pre false
+b@4#3,0:
+b@3#2,1:in-place bat3, same-pre false
+b@2#1,1:in-place vbat2, same-pre true
+
+scan
+----
+a@2#1,1:a2
+b@5#7,1:b5
+b@4#3,0:
+b@3#2,1:bat3
+b@2#1,1:vbat2
+
 # Size of value index is 3 bytes plus 5 + 5 = 10 bytes of trailer of the value
 # block and value index block. So size 33 - 13 = 20 is the total size of the
 # values in the value block.

@@ -658,10 +658,11 @@ func buildForIngest(
 
 	equal := t.opts.Comparer.Equal
 	tableFormat := db.FormatMajorVersion().MaxTableFormat()
-	w := sstable.NewWriter(
-		objstorageprovider.NewFileWritable(f),
-		t.opts.MakeWriterOptions(0, tableFormat),
-	)
+	wOpts := t.opts.MakeWriterOptions(0, tableFormat)
+	if t.testOpts.disableValueBlocksForIngestSSTables {
+		wOpts = wOpts.SetDisableValueBlocks(true)
+	}
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), wOpts)
 
 	var lastUserKey []byte
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
