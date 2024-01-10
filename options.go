@@ -56,9 +56,6 @@ type FilterWriter = base.FilterWriter
 // FilterPolicy exports the base.FilterPolicy type.
 type FilterPolicy = base.FilterPolicy
 
-// TablePropertyCollector exports the sstable.TablePropertyCollector type.
-type TablePropertyCollector = sstable.TablePropertyCollector
-
 // BlockPropertyCollector exports the sstable.BlockPropertyCollector type.
 type BlockPropertyCollector = sstable.BlockPropertyCollector
 
@@ -967,11 +964,6 @@ type Options struct {
 	// and pebble will panic otherwise.
 	TableCache *TableCache
 
-	// TablePropertyCollectors is a list of TablePropertyCollector creation
-	// functions. A new TablePropertyCollector is created for each sstable built
-	// and lives for the lifetime of the table.
-	TablePropertyCollectors []func() TablePropertyCollector
-
 	// BlockPropertyCollectors is a list of BlockPropertyCollector creation
 	// functions. A new BlockPropertyCollector is created for each sstable
 	// built and lives for the lifetime of writing that table.
@@ -1349,16 +1341,6 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", o.private.strictWALTail)
 	fmt.Fprintf(&buf, "  table_cache_shards=%d\n", o.Experimental.TableCacheShards)
-	fmt.Fprintf(&buf, "  table_property_collectors=[")
-	for i := range o.TablePropertyCollectors {
-		if i > 0 {
-			fmt.Fprintf(&buf, ",")
-		}
-		// NB: This creates a new TablePropertyCollector, but Options.String() is
-		// called rarely so the overhead of doing so is not consequential.
-		fmt.Fprintf(&buf, "%s", o.TablePropertyCollectors[i]().Name())
-	}
-	fmt.Fprintf(&buf, "]\n")
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
@@ -1654,7 +1636,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					return errors.Errorf("pebble: unknown table format: %q", errors.Safe(value))
 				}
 			case "table_property_collectors":
-				// TODO(peter): set o.TablePropertyCollectors
+				// No longer implemented; ignore.
 			case "validate_on_ingest":
 				o.Experimental.ValidateOnIngest, err = strconv.ParseBool(value)
 			case "wal_dir":
@@ -1853,7 +1835,6 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 		if o.Merger != nil {
 			writerOpts.MergerName = o.Merger.Name
 		}
-		writerOpts.TablePropertyCollectors = o.TablePropertyCollectors
 		writerOpts.BlockPropertyCollectors = o.BlockPropertyCollectors
 	}
 	if format >= sstable.TableFormatPebblev3 {

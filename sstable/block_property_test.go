@@ -1420,18 +1420,6 @@ func (p *intSuffixCollector) setFromSuffix(to []byte) error {
 	return nil
 }
 
-type intSuffixTablePropCollector struct {
-	name string
-	intSuffixCollector
-}
-
-var _ TablePropertyCollector = &intSuffixTablePropCollector{}
-var _ SuffixReplaceableTableCollector = &intSuffixTablePropCollector{}
-
-func intSuffixTablePropCollectorFn(name string, len int) func() TablePropertyCollector {
-	return func() TablePropertyCollector { return &intSuffixTablePropCollector{name, makeIntSuffixCollector(len)} }
-}
-
 func (p *intSuffixCollector) Add(key InternalKey, _ []byte) error {
 	if len(key.UserKey) > p.suffixLen {
 		parsed, err := strconv.Atoi(string(key.UserKey[len(key.UserKey)-p.suffixLen:]))
@@ -1447,20 +1435,6 @@ func (p *intSuffixCollector) Add(key InternalKey, _ []byte) error {
 		}
 	}
 	return nil
-}
-
-func (p *intSuffixTablePropCollector) Finish(userProps map[string]string) error {
-	userProps[p.name+".min"] = fmt.Sprint(p.min)
-	userProps[p.name+".max"] = fmt.Sprint(p.max)
-	return nil
-}
-
-func (p *intSuffixTablePropCollector) Name() string { return p.name }
-
-func (p *intSuffixTablePropCollector) UpdateKeySuffixes(
-	oldProps map[string]string, from, to []byte,
-) error {
-	return p.setFromSuffix(to)
 }
 
 // testIntSuffixIntervalCollector is a wrapper for testIntSuffixCollector that

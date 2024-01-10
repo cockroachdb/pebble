@@ -21,9 +21,6 @@ func TestRewriteSuffixProps(t *testing.T) {
 			wOpts := WriterOptions{
 				FilterPolicy: bloom.FilterPolicy(10),
 				Comparer:     test4bSuffixComparer,
-				TablePropertyCollectors: []func() TablePropertyCollector{
-					intSuffixTablePropCollectorFn("ts3", 3), intSuffixTablePropCollectorFn("ts2", 2),
-				},
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					keyCountCollectorFn("count"),
 					intSuffixIntervalCollectorFn("bp3", 3),
@@ -42,11 +39,6 @@ func TestRewriteSuffixProps(t *testing.T) {
 			sst := make4bSuffixTestSST(t, wOpts, []byte(from), keyCount, rangeKeyCount)
 
 			expectedProps := make(map[string]string)
-			expectedProps["ts2.min"] = "46"
-			expectedProps["ts2.max"] = "46"
-			expectedProps["ts3.min"] = "646"
-			expectedProps["ts3.max"] = "646"
-
 			// Also expect to see the aggregated block properties with their updated value
 			// at the correct (new) shortIDs. Seeing the rolled up value here is almost an
 			// end-to-end test since we only fed them each block during rewrite.

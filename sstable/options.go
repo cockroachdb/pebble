@@ -61,49 +61,6 @@ type FilterWriter = base.FilterWriter
 // FilterPolicy exports the base.FilterPolicy type.
 type FilterPolicy = base.FilterPolicy
 
-// TablePropertyCollector provides a hook for collecting user-defined
-// properties based on the keys and values stored in an sstable. A new
-// TablePropertyCollector is created for an sstable when the sstable is being
-// written.
-type TablePropertyCollector interface {
-	// Add is called with each new entry added to the sstable. While the sstable
-	// is itself sorted by key, do not assume that the entries are added in any
-	// order. In particular, the ordering of point entries and range tombstones
-	// is unspecified.
-	Add(key InternalKey, value []byte) error
-
-	// Finish is called when all entries have been added to the sstable. The
-	// collected properties (if any) should be added to the specified map. Note
-	// that in case of an error during sstable construction, Finish may not be
-	// called.
-	Finish(userProps map[string]string) error
-
-	// The name of the property collector.
-	Name() string
-}
-
-// SuffixReplaceableTableCollector is an extension to the TablePropertyCollector
-// interface that allows a table property collector to indicate that it supports
-// being *updated* during suffix replacement, i.e. when an existing SST in which
-// all keys have the same key suffix is updated to have a new suffix.
-//
-// A collector which supports being updated in such cases must be able to derive
-// its updated value from its old value and the change being made to the suffix,
-// without needing to be passed each updated K/V.
-//
-// For example, a collector that only inspects values can simply copy its
-// previously computed property as-is, since key-suffix replacement does not
-// change values, while a collector that depends only on key suffixes, like one
-// which collected mvcc-timestamp bounds from timestamp-suffixed keys, can just
-// set its new bounds from the new suffix, as it is common to all keys, without
-// needing to recompute it from every key.
-type SuffixReplaceableTableCollector interface {
-	// UpdateKeySuffixes is called when a table is updated to change the suffix of
-	// all keys in the table, and is passed the old value for that prop, if any,
-	// for that table as well as the old and new suffix.
-	UpdateKeySuffixes(oldProps map[string]string, oldSuffix, newSuffix []byte) error
-}
-
 // ReaderOptions holds the parameters needed for reading an sstable.
 type ReaderOptions struct {
 	// Cache is used to cache uncompressed blocks from sstables.
@@ -241,11 +198,6 @@ type WriterOptions struct {
 	// used to set the obsolete bit on DEL/DELSIZED/SINGLEDEL if they are the
 	// youngest for a userkey.
 	WritingToLowestLevel bool
-
-	// TablePropertyCollectors is a list of TablePropertyCollector creation
-	// functions. A new TablePropertyCollector is created for each sstable built
-	// and lives for the lifetime of the table.
-	TablePropertyCollectors []func() TablePropertyCollector
 
 	// BlockPropertyCollectors is a list of BlockPropertyCollector creation
 	// functions. A new BlockPropertyCollector is created for each sstable
