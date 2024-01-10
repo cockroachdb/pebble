@@ -282,6 +282,10 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				inPlaceValueBound.Lower = []byte(l)
 				inPlaceValueBound.Upper = []byte(u)
 			}
+			var disableValueBlocks bool
+			if td.HasArg("disable-value-blocks") {
+				td.ScanArgs(t, "disable-value-blocks", &disableValueBlocks)
+			}
 			meta, r, err = runBuildCmd(td, &WriterOptions{
 				BlockSize:                 blockSize,
 				Comparer:                  testkeys.Comparer,
@@ -289,6 +293,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				Parallelism:               parallelism,
 				RequiredInPlaceValueBound: inPlaceValueBound,
 				ShortAttributeExtractor:   attributeExtractor,
+				DisableValueBlocks:        disableValueBlocks,
 			}, 0)
 			if err != nil {
 				return err.Error()

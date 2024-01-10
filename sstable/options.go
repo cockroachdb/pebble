@@ -219,6 +219,17 @@ type WriterOptions struct {
 	// RequiredInPlaceValueBound mirrors
 	// Options.Experimental.RequiredInPlaceValueBound.
 	RequiredInPlaceValueBound UserKeyPrefixBound
+
+	// DisableValueBlocks is only used for TableFormat >= TableFormatPebblev3,
+	// and if set to true, does not write any values to value blocks. This is
+	// only intended for cases where the in-memory buffering of all value blocks
+	// while writing a sstable is too expensive and likely to cause an OOM. It
+	// is never set to true by a Pebble DB, and can be set to true when some
+	// external code is directly generating huge sstables using Pebble's
+	// sstable.Writer (for example, CockroachDB backups can sometimes write
+	// 750MB sstables -- see
+	// https://github.com/cockroachdb/cockroach/issues/117113).
+	DisableValueBlocks bool
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {
