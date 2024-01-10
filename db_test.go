@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -1412,10 +1411,11 @@ func (t *testTracer) IsTracingEnabled(ctx context.Context) bool {
 }
 
 func TestTracing(t *testing.T) {
-	if !invariants.Enabled {
-		// The test relies on timing behavior injected when invariants.Enabled.
-		return
-	}
+	drbdForTesting := sstable.DeterministicReadBlockDurationForTesting
+	sstable.DeterministicReadBlockDurationForTesting = true
+	defer func() {
+		sstable.DeterministicReadBlockDurationForTesting = drbdForTesting
+	}()
 	var tracer testTracer
 	c := NewCache(0)
 	defer c.Unref()

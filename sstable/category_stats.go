@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
@@ -77,11 +78,15 @@ type CategoryStats struct {
 	// BlockBytesInCache is the subset of BlockBytes that were in the block
 	// cache.
 	BlockBytesInCache uint64
+	// BlockReadDuration is the total duration to read the bytes not in the
+	// cache, i.e., BlockBytes-BlockBytesInCache.
+	BlockReadDuration time.Duration
 }
 
 func (s *CategoryStats) aggregate(a CategoryStats) {
 	s.BlockBytes += a.BlockBytes
 	s.BlockBytesInCache += a.BlockBytesInCache
+	s.BlockReadDuration += a.BlockReadDuration
 }
 
 // CategoryStatsAggregate is the aggregate for the given category.
@@ -160,9 +165,12 @@ func (accum *iterStatsAccumulator) init(
 	accum.collector = collector
 }
 
-func (accum *iterStatsAccumulator) reportStats(blockBytes, blockBytesInCache uint64) {
+func (accum *iterStatsAccumulator) reportStats(
+	blockBytes, blockBytesInCache uint64, blockReadDuration time.Duration,
+) {
 	accum.stats.BlockBytes += blockBytes
 	accum.stats.BlockBytesInCache += blockBytesInCache
+	accum.stats.BlockReadDuration += blockReadDuration
 }
 
 func (accum *iterStatsAccumulator) close() {
