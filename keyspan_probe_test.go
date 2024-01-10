@@ -385,3 +385,7 @@ func (p *probeKeyspanIterator) Close() error {
 	p.err = p.probeCtx.keyspanOp.Err
 	return p.err
 }
+
+func (p *probeKeyspanIterator) WrapChildren(wrap keyspan.WrapFn) {
+	p.iter = wrap(p.iter)
+}
