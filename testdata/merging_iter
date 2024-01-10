@@ -829,13 +829,13 @@ seek-prefix-ge b
 #  rangedelIter.opSpanSeekGE("a") = nil <err="injected error">
 err=injected error
 #  iter.Last() = (f#21,1,"21")
-#  rangedelIter.opSpanSeekLT("f") = nil <err="injected error">
+#  rangedelIter.opSpanSeekGE("f") = nil <err="injected error">
 err=injected error
 #  iter.SeekGE("boo") = (c#18,1,"18")
 #  rangedelIter.opSpanSeekGE("boo") = nil <err="injected error">
 err=injected error
 #  iter.SeekLT("coo") = (c#18,1,"18")
-#  rangedelIter.opSpanSeekLT("coo") = nil <err="injected error">
+#  rangedelIter.opSpanSeekGE("coo") = nil <err="injected error">
 err=injected error
 #  iter.SeekPrefixGE("b") = (b#19,1,"19")
 #  rangedelIter.opSpanSeekGE("b") = nil <err="injected error">

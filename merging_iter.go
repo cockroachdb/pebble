@@ -406,12 +406,11 @@ func (m *mergingIter) initMaxRangeDelIters(oldTopLevel int) error {
 		if l.rangeDelIter == nil {
 			continue
 		}
-		l.tombstone = keyspan.SeekLE(m.heap.cmp, l.rangeDelIter, item.iterKey.UserKey)
-		if l.tombstone == nil {
-			if err := l.rangeDelIter.Error(); err != nil {
-				return err
-			}
+		tomb, err := keyspan.SeekLE(m.heap.cmp, l.rangeDelIter, item.iterKey.UserKey)
+		if err != nil {
+			return err
 		}
+		l.tombstone = tomb
 	}
 	return nil
 }
@@ -967,12 +966,12 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterLevel) (bool, error) {
 			// levelIter in the future cannot contain item.iterKey). Also, it is it is possible that we
 			// will encounter parts of the range delete that should be ignored -- we handle that
 			// below.
-			l.tombstone = keyspan.SeekLE(m.heap.cmp, l.rangeDelIter, item.iterKey.UserKey)
-			if l.tombstone == nil {
-				if err := l.rangeDelIter.Error(); err != nil {
-					return false, err
-				}
+
+			tomb, err := keyspan.SeekLE(m.heap.cmp, l.rangeDelIter, item.iterKey.UserKey)
+			if err != nil {
+				return false, err
 			}
+			l.tombstone = tomb
 		}
 		if l.tombstone == nil {
 			continue
@@ -1281,12 +1280,11 @@ func (m *mergingIter) seekLT(key []byte, level int, flags base.SeekLTFlags) erro
 				withinLargestSSTableBound = cmpResult > 0 || (cmpResult == 0 && !l.isLargestUserKeyExclusive)
 			}
 
-			l.tombstone = keyspan.SeekLE(m.heap.cmp, rangeDelIter, key)
-			if l.tombstone == nil {
-				if err := rangeDelIter.Error(); err != nil {
-					return err
-				}
+			tomb, err := keyspan.SeekLE(m.heap.cmp, rangeDelIter, key)
+			if err != nil {
+				return err
 			}
+			l.tombstone = tomb
 			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) &&
 				l.tombstone.Contains(m.heap.cmp, key) && withinLargestSSTableBound {
 				// NB: Based on the comment above l.smallestUserKey <= key, and based
