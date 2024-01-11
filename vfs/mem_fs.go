@@ -582,41 +582,6 @@ func newRootMemNode() *memNode {
 	}
 }
 
-func (f *memFile) IsDir() bool {
-	return f.n.isDir
-}
-
-func (f *memFile) ModTime() time.Time {
-	f.n.mu.Lock()
-	defer f.n.mu.Unlock()
-	return f.n.mu.modTime
-}
-
-func (f *memFile) Mode() os.FileMode {
-	if f.n.isDir {
-		return os.ModeDir | 0755
-	}
-	return 0755
-}
-
-func (f *memFile) Name() string {
-	if fs := f.fs; fs != nil {
-		fs.mu.Lock()
-		defer fs.mu.Unlock()
-	}
-	return f.n.name
-}
-
-func (f *memFile) Size() int64 {
-	f.n.mu.Lock()
-	defer f.n.mu.Unlock()
-	return int64(len(f.n.mu.data))
-}
-
-func (f *memFile) Sys() interface{} {
-	return nil
-}
-
 func (f *memNode) dump(w *bytes.Buffer, level int) {
 	if f.isDir {
 		w.WriteString("          ")
@@ -663,8 +628,7 @@ func (f *memNode) resetToSyncedState() {
 	}
 }
 
-// memFile is a reader or writer of a node's data. It implements File and
-// os.FileInfo.
+// memFile is a reader or writer of a node's data. Implements File.
 type memFile struct {
 	n           *memNode
 	fs          *MemFS // nil for a standalone memFile
@@ -673,7 +637,6 @@ type memFile struct {
 	read, write bool
 }
 
-var _ os.FileInfo = (*memFile)(nil)
 var _ File = (*memFile)(nil)
 
 func (f *memFile) Close() error {
@@ -778,8 +741,28 @@ func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
 func (f *memFile) Prefetch(offset int64, length int64) error { return nil }
 func (f *memFile) Preallocate(offset, length int64) error    { return nil }
 
+// name returns the current file name.
+func (f *memFile) name() string {
+	// NB: the file name must be accessed under MemFS.mu lock.
+	if fs := f.fs; fs != nil {
+		fs.mu.Lock()
+		defer fs.mu.Unlock()
+	}
+	return f.n.name
+}
+
 func (f *memFile) Stat() (os.FileInfo, error) {
-	return f, nil
+	// NB: can not inline f.name() below because it would violate the locking
+	// order: MemFS.mu can not be locked after the f.n.mu lock.
+	name := f.name()
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	return &memFileInfo{
+		name:    name,
+		size:    int64(len(f.n.mu.data)),
+		modTime: f.n.mu.modTime,
+		isDir:   f.n.isDir,
+	}, nil
 }
 
 func (f *memFile) Sync() error {
@@ -823,6 +806,43 @@ func (f *memFile) Fd() uintptr {
 // Flush is a no-op and present only to prevent buffering at higher levels
 // (e.g. it prevents sstable.Writer from using a bufio.Writer).
 func (f *memFile) Flush() error {
+	return nil
+}
+
+// memFileInfo implements os.FileInfo for a memFile.
+type memFileInfo struct {
+	name    string
+	size    int64
+	modTime time.Time
+	isDir   bool
+}
+
+var _ os.FileInfo = (*memFileInfo)(nil)
+
+func (f *memFileInfo) Name() string {
+	return f.name
+}
+
+func (f *memFileInfo) Size() int64 {
+	return f.size
+}
+
+func (f *memFileInfo) Mode() os.FileMode {
+	if f.isDir {
+		return os.ModeDir | 0755
+	}
+	return 0755
+}
+
+func (f *memFileInfo) ModTime() time.Time {
+	return f.modTime
+}
+
+func (f *memFileInfo) IsDir() bool {
+	return f.isDir
+}
+
+func (f *memFileInfo) Sys() interface{} {
 	return nil
 }
 
