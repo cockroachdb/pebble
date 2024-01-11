@@ -685,7 +685,17 @@ func (i *compactionIter) nextInStripeHelper() stripeChangeType {
 		}
 		key := i.iterKey
 
-		if !i.equal(i.key.UserKey, key.UserKey) {
+		// Is this a new key? There are two cases:
+		//
+		// 1. The new key has a different user key.
+		// 2. The previous key was an interleaved range deletion or range key
+		//    boundary. These keys are interleaved in the same input iterator
+		//    stream as point keys, but they do not obey the ordinary sequence
+		//    number ordering within a user key. If the previous key was one
+		//    of these keys, we consider the new key a `newStripeNewKey` to
+		//    reflect that it's the beginning of a new stream of point keys.
+		if (i.key.Trailer == InternalKeyRangeDeleteSentinel || i.key.Trailer == base.InternalKeyBoundaryRangeKey) ||
+			!i.equal(i.key.UserKey, key.UserKey) {
 			i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 			return newStripeNewKey
 		}
@@ -718,8 +728,10 @@ func (i *compactionIter) nextInStripeHelper() stripeChangeType {
 			}
 			return newStripeSameKey
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-			// Range keys are interleaved at the max sequence number for a given user
-			// key, so we should not see any more range keys in this stripe.
+			// Range tombstones and range keys are interleaved at the max
+			// sequence number for a given user key, and the first key after one
+			// is always considered a newStripeNewKey, so we should never reach
+			// this.
 			panic("unreachable")
 		case InternalKeyKindInvalid:
 			if i.curSnapshotIdx == origSnapshotIdx {
