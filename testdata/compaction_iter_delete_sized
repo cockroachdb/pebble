@@ -247,9 +247,7 @@ a.INVALID.1:c
 
 iter
 first
-next
 ----
-a#2,18:b
 err=invalid internal key kind: INVALID
 
 define
@@ -259,9 +257,7 @@ a.INVALID.1:c
 
 iter
 first
-next
 ----
-a#2,2:b
 err=invalid internal key kind: INVALID
 
 define
@@ -271,10 +267,10 @@ a.RANGEDEL.1:d
 
 iter
 first
-tombstones
+next
 ----
+a#72057594037927935,15:
 err=invalid internal key kind: INVALID
-.
 
 define
 a.MERGE.2:b
@@ -306,11 +302,13 @@ first
 next
 next
 next
+next
 tombstones
 ----
-a#2,18:b
-a#1,15:c
-b#4,15:d
+a#72057594037927935,15:
+a#2,1:b
+b#72057594037927935,15:
+c#72057594037927935,15:
 .
 a-b#1
 b-c#4
@@ -322,11 +320,13 @@ first
 next
 next
 next
+next
 tombstones
 ----
+a#72057594037927935,15:
 a#2,1:b
-a#1,15:c
-b#4,15:d
+b#72057594037927935,15:
+c#72057594037927935,15:
 .
 a-b#1
 b-c#4
@@ -340,12 +340,14 @@ next
 next
 next
 next
+next
 tombstones
 ----
-a#2,18:b (not pinned) (not force obsolete)
-a#1,15:c (not pinned) (not force obsolete)
-b#4,15:d (not pinned) (not force obsolete)
+a#72057594037927935,15: (not pinned) (not force obsolete)
+a#2,1:b (not pinned) (not force obsolete)
+b#72057594037927935,15: (not pinned) (not force obsolete)
 b#2,1:e (pinned) (force obsolete)
+c#72057594037927935,15: (not pinned) (force obsolete)
 .
 a-b#1
 b-c#4
@@ -360,12 +362,14 @@ next
 next
 next
 next
+next
 tombstones
 ----
-a#2,18:b (not pinned) (not force obsolete)
-a#1,15:c (not pinned) (not force obsolete)
-b#4,15:d (not pinned) (not force obsolete)
+a#72057594037927935,15: (not pinned) (not force obsolete)
+a#2,1:b (not pinned) (not force obsolete)
+b#72057594037927935,15: (not pinned) (not force obsolete)
 b#2,1:e (pinned) (force obsolete)
+c#72057594037927935,15: (not pinned) (force obsolete)
 c#3,1:f (pinned) (force obsolete)
 .
 a-b#1
@@ -390,7 +394,7 @@ next
 next
 tombstones
 ----
-a#3,15:e
+a#72057594037927935,15:
 b#4,1:b
 c#3,1:c
 e#1,1:e
@@ -414,7 +418,7 @@ next
 next
 tombstones
 ----
-a#3,15:e
+a#72057594037927935,15:
 b#4,2:b
 c#3,2:c
 e#1,2:e
@@ -443,10 +447,10 @@ next
 next
 tombstones
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#5,2:de
+d#72057594037927935,15:
 d#5,2:bc
-d#3,15:f
 .
 a-c#3
 d-f#3
@@ -463,11 +467,15 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
+a#72057594037927935,15:
+b#72057594037927935,15:
+c#72057594037927935,15:
+d#72057594037927935,15:
+e#72057594037927935,15:
 .
 a-b#3
 b-c#3
@@ -483,17 +491,16 @@ next
 next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
-.
+a#72057594037927935,15:
+b#72057594037927935,15:
+c#72057594037927935,15:
+d#72057594037927935,15:
 a-b#3
 b-c#3
 c-d#3
 c-d#1
 d-e#2
 d-e#1
-e-f#1
 .
 
 iter snapshots=3
@@ -501,11 +508,15 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
+a#72057594037927935,15:
+b#72057594037927935,15:
+c#72057594037927935,15:
+d#72057594037927935,15:
+e#72057594037927935,15:
 .
 a-b#3
 b-c#3
@@ -521,11 +532,15 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
+a#72057594037927935,15:
+b#72057594037927935,15:
+c#72057594037927935,15:
+d#72057594037927935,15:
+e#72057594037927935,15:
 .
 a-b#3
 b-c#3
@@ -551,7 +566,7 @@ tombstones f
 next
 tombstones
 ----
-a#10,15:k (not pinned) (not force obsolete)
+a#72057594037927935,15: (not pinned) (not force obsolete)
 f#9,1:f (pinned) (force obsolete)
 a-f#10
 .
@@ -572,7 +587,7 @@ tombstones f
 next
 tombstones
 ----
-f#10,15:k
+f#72057594037927935,15:
 f#9,1:f
 .
 f#8,1:f
@@ -589,16 +604,20 @@ d.SET.4:d
 iter
 first
 next
-next
-next
 tombstones c
+next
+next
+next
+next
 tombstones
 ----
 a#1,1:a
-b#2,15:d
-c#3,15:e
-d#4,1:d
+b#72057594037927935,15:
 b-c#2
+.
+c#72057594037927935,15:
+d#72057594037927935,15:
+d#4,1:d
 .
 c-d#3
 d-e#3
@@ -607,16 +626,20 @@ d-e#3
 iter snapshots=3
 first
 next
-next
-next
 tombstones c
+next
+next
+next
+next
 tombstones
 ----
 a#1,1:a
-b#2,15:d
-c#3,15:e
-d#4,1:d
+b#72057594037927935,15:
 b-c#2
+.
+c#72057594037927935,15:
+d#72057594037927935,15:
+d#4,1:d
 .
 c-d#3
 c-d#2
@@ -633,12 +656,14 @@ iter
 first
 next
 next
+next
 tombstones c
 tombstones
 ----
 a#1,1:a
-b#2,15:d
+b#72057594037927935,15:
 c#4,1:d
+.
 b-c#2
 .
 c-d#2
@@ -658,7 +683,7 @@ next
 next
 next
 ----
-a#2,15:d
+a#72057594037927935,15:
 a#2,1:a
 b#2,1:b
 c#2,1:c
@@ -979,8 +1004,8 @@ next
 next
 tombstones
 ----
+a#72057594037927935,15:
 a#3,7:
-a#2,15:c
 .
 a-c#2
 .
@@ -998,7 +1023,7 @@ next
 next
 tombstones
 ----
-a#3,15:d
+a#72057594037927935,15:
 d#2,0:
 .
 a-d#3
@@ -1010,7 +1035,7 @@ next
 next
 next
 ----
-a#3,15:d
+a#72057594037927935,15:
 a#2,0:
 d#2,0:
 .
@@ -1021,7 +1046,7 @@ next
 next
 next
 ----
-a#3,15:d
+a#72057594037927935,15:
 a#1,1:a
 d#2,0:
 .
@@ -1031,7 +1056,7 @@ first
 next
 next
 ----
-a#3,15:d
+a#72057594037927935,15:
 d#2,0:
 .
 
@@ -1049,7 +1074,7 @@ tombstones
 ----
 a#2,2:a
 .
-b#1,15:c
+b#72057594037927935,15:
 .
 b-c#1
 .
@@ -1064,12 +1089,10 @@ iter allow-zero-seqnum=true
 first
 next
 next
-next
 tombstones
 ----
-a#2,2:v2
-a#1,15:b
-a#0,2:v1
+a#72057594037927935,15:
+a#0,2:v1v2
 .
 a-b#1
 .
@@ -1135,7 +1158,7 @@ first
 next
 next
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#5,2:5
 .
 
@@ -1144,7 +1167,7 @@ first
 next
 next
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#0,2:5
 .
 
@@ -1152,10 +1175,12 @@ iter snapshots=2
 first
 next
 next
+next
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#5,2:5
 b#1,2:1
+.
 
 define
 a.RANGEDEL.3:c
@@ -1169,7 +1194,7 @@ first
 next
 next
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#5,2:5
 .
 
@@ -1177,10 +1202,12 @@ iter snapshots=2
 first
 next
 next
+next
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#5,2:5
 b#1,2:1
+.
 
 # SET that meets a DEL is transformed into a SETWITHDEL.
 
@@ -1303,8 +1330,8 @@ first
 next
 next
 ----
-a#0,18:c
-a#2,15:z
+a#72057594037927935,15:
+a#0,1:c
 .
 
 iter allow-zero-seqnum=true snapshots=3
@@ -1313,8 +1340,8 @@ next
 next
 next
 ----
+a#72057594037927935,15:
 a#3,1:c
-a#2,15:z
 a#0,1:b
 .
 
@@ -1324,8 +1351,8 @@ next
 next
 next
 ----
-a#3,18:c
-a#2,15:z
+a#72057594037927935,15:
+a#3,1:c
 a#1,0:
 .
 
@@ -1341,8 +1368,8 @@ first
 next
 next
 ----
-a#4,18:c
-a#3,15:z
+a#72057594037927935,15:
+a#4,1:c
 .
 
 # Invalid keys are emitted under SETWITHDEL.
@@ -1354,9 +1381,7 @@ a.INVALID.1:
 
 iter
 first
-next
 ----
-a#2,18:b
 err=invalid internal key kind: INVALID
 
 define
@@ -1367,9 +1392,7 @@ a.SET.1:b
 
 iter
 first
-next
 ----
-a#3,18:c
 err=invalid internal key kind: INVALID
 
 # SINGLEDEL that meets a SETWITHDEL is transformed into a DEL.
@@ -1653,9 +1676,9 @@ tombstones
 
 # Test a very subtle sequence where a elision of tombstones is active, and a
 # unskippable RANGEDEL sits between a DELSIZED and the key it was intended to
-# delete. The unskippable RANGEDEL breaks the skipping of keys within the
-# snapshot stripe, but it's ultimately okay because we preserve skip=true across
-# the RANGEDEL return.
+# delete. In previous versions of the code, the RANGEDEL was interleaved at its
+# sequence number and "unskippable" breaking the skipping of keys within the
+# snapshot stripe.
 
 define
 a.DELSIZED.5:varint(4)
@@ -1668,7 +1691,7 @@ first
 next
 tombstones
 ----
-a#4,15:d
+a#72057594037927935,15:
 .
 .
 
@@ -1679,7 +1702,7 @@ first
 next
 tombstones
 ----
-a#4,15:d
+a#72057594037927935,15:
 .
 .
 
@@ -1696,7 +1719,7 @@ first
 next
 tombstones
 ----
-a#4,15:d
+a#72057594037927935,15:
 .
 .
 
@@ -1713,9 +1736,10 @@ first
 next
 tombstones
 ----
-a#4,15:d
+a#72057594037927935,15:
 .
 .
+ineffectual-single-deletes: a
 
 # Perform a few variants of the above but with a range del with a seqnum equal to
 # keys. NB: When seqnums are equal, the order of keys with various kinds is:
@@ -1726,13 +1750,10 @@ a#4,15:d
 # compaction iterator should always observe them first.
 
 define
+a-z:{(#5,RANGEKEYDEL)}
 a.SINGLEDEL.6:
 a.SETWITHDEL.5:foo
 a.RANGEDEL.5:z
-----
-
-define-range-keys
-a-z:{(#5,RANGEKEYDEL)}
 ----
 
 # In the following case, the SINGLEDEL meets a SETWITHDEL, promoting the
@@ -1746,8 +1767,8 @@ next
 tombstones
 ----
 a#72057594037927935,19:
+a#72057594037927935,15:
 a#6,0:
-a#5,15:z
 .
 a-z#5
 .
@@ -1762,7 +1783,7 @@ next
 tombstones
 ----
 a#72057594037927935,19:
-a#5,15:z
+a#72057594037927935,15:
 .
 .
 
@@ -1772,21 +1793,17 @@ a.RANGEDEL.5:d
 a.SET.5:foo
 ----
 
-# NB: In this case, the RANGEDEL acts as an unintentional snapshot stripe
-# change. This is a code artifact, and we will be able to remove this behavior
-# when range deletes are interleaved at the maximal sequence number by an
-# interleaving iterator (like range keys are).
+# NB: In this case, in previous versions of the code, the RANGEDEL acted as an
+# unintentional snapshot stripe change. This was a code artifact that was fixed
+# when we began interleaving range deletions at the maximal sequence number
+# using an interleaving iterator (like range keys are).
 
 iter
 first
 next
-next
-next
 tombstones
 ----
-a#6,7:
-a#5,15:d
-a#5,1:foo
+a#72057594037927935,15:
 .
 a-d#5
 .
@@ -1796,7 +1813,7 @@ first
 next
 tombstones
 ----
-a#5,15:d
+a#72057594037927935,15:
 .
 .
 
@@ -1807,17 +1824,20 @@ a.RANGEDEL.4:d
 a.SET.4:bar
 ----
 
-# The SINGLEDEL invariant checking can't see past the RANGEDEL and see that
-# the a.SET.4 violates the invariant. This is a code artifact that will be
-# improved when range deletes are interleaved at the maximal sequence number.
+# In previous versions of the code, the SINGLEDEL invariant checking could not
+# see past the RANGEDEL and see that the a.SET.4 violates the invariant. This
+# was a code artifact that has been improved when we began interleaving range
+# deletes at the maximal sequence number
+
 iter
 first
 next
 next
 ----
-a#4,15:d
+a#72057594037927935,15:
 a#4,1:bar
 .
+invariant-violation-single-deletes: a
 
 define
 a.SINGLEDEL.6:
@@ -1832,8 +1852,8 @@ first
 next
 tombstones
 ----
+a#72057594037927935,15:
 a#6,0:
-a#5,15:d
 a-d#5
 .
 
@@ -1842,7 +1862,7 @@ first
 next
 tombstones
 ----
-a#5,15:d
+a#72057594037927935,15:
 .
 .
 
@@ -1855,10 +1875,12 @@ a.SET.5:foo
 iter
 first
 next
+next
 tombstones
 ----
-a#6,23:varint(3)
-a#5,15:d
+a#72057594037927935,15:
+a#6,0:
+.
 a-d#5
 .
 
@@ -1867,7 +1889,7 @@ first
 next
 tombstones
 ----
-a#5,15:d
+a#72057594037927935,15:
 .
 .
 
