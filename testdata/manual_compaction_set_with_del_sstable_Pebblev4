@@ -93,7 +93,7 @@ range-deletions-bytes-estimate: 1334
 compact a-e L1
 ----
 2:
-  000008:[a#3,SETWITHDEL-c#inf,RANGEDEL]
+  000008:[a#3,SET-c#inf,RANGEDEL]
   000009:[c#2,RANGEDEL-e#inf,RANGEDEL]
 3:
   000006:[a#0,SET-b#0,SET]
@@ -141,7 +141,7 @@ L3
 compact a-e L1
 ----
 2:
-  000010:[a#3,SETWITHDEL-c#inf,RANGEDEL]
+  000010:[a#3,SET-c#inf,RANGEDEL]
   000011:[c#2,RANGEDEL-e#inf,RANGEDEL]
   000012:[e#2,RANGEDEL-g#inf,RANGEDEL]
 3:
@@ -181,7 +181,7 @@ L3
 compact a-e L1
 ----
 2:
-  000009:[a#3,SETWITHDEL-c#inf,RANGEDEL]
+  000009:[a#3,SET-c#inf,RANGEDEL]
   000010:[c#2,RANGEDEL-h#3,SET]
 3:
   000006:[a#0,SET-b#0,SET]
@@ -354,7 +354,7 @@ compact a-e L1
 0.0:
   000004:[c#4,SET-c#4,SET]
 2:
-  000008:[a#3,SETWITHDEL-b#inf,RANGEDEL]
+  000008:[a#3,SET-b#inf,RANGEDEL]
   000009:[b#2,RANGEDEL-e#inf,RANGEDEL]
 3:
   000007:[b#1,SET-b#1,SET]
@@ -702,7 +702,7 @@ compact a-q L1
 ----
 2:
   000011:[a#4,RANGEDEL-d#inf,RANGEDEL]
-  000012:[k#5,RANGEDEL-m#inf,RANGEDEL]
+  000012:[k#5,RANGEDEL-q#inf,RANGEDEL]
 3:
   000008:[a#1,SET-c#1,SET]
   000009:[ff#1,SET-ff#1,SET]
