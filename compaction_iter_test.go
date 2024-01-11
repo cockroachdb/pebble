@@ -81,11 +81,13 @@ func TestCompactionIter(t *testing.T) {
 	var merge Merge
 	var keys []InternalKey
 	var rangeKeys []keyspan.Span
+	var rangeDels []keyspan.Span
 	var vals [][]byte
 	var snapshots []uint64
 	var elideTombstones bool
 	var allowZeroSeqnum bool
-	var interleavingIter *keyspan.InterleavingIter
+	var rangeKeyInterleaving *keyspan.InterleavingIter
+	var rangeDelInterleaving *keyspan.InterleavingIter
 
 	// The input to the data-driven test is dependent on the format major
 	// version we are testing against.
@@ -108,13 +110,19 @@ func TestCompactionIter(t *testing.T) {
 		// susceptible to use-after-free bugs, we skip the zeroing of
 		// RangeDelete keys.
 		fi := &fakeIter{keys: keys, vals: vals}
-		interleavingIter = &keyspan.InterleavingIter{}
-		interleavingIter.Init(
+		rangeDelInterleaving = &keyspan.InterleavingIter{}
+		rangeDelInterleaving.Init(
 			base.DefaultComparer,
 			fi,
+			keyspan.NewIter(base.DefaultComparer.Compare, rangeDels),
+			keyspan.InterleavingIterOpts{})
+		rangeKeyInterleaving = &keyspan.InterleavingIter{}
+		rangeKeyInterleaving.Init(
+			base.DefaultComparer,
+			rangeDelInterleaving,
 			keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys),
 			keyspan.InterleavingIterOpts{})
-		iter := invalidating.NewIter(interleavingIter, invalidating.IgnoreKinds(InternalKeyKindRangeDelete))
+		iter := invalidating.NewIter(rangeKeyInterleaving, invalidating.IgnoreKinds(InternalKeyKindRangeDelete))
 		if merge == nil {
 			merge = func(key, value []byte) (base.ValueMerger, error) {
 				m := &debugMerger{}
@@ -161,9 +169,37 @@ func TestCompactionIter(t *testing.T) {
 				keys = keys[:0]
 				vals = vals[:0]
 				rangeKeys = rangeKeys[:0]
+				rangeDels = rangeDels[:0]
+				rangeDelFragmenter := keyspan.Fragmenter{
+					Cmp:    DefaultComparer.Compare,
+					Format: DefaultComparer.FormatKey,
+					Emit: func(s keyspan.Span) {
+						rangeDels = append(rangeDels, s)
+					},
+				}
 				for _, key := range strings.Split(d.Input, "\n") {
+					// If the line ends in a '}' assume it's a span.
+					if strings.HasSuffix(key, "}") {
+						s := keyspan.ParseSpan(strings.TrimSpace(key))
+						rangeKeys = append(rangeKeys, s)
+						continue
+					}
+
 					j := strings.Index(key, ":")
-					keys = append(keys, base.ParseInternalKey(key[:j]))
+					ik := base.ParseInternalKey(key[:j])
+					if rangekey.IsRangeKey(ik.Kind()) {
+						panic("range keys must be pre-fragmented and formatted as spans")
+					}
+					if ik.Kind() == base.InternalKeyKindRangeDelete {
+						rangeDelFragmenter.Add(keyspan.Span{
+							Start: ik.UserKey,
+							End:   []byte(key[j+1:]),
+							Keys:  []keyspan.Key{{Trailer: ik.Trailer}},
+						})
+						continue
+					}
+
+					keys = append(keys, ik)
 
 					if strings.HasPrefix(key[j+1:], "varint(") {
 						valueStr := strings.TrimSuffix(strings.TrimPrefix(key[j+1:], "varint("), ")")
@@ -175,13 +211,7 @@ func TestCompactionIter(t *testing.T) {
 						vals = append(vals, []byte(key[j+1:]))
 					}
 				}
-				return ""
-
-			case "define-range-keys":
-				for _, key := range strings.Split(d.Input, "\n") {
-					s := keyspan.ParseSpan(strings.TrimSpace(key))
-					rangeKeys = append(rangeKeys, s)
-				}
+				rangeDelFragmenter.Finish()
 				return ""
 
 			case "iter":
@@ -288,16 +318,10 @@ func TestCompactionIter(t *testing.T) {
 						}
 						fmt.Fprintf(&b, "%s:%s%s%s\n", iter.Key(), v, snapshotPinned, forceObsolete)
 						if iter.Key().Kind() == InternalKeyKindRangeDelete {
-							iter.rangeDelFrag.Add(keyspan.Span{
-								Start: append([]byte{}, iter.Key().UserKey...),
-								End:   append([]byte{}, iter.Value()...),
-								Keys: []keyspan.Key{
-									{Trailer: iter.Key().Trailer},
-								},
-							})
+							iter.rangeDelFrag.Add(*rangeDelInterleaving.Span())
 						}
 						if rangekey.IsRangeKey(iter.Key().Kind()) {
-							iter.rangeKeyFrag.Add(*interleavingIter.Span())
+							iter.rangeKeyFrag.Add(*rangeKeyInterleaving.Span())
 						}
 					} else if err := iter.Error(); err != nil {
 						fmt.Fprintf(&b, "err=%v\n", err)

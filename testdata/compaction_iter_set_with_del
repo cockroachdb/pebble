@@ -247,9 +247,7 @@ a.INVALID.1:c
 
 iter
 first
-next
 ----
-a#2,18:b
 err=invalid internal key kind: INVALID
 
 define
@@ -259,9 +257,7 @@ a.INVALID.1:c
 
 iter
 first
-next
 ----
-a#2,2:b
 err=invalid internal key kind: INVALID
 
 define
@@ -271,9 +267,12 @@ a.RANGEDEL.1:d
 
 iter
 first
+next
 tombstones
 ----
+a#72057594037927935,15:
 err=invalid internal key kind: INVALID
+a-d#1
 .
 
 define
@@ -306,11 +305,13 @@ first
 next
 next
 next
+next
 tombstones
 ----
-a#2,18:b
-a#1,15:c
-b#4,15:d
+a#72057594037927935,15:
+a#2,1:b
+b#72057594037927935,15:
+c#72057594037927935,15:
 .
 a-b#1
 b-c#4
@@ -322,11 +323,13 @@ first
 next
 next
 next
+next
 tombstones
 ----
+a#72057594037927935,15:
 a#2,1:b
-a#1,15:c
-b#4,15:d
+b#72057594037927935,15:
+c#72057594037927935,15:
 .
 a-b#1
 b-c#4
@@ -340,12 +343,14 @@ next
 next
 next
 next
+next
 tombstones
 ----
-a#2,18:b
-a#1,15:c
-b#4,15:d
+a#72057594037927935,15:
+a#2,1:b
+b#72057594037927935,15:
 b#2,1:e
+c#72057594037927935,15:
 .
 a-b#1
 b-c#4
@@ -360,12 +365,14 @@ next
 next
 next
 next
+next
 tombstones
 ----
-a#2,18:b
-a#1,15:c
-b#4,15:d
+a#72057594037927935,15:
+a#2,1:b
+b#72057594037927935,15:
 b#2,1:e
+c#72057594037927935,15:
 c#3,1:f
 .
 a-b#1
@@ -390,7 +397,7 @@ next
 next
 tombstones
 ----
-a#3,15:e
+a#72057594037927935,15:
 b#4,1:b
 c#3,1:c
 e#1,1:e
@@ -414,7 +421,7 @@ next
 next
 tombstones
 ----
-a#3,15:e
+a#72057594037927935,15:
 b#4,2:b
 c#3,2:c
 e#1,2:e
@@ -443,10 +450,10 @@ next
 next
 tombstones
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#5,2:de
+d#72057594037927935,15:
 d#5,2:bc
-d#3,15:f
 .
 a-c#3
 d-f#3
@@ -463,11 +470,15 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
+a#72057594037927935,15:
+b#72057594037927935,15:
+c#72057594037927935,15:
+d#72057594037927935,15:
+e#72057594037927935,15:
 .
 a-b#3
 b-c#3
@@ -481,11 +492,15 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
+a#72057594037927935,15:
+b#72057594037927935,15:
+c#72057594037927935,15:
+d#72057594037927935,15:
+e#72057594037927935,15:
 .
 a-b#3
 b-c#3
@@ -501,11 +516,15 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
+a#72057594037927935,15:
+b#72057594037927935,15:
+c#72057594037927935,15:
+d#72057594037927935,15:
+e#72057594037927935,15:
 .
 a-b#3
 b-c#3
@@ -521,11 +540,15 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
+a#72057594037927935,15:
+b#72057594037927935,15:
+c#72057594037927935,15:
+d#72057594037927935,15:
+e#72057594037927935,15:
 .
 a-b#3
 b-c#3
@@ -551,7 +574,7 @@ tombstones f
 next
 tombstones
 ----
-a#10,15:k
+a#72057594037927935,15:
 f#9,1:f
 a-f#10
 .
@@ -572,7 +595,7 @@ tombstones f
 next
 tombstones
 ----
-f#10,15:k
+f#72057594037927935,15:
 f#9,1:f
 .
 f#8,1:f
@@ -589,16 +612,20 @@ d.SET.4:d
 iter
 first
 next
-next
-next
 tombstones c
+next
+next
+next
+next
 tombstones
 ----
 a#1,1:a
-b#2,15:d
-c#3,15:e
-d#4,1:d
+b#72057594037927935,15:
 b-c#2
+.
+c#72057594037927935,15:
+d#72057594037927935,15:
+d#4,1:d
 .
 c-d#3
 d-e#3
@@ -607,16 +634,20 @@ d-e#3
 iter snapshots=3
 first
 next
-next
-next
 tombstones c
+next
+next
+next
+next
 tombstones
 ----
 a#1,1:a
-b#2,15:d
-c#3,15:e
-d#4,1:d
+b#72057594037927935,15:
 b-c#2
+.
+c#72057594037927935,15:
+d#72057594037927935,15:
+d#4,1:d
 .
 c-d#3
 c-d#2
@@ -637,7 +668,7 @@ tombstones c
 tombstones
 ----
 a#1,1:a
-b#2,15:d
+b#72057594037927935,15:
 c#4,1:d
 b-c#2
 .
@@ -658,7 +689,7 @@ next
 next
 next
 ----
-a#2,15:d
+a#72057594037927935,15:
 a#2,1:a
 b#2,1:b
 c#2,1:c
@@ -979,8 +1010,8 @@ next
 next
 tombstones
 ----
+a#72057594037927935,15:
 a#3,7:
-a#2,15:c
 .
 a-c#2
 .
@@ -998,7 +1029,7 @@ next
 next
 tombstones
 ----
-a#3,15:d
+a#72057594037927935,15:
 d#2,0:
 .
 a-d#3
@@ -1010,7 +1041,7 @@ next
 next
 next
 ----
-a#3,15:d
+a#72057594037927935,15:
 a#2,0:
 d#2,0:
 .
@@ -1021,7 +1052,7 @@ next
 next
 next
 ----
-a#3,15:d
+a#72057594037927935,15:
 a#1,1:a
 d#2,0:
 .
@@ -1031,7 +1062,7 @@ first
 next
 next
 ----
-a#3,15:d
+a#72057594037927935,15:
 d#2,0:
 .
 
@@ -1049,7 +1080,7 @@ tombstones
 ----
 a#2,2:a
 .
-b#1,15:c
+b#72057594037927935,15:
 .
 b-c#1
 .
@@ -1064,12 +1095,10 @@ iter allow-zero-seqnum=true
 first
 next
 next
-next
 tombstones
 ----
-a#2,2:v2
-a#1,15:b
-a#0,2:v1
+a#72057594037927935,15:
+a#0,2:v1v2
 .
 a-b#1
 .
@@ -1135,7 +1164,7 @@ first
 next
 next
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#5,2:5
 .
 
@@ -1144,7 +1173,7 @@ first
 next
 next
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#0,2:5
 .
 
@@ -1153,7 +1182,7 @@ first
 next
 next
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#5,2:5
 b#1,2:1
 
@@ -1169,7 +1198,7 @@ first
 next
 next
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#5,2:5
 .
 
@@ -1178,7 +1207,7 @@ first
 next
 next
 ----
-a#3,15:c
+a#72057594037927935,15:
 b#5,2:5
 b#1,2:1
 
@@ -1291,6 +1320,7 @@ a#1,0:
 
 # SETWITHDEL-eligible entries at or under a RANGEDEL at the same user key should
 # be skipped.
+
 define
 a.SET.3:c
 a.RANGEDEL.2:z
@@ -1303,8 +1333,8 @@ first
 next
 next
 ----
-a#0,18:c
-a#2,15:z
+a#72057594037927935,15:
+a#0,1:c
 .
 
 iter allow-zero-seqnum=true snapshots=3
@@ -1313,8 +1343,8 @@ next
 next
 next
 ----
+a#72057594037927935,15:
 a#3,1:c
-a#2,15:z
 a#0,1:b
 .
 
@@ -1324,8 +1354,8 @@ next
 next
 next
 ----
-a#3,18:c
-a#2,15:z
+a#72057594037927935,15:
+a#3,1:c
 a#1,0:
 .
 
@@ -1341,8 +1371,8 @@ first
 next
 next
 ----
-a#4,18:c
-a#3,15:z
+a#72057594037927935,15:
+a#4,1:c
 .
 
 # Invalid keys are emitted under SETWITHDEL.
@@ -1354,9 +1384,7 @@ a.INVALID.1:
 
 iter
 first
-next
 ----
-a#2,18:b
 err=invalid internal key kind: INVALID
 
 define
@@ -1367,9 +1395,7 @@ a.SET.1:b
 
 iter
 first
-next
 ----
-a#3,18:c
 err=invalid internal key kind: INVALID
 
 # SINGLEDEL that meets a SETWITHDEL is transformed into a DEL.
