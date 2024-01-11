@@ -579,33 +579,6 @@ func newRootMemNode() *memNode {
 	}
 }
 
-func (f *memFile) IsDir() bool {
-	return f.n.isDir
-}
-
-func (f *memFile) ModTime() time.Time {
-	f.n.mu.Lock()
-	defer f.n.mu.Unlock()
-	return f.n.mu.modTime
-}
-
-func (f *memFile) Mode() os.FileMode {
-	if f.n.isDir {
-		return os.ModeDir | 0755
-	}
-	return 0755
-}
-
-func (f *memFile) Size() int64 {
-	f.n.mu.Lock()
-	defer f.n.mu.Unlock()
-	return int64(len(f.n.mu.data))
-}
-
-func (f *memFile) Sys() interface{} {
-	return nil
-}
-
 func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 	if f.isDir {
 		w.WriteString("          ")
@@ -652,8 +625,7 @@ func (f *memNode) resetToSyncedState() {
 	}
 }
 
-// memFile is a reader or writer of a node's data. It implements os.FileInfo and
-// File interfaces.
+// memFile is a reader or writer of a node's data, implements File interface.
 type memFile struct {
 	name        string
 	n           *memNode
@@ -663,7 +635,6 @@ type memFile struct {
 	read, write bool
 }
 
-var _ os.FileInfo = (*memFile)(nil)
 var _ File = (*memFile)(nil)
 
 func (f *memFile) Close() error {
@@ -769,14 +740,15 @@ func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
 func (f *memFile) Prefetch(offset int64, length int64) error { return nil }
 func (f *memFile) Preallocate(offset, length int64) error    { return nil }
 
-func (f *memFile) Name() string {
-	return f.name
-}
-
 func (f *memFile) Stat() (os.FileInfo, error) {
-	// TODO(pav-kv): introduce a separate type for FileInfo implementation. The
-	// returned stats must not outlive the opened file.
-	return f, nil
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	return &memFileStat{
+		name:    f.name,
+		size:    int64(len(f.n.mu.data)),
+		modTime: f.n.mu.modTime,
+		isDir:   f.n.isDir,
+	}, nil
 }
 
 func (f *memFile) Sync() error {
@@ -820,6 +792,43 @@ func (f *memFile) Fd() uintptr {
 // Flush is a no-op and present only to prevent buffering at higher levels
 // (e.g. it prevents sstable.Writer from using a bufio.Writer).
 func (f *memFile) Flush() error {
+	return nil
+}
+
+// memFileStat implements os.FileInfo for a memFile.
+type memFileStat struct {
+	name    string
+	size    int64
+	modTime time.Time
+	isDir   bool
+}
+
+var _ os.FileInfo = (*memFileStat)(nil)
+
+func (s *memFileStat) Name() string {
+	return s.name
+}
+
+func (s *memFileStat) Size() int64 {
+	return s.size
+}
+
+func (s *memFileStat) Mode() os.FileMode {
+	if s.isDir {
+		return os.ModeDir | 0755
+	}
+	return 0755
+}
+
+func (s *memFileStat) ModTime() time.Time {
+	return s.modTime
+}
+
+func (s *memFileStat) IsDir() bool {
+	return s.isDir
+}
+
+func (s *memFileStat) Sys() interface{} {
 	return nil
 }
 
