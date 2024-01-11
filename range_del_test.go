@@ -356,7 +356,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 1:
   000008:[a#12,RANGEDEL-b#inf,RANGEDEL]
 2:
-  000012:[b#13,SETWITHDEL-c#inf,RANGEDEL]
+  000012:[b#13,SET-c#inf,RANGEDEL]
 3:
   000013:[c#14,SET-d#inf,RANGEDEL]
 `)
