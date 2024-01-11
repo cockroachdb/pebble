@@ -641,10 +641,9 @@ func (f *memFile) Close() error {
 	if n := f.n.refs.Add(-1); n < 0 {
 		panic(fmt.Sprintf("pebble: close of unopened file: %d", n))
 	}
-	// TODO(pav-kv): set f.n to nil here, to automatically catch use-after-close
-	// and double-close errors. It it unsafe to do so currently, because f is
-	// returns from Stat(), and may outlive the Close() call. Add a separate type
-	// for holding stats.
+	// Set node pointer to nil, to cause panic on any subsequent method call. This
+	// is a defence-in-depth to catch use-after-close or double-close bugs.
+	f.n = nil
 	return nil
 }
 
