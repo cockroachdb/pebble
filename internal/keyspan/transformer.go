@@ -24,7 +24,8 @@ func (tf TransformerFunc) Transform(cmp base.Compare, in Span, out *Span) error 
 	return tf(cmp, in, out)
 }
 
-var noopTransform Transformer = TransformerFunc(func(_ base.Compare, s Span, dst *Span) error {
+// NoopTransform is a Transformer that performs no mutations.
+var NoopTransform Transformer = TransformerFunc(func(_ base.Compare, s Span, dst *Span) error {
 	dst.Start, dst.End = s.Start, s.End
 	dst.Keys = append(dst.Keys[:0], s.Keys...)
 	return nil

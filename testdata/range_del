@@ -1011,13 +1011,13 @@ mem: 1
 compact a-e
 ----
 1:
-  000007:[a#11,SETWITHDEL-c#inf,RANGEDEL]
+  000007:[a#11,SET-c#inf,RANGEDEL]
   000008:[c#12,SET-e#inf,RANGEDEL]
 
 compact d-e
 ----
 1:
-  000007:[a#11,SETWITHDEL-c#inf,RANGEDEL]
+  000007:[a#11,SET-c#inf,RANGEDEL]
 2:
   000008:[c#12,SET-e#inf,RANGEDEL]
 
@@ -1049,7 +1049,7 @@ mem: 1
 compact a-e
 ----
 1:
-  000007:[a#11,SETWITHDEL-c#inf,RANGEDEL]
+  000007:[a#11,SET-c#inf,RANGEDEL]
   000008:[c#12,SET-e#inf,RANGEDEL]
 
 compact a-b
@@ -1057,7 +1057,7 @@ compact a-b
 1:
   000008:[c#12,SET-e#inf,RANGEDEL]
 2:
-  000007:[a#11,SETWITHDEL-c#inf,RANGEDEL]
+  000007:[a#11,SET-c#inf,RANGEDEL]
 
 iter seq=13
 seek-lt d
@@ -1097,7 +1097,7 @@ mem: 1
 compact a-b
 ----
 1:
-  000008:[a#11,SETWITHDEL-c#inf,RANGEDEL]
+  000008:[a#11,SET-c#inf,RANGEDEL]
   000009:[c#12,SET-d#inf,RANGEDEL]
   000010:[d#10,RANGEDEL-e#inf,RANGEDEL]
 2:
@@ -1106,7 +1106,7 @@ compact a-b
 compact d-e
 ----
 1:
-  000008:[a#11,SETWITHDEL-c#inf,RANGEDEL]
+  000008:[a#11,SET-c#inf,RANGEDEL]
   000009:[c#12,SET-d#inf,RANGEDEL]
 3:
   000011:[d#10,RANGEDEL-e#inf,RANGEDEL]
@@ -1121,7 +1121,7 @@ compact a-b L1
 1:
   000009:[c#12,SET-d#inf,RANGEDEL]
 2:
-  000008:[a#11,SETWITHDEL-c#inf,RANGEDEL]
+  000008:[a#11,SET-c#inf,RANGEDEL]
 3:
   000011:[d#10,RANGEDEL-e#inf,RANGEDEL]
 
@@ -1160,7 +1160,7 @@ compact a-b
 0.0:
   000007:[f#13,SET-f#13,SET]
 1:
-  000009:[a#11,SETWITHDEL-c#inf,RANGEDEL]
+  000009:[a#11,SET-c#inf,RANGEDEL]
   000010:[c#12,SET-d#inf,RANGEDEL]
   000011:[d#10,RANGEDEL-e#inf,RANGEDEL]
 2:
@@ -1171,7 +1171,7 @@ compact d-e
 0.0:
   000007:[f#13,SET-f#13,SET]
 1:
-  000009:[a#11,SETWITHDEL-c#inf,RANGEDEL]
+  000009:[a#11,SET-c#inf,RANGEDEL]
   000010:[c#12,SET-d#inf,RANGEDEL]
 3:
   000012:[d#10,RANGEDEL-e#inf,RANGEDEL]
@@ -1184,7 +1184,7 @@ c:v
 compact f-f L0
 ----
 1:
-  000009:[a#11,SETWITHDEL-c#inf,RANGEDEL]
+  000009:[a#11,SET-c#inf,RANGEDEL]
   000010:[c#12,SET-d#inf,RANGEDEL]
   000007:[f#13,SET-f#13,SET]
 3:
@@ -1193,9 +1193,8 @@ compact f-f L0
 compact a-f L1
 ----
 2:
-  000013:[a#11,SETWITHDEL-c#inf,RANGEDEL]
-  000014:[c#12,SETWITHDEL-d#inf,RANGEDEL]
-  000015:[f#13,SET-f#13,SET]
+  000013:[a#11,SET-d#inf,RANGEDEL]
+  000014:[f#13,SET-f#13,SET]
 3:
   000012:[d#10,RANGEDEL-e#inf,RANGEDEL]
 

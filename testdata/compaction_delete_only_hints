@@ -221,7 +221,7 @@ L6
 a.SET.20:b a.RANGEDEL.15:z
 ----
 6:
-  000004:[a#20,SETWITHDEL-z#inf,RANGEDEL]
+  000004:[a#20,SET-z#inf,RANGEDEL]
 
 # Note that this test depends on stats being present on the sstables, so we
 # collect hints here. We expect none, as the table is in L6.
@@ -255,7 +255,7 @@ L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0, type=point-key-only)
 close-snapshot
 10
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (741B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (662B), in 1.0s (2.0s total), output rate 662B/s
+[JOB 100] compacted(elision-only) L6 [000004] (825B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (746B), in 1.0s (2.0s total), output rate 746B/s
 
 # The deletion hint was removed by the elision-only compaction.
 get-hints

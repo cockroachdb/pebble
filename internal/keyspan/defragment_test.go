@@ -80,7 +80,7 @@ func TestDefragmentingIter(t *testing.T) {
 				}
 			}
 			var miter MergingIter
-			miter.Init(cmp, noopTransform, new(MergingBuffers), NewIter(cmp, spans))
+			miter.Init(cmp, NoopTransform, new(MergingBuffers), NewIter(cmp, spans))
 			innerIter := attachProbes(&miter, probeContext{log: &buf}, probes...)
 			var iter DefragmentingIter
 			iter.Init(comparer, innerIter, equal, reducer, new(DefragmentingBuffers))
@@ -164,9 +164,9 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	fragmented = fragment(cmp, formatKey, fragmented)
 
 	var originalInner MergingIter
-	originalInner.Init(cmp, noopTransform, new(MergingBuffers), NewIter(cmp, original))
+	originalInner.Init(cmp, NoopTransform, new(MergingBuffers), NewIter(cmp, original))
 	var fragmentedInner MergingIter
-	fragmentedInner.Init(cmp, noopTransform, new(MergingBuffers), NewIter(cmp, fragmented))
+	fragmentedInner.Init(cmp, NoopTransform, new(MergingBuffers), NewIter(cmp, fragmented))
 
 	var referenceIter, fragmentedIter DefragmentingIter
 	referenceIter.Init(comparer, &originalInner, DefragmentInternal, StaticDefragmentReducer, new(DefragmentingBuffers))

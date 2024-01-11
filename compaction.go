@@ -628,9 +628,7 @@ type compaction struct {
 	// The range deletion tombstone iterator, that merges and fragments
 	// tombstones across levels. This iterator is included within the compaction
 	// input iterator as a single level.
-	// TODO(jackson): Remove this when the refactor of FragmentIterator,
-	// InterleavingIterator, etc is complete.
-	rangeDelIter keyspan.InternalIteratorShim
+	rangeDelInterleaving keyspan.InterleavingIter
 	// rangeKeyInterleaving is the interleaving iter for range keys.
 	rangeKeyInterleaving keyspan.InterleavingIter
 
@@ -1377,6 +1375,15 @@ func (c *compaction) newInputIter(
 		}
 	}
 
+	// If there's only one constituent point iterator, we can avoid the overhead
+	// of a *mergingIter. This is possible, for example, when performing a flush
+	// of a single memtable. Otherwise, combine all the iterators into a merging
+	// iter.
+	iter := iters[0]
+	if len(iters) > 1 {
+		iter = newMergingIter(c.logger, &c.stats, c.cmp, nil, iters...)
+	}
+
 	// In normal operation, levelIter iterates over the point operations in a
 	// level, and initializes a rangeDelIter pointer for the range deletions in
 	// each table. During compaction, we want to iterate over the merged view of
@@ -1384,29 +1391,19 @@ func (c *compaction) newInputIter(
 	// levelIter per level to iterate over the point operations, and collect up
 	// all the range deletion files.
 	//
-	// The range deletion levels are first combined with a keyspan.MergingIter
-	// (currently wrapped by a keyspan.InternalIteratorShim to satisfy the
-	// internal iterator interface). The resulting merged rangedel iterator is
-	// then included with the point levels in a single mergingIter.
-	//
-	// Combine all the rangedel iterators using a keyspan.MergingIterator and a
-	// InternalIteratorShim so that the range deletions may be interleaved in
-	// the compaction input.
-	// TODO(jackson): Replace the InternalIteratorShim with an interleaving
-	// iterator.
+	// The range deletion levels are combined with a keyspan.MergingIter. The
+	// resulting merged rangedel iterator is then included using an
+	// InterleavingIter.
+	// TODO(jackson): Consider using a defragmenting iterator to stitch together
+	// logical range deletions that were fragmented due to previous file
+	// boundaries.
 	if len(rangeDelIters) > 0 {
-		c.rangeDelIter.Init(c.cmp, rangeDelIters...)
-		iters = append(iters, &c.rangeDelIter)
+		mi := &keyspan.MergingIter{}
+		mi.Init(c.cmp, keyspan.NoopTransform, new(keyspan.MergingBuffers), rangeDelIters...)
+		c.rangeDelInterleaving.Init(c.comparer, iter, mi, keyspan.InterleavingIterOpts{})
+		iter = &c.rangeDelInterleaving
 	}
 
-	// If there's only one constituent point iterator, we can avoid the overhead
-	// of a *mergingIter. This is possible, for example, when performing a flush
-	// of a single memtable. Otherwise, combine all the iterators into a merging
-	// iter.
-	iter := iters[0]
-	if len(iters) > 0 {
-		iter = newMergingIter(c.logger, &c.stats, c.cmp, nil, iters...)
-	}
 	// If there are range key iterators, we need to combine them using
 	// keyspan.MergingIter, and then interleave them among the points.
 	if len(rangeKeyIters) > 0 {
@@ -3401,7 +3398,7 @@ func (d *DB) runCompaction(
 				// The interleaved range deletion might only be one of many with
 				// these bounds. Some fragmenting is performed ahead of time by
 				// keyspan.MergingIter.
-				if s := c.rangeDelIter.Span(); !s.Empty() {
+				if s := c.rangeDelInterleaving.Span(); !s.Empty() {
 					// The memory management here is subtle. Range deletions
 					// blocks do NOT use prefix compression, which ensures that
 					// range deletion spans' memory is available as long we keep
