@@ -111,6 +111,11 @@ log writers:
 
 # Error is injected on sync of first (or first and second) record in first log
 # file.
+#
+# TODO(sumeer): this flakes under stress, with the primary file occasionally
+# containing woolly. Index 0 is create, index 1 is write, and index 2 is the
+# earliest the sync can happen, so this should work. Fix this or disable this
+# test case.
 init inject-errors=((ErrInjected (And Writes (PathMatch "*/000003.log") (OnIndex 2))))
 ----
 

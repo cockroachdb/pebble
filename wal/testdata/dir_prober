@@ -1,0 +1,99 @@
+# First write to probe file has error.
+init interval=200ms inject-errors=((ErrInjected (And Writes (PathMatch "foo") (OnIndex 0))))
+----
+
+enable wait
+----
+enabled
+
+# No history, so mean and max is failedProbeDuration.
+get-mean-max dur=400ms
+----
+mean: 24h0m0s, max: 24h0m0s, state:
+
+# One probe attempt, which resulted in error.
+advance-time dur=300ms wait
+----
+now: 300ms
+
+# History records a failedProbeDuration.
+get-mean-max dur=400ms
+----
+mean: 24h0m0s, max: 24h0m0s, state: 0: 24h0m0s
+
+# Second probe attempt. Succeeds in 0s.
+advance-time dur=200ms wait
+----
+now: 500ms
+
+# History has two attempts.
+get-mean-max dur=400ms
+----
+mean: 12h0m0s, max: 24h0m0s, state: 0: 24h0m0s 1: 0s
+
+# Not enough history for 401ms.
+get-mean-max dur=401ms
+----
+mean: 24h0m0s, max: 24h0m0s, state: 0: 24h0m0s 1: 0s
+
+# Block both write and sync.
+block-io-config
+----
+
+advance-time dur=200ms
+----
+now: 700ms
+
+# Unblock the write. And we know that write was waiting.
+wait-for-and-unblock-io
+----
+
+# History is unchanged, since sync is blocked.
+get-mean-max dur=600ms
+----
+mean: 24h0m0s, max: 24h0m0s, state: 0: 24h0m0s 1: 0s
+
+advance-time dur=60ms
+----
+now: 760ms
+
+# Unblock the sync. 60ms of latency was incurred.
+wait-for-and-unblock-io
+----
+
+# Wait for the history to be updated.
+advance-time dur=0ms wait
+----
+now: 760ms
+
+block-io-config unblock
+----
+
+# History has the third sample with 60ms latency.
+get-mean-max dur=600ms
+----
+mean: 8h0m0.02s, max: 24h0m0s, state: 0: 24h0m0s 1: 0s 2: 60ms
+
+# Insufficient history.
+get-mean-max dur=1s
+----
+mean: 24h0m0s, max: 24h0m0s, state: 0: 24h0m0s 1: 0s 2: 60ms
+
+# One sample is sufficient.
+get-mean-max dur=200ms
+----
+mean: 60ms, max: 60ms, state: 0: 24h0m0s 1: 0s 2: 60ms
+
+# Use last two samples.
+get-mean-max dur=201ms
+----
+mean: 30ms, max: 60ms, state: 0: 24h0m0s 1: 0s 2: 60ms
+
+disable wait
+----
+disabled
+
+# No samples.
+get-mean-max dur=600ms
+----
+mean: 24h0m0s, max: 24h0m0s, state:

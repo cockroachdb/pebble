@@ -1,0 +1,387 @@
+# Simple test case that constructs two writers with no errors or latency.
+init-manager
+----
+ok
+
+# Wait for monitor ticker to start.
+advance-time dur=1ms wait-monitor
+----
+monitor state: dir index: 0
+now: 1ms
+
+create-writer wal-num=1
+----
+ok
+
+# Ensure LogWriter is created, so that it does not race with advance-time
+# below.
+advance-time dur=0ms wait-for-log-writer
+----
+now: 1ms
+
+# Wait for monitor tick. Still using primary dir.
+advance-time dur=75ms wait-monitor
+----
+monitor state: dir index: 0 num-switches: 0, ongoing-latency-at-switch: 0s
+now: 76ms
+
+close-writer
+----
+ok
+
+list-fs
+----
+pri/000001.log
+
+create-writer wal-num=2
+----
+ok
+
+close-writer
+----
+ok
+
+elevate-write-stall-threshold
+----
+false
+
+list-fs
+----
+pri/000001.log
+pri/000002.log
+
+close-manager
+----
+ok
+
+# Test where error on first log file creation causes switch to secondary, and
+# the secondary creation blocks for too long, causing switch back to the
+# primary.
+init-manager inject-errors=((ErrInjected (And Writes (PathMatch "*/000001.log") (OnIndex 0))))
+----
+ok
+
+block-io-config filename=000001-001.log create
+----
+000001-001.log: 0b1
+
+# Wait for monitor ticker to start.
+advance-time dur=1ms wait-monitor
+----
+monitor state: dir index: 0
+now: 1ms
+
+create-writer wal-num=1
+----
+ok
+
+# Wait until create error has been noticed.
+advance-time dur=1ms wait-ongoing-io wait-for-log-writer
+----
+now: 2ms
+
+# Wait until monitor sees the error and switches to secondary.
+advance-time dur=75ms wait-monitor wait-prober
+----
+monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 0s
+prober state:
+now: 77ms
+
+# The switch to secondary blocks on creation.
+advance-time dur=0ms wait-ongoing-io
+----
+now: 77ms
+
+elevate-write-stall-threshold
+----
+true
+
+# Wait until monitor sees the slowness and switches back to primary.
+advance-time dur=80ms wait-monitor wait-prober wait-for-log-writer
+----
+monitor state: dir index: 0 failback time: 157ms num-switches: 2, ongoing-latency-at-switch: 80ms
+prober state:
+now: 157ms
+
+# Unblock creation on secondary.
+wait-for-and-unblock-io filename=000001-001.log
+----
+
+advance-time dur=1s
+----
+now: 1.157s
+
+elevate-write-stall-threshold
+----
+true
+
+close-writer
+----
+ok
+
+elevate-write-stall-threshold
+----
+true
+
+advance-time dur=10s
+----
+now: 11.157s
+
+elevate-write-stall-threshold
+----
+false
+
+create-writer wal-num=2
+----
+ok
+
+close-writer
+----
+ok
+
+close-manager
+----
+ok
+
+list-fs
+----
+pri/000001-002.log
+pri/000002.log
+sec/000001-001.log
+
+# Test with dampening of switching based on latency and secondary errors.
+#
+# Error in creation of files in the secondary.
+init-manager inject-errors=((ErrInjected (And Writes (PathMatch "sec/*.log"))))
+----
+ok
+
+# Block creation of the first 3 files in the primary.
+block-io-config filename=000001.log create
+----
+000001.log: 0b1
+
+block-io-config filename=000001-002.log create
+----
+000001-002.log: 0b1
+
+block-io-config filename=000001-004.log create
+----
+000001-004.log: 0b1
+
+# Wait for monitor ticker to start.
+advance-time dur=1ms wait-monitor
+----
+monitor state: dir index: 0
+now: 1ms
+
+create-writer wal-num=1
+----
+ok
+
+# Blocked in creation.
+advance-time dur=0ms wait-ongoing-io
+----
+now: 1ms
+
+# Wait until monitor sees the slowness and switches to secondary.
+advance-time dur=76ms wait-monitor wait-prober
+----
+monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 76ms
+prober state:
+now: 77ms
+
+elevate-write-stall-threshold
+----
+true
+
+# Wait for the error.
+advance-time dur=0ms wait-ongoing-io wait-for-log-writer
+----
+now: 77ms
+
+list-fs
+----
+
+# Wait until monitor sees the error and switches back to primary.
+advance-time dur=75ms wait-monitor wait-prober
+----
+monitor state: dir index: 0 failback time: 152ms num-switches: 2, ongoing-latency-at-switch: 76ms
+prober state:
+now: 152ms
+
+# Blocked in creation.
+advance-time dur=0ms wait-ongoing-io
+----
+now: 152ms
+
+# Monitor sees the slowness but since latency is < 2*76ms, does not switch.
+advance-time dur=77ms wait-monitor
+----
+monitor state: dir index: 0 failback time: 152ms num-switches: 2, ongoing-latency-at-switch: 76ms
+now: 229ms
+
+# Wait until monitor sees the slowness and switches to secondary.
+advance-time dur=77ms wait-monitor wait-prober
+----
+monitor state: dir index: 1 failback time: 152ms num-switches: 3, ongoing-latency-at-switch: 154ms
+prober state:
+now: 306ms
+
+# Wait for the error.
+advance-time dur=0ms wait-ongoing-io wait-for-log-writer
+----
+now: 306ms
+
+# Wait until monitor sees the error and switches back to primary.
+advance-time dur=75ms wait-monitor wait-prober
+----
+monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
+prober state:
+now: 381ms
+
+# Blocked in creation.
+advance-time dur=0ms wait-ongoing-io
+----
+now: 381ms
+
+advance-time dur=78ms wait-monitor
+----
+monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
+now: 459ms
+
+advance-time dur=78ms wait-monitor
+----
+monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
+now: 537ms
+
+advance-time dur=78ms wait-monitor
+----
+monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
+now: 615ms
+
+advance-time dur=78ms wait-monitor
+----
+monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
+now: 693ms
+
+# Unblock everything.
+block-io-config filename=000001.log
+----
+000001.log: 0b0
+
+block-io-config filename=000001-002.log
+----
+000001-002.log: 0b0
+
+block-io-config filename=000001-004.log
+----
+000001-004.log: 0b0
+
+close-writer
+----
+ok
+
+close-manager
+----
+ok
+
+list-fs
+----
+pri/000001-002.log
+pri/000001-004.log
+pri/000001.log
+
+# Test failback after primary is healthy.
+init-manager inject-errors=((ErrInjected (And Writes (PathMatch "*/000001.log"))))
+----
+ok
+
+# Wait for monitor ticker to start.
+advance-time dur=0ms wait-monitor
+----
+monitor state: dir index: 0
+now: 0s
+
+create-writer wal-num=1
+----
+ok
+
+# Wait until create error has been noticed.
+advance-time dur=1ms wait-ongoing-io wait-for-log-writer
+----
+now: 1ms
+
+# Wait until monitor sees the error and switches to secondary.
+advance-time dur=74ms wait-monitor wait-prober wait-for-log-writer
+----
+monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 0s
+prober state:
+now: 75ms
+
+elevate-write-stall-threshold
+----
+true
+
+# Monitor will tick at 75ms, 150ms, 225ms, 300ms, ...
+# Prober will tick at 175ms, 275ms.
+#
+# We have already ensure the secondary is created, to ensure that creation
+# does not race with the advancement of time (otherwise we can accidentally
+# observe 75ms latency on the creation).
+
+advance-time dur=75ms wait-monitor
+----
+monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 0s
+now: 150ms
+
+advance-time dur=25ms wait-prober
+----
+prober state: 0: 0s
+now: 175ms
+
+advance-time dur=50ms wait-monitor
+----
+monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 0s
+now: 225ms
+
+advance-time dur=50ms wait-prober
+----
+prober state: 0: 0s 1: 0s
+now: 275ms
+
+advance-time dur=25ms wait-monitor wait-prober wait-for-log-writer
+----
+monitor state: dir index: 0 failback time: 300ms num-switches: 2, ongoing-latency-at-switch: 0s
+prober state:
+now: 300ms
+
+advance-time dur=1s
+----
+now: 1.3s
+
+elevate-write-stall-threshold
+----
+true
+
+advance-time dur=9s
+----
+now: 10.3s
+
+elevate-write-stall-threshold
+----
+false
+
+close-writer
+----
+ok
+
+close-manager
+----
+ok
+
+list-fs
+----
+pri/000001-002.log
+pri/probe-file
+sec/000001-001.log
