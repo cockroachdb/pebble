@@ -1,0 +1,152 @@
+init
+----
+
+blocking-conf filename=000000.log sync
+----
+000000.log: 0b100
+
+write sync=true value=woolly
+----
+
+close-async
+----
+
+ongoing-latency writer-index=0
+----
+found ongoing
+
+wait-for-and-unblock filename=000000.log
+----
+
+blocking-conf filename=000000.log
+----
+000000.log: 0b0
+
+wait-for-close
+----
+close: ok
+records:
+  record 0: synced
+log files:
+  pri/000000.log
+    0: woolly
+    EOF
+log writers:
+  writer 0: no error
+
+# More complex blocking.
+init
+----
+
+# Sync is blocked on first log file.
+blocking-conf filename=000001.log sync
+----
+000001.log: 0b100
+
+# Write wants a sync.
+write sync=true value=woolly
+----
+
+# Wait until log writer is blocked on sync and indicating ongoing latency.
+ongoing-latency writer-index=0
+----
+found ongoing
+
+# Unblock the sync.
+wait-for-and-unblock filename=000001.log
+----
+
+# Queue length drops to 0.
+wait-for-queue length=0
+----
+
+# Write is blocked on first log file.
+blocking-conf filename=000001.log write
+----
+000001.log: 0b10
+
+# Write does not want a sync, but the file write is blocked.
+write sync=false value=mammoth
+----
+
+# See if first log writer is blocked on write and indicating ongoing latency.
+# Because we did not request a sync, the log writer is not trying to do a
+# write. But the record is in the log writer's buffer.
+ongoing-latency writer-index=0
+----
+no ongoing
+
+# Block writes on the second log file too, which we haven't created yet.
+blocking-conf filename=000001-001.log write
+----
+000001-001.log: 0b10
+
+# Switch to second log file.
+switch
+----
+ok
+
+# Ensure second log writer is blocked on write and indicating ongoing latency.
+ongoing-latency writer-index=1
+----
+found ongoing
+
+# Close can complete when second log writer writes the second record, but it
+# is blocked.
+close-async
+----
+
+# Unblock writes on second log file
+wait-for-and-unblock filename=000001-001.log
+----
+
+blocking-conf filename=000001-001.log
+----
+000001-001.log: 0b0
+
+# Queue length drops to 0.
+wait-for-queue length=0
+----
+
+# Ensure close succeeds. First writer is still blocked.
+wait-for-close do-not-stop-goroutines
+----
+close: ok
+records:
+  record 0: synced
+  record 1: no sync
+
+# Do a noop switch.
+switch
+----
+ok
+
+# First log writer is still trying to close, but blocked on the write.
+ongoing-latency writer-index=0
+----
+found ongoing
+
+# Unblock first log writer.
+wait-for-and-unblock filename=000001.log
+----
+
+blocking-conf filename=000001.log
+----
+000001.log: 0b0
+
+# Everyone is unblocked, so we can stop and wait for all goroutines to stop.
+stop-goroutines-after-close
+----
+log files:
+  pri/000001.log
+    0: woolly
+    17: mammoth
+    EOF
+  sec/000001-001.log
+    0: mammoth
+    EOF
+log writers:
+  writer 0: no error
+  writer 1: no error
+
+# TODO(sumeer): More blocking test cases.
