@@ -27,7 +27,7 @@ type Dir struct {
 // NumWAL is the number of the virtual WAL. It can map to one or more physical
 // log files. In standalone mode, it will map to exactly one log file. In
 // failover mode, it can map to many log files, which are totally ordered
-// (using a dense logIndex).
+// (using a dense logNameIndex).
 //
 // In general, WAL refers to the virtual WAL, and file refers to a log file.
 // The Pebble MANIFEST only knows about virtual WALs and assigns numbers to
@@ -36,14 +36,14 @@ type Dir struct {
 // the contents of the directories.
 type NumWAL base.DiskFileNum
 
-// logIndex numbers log files within a WAL.
-type logIndex uint32
+// logNameIndex numbers log files within a WAL.
+type logNameIndex uint32
 
 // TODO(sumeer): parsing func. And remove attempts to parse log files outside
 // the wal package (including tools).
 
 // makeLogFilename makes a log filename.
-func makeLogFilename(wn NumWAL, index logIndex) string {
+func makeLogFilename(wn NumWAL, index logNameIndex) string {
 	if index == 0 {
 		// Use a backward compatible name, for simplicity.
 		return base.MakeFilename(base.FileTypeLog, base.DiskFileNum(wn))
@@ -53,9 +53,11 @@ func makeLogFilename(wn NumWAL, index logIndex) string {
 
 // Options provides configuration for the Manager.
 type Options struct {
-	// Primary dir for storing WAL files.
+	// Primary dir for storing WAL files. It must already be created and synced
+	// up to the root.
 	Primary Dir
-	// Secondary is used for failover. Optional.
+	// Secondary is used for failover. Optional. It must already be created and
+	// synced up to the root.
 	Secondary Dir
 
 	// Recyling configuration. Only files in the primary dir are recycled.
@@ -69,8 +71,14 @@ type Options struct {
 	// recycling.
 	MaxNumRecyclableLogs int
 
-	// SyncingFileOptions is the configuration when calling vfs.NewSyncingFile.
-	SyncingFileOpts vfs.SyncingFileOptions
+	// Configuration for calling vfs.NewSyncingFile.
+
+	// NoSyncOnClose is documented in SyncingFileOptions.
+	NoSyncOnClose bool
+	// BytesPerSync is documented in SyncingFileOptions.
+	BytesPerSync int
+	// PreallocateSize is documented in SyncingFileOptions.
+	PreallocateSize func() int
 
 	// MinSyncInterval is documented in Options.WALMinSyncInterval.
 	MinSyncInterval func() time.Duration
@@ -87,6 +95,13 @@ type Options struct {
 	// there is no syncQueue, so the pushback into the commit pipeline is
 	// unnecessary, but possibly harmless.
 	QueueSemChan chan struct{}
+
+	// ElevatedWriteStallThresholdLag is the duration for which an elevated
+	// threshold should continue after a switch back to the primary dir.
+	ElevatedWriteStallThresholdLag time.Duration
+
+	// Logger for logging.
+	Logger base.Logger
 }
 
 // Stats exposes stats used in Pebble metrics.
@@ -133,9 +148,14 @@ type Manager interface {
 	// increasing, and be greater than any NumWAL seen earlier. The caller must
 	// close the previous Writer before calling Create.
 	Create(wn NumWAL) (Writer, error)
+	// ElevateWriteStallThresholdForFailover returns true if the caller should
+	// use a high write stall threshold because the WALs are being written to
+	// the secondary dir.
+	ElevateWriteStallThresholdForFailover() bool
 	// Stats returns the latest Stats.
 	Stats() Stats
 	// Close the manager.
+	// REQUIRES: Writers and Readers have already been closed.
 	Close() error
 }
 
@@ -181,5 +201,5 @@ type Reader interface {
 }
 
 // Make lint happy.
-var _ logIndex = 0
+var _ logNameIndex = 0
 var _ = makeLogFilename

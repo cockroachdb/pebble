@@ -1,0 +1,115 @@
+init
+----
+
+write sync=true value=woolly
+----
+
+write sync=false value=sheep
+----
+
+wait-for-queue length=1
+----
+
+switch
+----
+
+write sync=false value=yak
+----
+
+close
+----
+close: success
+sync 0: no error
+sync 1: no error
+sync 2: no error
+log files:
+  pri/000000.log
+    0: woolly
+    17: sheep
+    EOF
+  sec/000000-001.log
+    0: sheep
+    16: yak
+    EOF
+
+# Error is injected on create of first log file.
+init inject-errors=((ErrInjected (And Writes (PathMatch "*/000001.log") (OnIndex 0))))
+----
+
+write sync=true value=woolly
+----
+
+write sync=true value=sheep
+----
+
+switch
+----
+
+close
+----
+close: success
+sync 0: no error
+sync 1: no error
+log files:
+  sec/000001-001.log
+    0: woolly
+    17: sheep
+    EOF
+
+# Error is injected on write of first (or first and second) record.
+init inject-errors=((ErrInjected (And Writes (PathMatch "*/000002.log") (OnIndex 1))))
+----
+
+write sync=true value=woolly
+----
+
+write sync=true value=sheep
+----
+
+switch
+----
+
+close
+----
+close: success
+sync 0: no error
+sync 1: no error
+log files:
+  pri/000002.log
+    EOF
+  sec/000002-001.log
+    0: woolly
+    17: sheep
+    EOF
+
+# Error is injected on sync of first (or first and second) record.
+init inject-errors=((ErrInjected (And Writes (PathMatch "*/000003.log") (OnIndex 2))))
+----
+
+write sync=true value=woolly
+----
+
+write sync=true value=sheep
+----
+
+switch
+----
+
+close
+----
+close: success
+sync 0: no error
+sync 1: no error
+log files:
+  pri/000003.log
+    EOF
+  sec/000003-001.log
+    0: woolly
+    17: sheep
+    EOF
+
+
+# TODO: inject errors in all writers and then close. Close will not happen until ...
+# TODO: err recording.
+# TODO: switch 11 times
+
