@@ -1,0 +1,358 @@
+init
+----
+
+blocking-conf filename=000000.log sync
+----
+000000.log: 0b100
+
+write sync=true value=woolly
+----
+
+close-async
+----
+
+ongoing-latency writer-index=0
+----
+found ongoing
+
+wait-for-and-unblock filename=000000.log
+----
+
+blocking-conf filename=000000.log
+----
+000000.log: 0b0
+
+wait-for-close
+----
+close: ok, offset: 17
+records:
+  record 0: synced
+write bytes metric: 28
+log files:
+  pri/000000.log
+    0: woolly
+    EOF
+log writers:
+  writer 0: no error
+
+# More complex blocking.
+init
+----
+
+# Sync is blocked on first log file.
+blocking-conf filename=000001.log sync
+----
+000001.log: 0b100
+
+# Write wants a sync.
+write sync=true value=woolly
+----
+
+# Wait until log writer is blocked on sync and indicating ongoing latency.
+ongoing-latency writer-index=0
+----
+found ongoing
+
+# Unblock the sync.
+wait-for-and-unblock filename=000001.log
+----
+
+# Queue length drops to 0.
+wait-for-queue length=0
+----
+
+# Write is blocked on first log file.
+blocking-conf filename=000001.log write
+----
+000001.log: 0b10
+
+# Write does not want a sync, but the file write is blocked.
+write sync=false value=mammoth print-offset
+----
+offset: 35
+
+# See if first log writer is blocked on write and indicating ongoing latency.
+# Because we did not request a sync, the log writer is not trying to do a
+# write. But the record is in the log writer's buffer.
+ongoing-latency writer-index=0
+----
+no ongoing
+
+# Block writes on the second log file too, which we haven't created yet.
+blocking-conf filename=000001-001.log write
+----
+000001-001.log: 0b10
+
+# Switch to second log file.
+switch
+----
+ok
+
+# Ensure second log writer is blocked on write and indicating ongoing latency.
+ongoing-latency writer-index=1
+----
+found ongoing
+
+# Close can complete when second log writer writes the second record, but it
+# is blocked.
+close-async
+----
+
+# Unblock writes on second log file
+wait-for-and-unblock filename=000001-001.log
+----
+
+blocking-conf filename=000001-001.log
+----
+000001-001.log: 0b0
+
+# Queue length drops to 0.
+wait-for-queue length=0
+----
+
+# Ensure close succeeds. First writer is still blocked.
+wait-for-close do-not-stop-goroutines
+----
+close: ok, offset: 35
+records:
+  record 0: synced
+  record 1: no sync
+write bytes metric: 29
+
+# Do a noop switch.
+switch
+----
+ok
+
+# First log writer is still trying to close, but blocked on the write.
+ongoing-latency writer-index=0
+----
+found ongoing
+
+# Unblock first log writer.
+wait-for-and-unblock filename=000001.log
+----
+
+blocking-conf filename=000001.log
+----
+000001.log: 0b0
+
+# Everyone is unblocked, so we can stop and wait for all goroutines to stop.
+stop-goroutines-after-close
+----
+log files:
+  pri/000001.log
+    0: woolly
+    17: mammoth
+    EOF
+  sec/000001-001.log
+    0: mammoth
+    EOF
+log writers:
+  writer 0: no error
+  writer 1: no error
+
+# Block the creation of the writer. Initial offsets will be estimates equal to
+# the length of the records.
+init no-writer
+----
+
+blocking-conf filename=000002.log create
+----
+000002.log: 0b1
+
+create-writer-after-init no-wait
+----
+
+write sync=true value=woolly print-offset
+----
+offset: 6
+
+write sync=true value=sheep print-offset
+----
+offset: 11
+
+wait-for-and-unblock filename=000002.log
+----
+
+blocking-conf filename=000002.log
+----
+000002.log: 0b0
+
+wait-for-queue length=0
+----
+
+# Offset is now accurate, accounting for all three records.
+write sync=false value=yak print-offset
+----
+offset: 47
+
+close
+----
+close: ok, offset: 47
+records:
+  record 0: synced
+  record 1: synced
+  record 2: no sync
+write bytes metric: 58
+log files:
+  pri/000002.log
+    0: woolly
+    17: sheep
+    33: yak
+    EOF
+log writers:
+  writer 0: no error
+
+# Two writers. Second writer is blocked on creation when close is called, so
+# close has to iterate. Also, first writer gets created after second writer
+# creation starts, so closes itself.
+init no-writer
+----
+
+blocking-conf filename=000003.log create
+----
+000003.log: 0b1
+
+create-writer-after-init no-wait
+----
+
+blocking-conf filename=000003-001.log create
+----
+000003-001.log: 0b1
+
+switch no-wait
+----
+ok
+
+write sync=true value=woolly print-offset
+----
+offset: 6
+
+ongoing-latency writer-index=0
+----
+found ongoing
+
+ongoing-latency writer-index=1
+----
+found ongoing
+
+wait-for-and-unblock filename=000003.log
+----
+
+ongoing-latency writer-index=1
+----
+found ongoing
+
+close-async
+----
+
+sleep
+----
+
+wait-for-and-unblock filename=000003-001.log
+----
+
+wait-for-close
+----
+close: ok, offset: 6
+records:
+  record 0: synced
+write bytes metric: 28
+log files:
+  pri/000003.log
+    EOF
+  sec/000003-001.log
+    0: woolly
+    EOF
+log writers:
+  writer 0: no error
+  writer 1: no error
+
+# Two writers. Second writer is has already been created when close is called,
+# but first writer has not been created. So first writer will close itself.
+# Have to iterate in close for second writer to close.
+init no-writer
+----
+
+blocking-conf filename=000004.log create
+----
+000004.log: 0b1
+
+create-writer-after-init no-wait
+----
+
+blocking-conf filename=000004-001.log write
+----
+000004-001.log: 0b10
+
+# Second log writer is created.
+switch
+----
+ok
+
+write sync=true value=mammoth print-offset
+----
+offset: 18
+
+# Waiting in create.
+ongoing-latency writer-index=0
+----
+found ongoing
+
+# Waiting in write.
+ongoing-latency writer-index=1
+----
+found ongoing
+
+# Let the write proceed in second writer.
+wait-for-and-unblock filename=000004-001.log
+----
+
+ongoing-latency writer-index=0
+----
+found ongoing
+
+close-async
+----
+
+sleep
+----
+
+# Unblock the writing of the EOF trailer.
+wait-for-and-unblock filename=000004-001.log
+----
+
+blocking-conf filename=000004-001.log
+----
+000004-001.log: 0b0
+
+wait-for-close do-not-stop-goroutines
+----
+close: ok, offset: 18
+records:
+  record 0: synced
+write bytes metric: 29
+
+# First writer is still blocked.
+ongoing-latency writer-index=0
+----
+found ongoing
+
+# Unblock first writer.
+wait-for-and-unblock filename=000004.log
+----
+
+stop-goroutines-after-close
+----
+log files:
+  pri/000004.log
+    EOF
+  sec/000004-001.log
+    0: mammoth
+    EOF
+log writers:
+  writer 0: no error
+  writer 1: no error
+
+# TODO(sumeer): More blocking test cases.

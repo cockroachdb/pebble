@@ -1001,10 +1001,15 @@ func (w *LogWriter) emitFragment(n int, p []byte) (remainingP []byte) {
 	return p[r:]
 }
 
-// Metrics must be called after Close. The callee will no longer modify the
-// returned LogWriterMetrics.
-func (w *LogWriter) Metrics() *LogWriterMetrics {
-	return w.flusher.metrics
+// Metrics must typically be called after Close, since the callee will no
+// longer modify the returned LogWriterMetrics. It is also current if there is
+// nothing left to flush in the flush loop, but that is an implementation
+// detail that callers should not rely on.
+func (w *LogWriter) Metrics() LogWriterMetrics {
+	w.flusher.Lock()
+	defer w.flusher.Unlock()
+	m := *w.flusher.metrics
+	return m
 }
 
 // LogWriterMetrics contains misc metrics for the log writer.
