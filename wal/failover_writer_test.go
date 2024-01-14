@@ -251,9 +251,11 @@ func TestFailoverWriter(t *testing.T) {
 					logWriterCreated = make(chan struct{}, 100)
 					w, err = newFailoverWriter(failoverWriterOpts{
 						wn:                   wn,
+						timeSource:           defaultTime{},
 						preallocateSize:      func() int { return 0 },
 						queueSemChan:         queueSemChan,
 						stopper:              stopper,
+						writerClosed:         func() {},
 						writerCreatedForTest: logWriterCreated,
 					}, testDirs[dirIndex])
 					require.NoError(t, err)
@@ -359,7 +361,9 @@ func TestFailoverWriter(t *testing.T) {
 				case "ongoing-latency":
 					var index int
 					td.ScanArgs(t, "writer-index", &index)
-					for i := 0; i < 10; i++ {
+					// TODO(sumeer): make this more robust (and faster), i.e., don't
+					// sleep.
+					for i := 0; i < 20; i++ {
 						time.Sleep(time.Duration(i+1) * time.Millisecond)
 						d, _ := w.writers[index].r.ongoingLatencyOrError()
 						if d > 0 {
@@ -586,9 +590,11 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 	dirIndex := 0
 	ww, err := newFailoverWriter(failoverWriterOpts{
 		wn:                   0,
+		timeSource:           defaultTime{},
 		preallocateSize:      func() int { return 0 },
 		queueSemChan:         queueSemChan,
 		stopper:              stopper,
+		writerClosed:         func() {},
 		writerCreatedForTest: logWriterCreated,
 	}, dirs[dirIndex])
 	require.NoError(t, err)

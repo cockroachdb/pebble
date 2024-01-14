@@ -322,19 +322,18 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	})
 	walManager := &wal.StandaloneManager{}
 	err = walManager.Init(wal.Options{
-		Primary:                        wal.Dir{FS: opts.FS, Dirname: walDirname},
-		Secondary:                      wal.Dir{},
-		MinUnflushedWALNum:             wal.NumWAL(d.mu.versions.minUnflushedLogNum),
-		MaxNumRecyclableLogs:           opts.MemTableStopWritesThreshold + 1,
-		NoSyncOnClose:                  opts.NoSyncOnClose,
-		BytesPerSync:                   opts.WALBytesPerSync,
-		PreallocateSize:                d.walPreallocateSize,
-		MinSyncInterval:                opts.WALMinSyncInterval,
-		FsyncLatency:                   d.mu.log.metrics.fsyncLatency,
-		QueueSemChan:                   d.commit.logSyncQSem,
-		ElevatedWriteStallThresholdLag: 0,
-		Logger:                         opts.Logger,
-		EventListener:                  walEventListenerAdaptor{l: opts.EventListener},
+		Primary:              wal.Dir{FS: opts.FS, Dirname: walDirname},
+		Secondary:            wal.Dir{},
+		MinUnflushedWALNum:   wal.NumWAL(d.mu.versions.minUnflushedLogNum),
+		MaxNumRecyclableLogs: opts.MemTableStopWritesThreshold + 1,
+		NoSyncOnClose:        opts.NoSyncOnClose,
+		BytesPerSync:         opts.WALBytesPerSync,
+		PreallocateSize:      d.walPreallocateSize,
+		MinSyncInterval:      opts.WALMinSyncInterval,
+		FsyncLatency:         d.mu.log.metrics.fsyncLatency,
+		QueueSemChan:         d.commit.logSyncQSem,
+		Logger:               opts.Logger,
+		EventListener:        walEventListenerAdaptor{l: opts.EventListener},
 	})
 	if err != nil {
 		return nil, err
