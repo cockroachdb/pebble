@@ -76,11 +76,12 @@ func TestSyncQueue(t *testing.T) {
 
 func TestFlusherCond(t *testing.T) {
 	var mu sync.Mutex
-	var q syncQueue
 	var c flusherCond
 	var closed bool
 
-	c.init(&mu, &q)
+	psq := &pendingSyncsWithSyncQueue{}
+	c.init(&mu, psq)
+	q := &psq.syncQueue
 
 	var flusherWG sync.WaitGroup
 	flusherWG.Add(1)
@@ -299,7 +300,8 @@ func TestMinSyncInterval(t *testing.T) {
 		}
 		// NB: we can't use syncQueue.load() here as that will return 0,0 while the
 		// syncQueue is blocked.
-		head, tail := w.flusher.syncQ.unpack(w.flusher.syncQ.headTail.Load())
+		syncQ := w.flusher.pendingSyncs.(*pendingSyncsWithSyncQueue)
+		head, tail := syncQ.unpack(syncQ.headTail.Load())
 		waiters := head - tail
 		if waiters != uint32(i+1) {
 			t.Fatalf("expected %d waiters, but found %d", i+1, waiters)
