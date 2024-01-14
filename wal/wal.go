@@ -137,17 +137,48 @@ type Options struct {
 	// unnecessary, but possibly harmless.
 	QueueSemChan chan struct{}
 
+	// Logger for logging.
+	Logger base.Logger
+
+	// EventListener is called on events, like log file creation.
+	EventListener EventListener
+
+	FailoverOptions
+}
+
+// FailoverOptions are options that are specific to failover mode.
+type FailoverOptions struct {
+	// PrimaryDirProbeInterval is the interval for probing the primary dir, when
+	// the WAL is being written to the secondary, to decide when to fail back.
+	PrimaryDirProbeInterval time.Duration
+	// HealthyProbeLatencyThreshold is the latency threshold to declare that the
+	// primary is healthy again.
+	HealthyProbeLatencyThreshold time.Duration
+	// HealthyInterval is the time interval over which the probes have to be
+	// healthy. That is, we look at probe history of length
+	// HealthyInterval/PrimaryDirProbeInterval.
+	HealthyInterval time.Duration
+
+	// UnhealthySamplingInterval is the interval for sampling ongoing calls and
+	// errors in the latest LogWriter.
+	UnhealthySamplingInterval time.Duration
+	// UnhealthyOperationLatencyThreshold is the latency threshold that is
+	// considered unhealthy, for operations done by a LogWriter.
+	UnhealthyOperationLatencyThreshold time.Duration
+
 	// ElevatedWriteStallThresholdLag is the duration for which an elevated
 	// threshold should continue after a switch back to the primary dir. This is
 	// because we may have accumulated many unflushed memtables and flushing
 	// them can take some time. Maybe set to 60s.
 	ElevatedWriteStallThresholdLag time.Duration
 
-	// Logger for logging.
-	Logger base.Logger
+	// timeSource is only non-nil for tests.
+	timeSource
 
-	// EventListener is called on events, like log file creation.
-	EventListener EventListener
+	monitorIterationForTesting chan<- struct{}
+	proberIterationForTesting  chan<- struct{}
+	monitorStateForTesting     func(numSwitches int, ongoingLatencyAtSwitch time.Duration)
+	logWriterCreatedForTesting chan<- struct{}
 }
 
 // EventListener is called on events, like log file creation.

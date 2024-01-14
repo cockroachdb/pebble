@@ -83,6 +83,8 @@ const (
 	OpFileSync
 	// OpFileSyncData describes a file sync operation.
 	OpFileSyncData
+	// OpFileSyncTo describes a file sync operation.
+	OpFileSyncTo
 	// OpFileFlush describes a file flush operation.
 	OpFileFlush
 )
@@ -92,7 +94,7 @@ func (o OpKind) ReadOrWrite() OpReadWrite {
 	switch o {
 	case OpOpen, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat:
 		return OpIsRead
-	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForWrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileSyncData, OpFileFlush, OpFilePreallocate:
+	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForWrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileSyncData, OpFileSyncTo, OpFileFlush, OpFilePreallocate:
 		return OpIsWrite
 	default:
 		panic(fmt.Sprintf("unrecognized op %v\n", o))
@@ -535,7 +537,9 @@ func (f *errorFile) SyncData() error {
 }
 
 func (f *errorFile) SyncTo(length int64) (fullSync bool, err error) {
-	// TODO(jackson): Consider error injection.
+	if err := f.inj.MaybeError(Op{Kind: OpFileSyncTo, Path: f.path}); err != nil {
+		return false, err
+	}
 	return f.file.SyncTo(length)
 }
 

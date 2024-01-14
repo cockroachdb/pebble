@@ -355,6 +355,7 @@ var _ switchableWriter = &failoverWriter{}
 type failoverWriterOpts struct {
 	wn     NumWAL
 	logger base.Logger
+	timeSource
 
 	// Options that feed into SyncingFileOptions.
 	noSyncOnClose   bool
@@ -366,6 +367,8 @@ type failoverWriterOpts struct {
 	fsyncLatency    prometheus.Histogram
 	queueSemChan    chan struct{}
 	stopper         *stopper
+
+	writerClosed func()
 
 	writerCreatedForTest chan<- struct{}
 }
@@ -459,6 +462,7 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 		// TODO(sumeer): recycling of logs.
 		filename := dir.FS.PathJoin(dir.Dirname, makeLogFilename(ww.opts.wn, writerIndex))
 		recorderAndWriter := &ww.writers[writerIndex].r
+		recorderAndWriter.ts = ww.opts.timeSource
 		var file vfs.File
 		// handleErrFunc is called when err != nil. It handles the multiple IO error
 		// cases below.
@@ -593,12 +597,21 @@ func (ww *failoverWriter) doneSyncCallback(doneSync record.PendingSyncIndex, err
 
 // ongoingLatencyOrErrorForCurDir implements switchableWriter.
 func (ww *failoverWriter) ongoingLatencyOrErrorForCurDir() (time.Duration, error) {
+	r := ww.recorderForCurDir()
+	if r == nil {
+		return 0, nil
+	}
+	return r.ongoingLatencyOrError()
+}
+
+// For internal use and testing.
+func (ww *failoverWriter) recorderForCurDir() *latencyAndErrorRecorder {
 	ww.mu.Lock()
 	defer ww.mu.Unlock()
 	if ww.mu.closed {
-		return 0, nil
+		return nil
 	}
-	return ww.writers[ww.mu.nextWriterIndex-1].r.ongoingLatencyOrError()
+	return &ww.writers[ww.mu.nextWriterIndex-1].r
 }
 
 // Close implements Writer.
@@ -613,6 +626,12 @@ func (ww *failoverWriter) ongoingLatencyOrErrorForCurDir() (time.Duration, error
 //
 // See the long comment about Close behavior where failoverWriter is declared.
 func (ww *failoverWriter) Close() (logicalOffset int64, err error) {
+	offset, err := ww.closeInternal()
+	ww.opts.writerClosed()
+	return offset, err
+}
+
+func (ww *failoverWriter) closeInternal() (logicalOffset int64, err error) {
 	logicalOffset = ww.logicalOffset.offset
 	// [0, closeCalledCount) have had LogWriter.Close called (though may not
 	// have finished) or the LogWriter will never be non-nil. Either way, they
@@ -738,6 +757,7 @@ func (ww *failoverWriter) Metrics() record.LogWriterMetrics {
 // implementation of writerSyncerCloser that will record for the Write and
 // Sync methods.
 type latencyAndErrorRecorder struct {
+	ts                    timeSource
 	ongoingOperationStart atomic.Int64
 	error                 atomic.Pointer[error]
 	writerSyncerCloser
@@ -750,7 +770,7 @@ type writerSyncerCloser interface {
 }
 
 func (r *latencyAndErrorRecorder) writeStart() {
-	r.ongoingOperationStart.Store(time.Now().UnixNano())
+	r.ongoingOperationStart.Store(r.ts.now().UnixNano())
 }
 
 func (r *latencyAndErrorRecorder) writeEnd(err error) {
@@ -769,7 +789,7 @@ func (r *latencyAndErrorRecorder) ongoingLatencyOrError() (time.Duration, error)
 	startTime := r.ongoingOperationStart.Load()
 	var latency time.Duration
 	if startTime != 0 {
-		l := time.Now().UnixNano() - startTime
+		l := r.ts.now().UnixNano() - startTime
 		if l < 0 {
 			l = 0
 		}

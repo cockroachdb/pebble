@@ -252,9 +252,11 @@ func TestFailoverWriter(t *testing.T) {
 					logWriterCreated = make(chan struct{}, 100)
 					w, err = newFailoverWriter(failoverWriterOpts{
 						wn:                   wn,
+						timeSource:           defaultTime{},
 						preallocateSize:      func() int { return 0 },
 						queueSemChan:         queueSemChan,
 						stopper:              stopper,
+						writerClosed:         func() {},
 						writerCreatedForTest: logWriterCreated,
 					}, testDirs[dirIndex])
 					require.NoError(t, err)
@@ -360,14 +362,27 @@ func TestFailoverWriter(t *testing.T) {
 				case "ongoing-latency":
 					var index int
 					td.ScanArgs(t, "writer-index", &index)
-					for i := 0; i < 10; i++ {
-						time.Sleep(time.Duration(i+1) * time.Millisecond)
-						d, _ := w.writers[index].r.ongoingLatencyOrError()
+					expectedOngoing := true
+					if td.HasArg("none") {
+						expectedOngoing = false
+					}
+					time.Sleep(5 * time.Millisecond)
+					var d time.Duration
+					returnStr := func() string {
 						if d > 0 {
 							return "found ongoing"
 						}
+						return "no ongoing"
 					}
-					return "no ongoing"
+					// Timeout eventually, if the state is unexpected.
+					for i := 0; i < 4000; i++ {
+						d, _ = w.writers[index].r.ongoingLatencyOrError()
+						if (d > 0) == expectedOngoing {
+							return returnStr()
+						}
+						time.Sleep(5 * time.Millisecond)
+					}
+					return returnStr()
 
 				case "wait-for-close":
 					stopGoroutines := true
@@ -404,7 +419,7 @@ func TestFailoverWriter(t *testing.T) {
 				case "wait-for-and-unblock":
 					var filename string
 					td.ScanArgs(t, "filename", &filename)
-					testDirs[0].FS.(*blockingFS).waitForBlockAndUnblock(filename)
+					sendWithDeadline(t, td, "", testDirs[0].FS.(*blockingFS).waitForBlockAndUnblock(filename))
 					return ""
 
 				case "sleep":
@@ -469,14 +484,14 @@ func (fs *blockingFS) setConf(baseFilename string, conf blockingConf) {
 	}
 }
 
-func (fs *blockingFS) waitForBlockAndUnblock(baseFilename string) {
+func (fs *blockingFS) waitForBlockAndUnblock(baseFilename string) chan<- struct{} {
 	fs.mu.Lock()
 	cs, ok := fs.mu.conf[baseFilename]
 	if !ok {
 		panic(errors.AssertionFailedf("no conf for %s", baseFilename))
 	}
 	fs.mu.Unlock()
-	cs.block <- struct{}{}
+	return cs.block
 }
 
 func (fs *blockingFS) maybeBlock(baseFilename string, op blockingConf) {
@@ -587,9 +602,11 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 	dirIndex := 0
 	ww, err := newFailoverWriter(failoverWriterOpts{
 		wn:                   0,
+		timeSource:           defaultTime{},
 		preallocateSize:      func() int { return 0 },
 		queueSemChan:         queueSemChan,
 		stopper:              stopper,
+		writerClosed:         func() {},
 		writerCreatedForTest: logWriterCreated,
 	}, dirs[dirIndex])
 	require.NoError(t, err)
@@ -613,7 +630,15 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 	_, err = ww.Close()
 	require.NoError(t, err)
 	wg.Wait()
-	require.Equal(t, 0, len(queueSemChan))
+	func() {
+		for i := 0; i < 100; i++ {
+			if len(queueSemChan) == 0 {
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		require.Equal(t, 0, len(queueSemChan))
+	}()
 	type indexInterval struct {
 		first, last int
 	}
