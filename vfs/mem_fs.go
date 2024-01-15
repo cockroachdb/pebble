@@ -549,9 +549,11 @@ func (*MemFS) GetDiskUsage(string) (DiskUsage, error) {
 	return DiskUsage{}, ErrUnsupported
 }
 
-// memNode holds a file's data or a directory's children, and implements os.FileInfo.
+// memNode holds a file's data or a directory's children.
 type memNode struct {
-	name  string
+	// TODO(pav-kv): file name is a property of a file, not of a node. Multiple
+	// files with different names can hard link to the same node.
+	name  string // protected by MemFS.mu
 	isDir bool
 	refs  atomic.Int32
 
@@ -580,34 +582,38 @@ func newRootMemNode() *memNode {
 	}
 }
 
-func (f *memNode) IsDir() bool {
-	return f.isDir
+func (f *memFile) IsDir() bool {
+	return f.n.isDir
 }
 
-func (f *memNode) ModTime() time.Time {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.mu.modTime
+func (f *memFile) ModTime() time.Time {
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	return f.n.mu.modTime
 }
 
-func (f *memNode) Mode() os.FileMode {
-	if f.isDir {
+func (f *memFile) Mode() os.FileMode {
+	if f.n.isDir {
 		return os.ModeDir | 0755
 	}
 	return 0755
 }
 
-func (f *memNode) Name() string {
-	return f.name
+func (f *memFile) Name() string {
+	if fs := f.fs; fs != nil {
+		fs.mu.Lock()
+		defer fs.mu.Unlock()
+	}
+	return f.n.name
 }
 
-func (f *memNode) Size() int64 {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return int64(len(f.mu.data))
+func (f *memFile) Size() int64 {
+	f.n.mu.Lock()
+	defer f.n.mu.Unlock()
+	return int64(len(f.n.mu.data))
 }
 
-func (f *memNode) Sys() interface{} {
+func (f *memFile) Sys() interface{} {
 	return nil
 }
 
@@ -657,7 +663,8 @@ func (f *memNode) resetToSyncedState() {
 	}
 }
 
-// memFile is a reader or writer of a node's data, and implements File.
+// memFile is a reader or writer of a node's data. It implements File and
+// os.FileInfo.
 type memFile struct {
 	n           *memNode
 	fs          *MemFS // nil for a standalone memFile
@@ -666,6 +673,7 @@ type memFile struct {
 	read, write bool
 }
 
+var _ os.FileInfo = (*memFile)(nil)
 var _ File = (*memFile)(nil)
 
 func (f *memFile) Close() error {
