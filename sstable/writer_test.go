@@ -254,6 +254,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 		parallelism = true
 	}
 	t.Logf("writer parallelism %t", parallelism)
+
 	attributeExtractor := func(
 		key []byte, keyPrefixLen int, value []byte) (base.ShortAttribute, error) {
 		require.NotNil(t, key)
@@ -271,9 +272,12 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			}
 			var meta *WriterMetadata
 			var err error
-			var blockSize int
+			var blockSize, bufLimit int
 			if td.HasArg("block-size") {
 				td.ScanArgs(t, "block-size", &blockSize)
+			}
+			if td.HasArg("buf-limit") {
+				td.ScanArgs(t, "buf-limit", &bufLimit)
 			}
 			var inPlaceValueBound UserKeyPrefixBound
 			if td.HasArg("in-place-bound") {
@@ -289,6 +293,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				Parallelism:               parallelism,
 				RequiredInPlaceValueBound: inPlaceValueBound,
 				ShortAttributeExtractor:   attributeExtractor,
+				ValueBlockBufferLimit:     bufLimit,
 			}, 0)
 			if err != nil {
 				return err.Error()

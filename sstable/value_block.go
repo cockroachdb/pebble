@@ -135,10 +135,12 @@ import (
 // compressed. An uncompressed value block is a sequence of values with no
 // separator or length (we rely on the valueHandle to demarcate). The
 // valueHandle.offsetInBlock points to the value, of length
-// valueHandle.valueLen. While writing a sstable, all the (possibly
-// compressed) value blocks need to be held in-memory until they can be
-// written. Value blocks are placed after the "meta rangedel" and "meta range
-// key" blocks since value blocks are considered less likely to be read.
+// valueHandle.valueLen. While writing a sstable, up to the configured limit
+// number of (possibly compressed) value blocks need to be held in-memory until
+// they can be written contiguously. Remaining value blocks when the file is
+// finished, and the value block index, are placed after the "meta rangedel" and
+// "meta range key" blocks. Value blocks are buffered and then stored in larger
+// groups to improve locality of data blocks.
 //
 // Meta Value Index Block:
 // Since the (key, valueHandle) pair are written before there is any knowledge
@@ -386,8 +388,8 @@ type valueBlocksAndIndexStats struct {
 // valueBlockWriter writes a sequence of value blocks, and the value blocks
 // index, for a sstable.
 type valueBlockWriter struct {
-	// The configured uncompressed block size and size threshold
-	blockSize, blockSizeThreshold int
+	// The configured uncompressed block size and size threshold, and buffer size.
+	blockSize, blockSizeThreshold, maxBufferedBlocks int
 	// Configured compression.
 	compression Compression
 	// checksummer with configured checksum type.
@@ -404,6 +406,10 @@ type valueBlockWriter struct {
 	// Cumulative value block bytes written so far.
 	totalBlockBytes uint64
 	numValues       uint64
+	// queue's writer and writerMu fields are used to flush blocks.
+	queue *writeQueue
+	// unflushedIdx is the first index in `blocks` that has not been flushed.
+	unflushedIdx int
 }
 
 type blockAndHandle struct {
@@ -432,6 +438,9 @@ var compressedValueBlockBufPool = sync.Pool{
 }
 
 func releaseToValueBlockBufPool(pool *sync.Pool, b *blockBuffer) {
+	if b == nil {
+		return // already released when flushed.
+	}
 	// Don't pool buffers larger than 128KB, in case we had some rare large
 	// values.
 	if len(b.b) > 128*1024 {
@@ -459,10 +468,12 @@ var valueBlockWriterPool = sync.Pool{
 func newValueBlockWriter(
 	blockSize int,
 	blockSizeThreshold int,
+	maxBufferedBlocks int,
 	compression Compression,
 	checksumType ChecksumType,
 	// compressedSize should exclude the block trailer.
 	blockFinishedFunc func(compressedSize int),
+	queue *writeQueue,
 ) *valueBlockWriter {
 	w := valueBlockWriterPool.Get().(*valueBlockWriter)
 	*w = valueBlockWriter{
@@ -476,6 +487,8 @@ func newValueBlockWriter(
 		buf:               uncompressedValueBlockBufPool.Get().(*blockBuffer),
 		compressedBuf:     compressedValueBlockBufPool.Get().(*blockBuffer),
 		blocks:            w.blocks[:0],
+		queue:             queue,
+		maxBufferedBlocks: maxBufferedBlocks,
 	}
 	w.buf.b = w.buf.b[:0]
 	w.compressedBuf.b = w.compressedBuf.b[:0]
@@ -514,7 +527,9 @@ func (w *valueBlockWriter) addValue(v []byte) (valueHandle, error) {
 		(blockLen > w.blockSizeThreshold && blockLen+valueLen > w.blockSize) {
 		// Block is not currently empty and adding this value will become too big,
 		// so finish this block.
-		w.compressAndFlush()
+		if err := w.compressAndFlush(); err != nil {
+			return valueHandle{}, err
+		}
 		blockLen = len(w.buf.b)
 		if invariants.Enabled && blockLen != 0 {
 			panic("blockLen of new block should be 0")
@@ -548,7 +563,7 @@ func (w *valueBlockWriter) addValue(v []byte) (valueHandle, error) {
 	return vh, nil
 }
 
-func (w *valueBlockWriter) compressAndFlush() {
+func (w *valueBlockWriter) compressAndFlush() error {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
 	blockType := noCompressionBlockType
@@ -572,14 +587,18 @@ func (w *valueBlockWriter) compressAndFlush() {
 	}
 	b.b[n] = byte(blockType)
 	w.computeChecksum(b.b)
-	bh := BlockHandle{Offset: w.totalBlockBytes, Length: uint64(n)}
 	w.totalBlockBytes += uint64(len(b.b))
 	// blockFinishedFunc length excludes the block trailer.
 	w.blockFinishedFunc(n)
 	compressed := blockType != noCompressionBlockType
+	if len(w.blocks)-w.unflushedIdx >= w.maxBufferedBlocks {
+		if err := w.flushBufferedBlocks(); err != nil {
+			return err
+		}
+	}
 	w.blocks = append(w.blocks, blockAndHandle{
 		block:      b,
-		handle:     bh,
+		handle:     BlockHandle{Length: uint64(n)}, // Offset is set at flush.
 		compressed: compressed,
 	})
 	// Handed off a buffer to w.blocks, so need get a new one.
@@ -589,6 +608,27 @@ func (w *valueBlockWriter) compressAndFlush() {
 		w.buf = uncompressedValueBlockBufPool.Get().(*blockBuffer)
 	}
 	w.buf.b = w.buf.b[:0]
+	return nil
+}
+
+func (w *valueBlockWriter) flushBufferedBlocks() error {
+	w.queue.writeMu.Lock()
+	defer w.queue.writeMu.Unlock()
+
+	for i := w.unflushedIdx; i < len(w.blocks); i++ {
+		w.blocks[i].handle.Offset = w.queue.writer.meta.Size
+		if _, err := w.queue.writer.Write(w.blocks[i].block.b); err != nil {
+			return err
+		}
+		if w.blocks[i].compressed {
+			releaseToValueBlockBufPool(&compressedValueBlockBufPool, w.blocks[i].block)
+		} else {
+			releaseToValueBlockBufPool(&uncompressedValueBlockBufPool, w.blocks[i].block)
+		}
+		w.blocks[i].block = nil
+	}
+	w.unflushedIdx = len(w.blocks)
+	return nil
 }
 
 func (w *valueBlockWriter) computeChecksum(block []byte) {
@@ -598,10 +638,12 @@ func (w *valueBlockWriter) computeChecksum(block []byte) {
 }
 
 func (w *valueBlockWriter) finish(
-	writer io.Writer, fileOffset uint64,
+	writer *Writer,
 ) (valueBlocksIndexHandle, valueBlocksAndIndexStats, error) {
 	if len(w.buf.b) > 0 {
-		w.compressAndFlush()
+		if err := w.compressAndFlush(); err != nil {
+			return valueBlocksIndexHandle{}, valueBlocksAndIndexStats{}, err
+		}
 	}
 	n := len(w.blocks)
 	if n == 0 {
@@ -609,18 +651,18 @@ func (w *valueBlockWriter) finish(
 	}
 	largestOffset := uint64(0)
 	largestLength := uint64(0)
+
+	if err := w.flushBufferedBlocks(); err != nil {
+		return valueBlocksIndexHandle{}, valueBlocksAndIndexStats{}, nil
+	}
+
 	for i := range w.blocks {
-		_, err := writer.Write(w.blocks[i].block.b)
-		if err != nil {
-			return valueBlocksIndexHandle{}, valueBlocksAndIndexStats{}, err
-		}
-		w.blocks[i].handle.Offset += fileOffset
 		largestOffset = w.blocks[i].handle.Offset
 		if largestLength < w.blocks[i].handle.Length {
 			largestLength = w.blocks[i].handle.Length
 		}
 	}
-	vbihOffset := fileOffset + w.totalBlockBytes
+	vbihOffset := writer.meta.Size
 
 	vbih := valueBlocksIndexHandle{
 		h: BlockHandle{
