@@ -58,7 +58,7 @@ func TestCatalog(t *testing.T) {
 			if len(args) != 1 {
 				td.Fatalf(t, "delete <file-num>")
 			}
-			return base.FileNum(toUInt64(args[0])[0]).DiskFileNum()
+			return base.DiskFileNum(toUInt64(args[0])[0])
 		}
 
 		memLog.Reset()

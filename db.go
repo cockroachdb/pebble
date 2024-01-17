@@ -2241,7 +2241,7 @@ type SSTableInfo struct {
 	// Virtual indicates whether the sstable is virtual.
 	Virtual bool
 	// BackingSSTNum is the disk file number associated with the backing sstable.
-	// If Virtual is false, BackingSSTNum == FileNum.DiskFileNum().
+	// If Virtual is false, BackingSSTNum == PhysicalTableDiskFileNum(FileNum).
 	BackingSSTNum base.DiskFileNum
 	// BackingType is the type of storage backing this sstable.
 	BackingType BackingType

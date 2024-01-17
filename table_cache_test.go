@@ -1020,8 +1020,7 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 	const testFileNum = 3
 	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
 	require.NoError(t, err)
-	w, _, err := objProvider.Create(context.Background(), fileTypeTable,
-		base.FileNum(testFileNum).DiskFileNum(), objstorage.CreateOptions{})
+	w, _, err := objProvider.Create(context.Background(), fileTypeTable, testFileNum, objstorage.CreateOptions{})
 	w.Write(buf)
 	require.NoError(t, w.Finish())
 	opts := &Options{}

@@ -822,7 +822,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				// corresponding sstables before being terminated.
 				if s.kind == flushStepKind || s.kind == ingestStepKind {
 					for _, fileNum := range newFiles {
-						if _, ok := r.workload.sstables[fileNum.FileNum()]; !ok {
+						if _, ok := r.workload.sstables[base.PhysicalTableFileNum(fileNum)]; !ok {
 							// TODO(jackson,leon): This isn't exactly an error
 							// condition. Give this more thought; do we want to
 							// require graceful exiting of workload collection,
@@ -907,7 +907,7 @@ func findWorkloadFiles(
 		case base.FileTypeManifest:
 			manifests = append(manifests, dirent)
 		case base.FileTypeTable:
-			sstables[fileNum.FileNum()] = struct{}{}
+			sstables[base.PhysicalTableFileNum(fileNum)] = struct{}{}
 		}
 	}
 	if len(manifests) == 0 {

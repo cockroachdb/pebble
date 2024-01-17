@@ -153,6 +153,6 @@ func TestAttachRemoteObjects(t *testing.T) {
 	o := objs[0]
 	require.Equal(t, remote.Locator("foo"), o.Remote.Locator)
 	require.Equal(t, "custom-obj-name", o.Remote.CustomObjectName)
-	require.Equal(t, uint64(100), uint64(o.DiskFileNum.FileNum()))
+	require.Equal(t, uint64(100), uint64(o.DiskFileNum))
 	require.Equal(t, base.FileTypeTable, o.FileType)
 }

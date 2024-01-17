@@ -55,7 +55,7 @@ type findT struct {
 	// Map from file num to path on disk.
 	files map[base.DiskFileNum]string
 	// Map from file num to version edit index which references the file num.
-	editRefs map[base.FileNum][]int
+	editRefs map[base.DiskFileNum][]int
 	// List of version edits.
 	edits []manifest.VersionEdit
 	// Sorted list of WAL file nums.
@@ -137,7 +137,7 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 		r := &refs[i]
 		if lastFileNum != r.fileNum {
 			lastFileNum = r.fileNum
-			fmt.Fprintf(stdout, "%s", f.opts.FS.PathBase(f.files[r.fileNum.DiskFileNum()]))
+			fmt.Fprintf(stdout, "%s", f.opts.FS.PathBase(f.files[base.PhysicalTableDiskFileNum(r.fileNum)]))
 			if m := f.tableMeta[r.fileNum]; m != nil {
 				fmt.Fprintf(stdout, " ")
 				formatKeyRange(stdout, f.fmtKey, &m.Smallest, &m.Largest)
@@ -159,7 +159,7 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 // Find all of the manifests, logs, and tables in the specified directory.
 func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 	f.files = make(map[base.DiskFileNum]string)
-	f.editRefs = make(map[base.FileNum][]int)
+	f.editRefs = make(map[base.DiskFileNum][]int)
 	f.logs = nil
 	f.manifests = nil
 	f.tables = nil
@@ -180,7 +180,7 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 		case base.FileTypeManifest:
 			f.manifests = append(f.manifests, fileNum)
 		case base.FileTypeTable:
-			f.tables = append(f.tables, fileNum.FileNum())
+			f.tables = append(f.tables, base.PhysicalTableFileNum(fileNum))
 		default:
 			return
 		}
@@ -239,18 +239,20 @@ func (f *findT) readManifests(stdout io.Writer) {
 					f.comparerName = ve.ComparerName
 				}
 				if num := ve.MinUnflushedLogNum; num != 0 {
-					f.editRefs[num.FileNum()] = append(f.editRefs[num.FileNum()], i)
+					f.editRefs[num] = append(f.editRefs[num], i)
 				}
 				for df := range ve.DeletedFiles {
-					f.editRefs[df.FileNum] = append(f.editRefs[df.FileNum], i)
+					diskFileNum := base.PhysicalTableDiskFileNum(df.FileNum)
+					f.editRefs[diskFileNum] = append(f.editRefs[diskFileNum], i)
 				}
 				for _, nf := range ve.NewFiles {
 					// The same file can be deleted and added in a single version edit
 					// which indicates a "move" compaction. Only add the edit to the list
 					// once.
-					refs := f.editRefs[nf.Meta.FileNum]
+					diskFileNum := base.PhysicalTableDiskFileNum(nf.Meta.FileNum)
+					refs := f.editRefs[diskFileNum]
 					if n := len(refs); n == 0 || refs[n-1] != i {
-						f.editRefs[nf.Meta.FileNum] = append(refs, i)
+						f.editRefs[diskFileNum] = append(refs, i)
 					}
 					if _, ok := f.tableMeta[nf.Meta.FileNum]; !ok {
 						f.tableMeta[nf.Meta.FileNum] = nf.Meta
@@ -380,7 +382,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 					refs = append(refs, findRef{
 						key:     ikey.Clone(),
 						value:   append([]byte(nil), value...),
-						fileNum: fileNum.FileNum(),
+						fileNum: base.PhysicalTableFileNum(fileNum),
 					})
 				}
 			}
@@ -397,7 +399,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 	f.tableRefs = make(map[base.FileNum]bool)
 	for _, fileNum := range f.tables {
 		_ = func() (err error) {
-			path := f.files[fileNum.DiskFileNum()]
+			path := f.files[base.PhysicalTableDiskFileNum(fileNum)]
 			tf, err := f.opts.FS.Open(path)
 			if err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
@@ -435,7 +437,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			r, err := sstable.NewReader(readable, opts, f.comparers, f.mergers,
 				private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 			if err != nil {
-				f.errors = append(f.errors, fmt.Sprintf("Unable to decode sstable %s, %s", f.files[fileNum.DiskFileNum()], err.Error()))
+				f.errors = append(f.errors, fmt.Sprintf("Unable to decode sstable %s, %s", f.files[base.PhysicalTableDiskFileNum(fileNum)], err.Error()))
 				// Ensure the error only gets printed once.
 				err = nil
 				return
@@ -537,7 +539,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 // determine if it was a compaction, flush, or ingestion. Returns an empty
 // string if the provenance of a table cannot be determined.
 func (f *findT) tableProvenance(fileNum base.FileNum) string {
-	editRefs := f.editRefs[fileNum]
+	editRefs := f.editRefs[base.PhysicalTableDiskFileNum(fileNum)]
 	for len(editRefs) > 0 {
 		ve := f.edits[editRefs[0]]
 		editRefs = editRefs[1:]

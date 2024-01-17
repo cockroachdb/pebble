@@ -285,7 +285,7 @@ func TestCheckpointCompaction(t *testing.T) {
 					if tbl.Virtual {
 						continue
 					}
-					if _, err := fs.Stat(base.MakeFilepath(fs, dir, base.FileTypeTable, tbl.FileNum.DiskFileNum())); err != nil {
+					if _, err := fs.Stat(base.MakeFilepath(fs, dir, base.FileTypeTable, base.PhysicalTableDiskFileNum(tbl.FileNum))); err != nil {
 						t.Error(err)
 						return
 					}

@@ -167,7 +167,7 @@ func TestIngestLoadRand(t *testing.T) {
 		paths[i] = fmt.Sprint(i)
 		pending[i] = base.DiskFileNum(rng.Uint64())
 		expected[i] = &fileMetadata{
-			FileNum: pending[i].FileNum(),
+			FileNum: base.PhysicalTableFileNum(pending[i]),
 		}
 		expected[i].StatsMarkValid()
 
@@ -1248,13 +1248,13 @@ func TestSimpleIngestShared(t *testing.T) {
 	{
 		// Create a shared file.
 		fn := base.FileNum(2)
-		f, meta, err := provider2.Create(context.TODO(), fileTypeTable, fn.DiskFileNum(), objstorage.CreateOptions{PreferSharedStorage: true})
+		f, meta, err := provider2.Create(context.TODO(), fileTypeTable, base.PhysicalTableDiskFileNum(fn), objstorage.CreateOptions{PreferSharedStorage: true})
 		require.NoError(t, err)
 		w := sstable.NewWriter(f, d.opts.MakeWriterOptions(0, d.opts.FormatMajorVersion.MaxTableFormat()))
 		w.Set([]byte("d"), []byte("shared"))
 		w.Set([]byte("e"), []byte("shared"))
 		w.Close()
-		metaMap[fn.DiskFileNum()] = meta
+		metaMap[base.PhysicalTableDiskFileNum(fn)] = meta
 	}
 
 	m := metaMap[base.DiskFileNum(2)]
@@ -3168,7 +3168,7 @@ func TestIngestCleanup(t *testing.T) {
 			// Create the files in the VFS.
 			metaMap := make(map[base.FileNum]objstorage.Writable)
 			for _, fn := range fns {
-				w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, fn.DiskFileNum(), objstorage.CreateOptions{})
+				w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, base.PhysicalTableDiskFileNum(fn), objstorage.CreateOptions{})
 				require.NoError(t, err)
 
 				metaMap[fn] = w
