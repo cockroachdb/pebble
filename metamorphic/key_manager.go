@@ -538,7 +538,30 @@ func (k *keyManager) update(o op) {
 			opType:        OpWriterSingleDelete,
 			metaTimestamp: k.nextMetaTimestamp(),
 		})
-
+	case *rangeKeyDeleteOp:
+		// Range key operations on their own don't determine singledel eligibility,
+		// however range key operations could be part of a batch which contains
+		// other operations that do affect it. If those batches were to get
+		// ingested, we'd need to know what the bounds of sstables generated out
+		// of those batches are, as that determines whether that ingestion
+		// will succeed or not.
+		k.expandBounds(s.writerID, bounds{
+			smallest:    s.start,
+			largest:     s.end,
+			largestExcl: true,
+		})
+	case *rangeKeySetOp:
+		k.expandBounds(s.writerID, bounds{
+			smallest:    s.start,
+			largest:     s.end,
+			largestExcl: true,
+		})
+	case *rangeKeyUnsetOp:
+		k.expandBounds(s.writerID, bounds{
+			smallest:    s.start,
+			largest:     s.end,
+			largestExcl: true,
+		})
 	case *ingestOp:
 		// Some ingestion operations may attempt to ingest overlapping sstables
 		// which is prohibited. We know at generation time whether these
