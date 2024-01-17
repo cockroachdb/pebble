@@ -147,6 +147,14 @@ func ingestSynthesizeShared(
 		if sm.LargestPointKey.IsExclusiveSentinel() {
 			largestPointKey = base.MakeRangeDeleteSentinelKey(sm.LargestPointKey.UserKey)
 		}
+		if opts.Comparer.Equal(smallestPointKey.UserKey, largestPointKey.UserKey) &&
+			smallestPointKey.Trailer < largestPointKey.Trailer {
+			// We get kinds from the sender, however we substitute our own sequence
+			// numbers. This can result in cases where an sstable [b#5,SET-b#4,DELSIZED]
+			// becomes [b#0,SET-b#0,DELSIZED] when we synthesize it here, but the
+			// kinds need to be reversed now because DelSized > Set.
+			smallestPointKey, largestPointKey = largestPointKey, smallestPointKey
+		}
 		meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallestPointKey, largestPointKey)
 	}
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
