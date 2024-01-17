@@ -422,7 +422,10 @@ func (m *FileMetadata) InitPhysicalBacking() {
 		panic("pebble: virtual sstables should use a pre-existing FileBacking")
 	}
 	if m.FileBacking == nil {
-		m.FileBacking = &FileBacking{Size: m.Size, DiskFileNum: m.FileNum.DiskFileNum()}
+		m.FileBacking = &FileBacking{
+			DiskFileNum: base.PhysicalTableDiskFileNum(m.FileNum),
+			Size:        m.Size,
+		}
 	}
 }
 

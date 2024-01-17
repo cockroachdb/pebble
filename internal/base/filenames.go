@@ -14,7 +14,8 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// FileNum is an internal DB identifier for a file.
+// FileNum is an internal DB identifier for a table. Tables can be physical (in
+// which case the FileNum also identifies the backing object) or virtual.
 type FileNum uint64
 
 // String returns a string representation of the file number.
@@ -25,20 +26,19 @@ func (fn FileNum) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("%06d", redact.SafeUint(fn))
 }
 
-// DiskFileNum converts a FileNum to a DiskFileNum. DiskFileNum should only be
-// called if the caller can ensure that the FileNum belongs to a physical file
-// on disk. These could be manifests, log files, physical sstables on disk, the
-// options file, but not virtual sstables.
-func (fn FileNum) DiskFileNum() DiskFileNum {
-	return DiskFileNum(fn)
+// PhysicalTableDiskFileNum converts the FileNum of a physical table to the
+// backing DiskFileNum. The underlying numbers always match for physical tables.
+func PhysicalTableDiskFileNum(n FileNum) DiskFileNum {
+	return DiskFileNum(n)
 }
 
-// A DiskFileNum is just a FileNum belonging to a file which exists on disk.
-// Note that a FileNum is an internal DB identifier and it could belong to files
-// which don't exist on disk. An example would be virtual sstable FileNums.
-// Converting a DiskFileNum to a FileNum is always valid, whereas converting a
-// FileNum to DiskFileNum may not be valid and care should be taken to prove
-// that the FileNum actually exists on disk.
+// PhysicalTableFileNum converts the DiskFileNum backing a physical table into
+// the table's FileNum. The underlying numbers always match for physical tables.
+func PhysicalTableFileNum(f DiskFileNum) FileNum {
+	return FileNum(f)
+}
+
+// A DiskFileNum identifies a file or object with exists on disk.
 type DiskFileNum uint64
 
 func (dfn DiskFileNum) String() string { return fmt.Sprintf("%06d", dfn) }
@@ -46,11 +46,6 @@ func (dfn DiskFileNum) String() string { return fmt.Sprintf("%06d", dfn) }
 // SafeFormat implements redact.SafeFormatter.
 func (dfn DiskFileNum) SafeFormat(w redact.SafePrinter, verb rune) {
 	w.Printf("%06d", redact.SafeUint(dfn))
-}
-
-// FileNum converts a DiskFileNum to a FileNum. This conversion is always valid.
-func (dfn DiskFileNum) FileNum() FileNum {
-	return FileNum(dfn)
 }
 
 // FileType enumerates the types of files found in a DB.

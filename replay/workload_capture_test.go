@@ -95,7 +95,7 @@ func TestWorkloadCollector(t *testing.T) {
 					require.NoError(t, err)
 					tableInfo.FileNum = base.FileNum(fileNum)
 
-					p := writeFile(t, fs, srcDir, base.FileTypeTable, tableInfo.FileNum.DiskFileNum(), randData(int(tableInfo.Size)))
+					p := writeFile(t, fs, srcDir, base.FileTypeTable, base.PhysicalTableDiskFileNum(tableInfo.FileNum), randData(int(tableInfo.Size)))
 					fmt.Fprintf(&buf, "created %s\n", p)
 					flushInfo.Output = append(flushInfo.Output, tableInfo)
 
@@ -120,7 +120,7 @@ func TestWorkloadCollector(t *testing.T) {
 					require.NoError(t, err)
 					tableInfo.FileNum = base.FileNum(fileNum)
 
-					p := writeFile(t, fs, srcDir, base.FileTypeTable, tableInfo.FileNum.DiskFileNum(), randData(int(tableInfo.Size)))
+					p := writeFile(t, fs, srcDir, base.FileTypeTable, base.PhysicalTableDiskFileNum(tableInfo.FileNum), randData(int(tableInfo.Size)))
 					fmt.Fprintf(&buf, "created %s\n", p)
 					ingestInfo.Tables = append(ingestInfo.Tables, struct {
 						pebble.TableInfo

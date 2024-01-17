@@ -2026,10 +2026,10 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// physical files on disk. This property might not hold once
 				// https://github.com/cockroachdb/pebble/issues/389 is
 				// implemented if #389 creates virtual sstables as output files.
-				d.mu.versions.obsoleteTables = append(
-					d.mu.versions.obsoleteTables,
-					fileInfo{f.FileNum.DiskFileNum(), f.Size},
-				)
+				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, fileInfo{
+					fileNum:  base.PhysicalTableDiskFileNum(f.FileNum),
+					fileSize: f.Size,
+				})
 			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
 		}
@@ -2656,10 +2656,10 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 				// physical files on disk. This property might not hold once
 				// https://github.com/cockroachdb/pebble/issues/389 is
 				// implemented if #389 creates virtual sstables as output files.
-				d.mu.versions.obsoleteTables = append(
-					d.mu.versions.obsoleteTables,
-					fileInfo{f.FileNum.DiskFileNum(), f.Size},
-				)
+				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, fileInfo{
+					fileNum:  base.PhysicalTableDiskFileNum(f.FileNum),
+					fileSize: f.Size,
+				})
 			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
 		}
@@ -3051,7 +3051,8 @@ func (d *DB) runCompaction(
 		createOpts := objstorage.CreateOptions{
 			PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
 		}
-		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, fileNum.DiskFileNum(), createOpts)
+		diskFileNum := base.PhysicalTableDiskFileNum(fileNum)
+		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, diskFileNum, createOpts)
 		if err != nil {
 			return err
 		}
@@ -3064,7 +3065,7 @@ func (d *DB) runCompaction(
 			JobID:   jobID,
 			Reason:  reason,
 			Path:    d.objProvider.Path(objMeta),
-			FileNum: fileNum.DiskFileNum(),
+			FileNum: diskFileNum,
 		})
 		if c.kind != compactionKindFlush {
 			writable = &compactionWritable{
@@ -3073,8 +3074,8 @@ func (d *DB) runCompaction(
 				written:  &c.bytesWritten,
 			}
 		}
-		createdFiles = append(createdFiles, fileNum.DiskFileNum())
-		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum.DiskFileNum()).(sstable.WriterOption)
+		createdFiles = append(createdFiles, diskFileNum)
+		cacheOpts := private.SSTableCacheOpts(d.cacheID, diskFileNum).(sstable.WriterOption)
 
 		const MaxFileWriteAdditionalCPUTime = time.Millisecond * 100
 		cpuWorkHandle = d.opts.Experimental.CPUWorkPermissionGranter.GetPermission(

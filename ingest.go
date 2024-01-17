@@ -108,7 +108,9 @@ func ingestSynthesizeShared(
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
 	meta := &fileMetadata{
-		FileNum:      fileNum.FileNum(),
+		// For simplicity, we use the same number for both the FileNum and the
+		// DiskFileNum (even though this is a virtual sstable).
+		FileNum:      FileNum(fileNum),
 		CreationTime: time.Now().Unix(),
 		Virtual:      true,
 		Size:         sm.Size,
@@ -159,7 +161,7 @@ func ingestLoad1External(
 	opts *Options,
 	e ExternalFile,
 	fileNum base.DiskFileNum,
-	objprovider objstorage.Provider,
+	objProvider objstorage.Provider,
 	jobID int,
 ) (*fileMetadata, error) {
 	if e.Size == 0 {
@@ -171,19 +173,22 @@ func ingestLoad1External(
 	}
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
-	meta := &fileMetadata{}
-	meta.FileNum = fileNum.FileNum()
-	meta.CreationTime = time.Now().Unix()
-	meta.Virtual = true
-	meta.Size = e.Size
+	meta := &fileMetadata{
+		// For simplicity, we use the same number for both the FileNum and the
+		// DiskFileNum (even though this is a virtual sstable).
+		FileNum:      FileNum(fileNum),
+		CreationTime: time.Now().Unix(),
+		Virtual:      true,
+		Size:         e.Size,
+	}
 	meta.InitProviderBacking(fileNum)
 
 	// Try to resolve a reference to the external file.
-	backing, err := objprovider.CreateExternalObjectBacking(e.Locator, e.ObjName)
+	backing, err := objProvider.CreateExternalObjectBacking(e.Locator, e.ObjName)
 	if err != nil {
 		return nil, err
 	}
-	metas, err := objprovider.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
+	metas, err := objProvider.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
 		FileNum:  fileNum,
 		FileType: fileTypeTable,
 		Backing:  backing,
@@ -195,7 +200,7 @@ func ingestLoad1External(
 		opts.EventListener.TableCreated(TableCreateInfo{
 			JobID:   jobID,
 			Reason:  "ingesting",
-			Path:    objprovider.Path(metas[0]),
+			Path:    objProvider.Path(metas[0]),
 			FileNum: fileNum,
 		})
 	}
@@ -263,7 +268,7 @@ func ingestLoad1(
 	}
 
 	meta := &fileMetadata{}
-	meta.FileNum = fileNum.FileNum()
+	meta.FileNum = base.PhysicalTableFileNum(fileNum)
 	meta.Size = uint64(readable.Size())
 	meta.CreationTime = time.Now().Unix()
 	meta.InitPhysicalBacking()
@@ -582,7 +587,7 @@ func ingestLink(
 				JobID:   jobID,
 				Reason:  "ingesting",
 				Path:    objProvider.Path(objMeta),
-				FileNum: lr.localMeta[i].FileNum.DiskFileNum(),
+				FileNum: base.PhysicalTableDiskFileNum(lr.localMeta[i].FileNum),
 			})
 		}
 	}
@@ -622,7 +627,7 @@ func ingestLink(
 				JobID:   jobID,
 				Reason:  "ingesting",
 				Path:    objProvider.Path(sharedObjMetas[i]),
-				FileNum: lr.sharedMeta[i].FileNum.DiskFileNum(),
+				FileNum: sharedObjMetas[i].DiskFileNum,
 			})
 		}
 	}

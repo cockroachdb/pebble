@@ -168,7 +168,7 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 		EventListener: &pebble.EventListener{
 			FlushEnd: func(info pebble.FlushInfo) {
 				for _, tbl := range info.Output {
-					diskFileNums = append(diskFileNums, tbl.FileNum.DiskFileNum())
+					diskFileNums = append(diskFileNums, base.PhysicalTableDiskFileNum(tbl.FileNum))
 				}
 			},
 		},
