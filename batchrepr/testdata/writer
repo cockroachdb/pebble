@@ -1,0 +1,26 @@
+init
+0000000000000000 01000000 # Seqnum = 0, Count = 1
+00 0161                   # DEL "a"
+----
+
+read-header
+----
+[seqNum=0,count=1]
+
+set-seqnum 1052
+----
+1c04000000000000 01000000 # [seqNum=1052,count=1]
+00 0161                   # DEL "a"
+
+read-header
+----
+[seqNum=1052,count=1]
+
+set-count 20
+----
+1c04000000000000 14000000 # [seqNum=1052,count=20]
+00 0161                   # DEL "a"
+
+read-header
+----
+[seqNum=1052,count=20]

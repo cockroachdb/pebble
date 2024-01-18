@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -18,10 +17,10 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"unicode"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/batchskl"
 	"github.com/cockroachdb/pebble/internal/itertest"
@@ -239,7 +238,7 @@ func TestBatchLen(t *testing.T) {
 		require.Equal(t, size, len(b.Repr()))
 	}
 
-	requireLenAndReprEq(batchHeaderLen)
+	requireLenAndReprEq(batchrepr.HeaderLen)
 
 	key := "test-key"
 	value := "test-value"
@@ -378,18 +377,14 @@ func TestBatchReset(t *testing.T) {
 	// At this point b.data has not been modified since the db.NewBatch() and is
 	// either nil or contains a byte slice of length batchHeaderLen, with a 0
 	// seqnum encoded in data[0:8] and an arbitrary count encoded in data[8:12].
-	// The following commented code will often fail.
-	// 	count := binary.LittleEndian.Uint32(b.countData())
-	//  if count != 0 && count != 3 {
-	//  	t.Fatalf("count: %d", count)
-	//  }
 	// If we simply called b.Reset now and later used b.data to initialize
 	// expected, the count in expected will also be arbitrary. So we fix the
 	// count in b.data now by calling b.Repr(). This call isn't essential, since
 	// we will call b.Repr() again, and just shows that it fixes the count in
 	// b.data.
-	_ = b.Repr()
-	require.Equal(t, uint32(3), binary.LittleEndian.Uint32(b.countData()))
+	h, ok := batchrepr.ReadHeader(b.Repr())
+	require.True(t, ok)
+	require.Equal(t, uint32(3), h.Count)
 
 	b.Reset()
 	require.Equal(t, db, b.db)
@@ -398,7 +393,7 @@ func TestBatchReset(t *testing.T) {
 	require.Equal(t, uint32(0), b.Count())
 	require.Equal(t, uint64(0), b.countRangeDels)
 	require.Equal(t, uint64(0), b.countRangeKeys)
-	require.Equal(t, batchHeaderLen, len(b.data))
+	require.Equal(t, batchrepr.HeaderLen, len(b.data))
 	require.Equal(t, uint64(0), b.SeqNum())
 	require.Equal(t, uint64(0), b.memTableSize)
 	require.Equal(t, FormatMajorVersion(0x00), b.minimumFormatMajorVersion)
@@ -716,19 +711,16 @@ func TestBatchIncrement(t *testing.T) {
 		0xfffffffe,
 	}
 	for _, tc := range testCases {
-		var buf [batchHeaderLen]byte
+		var buf [batchrepr.HeaderLen]byte
 		binary.LittleEndian.PutUint32(buf[8:12], tc)
 		var b Batch
 		b.SetRepr(buf[:])
 		b.count++
-		got := binary.LittleEndian.Uint32(b.Repr()[8:12])
 		want := tc + 1
-		if got != want {
-			t.Errorf("input=%d: got %d, want %d", tc, got, want)
-		}
-		_, count := ReadBatch(b.Repr())
-		if got != want {
-			t.Errorf("input=%d: got %d, want %d", tc, count, want)
+		h, ok := batchrepr.ReadHeader(b.Repr())
+		require.True(t, ok)
+		if h.Count != want {
+			t.Errorf("input=%d: got %d, want %d", tc, h.Count, want)
 		}
 	}
 
@@ -740,7 +732,7 @@ func TestBatchIncrement(t *testing.T) {
 				}
 			}
 		}()
-		var buf [batchHeaderLen]byte
+		var buf [batchrepr.HeaderLen]byte
 		binary.LittleEndian.PutUint32(buf[8:12], 0xffffffff)
 		var b Batch
 		b.SetRepr(buf[:])
@@ -1373,52 +1365,6 @@ func TestBatchCommitStats(t *testing.T) {
 		}
 	}
 	require.NoError(t, err)
-}
-
-func TestBatchReader(t *testing.T) {
-	datadriven.RunTest(t, "testdata/batch_reader", func(t *testing.T, td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "scan":
-			var repr bytes.Buffer
-			for i, l := range strings.Split(td.Input, "\n") {
-				// Remove any trailing comments behind #.
-				if i := strings.IndexRune(l, '#'); i >= 0 {
-					l = l[:i]
-				}
-				// Strip all whitespace from the line.
-				l = strings.Map(func(r rune) rune {
-					if unicode.IsSpace(r) {
-						return -1
-					}
-					return r
-				}, l)
-				b, err := hex.DecodeString(l)
-				if err != nil {
-					return fmt.Sprintf("failed to decode hex; line %d", i)
-				}
-				repr.Write(b)
-			}
-			r, count := ReadBatch(repr.Bytes())
-			var out strings.Builder
-			fmt.Fprintf(&out, "Count: %d\n", count)
-			for {
-				kind, ukey, value, ok, err := r.Next()
-				if !ok {
-					if err != nil {
-						fmt.Fprintf(&out, "err: %s\n", err)
-					} else {
-						fmt.Fprint(&out, "eof")
-					}
-					break
-				}
-				fmt.Fprintf(&out, "%s: %q: %q\n", kind, ukey, value)
-			}
-			return out.String()
-
-		default:
-			return fmt.Sprintf("unrecognized command %q", td.Cmd)
-		}
-	})
 }
 
 func BenchmarkBatchSet(b *testing.B) {

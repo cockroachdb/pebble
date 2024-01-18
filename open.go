@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
+	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -850,7 +851,7 @@ func (d *DB) replayWAL(
 			return nil, 0, errors.Wrap(err, "pebble: error when replaying WAL")
 		}
 
-		if buf.Len() < batchHeaderLen {
+		if buf.Len() < batchrepr.HeaderLen {
 			return nil, 0, base.CorruptionErrorf("pebble: corrupt log file %q (num %s)",
 				filename, errors.Safe(logNum))
 		}
