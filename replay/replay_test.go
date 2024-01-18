@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datatest"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -204,7 +205,7 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 				return err.Error()
 			}
 
-			br, _ := pebble.ReadBatch(b.Repr())
+			br := batchrepr.Read(b.Repr())
 			kind, ukey, v, ok, err := br.Next()
 			for ; ok; kind, ukey, v, ok, err = br.Next() {
 				fmt.Fprintf(&buf, "%s.%s", ukey, kind)

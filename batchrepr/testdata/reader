@@ -1,27 +1,42 @@
 scan
 ----
-Count: 0
+Header: [seqNum=0,count=0]
 eof
+
+is-empty
+----
+true
 
 scan
 ffffffffffffffffffffffffffffffffffffffffffffffff
 ----
-Count: 4294967295
+Header: [seqNum=18446744073709551615,count=4294967295]
 err: invalid key kind 0xff: pebble: invalid batch
+
+is-empty
+ffffffffffffffffffffffffffffffffffffffffffffffff
+----
+false
 
 scan
 0000000000000000 01000000   # Seqnum = 0, Count = 1
 00 01 61                    # DEL "a"
 ----
-Count: 1
+Header: [seqNum=0,count=1]
 DEL: "a": ""
 eof
+
+is-empty
+0000000000000000 01000000   # Seqnum = 0, Count = 1
+00 01 61                    # DEL "a"
+----
+false
 
 scan
 0000000000000000 01000000   # Seqnum = 0, Count = 1
 01 01 62 01 62              # SET "b" = "b"
 ----
-Count: 1
+Header: [seqNum=0,count=1]
 SET: "b": "b"
 eof
 
@@ -29,7 +44,7 @@ scan
 0000000000000000 01000000   # Seqnum = 0, Count = 1
 01 01 62 01 62              # SET "b" = "b"
 ----
-Count: 1
+Header: [seqNum=0,count=1]
 SET: "b": "b"
 eof
 
@@ -38,7 +53,7 @@ scan
 00 01 61                    # DEL "a"
 01 01 62 01 62              # SET "b" = "b"
 ----
-Count: 2
+Header: [seqNum=0,count=2]
 DEL: "a": ""
 SET: "b": "b"
 eof
@@ -49,7 +64,7 @@ scan
 01 01 62 01 62              # SET "b" = "b"
 0F 01 62 01 63              # RANGEDEL "b" = "c"
 ----
-Count: 3
+Header: [seqNum=0,count=3]
 DEL: "a": ""
 SET: "b": "b"
 RANGEDEL: "b": "c"
@@ -61,7 +76,7 @@ scan
 01 01 62 01 62              # SET "b" = "b"
 0F 01 62 01                 # RANGEDEL "b"... missing end key string data
 ----
-Count: 3
+Header: [seqNum=0,count=3]
 DEL: "a": ""
 SET: "b": "b"
 err: decoding RANGEDEL value: pebble: invalid batch
@@ -72,7 +87,7 @@ scan
 01 01 62 01 62              # SET "b" = "b"
 0F 01 62 01                 # RANGEDEL "b"... missing end key string data
 ----
-Count: 3
+Header: [seqNum=0,count=3]
 DEL: "a": ""
 SET: "b": "b"
 err: decoding RANGEDEL value: pebble: invalid batch
@@ -84,7 +99,7 @@ scan
 01 01 62 01 62              # SET "b" = "b"
 1F 01 62 01                 # "1F" kind is garbage
 ----
-Count: 3
+Header: [seqNum=0,count=3]
 DEL: "a": ""
 SET: "b": "b"
 err: invalid key kind 0x1f: pebble: invalid batch
@@ -93,5 +108,15 @@ scan
 0000000000000000 01000000   # Seqnum = 0, Count = 1
 01 01                       # SET missing user key string data
 ----
-Count: 1
+Header: [seqNum=0,count=1]
 err: decoding user key: pebble: invalid batch
+
+is-empty
+0000000000000000 00000000   # Seqnum = 0, Count = 0
+----
+true
+
+is-empty
+0000000000000000 # Incomplete batch header.
+----
+true
