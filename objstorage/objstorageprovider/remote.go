@@ -126,9 +126,9 @@ func (p *provider) sharedClose() error {
 	if p.st.Remote.StorageFactory == nil {
 		return nil
 	}
-	var err error
+	err := p.sharedSync()
 	if p.remote.cache != nil {
-		err = p.remote.cache.Close()
+		err = firstError(err, p.remote.cache.Close())
 		p.remote.cache = nil
 	}
 	if p.remote.catalog != nil {

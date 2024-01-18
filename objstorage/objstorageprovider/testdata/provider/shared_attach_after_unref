@@ -45,7 +45,6 @@ p5b1 101
 <remote> create object "d632-5-000001.sst.ref.6.000101"
 <remote> close writer for "d632-5-000001.sst.ref.6.000101" after 0 bytes
 <remote> size of object "d632-5-000001.sst.ref.5.000001": 0
-<local fs> sync: p6/REMOTE-OBJ-CATALOG-000001
 000101 -> remote://d632-5-000001.sst
 
 switch p5
