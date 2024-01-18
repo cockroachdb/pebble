@@ -99,7 +99,7 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 // ingestSynthesizeShared constructs a fileMetadata for one shared sstable owned
 // or shared by another node.
 func ingestSynthesizeShared(
-	opts *Options, sm SharedSSTMeta, fileNum base.DiskFileNum,
+	opts *Options, sm SharedSSTMeta, fileNum base.FileNum,
 ) (*fileMetadata, error) {
 	if sm.Size == 0 {
 		// Disallow 0 file sizes
@@ -108,14 +108,14 @@ func ingestSynthesizeShared(
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
 	meta := &fileMetadata{
-		// For simplicity, we use the same number for both the FileNum and the
-		// DiskFileNum (even though this is a virtual sstable).
-		FileNum:      FileNum(fileNum),
+		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
 		Virtual:      true,
 		Size:         sm.Size,
 	}
-	meta.InitProviderBacking(fileNum)
+	// For simplicity, we use the same number for both the FileNum and the
+	// DiskFileNum (even though this is a virtual sstable).
+	meta.InitProviderBacking(base.DiskFileNum(fileNum))
 	// Set the underlying FileBacking's size to the same size as the virtualized
 	// view of the sstable. This ensures that we don't over-prioritize this
 	// sstable for compaction just yet, as we do not have a clear sense of what
@@ -166,11 +166,7 @@ func ingestSynthesizeShared(
 // ingestLoad1External loads the fileMetadata for one external sstable.
 // Sequence number and target level calculation happens during prepare/apply.
 func ingestLoad1External(
-	opts *Options,
-	e ExternalFile,
-	fileNum base.DiskFileNum,
-	objProvider objstorage.Provider,
-	jobID int,
+	opts *Options, e ExternalFile, fileNum base.FileNum, objProvider objstorage.Provider, jobID int,
 ) (*fileMetadata, error) {
 	if e.Size == 0 {
 		// Disallow 0 file sizes
@@ -182,14 +178,14 @@ func ingestLoad1External(
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
 	meta := &fileMetadata{
-		// For simplicity, we use the same number for both the FileNum and the
-		// DiskFileNum (even though this is a virtual sstable).
-		FileNum:      FileNum(fileNum),
+		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
 		Virtual:      true,
 		Size:         e.Size,
 	}
-	meta.InitProviderBacking(fileNum)
+	// For simplicity, we use the same number for both the FileNum and the
+	// DiskFileNum (even though this is a virtual sstable).
+	meta.InitProviderBacking(base.DiskFileNum(fileNum))
 
 	// Try to resolve a reference to the external file.
 	backing, err := objProvider.CreateExternalObjectBacking(e.Locator, e.ObjName)
@@ -197,7 +193,7 @@ func ingestLoad1External(
 		return nil, err
 	}
 	metas, err := objProvider.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
-		FileNum:  fileNum,
+		FileNum:  meta.FileBacking.DiskFileNum,
 		FileType: fileTypeTable,
 		Backing:  backing,
 	}})
@@ -209,7 +205,7 @@ func ingestLoad1External(
 			JobID:   jobID,
 			Reason:  "ingesting",
 			Path:    objProvider.Path(metas[0]),
-			FileNum: fileNum,
+			FileNum: meta.FileBacking.DiskFileNum,
 		})
 	}
 	// In the name of keeping this ingestion as fast as possible, we avoid
@@ -220,12 +216,18 @@ func ingestLoad1External(
 	largestCopy := make([]byte, len(e.LargestUserKey))
 	copy(largestCopy, e.LargestUserKey)
 	if e.HasPointKey {
-		meta.ExtendPointKeyBounds(opts.Comparer.Compare, base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
-			base.MakeRangeDeleteSentinelKey(largestCopy))
+		meta.ExtendPointKeyBounds(
+			opts.Comparer.Compare,
+			base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
+			base.MakeRangeDeleteSentinelKey(largestCopy),
+		)
 	}
 	if e.HasRangeKey {
-		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, base.MakeInternalKey(smallestCopy, 0, InternalKeyKindRangeKeySet),
-			base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyDelete, largestCopy))
+		meta.ExtendRangeKeyBounds(
+			opts.Comparer.Compare,
+			base.MakeInternalKey(smallestCopy, 0, InternalKeyKindRangeKeyMax),
+			base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyMin, largestCopy),
+		)
 	}
 
 	// Set the underlying FileBacking's size to the same size as the virtualized
@@ -254,9 +256,9 @@ func ingestLoad1(
 	fmv FormatMajorVersion,
 	readable objstorage.Readable,
 	cacheID uint64,
-	fileNum base.DiskFileNum,
+	fileNum base.FileNum,
 ) (*fileMetadata, error) {
-	cacheOpts := private.SSTableCacheOpts(cacheID, fileNum).(sstable.ReaderOption)
+	cacheOpts := private.SSTableCacheOpts(cacheID, base.PhysicalTableDiskFileNum(fileNum)).(sstable.ReaderOption)
 	r, err := sstable.NewReader(readable, opts.MakeReaderOptions(), cacheOpts)
 	if err != nil {
 		return nil, err
@@ -276,7 +278,7 @@ func ingestLoad1(
 	}
 
 	meta := &fileMetadata{}
-	meta.FileNum = base.PhysicalTableFileNum(fileNum)
+	meta.FileNum = fileNum
 	meta.Size = uint64(readable.Size())
 	meta.CreationTime = time.Now().Unix()
 	meta.InitPhysicalBacking()
@@ -408,7 +410,7 @@ func ingestLoad(
 	shared []SharedSSTMeta,
 	external []ExternalFile,
 	cacheID uint64,
-	pending []base.DiskFileNum,
+	pending []base.FileNum,
 	objProvider objstorage.Provider,
 	jobID int,
 ) (ingestLoadResult, error) {
@@ -1320,9 +1322,9 @@ func (d *DB) ingest(
 	// ordering. The sorting of L0 tables by sequence number avoids relying on
 	// that (busted) invariant.
 	d.mu.Lock()
-	pendingOutputs := make([]base.DiskFileNum, len(paths)+len(shared)+len(external))
+	pendingOutputs := make([]base.FileNum, len(paths)+len(shared)+len(external))
 	for i := 0; i < len(paths)+len(shared)+len(external); i++ {
-		pendingOutputs[i] = d.mu.versions.getNextDiskFileNum()
+		pendingOutputs[i] = d.mu.versions.getNextFileNum()
 	}
 
 	jobID := d.mu.nextJobID
