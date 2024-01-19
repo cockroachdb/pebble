@@ -6,13 +6,21 @@ package wal
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
+	"io"
+	"math/rand"
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/batchrepr"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/datadrivenutil"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -78,6 +86,160 @@ func TestList(t *testing.T) {
 			for _, name := range names {
 				fmt.Fprintf(&buf, "%s:\n", name)
 				fmt.Fprint(&buf, filesystems[name].String())
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
+
+// TestReader tests the virtual WAL reader that merges across multiple physical
+// log files.
+func TestReader(t *testing.T) {
+	fs := vfs.NewStrictMem()
+	rng := rand.New(rand.NewSource(1))
+	var buf bytes.Buffer
+	datadriven.RunTest(t, "testdata/reader", func(t *testing.T, td *datadriven.TestData) string {
+		buf.Reset()
+		switch td.Cmd {
+		case "define":
+			var logNum uint64
+			var index int64
+			var recycleFilename string
+			td.ScanArgs(t, "logNum", &logNum)
+			td.MaybeScanArgs(t, "logNameIndex", &index)
+			td.MaybeScanArgs(t, "recycleFilename", &recycleFilename)
+
+			filename := makeLogFilename(NumWAL(logNum), logNameIndex(index))
+			var f vfs.File
+			var err error
+			if recycleFilename != "" {
+				f, err = fs.ReuseForWrite(recycleFilename, filename)
+				require.NoError(t, err)
+				fmt.Fprintf(&buf, "recycled %q as %q\n", recycleFilename, filename)
+			} else {
+				f, err = fs.Create(filename)
+				require.NoError(t, err)
+				fmt.Fprintf(&buf, "created %q\n", filename)
+			}
+			dir, err := fs.OpenDir("")
+			require.NoError(t, err)
+			require.NoError(t, dir.Sync())
+			require.NoError(t, dir.Close())
+			w := record.NewLogWriter(f, base.DiskFileNum(logNum), record.LogWriterConfig{})
+
+			lines := datadrivenutil.Lines(td.Input)
+			var offset int64
+			for len(lines) > 0 {
+				fields := lines.Next().Fields()
+				switch fields[0] {
+				case "batch":
+					// Fake a batch of the provided size.
+					size := fields.MustKeyValue("size").Int()
+					repr := make([]byte, size)
+					var seq uint64
+					if len(repr) >= batchrepr.HeaderLen {
+						count := uint32(fields.MustKeyValue("count").Uint64())
+						seq = fields.MustKeyValue("seq").Uint64()
+						rng.Read(repr[batchrepr.HeaderLen:])
+						batchrepr.SetSeqNum(repr, seq)
+						batchrepr.SetCount(repr, count)
+					}
+
+					var tailOffset int64
+					if fields.HasValue("sync") {
+						var wg sync.WaitGroup
+						var writeErr, syncErr error
+						wg.Add(1)
+						tailOffset, writeErr = w.SyncRecord(repr, &wg, &syncErr)
+						if writeErr != nil {
+							return writeErr.Error()
+						}
+						wg.Wait()
+						if syncErr != nil {
+							return syncErr.Error()
+						}
+					} else {
+						var writeErr error
+						tailOffset, writeErr = w.WriteRecord(repr)
+						if writeErr != nil {
+							return writeErr.Error()
+						}
+					}
+
+					fmt.Fprintf(&buf, "%d..%d: batch #%d\n", offset, tailOffset, seq)
+					offset = tailOffset
+				case "write-garbage":
+					size := fields.MustKeyValue("size").Int()
+					garbage := make([]byte, size)
+					rng.Read(garbage)
+					_, err := f.Write(garbage)
+					require.NoError(t, err)
+					require.NoError(t, f.Sync())
+					fields.HasValue("sync")
+				default:
+					panic(fmt.Sprintf("unrecognized command %q", fields[0]))
+				}
+			}
+			if td.HasArg("close-unclean") {
+				fs.SetIgnoreSyncs(true)
+				require.NoError(t, w.Close())
+				fs.ResetToSyncedState()
+				fs.SetIgnoreSyncs(false)
+			} else {
+				require.NoError(t, w.Close())
+			}
+			return buf.String()
+		case "read":
+			var logNum uint64
+			var forceLogNameIndexes []uint64
+			td.ScanArgs(t, "logNum", &logNum)
+			td.MaybeScanArgs(t, "forceLogNameIndexes", &forceLogNameIndexes)
+			logs, err := listLogs(Dir{FS: fs})
+			require.NoError(t, err)
+			log, ok := logs.Get(NumWAL(logNum))
+			if !ok {
+				return "not found"
+			}
+
+			segments := log.segments
+			// If forceLogNameIndexes is provided, pretend we found some
+			// additional segments. This can be used to exercise the case where
+			// opening the next physical segment file fails.
+			if len(forceLogNameIndexes) > 0 {
+				for _, li := range forceLogNameIndexes {
+					j, found := slices.BinarySearchFunc(segments, logNameIndex(li), func(s segment, li logNameIndex) int {
+						return cmp.Compare(s.logNameIndex, li)
+					})
+					require.False(t, found)
+					segments = slices.Insert(segments, j, segment{logNameIndex: logNameIndex(li), dir: Dir{FS: fs}})
+				}
+			}
+
+			r := newVirtualWALReader(log.NumWAL, segments)
+			for {
+				rr, off, err := r.NextRecord()
+				fmt.Fprintf(&buf, "r.NextRecord() = (rr, %s, %v)\n", off, err)
+				if err != nil {
+					break
+				}
+				b, err := io.ReadAll(rr)
+				fmt.Fprintf(&buf, "  io.ReadAll(rr) = (\"")
+				if len(b) < 32 {
+					fmt.Fprintf(&buf, "%x", b)
+				} else {
+					fmt.Fprintf(&buf, "%x... <%d-byte record>", b[:32], len(b))
+				}
+				fmt.Fprintf(&buf, "\", %v)\n", err)
+				if h, ok := batchrepr.ReadHeader(b); !ok {
+					fmt.Fprintln(&buf, "  failed to parse batch header")
+				} else {
+					fmt.Fprintf(&buf, "  BatchHeader: %s\n", h)
+				}
+			}
+			if err := r.Close(); err != nil {
+				fmt.Fprintf(&buf, "r.Close() = %q", err)
 			}
 			return buf.String()
 		default:
