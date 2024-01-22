@@ -715,7 +715,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	var buf strings.Builder
 	twoLevelIndex := r.Properties.IndexType == twoLevelIndex
 	buf.WriteString("index entries:\n")
-	iter, err := newBlockIter(r.Compare, indexH.Get(), r.syntheticPrefix)
+	iter, err := newBlockIter(r.Compare, indexH.Get(), r.syntheticPrefix, r.syntheticSuffix)
 	defer func() {
 		require.NoError(t, iter.Close())
 	}()
@@ -729,7 +729,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 				context.Background(), bh.BlockHandle, nil, nil, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
-			iter2, err := newBlockIter(r.Compare, b.Get(), r.syntheticPrefix)
+			iter2, err := newBlockIter(r.Compare, b.Get(), r.syntheticPrefix, r.syntheticSuffix)
 			defer func() {
 				require.NoError(t, iter2.Close())
 			}()

@@ -16,12 +16,39 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
 func ikey(s string) InternalKey {
 	return InternalKey{UserKey: []byte(s)}
+}
+
+// delete this when pr is no longer a draft.
+func TestMichael(t *testing.T) {
+	cache := []byte("apple")
+	prefixLen := 3
+	sepBuffer := []byte{}
+	userKey := []byte("pear")
+
+	res := bytes.Compare([]byte("a"), []byte("b"))
+	fmt.Printf("%d\n", res)
+	if n := len(cache); n >= 0 {
+		// We initially assume the user key is pointed to cache
+		userKey = cache
+
+		// during, suffix replacement repoint the userkey to a different buffer
+		userKey = sepBuffer
+
+		// now do the byte for byte copy from the cache
+		userKey = append(userKey[:0], cache[:prefixLen]...)
+
+		// manipulate user key and assert the cache was never manipulated
+		userKey[0] = 'b'
+		fmt.Printf("user key: %s %p\n", userKey, &userKey[0])
+		fmt.Printf("cache key: %s %p\n", cache, &cache[0])
+	}
 }
 
 func TestBlockWriter(t *testing.T) {
@@ -245,7 +272,7 @@ func TestBlockIter2(t *testing.T) {
 					return ""
 
 				case "iter":
-					iter, err := newBlockIter(bytes.Compare, block, nil)
+					iter, err := newBlockIter(bytes.Compare, block, nil, nil)
 					if err != nil {
 						return err.Error()
 					}
@@ -276,7 +303,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 	}
 	block := w.finish()
 
-	i, err := newBlockIter(bytes.Compare, block, nil)
+	i, err := newBlockIter(bytes.Compare, block, nil, nil)
 	require.NoError(t, err)
 
 	// Check that the supplied slice resides within the bounds of the block.
@@ -336,7 +363,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 
 	for targetPos := 0; targetPos < w.restartInterval; targetPos++ {
 		t.Run("", func(t *testing.T) {
-			i, err := newBlockIter(bytes.Compare, block, nil)
+			i, err := newBlockIter(bytes.Compare, block, nil, nil)
 			require.NoError(t, err)
 
 			pos := 3
@@ -375,10 +402,10 @@ func TestBlockSyntheticPrefix(t *testing.T) {
 
 				elidedPrefixBlock, includedPrefixBlock := elidedPrefixWriter.finish(), includedPrefixWriter.finish()
 
-				expect, err := newBlockIter(bytes.Compare, includedPrefixBlock, nil)
+				expect, err := newBlockIter(bytes.Compare, includedPrefixBlock, nil, nil)
 				require.NoError(t, err)
 
-				got, err := newBlockIter(bytes.Compare, elidedPrefixBlock, SyntheticPrefix([]byte(prefix)))
+				got, err := newBlockIter(bytes.Compare, elidedPrefixBlock, SyntheticPrefix([]byte(prefix)), nil)
 				require.NoError(t, err)
 
 				check := func(eKey *base.InternalKey, eVal base.LazyValue) func(gKey *base.InternalKey, gVal base.LazyValue) {
@@ -413,6 +440,113 @@ func TestBlockSyntheticPrefix(t *testing.T) {
 	}
 }
 
+func TestBlockSyntheticSuffix(t *testing.T) {
+
+	// TODO(msbutler): add test where replacement suffix has fewer bytes than previous suffix
+	expectedSuffix := "@15"
+
+	synthSuffix := SyntheticSuffix{
+		suffix: []byte(expectedSuffix),
+		buf:    []byte{},
+		split:  testkeys.Comparer.Split,
+	}
+
+	// Use testkeys.Comparer.Compare which approximates EngineCompare by ordering
+	// multiple keys with same prefix in descending suffix order.
+	cmp := testkeys.Comparer.Compare
+
+	for _, restarts := range []int{1} { //, 2, 3, 4, 10} {
+		t.Run(fmt.Sprintf("restarts=%d", restarts), func(t *testing.T) {
+
+			suffixWriter, expectedSuffixWriter := &blockWriter{restartInterval: restarts}, &blockWriter{restartInterval: restarts}
+			keys := []string{
+				"apple@2", "apricot@2", "banana@13",
+				"grape@2", "orange@14", "peach@4",
+				"pear@1", "persimmon@4",
+			}
+			for _, key := range keys {
+				suffixWriter.add(ikey(key), nil)
+				replacedKey := strings.Split(key, "@")[0] + expectedSuffix
+				expectedSuffixWriter.add(ikey(replacedKey), nil)
+			}
+
+			suffixReplacedBlock, expectedBlock := suffixWriter.finish(), expectedSuffixWriter.finish()
+
+			expect, err := newBlockIter(cmp, expectedBlock, nil, nil)
+			require.NoError(t, err)
+
+			got, err := newBlockIter(cmp, suffixReplacedBlock, nil, &synthSuffix)
+			require.NoError(t, err)
+
+			check := func(eKey *base.InternalKey, eVal base.LazyValue) func(gKey *base.InternalKey, gVal base.LazyValue) {
+				return func(gKey *base.InternalKey, gVal base.LazyValue) {
+					t.Helper()
+					if eKey != nil {
+						require.NotNil(t, gKey, "expected %q", eKey.UserKey)
+						t.Logf("expected %q, got %q", eKey.UserKey, gKey.UserKey)
+						require.Equal(t, eKey, gKey)
+						require.Equal(t, eVal, gVal)
+					} else {
+						t.Logf("expected nil, got %q", gKey)
+						require.Nil(t, gKey)
+					}
+				}
+			}
+
+			check(expect.First())(got.First())
+			check(expect.Next())(got.Next())
+			check(expect.Prev())(got.Prev())
+
+			// Try searching with a key that matches the target key before replacement
+			check(expect.SeekGE([]byte("apricot@2"), base.SeekGEFlagsNone))(got.SeekGE([]byte("apricot@2"), base.SeekGEFlagsNone))
+			check(expect.Next())(got.Next())
+
+			// Try searching with a key that matches the target key after replacement
+			check(expect.SeekGE([]byte("orange@15"), base.SeekGEFlagsNone))(got.SeekGE([]byte("orange@15"), base.SeekGEFlagsNone))
+			check(expect.Next())(got.Next())
+			check(expect.Next())(got.Next())
+
+			// Try searching with a key that results in off by one handling
+			check(expect.First())(got.First())
+			check(expect.SeekGE([]byte("grape@10"), base.SeekGEFlagsNone))(got.SeekGE([]byte("grape@10"), base.SeekGEFlagsNone))
+			check(expect.Next())(got.Next())
+			check(expect.Next())(got.Next())
+
+			// Try searching with a key with suffix greater than the replacement
+			check(expect.SeekGE([]byte("orange@16"), base.SeekGEFlagsNone))(got.SeekGE([]byte("orange@16"), base.SeekGEFlagsNone))
+			check(expect.Next())(got.Next())
+
+			// Exhaust the iterator via searching
+			check(expect.SeekGE([]byte("persimmon@17"), base.SeekGEFlagsNone))(got.SeekGE([]byte("persimmon@17"), base.SeekGEFlagsNone))
+
+			// Ensure off by one handling works at end of iterator
+			check(expect.SeekGE([]byte("persimmon@10"), base.SeekGEFlagsNone))(got.SeekGE([]byte("persimmon@10"), base.SeekGEFlagsNone))
+
+			// Try reverse search with a key that matches the target key before replacement
+			check(expect.SeekLT([]byte("banana@13"), base.SeekLTFlagsNone))(got.SeekLT([]byte("banana@13"), base.SeekLTFlagsNone))
+			check(expect.Prev())(got.Prev())
+			check(expect.Next())(got.Next())
+
+			// Try reverse searching with a key that matches the target key after replacement
+			check(expect.Last())(got.Last())
+			check(expect.SeekLT([]byte("apricot@15"), base.SeekLTFlagsNone))(got.SeekLT([]byte("apricot@15"), base.SeekLTFlagsNone))
+
+			// Try reverse searching with a key with suffix in between original and target replacement
+			check(expect.Last())(got.Last())
+			check(expect.SeekLT([]byte("peach@10"), base.SeekLTFlagsNone))(got.SeekLT([]byte("peach@10"), base.SeekLTFlagsNone))
+			check(expect.Prev())(got.Prev())
+			check(expect.Next())(got.Next())
+
+			// Exhaust the iterator via reverse searching
+			check(expect.SeekLT([]byte("apple@17"), base.SeekLTFlagsNone))(got.SeekLT([]byte("apple@17"), base.SeekLTFlagsNone))
+
+			// Ensure off by one handling works at end of iterator
+			check(expect.Last())(got.Last())
+			check(expect.SeekLT([]byte("apple@10"), base.SeekLTFlagsNone))(got.SeekLT([]byte("apple@10"), base.SeekLTFlagsNone))
+		})
+	}
+}
+
 func BenchmarkBlockIterSeekGE(b *testing.B) {
 	const blockSize = 32 << 10
 
@@ -432,7 +566,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish(), nil)
+				it, err := newBlockIter(bytes.Compare, w.finish(), nil, nil)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -474,7 +608,7 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish(), nil)
+				it, err := newBlockIter(bytes.Compare, w.finish(), nil, nil)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -520,7 +654,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish(), nil)
+				it, err := newBlockIter(bytes.Compare, w.finish(), nil, nil)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -552,7 +686,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish(), nil)
+				it, err := newBlockIter(bytes.Compare, w.finish(), nil, nil)
 				if err != nil {
 					b.Fatal(err)
 				}
