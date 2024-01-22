@@ -634,7 +634,7 @@ lsm
   000007:[a#10,SET-a#10,SET]
   000008:[d#12,DEL-d#12,DEL]
 6:
-  000006:[f#13,SET-f#13,SET]
+  000006:[f#14,SET-f#14,SET]
 
 metadata-stats file=7
 ----
@@ -696,12 +696,12 @@ range-key-set e ee @1 foo
 flush
 ----
 0.1:
-  000010:[a#14,SET-ee#inf,RANGEKEYSET]
+  000010:[a#15,SET-ee#inf,RANGEKEYSET]
 0.0:
   000007:[a#10,SET-a#10,SET]
   000008:[d#12,DEL-d#12,DEL]
 6:
-  000006:[f#13,SET-f#13,SET]
+  000006:[f#14,SET-f#14,SET]
 
 properties file=10
 rocksdb
@@ -750,14 +750,14 @@ ingest-and-excise ext2 excise=b-c
 lsm
 ----
 0.1:
-  000012:[a#14,SET-a#14,SET]
-  000013:[d#16,SET-ee#inf,RANGEKEYSET]
+  000012:[a#15,SET-a#15,SET]
+  000013:[d#17,SET-ee#inf,RANGEKEYSET]
 0.0:
   000007:[a#10,SET-a#10,SET]
   000008:[d#12,DEL-d#12,DEL]
 6:
-  000006:[f#13,SET-f#13,SET]
-  000011:[z#18,SET-z#18,SET]
+  000006:[f#14,SET-f#14,SET]
+  000011:[z#20,SET-z#20,SET]
 
 metadata-stats file=12
 ----
@@ -809,9 +809,9 @@ compact a-z
 6:
   000014:[a#0,SET-a#0,SET]
   000015:[d#0,SETWITHDEL-d#0,SETWITHDEL]
-  000016:[e#17,RANGEKEYSET-ee#inf,RANGEKEYSET]
-  000006:[f#13,SET-f#13,SET]
-  000011:[z#18,SET-z#18,SET]
+  000016:[e#18,RANGEKEYSET-ee#inf,RANGEKEYSET]
+  000006:[f#14,SET-f#14,SET]
+  000011:[z#20,SET-z#20,SET]
 
 batch
 del-range a e
@@ -820,13 +820,13 @@ del-range a e
 flush
 ----
 0.0:
-  000018:[a#19,RANGEDEL-e#inf,RANGEDEL]
+  000018:[a#21,RANGEDEL-e#inf,RANGEDEL]
 6:
   000014:[a#0,SET-a#0,SET]
   000015:[d#0,SETWITHDEL-d#0,SETWITHDEL]
-  000016:[e#17,RANGEKEYSET-ee#inf,RANGEKEYSET]
-  000006:[f#13,SET-f#13,SET]
-  000011:[z#18,SET-z#18,SET]
+  000016:[e#18,RANGEKEYSET-ee#inf,RANGEKEYSET]
+  000006:[f#14,SET-f#14,SET]
+  000011:[z#20,SET-z#20,SET]
 
 properties file=18
 rocksdb
@@ -866,15 +866,15 @@ ingest-and-excise ext3 excise=b-c
 lsm
 ----
 0.0:
-  000020:[a#19,RANGEDEL-b#inf,RANGEDEL]
-  000021:[c#19,RANGEDEL-e#inf,RANGEDEL]
+  000020:[a#21,RANGEDEL-b#inf,RANGEDEL]
+  000021:[c#21,RANGEDEL-e#inf,RANGEDEL]
 6:
   000014:[a#0,SET-a#0,SET]
   000015:[d#0,SETWITHDEL-d#0,SETWITHDEL]
-  000016:[e#17,RANGEKEYSET-ee#inf,RANGEKEYSET]
-  000006:[f#13,SET-f#13,SET]
-  000011:[z#18,SET-z#18,SET]
-  000019:[zz#20,SET-zz#20,SET]
+  000016:[e#18,RANGEKEYSET-ee#inf,RANGEKEYSET]
+  000006:[f#14,SET-f#14,SET]
+  000011:[z#20,SET-z#20,SET]
+  000019:[zz#23,SET-zz#23,SET]
 
 properties file=20
 ----
