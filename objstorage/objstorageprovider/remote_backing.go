@@ -12,7 +12,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
@@ -271,25 +270,6 @@ func (p *provider) AttachRemoteObjects(
 		}
 	}
 
-	func() {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		for _, d := range decoded {
-			p.mu.remote.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{
-				FileNum:          d.meta.DiskFileNum,
-				FileType:         d.meta.FileType,
-				CreatorID:        d.meta.Remote.CreatorID,
-				CreatorFileNum:   d.meta.Remote.CreatorFileNum,
-				CleanupMethod:    d.meta.Remote.CleanupMethod,
-				Locator:          d.meta.Remote.Locator,
-				CustomObjectName: d.meta.Remote.CustomObjectName,
-			})
-		}
-	}()
-	if err := p.sharedSync(); err != nil {
-		return nil, err
-	}
-
 	metas := make([]objstorage.ObjectMetadata, len(decoded))
 	for i, d := range decoded {
 		metas[i] = d.meta
@@ -297,8 +277,8 @@ func (p *provider) AttachRemoteObjects(
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for _, meta := range metas {
-		p.mu.knownObjects[meta.DiskFileNum] = meta
+	for i := range metas {
+		p.addMetadataLocked(metas[i])
 	}
 	return metas, nil
 }

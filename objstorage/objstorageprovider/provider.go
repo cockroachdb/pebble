@@ -456,11 +456,15 @@ func (p *provider) Metrics() sharedcache.Metrics {
 }
 
 func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.addMetadataLocked(meta)
+}
+
+func (p *provider) addMetadataLocked(meta objstorage.ObjectMetadata) {
 	if invariants.Enabled {
 		meta.AssertValid()
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.mu.knownObjects[meta.DiskFileNum] = meta
 	if meta.IsRemote() {
 		p.mu.remote.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{

@@ -134,7 +134,6 @@ attach
 b1 101
 b2 102
 ----
-<local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
 000101 -> remote://61a6-1-000001.sst
 000102 -> remote://61a6-1-000001.sst
 
