@@ -67,7 +67,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	if i.err = i.index.initHandle(i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum, false, i.reader.syntheticPrefix); i.err == nil {
+	if i.err = i.index.initHandle(i.cmp, i.reader.Split, indexBlock, i.reader.Properties.GlobalSeqNum, false, i.reader.syntheticPrefix, nil); i.err == nil {
 		return loadBlockOK
 	}
 	return loadBlockFailed
@@ -175,7 +175,9 @@ func (i *twoLevelIterator) init(
 	i.stats = stats
 	i.hideObsoletePoints = hideObsoletePoints
 	i.bufferPool = bufferPool
-	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum, false, r.syntheticPrefix)
+	// Index blocks don't need a synthetic suffix replacement. See detailed note
+	// for the SyntheticSuffix data type.
+	err = i.topLevelIndex.initHandle(i.cmp, i.reader.Split, topLevelIndexH, r.Properties.GlobalSeqNum, false, r.syntheticPrefix, nil)
 	if err != nil {
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
 		_ = i.topLevelIndex.Close()
