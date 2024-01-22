@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -715,7 +716,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	var buf strings.Builder
 	twoLevelIndex := r.Properties.IndexType == twoLevelIndex
 	buf.WriteString("index entries:\n")
-	iter, err := newBlockIter(r.Compare, indexH.Get())
+	iter, err := newBlockIter(r.Compare, r.Split, indexH.Get(), nil)
 	defer func() {
 		require.NoError(t, iter.Close())
 	}()
@@ -729,7 +730,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 				context.Background(), bh.BlockHandle, nil, nil, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
-			iter2, err := newBlockIter(r.Compare, b.Get())
+			iter2, err := newBlockIter(r.Compare, r.Split, b.Get(), nil)
 			defer func() {
 				require.NoError(t, iter2.Close())
 			}()
@@ -1089,6 +1090,246 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		i := iter.(*singleLevelIterator)
 		require.False(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
 		require.False(t, objstorageprovider.TestingCheckMaxReadahead(i.vbRH))
+	}
+}
+
+type readCallType int
+
+const (
+	SeekGE readCallType = iota
+	Next
+	Prev
+	SeekLT
+	First
+	Last
+)
+
+// readCall represents an Iterator call. For seek calls, the seekKey must be
+// set. For Next and Prev, the repeatCount instructs the iterator to repeat the
+// call.
+type readCall struct {
+	callType    readCallType
+	seekKey     []byte
+	repeatCount int
+}
+
+// readerWorkload creates a random sequence of Iterator calls. If the iterator
+// becomes invalid, the user can call handleInvalid to move the iterator so
+// random part in the keyspace. The readerWorkload assumes the underlying file
+// contains keys throughout the keyspace.
+//
+// TODO(msbutler): eventually merge this randomized reader helper with the utility
+// in sstable/random_test.go. This will require teaching `buildRandomSSTable()` to
+// build a "treatment" sst with randomized timestamp suffixes and a "control" sst
+// with fixed timestamp suffixes.
+type readerWorkload struct {
+	ks                  testkeys.Keyspace
+	t                   *testing.T
+	calls               []readCall
+	maxTs               int64
+	seekKeyAfterInvalid []byte
+	rng                 *rand.Rand
+}
+
+func (rw *readerWorkload) setSeekKeyAfterInvalid() {
+	idx := rw.rng.Int63n(rw.ks.Count())
+	ts := rw.rng.Int63n(rw.maxTs)
+	rw.seekKeyAfterInvalid = testkeys.KeyAt(rw.ks, idx, ts)
+}
+
+func (rw *readerWorkload) handleInvalid(
+	call readCall, iter Iterator,
+) (*InternalKey, base.LazyValue) {
+	switch {
+	case SeekGE == call.callType || Next == call.callType || Last == call.callType:
+		return iter.SeekLT(rw.seekKeyAfterInvalid, base.SeekLTFlagsNone)
+	case SeekLT == call.callType || Prev == call.callType || First == call.callType:
+		return iter.SeekGE(rw.seekKeyAfterInvalid, base.SeekGEFlagsNone)
+	default:
+		rw.t.Fatalf("unkown call")
+		return nil, base.LazyValue{}
+	}
+}
+
+func (rw *readerWorkload) read(call readCall, iter Iterator) (*InternalKey, base.LazyValue) {
+	switch call.callType {
+	case SeekGE:
+		return iter.SeekGE(call.seekKey, base.SeekGEFlagsNone)
+	case Next:
+		return rw.repeatRead(call, iter)
+	case SeekLT:
+		return iter.SeekLT(call.seekKey, base.SeekLTFlagsNone)
+	case Prev:
+		return rw.repeatRead(call, iter)
+	case First:
+		return iter.First()
+	case Last:
+		return iter.Last()
+	default:
+		rw.t.Fatalf("unkown call")
+		return nil, base.LazyValue{}
+	}
+}
+
+func (rw *readerWorkload) repeatRead(call readCall, iter Iterator) (*InternalKey, base.LazyValue) {
+	var repeatCall func() (*InternalKey, base.LazyValue)
+
+	switch call.callType {
+	case Next:
+		repeatCall = iter.Next
+	case Prev:
+		repeatCall = iter.Prev
+	default:
+		rw.t.Fatalf("unknown repeat read call")
+	}
+	for i := 0; i < call.repeatCount; i++ {
+		key, val := repeatCall()
+		if key != nil {
+			return key, val
+		}
+	}
+	return repeatCall()
+}
+
+func createReadWorkload(
+	t *testing.T, rng *rand.Rand, callCount int, ks testkeys.Keyspace, maxTS int64,
+) readerWorkload {
+	calls := make([]readCall, 0, callCount)
+
+	for i := 0; i < callCount; i++ {
+		key := make([]byte, 0)
+		callType := readCallType(rng.Intn(int(Last + 1)))
+		repeatCount := 0
+		if callType == First || callType == Last {
+			// Sqrt the likelihood of calling First and Last as they're not very interesting.
+			callType = readCallType(rng.Intn(int(Last + 1)))
+		}
+		if callType == SeekLT || callType == SeekGE {
+			idx := rng.Int63n(int64(ks.MaxLen()))
+			ts := rng.Int63n(maxTS) + 1
+			key = testkeys.KeyAt(ks, idx, ts)
+		}
+		if callType == Next || callType == Prev {
+			repeatCount = rng.Intn(100)
+		}
+		calls = append(calls, readCall{callType: callType, seekKey: key, repeatCount: repeatCount})
+	}
+	return readerWorkload{
+		calls: calls,
+		t:     t,
+		ks:    ks,
+		maxTs: maxTS,
+		rng:   rng,
+	}
+}
+
+// TestRandomizedSuffixRewriter runs a random sequence of iterator calls
+// on an sst with keys with a fixed timestamp and asserts that all calls
+// return the same sequence of keys as another iterator initialized with
+// a suffix replacement rule to that fixed timestamp which reads an sst
+// with the same keys and randomized suffixes. In other words, this is a
+// randomized version of TestBlockSyntheticSuffix.
+func TestRandomizedSuffixRewriter(t *testing.T) {
+
+	ks := testkeys.Alpha(3)
+
+	callCount := 500
+	maxTs := int64(10)
+	suffix := int64(12)
+	syntheticSuffix := []byte("@" + strconv.Itoa(int(suffix)))
+
+	potentialBlockSize := []int{32, 64, 128, 256}
+	potentialRestartInterval := []int{1, 4, 8, 16}
+
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(seed))
+	mem := vfs.NewMem()
+
+	blockSize := potentialBlockSize[rng.Intn(len(potentialBlockSize))]
+	restartInterval := potentialRestartInterval[rng.Intn(len(potentialRestartInterval))]
+	t.Logf("Configured Block Size %d, Restart Interval %d, Seed %d", blockSize, restartInterval, seed)
+
+	createIter := func(fileName string, syntheticSuffix SyntheticSuffix) (Iterator, func()) {
+		f, err := mem.Open(fileName)
+		require.NoError(t, err)
+		eReader, err := newReader(f, ReaderOptions{Comparer: testkeys.Comparer})
+		require.NoError(t, err)
+		iter, err := eReader.newIterWithBlockPropertyFiltersAndContext(
+			context.Background(),
+			nil, nil, nil, false,
+			true, nil, CategoryAndQoS{}, nil,
+			TrivialReaderProvider{Reader: eReader}, &virtualState{syntheticSuffix: syntheticSuffix})
+		require.NoError(t, err)
+		return iter, func() {
+			require.NoError(t, iter.Close())
+			require.NoError(t, eReader.Close())
+		}
+	}
+
+	for _, twoLevelIndex := range []bool{false, true} {
+		testCaseName := fmt.Sprintf("two-level-index=%t", twoLevelIndex)
+		t.Run(testCaseName, func(t *testing.T) {
+			indexBlockSize := 4096
+			if twoLevelIndex {
+				indexBlockSize = 1
+			}
+
+			createFile := func(randSuffix bool) string {
+				// initialize a new rng so that every createFile
+				// call generates the same sequence of random numbers.
+				localRng := rand.New(rand.NewSource(seed))
+				name := "randTS"
+				if !randSuffix {
+					name = "fixedTS"
+				}
+				name = name + testCaseName
+				f, err := mem.Create(name)
+				require.NoError(t, err)
+
+				w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
+					BlockRestartInterval: restartInterval,
+					BlockSize:            blockSize,
+					IndexBlockSize:       indexBlockSize,
+					Comparer:             testkeys.Comparer,
+				})
+
+				keyIdx := int64(0)
+				maxIdx := ks.Count()
+				for keyIdx < maxIdx {
+					// We need to call rng here even if we don't actually use the ts
+					// because the sequence of rng calls must be identical for the treatment
+					// and control sst.
+					ts := localRng.Int63n(maxTs)
+					if !randSuffix {
+						ts = suffix
+					}
+					key := testkeys.KeyAt(ks, keyIdx, ts)
+					require.NoError(t, w.Set(key, []byte(fmt.Sprint(keyIdx))))
+					skipIdx := localRng.Int63n(5) + 1
+					keyIdx += skipIdx
+				}
+				require.NoError(t, w.Close())
+				return name
+			}
+
+			eFileName := createFile(false)
+			eIter, eCleanup := createIter(eFileName, nil)
+			defer eCleanup()
+
+			fileName := createFile(true)
+			iter, cleanup := createIter(fileName, syntheticSuffix)
+			defer cleanup()
+
+			w := createReadWorkload(t, rng, callCount, ks, maxTs+2)
+			workloadChecker := checker{t: t}
+			for _, call := range w.calls {
+				workloadChecker.check(w.read(call, eIter))(w.read(call, iter))
+				if workloadChecker.notValid {
+					w.setSeekKeyAfterInvalid()
+					workloadChecker.check(w.handleInvalid(call, eIter))(w.handleInvalid(call, iter))
+				}
+			}
+		})
 	}
 }
 
