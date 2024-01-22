@@ -563,7 +563,7 @@ lsm
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
-  000028:[z#32,SET-z#32,SET]
+  000028:[z#33,SET-z#33,SET]
 
 # There should be 2 backing tables. Note that tiny sstables have inaccurate
 # virtual sstable sizes.
@@ -640,8 +640,8 @@ lsm
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
-  000028:[z#32,SET-z#32,SET]
-  000031:[zz#33,SET-zz#33,SET]
+  000028:[z#33,SET-z#33,SET]
+  000031:[zz#35,SET-zz#35,SET]
 
 metrics-value
 num-backing
@@ -663,8 +663,8 @@ compact a-z
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
   000033:[d#0,SET-m#0,SET]
-  000028:[z#32,SET-z#32,SET]
-  000031:[zz#33,SET-zz#33,SET]
+  000028:[z#33,SET-z#33,SET]
+  000031:[zz#35,SET-zz#35,SET]
 
 # Virtual sstables metrics should be gone after the compaction.
 metrics-value

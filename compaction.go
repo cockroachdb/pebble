@@ -2071,14 +2071,6 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				s = s.next
 				continue
 			}
-			if s.efos.excised.Load() {
-				// If a concurrent excise has happened that overlaps with one of the key
-				// ranges this snapshot is interested in, this EFOS cannot transition to
-				// a file-only snapshot as keys in that range could now be deleted. Move
-				// onto the next snapshot.
-				s = s.next
-				continue
-			}
 			currentVersion.Ref()
 
 			// NB: s.efos.transitionToFileOnlySnapshot could close s, in which
