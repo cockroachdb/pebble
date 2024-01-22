@@ -187,7 +187,7 @@ func (l *Layout) Describe(
 		var lastKey InternalKey
 		switch b.name {
 		case "data", "range-del", "range-key":
-			iter, _ := newBlockIter(r.Compare, h.Get(), l.SyntheticPrefix)
+			iter, _ := newBlockIter(r.Compare, r.Split, h.Get(), l.SyntheticPrefix, r.SyntheticSuffix)
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				ptr := unsafe.Pointer(uintptr(iter.ptr) + uintptr(iter.offset))
 				shared, ptr := decodeVarint(ptr)
@@ -239,7 +239,7 @@ func (l *Layout) Describe(
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
 			formatTrailer()
 		case "index", "top-index":
-			iter, _ := newBlockIter(r.Compare, h.Get(), l.SyntheticPrefix)
+			iter, _ := newBlockIter(r.Compare, r.Split, h.Get(), l.SyntheticPrefix, r.SyntheticSuffix)
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 				if err != nil {

@@ -342,7 +342,8 @@ type blockEntry struct {
 //
 // We have picked the first option here.
 type blockIter struct {
-	cmp Compare
+	cmp   Compare
+	split Split
 	// offset is the byte index that marks where the current key/value is
 	// encoded in the block.
 	offset int32
@@ -412,14 +413,22 @@ type blockIter struct {
 	}
 	hideObsoletePoints bool
 	SyntheticPrefix
+	syntheticSuffix SyntheticSuffix
+	synthSuffixBuf  []byte
 }
 
 // blockIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*blockIter)(nil)
 
-func newBlockIter(cmp Compare, block block, syntheticPrefix SyntheticPrefix) (*blockIter, error) {
+func newBlockIter(
+	cmp Compare,
+	split Split,
+	block block,
+	syntheticPrefix SyntheticPrefix,
+	syntheticSuffix SyntheticSuffix,
+) (*blockIter, error) {
 	i := &blockIter{}
-	return i, i.init(cmp, block, 0, false, syntheticPrefix)
+	return i, i.init(cmp, split, block, 0, false, syntheticPrefix, syntheticSuffix)
 }
 
 func (i *blockIter) String() string {
@@ -427,13 +436,24 @@ func (i *blockIter) String() string {
 }
 
 func (i *blockIter) init(
-	cmp Compare, block block, globalSeqNum uint64, hideObsoletePoints bool, syntheticPrefix SyntheticPrefix,
+	cmp Compare,
+	split Split,
+	block block,
+	globalSeqNum uint64,
+	hideObsoletePoints bool,
+	syntheticPrefix SyntheticPrefix,
+	syntheticSuffix SyntheticSuffix,
 ) error {
 	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return base.CorruptionErrorf("pebble/table: invalid table (block has no restart points)")
 	}
 	i.SyntheticPrefix = syntheticPrefix
+	i.syntheticSuffix = syntheticSuffix
+	if i.syntheticSuffix != nil {
+		i.synthSuffixBuf = []byte{}
+	}
+	i.split = split
 	i.cmp = cmp
 	i.restarts = int32(len(block)) - 4*(1+numRestarts)
 	i.numRestarts = numRestarts
@@ -464,11 +484,17 @@ func (i *blockIter) init(
 //     ingested.
 //   - Foreign sstable iteration: globalSeqNum is always set.
 func (i *blockIter) initHandle(
-	cmp Compare, block bufferHandle, globalSeqNum uint64, hideObsoletePoints bool, syntheticPrefix SyntheticPrefix,
+	cmp Compare,
+	split Split,
+	block bufferHandle,
+	globalSeqNum uint64,
+	hideObsoletePoints bool,
+	syntheticPrefix SyntheticPrefix,
+	syntheticSuffix SyntheticSuffix,
 ) error {
 	i.handle.Release()
 	i.handle = block
-	return i.init(cmp, block.Get(), globalSeqNum, hideObsoletePoints, syntheticPrefix)
+	return i.init(cmp, split, block.Get(), globalSeqNum, hideObsoletePoints, syntheticPrefix, syntheticSuffix)
 }
 
 func (i *blockIter) invalidate() {
@@ -671,6 +697,21 @@ func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 	return hiddenPoint
 }
 
+func (i *blockIter) maybeReplaceSuffix(maybeFromCache bool) {
+	if i.syntheticSuffix != nil && i.ikey.UserKey != nil {
+		prefixLen := i.split(i.ikey.UserKey)
+		if !maybeFromCache {
+			i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.syntheticSuffix...)
+			return
+		}
+		// If ikey is cached or may get cached, we must de-reference
+		// UserKey before prefix replacement.
+		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
+		i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
+		i.ikey.UserKey = i.synthSuffixBuf
+	}
+}
+
 func (i *blockIter) clearCache() {
 	i.cached = i.cached[:0]
 	i.cachedBuf = i.cachedBuf[:0]
@@ -811,6 +852,9 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 	if !i.valid() {
 		return nil, base.LazyValue{}
 	}
+	// Before conducting any user key comparison, we must replace the suffix.
+	i.maybeReplaceSuffix(false)
+
 	if !hiddenPoint && i.cmp(i.ikey.UserKey, key) >= 0 {
 		// Initialize i.lazyValue
 		if !i.lazyValueHandling.hasValuePrefix ||
@@ -953,6 +997,16 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			targetOffset = decodeRestart(i.data[i.restarts+4*(index):])
 		}
 	} else if index == 0 {
+		if i.syntheticSuffix != nil {
+			// The binary search was conducted on keys without suffix replacement,
+			// implying the first key in the block may not be geq the search key. To
+			// double check, get the first key in the block with suffix replacement
+			// and compare to the search key.
+			ikey, lazyVal := i.First()
+			if i.cmp(ikey.UserKey, key) < 0 {
+				return ikey, lazyVal
+			}
+		}
 		// If index == 0 then all keys in this block are larger than the key
 		// sought.
 		i.offset = -1
@@ -979,6 +1033,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 		// of hidden keys we will be able to skip whole blocks (using block
 		// property filters) so we don't bother optimizing.
 		hiddenPoint := i.decodeInternalKey(i.key)
+		i.maybeReplaceSuffix(true)
 
 		// NB: we don't use the hiddenPoint return value of decodeInternalKey
 		// since we want to stop as soon as we reach a key >= ikey.UserKey, so
@@ -1003,9 +1058,41 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			if hiddenPoint {
 				return i.Prev()
 			}
+			if i.syntheticSuffix != nil {
+				// The binary search was conducted on keys without suffix replacement,
+				// implying the returned restart point may not be geq the search key.
+				//
+				// For example: consider this block with a replacement ts of 4, and restart interval of 1:
+				// - pre replacement: a3,b2,c3
+				// - post replacement: a4,b4,c4
+				//
+				// Suppose the client calls SeekLT(b3), SeekLT must return b4.
+				//
+				// If the client calls  SeekLT(b3), the binary search would return b2,
+				// the lowest key geq to b3, pre-suffix replacement. Then, SeekLT will
+				// begin forward iteration from a3, the previous restart point, to
+				// b{suffix}. The iteration stops when it encounters a key geq to the
+				// search key or if it reaches the upper bound. Without suffix replacement, we can assume
+				// that the upper bound of this forward iteration, b{suffix}, is greater
+				// than the search key, as implied by the binary search.
+				//
+				// If we naively hold this assumption with suffix replacement, the
+				// iteration would terminate at the upper bound, b4, call i.Prev, and
+				// incorrectly return a4. Instead, we must continue forward iteration
+				// past the upper bound, until we find a key geq the search key. With
+				// this correction, SeekLT would correctly return b4 in this example.
+				for i.cmp(i.ikey.UserKey, key) < 0 {
+					i.Next()
+					if !i.valid() {
+						break
+					}
+				}
+				// The current key is greater than or equal to our search key. Back up to
+				// the previous key which was less than our search key.
+				return i.Prev()
+			}
 			break
 		}
-
 		i.cacheEntry()
 	}
 
@@ -1040,6 +1127,7 @@ func (i *blockIter) First() (*InternalKey, base.LazyValue) {
 	if hiddenPoint {
 		return i.Next()
 	}
+	i.maybeReplaceSuffix(false)
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
@@ -1082,6 +1170,7 @@ func (i *blockIter) Last() (*InternalKey, base.LazyValue) {
 	if hiddenPoint {
 		return i.Prev()
 	}
+	i.maybeReplaceSuffix(true)
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
@@ -1129,6 +1218,10 @@ start:
 		}
 		if hiddenPoint {
 			goto start
+		}
+		if i.syntheticSuffix != nil {
+			prefixLen := i.split(i.ikey.UserKey)
+			i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.syntheticSuffix...)
 		}
 	} else {
 		i.ikey.Trailer = uint64(InternalKeyKindInvalid)
@@ -1400,6 +1493,10 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 			if i.globalSeqNum != 0 {
 				i.ikey.SetSeqNum(i.globalSeqNum)
 			}
+			if i.syntheticSuffix != nil {
+				prefixLen := i.split(i.ikey.UserKey)
+				i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.syntheticSuffix...)
+			}
 		} else {
 			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
 			i.ikey.UserKey = nil
@@ -1457,6 +1554,14 @@ start:
 			i.ikey.UserKey = i.key[:n:n]
 			if i.globalSeqNum != 0 {
 				i.ikey.SetSeqNum(i.globalSeqNum)
+			}
+			if i.syntheticSuffix != nil {
+				suffixLen := i.split(i.ikey.UserKey)
+				// If ikey is cached or may get cached, we must de-reference
+				// UserKey before prefix replacement.
+				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:suffixLen]...)
+				i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
+				i.ikey.UserKey = i.synthSuffixBuf
 			}
 		} else {
 			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
@@ -1534,6 +1639,14 @@ start:
 	if hiddenPoint {
 		// Use the cache.
 		goto start
+	}
+	if i.syntheticSuffix != nil {
+		suffixLen := i.split(i.ikey.UserKey)
+		// If ikey is cached or may get cached, we must de-reference
+		// UserKey before prefix replacement.
+		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:suffixLen]...)
+		i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
+		i.ikey.UserKey = i.synthSuffixBuf
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
