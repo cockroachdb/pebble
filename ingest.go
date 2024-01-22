@@ -187,27 +187,6 @@ func ingestLoad1External(
 	// DiskFileNum (even though this is a virtual sstable).
 	meta.InitProviderBacking(base.DiskFileNum(fileNum))
 
-	// Try to resolve a reference to the external file.
-	backing, err := objProvider.CreateExternalObjectBacking(e.Locator, e.ObjName)
-	if err != nil {
-		return nil, err
-	}
-	metas, err := objProvider.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
-		FileNum:  meta.FileBacking.DiskFileNum,
-		FileType: fileTypeTable,
-		Backing:  backing,
-	}})
-	if err != nil {
-		return nil, err
-	}
-	if opts.EventListener.TableCreated != nil {
-		opts.EventListener.TableCreated(TableCreateInfo{
-			JobID:   jobID,
-			Reason:  "ingesting",
-			Path:    objProvider.Path(metas[0]),
-			FileNum: meta.FileBacking.DiskFileNum,
-		})
-	}
 	// In the name of keeping this ingestion as fast as possible, we avoid
 	// *all* existence checks and synthesize a file metadata with smallest/largest
 	// keys that overlap whatever the passed-in span was.
@@ -579,6 +558,7 @@ func ingestLink(
 	objProvider objstorage.Provider,
 	lr ingestLoadResult,
 	shared []SharedSSTMeta,
+	external []ExternalFile,
 ) error {
 	for i := range lr.localPaths {
 		objMeta, err := objProvider.LinkOrCopyFromLocal(
@@ -600,23 +580,37 @@ func ingestLink(
 			})
 		}
 	}
-	sharedObjs := make([]objstorage.RemoteObjectToAttach, 0, len(shared))
+	remoteObjs := make([]objstorage.RemoteObjectToAttach, 0, len(shared)+len(external))
 	for i := range shared {
 		backing, err := shared[i].Backing.Get()
 		if err != nil {
 			return err
 		}
-		sharedObjs = append(sharedObjs, objstorage.RemoteObjectToAttach{
+		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
 			FileNum:  lr.sharedMeta[i].FileBacking.DiskFileNum,
 			FileType: fileTypeTable,
 			Backing:  backing,
 		})
 	}
-	sharedObjMetas, err := objProvider.AttachRemoteObjects(sharedObjs)
+	for i := range external {
+		// Try to resolve a reference to the external file.
+		backing, err := objProvider.CreateExternalObjectBacking(external[i].Locator, external[i].ObjName)
+		if err != nil {
+			return err
+		}
+		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
+			FileNum:  lr.externalMeta[i].FileBacking.DiskFileNum,
+			FileType: fileTypeTable,
+			Backing:  backing,
+		})
+	}
+
+	remoteObjMetas, err := objProvider.AttachRemoteObjects(remoteObjs)
 	if err != nil {
 		return err
 	}
-	for i := range sharedObjMetas {
+
+	for i := range shared {
 		// One corner case around file sizes we need to be mindful of, is that
 		// if one of the shareObjs was initially created by us (and has boomeranged
 		// back from another node), we'll need to update the FileBacking's size
@@ -624,24 +618,25 @@ func ingestLink(
 		// open the db again after a crash/restart (see checkConsistency in open.go),
 		// plus it more accurately allows us to prioritize compactions of files
 		// that were originally created by us.
-		if sharedObjMetas[i].IsShared() && !objProvider.IsSharedForeign(sharedObjMetas[i]) {
-			size, err := objProvider.Size(sharedObjMetas[i])
+		if remoteObjMetas[i].IsShared() && !objProvider.IsSharedForeign(remoteObjMetas[i]) {
+			size, err := objProvider.Size(remoteObjMetas[i])
 			if err != nil {
 				return err
 			}
 			lr.sharedMeta[i].FileBacking.Size = uint64(size)
 		}
-		if opts.EventListener.TableCreated != nil {
+	}
+
+	if opts.EventListener.TableCreated != nil {
+		for i := range remoteObjMetas {
 			opts.EventListener.TableCreated(TableCreateInfo{
 				JobID:   jobID,
 				Reason:  "ingesting",
-				Path:    objProvider.Path(sharedObjMetas[i]),
-				FileNum: sharedObjMetas[i].DiskFileNum,
+				Path:    objProvider.Path(remoteObjMetas[i]),
+				FileNum: remoteObjMetas[i].DiskFileNum,
 			})
 		}
 	}
-	// We do not need to do anything about lr.externalMetas. Those were already
-	// linked in ingestLoad.
 
 	return nil
 }
@@ -1359,7 +1354,7 @@ func (d *DB) ingest(
 	// (e.g. because the files reside on a different filesystem), ingestLink will
 	// fall back to copying, and if that fails we undo our work and return an
 	// error.
-	if err := ingestLink(jobID, d.opts, d.objProvider, loadResult, shared); err != nil {
+	if err := ingestLink(jobID, d.opts, d.objProvider, loadResult, shared, external); err != nil {
 		return IngestOperationStats{}, err
 	}
 

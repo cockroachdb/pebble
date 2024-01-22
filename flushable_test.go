@@ -83,7 +83,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// (e.g. because the files reside on a different filesystem), ingestLink will
 		// fall back to copying, and if that fails we undo our work and return an
 		// error.
-		if err := ingestLink(jobID, d.opts, d.objProvider, lr, nil /* shared */); err != nil {
+		if err := ingestLink(jobID, d.opts, d.objProvider, lr, nil /* shared */, nil /* external */); err != nil {
 			panic("couldn't hard link sstables")
 		}
 
