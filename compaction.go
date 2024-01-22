@@ -1515,6 +1515,8 @@ type downloadSpan struct {
 	// downloadSpan. Must be equal to len(doneChans)-1, i.e. there's one spare
 	// doneChan created each time a compaction starts up, for the next compaction.
 	compactionsStarted int
+
+	kind compactionKind
 }
 
 func (d *DB) addInProgressCompaction(c *compaction) {
