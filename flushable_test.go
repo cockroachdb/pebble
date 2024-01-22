@@ -48,9 +48,9 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 
 	loadFileMeta := func(paths []string) []*fileMetadata {
 		d.mu.Lock()
-		pendingOutputs := make([]base.DiskFileNum, len(paths))
+		pendingOutputs := make([]base.FileNum, len(paths))
 		for i := range paths {
-			pendingOutputs[i] = d.mu.versions.getNextDiskFileNum()
+			pendingOutputs[i] = d.mu.versions.getNextFileNum()
 		}
 		jobID := d.mu.nextJobID
 		d.mu.nextJobID++

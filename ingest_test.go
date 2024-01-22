@@ -128,7 +128,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}).WithFSDefaults()
-			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.DiskFileNum{base.DiskFileNum(1)}, nil, 0)
+			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.FileNum{1}, nil, 0)
 			if err != nil {
 				return err.Error()
 			}
@@ -161,13 +161,13 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 
 	paths := make([]string, 1+rng.Intn(10))
-	pending := make([]base.DiskFileNum, len(paths))
+	pending := make([]base.FileNum, len(paths))
 	expected := make([]*fileMetadata, len(paths))
 	for i := range paths {
 		paths[i] = fmt.Sprint(i)
-		pending[i] = base.DiskFileNum(rng.Uint64())
+		pending[i] = base.FileNum(rng.Uint64())
 		expected[i] = &fileMetadata{
-			FileNum: base.PhysicalTableFileNum(pending[i]),
+			FileNum: pending[i],
 		}
 		expected[i].StatsMarkValid()
 
@@ -235,7 +235,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.DiskFileNum{base.DiskFileNum(1)}, nil, 0); err == nil {
+	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.FileNum{1}, nil, 0); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }

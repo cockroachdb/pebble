@@ -80,6 +80,9 @@ const (
 	InternalKeyKindRangeKeyUnset InternalKeyKind = 20
 	InternalKeyKindRangeKeySet   InternalKeyKind = 21
 
+	InternalKeyKindRangeKeyMin InternalKeyKind = InternalKeyKindRangeKeyDelete
+	InternalKeyKindRangeKeyMax InternalKeyKind = InternalKeyKindRangeKeySet
+
 	// InternalKeyKindIngestSST is used to distinguish a batch that corresponds to
 	// the WAL entry for ingested sstables that are added to the flushable
 	// queue. This InternalKeyKind cannot appear, amongst other key kinds in a
