@@ -1884,6 +1884,20 @@ type DownloadSpan struct {
 	StartKey []byte
 	// EndKey is exclusive.
 	EndKey []byte
+	// ViaBackingFileDownload, if true, indicates the span should be downloaded by
+	// downloading any remote backing files byte-for-byte and replacing them with
+	// the downloaded local files, while otherwise leaving the virtual SSTables
+	// as-is. If false, a "normal" rewriting compaction of the span, that iterates
+	// the keys and produces a new SSTable, is used instead. Downloading raw files
+	// can be faster when the whole file is being downloaded, as it avoids some
+	// cpu-intensive steps involved in iteration and new file construction such as
+	// compression, however it can also be wasteful when only a small portion of a
+	// larger backing file is being used by a virtual file. Additionally, if the
+	// virtual file has expensive read-time transformations, such as prefix
+	// replacement, rewriting once can persist the result of these for future use
+	// while copying only the backing file will obligate future reads to continue
+	// to compute such transforms.
+	ViaBackingFileDownload bool
 }
 
 func (d *DB) downloadSpan(ctx context.Context, span DownloadSpan) error {
@@ -1892,6 +1906,10 @@ func (d *DB) downloadSpan(ctx context.Context, span DownloadSpan) error {
 		end:   span.EndKey,
 		// Protected by d.mu.
 		doneChans: make([]chan error, 1),
+		kind:      compactionKindRewrite,
+	}
+	if span.ViaBackingFileDownload {
+		dSpan.kind = compactionKindCopy
 	}
 	dSpan.doneChans[0] = make(chan error, 1)
 	doneChan := dSpan.doneChans[0]

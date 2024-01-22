@@ -432,13 +432,14 @@ func (m *FileMetadata) InitPhysicalBacking() {
 
 // InitProviderBacking creates a new FileBacking for a file backed by
 // an objstorage.Provider.
-func (m *FileMetadata) InitProviderBacking(fileNum base.DiskFileNum) {
+func (m *FileMetadata) InitProviderBacking(fileNum base.DiskFileNum, size uint64) {
 	if !m.Virtual {
 		panic("pebble: provider-backed sstables must be virtual")
 	}
 	if m.FileBacking == nil {
 		m.FileBacking = &FileBacking{DiskFileNum: fileNum}
 	}
+	m.FileBacking.Size = size
 }
 
 // ValidateVirtual should be called once the FileMetadata for a virtual sstable

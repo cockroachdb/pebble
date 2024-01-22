@@ -1831,12 +1831,21 @@ func TestIngestExternal(t *testing.T) {
 			return ""
 
 		case "download":
-			if len(td.CmdArgs) != 2 {
+			if len(td.CmdArgs) < 2 {
 				panic("insufficient args for download command")
+			}
+			viaBackingFileDownload := false
+			for _, arg := range td.CmdArgs[2:] {
+				switch arg.Key {
+				case "via-backing-file-download":
+					viaBackingFileDownload = true
+				default:
+					return fmt.Sprintf("unexpected key: %s", arg.Key)
+				}
 			}
 			l := []byte(td.CmdArgs[0].Key)
 			r := []byte(td.CmdArgs[1].Key)
-			spans := []DownloadSpan{{StartKey: l, EndKey: r}}
+			spans := []DownloadSpan{{StartKey: l, EndKey: r, ViaBackingFileDownload: viaBackingFileDownload}}
 			ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Minute)
 			defer cancel()
 			err := d.Download(ctx, spans)
