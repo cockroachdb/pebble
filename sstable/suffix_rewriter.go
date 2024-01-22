@@ -201,7 +201,7 @@ func rewriteBlocks(
 		if err != nil {
 			return err
 		}
-		if err := iter.init(r.Compare, inputBlock, r.Properties.GlobalSeqNum, false); err != nil {
+		if err := iter.init(r.Compare, r.Split, inputBlock, r.Properties.GlobalSeqNum, false, nil); err != nil {
 			return err
 		}
 
