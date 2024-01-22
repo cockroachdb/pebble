@@ -115,13 +115,13 @@ func ingestSynthesizeShared(
 		Size:         sm.Size,
 	}
 	// For simplicity, we use the same number for both the FileNum and the
-	// DiskFileNum (even though this is a virtual sstable).
-	meta.InitProviderBacking(base.DiskFileNum(fileNum))
-	// Set the underlying FileBacking's size to the same size as the virtualized
-	// view of the sstable. This ensures that we don't over-prioritize this
-	// sstable for compaction just yet, as we do not have a clear sense of what
-	// parts of this sstable are referenced by other nodes.
-	meta.FileBacking.Size = sm.Size
+	// DiskFileNum (even though this is a virtual sstable). Pass the underlying
+	// FileBacking's size to the same size as the virtualized view of the sstable.
+	// This ensures that we don't over-prioritize this sstable for compaction just
+	// yet, as we do not have a clear sense of what parts of this sstable are
+	// referenced by other nodes.
+	meta.InitProviderBacking(base.DiskFileNum(fileNum), sm.Size)
+
 	if sm.LargestPointKey.Valid() && sm.LargestPointKey.UserKey != nil {
 		// Initialize meta.{HasPointKeys,Smallest,Largest}, etc.
 		//
@@ -203,8 +203,12 @@ func ingestLoad1External(
 		Size:         e.Size,
 	}
 	// For simplicity, we use the same number for both the FileNum and the
-	// DiskFileNum (even though this is a virtual sstable).
-	meta.InitProviderBacking(base.DiskFileNum(fileNum))
+	// DiskFileNum (even though this is a virtual sstable). Pass the underlying
+	// FileBacking's size to the same size as the virtualized view of the sstable.
+	// This ensures that we don't over-prioritize this sstable for compaction just
+	// yet, as we do not have a clear sense of what parts of this sstable are
+	// referenced by other nodes.
+	meta.InitProviderBacking(base.DiskFileNum(fileNum), e.Size)
 
 	// In the name of keeping this ingestion as fast as possible, we avoid
 	// *all* existence checks and synthesize a file metadata with smallest/largest
@@ -227,12 +231,6 @@ func ingestLoad1External(
 			base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyMin, largestCopy),
 		)
 	}
-
-	// Set the underlying FileBacking's size to the same size as the virtualized
-	// view of the sstable. This ensures that we don't over-prioritize this
-	// sstable for compaction just yet, as we do not have a clear sense of
-	// what parts of this sstable are referenced by other nodes.
-	meta.FileBacking.Size = e.Size
 
 	if len(e.SyntheticPrefix) != 0 {
 		meta.PrefixReplacement = &manifest.PrefixReplacement{
