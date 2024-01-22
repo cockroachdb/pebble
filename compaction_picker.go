@@ -1795,6 +1795,9 @@ func pickManualCompaction(
 	return pc, false
 }
 
+// pickDownloadCompaction picks a download compaction for the downloadSpan,
+// which could be specified as being performed either by a copy compaction of
+// the backing file or a rewrite compaction.
 func pickDownloadCompaction(
 	vers *version,
 	opts *Options,
@@ -1809,8 +1812,11 @@ func pickDownloadCompaction(
 	if file.CompactionState == manifest.CompactionStateCompacting {
 		return nil
 	}
+	if download.kind != compactionKindCopy && download.kind != compactionKindRewrite {
+		panic("invalid download/rewrite compaction kind")
+	}
 	pc = newPickedCompaction(opts, vers, level, level, baseLevel)
-	pc.kind = compactionKindRewrite
+	pc.kind = download.kind
 	pc.startLevel.files = manifest.NewLevelSliceKeySorted(opts.Comparer.Compare, []*fileMetadata{file})
 	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
 		// setupInputs returned false indicating there's a conflicting
