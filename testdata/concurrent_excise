@@ -89,7 +89,7 @@ ok
 lsm
 ----
 6:
-  000010:[d#13,SET-d#13,SET]
+  000010:[d#14,SET-d#14,SET]
   000011:[f#11,SET-f#11,SET]
 
 compact a-z
@@ -165,7 +165,7 @@ replicated 1 shared SSTs
 
 wait-for-file-only-snapshot s2
 ----
-pebble: snapshot excised before conversion to file-only snapshot
+ok
 
 iter snapshot=s2
 first
@@ -173,4 +173,7 @@ next
 next
 next
 ----
-pebble: snapshot excised before conversion to file-only snapshot
+d: (something, .)
+dd: (memory, .)
+e: (bar, .)
+.

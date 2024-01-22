@@ -50,7 +50,7 @@ replicated 1 shared SSTs
 lsm
 ----
 6:
-  000005:[d#10,SET-f#10,SET]
+  000005:[d#11,SET-f#11,SET]
 
 iter
 first
@@ -366,9 +366,9 @@ ok
 lsm
 ----
 0.0:
-  000004:[a@3#11,SET-d#inf,RANGEDEL]
+  000004:[a@3#12,SET-d#inf,RANGEDEL]
 6:
-  000005:[a@3#10,SET-e#10,SET]
+  000005:[a@3#11,SET-e#11,SET]
 
 iter
 first
@@ -465,11 +465,11 @@ ok
 lsm
 ----
 0.0:
-  000004:[a@3#12,SET-c@9#12,SET]
+  000004:[a@3#13,SET-c@9#13,SET]
 5:
-  000005:[b#11,RANGEDEL-d#inf,RANGEDEL]
+  000005:[b#12,RANGEDEL-d#inf,RANGEDEL]
 6:
-  000006:[a@3#10,SET-e#10,SET]
+  000006:[a@3#11,SET-e#11,SET]
 
 iter
 first
@@ -540,7 +540,7 @@ lsm
 ----
 6:
   000008:[a#10,RANGEKEYSET-aaa#inf,RANGEKEYSET]
-  000007:[b#13,SET-c#13,SET]
+  000007:[b#14,SET-c#14,SET]
   000009:[d#11,SET-e#12,SET]
 
 iter
@@ -621,9 +621,9 @@ replicated 2 shared SSTs
 lsm
 ----
 5:
-  000007:[bb#12,RANGEDEL-f#inf,RANGEDEL]
+  000007:[bb#13,RANGEDEL-f#inf,RANGEDEL]
 6:
-  000008:[b@5#11,SET-e#11,SET]
+  000008:[b@5#12,SET-e#12,SET]
   000005:[ff#10,SET-ff#10,SET]
 
 iter
@@ -719,9 +719,9 @@ replicated 2 shared SSTs
 lsm
 ----
 5:
-  000007:[bb#12,RANGEKEYSET-f#inf,RANGEKEYSET]
+  000007:[bb#13,RANGEKEYSET-f#inf,RANGEKEYSET]
 6:
-  000008:[b@5#11,SET-e#11,SET]
+  000008:[b@5#12,SET-e#12,SET]
   000005:[ff#10,SET-ff#10,SET]
 
 iter
@@ -958,9 +958,8 @@ set f foobar
 
 # The below file-only snapshot is the more challenging case of a partial overlap
 # between an excise and a file-only snapshot. In this case the EFOS transition
-# blocks on the memtable but the excise proceeds through, causing the EFOS'
-# WaitForFileOnlySnapshot() call to error out. Opening iterators also returns
-# the same errors.
+# blocks on the memtable. The excise should detect that and force the flush
+# before it happens, and snapshot semantics should be maintained.
 
 file-only-snapshot s3
  c g
@@ -1004,7 +1003,7 @@ replicated 2 shared SSTs
 
 wait-for-file-only-snapshot s3
 ----
-pebble: snapshot excised before conversion to file-only snapshot
+ok
 
 iter snapshot=s3
 first
@@ -1013,7 +1012,11 @@ next
 next
 next
 ----
-pebble: snapshot excised before conversion to file-only snapshot
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+f: (foobar, .)
+.
 
 iter snapshot=s3
 first
@@ -1024,7 +1027,13 @@ next
 next
 next
 ----
-pebble: snapshot excised before conversion to file-only snapshot
+a: (foo, .)
+b: (bar, .)
+.
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+f: (foobar, .)
 
 iter
 first
@@ -1220,7 +1229,7 @@ ok
 lsm
 ----
 6:
-  000008:[c#11,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000008:[c#12,RANGEKEYSET-e#inf,RANGEKEYSET]
 
 switch 1
 ----
@@ -1289,7 +1298,7 @@ ok
 lsm
 ----
 6:
-  000005:[a#10,SET-a#10,DEL]
+  000005:[a#11,SET-a#11,DEL]
 
 iter
 first

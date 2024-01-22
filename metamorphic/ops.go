@@ -1664,14 +1664,6 @@ func (o *newSnapshotOp) run(t *Test, h historyRecorder) {
 	if createEfos || excisePossible {
 		s := t.getDB(o.dbID).NewEventuallyFileOnlySnapshot(bounds)
 		t.setSnapshot(o.snapID, s)
-		// If the EFOS isn't guaranteed to always create iterators, we must force
-		// a flush on this DB so it transitions this EFOS into a file-only snapshot.
-		if excisePossible && !t.testOpts.efosAlwaysCreatesIters {
-			err := t.getDB(o.dbID).Flush()
-			if err != nil {
-				h.Recordf("%s // %v", o, err)
-			}
-		}
 	} else {
 		s := t.getDB(o.dbID).NewSnapshot()
 		t.setSnapshot(o.snapID, s)

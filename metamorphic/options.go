@@ -135,10 +135,6 @@ func parseOptions(
 			case "TestOptions.use_excise":
 				opts.useExcise = true
 				return true
-			case "TestOptions.efos_always_creates_iterators":
-				opts.efosAlwaysCreatesIters = true
-				opts.Opts.TestingAlwaysCreateEFOSIterators(true /* value */)
-				return true
 			default:
 				if customOptionParsers == nil {
 					return false
@@ -214,9 +210,6 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.useExcise {
 		fmt.Fprintf(&buf, "  use_excise=%v\n", opts.useExcise)
-	}
-	if opts.efosAlwaysCreatesIters {
-		fmt.Fprintf(&buf, "  efos_always_creates_iterators=%v\n", opts.efosAlwaysCreatesIters)
 	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
@@ -320,11 +313,6 @@ type TestOptions struct {
 	// excises. However !useExcise && !useSharedReplicate can be used to guarantee
 	// lack of excises.
 	useExcise bool
-	// Enables EFOS to always create iterators, even if a conflicting excise
-	// happens. Used to guarantee EFOS determinism when conflicting excises are
-	// in play. If false, EFOS determinism is maintained by having the DB do a
-	// flush after every new EFOS.
-	efosAlwaysCreatesIters bool
 }
 
 // CustomOption defines a custom option that configures the behavior of an
@@ -665,10 +653,6 @@ func RandomOptions(
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatVirtualSSTables {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatVirtualSSTables
 		}
-	}
-	if testOpts.useExcise || testOpts.useSharedReplicate {
-		testOpts.efosAlwaysCreatesIters = rng.Intn(2) == 0
-		opts.TestingAlwaysCreateEFOSIterators(testOpts.efosAlwaysCreatesIters)
 	}
 	testOpts.Opts.EnsureDefaults()
 	return testOpts

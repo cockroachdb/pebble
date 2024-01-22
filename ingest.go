@@ -1392,6 +1392,52 @@ func (d *DB) ingest(
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
+		// Check if any of the currently-open EventuallyFileOnlySnapshots overlap
+		// in key ranges with the excise span. If so, we need to check for memtable
+		// overlaps with all bounds of that EventuallyFileOnlySnapshot in addition
+		// to the ingestion's own bounds too.
+
+		if exciseSpan.Valid() {
+			for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
+				if s.efos == nil {
+					continue
+				}
+				if base.Visible(seqNum, s.efos.seqNum, base.InternalKeySeqNumMax) {
+					// We only worry about snapshots older than the excise. Any snapshots
+					// created after the excise should see the excised view of the LSM
+					// anyway.
+					//
+					// Since we delay publishing the excise seqnum as visible until after
+					// the apply step, this case will never be hit in practice until we
+					// make excises flushable ingests.
+					continue
+				}
+				if invariants.Enabled {
+					if s.efos.hasTransitioned() {
+						panic("unexpected transitioned EFOS in snapshots list")
+					}
+				}
+				for i := range s.efos.protectedRanges {
+					if !s.efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
+						continue
+					}
+					// Our excise conflicts with this EFOS. We need to add its protected
+					// ranges to our overlapBounds. Grow overlapBounds in one allocation
+					// if necesary.
+					prs := s.efos.protectedRanges
+					if cap(overlapBounds) < len(overlapBounds)+len(prs) {
+						oldOverlapBounds := overlapBounds
+						overlapBounds = make([]bounded, len(oldOverlapBounds), len(oldOverlapBounds)+len(prs))
+						copy(overlapBounds, oldOverlapBounds)
+					}
+					for i := range prs {
+						overlapBounds = append(overlapBounds, &prs[i])
+					}
+					break
+				}
+			}
+		}
+
 		// Check to see if any files overlap with any of the memtables. The queue
 		// is ordered from oldest to newest with the mutable memtable being the
 		// last element in the slice. We want to wait for the newest table that
@@ -1419,7 +1465,8 @@ func (d *DB) ingest(
 					// flushable queue and switching to a new memtable.
 					metaFlushableOverlaps[v.FileNum] = true
 				case *KeyRange:
-					// An excise span; not a file.
+					// An excise span or an EventuallyFileOnlySnapshot protected range;
+					// not a file.
 				default:
 					panic("unreachable")
 				}
@@ -1491,6 +1538,13 @@ func (d *DB) ingest(
 			return
 		}
 
+		// If there's an excise being done atomically with the same ingest, we
+		// assign the lowest sequence number in the set of sequence numbers for this
+		// ingestion to the excise. Note that we've already allocated fileCount+1
+		// sequence numbers in this case.
+		if exciseSpan.Valid() {
+			seqNum++ // the first seqNum is reserved for the excise.
+		}
 		// Update the sequence numbers for all ingested sstables'
 		// metadata. When the version edit is applied, the metadata is
 		// written to the manifest, persisting the sequence number.
@@ -1524,8 +1578,12 @@ func (d *DB) ingest(
 	// the commit mutex which would prevent unrelated batches from writing their
 	// changes to the WAL and memtable. This will cause a bigger commit hiccup
 	// during ingestion.
+	seqNumCount := loadResult.fileCount
+	if exciseSpan.Valid() {
+		seqNumCount++
+	}
 	d.commit.ingestSem <- struct{}{}
-	d.commit.AllocateSeqNum(loadResult.fileCount, prepare, apply)
+	d.commit.AllocateSeqNum(seqNumCount, prepare, apply)
 	<-d.commit.ingestSem
 
 	if err != nil {
@@ -2253,7 +2311,10 @@ func (d *DB) ingestApply(
 			}
 		}
 		// Check for any EventuallyFileOnlySnapshots that could be watching for
-		// an excise on this span.
+		// an excise on this span. There should be none as the
+		// computePossibleOverlaps steps should have forced these EFOS to transition
+		// to file-only snapshots by now. If we see any that conflict with this
+		// excise, panic.
 		if exciseSpan.Valid() {
 			for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
 				if s.efos == nil {
@@ -2266,8 +2327,7 @@ func (d *DB) ingestApply(
 				// snapshot.
 				for i := range efos.protectedRanges {
 					if efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
-						efos.excised.Store(true)
-						break
+						panic("unexpected excise of an EventuallyFileOnlySnapshot's bounds")
 					}
 				}
 			}
