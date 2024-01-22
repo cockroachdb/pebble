@@ -35,6 +35,7 @@ type virtualState struct {
 	Compare          Compare
 	isSharedIngested bool
 	prefixChange     *manifest.PrefixReplacement
+	syntheticSuffix  SyntheticSuffix
 }
 
 func ceilDiv(a, b uint64) uint64 {

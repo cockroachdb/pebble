@@ -938,7 +938,7 @@ func TestBlockProperties(t *testing.T) {
 
 					var blocks []int
 					var i int
-					iter, _ := newBlockIter(r.Compare, indexH.Get())
+					iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), nil)
 					for key, value := iter.First(); key != nil; key, value = iter.Next() {
 						bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 						if err != nil {
@@ -1274,7 +1274,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		return err.Error()
 	}
 	twoLevelIndex := r.Properties.IndexPartitions > 0
-	i, err := newBlockIter(r.Compare, bh.Get())
+	i, err := newBlockIter(r.Compare, r.Split, bh.Get(), nil)
 	if err != nil {
 		return err.Error()
 	}
@@ -1321,8 +1321,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 			if err != nil {
 				return err.Error()
 			}
-			if err := subiter.init(
-				r.Compare, subIndex.Get(), 0 /* globalSeqNum */, false); err != nil {
+			if err := subiter.init(r.Compare, r.Split, subIndex.Get(), 0, false, nil); err != nil {
 				return err.Error()
 			}
 			for key, value := subiter.First(); key != nil; key, value = subiter.Next() {

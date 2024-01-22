@@ -218,7 +218,7 @@ func (i *singleLevelIterator) init(
 	i.stats = stats
 	i.hideObsoletePoints = hideObsoletePoints
 	i.bufferPool = bufferPool
-	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum, false)
+	err = i.index.initHandle(i.cmp, r.Split, indexH, r.Properties.GlobalSeqNum, false, i.getSyntheticSuffx())
 	if err != nil {
 		// blockIter.Close releases indexH and always returns a nil error
 		_ = i.index.Close()
@@ -250,19 +250,26 @@ func (i *singleLevelIterator) init(
 	return nil
 }
 
+func (i *singleLevelIterator) getSyntheticSuffx() SyntheticSuffix {
+	if i.vState != nil {
+		return i.vState.syntheticSuffix
+	}
+	return nil
+}
+
 // Helper function to check if keys returned from iterator are within global and virtual bounds.
 func (i *singleLevelIterator) maybeVerifyKey(
 	iKey *InternalKey, val base.LazyValue,
 ) (*InternalKey, base.LazyValue) {
 	// maybeVerify key is only used for virtual sstable iterators.
-	if invariants.Enabled && i.vState != nil && iKey != nil {
+	if invariants.Enabled && i.vState != nil && iKey != nil && i.upper != nil && i.lower != nil {
 		key := iKey.UserKey
 
 		uc, vuc := i.cmp(key, i.upper), i.cmp(key, i.vState.upper.UserKey)
 		lc, vlc := i.cmp(key, i.lower), i.cmp(key, i.vState.lower.UserKey)
 
 		if (i.vState.upper.IsExclusiveSentinel() && vuc == 0) || (!i.endKeyInclusive && uc == 0) || uc > 0 || vuc > 0 || lc < 0 || vlc < 0 {
-			panic(fmt.Sprintf("key: %s out of bounds of singleLevelIterator", key))
+			panic(fmt.Sprintf("key: %s out of bounds of singleLevelIterator: i.upper %s, i.lower %s, vstate upper %s, vstate lower %s", key, i.upper, i.lower, i.vState.upper.UserKey, i.vState.lower.UserKey))
 		}
 	}
 	return iKey, val
@@ -441,7 +448,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum, i.hideObsoletePoints)
+	i.err = i.data.initHandle(i.cmp, i.reader.Split, block, i.reader.Properties.GlobalSeqNum, i.hideObsoletePoints, i.getSyntheticSuffx())
 	if i.err != nil {
 		// The block is partially loaded, and we don't want it to appear valid.
 		i.data.invalidate()
