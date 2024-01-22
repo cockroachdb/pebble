@@ -1918,7 +1918,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	startTime := d.timeNow()
 
 	var ve *manifest.VersionEdit
-	var pendingOutputs []physicalMeta
+	var pendingOutputs []*fileMetadata
 	var stats compactStats
 	// To determine the target level of the files in the ingestedFlushable, we
 	// need to acquire the logLock, and not release it for that duration. Since,
@@ -2729,16 +2729,21 @@ func (d *DB) runCopyCompaction(
 	meta *fileMetadata,
 	objMeta objstorage.ObjectMetadata,
 	versionEdit *versionEdit,
-) (ve *versionEdit, pendingOutputs []physicalMeta, retErr error) {
+) (ve *versionEdit, pendingOutputs []*fileMetadata, retErr error) {
+	ctx := context.TODO()
+
 	ve = versionEdit
-	if objMeta.IsRemote() || !remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level) {
-		panic("pebble: scheduled a copy compaction that is not actually moving files to shared storage")
+	if !objMeta.IsExternal() {
+		if objMeta.IsRemote() || !remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level) {
+			panic("pebble: scheduled a copy compaction that is not actually moving files to shared storage")
+		}
+		// Note that based on logic in the compaction picker, we're guaranteed
+		// meta.Virtual is false.
+		if meta.Virtual {
+			panic(errors.AssertionFailedf("cannot do a copy compaction of a virtual sstable across local/remote storage"))
+		}
 	}
-	// Note that based on logic in the compaction picker, we're guaranteed
-	// meta.Virtual is false.
-	if meta.Virtual {
-		panic(errors.AssertionFailedf("cannot do a copy compaction of a virtual sstable across local/remote storage"))
-	}
+
 	// We are in the relatively more complex case where we need to copy this
 	// file to remote/shared storage. Drop the db mutex while we do the
 	// copy.
@@ -2762,7 +2767,10 @@ func (d *DB) runCopyCompaction(
 		metaCopy.ExtendRangeKeyBounds(c.cmp, meta.SmallestRangeKey, meta.LargestRangeKey)
 	}
 	metaCopy.FileNum = d.mu.versions.getNextFileNum()
+	metaCopy.Virtual = false
 	metaCopy.InitPhysicalBacking()
+	metaCopy.Virtual = meta.Virtual
+
 	c.metrics = map[int]*LevelMetrics{
 		c.outputLevel.level: {
 			BytesIn:         meta.Size,
@@ -2770,7 +2778,7 @@ func (d *DB) runCopyCompaction(
 			TablesCompacted: 1,
 		},
 	}
-	pendingOutputs = append(pendingOutputs, metaCopy.PhysicalMeta())
+
 	// Before dropping the db mutex, grab a ref to the current version. This
 	// prevents any concurrent excises from deleting files that this compaction
 	// needs to read/maintain a reference to.
@@ -2780,11 +2788,66 @@ func (d *DB) runCopyCompaction(
 
 	d.mu.Unlock()
 	defer d.mu.Lock()
-	_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
-		d.objProvider.Path(objMeta), fileTypeTable, metaCopy.FileBacking.DiskFileNum,
-		objstorage.CreateOptions{PreferSharedStorage: true})
-	if err != nil {
-		return ve, pendingOutputs, err
+
+	// If the src obj is external, we're doing an external to local/shared copy.
+	if objMeta.IsExternal() {
+		src, err := d.objProvider.OpenForReading(
+			ctx, fileTypeTable, meta.FileBacking.DiskFileNum, objstorage.OpenOptions{},
+		)
+		if err != nil {
+			return ve, pendingOutputs, err
+		}
+		defer src.Close()
+
+		w, _, err := d.objProvider.Create(
+			ctx, fileTypeTable, base.PhysicalTableDiskFileNum(metaCopy.FileNum),
+			objstorage.CreateOptions{
+				PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
+			},
+		)
+		if err != nil {
+			return ve, pendingOutputs, err
+		}
+		pendingOutputs = append(pendingOutputs, metaCopy.VirtualMeta().FileMetadata)
+
+		if err := func() error {
+			size := src.Size()
+			r := src.NewReadHandle(ctx)
+			r.SetupForCompaction()
+			buf := make([]byte, 128<<10)
+			var pos int64
+			for {
+				n := min(size-pos, int64(len(buf)))
+				readErr := r.ReadAt(context.TODO(), buf, pos)
+				if readErr != nil && readErr != io.EOF {
+					w.Abort()
+					return readErr
+				}
+				pos += n
+				if n > 0 {
+					if err := w.Write(buf[:n]); err != nil {
+						w.Abort()
+						return err
+					}
+				}
+				if readErr == io.EOF {
+					break
+				}
+			}
+			return w.Finish()
+		}(); err != nil {
+			return ve, pendingOutputs, err
+		}
+	} else {
+		pendingOutputs = append(pendingOutputs, metaCopy.PhysicalMeta().FileMetadata)
+
+		_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
+			d.objProvider.Path(objMeta), fileTypeTable, metaCopy.FileBacking.DiskFileNum,
+			objstorage.CreateOptions{PreferSharedStorage: true})
+
+		if err != nil {
+			return ve, pendingOutputs, err
+		}
 	}
 	ve.NewFiles[0].Meta = metaCopy
 
@@ -2801,7 +2864,7 @@ func (d *DB) runCopyCompaction(
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID int, c *compaction,
-) (ve *versionEdit, pendingOutputs []physicalMeta, stats compactStats, retErr error) {
+) (ve *versionEdit, pendingOutputs []*fileMetadata, stats compactStats, retErr error) {
 	// As a sanity check, confirm that the smallest / largest keys for new and
 	// deleted files in the new versionEdit pass a validation function before
 	// returning the edit.
@@ -3043,7 +3106,7 @@ func (d *DB) runCompaction(
 		d.mu.Lock()
 		fileNum := d.mu.versions.getNextFileNum()
 		fileMeta.FileNum = fileNum
-		pendingOutputs = append(pendingOutputs, fileMeta.PhysicalMeta())
+		pendingOutputs = append(pendingOutputs, fileMeta.PhysicalMeta().FileMetadata)
 		d.mu.Unlock()
 
 		ctx := context.TODO()
