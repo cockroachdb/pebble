@@ -287,6 +287,9 @@ type Provider interface {
 	CreateExternalObjectBacking(locator remote.Locator, objName string) (RemoteObjectBacking, error)
 
 	// AttachRemoteObjects registers existing remote objects with this provider.
+	//
+	// The objects are not guaranteed to be durable (accessible in case of
+	// crashes) until Sync is called.
 	AttachRemoteObjects(objs []RemoteObjectToAttach) ([]ObjectMetadata, error)
 
 	Close() error

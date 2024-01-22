@@ -66,7 +66,6 @@ b2 102
 <remote> create object "a629-1-000002.sst.ref.2.000102"
 <remote> close writer for "a629-1-000002.sst.ref.2.000102" after 0 bytes
 <remote> size of object "a629-1-000002.sst.ref.1.000002": 0
-<local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
 000101 -> remote://61a6-1-000001.sst
 000102 -> remote://a629-1-000002.sst
 
