@@ -215,6 +215,52 @@ func (m mockFS) GetDiskUsage(path string) (DiskUsage, error) {
 
 var _ FS = &mockFS{}
 
+func TestDiskHealthChecking_WriteStatsCollector(t *testing.T) {
+	const writeSizeInBytes = 10
+	testCases := []struct {
+		desc            string
+		writeCategories []DiskWriteCategory
+		numWrites       int
+		wantStats       []DiskWriteStatsAggregate
+	}{
+		{
+			desc:            "no write registered",
+			writeCategories: []DiskWriteCategory{},
+			numWrites:       0,
+			wantStats:       []DiskWriteStatsAggregate(nil),
+		},
+		{
+			desc:            "multiple writes to a single category",
+			writeCategories: []DiskWriteCategory{"test1"},
+			numWrites:       2,
+			wantStats: []DiskWriteStatsAggregate{
+				{Category: "test1", BytesWritten: 2 * writeSizeInBytes},
+			},
+		},
+		{
+			desc:            "writes to multiple categories",
+			writeCategories: []DiskWriteCategory{"test1", "test2"},
+			numWrites:       2,
+			wantStats: []DiskWriteStatsAggregate{
+				{Category: "test1", BytesWritten: 2 * writeSizeInBytes},
+				{Category: "test2", BytesWritten: 2 * writeSizeInBytes},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			statsCollector := NewDiskWriteStatsCollector()
+			for i := 0; i < tc.numWrites; i++ {
+				for _, category := range tc.writeCategories {
+					statsCollector.IncrementStats(category, writeSizeInBytes)
+				}
+			}
+			expectedStats := statsCollector.GetStats()
+			require.Equal(t, tc.wantStats, expectedStats)
+		})
+	}
+}
+
 func TestDiskHealthChecking_File(t *testing.T) {
 	oldTickInterval := defaultTickInterval
 	defaultTickInterval = time.Millisecond
@@ -255,7 +301,7 @@ func TestDiskHealthChecking_File(t *testing.T) {
 			mockFS := &mockFS{create: func(name string) (File, error) {
 				return mockFile{syncAndWriteDuration: tc.writeDuration}, nil
 			}}
-			fs, closer := WithDiskHealthChecks(mockFS, slowThreshold,
+			fs, closer := WithDiskHealthChecks(mockFS, slowThreshold, nil,
 				func(info DiskSlowInfo) {
 					diskSlow <- info
 				})
@@ -362,10 +408,11 @@ func TestDiskHealthChecking_File_PackingAndUnpacking(t *testing.T) {
 
 func TestDiskHealthChecking_File_Underflow(t *testing.T) {
 	f := &mockFile{}
-	hcFile := newDiskHealthCheckingFile(f, 1*time.Second, func(opType OpType, writeSizeInBytes int, duration time.Duration) {
-		// We expect to panic before sending the event.
-		t.Fatalf("unexpected slow disk event")
-	})
+	hcFile := newDiskHealthCheckingFile(f, 1*time.Second, "test-category", nil,
+		func(opType OpType, writeSizeInBytes int, duration time.Duration) {
+			// We expect to panic before sending the event.
+			t.Fatalf("unexpected slow disk event")
+		})
 	defer hcFile.Close()
 
 	t.Run("too large delta leads to panic", func(t *testing.T) {
@@ -481,7 +528,7 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 	var stallCount atomic.Uint64
 	unstall := make(chan struct{})
 	var lastOpType OpType
-	fs, closer := WithDiskHealthChecks(filesystemOpsMockFS(unstall), stallThreshold,
+	fs, closer := WithDiskHealthChecks(filesystemOpsMockFS(unstall), stallThreshold, nil,
 		func(info DiskSlowInfo) {
 			require.Equal(t, 0, info.WriteSize)
 			stallCount.Add(1)
@@ -530,7 +577,7 @@ func TestDiskHealthChecking_Filesystem_Close(t *testing.T) {
 	files := []string{"foo", "bar", "bax"}
 	var lastPath string
 	stalled := make(chan string)
-	fs, closer := WithDiskHealthChecks(mockFS, stallThreshold,
+	fs, closer := WithDiskHealthChecks(mockFS, stallThreshold, nil,
 		func(info DiskSlowInfo) {
 			if lastPath != info.Path {
 				lastPath = info.Path
