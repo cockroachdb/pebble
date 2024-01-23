@@ -2303,6 +2303,7 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	w.props.MergerName = o.MergerName
 	w.props.PropertyCollectorNames = "[]"
 	w.props.ExternalFormatVersion = rocksDBExternalFormatVersion
+	w.props.ElidedPrefix = string(o.ElidePrefix)
 
 	if len(o.BlockPropertyCollectors) > 0 || w.tableFormat >= TableFormatPebblev4 {
 		var buf bytes.Buffer

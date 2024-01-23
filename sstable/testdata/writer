@@ -369,7 +369,7 @@ layout
        821  footer (53)
        874  EOF
 
-build elide-prefix=foo_
+build elide-prefix=foo_ props=(elided)
 foo_a.SET.1:a
 foo_b.DEL.2:
 foo_c.MERGE.3:c
@@ -386,3 +386,5 @@ point:    [a#1,1-h#7,2]
 rangedel: [d#4,15-j#72057594037927935,15]
 rangekey: [j#9,19-m#72057594037927935,21]
 seqnums:  [1-11]
+props "elided":
+  pebble.elided_prefix: foo_

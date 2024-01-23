@@ -134,6 +134,9 @@ type Properties struct {
 	CompressionOptions string `prop:"rocksdb.compression_options"`
 	// The total size of all data blocks.
 	DataSize uint64 `prop:"rocksdb.data.size"`
+	// ElidedPrefix is the byte prefix, if any, that was elided from every key and
+	// key span during the construction of the sstable.
+	ElidedPrefix string `prop:"pebble.elided_prefix"`
 	// The external sstable version format. Version 2 is the one RocksDB has been
 	// using since 5.13. RocksDB only uses the global sequence number for an
 	// sstable if this property has been set.
@@ -428,7 +431,9 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 		p.saveUvarint(m, unsafe.Offsetof(p.ValueBlocksSize), p.ValueBlocksSize)
 	}
 	p.saveBool(m, unsafe.Offsetof(p.WholeKeyFiltering), p.WholeKeyFiltering)
-
+	if p.ElidedPrefix != "" {
+		p.saveString(m, unsafe.Offsetof(p.ElidedPrefix), p.ElidedPrefix)
+	}
 	if tblFormat < TableFormatPebblev1 {
 		m["rocksdb.column.family.id"] = binary.AppendUvarint([]byte(nil), math.MaxInt32)
 		m["rocksdb.fixed.key.length"] = []byte{0x00}
