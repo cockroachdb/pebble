@@ -21,8 +21,8 @@ func TestFileWrappersHaveFd(t *testing.T) {
 	defer os.Remove(filename)
 
 	// File wrapper case 1: Check if diskHealthCheckingFile has Fd().
-	fs2, closer := WithDiskHealthChecks(Default, 10*time.Second,
-		func(info DiskSlowInfo) {})
+	fs2, closer := WithDiskHealthChecks(Default, 10*time.Second, nil, func(info DiskSlowInfo) {})
+
 	defer closer.Close()
 	f2, err := fs2.Open(filename)
 	require.NoError(t, err)
