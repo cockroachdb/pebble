@@ -7,7 +7,10 @@ package metamorphic
 import (
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 
+	"github.com/cockroachdb/errors"
 	"golang.org/x/exp/rand"
 )
 
@@ -19,11 +22,21 @@ const (
 	batchTag
 	iterTag
 	snapTag
+	externalObjTag
+	numObjTags
 )
+
+var objTagPrefix = [numObjTags]string{
+	dbTag:          "db",
+	batchTag:       "batch",
+	iterTag:        "iter",
+	snapTag:        "snap",
+	externalObjTag: "external",
+}
 
 // objID identifies a particular object. The top 4-bits store the tag
 // identifying the type of object, while the bottom 28-bits store the slot used
-// to index with the test.{batches,iters,snapshots} slices.
+// to index with the test.{batches,iters,snapshots,externalObjs} slices.
 type objID uint32
 
 func makeObjID(t objTag, slot uint32) objID {
@@ -39,17 +52,30 @@ func (i objID) slot() uint32 {
 }
 
 func (i objID) String() string {
-	switch i.tag() {
-	case dbTag:
-		return fmt.Sprintf("db%d", i.slot())
-	case batchTag:
-		return fmt.Sprintf("batch%d", i.slot())
-	case iterTag:
-		return fmt.Sprintf("iter%d", i.slot())
-	case snapTag:
-		return fmt.Sprintf("snap%d", i.slot())
+	return fmt.Sprintf("%s%d", objTagPrefix[i.tag()], i.slot())
+}
+
+func parseObjID(str string) (objID, error) {
+	// To provide backward compatibility, treat "db" as "db1". Note that unlike
+	// the others, db slots are 1-indexed.
+	if str == "db" {
+		str = "db1"
 	}
-	return fmt.Sprintf("unknown%d", i.slot())
+	tag := objTag(1)
+	for ; ; tag++ {
+		if tag == numObjTags {
+			return 0, errors.Newf("unknown object type: %q", str)
+		}
+		if strings.HasPrefix(str, objTagPrefix[tag]) {
+			str = str[len(objTagPrefix[tag]):]
+			break
+		}
+	}
+	id, err := strconv.ParseInt(str, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return makeObjID(tag, uint32(id)), nil
 }
 
 // objIDSlice is an unordered set of integers used when random selection of an

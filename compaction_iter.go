@@ -350,6 +350,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	i.valid = false
 
 	for i.iterKey != nil {
+		//fmt.Printf("compactionIter.Next loop: %v\n", *i.iterKey)
 		// If we entered a new snapshot stripe with the same key, any key we
 		// return on this iteration is only returned because the open snapshot
 		// prevented it from being elided or merged with the key returned for
@@ -589,6 +590,7 @@ func (i *compactionIter) skipInStripe() {
 func (i *compactionIter) iterNext() bool {
 	var iterValue LazyValue
 	i.iterKey, iterValue = i.iter.Next()
+	//fmt.Printf("compactionIter.iterNext(%s): %v\n", i.iter.String(), i.iterKey)
 	i.iterValue, _, i.err = iterValue.Value(nil)
 	if i.err != nil {
 		i.iterKey = nil

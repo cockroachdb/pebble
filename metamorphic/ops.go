@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"golang.org/x/exp/slices"
 )
 
 // Ops holds a sequence of operations to be executed by the metamorphic tests.
@@ -62,22 +63,24 @@ type op interface {
 
 // initOp performs test initialization
 type initOp struct {
-	dbSlots       uint32
-	batchSlots    uint32
-	iterSlots     uint32
-	snapshotSlots uint32
+	dbSlots          uint32
+	batchSlots       uint32
+	iterSlots        uint32
+	snapshotSlots    uint32
+	externalObjSlots uint32
 }
 
 func (o *initOp) run(t *Test, h historyRecorder) {
 	t.batches = make([]*pebble.Batch, o.batchSlots)
 	t.iters = make([]*retryableIter, o.iterSlots)
 	t.snapshots = make([]readerCloser, o.snapshotSlots)
+	t.externalObjs = make([]*sstable.WriterMetadata, o.externalObjSlots)
 	h.Recordf("%s", o)
 }
 
 func (o *initOp) String() string {
-	return fmt.Sprintf("Init(%d /* dbs */, %d /* batches */, %d /* iters */, %d /* snapshots */)",
-		o.dbSlots, o.batchSlots, o.iterSlots, o.snapshotSlots)
+	return fmt.Sprintf("Init(%d /* dbs */, %d /* batches */, %d /* iters */, %d /* snapshots */, %d /* externalObjs */)",
+		o.dbSlots, o.batchSlots, o.iterSlots, o.snapshotSlots, o.externalObjSlots)
 }
 
 func (o *initOp) receiver() objID { return makeObjID(dbTag, 1) }
@@ -889,6 +892,102 @@ func (o *ingestAndExciseOp) diagramKeyRanges() []pebble.KeyRange {
 	return []pebble.KeyRange{{Start: o.exciseStart, End: o.exciseEnd}}
 }
 
+// ingestExternalFilesOp models a DB.IngestExternalFiles operation.
+//
+// When remote storage is not enabled, the operation is emulated using the
+// regular DB.Ingest; this serves as a cross-check of the result.
+type ingestExternalFilesOp struct {
+	dbID objID
+	// The bounds of the objects cannot overlap.
+	objs []externalObjWithBounds
+}
+
+type externalObjWithBounds struct {
+	externalObjID objID
+	bounds        pebble.KeyRange
+}
+
+func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
+	db := t.getDB(o.dbID)
+	var err error
+	if true || !t.testOpts.sharedStorageEnabled {
+		// Emulate the operation by crating local, truncated SST files and ingesting
+		// them.
+		var paths []string
+		for i, obj := range o.objs {
+			// Make sure the object exists and is not empty.
+			if objMeta := t.getExternalObj(obj.externalObjID); !objMeta.HasPointKeys && !objMeta.HasRangeKeys && !objMeta.HasRangeDelKeys {
+				continue
+			}
+			path, meta, err := buildForIngestExternalEmulation(t, o.dbID, obj.externalObjID, obj.bounds, i)
+			if err != nil {
+				panic(err)
+			}
+			if meta.HasPointKeys || meta.HasRangeKeys || meta.HasRangeDelKeys {
+				paths = append(paths, path)
+			}
+		}
+		if len(paths) > 0 {
+			err = db.Ingest(paths)
+		}
+	} else {
+		external := make([]pebble.ExternalFile, len(o.objs))
+		for i, obj := range o.objs {
+			meta := t.getExternalObj(obj.externalObjID)
+			external[i] = pebble.ExternalFile{
+				Locator:         "",
+				ObjName:         externalObjName(obj.externalObjID),
+				Size:            meta.Size,
+				SmallestUserKey: obj.bounds.Start,
+				LargestUserKey:  obj.bounds.End,
+				// Note: if the table has point/range keys, we don't know for sure whether
+				// this particular range has any, but that's acceptable.
+				HasPointKey: meta.HasPointKeys || meta.HasRangeDelKeys,
+				HasRangeKey: meta.HasRangeKeys,
+				// TODO(radu): test prefix replacement.
+			}
+		}
+		_, err = db.IngestExternalFiles(external)
+	}
+
+	h.Recordf("%s // %v", o, err)
+}
+
+func (o *ingestExternalFilesOp) receiver() objID { return o.dbID }
+func (o *ingestExternalFilesOp) syncObjs() objIDSlice {
+	res := make(objIDSlice, len(o.objs))
+	for i := range res {
+		res[i] = o.objs[i].externalObjID
+	}
+	// Deduplicate the IDs.
+	slices.Sort(res)
+	return slices.Compact(res)
+}
+
+func (o *ingestExternalFilesOp) String() string {
+	strs := make([]string, len(o.objs))
+	for i, obj := range o.objs {
+		strs[i] = fmt.Sprintf("%s, %q, %q", obj.externalObjID, obj.bounds.Start, obj.bounds.End)
+	}
+	return fmt.Sprintf("%s.IngestExternalFiles(%s)", o.dbID, strings.Join(strs, ", "))
+}
+
+func (o *ingestExternalFilesOp) keys() []*[]byte {
+	var res []*[]byte
+	for _, obj := range o.objs {
+		res = append(res, &obj.bounds.Start, &obj.bounds.End)
+	}
+	return res
+}
+
+func (o *ingestExternalFilesOp) diagramKeyRanges() []pebble.KeyRange {
+	ranges := make([]pebble.KeyRange, len(o.objs))
+	for i, obj := range o.objs {
+		ranges[i] = obj.bounds
+	}
+	return ranges
+}
+
 // getOp models a Reader.Get operation.
 type getOp struct {
 	readerID    objID
@@ -1582,6 +1681,54 @@ func (o *newSnapshotOp) keys() []*[]byte {
 func (o *newSnapshotOp) diagramKeyRanges() []pebble.KeyRange {
 	return o.bounds
 }
+
+// newExternalObjOp models a DB.NewExternalObj operation.
+type newExternalObjOp struct {
+	batchID       objID
+	externalObjID objID
+}
+
+func externalObjName(externalObjID objID) string {
+	if externalObjID.tag() != externalObjTag {
+		panic(fmt.Sprintf("invalid externalObjID %s", externalObjID))
+	}
+	return fmt.Sprintf("external-for-ingest-%d.sst", externalObjID.slot())
+}
+
+func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
+	b := t.getBatch(o.batchID)
+	t.clearObj(o.batchID)
+
+	writeCloser, err := t.externalStorage.CreateObject(externalObjName(o.externalObjID))
+	if err != nil {
+		panic(err)
+	}
+	writable := objstorageprovider.NewRemoteWritable(writeCloser)
+
+	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
+
+	meta, err := writeSSTForIngestion(
+		t,
+		iter, rangeDelIter, rangeKeyIter,
+		writable,
+		t.minFMV(),
+		pebble.KeyRange{},
+	)
+	if err != nil {
+		panic(err)
+	}
+	t.setExternalObj(o.externalObjID, meta)
+	h.Recordf("%s", o)
+}
+
+func (o *newExternalObjOp) String() string {
+	return fmt.Sprintf("%s = %s.NewExternalObj()", o.externalObjID, o.batchID)
+}
+func (o *newExternalObjOp) receiver() objID      { return o.batchID }
+func (o *newExternalObjOp) syncObjs() objIDSlice { return []objID{o.externalObjID} }
+
+func (o *newExternalObjOp) keys() []*[]byte                     { return nil }
+func (o *newExternalObjOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 type dbRatchetFormatMajorVersionOp struct {
 	dbID objID

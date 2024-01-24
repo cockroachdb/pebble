@@ -83,6 +83,8 @@ type generator struct {
 	liveSnapshots objIDSlice
 	// liveWriters contains the DB, and any live batches. The DB is always at index 0.
 	liveWriters objIDSlice
+	// externalObjects contains the external objects created.
+	externalObjects objIDSlice
 
 	// Maps used to find associated objects during generation. These maps are not
 	// needed during test execution.
@@ -174,6 +176,7 @@ func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 		OpNewIter:                     g.newIter,
 		OpNewIterUsingClone:           g.newIterUsingClone,
 		OpNewSnapshot:                 g.newSnapshot,
+		OpNewExternalObj:              g.newExternalObj,
 		OpReaderGet:                   g.readerGet,
 		OpReplicate:                   g.replicate,
 		OpSnapshotClose:               g.snapshotClose,
@@ -182,6 +185,7 @@ func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 		OpWriterDeleteRange:           g.writerDeleteRange,
 		OpWriterIngest:                g.writerIngest,
 		OpWriterIngestAndExcise:       g.writerIngestAndExcise,
+		OpWriterIngestExternalFiles:   g.writerIngestExternalFiles,
 		OpWriterMerge:                 g.writerMerge,
 		OpWriterRangeKeyDelete:        g.writerRangeKeyDelete,
 		OpWriterRangeKeySet:           g.writerRangeKeySet,
@@ -1274,6 +1278,21 @@ func (g *generator) snapshotClose() {
 	g.add(&closeOp{objID: snapID})
 }
 
+func (g *generator) newExternalObj() {
+	if len(g.liveBatches) == 0 {
+		return
+	}
+	batchID := g.liveBatches.rand(g.rng)
+	g.removeBatchFromGenerator(batchID)
+	objID := makeObjID(externalObjTag, g.init.externalObjSlots)
+	g.init.externalObjSlots++
+	g.externalObjects = append(g.externalObjects, objID)
+	g.add(&newExternalObjOp{
+		batchID:       batchID,
+		externalObjID: objID,
+	})
+}
+
 func (g *generator) writerApply() {
 	if len(g.liveBatches) == 0 {
 		return
@@ -1491,6 +1510,53 @@ func (g *generator) writerIngestAndExcise() {
 		derivedDBID: derivedDBID,
 		exciseStart: start,
 		exciseEnd:   end,
+	})
+}
+
+func (g *generator) writerIngestExternalFiles() {
+	if len(g.externalObjects) == 0 {
+		return
+	}
+	dbID := g.dbs.rand(g.rng)
+	numFiles := 1 + g.rng.Intn(4)
+	objs := make([]externalObjWithBounds, numFiles)
+	for i := range objs {
+		// We allow the same object to be selected multiple times.
+		objs[i].externalObjID = g.externalObjects.rand(g.rng)
+	}
+
+	// Generate 2*numFiles distinct keys and sort them. These will form the ingest
+	// bounds for each file.
+	//
+	// TODO(radu): in most cases, there won't be overlap between the bounds and
+	// the file; this is allowed, but it is unfortunate in terms of testing
+	// coverage. It would be ideal if we could use the bounds from the
+	// corresponding batches.
+	keys := make([][]byte, 2*numFiles)
+	for i := range keys {
+		for {
+			keys[i] = g.randPrefixToWrite(0.01)
+			if !slices.ContainsFunc(keys[:i], func(existing []byte) bool {
+				return g.cmp(existing, keys[i]) == 0
+			}) {
+				break
+			}
+		}
+	}
+	slices.SortFunc(keys, g.cmp)
+
+	for i := range objs {
+		if i > 0 && g.rng.Intn(4) == 0 {
+			// Sometimes use the previous end key as the start key; this will be common in practice.
+			objs[i].bounds.Start = objs[i-1].bounds.End
+		} else {
+			objs[i].bounds.Start = keys[2*i]
+		}
+		objs[i].bounds.End = keys[2*i+1]
+	}
+	g.add(&ingestExternalFilesOp{
+		dbID: dbID,
+		objs: objs,
 	})
 }
 

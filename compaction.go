@@ -3389,6 +3389,7 @@ func (d *DB) runCompaction(
 
 		// Each inner loop iteration processes one key from the input iterator.
 		for ; key != nil; key, val = iter.Next() {
+			//fmt.Printf("compaction iter loop: %v\n", key)
 			if split := splitter.shouldSplitBefore(key, tw); split == splitNow {
 				break
 			}

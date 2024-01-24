@@ -41,6 +41,7 @@ const (
 	OpNewIter
 	OpNewIterUsingClone
 	OpNewSnapshot
+	OpNewExternalObj
 	OpReaderGet
 	OpReplicate
 	OpSnapshotClose
@@ -49,6 +50,7 @@ const (
 	OpWriterDeleteRange
 	OpWriterIngest
 	OpWriterIngestAndExcise
+	OpWriterIngestExternalFiles
 	OpWriterMerge
 	OpWriterRangeKeyDelete
 	OpWriterRangeKeySet
@@ -170,13 +172,15 @@ func DefaultOpConfig() OpConfig {
 			OpWriterDelete:                100,
 			OpWriterDeleteRange:           50,
 			OpWriterIngest:                100,
-			OpWriterIngestAndExcise:       0, // TODO(bilal): Enable this.
+			OpWriterIngestAndExcise:       50,
 			OpWriterMerge:                 100,
 			OpWriterRangeKeySet:           10,
 			OpWriterRangeKeyUnset:         10,
 			OpWriterRangeKeyDelete:        5,
 			OpWriterSet:                   100,
 			OpWriterSingleDelete:          50,
+			OpNewExternalObj:              2,
+			OpWriterIngestExternalFiles:   20,
 		},
 		// Use a new prefix 75% of the time (and 25% of the time use an existing
 		// prefix with an alternative suffix).
@@ -303,7 +307,6 @@ func WriteOpConfig() OpConfig {
 func multiInstanceConfig() OpConfig {
 	cfg := DefaultOpConfig()
 	cfg.ops[OpReplicate] = 5
-	cfg.ops[OpWriterIngestAndExcise] = 50
 	// Single deletes and merges are disabled in multi-instance mode, as
 	// replicateOp doesn't support them.
 	cfg.ops[OpWriterSingleDelete] = 0
