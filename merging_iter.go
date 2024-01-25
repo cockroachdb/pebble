@@ -50,6 +50,9 @@ type mergingIterLevel struct {
 type levelIterBoundaryContext struct {
 	// smallestUserKey and largestUserKey are populated with the smallest and
 	// largest boundaries of the current file.
+	//
+	// TODO(jackson): Consider removal; currently only used by the level
+	// checker.
 	smallestUserKey, largestUserKey []byte
 	// isLargestUserKeyExclusive is set to true when a file's largest boundary
 	// is an exclusive key, (eg, a range deletion sentinel). If true, the file
@@ -737,39 +740,13 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterLevel) (bool, error) {
 			continue
 		}
 
-		// Reasoning for correctness of untruncated tombstone handling when the untruncated
-		// tombstone is at a higher level:
-		// The iterator corresponding to this tombstone is still in the heap so it must be
-		// positioned >= item.iterKey. Which means the Largest key bound of the sstable containing this
-		// tombstone is >= item.iterKey. So the upper limit of this tombstone cannot be file-bounds-constrained
-		// to < item.iterKey. But it is possible that item.key < smallestUserKey, in which
-		// case this tombstone should be ignored.
-		//
-		// Example 1:
-		// sstable bounds [c#8, g#12] containing a tombstone [b, i)#7, and key is c#6. The
-		// smallestUserKey is c, so we know the key is within the file bounds and the tombstone
-		// [b, i) covers it.
-		//
-		// Example 2:
-		// Same sstable bounds but key is b#10. The smallestUserKey is c, so the tombstone [b, i)
-		// does not cover this key.
-		//
-		// For a tombstone at the same level as the key, the file bounds are trivially satisfied.
-		if (l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, item.iterKey.UserKey) <= 0) &&
-			l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, item.iterKey.UserKey) {
+		if l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, item.iterKey.UserKey) {
 			if level < item.index {
 				// We could also do m.seekGE(..., level + 1). The levels from
 				// [level + 1, item.index) are already after item.iterKey so seeking them may be
 				// wasteful.
 
-				// We can seek up to the min of largestUserKey and tombstone.End.
-				//
-				// Using example 1 above, we can seek to the smaller of g and i, which is g.
-				//
-				// Another example, where the sstable bounds are [c#8, i#InternalRangeDelSentinel],
-				// and the tombstone is [b, i)#8. Seeking to i is correct since it is seeking up to
-				// the exclusive bound of the tombstone. We do not need to look at
-				// isLargestKeyRangeDelSentinel.
+				// We can seek up to tombstone.End.
 				//
 				// Progress argument: Since this file is at a higher level than item.iterKey we know
 				// that the iterator in this file must be positioned within its bounds and at a key
@@ -781,9 +758,6 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterLevel) (bool, error) {
 				// seekKey, computed below, is > item.iterKey.UserKey, so the call to seekGE() will
 				// make forward progress.
 				seekKey := l.tombstone.End
-				if l.largestUserKey != nil && m.heap.cmp(l.largestUserKey, seekKey) < 0 {
-					seekKey = l.largestUserKey
-				}
 				// This seek is not directly due to a SeekGE call, so we don't know
 				// enough about the underlying iterator positions, and so we keep the
 				// try-seek-using-next optimization disabled. Additionally, if we're in
@@ -975,48 +949,14 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterLevel) (bool, error) {
 			continue
 		}
 
-		// Reasoning for correctness of untruncated tombstone handling when the untruncated
-		// tombstone is at a higher level:
-		//
-		// The iterator corresponding to this tombstone is still in the heap so it must be
-		// positioned <= item.iterKey. Which means the Smallest key bound of the sstable containing this
-		// tombstone is <= item.iterKey. So the lower limit of this tombstone cannot have been
-		// file-bounds-constrained to > item.iterKey. But it is possible that item.key >= Largest
-		// key bound of this sstable, in which case this tombstone should be ignored.
-		//
-		// Example 1:
-		// sstable bounds [c#8, g#12] containing a tombstone [b, i)#7, and key is f#6. The
-		// largestUserKey is g, so we know the key is within the file bounds and the tombstone
-		// [b, i) covers it.
-		//
-		// Example 2:
-		// Same sstable but the key is g#6. This cannot happen since the [b, i)#7 untruncated
-		// tombstone was involved in a compaction which must have had a file to the right of this
-		// sstable that is part of the same atomic compaction group for future compactions. That
-		// file must have bounds that cover g#6 and this levelIter must be at that file.
-		//
-		// Example 3:
-		// sstable bounds [c#8, g#RangeDelSentinel] containing [b, i)#7 and the key is g#10.
-		// This key is not deleted by this tombstone. We need to look at
-		// isLargestUserKeyExclusive.
-		//
-		// For a tombstone at the same level as the key, the file bounds are trivially satisfied.
-
 		// Default to within bounds.
-		withinLargestSSTableBound := true
-		if l.largestUserKey != nil {
-			cmpResult := m.heap.cmp(l.largestUserKey, item.iterKey.UserKey)
-			withinLargestSSTableBound = cmpResult > 0 || (cmpResult == 0 && !l.isLargestUserKeyExclusive)
-		}
-		if withinLargestSSTableBound && l.tombstone.Contains(m.heap.cmp, item.iterKey.UserKey) && l.tombstone.VisibleAt(m.snapshot) {
+		if l.tombstone.Contains(m.heap.cmp, item.iterKey.UserKey) && l.tombstone.VisibleAt(m.snapshot) {
 			if level < item.index {
 				// We could also do m.seekLT(..., level + 1). The levels from
 				// [level + 1, item.index) are already before item.iterKey so seeking them may be
 				// wasteful.
 
-				// We can seek up to the max of smallestUserKey and tombstone.Start.UserKey.
-				//
-				// Using example 1 above, we can seek to the larger of c and b, which is c.
+				// We can seek up to tombstone.Start.UserKey.
 				//
 				// Progress argument: We know that the iterator in this file is positioned within
 				// its bounds and at a key X < item.iterKey (otherwise it would be the max of the heap).
@@ -1025,9 +965,6 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterLevel) (bool, error) {
 				// is <= item.iterKey.UserKey, and since we do a seekLT() we will make backwards
 				// progress.
 				seekKey := l.tombstone.Start
-				if l.smallestUserKey != nil && m.heap.cmp(l.smallestUserKey, seekKey) > 0 {
-					seekKey = l.smallestUserKey
-				}
 				// We set the relative-seek flag. This is important when
 				// iterating with lazy combined iteration. If there's a range
 				// key between this level's current file and the file the seek
@@ -1159,42 +1096,21 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 			(m.combinedIterState == nil || m.combinedIterState.initialized) {
 			// The level has a range-del iterator. Find the tombstone containing
 			// the search key.
-			//
-			// For untruncated tombstones that are possibly file-bounds-constrained, we are using a
-			// levelIter which will set smallestUserKey and largestUserKey. Since the levelIter
-			// is at this file we know that largestUserKey >= key, so we know that the
-			// tombstone we find cannot be file-bounds-constrained in its upper bound to something < key.
-			// We do need to  compare with smallestUserKey to ensure that the tombstone is not
-			// file-bounds-constrained in its lower bound.
-			//
-			// See the detailed comments in isNextEntryDeleted() on why similar containment and
-			// seeking logic is correct. The subtle difference here is that key is a user key,
-			// so we can have a sstable with bounds [c#8, i#InternalRangeDelSentinel], and the
-			// tombstone is [b, k)#8 and the seek key is i: levelIter.SeekGE(i) will move past
-			// this sstable since it realizes the largest key is a InternalRangeDelSentinel.
 			var err error
 			l.tombstone, err = rangeDelIter.SeekGE(key)
 			if err != nil {
 				return err
 			}
-			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, key) &&
-				(l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, key) <= 0) {
-				// NB: Based on the comment above l.largestUserKey >= key, and based on the
-				// containment condition tombstone.End > key, so the assignment to key results
-				// in a monotonically non-decreasing key across iterations of this loop.
+			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, key) {
+				// Based on the containment condition tombstone.End > key, so
+				// the assignment to key results in a monotonically
+				// non-decreasing key across iterations of this loop.
 				//
-				// The adjustment of key here can only move it to a larger key. Since
-				// the caller of seekGE guaranteed that the original key was greater
-				// than or equal to m.lower, the new key will continue to be greater
-				// than or equal to m.lower.
-				if l.largestUserKey != nil &&
-					m.heap.cmp(l.largestUserKey, l.tombstone.End) < 0 {
-					// Truncate the tombstone for seeking purposes. Note that this can over-truncate
-					// but that is harmless for this seek optimization.
-					key = l.largestUserKey
-				} else {
-					key = l.tombstone.End
-				}
+				// The adjustment of key here can only move it to a larger key.
+				// Since the caller of seekGE guaranteed that the original key
+				// was greater than or equal to m.lower, the new key will
+				// continue to be greater than or equal to m.lower.
+				key = l.tombstone.End
 			}
 		}
 	}
@@ -1259,48 +1175,23 @@ func (m *mergingIter) seekLT(key []byte, level int, flags base.SeekLTFlags) erro
 			(m.combinedIterState == nil || m.combinedIterState.initialized) {
 			// The level has a range-del iterator. Find the tombstone containing
 			// the search key.
-			//
-			// For untruncated tombstones that are possibly file-bounds-constrained we are using a
-			// levelIter which will set smallestUserKey and largestUserKey. Since the levelIter
-			// is at this file we know that smallestUserKey <= key, so we know that the
-			// tombstone we find cannot be file-bounds-constrained in its lower bound to something > key.
-			// We do need to  compare with largestUserKey to ensure that the tombstone is not
-			// file-bounds-constrained in its upper bound.
-			//
-			// See the detailed comments in isPrevEntryDeleted() on why similar containment and
-			// seeking logic is correct.
-
-			// Default to within bounds.
-			withinLargestSSTableBound := true
-			if l.largestUserKey != nil {
-				cmpResult := m.heap.cmp(l.largestUserKey, key)
-				withinLargestSSTableBound = cmpResult > 0 || (cmpResult == 0 && !l.isLargestUserKeyExclusive)
-			}
-
 			tomb, err := keyspan.SeekLE(m.heap.cmp, rangeDelIter, key)
 			if err != nil {
 				return err
 			}
 			l.tombstone = tomb
 			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) &&
-				l.tombstone.Contains(m.heap.cmp, key) && withinLargestSSTableBound {
-				// NB: Based on the comment above l.smallestUserKey <= key, and based
-				// on the containment condition tombstone.Start.UserKey <= key, so the
-				// assignment to key results in a monotonically non-increasing key
-				// across iterations of this loop.
+				l.tombstone.Contains(m.heap.cmp, key) {
+				// NB: Based on the containment condition
+				// tombstone.Start.UserKey <= key, so the assignment to key
+				// results in a monotonically non-increasing key across
+				// iterations of this loop.
 				//
-				// The adjustment of key here can only move it to a smaller key. Since
-				// the caller of seekLT guaranteed that the original key was less than
-				// or equal to m.upper, the new key will continue to be less than or
-				// equal to m.upper.
-				if l.smallestUserKey != nil &&
-					m.heap.cmp(l.smallestUserKey, l.tombstone.Start) >= 0 {
-					// Truncate the tombstone for seeking purposes. Note that this can over-truncate
-					// but that is harmless for this seek optimization.
-					key = l.smallestUserKey
-				} else {
-					key = l.tombstone.Start
-				}
+				// The adjustment of key here can only move it to a smaller key.
+				// Since the caller of seekLT guaranteed that the original key
+				// was less than or equal to m.upper, the new key will continue
+				// to be less than or equal to m.upper.
+				key = l.tombstone.Start
 			}
 		}
 	}

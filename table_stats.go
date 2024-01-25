@@ -910,23 +910,52 @@ func newCombinedDeletionKeyspanIter(
 		return nil, err
 	}
 	if iter != nil {
-		// Assert expected bounds in tests.
-		if invariants.Enabled {
-			// TODO(radu): we should be using AssertBounds, but it currently fails in
-			// some cases (#3167).
-			iter = keyspan.AssertUserKeyBounds(
-				iter, m.SmallestPointKey.UserKey, m.LargestPointKey.UserKey, comparer.Compare,
-			)
-		}
+		// Assert expected bounds. In previous versions of Pebble, range
+		// deletions persisted to sstables could exceed the bounds of the
+		// containing files due to "split user keys." This required readers to
+		// constrain the tombstones' bounds to the containing file at read time.
+		// See docs/range_deletions.md for an extended discussion of the design
+		// and invariants at that time.
+		//
+		// We've since compacted away all 'split user-keys' and in the process
+		// eliminated all "untruncated range tombstones" for physical sstables.
+		// We no longer need to perform truncation at read time for these
+		// sstables.
+		//
+		// At the same time, we've also introduced the concept of "virtual
+		// SSTables" where the file metadata's effective bounds can again be
+		// reduced to be narrower than the contained tombstones. These virtual
+		// SSTables handle truncation differently, performing it using
+		// keyspan.Truncate when the sstable's range deletion iterator is
+		// opened.
+		//
+		// Together, these mean that we should never see untruncated range
+		// tombstones any more—and the merging iterator no longer accounts for
+		// their existence. Since there's abundant subtlety that we're relying
+		// on, we choose to be conservative and assert that these invariants
+		// hold. We could (and previously did) chose to only validate these
+		// bounds in invariants builds, but the most likely avenue for these
+		// tombstones' existence is through a bug in a migration and old data
+		// sitting around in an old store from long ago.
+		//
+		// The table stats collector will read all files range deletions
+		// immediately on start, and provides a perfect opportunity to validate
+		// our invariants without harming user latency. We also previously
+		// performed truncation here which similarly required key comparisons,
+		// so replacing those key comparisons with assertions should be roughly
+		// similar in performance.
+		//
+		// TODO(jackson): Only use Assert[UserKey]Bounds in invariants builds
+		// in the following release.
+		//
+		// TODO(radu): we should be using AssertBounds, but it currently fails in
+		// some cases (#3167).
+		iter = keyspan.AssertUserKeyBounds(
+			iter, m.SmallestPointKey.UserKey, m.LargestPointKey.UserKey, comparer.Compare,
+		)
 		dIter := &keyspan.DefragmentingIter{}
 		dIter.Init(comparer, iter, equal, reducer, new(keyspan.DefragmentingBuffers))
 		iter = dIter
-		// Truncate tombstones to the containing file's bounds if necessary.
-		// See docs/range_deletions.md for why this is necessary.
-		iter = keyspan.Truncate(
-			comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey,
-			nil, nil, false, /* panicOnUpperTruncate */
-		)
 		mIter.AddLevel(iter)
 	}
 

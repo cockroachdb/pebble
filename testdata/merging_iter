@@ -13,10 +13,10 @@
 define
 L
 a.SET.30 e.RANGEDEL.72057594037927935
-a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:f
+a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:e
 L
 e.SET.10 g.SET.20
-e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:f
+e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:g
 ----
 1:
   000000:[a#30,SET-e#inf,RANGEDEL]
@@ -57,11 +57,11 @@ iter probe-rangedels=(000000,(Log "#  000000.rangeDelIter.")) probe-rangedels=(0
 seek-ge d
 next
 ----
-#  000000.rangeDelIter.opSpanSeekGE("d") = a-f:{(#8,RANGEDEL)}
-#  000001.rangeDelIter.opSpanSeekGE("e") = e-f:{(#8,RANGEDEL)}
-#  000000.rangeDelIter.opSpanSeekGE("e") = a-f:{(#8,RANGEDEL)}
+#  000000.rangeDelIter.opSpanSeekGE("d") = a-e:{(#8,RANGEDEL)}
+#  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
+#  000000.rangeDelIter.opSpanSeekGE("e") = nil
 #  000000.rangeDelIter.opSpanClose() = nil
-#  000001.rangeDelIter.opSpanSeekGE("e") = e-f:{(#8,RANGEDEL)}
+#  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
 e#10,1:10
 #  000001.rangeDelIter.opSpanSeekGE("g") = nil <err="injected error">
 err=injected error
@@ -91,13 +91,10 @@ e#10,1:10
 c#27,1:27
 a#30,1:30
 
-# We keep the rangedel alive by having a point in the higher level past the first point in the
-# lower level. This rangedel hides that first point in the lower level but we should not seek to
-# h and hide the second point.
 define
 L
 a.SET.15 f.SET.16
-a.SET.15:15 c.SET.13:13 f.SET.16:16 a.RANGEDEL.12:h
+a.SET.15:15 c.SET.13:13 f.SET.16:16 a.RANGEDEL.12:f
 L
 e.SET.10 g.SET.15
 e.SET.10:10 g.SET.15:15
@@ -136,18 +133,18 @@ f#16,1:16
 c#13,1:13
 a#15,1:15
 
-# The rangedel should not delete any points in any sstable.  The two files were involved in an
-# compaction and then the first file got moved to a lower level.
+# The rangedel should not delete any points in any sstable.
+
 define
 L
-c.SET.30 f.RANGEDEL.0
-c.SET.30:30 d.SET.27:27 a.RANGEDEL.8:f
+c.SET.30 f.RANGEDEL.72057594037927935
+c.SET.30:30 d.SET.27:27 e.RANGEDEL.8:f
 L
 a.SET.10 c.RANGEDEL.72057594037927935
-a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:f
+a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:c
 ----
 1:
-  000004:[c#30,SET-f#0,RANGEDEL]
+  000004:[c#30,SET-f#inf,RANGEDEL]
 2:
   000005:[a#10,SET-c#inf,RANGEDEL]
 
@@ -201,13 +198,10 @@ c#30,1:30
 b#12,1:12
 a#10,1:10
 
-# We keep the rangedel alive in prev iteration by having a point in the higher level before
-# the last point in the lower level. This rangedel hides that first point in the lower level
-# but we should not seek to a and hide the second point.
 define
 L
 c.SET.15 g.SET.16
-c.SET.15:15 f.SET.13:13 g.SET.16:16 a.RANGEDEL.12:h
+c.SET.15:15 f.SET.13:13 g.SET.16:16 c.RANGEDEL.12:g
 L
 b.SET.14 d.SET.10
 b.SET.14:14 d.SET.10:10
@@ -239,7 +233,7 @@ b#14,1:14
 define
 L
 a.SET.30 e.RANGEDEL.72057594037927935
-a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:g
+a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:e
 L
 e.SET.10 g.SET.20
 e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:g
