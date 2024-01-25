@@ -191,8 +191,10 @@ type InternalIterator interface {
 
 	// Close closes the iterator and returns any accumulated error. Exhausting
 	// all the key/value pairs in a table is not considered to be an error.
-	// It is valid to call Close multiple times. Other methods should not be
-	// called after the iterator has been closed.
+	//
+	// Once Close is called, the iterator should not be used again. Specific
+	// implementations may support multiple calls to Close (but no other calls
+	// after the first Close).
 	Close() error
 
 	// SetBounds sets the lower and upper bounds for the iterator. Note that the

@@ -165,6 +165,10 @@ type singleLevelIterator struct {
 	lastBloomFilterMatched bool
 
 	hideObsoletePoints bool
+
+	// inPool is set to true before putting the iterator in the reusable pool;
+	// used to detect double-close.
+	inPool bool
 }
 
 // singleLevelIterator implements the base.InternalIterator interface.
@@ -203,6 +207,7 @@ func (i *singleLevelIterator) init(
 		i.endKeyInclusive, lower, upper = v.constrainBounds(lower, upper, false /* endInclusive */)
 	}
 
+	i.inPool = false
 	i.ctx = ctx
 	i.lower = lower
 	i.upper = upper
@@ -274,8 +279,9 @@ func (i *singleLevelIterator) setupForCompaction() {
 
 func (i *singleLevelIterator) resetForReuse() singleLevelIterator {
 	return singleLevelIterator{
-		index: i.index.resetForReuse(),
-		data:  i.data.resetForReuse(),
+		index:  i.index.resetForReuse(),
+		data:   i.data.resetForReuse(),
+		inPool: true,
 	}
 }
 
@@ -1440,6 +1446,9 @@ func firstError(err0, err1 error) error {
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *singleLevelIterator) Close() error {
+	if invariants.Enabled && i.inPool {
+		panic("Close called on interator in pool")
+	}
 	i.iterStats.close()
 	var err error
 	if i.closeHook != nil {

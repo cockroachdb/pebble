@@ -391,7 +391,8 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(stderr, "%s%s\n", prefix, err)
 			return
 		}
-		defer iter.Close()
+		iterCloser := base.CloseHelper(iter)
+		defer iterCloser.Close()
 		key, value := iter.SeekGE(s.start, base.SeekGEFlagsNone)
 
 		// We configured sstable.Reader to return raw tombstones which requires a
@@ -532,7 +533,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			}
 		}
 
-		if err := iter.Close(); err != nil {
+		if err := iterCloser.Close(); err != nil {
 			fmt.Fprintf(stdout, "%s\n", err)
 		}
 	})
