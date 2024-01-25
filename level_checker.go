@@ -202,24 +202,17 @@ func (m *simpleMergingIter) step() bool {
 			return false
 		}
 		// Is this point covered by a tombstone at a lower level? Note that all these
-		// iterators must be positioned at a key > item.key. So the Largest key bound
-		// of the sstable containing the tombstone >= item.key. So the upper limit of
-		// the tombstone cannot be file-bounds-constrained to < item.key. But it is
-		// possible that item.key < smallest key bound of the sstable, in which case
-		// this tombstone should be ignored.
+		// iterators must be positioned at a key > item.key.
 		for level := item.index + 1; level < len(m.levels); level++ {
 			lvl := &m.levels[level]
 			if lvl.rangeDelIter == nil || lvl.tombstone.Empty() {
 				continue
 			}
-			if (lvl.smallestUserKey == nil || m.heap.cmp(lvl.smallestUserKey, item.key.UserKey) <= 0) &&
-				lvl.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
-				if lvl.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
-					m.err = errors.Errorf("tombstone %s in %s deletes key %s in %s",
-						lvl.tombstone.Pretty(m.formatKey), lvl.iter, item.key.Pretty(m.formatKey),
-						l.iter)
-					return false
-				}
+			if lvl.tombstone.Contains(m.heap.cmp, item.key.UserKey) && lvl.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
+				m.err = errors.Errorf("tombstone %s in %s deletes key %s in %s",
+					lvl.tombstone.Pretty(m.formatKey), lvl.iter, item.key.Pretty(m.formatKey),
+					l.iter)
+				return false
 			}
 		}
 	}
