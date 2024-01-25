@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 )
 
@@ -165,6 +166,7 @@ func (i *twoLevelIterator) init(
 		i.endKeyInclusive, lower, upper = v.constrainBounds(lower, upper, false /* endInclusive */)
 	}
 
+	i.inPool = false
 	i.ctx = ctx
 	i.lower = lower
 	i.upper = upper
@@ -979,6 +981,9 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *twoLevelIterator) Close() error {
+	if invariants.Enabled && i.inPool {
+		panic("Close called on interator in pool")
+	}
 	i.iterStats.close()
 	var err error
 	if i.closeHook != nil {
