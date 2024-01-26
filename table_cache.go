@@ -927,11 +927,13 @@ func (c *tableCacheShard) findNodeInternal(
 	// Note adding to the cache lists must complete before we begin loading the
 	// table as a failure during load will result in the node being unlinked.
 	pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+
 		v.load(
 			loadInfo{
-				backingFileNum: meta.FileBacking.DiskFileNum,
-				smallestSeqNum: meta.SmallestSeqNum,
-				largestSeqNum:  meta.LargestSeqNum,
+				backingFileNum:  meta.FileBacking.DiskFileNum,
+				smallestSeqNum:  meta.SmallestSeqNum,
+				largestSeqNum:   meta.LargestSeqNum,
+				syntheticSuffix: meta.SyntheticSuffix,
 			}, c, dbOpts)
 	})
 	return v
@@ -1159,9 +1161,10 @@ type tableCacheValue struct {
 }
 
 type loadInfo struct {
-	backingFileNum base.DiskFileNum
-	largestSeqNum  uint64
-	smallestSeqNum uint64
+	backingFileNum  base.DiskFileNum
+	largestSeqNum   uint64
+	smallestSeqNum  uint64
+	syntheticSuffix []byte
 }
 
 func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *tableCacheOpts) {
