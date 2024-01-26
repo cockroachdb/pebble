@@ -103,6 +103,9 @@ type recordQueue struct {
 
 	// Protected by mu.
 	writer *record.LogWriter
+
+	// Protected by mu. But not called with mu held.
+	transitionToEmptyCallback func()
 }
 
 func (q *recordQueue) init() {
@@ -159,7 +162,7 @@ func (q *recordQueue) popAll(err error) (numRecords int, numSyncsPopped int) {
 	if n == 0 {
 		return 0, 0
 	}
-	return n, q.pop(h-1, err)
+	return n, q.pop(h-1, err, false)
 }
 
 // Pops all entries up to and including index. The remaining queue is
@@ -168,7 +171,7 @@ func (q *recordQueue) popAll(err error) (numRecords int, numSyncsPopped int) {
 // NB: we could slightly simplify to only have the latest writer be able to
 // pop. This would avoid the CAS below, but it seems better to reduce the
 // amount of queued work regardless of who has successfully written it.
-func (q *recordQueue) pop(index uint32, err error) (numSyncsPopped int) {
+func (q *recordQueue) pop(index uint32, err error, runCb bool) (numSyncsPopped int) {
 	var buf [512]SyncOptions
 	ht := q.headTail.Load()
 	h, t := unpackHeadTail(ht)
@@ -204,6 +207,7 @@ func (q *recordQueue) pop(index uint32, err error) (numSyncsPopped int) {
 			break
 		}
 	}
+	ttec := q.transitionToEmptyCallback
 	q.mu.RUnlock()
 
 	numEntriesPopped := maxEntriesToPop
@@ -219,6 +223,10 @@ func (q *recordQueue) pop(index uint32, err error) (numSyncsPopped int) {
 			}
 			b[i].Done.Done()
 		}
+	}
+	if ttec != nil && runCb && h == index+1 {
+		// There will be no more entries pushed, and empty.
+		ttec()
 	}
 	return numSyncsPopped
 }
@@ -239,6 +247,16 @@ func (q *recordQueue) snapshotAndSwitchWriter(
 		}
 		snapshotFunc(t, b)
 	}
+}
+
+// setTransitionToEmptyCallback is used by failoverWriter.Close.
+func (q *recordQueue) setTransitionToEmptyCallback(f func()) (lastIndex int64) {
+	h, _ := unpackHeadTail(q.headTail.Load())
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.transitionToEmptyCallback = f
+	li := int64(h) - 1
+	return li
 }
 
 const headTailBits = 32
@@ -272,9 +290,11 @@ type failoverWriter struct {
 	writers [maxPhysicalLogs]logWriterAndRecorder
 	mu      struct {
 		sync.Mutex
-		// cond is signaled when the latest *LogWriter is set in writers, or when
-		// what was probably the latest *LogWriter is successfully closed. It is
-		// waited on in Close.
+		// cond is signaled when the latest LogWriter is set in writers (or there
+		// is a creation error), or when what was definitely the last LogWriter
+		// is successfully closed. It is waited on in Close. We don't use channels
+		// and select since what Close is waiting on is dynamic based on the local
+		// state in Close, so using Cond seemed simpler.
 		cond *sync.Cond
 		// nextWriterIndex is advanced before creating the *LogWriter. That is, a
 		// slot is reserved by taking the current value of nextWriterIndex and
@@ -287,6 +307,8 @@ type failoverWriter struct {
 		nextWriterIndex logNameIndex
 		closed          bool
 	}
+	psiForWriteRecordBacking record.PendingSyncIndex
+	psiForSwitchBacking      record.PendingSyncIndex
 }
 
 type logWriterAndRecorder struct {
@@ -358,11 +380,11 @@ func (ww *failoverWriter) WriteRecord(p []byte, opts SyncOptions) error {
 		// Don't have a record.LogWriter yet.
 		return nil
 	}
-	ps := record.PendingSyncIndex{Index: record.NoSyncIndex}
+	ww.psiForWriteRecordBacking = record.PendingSyncIndex{Index: record.NoSyncIndex}
 	if opts.Done != nil {
-		ps.Index = int64(recordIndex)
+		ww.psiForWriteRecordBacking.Index = int64(recordIndex)
 	}
-	_, err := writer.SyncRecordGeneralized(p, ps)
+	_, err := writer.SyncRecordGeneralized(p, &ww.psiForWriteRecordBacking)
 	return err
 }
 
@@ -378,6 +400,7 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 		}
 		return nil
 	}
+	// writerIndex is the slot for this writer.
 	writerIndex := ww.mu.nextWriterIndex
 	if int(writerIndex) == len(ww.writers) {
 		ww.mu.Unlock()
@@ -386,6 +409,7 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 	ww.mu.nextWriterIndex++
 	ww.mu.Unlock()
 
+	// Creation is async.
 	ww.opts.stopper.runAsync(func() {
 		// TODO(sumeer): recycling of logs.
 		filename := dir.FS.PathJoin(dir.Dirname, makeLogFilename(ww.opts.wn, writerIndex))
@@ -396,6 +420,9 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 		// TODO(sumeer): should we fatal if primary dir? At some point it is better
 		// to fatal instead of continuing to failover.
 		// base.MustExist(dir.FS, filename, ww.opts.logger, err)
+
+		// handleErrFunc is called when err != nil. It handles the multiple IO error
+		// cases below.
 		handleErrFunc := func() {
 			if file != nil {
 				file.Close()
@@ -421,11 +448,13 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 			handleErrFunc()
 			return
 		}
+		// Wrap in a syncingFile.
 		syncingFile := vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
 			NoSyncOnClose:   ww.opts.noSyncOnClose,
 			BytesPerSync:    ww.opts.bytesPerSync,
 			PreallocateSize: ww.opts.preallocateSize(),
 		})
+		// Wrap in the latencyAndErrorRecorder.
 		recorderAndWriter.setWriter(syncingFile)
 
 		// Using NumWAL as the DiskFileNum is fine since it is used only as
@@ -458,11 +487,11 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 			// SyncRecordGeneralized does no IO.
 			ww.q.snapshotAndSwitchWriter(w, func(firstIndex uint32, entries []recordQueueEntry) {
 				for i := range entries {
-					ps := record.PendingSyncIndex{Index: record.NoSyncIndex}
+					ww.psiForSwitchBacking = record.PendingSyncIndex{Index: record.NoSyncIndex}
 					if entries[i].opts.Done != nil {
-						ps.Index = int64(firstIndex) + int64(i)
+						ww.psiForSwitchBacking.Index = int64(firstIndex) + int64(i)
 					}
-					_, err := w.SyncRecordGeneralized(entries[i].p, ps)
+					_, err := w.SyncRecordGeneralized(entries[i].p, &ww.psiForSwitchBacking)
 					if err != nil {
 						// TODO(sumeer): log periodically. The err will also surface via
 						// the latencyAndErrorRecorder, so if a switch is possible, it
@@ -496,7 +525,7 @@ func (ww *failoverWriter) doneSyncCallback(doneSync record.PendingSyncIndex, err
 		return
 	}
 	// NB: harmless after Close returns since numSyncsPopped will be 0.
-	numSyncsPopped := ww.q.pop(uint32(doneSync.Index), err)
+	numSyncsPopped := ww.q.pop(uint32(doneSync.Index), err, true)
 	if ww.opts.queueSemChan != nil {
 		for i := 0; i < numSyncsPopped; i++ {
 			<-ww.opts.queueSemChan
@@ -528,162 +557,125 @@ func (ww *failoverWriter) Close() error {
 	// have finished) or the LogWriter will never be non-nil. Either way, they
 	// have been "processed".
 	closeCalledCount := logNameIndex(0)
+	// lastPossibleWriter is the state for the writer at index
+	// maxPhysicalLogs-1.
+	var lastPossibleWriter struct {
+		// closed and err are protected by ww.mu.
+		closed bool
+		err    error
+	}
+	// REQUIRES: closeCalledCount == maxPhysicalLogs
+	tryLastClosedFunc := func() (done bool, err error) {
+		if lastPossibleWriter.closed {
+			// No need to wait for the recordQueue to be empty, since there will
+			// never be another writer.
+			return true, lastPossibleWriter.err
+		}
+		return false, nil
+	}
+	li := ww.q.setTransitionToEmptyCallback(func() {
+		ww.mu.Lock()
+		defer ww.mu.Unlock()
+		ww.mu.cond.Signal()
+	})
+	lastRecordIndex := record.PendingSyncIndex{Index: li}
+	ww.mu.Lock()
+	defer ww.mu.Unlock()
 	done := false
 	var err error
-	ww.mu.Lock()
 	// Every iteration starts and ends with the mutex held.
 	//
 	// Invariant: ww.mu.nextWriterIndex >= 1.
 	//
-	// TODO(sumeer): write a high level comment for the logic below.
+	// We will loop until the recordQueue is empty, or we have closed the
+	// lastPossibleWriter (and use lastPossibleWriter.err). We also need to call
+	// close on all LogWriters that will not close themselves, i.e., those that
+	// have already been created and installed in failoverWriter.writers (this
+	// set may change while failoverWriter.Close runs)..
 	for !done {
-		numWriters := ww.mu.nextWriterIndex
-		// Want to process [closeCalledCount, numWriters).
-		// Invariant: numWriters - closeCalledCount >= 1.
-		if numWriters-closeCalledCount <= 0 {
-			panic("invariant violation")
-		}
-		// Wait until writers[numWriters-1] is either created or has a creation
-		// error or numWriters advances. We are waiting on IO here, since failover
-		// is continuing to happen if IO is taking too long. If we run out of
-		// maxPhysicalLogs, then we will truly block on IO here, but there is
-		// nothing that can be done in that case. Note that there is a very rare
-		// case that the recordQueue is already empty, and waiting is unnecessary,
-		// but so be it.
-		for {
-			if ww.writers[numWriters-1].w == nil && ww.writers[numWriters-1].createError == nil {
-				ww.mu.cond.Wait()
-			} else {
-				break
-			}
-			numWriters = ww.mu.nextWriterIndex
-		}
-		// Invariant: [closeCalledCount, numWriters) have their *LogWriters in the
-		// final state (the createError may not be in its final state): nil and
-		// will stay nil, or non-nil. Additionally, index numWriters-1 creation
-		// has completed, so both the *LogWriter and createError is in its final
-		// state.
-
-		// Unlock, so monitoring and switching can continue happening.
-		ww.mu.Unlock()
-		// Process [closeCalledCount, numWriters).
-
-		// Iterate over everything except the latest writer, i.e.,
-		// [closeCalledCount, numWriters-1). These are either non-nil, or will
-		// forever stay nil. From the previous invariant, we know that
-		// numWriters-1-closeCalledCount >= 0.
-		for i := closeCalledCount; i < numWriters-1; i++ {
-			w := ww.writers[i].w
-			if w != nil {
-				// Don't care about the returned error since all the records we relied
-				// on this writer for were already successfully written.
-				ww.opts.stopper.runAsync(func() {
-					_ = w.Close()
-				})
-			}
-		}
-		closeCalledCount = numWriters - 1
-		ww.mu.Lock()
-		numWriters = ww.mu.nextWriterIndex
-		if closeCalledCount < numWriters-1 {
-			// Haven't processed some non-latest writers. Process them first.
-			continue
-		}
-		// Latest writer, for now. And we have already waited for its creation.
-		latestWriterIndex := closeCalledCount
-		w := ww.writers[latestWriterIndex].w
-		createErr := ww.writers[latestWriterIndex].createError
-		// closedLatest and closeErr also protected by ww.mu.
-		closedLatest := false
-		var closeErr error
-		if w == nil && createErr == nil {
-			panic("invariant violation")
-		}
-		closeCalledCount++
-		if createErr == nil {
-			// INVARIANT: w != nil
-			ww.opts.stopper.runAsync(func() {
-				// Write to iteration local variable closeErr, since we may write to
-				// a different closeErr in a different iteration. We only read this
-				// value in the same iteration (below).
-				cErr := w.Close()
-				ww.mu.Lock()
-				closeErr = cErr
-				closedLatest = true
-				ww.mu.cond.Signal()
-				ww.mu.Unlock()
-			})
+		if closeCalledCount == maxPhysicalLogs {
+			done, err = tryLastClosedFunc()
 		} else {
-			closeErr = createErr
-			closedLatest = true
-		}
-		// We start this inner loop with latestWriterIndex being the latest writer
-		// and one of the following cases:
-		//
-		// A. w != nil and waiting for the goroutine that is closing w.
-		// B. w == nil and closedLatest is already true because of creation error,
-		// which is reflected in closeErr.
-		for !done {
-			if !closedLatest {
-				// Case A. Will unblock on close or when a newer writer creation
-				// happens (or fails).
-				ww.mu.cond.Wait()
-			}
-			if latestWriterIndex < ww.mu.nextWriterIndex-1 {
-				// Doesn't matter if closed or not, since no longer the latest.
-				break
-				// Continue outer for loop.
-			}
-			// Still the latest writer.
-			if closedLatest {
-				// Case A has finished close, or case B.
-				if closeErr == nil {
-					// Case A closed with no error.
-					_, numSyncsPopped := ww.q.popAll(nil)
-					if numSyncsPopped != 0 {
-						// The client requested syncs are required to be popped by the
-						// record.LogWriter. The only records we expect to pop now are the
-						// tail that did not request a sync, and have been successfully
-						// synced implicitly by the record.LogWriter.
-						//
-						// NB: popAll is not really necessary for correctness. We do this
-						// to free memory.
-						panic(errors.AssertionFailedf(
-							"%d syncs not popped by the record.LogWriter", numSyncsPopped))
+			numWriters := ww.mu.nextWriterIndex
+			// Try to process [closeCalledCount, numWriters). Will surely process
+			// [closeCalledCount, numWriters-1), since those writers are either done
+			// initializing, or will close themselves. The writer at numWriters-1 we
+			// can only process if it is done initializing, else we will iterate
+			// again.
+			for i := closeCalledCount; i < numWriters; i++ {
+				w := ww.writers[i].w
+				cErr := ww.writers[i].createError
+				// Is the current index the latest writer.
+				latestWriter := i == numWriters-1
+				if w != nil {
+					// Can close it, so extend closeCalledCount.
+					closeCalledCount = i + 1
+					lastQueuedRecord := record.PendingSyncIndex{Index: record.NoSyncIndex}
+					if latestWriter {
+						// Latest writer(s) (since new writers can be created and become
+						// latest, as we iterate) are guaranteed to have seen the last
+						// record (since it was queued before Close was called). It is
+						// possible that a writer got created after the last record was
+						// dequeued and before this fact was realized by Close. In that
+						// case we will harmlessly tell it that it synced that last
+						// record, though it has already been written and synced by
+						// another writer.
+						lastQueuedRecord = lastRecordIndex
 					}
-					// Exit all loops.
-					done = true
-					ww.mu.closed = true
+					if i == maxPhysicalLogs-1 {
+						// Last possible writer. We may care about its error and when it
+						// finishes closing.
+						ww.opts.stopper.runAsync(func() {
+							if !latestWriter {
+								panic("invariant violation")
+							}
+							err := w.CloseWithLastQueuedRecord(lastQueuedRecord)
+							ww.mu.Lock()
+							defer ww.mu.Unlock()
+							lastPossibleWriter.closed = true
+							lastPossibleWriter.err = err
+						})
+					} else {
+						// Don't care about the returned error since:
+						// - if not latest writer, all the records we relied on this
+						//   writer for were already successfully written.
+						// - if latest writer, it will callback if it successfully writes
+						//   all the records. And if it fails to write all the records we
+						//   will create another writer.
+						ww.opts.stopper.runAsync(func() {
+							_ = w.CloseWithLastQueuedRecord(lastQueuedRecord)
+						})
+					}
+				} else if cErr != nil {
+					// Have processed it, so extend closeCalledCount.
+					closeCalledCount = i + 1
+					if i == maxPhysicalLogs-1 {
+						lastPossibleWriter.closed = true
+						lastPossibleWriter.err = cErr
+						done, err = tryLastClosedFunc()
+					}
+					// Else, ignore, since if recordQueue is non-empty we will keep
+					// waiting.
 				} else {
-					// Case A closed with error, or case B. The err is in closeErr.
-					//
-					// If there are no more slots left, or the queue is empty (an
-					// earlier writer may have seen all the records and finally written
-					// them), we can be done.
-					if len(ww.writers) == int(latestWriterIndex+1) || ww.q.length() == 0 {
-						// If there are any records queued, we have no guarantee that they
-						// were written, so propagate the error.
-						numRecords, _ := ww.q.popAll(closeErr)
-						err = closeErr
-						if numRecords == 0 {
-							err = nil
-						}
-						// Exit all loops.
-						done = true
-						ww.mu.closed = true
+					if !latestWriter {
+						// Not latest writer, so will close itself.
+						closeCalledCount = i + 1
 					}
-					// Else, this will eventually not be the latest writer, so continue
-					// this inner loop.
+					// Else, latest writer, so we may have to close it.
 				}
 			}
-			// Else still waiting on case A to close.
+		}
+		if ww.q.length() == 0 {
+			done = true
+			// Ignore the error from the last writer, if any.
+			err = nil
+		}
+		if !done {
+			ww.mu.cond.Wait()
 		}
 	}
-	ww.mu.Unlock()
-	// Only nil in some unit tests.
-	if ww.wm != nil {
-		ww.wm.writerClosed()
-	}
+	ww.mu.closed = true
+	_, _ = ww.q.popAll(err)
 	return err
 }
 

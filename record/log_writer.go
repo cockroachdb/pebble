@@ -171,6 +171,15 @@ func (q *syncQueue) pop(head, tail uint32, err error, queueSemChan chan struct{}
 // the mode where the LogWriter can be subject to failover, there is no queue
 // kept in the LogWriter and the signaling to those waiting for sync is
 // handled in the wal package.
+//
+// To avoid heap allocations due to the use of this interface, the parameters
+// and return values follow some strict rules:
+//   - The PendingSync parameter can be reused by the caller after push returns.
+//     The implementation should be a pointer backed by a struct that is already
+//     heap allocated, which the caller can reuse for the next push call.
+//   - The pendingSyncSnapshot return value must be backed by the pendingSyncs
+//     implementation, so calling snapshotForPop again will cause the previous
+//     snapshot to be overwritten.
 type pendingSyncs interface {
 	push(PendingSync)
 	setBlocked()
@@ -194,7 +203,8 @@ type PendingSync interface {
 // The implementation of pendingSyncs in standalone mode.
 type pendingSyncsWithSyncQueue struct {
 	syncQueue
-	syncQueueLen *base.GaugeSampleMetric
+	syncQueueLen    *base.GaugeSampleMetric
+	snapshotBacking syncQueueSnapshot
 	// See the comment for LogWriterConfig.QueueSemChan.
 	queueSemChan chan struct{}
 }
@@ -202,22 +212,22 @@ type pendingSyncsWithSyncQueue struct {
 var _ pendingSyncs = &pendingSyncsWithSyncQueue{}
 
 func (q *pendingSyncsWithSyncQueue) push(ps PendingSync) {
-	ps2 := ps.(pendingSyncForSyncQueue)
+	ps2 := ps.(*pendingSyncForSyncQueue)
 	q.syncQueue.push(ps2.wg, ps2.err)
 }
 
 func (q *pendingSyncsWithSyncQueue) snapshotForPop() pendingSyncsSnapshot {
 	head, tail, realLength := q.syncQueue.load()
-	snap := syncQueueSnapshot{
+	q.snapshotBacking = syncQueueSnapshot{
 		head: head,
 		tail: tail,
 	}
 	q.syncQueueLen.AddSample(int64(realLength))
-	return snap
+	return &q.snapshotBacking
 }
 
 func (q *pendingSyncsWithSyncQueue) pop(snap pendingSyncsSnapshot, err error) error {
-	s := snap.(syncQueueSnapshot)
+	s := snap.(*syncQueueSnapshot)
 	return q.syncQueue.pop(s.head, s.tail, err, q.queueSemChan)
 }
 
@@ -226,7 +236,7 @@ type syncQueueSnapshot struct {
 	head, tail uint32
 }
 
-func (s syncQueueSnapshot) empty() bool {
+func (s *syncQueueSnapshot) empty() bool {
 	return s.head == s.tail
 }
 
@@ -236,7 +246,7 @@ type pendingSyncForSyncQueue struct {
 	err *error
 }
 
-func (ps pendingSyncForSyncQueue) syncRequested() bool {
+func (ps *pendingSyncForSyncQueue) syncRequested() bool {
 	return ps.wg != nil
 }
 
@@ -244,7 +254,8 @@ func (ps pendingSyncForSyncQueue) syncRequested() bool {
 type pendingSyncsWithHighestSyncIndex struct {
 	// The highest "index" queued that is requesting a sync. Initialized
 	// to NoSyncIndex, and reset to NoSyncIndex after the sync.
-	index atomic.Int64
+	index           atomic.Int64
+	snapshotBacking PendingSyncIndex
 	// blocked is an atomic boolean which indicates whether syncing is currently
 	// blocked or can proceed. It is used by the implementation of
 	// min-sync-interval to block syncing until the min interval has passed.
@@ -263,7 +274,7 @@ func (si *pendingSyncsWithHighestSyncIndex) init(
 }
 
 func (si *pendingSyncsWithHighestSyncIndex) push(ps PendingSync) {
-	ps2 := ps.(PendingSyncIndex)
+	ps2 := ps.(*PendingSyncIndex)
 	si.index.Store(ps2.Index)
 }
 
@@ -280,17 +291,18 @@ func (si *pendingSyncsWithHighestSyncIndex) empty() bool {
 }
 
 func (si *pendingSyncsWithHighestSyncIndex) snapshotForPop() pendingSyncsSnapshot {
-	return PendingSyncIndex{Index: si.index.Load()}
+	si.snapshotBacking = PendingSyncIndex{Index: si.index.Load()}
+	return &si.snapshotBacking
 }
 
 func (si *pendingSyncsWithHighestSyncIndex) pop(snap pendingSyncsSnapshot, err error) error {
-	index := snap.(PendingSyncIndex)
+	index := snap.(*PendingSyncIndex)
 	if index.Index == NoSyncIndex {
 		return nil
 	}
 	// Set to NoSyncIndex if a higher index has not queued.
 	si.index.CompareAndSwap(index.Index, NoSyncIndex)
-	si.externalSyncQueueCallback(index, err)
+	si.externalSyncQueueCallback(*index, err)
 	return nil
 }
 
@@ -301,11 +313,11 @@ type PendingSyncIndex struct {
 	Index int64
 }
 
-func (s PendingSyncIndex) empty() bool {
+func (s *PendingSyncIndex) empty() bool {
 	return s.Index == NoSyncIndex
 }
 
-func (s PendingSyncIndex) syncRequested() bool {
+func (s *PendingSyncIndex) syncRequested() bool {
 	return s.Index != NoSyncIndex
 }
 
@@ -448,6 +460,8 @@ type LogWriter struct {
 	// LogWriters are not constructed at a high rate?
 	pendingSyncsBackingQ     pendingSyncsWithSyncQueue
 	pendingSyncsBackingIndex pendingSyncsWithHighestSyncIndex
+
+	pendingSyncForSyncQueueBacking pendingSyncForSyncQueue
 }
 
 // LogWriterConfig is a struct used for configuring new LogWriters
@@ -795,6 +809,16 @@ func (w *LogWriter) queueBlock() {
 // Close flushes and syncs any unwritten data and closes the writer.
 // Where required, external synchronisation is provided by commitPipeline.mu.
 func (w *LogWriter) Close() error {
+	return w.closeInternal(PendingSyncIndex{Index: NoSyncIndex})
+}
+
+// CloseWithLastQueuedRecord is like Close, but optionally accepts a
+// lastQueuedRecord, that the caller will be notified about when synced.
+func (w *LogWriter) CloseWithLastQueuedRecord(lastQueuedRecord PendingSyncIndex) error {
+	return w.closeInternal(lastQueuedRecord)
+}
+
+func (w *LogWriter) closeInternal(lastQueuedRecord PendingSyncIndex) error {
 	f := &w.flusher
 
 	// Emit an EOF trailer signifying the end of this log. This helps readers
@@ -827,6 +851,11 @@ func (w *LogWriter) Close() error {
 	free := w.free.blocks
 	f.Unlock()
 
+	// NB: the caller of closeInternal may not care about a non-nil cerr below
+	// if all queued writes have been successfully written and synced.
+	if lastQueuedRecord.Index != NoSyncIndex {
+		w.pendingSyncsBackingIndex.externalSyncQueueCallback(lastQueuedRecord, err)
+	}
 	if w.c != nil {
 		cerr := w.c.Close()
 		w.c = nil
@@ -868,10 +897,11 @@ func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
 func (w *LogWriter) SyncRecord(
 	p []byte, wg *sync.WaitGroup, err *error,
 ) (logSize int64, err2 error) {
-	return w.SyncRecordGeneralized(p, pendingSyncForSyncQueue{
+	w.pendingSyncForSyncQueueBacking = pendingSyncForSyncQueue{
 		wg:  wg,
 		err: err,
-	})
+	}
+	return w.SyncRecordGeneralized(p, &w.pendingSyncForSyncQueueBacking)
 }
 
 // SyncRecordGeneralized is a version of SyncRecord that accepts a
