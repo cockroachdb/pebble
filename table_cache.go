@@ -929,12 +929,14 @@ func (c *tableCacheShard) findNodeInternal(
 		if meta.PrefixReplacement != nil && len(meta.PrefixReplacement.ContentPrefix) == 0 {
 			prefix = meta.PrefixReplacement.SyntheticPrefix
 		}
+
 		v.load(
 			loadInfo{
 				backingFileNum:  meta.FileBacking.DiskFileNum,
 				smallestSeqNum:  meta.SmallestSeqNum,
 				largestSeqNum:   meta.LargestSeqNum,
 				syntheticPrefix: prefix,
+				syntheticSuffix: meta.SyntheticSuffix,
 			}, c, dbOpts)
 	})
 	return v
@@ -1166,6 +1168,7 @@ type loadInfo struct {
 	largestSeqNum   uint64
 	smallestSeqNum  uint64
 	syntheticPrefix []byte
+	syntheticSuffix []byte
 }
 
 func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *tableCacheOpts) {
