@@ -221,6 +221,7 @@ func ingestLoad1External(
 			SyntheticPrefix: e.SyntheticPrefix,
 		}
 	}
+	meta.SyntheticSuffix = e.SyntheticSuffix
 
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
 		return nil, err
@@ -1120,6 +1121,8 @@ type ExternalFile struct {
 	// is accessed as if those keys all instead have prefix SyntheticPrefix.
 	// SyntheticPrefix must be a prefix of both SmallestUserKey and LargestUserKey.
 	ContentPrefix, SyntheticPrefix []byte
+
+	SyntheticSuffix []byte
 }
 
 // IngestWithStats does the same as Ingest, and additionally returns
