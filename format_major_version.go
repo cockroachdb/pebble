@@ -184,7 +184,9 @@ const (
 	// replacement information is stored in new fields in the Manifest and thus
 	// requires a format major version.
 	FormatSyntheticPrefixes
-
+ 
+	// TODO(msbutler): add major version for synthetic suffixes
+	
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
