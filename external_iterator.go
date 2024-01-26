@@ -139,9 +139,8 @@ func NewExternalIterWithContext(
 		// Add the readers to the Iterator so that Close closes them, and
 		// SetOptions can re-construct iterators from them.
 		externalReaders: readers,
-		newIters: func(
-			ctx context.Context, f *manifest.FileMetadata, opts *IterOptions,
-			internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+		newIters: func(context.Context, *manifest.FileMetadata, *IterOptions,
+			internalIterOpts, iterKinds) (iterSet, error) {
 			// NB: External iterators are currently constructed without any
 			// `levelIters`. newIters should never be called. When we support
 			// organizing multiple non-overlapping files into a single level

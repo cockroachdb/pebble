@@ -2891,9 +2891,9 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				}
 
 				newIters := func(
-					_ context.Context, _ *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
-				) (internalIterator, keyspan.FragmentIterator, error) {
-					return &errorIter{}, nil, nil
+					_ context.Context, _ *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
+				) (iterSet, error) {
+					return iterSet{point: &errorIter{}}, nil
 				}
 				result := "OK"
 				_, err := c.newInputIter(newIters, nil, nil)

@@ -1427,38 +1427,22 @@ func (c *compaction) newRangeDelIter(
 	bytesIterated *uint64,
 ) (keyspan.FragmentIterator, io.Closer, error) {
 	opts.level = l
-	iter, rangeDelIter, err := newIters(context.Background(), f.FileMetadata,
+	iterSet, err := newIters(context.Background(), f.FileMetadata,
 		&opts, internalIterOpts{
 			bytesIterated: &c.bytesIterated,
 			bufferPool:    &c.bufferPool,
-		})
+		}, iterRangeDeletions)
 	if err != nil {
 		return nil, nil, err
-	}
-	// TODO(peter): It is mildly wasteful to open the point iterator only to
-	// immediately close it. One way to solve this would be to add new
-	// methods to tableCache for creating point and range-deletion iterators
-	// independently. We'd only want to use those methods here,
-	// though. Doesn't seem worth the hassle in the near term.
-	if err = iter.Close(); err != nil {
-		if rangeDelIter != nil {
-			err = errors.CombineErrors(err, rangeDelIter.Close())
-		}
-		return nil, nil, err
-	}
-	if rangeDelIter == nil {
+	} else if iterSet.rangeDeletion == nil {
 		// The file doesn't contain any range deletions.
 		return nil, nil, nil
 	}
-
 	// Ensure that rangeDelIter is not closed until the compaction is
 	// finished. This is necessary because range tombstone processing
 	// requires the range tombstones to be held in memory for up to the
 	// lifetime of the compaction.
-	closer := rangeDelIter
-	rangeDelIter = noCloseIter{rangeDelIter}
-
-	return rangeDelIter, closer, nil
+	return noCloseIter{iterSet.rangeDeletion}, iterSet.rangeDeletion, nil
 }
 
 func (c *compaction) String() string {

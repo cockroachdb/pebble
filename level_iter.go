@@ -16,38 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 )
 
-// tableNewIters creates a new point and range-del iterator for the given file
-// number.
-//
-// On success, the internalIterator is not-nil and must be closed; the
-// FragmentIterator can be nil.
-// TODO(radu): always return a non-nil FragmentIterator.
-//
-// On error, the iterators are nil.
-//
-// The only (non-test) implementation of tableNewIters is tableCacheContainer.newIters().
-type tableNewIters func(
-	ctx context.Context,
-	file *manifest.FileMetadata,
-	opts *IterOptions,
-	internalOpts internalIterOpts,
-) (internalIterator, keyspan.FragmentIterator, error)
-
-// tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
-// for the rangedel iterator returned by tableNewIters.
-func tableNewRangeDelIter(ctx context.Context, newIters tableNewIters) keyspan.TableNewSpanIter {
-	return func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-		iter, rangeDelIter, err := newIters(ctx, file, nil, internalIterOpts{})
-		if iter != nil {
-			_ = iter.Close()
-		}
-		if rangeDelIter == nil {
-			rangeDelIter = emptyKeyspanIter
-		}
-		return rangeDelIter, err
-	}
-}
-
 type internalIterOpts struct {
 	bytesIterated      *uint64
 	bufferPool         *sstable.BufferPool
@@ -676,7 +644,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
-		iter, rangeDelIter, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts)
+		iter, rangeDelIter, l.err = l.newIters.TODO(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts)
 		l.iter = iter
 		if l.err != nil {
 			return noFileLoaded

@@ -370,7 +370,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		opts.TableCache, d.cacheID, d.objProvider, d.opts, tableCacheSize,
 		&sstable.CategoryStatsCollector{})
 	d.newIters = d.tableCache.newIters
-	d.tableNewRangeKeyIter = d.tableCache.newRangeKeyIter
+	d.tableNewRangeKeyIter = tableNewRangeKeyIter(context.TODO(), d.newIters)
 
 	// Replay any newer log files than the ones named in the manifest.
 	type fileNumAndName struct {

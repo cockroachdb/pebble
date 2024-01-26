@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invalidating"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -919,14 +918,14 @@ func TestIteratorSeekOpt(t *testing.T) {
 			oldNewIters := d.newIters
 			d.newIters = func(
 				ctx context.Context, file *manifest.FileMetadata, opts *IterOptions,
-				internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
-				iter, rangeIter, err := oldNewIters(ctx, file, opts, internalOpts)
-				iterWrapped := &iterSeekOptWrapper{
-					internalIterator:      iter,
+				internalOpts internalIterOpts, kinds iterKinds) (iterSet, error) {
+				iters, err := oldNewIters(ctx, file, opts, internalOpts, kinds)
+				iters.point = &iterSeekOptWrapper{
+					internalIterator:      iters.point,
 					seekGEUsingNext:       &seekGEUsingNext,
 					seekPrefixGEUsingNext: &seekPrefixGEUsingNext,
 				}
-				return iterWrapped, rangeIter, err
+				return iters, err
 			}
 			return s
 

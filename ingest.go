@@ -1663,7 +1663,7 @@ func (d *DB) excise(
 			// This file will contain point keys
 			smallestPointKey := m.SmallestPointKey
 			var err error
-			iter, rangeDelIter, err = d.newIters(context.TODO(), m, &IterOptions{
+			iter, rangeDelIter, err = d.newIters.TODO(context.TODO(), m, &IterOptions{
 				CategoryAndQoS: sstable.CategoryAndQoS{
 					Category: "pebble-ingest",
 					QoSLevel: sstable.LatencySensitiveQoSLevel,
@@ -1781,7 +1781,7 @@ func (d *DB) excise(
 		largestPointKey := m.LargestPointKey
 		var err error
 		if iter == nil && rangeDelIter == nil {
-			iter, rangeDelIter, err = d.newIters(context.TODO(), m, &IterOptions{
+			iter, rangeDelIter, err = d.newIters.TODO(context.TODO(), m, &IterOptions{
 				CategoryAndQoS: sstable.CategoryAndQoS{
 					Category: "pebble-ingest",
 					QoSLevel: sstable.LatencySensitiveQoSLevel,
