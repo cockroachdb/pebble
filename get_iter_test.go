@@ -11,7 +11,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 )
@@ -387,13 +386,13 @@ func TestGetIter(t *testing.T) {
 		// m is a map from file numbers to DBs.
 		m := map[FileNum]*memTable{}
 		newIter := func(
-			_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
-		) (internalIterator, keyspan.FragmentIterator, error) {
+			_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
+		) (iterSet, error) {
 			d, ok := m[file.FileNum]
 			if !ok {
-				return nil, nil, errors.New("no such file")
+				return iterSet{}, errors.New("no such file")
 			}
-			return d.newIter(nil), nil, nil
+			return iterSet{point: d.newIter(nil)}, nil
 		}
 
 		var files [numLevels][]*fileMetadata

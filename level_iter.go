@@ -16,35 +16,76 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 )
 
-// tableNewIters creates a new point and range-del iterator for the given file
-// number.
+// tableNewIters creates new iterators (point, range deletion and/or range key)
+// for the given file metadata. Which of the various iterator kinds the user is
+// requesting is specified with the iterKinds bitmap.
 //
-// On success, the internalIterator is not-nil and must be closed; the
-// FragmentIterator can be nil.
-// TODO(radu): always return a non-nil FragmentIterator.
+// On success, the requested subset of iters.{point,rangeDel,rangeKey} are
+// populated with iterators.
 //
-// On error, the iterators are nil.
+// If a point iterator is requested and the operation was successful,
+// iters.point is guaranteed to be non-nil and must be closed when the caller is
+// finished.
 //
-// The only (non-test) implementation of tableNewIters is tableCacheContainer.newIters().
+// If a range deletion or range key iterator is requested, the corresponding
+// iterator may be nil if the table does not contain any keys of the
+// corresponding kind. The returned iterSet type provides RangeDeletion() and
+// RangeKey() convenience methods that return non-nil empty iterators that may
+// be used if the caller requires a non-nil iterator.
+//
+// On error, all iterators are nil.
+//
+// The only (non-test) implementation of tableNewIters is
+// tableCacheContainer.newIters().
 type tableNewIters func(
 	ctx context.Context,
 	file *manifest.FileMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
-) (internalIterator, keyspan.FragmentIterator, error)
+	kinds iterKinds,
+) (iterSet, error)
+
+// all returns an iterator set containing iterators over all the keys that meta
+// contains.
+func (f tableNewIters) all(
+	ctx context.Context, file *fileMetadata, opts *IterOptions, internalOpts internalIterOpts,
+) (iterSet, error) {
+	var kinds iterKinds
+	if file.HasPointKeys {
+		kinds |= iterPointKeys
+		kinds |= iterRangeDeletions
+	}
+	if file.HasRangeKeys {
+		kinds |= iterRangeKeys
+	}
+	return f(ctx, file, opts, internalOpts, kinds)
+}
+
+// TODO implements the old tableNewIters interface that always attempted to open
+// a point iterator and a range deletion iterator. All call sites should be
+// updated to use `f` directly.
+func (f tableNewIters) TODO(
+	ctx context.Context,
+	file *manifest.FileMetadata,
+	opts *IterOptions,
+	internalOpts internalIterOpts,
+) (internalIterator, keyspan.FragmentIterator, error) {
+	iters, err := f(ctx, file, opts, internalOpts, iterPointKeys|iterRangeDeletions)
+	if err != nil {
+		return nil, nil, err
+	}
+	return iters.point, iters.rangeDeletion, nil
+}
 
 // tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
 // for the rangedel iterator returned by tableNewIters.
 func tableNewRangeDelIter(ctx context.Context, newIters tableNewIters) keyspan.TableNewSpanIter {
 	return func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-		iter, rangeDelIter, err := newIters(ctx, file, nil, internalIterOpts{})
-		if iter != nil {
-			_ = iter.Close()
+		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeDeletions)
+		if err != nil {
+			return nil, err
 		}
-		if rangeDelIter == nil {
-			rangeDelIter = emptyKeyspanIter
-		}
-		return rangeDelIter, err
+		return iters.RangeDeletion(), nil
 	}
 }
 
@@ -676,7 +717,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
-		iter, rangeDelIter, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts)
+		iter, rangeDelIter, l.err = l.newIters.TODO(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts)
 		l.iter = iter
 		if l.err != nil {
 			return noFileLoaded

@@ -609,7 +609,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			m.InitPhysicalBacking()
 			m.Ref()
 			defer m.Unref()
-			iter, _, err := c.newIters(context.Background(), m, nil, internalIterOpts{})
+			iter, _, err := tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
@@ -674,7 +674,7 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 			if rangeIter {
 				iter, err = c.newRangeKeyIter(m, keyspan.SpanIterOptions{})
 			} else {
-				iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
+				iter, _, err = tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 			}
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -721,11 +721,11 @@ func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
 			m := &fileMetadata{FileNum: FileNum(j)}
 			m.InitPhysicalBacking()
 			m.Ref()
-			iter1, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
+			iter1, _, err := tableNewIters(c1.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
-			iter2, _, err := c2.newIters(context.Background(), m, nil, internalIterOpts{})
+			iter2, _, err := tableNewIters(c2.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
@@ -777,7 +777,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		if rangeIter {
 			iter, err = c.newRangeKeyIter(m, keyspan.SpanIterOptions{})
 		} else {
-			iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
+			iter, _, err = tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 		}
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -839,12 +839,12 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 		m := &fileMetadata{FileNum: FileNum(j)}
 		m.InitPhysicalBacking()
 		m.Ref()
-		iter1, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
+		iter1, _, err := tableNewIters(c1.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
 
-		iter2, _, err := c2.newIters(context.Background(), m, nil, internalIterOpts{})
+		iter2, _, err := tableNewIters(c2.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
@@ -907,7 +907,7 @@ func TestTableCacheIterLeak(t *testing.T) {
 	m.InitPhysicalBacking()
 	m.Ref()
 	defer m.Unref()
-	iter, _, err := c.newIters(context.Background(), m, nil, internalIterOpts{})
+	iter, _, err := tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c.close(); err == nil {
@@ -934,7 +934,7 @@ func TestSharedTableCacheIterLeak(t *testing.T) {
 	m.InitPhysicalBacking()
 	m.Ref()
 	defer m.Unref()
-	iter, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
+	iter, _, err := tableNewIters(c1.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c1.close(); err == nil {
@@ -972,13 +972,13 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	m.InitPhysicalBacking()
 	m.Ref()
 	defer m.Unref()
-	if _, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{}); err == nil {
+	if _, _, err = tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
 	require.Equal(t, "pebble: backing file 000000 error: injected error", err.Error())
 	fs.setOpenError(false /* enabled */)
 	var iter internalIterator
-	iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
+	iter, _, err = tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 	require.NoError(t, iter.Close())
 	fs.validate(t, c, nil)
@@ -1036,7 +1036,7 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 	m.InitPhysicalBacking()
 	m.Ref()
 	defer m.Unref()
-	if _, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{}); err == nil {
+	if _, _, err = tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
 	require.Equal(t,
@@ -1161,16 +1161,16 @@ func BenchmarkNewItersAlloc(b *testing.B) {
 	d.mu.Unlock()
 
 	// Open once so that the Reader is cached.
-	iter, _, err := d.newIters(context.Background(), m, nil, internalIterOpts{})
-	require.NoError(b, iter.Close())
+	iters, err := d.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys|iterRangeDeletions)
+	require.NoError(b, iters.CloseAll())
 	require.NoError(b, err)
 
 	for i := 0; i < b.N; i++ {
 		b.StartTimer()
-		iter, _, err := d.newIters(context.Background(), m, nil, internalIterOpts{})
+		iters, err := d.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys|iterRangeDeletions)
 		b.StopTimer()
 		require.NoError(b, err)
-		require.NoError(b, iter.Close())
+		require.NoError(b, iters.CloseAll())
 	}
 }
 

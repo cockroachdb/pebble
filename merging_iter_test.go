@@ -163,22 +163,23 @@ func TestMergingIterCornerCases(t *testing.T) {
 		fileNum        base.FileNum
 	)
 	newIters :=
-		func(_ context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts,
-		) (internalIterator, keyspan.FragmentIterator, error) {
+		func(_ context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts, kinds iterKinds,
+		) (iterSet, error) {
 			r := readers[file.FileNum]
 			rangeDelIter, err := r.NewRawRangeDelIter()
 			if err != nil {
-				return nil, nil, err
+				return iterSet{}, err
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
 				opts.GetLowerBound(), opts.GetUpperBound(), nil, true /* useFilterBlock */, iio.stats,
 				sstable.CategoryAndQoS{}, nil, sstable.TrivialReaderProvider{Reader: r})
 			if err != nil {
-				return nil, nil, err
+				return iterSet{}, err
 			}
-			return itertest.Attach(iter, itertest.ProbeState{Log: &buf}, pointProbes[file.FileNum]...),
-				attachKeyspanProbes(rangeDelIter, keyspanProbeContext{log: &buf}, rangeDelProbes[file.FileNum]...),
-				nil
+			return iterSet{
+				point:         itertest.Attach(iter, itertest.ProbeState{Log: &buf}, pointProbes[file.FileNum]...),
+				rangeDeletion: attachKeyspanProbes(rangeDelIter, keyspanProbeContext{log: &buf}, rangeDelProbes[file.FileNum]...),
+			}, nil
 		}
 
 	datadriven.RunTest(t, "testdata/merging_iter", func(t *testing.T, d *datadriven.TestData) string {
@@ -655,19 +656,19 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		levelIndex := i
 		level := len(readers) - 1 - i
 		newIters := func(
-			_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
-		) (internalIterator, keyspan.FragmentIterator, error) {
+			_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
+		) (iterSet, error) {
 			iter, err := readers[levelIndex][file.FileNum].NewIter(
 				opts.LowerBound, opts.UpperBound)
 			if err != nil {
-				return nil, nil, err
+				return iterSet{}, err
 			}
 			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter()
 			if err != nil {
 				iter.Close()
-				return nil, nil, err
+				return iterSet{}, err
 			}
-			return iter, rdIter, err
+			return iterSet{point: iter, rangeDeletion: rdIter}, err
 		}
 		l := newLevelIter(
 			context.Background(), IterOptions{}, testkeys.Comparer, newIters, levelSlices[i].Iter(),

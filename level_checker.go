@@ -385,7 +385,7 @@ func checkRangeTombstones(c *checkConfig) error {
 		for f := files.First(); f != nil; f = files.Next() {
 			lf := files.Take()
 			//lower, upper := manifest.KeyRange(c.cmp, lf.Iter())
-			iterToClose, iter, err := c.newIters(
+			iterToClose, iter, err := c.newIters.TODO(
 				context.Background(), lf.FileMetadata, &IterOptions{level: manifest.Level(lsmLevel)}, internalIterOpts{})
 			if err != nil {
 				return err
