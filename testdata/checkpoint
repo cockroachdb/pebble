@@ -207,29 +207,23 @@ open: db/000005.sst
 read-at(630, 53): db/000005.sst
 read-at(593, 37): db/000005.sst
 read-at(74, 519): db/000005.sst
-read-at(47, 27): db/000005.sst
-open: db/000005.sst
-close: db/000005.sst
 open: db/000009.sst
 read-at(625, 53): db/000009.sst
 read-at(588, 37): db/000009.sst
 read-at(69, 519): db/000009.sst
-read-at(42, 27): db/000009.sst
-open: db/000009.sst
-close: db/000009.sst
 open: db/000007.sst
 read-at(630, 53): db/000007.sst
 read-at(593, 37): db/000007.sst
 read-at(74, 519): db/000007.sst
-read-at(47, 27): db/000007.sst
-open: db/000007.sst
-close: db/000007.sst
+read-at(47, 27): db/000005.sst
 open: db/000005.sst
 read-at(0, 47): db/000005.sst
+read-at(47, 27): db/000007.sst
 open: db/000007.sst
 read-at(0, 47): db/000007.sst
 create: db/000010.sst
 close: db/000005.sst
+read-at(42, 27): db/000009.sst
 open: db/000009.sst
 read-at(0, 42): db/000009.sst
 close: db/000007.sst

@@ -121,7 +121,7 @@ MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.3KB)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 5 entries (1.1KB)  hit rate: 42.9%
+Block cache: 5 entries (1.1KB)  hit rate: 33.3%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -129,7 +129,7 @@ Table iters: 2
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
 
 disk-usage
 ----
@@ -162,7 +162,7 @@ MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.3KB)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 5 entries (1.1KB)  hit rate: 42.9%
+Block cache: 5 entries (1.1KB)  hit rate: 33.3%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -170,7 +170,7 @@ Table iters: 2
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
 
 # Closing iter c will release one of the zombie sstables. The other
 # zombie sstable is still referenced by iter b.
@@ -200,7 +200,7 @@ MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 1 (661B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 3 entries (556B)  hit rate: 42.9%
+Block cache: 3 entries (556B)  hit rate: 33.3%
 Table cache: 1 entries (808B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -209,7 +209,7 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
 
 disk-usage
 ----
@@ -242,7 +242,7 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 0 entries (0B)  hit rate: 42.9%
+Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -252,7 +252,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
 
 disk-usage
 ----
@@ -311,7 +311,7 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 0 entries (0B)  hit rate: 42.9%
+Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -321,7 +321,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:132 BlockBytesInCache:88 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
 
 additional-metrics
 ----
@@ -364,7 +364,7 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 0 entries (0B)  hit rate: 27.3%
+Block cache: 0 entries (0B)  hit rate: 14.3%
 Table cache: 0 entries (0B)  hit rate: 58.3%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -374,7 +374,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:60ms}
+   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
 
 additional-metrics
 ----
@@ -466,7 +466,7 @@ MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 12 entries (2.4KB)  hit rate: 24.5%
+Block cache: 12 entries (2.4KB)  hit rate: 16.7%
 Table cache: 1 entries (808B)  hit rate: 60.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -476,7 +476,7 @@ Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:60ms}
+   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
        pebble-ingest,     latency: {BlockBytes:192 BlockBytesInCache:128 BlockReadDuration:10ms}
 
 batch
@@ -527,7 +527,7 @@ MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 12 entries (2.4KB)  hit rate: 24.5%
+Block cache: 12 entries (2.4KB)  hit rate: 16.7%
 Table cache: 1 entries (808B)  hit rate: 60.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -537,7 +537,7 @@ Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:60ms}
+   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
        pebble-ingest,     latency: {BlockBytes:192 BlockBytesInCache:128 BlockReadDuration:10ms}
 
 build ext1
@@ -612,7 +612,7 @@ Ingestions: 1  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:411 BlockBytesInCache:154 BlockReadDuration:60ms}
+   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
        pebble-ingest,     latency: {BlockBytes:328 BlockBytesInCache:128 BlockReadDuration:30ms}
 
 # Virtualize a virtual sstable.
@@ -712,5 +712,5 @@ Ingestions: 2  as flushable: 2 (2.1KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:941 BlockBytesInCache:640 BlockReadDuration:70ms}
+   pebble-compaction, non-latency: {BlockBytes:677 BlockBytesInCache:376 BlockReadDuration:70ms}
        pebble-ingest,     latency: {BlockBytes:400 BlockBytesInCache:200 BlockReadDuration:30ms}

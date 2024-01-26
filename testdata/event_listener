@@ -97,18 +97,14 @@ open: db/000005.sst
 read-at(609, 53): db/000005.sst
 read-at(572, 37): db/000005.sst
 read-at(53, 519): db/000005.sst
-read-at(26, 27): db/000005.sst
-open: db/000005.sst
-close: db/000005.sst
 open: db/000008.sst
 read-at(609, 53): db/000008.sst
 read-at(572, 37): db/000008.sst
 read-at(53, 519): db/000008.sst
-read-at(26, 27): db/000008.sst
-open: db/000008.sst
-close: db/000008.sst
+read-at(26, 27): db/000005.sst
 open: db/000005.sst
 read-at(0, 26): db/000005.sst
+read-at(26, 27): db/000008.sst
 open: db/000008.sst
 read-at(0, 26): db/000008.sst
 close: db/000008.sst
@@ -221,7 +217,7 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 6 entries (1.1KB)  hit rate: 11.1%
+Block cache: 6 entries (1.1KB)  hit rate: 0.0%
 Table cache: 1 entries (808B)  hit rate: 40.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -320,7 +316,7 @@ MemTables: 1 (512KB)  zombie: 1 (512KB)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 12 entries (2.3KB)  hit rate: 14.3%
+Block cache: 12 entries (2.3KB)  hit rate: 7.7%
 Table cache: 1 entries (808B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0

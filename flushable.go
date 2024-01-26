@@ -219,7 +219,7 @@ func (s *ingestedFlushable) constructRangeDelIter(
 ) (keyspan.FragmentIterator, error) {
 	// Note that the keyspan level iter expects a non-nil iterator to be
 	// returned even if there is an error. So, we return the emptyKeyspanIter.
-	iter, rangeDelIter, err := s.newIters(context.Background(), file, nil, internalIterOpts{})
+	iter, rangeDelIter, err := s.newIters.TODO(context.Background(), file, nil, internalIterOpts{})
 	if err != nil {
 		return emptyKeyspanIter, err
 	}

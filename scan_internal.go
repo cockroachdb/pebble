@@ -464,7 +464,7 @@ func (d *DB) truncateSharedFile(
 
 	// We will need to truncate file bounds in at least one direction. Open all
 	// relevant iterators.
-	iter, rangeDelIter, err := d.newIters(ctx, file, &IterOptions{
+	iter, rangeDelIter, err := d.newIters.TODO(ctx, file, &IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 		level:      manifest.Level(level),
