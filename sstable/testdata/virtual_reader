@@ -690,3 +690,39 @@ virtualize a.SET.1-b.SET.5
 bounds:  [a#1,1-b#5,1]
 filenum: 000026
 props: NumEntries: 1, RawKeySize: 3, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 1, NumRangeDeletions: 1, NumRangeKeyDels: 0, NumRangeKeySets: 1, ValueBlocksSize: 0
+
+# Test that a virtual reader with a suffix replacement rule replaces the
+# suffixes from the backing file during iteration.
+build with-suffix
+a@2.SET.1:a
+b@4.SET.2:b
+c@3.SET.3:c
+d@5.SET.4:d
+e@1.SET.5:e
+f@2.SET.6:f
+g@2.SET.8:g
+h@3.SET.9:h
+----
+point:    [a@2#1,1-h@3#9,1]
+seqnums:  [1-9]
+
+# Set bounds c@7-f@2 for the virtual sstable. Notice that we correctly elide c
+# because post suffix replacement, it is not in the bounds. Further, notice that
+# we do surface f because post suffix replacement, it is within the bounds.
+virtualize c@7.SET.3-f@4.SET.8 suffix=@8
+----
+bounds:  [c@7#3,1-f@4#8,1]
+filenum: 000028
+props: NumEntries: 2, RawKeySize: 13, RawValueSize: 2, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 0
+
+# Just test a basic iterator once virtual sstable bounds have been set.
+iter
+first
+next
+next
+next
+----
+<d@8:4>:d
+<e@8:5>:e
+<f@8:6>:f
+.

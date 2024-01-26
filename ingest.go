@@ -226,6 +226,7 @@ func ingestLoad1External(
 			SyntheticPrefix: e.SyntheticPrefix,
 		}
 	}
+	meta.SyntheticSuffix = e.SyntheticSuffix
 
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
 		return nil, err
@@ -1125,6 +1126,10 @@ type ExternalFile struct {
 	// is accessed as if those keys all instead have prefix SyntheticPrefix.
 	// SyntheticPrefix must be a prefix of both SmallestUserKey and LargestUserKey.
 	ContentPrefix, SyntheticPrefix []byte
+	// SyntheticSuffix will replace the suffix of every key in the file during
+	// iteration. Note that the file itself is not modifed, rather, every key
+	// returned by an iterator will have the synthetic suffix.
+	SyntheticSuffix []byte
 }
 
 // IngestWithStats does the same as Ingest, and additionally returns

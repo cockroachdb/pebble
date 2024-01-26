@@ -829,7 +829,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 	// the same backing will use the same reader from the cache; so no information
 	// that can differ among these virtual tables can be plumbed into loadInfo.
 	info := loadInfo{
-		backingFileNum: meta.FileBacking.DiskFileNum,
+		backingFileNum:  meta.FileBacking.DiskFileNum,
+		syntheticSuffix: meta.SyntheticSuffix,
 	}
 	// All virtual tables sharing an ingested backing will have the same
 	// SmallestSeqNum=LargestSeqNum value. We assert that below.
@@ -1167,7 +1168,8 @@ type tableCacheValue struct {
 type loadInfo struct {
 	backingFileNum base.DiskFileNum
 	// See sstable.Properties.GlobalSeqNum.
-	globalSeqNum uint64
+	globalSeqNum    uint64
+	syntheticSuffix []byte
 }
 
 func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *tableCacheOpts) {
