@@ -35,6 +35,7 @@ type virtualState struct {
 	Compare          Compare
 	isSharedIngested bool
 	prefixChange     *manifest.PrefixReplacement
+	suffixChange     []byte
 }
 
 func ceilDiv(a, b uint64) uint64 {
@@ -55,6 +56,7 @@ func MakeVirtualReader(reader *Reader, meta manifest.VirtualFileMeta, isShared b
 		Compare:          reader.Compare,
 		isSharedIngested: isShared && reader.Properties.GlobalSeqNum != 0,
 		prefixChange:     meta.PrefixReplacement,
+		suffixChange:     meta.SyntheticSuffix,
 	}
 	v := VirtualReader{
 		vState: vState,
