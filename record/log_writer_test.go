@@ -593,3 +593,35 @@ func BenchmarkQueueWALBlocks(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkWriteWALBlocksAllocs exercises the PendingSync and related
+// interfaces for the generalized write path, to ensure there are no extra
+// allocations.
+func BenchmarkWriteWALBlocksAllocs(b *testing.B) {
+	const dataVolume = 64 << 20 /* 64 MB */
+	writeSize := 64
+	record := make([]byte, writeSize)
+	numRecords := dataVolume / writeSize
+
+	for j := 0; j < b.N; j++ {
+		b.StopTimer()
+		f := vfstest.DiscardFile
+		w := NewLogWriter(f, 0, LogWriterConfig{
+			WALFsyncLatency:           prometheus.NewHistogram(prometheus.HistogramOpts{}),
+			ExternalSyncQueueCallback: func(doneSync PendingSyncIndex, err error) {},
+		})
+
+		var psi PendingSyncIndex
+		b.StartTimer()
+		for i := 0; i < numRecords; i++ {
+			psi.Index = int64(i)
+			if _, err := w.SyncRecordGeneralized(record[:], &psi); err != nil {
+				b.Fatal(err)
+			}
+		}
+		// Close to ensure everything is written.
+		require.NoError(b, w.CloseWithLastQueuedRecord(psi))
+		b.StopTimer()
+		b.SetBytes(dataVolume)
+	}
+}

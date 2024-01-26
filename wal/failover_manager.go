@@ -476,3 +476,7 @@ func firstError(err0, err1 error) error {
 	}
 	return err1
 }
+
+// Make lint happy.
+var _ = (*failoverMonitor).noWriter
+var _ = (*failoverManager).writerClosed
