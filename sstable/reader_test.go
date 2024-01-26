@@ -299,6 +299,9 @@ func TestVirtualReader(t *testing.T) {
 					writerOpts.BlockSize = 1
 				}
 			}
+			if td.HasArg("with-suffix") {
+				writerOpts.Comparer = testkeys.Comparer
+			}
 			wMeta, r, err = runBuildCmd(td, writerOpts, 0)
 			if err != nil {
 				return err.Error()
@@ -327,11 +330,20 @@ func TestVirtualReader(t *testing.T) {
 				vMeta1.FileMetadata = nil
 				v = VirtualReader{}
 			}
+
+			var syntheticSuffix []byte
+			if td.HasArg("suffix") {
+				var synthSuffixStr string
+				td.ScanArgs(t, "suffix", &synthSuffixStr)
+				syntheticSuffix = []byte(synthSuffixStr)
+			}
+
 			vMeta := &manifest.FileMetadata{
-				FileBacking:    meta.FileBacking,
-				SmallestSeqNum: meta.SmallestSeqNum,
-				LargestSeqNum:  meta.LargestSeqNum,
-				Virtual:        true,
+				FileBacking:     meta.FileBacking,
+				SmallestSeqNum:  meta.SmallestSeqNum,
+				LargestSeqNum:   meta.LargestSeqNum,
+				Virtual:         true,
+				SyntheticSuffix: syntheticSuffix,
 			}
 			// Parse the virtualization bounds.
 			bounds := strings.Split(td.CmdArgs[0].String(), "-")

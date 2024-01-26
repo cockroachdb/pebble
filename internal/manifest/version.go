@@ -273,6 +273,7 @@ type FileMetadata struct {
 	// PrefixReplacement is used for virtual files where the backing file has a
 	// different prefix on its keys than the span in which it is being exposed.
 	PrefixReplacement *PrefixReplacement
+	SyntheticSuffix   []byte
 }
 
 // InternalKeyBounds returns the set of overall table bounds.
@@ -897,6 +898,12 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 		}
 		if !bytes.HasPrefix(m.Largest.UserKey, m.PrefixReplacement.SyntheticPrefix) {
 			return base.CorruptionErrorf("virtual file with prefix replacement rules has largest key with a different prefix: %s", m.Largest.Pretty(formatKey))
+		}
+	}
+
+	if m.SyntheticSuffix != nil {
+		if !m.Virtual {
+			return base.CorruptionErrorf("suffix replacement rule set with non-virtual file")
 		}
 	}
 

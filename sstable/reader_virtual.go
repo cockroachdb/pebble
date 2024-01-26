@@ -56,6 +56,7 @@ func MakeVirtualReader(reader *Reader, meta manifest.VirtualFileMeta, isShared b
 		Compare:          reader.Compare,
 		isSharedIngested: isShared && reader.Properties.GlobalSeqNum != 0,
 		prefixChange:     meta.PrefixReplacement,
+		syntheticSuffix:  meta.SyntheticSuffix,
 	}
 	v := VirtualReader{
 		vState: vState,
