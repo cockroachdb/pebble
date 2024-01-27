@@ -509,6 +509,10 @@ func (f *minSeqNumFilter) Intersects(prop []byte) (bool, error) {
 	return minSeqNum < f.seqNumUpperBound, nil
 }
 
+func (f *minSeqNumFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
+	panic("unimplemented")
+}
+
 func TestReadSampling(t *testing.T) {
 	var d *DB
 	defer func() {
@@ -1254,8 +1258,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 							return err.Error()
 						}
 						opts.PointKeyFilters = append(opts.PointKeyFilters,
-							sstable.NewBlockIntervalFilter(fmt.Sprintf("%d", id),
-								uint64(lower), uint64(upper)))
+							sstable.NewBlockIntervalFilter(fmt.Sprintf("%d", id), uint64(lower), uint64(upper), nil))
 					default:
 						return fmt.Sprintf("unknown key: %s", arg.Key)
 					}
@@ -1347,8 +1350,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 
 	var iterOpts IterOptions
 	iterOpts.PointKeyFilters = []BlockPropertyFilter{
-		sstable.NewBlockIntervalFilter("0",
-			uint64(lower), uint64(upper)),
+		sstable.NewBlockIntervalFilter("0", uint64(lower), uint64(upper), nil),
 	}
 	iter, _ := d.NewIter(&iterOpts)
 	defer func() {
@@ -2217,8 +2219,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 					var iterOpts IterOptions
 					if filter {
 						iterOpts.PointKeyFilters = []BlockPropertyFilter{
-							sstable.NewBlockIntervalFilter("0",
-								uint64(0), uint64(1)),
+							sstable.NewBlockIntervalFilter("0", uint64(0), uint64(1), nil),
 						}
 					}
 					iter, _ := d.NewIter(&iterOpts)
