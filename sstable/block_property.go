@@ -11,7 +11,9 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
@@ -413,12 +415,23 @@ func (w *suffixReplacementBlockCollectorWrapper) UpdateKeySuffixes(
 	return w.BlockIntervalCollector.points.(SuffixReplaceableBlockCollector).UpdateKeySuffixes(oldProp, from, to)
 }
 
+// BlockIntervalSyntheticReplacer provides methods to conduct just in time
+// adjustments of a passed in block prop interval before filtering.
+type BlockIntervalSyntheticReplacer interface {
+	// AdjustIntervalWithSyntheticSuffix adjusts the [lower, upper) range for a data
+	// block (specifically, the range returned by the corresponding
+	// DataBlockIntervalCollector.FinishDataBlock) to what it would have been if
+	// all the input keys had the given synthetic suffix.
+	AdjustIntervalWithSyntheticSuffix(lower uint64, upper uint64, suffix []byte) (adjustedLower uint64, adjustedUpper uint64, err error)
+}
+
 // BlockIntervalFilter is an implementation of BlockPropertyFilter when the
 // corresponding collector is a BlockIntervalCollector. That is, the set is of
 // the form [lower, upper).
 type BlockIntervalFilter struct {
-	name           string
-	filterInterval interval
+	name              string
+	filterInterval    interval
+	syntheticReplacer BlockIntervalSyntheticReplacer
 }
 
 var _ BlockPropertyFilter = (*BlockIntervalFilter)(nil)
@@ -427,9 +440,11 @@ var _ BlockPropertyFilter = (*BlockIntervalFilter)(nil)
 // based on an interval property collected by BlockIntervalCollector and the
 // given [lower, upper) bounds. The given name specifies the
 // BlockIntervalCollector's properties to read.
-func NewBlockIntervalFilter(name string, lower uint64, upper uint64) *BlockIntervalFilter {
+func NewBlockIntervalFilter(
+	name string, lower uint64, upper uint64, syntheticReplacer BlockIntervalSyntheticReplacer,
+) *BlockIntervalFilter {
 	b := new(BlockIntervalFilter)
-	b.Init(name, lower, upper)
+	b.Init(name, lower, upper, syntheticReplacer)
 	return b
 }
 
@@ -437,10 +452,13 @@ func NewBlockIntervalFilter(name string, lower uint64, upper uint64) *BlockInter
 // BLockPropertyFilter to filter blocks based on an interval property collected
 // by BlockIntervalCollector and the given [lower, upper) bounds. The given name
 // specifies the BlockIntervalCollector's properties to read.
-func (b *BlockIntervalFilter) Init(name string, lower, upper uint64) {
+func (b *BlockIntervalFilter) Init(
+	name string, lower, upper uint64, syntheticReplacer BlockIntervalSyntheticReplacer,
+) {
 	*b = BlockIntervalFilter{
-		name:           name,
-		filterInterval: interval{lower: lower, upper: upper},
+		name:              name,
+		filterInterval:    interval{lower: lower, upper: upper},
+		syntheticReplacer: syntheticReplacer,
 	}
 }
 
@@ -456,6 +474,29 @@ func (b *BlockIntervalFilter) Intersects(prop []byte) (bool, error) {
 		return false, err
 	}
 	return i.intersects(b.filterInterval), nil
+}
+
+// SyntheticIntersects implements the BlockPropertyFilter interface.
+func (b *BlockIntervalFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
+	if b.syntheticReplacer == nil {
+		return false, errors.AssertionFailedf("missing SyntheticReplacer for SyntheticSuffixIntersects()")
+	}
+	var i interval
+	if err := i.decode(prop); err != nil {
+		return false, err
+	}
+
+	newLower, newUpper, err := b.syntheticReplacer.AdjustIntervalWithSyntheticSuffix(i.lower, i.upper, suffix)
+	if err != nil {
+		return false, err
+	}
+	if invariants.Enabled {
+		if newLower <= i.upper {
+			panic(fmt.Sprintf("the synthetic suffix %d is the less than or equal to the property upper bound %d", newLower, i.upper))
+		}
+	}
+	newInterval := interval{lower: newLower, upper: newUpper}
+	return newInterval.intersects(b.filterInterval), nil
 }
 
 // SetInterval adjusts the [lower, upper) bounds used by the filter. It is not
@@ -580,6 +621,8 @@ type BlockPropertiesFilterer struct {
 	// collected when the table was built.
 	boundLimitedFilter  BoundLimitedBlockPropertyFilter
 	boundLimitedShortID int
+
+	syntheticSuffix SyntheticSuffix
 }
 
 var blockPropertiesFiltererPool = sync.Pool{
@@ -591,7 +634,9 @@ var blockPropertiesFiltererPool = sync.Pool{
 // newBlockPropertiesFilterer returns a partially initialized filterer. To complete
 // initialization, call IntersectsUserPropsAndFinishInit.
 func newBlockPropertiesFilterer(
-	filters []BlockPropertyFilter, limited BoundLimitedBlockPropertyFilter,
+	filters []BlockPropertyFilter,
+	limited BoundLimitedBlockPropertyFilter,
+	syntheticSuffix SyntheticSuffix,
 ) *BlockPropertiesFilterer {
 	filterer := blockPropertiesFiltererPool.Get().(*BlockPropertiesFilterer)
 	*filterer = BlockPropertiesFilterer{
@@ -599,6 +644,7 @@ func newBlockPropertiesFilterer(
 		shortIDToFiltersIndex: filterer.shortIDToFiltersIndex[:0],
 		boundLimitedFilter:    limited,
 		boundLimitedShortID:   -1,
+		syntheticSuffix:       syntheticSuffix,
 	}
 	return filterer
 }
@@ -620,8 +666,9 @@ func IntersectsTable(
 	filters []BlockPropertyFilter,
 	limited BoundLimitedBlockPropertyFilter,
 	userProperties map[string]string,
+	syntheticSuffix SyntheticSuffix,
 ) (*BlockPropertiesFilterer, error) {
-	f := newBlockPropertiesFilterer(filters, limited)
+	f := newBlockPropertiesFilterer(filters, limited, syntheticSuffix)
 	ok, err := f.intersectsUserPropsAndFinishInit(userProperties)
 	if !ok || err != nil {
 		releaseBlockPropertiesFilterer(f)
@@ -655,7 +702,13 @@ func (f *BlockPropertiesFilterer) intersectsUserPropsAndFinishInit(
 			// Note that unsafe.StringData only works if the string is not empty
 			// (which we already checked).
 			byteProps := unsafe.Slice(unsafe.StringData(props), len(props))
-			intersects, err := f.filters[i].Intersects(byteProps[1:])
+			var intersects bool
+			var err error
+			if len(f.syntheticSuffix) == 0 {
+				intersects, err = f.filters[i].Intersects(byteProps[1:])
+			} else {
+				intersects, err = f.filters[i].SyntheticSuffixIntersects(byteProps[1:], f.syntheticSuffix)
+			}
 			if err != nil || !intersects {
 				return false, err
 			}
@@ -792,8 +845,14 @@ func (f *BlockPropertiesFilterer) intersects(props []byte) (ret intersectsResult
 }
 
 func (f *BlockPropertiesFilterer) intersectsFilter(i int, prop []byte) (intersectsResult, error) {
+	var intersects bool
+	var err error
 	if f.shortIDToFiltersIndex[i] >= 0 {
-		intersects, err := f.filters[f.shortIDToFiltersIndex[i]].Intersects(prop)
+		if len(f.syntheticSuffix) == 0 {
+			intersects, err = f.filters[f.shortIDToFiltersIndex[i]].Intersects(prop)
+		} else {
+			intersects, err = f.filters[f.shortIDToFiltersIndex[i]].SyntheticSuffixIntersects(prop, f.syntheticSuffix)
+		}
 		if err != nil {
 			return blockIntersects, err
 		}
@@ -809,7 +868,11 @@ func (f *BlockPropertiesFilterer) intersectsFilter(i int, prop []byte) (intersec
 		// Intersects determines that there is no intersection, we return
 		// `blockMaybeExcluded` if no other bpf unconditionally excludes the
 		// block.
-		intersects, err := f.boundLimitedFilter.Intersects(prop)
+		if len(f.syntheticSuffix) == 0 {
+			intersects, err = f.boundLimitedFilter.Intersects(prop)
+		} else {
+			intersects, err = f.boundLimitedFilter.SyntheticSuffixIntersects(prop, f.syntheticSuffix)
+		}
 		if err != nil {
 			return blockIntersects, err
 		} else if !intersects {

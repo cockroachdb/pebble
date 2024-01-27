@@ -815,7 +815,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 				}
 				var filterer *BlockPropertiesFilterer
 				if len(bpfs) > 0 {
-					filterer = newBlockPropertiesFilterer(bpfs, nil)
+					filterer = newBlockPropertiesFilterer(bpfs, nil, nil)
 					intersects, err :=
 						filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 					if err != nil {
@@ -2313,7 +2313,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 								var filterer *BlockPropertiesFilterer
 								if format == TableFormatPebblev4 && hideObsoletePoints {
 									filterer = newBlockPropertiesFilterer(
-										[]BlockPropertyFilter{obsoleteKeyBlockPropertyFilter{}}, nil)
+										[]BlockPropertyFilter{obsoleteKeyBlockPropertyFilter{}}, nil, nil)
 									intersects, err :=
 										filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 									if err != nil {
