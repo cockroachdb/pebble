@@ -299,9 +299,6 @@ type Iterator struct {
 	//   batchIter, Seek[Prefix]GE set flags.BatchJustRefreshed()=true if this
 	//   bit is enabled.
 	batchJustRefreshed bool
-	// Used for an optimization in external iterators to reduce the number of
-	// merging levels.
-	forwardOnly bool
 	// batchOnlyIter is set to true for Batch.NewBatchOnlyIter.
 	batchOnlyIter bool
 	// closePointIterOnce is set to true if this point iter can only be Close()d
@@ -454,14 +451,6 @@ const (
 	// around calling CanDeterministicallySingleDelete at most once per external
 	// iterator position.
 	internalNextOp
-	// invalidatedLastPositionOp is similar to unknownLastPositionOp and the
-	// only reason to distinguish this is for the wider set of SeekGE
-	// optimizations we permit for the external iterator Iterator.forwardOnly
-	// case. Most code predicates should be doing equality comparisons with one
-	// of the seek* enum values, so this duplication should not result in code
-	// of the form:
-	//  if unknownLastPositionOp || invalidLastPositionOp
-	invalidatedLastPositionOp
 )
 
 // Limited iteration mode. Not for use with prefix iteration.
@@ -1275,7 +1264,6 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
 	}
 	lastPositioningOp := i.lastPositioningOp
-	hasPrefix := i.hasPrefix
 	// Set it to unknown, since this operation may not succeed, in which case
 	// the SeekGE following this should not make any assumption about iterator
 	// position.
@@ -1337,25 +1325,6 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 				// start doing findNextEntry from i.iterKey.
 				seekInternalIter = false
 			}
-		}
-	}
-	// Check for another TrySeekUsingNext optimization opportunity, currently
-	// specifically tailored to external iterators. This case is intended to
-	// trigger in instances of Seek-ing with monotonically increasing keys with
-	// Nexts interspersed. At the time of writing, this is the case for
-	// CockroachDB scans. This optimization is important for external iterators
-	// to avoid re-seeking within an already-exhausted sstable. It is not always
-	// a performance win more generally, so we restrict it to external iterators
-	// that are configured to only use forward positioning operations.
-	//
-	// TODO(jackson): This optimization should be obsolete once we introduce and
-	// use the NextPrefix iterator positioning operation.
-	if seekInternalIter && i.forwardOnly && lastPositioningOp != invalidatedLastPositionOp &&
-		i.pos == iterPosCurForward && !hasPrefix && i.iterValidityState == IterValid &&
-		i.cmp(key, i.iterKey.UserKey) > 0 {
-		flags = flags.EnableTrySeekUsingNext()
-		if invariants.Enabled && flags.TrySeekUsingNext() && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
-			flags = flags.DisableTrySeekUsingNext()
 		}
 	}
 	if seekInternalIter {
@@ -2733,7 +2702,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 }
 
 func (i *Iterator) invalidate() {
-	i.lastPositioningOp = invalidatedLastPositionOp
+	i.lastPositioningOp = unknownLastPositionOp
 	i.hasPrefix = false
 	i.iterKey = nil
 	i.iterValue = LazyValue{}

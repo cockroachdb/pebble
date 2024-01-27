@@ -340,7 +340,7 @@ seek-ge b@7
 .
 .
 .
-lastPositioningOp="invalidate"
+lastPositioningOp="unknown"
 b@6: (b@6, .)
 
 reset

@@ -52,8 +52,6 @@ func TestExternalIterator(t *testing.T) {
 			var files [][]sstable.ReadableFile
 			for _, arg := range td.CmdArgs {
 				switch arg.Key {
-				case "fwd-only":
-					externalIterOpts = append(externalIterOpts, ExternalIterForwardOnly{})
 				case "mask-suffix":
 					opts.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
 				case "lower":
@@ -309,9 +307,9 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 	}
 }
 
-func BenchmarkExternalIter_NonOverlapping_SeekNextScan(b *testing.B) {
+func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 	ks := testkeys.Alpha(6)
-	opts := (&Options{}).EnsureDefaults()
+	opts := (&Options{Comparer: testkeys.Comparer}).EnsureDefaults()
 	iterOpts := &IterOptions{
 		KeyTypes: IterKeyTypePointsAndRanges,
 	}
@@ -338,40 +336,31 @@ func BenchmarkExternalIter_NonOverlapping_SeekNextScan(b *testing.B) {
 						filenames[i] = filename
 					}
 
-					for _, forwardOnly := range []bool{false, true} {
-						b.Run(fmt.Sprintf("forward-only=%t", forwardOnly), func(b *testing.B) {
-							var externalIterOpts []ExternalIterOption
-							if forwardOnly {
-								externalIterOpts = append(externalIterOpts, ExternalIterForwardOnly{})
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						func() {
+							files := make([][]sstable.ReadableFile, fileCount)
+							for i := 0; i < fileCount; i++ {
+								f, err := fs.Open(filenames[i])
+								require.NoError(b, err)
+								files[i] = []sstable.ReadableFile{f}
 							}
 
-							for i := 0; i < b.N; i++ {
-								func() {
-									files := make([][]sstable.ReadableFile, fileCount)
-									for i := 0; i < fileCount; i++ {
-										f, err := fs.Open(filenames[i])
-										require.NoError(b, err)
-										files[i] = []sstable.ReadableFile{f}
-									}
+							it, err := NewExternalIter(opts, iterOpts, files)
+							require.NoError(b, err)
+							defer it.Close()
 
-									it, err := NewExternalIter(opts, iterOpts, files, externalIterOpts...)
-									require.NoError(b, err)
-									defer it.Close()
-
-									for k := 0; k+1 < len(keys); k += 2 {
-										if !it.SeekGE(keys[k]) {
-											b.Fatalf("key %q not found", keys[k])
-										}
-										if !it.Next() {
-											b.Fatalf("key %q not found", keys[k+1])
-										}
-										if !bytes.Equal(it.Key(), keys[k+1]) {
-											b.Fatalf("expected key %q, found %q", keys[k+1], it.Key())
-										}
-									}
-								}()
+							k := 0
+							for valid := it.First(); valid; valid = it.NextPrefix() {
+								if !bytes.Equal(it.Key(), keys[k]) {
+									b.Fatalf("expected key %q, found %q", keys[k+1], it.Key())
+								}
+								k++
 							}
-						})
+							if k != len(keys) {
+								b.Fatalf("k=%d, expected %d\n", k, len(keys))
+							}
+						}()
 					}
 				})
 			}

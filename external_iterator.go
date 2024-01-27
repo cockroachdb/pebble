@@ -44,21 +44,6 @@ func ExternalIterReaderOptions(opts ...sstable.ReaderOption) ExternalIterOption 
 	return &externalIterReaderOptions{opts: opts}
 }
 
-// ExternalIterForwardOnly is an ExternalIterOption that specifies this iterator
-// will only be used for forward positioning operations (First, SeekGE, Next).
-// This could enable optimizations that take advantage of this invariant.
-// Behaviour when a reverse positioning operation is done on an iterator
-// opened with this option is unpredictable, though in most cases it should.
-type ExternalIterForwardOnly struct{}
-
-func (e ExternalIterForwardOnly) iterApply(iter *Iterator) {
-	iter.forwardOnly = true
-}
-
-func (e ExternalIterForwardOnly) readerOptions() []sstable.ReaderOption {
-	return nil
-}
-
 // NewExternalIter takes an input 2d array of sstable files which may overlap
 // across subarrays but not within a subarray (at least as far as points are
 // concerned; range keys are allowed to overlap arbitrarily even within a
@@ -222,14 +207,6 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 			rangeDelIter, err = r.NewRawRangeDelIter()
 			if err != nil {
 				return nil, err
-			}
-			if rangeDelIter == nil && pointIter != nil && it.forwardOnly {
-				// TODO(bilal): Consider implementing range key pausing in
-				// simpleLevelIter so we can reduce mergingIterLevels even more by
-				// sending all sstable iterators to combinedIters, not just those
-				// corresponding to sstables without range deletes.
-				combinedIters = append(combinedIters, pointIter)
-				continue
 			}
 			mlevels = append(mlevels, mergingIterLevel{
 				iter:         pointIter,
