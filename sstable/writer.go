@@ -2413,6 +2413,12 @@ func (o obsoleteKeyBlockPropertyFilter) Intersects(prop []byte) (bool, error) {
 	return propToIsObsolete(prop)
 }
 
+func (o obsoleteKeyBlockPropertyFilter) SyntheticSuffixIntersects(
+	prop []byte, suffix []byte,
+) (bool, error) {
+	panic("unimplemented")
+}
+
 func propToIsObsolete(prop []byte) (bool, error) {
 	if len(prop) == 0 {
 		return true, nil

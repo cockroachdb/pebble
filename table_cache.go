@@ -403,6 +403,7 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 	tableFilter func(userProps map[string]string) bool,
 	blockPropertyFilters []BlockPropertyFilter,
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter,
+	syntheticSuffix sstable.SyntheticSuffix,
 ) (ok bool, filterer *sstable.BlockPropertiesFilterer, err error) {
 	if tableFilter != nil &&
 		!tableFilter(v.reader.Properties.UserProperties) {
@@ -414,6 +415,7 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 			blockPropertyFilters,
 			boundLimitedFilter,
 			v.reader.Properties.UserProperties,
+			syntheticSuffix,
 		)
 		// NB: IntersectsTable will return a nil filterer if the table-level
 		// properties indicate there's no intersection with the provided filters.
@@ -476,7 +478,7 @@ func (c *tableCacheShard) newIters(
 	var err error
 	if opts != nil {
 		ok, filterer, err = c.checkAndIntersectFilters(v, opts.TableFilter,
-			pointKeyFilters, internalOpts.boundLimitedFilter)
+			pointKeyFilters, internalOpts.boundLimitedFilter, file.SyntheticSuffix)
 	}
 	if err != nil {
 		c.unrefValue(v)
@@ -607,7 +609,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 	// done here, rather than deferring to the block-property collector in order
 	// to maintain parity with point keys and the treatment of RANGEDELs.
 	if v.reader.Properties.NumRangeKeyDels == 0 {
-		ok, _, err = c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters, nil)
+		ok, _, err = c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters, nil, file.SyntheticSuffix)
 	}
 	if err != nil {
 		c.unrefValue(v)
