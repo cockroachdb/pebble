@@ -403,6 +403,10 @@ func (m *rangeKeyMasking) Intersects(prop []byte) (bool, error) {
 	return m.filter.Intersects(prop)
 }
 
+func (m *rangeKeyMasking) SyntheticIntersects(prop []byte, synthetic []byte) (bool, error) {
+	panic("unimplemented")
+}
+
 // KeyIsWithinLowerBound implements the limitedBlockPropertyFilter interface
 // defined in the sstable package. It's used to restrict the masking block
 // property filter to only applying within the bounds of the active range key.

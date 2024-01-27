@@ -414,6 +414,7 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 			blockPropertyFilters,
 			boundLimitedFilter,
 			v.reader.Properties.UserProperties,
+			v.reader.SyntheticSuffix,
 		)
 		// NB: IntersectsTable will return a nil filterer if the table-level
 		// properties indicate there's no intersection with the provided filters.
