@@ -88,7 +88,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		}
 		filterer = newBlockPropertiesFilterer([]BlockPropertyFilter{
 			NewTestKeysBlockPropertyFilter(low, high),
-		}, nil)
+		}, nil, nil)
 	}
 
 	// TOOD(jackson): NewIterWithBlockPropertyFilters returns an iterator over

@@ -35,7 +35,7 @@ func NewTestKeysBlockPropertyCollector() BlockPropertyCollector {
 // and keys with suffixes within the range [filterMin, filterMax). For keys with
 // suffixes outside the range, iteration is nondeterministic.
 func NewTestKeysBlockPropertyFilter(filterMin, filterMax uint64) *BlockIntervalFilter {
-	return NewBlockIntervalFilter(testKeysBlockPropertyName, filterMin, filterMax)
+	return NewBlockIntervalFilter(testKeysBlockPropertyName, filterMin, filterMax, nil)
 }
 
 // NewTestKeysMaskingFilter constructs a TestKeysMaskingFilter that implements
@@ -66,6 +66,11 @@ func (f TestKeysMaskingFilter) SetSuffix(suffix []byte) error {
 // Intersects implements the BlockPropertyFilter interface.
 func (f TestKeysMaskingFilter) Intersects(prop []byte) (bool, error) {
 	return f.BlockIntervalFilter.Intersects(prop)
+}
+
+// SyntheticSuffixIntersects implements the BlockPropertyFilter interface.
+func (f TestKeysMaskingFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
+	panic("unimplemented")
 }
 
 var _ DataBlockIntervalCollector = (*testKeysSuffixIntervalCollector)(nil)
