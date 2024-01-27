@@ -510,6 +510,10 @@ func (f *minSeqNumFilter) Intersects(prop []byte) (bool, error) {
 	return minSeqNum < f.seqNumUpperBound, nil
 }
 
+func (f *minSeqNumFilter) SyntheticIntersects(prop []byte, synthetic []byte) (bool, error) {
+	panic("unimplemented")
+}
+
 func TestReadSampling(t *testing.T) {
 	var d *DB
 	defer func() {

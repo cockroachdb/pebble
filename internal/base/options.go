@@ -73,4 +73,6 @@ type BlockPropertyFilter interface {
 	// Intersects returns true if the set represented by prop intersects with
 	// the set in the filter.
 	Intersects(prop []byte) (bool, error)
+
+	SyntheticIntersects(prop []byte, synthetic []byte) (bool, error)
 }

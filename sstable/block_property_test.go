@@ -7,6 +7,7 @@ package sstable
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -343,6 +344,12 @@ func (b filterWithTrueForEmptyProp) Intersects(prop []byte) (bool, error) {
 	return b.BlockPropertyFilter.Intersects(prop)
 }
 
+func (b filterWithTrueForEmptyProp) SyntheticIntersects(
+	prop []byte, synthetic []byte,
+) (bool, error) {
+	panic("unimplemented")
+}
+
 func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) {
 	// props with id=0, interval [10, 20); id=10, interval [110, 120).
 	var dbic testDataBlockIntervalCollector
@@ -478,7 +485,7 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 				filter := NewBlockIntervalFilter(f.name, f.i.lower, f.i.upper)
 				filters = append(filters, filter)
 			}
-			filterer := newBlockPropertiesFilterer(filters, nil)
+			filterer := newBlockPropertiesFilterer(filters, nil, nil)
 			intersects, err := filterer.intersectsUserPropsAndFinishInit(tc.userProps)
 			require.NoError(t, err)
 			require.Equal(t, tc.intersects, intersects)
@@ -895,8 +902,17 @@ func TestBlockProperties(t *testing.T) {
 			return runBlockPropsCmd(r, td)
 
 		case "filter":
+			var syntheticSuffix [binary.MaxVarintLen64]byte
 			var points, ranges []BlockPropertyFilter
 			for _, cmd := range td.CmdArgs {
+				if cmd.Key == "synthetic" {
+					var syntheticSuffixStr string
+					td.ScanArgs(t, "synthetic", &syntheticSuffixStr)
+					suffixInt, err := strconv.ParseUint(syntheticSuffixStr, 10, 64)
+					require.NoError(t, err)
+					binary.PutUvarint(syntheticSuffix[:], suffixInt)
+					continue
+				}
 				filter, err := parseIntervalFilter(cmd)
 				if err != nil {
 					return err.Error()
@@ -916,7 +932,7 @@ func TestBlockProperties(t *testing.T) {
 			var f *BlockPropertiesFilterer
 			buf.WriteString("points: ")
 			if len(points) > 0 {
-				f = newBlockPropertiesFilterer(points, nil)
+				f = newBlockPropertiesFilterer(points, nil, syntheticSuffix[:])
 				ok, err := f.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 				if err != nil {
 					return err.Error()
@@ -970,7 +986,7 @@ func TestBlockProperties(t *testing.T) {
 			// Range key filter matches.
 			buf.WriteString("ranges: ")
 			if len(ranges) > 0 {
-				f := newBlockPropertiesFilterer(ranges, nil)
+				f := newBlockPropertiesFilterer(ranges, nil, nil)
 				ok, err := f.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 				if err != nil {
 					return err.Error()
@@ -1001,7 +1017,7 @@ func TestBlockProperties(t *testing.T) {
 					filters = append(filters, f)
 				}
 			}
-			filterer := newBlockPropertiesFilterer(filters, nil)
+			filterer := newBlockPropertiesFilterer(filters, nil, nil)
 			ok, err := filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 			if err != nil {
 				return err.Error()
@@ -1081,7 +1097,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 				return "missing block property filter"
 			}
 
-			filterer := newBlockPropertiesFilterer(nil, &filter)
+			filterer := newBlockPropertiesFilterer(nil, &filter, nil)
 			ok, err := filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 			if err != nil {
 				return err.Error()
@@ -1133,6 +1149,10 @@ func (bl *boundLimitedWrapper) Intersects(prop []byte) (bool, error) {
 		fmt.Fprintf(bl.w, "    filter.Intersects(%s) = (%t, %v)\n", propString, v, err)
 	}
 	return v, err
+}
+
+func (bl *boundLimitedWrapper) SyntheticIntersects(prop []byte, synthetic []byte) (bool, error) {
+	panic("unimplemented")
 }
 
 func (bl *boundLimitedWrapper) KeyIsWithinLowerBound(key []byte) (ret bool) {
@@ -1321,7 +1341,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 			if err != nil {
 				return err.Error()
 			}
-			if err := subiter.init(r.Compare, r.Split, subIndex.Get(), 0, false, r.syntheticPrefix, r.SyntheticSuffix); err != nil {
+			if err := subiter.init(r.Compare, r.Split, subIndex.Get(), 0, false, r.syntheticPrefix, nil); err != nil {
 				return err.Error()
 			}
 			for key, value := subiter.First(); key != nil; key, value = subiter.Next() {

@@ -68,6 +68,11 @@ func (f TestKeysMaskingFilter) Intersects(prop []byte) (bool, error) {
 	return f.BlockIntervalFilter.Intersects(prop)
 }
 
+// SyntheticIntersects implements the BlockPropertyFilter interface.
+func (f TestKeysMaskingFilter) SyntheticIntersects(prop []byte, synthetic []byte) (bool, error) {
+	panic("unimplemented")
+}
+
 var _ DataBlockIntervalCollector = (*testKeysSuffixIntervalCollector)(nil)
 
 // testKeysSuffixIntervalCollector maintains an interval over the timestamps in
