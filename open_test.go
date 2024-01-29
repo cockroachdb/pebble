@@ -505,8 +505,8 @@ type optionsTornWriteFS struct {
 	vfs.FS
 }
 
-func (fs optionsTornWriteFS) Create(name string) (vfs.File, error) {
-	file, err := fs.FS.Create(name)
+func (fs optionsTornWriteFS) Create(name string, category vfs.DiskWriteCategory) (vfs.File, error) {
+	file, err := fs.FS.Create(name, category)
 	if file != nil {
 		file = optionsTornWriteFile{File: file}
 	}
@@ -1018,7 +1018,7 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 		b, err := io.ReadAll(f)
 		require.NoError(t, err)
 		require.NoError(t, f.Close())
-		f, err = fs.Create(logs[0])
+		f, err = fs.Create(logs[0], vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		_, err = f.Write(b)
 		require.NoError(t, err)
@@ -1207,7 +1207,7 @@ func TestGetVersion(t *testing.T) {
 			}
 		}
 	}
-	f, _ := mem.Create(fmt.Sprintf("OPTIONS-%d", highestOptionsNum+1))
+	f, _ := mem.Create(fmt.Sprintf("OPTIONS-%d", highestOptionsNum+1), vfs.WriteCategoryUnspecified)
 	_, err = f.Write([]byte("[Version]\n  pebble_version=0.2\n"))
 	require.NoError(t, err)
 	err = f.Close()
@@ -1217,7 +1217,7 @@ func TestGetVersion(t *testing.T) {
 	require.Equal(t, "0.2", version)
 
 	// Case 4: Manually created OPTIONS file with a RocksDB number.
-	f, _ = mem.Create(fmt.Sprintf("OPTIONS-%d", highestOptionsNum+2))
+	f, _ = mem.Create(fmt.Sprintf("OPTIONS-%d", highestOptionsNum+2), vfs.WriteCategoryUnspecified)
 	_, err = f.Write([]byte("[Version]\n  rocksdb_version=6.2.1\n"))
 	require.NoError(t, err)
 	err = f.Close()
@@ -1232,7 +1232,7 @@ func TestGetVersion(t *testing.T) {
 func TestOpenNeverFlushed(t *testing.T) {
 	mem := vfs.NewMem()
 
-	sstFile, err := mem.Create("to-ingest.sst")
+	sstFile, err := mem.Create("to-ingest.sst", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 
 	writerOpts := sstable.WriterOptions{}
@@ -1325,8 +1325,8 @@ func (fs *closeTrackingFS) wrap(file vfs.File, err error) (vfs.File, error) {
 	return f, err
 }
 
-func (fs *closeTrackingFS) Create(name string) (vfs.File, error) {
-	return fs.wrap(fs.FS.Create(name))
+func (fs *closeTrackingFS) Create(name string, category vfs.DiskWriteCategory) (vfs.File, error) {
+	return fs.wrap(fs.FS.Create(name, category))
 }
 
 func (fs *closeTrackingFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
@@ -1337,8 +1337,10 @@ func (fs *closeTrackingFS) OpenDir(name string) (vfs.File, error) {
 	return fs.wrap(fs.FS.OpenDir(name))
 }
 
-func (fs *closeTrackingFS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
-	return fs.wrap(fs.FS.ReuseForWrite(oldname, newname))
+func (fs *closeTrackingFS) ReuseForWrite(
+	oldname, newname string, category vfs.DiskWriteCategory,
+) (vfs.File, error) {
+	return fs.wrap(fs.FS.ReuseForWrite(oldname, newname, category))
 }
 
 type closeTrackingFile struct {
@@ -1441,7 +1443,7 @@ func TestCheckConsistency(t *testing.T) {
 					}
 					path := base.MakeFilepath(mem, dir, base.FileTypeTable, m.FileBacking.DiskFileNum)
 					_ = mem.Remove(path)
-					f, err := mem.Create(path)
+					f, err := mem.Create(path, vfs.WriteCategoryUnspecified)
 					if err != nil {
 						return err.Error()
 					}

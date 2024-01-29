@@ -202,7 +202,7 @@ func (y *MemFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 }
 
 // Create implements FS.Create.
-func (y *MemFS) Create(fullname string) (File, error) {
+func (y *MemFS) Create(fullname string, category DiskWriteCategory) (File, error) {
 	var ret *memFile
 	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -314,11 +314,13 @@ func (y *MemFS) Open(fullname string, opts ...OpenOption) (File, error) {
 }
 
 // OpenReadWrite implements FS.OpenReadWrite.
-func (y *MemFS) OpenReadWrite(fullname string, opts ...OpenOption) (File, error) {
+func (y *MemFS) OpenReadWrite(
+	fullname string, category DiskWriteCategory, opts ...OpenOption,
+) (File, error) {
 	f, err := y.open(fullname, true /* openForWrite */)
 	pathErr, ok := err.(*os.PathError)
 	if ok && pathErr.Err == oserror.ErrNotExist {
-		return y.Create(fullname)
+		return y.Create(fullname, category)
 	}
 	return f, err
 }
@@ -415,7 +417,7 @@ func (y *MemFS) Rename(oldname, newname string) error {
 }
 
 // ReuseForWrite implements FS.ReuseForWrite.
-func (y *MemFS) ReuseForWrite(oldname, newname string) (File, error) {
+func (y *MemFS) ReuseForWrite(oldname, newname string, category DiskWriteCategory) (File, error) {
 	if err := y.Rename(oldname, newname); err != nil {
 		return nil, err
 	}
@@ -477,7 +479,7 @@ func (y *MemFS) Lock(fullname string) (io.Closer, error) {
 	// directory. Create the path so that we have the normal detection of
 	// non-existent directory paths, and make the lock visible when listing
 	// directory entries.
-	f, err := y.Create(fullname)
+	f, err := y.Create(fullname, WriteCategoryUnspecified)
 	if err != nil {
 		// "Release" the lock since we failed.
 		y.lockedFiles.Delete(fullname)

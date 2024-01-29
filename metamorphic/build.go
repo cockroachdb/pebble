@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // writeSSTForIngestion writes an SST that is to be ingested, either directly or
@@ -165,7 +166,7 @@ func buildForIngest(
 	t *Test, dbID objID, b *pebble.Batch, i int,
 ) (path string, _ *sstable.WriterMetadata, _ error) {
 	path = t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
-	f, err := t.opts.FS.Create(path)
+	f, err := t.opts.FS.Create(path, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return "", nil, err
 	}
@@ -199,7 +200,7 @@ func buildForIngestExternalEmulation(
 	i int,
 ) (path string, _ *sstable.WriterMetadata) {
 	path = t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
-	f, err := t.opts.FS.Create(path)
+	f, err := t.opts.FS.Create(path, vfs.WriteCategoryUnspecified)
 	panicIfErr(err)
 
 	reader, pointIter, rangeDelIter, rangeKeyIter := openExternalObj(t, externalObjID, bounds, prefixChange)

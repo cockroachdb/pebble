@@ -583,7 +583,7 @@ func benchmarkRangeDelIterate(b *testing.B, entries, deleted int, snapshotCompac
 
 	// Create an sstable with N entries and ingest it. This is a fast way
 	// to get a lot of entries into pebble.
-	f, err := mem.Create("ext")
+	f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 	if err != nil {
 		b.Fatal(err)
 	}

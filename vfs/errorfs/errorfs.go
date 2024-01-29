@@ -299,11 +299,11 @@ func (fs *FS) Unwrap() vfs.FS {
 }
 
 // Create implements FS.Create.
-func (fs *FS) Create(name string) (vfs.File, error) {
+func (fs *FS) Create(name string, category vfs.DiskWriteCategory) (vfs.File, error) {
 	if err := fs.inj.MaybeError(Op{Kind: OpCreate, Path: name}); err != nil {
 		return nil, err
 	}
-	f, err := fs.fs.Create(name)
+	f, err := fs.fs.Create(name, category)
 	if err != nil {
 		return nil, err
 	}
@@ -335,11 +335,13 @@ func (fs *FS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 }
 
 // OpenReadWrite implements FS.OpenReadWrite.
-func (fs *FS) OpenReadWrite(name string, opts ...vfs.OpenOption) (vfs.File, error) {
+func (fs *FS) OpenReadWrite(
+	name string, category vfs.DiskWriteCategory, opts ...vfs.OpenOption,
+) (vfs.File, error) {
 	if err := fs.inj.MaybeError(Op{Kind: OpOpen, Path: name}); err != nil {
 		return nil, err
 	}
-	f, err := fs.fs.OpenReadWrite(name)
+	f, err := fs.fs.OpenReadWrite(name, category)
 	if err != nil {
 		return nil, err
 	}
@@ -414,11 +416,13 @@ func (fs *FS) Rename(oldname, newname string) error {
 }
 
 // ReuseForWrite implements FS.ReuseForWrite.
-func (fs *FS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
+func (fs *FS) ReuseForWrite(
+	oldname, newname string, category vfs.DiskWriteCategory,
+) (vfs.File, error) {
 	if err := fs.inj.MaybeError(Op{Kind: OpReuseForWrite, Path: oldname}); err != nil {
 		return nil, err
 	}
-	return fs.fs.ReuseForWrite(oldname, newname)
+	return fs.fs.ReuseForWrite(oldname, newname, category)
 }
 
 // MkdirAll implements FS.MkdirAll.
