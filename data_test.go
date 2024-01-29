@@ -612,7 +612,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 
 	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
 
-	f, err := fs.Create(path)
+	f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}

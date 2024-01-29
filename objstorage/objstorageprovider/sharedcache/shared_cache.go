@@ -446,7 +446,7 @@ func (s *shard) init(
 	}
 	s.bm = makeBlockMath(blockSize)
 	s.shardingBlockSize = shardingBlockSize
-	file, err := fs.OpenReadWrite(fs.PathJoin(fsDir, fmt.Sprintf("SHARED-CACHE-%03d", shardIdx)))
+	file, err := fs.OpenReadWrite(fs.PathJoin(fsDir, fmt.Sprintf("SHARED-CACHE-%03d", shardIdx)), vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}

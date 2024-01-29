@@ -67,7 +67,7 @@ func TestWorkloadCollector(t *testing.T) {
 				var err error
 				td.ScanArgs(t, "filenum", &fileNum)
 				path := base.MakeFilepath(fs, srcDir, base.FileTypeManifest, base.DiskFileNum(fileNum))
-				currentManifest, err = fs.Create(path)
+				currentManifest, err = fs.Create(path, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 				_, err = currentManifest.Write(randData(100))
 				require.NoError(t, err)
@@ -182,7 +182,7 @@ func writeFile(
 	t *testing.T, fs vfs.FS, dir string, typ base.FileType, fileNum base.DiskFileNum, data []byte,
 ) string {
 	path := base.MakeFilepath(fs, dir, typ, fileNum)
-	f, err := fs.Create(path)
+	f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	_, err = f.Write(data)
 	require.NoError(t, err)

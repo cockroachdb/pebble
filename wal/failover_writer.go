@@ -444,7 +444,7 @@ func simpleLogCreator(
 	filename := dir.FS.PathJoin(dir.Dirname, makeLogFilename(wn, li))
 	// Create file.
 	r.writeStart()
-	f, err = dir.FS.Create(filename)
+	f, err = dir.FS.Create(filename, "pebble-wal")
 	r.writeEnd(err)
 	return f, 0, err
 }

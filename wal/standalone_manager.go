@@ -141,10 +141,10 @@ func (m *StandaloneManager) Create(wn NumWAL, jobID int) (Writer, error) {
 	recycleLog, recycleOK = m.recycler.Peek()
 	if recycleOK {
 		recycleLogName := m.o.Primary.FS.PathJoin(m.o.Primary.Dirname, makeLogFilename(NumWAL(recycleLog.FileNum), 0))
-		newLogFile, err = m.o.Primary.FS.ReuseForWrite(recycleLogName, newLogName)
+		newLogFile, err = m.o.Primary.FS.ReuseForWrite(recycleLogName, newLogName, "pebble-wal")
 		base.MustExist(m.o.Primary.FS, newLogName, m.o.Logger, err)
 	} else {
-		newLogFile, err = m.o.Primary.FS.Create(newLogName)
+		newLogFile, err = m.o.Primary.FS.Create(newLogName, "pebble-wal")
 		base.MustExist(m.o.Primary.FS, newLogName, m.o.Logger, err)
 	}
 	createInfo := CreateInfo{

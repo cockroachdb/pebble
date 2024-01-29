@@ -196,7 +196,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 	datadriven.RunTest(t, "testdata/table_stats_deletion_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch cmd := td.Cmd; cmd {
 		case "build":
-			f, err := fs.Create("tmp.sst")
+			f, err := fs.Create("tmp.sst", vfs.WriteCategoryUnspecified)
 			if err != nil {
 				return err.Error()
 			}

@@ -381,7 +381,7 @@ func (t *Tracer) workerWriteTraces(state *workerState, data eventBuf) {
 func (t *Tracer) workerNewFile(state *workerState) {
 	filename := fmt.Sprintf("IOTRACES-%s", time.Now().UTC().Format(time.RFC3339Nano))
 
-	file, err := t.fs.Create(t.fs.PathJoin(t.fsDir, filename))
+	file, err := t.fs.Create(t.fs.PathJoin(t.fsDir, filename), vfs.WriteCategoryUnspecified)
 	if err != nil {
 		panic(err)
 	}
