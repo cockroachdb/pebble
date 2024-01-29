@@ -93,7 +93,7 @@ type FS interface {
 	// Create creates the named file for reading and writing. If a file
 	// already exists at the provided name, it's removed first ensuring the
 	// resulting file descriptor points to a new inode.
-	Create(name string) (File, error)
+	Create(name string, category DiskWriteCategory) (File, error)
 
 	// Link creates newname as a hard link to the oldname file.
 	Link(oldname, newname string) error
@@ -103,7 +103,7 @@ type FS interface {
 
 	// OpenReadWrite opens the named file for reading and writing. If the file
 	// does not exist, it is created.
-	OpenReadWrite(name string, opts ...OpenOption) (File, error)
+	OpenReadWrite(name string, category DiskWriteCategory, opts ...OpenOption) (File, error)
 
 	// OpenDir opens the named directory for syncing.
 	OpenDir(name string) (File, error)
@@ -125,7 +125,7 @@ type FS interface {
 	// to reuse oldname, and simply create the file with newname -- in this case the implementation
 	// should delete oldname. If the caller calls this function with an oldname that does not exist,
 	// the implementation may return an error.
-	ReuseForWrite(oldname, newname string) (File, error)
+	ReuseForWrite(oldname, newname string, category DiskWriteCategory) (File, error)
 
 	// MkdirAll creates a directory and all necessary parents. The permission
 	// bits perm have the same semantics as in os.MkdirAll. If the directory
@@ -201,7 +201,7 @@ func wrapOSFile(f *os.File) File {
 	return wrapOSFileImpl(f)
 }
 
-func (defaultFS) Create(name string) (File, error) {
+func (defaultFS) Create(name string, category DiskWriteCategory) (File, error) {
 	const openFlags = os.O_RDWR | os.O_CREATE | os.O_EXCL | syscall.O_CLOEXEC
 
 	osFile, err := os.OpenFile(name, openFlags, 0666)
@@ -238,7 +238,9 @@ func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 	return file, nil
 }
 
-func (defaultFS) OpenReadWrite(name string, opts ...OpenOption) (File, error) {
+func (defaultFS) OpenReadWrite(
+	name string, category DiskWriteCategory, opts ...OpenOption,
+) (File, error) {
 	osFile, err := os.OpenFile(name, os.O_RDWR|syscall.O_CLOEXEC|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -262,7 +264,9 @@ func (defaultFS) Rename(oldname, newname string) error {
 	return errors.WithStack(os.Rename(oldname, newname))
 }
 
-func (fs defaultFS) ReuseForWrite(oldname, newname string) (File, error) {
+func (fs defaultFS) ReuseForWrite(
+	oldname, newname string, category DiskWriteCategory,
+) (File, error) {
 	if err := fs.Rename(oldname, newname); err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -344,7 +348,7 @@ func CopyAcrossFS(srcFS FS, oldname string, dstFS FS, newname string) error {
 	}
 	defer src.Close()
 
-	dst, err := dstFS.Create(newname)
+	dst, err := dstFS.Create(newname, WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}
@@ -365,7 +369,7 @@ func LimitedCopy(fs FS, oldname, newname string, maxBytes int64) error {
 	}
 	defer src.Close()
 
-	dst, err := fs.Create(newname)
+	dst, err := fs.Create(newname, WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}

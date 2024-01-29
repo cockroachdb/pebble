@@ -329,7 +329,7 @@ func (c *Catalog) createNewCatalogFileLocked() (outErr error) {
 	}
 	filename := makeCatalogFilename(c.mu.marker.NextIter())
 	filepath := c.fs.PathJoin(c.dirname, filename)
-	file, err := c.fs.Create(filepath)
+	file, err := c.fs.Create(filepath, "pebble-manifest")
 	if err != nil {
 		return err
 	}

@@ -201,15 +201,17 @@ type syncingFS struct {
 
 var _ FS = (*syncingFS)(nil)
 
-func (fs *syncingFS) Create(name string) (File, error) {
-	f, err := fs.FS.Create(name)
+func (fs *syncingFS) Create(name string, category DiskWriteCategory) (File, error) {
+	f, err := fs.FS.Create(name, category)
 	if err != nil {
 		return nil, err
 	}
 	return NewSyncingFile(f, fs.syncOpts), nil
 }
 
-func (fs *syncingFS) ReuseForWrite(oldname, newname string) (File, error) {
+func (fs *syncingFS) ReuseForWrite(
+	oldname, newname string, category DiskWriteCategory,
+) (File, error) {
 	// TODO(radu): implement this if needed.
 	panic("unimplemented")
 }

@@ -192,7 +192,7 @@ func (lt *levelIterTest) runClear(d *datadriven.TestData) string {
 func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	fileNum := FileNum(len(lt.readers))
 	name := fmt.Sprint(fileNum)
-	f0, err := lt.mem.Create(name)
+	f0, err := lt.mem.Create(name, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err.Error()
 	}
@@ -457,7 +457,7 @@ func buildLevelIterTables(
 	mem := vfs.NewMem()
 	files := make([]vfs.File, count)
 	for i := range files {
-		f, err := mem.Create(fmt.Sprintf("bench%d", i))
+		f, err := mem.Create(fmt.Sprintf("bench%d", i), vfs.WriteCategoryUnspecified)
 		if err != nil {
 			b.Fatal(err)
 		}

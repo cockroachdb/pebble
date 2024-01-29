@@ -23,7 +23,7 @@ func TestSyncingFile(t *testing.T) {
 	require.NoError(t, tmpf.Close())
 	defer os.Remove(filename)
 
-	f, err := Default.Create(filename)
+	f, err := Default.Create(filename, WriteCategoryUnspecified)
 	require.NoError(t, err)
 
 	tf := &mockSyncToFile{File: f, canSyncTo: true}
@@ -80,7 +80,7 @@ close: test [<nil>]
 			require.NoError(t, tmpf.Close())
 			defer os.Remove(filename)
 
-			f, err := Default.Create(filename)
+			f, err := Default.Create(filename, WriteCategoryUnspecified)
 			require.NoError(t, err)
 
 			var buf bytes.Buffer
@@ -149,7 +149,7 @@ func TestSyncingFileNoSyncOnClose(t *testing.T) {
 			require.NoError(t, tmpf.Close())
 			defer os.Remove(filename)
 
-			f, err := Default.Create(filename)
+			f, err := Default.Create(filename, WriteCategoryUnspecified)
 			require.NoError(t, err)
 
 			tf := &mockSyncToFile{f, c.useSyncTo}

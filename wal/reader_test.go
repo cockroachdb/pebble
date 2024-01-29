@@ -64,7 +64,7 @@ func TestList(t *testing.T) {
 
 				fs := getFS(fsName)
 				require.NoError(t, fs.MkdirAll(fs.PathDir(filename), os.ModePerm))
-				f, err := fs.Create(filename)
+				f, err := fs.Create(filename, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 				require.NoError(t, f.Close())
 			}
