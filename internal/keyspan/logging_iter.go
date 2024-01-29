@@ -37,7 +37,7 @@ func newLoggingIter(state *loggingState, iter FragmentIterator) FragmentIterator
 	return &loggingIter{
 		iter:    iter,
 		state:   state,
-		context: fmt.Sprintf("%T:", iter),
+		context: fmt.Sprintf("%T(%p):", iter, iter),
 	}
 }
 

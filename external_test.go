@@ -62,7 +62,7 @@ func TestIteratorErrors(t *testing.T) {
 		testOpts.Opts.DisableAutomaticCompactions = true
 
 		// Create an errorfs injector that injects ErrInjected on 5% of reads.
-		// Wrap it in both a counter and a toggle so that we a) know wether an
+		// Wrap it in both a counter and a toggle so that we a) know whether an
 		// error was injected over the course of an operation, and b) so that we
 		// can disable error injection during Open.
 		predicate := errorfs.And(errorfs.Reads, errorfs.Randomly(0.50, seed))
@@ -72,9 +72,16 @@ func TestIteratorErrors(t *testing.T) {
 		testOpts.Opts.ReadOnly = true
 
 		test, err := metamorphic.New(
-			metamorphic.GenerateOps(rng, 500, metamorphic.ReadOpConfig()),
+			metamorphic.GenerateOps(rng, 5000, metamorphic.ReadOpConfig()),
 			testOpts, "" /* dir */, &testWriter{t: t})
 		require.NoError(t, err)
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("last injected error: %+v", counter.LastError())
+				panic(r)
+			}
+		}()
 
 		// Begin injecting errors.
 		toggle.On()
@@ -92,7 +99,7 @@ func TestIteratorErrors(t *testing.T) {
 			newCount := counter.Load()
 			if diff := newCount - prevCount; diff > 0 {
 				if !strings.Contains(operationOutput, errorfs.ErrInjected.Error()) {
-					t.Errorf("Injected %d errors in op %d but the operation output %q does not contain the injected error: %+v",
+					t.Fatalf("Injected %d errors in op %d but the operation output %q does not contain the injected error: %+v",
 						diff, i, operationOutput, counter.LastError())
 				}
 			}
