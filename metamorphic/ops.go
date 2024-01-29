@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 )
 
@@ -641,7 +642,7 @@ func buildForIngest(
 	t *Test, dbID objID, h historyRecorder, b *pebble.Batch, i int,
 ) (string, *sstable.WriterMetadata, error) {
 	path := t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
-	f, err := t.opts.FS.Create(path)
+	f, err := t.opts.FS.Create(path, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return "", nil, err
 	}
@@ -1848,7 +1849,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 	source := t.getDB(r.source)
 	dest := t.getDB(r.dest)
 	sstPath := path.Join(t.tmpDir, fmt.Sprintf("ext-replicate%d.sst", t.idx))
-	f, err := t.opts.FS.Create(sstPath)
+	f, err := t.opts.FS.Create(sstPath, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		h.Recordf("%s // %v", r, err)
 		return

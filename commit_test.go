@@ -223,7 +223,7 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	// rotate and close the log.
 
 	mem := vfs.NewMem()
-	f, err := mem.Create("test-wal")
+	f, err := mem.Create("test-wal", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 
 	// syncDelayFile will block on the done channel befor returning from Sync
