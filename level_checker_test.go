@@ -148,7 +148,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				line = strings.TrimSpace(line)
 				name := fmt.Sprint(fileNum)
 				fileNum++
-				f, err := memFS.Create(name)
+				f, err := memFS.Create(name, vfs.WriteCategoryUnspecified)
 				if err != nil {
 					return err.Error()
 				}

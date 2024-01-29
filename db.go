@@ -2761,10 +2761,10 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 		recycleLog, recycleOK = d.logRecycler.Peek()
 		if recycleOK {
 			recycleLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.FileNum)
-			newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
+			newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName, "pebble-wal")
 			base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
 		} else {
-			newLogFile, err = d.opts.FS.Create(newLogName)
+			newLogFile, err = d.opts.FS.Create(newLogName, "pebble-wal")
 			base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
 		}
 	}

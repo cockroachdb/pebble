@@ -177,7 +177,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 			keys := make([][]byte, 0, numKeys)
 
 			filename := fmt.Sprintf("test-%d", fileIdx)
-			f0, err := mem.Create(filename)
+			f0, err := mem.Create(filename, vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 
 			indexBlockSize := 4096
@@ -326,7 +326,7 @@ func BenchmarkExternalIter_NonOverlapping_SeekNextScan(b *testing.B) {
 					var keys [][]byte
 					for i := 0; i < fileCount; i++ {
 						filename := fmt.Sprintf("%03d.sst", i)
-						wf, err := fs.Create(filename)
+						wf, err := fs.Create(filename, vfs.WriteCategoryUnspecified)
 						require.NoError(b, err)
 						w := sstable.NewWriter(objstorageprovider.NewFileWritable(wf), writeOpts)
 						for j := 0; j < keyCount/fileCount; j++ {

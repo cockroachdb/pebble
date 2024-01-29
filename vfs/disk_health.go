@@ -110,7 +110,7 @@ func (o OpType) String() string {
 type DiskWriteCategory string
 
 // WriteCategoryUnspecified denotes a disk write without a significant category.
-const WriteCategoryUnspecified = "unspecified"
+const WriteCategoryUnspecified DiskWriteCategory = "unspecified"
 
 // DiskWriteStatsAggregate is an aggregate of the bytes written to disk for a given category.
 type DiskWriteStatsAggregate struct {
@@ -724,11 +724,11 @@ func (d *diskHealthCheckingFS) Close() error {
 }
 
 // Create implements the FS interface.
-func (d *diskHealthCheckingFS) Create(name string) (File, error) {
+func (d *diskHealthCheckingFS) Create(name string, category DiskWriteCategory) (File, error) {
 	var f File
 	var err error
 	d.timeFilesystemOp(name, OpTypeCreate, func() {
-		f, err = d.fs.Create(name)
+		f, err = d.fs.Create(name, category)
 	}, time.Now().UnixNano())
 	if err != nil {
 		return f, err
@@ -736,8 +736,7 @@ func (d *diskHealthCheckingFS) Create(name string) (File, error) {
 	if d.diskSlowThreshold == 0 {
 		return f, nil
 	}
-	// TODO(cheranm): add plumbing to pass down valid category.
-	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, WriteCategoryUnspecified, d.statsCollector,
+	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, category, d.statsCollector,
 		func(opType OpType, writeSizeInBytes int, duration time.Duration) {
 			d.onSlowDisk(
 				DiskSlowInfo{
@@ -790,13 +789,14 @@ func (d *diskHealthCheckingFS) Open(name string, opts ...OpenOption) (File, erro
 }
 
 // OpenReadWrite implements the FS interface.
-func (d *diskHealthCheckingFS) OpenReadWrite(name string, opts ...OpenOption) (File, error) {
-	f, err := d.fs.OpenReadWrite(name, opts...)
+func (d *diskHealthCheckingFS) OpenReadWrite(
+	name string, category DiskWriteCategory, opts ...OpenOption,
+) (File, error) {
+	f, err := d.fs.OpenReadWrite(name, category, opts...)
 	if err != nil {
 		return nil, err
 	}
-	// TODO(cheranm): add plumbing to pass down valid category.
-	return newDiskHealthCheckingFile(f, 0, WriteCategoryUnspecified, d.statsCollector, func(opType OpType, writeSizeInBytes int, duration time.Duration) {}), nil
+	return newDiskHealthCheckingFile(f, 0, category, d.statsCollector, func(opType OpType, writeSizeInBytes int, duration time.Duration) {}), nil
 }
 
 // OpenDir implements the FS interface.
@@ -857,11 +857,13 @@ func (d *diskHealthCheckingFS) Rename(oldname, newname string) error {
 }
 
 // ReuseForWrite implements the FS interface.
-func (d *diskHealthCheckingFS) ReuseForWrite(oldname, newname string) (File, error) {
+func (d *diskHealthCheckingFS) ReuseForWrite(
+	oldname, newname string, category DiskWriteCategory,
+) (File, error) {
 	var f File
 	var err error
 	d.timeFilesystemOp(newname, OpTypeReuseForWrite, func() {
-		f, err = d.fs.ReuseForWrite(oldname, newname)
+		f, err = d.fs.ReuseForWrite(oldname, newname, category)
 	}, time.Now().UnixNano())
 	if err != nil {
 		return f, err
@@ -869,8 +871,7 @@ func (d *diskHealthCheckingFS) ReuseForWrite(oldname, newname string) (File, err
 	if d.diskSlowThreshold == 0 {
 		return f, nil
 	}
-	// TODO(cheranm): add plumbing to pass down valid category.
-	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, WriteCategoryUnspecified, d.statsCollector,
+	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, category, d.statsCollector,
 		func(opType OpType, writeSizeInBytes int, duration time.Duration) {
 			d.onSlowDisk(
 				DiskSlowInfo{

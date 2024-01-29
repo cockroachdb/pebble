@@ -1166,7 +1166,7 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 		// causing compactions to be running concurrently with the close below.
 		for j := 0; j < 10; j++ {
 			path := fmt.Sprintf("ext%d", j)
-			f, err := mem.Create(path)
+			f, err := mem.Create(path, vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: d.FormatMajorVersion().MaxTableFormat(),
@@ -1614,7 +1614,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 	//           cc
 	{
 		path := "ingest1.sst"
-		f, err := memFS.Create(path)
+		f, err := memFS.Create(path, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
@@ -1625,7 +1625,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 	}
 	{
 		path := "ingest2.sst"
-		f, err := memFS.Create(path)
+		f, err := memFS.Create(path, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
@@ -1637,7 +1637,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 	}
 	{
 		path := "ingest3.sst"
-		f, err := memFS.Create(path)
+		f, err := memFS.Create(path, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
@@ -1648,7 +1648,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 	}
 	{
 		path := "ingest4.sst"
-		f, err := memFS.Create(path)
+		f, err := memFS.Create(path, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
@@ -1727,7 +1727,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 	//           cc
 	{
 		path := "ingest5.sst"
-		f, err := memFS.Create(path)
+		f, err := memFS.Create(path, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
@@ -1761,7 +1761,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 	//           cc
 	{
 		path := "ingest6.sst"
-		f, err := memFS.Create(path)
+		f, err := memFS.Create(path, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: d.FormatMajorVersion().MaxTableFormat(),

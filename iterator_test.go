@@ -2924,7 +2924,7 @@ func BenchmarkSeekPrefixTombstones(b *testing.B) {
 	for i := int64(0); i < ks.Count()-1; i++ {
 		func() {
 			filename := fmt.Sprintf("ext%2d", i)
-			f, err := o.FS.Create(filename)
+			f, err := o.FS.Create(filename, vfs.WriteCategoryUnspecified)
 			require.NoError(b, err)
 			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), wOpts)
 			require.NoError(b, w.DeleteRange(testkeys.Key(ks, i), testkeys.Key(ks, i+1)))

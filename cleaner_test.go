@@ -122,7 +122,7 @@ func TestCleaner(t *testing.T) {
 			if len(td.CmdArgs) != 1 {
 				return "create-bogus-file <db/file>"
 			}
-			dst, err := fs.Create(td.CmdArgs[0].String())
+			dst, err := fs.Create(td.CmdArgs[0].String(), vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			_, err = dst.Write([]byte("bogus data"))
 			require.NoError(t, err)

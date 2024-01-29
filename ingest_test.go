@@ -94,7 +94,7 @@ func TestIngestLoad(t *testing.T) {
 					return fmt.Sprintf("unknown cmd %s\n", k)
 				}
 			}
-			f, err := mem.Create("ext")
+			f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 			if err != nil {
 				return err.Error()
 			}
@@ -172,7 +172,7 @@ func TestIngestLoadRand(t *testing.T) {
 		expected[i].StatsMarkValid()
 
 		func() {
-			f, err := mem.Create(paths[i])
+			f, err := mem.Create(paths[i], vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 
 			keys := make([]InternalKey, 1+rng.Intn(100))
@@ -227,7 +227,7 @@ func TestIngestLoadRand(t *testing.T) {
 
 func TestIngestLoadInvalid(t *testing.T) {
 	mem := vfs.NewMem()
-	f, err := mem.Create("invalid")
+	f, err := mem.Create("invalid", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
@@ -316,7 +316,7 @@ func TestIngestLink(t *testing.T) {
 				meta[j] = &fileMetadata{}
 				meta[j].FileNum = FileNum(j)
 				meta[j].InitPhysicalBacking()
-				f, err := opts.FS.Create(paths[j])
+				f, err := opts.FS.Create(paths[j], vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 
 				contents[j] = []byte(fmt.Sprintf("data%d", j))
@@ -385,7 +385,7 @@ func TestIngestLinkFallback(t *testing.T) {
 	// Verify that ingestLink succeeds if linking fails by falling back to
 	// copying.
 	mem := vfs.NewMem()
-	src, err := mem.Create("source")
+	src, err := mem.Create("source", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 
 	opts := &Options{FS: errorfs.Wrap(mem, errorfs.ErrInjected.If(errorfs.OnIndex(1)))}
@@ -1049,7 +1049,7 @@ func testIngestSharedImpl(
 
 			writeOpts := d.opts.MakeWriterOptions(0 /* level */, to.opts.FormatMajorVersion.MaxTableFormat())
 			sstPath := fmt.Sprintf("ext/replicate%d.sst", replicateCounter)
-			f, err := to.opts.FS.Create(sstPath)
+			f, err := to.opts.FS.Create(sstPath, vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			replicateCounter++
 			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
@@ -1537,7 +1537,7 @@ func TestConcurrentExcise(t *testing.T) {
 
 			writeOpts := d.opts.MakeWriterOptions(0 /* level */, to.opts.FormatMajorVersion.MaxTableFormat())
 			sstPath := fmt.Sprintf("ext/replicate%d.sst", replicateCounter)
-			f, err := to.opts.FS.Create(sstPath)
+			f, err := to.opts.FS.Create(sstPath, vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			replicateCounter++
 			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
@@ -2038,7 +2038,7 @@ func BenchmarkIngestOverlappingMemtable(b *testing.B) {
 				}
 
 				// Create the overlapping sstable that will force a flush when ingested.
-				f, err := mem.Create("ext")
+				f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 				assertNoError(err)
 				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 				assertNoError(w.Set([]byte("a"), nil))
@@ -2292,12 +2292,12 @@ func TestIngestError(t *testing.T) {
 	for i := int32(0); ; i++ {
 		mem := vfs.NewMem()
 
-		f0, err := mem.Create("ext0")
+		f0, err := mem.Create("ext0", vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f0), sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("d"), nil))
 		require.NoError(t, w.Close())
-		f1, err := mem.Create("ext1")
+		f1, err := mem.Create("ext1", vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		w = sstable.NewWriter(objstorageprovider.NewFileWritable(f1), sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("d"), nil))
@@ -2361,7 +2361,7 @@ func TestIngestIdempotence(t *testing.T) {
 	fs := vfs.Default
 
 	path := fs.PathJoin(dir, "ext")
-	f, err := fs.Create(fs.PathJoin(dir, "ext"))
+	f, err := fs.Create(fs.PathJoin(dir, "ext"), vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	require.NoError(t, w.Set([]byte("d"), nil))
@@ -2394,7 +2394,7 @@ func TestIngestCompact(t *testing.T) {
 	src := func(i int) string {
 		return fmt.Sprintf("ext%d", i)
 	}
-	f, err := mem.Create(src(0))
+	f, err := mem.Create(src(0), vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 
 	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
@@ -2437,7 +2437,7 @@ func TestConcurrentIngest(t *testing.T) {
 	src := func(i int) string {
 		return fmt.Sprintf("ext%d", i)
 	}
-	f, err := mem.Create(src(0))
+	f, err := mem.Create(src(0), vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 
 	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
@@ -2491,7 +2491,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 
 			ingest := func(keys ...string) {
 				t.Helper()
-				f, err := mem.Create("ext")
+				f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 
 				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
@@ -2610,7 +2610,7 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 	}
 
 	ingest := func(keys ...string) {
-		f, err := mem.Create("ext")
+		f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
@@ -2641,7 +2641,7 @@ func TestIngestStats(t *testing.T) {
 
 	ingest := func(expectedLevel int, keys ...string) {
 		t.Helper()
-		f, err := mem.Create("ext")
+		f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
@@ -2689,7 +2689,7 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 
 	ingest := func(keys ...string) {
 		t.Helper()
-		f, err := mem.Create("ext")
+		f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
@@ -2727,7 +2727,7 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 
 	ingest := func(keys ...string) {
 		t.Helper()
-		f, err := mem.Create("ext")
+		f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
@@ -2837,7 +2837,7 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 	require.NoError(t, err)
 
 	// Prepare a sstable `ext` deleting foo.
-	f, err := mem.Create("ext")
+	f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	require.NoError(t, w.Delete([]byte("foo")))
@@ -2975,7 +2975,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 	var fileBytes [][]byte
 	for i := 0; i < count; i++ {
 		name := fmt.Sprintf("ext%d", i)
-		f, err := fs.Create(fs.PathJoin(dir, name))
+		f, err := fs.Create(fs.PathJoin(dir, name), vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte(fmt.Sprintf("foo%d", i)), nil))
@@ -3035,7 +3035,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 	mem := vfs.NewMem()
 	cmp := base.DefaultComparer.Compare
 	parse := func(input string) (*sstable.Writer, error) {
-		f, err := mem.Create("ext")
+		f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 		if err != nil {
 			return nil, err
 		}
@@ -3438,7 +3438,7 @@ func TestIngestValidation(t *testing.T) {
 				err    error
 			}
 			runIngest := func(keyVals []keyVal) (et errT) {
-				f, err := fs.Create(ingestTableName)
+				f, err := fs.Create(ingestTableName, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 				defer func() { _ = fs.Remove(ingestTableName) }()
 
@@ -3453,7 +3453,7 @@ func TestIngestValidation(t *testing.T) {
 
 				// Possibly corrupt the file.
 				if tc.cLoc != corruptionLocationNone {
-					f, err = fs.OpenReadWrite(ingestTableName)
+					f, err = fs.OpenReadWrite(ingestTableName, vfs.WriteCategoryUnspecified)
 					require.NoError(t, err)
 					corrupt(f)
 				}
@@ -3542,7 +3542,7 @@ func BenchmarkManySSTables(b *testing.B) {
 					var paths []string
 					for i := 0; i < count; i++ {
 						n := fmt.Sprintf("%07d", i)
-						f, err := mem.Create(n)
+						f, err := mem.Create(n, vfs.WriteCategoryUnspecified)
 						require.NoError(b, err)
 						w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 						require.NoError(b, w.Set([]byte(n), nil))
@@ -3553,7 +3553,7 @@ func BenchmarkManySSTables(b *testing.B) {
 
 					{
 						const broadIngest = "broad.sst"
-						f, err := mem.Create(broadIngest)
+						f, err := mem.Create(broadIngest, vfs.WriteCategoryUnspecified)
 						require.NoError(b, err)
 						w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 						require.NoError(b, w.Set([]byte("0"), nil))
@@ -3579,7 +3579,7 @@ func runBenchmarkManySSTablesIngest(b *testing.B, d *DB, fs vfs.FS, count int) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		n := fmt.Sprintf("%07d", count+i)
-		f, err := fs.Create(n)
+		f, err := fs.Create(n, vfs.WriteCategoryUnspecified)
 		require.NoError(b, err)
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(b, w.Set([]byte(n), nil))
