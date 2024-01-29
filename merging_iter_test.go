@@ -212,7 +212,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				line = strings.TrimSpace(line)
 				name := fmt.Sprint(fileNum)
 				fileNum++
-				f, err := memFS.Create(name)
+				f, err := memFS.Create(name, vfs.WriteCategoryUnspecified)
 				if err != nil {
 					return err.Error()
 				}
@@ -328,7 +328,7 @@ func buildMergingIterTables(
 	mem := vfs.NewMem()
 	files := make([]vfs.File, count)
 	for i := range files {
-		f, err := mem.Create(fmt.Sprintf("bench%d", i))
+		f, err := mem.Create(fmt.Sprintf("bench%d", i), vfs.WriteCategoryUnspecified)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -525,7 +525,7 @@ func buildLevelsForMergingIterSeqSeek(
 	files := make([][]vfs.File, levelCount)
 	for i := range files {
 		for j := 0; j < 2; j++ {
-			f, err := mem.Create(fmt.Sprintf("bench%d_%d", i, j))
+			f, err := mem.Create(fmt.Sprintf("bench%d_%d", i, j), vfs.WriteCategoryUnspecified)
 			if err != nil {
 				b.Fatal(err)
 			}

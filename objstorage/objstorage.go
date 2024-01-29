@@ -202,6 +202,10 @@ type CreateOptions struct {
 	// SharedCleanupMethod is used for the object when it is created on shared storage.
 	// The default (zero) value is SharedRefTracking.
 	SharedCleanupMethod SharedCleanupMethod
+
+	// WriteCategory is used for the object when it is created on local storage
+	// to collect aggregated write metrics for each write source.
+	WriteCategory vfs.DiskWriteCategory
 }
 
 // Provider is a singleton object used to access and manage objects.

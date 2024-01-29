@@ -25,7 +25,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 
 	buildFn := func(td *datadriven.TestData) (*Reader, error) {
 		mem := vfs.NewMem()
-		f, err := mem.Create("test")
+		f, err := mem.Create("test", vfs.WriteCategoryUnspecified)
 		if err != nil {
 			return nil, err
 		}

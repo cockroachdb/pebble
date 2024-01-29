@@ -29,7 +29,7 @@ func TestOpenFiles(t *testing.T) {
 			return f
 		}},
 		{name: "Create", fn: func() vfs.File {
-			f, err := fs.Create("foo")
+			f, err := fs.Create("foo", vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			return f
 		}},
@@ -44,7 +44,7 @@ func TestOpenFiles(t *testing.T) {
 			return f
 		}},
 		{name: "ReuseForWrite", fn: func() vfs.File {
-			f, err := fs.ReuseForWrite("foo", "bar")
+			f, err := fs.ReuseForWrite("foo", "bar", vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			return f
 		}},

@@ -142,7 +142,7 @@ func TestFlusherCond(t *testing.T) {
 
 func TestSyncError(t *testing.T) {
 	mem := vfs.NewMem()
-	f, err := mem.Create("log")
+	f, err := mem.Create("log", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 
 	injectedErr := errors.New("injected error")

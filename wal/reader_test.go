@@ -72,7 +72,7 @@ func TestList(t *testing.T) {
 
 				fs := getFS(fsName)
 				require.NoError(t, fs.MkdirAll(fs.PathDir(filename), os.ModePerm))
-				f, err := fs.Create(filename)
+				f, err := fs.Create(filename, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 				require.NoError(t, f.Close())
 			}
@@ -115,11 +115,11 @@ func TestReader(t *testing.T) {
 			var f vfs.File
 			var err error
 			if recycleFilename != "" {
-				f, err = fs.ReuseForWrite(recycleFilename, filename)
+				f, err = fs.ReuseForWrite(recycleFilename, filename, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 				fmt.Fprintf(&buf, "recycled %q as %q\n", recycleFilename, filename)
 			} else {
-				f, err = fs.Create(filename)
+				f, err = fs.Create(filename, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 				fmt.Fprintf(&buf, "created %q\n", filename)
 			}

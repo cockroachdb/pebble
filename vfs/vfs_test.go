@@ -53,8 +53,8 @@ func (fs vfsTestFS) stripBase(path string) string {
 	return path
 }
 
-func (fs vfsTestFS) Create(name string) (File, error) {
-	f, err := fs.FS.Create(name)
+func (fs vfsTestFS) Create(name string, category DiskWriteCategory) (File, error) {
+	f, err := fs.FS.Create(name, category)
 	fmt.Fprintf(fs.w, "create: %s [%v]\n", fs.stripBase(name), normalizeError(err))
 	return vfsTestFSFile{f, fs.PathBase(name), fs.w}, err
 }
@@ -69,8 +69,10 @@ func (fs vfsTestFS) Link(oldname, newname string) error {
 	return err
 }
 
-func (fs vfsTestFS) ReuseForWrite(oldname, newname string) (File, error) {
-	f, err := fs.FS.ReuseForWrite(oldname, newname)
+func (fs vfsTestFS) ReuseForWrite(
+	oldname, newname string, category DiskWriteCategory,
+) (File, error) {
+	f, err := fs.FS.ReuseForWrite(oldname, newname, category)
 	if err == nil {
 		f = vfsTestFSFile{f, fs.PathBase(newname), fs.w}
 	}
@@ -203,7 +205,7 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 					if len(parts) != 2 {
 						return "create <name>"
 					}
-					f, _ := fs.Create(fs.PathJoin(dir, parts[1]))
+					f, _ := fs.Create(fs.PathJoin(dir, parts[1]), WriteCategoryUnspecified)
 					f.Close()
 
 				case "link":
@@ -222,7 +224,7 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 					if len(parts) != 3 {
 						return "reuseForWrite <oldname> <newname>"
 					}
-					_, _ = fs.ReuseForWrite(fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]))
+					_, _ = fs.ReuseForWrite(fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]), WriteCategoryUnspecified)
 
 				case "list":
 					if len(parts) != 2 {
@@ -297,7 +299,7 @@ func TestVFSCreateLinkSemantics(t *testing.T) {
 		t.Run(fmt.Sprintf("%T", fs), func(t *testing.T) {
 			writeFile := func(path, contents string) {
 				path = fs.PathJoin(dir, path)
-				f, err := fs.Create(path)
+				f, err := fs.Create(path, WriteCategoryUnspecified)
 				require.NoError(t, err)
 				_, err = f.Write([]byte(contents))
 				require.NoError(t, err)

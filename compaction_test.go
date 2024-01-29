@@ -2752,7 +2752,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 
 	ingest := func(keys ...string) {
 		t.Helper()
-		f, err := mem.Create("ext")
+		f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
@@ -3477,7 +3477,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 	ingestKeys := func(db *DB) error {
 		// Create an SST for ingestion.
 		const fName = "ext"
-		f, err := db.opts.FS.Create(fName)
+		f, err := db.opts.FS.Create(fName, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(t, w.Set(key, nil))
@@ -3682,7 +3682,7 @@ func TestCompactionErrorStats(t *testing.T) {
 
 	ingest := func(keys ...string) {
 		t.Helper()
-		f, err := mem.Create("ext")
+		f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{

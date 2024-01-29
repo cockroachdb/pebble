@@ -148,7 +148,7 @@ func TestMarker(t *testing.T) {
 
 		case "touch":
 			for _, filename := range strings.Split(td.Input, "\n") {
-				f, err := memFS.Create(filename)
+				f, err := memFS.Create(filename, vfs.WriteCategoryUnspecified)
 				if err != nil {
 					return err.Error()
 				}

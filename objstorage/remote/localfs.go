@@ -80,7 +80,7 @@ func (r *localFSReader) Close() error {
 
 // CreateObject is part of the remote.Storage interface.
 func (s *localFSStore) CreateObject(objName string) (io.WriteCloser, error) {
-	file, err := s.vfs.Create(path.Join(s.dirname, objName))
+	file, err := s.vfs.Create(path.Join(s.dirname, objName), vfs.WriteCategoryUnspecified)
 	return file, err
 }
 

@@ -539,10 +539,10 @@ func (fs *blockingFS) maybeBlock(baseFilename string, op blockingConf) {
 	}
 }
 
-func (fs *blockingFS) Create(name string) (vfs.File, error) {
+func (fs *blockingFS) Create(name string, category vfs.DiskWriteCategory) (vfs.File, error) {
 	baseFilename := fs.FS.PathBase(name)
 	fs.maybeBlock(baseFilename, blockingCreate)
-	f, err := fs.FS.Create(name)
+	f, err := fs.FS.Create(name, category)
 	if err != nil {
 		return nil, err
 	}
