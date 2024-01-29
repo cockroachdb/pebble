@@ -43,7 +43,7 @@ func TestIterator_RandomErrors(t *testing.T) {
 func runErrorInjectionTest(t *testing.T, seed int64) {
 	t.Logf("seed %d", seed)
 	fs := vfs.NewMem()
-	f, err := fs.Create("random.sst")
+	f, err := fs.Create("random.sst", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	rng := rand.New(rand.NewSource(seed))
 	cfg := randomTableConfig{

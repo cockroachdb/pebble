@@ -1013,6 +1013,10 @@ type Options struct {
 	// Setting this to 0 disables deletion pacing, which is also the default.
 	TargetByteDeletionRate int
 
+	// EnableSQLRowSpillMetrics specifies whether the Pebble instance will only be used
+	// to temporarily persist data spilled to disk for row-oriented SQL query execution.
+	EnableSQLRowSpillMetrics bool
+
 	// private options are only used by internal tests or are used internally
 	// for facilitating upgrade paths of unconfigurable functionality.
 	private struct {

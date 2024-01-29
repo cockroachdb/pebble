@@ -3050,9 +3050,25 @@ func (d *DB) runCompaction(
 				ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
 			}
 		}
+		var writeCategory vfs.DiskWriteCategory
+		switch c.kind {
+		case compactionKindFlush:
+			if d.opts.EnableSQLRowSpillMetrics {
+				// In the scenario that the Pebble engine is used for SQL row spills the data written to
+				// the memtable will correspond to spills to disk and should be categorized as such.
+				writeCategory = "sql-row-spill"
+			} else {
+				writeCategory = "pebble-memtable-flush"
+			}
+		case compactionKindIngestedFlushable:
+			writeCategory = "pebble-ingestion"
+		default:
+			writeCategory = "pebble-compaction"
+		}
 		// Prefer shared storage if present.
 		createOpts := objstorage.CreateOptions{
 			PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
+			WriteCategory:       writeCategory,
 		}
 		diskFileNum := base.PhysicalTableDiskFileNum(fileNum)
 		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, diskFileNum, createOpts)

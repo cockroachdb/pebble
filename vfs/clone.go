@@ -118,7 +118,7 @@ func Clone(srcFS, dstFS FS, srcPath, dstPath string, opts ...CloneOption) (bool,
 	if err != nil {
 		return false, err
 	}
-	dstFile, err := dstFS.Create(dstPath)
+	dstFile, err := dstFS.Create(dstPath, WriteCategoryUnspecified)
 	if err != nil {
 		return false, err
 	}

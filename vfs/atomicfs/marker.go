@@ -180,7 +180,7 @@ func (a *Marker) Move(newValue string) error {
 	oldFilename := a.filename
 
 	// Create the new marker.
-	f, err := a.fs.Create(dstPath)
+	f, err := a.fs.Create(dstPath, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		// On a distributed filesystem, an error doesn't guarantee that
 		// the file wasn't created. A retry of the same Move call will

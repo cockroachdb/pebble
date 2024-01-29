@@ -134,7 +134,7 @@ func TestEventListener(t *testing.T) {
 
 		case "ingest":
 			memLog.Reset()
-			f, err := mem.Create("ext/0")
+			f, err := mem.Create("ext/0", vfs.WriteCategoryUnspecified)
 			if err != nil {
 				return err.Error()
 			}
@@ -168,7 +168,7 @@ func TestEventListener(t *testing.T) {
 				return err.Error()
 			}
 			writeTable := func(name string, key byte) error {
-				f, err := mem.Create(name)
+				f, err := mem.Create(name, vfs.WriteCategoryUnspecified)
 				if err != nil {
 					return err
 				}
