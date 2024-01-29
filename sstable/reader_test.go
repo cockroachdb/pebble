@@ -857,7 +857,7 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 	}
 
 	mem := vfs.NewMem()
-	f0, err := mem.Create(testTable)
+	f0, err := mem.Create(testTable, vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 
 	w := NewWriter(objstorageprovider.NewFileWritable(f0), writerOpts)
@@ -1372,7 +1372,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 					name = "fixedTS"
 				}
 				name = name + testCaseName
-				f, err := mem.Create(name)
+				f, err := mem.Create(name, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 
 				w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
@@ -1455,7 +1455,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 
 					{
 						// Create an sstable with 3 data blocks.
-						f, err := mem.Create("test")
+						f, err := mem.Create("test", vfs.WriteCategoryUnspecified)
 						require.NoError(t, err)
 
 						const blockSize = 32
@@ -1501,7 +1501,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 						// Corrupt the first byte in the block.
 						data[bh.Offset] ^= 0xff
 
-						corrupted, err := mem.Create("corrupted")
+						corrupted, err := mem.Create("corrupted", vfs.WriteCategoryUnspecified)
 						require.NoError(t, err)
 						_, err = corrupted.Write(data)
 						require.NoError(t, err)
@@ -1732,7 +1732,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 func TestReader_TableFormat(t *testing.T) {
 	test := func(t *testing.T, want TableFormat) {
 		fs := vfs.NewMem()
-		f, err := fs.Create("test")
+		f, err := fs.Create("test", vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 
 		opts := WriterOptions{TableFormat: want}
@@ -1818,7 +1818,7 @@ func buildBenchmarkTable(
 	b *testing.B, options WriterOptions, confirmTwoLevelIndex bool, offset int,
 ) (*Reader, [][]byte) {
 	mem := vfs.NewMem()
-	f0, err := mem.Create("bench")
+	f0, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -2106,7 +2106,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 	// 99,049,269 bytes in value blocks.
 	setupBench := func(b *testing.B, tableFormat TableFormat, cacheSize int64) *Reader {
 		mem := vfs.NewMem()
-		f0, err := mem.Create("bench")
+		f0, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
 		require.NoError(b, err)
 		options.TableFormat = tableFormat
 		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
@@ -2207,7 +2207,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 	}
 	setupBench := func(b *testing.B, versCount int) (r *Reader, succKeys [][]byte) {
 		mem := vfs.NewMem()
-		f0, err := mem.Create("bench")
+		f0, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
 		require.NoError(b, err)
 		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
 		for i := int64(0); i < keys.Count(); i++ {
@@ -2367,7 +2367,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 	keyBuf := make([]byte, keyLen)
 	setupBench := func(b *testing.B, tableFormat TableFormat, cacheSize int64) *Reader {
 		mem := vfs.NewMem()
-		f0, err := mem.Create("bench")
+		f0, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
 		require.NoError(b, err)
 		options.TableFormat = tableFormat
 		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)

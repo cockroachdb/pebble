@@ -153,7 +153,7 @@ func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 					var keys [][]byte
 					for i := 0; i < fileCount; i++ {
 						filename := fmt.Sprintf("%03d.sst", i)
-						wf, err := fs.Create(filename)
+						wf, err := fs.Create(filename, vfs.WriteCategoryUnspecified)
 						require.NoError(b, err)
 						w := sstable.NewWriter(objstorageprovider.NewFileWritable(wf), writeOpts)
 						for j := 0; j < keyCount/fileCount; j++ {

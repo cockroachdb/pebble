@@ -47,8 +47,8 @@ func (fs *openFilesFS) dumpStacks(w io.Writer) {
 	}
 }
 
-func (fs *openFilesFS) Create(name string) (vfs.File, error) {
-	return fs.wrapOpenFile(fs.inner.Create(name))
+func (fs *openFilesFS) Create(name string, category vfs.DiskWriteCategory) (vfs.File, error) {
+	return fs.wrapOpenFile(fs.inner.Create(name, category))
 }
 
 func (fs *openFilesFS) Link(oldname, newname string) error {
@@ -59,8 +59,10 @@ func (fs *openFilesFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, erro
 	return fs.wrapOpenFile(fs.inner.Open(name, opts...))
 }
 
-func (fs *openFilesFS) OpenReadWrite(name string, opts ...vfs.OpenOption) (vfs.File, error) {
-	return fs.wrapOpenFile(fs.inner.OpenReadWrite(name, opts...))
+func (fs *openFilesFS) OpenReadWrite(
+	name string, category vfs.DiskWriteCategory, opts ...vfs.OpenOption,
+) (vfs.File, error) {
+	return fs.wrapOpenFile(fs.inner.OpenReadWrite(name, category, opts...))
 }
 
 func (fs *openFilesFS) OpenDir(name string) (vfs.File, error) {
@@ -79,8 +81,10 @@ func (fs *openFilesFS) Rename(oldname, newname string) error {
 	return fs.inner.Rename(oldname, newname)
 }
 
-func (fs *openFilesFS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
-	return fs.wrapOpenFile(fs.inner.ReuseForWrite(oldname, newname))
+func (fs *openFilesFS) ReuseForWrite(
+	oldname, newname string, category vfs.DiskWriteCategory,
+) (vfs.File, error) {
+	return fs.wrapOpenFile(fs.inner.ReuseForWrite(oldname, newname, category))
 }
 
 func (fs *openFilesFS) MkdirAll(dir string, perm os.FileMode) error {

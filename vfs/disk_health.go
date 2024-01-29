@@ -106,11 +106,11 @@ func (o OpType) String() string {
 // stats for disk writes. The prefix "pebble-" is reserved for internal Pebble categories.
 //
 // Some examples include, pebble-wal, pebble-memtable-flush, pebble-manifest and in the
-// Cockroach context includes, sql-spill, range-snapshot, node-log.
+// Cockroach context includes, sql-row-spill, range-snapshot, crdb-log.
 type DiskWriteCategory string
 
 // WriteCategoryUnspecified denotes a disk write without a significant category.
-const WriteCategoryUnspecified = "unspecified"
+const WriteCategoryUnspecified DiskWriteCategory = "unspecified"
 
 // DiskWriteStatsAggregate is an aggregate of the bytes written to disk for a given category.
 type DiskWriteStatsAggregate struct {
@@ -129,6 +129,21 @@ func NewDiskWriteStatsCollector() *DiskWriteStatsCollector {
 	return &DiskWriteStatsCollector{
 		statsMap: make(map[DiskWriteCategory]*atomic.Uint64),
 	}
+}
+
+// CreateStat inserts a new category to the statsMap if it doesn't already exist, otherwise
+// it returns a pointer to the current stats.
+func (d *DiskWriteStatsCollector) CreateStat(category DiskWriteCategory) *atomic.Uint64 {
+	var bytesWritten *atomic.Uint64
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if aggStats, ok := d.statsMap[category]; !ok {
+		bytesWritten = new(atomic.Uint64)
+		d.statsMap[category] = bytesWritten
+	} else {
+		bytesWritten = aggStats
+	}
+	return bytesWritten
 }
 
 // GetStats returns the aggregated metrics for all categories.
@@ -184,10 +199,11 @@ type diskHealthCheckingFile struct {
 	lastWritePacked atomic.Uint64
 	createTimeNanos int64
 
-	// aggBytesWritten points to an atomic that aggregates the bytes written
-	// for files that belong to a specific DiskWriteCategory. This pointer is also stored in the
+	// aggBytesWritten points to an atomic that aggregates the bytes written for files
+	// that belong to a specific DiskWriteCategory. This pointer is also stored in the
 	// DiskWriteStatsCollector for metric collection.
 	aggBytesWritten *atomic.Uint64
+	category        DiskWriteCategory
 }
 
 // diskHealthCheckingFile implements File.
@@ -204,14 +220,7 @@ func newDiskHealthCheckingFile(
 ) *diskHealthCheckingFile {
 	var bytesWritten *atomic.Uint64
 	if statsCollector != nil {
-		statsCollector.mu.Lock()
-		if aggStats, ok := statsCollector.statsMap[category]; !ok {
-			bytesWritten = new(atomic.Uint64)
-			statsCollector.statsMap[category] = bytesWritten
-		} else {
-			bytesWritten = aggStats
-		}
-		statsCollector.mu.Unlock()
+		bytesWritten = statsCollector.CreateStat(category)
 	} else {
 		bytesWritten = new(atomic.Uint64)
 	}
@@ -225,6 +234,7 @@ func newDiskHealthCheckingFile(
 		createTimeNanos: time.Now().UnixNano(),
 
 		aggBytesWritten: bytesWritten,
+		category:        category,
 	}
 }
 
@@ -724,11 +734,11 @@ func (d *diskHealthCheckingFS) Close() error {
 }
 
 // Create implements the FS interface.
-func (d *diskHealthCheckingFS) Create(name string) (File, error) {
+func (d *diskHealthCheckingFS) Create(name string, category DiskWriteCategory) (File, error) {
 	var f File
 	var err error
 	d.timeFilesystemOp(name, OpTypeCreate, func() {
-		f, err = d.fs.Create(name)
+		f, err = d.fs.Create(name, category)
 	}, time.Now().UnixNano())
 	if err != nil {
 		return f, err
@@ -736,8 +746,7 @@ func (d *diskHealthCheckingFS) Create(name string) (File, error) {
 	if d.diskSlowThreshold == 0 {
 		return f, nil
 	}
-	// TODO(cheranm): add plumbing to pass down valid category.
-	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, WriteCategoryUnspecified, d.statsCollector,
+	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, category, d.statsCollector,
 		func(opType OpType, writeSizeInBytes int, duration time.Duration) {
 			d.onSlowDisk(
 				DiskSlowInfo{
@@ -790,13 +799,14 @@ func (d *diskHealthCheckingFS) Open(name string, opts ...OpenOption) (File, erro
 }
 
 // OpenReadWrite implements the FS interface.
-func (d *diskHealthCheckingFS) OpenReadWrite(name string, opts ...OpenOption) (File, error) {
-	f, err := d.fs.OpenReadWrite(name, opts...)
+func (d *diskHealthCheckingFS) OpenReadWrite(
+	name string, category DiskWriteCategory, opts ...OpenOption,
+) (File, error) {
+	f, err := d.fs.OpenReadWrite(name, category, opts...)
 	if err != nil {
 		return nil, err
 	}
-	// TODO(cheranm): add plumbing to pass down valid category.
-	return newDiskHealthCheckingFile(f, 0, WriteCategoryUnspecified, d.statsCollector, func(opType OpType, writeSizeInBytes int, duration time.Duration) {}), nil
+	return newDiskHealthCheckingFile(f, 0, category, d.statsCollector, func(opType OpType, writeSizeInBytes int, duration time.Duration) {}), nil
 }
 
 // OpenDir implements the FS interface.
@@ -857,11 +867,13 @@ func (d *diskHealthCheckingFS) Rename(oldname, newname string) error {
 }
 
 // ReuseForWrite implements the FS interface.
-func (d *diskHealthCheckingFS) ReuseForWrite(oldname, newname string) (File, error) {
+func (d *diskHealthCheckingFS) ReuseForWrite(
+	oldname, newname string, category DiskWriteCategory,
+) (File, error) {
 	var f File
 	var err error
 	d.timeFilesystemOp(newname, OpTypeReuseForWrite, func() {
-		f, err = d.fs.ReuseForWrite(oldname, newname)
+		f, err = d.fs.ReuseForWrite(oldname, newname, category)
 	}, time.Now().UnixNano())
 	if err != nil {
 		return f, err
@@ -869,8 +881,7 @@ func (d *diskHealthCheckingFS) ReuseForWrite(oldname, newname string) (File, err
 	if d.diskSlowThreshold == 0 {
 		return f, nil
 	}
-	// TODO(cheranm): add plumbing to pass down valid category.
-	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, WriteCategoryUnspecified, d.statsCollector,
+	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, category, d.statsCollector,
 		func(opType OpType, writeSizeInBytes int, duration time.Duration) {
 			d.onSlowDisk(
 				DiskSlowInfo{

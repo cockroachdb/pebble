@@ -272,7 +272,7 @@ func (w *WorkloadCollector) copyManifests(startAtIndex int, manifests []*manifes
 			// goroutine that accesses the fields of the `manifestDetails`
 			// struct.
 			var err error
-			manifest.destFile, err = destFS.Create(w.destFilepath(destFS.PathBase(manifest.sourceFilepath)))
+			manifest.destFile, err = destFS.Create(w.destFilepath(destFS.PathBase(manifest.sourceFilepath)), vfs.WriteCategoryUnspecified)
 			if err != nil {
 				panic(err)
 			}
