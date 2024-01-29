@@ -549,7 +549,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		// Write them to a temporary file first, in case we crash before
 		// we're done. A corrupt options file prevents opening the
 		// database.
-		optionsFile, err := opts.FS.Create(tmpPath)
+		optionsFile, err := opts.FS.Create(tmpPath, vfs.WriteCategoryUnspecified)
 		if err != nil {
 			return nil, err
 		}

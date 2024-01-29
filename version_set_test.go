@@ -29,7 +29,7 @@ import (
 
 func writeAndIngest(t *testing.T, mem vfs.FS, d *DB, k InternalKey, v []byte, filename string) {
 	path := mem.PathJoin("ext", filename)
-	f, err := mem.Create(path)
+	f, err := mem.Create(path, vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	require.NoError(t, w.Add(k, v))

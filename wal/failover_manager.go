@@ -106,7 +106,7 @@ func (p *dirProber) probeLoop() {
 				// Delete, create, write, sync.
 				start := p.timeSource.now()
 				_ = p.fs.Remove(p.filename)
-				f, err := p.fs.Create(p.filename)
+				f, err := p.fs.Create(p.filename, "pebble-wal")
 				if err != nil {
 					return failedProbeDuration
 				}
@@ -480,7 +480,7 @@ func (wm *failoverManager) init(o Options, initial Logs) error {
 	// proceed. An operator doesn't want to encounter an issue writing to the
 	// secondary the first time there's a need to failover. We write a bit of
 	// metadata to a file in the secondary's directory.
-	f, err := o.Secondary.FS.Create(o.Secondary.FS.PathJoin(o.Secondary.Dirname, "failover_source"))
+	f, err := o.Secondary.FS.Create(o.Secondary.FS.PathJoin(o.Secondary.Dirname, "failover_source"), "pebble-wal")
 	if err != nil {
 		return errors.Newf("failed to write to WAL secondary dir: %v", err)
 	}
@@ -755,7 +755,7 @@ func (wm *failoverManager) logCreator(
 			createInfo.RecycledFileNum = recycleLog.FileNum
 			recycleLogName := dir.FS.PathJoin(dir.Dirname, makeLogFilename(NumWAL(recycleLog.FileNum), 0))
 			r.writeStart()
-			logFile, err = dir.FS.ReuseForWrite(recycleLogName, logFilename)
+			logFile, err = dir.FS.ReuseForWrite(recycleLogName, logFilename, "pebble-wal")
 			r.writeEnd(err)
 			// TODO(sumeer): should we fatal since primary dir? At some point it is
 			// better to fatal instead of continuing to failover.
@@ -789,7 +789,7 @@ func (wm *failoverManager) logCreator(
 	//
 	// Create file.
 	r.writeStart()
-	logFile, err = dir.FS.Create(logFilename)
+	logFile, err = dir.FS.Create(logFilename, "pebble-wal")
 	r.writeEnd(err)
 	return logFile, 0, err
 }
