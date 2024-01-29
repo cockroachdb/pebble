@@ -485,7 +485,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 		newLogName := base.MakeFilepath(opts.FS, d.walDirname, fileTypeLog, newLogNum)
 		d.mu.log.queue = append(d.mu.log.queue, fileInfo{FileNum: newLogNum, FileSize: 0})
-		logFile, err := opts.FS.Create(newLogName)
+		logFile, err := opts.FS.Create(newLogName, "pebble-wal")
 		if err != nil {
 			return nil, err
 		}
@@ -548,7 +548,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		// Write them to a temporary file first, in case we crash before
 		// we're done. A corrupt options file prevents opening the
 		// database.
-		optionsFile, err := opts.FS.Create(tmpPath)
+		optionsFile, err := opts.FS.Create(tmpPath, vfs.WriteCategoryUnspecified)
 		if err != nil {
 			return nil, err
 		}

@@ -345,7 +345,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 					filePath = base.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum)
 				}
 			}
-			f, err := fs.Create(filePath)
+			f, err := fs.Create(filePath, vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			b, err := hex.DecodeString(strings.ReplaceAll(td.Input, "\n", ""))
 			require.NoError(t, err)

@@ -308,7 +308,7 @@ func (t *Test) maybeSaveDataInternal() error {
 				return err
 			}
 			outputPath := vfs.Default.PathJoin(outputDir, objs[i])
-			outputFile, err := vfs.Default.Create(outputPath)
+			outputFile, err := vfs.Default.Create(outputPath, vfs.WriteCategoryUnspecified)
 			if err != nil {
 				return err
 			}

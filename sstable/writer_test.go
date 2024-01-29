@@ -505,7 +505,7 @@ func TestDoubleClose(t *testing.T) {
 
 func TestParallelWriterErrorProp(t *testing.T) {
 	fs := vfs.NewMem()
-	f, err := fs.Create("test")
+	f, err := fs.Create("test", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	opts := WriterOptions{
 		TableFormat: TableFormatPebblev1, BlockSize: 1, Parallelism: true,
@@ -600,7 +600,7 @@ func TestWriterClearCache(t *testing.T) {
 	}
 
 	build := func(name string) {
-		f, err := mem.Create(name)
+		f, err := mem.Create(name, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 
 		w := NewWriter(objstorageprovider.NewFileWritable(f), writerOpts, cacheOpts)
@@ -751,7 +751,7 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
 			fs := vfs.NewMem()
-			f, err := fs.Create("test")
+			f, err := fs.Create("test", vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 
 			w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
@@ -838,7 +838,7 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 			for tf := TableFormatLevelDB; tf <= TableFormatMax; tf++ {
 				t.Run(tf.String(), func(t *testing.T) {
 					fs := vfs.NewMem()
-					f, err := fs.Create("sst")
+					f, err := fs.Create("sst", vfs.WriteCategoryUnspecified)
 					require.NoError(t, err)
 
 					opts := WriterOptions{TableFormat: tf}

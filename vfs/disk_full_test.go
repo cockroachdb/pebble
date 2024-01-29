@@ -19,7 +19,7 @@ import (
 
 var filesystemWriteOps = map[string]func(FS) error{
 	"Create": func(fs FS) error {
-		_, err := fs.Create("foo")
+		_, err := fs.Create("foo", WriteCategoryUnspecified)
 		return err
 	},
 	"Lock": func(fs FS) error {
@@ -27,7 +27,7 @@ var filesystemWriteOps = map[string]func(FS) error{
 		return err
 	},
 	"ReuseForWrite": func(fs FS) error {
-		_, err := fs.ReuseForWrite("foo", "bar")
+		_, err := fs.ReuseForWrite("foo", "bar", WriteCategoryUnspecified)
 		return err
 	},
 	"Link":      func(fs FS) error { return fs.Link("foo", "bar") },
@@ -68,7 +68,7 @@ func TestOnDiskFull_File(t *testing.T) {
 			callbackInvocations++
 		})
 
-		f, err := fs.Create("foo")
+		f, err := fs.Create("foo", WriteCategoryUnspecified)
 		require.NoError(t, err)
 
 		// The next Write should ENOSPC.
@@ -93,7 +93,7 @@ func TestOnDiskFull_File(t *testing.T) {
 			callbackInvocations++
 		})
 
-		f, err := fs.Create("foo")
+		f, err := fs.Create("foo", WriteCategoryUnspecified)
 		require.NoError(t, err)
 
 		// The next Sync should ENOSPC. The callback should be invoked, but a
@@ -124,7 +124,7 @@ func TestOnDiskFull_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := fs.Create("foo")
+			_, err := fs.Create("foo", WriteCategoryUnspecified)
 			// They all should succeed on retry.
 			require.NoError(t, err)
 		}()
@@ -160,7 +160,7 @@ func (fs *enospcMockFS) maybeENOSPC() error {
 	return nil
 }
 
-func (fs *enospcMockFS) Create(name string) (File, error) {
+func (fs *enospcMockFS) Create(name string, category DiskWriteCategory) (File, error) {
 	if err := fs.maybeENOSPC(); err != nil {
 		return nil, err
 	}
@@ -195,7 +195,9 @@ func (fs *enospcMockFS) Rename(oldname, newname string) error {
 	return nil
 }
 
-func (fs *enospcMockFS) ReuseForWrite(oldname, newname string) (File, error) {
+func (fs *enospcMockFS) ReuseForWrite(
+	oldname, newname string, category DiskWriteCategory,
+) (File, error) {
 	if err := fs.maybeENOSPC(); err != nil {
 		return nil, err
 	}
@@ -242,7 +244,7 @@ func (f *enospcMockFile) Sync() error {
 func BenchmarkOnDiskFull(b *testing.B) {
 	fs := OnDiskFull(NewMem(), func() {})
 
-	f, err := fs.Create("foo")
+	f, err := fs.Create("foo", WriteCategoryUnspecified)
 	require.NoError(b, err)
 	defer func() { require.NoError(b, f.Close()) }()
 
