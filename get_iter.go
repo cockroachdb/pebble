@@ -73,6 +73,10 @@ func (g *getIter) Last() (*InternalKey, base.LazyValue) {
 func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 	if g.iter != nil {
 		g.iterKey, g.iterValue = g.iter.Next()
+		if err := g.iter.Error(); err != nil {
+			g.err = err
+			return nil, base.LazyValue{}
+		}
 	}
 
 	for {
@@ -134,6 +138,10 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 				base.InternalKeySeqNumMax,
 			)
 			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
+			if err := g.iter.Error(); err != nil {
+				g.err = err
+				return nil, base.LazyValue{}
+			}
 			g.batch = nil
 			continue
 		}
@@ -151,6 +159,10 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			g.rangeDelIter = m.newRangeDelIter(nil)
 			g.mem = g.mem[:n-1]
 			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
+			if err := g.iter.Error(); err != nil {
+				g.err = err
+				return nil, base.LazyValue{}
+			}
 			continue
 		}
 
@@ -181,6 +193,11 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 					prefix = g.key[:g.comparer.Split(g.key)]
 				}
 				g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
+				if err := g.iter.Error(); err != nil {
+					g.err = err
+					return nil, base.LazyValue{}
+				}
+
 				if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
 					g.iterKey = nil
 					g.iterValue = base.LazyValue{}
@@ -219,6 +236,10 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			prefix = g.key[:g.comparer.Split(g.key)]
 		}
 		g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
+		if err := g.iter.Error(); err != nil {
+			g.err = err
+			return nil, base.LazyValue{}
+		}
 		if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
 			g.iterKey = nil
 			g.iterValue = base.LazyValue{}

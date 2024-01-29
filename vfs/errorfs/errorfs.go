@@ -223,17 +223,15 @@ func (c *Counter) MaybeError(op Op) error {
 // Load returns the number of errors injected.
 func (c *Counter) Load() uint64 {
 	c.mu.Lock()
-	v := c.mu.v
-	c.mu.Unlock()
-	return v
+	defer c.mu.Unlock()
+	return c.mu.v
 }
 
 // LastError returns the last non-nil error injected.
 func (c *Counter) LastError() error {
 	c.mu.Lock()
-	err := c.mu.lastErr
-	c.mu.Unlock()
-	return err
+	defer c.mu.Unlock()
+	return c.mu.lastErr
 }
 
 // Toggle wraps an Injector. By default, Toggle injects nothing. When toggled on

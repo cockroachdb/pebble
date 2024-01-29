@@ -6,6 +6,7 @@ package keyspan
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -34,7 +35,10 @@ func TestLoggingIter(t *testing.T) {
 			iter = InjectLogging(iter, l)
 			runFragmentIteratorCmd(iter, d.Input, nil)
 			require.NoError(t, iter.Close())
-			return l.String()
+			out := l.String()
+			// Hide pointer values.
+			r := regexp.MustCompile(`\(0x[0-9a-f]+\)`)
+			return r.ReplaceAllString(out, "")
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)

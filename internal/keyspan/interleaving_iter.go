@@ -207,11 +207,14 @@ func (i *InterleavingIter) Init(
 	keyspanIter FragmentIterator,
 	opts InterleavingIterOpts,
 ) {
+	keyspanIter = MaybeAssert(keyspanIter, comparer.Compare)
+	// To debug:
+	// keyspanIter = InjectLogging(keyspanIter, base.DefaultLogger)
 	*i = InterleavingIter{
 		cmp:         comparer.Compare,
 		comparer:    comparer,
 		pointIter:   pointIter,
-		keyspanIter: MaybeAssert(keyspanIter, comparer.Compare),
+		keyspanIter: keyspanIter,
 		mask:        opts.Mask,
 		lower:       opts.LowerBound,
 		upper:       opts.UpperBound,
