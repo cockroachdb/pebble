@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -198,8 +199,9 @@ type Counter struct {
 	Injector
 	mu struct {
 		sync.Mutex
-		v       uint64
-		lastErr error
+		v                 uint64
+		lastErr           error
+		lastErrStackTrace string
 	}
 }
 
@@ -215,6 +217,7 @@ func (c *Counter) MaybeError(op Op) error {
 		c.mu.Lock()
 		c.mu.v++
 		c.mu.lastErr = err
+		c.mu.lastErrStackTrace = string(debug.Stack())
 		c.mu.Unlock()
 	}
 	return err
@@ -223,17 +226,22 @@ func (c *Counter) MaybeError(op Op) error {
 // Load returns the number of errors injected.
 func (c *Counter) Load() uint64 {
 	c.mu.Lock()
-	v := c.mu.v
-	c.mu.Unlock()
-	return v
+	defer c.mu.Unlock()
+	return c.mu.v
 }
 
 // LastError returns the last non-nil error injected.
 func (c *Counter) LastError() error {
 	c.mu.Lock()
-	err := c.mu.lastErr
-	c.mu.Unlock()
-	return err
+	defer c.mu.Unlock()
+	return c.mu.lastErr
+}
+
+// LastErrorStack returns the stack when the last non-nil error was injected.
+func (c *Counter) LastErrorStack() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.mu.lastErrStackTrace
 }
 
 // Toggle wraps an Injector. By default, Toggle injects nothing. When toggled on

@@ -184,7 +184,6 @@ type MergingIter struct {
 	// destination for transforms. Every tranformed span overwrites the
 	// previous.
 	span Span
-	err  error
 	dir  int8
 
 	// alloc preallocates mergingIterLevel and mergingIterItems for use by the
@@ -675,7 +674,7 @@ func (m *MergingIter) Prev() (*Span, error) {
 
 // Close closes the iterator, releasing all acquired resources.
 func (m *MergingIter) Close() error {
-	err := m.err
+	var err error
 	for i := range m.levels {
 		err = firstError(err, m.levels[i].iter.Close())
 	}
@@ -834,7 +833,7 @@ func (m *MergingIter) findNextFragmentSet() (*Span, error) {
 	// below loop will still consider [b,d) before continuing to [d, e)). It
 	// returns when it finds a span that is covered by at least one key.
 
-	for m.heap.len() > 0 && m.err == nil {
+	for m.heap.len() > 0 {
 		// Initialize the next span's start bound. SeekGE and First prepare the
 		// heap without advancing. Next leaves the heap in a state such that the
 		// root is the smallest bound key equal to the returned span's end key,
@@ -876,12 +875,12 @@ func (m *MergingIter) findNextFragmentSet() (*Span, error) {
 		if err := m.nextEntry(); err != nil {
 			return nil, err
 		}
-		for len(m.heap.items) > 0 && m.err == nil && m.cmp(m.heapRoot(), m.start) == 0 {
+		for len(m.heap.items) > 0 && m.cmp(m.heapRoot(), m.start) == 0 {
 			if err := m.nextEntry(); err != nil {
 				return nil, err
 			}
 		}
-		if len(m.heap.items) == 0 || m.err != nil {
+		if len(m.heap.items) == 0 {
 			break
 		}
 
@@ -917,7 +916,7 @@ func (m *MergingIter) findPrevFragmentSet() (*Span, error) {
 	// below loop will still consider [b,d) before continuing to [a, b)). It
 	// returns when it finds a span that is covered by at least one key.
 
-	for m.heap.len() > 0 && m.err == nil {
+	for m.heap.len() > 0 {
 		// Initialize the next span's end bound. SeekLT and Last prepare the
 		// heap without advancing. Prev leaves the heap in a state such that the
 		// root is the largest bound key equal to the returned span's start key,
@@ -955,13 +954,15 @@ func (m *MergingIter) findPrevFragmentSet() (*Span, error) {
 		// L2:          [c, e)
 		// If we're positioned at L1's start(c) start boundary, we want to prev
 		// to move to the first bound < c.
-		m.err = m.prevEntry()
-		for len(m.heap.items) > 0 && m.err == nil && m.cmp(m.heapRoot(), m.end) == 0 {
-			m.err = m.prevEntry()
+		if err := m.prevEntry(); err != nil {
+			return nil, err
 		}
-		if m.err != nil {
-			return nil, m.err
-		} else if len(m.heap.items) == 0 {
+		for len(m.heap.items) > 0 && m.cmp(m.heapRoot(), m.end) == 0 {
+			if err := m.prevEntry(); err != nil {
+				return nil, err
+			}
+		}
+		if len(m.heap.items) == 0 {
 			break
 		}
 

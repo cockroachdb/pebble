@@ -331,11 +331,11 @@ func (t *Test) maybeSaveData() {
 	}
 }
 
-// Step runs one single operation, returning whether or not there are additional
-// operations, the operation's output and an error if any occurred while running
-// the operation.
+// Step runs one single operation, returning: whether there are additional
+// operations remaining; the operation's output; and an error if any occurred
+// while running the operation.
 //
-// Step may be used in stead of Execute to advance a test one operation at a
+// Step may be used instead of Execute to advance a test one operation at a
 // time.
 func (t *Test) Step() (more bool, operationOutput string, err error) {
 	more = t.step(t.h, func(format string, args ...interface{}) {
