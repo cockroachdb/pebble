@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"math/rand"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -76,11 +77,12 @@ func TestSyncQueue(t *testing.T) {
 
 func TestFlusherCond(t *testing.T) {
 	var mu sync.Mutex
-	var q syncQueue
 	var c flusherCond
 	var closed bool
 
-	c.init(&mu, &q)
+	psq := &pendingSyncsWithSyncQueue{}
+	c.init(&mu, psq)
+	q := &psq.syncQueue
 
 	var flusherWG sync.WaitGroup
 	flusherWG.Add(1)
@@ -299,7 +301,8 @@ func TestMinSyncInterval(t *testing.T) {
 		}
 		// NB: we can't use syncQueue.load() here as that will return 0,0 while the
 		// syncQueue is blocked.
-		head, tail := w.flusher.syncQ.unpack(w.flusher.syncQ.headTail.Load())
+		syncQ := w.flusher.pendingSyncs.(*pendingSyncsWithSyncQueue)
+		head, tail := syncQ.unpack(syncQ.headTail.Load())
 		waiters := head - tail
 		if waiters != uint32(i+1) {
 			t.Fatalf("expected %d waiters, but found %d", i+1, waiters)
@@ -553,6 +556,183 @@ func TestQueueWALBlocks(t *testing.T) {
 	require.GreaterOrEqual(t, logSize, int64(numBlocks*blockSize))
 }
 
+func TestPendingSyncsWithHighestSyncIndex(t *testing.T) {
+	var psi PendingSyncIndex
+	psi.Index = NoSyncIndex
+	require.True(t, psi.empty())
+	require.False(t, psi.syncRequested())
+	psi.Index = 0
+	require.False(t, psi.empty())
+	require.True(t, psi.syncRequested())
+
+	type indexAndErr struct {
+		PendingSyncIndex
+		error
+	}
+	var cbValues []indexAndErr
+	var q pendingSyncsWithHighestSyncIndex
+	q.init(func(doneSync PendingSyncIndex, err error) {
+		cbValues = append(cbValues, indexAndErr{PendingSyncIndex: doneSync, error: err})
+	})
+	require.True(t, q.empty())
+	q.push(&psi)
+	require.False(t, q.empty())
+	require.Equal(t, int64(0), q.load())
+	require.Equal(t, int64(0), q.snapshotForPop().(*PendingSyncIndex).Index)
+	q.setBlocked()
+	require.True(t, q.empty())
+	require.Equal(t, int64(NoSyncIndex), q.load())
+	require.Equal(t, int64(NoSyncIndex), q.snapshotForPop().(*PendingSyncIndex).Index)
+	q.clearBlocked()
+	require.False(t, q.empty())
+	require.Equal(t, int64(0), q.load())
+
+	const highestIndex = 100
+	testErr := errors.New("test error")
+	var popDone sync.WaitGroup
+	popDone.Add(1)
+	// Goroutine that pops.
+	go func() {
+		var poppedIndex int64
+		for poppedIndex != highestIndex {
+			if !q.empty() {
+				snap := q.snapshotForPop()
+				require.False(t, snap.empty())
+				poppedIndex = snap.(*PendingSyncIndex).Index
+				require.NotEqual(t, int64(NoSyncIndex), poppedIndex)
+				var err error
+				// Inject error for all even index pops.
+				if poppedIndex%2 == 0 {
+					err = testErr
+				}
+				require.NoError(t, q.pop(snap, err))
+			}
+		}
+		popDone.Done()
+	}()
+	// Goroutine that pushes.
+	go func() {
+		// Already pushed 0, so start at index 1.
+		for i := 1; i <= highestIndex; i++ {
+			psi.Index = int64(i)
+			q.push(&psi)
+			// Randomly inject sleep, to allow pop to catch up, so that highestIndex
+			// doesn't overwrite everything. With this, we see some sparseness of
+			// indices in pops, but we get enough popped indices.
+			if rand.Intn(2) == 0 {
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
+	popDone.Wait()
+	latestValue := int64(NoSyncIndex)
+	for _, cbVal := range cbValues {
+		if cbVal.Index%2 == 0 {
+			require.Equal(t, testErr, cbVal.error)
+		} else {
+			require.NoError(t, cbVal.error)
+		}
+		require.Less(t, latestValue, cbVal.Index)
+		latestValue = cbVal.Index
+	}
+	require.Equal(t, int64(highestIndex), latestValue)
+}
+
+func TestSyncRecordGeneralized(t *testing.T) {
+	f := &syncFile{}
+	// Write two records, where the first one requests a sync. The callback
+	// should execute for both since the second is synced on close.
+	lastSync := int64(-1)
+	cbChan := make(chan struct{}, 2)
+	w := NewLogWriter(f, 0, LogWriterConfig{
+		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		ExternalSyncQueueCallback: func(doneSync PendingSyncIndex, err error) {
+			require.NoError(t, err)
+			require.Equal(t, lastSync+1, doneSync.Index)
+			lastSync++
+			cbChan <- struct{}{}
+		},
+	})
+	offset, err := w.SyncRecordGeneralized([]byte("hello"), &PendingSyncIndex{})
+	require.NoError(t, err)
+	<-cbChan
+	require.Equal(t, offset, f.writePos.Load())
+	require.Equal(t, offset, f.syncPos.Load())
+
+	offset, err = w.SyncRecordGeneralized([]byte("world"), &PendingSyncIndex{Index: NoSyncIndex})
+	require.NoError(t, err)
+	time.Sleep(5 * time.Millisecond)
+	select {
+	case <-cbChan:
+		t.Fatalf("should not sync")
+	default:
+	}
+	if f.writePos.Load() == offset {
+		require.NotEqual(t, f.writePos.Load(), f.syncPos.Load())
+	}
+	require.NoError(t, w.CloseWithLastQueuedRecord(PendingSyncIndex{Index: 1}))
+	<-cbChan
+	require.Equal(t, int64(1), lastSync)
+	require.Equal(t, f.syncPos.Load(), f.writePos.Load())
+}
+
+type syncFileWithError struct {
+	syncFile
+	err error
+}
+
+func (f *syncFileWithError) Sync() error {
+	if f.err != nil {
+		return f.err
+	}
+	return f.syncFile.Sync()
+}
+
+func TestSyncRecordGeneralizedWithCloseError(t *testing.T) {
+	f := &syncFileWithError{}
+	// Write two records, where the first one requests a sync. The callback
+	// should execute for both since the second attempts to sync on close. The
+	// sync on close gets an error, so the callback has an error too.
+	lastSync := int64(-1)
+	cbChan := make(chan struct{}, 2)
+	w := NewLogWriter(f, 0, LogWriterConfig{
+		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		ExternalSyncQueueCallback: func(doneSync PendingSyncIndex, err error) {
+			if doneSync.Index == 1 {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, lastSync+1, doneSync.Index)
+			lastSync++
+			cbChan <- struct{}{}
+		},
+	})
+	offset, err := w.SyncRecordGeneralized([]byte("hello"), &PendingSyncIndex{})
+	require.NoError(t, err)
+	<-cbChan
+	require.Equal(t, offset, f.writePos.Load())
+	require.Equal(t, offset, f.syncPos.Load())
+
+	// Set error for next sync.
+	f.err = errorfs.ErrInjected
+	offset, err = w.SyncRecordGeneralized([]byte("world"), &PendingSyncIndex{Index: NoSyncIndex})
+	require.NoError(t, err)
+	time.Sleep(5 * time.Millisecond)
+	select {
+	case <-cbChan:
+		t.Fatalf("should not sync")
+	default:
+	}
+	if f.writePos.Load() == offset {
+		require.NotEqual(t, f.writePos.Load(), f.syncPos.Load())
+	}
+	require.Error(t, w.CloseWithLastQueuedRecord(PendingSyncIndex{Index: 1}))
+	<-cbChan
+	require.Equal(t, int64(1), lastSync)
+	require.Less(t, f.syncPos.Load(), f.writePos.Load())
+}
+
 // BenchmarkQueueWALBlocks exercises queueing within the LogWriter. It can be
 // useful to measure allocations involved when flushing is slow enough to
 // accumulate a large backlog fo queued blocks.
@@ -589,5 +769,37 @@ func BenchmarkQueueWALBlocks(b *testing.B) {
 				require.NoError(b, w.Close())
 			}
 		})
+	}
+}
+
+// BenchmarkWriteWALBlocksAllocs exercises the PendingSync and related
+// interfaces for the generalized write path, to ensure there are no extra
+// allocations.
+func BenchmarkWriteWALBlocksAllocs(b *testing.B) {
+	const dataVolume = 64 << 20 /* 64 MB */
+	writeSize := 64
+	record := make([]byte, writeSize)
+	numRecords := dataVolume / writeSize
+
+	for j := 0; j < b.N; j++ {
+		b.StopTimer()
+		f := vfstest.DiscardFile
+		w := NewLogWriter(f, 0, LogWriterConfig{
+			WALFsyncLatency:           prometheus.NewHistogram(prometheus.HistogramOpts{}),
+			ExternalSyncQueueCallback: func(doneSync PendingSyncIndex, err error) {},
+		})
+
+		var psi PendingSyncIndex
+		b.StartTimer()
+		for i := 0; i < numRecords; i++ {
+			psi.Index = int64(i)
+			if _, err := w.SyncRecordGeneralized(record[:], &psi); err != nil {
+				b.Fatal(err)
+			}
+		}
+		// Close to ensure everything is written.
+		require.NoError(b, w.CloseWithLastQueuedRecord(psi))
+		b.StopTimer()
+		b.SetBytes(dataVolume)
 	}
 }
