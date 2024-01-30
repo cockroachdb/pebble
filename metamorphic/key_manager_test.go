@@ -12,28 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestObjKey(t *testing.T) {
-	testCases := []struct {
-		key  objKey
-		want string
-	}{
-		{
-			key:  makeObjKey(makeObjID(dbTag, 1), []byte("foo")),
-			want: "db1:foo",
-		},
-		{
-			key:  makeObjKey(makeObjID(batchTag, 1), []byte("bar")),
-			want: "batch1:bar",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run("", func(t *testing.T) {
-			require.Equal(t, tc.want, tc.key.String())
-		})
-	}
-}
-
 func TestKeyManager_AddKey(t *testing.T) {
 	m := newKeyManager(1 /* numInstances */)
 	require.Empty(t, m.globalKeys)
@@ -72,25 +50,6 @@ func TestKeyManager_AddKey(t *testing.T) {
 	require.Equal(t, [][]byte{
 		[]byte("bar"), []byte("bax"), []byte("foo"),
 	}, m.prefixes())
-}
-
-func TestKeyManager_GetOrInit(t *testing.T) {
-	id := makeObjID(batchTag, 1)
-	key := []byte("foo")
-	o := makeObjKey(id, key)
-
-	m := newKeyManager(1 /* numInstances */)
-	require.NotContains(t, m.byObjKey, o.String())
-	require.NotContains(t, m.byObj, id)
-	require.Contains(t, m.byObj, makeObjID(dbTag, 1)) // Always contains the DB key.
-
-	meta1 := m.getOrInit(id, key)
-	require.Contains(t, m.byObjKey, o.String())
-	require.Contains(t, m.byObj, id)
-
-	// Idempotent.
-	meta2 := m.getOrInit(id, key)
-	require.Equal(t, meta1, meta2)
 }
 
 func mustParseObjID(s string) objID {
@@ -137,7 +96,7 @@ func TestKeyManager(t *testing.T) {
 				case "bounds":
 					for i := 1; i < len(fields); i++ {
 						objID := mustParseObjID(fields[1])
-						fmt.Fprintf(&buf, "%s: %s\n", objID, km.boundsByObj[objID])
+						fmt.Fprintf(&buf, "%s: %s\n", objID, km.objKeyMeta(objID).bounds)
 					}
 				case "keys":
 					fmt.Fprintf(&buf, "keys: ")
