@@ -1009,14 +1009,14 @@ func (g *generator) iterSeekGEWithLimit(iterID objID) {
 	})
 }
 
-func (g *generator) randKeyToReadWithinBounds(lower, upper []byte, readerID objID) []*keyMeta {
+// inRangeKeys returns all keys in the range [lower, upper) associated with the
+// given object.
+func (g *generator) inRangeKeys(lower, upper []byte, o objID) []*keyMeta {
 	var inRangeKeys []*keyMeta
-	for _, keyMeta := range g.keyManager.byObj[readerID] {
-		posKey := keyMeta.key
-		if g.cmp(posKey, lower) < 0 || g.cmp(posKey, upper) >= 0 {
-			continue
+	for _, keyMeta := range g.keyManager.sortedKeysForObj(o) {
+		if g.cmp(keyMeta.key, lower) >= 0 && g.cmp(keyMeta.key, upper) < 0 {
+			inRangeKeys = append(inRangeKeys, keyMeta)
 		}
-		inRangeKeys = append(inRangeKeys, keyMeta)
 	}
 	return inRangeKeys
 }
@@ -1036,7 +1036,7 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 	// random key.
 	if g.rng.Intn(10) >= 1 {
 		possibleKeys := make([][]byte, 0, 100)
-		inRangeKeys := g.randKeyToReadWithinBounds(lower, upper, g.objDB[iterID])
+		inRangeKeys := g.inRangeKeys(lower, upper, g.objDB[iterID])
 		for _, keyMeta := range inRangeKeys {
 			visibleHistory := keyMeta.history.before(iterCreationTimestamp)
 
@@ -1049,7 +1049,7 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 		}
 
 		if len(possibleKeys) > 0 {
-			key = []byte(possibleKeys[g.rng.Int31n(int32(len(possibleKeys)))])
+			key = possibleKeys[g.rng.Int31n(int32(len(possibleKeys)))]
 		}
 	}
 
