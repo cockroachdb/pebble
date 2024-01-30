@@ -617,6 +617,9 @@ func (i *twoLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.Laz
 		return nil, base.LazyValue{}
 	}
 	if result == loadBlockIrrelevant {
+		if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
+			i.exhaustedBounds = -1
+		}
 		// Load the previous block.
 		return i.skipBackward()
 	}

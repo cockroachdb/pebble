@@ -431,3 +431,96 @@ prev
 cc: (., [cc-f) @7=foo UPDATED)
 bbsomethinglong@4: (bazz, . UPDATED)
 b@5: (bar, .)
+
+# Regression test for #3236. Lower bounds are enforced in virtualLastSeekLE()
+# in the case where the actual virtual sstable last key is invisible due to
+# being obsolete. We create an EFOS to ensure that we create a virtual
+# sstable consisting only of obsolete keys with an excise, then do an iterator
+# operation that does a virtualLastSeekLE() on it.
+
+reset
+----
+
+batch
+set a foo
+set b bar
+----
+
+batch
+set d@6 baz
+----
+
+flush
+----
+
+compact a z
+----
+
+batch
+set d@6 something
+----
+
+flush
+----
+
+batch
+set x something
+----
+
+file-only-snapshot s1
+a z
+----
+ok
+
+build ext7
+del d@6
+----
+
+ingest ext7
+----
+
+lsm
+----
+0.1:
+  000008:[d@6#15,DEL-d@6#15,DEL]
+0.0:
+  000007:[d@6#13,SET-d@6#13,SET]
+6:
+  000005:[a#10,SET-d@6#12,SET]
+
+compact c e
+----
+
+lsm
+----
+6:
+  000009:[a#0,SET-d@6#0,SET]
+
+build ext5
+set c something
+----
+
+ingest-and-excise ext5 excise=c-cc
+----
+
+lsm
+----
+6:
+  000011:[a#0,SET-b#0,SET]
+  000010:[c#16,SET-c#16,SET]
+  000012:[d@6#15,DEL-d@6#0,SET]
+
+iter lower=c upper=e
+last
+prev
+prev
+seek-lt dd
+prev
+prev
+----
+c: (something, .)
+.
+.
+c: (something, .)
+.
+.
