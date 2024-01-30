@@ -880,24 +880,23 @@ func (i *singleLevelIterator) virtualLast() (*InternalKey, base.LazyValue) {
 		// Trivial case.
 		return i.SeekLT(i.upper, base.SeekLTFlagsNone)
 	}
-	return i.virtualLastSeekLE(i.upper)
+	return i.virtualLastSeekLE()
 }
 
 // virtualLastSeekLE is called by virtualLast to do a SeekLE as part of a
 // virtualLast. Consider generalizing this into a SeekLE() if there are other
-// uses of this method in the future.
-func (i *singleLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.LazyValue) {
+// uses of this method in the future. Does a SeekLE on the upper bound of the
+// file/iterator.
+func (i *singleLevelIterator) virtualLastSeekLE() (*InternalKey, base.LazyValue) {
 	// Callers of SeekLE don't know about virtual sstable bounds, so we may
 	// have to internally restrict the bounds.
 	//
 	// TODO(bananabrick): We can optimize this check away for the level iter
 	// if necessary.
-	if i.cmp(key, i.upper) >= 0 {
-		if !i.endKeyInclusive {
-			panic("unexpected virtualLastSeekLE with exclusive upper bounds")
-		}
-		key = i.upper
+	if !i.endKeyInclusive {
+		panic("unexpected virtualLastSeekLE with exclusive upper bounds")
 	}
+	key := i.upper
 
 	i.exhaustedBounds = 0
 	i.err = nil // clear cached iteration error
@@ -911,6 +910,17 @@ func (i *singleLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.
 	// We can have multiple internal keys with the same user key as the seek
 	// key. In that case, we want the last (greatest) internal key.
 	//
+	// INVARIANT: One of two cases:
+	// A. ikey == nil. There is no data block with index key >= key. So all keys
+	//    in the last data block are < key.
+	// B. ikey.userkey >= key. This data block may have some keys > key.
+	//
+	// Subcases of B:
+	//   B1. ikey.userkey == key. This is when loop iteration happens.
+	//       Since ikey.UserKey >= largest data key in the block, the largest data
+	//       key in this block is <= key.
+	//   B2. ikey.userkey > key. Loop iteration will not happen.
+	//
 	// NB: We can avoid this Next()ing if we just implement a blockIter.SeekLE().
 	// This might be challenging to do correctly, so impose regular operations
 	// for now.
@@ -918,18 +928,20 @@ func (i *singleLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.
 		ikey, _ = i.index.Next()
 	}
 	if ikey == nil {
+		// Cases A or B1 where B1 exhausted all blocks. In both cases the last block
+		// has all keys <= key. skipBackward enforces the lower bound.
 		return i.skipBackward()
 	}
+	// Case B. We are here because we were originally in case B2, or we were in B1
+	// and we arrived at a block where ikey.UserKey > key. Either way, ikey.UserKey
+	// > key. So there could be keys in the block > key. But the block preceding
+	// this block cannot have any keys > key, otherwise it would have been the
+	// result of the original index.SeekGE.
 	result := i.loadBlock(-1)
 	if result == loadBlockFailed {
 		return nil, base.LazyValue{}
 	}
 	if result == loadBlockIrrelevant {
-		// Enforce the lower bound here, as we could have gone past it.
-		if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
-			i.exhaustedBounds = -1
-			return nil, base.LazyValue{}
-		}
 		// Want to skip to the previous block.
 		return i.skipBackward()
 	}
@@ -942,7 +954,13 @@ func (i *singleLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.
 	}
 	ikey, val = i.data.Prev()
 	if ikey != nil {
-		// Enforce the lower bound here, as we could have gone past it.
+		// Enforce the lower bound here, as we could have gone past it. This happens
+		// if keys between `i.blockLower` and `key` are obsolete, for instance. Even
+		// though i.blockLower (which is either nil or equal to i.lower) is <= key,
+		// all internal keys in the user key interval [i.blockLower, key] could be
+		// obsolete (due to a RANGEDEL which will not be observed here). And
+		// i.data.Prev will skip all these obsolete keys, and could land on a key
+		// below the lower bound, requiring the lower bound check.
 		if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
 			i.exhaustedBounds = -1
 			return nil, base.LazyValue{}
