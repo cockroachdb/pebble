@@ -374,7 +374,7 @@ func TestLargeBatch(t *testing.T) {
 	logNum := func() base.DiskFileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum
+		return d.mu.log.queue[len(d.mu.log.queue)-1].FileNum
 	}
 	fileSize := func(fileNum base.DiskFileNum) int64 {
 		info, err := d.opts.FS.Stat(base.MakeFilepath(d.opts.FS, "", fileTypeLog, fileNum))
@@ -1962,4 +1962,58 @@ func BenchmarkRotateMemtables(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+// TODO(sumeer): rewrite test when LogRecycler is hidden from this package.
+func TestRecycleLogs(t *testing.T) {
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS: mem,
+	})
+	require.NoError(t, err)
+
+	logNum := func() base.DiskFileNum {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.mu.log.queue[len(d.mu.log.queue)-1].FileNum
+	}
+	logCount := func() int {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return len(d.mu.log.queue)
+	}
+
+	// Flush the memtable a few times, forcing rotation of the WAL. We should see
+	// the recycled logs change as expected.
+	require.EqualValues(t, []base.DiskFileNum(nil), d.logRecycler.LogNumsForTesting())
+	curLog := logNum()
+
+	require.NoError(t, d.Flush())
+
+	require.EqualValues(t, []base.DiskFileNum{curLog}, d.logRecycler.LogNumsForTesting())
+	curLog = logNum()
+
+	require.NoError(t, d.Flush())
+
+	require.EqualValues(t, []base.DiskFileNum{curLog}, d.logRecycler.LogNumsForTesting())
+
+	require.NoError(t, d.Close())
+
+	d, err = Open("", &Options{
+		FS: mem,
+	})
+	require.NoError(t, err)
+	metrics := d.Metrics()
+	if n := logCount(); n != int(metrics.WAL.Files) {
+		t.Fatalf("expected %d WAL files, but found %d", n, metrics.WAL.Files)
+	}
+	if n, sz := d.logRecycler.Stats(); n != int(metrics.WAL.ObsoleteFiles) {
+		t.Fatalf("expected %d obsolete WAL files, but found %d", n, metrics.WAL.ObsoleteFiles)
+	} else if sz != metrics.WAL.ObsoletePhysicalSize {
+		t.Fatalf("expected %d obsolete physical WAL size, but found %d", sz, metrics.WAL.ObsoletePhysicalSize)
+	}
+	if recycled := d.logRecycler.LogNumsForTesting(); len(recycled) != 0 {
+		t.Fatalf("expected no recycled WAL files after recovery, but found %d", recycled)
+	}
+	require.NoError(t, d.Close())
 }

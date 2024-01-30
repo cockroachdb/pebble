@@ -190,3 +190,9 @@ func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
 	fataler.Fatalf("%s:\n%s\ndirectory contains %d files, %d unknown, %d tables, %d logs, %d manifests",
 		fs.PathBase(filename), err, total, unknown, tables, logs, manifests)
 }
+
+// FileInfo provides some rudimentary information about a file.
+type FileInfo struct {
+	FileNum  DiskFileNum
+	FileSize uint64
+}

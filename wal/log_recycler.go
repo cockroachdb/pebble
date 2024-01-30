@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package pebble
+package wal
 
 import (
 	"sync"
@@ -11,7 +11,10 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
-type logRecycler struct {
+// TODO(sumeer): hide LogRecycler once rest of Pebble is using wal.Manager.
+
+// LogRecycler recycles WAL log files.
+type LogRecycler struct {
 	// The maximum number of log files to maintain for recycling.
 	limit int
 
@@ -24,23 +27,40 @@ type logRecycler struct {
 
 	mu struct {
 		sync.Mutex
-		logs      []fileInfo
+		logs      []base.FileInfo
 		maxLogNum base.DiskFileNum
 	}
 }
 
-// add attempts to recycle the log file specified by logInfo. Returns true if
+// Init initialized the LogRecycler.
+func (r *LogRecycler) Init(maxNumLogFiles int) {
+	r.limit = maxNumLogFiles
+}
+
+// MinRecycleLogNum returns the current minimum log number that is allowed to
+// be recycled.
+func (r *LogRecycler) MinRecycleLogNum() base.DiskFileNum {
+	return r.minRecycleLogNum
+}
+
+// SetMinRecycleLogNum sets the minimum log number that is allowed to be
+// recycled.
+func (r *LogRecycler) SetMinRecycleLogNum(n base.DiskFileNum) {
+	r.minRecycleLogNum = n
+}
+
+// Add attempts to recycle the log file specified by logInfo. Returns true if
 // the log file should not be deleted (i.e. the log is being recycled), and
 // false otherwise.
-func (r *logRecycler) add(logInfo fileInfo) bool {
-	if logInfo.fileNum < r.minRecycleLogNum {
+func (r *LogRecycler) Add(logInfo base.FileInfo) bool {
+	if logInfo.FileNum < r.minRecycleLogNum {
 		return false
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if logInfo.fileNum <= r.mu.maxLogNum {
+	if logInfo.FileNum <= r.mu.maxLogNum {
 		// The log file number was already considered for recycling. Don't consider
 		// it again. This avoids a race between adding the same log file for
 		// recycling multiple times, and removing the log file for actual
@@ -50,7 +70,7 @@ func (r *logRecycler) add(logInfo fileInfo) bool {
 		// shouldn't be deleted.
 		return true
 	}
-	r.mu.maxLogNum = logInfo.fileNum
+	r.mu.maxLogNum = logInfo.FileNum
 	if len(r.mu.logs) >= r.limit {
 		return false
 	}
@@ -58,52 +78,66 @@ func (r *logRecycler) add(logInfo fileInfo) bool {
 	return true
 }
 
-// peek returns the log at the head of the recycling queue, or the zero value
+// Peek returns the log at the head of the recycling queue, or the zero value
 // fileInfo and false if the queue is empty.
-func (r *logRecycler) peek() (fileInfo, bool) {
+func (r *LogRecycler) Peek() (base.FileInfo, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if len(r.mu.logs) == 0 {
-		return fileInfo{}, false
+		return base.FileInfo{}, false
 	}
 	return r.mu.logs[0], true
 }
 
-func (r *logRecycler) stats() (count int, size uint64) {
+// Stats return current stats.
+func (r *LogRecycler) Stats() (count int, size uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	count = len(r.mu.logs)
 	for i := 0; i < count; i++ {
-		size += r.mu.logs[i].fileSize
+		size += r.mu.logs[i].FileSize
 	}
 	return count, size
 }
 
-// pop removes the log number at the head of the recycling queue, enforcing
+// Pop removes the log number at the head of the recycling queue, enforcing
 // that it matches the specified logNum. An error is returned of the recycling
 // queue is empty or the head log number does not match the specified one.
-func (r *logRecycler) pop(logNum base.DiskFileNum) error {
+func (r *LogRecycler) Pop(logNum base.DiskFileNum) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if len(r.mu.logs) == 0 {
 		return errors.New("pebble: log recycler empty")
 	}
-	if r.mu.logs[0].fileNum != logNum {
+	if r.mu.logs[0].FileNum != logNum {
 		return errors.Errorf("pebble: log recycler invalid %d vs %v", logNum, errors.Safe(fileInfoNums(r.mu.logs)))
 	}
 	r.mu.logs = r.mu.logs[1:]
 	return nil
 }
 
-func fileInfoNums(finfos []fileInfo) []base.DiskFileNum {
+// LogNumsForTesting returns the current set of recyclable logs.
+func (r *LogRecycler) LogNumsForTesting() []base.DiskFileNum {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return fileInfoNums(r.mu.logs)
+}
+
+func (r *LogRecycler) maxLogNumForTesting() base.DiskFileNum {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.mu.maxLogNum
+}
+
+func fileInfoNums(finfos []base.FileInfo) []base.DiskFileNum {
 	if len(finfos) == 0 {
 		return nil
 	}
 	nums := make([]base.DiskFileNum, len(finfos))
 	for i := range finfos {
-		nums[i] = finfos[i].fileNum
+		nums[i] = finfos[i].FileNum
 	}
 	return nums
 }
