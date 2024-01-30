@@ -578,23 +578,22 @@ func (i *twoLevelIterator) virtualLast() (*InternalKey, base.LazyValue) {
 		// Trivial case.
 		return i.SeekLT(i.upper, base.SeekLTFlagsNone)
 	}
-	return i.virtualLastSeekLE(i.upper)
+	return i.virtualLastSeekLE()
 }
 
 // virtualLastSeekLE implements a SeekLE() that can be used as part
-// of reverse-iteration calls such as a Last() on a virtual sstable.
-func (i *twoLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.LazyValue) {
+// of reverse-iteration calls such as a Last() on a virtual sstable. Does a
+// SeekLE on the upper bound of the file/iterator.
+func (i *twoLevelIterator) virtualLastSeekLE() (*InternalKey, base.LazyValue) {
 	// Callers of SeekLE don't know about virtual sstable bounds, so we may
 	// have to internally restrict the bounds.
 	//
 	// TODO(bananabrick): We can optimize this check away for the level iter
 	// if necessary.
-	if i.cmp(key, i.upper) >= 0 {
-		if !i.endKeyInclusive {
-			panic("unexpected virtualLastSeekLE with exclusive upper bounds")
-		}
-		key = i.upper
+	if !i.endKeyInclusive {
+		panic("unexpected virtualLastSeekLE with exclusive upper bounds")
 	}
+	key := i.upper
 	// Need to position the topLevelIndex.
 	//
 	// The previous exhausted state of singleLevelIterator is no longer
@@ -619,13 +618,10 @@ func (i *twoLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.Laz
 		return nil, base.LazyValue{}
 	}
 	if result == loadBlockIrrelevant {
-		if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
-			i.exhaustedBounds = -1
-		}
 		// Load the previous block.
 		return i.skipBackward()
 	}
-	if ikey, val := i.singleLevelIterator.virtualLastSeekLE(key); ikey != nil {
+	if ikey, val := i.singleLevelIterator.virtualLastSeekLE(); ikey != nil {
 		return ikey, val
 	}
 	return i.skipBackward()
