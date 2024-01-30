@@ -13,7 +13,10 @@ import (
 
 // TODO(sumeer): hide LogRecycler once rest of Pebble is using wal.Manager.
 
-// LogRecycler recycles WAL log files.
+// LogRecycler recycles WAL log files. It holds a set of log file numbers that
+// are available for reuse. Writing to a recycled log file is faster than to a
+// new log file on some common filesystems (xfs, and ext3/4) due to avoiding
+// metadata updates.
 type LogRecycler struct {
 	// The maximum number of log files to maintain for recycling.
 	limit int
