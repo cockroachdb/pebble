@@ -1011,7 +1011,7 @@ func (g *generator) iterSeekGEWithLimit(iterID objID) {
 
 func (g *generator) randKeyToReadWithinBounds(lower, upper []byte, readerID objID) []*keyMeta {
 	var inRangeKeys []*keyMeta
-	for _, keyMeta := range g.keyManager.byObj[readerID] {
+	for _, keyMeta := range g.keyManager.objKeyMeta(readerID).SortedKeys() {
 		posKey := keyMeta.key
 		if g.cmp(posKey, lower) < 0 || g.cmp(posKey, upper) >= 0 {
 			continue
