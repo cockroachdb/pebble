@@ -30,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/tokenbucket"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -314,7 +315,7 @@ type DB struct {
 	// reuse. Writing to a recycled log file is faster than to a new log file on
 	// some common filesystems (xfs, and ext3/4) due to avoiding metadata
 	// updates.
-	logRecycler logRecycler
+	logRecycler wal.LogRecycler
 
 	closed   *atomic.Value
 	closedCh chan struct{}
@@ -2062,7 +2063,7 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 // Metrics returns metrics about the database.
 func (d *DB) Metrics() *Metrics {
 	metrics := &Metrics{}
-	recycledLogsCount, recycledLogSize := d.logRecycler.stats()
+	recycledLogsCount, recycledLogSize := d.logRecycler.Stats()
 
 	d.mu.Lock()
 	vers := d.mu.versions.currentVersion()
@@ -2099,11 +2100,11 @@ func (d *DB) Metrics() *Metrics {
 	// during WAL rotation. Use the larger of the two for the current WAL. All
 	// the previous WALs's fileSizes in d.mu.log.queue are already updated.
 	metrics.WAL.PhysicalSize = metrics.WAL.Size
-	if len(d.mu.log.queue) > 0 && metrics.WAL.PhysicalSize < d.mu.log.queue[len(d.mu.log.queue)-1].fileSize {
-		metrics.WAL.PhysicalSize = d.mu.log.queue[len(d.mu.log.queue)-1].fileSize
+	if len(d.mu.log.queue) > 0 && metrics.WAL.PhysicalSize < d.mu.log.queue[len(d.mu.log.queue)-1].FileSize {
+		metrics.WAL.PhysicalSize = d.mu.log.queue[len(d.mu.log.queue)-1].FileSize
 	}
 	for i, n := 0, len(d.mu.log.queue)-1; i < n; i++ {
-		metrics.WAL.PhysicalSize += d.mu.log.queue[i].fileSize
+		metrics.WAL.PhysicalSize += d.mu.log.queue[i].FileSize
 	}
 
 	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
@@ -2726,8 +2727,8 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	// The previous log may have grown past its original physical
 	// size. Update its file size in the queue so we have a proper
 	// accounting of its file size.
-	if d.mu.log.queue[len(d.mu.log.queue)-1].fileSize < prevLogSize {
-		d.mu.log.queue[len(d.mu.log.queue)-1].fileSize = prevLogSize
+	if d.mu.log.queue[len(d.mu.log.queue)-1].FileSize < prevLogSize {
+		d.mu.log.queue[len(d.mu.log.queue)-1].FileSize = prevLogSize
 	}
 	d.mu.Unlock()
 
@@ -2757,9 +2758,9 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	var recycleOK bool
 	var newLogFile vfs.File
 	if err == nil {
-		recycleLog, recycleOK = d.logRecycler.peek()
+		recycleLog, recycleOK = d.logRecycler.Peek()
 		if recycleOK {
-			recycleLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.fileNum)
+			recycleLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.FileNum)
 			newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
 			base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
 		} else {
@@ -2777,7 +2778,7 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 		// TODO(jackson): Adding a boolean to the ReuseForWrite return
 		// value indicating whether or not the file was actually
 		// reused would allow us to skip the stat and use
-		// recycleLog.fileSize.
+		// recycleLog.FileSize.
 		var finfo os.FileInfo
 		finfo, err = newLogFile.Stat()
 		if err == nil {
@@ -2802,14 +2803,14 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	}
 
 	if recycleOK {
-		err = firstError(err, d.logRecycler.pop(recycleLog.fileNum))
+		err = firstError(err, d.logRecycler.Pop(recycleLog.FileNum))
 	}
 
 	d.opts.EventListener.WALCreated(WALCreateInfo{
 		JobID:           jobID,
 		Path:            newLogName,
 		FileNum:         newLogNum,
-		RecycledFileNum: recycleLog.fileNum,
+		RecycledFileNum: recycleLog.FileNum,
 		Err:             err,
 	})
 
@@ -2826,7 +2827,7 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 		panic(err)
 	}
 
-	d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: newLogSize})
+	d.mu.log.queue = append(d.mu.log.queue, fileInfo{FileNum: newLogNum, FileSize: newLogSize})
 	d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum, record.LogWriterConfig{
 		WALFsyncLatency:    d.mu.log.metrics.fsyncLatency,
 		WALMinSyncInterval: d.opts.WALMinSyncInterval,

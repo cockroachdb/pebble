@@ -2029,8 +2029,8 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// https://github.com/cockroachdb/pebble/issues/389 is
 				// implemented if #389 creates virtual sstables as output files.
 				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, fileInfo{
-					fileNum:  base.PhysicalTableDiskFileNum(f.FileNum),
-					fileSize: f.Size,
+					FileNum:  base.PhysicalTableDiskFileNum(f.FileNum),
+					FileSize: f.Size,
 				})
 			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
@@ -2659,8 +2659,8 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 				// https://github.com/cockroachdb/pebble/issues/389 is
 				// implemented if #389 creates virtual sstables as output files.
 				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, fileInfo{
-					fileNum:  base.PhysicalTableDiskFileNum(f.FileNum),
-					fileSize: f.Size,
+					FileNum:  base.PhysicalTableDiskFileNum(f.FileNum),
+					FileSize: f.Size,
 				})
 			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
@@ -3601,27 +3601,27 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			if diskFileNum >= minUnflushedLogNum {
 				continue
 			}
-			fi := fileInfo{fileNum: diskFileNum}
+			fi := fileInfo{FileNum: diskFileNum}
 			if stat, err := d.opts.FS.Stat(filename); err == nil {
-				fi.fileSize = uint64(stat.Size())
+				fi.FileSize = uint64(stat.Size())
 			}
 			obsoleteLogs = append(obsoleteLogs, fi)
 		case fileTypeManifest:
 			if diskFileNum >= manifestFileNum {
 				continue
 			}
-			fi := fileInfo{fileNum: diskFileNum}
+			fi := fileInfo{FileNum: diskFileNum}
 			if stat, err := d.opts.FS.Stat(filename); err == nil {
-				fi.fileSize = uint64(stat.Size())
+				fi.FileSize = uint64(stat.Size())
 			}
 			obsoleteManifests = append(obsoleteManifests, fi)
 		case fileTypeOptions:
 			if diskFileNum >= d.optionsFileNum {
 				continue
 			}
-			fi := fileInfo{fileNum: diskFileNum}
+			fi := fileInfo{FileNum: diskFileNum}
 			if stat, err := d.opts.FS.Stat(filename); err == nil {
-				fi.fileSize = uint64(stat.Size())
+				fi.FileSize = uint64(stat.Size())
 			}
 			obsoleteOptions = append(obsoleteOptions, fi)
 		case fileTypeTable:
@@ -3639,10 +3639,10 @@ func (d *DB) scanObsoleteFiles(list []string) {
 				continue
 			}
 			fileInfo := fileInfo{
-				fileNum: obj.DiskFileNum,
+				FileNum: obj.DiskFileNum,
 			}
 			if size, err := d.objProvider.Size(obj); err == nil {
-				fileInfo.fileSize = uint64(size)
+				fileInfo.FileSize = uint64(size)
 			}
 			obsoleteTables = append(obsoleteTables, fileInfo)
 
@@ -3691,10 +3691,7 @@ func (d *DB) enableFileDeletions() {
 	d.deleteObsoleteFiles(jobID)
 }
 
-type fileInfo struct {
-	fileNum  base.DiskFileNum
-	fileSize uint64
-}
+type fileInfo = base.FileInfo
 
 // deleteObsoleteFiles enqueues a cleanup job to the cleanup manager, if necessary.
 //
@@ -3713,7 +3710,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		// log that has not had its contents flushed to an sstable. We can recycle
 		// the prefix of d.mu.log.queue with log numbers less than
 		// minUnflushedLogNum.
-		if d.mu.log.queue[i].fileNum >= d.mu.versions.minUnflushedLogNum {
+		if d.mu.log.queue[i].FileNum >= d.mu.versions.minUnflushedLogNum {
 			obsoleteLogs = d.mu.log.queue[:i]
 			d.mu.log.queue = d.mu.log.queue[i:]
 			d.mu.versions.metrics.WAL.Files -= int64(len(obsoleteLogs))
@@ -3725,13 +3722,13 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	d.mu.versions.obsoleteTables = nil
 
 	for _, tbl := range obsoleteTables {
-		delete(d.mu.versions.zombieTables, tbl.fileNum)
+		delete(d.mu.versions.zombieTables, tbl.FileNum)
 	}
 
 	// Sort the manifests cause we want to delete some contiguous prefix
 	// of the older manifests.
 	slices.SortFunc(d.mu.versions.obsoleteManifests, func(a, b fileInfo) int {
-		return cmp.Compare(a.fileNum, b.fileNum)
+		return cmp.Compare(a.FileNum, b.FileNum)
 	})
 
 	var obsoleteManifests []fileInfo
@@ -3767,25 +3764,25 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		// We sort to make the order of deletions deterministic, which is nice for
 		// tests.
 		slices.SortFunc(f.obsolete, func(a, b fileInfo) int {
-			return cmp.Compare(a.fileNum, b.fileNum)
+			return cmp.Compare(a.FileNum, b.FileNum)
 		})
 		for _, fi := range f.obsolete {
 			dir := d.dirname
 			switch f.fileType {
 			case fileTypeLog:
-				if !noRecycle && d.logRecycler.add(fi) {
+				if !noRecycle && d.logRecycler.Add(fi) {
 					continue
 				}
 				dir = d.walDirname
 			case fileTypeTable:
-				d.tableCache.evict(fi.fileNum)
+				d.tableCache.evict(fi.FileNum)
 			}
 
 			filesToDelete = append(filesToDelete, obsoleteFile{
 				dir:      dir,
-				fileNum:  fi.fileNum,
+				fileNum:  fi.FileNum,
 				fileType: f.fileType,
-				fileSize: fi.fileSize,
+				fileSize: fi.FileSize,
 			})
 		}
 	}
@@ -3818,9 +3815,9 @@ func merge(a, b []fileInfo) []fileInfo {
 
 	a = append(a, b...)
 	slices.SortFunc(a, func(a, b fileInfo) int {
-		return cmp.Compare(a.fileNum, b.fileNum)
+		return cmp.Compare(a.FileNum, b.FileNum)
 	})
 	return slices.CompactFunc(a, func(a, b fileInfo) bool {
-		return a.fileNum == b.fileNum
+		return a.FileNum == b.FileNum
 	})
 }

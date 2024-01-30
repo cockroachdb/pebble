@@ -598,8 +598,8 @@ func (vs *versionSet) logAndApply(
 	if newManifestFileNum != 0 {
 		if vs.manifestFileNum != 0 {
 			vs.obsoleteManifests = append(vs.obsoleteManifests, fileInfo{
-				fileNum:  vs.manifestFileNum,
-				fileSize: prevManifestFileSize,
+				FileNum:  vs.manifestFileNum,
+				FileSize: prevManifestFileSize,
 			})
 		}
 		vs.manifestFileNum = newManifestFileNum
@@ -829,14 +829,14 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*fileBacking) {
 
 	obsoleteFileInfo := make([]fileInfo, len(obsolete))
 	for i, bs := range obsolete {
-		obsoleteFileInfo[i].fileNum = bs.DiskFileNum
-		obsoleteFileInfo[i].fileSize = bs.Size
+		obsoleteFileInfo[i].FileNum = bs.DiskFileNum
+		obsoleteFileInfo[i].FileSize = bs.Size
 	}
 
 	if invariants.Enabled {
 		dedup := make(map[base.DiskFileNum]struct{})
 		for _, fi := range obsoleteFileInfo {
-			dedup[fi.fileNum] = struct{}{}
+			dedup[fi.FileNum] = struct{}{}
 		}
 		if len(dedup) != len(obsoleteFileInfo) {
 			panic("pebble: duplicate FileBacking present in obsolete list")
@@ -847,8 +847,8 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*fileBacking) {
 		// Note that the obsolete tables are no longer zombie by the definition of
 		// zombie, but we leave them in the zombie tables map until they are
 		// deleted from disk.
-		if _, ok := vs.zombieTables[fi.fileNum]; !ok {
-			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fi.fileNum)
+		if _, ok := vs.zombieTables[fi.FileNum]; !ok {
+			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fi.FileNum)
 		}
 	}
 
@@ -868,7 +868,7 @@ func (vs *versionSet) updateObsoleteTableMetricsLocked() {
 	vs.metrics.Table.ObsoleteCount = int64(len(vs.obsoleteTables))
 	vs.metrics.Table.ObsoleteSize = 0
 	for _, fi := range vs.obsoleteTables {
-		vs.metrics.Table.ObsoleteSize += fi.fileSize
+		vs.metrics.Table.ObsoleteSize += fi.FileSize
 	}
 }
 

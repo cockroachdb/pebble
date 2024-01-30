@@ -148,7 +148,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 	var v *version
 	var buf bytes.Buffer
 
-	// Indexed by fileNum.
+	// Indexed by FileNum.
 	var readers []*sstable.Reader
 	defer func() {
 		for _, r := range readers {

@@ -33,6 +33,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -213,10 +214,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		fileLock:            fileLock,
 		dataDir:             dataDir,
 		walDir:              walDir,
-		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
+		logRecycler:         wal.LogRecycler{},
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
 	}
+	d.logRecycler.Init(opts.MemTableStopWritesThreshold + 1)
 	d.mu.versions = &versionSet{}
 	d.diskAvailBytes.Store(math.MaxUint64)
 
@@ -395,8 +397,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			if fn >= d.mu.versions.minUnflushedLogNum {
 				logFiles = append(logFiles, fileNumAndName{fn, filename})
 			}
-			if d.logRecycler.minRecycleLogNum <= fn {
-				d.logRecycler.minRecycleLogNum = fn + 1
+			if d.logRecycler.MinRecycleLogNum() <= fn {
+				d.logRecycler.SetMinRecycleLogNum(fn + 1)
 			}
 		case fileTypeOptions:
 			if previousOptionsFileNum < fn {
@@ -482,7 +484,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 
 		newLogName := base.MakeFilepath(opts.FS, d.walDirname, fileTypeLog, newLogNum)
-		d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: 0})
+		d.mu.log.queue = append(d.mu.log.queue, fileInfo{FileNum: newLogNum, FileSize: 0})
 		logFile, err := opts.FS.Create(newLogName)
 		if err != nil {
 			return nil, err
