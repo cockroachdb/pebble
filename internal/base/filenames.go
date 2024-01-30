@@ -129,6 +129,7 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, dfn DiskFileN
 		if !ok {
 			break
 		}
+		// TODO(sumeer): stop handling FileTypeLog here.
 		switch filename[i+1:] {
 		case "sst":
 			return FileTypeTable, dfn, true

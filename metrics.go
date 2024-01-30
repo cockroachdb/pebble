@@ -284,6 +284,9 @@ type Metrics struct {
 		Size uint64
 		// Physical size of the WAL files on-disk. With WAL file recycling,
 		// this is greater than the live data in WAL files.
+		//
+		// TODO(sumeer): it seems this does not include ObsoletePhysicalSize.
+		// Should the comment be updated?
 		PhysicalSize uint64
 		// Number of logical bytes written to the WAL.
 		BytesIn uint64
