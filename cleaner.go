@@ -12,7 +12,6 @@ import (
 
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/tokenbucket"
 )
@@ -122,10 +121,6 @@ func (cm *cleanupManager) EnqueueJob(jobID int, obsoleteFiles []obsoleteFile) {
 	cm.mu.totalJobs++
 	cm.maybeLogLocked()
 	cm.mu.Unlock()
-
-	if invariants.Enabled && len(cm.jobsCh) >= cap(cm.jobsCh)-2 {
-		panic("cleanup jobs queue full")
-	}
 
 	cm.jobsCh <- job
 }
