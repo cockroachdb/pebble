@@ -583,15 +583,23 @@ func TestExcise(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
 	var flushed bool
+	var efos map[string]*EventuallyFileOnlySnapshot
 	defer func() {
+		for _, e := range efos {
+			require.NoError(t, e.Close())
+		}
 		require.NoError(t, d.Close())
 	}()
 
 	var opts *Options
 	reset := func(blockSize int) {
+		for _, e := range efos {
+			require.NoError(t, e.Close())
+		}
 		if d != nil {
 			require.NoError(t, d.Close())
 		}
+		efos = make(map[string]*EventuallyFileOnlySnapshot)
 
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
@@ -699,6 +707,25 @@ func TestExcise(t *testing.T) {
 			}
 			return ""
 
+		case "file-only-snapshot":
+			if len(td.CmdArgs) != 1 {
+				panic("insufficient args for file-only-snapshot command")
+			}
+			name := td.CmdArgs[0].Key
+			var keyRanges []KeyRange
+			for _, line := range strings.Split(td.Input, "\n") {
+				fields := strings.Fields(line)
+				if len(fields) != 2 {
+					return "expected two fields for file-only snapshot KeyRanges"
+				}
+				kr := KeyRange{Start: []byte(fields[0]), End: []byte(fields[1])}
+				keyRanges = append(keyRanges, kr)
+			}
+
+			s := d.NewEventuallyFileOnlySnapshot(keyRanges)
+			efos[name] = s
+			return "ok"
+
 		case "get":
 			return runGetCmd(t, td, d)
 
@@ -706,6 +733,7 @@ func TestExcise(t *testing.T) {
 			opts := &IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
 			}
+			var reader Reader = d
 			for i := range td.CmdArgs {
 				switch td.CmdArgs[i].Key {
 				case "range-key-masking":
@@ -715,11 +743,25 @@ func TestExcise(t *testing.T) {
 							return sstable.NewTestKeysMaskingFilter()
 						},
 					}
+				case "lower":
+					if len(td.CmdArgs[i].Vals) != 1 {
+						return fmt.Sprintf(
+							"%s expects at most 1 value for lower", td.Cmd)
+					}
+					opts.LowerBound = []byte(td.CmdArgs[i].Vals[0])
+				case "upper":
+					if len(td.CmdArgs[i].Vals) != 1 {
+						return fmt.Sprintf(
+							"%s expects at most 1 value for upper", td.Cmd)
+					}
+					opts.UpperBound = []byte(td.CmdArgs[i].Vals[0])
+				case "snapshot":
+					reader = efos[td.CmdArgs[i].Vals[0]]
 				default:
 					return fmt.Sprintf("unexpected argument: %s", td.CmdArgs[i].Key)
 				}
 			}
-			iter, _ := d.NewIter(opts)
+			iter, _ := reader.NewIter(opts)
 			return runIterCmd(td, iter, true)
 
 		case "lsm":

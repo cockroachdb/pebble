@@ -925,6 +925,11 @@ func (i *singleLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.
 		return nil, base.LazyValue{}
 	}
 	if result == loadBlockIrrelevant {
+		// Enforce the lower bound here, as we could have gone past it.
+		if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
+			i.exhaustedBounds = -1
+			return nil, base.LazyValue{}
+		}
 		// Want to skip to the previous block.
 		return i.skipBackward()
 	}
@@ -937,6 +942,11 @@ func (i *singleLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.
 	}
 	ikey, val = i.data.Prev()
 	if ikey != nil {
+		// Enforce the lower bound here, as we could have gone past it.
+		if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
+			i.exhaustedBounds = -1
+			return nil, base.LazyValue{}
+		}
 		return ikey, val
 	}
 	return i.skipBackward()
@@ -959,7 +969,7 @@ func (i *singleLevelIterator) SeekLT(
 		// first internal key with user key < key.
 		if cmp > 0 {
 			// Return the last key in the virtual sstable.
-			return i.virtualLast()
+			return i.maybeVerifyKey(i.virtualLast())
 		}
 	}
 
@@ -1139,7 +1149,7 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, base.LazyValue) {
 // SeekLT(upper))
 func (i *singleLevelIterator) Last() (*InternalKey, base.LazyValue) {
 	if i.vState != nil {
-		return i.virtualLast()
+		return i.maybeVerifyKey(i.virtualLast())
 	}
 
 	if i.upper != nil {
