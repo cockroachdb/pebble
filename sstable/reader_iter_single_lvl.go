@@ -911,6 +911,17 @@ func (i *singleLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.
 	// We can have multiple internal keys with the same user key as the seek
 	// key. In that case, we want the last (greatest) internal key.
 	//
+	// INVARIANT: One of two cases:
+	// A. ikey == nil. There is no data block with index key >= key. So all keys
+	//    in the last data block are < key.
+	// B. ikey.userkey >= key. This data block may have some keys > key.
+	//
+	// Subcases of B:
+	//   B1. ikey.userkey == key. This is when loop iteration happens.
+	//       Since ikey.UserKey >= largest data key in the block, the largest data
+	//       key in this block is <= key.
+	//   B2. ikey.userkey > key. Loop iteration will not happen.
+	//
 	// NB: We can avoid this Next()ing if we just implement a blockIter.SeekLE().
 	// This might be challenging to do correctly, so impose regular operations
 	// for now.
@@ -918,14 +929,21 @@ func (i *singleLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.
 		ikey, _ = i.index.Next()
 	}
 	if ikey == nil {
+		// Cases A or B1 where B1 exhausted all blocks. In both cases the last block
+		// has all keys <= key. skipBackward enforces the lower bound.
 		return i.skipBackward()
 	}
+	// Case B. It could be B2, so there could be keys in the block > key. But the
+	// block preceding this block cannot have any keys > key, otherwise it would
+	// have been the result of the original index.SeekGE.
 	result := i.loadBlock(-1)
 	if result == loadBlockFailed {
 		return nil, base.LazyValue{}
 	}
 	if result == loadBlockIrrelevant {
-		// Enforce the lower bound here, as we could have gone past it.
+		// Enforce the lower bound here, as we could have gone past it, if the
+		// block property filter excluded the only relevant block within the
+		// bounds.
 		if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
 			i.exhaustedBounds = -1
 			return nil, base.LazyValue{}
@@ -942,7 +960,8 @@ func (i *singleLevelIterator) virtualLastSeekLE(key []byte) (*InternalKey, base.
 	}
 	ikey, val = i.data.Prev()
 	if ikey != nil {
-		// Enforce the lower bound here, as we could have gone past it.
+		// Enforce the lower bound here, as we could have gone past it. This happens
+		// if keys between `i.blockLower` and `key` are obsolete, for instance.
 		if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
 			i.exhaustedBounds = -1
 			return nil, base.LazyValue{}
