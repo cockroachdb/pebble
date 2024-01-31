@@ -1268,7 +1268,7 @@ func runIngestAndExciseCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		}
 	}
 
-	if _, err := d.IngestAndExcise(paths, nil /* shared */, exciseSpan); err != nil {
+	if _, err := d.IngestAndExcise(paths, nil /* shared */, nil /* external */, exciseSpan); err != nil {
 		return err
 	}
 	return nil
