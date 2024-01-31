@@ -58,6 +58,8 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 			writerOpts.WritingToLowestLevel = true
 		case "is-strict-obsolete":
 			writerOpts.IsStrictObsolete = true
+		case "elide-prefix":
+			writerOpts.ElidePrefix = []byte(arg.Vals[0])
 		}
 	}
 	return nil
