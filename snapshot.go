@@ -80,17 +80,18 @@ func (s *Snapshot) ScanInternal(
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
+	visitExternalFile func(sst *ExternalFile) error,
 ) error {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
 	scanInternalOpts := &scanInternalOptions{
-		CategoryAndQoS:   categoryAndQoS,
-		visitPointKey:    visitPointKey,
-		visitRangeDel:    visitRangeDel,
-		visitRangeKey:    visitRangeKey,
-		visitSharedFile:  visitSharedFile,
-		skipSharedLevels: visitSharedFile != nil,
+		CategoryAndQoS:    categoryAndQoS,
+		visitPointKey:     visitPointKey,
+		visitRangeDel:     visitRangeDel,
+		visitRangeKey:     visitRangeKey,
+		visitSharedFile:   visitSharedFile,
+		visitExternalFile: visitExternalFile,
 		IterOptions: IterOptions{
 			KeyTypes:   IterKeyTypePointsAndRanges,
 			LowerBound: lower,
@@ -477,6 +478,7 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
+	visitExternalFile func(sst *ExternalFile) error,
 ) error {
 	if es.db == nil {
 		panic(ErrClosed)
@@ -489,11 +491,11 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 			LowerBound: lower,
 			UpperBound: upper,
 		},
-		visitPointKey:    visitPointKey,
-		visitRangeDel:    visitRangeDel,
-		visitRangeKey:    visitRangeKey,
-		visitSharedFile:  visitSharedFile,
-		skipSharedLevels: visitSharedFile != nil,
+		visitPointKey:     visitPointKey,
+		visitRangeDel:     visitRangeDel,
+		visitRangeKey:     visitRangeKey,
+		visitSharedFile:   visitSharedFile,
+		visitExternalFile: visitExternalFile,
 	}
 	es.mu.Lock()
 	if es.mu.vers != nil {

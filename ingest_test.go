@@ -1085,11 +1085,12 @@ func testIngestSharedImpl(
 					sharedSSTs = append(sharedSSTs, *sst)
 					return nil
 				},
+				nil,
 			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, KeyRange{Start: startKey, End: endKey})
+			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey})
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1317,7 +1318,7 @@ func TestSimpleIngestShared(t *testing.T) {
 		Level:            6,
 		Size:             uint64(size + 5),
 	}
-	_, err = d.IngestAndExcise([]string{}, []SharedSSTMeta{sharedSSTMeta}, KeyRange{Start: []byte("d"), End: []byte("ee")})
+	_, err = d.IngestAndExcise([]string{}, []SharedSSTMeta{sharedSSTMeta}, nil /* external */, KeyRange{Start: []byte("d"), End: []byte("ee")})
 	require.NoError(t, err)
 
 	// TODO(bilal): Once reading of shared sstables is in, verify that the values
@@ -1573,11 +1574,12 @@ func TestConcurrentExcise(t *testing.T) {
 					sharedSSTs = append(sharedSSTs, *sst)
 					return nil
 				},
+				nil,
 			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, KeyRange{Start: startKey, End: endKey})
+			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey})
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1740,17 +1742,27 @@ func TestConcurrentExcise(t *testing.T) {
 
 func TestIngestExternal(t *testing.T) {
 	var mem vfs.FS
-	var d *DB
+	var d, d1, d2 *DB
 	var flushed bool
 	defer func() {
-		require.NoError(t, d.Close())
+		if d1 != nil {
+			require.NoError(t, d1.Close())
+		}
+		if d2 != nil {
+			require.NoError(t, d2.Close())
+		}
 	}()
 
 	var remoteStorage remote.Storage
-
+	replicateCounter := 1
 	reset := func(majorVersion FormatMajorVersion) {
 		if d != nil {
-			require.NoError(t, d.Close())
+			if d1 != nil {
+				require.NoError(t, d1.Close())
+			}
+			if d2 != nil {
+				require.NoError(t, d2.Close())
+			}
 		}
 
 		mem = vfs.NewMem()
@@ -1778,9 +1790,13 @@ func TestIngestExternal(t *testing.T) {
 		opts.EventListener = &lel
 
 		var err error
-		d, err = Open("", opts)
+		d1, err = Open("d1", opts)
 		require.NoError(t, err)
-		require.NoError(t, d.SetCreatorID(1))
+		require.NoError(t, d1.SetCreatorID(1))
+		d2, err = Open("d2", opts)
+		require.NoError(t, err)
+		require.NoError(t, d2.SetCreatorID(2))
+		d = d1
 	}
 	reset(FormatNewest)
 
@@ -1807,7 +1823,19 @@ func TestIngestExternal(t *testing.T) {
 				return err.Error()
 			}
 			return ""
-
+		case "switch":
+			if len(td.CmdArgs) != 1 {
+				return "usage: switch <1 or 2>"
+			}
+			switch td.CmdArgs[0].Key {
+			case "1":
+				d = d1
+			case "2":
+				d = d2
+			default:
+				return "usage: switch <1 or 2>"
+			}
+			return "ok"
 		case "flush":
 			if err := d.Flush(); err != nil {
 				return err.Error()
@@ -1889,6 +1917,80 @@ func TestIngestExternal(t *testing.T) {
 				return err.Error()
 			}
 			return ""
+		case "replicate":
+			if len(td.CmdArgs) != 4 {
+				return "usage: replicate <from-db-num> <to-db-num> <start-key> <end-key>"
+			}
+			var from, to *DB
+			switch td.CmdArgs[0].Key {
+			case "1":
+				from = d1
+			case "2":
+				from = d2
+			default:
+				return "usage: replicate <from-db-num> <to-db-num> <start-key> <end-key>"
+			}
+			switch td.CmdArgs[1].Key {
+			case "1":
+				to = d1
+			case "2":
+				to = d2
+			default:
+				return "usage: replicate <from-db-num> <to-db-num> <start-key> <end-key>"
+			}
+			startKey := []byte(td.CmdArgs[2].Key)
+			endKey := []byte(td.CmdArgs[3].Key)
+
+			writeOpts := d.opts.MakeWriterOptions(0 /* level */, to.opts.FormatMajorVersion.MaxTableFormat())
+			sstPath := fmt.Sprintf("ext/replicate%d.sst", replicateCounter)
+			f, err := to.opts.FS.Create(sstPath)
+			require.NoError(t, err)
+			replicateCounter++
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
+
+			var externalFiles []ExternalFile
+			err = from.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, startKey, endKey,
+				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
+					val, _, err := value.Value(nil)
+					t.Logf("adding %s -> %s", key, val)
+					require.NoError(t, err)
+					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val))
+					return nil
+				},
+				func(start, end []byte, seqNum uint64) error {
+					require.NoError(t, w.DeleteRange(start, end))
+					return nil
+				},
+				func(start, end []byte, keys []keyspan.Key) error {
+					s := keyspan.Span{
+						Start:     start,
+						End:       end,
+						Keys:      keys,
+						KeysOrder: 0,
+					}
+					require.NoError(t, rangekey.Encode(&s, func(k base.InternalKey, v []byte) error {
+						return w.AddRangeKey(base.MakeInternalKey(k.UserKey, 0, k.Kind()), v)
+					}))
+					return nil
+				},
+				nil,
+				func(sst *ExternalFile) error {
+					externalFiles = append(externalFiles, *sst)
+					return nil
+				},
+			)
+			require.NoError(t, err)
+			require.NoError(t, w.Close())
+			t.Logf("adding local: %v", sstPath)
+			for _, ext := range externalFiles {
+				t.Logf("adding local: %s - %s",
+					ext.SmallestUserKey,
+					ext.LargestUserKey)
+			}
+			_, err = to.IngestAndExcise([]string{sstPath}, nil /* sharedSSTs */, externalFiles, KeyRange{Start: startKey, End: endKey})
+			require.NoError(t, err)
+			return fmt.Sprintf("replicated %d external SSTs", len(externalFiles))
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}

@@ -1244,14 +1244,15 @@ func (d *DB) ScanInternal(
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
+	visitExternalFile func(sst *ExternalFile) error,
 ) error {
 	scanInternalOpts := &scanInternalOptions{
-		CategoryAndQoS:   categoryAndQoS,
-		visitPointKey:    visitPointKey,
-		visitRangeDel:    visitRangeDel,
-		visitRangeKey:    visitRangeKey,
-		visitSharedFile:  visitSharedFile,
-		skipSharedLevels: visitSharedFile != nil,
+		CategoryAndQoS:    categoryAndQoS,
+		visitPointKey:     visitPointKey,
+		visitRangeDel:     visitRangeDel,
+		visitRangeKey:     visitRangeKey,
+		visitSharedFile:   visitSharedFile,
+		visitExternalFile: visitExternalFile,
 		IterOptions: IterOptions{
 			KeyTypes:   IterKeyTypePointsAndRanges,
 			LowerBound: lower,

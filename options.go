@@ -261,14 +261,11 @@ type scanInternalOptions struct {
 	sstable.CategoryAndQoS
 	IterOptions
 
-	visitPointKey   func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error
-	visitRangeDel   func(start, end []byte, seqNum uint64) error
-	visitRangeKey   func(start, end []byte, keys []rangekey.Key) error
-	visitSharedFile func(sst *SharedSSTMeta) error
-
-	// skipSharedLevels skips levels that are shareable (level >=
-	// sharedLevelStart).
-	skipSharedLevels bool
+	visitPointKey     func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error
+	visitRangeDel     func(start, end []byte, seqNum uint64) error
+	visitRangeKey     func(start, end []byte, keys []rangekey.Key) error
+	visitSharedFile   func(sst *SharedSSTMeta) error
+	visitExternalFile func(sst *ExternalFile) error
 
 	// includeObsoleteKeys specifies whether keys shadowed by newer internal keys
 	// are exposed. If false, only one internal key per user key is exposed.

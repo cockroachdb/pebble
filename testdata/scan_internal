@@ -462,3 +462,87 @@ shared file: 000005 [b#11,1-d#13,1] [point=b#11,1-d#13,1] [range=#0,0-#0,0]
 scan-internal skip-shared lower=a upper=aaa
 ----
 shared file: 000005 [a#10,21-aa#72057594037927935,21] [point=#0,0-#0,0] [range=a#10,21-aa#72057594037927935,21]
+
+
+reset
+----
+
+batch ingest-external=file1
+set a foo
+set b bar
+set c baz
+----
+wrote 3 keys to batch ""
+
+batch commit
+set d bat
+----
+committed 1 keys
+
+flush
+----
+
+lsm
+----
+0.0:
+  000006:[d#11,SET-d#11,SET]
+6:
+  000004(000004):[a#10,DELSIZED-c\x00#inf,RANGEDEL]
+
+
+
+scan-internal skip-shared skip-external lower=m upper=n
+----
+
+scan-internal skip-shared skip-external lower=a upper=f
+----
+external file: external-storage file1 [0x61-0x6300] (hasPoint: true, hasRange: false)
+d#11,1 (bat)
+
+
+reset create-on-shared=false
+----
+
+batch commit
+set d bat
+----
+committed 1 keys
+
+flush
+----
+
+batch ingest-external=file1
+set a foo
+set b bar
+set c baz
+----
+wrote 3 keys to batch ""
+
+flush
+----
+
+compact a-z
+----
+6:
+  000006(000006):[a#11,DELSIZED-c\x00#inf,RANGEDEL]
+  000005:[d#10,SET-d#10,SET]
+
+scan-internal skip-external lower=m upper=n
+----
+
+scan-internal skip-external lower=a upper=f
+----
+external file: external-storage file1 [0x61-0x6300] (hasPoint: true, hasRange: false)
+d#10,1 (bat)
+
+scan-internal skip-shared lower=a upper=f
+----
+external file is present but no external file visitor is defined: pebble: cannot use skip-shared iteration due to non-shareable files in lower levels
+
+
+scan-internal lower=a upper=f
+----
+a#11,1 (foo)
+b#11,1 (bar)
+c#11,1 (baz)
+d#10,1 (bat)
