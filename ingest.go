@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sort"
 	"time"
@@ -395,6 +396,8 @@ type ingestLoadResult struct {
 	local    []ingestLocalMeta
 	shared   []ingestSharedMeta
 	external []ingestExternalMeta
+
+	externalFilesHaveLevel bool
 }
 
 type ingestLocalMeta struct {
@@ -482,6 +485,14 @@ func ingestLoad(
 			fileMetadata: m,
 			external:     external[i],
 		})
+		if external[i].Level > 0 {
+			if i != 0 && !result.externalFilesHaveLevel {
+				return ingestLoadResult{}, errors.AssertionFailedf("pebble: external sstables must all have level set or unset")
+			}
+			result.externalFilesHaveLevel = true
+		} else if result.externalFilesHaveLevel {
+			return ingestLoadResult{}, errors.AssertionFailedf("pebble: external sstables must all have level set or unset")
+		}
 	}
 	return result, nil
 }
@@ -495,11 +506,6 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 		}
 	}
 	if len(lr.external) > 0 {
-		if len(lr.local) > 0 || len(lr.shared) > 0 {
-			// Currently we only support external ingests on their own. If external
-			// files are present alongside local/shared files, return an error.
-			return errors.Newf("pebble: external files cannot be ingested atomically alongside other types of files")
-		}
 		// Sort according to the smallest key.
 		slices.SortFunc(lr.external, func(a, b ingestExternalMeta) int {
 			return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
@@ -698,14 +704,14 @@ func ingestUpdateSeqNum(
 		}
 		seqNum++
 	}
-	for i := range loadResult.local {
-		if err := setSeqNumInMetadata(loadResult.local[i].fileMetadata, seqNum, cmp, format); err != nil {
+	for i := range loadResult.external {
+		if err := setSeqNumInMetadata(loadResult.external[i].fileMetadata, seqNum, cmp, format); err != nil {
 			return err
 		}
 		seqNum++
 	}
-	for i := range loadResult.external {
-		if err := setSeqNumInMetadata(loadResult.external[i].fileMetadata, seqNum, cmp, format); err != nil {
+	for i := range loadResult.local {
+		if err := setSeqNumInMetadata(loadResult.local[i].fileMetadata, seqNum, cmp, format); err != nil {
 			return err
 		}
 		seqNum++
@@ -1142,6 +1148,26 @@ type ExternalFile struct {
 	//  - SmallestUserKey and LargestUserKey must not have suffixes;
 	//  - the backing sst must not contain multiple keys with the same prefix.
 	SyntheticSuffix []byte
+
+	// Level denotes the level at which this file was presetnt at read time
+	// if the external file was returned by a scan of an existing Pebble
+	// instance. If Level is 0, this field is ignored.
+	Level uint8
+}
+
+func (e *ExternalFile) cloneFromFileMeta(f *fileMetadata) {
+	*e = ExternalFile{
+		SmallestUserKey: append([]byte(nil), f.Smallest.UserKey...),
+		LargestUserKey:  append([]byte(nil), f.Largest.UserKey...),
+		HasPointKey:     f.HasPointKeys,
+		HasRangeKey:     f.HasRangeKeys,
+		Size:            f.Size,
+	}
+	e.SyntheticSuffix = append([]byte(nil), f.SyntheticSuffix...)
+	if pr := f.PrefixReplacement; pr != nil {
+		e.ContentPrefix = append([]byte(nil), pr.ContentPrefix...)
+		e.SyntheticPrefix = append([]byte(nil), pr.SyntheticPrefix...)
+	}
 }
 
 // IngestWithStats does the same as Ingest, and additionally returns
@@ -1185,7 +1211,7 @@ func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats,
 // Panics if this DB instance was not instantiated with a remote.Storage and
 // shared sstables are present.
 func (d *DB) IngestAndExcise(
-	paths []string, shared []SharedSSTMeta, exciseSpan KeyRange,
+	paths []string, shared []SharedSSTMeta, external []ExternalFile, exciseSpan KeyRange,
 ) (IngestOperationStats, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
@@ -1208,7 +1234,7 @@ func (d *DB) IngestAndExcise(
 			v, FormatMinForSharedObjects,
 		)
 	}
-	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, nil /* external */)
+	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, external)
 }
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
@@ -2165,6 +2191,7 @@ func (d *DB) ingestApply(
 		// overlap any existing files in the level.
 		var m *fileMetadata
 		sharedIdx := -1
+		externalIdx := -1
 		sharedLevel := -1
 		externalFile := false
 		if i < len(lr.local) {
@@ -2178,14 +2205,17 @@ func (d *DB) ingestApply(
 		} else {
 			// external file.
 			externalFile = true
-			m = lr.external[i-(len(lr.local)+len(lr.shared))].fileMetadata
+			externalIdx = i - (len(lr.local) + len(lr.shared))
+			m = lr.external[externalIdx].fileMetadata
+			sharedLevel = int(lr.external[externalIdx].external.Level)
 		}
 		f := &ve.NewFiles[i]
 		var err error
-		if sharedIdx >= 0 {
+		if sharedIdx >= 0 || (externalFile && lr.externalFilesHaveLevel) {
 			f.Level = sharedLevel
 			if f.Level < sharedLevelsStart {
-				panic("cannot slot a shared file higher than the highest shared level")
+				panic(fmt.Sprintf("cannot slot a shared file higher than the highest shared level: %d < %d",
+					f.Level, sharedLevelsStart))
 			}
 			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 		} else {
@@ -2196,7 +2226,7 @@ func (d *DB) ingestApply(
 			if exciseSpan.Valid() && exciseSpan.Contains(d.cmp, m.Smallest) && exciseSpan.Contains(d.cmp, m.Largest) {
 				// This file fits perfectly within the excise span. We can slot it at
 				// L6, or sharedLevelsStart - 1 if we have shared files.
-				if len(lr.shared) > 0 {
+				if len(lr.shared) > 0 || lr.externalFilesHaveLevel {
 					f.Level = sharedLevelsStart - 1
 					if baseLevel > f.Level {
 						f.Level = 0
@@ -2346,6 +2376,7 @@ func (d *DB) ingestApply(
 			}
 		}
 	}
+
 	if err := d.mu.versions.logAndApply(jobID, ve, metrics, false /* forceRotation */, func() []compactionInfo {
 		return d.getInProgressCompactionInfoLocked(nil)
 	}); err != nil {
