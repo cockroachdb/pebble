@@ -495,7 +495,7 @@ set b b
 set c c
 ----
 
-ingest-external 
+ingest-external
 ext bounds=(ea,ed) synthetic-prefix=e
 ----
 
@@ -541,3 +541,157 @@ eb: (b, .)
 ec: (c, .)
 f: (f, .)
 .
+
+reset
+----
+
+build-remote f11
+set a foo
+set b bar
+----
+
+ingest-external
+f11 bounds=(a,c)
+----
+
+batch
+set a bar
+----
+
+iter
+first
+next
+----
+a: (bar, .)
+b: (bar, .)
+
+replicate 1 2 a z
+----
+replicated 1 external SSTs
+
+switch 2
+----
+ok
+
+iter
+first
+next
+----
+a: (bar, .)
+b: (bar, .)
+
+# Replicate with existing data in L6.
+
+reset
+----
+
+build-remote f12
+set a d1-v1
+set b d1-v1
+set c d1-v1
+set d d-1v1
+----
+
+ingest-external
+f12 bounds=(a,d)
+----
+
+batch
+set b d1-v2
+----
+
+switch 2
+----
+ok
+
+batch
+set a d2-v1
+set b d2-v1
+set c d2-v1
+set d d2-v1
+----
+
+compact a z
+----
+
+lsm
+----
+6:
+  000005:[a#10,SET-d#13,SET]
+
+replicate 1 2 b d
+----
+replicated 1 external SSTs
+
+
+iter
+first
+next
+next
+next
+----
+a: (d2-v1, .)
+b: (d1-v2, .)
+c: (d1-v1, .)
+d: (d2-v1, .)
+
+# Replicate with an internal file in L0
+
+reset
+----
+
+batch
+set d d1-v1
+set e d1-v1
+----
+
+compact a z
+----
+
+lsm
+----
+6:
+  000005:[d#10,SET-e#11,SET]
+
+build-remote f13
+set a d1-v1
+set b d1-v1
+----
+
+ingest-external
+f13 bounds=(a,c)
+----
+
+switch 2
+----
+ok
+
+batch
+set a d2-v1
+set b d2-v1
+set d d2-v1
+set e d2-v1
+----
+
+compact a z
+----
+
+lsm
+----
+6:
+  000005:[a#10,SET-e#13,SET]
+
+replicate 1 2 b e
+----
+replicated 1 external SSTs
+
+iter
+first
+next
+next
+next
+----
+a: (d2-v1, .)
+b: (d1-v1, .)
+d: (d1-v1, .)
+e: (d2-v1, .)
