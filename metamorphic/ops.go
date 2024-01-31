@@ -1824,6 +1824,7 @@ func (r *replicateOp) runSharedReplicate(
 			sharedSSTs = append(sharedSSTs, *sst)
 			return nil
 		},
+		nil,
 	)
 	if err != nil {
 		h.Recordf("%s // %v", r, err)

@@ -1085,6 +1085,7 @@ func testIngestSharedImpl(
 					sharedSSTs = append(sharedSSTs, *sst)
 					return nil
 				},
+				nil,
 			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
@@ -1573,6 +1574,7 @@ func TestConcurrentExcise(t *testing.T) {
 					sharedSSTs = append(sharedSSTs, *sst)
 					return nil
 				},
+				nil,
 			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())

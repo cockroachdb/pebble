@@ -1118,6 +1118,26 @@ type ExternalFile struct {
 	// iteration. Note that the file itself is not modifed, rather, every key
 	// returned by an iterator will have the synthetic suffix.
 	SyntheticSuffix []byte
+
+	// Level denotes the level at which this file was presetnt at read time
+	// if the external file was returned by a scan of an existing Pebble
+	// instance. If Level is 0, this field is ignored.
+	Level uint8
+}
+
+func (e *ExternalFile) cloneFromFileMeta(f *fileMetadata) {
+	*e = ExternalFile{
+		SmallestUserKey: append([]byte(nil), f.Smallest.UserKey...),
+		LargestUserKey:  append([]byte(nil), f.Largest.UserKey...),
+		HasPointKey:     f.HasPointKeys,
+		HasRangeKey:     f.HasRangeKeys,
+		Size:            f.Size,
+	}
+	e.SyntheticSuffix = append([]byte(nil), f.SyntheticSuffix...)
+	if pr := f.PrefixReplacement; pr != nil {
+		e.ContentPrefix = append([]byte(nil), pr.ContentPrefix...)
+		e.SyntheticPrefix = append([]byte(nil), pr.SyntheticPrefix...)
+	}
 }
 
 // IngestWithStats does the same as Ingest, and additionally returns

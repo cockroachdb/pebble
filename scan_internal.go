@@ -433,6 +433,48 @@ type scanInternalIterator struct {
 	boundsBufIdx int
 }
 
+// truncateExternalFile truncates an External file's [SmallestUserKey,
+// LargestKserKey] fields to [lower, upper). A ExternalFile is
+// produced that is suitable for external consumption by other Pebble
+// instances.
+//
+// TODO(ssd) 2024-01-26: truncateSharedFile reads the file to try to
+// create the the smallest possible bounds.  Here, I just blindly
+// truncate them. This may mean we include this SST in iterations it
+// isn't really needed in.  Since we don't expect External files to be
+// long-lived in the pebble instance, I think this is OK.
+//
+// TODO(ssd) 2024-01-26: Potentially de-duplicate with
+// truncateSharedFile.
+func (d *DB) truncateExternalFile(
+	ctx context.Context,
+	lower, upper []byte,
+	level int,
+	file *fileMetadata,
+	objMeta objstorage.ObjectMetadata,
+) *ExternalFile {
+	cmp := d.cmp
+	sst := &ExternalFile{}
+	sst.cloneFromFileMeta(file)
+	sst.Level = uint8(level)
+	sst.ObjName = objMeta.Remote.CustomObjectName
+	sst.Locator = objMeta.Remote.Locator
+	needsLowerTruncate := cmp(lower, file.Smallest.UserKey) > 0
+	needsUpperTruncate := cmp(upper, file.Largest.UserKey) < 0 || (cmp(upper, file.Largest.UserKey) == 0 && !file.Largest.IsExclusiveSentinel())
+
+	if needsLowerTruncate {
+		sst.SmallestUserKey = sst.SmallestUserKey[:0]
+		sst.SmallestUserKey = append(sst.SmallestUserKey, lower...)
+	}
+
+	if needsUpperTruncate {
+		sst.LargestUserKey = sst.LargestUserKey[:0]
+		sst.LargestUserKey = append(sst.LargestUserKey, upper...)
+	}
+
+	return sst
+}
+
 // truncateSharedFile truncates a shared file's [Smallest, Largest] fields to
 // [lower, upper), potentially opening iterators on the file to find keys within
 // the requested bounds. A SharedSSTMeta is produced that is suitable for
@@ -629,11 +671,13 @@ func scanInternalImpl(
 	if current == nil {
 		current = iter.readState.current
 	}
-	if opts.visitSharedFile != nil {
+
+	if opts.visitSharedFile != nil || opts.visitExternalFile != nil {
 		if provider == nil {
 			panic("expected non-nil Provider in skip-shared iteration mode")
 		}
-		for level := sharedLevelsStart; level < numLevels; level++ {
+
+		for level := opts.skipLevelForOpts(); level < numLevels; level++ {
 			files := current.Levels[level].Iter()
 			for f := files.SeekGE(cmp, lower); f != nil && cmp(f.Smallest.UserKey, upper) < 0; f = files.Next() {
 				var objMeta objstorage.ObjectMetadata
@@ -642,24 +686,45 @@ func scanInternalImpl(
 				if err != nil {
 					return err
 				}
-				if !objMeta.IsShared() {
-					return errors.Wrapf(ErrInvalidSkipSharedIteration, "file %s is not shared", objMeta.DiskFileNum)
+
+				if !objMeta.IsShared() && !objMeta.IsExternal() {
+					return errors.Wrapf(ErrInvalidSkipSharedIteration, "file %s is not shared or external", objMeta.DiskFileNum)
 				}
+
+				if objMeta.IsShared() && opts.visitSharedFile == nil {
+					// TODO(ssd) 2024-01-26: Perhaps create a different error type here.
+					return errors.Wrapf(ErrInvalidSkipSharedIteration, "shared file is present but no shared file visitor is defined")
+				}
+
+				if objMeta.IsExternal() && opts.visitExternalFile == nil {
+					// TODO(ssd) 2024-01-26: Perhaps create a different error type here.
+					return errors.Wrapf(ErrInvalidSkipSharedIteration, "external file is present but no external file visitor is defined")
+				}
+
 				if !base.Visible(f.LargestSeqNum, seqNum, base.InternalKeySeqNumMax) {
 					return errors.Wrapf(ErrInvalidSkipSharedIteration, "file %s contains keys newer than snapshot", objMeta.DiskFileNum)
 				}
-				var sst *SharedSSTMeta
-				var skip bool
-				sst, skip, err = iter.db.truncateSharedFile(ctx, lower, upper, level, f, objMeta)
-				if err != nil {
-					return err
+
+				if objMeta.IsShared() {
+					var sst *SharedSSTMeta
+					var skip bool
+					sst, skip, err = iter.db.truncateSharedFile(ctx, lower, upper, level, f, objMeta)
+					if err != nil {
+						return err
+					}
+					if skip {
+						continue
+					}
+					if err = opts.visitSharedFile(sst); err != nil {
+						return err
+					}
+				} else if objMeta.IsExternal() {
+					sst := iter.db.truncateExternalFile(ctx, lower, upper, level, f, objMeta)
+					if err := opts.visitExternalFile(sst); err != nil {
+						return err
+					}
 				}
-				if skip {
-					continue
-				}
-				if err = opts.visitSharedFile(sst); err != nil {
-					return err
-				}
+
 			}
 		}
 	}
@@ -718,6 +783,16 @@ func scanInternalImpl(
 	return nil
 }
 
+func (opts *scanInternalOptions) skipLevelForOpts() int {
+	if opts.visitSharedFile != nil {
+		return sharedLevelsStart
+	}
+	if opts.visitExternalFile != nil {
+		return 6
+	}
+	return 0
+}
+
 // constructPointIter constructs a merging iterator and sets i.iter to it.
 func (i *scanInternalIterator) constructPointIter(
 	categoryAndQoS sstable.CategoryAndQoS, memtables flushableList, buf *iterAlloc,
@@ -739,11 +814,15 @@ func (i *scanInternalIterator) constructPointIter(
 	numMergingLevels += len(current.L0SublevelFiles)
 	numLevelIters += len(current.L0SublevelFiles)
 
+	// skipGEThanLevel skips levels that >= the given level, if it
+	// is non-zero.
+	skipGEThanLevel := i.opts.skipLevelForOpts()
+
 	for level := 1; level < len(current.Levels); level++ {
 		if current.Levels[level].Empty() {
 			continue
 		}
-		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
+		if skipGEThanLevel > 0 && level >= skipGEThanLevel {
 			continue
 		}
 		numMergingLevels++
@@ -818,7 +897,7 @@ func (i *scanInternalIterator) constructPointIter(
 		if current.Levels[level].Empty() {
 			continue
 		}
-		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
+		if skipGEThanLevel > 0 && level >= skipGEThanLevel {
 			continue
 		}
 		i.iterLevels[mlevelsIndex] = IteratorLevel{Kind: IteratorLevelLSM, Level: level}
@@ -909,7 +988,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 		if current.RangeKeyLevels[level].Empty() {
 			continue
 		}
-		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
+		if skipStart := i.opts.skipLevelForOpts(); skipStart > 0 && level >= skipStart {
 			continue
 		}
 		li := i.rangeKey.iterConfig.NewLevelIter()
