@@ -817,8 +817,7 @@ func (d *DB) replayWAL(
 	}()
 
 	for {
-		offset = rr.LogicalOffset()
-		r, err := rr.NextRecord()
+		r, offset, err := rr.NextRecord()
 		if err == nil {
 			_, err = io.Copy(&buf, r)
 		}
@@ -837,7 +836,7 @@ func (d *DB) replayWAL(
 		}
 
 		if buf.Len() < batchrepr.HeaderLen {
-			return nil, 0, base.CorruptionErrorf("pebble: corrupt wal %s (offset %d)",
+			return nil, 0, base.CorruptionErrorf("pebble: corrupt wal %s (offset %s)",
 				errors.Safe(base.DiskFileNum(wn)), offset)
 		}
 
