@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
+	"github.com/cockroachdb/pebble/wal"
 )
 
 // checkpointOptions hold the optional parameters to construct checkpoint
@@ -192,6 +193,18 @@ func (d *DB) Checkpoint(
 	for diskFileNum := range d.mu.versions.backingState.fileBackingMap {
 		virtualBackingFiles[diskFileNum] = struct{}{}
 	}
+	var logFiles []wal.CopyableLog
+	for i := range memQueue {
+		logNum := memQueue[i].logNum
+		if logNum == 0 {
+			continue
+		}
+		files, err := d.mu.log.manager.ListFiles(wal.NumWAL(logNum))
+		if err != nil {
+			return err
+		}
+		logFiles = append(logFiles, files...)
+	}
 	// Release the manifest and DB.mu so we don't block other operations on
 	// the database.
 	d.mu.versions.logUnlock()
@@ -308,14 +321,9 @@ func (d *DB) Checkpoint(
 	// Copy the WAL files. We copy rather than link because WAL file recycling
 	// will cause the WAL files to be reused which would invalidate the
 	// checkpoint.
-	for i := range memQueue {
-		logNum := memQueue[i].logNum
-		if logNum == 0 {
-			continue
-		}
-		srcPath := base.MakeFilepath(fs, d.walDirname, fileTypeLog, logNum)
-		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
-		ckErr = vfs.Copy(fs, srcPath, destPath)
+	for _, src := range logFiles {
+		destPath := fs.PathJoin(destDir, src.FS.PathBase(src.Path))
+		ckErr = vfs.CopyAcrossFS(src.FS, src.Path, fs, destPath)
 		if ckErr != nil {
 			return ckErr
 		}
