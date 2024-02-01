@@ -31,6 +31,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 )
 
 var errEmptyTable = errors.New("pebble: empty table")
@@ -3559,10 +3560,8 @@ func (d *DB) scanObsoleteFiles(list []string) {
 		}
 	}
 
-	minUnflushedLogNum := d.mu.versions.minUnflushedLogNum
 	manifestFileNum := d.mu.versions.manifestFileNum
 
-	var obsoleteLogs []fileInfo
 	var obsoleteTables []fileInfo
 	var obsoleteManifests []fileInfo
 	var obsoleteOptions []fileInfo
@@ -3574,14 +3573,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 		}
 		switch fileType {
 		case fileTypeLog:
-			if diskFileNum >= minUnflushedLogNum {
-				continue
-			}
-			fi := fileInfo{FileNum: diskFileNum}
-			if stat, err := d.opts.FS.Stat(filename); err == nil {
-				fi.FileSize = uint64(stat.Size())
-			}
-			obsoleteLogs = append(obsoleteLogs, fi)
+			// Ignore. Handled by wal.Manager.
 		case fileTypeManifest:
 			if diskFileNum >= manifestFileNum {
 				continue
@@ -3627,8 +3619,6 @@ func (d *DB) scanObsoleteFiles(list []string) {
 		}
 	}
 
-	d.mu.log.queue = merge(d.mu.log.queue, obsoleteLogs)
-	d.mu.versions.metrics.WAL.Files = int64(len(d.mu.log.queue))
 	d.mu.versions.obsoleteTables = merge(d.mu.versions.obsoleteTables, obsoleteTables)
 	d.mu.versions.updateObsoleteTableMetricsLocked()
 	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
@@ -3679,19 +3669,13 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	if d.mu.disableFileDeletions > 0 {
 		return
 	}
+	_, noRecycle := d.opts.Cleaner.(base.NeedsFileContents)
 
-	var obsoleteLogs []fileInfo
-	for i := range d.mu.log.queue {
-		// NB: d.mu.versions.minUnflushedLogNum is the log number of the earliest
-		// log that has not had its contents flushed to an sstable. We can recycle
-		// the prefix of d.mu.log.queue with log numbers less than
-		// minUnflushedLogNum.
-		if d.mu.log.queue[i].FileNum >= d.mu.versions.minUnflushedLogNum {
-			obsoleteLogs = d.mu.log.queue[:i]
-			d.mu.log.queue = d.mu.log.queue[i:]
-			d.mu.versions.metrics.WAL.Files -= int64(len(obsoleteLogs))
-			break
-		}
+	// NB: d.mu.versions.minUnflushedLogNum is the log number of the earliest
+	// log that has not had its contents flushed to an sstable.
+	obsoleteLogs, err := d.mu.log.manager.Obsolete(wal.NumWAL(d.mu.versions.minUnflushedLogNum), noRecycle)
+	if err != nil {
+		panic(err)
 	}
 
 	obsoleteTables := append([]fileInfo(nil), d.mu.versions.obsoleteTables...)
@@ -3725,17 +3709,18 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	files := [4]struct {
+	filesToDelete := make([]obsoleteFile, 0, len(obsoleteLogs)+len(obsoleteTables)+len(obsoleteManifests)+len(obsoleteOptions))
+	for _, f := range obsoleteLogs {
+		filesToDelete = append(filesToDelete, obsoleteFile{fileType: fileTypeLog, logFile: f})
+	}
+	files := [3]struct {
 		fileType fileType
 		obsolete []fileInfo
 	}{
-		{fileTypeLog, obsoleteLogs},
 		{fileTypeTable, obsoleteTables},
 		{fileTypeManifest, obsoleteManifests},
 		{fileTypeOptions, obsoleteOptions},
 	}
-	_, noRecycle := d.opts.Cleaner.(base.NeedsFileContents)
-	filesToDelete := make([]obsoleteFile, 0, len(obsoleteLogs)+len(obsoleteTables)+len(obsoleteManifests)+len(obsoleteOptions))
 	for _, f := range files {
 		// We sort to make the order of deletions deterministic, which is nice for
 		// tests.
@@ -3745,20 +3730,17 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		for _, fi := range f.obsolete {
 			dir := d.dirname
 			switch f.fileType {
-			case fileTypeLog:
-				if !noRecycle && d.logRecycler.Add(fi) {
-					continue
-				}
-				dir = d.walDirname
 			case fileTypeTable:
 				d.tableCache.evict(fi.FileNum)
 			}
 
 			filesToDelete = append(filesToDelete, obsoleteFile{
-				dir:      dir,
-				fileNum:  fi.FileNum,
 				fileType: f.fileType,
-				fileSize: fi.FileSize,
+				nonLogFile: deletableFile{
+					dir:      dir,
+					fileNum:  fi.FileNum,
+					fileSize: fi.FileSize,
+				},
 			})
 		}
 	}

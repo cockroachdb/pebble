@@ -71,6 +71,7 @@ type versionSet struct {
 	versions versionList
 	picker   compactionPicker
 
+	// Not all metrics are kept here. See DB.Metrics().
 	metrics Metrics
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure

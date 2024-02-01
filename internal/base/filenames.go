@@ -65,6 +65,7 @@ const (
 // MakeFilename builds a filename from components.
 func MakeFilename(fileType FileType, dfn DiskFileNum) string {
 	switch fileType {
+	// TODO(sumeer): stop handling FileTypeLog in this function.
 	case FileTypeLog:
 		return fmt.Sprintf("%s.log", dfn)
 	case FileTypeLock:
@@ -129,7 +130,7 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, dfn DiskFileN
 		if !ok {
 			break
 		}
-		// TODO(sumeer): stop handling FileTypeLog here.
+		// TODO(sumeer): stop handling FileTypeLog in this function.
 		switch filename[i+1:] {
 		case "sst":
 			return FileTypeTable, dfn, true

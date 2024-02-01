@@ -170,6 +170,7 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 	}
 
 	walk(stderr, f.opts.FS, dir, func(path string) {
+		// TODO(sumeer): delegate FileTypeLog handling to wal package.
 		ft, fileNum, ok := base.ParseFilename(f.opts.FS, path)
 		if !ok {
 			return
