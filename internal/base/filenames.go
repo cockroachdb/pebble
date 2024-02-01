@@ -96,27 +96,27 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, dfn DiskFileN
 	case filename == "LOCK":
 		return FileTypeLock, 0, true
 	case strings.HasPrefix(filename, "MANIFEST-"):
-		dfn, ok = parseDiskFileNum(filename[len("MANIFEST-"):])
+		dfn, ok = ParseDiskFileNum(filename[len("MANIFEST-"):])
 		if !ok {
 			break
 		}
 		return FileTypeManifest, dfn, true
 	case strings.HasPrefix(filename, "OPTIONS-"):
-		dfn, ok = parseDiskFileNum(filename[len("OPTIONS-"):])
+		dfn, ok = ParseDiskFileNum(filename[len("OPTIONS-"):])
 		if !ok {
 			break
 		}
 		return FileTypeOptions, dfn, ok
 	case strings.HasPrefix(filename, "CURRENT.") && strings.HasSuffix(filename, ".dbtmp"):
 		s := strings.TrimSuffix(filename[len("CURRENT."):], ".dbtmp")
-		dfn, ok = parseDiskFileNum(s)
+		dfn, ok = ParseDiskFileNum(s)
 		if !ok {
 			break
 		}
 		return FileTypeOldTemp, dfn, ok
 	case strings.HasPrefix(filename, "temporary.") && strings.HasSuffix(filename, ".dbtmp"):
 		s := strings.TrimSuffix(filename[len("temporary."):], ".dbtmp")
-		dfn, ok = parseDiskFileNum(s)
+		dfn, ok = ParseDiskFileNum(s)
 		if !ok {
 			break
 		}
@@ -126,7 +126,7 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, dfn DiskFileN
 		if i < 0 {
 			break
 		}
-		dfn, ok = parseDiskFileNum(filename[:i])
+		dfn, ok = ParseDiskFileNum(filename[:i])
 		if !ok {
 			break
 		}
@@ -141,7 +141,8 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, dfn DiskFileN
 	return 0, dfn, false
 }
 
-func parseDiskFileNum(s string) (dfn DiskFileNum, ok bool) {
+// ParseDiskFileNum parses the provided string as a disk file number.
+func ParseDiskFileNum(s string) (dfn DiskFileNum, ok bool) {
 	u, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
 		return dfn, false

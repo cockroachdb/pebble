@@ -146,8 +146,9 @@ func (m *StandaloneManager) OpenForRead(wn NumWAL) (Reader, error) {
 		return nil, err
 	}
 	return &standaloneReader{
-		rr: record.NewReader(file, base.DiskFileNum(wn)),
-		f:  file,
+		filename: filename,
+		rr:       record.NewReader(file, base.DiskFileNum(wn)),
+		f:        file,
 	}, nil
 }
 
@@ -301,20 +302,21 @@ func firstError(err0, err1 error) error {
 }
 
 type standaloneReader struct {
-	rr *record.Reader
-	f  vfs.File
+	filename string
+	rr       *record.Reader
+	f        vfs.File
 }
 
 var _ Reader = &standaloneReader{}
 
 // NextRecord implements Reader.
-func (r *standaloneReader) NextRecord() (io.Reader, error) {
-	return r.rr.Next()
-}
-
-// LogicalOffset implements Reader.
-func (r *standaloneReader) LogicalOffset() int64 {
-	return r.rr.Offset()
+func (r *standaloneReader) NextRecord() (io.Reader, Offset, error) {
+	record, err := r.rr.Next()
+	off := Offset{
+		PhysicalFile: r.filename,
+		Physical:     r.rr.Offset(),
+	}
+	return record, off, err
 }
 
 // Close implements Reader.
