@@ -1,0 +1,144 @@
+touch
+a wals/000001.log
+a wals/000002.log
+a wals/1-cockroach.log
+a wals/CURRENT
+a wals/cockroach.log
+a wals/unknown-file
+a wals/unknown-file.log
+----
+a:
+          /
+            wals/
+       0      000001.log
+       0      000002.log
+       0      1-cockroach.log
+       0      CURRENT
+       0      cockroach.log
+       0      unknown-file
+       0      unknown-file.log
+
+# Filesystem b is empty.
+
+list fs=(a,wals) fs=(b,)
+----
+000001: {(wals,000)}
+000002: {(wals,000)}
+
+# Directory `wals` does not exist yet on filesystem b.
+
+list fs=(a,wals) fs=(b,wals)
+----
+reading "wals": open wals/: file does not exist
+
+touch
+b wals/000003.log
+----
+a:
+          /
+            wals/
+       0      000001.log
+       0      000002.log
+       0      1-cockroach.log
+       0      CURRENT
+       0      cockroach.log
+       0      unknown-file
+       0      unknown-file.log
+b:
+          /
+            wals/
+       0      000003.log
+
+# Now that (b,wals) exists, listing should succeed and find filesystem b's WAL.
+
+list fs=(a,wals) fs=(b,wals)
+----
+000001: {(wals,000)}
+000002: {(wals,000)}
+000003: {(wals,000)}
+
+# Two log files for the same log index (in this case the implicit 000).
+
+touch
+b wals/000002.log
+----
+a:
+          /
+            wals/
+       0      000001.log
+       0      000002.log
+       0      1-cockroach.log
+       0      CURRENT
+       0      cockroach.log
+       0      unknown-file
+       0      unknown-file.log
+b:
+          /
+            wals/
+       0      000002.log
+       0      000003.log
+
+list fs=(a,wals) fs=(b,wals)
+----
+wal: duplicate logIndex=000 for WAL 000002 in wals and wals
+
+reset
+----
+
+# Interleaved log indexes.
+
+touch
+a a/000099.log
+b b/000099-001.log
+a a/000099-002.log
+b b/000099-003.log
+----
+a:
+          /
+            a/
+       0      000099-002.log
+       0      000099.log
+b:
+          /
+            b/
+       0      000099-001.log
+       0      000099-003.log
+
+list fs=(a,a) fs=(b,b)
+----
+000099: {(a,000), (b,001), (a,002), (b,003)}
+
+reset
+----
+
+# Skipped log indexes.
+
+touch
+c c/000002.log
+c c/000101.log
+c c/000101-002.log
+c c/000101-004.log
+d d/000101-005.log
+c c/000191.log
+c c/000242.log
+----
+c:
+          /
+            c/
+       0      000002.log
+       0      000101-002.log
+       0      000101-004.log
+       0      000101.log
+       0      000191.log
+       0      000242.log
+d:
+          /
+            d/
+       0      000101-005.log
+
+list fs=(c,c) fs=(d,d)
+----
+000002: {(c,000)}
+000101: {(c,000), (c,002), (c,004), (d,005)}
+000191: {(c,000)}
+000242: {(c,000)}
