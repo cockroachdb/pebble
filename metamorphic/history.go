@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"unicode"
 
@@ -28,6 +29,10 @@ type history struct {
 	err    atomic.Value
 	failRE *regexp.Regexp
 	log    *log.Logger
+	mu     struct {
+		sync.Mutex
+		closed bool
+	}
 }
 
 func newHistory(failRE *regexp.Regexp, writers ...io.Writer) *history {
@@ -36,8 +41,18 @@ func newHistory(failRE *regexp.Regexp, writers ...io.Writer) *history {
 	return h
 }
 
-// Recordf records the results of a single operation.
+func (h *history) Close() {
+	h.mu.Lock()
+	h.mu.closed = true
+	h.mu.Unlock()
+}
+
 func (h *history) Recordf(op int, format string, args ...interface{}) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.mu.closed {
+		panic("Recordf after close")
+	}
 	if strings.Contains(format, "\n") {
 		// We could remove this restriction but suffixing every line with "#<seq>".
 		panic(fmt.Sprintf("format string must not contain \\n: %q", format))
@@ -80,18 +95,35 @@ func (h *history) format(prefix, format string, args ...interface{}) string {
 // Infof implements the pebble.Logger interface. Note that the output is
 // commented.
 func (h *history) Infof(format string, args ...interface{}) {
-	_ = h.log.Output(2, h.format("// INFO: ", format, args...))
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	// Suppress any messages that come after closing. This could happen if the
+	// test doesn't close the database.
+	if !h.mu.closed {
+		_ = h.log.Output(2, h.format("// INFO: ", format, args...))
+	}
 }
 
 // Errorf implements the pebble.Logger interface. Note that the output is
 // commented.
 func (h *history) Errorf(format string, args ...interface{}) {
-	_ = h.log.Output(2, h.format("// ERROR: ", format, args...))
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	// Suppress any messages that come after closing. This could happen if the
+	// test doesn't close the database.
+	if !h.mu.closed {
+		_ = h.log.Output(2, h.format("// ERROR: ", format, args...))
+	}
 }
 
 // Fatalf implements the pebble.Logger interface. Note that the output is
 // commented.
 func (h *history) Fatalf(format string, args ...interface{}) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.mu.closed {
+		panic(fmt.Sprintf(format, args...))
+	}
 	_ = h.log.Output(2, h.format("// FATAL: ", format, args...))
 	h.err.Store(errors.Errorf(format, args...))
 }

@@ -519,6 +519,7 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 		writers = append(writers, os.Stdout)
 	}
 	h := newHistory(runOpts.failRegexp, writers...)
+	defer h.Close()
 
 	m := newTest(ops)
 	require.NoError(t, m.init(h, dir, testOpts, runOpts.numInstances))
