@@ -2,9 +2,18 @@
 open db archive
 ----
 mkdir-all: db 0755
-mkdir-all: db_wal 0755
+open-dir: 
+sync: 
+close: 
 open-dir: db
+close: db
+mkdir-all: db_wal 0755
+open-dir: 
+sync: 
+close: 
 open-dir: db_wal
+close: db_wal
+open-dir: db
 lock: db/LOCK
 open-dir: db
 open-dir: db
@@ -13,6 +22,7 @@ sync: db/MANIFEST-000001
 create: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
+open-dir: db_wal
 open-dir: db
 sync: db/MANIFEST-000001
 create: db_wal/000002.log
@@ -122,9 +132,18 @@ list db_wal/archive
 open db1
 ----
 mkdir-all: db1 0755
-mkdir-all: db1_wal 0755
+open-dir: 
+sync: 
+close: 
 open-dir: db1
+close: db1
+mkdir-all: db1_wal 0755
+open-dir: 
+sync: 
+close: 
 open-dir: db1_wal
+close: db1_wal
+open-dir: db1
 lock: db1/LOCK
 open-dir: db1
 open-dir: db1
@@ -133,6 +152,7 @@ sync: db1/MANIFEST-000001
 create: db1/marker.manifest.000001.MANIFEST-000001
 close: db1/marker.manifest.000001.MANIFEST-000001
 sync: db1
+open-dir: db1_wal
 open-dir: db1
 sync: db1/MANIFEST-000001
 create: db1_wal/000002.log
@@ -170,10 +190,10 @@ close db1
 close: db1
 sync-data: db1_wal/000004.log
 close: db1_wal/000004.log
+close: db1_wal
 close: db1/MANIFEST-000001
 close: db1
 close: db1
-close: db1_wal
 close: db1
 
 create-bogus-file db1/000123.sst
@@ -191,14 +211,24 @@ close: db1/000456.sst
 open db1
 ----
 mkdir-all: db1 0755
-mkdir-all: db1_wal 0755
+open-dir: 
+sync: 
+close: 
 open-dir: db1
+close: db1
+mkdir-all: db1_wal 0755
+open-dir: 
+sync: 
+close: 
 open-dir: db1_wal
+close: db1_wal
+open-dir: db1
 lock: db1/LOCK
 open-dir: db1
 open-dir: db1
 open: db1/MANIFEST-000001
 close: db1/MANIFEST-000001
+open-dir: db1_wal
 open-dir: db1
 open: db1/OPTIONS-000003
 close: db1/OPTIONS-000003

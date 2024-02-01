@@ -1,9 +1,18 @@
 open
 ----
 mkdir-all: db 0755
-mkdir-all: wal 0755
+open-dir: 
+sync: 
+close: 
 open-dir: db
+close: db
+mkdir-all: wal 0755
+open-dir: 
+sync: 
+close: 
 open-dir: wal
+close: wal
+open-dir: db
 lock: db/LOCK
 open-dir: db
 open-dir: db
@@ -13,6 +22,7 @@ create: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 1] MANIFEST created 000001
+open-dir: wal
 open-dir: db
 sync: db/MANIFEST-000001
 create: wal/000002.log
@@ -384,8 +394,8 @@ close: db
 close: db/000013.sst
 sync-data: wal/000021.log
 close: wal/000021.log
+close: wal
 close: db/MANIFEST-000023
 close: db
 close: db
-close: wal
 close: db

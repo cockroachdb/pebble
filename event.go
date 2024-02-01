@@ -443,6 +443,9 @@ func (i WALCreateInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 }
 
 // WALDeleteInfo contains the info for a WAL deletion event.
+//
+// TODO(sumeer): extend WALDeleteInfo for the failover case in case the path
+// is insufficient to infer whether primary or secondary.
 type WALDeleteInfo struct {
 	// JobID is the ID of the job the caused the WAL to be deleted.
 	JobID   int

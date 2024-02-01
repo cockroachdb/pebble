@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -269,7 +268,7 @@ type DB struct {
 	// recycled.
 	memTableRecycle atomic.Pointer[memTable]
 
-	// The size of the current log file (i.e. db.mu.log.queue[len(queue)-1].
+	// The logical size of the current WAL.
 	logSize atomic.Uint64
 
 	// The number of bytes available on disk.
@@ -277,7 +276,6 @@ type DB struct {
 
 	cacheID        uint64
 	dirname        string
-	walDirname     string
 	opts           *Options
 	cmp            Compare
 	equal          Equal
@@ -297,7 +295,6 @@ type DB struct {
 
 	fileLock *Lock
 	dataDir  vfs.File
-	walDir   vfs.File
 
 	tableCache           *tableCacheContainer
 	newIters             tableNewIters
@@ -311,11 +308,6 @@ type DB struct {
 		sync.RWMutex
 		val *readState
 	}
-	// logRecycler holds a set of log file numbers that are available for
-	// reuse. Writing to a recycled log file is faster than to a new log file on
-	// some common filesystems (xfs, and ext3/4) due to avoiding metadata
-	// updates.
-	logRecycler wal.LogRecycler
 
 	closed   *atomic.Value
 	closedCh chan struct{}
@@ -375,26 +367,25 @@ type DB struct {
 		versions *versionSet
 
 		log struct {
-			// The queue of logs, containing both flushed and unflushed logs. The
-			// flushed logs will be a prefix, the unflushed logs a suffix. The
-			// delimeter between flushed and unflushed logs is
-			// versionSet.minUnflushedLogNum.
-			queue []fileInfo
+			// manager is not protected by mu, but calls to Create must be
+			// serialized, and happen after the previous writer is closed.
+			manager wal.Manager
 			// The number of input bytes to the log. This is the raw size of the
 			// batches written to the WAL, without the overhead of the record
 			// envelopes.
 			bytesIn uint64
-			// The LogWriter is protected by commitPipeline.mu. This allows log
-			// writes to be performed without holding DB.mu, but requires both
+			// The Writer is protected by commitPipeline.mu. This allows log writes
+			// to be performed without holding DB.mu, but requires both
 			// commitPipeline.mu and DB.mu to be held when rotating the WAL/memtable
-			// (i.e. makeRoomForWrite).
-			*record.LogWriter
-			// Can be nil.
+			// (i.e. makeRoomForWrite). Can be nil.
+			writer  wal.Writer
 			metrics struct {
+				// fsyncLatency has its own internal synchronization, and is not
+				// protected by mu.
 				fsyncLatency prometheus.Histogram
+				// Updated whenever a wal.Writer is closed.
 				record.LogWriterMetrics
 			}
-			registerLogWriterForTesting func(w *record.LogWriter)
 		}
 
 		mem struct {
@@ -927,7 +918,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		b.flushable.setSeqNum(b.SeqNum())
 		if !d.opts.DisableWAL {
 			var err error
-			size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
+			size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr})
 			if err != nil {
 				panic(err)
 			}
@@ -965,7 +956,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 	}
 
 	if b.flushable == nil {
-		size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
+		size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr})
 		if err != nil {
 			panic(err)
 		}
@@ -1640,10 +1631,14 @@ func (d *DB) Close() error {
 	err = firstError(err, d.mu.formatVers.marker.Close())
 	err = firstError(err, d.tableCache.close())
 	if !d.opts.ReadOnly {
-		err = firstError(err, d.mu.log.Close())
-	} else if d.mu.log.LogWriter != nil {
+		if d.mu.log.writer != nil {
+			_, err2 := d.mu.log.writer.Close()
+			err = firstError(err, err2)
+		}
+	} else if d.mu.log.writer != nil {
 		panic("pebble: log-writer should be nil in read-only mode")
 	}
+	err = firstError(err, d.mu.log.manager.Close())
 	err = firstError(err, d.fileLock.Close())
 
 	// Note that versionSet.close() only closes the MANIFEST. The versions list
@@ -1651,9 +1646,6 @@ func (d *DB) Close() error {
 	err = firstError(err, d.mu.versions.close())
 
 	err = firstError(err, d.dataDir.Close())
-	if d.dataDir != d.walDir {
-		err = firstError(err, d.walDir.Close())
-	}
 
 	d.readState.val.unrefLocked()
 
@@ -2063,7 +2055,7 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 // Metrics returns metrics about the database.
 func (d *DB) Metrics() *Metrics {
 	metrics := &Metrics{}
-	recycledLogsCount, recycledLogSize := d.logRecycler.Stats()
+	walStats := d.mu.log.manager.Stats()
 
 	d.mu.Lock()
 	vers := d.mu.versions.currentVersion()
@@ -2091,27 +2083,23 @@ func (d *DB) Metrics() *Metrics {
 	metrics.MemTable.Count = int64(len(d.mu.mem.queue))
 	metrics.MemTable.ZombieCount = d.memTableCount.Load() - metrics.MemTable.Count
 	metrics.MemTable.ZombieSize = uint64(d.memTableReserved.Load()) - metrics.MemTable.Size
-	metrics.WAL.ObsoleteFiles = int64(recycledLogsCount)
-	metrics.WAL.ObsoletePhysicalSize = recycledLogSize
-	metrics.WAL.Size = d.logSize.Load()
-	// The current WAL size (d.atomic.logSize) is the current logical size,
-	// which may be less than the WAL's physical size if it was recycled.
-	// The file sizes in d.mu.log.queue are updated to the physical size
-	// during WAL rotation. Use the larger of the two for the current WAL. All
-	// the previous WALs's fileSizes in d.mu.log.queue are already updated.
-	metrics.WAL.PhysicalSize = metrics.WAL.Size
-	if len(d.mu.log.queue) > 0 && metrics.WAL.PhysicalSize < d.mu.log.queue[len(d.mu.log.queue)-1].FileSize {
-		metrics.WAL.PhysicalSize = d.mu.log.queue[len(d.mu.log.queue)-1].FileSize
-	}
-	for i, n := 0, len(d.mu.log.queue)-1; i < n; i++ {
-		metrics.WAL.PhysicalSize += d.mu.log.queue[i].FileSize
-	}
-
+	metrics.WAL.ObsoleteFiles = int64(walStats.ObsoleteFileCount)
+	metrics.WAL.ObsoletePhysicalSize = walStats.ObsoleteFileSize
+	metrics.WAL.Files = int64(walStats.LiveFileCount)
+	// The current WAL's size (d.logSize) is the logical size, which may be less
+	// than the WAL's physical size if it was recycled. walStats.LiveFileSize
+	// includes the physical size of all live WALs, but for the current WAL it
+	// reflects the physical size when it was opened. So it is possible that
+	// d.atomic.logSize has exceeded that physical size. We allow for this
+	// anomaly.
+	metrics.WAL.PhysicalSize = walStats.LiveFileSize
 	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
+	metrics.WAL.Size = d.logSize.Load()
 	for i, n := 0, len(d.mu.mem.queue)-1; i < n; i++ {
 		metrics.WAL.Size += d.mu.mem.queue[i].logSize
 	}
 	metrics.WAL.BytesWritten = metrics.Levels[0].BytesIn + metrics.WAL.Size
+
 	if p := d.mu.versions.picker; p != nil {
 		compactions := d.getInProgressCompactionInfoLocked(nil)
 		for level, score := range p.getScores(compactions) {
@@ -2717,127 +2705,39 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	if d.opts.DisableWAL {
 		panic("pebble: invalid function call")
 	}
-
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	newLogNum = d.mu.versions.getNextDiskFileNum()
 
-	prevLogSize = uint64(d.mu.log.Size())
-
-	// The previous log may have grown past its original physical
-	// size. Update its file size in the queue so we have a proper
-	// accounting of its file size.
-	if d.mu.log.queue[len(d.mu.log.queue)-1].FileSize < prevLogSize {
-		d.mu.log.queue[len(d.mu.log.queue)-1].FileSize = prevLogSize
-	}
 	d.mu.Unlock()
-
-	var err error
 	// Close the previous log first. This writes an EOF trailer
 	// signifying the end of the file and syncs it to disk. We must
 	// close the previous log before linking the new log file,
 	// otherwise a crash could leave both logs with unclean tails, and
 	// Open will treat the previous log as corrupt.
-	err = d.mu.log.LogWriter.Close()
-	metrics := d.mu.log.LogWriter.Metrics()
-	d.mu.Lock()
-	if err := d.mu.log.metrics.Merge(metrics); err != nil {
-		d.opts.Logger.Errorf("metrics error: %s", err)
-	}
-	d.mu.Unlock()
-
-	newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
-
-	// Try to use a recycled log file. Recycling log files is an important
-	// performance optimization as it is faster to sync a file that has
-	// already been written, than one which is being written for the first
-	// time. This is due to the need to sync file metadata when a file is
-	// being written for the first time. Note this is true even if file
-	// preallocation is performed (e.g. fallocate).
-	var recycleLog fileInfo
-	var recycleOK bool
-	var newLogFile vfs.File
-	if err == nil {
-		recycleLog, recycleOK = d.logRecycler.Peek()
-		if recycleOK {
-			recycleLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.FileNum)
-			newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
-			base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
-		} else {
-			newLogFile, err = d.opts.FS.Create(newLogName)
-			base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
-		}
-	}
-
-	var newLogSize uint64
-	if err == nil && recycleOK {
-		// Figure out the recycled WAL size. This Stat is necessary
-		// because ReuseForWrite's contract allows for removing the
-		// old file and creating a new one. We don't know whether the
-		// WAL was actually recycled.
-		// TODO(jackson): Adding a boolean to the ReuseForWrite return
-		// value indicating whether or not the file was actually
-		// reused would allow us to skip the stat and use
-		// recycleLog.FileSize.
-		var finfo os.FileInfo
-		finfo, err = newLogFile.Stat()
-		if err == nil {
-			newLogSize = uint64(finfo.Size())
-		}
-	}
-
-	if err == nil {
-		// TODO(peter): RocksDB delays sync of the parent directory until the
-		// first time the log is synced. Is that worthwhile?
-		err = d.walDir.Sync()
-	}
-
-	if err != nil && newLogFile != nil {
-		newLogFile.Close()
-	} else if err == nil {
-		newLogFile = vfs.NewSyncingFile(newLogFile, vfs.SyncingFileOptions{
-			NoSyncOnClose:   d.opts.NoSyncOnClose,
-			BytesPerSync:    d.opts.WALBytesPerSync,
-			PreallocateSize: d.walPreallocateSize(),
-		})
-	}
-
-	if recycleOK {
-		err = firstError(err, d.logRecycler.Pop(recycleLog.FileNum))
-	}
-
-	d.opts.EventListener.WALCreated(WALCreateInfo{
-		JobID:           jobID,
-		Path:            newLogName,
-		FileNum:         newLogNum,
-		RecycledFileNum: recycleLog.FileNum,
-		Err:             err,
-	})
-
-	d.mu.Lock()
-
-	d.mu.versions.metrics.WAL.Files++
-
+	offset, err := d.mu.log.writer.Close()
 	if err != nil {
-		// TODO(peter): avoid chewing through file numbers in a tight loop if there
-		// is an error here.
-		//
 		// What to do here? Stumbling on doesn't seem worthwhile. If we failed to
 		// close the previous log it is possible we lost a write.
 		panic(err)
 	}
+	prevLogSize = uint64(offset)
+	metrics := d.mu.log.writer.Metrics()
 
-	d.mu.log.queue = append(d.mu.log.queue, fileInfo{FileNum: newLogNum, FileSize: newLogSize})
-	d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum, record.LogWriterConfig{
-		WALFsyncLatency:    d.mu.log.metrics.fsyncLatency,
-		WALMinSyncInterval: d.opts.WALMinSyncInterval,
-		QueueSemChan:       d.commit.logSyncQSem,
-	})
-	if d.mu.log.registerLogWriterForTesting != nil {
-		d.mu.log.registerLogWriterForTesting(d.mu.log.LogWriter)
+	d.mu.Lock()
+	if err := d.mu.log.metrics.LogWriterMetrics.Merge(metrics); err != nil {
+		d.opts.Logger.Errorf("metrics error: %s", err)
 	}
 
-	return
+	d.mu.Unlock()
+	writer, err := d.mu.log.manager.Create(wal.NumWAL(newLogNum), jobID)
+	if err != nil {
+		panic(err)
+	}
+
+	d.mu.Lock()
+	d.mu.log.writer = writer
+	return newLogNum, prevLogSize
 }
 
 func (d *DB) getEarliestUnflushedSeqNumLocked() uint64 {

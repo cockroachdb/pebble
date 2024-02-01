@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -91,15 +90,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	// deferred cleanups.
 
 	// Open the database and WAL directories first.
-	walDirname, dataDir, walDir, err := prepareAndOpenDirs(dirname, opts)
+	walDirname, dataDir, err := prepareAndOpenDirs(dirname, opts)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error opening database at %q", dirname)
 	}
 	defer func() {
 		if db == nil {
-			if walDir != dataDir {
-				walDir.Close()
-			}
 			dataDir.Close()
 		}
 	}()
@@ -203,7 +199,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d := &DB{
 		cacheID:             opts.Cache.NewID(),
 		dirname:             dirname,
-		walDirname:          walDirname,
 		opts:                opts,
 		cmp:                 opts.Comparer.Compare,
 		equal:               opts.equal(),
@@ -213,12 +208,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		largeBatchThreshold: (opts.MemTableSize - uint64(memTableEmptySize)) / 2,
 		fileLock:            fileLock,
 		dataDir:             dataDir,
-		walDir:              walDir,
-		logRecycler:         wal.LogRecycler{},
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
 	}
-	d.logRecycler.Init(opts.MemTableStopWritesThreshold + 1)
 	d.mu.versions = &versionSet{}
 	d.diskAvailBytes.Store(math.MaxUint64)
 
@@ -325,17 +317,45 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	}
 
-	// List the objects
-	ls, err := opts.FS.List(d.walDirname)
+	d.mu.log.metrics.fsyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Buckets: FsyncLatencyBuckets,
+	})
+	walManager := &wal.StandaloneManager{}
+	err = walManager.Init(wal.Options{
+		Primary:                        wal.Dir{FS: opts.FS, Dirname: walDirname},
+		Secondary:                      wal.Dir{},
+		MinUnflushedWALNum:             wal.NumWAL(d.mu.versions.minUnflushedLogNum),
+		MaxNumRecyclableLogs:           opts.MemTableStopWritesThreshold + 1,
+		NoSyncOnClose:                  opts.NoSyncOnClose,
+		BytesPerSync:                   opts.WALBytesPerSync,
+		PreallocateSize:                d.walPreallocateSize,
+		MinSyncInterval:                opts.WALMinSyncInterval,
+		FsyncLatency:                   d.mu.log.metrics.fsyncLatency,
+		QueueSemChan:                   d.commit.logSyncQSem,
+		ElevatedWriteStallThresholdLag: 0,
+		Logger:                         opts.Logger,
+		EventListener:                  walEventListenerAdaptor{l: opts.EventListener},
+	})
 	if err != nil {
 		return nil, err
 	}
-	if d.dirname != d.walDirname {
-		ls2, err := opts.FS.List(d.dirname)
-		if err != nil {
-			return nil, err
+	defer func() {
+		if db == nil {
+			walManager.Close()
 		}
-		ls = append(ls, ls2...)
+	}()
+	wals, err := walManager.List()
+	if err != nil {
+		return nil, err
+	}
+	d.mu.log.manager = walManager
+
+	// List the objects. This also happens to include WAL log files, if they are
+	// in the same dir, but we will ignore those below. The provider is also
+	// given this list, but it ignores non sstable files.
+	ls, err := opts.FS.List(d.dirname)
+	if err != nil {
+		return nil, err
 	}
 	providerSettings := objstorageprovider.Settings{
 		Logger:              opts.Logger,
@@ -372,12 +392,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.newIters = d.tableCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(context.TODO(), d.newIters)
 
-	// Replay any newer log files than the ones named in the manifest.
-	type fileNumAndName struct {
-		num  base.DiskFileNum
-		name string
-	}
-	var logFiles []fileNumAndName
 	var previousOptionsFileNum base.DiskFileNum
 	var previousOptionsFilename string
 	for _, filename := range ls {
@@ -388,18 +402,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 		// Don't reuse any obsolete file numbers to avoid modifying an
 		// ingested sstable's original external file.
-		if d.mu.versions.nextFileNum <= uint64(fn) {
-			d.mu.versions.nextFileNum = uint64(fn) + 1
-		}
+		d.mu.versions.markFileNumUsed(fn)
 
 		switch ft {
 		case fileTypeLog:
-			if fn >= d.mu.versions.minUnflushedLogNum {
-				logFiles = append(logFiles, fileNumAndName{fn, filename})
-			}
-			if d.logRecycler.MinRecycleLogNum() <= fn {
-				d.logRecycler.SetMinRecycleLogNum(fn + 1)
-			}
+			// Ignore.
 		case fileTypeOptions:
 			if previousOptionsFileNum < fn {
 				previousOptionsFileNum = fn
@@ -418,14 +425,17 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			}
 		}
 	}
+	if n := len(wals); n > 0 {
+		// Don't reuse any obsolete file numbers to avoid modifying an
+		// ingested sstable's original external file.
+		d.mu.versions.markFileNumUsed(base.DiskFileNum(wals[n-1]))
+	}
 
 	// Ratchet d.mu.versions.nextFileNum ahead of all known objects in the
 	// objProvider. This avoids FileNum collisions with obsolete sstables.
 	objects := d.objProvider.List()
 	for _, obj := range objects {
-		if d.mu.versions.nextFileNum <= uint64(obj.DiskFileNum) {
-			d.mu.versions.nextFileNum = uint64(obj.DiskFileNum) + 1
-		}
+		d.mu.versions.markFileNumUsed(obj.DiskFileNum)
 	}
 
 	// Validate the most-recent OPTIONS file, if there is one.
@@ -438,21 +448,23 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 	}
 
-	slices.SortFunc(logFiles, func(a, b fileNumAndName) int {
-		return cmp.Compare(a.num, b.num)
-	})
-
+	// Replay any newer log files than the ones named in the manifest.
+	var replayWALs []wal.NumWAL
+	for i, walNum := range wals {
+		if base.DiskFileNum(walNum) >= d.mu.versions.minUnflushedLogNum {
+			replayWALs = wals[i:]
+			break
+		}
+	}
 	var ve versionEdit
 	var toFlush flushableList
-	for i, lf := range logFiles {
-		lastWAL := i == len(logFiles)-1
-		flush, maxSeqNum, err := d.replayWAL(jobID, &ve, opts.FS,
-			opts.FS.PathJoin(d.walDirname, lf.name), lf.num, strictWALTail && !lastWAL)
+	for i, lf := range replayWALs {
+		lastWAL := i == len(replayWALs)-1
+		flush, maxSeqNum, err := d.replayWAL(jobID, &ve, lf, strictWALTail && !lastWAL)
 		if err != nil {
 			return nil, err
 		}
 		toFlush = append(toFlush, flush...)
-		d.mu.versions.markFileNumUsed(lf.num)
 		if d.mu.versions.logSeqNum.Load() < maxSeqNum {
 			d.mu.versions.logSeqNum.Store(maxSeqNum)
 		}
@@ -483,40 +495,14 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			entry.readerUnrefLocked(true)
 		}
 
-		newLogName := base.MakeFilepath(opts.FS, d.walDirname, fileTypeLog, newLogNum)
-		d.mu.log.queue = append(d.mu.log.queue, fileInfo{FileNum: newLogNum, FileSize: 0})
-		logFile, err := opts.FS.Create(newLogName)
+		d.mu.log.writer, err = d.mu.log.manager.Create(wal.NumWAL(newLogNum), jobID)
 		if err != nil {
 			return nil, err
 		}
-		if err := d.walDir.Sync(); err != nil {
-			return nil, err
-		}
-		d.opts.EventListener.WALCreated(WALCreateInfo{
-			JobID:   jobID,
-			Path:    newLogName,
-			FileNum: newLogNum,
-		})
+
 		// This isn't strictly necessary as we don't use the log number for
 		// memtables being flushed, only for the next unflushed memtable.
 		d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = newLogNum
-
-		logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
-			NoSyncOnClose:   d.opts.NoSyncOnClose,
-			BytesPerSync:    d.opts.WALBytesPerSync,
-			PreallocateSize: d.walPreallocateSize(),
-		})
-		d.mu.log.metrics.fsyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
-			Buckets: FsyncLatencyBuckets,
-		})
-
-		logWriterConfig := record.LogWriterConfig{
-			WALMinSyncInterval: d.opts.WALMinSyncInterval,
-			WALFsyncLatency:    d.mu.log.metrics.fsyncLatency,
-			QueueSemChan:       d.commit.logSyncQSem,
-		}
-		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum, logWriterConfig)
-		d.mu.versions.metrics.WAL.Files++
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
 
@@ -577,10 +563,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	if !d.opts.ReadOnly {
 		d.scanObsoleteFiles(ls)
 		d.deleteObsoleteFiles(jobID)
-	} else {
-		// All the log files are obsolete.
-		d.mu.versions.metrics.WAL.Files = int64(len(logFiles))
 	}
+	// Else, nothing is obsolete.
+
 	d.mu.tableStats.cond.L = &d.mu.Mutex
 	d.mu.tableValidation.cond.L = &d.mu.Mutex
 	if !d.opts.ReadOnly {
@@ -625,7 +610,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 // Returns an error if ReadOnly is set and the directories don't exist.
 func prepareAndOpenDirs(
 	dirname string, opts *Options,
-) (walDirname string, dataDir vfs.File, walDir vfs.File, err error) {
+) (walDirname string, dataDir vfs.File, err error) {
 	walDirname = opts.WALDir
 	if opts.WALDir == "" {
 		walDirname = dirname
@@ -633,34 +618,38 @@ func prepareAndOpenDirs(
 
 	// Create directories if needed.
 	if !opts.ReadOnly {
-		if err := opts.FS.MkdirAll(dirname, 0755); err != nil {
-			return "", nil, nil, err
+		f, err := mkdirAllAndSyncParents(opts.FS, dirname)
+		if err != nil {
+			return "", nil, err
 		}
+		f.Close()
 		if walDirname != dirname {
-			if err := opts.FS.MkdirAll(walDirname, 0755); err != nil {
-				return "", nil, nil, err
+			f, err := mkdirAllAndSyncParents(opts.FS, walDirname)
+			if err != nil {
+				return "", nil, err
 			}
+			f.Close()
 		}
 	}
 
 	dataDir, err = opts.FS.OpenDir(dirname)
 	if err != nil {
 		if opts.ReadOnly && oserror.IsNotExist(err) {
-			return "", nil, nil, errors.Errorf("pebble: database %q does not exist", dirname)
+			return "", nil, errors.Errorf("pebble: database %q does not exist", dirname)
 		}
-		return "", nil, nil, err
+		return "", nil, err
 	}
-
-	if walDirname == dirname {
-		walDir = dataDir
-	} else {
-		walDir, err = opts.FS.OpenDir(walDirname)
+	if opts.ReadOnly && walDirname != dirname {
+		// Check that the wal dir exists.
+		walDir, err := opts.FS.OpenDir(walDirname)
 		if err != nil {
 			dataDir.Close()
-			return "", nil, nil, err
+			return "", nil, err
 		}
+		walDir.Close()
 	}
-	return walDirname, dataDir, walDir, nil
+
+	return walDirname, dataDir, nil
 }
 
 // GetVersion returns the engine version string from the latest options
@@ -721,7 +710,7 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 	return version, nil
 }
 
-// replayWAL replays the edits in the specified log file. If the DB is in read
+// replayWAL replays the edits in the specified WAL. If the DB is in read
 // only mode, then the WALs are replayed into memtables and not flushed. If
 // the DB is not in read only mode, then the contents of the WAL are
 // guaranteed to be flushed. Note that this flushing is very important for
@@ -741,24 +730,18 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
-	jobID int,
-	ve *versionEdit,
-	fs vfs.FS,
-	filename string,
-	logNum base.DiskFileNum,
-	strictWALTail bool,
+	jobID int, ve *versionEdit, wn wal.NumWAL, strictWALTail bool,
 ) (toFlush flushableList, maxSeqNum uint64, err error) {
-	file, err := fs.Open(filename)
+	rr, err := d.mu.log.manager.OpenForRead(wn)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer file.Close()
+	defer rr.Close()
 	var (
 		b               Batch
 		buf             bytes.Buffer
 		mem             *memTable
 		entry           *flushableEntry
-		rr              = record.NewReader(file, logNum)
 		offset          int64 // byte offset in rr
 		lastFlushOffset int64
 		keysReplayed    int64 // number of keys replayed
@@ -802,7 +785,7 @@ func (d *DB) replayWAL(
 		if mem != nil {
 			return
 		}
-		mem, entry = d.newMemTable(logNum, seqNum)
+		mem, entry = d.newMemTable(base.DiskFileNum(wn), seqNum)
 		if d.opts.ReadOnly {
 			d.mu.mem.mutable = mem
 			d.mu.mem.queue = append(d.mu.mem.queue, entry)
@@ -829,13 +812,13 @@ func (d *DB) replayWAL(
 	}
 	defer func() {
 		if err != nil {
-			err = errors.WithDetailf(err, "replaying log %s, offset %d", logNum, offset)
+			err = errors.WithDetailf(err, "replaying wal %d, offset %d", wn, offset)
 		}
 	}()
 
 	for {
-		offset = rr.Offset()
-		r, err := rr.Next()
+		offset = rr.LogicalOffset()
+		r, err := rr.NextRecord()
 		if err == nil {
 			_, err = io.Copy(&buf, r)
 		}
@@ -854,8 +837,8 @@ func (d *DB) replayWAL(
 		}
 
 		if buf.Len() < batchrepr.HeaderLen {
-			return nil, 0, base.CorruptionErrorf("pebble: corrupt log file %q (num %s)",
-				filename, errors.Safe(logNum))
+			return nil, 0, base.CorruptionErrorf("pebble: corrupt wal %s (offset %d)",
+				errors.Safe(base.DiskFileNum(wn)), offset)
 		}
 
 		if d.opts.ErrorIfNotPristine {
@@ -942,7 +925,7 @@ func (d *DB) replayWAL(
 				}
 
 				entry, err = d.newIngestedFlushableEntry(
-					meta, seqNum, logNum,
+					meta, seqNum, base.DiskFileNum(wn),
 				)
 				if err != nil {
 					return nil, 0, err
@@ -1002,7 +985,7 @@ func (d *DB) replayWAL(
 			if err != nil {
 				return nil, 0, err
 			}
-			entry := d.newFlushableEntry(b.flushable, logNum, b.SeqNum())
+			entry := d.newFlushableEntry(b.flushable, base.DiskFileNum(wn), b.SeqNum())
 			// Disable memory accounting by adding a reader ref that will never be
 			// removed.
 			entry.readerRefs.Add(1)
@@ -1044,7 +1027,8 @@ func (d *DB) replayWAL(
 		buf.Reset()
 	}
 
-	d.opts.Logger.Infof("[JOB %d] WAL file %s with log number %s stopped reading at offset: %d; replayed %d keys in %d batches", jobID, filename, logNum.String(), offset, keysReplayed, batchesReplayed)
+	d.opts.Logger.Infof("[JOB %d] WAL %s stopped reading at offset: %d; replayed %d keys in %d batches",
+		jobID, base.DiskFileNum(wn).String(), offset, keysReplayed, batchesReplayed)
 	flushMem()
 
 	// mem is nil here.
@@ -1242,4 +1226,21 @@ func checkConsistency(v *manifest.Version, dirname string, objProvider objstorag
 		}
 	}
 	return errors.Join(errs...)
+}
+
+type walEventListenerAdaptor struct {
+	l *EventListener
+}
+
+func (l walEventListenerAdaptor) LogCreated(ci wal.CreateInfo) {
+	// TODO(sumeer): extend WALCreateInfo for the failover case in case the path
+	// is insufficient to infer whether primary or secondary.
+	wci := WALCreateInfo{
+		JobID:           ci.JobID,
+		Path:            ci.Path,
+		FileNum:         base.DiskFileNum(ci.Num),
+		RecycledFileNum: ci.RecycledFileNum,
+		Err:             ci.Err,
+	}
+	l.l.WALCreated(wci)
 }

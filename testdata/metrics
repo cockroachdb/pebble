@@ -77,7 +77,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
-2.0KB
+1.9KB
 
 batch
 set b 2

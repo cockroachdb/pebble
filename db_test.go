@@ -374,7 +374,9 @@ func TestLargeBatch(t *testing.T) {
 	logNum := func() base.DiskFileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.log.queue[len(d.mu.log.queue)-1].FileNum
+		walNums, err := d.mu.log.manager.List()
+		require.NoError(t, err)
+		return base.DiskFileNum(walNums[len(walNums)-1])
 	}
 	fileSize := func(fileNum base.DiskFileNum) int64 {
 		info, err := d.opts.FS.Stat(base.MakeFilepath(d.opts.FS, "", fileTypeLog, fileNum))
@@ -1975,27 +1977,32 @@ func TestRecycleLogs(t *testing.T) {
 	logNum := func() base.DiskFileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.log.queue[len(d.mu.log.queue)-1].FileNum
+		walNums, err := d.mu.log.manager.List()
+		require.NoError(t, err)
+		return base.DiskFileNum(walNums[len(walNums)-1])
 	}
 	logCount := func() int {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return len(d.mu.log.queue)
+		walNums, err := d.mu.log.manager.List()
+		require.NoError(t, err)
+		return len(walNums)
 	}
 
+	recycler := d.mu.log.manager.RecyclerForTesting()
 	// Flush the memtable a few times, forcing rotation of the WAL. We should see
 	// the recycled logs change as expected.
-	require.EqualValues(t, []base.DiskFileNum(nil), d.logRecycler.LogNumsForTesting())
+	require.EqualValues(t, []base.DiskFileNum(nil), recycler.LogNumsForTesting())
 	curLog := logNum()
 
 	require.NoError(t, d.Flush())
 
-	require.EqualValues(t, []base.DiskFileNum{curLog}, d.logRecycler.LogNumsForTesting())
+	require.EqualValues(t, []base.DiskFileNum{curLog}, recycler.LogNumsForTesting())
 	curLog = logNum()
 
 	require.NoError(t, d.Flush())
 
-	require.EqualValues(t, []base.DiskFileNum{curLog}, d.logRecycler.LogNumsForTesting())
+	require.EqualValues(t, []base.DiskFileNum{curLog}, recycler.LogNumsForTesting())
 
 	require.NoError(t, d.Close())
 
@@ -2003,16 +2010,17 @@ func TestRecycleLogs(t *testing.T) {
 		FS: mem,
 	})
 	require.NoError(t, err)
+	recycler = d.mu.log.manager.RecyclerForTesting()
 	metrics := d.Metrics()
 	if n := logCount(); n != int(metrics.WAL.Files) {
 		t.Fatalf("expected %d WAL files, but found %d", n, metrics.WAL.Files)
 	}
-	if n, sz := d.logRecycler.Stats(); n != int(metrics.WAL.ObsoleteFiles) {
+	if n, sz := recycler.Stats(); n != int(metrics.WAL.ObsoleteFiles) {
 		t.Fatalf("expected %d obsolete WAL files, but found %d", n, metrics.WAL.ObsoleteFiles)
 	} else if sz != metrics.WAL.ObsoletePhysicalSize {
 		t.Fatalf("expected %d obsolete physical WAL size, but found %d", sz, metrics.WAL.ObsoletePhysicalSize)
 	}
-	if recycled := d.logRecycler.LogNumsForTesting(); len(recycled) != 0 {
+	if recycled := recycler.LogNumsForTesting(); len(recycled) != 0 {
 		t.Fatalf("expected no recycled WAL files after recovery, but found %d", recycled)
 	}
 	require.NoError(t, d.Close())
