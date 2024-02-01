@@ -957,14 +957,7 @@ func (l *levelIter) Prev() (*InternalKey, base.LazyValue) {
 			}
 			return nil, base.LazyValue{}
 		}
-		// We're stepping past the boundary key, so now we can load the prev file.
-		if l.loadFile(l.files.Prev(), -1) != noFileLoaded {
-			if key, val := l.iter.Last(); key != nil {
-				return l.verify(key, val)
-			}
-			return l.verify(l.skipEmptyFileBackward())
-		}
-		return nil, base.LazyValue{}
+		return l.verify(l.skipEmptyFileBackward())
 
 	default:
 		// Reset the largest boundary since we're moving away from it.
@@ -1121,8 +1114,13 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, base.LazyValue) {
 				// bounds.
 				return nil, base.LazyValue{}
 			}
-			// If the boundary is a range deletion tombstone, return that key.
-			if l.iterFile.SmallestPointKey.Kind() == InternalKeyKindRangeDelete {
+			// If the boundary could be a range deletion tombstone, return the
+			// smallest point key as a special ignorable key to avoid advancing to the
+			// next file.
+			//
+			// If smallestBoundary is not nil, we have already emitted a boundary,
+			// either in this case or the one below.
+			if l.smallestBoundary == nil && *l.rangeDelIterPtr != nil && l.iterFile.HasPointKeys {
 				l.smallestBoundary = &l.iterFile.SmallestPointKey
 				if l.boundaryContext != nil {
 					l.boundaryContext.isIgnorableBoundaryKey = true
@@ -1150,11 +1148,15 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, base.LazyValue) {
 			// the top of the heap and immediately skip the entry, advancing to
 			// the next file.
 			if *l.rangeDelIterPtr != nil && l.filteredIter != nil && l.filteredIter.MaybeFilteredKeys() {
-				l.smallestBoundary = &l.iterFile.Smallest
-				if l.boundaryContext != nil {
-					l.boundaryContext.isIgnorableBoundaryKey = true
+				// Only emit this boundary if we haven't emitted it already (or
+				// emitted one for the same key in the case above).
+				if l.smallestBoundary == nil && l.cmp(l.smallestBoundary.UserKey, l.iterFile.Smallest.UserKey) > 0 {
+					l.smallestBoundary = &l.iterFile.Smallest
+					if l.boundaryContext != nil {
+						l.boundaryContext.isIgnorableBoundaryKey = true
+					}
+					return l.smallestBoundary, base.LazyValue{}
 				}
-				return l.smallestBoundary, base.LazyValue{}
 			}
 		}
 
