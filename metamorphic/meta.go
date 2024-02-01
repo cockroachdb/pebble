@@ -221,7 +221,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		args := []string{
 			"-keep=" + fmt.Sprint(runOpts.keep),
 			"-run-dir=" + runDir,
-			"-test.run=" + t.Name() + "$",
+			"-test.run=" + topLevelTestName + "$",
 		}
 		if runOpts.numInstances > 1 {
 			args = append(args, "--num-instances="+strconv.Itoa(runOpts.numInstances))
