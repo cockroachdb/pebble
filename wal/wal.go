@@ -7,6 +7,8 @@ package wal
 import (
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,10 +38,17 @@ type Dir struct {
 // the contents of the directories.
 type NumWAL base.DiskFileNum
 
+// String implements fmt.Stringer.
+func (s NumWAL) String() string { return base.DiskFileNum(s).String() }
+
 // logIndex numbers log files within a WAL.
 type logIndex uint32
 
-// TODO(sumeer): parsing func. And remove attempts to parse log files outside
+func (li logIndex) String() string {
+	return fmt.Sprintf("%03d", li)
+}
+
+// TODO(sumeer): Remove attempts to parse log files outside
 // the wal package (including tools).
 
 // makeLogFilename makes a log filename.
@@ -49,6 +58,33 @@ func makeLogFilename(wn NumWAL, index logIndex) string {
 		return base.MakeFilename(base.FileTypeLog, base.DiskFileNum(wn))
 	}
 	return fmt.Sprintf("%s-%03d.log", base.DiskFileNum(wn).String(), index)
+}
+
+// parseLogFilename takes a base filename and parses it into its constituent
+// NumWAL and logIndex. If the filename is not a log file, it returns false for
+// the final return value.
+func parseLogFilename(name string) (NumWAL, logIndex, bool) {
+	i := strings.IndexByte(name, '.')
+	if i < 0 || name[i:] != ".log" {
+		return 0, 0, false
+	}
+	j := strings.IndexByte(name[:i], '-')
+	if j < 0 {
+		dfn, ok := base.ParseDiskFileNum(name[:i])
+		if !ok {
+			return 0, 0, false
+		}
+		return NumWAL(dfn), 0, true
+	}
+	dfn, ok := base.ParseDiskFileNum(name[:j])
+	if !ok {
+		return 0, 0, false
+	}
+	li, err := strconv.ParseUint(name[j+1:i], 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	return NumWAL(dfn), logIndex(li), true
 }
 
 // Options provides configuration for the Manager.
@@ -170,14 +206,32 @@ type Writer interface {
 
 // Reader reads a virtual WAL.
 type Reader interface {
-	// NextRecord returns the next record, or error.
-	NextRecord() (io.Reader, error)
-	// LogicalOffset is the monotonically increasing offset in the WAL. When the
-	// WAL corresponds to a single log file, this is the offset in that log
-	// file.
-	LogicalOffset() int64
+	// NextRecord returns a reader for the next record. It returns io.EOF if there
+	// are no more records. The reader returned becomes stale after the next Next
+	// call, and should no longer be used.
+	NextRecord() (io.Reader, Offset, error)
 	// Close the reader.
 	Close() error
+}
+
+// Offset indicates the offset or position of a record within a WAL.
+type Offset struct {
+	// Logical is a monotonically increasing offset within a virtual WAL
+	// indicating the position of a record. Logical is deterministic with
+	// respect to the contents of the records.
+	Logical int
+	// PhysicalFile is the path to the physical file containing a particular
+	// record.
+	PhysicalFile string
+	// Physical indicates the file offset at which a record begins within
+	// the physical file named by PhysicalFile.
+	Physical int64
+}
+
+// String implements fmt.Stringer, returning a string representation of the
+// offset.
+func (o Offset) String() string {
+	return fmt.Sprintf("%d (%s: %d)", o.Logical, o.PhysicalFile, o.Physical)
 }
 
 // Make lint happy.
