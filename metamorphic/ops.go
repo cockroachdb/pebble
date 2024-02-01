@@ -1110,7 +1110,17 @@ func (o *newIterOp) syncObjs() objIDSlice {
 	return objs
 }
 
-func (o *newIterOp) keys() []*[]byte                     { return nil }
+func (o *newIterOp) keys() []*[]byte {
+	var res []*[]byte
+	if o.lower != nil {
+		res = append(res, &o.lower)
+	}
+	if o.upper != nil {
+		res = append(res, &o.upper)
+	}
+	return res
+}
+
 func (o *newIterOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // newIterUsingCloneOp models a Iterator.Clone operation.

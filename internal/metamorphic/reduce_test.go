@@ -182,7 +182,7 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 		t.Logf("  Diagram: %s", diagramPath)
 	}
 
-	t.Logf(`  go test ./internal/metamorphic -run "%s$" -v %s %q`, t.Name(), runFlags[0], runFlags[1])
+	t.Logf(`  go test ./internal/metamorphic -tags invariants -run "%s$" -v %s %q`, t.Name(), runFlags[0], runFlags[1])
 	if r.lastSavedDir != "" {
 		require.NoError(t, os.RemoveAll(r.lastSavedDir))
 	}

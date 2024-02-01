@@ -4,7 +4,11 @@
 
 package metamorphic
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/cockroachdb/pebble/internal/testkeys"
+)
 
 // TryToSimplifyKeys parses the operations data and tries to reassign keys to
 // single lowercase characters. Note that the result is not necessarily
@@ -49,6 +53,8 @@ func sortedKeys(in map[string]struct{}) []string {
 	for k := range in {
 		sorted = append(sorted, k)
 	}
-	sort.Strings(sorted)
+	sort.Slice(sorted, func(i, j int) bool {
+		return testkeys.Comparer.Compare([]byte(sorted[i]), []byte(sorted[j])) < 0
+	})
 	return sorted
 }
