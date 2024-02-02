@@ -37,9 +37,7 @@ func TestCoalesce(t *testing.T) {
 				Start: span.Start,
 				End:   span.End,
 			}
-			if err := Coalesce(cmp, eq, span.Keys, &coalesced.Keys); err != nil {
-				return err.Error()
-			}
+			Coalesce(cmp, eq, span.Keys, &coalesced.Keys)
 			fmt.Fprintln(&buf, coalesced)
 			return buf.String()
 		default:
@@ -77,9 +75,7 @@ func TestIter(t *testing.T) {
 					Cmp:  cmp,
 					Keys: dst.Keys[:0],
 				}
-				if err := coalesce(eq, &keysBySuffix, visibleSeqNum, s.Keys); err != nil {
-					return err
-				}
+				coalesce(eq, &keysBySuffix, visibleSeqNum, s.Keys)
 				// Update the span with the (potentially reduced) keys slice.  coalesce left
 				// the keys in *dst sorted by suffix. Re-sort them by trailer.
 				dst.Keys = keysBySuffix.Keys

@@ -721,10 +721,7 @@ func buildForIngest(
 				End:   span.End,
 				Keys:  make([]keyspan.Key, 0, len(span.Keys)),
 			}
-			err = rangekey.Coalesce(t.opts.Comparer.Compare, equal, span.Keys, &collapsed.Keys)
-			if err != nil {
-				return "", nil, err
-			}
+			rangekey.Coalesce(t.opts.Comparer.Compare, equal, span.Keys, &collapsed.Keys)
 			for i := range collapsed.Keys {
 				collapsed.Keys[i].Trailer = base.MakeTrailer(0, collapsed.Keys[i].Kind())
 			}

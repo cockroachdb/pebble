@@ -151,9 +151,7 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 		Cmp:  cmp,
 		Keys: ui.bufs.sortBuf.Keys[:0],
 	}
-	if err := coalesce(ui.comparer.Equal, &ui.bufs.sortBuf, ui.snapshot, s.Keys); err != nil {
-		return err
-	}
+	coalesce(ui.comparer.Equal, &ui.bufs.sortBuf, ui.snapshot, s.Keys)
 	if ui.internalKeys {
 		if s.KeysOrder != keyspan.ByTrailerDesc {
 			panic("unexpected key ordering in UserIteratorTransform with internalKeys = true")
@@ -276,26 +274,23 @@ func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.S
 // set or unset but not both.
 //
 // The resulting dst Keys slice is sorted by Trailer.
-func Coalesce(cmp base.Compare, eq base.Equal, keys []keyspan.Key, dst *[]keyspan.Key) error {
+func Coalesce(cmp base.Compare, eq base.Equal, keys []keyspan.Key, dst *[]keyspan.Key) {
 	// TODO(jackson): Currently, Coalesce doesn't actually perform the sequence
 	// number promotion described in the comment above.
 	keysBySuffix := keyspan.KeysBySuffix{
 		Cmp:  cmp,
 		Keys: (*dst)[:0],
 	}
-	if err := coalesce(eq, &keysBySuffix, math.MaxUint64, keys); err != nil {
-		return err
-	}
+	coalesce(eq, &keysBySuffix, math.MaxUint64, keys)
 	// Update the span with the (potentially reduced) keys slice. coalesce left
 	// the keys in *dst sorted by suffix. Re-sort them by trailer.
 	*dst = keysBySuffix.Keys
 	keyspan.SortKeysByTrailer(dst)
-	return nil
 }
 
 func coalesce(
 	equal base.Equal, keysBySuffix *keyspan.KeysBySuffix, snapshot uint64, keys []keyspan.Key,
-) error {
+) {
 	// First, enforce visibility and RangeKeyDelete mechanics. We only need to
 	// consider the prefix of keys before and including the first
 	// RangeKeyDelete. We also must skip any keys that aren't visible at the
@@ -376,7 +371,6 @@ func coalesce(
 	if deleteIdx >= 0 {
 		keysBySuffix.Keys = append(keysBySuffix.Keys, keys[deleteIdx])
 	}
-	return nil
 }
 
 // ForeignSSTTransformer implements a keyspan.Transformer for range keys in
@@ -404,9 +398,7 @@ func (f *ForeignSSTTransformer) Transform(
 		Cmp:  cmp,
 		Keys: f.sortBuf.Keys[:0],
 	}
-	if err := coalesce(f.Equal, &f.sortBuf, math.MaxUint64, s.Keys); err != nil {
-		return err
-	}
+	coalesce(f.Equal, &f.sortBuf, math.MaxUint64, s.Keys)
 	keys := f.sortBuf.Keys
 	dst.Keys = dst.Keys[:0]
 	for i := range keys {
