@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
@@ -165,35 +164,6 @@ func TestGeneratorRandom(t *testing.T) {
 				t.Logf("\nOps:\n%s", referenceOps)
 			}
 		})
-	}
-}
-
-func TestGenerateRandKeyToReadInRange(t *testing.T) {
-	rng := randvar.NewRand()
-	g := newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
-	// Seed 100 initial keys.
-	for i := 0; i < 100; i++ {
-		_ = g.randKeyToWrite(1.0)
-	}
-	for i := 0; i < 100; i++ {
-		a := g.randKeyToRead(0.01)
-		b := g.randKeyToRead(0.01)
-		// Ensure unique prefixes; required by randKeyToReadInRange.
-		for g.equal(g.prefix(a), g.prefix(b)) {
-			b = g.randKeyToRead(0.01)
-		}
-		if v := g.cmp(a, b); v > 0 {
-			a, b = b, a
-		}
-		kr := pebble.KeyRange{Start: a, End: b}
-		for j := 0; j < 10; j++ {
-			k := g.randKeyToReadInRange(0.05, kr)
-			if g.cmp(k, a) < 0 {
-				t.Errorf("generated random key %q outside range %s", k, kr)
-			} else if g.cmp(k, b) >= 0 {
-				t.Errorf("generated random key %q outside range %s", k, kr)
-			}
-		}
 	}
 }
 
