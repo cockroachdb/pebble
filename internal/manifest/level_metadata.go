@@ -393,52 +393,6 @@ const (
 	KeyTypeRange
 )
 
-type keyTypeAnnotator struct{}
-
-var _ Annotator = keyTypeAnnotator{}
-
-func (k keyTypeAnnotator) Zero(dst interface{}) interface{} {
-	var val *KeyType
-	if dst != nil {
-		val = dst.(*KeyType)
-	} else {
-		val = new(KeyType)
-	}
-	*val = KeyTypePoint
-	return val
-}
-
-func (k keyTypeAnnotator) Accumulate(m *FileMetadata, dst interface{}) (interface{}, bool) {
-	v := dst.(*KeyType)
-	switch *v {
-	case KeyTypePoint:
-		if m.HasRangeKeys {
-			*v = KeyTypePointAndRange
-		}
-	case KeyTypePointAndRange:
-		// Do nothing.
-	default:
-		panic("unexpected key type")
-	}
-	return v, true
-}
-
-func (k keyTypeAnnotator) Merge(src interface{}, dst interface{}) interface{} {
-	v := dst.(*KeyType)
-	srcVal := src.(*KeyType)
-	switch *v {
-	case KeyTypePoint:
-		if *srcVal == KeyTypePointAndRange {
-			*v = KeyTypePointAndRange
-		}
-	case KeyTypePointAndRange:
-		// Do nothing.
-	default:
-		panic("unexpected key type")
-	}
-	return v
-}
-
 // LevelIterator iterates over a set of files' metadata. Its zero value is an
 // empty iterator.
 type LevelIterator struct {
