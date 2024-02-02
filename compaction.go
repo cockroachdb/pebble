@@ -524,9 +524,7 @@ func rangeKeyCompactionTransform(
 			}
 			if j > start {
 				keysDst := dst.Keys[usedLen:cap(dst.Keys)]
-				if err := rangekey.Coalesce(cmp, eq, s.Keys[start:j], &keysDst); err != nil {
-					return err
-				}
+				rangekey.Coalesce(cmp, eq, s.Keys[start:j], &keysDst)
 				if j == len(s.Keys) {
 					// This is the last snapshot stripe. Unsets and deletes can be elided.
 					keysDst = elideInLastStripe(keysDst)
@@ -538,9 +536,7 @@ func rangeKeyCompactionTransform(
 		}
 		if j < len(s.Keys) {
 			keysDst := dst.Keys[usedLen:cap(dst.Keys)]
-			if err := rangekey.Coalesce(cmp, eq, s.Keys[j:], &keysDst); err != nil {
-				return err
-			}
+			rangekey.Coalesce(cmp, eq, s.Keys[j:], &keysDst)
 			keysDst = elideInLastStripe(keysDst)
 			usedLen += len(keysDst)
 			dst.Keys = append(dst.Keys, keysDst...)
