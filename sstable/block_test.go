@@ -527,157 +527,177 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 	}
 }
 
+var (
+	benchSynthSuffix = []byte("@15")
+	benchOrigSuffix  = []byte("@10")
+
+	// Use testkeys.Comparer.Compare which approximates EngineCompare by ordering
+	// multiple keys with same prefix in descending suffix order.
+	benchCmp   = testkeys.Comparer.Compare
+	benchSplit = testkeys.Comparer.Split
+)
+
+func createBenchBlock(blockSize int, w *blockWriter) [][]byte {
+	var ikey InternalKey
+	var keys [][]byte
+	for i := 0; w.estimatedSize() < blockSize; i++ {
+		key := []byte(fmt.Sprintf("%05d%s", i, benchOrigSuffix))
+		ikey.UserKey = key
+		w.add(ikey, nil)
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 func BenchmarkBlockIterSeekGE(b *testing.B) {
 	const blockSize = 32 << 10
+	for _, withSyntheticSuffix := range []bool{false, true} {
+		for _, restartInterval := range []int{16} {
+			b.Run(fmt.Sprintf("syntheticSuffix=%t;restart=%d", withSyntheticSuffix, restartInterval),
+				func(b *testing.B) {
+					w := &blockWriter{
+						restartInterval: restartInterval,
+					}
 
-	for _, restartInterval := range []int{16} {
-		b.Run(fmt.Sprintf("restart=%d", restartInterval),
-			func(b *testing.B) {
-				w := &blockWriter{
-					restartInterval: restartInterval,
-				}
+					keys := createBenchBlock(blockSize, w)
+					var syntheticSuffix []byte
+					if withSyntheticSuffix {
+						syntheticSuffix = benchSynthSuffix
+					}
 
-				var ikey InternalKey
-				var keys [][]byte
-				for i := 0; w.estimatedSize() < blockSize; i++ {
-					key := []byte(fmt.Sprintf("%05d", i))
-					keys = append(keys, key)
-					ikey.UserKey = key
-					w.add(ikey, nil)
-				}
+					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), nil, syntheticSuffix)
+					if err != nil {
+						b.Fatal(err)
+					}
+					rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
-				it, err := newBlockIter(bytes.Compare, nil, w.finish(), nil, nil)
-				if err != nil {
-					b.Fatal(err)
-				}
-				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					k := keys[rng.Intn(len(keys))]
-					it.SeekGE(k, base.SeekGEFlagsNone)
-					if testing.Verbose() {
-						if !it.valid() {
-							b.Fatal("expected to find key")
-						}
-						if !bytes.Equal(k, it.Key().UserKey) {
-							b.Fatalf("expected %s, but found %s", k, it.Key().UserKey)
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						k := keys[rng.Intn(len(keys))]
+						it.SeekGE(k, base.SeekGEFlagsNone)
+						if testing.Verbose() {
+							if !it.valid() && !withSyntheticSuffix {
+								b.Fatal("expected to find key")
+							}
+							if !bytes.Equal(k, it.Key().UserKey) && !withSyntheticSuffix {
+								b.Fatalf("expected %s, but found %s", k, it.Key().UserKey)
+							}
 						}
 					}
-				}
-			})
+				})
+		}
 	}
 }
 
 func BenchmarkBlockIterSeekLT(b *testing.B) {
 	const blockSize = 32 << 10
+	for _, withSyntheticSuffix := range []bool{false, true} {
+		for _, restartInterval := range []int{16} {
+			b.Run(fmt.Sprintf("syntheticSuffix=%t;restart=%d", withSyntheticSuffix, restartInterval),
+				func(b *testing.B) {
+					w := &blockWriter{
+						restartInterval: restartInterval,
+					}
 
-	for _, restartInterval := range []int{16} {
-		b.Run(fmt.Sprintf("restart=%d", restartInterval),
-			func(b *testing.B) {
-				w := &blockWriter{
-					restartInterval: restartInterval,
-				}
+					keys := createBenchBlock(blockSize, w)
+					var syntheticSuffix []byte
+					if withSyntheticSuffix {
+						syntheticSuffix = benchSynthSuffix
+					}
 
-				var ikey InternalKey
-				var keys [][]byte
-				for i := 0; w.estimatedSize() < blockSize; i++ {
-					key := []byte(fmt.Sprintf("%05d", i))
-					keys = append(keys, key)
-					ikey.UserKey = key
-					w.add(ikey, nil)
-				}
+					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), nil, syntheticSuffix)
+					if err != nil {
+						b.Fatal(err)
+					}
+					rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
-				it, err := newBlockIter(bytes.Compare, nil, w.finish(), nil, nil)
-				if err != nil {
-					b.Fatal(err)
-				}
-				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					j := rng.Intn(len(keys))
-					it.SeekLT(keys[j], base.SeekLTFlagsNone)
-					if testing.Verbose() {
-						if j == 0 {
-							if it.valid() {
-								b.Fatal("unexpected key")
-							}
-						} else {
-							if !it.valid() {
-								b.Fatal("expected to find key")
-							}
-							k := keys[j-1]
-							if !bytes.Equal(k, it.Key().UserKey) {
-								b.Fatalf("expected %s, but found %s", k, it.Key().UserKey)
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						j := rng.Intn(len(keys))
+						it.SeekLT(keys[j], base.SeekLTFlagsNone)
+						if testing.Verbose() {
+							if j == 0 {
+								if it.valid() && !withSyntheticSuffix {
+									b.Fatal("unexpected key")
+								}
+							} else {
+								if !it.valid() && !withSyntheticSuffix {
+									b.Fatal("expected to find key")
+								}
+								k := keys[j-1]
+								if !bytes.Equal(k, it.Key().UserKey) && !withSyntheticSuffix {
+									b.Fatalf("expected %s, but found %s", k, it.Key().UserKey)
+								}
 							}
 						}
 					}
-				}
-			})
+				})
+		}
 	}
 }
 
 func BenchmarkBlockIterNext(b *testing.B) {
 	const blockSize = 32 << 10
-
-	for _, restartInterval := range []int{16} {
-		b.Run(fmt.Sprintf("restart=%d", restartInterval),
-			func(b *testing.B) {
-				w := &blockWriter{
-					restartInterval: restartInterval,
-				}
-
-				var ikey InternalKey
-				for i := 0; w.estimatedSize() < blockSize; i++ {
-					ikey.UserKey = []byte(fmt.Sprintf("%05d", i))
-					w.add(ikey, nil)
-				}
-
-				it, err := newBlockIter(bytes.Compare, nil, w.finish(), nil, nil)
-				if err != nil {
-					b.Fatal(err)
-				}
-
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					if !it.valid() {
-						it.First()
+	for _, withSyntheticSuffix := range []bool{false, true} {
+		for _, restartInterval := range []int{16} {
+			b.Run(fmt.Sprintf("syntheticSuffix=%t;restart=%d", withSyntheticSuffix, restartInterval),
+				func(b *testing.B) {
+					w := &blockWriter{
+						restartInterval: restartInterval,
 					}
-					it.Next()
-				}
-			})
+
+					createBenchBlock(blockSize, w)
+					var syntheticSuffix []byte
+					if withSyntheticSuffix {
+						syntheticSuffix = benchSynthSuffix
+					}
+
+					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), nil, syntheticSuffix)
+					if err != nil {
+						b.Fatal(err)
+					}
+
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						if !it.valid() {
+							it.First()
+						}
+						it.Next()
+					}
+				})
+		}
 	}
 }
 
 func BenchmarkBlockIterPrev(b *testing.B) {
 	const blockSize = 32 << 10
-
-	for _, restartInterval := range []int{16} {
-		b.Run(fmt.Sprintf("restart=%d", restartInterval),
-			func(b *testing.B) {
-				w := &blockWriter{
-					restartInterval: restartInterval,
-				}
-
-				var ikey InternalKey
-				for i := 0; w.estimatedSize() < blockSize; i++ {
-					ikey.UserKey = []byte(fmt.Sprintf("%05d", i))
-					w.add(ikey, nil)
-				}
-
-				it, err := newBlockIter(bytes.Compare, nil, w.finish(), nil, nil)
-				if err != nil {
-					b.Fatal(err)
-				}
-
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					if !it.valid() {
-						it.Last()
+	for _, withSyntheticSuffix := range []bool{false, true} {
+		for _, restartInterval := range []int{16} {
+			b.Run(fmt.Sprintf("syntheticSuffix=%t;restart=%d", withSyntheticSuffix, restartInterval),
+				func(b *testing.B) {
+					w := &blockWriter{
+						restartInterval: restartInterval,
 					}
-					it.Prev()
-				}
-			})
+
+					createBenchBlock(blockSize, w)
+					var syntheticSuffix []byte
+					if withSyntheticSuffix {
+						syntheticSuffix = benchSynthSuffix
+					}
+
+					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), nil, syntheticSuffix)
+					if err != nil {
+						b.Fatal(err)
+					}
+
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						if !it.valid() {
+							it.Last()
+						}
+						it.Prev()
+					}
+				})
+		}
 	}
 }
