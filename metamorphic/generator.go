@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 
 	"github.com/cockroachdb/pebble"
@@ -359,14 +360,8 @@ func (g *generator) dbClose() {
 }
 
 func (g *generator) dbCheckpoint() {
-	// 1/2 of the time we don't restrict the checkpoint;
-	// 1/4 of the time we restrict to 1 span;
-	// 1/8 of the time we restrict to 2 spans; etc.
-	numSpans := 0
+	numSpans := g.expRandInt(1)
 	var spans []pebble.CheckpointSpan
-	for g.rng.Intn(2) == 0 {
-		numSpans++
-	}
 	if numSpans > 0 {
 		spans = make([]pebble.CheckpointSpan, numSpans)
 	}
@@ -1020,7 +1015,7 @@ func (g *generator) newSnapshot() {
 	// instead of a Snapshot, testing equivalence between the two for reads within
 	// those bounds.
 	s.bounds = g.generateDisjointKeyRanges(
-		g.rng.Intn(5) + 1, /* between 1-5 */
+		1 + g.expRandInt(3),
 	)
 	g.snapshotBounds[snapID] = s.bounds
 	g.add(s)
@@ -1203,9 +1198,8 @@ func (g *generator) writerIngest() {
 		return
 	}
 
-	// Ingest between 1 and 3 batches.
 	dbID := g.dbs.rand(g.rng)
-	n := min(1+g.rng.Intn(3), len(g.liveBatches))
+	n := min(1+g.expRandInt(1), len(g.liveBatches))
 	batchIDs := make([]objID, n)
 	derivedDBIDs := make([]objID, n)
 	for i := 0; i < n; i++ {
@@ -1380,4 +1374,15 @@ func (g *generator) String() string {
 		fmt.Fprintf(&buf, "%s\n", op)
 	}
 	return buf.String()
+}
+
+// expRandInt returns a random non-negative integer using the exponential
+// distribution with the given mean. This is useful when we usually want to test
+// with small values, but we want to occasionally test with a larger value.
+//
+// Large integers are exponentially less likely than small integers;
+// specifically, the probability decreases by a factor of `e` every `mean`
+// values.
+func (g *generator) expRandInt(mean int) int {
+	return int(math.Round(g.rng.ExpFloat64() * float64(mean)))
 }
