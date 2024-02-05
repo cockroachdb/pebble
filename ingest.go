@@ -1570,7 +1570,7 @@ func (d *DB) ingest(
 
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, err = d.ingestApply(jobID, loadResult, targetLevelFunc, mut, exciseSpan)
+		ve, err = d.ingestApply(jobID, loadResult, targetLevelFunc, mut, exciseSpan, seqNum)
 	}
 
 	// Only one ingest can occur at a time because if not, one would block waiting
@@ -2082,6 +2082,7 @@ func (d *DB) ingestApply(
 	findTargetLevel ingestTargetLevelFunc,
 	mut *memTable,
 	exciseSpan KeyRange,
+	exciseSeqNum uint64,
 ) (*versionEdit, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -2310,33 +2311,36 @@ func (d *DB) ingestApply(
 				}
 			}
 		}
-		// Check for any EventuallyFileOnlySnapshots that could be watching for
-		// an excise on this span. There should be none as the
-		// computePossibleOverlaps steps should have forced these EFOS to transition
-		// to file-only snapshots by now. If we see any that conflict with this
-		// excise, panic.
-		if exciseSpan.Valid() {
-			for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
-				if s.efos == nil {
-					continue
-				}
-				efos := s.efos
-				// TODO(bilal): We can make this faster by taking advantage of the sorted
-				// nature of protectedRanges to do a sort.Search, or even maintaining a
-				// global list of all protected ranges instead of having to peer into every
-				// snapshot.
-				for i := range efos.protectedRanges {
-					if efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
-						panic("unexpected excise of an EventuallyFileOnlySnapshot's bounds")
-					}
-				}
-			}
-		}
 	}
 	if err := d.mu.versions.logAndApply(jobID, ve, metrics, false /* forceRotation */, func() []compactionInfo {
 		return d.getInProgressCompactionInfoLocked(nil)
 	}); err != nil {
 		return nil, err
+	}
+
+	// Check for any EventuallyFileOnlySnapshots that could be watching for
+	// an excise on this span. There should be none as the
+	// computePossibleOverlaps steps should have forced these EFOS to transition
+	// to file-only snapshots by now. If we see any that conflict with this
+	// excise, panic.
+	if exciseSpan.Valid() {
+		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
+			// Skip non-EFOS snapshots, and also skip any EFOS that were created
+			// *after* the excise.
+			if s.efos == nil || base.Visible(exciseSeqNum, s.efos.seqNum, base.InternalKeySeqNumMax) {
+				continue
+			}
+			efos := s.efos
+			// TODO(bilal): We can make this faster by taking advantage of the sorted
+			// nature of protectedRanges to do a sort.Search, or even maintaining a
+			// global list of all protected ranges instead of having to peer into every
+			// snapshot.
+			for i := range efos.protectedRanges {
+				if efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
+					panic("unexpected excise of an EventuallyFileOnlySnapshot's bounds")
+				}
+			}
+		}
 	}
 
 	d.mu.versions.metrics.Ingest.Count++

@@ -2060,7 +2060,35 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				s = s.next
 				continue
 			}
+			overlapsFlushable := false
 			if base.Visible(earliestUnflushedSeqNum, s.efos.seqNum, InternalKeySeqNumMax) {
+				// There are some unflushed keys that are still visible to the EFOS.
+				// Check if any memtables older than the EFOS contain keys within a
+				// protected range of the EFOS. If no, we can transition.
+				protectedRanges := make([]bounded, len(s.efos.protectedRanges))
+				for i := range s.efos.protectedRanges {
+					protectedRanges[i] = s.efos.protectedRanges[i]
+				}
+				for i := range d.mu.mem.queue {
+					if !base.Visible(d.mu.mem.queue[i].logSeqNum, s.efos.seqNum, InternalKeySeqNumMax) {
+						// All keys in this memtable are newer than the EFOS. Skip this
+						// memtable.
+						continue
+					}
+					// NB: computePossibleOverlaps could have false positives, such as if
+					// the flushable is a flushable ingest and not a memtable. In that
+					// case we don't open the sstables to check; we just pessimistically
+					// assume an overlap.
+					d.mu.mem.queue[i].computePossibleOverlaps(func(b bounded) shouldContinue {
+						overlapsFlushable = true
+						return stopIteration
+					}, protectedRanges...)
+					if overlapsFlushable {
+						break
+					}
+				}
+			}
+			if overlapsFlushable {
 				s = s.next
 				continue
 			}
