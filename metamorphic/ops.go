@@ -516,6 +516,27 @@ func (o *rangeKeyUnsetOp) diagramKeyRanges() []pebble.KeyRange {
 	return []pebble.KeyRange{{Start: o.start, End: o.end}}
 }
 
+// logDataOp models a Writer.LogData operation.
+type logDataOp struct {
+	writerID objID
+	data     []byte
+}
+
+func (o *logDataOp) run(t *Test, h historyRecorder) {
+	w := t.getWriter(o.writerID)
+	err := w.LogData(o.data, t.writeOpts)
+	h.Recordf("%s // %v", o, err)
+}
+
+func (o *logDataOp) String() string {
+	return fmt.Sprintf("%s.LogData(%q)", o.writerID, o.data)
+}
+
+func (o *logDataOp) receiver() objID                     { return o.writerID }
+func (o *logDataOp) syncObjs() objIDSlice                { return nil }
+func (o *logDataOp) keys() []*[]byte                     { return []*[]byte{} }
+func (o *logDataOp) diagramKeyRanges() []pebble.KeyRange { return []pebble.KeyRange{} }
+
 // newBatchOp models a Write.NewBatch operation.
 type newBatchOp struct {
 	dbID    objID
