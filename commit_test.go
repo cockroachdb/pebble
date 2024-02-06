@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -282,6 +283,74 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	for i := 0; i < cap(errCh); i++ {
 		require.NoError(t, <-errCh)
 	}
+}
+
+// TestCommitPipelineLogDataSeqNum ensures committing a KV and a LogData
+// concurrently never publishes the KV's sequence number before it's been fully
+// applied to the memtable (which would violate the consistency of iterators
+// to which that sequence number is visible).
+//
+// A LogData batch reads the 'next sequence number' without incrementing it,
+// effectively sharing the sequence number with the next key committed. It may
+// finish applying to the memtable before the KV that shares its sequence
+// number. However, sequence number publishing ratchets the visible sequence
+// number to the batch's seqnum + 1 (indicating that all seqnums strictly less
+// than than the visible sequence number are visible). When the LogData batch
+// publishes its batch's sequence number, the batch's sequence number will not
+// yet become visible.
+func TestCommitPipelineLogDataSeqNum(t *testing.T) {
+	var testEnv commitEnv
+	testEnv = commitEnv{
+		logSeqNum:     new(atomic.Uint64),
+		visibleSeqNum: new(atomic.Uint64),
+		apply: func(b *Batch, mem *memTable) error {
+			// Jitter a delay in memtable application to get test coverage of
+			// varying interleavings of which batch completes memtable
+			// application first.
+			time.Sleep(time.Duration(rand.Float64() * 20.0 * float64(time.Millisecond)))
+			// Ensure that our sequence number is not published before we've
+			// returned from apply.
+			//
+			// If b is the Set("foo","bar") batch, the LogData batch sharing the
+			// sequence number may have already entered commitPipeline.publish,
+			// but the sequence number it publishes should not be high enough to
+			// make this batch's KV visible.
+			//
+			// It may set visibleSeqNum = b.SeqNum(), but seqnum X is not
+			// considered visible until the visibleSeqNum is >X.
+			require.False(t, base.Visible(
+				b.SeqNum(),                   // Seqnum of the first KV in the batch b
+				testEnv.visibleSeqNum.Load(), // Snapshot seqnum
+				InternalKeySeqNumMax,         // Indexed batch "seqnum" (unused here)
+			))
+			return nil
+		},
+		write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
+			if syncWG != nil {
+				syncWG.Done()
+			}
+			return nil, nil
+		},
+	}
+	testEnv.logSeqNum.Store(base.SeqNumStart)
+	testEnv.visibleSeqNum.Store(base.SeqNumStart)
+	p := newCommitPipeline(testEnv)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		b := &Batch{}
+		require.NoError(t, b.Set([]byte("foo"), []byte("bar"), nil))
+		require.NoError(t, p.Commit(b, false /* sync */, false))
+	}()
+	go func() {
+		defer wg.Done()
+		b := &Batch{}
+		require.NoError(t, b.LogData([]byte("foo"), nil))
+		require.NoError(t, p.Commit(b, false /* sync */, false))
+	}()
+	wg.Wait()
 }
 
 func BenchmarkCommitPipeline(b *testing.B) {
