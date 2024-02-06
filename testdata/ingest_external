@@ -189,3 +189,28 @@ fh: (foo, .)
 g: (foo, .)
 h: (foo, .)
 .
+
+# Test the case when we are ingesting part of a RANGEDEL.
+reset
+----
+
+batch
+set i bar
+----
+
+build-remote f6
+set b foo
+del-range f u
+----
+
+ingest-external
+f6,10,a,c
+f6,10,g,v
+----
+
+# The previous element cannot be i, because it is inside the [g, v) portion of
+# the [f, u) RANGEDEL.
+iter
+prev
+----
+b: (foo, .)
