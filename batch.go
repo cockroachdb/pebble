@@ -471,16 +471,23 @@ func (b *Batch) refreshMemTableSize() error {
 			b.countRangeDels++
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 			b.countRangeKeys++
+		case InternalKeyKindSet, InternalKeyKindDelete, InternalKeyKindMerge, InternalKeyKindSingleDelete, InternalKeyKindSetWithDelete:
+			// fallthrough
 		case InternalKeyKindDeleteSized:
 			if b.minimumFormatMajorVersion < FormatDeleteSizedAndObsolete {
 				b.minimumFormatMajorVersion = FormatDeleteSizedAndObsolete
 			}
+		case InternalKeyKindLogData:
+			// LogData does not contribute to memtable size.
+			continue
 		case InternalKeyKindIngestSST:
 			if b.minimumFormatMajorVersion < FormatFlushableIngest {
 				b.minimumFormatMajorVersion = FormatFlushableIngest
 			}
 			// This key kind doesn't contribute to the memtable size.
 			continue
+		default:
+			return base.CorruptionErrorf("pebble: unrecognized key kind %v in batch", kind)
 		}
 		b.memTableSize += memTableEntrySize(len(key), len(value))
 	}
@@ -529,6 +536,20 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 				b.countRangeKeys++
 			case InternalKeyKindIngestSST:
 				panic("pebble: invalid key kind for batch")
+			case InternalKeyKindLogData:
+				// LogData does not contribute to memtable size.
+				continue
+			case InternalKeyKindSet, InternalKeyKindDelete, InternalKeyKindMerge,
+				InternalKeyKindSingleDelete, InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
+				// fallthrough
+			default:
+				// TODO(jackson): Is ErrCorruption actually appropriate here? In
+				// some circumstances this might be temporary memory corruption
+				// that can be recovered by discarding the batch and trying
+				// again. In other cases, the batch repr might've been already
+				// persisted elsewhere, and we'll loop continuously trying to
+				// commit the same corrupted batch.
+				return base.CorruptionErrorf("pebble: unrecognized key kind %v in batch", kind)
 			}
 			if b.index != nil {
 				var err error
@@ -1752,8 +1773,19 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) (*flushableBatch, error
 				rangeDelOffsets = append(rangeDelOffsets, entry)
 			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 				rangeKeyOffsets = append(rangeKeyOffsets, entry)
-			default:
+			case InternalKeyKindLogData:
+				// Skip it; we never want to iterate over LogDatas.
+			case InternalKeyKindSet, InternalKeyKindDelete, InternalKeyKindMerge,
+				InternalKeyKindSingleDelete, InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
 				b.offsets = append(b.offsets, entry)
+			default:
+				// TODO(jackson): Is ErrCorruption actually appropriate here? In
+				// some circumstances this might be temporary memory corruption
+				// that can be recovered by discarding the batch and trying
+				// again. In other cases, the batch repr might've been already
+				// persisted elsewhere, and we'll loop continuously trying to
+				// commit the same corrupted batch.
+				return nil, base.CorruptionErrorf("pebble: unrecognized key kind %v in batch", kind)
 			}
 		}
 	}
