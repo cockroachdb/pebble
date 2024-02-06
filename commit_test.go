@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -282,6 +283,66 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	for i := 0; i < cap(errCh); i++ {
 		require.NoError(t, <-errCh)
 	}
+}
+
+// TestCommitPipelineLogDataSeqNum ensures committing a KV and a LogData
+// concurrently never publishes the KV's sequence number before it's been fully
+// applied to the memtable (which would violate the consistency of iterators
+// reading at that sequence number or higher).
+//
+// A LogData batch will receive the same sequence number as most recently
+// committed KV. It may finish applying to the memtable before the KV that
+// shares its sequence number. However the commit queue only allows batches to
+// be popped in the order they were committed, preventing publishing of any
+// sequence numbers until the first KV been applied to the memtable.
+func TestCommitPipelineLogDataSeqNum(t *testing.T) {
+	var testEnv commitEnv
+	testEnv = commitEnv{
+		logSeqNum:     new(atomic.Uint64),
+		visibleSeqNum: new(atomic.Uint64),
+		apply: func(b *Batch, mem *memTable) error {
+			// Note that a LogData does not increment a batch's count. If the
+			// batch contains actual KVs, sleep a bit during apply to simulate a
+			// slow memtable application.
+			if b.Count() > 0 {
+				time.Sleep(10 * time.Millisecond)
+			}
+			// Ensure that our sequence number is not published before we've
+			// returned from apply.
+			//
+			// If b is the Set("foo","bar") batch, the LogData batch sharing the
+			// sequence number may have already entered commitPipeline.publish,
+			// but it should not have published its sequence number since b was
+			// enqueued to the commit queue before it.
+			require.LessOrEqual(t, testEnv.visibleSeqNum.Load(), b.SeqNum())
+			return nil
+		},
+		write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
+			if syncWG != nil {
+				syncWG.Done()
+			}
+			return nil, nil
+		},
+	}
+	testEnv.logSeqNum.Store(base.SeqNumStart)
+	testEnv.visibleSeqNum.Store(base.SeqNumStart)
+	p := newCommitPipeline(testEnv)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		b := &Batch{}
+		require.NoError(t, b.Set([]byte("foo"), []byte("bar"), nil))
+		require.NoError(t, p.Commit(b, true /* sync */, false))
+	}()
+	go func() {
+		defer wg.Done()
+		b := &Batch{}
+		require.NoError(t, b.LogData([]byte("foo"), nil))
+		require.NoError(t, p.Commit(b, false /* sync */, false))
+	}()
+	wg.Wait()
 }
 
 func BenchmarkCommitPipeline(b *testing.B) {
