@@ -76,6 +76,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return nil, nil, []interface{}{&t.dbSlots, &t.batchSlots, &t.iterSlots, &t.snapshotSlots}
 	case *iterLastOp:
 		return &t.iterID, nil, nil
+	case *logDataOp:
+		return &t.writerID, nil, []interface{}{&t.data}
 	case *mergeOp:
 		return &t.writerID, nil, []interface{}{&t.key, &t.value}
 	case *newBatchOp:
@@ -138,6 +140,7 @@ var methods = map[string]*methodInfo{
 	"IngestAndExcise":           makeMethod(ingestAndExciseOp{}, dbTag),
 	"Init":                      makeMethod(initOp{}, dbTag),
 	"Last":                      makeMethod(iterLastOp{}, iterTag),
+	"LogData":                   makeMethod(logDataOp{}, dbTag, batchTag),
 	"Merge":                     makeMethod(mergeOp{}, dbTag, batchTag),
 	"NewBatch":                  makeMethod(newBatchOp{}, dbTag),
 	"NewIndexedBatch":           makeMethod(newIndexedBatchOp{}, dbTag),

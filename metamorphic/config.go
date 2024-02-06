@@ -49,6 +49,7 @@ const (
 	OpWriterDeleteRange
 	OpWriterIngest
 	OpWriterIngestAndExcise
+	OpWriterLogData
 	OpWriterMerge
 	OpWriterRangeKeyDelete
 	OpWriterRangeKeySet
@@ -171,6 +172,7 @@ func DefaultOpConfig() OpConfig {
 			OpWriterDeleteRange:           50,
 			OpWriterIngest:                100,
 			OpWriterIngestAndExcise:       0, // TODO(bilal): Enable this.
+			OpWriterLogData:               10,
 			OpWriterMerge:                 100,
 			OpWriterRangeKeySet:           10,
 			OpWriterRangeKeyUnset:         10,
@@ -226,6 +228,7 @@ func ReadOpConfig() OpConfig {
 			OpWriterDelete:                0,
 			OpWriterDeleteRange:           0,
 			OpWriterIngest:                0,
+			OpWriterLogData:               0,
 			OpWriterMerge:                 0,
 			OpWriterRangeKeySet:           0,
 			OpWriterRangeKeyUnset:         0,
@@ -283,6 +286,7 @@ func WriteOpConfig() OpConfig {
 			OpWriterDelete:                100,
 			OpWriterDeleteRange:           20,
 			OpWriterIngest:                100,
+			OpWriterLogData:               10,
 			OpWriterMerge:                 100,
 			OpWriterRangeKeySet:           10,
 			OpWriterRangeKeyUnset:         10,
