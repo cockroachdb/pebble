@@ -4,7 +4,11 @@
 
 package keyspan
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"fmt"
+
+	"github.com/cockroachdb/pebble/internal/base"
+)
 
 // Truncate creates a new iterator where every span in the supplied iterator is
 // truncated to be contained within the range [lower, upper). If start and end
@@ -54,18 +58,16 @@ func Truncate(
 			}
 		}
 
-		var truncated bool
 		// Truncate the bounds to lower and upper.
 		if cmp(in.Start, lower) < 0 {
 			out.Start = lower
 		}
 		if cmp(in.End, upper) > 0 {
-			truncated = true
-			out.End = upper
-		}
+			if panicOnUpperTruncate {
+				panic(fmt.Sprintf("pebble: upper bound should not be truncated. span end: %q  bound %q", in.End, upper))
+			}
 
-		if panicOnUpperTruncate && truncated {
-			panic("pebble: upper bound should not be truncated")
+			out.End = upper
 		}
 
 		return !out.Empty() && cmp(out.Start, out.End) < 0
