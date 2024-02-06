@@ -1367,6 +1367,35 @@ func TestBatchCommitStats(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestBatchLogDataMemtableSize tests that LogDatas never contribute to memtable
+// size.
+func TestBatchLogDataMemtableSize(t *testing.T) {
+	// Create a batch with Set("foo", "bar") and a LogData. Only the Set should
+	// contribute to the batch's memtable size.
+	b := Batch{}
+	require.NoError(t, b.Set([]byte("foo"), []byte("bar"), nil))
+	require.Equal(t, uint64(201), b.memTableSize)
+	require.NoError(t, b.LogData([]byte("baxbarbaz"), nil))
+	require.Equal(t, uint64(201), b.memTableSize)
+
+	t.Run("SetRepr", func(t *testing.T) {
+		// Setting another batch's repr using SetRepr should result in a
+		// recalculation of the memtable size that matches.
+		a := Batch{}
+		a.db = new(DB)
+		require.NoError(t, a.SetRepr(b.Repr()))
+		require.Equal(t, uint64(201), a.memTableSize)
+	})
+	t.Run("Apply", func(t *testing.T) {
+		// Applying another batch using apply should result in a recalculation
+		// of the memtable size that matches.
+		a := Batch{}
+		a.db = new(DB)
+		require.NoError(t, a.Apply(&b, nil))
+		require.Equal(t, uint64(201), a.memTableSize)
+	})
+}
+
 func BenchmarkBatchSet(b *testing.B) {
 	value := make([]byte, 10)
 	for i := range value {
