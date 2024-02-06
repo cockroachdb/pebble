@@ -1121,36 +1121,17 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, base.LazyValue) {
 				// bounds.
 				return nil, base.LazyValue{}
 			}
-			// If the boundary is a range deletion tombstone, return that key.
-			if l.iterFile.SmallestPointKey.Kind() == InternalKeyKindRangeDelete {
+			// If the boundary could be a range deletion tombstone, return the
+			// smallest point key as a special ignorable key to avoid advancing to the
+			// next file.
+			//
+			// It's possible the SmallestPointKey was already returned. Returning it
+			// again is a violation of the strict monotonicity normally provided. The
+			// mergingIter's heap can tolerate this repeat key and in this case will
+			// keep the level at the top of the heap and immediately skip the entry,
+			// advancing to the next file.
+			if *l.rangeDelIterPtr != nil {
 				l.smallestBoundary = &l.iterFile.SmallestPointKey
-				if l.boundaryContext != nil {
-					l.boundaryContext.isIgnorableBoundaryKey = true
-				}
-				return l.smallestBoundary, base.LazyValue{}
-			}
-			// If the last point iterator positioning op skipped keys, it's
-			// possible the file's range deletions are still relevant to other
-			// levels. Return the smallest boundary as a special ignorable key
-			// to avoid advancing to the next file.
-			//
-			// The sstable iterator cannot guarantee that keys were skipped.  A
-			// SeekGE that lands on a index separator k only knows that the
-			// block at the index entry contains keys ≤ k. We can't know whether
-			// there were actually keys between the seek key and the index
-			// separator key. If the block is then excluded due to block
-			// property filters, the iterator does not know whether keys were
-			// actually skipped by the block's exclusion.
-			//
-			// Since MaybeFilteredKeys cannot guarantee that keys were skipped,
-			// it's possible l.iterFile.Smallest was already returned. Returning
-			// l.iterFile.Smallest again is a violation of the strict
-			// monotonicity normally provided. The mergingIter's heap can
-			// tolerate this repeat key and in this case will keep the level at
-			// the top of the heap and immediately skip the entry, advancing to
-			// the next file.
-			if *l.rangeDelIterPtr != nil && l.filteredIter != nil && l.filteredIter.MaybeFilteredKeys() {
-				l.smallestBoundary = &l.iterFile.Smallest
 				if l.boundaryContext != nil {
 					l.boundaryContext.isIgnorableBoundaryKey = true
 				}

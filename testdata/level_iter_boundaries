@@ -117,7 +117,7 @@ last
 prev
 ----
 a#1,1:b
-.
+a#1,1:
 
 clear
 ----
@@ -357,7 +357,7 @@ prev
 prev
 ----
 e#5,1:z
-.
+e#5,1:
 .
 
 file-pos
