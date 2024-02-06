@@ -945,13 +945,10 @@ func newCombinedDeletionKeyspanIter(
 		// comparisons, so replacing those key comparisons with assertions
 		// should be roughly similar in performance.
 		//
-		// TODO(jackson): Only use Assert[UserKey]Bounds in invariants builds
-		// in the following release.
-		//
-		// TODO(radu): we should be using AssertBounds, but it currently fails in
-		// some cases (#3167).
-		iter = keyspan.AssertUserKeyBounds(
-			iter, m.SmallestPointKey.UserKey, m.LargestPointKey.UserKey, comparer.Compare,
+		// TODO(jackson): Only use AssertBounds in invariants builds in the
+		// following release.
+		iter = keyspan.AssertBounds(
+			iter, m.SmallestPointKey, m.LargestPointKey.UserKey, comparer.Compare,
 		)
 		dIter := &keyspan.DefragmentingIter{}
 		dIter.Init(comparer, iter, equal, reducer, new(keyspan.DefragmentingBuffers))

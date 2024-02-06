@@ -121,29 +121,25 @@ func ingestSynthesizeShared(
 	// sstable for compaction just yet, as we do not have a clear sense of what
 	// parts of this sstable are referenced by other nodes.
 	meta.FileBacking.Size = sm.Size
-	if sm.LargestRangeKey.Valid() && sm.LargestRangeKey.UserKey != nil {
-		// Initialize meta.{HasRangeKeys,Smallest,Largest}, etc.
+	if sm.LargestPointKey.Valid() && sm.LargestPointKey.UserKey != nil {
+		// Initialize meta.{HasPointKeys,Smallest,Largest}, etc.
 		//
-		// NB: We create new internal keys and pass them into ExternalRangeKeyBounds
+		// NB: We create new internal keys and pass them into ExtendPointKeyBounds
 		// so that we can sub a zero sequence number into the bounds. We can set
 		// the sequence number to anything here; it'll be reset in ingestUpdateSeqNum
 		// anyway. However, we do need to use the same sequence number across all
 		// bound keys at this step so that we end up with bounds that are consistent
 		// across point/range keys.
-		// Note that the kind of the smallest key might change because of the seqnum
-		// rewriting. For example, the sstable could start with a.SET.2 and
-		// a.RANGEDEL.1 (with smallest key being a.SET.2) but after rewriting the seqnum we have `a.RANGEDEL.1`a.SET.100
-		smallestRangeKey := base.MakeInternalKey(sm.SmallestRangeKey.UserKey, 0, sm.SmallestRangeKey.Kind())
-		largestRangeKey := base.MakeExclusiveSentinelKey(sm.LargestRangeKey.Kind(), sm.LargestRangeKey.UserKey)
-		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallestRangeKey, largestRangeKey)
-	}
-	if sm.LargestPointKey.Valid() && sm.LargestPointKey.UserKey != nil {
-		// Initialize meta.{HasPointKeys,Smallest,Largest}, etc.
 		//
-		// See point above in the ExtendRangeKeyBounds call on why we use a zero
-		// sequence number here.
-		smallestPointKey := base.MakeInternalKey(sm.SmallestPointKey.UserKey, 0, sm.SmallestPointKey.Kind())
-		largestPointKey := base.MakeInternalKey(sm.LargestPointKey.UserKey, 0, sm.LargestPointKey.Kind())
+		// Because of the sequence number rewriting, we cannot use the Kind of
+		// sm.SmallestPointKey. For example, the original SST might start with
+		// a.SET.2 and a.RANGEDEL.1 (with a.SET.2 being the smallest key); after
+		// rewriting the sequence numbers, these keys become a.SET.100 and
+		// a.RANGEDEL.100, with a.RANGEDEL.100 being the smallest key. To create a
+		// correct bound, we just use the maximum key kind (which sorts first).
+		// Similarly, we use the smallest key kind for the largest key.
+		smallestPointKey := base.MakeInternalKey(sm.SmallestPointKey.UserKey, 0, base.InternalKeyKindMax)
+		largestPointKey := base.MakeInternalKey(sm.LargestPointKey.UserKey, 0, 0)
 		if sm.LargestPointKey.IsExclusiveSentinel() {
 			largestPointKey = base.MakeRangeDeleteSentinelKey(sm.LargestPointKey.UserKey)
 		}
@@ -156,6 +152,15 @@ func ingestSynthesizeShared(
 			smallestPointKey, largestPointKey = largestPointKey, smallestPointKey
 		}
 		meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallestPointKey, largestPointKey)
+	}
+	if sm.LargestRangeKey.Valid() && sm.LargestRangeKey.UserKey != nil {
+		// Initialize meta.{HasRangeKeys,Smallest,Largest}, etc.
+		//
+		// See comment above on why we use a zero sequence number and these key
+		// kinds here.
+		smallestRangeKey := base.MakeInternalKey(sm.SmallestRangeKey.UserKey, 0, base.InternalKeyKindRangeKeyMax)
+		largestRangeKey := base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeyMin, sm.LargestRangeKey.UserKey)
+		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallestRangeKey, largestRangeKey)
 	}
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
 		return nil, err

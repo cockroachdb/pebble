@@ -89,7 +89,7 @@ ok
 lsm
 ----
 6:
-  000010:[d#14,SET-d#14,SET]
+  000010:[d#14,DELSIZED-d#14,DEL]
   000011:[f#11,SET-f#11,SET]
 
 compact a-z
