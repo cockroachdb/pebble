@@ -185,6 +185,7 @@ func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 		OpWriterDeleteRange:           g.writerDeleteRange,
 		OpWriterIngest:                g.writerIngest,
 		OpWriterIngestAndExcise:       g.writerIngestAndExcise,
+		OpWriterLogData:               g.writerLogData,
 		OpWriterMerge:                 g.writerMerge,
 		OpWriterRangeKeyDelete:        g.writerRangeKeyDelete,
 		OpWriterRangeKeySet:           g.writerRangeKeySet,
@@ -1258,6 +1259,16 @@ func (g *generator) writerIngestAndExcise() {
 		derivedDBID: derivedDBID,
 		exciseStart: start,
 		exciseEnd:   end,
+	})
+}
+
+func (g *generator) writerLogData() {
+	if len(g.liveWriters) == 0 {
+		return
+	}
+	g.add(&logDataOp{
+		writerID: g.liveWriters.rand(g.rng),
+		data:     randBytes(g.rng, 0, g.expRandInt(10)),
 	})
 }
 
