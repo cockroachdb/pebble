@@ -822,15 +822,31 @@ func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
 func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *tableCacheValue {
-	v := c.findNodeInternal(meta, dbOpts)
+	if refs := meta.Refs(); refs <= 0 {
+		panic(errors.AssertionFailedf("attempting to load file %s with refs=%d from table cache",
+			meta, refs))
+	}
+	// Caution! Here fileMetadata can be a physical or virtual table. Table cache
+	// readers are associated with the physical backings. All virtual tables with
+	// the same backing will use the same reader from the cache; so no information
+	// that can differ among these virtual tables can be plumbed into loadInfo.
+	info := loadInfo{
+		backingFileNum: meta.FileBacking.DiskFileNum,
+	}
+	// All virtual tables sharing an ingested backing will have the same
+	// SmallestSeqNum=LargestSeqNum value. We assert that below.
+	if meta.SmallestSeqNum == meta.LargestSeqNum {
+		info.globalSeqNum = meta.SmallestSeqNum
+	}
 
-	// Loading a file before its global sequence number is known (eg,
-	// during ingest before entering the commit pipeline) can pollute
-	// the cache with incorrect state. In invariant builds, verify
-	// that the global sequence number of the returned reader matches.
+	v := c.findNodeInternal(info, dbOpts)
+
+	// Loading a file before its global sequence number is known (eg, during
+	// ingest before entering the commit pipeline) can pollute the cache with
+	// incorrect state. In invariant builds, verify that the global sequence
+	// number of the returned reader matches.
 	if invariants.Enabled {
-		if v.reader != nil && meta.LargestSeqNum == meta.SmallestSeqNum &&
-			v.reader.Properties.GlobalSeqNum != meta.SmallestSeqNum {
+		if v.reader != nil && v.reader.Properties.GlobalSeqNum != info.globalSeqNum {
 			panic(errors.AssertionFailedf("file %s loaded from table cache with the wrong global sequence number %d",
 				meta, v.reader.Properties.GlobalSeqNum))
 		}
@@ -839,15 +855,11 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 }
 
 func (c *tableCacheShard) findNodeInternal(
-	meta *fileMetadata, dbOpts *tableCacheOpts,
+	loadInfo loadInfo, dbOpts *tableCacheOpts,
 ) *tableCacheValue {
-	if refs := meta.Refs(); refs <= 0 {
-		panic(errors.AssertionFailedf("attempting to load file %s with refs=%d from table cache",
-			meta, refs))
-	}
 	// Fast-path for a hit in the cache.
 	c.mu.RLock()
-	key := tableCacheKey{dbOpts.cacheID, meta.FileBacking.DiskFileNum}
+	key := tableCacheKey{dbOpts.cacheID, loadInfo.backingFileNum}
 	if n := c.mu.nodes[key]; n != nil && n.value != nil {
 		// Fast-path hit.
 		//
@@ -869,7 +881,7 @@ func (c *tableCacheShard) findNodeInternal(
 	case n == nil:
 		// Slow-path miss of a non-existent node.
 		n = &tableCacheNode{
-			fileNum: meta.FileBacking.DiskFileNum,
+			fileNum: loadInfo.backingFileNum,
 			ptype:   tableCacheNodeCold,
 		}
 		c.addNode(n, dbOpts)
@@ -927,12 +939,7 @@ func (c *tableCacheShard) findNodeInternal(
 	// Note adding to the cache lists must complete before we begin loading the
 	// table as a failure during load will result in the node being unlinked.
 	pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-		v.load(
-			loadInfo{
-				backingFileNum: meta.FileBacking.DiskFileNum,
-				smallestSeqNum: meta.SmallestSeqNum,
-				largestSeqNum:  meta.LargestSeqNum,
-			}, c, dbOpts)
+		v.load(loadInfo, c, dbOpts)
 	})
 	return v
 }
@@ -1158,10 +1165,11 @@ type tableCacheValue struct {
 	refCount atomic.Int32
 }
 
+// loadInfo contains the information needed to populate a new cache entry.
 type loadInfo struct {
 	backingFileNum base.DiskFileNum
-	largestSeqNum  uint64
-	smallestSeqNum uint64
+	// See sstable.Properties.GlobalSeqNum.
+	globalSeqNum uint64
 }
 
 func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *tableCacheOpts) {
@@ -1184,8 +1192,8 @@ func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *ta
 		v.err = errors.Wrapf(
 			err, "pebble: backing file %s error", loadInfo.backingFileNum)
 	}
-	if v.err == nil && loadInfo.smallestSeqNum == loadInfo.largestSeqNum {
-		v.reader.Properties.GlobalSeqNum = loadInfo.largestSeqNum
+	if v.err == nil {
+		v.reader.Properties.GlobalSeqNum = loadInfo.globalSeqNum
 	}
 	if v.err != nil {
 		c.mu.Lock()
