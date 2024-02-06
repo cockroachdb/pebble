@@ -775,6 +775,8 @@ func (d *DB) RangeKeyDelete(start, end []byte, opts *WriteOptions) error {
 // reuse them.
 //
 // It is safe to modify the contents of the arguments after Apply returns.
+//
+// Apply returns ErrInvalidBatch if the provided batch is invalid in any way.
 func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	return d.applyInternal(batch, opts, false)
 }
