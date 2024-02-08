@@ -963,10 +963,8 @@ func newCombinedDeletionKeyspanIter(
 	if iter != nil {
 		// Assert expected bounds in tests.
 		if invariants.Enabled {
-			// TODO(radu): we should be using AssertBounds, but it currently fails in
-			// some cases (#3167).
-			iter = keyspan.AssertUserKeyBounds(
-				iter, m.SmallestRangeKey.UserKey, m.LargestRangeKey.UserKey, comparer.Compare,
+			iter = keyspan.AssertBounds(
+				iter, m.SmallestRangeKey, m.LargestRangeKey.UserKey, comparer.Compare,
 			)
 		}
 		// Wrap the range key iterator in a filter that elides keys other than range
