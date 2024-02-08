@@ -359,6 +359,6 @@ func (w *standaloneWriter) Close() (logicalOffset int64, err error) {
 }
 
 // Metrics implements Writer.
-func (w *standaloneWriter) Metrics() *record.LogWriterMetrics {
+func (w *standaloneWriter) Metrics() record.LogWriterMetrics {
 	return w.w.Metrics()
 }
