@@ -12,7 +12,6 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
-	"github.com/cockroachdb/pebble/internal/testkeys"
 	"golang.org/x/exp/rand"
 )
 
@@ -220,7 +219,7 @@ func (g *generator) add(op op) {
 
 // prefixKeyRange generates a [start, end) pair consisting of two prefix keys.
 func (g *generator) prefixKeyRange() ([]byte, []byte) {
-	keys := g.keyGenerator.UniqueKeys(2, func() []byte { return g.keyGenerator.RandPrefix(0.001) })
+	keys := g.keyGenerator.UniqueKeys(2, func() []byte { return g.keyGenerator.RandPrefix(0.01) })
 	return keys[0], keys[1]
 }
 
@@ -448,32 +447,21 @@ func (g *generator) maybeSetSnapshotIterBounds(readerID objID, opts *iterOpts) b
 		return false
 	}
 	// Pick a random keyrange within one of the snapshot's key ranges.
-	parentBounds := snapBounds[g.rng.Intn(len(snapBounds))]
+	parentBounds := pickOneUniform(g.rng, snapBounds)
 	// With 10% probability, use the parent start bound as-is.
 	if g.rng.Float64() <= 0.1 {
 		opts.lower = parentBounds.Start
 	} else {
-		opts.lower = testkeys.RandomSeparator(
-			nil, /* dst */
-			parentBounds.Start,
-			parentBounds.End,
-			0, /* suffix */
-			4+g.rng.Intn(8),
-			g.rng,
-		)
+		opts.lower = g.keyGenerator.RandKeyInRange(0.1, parentBounds)
 	}
 	// With 10% probability, use the parent end bound as-is.
 	if g.rng.Float64() <= 0.1 {
 		opts.upper = parentBounds.End
 	} else {
-		opts.upper = testkeys.RandomSeparator(
-			nil, /* dst */
-			opts.lower,
-			parentBounds.End,
-			0, /* suffix */
-			4+g.rng.Intn(8),
-			g.rng,
-		)
+		opts.upper = g.keyGenerator.RandKeyInRange(0.1, pebble.KeyRange{
+			Start: opts.lower,
+			End:   parentBounds.End,
+		})
 	}
 	return true
 }

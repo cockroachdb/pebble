@@ -219,34 +219,74 @@ func keyspaceToString(ks Keyspace) string {
 	return buf.String()
 }
 
-func TestRandomSeparator(t *testing.T) {
-	rng := rand.New(rand.NewSource(0))
-	keys := [][]byte{[]byte("a"), []byte("zzz@9")}
-	for n := 0; n < 1000; n++ {
-		i := rng.Intn(len(keys))
-		j := rng.Intn(len(keys))
-		for i == j {
-			j = rng.Intn(len(keys))
-		}
-		if i > j {
-			i, j = j, i
-		}
-
-		a := keys[i]
-		b := keys[j]
-		suffix := rng.Int63n(10)
-		sep := RandomSeparator(nil, a, b, suffix, 3, rng)
-		t.Logf("RandomSeparator(%q, %q, %d) = %q\n", a, b, suffix, sep)
-		if sep == nil {
-			continue
-		}
-		for k := 0; k < len(keys); k++ {
-			v := Comparer.Compare(sep, keys[k])
-			if k <= i && v <= 0 || k >= j && v >= 0 {
-				t.Fatalf("RandomSeparator(%q, %q, %d) = %q; but Compare(%q,%q) = %d\n", a, b, suffix, sep, sep, keys[k], v)
-			}
-		}
-		keys = append(keys, sep)
-		slices.SortFunc(keys, Comparer.Compare)
+func TestRandomPrefixInRange(t *testing.T) {
+	testCases := []struct {
+		a, b            string
+		maxPossibleKeys int
+	}{
+		{a: "abc", b: "def"},
+		{a: "a", b: "aa", maxPossibleKeys: 1},
+		{a: "a", b: "aaa", maxPossibleKeys: 2},
+		{a: "a", b: "ab"},
+		{a: "longcommonprefixabcdef", b: "longcommonprefixb"},
+		{a: "longcommonprefix", b: "longcommonprefixb"},
+		{a: "longcommonprefix", b: "longcommonprefixa", maxPossibleKeys: 1},
+		{a: "longcommonprefix", b: "longcommonprefixaaaaa", maxPossibleKeys: 5},
+		{a: "a", b: "abthiskeywillneedtobetrimmed"},
+		{a: "abthiskeywillneedtobetrimmed", b: "ac"},
+		{a: "abthiskeywillneedtobetrimmed", b: "acthiskeywillneedtobetrimmed"},
 	}
+
+	for i, tc := range testCases {
+		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
+			rng := rand.New(rand.NewSource(0))
+			keys := make(map[string]struct{})
+			for i := 1; i < 100; i++ {
+				key := RandomPrefixInRange([]byte(tc.a), []byte(tc.b), rng)
+				require.True(t, compare([]byte(tc.a), key) <= 0)
+				require.True(t, compare(key, []byte(tc.b)) < 0)
+				keys[string(key)] = struct{}{}
+			}
+			if tc.maxPossibleKeys != 0 {
+				require.Equal(t, len(keys), tc.maxPossibleKeys)
+			} else {
+				// Make sure we are generating many different keys.
+				require.GreaterOrEqual(t, len(keys), 50)
+			}
+		})
+	}
+
+	t.Run("randomized", func(t *testing.T) {
+		rng := rand.New(rand.NewSource(0))
+		keys := [][]byte{[]byte("a"), []byte("zzz")}
+		for n := 0; n < 1000; n++ {
+			i := rng.Intn(len(keys) - 1)
+			j := i + 1 + rng.Intn(len(keys)-1-i)
+			a, b := keys[i], keys[j]
+			key := RandomPrefixInRange(a, b, rng)
+			if Comparer.Compare(key, a) == 0 {
+				// It is legal to return a.
+				continue
+			}
+			for k := 0; k < len(keys); k++ {
+				v := Comparer.Compare(key, keys[k])
+				if k <= i && v <= 0 || k >= j && v >= 0 {
+					t.Fatalf("RandomPrefixInRange(%q, %q) = %q; but Compare(%q,%q) = %d\n", a, b, key, key, keys[k], v)
+				}
+			}
+			keys = append(keys, key)
+			slices.SortFunc(keys, Comparer.Compare)
+		}
+	})
+}
+
+func TestOverflowPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("did not panic")
+		} else {
+			t.Logf("panic: %v", r)
+		}
+	}()
+	keyCount(6, len(alpha))
 }

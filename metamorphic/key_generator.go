@@ -5,6 +5,7 @@
 package metamorphic
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 
@@ -63,10 +64,13 @@ func (kg *keyGenerator) UniqueKeys(n int, genFn func() []byte) [][]byte {
 	keys := make([][]byte, n)
 	used := make(map[string]struct{}, n)
 	for i := range keys {
-		for {
+		for attempts := 0; ; attempts++ {
 			keys[i] = genFn()
 			if _, exists := used[string(keys[i])]; !exists {
 				break
+			}
+			if attempts > 100000 {
+				panic("could not generate unique key")
 			}
 		}
 		used[string(keys[i])] = struct{}{}
@@ -177,21 +181,10 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 			}
 		}
 		// Otherwise fall through to generating a new prefix.
-		fallthrough
+	}
 
-	default:
-		// Use a new prefix, producing a new user key.
-		suffix := int64(kg.cfg.writeSuffixDist.Uint64(kg.rng))
-
-		// If we have bounds in which we need to generate the key, use
-		// testkeys.RandomSeparator to generate a key between the bounds.
-		if bounds != nil {
-			targetLength := 4 + kg.rng.Intn(8)
-			return testkeys.RandomSeparator(
-				nil, kg.prefix(bounds.Start), kg.prefix(bounds.End),
-				suffix, targetLength, kg.rng,
-			)
-		}
+	if bounds == nil {
+		suffix := kg.SkewedSuffixInt(0.01)
 		for {
 			key := kg.generateKeyWithSuffix(4, 12, suffix)
 			if !kg.keyManager.prefixExists(kg.prefix(key)) {
@@ -202,6 +195,43 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 			}
 		}
 	}
+	// We need to generate a key between the bounds.
+	startPrefix, startSuffix := kg.parseKey(bounds.Start)
+	endPrefix, endSuffix := kg.parseKey(bounds.End)
+	var prefix []byte
+	var suffix int64
+	if kg.equal(startPrefix, endPrefix) {
+		prefix = startPrefix
+		// Bounds have the same prefix, generate a suffix in-between.
+		if cmpSuffix(startSuffix, endSuffix) >= 0 {
+			panic(fmt.Sprintf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
+		}
+		suffix = kg.SkewedSuffixInt(0.01)
+		for !(cmpSuffix(startSuffix, suffix) <= 0 && cmpSuffix(suffix, endSuffix) < 0) {
+			// The suffix we want must exist in the current suffix range, we don't
+			// want to keep increasing it here.
+			suffix = kg.SkewedSuffixInt(0)
+		}
+	} else {
+		prefix = testkeys.RandomPrefixInRange(startPrefix, endPrefix, kg.rng)
+		suffix = kg.SkewedSuffixInt(0.01)
+		if kg.equal(prefix, startPrefix) {
+			// We can't use a suffix which sorts before startSuffix.
+			for cmpSuffix(suffix, startSuffix) < 0 {
+				suffix = kg.SkewedSuffixInt(0.01)
+			}
+		}
+	}
+	key := slices.Clip(prefix)
+	if suffix != 0 {
+		key = append(key, testkeys.Suffix(suffix)...)
+	}
+	if kg.cmp(key, bounds.Start) < 0 || kg.cmp(key, bounds.End) >= 0 {
+		panic(fmt.Sprintf("invalid randKey %q  bounds: [%q, %q) %v %v", key, bounds.Start, bounds.End, kg.cmp(key, bounds.Start), kg.cmp(key, bounds.End)))
+	}
+	// We might (rarely) produce an existing key here, that's ok.
+	kg.keyManager.addNewKey(key)
+	return key
 }
 
 // generateKeyWithSuffix generates a key with a random prefix and the given
@@ -212,6 +242,20 @@ func (kg *keyGenerator) generateKeyWithSuffix(minPrefixLen, maxPrefixLen int, su
 		return prefix
 	}
 	return append(prefix, testkeys.Suffix(suffix)...)
+}
+
+// cmpSuffix compares two suffixes, where suffix 0 means there is no suffix.
+func cmpSuffix(s1, s2 int64) int {
+	switch {
+	case s1 == s2:
+		return 0
+	case s1 == 0:
+		return -1
+	case s2 == 0:
+		return +1
+	default:
+		return cmp.Compare(s1, s2)
+	}
 }
 
 func (kg *keyGenerator) cmp(a, b []byte) int {
@@ -227,7 +271,20 @@ func (kg *keyGenerator) split(a []byte) int {
 }
 
 func (kg *keyGenerator) prefix(a []byte) []byte {
-	return a[:kg.split(a)]
+	n := kg.split(a)
+	return a[:n:n]
+}
+
+func (kg *keyGenerator) parseKey(k []byte) (prefix []byte, suffix int64) {
+	n := kg.split(k)
+	if n == len(k) {
+		return k, 0
+	}
+	suffix, err := testkeys.ParseSuffix(k[n:])
+	if err != nil {
+		panic(fmt.Sprintf("error parsing suffix for key %q", k))
+	}
+	return k[:n:n], suffix
 }
 
 func randBytes(rng *rand.Rand, minLen, maxLen int) []byte {
