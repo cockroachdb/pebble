@@ -680,12 +680,12 @@ func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 	return hiddenPoint
 }
 
-// maybeReplaceSuffix replaces the suffix in i.ikey.UserKey with
+// replaceSuffix replaces the suffix in i.ikey.UserKey with
 // i.syntheticSuffix. allowInPlace is set to false if there's a chance that
 // i.ikey.UserKey points to the same buffer as i.cachedBuf (i.e. during reverse
 // iteration).
-func (i *blockIter) maybeReplaceSuffix(allowInPlace bool) {
-	if i.syntheticSuffix != nil && i.ikey.UserKey != nil {
+func (i *blockIter) replaceSuffix(allowInPlace bool) {
+	if i.ikey.UserKey != nil {
 		prefixLen := i.split(i.ikey.UserKey)
 		if allowInPlace && cap(i.ikey.UserKey) >= prefixLen+len(i.syntheticSuffix) {
 			i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.syntheticSuffix...)
@@ -856,8 +856,9 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 	// would land on the same key, as we assume the following:
 	// (1) no two keys in the sst share the same prefix.
 	// (2) pebble.Compare(replacementSuffix,originalSuffix) > 0
-
-	i.maybeReplaceSuffix(true /*allowInPlace*/)
+	if i.syntheticSuffix != nil {
+		i.replaceSuffix(true /*allowInPlace*/)
+	}
 
 	if !hiddenPoint && i.cmp(i.ikey.UserKey, key) >= 0 {
 		// Initialize i.lazyValue
@@ -1026,7 +1027,9 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 		// of hidden keys we will be able to skip whole blocks (using block
 		// property filters) so we don't bother optimizing.
 		hiddenPoint := i.decodeInternalKey(i.key)
-		i.maybeReplaceSuffix(false /*allowInPlace*/)
+		if i.syntheticSuffix != nil {
+			i.replaceSuffix(false /*allowInPlace*/)
+		}
 
 		// NB: we don't use the hiddenPoint return value of decodeInternalKey
 		// since we want to stop as soon as we reach a key >= ikey.UserKey, so
@@ -1121,7 +1124,9 @@ func (i *blockIter) First() (*InternalKey, base.LazyValue) {
 	if hiddenPoint {
 		return i.Next()
 	}
-	i.maybeReplaceSuffix(true /*allowInPlace*/)
+	if i.syntheticSuffix != nil {
+		i.replaceSuffix(true /*allowInPlace*/)
+	}
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
@@ -1164,7 +1169,9 @@ func (i *blockIter) Last() (*InternalKey, base.LazyValue) {
 	if hiddenPoint {
 		return i.Prev()
 	}
-	i.maybeReplaceSuffix(false /*allowInPlace*/)
+	if i.syntheticSuffix != nil {
+		i.replaceSuffix(false /*allowInPlace*/)
+	}
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
@@ -1214,14 +1221,7 @@ start:
 			goto start
 		}
 		if i.syntheticSuffix != nil {
-			prefixLen := i.split(i.ikey.UserKey)
-			if cap(i.ikey.UserKey) >= prefixLen+len(i.syntheticSuffix) {
-				i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.syntheticSuffix...)
-			} else {
-				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-				i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
-				i.ikey.UserKey = i.synthSuffixBuf
-			}
+			i.replaceSuffix(true /* allowInPlace */)
 		}
 	} else {
 		i.ikey.Trailer = uint64(InternalKeyKindInvalid)
@@ -1491,14 +1491,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 				i.ikey.SetSeqNum(i.globalSeqNum)
 			}
 			if i.syntheticSuffix != nil {
-				prefixLen := i.split(i.ikey.UserKey)
-				if cap(i.ikey.UserKey) >= prefixLen+len(i.syntheticSuffix) {
-					i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.syntheticSuffix...)
-				} else {
-					i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-					i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
-					i.ikey.UserKey = i.synthSuffixBuf
-				}
+				i.replaceSuffix(true /* allowInPlace */)
 			}
 		} else {
 			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
@@ -1559,12 +1552,7 @@ start:
 				i.ikey.SetSeqNum(i.globalSeqNum)
 			}
 			if i.syntheticSuffix != nil {
-				prefixLen := i.split(i.ikey.UserKey)
-				// If ikey is cached or may get cached, we must de-reference
-				// UserKey before prefix replacement.
-				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-				i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
-				i.ikey.UserKey = i.synthSuffixBuf
+				i.replaceSuffix(false /*allowInPlace*/)
 			}
 		} else {
 			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
@@ -1644,12 +1632,7 @@ start:
 		goto start
 	}
 	if i.syntheticSuffix != nil {
-		prefixLen := i.split(i.ikey.UserKey)
-		// If ikey is cached or may get cached, we must de-reference
-		// UserKey before prefix replacement.
-		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-		i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
-		i.ikey.UserKey = i.synthSuffixBuf
+		i.replaceSuffix(false /*allowInPlace*/)
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
