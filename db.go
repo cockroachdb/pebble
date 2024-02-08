@@ -2727,7 +2727,7 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	metrics := d.mu.log.writer.Metrics()
 
 	d.mu.Lock()
-	if err := d.mu.log.metrics.LogWriterMetrics.Merge(metrics); err != nil {
+	if err := d.mu.log.metrics.LogWriterMetrics.Merge(&metrics); err != nil {
 		d.opts.Logger.Errorf("metrics error: %s", err)
 	}
 

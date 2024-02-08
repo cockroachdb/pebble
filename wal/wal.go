@@ -138,7 +138,9 @@ type Options struct {
 	QueueSemChan chan struct{}
 
 	// ElevatedWriteStallThresholdLag is the duration for which an elevated
-	// threshold should continue after a switch back to the primary dir.
+	// threshold should continue after a switch back to the primary dir. This is
+	// because we may have accumulated many unflushed memtables and flushing
+	// them can take some time. Maybe set to 60s.
 	ElevatedWriteStallThresholdLag time.Duration
 
 	// Logger for logging.
@@ -284,7 +286,7 @@ type Writer interface {
 	Close() (logicalOffset int64, err error)
 	// Metrics must be called after Close. The callee will no longer modify the
 	// returned LogWriterMetrics.
-	Metrics() *record.LogWriterMetrics
+	Metrics() record.LogWriterMetrics
 }
 
 // Reader reads a virtual WAL.
