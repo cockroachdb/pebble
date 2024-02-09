@@ -1051,7 +1051,10 @@ func TestFlushableBatch(t *testing.T) {
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
 				ikey := base.ParseInternalKey(key[:j])
-				value := []byte(fmt.Sprint(ikey.SeqNum()))
+				value := []byte(key[j+1:])
+				if len(value) == 0 {
+					value = []byte(fmt.Sprintf("%d", ikey.SeqNum()))
+				}
 				switch ikey.Kind() {
 				case InternalKeyKindDelete:
 					require.NoError(t, batch.Delete(ikey.UserKey, nil))
@@ -1059,6 +1062,8 @@ func TestFlushableBatch(t *testing.T) {
 					require.NoError(t, batch.Set(ikey.UserKey, value, nil))
 				case InternalKeyKindMerge:
 					require.NoError(t, batch.Merge(ikey.UserKey, value, nil))
+				case InternalKeyKindLogData:
+					require.NoError(t, batch.LogData(ikey.UserKey, nil))
 				case InternalKeyKindRangeDelete:
 					require.NoError(t, batch.DeleteRange(ikey.UserKey, value, nil))
 				case InternalKeyKindRangeKeyDelete:

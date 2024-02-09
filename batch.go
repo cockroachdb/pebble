@@ -1756,7 +1756,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) (*flushableBatch, error
 	if len(b.data) > batchrepr.HeaderLen {
 		// Non-empty batch.
 		var index uint32
-		for iter := batchrepr.Read(b.data); len(iter) > 0; index++ {
+		for iter := batchrepr.Read(b.data); len(iter) > 0; {
 			offset := uintptr(unsafe.Pointer(&iter[0])) - uintptr(unsafe.Pointer(&b.data[0]))
 			kind, key, _, ok, err := iter.Next()
 			if !ok {
@@ -1786,6 +1786,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) (*flushableBatch, error
 				rangeKeyOffsets = append(rangeKeyOffsets, entry)
 			case InternalKeyKindLogData:
 				// Skip it; we never want to iterate over LogDatas.
+				continue
 			case InternalKeyKindSet, InternalKeyKindDelete, InternalKeyKindMerge,
 				InternalKeyKindSingleDelete, InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
 				b.offsets = append(b.offsets, entry)
@@ -1798,6 +1799,16 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) (*flushableBatch, error
 				// distinguishing.
 				return nil, errors.Wrapf(ErrInvalidBatch, "unrecognized kind %v", kind)
 			}
+			// NB: index (used for entry.offset above) must not reach the
+			// batch.count, because the offset is used in conjunction with the
+			// batch's sequence number to assign sequence numbers to keys within
+			// the batch. If we assign KV's indexes as high as batch.count,
+			// we'll begin assigning keys sequence numbers that weren't
+			// allocated.
+			if index >= uint32(batch.count) {
+				return nil, errors.AssertionFailedf("pebble: batch entry index %d ≥ batch.count %d", index, batch.count)
+			}
+			index++
 		}
 	}
 
