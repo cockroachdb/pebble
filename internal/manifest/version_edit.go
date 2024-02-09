@@ -1112,6 +1112,9 @@ func (b *BulkVersionEdit) Apply(
 					s1 := describeSublevels(base.DefaultFormatter, false /* verbose */, copyOfSublevels.Levels)
 					s2 := describeSublevels(base.DefaultFormatter, false /* verbose */, v.L0Sublevels.Levels)
 					if s1 != s2 {
+						// Add verbosity.
+						s1 := describeSublevels(base.DefaultFormatter, true /* verbose */, copyOfSublevels.Levels)
+						s2 := describeSublevels(base.DefaultFormatter, true /* verbose */, v.L0Sublevels.Levels)
 						panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
 					}
 				}
