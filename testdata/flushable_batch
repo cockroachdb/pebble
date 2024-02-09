@@ -154,3 +154,33 @@ seek-ge b
 ----
 a:1
 .
+
+# Test a LogData interleaved among batch data. The LogData entry should not be
+# assigned a sequence number or be appear within the iterator output.
+
+define
+b.SET.1:
+a.SET.1:
+c.SET.1:
+b.LOGDATA.2:
+1.RANGEDEL.3:
+a.SET.2:
+2.RANGEKEYSET.4:
+1.RANGEKEYDEL.3:
+c.MERGE.2:
+b.DEL.3:
+2.RANGEKEYUNSET.3:
+----
+
+dump seq=0
+----
+a#4,1:2
+a#1,1:1
+b#8,0:
+b#0,1:1
+c#7,2:2
+c#2,1:1
+1-3:{(#3,RANGEDEL)}
+1-2:{(#6,RANGEKEYDEL)}
+2-3:{(#9,RANGEKEYUNSET,3) (#6,RANGEKEYDEL) (#5,RANGEKEYSET,4,4)}
+3-4:{(#5,RANGEKEYSET,4,4)}
