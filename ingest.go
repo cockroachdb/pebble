@@ -1723,7 +1723,7 @@ func (d *DB) excise(
 			LargestSeqNum:  m.LargestSeqNum,
 		}
 		if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.SmallestPointKey) {
-			// This file will contain point keys
+			// This file will probably contain point keys.
 			smallestPointKey := m.SmallestPointKey
 			var err error
 			iter, rangeDelIter, err = d.newIters.TODO(context.TODO(), m, &IterOptions{
@@ -1767,7 +1767,7 @@ func (d *DB) excise(
 			}
 		}
 		if m.HasRangeKeys && !exciseSpan.Contains(d.cmp, m.SmallestRangeKey) {
-			// This file will contain range keys
+			// This file will probably contain range keys.
 			var err error
 			smallestRangeKey := m.SmallestRangeKey
 			rangeKeyIter, err = d.tableNewRangeKeyIter(m, keyspan.SpanIterOptions{})
@@ -1840,7 +1840,7 @@ func (d *DB) excise(
 		LargestSeqNum:  m.LargestSeqNum,
 	}
 	if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.LargestPointKey) {
-		// This file will contain point keys
+		// This file will probably contain point keys
 		largestPointKey := m.LargestPointKey
 		var err error
 		if iter == nil && rangeDelIter == nil {
@@ -1888,7 +1888,7 @@ func (d *DB) excise(
 		}
 	}
 	if m.HasRangeKeys && !exciseSpan.Contains(d.cmp, m.LargestRangeKey) {
-		// This file will contain range keys.
+		// This file will probably contain range keys.
 		largestRangeKey := m.LargestRangeKey
 		if rangeKeyIter == nil {
 			var err error
@@ -1933,6 +1933,9 @@ func (d *DB) excise(
 			// for it here.
 			rightFile.Size = 1
 		}
+		if err := rightFile.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
+			return nil, err
+		}
 		rightFile.ValidateVirtual(m)
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: rightFile})
 		needsBacking = true
@@ -1947,9 +1950,6 @@ func (d *DB) excise(
 		ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 	}
 
-	if err := rightFile.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
-		return nil, err
-	}
 	return ve.NewFiles[len(ve.NewFiles)-numCreatedFiles:], nil
 }
 
