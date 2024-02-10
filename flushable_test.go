@@ -62,7 +62,10 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		meta := lr.localMeta
+		meta := make([]*fileMetadata, len(lr.local))
+		for i := range meta {
+			meta[i] = lr.local[i].fileMetadata
+		}
 		if len(meta) == 0 {
 			// All of the sstables to be ingested were empty. Nothing to do.
 			panic("empty sstable")
@@ -83,7 +86,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// (e.g. because the files reside on a different filesystem), ingestLink will
 		// fall back to copying, and if that fails we undo our work and return an
 		// error.
-		if err := ingestLink(jobID, d.opts, d.objProvider, lr, nil /* shared */, nil /* external */); err != nil {
+		if err := ingestLink(jobID, d.opts, d.objProvider, lr); err != nil {
 			panic("couldn't hard link sstables")
 		}
 
