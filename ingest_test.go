@@ -133,7 +133,7 @@ func TestIngestLoad(t *testing.T) {
 				return err.Error()
 			}
 			var buf bytes.Buffer
-			for _, m := range lr.localMeta {
+			for _, m := range lr.local {
 				fmt.Fprintf(&buf, "%d: %s-%s\n", m.FileNum, m.Smallest, m.Largest)
 				fmt.Fprintf(&buf, "  points: %s-%s\n", m.SmallestPointKey, m.LargestPointKey)
 				fmt.Fprintf(&buf, "  ranges: %s-%s\n", m.SmallestRangeKey, m.LargestRangeKey)
@@ -162,12 +162,15 @@ func TestIngestLoadRand(t *testing.T) {
 
 	paths := make([]string, 1+rng.Intn(10))
 	pending := make([]base.FileNum, len(paths))
-	expected := make([]*fileMetadata, len(paths))
+	expected := make([]ingestLocalMeta, len(paths))
 	for i := range paths {
 		paths[i] = fmt.Sprint(i)
 		pending[i] = base.FileNum(rng.Uint64())
-		expected[i] = &fileMetadata{
-			FileNum: pending[i],
+		expected[i] = ingestLocalMeta{
+			fileMetadata: &fileMetadata{
+				FileNum: pending[i],
+			},
+			path: paths[i],
 		}
 		expected[i].StatsMarkValid()
 
@@ -218,11 +221,11 @@ func TestIngestLoadRand(t *testing.T) {
 	lr, err := ingestLoad(opts, version, paths, nil, nil, 0, pending, nil, 0)
 	require.NoError(t, err)
 
-	for _, m := range lr.localMeta {
+	for _, m := range lr.local {
 		m.CreationTime = 0
 	}
-	t.Log(strings.Join(pretty.Diff(expected, lr.localMeta), "\n"))
-	require.Equal(t, expected, lr.localMeta)
+	t.Log(strings.Join(pretty.Diff(expected, lr.local), "\n"))
+	require.Equal(t, expected, lr.local)
 }
 
 func TestIngestLoadInvalid(t *testing.T) {
@@ -253,8 +256,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 			switch d.Cmd {
 			case "ingest":
 				var buf bytes.Buffer
-				var meta []*fileMetadata
-				var paths []string
+				var meta []ingestLocalMeta
 				var cmpName string
 				d.ScanArgs(t, "cmp", &cmpName)
 				cmp := comparers[cmpName]
@@ -273,16 +275,18 @@ func TestIngestSortAndVerify(t *testing.T) {
 					}
 					m := (&fileMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
 					m.InitPhysicalBacking()
-					meta = append(meta, m)
-					paths = append(paths, strconv.Itoa(i))
+					meta = append(meta, ingestLocalMeta{
+						fileMetadata: m,
+						path:         strconv.Itoa(i),
+					})
 				}
-				lr := ingestLoadResult{localPaths: paths, localMeta: meta}
+				lr := ingestLoadResult{local: meta}
 				err := ingestSortAndVerify(cmp, lr, KeyRange{})
 				if err != nil {
 					return fmt.Sprintf("%v\n", err)
 				}
 				for i := range meta {
-					fmt.Fprintf(&buf, "%s: %v-%v\n", paths[i], meta[i].Smallest, meta[i].Largest)
+					fmt.Fprintf(&buf, "%s: %v-%v\n", meta[i].path, meta[i].Smallest, meta[i].Largest)
 				}
 				return buf.String()
 
@@ -308,15 +312,14 @@ func TestIngestLink(t *testing.T) {
 			require.NoError(t, err)
 			defer objProvider.Close()
 
-			paths := make([]string, 10)
-			meta := make([]*fileMetadata, len(paths))
-			contents := make([][]byte, len(paths))
-			for j := range paths {
-				paths[j] = fmt.Sprintf("external%d", j)
-				meta[j] = &fileMetadata{}
+			meta := make([]ingestLocalMeta, 10)
+			contents := make([][]byte, len(meta))
+			for j := range meta {
+				meta[j].path = fmt.Sprintf("external%d", j)
+				meta[j].fileMetadata = &fileMetadata{}
 				meta[j].FileNum = FileNum(j)
 				meta[j].InitPhysicalBacking()
-				f, err := opts.FS.Create(paths[j])
+				f, err := opts.FS.Create(meta[j].path)
 				require.NoError(t, err)
 
 				contents[j] = []byte(fmt.Sprintf("data%d", j))
@@ -328,11 +331,11 @@ func TestIngestLink(t *testing.T) {
 			}
 
 			if i < count {
-				opts.FS.Remove(paths[i])
+				opts.FS.Remove(meta[i].path)
 			}
 
-			lr := ingestLoadResult{localMeta: meta, localPaths: paths}
-			err = ingestLink(0 /* jobID */, opts, objProvider, lr, nil /* shared */, nil /* external */)
+			lr := ingestLoadResult{local: meta}
+			err = ingestLink(0 /* jobID */, opts, objProvider, lr)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -397,10 +400,10 @@ func TestIngestLinkFallback(t *testing.T) {
 	require.NoError(t, err)
 	defer objProvider.Close()
 
-	meta := []*fileMetadata{{FileNum: 1}}
-	meta[0].InitPhysicalBacking()
-	lr := ingestLoadResult{localMeta: meta, localPaths: []string{"source"}}
-	err = ingestLink(0, opts, objProvider, lr, nil /* shared */, nil /* external */)
+	meta := &fileMetadata{FileNum: 1}
+	meta.InitPhysicalBacking()
+	lr := ingestLoadResult{local: []ingestLocalMeta{{fileMetadata: meta, path: "source"}}}
+	err = ingestLink(0, opts, objProvider, lr)
 	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")
@@ -3066,14 +3069,14 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 	}
 
 	var (
-		seqnum uint64
+		seqNum uint64
 		err    error
 		metas  []*fileMetadata
 	)
 	datadriven.RunTest(t, "testdata/ingest_update_seqnums", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "starting-seqnum":
-			seqnum, err = strconv.ParseUint(td.Input, 10, 64)
+			seqNum, err = strconv.ParseUint(td.Input, 10, 64)
 			if err != nil {
 				return err.Error()
 			}
@@ -3146,8 +3149,10 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 
 		case "update-files":
 			// Update the bounds across all files.
-			if err = ingestUpdateSeqNum(cmp, base.DefaultFormatter, seqnum, ingestLoadResult{localMeta: metas}); err != nil {
-				return err.Error()
+			for i, m := range metas {
+				if err := setSeqNumInMetadata(m, seqNum+uint64(i), cmp, base.DefaultFormatter); err != nil {
+					return err.Error()
+				}
 			}
 
 			var buf bytes.Buffer
@@ -3226,11 +3231,11 @@ func TestIngestCleanup(t *testing.T) {
 			}
 
 			// Cleanup the set of files in the FS.
-			var toRemove []*fileMetadata
+			var toRemove []ingestLocalMeta
 			for _, fn := range tc.cleanupFiles {
 				m := &fileMetadata{FileNum: fn}
 				m.InitPhysicalBacking()
-				toRemove = append(toRemove, m)
+				toRemove = append(toRemove, ingestLocalMeta{fileMetadata: m})
 			}
 
 			err = ingestCleanup(objProvider, toRemove)

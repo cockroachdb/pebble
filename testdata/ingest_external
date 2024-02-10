@@ -214,3 +214,27 @@ iter
 prev
 ----
 b: (foo, .)
+
+# Test the case where the input files need to be reordered during ingest.
+reset
+----
+
+build-remote f7
+set a foo
+----
+
+build-remote f8
+set x bar
+----
+
+ingest-external
+f8,10,x,y
+f7,10,a,b
+----
+
+iter
+first
+next
+----
+a: (foo, .)
+x: (bar, .)
