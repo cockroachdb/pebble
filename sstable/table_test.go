@@ -60,7 +60,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		}
 
 		// Check using SeekGE.
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 		if err != nil {
 			return err
 		}
@@ -110,7 +110,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		}
 
 		// Check using Find.
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 		if err != nil {
 			return err
 		}
@@ -140,7 +140,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		{0, "~"},
 	}
 	for _, ct := range countTests {
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 		if err != nil {
 			return err
 		}
@@ -193,7 +193,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 			upper = []byte(words[upperIdx])
 		}
 
-		iter, err := r.NewIter(lower, upper)
+		iter, err := r.NewIter(NoTransforms, lower, upper)
 		if err != nil {
 			return err
 		}
@@ -469,7 +469,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
-					iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+					iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 					require.NoError(t, err)
 					i := newIterAdapter(iter)
 					for valid := i.First(); valid; valid = i.Next() {
@@ -494,22 +494,22 @@ func TestFinalBlockIsWritten(t *testing.T) {
 	}
 }
 
-func TestReaderGlobalSeqNum(t *testing.T) {
+func TestReaderSymtheticSeqNum(t *testing.T) {
 	f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
 	require.NoError(t, err)
 
 	r, err := newReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
-	const globalSeqNum = 42
-	r.Properties.GlobalSeqNum = globalSeqNum
+	const syntheticSeqNum = 42
+	transforms := IterTransforms{SyntheticSeqNum: syntheticSeqNum}
 
-	iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+	iter, err := r.NewIter(transforms, nil /* lower */, nil /* upper */)
 	require.NoError(t, err)
 	i := newIterAdapter(iter)
 	for valid := i.First(); valid; valid = i.Next() {
-		if globalSeqNum != i.Key().SeqNum() {
-			t.Fatalf("expected %d, but found %d", globalSeqNum, i.Key().SeqNum())
+		if syntheticSeqNum != i.Key().SeqNum() {
+			t.Fatalf("expected %d, but found %d", syntheticSeqNum, i.Key().SeqNum())
 		}
 	}
 	require.NoError(t, i.Close())

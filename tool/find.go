@@ -445,11 +445,12 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			}
 			defer r.Close()
 
-			if m != nil && m.SmallestSeqNum == m.LargestSeqNum {
-				r.Properties.GlobalSeqNum = m.LargestSeqNum
+			var transforms sstable.IterTransforms
+			if m != nil {
+				transforms = m.IterTransforms()
 			}
 
-			iter, err := r.NewIter(nil, nil)
+			iter, err := r.NewIter(transforms, nil, nil)
 			if err != nil {
 				return err
 			}
@@ -460,7 +461,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			// bit more work here to put them in a form that can be iterated in
 			// parallel with the point records.
 			rangeDelIter, err := func() (keyspan.FragmentIterator, error) {
-				iter, err := r.NewRawRangeDelIter()
+				iter, err := r.NewRawRangeDelIter(transforms)
 				if err != nil {
 					return nil, err
 				}

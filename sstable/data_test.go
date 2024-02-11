@@ -430,7 +430,7 @@ func runIterCmd(
 			}
 			fmt.Fprintf(&b, "|  index.isDataInvalidated()=%t\n", si.index.isDataInvalidated())
 			fmt.Fprintf(&b, "|  data.isDataInvalidated()=%t\n", si.data.isDataInvalidated())
-			fmt.Fprintf(&b, "|  hideObsoletePoints = %t\n", si.hideObsoletePoints)
+			fmt.Fprintf(&b, "|  hideObsoletePoints = %t\n", si.transforms.HideObsoletePoints)
 			fmt.Fprintf(&b, "|  dataBH = (Offset: %d, Length: %d)\n", si.dataBH.Offset, si.dataBH.Length)
 			fmt.Fprintf(&b, "|  (boundsCmp,positionedUsingLatestBounds) = (%d,%t)\n", si.boundsCmp, si.positionedUsingLatestBounds)
 			fmt.Fprintf(&b, "|  exhaustedBounds = %d\n", si.exhaustedBounds)

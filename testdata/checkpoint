@@ -473,8 +473,8 @@ h 11
 i i
 k k
 open: db/000014.sst
-read-at(636, 53): db/000014.sst
-read-at(599, 37): db/000014.sst
+read-at(613, 53): db/000014.sst
+read-at(576, 37): db/000014.sst
 z z
 .
 
@@ -545,18 +545,18 @@ e 8
 f 9
 g 10
 open: checkpoints/checkpoint4/000011.sst
-read-at(653, 53): checkpoints/checkpoint4/000011.sst
-read-at(616, 37): checkpoints/checkpoint4/000011.sst
-read-at(70, 546): checkpoints/checkpoint4/000011.sst
+read-at(630, 53): checkpoints/checkpoint4/000011.sst
+read-at(593, 37): checkpoints/checkpoint4/000011.sst
+read-at(70, 523): checkpoints/checkpoint4/000011.sst
 read-at(43, 27): checkpoints/checkpoint4/000011.sst
 read-at(0, 43): checkpoints/checkpoint4/000011.sst
 h 11
 i i
 k k
 open: checkpoints/checkpoint4/000014.sst
-read-at(636, 53): checkpoints/checkpoint4/000014.sst
-read-at(599, 37): checkpoints/checkpoint4/000014.sst
-read-at(53, 546): checkpoints/checkpoint4/000014.sst
+read-at(613, 53): checkpoints/checkpoint4/000014.sst
+read-at(576, 37): checkpoints/checkpoint4/000014.sst
+read-at(53, 523): checkpoints/checkpoint4/000014.sst
 read-at(26, 27): checkpoints/checkpoint4/000014.sst
 read-at(0, 26): checkpoints/checkpoint4/000014.sst
 z z

@@ -26,6 +26,8 @@ type VirtualReader struct {
 	Properties CommonProperties
 }
 
+var _ CommonReader = (*VirtualReader)(nil)
+
 // Lightweight virtual sstable state which can be passed to sstable iterators.
 type virtualState struct {
 	lower            InternalKey
@@ -34,23 +36,21 @@ type virtualState struct {
 	Compare          Compare
 	isSharedIngested bool
 	prefixChange     *PrefixReplacement
-	syntheticSuffix  SyntheticSuffix
 }
 
 // VirtualReaderParams are the parameters necessary to create a VirtualReader.
 type VirtualReaderParams struct {
-	Lower    InternalKey
-	Upper    InternalKey
-	FileNum  base.FileNum
-	IsShared bool
+	Lower            InternalKey
+	Upper            InternalKey
+	FileNum          base.FileNum
+	IsSharedIngested bool
 	// Size is an estimate of the size of the [Lower, Upper) section of the table.
 	Size uint64
 	// BackingSize is the total size of the backing table. The ratio between Size
 	// and BackingSize is used to estimate statistics.
 	BackingSize uint64
-	// TODO(radu): this should be passed just to iterators.
+	// TODO(radu): these should be moved to sstable.IterTransforms.
 	PrefixReplacement *PrefixReplacement
-	SyntheticSuffix   SyntheticSuffix
 }
 
 // MakeVirtualReader is used to contruct a reader which can read from virtual
@@ -61,9 +61,8 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 		upper:            p.Upper,
 		fileNum:          p.FileNum,
 		Compare:          reader.Compare,
-		isSharedIngested: p.IsShared && reader.Properties.GlobalSeqNum != 0,
+		isSharedIngested: p.IsSharedIngested,
 		prefixChange:     p.PrefixReplacement,
-		syntheticSuffix:  p.SyntheticSuffix,
 	}
 	v := VirtualReader{
 		vState: vState,
@@ -96,6 +95,7 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 
 // NewCompactionIter is the compaction iterator function for virtual readers.
 func (v *VirtualReader) NewCompactionIter(
+	transforms IterTransforms,
 	bytesIterated *uint64,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
@@ -103,7 +103,7 @@ func (v *VirtualReader) NewCompactionIter(
 	bufferPool *BufferPool,
 ) (Iterator, error) {
 	i, err := v.reader.newCompactionIter(
-		bytesIterated, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
+		transforms, bytesIterated, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
 	if err == nil && v.vState.prefixChange != nil {
 		i = newPrefixReplacingIterator(i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix, v.reader.Compare)
 	}
@@ -116,17 +116,18 @@ func (v *VirtualReader) NewCompactionIter(
 // sstable bounds. No overlap is not currently supported in the iterator.
 func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	ctx context.Context,
+	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	hideObsoletePoints, useFilterBlock bool,
+	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	i, err := v.reader.newIterWithBlockPropertyFiltersAndContext(
-		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats,
-		categoryAndQoS, statsCollector, rp, &v.vState)
+		ctx, transforms, lower, upper, filterer, useFilterBlock,
+		stats, categoryAndQoS, statsCollector, rp, &v.vState)
 	if err == nil && v.vState.prefixChange != nil {
 		i = newPrefixReplacingIterator(i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix, v.reader.Compare)
 	}
@@ -140,8 +141,10 @@ func (v *VirtualReader) ValidateBlockChecksumsOnBacking() error {
 }
 
 // NewRawRangeDelIter wraps Reader.NewRawRangeDelIter.
-func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
-	iter, err := v.reader.NewRawRangeDelIter()
+func (v *VirtualReader) NewRawRangeDelIter(
+	transforms IterTransforms,
+) (keyspan.FragmentIterator, error) {
+	iter, err := v.reader.NewRawRangeDelIter(transforms)
 	if err != nil {
 		return nil, err
 	}
@@ -179,8 +182,17 @@ func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 }
 
 // NewRawRangeKeyIter wraps Reader.NewRawRangeKeyIter.
-func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
-	iter, err := v.reader.newRawRangeKeyIter(&v.vState)
+func (v *VirtualReader) NewRawRangeKeyIter(
+	transforms IterTransforms,
+) (keyspan.FragmentIterator, error) {
+	syntheticSeqNum := transforms.SyntheticSeqNum
+	if v.vState.isSharedIngested {
+		// Don't pass a synthetic sequence number for shared ingested sstables. We
+		// need to know the materialized sequence numbers, and we will set up the
+		// appropriate sequence number substitution below.
+		transforms.SyntheticSeqNum = 0
+	}
+	iter, err := v.reader.NewRawRangeKeyIter(transforms)
 	if err != nil {
 		return nil, err
 	}
@@ -192,13 +204,13 @@ func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 
 	if v.vState.isSharedIngested {
 		// We need to coalesce range keys within each sstable, and then apply the
-		// global sequence number. For this, we use ForeignSSTTransformer.
+		// synthetic sequence number. For this, we use ForeignSSTTransformer.
 		//
 		// TODO(bilal): Avoid these allocations by hoisting the transformer and
 		// transform iter into VirtualReader.
 		transform := &rangekey.ForeignSSTTransformer{
 			Equal:  v.reader.Equal,
-			SeqNum: v.reader.Properties.GlobalSeqNum,
+			SeqNum: uint64(syntheticSeqNum),
 		}
 		transformIter := &keyspan.TransformerIter{
 			FragmentIterator: iter,

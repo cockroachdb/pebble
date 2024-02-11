@@ -283,6 +283,23 @@ func (m *FileMetadata) InternalKeyBounds() (InternalKey, InternalKey) {
 	return m.Smallest, m.Largest
 }
 
+// SyntheticSeqNum returns a SyntheticSeqNum which is set when SmallestSeqNum
+// equals LargestSeqNum.
+func (m *FileMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
+	if m.SmallestSeqNum == m.LargestSeqNum {
+		return sstable.SyntheticSeqNum(m.SmallestSeqNum)
+	}
+	return sstable.NoSyntheticSeqNum
+}
+
+// IterTransforms returns an sstable.IterTransforms that has SyntheticSeqNum set as needed.
+func (m *FileMetadata) IterTransforms() sstable.IterTransforms {
+	return sstable.IterTransforms{
+		SyntheticSeqNum: m.SyntheticSeqNum(),
+		SyntheticSuffix: m.SyntheticSuffix,
+	}
+}
+
 // PhysicalFileMeta is used by functions which want a guarantee that their input
 // belongs to a physical sst and not a virtual sst.
 //
@@ -335,11 +352,10 @@ func (m VirtualFileMeta) VirtualReaderParams(isShared bool) sstable.VirtualReade
 		Lower:             m.Smallest,
 		Upper:             m.Largest,
 		FileNum:           m.FileNum,
-		IsShared:          isShared,
+		IsSharedIngested:  isShared && m.SyntheticSeqNum() != 0,
 		Size:              m.Size,
 		BackingSize:       m.FileBacking.Size,
 		PrefixReplacement: m.PrefixReplacement,
-		SyntheticSuffix:   m.SyntheticSuffix,
 	}
 }
 

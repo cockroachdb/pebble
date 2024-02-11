@@ -246,15 +246,16 @@ func TestBlockIter2(t *testing.T) {
 					return ""
 
 				case "iter":
-					iter, err := newBlockIter(bytes.Compare, nil, block, nil /* syntheticSuffix */)
+					globalSeqNum, err := scanGlobalSeqNum(d)
+					transforms := IterTransforms{SyntheticSeqNum: SyntheticSeqNum(globalSeqNum)}
+					if err != nil {
+						return err.Error()
+					}
+					iter, err := newBlockIter(bytes.Compare, nil, block, transforms)
 					if err != nil {
 						return err.Error()
 					}
 
-					iter.globalSeqNum, err = scanGlobalSeqNum(d)
-					if err != nil {
-						return err.Error()
-					}
 					return itertest.RunInternalIterCmd(t, d, iter, itertest.Condensed)
 
 				default:
@@ -277,7 +278,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 	}
 	block := w.finish()
 
-	i, err := newBlockIter(bytes.Compare, nil, block, nil /* syntheticSuffix */)
+	i, err := newBlockIter(bytes.Compare, nil, block, NoTransforms)
 	require.NoError(t, err)
 
 	// Check that the supplied slice resides within the bounds of the block.
@@ -337,7 +338,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 
 	for targetPos := 0; targetPos < w.restartInterval; targetPos++ {
 		t.Run("", func(t *testing.T) {
-			i, err := newBlockIter(bytes.Compare, nil, block, nil /* syntheticSuffix */)
+			i, err := newBlockIter(bytes.Compare, nil, block, NoTransforms)
 			require.NoError(t, err)
 
 			pos := 3
@@ -418,10 +419,10 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 			suffixReplacedBlock := suffixWriter.finish()
 			expectedBlock := expectedSuffixWriter.finish()
 
-			expect, err := newBlockIter(cmp, split, expectedBlock, nil /* syntheticSuffix */)
+			expect, err := newBlockIter(cmp, split, expectedBlock, NoTransforms)
 			require.NoError(t, err)
 
-			got, err := newBlockIter(cmp, split, suffixReplacedBlock, synthSuffix)
+			got, err := newBlockIter(cmp, split, suffixReplacedBlock, IterTransforms{SyntheticSuffix: synthSuffix})
 			require.NoError(t, err)
 
 			c := checker{t: t}
@@ -529,7 +530,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 						syntheticSuffix = benchSynthSuffix
 					}
 
-					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), syntheticSuffix)
+					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), IterTransforms{SyntheticSuffix: syntheticSuffix})
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -568,7 +569,7 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 						syntheticSuffix = benchSynthSuffix
 					}
 
-					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), syntheticSuffix)
+					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), IterTransforms{SyntheticSuffix: syntheticSuffix})
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -614,7 +615,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 						syntheticSuffix = benchSynthSuffix
 					}
 
-					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), syntheticSuffix)
+					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), IterTransforms{SyntheticSuffix: syntheticSuffix})
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -648,7 +649,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 						syntheticSuffix = benchSynthSuffix
 					}
 
-					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), syntheticSuffix)
+					it, err := newBlockIter(benchCmp, benchSplit, w.finish(), IterTransforms{SyntheticSuffix: syntheticSuffix})
 					if err != nil {
 						b.Fatal(err)
 					}

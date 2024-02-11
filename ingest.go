@@ -294,7 +294,7 @@ func ingestLoad1(
 	maybeSetStatsFromProperties(meta.PhysicalMeta(), &r.Properties)
 
 	{
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 		if err != nil {
 			return nil, err
 		}
@@ -320,7 +320,7 @@ func ingestLoad1(
 		}
 	}
 
-	iter, err := r.NewRawRangeDelIter()
+	iter, err := r.NewRawRangeDelIter(sstable.NoTransforms)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +350,7 @@ func ingestLoad1(
 
 	// Update the range-key bounds for the table.
 	{
-		iter, err := r.NewRawRangeKeyIter()
+		iter, err := r.NewRawRangeKeyIter(sstable.NoTransforms)
 		if err != nil {
 			return nil, err
 		}
