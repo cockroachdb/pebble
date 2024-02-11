@@ -164,6 +164,11 @@ func (c *cacheOpts) writerApply(w *Writer) {
 // (2) pebble.Compare(replacementSuffix,originalSuffix) > 0, for all keys
 type SyntheticSuffix []byte
 
+// IsSet returns true if the synthetic suffix is not enpty.
+func (ss SyntheticSuffix) IsSet() bool {
+	return len(ss) > 0
+}
+
 // rawTombstonesOpt is a Reader open option for specifying that range
 // tombstones returned by Reader.NewRangeDelIter() should not be
 // fragmented. Used by debug tools to get a raw view of the tombstones
@@ -181,32 +186,6 @@ func init() {
 		return &cacheOpts{cacheID, fileNum}
 	}
 	private.SSTableRawTombstonesOpt = rawTombstonesOpt{}
-}
-
-// CommonReader abstracts functionality over a Reader or a VirtualReader. This
-// can be used by code which doesn't care to distinguish between a reader and a
-// virtual reader.
-type CommonReader interface {
-	NewRawRangeKeyIter() (keyspan.FragmentIterator, error)
-	NewRawRangeDelIter() (keyspan.FragmentIterator, error)
-	NewIterWithBlockPropertyFiltersAndContextEtc(
-		ctx context.Context, lower, upper []byte,
-		filterer *BlockPropertiesFilterer,
-		hideObsoletePoints, useFilterBlock bool,
-		stats *base.InternalIteratorStats,
-		categoryAndQoS CategoryAndQoS,
-		statsCollector *CategoryStatsCollector,
-		rp ReaderProvider,
-	) (Iterator, error)
-	NewCompactionIter(
-		bytesIterated *uint64,
-		categoryAndQoS CategoryAndQoS,
-		statsCollector *CategoryStatsCollector,
-		rp ReaderProvider,
-		bufferPool *BufferPool,
-	) (Iterator, error)
-	EstimateDiskUsage(start, end []byte) (uint64, error)
-	CommonProperties() *CommonProperties
 }
 
 // Reader is a table reader.
@@ -247,6 +226,8 @@ type Reader struct {
 	metaBufferPoolAlloc [3]allocedBuffer
 }
 
+var _ CommonReader = (*Reader)(nil)
+
 // Close implements DB.Close, as documented in the pebble package.
 func (r *Reader) Close() error {
 	r.opts.Cache.Unref()
@@ -268,6 +249,7 @@ func (r *Reader) Close() error {
 // table. If an error occurs, NewIterWithBlockPropertyFilters cleans up after
 // itself and returns a nil iterator.
 func (r *Reader) NewIterWithBlockPropertyFilters(
+	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	useFilterBlock bool,
@@ -277,30 +259,31 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.newIterWithBlockPropertyFiltersAndContext(
-		context.Background(), lower, upper, filterer, false, useFilterBlock, stats,
-		categoryAndQoS, statsCollector, rp, nil)
+		context.Background(), transforms, lower, upper, filterer, useFilterBlock,
+		stats, categoryAndQoS, statsCollector, rp, nil)
 }
 
 // NewIterWithBlockPropertyFiltersAndContextEtc is similar to
 // NewIterWithBlockPropertyFilters and additionally accepts a context for
 // tracing.
 //
-// If hideObsoletePoints, the callee assumes that filterer already includes
-// obsoleteKeyBlockPropertyFilter. The caller can satisfy this contract by
-// first calling TryAddBlockPropertyFilterForHideObsoletePoints.
+// If transform.HideObsoletePoints is set, the callee assumes that filterer
+// already includes obsoleteKeyBlockPropertyFilter. The caller can satisfy this
+// contract by first calling TryAddBlockPropertyFilterForHideObsoletePoints.
 func (r *Reader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	ctx context.Context,
+	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	hideObsoletePoints, useFilterBlock bool,
+	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.newIterWithBlockPropertyFiltersAndContext(
-		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats, categoryAndQoS,
-		statsCollector, rp, nil)
+		ctx, transforms, lower, upper, filterer, useFilterBlock,
+		stats, categoryAndQoS, statsCollector, rp, nil)
 }
 
 // TryAddBlockPropertyFilterForHideObsoletePoints is expected to be called
@@ -321,23 +304,23 @@ func (r *Reader) TryAddBlockPropertyFilterForHideObsoletePoints(
 
 func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	ctx context.Context,
+	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	hideObsoletePoints bool,
 	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
-	v *virtualState,
+	vState *virtualState,
 ) (Iterator, error) {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats,
-			categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+		err := i.init(ctx, r, vState, transforms, lower, upper, filterer, useFilterBlock,
+			stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
 		if err != nil {
 			return nil, err
 		}
@@ -345,8 +328,8 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats,
-		categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+	err := i.init(ctx, r, vState, transforms, lower, upper, filterer, useFilterBlock,
+		stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
 	if err != nil {
 		return nil, err
 	}
@@ -357,40 +340,44 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 // occurs, NewIter cleans up after itself and returns a nil iterator. NewIter
 // must only be used when the Reader is guaranteed to outlive any LazyValues
 // returned from the iter.
-func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
+func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterator, error) {
 	return r.NewIterWithBlockPropertyFilters(
-		lower, upper, nil, true /* useFilterBlock */, nil, /* stats */
-		CategoryAndQoS{}, nil /*statsCollector */, TrivialReaderProvider{Reader: r})
+		transforms, lower, upper, nil, true, /* useFilterBlock */
+		nil /* stats */, CategoryAndQoS{}, nil /* statsCollector */, TrivialReaderProvider{Reader: r})
 }
 
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
 // the number of bytes iterated. If an error occurs, NewCompactionIter cleans up
 // after itself and returns a nil iterator.
 func (r *Reader) NewCompactionIter(
+	transforms IterTransforms,
 	bytesIterated *uint64,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *BufferPool,
 ) (Iterator, error) {
-	return r.newCompactionIter(bytesIterated, categoryAndQoS, statsCollector, rp, nil, bufferPool)
+	return r.newCompactionIter(transforms, bytesIterated, categoryAndQoS, statsCollector, rp, nil, bufferPool)
 }
 
 func (r *Reader) newCompactionIter(
+	transforms IterTransforms,
 	bytesIterated *uint64,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
-	v *virtualState,
+	vState *virtualState,
 	bufferPool *BufferPool,
 ) (Iterator, error) {
+	if vState != nil && vState.isSharedIngested {
+		transforms.HideObsoletePoints = true
+	}
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
 		err := i.init(
 			context.Background(),
-			r, v, nil /* lower */, nil /* upper */, nil,
-			false /* useFilter */, v != nil && v.isSharedIngested, /* hideObsoletePoints */
-			nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
+			r, vState, transforms, nil /* lower */, nil /* upper */, nil,
+			false /* useFilter */, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 		)
 		if err != nil {
 			return nil, err
@@ -403,9 +390,8 @@ func (r *Reader) newCompactionIter(
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
-		context.Background(), r, v, nil /* lower */, nil, /* upper */
-		nil, false /* useFilter */, v != nil && v.isSharedIngested, /* hideObsoletePoints */
-		nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
+		context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
+		nil, false /* useFilter */, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 	)
 	if err != nil {
 		return nil, err
@@ -423,9 +409,12 @@ func (r *Reader) newCompactionIter(
 //
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
-func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
+func (r *Reader) NewRawRangeDelIter(transforms IterTransforms) (keyspan.FragmentIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
+	}
+	if transforms.SyntheticSuffix.IsSet() {
+		return nil, errors.AssertionFailedf("synthetic suffix not supported with range del iterator")
 	}
 	h, err := r.readRangeDel(nil /* stats */, nil /* iterStats */)
 	if err != nil {
@@ -436,29 +425,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 	// sstables. This is because rangedels do not apply to points in the same
 	// sstable at the same sequence number anyway, so exposing obsolete rangedels
 	// is harmless.
-	if err := i.blockIter.initHandle(r.Compare, r.Split, h, r.Properties.GlobalSeqNum, false, nil); err != nil {
-		return nil, err
-	}
-	return i, nil
-}
-
-func (r *Reader) newRawRangeKeyIter(vState *virtualState) (keyspan.FragmentIterator, error) {
-	if r.rangeKeyBH.Length == 0 {
-		return nil, nil
-	}
-	h, err := r.readRangeKey(nil /* stats */, nil /* iterStats */)
-	if err != nil {
-		return nil, err
-	}
-	i := rangeKeyFragmentBlockIterPool.Get().(*rangeKeyFragmentBlockIter)
-	var globalSeqNum uint64
-	// Don't pass a global sequence number for shared ingested sstables. The
-	// virtual reader needs to know the materialized sequence numbers, and will
-	// do the appropriate sequence number substitution.
-	if vState == nil || !vState.isSharedIngested {
-		globalSeqNum = r.Properties.GlobalSeqNum
-	}
-	if err := i.blockIter.initHandle(r.Compare, r.Split, h, globalSeqNum, false, nil); err != nil {
+	if err := i.blockIter.initHandle(r.Compare, r.Split, h, transforms); err != nil {
 		return nil, err
 	}
 	return i, nil
@@ -470,8 +437,23 @@ func (r *Reader) newRawRangeKeyIter(vState *virtualState) (keyspan.FragmentItera
 //
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
-func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
-	return r.newRawRangeKeyIter(nil /* vState */)
+func (r *Reader) NewRawRangeKeyIter(transforms IterTransforms) (keyspan.FragmentIterator, error) {
+	if r.rangeKeyBH.Length == 0 {
+		return nil, nil
+	}
+	if transforms.SyntheticSuffix.IsSet() {
+		return nil, errors.AssertionFailedf("synthetic suffix not supported with range key iterator")
+	}
+	h, err := r.readRangeKey(nil /* stats */, nil /* iterStats */)
+	if err != nil {
+		return nil, err
+	}
+	i := rangeKeyFragmentBlockIterPool.Get().(*rangeKeyFragmentBlockIter)
+
+	if err := i.blockIter.initHandle(r.Compare, r.Split, h, transforms); err != nil {
+		return nil, err
+	}
+	return i, nil
 }
 
 type rangeKeyFragmentBlockIter struct {
@@ -713,7 +695,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// tombstones. We need properly fragmented and sorted range tombstones in
 	// order to serve from them directly.
 	iter := &blockIter{}
-	if err := iter.init(r.Compare, r.Split, b, r.Properties.GlobalSeqNum, false, nil); err != nil {
+	if err := iter.init(r.Compare, r.Split, b, NoTransforms); err != nil {
 		return nil, err
 	}
 	var tombstones []keyspan.Span
@@ -893,7 +875,7 @@ func (r *Reader) Layout() (*Layout, error) {
 
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.indexBH)
-		iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), nil /* syntheticSuffix */)
+		iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		for key, value := iter.First(); key != nil; key, value = iter.Next() {
 			dataBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 			if err != nil {
@@ -906,7 +888,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		}
 	} else {
 		l.TopIndex = r.indexBH
-		topIter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), nil /* syntheticSuffix */)
+		topIter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		iter := &blockIter{}
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
 			indexBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
@@ -921,7 +903,7 @@ func (r *Reader) Layout() (*Layout, error) {
 				return nil, err
 			}
 			// TODO(msbutler): figure out how to pass virtualState to layout call.
-			if err := iter.init(r.Compare, r.Split, subIndex.Get(), 0, false, nil); err != nil {
+			if err := iter.init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
 				return nil, err
 			}
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
@@ -1056,14 +1038,14 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	// to the same blockIter over the single index in the unpartitioned case.
 	var startIdxIter, endIdxIter *blockIter
 	if r.Properties.IndexPartitions == 0 {
-		iter, err := newBlockIter(r.Compare, r.Split, indexH.Get(), nil /* syntheticSuffix */)
+		iter, err := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		if err != nil {
 			return 0, err
 		}
 		startIdxIter = iter
 		endIdxIter = iter
 	} else {
-		topIter, err := newBlockIter(r.Compare, r.Split, indexH.Get(), nil /* syntheticSuffix */)
+		topIter, err := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		if err != nil {
 			return 0, err
 		}
@@ -1083,7 +1065,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, err
 		}
 		defer startIdxBlock.Release()
-		startIdxIter, err = newBlockIter(r.Compare, r.Split, startIdxBlock.Get(), nil /* syntheticSuffix */)
+		startIdxIter, err = newBlockIter(r.Compare, r.Split, startIdxBlock.Get(), NoTransforms)
 		if err != nil {
 			return 0, err
 		}
@@ -1104,7 +1086,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				return 0, err
 			}
 			defer endIdxBlock.Release()
-			endIdxIter, err = newBlockIter(r.Compare, r.Split, endIdxBlock.Get(), nil /* syntheticSuffix */)
+			endIdxIter, err = newBlockIter(r.Compare, r.Split, endIdxBlock.Get(), NoTransforms)
 			if err != nil {
 				return 0, err
 			}

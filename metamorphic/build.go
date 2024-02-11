@@ -198,10 +198,10 @@ func openExternalObj(
 	reader, err = sstable.NewReader(objstorageprovider.NewRemoteReadable(objReader, objSize), opts)
 	panicIfErr(err)
 
-	pointIter, err = reader.NewIter(bounds.Start, bounds.End)
+	pointIter, err = reader.NewIter(sstable.NoTransforms, bounds.Start, bounds.End)
 	panicIfErr(err)
 
-	rangeDelIter, err = reader.NewRawRangeDelIter()
+	rangeDelIter, err = reader.NewRawRangeDelIter(sstable.NoTransforms)
 	panicIfErr(err)
 	if rangeDelIter != nil {
 		rangeDelIter = keyspan.Truncate(
@@ -212,7 +212,7 @@ func openExternalObj(
 		)
 	}
 
-	rangeKeyIter, err = reader.NewRawRangeKeyIter()
+	rangeKeyIter, err = reader.NewRawRangeKeyIter(sstable.NoTransforms)
 	panicIfErr(err)
 	if rangeKeyIter != nil {
 		rangeKeyIter = keyspan.Truncate(

@@ -22,10 +22,10 @@ h.sst
      13752  data (156)
      13913  index (245)
      14163  range-del (421)
-     14589  properties (536)
-     15130  meta-index (61)
-     15196  footer (53)
-     15249  EOF
+     14589  properties (513)
+     15107  meta-index (61)
+     15173  footer (53)
+     15226  EOF
 
 sstable layout
 ../sstable/testdata/h.table-bloom.no-compression.sst
@@ -48,10 +48,10 @@ h.table-bloom.no-compression.sst
      26799  filter (2245)
      29049  index (325)
      29379  range-del (421)
-     29805  properties (580)
-     30390  meta-index (112)
-     30507  footer (53)
-     30560  EOF
+     29805  properties (557)
+     30367  meta-index (112)
+     30484  footer (53)
+     30537  EOF
 
 sstable layout
 ../sstable/testdata/h.no-compression.two_level_index.sst
@@ -76,10 +76,10 @@ h.no-compression.two_level_index.sst
      27047  index (95)
      27147  top-index (70)
      27222  range-del (421)
-     27648  properties (582)
-     28235  meta-index (63)
-     28303  footer (53)
-     28356  EOF
+     27648  properties (559)
+     28212  meta-index (63)
+     28280  footer (53)
+     28333  EOF
 
 sstable layout
 -v
@@ -3744,7 +3744,7 @@ h.no-compression.two_level_index.sst
      27631    [restart 27523]
      27635    [restart 27546]
      27643    [trailer compression=none checksum=0xb93b31c5]
-     27648  properties (582)
+     27648  properties (559)
      27648    rocksdb.block.based.table.index.type (43) [restart]
      27691    rocksdb.block.based.table.prefix.filtering (20)
      27711    rocksdb.block.based.table.whole.key.filtering (23)
@@ -3753,37 +3753,36 @@ h.no-compression.two_level_index.sst
      27796    rocksdb.compression_options (106)
      27902    rocksdb.data.size (15)
      27917    rocksdb.deleted.keys (15)
-     27932    rocksdb.external_sst_file.global_seqno (41)
-     27973    rocksdb.external_sst_file.version (14)
-     27987    rocksdb.filter.size (15)
-     28002    rocksdb.index.partitions (20)
-     28022    rocksdb.index.size (9)
-     28031    rocksdb.merge.operands (18)
-     28049    rocksdb.merge.operator (13)
-     28062    rocksdb.num.data.blocks (19)
-     28081    rocksdb.num.entries (12)
-     28093    rocksdb.num.range-deletions (19)
-     28112    rocksdb.prefix.extractor.name (31)
-     28143    rocksdb.property.collectors (22)
-     28165    rocksdb.raw.key.size (18)
-     28183    rocksdb.raw.value.size (15)
-     28198    rocksdb.top-level.index.size (24)
-     28222    [restart 27648]
-     28230    [trailer compression=none checksum=0x9414996]
-     28235  meta-index (63)
-     28235    rocksdb.properties block:27648/582 [restart]
-     28261    rocksdb.range_del block:27222/421 [restart]
-     28286    [restart 28235]
-     28290    [restart 28261]
-     28298    [trailer compression=none checksum=0x9e135f62]
-     28303  footer (53)
-     28303    checksum type: crc32c
-     28304    meta: offset=28235, length=63
-     28308    index: offset=27147, length=70
-     28312    [padding]
-     28344    version: 1
-     28348    magic number: 0xf09faab3f09faab3
-     28356  EOF
+     27932    rocksdb.external_sst_file.version (32)
+     27964    rocksdb.filter.size (15)
+     27979    rocksdb.index.partitions (20)
+     27999    rocksdb.index.size (9)
+     28008    rocksdb.merge.operands (18)
+     28026    rocksdb.merge.operator (13)
+     28039    rocksdb.num.data.blocks (19)
+     28058    rocksdb.num.entries (12)
+     28070    rocksdb.num.range-deletions (19)
+     28089    rocksdb.prefix.extractor.name (31)
+     28120    rocksdb.property.collectors (22)
+     28142    rocksdb.raw.key.size (18)
+     28160    rocksdb.raw.value.size (15)
+     28175    rocksdb.top-level.index.size (24)
+     28199    [restart 27648]
+     28207    [trailer compression=none checksum=0x2d96f92a]
+     28212  meta-index (63)
+     28212    rocksdb.properties block:27648/559 [restart]
+     28238    rocksdb.range_del block:27222/421 [restart]
+     28263    [restart 28212]
+     28267    [restart 28238]
+     28275    [trailer compression=none checksum=0xf7259c47]
+     28280  footer (53)
+     28280    checksum type: crc32c
+     28281    meta: offset=28212, length=63
+     28285    index: offset=27147, length=70
+     28289    [padding]
+     28321    version: 1
+     28325    magic number: 0xf09faab3f09faab3
+     28333  EOF
 
 sstable layout
 -v

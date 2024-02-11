@@ -341,8 +341,9 @@ type blockEntry struct {
 //
 // We have picked the first option here.
 type blockIter struct {
-	cmp   Compare
-	split Split
+	cmp        Compare
+	split      Split
+	transforms IterTransforms
 	// offset is the byte index that marks where the current key/value is
 	// encoded in the block.
 	offset int32
@@ -364,10 +365,9 @@ type blockIter struct {
 	restarts int32
 	// Number of restart points in this block. Encoded at the end of the block
 	// as a uint32.
-	numRestarts  int32
-	globalSeqNum uint64
-	ptr          unsafe.Pointer
-	data         []byte
+	numRestarts int32
+	ptr         unsafe.Pointer
+	data        []byte
 	// key contains the raw key the iterator is currently pointed at. This may
 	// point directly to data stored in the block (for a key which has no prefix
 	// compression), to fullKey (for a prefix compressed key), or to a slice of
@@ -410,51 +410,40 @@ type blockIter struct {
 		vbr            *valueBlockReader
 		hasValuePrefix bool
 	}
-	hideObsoletePoints bool
-	syntheticSuffix    SyntheticSuffix
-	synthSuffixBuf     []byte
+	synthSuffixBuf []byte
 }
 
 // blockIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*blockIter)(nil)
 
 func newBlockIter(
-	cmp Compare, split Split, block block, syntheticSuffix SyntheticSuffix,
+	cmp Compare, split Split, block block, transforms IterTransforms,
 ) (*blockIter, error) {
 	i := &blockIter{}
-	return i, i.init(cmp, split, block, 0, false, syntheticSuffix)
+	return i, i.init(cmp, split, block, transforms)
 }
 
 func (i *blockIter) String() string {
 	return "block"
 }
 
-func (i *blockIter) init(
-	cmp Compare,
-	split Split,
-	block block,
-	globalSeqNum uint64,
-	hideObsoletePoints bool,
-	syntheticSuffix SyntheticSuffix,
-) error {
+func (i *blockIter) init(cmp Compare, split Split, block block, transforms IterTransforms) error {
 	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return base.CorruptionErrorf("pebble/table: invalid table (block has no restart points)")
 	}
-	i.syntheticSuffix = syntheticSuffix
-	if i.syntheticSuffix != nil {
+	i.transforms = transforms
+	if i.transforms.SyntheticSuffix != nil {
 		i.synthSuffixBuf = []byte{}
 	}
 	i.split = split
 	i.cmp = cmp
 	i.restarts = int32(len(block)) - 4*(1+numRestarts)
 	i.numRestarts = numRestarts
-	i.globalSeqNum = globalSeqNum
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
 	i.fullKey = i.fullKey[:0]
 	i.val = nil
-	i.hideObsoletePoints = hideObsoletePoints
 	i.clearCache()
 	if i.restarts > 0 {
 		if err := i.readFirstKey(); err != nil {
@@ -468,20 +457,15 @@ func (i *blockIter) init(
 }
 
 // NB: two cases of hideObsoletePoints:
-//   - Local sstable iteration: globalSeqNum will be set iff the sstable was
+//   - Local sstable iteration: syntheticSeqNum will be set iff the sstable was
 //     ingested.
-//   - Foreign sstable iteration: globalSeqNum is always set.
+//   - Foreign sstable iteration: syntheticSeqNum is always set.
 func (i *blockIter) initHandle(
-	cmp Compare,
-	split Split,
-	block bufferHandle,
-	globalSeqNum uint64,
-	hideObsoletePoints bool,
-	syntheticSuffix SyntheticSuffix,
+	cmp Compare, split Split, block bufferHandle, transforms IterTransforms,
 ) error {
 	i.handle.Release()
 	i.handle = block
-	return i.init(cmp, split, block.Get(), globalSeqNum, hideObsoletePoints, syntheticSuffix)
+	return i.init(cmp, split, block.Get(), transforms)
 }
 
 func (i *blockIter) invalidate() {
@@ -666,12 +650,12 @@ func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 	// BlockIter benchmarks.
 	if n := len(key) - 8; n >= 0 {
 		trailer := binary.LittleEndian.Uint64(key[n:])
-		hiddenPoint = i.hideObsoletePoints &&
+		hiddenPoint = i.transforms.HideObsoletePoints &&
 			(trailer&trailerObsoleteBit != 0)
 		i.ikey.Trailer = trailer & trailerObsoleteMask
 		i.ikey.UserKey = key[:n:n]
-		if i.globalSeqNum != 0 {
-			i.ikey.SetSeqNum(i.globalSeqNum)
+		if n := i.transforms.SyntheticSeqNum; n != 0 {
+			i.ikey.SetSeqNum(uint64(n))
 		}
 	} else {
 		i.ikey.Trailer = uint64(InternalKeyKindInvalid)
@@ -685,16 +669,16 @@ func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 // i.ikey.UserKey points to the same buffer as i.cachedBuf (i.e. during reverse
 // iteration).
 func (i *blockIter) maybeReplaceSuffix(allowInPlace bool) {
-	if i.syntheticSuffix != nil && i.ikey.UserKey != nil {
+	if i.transforms.SyntheticSuffix != nil && i.ikey.UserKey != nil {
 		prefixLen := i.split(i.ikey.UserKey)
-		if allowInPlace && cap(i.ikey.UserKey) >= prefixLen+len(i.syntheticSuffix) {
-			i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.syntheticSuffix...)
+		if allowInPlace && cap(i.ikey.UserKey) >= prefixLen+len(i.transforms.SyntheticSuffix) {
+			i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.transforms.SyntheticSuffix...)
 			return
 		}
 		// If ikey is cached or may get cached, we must copy
 		// UserKey to a new buffer before prefix replacement.
 		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-		i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
+		i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
 		i.ikey.UserKey = i.synthSuffixBuf
 	}
 }
@@ -990,7 +974,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			targetOffset = decodeRestart(i.data[i.restarts+4*(index):])
 		}
 	} else if index == 0 {
-		if i.syntheticSuffix != nil {
+		if i.transforms.SyntheticSuffix != nil {
 			// The binary search was conducted on keys without suffix replacement,
 			// implying the first key in the block may be less than the search key. To
 			// double check, get the first key in the block with suffix replacement
@@ -1051,7 +1035,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			if hiddenPoint {
 				return i.Prev()
 			}
-			if i.syntheticSuffix != nil {
+			if i.transforms.SyntheticSuffix != nil {
 				// The binary search was conducted on keys without suffix replacement,
 				// implying the returned restart point may be less than the search key.
 				//
@@ -1203,24 +1187,24 @@ start:
 	// Manually inlined version of i.decodeInternalKey(i.key).
 	if n := len(i.key) - 8; n >= 0 {
 		trailer := binary.LittleEndian.Uint64(i.key[n:])
-		hiddenPoint := i.hideObsoletePoints &&
+		hiddenPoint := i.transforms.HideObsoletePoints &&
 			(trailer&trailerObsoleteBit != 0)
 		i.ikey.Trailer = trailer & trailerObsoleteMask
 		i.ikey.UserKey = i.key[:n:n]
-		if i.globalSeqNum != 0 {
-			i.ikey.SetSeqNum(i.globalSeqNum)
+		if n := i.transforms.SyntheticSeqNum; n != 0 {
+			i.ikey.SetSeqNum(uint64(n))
 		}
 		if hiddenPoint {
 			goto start
 		}
-		if i.syntheticSuffix != nil {
+		if i.transforms.SyntheticSuffix != nil {
 			// Inlined version of i.maybeReplaceSuffix(true /* allowInPlace */)
 			prefixLen := i.split(i.ikey.UserKey)
-			if cap(i.ikey.UserKey) >= prefixLen+len(i.syntheticSuffix) {
-				i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.syntheticSuffix...)
+			if cap(i.ikey.UserKey) >= prefixLen+len(i.transforms.SyntheticSuffix) {
+				i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.transforms.SyntheticSuffix...)
 			} else {
 				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-				i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
+				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
 				i.ikey.UserKey = i.synthSuffixBuf
 			}
 		}
@@ -1484,21 +1468,21 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 		hiddenPoint := false
 		if n := len(i.key) - 8; n >= 0 {
 			trailer := binary.LittleEndian.Uint64(i.key[n:])
-			hiddenPoint = i.hideObsoletePoints &&
+			hiddenPoint = i.transforms.HideObsoletePoints &&
 				(trailer&trailerObsoleteBit != 0)
 			i.ikey.Trailer = trailer & trailerObsoleteMask
 			i.ikey.UserKey = i.key[:n:n]
-			if i.globalSeqNum != 0 {
-				i.ikey.SetSeqNum(i.globalSeqNum)
+			if n := i.transforms.SyntheticSeqNum; n != 0 {
+				i.ikey.SetSeqNum(uint64(n))
 			}
-			if i.syntheticSuffix != nil {
+			if i.transforms.SyntheticSuffix != nil {
 				// Inlined version of i.maybeReplaceSuffix(true /* allowInPlace */)
 				prefixLen := i.split(i.ikey.UserKey)
-				if cap(i.ikey.UserKey) >= prefixLen+len(i.syntheticSuffix) {
-					i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.syntheticSuffix...)
+				if cap(i.ikey.UserKey) >= prefixLen+len(i.transforms.SyntheticSuffix) {
+					i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.transforms.SyntheticSuffix...)
 				} else {
 					i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-					i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
+					i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
 					i.ikey.UserKey = i.synthSuffixBuf
 				}
 			}
@@ -1550,23 +1534,23 @@ start:
 		i.key = i.cachedBuf[e.keyStart:e.keyEnd]
 		if n := len(i.key) - 8; n >= 0 {
 			trailer := binary.LittleEndian.Uint64(i.key[n:])
-			hiddenPoint := i.hideObsoletePoints &&
+			hiddenPoint := i.transforms.HideObsoletePoints &&
 				(trailer&trailerObsoleteBit != 0)
 			if hiddenPoint {
 				continue
 			}
 			i.ikey.Trailer = trailer & trailerObsoleteMask
 			i.ikey.UserKey = i.key[:n:n]
-			if i.globalSeqNum != 0 {
-				i.ikey.SetSeqNum(i.globalSeqNum)
+			if n := i.transforms.SyntheticSeqNum; n != 0 {
+				i.ikey.SetSeqNum(uint64(n))
 			}
-			if i.syntheticSuffix != nil {
+			if i.transforms.SyntheticSuffix != nil {
 				// Inlined version of i.maybeReplaceSuffix(false /* allowInPlace */)
 				prefixLen := i.split(i.ikey.UserKey)
 				// If ikey is cached or may get cached, we must de-reference
 				// UserKey before prefix replacement.
 				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-				i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
+				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
 				i.ikey.UserKey = i.synthSuffixBuf
 			}
 		} else {
@@ -1646,13 +1630,13 @@ start:
 		// Use the cache.
 		goto start
 	}
-	if i.syntheticSuffix != nil {
+	if i.transforms.SyntheticSuffix != nil {
 		// Inlined version of i.maybeReplaceSuffix(false /* allowInPlace */)
 		prefixLen := i.split(i.ikey.UserKey)
 		// If ikey is cached or may get cached, we must de-reference
 		// UserKey before prefix replacement.
 		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-		i.synthSuffixBuf = append(i.synthSuffixBuf, i.syntheticSuffix...)
+		i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
 		i.ikey.UserKey = i.synthSuffixBuf
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||

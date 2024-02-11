@@ -164,7 +164,7 @@ type singleLevelIterator struct {
 	useFilter              bool
 	lastBloomFilterMatched bool
 
-	hideObsoletePoints bool
+	transforms IterTransforms
 
 	// inPool is set to true before putting the iterator in the reusable pool;
 	// used to detect double-close.
@@ -185,9 +185,10 @@ func (i *singleLevelIterator) init(
 	ctx context.Context,
 	r *Reader,
 	v *virtualState,
+	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilter, hideObsoletePoints bool,
+	useFilter bool,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
@@ -216,9 +217,9 @@ func (i *singleLevelIterator) init(
 	i.reader = r
 	i.cmp = r.Compare
 	i.stats = stats
-	i.hideObsoletePoints = hideObsoletePoints
+	i.transforms = transforms
 	i.bufferPool = bufferPool
-	err = i.index.initHandle(i.cmp, r.Split, indexH, r.Properties.GlobalSeqNum, false, i.getSyntheticSuffx())
+	err = i.index.initHandle(i.cmp, r.Split, indexH, transforms)
 	if err != nil {
 		// blockIter.Close releases indexH and always returns a nil error
 		_ = i.index.Close()
@@ -246,13 +247,6 @@ func (i *singleLevelIterator) init(
 			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(ctx, r.readable, &i.vbRHPrealloc)
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
-	}
-	return nil
-}
-
-func (i *singleLevelIterator) getSyntheticSuffx() SyntheticSuffix {
-	if i.vState != nil {
-		return i.vState.syntheticSuffix
 	}
 	return nil
 }
@@ -448,7 +442,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	i.err = i.data.initHandle(i.cmp, i.reader.Split, block, i.reader.Properties.GlobalSeqNum, i.hideObsoletePoints, i.getSyntheticSuffx())
+	i.err = i.data.initHandle(i.cmp, i.reader.Split, block, i.transforms)
 	if i.err != nil {
 		// The block is partially loaded, and we don't want it to appear valid.
 		i.data.invalidate()

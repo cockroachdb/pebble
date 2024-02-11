@@ -115,7 +115,7 @@ func TestSimpleLevelIter(t *testing.T) {
 			}()
 			var internalIters []internalIterator
 			for i := range readers {
-				iter, err := readers[i].NewIter(nil, nil)
+				iter, err := readers[i].NewIter(sstable.NoTransforms, nil, nil)
 				require.NoError(t, err)
 				internalIters = append(internalIters, iter)
 			}
@@ -241,7 +241,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 
 			var iter sstable.Iterator
 			iter, err = r.NewIterWithBlockPropertyFilters(
-				nil, nil, filterer, false /* useFilterBlock */, nil, /* stats */
+				sstable.NoTransforms, nil, nil, filterer, false /* useFilterBlock */, nil, /* stats */
 				sstable.CategoryAndQoS{}, nil, sstable.TrivialReaderProvider{Reader: r})
 			require.NoError(t, err)
 			defer iter.Close()

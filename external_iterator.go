@@ -183,6 +183,11 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 	if len(it.externalReaders) > cap(mlevels) {
 		mlevels = make([]mergingIterLevel, 0, len(it.externalReaders))
 	}
+	// We set a synthetic sequence number, with lower levels having higer numbers.
+	seqNum := 0
+	for _, readers := range it.externalReaders {
+		seqNum += len(readers)
+	}
 	for _, readers := range it.externalReaders {
 		var combinedIters []internalIterator
 		for _, r := range readers {
@@ -196,15 +201,17 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 			// not have obsolete points (so the performance optimization is
 			// unnecessary), and we don't want to bother constructing a
 			// BlockPropertiesFilterer that includes obsoleteKeyBlockPropertyFilter.
+			transforms := sstable.IterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
+			seqNum--
 			pointIter, err = r.NewIterWithBlockPropertyFiltersAndContextEtc(
-				ctx, it.opts.LowerBound, it.opts.UpperBound, nil, /* BlockPropertiesFilterer */
-				false /* hideObsoletePoints */, false, /* useFilterBlock */
+				ctx, transforms, it.opts.LowerBound, it.opts.UpperBound, nil, /* BlockPropertiesFilterer */
+				false, /* useFilterBlock */
 				&it.stats.InternalStats, it.opts.CategoryAndQoS, nil,
 				sstable.TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return nil, err
 			}
-			rangeDelIter, err = r.NewRawRangeDelIter()
+			rangeDelIter, err = r.NewRawRangeDelIter(transforms)
 			if err != nil {
 				return nil, err
 			}
@@ -268,9 +275,16 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 			// TODO(bilal): Explore adding a simpleRangeKeyLevelIter that does not
 			// operate on FileMetadatas (similar to simpleLevelIter), and implements
 			// this optimization.
+			// We set a synthetic sequence number, with lower levels having higer numbers.
+			seqNum := 0
+			for _, readers := range it.externalReaders {
+				seqNum += len(readers)
+			}
 			for _, readers := range it.externalReaders {
 				for _, r := range readers {
-					if rki, err := r.NewRawRangeKeyIter(); err != nil {
+					transforms := sstable.IterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
+					seqNum--
+					if rki, err := r.NewRawRangeKeyIter(transforms); err != nil {
 						return err
 					} else if rki != nil {
 						rangeKeyIters = append(rangeKeyIters, rki)
@@ -322,9 +336,6 @@ func openExternalTables(
 		if err != nil {
 			return readers, err
 		}
-		// Use the index of the file in files as the sequence number for all of
-		// its keys.
-		r.Properties.GlobalSeqNum = uint64(len(files) - i + seqNumOffset)
 		readers = append(readers, r)
 	}
 	return readers, err

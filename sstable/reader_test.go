@@ -59,7 +59,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 		}
 	}
 
-	i, err := r.NewIter(nil /* lower */, nil /* upper */)
+	i, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +191,7 @@ func TestVirtualReader(t *testing.T) {
 
 	// Set during the latest virtualize command.
 	var v *VirtualReader
+	var transforms IterTransforms
 
 	defer func() {
 		if r != nil {
@@ -289,8 +290,8 @@ func TestVirtualReader(t *testing.T) {
 				return "build must be called at least once before virtualize"
 			}
 			v = nil
-			var params VirtualReaderParams
 
+			var params VirtualReaderParams
 			// Parse the virtualization bounds.
 			bounds := strings.Split(td.CmdArgs[0].String(), "-")
 			params.Lower = base.ParseInternalKey(bounds[0])
@@ -311,6 +312,7 @@ func TestVirtualReader(t *testing.T) {
 			}
 			vr := MakeVirtualReader(r, params)
 			v = &vr
+			transforms = IterTransforms{SyntheticSuffix: params.SyntheticSuffix}
 			return formatVirtualReader(v)
 
 		case "citer":
@@ -323,7 +325,7 @@ func TestVirtualReader(t *testing.T) {
 
 			var rp ReaderProvider
 			var bytesIterated uint64
-			iter, err := v.NewCompactionIter(&bytesIterated, CategoryAndQoS{}, nil, rp, &bp)
+			iter, err := v.NewCompactionIter(transforms, &bytesIterated, CategoryAndQoS{}, nil, rp, &bp)
 			if err != nil {
 				return err.Error()
 			}
@@ -362,7 +364,7 @@ func TestVirtualReader(t *testing.T) {
 			if v == nil {
 				return "virtualize must be called before scan-range-del"
 			}
-			iter, err := v.NewRawRangeDelIter()
+			iter, err := v.NewRawRangeDelIter(transforms)
 			if err != nil {
 				return err.Error()
 			}
@@ -385,7 +387,7 @@ func TestVirtualReader(t *testing.T) {
 			if v == nil {
 				return "virtualize must be called before scan-range-key"
 			}
-			iter, err := v.NewRawRangeKeyIter()
+			iter, err := v.NewRawRangeKeyIter(transforms)
 			if err != nil {
 				return err.Error()
 			}
@@ -416,7 +418,7 @@ func TestVirtualReader(t *testing.T) {
 
 			var stats base.InternalIteratorStats
 			iter, err := v.NewIterWithBlockPropertyFiltersAndContextEtc(
-				context.Background(), lower, upper, nil, false, false,
+				context.Background(), transforms, lower, upper, nil, false,
 				&stats, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
@@ -615,7 +617,7 @@ func TestInjectedErrors(t *testing.T) {
 				return err
 			}
 
-			iter, err := r.NewIter(nil, nil)
+			iter, err := r.NewIter(NoTransforms, nil, nil)
 			if err != nil {
 				return err
 			}
@@ -680,7 +682,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	var buf strings.Builder
 	twoLevelIndex := r.Properties.IndexType == twoLevelIndex
 	buf.WriteString("index entries:\n")
-	iter, err := newBlockIter(r.Compare, r.Split, indexH.Get(), nil /* syntheticSuffix */)
+	iter, err := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 	defer func() {
 		require.NoError(t, iter.Close())
 	}()
@@ -694,7 +696,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 				context.Background(), bh.BlockHandle, nil, nil, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
-			iter2, err := newBlockIter(r.Compare, r.Split, b.Get(), nil /* syntheticSuffix */)
+			iter2, err := newBlockIter(r.Compare, r.Split, b.Get(), NoTransforms)
 			defer func() {
 				require.NoError(t, iter2.Close())
 			}()
@@ -748,7 +750,9 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					return err.Error()
 				}
 				var stats base.InternalIteratorStats
-				r.Properties.GlobalSeqNum = seqNum
+				transforms := IterTransforms{
+					SyntheticSeqNum: SyntheticSeqNum(seqNum),
+				}
 				var bpfs []BlockPropertyFilter
 				if d.HasArg("block-property-filter") {
 					var filterMin, filterMax uint64
@@ -756,13 +760,13 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					bpf := NewTestKeysBlockPropertyFilter(filterMin, filterMax)
 					bpfs = append(bpfs, bpf)
 				}
-				hideObsoletePoints := false
 				if d.HasArg("hide-obsolete-points") {
-					d.ScanArgs(t, "hide-obsolete-points", &hideObsoletePoints)
-					if hideObsoletePoints {
-						hideObsoletePoints, bpfs = r.TryAddBlockPropertyFilterForHideObsoletePoints(
+					d.ScanArgs(t, "hide-obsolete-points", &transforms.HideObsoletePoints)
+					if transforms.HideObsoletePoints {
+						var retHideObsoletePoints bool
+						retHideObsoletePoints, bpfs = r.TryAddBlockPropertyFilterForHideObsoletePoints(
 							InternalKeySeqNumMax, InternalKeySeqNumMax-1, bpfs)
-						require.True(t, hideObsoletePoints)
+						require.True(t, retHideObsoletePoints)
 					}
 				}
 				var filterer *BlockPropertiesFilterer
@@ -779,10 +783,10 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 				}
 				iter, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
 					context.Background(),
+					transforms,
 					nil, /* lower */
 					nil, /* upper */
 					filterer,
-					hideObsoletePoints,
 					true, /* use filter block */
 					&stats,
 					CategoryAndQoS{},
@@ -926,7 +930,7 @@ func testBytesIteratedWithCompression(
 				var pool BufferPool
 				pool.Init(5)
 				citer, err := r.NewCompactionIter(
-					&bytesIterated, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
+					NoTransforms, &bytesIterated, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
 				require.NoError(t, err)
 
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
@@ -984,7 +988,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				var pool BufferPool
 				pool.Init(5)
 				citer, err := r.NewCompactionIter(
-					&bytesIterated, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
+					NoTransforms, &bytesIterated, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
@@ -1040,7 +1044,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		var pool BufferPool
 		pool.Init(5)
 		citer, err := r.NewCompactionIter(
-			nil, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
+			NoTransforms, nil, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
 		require.NoError(t, err)
 		defer citer.Close()
 		i := citer.(*compactionIterator)
@@ -1048,7 +1052,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.vbRH))
 	}
 	{
-		iter, err := r.NewIter(nil, nil)
+		iter, err := r.NewIter(NoTransforms, nil, nil)
 		require.NoError(t, err)
 		defer iter.Close()
 		i := iter.(*singleLevelIterator)
@@ -1220,9 +1224,10 @@ func TestRandomizedSuffixRewriter(t *testing.T) {
 		require.NoError(t, err)
 		iter, err := eReader.newIterWithBlockPropertyFiltersAndContext(
 			context.Background(),
-			nil, nil, nil, false,
+			IterTransforms{SyntheticSuffix: syntheticSuffix},
+			nil, nil, nil,
 			true, nil, CategoryAndQoS{}, nil,
-			TrivialReaderProvider{Reader: eReader}, &virtualState{syntheticSuffix: syntheticSuffix})
+			TrivialReaderProvider{Reader: eReader}, nil /* virtualState */)
 		require.NoError(t, err)
 		return iter, func() {
 			require.NoError(t, iter.Close())
@@ -1370,14 +1375,14 @@ func TestReaderChecksumErrors(t *testing.T) {
 						r, err := newReader(corrupted, ReaderOptions{})
 						require.NoError(t, err)
 
-						iter, err := r.NewIter(nil, nil)
+						iter, err := r.NewIter(NoTransforms, nil, nil)
 						require.NoError(t, err)
 						for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
 						}
 						require.Regexp(t, `checksum mismatch`, iter.Error())
 						require.Regexp(t, `checksum mismatch`, iter.Close())
 
-						iter, err = r.NewIter(nil, nil)
+						iter, err = r.NewIter(NoTransforms, nil, nil)
 						require.NoError(t, err)
 						for k, _ := iter.Last(); k != nil; k, _ = iter.Prev() {
 						}
@@ -1744,7 +1749,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, bm.options, false, 0)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
@@ -1765,7 +1770,7 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, bm.options, false, 0)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
@@ -1786,7 +1791,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, bm.options, false, 0)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 
 				b.ResetTimer()
@@ -1815,7 +1820,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, bm.options, false, 0)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 
 				b.ResetTimer()
@@ -1895,7 +1900,7 @@ func BenchmarkSeqSeekGEExhausted(b *testing.B) {
 						} else {
 							seekKeys = postKeys
 						}
-						it, err := reader.NewIter(nil /* lower */, upper)
+						it, err := reader.NewIter(NoTransforms, nil /* lower */, upper)
 						require.NoError(b, err)
 						b.ResetTimer()
 						pos := 0
@@ -2002,7 +2007,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 						}()
 						for _, readValue := range []bool{false, true} {
 							b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
-								iter, err := r.NewIter(nil, nil)
+								iter, err := r.NewIter(NoTransforms, nil, nil)
 								require.NoError(b, err)
 								var k *InternalKey
 								var v base.LazyValue
@@ -2146,7 +2151,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 				b.Run(fmt.Sprintf("method=%s", method), func(b *testing.B) {
 					for _, readValue := range []bool{false, true} {
 						b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
-							iter, err := r.NewIter(nil, nil)
+							iter, err := r.NewIter(NoTransforms, nil, nil)
 							require.NoError(b, err)
 							var nextFunc func(index int) (*InternalKey, base.LazyValue)
 							switch method {
@@ -2277,8 +2282,9 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 										b.Fatalf("sstable does not intersect")
 									}
 								}
+								transforms := IterTransforms{HideObsoletePoints: hideObsoletePoints}
 								iter, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
-									context.Background(), nil, nil, filterer, hideObsoletePoints,
+									context.Background(), transforms, nil, nil, filterer,
 									true, nil, CategoryAndQoS{}, nil,
 									TrivialReaderProvider{Reader: r})
 								require.NoError(b, err)
