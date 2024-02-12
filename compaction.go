@@ -2050,56 +2050,8 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				d.mu.versions.metrics.Flush.AsIngestTableCount += l.TablesIngested
 			}
 		}
+		d.maybeTransitionSnapshotsToFileOnlyLocked()
 
-		// Update if any eventually file-only snapshots have now transitioned to
-		// being file-only.
-		earliestUnflushedSeqNum := d.getEarliestUnflushedSeqNumLocked()
-		currentVersion := d.mu.versions.currentVersion()
-		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; {
-			if s.efos == nil {
-				s = s.next
-				continue
-			}
-			overlapsFlushable := false
-			if base.Visible(earliestUnflushedSeqNum, s.efos.seqNum, InternalKeySeqNumMax) {
-				// There are some unflushed keys that are still visible to the EFOS.
-				// Check if any memtables older than the EFOS contain keys within a
-				// protected range of the EFOS. If no, we can transition.
-				protectedRanges := make([]bounded, len(s.efos.protectedRanges))
-				for i := range s.efos.protectedRanges {
-					protectedRanges[i] = s.efos.protectedRanges[i]
-				}
-				for i := range d.mu.mem.queue {
-					if !base.Visible(d.mu.mem.queue[i].logSeqNum, s.efos.seqNum, InternalKeySeqNumMax) {
-						// All keys in this memtable are newer than the EFOS. Skip this
-						// memtable.
-						continue
-					}
-					// NB: computePossibleOverlaps could have false positives, such as if
-					// the flushable is a flushable ingest and not a memtable. In that
-					// case we don't open the sstables to check; we just pessimistically
-					// assume an overlap.
-					d.mu.mem.queue[i].computePossibleOverlaps(func(b bounded) shouldContinue {
-						overlapsFlushable = true
-						return stopIteration
-					}, protectedRanges...)
-					if overlapsFlushable {
-						break
-					}
-				}
-			}
-			if overlapsFlushable {
-				s = s.next
-				continue
-			}
-			currentVersion.Ref()
-
-			// NB: s.efos.transitionToFileOnlySnapshot could close s, in which
-			// case s.next would be nil. Save it before calling it.
-			next := s.next
-			_ = s.efos.transitionToFileOnlySnapshot(currentVersion)
-			s = next
-		}
 	}
 	// Signal FlushEnd after installing the new readState. This helps for unit
 	// tests that use the callback to trigger a read using an iterator with
@@ -2124,6 +2076,61 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 
 	return bytesFlushed, err
+}
+
+// maybeTransitionSnapshotsToFileOnlyLocked transitions any "eventually
+// file-only" snapshots to be file-only if all their visible state has been
+// flushed to sstables.
+//
+// REQUIRES: d.mu.
+func (d *DB) maybeTransitionSnapshotsToFileOnlyLocked() {
+	earliestUnflushedSeqNum := d.getEarliestUnflushedSeqNumLocked()
+	currentVersion := d.mu.versions.currentVersion()
+	for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; {
+		if s.efos == nil {
+			s = s.next
+			continue
+		}
+		overlapsFlushable := false
+		if base.Visible(earliestUnflushedSeqNum, s.efos.seqNum, InternalKeySeqNumMax) {
+			// There are some unflushed keys that are still visible to the EFOS.
+			// Check if any memtables older than the EFOS contain keys within a
+			// protected range of the EFOS. If no, we can transition.
+			protectedRanges := make([]bounded, len(s.efos.protectedRanges))
+			for i := range s.efos.protectedRanges {
+				protectedRanges[i] = s.efos.protectedRanges[i]
+			}
+			for i := range d.mu.mem.queue {
+				if !base.Visible(d.mu.mem.queue[i].logSeqNum, s.efos.seqNum, InternalKeySeqNumMax) {
+					// All keys in this memtable are newer than the EFOS. Skip this
+					// memtable.
+					continue
+				}
+				// NB: computePossibleOverlaps could have false positives, such as if
+				// the flushable is a flushable ingest and not a memtable. In that
+				// case we don't open the sstables to check; we just pessimistically
+				// assume an overlap.
+				d.mu.mem.queue[i].computePossibleOverlaps(func(b bounded) shouldContinue {
+					overlapsFlushable = true
+					return stopIteration
+				}, protectedRanges...)
+				if overlapsFlushable {
+					break
+				}
+			}
+		}
+		if overlapsFlushable {
+			s = s.next
+			continue
+		}
+		currentVersion.Ref()
+
+		// NB: s.efos.transitionToFileOnlySnapshot could close s, in which
+		// case s.next would be nil. Save it before calling it.
+		next := s.next
+		_ = s.efos.transitionToFileOnlySnapshot(currentVersion)
+		s = next
+	}
 }
 
 // maybeScheduleCompactionAsync should be used when
