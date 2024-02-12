@@ -622,7 +622,7 @@ func (m *mergingIter) maybeNextEntryWithinPrefix(l *mergingIterLevel) error {
 // item in the heap.
 //
 // nextEntry should be called directly when not in prefix-iteration mode, or by
-// Next.  During prefix iteration mode, all other callers should use
+// Next. During prefix iteration mode, all other callers should use
 // maybeNextEntryWithinPrefix which will avoid advancing the iterator if the
 // current iteration prefix has been exhausted. See the comment within
 // nextEntry's body for an explanation of why other callers should call
@@ -1064,6 +1064,12 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 		l := &m.levels[level]
 		if m.prefix != nil {
 			l.iterKey, l.iterValue = l.iter.SeekPrefixGE(m.prefix, key, flags)
+			if l.iterKey != nil {
+				if n := m.split(l.iterKey.UserKey); !bytes.Equal(m.prefix, l.iterKey.UserKey[:n]) {
+					l.iterKey = nil
+					l.iterValue = base.LazyValue{}
+				}
+			}
 		} else {
 			l.iterKey, l.iterValue = l.iter.SeekGE(key, flags)
 		}
@@ -1131,7 +1137,13 @@ func (m *mergingIter) SeekPrefixGE(
 	if m.err != nil {
 		return nil, base.LazyValue{}
 	}
-	return m.findNextEntry()
+	iterKey, iterValue := m.findNextEntry()
+	if iterKey != nil {
+		if n := m.split(iterKey.UserKey); !bytes.Equal(m.prefix, iterKey.UserKey[:n]) {
+			return nil, base.LazyValue{}
+		}
+	}
+	return iterKey, iterValue
 }
 
 // Seeks levels >= level to < key. Additionally uses range tombstones to extend the seeks.
@@ -1262,10 +1274,23 @@ func (m *mergingIter) Next() (*InternalKey, base.LazyValue) {
 	// During prefix iteration mode, we rely on the caller to not call Next if
 	// the iterator has already advanced beyond the iteration prefix. See the
 	// comment above the base.InternalIterator interface.
-	if m.err = m.nextEntry(m.heap.items[0], nil /* succKey */); m.err != nil {
+	if m.prefix == nil {
+		if m.err = m.nextEntry(m.heap.items[0], nil /* succKey */); m.err != nil {
+			return nil, base.LazyValue{}
+		}
+		return m.findNextEntry()
+	}
+
+	if m.err = m.maybeNextEntryWithinPrefix(m.heap.items[0]); m.err != nil {
 		return nil, base.LazyValue{}
 	}
-	return m.findNextEntry()
+	iterKey, iterValue := m.findNextEntry()
+	if m.prefix != nil && iterKey != nil {
+		if n := m.split(iterKey.UserKey); !bytes.Equal(m.prefix, iterKey.UserKey[:n]) {
+			return nil, base.LazyValue{}
+		}
+	}
+	return iterKey, iterValue
 }
 
 func (m *mergingIter) NextPrefix(succKey []byte) (*InternalKey, LazyValue) {

@@ -73,7 +73,7 @@ seek-prefix-ge a0
 next
 ----
 a0:0
-a1:1
+.
 
 iter
 seek-prefix-ge a0
@@ -187,9 +187,9 @@ seek-prefix-ge aaa
 next
 ----
 a:0
-aa:1
+.
 aaa:2
-b:3
+.
 
 iter
 seek-prefix-ge aa
@@ -204,16 +204,7 @@ next
 prev
 ----
 aa:1
-aaa:2
-err=pebble: unsupported reverse prefix iteration
-
-iter
-seek-prefix-ge aa
-next
-prev
-----
-aa:1
-aaa:2
+.
 err=pebble: unsupported reverse prefix iteration
 
 iter
@@ -221,7 +212,7 @@ seek-prefix-ge aaa
 next
 ----
 aaa:2
-b:3
+.
 
 iter
 seek-prefix-ge aaa

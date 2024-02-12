@@ -75,7 +75,6 @@ a: (c, .)
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
 (internal-stats: (block-bytes: (total 0B, cached 0B, read-time 0s)), (points: (count 2, key-bytes 2B, value-bytes 2B, tombstoned 0)))
 
-
 define
 a.DEL.2:
 a.SET.1:b
@@ -126,8 +125,7 @@ iter seq=2
 seek-prefix-ge 1
 ----
 .
-stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 0B, cached 0B, read-time 0s)), (points: (count 1, key-bytes 1B, value-bytes 0B, tombstoned 0)))
+stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0))
 
 define
 a.DEL.2:
@@ -837,8 +835,7 @@ iter seq=3
 seek-prefix-ge 1
 ----
 .
-stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 0B, cached 0B, read-time 0s)), (points: (count 1, key-bytes 1B, value-bytes 1B, tombstoned 0)))
+stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0))
 
 iter seq=3
 seek-prefix-ge a
@@ -1372,6 +1369,18 @@ a: (a, .)
 b: (b, .)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 0B, cached 0B, read-time 0s)), (points: (count 2, key-bytes 2B, value-bytes 2B, tombstoned 0)))
+
+define
+a.SET.2:a
+b.SET.1:b
+----
+
+iter seq=2
+seek-prefix-ge a
+----
+.
+stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)),
 (internal-stats: (block-bytes: (total 0B, cached 0B, read-time 0s)), (points: (count 2, key-bytes 2B, value-bytes 2B, tombstoned 0)))
 
 define

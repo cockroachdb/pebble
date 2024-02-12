@@ -591,7 +591,7 @@ seek-prefix-ge d true
 a#10,1:a10
 .
 .
-d#10,1:d10
+.
 d#10,1:d10
 
 iter
