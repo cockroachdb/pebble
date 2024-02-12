@@ -25,6 +25,12 @@ func (c *errorIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 func (c *errorIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, base.LazyValue) {
+	return c.SeekPrefixGEStrict(prefix, key, flags)
+}
+
+func (c *errorIter) SeekPrefixGEStrict(
+	prefix, key []byte, flags base.SeekGEFlags,
+) (*base.InternalKey, base.LazyValue) {
 	return nil, base.LazyValue{}
 }
 

@@ -1486,7 +1486,7 @@ func (i *Iterator) constructPointIter(
 	buf.merging.snapshot = i.seqNum
 	buf.merging.batchSnapshot = i.batchSeqNum
 	buf.merging.combinedIterState = &i.lazyCombinedIter.combinedIterState
-	i.pointIter = invalidating.MaybeWrapIfInvariants(&buf.merging)
+	i.pointIter = invalidating.MaybeWrapIfInvariants(&buf.merging).(topLevelIterator)
 	i.merging = &buf.merging
 }
 

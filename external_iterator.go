@@ -166,7 +166,7 @@ func validateExternalIterOpts(iterOpts *IterOptions) error {
 	return nil
 }
 
-func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterator, error) {
+func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterator, error) {
 	// TODO(jackson): In some instances we could generate fewer levels by using
 	// L0Sublevels code to organize nonoverlapping files into the same level.
 	// This would allow us to use levelIters and keep a smaller set of data and
@@ -235,15 +235,6 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 				rangeDelIter: nil,
 			})
 		}
-	}
-	if len(mlevels) == 1 && mlevels[0].rangeDelIter == nil {
-		// Set closePointIterOnce to true. This is because we're bypassing the
-		// merging iter, which turns Close()s on it idempotent for any child
-		// iterators. The outer Iterator could call Close() on a point iter twice,
-		// which sstable iterators do not support (as they release themselves to
-		// a pool).
-		it.closePointIterOnce = true
-		return mlevels[0].iter, nil
 	}
 
 	it.alloc.merging.init(&it.opts, &it.stats.InternalStats, it.comparer.Compare, it.comparer.Split, mlevels...)

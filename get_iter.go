@@ -55,6 +55,12 @@ func (g *getIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, base
 func (g *getIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, base.LazyValue) {
+	return g.SeekPrefixGEStrict(prefix, key, flags)
+}
+
+func (g *getIter) SeekPrefixGEStrict(
+	prefix, key []byte, flags base.SeekGEFlags,
+) (*base.InternalKey, base.LazyValue) {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 

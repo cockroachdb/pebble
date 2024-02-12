@@ -214,6 +214,16 @@ type InternalIterator interface {
 	fmt.Stringer
 }
 
+// TopLevelIterator extends InternalIterator to include an additional absolute
+// positioning method, SeekPrefixGEStrict.
+type TopLevelIterator interface {
+	InternalIterator
+
+	// SeekPrefixGEStrict extends InternalIterator.SeekPrefixGE with a guarantee
+	// that the iterator only returns keys matching the prefix.
+	SeekPrefixGEStrict(prefix, key []byte, flags SeekGEFlags) (*InternalKey, LazyValue)
+}
+
 // SeekGEFlags holds flags that may configure the behavior of a forward seek.
 // Not all flags are relevant to all iterators.
 type SeekGEFlags uint8
