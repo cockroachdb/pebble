@@ -486,3 +486,26 @@ b: (., [b-d) @2=foo UPDATED)
 b: (., [b-d) @2=foo UPDATED)
 b: (., [b-d) @2=foo)
 .
+
+# Test Next-ing while in prefix iteration mode when using the keyspan iterator prefix
+# seek optimization (after a SeekGE(a) the keyspan iterator can avoid reseeking for
+# a SeekPrefixGE if the prefix falls within the previous span's bounds).
+
+reset
+----
+
+batch commit
+set a a
+range-key-set a b @1 foo
+range-key-set b d @2 bar
+----
+committed 3 keys
+
+combined-iter
+seek-ge a
+seek-prefix-ge a
+next
+----
+a: (a, [a-b) @1=foo UPDATED)
+a: (a, [a-"a\x00") @1=foo UPDATED)
+.
