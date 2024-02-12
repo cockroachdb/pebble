@@ -15,6 +15,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // flushable defines the interface for immutable memtables.
@@ -78,6 +80,10 @@ type flushableEntry struct {
 	delayedFlushForcedAt time.Time
 	// logNum corresponds to the WAL that contains the records present in the
 	// receiver.
+	//
+	// TODO(aadityas,jackson): We'll need to do something about this (and
+	// logSize) for entries corresponding to bufferedSSTables since there may be
+	// multiple associated log nums.
 	logNum base.DiskFileNum
 	// logSize is the size in bytes of the associated WAL. Protected by DB.mu.
 	logSize uint64
@@ -311,6 +317,106 @@ func (s *ingestedFlushable) computePossibleOverlaps(
 			}
 		}
 	}
+}
+
+// bufferedSSTables holds a set of in-memory sstables produced by a flush.
+// Buffering flushed state reduces write amplification by making it more likely
+// that we're able to drop KVs before they reach disk.
+type bufferedSSTables struct {
+	metas   []*fileMetadata
+	readers []*sstable.Reader
+}
+
+var (
+	// Assert that *bufferedSSTables implements the flushable interface.
+	_ flushable = (*bufferedSSTables)(nil)
+	// Assert that *bufferedSSTables implements the objectCreator interface.
+	_ objectCreator = (*bufferedSSTables)(nil)
+)
+
+// newIter is part of the flushable interface.
+func (b *bufferedSSTables) newIter(o *IterOptions) internalIterator {
+	panic("TODO")
+}
+
+// newFlushIter is part of the flushable interface.
+func (b *bufferedSSTables) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
+	panic("TODO")
+}
+
+func (b *bufferedSSTables) constructRangeDelIter(
+	file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
+) (keyspan.FragmentIterator, error) {
+	panic("TODO")
+}
+
+// newRangeDelIter is part of the flushable interface.
+//
+// TODO(sumeer): *IterOptions are being ignored, so the index block load for
+// the point iterator in constructRangeDeIter is not tracked.
+func (b *bufferedSSTables) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
+	panic("TODO")
+}
+
+// newRangeKeyIter is part of the flushable interface.
+func (b *bufferedSSTables) newRangeKeyIter(o *IterOptions) keyspan.FragmentIterator {
+	if !b.containsRangeKeys() {
+		return nil
+	}
+	panic("TODO")
+}
+
+// containsRangeKeys is part of the flushable interface.
+func (b *bufferedSSTables) containsRangeKeys() bool {
+	panic("TODO")
+}
+
+// inuseBytes is part of the flushable interface.
+func (b *bufferedSSTables) inuseBytes() uint64 {
+	panic("TODO")
+}
+
+// totalBytes is part of the flushable interface.
+func (b *bufferedSSTables) totalBytes() uint64 {
+	panic("TODO")
+}
+
+// readyForFlush is part of the flushable interface.
+func (b *bufferedSSTables) readyForFlush() bool {
+	// Buffered sstables are always ready for flush; they're immutable.
+	return true
+}
+
+// computePossibleOverlaps is part of the flushable interface.
+func (b *bufferedSSTables) computePossibleOverlaps(
+	fn func(bounded) shouldContinue, bounded ...bounded,
+) {
+	panic("TODO")
+}
+
+// Create implements the objectCreator interface.
+func (b *bufferedSSTables) Create(
+	ctx context.Context,
+	fileType base.FileType,
+	FileNum base.DiskFileNum,
+	opts objstorage.CreateOptions,
+) (w objstorage.Writable, meta objstorage.ObjectMetadata, err error) {
+	panic("TODO")
+}
+
+// Path implements the objectCreator interface.
+func (b *bufferedSSTables) Path(meta objstorage.ObjectMetadata) string {
+	panic("TODO")
+}
+
+// Remove implements the objectCreator interface.
+func (b *bufferedSSTables) Remove(fileType base.FileType, FileNum base.DiskFileNum) error {
+	panic("TODO")
+}
+
+// Sync implements the objectCreator interface.
+func (b *bufferedSSTables) Sync() error {
+	panic("TODO")
 }
 
 // computePossibleOverlapsGenericImpl is an implemention of the flushable
