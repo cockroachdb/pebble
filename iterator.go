@@ -526,13 +526,6 @@ func (i *Iterator) findNextEntry(limit []byte) {
 	}
 
 	for i.iterKey != nil {
-		key := *i.iterKey
-
-		if i.hasPrefix {
-			if n := i.split(key.UserKey); !i.equal(i.prefixOrFullSeekKey, key.UserKey[:n]) {
-				return
-			}
-		}
 		// Compare with limit every time we start at a different user key.
 		// Note that given the best-effort contract of limit, we could avoid a
 		// comparison in the common case by doing this only after
@@ -546,6 +539,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			return
 		}
 
+		key := *i.iterKey
 		// If the user has configured a SkipPoint function, invoke it to see
 		// whether we should skip over the current user key.
 		if i.opts.SkipPoint != nil && key.Kind() != InternalKeyKindRangeKeySet && i.opts.SkipPoint(i.iterKey.UserKey) {
@@ -563,6 +557,11 @@ func (i *Iterator) findNextEntry(limit []byte) {
 
 		switch key.Kind() {
 		case InternalKeyKindRangeKeySet:
+			if i.hasPrefix {
+				if n := i.split(key.UserKey); !i.equal(i.prefixOrFullSeekKey, key.UserKey[:n]) {
+					return
+				}
+			}
 			// Save the current key.
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
@@ -1867,7 +1866,7 @@ func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 			i.iterValidityState = IterExhausted
 			return i.iterValidityState
 		} else if i.iterValidityState == IterExhausted {
-			// No-op, already exhasuted. We avoid executing the Next because it
+			// No-op, already exhausted. We avoid executing the Next because it
 			// can break invariants: Specifically, a file that fails the bloom
 			// filter test may result in its level being removed from the
 			// merging iterator. The level's removal can cause a lazy combined

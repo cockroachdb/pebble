@@ -927,6 +927,7 @@ func TestIteratorSeekOpt(t *testing.T) {
 				}
 				return iters, err
 			}
+			d.opts.Comparer.Split = func(a []byte) int { return len(a) }
 			return s
 
 		case "iter":
@@ -940,7 +941,7 @@ func TestIteratorSeekOpt(t *testing.T) {
 				}
 				iter, _ = snap.NewIter(nil)
 				iter.readSampling.forceReadSampling = true
-				iter.comparer.Split = func(a []byte) int { return len(a) }
+				iter.comparer.Split = d.opts.Comparer.Split
 				iter.forceEnableSeekOpt = true
 				iter.merging.forceEnableSeekOpt = true
 			}
