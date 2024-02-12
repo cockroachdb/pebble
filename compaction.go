@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -488,7 +489,7 @@ func (k compactionKind) String() string {
 }
 
 // rangeKeyCompactionTransform is used to transform range key spans as part of the
-// keyspan.MergingIter. As part of this transformation step, we can elide range
+// keyspanimpl.MergingIter. As part of this transformation step, we can elide range
 // keys in the last snapshot stripe, as well as coalesce range keys within
 // snapshot stripes.
 func rangeKeyCompactionTransform(
@@ -1162,7 +1163,7 @@ func (c *compaction) elideRangeKey(start, end []byte) bool {
 
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
-	newIters tableNewIters, newRangeKeyIter keyspan.TableNewSpanIter, snapshots []uint64,
+	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter, snapshots []uint64,
 ) (_ internalIterator, retErr error) {
 	// Validate the ordering of compaction input files for defense in depth.
 	if len(c.flushing) == 0 {
@@ -1266,10 +1267,10 @@ func (c *compaction) newInputIter(
 					bytesIterated: &c.bytesIterated,
 					bufferPool:    &c.bufferPool,
 				}))
-			// TODO(jackson): Use keyspan.LevelIter to avoid loading all the range
-			// deletions into memory upfront. (See #2015, which reverted this.)
-			// There will be no user keys that are split between sstables
-			// within a level in Cockroach 23.1, which unblocks this optimization.
+			// TODO(jackson): Use keyspanimpl.LevelIter to avoid loading all the range
+			// deletions into memory upfront. (See #2015, which reverted this.) There
+			// will be no user keys that are split between sstables within a level in
+			// Cockroach 23.1, which unblocks this optimization.
 
 			// Add the range deletion iterator for each file as an independent level
 			// in mergingIter, as opposed to making a levelIter out of those. This
@@ -1326,7 +1327,7 @@ func (c *compaction) newInputIter(
 				}
 			}
 			if hasRangeKeys {
-				li := &keyspan.LevelIter{}
+				li := &keyspanimpl.LevelIter{}
 				newRangeKeyIterWrapper := func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 					iter, err := newRangeKeyIter(file, iterOptions)
 					if err != nil {
@@ -1390,24 +1391,24 @@ func (c *compaction) newInputIter(
 	// levelIter per level to iterate over the point operations, and collect up
 	// all the range deletion files.
 	//
-	// The range deletion levels are combined with a keyspan.MergingIter. The
+	// The range deletion levels are combined with a keyspanimpl.MergingIter. The
 	// resulting merged rangedel iterator is then included using an
 	// InterleavingIter.
 	// TODO(jackson): Consider using a defragmenting iterator to stitch together
 	// logical range deletions that were fragmented due to previous file
 	// boundaries.
 	if len(rangeDelIters) > 0 {
-		mi := &keyspan.MergingIter{}
-		mi.Init(c.cmp, keyspan.NoopTransform, new(keyspan.MergingBuffers), rangeDelIters...)
+		mi := &keyspanimpl.MergingIter{}
+		mi.Init(c.cmp, keyspan.NoopTransform, new(keyspanimpl.MergingBuffers), rangeDelIters...)
 		c.rangeDelInterleaving.Init(c.comparer, iter, mi, keyspan.InterleavingIterOpts{})
 		iter = &c.rangeDelInterleaving
 	}
 
 	// If there are range key iterators, we need to combine them using
-	// keyspan.MergingIter, and then interleave them among the points.
+	// keyspanimpl.MergingIter, and then interleave them among the points.
 	if len(rangeKeyIters) > 0 {
-		mi := &keyspan.MergingIter{}
-		mi.Init(c.cmp, rangeKeyCompactionTransform(c.equal, snapshots, c.elideRangeKey), new(keyspan.MergingBuffers), rangeKeyIters...)
+		mi := &keyspanimpl.MergingIter{}
+		mi.Init(c.cmp, rangeKeyCompactionTransform(c.equal, snapshots, c.elideRangeKey), new(keyspanimpl.MergingBuffers), rangeKeyIters...)
 		di := &keyspan.DefragmentingIter{}
 		di.Init(c.comparer, mi, keyspan.DefragmentInternal, keyspan.StaticDefragmentReducer, new(keyspan.DefragmentingBuffers))
 		c.rangeKeyInterleaving.Init(c.comparer, iter, di, keyspan.InterleavingIterOpts{})
@@ -3404,25 +3405,23 @@ func (d *DB) runCompaction(
 
 				// The interleaved range deletion might only be one of many with
 				// these bounds. Some fragmenting is performed ahead of time by
-				// keyspan.MergingIter.
+				// keyspanimpl.MergingIter.
 				if s := c.rangeDelInterleaving.Span(); !s.Empty() {
-					// The memory management here is subtle. Range deletions
-					// blocks do NOT use prefix compression, which ensures that
-					// range deletion spans' memory is available as long we keep
-					// the iterator open. However, the keyspan.MergingIter that
-					// merges spans across levels only guarantees the lifetime
-					// of the [start, end) bounds until the next positioning
-					// method is called.
+					// The memory management here is subtle. Range deletions blocks do NOT
+					// use prefix compression, which ensures that range deletion spans'
+					// memory is available as long we keep the iterator open. However, the
+					// keyspanimpl.MergingIter that merges spans across levels only
+					// guarantees the lifetime of the [start, end) bounds until the next
+					// positioning method is called.
 					//
-					// Additionally, the Span.Keys slice is owned by the the
-					// range deletion iterator stack, and it may be overwritten
-					// when we advance.
+					// Additionally, the Span.Keys slice is owned by the the range
+					// deletion iterator stack, and it may be overwritten when we advance.
 					//
 					// Clone the Keys slice and the start and end keys.
 					//
-					// TODO(jackson): Avoid the clone by removing c.rangeDelFrag
-					// and performing explicit truncation of the pending
-					// rangedel span as necessary.
+					// TODO(jackson): Avoid the clone by removing c.rangeDelFrag and
+					// performing explicit truncation of the pending rangedel span as
+					// necessary.
 					clone := keyspan.Span{
 						Start: iter.cloneKey(s.Start),
 						End:   iter.cloneKey(s.End),

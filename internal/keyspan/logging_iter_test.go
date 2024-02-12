@@ -33,7 +33,7 @@ func TestLoggingIter(t *testing.T) {
 			// Wrap with an assert as a very simple "stack" example.
 			iter = Assert(iter, base.DefaultComparer.Compare)
 			iter = InjectLogging(iter, l)
-			runFragmentIteratorCmd(iter, d.Input, nil)
+			RunFragmentIteratorCmd(iter, d.Input, nil)
 			require.NoError(t, iter.Close())
 			out := l.String()
 			// Hide pointer values.

@@ -70,7 +70,7 @@ func (m *maskingHooks) SkipPoint(userKey []byte) bool {
 
 func runInterleavingIterTest(t *testing.T, filename string) {
 	cmp := testkeys.Comparer.Compare
-	var keyspanIter MergingIter
+	var keyspanIter FragmentIterator
 	var pointIter pointIterator
 	var iter InterleavingIter
 	var buf bytes.Buffer
@@ -108,9 +108,9 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			for _, line := range lines {
 				spans = append(spans, ParseSpan(line))
 			}
-			keyspanIter.Init(cmp, NoopTransform, new(MergingBuffers), NewIter(cmp, spans))
+			keyspanIter = NewIter(cmp, spans)
 			hooks.maskSuffix = nil
-			iter.Init(testkeys.Comparer, &pointIter, &keyspanIter,
+			iter.Init(testkeys.Comparer, &pointIter, keyspanIter,
 				InterleavingIterOpts{Mask: &hooks})
 			return "OK"
 		case "define-pointkeys":
@@ -121,7 +121,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			}
 			pointIter = pointIterator{cmp: cmp, keys: points}
 			hooks.maskSuffix = nil
-			iter.Init(testkeys.Comparer, &pointIter, &keyspanIter,
+			iter.Init(testkeys.Comparer, &pointIter, keyspanIter,
 				InterleavingIterOpts{Mask: &hooks})
 			return "OK"
 		case "iter":

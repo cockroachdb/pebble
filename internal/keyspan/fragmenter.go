@@ -451,7 +451,7 @@ func (f *Fragmenter) flush(buf []Span, lastKey []byte) {
 			// indefinitely.
 			//
 			// Eventually, we should be able to replace the fragmenter with the
-			// keyspan.MergingIter which will perform just-in-time
+			// keyspanimpl.MergingIter which will perform just-in-time
 			// fragmentation, and only guaranteeing the memory lifetime for the
 			// current span. The MergingIter fragments while only needing to
 			// access one Span per level. It only accesses the Span at the

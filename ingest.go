@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -815,7 +816,7 @@ func overlapWithIterator(
 // is returned as the splitFile.
 func ingestTargetLevel(
 	newIters tableNewIters,
-	newRangeKeyIter keyspan.TableNewSpanIter,
+	newRangeKeyIter keyspanimpl.TableNewSpanIter,
 	iterOps IterOptions,
 	comparer *Comparer,
 	v *version,
@@ -909,7 +910,7 @@ func ingestTargetLevel(
 		// sets it up for the target file.
 		iter.initRangeDel(&rangeDelIter)
 
-		levelIter := keyspan.LevelIter{}
+		levelIter := keyspanimpl.LevelIter{}
 		levelIter.Init(
 			keyspan.SpanIterOptions{}, comparer.Compare, newRangeKeyIter,
 			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), manifest.KeyTypeRange,
@@ -939,7 +940,7 @@ func ingestTargetLevel(
 		// sets it up for the target file.
 		levelIter.initRangeDel(&rangeDelIter)
 
-		rkeyLevelIter := &keyspan.LevelIter{}
+		rkeyLevelIter := &keyspanimpl.LevelIter{}
 		rkeyLevelIter.Init(
 			keyspan.SpanIterOptions{}, comparer.Compare, newRangeKeyIter,
 			v.Levels[level].Iter(), manifest.Level(level), manifest.KeyTypeRange,
@@ -1955,7 +1956,7 @@ func (d *DB) excise(
 
 type ingestTargetLevelFunc func(
 	newIters tableNewIters,
-	newRangeKeyIter keyspan.TableNewSpanIter,
+	newRangeKeyIter keyspanimpl.TableNewSpanIter,
 	iterOps IterOptions,
 	comparer *Comparer,
 	v *version,
