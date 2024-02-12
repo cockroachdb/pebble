@@ -37,6 +37,8 @@ type InternalKey = base.InternalKey
 
 type internalIterator = base.InternalIterator
 
+type topLevelIterator = base.TopLevelIterator
+
 // ErrCorruption is a marker to indicate that data in a file (WAL, MANIFEST,
 // sstable) isn't in the expected format.
 var ErrCorruption = base.ErrCorruption

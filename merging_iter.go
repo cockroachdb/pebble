@@ -603,31 +603,8 @@ func (m *mergingIter) switchToMaxHeap() error {
 	return m.initMaxHeap()
 }
 
-// maybeNextEntryWithinPrefix steps to the next entry, as long as the iteration
-// prefix has not already been exceeded. If it has, it exhausts the iterator by
-// resetting the heap to empty.
-func (m *mergingIter) maybeNextEntryWithinPrefix(l *mergingIterLevel) error {
-	if s := m.split(l.iterKey.UserKey); !bytes.Equal(m.prefix, l.iterKey.UserKey[:s]) {
-		// The item at the root of the heap already exceeds the iteration
-		// prefix. We should not advance any more. Clear the heap to reflect
-		// that the iterator is now exhausted (within this prefix, at
-		// least).
-		m.heap.items = m.heap.items[:0]
-		return nil
-	}
-	return m.nextEntry(l, nil /* succKey */)
-}
-
 // nextEntry unconditionally steps to the next entry. item is the current top
 // item in the heap.
-//
-// nextEntry should be called directly when not in prefix-iteration mode, or by
-// Next.  During prefix iteration mode, all other callers should use
-// maybeNextEntryWithinPrefix which will avoid advancing the iterator if the
-// current iteration prefix has been exhausted. See the comment within
-// nextEntry's body for an explanation of why other callers should call
-// maybeNextEntryWithinPrefix, which will ensure the documented invariant is
-// preserved.
 func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 	// INVARIANT: If in prefix iteration mode, item.iterKey must have a prefix equal
 	// to m.prefix. This invariant is important for ensuring TrySeekUsingNext
@@ -665,8 +642,19 @@ func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 		l.iterKey, l.iterValue = l.iter.NextPrefix(succKey)
 	}
 
-	if l.iterKey != nil {
-		if m.heap.len() > 1 {
+	if l.iterKey == nil {
+		if err := l.iter.Error(); err != nil {
+			return err
+		}
+		m.heap.pop()
+	} else {
+		if m.prefix != nil && !bytes.Equal(m.prefix, l.iterKey.UserKey[:m.split(l.iterKey.UserKey)]) {
+			// Set keys without a matching prefix to their zero values when in prefix
+			// iteration mode and remove iterated level from heap.
+			l.iterKey = nil
+			l.iterValue = base.LazyValue{}
+			m.heap.pop()
+		} else if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
 		if l.rangeDelIter != oldRangeDelIter {
@@ -674,11 +662,6 @@ func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 			// next sstable. We have to update the tombstone for oldTopLevel as well.
 			oldTopLevel--
 		}
-	} else {
-		if err := l.iter.Error(); err != nil {
-			return err
-		}
-		m.heap.pop()
 	}
 
 	// The cached tombstones are only valid for the levels
@@ -797,13 +780,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterLevel) (bool, error) {
 				return true, nil
 			}
 			if l.tombstone.CoversAt(m.snapshot, item.iterKey.SeqNum()) {
-				var err error
-				if m.prefix == nil {
-					err = m.nextEntry(item, nil /* succKey */)
-				} else {
-					err = m.maybeNextEntryWithinPrefix(item)
-				}
-				if err != nil {
+				if err := m.nextEntry(item, nil /* succKey */); err != nil {
 					return false, err
 				}
 				return true, nil
@@ -830,11 +807,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
 		// keep sstables open until we've surpassed their end boundaries so that
 		// their range deletions are visible.
 		if m.levels[item.index].isIgnorableBoundaryKey {
-			if m.prefix == nil {
-				m.err = m.nextEntry(item, nil /* succKey */)
-			} else {
-				m.err = m.maybeNextEntryWithinPrefix(item)
-			}
+			m.err = m.nextEntry(item, nil /* succKey */)
 			if m.err != nil {
 				return nil, base.LazyValue{}
 			}
@@ -855,11 +828,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
 
 		// Check if the key is visible at the iterator sequence numbers.
 		if !item.iterKey.Visible(m.snapshot, m.batchSnapshot) {
-			if m.prefix == nil {
-				m.err = m.nextEntry(item, nil /* succKey */)
-			} else {
-				m.err = m.maybeNextEntryWithinPrefix(item)
-			}
+			m.err = m.nextEntry(item, nil /* succKey */)
 			if m.err != nil {
 				return nil, base.LazyValue{}
 			}
@@ -1064,6 +1033,14 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 		l := &m.levels[level]
 		if m.prefix != nil {
 			l.iterKey, l.iterValue = l.iter.SeekPrefixGE(m.prefix, key, flags)
+			if l.iterKey != nil {
+				if n := m.split(l.iterKey.UserKey); !bytes.Equal(m.prefix, l.iterKey.UserKey[:n]) {
+					// Prevent keys without a matching prefix from being added to the heap by setting
+					// iterKey and iterValue to their zero values before calling initMinHeap.
+					l.iterKey = nil
+					l.iterValue = base.LazyValue{}
+				}
+			}
 		} else {
 			l.iterKey, l.iterValue = l.iter.SeekGE(key, flags)
 		}
@@ -1120,10 +1097,16 @@ func (m *mergingIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, 
 	return m.findNextEntry()
 }
 
-// SeekPrefixGE implements base.InternalIterator.SeekPrefixGE. Note that
-// SeekPrefixGE only checks the upper bound. It is up to the caller to ensure
-// that key is greater than or equal to the lower bound.
+// SeekPrefixGE implements base.InternalIterator.SeekPrefixGE.
 func (m *mergingIter) SeekPrefixGE(
+	prefix, key []byte, flags base.SeekGEFlags,
+) (*base.InternalKey, base.LazyValue) {
+	return m.SeekPrefixGEStrict(prefix, key, flags)
+}
+
+// SeekPrefixGEStrict implements topLevelIterator.SeekPrefixGEStrict. Note that
+// SeekPrefixGEStrict explicitly checks that the key has a matching prefix.
+func (m *mergingIter) SeekPrefixGEStrict(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, base.LazyValue) {
 	m.prefix = prefix
@@ -1131,7 +1114,14 @@ func (m *mergingIter) SeekPrefixGE(
 	if m.err != nil {
 		return nil, base.LazyValue{}
 	}
-	return m.findNextEntry()
+
+	iterKey, iterValue := m.findNextEntry()
+	if invariants.Enabled && iterKey != nil {
+		if n := m.split(iterKey.UserKey); !bytes.Equal(m.prefix, iterKey.UserKey[:n]) {
+			m.logger.Fatalf("mergingIter: prefix violation: returning key %q without prefix %q\n", iterKey, m.prefix)
+		}
+	}
+	return iterKey, iterValue
 }
 
 // Seeks levels >= level to < key. Additionally uses range tombstones to extend the seeks.
@@ -1258,14 +1248,20 @@ func (m *mergingIter) Next() (*InternalKey, base.LazyValue) {
 	}
 
 	// NB: It's okay to call nextEntry directly even during prefix iteration
-	// mode (as opposed to indirectly through maybeNextEntryWithinPrefix).
-	// During prefix iteration mode, we rely on the caller to not call Next if
-	// the iterator has already advanced beyond the iteration prefix. See the
-	// comment above the base.InternalIterator interface.
+	// mode. During prefix iteration mode, we rely on the caller to not call
+	// Next if the iterator has already advanced beyond the iteration prefix.
+	// See the comment above the base.InternalIterator interface.
 	if m.err = m.nextEntry(m.heap.items[0], nil /* succKey */); m.err != nil {
 		return nil, base.LazyValue{}
 	}
-	return m.findNextEntry()
+
+	iterKey, iterValue := m.findNextEntry()
+	if invariants.Enabled && m.prefix != nil && iterKey != nil {
+		if n := m.split(iterKey.UserKey); !bytes.Equal(m.prefix, iterKey.UserKey[:n]) {
+			m.logger.Fatalf("mergingIter: prefix violation: returning key %q without prefix %q\n", iterKey, m.prefix)
+		}
+	}
+	return iterKey, iterValue
 }
 
 func (m *mergingIter) NextPrefix(succKey []byte) (*InternalKey, LazyValue) {

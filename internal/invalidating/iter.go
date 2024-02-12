@@ -55,7 +55,7 @@ func IgnoreKinds(kinds ...base.InternalKeyKind) Option {
 
 // NewIter constructs a new invalidating iterator that wraps the provided
 // iterator, trashing buffers for previously returned keys.
-func NewIter(originalIterator base.InternalIterator, opts ...Option) base.InternalIterator {
+func NewIter(originalIterator base.InternalIterator, opts ...Option) base.TopLevelIterator {
 	i := &iter{iter: originalIterator}
 	for _, opt := range opts {
 		opt.apply(i)
@@ -115,6 +115,12 @@ func (i *iter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.InternalKey, ba
 }
 
 func (i *iter) SeekPrefixGE(
+	prefix, key []byte, flags base.SeekGEFlags,
+) (*base.InternalKey, base.LazyValue) {
+	return i.update(i.iter.SeekPrefixGE(prefix, key, flags))
+}
+
+func (i *iter) SeekPrefixGEStrict(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, base.LazyValue) {
 	return i.update(i.iter.SeekPrefixGE(prefix, key, flags))

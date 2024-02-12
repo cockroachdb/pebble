@@ -187,7 +187,7 @@ type Iterator struct {
 	merge     Merge
 	comparer  base.Comparer
 	iter      internalIterator
-	pointIter internalIterator
+	pointIter topLevelIterator
 	// Either readState or version is set, but not both.
 	readState *readState
 	version   *version
@@ -302,16 +302,6 @@ type Iterator struct {
 	batchJustRefreshed bool
 	// batchOnlyIter is set to true for Batch.NewBatchOnlyIter.
 	batchOnlyIter bool
-	// closePointIterOnce is set to true if this point iter can only be Close()d
-	// once, _and_ closing i.iter and then i.pointIter would close i.pointIter
-	// twice. This is necessary to track if the point iter is an internal iterator
-	// that could release its resources to a pool on Close(), making it harder for
-	// that iterator to make its own closes idempotent.
-	//
-	// TODO(bilal): Update SetOptions to always close out point key iterators when
-	// they won't be used, so that Close() doesn't need to default to closing
-	// point iterators twice.
-	closePointIterOnce bool
 	// Used in some tests to disable the random disabling of seek optimizations.
 	forceEnableSeekOpt bool
 	// Set to true if NextPrefix is not currently permitted. Defaults to false
@@ -529,11 +519,19 @@ func (i *Iterator) findNextEntry(limit []byte) {
 	for i.iterKey != nil {
 		key := *i.iterKey
 
-		if i.hasPrefix {
-			if n := i.split(key.UserKey); !i.equal(i.prefixOrFullSeekKey, key.UserKey[:n]) {
-				return
+		// The topLevelIterator.StrictSeekPrefixGE contract requires that in
+		// prefix mode [i.hasPrefix=t], every point key returned by the internal
+		// iterator must have the current iteration prefix.
+		if invariants.Enabled && i.hasPrefix {
+			// Range keys are an exception to the contract and may return a different
+			// prefix. This case is explicitly handled in the switch statement below.
+			if key.Kind() != base.InternalKeyKindRangeKeySet {
+				if n := i.split(key.UserKey); !i.equal(i.prefixOrFullSeekKey, key.UserKey[:n]) {
+					i.opts.logger.Fatalf("pebble: prefix violation: key %q does not have prefix %q\n", key.UserKey, i.prefixOrFullSeekKey)
+				}
 			}
 		}
+
 		// Compare with limit every time we start at a different user key.
 		// Note that given the best-effort contract of limit, we could avoid a
 		// comparison in the common case by doing this only after
@@ -564,6 +562,11 @@ func (i *Iterator) findNextEntry(limit []byte) {
 
 		switch key.Kind() {
 		case InternalKeyKindRangeKeySet:
+			if i.hasPrefix {
+				if n := i.split(key.UserKey); !i.equal(i.prefixOrFullSeekKey, key.UserKey[:n]) {
+					return
+				}
+			}
 			// Save the current key.
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
@@ -1865,7 +1868,7 @@ func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 			i.iterValidityState = IterExhausted
 			return i.iterValidityState
 		} else if i.iterValidityState == IterExhausted {
-			// No-op, already exhasuted. We avoid executing the Next because it
+			// No-op, already exhausted. We avoid executing the Next because it
 			// can break invariants: Specifically, a file that fails the bloom
 			// filter test may result in its level being removed from the
 			// merging iterator. The level's removal can cause a lazy combined
@@ -2304,7 +2307,7 @@ func (i *Iterator) Close() error {
 		// NB: If the iterators were still connected to i.iter, they may be
 		// closed, but calling Close on a closed internal iterator or fragment
 		// iterator is allowed.
-		if i.pointIter != nil && !i.closePointIterOnce {
+		if i.pointIter != nil {
 			i.err = firstError(i.err, i.pointIter.Close())
 		}
 		if i.rangeKey != nil && i.rangeKey.rangeKeyIter != nil {
