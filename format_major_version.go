@@ -185,7 +185,12 @@ const (
 	// requires a format major version.
 	FormatSyntheticPrefixes
 
-	// TODO(msbutler): add major version for synthetic suffixes
+	// FormatSyntheticSuffixes is a format major version that adds support for
+	// sstables to have their keys exposed with a different suffix than their
+	// actual suffix persisted in such sstables. The suffix replacement
+	// information is stored in new fields in the Manifest and thus
+	// requires a format major version.
+	FormatSyntheticSuffixes
 
 	// -- Add new versions here --
 
@@ -222,7 +227,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	switch v {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev3
-	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixes:
+	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixes, FormatSyntheticSuffixes:
 		return sstable.TableFormatPebblev4
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -234,7 +239,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	switch v {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
-		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixes:
+		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixes, FormatSyntheticSuffixes:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -270,6 +275,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatSyntheticPrefixes: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatSyntheticPrefixes)
+	},
+	FormatSyntheticSuffixes: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatSyntheticSuffixes)
 	},
 }
 
