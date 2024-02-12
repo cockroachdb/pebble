@@ -18,10 +18,10 @@
           <div class="overview">
             Benchmarks are run nightly using <a class="code"
             href="https://github.com/cockroachdb/pebble/blob/master/cmd/pebble/ycsb.go">pebble
-            bench ycsb</a> on AWS m6id.4xlarge machines equipped with
-            local SSD storage. The AWS instances show remarkably high
-            instance to instance performance variability. In order to
-            smooth out that variability the benchmarks are run multiple
+            bench ycsb</a> on AWS machines equipped with local SSD
+            storage. The AWS instances show remarkably high instance
+            to instance performance variability. In order to smooth
+            out that variability the benchmarks are run multiple
             times each (using different instances) and outliers are
             excluded.
           </div>
@@ -70,6 +70,8 @@
         <div class="annotation" data-date="20230607">ycsb/F sampling bug</div>
         <div class="annotation" data-date="20230611">Switched to m6id.4xlarge
             (from 5d.4xlarge)</div>
+        <div class="annotation" data-date="20240209">Changed AWS machine type
+            (<a href="https://github.com/cockroachdb/cockroach/pull/117852">#117852</a>).</div>
       </div>
       <div class="section rows">
         <div>
