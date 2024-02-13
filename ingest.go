@@ -1307,10 +1307,13 @@ func (d *DB) ingest(
 	if (exciseSpan.Valid() || len(shared) > 0 || len(external) > 0) && d.FormatMajorVersion() < FormatVirtualSSTables {
 		return IngestOperationStats{}, errors.New("pebble: format major version too old for excise, shared or external sstable ingestion")
 	}
-	if len(external) > 0 && d.FormatMajorVersion() < FormatSyntheticPrefixes {
+	if len(external) > 0 && d.FormatMajorVersion() < FormatSyntheticPrefixSuffix {
 		for i := range external {
 			if len(external[i].SyntheticPrefix) > 0 {
 				return IngestOperationStats{}, errors.New("pebble: format major version too old for synthetic prefix ingestion")
+			}
+			if len(external[i].SyntheticSuffix) > 0 {
+				return IngestOperationStats{}, errors.New("pebble: format major version too old for synthetic suffix ingestion")
 			}
 		}
 	}

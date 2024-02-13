@@ -190,6 +190,54 @@ g: (foo, .)
 h: (foo, .)
 .
 
+# Test that ingestion with a prefix or suffix replacement rule fails on older
+# major versions
+
+reset format-major-version=16
+----
+
+build-remote f5
+set ef foo
+set eg foo
+set eh foo
+----
+
+ingest-external prefix-replace=(e,f)
+f5,10,ff,fi
+----
+pebble: format major version too old for synthetic prefix ingestion
+
+
+ingest-external suffix-replace=@5
+f5,10,ff,fi
+----
+pebble: format major version too old for synthetic suffix ingestion
+
+
+# Test plumbing for ingestion with suffix replacement
+reset
+----
+
+build-remote f1
+set a@1 foo
+set b@2 foo
+set c@1 foo
+----
+
+ingest-external suffix-replace=@5
+f1,10,a,d
+----
+
+iter
+first
+next
+next
+----
+a@5: (foo, .)
+b@5: (foo, .)
+c@5: (foo, .)
+
+
 # Test the case when we are ingesting part of a RANGEDEL.
 reset
 ----

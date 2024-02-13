@@ -23,7 +23,7 @@ func TestFormatMajorVersionStableValues(t *testing.T) {
 	require.Equal(t, FormatPrePebblev1MarkedCompacted, FormatMajorVersion(14))
 	require.Equal(t, FormatDeleteSizedAndObsolete, FormatMajorVersion(15))
 	require.Equal(t, FormatVirtualSSTables, FormatMajorVersion(16))
-	require.Equal(t, FormatSyntheticPrefixes, FormatMajorVersion(17))
+	require.Equal(t, FormatSyntheticPrefixSuffix, FormatMajorVersion(17))
 
 	// When we add a new version, we should add a check for the new version in
 	// addition to updating these expected values.
@@ -51,8 +51,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatDeleteSizedAndObsolete, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatVirtualSSTables))
 	require.Equal(t, FormatVirtualSSTables, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatSyntheticPrefixes))
-	require.Equal(t, FormatSyntheticPrefixes, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatSyntheticPrefixSuffix))
+	require.Equal(t, FormatSyntheticPrefixSuffix, d.FormatMajorVersion())
 
 	require.NoError(t, d.Close())
 
@@ -206,7 +206,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatPrePebblev1MarkedCompacted: {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
 		FormatDeleteSizedAndObsolete:     {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
 		FormatVirtualSSTables:            {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
-		FormatSyntheticPrefixes:          {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
+		FormatSyntheticPrefixSuffix:      {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
 	}
 
 	// Valid versions.
