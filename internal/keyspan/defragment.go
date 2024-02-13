@@ -12,10 +12,10 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
-// bufferReuseMaxCapacity is the maximum capacity of a DefragmentingIter buffer
+// BufferReuseMaxCapacity is the maximum capacity of a DefragmentingIter buffer
 // that DefragmentingIter will reuse. Buffers larger than this will be
 // discarded and reallocated as necessary.
-const bufferReuseMaxCapacity = 10 << 10 // 10 KB
+const BufferReuseMaxCapacity = 10 << 10 // 10 KB
 
 // keysReuseMaxCapacity is the maximum capacity of a []keyspan.Key buffer that
 // DefragmentingIter will reuse. Buffers larger than this will be discarded and
@@ -162,10 +162,10 @@ type DefragmentingBuffers struct {
 
 // PrepareForReuse discards any excessively large buffers.
 func (bufs *DefragmentingBuffers) PrepareForReuse() {
-	if cap(bufs.currBuf) > bufferReuseMaxCapacity {
+	if cap(bufs.currBuf) > BufferReuseMaxCapacity {
 		bufs.currBuf = nil
 	}
-	if cap(bufs.keyBuf) > bufferReuseMaxCapacity {
+	if cap(bufs.keyBuf) > BufferReuseMaxCapacity {
 		bufs.keyBuf = nil
 	}
 	if cap(bufs.keysBuf) > keysReuseMaxCapacity {

@@ -12,12 +12,13 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
 // UserIteratorConfig holds state for constructing the range key iterator stack
 // for user iteration. The range key iterator must merge range key spans across
-// the levels of the LSM. This merging is performed by a keyspan.MergingIter
+// the levels of the LSM. This merging is performed by a keyspanimpl.MergingIter
 // on-the-fly. The UserIteratorConfig implements keyspan.Transformer, evaluating
 // range-key semantics and shadowing, so the spans returned by a MergingIter are
 // fully resolved.
@@ -54,10 +55,10 @@ import (
 type UserIteratorConfig struct {
 	snapshot     uint64
 	comparer     *base.Comparer
-	miter        keyspan.MergingIter
+	miter        keyspanimpl.MergingIter
 	biter        keyspan.BoundedIter
 	diter        keyspan.DefragmentingIter
-	liters       [manifest.NumLevels]keyspan.LevelIter
+	liters       [manifest.NumLevels]keyspanimpl.LevelIter
 	litersUsed   int
 	internalKeys bool
 	bufs         *Buffers
@@ -66,7 +67,7 @@ type UserIteratorConfig struct {
 // Buffers holds various buffers used for range key iteration. They're exposed
 // so that they may be pooled and reused between iterators.
 type Buffers struct {
-	merging       keyspan.MergingBuffers
+	merging       keyspanimpl.MergingBuffers
 	defragmenting keyspan.DefragmentingBuffers
 	sortBuf       keyspan.KeysBySuffix
 }
@@ -118,11 +119,11 @@ func (ui *UserIteratorConfig) AddLevel(iter keyspan.FragmentIterator) {
 }
 
 // NewLevelIter returns a pointer to a newly allocated or reused
-// keyspan.LevelIter. The caller is responsible for calling Init() on this
+// keyspanimpl.LevelIter. The caller is responsible for calling Init() on this
 // instance.
-func (ui *UserIteratorConfig) NewLevelIter() *keyspan.LevelIter {
+func (ui *UserIteratorConfig) NewLevelIter() *keyspanimpl.LevelIter {
 	if ui.litersUsed >= len(ui.liters) {
-		return &keyspan.LevelIter{}
+		return &keyspanimpl.LevelIter{}
 	}
 	ui.litersUsed++
 	return &ui.liters[ui.litersUsed-1]
@@ -136,7 +137,7 @@ func (ui *UserIteratorConfig) SetBounds(lower, upper []byte) {
 }
 
 // Transform implements the keyspan.Transformer interface for use with a
-// keyspan.MergingIter. It transforms spans by resolving range keys at the
+// keyspanimpl.MergingIter. It transforms spans by resolving range keys at the
 // provided snapshot sequence number. Shadowing of keys is resolved (eg, removal
 // of unset keys, removal of keys overwritten by a set at the same suffix, etc)
 // and then non-RangeKeySet keys are removed. The resulting transformed spans

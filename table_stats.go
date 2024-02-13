@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 )
@@ -887,7 +888,7 @@ func newCombinedDeletionKeyspanIter(
 	// The separate iters for the range dels and range keys are wrapped in a
 	// merging iter to join the keyspaces into a single keyspace. The separate
 	// iters are only added if the particular key kind is present.
-	mIter := &keyspan.MergingIter{}
+	mIter := &keyspanimpl.MergingIter{}
 	var transform = keyspan.TransformerFunc(func(cmp base.Compare, in keyspan.Span, out *keyspan.Span) error {
 		if in.KeysOrder != keyspan.ByTrailerDesc {
 			panic("pebble: combined deletion iter encountered keys in non-trailer descending order")
@@ -897,13 +898,13 @@ func newCombinedDeletionKeyspanIter(
 		out.KeysOrder = keyspan.ByTrailerDesc
 		// NB: The order of by-trailer descending may have been violated,
 		// because we've layered rangekey and rangedel iterators from the same
-		// sstable into the same keyspan.MergingIter. The MergingIter will
+		// sstable into the same keyspanimpl.MergingIter. The MergingIter will
 		// return the keys in the order that the child iterators were provided.
 		// Sort the keys to ensure they're sorted by trailer descending.
 		keyspan.SortKeysByTrailer(&out.Keys)
 		return nil
 	})
-	mIter.Init(comparer.Compare, transform, new(keyspan.MergingBuffers))
+	mIter.Init(comparer.Compare, transform, new(keyspanimpl.MergingBuffers))
 
 	iter, err := cr.NewRawRangeDelIter()
 	if err != nil {

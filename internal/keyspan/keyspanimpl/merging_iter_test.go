@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package keyspan
+package keyspanimpl
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
@@ -23,29 +24,28 @@ import (
 func TestMergingIter(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 
-	var definedIters []FragmentIterator
+	var definedIters []keyspan.FragmentIterator
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/merging_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			definedIters = definedIters[:0]
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
-			var spans []Span
+			var spans []keyspan.Span
 			for _, line := range lines {
 				if line == "--" {
-					definedIters = append(definedIters, &invalidatingIter{iter: NewIter(cmp, spans)})
+					definedIters = append(definedIters, keyspan.NewInvalidatingIter(keyspan.NewIter(cmp, spans)))
 					spans = nil
 					continue
 				}
-				spans = append(spans, ParseSpan(line))
+				spans = append(spans, keyspan.ParseSpan(line))
 			}
 			if len(spans) > 0 {
-				definedIters = append(definedIters, &invalidatingIter{iter: NewIter(cmp, spans)})
+				definedIters = append(definedIters, keyspan.NewInvalidatingIter(keyspan.NewIter(cmp, spans)))
 			}
 			return fmt.Sprintf("%d levels", len(definedIters))
 		case "iter":
 			buf.Reset()
-			pctx := probeContext{log: &buf}
 			snapshot := base.InternalKeySeqNumMax
 			iters := slices.Clone(definedIters)
 			for _, cmdArg := range td.CmdArgs {
@@ -62,14 +62,14 @@ func TestMergingIter(t *testing.T) {
 						return err.Error()
 					}
 					// The remaining values define probes to attach.
-					iters[i] = attachProbes(iters[i], pctx, parseProbes(cmdArg.Vals[1:]...)...)
+					iters[i] = keyspan.ParseAndAttachProbes(iters[i], &buf, cmdArg.Vals[1:]...)
 				default:
 					return fmt.Sprintf("unrecognized arg %q", cmdArg.Key)
 				}
 			}
 			var iter MergingIter
-			iter.Init(cmp, VisibleTransform(snapshot), new(MergingBuffers), iters...)
-			runIterCmd(t, td, &iter, &buf)
+			iter.Init(cmp, keyspan.VisibleTransform(snapshot), new(MergingBuffers), iters...)
+			keyspan.RunIterCmd(td, &iter, &buf)
 			return buf.String()
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
@@ -115,9 +115,9 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 	ks := testkeys.Alpha(rng.Intn(3) + 1)
 
 	// Generate between 1 and 10 levels of fragment iterators.
-	levels := make([][]Span, rng.Intn(10)+1)
-	iters := make([]FragmentIterator, len(levels))
-	var allSpans []Span
+	levels := make([][]keyspan.Span, rng.Intn(10)+1)
+	iters := make([]keyspan.FragmentIterator, len(levels))
+	var allSpans []keyspan.Span
 	var buf bytes.Buffer
 	for l := 0; l < len(levels); l++ {
 		fmt.Fprintf(&buf, "level %d: ", l)
@@ -128,14 +128,14 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 
 			if spanEndIdx < ks.Count() {
 				keyCount := uint64(rng.Intn(3) + 1)
-				s := Span{
+				s := keyspan.Span{
 					Start: testkeys.Key(ks, spanStartIdx),
 					End:   testkeys.Key(ks, spanEndIdx),
-					Keys:  make([]Key, 0, keyCount),
+					Keys:  make([]keyspan.Key, 0, keyCount),
 				}
 				for k := keyCount; k > 0; k-- {
 					seqNum := uint64((len(levels)-l)*3) + k
-					s.Keys = append(s.Keys, Key{
+					s.Keys = append(s.Keys, keyspan.Key{
 						Trailer: base.MakeTrailer(seqNum, base.InternalKeyKindRangeKeySet),
 					})
 				}
@@ -149,20 +149,20 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 			}
 			keyspaceStartIdx = spanEndIdx
 		}
-		iters[l] = &invalidatingIter{iter: NewIter(cmp, levels[l])}
+		iters[l] = keyspan.NewInvalidatingIter(keyspan.NewIter(cmp, levels[l]))
 		fmt.Fprintln(&buf)
 	}
 
 	// Fragment the spans across the levels.
-	var allFragmented []Span
-	f := Fragmenter{
+	var allFragmented []keyspan.Span
+	f := keyspan.Fragmenter{
 		Cmp:    cmp,
 		Format: testkeys.Comparer.FormatKey,
-		Emit: func(span Span) {
+		Emit: func(span keyspan.Span) {
 			allFragmented = append(allFragmented, span)
 		},
 	}
-	Sort(f.Cmp, allSpans)
+	keyspan.Sort(f.Cmp, allSpans)
 	for _, s := range allSpans {
 		f.Add(s)
 	}
@@ -179,9 +179,9 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 	}
 	t.Logf("%d levels:\n%s\n", len(levels), buf.String())
 
-	fragmenterIter := NewIter(f.Cmp, allFragmented)
+	fragmenterIter := keyspan.NewIter(f.Cmp, allFragmented)
 	mergingIter := &MergingIter{}
-	mergingIter.Init(f.Cmp, VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), iters...)
+	mergingIter.Init(f.Cmp, keyspan.VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), iters...)
 
 	// Position both so that it's okay to perform relative positioning
 	// operations immediately.
@@ -190,35 +190,35 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 
 	type opKind struct {
 		weight int
-		fn     func() (str string, f *Span, m *Span)
+		fn     func() (str string, f *keyspan.Span, m *keyspan.Span)
 	}
-	must := func(s *Span, err error) *Span {
+	must := func(s *keyspan.Span, err error) *keyspan.Span {
 		require.NoError(t, err)
 		return s
 	}
 	ops := []opKind{
-		{weight: 2, fn: func() (string, *Span, *Span) {
+		{weight: 2, fn: func() (string, *keyspan.Span, *keyspan.Span) {
 			return "First()", must(fragmenterIter.First()), must(mergingIter.First())
 		}},
-		{weight: 2, fn: func() (string, *Span, *Span) {
+		{weight: 2, fn: func() (string, *keyspan.Span, *keyspan.Span) {
 			return "Last()", must(fragmenterIter.Last()), must(mergingIter.Last())
 		}},
-		{weight: 5, fn: func() (string, *Span, *Span) {
+		{weight: 5, fn: func() (string, *keyspan.Span, *keyspan.Span) {
 			k := testkeys.Key(ks, rng.Int63n(ks.Count()))
 			return fmt.Sprintf("SeekGE(%q)", k),
 				must(fragmenterIter.SeekGE(k)),
 				must(mergingIter.SeekGE(k))
 		}},
-		{weight: 5, fn: func() (string, *Span, *Span) {
+		{weight: 5, fn: func() (string, *keyspan.Span, *keyspan.Span) {
 			k := testkeys.Key(ks, rng.Int63n(ks.Count()))
 			return fmt.Sprintf("SeekLT(%q)", k),
 				must(fragmenterIter.SeekLT(k)),
 				must(mergingIter.SeekLT(k))
 		}},
-		{weight: 50, fn: func() (string, *Span, *Span) {
+		{weight: 50, fn: func() (string, *keyspan.Span, *keyspan.Span) {
 			return "Next()", must(fragmenterIter.Next()), must(mergingIter.Next())
 		}},
-		{weight: 50, fn: func() (string, *Span, *Span) {
+		{weight: 50, fn: func() (string, *keyspan.Span, *keyspan.Span) {
 			return "Prev()", must(fragmenterIter.Prev()), must(mergingIter.Prev())
 		}},
 	}

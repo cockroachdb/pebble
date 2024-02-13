@@ -236,7 +236,7 @@ type compactionIter struct {
 	// Reference to the range deletion tombstone fragmenter (e.g.,
 	// `compaction.rangeDelFrag`).
 	// TODO(jackson): We can eliminate range{Del,Key}Frag now that fragmentation
-	// is performed upfront by keyspan.MergingIters.
+	// is performed upfront by keyspanimpl.MergingIters.
 	rangeDelFrag *keyspan.Fragmenter
 	rangeKeyFrag *keyspan.Fragmenter
 	// The fragmented tombstones.

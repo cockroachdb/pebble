@@ -1,4 +1,4 @@
-// Package keyspan provides facilities for sorting, fragmenting and
+// Package keyspan provides general facilities for sorting, fragmenting and
 // iterating over spans of user keys.
 //
 // A Span represents a range of user key space with an inclusive start
@@ -10,4 +10,7 @@
 // are fragmented at overlapping key boundaries by the Fragmenter type.
 // This package's various iteration facilities require these
 // non-overlapping fragmented spans.
+//
+// Implementations that are specific to Pebble and use manifest types are
+// in the keyspanimpl subpackage.
 package keyspan

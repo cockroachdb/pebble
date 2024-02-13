@@ -5,7 +5,6 @@
 package keyspan
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -13,53 +12,6 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 )
-
-func runFragmentIteratorCmd(iter FragmentIterator, input string, extraInfo func() string) string {
-	var b bytes.Buffer
-	for _, line := range strings.Split(input, "\n") {
-		parts := strings.Fields(line)
-		if len(parts) == 0 {
-			continue
-		}
-		var span *Span
-		var err error
-		switch parts[0] {
-		case "seek-ge":
-			if len(parts) != 2 {
-				return "seek-ge <key>\n"
-			}
-			span, err = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
-		case "seek-lt":
-			if len(parts) != 2 {
-				return "seek-lt <key>\n"
-			}
-			span, err = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
-		case "first":
-			span, err = iter.First()
-		case "last":
-			span, err = iter.Last()
-		case "next":
-			span, err = iter.Next()
-		case "prev":
-			span, err = iter.Prev()
-		default:
-			return fmt.Sprintf("unknown op: %s", parts[0])
-		}
-		switch {
-		case err != nil:
-			fmt.Fprintf(&b, "err=%v\n", err)
-		case span == nil:
-			fmt.Fprintf(&b, ".\n")
-		default:
-			fmt.Fprintf(&b, "%s", span)
-			if extraInfo != nil {
-				fmt.Fprintf(&b, " (%s)", extraInfo())
-			}
-			b.WriteByte('\n')
-		}
-	}
-	return b.String()
-}
 
 func TestIter(t *testing.T) {
 	var spans []Span
@@ -75,77 +27,9 @@ func TestIter(t *testing.T) {
 		case "iter":
 			iter := NewIter(base.DefaultComparer.Compare, spans)
 			defer iter.Close()
-			return runFragmentIteratorCmd(iter, d.Input, nil)
+			return RunFragmentIteratorCmd(iter, d.Input, nil)
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
 	})
-}
-
-// invalidatingIter wraps a FragmentIterator and implements FragmentIterator
-// itself. Spans surfaced by the inner iterator are copied to buffers that are
-// zeroed by sbubsequent iterator positioning calls. This is intended to help
-// surface bugs in improper lifetime expectations of Spans.
-type invalidatingIter struct {
-	iter FragmentIterator
-	bufs [][]byte
-	keys []Key
-	span Span
-}
-
-// invalidatingIter implements FragmentIterator.
-var _ FragmentIterator = (*invalidatingIter)(nil)
-
-func (i *invalidatingIter) invalidate(s *Span, err error) (*Span, error) {
-	// Zero the entirety of the byte bufs and the keys slice.
-	for j := range i.bufs {
-		for k := range i.bufs[j] {
-			i.bufs[j][k] = 0x00
-		}
-		i.bufs[j] = nil
-	}
-	for j := range i.keys {
-		i.keys[j] = Key{}
-	}
-	if s == nil {
-		return nil, err
-	}
-
-	// Copy all of the span's slices into slices owned by the invalidating iter
-	// that we can invalidate on a subsequent positioning method.
-	i.bufs = i.bufs[:0]
-	i.keys = i.keys[:0]
-	i.span = Span{
-		Start: i.saveBytes(s.Start),
-		End:   i.saveBytes(s.End),
-	}
-	for j := range s.Keys {
-		i.keys = append(i.keys, Key{
-			Trailer: s.Keys[j].Trailer,
-			Suffix:  i.saveBytes(s.Keys[j].Suffix),
-			Value:   i.saveBytes(s.Keys[j].Value),
-		})
-	}
-	i.span.Keys = i.keys
-	return &i.span, err
-}
-
-func (i *invalidatingIter) saveBytes(b []byte) []byte {
-	if b == nil {
-		return nil
-	}
-	saved := append([]byte(nil), b...)
-	i.bufs = append(i.bufs, saved)
-	return saved
-}
-
-func (i *invalidatingIter) SeekGE(key []byte) (*Span, error) { return i.invalidate(i.iter.SeekGE(key)) }
-func (i *invalidatingIter) SeekLT(key []byte) (*Span, error) { return i.invalidate(i.iter.SeekLT(key)) }
-func (i *invalidatingIter) First() (*Span, error)            { return i.invalidate(i.iter.First()) }
-func (i *invalidatingIter) Last() (*Span, error)             { return i.invalidate(i.iter.Last()) }
-func (i *invalidatingIter) Next() (*Span, error)             { return i.invalidate(i.iter.Next()) }
-func (i *invalidatingIter) Prev() (*Span, error)             { return i.invalidate(i.iter.Prev()) }
-func (i *invalidatingIter) Close() error                     { return i.iter.Close() }
-func (i *invalidatingIter) WrapChildren(wrap WrapFn) {
-	i.iter = wrap(i.iter)
 }

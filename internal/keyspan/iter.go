@@ -4,10 +4,7 @@
 
 package keyspan
 
-import (
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/manifest"
-)
+import "github.com/cockroachdb/pebble/internal/base"
 
 // FragmentIterator defines an iterator interface over spans. The spans
 // surfaced by a FragmentIterator must be non-overlapping. This is achieved by
@@ -69,10 +66,6 @@ type FragmentIterator interface {
 	// stack. Used only for debug logging.
 	WrapChildren(wrap WrapFn)
 }
-
-// TableNewSpanIter creates a new iterator for range key spans for the given
-// file.
-type TableNewSpanIter func(file *manifest.FileMetadata, iterOptions SpanIterOptions) (FragmentIterator, error)
 
 // SpanIterOptions is a subset of IterOptions that are necessary to instantiate
 // per-sstable span iterators.

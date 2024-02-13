@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
@@ -49,7 +50,7 @@ func TestCoalesce(t *testing.T) {
 func TestIter(t *testing.T) {
 	eq := testkeys.Comparer.Equal
 	cmp := testkeys.Comparer.Compare
-	var iter keyspan.MergingIter
+	var iter keyspanimpl.MergingIter
 	var buf bytes.Buffer
 
 	datadriven.RunTest(t, "testdata/iter", func(t *testing.T, td *datadriven.TestData) string {
@@ -84,7 +85,7 @@ func TestIter(t *testing.T) {
 				dst.End = s.End
 				return nil
 			})
-			iter.Init(cmp, transform, new(keyspan.MergingBuffers), keyspan.NewIter(cmp, spans))
+			iter.Init(cmp, transform, new(keyspanimpl.MergingBuffers), keyspan.NewIter(cmp, spans))
 			return "OK"
 		case "iter":
 			buf.Reset()
