@@ -1745,7 +1745,7 @@ func TestIngestExternal(t *testing.T) {
 
 	var remoteStorage remote.Storage
 
-	reset := func() {
+	reset := func(majorVersion FormatMajorVersion) {
 		if d != nil {
 			require.NoError(t, d.Close())
 		}
@@ -1754,6 +1754,7 @@ func TestIngestExternal(t *testing.T) {
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 		remoteStorage = remote.NewInMem()
 		opts := &Options{
+			Comparer:              testkeys.Comparer,
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
@@ -1761,7 +1762,7 @@ func TestIngestExternal(t *testing.T) {
 			EventListener: &EventListener{FlushEnd: func(info FlushInfo) {
 				flushed = true
 			}},
-			FormatMajorVersion: FormatNewest,
+			FormatMajorVersion: majorVersion,
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"external-locator": remoteStorage,
@@ -1778,12 +1779,16 @@ func TestIngestExternal(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, d.SetCreatorID(1))
 	}
-	reset()
+	reset(FormatNewest)
 
 	datadriven.RunTest(t, "testdata/ingest_external", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
-			reset()
+			majorVersion := int64(FormatNewest)
+			if td.HasArg("format-major-version") {
+				td.ScanArgs(t, "format-major-version", &majorVersion)
+			}
+			reset(FormatMajorVersion(majorVersion))
 			return ""
 		case "batch":
 			b := d.NewIndexedBatch()
