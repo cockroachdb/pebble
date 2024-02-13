@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
@@ -233,7 +234,7 @@ type Iterator struct {
 	// Non-nil if this Iterator includes a Batch.
 	batch            *Batch
 	newIters         tableNewIters
-	newIterRangeKey  keyspan.TableNewSpanIter
+	newIterRangeKey  keyspanimpl.TableNewSpanIter
 	lazyCombinedIter lazyCombinedIter
 	seqNum           uint64
 	// batchSeqNum is used by Iterators over indexed batches to detect when the

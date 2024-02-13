@@ -260,7 +260,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 		var rangeKeyIters []keyspan.FragmentIterator
 		if it.rangeKey == nil {
 			// We could take advantage of the lack of overlaps in range keys within
-			// each slice in it.externalReaders, and generate keyspan.LevelIters
+			// each slice in it.externalReaders, and generate keyspanimpl.LevelIters
 			// out of those. However, since range keys are expected to be sparse to
 			// begin with, the performance gain might not be significant enough to
 			// warrant it.

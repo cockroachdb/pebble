@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
@@ -150,7 +151,7 @@ type ingestedFlushable struct {
 	files            []physicalMeta
 	comparer         *Comparer
 	newIters         tableNewIters
-	newRangeKeyIters keyspan.TableNewSpanIter
+	newRangeKeyIters keyspanimpl.TableNewSpanIter
 
 	// Since the level slice is immutable, we construct and set it once. It
 	// should be safe to read from slice in future reads.
@@ -163,7 +164,7 @@ func newIngestedFlushable(
 	files []*fileMetadata,
 	comparer *Comparer,
 	newIters tableNewIters,
-	newRangeKeyIters keyspan.TableNewSpanIter,
+	newRangeKeyIters keyspanimpl.TableNewSpanIter,
 ) *ingestedFlushable {
 	var physicalFiles []physicalMeta
 	var hasRangeKeys bool
@@ -237,7 +238,7 @@ func (s *ingestedFlushable) constructRangeDelIter(
 // TODO(sumeer): *IterOptions are being ignored, so the index block load for
 // the point iterator in constructRangeDeIter is not tracked.
 func (s *ingestedFlushable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
-	return keyspan.NewLevelIter(
+	return keyspanimpl.NewLevelIter(
 		keyspan.SpanIterOptions{}, s.comparer.Compare,
 		s.constructRangeDelIter, s.slice.Iter(), manifest.Level(0),
 		manifest.KeyTypePoint,
@@ -250,7 +251,7 @@ func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIter
 		return nil
 	}
 
-	return keyspan.NewLevelIter(
+	return keyspanimpl.NewLevelIter(
 		keyspan.SpanIterOptions{}, s.comparer.Compare, s.newRangeKeyIters,
 		s.slice.Iter(), manifest.Level(0), manifest.KeyTypeRange,
 	)

@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -298,7 +299,7 @@ type DB struct {
 
 	tableCache           *tableCacheContainer
 	newIters             tableNewIters
-	tableNewRangeKeyIter keyspan.TableNewSpanIter
+	tableNewRangeKeyIter keyspanimpl.TableNewSpanIter
 
 	commit *commitPipeline
 
@@ -1040,7 +1041,7 @@ func (d *DB) newIter(
 	}
 	var readState *readState
 	var newIters tableNewIters
-	var newIterRangeKey keyspan.TableNewSpanIter
+	var newIterRangeKey keyspanimpl.TableNewSpanIter
 	if !internalOpts.batch.batchOnly {
 		// Grab and reference the current readState. This prevents the underlying
 		// files in the associated version from being deleted if there is a current

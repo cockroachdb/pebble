@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -419,7 +420,7 @@ type scanInternalIterator struct {
 	iterValue       LazyValue
 	alloc           *iterAlloc
 	newIters        tableNewIters
-	newIterRangeKey keyspan.TableNewSpanIter
+	newIterRangeKey keyspanimpl.TableNewSpanIter
 	seqNum          uint64
 	iterLevels      []IteratorLevel
 	mergingIter     *mergingIter
@@ -756,9 +757,9 @@ func (i *scanInternalIterator) constructPointIter(
 		levels = make([]levelIter, 0, numLevelIters)
 	}
 	// TODO(bilal): Push these into the iterAlloc buf.
-	var rangeDelMiter keyspan.MergingIter
+	var rangeDelMiter keyspanimpl.MergingIter
 	rangeDelIters := make([]keyspan.FragmentIterator, 0, numMergingLevels)
-	rangeDelLevels := make([]keyspan.LevelIter, 0, numLevelIters)
+	rangeDelLevels := make([]keyspanimpl.LevelIter, 0, numLevelIters)
 
 	i.iterLevels = make([]IteratorLevel, numMergingLevels)
 	mlevelsIndex := 0
@@ -826,7 +827,7 @@ func (i *scanInternalIterator) constructPointIter(
 
 	buf.merging.init(&i.opts.IterOptions, &InternalIteratorStats{}, i.comparer.Compare, i.comparer.Split, mlevels...)
 	buf.merging.snapshot = i.seqNum
-	rangeDelMiter.Init(i.comparer.Compare, keyspan.VisibleTransform(i.seqNum), new(keyspan.MergingBuffers), rangeDelIters...)
+	rangeDelMiter.Init(i.comparer.Compare, keyspan.VisibleTransform(i.seqNum), new(keyspanimpl.MergingBuffers), rangeDelIters...)
 
 	if i.opts.includeObsoleteKeys {
 		iiter := &keyspan.InterleavingIter{}

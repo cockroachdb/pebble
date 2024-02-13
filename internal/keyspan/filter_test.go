@@ -69,8 +69,7 @@ func TestFilteringIter(t *testing.T) {
 			innerIter := NewIter(cmp, spans)
 			iter := Filter(innerIter, filter, cmp)
 			defer iter.Close()
-			s := runFragmentIteratorCmd(iter, td.Input, nil)
-			return s
+			return RunFragmentIteratorCmd(iter, td.Input, nil)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", cmd)

@@ -5,13 +5,13 @@
 package keyspan
 
 import (
+	"bytes"
 	"fmt"
 	"go/token"
 	"io"
 	"reflect"
 	"strconv"
 	"strings"
-	"testing"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -24,7 +24,8 @@ import (
 //
 // TODO(jackson): Move keyspan.{Span,Key,FragmentIterator} into internal/base,
 // and then move the testing facilities to an independent package, eg
-// internal/itertest.
+// internal/itertest. Alternatively, make all tests that use it use the
+// keyspan_test package, which can then import a separate itertest package.
 
 // probe defines an interface for probes that may inspect or mutate internal
 // span iterator behavior.
@@ -57,6 +58,14 @@ func attachProbes(iter FragmentIterator, pctx probeContext, probes ...probe) Fra
 		}
 	}
 	return iter
+}
+
+// ParseAndAttachProbes parses DSL probes and attaches them to an iterator.
+func ParseAndAttachProbes(
+	iter FragmentIterator, log io.Writer, probeDSLs ...string,
+) FragmentIterator {
+	pctx := probeContext{log: log}
+	return attachProbes(iter, pctx, parseProbes(probeDSLs...)...)
 }
 
 // probeContext provides the context within which a probe is run. It includes
@@ -236,6 +245,7 @@ func (e equal) Evaluate(pctx *probeContext) bool {
 // OpKind indicates the type of iterator operation being performed.
 type OpKind int8
 
+// OpKind values.
 const (
 	OpSeekGE OpKind = iota
 	OpSeekLT
@@ -247,7 +257,9 @@ const (
 	numOpKinds
 )
 
-func (o OpKind) String() string                   { return opNames[o] }
+func (o OpKind) String() string { return opNames[o] }
+
+// Evaluate implements dsl.Predicate.
 func (o OpKind) Evaluate(pctx *probeContext) bool { return pctx.op.Kind == o }
 
 var opNames = [numOpKinds]string{
@@ -366,10 +378,10 @@ func (p *probeIterator) WrapChildren(wrap WrapFn) {
 	p.iter = wrap(p.iter)
 }
 
-// runIterCmd evaluates a datadriven command controlling an internal
+// RunIterCmd evaluates a datadriven command controlling an internal
 // keyspan.FragmentIterator, writing the results of the iterator operations to
 // the provided writer.
-func runIterCmd(t *testing.T, td *datadriven.TestData, iter FragmentIterator, w io.Writer) {
+func RunIterCmd(td *datadriven.TestData, iter FragmentIterator, w io.Writer) {
 	lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 	for i, line := range lines {
 		if i > 0 {
@@ -421,4 +433,126 @@ func runIterOp(w io.Writer, it FragmentIterator, op string) {
 	default:
 		fmt.Fprint(w, s)
 	}
+}
+
+// RunFragmentIteratorCmd runs a command on an iterator; intended for testing.
+func RunFragmentIteratorCmd(iter FragmentIterator, input string, extraInfo func() string) string {
+	var b bytes.Buffer
+	for _, line := range strings.Split(input, "\n") {
+		parts := strings.Fields(line)
+		if len(parts) == 0 {
+			continue
+		}
+		var span *Span
+		var err error
+		switch parts[0] {
+		case "seek-ge":
+			if len(parts) != 2 {
+				return "seek-ge <key>\n"
+			}
+			span, err = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+		case "seek-lt":
+			if len(parts) != 2 {
+				return "seek-lt <key>\n"
+			}
+			span, err = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+		case "first":
+			span, err = iter.First()
+		case "last":
+			span, err = iter.Last()
+		case "next":
+			span, err = iter.Next()
+		case "prev":
+			span, err = iter.Prev()
+		default:
+			return fmt.Sprintf("unknown op: %s", parts[0])
+		}
+		switch {
+		case err != nil:
+			fmt.Fprintf(&b, "err=%v\n", err)
+		case span == nil:
+			fmt.Fprintf(&b, ".\n")
+		default:
+			fmt.Fprintf(&b, "%s", span)
+			if extraInfo != nil {
+				fmt.Fprintf(&b, " (%s)", extraInfo())
+			}
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+// NewInvalidatingIter wraps a FragmentIterator; spans surfaced by the inner
+// iterator are copied to buffers that are zeroed by subsequent iterator
+// positioning calls. This is intended to help surface bugs in improper lifetime
+// expectations of Spans.
+func NewInvalidatingIter(iter FragmentIterator) FragmentIterator {
+	return &invalidatingIter{
+		iter: iter,
+	}
+}
+
+type invalidatingIter struct {
+	iter FragmentIterator
+	bufs [][]byte
+	keys []Key
+	span Span
+}
+
+// invalidatingIter implements FragmentIterator.
+var _ FragmentIterator = (*invalidatingIter)(nil)
+
+func (i *invalidatingIter) invalidate(s *Span, err error) (*Span, error) {
+	// Zero the entirety of the byte bufs and the keys slice.
+	for j := range i.bufs {
+		for k := range i.bufs[j] {
+			i.bufs[j][k] = 0x00
+		}
+		i.bufs[j] = nil
+	}
+	for j := range i.keys {
+		i.keys[j] = Key{}
+	}
+	if s == nil {
+		return nil, err
+	}
+
+	// Copy all of the span's slices into slices owned by the invalidating iter
+	// that we can invalidate on a subsequent positioning method.
+	i.bufs = i.bufs[:0]
+	i.keys = i.keys[:0]
+	i.span = Span{
+		Start: i.saveBytes(s.Start),
+		End:   i.saveBytes(s.End),
+	}
+	for j := range s.Keys {
+		i.keys = append(i.keys, Key{
+			Trailer: s.Keys[j].Trailer,
+			Suffix:  i.saveBytes(s.Keys[j].Suffix),
+			Value:   i.saveBytes(s.Keys[j].Value),
+		})
+	}
+	i.span.Keys = i.keys
+	return &i.span, err
+}
+
+func (i *invalidatingIter) saveBytes(b []byte) []byte {
+	if b == nil {
+		return nil
+	}
+	saved := append([]byte(nil), b...)
+	i.bufs = append(i.bufs, saved)
+	return saved
+}
+
+func (i *invalidatingIter) SeekGE(key []byte) (*Span, error) { return i.invalidate(i.iter.SeekGE(key)) }
+func (i *invalidatingIter) SeekLT(key []byte) (*Span, error) { return i.invalidate(i.iter.SeekLT(key)) }
+func (i *invalidatingIter) First() (*Span, error)            { return i.invalidate(i.iter.First()) }
+func (i *invalidatingIter) Last() (*Span, error)             { return i.invalidate(i.iter.Last()) }
+func (i *invalidatingIter) Next() (*Span, error)             { return i.invalidate(i.iter.Next()) }
+func (i *invalidatingIter) Prev() (*Span, error)             { return i.invalidate(i.iter.Prev()) }
+func (i *invalidatingIter) Close() error                     { return i.iter.Close() }
+func (i *invalidatingIter) WrapChildren(wrap WrapFn) {
+	i.iter = wrap(i.iter)
 }

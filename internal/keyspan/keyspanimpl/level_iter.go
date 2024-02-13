@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package keyspan
+package keyspanimpl
 
 import (
 	"fmt"
@@ -10,8 +10,15 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
+
+// TableNewSpanIter creates a new iterator for range key spans for the given
+// file.
+type TableNewSpanIter func(
+	file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions,
+) (keyspan.FragmentIterator, error)
 
 // LevelIter provides a merged view of spans from sstables in a level.
 // It takes advantage of level invariants to only have one sstable span block
@@ -47,7 +54,7 @@ type LevelIter struct {
 	// on a straddle key therefore necessitates the value of iterFile to be
 	// reverted.
 	dir         int
-	straddle    Span
+	straddle    keyspan.Span
 	straddleDir int
 	// The iter for the current file (iterFile). It is nil under any of the
 	// following conditions:
@@ -57,8 +64,8 @@ type LevelIter struct {
 	//   next file (in the straddleDir direction).
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
-	iter   FragmentIterator
-	wrapFn WrapFn
+	iter   keyspan.FragmentIterator
+	wrapFn keyspan.WrapFn
 	// iterFile holds the current file.
 	// INVARIANT: iterFile = files.Current()
 	iterFile *manifest.FileMetadata
@@ -67,17 +74,17 @@ type LevelIter struct {
 	err      error
 
 	// The options that were passed in.
-	tableOpts SpanIterOptions
+	tableOpts keyspan.SpanIterOptions
 
 	// TODO(bilal): Add InternalIteratorStats.
 }
 
 // LevelIter implements the keyspan.FragmentIterator interface.
-var _ FragmentIterator = (*LevelIter)(nil)
+var _ keyspan.FragmentIterator = (*LevelIter)(nil)
 
 // NewLevelIter returns a LevelIter.
 func NewLevelIter(
-	opts SpanIterOptions,
+	opts keyspan.SpanIterOptions,
 	cmp base.Compare,
 	newIter TableNewSpanIter,
 	files manifest.LevelIterator,
@@ -91,7 +98,7 @@ func NewLevelIter(
 
 // Init initializes a LevelIter.
 func (l *LevelIter) Init(
-	opts SpanIterOptions,
+	opts keyspan.SpanIterOptions,
 	cmp base.Compare,
 	newIter TableNewSpanIter,
 	files manifest.LevelIterator,
@@ -185,7 +192,7 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 		if l.wrapFn != nil {
 			l.iter = l.wrapFn(l.iter)
 		}
-		l.iter = MaybeAssert(l.iter, l.cmp)
+		l.iter = keyspan.MaybeAssert(l.iter, l.cmp)
 		indicator = newFileLoaded
 	}
 	if l.err != nil {
@@ -195,9 +202,9 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 }
 
 // SeekGE implements keyspan.FragmentIterator.
-func (l *LevelIter) SeekGE(key []byte) (*Span, error) {
+func (l *LevelIter) SeekGE(key []byte) (*keyspan.Span, error) {
 	l.dir = +1
-	l.straddle = Span{}
+	l.straddle = keyspan.Span{}
 	l.straddleDir = 0
 	l.err = nil // clear cached iteration error
 
@@ -227,7 +234,7 @@ func (l *LevelIter) SeekGE(key []byte) (*Span, error) {
 				return l.verify(nil, l.err)
 			}
 			l.straddleDir = +1
-			l.straddle = Span{
+			l.straddle = keyspan.Span{
 				Start: prevFile.LargestRangeKey.UserKey,
 				End:   f.SmallestRangeKey.UserKey,
 				Keys:  nil,
@@ -248,9 +255,9 @@ func (l *LevelIter) SeekGE(key []byte) (*Span, error) {
 }
 
 // SeekLT implements keyspan.FragmentIterator.
-func (l *LevelIter) SeekLT(key []byte) (*Span, error) {
+func (l *LevelIter) SeekLT(key []byte) (*keyspan.Span, error) {
 	l.dir = -1
-	l.straddle = Span{}
+	l.straddle = keyspan.Span{}
 	l.straddleDir = 0
 	l.err = nil // clear cached iteration error
 
@@ -280,7 +287,7 @@ func (l *LevelIter) SeekLT(key []byte) (*Span, error) {
 				return l.verify(nil, l.err)
 			}
 			l.straddleDir = -1
-			l.straddle = Span{
+			l.straddle = keyspan.Span{
 				Start: f.LargestRangeKey.UserKey,
 				End:   nextFile.SmallestRangeKey.UserKey,
 				Keys:  nil,
@@ -300,9 +307,9 @@ func (l *LevelIter) SeekLT(key []byte) (*Span, error) {
 }
 
 // First implements keyspan.FragmentIterator.
-func (l *LevelIter) First() (*Span, error) {
+func (l *LevelIter) First() (*keyspan.Span, error) {
 	l.dir = +1
-	l.straddle = Span{}
+	l.straddle = keyspan.Span{}
 	l.straddleDir = 0
 	l.err = nil // clear cached iteration error
 
@@ -318,9 +325,9 @@ func (l *LevelIter) First() (*Span, error) {
 }
 
 // Last implements keyspan.FragmentIterator.
-func (l *LevelIter) Last() (*Span, error) {
+func (l *LevelIter) Last() (*keyspan.Span, error) {
 	l.dir = -1
-	l.straddle = Span{}
+	l.straddle = keyspan.Span{}
 	l.straddleDir = 0
 	l.err = nil // clear cached iteration error
 
@@ -336,7 +343,7 @@ func (l *LevelIter) Last() (*Span, error) {
 }
 
 // Next implements keyspan.FragmentIterator.
-func (l *LevelIter) Next() (*Span, error) {
+func (l *LevelIter) Next() (*keyspan.Span, error) {
 	if l.err != nil || (l.iter == nil && l.iterFile == nil && l.dir > 0) {
 		return l.verify(nil, l.err)
 	}
@@ -357,7 +364,7 @@ func (l *LevelIter) Next() (*Span, error) {
 }
 
 // Prev implements keyspan.FragmentIterator.
-func (l *LevelIter) Prev() (*Span, error) {
+func (l *LevelIter) Prev() (*keyspan.Span, error) {
 	if l.err != nil || (l.iter == nil && l.iterFile == nil && l.dir < 0) {
 		return l.verify(nil, l.err)
 	}
@@ -377,7 +384,7 @@ func (l *LevelIter) Prev() (*Span, error) {
 	return l.skipEmptyFileBackward()
 }
 
-func (l *LevelIter) skipEmptyFileForward() (*Span, error) {
+func (l *LevelIter) skipEmptyFileForward() (*keyspan.Span, error) {
 	if l.straddleDir == 0 && l.keyType == manifest.KeyTypeRange &&
 		l.iterFile != nil && l.iter != nil {
 		// We were at a file that had spans. Check if the next file that has
@@ -401,7 +408,7 @@ func (l *LevelIter) skipEmptyFileForward() (*Span, error) {
 		if l.cmp(startKey, endKey) < 0 {
 			// There is a gap between the two files. Synthesize a straddling span
 			// to avoid unnecessarily loading the next file.
-			l.straddle = Span{
+			l.straddle = keyspan.Span{
 				Start: startKey,
 				End:   endKey,
 			}
@@ -414,9 +421,9 @@ func (l *LevelIter) skipEmptyFileForward() (*Span, error) {
 		// forward.
 		l.iterFile = l.files.Next()
 	}
-	l.straddle = Span{}
+	l.straddle = keyspan.Span{}
 	l.straddleDir = 0
-	var span *Span
+	var span *keyspan.Span
 	for span.Empty() {
 		fileToLoad := l.iterFile
 		if l.keyType == manifest.KeyTypePoint {
@@ -440,7 +447,7 @@ func (l *LevelIter) skipEmptyFileForward() (*Span, error) {
 	return l.verify(span, l.err)
 }
 
-func (l *LevelIter) skipEmptyFileBackward() (*Span, error) {
+func (l *LevelIter) skipEmptyFileBackward() (*keyspan.Span, error) {
 	// We were at a file that had spans. Check if the previous file that has
 	// spans is not directly adjacent to the current file i.e. there is a
 	// gap in the span keyspace between the two files. In that case, synthesize
@@ -464,7 +471,7 @@ func (l *LevelIter) skipEmptyFileBackward() (*Span, error) {
 		if l.cmp(startKey, endKey) < 0 {
 			// There is a gap between the two files. Synthesize a straddling span
 			// to avoid unnecessarily loading the next file.
-			l.straddle = Span{
+			l.straddle = keyspan.Span{
 				Start: startKey,
 				End:   endKey,
 			}
@@ -477,9 +484,9 @@ func (l *LevelIter) skipEmptyFileBackward() (*Span, error) {
 		// backward.
 		l.iterFile = l.files.Prev()
 	}
-	l.straddle = Span{}
+	l.straddle = keyspan.Span{}
 	l.straddleDir = 0
-	var span *Span
+	var span *keyspan.Span
 	for span.Empty() {
 		fileToLoad := l.iterFile
 		if l.keyType == manifest.KeyTypePoint {
@@ -505,7 +512,7 @@ func (l *LevelIter) skipEmptyFileBackward() (*Span, error) {
 // verify is invoked whenever a span is returned from an iterator positioning
 // method to a caller. During invariant builds, it asserts invariants to the
 // caller.
-func (l *LevelIter) verify(s *Span, err error) (*Span, error) {
+func (l *LevelIter) verify(s *keyspan.Span, err error) (*keyspan.Span, error) {
 	// NB: Do not add any logic outside the invariants.Enabled conditional to
 	// ensure that verify is always compiled away in production builds.
 	if invariants.Enabled {
@@ -546,7 +553,7 @@ func (l *LevelIter) String() string {
 }
 
 // WrapChildren implements FragmentIterator.
-func (l *LevelIter) WrapChildren(wrap WrapFn) {
+func (l *LevelIter) WrapChildren(wrap keyspan.WrapFn) {
 	l.iter = wrap(l.iter)
 	l.wrapFn = wrap
 }

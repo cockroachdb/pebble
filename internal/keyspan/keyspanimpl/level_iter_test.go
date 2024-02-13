@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package keyspan
+package keyspanimpl
 
 import (
 	"fmt"
@@ -11,12 +11,13 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/stretchr/testify/require"
 )
 
 func TestLevelIterEquivalence(t *testing.T) {
-	type level [][]Span
+	type level [][]keyspan.Span
 	testCases := []struct {
 		name   string
 		levels []level
@@ -26,28 +27,28 @@ func TestLevelIterEquivalence(t *testing.T) {
 			[]level{
 				{
 					{
-						Span{
+						{
 							Start: []byte("a"),
 							End:   []byte("b"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
 							}},
 						},
-						Span{
+						{
 							Start: []byte("b"),
 							End:   []byte("c"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
 							}},
 						},
-						Span{
+						{
 							Start: []byte("c"),
 							End:   []byte("d"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
@@ -55,28 +56,28 @@ func TestLevelIterEquivalence(t *testing.T) {
 						},
 					},
 					{
-						Span{
+						{
 							Start: []byte("d"),
 							End:   []byte("e"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
 							}},
 						},
-						Span{
+						{
 							Start: []byte("e"),
 							End:   []byte("f"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
 							}},
 						},
-						Span{
+						{
 							Start: []byte("f"),
 							End:   []byte("g"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
@@ -91,10 +92,10 @@ func TestLevelIterEquivalence(t *testing.T) {
 			[]level{
 				{
 					{
-						Span{
+						{
 							Start: []byte("a"),
 							End:   []byte("b"),
-							Keys: []Key{
+							Keys: []keyspan.Key{
 								{
 									Trailer: base.MakeTrailer(4, base.InternalKeyKindRangeKeySet),
 									Suffix:  nil,
@@ -107,10 +108,10 @@ func TestLevelIterEquivalence(t *testing.T) {
 								},
 							},
 						},
-						Span{
+						{
 							Start: []byte("b"),
 							End:   []byte("c"),
-							Keys: []Key{
+							Keys: []keyspan.Key{
 								{
 									Trailer: base.MakeTrailer(4, base.InternalKeyKindRangeKeySet),
 									Suffix:  nil,
@@ -123,10 +124,10 @@ func TestLevelIterEquivalence(t *testing.T) {
 								},
 							},
 						},
-						Span{
+						{
 							Start: []byte("c"),
 							End:   []byte("d"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
@@ -134,28 +135,28 @@ func TestLevelIterEquivalence(t *testing.T) {
 						},
 					},
 					{
-						Span{
+						{
 							Start: []byte("d"),
 							End:   []byte("e"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
 							}},
 						},
-						Span{
+						{
 							Start: []byte("e"),
 							End:   []byte("f"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
 							}},
 						},
-						Span{
+						{
 							Start: []byte("f"),
 							End:   []byte("g"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
@@ -170,28 +171,28 @@ func TestLevelIterEquivalence(t *testing.T) {
 			[]level{
 				{
 					{
-						Span{
+						{
 							Start: []byte("a"),
 							End:   []byte("b"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
 							}},
 						},
-						Span{
+						{
 							Start: []byte("c"),
 							End:   []byte("d"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
 							}},
 						},
-						Span{
+						{
 							Start: []byte("e"),
 							End:   []byte("f"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
@@ -199,28 +200,28 @@ func TestLevelIterEquivalence(t *testing.T) {
 						},
 					},
 					{
-						Span{
+						{
 							Start: []byte("g"),
 							End:   []byte("h"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
 							}},
 						},
-						Span{
+						{
 							Start: []byte("i"),
 							End:   []byte("j"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
 							}},
 						},
-						Span{
+						{
 							Start: []byte("k"),
 							End:   []byte("l"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
@@ -235,10 +236,10 @@ func TestLevelIterEquivalence(t *testing.T) {
 			[]level{
 				{
 					{
-						Span{
+						{
 							Start: []byte("a"),
 							End:   []byte("h"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
@@ -246,10 +247,10 @@ func TestLevelIterEquivalence(t *testing.T) {
 						},
 					},
 					{
-						Span{
+						{
 							Start: []byte("l"),
 							End:   []byte("u"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(2, base.InternalKeyKindRangeKeyUnset),
 								Suffix:  nil,
 								Value:   nil,
@@ -259,10 +260,10 @@ func TestLevelIterEquivalence(t *testing.T) {
 				},
 				{
 					{
-						Span{
+						{
 							Start: []byte("e"),
 							End:   []byte("r"),
-							Keys: []Key{{
+							Keys: []keyspan.Key{{
 								Trailer: base.MakeTrailer(1, base.InternalKeyKindRangeKeySet),
 								Suffix:  nil,
 								Value:   []byte("foo"),
@@ -275,15 +276,15 @@ func TestLevelIterEquivalence(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		var fileIters []FragmentIterator
-		var levelIters []FragmentIterator
+		var fileIters []keyspan.FragmentIterator
+		var levelIters []keyspan.FragmentIterator
 		var iter1, iter2 MergingIter
 		for j, level := range tc.levels {
 			j := j // Copy for use in closures down below.
 			var levelIter LevelIter
 			var metas []*manifest.FileMetadata
 			for k, file := range level {
-				fileIters = append(fileIters, NewIter(base.DefaultComparer.Compare, file))
+				fileIters = append(fileIters, keyspan.NewIter(base.DefaultComparer.Compare, file))
 				meta := &manifest.FileMetadata{
 					FileNum:          base.FileNum(k + 1),
 					Size:             1024,
@@ -299,8 +300,8 @@ func TestLevelIterEquivalence(t *testing.T) {
 				metas = append(metas, meta)
 			}
 
-			tableNewIters := func(file *manifest.FileMetadata, iterOptions SpanIterOptions) (FragmentIterator, error) {
-				return NewIter(base.DefaultComparer.Compare, tc.levels[j][file.FileNum-1]), nil
+			tableNewIters := func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+				return keyspan.NewIter(base.DefaultComparer.Compare, tc.levels[j][file.FileNum-1]), nil
 			}
 			// Add all the fileMetadatas to L6.
 			b := &manifest.BulkVersionEdit{}
@@ -312,14 +313,14 @@ func TestLevelIterEquivalence(t *testing.T) {
 			v, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0, nil)
 			require.NoError(t, err)
 			levelIter.Init(
-				SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters,
+				keyspan.SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters,
 				v.Levels[6].Iter(), 0, manifest.KeyTypeRange,
 			)
 			levelIters = append(levelIters, &levelIter)
 		}
 
-		iter1.Init(base.DefaultComparer.Compare, VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), fileIters...)
-		iter2.Init(base.DefaultComparer.Compare, VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), levelIters...)
+		iter1.Init(base.DefaultComparer.Compare, keyspan.VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), fileIters...)
+		iter2.Init(base.DefaultComparer.Compare, keyspan.VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), levelIters...)
 
 		// Check iter1 and iter2 for equivalence.
 		s1, err1 := iter1.First()
@@ -348,10 +349,10 @@ func TestLevelIterEquivalence(t *testing.T) {
 }
 
 func TestLevelIter(t *testing.T) {
-	var level [][]Span
-	var rangedels [][]Span
+	var level [][]keyspan.Span
+	var rangedels [][]keyspan.Span
 	var metas []*manifest.FileMetadata
-	var iter FragmentIterator
+	var iter keyspan.FragmentIterator
 	var extraInfo func() string
 
 	datadriven.RunTest(t, "testdata/level_iter", func(t *testing.T, d *datadriven.TestData) string {
@@ -365,8 +366,8 @@ func TestLevelIter(t *testing.T) {
 				iter = nil
 			}
 			var pointKeys []base.InternalKey
-			var currentRangeDels []Span
-			var currentFile []Span
+			var currentRangeDels []keyspan.Span
+			var currentFile []keyspan.Span
 			for _, key := range strings.Split(d.Input, "\n") {
 				if strings.HasPrefix(key, "file") {
 					// Skip the very first file creation.
@@ -399,12 +400,12 @@ func TestLevelIter(t *testing.T) {
 					ikey := base.ParseInternalKey(key[:j])
 					pointKeys = append(pointKeys, ikey)
 					if ikey.Kind() == base.InternalKeyKindRangeDelete {
-						currentRangeDels = append(currentRangeDels, Span{
-							Start: ikey.UserKey, End: []byte(key[j+1:]), Keys: []Key{{Trailer: ikey.Trailer}}})
+						currentRangeDels = append(currentRangeDels, keyspan.Span{
+							Start: ikey.UserKey, End: []byte(key[j+1:]), Keys: []keyspan.Key{{Trailer: ikey.Trailer}}})
 					}
 					continue
 				}
-				span := ParseSpan(key)
+				span := keyspan.ParseSpan(key)
 				currentFile = append(currentFile, span)
 			}
 			meta := &manifest.FileMetadata{
@@ -438,14 +439,14 @@ func TestLevelIter(t *testing.T) {
 			}
 			if iter == nil {
 				var lastFileNum base.FileNum
-				tableNewIters := func(file *manifest.FileMetadata, _ SpanIterOptions) (FragmentIterator, error) {
+				tableNewIters := func(file *manifest.FileMetadata, _ keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 					keyType := keyType
 					spans := level[file.FileNum-1]
 					if keyType == manifest.KeyTypePoint {
 						spans = rangedels[file.FileNum-1]
 					}
 					lastFileNum = file.FileNum
-					return NewIter(base.DefaultComparer.Compare, spans), nil
+					return keyspan.NewIter(base.DefaultComparer.Compare, spans), nil
 				}
 				b := &manifest.BulkVersionEdit{}
 				amap := make(map[base.FileNum]*manifest.FileMetadata)
@@ -456,7 +457,7 @@ func TestLevelIter(t *testing.T) {
 				v, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0, nil)
 				require.NoError(t, err)
 				iter = NewLevelIter(
-					SpanIterOptions{}, base.DefaultComparer.Compare,
+					keyspan.SpanIterOptions{}, base.DefaultComparer.Compare,
 					tableNewIters, v.Levels[6].Iter(), 6, keyType,
 				)
 				extraInfo = func() string {
@@ -464,7 +465,7 @@ func TestLevelIter(t *testing.T) {
 				}
 			}
 
-			return runFragmentIteratorCmd(iter, d.Input, extraInfo)
+			return keyspan.RunFragmentIteratorCmd(iter, d.Input, extraInfo)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)

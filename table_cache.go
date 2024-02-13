@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -95,7 +96,9 @@ func (f tableNewIters) TODO(
 
 // tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
 // for the rangedel iterator returned by tableNewIters.
-func tableNewRangeDelIter(ctx context.Context, newIters tableNewIters) keyspan.TableNewSpanIter {
+func tableNewRangeDelIter(
+	ctx context.Context, newIters tableNewIters,
+) keyspanimpl.TableNewSpanIter {
 	return func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeDeletions)
 		if err != nil {
@@ -107,7 +110,9 @@ func tableNewRangeDelIter(ctx context.Context, newIters tableNewIters) keyspan.T
 
 // tableNewRangeKeyIter takes a tableNewIters and returns a TableNewSpanIter
 // for the range key iterator returned by tableNewIters.
-func tableNewRangeKeyIter(ctx context.Context, newIters tableNewIters) keyspan.TableNewSpanIter {
+func tableNewRangeKeyIter(
+	ctx context.Context, newIters tableNewIters,
+) keyspanimpl.TableNewSpanIter {
 	return func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeKeys)
 		if err != nil {
