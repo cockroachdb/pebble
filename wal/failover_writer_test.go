@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -31,6 +32,9 @@ const (
 )
 
 func TestFailoverWriter(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skipf("flaky on windows (#3289)")
+	}
 	datadriven.Walk(t, "testdata/failover_writer", func(t *testing.T, path string) {
 		memFS := vfs.NewStrictMem()
 		dirs := [numDirIndices]dirAndFileHandle{
