@@ -178,12 +178,12 @@ const (
 	// a format major version.
 	FormatVirtualSSTables
 
-	// FormatSyntheticPrefixes is a format major version that adds support for
-	// sstables to have their content exposed in a different prefix of keyspace
-	// than the actual prefix persisted in the keys in such sstables. The prefix
-	// replacement information is stored in new fields in the Manifest and thus
-	// requires a format major version.
-	FormatSyntheticPrefixes
+	// FormatSyntheticPrefixSuffix is a format major version that adds support
+	// for sstables to have their content exposed in a different prefix or suffix
+	// of keyspace than the actual prefix/suffix persisted in the keys in such
+	// sstables. The prefix replacement information is stored in new fields in the
+	// Manifest and thus requires a format major version.
+	FormatSyntheticPrefixSuffix
 
 	// TODO(msbutler): add major version for synthetic suffixes
 
@@ -222,7 +222,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	switch v {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev3
-	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixes:
+	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix:
 		return sstable.TableFormatPebblev4
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -234,7 +234,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	switch v {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
-		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixes:
+		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -268,8 +268,8 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	FormatVirtualSSTables: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatVirtualSSTables)
 	},
-	FormatSyntheticPrefixes: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatSyntheticPrefixes)
+	FormatSyntheticPrefixSuffix: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatSyntheticPrefixSuffix)
 	},
 }
 
