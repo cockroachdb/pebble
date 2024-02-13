@@ -1000,22 +1000,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 		// => answer is index.
 	}
 
-	// index is the first restart point with key >= search key. Define the keys
-	// between a restart point and the next restart point as belonging to that
-	// restart point. Note that index could be equal to i.numRestarts, i.e., we
-	// are past the last restart.
-	//
-	// Since keys are strictly increasing, if index > 0 then the restart point
-	// at index-1 will be the first one that has some keys belonging to it that
-	// are less than the search key.  If index == 0, then all keys in this block
-	// are larger than the search key, so there is no match.
-	targetOffset := i.restarts
-	if index > 0 {
-		i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
-		if index < i.numRestarts {
-			targetOffset = decodeRestart(i.data[i.restarts+4*(index):])
-		}
-	} else if index == 0 {
+	if index == 0 {
 		if i.syntheticSuffix != nil {
 			// The binary search was conducted on keys without suffix replacement,
 			// implying the first key in the block may be less than the search key. To
@@ -1033,15 +1018,93 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			}
 		}
 		// If index == 0 then all keys in this block are larger than the key
-		// sought.
+		// sought, so there is no match.
 		i.offset = -1
 		i.nextOffset = 0
 		return nil, base.LazyValue{}
 	}
 
-	// Iterate from that restart point to somewhere >= the key sought, then back
-	// up to the previous entry. The expectation is that we'll be performing
-	// reverse iteration, so we cache the entries as we advance forward.
+	// INVARIANT: index > 0
+
+	// Ignoring suffix replacement, index is the first restart point with key >=
+	// search key. Define the keys between a restart point and the next restart
+	// point as belonging to that restart point. Note that index could be equal to
+	// i.numRestarts, i.e., we are past the last restart.  Since keys are strictly
+	// increasing, then the restart point at index-1 will be the first one that
+	// has some keys belonging to it that are less than the search key.
+	//
+	// Next, we will search between the restart at index-1 and the restart point
+	// at index, for the first key >= key, and then on finding it, return
+	// i.Prev(). We need to know when we have hit the offset for index, since then
+	// we can stop searching. targetOffset encodes that offset for index.
+	targetOffset := i.restarts
+	i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
+	if index < i.numRestarts {
+		targetOffset = decodeRestart(i.data[i.restarts+4*(index):])
+
+		if i.syntheticSuffix != nil {
+			// The binary search was conducted on keys without suffix replacement,
+			// implying the returned restart point (index) may be less than the search
+			// key, breaking the assumption described above.
+			//
+			// For example: consider this block with a replacement ts of 4, and
+			// restart interval of 1: - pre replacement: a@3,b@2,c@3 - post
+			// replacement: a@4,b@4,c@4
+			//
+			// Suppose the client calls SeekLT(b@3), SeekLT must return b@4.
+			//
+			// If the client calls  SeekLT(b@3), the binary search would return b@2,
+			// the lowest key geq to b@3, pre-suffix replacement. Then, SeekLT will
+			// begin forward iteration from a@3, the previous restart point, to
+			// b{suffix}. The iteration stops when it encounters a key geq to the
+			// search key or if it reaches the upper bound. Without suffix
+			// replacement, we can assume that the upper bound of this forward
+			// iteration, b{suffix}, is greater than the search key, as implied by the
+			// binary search.
+			//
+			// If we naively hold this assumption with suffix replacement, the
+			// iteration would terminate at the upper bound, b@4, call i.Prev, and
+			// incorrectly return a@4. To correct for this, if the original returned
+			// index is less than the search key, shift our forward iteration to begin
+			// at index instead of index -1. With suffix replacement the key at index
+			// is guaranteed to be the highest restart point less than the seach key
+			// (i.e. the same property of index-1 for a block without suffix
+			// replacement). This property holds because of the invariant that a block
+			// with suffix replacement will not have two keys that share the same
+			// prefix. To consider the above example, binary searching with b@3 landed
+			// naively at a@3, but since b@4<b@3, we shift our forward iteration to
+			// begin at b@4. We never need to shift by more than one restart point
+			// (i.e. to c@4) because it's impossible for the search key to be greater
+			// than the the key at the next restart point in the block because that
+			// key will always have a different prefix. Put another way, because no
+			// key in the block shares the same prefix, naive binary search should
+			// always land at most 1 restart point off the correct one.
+
+			naiveOffset := i.offset
+			// Shift up to the original binary search result and decode the key.
+			i.offset = targetOffset
+			i.readEntry()
+			i.decodeInternalKey(i.key)
+			i.maybeReplaceSuffix(false /* allowInPlace */)
+
+			// If the binary search point is actually less than the search key, post
+			// replacement, bump the target offset.
+			if i.cmp(i.ikey.UserKey, key) < 0 {
+				i.offset = targetOffset
+				if index+1 < i.numRestarts {
+					// if index+1 is within the i.data bounds, use it to find the target
+					// offset.
+					targetOffset = decodeRestart(i.data[i.restarts+4*(index+1):])
+				} else {
+					targetOffset = i.restarts
+				}
+			} else {
+				i.offset = naiveOffset
+			}
+		}
+	}
+
+	// Init nextOffset for the forward iteration below.
 	i.nextOffset = i.offset
 
 	for {
@@ -1081,41 +1144,6 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			// blockIter. That is, we never cache anything and therefore never
 			// return a key backed by cachedBuf.
 			if hiddenPoint {
-				return i.Prev()
-			}
-			if i.syntheticSuffix != nil {
-				// The binary search was conducted on keys without suffix replacement,
-				// implying the returned restart point may be less than the search key.
-				//
-				// For example: consider this block with a replacement ts of 4, and
-				// restart interval of 1:
-				// - pre replacement: a@3,b@2,c@3
-				// - post replacement: a@4,b@4,c@4
-				//
-				// Suppose the client calls SeekLT(b@3), SeekLT must return b@4.
-				//
-				// If the client calls  SeekLT(b@3), the binary search would return b@2,
-				// the lowest key geq to b@3, pre-suffix replacement. Then, SeekLT will
-				// begin forward iteration from a@3, the previous restart point, to
-				// b{suffix}. The iteration stops when it encounters a key geq to the
-				// search key or if it reaches the upper bound. Without suffix
-				// replacement, we can assume that the upper bound of this forward
-				// iteration, b{suffix}, is greater than the search key, as implied by
-				// the binary search.
-				//
-				// If we naively hold this assumption with suffix replacement, the
-				// iteration would terminate at the upper bound, b@4, call i.Prev, and
-				// incorrectly return a@4. Instead, we must continue forward iteration
-				// past the upper bound, until we find a key geq the search key. With
-				// this correction, SeekLT would correctly return b@4 in this example.
-				for i.cmp(i.ikey.UserKey, key) < 0 {
-					i.Next()
-					if !i.valid() {
-						break
-					}
-				}
-				// The current key is greater than or equal to our search key. Back up to
-				// the previous key which was less than our search key.
 				return i.Prev()
 			}
 			break
