@@ -304,7 +304,10 @@ type blockEntry struct {
 // guarantee is used by the range tombstone and range key code, which knows that
 // the respective blocks are always encoded with a restart interval of 1. This
 // per-block key stability guarantee is sufficient for range tombstones and
-// range deletes as they are always encoded in a single block.
+// range deletes as they are always encoded in a single block. Note: this
+// stability guarantee no longer holds for a block iter with synthetic suffix
+// replacement, but this doesn't matter, as the user will not open
+// an iterator with a synthetic suffix on a block with rangekeys (for now).
 //
 // A blockIter also provides a value stability guarantee for range deletions and
 // range keys since there is only a single range deletion and range key block
@@ -372,6 +375,11 @@ type blockIter struct {
 	// point directly to data stored in the block (for a key which has no prefix
 	// compression), to fullKey (for a prefix compressed key), or to a slice of
 	// data stored in cachedBuf (during reverse iteration).
+	//
+	// NB: In general, key contains the same logical content as ikey
+	// (i.e. ikey = decode(key)), but if the iterator contains a synthetic suffix
+	// replacement rule, this will not be the case. Therefore, key should never
+	// be used after ikey is set.
 	key []byte
 	// fullKey is a buffer used for key prefix decompression.
 	fullKey []byte
@@ -383,9 +391,10 @@ type blockIter struct {
 	lazyValue base.LazyValue
 	// ikey contains the decoded InternalKey the iterator is currently pointed
 	// at. Note that the memory backing ikey.UserKey is either data stored
-	// directly in the block, fullKey, or cachedBuf. The key stability guarantee
-	// for blocks built with a restart interval of 1 is achieved by having
-	// ikey.UserKey always point to data stored directly in the block.
+	// directly in the block, fullKey, cachedBuf, or synthSuffixBuf. The key
+	// stability guarantee for blocks built with a restart interval of 1 is
+	// achieved by having ikey.UserKey always point to data stored directly in the
+	// block.
 	ikey InternalKey
 	// cached and cachedBuf are used during reverse iteration. They are needed
 	// because we can't perform prefix decoding in reverse, only in the forward
@@ -411,8 +420,27 @@ type blockIter struct {
 		hasValuePrefix bool
 	}
 	hideObsoletePoints bool
-	syntheticSuffix    SyntheticSuffix
-	synthSuffixBuf     []byte
+
+	// syntheticSuffix, if not nil, will replace the decoded ikey.UserKey suffix
+	// before the key is returned to the user. A sequence of iter operations on a
+	// block with a syntheticSuffix rule should return keys as if those operations
+	// ran on a block with keys that all had the syntheticSuffix. As an example:
+	// any sequence of block iter cmds should return the same keys for the
+	// following two blocks:
+	//
+	// blockA: a@3,b@3,c@3
+	// blockB: a@1,b@2,c@1 with syntheticSuffix=3
+	//
+	// To ensure this, Suffix replacement will not change the ordering of keys in
+	// the block because the iter assumes the following about the block:
+	//
+	// (1) no two keys in the block share the same prefix.
+	// (2) pebble.Compare(keyPrefix{replacementSuffix},keyPrefix{originalSuffix}) < 0
+	//
+	// In addition, we also assume that any block with rangekeys will not contain
+	// a synthetic suffix.
+	syntheticSuffix SyntheticSuffix
+	synthSuffixBuf  []byte
 }
 
 // blockIter implements the base.InternalIterator interface.
@@ -442,9 +470,7 @@ func (i *blockIter) init(
 		return base.CorruptionErrorf("pebble/table: invalid table (block has no restart points)")
 	}
 	i.syntheticSuffix = syntheticSuffix
-	if i.syntheticSuffix != nil {
-		i.synthSuffixBuf = []byte{}
-	}
+	i.synthSuffixBuf = i.synthSuffixBuf[:0]
 	i.split = split
 	i.cmp = cmp
 	i.restarts = int32(len(block)) - 4*(1+numRestarts)
@@ -994,7 +1020,13 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			// The binary search was conducted on keys without suffix replacement,
 			// implying the first key in the block may be less than the search key. To
 			// double check, get the first key in the block with suffix replacement
-			// and compare to the search key.
+			// and compare to the search key. Consider the following example: suppose
+			// the user searches with a@3, the first key in the block is a@2 and the
+			// block contains a suffix replacement rule of 4. Since a@3 sorts before
+			// a@2, the binary search would return index==0. Without conducting the
+			// suffix replacement, the SeekLT would incorrectly return nil. With
+			// suffix replacement though, a@4 should be returned as a@4 sorts before
+			// a@3.
 			ikey, lazyVal := i.First()
 			if i.cmp(ikey.UserKey, key) < 0 {
 				return ikey, lazyVal
@@ -1057,24 +1089,25 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 				//
 				// For example: consider this block with a replacement ts of 4, and
 				// restart interval of 1:
-				// - pre replacement: a3,b2,c3
-				// - post replacement: a4,b4,c4
+				// - pre replacement: a@3,b@2,c@3
+				// - post replacement: a@4,b@4,c@4
 				//
-				// Suppose the client calls SeekLT(b3), SeekLT must return b4.
+				// Suppose the client calls SeekLT(b@3), SeekLT must return b@4.
 				//
-				// If the client calls  SeekLT(b3), the binary search would return b2,
-				// the lowest key geq to b3, pre-suffix replacement. Then, SeekLT will
-				// begin forward iteration from a3, the previous restart point, to
+				// If the client calls  SeekLT(b@3), the binary search would return b@2,
+				// the lowest key geq to b@3, pre-suffix replacement. Then, SeekLT will
+				// begin forward iteration from a@3, the previous restart point, to
 				// b{suffix}. The iteration stops when it encounters a key geq to the
-				// search key or if it reaches the upper bound. Without suffix replacement, we can assume
-				// that the upper bound of this forward iteration, b{suffix}, is greater
-				// than the search key, as implied by the binary search.
+				// search key or if it reaches the upper bound. Without suffix
+				// replacement, we can assume that the upper bound of this forward
+				// iteration, b{suffix}, is greater than the search key, as implied by
+				// the binary search.
 				//
 				// If we naively hold this assumption with suffix replacement, the
-				// iteration would terminate at the upper bound, b4, call i.Prev, and
-				// incorrectly return a4. Instead, we must continue forward iteration
+				// iteration would terminate at the upper bound, b@4, call i.Prev, and
+				// incorrectly return a@4. Instead, we must continue forward iteration
 				// past the upper bound, until we find a key geq the search key. With
-				// this correction, SeekLT would correctly return b4 in this example.
+				// this correction, SeekLT would correctly return b@4 in this example.
 				for i.cmp(i.ikey.UserKey, key) < 0 {
 					i.Next()
 					if !i.valid() {
