@@ -1008,7 +1008,27 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 		i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
 		if index < i.numRestarts {
 			targetOffset = decodeRestart(i.data[i.restarts+4*(index):])
+
+			if i.syntheticSuffix != nil {
+				naiveOffset := i.offset
+				// Shift up to the original binary search result and decode the key.
+				i.offset = targetOffset
+				i.nextOffset = i.offset
+				i.readEntry()
+				i.decodeInternalKey(i.key)
+				i.maybeReplaceSuffix(false /* allowInPlace */)
+
+				// If the binary search point is actually less than the search key, post
+				// replacement, bump the target offset.
+				if i.cmp(i.ikey.UserKey, key) < 0 {
+					i.offset = targetOffset
+					targetOffset = decodeRestart(i.data[i.restarts+4*(index+1):])
+				} else {
+					i.offset = naiveOffset
+				}
+			}
 		}
+
 	} else if index == 0 {
 		if i.syntheticSuffix != nil {
 			// The binary search was conducted on keys without suffix replacement,
@@ -1075,41 +1095,6 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			// blockIter. That is, we never cache anything and therefore never
 			// return a key backed by cachedBuf.
 			if hiddenPoint {
-				return i.Prev()
-			}
-			if i.syntheticSuffix != nil {
-				// The binary search was conducted on keys without suffix replacement,
-				// implying the returned restart point may be less than the search key.
-				//
-				// For example: consider this block with a replacement ts of 4, and
-				// restart interval of 1:
-				// - pre replacement: a@3,b@2,c@3
-				// - post replacement: a@4,b@4,c@4
-				//
-				// Suppose the client calls SeekLT(b@3), SeekLT must return b@4.
-				//
-				// If the client calls  SeekLT(b@3), the binary search would return b@2,
-				// the lowest key geq to b@3, pre-suffix replacement. Then, SeekLT will
-				// begin forward iteration from a@3, the previous restart point, to
-				// b{suffix}. The iteration stops when it encounters a key geq to the
-				// search key or if it reaches the upper bound. Without suffix
-				// replacement, we can assume that the upper bound of this forward
-				// iteration, b{suffix}, is greater than the search key, as implied by
-				// the binary search.
-				//
-				// If we naively hold this assumption with suffix replacement, the
-				// iteration would terminate at the upper bound, b@4, call i.Prev, and
-				// incorrectly return a@4. Instead, we must continue forward iteration
-				// past the upper bound, until we find a key geq the search key. With
-				// this correction, SeekLT would correctly return b@4 in this example.
-				for i.cmp(i.ikey.UserKey, key) < 0 {
-					i.Next()
-					if !i.valid() {
-						break
-					}
-				}
-				// The current key is greater than or equal to our search key. Back up to
-				// the previous key which was less than our search key.
 				return i.Prev()
 			}
 			break
