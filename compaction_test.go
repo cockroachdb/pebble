@@ -30,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -3053,8 +3054,8 @@ func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
 				// can cause the duration to be 0.
 				if runtime.GOOS != "windows" {
 					tinyInterval := 50 * time.Microsecond
-					require.Less(t, tinyInterval, metrics.Flush.WriteThroughput.WorkDuration)
-					require.Less(t, tinyInterval, metrics.Flush.WriteThroughput.IdleDuration)
+					testutils.DurationIsAtLeast(t, metrics.Flush.WriteThroughput.WorkDuration, tinyInterval)
+					testutils.DurationIsAtLeast(t, metrics.Flush.WriteThroughput.IdleDuration, tinyInterval)
 				}
 				break
 			}
