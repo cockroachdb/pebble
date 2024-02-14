@@ -417,10 +417,14 @@ func (w *suffixReplacementBlockCollectorWrapper) UpdateKeySuffixes(
 // BlockIntervalSyntheticReplacer provides methods to conduct just in time
 // adjustments of a passed in block prop interval before filtering.
 type BlockIntervalSyntheticReplacer interface {
-	// AdjustIntervalWithSyntheticSuffix adjusts the [lower, upper) range for a data
-	// block (specifically, the range returned by the corresponding
+	// AdjustIntervalWithSyntheticSuffix adjusts the [lower, upper) range for a
+	// data block (specifically, the range returned by the corresponding
 	// DataBlockIntervalCollector.FinishDataBlock) to what it would have been if
 	// all the input keys had the given synthetic suffix.
+	//
+	// One synthetic suffix invariant is that the synthetic suffix is greater than
+	// all suffixes encountered in the block, implying that adjustedLower >=
+	// upper.
 	AdjustIntervalWithSyntheticSuffix(lower uint64, upper uint64, suffix []byte) (adjustedLower uint64, adjustedUpper uint64, err error)
 }
 
@@ -489,9 +493,15 @@ func (b *BlockIntervalFilter) SyntheticSuffixIntersects(prop []byte, suffix []by
 	if err != nil {
 		return false, err
 	}
+
+	// Given the invariant that the synthetic suffix is greater than all
+	// suffixes encountered in the block, newLower should be greater than or equal
+	// to the original upper bound.
+	//
+	// NB: This isn't an =< comparator because the original i.upper bound is
+	// exclusive to the suffixes in the block.
 	if newLower < i.upper {
-		// This isn't an =< comparator because the original i.upper bound is exclusive.
-		return false, base.CorruptionErrorf(fmt.Sprintf("the synthetic suffix %d is the less than the property upper bound %d", newLower, i.upper))
+		return false, base.CorruptionErrorf(fmt.Sprintf("the synthetic suffix %d is less than the original property upper bound %d", newLower, i.upper))
 	}
 	newInterval := interval{lower: newLower, upper: newUpper}
 	return newInterval.intersects(b.filterInterval), nil

@@ -1366,7 +1366,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 			if err != nil {
 				return err.Error()
 			}
-			if err := subiter.init(r.Compare, r.Split, subIndex.Get(), 0, false, nil); err != nil {
+			if err := subiter.init(r.Compare, r.Split, subIndex.Get(), 0, false /* hideObsoletePoints */, nil /* syntheticSuffix */); err != nil {
 				return err.Error()
 			}
 			for key, value := subiter.First(); key != nil; key, value = subiter.Next() {

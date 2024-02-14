@@ -713,7 +713,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// tombstones. We need properly fragmented and sorted range tombstones in
 	// order to serve from them directly.
 	iter := &blockIter{}
-	if err := iter.init(r.Compare, r.Split, b, r.Properties.GlobalSeqNum, false, nil); err != nil {
+	if err := iter.init(r.Compare, r.Split, b, r.Properties.GlobalSeqNum, false /* hideObsoletePoints */, nil /* syntheticSuffix */); err != nil {
 		return nil, err
 	}
 	var tombstones []keyspan.Span
@@ -865,7 +865,11 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	return nil
 }
 
-// Layout returns the layout (block organization) for an sstable.
+// Layout returns the layout (block organization) for a physical sstable.
+//
+// NB: No block iterator in this function uses a syntheticSuffix since
+// only virtual readers may iterate over blocks with a synthetic suffix.
+// Layout() is only able to inspect physical sst's directly.
 func (r *Reader) Layout() (*Layout, error) {
 	if r.err != nil {
 		return nil, r.err
@@ -920,8 +924,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			if err != nil {
 				return nil, err
 			}
-			// TODO(msbutler): figure out how to pass virtualState to layout call.
-			if err := iter.init(r.Compare, r.Split, subIndex.Get(), 0, false, nil); err != nil {
+			if err := iter.init(r.Compare, r.Split, subIndex.Get(), 0, false /* hideObsoletePoints */, nil /* syntheticSuffix */); err != nil {
 				return nil, err
 			}
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
@@ -1037,9 +1040,18 @@ func (r *Reader) CommonProperties() *CommonProperties {
 // Only blocks containing point keys are considered. Range deletion and range
 // key blocks are not considered.
 //
-// TODO(ajkr): account for metablock space usage. Perhaps look at the fraction of
-// data blocks overlapped and add that same fraction of the metadata blocks to the
-// estimate.
+// NB: No block iterator in this function uses a syntheticSuffix since only
+// virtual readers may iterate over blocks with a synthetic suffix.
+// EstimatedDiskUsage() is only able to inspect physical sst's directly. If the
+// virtual reader that links to this backing file contains a synthetic suffix
+// replacement and if the start and end args contain a suffix,
+// EstimatedDiskUsage may skip or include keys in its estimate that it shouldn't
+// have, as the synthetic suffix replacement can determine whether a key
+// intersects the bound.
+//
+// TODO(ajkr): account for metablock space usage. Perhaps look at the fraction
+// of data blocks overlapped and add that same fraction of the metadata blocks
+// to the estimate.
 func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	if r.err != nil {
 		return 0, r.err

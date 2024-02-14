@@ -444,7 +444,7 @@ func newBlockIter(
 	cmp Compare, split Split, block block, syntheticSuffix SyntheticSuffix,
 ) (*blockIter, error) {
 	i := &blockIter{}
-	return i, i.init(cmp, split, block, 0, false, syntheticSuffix)
+	return i, i.init(cmp, split, block, 0, false /* hideObsoletePoints */, syntheticSuffix)
 }
 
 func (i *blockIter) String() string {

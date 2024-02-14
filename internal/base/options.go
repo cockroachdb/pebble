@@ -73,9 +73,11 @@ type BlockPropertyFilter interface {
 	// Intersects returns true if the set represented by prop intersects with
 	// the set in the filter.
 	Intersects(prop []byte) (bool, error)
-	// SyntheticSuffixIntersects runs Intersects, but only after using the passed in
-	// suffix arg to modify a decoded copy of the passed in prop. This method only
-	// needs to be implemented for filters which that will be used with suffix
-	// replacement.
+	// SyntheticSuffixIntersects runs Intersects, but only after using the passed
+	// in suffix arg to modify a decoded copy of the passed in prop. If the filter
+	// depends on the suffix value, then the corresponding collector must encode
+	// the suffix in the property in a manner that the filter can successfully
+	// implement this method. If the filter does not depend on the value of the
+	// suffix, this method should call Intersects.
 	SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error)
 }

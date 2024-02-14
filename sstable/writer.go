@@ -2416,14 +2416,15 @@ func (o obsoleteKeyBlockPropertyFilter) Intersects(prop []byte) (bool, error) {
 func (o obsoleteKeyBlockPropertyFilter) SyntheticSuffixIntersects(
 	prop []byte, suffix []byte,
 ) (bool, error) {
-	// A block with suffix replacement should never be
-	// obselete, so return an assertion error if it is.
+	// A block with suffix replacement should never be obsolete because such
+	// sstables have a single point version per key and no RANGEDELs. Return an
+	// assertion error if the block is obsolete.
 	isNotObsolete, err := o.Intersects(prop)
 	if err != nil {
 		return false, err
 	}
 	if !isNotObsolete {
-		return false, errors.AssertionFailedf("block with synthetic suffix is obselete")
+		return false, errors.AssertionFailedf("block with synthetic suffix is obsolete")
 	}
 	return true, nil
 }
