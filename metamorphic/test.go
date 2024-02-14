@@ -10,11 +10,14 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 )
@@ -53,9 +56,15 @@ type Test struct {
 	dbs []*pebble.DB
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
-	batches   []*pebble.Batch
-	iters     []*retryableIter
-	snapshots []readerCloser
+	batches      []*pebble.Batch
+	iters        []*retryableIter
+	snapshots    []readerCloser
+	externalObjs []*sstable.WriterMetadata
+
+	// externalStorage is used to write external objects. If external storage is
+	// enabled, this is the same with testOpts.externalStorageFS; otherwise, this
+	// is an in-memory implementation used only by the test.
+	externalStorage remote.Storage
 }
 
 func newTest(ops []op) *Test {
@@ -89,6 +98,11 @@ func (t *Test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 	if numInstances < 1 {
 		numInstances = 1
 	}
+	if t.testOpts.externalStorageEnabled {
+		t.externalStorage = t.testOpts.externalStorageFS
+	} else {
+		t.externalStorage = remote.NewInMem()
+	}
 
 	t.opsWaitOn, t.opsDone = computeSynchronizationPoints(t.ops)
 
@@ -103,7 +117,7 @@ func (t *Test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 		if err == nil || errors.Is(err, errorfs.ErrInjected) || errors.Is(err, pebble.ErrCancelledCompaction) {
 			return
 		}
-		t.maybeSaveData()
+		t.saveInMemoryData()
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -227,6 +241,17 @@ func (t *Test) isFMV(dbID objID, fmv pebble.FormatMajorVersion) bool {
 	return db.FormatMajorVersion() >= fmv
 }
 
+// minFMV returns the minimum FormatMajorVersion between all databases.
+func (t *Test) minFMV() pebble.FormatMajorVersion {
+	minVersion := pebble.FormatNewest
+	for _, db := range t.dbs {
+		if db != nil {
+			minVersion = min(minVersion, db.FormatMajorVersion())
+		}
+	}
+	return minVersion
+}
+
 func (t *Test) restartDB(dbID objID) error {
 	db := t.getDB(dbID)
 	if !t.testOpts.strictFS {
@@ -279,54 +304,65 @@ func (t *Test) restartDB(dbID objID) error {
 	return err
 }
 
-func (t *Test) maybeSaveDataInternal() error {
-	rootFS := vfs.Root(t.opts.FS)
-	if rootFS == vfs.Default {
-		return nil
-	}
-	if err := os.RemoveAll(t.dir); err != nil {
-		return err
-	}
-	if _, err := vfs.Clone(rootFS, vfs.Default, t.dir, t.dir); err != nil {
-		return err
+func (t *Test) saveInMemoryDataInternal() error {
+	if rootFS := vfs.Root(t.opts.FS); rootFS != vfs.Default {
+		// t.opts.FS is an in-memory system; copy it to disk.
+		if err := os.RemoveAll(t.dir); err != nil {
+			return err
+		}
+		if _, err := vfs.Clone(rootFS, vfs.Default, t.dir, t.dir); err != nil {
+			return err
+		}
 	}
 	if t.testOpts.sharedStorageEnabled {
-		fs := t.testOpts.sharedStorageFS
-		outputDir := vfs.Default.PathJoin(t.dir, "shared", string(t.testOpts.Opts.Experimental.CreateOnSharedLocator))
-		vfs.Default.MkdirAll(outputDir, 0755)
-		objs, err := fs.List("", "")
+		if err := copyRemoteStorage(t.testOpts.sharedStorageFS, filepath.Join(t.dir, "shared")); err != nil {
+			return err
+		}
+	}
+	if t.testOpts.externalStorageEnabled {
+		if err := copyRemoteStorage(t.testOpts.externalStorageFS, filepath.Join(t.dir, "external")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyRemoteStorage(fs remote.Storage, outputDir string) error {
+	if err := vfs.Default.MkdirAll(outputDir, 0755); err != nil {
+		return err
+	}
+	objs, err := fs.List("", "")
+	if err != nil {
+		return err
+	}
+	for i := range objs {
+		reader, readSize, err := fs.ReadObject(context.TODO(), objs[i])
 		if err != nil {
 			return err
 		}
-		for i := range objs {
-			reader, readSize, err := fs.ReadObject(context.TODO(), objs[i])
-			if err != nil {
-				return err
-			}
-			buf := make([]byte, readSize)
-			if err := reader.ReadAt(context.TODO(), buf, 0); err != nil {
-				return err
-			}
-			outputPath := vfs.Default.PathJoin(outputDir, objs[i])
-			outputFile, err := vfs.Default.Create(outputPath)
-			if err != nil {
-				return err
-			}
-			if _, err := outputFile.Write(buf); err != nil {
-				outputFile.Close()
-				return err
-			}
-			if err := outputFile.Close(); err != nil {
-				return err
-			}
+		buf := make([]byte, readSize)
+		if err := reader.ReadAt(context.TODO(), buf, 0); err != nil {
+			return err
+		}
+		outputPath := vfs.Default.PathJoin(outputDir, objs[i])
+		outputFile, err := vfs.Default.Create(outputPath)
+		if err != nil {
+			return err
+		}
+		if _, err := outputFile.Write(buf); err != nil {
+			outputFile.Close()
+			return err
+		}
+		if err := outputFile.Close(); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 // If an in-memory FS is being used, save the contents to disk.
-func (t *Test) maybeSaveData() {
-	if err := t.maybeSaveDataInternal(); err != nil {
+func (t *Test) saveInMemoryData() {
+	if err := t.saveInMemoryDataInternal(); err != nil {
 		t.opts.Logger.Infof("unable to save data: %s: %v", t.dir, err)
 	}
 }
@@ -384,6 +420,20 @@ func (t *Test) setSnapshot(id objID, s readerCloser) {
 	t.snapshots[id.slot()] = s
 }
 
+func (t *Test) setExternalObj(id objID, meta *sstable.WriterMetadata) {
+	if id.tag() != externalObjTag {
+		panic(fmt.Sprintf("invalid external object ID: %s", id))
+	}
+	t.externalObjs[id.slot()] = meta
+}
+
+func (t *Test) getExternalObj(id objID) *sstable.WriterMetadata {
+	if id.tag() != externalObjTag || t.externalObjs[id.slot()] == nil {
+		panic(fmt.Sprintf("metamorphic test internal error: invalid external object ID: %s", id))
+	}
+	return t.externalObjs[id.slot()]
+}
+
 func (t *Test) clearObj(id objID) {
 	switch id.tag() {
 	case dbTag:
@@ -394,6 +444,8 @@ func (t *Test) clearObj(id objID) {
 		t.iters[id.slot()] = nil
 	case snapTag:
 		t.snapshots[id.slot()] = nil
+	default:
+		panic(fmt.Sprintf("cannot clear ID: %s", id))
 	}
 }
 
@@ -414,8 +466,9 @@ func (t *Test) getCloser(id objID) io.Closer {
 		return t.iters[id.slot()]
 	case snapTag:
 		return t.snapshots[id.slot()]
+	default:
+		panic(fmt.Sprintf("cannot close ID: %s", id))
 	}
-	panic(fmt.Sprintf("cannot close ID: %s", id))
 }
 
 func (t *Test) getIter(id objID) *retryableIter {
@@ -433,8 +486,9 @@ func (t *Test) getReader(id objID) pebble.Reader {
 		return t.batches[id.slot()]
 	case snapTag:
 		return t.snapshots[id.slot()]
+	default:
+		panic(fmt.Sprintf("invalid reader ID: %s", id))
 	}
-	panic(fmt.Sprintf("invalid reader ID: %s", id))
 }
 
 func (t *Test) getWriter(id objID) pebble.Writer {
@@ -443,8 +497,9 @@ func (t *Test) getWriter(id objID) pebble.Writer {
 		return t.dbs[id.slot()-1]
 	case batchTag:
 		return t.batches[id.slot()]
+	default:
+		panic(fmt.Sprintf("invalid writer ID: %s", id))
 	}
-	panic(fmt.Sprintf("invalid writer ID: %s", id))
 }
 
 func (t *Test) getDB(id objID) *pebble.DB {
@@ -505,6 +560,9 @@ func computeSynchronizationPoints(ops []op) (opsWaitOn [][]int, opsDone []chan s
 		// the DB since it mutates database state.
 		for _, syncObjID := range o.syncObjs() {
 			if vi, vok := lastOpReference[syncObjID]; vok {
+				if vi == i {
+					panic(fmt.Sprintf("%s has %s as syncObj multiple times", ops[i].String(), syncObjID))
+				}
 				opsWaitOn[i] = append(opsWaitOn[i], vi)
 			}
 			lastOpReference[syncObjID] = i

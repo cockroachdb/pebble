@@ -41,6 +41,7 @@ const (
 	OpNewIter
 	OpNewIterUsingClone
 	OpNewSnapshot
+	OpNewExternalObj
 	OpReaderGet
 	OpReplicate
 	OpSnapshotClose
@@ -49,6 +50,7 @@ const (
 	OpWriterDeleteRange
 	OpWriterIngest
 	OpWriterIngestAndExcise
+	OpWriterIngestExternalFiles
 	OpWriterLogData
 	OpWriterMerge
 	OpWriterRangeKeyDelete
@@ -179,6 +181,8 @@ func DefaultOpConfig() OpConfig {
 			OpWriterRangeKeyDelete:        5,
 			OpWriterSet:                   100,
 			OpWriterSingleDelete:          50,
+			OpNewExternalObj:              2,
+			OpWriterIngestExternalFiles:   20,
 		},
 		// Use a new prefix 75% of the time (and 25% of the time use an existing
 		// prefix with an alternative suffix).
@@ -309,9 +313,14 @@ func multiInstanceConfig() OpConfig {
 	cfg.ops[OpReplicate] = 5
 	cfg.ops[OpWriterIngestAndExcise] = 50
 	// Single deletes and merges are disabled in multi-instance mode, as
-	// replicateOp doesn't support them.
+	// replicateOp and ingestAndExciseOp don't support them.
 	cfg.ops[OpWriterSingleDelete] = 0
 	cfg.ops[OpWriterMerge] = 0
+
+	// TODO(radu): external file ingest doesn't yet work with OpReplicate ("cannot
+	// use skip-shared iteration due to non-shareable files in lower levels").
+	cfg.ops[OpNewExternalObj] = 0
+	cfg.ops[OpWriterIngestExternalFiles] = 0
 	return cfg
 }
 

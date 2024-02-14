@@ -1,5 +1,5 @@
 diagram
-Init(2 /* dbs */, 49 /* batches */, 63 /* iters */, 45 /* snapshots */)
+Init(2 /* dbs */, 49 /* batches */, 63 /* iters */, 45 /* snapshots */, 0 /* externalObjs */)
 db2.RangeKeySet("c", "h", "@6", "foo")
 snap9 = db2.NewSnapshot("a", "z")
 db2.RangeKeyDelete("d", "f")
@@ -8,7 +8,7 @@ db2.Replicate(db1, "b", "f")
 iter25 = db1.NewIter("", "", 2 /* key types */, 0, 0, false /* use L6 filters */, "@7" /* masking suffix */)
 iter25.SeekGE("e", "")
 ----
-                                                        Init(2 /* dbs */, 49 /* batches */, 63 /* iters */, 45 /* snapshots */)
+                                                        Init(2 /* dbs */, 49 /* batches */, 63 /* iters */, 45 /* snapshots */, 0 /* externalObjs */)
             |-----------------------------|             db2.RangeKeySet("c", "h", "@6", "foo")
 |-----------------------------------------------------| snap9 = db2.NewSnapshot("a", "z")
                   |-----------|                         db2.RangeKeyDelete("d", "f")

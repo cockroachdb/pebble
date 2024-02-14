@@ -103,14 +103,14 @@ func parseOptions(
 				return true
 			case "TestOptions.shared_storage_enabled":
 				opts.sharedStorageEnabled = true
-				sharedStorage := remote.NewInMem()
-				opts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-					"": sharedStorage,
-				})
-				opts.sharedStorageFS = sharedStorage
+				opts.sharedStorageFS = remote.NewInMem()
 				if opts.Opts.Experimental.CreateOnShared == remote.CreateOnSharedNone {
 					opts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 				}
+				return true
+			case "TestOptions.external_storage_enabled":
+				opts.externalStorageEnabled = true
+				opts.externalStorageFS = remote.NewInMem()
 				return true
 			case "TestOptions.secondary_cache_enabled":
 				opts.secondaryCacheEnabled = true
@@ -151,6 +151,7 @@ func parseOptions(
 		},
 	}
 	err := opts.Opts.Parse(data, hooks)
+	opts.InitRemoteStorageFactory()
 	opts.Opts.EnsureDefaults()
 	return err
 }
@@ -195,6 +196,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.sharedStorageEnabled {
 		fmt.Fprint(&buf, "  shared_storage_enabled=true\n")
+	}
+	if opts.externalStorageEnabled {
+		fmt.Fprint(&buf, "  external_storage_enabled=true\n")
 	}
 	if opts.secondaryCacheEnabled {
 		fmt.Fprint(&buf, "  secondary_cache_enabled=true\n")
@@ -292,9 +296,10 @@ type TestOptions struct {
 	asyncApplyToDB bool
 	// Enable the use of shared storage.
 	sharedStorageEnabled bool
-	// sharedStorageFS stores the remote.Storage that is being used with shared
-	// storage.
-	sharedStorageFS remote.Storage
+	sharedStorageFS      remote.Storage
+	// Enable the use of shared storage for external file ingestion.
+	externalStorageEnabled bool
+	externalStorageFS      remote.Storage
 	// Enables the use of shared replication in TestOptions.
 	useSharedReplicate bool
 	// Enable the secondary cache. Only effective if sharedStorageEnabled is
@@ -313,6 +318,20 @@ type TestOptions struct {
 	// excises. However !useExcise && !useSharedReplicate can be used to guarantee
 	// lack of excises.
 	useExcise bool
+}
+
+// InitRemoteStorageFactory initializes Opts.Experimental.RemoteStorage.
+func (testOpts *TestOptions) InitRemoteStorageFactory() {
+	if testOpts.sharedStorageEnabled || testOpts.externalStorageEnabled {
+		m := make(map[remote.Locator]remote.Storage)
+		if testOpts.sharedStorageEnabled {
+			m[""] = testOpts.sharedStorageFS
+		}
+		if testOpts.externalStorageEnabled {
+			m["external"] = testOpts.externalStorageFS
+		}
+		testOpts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(m)
+	}
 }
 
 // CustomOption defines a custom option that configures the behavior of an
@@ -459,6 +478,7 @@ func standardOptions() []*TestOptions {
   format_major_version=%s
 [TestOptions]
   shared_storage_enabled=true
+  external_storage_enabled=true
   secondary_cache_enabled=true
 `, pebble.FormatMinForSharedObjects),
 	}
@@ -622,11 +642,7 @@ func RandomOptions(
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatMinForSharedObjects {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatMinForSharedObjects
 		}
-		inMemShared := remote.NewInMem()
-		testOpts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": inMemShared,
-		})
-		testOpts.sharedStorageFS = inMemShared
+		testOpts.sharedStorageFS = remote.NewInMem()
 		// If shared storage is enabled, pick between writing all files on shared
 		// vs. lower levels only, 50% of the time.
 		testOpts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
@@ -642,6 +658,16 @@ func RandomOptions(
 		// 50% of the time, enable shared replication.
 		testOpts.useSharedReplicate = rng.Intn(2) == 0
 	}
+
+	// 50% of time, enable external storage.
+	if rng.Intn(2) == 0 {
+		testOpts.externalStorageEnabled = true
+		if testOpts.Opts.FormatMajorVersion < pebble.FormatMinForSharedObjects {
+			testOpts.Opts.FormatMajorVersion = pebble.FormatMinForSharedObjects
+		}
+		testOpts.externalStorageFS = remote.NewInMem()
+	}
+
 	testOpts.seedEFOS = rng.Uint64()
 	// TODO(bilal): Enable ingestSplit when known bugs with virtual sstables
 	// are addressed.
@@ -654,6 +680,7 @@ func RandomOptions(
 			testOpts.Opts.FormatMajorVersion = pebble.FormatVirtualSSTables
 		}
 	}
+	testOpts.InitRemoteStorageFactory()
 	testOpts.Opts.EnsureDefaults()
 	return testOpts
 }

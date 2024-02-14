@@ -1101,16 +1101,13 @@ func (i *singleLevelIterator) SeekLT(
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *singleLevelIterator) First() (*InternalKey, base.LazyValue) {
-	// If the iterator was created on a virtual sstable, we will SeekGE to the
-	// lower bound instead of using First, because First does not respect
-	// bounds.
-	if i.vState != nil {
+	// If we have a lower bound, use SeekGE. Note that in general this is not
+	// supported usage, except when the lower bound is there because the table is
+	// virtual.
+	if i.lower != nil {
 		return i.SeekGE(i.lower, base.SeekGEFlagsNone)
 	}
 
-	if i.lower != nil {
-		panic("singleLevelIterator.First() used despite lower bound")
-	}
 	i.positionedUsingLatestBounds = true
 	i.maybeFilteredKeysSingleLevel = false
 

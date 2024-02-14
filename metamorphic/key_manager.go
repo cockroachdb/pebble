@@ -290,6 +290,9 @@ func (k *keyManager) addNewKey(key []byte) bool {
 	k.globalKeysMap[string(key)] = true
 
 	prefixLen := k.comparer.Split(key)
+	if prefixLen == 0 {
+		panic(fmt.Sprintf("key %q has zero length prefix", key))
+	}
 	if _, ok := k.globalKeyPrefixesMap[string(key[:prefixLen])]; !ok {
 		insertSorted(k.comparer.Compare, &k.globalKeyPrefixes, key[:prefixLen])
 		k.globalKeyPrefixesMap[string(key[:prefixLen])] = struct{}{}
@@ -580,8 +583,32 @@ func (k *keyManager) update(o op) {
 		// TODO(bilal): Handle ingestAndExciseOp and replicateOp here. We currently
 		// disable SingleDelete when these operations are enabled (see
 		// multiInstanceConfig).
+	case *newExternalObjOp:
+		// Collapse and transfer the keys from the batch to the external object.
+		k.objKeyMeta(s.batchID).CollapseKeys()
+		k.mergeKeysInto(s.batchID, s.externalObjID)
+	case *ingestExternalFilesOp:
+		// Merge the keys from the external objects (within the restricted bounds)
+		// into the database.
+		ts := k.nextMetaTimestamp()
+		dbMeta := k.objKeyMeta(s.dbID)
+		for _, obj := range s.objs {
+			for _, keyMeta := range k.objKeyMeta(obj.externalObjID).keys {
+				if k.comparer.Compare(obj.bounds.Start, keyMeta.key) <= 0 &&
+					k.comparer.Compare(keyMeta.key, obj.bounds.End) < 0 {
+					// Note: the keys have already been collapsed when the external object
+					// was created.
+					dbMeta.MergeKey(keyMeta, ts)
+				}
+			}
+			dbMeta.bounds.Expand(k.comparer.Compare, bounds{
+				smallest:    obj.bounds.Start,
+				largest:     obj.bounds.End,
+				largestExcl: true,
+			})
+		}
 	case *applyOp:
-		// Merge the keys from this writer into the parent writer.
+		// Merge the keys from this batch into the parent writer.
 		k.mergeKeysInto(s.batchID, s.writerID)
 	case *batchCommitOp:
 		// Merge the keys from the batch with the keys from the DB.
