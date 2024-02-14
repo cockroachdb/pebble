@@ -640,7 +640,7 @@ func (o *ingestOp) run(t *Test, h historyRecorder) {
 	for i, id := range o.batchIDs {
 		b := t.getBatch(id)
 		t.clearObj(id)
-		path, err2 := o.build(t, h, b, i)
+		path, _, err2 := buildForIngest(t, o.dbID, b, i)
 		if err2 != nil {
 			h.Recordf("Build(%s) // %v", id, err2)
 		}
@@ -656,120 +656,6 @@ func (o *ingestOp) run(t *Test, h historyRecorder) {
 	}))
 
 	h.Recordf("%s // %v", o, err)
-}
-
-func buildForIngest(
-	t *Test, dbID objID, h historyRecorder, b *pebble.Batch, i int,
-) (string, *sstable.WriterMetadata, error) {
-	path := t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
-	f, err := t.opts.FS.Create(path)
-	if err != nil {
-		return "", nil, err
-	}
-	db := t.getDB(dbID)
-
-	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
-	defer closeIters(iter, rangeDelIter, rangeKeyIter)
-
-	equal := t.opts.Comparer.Equal
-	tableFormat := db.FormatMajorVersion().MaxTableFormat()
-	wOpts := t.opts.MakeWriterOptions(0, tableFormat)
-	if t.testOpts.disableValueBlocksForIngestSSTables {
-		wOpts.DisableValueBlocks = true
-	}
-	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), wOpts)
-
-	var lastUserKey []byte
-	for key, value := iter.First(); key != nil; key, value = iter.Next() {
-		// Ignore duplicate keys.
-		if equal(lastUserKey, key.UserKey) {
-			continue
-		}
-		// NB: We don't have to copy the key or value since we're reading from a
-		// batch which doesn't do prefix compression.
-		lastUserKey = key.UserKey
-
-		key.SetSeqNum(base.SeqNumZero)
-		// It's possible that we wrote the key on a batch from a db that supported
-		// DeleteSized, but are now ingesting into a db that does not. Detect
-		// this case and translate the key to an InternalKeyKindDelete.
-		if key.Kind() == pebble.InternalKeyKindDeleteSized && !t.isFMV(dbID, pebble.FormatDeleteSizedAndObsolete) {
-			value = pebble.LazyValue{}
-			key.SetKind(pebble.InternalKeyKindDelete)
-		}
-		if err := w.Add(*key, value.InPlaceValue()); err != nil {
-			return "", nil, err
-		}
-	}
-	if err := iter.Close(); err != nil {
-		return "", nil, err
-	}
-	iter = nil
-
-	if rangeDelIter != nil {
-		// NB: The range tombstones have already been fragmented by the Batch.
-		t, err := rangeDelIter.First()
-		for ; t != nil; t, err = rangeDelIter.Next() {
-			// NB: We don't have to copy the key or value since we're reading from a
-			// batch which doesn't do prefix compression.
-			if err := w.DeleteRange(t.Start, t.End); err != nil {
-				return "", nil, err
-			}
-		}
-		if err != nil {
-			return "", nil, err
-		}
-		if err := rangeDelIter.Close(); err != nil {
-			return "", nil, err
-		}
-		rangeDelIter = nil
-	}
-
-	if rangeKeyIter != nil {
-		span, err := rangeKeyIter.First()
-		for ; span != nil; span, err = rangeKeyIter.Next() {
-			// Coalesce the keys of this span and then zero the sequence
-			// numbers. This is necessary in order to make the range keys within
-			// the ingested sstable internally consistent at the sequence number
-			// it's ingested at. The individual keys within a batch are
-			// committed at unique sequence numbers, whereas all the keys of an
-			// ingested sstable are given the same sequence number. A span
-			// contaning keys that both set and unset the same suffix at the
-			// same sequence number is nonsensical, so we "coalesce" or collapse
-			// the keys.
-			collapsed := keyspan.Span{
-				Start: span.Start,
-				End:   span.End,
-				Keys:  make([]keyspan.Key, 0, len(span.Keys)),
-			}
-			rangekey.Coalesce(t.opts.Comparer.Compare, equal, span.Keys, &collapsed.Keys)
-			for i := range collapsed.Keys {
-				collapsed.Keys[i].Trailer = base.MakeTrailer(0, collapsed.Keys[i].Kind())
-			}
-			keyspan.SortKeysByTrailer(&collapsed.Keys)
-			if err := rangekey.Encode(&collapsed, w.AddRangeKey); err != nil {
-				return "", nil, err
-			}
-		}
-		if err != nil {
-			return "", nil, err
-		}
-		if err := rangeKeyIter.Close(); err != nil {
-			return "", nil, err
-		}
-		rangeKeyIter = nil
-	}
-
-	if err := w.Close(); err != nil {
-		return "", nil, err
-	}
-	meta, err := w.Metadata()
-	return path, meta, err
-}
-
-func (o *ingestOp) build(t *Test, h historyRecorder, b *pebble.Batch, i int) (string, error) {
-	path, _, err := buildForIngest(t, o.dbID, h, b, i)
-	return path, err
 }
 
 func (o *ingestOp) receiver() objID { return o.dbID }
@@ -963,7 +849,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 		h.Recordf("%s // %v", o, err)
 		return
 	}
-	path, writerMeta, err2 := o.build(t, h, b, 0 /* i */)
+	path, writerMeta, err2 := buildForIngest(t, o.dbID, b, 0 /* i */)
 	if err2 != nil {
 		h.Recordf("Build(%s) // %v", o.batchID, err2)
 		return
@@ -999,12 +885,6 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 	}
 
 	h.Recordf("%s // %v", o, err)
-}
-
-func (o *ingestAndExciseOp) build(
-	t *Test, h historyRecorder, b *pebble.Batch, i int,
-) (string, *sstable.WriterMetadata, error) {
-	return buildForIngest(t, o.dbID, h, b, i)
 }
 
 func (o *ingestAndExciseOp) receiver() objID { return o.dbID }
