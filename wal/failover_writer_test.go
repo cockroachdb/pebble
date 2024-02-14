@@ -1,3 +1,7 @@
+// Copyright 2024 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+
 package wal
 
 import (
@@ -6,7 +10,6 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -16,6 +19,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
@@ -32,9 +36,6 @@ const (
 )
 
 func TestFailoverWriter(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skipf("flaky on windows (#3289)")
-	}
 	datadriven.Walk(t, "testdata/failover_writer", func(t *testing.T, path string) {
 		memFS := vfs.NewStrictMem()
 		dirs := [numDirIndices]dirAndFileHandle{
@@ -228,7 +229,7 @@ func TestFailoverWriter(t *testing.T) {
 						metrics := w.Metrics()
 						fmt.Fprintf(&b, "write bytes metric: %d\n", metrics.WriteThroughput.Bytes)
 						if metrics.WriteThroughput.Bytes > 0 {
-							require.Less(t, time.Duration(0), metrics.WriteThroughput.WorkDuration)
+							testutils.DurationIsAtLeast(t, metrics.WriteThroughput.WorkDuration, time.Nanosecond)
 						}
 					}
 					if stopGoroutines {
