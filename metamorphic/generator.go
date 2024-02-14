@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
@@ -83,6 +84,8 @@ type generator struct {
 	liveSnapshots objIDSlice
 	// liveWriters contains the DB, and any live batches. The DB is always at index 0.
 	liveWriters objIDSlice
+	// externalObjects contains the external objects created.
+	externalObjects objIDSlice
 
 	// Maps used to find associated objects during generation. These maps are not
 	// needed during test execution.
@@ -176,6 +179,7 @@ func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 		OpNewIter:                     g.newIter,
 		OpNewIterUsingClone:           g.newIterUsingClone,
 		OpNewSnapshot:                 g.newSnapshot,
+		OpNewExternalObj:              g.newExternalObj,
 		OpReaderGet:                   g.readerGet,
 		OpReplicate:                   g.replicate,
 		OpSnapshotClose:               g.snapshotClose,
@@ -184,6 +188,7 @@ func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 		OpWriterDeleteRange:           g.writerDeleteRange,
 		OpWriterIngest:                g.writerIngest,
 		OpWriterIngestAndExcise:       g.writerIngestAndExcise,
+		OpWriterIngestExternalFiles:   g.writerIngestExternalFiles,
 		OpWriterLogData:               g.writerLogData,
 		OpWriterMerge:                 g.writerMerge,
 		OpWriterRangeKeyDelete:        g.writerRangeKeyDelete,
@@ -1031,6 +1036,24 @@ func (g *generator) snapshotClose() {
 	g.add(&closeOp{objID: snapID})
 }
 
+func (g *generator) newExternalObj() {
+	if len(g.liveBatches) == 0 {
+		return
+	}
+	batchID := g.liveBatches.rand(g.rng)
+	if g.keyManager.objKeyMeta(batchID).bounds.IsUnset() {
+		return
+	}
+	g.removeBatchFromGenerator(batchID)
+	objID := makeObjID(externalObjTag, g.init.externalObjSlots)
+	g.init.externalObjSlots++
+	g.externalObjects = append(g.externalObjects, objID)
+	g.add(&newExternalObjOp{
+		batchID:       batchID,
+		externalObjID: objID,
+	})
+}
+
 func (g *generator) writerApply() {
 	if len(g.liveBatches) == 0 {
 		return
@@ -1247,6 +1270,97 @@ func (g *generator) writerIngestAndExcise() {
 		derivedDBID: derivedDBID,
 		exciseStart: start,
 		exciseEnd:   end,
+	})
+}
+
+func (g *generator) writerIngestExternalFiles() {
+	if len(g.externalObjects) == 0 {
+		return
+	}
+	dbID := g.dbs.rand(g.rng)
+	numFiles := 1 + g.expRandInt(1)
+	objs := make([]externalObjWithBounds, numFiles)
+	for i := range objs {
+		// We allow the same object to be selected multiple times.
+		id := g.externalObjects.rand(g.rng)
+
+		b := g.keyManager.objKeyMeta(id).bounds
+		// For now, set the bounds to the bounds of the entire object.
+		kr := pebble.KeyRange{
+			Start: b.smallest,
+			End:   b.largest,
+		}
+		if !b.largestExcl {
+			// Move up the end key a bit by appending a few letters to the prefix.
+			kr.End = append(g.keyGenerator.prefix(kr.End), randBytes(g.rng, 1, 3)...)
+		}
+
+		objs[i] = externalObjWithBounds{
+			externalObjID: id,
+			bounds:        kr,
+		}
+	}
+
+	// Sort the objects by their start bound.
+	sorted := make([]*externalObjWithBounds, numFiles)
+	for i := range sorted {
+		sorted[i] = &objs[i]
+	}
+	slices.SortFunc(sorted, func(a, b *externalObjWithBounds) int {
+		return g.cmp(a.bounds.Start, b.bounds.Start)
+	})
+
+	// We take the overall bounds of all the objects and generate 2*numFiles keys
+	// in that range to create the per-object bounds. In many cases, there won't
+	// be overlap between the object and its corresponding bounds but that's ok
+	// (we verify that when running the op).
+	overall := sorted[0].bounds
+	for i := 1; i < len(sorted); i++ {
+		if g.cmp(overall.End, sorted[i].bounds.End) < 0 {
+			overall.End = sorted[i].bounds.End
+		}
+	}
+	if g.cmp(overall.Start, overall.End) >= 0 {
+		panic(fmt.Sprintf("invalid bounds [%q, %q)", overall.Start, overall.End))
+	}
+	// Generate 2*numFiles distinct keys and sort them. These will form the ingest
+	// bounds for each file.
+	keys := g.keyGenerator.UniqueKeys(2*numFiles, func() []byte {
+		return g.keyGenerator.RandKeyInRange(0.01, overall)
+	})
+
+	for i, o := range sorted {
+		if i > 0 && g.rng.Intn(4) == 0 {
+			// Sometimes use the previous end key as the start key; this will be common in practice.
+			o.bounds.Start = sorted[i-1].bounds.End
+		} else {
+			o.bounds.Start = keys[2*i]
+		}
+		o.bounds.End = keys[2*i+1]
+	}
+	// The batches we're ingesting may contain single delete tombstones that
+	// when applied to the writer result in nondeterminism in the deleted key.
+	// If that's the case, we can restore determinism by first deleting the keys
+	// from the writer.
+	//
+	// Generating additional operations here is not ideal, but it simplifies
+	// single delete invariants significantly.
+	for _, o := range objs {
+		singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(o.externalObjID, dbID, true /* collapsed */)
+		for _, key := range singleDeleteConflicts {
+			if g.cmp(key, o.bounds.Start) >= 0 && g.cmp(key, o.bounds.End) < 0 {
+				g.add(&deleteOp{
+					writerID:    dbID,
+					key:         key,
+					derivedDBID: dbID,
+				})
+			}
+		}
+	}
+
+	g.add(&ingestExternalFilesOp{
+		dbID: dbID,
+		objs: objs,
 	})
 }
 

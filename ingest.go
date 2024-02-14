@@ -181,6 +181,10 @@ func ingestLoad1External(
 	if !e.HasRangeKey && !e.HasPointKey {
 		return nil, errors.New("pebble: cannot ingest external file with no point or range keys")
 	}
+	// #3287: range keys don't yet work correctly when the range key bounds are not tight.
+	if e.HasRangeKey {
+		return nil, errors.New("pebble: range keys not supported in external files")
+	}
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
 	meta := &fileMetadata{

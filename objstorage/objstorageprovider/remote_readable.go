@@ -14,6 +14,14 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 )
 
+// NewRemoteReadable creates an objstorage.Readable out of a remote.ObjectReader.
+func NewRemoteReadable(objReader remote.ObjectReader, size int64) objstorage.Readable {
+	return &remoteReadable{
+		objReader: objReader,
+		size:      size,
+	}
+}
+
 const remoteMaxReadaheadSize = 1024 * 1024 /* 1MB */
 
 // remoteReadable is a very simple implementation of Readable on top of the
@@ -22,7 +30,7 @@ type remoteReadable struct {
 	objReader remote.ObjectReader
 	size      int64
 	fileNum   base.DiskFileNum
-	provider  *provider
+	cache     *sharedcache.Cache
 }
 
 var _ objstorage.Readable = (*remoteReadable)(nil)
@@ -34,7 +42,7 @@ func (p *provider) newRemoteReadable(
 		objReader: objReader,
 		size:      size,
 		fileNum:   fileNum,
-		provider:  p,
+		cache:     p.remote.cache,
 	}
 }
 
@@ -48,12 +56,12 @@ func (r *remoteReadable) ReadAt(ctx context.Context, p []byte, offset int64) err
 func (r *remoteReadable) readInternal(
 	ctx context.Context, p []byte, offset int64, forCompaction bool,
 ) error {
-	if cache := r.provider.remote.cache; cache != nil {
+	if r.cache != nil {
 		flags := sharedcache.ReadFlags{
 			// Don't add data to the cache if this read is for a compaction.
 			ReadOnly: forCompaction,
 		}
-		return r.provider.remote.cache.ReadAt(ctx, r.fileNum, p, offset, r.objReader, r.size, flags)
+		return r.cache.ReadAt(ctx, r.fileNum, p, offset, r.objReader, r.size, flags)
 	}
 	return r.objReader.ReadAt(ctx, p, offset)
 }
