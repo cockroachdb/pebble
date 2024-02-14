@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -259,7 +260,6 @@ func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIter
 	if !s.containsRangeKeys() {
 		return nil
 	}
-
 	return keyspanimpl.NewLevelIter(
 		keyspan.SpanIterOptions{}, s.comparer.Compare, s.newRangeKeyIters,
 		s.slice.Iter(), manifest.Level(0), manifest.KeyTypeRange,
@@ -322,6 +322,39 @@ func (s *ingestedFlushable) computePossibleOverlaps(
 	}
 }
 
+func newFlushableBufferedSSTables(
+	comparer *base.Comparer,
+	metas []*fileMetadata,
+	ro sstable.ReaderOptions,
+	b *bufferedSSTables,
+	extraReaderOpts ...sstable.ReaderOption,
+) (*flushableBufferedSSTables, error) {
+	if len(metas) != len(b.finished) {
+		panic(errors.AssertionFailedf("metadata for %d files provided, but buffered %d files", len(metas), len(b.finished)))
+	}
+	f := &flushableBufferedSSTables{
+		comparer: comparer,
+		ls:       manifest.NewLevelSliceKeySorted(comparer.Compare, metas),
+		metas:    metas,
+		readers:  make([]*sstable.Reader, len(b.finished)),
+	}
+	// NB: metas and b.finished are parallel slices.
+	for i := range b.finished {
+		if b.finished[i].fileNum != base.PhysicalTableDiskFileNum(metas[i].FileNum) {
+			panic(errors.AssertionFailedf("file metas and file buffers in mismatched order"))
+		}
+		f.anyRangeKeys = f.anyRangeKeys || metas[i].HasRangeKeys
+		f.size += metas[i].Size
+		readable := objstorageprovider.BytesReadable(b.finished[i].buf)
+		var err error
+		f.readers[i], err = sstable.NewReader(readable, ro, extraReaderOpts...)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return f, nil
+}
+
 // flushableBufferedSSTables holds a set of in-memory sstables produced by a
 // flush. Buffering flushed state reduces write amplification by making it more
 // likely that we're able to drop KVs before they reach disk.
@@ -330,6 +363,11 @@ type flushableBufferedSSTables struct {
 	ls       manifest.LevelSlice
 	metas    []*fileMetadata
 	readers  []*sstable.Reader
+	// size is the size, in bytes, of all the buffered sstables.
+	size uint64
+	// anyRangeKeys indicates whether any of the sstables contain any range
+	// keys.
+	anyRangeKeys bool
 }
 
 var (
@@ -370,19 +408,33 @@ func (b *flushableBufferedSSTables) newIters(
 		iters.rangeDeletion, err = r.NewRawRangeDelIter()
 	}
 	if kinds.Point() && err == nil {
-		panic("TODO")
-		//var categoryAndQoS sstable.CategoryAndQoS
-		//var iter internalIterator
-		//if internalOpts.bytesIterated != nil {
-		//iter, err = r.NewCompactionIter(
-		//internalOpts.bytesIterated, categoryAndQoS, nil [> statsCollector <], rp,
-		//internalOpts.bufferPool)
-		//} else {
-		//iter, err = cr.NewIterWithBlockPropertyFiltersAndContextEtc(
-		//ctx, opts.GetLowerBound(), opts.GetUpperBound(),
-		//nil [> filterer */, false /* hideObsoletePoints */, true, /* useFilter <]
-		//internalOpts.stats, categoryAndQoS, nil [> stats collector <], rp)
-		//}
+		// TODO(aadityas,jackson): We could support block-property filtering
+		// within the in-memory sstables, but it's unclear it's worth the code
+		// complexity. We expect these blocks to be hit frequently, and the cost
+		// of loading them is less since they're already in main memory.
+		tableFormat, err := r.TableFormat()
+		if err != nil {
+			return iterSet{}, err
+		}
+		var rp sstable.ReaderProvider
+		if tableFormat >= sstable.TableFormatPebblev3 && r.Properties.NumValueBlocks > 0 {
+			// NB: We can return a fixedReaderProvider because the Readers for
+			// these in-memory sstables are guaranteed to be open until the
+			// readState is obsolete which will only occur when all iterators
+			// have closed.
+			rp = &fixedReaderProvider{r}
+		}
+		var categoryAndQoS sstable.CategoryAndQoS
+		if internalOpts.bytesIterated != nil {
+			iters.point, err = r.NewCompactionIter(
+				internalOpts.bytesIterated, categoryAndQoS, nil /* statsCollector */, rp,
+				internalOpts.bufferPool)
+		} else {
+			iters.point, err = r.NewIterWithBlockPropertyFiltersAndContextEtc(
+				ctx, opts.GetLowerBound(), opts.GetUpperBound(),
+				nil /* filterer */, false /* hideObsoletePoints */, true, /* useFilter */
+				internalOpts.stats, categoryAndQoS, nil /* stats collector */, rp)
+		}
 	}
 	if err != nil {
 		iters.CloseAll()
@@ -411,21 +463,46 @@ func (b *flushableBufferedSSTables) newIter(o *IterOptions) internalIterator {
 func (b *flushableBufferedSSTables) newFlushIter(
 	o *IterOptions, bytesFlushed *uint64,
 ) internalIterator {
-	panic("TODO")
+	var opts IterOptions
+	if o != nil {
+		opts = *o
+	}
+	// TODO(jackson): The manifest.Level in newLevelIter is only used for
+	// logging. Update the manifest.Level encoding to account for levels which
+	// aren't truly levels in the lsm. Right now, the encoding only supports
+	// L0 sublevels, and the rest of the levels in the lsm.
+	return newLevelIter(
+		context.Background(), opts, b.comparer, b.newIters, b.ls.Iter(), manifest.Level(0),
+		internalIterOpts{bytesIterated: bytesFlushed},
+	)
 }
 
+// constructRangeDelIter implements keyspanimpl.TableNewSpanIter.
 func (b *flushableBufferedSSTables) constructRangeDelIter(
 	file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
-	panic("TODO")
+	iters, err := b.newIters(context.Background(), file, nil, internalIterOpts{}, iterRangeDeletions)
+	return iters.RangeDeletion(), err
 }
 
 // newRangeDelIter is part of the flushable interface.
-//
-// TODO(sumeer): *IterOptions are being ignored, so the index block load for
-// the point iterator in constructRangeDeIter is not tracked.
 func (b *flushableBufferedSSTables) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
-	panic("TODO")
+	return keyspanimpl.NewLevelIter(
+		keyspan.SpanIterOptions{}, b.comparer.Compare,
+		b.constructRangeDelIter, b.ls.Iter(), manifest.Level(0),
+		manifest.KeyTypePoint,
+	)
+}
+
+// constructRangeKeyIter implements keyspanimpl.TableNewSpanIter.
+func (b *flushableBufferedSSTables) constructRangeKeyIter(
+	file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
+) (keyspan.FragmentIterator, error) {
+	iters, err := b.newIters(context.Background(), file, nil, internalIterOpts{}, iterRangeKeys)
+	if err != nil {
+		return nil, err
+	}
+	return iters.RangeKey(), nil
 }
 
 // newRangeKeyIter is part of the flushable interface.
@@ -433,23 +510,20 @@ func (b *flushableBufferedSSTables) newRangeKeyIter(o *IterOptions) keyspan.Frag
 	if !b.containsRangeKeys() {
 		return nil
 	}
-	panic("TODO")
+	return keyspanimpl.NewLevelIter(
+		keyspan.SpanIterOptions{}, b.comparer.Compare, b.constructRangeKeyIter,
+		b.ls.Iter(), manifest.Level(0), manifest.KeyTypeRange,
+	)
 }
 
 // containsRangeKeys is part of the flushable interface.
-func (b *flushableBufferedSSTables) containsRangeKeys() bool {
-	panic("TODO")
-}
+func (b *flushableBufferedSSTables) containsRangeKeys() bool { return b.anyRangeKeys }
 
 // inuseBytes is part of the flushable interface.
-func (b *flushableBufferedSSTables) inuseBytes() uint64 {
-	panic("TODO")
-}
+func (b *flushableBufferedSSTables) inuseBytes() uint64 { return b.size }
 
 // totalBytes is part of the flushable interface.
-func (b *flushableBufferedSSTables) totalBytes() uint64 {
-	panic("TODO")
-}
+func (b *flushableBufferedSSTables) totalBytes() uint64 { return b.size }
 
 // readyForFlush is part of the flushable interface.
 func (b *flushableBufferedSSTables) readyForFlush() bool {
@@ -461,7 +535,7 @@ func (b *flushableBufferedSSTables) readyForFlush() bool {
 func (b *flushableBufferedSSTables) computePossibleOverlaps(
 	fn func(bounded) shouldContinue, bounded ...bounded,
 ) {
-	panic("TODO")
+	computePossibleOverlapsGenericImpl[*flushableBufferedSSTables](b, b.comparer.Compare, fn, bounded)
 }
 
 // bufferedSSTables implements the objectCreator interface and is used by a
@@ -605,3 +679,20 @@ func computePossibleOverlapsGenericImpl[F flushable](
 		}
 	}
 }
+
+type fixedReaderProvider struct {
+	*sstable.Reader
+}
+
+var _ sstable.ReaderProvider = (*fixedReaderProvider)(nil)
+
+// GetReader implements sstable.ReaderProvider.
+//
+// Note that currently the Reader returned here is only used to read value
+// blocks.
+func (p *fixedReaderProvider) GetReader() (*sstable.Reader, error) {
+	return p.Reader, nil
+}
+
+// Close implements sstable.ReaderProvider.
+func (p *fixedReaderProvider) Close() {}
