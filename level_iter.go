@@ -1200,7 +1200,7 @@ func (l *levelIter) SetContext(ctx context.Context) {
 
 func (l *levelIter) String() string {
 	if l.iterFile != nil {
-		return fmt.Sprintf("%s: fileNum=%s", l.level, l.iter.String())
+		return fmt.Sprintf("%s: fileNum=%s", l.level, l.iterFile.FileNum.String())
 	}
 	return fmt.Sprintf("%s: fileNum=<nil>", l.level)
 }

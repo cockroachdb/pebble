@@ -5,6 +5,7 @@
 package metamorphic
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
@@ -32,7 +33,6 @@ func writeSSTForIngestion(
 	rangeKeyIter keyspan.FragmentIterator,
 	writable objstorage.Writable,
 	targetFMV pebble.FormatMajorVersion,
-	bounds pebble.KeyRange,
 ) (*sstable.WriterMetadata, error) {
 	writerOpts := t.opts.MakeWriterOptions(0, targetFMV.MaxTableFormat())
 	if t.testOpts.disableValueBlocksForIngestSSTables {
@@ -62,7 +62,11 @@ func writeSSTForIngestion(
 			value = pebble.LazyValue{}
 			key.SetKind(pebble.InternalKeyKindDelete)
 		}
-		if err := w.Add(*key, value.InPlaceValue()); err != nil {
+		valBytes, _, err := value.Value(nil)
+		if err != nil {
+			return nil, err
+		}
+		if err := w.Add(*key, valBytes); err != nil {
 			return nil, err
 		}
 	}
@@ -151,7 +155,105 @@ func buildForIngest(
 		iter, rangeDelIter, rangeKeyIter,
 		writable,
 		db.FormatMajorVersion(),
-		pebble.KeyRange{},
 	)
 	return path, meta, err
+}
+
+// buildForIngest builds a local SST file containing the keys in the given
+// external object (truncated to the given bounds) and returns its path and
+// metadata.
+func buildForIngestExternalEmulation(
+	t *Test, dbID objID, externalObjID objID, bounds pebble.KeyRange, i int,
+) (path string, _ *sstable.WriterMetadata) {
+	path = t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
+	f, err := t.opts.FS.Create(path)
+	panicIfErr(err)
+
+	reader, pointIter, rangeDelIter, rangeKeyIter := openExternalObj(t, externalObjID, bounds)
+	defer reader.Close()
+
+	writable := objstorageprovider.NewFileWritable(f)
+	meta, err := writeSSTForIngestion(
+		t,
+		pointIter, rangeDelIter, rangeKeyIter,
+		writable,
+		t.minFMV(),
+	)
+	if err != nil {
+		panic(err)
+	}
+	return path, meta
+}
+
+func openExternalObj(
+	t *Test, externalObjID objID, bounds pebble.KeyRange,
+) (
+	reader *sstable.Reader,
+	pointIter base.InternalIterator,
+	rangeDelIter keyspan.FragmentIterator,
+	rangeKeyIter keyspan.FragmentIterator,
+) {
+	objReader, objSize, err := t.externalStorage.ReadObject(context.Background(), externalObjName(externalObjID))
+	panicIfErr(err)
+	opts := sstable.ReaderOptions{
+		Comparer: t.opts.Comparer,
+	}
+	reader, err = sstable.NewReader(objstorageprovider.NewRemoteReadable(objReader, objSize), opts)
+	panicIfErr(err)
+
+	pointIter, err = reader.NewIter(bounds.Start, bounds.End)
+	panicIfErr(err)
+
+	rangeDelIter, err = reader.NewRawRangeDelIter()
+	panicIfErr(err)
+	if rangeDelIter != nil {
+		rangeDelIter = keyspan.Truncate(
+			t.opts.Comparer.Compare,
+			rangeDelIter,
+			bounds.Start, bounds.End,
+			nil /* start */, nil /* end */, false, /* panicOnUpperTruncate */
+		)
+	}
+
+	rangeKeyIter, err = reader.NewRawRangeKeyIter()
+	panicIfErr(err)
+	if rangeKeyIter != nil {
+		rangeKeyIter = keyspan.Truncate(
+			t.opts.Comparer.Compare,
+			rangeKeyIter,
+			bounds.Start, bounds.End,
+			nil /* start */, nil /* end */, false, /* panicOnUpperTruncate */
+		)
+	}
+	return reader, pointIter, rangeDelIter, rangeKeyIter
+}
+
+// externalObjIsEmpty returns true if the given external object has no point or
+// range keys withing the given bounds.
+func externalObjIsEmpty(t *Test, externalObjID objID, bounds pebble.KeyRange) bool {
+	reader, pointIter, rangeDelIter, rangeKeyIter := openExternalObj(t, externalObjID, bounds)
+	defer reader.Close()
+	defer closeIters(pointIter, rangeDelIter, rangeKeyIter)
+
+	key, _ := pointIter.First()
+	panicIfErr(pointIter.Error())
+	if key != nil {
+		return false
+	}
+	for _, it := range []keyspan.FragmentIterator{rangeDelIter, rangeKeyIter} {
+		if it != nil {
+			span, err := it.First()
+			panicIfErr(err)
+			if span != nil {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func panicIfErr(err error) {
+	if err != nil {
+		panic(err)
+	}
 }

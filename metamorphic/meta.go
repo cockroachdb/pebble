@@ -527,12 +527,12 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	if err := Execute(m); err != nil {
 		fmt.Fprintf(os.Stderr, "Seed: %d\n", seed)
 		fmt.Fprintln(os.Stderr, err)
-		m.maybeSaveData()
+		m.saveInMemoryData()
 		os.Exit(1)
 	}
 
 	if runOpts.keep && !testOpts.useDisk {
-		m.maybeSaveData()
+		m.saveInMemoryData()
 	}
 }
 

@@ -1,7 +1,7 @@
 parse
 foo
 ----
-metamorphic test internal error: 1:1: unable to parse objectID: "foo"
+metamorphic test internal error: 1:1: unknown object type: "foo"
 
 parse
 "foo"
@@ -16,12 +16,12 @@ metamorphic test internal error: 1:1: unknown op db1.bar
 parse
 db.Apply()
 ----
-metamorphic test internal error: 1:10: unexpected token: ")"
+metamorphic test internal error: 1:10: Apply: not enough arguments
 
 parse
 db.Apply(hello)
 ----
-metamorphic test internal error: 1:10: unable to parse objectID: "hello"
+metamorphic test internal error: 1:10: unknown object type: "hello"
 
 parse
 db.NewBatch()

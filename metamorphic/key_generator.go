@@ -227,7 +227,7 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 		key = append(key, testkeys.Suffix(suffix)...)
 	}
 	if kg.cmp(key, bounds.Start) < 0 || kg.cmp(key, bounds.End) >= 0 {
-		panic(fmt.Sprintf("invalid randKey %q  bounds: [%q, %q) %v %v", key, bounds.Start, bounds.End, kg.cmp(key, bounds.Start), kg.cmp(key, bounds.End)))
+		panic(fmt.Sprintf("invalid randKey %q; bounds: [%q, %q) %v %v", key, bounds.Start, bounds.End, kg.cmp(key, bounds.Start), kg.cmp(key, bounds.End)))
 	}
 	// We might (rarely) produce an existing key here, that's ok.
 	kg.keyManager.addNewKey(key)
