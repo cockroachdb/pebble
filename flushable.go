@@ -554,6 +554,8 @@ type bufferedSSTables struct {
 	currFileNum base.DiskFileNum
 	// finished holds the set of previously written and finished sstables.
 	finished []bufferedSSTable
+	// cumulative size of the finished buffers
+	size uint64
 	// objectIsOpen is true if the bufferedSSTables is currently being used as a
 	// Writable.
 	objectIsOpen bool
@@ -609,7 +611,8 @@ func (b *bufferedSSTables) Remove(fileType base.FileType, FileNum base.DiskFileN
 
 // Sync implements the objectCreator interface.
 func (b *bufferedSSTables) Sync() error {
-	panic("TODO")
+	// BufferedSSTs store their data in memory and do not need to sync.
+	return nil
 }
 
 // Assert that bufferedSSTables implements objstorage.Writable.
@@ -619,10 +622,9 @@ func (b *bufferedSSTables) Sync() error {
 // written by the flush.
 var _ objstorage.Writable = (*bufferedSSTables)(nil)
 
-// Finish implements objstorage.Writable.
+// Write implements objstorage.Writable.
 func (o *bufferedSSTables) Write(p []byte) error {
 	_, err := o.curr.Write(p)
-	o.curr.Reset()
 	return err
 }
 
@@ -635,6 +637,7 @@ func (o *bufferedSSTables) Finish() error {
 		fileNum: o.currFileNum,
 		buf:     slices.Clone(o.curr.Bytes()),
 	})
+	o.size += uint64(o.curr.Len())
 	o.curr.Reset()
 	o.objectIsOpen = false
 	return nil
