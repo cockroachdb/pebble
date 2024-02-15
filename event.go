@@ -293,7 +293,6 @@ type TableCreateInfo struct {
 	// Reason is the reason for the table creation: "compacting", "flushing", or
 	// "ingesting".
 	Reason  string
-	Path    string
 	FileNum base.DiskFileNum
 }
 

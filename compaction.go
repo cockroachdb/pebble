@@ -673,9 +673,6 @@ type objectCreator interface {
 		FileNum base.DiskFileNum,
 		opts objstorage.CreateOptions,
 	) (w objstorage.Writable, meta objstorage.ObjectMetadata, err error)
-	// Path returns an internal, implementation-dependent path for the object. It is
-	// meant to be used for informational purposes (like logging).
-	Path(meta objstorage.ObjectMetadata) string
 	// Remove removes an object.
 	//
 	// The object is not guaranteed to be durably removed until Sync is called.
@@ -3098,7 +3095,7 @@ func (d *DB) runCompaction(
 		}
 		diskFileNum := base.PhysicalTableDiskFileNum(fileNum)
 
-		writable, objMeta, err := objCreator.Create(ctx, fileTypeTable, diskFileNum, createOpts)
+		writable, _, err := objCreator.Create(ctx, fileTypeTable, diskFileNum, createOpts)
 		if err != nil {
 			return err
 		}
@@ -3110,7 +3107,6 @@ func (d *DB) runCompaction(
 		d.opts.EventListener.TableCreated(TableCreateInfo{
 			JobID:   jobID,
 			Reason:  reason,
-			Path:    objCreator.Path(objMeta),
 			FileNum: diskFileNum,
 		})
 		if c.kind != compactionKindFlush {

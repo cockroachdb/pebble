@@ -412,8 +412,8 @@ func (b *flushableBufferedSSTables) newIters(
 		// within the in-memory sstables, but it's unclear it's worth the code
 		// complexity. We expect these blocks to be hit frequently, and the cost
 		// of loading them is less since they're already in main memory.
-		tableFormat, err := r.TableFormat()
-		if err != nil {
+		var tableFormat sstable.TableFormat
+		if tableFormat, err = r.TableFormat(); err != nil {
 			return iterSet{}, err
 		}
 		var rp sstable.ReaderProvider
@@ -597,19 +597,18 @@ func (b *bufferedSSTables) Create(
 	}, nil
 }
 
-// Path implements the objectCreator interface.
-func (b *bufferedSSTables) Path(meta objstorage.ObjectMetadata) string {
-	panic("TODO")
-}
-
 // Remove implements the objectCreator interface.
 func (b *bufferedSSTables) Remove(fileType base.FileType, FileNum base.DiskFileNum) error {
-	panic("TODO")
+	// Remove is called when a flush/compaction fails. We could zero out the
+	// buffers to reclaim the memory marinally sooner, but it doesn't seem worth
+	// the added complexity. Just do nothing; the bufferedSSTables object itself
+	// should be reclaimed soon enough.
+	return nil
 }
 
 // Sync implements the objectCreator interface.
 func (b *bufferedSSTables) Sync() error {
-	panic("TODO")
+	return nil
 }
 
 // Assert that bufferedSSTables implements objstorage.Writable.
@@ -620,30 +619,30 @@ func (b *bufferedSSTables) Sync() error {
 var _ objstorage.Writable = (*bufferedSSTables)(nil)
 
 // Finish implements objstorage.Writable.
-func (o *bufferedSSTables) Write(p []byte) error {
-	_, err := o.curr.Write(p)
-	o.curr.Reset()
+func (b *bufferedSSTables) Write(p []byte) error {
+	_, err := b.curr.Write(p)
+	b.curr.Reset()
 	return err
 }
 
 // Finish implements objstorage.Writable.
-func (o *bufferedSSTables) Finish() error {
-	if !o.objectIsOpen {
+func (b *bufferedSSTables) Finish() error {
+	if !b.objectIsOpen {
 		panic("bufferedSSTables.Finish() invoked when no object is open")
 	}
-	o.finished = append(o.finished, bufferedSSTable{
-		fileNum: o.currFileNum,
-		buf:     slices.Clone(o.curr.Bytes()),
+	b.finished = append(b.finished, bufferedSSTable{
+		fileNum: b.currFileNum,
+		buf:     slices.Clone(b.curr.Bytes()),
 	})
-	o.curr.Reset()
-	o.objectIsOpen = false
+	b.curr.Reset()
+	b.objectIsOpen = false
 	return nil
 }
 
 // Abort implements objstorage.Writable.
-func (o *bufferedSSTables) Abort() {
-	o.curr.Reset()
-	o.objectIsOpen = false
+func (b *bufferedSSTables) Abort() {
+	b.curr.Reset()
+	b.objectIsOpen = false
 }
 
 // computePossibleOverlapsGenericImpl is an implemention of the flushable

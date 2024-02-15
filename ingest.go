@@ -553,7 +553,7 @@ func ingestLink(
 	jobID int, opts *Options, objProvider objstorage.Provider, lr ingestLoadResult,
 ) error {
 	for i := range lr.local {
-		objMeta, err := objProvider.LinkOrCopyFromLocal(
+		_, err := objProvider.LinkOrCopyFromLocal(
 			context.TODO(), opts.FS, lr.local[i].path, fileTypeTable, lr.local[i].FileBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true},
 		)
@@ -567,7 +567,6 @@ func ingestLink(
 			opts.EventListener.TableCreated(TableCreateInfo{
 				JobID:   jobID,
 				Reason:  "ingesting",
-				Path:    objProvider.Path(objMeta),
 				FileNum: base.PhysicalTableDiskFileNum(lr.local[i].FileNum),
 			})
 		}
@@ -624,7 +623,6 @@ func ingestLink(
 			opts.EventListener.TableCreated(TableCreateInfo{
 				JobID:   jobID,
 				Reason:  "ingesting",
-				Path:    objProvider.Path(remoteObjMetas[i]),
 				FileNum: remoteObjMetas[i].DiskFileNum,
 			})
 		}
