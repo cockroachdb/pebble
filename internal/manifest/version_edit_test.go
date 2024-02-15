@@ -45,11 +45,12 @@ func checkRoundTrip(e0 VersionEdit) error {
 func TestVERoundTripAndAccumulate(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	m1 := (&FileMetadata{
-		FileNum:        810,
-		Size:           8090,
-		CreationTime:   809060,
-		SmallestSeqNum: 9,
-		LargestSeqNum:  11,
+		FileNum:         810,
+		Size:            8090,
+		CreationTime:    809060,
+		SmallestSeqNum:  9,
+		LargestSeqNum:   11,
+		SyntheticSuffix: []byte("foo"),
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
@@ -129,6 +130,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		SmallestSeqNum:      3,
 		LargestSeqNum:       5,
 		MarkedForCompaction: true,
+		SyntheticSuffix:     []byte("foo"),
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
