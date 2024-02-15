@@ -56,7 +56,9 @@ const (
 	tagCreatedBackingTable = 105
 	tagRemovedBackingTable = 106
 
-	// The custom tags sub-format used by tagNewFile4 and above.
+	// The custom tags sub-format used by tagNewFile4 and above. All tags less
+	// than customTagNonSafeIgnoreMask are safe to ignore and their format must be
+	// a single bytes field.
 	customTagTerminate         = 1
 	customTagNeedsCompaction   = 2
 	customTagCreationTime      = 6
@@ -348,15 +350,39 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 					if customTag == customTagTerminate {
 						break
-					} else if customTag == customTagVirtual {
-						virtualState.virtual = true
-						n, err := d.readUvarint()
+					}
+					switch customTag {
+					case customTagNeedsCompaction:
+						field, err := d.readBytes()
 						if err != nil {
 							return err
 						}
-						virtualState.backingFileNum = n
-						continue
-					} else if customTag == customTagPrefixRewrite {
+						if len(field) != 1 {
+							return base.CorruptionErrorf("new-file4: need-compaction field wrong size")
+						}
+						markedForCompaction = (field[0] == 1)
+
+					case customTagCreationTime:
+						field, err := d.readBytes()
+						if err != nil {
+							return err
+						}
+						var n int
+						creationTime, n = binary.Uvarint(field)
+						if n != len(field) {
+							return base.CorruptionErrorf("new-file4: invalid file creation time")
+						}
+
+					case customTagPathID:
+						return base.CorruptionErrorf("new-file4: path-id field not supported")
+
+					case customTagVirtual:
+						virtualState.virtual = true
+						if virtualState.backingFileNum, err = d.readUvarint(); err != nil {
+							return err
+						}
+
+					case customTagPrefixRewrite:
 						content, err := d.readBytes()
 						if err != nil {
 							return err
@@ -369,38 +395,18 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 							ContentPrefix:   content,
 							SyntheticPrefix: synthetic,
 						}
-						continue
-					} else if customTag == customTagSuffixRewrite {
-						syntheticSuffix, err = d.readBytes()
-						if err != nil {
+
+					case customTagSuffixRewrite:
+						if syntheticSuffix, err = d.readBytes(); err != nil {
 							return err
 						}
-					}
-
-					field, err := d.readBytes()
-					if err != nil {
-						return err
-					}
-					switch customTag {
-					case customTagNeedsCompaction:
-						if len(field) != 1 {
-							return base.CorruptionErrorf("new-file4: need-compaction field wrong size")
-						}
-						markedForCompaction = (field[0] == 1)
-
-					case customTagCreationTime:
-						var n int
-						creationTime, n = binary.Uvarint(field)
-						if n != len(field) {
-							return base.CorruptionErrorf("new-file4: invalid file creation time")
-						}
-
-					case customTagPathID:
-						return base.CorruptionErrorf("new-file4: path-id field not supported")
 
 					default:
 						if (customTag & customTagNonSafeIgnoreMask) != 0 {
 							return base.CorruptionErrorf("new-file4: custom field not supported: %d", customTag)
+						}
+						if _, err := d.readBytes(); err != nil {
+							return err
 						}
 					}
 				}
