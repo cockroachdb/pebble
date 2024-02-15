@@ -571,6 +571,28 @@ func (b *bufferedSSTables) init(targetFileSize int) {
 	b.curr.Grow(targetFileSize)
 }
 
+// copyToProvider copies all the finished buffered sstables to the provided
+// destination object storage Provider.
+func (b *bufferedSSTables) copyToProvider(ctx context.Context, dst objstorage.Provider) error {
+	for i := range b.finished {
+		err := func() error {
+			w, _, err := dst.Create(ctx, base.FileTypeTable, b.finished[i].fileNum, objstorage.CreateOptions{})
+			if err != nil {
+				return err
+			}
+			if err = w.Write(b.finished[i].buf); err != nil {
+				w.Abort()
+				return err
+			}
+			return w.Finish()
+		}()
+		if err != nil {
+			return errors.Wrapf(err, "copying file %s", b.finished[i].fileNum)
+		}
+	}
+	return dst.Sync()
+}
+
 // Assert that *bufferedSSTables implements the objectCreator interface.
 var _ objectCreator = (*bufferedSSTables)(nil)
 
