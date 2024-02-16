@@ -43,8 +43,7 @@ var _ BlockIntervalSyntheticReplacer = testKeysBlockIntervalSyntheticReplacer{}
 
 type testKeysBlockIntervalSyntheticReplacer struct{}
 
-// AdjustIntervalWithSyntheticSuffix is part of the
-// BlockIntervalSyntheticReplacer interface.
+// AdjustIntervalWithSyntheticSuffix implements BlockIntervalSyntheticReplacer.
 func (sr testKeysBlockIntervalSyntheticReplacer) AdjustIntervalWithSyntheticSuffix(
 	lower uint64, upper uint64, suffix []byte,
 ) (adjustedLower uint64, adjustedUpper uint64, err error) {
@@ -52,7 +51,8 @@ func (sr testKeysBlockIntervalSyntheticReplacer) AdjustIntervalWithSyntheticSuff
 	if err != nil {
 		return 0, 0, err
 	}
-	if uint64(decoded) < upper {
+	// The testKeysSuffixIntervalCollector below maps keys with no suffix to MaxUint64; ignore it.
+	if upper != math.MaxUint64 && uint64(decoded) < upper {
 		panic(fmt.Sprintf("the synthetic suffix %d is less than the property upper bound %d", decoded, upper))
 	}
 	return uint64(decoded), uint64(decoded) + 1, nil
@@ -90,7 +90,7 @@ func (f TestKeysMaskingFilter) Intersects(prop []byte) (bool, error) {
 
 // SyntheticSuffixIntersects implements the BlockPropertyFilter interface.
 func (f TestKeysMaskingFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
-	panic("unimplemented")
+	return f.BlockIntervalFilter.SyntheticSuffixIntersects(prop, suffix)
 }
 
 var _ DataBlockIntervalCollector = (*testKeysSuffixIntervalCollector)(nil)

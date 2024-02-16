@@ -466,22 +466,25 @@ func (p *parser) parseCheckpointSpans(list []listElem) []pebble.CheckpointSpan {
 }
 
 func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithBounds {
-	if len(list)%3 != 0 {
-		panic(p.errorf(list[0].pos, "expected number of arguments to be multiple of 3"))
+	const numArgs = 4
+	if len(list)%numArgs != 0 {
+		panic(p.errorf(list[0].pos, "expected number of arguments to be multiple of %d", numArgs))
 	}
-	objs := make([]externalObjWithBounds, len(list)/3)
+	objs := make([]externalObjWithBounds, len(list)/numArgs)
 	for i := range objs {
 		list[0].expectToken(p, token.IDENT)
 		list[1].expectToken(p, token.STRING)
 		list[2].expectToken(p, token.STRING)
+		list[3].expectToken(p, token.STRING)
 		objs[i] = externalObjWithBounds{
 			externalObjID: p.parseObjID(list[0].pos, list[0].lit),
 			bounds: pebble.KeyRange{
 				Start: unquoteBytes(list[1].lit),
 				End:   unquoteBytes(list[2].lit),
 			},
+			syntheticSuffix: unquoteBytes(list[3].lit),
 		}
-		list = list[3:]
+		list = list[numArgs:]
 	}
 	return objs
 }
