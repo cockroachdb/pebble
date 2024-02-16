@@ -22,19 +22,18 @@ import (
 // writeSSTForIngestion writes an SST that is to be ingested, either directly or
 // as an external file.
 //
-// If convertDelSizedToDel is set, then any DeleteSized keys are converted to
-// Delete keys; this is useful when the database that will ingest the file is at
-// a format that doesn't support DeleteSized.
-//
+// Returns the sstable metadata and the minimum non-empty suffix.
 // Closes the iterators in all cases.
 func writeSSTForIngestion(
 	t *Test,
 	pointIter base.InternalIterator,
 	rangeDelIter keyspan.FragmentIterator,
 	rangeKeyIter keyspan.FragmentIterator,
+	uniquePrefixes bool,
+	syntheticSuffix sstable.SyntheticSuffix,
 	writable objstorage.Writable,
 	targetFMV pebble.FormatMajorVersion,
-) (*sstable.WriterMetadata, error) {
+) (_ *sstable.WriterMetadata, minSuffix []byte, _ error) {
 	writerOpts := t.opts.MakeWriterOptions(0, targetFMV.MaxTableFormat())
 	if t.testOpts.disableValueBlocksForIngestSSTables {
 		writerOpts.DisableValueBlocks = true
@@ -47,11 +46,37 @@ func writeSSTForIngestion(
 	rangeKeyIterCloser := base.CloseHelper(rangeKeyIter)
 	defer rangeKeyIterCloser.Close()
 
+	outputKey := func(key []byte) []byte {
+		n := t.opts.Comparer.Split(key)
+		if suffix := key[n:]; len(suffix) > 0 {
+			if minSuffix == nil || t.opts.Comparer.Compare(suffix, minSuffix) < 0 {
+				minSuffix = slices.Clone(suffix)
+			}
+		}
+		return slices.Clone(key)
+	}
+
+	if len(syntheticSuffix) > 0 {
+		minSuffix = slices.Clone(syntheticSuffix)
+		outputKey = func(key []byte) []byte {
+			n := t.opts.Comparer.Split(key)
+			return append(key[:n:n], syntheticSuffix...)
+		}
+	}
+
 	var lastUserKey []byte
 	for key, value := pointIter.First(); key != nil; key, value = pointIter.Next() {
 		// Ignore duplicate keys.
-		if t.opts.Comparer.Equal(lastUserKey, key.UserKey) {
-			continue
+		if lastUserKey != nil {
+			last := lastUserKey
+			this := key.UserKey
+			if uniquePrefixes {
+				last = last[:t.opts.Comparer.Split(last)]
+				this = this[:t.opts.Comparer.Split(this)]
+			}
+			if t.opts.Comparer.Equal(last, this) {
+				continue
+			}
 		}
 		lastUserKey = append(lastUserKey[:0], key.UserKey...)
 
@@ -65,28 +90,30 @@ func writeSSTForIngestion(
 		}
 		valBytes, _, err := value.Value(nil)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if err := w.Add(*key, valBytes); err != nil {
-			return nil, err
+		k := *key
+		k.UserKey = outputKey(k.UserKey)
+		if err := w.Add(k, valBytes); err != nil {
+			return nil, nil, err
 		}
 	}
 	if err := pointIterCloser.Close(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if rangeDelIter != nil {
 		span, err := rangeDelIter.First()
 		for ; span != nil; span, err = rangeDelIter.Next() {
-			if err := w.DeleteRange(slices.Clone(span.Start), slices.Clone(span.End)); err != nil {
-				return nil, err
+			if err := w.DeleteRange(outputKey(span.Start), outputKey(span.End)); err != nil {
+				return nil, nil, err
 			}
 		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if err := rangeDelIterCloser.Close(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
@@ -103,8 +130,8 @@ func writeSSTForIngestion(
 			// same sequence number is nonsensical, so we "coalesce" or collapse
 			// the keys.
 			collapsed := keyspan.Span{
-				Start: slices.Clone(span.Start),
-				End:   slices.Clone(span.End),
+				Start: outputKey(span.Start),
+				End:   outputKey(span.End),
 				Keys:  make([]keyspan.Key, 0, len(span.Keys)),
 			}
 			rangekey.Coalesce(
@@ -115,21 +142,25 @@ func writeSSTForIngestion(
 			}
 			keyspan.SortKeysByTrailer(&collapsed.Keys)
 			if err := rangekey.Encode(&collapsed, w.AddRangeKey); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if err := rangeKeyIterCloser.Close(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	if err := w.Close(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return w.Metadata()
+	sstMeta, err := w.Metadata()
+	if err != nil {
+		return nil, nil, err
+	}
+	return sstMeta, minSuffix, nil
 }
 
 // buildForIngest builds a local SST file containing the keys in the given batch
@@ -147,9 +178,11 @@ func buildForIngest(
 	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
 
 	writable := objstorageprovider.NewFileWritable(f)
-	meta, err := writeSSTForIngestion(
+	meta, _, err := writeSSTForIngestion(
 		t,
 		iter, rangeDelIter, rangeKeyIter,
+		false, /* uniquePrefixes */
+		nil,   /* syntheticSuffix */
 		writable,
 		db.FormatMajorVersion(),
 	)
@@ -160,7 +193,12 @@ func buildForIngest(
 // external object (truncated to the given bounds) and returns its path and
 // metadata.
 func buildForIngestExternalEmulation(
-	t *Test, dbID objID, externalObjID objID, bounds pebble.KeyRange, i int,
+	t *Test,
+	dbID objID,
+	externalObjID objID,
+	bounds pebble.KeyRange,
+	syntheticSuffix sstable.SyntheticSuffix,
+	i int,
 ) (path string, _ *sstable.WriterMetadata) {
 	path = t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
 	f, err := t.opts.FS.Create(path)
@@ -170,9 +208,15 @@ func buildForIngestExternalEmulation(
 	defer reader.Close()
 
 	writable := objstorageprovider.NewFileWritable(f)
-	meta, err := writeSSTForIngestion(
+	// The underlying file should already have unique prefixes. Plus we are
+	// emulating the external ingestion path which won't remove duplicate prefixes
+	// if they exist.
+	const uniquePrefixes = false
+	meta, _, err := writeSSTForIngestion(
 		t,
 		pointIter, rangeDelIter, rangeKeyIter,
+		uniquePrefixes,
+		syntheticSuffix,
 		writable,
 		t.minFMV(),
 	)

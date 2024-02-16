@@ -207,7 +207,12 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 			panic(fmt.Sprintf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
 		}
 		suffix = kg.SkewedSuffixInt(0.01)
-		for !(cmpSuffix(startSuffix, suffix) <= 0 && cmpSuffix(suffix, endSuffix) < 0) {
+		for i := 0; !(cmpSuffix(startSuffix, suffix) <= 0 && cmpSuffix(suffix, endSuffix) < 0); i++ {
+			if i > 10 {
+				// This value is always >= startSuffix and < endSuffix.
+				suffix = (startSuffix + endSuffix) / 2
+				break
+			}
 			// The suffix we want must exist in the current suffix range, we don't
 			// want to keep increasing it here.
 			suffix = kg.SkewedSuffixInt(0)
@@ -217,8 +222,12 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 		suffix = kg.SkewedSuffixInt(0.01)
 		if kg.equal(prefix, startPrefix) {
 			// We can't use a suffix which sorts before startSuffix.
-			for cmpSuffix(suffix, startSuffix) < 0 {
-				suffix = kg.SkewedSuffixInt(0.01)
+			for i := 0; cmpSuffix(suffix, startSuffix) < 0; i++ {
+				if i > 10 {
+					suffix = startSuffix
+					break
+				}
+				suffix = kg.SkewedSuffixInt(0)
 			}
 		}
 	}

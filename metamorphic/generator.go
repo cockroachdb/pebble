@@ -1337,6 +1337,22 @@ func (g *generator) writerIngestExternalFiles() {
 			o.bounds.Start = keys[2*i]
 		}
 		o.bounds.End = keys[2*i+1]
+
+		if g.rng.Intn(2) == 0 {
+			// Try to set a synthetic suffix. We can only do so if the bounds don't
+			// have suffixes, so try to trim them.
+			start := g.keyGenerator.prefix(o.bounds.Start)
+			end := g.keyGenerator.prefix(o.bounds.End)
+			// If the trimmed bounds overlap with adjacent file bounds, we just don't
+			// set the suffix.
+			if g.cmp(start, end) < 0 &&
+				(i == 0 || g.cmp(sorted[i-1].bounds.End, start) <= 0) &&
+				(i == len(sorted)-1 || g.cmp(end, sorted[i+1].bounds.Start) <= 0) {
+				o.bounds.Start = start
+				o.bounds.End = end
+				o.syntheticSuffix = g.keyGenerator.SkewedSuffix(0.1)
+			}
+		}
 	}
 	// The batches we're ingesting may contain single delete tombstones that
 	// when applied to the writer result in nondeterminism in the deleted key.
