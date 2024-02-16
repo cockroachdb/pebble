@@ -158,10 +158,11 @@ func (c *cacheOpts) writerApply(w *Writer) {
 }
 
 // SyntheticSuffix will replace every suffix of every key surfaced during block
-// iteration. The client should only initiate a reader with SuffixReplacement if:
-//
-// (1) no two keys in the sst share the same prefix
-// (2) pebble.Compare(replacementSuffix,originalSuffix) > 0, for all keys
+// iteration. A synthetic suffix can be used if:
+//  1. no two keys in the sst share the same prefix; and
+//  2. pebble.Compare(prefix + replacementSuffix, prefix + originalSuffix) < 0,
+//     for all keys in the backing sst which have a suffix (i.e. originalSuffix
+//     is not empty).
 type SyntheticSuffix []byte
 
 // rawTombstonesOpt is a Reader open option for specifying that range
