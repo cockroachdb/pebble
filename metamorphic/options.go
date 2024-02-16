@@ -478,9 +478,22 @@ func standardOptions() []*TestOptions {
   format_major_version=%s
 [TestOptions]
   shared_storage_enabled=true
-  external_storage_enabled=true
   secondary_cache_enabled=true
 `, pebble.FormatMinForSharedObjects),
+		28: fmt.Sprintf(`
+[Options]
+  format_major_version=%s
+[TestOptions]
+  external_storage_enabled=true
+`, pebble.FormatSyntheticPrefixSuffix),
+		29: fmt.Sprintf(`
+[Options]
+  format_major_version=%s
+[TestOptions]
+  shared_storage_enabled=true
+  external_storage_enabled=true
+  secondary_cache_enabled=false
+`, pebble.FormatSyntheticPrefixSuffix),
 	}
 
 	opts := make([]*TestOptions, len(stdOpts))
@@ -662,8 +675,8 @@ func RandomOptions(
 	// 50% of time, enable external storage.
 	if rng.Intn(2) == 0 {
 		testOpts.externalStorageEnabled = true
-		if testOpts.Opts.FormatMajorVersion < pebble.FormatMinForSharedObjects {
-			testOpts.Opts.FormatMajorVersion = pebble.FormatMinForSharedObjects
+		if testOpts.Opts.FormatMajorVersion < pebble.FormatSyntheticPrefixSuffix {
+			testOpts.Opts.FormatMajorVersion = pebble.FormatSyntheticPrefixSuffix
 		}
 		testOpts.externalStorageFS = remote.NewInMem()
 	}

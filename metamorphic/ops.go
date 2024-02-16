@@ -74,7 +74,7 @@ func (o *initOp) run(t *Test, h historyRecorder) {
 	t.batches = make([]*pebble.Batch, o.batchSlots)
 	t.iters = make([]*retryableIter, o.iterSlots)
 	t.snapshots = make([]readerCloser, o.snapshotSlots)
-	t.externalObjs = make([]*sstable.WriterMetadata, o.externalObjSlots)
+	t.externalObjs = make([]externalObjMeta, o.externalObjSlots)
 	h.Recordf("%s", o)
 }
 
@@ -926,22 +926,56 @@ type ingestExternalFilesOp struct {
 type externalObjWithBounds struct {
 	externalObjID objID
 	bounds        pebble.KeyRange
+	// We will only apply the synthetic suffix if it compares before all the
+	// suffixes inside the sst.
+	syntheticSuffix sstable.SyntheticSuffix
 }
 
 func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 	db := t.getDB(o.dbID)
+
+	// We modify objs to eliminate empty objects and clear invalid synthetic suffixes.
+	var objs []externalObjWithBounds
+	for _, obj := range o.objs {
+		// Make sure the object exists and is not empty.
+		objMeta := t.getExternalObj(obj.externalObjID)
+		if m := objMeta.sstMeta; !m.HasPointKeys && !m.HasRangeKeys && !m.HasRangeDelKeys {
+			continue
+		}
+		if externalObjIsEmpty(t, obj.externalObjID, obj.bounds) {
+			// Currently we don't support ingesting external objects that have no point
+			// or range keys in the given range. Filter out any such objects.
+			// TODO(radu): even though we don't expect this case in practice, eventually
+			// we want to make sure that it doesn't cause failures.
+			continue
+		}
+		if obj.syntheticSuffix != nil {
+			// Verify that the version supports suffix replacement, and verify that
+			// the suffix comes before any suffix present in the object.
+			if t.opts.Comparer.Compare(obj.syntheticSuffix, objMeta.minSuffix) >= 0 {
+				obj.syntheticSuffix = nil
+			}
+			if objMeta.sstMeta.HasRangeDelKeys {
+				// Disable synthetic suffix if we have range dels.
+				// TODO(radu): we will want to support this at some point.
+				obj.syntheticSuffix = nil
+			}
+		}
+		objs = append(objs, obj)
+	}
+	if len(objs) == 0 {
+		h.Recordf("%s // no-op", o)
+		return
+	}
 	var err error
 	if !t.testOpts.externalStorageEnabled {
 		// Emulate the operation by crating local, truncated SST files and ingesting
 		// them.
 		var paths []string
-		for i, obj := range o.objs {
+		for i, obj := range objs {
 			// Make sure the object exists and is not empty.
-			if objMeta := t.getExternalObj(obj.externalObjID); !objMeta.HasPointKeys && !objMeta.HasRangeKeys && !objMeta.HasRangeDelKeys {
-				continue
-			}
-			path, meta := buildForIngestExternalEmulation(t, o.dbID, obj.externalObjID, obj.bounds, i)
-			if meta.HasPointKeys || meta.HasRangeKeys || meta.HasRangeDelKeys {
+			path, sstMeta := buildForIngestExternalEmulation(t, o.dbID, obj.externalObjID, obj.bounds, obj.syntheticSuffix, i)
+			if sstMeta.HasPointKeys || sstMeta.HasRangeKeys || sstMeta.HasRangeDelKeys {
 				paths = append(paths, path)
 			}
 		}
@@ -949,39 +983,24 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 			err = db.Ingest(paths)
 		}
 	} else {
-		// Currently we don't support ingesting external objects that have no point
-		// or range keys in the given range. Filter out any such objects.
-		// TODO(radu): even though we don't expect this case in practice, eventually
-		// we want to make sure that it doesn't cause failures.
-		var objs []externalObjWithBounds
-		for _, obj := range o.objs {
-			objMeta := t.getExternalObj(obj.externalObjID)
-			if objMeta.HasPointKeys || objMeta.HasRangeKeys || objMeta.HasRangeDelKeys {
-				if !externalObjIsEmpty(t, obj.externalObjID, obj.bounds) {
-					objs = append(objs, obj)
-				}
-			}
-		}
-
 		external := make([]pebble.ExternalFile, len(objs))
 		for i, obj := range objs {
 			meta := t.getExternalObj(obj.externalObjID)
 			external[i] = pebble.ExternalFile{
 				Locator:         "external",
 				ObjName:         externalObjName(obj.externalObjID),
-				Size:            meta.Size,
+				Size:            meta.sstMeta.Size,
 				SmallestUserKey: obj.bounds.Start,
 				LargestUserKey:  obj.bounds.End,
 				// Note: if the table has point/range keys, we don't know for sure whether
 				// this particular range has any, but that's acceptable.
-				HasPointKey: meta.HasPointKeys || meta.HasRangeDelKeys,
-				HasRangeKey: meta.HasRangeKeys,
+				HasPointKey:     meta.sstMeta.HasPointKeys || meta.sstMeta.HasRangeDelKeys,
+				HasRangeKey:     meta.sstMeta.HasRangeKeys,
+				SyntheticSuffix: obj.syntheticSuffix,
 				// TODO(radu): test prefix replacement.
 			}
 		}
-		if len(external) > 0 {
-			_, err = db.IngestExternalFiles(external)
-		}
+		_, err = db.IngestExternalFiles(external)
 	}
 
 	h.Recordf("%s // %v", o, err)
@@ -1001,7 +1020,7 @@ func (o *ingestExternalFilesOp) syncObjs() objIDSlice {
 func (o *ingestExternalFilesOp) String() string {
 	strs := make([]string, len(o.objs))
 	for i, obj := range o.objs {
-		strs[i] = fmt.Sprintf("%s, %q, %q", obj.externalObjID, obj.bounds.Start, obj.bounds.End)
+		strs[i] = fmt.Sprintf("%s, %q, %q, %q", obj.externalObjID, obj.bounds.Start, obj.bounds.End, obj.syntheticSuffix)
 	}
 	return fmt.Sprintf("%s.IngestExternalFiles(%s)", o.dbID, strings.Join(strs, ", "))
 }
@@ -1758,16 +1777,21 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 		rangeKeyIter = nil
 	}
 
-	meta, err := writeSSTForIngestion(
+	sstMeta, minSuffix, err := writeSSTForIngestion(
 		t,
 		iter, rangeDelIter, rangeKeyIter,
+		true, /* uniquePrefixes */
+		nil,  /* syntheticSuffix */
 		writable,
 		t.minFMV(),
 	)
 	if err != nil {
 		panic(err)
 	}
-	t.setExternalObj(o.externalObjID, meta)
+	t.setExternalObj(o.externalObjID, externalObjMeta{
+		sstMeta:   sstMeta,
+		minSuffix: minSuffix,
+	})
 	h.Recordf("%s", o)
 }
 

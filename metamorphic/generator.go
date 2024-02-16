@@ -1292,7 +1292,7 @@ func (g *generator) writerIngestExternalFiles() {
 		}
 		if !b.largestExcl {
 			// Move up the end key a bit by appending a few letters to the prefix.
-			kr.End = append(g.keyGenerator.prefix(kr.End), randBytes(g.rng, 1, 3)...)
+			kr.End = append(g.prefix(kr.End), randBytes(g.rng, 1, 3)...)
 		}
 
 		objs[i] = externalObjWithBounds{
@@ -1323,6 +1323,11 @@ func (g *generator) writerIngestExternalFiles() {
 	if g.cmp(overall.Start, overall.End) >= 0 {
 		panic(fmt.Sprintf("invalid bounds [%q, %q)", overall.Start, overall.End))
 	}
+	// If the bounds have the same prefix, we might not be able to generate enough unique keys.
+	if g.cmp(g.prefix(overall.Start), g.prefix(overall.End)) == 0 {
+		// Append some bytes to move up the end bound.
+		overall.End = append(g.prefix(overall.End), randBytes(g.rng, 1, 3)...)
+	}
 	// Generate 2*numFiles distinct keys and sort them. These will form the ingest
 	// bounds for each file.
 	keys := g.keyGenerator.UniqueKeys(2*numFiles, func() []byte {
@@ -1337,6 +1342,22 @@ func (g *generator) writerIngestExternalFiles() {
 			o.bounds.Start = keys[2*i]
 		}
 		o.bounds.End = keys[2*i+1]
+
+		if g.rng.Intn(2) == 0 {
+			// Try to set a synthetic suffix. We can only do so if the bounds don't
+			// have suffixes, so try to trim them.
+			start := g.prefix(o.bounds.Start)
+			end := g.prefix(o.bounds.End)
+			// If the trimmed bounds overlap with adjacent file bounds, we just don't
+			// set the suffix.
+			if g.cmp(start, end) < 0 &&
+				(i == 0 || g.cmp(sorted[i-1].bounds.End, start) <= 0) &&
+				(i == len(sorted)-1 || g.cmp(end, sorted[i+1].bounds.Start) <= 0) {
+				o.bounds.Start = start
+				o.bounds.End = end
+				o.syntheticSuffix = g.keyGenerator.SkewedSuffix(0.1)
+			}
+		}
 	}
 	// The batches we're ingesting may contain single delete tombstones that
 	// when applied to the writer result in nondeterminism in the deleted key.
@@ -1479,6 +1500,11 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 
 func (g *generator) cmp(a, b []byte) int {
 	return g.keyManager.comparer.Compare(a, b)
+}
+
+func (g *generator) prefix(a []byte) []byte {
+	n := g.keyManager.comparer.Split(a)
+	return a[:n:n]
 }
 
 func (g *generator) String() string {

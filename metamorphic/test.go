@@ -59,12 +59,19 @@ type Test struct {
 	batches      []*pebble.Batch
 	iters        []*retryableIter
 	snapshots    []readerCloser
-	externalObjs []*sstable.WriterMetadata
+	externalObjs []externalObjMeta
 
 	// externalStorage is used to write external objects. If external storage is
 	// enabled, this is the same with testOpts.externalStorageFS; otherwise, this
 	// is an in-memory implementation used only by the test.
 	externalStorage remote.Storage
+}
+
+type externalObjMeta struct {
+	sstMeta *sstable.WriterMetadata
+	// minSuffix is the minimum (according to the comparator) non-empty suffix in
+	// the object.
+	minSuffix []byte
 }
 
 func newTest(ops []op) *Test {
@@ -420,15 +427,15 @@ func (t *Test) setSnapshot(id objID, s readerCloser) {
 	t.snapshots[id.slot()] = s
 }
 
-func (t *Test) setExternalObj(id objID, meta *sstable.WriterMetadata) {
+func (t *Test) setExternalObj(id objID, meta externalObjMeta) {
 	if id.tag() != externalObjTag {
 		panic(fmt.Sprintf("invalid external object ID: %s", id))
 	}
 	t.externalObjs[id.slot()] = meta
 }
 
-func (t *Test) getExternalObj(id objID) *sstable.WriterMetadata {
-	if id.tag() != externalObjTag || t.externalObjs[id.slot()] == nil {
+func (t *Test) getExternalObj(id objID) externalObjMeta {
+	if id.tag() != externalObjTag || t.externalObjs[id.slot()].sstMeta == nil {
 		panic(fmt.Sprintf("metamorphic test internal error: invalid external object ID: %s", id))
 	}
 	return t.externalObjs[id.slot()]
