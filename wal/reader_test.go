@@ -50,7 +50,7 @@ func TestList(t *testing.T) {
 					Dirname: dirname,
 				})
 			}
-			logs, err := listLogs(dirs...)
+			logs, err := Scan(dirs...)
 			if err != nil {
 				return err.Error()
 			}
@@ -196,9 +196,9 @@ func TestReader(t *testing.T) {
 			var forceLogNameIndexes []uint64
 			td.ScanArgs(t, "logNum", &logNum)
 			td.MaybeScanArgs(t, "forceLogNameIndexes", &forceLogNameIndexes)
-			logs, err := listLogs(Dir{FS: fs})
+			logs, err := Scan(Dir{FS: fs})
 			require.NoError(t, err)
-			log, ok := logs.get(NumWAL(logNum))
+			log, ok := logs.Get(NumWAL(logNum))
 			if !ok {
 				return "not found"
 			}
@@ -216,8 +216,8 @@ func TestReader(t *testing.T) {
 					segments = slices.Insert(segments, j, segment{logNameIndex: logNameIndex(li), dir: Dir{FS: fs}})
 				}
 			}
-
-			r := newVirtualWALReader(log.NumWAL, segments)
+			ll := LogicalLog{Num: log.Num, segments: segments}
+			r := ll.OpenForRead()
 			for {
 				rr, off, err := r.NextRecord()
 				fmt.Fprintf(&buf, "r.NextRecord() = (rr, %s, %v)\n", off, err)

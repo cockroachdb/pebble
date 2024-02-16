@@ -374,9 +374,9 @@ func TestLargeBatch(t *testing.T) {
 	logNum := func() base.DiskFileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		walNums, err := d.mu.log.manager.List()
+		logs, err := d.mu.log.manager.List()
 		require.NoError(t, err)
-		return base.DiskFileNum(walNums[len(walNums)-1])
+		return base.DiskFileNum(logs[len(logs)-1].Num)
 	}
 	fileSize := func(fileNum base.DiskFileNum) int64 {
 		info, err := d.opts.FS.Stat(base.MakeFilepath(d.opts.FS, "", fileTypeLog, fileNum))
@@ -1979,7 +1979,7 @@ func TestRecycleLogs(t *testing.T) {
 		defer d.mu.Unlock()
 		walNums, err := d.mu.log.manager.List()
 		require.NoError(t, err)
-		return base.DiskFileNum(walNums[len(walNums)-1])
+		return base.DiskFileNum(walNums[len(walNums)-1].Num)
 	}
 	logCount := func() int {
 		d.mu.Lock()
