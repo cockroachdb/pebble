@@ -185,6 +185,15 @@ func ingestLoad1External(
 	if e.HasRangeKey {
 		return nil, errors.New("pebble: range keys not supported in external files")
 	}
+	if len(e.SyntheticSuffix) > 0 {
+		if n := opts.Comparer.Split(e.SmallestUserKey); n != len(e.SmallestUserKey) {
+			return nil, errors.New("pebble: synthetic suffix is set but smallest key has suffix")
+		}
+		if n := opts.Comparer.Split(e.LargestUserKey); n != len(e.LargestUserKey) {
+			return nil, errors.New("pebble: synthetic suffix is set but largest key has suffix")
+		}
+	}
+
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
 	meta := &fileMetadata{
@@ -1119,8 +1128,14 @@ type ExternalFile struct {
 	// SyntheticPrefix must be a prefix of both SmallestUserKey and LargestUserKey.
 	ContentPrefix, SyntheticPrefix []byte
 	// SyntheticSuffix will replace the suffix of every key in the file during
-	// iteration. Note that the file itself is not modifed, rather, every key
+	// iteration. Note that the file itself is not modified, rather, every key
 	// returned by an iterator will have the synthetic suffix.
+	//
+  // The SyntheticSuffix must sort before any non-empty suffixes in the backing
+  // sstable.
+	//
+	// If SyntheticSuffix is set, then SmallestUserKey and LargestUserKey must not
+	// have suffixes.
 	SyntheticSuffix []byte
 }
 

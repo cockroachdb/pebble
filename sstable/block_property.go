@@ -489,10 +489,6 @@ func (b *BlockIntervalFilter) SyntheticSuffixIntersects(prop []byte, suffix []by
 	if err != nil {
 		return false, err
 	}
-	if newLower < i.upper {
-		// This isn't an =< comparator because the original i.upper bound is exclusive.
-		return false, base.CorruptionErrorf(fmt.Sprintf("the synthetic suffix %d is the less than the property upper bound %d", newLower, i.upper))
-	}
 	newInterval := interval{lower: newLower, upper: newUpper}
 	return newInterval.intersects(b.filterInterval), nil
 }

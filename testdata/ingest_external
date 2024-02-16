@@ -237,6 +237,16 @@ a@5: (foo, .)
 b@5: (foo, .)
 c@5: (foo, .)
 
+# Verify that we require bounds without suffix if we use suffix replacement.
+ingest-external suffix-replace=@5
+f6,10,a@1,z@10
+----
+pebble: synthetic suffix is set but smallest key has suffix
+
+ingest-external suffix-replace=@5
+f6,10,a,z@10
+----
+pebble: synthetic suffix is set but largest key has suffix
 
 # Test the case when we are ingesting part of a RANGEDEL.
 reset
