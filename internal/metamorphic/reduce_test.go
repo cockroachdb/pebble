@@ -206,10 +206,14 @@ func (r *reducer) Run(t *testing.T) {
 		}
 	}
 	// Try to simplify the keys.
-	newOpsData, err := metamorphic.TryToSimplifyKeys([]byte(strings.Join(ops, "\n")))
-	require.NoError(t, err)
-	o := strings.Split(strings.TrimSpace(string(newOpsData)), "\n")
-	r.try(t, o)
+	opsData := []byte(strings.Join(ops, "\n"))
+	for _, retainSuffixes := range []bool{false, true} {
+		newOpsData := metamorphic.TryToSimplifyKeys(opsData, retainSuffixes)
+		o := strings.Split(strings.TrimSpace(string(newOpsData)), "\n")
+		if r.try(t, o) {
+			return
+		}
+	}
 }
 
 func randomSubset(t *testing.T, ops []string, removeProbability float64) []string {
