@@ -42,14 +42,14 @@ func (r *LogRecycler) Init(maxNumLogFiles int) {
 
 // MinRecycleLogNum returns the current minimum log number that is allowed to
 // be recycled.
-func (r *LogRecycler) MinRecycleLogNum() base.DiskFileNum {
-	return r.minRecycleLogNum
+func (r *LogRecycler) MinRecycleLogNum() NumWAL {
+	return NumWAL(r.minRecycleLogNum)
 }
 
 // SetMinRecycleLogNum sets the minimum log number that is allowed to be
 // recycled.
-func (r *LogRecycler) SetMinRecycleLogNum(n base.DiskFileNum) {
-	r.minRecycleLogNum = n
+func (r *LogRecycler) SetMinRecycleLogNum(n NumWAL) {
+	r.minRecycleLogNum = base.DiskFileNum(n)
 }
 
 // Add attempts to recycle the log file specified by logInfo. Returns true if

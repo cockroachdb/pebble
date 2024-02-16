@@ -321,7 +321,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		Buckets: FsyncLatencyBuckets,
 	})
 	walManager := &wal.StandaloneManager{}
-	err = walManager.Init(wal.Options{
+	walOpts := wal.Options{
 		Primary:              wal.Dir{FS: opts.FS, Dirname: walDirname},
 		Secondary:            wal.Dir{},
 		MinUnflushedWALNum:   wal.NumWAL(d.mu.versions.minUnflushedLogNum),
@@ -334,7 +334,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		QueueSemChan:         d.commit.logSyncQSem,
 		Logger:               opts.Logger,
 		EventListener:        walEventListenerAdaptor{l: opts.EventListener},
-	})
+	}
+	wals, err := wal.Scan(walOpts.Dirs()...)
+	if err != nil {
+		return nil, err
+	}
+	err = walManager.Init(walOpts, wals)
 	if err != nil {
 		return nil, err
 	}
@@ -343,10 +348,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			walManager.Close()
 		}
 	}()
-	wals, err := walManager.List()
-	if err != nil {
-		return nil, err
-	}
+
 	d.mu.log.manager = walManager
 
 	// List the objects. This also happens to include WAL log files, if they are
@@ -427,7 +429,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	if n := len(wals); n > 0 {
 		// Don't reuse any obsolete file numbers to avoid modifying an
 		// ingested sstable's original external file.
-		d.mu.versions.markFileNumUsed(base.DiskFileNum(wals[n-1]))
+		d.mu.versions.markFileNumUsed(base.DiskFileNum(wals[n-1].Num))
 	}
 
 	// Ratchet d.mu.versions.nextFileNum ahead of all known objects in the
@@ -448,9 +450,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	// Replay any newer log files than the ones named in the manifest.
-	var replayWALs []wal.NumWAL
-	for i, walNum := range wals {
-		if base.DiskFileNum(walNum) >= d.mu.versions.minUnflushedLogNum {
+	var replayWALs wal.Logs
+	for i, w := range wals {
+		if base.DiskFileNum(w.Num) >= d.mu.versions.minUnflushedLogNum {
 			replayWALs = wals[i:]
 			break
 		}
@@ -729,12 +731,9 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
-	jobID int, ve *versionEdit, wn wal.NumWAL, strictWALTail bool,
+	jobID int, ve *versionEdit, ll wal.LogicalLog, strictWALTail bool,
 ) (toFlush flushableList, maxSeqNum uint64, err error) {
-	rr, err := d.mu.log.manager.OpenForRead(wn)
-	if err != nil {
-		return nil, 0, err
-	}
+	rr := ll.OpenForRead()
 	defer rr.Close()
 	var (
 		b               Batch
@@ -784,7 +783,7 @@ func (d *DB) replayWAL(
 		if mem != nil {
 			return
 		}
-		mem, entry = d.newMemTable(base.DiskFileNum(wn), seqNum)
+		mem, entry = d.newMemTable(base.DiskFileNum(ll.Num), seqNum)
 		if d.opts.ReadOnly {
 			d.mu.mem.mutable = mem
 			d.mu.mem.queue = append(d.mu.mem.queue, entry)
@@ -811,7 +810,7 @@ func (d *DB) replayWAL(
 	}
 	defer func() {
 		if err != nil {
-			err = errors.WithDetailf(err, "replaying wal %d, offset %d", wn, offset)
+			err = errors.WithDetailf(err, "replaying wal %d, offset %d", ll.Num, offset)
 		}
 	}()
 
@@ -836,7 +835,7 @@ func (d *DB) replayWAL(
 
 		if buf.Len() < batchrepr.HeaderLen {
 			return nil, 0, base.CorruptionErrorf("pebble: corrupt wal %s (offset %s)",
-				errors.Safe(base.DiskFileNum(wn)), offset)
+				errors.Safe(base.DiskFileNum(ll.Num)), offset)
 		}
 
 		if d.opts.ErrorIfNotPristine {
@@ -923,7 +922,7 @@ func (d *DB) replayWAL(
 				}
 
 				entry, err = d.newIngestedFlushableEntry(
-					meta, seqNum, base.DiskFileNum(wn),
+					meta, seqNum, base.DiskFileNum(ll.Num),
 				)
 				if err != nil {
 					return nil, 0, err
@@ -983,7 +982,7 @@ func (d *DB) replayWAL(
 			if err != nil {
 				return nil, 0, err
 			}
-			entry := d.newFlushableEntry(b.flushable, base.DiskFileNum(wn), b.SeqNum())
+			entry := d.newFlushableEntry(b.flushable, base.DiskFileNum(ll.Num), b.SeqNum())
 			// Disable memory accounting by adding a reader ref that will never be
 			// removed.
 			entry.readerRefs.Add(1)
@@ -1026,7 +1025,7 @@ func (d *DB) replayWAL(
 	}
 
 	d.opts.Logger.Infof("[JOB %d] WAL %s stopped reading at offset: %d; replayed %d keys in %d batches",
-		jobID, base.DiskFileNum(wn).String(), offset, keysReplayed, batchesReplayed)
+		jobID, base.DiskFileNum(ll.Num).String(), offset, keysReplayed, batchesReplayed)
 	flushMem()
 
 	// mem is nil here.

@@ -409,7 +409,7 @@ var _ Manager = &failoverManager{}
 // - calls to EventListener
 
 // Init implements Manager.
-func (wm *failoverManager) Init(o Options) error {
+func (wm *failoverManager) Init(o Options, initial Logs) error {
 	if o.timeSource == nil {
 		o.timeSource = defaultTime{}
 	}
@@ -443,9 +443,8 @@ func (wm *failoverManager) Init(o Options) error {
 }
 
 // List implements Manager.
-func (wm *failoverManager) List() ([]NumWAL, error) {
-	// TODO(jackson):
-	return nil, nil
+func (wm *failoverManager) List() (Logs, error) {
+	return Scan(wm.opts.Primary, wm.opts.Secondary)
 }
 
 // Obsolete implements Manager.
@@ -453,22 +452,6 @@ func (wm *failoverManager) Obsolete(
 	minUnflushedNum NumWAL, noRecycle bool,
 ) (toDelete []DeletableLog, err error) {
 	// TODO(sumeer):
-	return nil, nil
-}
-
-// OpenForRead implements Manager.
-func (wm *failoverManager) OpenForRead(wn NumWAL) (Reader, error) {
-	// TODO(jackson):
-	//
-	// Temporary implementation note: Gap and de-duping logic on read.
-	//
-	// Gap can be there in adjacent logs but not between log n and the union of logs 0..n-1.
-	// Entries 0..50 sent to log 0.
-	// Entries 0..60 sent to log 1
-	// Log 0 commits up to 50
-	// Entries 50..100 sent to log 2
-	// Log 2 commits all of these.
-	// Log 1 only commits 0..10 and node fails and restarts.
 	return nil, nil
 }
 
@@ -499,12 +482,6 @@ func (wm *failoverManager) Create(wn NumWAL, jobID int) (Writer, error) {
 	}
 	wm.monitor.newWriter(writerCreateFunc)
 	return ww, err
-}
-
-// ListFiles implements Manager.
-func (wm *failoverManager) ListFiles(wn NumWAL) (files []CopyableLog, err error) {
-	// TODO(sumeer):
-	return nil, nil
 }
 
 // ElevateWriteStallThresholdForFailover implements Manager.

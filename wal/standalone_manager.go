@@ -6,7 +6,6 @@ package wal
 
 import (
 	"cmp"
-	"io"
 	"os"
 	"slices"
 	"sync"
@@ -43,7 +42,7 @@ type StandaloneManager struct {
 var _ Manager = &StandaloneManager{}
 
 // Init implements Manager.
-func (m *StandaloneManager) Init(o Options) error {
+func (m *StandaloneManager) Init(o Options, initial Logs) error {
 	if o.Secondary.FS != nil {
 		return errors.AssertionFailedf("cannot create StandaloneManager with a secondary")
 	}
@@ -58,27 +57,19 @@ func (m *StandaloneManager) Init(o Options) error {
 	}
 	m.recycler.Init(o.MaxNumRecyclableLogs)
 
-	ls, err := o.Primary.FS.List(o.Primary.Dirname)
-	if err != nil {
-		return err
-	}
 	closeAndReturnErr := func(err error) error {
 		err = firstError(err, walDir.Close())
 		return err
 	}
 	var files []base.FileInfo
-	for _, filename := range ls {
-		ft, fn, ok := base.ParseFilename(o.Primary.FS, filename)
-		if !ok || ft != base.FileTypeLog {
-			continue
-		}
-		stat, err := o.Primary.FS.Stat(o.Primary.FS.PathJoin(o.Primary.Dirname, filename))
+	for _, ll := range initial {
+		size, err := ll.PhysicalSize()
 		if err != nil {
 			return closeAndReturnErr(err)
 		}
-		files = append(files, base.FileInfo{FileNum: fn, FileSize: uint64(stat.Size())})
-		if m.recycler.MinRecycleLogNum() <= fn {
-			m.recycler.SetMinRecycleLogNum(fn + 1)
+		files = append(files, base.FileInfo{FileNum: base.DiskFileNum(ll.Num), FileSize: size})
+		if m.recycler.MinRecycleLogNum() <= ll.Num {
+			m.recycler.SetMinRecycleLogNum(ll.Num + 1)
 		}
 	}
 	slices.SortFunc(files, func(a, b base.FileInfo) int { return cmp.Compare(a.FileNum, b.FileNum) })
@@ -87,12 +78,15 @@ func (m *StandaloneManager) Init(o Options) error {
 }
 
 // List implements Manager.
-func (m *StandaloneManager) List() ([]NumWAL, error) {
+func (m *StandaloneManager) List() (Logs, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	wals := make([]NumWAL, len(m.mu.queue))
+	wals := make(Logs, len(m.mu.queue))
 	for i := range m.mu.queue {
-		wals[i] = NumWAL(m.mu.queue[i].FileNum)
+		wals[i] = LogicalLog{
+			Num:      NumWAL(m.mu.queue[i].FileNum),
+			segments: []segment{{dir: m.o.Primary}},
+		}
 	}
 	return wals, nil
 }
@@ -122,42 +116,11 @@ func (m *StandaloneManager) Obsolete(
 	return toDelete, nil
 }
 
-// OpenForRead implements Manager.
-func (m *StandaloneManager) OpenForRead(wn NumWAL) (Reader, error) {
-	if wn < m.o.MinUnflushedWALNum {
-		return nil, errors.AssertionFailedf(
-			"attempting to open WAL %d which is earlier than min unflushed %d", wn, m.o.MinUnflushedWALNum)
-	}
-	var filename string
-	m.mu.Lock()
-	for i := range m.mu.queue {
-		if NumWAL(m.mu.queue[i].FileNum) == wn {
-			filename = m.o.Primary.FS.PathJoin(
-				m.o.Primary.Dirname, base.MakeFilename(base.FileTypeLog, m.mu.queue[i].FileNum))
-			break
-		}
-	}
-	m.mu.Unlock()
-	if len(filename) == 0 {
-		return nil, errors.AssertionFailedf("attempting to open WAL %d which is unknown", wn)
-	}
-	file, err := m.o.Primary.FS.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	return &standaloneReader{
-		filename: filename,
-		rr:       record.NewReader(file, base.DiskFileNum(wn)),
-		f:        file,
-	}, nil
-}
-
 // Create implements Manager.
 func (m *StandaloneManager) Create(wn NumWAL, jobID int) (Writer, error) {
 	// TODO(sumeer): check monotonicity of wn.
 	newLogNum := base.DiskFileNum(wn)
-	newLogName :=
-		base.MakeFilepath(m.o.Primary.FS, m.o.Primary.Dirname, base.FileTypeLog, base.DiskFileNum(wn))
+	newLogName := m.o.Primary.FS.PathJoin(m.o.Primary.Dirname, makeLogFilename(wn, 0))
 
 	// Try to use a recycled log file. Recycling log files is an important
 	// performance optimization as it is faster to sync a file that has
@@ -171,8 +134,7 @@ func (m *StandaloneManager) Create(wn NumWAL, jobID int) (Writer, error) {
 	var err error
 	recycleLog, recycleOK = m.recycler.Peek()
 	if recycleOK {
-		recycleLogName := base.MakeFilepath(
-			m.o.Primary.FS, m.o.Primary.Dirname, base.FileTypeLog, recycleLog.FileNum)
+		recycleLogName := m.o.Primary.FS.PathJoin(m.o.Primary.Dirname, makeLogFilename(NumWAL(recycleLog.FileNum), 0))
 		newLogFile, err = m.o.Primary.FS.ReuseForWrite(recycleLogName, newLogName)
 		base.MustExist(m.o.Primary.FS, newLogName, m.o.Logger, err)
 	} else {
@@ -241,21 +203,6 @@ func (m *StandaloneManager) Create(wn NumWAL, jobID int) (Writer, error) {
 	return m.w, nil
 }
 
-// ListFiles implements Manager.
-func (m *StandaloneManager) ListFiles(wn NumWAL) (files []CopyableLog, err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, fi := range m.mu.queue {
-		if NumWAL(fi.FileNum) == wn {
-			return []CopyableLog{{
-				FS:   m.o.Primary.FS,
-				Path: m.o.Primary.FS.PathJoin(m.o.Primary.Dirname, base.MakeFilename(base.FileTypeLog, fi.FileNum)),
-			}}, nil
-		}
-	}
-	return nil, errors.Errorf("WAL %d not found", wn)
-}
-
 // ElevateWriteStallThresholdForFailover implements Manager.
 func (m *StandaloneManager) ElevateWriteStallThresholdForFailover() bool {
 	return false
@@ -299,29 +246,6 @@ func firstError(err0, err1 error) error {
 		return err0
 	}
 	return err1
-}
-
-type standaloneReader struct {
-	filename string
-	rr       *record.Reader
-	f        vfs.File
-}
-
-var _ Reader = &standaloneReader{}
-
-// NextRecord implements Reader.
-func (r *standaloneReader) NextRecord() (io.Reader, Offset, error) {
-	record, err := r.rr.Next()
-	off := Offset{
-		PhysicalFile: r.filename,
-		Physical:     r.rr.Offset(),
-	}
-	return record, off, err
-}
-
-// Close implements Reader.
-func (r *standaloneReader) Close() error {
-	return r.f.Close()
 }
 
 type standaloneWriter struct {
