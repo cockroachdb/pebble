@@ -19,6 +19,15 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+// A LogicalLog identifies a logical WAL and its consituent segment files.
+type LogicalLog struct {
+	Num NumWAL
+	// segments contains the list of the consistuent physical segment files that
+	// make up the single logical WAL file. segments is ordered by increasing
+	// logIndex.
+	segments []segment
+}
+
 // A segment represents an individual physical file that makes up a contiguous
 // segment of a logical WAL. If a failover occurred during a WAL's lifetime, a
 // WAL may be composed of multiple segments.
@@ -27,51 +36,60 @@ type segment struct {
 	dir          Dir
 }
 
+// String implements fmt.Stringer.
 func (s segment) String() string {
 	return fmt.Sprintf("(%s,%s)", s.dir.Dirname, s.logNameIndex)
 }
 
-// A logicalWAL identifies a logical WAL and its consituent segment files.
-type logicalWAL struct {
-	NumWAL
-	// segments contains the list of the consistuent physical segment files that
-	// make up the single logical WAL file. segments is ordered by increasing
-	// logIndex.
-	segments []segment
+// NumSegments returns the number of constituent physical log files that make up
+// the log.
+func (ll LogicalLog) NumSegments() int { return len(ll.segments) }
+
+// SegmentLocation returns the FS and path for the i-th physical segment file.
+func (ll LogicalLog) SegmentLocation(i int) (vfs.FS, string) {
+	s := ll.segments[i]
+	path := s.dir.FS.PathJoin(s.dir.Dirname, makeLogFilename(ll.Num, s.logNameIndex))
+	return s.dir.FS, path
 }
 
-func (w logicalWAL) String() string {
+// PhysicalSize stats each of the log's physical files, summing their sizes.
+func (ll LogicalLog) PhysicalSize() (uint64, error) {
+	var size uint64
+	for i := range ll.segments {
+		fs, path := ll.SegmentLocation(i)
+		stat, err := fs.Stat(path)
+		if err != nil {
+			return 0, err
+		}
+		size += uint64(stat.Size())
+	}
+	return size, nil
+}
+
+// OpenForRead a logical WAL for reading.
+func (ll LogicalLog) OpenForRead() Reader {
+	return newVirtualWALReader(ll)
+}
+
+// String implements fmt.Stringer.
+func (ll LogicalLog) String() string {
 	var sb strings.Builder
-	sb.WriteString(base.DiskFileNum(w.NumWAL).String())
+	sb.WriteString(base.DiskFileNum(ll.Num).String())
 	sb.WriteString(": {")
-	for i := range w.segments {
+	for i := range ll.segments {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(w.segments[i].String())
+		sb.WriteString(ll.segments[i].String())
 	}
 	sb.WriteString("}")
 	return sb.String()
 }
 
-type logicalWALs []logicalWAL
-
-// get retrieves the WAL with the given number if present. The second return
-// value indicates whether or not the WAL was found.
-func (wals logicalWALs) get(num NumWAL) (logicalWAL, bool) {
-	i, found := slices.BinarySearchFunc(wals, num, func(lw logicalWAL, n NumWAL) int {
-		return cmp.Compare(lw.NumWAL, n)
-	})
-	if !found {
-		return logicalWAL{}, false
-	}
-	return wals[i], true
-}
-
-// listLogs finds all log files in the provided directories. It returns an
+// Scan finds all log files in the provided directories. It returns an
 // ordered list of WALs in increasing NumWAL order.
-func listLogs(dirs ...Dir) (logicalWALs, error) {
-	var wals []logicalWAL
+func Scan(dirs ...Dir) (Logs, error) {
+	var wals []LogicalLog
 	for _, d := range dirs {
 		ls, err := d.FS.List(d.Dirname)
 		if err != nil {
@@ -83,11 +101,11 @@ func listLogs(dirs ...Dir) (logicalWALs, error) {
 				continue
 			}
 			// Have we seen this logical log number yet?
-			i, found := slices.BinarySearchFunc(wals, dfn, func(lw logicalWAL, n NumWAL) int {
-				return cmp.Compare(lw.NumWAL, n)
+			i, found := slices.BinarySearchFunc(wals, dfn, func(lw LogicalLog, n NumWAL) int {
+				return cmp.Compare(lw.Num, n)
 			})
 			if !found {
-				wals = slices.Insert(wals, i, logicalWAL{NumWAL: dfn, segments: make([]segment, 0, 1)})
+				wals = slices.Insert(wals, i, LogicalLog{Num: dfn, segments: make([]segment, 0, 1)})
 			}
 
 			// Ensure we haven't seen this log index yet, and find where it
@@ -105,11 +123,25 @@ func listLogs(dirs ...Dir) (logicalWALs, error) {
 	return wals, nil
 }
 
-func newVirtualWALReader(logNum NumWAL, segments []segment) *virtualWALReader {
+// Logs holds a collection of WAL files.
+type Logs []LogicalLog
+
+// Get retrieves the WAL with the given number if present. The second return
+// value indicates whether or not the WAL was found.
+func (l Logs) Get(num NumWAL) (LogicalLog, bool) {
+	i, found := slices.BinarySearchFunc(l, num, func(lw LogicalLog, n NumWAL) int {
+		return cmp.Compare(lw.Num, n)
+	})
+	if !found {
+		return LogicalLog{}, false
+	}
+	return l[i], true
+}
+
+func newVirtualWALReader(wal LogicalLog) *virtualWALReader {
 	return &virtualWALReader{
-		logNum:    logNum,
-		segments:  segments,
-		currIndex: -1,
+		LogicalLog: wal,
+		currIndex:  -1,
 	}
 }
 
@@ -120,8 +152,7 @@ func newVirtualWALReader(logNum NumWAL, segments []segment) *virtualWALReader {
 // successor.
 type virtualWALReader struct {
 	// VirtualWAL metadata.
-	logNum   NumWAL
-	segments []segment
+	LogicalLog
 
 	// State pertaining to the current position of the reader within the virtual
 	// WAL and its constituent physical files.
@@ -221,7 +252,7 @@ func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
 			// the caller to interpret it as corruption, but it seems safer to
 			// be explicit and surface the corruption error here.
 			return nil, r.off, base.CorruptionErrorf("pebble: corrupt log file logNum=%d, logNameIndex=%s: invalid batch",
-				r.logNum, errors.Safe(r.segments[r.currIndex].logNameIndex))
+				r.Num, errors.Safe(r.segments[r.currIndex].logNameIndex))
 		}
 
 		// There's a subtlety necessitated by LogData operations. A LogData
@@ -273,15 +304,13 @@ func (r *virtualWALReader) nextFile() error {
 		return io.EOF
 	}
 
-	segment := r.segments[r.currIndex]
-	fs := segment.dir.FS
-	path := fs.PathJoin(segment.dir.Dirname, makeLogFilename(r.logNum, segment.logNameIndex))
+	fs, path := r.LogicalLog.SegmentLocation(r.currIndex)
 	r.off.PhysicalFile = path
 	r.off.Physical = 0
 	var err error
 	if r.currFile, err = fs.Open(path); err != nil {
 		return errors.Wrapf(err, "opening WAL file segment %q", path)
 	}
-	r.currReader = record.NewReader(r.currFile, base.DiskFileNum(r.logNum))
+	r.currReader = record.NewReader(r.currFile, base.DiskFileNum(r.Num))
 	return nil
 }

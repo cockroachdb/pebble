@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
@@ -193,22 +194,22 @@ func (d *DB) Checkpoint(
 	for diskFileNum := range d.mu.versions.backingState.fileBackingMap {
 		virtualBackingFiles[diskFileNum] = struct{}{}
 	}
-	var logFiles []wal.CopyableLog
+
+	queuedLogNums := make([]wal.NumWAL, 0, len(memQueue))
 	for i := range memQueue {
-		logNum := memQueue[i].logNum
-		if logNum == 0 {
-			continue
+		if logNum := memQueue[i].logNum; logNum != 0 {
+			queuedLogNums = append(queuedLogNums, wal.NumWAL(logNum))
 		}
-		files, err := d.mu.log.manager.ListFiles(wal.NumWAL(logNum))
-		if err != nil {
-			return err
-		}
-		logFiles = append(logFiles, files...)
 	}
 	// Release the manifest and DB.mu so we don't block other operations on
 	// the database.
 	d.mu.versions.logUnlock()
 	d.mu.Unlock()
+
+	allLogicalLogs, err := d.mu.log.manager.List()
+	if err != nil {
+		return err
+	}
 
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
@@ -321,11 +322,18 @@ func (d *DB) Checkpoint(
 	// Copy the WAL files. We copy rather than link because WAL file recycling
 	// will cause the WAL files to be reused which would invalidate the
 	// checkpoint.
-	for _, src := range logFiles {
-		destPath := fs.PathJoin(destDir, src.FS.PathBase(src.Path))
-		ckErr = vfs.CopyAcrossFS(src.FS, src.Path, fs, destPath)
-		if ckErr != nil {
-			return ckErr
+	for _, logNum := range queuedLogNums {
+		log, ok := allLogicalLogs.Get(logNum)
+		if !ok {
+			return errors.Newf("log %s not found", logNum)
+		}
+		for i := 0; i < log.NumSegments(); i++ {
+			srcFS, srcPath := log.SegmentLocation(i)
+			destPath := fs.PathJoin(destDir, srcFS.PathBase(srcPath))
+			ckErr = vfs.CopyAcrossFS(srcFS, srcPath, fs, destPath)
+			if ckErr != nil {
+				return ckErr
+			}
 		}
 	}
 

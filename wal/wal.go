@@ -146,6 +146,14 @@ type Options struct {
 	FailoverOptions
 }
 
+// Dirs returns the primary Dir and the secondary if provided.
+func (o *Options) Dirs() []Dir {
+	if o.Secondary == (Dir{}) {
+		return []Dir{o.Primary}
+	}
+	return []Dir{o.Primary, o.Secondary}
+}
+
 // FailoverOptions are options that are specific to failover mode.
 type FailoverOptions struct {
 	// PrimaryDirProbeInterval is the interval for probing the primary dir, when
@@ -234,24 +242,22 @@ type Stats struct {
 
 // Manager handles all WAL work.
 //
-//   - Init, List, OpenForRead will be called during DB initialization.
+//   - Init will be called during DB initialization.
 //   - Obsolete can be called concurrently with WAL writing.
 //   - WAL writing: Is done via Create, and the various Writer methods. These
 //     are required to be serialized via external synchronization (specifically,
 //     the caller does it via commitPipeline.mu).
 type Manager interface {
 	// Init initializes the Manager.
-	Init(o Options) error
+	Init(o Options, initial Logs) error
 	// List returns the virtual WALs in ascending order.
-	List() ([]NumWAL, error)
+	List() (Logs, error)
 	// Obsolete informs the manager that all virtual WALs less than
 	// minUnflushedNum are obsolete. The callee can choose to recycle some
 	// underlying log files, if !noRecycle. The log files that are not recycled,
 	// and therefore can be deleted, are returned. The deletable files are no
 	// longer tracked by the manager.
 	Obsolete(minUnflushedNum NumWAL, noRecycle bool) (toDelete []DeletableLog, err error)
-	// OpenForRead opens a virtual WAL for read.
-	OpenForRead(wn NumWAL) (Reader, error)
 	// Create creates a new virtual WAL.
 	//
 	// NumWALs passed to successive Create calls must be monotonically
@@ -260,8 +266,6 @@ type Manager interface {
 	//
 	// jobID is used for the WALEventListener.
 	Create(wn NumWAL, jobID int) (Writer, error)
-	// ListFiles lists the log files backing the given unflushed WAL.
-	ListFiles(wn NumWAL) (files []CopyableLog, err error)
 	// ElevateWriteStallThresholdForFailover returns true if the caller should
 	// use a high write stall threshold because the WALs are being written to
 	// the secondary dir.
@@ -283,13 +287,6 @@ type DeletableLog struct {
 	Path string
 	NumWAL
 	FileSize uint64
-}
-
-// CopyableLog contains information about a log file that can be copied (e.g.
-// for checkpointing).
-type CopyableLog struct {
-	vfs.FS
-	Path string
 }
 
 // SyncOptions has non-nil Done and Err when fsync is requested, else both are
@@ -345,7 +342,3 @@ type Offset struct {
 func (o Offset) String() string {
 	return fmt.Sprintf("(%s: %d)", o.PhysicalFile, o.Physical)
 }
-
-// Make lint happy.
-var _ logNameIndex = 0
-var _ = makeLogFilename

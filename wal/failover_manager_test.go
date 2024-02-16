@@ -362,7 +362,9 @@ func TestManagerFailover(t *testing.T) {
 					monitorStateForTesting:             monitorStateForTesting,
 					logWriterCreatedForTesting:         logWriterCreatedForTesting,
 				}
-				err := fm.Init(o)
+				logs, err := Scan(o.Dirs()...)
+				require.NoError(t, err)
+				err = fm.Init(o, logs)
 				return errorToStr(err)
 
 			case "create-writer":
