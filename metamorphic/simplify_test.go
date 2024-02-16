@@ -15,10 +15,8 @@ func TestSimplifyKeys(t *testing.T) {
 	datadriven.RunTest(t, "testdata/simplify", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "simplify-keys":
-			res, err := TryToSimplifyKeys([]byte(d.Input))
-			if err != nil {
-				return err.Error()
-			}
+			retainSuffixes := d.HasArg("retain-suffixes")
+			res := TryToSimplifyKeys([]byte(d.Input), retainSuffixes)
 			return string(res)
 
 		default:

@@ -16,36 +16,46 @@ import (
 //
 // On success it returns the new operations data.
 //
-// If there are too many distinct keys, returns nil (and no error).
-func TryToSimplifyKeys(opsData []byte) ([]byte, error) {
+// If there are too many distinct keys, returns nil.
+func TryToSimplifyKeys(opsData []byte, retainSuffixes bool) []byte {
 	ops, err := parse(opsData, parserOpts{})
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	keys := make(map[string]struct{})
 	for i := range ops {
 		for _, k := range ops[i].keys() {
-			keys[string(*k)] = struct{}{}
+			key := *k
+			if retainSuffixes {
+				key = key[:testkeys.Comparer.Split(key)]
+			}
+			keys[string(key)] = struct{}{}
 		}
 	}
 	if len(keys) > ('z' - 'a' + 1) {
-		return nil, nil
+		return nil
 	}
 	sorted := sortedKeys(keys)
 	ordinals := make(map[string]int, len(sorted))
 	for i, k := range sorted {
 		ordinals[k] = i
 	}
-	// TODO(radu): We reassign the user keys, ignoring the prefix and suffix
-	// composition. This is sufficient to reproduce a class of problems, but if it
-	// fails, we should try to simplify just the prefix and retain the suffix.
 	for i := range ops {
 		for _, k := range ops[i].keys() {
-			idx := ordinals[string(*k)]
-			*k = []byte{'a' + byte(idx)}
+			key := *k
+			var suffix []byte
+			if retainSuffixes {
+				n := testkeys.Comparer.Split(key)
+				suffix = key[n:]
+				key = key[:n]
+			}
+			idx := ordinals[string(key)]
+			newKey := []byte{'a' + byte(idx)}
+			newKey = append(newKey, suffix...)
+			*k = newKey
 		}
 	}
-	return []byte(formatOps(ops)), nil
+	return []byte(formatOps(ops))
 }
 
 func sortedKeys(in map[string]struct{}) []string {
