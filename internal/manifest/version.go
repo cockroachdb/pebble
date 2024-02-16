@@ -431,7 +431,8 @@ func (m *FileMetadata) InitPhysicalBacking() {
 }
 
 // InitProviderBacking creates a new FileBacking for a file backed by
-// an objstorage.Provider.
+// an objstorage.Provider. It's the caller's responsibility to set the size
+// in m.FileBacking before installing this FileMetadata in a Version.
 func (m *FileMetadata) InitProviderBacking(fileNum base.DiskFileNum) {
 	if !m.Virtual {
 		panic("pebble: provider-backed sstables must be virtual")

@@ -286,3 +286,71 @@ next
 ----
 a: (foo, .)
 x: (bar, .)
+
+# Test ViaBackingFileDownload.
+
+reset
+----
+
+build-remote f7
+set fc foo
+set fd haha
+set fe something
+----
+
+build-remote f8
+set fg foo
+set fh foo
+set fi foo
+----
+
+ingest-external prefix-replace=(f,g)
+f7,10,gc,gf
+f8,10,gg,gj
+----
+
+iter
+seek-ge g
+next
+next
+next
+next
+next
+----
+gc: (foo, .)
+gd: (haha, .)
+ge: (something, .)
+gg: (foo, .)
+gh: (foo, .)
+gi: (foo, .)
+
+lsm
+----
+6:
+  000004:[gc#10,DELSIZED-gf#inf,RANGEDEL]
+  000005:[gg#11,DELSIZED-gj#inf,RANGEDEL]
+
+download g h via-backing-file-download
+----
+ok
+
+lsm
+----
+6:
+  000006:[gc#10,DELSIZED-gf#inf,RANGEDEL]
+  000007:[gg#11,DELSIZED-gj#inf,RANGEDEL]
+
+iter
+seek-ge g
+next
+next
+next
+next
+next
+----
+gc: (foo, .)
+gd: (haha, .)
+ge: (something, .)
+gg: (foo, .)
+gh: (foo, .)
+gi: (foo, .)

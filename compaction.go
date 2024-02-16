@@ -2722,9 +2722,11 @@ type compactStats struct {
 // runCopyCompaction runs a copy compaction where a new FileNum is created that
 // is a byte-for-byte copy of the input file. This is used in lieu of a move
 // compaction when a file is being moved across the local/remote storage
-// boundary.
+// boundary. It could also be used in lieu of a rewrite compaction as part of a
+// Download() call.
 //
-// d.mu must be held when calling this method.
+// d.mu must be held when calling this method. The mutex will be released when
+// doing IO.
 func (d *DB) runCopyCompaction(
 	jobID int,
 	c *compaction,
@@ -2747,20 +2749,20 @@ func (d *DB) runCopyCompaction(
 	}
 
 	// We are in the relatively more complex case where we need to copy this
-	// file to remote/shared storage. Drop the db mutex while we do the
-	// copy.
+	// file to remote storage. Drop the db mutex while we do the copy
 	//
 	// To ease up cleanup of the local file and tracking of refs, we create
 	// a new FileNum. This has the potential of making the block cache less
 	// effective, however.
 	metaCopy := new(fileMetadata)
 	*metaCopy = fileMetadata{
-		Size:           meta.Size,
-		CreationTime:   meta.CreationTime,
-		SmallestSeqNum: meta.SmallestSeqNum,
-		LargestSeqNum:  meta.LargestSeqNum,
-		Stats:          meta.Stats,
-		Virtual:        meta.Virtual,
+		Size:              meta.Size,
+		CreationTime:      meta.CreationTime,
+		SmallestSeqNum:    meta.SmallestSeqNum,
+		LargestSeqNum:     meta.LargestSeqNum,
+		Stats:             meta.Stats,
+		PrefixReplacement: meta.PrefixReplacement,
+		Virtual:           meta.Virtual,
 	}
 	if meta.HasPointKeys {
 		metaCopy.ExtendPointKeyBounds(c.cmp, meta.SmallestPointKey, meta.LargestPointKey)
@@ -2769,9 +2771,15 @@ func (d *DB) runCopyCompaction(
 		metaCopy.ExtendRangeKeyBounds(c.cmp, meta.SmallestRangeKey, meta.LargestRangeKey)
 	}
 	metaCopy.FileNum = d.mu.versions.getNextFileNum()
-	metaCopy.Virtual = false
-	metaCopy.InitPhysicalBacking()
-	metaCopy.Virtual = meta.Virtual
+	if objMeta.IsExternal() {
+		// external -> local/shared copy. File must be virtual.
+		metaCopy.InitProviderBacking(base.DiskFileNum(metaCopy.FileNum))
+		// NB: InitProviderBacking expects the caller to set the file backing size.
+		metaCopy.FileBacking.Size = meta.FileBacking.Size
+	} else {
+		// local -> shared copy. New file is guaranteed to not be virtual.
+		metaCopy.InitPhysicalBacking()
+	}
 
 	c.metrics = map[int]*LevelMetrics{
 		c.outputLevel.level: {
@@ -2788,6 +2796,8 @@ func (d *DB) runCopyCompaction(
 	vers.Ref()
 	defer vers.UnrefLocked()
 
+	// NB: The order here is reversed, lock after unlock. This is similar to
+	// runCompaction.
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
@@ -2810,7 +2820,7 @@ func (d *DB) runCopyCompaction(
 		if err != nil {
 			return ve, pendingOutputs, err
 		}
-		pendingOutputs = append(pendingOutputs, metaCopy.VirtualMeta().FileMetadata)
+		pendingOutputs = append(pendingOutputs, metaCopy)
 
 		if err := func() error {
 			size := src.Size()
@@ -2820,20 +2830,18 @@ func (d *DB) runCopyCompaction(
 			var pos int64
 			for {
 				n := min(size-pos, int64(len(buf)))
-				readErr := r.ReadAt(context.TODO(), buf, pos)
-				if readErr != nil && readErr != io.EOF {
+				if n == 0 {
+					break
+				}
+				readErr := r.ReadAt(ctx, buf[:n], pos)
+				if readErr != nil {
 					w.Abort()
 					return readErr
 				}
 				pos += n
-				if n > 0 {
-					if err := w.Write(buf[:n]); err != nil {
-						w.Abort()
-						return err
-					}
-				}
-				if readErr == io.EOF {
-					break
+				if err := w.Write(buf[:n]); err != nil {
+					w.Abort()
+					return err
 				}
 			}
 			return w.Finish()
