@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"sync"
@@ -32,6 +33,35 @@ type Iterator interface {
 	MaybeFilteredKeys() bool
 
 	SetCloseHook(fn func(i Iterator) error)
+}
+
+// PrefixReplacement represents a read-time replacement of a key prefix.
+type PrefixReplacement struct {
+	// ContentPrefix is the existing prefix that each key is expected to have.
+	ContentPrefix []byte
+	// SyntheticPrefix replaces the ContentPrefix in all keys. If ContentPrefix is
+	// empty, we are just prepending the synthetic prefix.
+	SyntheticPrefix []byte
+}
+
+// ReplaceArg replaces the new prefix in the argument with the original prefix.
+func (p *PrefixReplacement) ReplaceArg(src []byte) []byte {
+	return p.replace(src, p.SyntheticPrefix, p.ContentPrefix)
+}
+
+// ReplaceResult replaces the original prefix in the result with the new prefix.
+func (p *PrefixReplacement) ReplaceResult(key []byte) []byte {
+	return p.replace(key, p.ContentPrefix, p.SyntheticPrefix)
+}
+
+func (p *PrefixReplacement) replace(key, from, to []byte) []byte {
+	if !bytes.HasPrefix(key, from) {
+		panic(fmt.Sprintf("unexpected prefix in replace: %s", key))
+	}
+	result := make([]byte, 0, len(to)+(len(key)-len(from)))
+	result = append(result, to...)
+	result = append(result, key[len(from):]...)
+	return result
 }
 
 // Iterator positioning optimizations and singleLevelIterator and

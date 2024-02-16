@@ -1182,7 +1182,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	var v sstable.VirtualReader
 	props := r.Properties.String()
 	if m != nil && m.Virtual {
-		v = sstable.MakeVirtualReader(r, m.VirtualMeta(), false /* isShared */)
+		v = sstable.MakeVirtualReader(r, m.VirtualMeta().VirtualReaderParams(false /* isShared */))
 		props = v.Properties.String()
 	}
 	if len(td.Input) == 0 {
