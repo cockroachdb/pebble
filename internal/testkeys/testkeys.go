@@ -102,6 +102,11 @@ var Comparer = &base.Comparer{
 	Name:  "pebble.internal.testkeys",
 }
 
+// The comparator is similar to the one in Cockroach; when the prefixes are
+// equal:
+//   - a key without a suffix is smaller than one with a suffix;
+//   - when both keys have a suffix, the key with the larger (decoded) suffix
+//     value is smaller.
 func compare(a, b []byte) int {
 	ai, bi := split(a), split(b)
 	if v := bytes.Compare(a[:ai], b[:bi]); v != 0 {

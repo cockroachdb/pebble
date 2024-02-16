@@ -1107,35 +1107,42 @@ type ExternalFile struct {
 	// Locator is the shared.Locator that can be used with objProvider to
 	// resolve a reference to this external sstable.
 	Locator remote.Locator
+
 	// ObjName is the unique name of this sstable on Locator.
 	ObjName string
+
 	// Size of the referenced proportion of the virtualized sstable. An estimate
 	// is acceptable in lieu of the backing file size.
 	Size uint64
+
 	// SmallestUserKey and LargestUserKey are the [smallest,largest) user key
 	// bounds of the sstable. Both these bounds are loose i.e. it's possible for
 	// the sstable to not span the entirety of this range. However, multiple
 	// ExternalFiles in one ingestion must all have non-overlapping
 	// [smallest, largest) spans. Note that this Largest bound is exclusive.
 	SmallestUserKey, LargestUserKey []byte
+
 	// HasPointKey and HasRangeKey denote whether this file contains point keys
 	// or range keys. If both structs are false, an error is returned during
 	// ingestion.
 	HasPointKey, HasRangeKey bool
+
 	// ContentPrefix and SyntheticPrefix denote a prefix replacement rule causing
 	// a file, in which all keys have prefix ContentPrefix, to appear whenever it
 	// is accessed as if those keys all instead have prefix SyntheticPrefix.
+	//
 	// SyntheticPrefix must be a prefix of both SmallestUserKey and LargestUserKey.
 	ContentPrefix, SyntheticPrefix []byte
+
 	// SyntheticSuffix will replace the suffix of every key in the file during
 	// iteration. Note that the file itself is not modified, rather, every key
 	// returned by an iterator will have the synthetic suffix.
 	//
-  // The SyntheticSuffix must sort before any non-empty suffixes in the backing
-  // sstable.
-	//
-	// If SyntheticSuffix is set, then SmallestUserKey and LargestUserKey must not
-	// have suffixes.
+	// SyntheticSuffix can only be used under the following conditions:
+	//  - the synthetic suffix must sort before any non-empty suffixes in the
+	//    backing sst;
+	//  - SmallestUserKey and LargestUserKey must not have suffixes;
+	//  - the backing sst must not contain multiple keys with the same prefix.
 	SyntheticSuffix []byte
 }
 
