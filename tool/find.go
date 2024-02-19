@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"path/filepath"
 	"slices"
 	"sort"
 
@@ -24,9 +25,10 @@ import (
 )
 
 type findRef struct {
-	key     base.InternalKey
-	value   []byte
-	fileNum base.FileNum
+	key      base.InternalKey
+	value    []byte
+	fileNum  base.FileNum
+	filename string
 }
 
 // findT implements the find tool.
@@ -52,24 +54,34 @@ type findT struct {
 	fmtValue     valueFormatter
 	verbose      bool
 
-	// Map from file num to path on disk.
-	files map[base.DiskFileNum]string
 	// Map from file num to version edit index which references the file num.
 	editRefs map[base.DiskFileNum][]int
 	// List of version edits.
 	edits []manifest.VersionEdit
-	// Sorted list of WAL file nums.
-	logs []base.DiskFileNum
-	// Sorted list of manifest file nums.
-	manifests []base.DiskFileNum
-	// Sorted list of table file nums.
-	tables []base.FileNum
+	// List of WAL files sorted by disk file num.
+	//
+	// TODO(jackson): Support logical WALs that are split across multiple
+	// physical file segments.
+	logs []fileLoc
+	// List of manifest files sorted by disk file num.
+	manifests []fileLoc
+	// List of table files sorted by disk file num.
+	tables []fileLoc
 	// Set of tables that contains references to the search key.
 	tableRefs map[base.FileNum]bool
 	// Map from file num to table metadata.
 	tableMeta map[base.FileNum]*manifest.FileMetadata
 	// List of error messages for SSTables that could not be decoded.
 	errors []string
+}
+
+type fileLoc struct {
+	base.DiskFileNum
+	path string
+}
+
+func cmpFileLoc(a, b fileLoc) int {
+	return cmp.Compare(a.DiskFileNum, b.DiskFileNum)
 }
 
 func newFind(
@@ -132,12 +144,12 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 	f.fmtValue.setForComparer(f.opts.Comparer.Name, f.comparers)
 
 	refs := f.search(stdout, key)
-	var lastFileNum base.FileNum
+	var lastFilename string
 	for i := range refs {
 		r := &refs[i]
-		if lastFileNum != r.fileNum {
-			lastFileNum = r.fileNum
-			fmt.Fprintf(stdout, "%s", f.opts.FS.PathBase(f.files[base.PhysicalTableDiskFileNum(r.fileNum)]))
+		if lastFilename != r.filename {
+			lastFilename = r.filename
+			fmt.Fprintf(stdout, "%s", r.filename)
 			if m := f.tableMeta[r.fileNum]; m != nil {
 				fmt.Fprintf(stdout, " ")
 				formatKeyRange(stdout, f.fmtKey, &m.Smallest, &m.Largest)
@@ -158,7 +170,6 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 
 // Find all of the manifests, logs, and tables in the specified directory.
 func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
-	f.files = make(map[base.DiskFileNum]string)
 	f.editRefs = make(map[base.DiskFileNum][]int)
 	f.logs = nil
 	f.manifests = nil
@@ -175,22 +186,22 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 		if !ok {
 			return
 		}
+		fl := fileLoc{DiskFileNum: fileNum, path: path}
 		switch ft {
 		case base.FileTypeLog:
-			f.logs = append(f.logs, fileNum)
+			f.logs = append(f.logs, fl)
 		case base.FileTypeManifest:
-			f.manifests = append(f.manifests, fileNum)
+			f.manifests = append(f.manifests, fl)
 		case base.FileTypeTable:
-			f.tables = append(f.tables, base.PhysicalTableFileNum(fileNum))
+			f.tables = append(f.tables, fl)
 		default:
 			return
 		}
-		f.files[fileNum] = path
 	})
 
-	slices.Sort(f.logs)
-	slices.Sort(f.manifests)
-	slices.Sort(f.tables)
+	slices.SortFunc(f.logs, cmpFileLoc)
+	slices.SortFunc(f.manifests, cmpFileLoc)
+	slices.SortFunc(f.tables, cmpFileLoc)
 
 	if f.verbose {
 		fmt.Fprintf(stdout, "%s\n", dir)
@@ -204,10 +215,9 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 // Read the manifests and populate the editRefs map which is used to determine
 // the provenance and metadata of tables.
 func (f *findT) readManifests(stdout io.Writer) {
-	for _, fileNum := range f.manifests {
+	for _, fl := range f.manifests {
 		func() {
-			path := f.files[fileNum]
-			mf, err := f.opts.FS.Open(path)
+			mf, err := f.opts.FS.Open(fl.path)
 			if err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
 				return
@@ -215,7 +225,7 @@ func (f *findT) readManifests(stdout io.Writer) {
 			defer mf.Close()
 
 			if f.verbose {
-				fmt.Fprintf(stdout, "%s\n", path)
+				fmt.Fprintf(stdout, "%s\n", fl.path)
 			}
 
 			rr := record.NewReader(mf, 0 /* logNum */)
@@ -223,14 +233,14 @@ func (f *findT) readManifests(stdout io.Writer) {
 				r, err := rr.Next()
 				if err != nil {
 					if err != io.EOF {
-						fmt.Fprintf(stdout, "%s: %s\n", path, err)
+						fmt.Fprintf(stdout, "%s: %s\n", fl.path, err)
 					}
 					break
 				}
 
 				var ve manifest.VersionEdit
 				if err := ve.Decode(r); err != nil {
-					fmt.Fprintf(stdout, "%s: %s\n", path, err)
+					fmt.Fprintf(stdout, "%s: %s\n", fl.path, err)
 					break
 				}
 				i := len(f.edits)
@@ -288,7 +298,10 @@ func (f *findT) search(stdout io.Writer, key []byte) []findRef {
 	// log. Ideally, we'd show the key "a" from the log, then the key "b" from
 	// the ingested sstable, then key "c" from the log.
 	slices.SortStableFunc(refs, func(a, b findRef) int {
-		return cmp.Compare(a.fileNum, b.fileNum)
+		if v := cmp.Compare(a.fileNum, b.fileNum); v != 0 {
+			return v
+		}
+		return cmp.Compare(a.filename, b.filename)
 	})
 	return refs
 }
@@ -296,10 +309,9 @@ func (f *findT) search(stdout io.Writer, key []byte) []findRef {
 // Search the logs for references to the specified key.
 func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) []findRef {
 	cmp := f.opts.Comparer.Compare
-	for _, fileNum := range f.logs {
+	for _, fl := range f.logs {
 		_ = func() (err error) {
-			path := f.files[fileNum]
-			lf, err := f.opts.FS.Open(path)
+			lf, err := f.opts.FS.Open(fl.path)
 			if err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
 				return
@@ -307,7 +319,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 			defer lf.Close()
 
 			if f.verbose {
-				fmt.Fprintf(stdout, "%s", path)
+				fmt.Fprintf(stdout, "%s", fl.path)
 				defer fmt.Fprintf(stdout, "\n")
 			}
 			defer func() {
@@ -325,7 +337,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 						if f.verbose {
 							fmt.Fprintf(stdout, ": %s", err)
 						} else {
-							fmt.Fprintf(stdout, "%s: %s\n", path, err)
+							fmt.Fprintf(stdout, "%s: %s\n", fl.path, err)
 						}
 					}
 				}
@@ -333,7 +345,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 
 			var b pebble.Batch
 			var buf bytes.Buffer
-			rr := record.NewReader(lf, fileNum)
+			rr := record.NewReader(lf, fl.DiskFileNum)
 			for {
 				r, err := rr.Next()
 				if err == nil {
@@ -346,7 +358,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 
 				b = pebble.Batch{}
 				if err := b.SetRepr(buf.Bytes()); err != nil {
-					fmt.Fprintf(stdout, "%s: corrupt log file: %v", path, err)
+					fmt.Fprintf(stdout, "%s: corrupt log file: %v", fl.path, err)
 					continue
 				}
 				seqNum := b.SeqNum()
@@ -354,7 +366,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 					kind, ukey, value, ok, err := r.Next()
 					if !ok {
 						if err != nil {
-							fmt.Fprintf(stdout, "%s: corrupt log file: %v", path, err)
+							fmt.Fprintf(stdout, "%s: corrupt log file: %v", fl.path, err)
 							break
 						}
 						break
@@ -381,9 +393,10 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 					}
 
 					refs = append(refs, findRef{
-						key:     ikey.Clone(),
-						value:   append([]byte(nil), value...),
-						fileNum: base.PhysicalTableFileNum(fileNum),
+						key:      ikey.Clone(),
+						value:    append([]byte(nil), value...),
+						fileNum:  base.PhysicalTableFileNum(fl.DiskFileNum),
+						filename: filepath.Base(fl.path),
 					})
 				}
 			}
@@ -398,18 +411,17 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 	defer cache.Unref()
 
 	f.tableRefs = make(map[base.FileNum]bool)
-	for _, fileNum := range f.tables {
+	for _, fl := range f.tables {
 		_ = func() (err error) {
-			path := f.files[base.PhysicalTableDiskFileNum(fileNum)]
-			tf, err := f.opts.FS.Open(path)
+			tf, err := f.opts.FS.Open(fl.path)
 			if err != nil {
 				fmt.Fprintf(stdout, "%s\n", err)
 				return
 			}
 
-			m := f.tableMeta[fileNum]
+			m := f.tableMeta[base.PhysicalTableFileNum(fl.DiskFileNum)]
 			if f.verbose {
-				fmt.Fprintf(stdout, "%s", path)
+				fmt.Fprintf(stdout, "%s", fl.path)
 				if m != nil && m.SmallestSeqNum == m.LargestSeqNum {
 					fmt.Fprintf(stdout, ": global seqnum: %d", m.LargestSeqNum)
 				}
@@ -421,7 +433,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 					if f.verbose {
 						fmt.Fprintf(stdout, ": %v", err)
 					} else {
-						fmt.Fprintf(stdout, "%s: %v\n", path, err)
+						fmt.Fprintf(stdout, "%s: %v\n", fl.path, err)
 					}
 				}
 			}()
@@ -438,7 +450,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			r, err := sstable.NewReader(readable, opts, f.comparers, f.mergers,
 				private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 			if err != nil {
-				f.errors = append(f.errors, fmt.Sprintf("Unable to decode sstable %s, %s", f.files[base.PhysicalTableDiskFileNum(fileNum)], err.Error()))
+				f.errors = append(f.errors, fmt.Sprintf("Unable to decode sstable %s, %s", fl.path, err.Error()))
 				// Ensure the error only gets printed once.
 				err = nil
 				return
@@ -509,9 +521,10 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 						return err
 					}
 					refs = append(refs, findRef{
-						key:     key.Clone(),
-						value:   append([]byte(nil), v...),
-						fileNum: fileNum,
+						key:      key.Clone(),
+						value:    slices.Clone(v),
+						fileNum:  base.PhysicalTableFileNum(fl.DiskFileNum),
+						filename: filepath.Base(fl.path),
 					})
 					key, value = iter.Next()
 				} else {
@@ -519,9 +532,10 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 					// within the span.
 					err := rangedel.Encode(rangeDel, func(k base.InternalKey, v []byte) error {
 						refs = append(refs, findRef{
-							key:     k.Clone(),
-							value:   append([]byte(nil), v...),
-							fileNum: fileNum,
+							key:      k.Clone(),
+							value:    slices.Clone(v),
+							fileNum:  base.PhysicalTableFileNum(fl.DiskFileNum),
+							filename: filepath.Base(fl.path),
 						})
 						return nil
 					})
@@ -537,7 +551,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			}
 
 			if foundRef {
-				f.tableRefs[fileNum] = true
+				f.tableRefs[base.PhysicalTableFileNum(fl.DiskFileNum)] = true
 			}
 			return nil
 		}()
