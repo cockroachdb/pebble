@@ -276,7 +276,7 @@ func createCommonReader(v *tableCacheValue, file *fileMetadata) sstable.CommonRe
 	var cr sstable.CommonReader = v.reader
 	if file.Virtual {
 		virtualReader := sstable.MakeVirtualReader(
-			v.reader, file.VirtualMeta(), v.isShared,
+			v.reader, file.VirtualMeta().VirtualReaderParams(v.isShared),
 		)
 		cr = &virtualReader
 	}
@@ -320,7 +320,7 @@ func (c *tableCacheContainer) withVirtualReader(
 	if err != nil {
 		return err
 	}
-	return fn(sstable.MakeVirtualReader(v.reader, meta, objMeta.IsShared()))
+	return fn(sstable.MakeVirtualReader(v.reader, meta.VirtualReaderParams(objMeta.IsShared())))
 }
 
 func (c *tableCacheContainer) iterCount() int64 {

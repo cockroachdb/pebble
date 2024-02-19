@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // Compare exports the base.Compare type.
@@ -272,38 +273,14 @@ type FileMetadata struct {
 
 	// PrefixReplacement is used for virtual files where the backing file has a
 	// different prefix on its keys than the span in which it is being exposed.
-	PrefixReplacement *PrefixReplacement
-	SyntheticSuffix   []byte
+	PrefixReplacement *sstable.PrefixReplacement
+
+	SyntheticSuffix sstable.SyntheticSuffix
 }
 
 // InternalKeyBounds returns the set of overall table bounds.
 func (m *FileMetadata) InternalKeyBounds() (InternalKey, InternalKey) {
 	return m.Smallest, m.Largest
-}
-
-// PrefixReplacement represents a read-time replacement of a key prefix.
-type PrefixReplacement struct {
-	ContentPrefix, SyntheticPrefix []byte
-}
-
-// ReplaceArg replaces the new prefix in the argument with the original prefix.
-func (p *PrefixReplacement) ReplaceArg(src []byte) []byte {
-	return p.replace(src, p.SyntheticPrefix, p.ContentPrefix)
-}
-
-// ReplaceResult replaces the original prefix in the result with the new prefix.
-func (p *PrefixReplacement) ReplaceResult(key []byte) []byte {
-	return p.replace(key, p.ContentPrefix, p.SyntheticPrefix)
-}
-
-func (p *PrefixReplacement) replace(key, from, to []byte) []byte {
-	if !bytes.HasPrefix(key, from) {
-		panic(fmt.Sprintf("unexpected prefix in replace: %s", key))
-	}
-	result := make([]byte, 0, len(to)+(len(key)-len(from)))
-	result = append(result, to...)
-	result = append(result, key[len(from):]...)
-	return result
 }
 
 // PhysicalFileMeta is used by functions which want a guarantee that their input
@@ -349,6 +326,21 @@ type PhysicalFileMeta struct {
 // NB: This type should only be constructed by calling FileMetadata.VirtualMeta.
 type VirtualFileMeta struct {
 	*FileMetadata
+}
+
+// VirtualReaderParams fills in the parameters necessary to create a virtual
+// sstable reader.
+func (m VirtualFileMeta) VirtualReaderParams(isShared bool) sstable.VirtualReaderParams {
+	return sstable.VirtualReaderParams{
+		Lower:             m.Smallest,
+		Upper:             m.Largest,
+		FileNum:           m.FileNum,
+		IsShared:          isShared,
+		Size:              m.Size,
+		BackingSize:       m.FileBacking.Size,
+		PrefixReplacement: m.PrefixReplacement,
+		SyntheticSuffix:   m.SyntheticSuffix,
+	}
 }
 
 // PhysicalMeta should be the only source of creating the PhysicalFileMeta
