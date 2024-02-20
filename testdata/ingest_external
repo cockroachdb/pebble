@@ -364,3 +364,57 @@ ge: (something, .)
 gg: (foo, .)
 gh: (foo, .)
 gi: (foo, .)
+
+# Test seeks with keys outside of the synthetic prefix range.
+reset
+----
+
+build-remote f9
+set i foo
+----
+
+ingest-external prefix-replace=(,c)
+f9,10,cg,ck
+----
+
+iter
+seek-ge bp
+----
+ci: (foo, .)
+
+iter
+seek-prefix-ge bp
+----
+.
+
+iter
+seek-lt de
+----
+ci: (foo, .)
+
+reset
+----
+
+batch
+set a1 foo
+set ci1 bar
+set z1 baz
+----
+
+build-remote f10
+del-range i j
+----
+
+ingest-external prefix-replace=(,c)
+f10,10,cg,ck
+----
+
+iter
+seek-ge bp
+----
+z1: (baz, .)
+
+iter
+seek-lt de
+----
+a1: (foo, .)

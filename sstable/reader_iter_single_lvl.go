@@ -257,19 +257,29 @@ func (i *singleLevelIterator) getSyntheticSuffx() SyntheticSuffix {
 	return nil
 }
 
-// Helper function to check if keys returned from iterator are within global and virtual bounds.
+// Helper function to check if keys returned from iterator are within virtual bounds.
 func (i *singleLevelIterator) maybeVerifyKey(
 	iKey *InternalKey, val base.LazyValue,
 ) (*InternalKey, base.LazyValue) {
-	// maybeVerify key is only used for virtual sstable iterators.
-	if invariants.Enabled && i.vState != nil && iKey != nil && i.upper != nil && i.lower != nil {
+	if invariants.Enabled && iKey != nil && i.vState != nil {
 		key := iKey.UserKey
-
-		uc, vuc := i.cmp(key, i.upper), i.cmp(key, i.vState.upper.UserKey)
-		lc, vlc := i.cmp(key, i.lower), i.cmp(key, i.vState.lower.UserKey)
-
-		if (i.vState.upper.IsExclusiveSentinel() && vuc == 0) || (!i.endKeyInclusive && uc == 0) || uc > 0 || vuc > 0 || lc < 0 || vlc < 0 {
-			panic(fmt.Sprintf("key: %s out of bounds of singleLevelIterator: i.upper %s, i.lower %s, vstate upper %s, vstate lower %s", key, i.upper, i.lower, i.vState.upper.UserKey, i.vState.lower.UserKey))
+		v := i.vState
+		var uc, lc int
+		if p := v.prefixChange; p != nil {
+			if !bytes.HasPrefix(key, p.ContentPrefix) {
+				panic(fmt.Sprintf("key %q does not have content prefix %q", key, v.prefixChange.ContentPrefix))
+			}
+			// We are assuming that the key comparator works if we just skip the
+			// prefix portion that we are replacing. This is true for all known
+			// implementations.
+			lc = i.cmp(key[len(p.ContentPrefix):], v.lower.UserKey[len(p.SyntheticPrefix):])
+			uc = i.cmp(key[len(p.ContentPrefix):], v.upper.UserKey[len(p.SyntheticPrefix):])
+		} else {
+			lc = i.cmp(key, v.lower.UserKey)
+			uc = i.cmp(key, v.upper.UserKey)
+		}
+		if lc < 0 || uc > 0 || (uc == 0 && v.upper.IsExclusiveSentinel()) {
+			panic(fmt.Sprintf("key %q out of singleLeveliterator virtual bounds %s %s", key, v.lower, v.lower))
 		}
 	}
 	return iKey, val

@@ -1270,7 +1270,11 @@ func TestRandomizedSuffixRewriter(t *testing.T) {
 			context.Background(),
 			nil, nil, nil, false,
 			true, nil, CategoryAndQoS{}, nil,
-			TrivialReaderProvider{Reader: eReader}, &virtualState{syntheticSuffix: syntheticSuffix})
+			TrivialReaderProvider{Reader: eReader}, &virtualState{
+				lower:           base.MakeInternalKey([]byte("a"), base.InternalKeySeqNumMax, base.InternalKeyKindSet),
+				upper:           base.MakeRangeDeleteSentinelKey([]byte("zzzzzzzzzzzzzzzzzzz")),
+				syntheticSuffix: syntheticSuffix,
+			})
 		require.NoError(t, err)
 		return iter, func() {
 			require.NoError(t, iter.Close())
