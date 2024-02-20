@@ -5,7 +5,6 @@
 package sstable
 
 import (
-	"bytes"
 	"context"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -93,7 +92,10 @@ func (v *VirtualReader) NewCompactionIter(
 	i, err := v.reader.newCompactionIter(
 		bytesIterated, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
 	if err == nil && v.vState.prefixChange != nil {
-		i = newPrefixReplacingIterator(i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix, v.reader.Compare)
+		i = newPrefixReplacingIterator(
+			i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
+			v.vState.lower.UserKey, v.reader.Compare,
+		)
 	}
 	return i, err
 }
@@ -116,7 +118,10 @@ func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats,
 		categoryAndQoS, statsCollector, rp, &v.vState)
 	if err == nil && v.vState.prefixChange != nil {
-		i = newPrefixReplacingIterator(i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix, v.reader.Compare)
+		i = newPrefixReplacingIterator(
+			i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
+			v.vState.lower.UserKey, v.reader.Compare,
+		)
 	}
 	return i, err
 }
@@ -147,7 +152,10 @@ func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 			v.reader.Compare, iter, lower.UserKey, upper.UserKey,
 			lower, upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnUpperTruncate */
 		)
-		return newPrefixReplacingFragmentIterator(iter, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix), nil
+		return newPrefixReplacingFragmentIterator(
+			iter, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
+			v.vState.lower.UserKey, v.reader.Compare,
+		), nil
 	}
 
 	// Truncation of spans isn't allowed at a user key that also contains points
@@ -203,7 +211,10 @@ func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 			v.reader.Compare, iter, lower.UserKey, upper.UserKey,
 			lower, upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnUpperTruncate */
 		)
-		return newPrefixReplacingFragmentIterator(iter, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix), nil
+		return newPrefixReplacingFragmentIterator(
+			iter, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
+			v.vState.lower.UserKey, v.reader.Compare,
+		), nil
 	}
 
 	// Truncation of spans isn't allowed at a user key that also contains points
@@ -264,16 +275,6 @@ func (v *virtualState) constrainBounds(
 // enforcing the virtual sstable bounds.
 func (v *VirtualReader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	_, f, l := v.vState.constrainBounds(start, end, true /* endInclusive */)
-	if v.vState.prefixChange != nil {
-		if !bytes.HasPrefix(f, v.vState.prefixChange.SyntheticPrefix) || !bytes.HasPrefix(l, v.vState.prefixChange.SyntheticPrefix) {
-			return 0, errInputPrefixMismatch
-		}
-		// TODO(dt): we could add a scratch buf to VirtualReader to avoid allocs on
-		// repeated calls to this.
-		f = append(append([]byte{}, v.vState.prefixChange.ContentPrefix...), f[len(v.vState.prefixChange.SyntheticPrefix):]...)
-		l = append(append([]byte{}, v.vState.prefixChange.ContentPrefix...), l[len(v.vState.prefixChange.SyntheticPrefix):]...)
-	}
-
 	return v.reader.EstimateDiskUsage(f, l)
 }
 

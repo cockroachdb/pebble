@@ -32,9 +32,11 @@ func TestPrefixReplacingIterator(t *testing.T) {
 
 			raw := rawIter.(*singleLevelIterator)
 
-			it := newPrefixReplacingIterator(raw, tc.from, tc.to, DefaultComparer.Compare)
+			it := newPrefixReplacingIterator(raw, tc.from, tc.to, tc.to, DefaultComparer.Compare)
 
-			kMin, kMax, k := []byte{0}, []byte("~"), func(i uint64) []byte {
+			kMin := []byte{0}
+			kMax := []byte("~")
+			k := func(i uint64) []byte {
 				return binary.BigEndian.AppendUint64(tc.to[:len(tc.to):len(tc.to)], i)
 			}
 
@@ -99,9 +101,6 @@ func TestPrefixReplacingIterator(t *testing.T) {
 			})
 
 			t.Run("SeekPrefixGE", func(t *testing.T) {
-				got, _ = it.SeekPrefixGE(tc.to, kMin, base.SeekGEFlagsNone)
-				require.Equal(t, k(0), got.UserKey)
-
 				got, _ = it.SeekPrefixGE(tc.to, k(0), base.SeekGEFlagsNone)
 				require.Equal(t, k(0), got.UserKey)
 
@@ -112,9 +111,6 @@ func TestPrefixReplacingIterator(t *testing.T) {
 				require.Equal(t, k(11), got.UserKey)
 
 				got, _ = it.SeekPrefixGE(tc.to, k(100), base.SeekGEFlagsNone)
-				require.Nil(t, got)
-
-				got, _ = it.SeekPrefixGE(tc.to, kMax, base.SeekGEFlagsNone)
 				require.Nil(t, got)
 			})
 
