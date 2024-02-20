@@ -50,7 +50,7 @@ replicated 1 shared SSTs
 lsm
 ----
 6:
-  000005:[d#11,DELSIZED-f#11,DEL]
+  000005(000005):[d#11,DELSIZED-f#11,DEL]
 
 iter
 first
@@ -368,7 +368,7 @@ lsm
 0.0:
   000004:[a@3#12,SET-d#inf,RANGEDEL]
 6:
-  000005:[a@3#11,DELSIZED-e#11,DEL]
+  000005(000005):[a@3#11,DELSIZED-e#11,DEL]
 
 iter
 first
@@ -467,9 +467,9 @@ lsm
 0.0:
   000004:[a@3#13,SET-c@9#13,SET]
 5:
-  000005:[b#12,DELSIZED-d#inf,RANGEDEL]
+  000005(000005):[b#12,DELSIZED-d#inf,RANGEDEL]
 6:
-  000006:[a@3#11,DELSIZED-e#11,DEL]
+  000006(000006):[a@3#11,DELSIZED-e#11,DEL]
 
 iter
 first
@@ -539,9 +539,9 @@ ok
 lsm
 ----
 6:
-  000008:[a#10,RANGEKEYSET-aaa#inf,RANGEKEYSET]
-  000007:[b#14,DELSIZED-c#14,DEL]
-  000009:[d#11,SET-e#12,SET]
+  000008(000005):[a#10,RANGEKEYSET-aaa#inf,RANGEKEYSET]
+  000007(000007):[b#14,DELSIZED-c#14,DEL]
+  000009(000005):[d#11,SET-e#12,SET]
 
 iter
 first
@@ -621,9 +621,9 @@ replicated 2 shared SSTs
 lsm
 ----
 5:
-  000007:[bb#13,DELSIZED-f#inf,RANGEDEL]
+  000007(000007):[bb#13,DELSIZED-f#inf,RANGEDEL]
 6:
-  000008:[b@5#12,DELSIZED-e#12,DEL]
+  000008(000008):[b@5#12,DELSIZED-e#12,DEL]
   000005:[ff#10,SET-ff#10,SET]
 
 iter
@@ -719,9 +719,9 @@ replicated 2 shared SSTs
 lsm
 ----
 5:
-  000007:[bb#13,RANGEKEYSET-f#inf,RANGEKEYDEL]
+  000007(000007):[bb#13,RANGEKEYSET-f#inf,RANGEKEYDEL]
 6:
-  000008:[b@5#12,DELSIZED-e#12,DEL]
+  000008(000008):[b@5#12,DELSIZED-e#12,DEL]
   000005:[ff#10,SET-ff#10,SET]
 
 iter
@@ -1298,7 +1298,7 @@ ok
 lsm
 ----
 6:
-  000005:[a#11,DELSIZED-a#11,DEL]
+  000005(000005):[a#11,DELSIZED-a#11,DEL]
 
 iter
 first

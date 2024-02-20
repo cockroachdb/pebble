@@ -746,8 +746,13 @@ func (m *FileMetadata) String() string {
 // and overall bounds for the table.
 func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "%s:[%s-%s]",
-		m.FileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+	if m.Virtual {
+		fmt.Fprintf(&b, "%s(%s):[%s-%s]",
+			m.FileNum, m.FileBacking.DiskFileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+	} else {
+		fmt.Fprintf(&b, "%s:[%s-%s]",
+			m.FileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+	}
 	if !verbose {
 		return b.String()
 	}

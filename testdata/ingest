@@ -939,9 +939,9 @@ ingest ext11
 lsm
 ----
 6:
-  000006:[a#10,SET-a#10,SET]
+  000006(000004):[a#10,SET-a#10,SET]
   000005:[b#11,SET-d#11,SET]
-  000007:[e#10,SET-e#10,SET]
+  000007(000004):[e#10,SET-e#10,SET]
 
 iter
 first
@@ -969,9 +969,9 @@ lsm
 0.0:
   000008:[c#12,SET-e#12,SET]
 6:
-  000006:[a#10,SET-a#10,SET]
+  000006(000004):[a#10,SET-a#10,SET]
   000005:[b#11,SET-d#11,SET]
-  000007:[e#10,SET-e#10,SET]
+  000007(000004):[e#10,SET-e#10,SET]
 
 # The below ingestion should fall through one existing file and split another
 # file.
@@ -989,11 +989,11 @@ lsm
 0.0:
   000008:[c#12,SET-e#12,SET]
 6:
-  000006:[a#10,SET-a#10,SET]
-  000010:[b#11,SET-b#11,SET]
+  000006(000004):[a#10,SET-a#10,SET]
+  000010(000005):[b#11,SET-b#11,SET]
   000009:[cc#13,SET-ccc#13,SET]
-  000011:[d#11,SET-d#11,SET]
-  000007:[e#10,SET-e#10,SET]
+  000011(000005):[d#11,SET-d#11,SET]
+  000007(000004):[e#10,SET-e#10,SET]
 
 iter
 seek-ge c
@@ -1025,11 +1025,11 @@ lsm
 0.0:
   000008:[c#12,SET-e#12,SET]
 6:
-  000006:[a#10,SET-a#10,SET]
-  000010:[b#11,SET-b#11,SET]
+  000006(000004):[a#10,SET-a#10,SET]
+  000010(000005):[b#11,SET-b#11,SET]
   000009:[cc#13,SET-ccc#13,SET]
-  000011:[d#11,SET-d#11,SET]
-  000007:[e#10,SET-e#10,SET]
+  000011(000005):[d#11,SET-d#11,SET]
+  000007(000004):[e#10,SET-e#10,SET]
 
 iter
 seek-lt d
@@ -1083,10 +1083,10 @@ ingest ext11 ext12
 lsm
 ----
 6:
-  000007:[a#10,SET-a#10,SET]
+  000007(000004):[a#10,SET-a#10,SET]
   000005:[b#11,SET-c#11,SET]
   000006:[cc#12,SET-d#12,SET]
-  000008:[e#10,SET-g#10,SET]
+  000008(000004):[e#10,SET-g#10,SET]
 
 # A virtual sstable produced from an ingest split can be ingest split again.
 
@@ -1101,12 +1101,12 @@ ingest ext13
 lsm
 ----
 6:
-  000007:[a#10,SET-a#10,SET]
+  000007(000004):[a#10,SET-a#10,SET]
   000005:[b#11,SET-c#11,SET]
   000006:[cc#12,SET-d#12,SET]
-  000010:[e#10,SET-e#10,SET]
+  000010(000004):[e#10,SET-e#10,SET]
   000009:[ee#13,SET-f#13,SET]
-  000011:[g#10,SET-g#10,SET]
+  000011(000004):[g#10,SET-g#10,SET]
 
 reset enable-split
 ----
@@ -1149,12 +1149,12 @@ ingest ext11 ext12 ext13
 lsm
 ----
 6:
-  000008:[a#10,SET-a#10,SET]
+  000008(000004):[a#10,SET-a#10,SET]
   000005:[b#11,SET-c#11,SET]
   000006:[cc#12,SET-d#12,SET]
-  000010:[e#10,SET-e#10,SET]
+  000010(000004):[e#10,SET-e#10,SET]
   000007:[ee#13,SET-f#13,SET]
-  000011:[g#10,SET-g#10,SET]
+  000011(000004):[g#10,SET-g#10,SET]
 
 iter
 first
