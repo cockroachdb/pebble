@@ -5,16 +5,22 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // flushable defines the interface for immutable memtables.
@@ -78,6 +84,10 @@ type flushableEntry struct {
 	delayedFlushForcedAt time.Time
 	// logNum corresponds to the WAL that contains the records present in the
 	// receiver.
+	//
+	// TODO(aadityas,jackson): We'll need to do something about this (and
+	// logSize) for entries corresponding to bufferedSSTables since there may be
+	// multiple associated log nums.
 	logNum base.DiskFileNum
 	// logSize is the size in bytes of the associated WAL. Protected by DB.mu.
 	logSize uint64
@@ -250,7 +260,6 @@ func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIter
 	if !s.containsRangeKeys() {
 		return nil
 	}
-
 	return keyspanimpl.NewLevelIter(
 		keyspan.SpanIterOptions{}, s.comparer.Compare, s.newRangeKeyIters,
 		s.slice.Iter(), manifest.Level(0), manifest.KeyTypeRange,
@@ -313,6 +322,333 @@ func (s *ingestedFlushable) computePossibleOverlaps(
 	}
 }
 
+func newFlushableBufferedSSTables(
+	comparer *base.Comparer,
+	metas []*fileMetadata,
+	ro sstable.ReaderOptions,
+	b *bufferedSSTables,
+	extraReaderOpts ...sstable.ReaderOption,
+) (*flushableBufferedSSTables, error) {
+	if len(metas) != len(b.finished) {
+		panic(errors.AssertionFailedf("metadata for %d files provided, but buffered %d files", len(metas), len(b.finished)))
+	}
+	f := &flushableBufferedSSTables{
+		comparer: comparer,
+		ls:       manifest.NewLevelSliceKeySorted(comparer.Compare, metas),
+		metas:    metas,
+		readers:  make([]*sstable.Reader, len(b.finished)),
+	}
+	// NB: metas and b.finished are parallel slices.
+	for i := range b.finished {
+		if b.finished[i].fileNum != base.PhysicalTableDiskFileNum(metas[i].FileNum) {
+			panic(errors.AssertionFailedf("file metas and file buffers in mismatched order"))
+		}
+		f.anyRangeKeys = f.anyRangeKeys || metas[i].HasRangeKeys
+		f.size += metas[i].Size
+		readable := objstorageprovider.BytesReadable(b.finished[i].buf)
+		var err error
+		f.readers[i], err = sstable.NewReader(readable, ro, extraReaderOpts...)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return f, nil
+}
+
+// flushableBufferedSSTables holds a set of in-memory sstables produced by a
+// flush. Buffering flushed state reduces write amplification by making it more
+// likely that we're able to drop KVs before they reach disk.
+type flushableBufferedSSTables struct {
+	comparer *base.Comparer
+	ls       manifest.LevelSlice
+	metas    []*fileMetadata
+	readers  []*sstable.Reader
+	// size is the size, in bytes, of all the buffered sstables.
+	size uint64
+	// anyRangeKeys indicates whether any of the sstables contain any range
+	// keys.
+	anyRangeKeys bool
+}
+
+var (
+	// Assert that *flushableBufferedSSTables implements the flushable
+	// interface.
+	_ flushable = (*flushableBufferedSSTables)(nil)
+)
+
+// newIters implements the tableNewIters function signature. Ordinarily this
+// function is provided by the table cache. Flushable buffered sstables are not
+// opened through the table cache since they're not present on the real
+// filesystem and do not require use of file descriptors. Instead, the
+// flushableBufferedSSTables keeps sstable.Readers for all the buffered sstables
+// open, and this newIters func uses them to construct iterators.
+func (b *flushableBufferedSSTables) newIters(
+	ctx context.Context,
+	file *manifest.FileMetadata,
+	opts *IterOptions,
+	internalOpts internalIterOpts,
+	kinds iterKinds,
+) (iterSet, error) {
+	var r *sstable.Reader
+	for i := range b.metas {
+		if b.metas[i].FileNum == file.FileNum {
+			r = b.readers[i]
+			break
+		}
+	}
+	if r == nil {
+		return iterSet{}, errors.Newf("file %s not found among flushable buffered sstables", file.FileNum)
+	}
+	var iters iterSet
+	var err error
+	if kinds.RangeKey() && file.HasRangeKeys {
+		iters.rangeKey, err = r.NewRawRangeKeyIter()
+	}
+	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
+		iters.rangeDeletion, err = r.NewRawRangeDelIter()
+	}
+	if kinds.Point() && err == nil {
+		// TODO(aadityas,jackson): We could support block-property filtering
+		// within the in-memory sstables, but it's unclear it's worth the code
+		// complexity. We expect these blocks to be hit frequently, and the cost
+		// of loading them is less since they're already in main memory.
+		tableFormat, err := r.TableFormat()
+		if err != nil {
+			return iterSet{}, err
+		}
+		var rp sstable.ReaderProvider
+		if tableFormat >= sstable.TableFormatPebblev3 && r.Properties.NumValueBlocks > 0 {
+			// NB: We can return a fixedReaderProvider because the Readers for
+			// these in-memory sstables are guaranteed to be open until the
+			// readState is obsolete which will only occur when all iterators
+			// have closed.
+			rp = &fixedReaderProvider{r}
+		}
+		var categoryAndQoS sstable.CategoryAndQoS
+		if internalOpts.bytesIterated != nil {
+			iters.point, err = r.NewCompactionIter(
+				internalOpts.bytesIterated, categoryAndQoS, nil /* statsCollector */, rp,
+				internalOpts.bufferPool)
+		} else {
+			iters.point, err = r.NewIterWithBlockPropertyFiltersAndContextEtc(
+				ctx, opts.GetLowerBound(), opts.GetUpperBound(),
+				nil /* filterer */, false /* hideObsoletePoints */, true, /* useFilter */
+				internalOpts.stats, categoryAndQoS, nil /* stats collector */, rp)
+		}
+	}
+	if err != nil {
+		iters.CloseAll()
+		return iterSet{}, err
+	}
+	return iters, nil
+}
+
+// newIter is part of the flushable interface.
+func (b *flushableBufferedSSTables) newIter(o *IterOptions) internalIterator {
+	var opts IterOptions
+	if o != nil {
+		opts = *o
+	}
+	// TODO(jackson): The manifest.Level in newLevelIter is only used for
+	// logging. Update the manifest.Level encoding to account for levels which
+	// aren't truly levels in the lsm. Right now, the encoding only supports
+	// L0 sublevels, and the rest of the levels in the lsm.
+	return newLevelIter(
+		context.Background(), opts, b.comparer, b.newIters, b.ls.Iter(), manifest.Level(0),
+		internalIterOpts{},
+	)
+}
+
+// newFlushIter is part of the flushable interface.
+func (b *flushableBufferedSSTables) newFlushIter(
+	o *IterOptions, bytesFlushed *uint64,
+) internalIterator {
+	var opts IterOptions
+	if o != nil {
+		opts = *o
+	}
+	// TODO(jackson): The manifest.Level in newLevelIter is only used for
+	// logging. Update the manifest.Level encoding to account for levels which
+	// aren't truly levels in the lsm. Right now, the encoding only supports
+	// L0 sublevels, and the rest of the levels in the lsm.
+	return newLevelIter(
+		context.Background(), opts, b.comparer, b.newIters, b.ls.Iter(), manifest.Level(0),
+		internalIterOpts{bytesIterated: bytesFlushed},
+	)
+}
+
+// constructRangeDelIter implements keyspanimpl.TableNewSpanIter.
+func (b *flushableBufferedSSTables) constructRangeDelIter(
+	file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
+) (keyspan.FragmentIterator, error) {
+	iters, err := b.newIters(context.Background(), file, nil, internalIterOpts{}, iterRangeDeletions)
+	return iters.RangeDeletion(), err
+}
+
+// newRangeDelIter is part of the flushable interface.
+func (b *flushableBufferedSSTables) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
+	return keyspanimpl.NewLevelIter(
+		keyspan.SpanIterOptions{}, b.comparer.Compare,
+		b.constructRangeDelIter, b.ls.Iter(), manifest.Level(0),
+		manifest.KeyTypePoint,
+	)
+}
+
+// constructRangeKeyIter implements keyspanimpl.TableNewSpanIter.
+func (b *flushableBufferedSSTables) constructRangeKeyIter(
+	file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
+) (keyspan.FragmentIterator, error) {
+	iters, err := b.newIters(context.Background(), file, nil, internalIterOpts{}, iterRangeKeys)
+	if err != nil {
+		return nil, err
+	}
+	return iters.RangeKey(), nil
+}
+
+// newRangeKeyIter is part of the flushable interface.
+func (b *flushableBufferedSSTables) newRangeKeyIter(o *IterOptions) keyspan.FragmentIterator {
+	if !b.containsRangeKeys() {
+		return nil
+	}
+	return keyspanimpl.NewLevelIter(
+		keyspan.SpanIterOptions{}, b.comparer.Compare, b.constructRangeKeyIter,
+		b.ls.Iter(), manifest.Level(0), manifest.KeyTypeRange,
+	)
+}
+
+// containsRangeKeys is part of the flushable interface.
+func (b *flushableBufferedSSTables) containsRangeKeys() bool { return b.anyRangeKeys }
+
+// inuseBytes is part of the flushable interface.
+func (b *flushableBufferedSSTables) inuseBytes() uint64 { return b.size }
+
+// totalBytes is part of the flushable interface.
+func (b *flushableBufferedSSTables) totalBytes() uint64 { return b.size }
+
+// readyForFlush is part of the flushable interface.
+func (b *flushableBufferedSSTables) readyForFlush() bool {
+	// Buffered sstables are always ready for flush; they're immutable.
+	return true
+}
+
+// computePossibleOverlaps is part of the flushable interface.
+func (b *flushableBufferedSSTables) computePossibleOverlaps(
+	fn func(bounded) shouldContinue, bounded ...bounded,
+) {
+	computePossibleOverlapsGenericImpl[*flushableBufferedSSTables](b, b.comparer.Compare, fn, bounded)
+}
+
+// bufferedSSTables implements the objectCreator interface and is used by a
+// flush to buffer sstables into memory. When the flush is complete, the
+// buffered sstables are either flushed to durable storage or moved into a
+// flushableBufferedSSTables that's linked into the flushable queue.
+//
+// The bufferedSSTables implementation of objectCreator requires that only one
+// created object may be open at a time. If violated, Create will panic.
+type bufferedSSTables struct {
+	// curr is a byte buffer used to accumulate the writes of the current
+	// sstable when *bufferedSSTables is used as a writable.
+	curr bytes.Buffer
+	// currFileNum holds the file number assigned to the sstable being
+	// constructed in curr.
+	currFileNum base.DiskFileNum
+	// finished holds the set of previously written and finished sstables.
+	finished []bufferedSSTable
+	// cumulative size of the finished buffers
+	size uint64
+	// objectIsOpen is true if the bufferedSSTables is currently being used as a
+	// Writable.
+	objectIsOpen bool
+}
+
+// A bufferedSSTable holds a single, serialized sstable and a corresponding file
+// number.
+type bufferedSSTable struct {
+	fileNum base.DiskFileNum
+	buf     []byte
+}
+
+// init initializes the bufferedSSTables.
+func (b *bufferedSSTables) init(targetFileSize int) {
+	b.curr.Grow(targetFileSize)
+}
+
+// Assert that *bufferedSSTables implements the objectCreator interface.
+var _ objectCreator = (*bufferedSSTables)(nil)
+
+// Create implements the objectCreator interface.
+func (b *bufferedSSTables) Create(
+	ctx context.Context,
+	fileType base.FileType,
+	fileNum base.DiskFileNum,
+	opts objstorage.CreateOptions,
+) (w objstorage.Writable, meta objstorage.ObjectMetadata, err error) {
+	// The bufferedSSTables implementation depends on only one writable being
+	// open at a time. The *bufferedSSTables itself is used as the
+	// implementation of both the objectCreator interface and the
+	// objstorage.Writable interface. We guard against misuse by verifying that
+	// there is no object currently open.
+	if b.objectIsOpen {
+		panic("bufferedSSTables used with concurrent open files")
+	}
+	b.objectIsOpen = true
+	b.currFileNum = fileNum
+	return b, objstorage.ObjectMetadata{
+		DiskFileNum: fileNum,
+		FileType:    fileType,
+	}, nil
+}
+
+// Path implements the objectCreator interface.
+func (b *bufferedSSTables) Path(meta objstorage.ObjectMetadata) string {
+	panic("TODO")
+}
+
+// Remove implements the objectCreator interface.
+func (b *bufferedSSTables) Remove(fileType base.FileType, FileNum base.DiskFileNum) error {
+	panic("TODO")
+}
+
+// Sync implements the objectCreator interface.
+func (b *bufferedSSTables) Sync() error {
+	// BufferedSSTs store their data in memory and do not need to sync.
+	return nil
+}
+
+// Assert that bufferedSSTables implements objstorage.Writable.
+//
+// A flush writes files sequentially, so the bufferedSSTables type implements
+// Writable directly, serving as the destination for writes across all sstables
+// written by the flush.
+var _ objstorage.Writable = (*bufferedSSTables)(nil)
+
+// Write implements objstorage.Writable.
+func (o *bufferedSSTables) Write(p []byte) error {
+	_, err := o.curr.Write(p)
+	return err
+}
+
+// Finish implements objstorage.Writable.
+func (o *bufferedSSTables) Finish() error {
+	if !o.objectIsOpen {
+		panic("bufferedSSTables.Finish() invoked when no object is open")
+	}
+	o.finished = append(o.finished, bufferedSSTable{
+		fileNum: o.currFileNum,
+		buf:     slices.Clone(o.curr.Bytes()),
+	})
+	o.size += uint64(o.curr.Len())
+	o.curr.Reset()
+	o.objectIsOpen = false
+	return nil
+}
+
+// Abort implements objstorage.Writable.
+func (o *bufferedSSTables) Abort() {
+	o.curr.Reset()
+	o.objectIsOpen = false
+}
+
 // computePossibleOverlapsGenericImpl is an implemention of the flushable
 // interface's computePossibleOverlaps function for flushable implementations
 // with only in-memory state that do not have special requirements and should
@@ -346,3 +682,20 @@ func computePossibleOverlapsGenericImpl[F flushable](
 		}
 	}
 }
+
+type fixedReaderProvider struct {
+	*sstable.Reader
+}
+
+var _ sstable.ReaderProvider = (*fixedReaderProvider)(nil)
+
+// GetReader implements sstable.ReaderProvider.
+//
+// Note that currently the Reader returned here is only used to read value
+// blocks.
+func (p *fixedReaderProvider) GetReader() (*sstable.Reader, error) {
+	return p.Reader, nil
+}
+
+// Close implements sstable.ReaderProvider.
+func (p *fixedReaderProvider) Close() {}

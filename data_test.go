@@ -869,7 +869,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		// to the user-defined boundaries.
 		c.maxOutputFileSize = math.MaxUint64
 
-		newVE, _, _, err := d.runCompaction(0, c)
+		newVE, _, _, err := d.runCompaction(0, c, d.objProvider)
 		if err != nil {
 			return err
 		}

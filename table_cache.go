@@ -1178,6 +1178,7 @@ type loadInfo struct {
 }
 
 func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *tableCacheOpts) {
+	// TODO(aaditya): Example of creating iter for SST
 	// Try opening the file first.
 	var f objstorage.Readable
 	var err error

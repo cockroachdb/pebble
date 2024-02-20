@@ -462,6 +462,7 @@ const (
 	compactionKindRead
 	compactionKindRewrite
 	compactionKindIngestedFlushable
+	compactionKindBufferedFlush
 )
 
 func (k compactionKind) String() string {
@@ -657,6 +658,33 @@ type compaction struct {
 	metrics map[int]*LevelMetrics
 
 	pickerMetrics compactionPickerMetrics
+}
+
+// objectCreator provides the subset of the objstorage.Provider interface
+// necessary for compactions and flushes. It's typically satisfied by
+// d.objProvider but may be satisfied by bufferedSSTables during flushes.
+type objectCreator interface {
+	// Create creates a new object and opens it for writing.
+	//
+	// The object is not guaranteed to be durable (accessible in case of crashes)
+	// until Sync is called.
+	Create(
+		ctx context.Context,
+		fileType base.FileType,
+		FileNum base.DiskFileNum,
+		opts objstorage.CreateOptions,
+	) (w objstorage.Writable, meta objstorage.ObjectMetadata, err error)
+	// Path returns an internal, implementation-dependent path for the object. It is
+	// meant to be used for informational purposes (like logging).
+	Path(meta objstorage.ObjectMetadata) string
+	// Remove removes an object.
+	//
+	// The object is not guaranteed to be durably removed until Sync is called.
+	Remove(fileType base.FileType, FileNum base.DiskFileNum) error
+	// Sync flushes the metadata from creation or removal of objects since the
+	// last Sync. This includes objects that have been Created but for which
+	// Writable.Finish() has not yet been called.
+	Sync() error
 }
 
 func (c *compaction) makeInfo(jobID int) CompactionInfo {
@@ -1847,6 +1875,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	var n, inputs int
 	var inputBytes uint64
 	var ingest bool
+	var bufferedFlush = true // TODO(aaditya): loop this into a config setting
 	for ; n < len(d.mu.mem.queue)-1; n++ {
 		if f, ok := d.mu.mem.queue[n].flushable.(*ingestedFlushable); ok {
 			if n == 0 {
@@ -1905,6 +1934,10 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	if err != nil {
 		return 0, err
 	}
+
+	if bufferedFlush && !ingest {
+		c.kind = compactionKindBufferedFlush
+	}
 	d.addInProgressCompaction(c)
 
 	jobID := d.mu.nextJobID
@@ -1917,6 +1950,18 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	})
 	startTime := d.timeNow()
 
+	// Compactions always write directly to the database's object provider.
+	// Flushes may write to an in-memory object provider first.
+	var objCreator objectCreator
+	if c.kind == compactionKindBufferedFlush {
+		bufferedSSTs := &bufferedSSTables{}
+		// TODO(aaditya): pick a better size
+		bufferedSSTs.init(10)
+		objCreator = bufferedSSTs
+	} else {
+		objCreator = d.objProvider
+	}
+
 	var ve *manifest.VersionEdit
 	var pendingOutputs []physicalMeta
 	var stats compactStats
@@ -1927,7 +1972,32 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	// runCompaction. For all other flush cases, we construct the VersionEdit
 	// inside runCompaction.
 	if c.kind != compactionKindIngestedFlushable {
-		ve, pendingOutputs, stats, err = d.runCompaction(jobID, c)
+		ve, pendingOutputs, stats, err = d.runCompaction(jobID, c, objCreator)
+	}
+
+	// TODO(aadityas,jackson): If the buffered output sstables are too small,
+	// avoid linking them into the version and just update the flushable queue
+	// appropriately.
+	if c.kind == compactionKindBufferedFlush {
+		var metas []*fileMetadata
+		var fileNums []base.DiskFileNum
+		for _, file := range ve.NewFiles {
+			metas = append(metas, file.Meta)
+			fileNums = append(fileNums, file.BackingFileNum)
+		}
+
+		bufferedSST := objCreator.(*bufferedSSTables)
+		if bufferedSST.size < d.opts.MemTableSize /* TODO(aaditya): does this make sense? */ {
+			var f flushable
+			f, err = newFlushableBufferedSSTables(d.opts.Comparer, metas, sstable.ReaderOptions{}, bufferedSST)
+			fe := d.newFlushableEntry(f, fileNums[0], 0 /* TODO(aaditya): figure out what to put here */)
+			remaining := d.mu.mem.queue[n : len(d.mu.mem.queue)-2]
+			mutable := d.mu.mem.queue[len(d.mu.mem.queue)-1]
+			d.mu.mem.queue = append(remaining, fe, mutable)
+			return 0, err
+		}
+
+		// else convert to objProvider and write to disk
 	}
 
 	// Acquire logLock. This will be released either on an error, by way of
@@ -2634,7 +2704,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
 
-	ve, pendingOutputs, stats, err := d.runCompaction(jobID, c)
+	ve, pendingOutputs, stats, err := d.runCompaction(jobID, c, d.objProvider)
 
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
@@ -2800,7 +2870,7 @@ func (d *DB) runCopyCompaction(
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
-	jobID int, c *compaction,
+	jobID int, c *compaction, objCreator objectCreator,
 ) (ve *versionEdit, pendingOutputs []physicalMeta, stats compactStats, retErr error) {
 	// As a sanity check, confirm that the smallest / largest keys for new and
 	// deleted files in the new versionEdit pass a validation function before
@@ -2968,7 +3038,7 @@ func (d *DB) runCompaction(
 		}
 		if retErr != nil {
 			for _, fileNum := range createdFiles {
-				_ = d.objProvider.Remove(fileTypeTable, fileNum)
+				_ = objCreator.Remove(fileTypeTable, fileNum)
 			}
 		}
 		for _, closer := range c.closers {
@@ -3063,7 +3133,8 @@ func (d *DB) runCompaction(
 			PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
 		}
 		diskFileNum := base.PhysicalTableDiskFileNum(fileNum)
-		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, diskFileNum, createOpts)
+
+		writable, objMeta, err := objCreator.Create(ctx, fileTypeTable, diskFileNum, createOpts)
 		if err != nil {
 			return err
 		}
@@ -3075,7 +3146,7 @@ func (d *DB) runCompaction(
 		d.opts.EventListener.TableCreated(TableCreateInfo{
 			JobID:   jobID,
 			Reason:  reason,
-			Path:    d.objProvider.Path(objMeta),
+			Path:    objCreator.Path(objMeta),
 			FileNum: diskFileNum,
 		})
 		if c.kind != compactionKindFlush {
@@ -3516,7 +3587,7 @@ func (d *DB) runCompaction(
 	// compactStats.
 	stats.countMissizedDels = iter.stats.countMissizedDels
 
-	if err := d.objProvider.Sync(); err != nil {
+	if err := objCreator.Sync(); err != nil {
 		return nil, pendingOutputs, stats, err
 	}
 
