@@ -391,7 +391,6 @@ func (c *checker) check(
 }
 
 func TestBlockSyntheticSuffix(t *testing.T) {
-	// TODO(msbutler): add test where replacement suffix has fewer bytes than previous suffix
 	expectedSuffix := "15"
 	synthSuffix := []byte("@" + expectedSuffix)
 
@@ -405,7 +404,7 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 
 			suffixWriter, expectedSuffixWriter := &blockWriter{restartInterval: restarts}, &blockWriter{restartInterval: restarts}
 			keys := []string{
-				"apple@2", "apricot@2", "banana@13",
+				"apple@2", "apricot@2", "banana@13", "cantaloupe",
 				"grape@2", "orange@14", "peach@4",
 				"pear@1", "persimmon@4",
 			}
@@ -476,6 +475,25 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 			// Ensure off by one handling works at end of iterator
 			c.check(expect.Last())(got.Last())
 			c.check(expect.SeekLT([]byte("apple@10"), base.SeekLTFlagsNone))(got.SeekLT([]byte("apple@10"), base.SeekLTFlagsNone))
+
+			// Try searching on the suffixless key
+			c.check(expect.First())(got.First())
+			c.check(expect.SeekGE([]byte("cantaloupe"), base.SeekGEFlagsNone))(got.SeekGE([]byte("cantaloupe"), base.SeekGEFlagsNone))
+
+			c.check(expect.First())(got.First())
+			c.check(expect.SeekGE([]byte("cantaloupe@16"), base.SeekGEFlagsNone))(got.SeekGE([]byte("cantaloupe@16"), base.SeekGEFlagsNone))
+
+			c.check(expect.First())(got.First())
+			c.check(expect.SeekGE([]byte("cantaloupe@14"), base.SeekGEFlagsNone))(got.SeekGE([]byte("cantaloupe@14"), base.SeekGEFlagsNone))
+
+			c.check(expect.Last())(got.Last())
+			c.check(expect.SeekLT([]byte("cantaloupe"), base.SeekLTFlagsNone))(got.SeekLT([]byte("cantaloupe"), base.SeekLTFlagsNone))
+
+			c.check(expect.Last())(got.Last())
+			c.check(expect.SeekLT([]byte("cantaloupe10"), base.SeekLTFlagsNone))(got.SeekLT([]byte("cantaloupe10"), base.SeekLTFlagsNone))
+
+			c.check(expect.Last())(got.Last())
+			c.check(expect.SeekLT([]byte("cantaloupe16"), base.SeekLTFlagsNone))(got.SeekLT([]byte("cantaloupe16"), base.SeekLTFlagsNone))
 		})
 	}
 }

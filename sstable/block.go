@@ -432,10 +432,23 @@ type blockIter struct {
 	// blockB: a@1,b@2,c@1 with syntheticSuffix=3
 	//
 	// To ensure this, Suffix replacement will not change the ordering of keys in
-	// the block because the iter assumes the following about the block:
+	// the block because the iter assumes that no two keys in the block share the
+	// same prefix. Furthermore, during SeekGE and SeekLT operations, the block
+	// iterator handles "off by one" errors (explained in more detail in those
+	// functions) when, for a given key, originalSuffix < searchSuffix <
+	// replacementSuffix, with integer comparison. To handle these cases, the
+	// iterator assumes:
 	//
-	// (1) no two keys in the block share the same prefix.
-	// (2) pebble.Compare(keyPrefix{replacementSuffix},keyPrefix{originalSuffix}) < 0
+	//  pebble.Compare(keyPrefix{replacementSuffix},keyPrefix{originalSuffix}) < 0
+	//  for keys with a suffix.
+	//
+	//  NB: it is possible for a block iter to add a synthetic suffix on a key
+	//  without a suffix, which implies
+	//  pebble.Compare(keyPrefix{replacementSuffix},keyPrefix{noSuffix}) > 0 ,
+	//  however, the iterator would never need to handle an off by one error in
+	//  this case since originalSuffix (empty) > searchSuffix (non empty), with
+	//  integer comparison.
+	//
 	//
 	// In addition, we also assume that any block with rangekeys will not contain
 	// a synthetic suffix.
