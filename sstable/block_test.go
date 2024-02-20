@@ -405,7 +405,7 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 
 			suffixWriter, expectedSuffixWriter := &blockWriter{restartInterval: restarts}, &blockWriter{restartInterval: restarts}
 			keys := []string{
-				"apple@2", "apricot@2", "banana@13",
+				"apple@2", "apricot@2", "banana@13", "canteloupe",
 				"grape@2", "orange@14", "peach@4",
 				"pear@1", "persimmon@4",
 			}
@@ -476,6 +476,25 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 			// Ensure off by one handling works at end of iterator
 			c.check(expect.Last())(got.Last())
 			c.check(expect.SeekLT([]byte("apple@10"), base.SeekLTFlagsNone))(got.SeekLT([]byte("apple@10"), base.SeekLTFlagsNone))
+
+			// Try searching on the suffixless key
+			c.check(expect.First())(got.First())
+			c.check(expect.SeekGE([]byte("canteloupe"), base.SeekGEFlagsNone))(got.SeekGE([]byte("canteloupe"), base.SeekGEFlagsNone))
+
+			c.check(expect.First())(got.First())
+			c.check(expect.SeekGE([]byte("canteloupe@16"), base.SeekGEFlagsNone))(got.SeekGE([]byte("canteloupe@16"), base.SeekGEFlagsNone))
+
+			c.check(expect.First())(got.First())
+			c.check(expect.SeekGE([]byte("canteloupe@14"), base.SeekGEFlagsNone))(got.SeekGE([]byte("canteloupe@14"), base.SeekGEFlagsNone))
+
+			c.check(expect.Last())(got.Last())
+			c.check(expect.SeekLT([]byte("canteloupe"), base.SeekLTFlagsNone))(got.SeekLT([]byte("canteloupe"), base.SeekLTFlagsNone))
+
+			c.check(expect.Last())(got.Last())
+			c.check(expect.SeekLT([]byte("canteloupe10"), base.SeekLTFlagsNone))(got.SeekLT([]byte("canteloupe10"), base.SeekLTFlagsNone))
+
+			c.check(expect.Last())(got.Last())
+			c.check(expect.SeekLT([]byte("canteloupe16"), base.SeekLTFlagsNone))(got.SeekLT([]byte("canteloupe16"), base.SeekLTFlagsNone))
 		})
 	}
 }
