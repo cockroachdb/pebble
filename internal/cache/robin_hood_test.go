@@ -87,29 +87,6 @@ func TestRobinHoodMap(t *testing.T) {
 	t.Logf("map size: %d", len(goMap))
 }
 
-const benchSize = 1 << 20
-
-func BenchmarkGoMapInsert(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-	keys := make([]key, benchSize)
-	for i := range keys {
-		keys[i].fileNum = base.DiskFileNum(rng.Uint64n(1 << 20))
-		keys[i].offset = uint64(rng.Intn(1 << 20))
-	}
-	b.ResetTimer()
-
-	var m map[key]*entry
-	for i, j := 0, 0; i < b.N; i, j = i+1, j+1 {
-		if m == nil || j == len(keys) {
-			b.StopTimer()
-			m = make(map[key]*entry, len(keys))
-			j = 0
-			b.StartTimer()
-		}
-		m[keys[j]] = nil
-	}
-}
-
 func BenchmarkRobinHoodInsert(b *testing.B) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	keys := make([]key, benchSize)
@@ -124,6 +101,9 @@ func BenchmarkRobinHoodInsert(b *testing.B) {
 	for i, j := 0, 0; i < b.N; i, j = i+1, j+1 {
 		if m == nil || j == len(keys) {
 			b.StopTimer()
+			if m != nil {
+				m.free()
+			}
 			m = newRobinHoodMap(len(keys))
 			j = 0
 			b.StartTimer()
@@ -132,31 +112,6 @@ func BenchmarkRobinHoodInsert(b *testing.B) {
 	}
 
 	runtime.KeepAlive(e)
-}
-
-func BenchmarkGoMapLookupHit(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-	keys := make([]key, benchSize)
-	m := make(map[key]*entry, len(keys))
-	e := &entry{}
-	for i := range keys {
-		keys[i].fileNum = base.DiskFileNum(rng.Uint64n(1 << 20))
-		keys[i].offset = uint64(rng.Intn(1 << 20))
-		m[keys[i]] = e
-	}
-	b.ResetTimer()
-
-	var p *entry
-	for i, j := 0, 0; i < b.N; i, j = i+1, j+1 {
-		if j == len(keys) {
-			j = 0
-		}
-		p = m[keys[j]]
-	}
-
-	if testing.Verbose() {
-		fmt.Fprintln(io.Discard, p)
-	}
 }
 
 func BenchmarkRobinHoodLookupHit(b *testing.B) {
@@ -179,37 +134,12 @@ func BenchmarkRobinHoodLookupHit(b *testing.B) {
 		p = m.Get(keys[j])
 	}
 
+	b.StopTimer()
 	if testing.Verbose() {
 		fmt.Fprintln(io.Discard, p)
 	}
 	runtime.KeepAlive(e)
-}
-
-func BenchmarkGoMapLookupMiss(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-	keys := make([]key, benchSize)
-	m := make(map[key]*entry, len(keys))
-	e := &entry{}
-	for i := range keys {
-		keys[i].id = 1
-		keys[i].fileNum = base.DiskFileNum(rng.Uint64n(1 << 20))
-		keys[i].offset = uint64(rng.Intn(1 << 20))
-		m[keys[i]] = e
-		keys[i].id = 2
-	}
-	b.ResetTimer()
-
-	var p *entry
-	for i, j := 0, 0; i < b.N; i, j = i+1, j+1 {
-		if j == len(keys) {
-			j = 0
-		}
-		p = m[keys[j]]
-	}
-
-	if testing.Verbose() {
-		fmt.Fprintln(io.Discard, p)
-	}
+	m.free()
 }
 
 func BenchmarkRobinHoodLookupMiss(b *testing.B) {
@@ -234,8 +164,10 @@ func BenchmarkRobinHoodLookupMiss(b *testing.B) {
 		p = m.Get(keys[j])
 	}
 
+	b.StopTimer()
 	if testing.Verbose() {
 		fmt.Fprintln(io.Discard, p)
 	}
 	runtime.KeepAlive(e)
+	m.free()
 }
