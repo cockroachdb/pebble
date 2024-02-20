@@ -89,8 +89,8 @@ ok
 lsm
 ----
 6:
-  000010:[d#14,DELSIZED-d#14,DEL]
-  000011:[f#11,SET-f#11,SET]
+  000010(000010):[d#14,DELSIZED-d#14,DEL]
+  000011(000005):[f#11,SET-f#11,SET]
 
 compact a-z
 ----

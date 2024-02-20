@@ -631,8 +631,8 @@ ingest-and-excise ext1 excise=b-c
 lsm
 ----
 0.0:
-  000007:[a#10,SET-a#10,SET]
-  000008:[d#12,DEL-d#12,DEL]
+  000007(000005):[a#10,SET-a#10,SET]
+  000008(000005):[d#12,DEL-d#12,DEL]
 6:
   000006:[f#14,SET-f#14,SET]
 
@@ -698,8 +698,8 @@ flush
 0.1:
   000010:[a#15,SET-ee#inf,RANGEKEYSET]
 0.0:
-  000007:[a#10,SET-a#10,SET]
-  000008:[d#12,DEL-d#12,DEL]
+  000007(000005):[a#10,SET-a#10,SET]
+  000008(000005):[d#12,DEL-d#12,DEL]
 6:
   000006:[f#14,SET-f#14,SET]
 
@@ -750,11 +750,11 @@ ingest-and-excise ext2 excise=b-c
 lsm
 ----
 0.1:
-  000012:[a#15,SET-a#15,SET]
-  000013:[d#17,SET-ee#inf,RANGEKEYSET]
+  000012(000010):[a#15,SET-a#15,SET]
+  000013(000010):[d#17,SET-ee#inf,RANGEKEYSET]
 0.0:
-  000007:[a#10,SET-a#10,SET]
-  000008:[d#12,DEL-d#12,DEL]
+  000007(000005):[a#10,SET-a#10,SET]
+  000008(000005):[d#12,DEL-d#12,DEL]
 6:
   000006:[f#14,SET-f#14,SET]
   000011:[z#20,SET-z#20,SET]
@@ -866,8 +866,8 @@ ingest-and-excise ext3 excise=b-c
 lsm
 ----
 0.0:
-  000020:[a#21,RANGEDEL-b#inf,RANGEDEL]
-  000021:[c#21,RANGEDEL-e#inf,RANGEDEL]
+  000020(000018):[a#21,RANGEDEL-b#inf,RANGEDEL]
+  000021(000018):[c#21,RANGEDEL-e#inf,RANGEDEL]
 6:
   000014:[a#0,SET-a#0,SET]
   000015:[d#0,SETWITHDEL-d#0,SETWITHDEL]

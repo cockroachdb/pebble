@@ -14,7 +14,7 @@ f1,5,a,cc
 lsm
 ----
 6:
-  000004:[a#10,DELSIZED-cc#inf,RANGEDEL]
+  000004(000004):[a#10,DELSIZED-cc#inf,RANGEDEL]
 
 iter
 first
@@ -45,7 +45,7 @@ f2,5,a,c
 lsm
 ----
 6:
-  000004:[a#10,DELSIZED-c#inf,RANGEDEL]
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
 
 iter
 first
@@ -86,9 +86,9 @@ f4,10,f,hh
 lsm
 ----
 6:
-  000004:[a#10,DELSIZED-c#inf,RANGEDEL]
-  000007:[c#11,DELSIZED-f#inf,RANGEDEL]
-  000008:[f#12,DELSIZED-hh#inf,RANGEDEL]
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
+  000007(000007):[c#11,DELSIZED-f#inf,RANGEDEL]
+  000008(000008):[f#12,DELSIZED-hh#inf,RANGEDEL]
 
 iter
 first
@@ -117,9 +117,9 @@ compact a z
 lsm
 ----
 6:
-  000004:[a#10,DELSIZED-c#inf,RANGEDEL]
-  000007:[c#11,DELSIZED-f#inf,RANGEDEL]
-  000008:[f#12,DELSIZED-hh#inf,RANGEDEL]
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
+  000007(000007):[c#11,DELSIZED-f#inf,RANGEDEL]
+  000008(000008):[f#12,DELSIZED-hh#inf,RANGEDEL]
 
 download a j
 ----
@@ -337,8 +337,8 @@ gi: (foo, .)
 lsm
 ----
 6:
-  000004:[gc#10,DELSIZED-gf#inf,RANGEDEL]
-  000005:[gg#11,DELSIZED-gj#inf,RANGEDEL]
+  000004(000004):[gc#10,DELSIZED-gf#inf,RANGEDEL]
+  000005(000005):[gg#11,DELSIZED-gj#inf,RANGEDEL]
 
 download g h via-backing-file-download
 ----
@@ -347,8 +347,8 @@ ok
 lsm
 ----
 6:
-  000006:[gc#10,DELSIZED-gf#inf,RANGEDEL]
-  000007:[gg#11,DELSIZED-gj#inf,RANGEDEL]
+  000006(000006):[gc#10,DELSIZED-gf#inf,RANGEDEL]
+  000007(000007):[gg#11,DELSIZED-gj#inf,RANGEDEL]
 
 iter
 seek-ge g

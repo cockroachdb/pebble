@@ -33,8 +33,8 @@ excise c k
 would excise 2 files, use ingest-and-excise to excise.
   deleted:       L0 000006
   deleted:       L6 000004
-  added:         L6 000007:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
-  added:         L6 000008:[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
+  added:         L6 000007(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
+  added:         L6 000008(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
 
 
 excise a e
@@ -42,33 +42,33 @@ excise a e
 would excise 2 files, use ingest-and-excise to excise.
   deleted:       L0 000006
   deleted:       L6 000004
-  added:         L0 000009:[f#12,SET-f#12,SET] seqnums:[11-12] points:[f#12,SET-f#12,SET]
-  added:         L6 000010:[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
+  added:         L0 000009(000006):[f#12,SET-f#12,SET] seqnums:[11-12] points:[f#12,SET-f#12,SET]
+  added:         L6 000010(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
 
 excise e z
 ----
 would excise 2 files, use ingest-and-excise to excise.
   deleted:       L0 000006
   deleted:       L6 000004
-  added:         L0 000011:[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
-  added:         L6 000012:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
+  added:         L0 000011(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
+  added:         L6 000012(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
 
 excise f l
 ----
 would excise 2 files, use ingest-and-excise to excise.
   deleted:       L0 000006
   deleted:       L6 000004
-  added:         L0 000013:[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
-  added:         L6 000014:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
-  added:         L6 000015:[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
+  added:         L0 000013(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
+  added:         L6 000014(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
+  added:         L6 000015(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
 
 excise f ll
 ----
 would excise 2 files, use ingest-and-excise to excise.
   deleted:       L0 000006
   deleted:       L6 000004
-  added:         L0 000016:[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
-  added:         L6 000017:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
+  added:         L0 000016(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
+  added:         L6 000017(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
 
 excise p q
 ----
@@ -105,9 +105,9 @@ ingest-and-excise ext1 excise=c-k
 lsm
 ----
 6:
-  000019:[a#10,SET-a#10,SET]
+  000019(000004):[a#10,SET-a#10,SET]
   000018:[d#14,SET-e#14,SET]
-  000020:[l#10,SET-l#10,SET]
+  000020(000004):[l#10,SET-l#10,SET]
 
 iter
 first
@@ -154,14 +154,14 @@ excise f g
 ----
 would excise 1 files, use ingest-and-excise to excise.
   deleted:       L0 000005
-  added:         L0 000006:[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
-  added:         L0 000007:[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
+  added:         L0 000006(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
+  added:         L0 000007(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
 
 excise b c
 ----
 would excise 1 files, use ingest-and-excise to excise.
   deleted:       L0 000005
-  added:         L0 000008:[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
+  added:         L0 000008(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
 
 excise i j
 ----
@@ -175,9 +175,9 @@ excise c d
 would excise 2 files, use ingest-and-excise to excise.
   deleted:       L0 000005
   deleted:       L6 000004
-  added:         L0 000009:[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
-  added:         L0 000010:[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
-  added:         L6 000011:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET]
+  added:         L0 000009(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
+  added:         L0 000010(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
+  added:         L6 000011(000004):[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET]
 
 reset
 ----
@@ -208,8 +208,8 @@ ingest-and-excise ext2 excise=b-c
 lsm
 ----
 0.0:
-  000007:[a#10,SET-a#10,SET]
-  000008:[d#12,SET-ee#inf,RANGEKEYSET]
+  000007(000005):[a#10,SET-a#10,SET]
+  000008(000005):[d#12,SET-ee#inf,RANGEKEYSET]
 6:
   000006:[z#15,SET-z#15,SET]
 
@@ -248,8 +248,8 @@ ingest-and-excise ext2 excise=d-e
 lsm
 ----
 0.0:
-  000007:[a#10,SET-c#12,SET]
-  000008:[e#14,SET-j#19,SET]
+  000007(000005):[a#10,SET-c#12,SET]
+  000008(000005):[e#14,SET-j#19,SET]
 6:
   000006:[z#21,SET-z#21,SET]
 
@@ -264,9 +264,9 @@ ingest-and-excise ext3 excise=g-h
 lsm
 ----
 0.0:
-  000007:[a#10,SET-c#12,SET]
-  000010:[e#14,SET-f#15,SET]
-  000011:[h#17,SET-j#19,SET]
+  000007(000005):[a#10,SET-c#12,SET]
+  000010(000005):[e#14,SET-f#15,SET]
+  000011(000005):[h#17,SET-j#19,SET]
 6:
   000006:[z#21,SET-z#21,SET]
   000009:[zz#23,SET-zz#23,SET]
@@ -283,9 +283,9 @@ reopen
 lsm
 ----
 0.0:
-  000007:[a#10,SET-c#12,SET]
-  000010:[e#14,SET-f#15,SET]
-  000011:[h#17,SET-j#19,SET]
+  000007(000005):[a#10,SET-c#12,SET]
+  000010(000005):[e#14,SET-f#15,SET]
+  000011(000005):[h#17,SET-j#19,SET]
 6:
   000006:[z#21,SET-z#21,SET]
   000009:[zz#23,SET-zz#23,SET]
@@ -324,7 +324,7 @@ ingest-and-excise ext2 excise=d-f
 lsm
 ----
 0.0:
-  000007:[a#10,SET-c#12,SET]
+  000007(000005):[a#10,SET-c#12,SET]
 6:
   000006:[z#16,SET-z#16,SET]
 
@@ -334,7 +334,7 @@ reopen
 lsm
 ----
 0.0:
-  000007:[a#10,SET-c#12,SET]
+  000007(000005):[a#10,SET-c#12,SET]
 6:
   000006:[z#16,SET-z#16,SET]
 
@@ -401,11 +401,11 @@ ingest-and-excise ext3 excise=bd-cc
 lsm
 ----
 0.0:
-  000011:[cc#17,RANGEKEYSET-f#17,MERGE]
+  000011(000009):[cc#17,RANGEKEYSET-f#17,MERGE]
   000010:[z#19,SET-z#19,SET]
 6:
-  000012:[a@3#0,SET-bbsomethinglong@4#0,MERGE]
-  000013:[d@6#0,MERGE-z#0,MERGE]
+  000012(000008):[a@3#0,SET-bbsomethinglong@4#0,MERGE]
+  000013(000008):[d@6#0,MERGE-z#0,MERGE]
 
 iter range-key-masking=@10
 first
@@ -509,9 +509,9 @@ lsm
 0.0:
   000012:[x#14,SET-x#14,SET]
 6:
-  000013:[a#0,SET-b#0,SET]
+  000013(000009):[a#0,SET-b#0,SET]
   000010:[c#17,SET-c#17,SET]
-  000014:[d@6#15,DEL-d@6#0,SET]
+  000014(000009):[d@6#15,DEL-d@6#0,SET]
 
 iter lower=c upper=e
 last

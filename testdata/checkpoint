@@ -439,8 +439,8 @@ ingest-and-excise db ext1 excise=c-d
 lsm db
 ----
 6:
-  000012:[a#0,SET-b#0,SET]
-  000013:[d#0,SET-g#0,SET]
+  000012(000010):[a#0,SET-b#0,SET]
+  000013(000010):[d#0,SET-g#0,SET]
   000011:[i#20,SET-k#20,SET]
 
 build db ext2 format=pebblev2
@@ -454,10 +454,10 @@ ingest-and-excise db ext2 excise=j-k
 lsm db
 ----
 6:
-  000012:[a#0,SET-b#0,SET]
-  000013:[d#0,SET-g#0,SET]
-  000015:[i#20,SET-i#20,SET]
-  000016:[k#20,SET-k#20,SET]
+  000012(000010):[a#0,SET-b#0,SET]
+  000013(000010):[d#0,SET-g#0,SET]
+  000015(000011):[i#20,SET-i#20,SET]
+  000016(000011):[k#20,SET-k#20,SET]
   000014:[z#22,SET-z#22,SET]
 
 # scan db so that it is known what to expect from the checkpoints.
@@ -670,9 +670,9 @@ lsm checkpoints/checkpoint5
 0.0:
   000017:[h#18,SET-h#18,SET]
 6:
-  000013:[d#0,SET-g#0,SET]
-  000015:[i#20,SET-i#20,SET]
-  000016:[k#20,SET-k#20,SET]
+  000013(000010):[d#0,SET-g#0,SET]
+  000015(000011):[i#20,SET-i#20,SET]
+  000016(000011):[k#20,SET-k#20,SET]
   000014:[z#22,SET-z#22,SET]
 
 close checkpoints/checkpoint5
@@ -764,6 +764,6 @@ lsm checkpoints/checkpoint6
 0.0:
   000017:[h#18,SET-h#18,SET]
 6:
-  000015:[i#20,SET-i#20,SET]
-  000016:[k#20,SET-k#20,SET]
+  000015(000011):[i#20,SET-i#20,SET]
+  000016(000011):[k#20,SET-k#20,SET]
   000014:[z#22,SET-z#22,SET]
