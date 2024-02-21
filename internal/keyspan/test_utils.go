@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/dsl"
 )
@@ -381,8 +380,8 @@ func (p *probeIterator) WrapChildren(wrap WrapFn) {
 // RunIterCmd evaluates a datadriven command controlling an internal
 // keyspan.FragmentIterator, writing the results of the iterator operations to
 // the provided writer.
-func RunIterCmd(td *datadriven.TestData, iter FragmentIterator, w io.Writer) {
-	lines := strings.Split(strings.TrimSpace(td.Input), "\n")
+func RunIterCmd(tdInput string, iter FragmentIterator, w io.Writer) {
+	lines := strings.Split(strings.TrimSpace(tdInput), "\n")
 	for i, line := range lines {
 		if i > 0 {
 			fmt.Fprintln(w)

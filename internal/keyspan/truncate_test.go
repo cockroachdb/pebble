@@ -88,7 +88,7 @@ func TestTruncate(t *testing.T) {
 
 		case "saved-iter":
 			var buf bytes.Buffer
-			RunIterCmd(d, savedIter, &buf)
+			RunIterCmd(d.Input, savedIter, &buf)
 			return buf.String()
 
 		default:
