@@ -491,3 +491,6 @@ func recvWithDeadline(t *testing.T, td *datadriven.TestData, waitStr string, ch 
 // are complete. Currently this is done by waiting on various channels etc.
 // which exposes implementation detail. See concurrency_test.monitor, in
 // CockroachDB, for an alternative.
+
+// TODO(sumeer): test failoverManager.{List,Obsolete,Stats}
+// TODO(sumeer): test failoverWriter.getLog

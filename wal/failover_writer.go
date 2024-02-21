@@ -276,11 +276,16 @@ const maxPhysicalLogs = 10
 // an error on Writer.Close as fatal, this does mean that failoverWriter has
 // limited ability to mask errors (its primary task is to mask high latency).
 type failoverWriter struct {
-	opts    failoverWriterOpts
-	q       recordQueue
-	writers [maxPhysicalLogs]logWriterAndRecorder
-	mu      struct {
+	opts failoverWriterOpts
+	q    recordQueue
+	mu   struct {
 		sync.Mutex
+		// writers is protected by mu, except for updates to the
+		// latencyAndErrorRecorder field. WriteRecord does not acquire mu, so the
+		// protection by mu is for handling concurrent calls to switchToNewDir,
+		// Close, and getLog.
+		writers [maxPhysicalLogs]logWriterAndRecorder
+
 		// cond is signaled when the latest LogWriter is set in writers (or there
 		// is a creation error), or when the latest LogWriter is successfully
 		// closed. It is waited on in Close. We don't use channels and select
@@ -346,6 +351,14 @@ type logWriterAndRecorder struct {
 	// latest writer is done, whether it resulted in success or not.
 	createError error
 	r           latencyAndErrorRecorder
+
+	// dir, approxFileSize, synchronouslyClosed are kept for initializing
+	// segmentWithSizeEtc. The approxFileSize is initially set to whatever is
+	// returned by logCreator. When failoverWriter.Close is called,
+	// approxFileSize and synchronouslyClosed may be updated.
+	dir                 Dir
+	approxFileSize      uint64
+	synchronouslyClosed bool
 }
 
 var _ Writer = &failoverWriter{}
@@ -356,6 +369,8 @@ type failoverWriterOpts struct {
 	wn     NumWAL
 	logger base.Logger
 	timeSource
+	jobID int
+	logCreator
 
 	// Options that feed into SyncingFileOptions.
 	noSyncOnClose   bool
@@ -372,6 +387,21 @@ type failoverWriterOpts struct {
 
 	writerCreatedForTest chan<- struct{}
 }
+
+func simpleLogCreator(
+	dir Dir, wn NumWAL, li logNameIndex, r *latencyAndErrorRecorder, jobID int,
+) (f vfs.File, initialFileSize uint64, err error) {
+	filename := dir.FS.PathJoin(dir.Dirname, makeLogFilename(wn, li))
+	// Create file.
+	r.writeStart()
+	f, err = dir.FS.Create(filename)
+	r.writeEnd(err)
+	return f, 0, err
+}
+
+type logCreator func(
+	dir Dir, wn NumWAL, li logNameIndex, r *latencyAndErrorRecorder, jobID int,
+) (f vfs.File, initialFileSize uint64, err error)
 
 func newFailoverWriter(
 	opts failoverWriterOpts, initialDir dirAndFileHandle,
@@ -450,20 +480,21 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 	}
 	// writerIndex is the slot for this writer.
 	writerIndex := ww.mu.nextWriterIndex
-	if int(writerIndex) == len(ww.writers) {
+	if int(writerIndex) == len(ww.mu.writers) {
 		ww.mu.Unlock()
 		return errors.Errorf("exceeded switching limit")
 	}
+	ww.mu.writers[writerIndex].dir = dir.Dir
 	ww.mu.nextWriterIndex++
 	ww.mu.Unlock()
 
 	// Creation is async.
 	ww.opts.stopper.runAsync(func() {
-		// TODO(sumeer): recycling of logs.
-		filename := dir.FS.PathJoin(dir.Dirname, makeLogFilename(ww.opts.wn, writerIndex))
-		recorderAndWriter := &ww.writers[writerIndex].r
+		recorderAndWriter := &ww.mu.writers[writerIndex].r
 		recorderAndWriter.ts = ww.opts.timeSource
-		var file vfs.File
+		file, initialFileSize, err := ww.opts.logCreator(
+			dir.Dir, ww.opts.wn, writerIndex, recorderAndWriter, ww.opts.jobID)
+		ww.mu.writers[writerIndex].approxFileSize = initialFileSize
 		// handleErrFunc is called when err != nil. It handles the multiple IO error
 		// cases below.
 		handleErrFunc := func(err error) {
@@ -472,20 +503,12 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 			}
 			ww.mu.Lock()
 			defer ww.mu.Unlock()
-			ww.writers[writerIndex].createError = err
+			ww.mu.writers[writerIndex].createError = err
 			ww.mu.cond.Signal()
 			if ww.opts.writerCreatedForTest != nil {
 				ww.opts.writerCreatedForTest <- struct{}{}
 			}
 		}
-		var err error
-		// Create file.
-		recorderAndWriter.writeStart()
-		file, err = dir.FS.Create(filename)
-		recorderAndWriter.writeEnd(err)
-		// TODO(sumeer): should we fatal if primary dir? At some point it is better
-		// to fatal instead of continuing to failover.
-		// base.MustExist(dir.FS, filename, ww.opts.logger, err)
 		if err != nil {
 			handleErrFunc(err)
 			return
@@ -531,7 +554,7 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 				return true
 			}
 			// Latest writer.
-			ww.writers[writerIndex].w = w
+			ww.mu.writers[writerIndex].w = w
 			ww.mu.cond.Signal()
 			// NB: snapshotAndSwitchWriter does not block on IO, since
 			// SyncRecordGeneralized does no IO.
@@ -563,6 +586,14 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 			// returned error.
 			ww.opts.stopper.runAsync(func() {
 				_ = w.Close()
+				// TODO(sumeer): consider deleting this file too, since
+				// failoverWriter.Close may not wait for it. This is going to be
+				// extremely rare, so the risk of garbage empty files piling up is
+				// extremely low. Say failover happens daily and and of those cases we
+				// have to be very unlucky and the close happens while a failover was
+				// ongoing and the previous LogWriter successfully wrote everything
+				// (say 1% probability if we want to be pessimistic). A garbage file
+				// every 100 days. Restarts will delete that garbage.
 			})
 		}
 	})
@@ -611,7 +642,7 @@ func (ww *failoverWriter) recorderForCurDir() *latencyAndErrorRecorder {
 	if ww.mu.closed {
 		return nil
 	}
-	return &ww.writers[ww.mu.nextWriterIndex-1].r
+	return &ww.mu.writers[ww.mu.nextWriterIndex-1].r
 }
 
 // Close implements Writer.
@@ -673,14 +704,18 @@ func (ww *failoverWriter) closeInternal() (logicalOffset int64, err error) {
 			// can only process if it is done initializing, else we will iterate
 			// again.
 			for i := closeCalledCount; i < numWriters; i++ {
-				w := ww.writers[i].w
-				cErr := ww.writers[i].createError
+				w := ww.mu.writers[i].w
+				cErr := ww.mu.writers[i].createError
 				// Is the current index the last writer. If yes, this is also the last
 				// loop iteration.
 				isLastWriter := i == lastWriter.index
 				if w != nil {
 					// Can close it, so extend closeCalledCount.
 					closeCalledCount = i + 1
+					size := uint64(w.Size())
+					if ww.mu.writers[i].approxFileSize < size {
+						ww.mu.writers[i].approxFileSize = size
+					}
 					if isLastWriter {
 						// We may care about its error and when it finishes closing.
 						index := i
@@ -732,6 +767,9 @@ func (ww *failoverWriter) closeInternal() (logicalOffset int64, err error) {
 			// Either waiting for creation of last writer or waiting for the close
 			// to finish, or something else to become the last writer.
 			ww.mu.cond.Wait()
+		} else if ww.mu.writers[lastWriter.index].w != nil {
+			// This permits log recycling.
+			ww.mu.writers[lastWriter.index].synchronouslyClosed = true
 		}
 	}
 	err = lastWriter.err
@@ -746,6 +784,28 @@ func (ww *failoverWriter) Metrics() record.LogWriterMetrics {
 	ww.mu.Lock()
 	defer ww.mu.Unlock()
 	return ww.mu.metrics
+}
+
+// getLog can be called at any time, including after Close returns.
+func (ww *failoverWriter) getLog() logicalLogWithSizesEtc {
+	ww.mu.Lock()
+	defer ww.mu.Unlock()
+	ll := logicalLogWithSizesEtc{
+		num: ww.opts.wn,
+	}
+	for i := range ww.mu.writers {
+		if ww.mu.writers[i].w != nil {
+			ll.segments = append(ll.segments, segmentWithSizeEtc{
+				segment: segment{
+					logNameIndex: logNameIndex(i),
+					dir:          ww.mu.writers[i].dir,
+				},
+				approxFileSize:      ww.mu.writers[i].approxFileSize,
+				synchronouslyClosed: ww.mu.writers[i].synchronouslyClosed,
+			})
+		}
+	}
+	return ll
 }
 
 // latencyAndErrorRecorder records ongoing write and sync operations and errors

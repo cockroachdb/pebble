@@ -136,10 +136,10 @@ func TestFailoverWriter(t *testing.T) {
 			}
 			fmt.Fprintf(b, "log writers:\n")
 			for i := logNameIndex(0); i < w.mu.nextWriterIndex; i++ {
-				rLatency, rErr := w.writers[i].r.ongoingLatencyOrError()
+				rLatency, rErr := w.mu.writers[i].r.ongoingLatencyOrError()
 				require.Equal(t, time.Duration(0), rLatency)
-				if w.writers[i].createError != nil {
-					require.Equal(t, rErr, w.writers[i].createError)
+				if w.mu.writers[i].createError != nil {
+					require.Equal(t, rErr, w.mu.writers[i].createError)
 				}
 				errStr := "no error"
 				if rErr != nil {
@@ -253,6 +253,7 @@ func TestFailoverWriter(t *testing.T) {
 					w, err = newFailoverWriter(failoverWriterOpts{
 						wn:                   wn,
 						timeSource:           defaultTime{},
+						logCreator:           simpleLogCreator,
 						preallocateSize:      func() int { return 0 },
 						queueSemChan:         queueSemChan,
 						stopper:              stopper,
@@ -376,7 +377,7 @@ func TestFailoverWriter(t *testing.T) {
 					}
 					// Timeout eventually, if the state is unexpected.
 					for i := 0; i < 4000; i++ {
-						d, _ = w.writers[index].r.ongoingLatencyOrError()
+						d, _ = w.mu.writers[index].r.ongoingLatencyOrError()
 						if (d > 0) == expectedOngoing {
 							return returnStr()
 						}
@@ -603,6 +604,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 	ww, err := newFailoverWriter(failoverWriterOpts{
 		wn:                   0,
 		timeSource:           defaultTime{},
+		logCreator:           simpleLogCreator,
 		preallocateSize:      func() int { return 0 },
 		queueSemChan:         queueSemChan,
 		stopper:              stopper,

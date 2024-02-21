@@ -123,7 +123,7 @@ func Scan(dirs ...Dir) (Logs, error) {
 	return wals, nil
 }
 
-// Logs holds a collection of WAL files.
+// Logs holds a collection of WAL files, in increasing order of NumWAL.
 type Logs []LogicalLog
 
 // Get retrieves the WAL with the given number if present. The second return
