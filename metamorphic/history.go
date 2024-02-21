@@ -148,6 +148,13 @@ type historyRecorder struct {
 
 // Recordf records the results of a single operation.
 func (h historyRecorder) Recordf(format string, args ...interface{}) {
+	// Check for assertion errors.
+	for _, a := range args {
+		if err, ok := a.(error); ok && errors.IsAssertionFailure(err) {
+			fmt.Fprintf(os.Stderr, "%+v", err)
+			panic(err)
+		}
+	}
 	h.history.Recordf(h.op, format, args...)
 	// If the history recorder was configured with an additional record func,
 	// invoke it. This can be used to collect the per-operation output when
