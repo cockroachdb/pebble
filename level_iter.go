@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"runtime/debug"
@@ -714,6 +715,11 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 func (l *levelIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, base.LazyValue) {
+	if invariants.Enabled {
+		if !bytes.HasPrefix(key, prefix) || (l.comparer.Split != nil && len(prefix) != l.comparer.Split(key)) {
+			panic(fmt.Sprintf("invalid SeekPrefixGE prefix %q for key %q", prefix, key))
+		}
+	}
 	l.err = nil // clear cached iteration error
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false

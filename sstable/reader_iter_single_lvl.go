@@ -810,6 +810,9 @@ func (i *singleLevelIterator) seekGEHelper(
 func (i *singleLevelIterator) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, base.LazyValue) {
+	if invariants.Enabled && !bytes.HasPrefix(key, prefix) {
+		panic(fmt.Sprintf("invalid SeekPrefixGE prefix %q for key %q", prefix, key))
+	}
 	if i.vState != nil {
 		// Callers of SeekPrefixGE aren't aware of virtual sstable bounds, so
 		// we may have to internally restrict the bounds.
