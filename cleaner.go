@@ -166,7 +166,7 @@ func (cm *cleanupManager) mainLoop() {
 				cm.deleteObsoleteObject(fileTypeTable, job.jobID, of.nonLogFile.fileNum)
 			case fileTypeLog:
 				cm.deleteObsoleteFile(of.logFile.FS, fileTypeLog, job.jobID, of.logFile.Path,
-					base.DiskFileNum(of.logFile.NumWAL), of.logFile.FileSize)
+					base.DiskFileNum(of.logFile.NumWAL), of.logFile.ApproxFileSize)
 			default:
 				path := base.MakeFilepath(cm.opts.FS, of.nonLogFile.dir, of.fileType, of.nonLogFile.fileNum)
 				cm.deleteObsoleteFile(

@@ -136,10 +136,10 @@ func TestFailoverWriter(t *testing.T) {
 			}
 			fmt.Fprintf(b, "log writers:\n")
 			for i := logNameIndex(0); i < w.mu.nextWriterIndex; i++ {
-				rLatency, rErr := w.writers[i].r.ongoingLatencyOrError()
+				rLatency, rErr := w.mu.writers[i].r.ongoingLatencyOrError()
 				require.Equal(t, time.Duration(0), rLatency)
-				if w.writers[i].createError != nil {
-					require.Equal(t, rErr, w.writers[i].createError)
+				if w.mu.writers[i].createError != nil {
+					require.Equal(t, rErr, w.mu.writers[i].createError)
 				}
 				errStr := "no error"
 				if rErr != nil {
@@ -179,6 +179,14 @@ func TestFailoverWriter(t *testing.T) {
 		)
 		datadriven.RunTest(t, path,
 			func(t *testing.T, td *datadriven.TestData) string {
+				getLogFunc := func(b *strings.Builder) {
+					llse := w.getLog()
+					fmt.Fprintf(b, "getLog: num: %d\n", llse.num)
+					for _, s := range llse.segments {
+						fmt.Fprintf(b, "  segment %d: size %d closed %t dir: %s\n",
+							s.logNameIndex, s.approxFileSize, s.synchronouslyClosed, s.dir.Dirname)
+					}
+				}
 				closeFunc := func(closeKind closeKind, stopGoroutines bool) string {
 					if closeKind != waitForCloseToFinish {
 						closeSemCount = queueSemChanCap
@@ -231,6 +239,7 @@ func TestFailoverWriter(t *testing.T) {
 						if metrics.WriteThroughput.Bytes > 0 {
 							testutils.DurationIsAtLeast(t, metrics.WriteThroughput.WorkDuration, time.Nanosecond)
 						}
+						getLogFunc(&b)
 					}
 					if stopGoroutines {
 						// We expect the Close to complete without stopping all the
@@ -244,19 +253,34 @@ func TestFailoverWriter(t *testing.T) {
 					}
 					return b.String()
 				}
-				createWriter := func(noWaitForLogWriterCreation bool) {
+				createWriter := func(noWaitForLogWriterCreation bool, firstCallInitialFileSize int) {
 					wn := nextWALNum
 					nextWALNum++
 					var err error
 					stopper = newStopper()
+					numCreateCalls := 0
+					testLogCreator := simpleLogCreator
+					if firstCallInitialFileSize > 0 {
+						testLogCreator = func(
+							dir Dir, wn NumWAL, li logNameIndex, r *latencyAndErrorRecorder, jobID int,
+						) (f vfs.File, initialFileSize uint64, err error) {
+							f, _, err = simpleLogCreator(dir, wn, li, r, jobID)
+							if numCreateCalls == 0 {
+								initialFileSize = uint64(firstCallInitialFileSize)
+							}
+							numCreateCalls++
+							return f, initialFileSize, err
+						}
+					}
 					logWriterCreated = make(chan struct{}, 100)
 					w, err = newFailoverWriter(failoverWriterOpts{
 						wn:                   wn,
 						timeSource:           defaultTime{},
+						logCreator:           testLogCreator,
 						preallocateSize:      func() int { return 0 },
 						queueSemChan:         queueSemChan,
 						stopper:              stopper,
-						writerClosed:         func() {},
+						writerClosed:         func(_ logicalLogWithSizesEtc) {},
 						writerCreatedForTest: logWriterCreated,
 					}, testDirs[dirIndex])
 					require.NoError(t, err)
@@ -268,6 +292,7 @@ func TestFailoverWriter(t *testing.T) {
 				case "init":
 					var injs []errorfs.Injector
 					var noWriter bool
+					var initialFileSize int
 					for _, cmdArg := range td.CmdArgs {
 						switch cmdArg.Key {
 						case "inject-errors":
@@ -284,6 +309,8 @@ func TestFailoverWriter(t *testing.T) {
 							}
 						case "no-writer":
 							noWriter = true
+						case "initial-file-size":
+							td.ScanArgs(t, "initial-file-size", &initialFileSize)
 						default:
 							return fmt.Sprintf("unknown arg %s", cmdArg.Key)
 						}
@@ -295,7 +322,7 @@ func TestFailoverWriter(t *testing.T) {
 					fs = newBlockingFS(fs)
 					setDirsFunc(t, fs, &testDirs)
 					if !noWriter {
-						createWriter(false)
+						createWriter(false, initialFileSize)
 					}
 					return ""
 
@@ -304,7 +331,11 @@ func TestFailoverWriter(t *testing.T) {
 					if td.HasArg("no-wait") {
 						noWaitForLogWriterCreation = true
 					}
-					createWriter(noWaitForLogWriterCreation)
+					var initialFileSize int
+					if td.HasArg("initial-file-size") {
+						td.ScanArgs(t, "initial-file-size", &initialFileSize)
+					}
+					createWriter(noWaitForLogWriterCreation, initialFileSize)
 					return ""
 
 				case "write":
@@ -359,6 +390,11 @@ func TestFailoverWriter(t *testing.T) {
 				case "close-async":
 					return closeFunc(closeAsync, false)
 
+				case "get-log":
+					var b strings.Builder
+					getLogFunc(&b)
+					return b.String()
+
 				case "ongoing-latency":
 					var index int
 					td.ScanArgs(t, "writer-index", &index)
@@ -376,7 +412,7 @@ func TestFailoverWriter(t *testing.T) {
 					}
 					// Timeout eventually, if the state is unexpected.
 					for i := 0; i < 4000; i++ {
-						d, _ = w.writers[index].r.ongoingLatencyOrError()
+						d, _ = w.mu.writers[index].r.ongoingLatencyOrError()
 						if (d > 0) == expectedOngoing {
 							return returnStr()
 						}
@@ -603,10 +639,11 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 	ww, err := newFailoverWriter(failoverWriterOpts{
 		wn:                   0,
 		timeSource:           defaultTime{},
+		logCreator:           simpleLogCreator,
 		preallocateSize:      func() int { return 0 },
 		queueSemChan:         queueSemChan,
 		stopper:              stopper,
-		writerClosed:         func() {},
+		writerClosed:         func(_ logicalLogWithSizesEtc) {},
 		writerCreatedForTest: logWriterCreated,
 	}, dirs[dirIndex])
 	require.NoError(t, err)
