@@ -286,7 +286,7 @@ type DeletableLog struct {
 	// Path to the file.
 	Path string
 	NumWAL
-	FileSize uint64
+	ApproxFileSize uint64
 }
 
 // SyncOptions has non-nil Done and Err when fsync is requested, else both are
