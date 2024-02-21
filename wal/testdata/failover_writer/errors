@@ -1,7 +1,9 @@
 # Switch once with tail of first log equal to the head of the second log. This
 # is because the record at the tail did not request sync, so stayed in the
 # queue when the switch happened, and was replayed.
-init
+#
+# Large initial-file-size due to log recycling.
+init initial-file-size=500
 ----
 
 write sync=true value=woolly
@@ -21,6 +23,13 @@ write sync=false value=yak print-offset
 ----
 offset: 47
 
+# The approx file size reflects the initial-file-size.
+get-log
+----
+getLog: num: 0
+  segment 0: size 500 closed false dir: pri
+  segment 1: size 0 closed false dir: sec
+
 close
 ----
 close: ok, offset: 47
@@ -29,6 +38,9 @@ records:
   record 1: no sync
   record 2: no sync
 write bytes metric: 41
+getLog: num: 0
+  segment 0: size 500 closed false dir: pri
+  segment 1: size 30 closed true dir: sec
 log files:
   pri/000000.log
     0: woolly
@@ -56,6 +68,10 @@ write sync=true value=sheep print-offset
 ----
 offset: 11
 
+get-log
+----
+getLog: num: 1
+
 switch
 ----
 ok
@@ -67,6 +83,8 @@ records:
   record 0: synced
   record 1: synced
 write bytes metric: 44
+getLog: num: 1
+  segment 1: size 33 closed true dir: sec
 log files:
   sec/000001-001.log
     0: woolly
@@ -91,6 +109,12 @@ switch
 ----
 ok
 
+get-log
+----
+getLog: num: 2
+  segment 0: size 0 closed false dir: pri
+  segment 1: size 0 closed false dir: sec
+
 close
 ----
 close: ok, offset: 35
@@ -98,6 +122,9 @@ records:
   record 0: synced
   record 1: synced
 write bytes metric: 46
+getLog: num: 2
+  segment 0: size 35 closed false dir: pri
+  segment 1: size 35 closed true dir: sec
 log files:
   pri/000002.log
     EOF
@@ -136,6 +163,9 @@ records:
   record 0: synced
   record 1: synced
 write bytes metric: 44
+getLog: num: 3
+  segment 0: size 33 closed false dir: pri
+  segment 1: size 33 closed true dir: sec
 log files:
   pri/000003.log
     EOF
@@ -155,6 +185,7 @@ close
 ----
 close: injected error, offset: 0
 write bytes metric: 0
+getLog: num: 4
 log writers:
   writer 0: injected error
 
@@ -176,6 +207,8 @@ close: injected error, offset: 17
 records:
   record 0: synced
 write bytes metric: 17
+getLog: num: 5
+  segment 0: size 17 closed true dir: pri
 log files:
   pri/000005.log
     0: woolly
@@ -237,6 +270,7 @@ close: injected error, offset: 6
 records:
   record 0: sync error injected error
 write bytes metric: 0
+getLog: num: 6
 log writers:
   writer 0: injected error
   writer 1: injected error
@@ -299,6 +333,7 @@ close: injected error, offset: 6
 records:
   record 0: no sync
 write bytes metric: 0
+getLog: num: 7
 log writers:
   writer 0: injected error
   writer 1: injected error
@@ -328,6 +363,8 @@ close: ok, offset: 6
 records:
   record 0: no sync
 write bytes metric: 28
+getLog: num: 8
+  segment 1: size 17 closed true dir: sec
 log files:
   sec/000008-001.log
     0: woolly
@@ -358,6 +395,8 @@ close: ok, offset: 6
 records:
   record 0: synced
 write bytes metric: 28
+getLog: num: 9
+  segment 2: size 17 closed true dir: pri
 log files:
   pri/000009-002.log
     0: woolly
@@ -388,6 +427,7 @@ close: injected error, offset: 6
 records:
   record 0: sync error injected error
 write bytes metric: 0
+getLog: num: 10
 log writers:
   writer 0: injected error
   writer 1: injected error
