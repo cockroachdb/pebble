@@ -28,6 +28,8 @@ close: ok, offset: 17
 records:
   record 0: synced
 write bytes metric: 28
+getLog: num: 0
+  segment 0: size 17 closed true dir: pri
 log files:
   pri/000000.log
     0: woolly
@@ -135,11 +137,20 @@ records:
   record 2: synced
   record 3: no sync
 write bytes metric: 59
+getLog: num: 1
+  segment 0: size 35 closed false dir: pri
+  segment 1: size 48 closed true dir: sec
 
 # Do a noop switch.
 switch
 ----
 ok
+
+get-log
+----
+getLog: num: 1
+  segment 0: size 35 closed false dir: pri
+  segment 1: size 48 closed true dir: sec
 
 # First log writer is still trying to close, but blocked on the write.
 ongoing-latency writer-index=0
@@ -180,7 +191,7 @@ blocking-conf filename=000002.log create
 ----
 000002.log: 0b1
 
-create-writer-after-init no-wait
+create-writer-after-init no-wait initial-file-size=20
 ----
 
 write sync=true value=woolly print-offset
@@ -206,6 +217,15 @@ write sync=false value=yak print-offset
 ----
 offset: 47
 
+# The initial-file-size of 20 is observed as the approx file size, since
+# failoverWriter has not been closed.
+get-log
+----
+getLog: num: 2
+  segment 0: size 20 closed false dir: pri
+
+# The approx file size is updated to be the larger of the initial-file-size and
+# the current approximate, so it becomes 47.
 close
 ----
 close: ok, offset: 47
@@ -214,6 +234,8 @@ records:
   record 1: synced
   record 2: no sync
 write bytes metric: 58
+getLog: num: 2
+  segment 0: size 47 closed true dir: pri
 log files:
   pri/000002.log
     0: woolly
@@ -278,6 +300,8 @@ close: ok, offset: 6
 records:
   record 0: synced
 write bytes metric: 28
+getLog: num: 3
+  segment 1: size 17 closed true dir: sec
 log files:
   pri/000003.log
     EOF
@@ -352,6 +376,8 @@ close: ok, offset: 18
 records:
   record 0: synced
 write bytes metric: 29
+getLog: num: 4
+  segment 1: size 18 closed true dir: sec
 
 # First writer is still blocked.
 ongoing-latency writer-index=0

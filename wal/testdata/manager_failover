@@ -2,6 +2,7 @@
 init-manager
 ----
 ok
+recycler min-log-num: 0
 
 # Wait for monitor ticker to start.
 advance-time dur=1ms wait-monitor
@@ -54,12 +55,138 @@ close-manager
 ----
 ok
 
+# The min recyable log num bumps up to 3.
+init-manager reuse-fs
+----
+ok
+recycler min-log-num: 3
+
+list-and-stats
+----
+logs:
+  000001: {(pri,000)}
+  000002: {(pri,000)}
+stats:
+  obsolete: count 0 size 0
+  live: count 2 size 22
+
+# Wait for monitor ticker to start.
+advance-time dur=1ms wait-monitor
+----
+monitor state: dir index: 0
+now: 1ms
+
+create-writer wal-num=5
+----
+ok
+
+# Ensure LogWriter is created, so that it does not race with advance-time
+# below.
+advance-time dur=0ms wait-for-log-writer
+----
+now: 1ms
+
+write-record value=mammoth
+----
+offset: 18
+
+close-writer
+----
+ok
+
+create-writer wal-num=7
+----
+ok
+
+# Ensure LogWriter is created, so that it does not race with advance-time
+# below.
+advance-time dur=0ms wait-for-log-writer
+----
+now: 1ms
+
+write-record value=sheep
+----
+offset: 16
+
+close-writer
+----
+ok
+
+list-and-stats
+----
+logs:
+  000001: {(pri,000)}
+  000002: {(pri,000)}
+  000005: {(pri,000)}
+  000007: {(pri,000)}
+stats:
+  obsolete: count 0 size 0
+  live: count 4 size 56
+
+obsolete min-unflushed=7
+----
+ok
+recycler non-empty, front filenum: 5 size: 18
+to delete:
+  wal 1: path: pri/000001.log size: 11
+  wal 2: path: pri/000002.log size: 11
+
+obsolete min-unflushed=8 no-recycle
+----
+ok
+recycler non-empty, front filenum: 5 size: 18
+to delete:
+  wal 7: path: pri/000007.log size: 16
+
+# Reuses a file from the recycler.
+create-writer wal-num=9
+----
+ok
+
+advance-time dur=0ms wait-for-log-writer
+----
+now: 1ms
+
+# Because of the reuse, the file size for this live log is non-zero.
+list-and-stats
+----
+logs:
+  000009: {(pri,000)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 29
+
+write-record value=woolly
+----
+offset: 17
+
+write-record value=rhinoceros
+----
+offset: 38
+
+close-writer
+----
+ok
+
+list-and-stats
+----
+logs:
+  000009: {(pri,000)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 38
+
+close-manager
+----
+ok
+
 # Test where error on first log file creation causes switch to secondary, and
 # the secondary creation blocks for too long, causing switch back to the
 # primary.
 init-manager inject-errors=((ErrInjected (And Writes (PathMatch "*/000001.log") (OnIndex 0))))
 ----
 ok
+recycler min-log-num: 0
 
 block-io-config filename=000001-001.log create
 ----
@@ -92,6 +219,10 @@ advance-time dur=0ms wait-ongoing-io
 ----
 now: 77ms
 
+write-record value=mammoth
+----
+offset: 7
+
 elevate-write-stall-threshold
 ----
 true
@@ -107,17 +238,25 @@ now: 157ms
 wait-for-and-unblock-io filename=000001-001.log
 ----
 
-advance-time dur=1s
+advance-time dur=0ms wait-for-log-writer
 ----
-now: 1.157s
-
-elevate-write-stall-threshold
-----
-true
+now: 157ms
 
 close-writer
 ----
 ok
+
+list-and-stats
+----
+logs:
+  000001: {(pri,002)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 18
+
+advance-time dur=1s
+----
+now: 1.157s
 
 elevate-write-stall-threshold
 ----
@@ -131,13 +270,42 @@ elevate-write-stall-threshold
 ----
 false
 
+# Log on primary is not recycled since logNameIndex > 0.
+obsolete min-unflushed=2
+----
+ok
+recycler empty
+to delete:
+  wal 1: path: pri/000001-002.log size: 18
+
 create-writer wal-num=2
 ----
 ok
 
+advance-time dur=0ms wait-for-log-writer
+----
+now: 11.157s
+
+write-record value=sheep
+----
+offset: 16
+
 close-writer
 ----
 ok
+
+list-and-stats
+----
+logs:
+  000002: {(pri,000)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 16
+
+obsolete min-unflushed=3
+----
+ok
+recycler non-empty, front filenum: 2 size: 16
 
 close-manager
 ----
@@ -155,6 +323,7 @@ sec/000001-001.log
 init-manager inject-errors=((ErrInjected (And Writes (PathMatch "sec/*.log"))))
 ----
 ok
+recycler min-log-num: 0
 
 # Block creation of the first 3 files in the primary.
 block-io-config filename=000001.log create
@@ -296,6 +465,7 @@ pri/000001.log
 init-manager inject-errors=((ErrInjected (And Writes (PathMatch "*/000001.log"))))
 ----
 ok
+recycler min-log-num: 0
 
 # Wait for monitor ticker to start.
 advance-time dur=0ms wait-monitor

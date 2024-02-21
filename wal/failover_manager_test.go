@@ -299,7 +299,9 @@ func TestManagerFailover(t *testing.T) {
 			switch td.Cmd {
 			case "init-manager":
 				ts = newManualTime(time.UnixMilli(0))
-				memFS = vfs.NewMem()
+				if !td.HasArg("reuse-fs") {
+					memFS = vfs.NewMem()
+				}
 				proberIterationForTesting = make(chan struct{}, 50000)
 				monitorIterationForTesting = make(chan struct{}, 50000)
 				monitorStateBuf.Reset()
@@ -319,6 +321,8 @@ func TestManagerFailover(t *testing.T) {
 							}
 							injs[i] = inj
 						}
+					case "reuse-fs":
+						// Ignore, already handled above.
 					default:
 						return fmt.Sprintf("unknown arg %s", cmdArg.Key)
 					}
@@ -333,7 +337,7 @@ func TestManagerFailover(t *testing.T) {
 					Primary:              Dir{FS: fs, Dirname: dirs[primaryDirIndex]},
 					Secondary:            Dir{FS: fs, Dirname: dirs[secondaryDirIndex]},
 					MinUnflushedWALNum:   0,
-					MaxNumRecyclableLogs: 0,
+					MaxNumRecyclableLogs: 1,
 					NoSyncOnClose:        false,
 					BytesPerSync:         0,
 					PreallocateSize:      func() int { return 0 },
@@ -365,7 +369,12 @@ func TestManagerFailover(t *testing.T) {
 				logs, err := Scan(o.Dirs()...)
 				require.NoError(t, err)
 				err = fm.Init(o, logs)
-				return errorToStr(err)
+				var b strings.Builder
+				fmt.Fprintf(&b, "%s\n", errorToStr(err))
+				if err == nil {
+					fmt.Fprintf(&b, "recycler min-log-num: %d\n", fm.recycler.MinRecycleLogNum())
+				}
+				return b.String()
 
 			case "create-writer":
 				var walNum int
@@ -380,6 +389,58 @@ func TestManagerFailover(t *testing.T) {
 			case "close-writer":
 				_, err := fw.Close()
 				return errorToStr(err)
+
+			case "obsolete":
+				var minUnflushed int
+				td.ScanArgs(t, "min-unflushed", &minUnflushed)
+				var noRecycle bool
+				if td.HasArg("no-recycle") {
+					noRecycle = true
+				}
+				toDelete, err := fm.Obsolete(NumWAL(minUnflushed), noRecycle)
+				var b strings.Builder
+				fmt.Fprintf(&b, "%s\n", errorToStr(err))
+				if err == nil {
+					fileInfo, ok := fm.recycler.Peek()
+					fmt.Fprintf(&b, "recycler ")
+					if ok {
+						fmt.Fprintf(&b, "non-empty, front filenum: %d size: %d\n", fileInfo.FileNum, fileInfo.FileSize)
+					} else {
+						fmt.Fprintf(&b, "empty\n")
+					}
+					if len(toDelete) > 0 {
+						fmt.Fprintf(&b, "to delete:\n")
+						for _, f := range toDelete {
+							fmt.Fprintf(&b, "  wal %d: path: %s size: %d\n", f.NumWAL, f.Path, f.ApproxFileSize)
+						}
+					}
+				}
+				return b.String()
+
+			case "list-and-stats":
+				logs, err := fm.List()
+				if err != nil {
+					return err.Error()
+				}
+				stats := fm.Stats()
+				var b strings.Builder
+				if len(logs) > 0 {
+					fmt.Fprintf(&b, "logs:\n")
+					for _, f := range logs {
+						fmt.Fprintf(&b, "  %s\n", f.String())
+					}
+				}
+				fmt.Fprintf(&b, "stats:\n")
+				fmt.Fprintf(&b, "  obsolete: count %d size %d\n", stats.ObsoleteFileCount, stats.ObsoleteFileSize)
+				fmt.Fprintf(&b, "  live: count %d size %d\n", stats.LiveFileCount, stats.LiveFileSize)
+				return b.String()
+
+			case "write-record":
+				var value string
+				td.ScanArgs(t, "value", &value)
+				offset, err := fw.WriteRecord([]byte(value), SyncOptions{})
+				require.NoError(t, err)
+				return fmt.Sprintf("offset: %d", offset)
 
 			case "close-manager":
 				err := fm.Close()
