@@ -69,7 +69,7 @@ func TestMergingIter(t *testing.T) {
 			}
 			var iter MergingIter
 			iter.Init(cmp, keyspan.VisibleTransform(snapshot), new(MergingBuffers), iters...)
-			keyspan.RunIterCmd(td, &iter, &buf)
+			keyspan.RunIterCmd(td.Input, &iter, &buf)
 			return buf.String()
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
