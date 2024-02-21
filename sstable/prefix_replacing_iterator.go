@@ -41,8 +41,13 @@ type prefixReplacingIterator struct {
 	empty bool
 }
 
-var errInputPrefixMismatch = errors.New("key argument does not have prefix required for replacement")
-var errOutputPrefixMismatch = errors.New("key returned does not have prefix required for replacement")
+func errInputPrefixMismatch() error {
+	return errors.AssertionFailedf("key argument does not have prefix required for replacement")
+}
+
+func errOutputPrefixMismatch() error {
+	return errors.AssertionFailedf("key returned does not have prefix required for replacement")
+}
 
 var _ Iterator = (*prefixReplacingIterator)(nil)
 
@@ -101,7 +106,7 @@ func (p *prefixReplacingIterator) rewriteResult(
 		return k, v
 	}
 	if !bytes.HasPrefix(k.UserKey, p.contentPrefix) {
-		p.err = errOutputPrefixMismatch
+		p.err = errOutputPrefixMismatch()
 		if invariants.Enabled {
 			panic(p.err)
 		}
@@ -280,7 +285,7 @@ func newPrefixReplacingFragmentIterator(
 
 func (p *prefixReplacingFragmentIterator) rewriteArg(key []byte) ([]byte, error) {
 	if !bytes.HasPrefix(key, p.syntheticPrefix) {
-		return nil, errInputPrefixMismatch
+		return nil, errInputPrefixMismatch()
 	}
 	p.arg = append(p.arg[:len(p.contentPrefix)], key[len(p.syntheticPrefix):]...)
 	return p.arg, nil
@@ -293,7 +298,7 @@ func (p *prefixReplacingFragmentIterator) rewriteSpan(
 		return sp, err
 	}
 	if !bytes.HasPrefix(sp.Start, p.contentPrefix) || !bytes.HasPrefix(sp.End, p.contentPrefix) {
-		return nil, errOutputPrefixMismatch
+		return nil, errOutputPrefixMismatch()
 	}
 	sp.Start = append(p.out1[:len(p.syntheticPrefix)], sp.Start[len(p.contentPrefix):]...)
 	sp.End = append(p.out2[:len(p.syntheticPrefix)], sp.End[len(p.contentPrefix):]...)

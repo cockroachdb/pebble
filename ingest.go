@@ -491,14 +491,14 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 	// fit within the exciseSpan.
 	for _, f := range lr.shared {
 		if !exciseSpan.Contains(cmp, f.Smallest) || !exciseSpan.Contains(cmp, f.Largest) {
-			return errors.AssertionFailedf("pebble: shared file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
+			return errors.Newf("pebble: shared file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
 		}
 	}
 	if len(lr.external) > 0 {
 		if len(lr.local) > 0 || len(lr.shared) > 0 {
 			// Currently we only support external ingests on their own. If external
 			// files are present alongside local/shared files, return an error.
-			return errors.AssertionFailedf("pebble: external files cannot be ingested atomically alongside other types of files")
+			return errors.Newf("pebble: external files cannot be ingested atomically alongside other types of files")
 		}
 		// Sort according to the smallest key.
 		slices.SortFunc(lr.external, func(a, b ingestExternalMeta) int {
@@ -506,7 +506,7 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 		})
 		for i := 1; i < len(lr.external); i++ {
 			if sstableKeyCompare(cmp, lr.external[i-1].Largest, lr.external[i].Smallest) >= 0 {
-				return errors.AssertionFailedf("pebble: external sstables have overlapping ranges")
+				return errors.Newf("pebble: external sstables have overlapping ranges")
 			}
 		}
 		return nil
@@ -522,7 +522,7 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 
 	for i := 1; i < len(lr.local); i++ {
 		if sstableKeyCompare(cmp, lr.local[i-1].Largest, lr.local[i].Smallest) >= 0 {
-			return errors.AssertionFailedf("pebble: local ingestion sstables have overlapping ranges")
+			return errors.Newf("pebble: local ingestion sstables have overlapping ranges")
 		}
 	}
 	if len(lr.shared) == 0 {
