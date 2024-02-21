@@ -188,11 +188,12 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 
 				// Compute the key prefix for bloom filtering if split function is
 				// specified, or use the user key as default.
-				prefix := g.key
 				if g.comparer.Split != nil {
-					prefix = g.key[:g.comparer.Split(g.key)]
+					prefix := g.key[:g.comparer.Split(g.key)]
+					g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
+				} else {
+					g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
 				}
-				g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
 				if err := g.iter.Error(); err != nil {
 					g.err = err
 					return nil, base.LazyValue{}
@@ -230,12 +231,13 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		g.iter = &g.levelIter
 
 		// Compute the key prefix for bloom filtering if split function is
-		// specified, or use the user key as default.
-		prefix := g.key
+		// specified.
 		if g.comparer.Split != nil {
-			prefix = g.key[:g.comparer.Split(g.key)]
+			prefix := g.key[:g.comparer.Split(g.key)]
+			g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
+		} else {
+			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
 		}
-		g.iterKey, g.iterValue = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
 		if err := g.iter.Error(); err != nil {
 			g.err = err
 			return nil, base.LazyValue{}

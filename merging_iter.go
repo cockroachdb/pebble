@@ -1098,6 +1098,9 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 				// was greater than or equal to m.lower, the new key will
 				// continue to be greater than or equal to m.lower.
 				key = l.tombstone.End
+				if m.prefix != nil && !bytes.Equal(m.prefix, key[:m.split(key)]) {
+					m.prefix = nil
+				}
 			}
 		}
 	}
@@ -1126,6 +1129,11 @@ func (m *mergingIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, 
 func (m *mergingIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, base.LazyValue) {
+	if invariants.Enabled {
+		if !bytes.HasPrefix(key, prefix) || len(prefix) != m.split(key) {
+			panic(fmt.Sprintf("invalid SeekPrefixGE prefix %q for key %q", prefix, key))
+		}
+	}
 	m.prefix = prefix
 	m.err = m.seekGE(key, 0 /* start level */, flags)
 	if m.err != nil {

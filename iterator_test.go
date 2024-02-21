@@ -910,6 +910,9 @@ func TestIteratorSeekOpt(t *testing.T) {
 					return &minSeqNumPropertyCollector{}
 				},
 			}
+			comparer := *base.DefaultComparer
+			comparer.Split = func(a []byte) int { return len(a) }
+			opts.Comparer = &comparer
 
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -944,7 +947,6 @@ func TestIteratorSeekOpt(t *testing.T) {
 				}
 				iter, _ = snap.NewIter(nil)
 				iter.readSampling.forceReadSampling = true
-				iter.comparer.Split = func(a []byte) int { return len(a) }
 				iter.forceEnableSeekOpt = true
 				iter.merging.forceEnableSeekOpt = true
 			}
