@@ -55,6 +55,7 @@ type CommonReader interface {
 type IterTransforms struct {
 	SyntheticSeqNum    SyntheticSeqNum
 	HideObsoletePoints bool
+	SyntheticPrefix    SyntheticPrefix
 	SyntheticSuffix    SyntheticSuffix
 }
 

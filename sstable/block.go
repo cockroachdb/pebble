@@ -5,8 +5,10 @@
 package sstable
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
+	"slices"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -416,7 +418,9 @@ type blockIter struct {
 	// replacement rule, this will not be the case. Therefore, key should never
 	// be used after ikey is set.
 	key []byte
-	// fullKey is a buffer used for key prefix decompression.
+	// fullKey is a buffer used for key prefix decompression. Note that if
+	// transforms.SyntheticPrifix is not nil, fullKey always starts with that
+	// prefix.
 	fullKey []byte
 	// val contains the value the iterator is currently pointed at. If non-nil,
 	// this points to a slice of the block data.
@@ -454,7 +458,8 @@ type blockIter struct {
 		vbr            *valueBlockReader
 		hasValuePrefix bool
 	}
-	synthSuffixBuf []byte
+	synthSuffixBuf            []byte
+	firstUserKeyWithPrefixBuf []byte
 }
 
 // blockIter implements the base.InternalIterator interface.
@@ -484,7 +489,11 @@ func (i *blockIter) init(cmp Compare, split Split, block block, transforms IterT
 	i.numRestarts = numRestarts
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
-	i.fullKey = i.fullKey[:0]
+	if i.transforms.SyntheticPrefix != nil {
+		i.fullKey = append(i.fullKey[:0], i.transforms.SyntheticPrefix...)
+	} else {
+		i.fullKey = i.fullKey[:0]
+	}
 	i.val = nil
 	i.clearCache()
 	if i.restarts > 0 {
@@ -528,10 +537,11 @@ func (i *blockIter) isDataInvalidated() bool {
 
 func (i *blockIter) resetForReuse() blockIter {
 	return blockIter{
-		fullKey:   i.fullKey[:0],
-		cached:    i.cached[:0],
-		cachedBuf: i.cachedBuf[:0],
-		data:      nil,
+		fullKey:                   i.fullKey[:0],
+		cached:                    i.cached[:0],
+		cachedBuf:                 i.cachedBuf[:0],
+		firstUserKeyWithPrefixBuf: i.firstUserKeyWithPrefixBuf[:0],
+		data:                      nil,
 	}
 }
 
@@ -602,7 +612,7 @@ func (i *blockIter) readEntry() {
 		value = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 		ptr = unsafe.Pointer(uintptr(ptr) + 5)
 	}
-
+	shared += uint32(len(i.transforms.SyntheticPrefix))
 	unsharedKey := getBytes(ptr, int(unshared))
 	// TODO(sumeer): move this into the else block below.
 	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
@@ -678,6 +688,12 @@ func (i *blockIter) readFirstKey() error {
 	} else {
 		i.firstUserKey = nil
 		return base.CorruptionErrorf("pebble/table: invalid firstKey in block")
+	}
+	if i.transforms.SyntheticPrefix != nil {
+		i.firstUserKeyWithPrefixBuf = slices.Grow(i.firstUserKeyWithPrefixBuf[:0], len(i.transforms.SyntheticPrefix)+len(i.firstUserKey))
+		i.firstUserKeyWithPrefixBuf = append(i.firstUserKeyWithPrefixBuf, i.transforms.SyntheticPrefix...)
+		i.firstUserKeyWithPrefixBuf = append(i.firstUserKeyWithPrefixBuf, i.firstUserKey...)
+		i.firstUserKey = i.firstUserKeyWithPrefixBuf
 	}
 	return nil
 }
@@ -757,6 +773,25 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 	if invariants.Enabled && i.isDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
+	searchKey := key
+	if i.transforms.SyntheticPrefix != nil {
+		if !bytes.HasPrefix(key, i.transforms.SyntheticPrefix) {
+			if i.cmp(i.firstUserKey, key) >= 0 {
+				// The seek key is before or after the entire block of keys that start
+				// with SyntheticPrefix. To determine which, we need to compare against a
+				// valid key in the block. We use firstUserKey which has the synthetic
+				// prefix.
+				return i.First()
+			}
+			// Set the offset to the end of the block to mimic the offset of an
+			// invalid iterator. This ensures a subsequent i.Prev() returns a valid
+			// result.
+			i.offset = i.restarts
+			i.nextOffset = i.restarts
+			return nil, base.LazyValue{}
+		}
+		searchKey = key[len(i.transforms.SyntheticPrefix):]
+	}
 
 	i.clearCache()
 	// Find the index of the smallest restart point whose key is > the key
@@ -821,7 +856,7 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 			}
 			// Else k is invalid, and left as nil
 
-			if i.cmp(key, k) > 0 {
+			if i.cmp(searchKey, k) > 0 {
 				// The search key is greater than the user key at this restart point.
 				// Search beyond this restart point, since we are trying to find the
 				// first restart point with a user key >= the search key.
@@ -921,6 +956,25 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 	if invariants.Enabled && i.isDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
+	searchKey := key
+	if i.transforms.SyntheticPrefix != nil {
+		if !bytes.HasPrefix(key, i.transforms.SyntheticPrefix) {
+			// The seek key is before or after the entire block of keys that start
+			// with SyntheticPrefix. To determine which, we need to compare against a
+			// valid key in the block. We use firstUserKey which has the synthetic
+			// prefix.
+			if i.cmp(i.firstUserKey, key) < 0 {
+				return i.Last()
+			}
+			// Set the offset to the beginning of the block to mimic an exhausted
+			// iterator that has conducted backward interation. This ensures a
+			// subsequent Next() call returns the first key in the block.
+			i.offset = -1
+			i.nextOffset = 0
+			return nil, base.LazyValue{}
+		}
+		searchKey = key[len(i.transforms.SyntheticPrefix):]
+	}
 
 	i.clearCache()
 	// Find the index of the smallest restart point whose key is >= the key
@@ -985,7 +1039,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			}
 			// Else k is invalid, and left as nil
 
-			if i.cmp(key, k) > 0 {
+			if i.cmp(searchKey, k) > 0 {
 				// The search key is greater than the user key at this restart point.
 				// Search beyond this restart point, since we are trying to find the
 				// first restart point with a user key >= the search key.
@@ -1413,6 +1467,9 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 			d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
 			value = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 			ptr = unsafe.Pointer(uintptr(ptr) + 5)
+		}
+		if i.transforms.SyntheticPrefix != nil {
+			shared += uint32(len(i.transforms.SyntheticPrefix))
 		}
 		// The starting position of the value.
 		valuePtr := unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
