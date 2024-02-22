@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/spf13/cobra"
 )
 
@@ -59,10 +60,7 @@ type findT struct {
 	// List of version edits.
 	edits []manifest.VersionEdit
 	// List of WAL files sorted by disk file num.
-	//
-	// TODO(jackson): Support logical WALs that are split across multiple
-	// physical file segments.
-	logs []fileLoc
+	logs []wal.LogicalLog
 	// List of manifest files sorted by disk file num.
 	manifests []fileLoc
 	// List of table files sorted by disk file num.
@@ -180,16 +178,21 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 		return err
 	}
 
+	var walAccumulator wal.FileAccumulator
 	walk(stderr, f.opts.FS, dir, func(path string) {
-		// TODO(sumeer): delegate FileTypeLog handling to wal package.
+		if isLogFile, err := walAccumulator.MaybeAccumulate(f.opts.FS, path); err != nil {
+			fmt.Fprintf(stderr, "%s: %v\n", path, err)
+			return
+		} else if isLogFile {
+			return
+		}
+
 		ft, fileNum, ok := base.ParseFilename(f.opts.FS, path)
 		if !ok {
 			return
 		}
 		fl := fileLoc{DiskFileNum: fileNum, path: path}
 		switch ft {
-		case base.FileTypeLog:
-			f.logs = append(f.logs, fl)
 		case base.FileTypeManifest:
 			f.manifests = append(f.manifests, fl)
 		case base.FileTypeTable:
@@ -199,7 +202,10 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 		}
 	})
 
-	slices.SortFunc(f.logs, cmpFileLoc)
+	// TODO(jackson): Provide a means of scanning the secondary WAL directory
+	// too.
+
+	f.logs = walAccumulator.Finish()
 	slices.SortFunc(f.manifests, cmpFileLoc)
 	slices.SortFunc(f.tables, cmpFileLoc)
 
@@ -309,17 +315,11 @@ func (f *findT) search(stdout io.Writer, key []byte) []findRef {
 // Search the logs for references to the specified key.
 func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) []findRef {
 	cmp := f.opts.Comparer.Compare
-	for _, fl := range f.logs {
+	for _, ll := range f.logs {
 		_ = func() (err error) {
-			lf, err := f.opts.FS.Open(fl.path)
-			if err != nil {
-				fmt.Fprintf(stdout, "%s\n", err)
-				return
-			}
-			defer lf.Close()
-
+			rr := ll.OpenForRead()
 			if f.verbose {
-				fmt.Fprintf(stdout, "%s", fl.path)
+				fmt.Fprintf(stdout, "%s", ll)
 				defer fmt.Fprintf(stdout, "\n")
 			}
 			defer func() {
@@ -337,7 +337,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 						if f.verbose {
 							fmt.Fprintf(stdout, ": %s", err)
 						} else {
-							fmt.Fprintf(stdout, "%s: %s\n", fl.path, err)
+							fmt.Fprintf(stdout, "%s: %s\n", ll, err)
 						}
 					}
 				}
@@ -345,9 +345,8 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 
 			var b pebble.Batch
 			var buf bytes.Buffer
-			rr := record.NewReader(lf, fl.DiskFileNum)
 			for {
-				r, err := rr.Next()
+				r, off, err := rr.NextRecord()
 				if err == nil {
 					buf.Reset()
 					_, err = io.Copy(&buf, r)
@@ -358,7 +357,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 
 				b = pebble.Batch{}
 				if err := b.SetRepr(buf.Bytes()); err != nil {
-					fmt.Fprintf(stdout, "%s: corrupt log file: %v", fl.path, err)
+					fmt.Fprintf(stdout, "%s: corrupt log file: %v", ll, err)
 					continue
 				}
 				seqNum := b.SeqNum()
@@ -366,7 +365,7 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 					kind, ukey, value, ok, err := r.Next()
 					if !ok {
 						if err != nil {
-							fmt.Fprintf(stdout, "%s: corrupt log file: %v", fl.path, err)
+							fmt.Fprintf(stdout, "%s: corrupt log file: %v", ll, err)
 							break
 						}
 						break
@@ -395,8 +394,8 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 					refs = append(refs, findRef{
 						key:      ikey.Clone(),
 						value:    append([]byte(nil), value...),
-						fileNum:  base.PhysicalTableFileNum(fl.DiskFileNum),
-						filename: filepath.Base(fl.path),
+						fileNum:  base.FileNum(ll.Num),
+						filename: filepath.Base(off.PhysicalFile),
 					})
 				}
 			}

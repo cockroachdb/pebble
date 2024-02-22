@@ -119,9 +119,9 @@ func (a *FileAccumulator) MaybeAccumulate(fs vfs.FS, path string) (isLogFile boo
 	return a.maybeAccumulate(fs, dirname, filename)
 }
 
-// Finish returns a sorted slice of LogicalLogs constructed from the physical
-// files observed through MaybeAccumulate.
-func (a *FileAccumulator) Finish() []LogicalLog {
+// Finish returns a Logs constructed from the physical files observed through
+// MaybeAccumulate.
+func (a *FileAccumulator) Finish() Logs {
 	wals := a.wals
 	a.wals = nil
 	return wals
