@@ -32,6 +32,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 	// Generate a random database by running the metamorphic test.
 	testOpts := metamorphic.RandomOptions(rng, nil /* custom opt parsers */)
 	testOpts.Opts.Cache.Ref()
+	defer testOpts.Opts.Cache.Unref()
 	{
 		ops := metamorphic.GenerateOps(rng, 10000, metamorphic.WriteOpConfig())
 		test, err := metamorphic.New(ops, testOpts, "" /* dir */, io.Discard)
