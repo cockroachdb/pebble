@@ -145,8 +145,8 @@ func (v *VirtualReader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 	upper := &v.vState.upper
 
 	if v.vState.prefixChange != nil {
-		lower = &InternalKey{UserKey: v.vState.prefixChange.ReplaceArg(lower.UserKey), Trailer: lower.Trailer}
-		upper = &InternalKey{UserKey: v.vState.prefixChange.ReplaceArg(upper.UserKey), Trailer: upper.Trailer}
+		lower = &InternalKey{UserKey: v.vState.prefixChange.Invert(lower.UserKey), Trailer: lower.Trailer}
+		upper = &InternalKey{UserKey: v.vState.prefixChange.Invert(upper.UserKey), Trailer: upper.Trailer}
 
 		iter = keyspan.Truncate(
 			v.reader.Compare, iter, lower.UserKey, upper.UserKey,
@@ -205,8 +205,8 @@ func (v *VirtualReader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 	}
 
 	if v.vState.prefixChange != nil {
-		lower = &InternalKey{UserKey: v.vState.prefixChange.ReplaceArg(lower.UserKey), Trailer: lower.Trailer}
-		upper = &InternalKey{UserKey: v.vState.prefixChange.ReplaceArg(upper.UserKey), Trailer: upper.Trailer}
+		lower = &InternalKey{UserKey: v.vState.prefixChange.Invert(lower.UserKey), Trailer: lower.Trailer}
+		upper = &InternalKey{UserKey: v.vState.prefixChange.Invert(upper.UserKey), Trailer: upper.Trailer}
 		iter = keyspan.Truncate(
 			v.reader.Compare, iter, lower.UserKey, upper.UserKey,
 			lower, upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnUpperTruncate */
@@ -263,8 +263,8 @@ func (v *virtualState) constrainBounds(
 		}
 	}
 	if v.prefixChange != nil {
-		first = v.prefixChange.ReplaceArg(first)
-		last = v.prefixChange.ReplaceArg(last)
+		first = v.prefixChange.Invert(first)
+		last = v.prefixChange.Invert(last)
 	}
 	// TODO(bananabrick): What if someone passes in bounds completely outside of
 	// virtual sstable bounds?

@@ -286,14 +286,14 @@ type PrefixReplacement struct {
 	ContentPrefix, SyntheticPrefix []byte
 }
 
-// ReplaceArg replaces the new prefix in the argument with the original prefix.
-func (p *PrefixReplacement) ReplaceArg(src []byte) []byte {
-	return p.replace(src, p.SyntheticPrefix, p.ContentPrefix)
+// Apply replaces the content prefix in the key with the synthetic prefix.
+func (p *PrefixReplacement) Apply(key []byte) []byte {
+	return p.replace(key, p.ContentPrefix, p.SyntheticPrefix)
 }
 
-// ReplaceResult replaces the original prefix in the result with the new prefix.
-func (p *PrefixReplacement) ReplaceResult(key []byte) []byte {
-	return p.replace(key, p.ContentPrefix, p.SyntheticPrefix)
+// Invert replaces the synthetic prefix in the key with the content prefix.
+func (p *PrefixReplacement) Invert(key []byte) []byte {
+	return p.replace(key, p.SyntheticPrefix, p.ContentPrefix)
 }
 
 func (p *PrefixReplacement) replace(key, from, to []byte) []byte {
