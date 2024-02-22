@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
+	"github.com/cockroachdb/pebble/sstable"
 	"golang.org/x/exp/rand"
 )
 
@@ -1283,82 +1284,74 @@ func (g *generator) writerIngestExternalFiles() {
 	for i := range objs {
 		// We allow the same object to be selected multiple times.
 		id := g.externalObjects.rand(g.rng)
-
 		b := g.keyManager.objKeyMeta(id).bounds
-		// For now, set the bounds to the bounds of the entire object.
-		kr := pebble.KeyRange{
-			Start: b.smallest,
-			End:   b.largest,
-		}
+
+		objStart := b.smallest
+		objEnd := b.largest
 		if !b.largestExcl {
 			// Move up the end key a bit by appending a few letters to the prefix.
-			kr.End = append(g.prefix(kr.End), randBytes(g.rng, 1, 3)...)
+			objEnd = append(g.prefix(objEnd), randBytes(g.rng, 1, 3)...)
+		}
+		// Generate two random keys within the given bounds.
+		// First, generate a start key in the range [objStart, objEnd).
+		start := g.keyGenerator.RandKeyInRange(0.01, pebble.KeyRange{
+			Start: objStart,
+			End:   objEnd,
+		})
+		// Second, generate an end key in the range (start, objEnd]. To do this, we
+		// generate a key in the range [start, objEnd) and if we get `start`, we
+		// remap that to `objEnd`.
+		end := g.keyGenerator.RandKeyInRange(0.01, pebble.KeyRange{
+			Start: start,
+			End:   objEnd,
+		})
+		if g.cmp(start, end) == 0 {
+			end = objEnd
+		}
+
+		var syntheticSuffix sstable.SyntheticSuffix
+		if g.rng.Intn(2) == 0 {
+			// Try to set a synthetic suffix. We can only do so if the bounds don't
+			// have suffixes, so trim them.
+			start = g.prefix(start)
+			end = g.prefix(end)
+			if g.cmp(start, end) == 0 {
+				// Move the end bound up a bit.
+				end = append(g.prefix(end), randBytes(g.rng, 1, 3)...)
+			}
+			syntheticSuffix = g.keyGenerator.SkewedSuffix(0.1)
 		}
 
 		objs[i] = externalObjWithBounds{
 			externalObjID: id,
-			bounds:        kr,
+			bounds: pebble.KeyRange{
+				Start: start,
+				End:   end,
+			},
+			syntheticSuffix: syntheticSuffix,
 		}
 	}
 
-	// Sort the objects by their start bound.
-	sorted := make([]*externalObjWithBounds, numFiles)
-	for i := range sorted {
-		sorted[i] = &objs[i]
-	}
-	slices.SortFunc(sorted, func(a, b *externalObjWithBounds) int {
+	slices.SortFunc(objs, func(a, b externalObjWithBounds) int {
 		return g.cmp(a.bounds.Start, b.bounds.Start)
 	})
 
-	// We take the overall bounds of all the objects and generate 2*numFiles keys
-	// in that range to create the per-object bounds. In many cases, there won't
-	// be overlap between the object and its corresponding bounds but that's ok
-	// (we verify that when running the op).
-	overall := sorted[0].bounds
-	for i := 1; i < len(sorted); i++ {
-		if g.cmp(overall.End, sorted[i].bounds.End) < 0 {
-			overall.End = sorted[i].bounds.End
-		}
-	}
-	if g.cmp(overall.Start, overall.End) >= 0 {
-		panic(fmt.Sprintf("invalid bounds [%q, %q)", overall.Start, overall.End))
-	}
-	// If the bounds have the same prefix, we might not be able to generate enough unique keys.
-	if g.cmp(g.prefix(overall.Start), g.prefix(overall.End)) == 0 {
-		// Append some bytes to move up the end bound.
-		overall.End = append(g.prefix(overall.End), randBytes(g.rng, 1, 3)...)
-	}
-	// Generate 2*numFiles distinct keys and sort them. These will form the ingest
-	// bounds for each file.
-	keys := g.keyGenerator.UniqueKeys(2*numFiles, func() []byte {
-		return g.keyGenerator.RandKeyInRange(0.01, overall)
-	})
-
-	for i, o := range sorted {
-		if i > 0 && g.rng.Intn(4) == 0 {
-			// Sometimes use the previous end key as the start key; this will be common in practice.
-			o.bounds.Start = sorted[i-1].bounds.End
-		} else {
-			o.bounds.Start = keys[2*i]
-		}
-		o.bounds.End = keys[2*i+1]
-
-		if g.rng.Intn(2) == 0 {
-			// Try to set a synthetic suffix. We can only do so if the bounds don't
-			// have suffixes, so try to trim them.
-			start := g.prefix(o.bounds.Start)
-			end := g.prefix(o.bounds.End)
-			// If the trimmed bounds overlap with adjacent file bounds, we just don't
-			// set the suffix.
-			if g.cmp(start, end) < 0 &&
-				(i == 0 || g.cmp(sorted[i-1].bounds.End, start) <= 0) &&
-				(i == len(sorted)-1 || g.cmp(end, sorted[i+1].bounds.Start) <= 0) {
-				o.bounds.Start = start
-				o.bounds.End = end
-				o.syntheticSuffix = g.keyGenerator.SkewedSuffix(0.1)
+	// Trim bounds so that there is no overlap.
+	for i := 0; i < len(objs)-1; i++ {
+		if g.cmp(objs[i].bounds.End, objs[i+1].bounds.Start) > 0 {
+			objs[i].bounds.End = objs[i+1].bounds.Start
+			if objs[i].syntheticSuffix != nil {
+				// Bounds can't have suffixes when syntheticSuffix is used.
+				objs[i].bounds.End = g.prefix(objs[i].bounds.End)
 			}
 		}
 	}
+	// Some bounds might be empty now, remove those objects altogether. Note that
+	// the last object is unmodified, so at least that object will remain.
+	objs = slices.DeleteFunc(objs, func(o externalObjWithBounds) bool {
+		return g.cmp(o.bounds.Start, o.bounds.End) >= 0
+	})
+
 	// The batches we're ingesting may contain single delete tombstones that
 	// when applied to the writer result in nondeterminism in the deleted key.
 	// If that's the case, we can restore determinism by first deleting the keys
@@ -1378,6 +1371,11 @@ func (g *generator) writerIngestExternalFiles() {
 			}
 		}
 	}
+
+	// Shuffle the objects.
+	g.rng.Shuffle(len(objs), func(i, j int) {
+		objs[i], objs[j] = objs[j], objs[i]
+	})
 
 	g.add(&ingestExternalFilesOp{
 		dbID: dbID,
