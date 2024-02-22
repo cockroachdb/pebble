@@ -170,6 +170,14 @@ func (ss SyntheticSuffix) IsSet() bool {
 	return len(ss) > 0
 }
 
+// SyntheticPrefix represents a byte slice that it implicitly prepended to every
+// key in a file being read or accessed by a reader. Specifically, the file is
+// implied to contain keys that do not explicitly include the prefix, and the
+// file's bloom filters similarly are constructed on keys that do not include it
+// but interactions with the file, including seeks and reads, will all behave as
+// if the file had been constructed from files that did include the prefix.
+type SyntheticPrefix []byte
+
 // rawTombstonesOpt is a Reader open option for specifying that range
 // tombstones returned by Reader.NewRangeDelIter() should not be
 // fragmented. Used by debug tools to get a raw view of the tombstones
