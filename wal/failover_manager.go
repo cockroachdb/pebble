@@ -315,7 +315,7 @@ func (m *failoverMonitor) monitorLoop(shouldQuiesce <-chan struct{}) {
 					// error is useless.
 					lastWriter.errorCounts[dirIndex]++
 					switchDir = true
-				} else if writerOngoingLatency > m.opts.UnhealthyOperationLatencyThreshold {
+				} else if writerOngoingLatency > m.opts.UnhealthyOperationLatencyThreshold() {
 					// Arbitrary value.
 					const switchImmediatelyCountThreshold = 2
 					// High latency. Switch immediately if the number of switches that
@@ -384,8 +384,10 @@ func (o *FailoverOptions) ensureDefaults() {
 	if o.UnhealthySamplingInterval == 0 {
 		o.UnhealthySamplingInterval = 100 * time.Millisecond
 	}
-	if o.UnhealthyOperationLatencyThreshold == 0 {
-		o.UnhealthyOperationLatencyThreshold = 200 * time.Millisecond
+	if o.UnhealthyOperationLatencyThreshold == nil {
+		o.UnhealthyOperationLatencyThreshold = func() time.Duration {
+			return 200 * time.Millisecond
+		}
 	}
 }
 

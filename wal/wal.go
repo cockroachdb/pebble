@@ -172,7 +172,7 @@ type FailoverOptions struct {
 	UnhealthySamplingInterval time.Duration
 	// UnhealthyOperationLatencyThreshold is the latency threshold that is
 	// considered unhealthy, for operations done by a LogWriter.
-	UnhealthyOperationLatencyThreshold time.Duration
+	UnhealthyOperationLatencyThreshold func() time.Duration
 
 	// ElevatedWriteStallThresholdLag is the duration for which an elevated
 	// threshold should continue after a switch back to the primary dir. This is
