@@ -358,7 +358,7 @@ func TestManagerFailover(t *testing.T) {
 					// Use 75ms to not align with PrimaryDirProbeInterval, to avoid
 					// races.
 					UnhealthySamplingInterval:          75 * time.Millisecond,
-					UnhealthyOperationLatencyThreshold: 50 * time.Millisecond,
+					UnhealthyOperationLatencyThreshold: func() time.Duration { return 50 * time.Millisecond },
 					ElevatedWriteStallThresholdLag:     10 * time.Second,
 					timeSource:                         ts,
 					monitorIterationForTesting:         monitorIterationForTesting,
