@@ -369,8 +369,9 @@ func TestBlockIterReverseDirections(t *testing.T) {
 // NB: the signature to check is not simply `check(eKey,eVal,gKey,gVal)` because
 // `check(expect.Next(),got.Next())` does not compile.
 type checker struct {
-	t        *testing.T
-	notValid bool
+	t         *testing.T
+	notValid  bool
+	alsoCheck func()
 }
 
 func (c *checker) check(
@@ -388,6 +389,74 @@ func (c *checker) check(
 			require.Nil(c.t, gKey)
 			c.notValid = true
 		}
+		c.alsoCheck()
+	}
+}
+
+func TestBlockSyntheticPrefix(t *testing.T) {
+	for _, prefix := range []string{"_", "", "~", "fruits/"} {
+		for _, restarts := range []int{1, 2, 3, 4, 10} {
+			t.Run(fmt.Sprintf("prefix=%s/restarts=%d", prefix, restarts), func(t *testing.T) {
+
+				elidedPrefixWriter, includedPrefixWriter := &blockWriter{restartInterval: restarts}, &blockWriter{restartInterval: restarts}
+				keys := []string{
+					"apple", "apricot", "banana",
+					"grape", "orange", "peach",
+					"pear", "persimmon",
+				}
+				for _, k := range keys {
+					elidedPrefixWriter.add(ikey(k), nil)
+					includedPrefixWriter.add(ikey(prefix+k), nil)
+				}
+
+				elidedPrefixBlock, includedPrefixBlock := elidedPrefixWriter.finish(), includedPrefixWriter.finish()
+
+				expect, err := newBlockIter(bytes.Compare, nil, includedPrefixBlock, IterTransforms{})
+				require.NoError(t, err)
+
+				got, err := newBlockIter(bytes.Compare, nil, elidedPrefixBlock, IterTransforms{SyntheticPrefix: []byte(prefix)})
+				require.NoError(t, err)
+
+				c := checker{
+					t: t,
+					alsoCheck: func() {
+						require.Equal(t, expect.valid(), got.valid())
+						require.Equal(t, expect.Error(), got.Error())
+					},
+				}
+
+				c.check(expect.First())(got.First())
+				c.check(expect.Next())(got.Next())
+				c.check(expect.Prev())(got.Prev())
+
+				c.check(expect.SeekGE([]byte(prefix+"or"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefix+"or"), base.SeekGEFlagsNone))
+				c.check(expect.SeekGE([]byte(prefix+"peach"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefix+"peach"), base.SeekGEFlagsNone))
+				c.check(expect.Next())(got.Next())
+				c.check(expect.Next())(got.Next())
+				c.check(expect.Next())(got.Next())
+
+				c.check(expect.SeekLT([]byte(prefix+"banana"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefix+"banana"), base.SeekLTFlagsNone))
+				c.check(expect.SeekLT([]byte(prefix+"pomegranate"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefix+"pomegranate"), base.SeekLTFlagsNone))
+				c.check(expect.SeekLT([]byte(prefix+"apple"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefix+"apple"), base.SeekLTFlagsNone))
+
+				// Check Prefix-less seeks behave identically
+				c.check(expect.First())(got.First())
+				c.check(expect.SeekGE([]byte("peach"), base.SeekGEFlagsNone))(got.SeekGE([]byte("peach"), base.SeekGEFlagsNone))
+				c.check(expect.Prev())(got.Prev())
+
+				c.check(expect.Last())(got.Last())
+				c.check(expect.SeekLT([]byte("peach"), base.SeekLTFlagsNone))(got.SeekLT([]byte("peach"), base.SeekLTFlagsNone))
+				c.check(expect.Next())(got.Next())
+
+				// Iterate past last key and call prev
+				c.check(expect.SeekGE([]byte(prefix+"pomegranate"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefix+"pomegranate"), base.SeekGEFlagsNone))
+				c.check(expect.Prev())(got.Prev())
+
+				// Iterate before first key and call next
+				c.check(expect.SeekLT([]byte(prefix+"ant"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefix+"ant"), base.SeekLTFlagsNone))
+				c.check(expect.Next())(got.Next())
+			})
+		}
 	}
 }
 
@@ -401,101 +470,115 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 	split := testkeys.Comparer.Split
 
 	for _, restarts := range []int{1, 2, 3, 4, 10} {
-		t.Run(fmt.Sprintf("restarts=%d", restarts), func(t *testing.T) {
+		for _, replacePrefix := range []bool{false, true} {
 
-			suffixWriter, expectedSuffixWriter := &blockWriter{restartInterval: restarts}, &blockWriter{restartInterval: restarts}
-			keys := []string{
-				"apple@2", "apricot@2", "banana@13", "cantaloupe",
-				"grape@2", "orange@14", "peach@4",
-				"pear@1", "persimmon@4",
-			}
-			for _, key := range keys {
-				suffixWriter.add(ikey(key), nil)
-				replacedKey := strings.Split(key, "@")[0] + "@" + expectedSuffix
-				expectedSuffixWriter.add(ikey(replacedKey), nil)
-			}
+			t.Run(fmt.Sprintf("restarts=%d;replacePrefix=%t", restarts, replacePrefix), func(t *testing.T) {
 
-			suffixReplacedBlock := suffixWriter.finish()
-			expectedBlock := expectedSuffixWriter.finish()
+				suffixWriter, expectedSuffixWriter := &blockWriter{restartInterval: restarts}, &blockWriter{restartInterval: restarts}
+				keys := []string{
+					"apple@2", "apricot@2", "banana@13", "cantaloupe",
+					"grape@2", "orange@14", "peach@4",
+					"pear@1", "persimmon@4",
+				}
 
-			expect, err := newBlockIter(cmp, split, expectedBlock, NoTransforms)
-			require.NoError(t, err)
+				var synthPrefix []byte
+				var prefixStr string
+				if replacePrefix {
+					prefixStr = "fruit/"
+					synthPrefix = []byte(prefixStr)
+				}
+				for _, key := range keys {
+					suffixWriter.add(ikey(key), nil)
+					replacedKey := strings.Split(key, "@")[0] + "@" + expectedSuffix
+					expectedSuffixWriter.add(ikey(prefixStr+replacedKey), nil)
+				}
 
-			got, err := newBlockIter(cmp, split, suffixReplacedBlock, IterTransforms{SyntheticSuffix: synthSuffix})
-			require.NoError(t, err)
+				suffixReplacedBlock := suffixWriter.finish()
+				expectedBlock := expectedSuffixWriter.finish()
 
-			c := checker{t: t}
+				expect, err := newBlockIter(cmp, split, expectedBlock, NoTransforms)
+				require.NoError(t, err)
 
-			c.check(expect.First())(got.First())
-			c.check(expect.Next())(got.Next())
-			c.check(expect.Prev())(got.Prev())
+				got, err := newBlockIter(cmp, split, suffixReplacedBlock, IterTransforms{SyntheticSuffix: synthSuffix, SyntheticPrefix: synthPrefix})
+				require.NoError(t, err)
 
-			// Try searching with a key that matches the target key before replacement
-			c.check(expect.SeekGE([]byte("apricot@2"), base.SeekGEFlagsNone))(got.SeekGE([]byte("apricot@2"), base.SeekGEFlagsNone))
-			c.check(expect.Next())(got.Next())
+				c := checker{t: t,
+					alsoCheck: func() {
+						require.Equal(t, expect.valid(), got.valid())
+						require.Equal(t, expect.Error(), got.Error())
+					}}
 
-			// Try searching with a key that matches the target key after replacement
-			c.check(expect.SeekGE([]byte("orange@15"), base.SeekGEFlagsNone))(got.SeekGE([]byte("orange@15"), base.SeekGEFlagsNone))
-			c.check(expect.Next())(got.Next())
-			c.check(expect.Next())(got.Next())
+				c.check(expect.First())(got.First())
+				c.check(expect.Next())(got.Next())
+				c.check(expect.Prev())(got.Prev())
 
-			// Try searching with a key that results in off by one handling
-			c.check(expect.First())(got.First())
-			c.check(expect.SeekGE([]byte("grape@10"), base.SeekGEFlagsNone))(got.SeekGE([]byte("grape@10"), base.SeekGEFlagsNone))
-			c.check(expect.Next())(got.Next())
-			c.check(expect.Next())(got.Next())
+				// Try searching with a key that matches the target key before replacement
+				c.check(expect.SeekGE([]byte(prefixStr+"apricot@2"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefixStr+"apricot@2"), base.SeekGEFlagsNone))
+				c.check(expect.Next())(got.Next())
 
-			// Try searching with a key with suffix greater than the replacement
-			c.check(expect.SeekGE([]byte("orange@16"), base.SeekGEFlagsNone))(got.SeekGE([]byte("orange@16"), base.SeekGEFlagsNone))
-			c.check(expect.Next())(got.Next())
+				// Try searching with a key that matches the target key after replacement
+				c.check(expect.SeekGE([]byte(prefixStr+"orange@15"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefixStr+"orange@15"), base.SeekGEFlagsNone))
+				c.check(expect.Next())(got.Next())
+				c.check(expect.Next())(got.Next())
 
-			// Exhaust the iterator via searching
-			c.check(expect.SeekGE([]byte("persimmon@17"), base.SeekGEFlagsNone))(got.SeekGE([]byte("persimmon@17"), base.SeekGEFlagsNone))
+				// Try searching with a key that results in off by one handling
+				c.check(expect.First())(got.First())
+				c.check(expect.SeekGE([]byte(prefixStr+"grape@10"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefixStr+"grape@10"), base.SeekGEFlagsNone))
+				c.check(expect.Next())(got.Next())
+				c.check(expect.Next())(got.Next())
 
-			// Ensure off by one handling works at end of iterator
-			c.check(expect.SeekGE([]byte("persimmon@10"), base.SeekGEFlagsNone))(got.SeekGE([]byte("persimmon@10"), base.SeekGEFlagsNone))
+				// Try searching with a key with suffix greater than the replacement
+				c.check(expect.SeekGE([]byte(prefixStr+"orange@16"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefixStr+"orange@16"), base.SeekGEFlagsNone))
+				c.check(expect.Next())(got.Next())
 
-			// Try reverse search with a key that matches the target key before replacement
-			c.check(expect.SeekLT([]byte("banana@13"), base.SeekLTFlagsNone))(got.SeekLT([]byte("banana@13"), base.SeekLTFlagsNone))
-			c.check(expect.Prev())(got.Prev())
-			c.check(expect.Next())(got.Next())
+				// Exhaust the iterator via searching
+				c.check(expect.SeekGE([]byte(prefixStr+"persimmon@17"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefixStr+"persimmon@17"), base.SeekGEFlagsNone))
 
-			// Try reverse searching with a key that matches the target key after replacement
-			c.check(expect.Last())(got.Last())
-			c.check(expect.SeekLT([]byte("apricot@15"), base.SeekLTFlagsNone))(got.SeekLT([]byte("apricot@15"), base.SeekLTFlagsNone))
+				// Ensure off by one handling works at end of iterator
+				c.check(expect.SeekGE([]byte(prefixStr+"persimmon@10"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefixStr+"persimmon@10"), base.SeekGEFlagsNone))
 
-			// Try reverse searching with a key with suffix in between original and target replacement
-			c.check(expect.Last())(got.Last())
-			c.check(expect.SeekLT([]byte("peach@10"), base.SeekLTFlagsNone))(got.SeekLT([]byte("peach@10"), base.SeekLTFlagsNone))
-			c.check(expect.Prev())(got.Prev())
-			c.check(expect.Next())(got.Next())
+				// Try reverse search with a key that matches the target key before replacement
+				c.check(expect.SeekLT([]byte(prefixStr+"banana@13"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefixStr+"banana@13"), base.SeekLTFlagsNone))
+				c.check(expect.Prev())(got.Prev())
+				c.check(expect.Next())(got.Next())
 
-			// Exhaust the iterator via reverse searching
-			c.check(expect.SeekLT([]byte("apple@17"), base.SeekLTFlagsNone))(got.SeekLT([]byte("apple@17"), base.SeekLTFlagsNone))
+				// Try reverse searching with a key that matches the target key after replacement
+				c.check(expect.Last())(got.Last())
+				c.check(expect.SeekLT([]byte(prefixStr+"apricot@15"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefixStr+"apricot@15"), base.SeekLTFlagsNone))
 
-			// Ensure off by one handling works at end of iterator
-			c.check(expect.Last())(got.Last())
-			c.check(expect.SeekLT([]byte("apple@10"), base.SeekLTFlagsNone))(got.SeekLT([]byte("apple@10"), base.SeekLTFlagsNone))
+				// Try reverse searching with a key with suffix in between original and target replacement
+				c.check(expect.Last())(got.Last())
+				c.check(expect.SeekLT([]byte(prefixStr+"peach@10"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefixStr+"peach@10"), base.SeekLTFlagsNone))
+				c.check(expect.Prev())(got.Prev())
+				c.check(expect.Next())(got.Next())
 
-			// Try searching on the suffixless key
-			c.check(expect.First())(got.First())
-			c.check(expect.SeekGE([]byte("cantaloupe"), base.SeekGEFlagsNone))(got.SeekGE([]byte("cantaloupe"), base.SeekGEFlagsNone))
+				// Exhaust the iterator via reverse searching
+				c.check(expect.SeekLT([]byte(prefixStr+"apple@17"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefixStr+"apple@17"), base.SeekLTFlagsNone))
 
-			c.check(expect.First())(got.First())
-			c.check(expect.SeekGE([]byte("cantaloupe@16"), base.SeekGEFlagsNone))(got.SeekGE([]byte("cantaloupe@16"), base.SeekGEFlagsNone))
+				// Ensure off by one handling works at end of iterator
+				c.check(expect.Last())(got.Last())
+				c.check(expect.SeekLT([]byte(prefixStr+"apple@10"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefixStr+"apple@10"), base.SeekLTFlagsNone))
 
-			c.check(expect.First())(got.First())
-			c.check(expect.SeekGE([]byte("cantaloupe@14"), base.SeekGEFlagsNone))(got.SeekGE([]byte("cantaloupe@14"), base.SeekGEFlagsNone))
+				// Try searching on the suffixless key
+				c.check(expect.First())(got.First())
+				c.check(expect.SeekGE([]byte(prefixStr+"cantaloupe"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefixStr+"cantaloupe"), base.SeekGEFlagsNone))
 
-			c.check(expect.Last())(got.Last())
-			c.check(expect.SeekLT([]byte("cantaloupe"), base.SeekLTFlagsNone))(got.SeekLT([]byte("cantaloupe"), base.SeekLTFlagsNone))
+				c.check(expect.First())(got.First())
+				c.check(expect.SeekGE([]byte(prefixStr+"cantaloupe@16"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefixStr+"cantaloupe@16"), base.SeekGEFlagsNone))
 
-			c.check(expect.Last())(got.Last())
-			c.check(expect.SeekLT([]byte("cantaloupe10"), base.SeekLTFlagsNone))(got.SeekLT([]byte("cantaloupe10"), base.SeekLTFlagsNone))
+				c.check(expect.First())(got.First())
+				c.check(expect.SeekGE([]byte(prefixStr+"cantaloupe@14"), base.SeekGEFlagsNone))(got.SeekGE([]byte(prefixStr+"cantaloupe@14"), base.SeekGEFlagsNone))
 
-			c.check(expect.Last())(got.Last())
-			c.check(expect.SeekLT([]byte("cantaloupe16"), base.SeekLTFlagsNone))(got.SeekLT([]byte("cantaloupe16"), base.SeekLTFlagsNone))
-		})
+				c.check(expect.Last())(got.Last())
+				c.check(expect.SeekLT([]byte(prefixStr+"cantaloupe"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefixStr+"cantaloupe"), base.SeekLTFlagsNone))
+
+				c.check(expect.Last())(got.Last())
+				c.check(expect.SeekLT([]byte(prefixStr+"cantaloupe10"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefixStr+"cantaloupe10"), base.SeekLTFlagsNone))
+
+				c.check(expect.Last())(got.Last())
+				c.check(expect.SeekLT([]byte(prefixStr+"cantaloupe16"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefixStr+"cantaloupe16"), base.SeekLTFlagsNone))
+			})
+		}
 	}
 }
 
