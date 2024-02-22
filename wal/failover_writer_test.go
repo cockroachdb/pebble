@@ -135,7 +135,7 @@ func TestFailoverWriter(t *testing.T) {
 				return
 			}
 			fmt.Fprintf(b, "log writers:\n")
-			for i := logNameIndex(0); i < w.mu.nextWriterIndex; i++ {
+			for i := LogNameIndex(0); i < w.mu.nextWriterIndex; i++ {
 				rLatency, rErr := w.mu.writers[i].r.ongoingLatencyOrError()
 				require.Equal(t, time.Duration(0), rLatency)
 				if w.mu.writers[i].createError != nil {
@@ -262,7 +262,7 @@ func TestFailoverWriter(t *testing.T) {
 					testLogCreator := simpleLogCreator
 					if firstCallInitialFileSize > 0 {
 						testLogCreator = func(
-							dir Dir, wn NumWAL, li logNameIndex, r *latencyAndErrorRecorder, jobID int,
+							dir Dir, wn NumWAL, li LogNameIndex, r *latencyAndErrorRecorder, jobID int,
 						) (f vfs.File, initialFileSize uint64, err error) {
 							f, _, err = simpleLogCreator(dir, wn, li, r, jobID)
 							if numCreateCalls == 0 {
@@ -630,7 +630,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 		dirs[i].File = f
 	}
 	for i := 0; i < numLogWriters; i++ {
-		bFS.setConf(makeLogFilename(0, logNameIndex(i)), blockingWrite)
+		bFS.setConf(makeLogFilename(0, LogNameIndex(i)), blockingWrite)
 	}
 	stopper := newStopper()
 	logWriterCreated := make(chan struct{}, 100)
@@ -662,7 +662,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 	}
 	time.Sleep(5 * time.Millisecond)
 	for i := 0; i < numLogWriters; i++ {
-		bFS.setConf(makeLogFilename(0, logNameIndex(i)), 0)
+		bFS.setConf(makeLogFilename(0, LogNameIndex(i)), 0)
 	}
 	_, err = ww.Close()
 	require.NoError(t, err)
@@ -681,7 +681,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 	}
 	for i := 0; i < numLogWriters; i++ {
 		func() {
-			f, err := memFS.Open(memFS.PathJoin(dirs[i%2].Dirname, makeLogFilename(0, logNameIndex(i))))
+			f, err := memFS.Open(memFS.PathJoin(dirs[i%2].Dirname, makeLogFilename(0, LogNameIndex(i))))
 			if err != nil {
 				t.Logf("file %d: %s", i, err.Error())
 				return

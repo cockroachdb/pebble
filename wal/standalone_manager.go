@@ -106,7 +106,7 @@ func (m *StandaloneManager) Obsolete(
 		if noRecycle || !m.recycler.Add(fi) {
 			toDelete = append(toDelete, DeletableLog{
 				FS:             m.o.Primary.FS,
-				Path:           m.o.Primary.FS.PathJoin(m.o.Primary.Dirname, base.MakeFilename(base.FileTypeLog, fi.FileNum)),
+				Path:           m.o.Primary.FS.PathJoin(m.o.Primary.Dirname, makeLogFilename(NumWAL(fi.FileNum), 000)),
 				NumWAL:         NumWAL(fi.FileNum),
 				ApproxFileSize: fi.FileSize,
 			})

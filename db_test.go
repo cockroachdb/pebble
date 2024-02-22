@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -371,17 +372,12 @@ func TestLargeBatch(t *testing.T) {
 		}
 	}
 
-	logNum := func() base.DiskFileNum {
+	getLatestLog := func() wal.LogicalLog {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		logs, err := d.mu.log.manager.List()
 		require.NoError(t, err)
-		return base.DiskFileNum(logs[len(logs)-1].Num)
-	}
-	fileSize := func(fileNum base.DiskFileNum) int64 {
-		info, err := d.opts.FS.Stat(base.MakeFilepath(d.opts.FS, "", fileTypeLog, fileNum))
-		require.NoError(t, err)
-		return info.Size()
+		return logs[len(logs)-1]
 	}
 	memTableCreationSeqNum := func() uint64 {
 		d.mu.Lock()
@@ -389,8 +385,9 @@ func TestLargeBatch(t *testing.T) {
 		return d.mu.mem.mutable.logSeqNum
 	}
 
-	startLogNum := logNum()
-	startLogStartSize := fileSize(startLogNum)
+	startLog := getLatestLog()
+	startLogStartSize, err := startLog.PhysicalSize()
+	require.NoError(t, err)
 	startSeqNum := d.mu.versions.logSeqNum.Load()
 
 	// Write a key with a value larger than the memtable size.
@@ -399,18 +396,20 @@ func TestLargeBatch(t *testing.T) {
 	// Verify that the large batch was written to the WAL that existed before it
 	// was committed. We verify that WAL rotation occurred, where the large batch
 	// was written to, and that the new WAL is empty.
-	endLogNum := logNum()
-	if startLogNum == endLogNum {
+	endLog := getLatestLog()
+	if startLog.Num == endLog.Num {
 		t.Fatal("expected WAL rotation")
 	}
-	startLogEndSize := fileSize(startLogNum)
+	startLogEndSize, err := startLog.PhysicalSize()
+	require.NoError(t, err)
 	if startLogEndSize == startLogStartSize {
 		t.Fatalf("expected large batch to be written to %s.log, but file size unchanged at %d",
-			startLogNum, startLogEndSize)
+			startLog.Num, startLogEndSize)
 	}
-	endLogSize := fileSize(endLogNum)
+	endLogSize, err := endLog.PhysicalSize()
+	require.NoError(t, err)
 	if endLogSize != 0 {
-		t.Fatalf("expected %s.log to be empty, but found %d", endLogNum, endLogSize)
+		t.Fatalf("expected %s to be empty, but found %d", endLog, endLogSize)
 	}
 	if creationSeqNum := memTableCreationSeqNum(); creationSeqNum <= startSeqNum {
 		t.Fatalf("expected memTable.logSeqNum=%d > largeBatch.seqNum=%d", creationSeqNum, startSeqNum)

@@ -16,10 +16,13 @@ import (
 )
 
 func TestParseFilename(t *testing.T) {
+	// NB: log files are not handled by ParseFilename, so valid log filenames
+	// appear here with a false value. See the wal/ package.
 	testCases := map[string]bool{
-		"000000.log":             true,
+		"000000.log":             false,
 		"000000.log.zip":         false,
 		"000000..log":            false,
+		"000001-002.log":         false,
 		"a000000.log":            false,
 		"abcdef.log":             false,
 		"000001ldb":              false,
@@ -57,12 +60,14 @@ func TestFilenameRoundTrip(t *testing.T) {
 		// LOCK files aren't numbered.
 		FileTypeLock: false,
 		// The remaining file types are numbered.
-		FileTypeLog:      true,
 		FileTypeManifest: true,
 		FileTypeTable:    true,
 		FileTypeOptions:  true,
 		FileTypeOldTemp:  true,
 		FileTypeTemp:     true,
+		// NB: Log filenames are created and parsed elsewhere in the wal/
+		// package.
+		// FileTypeLog:      true,
 	}
 	fs := vfs.NewMem()
 	for fileType, numbered := range testCases {

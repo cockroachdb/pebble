@@ -300,7 +300,7 @@ type failoverWriter struct {
 		// The latest *LogWriter is (will be) at nextWriterIndex-1.
 		//
 		// INVARIANT: nextWriterIndex <= len(writers)
-		nextWriterIndex logNameIndex
+		nextWriterIndex LogNameIndex
 		closed          bool
 		// metrics is initialized in Close. Currently we just use the metrics from
 		// the latest writer after it is closed, since in the common case with
@@ -389,7 +389,7 @@ type failoverWriterOpts struct {
 }
 
 func simpleLogCreator(
-	dir Dir, wn NumWAL, li logNameIndex, r *latencyAndErrorRecorder, jobID int,
+	dir Dir, wn NumWAL, li LogNameIndex, r *latencyAndErrorRecorder, jobID int,
 ) (f vfs.File, initialFileSize uint64, err error) {
 	filename := dir.FS.PathJoin(dir.Dirname, makeLogFilename(wn, li))
 	// Create file.
@@ -400,7 +400,7 @@ func simpleLogCreator(
 }
 
 type logCreator func(
-	dir Dir, wn NumWAL, li logNameIndex, r *latencyAndErrorRecorder, jobID int,
+	dir Dir, wn NumWAL, li LogNameIndex, r *latencyAndErrorRecorder, jobID int,
 ) (f vfs.File, initialFileSize uint64, err error)
 
 func newFailoverWriter(
@@ -667,13 +667,13 @@ func (ww *failoverWriter) closeInternal() (logicalOffset int64, err error) {
 	// [0, closeCalledCount) have had LogWriter.Close called (though may not
 	// have finished) or the LogWriter will never be non-nil. Either way, they
 	// have been "processed".
-	closeCalledCount := logNameIndex(0)
+	closeCalledCount := LogNameIndex(0)
 	// lastWriterState is the state for the last writer, for which we are
 	// waiting for LogWriter.Close to finish or for creation to be unsuccessful.
 	// What is considered the last writer can change. All state is protected by
 	// ww.mu.
 	type lastWriterState struct {
-		index   logNameIndex
+		index   LogNameIndex
 		closed  bool
 		err     error
 		metrics record.LogWriterMetrics
@@ -798,7 +798,7 @@ func (ww *failoverWriter) getLog() logicalLogWithSizesEtc {
 		if ww.mu.writers[i].w != nil {
 			ll.segments = append(ll.segments, segmentWithSizeEtc{
 				segment: segment{
-					logNameIndex: logNameIndex(i),
+					logNameIndex: LogNameIndex(i),
 					dir:          ww.mu.writers[i].dir,
 				},
 				approxFileSize:      ww.mu.writers[i].approxFileSize,
