@@ -368,7 +368,11 @@ func TestManagerFailover(t *testing.T) {
 				}
 				logs, err := Scan(o.Dirs()...)
 				require.NoError(t, err)
-				err = fm.Init(o, logs)
+				var minUnflushedNum NumWAL
+				if n := logs.MaxNum(); n != 0 {
+					minUnflushedNum = n + 1
+				}
+				err = fm.Init(o, minUnflushedNum)
 				var b strings.Builder
 				fmt.Fprintf(&b, "%s\n", errorToStr(err))
 				if err == nil {

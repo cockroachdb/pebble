@@ -5,9 +5,7 @@
 package wal
 
 import (
-	"cmp"
 	"os"
-	"slices"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -42,7 +40,7 @@ type StandaloneManager struct {
 var _ Manager = &StandaloneManager{}
 
 // Init implements Manager.
-func (m *StandaloneManager) Init(o Options, initial Logs) error {
+func (m *StandaloneManager) Init(o Options, minRecycleLogNum NumWAL) error {
 	if o.Secondary.FS != nil {
 		return errors.AssertionFailedf("cannot create StandaloneManager with a secondary")
 	}
@@ -56,24 +54,9 @@ func (m *StandaloneManager) Init(o Options, initial Logs) error {
 		walDir: walDir,
 	}
 	m.recycler.Init(o.MaxNumRecyclableLogs)
-
-	closeAndReturnErr := func(err error) error {
-		err = firstError(err, walDir.Close())
-		return err
+	if m.recycler.MinRecycleLogNum() <= minRecycleLogNum {
+		m.recycler.SetMinRecycleLogNum(minRecycleLogNum)
 	}
-	var files []base.FileInfo
-	for _, ll := range initial {
-		size, err := ll.PhysicalSize()
-		if err != nil {
-			return closeAndReturnErr(err)
-		}
-		files = append(files, base.FileInfo{FileNum: base.DiskFileNum(ll.Num), FileSize: size})
-		if m.recycler.MinRecycleLogNum() <= ll.Num {
-			m.recycler.SetMinRecycleLogNum(ll.Num + 1)
-		}
-	}
-	slices.SortFunc(files, func(a, b base.FileInfo) int { return cmp.Compare(a.FileNum, b.FileNum) })
-	m.mu.queue = files
 	return nil
 }
 

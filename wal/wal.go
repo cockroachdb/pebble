@@ -249,7 +249,7 @@ type Stats struct {
 //     the caller does it via commitPipeline.mu).
 type Manager interface {
 	// Init initializes the Manager.
-	Init(o Options, initial Logs) error
+	Init(o Options, minRecycleLogNum NumWAL) error
 	// List returns the virtual WALs in ascending order.
 	List() (Logs, error)
 	// Obsolete informs the manager that all virtual WALs less than

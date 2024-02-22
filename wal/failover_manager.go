@@ -426,7 +426,7 @@ var _ Manager = &failoverManager{}
 //   get an error when deleting or renaming (only under windows?).
 
 // Init implements Manager.
-func (wm *failoverManager) Init(o Options, initial Logs) error {
+func (wm *failoverManager) Init(o Options, minRecycleLogNum NumWAL) error {
 	if o.timeSource == nil {
 		o.timeSource = defaultTime{}
 	}
@@ -454,26 +454,8 @@ func (wm *failoverManager) Init(o Options, initial Logs) error {
 		monitor:    monitor,
 	}
 	wm.recycler.Init(o.MaxNumRecyclableLogs)
-	for _, ll := range initial {
-		llse := logicalLogWithSizesEtc{
-			num: ll.Num,
-		}
-		if wm.recycler.MinRecycleLogNum() <= ll.Num {
-			wm.recycler.SetMinRecycleLogNum(ll.Num + 1)
-		}
-		for i, s := range ll.segments {
-			fs, path := ll.SegmentLocation(i)
-			stat, err := fs.Stat(path)
-			if err != nil {
-				return err
-			}
-			llse.segments = append(llse.segments, segmentWithSizeEtc{
-				segment:             s,
-				approxFileSize:      uint64(stat.Size()),
-				synchronouslyClosed: true,
-			})
-		}
-		wm.mu.closedWALs = append(wm.mu.closedWALs, llse)
+	if wm.recycler.MinRecycleLogNum() <= minRecycleLogNum {
+		wm.recycler.SetMinRecycleLogNum(minRecycleLogNum)
 	}
 	return nil
 }

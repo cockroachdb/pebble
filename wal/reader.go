@@ -86,6 +86,29 @@ func (ll LogicalLog) String() string {
 	return sb.String()
 }
 
+// AppendDeletableLogs appends all of the LogicalLog's constituent physical
+// files as DeletableLogs to dst, returning the modified slice.
+// AppendDeletableLogs will Stat physical files to determine physical sizes.
+// AppendDeletableLogs does not make any judgmenet on whether a log file is
+// obsolete, so callers must take care not to delete logs that are still
+// unflushed.
+func AppendDeletableLogs(dst []DeletableLog, ll LogicalLog) ([]DeletableLog, error) {
+	for i := range ll.segments {
+		fs, path := ll.SegmentLocation(i)
+		stat, err := fs.Stat(path)
+		if err != nil {
+			return dst, err
+		}
+		dst = append(dst, DeletableLog{
+			FS:             fs,
+			Path:           path,
+			NumWAL:         ll.Num,
+			ApproxFileSize: uint64(stat.Size()),
+		})
+	}
+	return dst, nil
+}
+
 // Scan finds all log files in the provided directories. It returns an
 // ordered list of WALs in increasing NumWAL order.
 func Scan(dirs ...Dir) (Logs, error) {
@@ -136,6 +159,14 @@ func (l Logs) Get(num NumWAL) (LogicalLog, bool) {
 		return LogicalLog{}, false
 	}
 	return l[i], true
+}
+
+// MaxNum returns the largest Num in the list of logs.
+func (l Logs) MaxNum() NumWAL {
+	if len(l) == 0 {
+		return 0
+	}
+	return l[len(l)-1].Num
 }
 
 func newVirtualWALReader(wal LogicalLog) *virtualWALReader {

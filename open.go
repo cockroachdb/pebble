@@ -339,7 +339,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	if err != nil {
 		return nil, err
 	}
-	err = walManager.Init(walOpts, wals)
+	// We pass minRecycleLogNum=wals.MaxNum()+1 to avoid recycling any of the
+	// logs that exist at start.
+	err = walManager.Init(walOpts, wals.MaxNum()+1)
 	if err != nil {
 		return nil, err
 	}
@@ -494,6 +496,25 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 		for _, entry := range toFlush {
 			entry.readerUnrefLocked(true)
+		}
+
+		// Delete the old, recovered WAL files.
+		{
+			var deletableLogFiles []wal.DeletableLog
+			for _, ll := range wals {
+				deletableLogFiles, err = wal.AppendDeletableLogs(deletableLogFiles, ll)
+				if err != nil {
+					return nil, err
+				}
+			}
+			var filesToDelete []obsoleteFile
+			for _, dlf := range deletableLogFiles {
+				filesToDelete = append(filesToDelete, obsoleteFile{
+					fileType: fileTypeLog,
+					logFile:  dlf,
+				})
+			}
+			d.cleanupManager.EnqueueJob(jobID, filesToDelete)
 		}
 
 		d.mu.log.writer, err = d.mu.log.manager.Create(wal.NumWAL(newLogNum), jobID)
