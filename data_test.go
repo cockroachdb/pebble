@@ -510,6 +510,11 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	}
 
 	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
+	if rand.Intn(4) == 0 {
+		// Force two-level indexes.
+		writeOpts.BlockSize = 5
+		writeOpts.IndexBlockSize = 5
+	}
 
 	f, err := storage.CreateObject(path)
 	if err != nil {

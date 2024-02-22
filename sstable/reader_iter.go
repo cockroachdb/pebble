@@ -280,9 +280,10 @@ func (i *compactionIterator) skipForward(
 	*i.bytesIterated += uint64(curOffset - i.prevOffset)
 	i.prevOffset = curOffset
 
-	if i.vState != nil && key != nil {
-		cmp := i.cmp(key.UserKey, i.vState.upper.UserKey)
-		if cmp > 0 || (i.vState.upper.IsExclusiveSentinel() && cmp == 0) {
+	// We have an upper bound when the table is virtual.
+	if i.upper != nil && key != nil {
+		cmp := i.cmp(key.UserKey, i.upper)
+		if cmp > 0 || (!i.endKeyInclusive && cmp == 0) {
 			return nil, base.LazyValue{}
 		}
 	}
