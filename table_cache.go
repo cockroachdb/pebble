@@ -513,7 +513,7 @@ func (c *tableCacheShard) newIters(
 	var iters iterSet
 	var err error
 	if kinds.RangeKey() && file.HasRangeKeys {
-		iters.rangeKey, err = c.newRangeKeyIter(v, cr, opts.SpanIterOptions())
+		iters.rangeKey, err = c.newRangeKeyIter(v, file, cr, opts.SpanIterOptions())
 	}
 	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
 		iters.rangeDeletion, err = c.newRangeDelIter(ctx, file, cr, dbOpts)
@@ -621,24 +621,26 @@ func (c *tableCacheShard) newPointIter(
 		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
 	}
 
-	if v.isShared && v.reader.Properties.GlobalSeqNum != 0 {
+	if v.isShared && file.SyntheticSeqNum() != 0 {
 		if tableFormat < sstable.TableFormatPebblev4 {
 			return nil, errors.New("pebble: shared ingested sstable has a lower table format than expected")
 		}
 		// The table is shared and ingested.
 		hideObsoletePoints = true
 	}
+	transforms := file.IterTransforms()
+	transforms.HideObsoletePoints = hideObsoletePoints
 	var categoryAndQoS sstable.CategoryAndQoS
 	if opts != nil {
 		categoryAndQoS = opts.CategoryAndQoS
 	}
 	if internalOpts.bytesIterated != nil {
 		iter, err = cr.NewCompactionIter(
-			internalOpts.bytesIterated, categoryAndQoS, dbOpts.sstStatsCollector, rp,
+			transforms, internalOpts.bytesIterated, categoryAndQoS, dbOpts.sstStatsCollector, rp,
 			internalOpts.bufferPool)
 	} else {
 		iter, err = cr.NewIterWithBlockPropertyFiltersAndContextEtc(
-			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, hideObsoletePoints, useFilter,
+			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter,
 			internalOpts.stats, categoryAndQoS, dbOpts.sstStatsCollector, rp)
 	}
 	if err != nil {
@@ -665,7 +667,7 @@ func (c *tableCacheShard) newRangeDelIter(
 ) (keyspan.FragmentIterator, error) {
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := cr.NewRawRangeDelIter()
+	rangeDelIter, err := cr.NewRawRangeDelIter(file.IterTransforms())
 	if err != nil {
 		return nil, err
 	}
@@ -686,22 +688,24 @@ func (c *tableCacheShard) newRangeDelIter(
 // sstable's range keys. This function is for table-cache internal use only, and
 // callers should use newIters instead.
 func (c *tableCacheShard) newRangeKeyIter(
-	v *tableCacheValue, cr sstable.CommonReader, opts keyspan.SpanIterOptions,
+	v *tableCacheValue, file *fileMetadata, cr sstable.CommonReader, opts keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
+	transforms := file.IterTransforms()
 	// Don't filter a table's range keys if the file contains RANGEKEYDELs.
 	// The RANGEKEYDELs may delete range keys in other levels. Skipping the
 	// file's range key blocks may surface deleted range keys below. This is
 	// done here, rather than deferring to the block-property collector in order
 	// to maintain parity with point keys and the treatment of RANGEDELs.
 	if v.reader.Properties.NumRangeKeyDels == 0 && len(opts.RangeKeyFilters) > 0 {
-		ok, _, err := c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters, nil, nil)
+		ok, _, err := c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters, nil, transforms.SyntheticSuffix)
 		if err != nil {
 			return nil, err
 		} else if !ok {
 			return nil, nil
 		}
 	}
-	return cr.NewRawRangeKeyIter()
+	// TODO(radu): wrap in an AssertBounds.
+	return cr.NewRawRangeKeyIter(transforms)
 }
 
 type tableCacheShardReaderProvider struct {
@@ -838,25 +842,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 	info := loadInfo{
 		backingFileNum: meta.FileBacking.DiskFileNum,
 	}
-	// All virtual tables sharing an ingested backing will have the same
-	// SmallestSeqNum=LargestSeqNum value. We assert that below.
-	if meta.SmallestSeqNum == meta.LargestSeqNum {
-		info.globalSeqNum = meta.SmallestSeqNum
-	}
 
-	v := c.findNodeInternal(info, dbOpts)
-
-	// Loading a file before its global sequence number is known (eg, during
-	// ingest before entering the commit pipeline) can pollute the cache with
-	// incorrect state. In invariant builds, verify that the global sequence
-	// number of the returned reader matches.
-	if invariants.Enabled {
-		if v.reader != nil && v.reader.Properties.GlobalSeqNum != info.globalSeqNum {
-			panic(errors.AssertionFailedf("file %s loaded from table cache with the wrong global sequence number %d",
-				meta, v.reader.Properties.GlobalSeqNum))
-		}
-	}
-	return v
+	return c.findNodeInternal(info, dbOpts)
 }
 
 func (c *tableCacheShard) findNodeInternal(
@@ -1173,8 +1160,6 @@ type tableCacheValue struct {
 // loadInfo contains the information needed to populate a new cache entry.
 type loadInfo struct {
 	backingFileNum base.DiskFileNum
-	// See sstable.Properties.GlobalSeqNum.
-	globalSeqNum uint64
 }
 
 func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *tableCacheOpts) {
@@ -1196,9 +1181,6 @@ func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *ta
 	if err != nil {
 		v.err = errors.Wrapf(
 			err, "pebble: backing file %s error", loadInfo.backingFileNum)
-	}
-	if v.err == nil {
-		v.reader.Properties.GlobalSeqNum = loadInfo.globalSeqNum
 	}
 	if v.err != nil {
 		c.mu.Lock()

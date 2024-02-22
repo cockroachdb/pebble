@@ -17,7 +17,6 @@ import (
 )
 
 const propertiesBlockRestartInterval = math.MaxInt32
-const propGlobalSeqnumName = "rocksdb.external_sst_file.global_seqno"
 
 var propTagMap = make(map[string]reflect.StructField)
 var propBoolTrue = []byte{'1'}
@@ -143,9 +142,6 @@ type Properties struct {
 	FilterPolicyName string `prop:"rocksdb.filter.policy"`
 	// The size of filter block.
 	FilterSize uint64 `prop:"rocksdb.filter.size"`
-	// The global sequence number to use for all entries in the table. Present if
-	// the table was created externally and ingested whole.
-	GlobalSeqNum uint64 `prop:"rocksdb.external_sst_file.global_seqno"`
 	// Total number of index partitions if kTwoLevelIndexSearch is used.
 	IndexPartitions uint64 `prop:"rocksdb.index.partitions"`
 	// The size of index block.
@@ -287,12 +283,7 @@ func (p *Properties) load(
 			case reflect.Uint32:
 				field.SetUint(uint64(binary.LittleEndian.Uint32(i.Value())))
 			case reflect.Uint64:
-				var n uint64
-				if string(i.Key().UserKey) == propGlobalSeqnumName {
-					n = binary.LittleEndian.Uint64(i.Value())
-				} else {
-					n, _ = binary.Uvarint(i.Value())
-				}
+				n, _ := binary.Uvarint(i.Value())
 				field.SetUint(n)
 			case reflect.String:
 				field.SetString(intern.Bytes(i.Value()))
@@ -333,6 +324,8 @@ func (p *Properties) saveUint64(m map[string][]byte, offset uintptr, value uint6
 	m[propOffsetTagMap[offset]] = buf[:]
 }
 
+var _ = (*Properties).saveUint64
+
 func (p *Properties) saveUvarint(m map[string][]byte, offset uintptr, value uint64) {
 	var buf [10]byte
 	n := binary.PutUvarint(buf[:], value)
@@ -361,7 +354,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	p.saveUvarint(m, unsafe.Offsetof(p.DataSize), p.DataSize)
 	if p.ExternalFormatVersion != 0 {
 		p.saveUint32(m, unsafe.Offsetof(p.ExternalFormatVersion), p.ExternalFormatVersion)
-		p.saveUint64(m, unsafe.Offsetof(p.GlobalSeqNum), p.GlobalSeqNum)
 	}
 	if p.FilterPolicyName != "" {
 		p.saveString(m, unsafe.Offsetof(p.FilterPolicyName), p.FilterPolicyName)

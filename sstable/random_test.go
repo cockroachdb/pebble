@@ -96,6 +96,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 	// operations on the range deletion and range key iterators?
 	var stats base.InternalIteratorStats
 	it, err := r.NewIterWithBlockPropertyFilters(
+		NoTransforms,
 		nil /* lower TODO */, nil, /* upper TODO */
 		filterer,
 		rng.Intn(2) == 1, /* use filter block */

@@ -26,7 +26,7 @@ func TestPrefixReplacingIterator(t *testing.T) {
 		t.Run(fmt.Sprintf("%s_%s", tc.from, tc.to), func(t *testing.T) {
 			r := buildTestTable(t, 20, 256, 256, DefaultCompression, tc.from)
 			defer r.Close()
-			rawIter, err := r.NewIter(nil, nil)
+			rawIter, err := r.NewIter(NoTransforms, nil, nil)
 			require.NoError(t, err)
 			defer rawIter.Close()
 

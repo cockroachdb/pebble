@@ -178,7 +178,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		iter, err := r.NewIter(nil, nil)
+		iter, err := r.NewIter(sstable.NoTransforms, nil, nil)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
@@ -189,7 +189,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		var prefixIter sstable.Iterator
 		if r.Split != nil {
 			var err error
-			prefixIter, err = r.NewIter(nil, nil)
+			prefixIter, err = r.NewIter(sstable.NoTransforms, nil, nil)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return
@@ -331,7 +331,6 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "  range-key-unset\t%d\n", r.Properties.NumRangeKeyUnsets)
 		fmt.Fprintf(tw, "  range-key-delete\t%d\n", r.Properties.NumRangeKeyDels)
 		fmt.Fprintf(tw, "  merge\t%d\n", r.Properties.NumMergeOperands)
-		fmt.Fprintf(tw, "  global-seq-num\t%d\n", r.Properties.GlobalSeqNum)
 		fmt.Fprintf(tw, "  pinned\t%d\n", r.Properties.SnapshotPinnedKeys)
 		fmt.Fprintf(tw, "index\t\n")
 		fmt.Fprintf(tw, "  key\t")
@@ -386,7 +385,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		iter, err := r.NewIter(nil, s.end)
+		iter, err := r.NewIter(sstable.NoTransforms, nil, s.end)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s%s\n", prefix, err)
 			return
@@ -399,7 +398,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		// bit more work here to put them in a form that can be iterated in
 		// parallel with the point records.
 		rangeDelIter, err := func() (keyspan.FragmentIterator, error) {
-			iter, err := r.NewRawRangeDelIter()
+			iter, err := r.NewRawRangeDelIter(sstable.NoTransforms)
 			if err != nil {
 				return nil, err
 			}
@@ -501,7 +500,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 
 		// Handle range keys.
-		rkIter, err := r.NewRawRangeKeyIter()
+		rkIter, err := r.NewRawRangeKeyIter(sstable.NoTransforms)
 		if err != nil {
 			fmt.Fprintf(stdout, "%s\n", err)
 			os.Exit(1)

@@ -75,7 +75,6 @@ var testProps = Properties{
 	ExternalFormatVersion:  4,
 	FilterPolicyName:       "filter policy name",
 	FilterSize:             5,
-	GlobalSeqNum:           8,
 	IndexPartitions:        10,
 	IndexSize:              11,
 	IndexType:              12,

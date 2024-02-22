@@ -952,7 +952,7 @@ func TestBlockProperties(t *testing.T) {
 
 					var blocks []int
 					var i int
-					iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), nil /* syntheticSuffix */)
+					iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 					for key, value := iter.First(); key != nil; key, value = iter.Next() {
 						bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 						if err != nil {
@@ -1023,7 +1023,7 @@ func TestBlockProperties(t *testing.T) {
 				return "filter excludes entire table"
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
-				lower, upper, filterer, false /* use (bloom) filter */, &stats,
+				NoTransforms, lower, upper, filterer, false /* useFilterBlock */, &stats,
 				CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
@@ -1108,7 +1108,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 				return "filter excludes entire table"
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
-				lower, upper, filterer, false /* use (bloom) filter */, &stats,
+				NoTransforms, lower, upper, filterer, false /* useFilterBlock */, &stats,
 				CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
@@ -1319,7 +1319,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		return err.Error()
 	}
 	twoLevelIndex := r.Properties.IndexPartitions > 0
-	i, err := newBlockIter(r.Compare, r.Split, bh.Get(), nil /* syntheticSuffix */)
+	i, err := newBlockIter(r.Compare, r.Split, bh.Get(), NoTransforms)
 	if err != nil {
 		return err.Error()
 	}
@@ -1366,7 +1366,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 			if err != nil {
 				return err.Error()
 			}
-			if err := subiter.init(r.Compare, r.Split, subIndex.Get(), 0, false, nil); err != nil {
+			if err := subiter.init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
 				return err.Error()
 			}
 			for key, value := subiter.First(); key != nil; key, value = subiter.Next() {
