@@ -6,6 +6,7 @@ package base
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -67,7 +68,7 @@ func MakeFilename(fileType FileType, dfn DiskFileNum) string {
 	switch fileType {
 	// TODO(sumeer): stop handling FileTypeLog in this function.
 	case FileTypeLog:
-		return fmt.Sprintf("%s.log", dfn)
+		panic("the pebble/wal pkg is responsible for constructing WAL filenames")
 	case FileTypeLock:
 		return "LOCK"
 	case FileTypeTable:
@@ -134,8 +135,6 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, dfn DiskFileN
 		switch filename[i+1:] {
 		case "sst":
 			return FileTypeTable, dfn, true
-		case "log":
-			return FileTypeLog, dfn, true
 		}
 	}
 	return 0, dfn, false
@@ -175,6 +174,15 @@ func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
 	var total, unknown, tables, logs, manifests int
 	total = len(ls)
 	for _, f := range ls {
+		// The file format of log files is an implementation detail of the wal/
+		// package that the internal/base package is not privy to. We can't call
+		// into the wal package because that would introduce a cyclical
+		// dependency. For our purposes, an exact count isn't important and we
+		// just count files with .log extensions.
+		if filepath.Ext(f) == ".log" {
+			logs++
+			continue
+		}
 		typ, _, ok := ParseFilename(fs, f)
 		if !ok {
 			unknown++
@@ -183,8 +191,6 @@ func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
 		switch typ {
 		case FileTypeTable:
 			tables++
-		case FileTypeLog:
-			logs++
 		case FileTypeManifest:
 			manifests++
 		}

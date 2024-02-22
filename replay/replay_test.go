@@ -340,7 +340,9 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 				case "table":
 					filePath = base.MakeFilepath(fs, dir, base.FileTypeTable, fileNum)
 				case "log":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeLog, fileNum)
+					// TODO(jackson): expose a func from the wal package for
+					// constructing log filenames for tests?
+					filePath = fs.PathJoin(dir, fmt.Sprintf("%s.log", fileNum))
 				case "manifest":
 					filePath = base.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum)
 				}

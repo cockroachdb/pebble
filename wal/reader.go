@@ -32,7 +32,7 @@ type LogicalLog struct {
 // segment of a logical WAL. If a failover occurred during a WAL's lifetime, a
 // WAL may be composed of multiple segments.
 type segment struct {
-	logNameIndex logNameIndex
+	logNameIndex LogNameIndex
 	dir          Dir
 }
 
@@ -130,7 +130,7 @@ func (a *FileAccumulator) Finish() Logs {
 func (a *FileAccumulator) maybeAccumulate(
 	fs vfs.FS, dirname, name string,
 ) (isLogFile bool, err error) {
-	dfn, li, ok := parseLogFilename(name)
+	dfn, li, ok := ParseLogFilename(name)
 	if !ok {
 		return false, nil
 	}
@@ -143,7 +143,7 @@ func (a *FileAccumulator) maybeAccumulate(
 	}
 	// Ensure we haven't seen this log index yet, and find where it
 	// slots within this log's segments.
-	j, found := slices.BinarySearchFunc(a.wals[i].segments, li, func(s segment, li logNameIndex) int {
+	j, found := slices.BinarySearchFunc(a.wals[i].segments, li, func(s segment, li LogNameIndex) int {
 		return cmp.Compare(s.logNameIndex, li)
 	})
 	if found {

@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/spf13/cobra"
 )
 
@@ -77,7 +78,7 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 			// necessary in case WAL recycling was used (which it is usually is). If
 			// we can't parse the filename or it isn't a log file, we'll plow ahead
 			// anyways (which will likely fail when we try to read the file).
-			_, fileNum, ok := base.ParseFilename(w.opts.FS, arg)
+			fileNum, _, ok := wal.ParseLogFilename(arg)
 			if !ok {
 				fileNum = 0
 			}
@@ -93,7 +94,7 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 
 			var b pebble.Batch
 			var buf bytes.Buffer
-			rr := record.NewReader(f, fileNum)
+			rr := record.NewReader(f, base.DiskFileNum(fileNum))
 			for {
 				offset := rr.Offset()
 				r, err := rr.Next()
