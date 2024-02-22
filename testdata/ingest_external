@@ -418,3 +418,65 @@ iter
 seek-lt de
 ----
 a1: (foo, .)
+
+
+# Test compactions with synthetic prefix.
+reset
+----
+
+build-remote ext
+set ax ax
+set da da
+set db db
+set dc dc
+set ux ux
+----
+
+# Replace prefix with one greater than the original one.
+ingest-external prefix-replace=(d,e)
+ext,10,ea,ed
+----
+
+# Replace prefix with one smaller than the original one.
+ingest-external prefix-replace=(d,b)
+ext,10,ba,bd
+----
+
+# Write some keys so we actually perform a compaction.
+batch
+set a a
+set c c
+set f f
+----
+
+compact a z
+----
+
+lsm
+----
+6:
+  000008:[a#0,SET-f#0,SET]
+
+# Make sure we see both ba..bc and ea..ec.
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a: (a, .)
+ba: (da, .)
+bb: (db, .)
+bc: (dc, .)
+c: (c, .)
+ea: (da, .)
+eb: (db, .)
+ec: (dc, .)
+f: (f, .)
+.
