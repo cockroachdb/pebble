@@ -3672,8 +3672,6 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			continue
 		}
 		switch fileType {
-		case fileTypeLog:
-			// Ignore. Handled by wal.Manager.
 		case fileTypeManifest:
 			if diskFileNum >= manifestFileNum {
 				continue

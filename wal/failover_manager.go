@@ -650,7 +650,7 @@ func (wm *failoverManager) RecyclerForTesting() *LogRecycler {
 
 // logCreator implements the logCreator func type.
 func (wm *failoverManager) logCreator(
-	dir Dir, wn NumWAL, li logNameIndex, r *latencyAndErrorRecorder, jobID int,
+	dir Dir, wn NumWAL, li LogNameIndex, r *latencyAndErrorRecorder, jobID int,
 ) (logFile vfs.File, initialFileSize uint64, err error) {
 	logFilename := dir.FS.PathJoin(dir.Dirname, makeLogFilename(wn, li))
 	isPrimary := dir == wm.opts.Primary

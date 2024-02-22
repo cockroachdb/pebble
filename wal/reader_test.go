@@ -111,7 +111,7 @@ func TestReader(t *testing.T) {
 			td.MaybeScanArgs(t, "logNameIndex", &index)
 			td.MaybeScanArgs(t, "recycleFilename", &recycleFilename)
 
-			filename := makeLogFilename(NumWAL(logNum), logNameIndex(index))
+			filename := makeLogFilename(NumWAL(logNum), LogNameIndex(index))
 			var f vfs.File
 			var err error
 			if recycleFilename != "" {
@@ -209,11 +209,11 @@ func TestReader(t *testing.T) {
 			// opening the next physical segment file fails.
 			if len(forceLogNameIndexes) > 0 {
 				for _, li := range forceLogNameIndexes {
-					j, found := slices.BinarySearchFunc(segments, logNameIndex(li), func(s segment, li logNameIndex) int {
+					j, found := slices.BinarySearchFunc(segments, LogNameIndex(li), func(s segment, li LogNameIndex) int {
 						return cmp.Compare(s.logNameIndex, li)
 					})
 					require.False(t, found)
-					segments = slices.Insert(segments, j, segment{logNameIndex: logNameIndex(li), dir: Dir{FS: fs}})
+					segments = slices.Insert(segments, j, segment{logNameIndex: LogNameIndex(li), dir: Dir{FS: fs}})
 				}
 			}
 			ll := LogicalLog{Num: log.Num, segments: segments}

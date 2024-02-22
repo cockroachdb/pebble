@@ -41,29 +41,27 @@ type NumWAL base.DiskFileNum
 // String implements fmt.Stringer.
 func (s NumWAL) String() string { return base.DiskFileNum(s).String() }
 
-// logNameIndex numbers log files within a WAL.
-type logNameIndex uint32
+// LogNameIndex numbers log files within a WAL.
+type LogNameIndex uint32
 
-func (li logNameIndex) String() string {
+// String implements fmt.Stringer.
+func (li LogNameIndex) String() string {
 	return fmt.Sprintf("%03d", li)
 }
 
-// TODO(sumeer): Remove attempts to parse log files outside
-// the wal package (including tools).
-
 // makeLogFilename makes a log filename.
-func makeLogFilename(wn NumWAL, index logNameIndex) string {
+func makeLogFilename(wn NumWAL, index LogNameIndex) string {
 	if index == 0 {
 		// Use a backward compatible name, for simplicity.
-		return base.MakeFilename(base.FileTypeLog, base.DiskFileNum(wn))
+		return fmt.Sprintf("%s.log", base.DiskFileNum(wn).String())
 	}
 	return fmt.Sprintf("%s-%s.log", base.DiskFileNum(wn).String(), index)
 }
 
-// parseLogFilename takes a base filename and parses it into its constituent
-// NumWAL and logIndex. If the filename is not a log file, it returns false for
-// the final return value.
-func parseLogFilename(name string) (NumWAL, logNameIndex, bool) {
+// ParseLogFilename takes a base filename and parses it into its constituent
+// NumWAL and LogNameIndex. If the filename is not a log file, it returns false
+// for the final return value.
+func ParseLogFilename(name string) (NumWAL, LogNameIndex, bool) {
 	i := strings.IndexByte(name, '.')
 	if i < 0 || name[i:] != ".log" {
 		return 0, 0, false
@@ -90,7 +88,7 @@ func parseLogFilename(name string) (NumWAL, logNameIndex, bool) {
 	if err != nil {
 		return 0, 0, false
 	}
-	return NumWAL(dfn), logNameIndex(li), true
+	return NumWAL(dfn), LogNameIndex(li), true
 }
 
 // Options provides configuration for the Manager.
