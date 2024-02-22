@@ -3082,3 +3082,10 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 		panic(err)
 	}
 }
+
+// DebugString returns a debugging string describing the LSM.
+func (d *DB) DebugString() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+}
