@@ -20,7 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/rangekeystack"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/redact"
 )
@@ -389,7 +389,7 @@ type iteratorRangeKeyState struct {
 	// iterator stack, but do not need to be directly accessed during iteration.
 	// This struct is bundled within the iteratorRangeKeyState struct to reduce
 	// allocations.
-	iterConfig rangekey.UserIteratorConfig
+	iterConfig rangekeystack.UserIteratorConfig
 }
 
 type rangeKeyBuffers struct {
@@ -399,7 +399,7 @@ type rangeKeyBuffers struct {
 	// Start and end boundaries, suffixes and values are all copied into buf.
 	buf bytealloc.A
 	// internal holds buffers used by the range key internal iterators.
-	internal rangekey.Buffers
+	internal rangekeystack.Buffers
 }
 
 func (b *rangeKeyBuffers) PrepareForReuse() {
