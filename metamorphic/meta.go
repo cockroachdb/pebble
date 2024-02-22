@@ -527,6 +527,17 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	if err := Execute(m); err != nil {
 		fmt.Fprintf(os.Stderr, "Seed: %d\n", seed)
 		fmt.Fprintln(os.Stderr, err)
+	}
+
+	// If we have unclosed databases, print LSM details. This will be the case
+	// when we use --try-to-reduce.
+	for i, db := range m.dbs {
+		if db != nil {
+			fmt.Fprintf(os.Stderr, "\ndb%d:\n%s", i+1, db.DebugString())
+		}
+	}
+
+	if err != nil {
 		m.saveInMemoryData()
 		os.Exit(1)
 	}
