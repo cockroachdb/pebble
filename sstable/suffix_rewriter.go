@@ -201,7 +201,7 @@ func rewriteBlocks(
 		if err != nil {
 			return err
 		}
-		if err := iter.init(r.Compare, r.Split, inputBlock, r.Properties.GlobalSeqNum, false, nil); err != nil {
+		if err := iter.init(r.Compare, r.Split, inputBlock, NoTransforms); err != nil {
 			return err
 		}
 
@@ -392,7 +392,7 @@ func rewriteDataBlocksToWriter(
 }
 
 func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
-	iter, err := r.NewRawRangeKeyIter()
+	iter, err := r.NewRawRangeKeyIter(NoTransforms)
 	if err != nil {
 		return err
 	}
@@ -465,7 +465,7 @@ func RewriteKeySuffixesViaWriter(
 			w.Close()
 		}
 	}()
-	i, err := r.NewIter(nil, nil)
+	i, err := r.NewIter(NoTransforms, nil, nil)
 	if err != nil {
 		return nil, err
 	}

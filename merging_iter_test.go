@@ -166,11 +166,12 @@ func TestMergingIterCornerCases(t *testing.T) {
 		func(_ context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts, kinds iterKinds,
 		) (iterSet, error) {
 			r := readers[file.FileNum]
-			rangeDelIter, err := r.NewRawRangeDelIter()
+			rangeDelIter, err := r.NewRawRangeDelIter(sstable.NoTransforms)
 			if err != nil {
 				return iterSet{}, err
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
+				sstable.NoTransforms,
 				opts.GetLowerBound(), opts.GetUpperBound(), nil, true /* useFilterBlock */, iio.stats,
 				sstable.CategoryAndQoS{}, nil, sstable.TrivialReaderProvider{Reader: r})
 			if err != nil {
@@ -408,7 +409,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
 							var stats base.InternalIteratorStats
@@ -441,7 +442,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
 							var stats base.InternalIteratorStats
@@ -477,7 +478,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
 							var stats base.InternalIteratorStats
@@ -633,7 +634,7 @@ func buildLevelsForMergingIterSeqSeek(
 	for i := range readers {
 		meta := make([]*fileMetadata, len(readers[i]))
 		for j := range readers[i] {
-			iter, err := readers[i][j].NewIter(nil /* lower */, nil /* upper */)
+			iter, err := readers[i][j].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 			require.NoError(b, err)
 			smallest, _ := iter.First()
 			meta[j] = &fileMetadata{}
@@ -659,11 +660,11 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 			_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 		) (iterSet, error) {
 			iter, err := readers[levelIndex][file.FileNum].NewIter(
-				opts.LowerBound, opts.UpperBound)
+				sstable.NoTransforms, opts.LowerBound, opts.UpperBound)
 			if err != nil {
 				return iterSet{}, err
 			}
-			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter()
+			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(sstable.NoTransforms)
 			if err != nil {
 				iter.Close()
 				return iterSet{}, err

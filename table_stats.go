@@ -906,7 +906,7 @@ func newCombinedDeletionKeyspanIter(
 	})
 	mIter.Init(comparer.Compare, transform, new(keyspanimpl.MergingBuffers))
 
-	iter, err := cr.NewRawRangeDelIter()
+	iter, err := cr.NewRawRangeDelIter(m.IterTransforms())
 	if err != nil {
 		return nil, err
 	}
@@ -957,7 +957,7 @@ func newCombinedDeletionKeyspanIter(
 		mIter.AddLevel(iter)
 	}
 
-	iter, err = cr.NewRawRangeKeyIter()
+	iter, err = cr.NewRawRangeKeyIter(m.IterTransforms())
 	if err != nil {
 		return nil, err
 	}

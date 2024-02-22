@@ -68,7 +68,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	if i.err = i.index.initHandle(i.cmp, i.reader.Split, indexBlock, i.reader.Properties.GlobalSeqNum, false, i.getSyntheticSuffx()); i.err == nil {
+	if i.err = i.index.initHandle(i.cmp, i.reader.Split, indexBlock, i.transforms); i.err == nil {
 		return loadBlockOK
 	}
 	return loadBlockFailed
@@ -143,9 +143,10 @@ func (i *twoLevelIterator) init(
 	ctx context.Context,
 	r *Reader,
 	v *virtualState,
+	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilter, hideObsoletePoints bool,
+	useFilter bool,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
@@ -175,9 +176,9 @@ func (i *twoLevelIterator) init(
 	i.reader = r
 	i.cmp = r.Compare
 	i.stats = stats
-	i.hideObsoletePoints = hideObsoletePoints
+	i.transforms = transforms
 	i.bufferPool = bufferPool
-	err = i.topLevelIndex.initHandle(i.cmp, i.reader.Split, topLevelIndexH, r.Properties.GlobalSeqNum, false, i.getSyntheticSuffx())
+	err = i.topLevelIndex.initHandle(i.cmp, i.reader.Split, topLevelIndexH, transforms)
 	if err != nil {
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
 		_ = i.topLevelIndex.Close()
