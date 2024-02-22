@@ -170,6 +170,20 @@ func (ss SyntheticSuffix) IsSet() bool {
 	return len(ss) > 0
 }
 
+// SyntheticPrefix represents a byte slice that is implicitly prepended to every
+// key in a file being read or accessed by a reader.  Note that the table is
+// assumed to contain "prefix-less" keys that become full keys when prepended
+// with the synthetic prefix. The table's bloom filters are constructed only on
+// the "prefix-less" keys in the table, but interactions with the file including
+// seeks and reads, will all behave as if the file had been constructed from
+// keys that did include the prefix. Note that all Compare operations may act on
+// a prefix-less key as the synthetic prefix will never modify key metadata
+// stored in the key suffix.
+//
+// NB: Since this transformation currently only applies to point keys, a block
+// with range keys cannot be iterated over with a synthetic prefix.
+type SyntheticPrefix []byte
+
 // rawTombstonesOpt is a Reader open option for specifying that range
 // tombstones returned by Reader.NewRangeDelIter() should not be
 // fragmented. Used by debug tools to get a raw view of the tombstones
