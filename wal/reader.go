@@ -89,38 +89,73 @@ func (ll LogicalLog) String() string {
 // Scan finds all log files in the provided directories. It returns an
 // ordered list of WALs in increasing NumWAL order.
 func Scan(dirs ...Dir) (Logs, error) {
-	var wals []LogicalLog
+	var fa FileAccumulator
 	for _, d := range dirs {
 		ls, err := d.FS.List(d.Dirname)
 		if err != nil {
 			return nil, errors.Wrapf(err, "reading %q", d.Dirname)
 		}
 		for _, name := range ls {
-			dfn, li, ok := parseLogFilename(name)
-			if !ok {
-				continue
+			_, err := fa.maybeAccumulate(d.FS, d.Dirname, name)
+			if err != nil {
+				return nil, err
 			}
-			// Have we seen this logical log number yet?
-			i, found := slices.BinarySearchFunc(wals, dfn, func(lw LogicalLog, n NumWAL) int {
-				return cmp.Compare(lw.Num, n)
-			})
-			if !found {
-				wals = slices.Insert(wals, i, LogicalLog{Num: dfn, segments: make([]segment, 0, 1)})
-			}
-
-			// Ensure we haven't seen this log index yet, and find where it
-			// slots within this log's segments.
-			j, found := slices.BinarySearchFunc(wals[i].segments, li, func(s segment, li logNameIndex) int {
-				return cmp.Compare(s.logNameIndex, li)
-			})
-			if found {
-				return nil, errors.Errorf("wal: duplicate logIndex=%s for WAL %s in %s and %s",
-					li, dfn, d.Dirname, wals[i].segments[j].dir.Dirname)
-			}
-			wals[i].segments = slices.Insert(wals[i].segments, j, segment{logNameIndex: li, dir: d})
 		}
 	}
-	return wals, nil
+	return fa.wals, nil
+}
+
+// FileAccumulator parses and accumulates log files.
+type FileAccumulator struct {
+	wals []LogicalLog
+}
+
+// MaybeAccumulate parses the provided path's filename. If the filename
+// indicates the file is a write-ahead log, MaybeAccumulate updates its internal
+// state to remember the file and returns isLogFile=true. An error is returned
+// if the file is a duplicate.
+func (a *FileAccumulator) MaybeAccumulate(fs vfs.FS, path string) (isLogFile bool, err error) {
+	filename := fs.PathBase(path)
+	dirname := fs.PathDir(path)
+	return a.maybeAccumulate(fs, dirname, filename)
+}
+
+// Finish returns a sorted slice of LogicalLogs constructed from the physical
+// files observed through MaybeAccumulate.
+func (a *FileAccumulator) Finish() []LogicalLog {
+	wals := a.wals
+	a.wals = nil
+	return wals
+}
+
+func (a *FileAccumulator) maybeAccumulate(
+	fs vfs.FS, dirname, name string,
+) (isLogFile bool, err error) {
+	dfn, li, ok := parseLogFilename(name)
+	if !ok {
+		return false, nil
+	}
+	// Have we seen this logical log number yet?
+	i, found := slices.BinarySearchFunc(a.wals, dfn, func(lw LogicalLog, n NumWAL) int {
+		return cmp.Compare(lw.Num, n)
+	})
+	if !found {
+		a.wals = slices.Insert(a.wals, i, LogicalLog{Num: dfn, segments: make([]segment, 0, 1)})
+	}
+	// Ensure we haven't seen this log index yet, and find where it
+	// slots within this log's segments.
+	j, found := slices.BinarySearchFunc(a.wals[i].segments, li, func(s segment, li logNameIndex) int {
+		return cmp.Compare(s.logNameIndex, li)
+	})
+	if found {
+		return false, errors.Errorf("wal: duplicate logIndex=%s for WAL %s in %s and %s",
+			li, dfn, dirname, a.wals[i].segments[j].dir.Dirname)
+	}
+	a.wals[i].segments = slices.Insert(a.wals[i].segments, j, segment{logNameIndex: li, dir: Dir{
+		FS:      fs,
+		Dirname: dirname,
+	}})
+	return true, nil
 }
 
 // Logs holds a collection of WAL files, in increasing order of NumWAL.
