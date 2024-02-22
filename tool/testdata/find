@@ -101,9 +101,9 @@ find-db
     6 sstables
 find-db/MANIFEST-000001
     9 edits
-find-db/archive/000002.log
-find-db/archive/000004.log
-find-db/000009.log
+000002: {(find-db/archive,000)}
+000004: {(find-db/archive,000)}
+000009: {(find-db,000)}
 find-db/archive/000005.sst
 find-db/archive/000006.sst: global seqnum: 15
 find-db/archive/000007.sst: global seqnum: 16
