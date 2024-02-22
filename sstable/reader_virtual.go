@@ -9,7 +9,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
@@ -33,50 +32,63 @@ type virtualState struct {
 	fileNum          base.FileNum
 	Compare          Compare
 	isSharedIngested bool
-	prefixChange     *manifest.PrefixReplacement
+	prefixChange     *PrefixReplacement
 	syntheticSuffix  SyntheticSuffix
 }
 
-func ceilDiv(a, b uint64) uint64 {
-	return (a + b - 1) / b
+// VirtualReaderParams are the parameters necessary to create a VirtualReader.
+type VirtualReaderParams struct {
+	Lower    InternalKey
+	Upper    InternalKey
+	FileNum  base.FileNum
+	IsShared bool
+	// Size is an estimate of the size of the [Lower, Upper) section of the table.
+	Size uint64
+	// BackingSize is the total size of the backing table. The ratio between Size
+	// and BackingSize is used to estimate statistics.
+	BackingSize uint64
+	// TODO(radu): this should be passed just to iterators.
+	PrefixReplacement *PrefixReplacement
+	SyntheticSuffix   SyntheticSuffix
 }
 
 // MakeVirtualReader is used to contruct a reader which can read from virtual
 // sstables.
-func MakeVirtualReader(reader *Reader, meta manifest.VirtualFileMeta, isShared bool) VirtualReader {
-	if reader.fileNum != meta.FileBacking.DiskFileNum {
-		panic("pebble: invalid call to MakeVirtualReader")
-	}
-
+func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 	vState := virtualState{
-		lower:            meta.Smallest,
-		upper:            meta.Largest,
-		fileNum:          meta.FileNum,
+		lower:            p.Lower,
+		upper:            p.Upper,
+		fileNum:          p.FileNum,
 		Compare:          reader.Compare,
-		isSharedIngested: isShared && reader.Properties.GlobalSeqNum != 0,
-		prefixChange:     meta.PrefixReplacement,
-		syntheticSuffix:  meta.SyntheticSuffix,
+		isSharedIngested: p.IsShared && reader.Properties.GlobalSeqNum != 0,
+		prefixChange:     p.PrefixReplacement,
+		syntheticSuffix:  p.SyntheticSuffix,
 	}
 	v := VirtualReader{
 		vState: vState,
 		reader: reader,
 	}
 
-	v.Properties.RawKeySize = ceilDiv(reader.Properties.RawKeySize*meta.Size, meta.FileBacking.Size)
-	v.Properties.RawValueSize = ceilDiv(reader.Properties.RawValueSize*meta.Size, meta.FileBacking.Size)
-	v.Properties.NumEntries = ceilDiv(reader.Properties.NumEntries*meta.Size, meta.FileBacking.Size)
-	v.Properties.NumDeletions = ceilDiv(reader.Properties.NumDeletions*meta.Size, meta.FileBacking.Size)
-	v.Properties.NumRangeDeletions = ceilDiv(reader.Properties.NumRangeDeletions*meta.Size, meta.FileBacking.Size)
-	v.Properties.NumRangeKeyDels = ceilDiv(reader.Properties.NumRangeKeyDels*meta.Size, meta.FileBacking.Size)
+	// Scales the given value by the (Size / BackingSize) ratio, rounding up.
+	scale := func(a uint64) uint64 {
+		return (a*p.Size + p.BackingSize - 1) / p.BackingSize
+	}
+
+	v.Properties.RawKeySize = scale(reader.Properties.RawKeySize)
+	v.Properties.RawValueSize = scale(reader.Properties.RawValueSize)
+	v.Properties.NumEntries = scale(reader.Properties.NumEntries)
+	v.Properties.NumDeletions = scale(reader.Properties.NumDeletions)
+	v.Properties.NumRangeDeletions = scale(reader.Properties.NumRangeDeletions)
+	v.Properties.NumRangeKeyDels = scale(reader.Properties.NumRangeKeyDels)
 
 	// Note that we rely on NumRangeKeySets for correctness. If the sstable may
 	// contain range keys, then NumRangeKeySets must be > 0. ceilDiv works because
 	// meta.Size will not be 0 for virtual sstables.
-	v.Properties.NumRangeKeySets = ceilDiv(reader.Properties.NumRangeKeySets*meta.Size, meta.FileBacking.Size)
-	v.Properties.ValueBlocksSize = ceilDiv(reader.Properties.ValueBlocksSize*meta.Size, meta.FileBacking.Size)
-	v.Properties.NumSizedDeletions = ceilDiv(reader.Properties.NumSizedDeletions*meta.Size, meta.FileBacking.Size)
-	v.Properties.RawPointTombstoneKeySize = ceilDiv(reader.Properties.RawPointTombstoneKeySize*meta.Size, meta.FileBacking.Size)
-	v.Properties.RawPointTombstoneValueSize = ceilDiv(reader.Properties.RawPointTombstoneValueSize*meta.Size, meta.FileBacking.Size)
+	v.Properties.NumRangeKeySets = scale(reader.Properties.NumRangeKeySets)
+	v.Properties.ValueBlocksSize = scale(reader.Properties.ValueBlocksSize)
+	v.Properties.NumSizedDeletions = scale(reader.Properties.NumSizedDeletions)
+	v.Properties.RawPointTombstoneKeySize = scale(reader.Properties.RawPointTombstoneKeySize)
+	v.Properties.RawPointTombstoneValueSize = scale(reader.Properties.RawPointTombstoneValueSize)
 
 	return v
 }

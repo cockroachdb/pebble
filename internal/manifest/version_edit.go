@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // TODO(peter): describe the MANIFEST file format, independently of the C++
@@ -340,7 +341,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				virtual        bool
 				backingFileNum uint64
 			}{}
-			var virtualPrefix *PrefixReplacement
+			var virtualPrefix *sstable.PrefixReplacement
 			var syntheticSuffix []byte
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
@@ -391,7 +392,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						if err != nil {
 							return err
 						}
-						virtualPrefix = &PrefixReplacement{
+						virtualPrefix = &sstable.PrefixReplacement{
 							ContentPrefix:   content,
 							SyntheticPrefix: synthetic,
 						}

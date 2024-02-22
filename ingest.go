@@ -233,7 +233,7 @@ func ingestLoad1External(
 	}
 
 	if len(e.SyntheticPrefix) != 0 {
-		meta.PrefixReplacement = &manifest.PrefixReplacement{
+		meta.PrefixReplacement = &sstable.PrefixReplacement{
 			ContentPrefix:   e.ContentPrefix,
 			SyntheticPrefix: e.SyntheticPrefix,
 		}
