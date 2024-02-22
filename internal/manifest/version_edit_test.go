@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -50,7 +51,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		CreationTime:   809060,
 		SmallestSeqNum: 9,
 		LargestSeqNum:  11,
-		PrefixReplacement: &PrefixReplacement{
+		PrefixReplacement: &sstable.PrefixReplacement{
 			ContentPrefix:   []byte("before"),
 			SyntheticPrefix: []byte("after"),
 		},

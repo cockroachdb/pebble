@@ -25,7 +25,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
-	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -187,12 +186,11 @@ func TestVirtualReader(t *testing.T) {
 
 	// Set during the latest build command.
 	var r *Reader
-	var meta manifest.PhysicalFileMeta
+	var wMeta *WriterMetadata
 	var bp BufferPool
 
 	// Set during the latest virtualize command.
-	var vMeta1 manifest.VirtualFileMeta
-	var v VirtualReader
+	var v *VirtualReader
 
 	defer func() {
 		if r != nil {
@@ -200,32 +198,6 @@ func TestVirtualReader(t *testing.T) {
 			bp.Release()
 		}
 	}()
-
-	createPhysicalMeta := func(w *WriterMetadata, r *Reader) (manifest.PhysicalFileMeta, error) {
-		meta := &manifest.FileMetadata{}
-		meta.FileNum = nextFileNum()
-		meta.CreationTime = time.Now().Unix()
-		meta.Size = w.Size
-		meta.SmallestSeqNum = w.SmallestSeqNum
-		meta.LargestSeqNum = w.LargestSeqNum
-
-		if w.HasPointKeys {
-			meta.ExtendPointKeyBounds(r.Compare, w.SmallestPoint, w.LargestPoint)
-		}
-		if w.HasRangeDelKeys {
-			meta.ExtendPointKeyBounds(r.Compare, w.SmallestRangeDel, w.LargestRangeDel)
-		}
-		if w.HasRangeKeys {
-			meta.ExtendRangeKeyBounds(r.Compare, w.SmallestRangeKey, w.LargestRangeKey)
-		}
-		meta.InitPhysicalBacking()
-
-		if err := meta.Validate(r.Compare, r.opts.Comparer.FormatKey); err != nil {
-			return manifest.PhysicalFileMeta{}, err
-		}
-
-		return meta.PhysicalMeta(), nil
-	}
 
 	formatWMeta := func(m *WriterMetadata) string {
 		var b bytes.Buffer
@@ -281,11 +253,8 @@ func TestVirtualReader(t *testing.T) {
 				bp.Release()
 				_ = r.Close()
 				r = nil
-				meta.FileMetadata = nil
-				vMeta1.FileMetadata = nil
-				v = VirtualReader{}
+				v = nil
 			}
-			var wMeta *WriterMetadata
 			var err error
 			writerOpts := &WriterOptions{
 				TableFormat: TableFormatMax,
@@ -307,13 +276,6 @@ func TestVirtualReader(t *testing.T) {
 				return err.Error()
 			}
 			bp.Init(5)
-
-			// Create a fake filemetada using the writer meta.
-			meta, err = createPhysicalMeta(wMeta, r)
-			if err != nil {
-				return err.Error()
-			}
-			r.fileNum = meta.FileBacking.DiskFileNum
 			return formatWMeta(wMeta)
 
 		case "virtualize":
@@ -323,49 +285,39 @@ func TestVirtualReader(t *testing.T) {
 			// this command the bounds must be valid keys. In general, and for
 			// this command, range key/range del spans must also not span across
 			// virtual sstable bounds.
-			if meta.FileMetadata == nil {
+			if wMeta == nil {
 				return "build must be called at least once before virtualize"
 			}
-			if vMeta1.FileMetadata != nil {
-				vMeta1.FileMetadata = nil
-				v = VirtualReader{}
-			}
+			v = nil
+			var params VirtualReaderParams
 
-			var syntheticSuffix []byte
+			// Parse the virtualization bounds.
+			bounds := strings.Split(td.CmdArgs[0].String(), "-")
+			params.Lower = base.ParseInternalKey(bounds[0])
+			params.Upper = base.ParseInternalKey(bounds[1])
+
 			if td.HasArg("suffix") {
 				var synthSuffixStr string
 				td.ScanArgs(t, "suffix", &synthSuffixStr)
-				syntheticSuffix = []byte(synthSuffixStr)
+				params.SyntheticSuffix = []byte(synthSuffixStr)
 			}
 
-			vMeta := &manifest.FileMetadata{
-				FileBacking:     meta.FileBacking,
-				SmallestSeqNum:  meta.SmallestSeqNum,
-				LargestSeqNum:   meta.LargestSeqNum,
-				Virtual:         true,
-				SyntheticSuffix: syntheticSuffix,
-			}
-			// Parse the virtualization bounds.
-			bounds := strings.Split(td.CmdArgs[0].String(), "-")
-			vMeta.Smallest = base.ParseInternalKey(bounds[0])
-			vMeta.Largest = base.ParseInternalKey(bounds[1])
-			vMeta.FileNum = nextFileNum()
+			params.FileNum = nextFileNum()
+			params.BackingSize = wMeta.Size
 			var err error
-			vMeta.Size, err = r.EstimateDiskUsage(vMeta.Smallest.UserKey, vMeta.Largest.UserKey)
+			params.Size, err = r.EstimateDiskUsage(params.Lower.UserKey, params.Upper.UserKey)
 			if err != nil {
 				return err.Error()
 			}
-			vMeta.ValidateVirtual(meta.FileMetadata)
-
-			vMeta1 = vMeta.VirtualMeta()
-			v = MakeVirtualReader(r, vMeta1, false /* isSharedIngested */)
-			return formatVirtualReader(&v)
+			vr := MakeVirtualReader(r, params)
+			v = &vr
+			return formatVirtualReader(v)
 
 		case "citer":
 			// Creates a compaction iterator from the virtual reader, and then
 			// just scans the keyspace. Which is all a compaction iterator is
 			// used for. This tests the First and Next calls.
-			if vMeta1.FileMetadata == nil {
+			if v == nil {
 				return "virtualize must be called before creating compaction iters"
 			}
 
@@ -387,7 +339,7 @@ func TestVirtualReader(t *testing.T) {
 			return buf.String()
 
 		case "constrain":
-			if vMeta1.FileMetadata == nil {
+			if v == nil {
 				return "virtualize must be called before constrain"
 			}
 			splits := strings.Split(td.CmdArgs[0].String(), ",")
@@ -407,7 +359,7 @@ func TestVirtualReader(t *testing.T) {
 			return buf.String()
 
 		case "scan-range-del":
-			if vMeta1.FileMetadata == nil {
+			if v == nil {
 				return "virtualize must be called before scan-range-del"
 			}
 			iter, err := v.NewRawRangeDelIter()
@@ -430,7 +382,7 @@ func TestVirtualReader(t *testing.T) {
 			return buf.String()
 
 		case "scan-range-key":
-			if vMeta1.FileMetadata == nil {
+			if v == nil {
 				return "virtualize must be called before scan-range-key"
 			}
 			iter, err := v.NewRawRangeKeyIter()
@@ -453,7 +405,7 @@ func TestVirtualReader(t *testing.T) {
 			return buf.String()
 
 		case "iter":
-			if vMeta1.FileMetadata == nil {
+			if v == nil {
 				return "virtualize must be called before iter"
 			}
 			var lower, upper []byte
