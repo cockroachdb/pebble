@@ -154,13 +154,23 @@ h: (foo, .)
 .
 
 build-remote f5
-set ef foo
-set eg foo
-set eh foo
+set f foo
+set g foo
+set h foo
 ----
 
-ingest-external prefix-replace=(e,f)
+ingest-external prefix-synthesis=(f)
 f5,10,ff,fi
+----
+
+build-remote f6
+set bf foo
+set bg foo
+set bh foo
+----
+
+ingest-external prefix-replace=(b,c)
+f6,10,cf,ci
 ----
 
 iter
@@ -176,10 +186,16 @@ next
 next
 next
 next
+next
+next
+next
 ----
 a: (foo, .)
 b: (bar, .)
 c: (foobarbaz, .)
+cf: (foo, .)
+cg: (foo, .)
+ch: (foo, .)
 d: (haha, .)
 e: (something, .)
 f: (foo, .)
@@ -203,6 +219,12 @@ set eh foo
 ----
 
 ingest-external prefix-replace=(e,f)
+f5,10,ff,fi
+----
+pebble: format major version too old for synthetic prefix ingestion
+
+
+ingest-external prefix-synthesis=(f)
 f5,10,ff,fi
 ----
 pebble: format major version too old for synthetic prefix ingestion
@@ -303,18 +325,18 @@ reset
 ----
 
 build-remote f7
-set fc foo
-set fd haha
-set fe something
+set c foo
+set d haha
+set e something
 ----
 
 build-remote f8
-set fg foo
-set fh foo
-set fi foo
+set g foo
+set h foo
+set i foo
 ----
 
-ingest-external prefix-replace=(f,g)
+ingest-external prefix-synthesis=(g)
 f7,10,gc,gf
 f8,10,gg,gj
 ----

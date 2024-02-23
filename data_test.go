@@ -1286,9 +1286,10 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 
 func runIngestExternalCmd(td *datadriven.TestData, d *DB, locator string) error {
 	external := make([]ExternalFile, 0)
-	usePrefixChange := false
+	usePrefixReplacement := false
 	var fromPrefix, toPrefix []byte
 	var syntheticSuffix []byte
+	var syntheticPrefix []byte
 	for i := range td.CmdArgs {
 		switch td.CmdArgs[i].Key {
 		case "prefix-replace":
@@ -1298,7 +1299,9 @@ func runIngestExternalCmd(td *datadriven.TestData, d *DB, locator string) error 
 			}
 			fromPrefix = []byte(vals[0])
 			toPrefix = []byte(vals[1])
-			usePrefixChange = true
+			usePrefixReplacement = true
+		case "prefix-synthesis":
+			syntheticPrefix = []byte(td.CmdArgs[i].Vals[0])
 		case "suffix-replace":
 			syntheticSuffix = []byte(td.CmdArgs[i].Vals[0])
 		}
@@ -1319,9 +1322,11 @@ func runIngestExternalCmd(td *datadriven.TestData, d *DB, locator string) error 
 		ef.SmallestUserKey = []byte(fields[2])
 		ef.LargestUserKey = []byte(fields[3])
 		ef.HasPointKey = true
-		if usePrefixChange {
+		if usePrefixReplacement {
 			ef.ContentPrefix = fromPrefix
 			ef.SyntheticPrefix = toPrefix
+		} else {
+			ef.SyntheticPrefix = syntheticPrefix
 		}
 		ef.SyntheticSuffix = syntheticSuffix
 		external = append(external, ef)

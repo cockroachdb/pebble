@@ -1130,6 +1130,9 @@ type ExternalFile struct {
 	// is accessed as if those keys all instead have prefix SyntheticPrefix.
 	//
 	// SyntheticPrefix must be a prefix of both SmallestUserKey and LargestUserKey.
+	//
+	// NB: If the SyntheticPrefix is non-empty and the ContentPrefix is empty,
+	// then the read path will conduct block level prefix synthesis.
 	ContentPrefix, SyntheticPrefix []byte
 
 	// SyntheticSuffix will replace the suffix of every key in the file during
