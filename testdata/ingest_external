@@ -154,13 +154,23 @@ h: (foo, .)
 .
 
 build-remote f5
-set ef foo
-set eg foo
-set eh foo
+set f foo
+set g foo
+set h foo
 ----
 
 ingest-external
-f5 bounds=(ff,fi) prefix-replace=(e,f)
+f5 bounds=(ff,fi) synthetic-prefix=f
+----
+
+build-remote f6
+set bf foo
+set bg foo
+set bh foo
+----
+
+ingest-external
+f6 bounds=(cf,ci) prefix-replace=(b,c)
 ----
 
 iter
@@ -176,10 +186,16 @@ next
 next
 next
 next
+next
+next
+next
 ----
 a: (foo, .)
 b: (bar, .)
 c: (foobarbaz, .)
+cf: (foo, .)
+cg: (foo, .)
+ch: (foo, .)
 d: (haha, .)
 e: (something, .)
 f: (foo, .)
@@ -204,6 +220,12 @@ set eh foo
 
 ingest-external
 f5 bounds=(ff,fi) prefix-replace=(e,f)
+----
+pebble: format major version too old for synthetic prefix ingestion
+
+
+ingest-external
+f5 bounds=(ff,fi) synthetic-prefix=(f)
 ----
 pebble: format major version too old for synthetic prefix ingestion
 
@@ -303,20 +325,20 @@ reset
 ----
 
 build-remote f7
-set fc foo
-set fd haha
-set fe something
+set c foo
+set d haha
+set e something
 ----
 
 build-remote f8
-set fg foo
-set fh foo
-set fi foo
+set g foo
+set h foo
+set i foo
 ----
 
 ingest-external
-f7 bounds=(gc,gf) prefix-replace=(f,g)
-f8 bounds=(gg,gj) prefix-replace=(f,g)
+f7 bounds=(gc,gf) synthetic-prefix=g
+f8 bounds=(gg,gj) synthetic-prefix=g
 ----
 
 iter
@@ -395,32 +417,8 @@ ci: (foo, .)
 reset
 ----
 
-batch
-set a1 foo
-set ci1 bar
-set z1 baz
-----
 
-build-remote f10
-del-range i j
-----
-
-ingest-external
-f10 bounds=(cg,ck) synthetic-prefix=c
-----
-
-iter
-seek-ge bp
-----
-z1: (baz, .)
-
-iter
-seek-lt de
-----
-a1: (foo, .)
-
-
-# Test compactions with synthetic prefix.
+# Test compactions with synthetic prefix replacement.
 reset
 ----
 
@@ -478,5 +476,62 @@ c: (c, .)
 ea: (da, .)
 eb: (db, .)
 ec: (dc, .)
+f: (f, .)
+.
+
+# Test compactions with prefix synthesis.
+reset
+----
+
+build-remote ext
+set a a
+set b b
+set c c
+----
+
+ingest-external 
+ext bounds=(ea,ed) synthetic-prefix=e
+----
+
+ingest-external
+ext bounds=(ba,bd) synthetic-prefix=b
+----
+
+# Write some keys so we actually perform a compaction.
+batch
+set a a
+set c c
+set f f
+----
+
+compact a z
+----
+
+lsm
+----
+6:
+  000008:[a#0,SET-f#0,SET]
+
+# Make sure we see both ba..bc and ea..ec.
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a: (a, .)
+ba: (a, .)
+bb: (b, .)
+bc: (c, .)
+c: (c, .)
+ea: (a, .)
+eb: (b, .)
+ec: (c, .)
 f: (f, .)
 .
