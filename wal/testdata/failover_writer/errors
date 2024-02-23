@@ -139,11 +139,13 @@ log writers:
 # Error is injected on sync of first (or first and second) record in first log
 # file.
 #
-# TODO(sumeer): this flakes under stress, with the primary file occasionally
-# containing woolly. Index 0 is create, index 1 is write, and index 2 is the
-# earliest the sync can happen, so this should work. Fix this or disable this
-# test case.
-init inject-errors=((ErrInjected (And Writes (PathMatch "*/000003.log") (OnIndex 2))))
+# TODO(sumeer): this disabled case flakes under stress, with the primary file
+# occasionally containing woolly. Index 0 is create, index 1 is write, and
+# index 2 is the earliest the sync can happen, so this should work. Fix this.
+# init inject-errors=((ErrInjected (And Writes (PathMatch "*/000003.log") (OnIndex 2))))
+# ----
+
+init
 ----
 
 write sync=true value=woolly
@@ -152,9 +154,30 @@ write sync=true value=woolly
 write sync=true value=sheep
 ----
 
-switch
-----
-ok
+# switch
+# ----
+# ok
+#
+# close
+# ----
+# close: ok, offset: 33
+# records:
+#   record 0: synced
+#   record 1: synced
+# write bytes metric: 44
+# getLog: num: 3
+#   segment 0: size 33 closed false dir: pri
+#   segment 1: size 33 closed true dir: sec
+# log files:
+#   pri/000003.log
+#     EOF
+#   sec/000003-001.log
+#     0: woolly
+#     17: sheep
+#     EOF
+# log writers:
+#   writer 0: injected error
+#   writer 1: no error
 
 close
 ----
@@ -164,18 +187,14 @@ records:
   record 1: synced
 write bytes metric: 44
 getLog: num: 3
-  segment 0: size 33 closed false dir: pri
-  segment 1: size 33 closed true dir: sec
+  segment 0: size 33 closed true dir: pri
 log files:
   pri/000003.log
-    EOF
-  sec/000003-001.log
     0: woolly
     17: sheep
     EOF
 log writers:
-  writer 0: injected error
-  writer 1: no error
+  writer 0: no error
 
 # Error is injected on create of first log file. Close does not block.
 init inject-errors=((ErrInjected (And Writes (PathMatch "*/000004.log") (OnIndex 0))))
