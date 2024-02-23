@@ -154,13 +154,23 @@ h: (foo, .)
 .
 
 build-remote f5
-set ef foo
-set eg foo
-set eh foo
+set f foo
+set g foo
+set h foo
 ----
 
-ingest-external prefix-replace=(e,f)
+ingest-external prefix-synthesis=(f)
 f5,10,ff,fi
+----
+
+build-remote f6
+set bf foo
+set bg foo
+set bh foo
+----
+
+ingest-external prefix-replace=(b,c)
+f6,10,cf,ci
 ----
 
 iter
@@ -176,10 +186,16 @@ next
 next
 next
 next
+next
+next
+next
 ----
 a: (foo, .)
 b: (bar, .)
 c: (foobarbaz, .)
+cf: (foo, .)
+cg: (foo, .)
+ch: (foo, .)
 d: (haha, .)
 e: (something, .)
 f: (foo, .)
@@ -203,6 +219,12 @@ set eh foo
 ----
 
 ingest-external prefix-replace=(e,f)
+f5,10,ff,fi
+----
+pebble: format major version too old for synthetic prefix ingestion
+
+
+ingest-external prefix-synthesis=(f)
 f5,10,ff,fi
 ----
 pebble: format major version too old for synthetic prefix ingestion
@@ -303,18 +325,18 @@ reset
 ----
 
 build-remote f7
-set fc foo
-set fd haha
-set fe something
+set c foo
+set d haha
+set e something
 ----
 
 build-remote f8
-set fg foo
-set fh foo
-set fi foo
+set g foo
+set h foo
+set i foo
 ----
 
-ingest-external prefix-replace=(f,g)
+ingest-external prefix-synthesis=(g)
 f7,10,gc,gf
 f8,10,gg,gj
 ----
@@ -392,35 +414,44 @@ seek-lt de
 ----
 ci: (foo, .)
 
+
 reset
 ----
 
-batch
-set a1 foo
-set ci1 bar
-set z1 baz
+# Conduct the same test except with prefix synthesis
+reset
 ----
 
-build-remote f10
-del-range i j
+build-remote f9
+set i foo
 ----
 
-ingest-external prefix-replace=(,c)
-f10,10,cg,ck
+ingest-external prefix-synthesis=(c)
+f9,10,cg,ck
 ----
 
 iter
 seek-ge bp
 ----
-z1: (baz, .)
+ci: (foo, .)
+
+iter
+seek-prefix-ge bp
+----
+.
 
 iter
 seek-lt de
 ----
-a1: (foo, .)
+ci: (foo, .)
+
+reset
+----
 
 
-# Test compactions with synthetic prefix.
+
+
+# Test compactions with synthetic prefix replacement.
 reset
 ----
 
@@ -478,5 +509,64 @@ c: (c, .)
 ea: (da, .)
 eb: (db, .)
 ec: (dc, .)
+f: (f, .)
+.
+
+# Test compactions with prefix synthesis.
+reset
+----
+
+build-remote ext
+set a a
+set b b
+set c c
+----
+
+# Synthesize prefix with one greater than the original one.
+ingest-external prefix-synthesis=(e)
+ext,10,ea,ed
+----
+
+# Replace prefix with one smaller than the original one.
+ingest-external prefix-synthesis=(b)
+ext,10,ba,bd
+----
+
+# Write some keys so we actually perform a compaction.
+batch
+set a a
+set c c
+set f f
+----
+
+compact a z
+----
+
+lsm
+----
+6:
+  000008:[a#0,SET-f#0,SET]
+
+# Make sure we see both ba..bc and ea..ec.
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a: (a, .)
+ba: (a, .)
+bb: (b, .)
+bc: (c, .)
+c: (c, .)
+ea: (a, .)
+eb: (b, .)
+ec: (c, .)
 f: (f, .)
 .

@@ -384,6 +384,7 @@ func (c *checker) check(
 			c.t.Logf("expected %q, got %q", eKey.UserKey, gKey.UserKey)
 			require.Equal(c.t, eKey, gKey)
 			require.Equal(c.t, eVal, gVal)
+			c.notValid = false
 		} else {
 			c.t.Logf("expected nil, got %q", gKey)
 			require.Nil(c.t, gKey)

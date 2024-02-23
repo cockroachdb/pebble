@@ -1072,6 +1072,44 @@ const (
 	Last
 )
 
+func (rct readCallType) String() string {
+	switch rct {
+	case SeekGE:
+		return "SeekGE"
+	case Next:
+		return "Next"
+	case Prev:
+		return "Prev"
+	case SeekLT:
+		return "SeekLT"
+	case First:
+		return "First"
+	case Last:
+		return "Last"
+	default:
+		panic("unavailable read call type")
+	}
+}
+
+func (rct readCallType) Opposite() readCallType {
+	switch rct {
+	case SeekGE:
+		return SeekLT
+	case Next:
+		return Prev
+	case Prev:
+		return Next
+	case SeekLT:
+		return SeekGE
+	case First:
+		return Last
+	case Last:
+		return First
+	default:
+		panic("unavailable read call type")
+	}
+}
+
 // readCall represents an Iterator call. For seek calls, the seekKey must be
 // set. For Next and Prev, the repeatCount instructs the iterator to repeat the
 // call.
@@ -1079,6 +1117,13 @@ type readCall struct {
 	callType    readCallType
 	seekKey     []byte
 	repeatCount int
+}
+
+func (rc readCall) String() string {
+	if rc.seekKey != nil {
+		return fmt.Sprintf("%s(%s)", rc.callType, string(rc.seekKey))
+	}
+	return rc.callType.String()
 }
 
 // readerWorkload creates a random sequence of Iterator calls. If the iterator
@@ -1097,21 +1142,48 @@ type readerWorkload struct {
 	maxTs               int64
 	seekKeyAfterInvalid []byte
 	rng                 *rand.Rand
+	prefix              []byte
 }
 
-func (rw *readerWorkload) setSeekKeyAfterInvalid() {
+// setCallAfterInvalid chooses the kind the call to return the iterator to a
+// valid state. If seekAfterInvalid is empty after this call, then Next or Prev
+// will be used, else SeekLT/SeekPrev will be used.
+func (rw *readerWorkload) setCallAfterInvalid() {
+	if rw.rng.Intn(3) == 0 {
+		rw.seekKeyAfterInvalid = rw.seekKeyAfterInvalid[:0]
+		rw.t.Logf("Handle Invalid: Next/Prev")
+		return
+	}
 	idx := rw.rng.Int63n(rw.ks.Count())
 	ts := rw.rng.Int63n(rw.maxTs)
-	rw.seekKeyAfterInvalid = testkeys.KeyAt(rw.ks, idx, ts)
+	key := testkeys.KeyAt(rw.ks, idx, ts)
+	rw.seekKeyAfterInvalid = append(rw.seekKeyAfterInvalid[:0], rw.prefix...)
+	rw.seekKeyAfterInvalid = append(rw.seekKeyAfterInvalid, key...)
+
+	if rw.rng.Int31n(10) == 0 {
+		// Occasioinally seek without a prefix, even if there is one, which may not
+		// land the iterator back in valid key space. This further checks that both
+		// iterators behave the same in in invalid key space.
+		rw.seekKeyAfterInvalid = append(rw.seekKeyAfterInvalid[:0], key...)
+	}
+
+	rw.t.Logf("Handle Invalid: Seek with %s", rw.seekKeyAfterInvalid)
+
 }
 
 func (rw *readerWorkload) handleInvalid(
-	call readCall, iter Iterator,
+	callType readCallType, iter Iterator,
 ) (*InternalKey, base.LazyValue) {
 	switch {
-	case SeekGE == call.callType || Next == call.callType || Last == call.callType:
+	case (SeekGE == callType || Next == callType || Last == callType):
+		if len(rw.seekKeyAfterInvalid) == 0 {
+			return iter.Prev()
+		}
 		return iter.SeekLT(rw.seekKeyAfterInvalid, base.SeekLTFlagsNone)
-	case SeekLT == call.callType || Prev == call.callType || First == call.callType:
+	case (SeekLT == callType || Prev == callType || First == callType):
+		if len(rw.seekKeyAfterInvalid) == 0 {
+			return iter.Next()
+		}
 		return iter.SeekGE(rw.seekKeyAfterInvalid, base.SeekGEFlagsNone)
 	default:
 		rw.t.Fatalf("unkown call")
@@ -1152,7 +1224,7 @@ func (rw *readerWorkload) repeatRead(call readCall, iter Iterator) (*InternalKey
 	}
 	for i := 0; i < call.repeatCount; i++ {
 		key, val := repeatCall()
-		if key != nil {
+		if key == nil {
 			return key, val
 		}
 	}
@@ -1160,12 +1232,13 @@ func (rw *readerWorkload) repeatRead(call readCall, iter Iterator) (*InternalKey
 }
 
 func createReadWorkload(
-	t *testing.T, rng *rand.Rand, callCount int, ks testkeys.Keyspace, maxTS int64,
+	t *testing.T, rng *rand.Rand, callCount int, ks testkeys.Keyspace, maxTS int64, prefix []byte,
 ) readerWorkload {
 	calls := make([]readCall, 0, callCount)
 
 	for i := 0; i < callCount; i++ {
-		key := make([]byte, 0)
+		var seekKey []byte
+
 		callType := readCallType(rng.Intn(int(Last + 1)))
 		repeatCount := 0
 		if callType == First || callType == Last {
@@ -1173,31 +1246,41 @@ func createReadWorkload(
 			callType = readCallType(rng.Intn(int(Last + 1)))
 		}
 		if callType == SeekLT || callType == SeekGE {
+
 			idx := rng.Int63n(int64(ks.MaxLen()))
 			ts := rng.Int63n(maxTS) + 1
-			key = testkeys.KeyAt(ks, idx, ts)
+			key := testkeys.KeyAt(ks, idx, ts)
+			if prefix != nil && rng.Intn(10) != 0 {
+				// If there's a prefix, prepend it most of the time.
+				seekKey = append(seekKey, prefix...)
+			}
+			seekKey = append(seekKey, key...)
 		}
 		if callType == Next || callType == Prev {
 			repeatCount = rng.Intn(100)
 		}
-		calls = append(calls, readCall{callType: callType, seekKey: key, repeatCount: repeatCount})
+		calls = append(calls, readCall{callType: callType, seekKey: seekKey, repeatCount: repeatCount})
 	}
 	return readerWorkload{
-		calls: calls,
-		t:     t,
-		ks:    ks,
-		maxTs: maxTS,
-		rng:   rng,
+		calls:               calls,
+		t:                   t,
+		ks:                  ks,
+		maxTs:               maxTS,
+		rng:                 rng,
+		prefix:              prefix,
+		seekKeyAfterInvalid: append([]byte{}, prefix...),
 	}
 }
 
-// TestRandomizedSuffixRewriter runs a random sequence of iterator calls
-// on an sst with keys with a fixed timestamp and asserts that all calls
-// return the same sequence of keys as another iterator initialized with
-// a suffix replacement rule to that fixed timestamp which reads an sst
-// with the same keys and randomized suffixes. In other words, this is a
-// randomized version of TestBlockSyntheticSuffix.
-func TestRandomizedSuffixRewriter(t *testing.T) {
+// TestRandomizedPrefixSuffixRewriter runs a random sequence of iterator calls
+// on an sst with keys with a fixed timestamp and asserts that all calls return
+// the same sequence of keys as another iterator initialized with a suffix
+// replacement rule to that fixed timestamp which reads an sst with the same
+// keys and randomized suffixes. The iterator with the suffix replacement rule
+// may also be initialized with a prefix synthenthsis rule while the control file
+// will contain all keys with that prefix. In other words, this is a randomized
+// version of TestBlockSyntheticSuffix and TestBlockSyntheticPrefix.
+func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 
 	ks := testkeys.Alpha(3)
 
@@ -1205,6 +1288,7 @@ func TestRandomizedSuffixRewriter(t *testing.T) {
 	maxTs := int64(10)
 	suffix := int64(12)
 	syntheticSuffix := []byte("@" + strconv.Itoa(int(suffix)))
+	var syntheticPrefix []byte
 
 	potentialBlockSize := []int{32, 64, 128, 256}
 	potentialRestartInterval := []int{1, 4, 8, 16}
@@ -1215,21 +1299,29 @@ func TestRandomizedSuffixRewriter(t *testing.T) {
 
 	blockSize := potentialBlockSize[rng.Intn(len(potentialBlockSize))]
 	restartInterval := potentialRestartInterval[rng.Intn(len(potentialRestartInterval))]
-	t.Logf("Configured Block Size %d, Restart Interval %d, Seed %d", blockSize, restartInterval, seed)
+	if rng.Intn(1) == 0 {
+		randKey := testkeys.Key(ks, rng.Int63n(ks.Count()))
+		// Choose from 3 prefix candidates: "_" sorts before all keys, randKey sorts
+		// somewhere between all keys, and "~" sorts after all keys
+		prefixCandidates := []string{"~", string(randKey) + "_", "_"}
+		syntheticPrefix = []byte(prefixCandidates[rng.Intn(len(prefixCandidates))])
 
-	createIter := func(fileName string, syntheticSuffix SyntheticSuffix) (Iterator, func()) {
+	}
+	t.Logf("Configured Block Size %d, Restart Interval %d, Seed %d, Prefix %s", blockSize, restartInterval, seed, string(syntheticPrefix))
+
+	createIter := func(fileName string, syntheticSuffix SyntheticSuffix, syntheticPrefix SyntheticPrefix) (Iterator, func()) {
 		f, err := mem.Open(fileName)
 		require.NoError(t, err)
 		eReader, err := newReader(f, ReaderOptions{Comparer: testkeys.Comparer})
 		require.NoError(t, err)
 		iter, err := eReader.newIterWithBlockPropertyFiltersAndContext(
 			context.Background(),
-			IterTransforms{SyntheticSuffix: syntheticSuffix},
+			IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix},
 			nil, nil, nil,
 			true, nil, CategoryAndQoS{}, nil,
 			TrivialReaderProvider{Reader: eReader}, &virtualState{
-				lower: base.MakeInternalKey([]byte("a"), base.InternalKeySeqNumMax, base.InternalKeyKindSet),
-				upper: base.MakeRangeDeleteSentinelKey([]byte("zzzzzzzzzzzzzzzzzzz")),
+				lower: base.MakeInternalKey([]byte("_"), base.InternalKeySeqNumMax, base.InternalKeyKindSet),
+				upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~")),
 			})
 		require.NoError(t, err)
 		return iter, func() {
@@ -1250,7 +1342,7 @@ func TestRandomizedSuffixRewriter(t *testing.T) {
 				indexBlockSize = 1
 			}
 
-			createFile := func(randSuffix bool) string {
+			createFile := func(randSuffix bool, prefix []byte) string {
 				// initialize a new rng so that every createFile
 				// call generates the same sequence of random numbers.
 				localRng := rand.New(rand.NewSource(seed))
@@ -1279,8 +1371,19 @@ func TestRandomizedSuffixRewriter(t *testing.T) {
 					if !randSuffix {
 						ts = suffix
 					}
+					var keyToWrite []byte
 					key := testkeys.KeyAt(ks, keyIdx, ts)
-					require.NoError(t, w.Set(key, []byte(fmt.Sprint(keyIdx))))
+					if rng.Intn(10) == 0 && randSuffix {
+						// Occasionally include keys without a suffix.
+						key = testkeys.Key(ks, keyIdx)
+					}
+					if prefix != nil {
+						keyToWrite = append(keyToWrite, prefix...)
+						keyToWrite = append(keyToWrite, key...)
+					} else {
+						keyToWrite = key
+					}
+					require.NoError(t, w.Set(keyToWrite, []byte(fmt.Sprint(keyIdx))))
 					skipIdx := localRng.Int63n(5) + 1
 					keyIdx += skipIdx
 				}
@@ -1288,21 +1391,35 @@ func TestRandomizedSuffixRewriter(t *testing.T) {
 				return name
 			}
 
-			eFileName := createFile(false)
-			eIter, eCleanup := createIter(eFileName, nil)
+			eFileName := createFile(false, syntheticPrefix)
+			eIter, eCleanup := createIter(eFileName, nil, nil)
 			defer eCleanup()
 
-			fileName := createFile(true)
-			iter, cleanup := createIter(fileName, syntheticSuffix)
+			fileName := createFile(true, nil)
+			iter, cleanup := createIter(fileName, syntheticSuffix, syntheticPrefix)
 			defer cleanup()
 
-			w := createReadWorkload(t, rng, callCount, ks, maxTs+2)
-			workloadChecker := checker{t: t}
+			w := createReadWorkload(t, rng, callCount, ks, maxTs+2, syntheticPrefix)
+			workloadChecker := checker{
+				t: t,
+				alsoCheck: func() {
+					require.Nil(t, eIter.Error())
+					require.Nil(t, iter.Error())
+
+				},
+			}
 			for _, call := range w.calls {
+				t.Logf("%s", call)
 				workloadChecker.check(w.read(call, eIter))(w.read(call, iter))
 				if workloadChecker.notValid {
-					w.setSeekKeyAfterInvalid()
-					workloadChecker.check(w.handleInvalid(call, eIter))(w.handleInvalid(call, iter))
+					w.setCallAfterInvalid()
+					workloadChecker.check(w.handleInvalid(call.callType, eIter))(w.handleInvalid(call.callType, iter))
+					if workloadChecker.notValid {
+						// Try correcting using the opposite call if the iterator is still
+						// invalid. This may occur if the Seek key exhausted the iterator.
+						workloadChecker.check(w.handleInvalid(call.callType.Opposite(), eIter))(w.handleInvalid(call.callType.Opposite(), iter))
+					}
+					require.Equal(t, false, workloadChecker.notValid)
 				}
 			}
 		})
