@@ -404,6 +404,14 @@ type segmentWithSizeEtc struct {
 
 type failoverManager struct {
 	opts Options
+	// initialObsolete holds the set of DeletableLogs that formed the logs
+	// passed into Init. The initialObsolete logs are all obsolete. Once
+	// returned via Manager.Obsolete, initialObsolete is cleared. The
+	// initialObsolete logs are stored separately from mu.queue because they may
+	// include logs that were NOT created by the standalone manager, and
+	// multiple physical log files may form one logical WAL.
+	initialObsolete []DeletableLog
+
 	// TODO(jackson/sumeer): read-path etc.
 
 	dirHandles [numDirIndices]vfs.File
@@ -457,25 +465,14 @@ func (wm *failoverManager) Init(o Options, initial Logs) error {
 	}
 	wm.recycler.Init(o.MaxNumRecyclableLogs)
 	for _, ll := range initial {
-		llse := logicalLogWithSizesEtc{
-			num: ll.Num,
-		}
 		if wm.recycler.MinRecycleLogNum() <= ll.Num {
 			wm.recycler.SetMinRecycleLogNum(ll.Num + 1)
 		}
-		for i, s := range ll.segments {
-			fs, path := ll.SegmentLocation(i)
-			stat, err := fs.Stat(path)
-			if err != nil {
-				return err
-			}
-			llse.segments = append(llse.segments, segmentWithSizeEtc{
-				segment:             s,
-				approxFileSize:      uint64(stat.Size()),
-				synchronouslyClosed: true,
-			})
+		var err error
+		wm.initialObsolete, err = appendDeletableLogs(wm.initialObsolete, ll)
+		if err != nil {
+			return err
 		}
-		wm.mu.closedWALs = append(wm.mu.closedWALs, llse)
 	}
 	return nil
 }
@@ -514,6 +511,11 @@ func (wm *failoverManager) Obsolete(
 ) (toDelete []DeletableLog, err error) {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
+
+	// If this is the first call to Obsolete after Open, we may have deletable
+	// logs outside the queue.
+	toDelete, wm.initialObsolete = wm.initialObsolete, nil
+
 	i := 0
 	for ; i < len(wm.mu.closedWALs); i++ {
 		ll := wm.mu.closedWALs[i]
@@ -607,7 +609,7 @@ func (wm *failoverManager) writerClosed(llse logicalLogWithSizesEtc) {
 
 // Stats implements Manager.
 func (wm *failoverManager) Stats() Stats {
-	recycledLogsCount, recycledLogSize := wm.recycler.Stats()
+	obsoleteLogsCount, obsoleteLogSize := wm.recycler.Stats()
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 	var liveFileCount int
@@ -624,9 +626,15 @@ func (wm *failoverManager) Stats() Stats {
 	if wm.mu.ww != nil {
 		updateStats(wm.mu.ww.getLog().segments)
 	}
+	for i := range wm.initialObsolete {
+		if i == 0 || wm.initialObsolete[i].NumWAL != wm.initialObsolete[i-1].NumWAL {
+			obsoleteLogsCount++
+		}
+		obsoleteLogSize += wm.initialObsolete[i].ApproxFileSize
+	}
 	return Stats{
-		ObsoleteFileCount: recycledLogsCount,
-		ObsoleteFileSize:  recycledLogSize,
+		ObsoleteFileCount: obsoleteLogsCount,
+		ObsoleteFileSize:  obsoleteLogSize,
 		LiveFileCount:     liveFileCount,
 		LiveFileSize:      liveFileSize,
 	}

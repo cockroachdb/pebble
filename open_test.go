@@ -595,7 +595,7 @@ func TestOpenWALReplay(t *testing.T) {
 
 			if readOnly {
 				m := d.Metrics()
-				require.Equal(t, int64(logCount), m.WAL.Files)
+				require.Equal(t, int64(logCount), m.WAL.ObsoleteFiles)
 				d.mu.Lock()
 				require.NotNil(t, d.mu.mem.mutable)
 				d.mu.Unlock()

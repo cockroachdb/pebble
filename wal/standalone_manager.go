@@ -5,9 +5,7 @@
 package wal
 
 import (
-	"cmp"
 	"os"
-	"slices"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -22,6 +20,13 @@ type StandaloneManager struct {
 	o        Options
 	recycler LogRecycler
 	walDir   vfs.File
+	// initialObsolete holds the set of DeletableLogs that formed the logs
+	// passed into Init. The initialObsolete logs are all obsolete. Once
+	// returned via Manager.Obsolete, initialObsolete is cleared. The
+	// initialObsolete logs are stored separately from mu.queue because they may
+	// include logs that were NOT created by the standalone manager, and
+	// multiple physical log files may form one logical WAL.
+	initialObsolete []DeletableLog
 
 	// External synchronization is relied on when accessing w in Manager.Create,
 	// Writer.{WriteRecord,Close}.
@@ -61,19 +66,15 @@ func (m *StandaloneManager) Init(o Options, initial Logs) error {
 		err = firstError(err, walDir.Close())
 		return err
 	}
-	var files []base.FileInfo
 	for _, ll := range initial {
-		size, err := ll.PhysicalSize()
-		if err != nil {
-			return closeAndReturnErr(err)
-		}
-		files = append(files, base.FileInfo{FileNum: base.DiskFileNum(ll.Num), FileSize: size})
 		if m.recycler.MinRecycleLogNum() <= ll.Num {
 			m.recycler.SetMinRecycleLogNum(ll.Num + 1)
 		}
+		m.initialObsolete, err = appendDeletableLogs(m.initialObsolete, ll)
+		if err != nil {
+			return closeAndReturnErr(err)
+		}
 	}
-	slices.SortFunc(files, func(a, b base.FileInfo) int { return cmp.Compare(a.FileNum, b.FileNum) })
-	m.mu.queue = files
 	return nil
 }
 
@@ -97,6 +98,11 @@ func (m *StandaloneManager) Obsolete(
 ) (toDelete []DeletableLog, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// If this is the first call to Obsolete after Open, we may have deletable
+	// logs outside the queue.
+	toDelete, m.initialObsolete = m.initialObsolete, nil
+
 	i := 0
 	for ; i < len(m.mu.queue); i++ {
 		fi := m.mu.queue[i]
@@ -210,16 +216,22 @@ func (m *StandaloneManager) ElevateWriteStallThresholdForFailover() bool {
 
 // Stats implements Manager.
 func (m *StandaloneManager) Stats() Stats {
-	recycledLogsCount, recycledLogSize := m.recycler.Stats()
+	obsoleteLogsCount, obsoleteLogSize := m.recycler.Stats()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var fileSize uint64
 	for i := range m.mu.queue {
 		fileSize += m.mu.queue[i].FileSize
 	}
+	for i := range m.initialObsolete {
+		if i == 0 || m.initialObsolete[i].NumWAL != m.initialObsolete[i-1].NumWAL {
+			obsoleteLogsCount++
+		}
+		obsoleteLogSize += m.initialObsolete[i].ApproxFileSize
+	}
 	return Stats{
-		ObsoleteFileCount: recycledLogsCount,
-		ObsoleteFileSize:  recycledLogSize,
+		ObsoleteFileCount: obsoleteLogsCount,
+		ObsoleteFileSize:  obsoleteLogSize,
 		LiveFileCount:     len(m.mu.queue),
 		LiveFileSize:      fileSize,
 	}
