@@ -22,7 +22,7 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     6 |     0     0B     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
 total |     1   709B     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
+WAL: 0 files (0B)  in: 0B  written: 0B (0% overhead)
 Flushes: 0
 Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
              default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0

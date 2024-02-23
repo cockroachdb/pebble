@@ -63,12 +63,9 @@ recycler min-log-num: 3
 
 list-and-stats
 ----
-logs:
-  000001: {(pri,000)}
-  000002: {(pri,000)}
 stats:
-  obsolete: count 0 size 0
-  live: count 2 size 22
+  obsolete: count 2 size 22
+  live: count 0 size 0
 
 # Wait for monitor ticker to start.
 advance-time dur=1ms wait-monitor
@@ -115,13 +112,11 @@ ok
 list-and-stats
 ----
 logs:
-  000001: {(pri,000)}
-  000002: {(pri,000)}
   000005: {(pri,000)}
   000007: {(pri,000)}
 stats:
-  obsolete: count 0 size 0
-  live: count 4 size 56
+  obsolete: count 2 size 22
+  live: count 2 size 34
 
 obsolete min-unflushed=7
 ----
