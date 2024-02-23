@@ -1316,7 +1316,7 @@ func (s *iterSet) RangeKey() keyspan.FragmentIterator {
 }
 
 // CloseAll closes all of the held iterators. If CloseAll is called, then Close
-// must be not be called on the consitutent iterators.
+// must be not be called on the constituent iterators.
 func (s *iterSet) CloseAll() error {
 	var err error
 	if s.point != nil {
