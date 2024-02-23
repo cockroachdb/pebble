@@ -294,9 +294,14 @@ func (m *FileMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
 
 // IterTransforms returns an sstable.IterTransforms that has SyntheticSeqNum set as needed.
 func (m *FileMetadata) IterTransforms() sstable.IterTransforms {
+	var syntheticPrefix []byte
+	if m.PrefixReplacement != nil && !m.PrefixReplacement.UsePrefixReplacementIterator() {
+		syntheticPrefix = m.PrefixReplacement.SyntheticPrefix
+	}
 	return sstable.IterTransforms{
 		SyntheticSeqNum: m.SyntheticSeqNum(),
 		SyntheticSuffix: m.SyntheticSuffix,
+		SyntheticPrefix: syntheticPrefix,
 	}
 }
 
