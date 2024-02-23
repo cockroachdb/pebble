@@ -46,8 +46,8 @@ type StandaloneManager struct {
 
 var _ Manager = &StandaloneManager{}
 
-// Init implements Manager.
-func (m *StandaloneManager) Init(o Options, initial Logs) error {
+// init implements Manager.
+func (m *StandaloneManager) init(o Options, initial Logs) error {
 	if o.Secondary.FS != nil {
 		return errors.AssertionFailedf("cannot create StandaloneManager with a secondary")
 	}

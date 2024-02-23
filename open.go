@@ -320,7 +320,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.mu.log.metrics.fsyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Buckets: FsyncLatencyBuckets,
 	})
-	walManager := &wal.StandaloneManager{}
 	walOpts := wal.Options{
 		Primary:              wal.Dir{FS: opts.FS, Dirname: walDirname},
 		Secondary:            wal.Dir{},
@@ -335,11 +334,16 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		Logger:               opts.Logger,
 		EventListener:        walEventListenerAdaptor{l: opts.EventListener},
 	}
-	wals, err := wal.Scan(walOpts.Dirs()...)
+	if opts.WALFailover != nil {
+		walOpts.Secondary = opts.WALFailover.Secondary
+		walOpts.FailoverOptions = opts.WALFailover.FailoverOptions
+	}
+	walDirs := append(walOpts.Dirs(), opts.WALRecoveryDirs...)
+	wals, err := wal.Scan(walDirs...)
 	if err != nil {
 		return nil, err
 	}
-	err = walManager.Init(walOpts, wals)
+	walManager, err := wal.Init(walOpts, wals)
 	if err != nil {
 		return nil, err
 	}
