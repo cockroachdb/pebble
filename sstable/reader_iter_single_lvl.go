@@ -259,7 +259,7 @@ func (i *singleLevelIterator) maybeVerifyKey(
 		key := iKey.UserKey
 		v := i.vState
 		var uc, lc int
-		if p := v.prefixChange; p != nil {
+		if p := v.prefixChange; p != nil && len(p.ContentPrefix) > 0 {
 			if !bytes.HasPrefix(key, p.ContentPrefix) {
 				panic(fmt.Sprintf("key %q does not have content prefix %q", key, v.prefixChange.ContentPrefix))
 			}
@@ -273,7 +273,7 @@ func (i *singleLevelIterator) maybeVerifyKey(
 			uc = i.cmp(key, v.upper.UserKey)
 		}
 		if lc < 0 || uc > 0 || (uc == 0 && v.upper.IsExclusiveSentinel()) {
-			panic(fmt.Sprintf("key %q out of singleLeveliterator virtual bounds %s %s", key, v.lower, v.lower))
+			panic(fmt.Sprintf("key %q out of singleLeveliterator virtual bounds %s %s", key, v.lower.UserKey, v.upper.UserKey))
 		}
 	}
 	return iKey, val

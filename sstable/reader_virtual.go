@@ -103,7 +103,7 @@ func (v *VirtualReader) NewCompactionIter(
 ) (Iterator, error) {
 	i, err := v.reader.newCompactionIter(
 		transforms, bytesIterated, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
-	if err == nil && v.vState.prefixChange != nil {
+	if err == nil && v.vState.prefixChange.UsePrefixReplacementIterator() {
 		i = newPrefixReplacingIterator(
 			i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
 			v.vState.lower.UserKey, v.reader.Compare,
@@ -130,7 +130,8 @@ func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	i, err := v.reader.newIterWithBlockPropertyFiltersAndContext(
 		ctx, transforms, lower, upper, filterer, useFilterBlock,
 		stats, categoryAndQoS, statsCollector, rp, &v.vState)
-	if err == nil && v.vState.prefixChange != nil {
+	// NB: for block level prefix replacement,
+	if err == nil && v.vState.prefixChange.UsePrefixReplacementIterator() {
 		i = newPrefixReplacingIterator(
 			i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
 			v.vState.lower.UserKey, v.reader.Compare,
@@ -159,7 +160,7 @@ func (v *VirtualReader) NewRawRangeDelIter(
 	lower := &v.vState.lower
 	upper := &v.vState.upper
 
-	if v.vState.prefixChange != nil {
+	if v.vState.prefixChange.UsePrefixReplacementIterator() {
 		lower = &InternalKey{UserKey: v.vState.prefixChange.Invert(lower.UserKey), Trailer: lower.Trailer}
 		upper = &InternalKey{UserKey: v.vState.prefixChange.Invert(upper.UserKey), Trailer: upper.Trailer}
 
@@ -228,7 +229,7 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 		iter = transformIter
 	}
 
-	if v.vState.prefixChange != nil {
+	if v.vState.prefixChange.UsePrefixReplacementIterator() {
 		lower = &InternalKey{UserKey: v.vState.prefixChange.Invert(lower.UserKey), Trailer: lower.Trailer}
 		upper = &InternalKey{UserKey: v.vState.prefixChange.Invert(upper.UserKey), Trailer: upper.Trailer}
 		iter = keyspan.Truncate(
@@ -286,7 +287,7 @@ func (v *virtualState) constrainBounds(
 			last = end
 		}
 	}
-	if v.prefixChange != nil {
+	if v.prefixChange.UsePrefixReplacementIterator() {
 		first = v.prefixChange.Invert(first)
 		last = v.prefixChange.Invert(last)
 	}

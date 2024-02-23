@@ -181,6 +181,11 @@ func (ss SyntheticSuffix) IsSet() bool {
 // stored in the key suffix.
 type SyntheticPrefix []byte
 
+// IsSet returns true if the synthetic prefix is not enpty.
+func (sp SyntheticPrefix) IsSet() bool {
+	return len(sp) > 0
+}
+
 // rawTombstonesOpt is a Reader open option for specifying that range
 // tombstones returned by Reader.NewRangeDelIter() should not be
 // fragmented. Used by debug tools to get a raw view of the tombstones
@@ -428,6 +433,9 @@ func (r *Reader) NewRawRangeDelIter(transforms IterTransforms) (keyspan.Fragment
 	if transforms.SyntheticSuffix.IsSet() {
 		return nil, errors.AssertionFailedf("synthetic suffix not supported with range del iterator")
 	}
+	if transforms.SyntheticPrefix.IsSet() {
+		return nil, errors.AssertionFailedf("synthetic prefix not supported with range del iterator")
+	}
 	h, err := r.readRangeDel(nil /* stats */, nil /* iterStats */)
 	if err != nil {
 		return nil, err
@@ -455,6 +463,9 @@ func (r *Reader) NewRawRangeKeyIter(transforms IterTransforms) (keyspan.Fragment
 	}
 	if transforms.SyntheticSuffix.IsSet() {
 		return nil, errors.AssertionFailedf("synthetic suffix not supported with range key iterator")
+	}
+	if transforms.SyntheticPrefix.IsSet() {
+		return nil, errors.AssertionFailedf("synthetic prefix not supported with range key iterator")
 	}
 	h, err := r.readRangeKey(nil /* stats */, nil /* iterStats */)
 	if err != nil {
