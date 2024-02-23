@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -166,6 +167,44 @@ func TestOptionsCheck(t *testing.T) {
 `
 	tmp = *opts
 	require.NoError(t, tmp.Check(s))
+
+	// Check that an OPTIONS file that configured an explicit WALDir that will
+	// no longer be used errors if it's not also present in WALRecoveryDirs.
+	require.Equal(t, ErrMissingWALRecoveryDir{Dir: "external-wal-dir"},
+		(&Options{}).EnsureDefaults().Check(`
+[Options]
+  wal_dir=external-wal-dir
+`))
+	// But not if it's configured as a WALRecoveryDir or current WALDir.
+	require.NoError(t,
+		(&Options{WALRecoveryDirs: []wal.Dir{{Dirname: "external-wal-dir"}}}).EnsureDefaults().Check(`
+[Options]
+  wal_dir=external-wal-dir
+`))
+	require.NoError(t,
+		(&Options{WALDir: "external-wal-dir"}).EnsureDefaults().Check(`
+[Options]
+  wal_dir=external-wal-dir
+`))
+
+	// Check that an OPTIONS file that configured a secondary failover WAL dir
+	// that will no longer be used errors if it's not also present in
+	// WALRecoveryDirs.
+	require.Equal(t, ErrMissingWALRecoveryDir{Dir: "failover-wal-dir"},
+		(&Options{}).EnsureDefaults().Check(`
+[Options]
+  wal_dir_secondary=failover-wal-dir
+`))
+	// But not if it's configured as a WALRecoveryDir or current failover
+	// secondary dir.
+	require.NoError(t, (&Options{WALRecoveryDirs: []wal.Dir{{Dirname: "failover-wal-dir"}}}).EnsureDefaults().Check(`
+[Options]
+  wal_dir_secondary=failover-wal-dir
+`))
+	require.NoError(t, (&Options{WALFailover: &WALFailoverOptions{Secondary: wal.Dir{Dirname: "failover-wal-dir"}}}).EnsureDefaults().Check(`
+[Options]
+  wal_dir_secondary=failover-wal-dir
+`))
 }
 
 type testCleaner struct{}
@@ -234,6 +273,9 @@ func TestOptionsParse(t *testing.T) {
 			opts.FlushDelayRangeKey = 11 * time.Second
 			opts.Experimental.LevelMultiplier = 5
 			opts.TargetByteDeletionRate = 200
+			opts.WALFailover = &WALFailoverOptions{
+				Secondary: wal.Dir{Dirname: "wal_secondary", FS: vfs.Default},
+			}
 			opts.Experimental.ReadCompactionRate = 300
 			opts.Experimental.ReadSamplingMultiplier = 400
 			opts.Experimental.TableCacheShards = 500

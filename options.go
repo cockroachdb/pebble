@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 )
 
 const (
@@ -987,6 +988,24 @@ type Options struct {
 	// (i.e. the directory passed to pebble.Open).
 	WALDir string
 
+	// WALFailover may be set to configure Pebble to monitor writes to its
+	// write-ahead log and failover to writing write-ahead log entries to a
+	// secondary location (eg, a separate physical disk). WALFailover may be
+	// used to improve write availability in the presence of transient disk
+	// unavailability.
+	WALFailover *WALFailoverOptions
+
+	// WALRecoveryDirs is a list of additional directories that should be
+	// scanned for the existence of additional write-ahead logs. WALRecoveryDirs
+	// is expected to be used when starting Pebble with a new WALDir or a new
+	// WALFailover configuration. The directories associated with the previous
+	// configuration may still contain WALs that are required for recovery of
+	// the current database state.
+	//
+	// If a previous WAL configuration may have stored WALs elsewhere but there
+	// is not a corresponding entry in WALRecoveryDirs, Open will error.
+	WALRecoveryDirs []wal.Dir
+
 	// WALMinSyncInterval is the minimum duration between syncs of the WAL. If
 	// WAL syncs are requested faster than this interval, they will be
 	// artificially delayed. Introducing a small artificial delay (500us) between
@@ -1057,6 +1076,18 @@ type Options struct {
 		// goroutine indefinitely.
 		fsCloser io.Closer
 	}
+}
+
+// WALFailoverOptions configures the WAL failover mechanics to use during
+// transient write unavailability on the primary WAL volume.
+type WALFailoverOptions struct {
+	// Secondary indicates the secondary directory and VFS to use in the event a
+	// write to the primary WAL stalls.
+	Secondary wal.Dir
+	// FailoverOptions provides configuration of the thresholds and intervals
+	// involved in WAL failover. If any of its fields are left unspecified,
+	// reasonable defaults will be used.
+	wal.FailoverOptions
 }
 
 // DebugCheckLevels calls CheckLevels on the provided database.
@@ -1186,6 +1217,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.FlushSplitBytes <= 0 {
 		o.FlushSplitBytes = 2 * o.Levels[0].TargetFileSize
+	}
+	if o.WALFailover != nil {
+		o.WALFailover.FailoverOptions.EnsureDefaults()
 	}
 	if o.Experimental.LevelMultiplier <= 0 {
 		o.Experimental.LevelMultiplier = defaultLevelMultiplier
@@ -1334,6 +1368,9 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
+	if o.WALFailover != nil {
+		fmt.Fprintf(&buf, "  wal_dir_secondary=%s\n", o.WALFailover.Secondary.Dirname)
+	}
 	fmt.Fprintf(&buf, "  max_writer_concurrency=%d\n", o.Experimental.MaxWriterConcurrency)
 	fmt.Fprintf(&buf, "  force_writer_parallelism=%t\n", o.Experimental.ForceWriterParallelism)
 	fmt.Fprintf(&buf, "  secondary_cache_size_bytes=%d\n", o.Experimental.SecondaryCacheSizeBytes)
@@ -1633,6 +1670,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.WALDir = value
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
+			case "wal_dir_secondary":
+				o.WALFailover = &WALFailoverOptions{Secondary: wal.Dir{Dirname: value, FS: vfs.Default}}
 			case "max_writer_concurrency":
 				o.Experimental.MaxWriterConcurrency, err = strconv.Atoi(value)
 			case "force_writer_parallelism":
@@ -1721,6 +1760,18 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	})
 }
 
+// ErrMissingWALRecoveryDir is an error returned when a database is attempted to be
+// opened without supplying a Options.WALRecoveryDir entry for a directory that
+// may contain WALs required to recover a consistent database state.
+type ErrMissingWALRecoveryDir struct {
+	Dir string
+}
+
+// Error implements error.
+func (e ErrMissingWALRecoveryDir) Error() string {
+	return fmt.Sprintf("directory %q may contain relevant WALs", e.Dir)
+}
+
 func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 	// TODO(jackson): Refactor to avoid awkwardness of the strictWALTail return value.
 	return strictWALTail, parseOptions(s, func(section, key, value string) error {
@@ -1741,6 +1792,20 @@ func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 			strictWALTail, err = strconv.ParseBool(value)
 			if err != nil {
 				return errors.Errorf("pebble: error parsing strict_wal_tail value %q: %w", value, err)
+			}
+		case "Options.wal_dir", "Options.wal_dir_secondary":
+			switch {
+			case o.WALDir == value:
+				return nil
+			case o.WALFailover != nil && o.WALFailover.Secondary.Dirname == value:
+				return nil
+			default:
+				for _, d := range o.WALRecoveryDirs {
+					if d.Dirname == value {
+						return nil
+					}
+				}
+				return ErrMissingWALRecoveryDir{Dir: value}
 			}
 		}
 		return nil
