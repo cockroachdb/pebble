@@ -99,6 +99,19 @@ func (k Key) Equal(equal base.Equal, b Key) bool {
 		bytes.Equal(k.Value, b.Value)
 }
 
+func (k Key) String() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "(#%d,%s", k.SeqNum(), k.Kind())
+	if len(k.Suffix) > 0 || len(k.Value) > 0 {
+		fmt.Fprintf(&b, ",%s", k.Suffix)
+	}
+	if len(k.Value) > 0 {
+		fmt.Fprintf(&b, ",%s", k.Value)
+	}
+	b.WriteString(")")
+	return b.String()
+}
+
 // Valid returns true if the span is defined.
 func (s *Span) Valid() bool {
 	return s.Start != nil && s.End != nil
@@ -387,14 +400,7 @@ func (s prettySpan) Format(fs fmt.State, c rune) {
 		if i > 0 {
 			fmt.Fprint(fs, " ")
 		}
-		fmt.Fprintf(fs, "(#%d,%s", k.SeqNum(), k.Kind())
-		if len(k.Suffix) > 0 || len(k.Value) > 0 {
-			fmt.Fprintf(fs, ",%s", k.Suffix)
-		}
-		if len(k.Value) > 0 {
-			fmt.Fprintf(fs, ",%s", k.Value)
-		}
-		fmt.Fprint(fs, ")")
+		fmt.Fprint(fs, k.String())
 	}
 	fmt.Fprintf(fs, "}")
 }

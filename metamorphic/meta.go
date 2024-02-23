@@ -534,6 +534,7 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	for i, db := range m.dbs {
 		if db != nil {
 			fmt.Fprintf(os.Stderr, "\ndb%d:\n%s", i+1, db.DebugString())
+			fmt.Fprintf(os.Stderr, "\n%s\n", db.LSMViewURL())
 		}
 	}
 
