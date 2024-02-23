@@ -371,26 +371,6 @@ func (m *failoverMonitor) monitorLoop(shouldQuiesce <-chan struct{}) {
 	}
 }
 
-func (o *FailoverOptions) ensureDefaults() {
-	if o.PrimaryDirProbeInterval == 0 {
-		o.PrimaryDirProbeInterval = time.Second
-	}
-	if o.HealthyProbeLatencyThreshold == 0 {
-		o.HealthyProbeLatencyThreshold = 100 * time.Millisecond
-	}
-	if o.HealthyInterval == 0 {
-		o.HealthyInterval = 2 * time.Minute
-	}
-	if o.UnhealthySamplingInterval == 0 {
-		o.UnhealthySamplingInterval = 100 * time.Millisecond
-	}
-	if o.UnhealthyOperationLatencyThreshold == nil {
-		o.UnhealthyOperationLatencyThreshold = func() time.Duration {
-			return 200 * time.Millisecond
-		}
-	}
-}
-
 type logicalLogWithSizesEtc struct {
 	num      NumWAL
 	segments []segmentWithSizeEtc
@@ -435,12 +415,12 @@ var _ Manager = &failoverManager{}
 // - log deletion: if record.LogWriter did not close yet, the cleaner may
 //   get an error when deleting or renaming (only under windows?).
 
-// Init implements Manager.
-func (wm *failoverManager) Init(o Options, initial Logs) error {
+// init implements Manager.
+func (wm *failoverManager) init(o Options, initial Logs) error {
 	if o.timeSource == nil {
 		o.timeSource = defaultTime{}
 	}
-	o.FailoverOptions.ensureDefaults()
+	o.FailoverOptions.EnsureDefaults()
 	stopper := newStopper()
 	var dirs [numDirIndices]dirAndFileHandle
 	for i, dir := range []Dir{o.Primary, o.Secondary} {

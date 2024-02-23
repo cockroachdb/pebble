@@ -144,6 +144,21 @@ type Options struct {
 	FailoverOptions
 }
 
+// Init constructs and initializes a WAL manager from the provided options and
+// the set of initial logs.
+func Init(o Options, initial Logs) (Manager, error) {
+	var m Manager
+	if o.Secondary == (Dir{}) {
+		m = new(StandaloneManager)
+	} else {
+		m = new(failoverManager)
+	}
+	if err := m.init(o, initial); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // Dirs returns the primary Dir and the secondary if provided.
 func (o *Options) Dirs() []Dir {
 	if o.Secondary == (Dir{}) {
@@ -185,6 +200,28 @@ type FailoverOptions struct {
 	proberIterationForTesting  chan<- struct{}
 	monitorStateForTesting     func(numSwitches int, ongoingLatencyAtSwitch time.Duration)
 	logWriterCreatedForTesting chan<- struct{}
+}
+
+// EnsureDefaults ensures that the default values for all options are set if a
+// valid value was not already specified.
+func (o *FailoverOptions) EnsureDefaults() {
+	if o.PrimaryDirProbeInterval == 0 {
+		o.PrimaryDirProbeInterval = time.Second
+	}
+	if o.HealthyProbeLatencyThreshold == 0 {
+		o.HealthyProbeLatencyThreshold = 100 * time.Millisecond
+	}
+	if o.HealthyInterval == 0 {
+		o.HealthyInterval = 2 * time.Minute
+	}
+	if o.UnhealthySamplingInterval == 0 {
+		o.UnhealthySamplingInterval = 100 * time.Millisecond
+	}
+	if o.UnhealthyOperationLatencyThreshold == nil {
+		o.UnhealthyOperationLatencyThreshold = func() time.Duration {
+			return 200 * time.Millisecond
+		}
+	}
 }
 
 // EventListener is called on events, like log file creation.
@@ -240,14 +277,14 @@ type Stats struct {
 
 // Manager handles all WAL work.
 //
-//   - Init will be called during DB initialization.
 //   - Obsolete can be called concurrently with WAL writing.
 //   - WAL writing: Is done via Create, and the various Writer methods. These
 //     are required to be serialized via external synchronization (specifically,
 //     the caller does it via commitPipeline.mu).
 type Manager interface {
-	// Init initializes the Manager.
-	Init(o Options, initial Logs) error
+	// init initializes the Manager. init is called during DB initialization.
+	init(o Options, initial Logs) error
+
 	// List returns the virtual WALs in ascending order.
 	List() (Logs, error)
 	// Obsolete informs the manager that all virtual WALs less than
