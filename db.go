@@ -1996,6 +1996,12 @@ func (d *DB) downloadSpan(ctx context.Context, span DownloadSpan) error {
 					return true
 				}
 				d.maybeScheduleCompaction()
+				if d.closed.Load() != nil {
+					// No compactions were scheduled above. Waiting on the cond lock below
+					// could possibly lead to a forever-wait. Return true so we exit
+					// out of the method.
+					return true
+				}
 				d.mu.compact.cond.Wait()
 				return false
 			}()
@@ -2015,7 +2021,7 @@ func (d *DB) downloadSpan(ctx context.Context, span DownloadSpan) error {
 // downloaded with high priority.
 //
 // The method returns once no external sstasbles overlap the given spans, the
-// context is canceled, or an error is hit.
+// context is canceled, the db is closed, or an error is hit.
 //
 // TODO(radu): consider passing a priority/impact knob to express how important
 // the download is (versus live traffic performance, LSM health).
