@@ -163,11 +163,6 @@ type Properties struct {
 	NumValueBlocks uint64 `prop:"pebble.num.value-blocks"`
 	// The number of values stored in value blocks. Only serialized if > 0.
 	NumValuesInValueBlocks uint64 `prop:"pebble.num.values.in.value-blocks"`
-	// The name of the prefix extractor used in this table. Empty if no prefix
-	// extractor is used.
-	PrefixExtractorName string `prop:"rocksdb.prefix.extractor.name"`
-	// If filtering is enabled, was the filter created on the key prefix.
-	PrefixFiltering bool `prop:"rocksdb.block.based.table.prefix.filtering"`
 	// A comma separated list of names of the property collectors used in this
 	// table.
 	PropertyCollectorNames string `prop:"rocksdb.property.collectors"`
@@ -187,8 +182,6 @@ type Properties struct {
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
 	// User collected properties.
 	UserProperties map[string]string
-	// If filtering is enabled, was the filter created on the whole key.
-	WholeKeyFiltering bool `prop:"rocksdb.block.based.table.whole.key.filtering"`
 
 	// Loaded set indicating which fields have been loaded from disk. Indexed by
 	// the field's byte offset within the struct
@@ -402,10 +395,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	if p.NumValuesInValueBlocks > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.NumValuesInValueBlocks), p.NumValuesInValueBlocks)
 	}
-	if p.PrefixExtractorName != "" {
-		p.saveString(m, unsafe.Offsetof(p.PrefixExtractorName), p.PrefixExtractorName)
-	}
-	p.saveBool(m, unsafe.Offsetof(p.PrefixFiltering), p.PrefixFiltering)
 	if p.PropertyCollectorNames != "" {
 		p.saveString(m, unsafe.Offsetof(p.PropertyCollectorNames), p.PropertyCollectorNames)
 	}
@@ -419,7 +408,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	if p.ValueBlocksSize > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.ValueBlocksSize), p.ValueBlocksSize)
 	}
-	p.saveBool(m, unsafe.Offsetof(p.WholeKeyFiltering), p.WholeKeyFiltering)
 
 	if tblFormat < TableFormatPebblev1 {
 		m["rocksdb.column.family.id"] = binary.AppendUvarint([]byte(nil), math.MaxInt32)

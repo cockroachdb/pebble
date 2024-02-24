@@ -15,7 +15,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 64
+point-deletions-bytes-estimate: 57
 range-deletions-bytes-estimate: 0
 
 compact a-c
@@ -181,7 +181,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 632
+range-deletions-bytes-estimate: 560
 
 wait-pending-table-stats
 000012
@@ -190,7 +190,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 632
+range-deletions-bytes-estimate: 560
 
 # A table in L6 with two point keys blocks, each covered by distinct range dels.
 # The deletion estimate takes into account the contribution from both deleted
@@ -346,7 +346,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 778
+range-deletions-bytes-estimate: 706
 
 # Drop a range del and a range key del over the entire keyspace. This table can
 # delete everything underneath it.
@@ -546,7 +546,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 2
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 112732
+point-deletions-bytes-estimate: 112572
 range-deletions-bytes-estimate: 0
 
 # Try a missized point tombstone. It should appear in the Metrics after the
@@ -588,7 +588,7 @@ flush
 
 metadata-stats file=5
 ----
-size: 726
+size: 654
 
 # Just grab the physical sstable properties as these are used to construct the
 # virtual sstable properties.
@@ -612,10 +612,7 @@ rocksdb:
   rocksdb.merge.operator: pebble.concatenate
   rocksdb.num.data.blocks: 1
   rocksdb.merge.operands: 0
-  rocksdb.prefix.extractor.name: nullptr
-  rocksdb.block.based.table.prefix.filtering: false
   rocksdb.property.collectors: [obsolete-key]
-  rocksdb.block.based.table.whole.key.filtering: false
 pebble:
   pebble.raw.point-tombstone.key.size: 1
   rocksdb.comparator: pebble.internal.testkeys
@@ -654,7 +651,7 @@ size: 53
 properties file=7
 ----
 rocksdb.num.entries: 1
-rocksdb.raw.key.size: 2
+rocksdb.raw.key.size: 3
 rocksdb.raw.value.size: 1
 pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
@@ -662,7 +659,7 @@ rocksdb.deleted.keys: 1
 properties file=8
 ----
 rocksdb.num.entries: 1
-rocksdb.raw.key.size: 2
+rocksdb.raw.key.size: 3
 rocksdb.raw.value.size: 1
 pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
@@ -673,7 +670,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 53
+point-deletions-bytes-estimate: 39
 range-deletions-bytes-estimate: 0
 
 wait-pending-table-stats
@@ -682,7 +679,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 53
+point-deletions-bytes-estimate: 39
 range-deletions-bytes-estimate: 0
 
 # Create an sstable with a range key set.
@@ -723,10 +720,7 @@ rocksdb:
   rocksdb.merge.operator: pebble.concatenate
   rocksdb.num.data.blocks: 1
   rocksdb.merge.operands: 0
-  rocksdb.prefix.extractor.name: nullptr
-  rocksdb.block.based.table.prefix.filtering: false
   rocksdb.property.collectors: [obsolete-key]
-  rocksdb.block.based.table.whole.key.filtering: false
 pebble:
   pebble.num.range-key-dels: 0
   pebble.num.range-key-sets: 1
@@ -738,7 +732,7 @@ pebble:
 
 metadata-stats file=10
 ----
-size: 828
+size: 756
 
 build ext2
 set z z
@@ -848,10 +842,7 @@ rocksdb:
   rocksdb.merge.operator: pebble.concatenate
   rocksdb.num.data.blocks: 1
   rocksdb.merge.operands: 0
-  rocksdb.prefix.extractor.name: nullptr
-  rocksdb.block.based.table.prefix.filtering: false
   rocksdb.property.collectors: [obsolete-key]
-  rocksdb.block.based.table.whole.key.filtering: false
 pebble:
   rocksdb.comparator: pebble.internal.testkeys
   rocksdb.merge.operator: pebble.concatenate
@@ -899,7 +890,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 661
+range-deletions-bytes-estimate: 589
 
 wait-pending-table-stats
 000021
@@ -908,4 +899,4 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 660
+range-deletions-bytes-estimate: 588

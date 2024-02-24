@@ -80,10 +80,10 @@ layout filename=000004.sst
          0  data (38)
         43  index (35)
         83  range-key (29)
-       117  properties (645)
-       767  meta-index (57)
-       829  footer (53)
-       882  EOF
+       117  properties (573)
+       695  meta-index (57)
+       757  footer (53)
+       810  EOF
 
 # Inject an error on the first `ReadAt` call on 000004.sst's range key block
 # (which is at offset 83).
@@ -128,10 +128,10 @@ layout filename=000004.sst
        139  data (22)
        166  data (22)
        193  index (113)
-       311  properties (643)
-       959  meta-index (33)
-       997  footer (53)
-      1050  EOF
+       311  properties (571)
+       887  meta-index (33)
+       925  footer (53)
+       978  EOF
 
 reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 0))))
 ----
@@ -182,10 +182,10 @@ layout filename=000004.sst
         81  data (22)
        108  data (22)
        135  index (84)
-       224  properties (567)
-       796  meta-index (33)
-       834  footer (53)
-       887  EOF
+       224  properties (495)
+       724  meta-index (33)
+       762  footer (53)
+       815  EOF
 
 # NB: Block offset to key contained:
 #  0 -> a, 27 -> b, 54 -> c, 81 -> d, 108 -> e
@@ -243,10 +243,10 @@ layout filename=000004.sst
         54  data (22)
         81  data (22)
        108  index (71)
-       184  properties (642)
-       831  meta-index (33)
-       869  footer (53)
-       922  EOF
+       184  properties (570)
+       759  meta-index (33)
+       797  footer (53)
+       850  EOF
 
 
 reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 54))))

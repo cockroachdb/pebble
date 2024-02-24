@@ -338,8 +338,6 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "comparer\t%s\n", r.Properties.ComparerName)
 		fmt.Fprintf(tw, "merger\t%s\n", formatNull(r.Properties.MergerName))
 		fmt.Fprintf(tw, "filter\t%s\n", formatNull(r.Properties.FilterPolicyName))
-		fmt.Fprintf(tw, "  prefix\t%t\n", r.Properties.PrefixFiltering)
-		fmt.Fprintf(tw, "  whole-key\t%t\n", r.Properties.WholeKeyFiltering)
 		fmt.Fprintf(tw, "compression\t%s\n", r.Properties.CompressionName)
 		fmt.Fprintf(tw, "  options\t%s\n", r.Properties.CompressionOptions)
 		fmt.Fprintf(tw, "user properties\t\n")
