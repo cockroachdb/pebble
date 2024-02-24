@@ -2251,17 +2251,10 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 		}
 	}
 
-	w.props.PrefixExtractorName = "nullptr"
 	if o.FilterPolicy != nil {
 		switch o.FilterType {
 		case TableFilter:
 			w.filter = newTableFilterWriter(o.FilterPolicy)
-			if w.split != nil {
-				w.props.PrefixExtractorName = o.Comparer.Name
-				w.props.PrefixFiltering = true
-			} else {
-				w.props.WholeKeyFiltering = true
-			}
 		default:
 			panic(fmt.Sprintf("unknown filter type: %v", o.FilterType))
 		}

@@ -35,9 +35,7 @@ func TestPropertiesLoad(t *testing.T) {
 		IndexSize:              325,
 		MergerName:             "nullptr",
 		NumDataBlocks:          14,
-		PrefixExtractorName:    "nullptr",
 		PropertyCollectorNames: "[]",
-		WholeKeyFiltering:      false,
 	}
 
 	{
@@ -85,11 +83,8 @@ var testProps = Properties{
 	NumRangeKeyUnsets:      21,
 	NumValueBlocks:         22,
 	NumValuesInValueBlocks: 23,
-	PrefixExtractorName:    "prefix extractor name",
-	PrefixFiltering:        true,
 	PropertyCollectorNames: "prefix collector names",
 	TopLevelIndexSize:      27,
-	WholeKeyFiltering:      true,
 	UserProperties: map[string]string{
 		"user-prop-a": "1",
 		"user-prop-b": "2",
