@@ -1072,15 +1072,15 @@ func (o *Options) EnsureDefaults() *Options {
 	if o == nil {
 		o = &Options{}
 	}
+	o.Comparer = o.Comparer.EnsureDefaults()
+
 	if o.BytesPerSync <= 0 {
 		o.BytesPerSync = 512 << 10 // 512 KB
 	}
 	if o.Cleaner == nil {
 		o.Cleaner = DeleteCleaner{}
 	}
-	if o.Comparer == nil {
-		o.Comparer = DefaultComparer
-	}
+
 	if o.Experimental.DisableIngestAsFlushable == nil {
 		o.Experimental.DisableIngestAsFlushable = func() bool { return false }
 	}
@@ -1230,13 +1230,6 @@ func (o *Options) AddEventListener(l EventListener) {
 		l = TeeEventListener(l, *o.EventListener)
 	}
 	o.EventListener = &l
-}
-
-func (o *Options) equal() Equal {
-	if o.Comparer.Equal == nil {
-		return bytes.Equal
-	}
-	return o.Comparer.Equal
 }
 
 // initMaps initializes the Comparers, Filters, and Mergers maps.
