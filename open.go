@@ -201,7 +201,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		dirname:             dirname,
 		opts:                opts,
 		cmp:                 opts.Comparer.Compare,
-		equal:               opts.equal(),
+		equal:               opts.Comparer.Equal,
 		merge:               opts.Merger.Merge,
 		split:               opts.Comparer.Split,
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,

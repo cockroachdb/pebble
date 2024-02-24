@@ -707,7 +707,7 @@ func newCompaction(
 	c := &compaction{
 		kind:              compactionKindDefault,
 		cmp:               pc.cmp,
-		equal:             opts.equal(),
+		equal:             opts.Comparer.Equal,
 		comparer:          opts.Comparer,
 		formatKey:         opts.Comparer.FormatKey,
 		inputs:            pc.inputs,
@@ -782,7 +782,7 @@ func newDeleteOnlyCompaction(
 	c := &compaction{
 		kind:      compactionKindDeleteOnly,
 		cmp:       opts.Comparer.Compare,
-		equal:     opts.equal(),
+		equal:     opts.Comparer.Equal,
 		comparer:  opts.Comparer,
 		formatKey: opts.Comparer.FormatKey,
 		logger:    opts.Logger,
@@ -873,7 +873,7 @@ func newFlush(
 	c := &compaction{
 		kind:              compactionKindFlush,
 		cmp:               opts.Comparer.Compare,
-		equal:             opts.equal(),
+		equal:             opts.Comparer.Equal,
 		comparer:          opts.Comparer,
 		formatKey:         opts.Comparer.FormatKey,
 		logger:            opts.Logger,
