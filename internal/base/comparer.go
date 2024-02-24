@@ -161,6 +161,9 @@ func (c *Comparer) EnsureDefaults() *Comparer {
 	if c == nil {
 		return DefaultComparer
 	}
+	if c.Compare == nil || c.AbbreviatedKey == nil || c.Separator == nil || c.Successor == nil || c.Name == "" {
+		panic("invalid Comparer: mandatory field not set")
+	}
 	if c.Equal != nil && c.FormatKey != nil {
 		return c
 	}

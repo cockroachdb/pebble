@@ -348,8 +348,11 @@ func TestOpenOptionsCheck(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
 
+	fooCmp := *base.DefaultComparer
+	fooCmp.Name = "foo"
+
 	opts = &Options{
-		Comparer: &Comparer{Name: "foo"},
+		Comparer: &fooCmp,
 		FS:       mem,
 	}
 	_, err = Open("", opts)

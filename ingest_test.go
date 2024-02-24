@@ -1897,16 +1897,21 @@ func TestIngestExternal(t *testing.T) {
 
 func TestIngestMemtableOverlaps(t *testing.T) {
 	comparers := []Comparer{
-		{Name: "default", Compare: DefaultComparer.Compare, FormatKey: DefaultComparer.FormatKey},
 		{
-			Name:      "reverse",
-			Compare:   func(a, b []byte) int { return DefaultComparer.Compare(b, a) },
-			FormatKey: DefaultComparer.FormatKey,
+			Name:    "default",
+			Compare: DefaultComparer.Compare,
+		},
+		{
+			Name:    "reverse",
+			Compare: func(a, b []byte) int { return DefaultComparer.Compare(b, a) },
 		},
 	}
 	m := make(map[string]*Comparer)
 	for i := range comparers {
 		c := &comparers[i]
+		c.AbbreviatedKey = func(key []byte) uint64 { panic("unimplemented") }
+		c.Successor = func(dst, a []byte) []byte { panic("unimplemented") }
+		c.Separator = func(dst, a, b []byte) []byte { panic("unimplemented") }
 		m[c.Name] = c
 	}
 
