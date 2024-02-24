@@ -96,8 +96,14 @@ func TestPrefixReplacingIterator(t *testing.T) {
 				got, _ = it.SeekGE(k(100), base.SeekGEFlagsNone)
 				require.Nil(t, got)
 
+				got, _ = it.Prev()
+				require.Equal(t, k(19), got.UserKey)
+
 				got, _ = it.SeekGE(kMax, base.SeekGEFlagsNone)
 				require.Nil(t, got)
+
+				got, _ = it.Prev()
+				require.Equal(t, k(19), got.UserKey)
 			})
 
 			t.Run("SeekPrefixGE", func(t *testing.T) {
@@ -112,11 +118,17 @@ func TestPrefixReplacingIterator(t *testing.T) {
 
 				got, _ = it.SeekPrefixGE(tc.to, k(100), base.SeekGEFlagsNone)
 				require.Nil(t, got)
+
+				got, _ = it.Prev()
+				require.Equal(t, k(19), got.UserKey)
 			})
 
 			t.Run("SeekLT", func(t *testing.T) {
 				got, _ = it.SeekLT(kMin, base.SeekLTFlagsNone)
 				require.Nil(t, got)
+
+				got, _ = it.Next()
+				require.Equal(t, k(0), got.UserKey)
 
 				got, _ = it.SeekLT(k(0), base.SeekLTFlagsNone)
 				require.Nil(t, got)
