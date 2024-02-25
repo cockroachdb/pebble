@@ -58,11 +58,10 @@ type versionSet struct {
 	// Immutable fields.
 	dirname string
 	// Set to DB.mu.
-	mu      *sync.Mutex
-	opts    *Options
-	fs      vfs.FS
-	cmp     Compare
-	cmpName string
+	mu   *sync.Mutex
+	opts *Options
+	fs   vfs.FS
+	cmp  *base.Comparer
 	// Dynamic base level allows the dynamic base level computation to be
 	// disabled. Used by tests which want to create specific LSM structures.
 	dynamicBaseLevel bool
@@ -135,8 +134,7 @@ func (vs *versionSet) init(
 	vs.writerCond.L = mu
 	vs.opts = opts
 	vs.fs = opts.FS
-	vs.cmp = opts.Comparer.Compare
-	vs.cmpName = opts.Comparer.Name
+	vs.cmp = opts.Comparer
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
@@ -241,10 +239,10 @@ func (vs *versionSet) load(
 			return err
 		}
 		if ve.ComparerName != "" {
-			if ve.ComparerName != vs.cmpName {
+			if ve.ComparerName != vs.cmp.Name {
 				return errors.Errorf("pebble: manifest file %q for DB %q: "+
 					"comparer name from file %q != comparer name from Options %q",
-					errors.Safe(manifestFilename), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName))
+					errors.Safe(manifestFilename), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmp.Name))
 			}
 		}
 		if err := bve.Accumulate(&ve); err != nil {
@@ -301,10 +299,8 @@ func (vs *versionSet) load(
 		vs.removeFileBacking(fileNum)
 	}
 
-	newVersion, err := bve.Apply(
-		nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes,
-		opts.Experimental.ReadCompactionRate, nil, /* zombies */
-	)
+	newVersion, err := bve.Apply(nil, opts.Comparer, opts.FlushSplitBytes,
+		opts.Experimental.ReadCompactionRate, nil /* zombies */)
 	if err != nil {
 		return err
 	}
@@ -512,7 +508,7 @@ func (vs *versionSet) logAndApply(
 			return errors.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
 		}
 		newVersion, zombies, err = manifest.AccumulateIncompleteAndApplySingleVE(
-			ve, currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
+			ve, currentVersion, vs.cmp,
 			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
 			vs.backingState.fileBackingMap, vs.addFileBacking, vs.removeFileBacking,
 		)
@@ -715,7 +711,7 @@ func (vs *versionSet) createManifest(
 	manifest = record.NewWriter(manifestFile)
 
 	snapshot := versionEdit{
-		ComparerName: vs.cmpName,
+		ComparerName: vs.cmp.Name,
 	}
 	dedup := make(map[base.DiskFileNum]struct{})
 	for level, levelMetadata := range vs.currentVersion().Levels {

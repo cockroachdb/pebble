@@ -714,8 +714,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	currentVersion := func() (*manifest.Version, error) {
 		var err error
 		v, err = bve.Apply(v,
-			r.Opts.Comparer.Compare,
-			r.Opts.Comparer.FormatKey,
+			r.Opts.Comparer,
 			r.Opts.FlushSplitBytes,
 			r.Opts.Experimental.ReadCompactionRate,
 			nil /* zombies */)

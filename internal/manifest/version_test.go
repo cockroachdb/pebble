@@ -90,13 +90,11 @@ func TestIkeyRange(t *testing.T) {
 
 func TestOverlaps(t *testing.T) {
 	var v *Version
-	cmp := testkeys.Comparer.Compare
-	fmtKey := testkeys.Comparer.FormatKey
 	datadriven.RunTest(t, "testdata/overlaps", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			var err error
-			v, err = ParseVersionDebug(cmp, fmtKey, 64>>10 /* flush split bytes */, d.Input)
+			v, err = ParseVersionDebug(testkeys.Comparer, 64*1024 /* flush split bytes */, d.Input)
 			if err != nil {
 				return err.Error()
 			}
@@ -109,7 +107,7 @@ func TestOverlaps(t *testing.T) {
 			d.ScanArgs(t, "start", &start)
 			d.ScanArgs(t, "end", &end)
 			d.ScanArgs(t, "exclusive-end", &exclusiveEnd)
-			overlaps := v.Overlaps(level, testkeys.Comparer.Compare, []byte(start), []byte(end), exclusiveEnd)
+			overlaps := v.Overlaps(level, []byte(start), []byte(end), exclusiveEnd)
 			var buf bytes.Buffer
 			fmt.Fprintf(&buf, "%d files:\n", overlaps.Len())
 			overlaps.Each(func(f *FileMetadata) {
@@ -217,6 +215,7 @@ func TestContains(t *testing.T) {
 			0: levelMetadata(0, m00, m01, m02, m03, m04, m05, m06, m07),
 			1: levelMetadata(1, m10, m11, m12, m13, m14),
 		},
+		cmp: testkeys.Comparer,
 	}
 
 	testCases := []struct {
@@ -264,7 +263,7 @@ func TestContains(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		got := v.Contains(tc.level, cmp, tc.file)
+		got := v.Contains(tc.level, tc.file)
 		if got != tc.want {
 			t.Errorf("level=%d, file=%s\ngot %t\nwant %t", tc.level, tc.file, got, tc.want)
 		}
@@ -284,13 +283,11 @@ func TestVersionUnref(t *testing.T) {
 }
 
 func TestCheckOrdering(t *testing.T) {
-	cmp := base.DefaultComparer.Compare
-	fmtKey := base.DefaultComparer.FormatKey
 	datadriven.RunTest(t, "testdata/version_check_ordering",
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "check-ordering":
-				v, err := ParseVersionDebug(cmp, fmtKey, 10<<20, d.Input)
+				v, err := ParseVersionDebug(base.DefaultComparer, 10*1024*1024, d.Input)
 				if err != nil {
 					return err.Error()
 				}
@@ -300,7 +297,7 @@ func TestCheckOrdering(t *testing.T) {
 					m.SmallestSeqNum = m.Smallest.SeqNum()
 					m.LargestSeqNum = m.Largest.SeqNum()
 				})
-				if err = v.CheckOrdering(cmp, base.DefaultFormatter); err != nil {
+				if err = v.CheckOrdering(); err != nil {
 					return err.Error()
 				}
 				return "OK"

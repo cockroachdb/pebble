@@ -486,7 +486,7 @@ func TestVersionEditApply(t *testing.T) {
 							}
 							if isVersion {
 								if v == nil {
-									v = new(Version)
+									v = &Version{cmp: base.DefaultComparer}
 									for l := 0; l < NumLevels; l++ {
 										v.Levels[l] = makeLevelMetadata(base.DefaultComparer.Compare, l, nil /* files */)
 									}
@@ -512,8 +512,9 @@ func TestVersionEditApply(t *testing.T) {
 					}
 				}
 
+				const flushSplitBytes = 10 * 1024 * 1024
 				if v != nil {
-					if err := v.InitL0Sublevels(base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20); err != nil {
+					if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
 						return err.Error()
 					}
 				}
@@ -526,7 +527,7 @@ func TestVersionEditApply(t *testing.T) {
 					}
 				}
 				zombies := make(map[base.DiskFileNum]uint64)
-				newv, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000, zombies)
+				newv, err := bve.Apply(v, base.DefaultComparer, flushSplitBytes, 32000, zombies)
 				if err != nil {
 					return err.Error()
 				}

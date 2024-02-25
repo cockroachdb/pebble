@@ -1066,9 +1066,11 @@ const NumLevels = 7
 // NewVersion constructs a new Version with the provided files. It requires
 // the provided files are already well-ordered. It's intended for testing.
 func NewVersion(
-	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64, files [NumLevels][]*FileMetadata,
+	comparer *base.Comparer, flushSplitBytes int64, files [NumLevels][]*FileMetadata,
 ) *Version {
-	var v Version
+	v := &Version{
+		cmp: comparer,
+	}
 	for l := range files {
 		// NB: We specifically insert `files` into the B-Tree in the order
 		// they appear within `files`. Some tests depend on this behavior in
@@ -1080,16 +1082,23 @@ func NewVersion(
 		if l == 0 {
 			v.Levels[l].tree.cmp = btreeCmpSeqNum
 		} else {
-			v.Levels[l].tree.cmp = btreeCmpSmallestKey(cmp)
+			v.Levels[l].tree.cmp = btreeCmpSmallestKey(comparer.Compare)
 		}
 		for _, f := range files[l] {
 			v.Levels[l].totalSize += f.Size
 		}
 	}
-	if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
+	if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
 		panic(err)
 	}
-	return &v
+	return v
+}
+
+// TestingNewVersion returns a blank Version, used for tests.
+func TestingNewVersion(comparer *base.Comparer) *Version {
+	return &Version{
+		cmp: comparer,
+	}
 }
 
 // Version is a collection of file metadata for on-disk tables at various
@@ -1159,6 +1168,8 @@ type Version struct {
 		MarkedForCompaction int
 	}
 
+	cmp *base.Comparer
+
 	// The list the version is linked into.
 	list *VersionList
 
@@ -1169,13 +1180,13 @@ type Version struct {
 // String implements fmt.Stringer, printing the FileMetadata for each level in
 // the Version.
 func (v *Version) String() string {
-	return v.string(base.DefaultFormatter, false)
+	return v.string(false)
 }
 
 // DebugString returns an alternative format to String() which includes sequence
 // number and kind information for the sstable boundaries.
-func (v *Version) DebugString(format base.FormatKey) string {
-	return v.string(format, true)
+func (v *Version) DebugString() string {
+	return v.string(true)
 }
 
 func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSlice) string {
@@ -1189,10 +1200,10 @@ func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSli
 	return buf.String()
 }
 
-func (v *Version) string(format base.FormatKey, verbose bool) string {
+func (v *Version) string(verbose bool) string {
 	var buf bytes.Buffer
 	if len(v.L0SublevelFiles) > 0 {
-		fmt.Fprintf(&buf, "%s", describeSublevels(format, verbose, v.L0SublevelFiles))
+		fmt.Fprintf(&buf, "%s", describeSublevels(v.cmp.FormatKey, verbose, v.L0SublevelFiles))
 	}
 	for level := 1; level < NumLevels; level++ {
 		if v.Levels[level].Empty() {
@@ -1201,16 +1212,14 @@ func (v *Version) string(format base.FormatKey, verbose bool) string {
 		fmt.Fprintf(&buf, "%d:\n", level)
 		iter := v.Levels[level].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
+			fmt.Fprintf(&buf, "  %s\n", f.DebugString(v.cmp.FormatKey, verbose))
 		}
 	}
 	return buf.String()
 }
 
 // ParseVersionDebug parses a Version from its DebugString output.
-func ParseVersionDebug(
-	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64, s string,
-) (*Version, error) {
+func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string) (*Version, error) {
 	var level int
 	var files [NumLevels][]*FileMetadata
 	for _, l := range strings.Split(s, "\n") {
@@ -1242,7 +1251,7 @@ func ParseVersionDebug(
 	for i := 0; i < len(files[0])/2; i++ {
 		files[0][i], files[0][len(files[0])-i-1] = files[0][len(files[0])-i-1], files[0][i]
 	}
-	return NewVersion(cmp, formatKey, flushSplitBytes, files), nil
+	return NewVersion(comparer, flushSplitBytes, files), nil
 }
 
 // Refs returns the number of references to the version.
@@ -1297,11 +1306,9 @@ func (v *Version) Next() *Version {
 }
 
 // InitL0Sublevels initializes the L0Sublevels
-func (v *Version) InitL0Sublevels(
-	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64,
-) error {
+func (v *Version) InitL0Sublevels(flushSplitBytes int64) error {
 	var err error
-	v.L0Sublevels, err = NewL0Sublevels(&v.Levels[0], cmp, formatKey, flushSplitBytes)
+	v.L0Sublevels, err = NewL0Sublevels(&v.Levels[0], v.cmp.Compare, v.cmp.FormatKey, flushSplitBytes)
 	if err == nil && v.L0Sublevels != nil {
 		v.L0SublevelFiles = v.L0Sublevels.Levels
 	}
@@ -1313,7 +1320,7 @@ func (v *Version) InitL0Sublevels(
 // that include all keys that exist within levels [level, maxLevel] and within
 // [smallest,largest].
 func (v *Version) CalculateInuseKeyRanges(
-	cmp base.Compare, level, maxLevel int, smallest, largest []byte,
+	level, maxLevel int, smallest, largest []byte,
 ) []UserKeyRange {
 	// Use two slices, alternating which one is input and which one is output
 	// as we descend the LSM.
@@ -1331,7 +1338,7 @@ func (v *Version) CalculateInuseKeyRanges(
 		// NB: We always treat `largest` as inclusive for simplicity, because
 		// there's little consequence to calculating slightly broader in-use key
 		// ranges.
-		overlaps := v.Overlaps(level, cmp, smallest, largest, false /* exclusiveEnd */)
+		overlaps := v.Overlaps(level, smallest, largest, false /* exclusiveEnd */)
 		iter := overlaps.Iter()
 
 		// We may already have in-use key ranges from higher levels. Iterate
@@ -1351,11 +1358,12 @@ func (v *Version) CalculateInuseKeyRanges(
 		if len(input) > 0 {
 			currAccum, input = &input[0], input[1:]
 		}
+		cmp := v.cmp.Compare
 
 		// If we have an accumulated key range and its start is ≤ smallest,
 		// we can seek to the accumulated range's end. Otherwise, we need to
 		// start at the first overlapping file within the level.
-		if currAccum != nil && cmp(currAccum.Start, smallest) <= 0 {
+		if currAccum != nil && v.cmp.Compare(currAccum.Start, smallest) <= 0 {
 			currFile = seekGT(&iter, cmp, currAccum.End)
 		} else {
 			currFile = iter.First()
@@ -1425,11 +1433,10 @@ func seekGT(iter *LevelIterator, cmp base.Compare, key []byte) *FileMetadata {
 // the version at the given level. If level is non-zero then Contains binary
 // searches among the files. If level is zero, Contains scans the entire
 // level.
-func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
+func (v *Version) Contains(level int, m *FileMetadata) bool {
 	iter := v.Levels[level].Iter()
 	if level > 0 {
-		overlaps := v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey,
-			m.Largest.IsExclusiveSentinel())
+		overlaps := v.Overlaps(level, m.Smallest.UserKey, m.Largest.UserKey, m.Largest.IsExclusiveSentinel())
 		iter = overlaps.Iter()
 	}
 	for f := iter.First(); f != nil; f = iter.Next() {
@@ -1448,9 +1455,7 @@ func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
 // repeated until [start, end] stabilizes.
 // The returned files are a subsequence of the input files, i.e., the ordering
 // is not changed.
-func (v *Version) Overlaps(
-	level int, cmp Compare, start, end []byte, exclusiveEnd bool,
-) LevelSlice {
+func (v *Version) Overlaps(level int, start, end []byte, exclusiveEnd bool) LevelSlice {
 	if level == 0 {
 		// Indices that have been selected as overlapping.
 		l0 := v.Levels[level]
@@ -1465,7 +1470,7 @@ func (v *Version) Overlaps(
 				if selected {
 					continue
 				}
-				if !meta.Overlaps(cmp, start, end, exclusiveEnd) {
+				if !meta.Overlaps(v.cmp.Compare, start, end, exclusiveEnd) {
 					// meta is completely outside the specified range; skip it.
 					continue
 				}
@@ -1480,11 +1485,11 @@ func (v *Version) Overlaps(
 				// we have remaining to check in this loop. All already checked
 				// and unselected files will need to be rechecked via the
 				// restart below.
-				if cmp(smallest, start) < 0 {
+				if v.cmp.Compare(smallest, start) < 0 {
 					start = smallest
 					restart = true
 				}
-				if v := cmp(largest, end); v > 0 {
+				if v := v.cmp.Compare(largest, end); v > 0 {
 					end = largest
 					exclusiveEnd = meta.Largest.IsExclusiveSentinel()
 					restart = true
@@ -1520,23 +1525,23 @@ func (v *Version) Overlaps(
 		return slice
 	}
 
-	return overlaps(v.Levels[level].Iter(), cmp, start, end, exclusiveEnd)
+	return overlaps(v.Levels[level].Iter(), v.cmp.Compare, start, end, exclusiveEnd)
 }
 
 // CheckOrdering checks that the files are consistent with respect to
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
-func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
+func (v *Version) CheckOrdering() error {
 	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 		sublevelIter := v.L0SublevelFiles[sublevel].Iter()
-		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), sublevelIter); err != nil {
-			return base.CorruptionErrorf("%s\n%s", err, v.DebugString(format))
+		if err := CheckOrdering(v.cmp.Compare, v.cmp.FormatKey, L0Sublevel(sublevel), sublevelIter); err != nil {
+			return base.CorruptionErrorf("%s\n%s", err, v.DebugString())
 		}
 	}
 
 	for level, lm := range v.Levels {
-		if err := CheckOrdering(cmp, format, Level(level), lm.Iter()); err != nil {
-			return base.CorruptionErrorf("%s\n%s", err, v.DebugString(format))
+		if err := CheckOrdering(v.cmp.Compare, v.cmp.FormatKey, Level(level), lm.Iter()); err != nil {
+			return base.CorruptionErrorf("%s\n%s", err, v.DebugString())
 		}
 	}
 	return nil

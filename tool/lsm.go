@@ -232,7 +232,9 @@ func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 			}
 			l.fmtKey.setForComparer(ve.ComparerName, l.comparers)
 		} else if l.cmp == nil {
-			l.cmp = base.DefaultComparer
+			l.cmp = &base.Comparer{}
+			*l.cmp = *base.DefaultComparer
+			l.cmp.FormatKey = l.fmtKey.fn
 		}
 	}
 	return edits
@@ -320,7 +322,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 			}
 		}
 
-		v := manifest.NewVersion(l.cmp.Compare, l.fmtKey.fn, 0, currentFiles)
+		v := manifest.NewVersion(l.cmp, 0, currentFiles)
 		edit.Sublevels = make(map[base.FileNum]int)
 		for sublevel, files := range v.L0SublevelFiles {
 			iter := files.Iter()

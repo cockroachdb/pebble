@@ -1245,8 +1245,6 @@ func TestCheckConsistency(t *testing.T) {
 	require.NoError(t, err)
 	defer provider.Close()
 
-	cmp := base.DefaultComparer.Compare
-	fmtKey := base.DefaultComparer.FormatKey
 	parseMeta := func(s string) (*manifest.FileMetadata, error) {
 		if len(s) == 0 {
 			return nil, nil
@@ -1308,7 +1306,7 @@ func TestCheckConsistency(t *testing.T) {
 					}
 				}
 
-				v := manifest.NewVersion(cmp, fmtKey, 0, filesByLevel)
+				v := manifest.NewVersion(base.DefaultComparer, 0, filesByLevel)
 				err := checkConsistency(v, dir, provider)
 				if err != nil {
 					if redactErr {

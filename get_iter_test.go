@@ -379,7 +379,7 @@ func TestGetIter(t *testing.T) {
 		},
 	}
 
-	cmp := testkeys.Comparer.Compare
+	cmp := testkeys.Comparer
 	for _, tc := range testCases {
 		desc := tc.description[:strings.Index(tc.description, ":")]
 
@@ -412,7 +412,7 @@ func TestGetIter(t *testing.T) {
 					t.Fatalf("desc=%q: memtable Set: %v", desc, err)
 				}
 
-				meta.ExtendPointKeyBounds(cmp, ikey, ikey)
+				meta.ExtendPointKeyBounds(cmp.Compare, ikey, ikey)
 				if i == 0 {
 					meta.SmallestSeqNum = ikey.SeqNum()
 					meta.LargestSeqNum = ikey.SeqNum()
@@ -428,8 +428,8 @@ func TestGetIter(t *testing.T) {
 
 			files[tt.level] = append(files[tt.level], meta)
 		}
-		v := manifest.NewVersion(cmp, base.DefaultFormatter, 10<<20, files)
-		err := v.CheckOrdering(cmp, base.DefaultFormatter)
+		v := manifest.NewVersion(cmp, 10<<20, files)
+		err := v.CheckOrdering()
 		if tc.badOrdering && err == nil {
 			t.Errorf("desc=%q: want bad ordering, got nil error", desc)
 			continue

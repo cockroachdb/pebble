@@ -252,8 +252,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				files[i+1] = levels[i]
 			}
 			version := manifest.NewVersion(
-				base.DefaultComparer.Compare,
-				base.DefaultFormatter,
+				base.DefaultComparer,
 				0,
 				files)
 			readState := &readState{current: version}

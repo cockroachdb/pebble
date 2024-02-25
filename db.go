@@ -1742,7 +1742,7 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 	maxLevelWithFiles := 1
 	cur := d.mu.versions.currentVersion()
 	for level := 0; level < numLevels; level++ {
-		overlaps := cur.Overlaps(level, d.cmp, start, end, false)
+		overlaps := cur.Overlaps(level, start, end, false)
 		if !overlaps.Empty() {
 			maxLevelWithFiles = level + 1
 		}
@@ -1819,7 +1819,7 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 func (d *DB) manualCompact(start, end []byte, level int, parallelize bool) error {
 	d.mu.Lock()
 	curr := d.mu.versions.currentVersion()
-	files := curr.Overlaps(level, d.cmp, start, end, false)
+	files := curr.Overlaps(level, start, end, false)
 	if files.Empty() {
 		d.mu.Unlock()
 		return nil
@@ -1866,7 +1866,7 @@ func (d *DB) splitManualCompaction(
 	if level == 0 {
 		endLevel = baseLevel
 	}
-	keyRanges := curr.CalculateInuseKeyRanges(d.cmp, level, endLevel, start, end)
+	keyRanges := curr.CalculateInuseKeyRanges(level, endLevel, start, end)
 	for _, keyRange := range keyRanges {
 		splitCompactions = append(splitCompactions, &manualCompaction{
 			level: level,
@@ -1931,7 +1931,7 @@ func (d *DB) downloadSpan(ctx context.Context, span DownloadSpan) error {
 			if vers.Levels[i].Empty() {
 				continue
 			}
-			overlap := vers.Overlaps(i, d.cmp, span.StartKey, span.EndKey, true /* exclusiveEnd */)
+			overlap := vers.Overlaps(i, span.StartKey, span.EndKey, true /* exclusiveEnd */)
 			foundExternalFile := false
 			overlap.Each(func(metadata *manifest.FileMetadata) {
 				objMeta, err := d.objProvider.Lookup(fileTypeTable, metadata.FileBacking.DiskFileNum)
@@ -2407,7 +2407,7 @@ func (d *DB) EstimateDiskUsageByBackingType(
 			// We can only use `Overlaps` to restrict `files` at L1+ since at L0 it
 			// expands the range iteratively until it has found a set of files that
 			// do not overlap any other L0 files outside that set.
-			overlaps := readState.current.Overlaps(level, d.opts.Comparer.Compare, start, end, false /* exclusiveEnd */)
+			overlaps := readState.current.Overlaps(level, start, end, false /* exclusiveEnd */)
 			iter = overlaps.Iter()
 		}
 		for file := iter.First(); file != nil; file = iter.Next() {
@@ -3087,5 +3087,5 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 func (d *DB) DebugString() string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+	return d.mu.versions.currentVersion().DebugString()
 }

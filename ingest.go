@@ -172,7 +172,7 @@ func ingestSynthesizeShared(
 // ingestLoad1External loads the fileMetadata for one external sstable.
 // Sequence number and target level calculation happens during prepare/apply.
 func ingestLoad1External(
-	opts *Options, e ExternalFile, fileNum base.FileNum, objProvider objstorage.Provider, jobID int,
+	opts *Options, e ExternalFile, fileNum base.FileNum,
 ) (*fileMetadata, error) {
 	if e.Size == 0 {
 		// Disallow 0 file sizes
@@ -474,7 +474,7 @@ func ingestLoad(
 	}
 	result.external = make([]ingestExternalMeta, 0, len(external))
 	for i := range external {
-		m, err := ingestLoad1External(opts, external[i], externalFileNums[i], objProvider, jobID)
+		m, err := ingestLoad1External(opts, external[i], externalFileNums[i])
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
@@ -961,7 +961,7 @@ func ingestTargetLevel(
 
 		// Check boundary overlap.
 		var candidateSplitFile *fileMetadata
-		boundaryOverlaps := v.Overlaps(level, comparer.Compare, meta.Smallest.UserKey,
+		boundaryOverlaps := v.Overlaps(level, meta.Smallest.UserKey,
 			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
 		if !boundaryOverlaps.Empty() {
 			// We are already guaranteed to not have any data overlaps with files
@@ -2284,7 +2284,7 @@ func (d *DB) ingestApply(
 		// for files, and if they are, we should signal those compactions to error
 		// out.
 		for level := range current.Levels {
-			overlaps := current.Overlaps(level, d.cmp, exciseSpan.Start, exciseSpan.End, true /* exclusiveEnd */)
+			overlaps := current.Overlaps(level, exciseSpan.Start, exciseSpan.End, true /* exclusiveEnd */)
 			iter := overlaps.Iter()
 
 			for m := iter.First(); m != nil; m = iter.Next() {
@@ -2458,7 +2458,7 @@ func (d *DB) validateSSTables() {
 	for _, f := range pending {
 		// The file may have been moved or deleted since it was ingested, in
 		// which case we skip.
-		if !rs.current.Contains(f.Level, d.cmp, f.Meta) {
+		if !rs.current.Contains(f.Level, f.Meta) {
 			// Assume the file was moved to a lower level. It is rare enough
 			// that a table is moved or deleted between the time it was ingested
 			// and the time the validation routine runs that the overall cost of
@@ -2466,7 +2466,7 @@ func (d *DB) validateSSTables() {
 			// ingested tables.
 			found := false
 			for i := f.Level + 1; i < numLevels; i++ {
-				if rs.current.Contains(i, d.cmp, f.Meta) {
+				if rs.current.Contains(i, f.Meta) {
 					found = true
 					break
 				}

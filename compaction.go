@@ -733,7 +733,7 @@ func newCompaction(
 	// Compute the set of outputLevel+1 files that overlap this compaction (these
 	// are the grandparent sstables).
 	if c.outputLevel.level+1 < numLevels {
-		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.cmp,
+		c.grandparents = c.version.Overlaps(c.outputLevel.level+1,
 			c.smallest.UserKey, c.largest.UserKey, c.largest.IsExclusiveSentinel())
 	}
 	c.setupInuseKeyRanges()
@@ -972,7 +972,7 @@ func newFlush(
 	if opts.FlushSplitBytes > 0 {
 		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
-		c.grandparents = c.version.Overlaps(baseLevel, c.cmp, c.smallest.UserKey,
+		c.grandparents = c.version.Overlaps(baseLevel, c.smallest.UserKey,
 			c.largest.UserKey, c.largest.IsExclusiveSentinel())
 		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)
 	}
@@ -1002,7 +1002,7 @@ func (c *compaction) setupInuseKeyRanges() {
 	// calculateInuseKeyRanges will return a series of sorted spans. Overlapping
 	// or abutting spans have already been merged.
 	c.inuseKeyRanges = c.version.CalculateInuseKeyRanges(
-		c.cmp, level, numLevels-1, c.smallest.UserKey, c.largest.UserKey,
+		level, numLevels-1, c.smallest.UserKey, c.largest.UserKey,
 	)
 	// Check if there's a single in-use span that encompasses the entire key
 	// range of the compaction. This is an optimization to avoid key comparisons
@@ -2176,7 +2176,7 @@ func (d *DB) maybeScheduleDownloadCompaction(env compactionEnv, maxConcurrentCom
 		var err error
 		var level int
 		for i := range v.Levels {
-			overlaps := v.Overlaps(i, d.cmp, download.start, download.end, true /* exclusiveEnd */)
+			overlaps := v.Overlaps(i, download.start, download.end, true /* exclusiveEnd */)
 			iter := overlaps.Iter()
 			provider := d.objProvider
 			for f := iter.First(); f != nil; f = iter.Next() {
@@ -2565,7 +2565,7 @@ func checkDeleteCompactionHints(
 		// The hint h will be resolved and dropped, regardless of whether
 		// there are any tables that can be deleted.
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
-			overlaps := v.Overlaps(l, cmp, h.start, h.end, true /* exclusiveEnd */)
+			overlaps := v.Overlaps(l, h.start, h.end, true /* exclusiveEnd */)
 			iter := overlaps.Iter()
 			for m := iter.First(); m != nil; m = iter.Next() {
 				if m.IsCompacting() || !h.canDelete(cmp, m, snapshots) || files[m] {
