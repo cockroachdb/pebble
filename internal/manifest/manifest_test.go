@@ -41,7 +41,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 	}
 	t.Log("Constructed test database state")
 	v := replayManifest(t, testOpts.Opts, "")
-	t.Log(v.DebugString(base.DefaultFormatter))
+	t.Log(v.DebugString())
 
 	const maxKeyLen = 12
 	const maxSuffix = 20
@@ -59,14 +59,14 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 
 		level := rng.Intn(manifest.NumLevels)
 		cmp := testOpts.Opts.Comparer.Compare
-		keyRanges := v.CalculateInuseKeyRanges(cmp, level, manifest.NumLevels-1, smallest, largest)
+		keyRanges := v.CalculateInuseKeyRanges(level, manifest.NumLevels-1, smallest, largest)
 		t.Logf("%d: [%s, %s] levels L%d-L6: ", i, smallest, largest, level)
 		for _, kr := range keyRanges {
 			t.Logf("  [%s,%s]", kr.Start, kr.End)
 		}
 
 		for l := level; l < manifest.NumLevels; l++ {
-			o := v.Overlaps(l, cmp, smallest, largest, false /* exclusiveEnd */)
+			o := v.Overlaps(l, smallest, largest, false /* exclusiveEnd */)
 			iter := o.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
 				// CalculateInuseKeyRanges only guarantees that it returns key
@@ -123,7 +123,7 @@ func replayManifest(t *testing.T, opts *pebble.Options, dirname string) *manifes
 		require.NoError(t, bve.Accumulate(&ve))
 	}
 	v, err := bve.Apply(
-		nil /* version */, cmp.Compare, base.DefaultFormatter, opts.FlushSplitBytes,
+		nil /* version */, cmp, opts.FlushSplitBytes,
 		opts.Experimental.ReadCompactionRate, nil /* zombies */)
 	require.NoError(t, err)
 	return v

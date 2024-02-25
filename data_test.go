@@ -1337,7 +1337,7 @@ func runLSMCmd(td *datadriven.TestData, d *DB) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if td.HasArg("verbose") {
-		return d.mu.versions.currentVersion().DebugString(d.opts.Comparer.FormatKey)
+		return d.mu.versions.currentVersion().DebugString()
 	}
 	return d.mu.versions.currentVersion().String()
 }

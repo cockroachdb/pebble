@@ -420,7 +420,7 @@ func (pc *pickedCompaction) setupInputs(
 	// sstables. No need to do this for intra-L0 compactions; outputLevel.files is
 	// left empty for those.
 	if startLevel.level != pc.outputLevel.level {
-		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.cmp, pc.smallest.UserKey,
+		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.smallest.UserKey,
 			pc.largest.UserKey, pc.largest.IsExclusiveSentinel())
 		if anyTablesCompacting(pc.outputLevel.files) {
 			return false
@@ -514,7 +514,7 @@ func (pc *pickedCompaction) grow(
 	if pc.outputLevel.files.Empty() {
 		return false
 	}
-	grow0 := pc.version.Overlaps(startLevel.level, pc.cmp, sm.UserKey,
+	grow0 := pc.version.Overlaps(startLevel.level, sm.UserKey,
 		la.UserKey, la.IsExclusiveSentinel())
 	if anyTablesCompacting(grow0) {
 		return false
@@ -528,7 +528,7 @@ func (pc *pickedCompaction) grow(
 	// We need to include the outputLevel iter because without it, in a multiLevel scenario,
 	// sm1 and la1 could shift the output level keyspace when pc.outputLevel.files is set to grow1.
 	sm1, la1 := manifest.KeyRange(pc.cmp, grow0.Iter(), pc.outputLevel.files.Iter())
-	grow1 := pc.version.Overlaps(pc.outputLevel.level, pc.cmp, sm1.UserKey,
+	grow1 := pc.version.Overlaps(pc.outputLevel.level, sm1.UserKey,
 		la1.UserKey, la1.IsExclusiveSentinel())
 	if anyTablesCompacting(grow1) {
 		return false
@@ -1560,7 +1560,7 @@ func pickAutoLPositive(
 	if pc.startLevel.level == 0 {
 		cmp := opts.Comparer.Compare
 		smallest, largest := manifest.KeyRange(cmp, pc.startLevel.files.Iter())
-		pc.startLevel.files = vers.Overlaps(0, cmp, smallest.UserKey,
+		pc.startLevel.files = vers.Overlaps(0, smallest.UserKey,
 			largest.UserKey, largest.IsExclusiveSentinel())
 		if pc.startLevel.files.Empty() {
 			panic("pebble: empty compaction")
@@ -1768,7 +1768,7 @@ func pickManualCompaction(
 	}
 	pc = newPickedCompaction(opts, vers, manual.level, defaultOutputLevel(manual.level, baseLevel), baseLevel)
 	manual.outputLevel = pc.outputLevel.level
-	pc.startLevel.files = vers.Overlaps(manual.level, opts.Comparer.Compare, manual.start, manual.end, false)
+	pc.startLevel.files = vers.Overlaps(manual.level, manual.start, manual.end, false)
 	if pc.startLevel.files.Empty() {
 		// Nothing to do
 		return nil, false
@@ -1854,8 +1854,7 @@ func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 func pickReadTriggeredCompactionHelper(
 	p *compactionPickerByScore, rc *readCompaction, env compactionEnv,
 ) (pc *pickedCompaction) {
-	cmp := p.opts.Comparer.Compare
-	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end, false /* exclusiveEnd */)
+	overlapSlice := p.vers.Overlaps(rc.level, rc.start, rc.end, false /* exclusiveEnd */)
 	if overlapSlice.Empty() {
 		// If there is no overlap, then the file with the key range
 		// must have been compacted away. So, we don't proceed to
@@ -1888,7 +1887,7 @@ func pickReadTriggeredCompactionHelper(
 
 	// Prevent read compactions which are too wide.
 	outputOverlaps := pc.version.Overlaps(
-		pc.outputLevel.level, pc.cmp, pc.smallest.UserKey,
+		pc.outputLevel.level, pc.smallest.UserKey,
 		pc.largest.UserKey, pc.largest.IsExclusiveSentinel())
 	if outputOverlaps.SizeSum() > pc.maxReadCompactionBytes {
 		return nil

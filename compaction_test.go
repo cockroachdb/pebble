@@ -41,8 +41,7 @@ import (
 
 func newVersion(opts *Options, files [numLevels][]*fileMetadata) *version {
 	return manifest.NewVersion(
-		opts.Comparer.Compare,
-		opts.Comparer.FormatKey,
+		opts.Comparer,
 		opts.FlushSplitBytes,
 		files)
 }
@@ -506,9 +505,8 @@ func TestPickCompaction(t *testing.T) {
 
 	for _, tc := range testCases {
 		vs := &versionSet{
-			opts:    opts,
-			cmp:     DefaultComparer.Compare,
-			cmpName: DefaultComparer.Name,
+			opts: opts,
+			cmp:  DefaultComparer,
 		}
 		vs.versions.Init(nil)
 		vs.append(tc.version)
@@ -566,7 +564,7 @@ func TestElideTombstone(t *testing.T) {
 					return err.Error()
 				}
 				if td.HasArg("verbose") {
-					return d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+					return d.mu.versions.currentVersion().DebugString()
 				}
 				return d.mu.versions.currentVersion().String()
 			case "elide":
@@ -1213,8 +1211,8 @@ func TestManualCompaction(t *testing.T) {
 		ongoingCompaction.outputLevel = &ongoingCompaction.inputs[1]
 		// Mark files as compacting.
 		curr := d.mu.versions.currentVersion()
-		ongoingCompaction.startLevel.files = curr.Overlaps(startLevel, d.cmp, start, end, false)
-		ongoingCompaction.outputLevel.files = curr.Overlaps(outputLevel, d.cmp, start, end, false)
+		ongoingCompaction.startLevel.files = curr.Overlaps(startLevel, start, end, false)
+		ongoingCompaction.outputLevel.files = curr.Overlaps(outputLevel, start, end, false)
 		for _, cl := range ongoingCompaction.inputs {
 			iter := cl.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
@@ -1268,7 +1266,7 @@ func TestManualCompaction(t *testing.T) {
 				d.mu.Lock()
 				s := d.mu.versions.currentVersion().String()
 				if verbose {
-					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+					s = d.mu.versions.currentVersion().DebugString()
 				}
 				d.mu.Unlock()
 				if td.HasArg("hide-file-num") {
@@ -1303,7 +1301,7 @@ func TestManualCompaction(t *testing.T) {
 
 				s := d.mu.versions.currentVersion().String()
 				if verbose {
-					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+					s = d.mu.versions.currentVersion().DebugString()
 				}
 				return s
 
@@ -1317,7 +1315,7 @@ func TestManualCompaction(t *testing.T) {
 				d.mu.Lock()
 				s := d.mu.versions.currentVersion().String()
 				if verbose {
-					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+					s = d.mu.versions.currentVersion().DebugString()
 				}
 				d.mu.Unlock()
 				return s
@@ -1329,7 +1327,7 @@ func TestManualCompaction(t *testing.T) {
 				d.mu.Lock()
 				s := d.mu.versions.currentVersion().String()
 				if verbose {
-					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+					s = d.mu.versions.currentVersion().DebugString()
 				}
 				d.mu.Unlock()
 				return s
@@ -1677,7 +1675,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 					}
 				}
 
-				vers = manifest.NewVersion(DefaultComparer.Compare, base.DefaultFormatter, flushSplitBytes, fileMetas)
+				vers = manifest.NewVersion(DefaultComparer, flushSplitBytes, fileMetas)
 				flushSplitKeys := vers.L0Sublevels.FlushSplitKeys()
 
 				var buf strings.Builder
@@ -1726,7 +1724,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 
 func TestCompactionOutputLevel(t *testing.T) {
 	opts := (*Options)(nil).EnsureDefaults()
-	version := &version{}
+	version := manifest.TestingNewVersion(opts.Comparer)
 
 	datadriven.RunTest(t, "testdata/compaction_output_level",
 		func(t *testing.T, d *datadriven.TestData) (res string) {
@@ -2493,14 +2491,14 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 			})
 		}
 		v := newVersion(opts, files)
-		t.Log(v.DebugString(opts.Comparer.FormatKey))
+		t.Log(v.DebugString())
 		for i := 0; i < 1000; i++ {
 			l := rng.Intn(numLevels)
 			s := rng.Intn(endKeyspace)
 			maxWidth := rng.Intn(endKeyspace-s) + 1
 			e := rng.Intn(maxWidth) + s
 			sKey, eKey := makeUserKey(s), makeUserKey(e)
-			keyRanges := v.CalculateInuseKeyRanges(opts.Comparer.Compare, l, numLevels-1, sKey, eKey)
+			keyRanges := v.CalculateInuseKeyRanges(l, numLevels-1, sKey, eKey)
 
 			for level := l; level < numLevels; level++ {
 				for _, f := range files[level] {
@@ -3172,7 +3170,6 @@ func TestCompactionInvalidBounds(t *testing.T) {
 
 func Test_calculateInuseKeyRanges(t *testing.T) {
 	opts := (*Options)(nil).EnsureDefaults()
-	cmp := base.DefaultComparer.Compare
 	newFileMeta := func(fileNum FileNum, size uint64, smallest, largest base.InternalKey) *fileMetadata {
 		m := (&fileMetadata{
 			FileNum: fileNum,
@@ -3401,7 +3398,7 @@ func Test_calculateInuseKeyRanges(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.v.CalculateInuseKeyRanges(cmp, tt.level, tt.depth, tt.smallest, tt.largest); !reflect.DeepEqual(got, tt.want) {
+			if got := tt.v.CalculateInuseKeyRanges(tt.level, tt.depth, tt.smallest, tt.largest); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CalculateInuseKeyRanges() = %v, want %v", got, tt.want)
 			}
 		})
@@ -3468,7 +3465,7 @@ func TestMarkedForCompaction(t *testing.T) {
 				t = t.Add(time.Second)
 				return t
 			}
-			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			s := d.mu.versions.currentVersion().DebugString()
 			return s
 
 		case "mark-for-compaction":
@@ -3500,7 +3497,7 @@ func TestMarkedForCompaction(t *testing.T) {
 				d.mu.compact.cond.Wait()
 			}
 
-			fmt.Fprintln(&buf, d.mu.versions.currentVersion().DebugString(base.DefaultFormatter))
+			fmt.Fprintln(&buf, d.mu.versions.currentVersion().DebugString())
 			s := strings.TrimSpace(buf.String())
 			buf.Reset()
 			opts.DisableAutomaticCompactions = true

@@ -501,9 +501,8 @@ func TestCompactionPickerL0(t *testing.T) {
 			version := newVersion(opts, fileMetas)
 			version.L0Sublevels.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
 			vs := &versionSet{
-				opts:    opts,
-				cmp:     DefaultComparer.Compare,
-				cmpName: DefaultComparer.Name,
+				opts: opts,
+				cmp:  DefaultComparer,
 			}
 			vs.versions.Init(nil)
 			vs.append(version)
@@ -725,9 +724,8 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			version := newVersion(opts, fileMetas)
 			version.L0Sublevels.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
 			vs := &versionSet{
-				opts:    opts,
-				cmp:     DefaultComparer.Compare,
-				cmpName: DefaultComparer.Name,
+				opts: opts,
+				cmp:  DefaultComparer,
 			}
 			vs.versions.Init(nil)
 			vs.append(version)
@@ -843,9 +841,8 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 
 			vers = newVersion(opts, fileMetas)
 			vs := &versionSet{
-				opts:    opts,
-				cmp:     DefaultComparer.Compare,
-				cmpName: DefaultComparer.Name,
+				opts: opts,
+				cmp:  DefaultComparer,
 			}
 			vs.versions.Init(nil)
 			vs.append(vers)
@@ -1049,7 +1046,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				pc.outputLevel.level = pc.startLevel.level + 1
 			}
 			pc.version = newVersion(opts, files)
-			pc.startLevel.files = pc.version.Overlaps(pc.startLevel.level, pc.cmp,
+			pc.startLevel.files = pc.version.Overlaps(pc.startLevel.level,
 				[]byte(args[0].String()), []byte(args[1].String()), false /* exclusiveEnd */)
 
 			var isCompacting bool
@@ -1263,9 +1260,8 @@ func TestCompactionOutputFileSize(t *testing.T) {
 
 			vers = newVersion(opts, fileMetas)
 			vs := &versionSet{
-				opts:    opts,
-				cmp:     DefaultComparer.Compare,
-				cmpName: DefaultComparer.Name,
+				opts: opts,
+				cmp:  DefaultComparer,
 			}
 			vs.versions.Init(nil)
 			vs.append(vers)

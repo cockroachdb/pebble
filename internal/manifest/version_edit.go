@@ -889,8 +889,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 func AccumulateIncompleteAndApplySingleVE(
 	ve *VersionEdit,
 	curr *Version,
-	cmp Compare,
-	formatKey base.FormatKey,
+	comparer *base.Comparer,
 	flushSplitBytes int64,
 	readCompactionRate int64,
 	backingStateMap map[base.DiskFileNum]*FileBacking,
@@ -906,7 +905,7 @@ func AccumulateIncompleteAndApplySingleVE(
 		return nil, nil, err
 	}
 	zombies = make(map[base.DiskFileNum]uint64)
-	v, err := b.Apply(curr, cmp, formatKey, flushSplitBytes, readCompactionRate, zombies)
+	v, err := b.Apply(curr, comparer, flushSplitBytes, readCompactionRate, zombies)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -941,8 +940,7 @@ func AccumulateIncompleteAndApplySingleVE(
 // incoming Version.
 func (b *BulkVersionEdit) Apply(
 	curr *Version,
-	cmp Compare,
-	formatKey base.FormatKey,
+	comparer *base.Comparer,
 	flushSplitBytes int64,
 	readCompactionRate int64,
 	zombies map[base.DiskFileNum]uint64,
@@ -958,7 +956,9 @@ func (b *BulkVersionEdit) Apply(
 		}
 	}
 
-	v := new(Version)
+	v := &Version{
+		cmp: comparer,
+	}
 
 	// Adjust the count of files marked for compaction.
 	if curr != nil {
@@ -971,12 +971,12 @@ func (b *BulkVersionEdit) Apply(
 
 	for level := range v.Levels {
 		if curr == nil || curr.Levels[level].tree.root == nil {
-			v.Levels[level] = makeLevelMetadata(cmp, level, nil /* files */)
+			v.Levels[level] = makeLevelMetadata(comparer.Compare, level, nil /* files */)
 		} else {
 			v.Levels[level] = curr.Levels[level].clone()
 		}
 		if curr == nil || curr.RangeKeyLevels[level].tree.root == nil {
-			v.RangeKeyLevels[level] = makeLevelMetadata(cmp, level, nil /* files */)
+			v.RangeKeyLevels[level] = makeLevelMetadata(comparer.Compare, level, nil /* files */)
 		} else {
 			v.RangeKeyLevels[level] = curr.RangeKeyLevels[level].clone()
 		}
@@ -986,7 +986,7 @@ func (b *BulkVersionEdit) Apply(
 			if level == 0 {
 				// Initialize L0Sublevels.
 				if curr == nil || curr.L0Sublevels == nil {
-					if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
+					if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
 						return nil, errors.Wrap(err, "pebble: internal error")
 					}
 				} else {
@@ -1092,10 +1092,10 @@ func (b *BulkVersionEdit) Apply(
 			removeZombie(f.FileBacking)
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
-			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {
+			if sm == nil || base.InternalCompare(comparer.Compare, sm.Smallest, f.Smallest) > 0 {
 				sm = f
 			}
-			if la == nil || base.InternalCompare(cmp, la.Largest, f.Largest) < 0 {
+			if la == nil || base.InternalCompare(comparer.Compare, la.Largest, f.Largest) < 0 {
 				la = f
 			}
 		}
@@ -1110,18 +1110,18 @@ func (b *BulkVersionEdit) Apply(
 				SortBySeqNum(addedFiles)
 				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(addedFiles, flushSplitBytes, &v.Levels[0])
 				if errors.Is(err, errInvalidL0SublevelsOpt) {
-					err = v.InitL0Sublevels(cmp, formatKey, flushSplitBytes)
+					err = v.InitL0Sublevels(flushSplitBytes)
 				} else if invariants.Enabled && err == nil {
-					copyOfSublevels, err := NewL0Sublevels(&v.Levels[0], cmp, formatKey, flushSplitBytes)
+					copyOfSublevels, err := NewL0Sublevels(&v.Levels[0], comparer.Compare, comparer.FormatKey, flushSplitBytes)
 					if err != nil {
 						panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
 					}
-					s1 := describeSublevels(base.DefaultFormatter, false /* verbose */, copyOfSublevels.Levels)
-					s2 := describeSublevels(base.DefaultFormatter, false /* verbose */, v.L0Sublevels.Levels)
+					s1 := describeSublevels(comparer.FormatKey, false /* verbose */, copyOfSublevels.Levels)
+					s2 := describeSublevels(comparer.FormatKey, false /* verbose */, v.L0Sublevels.Levels)
 					if s1 != s2 {
 						// Add verbosity.
-						s1 := describeSublevels(base.DefaultFormatter, true /* verbose */, copyOfSublevels.Levels)
-						s2 := describeSublevels(base.DefaultFormatter, true /* verbose */, v.L0Sublevels.Levels)
+						s1 := describeSublevels(comparer.FormatKey, true /* verbose */, copyOfSublevels.Levels)
+						s2 := describeSublevels(comparer.FormatKey, true /* verbose */, v.L0Sublevels.Levels)
 						panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
 					}
 				}
@@ -1129,10 +1129,10 @@ func (b *BulkVersionEdit) Apply(
 					return nil, errors.Wrap(err, "pebble: internal error")
 				}
 				v.L0SublevelFiles = v.L0Sublevels.Levels
-			} else if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
+			} else if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
 				return nil, errors.Wrap(err, "pebble: internal error")
 			}
-			if err := CheckOrdering(cmp, formatKey, Level(0), v.Levels[level].Iter()); err != nil {
+			if err := CheckOrdering(comparer.Compare, comparer.FormatKey, Level(0), v.Levels[level].Iter()); err != nil {
 				return nil, errors.Wrap(err, "pebble: internal error")
 			}
 			continue
@@ -1140,7 +1140,7 @@ func (b *BulkVersionEdit) Apply(
 
 		// Check consistency of the level in the vicinity of our edits.
 		if sm != nil && la != nil {
-			overlap := overlaps(v.Levels[level].Iter(), cmp, sm.Smallest.UserKey,
+			overlap := overlaps(v.Levels[level].Iter(), comparer.Compare, sm.Smallest.UserKey,
 				la.Largest.UserKey, la.Largest.IsExclusiveSentinel())
 			// overlap contains all of the added files. We want to ensure that
 			// the added files are consistent with neighboring existing files
@@ -1153,7 +1153,7 @@ func (b *BulkVersionEdit) Apply(
 					end.Prev()
 				}
 			})
-			if err := CheckOrdering(cmp, formatKey, Level(level), check.Iter()); err != nil {
+			if err := CheckOrdering(comparer.Compare, comparer.FormatKey, Level(level), check.Iter()); err != nil {
 				return nil, errors.Wrap(err, "pebble: internal error")
 			}
 		}

@@ -310,7 +310,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 				amap[metas[i].FileNum] = metas[i]
 			}
 			b.Added[6] = amap
-			v, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0, nil)
+			v, err := b.Apply(nil, base.DefaultComparer, 0, 0, nil)
 			require.NoError(t, err)
 			levelIter.Init(
 				keyspan.SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters,
@@ -454,7 +454,7 @@ func TestLevelIter(t *testing.T) {
 					amap[metas[i].FileNum] = metas[i]
 				}
 				b.Added[6] = amap
-				v, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0, nil)
+				v, err := b.Apply(nil, base.DefaultComparer, 0, 0, nil)
 				require.NoError(t, err)
 				iter = NewLevelIter(
 					keyspan.SpanIterOptions{}, base.DefaultComparer.Compare,

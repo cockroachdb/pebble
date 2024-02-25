@@ -191,7 +191,7 @@ func TestTableStats(t *testing.T) {
 
 func TestTableRangeDeletionIter(t *testing.T) {
 	var m *fileMetadata
-	cmp := base.DefaultComparer.Compare
+	cmp := base.DefaultComparer
 	fs := vfs.NewMem()
 	datadriven.RunTest(t, "testdata/table_stats_deletion_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch cmd := td.Cmd; cmd {
@@ -233,15 +233,15 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				return err.Error()
 			}
 			if meta.HasPointKeys {
-				m.ExtendPointKeyBounds(cmp, meta.SmallestPoint, meta.LargestPoint)
+				m.ExtendPointKeyBounds(cmp.Compare, meta.SmallestPoint, meta.LargestPoint)
 			}
 			if meta.HasRangeDelKeys {
-				m.ExtendPointKeyBounds(cmp, meta.SmallestRangeDel, meta.LargestRangeDel)
+				m.ExtendPointKeyBounds(cmp.Compare, meta.SmallestRangeDel, meta.LargestRangeDel)
 			}
 			if meta.HasRangeKeys {
-				m.ExtendRangeKeyBounds(cmp, meta.SmallestRangeKey, meta.LargestRangeKey)
+				m.ExtendRangeKeyBounds(cmp.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
 			}
-			return m.DebugString(base.DefaultFormatter, false /* verbose */)
+			return m.DebugString(cmp.FormatKey, false /* verbose */)
 		case "spans":
 			f, err := fs.Open("tmp.sst")
 			if err != nil {
@@ -257,7 +257,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				return err.Error()
 			}
 			defer r.Close()
-			iter, err := newCombinedDeletionKeyspanIter(base.DefaultComparer, r, m)
+			iter, err := newCombinedDeletionKeyspanIter(cmp, r, m)
 			if err != nil {
 				return err.Error()
 			}

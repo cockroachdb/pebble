@@ -149,7 +149,7 @@ func (d *DB) collectTableStats() bool {
 		v := d.mu.versions.currentVersion()
 		keepHints := hints[:0]
 		for _, h := range hints {
-			if v.Contains(h.tombstoneLevel, d.cmp, h.tombstoneFile) {
+			if v.Contains(h.tombstoneLevel, h.tombstoneFile) {
 				keepHints = append(keepHints, h)
 			}
 		}
@@ -185,7 +185,7 @@ func (d *DB) loadNewFileStats(
 		// The file isn't guaranteed to still be live in the readState's
 		// version. It may have been deleted or moved. Skip it if it's not in
 		// the expected level.
-		if !rs.current.Contains(nf.Level, d.cmp, nf.Meta) {
+		if !rs.current.Contains(nf.Level, nf.Meta) {
 			continue
 		}
 
@@ -500,7 +500,7 @@ func (d *DB) estimateSizesBeneath(
 	}
 
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, d.cmp, meta.Smallest.UserKey,
+		overlaps := v.Overlaps(l, meta.Smallest.UserKey,
 			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
 		iter := overlaps.Iter()
 		for file = iter.First(); file != nil; file = iter.Next() {
@@ -553,7 +553,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	// additional I/O to read the file's index blocks.
 	hintSeqNum = math.MaxUint64
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, d.cmp, start, end, true /* exclusiveEnd */)
+		overlaps := v.Overlaps(l, start, end, true /* exclusiveEnd */)
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
 			startCmp := d.cmp(start, file.Smallest.UserKey)

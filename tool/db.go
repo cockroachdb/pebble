@@ -529,7 +529,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			}
 		}
 		v, err := bve.Apply(
-			nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes,
+			nil /* version */, cmp, d.opts.FlushSplitBytes,
 			d.opts.Experimental.ReadCompactionRate, nil, /* zombies */
 		)
 		if err != nil {
