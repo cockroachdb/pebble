@@ -515,6 +515,12 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 	}
 
 	if len(lr.external) > 0 {
+		if len(lr.shared) > 0 {
+			// If external files are present alongside
+			// shared files, return an error.
+			return errors.AssertionFailedf("pebble: external files cannot be ingested atomically alongside shared files")
+		}
+
 		// Sort according to the smallest key.
 		slices.SortFunc(lr.external, func(a, b ingestExternalMeta) int {
 			return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
