@@ -26,6 +26,15 @@ advance-time dur=75ms wait-monitor
 monitor state: dir index: 0 num-switches: 0, ongoing-latency-at-switch: 0s
 now: 76ms
 
+list-and-stats
+----
+logs:
+  000001: {(pri,000)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 0
+  failover: switches 0 pri-dur 76ms sec-dur 0s
+
 close-writer
 ----
 ok
@@ -66,6 +75,7 @@ list-and-stats
 stats:
   obsolete: count 2 size 22
   live: count 0 size 0
+  failover: switches 0 pri-dur 0s sec-dur 0s
 
 # Wait for monitor ticker to start.
 advance-time dur=1ms wait-monitor
@@ -90,6 +100,15 @@ offset: 18
 close-writer
 ----
 ok
+
+list-and-stats
+----
+logs:
+  000005: {(pri,000)}
+stats:
+  obsolete: count 2 size 22
+  live: count 1 size 18
+  failover: switches 0 pri-dur 1ms sec-dur 0s
 
 create-writer wal-num=7
 ----
@@ -117,6 +136,7 @@ logs:
 stats:
   obsolete: count 2 size 22
   live: count 2 size 34
+  failover: switches 0 pri-dur 1ms sec-dur 0s
 
 obsolete min-unflushed=7
 ----
@@ -150,6 +170,7 @@ logs:
 stats:
   obsolete: count 0 size 0
   live: count 1 size 29
+  failover: switches 0 pri-dur 1ms sec-dur 0s
 
 write-record value=woolly
 ----
@@ -170,6 +191,7 @@ logs:
 stats:
   obsolete: count 0 size 0
   live: count 1 size 38
+  failover: switches 0 pri-dur 1ms sec-dur 0s
 
 close-manager
 ----
@@ -202,12 +224,30 @@ advance-time dur=1ms wait-ongoing-io wait-for-log-writer
 ----
 now: 2ms
 
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 0 pri-dur 2ms sec-dur 0s
+
 # Wait until monitor sees the error and switches to secondary.
 advance-time dur=75ms wait-monitor wait-prober
 ----
 monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 0s
 prober state:
 now: 77ms
+
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 1 pri-dur 77ms sec-dur 0s
 
 # The switch to secondary blocks on creation.
 advance-time dur=0ms wait-ongoing-io
@@ -248,6 +288,7 @@ logs:
 stats:
   obsolete: count 0 size 0
   live: count 1 size 18
+  failover: switches 2 pri-dur 77ms sec-dur 80ms
 
 advance-time dur=1s
 ----
@@ -296,6 +337,7 @@ logs:
 stats:
   obsolete: count 0 size 0
   live: count 1 size 16
+  failover: switches 2 pri-dur 11.077s sec-dur 80ms
 
 obsolete min-unflushed=3
 ----
@@ -355,6 +397,15 @@ monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 76ms
 prober state:
 now: 77ms
 
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 1 pri-dur 77ms sec-dur 0s
+
 elevate-write-stall-threshold
 ----
 true
@@ -374,6 +425,15 @@ monitor state: dir index: 0 failback time: 152ms num-switches: 2, ongoing-latenc
 prober state:
 now: 152ms
 
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 2 pri-dur 77ms sec-dur 75ms
+
 # Blocked in creation.
 advance-time dur=0ms wait-ongoing-io
 ----
@@ -392,6 +452,15 @@ monitor state: dir index: 1 failback time: 152ms num-switches: 3, ongoing-latenc
 prober state:
 now: 306ms
 
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 3 pri-dur 231ms sec-dur 75ms
+
 # Wait for the error.
 advance-time dur=0ms wait-ongoing-io wait-for-log-writer
 ----
@@ -403,6 +472,15 @@ advance-time dur=75ms wait-monitor wait-prober
 monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
 prober state:
 now: 381ms
+
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 4 pri-dur 231ms sec-dur 150ms
 
 # Blocked in creation.
 advance-time dur=0ms wait-ongoing-io
@@ -428,6 +506,15 @@ advance-time dur=78ms wait-monitor
 ----
 monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
 now: 693ms
+
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 4 pri-dur 543ms sec-dur 150ms
 
 # Unblock everything.
 block-io-config filename=000001.log
@@ -484,6 +571,15 @@ monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 0s
 prober state:
 now: 75ms
 
+list-and-stats
+----
+logs:
+  000001: {(sec,001)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 0
+  failover: switches 1 pri-dur 75ms sec-dur 0s
+
 elevate-write-stall-threshold
 ----
 true
@@ -521,6 +617,15 @@ monitor state: dir index: 0 failback time: 300ms num-switches: 2, ongoing-latenc
 prober state:
 now: 300ms
 
+list-and-stats
+----
+logs:
+  000001: {(sec,001), (pri,002)}
+stats:
+  obsolete: count 0 size 0
+  live: count 2 size 0
+  failover: switches 2 pri-dur 75ms sec-dur 225ms
+
 advance-time dur=1s
 ----
 now: 1.3s
@@ -536,6 +641,15 @@ now: 10.3s
 elevate-write-stall-threshold
 ----
 false
+
+list-and-stats
+----
+logs:
+  000001: {(sec,001), (pri,002)}
+stats:
+  obsolete: count 0 size 0
+  live: count 2 size 0
+  failover: switches 2 pri-dur 10.075s sec-dur 225ms
 
 close-writer
 ----

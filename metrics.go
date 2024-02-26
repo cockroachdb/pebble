@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/redact"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -292,6 +293,8 @@ type Metrics struct {
 		BytesIn uint64
 		// Number of bytes written to the WAL.
 		BytesWritten uint64
+		// Failover contains failover stats. Empty if failover is not enabled.
+		Failover wal.FailoverStats
 	}
 
 	LogWriter struct {
@@ -532,12 +535,18 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.SafeString("-------------------------------------------------------------------------------------------------------------------")
 	appendIfMulti("--------------------")
 	newline()
-	w.Printf("WAL: %d files (%s)  in: %s  written: %s (%.0f%% overhead)\n",
+	w.Printf("WAL: %d files (%s)  in: %s  written: %s (%.0f%% overhead)",
 		redact.Safe(m.WAL.Files),
 		humanize.Bytes.Uint64(m.WAL.Size),
 		humanize.Bytes.Uint64(m.WAL.BytesIn),
 		humanize.Bytes.Uint64(m.WAL.BytesWritten),
 		redact.Safe(percent(int64(m.WAL.BytesWritten)-int64(m.WAL.BytesIn), int64(m.WAL.BytesIn))))
+	if m.WAL.Failover == (wal.FailoverStats{}) {
+		w.Printf("\n")
+	} else {
+		w.Printf(" failover: (switches: %d, primary: %s, secondary: %s)\n", m.WAL.Failover.DirSwitchCount,
+			m.WAL.Failover.PrimaryWriteDuration.String(), m.WAL.Failover.SecondaryWriteDuration.String())
+	}
 
 	w.Printf("Flushes: %d\n", redact.Safe(m.Flush.Count))
 
