@@ -236,6 +236,28 @@ type Stats struct {
 	// This is updated only when log files are closed, to minimize
 	// synchronization.
 	LiveFileSize uint64
+	// Failover contains failover stats.
+	Failover FailoverStats
+}
+
+// FailoverStats contains stats about WAL failover. These are empty if
+// failover is not configured.
+type FailoverStats struct {
+	// DirSwitchCount is the number of times WAL writing has switched to a
+	// different directory, either due to failover, when the current dir is
+	// unhealthy, or to failback to the primary, when the primary is healthy
+	// again.
+	DirSwitchCount int64
+	// The following durations do not account for continued background writes to
+	// a directory that has been switched away from. These background writes can
+	// happen because of queued records.
+
+	// PrimaryWriteDuration is the cumulative duration for which WAL writes are
+	// using the primary directory.
+	PrimaryWriteDuration time.Duration
+	// SecondaryWriteDuration is the cumulative duration for which WAL writes
+	// are using the secondary directory.
+	SecondaryWriteDuration time.Duration
 }
 
 // Manager handles all WAL work.

@@ -220,6 +220,12 @@ type failoverMonitor struct {
 		lastFailBackTime time.Time
 		// The current failoverWriter, exposed via a narrower interface.
 		writer switchableWriter
+
+		// Stats.
+		dirSwitchCount              int64
+		lastAccumulateIntoDurations time.Time
+		primaryWriteDuration        time.Duration
+		secondaryWriteDuration      time.Duration
 	}
 }
 
@@ -227,6 +233,7 @@ func newFailoverMonitor(opts failoverMonitorOptions) *failoverMonitor {
 	m := &failoverMonitor{
 		opts: opts,
 	}
+	m.mu.lastAccumulateIntoDurations = opts.timeSource.now()
 	m.prober.init(opts.dirs[primaryDirIndex].FS,
 		opts.dirs[primaryDirIndex].FS.PathJoin(opts.dirs[primaryDirIndex].Dirname, "probe-file"),
 		opts.PrimaryDirProbeInterval, opts.stopper, opts.timeSource, opts.proberIterationForTesting)
@@ -238,9 +245,11 @@ func newFailoverMonitor(opts failoverMonitorOptions) *failoverMonitor {
 
 // Called when previous writer is closed
 func (m *failoverMonitor) noWriter() {
+	now := m.opts.timeSource.now()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.mu.writer = nil
+	m.accumulateDurationLocked(now)
 }
 
 // writerCreateFunc is allowed to return nil, if there is an error. It is not
@@ -263,6 +272,31 @@ func (m *failoverMonitor) elevateWriteStallThresholdForFailover() bool {
 	}
 	intervalSinceFailedback := m.opts.timeSource.now().Sub(m.mu.lastFailBackTime)
 	return intervalSinceFailedback < m.opts.ElevatedWriteStallThresholdLag
+}
+
+func (m *failoverMonitor) accumulateDurationLocked(now time.Time) {
+	dur := now.Sub(m.mu.lastAccumulateIntoDurations)
+	m.mu.lastAccumulateIntoDurations = now
+	if dur < 0 {
+		return
+	}
+	if m.mu.dirIndex == primaryDirIndex {
+		m.mu.primaryWriteDuration += dur
+		return
+	}
+	m.mu.secondaryWriteDuration += dur
+}
+
+func (m *failoverMonitor) stats() FailoverStats {
+	now := m.opts.timeSource.now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.accumulateDurationLocked(now)
+	return FailoverStats{
+		DirSwitchCount:         m.mu.dirSwitchCount,
+		PrimaryWriteDuration:   m.mu.primaryWriteDuration,
+		SecondaryWriteDuration: m.mu.secondaryWriteDuration,
+	}
 }
 
 // lastWriterInfo is state maintained in the monitorLoop for the latest
@@ -351,10 +385,13 @@ func (m *failoverMonitor) monitorLoop(shouldQuiesce <-chan struct{}) {
 					dirIndex = secondaryDirIndex
 				}
 				dir := m.opts.dirs[dirIndex]
+				now := m.opts.timeSource.now()
 				m.mu.Lock()
+				m.accumulateDurationLocked(now)
 				m.mu.dirIndex = dirIndex
+				m.mu.dirSwitchCount++
 				if dirIndex == primaryDirIndex {
-					m.mu.lastFailBackTime = m.opts.timeSource.now()
+					m.mu.lastFailBackTime = now
 				}
 				if m.mu.writer != nil {
 					m.mu.writer.switchToNewDir(dir)
@@ -610,6 +647,7 @@ func (wm *failoverManager) writerClosed(llse logicalLogWithSizesEtc) {
 // Stats implements Manager.
 func (wm *failoverManager) Stats() Stats {
 	obsoleteLogsCount, obsoleteLogSize := wm.recycler.Stats()
+	failoverStats := wm.monitor.stats()
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 	var liveFileCount int
@@ -637,6 +675,7 @@ func (wm *failoverManager) Stats() Stats {
 		ObsoleteFileSize:  obsoleteLogSize,
 		LiveFileCount:     liveFileCount,
 		LiveFileSize:      liveFileSize,
+		Failover:          failoverStats,
 	}
 }
 

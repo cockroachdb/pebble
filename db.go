@@ -2120,6 +2120,7 @@ func (d *DB) Metrics() *Metrics {
 		metrics.WAL.Size += d.mu.mem.queue[i].logSize
 	}
 	metrics.WAL.BytesWritten = metrics.Levels[0].BytesIn + metrics.WAL.Size
+	metrics.WAL.Failover = walStats.Failover
 
 	if p := d.mu.versions.picker; p != nil {
 		compactions := d.getInProgressCompactionInfoLocked(nil)
