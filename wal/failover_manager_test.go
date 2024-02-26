@@ -433,6 +433,8 @@ func TestManagerFailover(t *testing.T) {
 				fmt.Fprintf(&b, "stats:\n")
 				fmt.Fprintf(&b, "  obsolete: count %d size %d\n", stats.ObsoleteFileCount, stats.ObsoleteFileSize)
 				fmt.Fprintf(&b, "  live: count %d size %d\n", stats.LiveFileCount, stats.LiveFileSize)
+				fmt.Fprintf(&b, "  failover: switches %d pri-dur %s sec-dur %s\n", stats.Failover.DirSwitchCount,
+					stats.Failover.PrimaryWriteDuration.String(), stats.Failover.SecondaryWriteDuration.String())
 				return b.String()
 
 			case "write-record":
