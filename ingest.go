@@ -505,6 +505,15 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 			return errors.Newf("pebble: shared file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
 		}
 	}
+
+	if lr.externalFilesHaveLevel {
+		for _, f := range lr.external {
+			if !exciseSpan.Contains(cmp, f.Smallest) || !exciseSpan.Contains(cmp, f.Largest) {
+				return errors.AssertionFailedf("pebble: external file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
+			}
+		}
+	}
+
 	if len(lr.external) > 0 {
 		// Sort according to the smallest key.
 		slices.SortFunc(lr.external, func(a, b ingestExternalMeta) int {
@@ -540,6 +549,11 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 		for i := range lr.shared {
 			if lr.shared[i].shared.Level == uint8(l) {
 				filesInLevel = append(filesInLevel, lr.shared[i].fileMetadata)
+			}
+		}
+		for i := range lr.external {
+			if lr.external[i].external.Level == uint8(l) {
+				filesInLevel = append(filesInLevel, lr.external[i].fileMetadata)
 			}
 		}
 		slices.SortFunc(filesInLevel, func(a, b *fileMetadata) int {
