@@ -29,8 +29,12 @@ var _ CommonReader = (*VirtualReader)(nil)
 
 // Lightweight virtual sstable state which can be passed to sstable iterators.
 type virtualState struct {
-	lower            InternalKey
-	upper            InternalKey
+	// Bounds for the virtual table. Note that when prefixChange is set, these
+	// bounds are the logical bounds which start with the SyntheticPrefix.
+	lower InternalKey
+	upper InternalKey
+
+	// Virtual table number, for informative purposes.
 	fileNum          base.FileNum
 	Compare          Compare
 	isSharedIngested bool
@@ -104,6 +108,7 @@ func (v *VirtualReader) NewCompactionIter(
 	i, err := v.reader.newCompactionIter(
 		transforms, bytesIterated, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
 	if err == nil && v.vState.prefixChange != nil {
+
 		i = newPrefixReplacingIterator(
 			i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
 			v.vState.lower.UserKey, v.reader.Compare,
