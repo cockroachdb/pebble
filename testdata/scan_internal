@@ -491,10 +491,10 @@ lsm
 
 
 
-scan-internal skip-shared skip-external lower=m upper=n
+scan-internal skip-external lower=m upper=n
 ----
 
-scan-internal skip-shared skip-external lower=a upper=f
+scan-internal skip-external lower=a upper=f
 ----
 external file: external-storage file1 [0x61-0x6300] (hasPoint: true, hasRange: false)
 d#11,1 (bat)

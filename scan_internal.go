@@ -659,6 +659,10 @@ func scanInternalImpl(
 	if opts.visitSharedFile != nil && (lower == nil || upper == nil) {
 		panic("lower and upper bounds must be specified in skip-shared iteration mode")
 	}
+	if opts.visitSharedFile != nil && opts.visitExternalFile != nil {
+		return errors.AssertionFailedf("cannot provide both a shared-file and external-file visitor")
+	}
+
 	// Before starting iteration, check if any files in levels sharedLevelsStart
 	// and below are *not* shared. Error out if that is the case, as skip-shared
 	// iteration will not produce a consistent point-in-time view of this range
