@@ -20,9 +20,17 @@ import (
 )
 
 const (
-	// In skip-shared iteration mode, keys in levels sharedLevelsStart and greater
-	// (i.e. lower in the LSM) are skipped.
+	// In skip-shared iteration mode, keys in levels greater than
+	// sharedLevelsStart (i.e. lower in the LSM) are skipped. Keys
+	// in sharedLevelsStart are returned iff they are not in a
+	// shared file.
 	sharedLevelsStart = remote.SharedLevelsStart
+
+	// In skip-external iteration mode, keys in levels greater
+	// than externalSkipStart are skipped. Keys in
+	// externalSkipStart are returned iff they are not in an
+	// external file.
+	externalSkipStart = 6
 )
 
 // ErrInvalidSkipSharedIteration is returned by ScanInternal if it was called
@@ -800,7 +808,7 @@ func (opts *scanInternalOptions) skipLevelForOpts() int {
 		return sharedLevelsStart
 	}
 	if opts.visitExternalFile != nil {
-		return 6
+		return externalSkipStart
 	}
 	return 0
 }
