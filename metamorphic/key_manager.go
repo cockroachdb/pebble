@@ -283,6 +283,32 @@ func (k *keyManager) SortedKeysForObj(o objID) []keyMeta {
 	return res
 }
 
+// InRangeKeysForObj returns all keys in the range [lower, upper) associated with the
+// given object, in sorted order.
+func (k *keyManager) InRangeKeysForObj(o objID, lower, upper []byte) []keyMeta {
+	var inRangeKeys []keyMeta
+	for _, km := range k.SortedKeysForObj(o) {
+		if k.comparer.Compare(km.key, lower) >= 0 && k.comparer.Compare(km.key, upper) < 0 {
+			inRangeKeys = append(inRangeKeys, km)
+		}
+	}
+	return inRangeKeys
+
+}
+
+// KeysForExternalIngest returns the keys that will be ingested with an external
+// object (taking into consideration the bounds, synthetic suffix, etc).
+func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta {
+	keys := k.InRangeKeysForObj(obj.externalObjID, obj.bounds.Start, obj.bounds.End)
+	if obj.syntheticSuffix.IsSet() {
+		for i := range keys {
+			n := k.comparer.Split(keys[i].key)
+			keys[i].key = append(keys[i].key[:n:n], obj.syntheticSuffix...)
+		}
+	}
+	return keys
+}
+
 func (k *keyManager) nextMetaTimestamp() int {
 	ret := k.metaTimestamp
 	k.metaTimestamp++
@@ -396,102 +422,115 @@ func (k *keyManager) checkForSingleDelConflicts(srcObj, dstObj objID, srcCollaps
 	dstKeys := k.objKeyMeta(dstObj)
 	var conflicts [][]byte
 	for _, src := range k.SortedKeysForObj(srcObj) {
-		// Single delete generation logic already ensures that both srcObj and
-		// dstObj's single deletes are deterministic within the context of their
-		// existing writes. However, applying srcObj on top of dstObj may
-		// violate the invariants. Consider:
-		//
-		//    src: a.SET; a.SINGLEDEL;
-		//    dst: a.SET;
-		//
-		// The merged view is:
-		//
-		//    a.SET; a.SET; a.SINGLEDEL;
-		//
-		// This is invalid, because there is more than 1 value mutation of the
-		// key before the single delete.
-		//
-		// We walk the source object's history in chronological order, looking
-		// for a single delete that was written before a DEL/RANGEDEL. (NB: We
-		// don't need to look beyond a DEL/RANGEDEL, because these deletes bound
-		// any subsequently-written single deletes to applying to the keys
-		// within src's history between the two tombstones. We already know from
-		// per-object history invariants that any such single delete must be
-		// deterministic with respect to src's keys.)
-		var srcHasUnboundedSingleDelete bool
-		var srcValuesBeforeSingleDelete int
-
-		// When the srcObj is being ingested (srcCollapsed=t), the semantics
-		// change. We must first "collapse" the key's history to represent the
-		// ingestion semantics.
-		srcHistory := src.history
 		if srcCollapsed {
-			srcHistory = src.history.collapsed()
+			src.history = src.history.collapsed()
 		}
-
-	srcloop:
-		for _, item := range srcHistory {
-			switch item.opType {
-			case OpWriterDelete, OpWriterDeleteRange:
-				// We found a DEL or RANGEDEL before any single delete. If src
-				// contains additional single deletes, their effects are limited
-				// to applying to later keys. Combining the two object histories
-				// doesn't pose any determinism risk.
-				break srcloop
-			case OpWriterSingleDelete:
-				// We found a single delete. Since we found this single delete
-				// before a DEL or RANGEDEL, this delete has the potential to
-				// affect the visibility of keys in `dstObj`. We'll need to look
-				// for potential conflicts down below.
-				srcHasUnboundedSingleDelete = true
-				if srcValuesBeforeSingleDelete > 1 {
-					panic(errors.AssertionFailedf("unexpectedly found %d sets/merges within %s before single del",
-						srcValuesBeforeSingleDelete, srcObj))
-				}
-				break srcloop
-			case OpWriterSet, OpWriterMerge:
-				// We found a SET or MERGE operation for this key. If there's a
-				// subsequent single delete, we'll need to make sure there's not
-				// a SET or MERGE in the dst too.
-				srcValuesBeforeSingleDelete++
-			default:
-				panic(errors.AssertionFailedf("unexpected optype %d", item.opType))
-			}
-		}
-		if !srcHasUnboundedSingleDelete {
-			continue
-		}
-
-		dst, ok := dstKeys.keys[string(src.key)]
-		// If the destination writer has no record of the key, the combined key
-		// history is simply the src object's key history which is valid due to
-		// per-object single deletion invariants.
-		if !ok {
-			continue
-		}
-
-		// We need to examine the trailing key history on dst.
-		consecutiveValues := srcValuesBeforeSingleDelete
-	dstloop:
-		for i := len(dst.history) - 1; i >= 0; i-- {
-			switch dst.history[i].opType {
-			case OpWriterSet, OpWriterMerge:
-				// A SET/MERGE may conflict if there's more than 1 consecutive
-				// SET/MERGEs.
-				consecutiveValues++
-				if consecutiveValues > 1 {
-					conflicts = append(conflicts, src.key)
-					break dstloop
-				}
-			case OpWriterDelete, OpWriterSingleDelete, OpWriterDeleteRange:
-				// Dels clear the history, enabling use of single delete.
-				break dstloop
-			default:
-				panic(errors.AssertionFailedf("unexpected optype %d", dst.history[i].opType))
-			}
+		if k.checkForSingleDelConflict(src, dstKeys) {
+			conflicts = append(conflicts, src.key)
 		}
 	}
 	return conflicts
+}
+
+// checkForSingleDelConflict returns true if applying the history of the source
+// key on top of the given object results in a possible SingleDel
+// nondeterminism. See checkForSingleDelConflicts.
+func (k *keyManager) checkForSingleDelConflict(src keyMeta, dstObjKeyMeta *objKeyMeta) bool {
+	// Single delete generation logic already ensures that both the source
+	// object and the destination object's single deletes are deterministic
+	// within the context of their existing writes. However, applying the source
+	// keys on top of the destination object may violate the invariants.
+	// Consider:
+	//
+	//    src: a.SET; a.SINGLEDEL;
+	//    dst: a.SET;
+	//
+	// The merged view is:
+	//
+	//    a.SET; a.SET; a.SINGLEDEL;
+	//
+	// This is invalid, because there is more than 1 value mutation of the
+	// key before the single delete.
+	//
+	// We walk the source object's history in chronological order, looking
+	// for a single delete that was written before a DEL/RANGEDEL. (NB: We
+	// don't need to look beyond a DEL/RANGEDEL, because these deletes bound
+	// any subsequently-written single deletes to applying to the keys
+	// within src's history between the two tombstones. We already know from
+	// per-object history invariants that any such single delete must be
+	// deterministic with respect to src's keys.)
+	var srcHasUnboundedSingleDelete bool
+	var srcValuesBeforeSingleDelete int
+
+	// When the srcObj is being ingested (srcCollapsed=t), the semantics
+	// change. We must first "collapse" the key's history to represent the
+	// ingestion semantics.
+	srcHistory := src.history
+
+srcloop:
+	for _, item := range srcHistory {
+		switch item.opType {
+		case OpWriterDelete, OpWriterDeleteRange:
+			// We found a DEL or RANGEDEL before any single delete. If src
+			// contains additional single deletes, their effects are limited
+			// to applying to later keys. Combining the two object histories
+			// doesn't pose any determinism risk.
+			return false
+
+		case OpWriterSingleDelete:
+			// We found a single delete. Since we found this single delete
+			// before a DEL or RANGEDEL, this delete has the potential to
+			// affect the visibility of keys in `dstObj`. We'll need to look
+			// for potential conflicts down below.
+			srcHasUnboundedSingleDelete = true
+			if srcValuesBeforeSingleDelete > 1 {
+				panic(errors.AssertionFailedf("unexpectedly found %d sets/merges before single del",
+					srcValuesBeforeSingleDelete))
+			}
+			break srcloop
+
+		case OpWriterSet, OpWriterMerge:
+			// We found a SET or MERGE operation for this key. If there's a
+			// subsequent single delete, we'll need to make sure there's not
+			// a SET or MERGE in the dst too.
+			srcValuesBeforeSingleDelete++
+
+		default:
+			panic(errors.AssertionFailedf("unexpected optype %d", item.opType))
+		}
+	}
+	if !srcHasUnboundedSingleDelete {
+		return false
+	}
+
+	dst, ok := dstObjKeyMeta.keys[string(src.key)]
+	// If the destination writer has no record of the key, the combined key
+	// history is simply the src object's key history which is valid due to
+	// per-object single deletion invariants.
+	if !ok {
+		return false
+	}
+
+	// We need to examine the trailing key history on dst.
+	consecutiveValues := srcValuesBeforeSingleDelete
+	for i := len(dst.history) - 1; i >= 0; i-- {
+		switch dst.history[i].opType {
+		case OpWriterSet, OpWriterMerge:
+			// A SET/MERGE may conflict if there's more than 1 consecutive
+			// SET/MERGEs.
+			consecutiveValues++
+			if consecutiveValues > 1 {
+				return true
+			}
+		case OpWriterDelete, OpWriterSingleDelete, OpWriterDeleteRange:
+			// Dels clear the history, enabling use of single delete.
+			return false
+
+		default:
+			panic(errors.AssertionFailedf("unexpected optype %d", dst.history[i].opType))
+		}
+	}
+	return false
 }
 
 // update updates the internal state of the keyManager according to the given
@@ -596,13 +635,8 @@ func (k *keyManager) update(o op) {
 		ts := k.nextMetaTimestamp()
 		dbMeta := k.objKeyMeta(s.dbID)
 		for _, obj := range s.objs {
-			for _, keyMeta := range k.objKeyMeta(obj.externalObjID).keys {
-				if k.comparer.Compare(obj.bounds.Start, keyMeta.key) <= 0 &&
-					k.comparer.Compare(keyMeta.key, obj.bounds.End) < 0 {
-					// Note: the keys have already been collapsed when the external object
-					// was created.
-					dbMeta.MergeKey(keyMeta, ts)
-				}
+			for _, keyMeta := range k.KeysForExternalIngest(obj) {
+				dbMeta.MergeKey(&keyMeta, ts)
 			}
 			dbMeta.bounds.Expand(k.comparer.Compare, k.makeEndExclusiveBounds(obj.bounds.Start, obj.bounds.End))
 		}
