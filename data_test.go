@@ -1284,46 +1284,63 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	return nil
 }
 
-func runIngestExternalCmd(td *datadriven.TestData, d *DB, locator string) error {
-	external := make([]ExternalFile, 0)
-	usePrefixChange := false
-	var fromPrefix, toPrefix []byte
-	var syntheticSuffix []byte
-	for i := range td.CmdArgs {
-		switch td.CmdArgs[i].Key {
-		case "prefix-replace":
-			vals := td.CmdArgs[i].Vals
-			if len(vals) != 2 {
-				return errors.New("usage: prefix-replace=(from,to)")
-			}
-			fromPrefix = []byte(vals[0])
-			toPrefix = []byte(vals[1])
-			usePrefixChange = true
-		case "suffix-replace":
-			syntheticSuffix = []byte(td.CmdArgs[i].Vals[0])
+func runIngestExternalCmd(t testing.TB, td *datadriven.TestData, d *DB, locator string) error {
+	var external []ExternalFile
+	for _, line := range strings.Split(td.Input, "\n") {
+		usageErr := func(info interface{}) {
+			t.Helper()
+			td.Fatalf(t, "error parsing %q: %v; "+
+				"usage: obj bounds=(smallest,largest) [size=x] [prefix-replace=(from,to)] [synthetic-prefix=prefix] [synthetic-suffix=suffix]",
+				line, info,
+			)
 		}
-	}
-	for _, arg := range strings.Split(td.Input, "\n") {
-		fields := strings.Split(arg, ",")
-		if len(fields) != 4 {
-			return errors.New("usage: path,size,smallest,largest")
-		}
-		ef := ExternalFile{}
-		ef.Locator = remote.Locator(locator)
-		ef.ObjName = fields[0]
-		sizeInt, err := strconv.Atoi(fields[1])
+		objName, args, err := datadriven.ParseLine(line)
 		if err != nil {
-			return err
+			usageErr(err)
 		}
-		ef.Size = uint64(sizeInt)
-		ef.SmallestUserKey = []byte(fields[2])
-		ef.LargestUserKey = []byte(fields[3])
-		ef.HasPointKey = true
-		if usePrefixChange {
-			ef.ContentPrefix = fromPrefix
-			ef.SyntheticPrefix = toPrefix
+		ef := ExternalFile{
+			Locator:     remote.Locator(locator),
+			ObjName:     objName,
+			HasPointKey: true,
+			Size:        10,
 		}
-		ef.SyntheticSuffix = syntheticSuffix
+		for _, arg := range args {
+			nArgs := func(n int) {
+				if len(arg.Vals) != n {
+					usageErr(fmt.Sprintf("%s must have %d arguments", arg.Key, n))
+				}
+			}
+			switch arg.Key {
+			case "bounds":
+				nArgs(2)
+				ef.SmallestUserKey = []byte(arg.Vals[0])
+				ef.LargestUserKey = []byte(arg.Vals[1])
+
+			case "size":
+				nArgs(1)
+				arg.Scan(t, 0, &ef.Size)
+
+			case "prefix-replace":
+				nArgs(2)
+				ef.ContentPrefix = []byte(arg.Vals[0])
+				ef.SyntheticPrefix = []byte(arg.Vals[1])
+
+			case "synthetic-prefix":
+				nArgs(1)
+				ef.SyntheticPrefix = []byte(arg.Vals[0])
+
+			case "synthetic-suffix":
+				nArgs(1)
+				ef.SyntheticSuffix = []byte(arg.Vals[0])
+
+			default:
+				usageErr(fmt.Sprintf("unknown argument %v", arg.Key))
+			}
+		}
+		if ef.SmallestUserKey == nil {
+			usageErr("no bounds specified")
+		}
+
 		external = append(external, ef)
 	}
 
