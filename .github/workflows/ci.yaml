@@ -10,6 +10,9 @@ on:
     - master
     - crl-release-*
 
+env:
+  GO_VERSION: "1.22"
+
 jobs:
 
   linux:
@@ -21,7 +24,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - run: make test testobjiotracing generate
 
@@ -37,7 +40,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.21"
+          go-version: "${{ env.GO_VERSION }}"
 
       - run: GOARCH=386 make test
 
@@ -50,7 +53,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - run: make crossversion-meta
 
@@ -63,7 +66,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - run: make testrace TAGS=
 
@@ -76,7 +79,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - run: make test TAGS=
 
@@ -89,7 +92,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - run: CGO_ENABLED=0 make test TAGS=
 
@@ -102,7 +105,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - run: make test
 
@@ -115,7 +118,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - run: go test -v ./...
 
@@ -128,7 +131,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - name: FreeBSD build
       env:
@@ -154,7 +157,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - name: mod-tidy-check
       run: make mod-tidy-check
