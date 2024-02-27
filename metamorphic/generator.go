@@ -1130,11 +1130,8 @@ func (g *generator) writerDeleteRange() {
 		return
 	}
 
-	start := g.keyGenerator.RandKey(0.001)
-	end := g.keyGenerator.RandKey(0.001)
-	if g.cmp(start, end) > 0 {
-		start, end = end, start
-	}
+	keys := g.keyGenerator.UniqueKeys(2, func() []byte { return g.keyGenerator.RandKey(0.001) })
+	start, end := keys[0], keys[1]
 
 	writerID := g.liveWriters.rand(g.rng)
 	g.add(&deleteRangeOp{

@@ -66,6 +66,14 @@ type bounds struct {
 	largestExcl bool // is largest exclusive?
 }
 
+func (b bounds) checkValid(cmp base.Compare) {
+	if c := cmp(b.smallest, b.largest); c > 0 {
+		panic(fmt.Sprintf("invalid bound [%q, %q]", b.smallest, b.largest))
+	} else if c == 0 && b.largestExcl {
+		panic(fmt.Sprintf("invalid bound [%q, %q)", b.smallest, b.largest))
+	}
+}
+
 func (b bounds) String() string {
 	if b.largestExcl {
 		return fmt.Sprintf("[%q,%q)", b.smallest, b.largest)
@@ -100,6 +108,7 @@ func (b *bounds) Expand(cmp base.Compare, other bounds) {
 	if other.IsUnset() {
 		return
 	}
+	other.checkValid(cmp)
 	if b.IsUnset() {
 		*b = other
 		return
@@ -315,10 +324,7 @@ func (k *keyManager) getOrInit(id objID, key []byte) *keyMeta {
 	// Initialize the key-to-meta index.
 	objKeys.keys[string(key)] = m
 	// Expand the object's bounds to contain this key if they don't already.
-	objKeys.bounds.Expand(k.comparer.Compare, bounds{
-		smallest: key,
-		largest:  key,
-	})
+	objKeys.bounds.Expand(k.comparer.Compare, k.makeSingleKeyBounds(key))
 	return m
 }
 
@@ -525,11 +531,7 @@ func (k *keyManager) update(o op) {
 				})
 			}
 		}
-		k.expandBounds(s.writerID, bounds{
-			smallest:    s.start,
-			largest:     s.end,
-			largestExcl: true,
-		})
+		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
 	case *singleDeleteOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		meta.history = append(meta.history, keyHistoryItem{
@@ -543,23 +545,11 @@ func (k *keyManager) update(o op) {
 		// ingested, we'd need to know what the bounds of sstables generated out
 		// of those batches are, as that determines whether that ingestion
 		// will succeed or not.
-		k.expandBounds(s.writerID, bounds{
-			smallest:    s.start,
-			largest:     s.end,
-			largestExcl: true,
-		})
+		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
 	case *rangeKeySetOp:
-		k.expandBounds(s.writerID, bounds{
-			smallest:    s.start,
-			largest:     s.end,
-			largestExcl: true,
-		})
+		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
 	case *rangeKeyUnsetOp:
-		k.expandBounds(s.writerID, bounds{
-			smallest:    s.start,
-			largest:     s.end,
-			largestExcl: true,
-		})
+		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
 	case *ingestOp:
 		// Some ingestion operations may attempt to ingest overlapping sstables
 		// which is prohibited. We know at generation time whether these
@@ -601,11 +591,7 @@ func (k *keyManager) update(o op) {
 					dbMeta.MergeKey(keyMeta, ts)
 				}
 			}
-			dbMeta.bounds.Expand(k.comparer.Compare, bounds{
-				smallest:    obj.bounds.Start,
-				largest:     obj.bounds.End,
-				largestExcl: true,
-			})
+			dbMeta.bounds.Expand(k.comparer.Compare, k.makeEndExclusiveBounds(obj.bounds.Start, obj.bounds.End))
 		}
 	case *applyOp:
 		// Merge the keys from this batch into the parent writer.
@@ -663,6 +649,26 @@ func (k *keyManager) eligibleSingleDeleteKeys(o objID) (keys [][]byte) {
 		}
 	}
 	return keys
+}
+
+// makeSingleKeyBounds creates a [key, key] bound.
+func (k *keyManager) makeSingleKeyBounds(key []byte) bounds {
+	return bounds{
+		smallest:    key,
+		largest:     key,
+		largestExcl: false,
+	}
+}
+
+// makeEndExclusiveBounds creates a [smallest, largest) bound.
+func (k *keyManager) makeEndExclusiveBounds(smallest, largest []byte) bounds {
+	b := bounds{
+		smallest:    smallest,
+		largest:     largest,
+		largestExcl: true,
+	}
+	b.checkValid(k.comparer.Compare)
+	return b
 }
 
 // a keyHistoryItem describes an individual operation performed on a key.
