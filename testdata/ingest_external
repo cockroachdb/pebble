@@ -8,7 +8,7 @@ set c foobar
 ----
 
 ingest-external
-f1,5,a,cc
+f1 bounds=(a,cc)
 ----
 
 lsm
@@ -39,7 +39,7 @@ set c foobar
 ----
 
 ingest-external
-f2,5,a,c
+f2 bounds=(a,c)
 ----
 
 lsm
@@ -73,14 +73,14 @@ set h foo
 # This ingestion should error out due to the overlap between file spans.
 
 ingest-external
-f3,10,c,f
-f4,10,e,h
+f3 bounds=(c,f)
+f4 bounds=(e,h)
 ----
 pebble: external sstables have overlapping ranges
 
 ingest-external
-f3,10,c,f
-f4,10,f,hh
+f3 bounds=(c,f)
+f4 bounds=(f,hh)
 ----
 
 lsm
@@ -159,8 +159,8 @@ set eg foo
 set eh foo
 ----
 
-ingest-external prefix-replace=(e,f)
-f5,10,ff,fi
+ingest-external
+f5 bounds=(ff,fi) prefix-replace=(e,f)
 ----
 
 iter
@@ -202,14 +202,14 @@ set eg foo
 set eh foo
 ----
 
-ingest-external prefix-replace=(e,f)
-f5,10,ff,fi
+ingest-external
+f5 bounds=(ff,fi) prefix-replace=(e,f)
 ----
 pebble: format major version too old for synthetic prefix ingestion
 
 
-ingest-external suffix-replace=@5
-f5,10,ff,fi
+ingest-external
+f5 bounds=(ff,fi) synthetic-suffix=@5
 ----
 pebble: format major version too old for synthetic suffix ingestion
 
@@ -224,8 +224,8 @@ set b@2 foo
 set c@1 foo
 ----
 
-ingest-external suffix-replace=@5
-f1,10,a,d
+ingest-external
+f1 bounds=(a,d) synthetic-suffix=@5
 ----
 
 iter
@@ -238,13 +238,13 @@ b@5: (foo, .)
 c@5: (foo, .)
 
 # Verify that we require bounds without suffix if we use suffix replacement.
-ingest-external suffix-replace=@5
-f6,10,a@1,z@10
+ingest-external
+f6 bounds=(a@1,z@10) synthetic-suffix=@5
 ----
 pebble: synthetic suffix is set but smallest key has suffix
 
-ingest-external suffix-replace=@5
-f6,10,a,z@10
+ingest-external
+f6 bounds=(a,z@10) synthetic-suffix=@5
 ----
 pebble: synthetic suffix is set but largest key has suffix
 
@@ -262,8 +262,8 @@ del-range f u
 ----
 
 ingest-external
-f6,10,a,c
-f6,10,g,v
+f6 bounds=(a,c)
+f6 bounds=(g,v)
 ----
 
 # The previous element cannot be i, because it is inside the [g, v) portion of
@@ -286,8 +286,8 @@ set x bar
 ----
 
 ingest-external
-f8,10,x,y
-f7,10,a,b
+f8 bounds=(x,y)
+f7 bounds=(a,b)
 ----
 
 iter
@@ -314,9 +314,9 @@ set fh foo
 set fi foo
 ----
 
-ingest-external prefix-replace=(f,g)
-f7,10,gc,gf
-f8,10,gg,gj
+ingest-external
+f7 bounds=(gc,gf) prefix-replace=(f,g)
+f8 bounds=(gg,gj) prefix-replace=(f,g)
 ----
 
 iter
@@ -373,8 +373,8 @@ build-remote f9
 set i foo
 ----
 
-ingest-external prefix-replace=(,c)
-f9,10,cg,ck
+ingest-external
+f9 bounds=(cg,ck) synthetic-prefix=c
 ----
 
 iter
@@ -405,8 +405,8 @@ build-remote f10
 del-range i j
 ----
 
-ingest-external prefix-replace=(,c)
-f10,10,cg,ck
+ingest-external
+f10 bounds=(cg,ck) synthetic-prefix=c
 ----
 
 iter
@@ -433,13 +433,13 @@ set ux ux
 ----
 
 # Replace prefix with one greater than the original one.
-ingest-external prefix-replace=(d,e)
-ext,10,ea,ed
+ingest-external
+ext bounds=(ea,ed) prefix-replace=(d,e)
 ----
 
 # Replace prefix with one smaller than the original one.
-ingest-external prefix-replace=(d,b)
-ext,10,ba,bd
+ingest-external
+ext bounds=(ba,bd) prefix-replace=(d,b)
 ----
 
 # Write some keys so we actually perform a compaction.
