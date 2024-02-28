@@ -214,6 +214,9 @@ type objKeyMeta struct {
 	// bounds holds user key bounds encompassing all the keys set within an
 	// object. It's updated within `update` when a new op is generated.
 	bounds bounds
+	// These flags are true if the object has had range del or range key operations.
+	hasRangeDels bool
+	hasRangeKeys bool
 }
 
 // MergeKey adds the given key at the given meta timestamp, merging the histories as needed.
@@ -235,6 +238,18 @@ func (okm *objKeyMeta) CollapseKeys() {
 	for _, keyMeta := range okm.keys {
 		keyMeta.history = keyMeta.history.collapsed()
 	}
+}
+
+// MergeFrom merges the `from` metadata into this one, appending all of its
+// individual operations at the provided timestamp.
+func (okm *objKeyMeta) MergeFrom(from *objKeyMeta, metaTimestamp int, cmp base.Compare) {
+	// The result should be the same regardless of the ordering of the keys.
+	for _, k := range from.keys {
+		okm.MergeKey(k, metaTimestamp)
+	}
+	okm.bounds.Expand(cmp, from.bounds)
+	okm.hasRangeDels = okm.hasRangeDels || from.hasRangeDels
+	okm.hasRangeKeys = okm.hasRangeKeys || from.hasRangeKeys
 }
 
 // objKeyMeta looks up the objKeyMeta for a given object, creating it if necessary.
@@ -328,21 +343,14 @@ func (k *keyManager) getOrInit(id objID, key []byte) *keyMeta {
 	return m
 }
 
-// mergeKeysInto merges the keys and bounds from an object into another. Assumes
-// the source object will not be used again.
-func (k *keyManager) mergeKeysInto(from, to objID) {
-	fromMeta := k.objKeyMeta(from)
+// mergeObjectInto merges obj key metadata from an object into another and
+// deletes the metadata for the source object (which must not be used again).
+func (k *keyManager) mergeObjectInto(from, to objID) {
 	toMeta := k.objKeyMeta(to)
 	ts := k.nextMetaTimestamp()
-	// The result should be the same, regardless of the ordering of the keys.
-	for _, keyMeta := range fromMeta.keys {
-		toMeta.MergeKey(keyMeta, ts)
-	}
-	// All the keys in `from` have been merged into `to`. Expand `to`'s bounds
-	// to be at least as wide as `from`'s.
-	toMeta.bounds.Expand(k.comparer.Compare, fromMeta.bounds)
+	toMeta.MergeFrom(k.objKeyMeta(from), ts, k.comparer.Compare)
 
-	delete(k.byObj, from) // Unlink "from" obj.
+	delete(k.byObj, from)
 }
 
 // expandBounds expands the incrementally maintained bounds of o to be at least
@@ -532,6 +540,8 @@ func (k *keyManager) update(o op) {
 			}
 		}
 		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
+		k.objKeyMeta(s.writerID).hasRangeDels = true
+
 	case *singleDeleteOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		meta.history = append(meta.history, keyHistoryItem{
@@ -546,10 +556,13 @@ func (k *keyManager) update(o op) {
 		// of those batches are, as that determines whether that ingestion
 		// will succeed or not.
 		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
+		k.objKeyMeta(s.writerID).hasRangeKeys = true
 	case *rangeKeySetOp:
 		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
+		k.objKeyMeta(s.writerID).hasRangeKeys = true
 	case *rangeKeyUnsetOp:
 		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
+		k.objKeyMeta(s.writerID).hasRangeKeys = true
 	case *ingestOp:
 		// Some ingestion operations may attempt to ingest overlapping sstables
 		// which is prohibited. We know at generation time whether these
@@ -568,7 +581,7 @@ func (k *keyManager) update(o op) {
 		// merge that.
 		for _, batchID := range s.batchIDs {
 			k.objKeyMeta(batchID).CollapseKeys()
-			k.mergeKeysInto(batchID, s.dbID)
+			k.mergeObjectInto(batchID, s.dbID)
 		}
 		// TODO(bilal): Handle ingestAndExciseOp and replicateOp here. We currently
 		// disable SingleDelete when these operations are enabled (see
@@ -576,7 +589,7 @@ func (k *keyManager) update(o op) {
 	case *newExternalObjOp:
 		// Collapse and transfer the keys from the batch to the external object.
 		k.objKeyMeta(s.batchID).CollapseKeys()
-		k.mergeKeysInto(s.batchID, s.externalObjID)
+		k.mergeObjectInto(s.batchID, s.externalObjID)
 	case *ingestExternalFilesOp:
 		// Merge the keys from the external objects (within the restricted bounds)
 		// into the database.
@@ -595,10 +608,10 @@ func (k *keyManager) update(o op) {
 		}
 	case *applyOp:
 		// Merge the keys from this batch into the parent writer.
-		k.mergeKeysInto(s.batchID, s.writerID)
+		k.mergeObjectInto(s.batchID, s.writerID)
 	case *batchCommitOp:
 		// Merge the keys from the batch with the keys from the DB.
-		k.mergeKeysInto(s.batchID, s.dbID)
+		k.mergeObjectInto(s.batchID, s.dbID)
 	}
 }
 
