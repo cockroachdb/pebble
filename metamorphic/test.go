@@ -69,9 +69,6 @@ type Test struct {
 
 type externalObjMeta struct {
 	sstMeta *sstable.WriterMetadata
-	// minSuffix is the minimum (according to the comparator) non-empty suffix in
-	// the object.
-	minSuffix []byte
 }
 
 func newTest(ops []op) *Test {

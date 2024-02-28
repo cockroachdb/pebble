@@ -13,7 +13,6 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
-	"github.com/cockroachdb/pebble/sstable"
 	"golang.org/x/exp/rand"
 )
 
@@ -1287,6 +1286,13 @@ func (g *generator) writerIngestExternalFiles() {
 	dbID := g.dbs.rand(g.rng)
 	numFiles := 1 + g.expRandInt(1)
 	objs := make([]externalObjWithBounds, numFiles)
+
+	// We generate the parameters in multiple passes:
+	//  1. Generate objs with random start and end keys. Their bounds can overlap.
+	//  2. Sort objects by the start bound and trim the bounds to remove overlap.
+	//  3. Remove any objects where the previous step resulted in empty bounds.
+	//  4. Randomly add synthetic suffixes.
+
 	for i := range objs {
 		// We allow the same object to be selected multiple times.
 		id := g.externalObjects.rand(g.rng)
@@ -1319,22 +1325,16 @@ func (g *generator) writerIngestExternalFiles() {
 		if g.cmp(start, end) == 0 {
 			end = objEnd
 		}
-
-		var syntheticSuffix sstable.SyntheticSuffix
-		if g.rng.Intn(2) == 0 {
-			syntheticSuffix = g.keyGenerator.SkewedSuffix(0.1)
-		}
-
 		objs[i] = externalObjWithBounds{
 			externalObjID: id,
 			bounds: pebble.KeyRange{
 				Start: start,
 				End:   end,
 			},
-			syntheticSuffix: syntheticSuffix,
 		}
 	}
 
+	// Sort by start bound.
 	slices.SortFunc(objs, func(a, b externalObjWithBounds) int {
 		return g.cmp(a.bounds.Start, b.bounds.Start)
 	})
@@ -1350,6 +1350,19 @@ func (g *generator) writerIngestExternalFiles() {
 	objs = slices.DeleteFunc(objs, func(o externalObjWithBounds) bool {
 		return g.cmp(o.bounds.Start, o.bounds.End) >= 0
 	})
+
+	for i := range objs {
+		// We can only use a synthetic suffix if we don't have range dels.
+		// TODO(radu): we will want to support this at some point.
+		if g.keyManager.objKeyMeta(objs[i].externalObjID).hasRangeDels {
+			continue
+		}
+
+		if g.rng.Intn(2) == 0 {
+			// Generate a suffix that sorts before any previously generated suffix.
+			objs[i].syntheticSuffix = g.keyGenerator.IncMaxSuffix()
+		}
+	}
 
 	// The batches we're ingesting may contain single delete tombstones that
 	// when applied to the writer result in nondeterminism in the deleted key.
@@ -1380,6 +1393,10 @@ func (g *generator) writerIngestExternalFiles() {
 		dbID: dbID,
 		objs: objs,
 	})
+}
+
+func (g *generator) keysForExternalIngest(obj externalObjWithBounds) []keyMeta {
+	return g.inRangeKeys(obj.bounds.Start, obj.bounds.End, obj.externalObjID)
 }
 
 func (g *generator) writerLogData() {
