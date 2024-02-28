@@ -784,9 +784,9 @@ func (g *generator) iterSeekGEWithLimit(iterID objID) {
 
 // inRangeKeys returns all keys in the range [lower, upper) associated with the
 // given object.
-func (g *generator) inRangeKeys(lower, upper []byte, o objID) []*keyMeta {
-	var inRangeKeys []*keyMeta
-	for _, keyMeta := range g.keyManager.sortedKeysForObj(o) {
+func (g *generator) inRangeKeys(lower, upper []byte, o objID) []keyMeta {
+	var inRangeKeys []keyMeta
+	for _, keyMeta := range g.keyManager.SortedKeysForObj(o) {
 		if g.cmp(keyMeta.key, lower) >= 0 && g.cmp(keyMeta.key, upper) < 0 {
 			inRangeKeys = append(inRangeKeys, keyMeta)
 		}
