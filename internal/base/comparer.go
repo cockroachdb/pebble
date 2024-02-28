@@ -43,6 +43,12 @@ type AbbreviatedKey func(key []byte) uint64
 // FormatKey returns a formatter for the user key.
 type FormatKey func(key []byte) fmt.Formatter
 
+// DefaultFormatter is the default implementation of user key formatting:
+// non-ASCII data is formatted as escaped hexadecimal values.
+var DefaultFormatter FormatKey = func(key []byte) fmt.Formatter {
+	return FormatBytes(key)
+}
+
 // FormatValue returns a formatter for the user value. The key is also specified
 // for the value formatter in order to support value formatting that is
 // dependent on the key.
@@ -123,6 +129,10 @@ type ImmediateSuccessor func(dst, a []byte) []byte
 //     If Compare(prefix(a), prefix(b)) == 0, then Compare(suffix(a), suffix(b)) == Compare(a, b)
 type Split func(a []byte) int
 
+// DefaultSplit is a trivial implementation of Split which always returns the
+// full key.
+var DefaultSplit Split = func(key []byte) int { return len(key) }
+
 // Comparer defines a total ordering over the space of []byte keys: a 'less
 // than' relationship.
 type Comparer struct {
@@ -132,16 +142,18 @@ type Comparer struct {
 	Separator      Separator
 	Successor      Successor
 
-	// ImmediateSuccessor is required if range keys are used.
+	// ImmediateSuccessor must be specified if range keys are used.
 	ImmediateSuccessor ImmediateSuccessor
 
 	// Equal defaults to using Compare() == 0 if it is not specified.
 	Equal Equal
 	// FormatKey defaults to the DefaultFormatter if it is not specified.
 	FormatKey FormatKey
+	// Split defaults to a trivial implementation that returns the full key length
+	// if it is not specified.
+	Split Split
 
-	// These fields are optional.
-	Split       Split
+	// FormatValue is optional.
 	FormatValue FormatValue
 
 	// Name is the name of the comparer.
@@ -164,7 +176,7 @@ func (c *Comparer) EnsureDefaults() *Comparer {
 	if c.Compare == nil || c.AbbreviatedKey == nil || c.Separator == nil || c.Successor == nil || c.Name == "" {
 		panic("invalid Comparer: mandatory field not set")
 	}
-	if c.Equal != nil && c.FormatKey != nil {
+	if c.Equal != nil && c.Split != nil && c.FormatKey != nil {
 		return c
 	}
 	n := &Comparer{}
@@ -175,16 +187,13 @@ func (c *Comparer) EnsureDefaults() *Comparer {
 			return cmp(a, b) == 0
 		}
 	}
+	if n.Split == nil {
+		n.Split = DefaultSplit
+	}
 	if n.FormatKey == nil {
 		n.FormatKey = DefaultFormatter
 	}
 	return n
-}
-
-// DefaultFormatter is the default implementation of user key formatting:
-// non-ASCII data is formatted as escaped hexadecimal values.
-var DefaultFormatter FormatKey = func(key []byte) fmt.Formatter {
-	return FormatBytes(key)
 }
 
 // DefaultComparer is the default implementation of the Comparer interface.
@@ -204,6 +213,8 @@ var DefaultComparer = &Comparer{
 		}
 		return v << uint(8*(8-len(key)))
 	},
+
+	Split: DefaultSplit,
 
 	FormatKey: DefaultFormatter,
 

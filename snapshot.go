@@ -421,13 +421,7 @@ func (es *EventuallyFileOnlySnapshot) Get(key []byte) (value []byte, closer io.C
 	if err != nil {
 		return nil, nil, err
 	}
-	var valid bool
-	if es.db.opts.Comparer.Split != nil {
-		valid = iter.SeekPrefixGE(key)
-	} else {
-		valid = iter.SeekGE(key)
-	}
-	if !valid {
+	if !iter.SeekPrefixGE(key) {
 		if err = firstError(iter.Error(), iter.Close()); err != nil {
 			return nil, nil, err
 		}

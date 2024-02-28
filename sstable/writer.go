@@ -811,10 +811,7 @@ func (w *Writer) makeAddPointDecisionV3(
 ) (setHasSamePrefix bool, writeToValueBlock bool, isObsolete bool, err error) {
 	prevPointKeyInfo := w.lastPointKeyInfo
 	w.lastPointKeyInfo.userKeyLen = len(key.UserKey)
-	w.lastPointKeyInfo.prefixLen = w.lastPointKeyInfo.userKeyLen
-	if w.split != nil {
-		w.lastPointKeyInfo.prefixLen = w.split(key.UserKey)
-	}
+	w.lastPointKeyInfo.prefixLen = w.split(key.UserKey)
 	w.lastPointKeyInfo.trailer = key.Trailer
 	w.lastPointKeyInfo.isObsolete = false
 	if !w.meta.HasPointKeys {
@@ -1370,12 +1367,8 @@ func (w *Writer) tempRangeKeyCopy(k []byte) []byte {
 
 func (w *Writer) maybeAddToFilter(key []byte) {
 	if w.filter != nil {
-		if w.split != nil {
-			prefix := key[:w.split(key)]
-			w.filter.addKey(prefix)
-		} else {
-			w.filter.addKey(key)
-		}
+		prefix := key[:w.split(key)]
+		w.filter.addKey(prefix)
 	}
 }
 
