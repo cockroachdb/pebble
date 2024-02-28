@@ -1140,7 +1140,7 @@ type ExternalFile struct {
 	//
 	// SyntheticSuffix can only be used under the following conditions:
 	//  - the synthetic suffix must sort before any non-empty suffixes in the
-	//    backing sst;
+	//    backing sst (the entire sst, not just the part restricted to Bounds).
 	//  - the backing sst must not contain multiple keys with the same prefix.
 	SyntheticSuffix []byte
 }
