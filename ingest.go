@@ -1193,7 +1193,7 @@ func (d *DB) IngestAndExcise(
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	if invariants.Enabled && d.opts.Comparer.Split != nil {
+	if invariants.Enabled {
 		// Excise is only supported on prefix keys.
 		if d.opts.Comparer.Split(exciseSpan.Start) != len(exciseSpan.Start) {
 			panic("IngestAndExcise called with suffixed start key")

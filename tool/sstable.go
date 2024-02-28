@@ -184,16 +184,11 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 			return
 		}
 
-		// If a split function is defined for the comparer, verify that
-		// SeekPrefixGE can find every key in the table.
-		var prefixIter sstable.Iterator
-		if r.Split != nil {
-			var err error
-			prefixIter, err = r.NewIter(sstable.NoTransforms, nil, nil)
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
+		// Verify that SeekPrefixGE can find every key in the table.
+		prefixIter, err := r.NewIter(sstable.NoTransforms, nil, nil)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
 		}
 
 		var lastKey base.InternalKey
@@ -208,15 +203,13 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 			lastKey.Trailer = key.Trailer
 			lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
 
-			if prefixIter != nil {
-				n := r.Split(key.UserKey)
-				prefix := key.UserKey[:n]
-				key2, _ := prefixIter.SeekPrefixGE(prefix, key.UserKey, base.SeekGEFlagsNone)
-				if key2 == nil {
-					fmt.Fprintf(stdout, "WARNING: PREFIX ITERATION FAILURE!\n")
-					if s.fmtKey.spec != "null" {
-						fmt.Fprintf(stdout, "    %s not found\n", key.Pretty(s.fmtKey.fn))
-					}
+			n := r.Split(key.UserKey)
+			prefix := key.UserKey[:n]
+			key2, _ := prefixIter.SeekPrefixGE(prefix, key.UserKey, base.SeekGEFlagsNone)
+			if key2 == nil {
+				fmt.Fprintf(stdout, "WARNING: PREFIX ITERATION FAILURE!\n")
+				if s.fmtKey.spec != "null" {
+					fmt.Fprintf(stdout, "    %s not found\n", key.Pretty(s.fmtKey.fn))
 				}
 			}
 		}
@@ -224,10 +217,8 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		if err := iter.Close(); err != nil {
 			fmt.Fprintf(stdout, "%s\n", err)
 		}
-		if prefixIter != nil {
-			if err := prefixIter.Close(); err != nil {
-				fmt.Fprintf(stdout, "%s\n", err)
-			}
+		if err := prefixIter.Close(); err != nil {
+			fmt.Fprintf(stdout, "%s\n", err)
 		}
 	})
 }

@@ -1421,9 +1421,6 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	i.requiresReposition = false
 	i.err = nil // clear cached iteration error
 	i.stats.ForwardSeekCount[InterfaceCall]++
-	if i.comparer.Split == nil {
-		panic("pebble: split must be provided for SeekPrefixGE")
-	}
 	if i.comparer.ImmediateSuccessor == nil && i.opts.KeyTypes != IterKeyTypePointsOnly {
 		panic("pebble: ImmediateSuccessor must be provided for SeekPrefixGE with range keys")
 	}
@@ -2483,14 +2480,12 @@ func (i *Iterator) processBounds(lower, upper []byte) {
 	if upper != nil {
 		buf = append(buf, upper...)
 		i.opts.UpperBound = buf[len(buf)-len(upper):]
-		if i.comparer.Split != nil {
-			if i.comparer.Split(i.opts.UpperBound) != len(i.opts.UpperBound) {
-				// Setting an upper bound that is a versioned MVCC key. This means
-				// that a key can have some MVCC versions before the upper bound and
-				// some after. This causes significant complications for NextPrefix,
-				// so we bar the user of NextPrefix.
-				i.nextPrefixNotPermittedByUpperBound = true
-			}
+		if i.comparer.Split(i.opts.UpperBound) != len(i.opts.UpperBound) {
+			// Setting an upper bound that is a versioned MVCC key. This means
+			// that a key can have some MVCC versions before the upper bound and
+			// some after. This causes significant complications for NextPrefix,
+			// so we bar the user of NextPrefix.
+			i.nextPrefixNotPermittedByUpperBound = true
 		}
 	} else {
 		i.opts.UpperBound = nil

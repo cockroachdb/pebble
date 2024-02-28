@@ -957,7 +957,7 @@ func (b *Batch) DeleteRangeDeferred(startLen, endLen int) *DeferredBatchOp {
 //
 // It is safe to modify the contents of the arguments after RangeKeySet returns.
 func (b *Batch) RangeKeySet(start, end, suffix, value []byte, _ *WriteOptions) error {
-	if invariants.Enabled && b.db != nil && b.db.opts.Comparer.Split != nil {
+	if invariants.Enabled && b.db != nil {
 		// RangeKeySet is only supported on prefix keys.
 		if b.db.opts.Comparer.Split(start) != len(start) {
 			panic("RangeKeySet called with suffixed start key")
@@ -1013,7 +1013,7 @@ func (b *Batch) incrementRangeKeysCount() {
 // It is safe to modify the contents of the arguments after RangeKeyUnset
 // returns.
 func (b *Batch) RangeKeyUnset(start, end, suffix []byte, _ *WriteOptions) error {
-	if invariants.Enabled && b.db != nil && b.db.opts.Comparer.Split != nil {
+	if invariants.Enabled && b.db != nil {
 		// RangeKeyUnset is only supported on prefix keys.
 		if b.db.opts.Comparer.Split(start) != len(start) {
 			panic("RangeKeyUnset called with suffixed start key")
@@ -1055,7 +1055,7 @@ func (b *Batch) rangeKeyUnsetDeferred(startLen, internalValueLen int) *DeferredB
 // It is safe to modify the contents of the arguments after RangeKeyDelete
 // returns.
 func (b *Batch) RangeKeyDelete(start, end []byte, _ *WriteOptions) error {
-	if invariants.Enabled && b.db != nil && b.db.opts.Comparer.Split != nil {
+	if invariants.Enabled && b.db != nil {
 		// RangeKeyDelete is only supported on prefix keys.
 		if b.db.opts.Comparer.Split(start) != len(start) {
 			panic("RangeKeyDelete called with suffixed start key")
