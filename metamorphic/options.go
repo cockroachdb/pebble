@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -152,6 +153,11 @@ func parseOptions(
 		},
 	}
 	err := opts.Opts.Parse(data, hooks)
+	// Ensure that the WAL failover FS agrees with the primary FS. They're
+	// separate options, but in the metamorphic tests we keep them in sync.
+	if opts.Opts.WALFailover != nil {
+		opts.Opts.WALFailover.Secondary.FS = opts.Opts.FS
+	}
 	opts.InitRemoteStorageFactory()
 	opts.Opts.EnsureDefaults()
 	return err
@@ -567,6 +573,38 @@ func RandomOptions(
 	if rng.Intn(2) == 0 {
 		opts.WALDir = "data/wal"
 	}
+
+	// Half the time enable WAL failover.
+	// TODO(jackson): Add I/O latency injection (#2482). Until then WAL failover
+	// will rarely trigger.
+	if rng.Intn(2) == 0 {
+		// Use 10x longer durations when writing directly to FS; we don't want
+		// WAL failover to trigger excessively frequently.
+		referenceDur := time.Millisecond
+		if testOpts.useDisk {
+			referenceDur *= 10
+		}
+
+		scaleDuration := func(d time.Duration, minFactor, maxFactor float64) time.Duration {
+			return time.Duration(float64(d) * (minFactor + rng.Float64()*(maxFactor-minFactor)))
+		}
+		unhealthyThreshold := expRandDuration(rng, 3*referenceDur, time.Second)
+		healthyThreshold := expRandDuration(rng, 3*referenceDur, time.Second)
+		healthyInterval := scaleDuration(healthyThreshold, 1.0, 10.0) // Between 1-10x the healthy threshold
+		opts.WALFailover = &pebble.WALFailoverOptions{
+			Secondary: wal.Dir{FS: vfs.Default, Dirname: "data/wal_secondary"},
+			FailoverOptions: wal.FailoverOptions{
+				PrimaryDirProbeInterval:      scaleDuration(healthyThreshold, 0.10, 0.50), // Between 10-50% of the healthy threshold
+				HealthyProbeLatencyThreshold: healthyThreshold,
+				HealthyInterval:              healthyInterval,
+				UnhealthySamplingInterval:    scaleDuration(unhealthyThreshold, 0.10, 0.50), // Between 10-50% of the unhealthy threshold
+				UnhealthyOperationLatencyThreshold: func() time.Duration {
+					return unhealthyThreshold
+				},
+				ElevatedWriteStallThresholdLag: expRandDuration(rng, 5*referenceDur, 2*time.Second),
+			},
+		}
+	}
 	if rng.Intn(4) == 0 {
 		// Enable Writer parallelism for 25% of the random options. Setting
 		// MaxWriterConcurrency to any value greater than or equal to 1 has the
@@ -637,6 +675,13 @@ func RandomOptions(
 	} else if !testOpts.useDisk {
 		opts.FS = vfs.NewMem()
 	}
+	// Update the WALFailover's secondary to use the same FS. This isn't
+	// strictly necessary (the WALFailover could use a separate FS), but it
+	// ensures when we save a copy of the test state to disk, we include the
+	// secondary's WALs.
+	if opts.WALFailover != nil {
+		opts.WALFailover.Secondary.FS = opts.FS
+	}
 	testOpts.ingestUsingApply = rng.Intn(2) != 0
 	testOpts.deleteSized = rng.Intn(2) != 0
 	testOpts.replaceSingleDelete = rng.Intn(2) != 0
@@ -699,6 +744,10 @@ func RandomOptions(
 	return testOpts
 }
 
+func expRandDuration(rng *rand.Rand, meanDur, maxDur time.Duration) time.Duration {
+	return min(maxDur, time.Duration(math.Round(rng.ExpFloat64()*float64(meanDur))))
+}
+
 func setupInitialState(dataDir string, testOpts *TestOptions) error {
 	// Copy (vfs.Default,<initialStatePath>/data) to (testOpts.opts.FS,<dataDir>).
 	ok, err := vfs.Clone(
@@ -737,6 +786,17 @@ func setupInitialState(dataDir string, testOpts *TestOptions) error {
 		FS:      testOpts.Opts.FS,
 		Dirname: walRecoveryPath,
 	})
+
+	// If the failover dir exists and the test opts are not configured to use
+	// WAL failover, add the failover directory as a 'WAL recovery dir' in case
+	// the previous test was configured to use failover.
+	failoverDir := testOpts.Opts.FS.PathJoin(dataDir, "wal_secondary")
+	if _, err := testOpts.Opts.FS.Stat(failoverDir); err == nil && testOpts.Opts.WALFailover == nil {
+		testOpts.Opts.WALRecoveryDirs = append(testOpts.Opts.WALRecoveryDirs, wal.Dir{
+			FS:      testOpts.Opts.FS,
+			Dirname: failoverDir,
+		})
+	}
 	return nil
 }
 

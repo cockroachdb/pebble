@@ -75,6 +75,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Experimental.IngestSplit:",
 		"Experimental.RemoteStorage:",
 		"Experimental.SingleDeleteInvariantViolationCallback:",
+		"WALFailover.FailoverOptions.UnhealthyOperationLatencyThreshold:",
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
 		"Experimental.MultiLevelCompactionHeuristic.AddPropensity",
