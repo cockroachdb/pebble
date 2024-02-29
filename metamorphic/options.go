@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 	"golang.org/x/exp/rand"
 )
 
@@ -721,36 +722,21 @@ func setupInitialState(dataDir string, testOpts *TestOptions) error {
 	// Tests with wal_dir set store their WALs in a `wal` directory. The source
 	// database (initialStatePath) could've had wal_dir set, or the current test
 	// options (testOpts) could have wal_dir set, or both.
-	fs := testOpts.Opts.FS
-	walDir := fs.PathJoin(dataDir, "wal")
-	if err := fs.MkdirAll(walDir, os.ModePerm); err != nil {
-		return err
-	}
-
-	// Copy <dataDir>/wal/*.log -> <dataDir>.
-	src, dst := walDir, dataDir
+	//
+	// If the test opts are not configured to use a WAL dir, we add the WAL dir
+	// as a 'WAL recovery dir' so that we'll read any WALs in the directory in
+	// Open.
+	walRecoveryPath := testOpts.Opts.FS.PathJoin(dataDir, "wal")
 	if testOpts.Opts.WALDir != "" {
-		// Copy <dataDir>/*.log -> <dataDir>/wal.
-		src, dst = dst, src
+		// If the test opts are configured to use a WAL dir, we add the data
+		// directory itself as a 'WAL recovery dir' so that we'll read any WALs if
+		// the previous test was writing them to the data directory.
+		walRecoveryPath = dataDir
 	}
-	return moveLogs(fs, src, dst)
-}
-
-func moveLogs(fs vfs.FS, srcDir, dstDir string) error {
-	ls, err := fs.List(srcDir)
-	if err != nil {
-		return err
-	}
-	for _, f := range ls {
-		if filepath.Ext(f) != ".log" {
-			continue
-		}
-		src := fs.PathJoin(srcDir, f)
-		dst := fs.PathJoin(dstDir, f)
-		if err := fs.Rename(src, dst); err != nil {
-			return err
-		}
-	}
+	testOpts.Opts.WALRecoveryDirs = append(testOpts.Opts.WALRecoveryDirs, wal.Dir{
+		FS:      testOpts.Opts.FS,
+		Dirname: walRecoveryPath,
+	})
 	return nil
 }
 
