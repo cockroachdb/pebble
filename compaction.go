@@ -2763,6 +2763,7 @@ func (d *DB) runCopyCompaction(
 		Stats:             meta.Stats,
 		PrefixReplacement: meta.PrefixReplacement,
 		Virtual:           meta.Virtual,
+		SyntheticSuffix:   meta.SyntheticSuffix,
 	}
 	if meta.HasPointKeys {
 		metaCopy.ExtendPointKeyBounds(c.cmp, meta.SmallestPointKey, meta.LargestPointKey)
