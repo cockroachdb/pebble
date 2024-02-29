@@ -190,10 +190,11 @@ func (d *DB) Checkpoint(
 	manifestFileNum := d.mu.versions.manifestFileNum
 	manifestSize := d.mu.versions.manifest.Size()
 	optionsFileNum := d.optionsFileNum
+
 	virtualBackingFiles := make(map[base.DiskFileNum]struct{})
-	for diskFileNum := range d.mu.versions.backingState.fileBackingMap {
-		virtualBackingFiles[diskFileNum] = struct{}{}
-	}
+	d.mu.versions.fileBackings.ForEach(func(backing *fileBacking) {
+		virtualBackingFiles[backing.DiskFileNum] = struct{}{}
+	})
 
 	queuedLogNums := make([]wal.NumWAL, 0, len(memQueue))
 	for i := range memQueue {
