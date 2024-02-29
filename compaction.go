@@ -46,12 +46,6 @@ var compactLabels = pprof.Labels("pebble", "compact")
 var flushLabels = pprof.Labels("pebble", "flush")
 var gcLabels = pprof.Labels("pebble", "gc")
 
-// getInternalWriterProperties accesses a private variable (in the
-// internal/private package) initialized by the sstable Writer. This indirection
-// is necessary to ensure non-Pebble users constructing sstables for ingestion
-// are unable to set internal-only properties.
-var getInternalWriterProperties = private.SSTableInternalProperties.(func(*sstable.Writer) *sstable.Properties)
-
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
 // if it would make the total compaction cover more than this many bytes.
@@ -2706,11 +2700,37 @@ func (d *DB) runCompaction(
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	iiter = invalidating.MaybeWrapIfInvariants(iiter)
-	iter := newCompactionIter(c.cmp, c.equal, c.formatKey, d.merge, iiter, snapshots,
-		&c.rangeDelFrag, &c.rangeKeyFrag, c.allowedZeroSeqNum, c.elideTombstone,
-		c.elideRangeTombstone, d.opts.Experimental.IneffectualSingleDeleteCallback,
-		d.opts.Experimental.SingleDeleteInvariantViolationCallback,
-		d.FormatMajorVersion())
+
+	ctx := context.TODO()
+	if objiotracing.Enabled {
+		ctx = objiotracing.WithLevel(ctx, c.outputLevel.level)
+		switch c.kind {
+		case compactionKindFlush:
+			ctx = objiotracing.WithReason(ctx, objiotracing.ForFlush)
+		case compactionKindIngestedFlushable:
+			ctx = objiotracing.WithReason(ctx, objiotracing.ForIngestion)
+		default:
+			ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
+		}
+	}
+
+	out, err := compact.Run(
+		ctx,
+		c.comparer,
+		d.merge,
+		splitter,
+		snapshots,
+		c.allowedZeroSeqNum,
+		iiter,
+		&c.rangeDelInterleaving,
+		&c.rangeKeyInterleaving,
+		compact.Funcs{
+			NewTable: func(extraOpts ...sstable.WriterOption) (*manifest.FileMetadata, *sstable.Writer, error) {
+			},
+			TableFinished: func(meta *manifest.FileMetadata, writerMeta *sstable.WriterMetadata) error {
+			},
+		},
+	)
 
 	var (
 		createdFiles    []base.DiskFileNum
@@ -2806,18 +2826,6 @@ func (d *DB) runCompaction(
 		pendingOutputs = append(pendingOutputs, fileMeta.PhysicalMeta().FileMetadata)
 		d.mu.Unlock()
 
-		ctx := context.TODO()
-		if objiotracing.Enabled {
-			ctx = objiotracing.WithLevel(ctx, c.outputLevel.level)
-			switch c.kind {
-			case compactionKindFlush:
-				ctx = objiotracing.WithReason(ctx, objiotracing.ForFlush)
-			case compactionKindIngestedFlushable:
-				ctx = objiotracing.WithReason(ctx, objiotracing.ForIngestion)
-			default:
-				ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
-			}
-		}
 		// Prefer shared storage if present.
 		createOpts := objstorage.CreateOptions{
 			PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
