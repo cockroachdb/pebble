@@ -26,7 +26,7 @@ jobs:
       with:
         go-version: "${{ env.GO_VERSION }}"
 
-    - run: make test testobjiotracing generate
+    - run: GOTRACEBACK=all make test testobjiotracing generate
 
     - name: Assert workspace clean
       run: scripts/check-workspace-clean.sh
@@ -42,7 +42,7 @@ jobs:
         with:
           go-version: "${{ env.GO_VERSION }}"
 
-      - run: GOARCH=386 make test
+      - run: GOTRACEBACK=all GOARCH=386 make test
 
   linux-crossversion:
     name: go-linux-crossversion
@@ -68,7 +68,7 @@ jobs:
       with:
         go-version: "${{ env.GO_VERSION }}"
 
-    - run: make testrace TAGS=
+    - run: GOTRACEBACK=all make testrace TAGS=
 
   linux-no-invariants:
     name: go-linux-no-invariants
@@ -81,7 +81,7 @@ jobs:
       with:
         go-version: "${{ env.GO_VERSION }}"
 
-    - run: make test TAGS=
+    - run: GOTRACEBACK=all make test TAGS=
 
   linux-no-cgo:
     name: go-linux-no-cgo
@@ -94,7 +94,7 @@ jobs:
       with:
         go-version: "${{ env.GO_VERSION }}"
 
-    - run: CGO_ENABLED=0 make test TAGS=
+    - run: GOTRACEBACK=all CGO_ENABLED=0 make test TAGS=
 
   darwin:
     name: go-macos
@@ -107,7 +107,7 @@ jobs:
       with:
         go-version: "${{ env.GO_VERSION }}"
 
-    - run: make test
+    - run: GOTRACEBACK=all make test
 
   windows:
     name: go-windows
