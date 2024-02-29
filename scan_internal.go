@@ -442,15 +442,15 @@ type scanInternalIterator struct {
 }
 
 // truncateExternalFile truncates an External file's [SmallestUserKey,
-// LargestKserKey] fields to [lower, upper). A ExternalFile is
+// LargestUserKey] fields to [lower, upper). A ExternalFile is
 // produced that is suitable for external consumption by other Pebble
 // instances.
 //
-// TODO(ssd) 2024-01-26: truncateSharedFile reads the file to try to
-// create the the smallest possible bounds.  Here, I just blindly
-// truncate them. This may mean we include this SST in iterations it
-// isn't really needed in.  Since we don't expect External files to be
-// long-lived in the pebble instance, I think this is OK.
+// truncateSharedFile reads the file to try to create the the smallest
+// possible bounds.  Here, we blindly truncate them. This may mean we
+// include this SST in iterations it isn't really needed in. Since we
+// don't expect External files to be long-lived in the pebble
+// instance, We think this is OK.
 //
 // TODO(ssd) 2024-01-26: Potentially de-duplicate with
 // truncateSharedFile.
@@ -708,12 +708,10 @@ func scanInternalImpl(
 				}
 
 				if objMeta.IsShared() && opts.visitSharedFile == nil {
-					// TODO(ssd) 2024-01-26: Perhaps create a different error type here.
 					return errors.Wrapf(ErrInvalidSkipSharedIteration, "shared file is present but no shared file visitor is defined")
 				}
 
 				if objMeta.IsExternal() && opts.visitExternalFile == nil {
-					// TODO(ssd) 2024-01-26: Perhaps create a different error type here.
 					return errors.Wrapf(ErrInvalidSkipSharedIteration, "external file is present but no external file visitor is defined")
 				}
 
@@ -810,7 +808,7 @@ func (opts *scanInternalOptions) skipLevelForOpts() int {
 	if opts.visitExternalFile != nil {
 		return externalSkipStart
 	}
-	return 0
+	return numLevels
 }
 
 // constructPointIter constructs a merging iterator and sets i.iter to it.
@@ -835,12 +833,11 @@ func (i *scanInternalIterator) constructPointIter(
 	numLevelIters += len(current.L0SublevelFiles)
 
 	skipStart := i.opts.skipLevelForOpts()
-
 	for level := 1; level < len(current.Levels); level++ {
 		if current.Levels[level].Empty() {
 			continue
 		}
-		if skipStart > 0 && level > skipStart {
+		if level > skipStart {
 			continue
 		}
 		numMergingLevels++
@@ -916,12 +913,12 @@ func (i *scanInternalIterator) constructPointIter(
 			continue
 		}
 
-		if skipStart > 0 && level > skipStart {
+		if level > skipStart {
 			continue
 		}
 		i.iterLevels[mlevelsIndex] = IteratorLevel{Kind: IteratorLevelLSM, Level: level}
 		levIter := current.Levels[level].Iter()
-		if skipStart > 0 && level == skipStart {
+		if level == skipStart {
 			levIter = levIter.FilterRemoteFiles(i.db.ObjProvider())
 		}
 
@@ -1007,18 +1004,18 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 		i.rangeKey.iterConfig.AddLevel(spanIter)
 	}
 	// Add level iterators for the non-empty non-L0 levels.
+	skipStart := i.opts.skipLevelForOpts()
 	for level := 1; level < len(current.RangeKeyLevels); level++ {
 		if current.RangeKeyLevels[level].Empty() {
 			continue
 		}
-		skipStart := i.opts.skipLevelForOpts()
-		if skipStart > 0 && level > skipStart {
+		if level > skipStart {
 			continue
 		}
 		li := i.rangeKey.iterConfig.NewLevelIter()
 		spanIterOpts := i.opts.SpanIterOptions()
 		levIter := current.RangeKeyLevels[level].Iter()
-		if skipStart > 0 && level == skipStart {
+		if level == skipStart {
 			levIter = levIter.FilterRemoteFiles(i.db.ObjProvider())
 		}
 		li.Init(spanIterOpts, i.comparer.Compare, i.newIterRangeKey, levIter,

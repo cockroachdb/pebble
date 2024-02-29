@@ -516,8 +516,8 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 
 	if len(lr.external) > 0 {
 		if len(lr.shared) > 0 {
-			// If external files are present alongside
-			// shared files, return an error.
+			// If external files are present alongside shared files,
+			// return an error.
 			return errors.AssertionFailedf("pebble: external files cannot be ingested atomically alongside shared files")
 		}
 
@@ -2212,7 +2212,7 @@ func (d *DB) ingestApply(
 		var m *fileMetadata
 		sharedIdx := -1
 		externalIdx := -1
-		sharedLevel := -1
+		specifiedLevel := -1
 		externalFile := false
 		if i < len(lr.local) {
 			// local file.
@@ -2221,22 +2221,25 @@ func (d *DB) ingestApply(
 			// shared file.
 			sharedIdx = i - len(lr.local)
 			m = lr.shared[sharedIdx].fileMetadata
-			sharedLevel = int(lr.shared[sharedIdx].shared.Level)
+			specifiedLevel = int(lr.shared[sharedIdx].shared.Level)
 		} else {
 			// external file.
 			externalFile = true
 			externalIdx = i - (len(lr.local) + len(lr.shared))
 			m = lr.external[externalIdx].fileMetadata
-			sharedLevel = int(lr.external[externalIdx].external.Level)
+			specifiedLevel = int(lr.external[externalIdx].external.Level)
 		}
 		f := &ve.NewFiles[i]
 		var err error
-		if sharedIdx >= 0 || (externalFile && lr.externalFilesHaveLevel) {
-			f.Level = sharedLevel
+		if sharedIdx >= 0 {
+			f.Level = specifiedLevel
 			if f.Level < sharedLevelsStart {
 				panic(fmt.Sprintf("cannot slot a shared file higher than the highest shared level: %d < %d",
 					f.Level, sharedLevelsStart))
 			}
+			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
+		} else if externalFile && lr.externalFilesHaveLevel {
+			f.Level = specifiedLevel
 			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 		} else {
 			if externalFile {

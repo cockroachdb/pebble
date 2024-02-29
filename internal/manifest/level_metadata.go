@@ -618,7 +618,6 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 }
 
 func (i *LevelIterator) shouldFilter(meta *FileMetadata) bool {
-
 	shouldFilterOnKeyType := !meta.ContainsKeyType(i.filter)
 	if i.objProvider != nil {
 		objMeta, err := i.objProvider.Lookup(base.FileTypeTable, meta.FileBacking.DiskFileNum)
