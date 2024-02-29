@@ -2145,17 +2145,9 @@ func (d *DB) Metrics() *Metrics {
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
-	metrics.Table.BackingTableCount = uint64(len(d.mu.versions.backingState.fileBackingMap))
-	metrics.Table.BackingTableSize = d.mu.versions.backingState.fileBackingSize
-	if invariants.Enabled {
-		var totalSize uint64
-		for _, backing := range d.mu.versions.backingState.fileBackingMap {
-			totalSize += backing.Size
-		}
-		if totalSize != metrics.Table.BackingTableSize {
-			panic("pebble: invalid backing table size accounting")
-		}
-	}
+	backingCount, backingTotalSize := d.mu.versions.fileBackings.Stats()
+	metrics.Table.BackingTableCount = uint64(backingCount)
+	metrics.Table.BackingTableSize = backingTotalSize
 	d.mu.versions.logUnlock()
 
 	metrics.LogWriter.FsyncLatency = d.mu.log.metrics.fsyncLatency

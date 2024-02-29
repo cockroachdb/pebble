@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -133,14 +132,10 @@ func TestCheckpoint(t *testing.T) {
 			d := dbs[td.CmdArgs[0].String()]
 			d.mu.Lock()
 			d.mu.versions.logLock()
-			var fileNums []base.DiskFileNum
-			for _, b := range d.mu.versions.backingState.fileBackingMap {
-				fileNums = append(fileNums, b.DiskFileNum)
-			}
+			fileNums := d.mu.versions.fileBackings.DiskFileNums()
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
 
-			slices.Sort(fileNums)
 			var buf bytes.Buffer
 			for _, f := range fileNums {
 				buf.WriteString(fmt.Sprintf("%s\n", f.String()))

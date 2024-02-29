@@ -31,11 +31,7 @@ func writeAndIngest(t *testing.T, mem vfs.FS, d *DB, k InternalKey, v []byte, fi
 // d.mu should be help. logLock should not be held.
 func checkBackingSize(t *testing.T, d *DB) {
 	d.mu.versions.logLock()
-	var backingSizeSum uint64
-	for _, backing := range d.mu.versions.backingState.fileBackingMap {
-		backingSizeSum += backing.Size
-	}
-	require.Equal(t, backingSizeSum, d.mu.versions.backingState.fileBackingSize)
+	d.mu.versions.fileBackings.Check()
 	d.mu.versions.logUnlock()
 }
 
@@ -160,9 +156,7 @@ func TestLatestRefCounting(t *testing.T) {
 	// to the physical sstable.
 	require.Equal(t, 2, int(m1.LatestRefs()))
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, 1, len(d.mu.versions.backingState.fileBackingMap))
-	_, ok := d.mu.versions.backingState.fileBackingMap[f.FileBacking.DiskFileNum]
-	require.True(t, ok)
+	require.Equal(t, []base.DiskFileNum{f.FileBacking.DiskFileNum}, d.mu.versions.fileBackings.DiskFileNums())
 	require.Equal(t, f.Size, m2.FileBacking.VirtualizedSize.Load())
 	checkBackingSize(t, d)
 
@@ -182,9 +176,7 @@ func TestLatestRefCounting(t *testing.T) {
 	require.Equal(t, 1, int(m2.LatestRefs()))
 	require.Equal(t, 0, len(d.mu.versions.zombieTables))
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, 1, len(d.mu.versions.backingState.fileBackingMap))
-	_, ok = d.mu.versions.backingState.fileBackingMap[f.FileBacking.DiskFileNum]
-	require.True(t, ok)
+	require.Equal(t, []base.DiskFileNum{f.FileBacking.DiskFileNum}, d.mu.versions.fileBackings.DiskFileNums())
 	require.Equal(t, m2.Size, m2.FileBacking.VirtualizedSize.Load())
 	checkBackingSize(t, d)
 
@@ -201,9 +193,7 @@ func TestLatestRefCounting(t *testing.T) {
 	require.Equal(t, 1, int(m2.LatestRefs()))
 	require.Equal(t, 0, len(d.mu.versions.zombieTables))
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, 1, len(d.mu.versions.backingState.fileBackingMap))
-	_, ok = d.mu.versions.backingState.fileBackingMap[f.FileBacking.DiskFileNum]
-	require.True(t, ok)
+	require.Equal(t, []base.DiskFileNum{f.FileBacking.DiskFileNum}, d.mu.versions.fileBackings.DiskFileNums())
 	require.Equal(t, m2.Size, m2.FileBacking.VirtualizedSize.Load())
 
 	// Delete m2 from L6.
@@ -218,9 +208,7 @@ func TestLatestRefCounting(t *testing.T) {
 	require.Equal(t, 0, int(m2.LatestRefs()))
 	require.Equal(t, 1, len(d.mu.versions.zombieTables))
 	require.Equal(t, f.Size, d.mu.versions.zombieTables[f.FileBacking.DiskFileNum])
-	require.Equal(t, 0, len(d.mu.versions.backingState.fileBackingMap))
-	_, ok = d.mu.versions.backingState.fileBackingMap[f.FileBacking.DiskFileNum]
-	require.False(t, ok)
+	require.Equal(t, []base.DiskFileNum{}, d.mu.versions.fileBackings.DiskFileNums())
 	require.Equal(t, 0, int(m2.FileBacking.VirtualizedSize.Load()))
 	checkBackingSize(t, d)
 }
@@ -345,9 +333,7 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 
 	require.Equal(t, 2, int(m1.LatestRefs()))
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, 1, len(d.mu.versions.backingState.fileBackingMap))
-	_, ok := d.mu.versions.backingState.fileBackingMap[f.FileBacking.DiskFileNum]
-	require.True(t, ok)
+	require.Equal(t, []base.DiskFileNum{f.FileBacking.DiskFileNum}, d.mu.versions.fileBackings.DiskFileNums())
 	require.Equal(t, f.Size, m2.FileBacking.VirtualizedSize.Load())
 
 	// Snapshot version edit will be written to a new manifest due to the flush.
@@ -370,9 +356,7 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 
 	require.Equal(t, 2, int(virtualFile.LatestRefs()))
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, 1, len(d.mu.versions.backingState.fileBackingMap))
-	_, ok = d.mu.versions.backingState.fileBackingMap[f.FileBacking.DiskFileNum]
-	require.True(t, ok)
+	require.Equal(t, []base.DiskFileNum{f.FileBacking.DiskFileNum}, d.mu.versions.fileBackings.DiskFileNums())
 	require.Equal(t, f.Size, virtualFile.FileBacking.VirtualizedSize.Load())
 	checkBackingSize(t, d)
 	d.mu.Unlock()
@@ -392,7 +376,7 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 	}
 	require.Nil(t, virtualFile)
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, 0, len(d.mu.versions.backingState.fileBackingMap))
+	require.Equal(t, []base.DiskFileNum{}, d.mu.versions.fileBackings.DiskFileNums())
 	checkBackingSize(t, d)
 	d.mu.Unlock()
 
@@ -413,7 +397,7 @@ func TestVirtualSSTableManifestReplay(t *testing.T) {
 	}
 	require.Nil(t, virtualFile)
 	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, 0, len(d.mu.versions.backingState.fileBackingMap))
+	require.Equal(t, []base.DiskFileNum{}, d.mu.versions.fileBackings.DiskFileNums())
 	checkBackingSize(t, d)
 	d.mu.Unlock()
 	require.NoError(t, d.Close())

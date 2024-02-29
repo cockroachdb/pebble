@@ -892,9 +892,7 @@ func AccumulateIncompleteAndApplySingleVE(
 	comparer *base.Comparer,
 	flushSplitBytes int64,
 	readCompactionRate int64,
-	backingStateMap map[base.DiskFileNum]*FileBacking,
-	addBackingFunc func(*FileBacking),
-	removeBackingFunc func(base.DiskFileNum),
+	backings *FileBackings,
 ) (_ *Version, zombies map[base.DiskFileNum]uint64, _ error) {
 	if len(ve.RemovedBackingTables) != 0 {
 		panic("pebble: invalid incomplete version edit")
@@ -911,18 +909,18 @@ func AccumulateIncompleteAndApplySingleVE(
 	}
 
 	for _, s := range b.AddedFileBacking {
-		addBackingFunc(s)
+		backings.Add(s)
 	}
 
 	for fileNum := range zombies {
-		if _, ok := backingStateMap[fileNum]; ok {
+		if _, ok := backings.Get(fileNum); ok {
 			// This table was backing some virtual sstable in the latest version,
 			// but is now a zombie. We add RemovedBackingTables entries for
 			// these, before the version edit is written to disk.
 			ve.RemovedBackingTables = append(
 				ve.RemovedBackingTables, fileNum,
 			)
-			removeBackingFunc(fileNum)
+			backings.Remove(fileNum)
 		}
 	}
 	return v, zombies, nil
