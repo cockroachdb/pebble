@@ -1366,6 +1366,24 @@ func TestCompactionPickerPickFile(t *testing.T) {
 		case "file-sizes":
 			return runTableFileSizesCmd(td, d)
 
+		case "build":
+			if err := runBuildCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest-and-excise":
+			if err := runIngestAndExciseCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "lsm":
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
 		case "pick-file":
 			s := strings.TrimPrefix(td.CmdArgs[0].String(), "L")
 			level, err := strconv.Atoi(s)

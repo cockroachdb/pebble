@@ -410,15 +410,12 @@ type FileBacking struct {
 	// virtual sstable sizes of all of the virtual sstables in the latest
 	// version which are backed by the physical sstable. When a virtual
 	// sstable is removed from the latest version, we will decrement the
-	// VirtualizedSize. During compaction picking, we'll compensate a
+	// VirtualizedSize. During compaction picking, we compensate a
 	// virtual sstable file size by
 	// (FileBacking.Size - FileBacking.VirtualizedSize) / latestVersionRefs.
 	// The intuition is that if FileBacking.Size - FileBacking.VirtualizedSize
 	// is high, then the space amplification due to virtual sstables is
 	// high, and we should pick the virtual sstable with a higher priority.
-	//
-	// TODO(bananabrick): Compensate the virtual sstable file size using
-	// the VirtualizedSize during compaction picking and test.
 	VirtualizedSize atomic.Uint64
 	DiskFileNum     base.DiskFileNum
 	Size            uint64
@@ -525,6 +522,39 @@ func (m *FileMetadata) LatestUnref() int32 {
 // LatestRefs returns the latest ref count associated with the backing sstable.
 func (m *FileMetadata) LatestRefs() int32 {
 	return m.FileBacking.latestVersionRefs.Load()
+}
+
+// ResponsibleForGarbageBytes returns the amount of garbage in the backing
+// sstable that we consider the responsibility of this virtual sstable. For
+// non-virtual sstables, this is of course 0. For virtual sstables, we equally
+// distribute the responsibility of the garbage across all the virtual
+// sstables that are referencing the same backing sstable. One could
+// alternatively distribute this in proportion to the virtual sst sizes, but
+// it isn't clear that more sophisticated heuristics are worth it, given that
+// the garbage cannot be reclaimed until all the referencing virtual sstables
+// are compacted.
+//
+// REQUIRES: m exists in the latest version.
+func (m *FileMetadata) ResponsibleForGarbageBytes() uint64 {
+	if !m.Virtual {
+		return 0
+	}
+	virtualizedSize := m.FileBacking.VirtualizedSize.Load()
+	// Since virtualizedSize is the sum of the estimated size of all virtual
+	// ssts, we allow for the possibility that virtualizedSize could exceed
+	// m.FileBacking.Size.
+	totalGarbage := int64(m.FileBacking.Size) - int64(virtualizedSize)
+	if totalGarbage <= 0 {
+		return 0
+	}
+	latestRefs := m.LatestRefs()
+	if latestRefs == 0 {
+		// This cannot happen if m exists in the latest version. The call to
+		// ResponsibleForGarbageBytes during compaction picking ensures that m
+		// exists in the latest version by holding versionSet.logLock.
+		panic(errors.AssertionFailedf("%s has no LatestRefs", m.String()))
+	}
+	return uint64(totalGarbage) / uint64(latestRefs)
 }
 
 // SetCompactionState transitions this file's compaction state to the given
