@@ -1,0 +1,162 @@
+# Open a database without WAL failover configured.
+
+open path=(a,data)
+----
+ok
+
+list path=(a,data)
+----
+  000002.log
+  LOCK
+  MANIFEST-000001
+  OPTIONS-000003
+  marker.format-version.000001.013
+  marker.manifest.000001.MANIFEST-000001
+
+cat path=(a,data/OPTIONS-000003)
+----
+----
+[Version]
+  pebble_version=0.1
+
+[Options]
+  bytes_per_sync=524288
+  cache_size=8388608
+  cleaner=delete
+  compaction_debt_concurrency=1073741824
+  comparer=leveldb.BytewiseComparator
+  disable_wal=false
+  flush_delay_delete_range=0s
+  flush_delay_range_key=0s
+  flush_split_bytes=4194304
+  format_major_version=13
+  l0_compaction_concurrency=10
+  l0_compaction_file_threshold=500
+  l0_compaction_threshold=4
+  l0_stop_writes_threshold=12
+  lbase_max_bytes=67108864
+  max_concurrent_compactions=1
+  max_manifest_file_size=134217728
+  max_open_files=1000
+  mem_table_size=4194304
+  mem_table_stop_writes_threshold=2
+  min_deletion_rate=0
+  merger=pebble.concatenate
+  multilevel_compaction_heuristic=wamp(0.00, false)
+  read_compaction_rate=16000
+  read_sampling_multiplier=16
+  strict_wal_tail=true
+  table_cache_shards=10
+  validate_on_ingest=false
+  wal_dir=
+  wal_bytes_per_sync=0
+  max_writer_concurrency=0
+  force_writer_parallelism=false
+  secondary_cache_size_bytes=0
+  create_on_shared=0
+
+[Level "0"]
+  block_restart_interval=16
+  block_size=4096
+  block_size_threshold=90
+  compression=Snappy
+  filter_policy=none
+  filter_type=table
+  index_block_size=4096
+  target_file_size=2097152
+----
+----
+
+# Open the same database with WAL failover configured, but pointing to a
+# different FS.
+
+open path=(a,data) secondary=(b,secondary-wals)
+----
+ok
+
+# Open should have created the 'secondary-wals' directory on the 'b' FS.
+
+list path=(b,)
+----
+  secondary-wals
+
+list path=(a,data)
+----
+  000004.log
+  LOCK
+  MANIFEST-000001
+  MANIFEST-000005
+  OPTIONS-000006
+  marker.format-version.000001.013
+  marker.manifest.000002.MANIFEST-000005
+
+# The new OPTIONS file should declare the secondary WAL path.
+
+cat path=(a,data/OPTIONS-000006)
+----
+----
+[Version]
+  pebble_version=0.1
+
+[Options]
+  bytes_per_sync=524288
+  cache_size=8388608
+  cleaner=delete
+  compaction_debt_concurrency=1073741824
+  comparer=leveldb.BytewiseComparator
+  disable_wal=false
+  flush_delay_delete_range=0s
+  flush_delay_range_key=0s
+  flush_split_bytes=4194304
+  format_major_version=13
+  l0_compaction_concurrency=10
+  l0_compaction_file_threshold=500
+  l0_compaction_threshold=4
+  l0_stop_writes_threshold=12
+  lbase_max_bytes=67108864
+  max_concurrent_compactions=1
+  max_manifest_file_size=134217728
+  max_open_files=1000
+  mem_table_size=4194304
+  mem_table_stop_writes_threshold=2
+  min_deletion_rate=0
+  merger=pebble.concatenate
+  multilevel_compaction_heuristic=wamp(0.00, false)
+  read_compaction_rate=16000
+  read_sampling_multiplier=16
+  strict_wal_tail=true
+  table_cache_shards=10
+  validate_on_ingest=false
+  wal_dir=
+  wal_bytes_per_sync=0
+  wal_dir_secondary=secondary-wals
+  max_writer_concurrency=0
+  force_writer_parallelism=false
+  secondary_cache_size_bytes=0
+  create_on_shared=0
+
+[Level "0"]
+  block_restart_interval=16
+  block_size=4096
+  block_size_threshold=90
+  compression=Snappy
+  filter_policy=none
+  filter_type=table
+  index_block_size=4096
+  target_file_size=2097152
+----
+----
+
+# Opening the same directory without providing the secondary path in either the
+# WAL failover configuration or as a WALRecoveryDir should error.
+
+open path=(a,data)
+----
+directory "secondary-wals" may contain relevant WALs
+
+# But opening the same directory while providing the secondary path as a WAL
+# recovery dir should succeed.
+
+open path=(a,data) wal-recovery-dir=(b,secondary-wals)
+----
+ok

@@ -635,6 +635,14 @@ func prepareAndOpenDirs(
 			}
 			f.Close()
 		}
+		if opts.WALFailover != nil {
+			secondary := opts.WALFailover.Secondary
+			f, err := mkdirAllAndSyncParents(secondary.FS, secondary.Dirname)
+			if err != nil {
+				return "", nil, err
+			}
+			f.Close()
+		}
 	}
 
 	dataDir, err = opts.FS.OpenDir(dirname)
