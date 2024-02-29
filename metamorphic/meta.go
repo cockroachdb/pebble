@@ -500,6 +500,19 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 		require.NoError(t, setupInitialState(dir, testOpts))
 	}
 
+	if testOpts.Opts.WALFailover != nil {
+		if runOpts.numInstances > 1 {
+			// TODO(bilal,jackson): Allow opts to diverge on a per-instance
+			// basis, and use that to set unique WAL dirs for all instances in
+			// multi-instance mode.
+			testOpts.Opts.WALFailover = nil
+		} else {
+			testOpts.Opts.WALFailover.Secondary.FS = opts.FS
+			testOpts.Opts.WALFailover.Secondary.Dirname = opts.FS.PathJoin(
+				runDir, testOpts.Opts.WALFailover.Secondary.Dirname)
+		}
+	}
+
 	if opts.WALDir != "" {
 		if runOpts.numInstances > 1 {
 			// TODO(bilal): Allow opts to diverge on a per-instance basis, and use
