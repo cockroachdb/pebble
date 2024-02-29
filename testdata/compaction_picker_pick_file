@@ -104,3 +104,119 @@ L6
 pick-file L5
 ----
 000004:[c#11,SET-d#11,SET]
+
+# Test with virtual ssts.
+define
+L5
+  c.SET.11:<rand-bytes=32768>
+  d.SET.11:<rand-bytes=65536>
+  e.SET.11:<rand-bytes=100>
+L5
+  f.SET.11:<rand-bytes=57344>
+L6
+  c.SET.0:<rand-bytes=65536>
+L6
+  e.SET.0:<rand-bytes=65536>
+L6
+  f.SET.0:<rand-bytes=65536>
+----
+5:
+  000004:[c#11,SET-e#11,SET]
+  000005:[f#11,SET-f#11,SET]
+6:
+  000006:[c#0,SET-c#0,SET]
+  000007:[e#0,SET-e#0,SET]
+  000008:[f#0,SET-f#0,SET]
+
+file-sizes
+----
+L5:
+  000004:[c#11,SET-e#11,SET]: 99086 bytes (97KB)
+  000005:[f#11,SET-f#11,SET]: 57942 bytes (57KB)
+L6:
+  000006:[c#0,SET-c#0,SET]: 66134 bytes (65KB)
+  000007:[e#0,SET-e#0,SET]: 66134 bytes (65KB)
+  000008:[f#0,SET-f#0,SET]: 66134 bytes (65KB)
+
+# Sst 5 is picked since 65KB/57KB is less than 130KB/97KB.
+pick-file L5
+----
+000005:[f#11,SET-f#11,SET]
+
+build ext1
+set d d
+----
+
+# Sst 4 is split into two virtual ssts, where the 64KB of key d is excised.
+ingest-and-excise ext1 excise=d-e
+----
+
+lsm
+----
+5:
+  000010(000004):[c#11,SET-c#11,SET]
+  000011(000004):[e#11,SET-e#11,SET]
+  000005:[f#11,SET-f#11,SET]
+6:
+  000006:[c#0,SET-c#0,SET]
+  000009:[d#13,SET-d#13,SET]
+  000007:[e#0,SET-e#0,SET]
+  000008:[f#0,SET-f#0,SET]
+
+file-sizes
+----
+L5:
+  000010:[c#11,SET-c#11,SET]: 32796 bytes (32KB)
+  000011:[e#11,SET-e#11,SET]: 126 bytes (126B)
+  000005:[f#11,SET-f#11,SET]: 57942 bytes (57KB)
+L6:
+  000006:[c#0,SET-c#0,SET]: 66134 bytes (65KB)
+  000009:[d#13,SET-d#13,SET]: 621 bytes (621B)
+  000007:[e#0,SET-e#0,SET]: 66134 bytes (65KB)
+  000008:[f#0,SET-f#0,SET]: 66134 bytes (65KB)
+
+# Superficially, sst 10 causes write amp of 65KB/32KB which is worse than sst
+# 5. But the garbage of ~64KB in the backing sst 4 is equally distributed
+# between sst 10 and sst 10, which results in sst 10 causing a write amp of
+# 65KB/(32KB + 32KB), which is the lowest.
+pick-file L5
+----
+000010:[c#11,SET-c#11,SET]
+
+build ext2
+set c c
+----
+
+# Remove sst 10, so the backing sst 4 is mostly garbage, and is only
+# referenced by sst 11.
+ingest-and-excise ext2 excise=b-d
+----
+
+lsm
+----
+5:
+  000011(000004):[e#11,SET-e#11,SET]
+  000005:[f#11,SET-f#11,SET]
+6:
+  000012:[c#15,SET-c#15,SET]
+  000009:[d#13,SET-d#13,SET]
+  000007:[e#0,SET-e#0,SET]
+  000008:[f#0,SET-f#0,SET]
+
+file-sizes
+----
+L5:
+  000011:[e#11,SET-e#11,SET]: 126 bytes (126B)
+  000005:[f#11,SET-f#11,SET]: 57942 bytes (57KB)
+L6:
+  000012:[c#15,SET-c#15,SET]: 621 bytes (621B)
+  000009:[d#13,SET-d#13,SET]: 621 bytes (621B)
+  000007:[e#0,SET-e#0,SET]: 66134 bytes (65KB)
+  000008:[f#0,SET-f#0,SET]: 66134 bytes (65KB)
+
+# Even though picking sst 11 seems to cause poor write amp of 65KB/126B, it is
+# picked because it is blamed for all the garbage in backing sst 4 (~96KB),
+# and so the actual write amp is 65KB/(126B + 96KB), which is the lowest.
+pick-file L5
+----
+000011:[e#11,SET-e#11,SET]

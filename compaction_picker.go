@@ -1030,22 +1030,22 @@ func pickCompactionSeedFile(
 	vers *version, opts *Options, level, outputLevel int, earliestSnapshotSeqNum uint64,
 ) (manifest.LevelFile, bool) {
 	// Select the file within the level to compact. We want to minimize write
-	// amplification, but also ensure that deletes are propagated to the
-	// bottom level in a timely fashion so as to reclaim disk space. A table's
-	// smallest sequence number provides a measure of its age. The ratio of
-	// overlapping-bytes / table-size gives an indication of write
-	// amplification (a smaller ratio is preferrable).
+	// amplification, but also ensure that (a) deletes are propagated to the
+	// bottom level in a timely fashion, and (b) virtual sstables that are
+	// pinning backing sstables where most of the data is garbage are compacted
+	// away. Doing (a) and (b) reclaims disk space. A table's smallest sequence
+	// number provides a measure of its age. The ratio of overlapping-bytes /
+	// table-size gives an indication of write amplification (a smaller ratio is
+	// preferrable).
 	//
 	// The current heuristic is based off the the RocksDB kMinOverlappingRatio
 	// heuristic. It chooses the file with the minimum overlapping ratio with
 	// the target level, which minimizes write amplification.
 	//
-	// It uses a "compensated size" for the denominator, which is the file
-	// size but artificially inflated by an estimate of the space that may be
-	// reclaimed through compaction. Currently, we only compensate for range
-	// deletions and only with a rough estimate of the reclaimable bytes. This
-	// differs from RocksDB which only compensates for point tombstones and
-	// only if they exceed the number of non-deletion entries in table.
+	// The heuristic uses a "compensated size" for the denominator, which is the
+	// file size inflated by (a) an estimate of the space that may be reclaimed
+	// through compaction, and (b) a fraction of the amount of garbage in the
+	// backing sstable pinned by this (virtual) sstable.
 	//
 	// TODO(peter): For concurrent compactions, we may want to try harder to
 	// pick a seed file whose resulting compaction bounds do not overlap with
@@ -1132,7 +1132,7 @@ func pickCompactionSeedFile(
 			continue
 		}
 
-		compSz := compensatedSize(f)
+		compSz := compensatedSize(f) + f.ResponsibleForGarbageBytes()
 		scaledRatio := overlappingBytes * 1024 / compSz
 		if scaledRatio < smallestRatio {
 			smallestRatio = scaledRatio
