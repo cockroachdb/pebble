@@ -5,9 +5,7 @@
 package pebble
 
 import (
-	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -15,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/redact"
@@ -232,7 +231,7 @@ type compactionIter struct {
 	// surpassed, these splitters update internal state recording that they
 	// should request a compaction split next time they're asked in
 	// [shouldSplitBefore].
-	frontiers frontiers
+	frontiers compact.Frontiers
 	// Reference to the range deletion tombstone fragmenter (e.g.,
 	// `compaction.rangeDelFrag`).
 	// TODO(jackson): We can eliminate range{Del,Key}Frag now that fragmentation
@@ -280,7 +279,6 @@ func newCompactionIter(
 		merge:                                  merge,
 		iter:                                   iter,
 		snapshots:                              snapshots,
-		frontiers:                              frontiers{cmp: cmp},
 		rangeDelFrag:                           rangeDelFrag,
 		rangeKeyFrag:                           rangeKeyFrag,
 		allowZeroSeqNum:                        allowZeroSeqNum,
@@ -290,6 +288,7 @@ func newCompactionIter(
 		singleDeleteInvariantViolationCallback: singleDeleteInvariantViolationCallback,
 		formatVersion:                          formatVersion,
 	}
+	i.frontiers.Init(cmp)
 	i.rangeDelFrag.Cmp = cmp
 	i.rangeDelFrag.Format = formatKey
 	i.rangeDelFrag.Emit = i.emitRangeDelChunk
@@ -1329,205 +1328,4 @@ func (i *compactionIter) maybeZeroSeqnum(snapshotIdx int) {
 		return
 	}
 	i.key.SetSeqNum(base.SeqNumZero)
-}
-
-// A frontier is used to monitor a compaction's progression across the user
-// keyspace.
-//
-// A frontier hold a user key boundary that it's concerned with in its `key`
-// field. If/when the compaction iterator returns an InternalKey with a user key
-// _k_ such that k ≥ frontier.key, the compaction iterator invokes the
-// frontier's `reached` function, passing _k_ as its argument.
-//
-// The `reached` function returns a new value to use as the key. If `reached`
-// returns nil, the frontier is forgotten and its `reached` method will not be
-// invoked again, unless the user calls [Update] to set a new key.
-//
-// A frontier's key may be updated outside the context of a `reached`
-// invocation at any time, through its Update method.
-type frontier struct {
-	// container points to the containing *frontiers that was passed to Init
-	// when the frontier was initialized.
-	container *frontiers
-
-	// key holds the frontier's current key. If nil, this frontier is inactive
-	// and its reached func will not be invoked. The value of this key may only
-	// be updated by the `frontiers` type, or the Update method.
-	key []byte
-
-	// reached is invoked to inform a frontier that its key has been reached.
-	// It's invoked with the user key that reached the limit. The `key` argument
-	// is guaranteed to be ≥ the frontier's key.
-	//
-	// After reached is invoked, the frontier's key is updated to the return
-	// value of `reached`. Note bene, the frontier is permitted to update its
-	// key to a user key ≤ the argument `key`.
-	//
-	// If a frontier is set to key k1, and reached(k2) is invoked (k2 ≥ k1), the
-	// frontier will receive reached(k2) calls until it returns nil or a key
-	// `k3` such that k2 < k3. This property is useful for frontiers that use
-	// `reached` invocations to drive iteration through collections of keys that
-	// may contain multiple keys that are both < k2 and ≥ k1.
-	reached func(key []byte) (next []byte)
-}
-
-// Init initializes the frontier with the provided key and reached callback.
-// The frontier is attached to the provided *frontiers and the provided reached
-// func will be invoked when the *frontiers is advanced to a key ≥ this
-// frontier's key.
-func (f *frontier) Init(
-	frontiers *frontiers, initialKey []byte, reached func(key []byte) (next []byte),
-) {
-	*f = frontier{
-		container: frontiers,
-		key:       initialKey,
-		reached:   reached,
-	}
-	if initialKey != nil {
-		f.container.push(f)
-	}
-}
-
-// String implements fmt.Stringer.
-func (f *frontier) String() string {
-	return string(f.key)
-}
-
-// Update replaces the existing frontier's key with the provided key. The
-// frontier's reached func will be invoked when the new key is reached.
-func (f *frontier) Update(key []byte) {
-	c := f.container
-	prevKeyIsNil := f.key == nil
-	f.key = key
-	if prevKeyIsNil {
-		if key != nil {
-			c.push(f)
-		}
-		return
-	}
-
-	// Find the frontier within the heap (it must exist within the heap because
-	// f.key was != nil). If the frontier key is now nil, remove it from the
-	// heap. Otherwise, fix up its position.
-	for i := 0; i < len(c.items); i++ {
-		if c.items[i] == f {
-			if key != nil {
-				c.fix(i)
-			} else {
-				n := c.len() - 1
-				c.swap(i, n)
-				c.down(i, n)
-				c.items = c.items[:n]
-			}
-			return
-		}
-	}
-	panic("unreachable")
-}
-
-// frontiers is used to track progression of a task (eg, compaction) across the
-// keyspace. Clients that want to be informed when the task advances to a key ≥
-// some frontier may register a frontier, providing a callback. The task calls
-// `Advance(k)` with each user key encountered, which invokes the `reached` func
-// on all tracked frontiers with `key`s ≤ k.
-//
-// Internally, frontiers is implemented as a simple heap.
-type frontiers struct {
-	cmp   Compare
-	items []*frontier
-}
-
-// String implements fmt.Stringer.
-func (f *frontiers) String() string {
-	var buf bytes.Buffer
-	for i := 0; i < len(f.items); i++ {
-		if i > 0 {
-			fmt.Fprint(&buf, ", ")
-		}
-		fmt.Fprintf(&buf, "%s: %q", f.items[i], f.items[i].key)
-	}
-	return buf.String()
-}
-
-// Advance notifies all member frontiers with keys ≤ k.
-func (f *frontiers) Advance(k []byte) {
-	for len(f.items) > 0 && f.cmp(k, f.items[0].key) >= 0 {
-		// This frontier has been reached. Invoke the closure and update with
-		// the next frontier.
-		f.items[0].key = f.items[0].reached(k)
-		if f.items[0].key == nil {
-			// This was the final frontier that this user was concerned with.
-			// Remove it from the heap.
-			f.pop()
-		} else {
-			// Fix up the heap root.
-			f.fix(0)
-		}
-	}
-}
-
-func (f *frontiers) len() int {
-	return len(f.items)
-}
-
-func (f *frontiers) less(i, j int) bool {
-	return f.cmp(f.items[i].key, f.items[j].key) < 0
-}
-
-func (f *frontiers) swap(i, j int) {
-	f.items[i], f.items[j] = f.items[j], f.items[i]
-}
-
-// fix, up and down are copied from the go stdlib.
-
-func (f *frontiers) fix(i int) {
-	if !f.down(i, f.len()) {
-		f.up(i)
-	}
-}
-
-func (f *frontiers) push(ff *frontier) {
-	n := len(f.items)
-	f.items = append(f.items, ff)
-	f.up(n)
-}
-
-func (f *frontiers) pop() *frontier {
-	n := f.len() - 1
-	f.swap(0, n)
-	f.down(0, n)
-	item := f.items[n]
-	f.items = f.items[:n]
-	return item
-}
-
-func (f *frontiers) up(j int) {
-	for {
-		i := (j - 1) / 2 // parent
-		if i == j || !f.less(j, i) {
-			break
-		}
-		f.swap(i, j)
-		j = i
-	}
-}
-
-func (f *frontiers) down(i0, n int) bool {
-	i := i0
-	for {
-		j1 := 2*i + 1
-		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
-			break
-		}
-		j := j1 // left child
-		if j2 := j1 + 1; j2 < n && f.less(j2, j1) {
-			j = j2 // = 2*i + 2  // right child
-		}
-		if !f.less(j, i) {
-			break
-		}
-		f.swap(i, j)
-		i = j
-	}
-	return i > i0
 }

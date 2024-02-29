@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -111,318 +112,6 @@ func (cl compactionLevel) Clone() compactionLevel {
 }
 func (cl compactionLevel) String() string {
 	return fmt.Sprintf(`Level %d, Files %s`, cl.level, cl.files)
-}
-
-// Return output from compactionOutputSplitters. See comment on
-// compactionOutputSplitter.shouldSplitBefore() on how this value is used.
-type maybeSplit int
-
-const (
-	noSplit maybeSplit = iota
-	splitNow
-)
-
-// String implements the Stringer interface.
-func (c maybeSplit) String() string {
-	if c == noSplit {
-		return "no-split"
-	}
-	return "split-now"
-}
-
-// compactionOutputSplitter is an interface for encapsulating logic around
-// switching the output of a compaction to a new output file. Additional
-// constraints around switching compaction outputs that are specific to that
-// compaction type (eg. flush splits) are implemented in
-// compactionOutputSplitters that compose other child compactionOutputSplitters.
-type compactionOutputSplitter interface {
-	// shouldSplitBefore returns whether we should split outputs before the
-	// specified "current key". The return value is splitNow or noSplit.
-	// splitNow means a split is advised before the specified key, and noSplit
-	// means no split is advised. If shouldSplitBefore(a) advises a split then
-	// shouldSplitBefore(b) should also advise a split given b >= a, until
-	// onNewOutput is called.
-	shouldSplitBefore(key *InternalKey, tw *sstable.Writer) maybeSplit
-	// onNewOutput updates internal splitter state when the compaction switches
-	// to a new sstable, and returns the next limit for the new output which
-	// would get used to truncate range tombstones if the compaction iterator
-	// runs out of keys. The limit returned MUST be > key according to the
-	// compaction's comparator. The specified key is the first key in the new
-	// output, or nil if this sstable will only contain range tombstones already
-	// in the fragmenter.
-	onNewOutput(key []byte) []byte
-}
-
-// fileSizeSplitter is a compactionOutputSplitter that enforces target file
-// sizes. This splitter splits to a new output file when the estimated file size
-// is 0.5x-2x the target file size. If there are overlapping grandparent files,
-// this splitter will attempt to split at a grandparent boundary. For example,
-// consider the example where a compaction wrote 'd' to the current output file,
-// and the next key has a user key 'g':
-//
-//	                              previous key   next key
-//		                                 |           |
-//		                                 |           |
-//		                 +---------------|----+   +--|----------+
-//		  grandparents:  |       000006  |    |   |  | 000007   |
-//		                 +---------------|----+   +--|----------+
-//		                 a    b          d    e   f  g       i
-//
-// Splitting the output file F before 'g' will ensure that the current output
-// file F does not overlap the grandparent file 000007. Aligning sstable
-// boundaries like this can significantly reduce write amplification, since a
-// subsequent compaction of F into the grandparent level will avoid needlessly
-// rewriting any keys within 000007 that do not overlap F's bounds. Consider the
-// following compaction:
-//
-//	                       +----------------------+
-//		  input            |                      |
-//		  level            +----------------------+
-//		                              \/
-//		           +---------------+       +---------------+
-//		  output   |XXXXXXX|       |       |      |XXXXXXXX|
-//		  level    +---------------+       +---------------+
-//
-// The input-level file overlaps two files in the output level, but only
-// partially. The beginning of the first output-level file and the end of the
-// second output-level file will be rewritten verbatim. This write I/O is
-// "wasted" in the sense that no merging is being performed.
-//
-// To prevent the above waste, this splitter attempts to split output files
-// before the start key of grandparent files. It still strives to write output
-// files of approximately the target file size, by constraining this splitting
-// at grandparent points to apply only if the current output's file size is
-// about the right order of magnitude.
-//
-// Note that, unlike most other splitters, this splitter does not guarantee that
-// it will advise splits only at user key change boundaries.
-type fileSizeSplitter struct {
-	frontier              frontier
-	targetFileSize        uint64
-	atGrandparentBoundary bool
-	boundariesObserved    uint64
-	nextGrandparent       *fileMetadata
-	grandparents          manifest.LevelIterator
-}
-
-func newFileSizeSplitter(
-	f *frontiers, targetFileSize uint64, grandparents manifest.LevelIterator,
-) *fileSizeSplitter {
-	s := &fileSizeSplitter{targetFileSize: targetFileSize}
-	s.nextGrandparent = grandparents.First()
-	s.grandparents = grandparents
-	if s.nextGrandparent != nil {
-		s.frontier.Init(f, s.nextGrandparent.Smallest.UserKey, s.reached)
-	}
-	return s
-}
-
-func (f *fileSizeSplitter) reached(nextKey []byte) []byte {
-	f.atGrandparentBoundary = true
-	f.boundariesObserved++
-	// NB: f.grandparents is a bounded iterator, constrained to the compaction
-	// key range.
-	f.nextGrandparent = f.grandparents.Next()
-	if f.nextGrandparent == nil {
-		return nil
-	}
-	// TODO(jackson): Should we also split before or immediately after
-	// grandparents' largest keys? Splitting before the start boundary prevents
-	// overlap with the grandparent. Also splitting after the end boundary may
-	// increase the probability of move compactions.
-	return f.nextGrandparent.Smallest.UserKey
-}
-
-func (f *fileSizeSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) maybeSplit {
-	atGrandparentBoundary := f.atGrandparentBoundary
-
-	// Clear f.atGrandparentBoundary unconditionally.
-	//
-	// This is a bit subtle. Even if do decide to split, it's possible that a
-	// higher-level splitter will ignore our request (eg, because we're between
-	// two internal keys with the same user key). In this case, the next call to
-	// shouldSplitBefore will find atGrandparentBoundary=false. This is
-	// desirable, because in this case we would've already written the earlier
-	// key with the same user key to the output file. The current output file is
-	// already doomed to overlap the grandparent whose bound triggered
-	// atGrandparentBoundary=true. We should continue on, waiting for the next
-	// grandparent boundary.
-	f.atGrandparentBoundary = false
-
-	if tw == nil {
-		return noSplit
-	}
-
-	estSize := tw.EstimatedSize()
-	switch {
-	case estSize < f.targetFileSize/2:
-		// The estimated file size is less than half the target file size. Don't
-		// split it, even if currently aligned with a grandparent file because
-		// it's too small.
-		return noSplit
-	case estSize >= 2*f.targetFileSize:
-		// The estimated file size is double the target file size. Split it even
-		// if we were not aligned with a grandparent file boundary to avoid
-		// excessively exceeding the target file size.
-		return splitNow
-	case !atGrandparentBoundary:
-		// Don't split if we're not at a grandparent, except if we've exhausted
-		// all the grandparents overlapping this compaction's key range. Then we
-		// may want to split purely based on file size.
-		if f.nextGrandparent == nil {
-			// There are no more grandparents. Optimize for the target file size
-			// and split as soon as we hit the target file size.
-			if estSize >= f.targetFileSize {
-				return splitNow
-			}
-		}
-		return noSplit
-	default:
-		// INVARIANT: atGrandparentBoundary
-		// INVARIANT: targetSize/2 < estSize < 2*targetSize
-		//
-		// The estimated file size is close enough to the target file size that
-		// we should consider splitting.
-		//
-		// Determine whether to split now based on how many grandparent
-		// boundaries we have already observed while building this output file.
-		// The intuition here is that if the grandparent level is dense in this
-		// part of the keyspace, we're likely to continue to have more
-		// opportunities to split this file aligned with a grandparent. If this
-		// is the first grandparent boundary observed, we split immediately
-		// (we're already at ≥50% the target file size). Otherwise, each
-		// overlapping grandparent we've observed increases the minimum file
-		// size by 5% of the target file size, up to at most 90% of the target
-		// file size.
-		//
-		// TODO(jackson): The particular thresholds are somewhat unprincipled.
-		// This is the same heuristic as RocksDB implements. Is there are more
-		// principled formulation that can, further reduce w-amp, produce files
-		// closer to the target file size, or is more understandable?
-
-		// NB: Subtract 1 from `boundariesObserved` to account for the current
-		// boundary we're considering splitting at. `reached` will have
-		// incremented it at the same time it set `atGrandparentBoundary`.
-		minimumPctOfTargetSize := 50 + 5*min(f.boundariesObserved-1, 8)
-		if estSize < (minimumPctOfTargetSize*f.targetFileSize)/100 {
-			return noSplit
-		}
-		return splitNow
-	}
-}
-
-func (f *fileSizeSplitter) onNewOutput(key []byte) []byte {
-	f.boundariesObserved = 0
-	return nil
-}
-
-func newLimitFuncSplitter(f *frontiers, limitFunc func(userKey []byte) []byte) *limitFuncSplitter {
-	s := &limitFuncSplitter{limitFunc: limitFunc}
-	s.frontier.Init(f, nil, s.reached)
-	return s
-}
-
-type limitFuncSplitter struct {
-	frontier  frontier
-	limitFunc func(userKey []byte) []byte
-	split     maybeSplit
-}
-
-func (lf *limitFuncSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) maybeSplit {
-	return lf.split
-}
-
-func (lf *limitFuncSplitter) reached(nextKey []byte) []byte {
-	lf.split = splitNow
-	return nil
-}
-
-func (lf *limitFuncSplitter) onNewOutput(key []byte) []byte {
-	lf.split = noSplit
-	if key != nil {
-		// TODO(jackson): For some users, like L0 flush splits, there's no need
-		// to binary search over all the flush splits every time. The next split
-		// point must be ahead of the previous flush split point.
-		limit := lf.limitFunc(key)
-		lf.frontier.Update(limit)
-		return limit
-	}
-	lf.frontier.Update(nil)
-	return nil
-}
-
-// splitterGroup is a compactionOutputSplitter that splits whenever one of its
-// child splitters advises a compaction split.
-type splitterGroup struct {
-	cmp       Compare
-	splitters []compactionOutputSplitter
-}
-
-func (a *splitterGroup) shouldSplitBefore(
-	key *InternalKey, tw *sstable.Writer,
-) (suggestion maybeSplit) {
-	for _, splitter := range a.splitters {
-		if splitter.shouldSplitBefore(key, tw) == splitNow {
-			return splitNow
-		}
-	}
-	return noSplit
-}
-
-func (a *splitterGroup) onNewOutput(key []byte) []byte {
-	var earliestLimit []byte
-	for _, splitter := range a.splitters {
-		limit := splitter.onNewOutput(key)
-		if limit == nil {
-			continue
-		}
-		if earliestLimit == nil || a.cmp(limit, earliestLimit) < 0 {
-			earliestLimit = limit
-		}
-	}
-	return earliestLimit
-}
-
-// userKeyChangeSplitter is a compactionOutputSplitter that takes in a child
-// splitter, and splits when 1) that child splitter has advised a split, and 2)
-// the compaction output is at the boundary between two user keys (also
-// the boundary between atomic compaction units). Use this splitter to wrap
-// any splitters that don't guarantee user key splits (i.e. splitters that make
-// their determination in ways other than comparing the current key against a
-// limit key.) If a wrapped splitter advises a split, it must continue
-// to advise a split until a new output.
-type userKeyChangeSplitter struct {
-	cmp               Compare
-	splitter          compactionOutputSplitter
-	unsafePrevUserKey func() []byte
-}
-
-func (u *userKeyChangeSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) maybeSplit {
-	// NB: The userKeyChangeSplitter only needs to suffer a key comparison if
-	// the wrapped splitter requests a split.
-	//
-	// We could implement this splitter using frontiers: When the inner splitter
-	// requests a split before key `k`, we'd update a frontier to be
-	// ImmediateSuccessor(k). Then on the next key greater than >k, the
-	// frontier's `reached` func would be called and we'd return splitNow.
-	// This doesn't really save work since duplicate user keys are rare, and it
-	// requires us to materialize the ImmediateSuccessor key. It also prevents
-	// us from splitting on the same key that the inner splitter requested a
-	// split for—instead we need to wait until the next key. The current
-	// implementation uses `unsafePrevUserKey` to gain access to the previous
-	// key which allows it to immediately respect the inner splitter if
-	// possible.
-	if split := u.splitter.shouldSplitBefore(key, tw); split != splitNow {
-		return split
-	}
-	if u.cmp(key.UserKey, u.unsafePrevUserKey()) > 0 {
-		return splitNow
-	}
-	return noSplit
-}
-
-func (u *userKeyChangeSplitter) onNewOutput(key []byte) []byte {
-	return u.splitter.onNewOutput(key)
 }
 
 // compactionWritable is a objstorage.Writable wrapper that, on every write,
@@ -3407,7 +3096,6 @@ func (d *DB) runCompaction(
 	// splitterGroup can be composed of multiple splitters. In this case, we
 	// start off with splitters for file sizes, grandparent limits, and (for L0
 	// splits) L0 limits, before wrapping them in an splitterGroup.
-	sizeSplitter := newFileSizeSplitter(&iter.frontiers, c.maxOutputFileSize, c.grandparents.Iter())
 	unsafePrevUserKey := func() []byte {
 		// Return the largest point key written to tw or the start of
 		// the current range deletion in the fragmenter, whichever is
@@ -3418,22 +3106,22 @@ func (d *DB) runCompaction(
 		}
 		return c.rangeDelFrag.Start()
 	}
-	outputSplitters := []compactionOutputSplitter{
+	outputSplitters := []compact.OutputSplitter{
 		// We do not split the same user key across different sstables within
-		// one flush or compaction. The fileSizeSplitter may request a split in
-		// the middle of a user key, so the userKeyChangeSplitter ensures we are
-		// at a user key change boundary when doing a split.
-		&userKeyChangeSplitter{
-			cmp:               c.cmp,
-			splitter:          sizeSplitter,
-			unsafePrevUserKey: unsafePrevUserKey,
-		},
-		newLimitFuncSplitter(&iter.frontiers, c.findGrandparentLimit),
+		// one flush or compaction. The FileSizeSplitter may request a split in
+		// the middle of a user key, so PreventSplitUserKeys ensures we are at a
+		// user key change boundary when doing a split.
+		compact.PreventSplitUserKeys(
+			c.cmp,
+			compact.FileSizeSplitter(&iter.frontiers, c.maxOutputFileSize, c.grandparents.Iter()),
+			unsafePrevUserKey,
+		),
+		compact.LimitFuncSplitter(&iter.frontiers, c.findGrandparentLimit),
 	}
 	if splitL0Outputs {
-		outputSplitters = append(outputSplitters, newLimitFuncSplitter(&iter.frontiers, c.findL0Limit))
+		outputSplitters = append(outputSplitters, compact.LimitFuncSplitter(&iter.frontiers, c.findL0Limit))
 	}
-	splitter := &splitterGroup{cmp: c.cmp, splitters: outputSplitters}
+	splitter := compact.CombineSplitters(c.cmp, outputSplitters...)
 
 	// Each outer loop iteration produces one output file. An iteration that
 	// produces a file containing point keys (and optionally range tombstones)
@@ -3465,11 +3153,11 @@ func (d *DB) runCompaction(
 			// point.
 			firstKey = startKey
 		}
-		splitterSuggestion := splitter.onNewOutput(firstKey)
+		splitterSuggestion := splitter.OnNewOutput(firstKey)
 
 		// Each inner loop iteration processes one key from the input iterator.
 		for ; key != nil; key, val = iter.Next() {
-			if split := splitter.shouldSplitBefore(key, tw); split == splitNow {
+			if split := splitter.ShouldSplitBefore(key, tw); split == compact.SplitNow {
 				break
 			}
 

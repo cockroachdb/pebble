@@ -19,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
-	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
 
@@ -361,63 +360,4 @@ func TestCompactionIter(t *testing.T) {
 			runTest(t, formatVersion)
 		})
 	}
-}
-
-func TestFrontiers(t *testing.T) {
-	cmp := testkeys.Comparer.Compare
-	var keySets [][][]byte
-	datadriven.RunTest(t, "testdata/frontiers", func(t *testing.T, td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "init":
-			// Init configures a frontier per line of input. Each line should
-			// contain a sorted whitespace-separated list of keys that the
-			// frontier will use.
-			//
-			// For example, the following input creates two separate monitored
-			// frontiers: one that sets its key successively to 'd', 'e', 'j'
-			// and one that sets its key to 'a', 'p', 'n', 'z':
-			//
-			//    init
-			//    b e j
-			//    a p n z
-
-			keySets = keySets[:0]
-			for _, line := range strings.Split(td.Input, "\n") {
-				keySets = append(keySets, bytes.Fields([]byte(line)))
-			}
-			return ""
-		case "scan":
-			f := &frontiers{cmp: cmp}
-			for _, keys := range keySets {
-				initTestFrontier(f, keys...)
-			}
-			var buf bytes.Buffer
-			for _, kStr := range strings.Fields(td.Input) {
-				k := []byte(kStr)
-				f.Advance(k)
-				fmt.Fprintf(&buf, "%s : { %s }\n", kStr, f.String())
-			}
-			return buf.String()
-		default:
-			return fmt.Sprintf("unrecognized command %q", td.Cmd)
-		}
-	})
-}
-
-// initTestFrontiers adds a new frontier to f that iterates through the provided
-// keys. The keys slice must be sorted.
-func initTestFrontier(f *frontiers, keys ...[]byte) *frontier {
-	ff := &frontier{}
-	var key []byte
-	if len(keys) > 0 {
-		key, keys = keys[0], keys[1:]
-	}
-	reached := func(k []byte) (nextKey []byte) {
-		if len(keys) > 0 {
-			nextKey, keys = keys[0], keys[1:]
-		}
-		return nextKey
-	}
-	ff.Init(f, key, reached)
-	return ff
 }
