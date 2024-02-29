@@ -1283,11 +1283,14 @@ func (g *generator) writerIngestExternalFiles() {
 		id := g.externalObjects.rand(g.rng)
 		b := g.keyManager.objKeyMeta(id).bounds
 
-		objStart := b.smallest
-		objEnd := b.largest
-		if !b.largestExcl {
+		objStart := g.prefix(b.smallest)
+		objEnd := g.prefix(b.largest)
+		if !b.largestExcl || len(objEnd) != len(b.largest) {
 			// Move up the end key a bit by appending a few letters to the prefix.
-			objEnd = append(g.prefix(objEnd), randBytes(g.rng, 1, 3)...)
+			objEnd = append(objEnd, randBytes(g.rng, 1, 3)...)
+		}
+		if g.cmp(objStart, objEnd) >= 0 {
+			panic("bug in generating obj bounds")
 		}
 		// Generate two random keys within the given bounds.
 		// First, generate a start key in the range [objStart, objEnd).
@@ -1295,6 +1298,7 @@ func (g *generator) writerIngestExternalFiles() {
 			Start: objStart,
 			End:   objEnd,
 		})
+		start = g.prefix(start)
 		// Second, generate an end key in the range (start, objEnd]. To do this, we
 		// generate a key in the range [start, objEnd) and if we get `start`, we
 		// remap that to `objEnd`.
@@ -1302,20 +1306,13 @@ func (g *generator) writerIngestExternalFiles() {
 			Start: start,
 			End:   objEnd,
 		})
+		end = g.prefix(end)
 		if g.cmp(start, end) == 0 {
 			end = objEnd
 		}
 
 		var syntheticSuffix sstable.SyntheticSuffix
 		if g.rng.Intn(2) == 0 {
-			// Try to set a synthetic suffix. We can only do so if the bounds don't
-			// have suffixes, so trim them.
-			start = g.prefix(start)
-			end = g.prefix(end)
-			if g.cmp(start, end) == 0 {
-				// Move the end bound up a bit.
-				end = append(g.prefix(end), randBytes(g.rng, 1, 3)...)
-			}
 			syntheticSuffix = g.keyGenerator.SkewedSuffix(0.1)
 		}
 
@@ -1337,10 +1334,6 @@ func (g *generator) writerIngestExternalFiles() {
 	for i := 0; i < len(objs)-1; i++ {
 		if g.cmp(objs[i].bounds.End, objs[i+1].bounds.Start) > 0 {
 			objs[i].bounds.End = objs[i+1].bounds.Start
-			if objs[i].syntheticSuffix != nil {
-				// Bounds can't have suffixes when syntheticSuffix is used.
-				objs[i].bounds.End = g.prefix(objs[i].bounds.End)
-			}
 		}
 	}
 	// Some bounds might be empty now, remove those objects altogether. Note that
