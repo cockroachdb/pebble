@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,7 +33,9 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/redact"
+	"github.com/ghemawat/stream"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -148,6 +151,112 @@ func TestErrorIfNotPristine(t *testing.T) {
 	if _, err := Open("", opts); !errors.Is(err, ErrDBNotPristine) {
 		t.Fatalf("expected db-already-exists error, got %v", err)
 	}
+}
+
+func TestOpen_WALFailover(t *testing.T) {
+	filesystems := map[string]vfs.FS{}
+
+	extractFSAndPath := func(cmdArg datadriven.CmdArg) (fs vfs.FS, dir string) {
+		var ok bool
+		if fs, ok = filesystems[cmdArg.Vals[0]]; !ok {
+			fs = vfs.NewMem()
+			filesystems[cmdArg.Vals[0]] = fs
+		}
+		dir = cmdArg.Vals[1]
+		return fs, dir
+	}
+
+	getFSAndPath := func(td *datadriven.TestData, key string) (fs vfs.FS, dir string, ok bool) {
+		cmdArg, ok := td.Arg(key)
+		if !ok {
+			return nil, "", false
+		}
+		fs, dir = extractFSAndPath(cmdArg)
+		return fs, dir, ok
+	}
+
+	datadriven.RunTest(t, "testdata/open_wal_failover", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "grep":
+			fs, path, ok := getFSAndPath(td, "path")
+			if !ok {
+				return "no `dir` provided"
+			}
+			var pattern string
+			td.ScanArgs(t, "pattern", &pattern)
+			f, err := fs.Open(path)
+			if err != nil {
+				return err.Error()
+			}
+			var buf bytes.Buffer
+			if err := stream.ForEach(
+				stream.Sequence(
+					stream.ReadLines(f),
+					stream.Grep(pattern),
+				), func(s string) {
+					fmt.Fprintln(&buf, s)
+				}); err != nil {
+				return err.Error()
+			}
+			require.NoError(t, f.Close())
+			return buf.String()
+		case "list":
+			fs, dir, ok := getFSAndPath(td, "path")
+			if !ok {
+				return "no `path` provided"
+			}
+			ls, err := fs.List(dir)
+			if err != nil {
+				return err.Error()
+			}
+			slices.Sort(ls)
+			var buf bytes.Buffer
+			for _, f := range ls {
+				fmt.Fprintf(&buf, "  %s\n", f)
+			}
+			return buf.String()
+		case "open":
+			var dataDir string
+			o := &Options{}
+			for _, cmdArg := range td.CmdArgs {
+				switch cmdArg.Key {
+				case "path":
+					o.FS, dataDir = extractFSAndPath(cmdArg)
+				case "secondary":
+					fs, dir := extractFSAndPath(cmdArg)
+					o.WALFailover = &WALFailoverOptions{
+						Secondary: wal.Dir{FS: fs, Dirname: dir},
+					}
+				case "wal-recovery-dir":
+					fs, dir := extractFSAndPath(cmdArg)
+					o.WALRecoveryDirs = append(o.WALRecoveryDirs, wal.Dir{FS: fs, Dirname: dir})
+				default:
+					return fmt.Sprintf("unrecognized cmdArg %q", cmdArg.Key)
+				}
+			}
+			if o.FS == nil {
+				return "no path"
+			}
+			d, err := Open(dataDir, o)
+			if err != nil {
+				return err.Error()
+			}
+			require.NoError(t, d.Close())
+			return "ok"
+		case "stat":
+			fs, path, ok := getFSAndPath(td, "path")
+			if !ok {
+				return "no `path` provided"
+			}
+			finfo, err := fs.Stat(path)
+			if err != nil {
+				return err.Error()
+			}
+			return fmt.Sprintf("IsDir: %t", finfo.IsDir())
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
 }
 
 func TestOpenAlreadyLocked(t *testing.T) {
