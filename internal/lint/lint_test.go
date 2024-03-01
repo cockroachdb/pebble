@@ -242,7 +242,7 @@ func TestLint(t *testing.T) {
 	t.Run("TestCrlfmt", func(t *testing.T) {
 		t.Parallel()
 
-		args := []string{"run", crlfmt, "-fast", "-tab", "2", "."}
+		args := []string{"run", crlfmt, "-fast", "-tab", "2", "-ignore", `\.gen\.go`, "."}
 		var buf bytes.Buffer
 		if err := stream.ForEach(
 			stream.Sequence(
