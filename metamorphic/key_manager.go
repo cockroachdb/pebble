@@ -265,15 +265,15 @@ func (k *keyManager) objKeyMeta(o objID) *objKeyMeta {
 	return m
 }
 
-// sortedKeysForObj returns all the values in objKeyMeta(o).keys, in sorted
+// SortedKeysForObj returns all the entries in objKeyMeta(o).keys, in sorted
 // order.
-func (k *keyManager) sortedKeysForObj(o objID) []*keyMeta {
+func (k *keyManager) SortedKeysForObj(o objID) []keyMeta {
 	okm := k.objKeyMeta(o)
-	res := make([]*keyMeta, 0, len(okm.keys))
+	res := make([]keyMeta, 0, len(okm.keys))
 	for _, m := range okm.keys {
-		res = append(res, m)
+		res = append(res, *m)
 	}
-	slices.SortFunc(res, func(a, b *keyMeta) int {
+	slices.SortFunc(res, func(a, b keyMeta) int {
 		cmp := k.comparer.Compare(a.key, b.key)
 		if cmp == 0 {
 			panic(fmt.Sprintf("distinct keys %q and %q compared as equal", a.key, b.key))
@@ -395,7 +395,7 @@ func (k *keyManager) doObjectBoundsOverlap(objIDs []objID) bool {
 func (k *keyManager) checkForSingleDelConflicts(srcObj, dstObj objID, srcCollapsed bool) [][]byte {
 	dstKeys := k.objKeyMeta(dstObj)
 	var conflicts [][]byte
-	for _, src := range k.sortedKeysForObj(srcObj) {
+	for _, src := range k.SortedKeysForObj(srcObj) {
 		// Single delete generation logic already ensures that both srcObj and
 		// dstObj's single deletes are deterministic within the context of their
 		// existing writes. However, applying srcObj on top of dstObj may
