@@ -1007,7 +1007,7 @@ func (o *ingestExternalFilesOp) syncObjs() objIDSlice {
 func (o *ingestExternalFilesOp) String() string {
 	strs := make([]string, len(o.objs))
 	for i, obj := range o.objs {
-		strs[i] = fmt.Sprintf("%s, %q, %q, %q", obj.externalObjID, obj.bounds.Start, obj.bounds.End, obj.syntheticSuffix)
+		strs[i] = fmt.Sprintf("%s, %q, %q, %q /* syntheticSuffix */", obj.externalObjID, obj.bounds.Start, obj.bounds.End, obj.syntheticSuffix)
 	}
 	return fmt.Sprintf("%s.IngestExternalFiles(%s)", o.dbID, strings.Join(strs, ", "))
 }
