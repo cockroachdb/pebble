@@ -1041,9 +1041,18 @@ func (g *generator) newExternalObj() {
 	if len(g.liveBatches) == 0 {
 		return
 	}
-	batchID := g.liveBatches.rand(g.rng)
-	if g.keyManager.objKeyMeta(batchID).bounds.IsUnset() {
-		return
+	var batchID objID
+	// Try to find a suitable batch.
+	for i := 0; ; i++ {
+		if i == 10 {
+			return
+		}
+		batchID = g.liveBatches.rand(g.rng)
+		okm := g.keyManager.objKeyMeta(batchID)
+		// #3287: IngestExternalFiles currently doesn't support range keys.
+		if !okm.bounds.IsUnset() && !okm.hasRangeKeys {
+			break
+		}
 	}
 	g.removeBatchFromGenerator(batchID)
 	objID := makeObjID(externalObjTag, g.init.externalObjSlots)
