@@ -177,25 +177,24 @@ func TestOpen_WALFailover(t *testing.T) {
 
 	datadriven.RunTest(t, "testdata/open_wal_failover", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
-		case "grep":
+		case "grep-between":
 			fs, path, ok := getFSAndPath(td, "path")
 			if !ok {
 				return "no `dir` provided"
 			}
-			var pattern string
-			td.ScanArgs(t, "pattern", &pattern)
+			var start, end string
+			td.ScanArgs(t, "start", &start)
+			td.ScanArgs(t, "end", &end)
 			f, err := fs.Open(path)
 			if err != nil {
 				return err.Error()
 			}
 			var buf bytes.Buffer
-			if err := stream.ForEach(
-				stream.Sequence(
-					stream.ReadLines(f),
-					stream.Grep(pattern),
-				), func(s string) {
-					fmt.Fprintln(&buf, s)
-				}); err != nil {
+			if err := stream.Run(stream.Sequence(
+				stream.ReadLines(f),
+				streamFilterBetweenGrep(start, end),
+				stream.WriteLines(&buf),
+			)); err != nil {
 				return err.Error()
 			}
 			require.NoError(t, f.Close())
