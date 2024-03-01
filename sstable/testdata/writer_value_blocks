@@ -12,19 +12,19 @@ value-blocks: num-values 1, num-blocks: 1, size: 18
 
 scan-raw
 ----
-a@2#1,1:in-place a2, same-pre false
-b@5#7,1:in-place b5, same-pre false
-b@4#3,0:
-b@3#2,1:in-place bat3, same-pre false
-b@2#1,1:value-handle len 5 block 0 offset 0, att 5, same-pre true
+a@2#1,SET:in-place a2, same-pre false
+b@5#7,SET:in-place b5, same-pre false
+b@4#3,DEL:
+b@3#2,SET:in-place bat3, same-pre false
+b@2#1,SET:value-handle len 5 block 0 offset 0, att 5, same-pre true
 
 scan
 ----
-a@2#1,1:a2
-b@5#7,1:b5
-b@4#3,0:
-b@3#2,1:bat3
-b@2#1,1:vbat2
+a@2#1,SET:a2
+b@5#7,SET:b5
+b@4#3,DEL:
+b@3#2,SET:bat3
+b@2#1,SET:vbat2
 
 scan-cloned-lazy-values
 ----
@@ -46,19 +46,19 @@ value-blocks: num-values 0, num-blocks: 0, size: 0
 
 scan-raw
 ----
-a@2#1,1:in-place a2, same-pre false
-b@5#7,1:in-place b5, same-pre false
-b@4#3,0:
-b@3#2,1:in-place bat3, same-pre false
-b@2#1,1:in-place vbat2, same-pre true
+a@2#1,SET:in-place a2, same-pre false
+b@5#7,SET:in-place b5, same-pre false
+b@4#3,DEL:
+b@3#2,SET:in-place bat3, same-pre false
+b@2#1,SET:in-place vbat2, same-pre true
 
 scan
 ----
-a@2#1,1:a2
-b@5#7,1:b5
-b@4#3,0:
-b@3#2,1:bat3
-b@2#1,1:vbat2
+a@2#1,SET:a2
+b@5#7,SET:b5
+b@4#3,DEL:
+b@3#2,SET:bat3
+b@2#1,SET:vbat2
 
 # Size of value index is 3 bytes plus 5 + 5 = 10 bytes of trailer of the value
 # block and value index block. So size 33 - 13 = 20 is the total size of the
@@ -77,25 +77,25 @@ value-blocks: num-values 4, num-blocks: 1, size: 33
 
 scan-raw
 ----
-blue@10#20,1:in-place blue10, same-pre false
-blue@8#18,1:value-handle len 5 block 0 offset 0, att 5, same-pre true
-blue@8#16,1:value-handle len 6 block 0 offset 5, att 6, same-pre true
-blue@6#14,0:
-blue@4#12,1:in-place blue4, same-pre false
-blue@3#10,1:value-handle len 5 block 0 offset 11, att 5, same-pre true
-red@9#18,1:in-place red9, same-pre false
-red@7#8,1:value-handle len 4 block 0 offset 16, att 4, same-pre true
+blue@10#20,SET:in-place blue10, same-pre false
+blue@8#18,SET:value-handle len 5 block 0 offset 0, att 5, same-pre true
+blue@8#16,SET:value-handle len 6 block 0 offset 5, att 6, same-pre true
+blue@6#14,DEL:
+blue@4#12,SET:in-place blue4, same-pre false
+blue@3#10,SET:value-handle len 5 block 0 offset 11, att 5, same-pre true
+red@9#18,SET:in-place red9, same-pre false
+red@7#8,SET:value-handle len 4 block 0 offset 16, att 4, same-pre true
 
 scan
 ----
-blue@10#20,1:blue10
-blue@8#18,1:blue8
-blue@8#16,1:blue8s
-blue@6#14,0:
-blue@4#12,1:blue4
-blue@3#10,1:blue3
-red@9#18,1:red9
-red@7#8,1:red7
+blue@10#20,SET:blue10
+blue@8#18,SET:blue8
+blue@8#16,SET:blue8s
+blue@6#14,DEL:
+blue@4#12,SET:blue4
+blue@3#10,SET:blue3
+red@9#18,SET:red9
+red@7#8,SET:red7
 
 scan-cloned-lazy-values
 ----
@@ -123,17 +123,17 @@ value-blocks: num-values 3, num-blocks: 2, size: 49
 
 scan-raw
 ----
-blue@10#20,1:in-place blue10, same-pre false
-blue@8#18,1:value-handle len 5 block 0 offset 0, att 5, same-pre true
-blue@8#16,1:value-handle len 6 block 0 offset 5, att 6, same-pre true
-blue@6#16,1:value-handle len 15 block 1 offset 0, att 7, same-pre true
+blue@10#20,SET:in-place blue10, same-pre false
+blue@8#18,SET:value-handle len 5 block 0 offset 0, att 5, same-pre true
+blue@8#16,SET:value-handle len 6 block 0 offset 5, att 6, same-pre true
+blue@6#16,SET:value-handle len 15 block 1 offset 0, att 7, same-pre true
 
 scan
 ----
-blue@10#20,1:blue10
-blue@8#18,1:blue8
-blue@8#16,1:blue8s
-blue@6#16,1:blue6isverylong
+blue@10#20,SET:blue10
+blue@8#18,SET:blue8
+blue@8#16,SET:blue8s
+blue@6#16,SET:blue6isverylong
 
 scan-cloned-lazy-values
 ----
@@ -146,22 +146,22 @@ layout
 ----
          0  data (33)
          0    record (25 = 3 [0] + 15 + 7) [restart]
-                blue@10#20,1:blue10
+                blue@10#20,SET:blue10
         25    [restart 0]
         33    [trailer compression=none checksum=0x5fb0d551]
         38  data (29)
         38    record (21 = 3 [0] + 14 + 4) [restart]
-                blue@8#18,1:value handle {valueLen:5 blockNum:0 offsetInBlock:0}
+                blue@8#18,SET:value handle {valueLen:5 blockNum:0 offsetInBlock:0}
         59    [restart 38]
         67    [trailer compression=none checksum=0x628e4a10]
         72  data (29)
         72    record (21 = 3 [0] + 14 + 4) [restart]
-                blue@8#16,1:value handle {valueLen:6 blockNum:0 offsetInBlock:5}
+                blue@8#16,SET:value handle {valueLen:6 blockNum:0 offsetInBlock:5}
         93    [restart 72]
        101    [trailer compression=none checksum=0x4e65b9b6]
        106  data (29)
        106    record (21 = 3 [0] + 14 + 4) [restart]
-                blue@6#16,1:value handle {valueLen:15 blockNum:1 offsetInBlock:0}
+                blue@6#16,SET:value handle {valueLen:15 blockNum:1 offsetInBlock:0}
        127    [restart 106]
        135    [trailer compression=none checksum=0x9f60e629]
        140  index (28)
@@ -247,21 +247,21 @@ value-blocks: num-values 2, num-blocks: 1, size: 23
 
 scan-raw
 ----
-blue@10#20,1:in-place blue10, same-pre false
-blue@8#18,1:value-handle len 5 block 0 offset 0, att 5, same-pre true
-c@10#16,1:in-place c10, same-pre false
-c@8#14,1:in-place c8, same-pre false
-e@20#25,1:in-place eat20, same-pre false
-e@18#23,1:value-handle len 5 block 0 offset 5, att 5, same-pre true
+blue@10#20,SET:in-place blue10, same-pre false
+blue@8#18,SET:value-handle len 5 block 0 offset 0, att 5, same-pre true
+c@10#16,SET:in-place c10, same-pre false
+c@8#14,SET:in-place c8, same-pre false
+e@20#25,SET:in-place eat20, same-pre false
+e@18#23,SET:value-handle len 5 block 0 offset 5, att 5, same-pre true
 
 scan
 ----
-blue@10#20,1:blue10
-blue@8#18,1:blue8
-c@10#16,1:c10
-c@8#14,1:c8
-e@20#25,1:eat20
-e@18#23,1:eat18
+blue@10#20,SET:blue10
+blue@8#18,SET:blue8
+c@10#16,SET:c10
+c@8#14,SET:c8
+e@20#25,SET:eat20
+e@18#23,SET:eat18
 
 scan-cloned-lazy-values
 ----
@@ -283,29 +283,29 @@ value-blocks: num-values 0, num-blocks: 0, size: 0
 
 scan-raw
 ----
-b@5#7,1:in-place b5, same-pre false
-b@3#2,1:in-place , same-pre true
-c@6#7,0:
-c@5#6,0:
+b@5#7,SET:in-place b5, same-pre false
+b@3#2,SET:in-place , same-pre true
+c@6#7,DEL:
+c@5#6,DEL:
 
 scan
 ----
-b@5#7,1:b5
-b@3#2,1:
-c@6#7,0:
-c@5#6,0:
+b@5#7,SET:b5
+b@3#2,SET:
+c@6#7,DEL:
+c@5#6,DEL:
 
 layout
 ----
          0  data (66)
          0    record (17 = 3 [0] + 11 + 3) [restart]
-                b@5#7,1:b5
+                b@5#7,SET:b5
         17    record (14 = 3 [1] + 10 + 1)
-                b@3#2,1:
+                b@3#2,SET:
         31    record (14 = 3 [0] + 11 + 0)
-                c@6#7,0:
+                c@6#7,DEL:
         45    record (13 = 3 [1] + 10 + 0)
-                c@5#6,0:
+                c@5#6,DEL:
         58    [restart 0]
         66    [trailer compression=none checksum=0x4e91250f]
         71  index (22)

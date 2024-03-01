@@ -14,9 +14,9 @@ next
 next
 next
 ----
-a#5,1:foo
-b#6,1:foo
-c#7,1:bar
+a#5,SET:foo
+b#6,SET:foo
+c#7,SET:bar
 .
 .
 
@@ -37,9 +37,9 @@ seek-ge b
 next
 next
 ----
-b#72057594037927935,15:
-b#6,1:foo
-c#7,1:bar
+b#72057594037927935,RANGEDEL:
+b#6,SET:foo
+c#7,SET:bar
 
 # More rangedel elision tests
 
@@ -60,8 +60,8 @@ next
 next
 next
 ----
-a#72057594037927935,15:
-a#5,1:foo
-b#72057594037927935,15:
-c#7,1:bar
+a#72057594037927935,RANGEDEL:
+a#5,SET:foo
+b#72057594037927935,RANGEDEL:
+c#7,SET:bar
 .

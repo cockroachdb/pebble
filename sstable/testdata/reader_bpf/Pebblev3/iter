@@ -95,10 +95,10 @@ next
 .
 .
 | *sstable.twoLevelIterator:
-|  topLevelIndex.Key() = "x#72057594037927935,17"
+|  topLevelIndex.Key() = "x#72057594037927935,SEPARATOR"
 |  topLevelIndex.InPlaceValue() = (Offset: 193, Length: 26, Props: 00020801)
 |  topLevelIndex.isDataInvalidated()=false
-|  index.Key() = "x#72057594037927935,17"
+|  index.Key() = "x#72057594037927935,SEPARATOR"
 |  index.InPlaceValue() = (Offset: 62, Length: 29, Props: 00020801)
 |  index.isDataInvalidated()=false
 |  data.isDataInvalidated()=false
@@ -108,7 +108,7 @@ next
 |  exhaustedBounds = 1
 .
 | *sstable.twoLevelIterator:
-|  topLevelIndex.Key() = "wc#72057594037927935,17"
+|  topLevelIndex.Key() = "wc#72057594037927935,SEPARATOR"
 |  topLevelIndex.InPlaceValue() = (Offset: 161, Length: 27, Props: 00020201)
 |  topLevelIndex.isDataInvalidated()=false
 |  index iter invalid
@@ -120,7 +120,7 @@ next
 |  exhaustedBounds = 1
 .
 | *sstable.twoLevelIterator:
-|  topLevelIndex.Key() = "wc#72057594037927935,17"
+|  topLevelIndex.Key() = "wc#72057594037927935,SEPARATOR"
 |  topLevelIndex.InPlaceValue() = (Offset: 161, Length: 27, Props: 00020201)
 |  topLevelIndex.isDataInvalidated()=false
 |  index iter invalid
@@ -132,10 +132,10 @@ next
 |  exhaustedBounds = 1
 <wz@8:8>
 | *sstable.twoLevelIterator:
-|  topLevelIndex.Key() = "x#72057594037927935,17"
+|  topLevelIndex.Key() = "x#72057594037927935,SEPARATOR"
 |  topLevelIndex.InPlaceValue() = (Offset: 193, Length: 26, Props: 00020801)
 |  topLevelIndex.isDataInvalidated()=false
-|  index.Key() = "x#72057594037927935,17"
+|  index.Key() = "x#72057594037927935,SEPARATOR"
 |  index.InPlaceValue() = (Offset: 62, Length: 29, Props: 00020801)
 |  index.isDataInvalidated()=false
 |  data.isDataInvalidated()=false

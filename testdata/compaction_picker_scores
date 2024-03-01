@@ -151,8 +151,8 @@ range-deletions-bytes-estimate: 0
 maybe-compact
 ----
 1 compactions in progress:
-5: 000005:a:#10,0-e:#10,0
-6: 000004:a#1,1-e#1,1
+5: 000005:a:#10,DEL-e:#10,DEL
+6: 000004:a#1,SET-e#1,SET
 
 scores
 ----
@@ -223,8 +223,8 @@ lsm verbose
 maybe-compact
 ----
 1 compactions in progress:
-5: 000004:aa#2,1-dd#2,1
-6: 000006:a#1,1-d#1,1
+5: 000004:aa#2,SET-dd#2,SET
+6: 000006:a#1,SET-d#1,SET
 
 # The scores and sizes should be stable between when the version edit has been
 # applied but the compaction has not completed, and when the compaction is

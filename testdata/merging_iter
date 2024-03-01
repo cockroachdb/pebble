@@ -35,10 +35,10 @@ stats
 reset-stats
 stats
 ----
-a#30,1:30
-c#27,1:27
-e#10,1:10
-g#20,1:20
+a#30,SET:30
+c#27,SET:27
+e#10,SET:10
+g#20,SET:20
 .
 {BlockBytes:116 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:5 ValueBytes:8 PointCount:5 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
@@ -49,8 +49,8 @@ seek-ge d
 next
 next
 ----
-e#10,1:10
-g#20,1:20
+e#10,SET:10
+g#20,SET:20
 .
 
 iter probe-rangedels=(000000,(Log "#  000000.rangeDelIter.")) probe-rangedels=(000001,(If (Equal SeekKey (Bytes "g")) ErrInjected noop),(Log "#  000001.rangeDelIter."))
@@ -62,7 +62,7 @@ next
 #  000000.rangeDelIter.opSpanSeekGE("e") = nil
 #  000000.rangeDelIter.opSpanClose() = nil
 #  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
-e#10,1:10
+e#10,SET:10
 #  000001.rangeDelIter.opSpanSeekGE("g") = nil <err="injected error">
 err=injected error
 
@@ -74,10 +74,10 @@ prev
 prev
 prev
 ----
-g#20,1:20
-e#10,1:10
-c#27,1:27
-a#30,1:30
+g#20,SET:20
+e#10,SET:10
+c#27,SET:27
+a#30,SET:30
 
 # seekLT() should not allow the rangedel to act on points in the lower sstable that are after it.
 iter
@@ -86,10 +86,10 @@ prev
 prev
 prev
 ----
-g#20,1:20
-e#10,1:10
-c#27,1:27
-a#30,1:30
+g#20,SET:20
+e#10,SET:10
+c#27,SET:27
+a#30,SET:30
 
 define
 L
@@ -110,17 +110,17 @@ next
 next
 next
 ----
-a#15,1:15
-c#13,1:13
-f#16,1:16
-g#15,1:15
+a#15,SET:15
+c#13,SET:13
+f#16,SET:16
+g#15,SET:15
 
 iter
 seek-ge d
 next
 ----
-f#16,1:16
-g#15,1:15
+f#16,SET:16
+g#15,SET:15
 
 iter
 last
@@ -128,10 +128,10 @@ prev
 prev
 prev
 ----
-g#15,1:15
-f#16,1:16
-c#13,1:13
-a#15,1:15
+g#15,SET:15
+f#16,SET:16
+c#13,SET:13
+a#15,SET:15
 
 # The rangedel should not delete any points in any sstable.
 
@@ -156,10 +156,10 @@ next
 next
 next
 ----
-a#10,1:10
-b#12,1:12
-c#30,1:30
-d#27,1:27
+a#10,SET:10
+b#12,SET:12
+c#30,SET:30
+d#27,SET:27
 
 # seekGE() should not allow the rangedel to act on points in the lower sstable that are before it.
 iter
@@ -168,10 +168,10 @@ next
 next
 next
 ----
-a#10,1:10
-b#12,1:12
-c#30,1:30
-d#27,1:27
+a#10,SET:10
+b#12,SET:12
+c#30,SET:30
+d#27,SET:27
 
 # isPrevEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
 # that are before it.
@@ -181,10 +181,10 @@ prev
 prev
 prev
 ----
-d#27,1:27
-c#30,1:30
-b#12,1:12
-a#10,1:10
+d#27,SET:27
+c#30,SET:30
+b#12,SET:12
+a#10,SET:10
 
 # seekLT() should not allow the rangedel to act on points in the lower sstable that are before it.
 iter
@@ -193,10 +193,10 @@ prev
 prev
 prev
 ----
-d#27,1:27
-c#30,1:30
-b#12,1:12
-a#10,1:10
+d#27,SET:27
+c#30,SET:30
+b#12,SET:12
+a#10,SET:10
 
 define
 L
@@ -217,17 +217,17 @@ prev
 prev
 prev
 ----
-g#16,1:16
-f#13,1:13
-c#15,1:15
-b#14,1:14
+g#16,SET:16
+f#13,SET:13
+c#15,SET:15
+b#14,SET:14
 
 iter
 seek-lt f
 prev
 ----
-c#15,1:15
-b#14,1:14
+c#15,SET:15
+b#14,SET:14
 
 # The rangedel should not delete anything.
 define
@@ -251,25 +251,25 @@ seek-lt f
 prev
 prev
 ----
-e#10,1:10
-c#27,1:27
-a#30,1:30
+e#10,SET:10
+c#27,SET:27
+a#30,SET:30
 
 iter
 seek-ge e
 next
 ----
-e#10,1:10
-g#20,1:20
+e#10,SET:10
+g#20,SET:20
 
 iter
 first
 seek-ge e
 next
 ----
-a#30,1:30
-e#10,1:10
-g#20,1:20
+a#30,SET:30
+e#10,SET:10
+g#20,SET:20
 
 iter
 first
@@ -278,10 +278,10 @@ next
 next
 next
 ----
-a#30,1:30
-c#27,1:27
-e#10,1:10
-g#20,1:20
+a#30,SET:30
+c#27,SET:27
+e#10,SET:10
+g#20,SET:20
 .
 
 # Verify that switching directions respects lower/upper bound.
@@ -304,10 +304,10 @@ prev
 prev
 next
 ----
-c#7,1:7
+c#7,SET:7
 .
 .
-c#7,1:7
+c#7,SET:7
 
 # Verify the upper bound is respected in switchToMaxHeap() when the
 # heap is empty.
@@ -319,10 +319,10 @@ next
 next
 prev
 ----
-b#8,1:8
+b#8,SET:8
 .
 .
-b#8,1:8
+b#8,SET:8
 
 # Verify the lower bound is respected in switchToMinHeap() when the
 # heap is not empty.
@@ -348,11 +348,11 @@ prev
 next
 next
 ----
-d#6,1:6
+d#6,SET:6
 .
 .
-d#6,1:6
-d#4,1:4
+d#6,SET:6
+d#4,SET:4
 
 # Test the above but an error is encountered when Prev-ing to establish the min
 # heap. The error should be propagated up.
@@ -361,9 +361,9 @@ set-bounds lower=d
 seek-ge d
 prev
 ----
-# L1.000011.SeekGE("d") = (d#6,1,"6")
-# L2.000012.SeekGE("d") = (d#4,1,"4")
-d#6,1:6
+# L1.000011.SeekGE("d") = (d#6,SET,"6")
+# L2.000012.SeekGE("d") = (d#4,SET,"4")
+d#6,SET:6
 # L2.000012.Prev() = nil
 # L1.000011.Prev() = nil <err="injected error">
 err=injected error
@@ -375,7 +375,7 @@ seek-prefix-ge d
 prev
 next
 ----
-d#6,1:6
+d#6,SET:6
 err=pebble: unsupported reverse prefix iteration
 err=pebble: unsupported reverse prefix iteration
 
@@ -403,11 +403,11 @@ next
 prev
 prev
 ----
-c#3,1:3
+c#3,SET:3
 .
 .
-c#3,1:3
-c#9,1:9
+c#3,SET:3
+c#9,SET:9
 
 # Test the above scenario, but an error is encountered when Next-ing to switch
 # to a max heap. The error should be propagated to the caller.
@@ -416,9 +416,9 @@ set-bounds upper=d
 seek-lt d
 next
 ----
-# L1.000013.SeekLT("d") = (c#9,1,"9")
-# L2.000014.SeekLT("d") = (c#3,1,"3")
-c#3,1:3
+# L1.000013.SeekLT("d") = (c#9,SET,"9")
+# L2.000014.SeekLT("d") = (c#3,SET,"3")
+c#3,SET:3
 # L1.000013.Next() = nil <err="injected error">
 err=injected error
 
@@ -456,12 +456,12 @@ next
 next
 next
 ----
-a#2,1:2
-a#0,1:1
-b#0,1:1
-e#0,1:1
-f#3,1:3
-f#0,1:1
+a#2,SET:2
+a#0,SET:1
+b#0,SET:1
+e#0,SET:1
+f#3,SET:3
+f#0,SET:1
 .
 .
 
@@ -475,12 +475,12 @@ prev
 prev
 prev
 ----
-f#0,1:1
-f#3,1:3
-e#0,1:1
-b#0,1:1
-a#0,1:1
-a#2,1:2
+f#0,SET:1
+f#3,SET:3
+e#0,SET:1
+b#0,SET:1
+a#0,SET:1
+a#2,SET:2
 .
 .
 
@@ -511,7 +511,7 @@ seek-ge krgywquurww
 prev
 ----
 .
-koujdlp#37,2:37
+koujdlp#37,MERGE:37
 
 # Verify the lower bound is respected when switching directions at a RANGEDEL
 # boundary.
@@ -539,7 +539,7 @@ set-bounds lower=cz upper=jd
 seek-lt jd
 next
 ----
-iwoeionch#792,1:792
+iwoeionch#792,SET:792
 .
 
 # Test the above case, but injecting an error when we re-seek the iterator in
@@ -550,10 +550,10 @@ set-bounds lower=cz upper=jd
 seek-lt jd
 next
 ----
-#  000022.SeekLT("jd") = (iwoeionch#792,1,"792")
+#  000022.SeekLT("jd") = (iwoeionch#792,SET,"792")
 #  000023.SeekLT("c") = nil
 #  000024.SeekLT("c") = nil
-iwoeionch#792,1:792
+iwoeionch#792,SET:792
 #  000023.SeekGE("cz") = nil <err="injected error">
 err=injected error
 
@@ -572,8 +572,8 @@ first
 next
 next
 ----
-a#10,1:a10
-d#10,1:d10
+a#10,SET:a10
+d#10,SET:d10
 .
 
 # The seek to c finds d since iteration cannot stop at c as it matches the
@@ -588,11 +588,11 @@ seek-prefix-ge b true
 seek-prefix-ge c true
 seek-prefix-ge d true
 ----
-a#10,1:a10
+a#10,SET:a10
 .
 .
-d#10,1:d10
-d#10,1:d10
+d#10,SET:d10
+d#10,SET:d10
 
 iter
 seek-prefix-ge a false
@@ -601,10 +601,10 @@ seek-prefix-ge b false
 seek-prefix-ge d true
 next
 ----
-a#10,1:a10
+a#10,SET:a10
 .
 .
-d#10,1:d10
+d#10,SET:d10
 .
 
 # Create a sstable which has a range tombstone that covers 4 points in the
@@ -630,10 +630,10 @@ stats
 next
 stats
 ----
-a#30,1:30
+a#30,SET:30
 {BlockBytes:97 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:1 ValueBytes:2 PointCount:1 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-f#21,1:21
+f#21,SET:21
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:5 ValueBytes:10 PointCount:5 PointsCoveredByRangeTombstones:4 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 .
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:6 ValueBytes:10 PointCount:6 PointsCoveredByRangeTombstones:4 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
@@ -712,19 +712,19 @@ seek-ge boo
 seek-lt coo
 seek-prefix-ge b
 ----
-# L1.000028.First() = (a#30,1,"30")
+# L1.000028.First() = (a#30,SET,"30")
 # L2.000029.First() = nil <err="injected error">
 err=injected error
-# L1.000028.Last() = (c#27,1,"27")
+# L1.000028.Last() = (c#27,SET,"27")
 # L2.000029.Last() = nil <err="injected error">
 err=injected error
-# L1.000028.SeekGE("boo") = (c#27,1,"27")
+# L1.000028.SeekGE("boo") = (c#27,SET,"27")
 # L2.000029.SeekGE("boo") = nil <err="injected error">
 err=injected error
-# L1.000028.SeekLT("coo") = (c#27,1,"27")
+# L1.000028.SeekLT("coo") = (c#27,SET,"27")
 # L2.000029.Close() = nil <err="injected error">
 err=injected error
-# L1.000028.SeekPrefixGE("b") = (c#27,1,"27")
+# L1.000028.SeekPrefixGE("b") = (c#27,SET,"27")
 # L2.000029.SeekPrefixGE("b") = nil <err="injected error">
 err=injected error
 
@@ -740,24 +740,24 @@ prev
 prev
 prev
 ----
-# L1.000028.First() = (a#30,1,"30")
-# L2.000029.First() = (e#10,1,"10")
-a#30,1:30
+# L1.000028.First() = (a#30,SET,"30")
+# L2.000029.First() = (e#10,SET,"10")
+a#30,SET:30
 # L1.000028.Next() = nil <err="injected error">
 err=injected error
-# L1.000028.First() = (a#30,1,"30")
-# L2.000029.First() = (e#10,1,"10")
-a#30,1:30
+# L1.000028.First() = (a#30,SET,"30")
+# L2.000029.First() = (e#10,SET,"10")
+a#30,SET:30
 # L1.000028.NextPrefix("a\x00") = nil <err="injected error">
 err=injected error
-# L1.000028.Last() = (c#27,1,"27")
-# L2.000029.Last() = (g#20,1,"20")
-g#20,1:20
-# L2.000029.Prev() = (e#10,1,"10")
-e#10,1:10
+# L1.000028.Last() = (c#27,SET,"27")
+# L2.000029.Last() = (g#20,SET,"20")
+g#20,SET:20
+# L2.000029.Prev() = (e#10,SET,"10")
+e#10,SET:10
 # L2.000029.Prev() = nil
 # L2.000029.Close() = nil
-c#27,1:27
+c#27,SET:27
 # L1.000028.Prev() = nil <err="injected error">
 err=injected error
 
@@ -775,29 +775,29 @@ next-prefix
 last
 prev
 ----
-# L1.000028.First() = (a#30,1,"30")
-# L2.000029.First() = (e#10,1,"10")
-a#30,1:30
-# L1.000028.Next() = (c#27,1,"27")
-c#27,1:27
+# L1.000028.First() = (a#30,SET,"30")
+# L2.000029.First() = (e#10,SET,"10")
+a#30,SET:30
+# L1.000028.Next() = (c#27,SET,"27")
+c#27,SET:27
 # L1.000028.Next() = nil
 # L1.000028.Close() = nil
-e#10,1:10
+e#10,SET:10
 # L2.000029.Next() = nil <err="injected error">
 err=injected error
-# L1.000028.First() = (a#30,1,"30")
-# L2.000029.First() = (e#10,1,"10")
-a#30,1:30
-# L1.000028.NextPrefix("a\x00") = (c#27,1,"27")
-c#27,1:27
+# L1.000028.First() = (a#30,SET,"30")
+# L2.000029.First() = (e#10,SET,"10")
+a#30,SET:30
+# L1.000028.NextPrefix("a\x00") = (c#27,SET,"27")
+c#27,SET:27
 # L1.000028.NextPrefix("c\x00") = nil
 # L1.000028.Close() = nil
-e#10,1:10
+e#10,SET:10
 # L2.000029.NextPrefix("e\x00") = nil <err="injected error">
 err=injected error
-# L1.000028.Last() = (c#27,1,"27")
-# L2.000029.Last() = (g#20,1,"20")
-g#20,1:20
+# L1.000028.Last() = (c#27,SET,"27")
+# L2.000029.Last() = (g#20,SET,"20")
+g#20,SET:20
 # L2.000029.Prev() = nil <err="injected error">
 err=injected error
 
@@ -819,19 +819,19 @@ seek-ge boo
 seek-lt coo
 seek-prefix-ge b
 ----
-#  iter.First() = (a#30,1,"30")
+#  iter.First() = (a#30,SET,"30")
 #  rangedelIter.opSpanSeekGE("a") = nil <err="injected error">
 err=injected error
-#  iter.Last() = (f#21,1,"21")
+#  iter.Last() = (f#21,SET,"21")
 #  rangedelIter.opSpanSeekGE("f") = nil <err="injected error">
 err=injected error
-#  iter.SeekGE("boo") = (c#18,1,"18")
+#  iter.SeekGE("boo") = (c#18,SET,"18")
 #  rangedelIter.opSpanSeekGE("boo") = nil <err="injected error">
 err=injected error
-#  iter.SeekLT("coo") = (c#18,1,"18")
+#  iter.SeekLT("coo") = (c#18,SET,"18")
 #  rangedelIter.opSpanSeekGE("coo") = nil <err="injected error">
 err=injected error
-#  iter.SeekPrefixGE("b") = (b#19,1,"19")
+#  iter.SeekPrefixGE("b") = (b#19,SET,"19")
 #  rangedelIter.opSpanSeekGE("b") = nil <err="injected error">
 err=injected error
 
@@ -854,10 +854,10 @@ first
 next
 next
 ----
-#  000031.First() = (a#10,1,"a10")
-a#10,1:a10
-#  000031.Next() = (c#10,1,"c10")
-c#10,1:c10
+#  000031.First() = (a#10,SET,"a10")
+a#10,SET:a10
+#  000031.Next() = (c#10,SET,"c10")
+c#10,SET:c10
 #  000031.Next() = nil
 #  000031.Close() = nil
 #  000032.First() = nil <err="injected error">
@@ -868,10 +868,10 @@ last
 prev
 prev
 ----
-#  000032.Last() = (g#10,1,"g10")
-g#10,1:g10
-#  000032.Prev() = (d#10,1,"d10")
-d#10,1:d10
+#  000032.Last() = (g#10,SET,"g10")
+g#10,SET:g10
+#  000032.Prev() = (d#10,SET,"d10")
+d#10,SET:d10
 #  000032.Prev() = nil
 #  000032.Close() = nil
 #  000031.Last() = nil <err="injected error">

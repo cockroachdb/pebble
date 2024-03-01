@@ -14,12 +14,12 @@ seek-lt bar
 last
 prev
 ----
-bar#2,1:value
-bar#2,1:value
-bar#2,1:value
-bar#2,1:value
-bar#2,1:value
-bar#2,1:value
+bar#2,SET:value
+bar#2,SET:value
+bar#2,SET:value
+bar#2,SET:value
+bar#2,SET:value
+bar#2,SET:value
 
 # Create an identical probe as above, and then wrap it in a "noop" probe.
 # A noop probe does nothing; it passes through the child iterator's results
@@ -38,12 +38,12 @@ seek-lt bar
 last
 prev
 ----
-bar#2,1:value
-bar#2,1:value
-bar#2,1:value
-bar#2,1:value
-bar#2,1:value
-bar#2,1:value
+bar#2,SET:value
+bar#2,SET:value
+bar#2,SET:value
+bar#2,SET:value
+bar#2,SET:value
+bar#2,SET:value
 
 # Again, create an iterator with similar probes but this time with an additional
 # probe level that ignores the inner return values and injects errors.
@@ -84,11 +84,11 @@ seek-lt bar
 last
 prev
 ----
-bar#2,1:value
+bar#2,SET:value
 err=injected error
-bar#2,1:value
-bar#2,1:value
-bar#2,1:value
+bar#2,SET:value
+bar#2,SET:value
+bar#2,SET:value
 err=injected error
 
 # Create a probe that returns an error on the 3rd seek-ge.
@@ -108,15 +108,15 @@ seek-ge bar
 seek-ge bax
 seek-ge bop
 ----
-ok#1,1:ok
-ok#1,1:ok
-ok#1,1:ok
-ok#1,1:ok
-ok#1,1:ok
-ok#1,1:ok
-ok#1,1:ok
+ok#1,SET:ok
+ok#1,SET:ok
+ok#1,SET:ok
+ok#1,SET:ok
+ok#1,SET:ok
+ok#1,SET:ok
+ok#1,SET:ok
 err=injected error
-ok#1,1:ok
+ok#1,SET:ok
 
 # Create a probe that always returns nil, except for on the 3rd seek-ge.
 
@@ -142,5 +142,5 @@ seek-ge bop
 .
 .
 .
-ok#1,1:ok
+ok#1,SET:ok
 .

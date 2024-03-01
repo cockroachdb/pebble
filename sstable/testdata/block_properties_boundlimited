@@ -8,9 +8,9 @@ f@0.SET.6:54
 g@8.SET.7:63
 h@3.SET.8:38
 ----
-point:    [a@5#1,1,h@3#8,1]
-rangedel: [#0,0,#0,0]
-rangekey: [#0,0,#0,0]
+point:    [a@5#1,SET,h@3#8,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [#0,DEL,#0,DEL]
 seqnums:  [1,8]
 
 collectors
@@ -23,13 +23,13 @@ table-props
 
 block-props
 ----
-c#72057594037927935,17:
+c#72057594037927935,SEPARATOR:
   0: [2, 6)
-e#72057594037927935,17:
+e#72057594037927935,SEPARATOR:
   0: [3, 10)
-g#72057594037927935,17:
+g#72057594037927935,SEPARATOR:
   0: [0, 3)
-i#72057594037927935,17:
+i#72057594037927935,SEPARATOR:
   0: [3, 9)
 
 # Test an interator with a bound-limited filter that has a filtering criteria

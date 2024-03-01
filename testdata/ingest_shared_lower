@@ -112,8 +112,8 @@ excise e gg
 ----
 would excise 1 files, use ingest-and-excise to excise.
   deleted:       L6 000008
-  added:         L6 000009:[a#0,1-d#0,1]
-  added:         L6 000010:[l#0,1-l#0,1]
+  added:         L6 000009:[a#0,SET-d#0,SET]
+  added:         L6 000010:[l#0,SET-l#0,SET]
 
 replicate 2 1 e gg
 ----

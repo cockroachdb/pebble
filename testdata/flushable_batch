@@ -15,12 +15,12 @@ c.MERGE.2:2
 
 dump seq=0
 ----
-a#1,1:2
-a#0,1:1
-b#3,0:
-b#2,1:1
-c#5,2:2
-c#4,1:1
+a#1,SET:2
+a#0,SET:1
+b#3,DEL:
+b#2,SET:1
+c#5,MERGE:2
+c#4,SET:1
 1-3:{(#6,RANGEDEL)}
 1-2:{(#8,RANGEKEYDEL)}
 2-3:{(#9,RANGEKEYUNSET,3) (#8,RANGEKEYDEL) (#7,RANGEKEYSET,4,4)}
@@ -28,12 +28,12 @@ c#4,1:1
 
 dump seq=100
 ----
-a#101,1:2
-a#100,1:1
-b#103,0:
-b#102,1:1
-c#105,2:2
-c#104,1:1
+a#101,SET:2
+a#100,SET:1
+b#103,DEL:
+b#102,SET:1
+c#105,MERGE:2
+c#104,SET:1
 1-3:{(#106,RANGEDEL)}
 1-2:{(#108,RANGEKEYDEL)}
 2-3:{(#109,RANGEKEYUNSET,3) (#108,RANGEKEYDEL) (#107,RANGEKEYSET,4,4)}
@@ -47,9 +47,9 @@ a.SET.1:1
 
 dump seq=1000
 ----
-a#1002,1:1
-b#1001,1:1
-c#1000,1:1
+a#1002,SET:1
+b#1001,SET:1
+c#1000,SET:1
 
 iter
 first
@@ -174,12 +174,12 @@ b.DEL.3:
 
 dump seq=0
 ----
-a#4,1:2
-a#1,1:1
-b#8,0:
-b#0,1:1
-c#7,2:2
-c#2,1:1
+a#4,SET:2
+a#1,SET:1
+b#8,DEL:
+b#0,SET:1
+c#7,MERGE:2
+c#2,SET:1
 1-3:{(#3,RANGEDEL)}
 1-2:{(#6,RANGEKEYDEL)}
 2-3:{(#9,RANGEKEYUNSET,3) (#6,RANGEKEYDEL) (#5,RANGEKEYSET,4,4)}

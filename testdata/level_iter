@@ -12,11 +12,11 @@ next
 next
 next
 ----
-a#1,1:1
-b#2,1:2
-c#3,1:3
-d#4,1:4
-dd#5,1:5
+a#1,SET:1
+b#2,SET:2
+c#3,SET:3
+d#4,SET:4
+dd#5,SET:5
 .
 
 iter
@@ -26,10 +26,10 @@ next
 next
 next
 ----
-b#2,1:2
-c#3,1:3
-d#4,1:4
-dd#5,1:5
+b#2,SET:2
+c#3,SET:3
+d#4,SET:4
+dd#5,SET:5
 .
 
 iter
@@ -38,9 +38,9 @@ next
 next
 next
 ----
-c#3,1:3
-d#4,1:4
-dd#5,1:5
+c#3,SET:3
+d#4,SET:4
+dd#5,SET:5
 .
 
 iter
@@ -48,15 +48,15 @@ seek-ge d
 next
 next
 ----
-d#4,1:4
-dd#5,1:5
+d#4,SET:4
+dd#5,SET:5
 .
 
 iter
 seek-ge dd
 next
 ----
-dd#5,1:5
+dd#5,SET:5
 .
 
 iter
@@ -73,7 +73,7 @@ iter
 seek-lt b
 prev
 ----
-a#1,1:1
+a#1,SET:1
 .
 
 iter
@@ -81,8 +81,8 @@ seek-lt c
 prev
 prev
 ----
-b#2,1:2
-a#1,1:1
+b#2,SET:2
+a#1,SET:1
 .
 
 iter
@@ -91,9 +91,9 @@ prev
 prev
 prev
 ----
-c#3,1:3
-b#2,1:2
-a#1,1:1
+c#3,SET:3
+b#2,SET:2
+a#1,SET:1
 .
 
 iter
@@ -104,34 +104,34 @@ prev
 prev
 prev
 ----
-dd#5,1:5
-d#4,1:4
-c#3,1:3
-b#2,1:2
-a#1,1:1
+dd#5,SET:5
+d#4,SET:4
+c#3,SET:3
+b#2,SET:2
+a#1,SET:1
 .
 
 iter
 seek-prefix-ge a
 next
 ----
-a#1,1:1
-b#2,1:2
+a#1,SET:1
+b#2,SET:2
 
 iter
 seek-prefix-ge d
 next
 next
 ----
-d#4,1:4
-dd#5,1:5
+d#4,SET:4
+dd#5,SET:5
 .
 
 iter
 seek-prefix-ge dd
 next
 ----
-dd#5,1:5
+dd#5,SET:5
 .
 
 iter
@@ -140,39 +140,39 @@ next
 prev
 prev
 ----
-d#4,1:4
-dd#5,1:5
-d#4,1:4
-c#3,1:3
+d#4,SET:4
+dd#5,SET:5
+d#4,SET:4
+c#3,SET:3
 
 iter
 seek-prefix-ge d
 prev
 ----
-d#4,1:4
-c#3,1:3
+d#4,SET:4
+c#3,SET:3
 
 iter
 seek-prefix-ge dd
 prev
 ----
-dd#5,1:5
-d#4,1:4
+dd#5,SET:5
+d#4,SET:4
 
 iter lower=a
 seek-ge a
 first
 ----
-a#1,1:1
-a#1,1:1
+a#1,SET:1
+a#1,SET:1
 
 iter
 set-bounds lower=a
 seek-ge a
 first
 ----
-a#1,1:1
-a#1,1:1
+a#1,SET:1
+a#1,SET:1
 
 iter
 set-bounds lower=dd upper=f
@@ -185,10 +185,10 @@ prev
 prev
 ----
 .
-d#4,1:4
-c#3,1:3
-b#2,1:2
-a#1,1:1
+d#4,SET:4
+c#3,SET:3
+b#2,SET:2
+a#1,SET:1
 .
 
 iter
@@ -201,9 +201,9 @@ next
 next
 ----
 .
-c#3,1:3
-d#4,1:4
-dd#5,1:5
+c#3,SET:3
+d#4,SET:4
+dd#5,SET:5
 .
 
 # levelIter trims lower/upper bound in the options passed to sstables.
@@ -232,39 +232,39 @@ iter lower=b
 seek-ge a
 first
 ----
-a#1,1:1
-a#1,1:1
+a#1,SET:1
+a#1,SET:1
 
 iter lower=c
 seek-ge a
 first
 ----
-c#3,1:3
-c#3,1:3
+c#3,SET:3
+c#3,SET:3
 
 iter
 set-bounds lower=b
 seek-ge a
 first
 ----
-a#1,1:1
-a#1,1:1
+a#1,SET:1
+a#1,SET:1
 
 iter
 set-bounds lower=c
 seek-ge a
 first
 ----
-c#3,1:3
-c#3,1:3
+c#3,SET:3
+c#3,SET:3
 
 # levelIter only checks lower bound when loading sstables.
 iter lower=d
 seek-ge a
 first
 ----
-c#3,1:3
-c#3,1:3
+c#3,SET:3
+c#3,SET:3
 
 iter lower=e
 seek-ge a
@@ -277,16 +277,16 @@ iter upper=e
 seek-lt e
 last
 ----
-dd#5,1:5
-dd#5,1:5
+dd#5,SET:5
+dd#5,SET:5
 
 iter
 set-bounds lower=d
 seek-ge a
 first
 ----
-c#3,1:3
-c#3,1:3
+c#3,SET:3
+c#3,SET:3
 
 iter
 set-bounds lower=e
@@ -301,47 +301,47 @@ set-bounds upper=e
 seek-lt e
 last
 ----
-dd#5,1:5
-dd#5,1:5
+dd#5,SET:5
+dd#5,SET:5
 
 # levelIter only checks upper bound when loading sstables.
 iter upper=d
 seek-lt e
 last
 ----
-d#4,1:4
-d#4,1:4
+d#4,SET:4
+d#4,SET:4
 
 iter upper=c
 seek-lt e
 last
 ----
-b#2,1:2
-b#2,1:2
+b#2,SET:2
+b#2,SET:2
 
 iter
 set-bounds upper=d
 seek-lt e
 last
 ----
-d#4,1:4
-d#4,1:4
+d#4,SET:4
+d#4,SET:4
 
 iter
 set-bounds upper=c
 seek-lt e
 last
 ----
-b#2,1:2
-b#2,1:2
+b#2,SET:2
+b#2,SET:2
 
 # levelIter only checks upper bound when loading sstables.
 iter upper=b
 seek-lt e
 last
 ----
-b#2,1:2
-b#2,1:2
+b#2,SET:2
+b#2,SET:2
 
 iter upper=a
 seek-lt e
@@ -354,7 +354,7 @@ iter upper=dd
 seek-prefix-ge d
 next
 ----
-d#4,1:4
+d#4,SET:4
 .
 
 iter
@@ -362,8 +362,8 @@ set-bounds upper=b
 seek-lt e
 last
 ----
-b#2,1:2
-b#2,1:2
+b#2,SET:2
+b#2,SET:2
 
 iter
 set-bounds upper=a
@@ -378,7 +378,7 @@ set-bounds upper=dd
 seek-prefix-ge d
 next
 ----
-d#4,1:4
+d#4,SET:4
 .
 
 iter upper=e
@@ -386,30 +386,30 @@ seek-prefix-ge d
 next
 next
 ----
-d#4,1:4
-dd#5,1:5
+d#4,SET:4
+dd#5,SET:5
 .
 
 iter lower=dd
 seek-prefix-ge d
 next
 ----
-dd#5,1:5
+dd#5,SET:5
 .
 
 iter lower=d
 seek-prefix-ge dd
 prev
 ----
-dd#5,1:5
-d#4,1:4
+dd#5,SET:5
+d#4,SET:4
 
 iter lower=c
 seek-prefix-ge dd
 prev
 ----
-dd#5,1:5
-d#4,1:4
+dd#5,SET:5
+d#4,SET:4
 
 iter lower=c
 seek-lt c
@@ -421,7 +421,7 @@ seek-lt c
 set-bounds lower=c
 seek-lt c
 ----
-b#2,1:2
+b#2,SET:2
 .
 
 iter upper=c
@@ -434,7 +434,7 @@ seek-ge c
 set-bounds upper=c
 seek-ge c
 ----
-c#3,1:3
+c#3,SET:3
 .
 
 # The behavior of next/prev after set-bounds is undefined. We're just
@@ -447,7 +447,7 @@ seek-ge c
 set-bounds lower=e
 next
 ----
-c#3,1:3
+c#3,SET:3
 .
 
 # The lower bound lies within the current table's bounds.
@@ -457,8 +457,8 @@ seek-ge c
 set-bounds lower=d
 next
 ----
-c#3,1:3
-d#4,1:4
+c#3,SET:3
+d#4,SET:4
 
 # The upper bound is before the current table's bounds.
 
@@ -467,7 +467,7 @@ seek-ge d
 set-bounds upper=c
 prev
 ----
-d#4,1:4
+d#4,SET:4
 .
 
 # The upper bound lies within the current table's bounds.
@@ -477,8 +477,8 @@ seek-ge d
 set-bounds upper=cc
 prev
 ----
-d#4,1:4
-c#3,1:3
+d#4,SET:4
+c#3,SET:3
 
 # Setting bounds should update the table bounds, allowing a subsequent
 # seek-ge/seek-lt to see the boundary keys.
@@ -488,7 +488,7 @@ seek-ge d
 set-bounds lower=cc
 seek-lt d
 ----
-d#4,1:4
+d#4,SET:4
 .
 
 iter
@@ -496,5 +496,5 @@ seek-ge c
 set-bounds upper=cc
 seek-ge d
 ----
-c#3,1:3
+c#3,SET:3
 .

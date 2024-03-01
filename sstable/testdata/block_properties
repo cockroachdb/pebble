@@ -13,9 +13,9 @@ a.SET.1:10
 b.SET.2:20
 c.SET.3:30
 ----
-point:    [a#1,1,c#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [#0,0,#0,0]
+point:    [a#1,SET,c#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [#0,DEL,#0,DEL]
 seqnums:  [1,3]
 
 # collectors returns the collectors used when writing the table, keyed by the
@@ -33,7 +33,7 @@ table-props
 # is printed, along with the properties for the block, keyed by the shortID.
 block-props
 ----
-d#72057594037927935,17:
+d#72057594037927935,SEPARATOR:
   0: [1, 4)
 
 # Multiple collectors.
@@ -43,9 +43,9 @@ a.SET.1:17
 b.SET.2:29
 c.SET.3:38
 ----
-point:    [a#1,1,c#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [#0,0,#0,0]
+point:    [a#1,SET,c#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [#0,DEL,#0,DEL]
 seqnums:  [1,3]
 
 collectors
@@ -60,7 +60,7 @@ table-props
 
 block-props
 ----
-d#72057594037927935,17:
+d#72057594037927935,SEPARATOR:
   0: [1, 4)
   1: [7, 10)
 
@@ -77,9 +77,9 @@ f.SET.6:54
 g.SET.7:63
 h.SET.8:38
 ----
-point:    [a#1,1,h#8,1]
-rangedel: [#0,0,#0,0]
-rangekey: [#0,0,#0,0]
+point:    [a#1,SET,h#8,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [#0,DEL,#0,DEL]
 seqnums:  [1,8]
 
 collectors
@@ -94,16 +94,16 @@ table-props
 
 block-props
 ----
-b#2,1:
+b#2,SET:
   0: [1, 9)
   1: [5, 7)
-d#4,1:
+d#4,SET:
   0: [2, 8)
   1: [1, 3)
-f#6,1:
+f#6,SET:
   0: [4, 6)
   1: [4, 8)
-i#72057594037927935,17:
+i#72057594037927935,SEPARATOR:
   0: [3, 7)
   1: [3, 9)
 
@@ -118,9 +118,9 @@ rangekey: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
 rangekey: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
 rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
-point:    [a@5#1,1,c@15#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [d@10#4,21,z@25#72057594037927935,19]
+point:    [a@5#1,SET,c@15#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [d@10#4,RANGEKEYSET,z@25#72057594037927935,RANGEKEYDEL]
 seqnums:  [1,6]
 
 collectors
@@ -129,7 +129,7 @@ collectors
 
 block-props
 ----
-d#72057594037927935,17:
+d#72057594037927935,SEPARATOR:
   0: [5, 16)
 
 table-props
@@ -146,9 +146,9 @@ rangekey: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
 rangekey: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
 rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
-point:    [a@5#1,1,c@15#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [d@10#4,21,z@25#72057594037927935,19]
+point:    [a@5#1,SET,c@15#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [d@10#4,RANGEKEYSET,z@25#72057594037927935,RANGEKEYDEL]
 seqnums:  [1,6]
 
 collectors
@@ -157,7 +157,7 @@ collectors
 
 block-props
 ----
-d#72057594037927935,17:
+d#72057594037927935,SEPARATOR:
   0: [5, 16)
 
 table-props
@@ -174,9 +174,9 @@ rangekey: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
 rangekey: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
 rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
-point:    [a@5#1,1,c@15#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [d@10#4,21,z@25#72057594037927935,19]
+point:    [a@5#1,SET,c@15#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [d@10#4,RANGEKEYSET,z@25#72057594037927935,RANGEKEYDEL]
 seqnums:  [1,6]
 
 collectors
@@ -185,7 +185,7 @@ collectors
 
 block-props
 ----
-d#72057594037927935,17:
+d#72057594037927935,SEPARATOR:
 
 table-props
 ----
@@ -203,9 +203,9 @@ rangekey: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
 rangekey: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
 rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
-point:    [a@5#1,1,c@15#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [d@10#4,21,z@25#72057594037927935,19]
+point:    [a@5#1,SET,c@15#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [d@10#4,RANGEKEYSET,z@25#72057594037927935,RANGEKEYDEL]
 seqnums:  [1,6]
 
 collectors
@@ -215,11 +215,11 @@ collectors
 
 block-props
 ----
-b#72057594037927935,17:
+b#72057594037927935,SEPARATOR:
   0: [5, 6)
-c#72057594037927935,17:
+c#72057594037927935,SEPARATOR:
   0: [10, 11)
-d#72057594037927935,17:
+d#72057594037927935,SEPARATOR:
   0: [15, 16)
 
 table-props
@@ -300,9 +300,9 @@ d@25.SET.4:bax
 e@3.SET.5:box
 f@5.SET.3:mop
 ----
-point:    [a@1#1,1,f@5#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [#0,0,#0,0]
+point:    [a@1#1,SET,f@5#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [#0,DEL,#0,DEL]
 seqnums:  [1,5]
 
 collectors
@@ -319,29 +319,29 @@ table-props
 
 block-props
 ----
-b#72057594037927935,17:
+b#72057594037927935,SEPARATOR:
   0: [1, 2)
-  b#72057594037927935,17:
+  b#72057594037927935,SEPARATOR:
     0: [1, 2)
-c#72057594037927935,17:
+c#72057594037927935,SEPARATOR:
   0: [10, 11)
-  c#72057594037927935,17:
+  c#72057594037927935,SEPARATOR:
     0: [10, 11)
-d#72057594037927935,17:
+d#72057594037927935,SEPARATOR:
   0: [15, 16)
-  d#72057594037927935,17:
+  d#72057594037927935,SEPARATOR:
     0: [15, 16)
-e#72057594037927935,17:
+e#72057594037927935,SEPARATOR:
   0: [25, 26)
-  e#72057594037927935,17:
+  e#72057594037927935,SEPARATOR:
     0: [25, 26)
-f#72057594037927935,17:
+f#72057594037927935,SEPARATOR:
   0: [3, 4)
-  f#72057594037927935,17:
+  f#72057594037927935,SEPARATOR:
     0: [3, 4)
-g#72057594037927935,17:
+g#72057594037927935,SEPARATOR:
   0: [5, 6)
-  g#72057594037927935,17:
+  g#72057594037927935,SEPARATOR:
     0: [5, 6)
 
 # Test the same sstable, but with a larger index block size that fits multiple
@@ -356,9 +356,9 @@ d@25.SET.4:bax
 e@3.SET.5:box
 f@5.SET.3:mop
 ----
-point:    [a@1#1,1,f@5#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [#0,0,#0,0]
+point:    [a@1#1,SET,f@5#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [#0,DEL,#0,DEL]
 seqnums:  [1,5]
 
 collectors
@@ -367,21 +367,21 @@ collectors
 
 block-props
 ----
-d#72057594037927935,17:
+d#72057594037927935,SEPARATOR:
   0: [1, 16)
-  b#72057594037927935,17:
+  b#72057594037927935,SEPARATOR:
     0: [1, 2)
-  c#72057594037927935,17:
+  c#72057594037927935,SEPARATOR:
     0: [10, 11)
-  d#72057594037927935,17:
+  d#72057594037927935,SEPARATOR:
     0: [15, 16)
-g#72057594037927935,17:
+g#72057594037927935,SEPARATOR:
   0: [3, 26)
-  e#72057594037927935,17:
+  e#72057594037927935,SEPARATOR:
     0: [25, 26)
-  f#72057594037927935,17:
+  f#72057594037927935,SEPARATOR:
     0: [3, 4)
-  g#72057594037927935,17:
+  g#72057594037927935,SEPARATOR:
     0: [5, 6)
 
 # Regression test for a bug in boundary checking when skipping over irrelevant
@@ -406,30 +406,30 @@ d@25.SET.4:bax
 e@3.SET.5:box
 f@5.SET.3:mop
 ----
-point:    [a@1#1,1,f@5#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [#0,0,#0,0]
+point:    [a@1#1,SET,f@5#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [#0,DEL,#0,DEL]
 seqnums:  [1,5]
 
 block-props
 ----
-c#72057594037927935,17:
+c#72057594037927935,SEPARATOR:
   0: [1, 11)
-  b#72057594037927935,17:
+  b#72057594037927935,SEPARATOR:
     0: [1, 2)
-  c#72057594037927935,17:
+  c#72057594037927935,SEPARATOR:
     0: [10, 11)
-e#72057594037927935,17:
+e#72057594037927935,SEPARATOR:
   0: [15, 26)
-  d#72057594037927935,17:
+  d#72057594037927935,SEPARATOR:
     0: [15, 16)
-  e#72057594037927935,17:
+  e#72057594037927935,SEPARATOR:
     0: [25, 26)
-g#72057594037927935,17:
+g#72057594037927935,SEPARATOR:
   0: [3, 6)
-  f#72057594037927935,17:
+  f#72057594037927935,SEPARATOR:
     0: [3, 4)
-  g#72057594037927935,17:
+  g#72057594037927935,SEPARATOR:
     0: [5, 6)
 
 # Regression test for a bug in boundary checking when skipping over irrelevant
@@ -604,20 +604,20 @@ d@25.SET.4:bax
 e@3.SET.5:box
 f@5.SET.3:mop
 ----
-point:    [a@1#1,1,f@5#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [#0,0,#0,0]
+point:    [a@1#1,SET,f@5#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [#0,DEL,#0,DEL]
 seqnums:  [1,5]
 
 block-props
 ----
-d#72057594037927935,17:
+d#72057594037927935,SEPARATOR:
   0: [1, 16)
-  d#72057594037927935,17:
+  d#72057594037927935,SEPARATOR:
     0: [1, 16)
-g#72057594037927935,17:
+g#72057594037927935,SEPARATOR:
   0: [3, 26)
-  g#72057594037927935,17:
+  g#72057594037927935,SEPARATOR:
     0: [3, 26)
 
 iter point-key-filter=(suffix-point-keys-only,1,2)
@@ -645,18 +645,18 @@ d@25.SET.4:bax
 e@3.SET.5:box
 f@5.SET.3:mop
 ----
-point:    [a@1#1,1,f@5#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [#0,0,#0,0]
+point:    [a@1#1,SET,f@5#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [#0,DEL,#0,DEL]
 seqnums:  [1,5]
 
 block-props
 ----
-c#72057594037927935,17:
+c#72057594037927935,SEPARATOR:
   0: [1, 11)
-e#72057594037927935,17:
+e#72057594037927935,SEPARATOR:
   0: [15, 26)
-g#72057594037927935,17:
+g#72057594037927935,SEPARATOR:
   0: [3, 6)
 
 iter point-key-filter=(suffix-point-keys-only,1,2)
@@ -678,9 +678,9 @@ a@5.SET.1:foo
 b@8.SET.2:bar
 c@7.SET.3:baz
 ----
-point:    [a@5#1,1,c@7#3,1]
-rangedel: [#0,0,#0,0]
-rangekey: [#0,0,#0,0]
+point:    [a@5#1,SET,c@7#3,SET]
+rangedel: [#0,DEL,#0,DEL]
+rangekey: [#0,DEL,#0,DEL]
 seqnums:  [1,3]
 
 collectors
@@ -689,11 +689,11 @@ collectors
 
 block-props
 ----
-b#72057594037927935,17:
+b#72057594037927935,SEPARATOR:
   0: [5, 6)
-c#72057594037927935,17:
+c#72057594037927935,SEPARATOR:
   0: [8, 9)
-d#72057594037927935,17:
+d#72057594037927935,SEPARATOR:
   0: [7, 8)
 
 table-props
