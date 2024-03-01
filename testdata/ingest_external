@@ -259,16 +259,22 @@ a@5: (foo, .)
 b@5: (foo, .)
 c@5: (foo, .)
 
-# Verify that we require bounds without suffix if we use suffix replacement.
+# Verify that we require bounds without suffix.
 ingest-external
-f6 bounds=(a@1,z@10) synthetic-suffix=@5
+f6 bounds=(a@1,z)
 ----
-pebble: synthetic suffix is set but smallest key has suffix
+pebble: external file bounds start key "a@1" has suffix
 
 ingest-external
-f6 bounds=(a,z@10) synthetic-suffix=@5
+f6 bounds=(a,z@10)
 ----
-pebble: synthetic suffix is set but largest key has suffix
+pebble: external file bounds end key "z@10" has suffix
+
+# Verify that we require valid bounds.
+ingest-external
+f6 bounds=(c,a)
+----
+pebble: external file bounds ["c", "a") are invalid
 
 # Test the case when we are ingesting part of a RANGEDEL.
 reset

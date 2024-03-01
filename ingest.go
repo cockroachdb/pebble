@@ -175,23 +175,24 @@ func ingestLoad1External(
 	opts *Options, e ExternalFile, fileNum base.FileNum,
 ) (*fileMetadata, error) {
 	if e.Size == 0 {
-		// Disallow 0 file sizes
 		return nil, errors.New("pebble: cannot ingest external file with size 0")
 	}
 	if !e.HasRangeKey && !e.HasPointKey {
 		return nil, errors.New("pebble: cannot ingest external file with no point or range keys")
 	}
+	if opts.Comparer.Compare(e.Bounds.Start, e.Bounds.End) >= 0 {
+		return nil, errors.Newf("pebble: external file bounds [%q, %q) are invalid", e.Bounds.Start, e.Bounds.End)
+	}
+	if n := opts.Comparer.Split(e.Bounds.Start); n != len(e.Bounds.Start) {
+		return nil, errors.Newf("pebble: external file bounds start key %q has suffix", e.Bounds.Start)
+	}
+	if n := opts.Comparer.Split(e.Bounds.End); n != len(e.Bounds.End) {
+		return nil, errors.Newf("pebble: external file bounds end key %q has suffix", e.Bounds.End)
+	}
+
 	// #3287: range keys don't yet work correctly when the range key bounds are not tight.
 	if e.HasRangeKey {
 		return nil, errors.New("pebble: range keys not supported in external files")
-	}
-	if len(e.SyntheticSuffix) > 0 {
-		if n := opts.Comparer.Split(e.SmallestUserKey); n != len(e.SmallestUserKey) {
-			return nil, errors.New("pebble: synthetic suffix is set but smallest key has suffix")
-		}
-		if n := opts.Comparer.Split(e.LargestUserKey); n != len(e.LargestUserKey) {
-			return nil, errors.New("pebble: synthetic suffix is set but largest key has suffix")
-		}
 	}
 
 	// Don't load table stats. Doing a round trip to shared storage, one SST
@@ -213,10 +214,8 @@ func ingestLoad1External(
 	// In the name of keeping this ingestion as fast as possible, we avoid
 	// *all* existence checks and synthesize a file metadata with smallest/largest
 	// keys that overlap whatever the passed-in span was.
-	smallestCopy := make([]byte, len(e.SmallestUserKey))
-	copy(smallestCopy, e.SmallestUserKey)
-	largestCopy := make([]byte, len(e.LargestUserKey))
-	copy(largestCopy, e.LargestUserKey)
+	smallestCopy := slices.Clone(e.Bounds.Start)
+	largestCopy := slices.Clone(e.Bounds.End)
 	if e.HasPointKey {
 		meta.ExtendPointKeyBounds(
 			opts.Comparer.Compare,
@@ -1113,12 +1112,15 @@ type ExternalFile struct {
 	// is acceptable in lieu of the backing file size.
 	Size uint64
 
-	// SmallestUserKey and LargestUserKey are the [smallest,largest) user key
-	// bounds of the sstable. Both these bounds are loose i.e. it's possible for
-	// the sstable to not span the entirety of this range. However, multiple
-	// ExternalFiles in one ingestion must all have non-overlapping
-	// [smallest, largest) spans. Note that this Largest bound is exclusive.
-	SmallestUserKey, LargestUserKey []byte
+	// Bounds of the sstable; the ingestion of this file will only result in keys
+	// within [Bounds.Start, Bounds.End). These bounds are loose i.e. it's
+	// possible for keys to not span the entirety of this range.
+	//
+	// The Bounds.Start/End user keys must not have suffixes.
+	//
+	// Multiple ExternalFiles in one ingestion must all have non-overlapping
+	// bounds.
+	Bounds KeyRange
 
 	// HasPointKey and HasRangeKey denote whether this file contains point keys
 	// or range keys. If both structs are false, an error is returned during
@@ -1129,7 +1131,7 @@ type ExternalFile struct {
 	// a file, in which all keys have prefix ContentPrefix, to appear whenever it
 	// is accessed as if those keys all instead have prefix SyntheticPrefix.
 	//
-	// SyntheticPrefix must be a prefix of both SmallestUserKey and LargestUserKey.
+	// SyntheticPrefix must be a prefix of both Bounds.Start and Bounds.End.
 	//
 	// NB: If the SyntheticPrefix is non-empty and the ContentPrefix is empty,
 	// then the read path will conduct block level prefix synthesis.
@@ -1142,7 +1144,6 @@ type ExternalFile struct {
 	// SyntheticSuffix can only be used under the following conditions:
 	//  - the synthetic suffix must sort before any non-empty suffixes in the
 	//    backing sst;
-	//  - SmallestUserKey and LargestUserKey must not have suffixes;
 	//  - the backing sst must not contain multiple keys with the same prefix.
 	SyntheticSuffix []byte
 }

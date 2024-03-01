@@ -1313,8 +1313,8 @@ func runIngestExternalCmd(t testing.TB, td *datadriven.TestData, d *DB, locator 
 			switch arg.Key {
 			case "bounds":
 				nArgs(2)
-				ef.SmallestUserKey = []byte(arg.Vals[0])
-				ef.LargestUserKey = []byte(arg.Vals[1])
+				ef.Bounds.Start = []byte(arg.Vals[0])
+				ef.Bounds.End = []byte(arg.Vals[1])
 
 			case "size":
 				nArgs(1)
@@ -1337,7 +1337,7 @@ func runIngestExternalCmd(t testing.TB, td *datadriven.TestData, d *DB, locator 
 				usageErr(fmt.Sprintf("unknown argument %v", arg.Key))
 			}
 		}
-		if ef.SmallestUserKey == nil {
+		if ef.Bounds.Start == nil {
 			usageErr("no bounds specified")
 		}
 
