@@ -181,8 +181,8 @@ func DefaultOpConfig() OpConfig {
 			OpWriterRangeKeyDelete:        5,
 			OpWriterSet:                   100,
 			OpWriterSingleDelete:          50,
-			OpNewExternalObj:              2,
-			OpWriterIngestExternalFiles:   20,
+			OpNewExternalObj:              5,
+			OpWriterIngestExternalFiles:   100,
 		},
 		// Use a new prefix 75% of the time (and 25% of the time use an existing
 		// prefix with an alternative suffix).

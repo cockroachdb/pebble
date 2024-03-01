@@ -305,10 +305,7 @@ func (kg *keyGenerator) parseKey(k []byte) (prefix []byte, suffix int64) {
 }
 
 func randBytes(rng *rand.Rand, minLen, maxLen int) []byte {
-	n := minLen
-	if maxLen > minLen {
-		n += rng.Intn(maxLen - minLen)
-	}
+	n := minLen + rng.Intn(maxLen-minLen+1)
 	if n == 0 {
 		return nil
 	}
