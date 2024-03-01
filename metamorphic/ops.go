@@ -1770,12 +1770,6 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 
 	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
 
-	// #3287: range keys are not supported yet.
-	if rangeKeyIter != nil {
-		rangeKeyIter.Close()
-		rangeKeyIter = nil
-	}
-
 	sstMeta, minSuffix, err := writeSSTForIngestion(
 		t,
 		iter, rangeDelIter, rangeKeyIter,
@@ -1786,6 +1780,11 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 	)
 	if err != nil {
 		panic(err)
+	}
+	if sstMeta.HasRangeKeys {
+		// #3287: IngestExternalFiles currently doesn't support range keys; we check
+		// for range keys in newExternalObj.
+		panic("external object has range keys")
 	}
 	t.setExternalObj(o.externalObjID, externalObjMeta{
 		sstMeta:   sstMeta,
