@@ -20,9 +20,8 @@ import (
 )
 
 // writeSSTForIngestion writes an SST that is to be ingested, either directly or
-// as an external file.
+// as an external file. Returns the sstable metadata.
 //
-// Returns the sstable metadata and the minimum non-empty suffix.
 // Closes the iterators in all cases.
 func writeSSTForIngestion(
 	t *Test,
@@ -33,7 +32,7 @@ func writeSSTForIngestion(
 	syntheticSuffix sstable.SyntheticSuffix,
 	writable objstorage.Writable,
 	targetFMV pebble.FormatMajorVersion,
-) (_ *sstable.WriterMetadata, minSuffix []byte, _ error) {
+) (*sstable.WriterMetadata, error) {
 	writerOpts := t.opts.MakeWriterOptions(0, targetFMV.MaxTableFormat())
 	if t.testOpts.disableValueBlocksForIngestSSTables {
 		writerOpts.DisableValueBlocks = true
@@ -47,17 +46,10 @@ func writeSSTForIngestion(
 	defer rangeKeyIterCloser.Close()
 
 	outputKey := func(key []byte) []byte {
-		n := t.opts.Comparer.Split(key)
-		if suffix := key[n:]; len(suffix) > 0 {
-			if minSuffix == nil || t.opts.Comparer.Compare(suffix, minSuffix) < 0 {
-				minSuffix = slices.Clone(suffix)
-			}
-		}
 		return slices.Clone(key)
 	}
 
 	if len(syntheticSuffix) > 0 {
-		minSuffix = slices.Clone(syntheticSuffix)
 		outputKey = func(key []byte) []byte {
 			n := t.opts.Comparer.Split(key)
 			return append(key[:n:n], syntheticSuffix...)
@@ -90,30 +82,30 @@ func writeSSTForIngestion(
 		}
 		valBytes, _, err := value.Value(nil)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		k := *key
 		k.UserKey = outputKey(k.UserKey)
 		if err := w.Add(k, valBytes); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 	if err := pointIterCloser.Close(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	if rangeDelIter != nil {
 		span, err := rangeDelIter.First()
 		for ; span != nil; span, err = rangeDelIter.Next() {
 			if err := w.DeleteRange(outputKey(span.Start), outputKey(span.End)); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 		}
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if err := rangeDelIterCloser.Close(); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
@@ -142,25 +134,25 @@ func writeSSTForIngestion(
 			}
 			keyspan.SortKeysByTrailer(&collapsed.Keys)
 			if err := rangekey.Encode(&collapsed, w.AddRangeKey); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 		}
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if err := rangeKeyIterCloser.Close(); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
 	if err := w.Close(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	sstMeta, err := w.Metadata()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return sstMeta, minSuffix, nil
+	return sstMeta, nil
 }
 
 // buildForIngest builds a local SST file containing the keys in the given batch
@@ -178,7 +170,7 @@ func buildForIngest(
 	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
 
 	writable := objstorageprovider.NewFileWritable(f)
-	meta, _, err := writeSSTForIngestion(
+	meta, err := writeSSTForIngestion(
 		t,
 		iter, rangeDelIter, rangeKeyIter,
 		false, /* uniquePrefixes */
@@ -212,7 +204,7 @@ func buildForIngestExternalEmulation(
 	// emulating the external ingestion path which won't remove duplicate prefixes
 	// if they exist.
 	const uniquePrefixes = false
-	meta, _, err := writeSSTForIngestion(
+	meta, err := writeSSTForIngestion(
 		t,
 		pointIter, rangeDelIter, rangeKeyIter,
 		uniquePrefixes,

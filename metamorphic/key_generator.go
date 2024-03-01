@@ -102,6 +102,14 @@ func (kg *keyGenerator) SkewedSuffixInt(incMaxProb float64) int64 {
 	return int64(kg.cfg.writeSuffixDist.Uint64(kg.rng))
 }
 
+// IncMaxSuffix increases the max suffix range and returns the new maximum
+// suffix (which is guaranteed to be larger than any previously generated
+// suffix).
+func (kg *keyGenerator) IncMaxSuffix() []byte {
+	kg.cfg.writeSuffixDist.IncMax(1)
+	return testkeys.Suffix(int64(kg.cfg.writeSuffixDist.Max()))
+}
+
 // UniformSuffix returns a suffix in the same range as SkewedSuffix but with a
 // uniform distribution. This is used during reads to better exercise reading a
 // mix of older and newer keys. The suffix can be empty.
