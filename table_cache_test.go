@@ -263,13 +263,13 @@ func TestVirtualReadsWiring(t *testing.T) {
 	b := newBatch(d)
 	// Some combination of sets, range deletes, and range key sets/unsets, so
 	// all of the table cache iterator functions are utilized.
-	require.NoError(t, b.Set([]byte{'a'}, []byte{'a'}, nil))
-	require.NoError(t, b.Set([]byte{'d'}, []byte{'d'}, nil))
-	require.NoError(t, b.DeleteRange([]byte{'c'}, []byte{'e'}, nil))
-	require.NoError(t, b.Set([]byte{'f'}, []byte{'f'}, nil))
-	require.NoError(t, b.RangeKeySet([]byte{'f'}, []byte{'k'}, nil, []byte{'c'}, nil))
-	require.NoError(t, b.RangeKeyUnset([]byte{'j'}, []byte{'k'}, nil, nil))
-	require.NoError(t, b.Set([]byte{'z'}, []byte{'z'}, nil))
+	require.NoError(t, b.Set([]byte{'a'}, []byte{'a'}, nil))                           // SeqNum start.
+	require.NoError(t, b.Set([]byte{'d'}, []byte{'d'}, nil))                           // SeqNum: +1
+	require.NoError(t, b.DeleteRange([]byte{'c'}, []byte{'e'}, nil))                   // SeqNum: +2
+	require.NoError(t, b.Set([]byte{'f'}, []byte{'f'}, nil))                           // SeqNum: +3
+	require.NoError(t, b.RangeKeySet([]byte{'f'}, []byte{'k'}, nil, []byte{'c'}, nil)) // SeqNum: +4
+	require.NoError(t, b.RangeKeyUnset([]byte{'j'}, []byte{'k'}, nil, nil))            // SeqNum: +5
+	require.NoError(t, b.Set([]byte{'z'}, []byte{'z'}, nil))                           // SeqNum: +6
 	require.NoError(t, d.Apply(b, nil))
 	require.NoError(t, d.Flush())
 	require.NoError(t, d.Compact([]byte{'a'}, []byte{'b'}, false))
@@ -287,6 +287,13 @@ func TestVirtualReadsWiring(t *testing.T) {
 	f2 := f1 + 1
 	d.mu.versions.nextFileNum += 2
 
+	seqNumA := parentFile.Smallest.SeqNum()
+	// See SeqNum comments above.
+	seqNumCEDel := seqNumA + 2
+	seqNumRangeSet := seqNumA + 4
+	seqNumRangeUnset := seqNumA + 5
+	seqNumZ := seqNumA + 6
+
 	v1 := &manifest.FileMetadata{
 		FileBacking:      parentFile.FileBacking,
 		FileNum:          f1,
@@ -294,10 +301,10 @@ func TestVirtualReadsWiring(t *testing.T) {
 		Size:             parentFile.Size / 2,
 		SmallestSeqNum:   parentFile.SmallestSeqNum,
 		LargestSeqNum:    parentFile.LargestSeqNum,
-		Smallest:         base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
-		Largest:          base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
-		SmallestPointKey: base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
-		LargestPointKey:  base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
+		Smallest:         base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
+		Largest:          base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
+		SmallestPointKey: base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
+		LargestPointKey:  base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		HasPointKeys:     true,
 		Virtual:          true,
 	}
@@ -310,12 +317,12 @@ func TestVirtualReadsWiring(t *testing.T) {
 		Size:             parentFile.Size / 2,
 		SmallestSeqNum:   parentFile.SmallestSeqNum,
 		LargestSeqNum:    parentFile.LargestSeqNum,
-		Smallest:         base.MakeInternalKey([]byte{'d'}, parentFile.Smallest.SeqNum()+2, InternalKeyKindRangeDelete),
-		Largest:          base.MakeInternalKey([]byte{'z'}, parentFile.Largest.SeqNum(), InternalKeyKindSet),
-		SmallestPointKey: base.MakeInternalKey([]byte{'d'}, parentFile.Smallest.SeqNum()+2, InternalKeyKindRangeDelete),
-		LargestPointKey:  base.MakeInternalKey([]byte{'z'}, parentFile.Largest.SeqNum(), InternalKeyKindSet),
-		SmallestRangeKey: base.MakeInternalKey([]byte{'f'}, parentFile.Smallest.SeqNum()+2, InternalKeyKindRangeKeySet),
-		LargestRangeKey:  base.MakeInternalKey([]byte{'k'}, parentFile.Largest.SeqNum(), InternalKeyKindRangeKeyUnset),
+		Smallest:         base.MakeInternalKey([]byte{'d'}, seqNumCEDel, InternalKeyKindRangeDelete),
+		Largest:          base.MakeInternalKey([]byte{'z'}, seqNumZ, InternalKeyKindSet),
+		SmallestPointKey: base.MakeInternalKey([]byte{'d'}, seqNumCEDel, InternalKeyKindRangeDelete),
+		LargestPointKey:  base.MakeInternalKey([]byte{'z'}, seqNumZ, InternalKeyKindSet),
+		SmallestRangeKey: base.MakeInternalKey([]byte{'f'}, seqNumRangeSet, InternalKeyKindRangeKeySet),
+		LargestRangeKey:  base.MakeInternalKey([]byte{'k'}, seqNumRangeUnset, InternalKeyKindRangeKeyUnset),
 		HasPointKeys:     true,
 		Virtual:          true,
 	}
