@@ -781,18 +781,6 @@ func (g *generator) iterSeekGEWithLimit(iterID objID) {
 	})
 }
 
-// inRangeKeys returns all keys in the range [lower, upper) associated with the
-// given object.
-func (g *generator) inRangeKeys(lower, upper []byte, o objID) []keyMeta {
-	var inRangeKeys []keyMeta
-	for _, keyMeta := range g.keyManager.SortedKeysForObj(o) {
-		if g.cmp(keyMeta.key, lower) >= 0 && g.cmp(keyMeta.key, upper) < 0 {
-			inRangeKeys = append(inRangeKeys, keyMeta)
-		}
-	}
-	return inRangeKeys
-}
-
 func (g *generator) iterSeekPrefixGE(iterID objID) {
 	lower := g.itersLastOpts[iterID].lower
 	upper := g.itersLastOpts[iterID].upper
@@ -808,7 +796,7 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 	// random key.
 	if g.rng.Intn(10) >= 1 {
 		possibleKeys := make([][]byte, 0, 100)
-		inRangeKeys := g.inRangeKeys(lower, upper, g.objDB[iterID])
+		inRangeKeys := g.keyManager.InRangeKeysForObj(g.objDB[iterID], lower, upper)
 		for _, keyMeta := range inRangeKeys {
 			visibleHistory := keyMeta.history.before(iterCreationTimestamp)
 
@@ -1364,20 +1352,20 @@ func (g *generator) writerIngestExternalFiles() {
 		}
 	}
 
-	// The batches we're ingesting may contain single delete tombstones that
-	// when applied to the writer result in nondeterminism in the deleted key.
-	// If that's the case, we can restore determinism by first deleting the keys
-	// from the writer.
+	// The batches we're ingesting may contain single delete tombstones that when
+	// applied to the db result in nondeterminism in the deleted key. If that's
+	// the case, we can restore determinism by first deleting the keys from the
+	// db.
 	//
 	// Generating additional operations here is not ideal, but it simplifies
 	// single delete invariants significantly.
+	dbKeys := g.keyManager.objKeyMeta(dbID)
 	for _, o := range objs {
-		singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(o.externalObjID, dbID, true /* collapsed */)
-		for _, key := range singleDeleteConflicts {
-			if g.cmp(key, o.bounds.Start) >= 0 && g.cmp(key, o.bounds.End) < 0 {
+		for _, src := range g.keyManager.KeysForExternalIngest(o) {
+			if g.keyManager.checkForSingleDelConflict(src, dbKeys) {
 				g.add(&deleteOp{
 					writerID:    dbID,
-					key:         key,
+					key:         src.key,
 					derivedDBID: dbID,
 				})
 			}
@@ -1393,10 +1381,6 @@ func (g *generator) writerIngestExternalFiles() {
 		dbID: dbID,
 		objs: objs,
 	})
-}
-
-func (g *generator) keysForExternalIngest(obj externalObjWithBounds) []keyMeta {
-	return g.inRangeKeys(obj.bounds.Start, obj.bounds.End, obj.externalObjID)
 }
 
 func (g *generator) writerLogData() {
