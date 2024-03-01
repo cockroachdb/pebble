@@ -17,6 +17,18 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// We automatically generate a "streamlined" version of the blockIter code (in
+// block_iter_streamlined.gen.go). The streamlined code can be used in the
+// common case and does not support all features. This improves performance by
+// reducing the conditionals in the hot path.
+//
+// The streamlinedBlockIter constant can be used in if statements; in the
+// streamlined version, it gets replaced by "true" (allowing the compiler to
+// omit blocks of code from the streamlined version).
+//
+//go:generate go run ./block-iter-codegen
+const streamlinedBlockIter = false
+
 // blockIter is an iterator over a single block of data.
 //
 // A blockIter provides an additional guarantee around key stability when a
@@ -222,7 +234,7 @@ func (i *blockIter) init(cmp Compare, split Split, block block, transforms IterT
 	i.numRestarts = numRestarts
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
-	if i.transforms.SyntheticPrefix.IsSet() {
+	if !streamlinedBlockIter && i.transforms.SyntheticPrefix.IsSet() {
 		i.fullKey = append(i.fullKey[:0], i.transforms.SyntheticPrefix...)
 	} else {
 		i.fullKey = i.fullKey[:0]
@@ -345,7 +357,9 @@ func (i *blockIter) readEntry() {
 		value = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 		ptr = unsafe.Pointer(uintptr(ptr) + 5)
 	}
-	shared += uint32(len(i.transforms.SyntheticPrefix))
+	if !streamlinedBlockIter {
+		shared += uint32(len(i.transforms.SyntheticPrefix))
+	}
 	unsharedKey := getBytes(ptr, int(unshared))
 	// TODO(sumeer): move this into the else block below.
 	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
@@ -422,7 +436,7 @@ func (i *blockIter) readFirstKey() error {
 		i.firstUserKey = nil
 		return base.CorruptionErrorf("pebble/table: invalid firstKey in block")
 	}
-	if i.transforms.SyntheticPrefix != nil {
+	if !streamlinedBlockIter && i.transforms.SyntheticPrefix != nil {
 		i.firstUserKeyWithPrefixBuf = slices.Grow(i.firstUserKeyWithPrefixBuf[:0], len(i.transforms.SyntheticPrefix)+len(i.firstUserKey))
 		i.firstUserKeyWithPrefixBuf = append(i.firstUserKeyWithPrefixBuf, i.transforms.SyntheticPrefix...)
 		i.firstUserKeyWithPrefixBuf = append(i.firstUserKeyWithPrefixBuf, i.firstUserKey...)
@@ -501,7 +515,7 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
 	searchKey := key
-	if i.transforms.SyntheticPrefix != nil {
+	if !streamlinedBlockIter && i.transforms.SyntheticPrefix != nil {
 		// The seek key is before or after the entire block of keys that start with
 		// SyntheticPrefix. To determine which, we need to compare against a valid
 		// key in the block. We use firstUserKey which has the synthetic prefix.
