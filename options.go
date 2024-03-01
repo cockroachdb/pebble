@@ -1361,9 +1361,6 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
-	if o.WALFailover != nil {
-		fmt.Fprintf(&buf, "  wal_dir_secondary=%s\n", o.WALFailover.Secondary.Dirname)
-	}
 	fmt.Fprintf(&buf, "  max_writer_concurrency=%d\n", o.Experimental.MaxWriterConcurrency)
 	fmt.Fprintf(&buf, "  force_writer_parallelism=%t\n", o.Experimental.ForceWriterParallelism)
 	fmt.Fprintf(&buf, "  secondary_cache_size_bytes=%d\n", o.Experimental.SecondaryCacheSizeBytes)
@@ -1383,6 +1380,18 @@ func (o *Options) String() string {
 	}
 	if o.private.disableLazyCombinedIteration {
 		fmt.Fprintln(&buf, "  disable_lazy_combined_iteration=true")
+	}
+
+	if o.WALFailover != nil {
+		fmt.Fprintf(&buf, "\n")
+		fmt.Fprintf(&buf, "[WAL Failover]\n")
+		fmt.Fprintf(&buf, "  secondary_dir=%s\n", o.WALFailover.Secondary.Dirname)
+		fmt.Fprintf(&buf, "  primary_dir_probe_interval=%s\n", o.WALFailover.FailoverOptions.PrimaryDirProbeInterval)
+		fmt.Fprintf(&buf, "  healthy_probe_latency_threshold=%s\n", o.WALFailover.FailoverOptions.HealthyProbeLatencyThreshold)
+		fmt.Fprintf(&buf, "  healthy_interval=%s\n", o.WALFailover.FailoverOptions.HealthyInterval)
+		fmt.Fprintf(&buf, "  unhealthy_sampling_interval=%s\n", o.WALFailover.FailoverOptions.UnhealthySamplingInterval)
+		fmt.Fprintf(&buf, "  unhealthy_operation_latency_threshold=%s\n", o.WALFailover.FailoverOptions.UnhealthyOperationLatencyThreshold())
+		fmt.Fprintf(&buf, "  elevated_write_stall_threshold_lag=%s\n", o.WALFailover.FailoverOptions.ElevatedWriteStallThresholdLag)
 	}
 
 	for i := range o.Levels {
@@ -1663,8 +1672,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.WALDir = value
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
-			case "wal_dir_secondary":
-				o.WALFailover = &WALFailoverOptions{Secondary: wal.Dir{Dirname: value, FS: vfs.Default}}
 			case "max_writer_concurrency":
 				o.Experimental.MaxWriterConcurrency, err = strconv.Atoi(value)
 			case "force_writer_parallelism":
@@ -1675,6 +1682,39 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				var createOnSharedInt int64
 				createOnSharedInt, err = strconv.ParseInt(value, 10, 64)
 				o.Experimental.CreateOnShared = remote.CreateOnSharedStrategy(createOnSharedInt)
+			default:
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
+					return nil
+				}
+				return errors.Errorf("pebble: unknown option: %s.%s",
+					errors.Safe(section), errors.Safe(key))
+			}
+			return err
+
+		case section == "WAL Failover":
+			if o.WALFailover == nil {
+				o.WALFailover = new(WALFailoverOptions)
+			}
+			var err error
+			switch key {
+			case "secondary_dir":
+				o.WALFailover.Secondary = wal.Dir{Dirname: value, FS: vfs.Default}
+			case "primary_dir_probe_interval":
+				o.WALFailover.PrimaryDirProbeInterval, err = time.ParseDuration(value)
+			case "healthy_probe_latency_threshold":
+				o.WALFailover.HealthyProbeLatencyThreshold, err = time.ParseDuration(value)
+			case "healthy_interval":
+				o.WALFailover.HealthyInterval, err = time.ParseDuration(value)
+			case "unhealthy_sampling_interval":
+				o.WALFailover.UnhealthySamplingInterval, err = time.ParseDuration(value)
+			case "unhealthy_operation_latency_threshold":
+				var threshold time.Duration
+				threshold, err = time.ParseDuration(value)
+				o.WALFailover.UnhealthyOperationLatencyThreshold = func() time.Duration {
+					return threshold
+				}
+			case "elevated_write_stall_threshold_lag":
+				o.WALFailover.ElevatedWriteStallThresholdLag, err = time.ParseDuration(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
@@ -1786,7 +1826,7 @@ func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 			if err != nil {
 				return errors.Errorf("pebble: error parsing strict_wal_tail value %q: %w", value, err)
 			}
-		case "Options.wal_dir", "Options.wal_dir_secondary":
+		case "Options.wal_dir", "WAL Failover.secondary_dir":
 			switch {
 			case o.WALDir == value:
 				return nil

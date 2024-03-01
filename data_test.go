@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,6 +32,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"github.com/ghemawat/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1448,4 +1450,30 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 		}
 	}
 	return nil
+}
+
+func streamFilterBetweenGrep(start, end string) stream.Filter {
+	startRegexp, err := regexp.Compile(start)
+	if err != nil {
+		return stream.FilterFunc(func(stream.Arg) error { return err })
+	}
+	endRegexp, err := regexp.Compile(end)
+	if err != nil {
+		return stream.FilterFunc(func(stream.Arg) error { return err })
+	}
+	var passedStart bool
+	return stream.FilterFunc(func(arg stream.Arg) error {
+		for s := range arg.In {
+			if passedStart {
+				if endRegexp.MatchString(s) {
+					break
+				}
+				arg.Out <- s
+				continue
+			} else {
+				passedStart = startRegexp.MatchString(s)
+			}
+		}
+		return nil
+	})
 }
