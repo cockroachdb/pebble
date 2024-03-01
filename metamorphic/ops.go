@@ -934,7 +934,7 @@ type externalObjWithBounds struct {
 func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 	db := t.getDB(o.dbID)
 
-	// We modify objs to eliminate empty objects and clear invalid synthetic suffixes.
+	// We modify objs to eliminate empty objects.
 	var objs []externalObjWithBounds
 	for _, obj := range o.objs {
 		// Make sure the object exists and is not empty.
@@ -948,18 +948,6 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 			// TODO(radu): even though we don't expect this case in practice, eventually
 			// we want to make sure that it doesn't cause failures.
 			continue
-		}
-		if obj.syntheticSuffix != nil {
-			// Verify that the version supports suffix replacement, and verify that
-			// the suffix comes before any suffix present in the object.
-			if t.opts.Comparer.Compare(obj.syntheticSuffix, objMeta.minSuffix) >= 0 {
-				obj.syntheticSuffix = nil
-			}
-			if objMeta.sstMeta.HasRangeDelKeys {
-				// Disable synthetic suffix if we have range dels.
-				// TODO(radu): we will want to support this at some point.
-				obj.syntheticSuffix = nil
-			}
 		}
 		objs = append(objs, obj)
 	}
@@ -1770,7 +1758,7 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 
 	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
 
-	sstMeta, minSuffix, err := writeSSTForIngestion(
+	sstMeta, err := writeSSTForIngestion(
 		t,
 		iter, rangeDelIter, rangeKeyIter,
 		true, /* uniquePrefixes */
@@ -1787,8 +1775,7 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 		panic("external object has range keys")
 	}
 	t.setExternalObj(o.externalObjID, externalObjMeta{
-		sstMeta:   sstMeta,
-		minSuffix: minSuffix,
+		sstMeta: sstMeta,
 	})
 	h.Recordf("%s", o)
 }
