@@ -193,17 +193,23 @@ func TestOptionsCheck(t *testing.T) {
 	require.Equal(t, ErrMissingWALRecoveryDir{Dir: "failover-wal-dir"},
 		(&Options{}).EnsureDefaults().Check(`
 [Options]
-  wal_dir_secondary=failover-wal-dir
+
+[WAL Failover]
+  secondary_dir=failover-wal-dir
 `))
 	// But not if it's configured as a WALRecoveryDir or current failover
 	// secondary dir.
 	require.NoError(t, (&Options{WALRecoveryDirs: []wal.Dir{{Dirname: "failover-wal-dir"}}}).EnsureDefaults().Check(`
 [Options]
-  wal_dir_secondary=failover-wal-dir
+
+[WAL Failover]
+  secondary_dir=failover-wal-dir
 `))
 	require.NoError(t, (&Options{WALFailover: &WALFailoverOptions{Secondary: wal.Dir{Dirname: "failover-wal-dir"}}}).EnsureDefaults().Check(`
 [Options]
-  wal_dir_secondary=failover-wal-dir
+
+[WAL Failover]
+  secondary_dir=failover-wal-dir
 `))
 }
 
