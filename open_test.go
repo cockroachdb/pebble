@@ -185,19 +185,27 @@ func TestOpen_WALFailover(t *testing.T) {
 			var start, end string
 			td.ScanArgs(t, "start", &start)
 			td.ScanArgs(t, "end", &end)
+			// Read the entirety of the file into memory (rather than passing
+			// f into stream.ReadLines) to avoid a data race between closing the
+			// file and stream.ReadLines asynchronously reading the file.
 			f, err := fs.Open(path)
 			if err != nil {
 				return err.Error()
 			}
+			data, err := io.ReadAll(f)
+			if err != nil {
+				return err.Error()
+			}
+			require.NoError(t, f.Close())
+
 			var buf bytes.Buffer
 			if err := stream.Run(stream.Sequence(
-				stream.ReadLines(f),
+				stream.ReadLines(bytes.NewReader(data)),
 				streamFilterBetweenGrep(start, end),
 				stream.WriteLines(&buf),
 			)); err != nil {
 				return err.Error()
 			}
-			require.NoError(t, f.Close())
 			return buf.String()
 		case "list":
 			fs, dir, ok := getFSAndPath(td, "path")
