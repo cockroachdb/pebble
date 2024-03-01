@@ -490,7 +490,7 @@ set b bar
 ----
 
 ingest-external
-f11,10,a,c
+f11 bounds=(a,c)
 ----
 
 batch
@@ -532,7 +532,7 @@ set d d-1v1
 ----
 
 ingest-external
-f12,10,a,d
+f12 bounds=(a,d)
 ----
 
 batch
@@ -598,7 +598,7 @@ set b d1-v1
 ----
 
 ingest-external
-f13,10,a,c
+f13 bounds=(a,c)
 ----
 
 switch 2
