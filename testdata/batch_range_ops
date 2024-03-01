@@ -9,10 +9,10 @@ range-key-set b c @4 value
 
 scan
 ----
-a#12,1:1
-b#17,1:2
-c#22,2:3
-d#32,0:
+a#12,SET:1
+b#17,SET:2
+c#22,MERGE:3
+d#32,DEL:
 
 scan range-del
 ----

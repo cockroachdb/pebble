@@ -16,17 +16,17 @@ L2
 file-sizes
 ----
 L1:
-  000004:[b#11,1-c#11,1]: 597 bytes (597B)
+  000004:[b#11,SET-c#11,SET]: 597 bytes (597B)
 L2:
-  000005:[c#0,1-d#0,1]: 596 bytes (596B)
+  000005:[c#0,SET-d#0,SET]: 596 bytes (596B)
 
 pick-file L1
 ----
-000004:[b#11,1-c#11,1]
+000004:[b#11,SET-c#11,SET]
 
 pick-file L2
 ----
-000005:[c#0,1-d#0,1]
+000005:[c#0,SET-d#0,SET]
 
 # Test a scenario where we should pick a file with a tiny file size over one
 # with a larger file size, because the tiny sized one overlaps zero data in the
@@ -50,7 +50,7 @@ L6
 
 pick-file L5
 ----
-000005:[e#11,1-e#11,1]
+000005:[e#11,SET-e#11,SET]
 
 # Test the same scenario as above, but the larger file that overlaps the next
 # level only overlaps on its start boundary key ("c").
@@ -73,7 +73,7 @@ L6
 
 pick-file L5
 ----
-000005:[e#11,1-e#11,1]
+000005:[e#11,SET-e#11,SET]
 
 
 # Test a scenario where the file containing e.SET.11 overlaps an L6 file
@@ -103,4 +103,4 @@ L6
 
 pick-file L5
 ----
-000004:[c#11,1-d#11,1]
+000004:[c#11,SET-d#11,SET]

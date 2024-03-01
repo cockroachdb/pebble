@@ -6,7 +6,7 @@ iter
 first
 next
 ----
-a#1,1:b
+a#1,SET:b
 .
 
 define
@@ -18,21 +18,21 @@ iter
 first
 next
 ----
-a#2,1:c
+a#2,SET:c
 .
 
 iter snapshots=0
 first
 next
 ----
-a#2,1:c
+a#2,SET:c
 .
 
 iter snapshots=1
 first
 next
 ----
-a#2,1:c
+a#2,SET:c
 .
 
 iter snapshots=2
@@ -40,8 +40,8 @@ first
 next
 next
 ----
-a#2,1:c
-a#1,1:b
+a#2,SET:c
+a#1,SET:b
 .
 
 define
@@ -53,7 +53,7 @@ iter
 first
 next
 ----
-a#2,0:
+a#2,DEL:
 .
 
 iter elide-tombstones=true
@@ -66,15 +66,15 @@ first
 next
 next
 ----
-a#2,0:
-a#1,1:b
+a#2,DEL:
+a#1,SET:b
 .
 
 iter elide-tombstones=true snapshots=1
 first
 next
 ----
-a#2,0:
+a#2,DEL:
 .
 
 define
@@ -88,8 +88,8 @@ first
 next
 next
 ----
-a#2,0:
-b#3,1:c
+a#2,DEL:
+b#3,SET:c
 .
 
 iter snapshots=1
@@ -97,8 +97,8 @@ first
 next
 next
 ----
-a#2,0:
-b#3,1:c
+a#2,DEL:
+b#3,SET:c
 .
 
 iter snapshots=2
@@ -107,9 +107,9 @@ next
 next
 next
 ----
-a#2,0:
-a#1,1:b
-b#3,1:c
+a#2,DEL:
+a#1,SET:b
+b#3,SET:c
 .
 
 define
@@ -124,9 +124,9 @@ next
 next
 next
 ----
-a#1,1:a
-b#2,1:b
-c#3,1:c
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
 .
 
 define
@@ -142,8 +142,8 @@ first
 next
 next
 ----
-a#3,1:bcd[base]
-b#2,2:ab
+a#3,SET:bcd[base]
+b#2,MERGE:ab
 .
 
 iter snapshots=3
@@ -152,9 +152,9 @@ next
 next
 next
 ----
-a#3,2:d
-a#2,1:bc[base]
-b#2,2:ab
+a#3,MERGE:d
+a#2,SET:bc[base]
+b#2,MERGE:ab
 .
 
 define
@@ -169,7 +169,7 @@ iter
 first
 next
 ----
-a#9,18:b
+a#9,SETWITHDEL:b
 .
 
 iter snapshots=6
@@ -177,8 +177,8 @@ first
 next
 next
 ----
-a#9,18:b
-a#5,1:f
+a#9,SETWITHDEL:b
+a#5,SET:f
 .
 
 iter snapshots=7
@@ -186,8 +186,8 @@ first
 next
 next
 ----
-a#9,18:b
-a#6,0:
+a#9,SETWITHDEL:b
+a#6,DEL:
 .
 
 iter snapshots=8
@@ -195,8 +195,8 @@ first
 next
 next
 ----
-a#9,18:b
-a#7,18:d
+a#9,SETWITHDEL:b
+a#7,SETWITHDEL:d
 .
 
 iter snapshots=9
@@ -204,15 +204,15 @@ first
 next
 next
 ----
-a#9,1:b
-a#8,0:
+a#9,SET:b
+a#8,DEL:
 .
 
 iter snapshots=10
 first
 next
 ----
-a#9,18:b
+a#9,SETWITHDEL:b
 .
 
 iter snapshots=(5,6,7,8,9)
@@ -223,11 +223,11 @@ next
 next
 next
 ----
-a#9,1:b
-a#8,0:
-a#7,1:d
-a#6,0:
-a#5,1:f
+a#9,SET:b
+a#8,DEL:
+a#7,SET:d
+a#6,DEL:
+a#5,SET:f
 .
 
 define
@@ -270,7 +270,7 @@ first
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-d:{(#1,RANGEDEL)}
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#1,RANGEDEL)}
 err=invalid internal key kind: INVALID
 a-d#1
 .
@@ -287,9 +287,9 @@ next
 next
 next
 ----
-a#2,2:b
-a#1,2:c
-a#0,2:d
+a#2,MERGE:b
+a#1,MERGE:c
+a#0,MERGE:d
 .
 
 define
@@ -308,10 +308,10 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-b:{(#1,RANGEDEL)}
-a#2,1:b
-b#72057594037927935,15:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
-c#72057594037927935,15:; Span() = c-d:{(#4,RANGEDEL)}
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#2,SET:b
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
 .
 a-b#1
 b-c#4
@@ -326,10 +326,10 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-b:{(#1,RANGEDEL)}
-a#2,1:b
-b#72057594037927935,15:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
-c#72057594037927935,15:; Span() = c-d:{(#4,RANGEDEL)}
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#2,SET:b
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
 .
 a-b#1
 b-c#4
@@ -346,11 +346,11 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-b:{(#1,RANGEDEL)}
-a#2,1:b
-b#72057594037927935,15:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
-b#2,1:e
-c#72057594037927935,15:; Span() = c-d:{(#4,RANGEDEL)}
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#2,SET:b
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+b#2,SET:e
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
 .
 a-b#1
 b-c#4
@@ -368,12 +368,12 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-b:{(#1,RANGEDEL)}
-a#2,1:b
-b#72057594037927935,15:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
-b#2,1:e
-c#72057594037927935,15:; Span() = c-d:{(#4,RANGEDEL)}
-c#3,1:f
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#2,SET:b
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+b#2,SET:e
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
+c#3,SET:f
 .
 a-b#1
 b-c#4
@@ -397,10 +397,10 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-e:{(#3,RANGEDEL)}
-b#4,1:b
-c#3,1:c
-e#1,1:e
+a#72057594037927935,RANGEDEL:; Span() = a-e:{(#3,RANGEDEL)}
+b#4,SET:b
+c#3,SET:c
+e#1,SET:e
 .
 a-e#3
 .
@@ -421,10 +421,10 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-e:{(#3,RANGEDEL)}
-b#4,2:b
-c#3,2:c
-e#1,2:e
+a#72057594037927935,RANGEDEL:; Span() = a-e:{(#3,RANGEDEL)}
+b#4,MERGE:b
+c#3,MERGE:c
+e#1,MERGE:e
 .
 a-e#3
 .
@@ -450,10 +450,10 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-c:{(#3,RANGEDEL)}
-b#5,2:de
-d#72057594037927935,15:; Span() = d-f:{(#3,RANGEDEL)}
-d#5,2:bc
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#5,MERGE:de
+d#72057594037927935,RANGEDEL:; Span() = d-f:{(#3,RANGEDEL)}
+d#5,MERGE:bc
 .
 a-c#3
 d-f#3
@@ -474,11 +474,11 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-b:{(#3,RANGEDEL)}
-b#72057594037927935,15:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
-c#72057594037927935,15:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
-d#72057594037927935,15:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
-e#72057594037927935,15:; Span() = e-f:{(#1,RANGEDEL)}
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
+e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 a-b#3
 b-c#3
@@ -496,11 +496,11 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-b:{(#3,RANGEDEL)}
-b#72057594037927935,15:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
-c#72057594037927935,15:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
-d#72057594037927935,15:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
-e#72057594037927935,15:; Span() = e-f:{(#1,RANGEDEL)}
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
+e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 a-b#3
 b-c#3
@@ -520,11 +520,11 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-b:{(#3,RANGEDEL)}
-b#72057594037927935,15:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
-c#72057594037927935,15:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
-d#72057594037927935,15:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
-e#72057594037927935,15:; Span() = e-f:{(#1,RANGEDEL)}
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
+e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 a-b#3
 b-c#3
@@ -544,11 +544,11 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-b:{(#3,RANGEDEL)}
-b#72057594037927935,15:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
-c#72057594037927935,15:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
-d#72057594037927935,15:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
-e#72057594037927935,15:; Span() = e-f:{(#1,RANGEDEL)}
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
+e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 a-b#3
 b-c#3
@@ -574,11 +574,11 @@ tombstones f
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-k:{(#10,RANGEDEL)}
-f#9,1:f
+a#72057594037927935,RANGEDEL:; Span() = a-k:{(#10,RANGEDEL)}
+f#9,SET:f
 a-f#10
 .
-f#8,1:f
+f#8,SET:f
 f-k#10
 .
 
@@ -595,10 +595,10 @@ tombstones f
 next
 tombstones
 ----
-f#72057594037927935,15:; Span() = f-k:{(#10,RANGEDEL)}
-f#9,1:f
+f#72057594037927935,RANGEDEL:; Span() = f-k:{(#10,RANGEDEL)}
+f#9,SET:f
 .
-f#8,1:f
+f#8,SET:f
 f-k#10
 .
 
@@ -619,13 +619,13 @@ next
 next
 tombstones
 ----
-a#1,1:a
-b#72057594037927935,15:; Span() = b-c:{(#2,RANGEDEL)}
+a#1,SET:a
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#2,RANGEDEL)}
 b-c#2
 .
-c#72057594037927935,15:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
-d#72057594037927935,15:; Span() = d-e:{(#3,RANGEDEL)}
-d#4,1:d
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#3,RANGEDEL)}
+d#4,SET:d
 .
 c-d#3
 d-e#3
@@ -641,13 +641,13 @@ next
 next
 tombstones
 ----
-a#1,1:a
-b#72057594037927935,15:; Span() = b-c:{(#2,RANGEDEL)}
+a#1,SET:a
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#2,RANGEDEL)}
 b-c#2
 .
-c#72057594037927935,15:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
-d#72057594037927935,15:; Span() = d-e:{(#3,RANGEDEL)}
-d#4,1:d
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#3,RANGEDEL)}
+d#4,SET:d
 .
 c-d#3
 c-d#2
@@ -667,9 +667,9 @@ next
 tombstones c
 tombstones
 ----
-a#1,1:a
-b#72057594037927935,15:; Span() = b-d:{(#2,RANGEDEL)}
-c#4,1:d
+a#1,SET:a
+b#72057594037927935,RANGEDEL:; Span() = b-d:{(#2,RANGEDEL)}
+c#4,SET:d
 b-c#2
 .
 c-d#2
@@ -689,10 +689,10 @@ next
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-d:{(#2,RANGEDEL)}
-a#2,1:a
-b#2,1:b
-c#2,1:c
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#2,RANGEDEL)}
+a#2,SET:a
+b#2,SET:b
+c#2,SET:c
 .
 
 define
@@ -703,7 +703,7 @@ iter
 first
 next
 ----
-a#1,7:
+a#1,SINGLEDEL:
 .
 
 iter elide-tombstones=true
@@ -721,7 +721,7 @@ iter
 first
 next
 ----
-a#2,7:
+a#2,SINGLEDEL:
 .
 ineffectual-single-deletes: a
 
@@ -748,8 +748,8 @@ first
 next
 next
 ----
-a#3,1:a
-b#2,0:
+a#3,SET:a
+b#2,DEL:
 .
 ineffectual-single-deletes: b
 
@@ -762,7 +762,7 @@ iter
 first
 next
 ----
-a#2,0:
+a#2,DEL:
 .
 ineffectual-single-deletes: a
 
@@ -808,7 +808,7 @@ iter
 first
 next
 ----
-a#2,18:b
+a#2,SETWITHDEL:b
 .
 
 # We don't notice the ineffectual single delete since the SET causes all
@@ -817,7 +817,7 @@ iter elide-tombstones=true
 first
 next
 ----
-a#2,18:b
+a#2,SETWITHDEL:b
 .
 
 define
@@ -830,7 +830,7 @@ iter
 first
 next
 ----
-a#6,18:b[base]
+a#6,SETWITHDEL:b[base]
 .
 
 # Non-deterministic use of SINGLEDEL where there are two older SETs that have
@@ -847,7 +847,7 @@ iter
 first
 next
 ----
-a#6,18:b[base]
+a#6,SETWITHDEL:b[base]
 .
 
 define
@@ -860,7 +860,7 @@ iter
 first
 next
 ----
-b#3,1:c
+b#3,SET:c
 .
 
 define
@@ -873,7 +873,7 @@ iter
 first
 next
 ----
-a#1,1:a
+a#1,SET:a
 .
 invariant-violation-single-deletes: a
 
@@ -888,7 +888,7 @@ iter
 first
 next
 ----
-a#1,2:a
+a#1,MERGE:a
 .
 invariant-violation-single-deletes: a
 
@@ -909,8 +909,8 @@ first
 next
 next
 ----
-a#2,7:
-a#1,1:val
+a#2,SINGLEDEL:
+a#1,SET:val
 .
 
 define
@@ -924,7 +924,7 @@ iter
 first
 next
 ----
-a#2,0:
+a#2,DEL:
 .
 
 iter snapshots=2
@@ -932,15 +932,15 @@ first
 next
 next
 ----
-a#2,0:
-a#1,1:val
+a#2,DEL:
+a#1,SET:val
 .
 
 iter snapshots=3
 first
 next
 ----
-a#2,0:
+a#2,DEL:
 .
 
 iter snapshots=(2,3)
@@ -948,8 +948,8 @@ first
 next
 next
 ----
-a#2,0:
-a#1,1:val
+a#2,DEL:
+a#1,SET:val
 .
 
 define
@@ -963,7 +963,7 @@ iter
 first
 next
 ----
-a#2,1:ab[base]
+a#2,SET:ab[base]
 .
 invariant-violation-single-deletes: a
 
@@ -972,8 +972,8 @@ first
 next
 next
 ----
-a#2,2:b
-a#1,1:a
+a#2,MERGE:b
+a#1,SET:a
 .
 invariant-violation-single-deletes: a
 
@@ -981,7 +981,7 @@ iter snapshots=3
 first
 next
 ----
-a#2,1:ab[base]
+a#2,SET:ab[base]
 .
 invariant-violation-single-deletes: a
 
@@ -992,10 +992,10 @@ next
 next
 next
 ----
-a#4,7:
-a#3,1:c
-a#2,2:b
-a#1,1:a
+a#4,SINGLEDEL:
+a#3,SET:c
+a#2,MERGE:b
+a#1,SET:a
 .
 
 define
@@ -1010,8 +1010,8 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-c:{(#2,RANGEDEL)}
-a#3,7:
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#2,RANGEDEL)}
+a#3,SINGLEDEL:
 .
 a-c#2
 .
@@ -1029,8 +1029,8 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-d:{(#3,RANGEDEL)}
-d#2,0:
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
+d#2,DEL:
 .
 a-d#3
 .
@@ -1041,9 +1041,9 @@ next
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-d:{(#3,RANGEDEL)}
-a#2,0:
-d#2,0:
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
+a#2,DEL:
+d#2,DEL:
 .
 
 iter snapshots=2
@@ -1052,9 +1052,9 @@ next
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-d:{(#3,RANGEDEL)}
-a#1,1:a
-d#2,0:
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
+a#1,SET:a
+d#2,DEL:
 .
 
 iter snapshots=1
@@ -1062,8 +1062,8 @@ first
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-d:{(#3,RANGEDEL)}
-d#2,0:
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
+d#2,DEL:
 .
 
 define
@@ -1078,9 +1078,9 @@ next
 next
 tombstones
 ----
-a#2,2:a
+a#2,MERGE:a
 .
-b#72057594037927935,15:; Span() = b-c:{(#1,RANGEDEL)}
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#1,RANGEDEL)}
 .
 b-c#1
 .
@@ -1097,8 +1097,8 @@ next
 next
 tombstones
 ----
-a#72057594037927935,15:; Span() = a-b:{(#1,RANGEDEL)}
-a#0,2:v1v2
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#0,MERGE:v1v2
 .
 a-b#1
 .
@@ -1115,21 +1115,21 @@ iter
 first
 next
 ----
-a#5,18:5[base]
+a#5,SETWITHDEL:5[base]
 .
 
 iter allow-zero-seqnum=true
 first
 next
 ----
-a#0,18:5[base]
+a#0,SETWITHDEL:5[base]
 .
 
 iter elide-tombstones=true
 first
 next
 ----
-a#5,18:5[base]
+a#5,SETWITHDEL:5[base]
 .
 
 iter snapshots=2
@@ -1137,8 +1137,8 @@ first
 next
 next
 ----
-a#5,18:5[base]
-a#1,2:1
+a#5,SETWITHDEL:5[base]
+a#1,MERGE:1
 .
 
 iter snapshots=2 elide-tombstones=true
@@ -1146,8 +1146,8 @@ first
 next
 next
 ----
-a#5,18:5[base]
-a#1,2:1
+a#5,SETWITHDEL:5[base]
+a#1,MERGE:1
 .
 
 # Verify that merge+rangedel -> merge.
@@ -1164,8 +1164,8 @@ first
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-c:{(#3,RANGEDEL)}
-b#5,2:5
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#5,MERGE:5
 .
 
 iter allow-zero-seqnum=true
@@ -1173,8 +1173,8 @@ first
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-c:{(#3,RANGEDEL)}
-b#0,2:5
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#0,MERGE:5
 .
 
 iter snapshots=2
@@ -1182,9 +1182,9 @@ first
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-c:{(#3,RANGEDEL)}
-b#5,2:5
-b#1,2:1
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#5,MERGE:5
+b#1,MERGE:1
 
 define
 a.RANGEDEL.3:c
@@ -1198,8 +1198,8 @@ first
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-c:{(#3,RANGEDEL)}
-b#5,2:5
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#5,MERGE:5
 .
 
 iter snapshots=2
@@ -1207,9 +1207,9 @@ first
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-c:{(#3,RANGEDEL)}
-b#5,2:5
-b#1,2:1
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#5,MERGE:5
+b#1,MERGE:1
 
 # SET that meets a DEL is transformed into a SETWITHDEL.
 
@@ -1222,7 +1222,7 @@ iter
 first
 next
 ----
-a#2,18:b
+a#2,SETWITHDEL:b
 .
 
 iter snapshots=2
@@ -1230,8 +1230,8 @@ first
 next
 next
 ----
-a#2,1:b
-a#1,0:
+a#2,SET:b
+a#1,DEL:
 .
 
 define
@@ -1244,7 +1244,7 @@ iter
 first
 next
 ----
-a#3,18:c
+a#3,SETWITHDEL:c
 .
 
 iter snapshots=2
@@ -1252,8 +1252,8 @@ first
 next
 next
 ----
-a#3,18:c
-a#1,1:b
+a#3,SETWITHDEL:c
+a#1,SET:b
 .
 
 define
@@ -1266,7 +1266,7 @@ iter
 first
 next
 ----
-a#3,18:c
+a#3,SETWITHDEL:c
 .
 
 iter snapshots=3
@@ -1274,8 +1274,8 @@ first
 next
 next
 ----
-a#3,1:c
-a#2,18:b
+a#3,SET:c
+a#2,SETWITHDEL:b
 .
 
 iter snapshots=2
@@ -1283,8 +1283,8 @@ first
 next
 next
 ----
-a#3,1:c
-a#1,0:
+a#3,SET:c
+a#1,DEL:
 .
 
 define
@@ -1297,7 +1297,7 @@ iter
 first
 next
 ----
-a#3,0:
+a#3,DEL:
 .
 
 iter snapshots=3
@@ -1305,8 +1305,8 @@ first
 next
 next
 ----
-a#3,0:
-a#2,18:b
+a#3,DEL:
+a#2,SETWITHDEL:b
 .
 
 iter snapshots=2
@@ -1314,8 +1314,8 @@ first
 next
 next
 ----
-a#3,0:
-a#1,0:
+a#3,DEL:
+a#1,DEL:
 .
 
 # SETWITHDEL-eligible entries at or under a RANGEDEL at the same user key should
@@ -1333,8 +1333,8 @@ first
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-z:{(#2,RANGEDEL)}
-a#0,1:c
+a#72057594037927935,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
+a#0,SET:c
 .
 
 iter allow-zero-seqnum=true snapshots=3
@@ -1343,9 +1343,9 @@ next
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-z:{(#2,RANGEDEL)}
-a#3,1:c
-a#0,1:b
+a#72057594037927935,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
+a#3,SET:c
+a#0,SET:b
 .
 
 iter allow-zero-seqnum=true snapshots=2
@@ -1354,9 +1354,9 @@ next
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-z:{(#2,RANGEDEL)}
-a#3,1:c
-a#1,0:
+a#72057594037927935,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
+a#3,SET:c
+a#1,DEL:
 .
 
 define
@@ -1371,8 +1371,8 @@ first
 next
 next
 ----
-a#72057594037927935,15:; Span() = a-z:{(#3,RANGEDEL)}
-a#4,1:c
+a#72057594037927935,RANGEDEL:; Span() = a-z:{(#3,RANGEDEL)}
+a#4,SET:c
 .
 
 # Invalid keys are emitted under SETWITHDEL.
@@ -1411,8 +1411,8 @@ first
 next
 next
 ----
-a#3,0:
-b#1,1:c
+a#3,DEL:
+b#1,SET:c
 .
 
 iter snapshots=2
@@ -1420,8 +1420,8 @@ first
 next
 next
 ----
-a#3,0:
-b#1,1:c
+a#3,DEL:
+b#1,SET:c
 .
 
 iter snapshots=3
@@ -1430,9 +1430,9 @@ next
 next
 next
 ----
-a#3,7:
-a#2,18:d
-b#1,1:c
+a#3,SINGLEDEL:
+a#2,SETWITHDEL:d
+b#1,SET:c
 .
 
 define
@@ -1446,8 +1446,8 @@ first
 next
 next
 ----
-a#3,18:3
-b#1,1:c
+a#3,SETWITHDEL:3
+b#1,SET:c
 .
 
 iter snapshots=3
@@ -1456,7 +1456,7 @@ next
 next
 next
 ----
-a#3,18:3
-a#2,1:d
-b#1,1:c
+a#3,SETWITHDEL:3
+a#2,SET:d
+b#1,SET:c
 .

@@ -24,7 +24,7 @@ define
 iter
 last
 ----
-000001:[a#1,1-b#2,1]
+000001:[a#1,SET-b#2,SET]
 
 iter
 first
@@ -32,9 +32,9 @@ next
 prev
 prev
 ----
-000001:[a#1,1-b#2,1]
+000001:[a#1,SET-b#2,SET]
 .
-000001:[a#1,1-b#2,1]
+000001:[a#1,SET-b#2,SET]
 .
 
 iter
@@ -42,8 +42,8 @@ seek-ge a
 seek-ge b
 seek-ge c
 ----
-000001:[a#1,1-b#2,1]
-000001:[a#1,1-b#2,1]
+000001:[a#1,SET-b#2,SET]
+000001:[a#1,SET-b#2,SET]
 .
 
 iter
@@ -52,8 +52,8 @@ seek-lt b
 seek-lt z
 ----
 .
-000001:[a#1,1-b#2,1]
-000001:[a#1,1-b#2,1]
+000001:[a#1,SET-b#2,SET]
+000001:[a#1,SET-b#2,SET]
 
 define
 [ b.SET.1-c.SET.2 ]
@@ -65,10 +65,10 @@ seek-ge d
 seek-lt a
 seek-lt z
 ----
-000001:[b#1,1-c#2,1]
+000001:[b#1,SET-c#2,SET]
 .
 .
-000001:[b#1,1-c#2,1]
+000001:[b#1,SET-c#2,SET]
 
 
 define
@@ -81,9 +81,9 @@ prev
 last
 next
 ----
-000002:[c#3,1-d#4,1]
+000002:[c#3,SET-d#4,SET]
 .
-000003:[e#5,1-f#6,1]
+000003:[e#5,SET-f#6,SET]
 .
 
 iter
@@ -93,11 +93,11 @@ seek-ge c
 seek-ge h
 prev
 ----
-000002:[c#3,1-d#4,1]
-000002:[c#3,1-d#4,1]
-000002:[c#3,1-d#4,1]
+000002:[c#3,SET-d#4,SET]
+000002:[c#3,SET-d#4,SET]
+000002:[c#3,SET-d#4,SET]
 .
-000003:[e#5,1-f#6,1]
+000003:[e#5,SET-f#6,SET]
 
 iter
 seek-lt b
@@ -107,10 +107,10 @@ next
 seek-lt z
 ----
 .
-000002:[c#3,1-d#4,1]
+000002:[c#3,SET-d#4,SET]
 .
-000002:[c#3,1-d#4,1]
-000003:[e#5,1-f#6,1]
+000002:[c#3,SET-d#4,SET]
+000003:[e#5,SET-f#6,SET]
 
 define
 a.SET.1-b.SET.2 c.SET.3-d.SET.4 e.SET.5-f.SET.6 g.SET.7-h.SET.8 [ ]

@@ -451,7 +451,7 @@ func (k *InternalKey) CopyFrom(k2 InternalKey) {
 
 // String returns a string representation of the key.
 func (k InternalKey) String() string {
-	return fmt.Sprintf("%s#%d,%d", FormatBytes(k.UserKey), k.SeqNum(), k.Kind())
+	return fmt.Sprintf("%s#%d,%s", FormatBytes(k.UserKey), k.SeqNum(), k.Kind())
 }
 
 // Pretty returns a formatter for the key.

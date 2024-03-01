@@ -20,7 +20,7 @@ assert-bounds
 a.SET.1
 z
 ----
-lower bound a#1,1 violated by key a#3,20; wraps *keyspan.Iter
+lower bound a#1,SET violated by key a#3,RANGEKEYUNSET; wraps *keyspan.Iter
 
 assert-bounds
 a.SET.5

@@ -15,78 +15,78 @@ pebble: external sstable has corrupted key: a#0,INVALID
 load
 a.SET.0:
 ----
-1: a#0,1-a#0,1
-  points: a#0,1-a#0,1
-  ranges: #0,0-#0,0
+1: a#0,SET-a#0,SET
+  points: a#0,SET-a#0,SET
+  ranges: #0,DEL-#0,DEL
 
 load
 a.SET.0:
 b.SET.0:
 ----
-1: a#0,1-b#0,1
-  points: a#0,1-b#0,1
-  ranges: #0,0-#0,0
+1: a#0,SET-b#0,SET
+  points: a#0,SET-b#0,SET
+  ranges: #0,DEL-#0,DEL
 
 load
 a.DEL.0:
 ----
-1: a#0,0-a#0,0
-  points: a#0,0-a#0,0
-  ranges: #0,0-#0,0
+1: a#0,DEL-a#0,DEL
+  points: a#0,DEL-a#0,DEL
+  ranges: #0,DEL-#0,DEL
 
 load
 a.DEL.0:
 b.DEL.0:
 ----
-1: a#0,0-b#0,0
-  points: a#0,0-b#0,0
-  ranges: #0,0-#0,0
+1: a#0,DEL-b#0,DEL
+  points: a#0,DEL-b#0,DEL
+  ranges: #0,DEL-#0,DEL
 
 load
 a.MERGE.0:
 ----
-1: a#0,2-a#0,2
-  points: a#0,2-a#0,2
-  ranges: #0,0-#0,0
+1: a#0,MERGE-a#0,MERGE
+  points: a#0,MERGE-a#0,MERGE
+  ranges: #0,DEL-#0,DEL
 
 load
 a.MERGE.0:
 b.MERGE.0:
 ----
-1: a#0,2-b#0,2
-  points: a#0,2-b#0,2
-  ranges: #0,0-#0,0
+1: a#0,MERGE-b#0,MERGE
+  points: a#0,MERGE-b#0,MERGE
+  ranges: #0,DEL-#0,DEL
 
 load
 a.RANGEDEL.0:b
 ----
-1: a#0,15-b#72057594037927935,15
-  points: a#0,15-b#72057594037927935,15
-  ranges: #0,0-#0,0
-
-load
-a.SET.0:
-a.RANGEDEL.0:b
-----
-1: a#0,15-b#72057594037927935,15
-  points: a#0,15-b#72057594037927935,15
-  ranges: #0,0-#0,0
+1: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
+  points: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
+  ranges: #0,DEL-#0,DEL
 
 load
 a.SET.0:
 a.RANGEDEL.0:b
 ----
-1: a#0,15-b#72057594037927935,15
-  points: a#0,15-b#72057594037927935,15
-  ranges: #0,0-#0,0
+1: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
+  points: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
+  ranges: #0,DEL-#0,DEL
+
+load
+a.SET.0:
+a.RANGEDEL.0:b
+----
+1: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
+  points: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
+  ranges: #0,DEL-#0,DEL
 
 load
 b.SET.0:
 a.RANGEDEL.0:b
 ----
-1: a#0,15-b#0,1
-  points: a#0,15-b#0,1
-  ranges: #0,0-#0,0
+1: a#0,RANGEDEL-b#0,SET
+  points: a#0,RANGEDEL-b#0,SET
+  ranges: #0,DEL-#0,DEL
 
 # Loading tables at an unsupported table format results in an error.
 # Write a table at version 15 (Pebble,v4) into a DB at version 14 (Pebble,v3).
@@ -100,9 +100,9 @@ pebble: table format (Pebble,v4) is not within range supported at DB format majo
 load writer-version=16 db-version=16
 rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
-1: a#0,21-z#72057594037927935,21
-  points: #0,0-#0,0
-  ranges: a#0,21-z#72057594037927935,21
+1: a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
+  points: #0,DEL-#0,DEL
+  ranges: a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
 
 # Tables with a mixture of point and range keys.
 
@@ -114,25 +114,25 @@ rangekey: w-x:{(#0,RANGEKEYSET,@1,foo)}
 rangekey: x-y:{(#0,RANGEKEYSET,@2,bar)}
 rangekey: y-z:{(#0,RANGEKEYSET,@3,baz)}
 ----
-1: a#0,1-z#72057594037927935,21
-  points: a#0,1-c#0,1
-  ranges: w#0,21-z#72057594037927935,21
+1: a#0,SET-z#72057594037927935,RANGEKEYSET
+  points: a#0,SET-c#0,SET
+  ranges: w#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
 
 load writer-version=16 db-version=16
 c.SET.0:d
 rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
-1: a#0,21-z#72057594037927935,21
-  points: c#0,1-c#0,1
-  ranges: a#0,21-z#72057594037927935,21
+1: a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
+  points: c#0,SET-c#0,SET
+  ranges: a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
 
 load writer-version=16 db-version=16
 a.SET.0:z
 rangekey: c-d:{(#0,RANGEKEYSET,@1,foo)}
 ----
-1: a#0,1-d#72057594037927935,21
-  points: a#0,1-a#0,1
-  ranges: c#0,21-d#72057594037927935,21
+1: a#0,SET-d#72057594037927935,RANGEKEYSET
+  points: a#0,SET-a#0,SET
+  ranges: c#0,RANGEKEYSET-d#72057594037927935,RANGEKEYSET
 
 # NB: range dels sort before range keys
 
@@ -140,9 +140,9 @@ load writer-version=16 db-version=16
 a.RANGEDEL.0:z
 rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
-1: a#0,21-z#72057594037927935,15
-  points: a#0,15-z#72057594037927935,15
-  ranges: a#0,21-z#72057594037927935,21
+1: a#0,RANGEKEYSET-z#72057594037927935,RANGEDEL
+  points: a#0,RANGEDEL-z#72057594037927935,RANGEDEL
+  ranges: a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
 
 # Loading tables at an unsupported table format results in an error.
 
