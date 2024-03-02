@@ -125,6 +125,27 @@ func parseOptions(
 				}
 				opts.seedEFOS = v
 				return true
+			case "TestOptions.io_latency_mean":
+				v, err := time.ParseDuration(value)
+				if err != nil {
+					panic(err)
+				}
+				opts.ioLatencyMean = v
+				return true
+			case "TestOptions.io_latency_probability":
+				v, err := strconv.ParseFloat(value, 64)
+				if err != nil {
+					panic(err)
+				}
+				opts.ioLatencyProbability = v
+				return true
+			case "TestOptions.io_latency_seed":
+				v, err := strconv.ParseInt(value, 10, 64)
+				if err != nil {
+					panic(err)
+				}
+				opts.ioLatencySeed = v
+				return true
 			case "TestOptions.ingest_split":
 				opts.ingestSplit = true
 				opts.Opts.Experimental.IngestSplit = func() bool {
@@ -215,6 +236,11 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.ingestSplit {
 		fmt.Fprintf(&buf, "  ingest_split=%v\n", opts.ingestSplit)
+	}
+	if opts.ioLatencyProbability > 0.0 {
+		fmt.Fprintf(&buf, "  io_latency_mean=%s\n", opts.ioLatencyMean)
+		fmt.Fprintf(&buf, "  io_latency_probability=%f\n", opts.ioLatencyProbability)
+		fmt.Fprintf(&buf, "  io_latency_seed=%d\n", opts.ioLatencySeed)
 	}
 	if opts.useSharedReplicate {
 		fmt.Fprintf(&buf, "  use_shared_replicate=%v\n", opts.useSharedReplicate)
@@ -317,6 +343,13 @@ type TestOptions struct {
 	// are actually created as EventuallyFileOnlySnapshots is deterministically
 	// derived from the seed and the operation index.
 	seedEFOS uint64
+	// If nonzero, enables the injection of random IO latency. The mechanics of
+	// a Pebble operation can be very timing dependent, so artificial latency
+	// can ensure a wide variety of mechanics are exercised. Additionally,
+	// exercising some mechanics such as WAL failover require IO latency.
+	ioLatencyProbability float64
+	ioLatencySeed        int64
+	ioLatencyMean        time.Duration
 	// Enables ingest splits. Saved here for serialization as Options does not
 	// serialize this.
 	ingestSplit bool
@@ -575,8 +608,6 @@ func RandomOptions(
 	}
 
 	// Half the time enable WAL failover.
-	// TODO(jackson): Add I/O latency injection (#2482). Until then WAL failover
-	// will rarely trigger.
 	if rng.Intn(2) == 0 {
 		// Use 10x longer durations when writing directly to FS; we don't want
 		// WAL failover to trigger excessively frequently.
@@ -668,6 +699,12 @@ func RandomOptions(
 	// sufficient.
 	testOpts.useDisk = false
 	testOpts.strictFS = rng.Intn(2) != 0 // Only relevant for MemFS.
+	// 50% of the time, enable IO latency injection.
+	if rng.Intn(2) == 0 {
+		testOpts.ioLatencyMean = expRandDuration(rng, 3*time.Millisecond, time.Second)
+		testOpts.ioLatencyProbability = 0.01 * rng.Float64() // 0-1%
+		testOpts.ioLatencySeed = rng.Int63()
+	}
 	testOpts.Threads = rng.Intn(runtime.GOMAXPROCS(0)) + 1
 	if testOpts.strictFS {
 		opts.DisableWAL = false
