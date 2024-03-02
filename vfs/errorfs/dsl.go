@@ -5,14 +5,11 @@
 package errorfs
 
 import (
-	"encoding/binary"
 	"fmt"
 	"go/token"
-	"hash/maphash"
 	"math/rand"
 	"path/filepath"
 	"strconv"
-	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/dsl"
@@ -91,20 +88,15 @@ func (p opKindPred) Evaluate(op Op) bool { return p.kind == op.Kind.ReadOrWrite(
 // nondeterministic concurrency if the concurrency is constrained to separate
 // files.
 func Randomly(p float64, seed int64) Predicate {
-	rs := &randomSeed{p: p, rootSeed: seed}
-	rs.mu.perFilePrng = make(map[string]*rand.Rand)
+	rs := &randomSeed{p: p}
+	rs.keyedPrng.init(seed)
 	return rs
 }
 
 type randomSeed struct {
 	// p defines the probability of an error being injected.
-	p        float64
-	rootSeed int64
-	mu       struct {
-		sync.Mutex
-		h           maphash.Hash
-		perFilePrng map[string]*rand.Rand
-	}
+	p float64
+	keyedPrng
 }
 
 func (rs *randomSeed) String() string {
@@ -115,27 +107,11 @@ func (rs *randomSeed) String() string {
 }
 
 func (rs *randomSeed) Evaluate(op Op) bool {
-	rs.mu.Lock()
-	defer rs.mu.Unlock()
-	prng, ok := rs.mu.perFilePrng[op.Path]
-	if !ok {
-		// This is the first time an operation has been performed on the file at
-		// this path. Initialize the per-file prng by computing a deterministic
-		// hash of the path.
-		rs.mu.h.Reset()
-		var b [8]byte
-		binary.LittleEndian.PutUint64(b[:], uint64(rs.rootSeed))
-		if _, err := rs.mu.h.Write(b[:]); err != nil {
-			panic(err)
-		}
-		if _, err := rs.mu.h.WriteString(op.Path); err != nil {
-			panic(err)
-		}
-		seed := rs.mu.h.Sum64()
-		prng = rand.New(rand.NewSource(int64(seed)))
-		rs.mu.perFilePrng[op.Path] = prng
-	}
-	return prng.Float64() < rs.p
+	var ok bool
+	rs.keyedPrng.withKey(op.Path, func(prng *rand.Rand) {
+		ok = prng.Float64() < rs.p
+	})
+	return ok
 }
 
 // ParseDSL parses the provided string using the default DSL parser.
@@ -206,6 +182,10 @@ func NewParser() *Parser {
 			return parseRandomly(s)
 		})
 	p.AddError(ErrInjected)
+	p.injectors.DefineFunc("RandomLatency",
+		func(_ *dsl.Parser[Injector], s *dsl.Scanner) Injector {
+			return parseRandomLatency(p, s)
+		})
 	return p
 }
 
