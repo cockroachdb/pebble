@@ -46,7 +46,9 @@ const probeHistoryLength = 128
 // Large value.
 const failedProbeDuration = 24 * 60 * 60 * time.Second
 
-// There is no close/stop method on the dirProber -- use stopper.
+// init takes a stopper in order to connect the dirProber's long-running
+// goroutines with the stopper's wait group, but the dirProber has its own
+// stop() method that should be invoked to trigger the shutdown.
 func (p *dirProber) init(
 	fs vfs.FS,
 	filename string,
@@ -68,18 +70,29 @@ func (p *dirProber) init(
 	if err != nil {
 		panic(err)
 	}
-	stopper.runAsync(func() {
-		p.probeLoop(stopper.shouldQuiesce())
-	})
+	// dirProber has an explicit stop() method instead of listening on
+	// stopper.shouldQuiesce. This structure helps negotiate the shutdown
+	// between failoverMonitor and dirProber. If the dirProber independently
+	// listened to shouldQuiesce, it might exit before the failover monitor. The
+	// [enable|disable]Probing methods require sending on a channel expecting
+	// that the dirProber goroutine will receive on the same channel. If the
+	// dirProber noticed the queiscence and exited first, the failoverMonitor
+	// could deadlock waiting for a goroutine that no longer exists.
+	//
+	// Instead, shutdown of the dirProber is coordinated by the failoverMonitor:
+	//   - the failoverMonitor listens to stopper.shouldQuiesce.
+	//   - when the failoverMonitor is exiting, it will no longer attempt to
+	//   interact with the dirProber. Only then does it invoke dirProber.stop.
+	stopper.runAsync(p.probeLoop)
 }
 
-func (p *dirProber) probeLoop(shouldQuiesce <-chan struct{}) {
+func (p *dirProber) probeLoop() {
 	ticker := p.timeSource.newTicker(p.interval)
 	ticker.stop()
 	tickerCh := ticker.ch()
-	done := false
+	shouldContinue := true
 	var enabled bool
-	for !done {
+	for shouldContinue {
 		select {
 		case <-tickerCh:
 			if !enabled {
@@ -119,18 +132,15 @@ func (p *dirProber) probeLoop(shouldQuiesce <-chan struct{}) {
 			}
 			p.mu.Unlock()
 
-		case <-shouldQuiesce:
-			done = true
-
-		case enabled = <-p.enabled:
-			if enabled {
-				ticker.reset(p.interval)
-			} else {
+		case enabled, shouldContinue = <-p.enabled:
+			if !enabled || !shouldContinue {
 				ticker.stop()
 				p.mu.Lock()
 				p.mu.firstProbeIndex = 0
 				p.mu.nextProbeIndex = 0
 				p.mu.Unlock()
+			} else {
+				ticker.reset(p.interval)
 			}
 		}
 		if p.iterationForTesting != nil {
@@ -145,6 +155,10 @@ func (p *dirProber) enableProbing() {
 
 func (p *dirProber) disableProbing() {
 	p.enabled <- false
+}
+
+func (p *dirProber) stop() {
+	close(p.enabled)
 }
 
 func (p *dirProber) getMeanMax(interval time.Duration) (time.Duration, time.Duration) {
@@ -317,6 +331,7 @@ func (m *failoverMonitor) monitorLoop(shouldQuiesce <-chan struct{}) {
 		select {
 		case <-shouldQuiesce:
 			ticker.stop()
+			m.prober.stop()
 			return
 		case <-tickerCh:
 			writerOngoingLatency, writerErr := func() (time.Duration, error) {
