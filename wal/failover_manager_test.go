@@ -7,6 +7,7 @@ package wal
 import (
 	"container/list"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -545,6 +546,38 @@ func recvWithDeadline(t *testing.T, td *datadriven.TestData, waitStr string, ch 
 	case <-timer.C:
 		t.Fatalf("send expired at %s %s", td.Pos, waitStr)
 	}
+}
+
+func TestFailoverManager_Quiesce(t *testing.T) {
+	seed := time.Now().UnixNano()
+	memFS := vfs.NewMem()
+	require.NoError(t, memFS.MkdirAll("primary", os.ModePerm))
+	require.NoError(t, memFS.MkdirAll("secondary", os.ModePerm))
+	fs := errorfs.Wrap(memFS, errorfs.RandomLatency(errorfs.Randomly(0.50, seed), 10*time.Millisecond, seed))
+
+	var m failoverManager
+	require.NoError(t, m.init(Options{
+		Primary:              Dir{FS: fs, Dirname: "primary"},
+		Secondary:            Dir{FS: fs, Dirname: "secondary"},
+		MaxNumRecyclableLogs: 2,
+		PreallocateSize:      func() int { return 4 },
+		FailoverOptions: FailoverOptions{
+			PrimaryDirProbeInterval:            250 * time.Microsecond,
+			HealthyProbeLatencyThreshold:       time.Millisecond,
+			HealthyInterval:                    3 * time.Millisecond,
+			UnhealthySamplingInterval:          250 * time.Microsecond,
+			UnhealthyOperationLatencyThreshold: func() time.Duration { return time.Millisecond },
+		},
+	}, nil /* initial  logs */))
+	for i := 0; i < 3; i++ {
+		w, err := m.Create(NumWAL(i), i)
+		require.NoError(t, err)
+		_, err = w.WriteRecord([]byte("hello world"), SyncOptions{})
+		require.NoError(t, err)
+		_, err = w.Close()
+		require.NoError(t, err)
+	}
+	require.NoError(t, m.Close())
 }
 
 // TODO(sumeer): test wrap around of history in dirProber.
