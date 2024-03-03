@@ -68,18 +68,16 @@ func (p *dirProber) init(
 	if err != nil {
 		panic(err)
 	}
-	stopper.runAsync(func() {
-		p.probeLoop(stopper.shouldQuiesce())
-	})
+	stopper.runAsync(p.probeLoop)
 }
 
-func (p *dirProber) probeLoop(shouldQuiesce <-chan struct{}) {
+func (p *dirProber) probeLoop() {
 	ticker := p.timeSource.newTicker(p.interval)
 	ticker.stop()
 	tickerCh := ticker.ch()
-	done := false
+	shouldContinue := true
 	var enabled bool
-	for !done {
+	for shouldContinue {
 		select {
 		case <-tickerCh:
 			if !enabled {
@@ -119,18 +117,15 @@ func (p *dirProber) probeLoop(shouldQuiesce <-chan struct{}) {
 			}
 			p.mu.Unlock()
 
-		case <-shouldQuiesce:
-			done = true
-
-		case enabled = <-p.enabled:
-			if enabled {
-				ticker.reset(p.interval)
-			} else {
+		case enabled, shouldContinue = <-p.enabled:
+			if !enabled || !shouldContinue {
 				ticker.stop()
 				p.mu.Lock()
 				p.mu.firstProbeIndex = 0
 				p.mu.nextProbeIndex = 0
 				p.mu.Unlock()
+			} else {
+				ticker.reset(p.interval)
 			}
 		}
 		if p.iterationForTesting != nil {
@@ -145,6 +140,10 @@ func (p *dirProber) enableProbing() {
 
 func (p *dirProber) disableProbing() {
 	p.enabled <- false
+}
+
+func (p *dirProber) stop() {
+	close(p.enabled)
 }
 
 func (p *dirProber) getMeanMax(interval time.Duration) (time.Duration, time.Duration) {
@@ -317,6 +316,7 @@ func (m *failoverMonitor) monitorLoop(shouldQuiesce <-chan struct{}) {
 		select {
 		case <-shouldQuiesce:
 			ticker.stop()
+			m.prober.stop()
 			return
 		case <-tickerCh:
 			writerOngoingLatency, writerErr := func() (time.Duration, error) {
