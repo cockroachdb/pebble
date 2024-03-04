@@ -925,10 +925,13 @@ type ingestExternalFilesOp struct {
 
 type externalObjWithBounds struct {
 	externalObjID objID
-	bounds        pebble.KeyRange
-	// We will only apply the synthetic suffix if it compares before all the
-	// suffixes inside the sst.
+
+	// bounds for the external object. These bounds apply after keys undergo
+	// any prefix or suffix transforms.
+	bounds pebble.KeyRange
+
 	syntheticSuffix sstable.SyntheticSuffix
+	prefixChange    *sstable.PrefixReplacement
 }
 
 func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
@@ -942,7 +945,7 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 		if m := objMeta.sstMeta; !m.HasPointKeys && !m.HasRangeKeys && !m.HasRangeDelKeys {
 			continue
 		}
-		if externalObjIsEmpty(t, obj.externalObjID, obj.bounds) {
+		if externalObjIsEmpty(t, obj.externalObjID, obj.bounds, obj.prefixChange) {
 			// Currently we don't support ingesting external objects that have no point
 			// or range keys in the given range. Filter out any such objects.
 			// TODO(radu): even though we don't expect this case in practice, eventually
@@ -962,7 +965,9 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 		var paths []string
 		for i, obj := range objs {
 			// Make sure the object exists and is not empty.
-			path, sstMeta := buildForIngestExternalEmulation(t, o.dbID, obj.externalObjID, obj.bounds, obj.syntheticSuffix, i)
+			path, sstMeta := buildForIngestExternalEmulation(
+				t, o.dbID, obj.externalObjID, obj.bounds, obj.syntheticSuffix, obj.prefixChange, i,
+			)
 			if sstMeta.HasPointKeys || sstMeta.HasRangeKeys || sstMeta.HasRangeDelKeys {
 				paths = append(paths, path)
 			}
@@ -984,7 +989,10 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 				HasPointKey:     meta.sstMeta.HasPointKeys || meta.sstMeta.HasRangeDelKeys,
 				HasRangeKey:     meta.sstMeta.HasRangeKeys,
 				SyntheticSuffix: obj.syntheticSuffix,
-				// TODO(radu): test prefix replacement.
+			}
+			if obj.prefixChange != nil {
+				external[i].ContentPrefix = obj.prefixChange.ContentPrefix
+				external[i].SyntheticPrefix = obj.prefixChange.SyntheticPrefix
 			}
 		}
 		_, err = db.IngestExternalFiles(external)
@@ -1007,12 +1015,28 @@ func (o *ingestExternalFilesOp) syncObjs() objIDSlice {
 func (o *ingestExternalFilesOp) String() string {
 	strs := make([]string, len(o.objs))
 	for i, obj := range o.objs {
-		strs[i] = fmt.Sprintf("%s, %q, %q, %q /* syntheticSuffix */", obj.externalObjID, obj.bounds.Start, obj.bounds.End, obj.syntheticSuffix)
+		var contentPrefix, syntheticPrefix []byte
+		if obj.prefixChange != nil {
+			contentPrefix = obj.prefixChange.ContentPrefix
+			syntheticPrefix = obj.prefixChange.SyntheticPrefix
+		}
+		strs[i] = fmt.Sprintf("%s, %q /* start */, %q /* end */, %q /* syntheticSuffix */, %q /* contentPrefix */, %q /* syntheticPrefix */",
+			obj.externalObjID, obj.bounds.Start, obj.bounds.End, obj.syntheticSuffix,
+			contentPrefix, syntheticPrefix,
+		)
 	}
 	return fmt.Sprintf("%s.IngestExternalFiles(%s)", o.dbID, strings.Join(strs, ", "))
 }
 
 func (o *ingestExternalFilesOp) keys() []*[]byte {
+	// If any of the objects have synthetic prefixes, we can't allow modification
+	// of external object bounds.
+	for i := range o.objs {
+		if o.objs[i].prefixChange != nil {
+			return nil
+		}
+	}
+
 	var res []*[]byte
 	for i := range o.objs {
 		res = append(res, &o.objs[i].bounds.Start, &o.objs[i].bounds.End)
@@ -1275,7 +1299,7 @@ func (o *iterSetOptionsOp) String() string {
 }
 
 func iterOptions(o iterOpts) *pebble.IterOptions {
-	if o.IsZero() {
+	if o.IsZero() && !debugIterators {
 		return nil
 	}
 	var lower, upper []byte
@@ -1292,7 +1316,8 @@ func iterOptions(o iterOpts) *pebble.IterOptions {
 		RangeKeyMasking: pebble.RangeKeyMasking{
 			Suffix: o.maskSuffix,
 		},
-		UseL6Filters: o.useL6Filters,
+		UseL6Filters:       o.useL6Filters,
+		DebugRangeKeyStack: debugIterators,
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
 		opts.RangeKeyMasking.Filter = func() pebble.BlockPropertyFilterMask {
@@ -1763,6 +1788,7 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 		iter, rangeDelIter, rangeKeyIter,
 		true, /* uniquePrefixes */
 		nil,  /* syntheticSuffix */
+		nil,  /* prefixChange */
 		writable,
 		t.minFMV(),
 	)

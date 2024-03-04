@@ -299,14 +299,21 @@ func (k *keyManager) InRangeKeysForObj(o objID, lower, upper []byte) []keyMeta {
 // KeysForExternalIngest returns the keys that will be ingested with an external
 // object (taking into consideration the bounds, synthetic suffix, etc).
 func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta {
-	keys := k.InRangeKeysForObj(obj.externalObjID, obj.bounds.Start, obj.bounds.End)
-	if obj.syntheticSuffix.IsSet() {
-		for i := range keys {
-			n := k.comparer.Split(keys[i].key)
-			keys[i].key = append(keys[i].key[:n:n], obj.syntheticSuffix...)
+	var res []keyMeta
+	for _, km := range k.SortedKeysForObj(obj.externalObjID) {
+		// Apply prefix and suffix changes, then check the bounds.
+		if obj.prefixChange != nil {
+			km.key = obj.prefixChange.Apply(km.key)
+		}
+		if obj.syntheticSuffix.IsSet() {
+			n := k.comparer.Split(km.key)
+			km.key = append(km.key[:n:n], obj.syntheticSuffix...)
+		}
+		if k.comparer.Compare(km.key, obj.bounds.Start) >= 0 && k.comparer.Compare(km.key, obj.bounds.End) < 0 {
+			res = append(res, km)
 		}
 	}
-	return keys
+	return res
 }
 
 func (k *keyManager) nextMetaTimestamp() int {
