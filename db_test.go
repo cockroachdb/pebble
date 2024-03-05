@@ -2024,3 +2024,61 @@ func TestRecycleLogs(t *testing.T) {
 	}
 	require.NoError(t, d.Close())
 }
+
+type sstAndLogFileBlockingFS struct {
+	vfs.FS
+	unblocker sync.WaitGroup
+}
+
+var _ vfs.FS = &sstAndLogFileBlockingFS{}
+
+func (fs *sstAndLogFileBlockingFS) Create(name string) (vfs.File, error) {
+	if strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".sst") {
+		fs.unblocker.Wait()
+	}
+	return fs.FS.Create(name)
+}
+
+func (fs *sstAndLogFileBlockingFS) unblock() {
+	fs.unblocker.Done()
+}
+
+func newBlockingFS(fs vfs.FS) *sstAndLogFileBlockingFS {
+	lfbfs := &sstAndLogFileBlockingFS{FS: fs}
+	lfbfs.unblocker.Add(1)
+	return lfbfs
+}
+
+func TestWALFailoverAvoidsWriteStall(t *testing.T) {
+	mem := vfs.NewMem()
+	// All sst and log creation is blocked.
+	primaryFS := newBlockingFS(mem)
+	// Secondary for WAL failover can do log creation.
+	secondary := wal.Dir{FS: mem, Dirname: "secondary"}
+	walFailover := &WALFailoverOptions{Secondary: secondary, FailoverOptions: wal.FailoverOptions{
+		UnhealthySamplingInterval:          100 * time.Millisecond,
+		UnhealthyOperationLatencyThreshold: func() time.Duration { return time.Second },
+	}}
+	o := &Options{
+		FS:                          primaryFS,
+		MemTableSize:                4 << 20,
+		MemTableStopWritesThreshold: 2,
+		WALFailover:                 walFailover,
+	}
+	d, err := Open("", o)
+	require.NoError(t, err)
+	defer d.Close()
+	value := make([]byte, 1<<20)
+	rand.Read(value)
+	// After ~8 writes, the default write stall threshold is exceeded, but the
+	// writes will not block indefinitely since failover has or will happen, and
+	// wal.Manager.ElevateWriteStallThresholdForFailover() will return true.
+	for i := 0; i < 200; i++ {
+		require.NoError(t, d.Set([]byte(fmt.Sprintf("%d", i)), value, nil))
+	}
+	// Validate that the default write stall threshold was exceeded.
+	require.Greater(
+		t, d.Metrics().MemTable.Size, o.MemTableSize*uint64(o.MemTableStopWritesThreshold))
+	// Unblock the writes to allow the DB to close.
+	primaryFS.unblock()
+}
