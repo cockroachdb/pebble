@@ -269,7 +269,7 @@ var _ Writer = &standaloneWriter{}
 
 // WriteRecord implements Writer.
 func (w *standaloneWriter) WriteRecord(
-	p []byte, opts SyncOptions,
+	p []byte, opts SyncOptions, _ RefFunc,
 ) (logicalOffset int64, err error) {
 	return w.w.SyncRecord(p, opts.Done, opts.Err)
 }

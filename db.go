@@ -610,8 +610,7 @@ func (d *DB) Set(key, value []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
-	return nil
+	return b.Close()
 }
 
 // Delete deletes the value for the given key. Deletes are blind all will
@@ -625,8 +624,7 @@ func (d *DB) Delete(key []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
-	return nil
+	return b.Close()
 }
 
 // DeleteSized behaves identically to Delete, but takes an additional
@@ -649,8 +647,7 @@ func (d *DB) DeleteSized(key []byte, valueSize uint32, opts *WriteOptions) error
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
-	return nil
+	return b.Close()
 }
 
 // SingleDelete adds an action to the batch that single deletes the entry for key.
@@ -664,8 +661,7 @@ func (d *DB) SingleDelete(key []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
-	return nil
+	return b.Close()
 }
 
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
@@ -680,8 +676,7 @@ func (d *DB) DeleteRange(start, end []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
-	return nil
+	return b.Close()
 }
 
 // Merge adds an action to the DB that merges the value at key with the new
@@ -696,8 +691,7 @@ func (d *DB) Merge(key, value []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
-	return nil
+	return b.Close()
 }
 
 // LogData adds the specified to the batch. The data will be written to the
@@ -712,8 +706,7 @@ func (d *DB) LogData(data []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
-	return nil
+	return b.Close()
 }
 
 // RangeKeySet sets a range key mapping the key range [start, end) at the MVCC
@@ -729,8 +722,7 @@ func (d *DB) RangeKeySet(start, end, suffix, value []byte, opts *WriteOptions) e
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
-	return nil
+	return b.Close()
 }
 
 // RangeKeyUnset removes a range key mapping the key range [start, end) at the
@@ -748,8 +740,7 @@ func (d *DB) RangeKeyUnset(start, end, suffix []byte, opts *WriteOptions) error 
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
-	return nil
+	return b.Close()
 }
 
 // RangeKeyDelete deletes all of the range keys in the range [start,end)
@@ -766,8 +757,7 @@ func (d *DB) RangeKeyDelete(start, end []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
-	return nil
+	return b.Close()
 }
 
 // Apply the operations contained in the batch to the DB. If the batch is large
@@ -921,7 +911,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		b.flushable.setSeqNum(b.SeqNum())
 		if !d.opts.DisableWAL {
 			var err error
-			size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr})
+			size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr}, b.refData)
 			if err != nil {
 				panic(err)
 			}
@@ -959,7 +949,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 	}
 
 	if b.flushable == nil {
-		size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr})
+		size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr}, b.refData)
 		if err != nil {
 			panic(err)
 		}

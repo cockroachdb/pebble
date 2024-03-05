@@ -441,7 +441,7 @@ func TestManagerFailover(t *testing.T) {
 			case "write-record":
 				var value string
 				td.ScanArgs(t, "value", &value)
-				offset, err := fw.WriteRecord([]byte(value), SyncOptions{})
+				offset, err := fw.WriteRecord([]byte(value), SyncOptions{}, nil)
 				require.NoError(t, err)
 				return fmt.Sprintf("offset: %d", offset)
 
@@ -572,7 +572,7 @@ func TestFailoverManager_Quiesce(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		w, err := m.Create(NumWAL(i), i)
 		require.NoError(t, err)
-		_, err = w.WriteRecord([]byte("hello world"), SyncOptions{})
+		_, err = w.WriteRecord([]byte("hello world"), SyncOptions{}, nil)
 		require.NoError(t, err)
 		_, err = w.Close()
 		require.NoError(t, err)

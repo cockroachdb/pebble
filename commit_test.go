@@ -416,7 +416,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 									b.Fatal(err)
 								}
 							}
-							batch.release()
+							batch.Close()
 						}
 					})
 				})

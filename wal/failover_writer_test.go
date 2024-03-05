@@ -354,7 +354,7 @@ func TestFailoverWriter(t *testing.T) {
 					syncs = append(syncs, synco)
 					var value string
 					td.ScanArgs(t, "value", &value)
-					offset, err := w.WriteRecord([]byte(value), synco)
+					offset, err := w.WriteRecord([]byte(value), synco, nil)
 					require.NoError(t, err)
 					// The offset can be non-deterministic depending on which LogWriter
 					// is being written to, so print it only when requested.
@@ -653,7 +653,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 		queueSemChan <- struct{}{}
 		wg.Add(1)
 		synco := SyncOptions{Done: wg, Err: new(error)}
-		_, err := ww.WriteRecord(records[i], synco)
+		_, err := ww.WriteRecord(records[i], synco, nil)
 		require.NoError(t, err)
 		if i > 0 && i%switchInterval == 0 {
 			dirIndex = (dirIndex + 1) % 2

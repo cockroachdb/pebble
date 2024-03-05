@@ -363,7 +363,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 				b.DeleteRange(start, end, nil)
 				n := seqNum.Add(1) - 1
 				require.NoError(t, m.apply(b, n))
-				b.release()
+				b.Close()
 
 				var count int
 				it := m.newRangeDelIter(nil)
