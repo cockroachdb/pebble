@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Lines wraps a string, providing facilities for parsing individual lines.
@@ -29,11 +30,29 @@ func (l *Lines) Next() (line Line) {
 // A Line is a string with no newlines.
 type Line string
 
-// Fields breaks the line into fields delimited by whitespace.
-func (l Line) Fields() Fields { return Fields(strings.Fields(string(l))) }
+// Fields breaks the line into fields delimited by whitespace and any runes
+// passed into the function.
+func (l Line) Fields(delims ...rune) Fields {
+	return Fields(strings.FieldsFunc(string(l), func(r rune) bool {
+		if unicode.IsSpace(r) {
+			return true
+		}
+		for _, delim := range delims {
+			if delim == r {
+				return true
+			}
+		}
+		return false
+	}))
+}
 
 // Fields wraps a []string with facilities for parsing out values.
 type Fields []string
+
+// String implements fmt.Stringer.
+func (fs Fields) String() string {
+	return strings.Join(fs, " ")
+}
 
 // HasValue searches for a field that is exactly the provided string.
 func (fs Fields) HasValue(value string) bool {
@@ -43,6 +62,15 @@ func (fs Fields) HasValue(value string) bool {
 		}
 	}
 	return false
+}
+
+// Index returns the field at index i, or the empty string if there are i or
+// fewer fields.
+func (fs Fields) Index(i int) Value {
+	if len(fs) <= i {
+		return ""
+	}
+	return Value(fs[i])
 }
 
 // KeyValue looks for a field containing a key=value pair with the provided key.
@@ -81,6 +109,12 @@ func (fs Fields) HexBytes() []byte {
 // of an individual field. This blurring of semantics is convenient for
 // parsing.
 type Value string
+
+// Str returns the value as a string.
+func (v Value) Str() string { return string(v) }
+
+// Bytes returns the value as a byte slice.
+func (v Value) Bytes() []byte { return []byte(v) }
 
 // Int parses the value as an int. It panics if the value fails to decode as an
 // integer.

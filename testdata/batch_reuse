@@ -1,0 +1,100 @@
+# Test a simple NewBatch + Close sequence without any reference counting.
+# This is the common case when configured without WAL failover. We cheat and
+# read the length [b1.Len()] at the end to ensure the batch was reset.
+
+run
+b1 = db.NewBatch()
+b1.Len()
+b1.Set("foo", "hello world")
+b1.Len()
+b1.lifecycle
+b1.Close()
+# At this point the batch is reused. It's not legal to call any methods
+# on the batch, but we cheat and introspect the length to make sure it's
+# reset to the length of the batch header.
+b1.lifecycle
+b1.Len()
+----
+b1 = db.NewBatch()
+b1.Len() = 12
+b1.Set("foo", "hello world")
+b1.Len() = 19
+b1.lifecycle = 0
+b1.Close()
+# At this point the batch is reused. It's not legal to call any methods
+# on the batch, but we cheat and introspect the length to make sure it's
+# reset to the length of the batch header.
+b1.lifecycle = 0
+b1.Len() = 12
+
+run
+b2 = db.NewBatch()
+b2.Len()
+b2.Set("foo", "hello world")
+b2.Len()
+b2.lifecycle
+b2.refData()
+b2.lifecycle
+b2.unrefData()
+b2.lifecycle
+b2.Len()
+b2.Close()
+# At this point the batch has been inserted into the pool. It's not legal to
+# call any methods on the batch, but we cheat and introspect the length to make
+# sure it's reset to the length of the batch header.
+b2.Len()
+----
+b2 = db.NewBatch()
+b2.Len() = 12
+b2.Set("foo", "hello world")
+b2.Len() = 19
+b2.lifecycle = 0
+b2.refData()
+b2.lifecycle = 1
+b2.unrefData()
+b2.lifecycle = 0
+b2.Len() = 19
+b2.Close()
+# At this point the batch has been inserted into the pool. It's not legal to
+# call any methods on the batch, but we cheat and introspect the length to make
+# sure it's reset to the length of the batch header.
+b2.Len() = 12
+
+run
+b3 = db.NewBatch()
+b3.Len()
+b3.Set("foo", "hello world")
+b3.Len()
+b3.lifecycle
+b3.refData()
+b3.lifecycle
+b3.Close()
+# Although Close() has been called, b3 should not yet be in the pool (or
+# have been zeroed out yet). The open reference count prevents it.
+b3.lifecycle
+b3.Len()
+b3.unrefData()
+# At this point the batch has been inserted into the pool. It's not legal to
+# call any methods on the batch, but we cheat and introspect the length to make
+# sure it's reset to the length of the batch header.
+b3.lifecycle
+b3.Len()
+----
+b3 = db.NewBatch()
+b3.Len() = 12
+b3.Set("foo", "hello world")
+b3.Len() = 19
+b3.lifecycle = 0
+b3.refData()
+b3.lifecycle = 1
+b3.Close()
+# Although Close() has been called, b3 should not yet be in the pool (or
+# have been zeroed out yet). The open reference count prevents it.
+b3.lifecycle = 1000000000000000000000000000001
+b3.Len() = 19
+b3.unrefData()
+# At this point the batch has been inserted into the pool. It's not legal to
+# call any methods on the batch, but we cheat and introspect the length to make
+# sure it's reset to the length of the batch header.
+b3.lifecycle = 0
+b3.Len() = 12

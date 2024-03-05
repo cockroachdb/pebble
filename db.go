@@ -610,7 +610,7 @@ func (d *DB) Set(key, value []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
+	b.Close()
 	return nil
 }
 
@@ -625,7 +625,7 @@ func (d *DB) Delete(key []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
+	b.Close()
 	return nil
 }
 
@@ -649,7 +649,7 @@ func (d *DB) DeleteSized(key []byte, valueSize uint32, opts *WriteOptions) error
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
+	b.Close()
 	return nil
 }
 
@@ -664,7 +664,7 @@ func (d *DB) SingleDelete(key []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
+	b.Close()
 	return nil
 }
 
@@ -680,7 +680,7 @@ func (d *DB) DeleteRange(start, end []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
+	b.Close()
 	return nil
 }
 
@@ -696,7 +696,7 @@ func (d *DB) Merge(key, value []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
+	b.Close()
 	return nil
 }
 
@@ -712,7 +712,7 @@ func (d *DB) LogData(data []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
+	b.Close()
 	return nil
 }
 
@@ -729,7 +729,7 @@ func (d *DB) RangeKeySet(start, end, suffix, value []byte, opts *WriteOptions) e
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
+	b.Close()
 	return nil
 }
 
@@ -748,7 +748,7 @@ func (d *DB) RangeKeyUnset(start, end, suffix []byte, opts *WriteOptions) error 
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
+	b.Close()
 	return nil
 }
 
@@ -766,7 +766,7 @@ func (d *DB) RangeKeyDelete(start, end []byte, opts *WriteOptions) error {
 		return err
 	}
 	// Only release the batch on success.
-	b.release()
+	b.Close()
 	return nil
 }
 
@@ -921,7 +921,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		b.flushable.setSeqNum(b.SeqNum())
 		if !d.opts.DisableWAL {
 			var err error
-			size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr})
+			size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr}, b.refData)
 			if err != nil {
 				panic(err)
 			}
@@ -959,7 +959,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 	}
 
 	if b.flushable == nil {
-		size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr})
+		size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr}, b.refData)
 		if err != nil {
 			panic(err)
 		}
