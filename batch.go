@@ -185,6 +185,68 @@ func (d DeferredBatchOp) Finish() error {
 type Batch struct {
 	batchInternal
 	applied atomic.Bool
+	// lifecycle is used to negotiate the lifecycle of a Batch. A Batch and its
+	// underlying batchInternal.data byte slice may be reused. There are two
+	// mechanisms for reuse:
+	//
+	// 1. The caller may explicitly call [Batch.Reset] to reset the batch to be
+	//    empty (while retaining the underlying repr's buffer).
+	// 2. The caller may call [Batch.Close], passing ownership off to Pebble,
+	//    which may reuse the batch's memory to service new callers to
+	//    [DB.NewBatch].
+	//
+	// There's a complication to reuse: When WAL failover is configured, the
+	// Pebble commit pipeline may retain a pointer to the batch.data beyond the
+	// return of [Batch.Commit]. The user of the Batch may commit their batch
+	// and call Close or Reset before the commit pipeline is finished reading
+	// the data slice. Recycling immediately would cause a data race.
+	//
+	// To resolve this data race, this [lifecycle] atomic is used to determine
+	// safety and responsibility of reusing a batch. The low bits of the atomic
+	// are used as a reference count (really just the lowest bit—in practice
+	// there's only 1 code path that references). The [Batch.refData] func is
+	// passed into [wal.Writer]'s WriteRecord method. The wal.Writer guarantees
+	// that if it will read [Batch.data] after the call to WriteRecord returns,
+	// it will increment the reference count. When it's complete, it'll
+	// unreference through invoking [Batch.unrefData].
+	//
+	// When the committer of a batch indicates intent to recycle a Batch through
+	// calling [Batch.Reset] or [Batch.Close], the lifecycle atomic is read. If
+	// an outstanding reference remains, it's unsafe to reuse Batch.data yet. In
+	// [Batch.Reset] the caller wants to reuse the [Batch] immediately, so we
+	// discard b.data to recycle the struct but not the underlying byte slice.
+	// In [Batch.Close], we set a special high bit [batchClosedBit] on lifecycle
+	// that indicates that the user will not use [Batch] again and we're free to
+	// recycle it when safe. When the commit pipeline eventually calls
+	// [Batch.unrefData], the [batchClosedBit] is noticed and the batch is
+	// recycled.
+	lifecycle atomic.Int32
+}
+
+// batchClosedBit is a bit stored on Batch.lifecycle to indicate that the user
+// called [Batch.Close] to release a Batch, but an open reference count
+// prevented immediate recycling.
+const batchClosedBit = 1 << 30
+
+// refData is passed to (wal.Writer).WriteRecord. If the WAL writer may need to
+// read b.data after it returns, it invokes refData to increment the lifecycle's
+// reference count. When it's finished, it invokes the returned function
+// [Batch.unrefData].
+func (b *Batch) refData() (unref func()) {
+	b.lifecycle.Add(+1)
+	return b.unrefData
+}
+
+func (b *Batch) unrefData() {
+	if v := b.lifecycle.Add(-1); (v ^ batchClosedBit) == 0 {
+		// The [batchClosedBit] high bit is set, and there are no outstanding
+		// references. The user of the Batch called [Batch.Close], expecting the
+		// batch to be recycled. However, our outstanding reference count
+		// prevented recycling. As the last to dereference, we're now
+		// responsible for releasing the batch.
+		b.lifecycle.Store(0)
+		b.release()
+	}
 }
 
 // batchInternal contains the set of fields within Batch that are non-atomic and
@@ -436,7 +498,7 @@ func (b *Batch) release() {
 	// but necessary so that we can use atomic.StoreUint32 for the Batch.applied
 	// field. Without using an atomic to clear that field the Go race detector
 	// complains.
-	b.Reset()
+	b.reset()
 	b.cmp = nil
 	b.formatKey = nil
 	b.abbreviatedKey = nil
@@ -1402,8 +1464,41 @@ func (b *Batch) Commit(o *WriteOptions) error {
 
 // Close closes the batch without committing it.
 func (b *Batch) Close() error {
-	b.release()
-	return nil
+	// The storage engine commit pipeline may retain a pointer to b.data beyond
+	// when Commit() returns. This is possible when configured for WAL failover;
+	// we don't know if we might need to read the batch data again until the
+	// batch has been durably synced [even if the committer doesn't care to wait
+	// for the sync and Sync()=false].
+	//
+	// We still want to recycle these batches. The b.lifecycle atomic negotiates
+	// the batch's lifecycle. If the commit pipeline still might read b.data,
+	// b.lifecycle will be nonzeroed [the low bits hold a ref count].
+	for {
+		v := b.lifecycle.Load()
+		switch {
+		case v == 0:
+			// A zero value indicates that the commit pipeline has no
+			// outstanding references to the batch. The commit pipeline is
+			// required to acquire a ref synchronously, so there is no risk that
+			// the commit pipeline will grab a ref after the call to release. We
+			// can simply release the batch.
+			b.release()
+			return nil
+		case (v & batchClosedBit) != 0:
+			// The batch has a batchClosedBit: This batch has already been closed.
+			return ErrClosed
+		default:
+			// There's an outstanding reference. Set the batch released bit so
+			// that the commit pipeline knows it should release the batch when
+			// it unrefs.
+			if b.lifecycle.CompareAndSwap(v, v|batchClosedBit) {
+				return nil
+			}
+			// CAS Failed—this indicates the outstanding reference just
+			// decremented (or the caller illegally closed the batch twice).
+			// Loop to reload.
+		}
+	}
 }
 
 // Indexed returns true if the batch is indexed (i.e. supports read
@@ -1432,6 +1527,19 @@ func (b *Batch) init(size int) {
 // of releasing resources when appropriate for batches that are internally
 // being reused.
 func (b *Batch) Reset() {
+	// In some configurations (WAL failover) the commit pipeline may retain
+	// b.data beyond a call to commit the batch. When this happens, b.lifecycle
+	// is nonzero (see the comment above b.lifecycle). In this case it's unsafe
+	// to mutate b.data, so we discard it. Note that Reset must not be called on
+	// a closed batch, so v > 0 implies a non-zero ref count and not
+	// batchClosedBit being set.
+	if v := b.lifecycle.Load(); v > 0 {
+		b.data = nil
+	}
+	b.reset()
+}
+
+func (b *Batch) reset() {
 	// Zero out the struct, retaining only the fields necessary for manual
 	// reuse.
 	b.batchInternal = batchInternal{

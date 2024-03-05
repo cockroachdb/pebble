@@ -19,8 +19,14 @@ import (
 
 // recordQueueEntry is an entry in recordQueue.
 type recordQueueEntry struct {
-	p    []byte
-	opts SyncOptions
+	p     []byte
+	opts  SyncOptions
+	unref func()
+}
+
+type poppedEntry struct {
+	opts  SyncOptions
+	unref func()
 }
 
 const initialBufferLen = 8192
@@ -88,6 +94,7 @@ func (q *recordQueue) init() {
 func (q *recordQueue) push(
 	p []byte,
 	opts SyncOptions,
+	unref func(),
 	latestLogSizeInWriteRecord int64,
 	latestWriterInWriteRecord *record.LogWriter,
 ) (index uint32, writer *record.LogWriter, lastLogSize int64) {
@@ -107,8 +114,9 @@ func (q *recordQueue) push(
 	}
 	q.mu.RLock()
 	q.buffer[h] = recordQueueEntry{
-		p:    p,
-		opts: opts,
+		p:     p,
+		opts:  opts,
+		unref: unref,
 	}
 	// Reclaim memory for consumed entries. We couldn't do that in pop since
 	// multiple consumers are popping using CAS and that immediately transfers
@@ -155,7 +163,7 @@ func (q *recordQueue) popAll(err error) (numRecords int, numSyncsPopped int) {
 // pop. This would avoid the CAS below, but it seems better to reduce the
 // amount of queued work regardless of who has successfully written it.
 func (q *recordQueue) pop(index uint32, err error, runCb bool) (numSyncsPopped int) {
-	var buf [512]SyncOptions
+	var buf [512]poppedEntry
 	// Tail can increase, and numEntriesToPop decrease, due to competition with
 	// other consumers. Head can increase due to the concurrent producer.
 	headTailEntriesToPop := func() (ht uint64, h uint32, t uint32, numEntriesToPop int) {
@@ -169,19 +177,23 @@ func (q *recordQueue) pop(index uint32, err error, runCb bool) (numSyncsPopped i
 	if numEntriesToPop <= 0 {
 		return 0
 	}
-	var b []SyncOptions
+	var b []poppedEntry
 	if numEntriesToPop <= len(buf) {
 		b = buf[:numEntriesToPop]
 	} else {
 		// Do allocation before acquiring the mutex.
-		b = make([]SyncOptions, numEntriesToPop)
+		b = make([]poppedEntry, numEntriesToPop)
 	}
 	q.mu.RLock()
 	n := len(q.buffer)
 	for i := 0; i < numEntriesToPop; i++ {
 		// Grab all the possible entries before doing CAS, since successful CAS
 		// will also release those buffer slots to the producer.
-		b[i] = q.buffer[(i+int(tail))%n].opts
+		idx := (i + int(tail)) % n
+		b[i] = poppedEntry{
+			opts:  q.buffer[idx].opts,
+			unref: q.buffer[idx].unref,
+		}
 	}
 	// CAS, with retry loop, since this pop can race with other consumers.
 	for {
@@ -205,12 +217,17 @@ func (q *recordQueue) pop(index uint32, err error, runCb bool) (numSyncsPopped i
 	// [0, bufLen-numEntriesToPop) were not popped, since this pop raced with
 	// other consumers that popped those entries.
 	for i := bufLen - numEntriesToPop; i < bufLen; i++ {
-		if b[i].Done != nil {
+		// Now that we've synced the entry, we can unref it to signal that we
+		// will not read the written byte slice again.
+		if b[i].unref != nil {
+			b[i].unref()
+		}
+		if b[i].opts.Done != nil {
 			numSyncsPopped++
 			if err != nil {
-				*b[i].Err = err
+				*b[i].opts.Err = err
 			}
-			b[i].Done.Done()
+			b[i].opts.Done.Done()
 		}
 	}
 	return numSyncsPopped
@@ -422,9 +439,20 @@ func newFailoverWriter(
 }
 
 // WriteRecord implements Writer.
-func (ww *failoverWriter) WriteRecord(p []byte, opts SyncOptions) (logicalOffset int64, err error) {
+func (ww *failoverWriter) WriteRecord(
+	p []byte, opts SyncOptions, ref RefFunc,
+) (logicalOffset int64, err error) {
+	var unref func()
+	if ref != nil {
+		unref = ref()
+	}
 	recordIndex, writer, lastLogSize := ww.q.push(
-		p, opts, ww.logicalOffset.latestLogSizeInWriteRecord, ww.logicalOffset.latestWriterInWriteRecord)
+		p,
+		opts,
+		unref,
+		ww.logicalOffset.latestLogSizeInWriteRecord,
+		ww.logicalOffset.latestWriterInWriteRecord,
+	)
 	if writer == nil {
 		// Don't have a record.LogWriter yet, so use an estimate. This estimate
 		// will get overwritten.

@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/batchskl"
+	"github.com/cockroachdb/pebble/internal/datadrivenutil"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -412,6 +413,87 @@ func TestBatchReset(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 	require.Equal(t, v, []byte(value))
+}
+
+func TestBatchReuse(t *testing.T) {
+	db, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	batches := map[string]*Batch{}
+	datadriven.RunTest(t, "testdata/batch_reuse", func(t *testing.T, td *datadriven.TestData) string {
+		buf.Reset()
+		switch td.Cmd {
+		case "run":
+			lines := datadrivenutil.Lines(td.Input)
+			for len(lines) > 0 {
+				l := lines.Next()
+				fields := l.Fields('.', '(', ')', '"')
+				if len(l) > 0 && l[0] == '#' {
+					// Comment.
+					fmt.Fprintln(&buf, l)
+					continue
+				}
+				switch {
+				case fields.Index(1) == "=":
+					switch {
+					case fields.Index(2).Str() == "db" && fields.Index(3).Str() == "NewBatch":
+						// Command of the form: b = db.NewBatch()
+						batches[fields.Index(0).Str()] = db.NewBatch()
+						fmt.Fprintln(&buf, l)
+					case fields.Index(2).Str() == "new" && fields.Index(3).Str() == "Batch":
+						// Command of the form: b = new(Batch)
+						batches[fields.Index(0).Str()] = new(Batch)
+						fmt.Fprintln(&buf, l)
+					default:
+						return fmt.Sprintf("unrecognized batch constructor: %s", l)
+					}
+				case fields.Index(1) == "Set":
+					// Command of the form: b1.Set("foo", "bar")
+					batches[fields.Index(0).Str()].Set(
+						fields.Index(2).Bytes(),
+						fields.Index(3).Bytes(),
+						nil,
+					)
+					fmt.Fprintln(&buf, l)
+				case fields.Index(1) == "lifecycle":
+					// Command of the form: b1.lifecycle
+					v := batches[fields.Index(0).Str()].lifecycle.Load()
+					fmt.Fprintf(&buf, "%s = %b\n", l, v)
+				case fields.Index(1) == "refData":
+					// Command of the form: b1.refData()
+					batches[fields.Index(0).Str()].refData()
+					fmt.Fprintf(&buf, "%s\n", l)
+				case fields.Index(1) == "unrefData":
+					// Command of the form: b1.unrefData()
+					batches[fields.Index(0).Str()].unrefData()
+					fmt.Fprintf(&buf, "%s\n", l)
+				case fields.Index(1) == "Close":
+					// Command of the form: b1.Close()
+					err := batches[fields.Index(0).Str()].Close()
+					fmt.Fprintf(&buf, "%s = %v\n", l, err)
+				case fields.Index(1) == "Len":
+					// Command of the form: b1.Len()
+					fmt.Fprintf(&buf, "%s = %d\n", l, batches[fields.Index(0).Str()].Len())
+				case fields.Index(1) == "Reset":
+					// Command of the form: b1.Reset()
+					batches[fields.Index(0).Str()].Reset()
+					fmt.Fprintf(&buf, "%s\n", l)
+				case fields.Index(0) == "cap" && fields.Index(2) == "data":
+					// Command of the form: cap(b1.data)
+					v := cap(batches[fields.Index(1).Str()].data)
+					fmt.Fprintf(&buf, "%s = %d\n", l, v)
+				default:
+					return fmt.Sprintf("unrecognized `run` subcommand: %+v", fields)
+				}
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
 }
 
 func TestIndexedBatchReset(t *testing.T) {

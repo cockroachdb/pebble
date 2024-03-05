@@ -366,13 +366,24 @@ type Writer interface {
 	// The logicalOffset is the logical size of the WAL after this record is
 	// written. If the WAL corresponds to a single log file, this is the offset
 	// in that log file.
-	WriteRecord(p []byte, opts SyncOptions) (logicalOffset int64, err error)
+	//
+	// Some Writer implementations may continue to read p after WriteRecord
+	// returns. This is an obstacle to reusing p's memory. If the caller would
+	// like to reuse p's memory, the caller may pass a non-nil [RefFunc].
+	// If the Writer will retain p, it will invoke the [RefFunc] before
+	// returning. When it's finished, it will invoke the func returned by the
+	// [RefFunc] to release its reference.
+	WriteRecord(p []byte, opts SyncOptions, ref RefFunc) (logicalOffset int64, err error)
 	// Close the writer.
 	Close() (logicalOffset int64, err error)
 	// Metrics must be called after Close. The callee will no longer modify the
 	// returned LogWriterMetrics.
 	Metrics() record.LogWriterMetrics
 }
+
+// RefFunc holds funcs to increment a reference count associated with a record
+// passed to [Writer.WriteRecord]. See the comment on WriteRecord.
+type RefFunc func() (unref func())
 
 // Reader reads a virtual WAL.
 type Reader interface {
