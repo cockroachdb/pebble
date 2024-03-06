@@ -879,88 +879,17 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 	return nil
 }
 
-// AccumulateIncompleteAndApplySingleVE should be called if a single version edit
-// is to be applied to the provided curr Version and if the caller needs to
-// update the versionSet.zombieTables map. This function exists separately from
-// BulkVersionEdit.Apply because it is easier to reason about properties
-// regarding BulkVersionedit.Accumulate/Apply and zombie table generation, if we
-// know that exactly one version edit is being accumulated.
-//
-// Note that the version edit passed into this function may be incomplete
-// because compactions don't have the ref counting information necessary to
-// populate VersionEdit.RemovedBackingTables. This function will complete such a
-// version edit by populating RemovedBackingTables.
-//
-// Invariant: Any file being deleted through ve must belong to the curr Version.
-// We can't have a delete for some arbitrary file which does not exist in curr.
-func AccumulateIncompleteAndApplySingleVE(
-	ve *VersionEdit,
-	curr *Version,
-	comparer *base.Comparer,
-	flushSplitBytes int64,
-	readCompactionRate int64,
-	backings *FileBackings,
-) (_ *Version, zombies map[base.DiskFileNum]uint64, _ error) {
-	if len(ve.RemovedBackingTables) != 0 {
-		panic("pebble: invalid incomplete version edit")
-	}
-	var b BulkVersionEdit
-	err := b.Accumulate(ve)
-	if err != nil {
-		return nil, nil, err
-	}
-	zombies = make(map[base.DiskFileNum]uint64)
-	v, err := b.Apply(curr, comparer, flushSplitBytes, readCompactionRate, zombies)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	for _, s := range b.AddedFileBacking {
-		backings.Add(s)
-	}
-
-	for fileNum := range zombies {
-		if _, ok := backings.Get(fileNum); ok {
-			// This table was backing some virtual sstable in the latest version,
-			// but is now a zombie. We add RemovedBackingTables entries for
-			// these, before the version edit is written to disk.
-			ve.RemovedBackingTables = append(
-				ve.RemovedBackingTables, fileNum,
-			)
-			backings.Remove(fileNum)
-		}
-	}
-	return v, zombies, nil
-}
-
 // Apply applies the delta b to the current version to produce a new
 // version. The new version is consistent with respect to the comparer cmp.
 //
-// curr may be nil, which is equivalent to a pointer to a zero version.
+// Apply updates the backing refcounts (Ref/Unref) as files are installed into
+// the levels. It does not update the "latest" refcounts
+// (LatestRef/LatestUnref).
 //
-// On success, if a non-nil zombies map is provided to Apply, the map is updated
-// with file numbers and files sizes of deleted files. These files are
-// considered zombies because they are no longer referenced by the returned
-// Version, but cannot be deleted from disk as they are still in use by the
-// incoming Version.
+// curr may be nil, which is equivalent to a pointer to a zero version.
 func (b *BulkVersionEdit) Apply(
-	curr *Version,
-	comparer *base.Comparer,
-	flushSplitBytes int64,
-	readCompactionRate int64,
-	zombies map[base.DiskFileNum]uint64,
+	curr *Version, comparer *base.Comparer, flushSplitBytes int64, readCompactionRate int64,
 ) (*Version, error) {
-	addZombie := func(state *FileBacking) {
-		if zombies != nil {
-			zombies[state.DiskFileNum] = state.Size
-		}
-	}
-	removeZombie := func(state *FileBacking) {
-		if zombies != nil {
-			delete(zombies, state.DiskFileNum)
-		}
-	}
-
 	v := &Version{
 		cmp: comparer,
 	}
@@ -1037,23 +966,6 @@ func (b *BulkVersionEdit) Apply(
 					return nil, err
 				}
 			}
-
-			// Note that a backing sst will only become a zombie if the
-			// references to it in the latest version is 0. We will remove the
-			// backing sst from the zombie list in the next loop if one of the
-			// addedFiles in any of the levels is referencing the backing sst.
-			// This is possible if a physical sstable is virtualized, or if it
-			// is moved.
-			latestRefCount := f.LatestRefs()
-			if latestRefCount <= 0 {
-				// If a file is present in deletedFilesMap for a level, then it
-				// must have already been added to the level previously, which
-				// means that its latest ref count cannot be 0.
-				err := errors.Errorf("pebble: internal error: incorrect latestRefs reference counting for file", f.FileNum)
-				return nil, err
-			} else if f.LatestUnref() == 0 {
-				addZombie(f.FileBacking)
-			}
 		}
 
 		addedFiles := make([]*FileMetadata, 0, len(addedFilesMap))
@@ -1082,9 +994,6 @@ func (b *BulkVersionEdit) Apply(
 			f.InitAllowedSeeks = allowedSeeks
 
 			err := lm.insert(f)
-			// We're adding this file to the new version, so increment the
-			// latest refs count.
-			f.LatestRef()
 			if err != nil {
 				return nil, errors.Wrap(err, "pebble")
 			}
@@ -1094,7 +1003,6 @@ func (b *BulkVersionEdit) Apply(
 					return nil, errors.Wrap(err, "pebble")
 				}
 			}
-			removeZombie(f.FileBacking)
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(comparer.Compare, sm.Smallest, f.Smallest) > 0 {

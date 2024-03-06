@@ -124,7 +124,7 @@ func replayManifest(t *testing.T, opts *pebble.Options, dirname string) *manifes
 	}
 	v, err := bve.Apply(
 		nil /* version */, cmp, opts.FlushSplitBytes,
-		opts.Experimental.ReadCompactionRate, nil /* zombies */)
+		opts.Experimental.ReadCompactionRate)
 	require.NoError(t, err)
 	return v
 }

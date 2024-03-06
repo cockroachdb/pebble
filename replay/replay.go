@@ -716,8 +716,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 		v, err = bve.Apply(v,
 			r.Opts.Comparer,
 			r.Opts.FlushSplitBytes,
-			r.Opts.Experimental.ReadCompactionRate,
-			nil /* zombies */)
+			r.Opts.Experimental.ReadCompactionRate)
 		bve = manifest.BulkVersionEdit{AddedByFileNum: bve.AddedByFileNum}
 		return v, err
 	}

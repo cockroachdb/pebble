@@ -506,7 +506,7 @@ func (m *FileMetadata) LatestRef() {
 }
 
 // LatestUnref decrements the latest ref count associated with the backing
-// sstable.
+// sstable and returns the new refcount.
 func (m *FileMetadata) LatestUnref() int32 {
 	if m.Virtual {
 		m.FileBacking.VirtualizedSize.Add(-m.Size)

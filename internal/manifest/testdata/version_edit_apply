@@ -16,7 +16,6 @@ edit
 2:
   000001:[a#1,SET-b#2,SET]
   000004:[c#3,SET-d#4,SET]
-zombies []
 
 apply
  L0
@@ -59,7 +58,6 @@ edit
   000002:[c#3,SET-d#4,SET]
 0.0:
   000001:[a#1,SET-c#2,SET]
-zombies []
 
 apply
  L0
@@ -76,7 +74,6 @@ edit
   000001:[a#1,SET-c#2,SET]
 0.0:
   000004:[b#0,SET-d#0,SET]
-zombies []
 
 
 apply
@@ -90,7 +87,6 @@ edit
   000004:[b#3,SET-d#5,SET]
 0.0:
   000001:[a#1,SET-c#2,SET]
-zombies []
 
 apply
  L0
@@ -98,7 +94,6 @@ apply
 ----
 0.0:
   000001:[a#1,SET-c#2,SET]
-zombies []
 
 apply
  L2
@@ -125,7 +120,6 @@ edit
   000005:[h#3,SET-h#2,SET]
   000010:[j#3,SET-m#2,SET]
   000002:[n#5,SET-q#3,SET]
-zombies [1 4]
 
 apply
 edit
@@ -137,9 +131,6 @@ edit
 2:
   000006:[a#10,SET-a#7,SET]
   000010:[j#3,SET-m#2,SET]
-zombies []
-
-# Verify that the zombies map is populated correctly.
 
 apply
  L0
@@ -153,7 +144,6 @@ edit
   L1
    2
 ----
-zombies [1 2]
 
 # Deletion of a non-existent table results in an error.
 
@@ -188,4 +178,3 @@ edit
 ----
 2:
   000005:[s#3,SET-z#4,SET]
-zombies []
