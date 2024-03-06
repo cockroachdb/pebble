@@ -192,7 +192,7 @@ func (d *DB) Checkpoint(
 	optionsFileNum := d.optionsFileNum
 
 	virtualBackingFiles := make(map[base.DiskFileNum]struct{})
-	d.mu.versions.fileBackings.ForEach(func(backing *fileBacking) {
+	d.mu.versions.virtualBackings.ForEach(func(backing *fileBacking) {
 		virtualBackingFiles[backing.DiskFileNum] = struct{}{}
 	})
 

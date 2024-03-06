@@ -2139,7 +2139,7 @@ func (d *DB) Metrics() *Metrics {
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
-	backingCount, backingTotalSize := d.mu.versions.fileBackings.Stats()
+	backingCount, backingTotalSize := d.mu.versions.virtualBackings.Stats()
 	metrics.Table.BackingTableCount = uint64(backingCount)
 	metrics.Table.BackingTableSize = backingTotalSize
 	d.mu.versions.logUnlock()

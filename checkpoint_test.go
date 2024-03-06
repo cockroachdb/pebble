@@ -132,7 +132,7 @@ func TestCheckpoint(t *testing.T) {
 			d := dbs[td.CmdArgs[0].String()]
 			d.mu.Lock()
 			d.mu.versions.logLock()
-			fileNums := d.mu.versions.fileBackings.DiskFileNums()
+			fileNums := d.mu.versions.virtualBackings.DiskFileNums()
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
 

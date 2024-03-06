@@ -84,17 +84,16 @@ type versionSet struct {
 	// still referenced by an inuse iterator.
 	zombieTables map[base.DiskFileNum]uint64 // filenum -> size
 
-	// fileBackings contains the FileBackings with support virtual sstables in the
-	// latest version, sstables in the latest version. Once the file backing is
-	// backing no virtual sstables in the latest version, it is removed from this
-	// map and the corresponding state is added to the zombieTables map. Note that
-	// we don't keep track of file backings which support a virtual sstable which
-	// is not in the latest version.
+	// virtualBackings contains the FileBackings which support virtual sstables in
+	// the latest version. Once the file backing is backing no virtual sstables in
+	// the latest version, it is removed from this map and the corresponding state
+	// is added to the zombieTables map. Note that we don't keep track of file
+	// backings which support a virtual sstable which is not in the latest
+	// version.
 	//
-	// fileBackings is protected by the versionSet.logLock. It's populated
-	// during Open in versionSet.load, but it's not used concurrently during
-	// load.
-	fileBackings manifest.FileBackings
+	// virtualBackings is protected by the versionSet.logLock. It's populated
+	// during Open in versionSet.load, but it's not used concurrently during load.
+	virtualBackings manifest.FileBackings
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
@@ -135,7 +134,7 @@ func (vs *versionSet) init(
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = make(map[base.DiskFileNum]uint64)
-	vs.fileBackings = manifest.FileBackings{}
+	vs.virtualBackings = manifest.FileBackings{}
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
 	vs.getFormatMajorVersion = getFMV
@@ -287,11 +286,11 @@ func (vs *versionSet) load(
 	// Populate the fileBackingMap and the FileBacking for virtual sstables since
 	// we have finished version edit accumulation.
 	for _, s := range bve.AddedFileBacking {
-		vs.fileBackings.Add(s)
+		vs.virtualBackings.Add(s)
 	}
 
 	for _, diskFileNum := range bve.RemovedFileBacking {
-		vs.fileBackings.Remove(diskFileNum)
+		vs.virtualBackings.Remove(diskFileNum)
 	}
 
 	newVersion, err := bve.Apply(nil, opts.Comparer, opts.FlushSplitBytes,
@@ -485,7 +484,7 @@ func (vs *versionSet) logAndApply(
 		newVersion, zombies, err = manifest.AccumulateIncompleteAndApplySingleVE(
 			ve, currentVersion, vs.cmp,
 			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
-			&vs.fileBackings,
+			&vs.virtualBackings,
 		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
