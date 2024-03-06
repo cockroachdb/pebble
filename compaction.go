@@ -2419,7 +2419,7 @@ type compactStats struct {
 func (d *DB) runCopyCompaction(
 	jobID int,
 	c *compaction,
-	meta *fileMetadata,
+	inputMeta *fileMetadata,
 	objMeta objstorage.ObjectMetadata,
 	versionEdit *versionEdit,
 ) (ve *versionEdit, pendingOutputs []*fileMetadata, retErr error) {
@@ -2431,8 +2431,8 @@ func (d *DB) runCopyCompaction(
 			panic("pebble: scheduled a copy compaction that is not actually moving files to shared storage")
 		}
 		// Note that based on logic in the compaction picker, we're guaranteed
-		// meta.Virtual is false.
-		if meta.Virtual {
+		// inputMeta.Virtual is false.
+		if inputMeta.Virtual {
 			panic(errors.AssertionFailedf("cannot do a copy compaction of a virtual sstable across local/remote storage"))
 		}
 	}
@@ -2443,36 +2443,35 @@ func (d *DB) runCopyCompaction(
 	// To ease up cleanup of the local file and tracking of refs, we create
 	// a new FileNum. This has the potential of making the block cache less
 	// effective, however.
-	metaCopy := new(fileMetadata)
-	*metaCopy = fileMetadata{
-		Size:              meta.Size,
-		CreationTime:      meta.CreationTime,
-		SmallestSeqNum:    meta.SmallestSeqNum,
-		LargestSeqNum:     meta.LargestSeqNum,
-		Stats:             meta.Stats,
-		PrefixReplacement: meta.PrefixReplacement,
-		Virtual:           meta.Virtual,
-		SyntheticSuffix:   meta.SyntheticSuffix,
+	newMeta := &fileMetadata{
+		Size:              inputMeta.Size,
+		CreationTime:      inputMeta.CreationTime,
+		SmallestSeqNum:    inputMeta.SmallestSeqNum,
+		LargestSeqNum:     inputMeta.LargestSeqNum,
+		Stats:             inputMeta.Stats,
+		PrefixReplacement: inputMeta.PrefixReplacement,
+		Virtual:           inputMeta.Virtual,
+		SyntheticSuffix:   inputMeta.SyntheticSuffix,
 	}
-	if meta.HasPointKeys {
-		metaCopy.ExtendPointKeyBounds(c.cmp, meta.SmallestPointKey, meta.LargestPointKey)
+	if inputMeta.HasPointKeys {
+		newMeta.ExtendPointKeyBounds(c.cmp, inputMeta.SmallestPointKey, inputMeta.LargestPointKey)
 	}
-	if meta.HasRangeKeys {
-		metaCopy.ExtendRangeKeyBounds(c.cmp, meta.SmallestRangeKey, meta.LargestRangeKey)
+	if inputMeta.HasRangeKeys {
+		newMeta.ExtendRangeKeyBounds(c.cmp, inputMeta.SmallestRangeKey, inputMeta.LargestRangeKey)
 	}
-	metaCopy.FileNum = d.mu.versions.getNextFileNum()
+	newMeta.FileNum = d.mu.versions.getNextFileNum()
 	if objMeta.IsExternal() {
 		// external -> local/shared copy. File must be virtual.
-		metaCopy.InitProviderBacking(base.DiskFileNum(metaCopy.FileNum), meta.FileBacking.Size)
+		newMeta.InitProviderBacking(base.DiskFileNum(newMeta.FileNum), inputMeta.FileBacking.Size)
 	} else {
 		// local -> shared copy. New file is guaranteed to not be virtual.
-		metaCopy.InitPhysicalBacking()
+		newMeta.InitPhysicalBacking()
 	}
 
 	c.metrics = map[int]*LevelMetrics{
 		c.outputLevel.level: {
-			BytesIn:         meta.Size,
-			BytesCompacted:  meta.Size,
+			BytesIn:         inputMeta.Size,
+			BytesCompacted:  inputMeta.Size,
 			TablesCompacted: 1,
 		},
 	}
@@ -2492,7 +2491,7 @@ func (d *DB) runCopyCompaction(
 	// If the src obj is external, we're doing an external to local/shared copy.
 	if objMeta.IsExternal() {
 		src, err := d.objProvider.OpenForReading(
-			ctx, fileTypeTable, meta.FileBacking.DiskFileNum, objstorage.OpenOptions{},
+			ctx, fileTypeTable, inputMeta.FileBacking.DiskFileNum, objstorage.OpenOptions{},
 		)
 		if err != nil {
 			return ve, pendingOutputs, err
@@ -2500,7 +2499,7 @@ func (d *DB) runCopyCompaction(
 		defer src.Close()
 
 		w, _, err := d.objProvider.Create(
-			ctx, fileTypeTable, base.PhysicalTableDiskFileNum(metaCopy.FileNum),
+			ctx, fileTypeTable, base.PhysicalTableDiskFileNum(newMeta.FileNum),
 			objstorage.CreateOptions{
 				PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
 			},
@@ -2508,7 +2507,7 @@ func (d *DB) runCopyCompaction(
 		if err != nil {
 			return ve, pendingOutputs, err
 		}
-		pendingOutputs = append(pendingOutputs, metaCopy)
+		pendingOutputs = append(pendingOutputs, newMeta)
 
 		if err := func() error {
 			size := src.Size()
@@ -2536,17 +2535,20 @@ func (d *DB) runCopyCompaction(
 			return ve, pendingOutputs, err
 		}
 	} else {
-		pendingOutputs = append(pendingOutputs, metaCopy.PhysicalMeta().FileMetadata)
+		pendingOutputs = append(pendingOutputs, newMeta.PhysicalMeta().FileMetadata)
 
 		_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
-			d.objProvider.Path(objMeta), fileTypeTable, metaCopy.FileBacking.DiskFileNum,
+			d.objProvider.Path(objMeta), fileTypeTable, newMeta.FileBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true})
 
 		if err != nil {
 			return ve, pendingOutputs, err
 		}
 	}
-	ve.NewFiles[0].Meta = metaCopy
+	ve.NewFiles[0].Meta = newMeta
+	if newMeta.Virtual {
+		ve.CreatedBackingTables = []*fileBacking{newMeta.FileBacking}
+	}
 
 	if err := d.objProvider.Sync(); err != nil {
 		return nil, pendingOutputs, err
