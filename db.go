@@ -1335,7 +1335,9 @@ func finishInitializingInternalIter(
 	}
 	i.initializeBoundBufs(i.opts.LowerBound, i.opts.UpperBound)
 
-	i.constructPointIter(i.opts.CategoryAndQoS, memtables, buf)
+	if err := i.constructPointIter(i.opts.CategoryAndQoS, memtables, buf); err != nil {
+		return nil, err
+	}
 
 	// For internal iterators, we skip the lazy combined iteration optimization
 	// entirely, and create the range key iterator stack directly.
