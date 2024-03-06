@@ -814,7 +814,7 @@ func (opts *scanInternalOptions) skipLevelForOpts() int {
 // constructPointIter constructs a merging iterator and sets i.iter to it.
 func (i *scanInternalIterator) constructPointIter(
 	categoryAndQoS sstable.CategoryAndQoS, memtables flushableList, buf *iterAlloc,
-) {
+) error {
 	// Merging levels and levels from iterAlloc.
 	mlevels := buf.mlevels[:0]
 	levels := buf.levels[:0]
@@ -919,7 +919,21 @@ func (i *scanInternalIterator) constructPointIter(
 		i.iterLevels[mlevelsIndex] = IteratorLevel{Kind: IteratorLevelLSM, Level: level}
 		levIter := current.Levels[level].Iter()
 		if level == skipStart {
-			levIter = levIter.FilterRemoteFiles(i.db.ObjProvider())
+			nonRemoteFiles := make([]*manifest.FileMetadata, 0)
+			for f := levIter.First(); f != nil; f = levIter.Next() {
+				meta, err := i.db.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+				if err != nil {
+					return err
+				}
+				if (meta.IsShared() && i.opts.visitSharedFile != nil) ||
+					(meta.IsExternal() && i.opts.visitExternalFile != nil) {
+					// Skip this file.
+					continue
+				}
+				nonRemoteFiles = append(nonRemoteFiles, f)
+			}
+			levSlice := manifest.NewLevelSliceKeySorted(i.db.cmp, nonRemoteFiles)
+			levIter = levSlice.Iter()
 		}
 
 		addLevelIterForFiles(levIter, manifest.Level(level))
@@ -950,6 +964,7 @@ func (i *scanInternalIterator) constructPointIter(
 		i.pointKeyIter = pcIter
 	}
 	i.iter = i.pointKeyIter
+	return nil
 }
 
 // constructRangeKeyIter constructs the range-key iterator stack, populating
@@ -1016,7 +1031,21 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 		spanIterOpts := i.opts.SpanIterOptions()
 		levIter := current.RangeKeyLevels[level].Iter()
 		if level == skipStart {
-			levIter = levIter.FilterRemoteFiles(i.db.ObjProvider())
+			nonRemoteFiles := make([]*manifest.FileMetadata, 0)
+			for f := levIter.First(); f != nil; f = levIter.Next() {
+				meta, err := i.db.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+				if err != nil {
+					return err
+				}
+				if (meta.IsShared() && i.opts.visitSharedFile != nil) ||
+					(meta.IsExternal() && i.opts.visitExternalFile != nil) {
+					// Skip this file.
+					continue
+				}
+				nonRemoteFiles = append(nonRemoteFiles, f)
+			}
+			levSlice := manifest.NewLevelSliceKeySorted(i.db.cmp, nonRemoteFiles)
+			levIter = levSlice.Iter()
 		}
 		li.Init(spanIterOpts, i.comparer.Compare, i.newIterRangeKey, levIter,
 			manifest.Level(level), manifest.KeyTypeRange)

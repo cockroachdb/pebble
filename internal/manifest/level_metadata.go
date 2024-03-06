@@ -10,7 +10,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/objstorage"
 )
 
 // LevelMetadata contains metadata for all of the files within
@@ -401,8 +400,6 @@ type LevelIterator struct {
 	start  *iterator
 	end    *iterator
 	filter KeyType
-
-	objProvider objstorage.Provider
 }
 
 func (i LevelIterator) String() string {
@@ -452,11 +449,10 @@ func (i *LevelIterator) Clone() LevelIterator {
 	// The start and end iterators are not cloned and are treated as
 	// immutable.
 	return LevelIterator{
-		iter:        i.iter.clone(),
-		start:       i.start,
-		end:         i.end,
-		filter:      i.filter,
-		objProvider: i.objProvider,
+		iter:   i.iter.clone(),
+		start:  i.start,
+		end:    i.end,
+		filter: i.filter,
 	}
 }
 
@@ -482,14 +478,6 @@ func (i *LevelIterator) empty() bool {
 func (i *LevelIterator) Filter(keyType KeyType) LevelIterator {
 	l := i.Clone()
 	l.filter = keyType
-	return l
-}
-
-// FilterRemoteFiles clones the iterator and sets the object provider
-// to use to filter remote files.
-func (i *LevelIterator) FilterRemoteFiles(objProvider objstorage.Provider) LevelIterator {
-	l := i.Clone()
-	l.objProvider = objProvider
 	return l
 }
 
@@ -617,22 +605,6 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 	return i.skipFilteredBackward(m)
 }
 
-func (i *LevelIterator) shouldFilter(meta *FileMetadata) bool {
-	shouldFilterOnKeyType := !meta.ContainsKeyType(i.filter)
-	if i.objProvider != nil {
-		objMeta, err := i.objProvider.Lookup(base.FileTypeTable, meta.FileBacking.DiskFileNum)
-		if err != nil {
-			// TODO(ssd): This panic is probably an
-			// indication I'm doing this at the wrong
-			// level.
-			panic(err)
-		}
-		shouldFilterOnFileType := objMeta.IsRemote()
-		return shouldFilterOnKeyType || shouldFilterOnFileType
-	}
-	return shouldFilterOnKeyType
-}
-
 // skipFilteredForward takes the file metadata at the iterator's current
 // position, and skips forward if the current key-type filter (i.filter)
 // excludes the file. It skips until it finds an unfiltered file or exhausts the
@@ -642,7 +614,7 @@ func (i *LevelIterator) shouldFilter(meta *FileMetadata) bool {
 // skipFilteredForward also enforces the upper bound, returning nil if at any
 // point the upper bound is exceeded.
 func (i *LevelIterator) skipFilteredForward(meta *FileMetadata) *FileMetadata {
-	for meta != nil && i.shouldFilter(meta) {
+	for meta != nil && !meta.ContainsKeyType(i.filter) {
 		i.iter.next()
 		if !i.iter.valid() {
 			meta = nil
@@ -666,7 +638,7 @@ func (i *LevelIterator) skipFilteredForward(meta *FileMetadata) *FileMetadata {
 // skipFilteredBackward also enforces the lower bound, returning nil if at any
 // point the lower bound is exceeded.
 func (i *LevelIterator) skipFilteredBackward(meta *FileMetadata) *FileMetadata {
-	for meta != nil && i.shouldFilter(meta) {
+	for meta != nil && !meta.ContainsKeyType(i.filter) {
 		i.iter.prev()
 		if !i.iter.valid() {
 			meta = nil
