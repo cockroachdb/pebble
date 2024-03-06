@@ -526,6 +526,13 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 		}
 		fmt.Fprintln(&buf)
 	}
+
+	for _, b := range v.CreatedBackingTables {
+		fmt.Fprintf(&buf, "  add backing:   %s\n", b.DiskFileNum)
+	}
+	for _, n := range v.RemovedBackingTables {
+		fmt.Fprintf(&buf, "  del backing:   %s\n", n)
+	}
 	return buf.String()
 }
 
