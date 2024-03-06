@@ -766,6 +766,27 @@ func (vs *versionSet) append(v *version) {
 	v.Deleted = vs.obsoleteFn
 	v.Ref()
 	vs.versions.PushBack(v)
+	if invariants.Enabled {
+		// Verify that the virtualBackings map is correct.
+		m := make(map[base.DiskFileNum]struct{})
+		for _, l := range v.Levels {
+			iter := l.Iter()
+			for f := iter.First(); f != nil; f = iter.Next() {
+				if f.Virtual {
+					m[f.FileBacking.DiskFileNum] = struct{}{}
+				}
+			}
+		}
+		vs.virtualBackings.ForEach(func(b *fileBacking) {
+			if _, ok := m[b.DiskFileNum]; !ok {
+				panic(fmt.Sprintf("%s should not be in virtualBackings", b.DiskFileNum))
+			}
+			delete(m, b.DiskFileNum)
+		})
+		for n := range m {
+			panic(fmt.Sprintf("%s is not in virtualBackings", n))
+		}
+	}
 }
 
 func (vs *versionSet) currentVersion() *version {
