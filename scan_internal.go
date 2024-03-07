@@ -7,6 +7,7 @@ package pebble
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -460,27 +461,43 @@ func (d *DB) truncateExternalFile(
 	level int,
 	file *fileMetadata,
 	objMeta objstorage.ObjectMetadata,
-) *ExternalFile {
+) (*ExternalFile, error) {
 	cmp := d.cmp
-	sst := &ExternalFile{}
-	sst.cloneFromFileMeta(file)
-	sst.Level = uint8(level)
-	sst.ObjName = objMeta.Remote.CustomObjectName
-	sst.Locator = objMeta.Remote.Locator
+	sst := &ExternalFile{
+		Level:           uint8(level),
+		ObjName:         objMeta.Remote.CustomObjectName,
+		Locator:         objMeta.Remote.Locator,
+		Bounds:          KeyRange{},
+		HasPointKey:     file.HasPointKeys,
+		HasRangeKey:     file.HasRangeKeys,
+		Size:            file.Size,
+		SyntheticSuffix: slices.Clone(file.SyntheticSuffix),
+	}
+	if pr := file.PrefixReplacement; pr != nil {
+		sst.ContentPrefix = slices.Clone(pr.ContentPrefix)
+		sst.SyntheticPrefix = slices.Clone(pr.SyntheticPrefix)
+	}
+
 	needsLowerTruncate := cmp(lower, file.Smallest.UserKey) > 0
-	needsUpperTruncate := cmp(upper, file.Largest.UserKey) < 0 || (cmp(upper, file.Largest.UserKey) == 0 && !file.Largest.IsExclusiveSentinel())
-
 	if needsLowerTruncate {
-		sst.Bounds.Start = sst.Bounds.Start[:0]
-		sst.Bounds.Start = append(sst.Bounds.Start, lower...)
+		sst.Bounds.Start = slices.Clone(lower)
+	} else {
+		sst.Bounds.Start = slices.Clone(file.Smallest.UserKey)
 	}
 
+	cmpUpper := cmp(upper, file.Largest.UserKey)
+	needsUpperTruncate := cmpUpper < 0 || (cmpUpper == 0 && !file.Largest.IsExclusiveSentinel())
 	if needsUpperTruncate {
-		sst.Bounds.End = sst.Bounds.End[:0]
-		sst.Bounds.End = append(sst.Bounds.End, upper...)
+		sst.Bounds.End = slices.Clone(upper)
+	} else {
+		sst.Bounds.End = slices.Clone(file.Largest.UserKey)
 	}
 
-	return sst
+	if cmp(sst.Bounds.Start, sst.Bounds.End) >= 0 {
+		return nil, errors.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.Bounds.Start, sst.Bounds.End)
+	}
+
+	return sst, nil
 }
 
 // truncateSharedFile truncates a shared file's [Smallest, Largest] fields to
@@ -693,6 +710,10 @@ func scanInternalImpl(
 		for level := firstLevelWithRemote; level < numLevels; level++ {
 			files := current.Levels[level].Iter()
 			for f := files.SeekGE(cmp, lower); f != nil && cmp(f.Smallest.UserKey, upper) < 0; f = files.Next() {
+				if cmp(lower, f.Largest.UserKey) == 0 && f.Largest.IsExclusiveSentinel() {
+					continue
+				}
+
 				var objMeta objstorage.ObjectMetadata
 				var err error
 				objMeta, err = provider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
@@ -737,7 +758,10 @@ func scanInternalImpl(
 						return err
 					}
 				} else if objMeta.IsExternal() {
-					sst := iter.db.truncateExternalFile(ctx, lower, upper, level, f, objMeta)
+					sst, err := iter.db.truncateExternalFile(ctx, lower, upper, level, f, objMeta)
+					if err != nil {
+						return err
+					}
 					if err := opts.visitExternalFile(sst); err != nil {
 						return err
 					}
