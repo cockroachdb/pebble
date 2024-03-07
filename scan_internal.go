@@ -480,6 +480,10 @@ func (d *DB) truncateExternalFile(
 		sst.Bounds.End = append(sst.Bounds.End, upper...)
 	}
 
+	if cmp(sst.Bounds.Start, sst.Bounds.End) == 0 {
+		return nil
+	}
+
 	return sst
 }
 
@@ -738,8 +742,10 @@ func scanInternalImpl(
 					}
 				} else if objMeta.IsExternal() {
 					sst := iter.db.truncateExternalFile(ctx, lower, upper, level, f, objMeta)
-					if err := opts.visitExternalFile(sst); err != nil {
-						return err
+					if sst != nil {
+						if err := opts.visitExternalFile(sst); err != nil {
+							return err
+						}
 					}
 				}
 
