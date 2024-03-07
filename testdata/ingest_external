@@ -695,3 +695,19 @@ a: (d2-v1, .)
 b: (d1-v1, .)
 d: (d1-v1, .)
 e: (d2-v1, .)
+
+reset
+----
+
+build-remote trunctest
+set a foo
+set b bar
+----
+
+ingest-external
+trunctest bounds=(a,c)
+----
+
+replicate 1 2 c z
+----
+replicated 0 external SSTs
