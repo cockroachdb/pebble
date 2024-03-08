@@ -244,7 +244,6 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 				v, err := bve.Apply(
 					nil /* version */, comparer, 0,
 					m.opts.Experimental.ReadCompactionRate,
-					nil, /* zombies */
 				)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)
@@ -552,7 +551,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 				}
 				// TODO(sbhola): add option to Apply that reports all errors instead of
 				// one error.
-				newv, err := bve.Apply(v, cmp, 0, m.opts.Experimental.ReadCompactionRate, nil /* zombies */)
+				newv, err := bve.Apply(v, cmp, 0, m.opts.Experimental.ReadCompactionRate)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n",
 						arg, offset, err)
