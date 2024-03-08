@@ -91,8 +91,7 @@ type versionSet struct {
 	// backings which support a virtual sstable which is not in the latest
 	// version.
 	//
-	// virtualBackings is protected by the versionSet.logLock. It's populated
-	// during Open in versionSet.load, but it's not used concurrently during load.
+	// virtualBackings is modified under DB.mu and the log lock.
 	virtualBackings manifest.FileBackings
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
@@ -293,8 +292,22 @@ func (vs *versionSet) load(
 		vs.virtualBackings.Remove(diskFileNum)
 	}
 
-	newVersion, err := bve.Apply(nil, opts.Comparer, opts.FlushSplitBytes,
-		opts.Experimental.ReadCompactionRate, nil /* zombies */)
+	for _, addedLevel := range bve.Added {
+		for _, m := range addedLevel {
+			m.LatestRef()
+		}
+	}
+
+	// There should be no deleted files, since we're starting with an empty state.
+	if invariants.Enabled {
+		for _, deletedLevel := range bve.Deleted {
+			if len(deletedLevel) != 0 {
+				panic("deleted files during manifest replay")
+			}
+		}
+	}
+
+	newVersion, err := bve.Apply(nil, opts.Comparer, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
 	if err != nil {
 		return err
 	}
@@ -472,19 +485,45 @@ func (vs *versionSet) logAndApply(
 	minUnflushedLogNum := vs.minUnflushedLogNum
 	nextFileNum := vs.nextFileNum
 
+	// Update backing refcounts and populate RemovedBackingTables.
 	var zombies map[base.DiskFileNum]uint64
+	for _, b := range ve.CreatedBackingTables {
+		vs.virtualBackings.Add(b)
+	}
+	for _, nf := range ve.NewFiles {
+		nf.Meta.LatestRef()
+	}
+	for _, m := range ve.DeletedFiles {
+		if m.LatestUnref() == 0 {
+			n := m.FileBacking.DiskFileNum
+			if zombies == nil {
+				zombies = make(map[base.DiskFileNum]uint64)
+			}
+			zombies[n] = m.FileBacking.Size
+			if m.Virtual {
+				// This backing was backing some virtual sstable in the latest version,
+				// but is now a zombie. We add RemovedBackingTables entries for
+				// these, before the version edit is written to disk.
+				vs.virtualBackings.Remove(n)
+				ve.RemovedBackingTables = append(ve.RemovedBackingTables, n)
+			}
+		}
+	}
+
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
 
-		var err error
 		if vs.getFormatMajorVersion() < FormatVirtualSSTables && len(ve.CreatedBackingTables) > 0 {
 			return errors.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
 		}
-		newVersion, zombies, err = manifest.AccumulateIncompleteAndApplySingleVE(
-			ve, currentVersion, vs.cmp,
-			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
-			&vs.virtualBackings,
+		var b bulkVersionEdit
+		err := b.Accumulate(ve)
+		if err != nil {
+			return errors.Wrap(err, "MANIFEST accumulate failed")
+		}
+		newVersion, err = b.Apply(
+			currentVersion, vs.cmp, vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
 		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")

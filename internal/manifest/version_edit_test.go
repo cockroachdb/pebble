@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -526,23 +525,11 @@ func TestVersionEditApply(t *testing.T) {
 						return err.Error()
 					}
 				}
-				zombies := make(map[base.DiskFileNum]uint64)
-				newv, err := bve.Apply(v, base.DefaultComparer, flushSplitBytes, 32000, zombies)
+				newv, err := bve.Apply(v, base.DefaultComparer, flushSplitBytes, 32000)
 				if err != nil {
 					return err.Error()
 				}
-
-				zombieFileNums := make([]base.DiskFileNum, 0, len(zombies))
-				if len(veList) == 1 {
-					// Only care about zombies if a single version edit was
-					// being applied.
-					for fileNum := range zombies {
-						zombieFileNums = append(zombieFileNums, fileNum)
-					}
-					slices.Sort(zombieFileNums)
-				}
-
-				return fmt.Sprintf("%szombies %d\n", newv, zombieFileNums)
+				return newv.String()
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)

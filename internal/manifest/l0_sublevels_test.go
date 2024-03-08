@@ -51,7 +51,7 @@ func readManifest(filename string) (*Version, error) {
 		if err := bve.Accumulate(&ve); err != nil {
 			return nil, err
 		}
-		if v, err = bve.Apply(v, base.DefaultComparer, 10<<20, 32000, nil); err != nil {
+		if v, err = bve.Apply(v, base.DefaultComparer, 10<<20, 32000); err != nil {
 			return nil, err
 		}
 	}
