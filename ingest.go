@@ -1179,23 +1179,6 @@ type ExternalFile struct {
 	Level uint8
 }
 
-func (e *ExternalFile) cloneFromFileMeta(f *fileMetadata) {
-	*e = ExternalFile{
-		Bounds: KeyRange{
-			Start: append([]byte(nil), f.Smallest.UserKey...),
-			End:   append([]byte(nil), f.Largest.UserKey...),
-		},
-		HasPointKey: f.HasPointKeys,
-		HasRangeKey: f.HasRangeKeys,
-		Size:        f.Size,
-	}
-	e.SyntheticSuffix = append([]byte(nil), f.SyntheticSuffix...)
-	if pr := f.PrefixReplacement; pr != nil {
-		e.ContentPrefix = append([]byte(nil), pr.ContentPrefix...)
-		e.SyntheticPrefix = append([]byte(nil), pr.SyntheticPrefix...)
-	}
-}
-
 // IngestWithStats does the same as Ingest, and additionally returns
 // IngestOperationStats.
 func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {

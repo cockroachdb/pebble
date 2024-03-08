@@ -460,24 +460,36 @@ func (d *DB) truncateExternalFile(
 	level int,
 	file *fileMetadata,
 	objMeta objstorage.ObjectMetadata,
-) *ExternalFile {
+) (*ExternalFile, error) {
 	cmp := d.cmp
-	sst := &ExternalFile{}
-	sst.cloneFromFileMeta(file)
-	sst.Level = uint8(level)
-	sst.ObjName = objMeta.Remote.CustomObjectName
-	sst.Locator = objMeta.Remote.Locator
-	needsLowerTruncate := cmp(lower, file.Smallest.UserKey) > 0
-	needsUpperTruncate := cmp(upper, file.Largest.UserKey) < 0 || (cmp(upper, file.Largest.UserKey) == 0 && !file.Largest.IsExclusiveSentinel())
-
-	if needsLowerTruncate {
-		sst.Bounds.Start = sst.Bounds.Start[:0]
-		sst.Bounds.Start = append(sst.Bounds.Start, lower...)
+	sst := &ExternalFile{
+		Level:           uint8(level),
+		ObjName:         objMeta.Remote.CustomObjectName,
+		Locator:         objMeta.Remote.Locator,
+		Bounds:          KeyRange{},
+		HasPointKey:     file.HasPointKeys,
+		HasRangeKey:     file.HasRangeKeys,
+		Size:            file.Size,
+		SyntheticSuffix: append([]byte(nil), file.SyntheticSuffix...),
+	}
+	if pr := file.PrefixReplacement; pr != nil {
+		sst.ContentPrefix = append([]byte(nil), pr.ContentPrefix...)
+		sst.SyntheticPrefix = append([]byte(nil), pr.SyntheticPrefix...)
 	}
 
+	needsLowerTruncate := cmp(lower, file.Smallest.UserKey) > 0
+	if needsLowerTruncate {
+		sst.Bounds.Start = append(sst.Bounds.Start, lower...)
+	} else {
+		sst.Bounds.Start = append(sst.Bounds.Start, file.Smallest.UserKey...)
+	}
+
+	cmpUpper := cmp(upper, file.Largest.UserKey)
+	needsUpperTruncate := cmpUpper < 0 || (cmpUpper == 0 && !file.Largest.IsExclusiveSentinel())
 	if needsUpperTruncate {
-		sst.Bounds.End = sst.Bounds.End[:0]
 		sst.Bounds.End = append(sst.Bounds.End, upper...)
+	} else {
+		sst.Bounds.End = append(sst.Bounds.End, file.Largest.UserKey...)
 	}
 
 	if cmp(sst.Bounds.Start, sst.Bounds.End) == 0 {
