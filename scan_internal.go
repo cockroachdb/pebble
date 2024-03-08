@@ -481,10 +481,10 @@ func (d *DB) truncateExternalFile(
 	}
 
 	if cmp(sst.Bounds.Start, sst.Bounds.End) == 0 {
-		return nil
+		return nil, errors.AssertionFailedf("invalid ExternalFile bounds after truncation")
 	}
 
-	return sst
+	return sst, nil
 }
 
 // truncateSharedFile truncates a shared file's [Smallest, Largest] fields to
@@ -697,6 +697,10 @@ func scanInternalImpl(
 		for level := firstLevelWithRemote; level < numLevels; level++ {
 			files := current.Levels[level].Iter()
 			for f := files.SeekGE(cmp, lower); f != nil && cmp(f.Smallest.UserKey, upper) < 0; f = files.Next() {
+				if cmp(lower, f.Largest.UserKey) == 0 && f.Largest.IsExclusiveSentinel() {
+					continue
+				}
+
 				var objMeta objstorage.ObjectMetadata
 				var err error
 				objMeta, err = provider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
@@ -741,11 +745,12 @@ func scanInternalImpl(
 						return err
 					}
 				} else if objMeta.IsExternal() {
-					sst := iter.db.truncateExternalFile(ctx, lower, upper, level, f, objMeta)
-					if sst != nil {
-						if err := opts.visitExternalFile(sst); err != nil {
-							return err
-						}
+					sst, err := iter.db.truncateExternalFile(ctx, lower, upper, level, f, objMeta)
+					if err != nil {
+						return err
+					}
+					if err := opts.visitExternalFile(sst); err != nil {
+						return err
 					}
 				}
 
