@@ -564,7 +564,7 @@ func TestElideTombstone(t *testing.T) {
 					return err.Error()
 				}
 				if td.HasArg("verbose") {
-					return d.mu.versions.currentVersion().DebugString()
+					return d.mu.versions.currentVersion().DebugString(d.objProvider)
 				}
 				return d.mu.versions.currentVersion().String()
 			case "elide":
@@ -1266,7 +1266,7 @@ func TestManualCompaction(t *testing.T) {
 				d.mu.Lock()
 				s := d.mu.versions.currentVersion().String()
 				if verbose {
-					s = d.mu.versions.currentVersion().DebugString()
+					s = d.mu.versions.currentVersion().DebugString(d.objProvider)
 				}
 				d.mu.Unlock()
 				if td.HasArg("hide-file-num") {
@@ -1301,7 +1301,7 @@ func TestManualCompaction(t *testing.T) {
 
 				s := d.mu.versions.currentVersion().String()
 				if verbose {
-					s = d.mu.versions.currentVersion().DebugString()
+					s = d.mu.versions.currentVersion().DebugString(d.objProvider)
 				}
 				return s
 
@@ -1315,7 +1315,7 @@ func TestManualCompaction(t *testing.T) {
 				d.mu.Lock()
 				s := d.mu.versions.currentVersion().String()
 				if verbose {
-					s = d.mu.versions.currentVersion().DebugString()
+					s = d.mu.versions.currentVersion().DebugString(d.objProvider)
 				}
 				d.mu.Unlock()
 				return s
@@ -1327,7 +1327,7 @@ func TestManualCompaction(t *testing.T) {
 				d.mu.Lock()
 				s := d.mu.versions.currentVersion().String()
 				if verbose {
-					s = d.mu.versions.currentVersion().DebugString()
+					s = d.mu.versions.currentVersion().DebugString(d.objProvider)
 				}
 				d.mu.Unlock()
 				return s
@@ -2491,7 +2491,7 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 			})
 		}
 		v := newVersion(opts, files)
-		t.Log(v.DebugString())
+		t.Log(v.DebugString(nil))
 		for i := 0; i < 1000; i++ {
 			l := rng.Intn(numLevels)
 			s := rng.Intn(endKeyspace)
@@ -3371,7 +3371,7 @@ func TestMarkedForCompaction(t *testing.T) {
 				t = t.Add(time.Second)
 				return t
 			}
-			s := d.mu.versions.currentVersion().DebugString()
+			s := d.mu.versions.currentVersion().DebugString(d.objProvider)
 			return s
 
 		case "mark-for-compaction":
@@ -3403,7 +3403,7 @@ func TestMarkedForCompaction(t *testing.T) {
 				d.mu.compact.cond.Wait()
 			}
 
-			fmt.Fprintln(&buf, d.mu.versions.currentVersion().DebugString())
+			fmt.Fprintln(&buf, d.mu.versions.currentVersion().DebugString(d.objProvider))
 			s := strings.TrimSpace(buf.String())
 			buf.Reset()
 			opts.DisableAutomaticCompactions = true

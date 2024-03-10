@@ -278,6 +278,9 @@ type Provider interface {
 	// IsSharedForeign returns whether this object is owned by a different node.
 	IsSharedForeign(meta ObjectMetadata) bool
 
+	// IsExternal returns whether the file for the passed number is external.
+	IsExternal(base.DiskFileNum) bool
+
 	// RemoteObjectBacking encodes the remote object metadata for the given object.
 	RemoteObjectBacking(meta *ObjectMetadata) (RemoteObjectBackingHandle, error)
 

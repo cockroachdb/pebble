@@ -163,6 +163,18 @@ func (p *provider) IsSharedForeign(meta objstorage.ObjectMetadata) bool {
 	return meta.IsShared() && (meta.Remote.CreatorID != p.remote.shared.creatorID)
 }
 
+// IsSharedForeign is part of the objstorage.Provider interface.
+func (p *provider) IsExternal(i base.DiskFileNum) bool {
+	if !p.remote.shared.initialized.Load() {
+		return false
+	}
+	if meta, err := p.Lookup(base.FileTypeTable, i); err == nil {
+		return meta.IsExternal()
+	}
+
+	return false
+}
+
 func (p *provider) remoteCheckInitialized() error {
 	if p.st.Remote.StorageFactory == nil {
 		return errors.Errorf("remote object support not configured")

@@ -784,14 +784,23 @@ func (m *FileMetadata) String() string {
 	return fmt.Sprintf("%s:[%s-%s]", m.FileNum, m.Smallest, m.Largest)
 }
 
+type IsExternal interface {
+	IsExternal(base.DiskFileNum) bool
+}
+
 // DebugString returns a verbose representation of FileMetadata, typically for
 // use in tests and debugging, returning the file number and the point, range
 // and overall bounds for the table.
-func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
+func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool, ext IsExternal) string {
 	var b bytes.Buffer
 	if m.Virtual {
-		fmt.Fprintf(&b, "%s(%s):[%s-%s]",
-			m.FileNum, m.FileBacking.DiskFileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+		if ext != nil && ext.IsExternal(m.FileBacking.DiskFileNum) {
+			fmt.Fprintf(&b, "%s(ext%s):[%s-%s]",
+				m.FileNum, m.FileBacking.DiskFileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+		} else {
+			fmt.Fprintf(&b, "%s(%s):[%s-%s]",
+				m.FileNum, m.FileBacking.DiskFileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+		}
 	} else {
 		fmt.Fprintf(&b, "%s:[%s-%s]",
 			m.FileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
@@ -1215,30 +1224,30 @@ type Version struct {
 // String implements fmt.Stringer, printing the FileMetadata for each level in
 // the Version.
 func (v *Version) String() string {
-	return v.string(false)
+	return v.string(false, nil)
 }
 
 // DebugString returns an alternative format to String() which includes sequence
 // number and kind information for the sstable boundaries.
-func (v *Version) DebugString() string {
-	return v.string(true)
+func (v *Version) DebugString(e IsExternal) string {
+	return v.string(true, e)
 }
 
-func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSlice) string {
+func describeSublevels(format base.FormatKey, verbose bool, e IsExternal, sublevels []LevelSlice) string {
 	var buf bytes.Buffer
 	for sublevel := len(sublevels) - 1; sublevel >= 0; sublevel-- {
 		fmt.Fprintf(&buf, "0.%d:\n", sublevel)
 		sublevels[sublevel].Each(func(f *FileMetadata) {
-			fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
+			fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose, e))
 		})
 	}
 	return buf.String()
 }
 
-func (v *Version) string(verbose bool) string {
+func (v *Version) string(verbose bool, e IsExternal) string {
 	var buf bytes.Buffer
 	if len(v.L0SublevelFiles) > 0 {
-		fmt.Fprintf(&buf, "%s", describeSublevels(v.cmp.FormatKey, verbose, v.L0SublevelFiles))
+		fmt.Fprintf(&buf, "%s", describeSublevels(v.cmp.FormatKey, verbose, e, v.L0SublevelFiles))
 	}
 	for level := 1; level < NumLevels; level++ {
 		if v.Levels[level].Empty() {
@@ -1247,7 +1256,7 @@ func (v *Version) string(verbose bool) string {
 		fmt.Fprintf(&buf, "%d:\n", level)
 		iter := v.Levels[level].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			fmt.Fprintf(&buf, "  %s\n", f.DebugString(v.cmp.FormatKey, verbose))
+			fmt.Fprintf(&buf, "  %s\n", f.DebugString(v.cmp.FormatKey, verbose, e))
 		}
 	}
 	return buf.String()
@@ -1570,13 +1579,13 @@ func (v *Version) CheckOrdering() error {
 	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 		sublevelIter := v.L0SublevelFiles[sublevel].Iter()
 		if err := CheckOrdering(v.cmp.Compare, v.cmp.FormatKey, L0Sublevel(sublevel), sublevelIter); err != nil {
-			return base.CorruptionErrorf("%s\n%s", err, v.DebugString())
+			return base.CorruptionErrorf("%s\n%s", err, v.DebugString(nil))
 		}
 	}
 
 	for level, lm := range v.Levels {
 		if err := CheckOrdering(v.cmp.Compare, v.cmp.FormatKey, Level(level), lm.Iter()); err != nil {
-			return base.CorruptionErrorf("%s\n%s", err, v.DebugString())
+			return base.CorruptionErrorf("%s\n%s", err, v.DebugString(nil))
 		}
 	}
 	return nil

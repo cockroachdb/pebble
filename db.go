@@ -3089,5 +3089,5 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 func (d *DB) DebugString() string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.mu.versions.currentVersion().DebugString()
+	return d.mu.versions.currentVersion().DebugString(d.objProvider)
 }

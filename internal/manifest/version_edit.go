@@ -516,7 +516,7 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	for _, nf := range v.NewFiles {
 		fmt.Fprintf(&buf, "  added:         L%d", nf.Level)
 		if verbose {
-			fmt.Fprintf(&buf, " %s", nf.Meta.DebugString(fmtKey, true /* verbose */))
+			fmt.Fprintf(&buf, " %s", nf.Meta.DebugString(fmtKey, true /* verbose */, nil))
 		} else {
 			fmt.Fprintf(&buf, " %s", nf.Meta.String())
 		}
@@ -1029,12 +1029,12 @@ func (b *BulkVersionEdit) Apply(
 					if err != nil {
 						panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
 					}
-					s1 := describeSublevels(comparer.FormatKey, false /* verbose */, copyOfSublevels.Levels)
-					s2 := describeSublevels(comparer.FormatKey, false /* verbose */, v.L0Sublevels.Levels)
+					s1 := describeSublevels(comparer.FormatKey, false /* verbose */, nil, copyOfSublevels.Levels)
+					s2 := describeSublevels(comparer.FormatKey, false /* verbose */, nil, v.L0Sublevels.Levels)
 					if s1 != s2 {
 						// Add verbosity.
-						s1 := describeSublevels(comparer.FormatKey, true /* verbose */, copyOfSublevels.Levels)
-						s2 := describeSublevels(comparer.FormatKey, true /* verbose */, v.L0Sublevels.Levels)
+						s1 := describeSublevels(comparer.FormatKey, true /* verbose */, nil, copyOfSublevels.Levels)
+						s2 := describeSublevels(comparer.FormatKey, true /* verbose */, nil, v.L0Sublevels.Levels)
 						panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
 					}
 				}

@@ -241,7 +241,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			if meta.HasRangeKeys {
 				m.ExtendRangeKeyBounds(cmp.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
 			}
-			return m.DebugString(cmp.FormatKey, false /* verbose */)
+			return m.DebugString(cmp.FormatKey, false /* verbose */, nil)
 		case "spans":
 			f, err := fs.Open("tmp.sst")
 			if err != nil {
