@@ -817,6 +817,13 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool, ext IsEx
 		fmt.Fprintf(&b, " ranges:[%s-%s]",
 			m.SmallestRangeKey.Pretty(format), m.LargestRangeKey.Pretty(format))
 	}
+	if m.PrefixReplacement != nil {
+		fmt.Fprintf(&b, " prefix:[%s->%s]",
+			format(m.PrefixReplacement.ContentPrefix), format(m.PrefixReplacement.SyntheticPrefix))
+	}
+	if m.SyntheticSuffix.IsSet() {
+		fmt.Fprintf(&b, " suffix:%s", format(m.SyntheticSuffix))
+	}
 	return b.String()
 }
 
