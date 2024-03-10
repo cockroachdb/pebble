@@ -77,16 +77,16 @@ L4
   t.SET.101:t
   t.SET.100:t
 ----
-1:
+L1:
   000004:[c#801,SET-g#800,SET]
   000005:[x#701,SET-y#700,SET]
-2:
+L2:
   000006:[d#601,SET-h#600,SET]
   000007:[r#501,SET-t#500,SET]
-3:
+L3:
   000008:[f#401,SET-g#400,SET]
   000009:[w#301,SET-x#300,SET]
-4:
+L4:
   000010:[f#201,SET-m#200,SET]
   000011:[t#101,SET-t#101,SET]
 
@@ -161,11 +161,11 @@ L3
   g.SET.1:v
   g.SET.0:v
 ----
-1:
+L1:
   000004:[a#3,SET-a#3,SET]
-2:
+L2:
   000005:[a#2,RANGEDEL-g#inf,RANGEDEL]
-3:
+L3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
   000008:[e#0,SET-f#1,SET]
@@ -191,7 +191,7 @@ L6
   g.SET.0:g
   h.RANGEDEL.1:z
 ----
-6:
+L6:
   000004:[g#0,SET-z#inf,RANGEDEL]
 
 elide start-level=1

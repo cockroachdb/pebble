@@ -11,9 +11,9 @@ L6
   d.SET.1:<rand-bytes=65536>
   e.SET.1:<rand-bytes=65536>
 ----
-5:
+L5:
   000004:[a#2,RANGEDEL-f#inf,RANGEDEL]
-6:
+L6:
   000005:[a#1,SET-e#1,SET]
 
 scores
@@ -67,9 +67,9 @@ L6
   d.SET.1:<rand-bytes=65536>
   e.SET.1:<rand-bytes=65536>
 ----
-5:
+L5:
   000004:[a#2,DEL-e#2,DEL]
-6:
+L6:
   000005:[a#1,SET-e#1,SET]
 
 scores
@@ -124,7 +124,7 @@ L6
   d.SET.1:<rand-bytes=65536>
   e.SET.1:<rand-bytes=65536>
 ----
-6:
+L6:
   000004:[a#1,SET-e#1,SET]
 
 ingest ext1
@@ -134,9 +134,9 @@ del c:
 del d:
 del e:
 ----
-5:
+L5:
   000005:[a:#10,DEL-e:#10,DEL]
-6:
+L6:
   000004:[a#1,SET-e#1,SET]
 
 wait-pending-table-stats
@@ -167,7 +167,7 @@ L6  	321KB  -
 
 lsm
 ----
-6:
+L6:
   000006:[a#0,SET-e#0,SET]
 
 # Test the adjustment of level sizes to accommodate in-progress compactions. A
@@ -191,10 +191,10 @@ L6
 L6
   e.SET.1:<rand-bytes=131072>
 ----
-5:
+L5:
   000004:[aa#2,SET-dd#2,SET]
   000005:[e#2,SET-e#2,SET]
-6:
+L6:
   000006:[a#1,SET-d#1,SET]
   000007:[e#1,SET-e#1,SET]
 
@@ -211,10 +211,10 @@ L6  	385KB  -
 
 lsm verbose
 ----
-5:
+L5:
   000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET]
   000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET]
-6:
+L6:
   000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET]
   000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET]
 
@@ -243,9 +243,9 @@ L6  	898KB  -
 
 lsm
 ----
-5:
+L5:
   000005:[e#2,SET-e#2,SET]
-6:
+L6:
   000008:[a#0,SET-dd#0,SET]
   000007:[e#1,SET-e#1,SET]
 

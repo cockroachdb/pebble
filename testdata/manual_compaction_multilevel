@@ -13,20 +13,20 @@ L3
 L4
   c.SET.2:v d.SET.1:v
 ----
-1:
+L1:
   000004:[a#3,SET-b#2,SET]
-2:
+L2:
   000005:[a#2,SET-c#4,SET]
-3:
+L3:
   000006:[c#3,SET-d#2,SET]
-4:
+L4:
   000007:[c#2,SET-d#1,SET]
 
 compact a-b L1
 ----
-3:
+L3:
   000008:[a#3,SET-d#2,SET]
-4:
+L4:
   000007:[c#2,SET-d#1,SET]
 
 # Conduct a multi level compaction with no output level files
@@ -38,18 +38,18 @@ L2
 L4
   c.SET.2:v d.SET.1:v
 ----
-1:
+L1:
   000004:[a#3,SET-b#2,SET]
-2:
+L2:
   000005:[a#2,SET-c#4,SET]
-4:
+L4:
   000006:[c#2,SET-d#1,SET]
 
 compact a-b L1
 ----
-3:
+L3:
   000007:[a#3,SET-c#4,SET]
-4:
+L4:
   000006:[c#2,SET-d#1,SET]
 
 # No multilevel compaction because a move to L2 results in less writeamp than the ML compaction
@@ -62,20 +62,20 @@ L3
 L4
   c.SET.2:v d.SET.1:v
 ----
-1:
+L1:
   000004:[a#3,SET-b#2,SET]
-3:
+L3:
   000005:[a#2,SET-c#4,SET]
-4:
+L4:
   000006:[c#2,SET-d#1,SET]
 
 compact a-b L1
 ----
-2:
+L2:
   000004:[a#3,SET-b#2,SET]
-3:
+L3:
   000005:[a#2,SET-c#4,SET]
-4:
+L4:
   000006:[c#2,SET-d#1,SET]
 
 # Conduct a multi input compaction without intermediate or output level, basically a move.
@@ -85,16 +85,16 @@ L1
 L4
   c.SET.2:v d.SET.1:v
 ----
-1:
+L1:
   000004:[a#3,SET-b#2,SET]
-4:
+L4:
   000005:[c#2,SET-d#1,SET]
 
 compact a-b L1
 ----
-3:
+L3:
   000004:[a#3,SET-b#2,SET]
-4:
+L4:
   000005:[c#2,SET-d#1,SET]
 
 # Don't conduct a multi level compaction on L0.
@@ -106,16 +106,16 @@ L1
 L2
   c.SET.2:v d.SET.2:v
 ----
-0.0:
+L0.0:
   000004:[a#1,SET-b#2,SET]
-1:
+L1:
   000005:[a#3,SET-c#4,SET]
-2:
+L2:
   000006:[c#2,SET-d#2,SET]
 
 compact a-b L0
 ----
-1:
+L1:
   000007:[a#3,SET-c#4,SET]
-2:
+L2:
   000006:[c#2,SET-d#2,SET]

@@ -5,7 +5,7 @@ set b 2
 
 compact a-b
 ----
-6:
+L6:
   000005:[a#10,SET-b#11,SET]
 
 batch
@@ -15,7 +15,7 @@ set d 4
 
 compact c-d
 ----
-6:
+L6:
   000005:[a#10,SET-b#11,SET]
   000007:[c#12,SET-d#13,SET]
 
@@ -26,7 +26,7 @@ set c 6
 
 compact a-d
 ----
-6:
+L6:
   000010:[a#0,SET-d#0,SET]
 
 # This also tests flushing a memtable that only contains range
@@ -47,13 +47,13 @@ L0
 L0
   a.SET.2:v
 ----
-0.0:
+L0.0:
   000005:[a#2,SET-a#2,SET]
   000004:[b#1,SET-b#1,SET]
 
 compact a-b
 ----
-1:
+L1:
   000006:[a#0,SET-a#0,SET]
   000007:[b#0,SET-b#0,SET]
 
@@ -73,11 +73,11 @@ L3
   c.SET.0:v
   d.SET.0:v
 ----
-1:
+L1:
   000004:[a#3,SET-a#3,SET]
-2:
+L2:
   000005:[a#2,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
 
@@ -92,10 +92,10 @@ range-deletions-bytes-estimate: 1190
 
 compact a-e L1
 ----
-2:
+L2:
   000008:[a#3,SET-c#inf,RANGEDEL]
   000009:[c#2,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
 
@@ -128,11 +128,11 @@ L3
   g.SET.1:v
   g.SET.0:v
 ----
-1:
+L1:
   000004:[a#3,SET-a#3,SET]
-2:
+L2:
   000005:[a#2,RANGEDEL-g#inf,RANGEDEL]
-3:
+L3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
   000008:[e#0,SET-f#1,SET]
@@ -140,11 +140,11 @@ L3
 
 compact a-e L1
 ----
-2:
+L2:
   000010:[a#3,SET-c#inf,RANGEDEL]
   000011:[c#2,RANGEDEL-e#inf,RANGEDEL]
   000012:[e#2,RANGEDEL-g#inf,RANGEDEL]
-3:
+L3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
   000008:[e#0,SET-f#1,SET]
@@ -169,21 +169,21 @@ L3
   e.SET.0:v
   f.SET.1:v
 ----
-1:
+L1:
   000004:[a#3,SET-h#3,SET]
-2:
+L2:
   000005:[a#2,RANGEDEL-g#inf,RANGEDEL]
-3:
+L3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
   000008:[e#0,SET-f#1,SET]
 
 compact a-e L1
 ----
-2:
+L2:
   000009:[a#3,SET-c#inf,RANGEDEL]
   000010:[c#2,RANGEDEL-h#3,SET]
-3:
+L3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
   000008:[e#0,SET-f#1,SET]
@@ -204,20 +204,20 @@ L3
   c.SET.0:v
   d.SET.0:v
 ----
-1:
+L1:
   000004:[a#3,RANGEDEL-e#inf,RANGEDEL]
-2:
+L2:
   000005:[a#2,SET-a#2,SET]
-3:
+L3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
 
 compact a-e L1
 ----
-2:
+L2:
   000008:[a#3,RANGEDEL-c#inf,RANGEDEL]
   000009:[c#3,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
 
@@ -239,21 +239,21 @@ L3
 L3
   m.SET.0:v
 ----
-1:
+L1:
   000004:[a#4,RANGEDEL-d#inf,RANGEDEL]
   000005:[grandparent#2,RANGEDEL-z#inf,RANGEDEL]
-2:
+L2:
   000006:[grandparent#1,SET-grandparent#1,SET]
-3:
+L3:
   000007:[grandparent#0,SET-grandparent#0,SET]
   000008:[m#0,SET-m#0,SET]
 
 compact a-h L1
 ----
-2:
+L2:
   000009:[grandparent#2,RANGEDEL-m#inf,RANGEDEL]
   000010:[m#2,RANGEDEL-z#inf,RANGEDEL]
-3:
+L3:
   000007:[grandparent#0,SET-grandparent#0,SET]
   000008:[m#0,SET-m#0,SET]
 
@@ -276,7 +276,7 @@ set z 1
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#10,SET-z#14,SET]
 
 build ext1
@@ -290,10 +290,10 @@ del-range c z
 
 ingest ext1 ext2
 ----
-0.0:
+L0.0:
   000006:[a#15,SET-a#15,SET]
   000007:[b#16,SET-z#inf,RANGEDEL]
-6:
+L6:
   000005:[a#10,SET-z#14,SET]
 
 iter
@@ -309,7 +309,7 @@ z: (1, .)
 
 compact a-z
 ----
-6:
+L6:
   000008:[a#0,SET-z#0,SET]
 
 iter
@@ -340,23 +340,23 @@ L2
 L3
   b.SET.1:1
 ----
-0.0:
+L0.0:
   000004:[c#4,SET-c#4,SET]
-1:
+L1:
   000005:[a#3,SET-a#3,SET]
-2:
+L2:
   000006:[a#2,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000007:[b#1,SET-b#1,SET]
 
 compact a-e L1
 ----
-0.0:
+L0.0:
   000004:[c#4,SET-c#4,SET]
-2:
+L2:
   000008:[a#3,SET-b#inf,RANGEDEL]
   000009:[b#2,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000007:[b#1,SET-b#1,SET]
 
 # We should only see a:3 and c:4 at this point.
@@ -398,18 +398,18 @@ L1
 L3
   b.SET.1:1
 ----
-1:
+L1:
   000004:[a#4,SET-a#4,SET]
   000005:[b#3,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000006:[b#1,SET-b#1,SET]
 
 compact a-e L1
 ----
-2:
+L2:
   000007:[a#4,SET-a#4,SET]
   000008:[b#3,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000006:[b#1,SET-b#1,SET]
 
 iter
@@ -435,18 +435,18 @@ L1
 L3
   b.SET.1:1
 ----
-1:
+L1:
   000004:[a#4,SET-a#4,SET]
   000005:[b#3,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000006:[b#1,SET-b#1,SET]
 
 compact a-e L1
 ----
-2:
+L2:
   000007:[a#4,SET-a#4,SET]
   000008:[b#3,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000006:[b#1,SET-b#1,SET]
 
 iter
@@ -476,18 +476,18 @@ L1
 L3
   b.SET.1:1
 ----
-1:
+L1:
   000004:[a#4,SET-a#4,SET]
   000005:[b#4,SET-e#inf,RANGEDEL]
-3:
+L3:
   000006:[b#1,SET-b#1,SET]
 
 compact a-e L1
 ----
-2:
+L2:
   000007:[a#4,SET-a#4,SET]
   000008:[b#4,SET-e#inf,RANGEDEL]
-3:
+L3:
   000006:[b#1,SET-b#1,SET]
 
 iter
@@ -519,9 +519,9 @@ L3
   c.SET.0:0
   d.SET.0:0
 ----
-1:
+L1:
   000004:[a#3,SET-e#inf,RANGEDEL]
-3:
+L3:
   000005:[a#2,RANGEDEL-b#inf,RANGEDEL]
   000006:[c#0,SET-d#0,SET]
 
@@ -534,10 +534,10 @@ a: (3, .)
 
 compact a-e L1
 ----
-2:
+L2:
   000007:[a#3,SET-c#inf,RANGEDEL]
   000008:[c#3,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000005:[a#2,RANGEDEL-b#inf,RANGEDEL]
   000006:[c#0,SET-d#0,SET]
 
@@ -563,17 +563,17 @@ L1
 L3
   c.RANGEDEL.2:d
 ----
-1:
+L1:
   000004:[a#3,SET-e#inf,RANGEDEL]
-3:
+L3:
   000005:[c#2,RANGEDEL-d#inf,RANGEDEL]
 
 compact a-f L1
 ----
-2:
+L2:
   000006:[a#3,SET-c#inf,RANGEDEL]
   000007:[c#3,RANGEDEL-e#inf,RANGEDEL]
-3:
+L3:
   000005:[c#2,RANGEDEL-d#inf,RANGEDEL]
 
 
@@ -589,16 +589,16 @@ L1
 L3
   b.SET.0:0
 ----
-1:
+L1:
   000004:[a#0,SET-d#inf,RANGEDEL]
-3:
+L3:
   000005:[b#0,SET-b#0,SET]
 
 compact a-e L1
 ----
-2:
+L2:
   000006:[a#0,SET-a#0,SET]
-3:
+L3:
   000005:[b#0,SET-b#0,SET]
 
 define target-file-sizes=(1, 1, 1, 1)
@@ -607,7 +607,7 @@ L0
 L0
   a.SET.2:v
 ----
-0.0:
+L0.0:
   000005:[a#2,SET-a#2,SET]
   000004:[b#1,SET-b#1,SET]
 
@@ -617,13 +617,13 @@ add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=z
 async-compact a-b L0
 ----
 manual compaction blocked until ongoing finished
-1:
+L1:
   000006:[a#0,SET-a#0,SET]
   000007:[b#0,SET-b#0,SET]
 
 compact a-b L1
 ----
-2:
+L2:
   000008:[a#0,SET-a#0,SET]
   000009:[b#0,SET-b#0,SET]
 
@@ -633,7 +633,7 @@ add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=z
 async-compact a-b L2
 ----
 manual compaction blocked until ongoing finished
-3:
+L3:
   000010:[a#0,SET-a#0,SET]
   000011:[b#0,SET-b#0,SET]
 
@@ -646,7 +646,7 @@ set-concurrent-compactions num=2
 async-compact a-b L3
 ----
 manual compaction did not block for ongoing
-4:
+L4:
   000012:[a#0,SET-a#0,SET]
   000013:[b#0,SET-b#0,SET]
 
@@ -659,7 +659,7 @@ add-ongoing-compaction startLevel=4 outputLevel=5 start=a end=b
 async-compact a-b L4
 ----
 manual compaction blocked until ongoing finished
-5:
+L5:
   000014:[a#0,SET-a#0,SET]
   000015:[b#0,SET-b#0,SET]
 
@@ -687,23 +687,23 @@ L3
 L3
   k.SET.1:foo
 ----
-1:
+L1:
   000004:[a#4,RANGEDEL-f#inf,RANGEDEL]
   000005:[g#6,RANGEDEL-j#inf,RANGEDEL]
   000006:[k#5,RANGEDEL-q#inf,RANGEDEL]
-2:
+L2:
   000007:[a#2,SET-a#2,SET]
-3:
+L3:
   000008:[a#1,SET-c#1,SET]
   000009:[ff#1,SET-ff#1,SET]
   000010:[k#1,SET-k#1,SET]
 
 compact a-q L1
 ----
-2:
+L2:
   000011:[a#4,RANGEDEL-d#inf,RANGEDEL]
   000012:[k#5,RANGEDEL-m#inf,RANGEDEL]
-3:
+L3:
   000008:[a#1,SET-c#1,SET]
   000009:[ff#1,SET-ff#1,SET]
   000010:[k#1,SET-k#1,SET]
@@ -721,18 +721,18 @@ L2
 L3
   q.SET.6:6
 ----
-1:
+L1:
   000004:[a#10,RANGEDEL-r#inf,RANGEDEL]
-2:
+L2:
   000005:[g#7,RANGEDEL-h#inf,RANGEDEL]
-3:
+L3:
   000006:[q#6,SET-q#6,SET]
 
 compact a-r L1
 ----
-2:
+L2:
   000007:[q#8,RANGEDEL-r#inf,RANGEDEL]
-3:
+L3:
   000006:[q#6,SET-q#6,SET]
 
 # Test a snapshot that separates a range deletion from all the data that it
@@ -748,14 +748,14 @@ L2
   c.SET.0:foo
   d.SET.0:foo
 ----
-1:
+L1:
   000004:[a#15,RANGEDEL-z#inf,RANGEDEL]
-2:
+L2:
   000005:[c#0,SET-d#0,SET]
 
 compact a-z L1
 ----
-2:
+L2:
   000006:[a#15,RANGEDEL-c#inf,RANGEDEL]
   000007:[c#15,RANGEDEL-d#inf,RANGEDEL]
   000008:[d#15,RANGEDEL-z#inf,RANGEDEL]
@@ -774,14 +774,14 @@ L2
   c.SET.0:foo
   d.SET.0:foo
 ----
-1:
+L1:
   000004:[a#10,RANGEDEL-z#inf,RANGEDEL]
-2:
+L2:
   000005:[c#0,SET-d#0,SET]
 
 compact a-z L1
 ----
-2:
+L2:
   000006:[b#0,SET-b#0,SET]
   000007:[c#0,SET-c#0,SET]
 
@@ -791,14 +791,14 @@ L1
 L2
   a.SET.5:a5
 ----
-1:
+L1:
   000004:[a#15,MERGE-a#15,MERGE]
-2:
+L2:
   000005:[a#5,SET-a#5,SET]
 
 compact a-z
 ----
-3:
+L3:
   000006:[a#15,MERGE-a#0,SET]
 
 # Fix for #2705. When snapshotPinned was used to set force obsolete, the

@@ -89,12 +89,12 @@ e#13,SET (foo)
 
 compact a-z
 ----
-6:
+L6:
   000008:[a#10,RANGEKEYSET-e#13,SET]
 
 lsm
 ----
-6:
+L6:
   000008:[a#10,RANGEKEYSET-e#13,SET]
 
 scan-internal lower=a upper=z skip-shared snapshot=foo
@@ -132,7 +132,7 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#10,RANGEKEYSET-e#inf,RANGEKEYSET]
 
 batch commit
@@ -160,10 +160,10 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000009:[a#13,RANGEKEYDEL-b#inf,RANGEKEYDEL]
   000007:[b#12,RANGEKEYUNSET-d#inf,RANGEKEYUNSET]
-6:
+L6:
   000005:[a#10,RANGEKEYSET-e#inf,RANGEKEYSET]
 
 scan-internal
@@ -298,7 +298,7 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#11,RANGEKEYSET-e#inf,RANGEDEL]
 
 batch commit
@@ -308,7 +308,7 @@ committed 1 keys
 
 lsm
 ----
-6:
+L6:
   000005:[a#11,RANGEKEYSET-e#inf,RANGEDEL]
 
 scan-internal
@@ -370,12 +370,12 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#10,SET-f#11,SET]
 
 lsm
 ----
-6:
+L6:
   000005:[a#10,SET-f#11,SET]
 
 scan-internal skip-shared lower=c upper=d
@@ -423,7 +423,7 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#10,SET-ee#inf,RANGEKEYSET]
 
 scan-internal skip-shared lower=a upper=ee
@@ -452,7 +452,7 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#10,RANGEKEYSET-d#13,SET]
 
 scan-internal skip-shared lower=b upper=e
@@ -483,9 +483,9 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000006:[d#11,SET-d#11,SET]
-6:
+L6:
   000004(000004):[a#10,DELSIZED-c\x00#inf,RANGEDEL]
 
 
@@ -522,7 +522,7 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000006(000006):[a#11,DELSIZED-c\x00#inf,RANGEDEL]
   000005:[d#10,SET-d#10,SET]
 

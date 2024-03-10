@@ -18,9 +18,9 @@ L
 e.SET.10 g.SET.20
 e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:g
 ----
-1:
+L1:
   000000:[a#30,SET-e#inf,RANGEDEL]
-2:
+L2:
   000001:[e#10,SET-g#20,SET]
 
 # isNextEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
@@ -99,9 +99,9 @@ L
 e.SET.10 g.SET.15
 e.SET.10:10 g.SET.15:15
 ----
-1:
+L1:
   000002:[a#15,SET-f#16,SET]
-2:
+L2:
   000003:[e#10,SET-g#15,SET]
 
 iter
@@ -143,9 +143,9 @@ L
 a.SET.10 c.RANGEDEL.72057594037927935
 a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:c
 ----
-1:
+L1:
   000004:[c#30,SET-f#inf,RANGEDEL]
-2:
+L2:
   000005:[a#10,SET-c#inf,RANGEDEL]
 
 # isNextEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
@@ -206,9 +206,9 @@ L
 b.SET.14 d.SET.10
 b.SET.14:14 d.SET.10:10
 ----
-1:
+L1:
   000006:[c#15,SET-g#16,SET]
-2:
+L2:
   000007:[b#14,SET-d#10,SET]
 
 iter
@@ -238,9 +238,9 @@ L
 e.SET.10 g.SET.20
 e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:g
 ----
-1:
+L1:
   000008:[a#30,SET-e#inf,RANGEDEL]
-2:
+L2:
   000009:[e#10,SET-g#20,SET]
 
 # When doing seek-lt f, the rangedel should not apply to e in the lower sstable. This is the
@@ -291,7 +291,7 @@ L
 a.SET.9 d.SET.6
 a.SET.9:9 b.SET.8:8 c.SET.7:7 d.SET.6:6
 ----
-1:
+L1:
   000010:[a#9,SET-d#6,SET]
 
 # Verify the lower bound is respected in switchToMinHeap() when the
@@ -335,9 +335,9 @@ L
 c.SET.5 f.SET.2
 c.SET.5:5 d.SET.4:4 e.SET.3:3 f.SET.2:2
 ----
-1:
+L1:
   000011:[a#9,SET-d#6,SET]
-2:
+L2:
   000012:[c#5,SET-f#2,SET]
 
 iter
@@ -390,9 +390,9 @@ L
 a.SET.5 d.SET.2
 a.SET.5:5 b.SET.4:4 c.SET.3:3 d.SET.2:2
 ----
-1:
+L1:
   000013:[c#9,SET-f#6,SET]
-2:
+L2:
   000014:[a#5,SET-d#2,SET]
 
 iter
@@ -439,11 +439,11 @@ L
 a.SET.0 f.SET.0
 a.SET.0:1 b.SET.0:1 c.SET.0:1 d.SET.0:1 e.SET.0:1 f.SET.0:1
 ----
-1:
+L1:
   000015:[a#2,SET-a#2,SET]
   000016:[c#4,RANGEDEL-e#inf,RANGEDEL]
   000017:[f#3,SET-f#3,SET]
-2:
+L2:
   000018:[a#0,SET-f#0,SET]
 
 iter
@@ -498,11 +498,11 @@ L
 a.SET.41 z.RANGEDEL.72057594037927935
 a.SET.41:41 koujdlp.MERGE.37:37 ok.SET.46:46 v.SET.43:43 v.RANGEDEL.19:z
 ----
-1:
+L1:
   000019:[kq#100,RANGEDEL-p#inf,RANGEDEL]
-2:
+L2:
   000020:[b#90,SET-o#65,SET]
-3:
+L3:
   000021:[a#41,SET-z#inf,RANGEDEL]
 
 iter
@@ -527,11 +527,11 @@ L
 all.SET.0 zk.SET.722
 all.SET.0:0 c.SET.0:0 zk.SET.722:722
 ----
-1:
+L1:
   000022:[a#103,SET-jyk#inf,RANGEDEL]
-2:
+L2:
   000023:[b#90,SET-o#65,SET]
-3:
+L3:
   000024:[all#0,SET-zk#722,SET]
 
 iter
@@ -564,7 +564,7 @@ L
 a.SET.10 d.SET.10
 a.SET.10:a10 b.SET.10:b10 c.SET.10:c10 d.SET.10:d10 b.RANGEDEL.12:d
 ----
-1:
+L1:
   000025:[a#10,SET-d#10,SET]
 
 iter
@@ -615,7 +615,7 @@ L
 a.SET.30 g.RANGEDEL.72057594037927935
 a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
 ----
-1:
+L1:
   000026:[a#30,SET-g#inf,RANGEDEL]
 
 iter
@@ -647,7 +647,7 @@ L
 a.SET.30 g.RANGEDEL.72057594037927935
 a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
 ----
-1:
+L1:
   000027:[a#30,SET-g#inf,RANGEDEL]
 
 iter probe-points=(000027,ErrInjected,(Log "#  L1.000027."))
@@ -678,9 +678,9 @@ L
 e.SET.10 g.SET.20
 e.SET.10:10 g.SET.20:20
 ----
-1:
+L1:
   000028:[a#30,SET-c#27,SET]
-2:
+L2:
   000029:[e#10,SET-g#20,SET]
 
 # Inject errors for each of the L1 operations.
@@ -809,7 +809,7 @@ L
 a.SET.30 g.RANGEDEL.72057594037927935
 a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
 ----
-1:
+L1:
   000030:[a#30,SET-g#inf,RANGEDEL]
 
 iter probe-points=(000030,(Log "#  iter.")) probe-rangedels=(000030,ErrInjected,(Log "#  rangedelIter."))
@@ -845,7 +845,7 @@ a.SET.10:a10 c.SET.10:c10
 d.SET.10 g.SET.10
 d.SET.10:d10 g.SET.10:g10
 ----
-1:
+L1:
   000031:[a#10,SET-c#10,SET]
   000032:[d#10,SET-g#10,SET]
 

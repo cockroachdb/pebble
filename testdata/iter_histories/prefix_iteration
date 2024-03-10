@@ -39,7 +39,7 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[a#10,RANGEKEYSET-c#inf,RANGEKEYSET]
   000007:[c#11,RANGEKEYSET-f#inf,RANGEKEYSET]
   000009:[f#12,RANGEKEYSET-m#inf,RANGEKEYSET]
@@ -93,7 +93,7 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[a#10,RANGEKEYSET-c@8#inf,RANGEKEYSET]
   000006:[c@8#13,SET-c@7#inf,RANGEKEYSET]
   000007:[c@7#14,SET-c@6#inf,RANGEKEYSET]
@@ -156,7 +156,7 @@ set z z
 
 lsm
 ----
-6:
+L6:
   000004:[a#10,RANGEKEYSET-c@8#inf,RANGEKEYSET]
   000005:[c@8#11,RANGEKEYSET-e#inf,RANGEKEYSET]
   000006:[y#12,RANGEKEYSET-z#12,SET]
@@ -283,10 +283,10 @@ range-key-set d e @1 bar
 
 lsm
 ----
-0.0:
+L0.0:
   000006:[a#12,SET-d#inf,RANGEDEL]
   000007:[d#13,RANGEKEYSET-e#inf,RANGEKEYSET]
-6:
+L6:
   000004:[b@4#10,SET-b@4#10,SET]
   000005:[c#11,SET-f#inf,RANGEKEYSET]
 
@@ -322,9 +322,9 @@ L6
   c@2.SET.2:v
   d@2.SET.2:v
 ----
-5:
+L5:
   000004:[b#3,RANGEDEL-d@9#9,SET]
-6:
+L6:
   000005:[b@2#2,SET-d@2#2,SET]
 
 combined-iter snapshot=4

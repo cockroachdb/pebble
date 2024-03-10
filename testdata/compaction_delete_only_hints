@@ -35,13 +35,13 @@ k.SET.90:k o.SET.150:o
 L4
 m.SET.30:m u.SET.60:u
 ----
-0.0:
+L0.0:
   000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
-2:
+L2:
   000005:[d#110,SET-i#140,SET]
-3:
+L3:
   000006:[k#90,SET-o#150,SET]
-4:
+L4:
   000007:[m#30,SET-u#60,SET]
 
 # Test a hint that is blocked by open snapshots. No compaction should occur
@@ -70,13 +70,13 @@ k.SET.90:k o.SET.150:o
 L4
 m.SET.30:m u.SET.60:u
 ----
-0.0:
+L0.0:
   000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
-2:
+L2:
   000005:[d#110,SET-i#140,SET]
-3:
+L3:
   000006:[k#90,SET-o#150,SET]
-4:
+L4:
   000007:[m#30,SET-u#60,SET]
 
 get-hints
@@ -106,15 +106,15 @@ k.SET.90:k o.SET.150:o
 L4
 m.SET.30:m u.SET.60:u
 ----
-0.0:
+L0.0:
   000004:[a#300,RANGEDEL-k#inf,RANGEDEL]
-1:
+L1:
   000005:[b#230,RANGEDEL-r#inf,RANGEDEL]
-2:
+L2:
   000006:[d#110,SET-i#140,SET]
-3:
+L3:
   000007:[k#90,SET-o#150,SET]
-4:
+L4:
   000008:[m#30,SET-u#60,SET]
 
 get-hints
@@ -141,13 +141,13 @@ k.SET.90:k o.SET.150:o
 L4
 m.SET.30:m u.SET.60:u
 ----
-0.0:
+L0.0:
   000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
-2:
+L2:
   000005:[d#110,SET-i#140,SET]
-3:
+L3:
   000006:[k#90,SET-o#150,SET]
-4:
+L4:
   000007:[m#30,SET-u#60,SET]
 
 get-hints
@@ -156,7 +156,7 @@ L0.000004 b-r seqnums(tombstone=200-230, file-smallest=90, type=point-key-only)
 
 compact a-z
 ----
-5:
+L5:
   000008:[b#230,RANGEDEL-u#0,SET]
 
 maybe-compact
@@ -181,15 +181,15 @@ m.SET.30:m u.SET.60:u
 L0
 e.SET.240:e m.SET.260:m
 ----
-0.0:
+L0.0:
   000008:[e#240,SET-m#260,SET]
-1:
+L1:
   000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
-2:
+L2:
   000005:[d#110,SET-i#140,SET]
-3:
+L3:
   000006:[k#90,SET-o#150,SET]
-4:
+L4:
   000007:[m#30,SET-u#60,SET]
 
 get-hints
@@ -220,7 +220,7 @@ define snapshots=(10, 25)
 L6
 a.SET.20:b a.RANGEDEL.15:z
 ----
-6:
+L6:
   000004:[a#20,SET-z#inf,RANGEDEL]
 
 # Note that this test depends on stats being present on the sstables, so we
@@ -390,9 +390,9 @@ OK
 
 describe-lsm
 ----
-0.0:
+L0.0:
   000013:[a#19,RANGEDEL-z#inf,RANGEKEYDEL]
-6:
+L6:
   000004:[a#10,RANGEKEYSET-c#10,SET]
   000005:[d#11,RANGEKEYSET-f#inf,RANGEKEYSET]
   000006:[g#12,SET-h#12,SET]

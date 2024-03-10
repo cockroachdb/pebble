@@ -6,7 +6,7 @@ del c
 
 flush
 ----
-0.0:
+L0.0:
   000005:[a#10,SET-c#12,DEL]
 
 wait-pending-table-stats
@@ -20,7 +20,7 @@ range-deletions-bytes-estimate: 0
 
 compact a-c
 ----
-6:
+L6:
   000005:[a#10,SET-c#12,DEL]
 
 batch
@@ -29,9 +29,9 @@ del-range a c
 
 flush
 ----
-0.0:
+L0.0:
   000007:[a#13,RANGEDEL-c#inf,RANGEDEL]
-6:
+L6:
   000005:[a#10,SET-c#12,DEL]
 
 wait-pending-table-stats
@@ -80,12 +80,12 @@ set b 2
 
 flush
 ----
-0.0:
+L0.0:
   000012:[a#14,SET-b#15,SET]
 
 compact a-c
 ----
-6:
+L6:
   000012:[a#14,SET-b#15,SET]
 
 enable
@@ -112,9 +112,9 @@ del-range a c
 
 flush
 ----
-0.0:
+L0.0:
   000014:[a#16,RANGEDEL-c#inf,RANGEDEL]
-6:
+L6:
   000012:[a#14,SET-b#15,SET]
 
 compact a-c
@@ -148,11 +148,11 @@ L6
 L6
   e.SET.5:v
 ----
-4:
+L4:
   000004:[a#8,RANGEDEL-f#inf,RANGEDEL]
-5:
+L5:
   000005:[b#7,SET-b#7,SET]
-6:
+L6:
   000006:[a#1,SET-a#1,SET]
   000007:[b#2,SET-b#2,SET]
   000008:[c#3,SET-c#3,SET]
@@ -161,13 +161,13 @@ L6
 
 compact a-b L4
 ----
-5:
+L5:
   000011:[a#8,RANGEDEL-b#inf,RANGEDEL]
   000012:[b#8,RANGEDEL-c#inf,RANGEDEL]
   000013:[c#8,RANGEDEL-d#inf,RANGEDEL]
   000014:[d#8,RANGEDEL-e#inf,RANGEDEL]
   000015:[e#8,RANGEDEL-f#inf,RANGEDEL]
-6:
+L6:
   000006:[a#1,SET-a#1,SET]
   000007:[b#2,SET-b#2,SET]
   000008:[c#3,SET-c#3,SET]
@@ -199,7 +199,7 @@ define block-size=1 snapshots=(10)
 L6
   e.SET.5:e a.RANGEDEL.15:f m.SET.5:m g.RANGEDEL.15:z
 ----
-6:
+L6:
   000004:[a#15,RANGEDEL-z#inf,RANGEDEL]
 
 wait-pending-table-stats
@@ -231,11 +231,11 @@ L2
 L2
   e.SET.0:e h.SET.0:h
 ----
-0.0:
+L0.0:
   000004:[a#2,RANGEDEL-b#inf,RANGEDEL]
-1:
+L1:
   000005:[d#1,RANGEDEL-f#inf,RANGEDEL]
-2:
+L2:
   000006:[a#0,SET-d#0,SET]
   000007:[e#0,SET-h#0,SET]
 
@@ -275,7 +275,7 @@ range-key-unset a b @2
 
 flush
 ----
-0.0:
+L0.0:
   000005:[a#12,RANGEKEYUNSET-b#inf,RANGEKEYSET]
 
 # Add a table that contains only point keys, to the right of the existing table.
@@ -285,13 +285,13 @@ set c c
 
 flush
 ----
-0.0:
+L0.0:
   000005:[a#12,RANGEKEYUNSET-b#inf,RANGEKEYSET]
   000007:[c#13,SET-c#13,SET]
 
 compact a-c
 ----
-6:
+L6:
   000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
@@ -302,9 +302,9 @@ range-key-del a b
 
 flush
 ----
-0.0:
+L0.0:
   000011:[a#14,RANGEKEYDEL-b#inf,RANGEKEYDEL]
-6:
+L6:
   000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
@@ -315,11 +315,11 @@ del-range a c
 
 flush
 ----
-0.1:
+L0.1:
   000013:[a#15,RANGEDEL-c#inf,RANGEDEL]
-0.0:
+L0.0:
   000011:[a#14,RANGEKEYDEL-b#inf,RANGEKEYDEL]
-6:
+L6:
   000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
@@ -354,13 +354,13 @@ ingest ext1
 del-range a z
 range-key-del a z
 ----
-0.2:
+L0.2:
   000014:[a#16,RANGEKEYDEL-z#inf,RANGEDEL]
-0.1:
+L0.1:
   000013:[a#15,RANGEDEL-c#inf,RANGEDEL]
-0.0:
+L0.0:
   000011:[a#14,RANGEKEYDEL-b#inf,RANGEKEYDEL]
-6:
+L6:
   000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
 
@@ -378,7 +378,7 @@ set d d
 set e e
 set f f
 ----
-6:
+L6:
   000015:[a#17,RANGEKEYDEL-z#inf,RANGEDEL]
 
 wait-pending-table-stats
@@ -403,7 +403,7 @@ set b b
 
 flush
 ----
-0.0:
+L0.0:
   000005:[b#10,SET-b#10,SET]
 
 # A table with a mixture of point and range keys.
@@ -414,13 +414,13 @@ range-key-set d d @1 foo
 
 flush
 ----
-0.0:
+L0.0:
   000005:[b#10,SET-b#10,SET]
   000007:[c#11,SET-c#11,SET]
 
 compact a-z
 ----
-6:
+L6:
   000008:[b#0,SET-b#0,SET]
   000009:[c#0,SET-c#0,SET]
 
@@ -431,9 +431,9 @@ range-key-del a z
 
 flush
 ----
-0.0:
+L0.0:
   000011:[a#13,RANGEKEYDEL-z#inf,RANGEKEYDEL]
-6:
+L6:
   000008:[b#0,SET-b#0,SET]
   000009:[c#0,SET-c#0,SET]
 
@@ -460,11 +460,11 @@ L5
 L6
   rangekey:c-d:{(#1,RANGEKEYSET,@1,foo)}
 ----
-4:
+L4:
   000004:[a#4,RANGEDEL-c#inf,RANGEDEL]
-5:
+L5:
   000005:[a#2,RANGEDEL-e#inf,RANGEDEL]
-6:
+L6:
   000006:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 
 # The table in L5 should not contain an estimate for the table below it, which
@@ -498,7 +498,7 @@ L6
   foo.SET.0:<rand-bytes=100000>
   moo.SET.0:<rand-bytes=1>
 ----
-6:
+L6:
   000004:[bar#0,SET-moo#0,SET]
 
 batch
@@ -511,9 +511,9 @@ del moo
 
 flush
 ----
-0.0:
+L0.0:
   000006:[a#10,SET-moo#14,DEL]
-6:
+L6:
   000004:[bar#0,SET-moo#0,SET]
 
 metric keys.missized-tombstones-count
@@ -559,11 +559,11 @@ del-sized a 10000
 
 flush
 ----
-0.1:
+L0.1:
   000008:[a#16,DEL-a#16,DEL]
-0.0:
+L0.0:
   000006:[a#10,SET-moo#14,DEL]
-6:
+L6:
   000004:[bar#0,SET-moo#0,SET]
 
 metric keys.missized-tombstones-count
@@ -583,7 +583,7 @@ del d
 
 flush
 ----
-0.0:
+L0.0:
   000005:[a#10,SET-d#12,DEL]
 
 metadata-stats file=5
@@ -627,10 +627,10 @@ ingest-and-excise ext1 excise=b-c
 
 lsm
 ----
-0.0:
+L0.0:
   000007(000005):[a#10,SET-a#10,SET]
   000008(000005):[d#12,DEL-d#12,DEL]
-6:
+L6:
   000006:[f#14,SET-f#14,SET]
 
 metadata-stats file=7
@@ -692,12 +692,12 @@ range-key-set e ee @1 foo
 
 flush
 ----
-0.1:
+L0.1:
   000010:[a#15,SET-ee#inf,RANGEKEYSET]
-0.0:
+L0.0:
   000007(000005):[a#10,SET-a#10,SET]
   000008(000005):[d#12,DEL-d#12,DEL]
-6:
+L6:
   000006:[f#14,SET-f#14,SET]
 
 properties file=10
@@ -743,13 +743,13 @@ ingest-and-excise ext2 excise=b-c
 
 lsm
 ----
-0.1:
+L0.1:
   000012(000010):[a#15,SET-a#15,SET]
   000013(000010):[d#17,SET-ee#inf,RANGEKEYSET]
-0.0:
+L0.0:
   000007(000005):[a#10,SET-a#10,SET]
   000008(000005):[d#12,DEL-d#12,DEL]
-6:
+L6:
   000006:[f#14,SET-f#14,SET]
   000011:[z#20,SET-z#20,SET]
 
@@ -800,7 +800,7 @@ range-deletions-bytes-estimate: 0
 # bytes in L0.
 compact a-z
 ----
-6:
+L6:
   000014:[a#0,SET-a#0,SET]
   000015:[d#0,SETWITHDEL-d#0,SETWITHDEL]
   000016:[e#18,RANGEKEYSET-ee#inf,RANGEKEYSET]
@@ -813,9 +813,9 @@ del-range a e
 
 flush
 ----
-0.0:
+L0.0:
   000018:[a#21,RANGEDEL-e#inf,RANGEDEL]
-6:
+L6:
   000014:[a#0,SET-a#0,SET]
   000015:[d#0,SETWITHDEL-d#0,SETWITHDEL]
   000016:[e#18,RANGEKEYSET-ee#inf,RANGEKEYSET]
@@ -856,10 +856,10 @@ ingest-and-excise ext3 excise=b-c
 
 lsm
 ----
-0.0:
+L0.0:
   000020(000018):[a#21,RANGEDEL-b#inf,RANGEDEL]
   000021(000018):[c#21,RANGEDEL-e#inf,RANGEDEL]
-6:
+L6:
   000014:[a#0,SET-a#0,SET]
   000015:[d#0,SETWITHDEL-d#0,SETWITHDEL]
   000016:[e#18,RANGEKEYSET-ee#inf,RANGEKEYSET]

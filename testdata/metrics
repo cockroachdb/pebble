@@ -37,7 +37,7 @@ iter-new a category=a qos=non-latency
 
 flush
 ----
-0.0:
+L0.0:
   000005:[a#10,SET-a#10,SET]
 
 # iter b references both a memtable and sstable 5.
@@ -85,7 +85,7 @@ set b 2
 
 flush
 ----
-0.0:
+L0.0:
   000005:[a#10,SET-a#10,SET]
   000007:[b#11,SET-b#11,SET]
 
@@ -96,7 +96,7 @@ iter-new c category=c qos=non-latency
 
 compact a-z
 ----
-6:
+L6:
   000008:[a#0,SET-b#0,SET]
 
 metrics
@@ -282,11 +282,11 @@ set c@14 c14
 
 flush
 ----
-0.0:
+L0.0:
   000010:[c@20#12,SET-c@18#14,SET]
   000011:[c@17#15,SET-c@15#17,SET]
   000012:[c@14#18,SET-c@14#18,SET]
-6:
+L6:
   000008:[a#0,SET-b#0,SET]
 
 metrics
@@ -337,7 +337,7 @@ block bytes written:
 
 compact a-z
 ----
-6:
+L6:
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
@@ -428,13 +428,13 @@ disable
 
 flush
 ----
-0.1:
+L0.1:
   000015:[d#22,SET-d#22,SET]
   000016:[e#23,SET-e#23,SET]
   000019:[f#24,SET-f#24,SET]
-0.0:
+L0.0:
   000023:[d#19,SET-f#21,SET]
-6:
+L6:
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
@@ -491,16 +491,16 @@ set m m
 
 flush
 ----
-0.1:
+L0.1:
   000015:[d#22,SET-d#22,SET]
   000016:[e#23,SET-e#23,SET]
   000019:[f#24,SET-f#24,SET]
-0.0:
+L0.0:
   000023:[d#19,SET-f#21,SET]
   000025:[g#25,SET-i#27,SET]
   000026:[j#28,SET-l#30,SET]
   000027:[m#31,SET-m#31,SET]
-6:
+L6:
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
@@ -550,16 +550,16 @@ ingest-and-excise ext1 excise=i-k
 # sstable 29, 30 were created as virtual when i-k was excised.
 lsm
 ----
-0.1:
+L0.1:
   000015:[d#22,SET-d#22,SET]
   000016:[e#23,SET-e#23,SET]
   000019:[f#24,SET-f#24,SET]
-0.0:
+L0.0:
   000023:[d#19,SET-f#21,SET]
   000029(000025):[g#25,SET-h#26,SET]
   000030(000026):[k#29,SET-l#30,SET]
   000027:[m#31,SET-m#31,SET]
-6:
+L6:
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
@@ -627,16 +627,16 @@ ingest-and-excise ext1 excise=k-l
 # created.
 lsm
 ----
-0.1:
+L0.1:
   000015:[d#22,SET-d#22,SET]
   000016:[e#23,SET-e#23,SET]
   000019:[f#24,SET-f#24,SET]
-0.0:
+L0.0:
   000023:[d#19,SET-f#21,SET]
   000029(000025):[g#25,SET-h#26,SET]
   000032(000026):[l#30,SET-l#30,SET]
   000027:[m#31,SET-m#31,SET]
-6:
+L6:
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
@@ -658,7 +658,7 @@ virtual-size
 
 compact a-z
 ----
-6:
+L6:
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]

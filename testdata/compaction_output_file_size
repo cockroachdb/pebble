@@ -12,16 +12,16 @@ L6
   000010:a.SET.1-f.SET.2 size=128000000
   000011:g.SET.1-l.SET.2 size=128000000 range-deletions-bytes-estimate=28000000
 ----
-3:
+L3:
   010001:[a#1111,SET-f#1112,SET]
   010002:[g#1111,SET-l#1112,SET]
-4:
+L4:
   001001:[a#111,SET-f#112,SET]
   001002:[g#111,SET-l#112,SET]
-5:
+L5:
   000101:[a#11,SET-f#12,SET]
   000102:[g#11,SET-l#12,SET]
-6:
+L6:
   000010:[a#1,SET-f#2,SET]
   000011:[g#1,SET-l#2,SET]
 
@@ -40,10 +40,10 @@ L6
   000010:a.SET.1-f.SET.2 size=128000000
   000011:g.SET.1-l.SET.2 size=128000000 range-deletions-bytes-estimate=28000000
 ----
-5:
+L5:
   000101:[a#11,SET-f#12,SET]
   000102:[g#11,SET-l#12,SET]
-6:
+L6:
   000010:[a#1,SET-f#2,SET]
   000011:[g#1,SET-l#2,SET]
 

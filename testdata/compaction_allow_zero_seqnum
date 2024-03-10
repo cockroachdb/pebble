@@ -2,7 +2,7 @@ define
 L2
   c.SET.2:2
 ----
-2:
+L2:
   000004:[c#2,SET-c#2,SET]
 
 allow-zero-seqnum
@@ -46,7 +46,7 @@ mem
 L1
   a.SET.0:0
 ----
-1:
+L1:
   000004:[a#0,SET-a#0,SET]
 
 allow-zero-seqnum

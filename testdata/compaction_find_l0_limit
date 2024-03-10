@@ -5,7 +5,7 @@ L0
    p.SET.14-s.SET.16 size=2
    t.SET.17-w.SET.19 size=2
 ----
-0.0:
+L0.0:
   000001:[a#1,SET-k#10,SET]
   000002:[l#11,SET-o#13,SET]
   000003:[p#14,SET-s#16,SET]
@@ -26,7 +26,7 @@ L0
    p.SET.14-s.SET.16 size=2
    t.SET.17-w.SET.19 size=2
 ----
-0.0:
+L0.0:
   000005:[a#1,SET-k#10,SET]
   000006:[l#11,SET-o#13,SET]
   000007:[p#14,SET-s#16,SET]
@@ -49,7 +49,7 @@ L0
    p.SET.14-s.SET.16 size=2
    t.SET.17-w.SET.19 size=2
 ----
-0.0:
+L0.0:
   000009:[a#1,SET-k#10,SET]
   000010:[l#11,SET-o#13,SET]
   000011:[p#14,SET-s#16,SET]
@@ -75,7 +75,7 @@ L0
    p.SET.14-s.SET.16 size=2
    t.SET.17-w.SET.19 size=2
 ----
-0.0:
+L0.0:
   000013:[a#1,SET-k#10,SET]
   000014:[l#11,SET-o#13,SET]
   000015:[p#14,SET-s#16,SET]
