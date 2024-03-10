@@ -383,6 +383,15 @@ L6:
   000006(000006):[gc#10,DELSIZED-gf#inf,RANGEDEL]
   000007(000007):[gg#11,DELSIZED-gj#inf,RANGEDEL]
 
+reopen
+----
+
+lsm
+----
+6:
+  000006(000006):[gc#10,DELSIZED-gf#inf,RANGEDEL]
+  000007(000007):[gg#11,DELSIZED-gj#inf,RANGEDEL]
+
 iter
 seek-ge g
 next
