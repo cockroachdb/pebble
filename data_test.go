@@ -1286,7 +1286,9 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	return nil
 }
 
-func runIngestExternalCmd(t testing.TB, td *datadriven.TestData, d *DB, locator string) error {
+func runIngestExternalCmd(
+	t testing.TB, td *datadriven.TestData, d *DB, st remote.Storage, locator string,
+) error {
 	var external []ExternalFile
 	for _, line := range strings.Split(td.Input, "\n") {
 		usageErr := func(info interface{}) {
@@ -1300,11 +1302,15 @@ func runIngestExternalCmd(t testing.TB, td *datadriven.TestData, d *DB, locator 
 		if err != nil {
 			usageErr(err)
 		}
+		sz, err := st.Size(objName)
+		if err != nil {
+			return errors.Wrapf(err, "sizeof %s", objName)
+		}
 		ef := ExternalFile{
 			Locator:     remote.Locator(locator),
 			ObjName:     objName,
 			HasPointKey: true,
-			Size:        10,
+			Size:        uint64(sz),
 		}
 		for _, arg := range args {
 			nArgs := func(n int) {
