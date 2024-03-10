@@ -1844,7 +1844,7 @@ func TestIngestExternal(t *testing.T) {
 
 		case "ingest-external":
 			flushed = false
-			if err := runIngestExternalCmd(t, td, d, "external-locator"); err != nil {
+			if err := runIngestExternalCmd(t, td, d, remoteStorage, "external-locator"); err != nil {
 				return err.Error()
 			}
 			// Wait for a possible flush.

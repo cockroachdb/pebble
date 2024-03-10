@@ -246,6 +246,11 @@ set b@2 foo
 set c@1 foo
 ----
 
+build-remote f6
+set b foo
+del-range f u
+----
+
 ingest-external
 f1 bounds=(a,d) synthetic-suffix=@5
 ----
