@@ -1743,6 +1743,7 @@ func TestConcurrentExcise(t *testing.T) {
 func TestIngestExternal(t *testing.T) {
 	var mem vfs.FS
 	var d, d1, d2 *DB
+	var opts *Options
 	var flushed bool
 	defer func() {
 		if d1 != nil {
@@ -1755,7 +1756,7 @@ func TestIngestExternal(t *testing.T) {
 
 	var remoteStorage remote.Storage
 	replicateCounter := 1
-	reset := func(majorVersion FormatMajorVersion) {
+	reopen := func(t *testing.T) {
 		if d != nil {
 			if d1 != nil {
 				require.NoError(t, d1.Close())
@@ -1765,10 +1766,21 @@ func TestIngestExternal(t *testing.T) {
 			}
 		}
 
+		var err error
+		d1, err = Open("d1", opts)
+		require.NoError(t, err)
+		require.NoError(t, d1.SetCreatorID(1))
+		d2, err = Open("d2", opts)
+		require.NoError(t, err)
+		require.NoError(t, d2.SetCreatorID(2))
+		d = d1
+	}
+	reset := func(t *testing.T, majorVersion FormatMajorVersion) {
+
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 		remoteStorage = remote.NewInMem()
-		opts := &Options{
+		opts = &Options{
 			Comparer:              testkeys.Comparer,
 			FS:                    mem,
 			L0CompactionThreshold: 100,
@@ -1789,25 +1801,21 @@ func TestIngestExternal(t *testing.T) {
 		lel := MakeLoggingEventListener(DefaultLogger)
 		opts.EventListener = &lel
 
-		var err error
-		d1, err = Open("d1", opts)
-		require.NoError(t, err)
-		require.NoError(t, d1.SetCreatorID(1))
-		d2, err = Open("d2", opts)
-		require.NoError(t, err)
-		require.NoError(t, d2.SetCreatorID(2))
-		d = d1
+		reopen(t)
 	}
-	reset(FormatNewest)
+	reset(t, FormatNewest)
 
 	datadriven.RunTest(t, "testdata/ingest_external", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "reopen":
+			reopen(t)
+			return ""
 		case "reset":
 			majorVersion := int64(FormatNewest)
 			if td.HasArg("format-major-version") {
 				td.ScanArgs(t, "format-major-version", &majorVersion)
 			}
-			reset(FormatMajorVersion(majorVersion))
+			reset(t, FormatMajorVersion(majorVersion))
 			return ""
 		case "batch":
 			b := d.NewIndexedBatch()
