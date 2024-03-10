@@ -90,9 +90,9 @@ open
 # Make sure that the sstables got flushed in the correct order on a WAL replay.
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000009:[a#10,SET-a#10,SET]
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
@@ -132,11 +132,11 @@ ingest ext1 ext2 ext3
 
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000009:[a#10,SET-a#10,SET]
-6:
+L6:
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
 
@@ -207,11 +207,11 @@ flush
 
 lsm
 ----
-0.2:
+L0.2:
   000007:[a#13,SET-a#13,SET]
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000010:[a#10,SET-a#10,SET]
   000011:[b#12,SET-b#12,SET]
 
@@ -246,7 +246,7 @@ ingest ext1 ext2
 
 lsm
 ----
-6:
+L6:
   000004:[b#11,SET-b#11,SET]
   000005:[d#12,SET-d#12,SET]
 
@@ -276,11 +276,11 @@ ingest ext1 ext2 ext3
 
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000009:[a#10,SET-a#10,SET]
-6:
+L6:
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
 
@@ -305,16 +305,16 @@ ingest ext4 ext5
 # yet.
 lsm
 ----
-0.3:
+L0.3:
   000010:[a#15,SET-a#15,SET]
-0.2:
+L0.2:
   000014:[a#14,SET-a#14,SET]
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000009:[a#10,SET-a#10,SET]
   000011:[b#16,SET-b#16,SET]
-6:
+L6:
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
 
@@ -418,9 +418,9 @@ open
 # Make sure that the sstables got flushed in the correct order on a WAL replay.
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000009:[a#10,SET-a#10,SET]
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
@@ -568,9 +568,9 @@ flush
 # expected.
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#12,SET-b#12,SET]
-0.0:
+L0.0:
   000007:[a#10,SET-b#11,SET]
 
 ls
@@ -614,7 +614,7 @@ open
 
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#12,SET-b#12,SET]
-0.0:
+L0.0:
   000007:[a#10,SET-b#11,SET]

@@ -64,9 +64,9 @@ L3
 L3
   z.SET.026:<rand-bytes=10000>
 ----
-2:
+L2:
   000004:[a#101,SET-z#102,SET]
-3:
+L3:
   000005:[a#1,SET-a#1,SET]
   000006:[b#2,SET-b#2,SET]
   000007:[c#3,SET-c#3,SET]
@@ -100,7 +100,7 @@ wrote 702 keys
 
 flush
 ----
-0.0:
+L0.0:
   000033:[a@1#103,SET-av@1#125,SET]
   000034:[aw@1#126,SET-br@1#148,SET]
   000035:[bs@1#149,SET-cn@1#171,SET]
@@ -132,9 +132,9 @@ flush
   000061:[xw@1#747,SET-yr@1#769,SET]
   000062:[ys@1#770,SET-zn@1#792,SET]
   000063:[zo@1#793,SET-zz@1#804,SET]
-2:
+L2:
   000004:[a#101,SET-z#102,SET]
-3:
+L3:
   000005:[a#1,SET-a#1,SET]
   000006:[b#2,SET-b#2,SET]
   000007:[c#3,SET-c#3,SET]
@@ -164,7 +164,7 @@ flush
 
 compact a-zz L0
 ----
-1:
+L1:
   000064:[a@1#103,SET-av@1#125,SET]
   000065:[aw@1#126,SET-br@1#148,SET]
   000066:[bs@1#149,SET-cn@1#171,SET]
@@ -196,9 +196,9 @@ compact a-zz L0
   000092:[xw@1#747,SET-yr@1#769,SET]
   000093:[ys@1#770,SET-zn@1#792,SET]
   000094:[zo@1#793,SET-zz@1#804,SET]
-2:
+L2:
   000004:[a#101,SET-z#102,SET]
-3:
+L3:
   000005:[a#1,SET-a#1,SET]
   000006:[b#2,SET-b#2,SET]
   000007:[c#3,SET-c#3,SET]
@@ -231,7 +231,7 @@ compact a-zz L0
 #
 compact a-zz L1
 ----
-2:
+L2:
   000095:[a#101,SET-az@1#129,SET]
   000096:[b@1#130,SET-bz@1#156,SET]
   000097:[c@1#157,SET-cz@1#183,SET]
@@ -259,7 +259,7 @@ compact a-zz L1
   000119:[y@1#751,SET-yz@1#777,SET]
   000120:[z#102,SET-zr@1#796,SET]
   000121:[zs@1#797,SET-zz@1#804,SET]
-3:
+L3:
   000005:[a#1,SET-a#1,SET]
   000006:[b#2,SET-b#2,SET]
   000007:[c#3,SET-c#3,SET]
@@ -380,20 +380,20 @@ L2
 L3
   m.SET.001:<rand-bytes=10000>
 ----
-1:
+L1:
   000004:[a#201,SET-o#215,SET]
-2:
+L2:
   000005:[a#101,SET-z#102,SET]
-3:
+L3:
   000006:[m#1,SET-m#1,SET]
 
 compact a-zz L1
 ----
-2:
+L2:
   000007:[a#201,SET-j#210,SET]
   000008:[k#211,SET-o#215,SET]
   000009:[z#102,SET-z#102,SET]
-3:
+L3:
   000006:[m#1,SET-m#1,SET]
 
 file-sizes
@@ -458,11 +458,11 @@ L3
 L3
   m.SET.013:<rand-bytes=1000>
 ----
-1:
+L1:
   000004:[a#201,SET-o#215,SET]
-2:
+L2:
   000005:[a#101,SET-z#102,SET]
-3:
+L3:
   000006:[a#1,SET-a#1,SET]
   000007:[ab#2,SET-ab#2,SET]
   000008:[ac#3,SET-ac#3,SET]
@@ -479,11 +479,11 @@ L3
 
 compact a-zz L1
 ----
-2:
+L2:
   000019:[a#201,SET-e#205,SET]
   000020:[f#206,SET-l#212,SET]
   000021:[m#213,SET-z#102,SET]
-3:
+L3:
   000006:[a#1,SET-a#1,SET]
   000007:[ab#2,SET-ab#2,SET]
   000008:[ac#3,SET-ac#3,SET]

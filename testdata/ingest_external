@@ -13,7 +13,7 @@ f1 bounds=(a,cc)
 
 lsm
 ----
-6:
+L6:
   000004(000004):[a#10,DELSIZED-cc#inf,RANGEDEL]
 
 iter
@@ -44,7 +44,7 @@ f2 bounds=(a,c)
 
 lsm
 ----
-6:
+L6:
   000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
 
 iter
@@ -85,7 +85,7 @@ f4 bounds=(f,hh)
 
 lsm
 ----
-6:
+L6:
   000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
   000007(000007):[c#11,DELSIZED-f#inf,RANGEDEL]
   000008(000008):[f#12,DELSIZED-hh#inf,RANGEDEL]
@@ -116,7 +116,7 @@ compact a z
 
 lsm
 ----
-6:
+L6:
   000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
   000007(000007):[c#11,DELSIZED-f#inf,RANGEDEL]
   000008(000008):[f#12,DELSIZED-hh#inf,RANGEDEL]
@@ -127,7 +127,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000009:[a#0,SET-b#0,SET]
   000010:[c#0,SET-e#0,SET]
   000011:[f#0,SET-h#0,SET]
@@ -364,7 +364,7 @@ gi: (foo, .)
 
 lsm
 ----
-6:
+L6:
   000004(000004):[gc#10,DELSIZED-gf#inf,RANGEDEL]
   000005(000005):[gg#11,DELSIZED-gj#inf,RANGEDEL]
 
@@ -374,7 +374,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000006(000006):[gc#10,DELSIZED-gf#inf,RANGEDEL]
   000007(000007):[gg#11,DELSIZED-gj#inf,RANGEDEL]
 
@@ -458,7 +458,7 @@ compact a z
 
 lsm
 ----
-6:
+L6:
   000008:[a#0,SET-f#0,SET]
 
 # Make sure we see both ba..bc and ea..ec.
@@ -515,7 +515,7 @@ compact a z
 
 lsm
 ----
-6:
+L6:
   000008:[a#0,SET-f#0,SET]
 
 # Make sure we see both ba..bc and ea..ec.
@@ -616,7 +616,7 @@ compact a z
 
 lsm
 ----
-6:
+L6:
   000005:[a#10,SET-d#13,SET]
 
 replicate 1 2 b d
@@ -650,7 +650,7 @@ compact a z
 
 lsm
 ----
-6:
+L6:
   000005:[d#10,SET-e#11,SET]
 
 build-remote f13
@@ -678,7 +678,7 @@ compact a z
 
 lsm
 ----
-6:
+L6:
   000005:[a#10,SET-e#13,SET]
 
 replicate 1 2 b e

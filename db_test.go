@@ -417,13 +417,13 @@ func TestLargeBatch(t *testing.T) {
 
 	// Verify this results in one L0 table being created.
 	require.NoError(t, try(100*time.Microsecond, 20*time.Second,
-		verifyLSM("0.0:\n  000005:[a#10,SET-a#10,SET]\n")))
+		verifyLSM("L0.0:\n  000005:[a#10,SET-a#10,SET]\n")))
 
 	require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("b"), 512), nil))
 
 	// Verify this results in a second L0 table being created.
 	require.NoError(t, try(100*time.Microsecond, 20*time.Second,
-		verifyLSM("0.0:\n  000005:[a#10,SET-a#10,SET]\n  000007:[b#11,SET-b#11,SET]\n")))
+		verifyLSM("L0.0:\n  000005:[a#10,SET-a#10,SET]\n  000007:[b#11,SET-b#11,SET]\n")))
 
 	// Allocate a bunch of batches to exhaust the batchPool. None of these
 	// batches should have a non-zero count.

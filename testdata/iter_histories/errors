@@ -72,7 +72,7 @@ L0
   rangekey:c-d:{(#0,RANGEKEYSET,@1,foo)}
   e@2.SET.2:e@2
 ----
-0.0:
+L0.0:
   000004:[a#9,SET-e@2#2,SET]
 
 layout filename=000004.sst
@@ -115,7 +115,7 @@ L1
   d.SET.9:d9
   e.SET.9:e9
 ----
-1:
+L1:
   000004:[c#13,SET-e#9,SET]
 
 layout filename=000004.sst
@@ -171,7 +171,7 @@ L1
   d.SET.1:d1
   e.SET.1:e1
 ----
-1:
+L1:
   000004:[a#1,SET-e#1,SET]
 
 layout filename=000004.sst
@@ -233,7 +233,7 @@ L1
     a.MERGE.3:a3
     a.MERGE.4:a4
 ----
-1:
+L1:
   000004:[a#4,MERGE-a#1,MERGE]
 
 layout filename=000004.sst

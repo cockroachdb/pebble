@@ -6,7 +6,7 @@ set b 2
 # The first L0 table can have its seqnums zeroed.
 flush
 ----
-0.0:
+L0.0:
   000005:[a#10,SET-b#11,SET]
 
 reset
@@ -21,7 +21,7 @@ del b
 
 flush
 ----
-0.0:
+L0.0:
   000005:[a#12,DEL-b#13,DEL]
 
 batch
@@ -31,9 +31,9 @@ set a 3
 # A second (overlapping) L0 table will have non-zero seqnums.
 flush
 ----
-0.1:
+L0.1:
   000007:[a#14,SET-a#14,SET]
-0.0:
+L0.0:
   000005:[a#12,DEL-b#13,DEL]
 
 batch
@@ -43,9 +43,9 @@ set c 4
 # A third (non-overlapping) L0 table will have non-zero seqnums.
 flush
 ----
-0.1:
+L0.1:
   000007:[a#14,SET-a#14,SET]
-0.0:
+L0.0:
   000005:[a#12,DEL-b#13,DEL]
   000009:[c#15,SET-c#15,SET]
 
@@ -60,7 +60,7 @@ del-range a c
 
 flush
 ----
-0.0:
+L0.0:
   000005:[a#12,RANGEDEL-c#inf,RANGEDEL]
 
 reset
@@ -73,5 +73,5 @@ set b 2
 
 async-flush
 ----
-0.0:
+L0.0:
   000005:[a#10,SET-b#11,SET]

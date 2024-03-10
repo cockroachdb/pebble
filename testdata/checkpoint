@@ -423,7 +423,7 @@ g 10
 
 lsm db
 ----
-6:
+L6:
   000010:[a#0,SET-g#0,SET]
 
 build db ext1 format=pebblev2
@@ -438,7 +438,7 @@ ingest-and-excise db ext1 excise=c-d
 # 12, 13 are virtual sstables.
 lsm db
 ----
-6:
+L6:
   000012(000010):[a#0,SET-b#0,SET]
   000013(000010):[d#0,SET-g#0,SET]
   000011:[i#20,SET-k#20,SET]
@@ -453,7 +453,7 @@ ingest-and-excise db ext2 excise=j-k
 # 12, 13, 15, 16 are virtual.
 lsm db
 ----
-6:
+L6:
   000012(000010):[a#0,SET-b#0,SET]
   000013(000010):[d#0,SET-g#0,SET]
   000015(000011):[i#20,SET-i#20,SET]
@@ -667,9 +667,9 @@ print-backing checkpoints/checkpoint5
 # sstable 12 is gone.
 lsm checkpoints/checkpoint5
 ----
-0.0:
+L0.0:
   000017:[h#18,SET-h#18,SET]
-6:
+L6:
   000013(000010):[d#0,SET-g#0,SET]
   000015(000011):[i#20,SET-i#20,SET]
   000016(000011):[k#20,SET-k#20,SET]
@@ -761,9 +761,9 @@ print-backing checkpoints/checkpoint6
 
 lsm checkpoints/checkpoint6
 ----
-0.0:
+L0.0:
   000017:[h#18,SET-h#18,SET]
-6:
+L6:
   000015(000011):[i#20,SET-i#20,SET]
   000016(000011):[k#20,SET-k#20,SET]
   000014:[z#22,SET-z#22,SET]

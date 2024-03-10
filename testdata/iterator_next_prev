@@ -5,7 +5,7 @@ set c 2
 
 ingest ext1
 ----
-6:
+L6:
   000004:[a#10,MERGE-c#10,SET]
 
 build ext2
@@ -14,9 +14,9 @@ del-range b c
 
 ingest ext2
 ----
-0.0:
+L0.0:
   000005:[b#11,RANGEDEL-c#inf,RANGEDEL]
-6:
+L6:
   000004:[a#10,MERGE-c#10,SET]
 
 # Regression test for a bug where range tombstones were not properly
@@ -56,7 +56,7 @@ merge z 2
 
 ingest ext1
 ----
-6:
+L6:
   000004:[t#10,SET-z#10,MERGE]
 
 build ext2
@@ -65,9 +65,9 @@ del-range x y
 
 ingest ext2
 ----
-0.0:
+L0.0:
   000005:[x#11,RANGEDEL-y#inf,RANGEDEL]
-6:
+L6:
   000004:[t#10,SET-z#10,MERGE]
 
 # Regression test for a bug where range tombstones were not properly
@@ -110,7 +110,7 @@ set e e
 
 ingest ext1
 ----
-6:
+L6:
   000004:[e#10,SET-e#10,SET]
 
 build ext2
@@ -120,7 +120,7 @@ del-range c d
 
 ingest ext2
 ----
-6:
+L6:
   000005:[b#11,SET-d#inf,RANGEDEL]
   000004:[e#10,SET-e#10,SET]
 
@@ -221,7 +221,7 @@ merge a a
 
 ingest ext1
 ----
-6:
+L6:
   000004:[a#10,MERGE-a#10,MERGE]
 
 build ext2
@@ -231,7 +231,7 @@ del-range c d
 
 ingest ext2
 ----
-6:
+L6:
   000004:[a#10,MERGE-a#10,MERGE]
   000005:[c#11,RANGEDEL-e#11,SET]
 
@@ -267,7 +267,7 @@ singledel b
 
 ingest ext1
 ----
-6:
+L6:
   000004:[a#10,SET-b#10,SET]
 
 iter

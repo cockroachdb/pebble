@@ -43,9 +43,9 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000007:[d#12,SET-d#12,SET]
-6:
+L6:
   000005:[c#10,SET-f#11,SET]
 
 compact a-z block=c1
@@ -88,7 +88,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000010(000010):[d#14,DELSIZED-d#14,DEL]
   000011(000005):[f#11,SET-f#11,SET]
 

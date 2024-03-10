@@ -13,7 +13,7 @@ ingest ext0
 
 lsm
 ----
-6:
+L6:
   000004:[a#10,SET-l#10,SET]
 
 
@@ -31,7 +31,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000008:[a#0,SET-l#0,SET]
 
 switch 2
@@ -49,7 +49,7 @@ replicated 1 shared SSTs
 
 lsm
 ----
-6:
+L6:
   000005(000005):[d#11,DELSIZED-f#11,DEL]
 
 iter
@@ -105,7 +105,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000008:[a#0,SET-l#0,SET]
 
 excise e gg
@@ -336,11 +336,11 @@ flush
 
 lsm
 ----
-0.1:
+L0.1:
   000010:[a@3#15,SET-c@9#17,SET]
-0.0:
+L0.0:
   000008:[b#14,RANGEDEL-d#inf,RANGEDEL]
-6:
+L6:
   000006:[a@3#10,SET-e#13,SET]
 
 iter
@@ -366,9 +366,9 @@ ok
 
 lsm
 ----
-0.0:
+L0.0:
   000004:[a@3#12,SET-d#inf,RANGEDEL]
-6:
+L6:
   000005(000005):[a@3#11,DELSIZED-e#11,DEL]
 
 iter
@@ -417,9 +417,9 @@ ingest s1
 
 lsm
 ----
-5:
+L5:
   000007:[b#14,RANGEDEL-d#inf,RANGEDEL]
-6:
+L6:
   000006:[a@3#10,SET-e#13,SET]
 
 batch
@@ -433,11 +433,11 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000009:[a@3#15,SET-c@9#17,SET]
-5:
+L5:
   000007:[b#14,RANGEDEL-d#inf,RANGEDEL]
-6:
+L6:
   000006:[a@3#10,SET-e#13,SET]
 
 iter
@@ -465,11 +465,11 @@ ok
 
 lsm
 ----
-0.0:
+L0.0:
   000004:[a@3#13,SET-c@9#13,SET]
-5:
+L5:
   000005(000005):[b#12,DELSIZED-d#inf,RANGEDEL]
-6:
+L6:
   000006(000006):[a@3#11,DELSIZED-e#11,DEL]
 
 iter
@@ -510,7 +510,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000006:[a#10,RANGEKEYSET-e#12,SET]
 
 switch 2
@@ -539,7 +539,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000009(000006):[a#10,RANGEKEYSET-aaa#inf,RANGEKEYSET]
   000008(000008):[b#14,DELSIZED-c#14,DEL]
   000010(000006):[d#11,SET-e#12,SET]
@@ -587,9 +587,9 @@ ingest s2
 
 lsm
 ----
-5:
+L5:
   000007:[bb#14,RANGEDEL-g#inf,RANGEDEL]
-6:
+L6:
   000006:[a@3#10,SET-e#13,SET]
 
 switch 2
@@ -609,7 +609,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000006:[ff#10,SET-ff#10,SET]
 
 # This replication should truncate the range deletion in pebble instance 1
@@ -621,9 +621,9 @@ replicated 2 shared SSTs
 
 lsm
 ----
-5:
+L5:
   000008(000008):[bb#13,DELSIZED-f#inf,RANGEDEL]
-6:
+L6:
   000009(000009):[b@5#12,DELSIZED-e#12,DEL]
   000006:[ff#10,SET-ff#10,SET]
 
@@ -668,9 +668,9 @@ ingest s3
 
 lsm
 ----
-5:
+L5:
   000007:[bb#14,RANGEKEYSET-g#inf,RANGEKEYSET]
-6:
+L6:
   000006:[a@3#10,SET-e#13,SET]
 
 switch 2
@@ -690,7 +690,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000006:[ff#10,SET-ff#10,SET]
 
 # This replication should truncate the range key in pebble instance 1
@@ -702,9 +702,9 @@ replicated 2 shared SSTs
 
 lsm
 ----
-5:
+L5:
   000008(000008):[bb#13,RANGEKEYSET-f#inf,RANGEKEYDEL]
-6:
+L6:
   000009(000009):[b@5#12,DELSIZED-e#12,DEL]
   000006:[ff#10,SET-ff#10,SET]
 
@@ -793,7 +793,7 @@ ok
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[b#10,SET-b#10,SET]
 
 iter snapshot=s1
@@ -842,7 +842,7 @@ del c
 
 lsm
 ----
-6:
+L6:
   000006:[a#10,SET-c#12,SET]
 
 file-only-snapshot s2

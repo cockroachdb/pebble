@@ -11,7 +11,7 @@ set d04 d
 set e05 e
 set f06 f
 ----
-0.0:
+L0.0:
   000005:[a01#10,SET-f06#15,SET]
 
 # Iterate without a filter.
@@ -190,7 +190,7 @@ set c0803 c
 set d0704 d
 set e0605 e
 ----
-0.0:
+L0.0:
   000005:[a1001#10,SET-e0605#14,SET]
 
 # Iterate without a filter.

@@ -8,9 +8,9 @@ L2
   c.SET.0:foo
   d.SET.0:foo
 ----
-1:
+L1:
   000004:[b#11,SET-c#11,SET]
-2:
+L2:
   000005:[c#0,SET-d#0,SET]
 
 file-sizes
@@ -42,10 +42,10 @@ L6
   a.SET.0:foo
   d.SET.0:foo
 ----
-5:
+L5:
   000004:[b#11,SET-c#11,SET]
   000005:[e#11,SET-e#11,SET]
-6:
+L6:
   000006:[a#0,SET-d#0,SET]
 
 pick-file L5
@@ -65,10 +65,10 @@ L6
   a.SET.0:foo
   c.SET.0:foo
 ----
-5:
+L5:
   000004:[c#11,SET-d#11,SET]
   000005:[e#11,SET-e#11,SET]
-6:
+L6:
   000006:[a#0,SET-c#0,SET]
 
 pick-file L5
@@ -94,10 +94,10 @@ L6
 L6
   e.SET.0:foo
 ----
-5:
+L5:
   000004:[c#11,SET-d#11,SET]
   000005:[e#11,SET-e#11,SET]
-6:
+L6:
   000006:[a#0,SET-c#0,SET]
   000007:[e#0,SET-e#0,SET]
 
@@ -120,10 +120,10 @@ L6
 L6
   f.SET.0:<rand-bytes=65536>
 ----
-5:
+L5:
   000004:[c#11,SET-e#11,SET]
   000005:[f#11,SET-f#11,SET]
-6:
+L6:
   000006:[c#0,SET-c#0,SET]
   000007:[e#0,SET-e#0,SET]
   000008:[f#0,SET-f#0,SET]
@@ -153,11 +153,11 @@ ingest-and-excise ext1 excise=d-e
 
 lsm
 ----
-5:
+L5:
   000010(000004):[c#11,SET-c#11,SET]
   000011(000004):[e#11,SET-e#11,SET]
   000005:[f#11,SET-f#11,SET]
-6:
+L6:
   000006:[c#0,SET-c#0,SET]
   000009:[d#13,SET-d#13,SET]
   000007:[e#0,SET-e#0,SET]
@@ -194,10 +194,10 @@ ingest-and-excise ext2 excise=b-d
 
 lsm
 ----
-5:
+L5:
   000011(000004):[e#11,SET-e#11,SET]
   000005:[f#11,SET-f#11,SET]
-6:
+L6:
   000012:[c#15,SET-c#15,SET]
   000009:[d#13,SET-d#13,SET]
   000007:[e#0,SET-e#0,SET]

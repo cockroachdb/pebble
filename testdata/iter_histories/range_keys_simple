@@ -348,9 +348,9 @@ flush
 
 lsm
 ----
-0.1:
+L0.1:
   000008:[b#2120,RANGEKEYSET-z#inf,RANGEKEYSET]
-0.0:
+L0.0:
   000006:[a@100#12,SET-zz@1#2113,SET]
 
 scan-rangekeys
@@ -447,7 +447,7 @@ L6
 a.RANGEDEL.3:z
 rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
 ----
-6:
+L6:
   000004:[a#3,RANGEDEL-z#inf,RANGEDEL]
 
 combined-iter

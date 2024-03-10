@@ -247,7 +247,7 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[a@100#12,SET-z@1#85,SET]
 
 # Test for https://github.com/cockroachdb/pebble/issues/2260. Triggered the

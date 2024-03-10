@@ -12,7 +12,7 @@ L5
   b.SET.1:1
   c.SET.2:2
 ----
-5:
+L5:
   000004:[b#1,SET-c#2,SET]
 
 # Overlapping cases.
@@ -53,12 +53,12 @@ L3
   g.SET.1:1
   h.SET.2:2
 ----
-0.1:
+L0.1:
   000005:[d#5,SET-f#6,SET]
-0.0:
+L0.0:
   000004:[b#3,SET-e#4,SET]
   000006:[x#7,SET-y#8,SET]
-3:
+L3:
   000007:[g#1,SET-h#2,SET]
 
 # Files overlap with L0. Files ingested into L0.
@@ -93,10 +93,10 @@ L6
 L6
   c.SET.1:1
 ----
-5:
+L5:
   000004:[a#4,SET-a#4,SET]
   000005:[c#3,SET-c#3,SET]
-6:
+L6:
   000006:[a#2,SET-a#2,SET]
   000007:[c#1,SET-c#1,SET]
 
@@ -117,10 +117,10 @@ L6
   c.SET.1:1
   compact:a-c
 ----
-5:
+L5:
   000004:[a#4,SET-a#4,SET]
   000005:[c#3,SET-c#3,SET]
-6:
+L6:
   000006:[a#2,SET-a#2,SET]
   000007:[c#1,SET-c#1,SET]
 
@@ -139,9 +139,9 @@ L0
 L2
   a.RANGEDEL.1:g
 ----
-0.0:
+L0.0:
   000004:[c#4,SET-g#inf,RANGEDEL]
-2:
+L2:
   000005:[a#1,RANGEDEL-g#inf,RANGEDEL]
 
 # Overlapping cases:
@@ -187,7 +187,7 @@ L1
   dd.SET.0:dd
   g.SET.0:g
 ----
-1:
+L1:
   000004:[a#0,SET-g#0,SET]
 
 # Data overlap.
@@ -213,7 +213,7 @@ L5
   b.SET.0:b
   c.SET.0:c
 ----
-5:
+L5:
   000004:[a#0,SET-c#0,SET]
 
 target
@@ -226,7 +226,7 @@ define
 L5
   rangekey:a-c:{(#1,RANGEKEYSET,@t10,foo)}
 ----
-5:
+L5:
   000004:[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]
 
 target
@@ -239,7 +239,7 @@ define
 L5
   rangekey:a-c:{(#1,RANGEKEYSET,@t10,foo)}
 ----
-5:
+L5:
   000004:[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]
 
 target
@@ -259,7 +259,7 @@ L6
   f.SET.4:4
   k.SET.6:6
 ----
-6:
+L6:
   000004:[a#2,SET-d#3,SET]
   000005:[f#4,SET-k#6,SET]
 
@@ -293,7 +293,7 @@ L6
   k.SET.6:6
   compact:f-k
 ----
-6:
+L6:
   000004:[a#2,SET-d#3,SET]
   000005:[f#4,SET-k#6,SET]
 
@@ -313,9 +313,9 @@ L6
   c.SET.1:1
   k.SET.1:1
 ----
-5:
+L5:
   000004:[a#2,SET-e#3,SET]
-6:
+L6:
   000005:[c#1,SET-k#1,SET]
 
 target suggest-split

@@ -1227,7 +1227,7 @@ func (v *Version) DebugString() string {
 func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSlice) string {
 	var buf bytes.Buffer
 	for sublevel := len(sublevels) - 1; sublevel >= 0; sublevel-- {
-		fmt.Fprintf(&buf, "0.%d:\n", sublevel)
+		fmt.Fprintf(&buf, "L0.%d:\n", sublevel)
 		sublevels[sublevel].Each(func(f *FileMetadata) {
 			fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
 		})
@@ -1244,7 +1244,7 @@ func (v *Version) string(verbose bool) string {
 		if v.Levels[level].Empty() {
 			continue
 		}
-		fmt.Fprintf(&buf, "%d:\n", level)
+		fmt.Fprintf(&buf, "L%d:\n", level)
 		iter := v.Levels[level].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
 			fmt.Fprintf(&buf, "  %s\n", f.DebugString(v.cmp.FormatKey, verbose))
@@ -1260,13 +1260,10 @@ func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string)
 	for _, l := range strings.Split(s, "\n") {
 		l = strings.TrimSpace(l)
 
-		switch l[:2] {
-		case "0.", "0:", "1:", "2:", "3:", "4:", "5:", "6:":
-			var err error
-			level, err = strconv.Atoi(l[:1])
-			if err != nil {
-				return nil, err
-			}
+		switch l[:min(len(l), 3)] {
+		case "L0.", "L0:", "L1:", "L2:", "L3:", "L4:", "L5:", "L6:":
+			level = int(l[1] - '0')
+
 		default:
 			m, err := ParseFileMetadataDebug(l)
 			if err != nil {
