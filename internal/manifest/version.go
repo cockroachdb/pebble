@@ -8,12 +8,11 @@ import (
 	"bytes"
 	stdcmp "cmp"
 	"fmt"
+	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -813,56 +812,55 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 
 // ParseFileMetadataDebug parses a FileMetadata from its DebugString
 // representation.
-func ParseFileMetadataDebug(s string) (*FileMetadata, error) {
-	// Split lines of the form:
-	//  000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...]
-	fields := strings.FieldsFunc(s, func(c rune) bool {
-		switch c {
-		case ':', '[', '-', ']':
-			return true
-		default:
-			return unicode.IsSpace(c) // NB: also trim whitespace padding.
+func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok = r.(error)
+			if !ok {
+				err = errors.Errorf("%v", r)
+			}
 		}
-	})
-	if len(fields)%3 != 0 {
-		return nil, errors.Newf("malformed input: %s", s)
-	}
+	}()
+
+	// Input format:
+	//	000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...]
 	m := &FileMetadata{}
-	for len(fields) > 0 {
-		prefix := fields[0]
-		if prefix == "seqnums" {
-			smallestSeqNum, err := strconv.ParseUint(fields[1], 10, 64)
-			if err != nil {
-				return m, errors.Newf("malformed input: %s: %s", s, err)
-			}
-			largestSeqNum, err := strconv.ParseUint(fields[2], 10, 64)
-			if err != nil {
-				return m, errors.Newf("malformed input: %s: %s", s, err)
-			}
-			m.SmallestSeqNum, m.LargestSeqNum = smallestSeqNum, largestSeqNum
-			fields = fields[3:]
-			continue
-		}
-		smallest := base.ParsePrettyInternalKey(fields[1])
-		largest := base.ParsePrettyInternalKey(fields[2])
-		switch prefix {
+	p := makeDebugParser(s)
+	m.FileNum = p.FileNum()
+	p.Expect(":", "[")
+	m.Smallest = p.InternalKey()
+	p.Expect("-")
+	m.Largest = p.InternalKey()
+	p.Expect("]")
+
+	for !p.Done() {
+		field := p.Next()
+		p.Expect(":", "[")
+		switch field {
+		case "seqnums":
+			m.SmallestSeqNum = p.Uint64()
+			p.Expect("-")
+			m.LargestSeqNum = p.Uint64()
+
 		case "points":
-			m.SmallestPointKey, m.LargestPointKey = smallest, largest
+			m.SmallestPointKey = p.InternalKey()
+			p.Expect("-")
+			m.LargestPointKey = p.InternalKey()
 			m.HasPointKeys = true
+
 		case "ranges":
-			m.SmallestRangeKey, m.LargestRangeKey = smallest, largest
+			m.SmallestRangeKey = p.InternalKey()
+			p.Expect("-")
+			m.LargestRangeKey = p.InternalKey()
 			m.HasRangeKeys = true
+
 		default:
-			fileNum, err := strconv.ParseUint(prefix, 10, 64)
-			if err != nil {
-				return m, errors.Newf("malformed input: %s: %s", s, err)
-			}
-			m.FileNum = base.FileNum(fileNum)
-			m.Smallest, m.Largest = smallest, largest
-			m.boundsSet = true
+			p.Errf("unknown field %q", field)
 		}
-		fields = fields[3:]
+		p.Expect("]")
 	}
+
 	// By default, when the parser sees just the overall bounds, we set the point
 	// keys. This preserves backwards compatability with existing test cases that
 	// specify only the overall bounds.
@@ -1255,34 +1253,28 @@ func (v *Version) string(verbose bool) string {
 
 // ParseVersionDebug parses a Version from its DebugString output.
 func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string) (*Version, error) {
-	var level int
 	var files [NumLevels][]*FileMetadata
+	level := -1
 	for _, l := range strings.Split(s, "\n") {
-		l = strings.TrimSpace(l)
-
-		switch l[:min(len(l), 3)] {
-		case "L0.", "L0:", "L1:", "L2:", "L3:", "L4:", "L5:", "L6:":
-			level = int(l[1] - '0')
-
-		default:
-			m, err := ParseFileMetadataDebug(l)
-			if err != nil {
-				return nil, err
-			}
-			// If we only parsed overall bounds, default to setting the point bounds.
-			if !m.HasPointKeys && !m.HasRangeKeys {
-				m.SmallestPointKey, m.LargestPointKey = m.Smallest, m.Largest
-				m.HasPointKeys = true
-			}
-			files[level] = append(files[level], m)
+		p := makeDebugParser(l)
+		if l, ok := p.TryLevel(); ok {
+			level = l
+			continue
 		}
+
+		if level == -1 {
+			return nil, errors.Errorf("version string must start with a level")
+		}
+		m, err := ParseFileMetadataDebug(l)
+		if err != nil {
+			return nil, err
+		}
+		files[level] = append(files[level], m)
 	}
-	// Reverse the order of L0 files. This ensures we construct the same
-	// sublevels. (They're printed from higher sublevel to lower, which means in
-	// a partial order that represents newest to oldest).
-	for i := 0; i < len(files[0])/2; i++ {
-		files[0][i], files[0][len(files[0])-i-1] = files[0][len(files[0])-i-1], files[0][i]
-	}
+	// L0 files are printed from higher sublevel to lower, which means in a
+	// partial order that represents newest to oldest. Reverse the order of L0
+	// files to ensure we construct the same sublevels.
+	slices.Reverse(files[0])
 	return NewVersion(comparer, flushSplitBytes, files), nil
 }
 
