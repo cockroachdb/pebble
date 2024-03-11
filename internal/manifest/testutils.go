@@ -18,9 +18,9 @@ import (
 // ParseFileMetadataDebug.
 //
 // It takes a string and splits it into tokens. Tokens are separated by
-// whitespace; in addition separators ':', '[', ']', '-' are always separate
-// tokens. For example, the string `000001:[a - b]` results in tokens `000001`,
-// `:`, `[`, `a`, `-`, `b`, `]`.
+// whitespace; in addition separators "_-[]()" are always separate tokens. For
+// example, the string `000001:[a - b]` results in tokens `000001`,
+// `:`, `[`, `a`, `-`, `b`, `]`, .
 //
 // All debugParser methods throw panics instead of returning errors. The code
 // that uses a debugParser can recover them and convert them to errors.
@@ -30,7 +30,7 @@ type debugParser struct {
 	lastToken string
 }
 
-const debugParserSeparators = ":[]-"
+const debugParserSeparators = ":-[]()"
 
 func makeDebugParser(s string) debugParser {
 	p := debugParser{
@@ -136,6 +136,11 @@ func (p *debugParser) Uint64() uint64 {
 // FileNum parses the next token as a FileNum.
 func (p *debugParser) FileNum() base.FileNum {
 	return base.FileNum(p.Int())
+}
+
+// DiskFileNum parses the next token as a DiskFileNum.
+func (p *debugParser) DiskFileNum() base.DiskFileNum {
+	return base.DiskFileNum(p.Int())
 }
 
 // InternalKey parses the next token as an internal key.

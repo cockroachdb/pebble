@@ -822,6 +822,12 @@ func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 	m := &FileMetadata{}
 	p := makeDebugParser(s)
 	m.FileNum = p.FileNum()
+	var backingNum base.DiskFileNum
+	if p.Peek() == "(" {
+		p.Expect("(")
+		backingNum = p.DiskFileNum()
+		p.Expect(")")
+	}
 	p.Expect(":", "[")
 	m.Smallest = p.InternalKey()
 	p.Expect("-")
@@ -862,7 +868,12 @@ func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 		m.SmallestPointKey, m.LargestPointKey = m.Smallest, m.Largest
 		m.HasPointKeys = true
 	}
-	m.InitPhysicalBacking()
+	if backingNum == 0 {
+		m.InitPhysicalBacking()
+	} else {
+		m.Virtual = true
+		m.InitProviderBacking(backingNum, 0 /* size */)
+	}
 	return m, nil
 }
 

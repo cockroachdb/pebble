@@ -588,6 +588,17 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 				FileNum: num,
 			}] = nil
 
+		case "add-backing":
+			n := p.DiskFileNum()
+			ve.CreatedBackingTables = append(ve.CreatedBackingTables, &FileBacking{
+				DiskFileNum: n,
+				Size:        100,
+			})
+
+		case "del-backing":
+			n := p.DiskFileNum()
+			ve.RemovedBackingTables = append(ve.RemovedBackingTables, n)
+
 		default:
 			return nil, errors.Errorf("field %q not implemented", field)
 		}
