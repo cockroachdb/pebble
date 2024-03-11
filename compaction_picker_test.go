@@ -134,8 +134,8 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 					return errMsg
 				}
 
-				p, ok := newCompactionPicker(vers, opts, nil).(*compactionPickerByScore)
-				require.True(t, ok)
+				vb := manifest.MakeVirtualBackings()
+				p := newCompactionPickerByScore(vers, &vb, opts, nil)
 				var buf bytes.Buffer
 				for level := p.getBaseLevel(); level < numLevels; level++ {
 					fmt.Fprintf(&buf, "%d: %d\n", level, p.levelMaxBytes[level])
@@ -217,10 +217,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 				}
 
-				p := newCompactionPicker(vers, opts, inProgress)
-				var ok bool
-				pickerByScore, ok = p.(*compactionPickerByScore)
-				require.True(t, ok)
+				vb := manifest.MakeVirtualBackings()
+				pickerByScore = newCompactionPickerByScore(vers, &vb, opts, inProgress)
 				return fmt.Sprintf("base: %d", pickerByScore.baseLevel)
 			case "queue":
 				var b strings.Builder
@@ -356,7 +354,8 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 				}
 				opts.MemTableSize = 1000
 
-				p := newCompactionPicker(vers, opts, nil)
+				vb := manifest.MakeVirtualBackings()
+				p := newCompactionPickerByScore(vers, &vb, opts, nil)
 				return fmt.Sprintf("%d\n", p.estimatedCompactionDebt(0))
 
 			default:
@@ -730,7 +729,8 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			vs.versions.Init(nil)
 			vs.append(version)
 
-			picker = newCompactionPicker(version, opts, inProgressCompactions).(*compactionPickerByScore)
+			vb := manifest.MakeVirtualBackings()
+			picker = newCompactionPickerByScore(version, &vb, opts, inProgressCompactions)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -847,7 +847,8 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 			vs.versions.Init(nil)
 			vs.append(vers)
 			var inProgressCompactions []compactionInfo
-			picker = newCompactionPicker(vers, opts, inProgressCompactions).(*compactionPickerByScore)
+			vb := manifest.MakeVirtualBackings()
+			picker = newCompactionPickerByScore(vers, &vb, opts, inProgressCompactions)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -1266,7 +1267,8 @@ func TestCompactionOutputFileSize(t *testing.T) {
 			vs.versions.Init(nil)
 			vs.append(vers)
 			var inProgressCompactions []compactionInfo
-			picker = newCompactionPicker(vers, opts, inProgressCompactions).(*compactionPickerByScore)
+			vb := manifest.MakeVirtualBackings()
+			picker = newCompactionPickerByScore(vers, &vb, opts, inProgressCompactions)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -1404,7 +1406,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 			var ok bool
 			d.maybeScheduleCompactionPicker(func(untypedPicker compactionPicker, env compactionEnv) *pickedCompaction {
 				p := untypedPicker.(*compactionPickerByScore)
-				lf, ok = pickCompactionSeedFile(p.vers, opts, level, level+1, env.earliestSnapshotSeqNum)
+				lf, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, opts, level, level+1, env.earliestSnapshotSeqNum)
 				return nil
 			})
 			if !ok {
