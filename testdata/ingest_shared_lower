@@ -111,10 +111,10 @@ L6:
 excise e gg
 ----
 would excise 1 files, use ingest-and-excise to excise.
-  deleted:       L6 000008
-  added:         L6 000009:[a#0,SET-d#0,SET]
-  added:         L6 000010:[l#0,SET-l#0,SET]
-  add backing:   000008
+  del-table:     L6 000008
+  add-table:     L6 000009(000008):[a#0,SET-d#0,SET]
+  add-table:     L6 000010(000008):[l#0,SET-l#0,SET]
+  add-backing:   000008
 
 replicate 2 1 e gg
 ----
