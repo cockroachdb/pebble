@@ -1273,12 +1273,12 @@ func (d *DB) newIngestedFlushableEntry(
 	// The flushable entry starts off with a single reader ref, so increment
 	// the FileMetadata.Refs.
 	for _, file := range f.files {
-		file.Ref()
+		file.FileBacking.Ref()
 	}
 	entry.unrefFiles = func() []*fileBacking {
 		var obsolete []*fileBacking
 		for _, file := range f.files {
-			if file.Unref() == 0 {
+			if file.FileBacking.Unref() == 0 {
 				obsolete = append(obsolete, file.FileMetadata.FileBacking)
 			}
 		}

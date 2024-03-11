@@ -612,8 +612,8 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Unlock()
 			m := &fileMetadata{FileNum: FileNum(fileNum)}
 			m.InitPhysicalBacking()
-			m.Ref()
-			defer m.Unref()
+			m.FileBacking.Ref()
+			defer m.FileBacking.Unref()
 			iter, _, err := tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
@@ -675,7 +675,7 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 			var err error
 			m := &fileMetadata{FileNum: FileNum(j)}
 			m.InitPhysicalBacking()
-			m.Ref()
+			m.FileBacking.Ref()
 			if rangeIter {
 				iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterRangeKeys)
 			} else {
@@ -725,7 +725,7 @@ func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
 			m := &fileMetadata{FileNum: FileNum(j)}
 			m.InitPhysicalBacking()
-			m.Ref()
+			m.FileBacking.Ref()
 			iter1, _, err := tableNewIters(c1.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -778,7 +778,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		var err error
 		m := &fileMetadata{FileNum: FileNum(j)}
 		m.InitPhysicalBacking()
-		m.Ref()
+		m.FileBacking.Ref()
 		if rangeIter {
 			iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterRangeKeys)
 		} else {
@@ -843,7 +843,7 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 		j := rng.Intn(tableCacheTestNumTables)
 		m := &fileMetadata{FileNum: FileNum(j)}
 		m.InitPhysicalBacking()
-		m.Ref()
+		m.FileBacking.Ref()
 		iter1, _, err := tableNewIters(c1.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -910,8 +910,8 @@ func TestTableCacheIterLeak(t *testing.T) {
 
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
-	m.Ref()
-	defer m.Unref()
+	m.FileBacking.Ref()
+	defer m.FileBacking.Unref()
 	iter, _, err := tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 
@@ -937,8 +937,8 @@ func TestSharedTableCacheIterLeak(t *testing.T) {
 
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
-	m.Ref()
-	defer m.Unref()
+	m.FileBacking.Ref()
+	defer m.FileBacking.Unref()
 	iter, _, err := tableNewIters(c1.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 
@@ -975,8 +975,8 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	fs.setOpenError(true /* enabled */)
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
-	m.Ref()
-	defer m.Unref()
+	m.FileBacking.Ref()
+	defer m.FileBacking.Unref()
 	if _, _, err = tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
@@ -1039,8 +1039,8 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 
 	m := &fileMetadata{FileNum: testFileNum}
 	m.InitPhysicalBacking()
-	m.Ref()
-	defer m.Unref()
+	m.FileBacking.Ref()
+	defer m.FileBacking.Unref()
 	if _, _, err = tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
@@ -1131,8 +1131,8 @@ func TestTableCacheClockPro(t *testing.T) {
 		oldHits := cache.hits.Load()
 		m := &fileMetadata{FileNum: FileNum(key)}
 		m.InitPhysicalBacking()
-		m.Ref()
-		v := cache.findNode(m, dbOpts)
+		m.FileBacking.Ref()
+		v := cache.findNode(m.FileBacking, dbOpts)
 		cache.unrefValue(v)
 
 		hit := cache.hits.Load() != oldHits
@@ -1141,7 +1141,7 @@ func TestTableCacheClockPro(t *testing.T) {
 			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
 		}
 		line++
-		m.Unref()
+		m.FileBacking.Unref()
 	}
 }
 
@@ -1252,11 +1252,11 @@ func BenchmarkTableCacheHotPath(b *testing.B) {
 
 	m := &fileMetadata{FileNum: 1}
 	m.InitPhysicalBacking()
-	m.Ref()
+	m.FileBacking.Ref()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v := cache.findNode(m, dbOpts)
+		v := cache.findNode(m.FileBacking, dbOpts)
 		cache.unrefValue(v)
 	}
 }
