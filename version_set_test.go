@@ -5,16 +5,22 @@
 package pebble
 
 import (
+	"fmt"
 	"io"
+	"math/rand"
+	"slices"
+	"strings"
+	"sync"
 	"testing"
-	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,379 +34,162 @@ func writeAndIngest(t *testing.T, mem vfs.FS, d *DB, k InternalKey, v []byte, fi
 	require.NoError(t, d.Ingest([]string{path}))
 }
 
-// d.mu should be help. logLock should not be held.
-func checkBackingSize(t *testing.T, d *DB) {
-	d.mu.versions.logLock()
-	d.mu.versions.virtualBackings.Check()
-	d.mu.versions.logUnlock()
-}
-
-// TestLatestRefCounting sanity checks the ref counting implementation for
-// FileMetadata.latestRefs, and makes sure that the zombie table implementation
-// works when the version edit contains virtual sstables. It also checks that
-// we're adding the physical sstable to the obsolete tables list iff the file is
-// truly obsolete.
-func TestLatestRefCounting(t *testing.T) {
-	mem := vfs.NewMem()
-	require.NoError(t, mem.MkdirAll("ext", 0755))
-
+func TestVersionSet(t *testing.T) {
 	opts := &Options{
-		FS:                          mem,
-		MaxManifestFileSize:         1,
-		DisableAutomaticCompactions: true,
-		FormatMajorVersion:          FormatVirtualSSTables,
+		FS:       vfs.NewMem(),
+		Comparer: base.DefaultComparer,
 	}
-	d, err := Open("", opts)
+	opts.EnsureDefaults()
+	mu := &sync.Mutex{}
+	marker, _, err := atomicfs.LocateMarker(opts.FS, "", manifestMarkerName)
 	require.NoError(t, err)
+	var vs versionSet
+	require.NoError(t, vs.create(
+		0 /* jobID */, "" /* dirname */, opts, marker,
+		func() FormatMajorVersion { return FormatVirtualSSTables },
+		mu,
+	))
+	vs.logSeqNum.Store(100)
 
-	err = d.Set([]byte{'a'}, []byte{'a'}, nil)
-	require.NoError(t, err)
-	err = d.Set([]byte{'b'}, []byte{'b'}, nil)
-	require.NoError(t, err)
-
-	err = d.Flush()
-	require.NoError(t, err)
-
-	iter := d.mu.versions.currentVersion().Levels[0].Iter()
-	var f *fileMetadata = iter.First()
-	require.NotNil(t, f)
-	require.Equal(t, 1, int(f.LatestRefs()))
-	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-
-	// Grab some new file nums.
-	d.mu.Lock()
-	f1 := FileNum(d.mu.versions.nextFileNum)
-	f2 := f1 + 1
-	d.mu.versions.nextFileNum += 2
-	d.mu.Unlock()
-
-	m1 := &manifest.FileMetadata{
-		FileBacking:    f.FileBacking,
-		FileNum:        f1,
-		CreationTime:   time.Now().Unix(),
-		Size:           f.Size / 2,
-		SmallestSeqNum: f.SmallestSeqNum,
-		LargestSeqNum:  f.LargestSeqNum,
-		Smallest:       base.MakeInternalKey([]byte{'a'}, f.Smallest.SeqNum(), InternalKeyKindSet),
-		Largest:        base.MakeInternalKey([]byte{'a'}, f.Smallest.SeqNum(), InternalKeyKindSet),
-		HasPointKeys:   true,
-		Virtual:        true,
+	metas := make(map[base.FileNum]*manifest.FileMetadata)
+	backings := make(map[base.DiskFileNum]*manifest.FileBacking)
+	// When we parse VersionEdits, we get a new FileBacking each time. We need to
+	// deduplicate them, since they hold a ref count.
+	dedupBacking := func(b *manifest.FileBacking) *manifest.FileBacking {
+		if existing, ok := backings[b.DiskFileNum]; ok {
+			return existing
+		}
+		// The first time we see a backing, we also set a size.
+		b.Size = uint64(b.DiskFileNum) * 1000
+		backings[b.DiskFileNum] = b
+		return b
 	}
 
-	m2 := &manifest.FileMetadata{
-		FileBacking:    f.FileBacking,
-		FileNum:        f2,
-		CreationTime:   time.Now().Unix(),
-		Size:           f.Size - m1.Size,
-		SmallestSeqNum: f.SmallestSeqNum,
-		LargestSeqNum:  f.LargestSeqNum,
-		Smallest:       base.MakeInternalKey([]byte{'b'}, f.Largest.SeqNum(), InternalKeyKindSet),
-		Largest:        base.MakeInternalKey([]byte{'b'}, f.Largest.SeqNum(), InternalKeyKindSet),
-		HasPointKeys:   true,
-		Virtual:        true,
-	}
+	refs := make(map[string]*version)
+	datadriven.RunTest(t, "testdata/version_set", func(t *testing.T, td *datadriven.TestData) (retVal string) {
+		var buf strings.Builder
 
-	m1.LargestPointKey = m1.Largest
-	m1.SmallestPointKey = m1.Smallest
-
-	m2.LargestPointKey = m2.Largest
-	m2.SmallestPointKey = m2.Smallest
-
-	m1.ValidateVirtual(f)
-	d.checkVirtualBounds(m1)
-	m2.ValidateVirtual(f)
-	d.checkVirtualBounds(m2)
-
-	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {
-		metrics := newFileMetrics(ve.NewFiles)
-		for de, f := range ve.DeletedFiles {
-			lm := metrics[de.Level]
-			if lm == nil {
-				lm = &LevelMetrics{}
-				metrics[de.Level] = lm
+		switch td.Cmd {
+		case "apply":
+			ve, err := manifest.ParseVersionEditDebug(td.Input)
+			if err != nil {
+				td.Fatalf(t, "%v", err)
 			}
-			metrics[de.Level].NumFiles--
-			metrics[de.Level].Size -= int64(f.Size)
-		}
-		return metrics
-	}
-
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	applyVE := func(ve *versionEdit) error {
-		d.mu.versions.logLock()
-		jobID := d.mu.nextJobID
-		d.mu.nextJobID++
-
-		err := d.mu.versions.logAndApply(jobID, ve, fileMetrics(ve), false, func() []compactionInfo {
-			return d.getInProgressCompactionInfoLocked(nil)
-		})
-		d.updateReadStateLocked(nil)
-		return err
-	}
-
-	// Virtualize f.
-	ve := manifest.VersionEdit{}
-	d1 := manifest.DeletedFileEntry{Level: 0, FileNum: f.FileNum}
-	n1 := manifest.NewFileEntry{Level: 0, Meta: m1}
-	n2 := manifest.NewFileEntry{Level: 0, Meta: m2}
-
-	ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
-	ve.DeletedFiles[d1] = f
-	ve.NewFiles = append(ve.NewFiles, n1)
-	ve.NewFiles = append(ve.NewFiles, n2)
-	ve.CreatedBackingTables = append(ve.CreatedBackingTables, f.FileBacking)
-
-	require.NoError(t, applyVE(&ve))
-	// 2 latestRefs from 2 virtual sstables in the latest version which refer
-	// to the physical sstable.
-	require.Equal(t, 2, int(m1.LatestRefs()))
-	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, []base.DiskFileNum{f.FileBacking.DiskFileNum}, d.mu.versions.virtualBackings.DiskFileNums())
-	require.Equal(t, f.Size, m2.FileBacking.VirtualizedSize.Load())
-	checkBackingSize(t, d)
-
-	// Make sure that f is not present in zombie list, because it is not yet a
-	// zombie.
-	require.Equal(t, 0, len(d.mu.versions.zombieTables))
-
-	// Delete the virtual sstable m1.
-	ve = manifest.VersionEdit{}
-	d1 = manifest.DeletedFileEntry{Level: 0, FileNum: m1.FileNum}
-	ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
-	ve.DeletedFiles[d1] = m1
-	require.NoError(t, applyVE(&ve))
-
-	// Only one virtual sstable in the latest version, confirm that the latest
-	// version ref counting is correct.
-	require.Equal(t, 1, int(m2.LatestRefs()))
-	require.Equal(t, 0, len(d.mu.versions.zombieTables))
-	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, []base.DiskFileNum{f.FileBacking.DiskFileNum}, d.mu.versions.virtualBackings.DiskFileNums())
-	require.Equal(t, m2.Size, m2.FileBacking.VirtualizedSize.Load())
-	checkBackingSize(t, d)
-
-	// Move m2 from L0 to L6 to test the move compaction case.
-	ve = manifest.VersionEdit{}
-	d1 = manifest.DeletedFileEntry{Level: 0, FileNum: m2.FileNum}
-	n1 = manifest.NewFileEntry{Level: 6, Meta: m2}
-	ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
-	ve.DeletedFiles[d1] = m2
-	ve.NewFiles = append(ve.NewFiles, n1)
-	require.NoError(t, applyVE(&ve))
-	checkBackingSize(t, d)
-
-	require.Equal(t, 1, int(m2.LatestRefs()))
-	require.Equal(t, 0, len(d.mu.versions.zombieTables))
-	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, []base.DiskFileNum{f.FileBacking.DiskFileNum}, d.mu.versions.virtualBackings.DiskFileNums())
-	require.Equal(t, m2.Size, m2.FileBacking.VirtualizedSize.Load())
-
-	// Delete m2 from L6.
-	ve = manifest.VersionEdit{}
-	d1 = manifest.DeletedFileEntry{Level: 6, FileNum: m2.FileNum}
-	ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
-	ve.DeletedFiles[d1] = m2
-	require.NoError(t, applyVE(&ve))
-	checkBackingSize(t, d)
-
-	// All virtual sstables are gone.
-	require.Equal(t, 0, int(m2.LatestRefs()))
-	require.Equal(t, 1, len(d.mu.versions.zombieTables))
-	require.Equal(t, f.Size, d.mu.versions.zombieTables[f.FileBacking.DiskFileNum])
-	require.Equal(t, []base.DiskFileNum{}, d.mu.versions.virtualBackings.DiskFileNums())
-	require.Equal(t, 0, int(m2.FileBacking.VirtualizedSize.Load()))
-	checkBackingSize(t, d)
-}
-
-// TODO(bananabrick): Convert TestLatestRefCounting and this test into a single
-// datadriven test.
-func TestVirtualSSTableManifestReplay(t *testing.T) {
-	mem := vfs.NewMem()
-	require.NoError(t, mem.MkdirAll("ext", 0755))
-
-	opts := &Options{
-		FormatMajorVersion:          FormatVirtualSSTables,
-		FS:                          mem,
-		MaxManifestFileSize:         1,
-		DisableAutomaticCompactions: true,
-	}
-	d, err := Open("", opts)
-	require.NoError(t, err)
-
-	err = d.Set([]byte{'a'}, []byte{'a'}, nil)
-	require.NoError(t, err)
-	err = d.Set([]byte{'b'}, []byte{'b'}, nil)
-	require.NoError(t, err)
-
-	err = d.Flush()
-	require.NoError(t, err)
-
-	iter := d.mu.versions.currentVersion().Levels[0].Iter()
-	var f *fileMetadata = iter.First()
-	require.NotNil(t, f)
-	require.Equal(t, 1, int(f.LatestRefs()))
-	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-
-	// Grab some new file nums.
-	d.mu.Lock()
-	f1 := FileNum(d.mu.versions.nextFileNum)
-	f2 := f1 + 1
-	d.mu.versions.nextFileNum += 2
-	d.mu.Unlock()
-
-	m1 := &manifest.FileMetadata{
-		FileBacking:    f.FileBacking,
-		FileNum:        f1,
-		CreationTime:   time.Now().Unix(),
-		Size:           f.Size / 2,
-		SmallestSeqNum: f.SmallestSeqNum,
-		LargestSeqNum:  f.LargestSeqNum,
-		Smallest:       base.MakeInternalKey([]byte{'a'}, f.Smallest.SeqNum(), InternalKeyKindSet),
-		Largest:        base.MakeInternalKey([]byte{'a'}, f.Smallest.SeqNum(), InternalKeyKindSet),
-		HasPointKeys:   true,
-		Virtual:        true,
-	}
-
-	m2 := &manifest.FileMetadata{
-		FileBacking:    f.FileBacking,
-		FileNum:        f2,
-		CreationTime:   time.Now().Unix(),
-		Size:           f.Size - m1.Size,
-		SmallestSeqNum: f.SmallestSeqNum,
-		LargestSeqNum:  f.LargestSeqNum,
-		Smallest:       base.MakeInternalKey([]byte{'b'}, f.Largest.SeqNum(), InternalKeyKindSet),
-		Largest:        base.MakeInternalKey([]byte{'b'}, f.Largest.SeqNum(), InternalKeyKindSet),
-		HasPointKeys:   true,
-		Virtual:        true,
-	}
-
-	m1.LargestPointKey = m1.Largest
-	m1.SmallestPointKey = m1.Smallest
-	m1.Stats.NumEntries = 1
-
-	m2.LargestPointKey = m2.Largest
-	m2.SmallestPointKey = m2.Smallest
-	m2.Stats.NumEntries = 1
-
-	m1.ValidateVirtual(f)
-	d.checkVirtualBounds(m1)
-	m2.ValidateVirtual(f)
-	d.checkVirtualBounds(m2)
-
-	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {
-		metrics := newFileMetrics(ve.NewFiles)
-		for de, f := range ve.DeletedFiles {
-			lm := metrics[de.Level]
-			if lm == nil {
-				lm = &LevelMetrics{}
-				metrics[de.Level] = lm
+			for _, nf := range ve.NewFiles {
+				// Set a size that depends on FileNum.
+				nf.Meta.Size = uint64(nf.Meta.FileNum) * 100
+				nf.Meta.FileBacking = dedupBacking(nf.Meta.FileBacking)
+				metas[nf.Meta.FileNum] = nf.Meta
 			}
-			metrics[de.Level].NumFiles--
-			metrics[de.Level].Size -= int64(f.Size)
+			for de := range ve.DeletedFiles {
+				m := metas[de.FileNum]
+				if m == nil {
+					td.Fatalf(t, "unknown FileNum %s", de.FileNum)
+				}
+				ve.DeletedFiles[de] = m
+			}
+			for i := range ve.CreatedBackingTables {
+				ve.CreatedBackingTables[i] = dedupBacking(ve.CreatedBackingTables[i])
+			}
+
+			fileMetrics := newFileMetrics(ve.NewFiles)
+			for de, f := range ve.DeletedFiles {
+				lm := fileMetrics[de.Level]
+				if lm == nil {
+					lm = &LevelMetrics{}
+					fileMetrics[de.Level] = lm
+				}
+				lm.NumFiles--
+				lm.Size -= int64(f.Size)
+			}
+
+			mu.Lock()
+			vs.logLock()
+
+			forceRotation := rand.Intn(3) == 0
+			err = vs.logAndApply(
+				0 /* jobID */, ve, fileMetrics, forceRotation,
+				func() []compactionInfo { return nil },
+			)
+			mu.Unlock()
+			if err != nil {
+				td.Fatalf(t, "%v", err)
+			}
+
+		case "ref":
+			name := td.CmdArgs[0].String()
+			refs[name] = vs.currentVersion()
+			refs[name].Ref()
+
+		case "unref":
+			name := td.CmdArgs[0].String()
+			refs[name].Unref()
+
+		case "reopen":
+			var err error
+			var filename string
+			marker, filename, err = atomicfs.LocateMarker(opts.FS, "", manifestMarkerName)
+			if err != nil {
+				td.Fatalf(t, "error locating marker: %v", err)
+			}
+			_, manifestNum, ok := base.ParseFilename(opts.FS, filename)
+			if !ok {
+				td.Fatalf(t, "invalid manifest file name %q", filename)
+			}
+			vs = versionSet{}
+			err = vs.load(
+				"", opts, manifestNum, marker,
+				func() FormatMajorVersion { return FormatVirtualSSTables }, mu,
+			)
+			if err != nil {
+				td.Fatalf(t, "error loading manifest: %v", err)
+			}
+
+			// Repopulate the maps.
+			metas = make(map[base.FileNum]*manifest.FileMetadata)
+			backings = make(map[base.DiskFileNum]*manifest.FileBacking)
+			v := vs.currentVersion()
+			for _, l := range v.Levels {
+				it := l.Iter()
+				for f := it.First(); f != nil; f = it.Next() {
+					metas[f.FileNum] = f
+					dedupBacking(f.FileBacking)
+				}
+			}
+
+		default:
+			td.Fatalf(t, "unknown command: %s", td.Cmd)
 		}
-		return metrics
-	}
 
-	d.mu.Lock()
-	applyVE := func(ve *versionEdit) error {
-		d.mu.versions.logLock()
-		jobID := d.mu.nextJobID
-		d.mu.nextJobID++
-
-		err := d.mu.versions.logAndApply(jobID, ve, fileMetrics(ve), false, func() []compactionInfo {
-			return d.getInProgressCompactionInfoLocked(nil)
-		})
-		d.updateReadStateLocked(nil)
-		return err
-	}
-
-	// Virtualize f.
-	ve := manifest.VersionEdit{}
-	d1 := manifest.DeletedFileEntry{Level: 0, FileNum: f.FileNum}
-	n1 := manifest.NewFileEntry{Level: 0, Meta: m1}
-	n2 := manifest.NewFileEntry{Level: 0, Meta: m2}
-
-	ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
-	ve.DeletedFiles[d1] = f
-	ve.NewFiles = append(ve.NewFiles, n1)
-	ve.NewFiles = append(ve.NewFiles, n2)
-	ve.CreatedBackingTables = append(ve.CreatedBackingTables, f.FileBacking)
-
-	require.NoError(t, applyVE(&ve))
-	checkBackingSize(t, d)
-	d.mu.Unlock()
-
-	require.Equal(t, 2, int(m1.LatestRefs()))
-	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, []base.DiskFileNum{f.FileBacking.DiskFileNum}, d.mu.versions.virtualBackings.DiskFileNums())
-	require.Equal(t, f.Size, m2.FileBacking.VirtualizedSize.Load())
-
-	// Snapshot version edit will be written to a new manifest due to the flush.
-	d.Set([]byte{'c'}, []byte{'c'}, nil)
-	d.Flush()
-
-	require.NoError(t, d.Close())
-	d, err = Open("", opts)
-	require.NoError(t, err)
-
-	d.mu.Lock()
-	it := d.mu.versions.currentVersion().Levels[0].Iter()
-	var virtualFile *fileMetadata
-	for f := it.First(); f != nil; f = it.Next() {
-		if f.Virtual {
-			virtualFile = f
-			break
+		buf.WriteString(vs.currentVersion().DebugString())
+		buf.WriteString(vs.virtualBackings.String())
+		if len(vs.zombieTables) == 0 {
+			buf.WriteString("no zombie tables\n")
+		} else {
+			var nums []base.DiskFileNum
+			for k := range vs.zombieTables {
+				nums = append(nums, k)
+			}
+			buf.WriteString("zombie tables:")
+			slices.Sort(nums)
+			for _, n := range nums {
+				fmt.Fprintf(&buf, " %s", n)
+			}
+			buf.WriteString("\n")
 		}
-	}
 
-	require.Equal(t, 2, int(virtualFile.LatestRefs()))
-	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, []base.DiskFileNum{f.FileBacking.DiskFileNum}, d.mu.versions.virtualBackings.DiskFileNums())
-	require.Equal(t, f.Size, virtualFile.FileBacking.VirtualizedSize.Load())
-	checkBackingSize(t, d)
-	d.mu.Unlock()
-
-	// Will cause the virtual sstables to be deleted, and the file backing should
-	// also be removed.
-	d.Compact([]byte{'a'}, []byte{'z'}, false)
-
-	d.mu.Lock()
-	virtualFile = nil
-	it = d.mu.versions.currentVersion().Levels[0].Iter()
-	for f := it.First(); f != nil; f = it.Next() {
-		if f.Virtual {
-			virtualFile = f
-			break
+		if len(vs.obsoleteTables) == 0 {
+			buf.WriteString("no obsolete tables\n")
+		} else {
+			buf.WriteString("obsolete tables:")
+			for _, fi := range vs.obsoleteTables {
+				fmt.Fprintf(&buf, " %s", fi.FileNum)
+			}
+			buf.WriteString("\n")
 		}
-	}
-	require.Nil(t, virtualFile)
-	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, []base.DiskFileNum{}, d.mu.versions.virtualBackings.DiskFileNums())
-	checkBackingSize(t, d)
-	d.mu.Unlock()
 
-	// Close and restart to make sure that the new snapshot written during
-	// compaction doesn't have the file backing.
-	require.NoError(t, d.Close())
-	d, err = Open("", opts)
-	require.NoError(t, err)
-
-	d.mu.Lock()
-	virtualFile = nil
-	it = d.mu.versions.currentVersion().Levels[0].Iter()
-	for f := it.First(); f != nil; f = it.Next() {
-		if f.Virtual {
-			virtualFile = f
-			break
-		}
-	}
-	require.Nil(t, virtualFile)
-	require.Equal(t, 0, len(d.mu.versions.obsoleteTables))
-	require.Equal(t, []base.DiskFileNum{}, d.mu.versions.virtualBackings.DiskFileNums())
-	checkBackingSize(t, d)
-	d.mu.Unlock()
-	require.NoError(t, d.Close())
+		return buf.String()
+	})
 }
 
 func TestVersionSetCheckpoint(t *testing.T) {
