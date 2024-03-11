@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -544,6 +545,55 @@ func (v *VersionEdit) DebugString(fmtKey base.FormatKey) string {
 // String implements fmt.Stringer for a VersionEdit.
 func (v *VersionEdit) String() string {
 	return v.string(false /* verbose */, base.DefaultFormatter)
+}
+
+// ParseVersionEditDebug parses a VersionEdit from its DebugString
+// implementation.
+//
+// It doesn't recognize all fields; this implementation can be filled in as
+// needed.
+func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
+	defer func() {
+		err = errors.CombineErrors(err, maybeRecover())
+	}()
+
+	var ve VersionEdit
+	for _, l := range strings.Split(s, "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		p := makeDebugParser(l)
+		field := p.Next()
+		p.Expect(":")
+		switch field {
+		case "added":
+			level := p.Level()
+			meta, err := ParseFileMetadataDebug(p.Remaining())
+			if err != nil {
+				return nil, err
+			}
+			ve.NewFiles = append(ve.NewFiles, NewFileEntry{
+				Level: level,
+				Meta:  meta,
+			})
+
+		case "deleted":
+			level := p.Level()
+			num := p.FileNum()
+			if ve.DeletedFiles == nil {
+				ve.DeletedFiles = make(map[DeletedFileEntry]*FileMetadata)
+			}
+			ve.DeletedFiles[DeletedFileEntry{
+				Level:   level,
+				FileNum: num,
+			}] = nil
+
+		default:
+			return nil, errors.Errorf("field %q not implemented", field)
+		}
+	}
+	return &ve, nil
 }
 
 // Encode encodes an edit to the specified writer.

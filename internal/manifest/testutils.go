@@ -78,6 +78,13 @@ func (p *debugParser) Next() string {
 	return res
 }
 
+// Remaining returns all the remaining tokens, separated by spaces.
+func (p *debugParser) Remaining() string {
+	res := strings.Join(p.tokens, " ")
+	p.tokens = nil
+	return res
+}
+
 // Expect consumes the next tokens, verifying that they exactly match the
 // arguments.
 func (p *debugParser) Expect(tokens ...string) {
@@ -141,4 +148,16 @@ func (p *debugParser) InternalKey() base.InternalKey {
 func (p *debugParser) Errf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	panic(errors.Errorf("error parsing %q at token %q: %s", p.original, p.lastToken, msg))
+}
+
+// maybeRecover can be used in a defer to convert panics into errors.
+func maybeRecover() error {
+	if r := recover(); r != nil {
+		err, ok := r.(error)
+		if !ok {
+			err = errors.Errorf("%v", r)
+		}
+		return err
+	}
+	return nil
 }

@@ -814,13 +814,7 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 // representation.
 func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			var ok bool
-			err, ok = r.(error)
-			if !ok {
-				err = errors.Errorf("%v", r)
-			}
-		}
+		err = errors.CombineErrors(err, maybeRecover())
 	}()
 
 	// Input format:
@@ -1256,6 +1250,9 @@ func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string)
 	var files [NumLevels][]*FileMetadata
 	level := -1
 	for _, l := range strings.Split(s, "\n") {
+		if l == "" {
+			continue
+		}
 		p := makeDebugParser(l)
 		if l, ok := p.TryLevel(); ok {
 			level = l
