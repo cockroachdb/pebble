@@ -15,9 +15,9 @@ L0.0:
   000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
 
 apply v1
-  deleted: L0 000001
-  added:   L2 000001:[a#1,SET-b#2,SET] seqnums:[1-2]
-  added:   L2 000004:[c#3,SET-d#4,SET] seqnums:[3-4]
+  del-table: L0 000001
+  add-table: L2 000001:[a#1,SET-b#2,SET] seqnums:[1-2]
+  add-table: L2 000004:[c#3,SET-d#4,SET] seqnums:[3-4]
 ----
 L0.0:
   000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
@@ -26,14 +26,14 @@ L2:
   000004:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
 
 apply v1
-  deleted: L1 000001
+  del-table: L1 000001
 ----
 pebble: internal error: No current or added files but have deleted files: 1
 
 apply v1
-  deleted: L0 000001
-  added:   L2 000001:[a#1,SET-b#2,SET] seqnums:[1-2]
-  added:   L2 000004:[b#3,SET-d#4,SET] seqnums:[3-4]
+  del-table: L0 000001
+  add-table: L2 000001:[a#1,SET-b#2,SET] seqnums:[1-2]
+  add-table: L2 000004:[b#3,SET-d#4,SET] seqnums:[3-4]
 ----
 pebble: internal error: L2 files 000001 and 000004 have overlapping ranges: [a#1,SET-b#2,SET] vs [b#3,SET-d#4,SET]
 
@@ -48,7 +48,7 @@ L0.0:
   000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
 
 apply v2
-  added:   L0 000004:[b#3,SET-d#5,SET] seqnums:[3-5]
+  add-table: L0 000004:[b#3,SET-d#5,SET] seqnums:[3-5]
 ----
 L0.2:
   000004:[b#3,SET-d#5,SET] seqnums:[3-5] points:[b#3,SET-d#5,SET]
@@ -58,7 +58,7 @@ L0.0:
   000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
 
 apply v2
-  added:   L0 000004:[b#0,SET-d#0,SET] seqnums:[0-0]
+  add-table: L0 000004:[b#0,SET-d#0,SET] seqnums:[0-0]
 ----
 L0.2:
   000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
@@ -72,8 +72,8 @@ define empty
 ----
 
 apply empty
-  added:   L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
-  added:   L0 000004:[b#3,SET-d#5,SET] seqnums:[3-5]
+  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
+  add-table: L0 000004:[b#3,SET-d#5,SET] seqnums:[3-5]
 ----
 L0.1:
   000004:[b#3,SET-d#5,SET] seqnums:[3-5] points:[b#3,SET-d#5,SET]
@@ -81,19 +81,19 @@ L0.0:
   000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
 
 apply v2
-  added:   L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
+  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
 ----
 pebble: files 000001 and 000001 collided on sort keys
 
 apply empty
-  added:   L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
+  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
 ----
 L0.0:
   000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
 
 apply empty
-  added:   L2 000010:[j#3,SET-m#2,SET]
-  added:   L2 000006:[a#10,SET-a#7,SET]
+  add-table: L2 000010:[j#3,SET-m#2,SET]
+  add-table: L2 000006:[a#10,SET-a#7,SET]
 ----
 L2:
   000006:[a#10,SET-a#7,SET] seqnums:[0-0] points:[a#10,SET-a#7,SET]
@@ -115,11 +115,11 @@ L2:
   000001:[r#2,SET-t#1,SET] seqnums:[0-0] points:[r#2,SET-t#1,SET]
 
 apply v3
-  deleted:  L2 000004
-  deleted:  L2 000001
-  added:    L2 000006:[a#10,SET-a#7,SET]
-  added:    L2 000007:[e#1,SET-g#2,SET]
-  added:    L2 000010:[j#3,SET-m#2,SET]
+  del-table: L2 000004
+  del-table: L2 000001
+  add-table: L2 000006:[a#10,SET-a#7,SET]
+  add-table: L2 000007:[e#1,SET-g#2,SET]
+  add-table: L2 000010:[j#3,SET-m#2,SET]
 ----
 L2:
   000006:[a#10,SET-a#7,SET] seqnums:[0-0] points:[a#10,SET-a#7,SET]
@@ -141,13 +141,13 @@ L1:
   000002:[c#3,SET-d#2,SET] seqnums:[0-0] points:[c#3,SET-d#2,SET]
 
 apply v4
-  deleted: L0 000001
-  deleted: L1 000002
+  del-table: L0 000001
+  del-table: L1 000002
 ----
 
 # Deletion of a non-existent table results in an error.
 apply v4
-  deleted: L0 000004
+  del-table: L0 000004
 ----
 error during Accumulate: pebble: file deleted L0.000004 before it was inserted
 
@@ -159,13 +159,13 @@ L0.0:
   000001:[a#1,SET-b#2,SET] seqnums:[0-0] points:[a#1,SET-b#2,SET]
 
 apply v5
-  deleted: L0 1
-  added: L2 000001:[a#1,SET-b#2,SET]
-  added: L2 000004:[c#3,SET-d#4,SET]
-  added: L2 000005:[s#3,SET-z#4,SET]
+  del-table: L0 1
+  add-table: L2 000001:[a#1,SET-b#2,SET]
+  add-table: L2 000004:[c#3,SET-d#4,SET]
+  add-table: L2 000005:[s#3,SET-z#4,SET]
 new version edit
-  deleted: L2 000001
-  deleted: L2 000004
+  del-table: L2 000001
+  del-table: L2 000004
 ----
 L2:
   000005:[s#3,SET-z#4,SET] seqnums:[0-0] points:[s#3,SET-z#4,SET]

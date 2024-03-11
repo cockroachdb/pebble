@@ -31,53 +31,53 @@ L6:
 excise c k
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000006
-  deleted:       L6 000004
-  added:         L6 000007(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
-  added:         L6 000008(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
-  add backing:   000004
+  del-table:     L0 000006
+  del-table:     L6 000004
+  add-table:     L6 000007(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
+  add-table:     L6 000008(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
+  add-backing:   000004
 
 
 excise a e
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000006
-  deleted:       L6 000004
-  added:         L0 000009(000006):[f#12,SET-f#12,SET] seqnums:[11-12] points:[f#12,SET-f#12,SET]
-  added:         L6 000010(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
-  add backing:   000006
-  add backing:   000004
+  del-table:     L0 000006
+  del-table:     L6 000004
+  add-table:     L0 000009(000006):[f#12,SET-f#12,SET] seqnums:[11-12] points:[f#12,SET-f#12,SET]
+  add-table:     L6 000010(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
+  add-backing:   000006
+  add-backing:   000004
 
 excise e z
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000006
-  deleted:       L6 000004
-  added:         L0 000011(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
-  added:         L6 000012(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
-  add backing:   000006
-  add backing:   000004
+  del-table:     L0 000006
+  del-table:     L6 000004
+  add-table:     L0 000011(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
+  add-table:     L6 000012(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
+  add-backing:   000006
+  add-backing:   000004
 
 excise f l
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000006
-  deleted:       L6 000004
-  added:         L0 000013(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
-  added:         L6 000014(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
-  added:         L6 000015(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
-  add backing:   000006
-  add backing:   000004
+  del-table:     L0 000006
+  del-table:     L6 000004
+  add-table:     L0 000013(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
+  add-table:     L6 000014(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
+  add-table:     L6 000015(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
+  add-backing:   000006
+  add-backing:   000004
 
 excise f ll
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000006
-  deleted:       L6 000004
-  added:         L0 000016(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
-  added:         L6 000017(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
-  add backing:   000006
-  add backing:   000004
+  del-table:     L0 000006
+  del-table:     L6 000004
+  add-table:     L0 000016(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
+  add-table:     L6 000017(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
+  add-backing:   000006
+  add-backing:   000004
 
 excise p q
 ----
@@ -162,17 +162,17 @@ L6:
 excise f g
 ----
 would excise 1 files, use ingest-and-excise to excise.
-  deleted:       L0 000005
-  added:         L0 000006(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
-  added:         L0 000007(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
-  add backing:   000005
+  del-table:     L0 000005
+  add-table:     L0 000006(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
+  add-table:     L0 000007(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
+  add-backing:   000005
 
 excise b c
 ----
 would excise 1 files, use ingest-and-excise to excise.
-  deleted:       L0 000005
-  added:         L0 000008(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
-  add backing:   000005
+  del-table:     L0 000005
+  add-table:     L0 000008(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
+  add-backing:   000005
 
 excise i j
 ----
@@ -184,13 +184,13 @@ would excise 0 files, use ingest-and-excise to excise.
 excise c d
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000005
-  deleted:       L6 000004
-  added:         L0 000009(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
-  added:         L0 000010(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
-  added:         L6 000011(000004):[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET]
-  add backing:   000005
-  add backing:   000004
+  del-table:     L0 000005
+  del-table:     L6 000004
+  add-table:     L0 000009(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
+  add-table:     L0 000010(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
+  add-table:     L6 000011(000004):[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET]
+  add-backing:   000005
+  add-backing:   000004
 
 reset
 ----

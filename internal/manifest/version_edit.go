@@ -512,15 +512,11 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 		return stdcmp.Compare(a.FileNum, b.FileNum)
 	})
 	for _, df := range entries {
-		fmt.Fprintf(&buf, "  deleted:       L%d %s\n", df.Level, df.FileNum)
+		fmt.Fprintf(&buf, "  del-table:     L%d %s\n", df.Level, df.FileNum)
 	}
 	for _, nf := range v.NewFiles {
-		fmt.Fprintf(&buf, "  added:         L%d", nf.Level)
-		if verbose {
-			fmt.Fprintf(&buf, " %s", nf.Meta.DebugString(fmtKey, true /* verbose */))
-		} else {
-			fmt.Fprintf(&buf, " %s", nf.Meta.String())
-		}
+		fmt.Fprintf(&buf, "  add-table:     L%d", nf.Level)
+		fmt.Fprintf(&buf, " %s", nf.Meta.DebugString(fmtKey, verbose))
 		if nf.Meta.CreationTime != 0 {
 			fmt.Fprintf(&buf, " (%s)",
 				time.Unix(nf.Meta.CreationTime, 0).UTC().Format(time.RFC3339))
@@ -529,10 +525,10 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	}
 
 	for _, b := range v.CreatedBackingTables {
-		fmt.Fprintf(&buf, "  add backing:   %s\n", b.DiskFileNum)
+		fmt.Fprintf(&buf, "  add-backing:   %s\n", b.DiskFileNum)
 	}
 	for _, n := range v.RemovedBackingTables {
-		fmt.Fprintf(&buf, "  del backing:   %s\n", n)
+		fmt.Fprintf(&buf, "  del-backing:   %s\n", n)
 	}
 	return buf.String()
 }
@@ -563,11 +559,14 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 		if l == "" {
 			continue
 		}
-		p := makeDebugParser(l)
-		field := p.Next()
-		p.Expect(":")
+		field, value, ok := strings.Cut(l, ":")
+		if !ok {
+			return nil, errors.Errorf("malformed line %q", l)
+		}
+		field = strings.TrimSpace(field)
+		p := makeDebugParser(value)
 		switch field {
-		case "added":
+		case "add-table":
 			level := p.Level()
 			meta, err := ParseFileMetadataDebug(p.Remaining())
 			if err != nil {
@@ -578,7 +577,7 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 				Meta:  meta,
 			})
 
-		case "deleted":
+		case "del-table":
 			level := p.Level()
 			num := p.FileNum()
 			if ve.DeletedFiles == nil {
