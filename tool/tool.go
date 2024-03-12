@@ -38,6 +38,7 @@ type T struct {
 	mergers         sstable.Mergers
 	defaultComparer string
 	openErrEnhancer func(error) error
+	openOptions     []OpenOption
 }
 
 // A Option configures the Pebble introspection tool.
@@ -82,15 +83,11 @@ func Filters(filters ...FilterPolicy) Option {
 	}
 }
 
-// DirectoryLock may be passed to New to pass an existing file lock within a
-// data directory. Some tool options open the database and will acquire the
-// directory's file lock if not already held. If the caller has already acquired
-// the file lock, they may pass it here. When the tool is embedded within the
-// CockroachDB CLI, we do this to ensure the lock provides mutual exclusion over
-// the persistent encryption-at-rest state.
-func DirectoryLock(lock *pebble.Lock) Option {
+// OpenOptions may be passed to New to provide a set of OpenOptions that should
+// be invoked to configure the *pebble.Options before opening a database.
+func OpenOptions(openOptions ...OpenOption) Option {
 	return func(t *T) {
-		t.opts.Lock = lock
+		t.openOptions = append(t.openOptions, openOptions...)
 	}
 }
 
@@ -133,7 +130,7 @@ func New(opts ...Option) *T {
 		opt(t)
 	}
 
-	t.db = newDB(&t.opts, t.comparers, t.mergers, t.openErrEnhancer)
+	t.db = newDB(&t.opts, t.comparers, t.mergers, t.openErrEnhancer, t.openOptions)
 	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)
