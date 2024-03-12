@@ -82,6 +82,18 @@ func Filters(filters ...FilterPolicy) Option {
 	}
 }
 
+// DirectoryLock may be passed to New to pass an existing file lock within a
+// data directory. Some tool options open the database and will acquire the
+// directory's file lock if not already held. If the caller has already acquired
+// the file lock, they may pass it here. When the tool is embedded within the
+// CockroachDB CLI, we do this to ensure the lock provides mutual exclusion over
+// the persistent encryption-at-rest state.
+func DirectoryLock(lock *pebble.Lock) Option {
+	return func(t *T) {
+		t.opts.Lock = lock
+	}
+}
+
 // FS sets the filesystem implementation to use by the introspection tools.
 func FS(fs vfs.FS) Option {
 	return func(t *T) {
