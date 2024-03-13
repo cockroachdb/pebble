@@ -267,10 +267,10 @@ func TestOpen_WALFailover(t *testing.T) {
 }
 
 func TestOpenAlreadyLocked(t *testing.T) {
-	runTest := func(t *testing.T, dirname string, fs vfs.FS) {
+	runTest := func(t *testing.T, lockPath, dirname string, fs vfs.FS) {
 		opts := testingRandomized(t, &Options{FS: fs})
 		var err error
-		opts.Lock, err = LockDirectory(dirname, fs)
+		opts.Lock, err = LockDirectory(lockPath, fs)
 		require.NoError(t, err)
 
 		d, err := Open(dirname, opts)
@@ -295,10 +295,25 @@ func TestOpenAlreadyLocked(t *testing.T) {
 		require.Equal(t, int32(0), opts.Lock.refs.Load())
 	}
 	t.Run("memfs", func(t *testing.T) {
-		runTest(t, "", vfs.NewMem())
+		runTest(t, "", "", vfs.NewMem())
 	})
 	t.Run("disk", func(t *testing.T) {
-		runTest(t, t.TempDir(), vfs.Default)
+		t.Run("absolute", func(t *testing.T) {
+			dir := t.TempDir()
+			runTest(t, dir, dir, vfs.Default)
+		})
+		t.Run("relative", func(t *testing.T) {
+			dir := t.TempDir()
+			original, err := os.Getwd()
+			require.NoError(t, err)
+			defer func() { require.NoError(t, os.Chdir(original)) }()
+
+			wd := filepath.Dir(dir)
+			require.NoError(t, os.Chdir(wd))
+			lockPath, err := filepath.Rel(wd, dir)
+			require.NoError(t, err)
+			runTest(t, lockPath, dir, vfs.Default)
+		})
 	})
 }
 
