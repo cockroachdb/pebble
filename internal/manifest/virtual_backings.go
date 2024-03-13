@@ -47,7 +47,12 @@ type backingWithMetadata struct {
 	// A backing initially has a useCount of 0. The useCount is increased by
 	// AddTable and decreased by RemoveTable. Backings that have useCount=0 are
 	// reported by Unused().
-	useCount        int
+	useCount int32
+	// protectionCount is used by Protect to temporarily prevent a backing from
+	// being reported as unused.
+	protectionCount int32
+	// virtualizedSize is the sum of the sizes of the useCount virtual tables
+	// associated with this backing.
 	virtualizedSize uint64
 }
 
@@ -68,7 +73,10 @@ func (bv *VirtualBackings) Add(backing *FileBacking) {
 func (bv *VirtualBackings) Remove(n base.DiskFileNum) {
 	v := bv.mustGet(n)
 	if v.inUse() {
-		panic(errors.AssertionFailedf("backing %s still in use (useCount=%d)", v.backing.DiskFileNum, v.useCount))
+		panic(errors.AssertionFailedf(
+			"backing %s still in use (useCount=%d protectionCount=%d)",
+			v.backing.DiskFileNum, v.useCount, v.protectionCount,
+		))
 	}
 	delete(bv.m, n)
 	delete(bv.unused, v.backing)
@@ -98,9 +106,40 @@ func (bv *VirtualBackings) RemoveTable(m *FileMetadata) {
 	}
 	v := bv.mustGet(m.FileBacking.DiskFileNum)
 
+	if v.useCount <= 0 {
+		panic(errors.AssertionFailedf("invalid useCount"))
+	}
 	v.useCount--
 	v.virtualizedSize -= m.Size
 	bv.m[m.FileBacking.DiskFileNum] = v
+	if !v.inUse() {
+		bv.unused[v.backing] = struct{}{}
+	}
+}
+
+// Protect prevents a backing from being reported as unused until a
+// corresponding Unprotect call is made. The backing must be in the set.
+//
+// Multiple Protect calls can be made for the same backing; each must have a
+// corresponding Unprotect call before the backing can become unused.
+func (bv *VirtualBackings) Protect(n base.DiskFileNum) {
+	v := bv.mustGet(n)
+	if !v.inUse() {
+		delete(bv.unused, v.backing)
+	}
+	v.protectionCount++
+	bv.m[n] = v
+}
+
+// Unprotect reverses a Protect call.
+func (bv *VirtualBackings) Unprotect(n base.DiskFileNum) {
+	v := bv.mustGet(n)
+
+	if v.protectionCount <= 0 {
+		panic(errors.AssertionFailedf("invalid protectionCount"))
+	}
+	v.protectionCount--
+	bv.m[n] = v
 	if !v.inUse() {
 		bv.unused[v.backing] = struct{}{}
 	}
@@ -123,7 +162,7 @@ func (bv *VirtualBackings) Stats() (count int, totalSize uint64) {
 // virtual sstable with a higher priority.
 func (bv *VirtualBackings) Usage(n base.DiskFileNum) (useCount int, virtualizedSize uint64) {
 	v := bv.mustGet(n)
-	return v.useCount, v.virtualizedSize
+	return int(v.useCount), v.virtualizedSize
 }
 
 // Unused returns all backings that are not in use, in DiskFileNum order.
@@ -167,7 +206,8 @@ func (bv *VirtualBackings) String() string {
 		fmt.Fprintf(&buf, "%d virtual backings, total size %d:\n", count, totalSize)
 		for _, n := range nums {
 			v := bv.m[n]
-			fmt.Fprintf(&buf, "  %s:  size=%d  useCount=%d  virtualizedSize=%d\n", n, v.backing.Size, v.useCount, v.virtualizedSize)
+			fmt.Fprintf(&buf, "  %s:  size=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d\n",
+				n, v.backing.Size, v.useCount, v.protectionCount, v.virtualizedSize)
 		}
 	}
 	unused := bv.Unused()
@@ -199,5 +239,5 @@ func (bv *VirtualBackings) mustGet(n base.DiskFileNum) backingWithMetadata {
 
 // inUse returns true if b is used to back at least one virtual table.
 func (v *backingWithMetadata) inUse() bool {
-	return v.useCount > 0
+	return v.useCount > 0 || v.protectionCount > 0
 }
