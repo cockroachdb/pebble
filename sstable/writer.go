@@ -1578,7 +1578,12 @@ func (w *Writer) addPrevDataBlockToIndexBlockProps() {
 func (w *Writer) addIndexEntrySync(
 	prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte,
 ) error {
-	sep := w.indexEntrySep(prevKey, key, w.dataBlockBuf)
+	return w.addIndexEntrySep(w.indexEntrySep(prevKey, key, w.dataBlockBuf), bhp, tmp)
+}
+
+func (w *Writer) addIndexEntrySep(
+	sep InternalKey, bhp BlockHandleWithProperties, tmp []byte,
+) error {
 	shouldFlush := supportsTwoLevelIndex(
 		w.tableFormat) && w.indexBlock.shouldFlush(
 		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,

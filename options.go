@@ -783,6 +783,10 @@ type Options struct {
 		//   which will later be consumed by SingleDelete#3. The violation will
 		//   not be detected and the DB will be correct.
 		SingleDeleteInvariantViolationCallback func(userKey []byte)
+
+		// DownloadViaSpaCopy downloads backing files during Download() calls via
+		// span copy.
+		DownloadViaSpaCopy bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
