@@ -1572,6 +1572,9 @@ func (w *Writer) addPrevDataBlockToIndexBlockProps() {
 // Invariant:
 //  1. addIndexEntrySync must not store references to the prevKey, key InternalKey's,
 //     the tmp byte slice. That is, these must be either deep copied or encoded.
+//
+// TODO: Improve coverage of this method. e.g. tests passed without the line
+// `w.twoLevelIndex = true` previously.
 func (w *Writer) addIndexEntrySync(
 	prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte,
 ) error {
@@ -1586,7 +1589,7 @@ func (w *Writer) addIndexEntrySync(
 	if shouldFlush {
 		flushableIndexBlock = w.indexBlock
 		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
-
+		w.twoLevelIndex = true
 		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
 		// flush the index block.
 		props, err = w.finishIndexBlockProps()
