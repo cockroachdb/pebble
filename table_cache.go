@@ -287,7 +287,7 @@ func (c *tableCacheContainer) withCommonReader(
 	meta *fileMetadata, fn func(sstable.CommonReader) error,
 ) error {
 	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(meta, &c.dbOpts)
+	v := s.findNode(meta.FileBacking, &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		return v.err
@@ -297,7 +297,7 @@ func (c *tableCacheContainer) withCommonReader(
 
 func (c *tableCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
 	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(meta.FileMetadata, &c.dbOpts)
+	v := s.findNode(meta.FileBacking, &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		return v.err
@@ -310,7 +310,7 @@ func (c *tableCacheContainer) withVirtualReader(
 	meta virtualMeta, fn func(sstable.VirtualReader) error,
 ) error {
 	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(meta.FileMetadata, &c.dbOpts)
+	v := s.findNode(meta.FileBacking, &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		return v.err
@@ -502,7 +502,7 @@ func (c *tableCacheShard) newIters(
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
-	v := c.findNode(file, dbOpts)
+	v := c.findNode(file.FileBacking, dbOpts)
 	if v.err != nil {
 		defer c.unrefValue(v)
 		return iterSet{}, v.err
@@ -734,7 +734,7 @@ var _ sstable.ReaderProvider = &tableCacheShardReaderProvider{}
 func (rp *tableCacheShardReaderProvider) GetReader() (*sstable.Reader, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount.
-	v := rp.c.findNode(rp.file, rp.dbOpts)
+	v := rp.c.findNode(rp.file.FileBacking, rp.dbOpts)
 	if v.err != nil {
 		defer rp.c.unrefValue(v)
 		return nil, v.err
@@ -754,7 +754,7 @@ func (c *tableCacheShard) getTableProperties(
 	file *fileMetadata, dbOpts *tableCacheOpts,
 ) (*sstable.Properties, error) {
 	// Calling findNode gives us the responsibility of decrementing v's refCount here
-	v := c.findNode(file, dbOpts)
+	v := c.findNode(file.FileBacking, dbOpts)
 	defer c.unrefValue(v)
 
 	if v.err != nil {
@@ -830,17 +830,15 @@ func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
-func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *tableCacheValue {
-	if refs := meta.Refs(); refs <= 0 {
-		panic(errors.AssertionFailedf("attempting to load file %s with refs=%d from table cache",
-			meta, refs))
-	}
+func (c *tableCacheShard) findNode(b *fileBacking, dbOpts *tableCacheOpts) *tableCacheValue {
+	// The backing must have a positive refcount (otherwise it could be deleted at any time).
+	b.MustHaveRefs()
 	// Caution! Here fileMetadata can be a physical or virtual table. Table cache
 	// readers are associated with the physical backings. All virtual tables with
 	// the same backing will use the same reader from the cache; so no information
 	// that can differ among these virtual tables can be plumbed into loadInfo.
 	info := loadInfo{
-		backingFileNum: meta.FileBacking.DiskFileNum,
+		backingFileNum: b.DiskFileNum,
 	}
 
 	return c.findNodeInternal(info, dbOpts)

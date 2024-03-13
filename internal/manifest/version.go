@@ -390,12 +390,13 @@ func (m *FileMetadata) VirtualMeta() VirtualFileMeta {
 //
 // See the comment above the FileMetadata type for sstable terminology.
 type FileBacking struct {
-	// Reference count for the backing file on disk: incremented when a
-	// physical or virtual sstable which is backed by the FileBacking is
-	// added to a version and decremented when the version is unreferenced.
-	// We ref count in order to determine when it is safe to delete a
-	// backing sst file from disk. The backing file is obsolete when the
-	// reference count falls to zero.
+	// Reference count for the backing file, used to determine when a backing file
+	// is obsolete and can be removed.
+	//
+	// The reference count is at least the number of distinct tables that use this
+	// backing across all versions that have a non-zero reference count. The tables
+	// in each version are maintained in a copy-on-write B-tree and each node
+	// takes a reference on the respective backings.
 	refs atomic.Int32
 	// latestVersionRefs are the references to the FileBacking in the
 	// latest version. This reference can be through a single physical
@@ -418,6 +419,28 @@ type FileBacking struct {
 	VirtualizedSize atomic.Uint64
 	DiskFileNum     base.DiskFileNum
 	Size            uint64
+}
+
+// MustHaveRefs asserts that the backing has a positive refcount.
+func (b *FileBacking) MustHaveRefs() {
+	if refs := b.refs.Load(); refs <= 0 {
+		panic(errors.AssertionFailedf("backing %s must have positive refcount (refs=%d)",
+			b.DiskFileNum, refs))
+	}
+}
+
+// Ref increments the backing's ref count.
+func (b *FileBacking) Ref() {
+	b.refs.Add(1)
+}
+
+// Unref decrements the backing's ref count (and returns the new count).
+func (b *FileBacking) Unref() int32 {
+	v := b.refs.Add(-1)
+	if invariants.Enabled && v < 0 {
+		panic("pebble: invalid FileMetadata refcounting")
+	}
+	return v
 }
 
 // InitPhysicalBacking allocates and sets the FileBacking which is required by a
@@ -473,25 +496,6 @@ func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
 	if m.Size == 0 {
 		panic("pebble: virtual sstable size must be set upon creation")
 	}
-}
-
-// Refs returns the refcount of backing sstable.
-func (m *FileMetadata) Refs() int32 {
-	return m.FileBacking.refs.Load()
-}
-
-// Ref increments the ref count associated with the backing sstable.
-func (m *FileMetadata) Ref() {
-	m.FileBacking.refs.Add(1)
-}
-
-// Unref decrements the ref count associated with the backing sstable.
-func (m *FileMetadata) Unref() int32 {
-	v := m.FileBacking.refs.Add(-1)
-	if invariants.Enabled && v < 0 {
-		panic("pebble: invalid FileMetadata refcounting")
-	}
-	return v
 }
 
 // LatestRef increments the latest ref count associated with the backing

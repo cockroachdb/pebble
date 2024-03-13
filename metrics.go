@@ -260,9 +260,9 @@ type Metrics struct {
 		ZombieSize uint64
 		// The count of zombie tables.
 		ZombieCount int64
-		// The count of the backing sstables.
+		// The count of sstables backing virtual tables.
 		BackingTableCount uint64
-		// The sum of the sizes of the all of the backing sstables.
+		// The sum of the sizes of the BackingTableCount sstables that are backing virtual tables.
 		BackingTableSize uint64
 	}
 
