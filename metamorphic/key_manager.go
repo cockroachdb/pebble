@@ -302,8 +302,8 @@ func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta 
 	var res []keyMeta
 	for _, km := range k.SortedKeysForObj(obj.externalObjID) {
 		// Apply prefix and suffix changes, then check the bounds.
-		if obj.prefixChange != nil {
-			km.key = obj.prefixChange.Apply(km.key)
+		if obj.syntheticPrefix.IsSet() {
+			km.key = obj.syntheticPrefix.Apply(km.key)
 		}
 		if obj.syntheticSuffix.IsSet() {
 			n := k.comparer.Split(km.key)

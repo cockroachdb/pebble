@@ -930,8 +930,8 @@ type externalObjWithBounds struct {
 	// any prefix or suffix transforms.
 	bounds pebble.KeyRange
 
+	syntheticPrefix sstable.SyntheticPrefix
 	syntheticSuffix sstable.SyntheticSuffix
-	prefixChange    *sstable.PrefixReplacement
 }
 
 func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
@@ -945,7 +945,7 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 		if m := objMeta.sstMeta; !m.HasPointKeys && !m.HasRangeKeys && !m.HasRangeDelKeys {
 			continue
 		}
-		if externalObjIsEmpty(t, obj.externalObjID, obj.bounds, obj.prefixChange) {
+		if externalObjIsEmpty(t, obj.externalObjID, obj.bounds, obj.syntheticPrefix) {
 			// Currently we don't support ingesting external objects that have no point
 			// or range keys in the given range. Filter out any such objects.
 			// TODO(radu): even though we don't expect this case in practice, eventually
@@ -966,7 +966,7 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 		for i, obj := range objs {
 			// Make sure the object exists and is not empty.
 			path, sstMeta := buildForIngestExternalEmulation(
-				t, o.dbID, obj.externalObjID, obj.bounds, obj.syntheticSuffix, obj.prefixChange, i,
+				t, o.dbID, obj.externalObjID, obj.bounds, obj.syntheticSuffix, obj.syntheticPrefix, i,
 			)
 			if sstMeta.HasPointKeys || sstMeta.HasRangeKeys || sstMeta.HasRangeDelKeys {
 				paths = append(paths, path)
@@ -990,9 +990,8 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 				HasRangeKey:     meta.sstMeta.HasRangeKeys,
 				SyntheticSuffix: obj.syntheticSuffix,
 			}
-			if obj.prefixChange != nil {
-				external[i].ContentPrefix = obj.prefixChange.ContentPrefix
-				external[i].SyntheticPrefix = obj.prefixChange.SyntheticPrefix
+			if obj.syntheticPrefix.IsSet() {
+				external[i].SyntheticPrefix = obj.syntheticPrefix
 			}
 		}
 		_, err = db.IngestExternalFiles(external)
@@ -1015,14 +1014,8 @@ func (o *ingestExternalFilesOp) syncObjs() objIDSlice {
 func (o *ingestExternalFilesOp) String() string {
 	strs := make([]string, len(o.objs))
 	for i, obj := range o.objs {
-		var contentPrefix, syntheticPrefix []byte
-		if obj.prefixChange != nil {
-			contentPrefix = obj.prefixChange.ContentPrefix
-			syntheticPrefix = obj.prefixChange.SyntheticPrefix
-		}
-		strs[i] = fmt.Sprintf("%s, %q /* start */, %q /* end */, %q /* syntheticSuffix */, %q /* contentPrefix */, %q /* syntheticPrefix */",
-			obj.externalObjID, obj.bounds.Start, obj.bounds.End, obj.syntheticSuffix,
-			contentPrefix, syntheticPrefix,
+		strs[i] = fmt.Sprintf("%s, %q /* start */, %q /* end */, %q /* syntheticSuffix */, %q /* syntheticPrefix */",
+			obj.externalObjID, obj.bounds.Start, obj.bounds.End, obj.syntheticSuffix, obj.syntheticPrefix,
 		)
 	}
 	return fmt.Sprintf("%s.IngestExternalFiles(%s)", o.dbID, strings.Join(strs, ", "))
@@ -1032,7 +1025,7 @@ func (o *ingestExternalFilesOp) keys() []*[]byte {
 	// If any of the objects have synthetic prefixes, we can't allow modification
 	// of external object bounds.
 	for i := range o.objs {
-		if o.objs[i].prefixChange != nil {
+		if o.objs[i].syntheticPrefix.IsSet() {
 			return nil
 		}
 	}
@@ -1788,7 +1781,7 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 		iter, rangeDelIter, rangeKeyIter,
 		true, /* uniquePrefixes */
 		nil,  /* syntheticSuffix */
-		nil,  /* prefixChange */
+		nil,  /* syntheticPrefix */
 		writable,
 		t.minFMV(),
 	)

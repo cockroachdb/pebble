@@ -1314,28 +1314,14 @@ func (g *generator) writerIngestExternalFiles() {
 		if g.cmp(start, end) == 0 {
 			end = objEnd
 		}
-		// Randomly set up prefix change.
-		var prefixChange *sstable.PrefixReplacement
+		// Randomly set up synthetic prefix.
+		var syntheticPrefix sstable.SyntheticPrefix
 		// We can only use a synthetic prefix if we don't have range dels.
 		// TODO(radu): we will want to support this at some point.
 		if !g.keyManager.objKeyMeta(id).hasRangeDels && g.rng.Intn(2) == 0 {
-			prefixChange = &sstable.PrefixReplacement{
-				SyntheticPrefix: randBytes(g.rng, 1, 5),
-			}
-			// TODO(radu): fix prefix replacement implementation or remove
-			// ContentPrefix altogether.
-			if false {
-				prefixLen := 0
-				limit := min(len(start), len(end))
-				for ; prefixLen < limit && start[prefixLen] == end[prefixLen]; prefixLen++ {
-				}
-				prefixLen = g.rng.Intn(prefixLen + 1)
-				if prefixLen > 0 {
-					prefixChange.ContentPrefix = start[:prefixLen]
-				}
-			}
-			start = prefixChange.Apply(start)
-			end = prefixChange.Apply(end)
+			syntheticPrefix = randBytes(g.rng, 1, 5)
+			start = syntheticPrefix.Apply(start)
+			end = syntheticPrefix.Apply(end)
 		}
 
 		objs[i] = externalObjWithBounds{
@@ -1344,7 +1330,7 @@ func (g *generator) writerIngestExternalFiles() {
 				Start: start,
 				End:   end,
 			},
-			prefixChange: prefixChange,
+			syntheticPrefix: syntheticPrefix,
 		}
 	}
 

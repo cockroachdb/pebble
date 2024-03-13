@@ -2444,14 +2444,14 @@ func (d *DB) runCopyCompaction(
 	// a new FileNum. This has the potential of making the block cache less
 	// effective, however.
 	newMeta := &fileMetadata{
-		Size:              inputMeta.Size,
-		CreationTime:      inputMeta.CreationTime,
-		SmallestSeqNum:    inputMeta.SmallestSeqNum,
-		LargestSeqNum:     inputMeta.LargestSeqNum,
-		Stats:             inputMeta.Stats,
-		PrefixReplacement: inputMeta.PrefixReplacement,
-		Virtual:           inputMeta.Virtual,
-		SyntheticSuffix:   inputMeta.SyntheticSuffix,
+		Size:            inputMeta.Size,
+		CreationTime:    inputMeta.CreationTime,
+		SmallestSeqNum:  inputMeta.SmallestSeqNum,
+		LargestSeqNum:   inputMeta.LargestSeqNum,
+		Stats:           inputMeta.Stats,
+		Virtual:         inputMeta.Virtual,
+		SyntheticPrefix: inputMeta.SyntheticPrefix,
+		SyntheticSuffix: inputMeta.SyntheticSuffix,
 	}
 	if inputMeta.HasPointKeys {
 		newMeta.ExtendPointKeyBounds(c.cmp, inputMeta.SmallestPointKey, inputMeta.LargestPointKey)

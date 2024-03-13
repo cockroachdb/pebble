@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
-	"github.com/cockroachdb/pebble/sstable"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -45,15 +44,12 @@ func checkRoundTrip(e0 VersionEdit) error {
 func TestVERoundTripAndAccumulate(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	m1 := (&FileMetadata{
-		FileNum:        810,
-		Size:           8090,
-		CreationTime:   809060,
-		SmallestSeqNum: 9,
-		LargestSeqNum:  11,
-		PrefixReplacement: &sstable.PrefixReplacement{
-			ContentPrefix:   []byte("before"),
-			SyntheticPrefix: []byte("after"),
-		},
+		FileNum:         810,
+		Size:            8090,
+		CreationTime:    809060,
+		SmallestSeqNum:  9,
+		LargestSeqNum:   11,
+		SyntheticPrefix: []byte("after"),
 		SyntheticSuffix: []byte("foo"),
 	}).ExtendPointKeyBounds(
 		cmp,

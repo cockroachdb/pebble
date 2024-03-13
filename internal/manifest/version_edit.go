@@ -342,8 +342,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				virtual        bool
 				backingFileNum uint64
 			}{}
-			var virtualPrefix *sstable.PrefixReplacement
-			var syntheticSuffix []byte
+			var syntheticPrefix sstable.SyntheticPrefix
+			var syntheticSuffix sstable.SyntheticSuffix
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
@@ -385,18 +385,19 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						}
 
 					case customTagPrefixRewrite:
+						// We used to have a content prefix; we no longer use it.
 						content, err := d.readBytes()
 						if err != nil {
 							return err
+						}
+						if len(content) > 0 {
+							return base.CorruptionErrorf("content prefix not supported")
 						}
 						synthetic, err := d.readBytes()
 						if err != nil {
 							return err
 						}
-						virtualPrefix = &sstable.PrefixReplacement{
-							ContentPrefix:   content,
-							SyntheticPrefix: synthetic,
-						}
+						syntheticPrefix = synthetic
 
 					case customTagSuffixRewrite:
 						if syntheticSuffix, err = d.readBytes(); err != nil {
@@ -421,7 +422,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				LargestSeqNum:       largestSeqNum,
 				MarkedForCompaction: markedForCompaction,
 				Virtual:             virtualState.virtual,
-				PrefixReplacement:   virtualPrefix,
+				SyntheticPrefix:     syntheticPrefix,
 				SyntheticSuffix:     syntheticSuffix,
 			}
 			if tag != tagNewFile5 { // no range keys present
@@ -705,10 +706,11 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(customTagVirtual)
 				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum))
 			}
-			if x.Meta.PrefixReplacement != nil {
+			if x.Meta.SyntheticPrefix != nil {
 				e.writeUvarint(customTagPrefixRewrite)
-				e.writeBytes(x.Meta.PrefixReplacement.ContentPrefix)
-				e.writeBytes(x.Meta.PrefixReplacement.SyntheticPrefix)
+				// We used to have a content prefix; we no longer use it.
+				e.writeBytes(nil)
+				e.writeBytes(x.Meta.SyntheticPrefix)
 			}
 			if x.Meta.SyntheticSuffix != nil {
 				e.writeUvarint(customTagSuffixRewrite)

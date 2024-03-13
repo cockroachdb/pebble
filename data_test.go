@@ -1294,7 +1294,7 @@ func runIngestExternalCmd(
 		usageErr := func(info interface{}) {
 			t.Helper()
 			td.Fatalf(t, "error parsing %q: %v; "+
-				"usage: obj bounds=(smallest,largest) [size=x] [prefix-replace=(from,to)] [synthetic-prefix=prefix] [synthetic-suffix=suffix]",
+				"usage: obj bounds=(smallest,largest) [size=x] [synthetic-prefix=prefix] [synthetic-suffix=suffix]",
 				line, info,
 			)
 		}
@@ -1327,11 +1327,6 @@ func runIngestExternalCmd(
 			case "size":
 				nArgs(1)
 				arg.Scan(t, 0, &ef.Size)
-
-			case "prefix-replace":
-				nArgs(2)
-				ef.ContentPrefix = []byte(arg.Vals[0])
-				ef.SyntheticPrefix = []byte(arg.Vals[1])
 
 			case "synthetic-prefix":
 				nArgs(1)

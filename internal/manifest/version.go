@@ -270,10 +270,11 @@ type FileMetadata struct {
 	// Virtual is true if the FileMetadata belongs to a virtual sstable.
 	Virtual bool
 
-	// PrefixReplacement is used for virtual files where the backing file has a
-	// different prefix on its keys than the span in which it is being exposed.
-	PrefixReplacement *sstable.PrefixReplacement
+	// SyntheticPrefix is used to prepend a prefix to all keys; used for some virtual
+	// tables.
+	SyntheticPrefix sstable.SyntheticPrefix
 
+	// SyntheticSuffix overrides all suffixes in a table; used for some virtual tables.
 	SyntheticSuffix sstable.SyntheticSuffix
 }
 
@@ -293,14 +294,10 @@ func (m *FileMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
 
 // IterTransforms returns an sstable.IterTransforms that has SyntheticSeqNum set as needed.
 func (m *FileMetadata) IterTransforms() sstable.IterTransforms {
-	var syntheticPrefix []byte
-	if m.PrefixReplacement != nil && !m.PrefixReplacement.UsePrefixReplacementIterator() {
-		syntheticPrefix = m.PrefixReplacement.SyntheticPrefix
-	}
 	return sstable.IterTransforms{
 		SyntheticSeqNum: m.SyntheticSeqNum(),
 		SyntheticSuffix: m.SyntheticSuffix,
-		SyntheticPrefix: syntheticPrefix,
+		SyntheticPrefix: m.SyntheticPrefix,
 	}
 }
 
@@ -353,13 +350,12 @@ type VirtualFileMeta struct {
 // sstable reader.
 func (m VirtualFileMeta) VirtualReaderParams(isShared bool) sstable.VirtualReaderParams {
 	return sstable.VirtualReaderParams{
-		Lower:             m.Smallest,
-		Upper:             m.Largest,
-		FileNum:           m.FileNum,
-		IsSharedIngested:  isShared && m.SyntheticSeqNum() != 0,
-		Size:              m.Size,
-		BackingSize:       m.FileBacking.Size,
-		PrefixReplacement: m.PrefixReplacement,
+		Lower:            m.Smallest,
+		Upper:            m.Largest,
+		FileNum:          m.FileNum,
+		IsSharedIngested: isShared && m.SyntheticSeqNum() != 0,
+		Size:             m.Size,
+		BackingSize:      m.FileBacking.Size,
 	}
 }
 
@@ -865,14 +861,14 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 		return base.CorruptionErrorf("file metadata FileBacking not set")
 	}
 
-	if m.PrefixReplacement != nil {
+	if m.SyntheticPrefix.IsSet() {
 		if !m.Virtual {
 			return base.CorruptionErrorf("prefix replacement rule set with non-virtual file")
 		}
-		if !bytes.HasPrefix(m.Smallest.UserKey, m.PrefixReplacement.SyntheticPrefix) {
+		if !bytes.HasPrefix(m.Smallest.UserKey, m.SyntheticPrefix) {
 			return base.CorruptionErrorf("virtual file with prefix replacement rules has smallest key with a different prefix: %s", m.Smallest.Pretty(formatKey))
 		}
-		if !bytes.HasPrefix(m.Largest.UserKey, m.PrefixReplacement.SyntheticPrefix) {
+		if !bytes.HasPrefix(m.Largest.UserKey, m.SyntheticPrefix) {
 			return base.CorruptionErrorf("virtual file with prefix replacement rules has largest key with a different prefix: %s", m.Largest.Pretty(formatKey))
 		}
 	}
