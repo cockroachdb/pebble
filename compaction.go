@@ -2414,10 +2414,12 @@ type compactStats struct {
 }
 
 // runCopyCompaction runs a copy compaction where a new FileNum is created that
-// is a byte-for-byte copy of the input file. This is used in lieu of a move
-// compaction when a file is being moved across the local/remote storage
-// boundary. It could also be used in lieu of a rewrite compaction as part of a
-// Download() call.
+// is a byte-for-byte copy of the input file or span thereof in some cases. This
+// is used in lieu of a move compaction when a file is being moved across the
+// local/remote storage boundary. It could also be used in lieu of a rewrite
+// compaction as part of a Download() call, which allows copying only a span of
+// the external file, provided the file does not contain range keys or value
+// blocks (see sstable.CopySpan).
 //
 // d.mu must be held when calling this method. The mutex will be released when
 // doing IO.
@@ -2467,6 +2469,7 @@ func (d *DB) runCopyCompaction(
 	newMeta.FileNum = d.mu.versions.getNextFileNum()
 	if objMeta.IsExternal() {
 		// external -> local/shared copy. File must be virtual.
+		// We will update this size later after we produce the new backing file.
 		newMeta.InitProviderBacking(base.DiskFileNum(newMeta.FileNum), inputMeta.FileBacking.Size)
 	} else {
 		// local -> shared copy. New file is guaranteed to not be virtual.
@@ -2501,7 +2504,11 @@ func (d *DB) runCopyCompaction(
 		if err != nil {
 			return ve, pendingOutputs, err
 		}
-		defer src.Close()
+		defer func() {
+			if src != nil {
+				src.Close()
+			}
+		}()
 
 		w, outObjMeta, err := d.objProvider.Create(
 			ctx, fileTypeTable, base.PhysicalTableDiskFileNum(newMeta.FileNum),
@@ -2517,13 +2524,23 @@ func (d *DB) runCopyCompaction(
 			isLocal: !outObjMeta.IsRemote(),
 		})
 
-		if err := objstorage.Copy(ctx, src, w, 0, uint64(src.Size())); err != nil {
-			w.Abort()
+		start, end := newMeta.Smallest, newMeta.Largest
+		if newMeta.SyntheticPrefix.IsSet() {
+			start.UserKey = newMeta.SyntheticPrefix.Invert(start.UserKey)
+			end.UserKey = newMeta.SyntheticPrefix.Invert(end.UserKey)
+		}
+
+		wrote, err := sstable.CopySpan(ctx,
+			src, d.opts.MakeReaderOptions(),
+			w, d.opts.MakeWriterOptions(c.outputLevel.level, d.FormatMajorVersion().MaxTableFormat()),
+			start, end,
+		)
+		src = nil // We passed src to CopySpan; it's responsible for closing it.
+		if err != nil {
 			return ve, pendingOutputs, err
 		}
-		if err := w.Finish(); err != nil {
-			return ve, pendingOutputs, err
-		}
+		newMeta.FileBacking.Size = wrote
+		newMeta.Size = wrote
 	} else {
 		pendingOutputs = append(pendingOutputs, compactionOutput{
 			meta:    newMeta.PhysicalMeta().FileMetadata,

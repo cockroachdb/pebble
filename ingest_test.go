@@ -1806,7 +1806,6 @@ func TestIngestExternal(t *testing.T) {
 		opts.DisableAutomaticCompactions = true
 		lel := MakeLoggingEventListener(testLogger{t})
 		opts.EventListener = &lel
-
 		reopen(t)
 	}
 	reset(t, FormatNewest)
