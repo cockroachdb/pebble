@@ -73,7 +73,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// The table cache requires the *fileMetadata to have a positive
 		// reference count. Fake a reference before we try to load the file.
 		for _, f := range meta {
-			f.Ref()
+			f.FileBacking.Ref()
 		}
 
 		// Verify the sstables do not overlap.
