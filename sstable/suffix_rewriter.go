@@ -272,6 +272,18 @@ func rewriteBlocks(
 	return nil
 }
 
+func checkWriterFilterMatchesReader(r *Reader, w *Writer) error {
+	if w.filter != nil {
+		if r.Properties.FilterPolicyName != w.filter.policyName() {
+			return errors.New("mismatched filters")
+		}
+		if was, is := r.Properties.ComparerName, w.props.ComparerName; was != is {
+			return errors.Errorf("mismatched Comparer %s vs %s, replacement requires same splitter to copy filters", was, is)
+		}
+	}
+	return nil
+}
+
 func rewriteDataBlocksToWriter(
 	r *Reader,
 	w *Writer,
@@ -286,13 +298,8 @@ func rewriteDataBlocksToWriter(
 	}
 	blocks := make([]blockWithSpan, len(data))
 
-	if w.filter != nil {
-		if r.Properties.FilterPolicyName != w.filter.policyName() {
-			return errors.New("mismatched filters")
-		}
-		if was, is := r.Properties.ComparerName, w.props.ComparerName; was != is {
-			return errors.Errorf("mismatched Comparer %s vs %s, replacement requires same splitter to copy filters", was, is)
-		}
+	if err := checkWriterFilterMatchesReader(r, w); err != nil {
+		return err
 	}
 
 	g := &sync.WaitGroup{}
