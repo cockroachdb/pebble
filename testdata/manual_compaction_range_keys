@@ -1,7 +1,7 @@
 
 # Test compaction of range keys.
 
-define target-file-sizes=(1, 1, 1, 1)
+define target-file-sizes=(1, 1, 1, 1) hide-size
 L0
   rangekey:a-c:{(#4,RANGEKEYSET,@2,foo)}
   a.SET.3:b
@@ -22,7 +22,7 @@ L3:
   000006:[a#0,SET-c#inf,RANGEKEYSET] seqnums:[0-1] points:[a#0,SET-b#0,SET] ranges:[b#1,RANGEKEYSET-c#inf,RANGEKEYSET]
   000007:[c#0,SET-c#0,SET] seqnums:[0-0] points:[c#0,SET-c#0,SET]
 
-compact a-d L0
+compact a-d L0 hide-size
 ----
 L1:
   000008:[a#4,RANGEKEYSET-c#inf,RANGEKEYSET] seqnums:[3-4] points:[a#3,SET-a#3,SET] ranges:[a#4,RANGEKEYSET-c#inf,RANGEKEYSET]
@@ -32,7 +32,7 @@ L3:
   000006:[a#0,SET-c#inf,RANGEKEYSET] seqnums:[0-1] points:[a#0,SET-b#0,SET] ranges:[b#1,RANGEKEYSET-c#inf,RANGEKEYSET]
   000007:[c#0,SET-c#0,SET] seqnums:[0-0] points:[c#0,SET-c#0,SET]
 
-compact a-d L1
+compact a-d L1 hide-size
 ----
 L2:
   000009:[a#4,RANGEKEYSET-c#inf,RANGEKEYSET] seqnums:[3-4] points:[a#3,SET-a#3,SET] ranges:[a#4,RANGEKEYSET-c#inf,RANGEKEYSET]
@@ -40,7 +40,7 @@ L3:
   000006:[a#0,SET-c#inf,RANGEKEYSET] seqnums:[0-1] points:[a#0,SET-b#0,SET] ranges:[b#1,RANGEKEYSET-c#inf,RANGEKEYSET]
   000007:[c#0,SET-c#0,SET] seqnums:[0-0] points:[c#0,SET-c#0,SET]
 
-compact a-d L2
+compact a-d L2 hide-size
 ----
 L3:
   000010:[a#4,RANGEKEYSET-b#inf,RANGEKEYSET] seqnums:[0-4] points:[a#0,SET-a#0,SET] ranges:[a#4,RANGEKEYSET-b#inf,RANGEKEYSET]

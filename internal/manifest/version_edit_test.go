@@ -506,7 +506,7 @@ func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 		output string
 	}{
 		{
-			input: `  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]`,
+			input: `  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
 		},
 		{
 			input:  `add-table: L0 1:[a#0,SET-z#0,DEL]`,
@@ -519,8 +519,8 @@ func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 			input: strings.Join([]string{
 				`  del-table:     L1 000002`,
 				`  del-table:     L3 000003`,
-				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]`,
-				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]`,
+				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
+				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:2`,
 			}, "\n"),
 		},
 	}
