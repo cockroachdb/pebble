@@ -1800,13 +1800,13 @@ func TestIngestExternal(t *testing.T) {
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"external-locator": remoteStorage,
 		})
+		opts.Experimental.DownloadViaSpaCopy = true
 		opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
 		lel := MakeLoggingEventListener(testLogger{t})
 		opts.EventListener = &lel
-
 		reopen(t)
 	}
 	reset(t, FormatNewest)
