@@ -923,10 +923,10 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 
 	if t.testOpts.useExcise {
 		err = firstError(err, t.withRetries(func() error {
-			_, err := t.getDB(o.dbID).IngestAndExcise([]string{path}, nil /* sharedSSTs */, nil /* external */, pebble.KeyRange{
+			_, err := t.getDB(o.dbID).IngestAndExcise([]string{path}, nil /* shared */, nil /* external */, pebble.KeyRange{
 				Start: o.exciseStart,
 				End:   o.exciseEnd,
-			})
+			}, false)
 			return err
 		}))
 	} else {
@@ -1988,7 +1988,7 @@ func (r *replicateOp) runSharedReplicate(
 		return
 	}
 
-	_, err = dest.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, pebble.KeyRange{Start: r.start, End: r.end})
+	_, err = dest.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, pebble.KeyRange{Start: r.start, End: r.end}, false)
 	h.Recordf("%s // %v", r, err)
 }
 

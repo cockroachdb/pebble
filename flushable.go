@@ -162,6 +162,9 @@ type ingestedFlushable struct {
 	slice manifest.LevelSlice
 	// hasRangeKeys is set on ingestedFlushable construction.
 	hasRangeKeys bool
+	// exciseSpan is populated if an excise operation should be performed during
+	// flush.
+	exciseSpan KeyRange
 }
 
 func newIngestedFlushable(
@@ -169,6 +172,7 @@ func newIngestedFlushable(
 	comparer *Comparer,
 	newIters tableNewIters,
 	newRangeKeyIters keyspanimpl.TableNewSpanIter,
+	exciseSpan KeyRange,
 ) *ingestedFlushable {
 	if invariants.Enabled {
 		for i := 1; i < len(files); i++ {
@@ -196,6 +200,7 @@ func newIngestedFlushable(
 		// slice is immutable and can be set once and used many times.
 		slice:        manifest.NewLevelSliceKeySorted(comparer.Compare, files),
 		hasRangeKeys: hasRangeKeys,
+		exciseSpan:   exciseSpan,
 	}
 
 	return ret
