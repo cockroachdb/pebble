@@ -2462,6 +2462,7 @@ func (d *DB) runCopyCompaction(
 	newMeta.FileNum = d.mu.versions.getNextFileNum()
 	if objMeta.IsExternal() {
 		// external -> local/shared copy. File must be virtual.
+		// We will update this size later after we produce the new backing file.
 		newMeta.InitProviderBacking(base.DiskFileNum(newMeta.FileNum), inputMeta.FileBacking.Size)
 	} else {
 		// local -> shared copy. New file is guaranteed to not be virtual.
@@ -2496,7 +2497,11 @@ func (d *DB) runCopyCompaction(
 		if err != nil {
 			return ve, pendingOutputs, err
 		}
-		defer src.Close()
+		defer func() {
+			if src != nil {
+				src.Close()
+			}
+		}()
 
 		w, _, err := d.objProvider.Create(
 			ctx, fileTypeTable, base.PhysicalTableDiskFileNum(newMeta.FileNum),
@@ -2509,13 +2514,23 @@ func (d *DB) runCopyCompaction(
 		}
 		pendingOutputs = append(pendingOutputs, newMeta)
 
-		if err := objstorage.Copy(ctx, src, w, 0, uint64(src.Size())); err != nil {
-			w.Abort()
+		start, end := newMeta.Smallest, newMeta.Largest
+		if newMeta.PrefixReplacement != nil {
+			start.UserKey = newMeta.PrefixReplacement.Invert(start.UserKey)
+			end.UserKey = newMeta.PrefixReplacement.Invert(end.UserKey)
+		}
+
+		wrote, err := sstable.CopySpan(ctx,
+			src, d.opts.MakeReaderOptions(),
+			w, d.opts.MakeWriterOptions(c.outputLevel.level, d.FormatMajorVersion().MaxTableFormat()),
+			start, end,
+		)
+		src = nil // We passed src to CopySpan; its responsible for closing it.
+		if err != nil {
 			return ve, pendingOutputs, err
 		}
-		if err := w.Finish(); err != nil {
-			return ve, pendingOutputs, err
-		}
+		newMeta.FileBacking.Size = wrote
+		newMeta.Size = wrote
 	} else {
 		pendingOutputs = append(pendingOutputs, newMeta.PhysicalMeta().FileMetadata)
 
