@@ -2509,29 +2509,11 @@ func (d *DB) runCopyCompaction(
 		}
 		pendingOutputs = append(pendingOutputs, newMeta)
 
-		if err := func() error {
-			size := src.Size()
-			r := src.NewReadHandle(ctx)
-			r.SetupForCompaction()
-			buf := make([]byte, 128<<10)
-			for pos := int64(0); pos < size; {
-				n := min(size-pos, int64(len(buf)))
-				if n == 0 {
-					break
-				}
-				readErr := r.ReadAt(ctx, buf[:n], pos)
-				if readErr != nil {
-					w.Abort()
-					return readErr
-				}
-				pos += n
-				if err := w.Write(buf[:n]); err != nil {
-					w.Abort()
-					return err
-				}
-			}
-			return w.Finish()
-		}(); err != nil {
+		if err := objstorage.Copy(ctx, src, w, 0, uint64(src.Size())); err != nil {
+			w.Abort()
+			return ve, pendingOutputs, err
+		}
+		if err := w.Finish(); err != nil {
 			return ve, pendingOutputs, err
 		}
 	} else {

@@ -331,3 +331,26 @@ type RemoteObjectToAttach struct {
 	// implementation).
 	Backing RemoteObjectBacking
 }
+
+// Copy copies the specified range from the input to the output.
+func Copy(ctx context.Context, in Readable, out Writable, offset, length uint64) error {
+	r := in.NewReadHandle(ctx)
+	r.SetupForCompaction()
+	buf := make([]byte, 256<<10)
+	end := offset + length
+	for offset < end {
+		n := min(end-offset, uint64(len(buf)))
+		if n == 0 {
+			break
+		}
+		readErr := r.ReadAt(ctx, buf[:n], int64(offset))
+		if readErr != nil {
+			return readErr
+		}
+		offset += n
+		if err := out.Write(buf[:n]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
