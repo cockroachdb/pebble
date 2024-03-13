@@ -1586,7 +1586,7 @@ func (w *Writer) addIndexEntrySync(
 	if shouldFlush {
 		flushableIndexBlock = w.indexBlock
 		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
-
+		w.twoLevelIndex = true
 		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
 		// flush the index block.
 		props, err = w.finishIndexBlockProps()
