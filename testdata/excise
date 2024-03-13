@@ -540,3 +540,115 @@ c: (something, .)
 c: (something, .)
 .
 .
+
+
+# Test to verify that IngestAndExcise now uses flushableIngest when directed to 
+# do so using a flag that is passed down by the caller.
+
+reset
+----
+
+batch
+set a foo
+set b bar
+----
+
+batch
+set d@6 baz
+----
+
+flush
+----
+
+compact a z
+----
+
+batch
+set d@6 something
+set g something
+----
+
+flush
+----
+
+lsm
+----
+L0.0:
+  000007:[d@6#13,SET-g#14,SET]
+L6:
+  000005:[a#10,SET-d@6#12,SET]
+
+batch
+set x something
+----
+
+file-only-snapshot s1
+a z
+----
+ok
+
+lsm
+----
+L0.0:
+  000007:[d@6#13,SET-g#14,SET]
+L6:
+  000005:[a#10,SET-d@6#12,SET]
+
+build ext7
+del d@6
+----
+
+ingest ext7
+----
+
+lsm
+----
+L0.1:
+  000008:[d@6#16,DEL-d@6#16,DEL]
+L0.0:
+  000007:[d@6#13,SET-g#14,SET]
+L6:
+  000005:[a#10,SET-d@6#12,SET]
+
+compact c e
+----
+
+lsm
+----
+L6:
+  000009:[a#0,SET-g#0,SET]
+
+build ext5
+set c something
+set b something
+set f something
+del b-e
+----
+
+ingest-and-excise ext5 excise=b-e flushable-ingest
+----
+flushable ingest
+
+lsm
+----
+L0.0:
+  000013:[x#15,SET-x#15,SET]
+L6:
+  000014(000009):[a#0,SET-a#0,SET]
+  000010:[b#17,SET-f#17,SET]
+  000015(000009):[g#0,SET-g#0,SET]
+
+iter lower=c upper=e
+last
+prev
+prev
+seek-lt dd
+prev
+prev
+----
+c: (something, .)
+.
+.
+c: (something, .)
+.
+.

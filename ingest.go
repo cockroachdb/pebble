@@ -1162,7 +1162,7 @@ func (d *DB) Ingest(paths []string) error {
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-	_, err := d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{}, nil /* external */)
+	_, err := d.ingest(paths, ingestTargetLevel, nil, KeyRange{}, false, nil)
 	return err
 }
 
@@ -1250,7 +1250,7 @@ func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{}, nil /* external */)
+	return d.ingest(paths, ingestTargetLevel, nil, KeyRange{}, false, nil)
 }
 
 // IngestExternalFiles does the same as IngestWithStats, and additionally
@@ -1268,7 +1268,7 @@ func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats,
 	if d.opts.Experimental.RemoteStorage == nil {
 		return IngestOperationStats{}, errors.New("pebble: cannot ingest external files without shared storage configured")
 	}
-	return d.ingest(nil, ingestTargetLevel, nil /* shared */, KeyRange{}, external)
+	return d.ingest(nil, ingestTargetLevel, nil, KeyRange{}, false, external)
 }
 
 // IngestAndExcise does the same as IngestWithStats, and additionally accepts a
@@ -1282,7 +1282,11 @@ func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats,
 // Panics if this DB instance was not instantiated with a remote.Storage and
 // shared sstables are present.
 func (d *DB) IngestAndExcise(
-	paths []string, shared []SharedSSTMeta, external []ExternalFile, exciseSpan KeyRange,
+	paths []string,
+	shared []SharedSSTMeta,
+	external []ExternalFile,
+	exciseSpan KeyRange,
+	sstsContainExciseTombstone bool,
 ) (IngestOperationStats, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
@@ -1305,12 +1309,12 @@ func (d *DB) IngestAndExcise(
 			v, FormatMinForSharedObjects,
 		)
 	}
-	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, external)
+	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, sstsContainExciseTombstone, external)
 }
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
 func (d *DB) newIngestedFlushableEntry(
-	meta []*fileMetadata, seqNum uint64, logNum base.DiskFileNum,
+	meta []*fileMetadata, seqNum uint64, logNum base.DiskFileNum, exciseSpan KeyRange,
 ) (*flushableEntry, error) {
 	// Update the sequence number for all of the sstables in the
 	// metadata. Writing the metadata to the manifest when the
@@ -1326,7 +1330,7 @@ func (d *DB) newIngestedFlushableEntry(
 		}
 	}
 
-	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter)
+	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan)
 
 	// NB: The logNum/seqNum are the WAL number which we're writing this entry
 	// to and the sequence number within the WAL which we'll write this entry
@@ -1356,7 +1360,9 @@ func (d *DB) newIngestedFlushableEntry(
 // we're holding both locks, the order in which we rotate the memtable or
 // recycle the WAL in this function is irrelevant as long as the correct log
 // numbers are assigned to the appropriate flushable.
-func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error {
+func (d *DB) handleIngestAsFlushable(
+	meta []*fileMetadata, seqNum uint64, exciseSpan KeyRange,
+) error {
 	b := d.NewBatch()
 	for _, m := range meta {
 		b.ingestSST(m.FileNum)
@@ -1382,7 +1388,7 @@ func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error 
 		d.mu.Lock()
 	}
 
-	entry, err := d.newIngestedFlushableEntry(meta, seqNum, logNum)
+	entry, err := d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan)
 	if err != nil {
 		return err
 	}
@@ -1411,6 +1417,7 @@ func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error 
 	d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	d.rotateMemtable(newLogNum, nextSeqNum, currMem)
 	d.updateReadStateLocked(d.opts.DebugCheck)
+	// TODO(aaditya): is this necessary? we call this already in rotateMemtable above
 	d.maybeScheduleFlush()
 	return nil
 }
@@ -1421,6 +1428,7 @@ func (d *DB) ingest(
 	targetLevelFunc ingestTargetLevelFunc,
 	shared []SharedSSTMeta,
 	exciseSpan KeyRange,
+	sstsContainExciseTombstone bool,
 	external []ExternalFile,
 ) (IngestOperationStats, error) {
 	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
@@ -1621,11 +1629,19 @@ func (d *DB) ingest(
 			mut.writerRef()
 			return
 		}
-		// The ingestion overlaps with some entry in the flushable queue.
-		if d.FormatMajorVersion() < FormatFlushableIngest ||
-			d.opts.Experimental.DisableIngestAsFlushable() ||
-			len(shared) > 0 || exciseSpan.Valid() || len(external) > 0 ||
-			(len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1) {
+
+		// The ingestion overlaps with some entry in the flushable queue. If the
+		// pre-conditions are met below, we can treat this ingestion as a flushable
+		// ingest, otherwise we wait on the memtable flush before ingestion.
+		//
+		// TODO(aaditya): We should make flushableIngest compatible with remote
+		// files.
+		hasRemoteFiles := len(shared) > 0 || len(external) > 0
+		canIngestFlushable := d.FormatMajorVersion() >= FormatFlushableIngest &&
+			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold) &&
+			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles
+
+		if !canIngestFlushable || (exciseSpan.Valid() && !sstsContainExciseTombstone) {
 			// We're not able to ingest as a flushable,
 			// so we must synchronously flush.
 			//
@@ -1657,7 +1673,7 @@ func (d *DB) ingest(
 		for i := range fileMetas {
 			fileMetas[i] = loadResult.local[i].fileMetadata
 		}
-		err = d.handleIngestAsFlushable(fileMetas, seqNum)
+		err = d.handleIngestAsFlushable(fileMetas, seqNum, exciseSpan)
 	}
 
 	var ve *versionEdit
