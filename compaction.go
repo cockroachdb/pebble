@@ -1448,17 +1448,70 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	var err error
 	var fileToSplit *fileMetadata
 	var ingestSplitFiles []ingestSplitFile
-	for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
-		suggestSplit := d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit() &&
-			d.FormatMajorVersion() >= FormatVirtualSSTables
-		level, fileToSplit, err = ingestTargetLevel(
-			d.newIters, d.tableNewRangeKeyIter, iterOpts, d.opts.Comparer,
-			c.version, baseLevel, d.mu.compact.inProgress, file.FileMetadata,
-			suggestSplit,
-		)
+	ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
+
+	updateLevelMetricsOnExcise := func(m *fileMetadata, level int, added []newFileEntry) {
+		levelMetrics := c.metrics[level]
+		if levelMetrics == nil {
+			levelMetrics = &LevelMetrics{}
+			c.metrics[level] = levelMetrics
+		}
+		levelMetrics.NumFiles--
+		levelMetrics.Size -= int64(m.Size)
+		for i := range added {
+			levelMetrics.NumFiles++
+			levelMetrics.Size += int64(added[i].Meta.Size)
+		}
+	}
+
+	suggestSplit := d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit() &&
+		d.FormatMajorVersion() >= FormatVirtualSSTables
+
+	replacedFiles := make(map[base.FileNum][]newFileEntry)
+	for _, file := range ingestFlushable.files {
+		// This file fits perfectly within the excise span, so we can slot it at L6.
+		if ingestFlushable.exciseSpan.Valid() &&
+			ingestFlushable.exciseSpan.Contains(d.cmp, file.FileMetadata.Smallest) &&
+			ingestFlushable.exciseSpan.Contains(d.cmp, file.FileMetadata.Largest) {
+			level = 6
+		} else {
+			level, fileToSplit, err = ingestTargetLevel(
+				d.newIters, d.tableNewRangeKeyIter, iterOpts, d.opts.Comparer,
+				c.version, baseLevel, d.mu.compact.inProgress, file.FileMetadata,
+				suggestSplit,
+			)
+		}
+
+		if ingestFlushable.exciseSpan.Valid() {
+			ve.DeletedFiles = map[manifest.DeletedFileEntry]*manifest.FileMetadata{}
+			// Iterate through all levels and find files that intersect with exciseSpan.
+			for level = range c.version.Levels {
+				overlaps := c.version.Overlaps(level, base.UserKeyBoundsEndExclusive(ingestFlushable.exciseSpan.Start, ingestFlushable.exciseSpan.End))
+				iter := overlaps.Iter()
+
+				for m := iter.First(); m != nil; m = iter.Next() {
+					newFiles, err := d.excise(ingestFlushable.exciseSpan, m, ve, level)
+					if err != nil {
+						return nil, err
+					}
+
+					if _, ok := ve.DeletedFiles[deletedFileEntry{
+						Level:   level,
+						FileNum: m.FileNum,
+					}]; !ok {
+						// We did not excise this file.
+						continue
+					}
+					replacedFiles[m.FileNum] = newFiles
+					updateLevelMetricsOnExcise(m, level, newFiles)
+				}
+			}
+		}
 		if err != nil {
 			return nil, err
 		}
+
+		// Add the current flushableIngest file to the version.
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: file.FileMetadata})
 		if fileToSplit != nil {
 			ingestSplitFiles = append(ingestSplitFiles, ingestSplitFile{
@@ -1476,23 +1529,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		levelMetrics.TablesIngested++
 	}
 
-	updateLevelMetricsOnExcise := func(m *fileMetadata, level int, added []newFileEntry) {
-		levelMetrics := c.metrics[level]
-		if levelMetrics == nil {
-			levelMetrics = &LevelMetrics{}
-			c.metrics[level] = levelMetrics
-		}
-		levelMetrics.NumFiles--
-		levelMetrics.Size -= int64(m.Size)
-		for i := range added {
-			levelMetrics.NumFiles++
-			levelMetrics.Size += int64(added[i].Meta.Size)
-		}
-	}
-
 	if len(ingestSplitFiles) > 0 {
-		ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
-		replacedFiles := make(map[base.FileNum][]newFileEntry)
 		if err := d.ingestSplit(ve, updateLevelMetricsOnExcise, ingestSplitFiles, replacedFiles); err != nil {
 			return nil, err
 		}

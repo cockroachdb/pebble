@@ -696,6 +696,9 @@ func TestExcise(t *testing.T) {
 
 		case "ingest-and-excise":
 			flushed = false
+			d.mu.Lock()
+			prevFlushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
+			d.mu.Unlock()
 			if err := runIngestAndExciseCmd(td, d, mem); err != nil {
 				return err.Error()
 			}
@@ -704,8 +707,12 @@ func TestExcise(t *testing.T) {
 			for d.mu.compact.flushing {
 				d.mu.compact.cond.Wait()
 			}
+			flushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
 			d.mu.Unlock()
 			if flushed {
+				if prevFlushableIngests < flushableIngests {
+					return "flushable ingest"
+				}
 				return "memtable flushed"
 			}
 			return ""
@@ -1091,7 +1098,7 @@ func testIngestSharedImpl(
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey})
+			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1320,7 +1327,7 @@ func TestSimpleIngestShared(t *testing.T) {
 		Level:            6,
 		Size:             uint64(size + 5),
 	}
-	_, err = d.IngestAndExcise([]string{}, []SharedSSTMeta{sharedSSTMeta}, nil /* external */, KeyRange{Start: []byte("d"), End: []byte("ee")})
+	_, err = d.IngestAndExcise([]string{}, []SharedSSTMeta{sharedSSTMeta}, nil /* external */, KeyRange{Start: []byte("d"), End: []byte("ee")}, false)
 	require.NoError(t, err)
 
 	// TODO(bilal): Once reading of shared sstables is in, verify that the values
@@ -1582,7 +1589,7 @@ func TestConcurrentExcise(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey})
+			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1991,7 +1998,7 @@ func TestIngestExternal(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
-			_, err = to.IngestAndExcise([]string{sstPath}, nil /* sharedSSTs */, externalFiles, KeyRange{Start: startKey, End: endKey})
+			_, err = to.IngestAndExcise([]string{sstPath}, nil /* shared */, externalFiles, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d external SSTs", len(externalFiles))
 
