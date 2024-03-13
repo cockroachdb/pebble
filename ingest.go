@@ -1101,7 +1101,7 @@ func (d *DB) Ingest(paths []string) error {
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-	_, err := d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{}, nil /* external */)
+	_, err := d.ingest(paths, ingestTargetLevel, nil, KeyRange{}, false, nil)
 	return err
 }
 
@@ -1188,7 +1188,7 @@ func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{}, nil /* external */)
+	return d.ingest(paths, ingestTargetLevel, nil, KeyRange{}, false, nil)
 }
 
 // IngestExternalFiles does the same as IngestWithStats, and additionally
@@ -1206,7 +1206,7 @@ func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats,
 	if d.opts.Experimental.RemoteStorage == nil {
 		return IngestOperationStats{}, errors.New("pebble: cannot ingest external files without shared storage configured")
 	}
-	return d.ingest(nil, ingestTargetLevel, nil /* shared */, KeyRange{}, external)
+	return d.ingest(nil, ingestTargetLevel, nil, KeyRange{}, false, external)
 }
 
 // IngestAndExcise does the same as IngestWithStats, and additionally accepts a
@@ -1220,7 +1220,11 @@ func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats,
 // Panics if this DB instance was not instantiated with a remote.Storage and
 // shared sstables are present.
 func (d *DB) IngestAndExcise(
-	paths []string, shared []SharedSSTMeta, external []ExternalFile, exciseSpan KeyRange,
+	paths []string,
+	shared []SharedSSTMeta,
+	external []ExternalFile,
+	exciseSpan KeyRange,
+	doFlushableIngest bool,
 ) (IngestOperationStats, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
@@ -1243,12 +1247,12 @@ func (d *DB) IngestAndExcise(
 			v, FormatMinForSharedObjects,
 		)
 	}
-	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, external)
+	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, doFlushableIngest, external)
 }
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
 func (d *DB) newIngestedFlushableEntry(
-	meta []*fileMetadata, seqNum uint64, logNum base.DiskFileNum,
+	meta []*fileMetadata, seqNum uint64, logNum base.DiskFileNum, exciseSpan KeyRange,
 ) (*flushableEntry, error) {
 	// Update the sequence number for all of the sstables in the
 	// metadata. Writing the metadata to the manifest when the
@@ -1264,7 +1268,7 @@ func (d *DB) newIngestedFlushableEntry(
 		}
 	}
 
-	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter)
+	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan)
 
 	// NB: The logNum/seqNum are the WAL number which we're writing this entry
 	// to and the sequence number within the WAL which we'll write this entry
@@ -1294,7 +1298,9 @@ func (d *DB) newIngestedFlushableEntry(
 // we're holding both locks, the order in which we rotate the memtable or
 // recycle the WAL in this function is irrelevant as long as the correct log
 // numbers are assigned to the appropriate flushable.
-func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error {
+func (d *DB) handleIngestAsFlushable(
+	meta []*fileMetadata, seqNum uint64, exciseSpan KeyRange,
+) error {
 	b := d.NewBatch()
 	for _, m := range meta {
 		b.ingestSST(m.FileNum)
@@ -1320,7 +1326,7 @@ func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error 
 		d.mu.Lock()
 	}
 
-	entry, err := d.newIngestedFlushableEntry(meta, seqNum, logNum)
+	entry, err := d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan)
 	if err != nil {
 		return err
 	}
@@ -1359,6 +1365,7 @@ func (d *DB) ingest(
 	targetLevelFunc ingestTargetLevelFunc,
 	shared []SharedSSTMeta,
 	exciseSpan KeyRange,
+	doFlushableIngest bool,
 	external []ExternalFile,
 ) (IngestOperationStats, error) {
 	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
@@ -1555,7 +1562,7 @@ func (d *DB) ingest(
 		}
 		// The ingestion overlaps with some entry in the flushable queue.
 		if d.FormatMajorVersion() < FormatFlushableIngest ||
-			d.opts.Experimental.DisableIngestAsFlushable() ||
+			d.opts.Experimental.DisableIngestAsFlushable() || !doFlushableIngest ||
 			len(shared) > 0 || exciseSpan.Valid() || len(external) > 0 ||
 			(len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1) {
 			// We're not able to ingest as a flushable,
@@ -1589,7 +1596,7 @@ func (d *DB) ingest(
 		for i := range fileMetas {
 			fileMetas[i] = loadResult.local[i].fileMetadata
 		}
-		err = d.handleIngestAsFlushable(fileMetas, seqNum)
+		err = d.handleIngestAsFlushable(fileMetas, seqNum, exciseSpan)
 	}
 
 	var ve *versionEdit
@@ -2420,6 +2427,7 @@ func (d *DB) ingestApply(
 		}
 	}
 
+	// TODO(aaditya): should this metric also be incremented for flushableIngests?
 	d.mu.versions.metrics.Ingest.Count++
 
 	d.updateReadStateLocked(d.opts.DebugCheck)

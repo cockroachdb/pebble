@@ -933,9 +933,7 @@ func (d *DB) replayWAL(
 					panic("pebble: couldn't load all files in WAL entry.")
 				}
 
-				entry, err = d.newIngestedFlushableEntry(
-					meta, seqNum, base.DiskFileNum(ll.Num),
-				)
+				entry, err = d.newIngestedFlushableEntry(meta, seqNum, base.DiskFileNum(ll.Num), KeyRange{})
 				if err != nil {
 					return nil, 0, err
 				}

@@ -1090,7 +1090,7 @@ func testIngestSharedImpl(
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey})
+			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1318,7 +1318,7 @@ func TestSimpleIngestShared(t *testing.T) {
 		Level:            6,
 		Size:             uint64(size + 5),
 	}
-	_, err = d.IngestAndExcise([]string{}, []SharedSSTMeta{sharedSSTMeta}, nil /* external */, KeyRange{Start: []byte("d"), End: []byte("ee")})
+	_, err = d.IngestAndExcise([]string{}, []SharedSSTMeta{sharedSSTMeta}, nil, KeyRange{Start: []byte("d"), End: []byte("ee")}, false)
 	require.NoError(t, err)
 
 	// TODO(bilal): Once reading of shared sstables is in, verify that the values
@@ -1579,7 +1579,7 @@ func TestConcurrentExcise(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey})
+			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1980,7 +1980,7 @@ func TestIngestExternal(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
-			_, err = to.IngestAndExcise([]string{sstPath}, nil /* sharedSSTs */, externalFiles, KeyRange{Start: startKey, End: endKey})
+			_, err = to.IngestAndExcise([]string{sstPath}, nil, externalFiles, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d external SSTs", len(externalFiles))
 
