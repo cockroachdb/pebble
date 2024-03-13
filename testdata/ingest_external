@@ -291,16 +291,20 @@ x: (bar, .)
 reset
 ----
 
-build-remote f7
+build-remote f7 block-size=5
+set b ignored
 set c foo
 set d haha
 set e something
+set x ignored
 ----
 
-build-remote f8
+build-remote f8 block-size=100
+set a ignored
 set g foo
 set h foo
 set i foo
+set z ignored
 ----
 
 ingest-external
@@ -323,21 +327,21 @@ gg: (foo, .)
 gh: (foo, .)
 gi: (foo, .)
 
-lsm
+lsm verbose
 ----
 L6:
-  000004(000004):[gc#10,DELSIZED-gf#inf,RANGEDEL]
-  000005(000005):[gg#11,DELSIZED-gj#inf,RANGEDEL]
+  000004(000004):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:979
+  000005(000005):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:660
 
 download g h via-backing-file-download
 ----
 ok
 
-lsm
+lsm verbose
 ----
 L6:
-  000006(000006):[gc#10,DELSIZED-gf#inf,RANGEDEL]
-  000007(000007):[gg#11,DELSIZED-gj#inf,RANGEDEL]
+  000006(000006):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:758
+  000007(000007):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:660
 
 reopen
 ----
@@ -362,6 +366,8 @@ ge: (something, .)
 gg: (foo, .)
 gh: (foo, .)
 gi: (foo, .)
+
+
 
 # Test seeks with keys outside of the synthetic prefix range.
 reset
