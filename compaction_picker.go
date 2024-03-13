@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -575,12 +576,19 @@ func anyTablesCompacting(inputs manifest.LevelSlice) bool {
 	return false
 }
 
-func newCompactionPicker(
-	v *version, opts *Options, inProgressCompactions []compactionInfo,
-) compactionPicker {
+// newCompactionPickerByScore creates a compactionPickerByScore associated with
+// the newest version. The picker is used under logLock (until a new version is
+// installed).
+func newCompactionPickerByScore(
+	v *version,
+	virtualBackings *manifest.VirtualBackings,
+	opts *Options,
+	inProgressCompactions []compactionInfo,
+) *compactionPickerByScore {
 	p := &compactionPickerByScore{
-		opts: opts,
-		vers: v,
+		opts:            opts,
+		vers:            v,
+		virtualBackings: virtualBackings,
 	}
 	p.initLevelMaxBytes(inProgressCompactions)
 	return p
@@ -680,8 +688,9 @@ func totalCompensatedSize(iter manifest.LevelIterator) uint64 {
 // compaction picker is associated with a single version. A new compaction
 // picker is created and initialized every time a new version is installed.
 type compactionPickerByScore struct {
-	opts *Options
-	vers *version
+	opts            *Options
+	vers            *version
+	virtualBackings *manifest.VirtualBackings
 	// The level to target for L0 compactions. Levels L1 to baseLevel must be
 	// empty.
 	baseLevel int
@@ -1027,7 +1036,11 @@ func calculateL0UncompensatedScore(
 // function is linear with respect to the number of files in `level` and
 // `outputLevel`.
 func pickCompactionSeedFile(
-	vers *version, opts *Options, level, outputLevel int, earliestSnapshotSeqNum uint64,
+	vers *version,
+	virtualBackings *manifest.VirtualBackings,
+	opts *Options,
+	level, outputLevel int,
+	earliestSnapshotSeqNum uint64,
 ) (manifest.LevelFile, bool) {
 	// Select the file within the level to compact. We want to minimize write
 	// amplification, but also ensure that (a) deletes are propagated to the
@@ -1132,7 +1145,7 @@ func pickCompactionSeedFile(
 			continue
 		}
 
-		compSz := compensatedSize(f) + f.ResponsibleForGarbageBytes()
+		compSz := compensatedSize(f) + responsibleForGarbageBytes(virtualBackings, f)
 		scaledRatio := overlappingBytes * 1024 / compSz
 		if scaledRatio < smallestRatio {
 			smallestRatio = scaledRatio
@@ -1140,6 +1153,36 @@ func pickCompactionSeedFile(
 		}
 	}
 	return file, file.FileMetadata != nil
+}
+
+// responsibleForGarbageBytes returns the amount of garbage in the backing
+// sstable that we consider the responsibility of this virtual sstable. For
+// non-virtual sstables, this is of course 0. For virtual sstables, we equally
+// distribute the responsibility of the garbage across all the virtual
+// sstables that are referencing the same backing sstable. One could
+// alternatively distribute this in proportion to the virtual sst sizes, but
+// it isn't clear that more sophisticated heuristics are worth it, given that
+// the garbage cannot be reclaimed until all the referencing virtual sstables
+// are compacted.
+func responsibleForGarbageBytes(virtualBackings *manifest.VirtualBackings, m *fileMetadata) uint64 {
+	if !m.Virtual {
+		return 0
+	}
+	useCount, virtualizedSize := virtualBackings.Usage(m.FileBacking.DiskFileNum)
+	// Since virtualizedSize is the sum of the estimated size of all virtual
+	// ssts, we allow for the possibility that virtualizedSize could exceed
+	// m.FileBacking.Size.
+	totalGarbage := int64(m.FileBacking.Size) - int64(virtualizedSize)
+	if totalGarbage <= 0 {
+		return 0
+	}
+	if useCount == 0 {
+		// This cannot happen if m exists in the latest version. The call to
+		// ResponsibleForGarbageBytes during compaction picking ensures that m
+		// exists in the latest version by holding versionSet.logLock.
+		panic(errors.AssertionFailedf("%s has zero useCount", m.String()))
+	}
+	return uint64(totalGarbage) / uint64(useCount)
 }
 
 // pickAuto picks the best compaction, if any.
@@ -1255,7 +1298,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 
 		// info.level > 0
 		var ok bool
-		info.file, ok = pickCompactionSeedFile(p.vers, p.opts, info.level, info.outputLevel, env.earliestSnapshotSeqNum)
+		info.file, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, p.opts, info.level, info.outputLevel, env.earliestSnapshotSeqNum)
 		if !ok {
 			continue
 		}

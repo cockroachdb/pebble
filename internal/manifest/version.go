@@ -390,35 +390,17 @@ func (m *FileMetadata) VirtualMeta() VirtualFileMeta {
 //
 // See the comment above the FileMetadata type for sstable terminology.
 type FileBacking struct {
+	DiskFileNum base.DiskFileNum
+	Size        uint64
+
 	// Reference count for the backing file, used to determine when a backing file
 	// is obsolete and can be removed.
 	//
 	// The reference count is at least the number of distinct tables that use this
 	// backing across all versions that have a non-zero reference count. The tables
-	// in each version are maintained in a copy-on-write B-tree and each node
-	// takes a reference on the respective backings.
+	// in each version are maintained in a copy-on-write B-tree and each B-tree node
+	// keeps a reference on the respective backings.
 	refs atomic.Int32
-	// latestVersionRefs are the references to the FileBacking in the
-	// latest version. This reference can be through a single physical
-	// sstable in the latest version, or one or more virtual sstables in the
-	// latest version.
-	//
-	// INVARIANT: latestVersionRefs <= refs.
-	latestVersionRefs atomic.Int32
-	// VirtualizedSize is set iff the backing sst is only referred to by
-	// virtual ssts in the latest version. VirtualizedSize is the sum of the
-	// virtual sstable sizes of all of the virtual sstables in the latest
-	// version which are backed by the physical sstable. When a virtual
-	// sstable is removed from the latest version, we will decrement the
-	// VirtualizedSize. During compaction picking, we compensate a
-	// virtual sstable file size by
-	// (FileBacking.Size - FileBacking.VirtualizedSize) / latestVersionRefs.
-	// The intuition is that if FileBacking.Size - FileBacking.VirtualizedSize
-	// is high, then the space amplification due to virtual sstables is
-	// high, and we should pick the virtual sstable with a higher priority.
-	VirtualizedSize atomic.Uint64
-	DiskFileNum     base.DiskFileNum
-	Size            uint64
 }
 
 // MustHaveRefs asserts that the backing has a positive refcount.
@@ -496,68 +478,6 @@ func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
 	if m.Size == 0 {
 		panic("pebble: virtual sstable size must be set upon creation")
 	}
-}
-
-// LatestRef increments the latest ref count associated with the backing
-// sstable.
-func (m *FileMetadata) LatestRef() {
-	m.FileBacking.latestVersionRefs.Add(1)
-
-	if m.Virtual {
-		m.FileBacking.VirtualizedSize.Add(m.Size)
-	}
-}
-
-// LatestUnref decrements the latest ref count associated with the backing
-// sstable and returns the new refcount.
-func (m *FileMetadata) LatestUnref() int32 {
-	if m.Virtual {
-		m.FileBacking.VirtualizedSize.Add(-m.Size)
-	}
-
-	v := m.FileBacking.latestVersionRefs.Add(-1)
-	if invariants.Enabled && v < 0 {
-		panic("pebble: invalid FileMetadata latest refcounting")
-	}
-	return v
-}
-
-// LatestRefs returns the latest ref count associated with the backing sstable.
-func (m *FileMetadata) LatestRefs() int32 {
-	return m.FileBacking.latestVersionRefs.Load()
-}
-
-// ResponsibleForGarbageBytes returns the amount of garbage in the backing
-// sstable that we consider the responsibility of this virtual sstable. For
-// non-virtual sstables, this is of course 0. For virtual sstables, we equally
-// distribute the responsibility of the garbage across all the virtual
-// sstables that are referencing the same backing sstable. One could
-// alternatively distribute this in proportion to the virtual sst sizes, but
-// it isn't clear that more sophisticated heuristics are worth it, given that
-// the garbage cannot be reclaimed until all the referencing virtual sstables
-// are compacted.
-//
-// REQUIRES: m exists in the latest version.
-func (m *FileMetadata) ResponsibleForGarbageBytes() uint64 {
-	if !m.Virtual {
-		return 0
-	}
-	virtualizedSize := m.FileBacking.VirtualizedSize.Load()
-	// Since virtualizedSize is the sum of the estimated size of all virtual
-	// ssts, we allow for the possibility that virtualizedSize could exceed
-	// m.FileBacking.Size.
-	totalGarbage := int64(m.FileBacking.Size) - int64(virtualizedSize)
-	if totalGarbage <= 0 {
-		return 0
-	}
-	latestRefs := m.LatestRefs()
-	if latestRefs == 0 {
-		// This cannot happen if m exists in the latest version. The call to
-		// ResponsibleForGarbageBytes during compaction picking ensures that m
-		// exists in the latest version by holding versionSet.logLock.
-		panic(errors.AssertionFailedf("%s has no LatestRefs", m.String()))
-	}
-	return uint64(totalGarbage) / uint64(latestRefs)
 }
 
 // SetCompactionState transitions this file's compaction state to the given
