@@ -212,11 +212,11 @@ L6  	385KB  -
 lsm verbose
 ----
 L5:
-  000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET]
-  000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET]
+  000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET] size:[525021]
+  000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET] size:[131670]
 L6:
-  000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET]
-  000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET]
+  000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET] size:[262869]
+  000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET] size:[131670]
 
 # Attempting to schedule a compaction should begin a L5->L6 compaction.
 

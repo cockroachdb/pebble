@@ -731,6 +731,9 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 		fmt.Fprintf(&b, " ranges:[%s-%s]",
 			m.SmallestRangeKey.Pretty(format), m.LargestRangeKey.Pretty(format))
 	}
+	if m.Size != 0 {
+		fmt.Fprintf(&b, " size:[%d]", m.Size)
+	}
 	return b.String()
 }
 
@@ -778,6 +781,9 @@ func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 			p.Expect("-")
 			m.LargestRangeKey = p.InternalKey()
 			m.HasRangeKeys = true
+
+		case "size":
+			m.Size = p.Uint64()
 
 		default:
 			p.Errf("unknown field %q", field)
