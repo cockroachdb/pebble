@@ -731,6 +731,9 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 		fmt.Fprintf(&b, " ranges:[%s-%s]",
 			m.SmallestRangeKey.Pretty(format), m.LargestRangeKey.Pretty(format))
 	}
+	if m.Size != 0 {
+		fmt.Fprintf(&b, " size:%d", m.Size)
+	}
 	return b.String()
 }
 
@@ -760,29 +763,37 @@ func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 
 	for !p.Done() {
 		field := p.Next()
-		p.Expect(":", "[")
+		p.Expect(":")
 		switch field {
 		case "seqnums":
+			p.Expect("[")
 			m.SmallestSeqNum = p.Uint64()
 			p.Expect("-")
 			m.LargestSeqNum = p.Uint64()
+			p.Expect("]")
 
 		case "points":
+			p.Expect("[")
 			m.SmallestPointKey = p.InternalKey()
 			p.Expect("-")
 			m.LargestPointKey = p.InternalKey()
 			m.HasPointKeys = true
+			p.Expect("]")
 
 		case "ranges":
+			p.Expect("[")
 			m.SmallestRangeKey = p.InternalKey()
 			p.Expect("-")
 			m.LargestRangeKey = p.InternalKey()
 			m.HasRangeKeys = true
+			p.Expect("]")
+
+		case "size":
+			m.Size = p.Uint64()
 
 		default:
 			p.Errf("unknown field %q", field)
 		}
-		p.Expect("]")
 	}
 
 	// By default, when the parser sees just the overall bounds, we set the point

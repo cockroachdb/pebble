@@ -1273,6 +1273,10 @@ func TestManualCompaction(t *testing.T) {
 					re := regexp.MustCompile(`([0-9]*):\[`)
 					s = re.ReplaceAllString(s, "[")
 				}
+				if td.HasArg("hide-size") {
+					re := regexp.MustCompile(` size:([0-9]*)`)
+					s = re.ReplaceAllString(s, "")
+				}
 				return s
 
 			case "define":
@@ -1302,6 +1306,10 @@ func TestManualCompaction(t *testing.T) {
 				s := d.mu.versions.currentVersion().String()
 				if verbose {
 					s = d.mu.versions.currentVersion().DebugString()
+				}
+				if td.HasArg("hide-size") {
+					re := regexp.MustCompile(` size:([0-9]*)`)
+					s = re.ReplaceAllString(s, "")
 				}
 				return s
 
