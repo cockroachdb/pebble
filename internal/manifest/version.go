@@ -400,6 +400,9 @@ type FileBacking struct {
 	// backing across all versions that have a non-zero reference count. The tables
 	// in each version are maintained in a copy-on-write B-tree and each B-tree node
 	// keeps a reference on the respective backings.
+	//
+	// In addition, a reference count is taken for every backing in the latest
+	// version's VirtualBackings (necessary to support Protect/Unprotect).
 	refs atomic.Int32
 }
 

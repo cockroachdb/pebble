@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/rand"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -115,13 +116,26 @@ func TestVersionSet(t *testing.T) {
 			if err != nil {
 				td.Fatalf(t, "%v", err)
 			}
+			// Show the edit, so that we can see the fields populated by Apply. We
+			// zero out the next file number because it is not deterministic (because
+			// of the randomized forceRotation).
+			ve.NextFileNum = 0
+			fmt.Fprintf(&buf, "applied:\n%s", ve.String())
 
-		case "ref":
+		case "protect-backing":
+			n, _ := strconv.Atoi(td.CmdArgs[0].String())
+			vs.virtualBackings.Protect(base.DiskFileNum(n))
+
+		case "unprotect-backing":
+			n, _ := strconv.Atoi(td.CmdArgs[0].String())
+			vs.virtualBackings.Unprotect(base.DiskFileNum(n))
+
+		case "ref-version":
 			name := td.CmdArgs[0].String()
 			refs[name] = vs.currentVersion()
 			refs[name].Ref()
 
-		case "unref":
+		case "unref-version":
 			name := td.CmdArgs[0].String()
 			refs[name].Unref()
 
@@ -161,7 +175,12 @@ func TestVersionSet(t *testing.T) {
 			td.Fatalf(t, "unknown command: %s", td.Cmd)
 		}
 
-		buf.WriteString(vs.currentVersion().DebugString())
+		fmt.Fprintf(&buf, "current version:\n")
+		for _, l := range strings.Split(vs.currentVersion().DebugString(), "\n") {
+			if l != "" {
+				fmt.Fprintf(&buf, "  %s\n", l)
+			}
+		}
 		buf.WriteString(vs.virtualBackings.String())
 		if len(vs.zombieTables) == 0 {
 			buf.WriteString("no zombie tables\n")

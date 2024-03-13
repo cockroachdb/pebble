@@ -177,6 +177,15 @@ func (bv *VirtualBackings) Unused() []*FileBacking {
 	return res
 }
 
+// Get returns the backing with the given DiskFileNum, if it is in the set.
+func (bv *VirtualBackings) Get(n base.DiskFileNum) (_ *FileBacking, ok bool) {
+	v, ok := bv.m[n]
+	if ok {
+		return v.backing, true
+	}
+	return nil, false
+}
+
 // ForEach calls fn on each backing, in an unspecified order.
 func (bv *VirtualBackings) ForEach(fn func(backing *FileBacking)) {
 	for _, v := range bv.m {
