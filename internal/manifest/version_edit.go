@@ -939,12 +939,11 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 	return nil
 }
 
-// Apply applies the delta b to the current version to produce a new
-// version. The new version is consistent with respect to the comparer cmp.
+// Apply applies the delta b to the current version to produce a new version.
+// The new version is consistent with respect to the comparer.
 //
 // Apply updates the backing refcounts (Ref/Unref) as files are installed into
-// the levels. It does not update the "latest" refcounts
-// (LatestRef/LatestUnref).
+// the levels.
 //
 // curr may be nil, which is equivalent to a pointer to a zero version.
 func (b *BulkVersionEdit) Apply(

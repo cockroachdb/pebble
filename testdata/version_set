@@ -1,0 +1,138 @@
+apply
+  add-table: L2 000001:[a#1,SET-c#1,SET]
+  add-table: L2 000002:[e#1,SET-h#1,SET]
+----
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+  000002:[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET]
+no virtual backings
+no zombie tables
+no obsolete tables
+
+reopen
+----
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+  000002:[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET]
+no virtual backings
+no zombie tables
+no obsolete tables
+
+# Convert 000002 to a virtual table.
+apply
+  del-table:   L2 000002
+  add-table:   L2 000003(000002):[e#1,SET-h#1,SET]
+  add-backing: 000002
+----
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+  000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET]
+1 virtual backings, total size 2000:
+  000002:  size=2000  useCount=1  virtualizedSize=300
+no zombie tables
+no obsolete tables
+
+# Add another virtual table.
+apply
+  add-table:   L2 000004(000002):[i#1,SET-k#1,SET]
+----
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+  000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET]
+  000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET]
+1 virtual backings, total size 2000:
+  000002:  size=2000  useCount=2  virtualizedSize=700
+no zombie tables
+no obsolete tables
+
+# Move a virtual table between levels.
+apply
+  del-table:   L2 000003
+  add-table:   L3 000003(000002):[e#1,SET-h#1,SET]
+----
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+  000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET]
+L3:
+  000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET]
+1 virtual backings, total size 2000:
+  000002:  size=2000  useCount=2  virtualizedSize=700
+no zombie tables
+no obsolete tables
+
+# Remove a virtual table.
+apply
+  del-table:   L3 000003
+----
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+  000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET]
+1 virtual backings, total size 2000:
+  000002:  size=2000  useCount=1  virtualizedSize=400
+no zombie tables
+no obsolete tables
+
+reopen
+----
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+  000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET]
+1 virtual backings, total size 2000:
+  000002:  size=2000  useCount=1  virtualizedSize=400
+no zombie tables
+no obsolete tables
+
+# Remove the last virtual table. This should automatically remove the last backing.
+apply
+  del-table:   L2 000004
+----
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+no virtual backings
+zombie tables: 000002
+obsolete tables: 000002
+
+# Add a virtual table with a new backing (like an ingestion would).
+apply
+  add-table:   L1 000005(000010):[u#1,SET-v#1,SET]
+  add-backing: 000010
+----
+L1:
+  000005(000010):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET]
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+1 virtual backings, total size 10000:
+  000010:  size=10000  useCount=1  virtualizedSize=500
+zombie tables: 000002
+obsolete tables: 000002
+
+ref r1
+----
+L1:
+  000005(000010):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET]
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+1 virtual backings, total size 10000:
+  000010:  size=10000  useCount=1  virtualizedSize=500
+zombie tables: 000002
+obsolete tables: 000002
+
+# Delete a table and backing; but we have a ref on the previous version so the
+# backing should not become obsolete.
+apply
+  del-table:   L1 000005
+----
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+no virtual backings
+zombie tables: 000002 000010
+obsolete tables: 000002
+
+# The backing is now obsolete.
+unref r1
+----
+L2:
+  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET]
+no virtual backings
+zombie tables: 000002 000010
+obsolete tables: 000002 000010

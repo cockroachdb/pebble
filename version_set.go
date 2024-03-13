@@ -84,15 +84,26 @@ type versionSet struct {
 	// still referenced by an inuse iterator.
 	zombieTables map[base.DiskFileNum]uint64 // filenum -> size
 
-	// virtualBackings contains the FileBackings which support virtual sstables in
-	// the latest version. Once the file backing is backing no virtual sstables in
-	// the latest version, it is removed from this map and the corresponding state
-	// is added to the zombieTables map. Note that we don't keep track of file
-	// backings which support a virtual sstable which is not in the latest
-	// version.
+	// virtualBackings contains information about the FileBackings which support
+	// virtual sstables in the latest version. It is mainly used to determine when
+	// a backing is no longer in use by the tables in the latest version; this is
+	// not a trivial problem because compactions and other operations can happen
+	// in parallel (and they can finish in unpredictable order).
 	//
-	// virtualBackings is modified under DB.mu and the log lock.
-	virtualBackings manifest.FileBackings
+	// This mechanism is complementary to the backing Ref/Unref mechanism, which
+	// determines when a backing is no longer used by *any* live version and can
+	// be removed.
+	//
+	// In principle this should have been a copy-on-write structure, with each
+	// Version having its own record of its virtual backings (similar to the
+	// B-tree that holds the tables). However, in practice we only need it for the
+	// latest version, so we use a simpler structure and store it in the
+	// versionSet instead.
+	//
+	// virtualBackings is modified under DB.mu and the log lock. If it is accessed
+	// under DB.mu and a version update is in progress, it reflects the state of
+	// the next version.
+	virtualBackings manifest.VirtualBackings
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
@@ -133,7 +144,7 @@ func (vs *versionSet) init(
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = make(map[base.DiskFileNum]uint64)
-	vs.virtualBackings = manifest.FileBackings{}
+	vs.virtualBackings = manifest.MakeVirtualBackings()
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
 	vs.getFormatMajorVersion = getFMV
@@ -153,7 +164,7 @@ func (vs *versionSet) create(
 	vs.append(newVersion)
 	var err error
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
+	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil)
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextDiskFileNum()
@@ -294,7 +305,9 @@ func (vs *versionSet) load(
 
 	for _, addedLevel := range bve.Added {
 		for _, m := range addedLevel {
-			m.LatestRef()
+			if m.Virtual {
+				vs.virtualBackings.AddTable(m)
+			}
 		}
 	}
 
@@ -321,7 +334,7 @@ func (vs *versionSet) load(
 		l.Size = int64(files.SizeSum())
 	}
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
+	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil)
 	return nil
 }
 
@@ -366,6 +379,18 @@ func (vs *versionSet) logUnlock() {
 
 // logAndApply logs the version edit to the manifest, applies the version edit
 // to the current version, and installs the new version.
+//
+// logAndApply fills in the following fields of the VersionEdit: NextFileNum,
+// LastSeqNum, RemovedBackingTables. The removed backing tables are those
+// backings that are no longer used (in the new version) after applying the edit
+// (as per vs.virtualBackings). Other than these fields, the VersionEdit must be
+// complete.
+//
+// New table backing references (FileBacking.Ref) are taken as part of applying
+// the version edit. The state of the virtual backings (vs.virtualBackings) is
+// updated before logging to the manifest and installing the latest version;
+// this is ok because any failure in those steps is fatal.
+// TODO(radu): remove the error return.
 //
 // DB.mu must be held when calling this method and will be released temporarily
 // while performing file I/O. Requires that the manifest is locked for writing
@@ -485,30 +510,8 @@ func (vs *versionSet) logAndApply(
 	minUnflushedLogNum := vs.minUnflushedLogNum
 	nextFileNum := vs.nextFileNum
 
-	// Update backing refcounts and populate RemovedBackingTables.
-	var zombies map[base.DiskFileNum]uint64
-	for _, b := range ve.CreatedBackingTables {
-		vs.virtualBackings.Add(b)
-	}
-	for _, nf := range ve.NewFiles {
-		nf.Meta.LatestRef()
-	}
-	for _, m := range ve.DeletedFiles {
-		if m.LatestUnref() == 0 {
-			n := m.FileBacking.DiskFileNum
-			if zombies == nil {
-				zombies = make(map[base.DiskFileNum]uint64)
-			}
-			zombies[n] = m.FileBacking.Size
-			if m.Virtual {
-				// This backing was backing some virtual sstable in the latest version,
-				// but is now a zombie. We add RemovedBackingTables entries for
-				// these, before the version edit is written to disk.
-				vs.virtualBackings.Remove(n)
-				ve.RemovedBackingTables = append(ve.RemovedBackingTables, n)
-			}
-		}
-	}
+	// Update backing metadata and populate RemovedBackingTables.
+	zombies := getZombiesAndUpdateVirtualBackings(ve, &vs.virtualBackings)
 
 	if err := func() error {
 		vs.mu.Unlock()
@@ -650,11 +653,73 @@ func (vs *versionSet) logAndApply(
 	}
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress)
+	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, inProgress)
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}
 	return nil
+}
+
+// getZombiesAndUpdateVirtualBackings updates the virtual backings with the
+// changes in the versionEdit, populates ve.RemovedBackingTables, and returns
+// all backings (physical and virtual) that will no longer be needed when we
+// apply ve.
+func getZombiesAndUpdateVirtualBackings(
+	ve *versionEdit, virtualBackings *manifest.VirtualBackings,
+) map[base.DiskFileNum]uint64 {
+	var zombies map[base.DiskFileNum]uint64
+
+	// We deal with physical and virtual tables separately.
+
+	// Physical tables are the sole users of their backing.
+	for _, m := range ve.DeletedFiles {
+		if !m.Virtual {
+			if zombies == nil {
+				zombies = make(map[base.DiskFileNum]uint64)
+			}
+			zombies[m.FileBacking.DiskFileNum] = m.FileBacking.Size
+		}
+	}
+	// Tables can move between levels, in which case they appear in both
+	// DeletedFiles and NewFiles.
+	for _, nf := range ve.NewFiles {
+		if !nf.Meta.Virtual {
+			delete(zombies, nf.Meta.FileBacking.DiskFileNum)
+		}
+	}
+
+	for _, b := range ve.CreatedBackingTables {
+		virtualBackings.Add(b)
+		// Physical backings can become virtual.
+		delete(zombies, b.DiskFileNum)
+	}
+	// When a virtual table moves between levels we AddTable() then RemoveTable(),
+	// which works out.
+	for _, nf := range ve.NewFiles {
+		if nf.Meta.Virtual {
+			virtualBackings.AddTable(nf.Meta)
+		}
+	}
+	for _, m := range ve.DeletedFiles {
+		if m.Virtual {
+			virtualBackings.RemoveTable(m)
+		}
+	}
+
+	if unused := virtualBackings.Unused(); len(unused) > 0 {
+		// Virtual backings that are no longer used are zombies and are also added
+		// to RemovedBackingTables (before the version edit is written to disk).
+		if zombies == nil {
+			zombies = make(map[base.DiskFileNum]uint64, len(ve.RemovedBackingTables))
+		}
+		ve.RemovedBackingTables = make([]base.DiskFileNum, len(unused))
+		for i, b := range unused {
+			zombies[b.DiskFileNum] = b.Size
+			virtualBackings.Remove(b.DiskFileNum)
+			ve.RemovedBackingTables[i] = b.DiskFileNum
+		}
+	}
+	return zombies
 }
 
 func (vs *versionSet) incrementCompactions(
