@@ -105,8 +105,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	if opts.Lock != nil {
 		// The caller already acquired the database lock. Ensure that the
 		// directory matches.
-		if dirname != opts.Lock.dirname {
-			return nil, errors.Newf("pebble: opts.Lock acquired in %q not %q", opts.Lock.dirname, dirname)
+		if err := opts.Lock.pathMatches(dirname); err != nil {
+			return nil, err
 		}
 		if err := opts.Lock.refForOpen(); err != nil {
 			return nil, err
@@ -1171,6 +1171,26 @@ func (l *Lock) Close() error {
 	}
 	defer func() { l.fileLock = nil }()
 	return l.fileLock.Close()
+}
+
+func (l *Lock) pathMatches(dirname string) error {
+	if dirname == l.dirname {
+		return nil
+	}
+	// Check for relative paths, symlinks, etc. This isn't ideal because we're
+	// circumventing the vfs.FS interface here.
+	//
+	// TODO(jackson): We could add support for retrieving file inodes through Stat
+	// calls in the VFS interface on platforms where it's available and use that
+	// to differentiate.
+	dirStat, err1 := os.Stat(dirname)
+	lockDirStat, err2 := os.Stat(l.dirname)
+	if err1 == nil && err2 == nil && os.SameFile(dirStat, lockDirStat) {
+		return nil
+	}
+	return errors.Join(
+		errors.Newf("pebble: opts.Lock acquired in %q not %q", l.dirname, dirname),
+		err1, err2)
 }
 
 // ErrDBDoesNotExist is generated when ErrorIfNotExists is set and the database
