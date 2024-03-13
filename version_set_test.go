@@ -38,6 +38,7 @@ func TestVersionSet(t *testing.T) {
 	opts := &Options{
 		FS:       vfs.NewMem(),
 		Comparer: base.DefaultComparer,
+		Logger:   testLogger{t},
 	}
 	opts.EnsureDefaults()
 	mu := &sync.Mutex{}
@@ -199,6 +200,7 @@ func TestVersionSetCheckpoint(t *testing.T) {
 	opts := &Options{
 		FS:                  mem,
 		MaxManifestFileSize: 1,
+		Logger:              testLogger{t: t},
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -231,6 +233,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 	opts := &Options{
 		FS:                  mem,
 		MaxManifestFileSize: 1,
+		Logger:              testLogger{t: t},
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)

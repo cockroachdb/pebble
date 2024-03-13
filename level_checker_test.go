@@ -37,7 +37,8 @@ func TestCheckLevelsBasics(t *testing.T) {
 				t.Fatalf("%s: cloneFileSystem failed: %v", tc, err)
 			}
 			d, err := Open(tc, &Options{
-				FS: fs,
+				FS:     fs,
+				Logger: testLogger{t},
 			})
 			if err != nil {
 				t.Fatalf("%s: Open failed: %v", tc, err)

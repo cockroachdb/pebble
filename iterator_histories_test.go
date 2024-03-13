@@ -50,6 +50,7 @@ func TestIterHistories(t *testing.T) {
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					sstable.NewTestKeysBlockPropertyCollector,
 				},
+				Logger: testLogger{t},
 			}
 
 			opts.DisableAutomaticCompactions = true

@@ -58,7 +58,7 @@ func TestRatchetFormat(t *testing.T) {
 
 	// If we Open the database again, leaving the default format, the
 	// database should Open using the persisted FormatNewest.
-	d, err = Open("", (&Options{FS: fs}).WithFSDefaults())
+	d, err = Open("", (&Options{FS: fs, Logger: testLogger{t}}).WithFSDefaults())
 	require.NoError(t, err)
 	require.Equal(t, internalFormatNewest, d.FormatMajorVersion())
 	require.NoError(t, d.Close())
@@ -106,6 +106,7 @@ func TestFormatMajorVersions(t *testing.T) {
 			opts := (&Options{
 				FS:                 fs,
 				FormatMajorVersion: vers,
+				Logger:             testLogger{t},
 			}).WithFSDefaults()
 
 			// Create a database at this format major version and perform

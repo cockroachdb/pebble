@@ -37,6 +37,7 @@ func TestCheckpoint(t *testing.T) {
 		FormatMajorVersion:          internalFormatNewest,
 		L0CompactionThreshold:       10,
 		DisableAutomaticCompactions: true,
+		Logger:                      testLogger{t},
 	}
 	opts.DisableTableStats = true
 	opts.private.testingAlwaysWaitForCleanup = true
@@ -217,7 +218,7 @@ func TestCheckpoint(t *testing.T) {
 
 func TestCheckpointCompaction(t *testing.T) {
 	fs := vfs.NewMem()
-	d, err := Open("", &Options{FS: fs})
+	d, err := Open("", &Options{FS: fs, Logger: testLogger{t: t}})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -263,7 +264,7 @@ func TestCheckpointCompaction(t *testing.T) {
 		}
 	}()
 	go func() {
-		opts := &Options{FS: fs}
+		opts := &Options{FS: fs, Logger: testLogger{t: t}}
 		defer cancel()
 		defer wg.Done()
 		for dir := range check {
@@ -300,7 +301,7 @@ func TestCheckpointCompaction(t *testing.T) {
 func TestCheckpointFlushWAL(t *testing.T) {
 	const checkpointPath = "checkpoints/checkpoint"
 	fs := vfs.NewStrictMem()
-	opts := &Options{FS: fs}
+	opts := &Options{FS: fs, Logger: testLogger{t: t}}
 	key, value := []byte("key"), []byte("value")
 
 	// Create a checkpoint from an unsynced DB.
@@ -359,6 +360,7 @@ func TestCheckpointManyFiles(t *testing.T) {
 		FS:                          vfs.NewMem(),
 		FormatMajorVersion:          internalFormatNewest,
 		DisableAutomaticCompactions: true,
+		Logger:                      testLogger{t},
 	}
 	// Disable compression to speed up the test.
 	opts.EnsureDefaults()
