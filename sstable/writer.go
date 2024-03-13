@@ -2018,26 +2018,31 @@ func (w *Writer) Close() (err error) {
 	}
 
 	{
-		userProps := make(map[string]string)
-		for i := range w.blockPropCollectors {
-			scratch := w.blockPropsEncoder.getScratchForProp()
-			// Place the shortID in the first byte.
-			scratch = append(scratch, byte(i))
-			buf, err := w.blockPropCollectors[i].FinishTable(scratch)
-			if err != nil {
-				return err
+		// Finish and record the prop collectors if props are not yet recorded.
+		// Pre-computed props might have been copied by specialized sst creators
+		// like suffix replacer or a span copier.
+		if len(w.props.UserProperties) == 0 {
+			userProps := make(map[string]string)
+			for i := range w.blockPropCollectors {
+				scratch := w.blockPropsEncoder.getScratchForProp()
+				// Place the shortID in the first byte.
+				scratch = append(scratch, byte(i))
+				buf, err := w.blockPropCollectors[i].FinishTable(scratch)
+				if err != nil {
+					return err
+				}
+				var prop string
+				if len(buf) > 0 {
+					prop = string(buf)
+				}
+				// NB: The property is populated in the map even if it is the
+				// empty string, since the presence in the map is what indicates
+				// that the block property collector was used when writing.
+				userProps[w.blockPropCollectors[i].Name()] = prop
 			}
-			var prop string
-			if len(buf) > 0 {
-				prop = string(buf)
+			if len(userProps) > 0 {
+				w.props.UserProperties = userProps
 			}
-			// NB: The property is populated in the map even if it is the
-			// empty string, since the presence in the map is what indicates
-			// that the block property collector was used when writing.
-			userProps[w.blockPropCollectors[i].Name()] = prop
-		}
-		if len(userProps) > 0 {
-			w.props.UserProperties = userProps
 		}
 
 		// Write the properties block.
