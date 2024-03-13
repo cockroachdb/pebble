@@ -224,7 +224,7 @@ func TestOpen_WALFailover(t *testing.T) {
 			return buf.String()
 		case "open":
 			var dataDir string
-			o := &Options{}
+			o := &Options{Logger: testLogger{t}}
 			for _, cmdArg := range td.CmdArgs {
 				switch cmdArg.Key {
 				case "path":
@@ -507,11 +507,11 @@ func TestOpenCrashWritingOptions(t *testing.T) {
 	// Open the database again, this time with a mocked filesystem that
 	// will only succeed in partially writing the OPTIONS file.
 	fs := optionsTornWriteFS{FS: memFS}
-	_, err = Open("", &Options{FS: fs})
+	_, err = Open("", &Options{FS: fs, Logger: testLogger{t}})
 	require.Error(t, err)
 
 	// Re-opening the database must succeed.
-	d, err = Open("", &Options{FS: memFS})
+	d, err = Open("", &Options{FS: memFS, Logger: testLogger{t}})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
 }
@@ -790,6 +790,7 @@ func TestWALReplaySequenceNumBug(t *testing.T) {
 	d, err = Open("", &Options{
 		FS:       mem,
 		ReadOnly: true,
+		Logger:   testLogger{t},
 	})
 	require.NoError(t, err)
 	val, c, _ := d.Get([]byte("1"))
@@ -929,6 +930,7 @@ func TestTwoWALReplayPermissive(t *testing.T) {
 	opts := &Options{
 		MemTableStopWritesThreshold: 4,
 		MemTableSize:                2048,
+		Logger:                      testLogger{t},
 	}
 	opts.testingRandomized(t)
 	opts.EnsureDefaults()
@@ -977,7 +979,7 @@ func TestTwoWALReplayPermissive(t *testing.T) {
 	require.NoError(t, vfs.Default.Remove(filepath.Join(dir, optionFilename)))
 
 	// Re-opening the database should not report the corruption.
-	d, err = Open(dir, nil)
+	d, err = Open(dir, &Options{Logger: testLogger{t}})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
 }
@@ -1069,6 +1071,7 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 				}
 				return nil
 			})),
+			Logger: testLogger{t},
 		})
 		require.NoError(t, err)
 		require.NoError(t, d.Close())
@@ -1258,7 +1261,8 @@ func TestOpenNeverFlushed(t *testing.T) {
 	require.NoError(t, w.Close())
 
 	opts := &Options{
-		FS: mem,
+		FS:     mem,
+		Logger: testLogger{t},
 	}
 	db, err := Open("", opts)
 	require.NoError(t, err)
@@ -1478,7 +1482,7 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 	mem := vfs.NewMem()
 	memShared := remote.NewInMem()
 
-	opts := &Options{FS: mem}
+	opts := &Options{FS: mem, Logger: testLogger{t}}
 	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": memShared,

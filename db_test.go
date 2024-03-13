@@ -2006,7 +2006,8 @@ func TestRecycleLogs(t *testing.T) {
 	require.NoError(t, d.Close())
 
 	d, err = Open("", &Options{
-		FS: mem,
+		FS:     mem,
+		Logger: testLogger{t},
 	})
 	require.NoError(t, err)
 	recycler = d.mu.log.manager.RecyclerForTesting()

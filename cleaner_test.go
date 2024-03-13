@@ -95,6 +95,7 @@ func TestCleaner(t *testing.T) {
 			opts := (&Options{
 				FS:     fs,
 				WALDir: dir + "_wal",
+				Logger: testLogger{t},
 			}).WithFSDefaults()
 
 			for i := 1; i < len(td.CmdArgs); i++ {

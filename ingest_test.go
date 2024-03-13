@@ -454,6 +454,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			L0StopWritesThreshold:       100,
 			DebugCheck:                  DebugCheckLevels,
 			FormatMajorVersion:          internalFormatNewest,
+			Logger:                      testLogger{t},
 		}).WithFSDefaults()
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -619,6 +620,7 @@ func TestExcise(t *testing.T) {
 				flushed = true
 			}},
 			FormatMajorVersion: FormatVirtualSSTables,
+			Logger:             testLogger{t},
 		}
 		if blockSize != 0 {
 			opts.Levels = append(opts.Levels, LevelOptions{BlockSize: blockSize, IndexBlockSize: 32 << 10})
@@ -881,7 +883,7 @@ func testIngestSharedImpl(
 	replicateCounter := 1
 	var opts1, opts2 *Options
 
-	reset := func() {
+	reset := func(t *testing.T) {
 		for _, e := range efos {
 			require.NoError(t, e.Close())
 		}
@@ -906,9 +908,10 @@ func testIngestSharedImpl(
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
 			FormatMajorVersion:    FormatVirtualSSTables,
+			Logger:                testLogger{t},
 		}
 		// lel.
-		lel := MakeLoggingEventListener(DefaultLogger)
+		lel := MakeLoggingEventListener(testLogger{t})
 		opts1.EventListener = &lel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
@@ -939,7 +942,7 @@ func testIngestSharedImpl(
 		creatorIDCounter++
 		d = d1
 	}
-	reset()
+	reset(t)
 
 	datadriven.RunTest(t, fmt.Sprintf("testdata/%s", fileName), func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -966,7 +969,7 @@ func testIngestSharedImpl(
 			d = d1
 			return "ok, note that the active db has been set to 1 (use 'switch' to change)"
 		case "reset":
-			reset()
+			reset(t)
 			return ""
 		case "switch":
 			if len(td.CmdArgs) != 1 {
@@ -1228,7 +1231,7 @@ func TestSimpleIngestShared(t *testing.T) {
 	mem := vfs.NewMem()
 	var d *DB
 	var provider2 objstorage.Provider
-	opts2 := Options{FS: vfs.NewMem(), FormatMajorVersion: FormatVirtualSSTables}
+	opts2 := Options{FS: vfs.NewMem(), FormatMajorVersion: FormatVirtualSSTables, Logger: testLogger{t}}
 	opts2.EnsureDefaults()
 
 	// Create an objProvider where we will fake-create some sstables that can
@@ -1270,6 +1273,7 @@ func TestSimpleIngestShared(t *testing.T) {
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
+			Logger:                testLogger{t},
 		}
 		opts.Experimental.RemoteStorage = providerSettings.Remote.StorageFactory
 		opts.Experimental.CreateOnShared = providerSettings.Remote.CreateOnShared
@@ -1416,9 +1420,10 @@ func TestConcurrentExcise(t *testing.T) {
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
 			FormatMajorVersion:    FormatVirtualSSTables,
+			Logger:                testLogger{t},
 		}
 		// lel.
-		lel := MakeLoggingEventListener(DefaultLogger)
+		lel := MakeLoggingEventListener(testLogger{t})
 		tel := TeeEventListener(lel, el)
 		opts1.EventListener = &tel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
@@ -1790,6 +1795,7 @@ func TestIngestExternal(t *testing.T) {
 				flushed = true
 			}},
 			FormatMajorVersion: majorVersion,
+			Logger:             testLogger{t},
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"external-locator": remoteStorage,
@@ -1798,7 +1804,7 @@ func TestIngestExternal(t *testing.T) {
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
-		lel := MakeLoggingEventListener(DefaultLogger)
+		lel := MakeLoggingEventListener(testLogger{t})
 		opts.EventListener = &lel
 
 		reopen(t)
@@ -3142,7 +3148,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 	// to induce errors on Remove calls. Even if we're unsuccessful in
 	// removing the obsolete files, the external files should not be
 	// overwritten.
-	d, err = Open(dir, &Options{FS: noRemoveFS{FS: fs}})
+	d, err = Open(dir, &Options{FS: noRemoveFS{FS: fs}, Logger: testLogger{t}})
 	require.NoError(t, err)
 	require.NoError(t, d.Set([]byte("bar"), nil, nil))
 	require.NoError(t, d.Flush())

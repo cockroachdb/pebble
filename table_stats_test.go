@@ -34,6 +34,7 @@ func TestTableStats(t *testing.T) {
 				loadedInfo = &info
 			},
 		},
+		Logger: testLogger{t},
 	}
 
 	d, err := Open("", opts)
