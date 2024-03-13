@@ -493,6 +493,7 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 
 	// Override table format, if provided.
 	tableFormat := d.opts.FormatMajorVersion.MaxTableFormat()
+	var blockSize int64
 	for _, cmdArg := range td.CmdArgs[1:] {
 		switch cmdArg.Key {
 		case "format":
@@ -508,15 +509,22 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 			default:
 				return errors.Errorf("unknown format string %s", cmdArg.Vals[0])
 			}
+		case "block-size":
+			var err error
+			blockSize, err = strconv.ParseInt(cmdArg.Vals[0], 10, 64)
+			if err != nil {
+				return errors.Wrap(err, td.Pos)
+			}
 		}
 	}
 
 	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
-	if rand.Intn(4) == 0 {
-		// Force two-level indexes.
-		writeOpts.BlockSize = 5
-		writeOpts.IndexBlockSize = 5
+	if blockSize == 0 && rand.Intn(4) == 0 {
+		// Force two-level indexes if not already forced on or off.
+		blockSize = 5
 	}
+	writeOpts.BlockSize = int(blockSize)
+	writeOpts.IndexBlockSize = int(blockSize)
 
 	f, err := storage.CreateObject(path)
 	if err != nil {
