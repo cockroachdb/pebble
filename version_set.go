@@ -7,7 +7,6 @@ package pebble
 import (
 	"fmt"
 	"io"
-	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -522,32 +521,7 @@ func (vs *versionSet) logAndApply(
 	minUnflushedLogNum := vs.minUnflushedLogNum
 	nextFileNum := vs.nextFileNum
 
-	removedPhysicalBackings := getRemovedPhysicalBackings(ve)
-
-	// Update virtualBackings and populate ve.RemovedBackingTables.
-	for _, b := range ve.CreatedBackingTables {
-		b.Ref()
-		vs.virtualBackings.Add(b)
-	}
-	for _, nf := range ve.NewFiles {
-		if nf.Meta.Virtual {
-			vs.virtualBackings.AddTable(nf.Meta)
-		}
-	}
-	for _, m := range ve.DeletedFiles {
-		if m.Virtual {
-			vs.virtualBackings.RemoveTable(m)
-		}
-	}
-	removedVirtualBackings := vs.virtualBackings.Unused()
-	if len(removedVirtualBackings) > 0 {
-		ve.RemovedBackingTables = make([]base.DiskFileNum, len(removedVirtualBackings))
-		for i, b := range removedVirtualBackings {
-			// Note: b will be Unref()ed below, after writing to the manifest.
-			vs.virtualBackings.Remove(b.DiskFileNum)
-			ve.RemovedBackingTables[i] = b.DiskFileNum
-		}
-	}
+	zombieBackings, obsoleteVirtualBackings := getZombiesAndUpdateVirtualBackings(ve, &vs.virtualBackings)
 
 	if err := func() error {
 		vs.mu.Unlock()
@@ -635,22 +609,13 @@ func (vs *versionSet) logAndApply(
 	// Update the zombie tables set first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
 	// being called.
-	for _, b := range removedPhysicalBackings {
-		vs.zombieTables[b.DiskFileNum] = b.Size
-	}
-	for _, b := range removedVirtualBackings {
+	for _, b := range zombieBackings {
 		vs.zombieTables[b.DiskFileNum] = b.Size
 	}
 
-	// Unref the removed virtual backings and report those that are now obsolete.
-	// Note: since we did not unref the previous version yet, backings can only
-	// become obsolete here if they were not part of the latest version (i.e.
-	// virtualBackings.Protect was used).
-	vs.addObsoleteLocked(slices.DeleteFunc(removedVirtualBackings, func(b *fileBacking) bool {
-		// We want to remove from the slice all backings that still haved refs; the
-		// remaining are obsolete.
-		return b.Unref() > 0
-	}))
+	// Report the virtual backings that already became obsolete (see
+	// getZombiesAndUpdateVirtualBackings).
+	vs.addObsoleteLocked(obsoleteVirtualBackings)
 
 	// Install the new version.
 	vs.append(newVersion)
@@ -734,6 +699,77 @@ func getRemovedPhysicalBackings(ve *versionEdit) []*fileBacking {
 		}
 	}
 	return unused
+}
+
+// getZombiesAndUpdateVirtualBackings updates the virtual backings with the
+// changes in the versionEdit, populates ve.RemovedBackingTables.
+// Returns:
+//   - zombieBackings: all backings (physical and virtual) that will no longer be
+//     needed when we apply ve.
+//   - obsoleteVirtualBackings: the virtual backings that now have a 0 refcount.
+//     Note that the only case when this list is not empty is when
+//     VirtualBackings.Protect/Unprotect was used to keep a backing alive
+//     without it being used in the current version.
+func getZombiesAndUpdateVirtualBackings(
+	ve *versionEdit, virtualBackings *manifest.VirtualBackings,
+) (zombieBackings, obsoleteVirtualBackings []*fileBacking) {
+	// First, deal with the physical tables.
+	//
+	// A physical backing has become unused if it is in DeletedFiles but not in
+	// NewFiles or CreatedBackingTables.
+	//
+	// Note that for the common case where there are very few elements, the map
+	// will stay on the stack.
+	stillUsed := make(map[base.DiskFileNum]struct{})
+	for _, nf := range ve.NewFiles {
+		if !nf.Meta.Virtual {
+			stillUsed[nf.Meta.FileBacking.DiskFileNum] = struct{}{}
+		}
+	}
+	for _, b := range ve.CreatedBackingTables {
+		stillUsed[b.DiskFileNum] = struct{}{}
+	}
+	for _, m := range ve.DeletedFiles {
+		if !m.Virtual {
+			if _, ok := stillUsed[m.FileBacking.DiskFileNum]; !ok {
+				zombieBackings = append(zombieBackings, m.FileBacking)
+			}
+		}
+	}
+
+	// Now deal with virtual tables.
+	//
+	// When a virtual table moves between levels we AddTable() then RemoveTable(),
+	// which works out.
+	for _, b := range ve.CreatedBackingTables {
+		b.Ref()
+		virtualBackings.Add(b)
+	}
+	for _, nf := range ve.NewFiles {
+		if nf.Meta.Virtual {
+			virtualBackings.AddTable(nf.Meta)
+		}
+	}
+	for _, m := range ve.DeletedFiles {
+		if m.Virtual {
+			virtualBackings.RemoveTable(m)
+		}
+	}
+
+	if unused := virtualBackings.Unused(); len(unused) > 0 {
+		// Virtual backings that are no longer used are zombies and are also added
+		// to RemovedBackingTables (before the version edit is written to disk).
+		ve.RemovedBackingTables = make([]base.DiskFileNum, len(unused))
+		for i, b := range unused {
+			zombieBackings = append(zombieBackings, b)
+			ve.RemovedBackingTables[i] = b.DiskFileNum
+			virtualBackings.Remove(b.DiskFileNum)
+			if b.Unref() == 0 {
+				obsoleteVirtualBackings = append(obsoleteVirtualBackings, b)
+			}
+		}
+	}
+	return zombieBackings, obsoleteVirtualBackings
 }
 
 func (vs *versionSet) incrementCompactions(
