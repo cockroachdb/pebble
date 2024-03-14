@@ -2,18 +2,24 @@ apply
   add-table: L2 000001:[a#1,SET-c#1,SET]
   add-table: L2 000002:[e#1,SET-h#1,SET]
 ----
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-  000002:[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:200
+applied:
+  last-seq-num:  99
+  add-table:     L2 000001:[a#1,SET-c#1,SET]
+  add-table:     L2 000002:[e#1,SET-h#1,SET]
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+    000002:[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:200
 no virtual backings
 no zombie tables
 no obsolete tables
 
 reopen
 ----
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-  000002:[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:200
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+    000002:[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:200
 no virtual backings
 no zombie tables
 no obsolete tables
@@ -24,9 +30,15 @@ apply
   add-table:   L2 000003(000002):[e#1,SET-h#1,SET]
   add-backing: 000002
 ----
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-  000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300
+applied:
+  last-seq-num:  99
+  del-table:     L2 000002
+  add-table:     L2 000003(000002):[e#1,SET-h#1,SET]
+  add-backing:   000002
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+    000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300
 1 virtual backings, total size 2000:
   000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=300
 no zombie tables
@@ -36,10 +48,14 @@ no obsolete tables
 apply
   add-table:   L2 000004(000002):[i#1,SET-k#1,SET]
 ----
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-  000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300
-  000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
+applied:
+  last-seq-num:  99
+  add-table:     L2 000004(000002):[i#1,SET-k#1,SET]
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+    000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300
+    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
 1 virtual backings, total size 2000:
   000002:  size=2000  useCount=2  protectionCount=0  virtualizedSize=700
 no zombie tables
@@ -50,11 +66,16 @@ apply
   del-table:   L2 000003
   add-table:   L3 000003(000002):[e#1,SET-h#1,SET]
 ----
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-  000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
-L3:
-  000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300
+applied:
+  last-seq-num:  99
+  del-table:     L2 000003
+  add-table:     L3 000003(000002):[e#1,SET-h#1,SET]
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
+  L3:
+    000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300
 1 virtual backings, total size 2000:
   000002:  size=2000  useCount=2  protectionCount=0  virtualizedSize=700
 no zombie tables
@@ -64,9 +85,13 @@ no obsolete tables
 apply
   del-table:   L3 000003
 ----
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-  000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
+applied:
+  last-seq-num:  99
+  del-table:     L3 000003
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
 1 virtual backings, total size 2000:
   000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=400
 no zombie tables
@@ -74,9 +99,10 @@ no obsolete tables
 
 reopen
 ----
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-  000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
 1 virtual backings, total size 2000:
   000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=400
 no zombie tables
@@ -86,34 +112,45 @@ no obsolete tables
 apply
   del-table:   L2 000004
 ----
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+applied:
+  last-seq-num:  99
+  del-table:     L2 000004
+  del-backing:   000002
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 no virtual backings
 zombie tables: 000002
 obsolete tables: 000002
 
 # Add a virtual table with a new backing (like an ingestion would).
 apply
-  add-table:   L1 000005(000010):[u#1,SET-v#1,SET]
-  add-backing: 000010
+  add-table:   L1 000005(000100):[u#1,SET-v#1,SET]
+  add-backing: 000100
 ----
-L1:
-  000005(000010):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:500
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-1 virtual backings, total size 10000:
-  000010:  size=10000  useCount=1  protectionCount=0  virtualizedSize=500
+applied:
+  last-seq-num:  99
+  add-table:     L1 000005(000100):[u#1,SET-v#1,SET]
+  add-backing:   000100
+current version:
+  L1:
+    000005(000100):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:500
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+1 virtual backings, total size 100000:
+  000100:  size=100000  useCount=1  protectionCount=0  virtualizedSize=500
 zombie tables: 000002
 obsolete tables: 000002
 
-ref r1
+ref-version r1
 ----
-L1:
-  000005(000010):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:500
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-1 virtual backings, total size 10000:
-  000010:  size=10000  useCount=1  protectionCount=0  virtualizedSize=500
+current version:
+  L1:
+    000005(000100):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:500
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+1 virtual backings, total size 100000:
+  000100:  size=100000  useCount=1  protectionCount=0  virtualizedSize=500
 zombie tables: 000002
 obsolete tables: 000002
 
@@ -122,17 +159,188 @@ obsolete tables: 000002
 apply
   del-table:   L1 000005
 ----
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+applied:
+  last-seq-num:  99
+  del-table:     L1 000005
+  del-backing:   000100
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 no virtual backings
-zombie tables: 000002 000010
+zombie tables: 000002 000100
 obsolete tables: 000002
 
 # The backing is now obsolete.
-unref r1
+unref-version r1
 ----
-L2:
-  000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 no virtual backings
-zombie tables: 000002 000010
-obsolete tables: 000002 000010
+zombie tables: 000002 000100
+obsolete tables: 000002 000100
+
+# Test backing protection mechanism.
+
+apply
+  add-table:   L1 000006(000101):[u#1,SET-v#1,SET]
+  add-table:   L1 000007(000101):[w#1,SET-x#1,SET]
+  add-backing: 000101
+----
+applied:
+  last-seq-num:  99
+  add-table:     L1 000006(000101):[u#1,SET-v#1,SET]
+  add-table:     L1 000007(000101):[w#1,SET-x#1,SET]
+  add-backing:   000101
+current version:
+  L1:
+    000006(000101):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:600
+    000007(000101):[w#1,SET-x#1,SET] seqnums:[0-0] points:[w#1,SET-x#1,SET] size:700
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+1 virtual backings, total size 101000:
+  000101:  size=101000  useCount=2  protectionCount=0  virtualizedSize=1300
+zombie tables: 000002 000100
+obsolete tables: 000002 000100
+
+protect-backing 101
+----
+current version:
+  L1:
+    000006(000101):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:600
+    000007(000101):[w#1,SET-x#1,SET] seqnums:[0-0] points:[w#1,SET-x#1,SET] size:700
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+1 virtual backings, total size 101000:
+  000101:  size=101000  useCount=2  protectionCount=1  virtualizedSize=1300
+zombie tables: 000002 000100
+obsolete tables: 000002 000100
+
+# We should not see a "del-backing" field here.
+apply
+  del-table: L1 000006
+  del-table: L1 000007
+----
+applied:
+  last-seq-num:  99
+  del-table:     L1 000006
+  del-table:     L1 000007
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+1 virtual backings, total size 101000:
+  000101:  size=101000  useCount=0  protectionCount=1  virtualizedSize=0
+zombie tables: 000002 000100
+obsolete tables: 000002 000100
+
+unprotect-backing 101
+----
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+1 virtual backings, total size 101000:
+  000101:  size=101000  useCount=0  protectionCount=0  virtualizedSize=0
+unused virtual backings: 000101
+zombie tables: 000002 000100
+obsolete tables: 000002 000100
+
+# Whatever this next apply is, it should remove the unused backing.
+apply
+  add-table: L3 000008:[a#1,SET-c#1,SET]
+----
+applied:
+  last-seq-num:  99
+  add-table:     L3 000008:[a#1,SET-c#1,SET]
+  del-backing:   000101
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+no virtual backings
+zombie tables: 000002 000100 000101
+obsolete tables: 000002 000100 000101
+
+# Test handling of leaked protected backings.
+
+apply
+  add-table:   L1 000009(000102):[u#1,SET-v#1,SET]
+  add-backing: 000102
+----
+applied:
+  last-seq-num:  99
+  add-table:     L1 000009(000102):[u#1,SET-v#1,SET]
+  add-backing:   000102
+current version:
+  L1:
+    000009(000102):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:900
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+1 virtual backings, total size 102000:
+  000102:  size=102000  useCount=1  protectionCount=0  virtualizedSize=900
+zombie tables: 000002 000100 000101
+obsolete tables: 000002 000100 000101
+
+protect-backing 102
+----
+current version:
+  L1:
+    000009(000102):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:900
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+1 virtual backings, total size 102000:
+  000102:  size=102000  useCount=1  protectionCount=1  virtualizedSize=900
+zombie tables: 000002 000100 000101
+obsolete tables: 000002 000100 000101
+
+apply
+  del-table:   L1 000009
+----
+applied:
+  last-seq-num:  99
+  del-table:     L1 000009
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+1 virtual backings, total size 102000:
+  000102:  size=102000  useCount=0  protectionCount=1  virtualizedSize=0
+zombie tables: 000002 000100 000101
+obsolete tables: 000002 000100 000101
+
+# Upon reopen, we still have a record of backing 102.
+reopen
+----
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+1 virtual backings, total size 102000:
+  000102:  size=102000  useCount=0  protectionCount=0  virtualizedSize=0
+unused virtual backings: 000102
+no zombie tables
+no obsolete tables
+
+# Whatever this next apply is, it should remove the leaked backing.
+apply
+  add-table: L3 000010:[d#1,SET-e#1,SET]
+----
+applied:
+  last-seq-num:  99
+  add-table:     L3 000010:[d#1,SET-e#1,SET]
+  del-backing:   000102
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+no virtual backings
+zombie tables: 000102
+obsolete tables: 000102
