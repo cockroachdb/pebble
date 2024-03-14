@@ -439,11 +439,7 @@ func newCompaction(
 		isRemote := false
 		// We should always be passed a provider, except in some unit tests.
 		if provider != nil {
-			objMeta, err := provider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
-			if err != nil {
-				panic(errors.Wrapf(err, "cannot lookup table %s in provider", meta.FileBacking.DiskFileNum))
-			}
-			isRemote = objMeta.IsRemote()
+			isRemote = !objstorage.MustIsLocalTable(provider, meta.FileBacking.DiskFileNum)
 		}
 		// Avoid a trivial move or copy if all of these are true, as rewriting a
 		// new file is better:
@@ -1292,10 +1288,13 @@ func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
 }
 
 // onObsoleteTableDelete is called to update metrics when an sstable is deleted.
-func (d *DB) onObsoleteTableDelete(fileSize uint64) {
+func (d *DB) onObsoleteTableDelete(fileSize uint64, isLocal bool) {
 	d.mu.Lock()
 	d.mu.versions.metrics.Table.ObsoleteCount--
 	d.mu.versions.metrics.Table.ObsoleteSize -= fileSize
+	if isLocal {
+		d.mu.versions.metrics.Table.Local.ObsoleteSize -= fileSize
+	}
 	d.mu.Unlock()
 }
 
@@ -1609,7 +1608,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	startTime := d.timeNow()
 
 	var ve *manifest.VersionEdit
-	var pendingOutputs []*fileMetadata
+	var pendingOutputs []compactionOutput
 	var stats compactStats
 	// To determine the target level of the files in the ingestedFlushable, we
 	// need to acquire the logLock, and not release it for that duration. Since,
@@ -1701,9 +1700,12 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// physical files on disk. This property might not hold once
 				// https://github.com/cockroachdb/pebble/issues/389 is
 				// implemented if #389 creates virtual sstables as output files.
-				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, fileInfo{
-					FileNum:  base.PhysicalTableDiskFileNum(f.FileNum),
-					FileSize: f.Size,
+				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, tableInfo{
+					fileInfo: fileInfo{
+						FileNum:  base.PhysicalTableDiskFileNum(f.meta.FileNum),
+						FileSize: f.meta.Size,
+					},
+					isLocal: f.isLocal,
 				})
 			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
@@ -2358,9 +2360,12 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 				// physical files on disk. This property might not hold once
 				// https://github.com/cockroachdb/pebble/issues/389 is
 				// implemented if #389 creates virtual sstables as output files.
-				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, fileInfo{
-					FileNum:  base.PhysicalTableDiskFileNum(f.FileNum),
-					FileSize: f.Size,
+				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, tableInfo{
+					fileInfo: fileInfo{
+						FileNum:  base.PhysicalTableDiskFileNum(f.meta.FileNum),
+						FileSize: f.meta.Size,
+					},
+					isLocal: f.isLocal,
 				})
 			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
@@ -2422,7 +2427,7 @@ func (d *DB) runCopyCompaction(
 	inputMeta *fileMetadata,
 	objMeta objstorage.ObjectMetadata,
 	versionEdit *versionEdit,
-) (ve *versionEdit, pendingOutputs []*fileMetadata, retErr error) {
+) (ve *versionEdit, pendingOutputs []compactionOutput, retErr error) {
 	ctx := context.TODO()
 
 	ve = versionEdit
@@ -2498,7 +2503,7 @@ func (d *DB) runCopyCompaction(
 		}
 		defer src.Close()
 
-		w, _, err := d.objProvider.Create(
+		w, outObjMeta, err := d.objProvider.Create(
 			ctx, fileTypeTable, base.PhysicalTableDiskFileNum(newMeta.FileNum),
 			objstorage.CreateOptions{
 				PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
@@ -2507,7 +2512,10 @@ func (d *DB) runCopyCompaction(
 		if err != nil {
 			return ve, pendingOutputs, err
 		}
-		pendingOutputs = append(pendingOutputs, newMeta)
+		pendingOutputs = append(pendingOutputs, compactionOutput{
+			meta:    newMeta,
+			isLocal: !outObjMeta.IsRemote(),
+		})
 
 		if err := func() error {
 			size := src.Size()
@@ -2535,8 +2543,10 @@ func (d *DB) runCopyCompaction(
 			return ve, pendingOutputs, err
 		}
 	} else {
-		pendingOutputs = append(pendingOutputs, newMeta.PhysicalMeta().FileMetadata)
-
+		pendingOutputs = append(pendingOutputs, compactionOutput{
+			meta:    newMeta.PhysicalMeta().FileMetadata,
+			isLocal: true,
+		})
 		_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
 			d.objProvider.Path(objMeta), fileTypeTable, newMeta.FileBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true})
@@ -2556,6 +2566,11 @@ func (d *DB) runCopyCompaction(
 	return ve, pendingOutputs, nil
 }
 
+type compactionOutput struct {
+	meta    *fileMetadata
+	isLocal bool
+}
+
 // runCompactions runs a compaction that produces new on-disk tables from
 // memtables or old on-disk tables.
 //
@@ -2563,7 +2578,7 @@ func (d *DB) runCopyCompaction(
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID int, c *compaction,
-) (ve *versionEdit, pendingOutputs []*fileMetadata, stats compactStats, retErr error) {
+) (ve *versionEdit, pendingOutputs []compactionOutput, stats compactStats, retErr error) {
 	// As a sanity check, confirm that the smallest / largest keys for new and
 	// deleted files in the new versionEdit pass a validation function before
 	// returning the edit.
@@ -2801,11 +2816,8 @@ func (d *DB) runCompaction(
 		if c.cancel.Load() {
 			return ErrCancelledCompaction
 		}
-		fileMeta := &fileMetadata{}
 		d.mu.Lock()
 		fileNum := d.mu.versions.getNextFileNum()
-		fileMeta.FileNum = fileNum
-		pendingOutputs = append(pendingOutputs, fileMeta.PhysicalMeta().FileMetadata)
 		d.mu.Unlock()
 
 		ctx := context.TODO()
@@ -2829,6 +2841,12 @@ func (d *DB) runCompaction(
 		if err != nil {
 			return err
 		}
+		fileMeta := &fileMetadata{}
+		fileMeta.FileNum = fileNum
+		pendingOutputs = append(pendingOutputs, compactionOutput{
+			meta:    fileMeta.PhysicalMeta().FileMetadata,
+			isLocal: !objMeta.IsRemote(),
+		})
 
 		reason := "flushing"
 		if c.flushing == nil {
@@ -3353,7 +3371,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 
 	manifestFileNum := d.mu.versions.manifestFileNum
 
-	var obsoleteTables []fileInfo
+	var obsoleteTables []tableInfo
 	var obsoleteManifests []fileInfo
 	var obsoleteOptions []fileInfo
 
@@ -3401,14 +3419,17 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			if size, err := d.objProvider.Size(obj); err == nil {
 				fileInfo.FileSize = uint64(size)
 			}
-			obsoleteTables = append(obsoleteTables, fileInfo)
+			obsoleteTables = append(obsoleteTables, tableInfo{
+				fileInfo: fileInfo,
+				isLocal:  !obj.IsRemote(),
+			})
 
 		default:
 			// Ignore object types we don't know about.
 		}
 	}
 
-	d.mu.versions.obsoleteTables = merge(d.mu.versions.obsoleteTables, obsoleteTables)
+	d.mu.versions.obsoleteTables = mergeTableInfos(d.mu.versions.obsoleteTables, obsoleteTables)
 	d.mu.versions.updateObsoleteTableMetricsLocked()
 	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
@@ -3467,7 +3488,7 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		panic(err)
 	}
 
-	obsoleteTables := append([]fileInfo(nil), d.mu.versions.obsoleteTables...)
+	obsoleteTables := append([]tableInfo(nil), d.mu.versions.obsoleteTables...)
 	d.mu.versions.obsoleteTables = nil
 
 	for _, tbl := range obsoleteTables {
@@ -3502,11 +3523,27 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	for _, f := range obsoleteLogs {
 		filesToDelete = append(filesToDelete, obsoleteFile{fileType: fileTypeLog, logFile: f})
 	}
-	files := [3]struct {
+	// We sort to make the order of deletions deterministic, which is nice for
+	// tests.
+	slices.SortFunc(obsoleteTables, func(a, b tableInfo) int {
+		return cmp.Compare(a.FileNum, b.FileNum)
+	})
+	for _, f := range obsoleteTables {
+		d.tableCache.evict(f.FileNum)
+		filesToDelete = append(filesToDelete, obsoleteFile{
+			fileType: fileTypeTable,
+			nonLogFile: deletableFile{
+				dir:      d.dirname,
+				fileNum:  f.FileNum,
+				fileSize: f.FileSize,
+				isLocal:  f.isLocal,
+			},
+		})
+	}
+	files := [2]struct {
 		fileType fileType
 		obsolete []fileInfo
 	}{
-		{fileTypeTable, obsoleteTables},
 		{fileTypeManifest, obsoleteManifests},
 		{fileTypeOptions, obsoleteOptions},
 	}
@@ -3518,17 +3555,13 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 		})
 		for _, fi := range f.obsolete {
 			dir := d.dirname
-			switch f.fileType {
-			case fileTypeTable:
-				d.tableCache.evict(fi.FileNum)
-			}
-
 			filesToDelete = append(filesToDelete, obsoleteFile{
 				fileType: f.fileType,
 				nonLogFile: deletableFile{
 					dir:      dir,
 					fileNum:  fi.FileNum,
 					fileSize: fi.FileSize,
+					isLocal:  true,
 				},
 			})
 		}
@@ -3565,6 +3598,20 @@ func merge(a, b []fileInfo) []fileInfo {
 		return cmp.Compare(a.FileNum, b.FileNum)
 	})
 	return slices.CompactFunc(a, func(a, b fileInfo) bool {
+		return a.FileNum == b.FileNum
+	})
+}
+
+func mergeTableInfos(a, b []tableInfo) []tableInfo {
+	if len(b) == 0 {
+		return a
+	}
+
+	a = append(a, b...)
+	slices.SortFunc(a, func(a, b tableInfo) int {
+		return cmp.Compare(a.FileNum, b.FileNum)
+	})
+	return slices.CompactFunc(a, func(a, b tableInfo) bool {
 		return a.FileNum == b.FileNum
 	})
 }
