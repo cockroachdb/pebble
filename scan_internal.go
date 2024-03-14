@@ -473,9 +473,8 @@ func (d *DB) truncateExternalFile(
 		Size:            file.Size,
 		SyntheticSuffix: slices.Clone(file.SyntheticSuffix),
 	}
-	if pr := file.PrefixReplacement; pr != nil {
-		sst.ContentPrefix = slices.Clone(pr.ContentPrefix)
-		sst.SyntheticPrefix = slices.Clone(pr.SyntheticPrefix)
+	if file.SyntheticPrefix.IsSet() {
+		sst.SyntheticPrefix = slices.Clone(sst.SyntheticPrefix)
 	}
 
 	needsLowerTruncate := cmp(lower, file.Smallest.UserKey) > 0

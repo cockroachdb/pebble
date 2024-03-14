@@ -34,7 +34,6 @@ type virtualState struct {
 	fileNum          base.FileNum
 	Compare          Compare
 	isSharedIngested bool
-	prefixChange     *PrefixReplacement
 }
 
 // VirtualReaderParams are the parameters necessary to create a VirtualReader.
@@ -48,8 +47,6 @@ type VirtualReaderParams struct {
 	// BackingSize is the total size of the backing table. The ratio between Size
 	// and BackingSize is used to estimate statistics.
 	BackingSize uint64
-	// TODO(radu): these should be moved to sstable.IterTransforms.
-	PrefixReplacement *PrefixReplacement
 }
 
 // MakeVirtualReader is used to contruct a reader which can read from virtual
@@ -61,7 +58,6 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 		fileNum:          p.FileNum,
 		Compare:          reader.Compare,
 		isSharedIngested: p.IsSharedIngested,
-		prefixChange:     p.PrefixReplacement,
 	}
 	v := VirtualReader{
 		vState: vState,
@@ -101,15 +97,8 @@ func (v *VirtualReader) NewCompactionIter(
 	rp ReaderProvider,
 	bufferPool *BufferPool,
 ) (Iterator, error) {
-	i, err := v.reader.newCompactionIter(
+	return v.reader.newCompactionIter(
 		transforms, bytesIterated, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
-	if err == nil && v.vState.prefixChange.UsePrefixReplacementIterator() {
-		i = newPrefixReplacingIterator(
-			i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
-			v.vState.lower.UserKey, v.reader.Compare,
-		)
-	}
-	return i, err
 }
 
 // NewIterWithBlockPropertyFiltersAndContextEtc wraps
@@ -127,17 +116,9 @@ func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 ) (Iterator, error) {
-	i, err := v.reader.newIterWithBlockPropertyFiltersAndContext(
+	return v.reader.newIterWithBlockPropertyFiltersAndContext(
 		ctx, transforms, lower, upper, filterer, useFilterBlock,
 		stats, categoryAndQoS, statsCollector, rp, &v.vState)
-	// NB: for block level prefix replacement,
-	if err == nil && v.vState.prefixChange.UsePrefixReplacementIterator() {
-		i = newPrefixReplacingIterator(
-			i, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
-			v.vState.lower.UserKey, v.reader.Compare,
-		)
-	}
-	return i, err
 }
 
 // ValidateBlockChecksumsOnBacking will call ValidateBlockChecksumsOnBacking on the underlying reader.
@@ -159,20 +140,6 @@ func (v *VirtualReader) NewRawRangeDelIter(
 	}
 	lower := &v.vState.lower
 	upper := &v.vState.upper
-
-	if v.vState.prefixChange.UsePrefixReplacementIterator() {
-		lower = &InternalKey{UserKey: v.vState.prefixChange.Invert(lower.UserKey), Trailer: lower.Trailer}
-		upper = &InternalKey{UserKey: v.vState.prefixChange.Invert(upper.UserKey), Trailer: upper.Trailer}
-
-		iter = keyspan.Truncate(
-			v.reader.Compare, iter, lower.UserKey, upper.UserKey,
-			lower, upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnUpperTruncate */
-		)
-		return newPrefixReplacingFragmentIterator(
-			iter, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
-			v.vState.lower.UserKey, v.reader.Compare,
-		), nil
-	}
 
 	// Truncation of spans isn't allowed at a user key that also contains points
 	// in the same virtual sstable, as it would lead to covered points getting
@@ -229,19 +196,6 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 		iter = transformIter
 	}
 
-	if v.vState.prefixChange.UsePrefixReplacementIterator() {
-		lower = &InternalKey{UserKey: v.vState.prefixChange.Invert(lower.UserKey), Trailer: lower.Trailer}
-		upper = &InternalKey{UserKey: v.vState.prefixChange.Invert(upper.UserKey), Trailer: upper.Trailer}
-		iter = keyspan.Truncate(
-			v.reader.Compare, iter, lower.UserKey, upper.UserKey,
-			lower, upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnUpperTruncate */
-		)
-		return newPrefixReplacingFragmentIterator(
-			iter, v.vState.prefixChange.ContentPrefix, v.vState.prefixChange.SyntheticPrefix,
-			v.vState.lower.UserKey, v.reader.Compare,
-		), nil
-	}
-
 	// Truncation of spans isn't allowed at a user key that also contains points
 	// in the same virtual sstable, as it would lead to covered points getting
 	// uncovered. Set panicOnUpperTruncate to true if the file's upper bound
@@ -286,10 +240,6 @@ func (v *virtualState) constrainBounds(
 			lastKeyInclusive = endInclusive
 			last = end
 		}
-	}
-	if v.prefixChange.UsePrefixReplacementIterator() {
-		first = v.prefixChange.Invert(first)
-		last = v.prefixChange.Invert(last)
 	}
 	// TODO(bananabrick): What if someone passes in bounds completely outside of
 	// virtual sstable bounds?

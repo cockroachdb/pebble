@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 	"slices"
@@ -187,6 +188,23 @@ type SyntheticPrefix []byte
 // IsSet returns true if the synthetic prefix is not enpty.
 func (sp SyntheticPrefix) IsSet() bool {
 	return len(sp) > 0
+}
+
+// Apply prepends the synthetic prefix to a key.
+func (sp SyntheticPrefix) Apply(key []byte) []byte {
+	res := make([]byte, 0, len(sp)+len(key))
+	res = append(res, sp...)
+	res = append(res, key...)
+	return res
+}
+
+// Invert removes the synthetic prefix from a key.
+func (sp SyntheticPrefix) Invert(key []byte) []byte {
+	res, ok := bytes.CutPrefix(key, sp)
+	if !ok {
+		panic(fmt.Sprintf("unexpected prefix: %s", key))
+	}
+	return res
 }
 
 // rawTombstonesOpt is a Reader open option for specifying that range

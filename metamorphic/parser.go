@@ -15,7 +15,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/sstable"
 )
 
 type methodInfo struct {
@@ -468,7 +467,7 @@ func (p *parser) parseCheckpointSpans(list []listElem) []pebble.CheckpointSpan {
 }
 
 func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithBounds {
-	const numArgs = 6
+	const numArgs = 5
 	if len(list)%numArgs != 0 {
 		panic(p.errorf(list[0].pos, "expected number of arguments to be multiple of %d", numArgs))
 	}
@@ -479,7 +478,6 @@ func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithB
 		list[2].expectToken(p, token.STRING)
 		list[3].expectToken(p, token.STRING)
 		list[4].expectToken(p, token.STRING)
-		list[5].expectToken(p, token.STRING)
 		objs[i] = externalObjWithBounds{
 			externalObjID: p.parseObjID(list[0].pos, list[0].lit),
 			bounds: pebble.KeyRange{
@@ -491,19 +489,15 @@ func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithB
 			objs[i].syntheticSuffix = syntheticSuffix
 		}
 
-		contentPrefix := unquoteBytes(list[4].lit)
-		syntheticPrefix := unquoteBytes(list[5].lit)
-		if len(syntheticPrefix) > 0 || len(contentPrefix) > 0 {
+		syntheticPrefix := unquoteBytes(list[4].lit)
+		if len(syntheticPrefix) > 0 {
 			if !bytes.HasPrefix(objs[i].bounds.Start, syntheticPrefix) {
 				panic(fmt.Sprintf("invalid synthetic prefix %q %q", objs[i].bounds.Start, syntheticPrefix))
 			}
 			if !bytes.HasPrefix(objs[i].bounds.End, syntheticPrefix) {
 				panic(fmt.Sprintf("invalid synthetic prefix %q %q", objs[i].bounds.End, syntheticPrefix))
 			}
-			objs[i].prefixChange = &sstable.PrefixReplacement{
-				ContentPrefix:   contentPrefix,
-				SyntheticPrefix: syntheticPrefix,
-			}
+			objs[i].syntheticPrefix = syntheticPrefix
 		}
 		list = list[numArgs:]
 	}

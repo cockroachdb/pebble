@@ -181,10 +181,11 @@ func (b *lsmViewBuilder) tableDetails(
 		outf("virtual; backed by %s (%ssize: %s)", m.FileBacking.DiskFileNum, backingInfo, humanize.Bytes.Uint64(m.FileBacking.Size))
 	}
 	outf("seqnums: %d - %d", m.SmallestSeqNum, m.LargestSeqNum)
-	if p := m.PrefixReplacement; p != nil {
-		outf("prefix replacement: %s -> %s", p.ContentPrefix, p.SyntheticPrefix)
+	if m.SyntheticPrefix.IsSet() {
+		// Note: we are abusing the key formatter by passing just the prefix.
+		outf("synthetic prefix: %s", b.fmtKey(m.SyntheticPrefix))
 	}
-	if len(m.SyntheticSuffix) > 0 {
+	if m.SyntheticSuffix.IsSet() {
 		// Note: we are abusing the key formatter by passing just the suffix.
 		outf("synthetic suffix: %s", b.fmtKey(m.SyntheticSuffix))
 	}

@@ -169,45 +169,8 @@ set bg foo
 set bh foo
 ----
 
-ingest-external
-f6 bounds=(cf,ci) prefix-replace=(b,c)
-----
-
-iter
-first
-next
-next
-next
-next
-next
-next
-next
-next
-next
-next
-next
-next
-next
-next
-----
-a: (foo, .)
-b: (bar, .)
-c: (foobarbaz, .)
-cf: (foo, .)
-cg: (foo, .)
-ch: (foo, .)
-d: (haha, .)
-e: (something, .)
-f: (foo, .)
-ff: (foo, .)
-fg: (foo, .)
-fh: (foo, .)
-g: (foo, .)
-h: (foo, .)
-.
-
-# Test that ingestion with a prefix or suffix replacement rule fails on older
-# major versions
+# Test that ingestion with a syntehtic prefix or suffix fails on older
+# major versions.
 
 reset format-major-version=16
 ----
@@ -219,16 +182,9 @@ set eh foo
 ----
 
 ingest-external
-f5 bounds=(ff,fi) prefix-replace=(e,f)
-----
-pebble: format major version too old for synthetic prefix ingestion
-
-
-ingest-external
 f5 bounds=(ff,fi) synthetic-prefix=(f)
 ----
 pebble: format major version too old for synthetic prefix ingestion
-
 
 ingest-external
 f5 bounds=(ff,fi) synthetic-suffix=@5
@@ -433,71 +389,6 @@ iter
 seek-lt de
 ----
 ci: (foo, .)
-
-reset
-----
-
-
-# Test compactions with synthetic prefix replacement.
-reset
-----
-
-build-remote ext
-set ax ax
-set da da
-set db db
-set dc dc
-set ux ux
-----
-
-# Replace prefix with one greater than the original one.
-ingest-external
-ext bounds=(ea,ed) prefix-replace=(d,e)
-----
-
-# Replace prefix with one smaller than the original one.
-ingest-external
-ext bounds=(ba,bd) prefix-replace=(d,b)
-----
-
-# Write some keys so we actually perform a compaction.
-batch
-set a a
-set c c
-set f f
-----
-
-compact a z
-----
-
-lsm
-----
-L6:
-  000008:[a#0,SET-f#0,SET]
-
-# Make sure we see both ba..bc and ea..ec.
-iter
-first
-next
-next
-next
-next
-next
-next
-next
-next
-next
-----
-a: (a, .)
-ba: (da, .)
-bb: (db, .)
-bc: (dc, .)
-c: (c, .)
-ea: (da, .)
-eb: (db, .)
-ec: (dc, .)
-f: (f, .)
-.
 
 # Test compactions with prefix synthesis.
 reset

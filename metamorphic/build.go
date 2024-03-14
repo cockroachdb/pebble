@@ -30,7 +30,7 @@ func writeSSTForIngestion(
 	rangeKeyIter keyspan.FragmentIterator,
 	uniquePrefixes bool,
 	syntheticSuffix sstable.SyntheticSuffix,
-	prefixChange *sstable.PrefixReplacement,
+	syntheticPrefix sstable.SyntheticPrefix,
 	writable objstorage.Writable,
 	targetFMV pebble.FormatMajorVersion,
 ) (*sstable.WriterMetadata, error) {
@@ -47,11 +47,11 @@ func writeSSTForIngestion(
 	defer rangeKeyIterCloser.Close()
 
 	outputKey := func(key []byte) []byte {
-		if prefixChange == nil && !syntheticSuffix.IsSet() {
+		if !syntheticPrefix.IsSet() && !syntheticSuffix.IsSet() {
 			return slices.Clone(key)
 		}
-		if prefixChange != nil {
-			key = prefixChange.Apply(key)
+		if syntheticPrefix.IsSet() {
+			key = syntheticPrefix.Apply(key)
 		}
 		if syntheticSuffix.IsSet() {
 			n := t.opts.Comparer.Split(key)
@@ -179,7 +179,7 @@ func buildForIngest(
 		iter, rangeDelIter, rangeKeyIter,
 		false, /* uniquePrefixes */
 		nil,   /* syntheticSuffix */
-		nil,   /* prefixChange */
+		nil,   /* syntheticPrefix */
 		writable,
 		db.FormatMajorVersion(),
 	)
@@ -195,14 +195,14 @@ func buildForIngestExternalEmulation(
 	externalObjID objID,
 	bounds pebble.KeyRange,
 	syntheticSuffix sstable.SyntheticSuffix,
-	prefixChange *sstable.PrefixReplacement,
+	syntheticPrefix sstable.SyntheticPrefix,
 	i int,
 ) (path string, _ *sstable.WriterMetadata) {
 	path = t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
 	f, err := t.opts.FS.Create(path)
 	panicIfErr(err)
 
-	reader, pointIter, rangeDelIter, rangeKeyIter := openExternalObj(t, externalObjID, bounds, prefixChange)
+	reader, pointIter, rangeDelIter, rangeKeyIter := openExternalObj(t, externalObjID, bounds, syntheticPrefix)
 	defer reader.Close()
 
 	writable := objstorageprovider.NewFileWritable(f)
@@ -215,7 +215,7 @@ func buildForIngestExternalEmulation(
 		pointIter, rangeDelIter, rangeKeyIter,
 		uniquePrefixes,
 		syntheticSuffix,
-		prefixChange,
+		syntheticPrefix,
 		writable,
 		t.minFMV(),
 	)
@@ -226,7 +226,7 @@ func buildForIngestExternalEmulation(
 }
 
 func openExternalObj(
-	t *Test, externalObjID objID, bounds pebble.KeyRange, prefixChange *sstable.PrefixReplacement,
+	t *Test, externalObjID objID, bounds pebble.KeyRange, syntheticPrefix sstable.SyntheticPrefix,
 ) (
 	reader *sstable.Reader,
 	pointIter base.InternalIterator,
@@ -243,9 +243,9 @@ func openExternalObj(
 
 	start := bounds.Start
 	end := bounds.End
-	if prefixChange != nil {
-		start = prefixChange.Invert(start)
-		end = prefixChange.Invert(end)
+	if syntheticPrefix.IsSet() {
+		start = syntheticPrefix.Invert(start)
+		end = syntheticPrefix.Invert(end)
 	}
 	pointIter, err = reader.NewIter(sstable.NoTransforms, start, end)
 	panicIfErr(err)
@@ -277,9 +277,9 @@ func openExternalObj(
 // externalObjIsEmpty returns true if the given external object has no point or
 // range keys withing the given bounds.
 func externalObjIsEmpty(
-	t *Test, externalObjID objID, bounds pebble.KeyRange, prefixChange *sstable.PrefixReplacement,
+	t *Test, externalObjID objID, bounds pebble.KeyRange, syntheticPrefix sstable.SyntheticPrefix,
 ) bool {
-	reader, pointIter, rangeDelIter, rangeKeyIter := openExternalObj(t, externalObjID, bounds, prefixChange)
+	reader, pointIter, rangeDelIter, rangeKeyIter := openExternalObj(t, externalObjID, bounds, syntheticPrefix)
 	defer reader.Close()
 	defer closeIters(pointIter, rangeDelIter, rangeKeyIter)
 
