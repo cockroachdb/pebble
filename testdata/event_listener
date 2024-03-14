@@ -16,6 +16,7 @@ open-dir: db
 lock: db/LOCK
 open-dir: db
 open-dir: db
+open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
 create: db/marker.manifest.000001.MANIFEST-000001
@@ -23,7 +24,6 @@ close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 1] MANIFEST created 000001
 open-dir: wal
-open-dir: db
 sync: db/MANIFEST-000001
 create: wal/000002.log
 sync: wal
@@ -224,9 +224,10 @@ Flushes: 3
 Compactions: 1  estimated debt: 1.8KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 1.8KB
 Block cache: 6 entries (1002B)  hit rate: 0.0%
 Table cache: 1 entries (768B)  hit rate: 40.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -323,9 +324,10 @@ Flushes: 6
 Compactions: 1  estimated debt: 3.6KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (512KB)  zombie: 1 (512KB)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 3.6KB
 Block cache: 12 entries (2.0KB)  hit rate: 7.7%
 Table cache: 1 entries (768B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%

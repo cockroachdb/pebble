@@ -30,7 +30,7 @@ type ArchiveCleaner = base.ArchiveCleaner
 type cleanupManager struct {
 	opts            *Options
 	objProvider     objstorage.Provider
-	onTableDeleteFn func(fileSize uint64)
+	onTableDeleteFn func(fileSize uint64, isLocal bool)
 	deletePacer     *deletionPacer
 
 	// jobsCh is used as the cleanup job queue.
@@ -56,6 +56,7 @@ type deletableFile struct {
 	dir      string
 	fileNum  base.DiskFileNum
 	fileSize uint64
+	isLocal  bool
 }
 
 // obsoleteFile holds information about a file that needs to be deleted soon.
@@ -77,7 +78,7 @@ type cleanupJob struct {
 func openCleanupManager(
 	opts *Options,
 	objProvider objstorage.Provider,
-	onTableDeleteFn func(fileSize uint64),
+	onTableDeleteFn func(fileSize uint64, isLocal bool),
 	getDeletePacerInfo func() deletionPacerInfo,
 ) *cleanupManager {
 	cm := &cleanupManager{
@@ -162,7 +163,7 @@ func (cm *cleanupManager) mainLoop() {
 			switch of.fileType {
 			case fileTypeTable:
 				cm.maybePace(&tb, of.fileType, of.nonLogFile.fileNum, of.nonLogFile.fileSize)
-				cm.onTableDeleteFn(of.nonLogFile.fileSize)
+				cm.onTableDeleteFn(of.nonLogFile.fileSize, of.nonLogFile.isLocal)
 				cm.deleteObsoleteObject(fileTypeTable, job.jobID, of.nonLogFile.fileNum)
 			case fileTypeLog:
 				cm.deleteObsoleteFile(of.logFile.FS, fileTypeLog, job.jobID, of.logFile.Path,

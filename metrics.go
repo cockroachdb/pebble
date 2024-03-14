@@ -264,6 +264,16 @@ type Metrics struct {
 		BackingTableCount uint64
 		// The sum of the sizes of the BackingTableCount sstables that are backing virtual tables.
 		BackingTableSize uint64
+
+		// Local file sizes.
+		Local struct {
+			// LiveSize is the number of bytes in live tables.
+			LiveSize uint64
+			// ObsoleteSize is the number of bytes in obsolete tables.
+			ObsoleteSize uint64
+			// ZombieSize is the number of bytes in zombie tables.
+			ZombieSize uint64
+		}
 	}
 
 	TableCache CacheMetrics
@@ -329,18 +339,19 @@ var (
 )
 
 // DiskSpaceUsage returns the total disk space used by the database in bytes,
-// including live and obsolete files.
+// including live and obsolete files. This only includes local files, i.e.,
+// remote files (as known to objstorage.Provider) are not included.
 func (m *Metrics) DiskSpaceUsage() uint64 {
 	var usageBytes uint64
 	usageBytes += m.WAL.PhysicalSize
 	usageBytes += m.WAL.ObsoletePhysicalSize
-	for _, lm := range m.Levels {
-		usageBytes += uint64(lm.Size)
-	}
-	usageBytes += m.Table.ObsoleteSize
-	usageBytes += m.Table.ZombieSize
+	usageBytes += m.Table.Local.LiveSize
+	usageBytes += m.Table.Local.ObsoleteSize
+	usageBytes += m.Table.Local.ZombieSize
 	usageBytes += m.private.optionsFileSize
 	usageBytes += m.private.manifestFileSize
+	// TODO(sumeer): InProgressBytes does not distinguish between local and
+	// remote files. This causes a small error. Fix.
 	usageBytes += uint64(m.Compact.InProgressBytes)
 	return usageBytes
 }
@@ -571,9 +582,10 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(m.MemTable.ZombieCount),
 		humanize.Bytes.Uint64(m.MemTable.ZombieSize))
 
-	w.Printf("Zombie tables: %d (%s)\n",
+	w.Printf("Zombie tables: %d (%s, local: %s)\n",
 		redact.Safe(m.Table.ZombieCount),
-		humanize.Bytes.Uint64(m.Table.ZombieSize))
+		humanize.Bytes.Uint64(m.Table.ZombieSize),
+		humanize.Bytes.Uint64(m.Table.Local.ZombieSize))
 
 	w.Printf("Backing tables: %d (%s)\n",
 		redact.Safe(m.Table.BackingTableCount),
@@ -581,6 +593,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("Virtual tables: %d (%s)\n",
 		redact.Safe(m.NumVirtual()),
 		humanize.Bytes.Uint64(m.VirtualSize()))
+	w.Printf("Local tables size: %s\n", humanize.Bytes.Uint64(m.Table.Local.LiveSize))
 
 	formatCacheMetrics := func(m *CacheMetrics, name redact.SafeString) {
 		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",
