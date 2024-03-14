@@ -281,6 +281,32 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 
+	// List the objects. This also happens to include WAL log files, if they are
+	// in the same dir, but we will ignore those below. The provider is also
+	// given this list, but it ignores non sstable files.
+	ls, err := opts.FS.List(d.dirname)
+	if err != nil {
+		return nil, err
+	}
+	providerSettings := objstorageprovider.Settings{
+		Logger:              opts.Logger,
+		FS:                  opts.FS,
+		FSDirName:           dirname,
+		FSDirInitialListing: ls,
+		FSCleaner:           opts.Cleaner,
+		NoSyncOnClose:       opts.NoSyncOnClose,
+		BytesPerSync:        opts.BytesPerSync,
+	}
+	providerSettings.Remote.StorageFactory = opts.Experimental.RemoteStorage
+	providerSettings.Remote.CreateOnShared = opts.Experimental.CreateOnShared
+	providerSettings.Remote.CreateOnSharedLocator = opts.Experimental.CreateOnSharedLocator
+	providerSettings.Remote.CacheSizeBytes = opts.Experimental.SecondaryCacheSizeBytes
+
+	d.objProvider, err = objstorageprovider.Open(providerSettings)
+	if err != nil {
+		return nil, err
+	}
+
 	if !manifestExists {
 		// DB does not exist.
 		if d.opts.ErrorIfNotExists || d.opts.ReadOnly {
@@ -288,7 +314,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 
 		// Create the DB.
-		if err := d.mu.versions.create(jobID, dirname, opts, manifestMarker, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
+		if err := d.mu.versions.create(
+			jobID, dirname, d.objProvider, opts, manifestMarker, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 	} else {
@@ -296,7 +323,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			return nil, errors.Wrapf(ErrDBAlreadyExists, "dirname=%q", dirname)
 		}
 		// Load the version set.
-		if err := d.mu.versions.load(dirname, opts, manifestFileNum, manifestMarker, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
+		if err := d.mu.versions.load(
+			dirname, d.objProvider, opts, manifestFileNum, manifestMarker, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 		if opts.ErrorIfNotPristine {
@@ -354,32 +382,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}()
 
 	d.mu.log.manager = walManager
-
-	// List the objects. This also happens to include WAL log files, if they are
-	// in the same dir, but we will ignore those below. The provider is also
-	// given this list, but it ignores non sstable files.
-	ls, err := opts.FS.List(d.dirname)
-	if err != nil {
-		return nil, err
-	}
-	providerSettings := objstorageprovider.Settings{
-		Logger:              opts.Logger,
-		FS:                  opts.FS,
-		FSDirName:           dirname,
-		FSDirInitialListing: ls,
-		FSCleaner:           opts.Cleaner,
-		NoSyncOnClose:       opts.NoSyncOnClose,
-		BytesPerSync:        opts.BytesPerSync,
-	}
-	providerSettings.Remote.StorageFactory = opts.Experimental.RemoteStorage
-	providerSettings.Remote.CreateOnShared = opts.Experimental.CreateOnShared
-	providerSettings.Remote.CreateOnSharedLocator = opts.Experimental.CreateOnSharedLocator
-	providerSettings.Remote.CacheSizeBytes = opts.Experimental.SecondaryCacheSizeBytes
-
-	d.objProvider, err = objstorageprovider.Open(providerSettings)
-	if err != nil {
-		return nil, err
-	}
 
 	d.cleanupManager = openCleanupManager(opts, d.objProvider, d.onObsoleteTableDelete, d.getDeletionPacerInfo)
 

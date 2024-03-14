@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -17,6 +18,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
@@ -45,9 +47,11 @@ func TestVersionSet(t *testing.T) {
 	mu := &sync.Mutex{}
 	marker, _, err := atomicfs.LocateMarker(opts.FS, "", manifestMarkerName)
 	require.NoError(t, err)
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(opts.FS, "" /* dirName */))
+	require.NoError(t, err)
 	var vs versionSet
 	require.NoError(t, vs.create(
-		0 /* jobID */, "" /* dirname */, opts, marker,
+		0 /* jobID */, "" /* dirname */, provider, opts, marker,
 		func() FormatMajorVersion { return FormatVirtualSSTables },
 		mu,
 	))
@@ -69,6 +73,13 @@ func TestVersionSet(t *testing.T) {
 
 	refs := make(map[string]*version)
 	datadriven.RunTest(t, "testdata/version_set", func(t *testing.T, td *datadriven.TestData) (retVal string) {
+		// createFile only exists to prevent versionSet from complaining that a
+		// file that is becoming a zombie does not exist.
+		createFile := func(fileNum base.DiskFileNum) {
+			w, _, err := provider.Create(context.Background(), fileTypeTable, fileNum, objstorage.CreateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, w.Finish())
+		}
 		var buf strings.Builder
 
 		switch td.Cmd {
@@ -82,6 +93,9 @@ func TestVersionSet(t *testing.T) {
 				nf.Meta.Size = uint64(nf.Meta.FileNum) * 100
 				nf.Meta.FileBacking = dedupBacking(nf.Meta.FileBacking)
 				metas[nf.Meta.FileNum] = nf.Meta
+				if !nf.Meta.Virtual {
+					createFile(nf.Meta.FileBacking.DiskFileNum)
+				}
 			}
 			for de := range ve.DeletedFiles {
 				m := metas[de.FileNum]
@@ -92,6 +106,7 @@ func TestVersionSet(t *testing.T) {
 			}
 			for i := range ve.CreatedBackingTables {
 				ve.CreatedBackingTables[i] = dedupBacking(ve.CreatedBackingTables[i])
+				createFile(ve.CreatedBackingTables[i].DiskFileNum)
 			}
 
 			fileMetrics := newFileMetrics(ve.NewFiles)
@@ -153,7 +168,7 @@ func TestVersionSet(t *testing.T) {
 			}
 			vs = versionSet{}
 			err = vs.load(
-				"", opts, manifestNum, marker,
+				"", provider, opts, manifestNum, marker,
 				func() FormatMajorVersion { return FormatVirtualSSTables }, mu,
 			)
 			if err != nil {

@@ -2128,8 +2128,11 @@ func (d *DB) Metrics() *Metrics {
 		}
 	}
 	metrics.Table.ZombieCount = int64(len(d.mu.versions.zombieTables))
-	for _, size := range d.mu.versions.zombieTables {
-		metrics.Table.ZombieSize += size
+	for _, info := range d.mu.versions.zombieTables {
+		metrics.Table.ZombieSize += info.FileSize
+		if info.isLocal {
+			metrics.Table.Local.ZombieSize += info.FileSize
+		}
 	}
 	metrics.private.optionsFileSize = d.optionsFileSize
 

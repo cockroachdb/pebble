@@ -354,3 +354,13 @@ func Copy(ctx context.Context, in Readable, out Writable, offset, length uint64)
 	}
 	return nil
 }
+
+// MustIsLocalTable requires that a table exist with fileNum, and returns true
+// iff it is local.
+func MustIsLocalTable(provider Provider, fileNum base.DiskFileNum) bool {
+	meta, err := provider.Lookup(base.FileTypeTable, fileNum)
+	if err != nil {
+		panic(err)
+	}
+	return !meta.IsRemote()
+}
