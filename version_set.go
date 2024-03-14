@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -56,7 +57,8 @@ type versionSet struct {
 	atomicInProgressBytes atomic.Int64
 
 	// Immutable fields.
-	dirname string
+	dirname  string
+	provider objstorage.Provider
 	// Set to DB.mu.
 	mu   *sync.Mutex
 	opts *Options
@@ -76,13 +78,13 @@ type versionSet struct {
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
 	obsoleteFn        func(obsolete []*fileBacking)
-	obsoleteTables    []fileInfo
+	obsoleteTables    []tableInfo
 	obsoleteManifests []fileInfo
 	obsoleteOptions   []fileInfo
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
-	zombieTables map[base.DiskFileNum]uint64 // filenum -> size
+	zombieTables map[base.DiskFileNum]tableInfo
 
 	// virtualBackings contains information about the FileBackings which support
 	// virtual sstables in the latest version. It is mainly used to determine when
@@ -127,14 +129,21 @@ type versionSet struct {
 	rotationHelper record.RotationHelper
 }
 
+type tableInfo struct {
+	fileInfo
+	isLocal bool
+}
+
 func (vs *versionSet) init(
 	dirname string,
+	provider objstorage.Provider,
 	opts *Options,
 	marker *atomicfs.Marker,
 	getFMV func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) {
 	vs.dirname = dirname
+	vs.provider = provider
 	vs.mu = mu
 	vs.writerCond.L = mu
 	vs.opts = opts
@@ -143,7 +152,7 @@ func (vs *versionSet) init(
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
-	vs.zombieTables = make(map[base.DiskFileNum]uint64)
+	vs.zombieTables = make(map[base.DiskFileNum]tableInfo)
 	vs.virtualBackings = manifest.MakeVirtualBackings()
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
@@ -154,12 +163,13 @@ func (vs *versionSet) init(
 func (vs *versionSet) create(
 	jobID int,
 	dirname string,
+	provider objstorage.Provider,
 	opts *Options,
 	marker *atomicfs.Marker,
 	getFormatMajorVersion func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) error {
-	vs.init(dirname, opts, marker, getFormatMajorVersion, mu)
+	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
 	newVersion := &version{}
 	vs.append(newVersion)
 	var err error
@@ -201,13 +211,14 @@ func (vs *versionSet) create(
 // load loads the version set from the manifest file.
 func (vs *versionSet) load(
 	dirname string,
+	provider objstorage.Provider,
 	opts *Options,
 	manifestFileNum base.DiskFileNum,
 	marker *atomicfs.Marker,
 	getFormatMajorVersion func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) error {
-	vs.init(dirname, opts, marker, getFormatMajorVersion, mu)
+	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
 
 	vs.manifestFileNum = manifestFileNum
 	manifestPath := base.MakeFilepath(opts.FS, dirname, fileTypeManifest, vs.manifestFileNum)
@@ -333,6 +344,19 @@ func (vs *versionSet) load(
 		files := newVersion.Levels[i].Slice()
 		l.Size = int64(files.SizeSum())
 	}
+	for _, l := range newVersion.Levels {
+		iter := l.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			if !f.Virtual {
+				_, localSize := computeLocalSize(f.FileBacking, vs.provider)
+				vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
+			}
+		}
+	}
+	vs.virtualBackings.ForEach(func(backing *fileBacking) {
+		_, localSize := computeLocalSize(backing, vs.provider)
+		vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
+	})
 
 	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil)
 	return nil
@@ -511,7 +535,7 @@ func (vs *versionSet) logAndApply(
 	nextFileNum := vs.nextFileNum
 
 	// Update backing metadata and populate RemovedBackingTables.
-	zombies := getZombiesAndUpdateVirtualBackings(ve, &vs.virtualBackings)
+	zombies, localLiveSizeDelta := getZombiesAndUpdateVirtualBackings(ve, &vs.virtualBackings, vs.provider)
 
 	if err := func() error {
 		vs.mu.Unlock()
@@ -599,8 +623,8 @@ func (vs *versionSet) logAndApply(
 	// Update the zombie tables set first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
 	// being called.
-	for fileNum, size := range zombies {
-		vs.zombieTables[fileNum] = size
+	for fileNum, ti := range zombies {
+		vs.zombieTables[fileNum] = ti
 	}
 
 	// Install the new version.
@@ -652,6 +676,7 @@ func (vs *versionSet) logAndApply(
 		}
 	}
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
+	vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localLiveSizeDelta)
 
 	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, inProgress)
 	if !vs.dynamicBaseLevel {
@@ -663,21 +688,27 @@ func (vs *versionSet) logAndApply(
 // getZombiesAndUpdateVirtualBackings updates the virtual backings with the
 // changes in the versionEdit, populates ve.RemovedBackingTables, and returns
 // all backings (physical and virtual) that will no longer be needed when we
-// apply ve.
+// apply ve. Additionally, returns the delta in local live bytes.
 func getZombiesAndUpdateVirtualBackings(
-	ve *versionEdit, virtualBackings *manifest.VirtualBackings,
-) map[base.DiskFileNum]uint64 {
-	var zombies map[base.DiskFileNum]uint64
-
+	ve *versionEdit, virtualBackings *manifest.VirtualBackings, provider objstorage.Provider,
+) (zombies map[base.DiskFileNum]tableInfo, localLiveSizeDelta int64) {
 	// We deal with physical and virtual tables separately.
 
 	// Physical tables are the sole users of their backing.
 	for _, m := range ve.DeletedFiles {
 		if !m.Virtual {
+			isLocal, localFileDelta := computeLocalSize(m.FileBacking, provider)
+			localLiveSizeDelta -= localFileDelta
 			if zombies == nil {
-				zombies = make(map[base.DiskFileNum]uint64)
+				zombies = make(map[base.DiskFileNum]tableInfo)
 			}
-			zombies[m.FileBacking.DiskFileNum] = m.FileBacking.Size
+			zombies[m.FileBacking.DiskFileNum] = tableInfo{
+				fileInfo: fileInfo{
+					FileNum:  m.FileBacking.DiskFileNum,
+					FileSize: m.FileBacking.Size,
+				},
+				isLocal: isLocal,
+			}
 		}
 	}
 	// Tables can move between levels, in which case they appear in both
@@ -685,6 +716,8 @@ func getZombiesAndUpdateVirtualBackings(
 	for _, nf := range ve.NewFiles {
 		if !nf.Meta.Virtual {
 			delete(zombies, nf.Meta.FileBacking.DiskFileNum)
+			_, localFileDelta := computeLocalSize(nf.Meta.FileBacking, provider)
+			localLiveSizeDelta += localFileDelta
 		}
 	}
 
@@ -692,6 +725,8 @@ func getZombiesAndUpdateVirtualBackings(
 		virtualBackings.Add(b)
 		// Physical backings can become virtual.
 		delete(zombies, b.DiskFileNum)
+		_, localFileDelta := computeLocalSize(b, provider)
+		localLiveSizeDelta += localFileDelta
 	}
 	// When a virtual table moves between levels we AddTable() then RemoveTable(),
 	// which works out.
@@ -710,16 +745,37 @@ func getZombiesAndUpdateVirtualBackings(
 		// Virtual backings that are no longer used are zombies and are also added
 		// to RemovedBackingTables (before the version edit is written to disk).
 		if zombies == nil {
-			zombies = make(map[base.DiskFileNum]uint64, len(ve.RemovedBackingTables))
+			zombies = make(map[base.DiskFileNum]tableInfo, len(ve.RemovedBackingTables))
 		}
 		ve.RemovedBackingTables = make([]base.DiskFileNum, len(unused))
 		for i, b := range unused {
-			zombies[b.DiskFileNum] = b.Size
+			isLocal, localFileDelta := computeLocalSize(b, provider)
+			localLiveSizeDelta -= localFileDelta
+			zombies[b.DiskFileNum] = tableInfo{
+				fileInfo: fileInfo{
+					FileNum:  b.DiskFileNum,
+					FileSize: b.Size,
+				},
+				isLocal: isLocal,
+			}
 			virtualBackings.Remove(b.DiskFileNum)
 			ve.RemovedBackingTables[i] = b.DiskFileNum
 		}
 	}
-	return zombies
+	return zombies, localLiveSizeDelta
+}
+
+func computeLocalSize(
+	backing *fileBacking, provider objstorage.Provider,
+) (isLocal bool, localSize int64) {
+	meta, err := provider.Lookup(fileTypeTable, backing.DiskFileNum)
+	if err != nil {
+		panic(errors.Wrapf(err, "disk file %s not found", backing.DiskFileNum))
+	}
+	if meta.IsRemote() {
+		return false, 0
+	}
+	return true, int64(backing.Size)
 }
 
 func (vs *versionSet) incrementCompactions(
@@ -923,7 +979,7 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*fileBacking) {
 		return
 	}
 
-	obsoleteFileInfo := make([]fileInfo, len(obsolete))
+	obsoleteFileInfo := make([]tableInfo, len(obsolete))
 	for i, bs := range obsolete {
 		obsoleteFileInfo[i].FileNum = bs.DiskFileNum
 		obsoleteFileInfo[i].FileSize = bs.Size
@@ -939,13 +995,19 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*fileBacking) {
 		}
 	}
 
-	for _, fi := range obsoleteFileInfo {
+	for i, fi := range obsoleteFileInfo {
 		// Note that the obsolete tables are no longer zombie by the definition of
 		// zombie, but we leave them in the zombie tables map until they are
 		// deleted from disk.
-		if _, ok := vs.zombieTables[fi.FileNum]; !ok {
+		//
+		// TODO(sumeer): this means that the zombie metrics, like ZombieSize,
+		// computed in DB.Metrics are also being counted in the obsolete metrics.
+		// Was this intentional?
+		info, ok := vs.zombieTables[fi.FileNum]
+		if !ok {
 			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fi.FileNum)
 		}
+		obsoleteFileInfo[i].isLocal = info.isLocal
 	}
 
 	vs.obsoleteTables = append(vs.obsoleteTables, obsoleteFileInfo...)
@@ -963,8 +1025,12 @@ func (vs *versionSet) addObsolete(obsolete []*fileBacking) {
 func (vs *versionSet) updateObsoleteTableMetricsLocked() {
 	vs.metrics.Table.ObsoleteCount = int64(len(vs.obsoleteTables))
 	vs.metrics.Table.ObsoleteSize = 0
+	vs.metrics.Table.Local.ObsoleteSize = 0
 	for _, fi := range vs.obsoleteTables {
 		vs.metrics.Table.ObsoleteSize += fi.FileSize
+		if fi.isLocal {
+			vs.metrics.Table.Local.ObsoleteSize += fi.FileSize
+		}
 	}
 }
 

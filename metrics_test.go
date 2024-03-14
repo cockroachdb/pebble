@@ -66,6 +66,9 @@ func exampleMetrics() Metrics {
 	m.WAL.BytesIn = 25
 	m.WAL.BytesWritten = 26
 	m.Ingest.Count = 27
+	m.Table.Local.LiveSize = 28
+	m.Table.Local.ObsoleteSize = 29
+	m.Table.Local.ZombieSize = 30
 
 	for i := range m.Levels {
 		l := &m.Levels[i]

@@ -17,9 +17,10 @@ Flushes: 8
 Compactions: 5  estimated debt: 6B  in progress: 2 (7B)
              default: 27  delete: 28  elision: 29  move: 30  read: 31  rewrite: 32  multi-level: 33
 MemTables: 12 (11B)  zombie: 14 (13B)
-Zombie tables: 16 (15B)
+Zombie tables: 16 (15B, local: 30B)
 Backing tables: 1 (2.0MB)
 Virtual tables: 2807 (2.8KB)
+Local tables size: 28B
 Block cache: 2 entries (1B)  hit rate: 42.9%
 Table cache: 18 entries (17B)  hit rate: 48.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -64,9 +65,10 @@ Flushes: 1
 Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
              default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 589B
 Block cache: 3 entries (484B)  hit rate: 0.0%
 Table cache: 1 entries (768B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -118,9 +120,10 @@ Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
-Zombie tables: 2 (1.2KB)
+Zombie tables: 2 (1.2KB, local: 1.2KB)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 595B
 Block cache: 5 entries (946B)  hit rate: 33.3%
 Table cache: 2 entries (1.5KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -159,9 +162,10 @@ Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
-Zombie tables: 2 (1.2KB)
+Zombie tables: 2 (1.2KB, local: 1.2KB)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 595B
 Block cache: 5 entries (946B)  hit rate: 33.3%
 Table cache: 2 entries (1.5KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -197,9 +201,10 @@ Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
-Zombie tables: 1 (589B)
+Zombie tables: 1 (589B, local: 589B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 595B
 Block cache: 3 entries (484B)  hit rate: 33.3%
 Table cache: 1 entries (768B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -239,9 +244,10 @@ Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 595B
 Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -308,9 +314,10 @@ Flushes: 3
 Compactions: 1  estimated debt: 2.6KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 2.6KB
 Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -361,9 +368,10 @@ Flushes: 3
 Compactions: 2  estimated debt: 0B  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 2.0KB
 Block cache: 0 entries (0B)  hit rate: 14.3%
 Table cache: 0 entries (0B)  hit rate: 58.3%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -463,9 +471,10 @@ Flushes: 8
 Compactions: 2  estimated debt: 4.4KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 4.4KB
 Block cache: 12 entries (2.0KB)  hit rate: 16.7%
 Table cache: 1 entries (768B)  hit rate: 60.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -524,9 +533,10 @@ Flushes: 9
 Compactions: 2  estimated debt: 6.2KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 6.2KB
 Block cache: 12 entries (2.0KB)  hit rate: 16.7%
 Table cache: 1 entries (768B)  hit rate: 60.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -599,9 +609,10 @@ Flushes: 9
 Compactions: 2  estimated debt: 5.7KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 2 (1.2KB)
 Virtual tables: 2 (102B)
+Local tables size: 6.8KB
 Block cache: 21 entries (3.5KB)  hit rate: 0.0%
 Table cache: 3 entries (2.3KB)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -699,9 +710,10 @@ Flushes: 9
 Compactions: 3  estimated debt: 0B  in progress: 0 (0B)
              default: 3  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
+Local tables size: 3.9KB
 Block cache: 6 entries (1.0KB)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
