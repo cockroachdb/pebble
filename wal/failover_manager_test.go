@@ -294,6 +294,7 @@ func TestManagerFailover(t *testing.T) {
 	var fs *blockingFS
 	var fm *failoverManager
 	var fw *failoverWriter
+	var allowFailover bool
 	dirs := [numDirIndices]string{"pri", "sec"}
 	datadriven.RunTest(t, "testdata/manager_failover",
 		func(t *testing.T, td *datadriven.TestData) string {
@@ -303,6 +304,7 @@ func TestManagerFailover(t *testing.T) {
 				if !td.HasArg("reuse-fs") {
 					memFS = vfs.NewMem()
 				}
+				allowFailover = !td.HasArg("disable-failover")
 				proberIterationForTesting = make(chan struct{}, 50000)
 				monitorIterationForTesting = make(chan struct{}, 50000)
 				monitorStateBuf.Reset()
@@ -322,7 +324,7 @@ func TestManagerFailover(t *testing.T) {
 							}
 							injs[i] = inj
 						}
-					case "reuse-fs":
+					case "reuse-fs", "disable-failover":
 						// Ignore, already handled above.
 					default:
 						return fmt.Sprintf("unknown arg %s", cmdArg.Key)
@@ -359,7 +361,7 @@ func TestManagerFailover(t *testing.T) {
 					// Use 75ms to not align with PrimaryDirProbeInterval, to avoid
 					// races.
 					UnhealthySamplingInterval:          75 * time.Millisecond,
-					UnhealthyOperationLatencyThreshold: func() time.Duration { return 50 * time.Millisecond },
+					UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return 50 * time.Millisecond, allowFailover },
 					ElevatedWriteStallThresholdLag:     10 * time.Second,
 					timeSource:                         ts,
 					monitorIterationForTesting:         monitorIterationForTesting,
@@ -566,7 +568,7 @@ func TestFailoverManager_Quiesce(t *testing.T) {
 			HealthyProbeLatencyThreshold:       time.Millisecond,
 			HealthyInterval:                    3 * time.Millisecond,
 			UnhealthySamplingInterval:          250 * time.Microsecond,
-			UnhealthyOperationLatencyThreshold: func() time.Duration { return time.Millisecond },
+			UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return time.Millisecond, true },
 		},
 	}, nil /* initial  logs */))
 	for i := 0; i < 3; i++ {

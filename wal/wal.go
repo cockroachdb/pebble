@@ -184,8 +184,10 @@ type FailoverOptions struct {
 	// errors in the latest LogWriter.
 	UnhealthySamplingInterval time.Duration
 	// UnhealthyOperationLatencyThreshold is the latency threshold that is
-	// considered unhealthy, for operations done by a LogWriter.
-	UnhealthyOperationLatencyThreshold func() time.Duration
+	// considered unhealthy, for operations done by a LogWriter. The second return
+	// value indicates whether we should consider failover at all. If the second
+	// return value is false, failover is disabled.
+	UnhealthyOperationLatencyThreshold func() (time.Duration, bool)
 
 	// ElevatedWriteStallThresholdLag is the duration for which an elevated
 	// threshold should continue after a switch back to the primary dir. This is
@@ -218,8 +220,8 @@ func (o *FailoverOptions) EnsureDefaults() {
 		o.UnhealthySamplingInterval = 100 * time.Millisecond
 	}
 	if o.UnhealthyOperationLatencyThreshold == nil {
-		o.UnhealthyOperationLatencyThreshold = func() time.Duration {
-			return 200 * time.Millisecond
+		o.UnhealthyOperationLatencyThreshold = func() (time.Duration, bool) {
+			return 200 * time.Millisecond, true
 		}
 	}
 }

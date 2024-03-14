@@ -353,15 +353,17 @@ func (m *failoverMonitor) monitorLoop(shouldQuiesce <-chan struct{}) {
 			// has misconfigured a secondary e.g. wrong permissions or not enough
 			// disk space. We only remember the error history in the context of the
 			// lastWriter since an operator can fix the underlying misconfiguration.
+			unhealthyThreshold, failoverEnabled := m.opts.UnhealthyOperationLatencyThreshold()
+
 			if !(lastWriter.errorCounts[secondaryDirIndex] >= highSecondaryErrorCountThreshold &&
-				dirIndex == primaryDirIndex) {
+				dirIndex == primaryDirIndex) && failoverEnabled {
 				// Switching heuristics. Subject to change based on real world experience.
 				if writerErr != nil {
 					// An error causes an immediate switch, since a LogWriter with an
 					// error is useless.
 					lastWriter.errorCounts[dirIndex]++
 					switchDir = true
-				} else if writerOngoingLatency > m.opts.UnhealthyOperationLatencyThreshold() {
+				} else if writerOngoingLatency > unhealthyThreshold {
 					// Arbitrary value.
 					const switchImmediatelyCountThreshold = 2
 					// High latency. Switch immediately if the number of switches that

@@ -664,3 +664,43 @@ list-fs
 pri/000001-002.log
 pri/probe-file
 sec/000001-001.log
+
+# Test that if UnhealthyOperationLatencyThreshold says not to allow failovers
+# yet, failover doesn't occur even if the primary errors.
+
+init-manager disable-failover inject-errors=((ErrInjected (And Writes (PathMatch "*/000001.log"))))
+----
+ok
+recycler min-log-num: 0
+
+# Wait for monitor ticker to start.
+advance-time dur=0ms wait-monitor
+----
+monitor state: dir index: 0
+now: 0s
+
+create-writer wal-num=1
+----
+ok
+
+# Wait until create error has been noticed.
+advance-time dur=1ms wait-ongoing-io wait-for-log-writer
+----
+now: 1ms
+
+# Wait until monitor sees the error.
+advance-time dur=74ms wait-monitor
+----
+monitor state: dir index: 0 num-switches: 0, ongoing-latency-at-switch: 0s
+now: 75ms
+
+close-writer
+----
+injected error
+
+close-manager
+----
+ok
+
+list-fs
+----
