@@ -50,6 +50,12 @@ func TestVirtualBackings(t *testing.T) {
 				Size:        size,
 			})
 
+		case "protect":
+			bv.Protect(n)
+
+		case "unprotect":
+			bv.Unprotect(n)
+
 		default:
 			d.Fatalf(t, "unknown command %q", d.Cmd)
 		}
