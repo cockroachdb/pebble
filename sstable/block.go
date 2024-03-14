@@ -351,7 +351,7 @@ type blockIter struct {
 
 	// Iterator transforms.
 	//
-	// SyntheticSuffix, if not nil, will replace the decoded ikey.UserKey suffix
+	// SyntheticSuffix, if set, will replace the decoded ikey.UserKey suffix
 	// before the key is returned to the user. A sequence of iter operations on a
 	// block with a syntheticSuffix rule should return keys as if those operations
 	// ran on a block with keys that all had the syntheticSuffix. As an example:
@@ -489,7 +489,7 @@ func (i *blockIter) init(cmp Compare, split Split, block block, transforms IterT
 	i.numRestarts = numRestarts
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
-	if i.transforms.SyntheticPrefix != nil {
+	if i.transforms.SyntheticPrefix.IsSet() {
 		i.fullKey = append(i.fullKey[:0], i.transforms.SyntheticPrefix...)
 	} else {
 		i.fullKey = i.fullKey[:0]
@@ -723,16 +723,10 @@ func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 }
 
 // maybeReplaceSuffix replaces the suffix in i.ikey.UserKey with
-// i.transforms.syntheticSuffix. allowInPlace is set to false if there's a chance
-// that i.ikey.UserKey points to the same buffer as i.cachedBuf (i.e. during
-// reverse iteration).
-func (i *blockIter) maybeReplaceSuffix(allowInPlace bool) {
-	if i.transforms.SyntheticSuffix != nil && i.ikey.UserKey != nil {
+// i.transforms.syntheticSuffix.
+func (i *blockIter) maybeReplaceSuffix() {
+	if i.transforms.SyntheticSuffix.IsSet() && i.ikey.UserKey != nil {
 		prefixLen := i.split(i.ikey.UserKey)
-		if allowInPlace && cap(i.ikey.UserKey) >= prefixLen+len(i.transforms.SyntheticSuffix) {
-			i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.transforms.SyntheticSuffix...)
-			return
-		}
 		// If ikey is cached or may get cached, we must copy
 		// UserKey to a new buffer before suffix replacement.
 		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
@@ -917,7 +911,7 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 	// (1) no two keys in the sst share the same prefix.
 	// (2) pebble.Compare(replacementSuffix,originalSuffix) > 0
 
-	i.maybeReplaceSuffix(true /*allowInPlace*/)
+	i.maybeReplaceSuffix()
 
 	if !hiddenPoint && i.cmp(i.ikey.UserKey, key) >= 0 {
 		// Initialize i.lazyValue
@@ -1053,7 +1047,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 	}
 
 	if index == 0 {
-		if i.transforms.SyntheticSuffix != nil {
+		if i.transforms.SyntheticSuffix.IsSet() {
 			// The binary search was conducted on keys without suffix replacement,
 			// implying the first key in the block may be less than the search key. To
 			// double check, get the first key in the block with suffix replacement
@@ -1094,7 +1088,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 	if index < i.numRestarts {
 		targetOffset = decodeRestart(i.data[i.restarts+4*(index):])
 
-		if i.transforms.SyntheticSuffix != nil {
+		if i.transforms.SyntheticSuffix.IsSet() {
 			// The binary search was conducted on keys without suffix replacement,
 			// implying the returned restart point (index) may be less than the search
 			// key, breaking the assumption described above.
@@ -1137,7 +1131,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			i.offset = targetOffset
 			i.readEntry()
 			i.decodeInternalKey(i.key)
-			i.maybeReplaceSuffix(false /* allowInPlace */)
+			i.maybeReplaceSuffix()
 
 			// If the binary search point is actually less than the search key, post
 			// replacement, bump the target offset.
@@ -1173,7 +1167,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 		// of hidden keys we will be able to skip whole blocks (using block
 		// property filters) so we don't bother optimizing.
 		hiddenPoint := i.decodeInternalKey(i.key)
-		i.maybeReplaceSuffix(false /*allowInPlace*/)
+		i.maybeReplaceSuffix()
 
 		// NB: we don't use the hiddenPoint return value of decodeInternalKey
 		// since we want to stop as soon as we reach a key >= ikey.UserKey, so
@@ -1234,7 +1228,7 @@ func (i *blockIter) First() (*InternalKey, base.LazyValue) {
 	if hiddenPoint {
 		return i.Next()
 	}
-	i.maybeReplaceSuffix(true /*allowInPlace*/)
+	i.maybeReplaceSuffix()
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
@@ -1277,7 +1271,7 @@ func (i *blockIter) Last() (*InternalKey, base.LazyValue) {
 	if hiddenPoint {
 		return i.Prev()
 	}
-	i.maybeReplaceSuffix(false /*allowInPlace*/)
+	i.maybeReplaceSuffix()
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
@@ -1326,16 +1320,12 @@ start:
 		if hiddenPoint {
 			goto start
 		}
-		if i.transforms.SyntheticSuffix != nil {
-			// Inlined version of i.maybeReplaceSuffix(true /* allowInPlace */)
+		if i.transforms.SyntheticSuffix.IsSet() {
+			// Inlined version of i.maybeReplaceSuffix()
 			prefixLen := i.split(i.ikey.UserKey)
-			if cap(i.ikey.UserKey) >= prefixLen+len(i.transforms.SyntheticSuffix) {
-				i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.transforms.SyntheticSuffix...)
-			} else {
-				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
-				i.ikey.UserKey = i.synthSuffixBuf
-			}
+			i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
+			i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
+			i.ikey.UserKey = i.synthSuffixBuf
 		}
 	} else {
 		i.ikey.Trailer = uint64(InternalKeyKindInvalid)
@@ -1607,16 +1597,12 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
 				i.ikey.SetSeqNum(uint64(n))
 			}
-			if i.transforms.SyntheticSuffix != nil {
-				// Inlined version of i.maybeReplaceSuffix(true /* allowInPlace */)
+			if i.transforms.SyntheticSuffix.IsSet() {
+				// Inlined version of i.maybeReplaceSuffix()
 				prefixLen := i.split(i.ikey.UserKey)
-				if cap(i.ikey.UserKey) >= prefixLen+len(i.transforms.SyntheticSuffix) {
-					i.ikey.UserKey = append(i.ikey.UserKey[:prefixLen], i.transforms.SyntheticSuffix...)
-				} else {
-					i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
-					i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
-					i.ikey.UserKey = i.synthSuffixBuf
-				}
+				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
+				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
+				i.ikey.UserKey = i.synthSuffixBuf
 			}
 		} else {
 			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
@@ -1676,8 +1662,8 @@ start:
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
 				i.ikey.SetSeqNum(uint64(n))
 			}
-			if i.transforms.SyntheticSuffix != nil {
-				// Inlined version of i.maybeReplaceSuffix(false /* allowInPlace */)
+			if i.transforms.SyntheticSuffix.IsSet() {
+				// Inlined version of i.maybeReplaceSuffix()
 				prefixLen := i.split(i.ikey.UserKey)
 				// If ikey is cached or may get cached, we must de-reference
 				// UserKey before suffix replacement.
@@ -1762,8 +1748,8 @@ start:
 		// Use the cache.
 		goto start
 	}
-	if i.transforms.SyntheticSuffix != nil {
-		// Inlined version of i.maybeReplaceSuffix(false /* allowInPlace */)
+	if i.transforms.SyntheticSuffix.IsSet() {
+		// Inlined version of i.maybeReplaceSuffix()
 		prefixLen := i.split(i.ikey.UserKey)
 		// If ikey is cached or may get cached, we must de-reference
 		// UserKey before suffix replacement.
