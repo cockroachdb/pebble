@@ -1380,6 +1380,7 @@ func (o *Options) String() string {
 	}
 
 	if o.WALFailover != nil {
+		unhealthyThreshold, _ := o.WALFailover.FailoverOptions.UnhealthyOperationLatencyThreshold()
 		fmt.Fprintf(&buf, "\n")
 		fmt.Fprintf(&buf, "[WAL Failover]\n")
 		fmt.Fprintf(&buf, "  secondary_dir=%s\n", o.WALFailover.Secondary.Dirname)
@@ -1387,7 +1388,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  healthy_probe_latency_threshold=%s\n", o.WALFailover.FailoverOptions.HealthyProbeLatencyThreshold)
 		fmt.Fprintf(&buf, "  healthy_interval=%s\n", o.WALFailover.FailoverOptions.HealthyInterval)
 		fmt.Fprintf(&buf, "  unhealthy_sampling_interval=%s\n", o.WALFailover.FailoverOptions.UnhealthySamplingInterval)
-		fmt.Fprintf(&buf, "  unhealthy_operation_latency_threshold=%s\n", o.WALFailover.FailoverOptions.UnhealthyOperationLatencyThreshold())
+		fmt.Fprintf(&buf, "  unhealthy_operation_latency_threshold=%s\n", unhealthyThreshold)
 		fmt.Fprintf(&buf, "  elevated_write_stall_threshold_lag=%s\n", o.WALFailover.FailoverOptions.ElevatedWriteStallThresholdLag)
 	}
 
@@ -1707,8 +1708,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "unhealthy_operation_latency_threshold":
 				var threshold time.Duration
 				threshold, err = time.ParseDuration(value)
-				o.WALFailover.UnhealthyOperationLatencyThreshold = func() time.Duration {
-					return threshold
+				o.WALFailover.UnhealthyOperationLatencyThreshold = func() (time.Duration, bool) {
+					return threshold, true
 				}
 			case "elevated_write_stall_threshold_lag":
 				o.WALFailover.ElevatedWriteStallThresholdLag, err = time.ParseDuration(value)

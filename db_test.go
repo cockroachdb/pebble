@@ -2058,7 +2058,7 @@ func TestWALFailoverAvoidsWriteStall(t *testing.T) {
 	secondary := wal.Dir{FS: mem, Dirname: "secondary"}
 	walFailover := &WALFailoverOptions{Secondary: secondary, FailoverOptions: wal.FailoverOptions{
 		UnhealthySamplingInterval:          100 * time.Millisecond,
-		UnhealthyOperationLatencyThreshold: func() time.Duration { return time.Second },
+		UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return time.Second, true },
 	}}
 	o := &Options{
 		FS:                          primaryFS,

@@ -629,8 +629,8 @@ func RandomOptions(
 				HealthyProbeLatencyThreshold: healthyThreshold,
 				HealthyInterval:              healthyInterval,
 				UnhealthySamplingInterval:    scaleDuration(unhealthyThreshold, 0.10, 0.50), // Between 10-50% of the unhealthy threshold
-				UnhealthyOperationLatencyThreshold: func() time.Duration {
-					return unhealthyThreshold
+				UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) {
+					return unhealthyThreshold, true
 				},
 				ElevatedWriteStallThresholdLag: expRandDuration(rng, 5*referenceDur, 2*time.Second),
 			},
