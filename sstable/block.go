@@ -734,7 +734,7 @@ func (i *blockIter) maybeReplaceSuffix(allowInPlace bool) {
 			return
 		}
 		// If ikey is cached or may get cached, we must copy
-		// UserKey to a new buffer before prefix replacement.
+		// UserKey to a new buffer before suffix replacement.
 		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
 		i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
 		i.ikey.UserKey = i.synthSuffixBuf
@@ -1680,7 +1680,7 @@ start:
 				// Inlined version of i.maybeReplaceSuffix(false /* allowInPlace */)
 				prefixLen := i.split(i.ikey.UserKey)
 				// If ikey is cached or may get cached, we must de-reference
-				// UserKey before prefix replacement.
+				// UserKey before suffix replacement.
 				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
 				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
 				i.ikey.UserKey = i.synthSuffixBuf
@@ -1766,7 +1766,7 @@ start:
 		// Inlined version of i.maybeReplaceSuffix(false /* allowInPlace */)
 		prefixLen := i.split(i.ikey.UserKey)
 		// If ikey is cached or may get cached, we must de-reference
-		// UserKey before prefix replacement.
+		// UserKey before suffix replacement.
 		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
 		i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
 		i.ikey.UserKey = i.synthSuffixBuf

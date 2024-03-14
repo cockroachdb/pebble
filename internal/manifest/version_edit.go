@@ -67,8 +67,8 @@ const (
 	customTagPathID            = 65
 	customTagNonSafeIgnoreMask = 1 << 6
 	customTagVirtual           = 66
-	customTagPrefixRewrite     = 67
-	customTagSuffixRewrite     = 68
+	customTagSyntheticPrefix   = 67
+	customTagSyntheticSuffix   = 68
 )
 
 // DeletedFileEntry holds the state for a file deletion from a level. The file
@@ -342,8 +342,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				virtual        bool
 				backingFileNum uint64
 			}{}
-			var virtualPrefix *sstable.PrefixReplacement
-			var syntheticSuffix []byte
+			var syntheticPrefix sstable.SyntheticPrefix
+			var syntheticSuffix sstable.SyntheticSuffix
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
@@ -384,21 +384,14 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 							return err
 						}
 
-					case customTagPrefixRewrite:
-						content, err := d.readBytes()
-						if err != nil {
-							return err
-						}
+					case customTagSyntheticPrefix:
 						synthetic, err := d.readBytes()
 						if err != nil {
 							return err
 						}
-						virtualPrefix = &sstable.PrefixReplacement{
-							ContentPrefix:   content,
-							SyntheticPrefix: synthetic,
-						}
+						syntheticPrefix = synthetic
 
-					case customTagSuffixRewrite:
+					case customTagSyntheticSuffix:
 						if syntheticSuffix, err = d.readBytes(); err != nil {
 							return err
 						}
@@ -421,7 +414,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				LargestSeqNum:       largestSeqNum,
 				MarkedForCompaction: markedForCompaction,
 				Virtual:             virtualState.virtual,
-				PrefixReplacement:   virtualPrefix,
+				SyntheticPrefix:     syntheticPrefix,
 				SyntheticSuffix:     syntheticSuffix,
 			}
 			if tag != tagNewFile5 { // no range keys present
@@ -705,13 +698,12 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(customTagVirtual)
 				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum))
 			}
-			if x.Meta.PrefixReplacement != nil {
-				e.writeUvarint(customTagPrefixRewrite)
-				e.writeBytes(x.Meta.PrefixReplacement.ContentPrefix)
-				e.writeBytes(x.Meta.PrefixReplacement.SyntheticPrefix)
+			if x.Meta.SyntheticPrefix != nil {
+				e.writeUvarint(customTagSyntheticPrefix)
+				e.writeBytes(x.Meta.SyntheticPrefix)
 			}
 			if x.Meta.SyntheticSuffix != nil {
-				e.writeUvarint(customTagSuffixRewrite)
+				e.writeUvarint(customTagSyntheticSuffix)
 				e.writeBytes(x.Meta.SyntheticSuffix)
 			}
 			e.writeUvarint(customTagTerminate)

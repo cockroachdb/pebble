@@ -258,20 +258,8 @@ func (i *singleLevelIterator) maybeVerifyKey(
 	if invariants.Enabled && iKey != nil && i.vState != nil {
 		key := iKey.UserKey
 		v := i.vState
-		var uc, lc int
-		if p := v.prefixChange; p != nil && len(p.ContentPrefix) > 0 {
-			if !bytes.HasPrefix(key, p.ContentPrefix) {
-				panic(fmt.Sprintf("key %q does not have content prefix %q", key, v.prefixChange.ContentPrefix))
-			}
-			// We are assuming that the key comparator works if we just skip the
-			// prefix portion that we are replacing. This is true for all known
-			// implementations.
-			lc = i.cmp(key[len(p.ContentPrefix):], v.lower.UserKey[len(p.SyntheticPrefix):])
-			uc = i.cmp(key[len(p.ContentPrefix):], v.upper.UserKey[len(p.SyntheticPrefix):])
-		} else {
-			lc = i.cmp(key, v.lower.UserKey)
-			uc = i.cmp(key, v.upper.UserKey)
-		}
+		lc := i.cmp(key, v.lower.UserKey)
+		uc := i.cmp(key, v.upper.UserKey)
 		if lc < 0 || uc > 0 || (uc == 0 && v.upper.IsExclusiveSentinel()) {
 			panic(fmt.Sprintf("key %q out of singleLeveliterator virtual bounds %s %s", key, v.lower.UserKey, v.upper.UserKey))
 		}

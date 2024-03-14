@@ -232,12 +232,7 @@ func ingestLoad1External(
 		)
 	}
 
-	if len(e.SyntheticPrefix) != 0 {
-		meta.PrefixReplacement = &sstable.PrefixReplacement{
-			ContentPrefix:   e.ContentPrefix,
-			SyntheticPrefix: e.SyntheticPrefix,
-		}
-	}
+	meta.SyntheticPrefix = e.SyntheticPrefix
 	meta.SyntheticSuffix = e.SyntheticSuffix
 
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
@@ -1153,15 +1148,11 @@ type ExternalFile struct {
 	// ingestion.
 	HasPointKey, HasRangeKey bool
 
-	// ContentPrefix and SyntheticPrefix denote a prefix replacement rule causing
-	// a file, in which all keys have prefix ContentPrefix, to appear whenever it
-	// is accessed as if those keys all instead have prefix SyntheticPrefix.
+	// SyntheticPrefix will prepend this suffix to all keys in the file during
+	// iteration. Note that the backing file itself is not modified.
 	//
 	// SyntheticPrefix must be a prefix of both Bounds.Start and Bounds.End.
-	//
-	// NB: If the SyntheticPrefix is non-empty and the ContentPrefix is empty,
-	// then the read path will conduct block level prefix synthesis.
-	ContentPrefix, SyntheticPrefix []byte
+	SyntheticPrefix []byte
 
 	// SyntheticSuffix will replace the suffix of every key in the file during
 	// iteration. Note that the file itself is not modified, rather, every key
