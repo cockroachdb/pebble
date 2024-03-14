@@ -540,3 +540,137 @@ c: (something, .)
 c: (something, .)
 .
 .
+
+
+
+
+
+
+####
+# FlushableIngest
+####
+
+reset
+----
+
+batch
+set a foo
+set b bar
+----
+
+batch
+set d@6 baz
+----
+
+flush
+----
+
+lsm
+----
+0.0:
+  000005:[a#10,SET-d@6#12,SET]
+
+compact a z
+----
+
+lsm
+----
+6:
+  000005:[a#10,SET-d@6#12,SET]
+
+batch
+set d@6 something
+set g something
+----
+
+flush
+----
+
+lsm
+----
+0.0:
+  000007:[d@6#13,SET-g#14,SET]
+6:
+  000005:[a#10,SET-d@6#12,SET]
+
+batch
+set x something
+----
+
+file-only-snapshot s1
+a z
+----
+ok
+
+lsm
+----
+0.0:
+  000007:[d@6#13,SET-g#14,SET]
+6:
+  000005:[a#10,SET-d@6#12,SET]
+
+build ext7
+del d@6
+----
+
+lsm
+----
+0.0:
+  000007:[d@6#13,SET-g#14,SET]
+6:
+  000005:[a#10,SET-d@6#12,SET]
+
+ingest ext7
+----
+
+lsm
+----
+0.1:
+  000008:[d@6#16,DEL-d@6#16,DEL]
+0.0:
+  000007:[d@6#13,SET-g#14,SET]
+6:
+  000005:[a#10,SET-d@6#12,SET]
+
+compact c e
+----
+
+lsm
+----
+6:
+  000009:[a#0,SET-g#0,SET]
+
+build ext5
+set c something
+set b something
+set f something
+del b-e
+----
+
+ingest-and-excise ext5 excise=b-e flushable-ingest
+----
+memtable flushed
+
+lsm
+----
+0.0:
+  000013:[x#15,SET-x#15,SET]
+6:
+  000014(000009):[a#0,SET-a#0,SET]
+  000010:[b#17,SET-f#17,SET]
+  000015(000009):[g#0,SET-g#0,SET]
+
+iter lower=c upper=e
+last
+prev
+prev
+seek-lt dd
+prev
+prev
+----
+c: (something, .)
+.
+.
+c: (something, .)
+.
+.

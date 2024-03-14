@@ -1479,6 +1479,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		}
 
 		if ingestFlushable.exciseSpan.Valid() {
+			ve.DeletedFiles = map[manifest.DeletedFileEntry]*manifest.FileMetadata{}
 			// Iterate through all levels and find files that intersect with exciseSpan.
 			for level = range c.version.Levels {
 				overlaps := c.version.Overlaps(level, ingestFlushable.exciseSpan.Start, ingestFlushable.exciseSpan.End, true /* exclusiveEnd */)

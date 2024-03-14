@@ -1560,11 +1560,19 @@ func (d *DB) ingest(
 			mut.writerRef()
 			return
 		}
-		// The ingestion overlaps with some entry in the flushable queue.
-		if d.FormatMajorVersion() < FormatFlushableIngest ||
-			d.opts.Experimental.DisableIngestAsFlushable() || !doFlushableIngest ||
-			len(shared) > 0 || exciseSpan.Valid() || len(external) > 0 ||
-			(len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1) {
+
+		// The ingestion overlaps with some entry in the flushable queue. If the
+		// pre-conditions are met below, we can treat this ingestion as a flushable
+		// ingest, otherwise we wait on the memtable flush before ingestion.
+		//
+		// TODO(aaditya): We should make flushableIngest compatible with remote
+		// files.
+		hasRemoteFiles := len(shared) > 0 || len(external) > 0
+		canIngestFlushable := d.FormatMajorVersion() >= FormatFlushableIngest &&
+			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold) &&
+			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles
+
+		if !canIngestFlushable || (exciseSpan.Valid() && !doFlushableIngest) {
 			// We're not able to ingest as a flushable,
 			// so we must synchronously flush.
 			//
