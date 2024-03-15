@@ -126,6 +126,11 @@ func (s *Span) Empty() bool {
 	return s == nil || len(s.Keys) == 0
 }
 
+// Bounds returns Start and End as UserKeyBounds.
+func (s *Span) Bounds() base.UserKeyBounds {
+	return base.UserKeyBoundsEndExclusive(s.Start, s.End)
+}
+
 // SmallestKey returns the smallest internal key defined by the span's keys.
 // It requires the Span's keys be in ByTrailerDesc order. It panics if the span
 // contains no keys or its keys are sorted in a different order.

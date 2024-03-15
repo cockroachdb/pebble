@@ -50,10 +50,11 @@ const (
 )
 
 type bounded interface {
-	// InternalKeyBounds returns a start key and an end key. Both bounds are
-	// inclusive.
-	InternalKeyBounds() (InternalKey, InternalKey)
+	UserKeyBounds() base.UserKeyBounds
 }
+
+var _ bounded = (*fileMetadata)(nil)
+var _ bounded = KeyRange{}
 
 func sliceAsBounded[B bounded](s []B) []bounded {
 	ret := make([]bounded, len(s))
@@ -288,22 +289,22 @@ func (s *ingestedFlushable) readyForFlush() bool {
 func (s *ingestedFlushable) computePossibleOverlaps(
 	fn func(bounded) shouldContinue, bounded ...bounded,
 ) {
-	for i := range bounded {
-		smallest, largest := bounded[i].InternalKeyBounds()
-		for j := 0; j < len(s.files); j++ {
-			if sstableKeyCompare(s.comparer.Compare, s.files[j].Largest, smallest) >= 0 {
-				// This file's largest key is larger than smallest. Either the
-				// file overlaps the bounds, or it lies strictly after the
-				// bounds. Either way we can stop iterating since the files are
-				// sorted. But first, determine if there's overlap and call fn
-				// if necessary.
-				if sstableKeyCompare(s.comparer.Compare, s.files[j].Smallest, largest) <= 0 {
+	for _, b := range bounded {
+		bounds := b.UserKeyBounds()
+		for _, f := range s.files {
+			fileBounds := f.UserKeyBounds()
+			if fileBounds.End.Applies(s.comparer.Compare, bounds.Start) {
+				// This file's largest key is larger than bounds.Start. Either the file
+				// overlaps the bounds, or it lies strictly after the bounds. Either way
+				// we can stop iterating since the files are sorted. But first,
+				// determine if there's overlap and call fn if necessary.
+				if bounds.End.Applies(s.comparer.Compare, fileBounds.Start) {
 					// The file overlaps in key boundaries. The file doesn't necessarily
 					// contain any keys within the key range, but we would need to
 					// perform I/O to know for sure. The flushable interface dictates
 					// that we're not permitted to perform I/O here, so err towards
 					// assuming overlap.
-					if !fn(bounded[i]) {
+					if !fn(b) {
 						return
 					}
 				}
@@ -327,9 +328,7 @@ func computePossibleOverlapsGenericImpl[F flushable](
 	rangeDelIter := f.newRangeDelIter(nil)
 	rkeyIter := f.newRangeKeyIter(nil)
 	for _, b := range bounded {
-		s, l := b.InternalKeyBounds()
-		kr := internalKeyRange{s, l}
-		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, kr, cmp) {
+		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, b.UserKeyBounds(), cmp) {
 			if !fn(b) {
 				break
 			}

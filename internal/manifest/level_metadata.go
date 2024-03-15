@@ -119,8 +119,7 @@ func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) *LevelFile {
 	if lm.level != 0 {
 		// If lm holds files for levels >0, we can narrow our search by binary
 		// searching by bounds.
-		o := overlaps(iter, cmp, m.Smallest.UserKey,
-			m.Largest.UserKey, m.Largest.IsExclusiveSentinel())
+		o := overlaps(iter, cmp, m.UserKeyBounds())
 		iter = o.Iter()
 	}
 	for f := iter.First(); f != nil; f = iter.Next() {
