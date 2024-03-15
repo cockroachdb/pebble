@@ -1323,7 +1323,14 @@ func runIngestExternalCmd(
 				nArgs(2)
 				ef.Bounds.Start = []byte(arg.Vals[0])
 				ef.Bounds.End = []byte(arg.Vals[1])
-
+			case "bounds-are-inclusive":
+				nArgs(1)
+				b, err := strconv.ParseBool(arg.Vals[0])
+				if err != nil {
+					usageErr(fmt.Sprintf("%s should have boolean argument: %v",
+						arg.Key, err))
+				}
+				ef.BoundsHasInclusiveEndKey = b
 			case "size":
 				nArgs(1)
 				arg.Scan(t, 0, &ef.Size)

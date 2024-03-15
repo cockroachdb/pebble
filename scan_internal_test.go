@@ -462,29 +462,11 @@ func TestScanInternal(t *testing.T) {
 				writeSST(points, rangeDels, rangeKeys, objstorageprovider.NewFileWritable(file))
 				require.NoError(t, d.Ingest([]string{"temp0.sst"}))
 			} else if ingestExternal {
-				// TODO(ssd) 2024-01-31: There must be
-				// a version of this somewhere in the
-				// pebble code base?
-				bytesNext := func(b []byte) []byte {
-					if cap(b) > len(b) {
-						bNext := b[:len(b)+1]
-						if bNext[len(bNext)-1] == 0 {
-							return bNext
-						}
-					}
-					bn := make([]byte, len(b)+1)
-					copy(bn, b)
-					bn[len(bn)-1] = 0
-					return bn
-
-				}
-
 				points, rangeDels, rangeKeys := batchSort(b)
 				largestUnsafe, _ := points.Last()
 				largest := largestUnsafe.Clone()
 				smallestUnsafe, _ := points.First()
 				smallest := smallestUnsafe.Clone()
-				t.Logf("got largest: %s, smallest: %s", largest, smallest)
 				var objName string
 				td.MaybeScanArgs(t, "ingest-external", &objName)
 				file, err := extStorage.CreateObject(objName)
@@ -498,9 +480,10 @@ func TestScanInternal(t *testing.T) {
 					Size:    10,
 					Bounds: KeyRange{
 						Start: smallest.UserKey,
-						End:   bytesNext(largest.UserKey),
+						End:   largest.UserKey,
 					},
-					HasPointKey: true,
+					BoundsHasInclusiveEndKey: true,
+					HasPointKey:              true,
 				}
 				_, err = d.IngestExternalFiles([]ExternalFile{ef})
 				require.NoError(t, err)
