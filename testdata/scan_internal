@@ -486,7 +486,7 @@ lsm
 L0.0:
   000006:[d#11,SET-d#11,SET]
 L6:
-  000004(000004):[a#10,DELSIZED-c\x00#inf,RANGEDEL]
+  000004(000004):[a#10,DELSIZED-c#10,DEL]
 
 
 
@@ -495,7 +495,7 @@ scan-internal skip-external lower=m upper=n
 
 scan-internal skip-external lower=a upper=f
 ----
-external file: external-storage file1 [0x61-0x6300] (hasPoint: true, hasRange: false)
+external file: external-storage file1 [0x61-0x63] (hasPoint: true, hasRange: false)
 d#11,SET (bat)
 
 
@@ -523,7 +523,7 @@ flush
 compact a-z
 ----
 L6:
-  000006(000006):[a#11,DELSIZED-c\x00#inf,RANGEDEL]
+  000006(000006):[a#11,DELSIZED-c#11,DEL]
   000005:[d#10,SET-d#10,SET]
 
 scan-internal skip-external lower=m upper=n
@@ -531,7 +531,7 @@ scan-internal skip-external lower=m upper=n
 
 scan-internal skip-external lower=a upper=f
 ----
-external file: external-storage file1 [0x61-0x6300] (hasPoint: true, hasRange: false)
+external file: external-storage file1 [0x61-0x63] (hasPoint: true, hasRange: false)
 d#10,SET (bat)
 
 scan-internal skip-shared lower=a upper=f
