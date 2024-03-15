@@ -15,7 +15,7 @@ import (
 )
 
 // VirtualBackings maintains information about the set of backings that support
-// virtual tables in a given version.
+// virtual tables in the latest version.
 //
 // The VirtualBackings set internally maintains for each backing the number of
 // virtual tables that use that backing and the sum of their virtual sizes. When
@@ -23,6 +23,48 @@ import (
 // tables. AddTable/RemoveTable are used to maintain the set of tables that are
 // associated with a backing. Finally, a backing can only be removed from the
 // set when it is no longer in use.
+//
+// -- Protection API --
+//
+// VirtualBackings exposes a Protect/Unprotect API. This is used to allow
+// external file ingestions to reuse existing virtual backings. Because
+// ingestions can run in parallel with other operations like compactions, it is
+// possible for a backing to "go away" in-between the time the ingestion decides
+// to use it and the time the ingestion installs a new version. The protection
+// API solves this problem by keeping backings alive, even if they become
+// otherwise unused by any tables.
+//
+// Backing protection achieves two goals:
+//   - it must prevent the removal of the backing from the latest version, where
+//     removal means becoming part of a VersionEdit.RemovedBackingTables. This
+//     is achieved by treating the backing as "in use", preventing Unused() from
+//     reporting it.
+//   - it must prevent the backing from becoming obsolete (i.e. reaching a ref
+//     count of 0). To achieve this, VirtualBackings takes a ref on each backing
+//     when it is added; this ref must be released after the backing is removed
+//     (when it is ok for the backing to be reported as obsolete).
+//
+// For example, say we have virtual table T1 with backing B1 and an ingestion tries
+// to reuse the file. This is what will usually happen (the happy case):
+//   - latest version is V1 and it contains T1(B1).
+//   - ingestion request comes for another virtual portion of B1. Ingestion process
+//     finds B1 and calls Protect(B1).
+//   - ingestion completes, installs version V2 which has T1(B1) and a new
+//     T2(B1), and calls Unprotect(B1).
+//
+// In this path, the Protect/Unprotect calls do nothing. But here is what could
+// happen (the corner case):
+//   - latest version is V1 and it contains T1(B1).
+//   - ingestion request comes for another virtual portion of B1. Ingestion process
+//     finds B1 and calls Protect(B1).
+//   - compaction completes and installs version V2 which no longer has T1.
+//     But because B1 is protected, V2 still has B1.
+//   - ingestion completes, installs version V3 which has a new T2(B1) and calls
+//     Unprotect(B1).
+//
+// If instead the ingestion fails to complete, the last step becomes:
+//   - ingestion fails, calls Unprotect(B1). B1 is now Unused() and the next
+//     version (applied by whatever next operation is) will remove B1.
 type VirtualBackings struct {
 	m map[base.DiskFileNum]backingWithMetadata
 
@@ -46,16 +88,25 @@ type backingWithMetadata struct {
 
 	// A backing initially has a useCount of 0. The useCount is increased by
 	// AddTable and decreased by RemoveTable. Backings that have useCount=0 are
-	// reported by Unused().
-	useCount        int
+
+	useCount int32
+	// protectionCount is used by Protect to temporarily prevent a backing from
+	// being reported as unused.
+	protectionCount int32
+	// virtualizedSize is the sum of the sizes of the useCount virtual tables
+	// associated with this backing.
 	virtualizedSize uint64
 }
 
-// Add adds a new backing that will be used by virtual tables. Another
+// AddAndRef adds a new backing to the set and takes a reference on it. Another
 // backing for the same DiskFilNum must not exist.
 //
-// The added backing is unused until it is associated with a table via AddTable.
-func (bv *VirtualBackings) Add(backing *FileBacking) {
+// The added backing is unused until it is associated with a table via AddTable
+// or protected via Protect.
+func (bv *VirtualBackings) AddAndRef(backing *FileBacking) {
+	// We take a reference on the backing because in case of protected backings
+	// (see Protect), we might be the only ones holding on to a backing.
+	backing.Ref()
 	bv.mustAdd(backingWithMetadata{
 		backing: backing,
 	})
@@ -63,12 +114,17 @@ func (bv *VirtualBackings) Add(backing *FileBacking) {
 	bv.totalSize += backing.Size
 }
 
-// Remove a backing; the backing must not be in use. Normally backings are
-// removed once they are reported by Unused().
+// Remove removes a backing. The backing must not be in use; normally backings
+// are removed once they are reported by Unused().
+//
+// It is up to the caller to release the reference took by AddAndRef.
 func (bv *VirtualBackings) Remove(n base.DiskFileNum) {
 	v := bv.mustGet(n)
 	if v.inUse() {
-		panic(errors.AssertionFailedf("backing %s still in use (useCount=%d)", v.backing.DiskFileNum, v.useCount))
+		panic(errors.AssertionFailedf(
+			"backing %s still in use (useCount=%d protectionCount=%d)",
+			v.backing.DiskFileNum, v.useCount, v.protectionCount,
+		))
 	}
 	delete(bv.m, n)
 	delete(bv.unused, v.backing)
@@ -98,9 +154,40 @@ func (bv *VirtualBackings) RemoveTable(m *FileMetadata) {
 	}
 	v := bv.mustGet(m.FileBacking.DiskFileNum)
 
+	if v.useCount <= 0 {
+		panic(errors.AssertionFailedf("invalid useCount"))
+	}
 	v.useCount--
 	v.virtualizedSize -= m.Size
 	bv.m[m.FileBacking.DiskFileNum] = v
+	if !v.inUse() {
+		bv.unused[v.backing] = struct{}{}
+	}
+}
+
+// Protect prevents a backing from being reported as unused until a
+// corresponding Unprotect call is made. The backing must be in the set.
+//
+// Multiple Protect calls can be made for the same backing; each must have a
+// corresponding Unprotect call before the backing can become unused.
+func (bv *VirtualBackings) Protect(n base.DiskFileNum) {
+	v := bv.mustGet(n)
+	if !v.inUse() {
+		delete(bv.unused, v.backing)
+	}
+	v.protectionCount++
+	bv.m[n] = v
+}
+
+// Unprotect reverses a Protect call.
+func (bv *VirtualBackings) Unprotect(n base.DiskFileNum) {
+	v := bv.mustGet(n)
+
+	if v.protectionCount <= 0 {
+		panic(errors.AssertionFailedf("invalid protectionCount"))
+	}
+	v.protectionCount--
+	bv.m[n] = v
 	if !v.inUse() {
 		bv.unused[v.backing] = struct{}{}
 	}
@@ -123,10 +210,11 @@ func (bv *VirtualBackings) Stats() (count int, totalSize uint64) {
 // virtual sstable with a higher priority.
 func (bv *VirtualBackings) Usage(n base.DiskFileNum) (useCount int, virtualizedSize uint64) {
 	v := bv.mustGet(n)
-	return v.useCount, v.virtualizedSize
+	return int(v.useCount), v.virtualizedSize
 }
 
-// Unused returns all backings that are not in use, in DiskFileNum order.
+// Unused returns all backings that are and no longer used by the latest version
+// and are not protected, in DiskFileNum order.
 func (bv *VirtualBackings) Unused() []*FileBacking {
 	res := make([]*FileBacking, 0, len(bv.unused))
 	for b := range bv.unused {
@@ -138,7 +226,16 @@ func (bv *VirtualBackings) Unused() []*FileBacking {
 	return res
 }
 
-// ForEach calls fn on each backing, in an unspecified order.
+// Get returns the backing with the given DiskFileNum, if it is in the set.
+func (bv *VirtualBackings) Get(n base.DiskFileNum) (_ *FileBacking, ok bool) {
+	v, ok := bv.m[n]
+	if ok {
+		return v.backing, true
+	}
+	return nil, false
+}
+
+// ForEach calls fn on each backing, in unspecified order.
 func (bv *VirtualBackings) ForEach(fn func(backing *FileBacking)) {
 	for _, v := range bv.m {
 		fn(v.backing)
@@ -156,6 +253,15 @@ func (bv *VirtualBackings) DiskFileNums() []base.DiskFileNum {
 	return res
 }
 
+// Backings returns all backings in the set, in unspecified order.
+func (bv *VirtualBackings) Backings() []*FileBacking {
+	res := make([]*FileBacking, 0, len(bv.m))
+	for _, v := range bv.m {
+		res = append(res, v.backing)
+	}
+	return res
+}
+
 func (bv *VirtualBackings) String() string {
 	nums := bv.DiskFileNums()
 
@@ -167,7 +273,8 @@ func (bv *VirtualBackings) String() string {
 		fmt.Fprintf(&buf, "%d virtual backings, total size %d:\n", count, totalSize)
 		for _, n := range nums {
 			v := bv.m[n]
-			fmt.Fprintf(&buf, "  %s:  size=%d  useCount=%d  virtualizedSize=%d\n", n, v.backing.Size, v.useCount, v.virtualizedSize)
+			fmt.Fprintf(&buf, "  %s:  size=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d\n",
+				n, v.backing.Size, v.useCount, v.protectionCount, v.virtualizedSize)
 		}
 	}
 	unused := bv.Unused()
@@ -199,5 +306,5 @@ func (bv *VirtualBackings) mustGet(n base.DiskFileNum) backingWithMetadata {
 
 // inUse returns true if b is used to back at least one virtual table.
 func (v *backingWithMetadata) inUse() bool {
-	return v.useCount > 0
+	return v.useCount > 0 || v.protectionCount > 0
 }

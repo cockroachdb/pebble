@@ -924,9 +924,15 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		}
 	}
 
-	// Since a file can be removed from backing files in exactly one version
-	// edit it is safe to just append without any de-duplication.
-	b.RemovedFileBacking = append(b.RemovedFileBacking, ve.RemovedBackingTables...)
+	for _, n := range ve.RemovedBackingTables {
+		if _, ok := b.AddedFileBacking[n]; ok {
+			delete(b.AddedFileBacking, n)
+		} else {
+			// Since a file can be removed from backing files in exactly one version
+			// edit it is safe to just append without any de-duplication.
+			b.RemovedFileBacking = append(b.RemovedFileBacking, n)
+		}
+	}
 
 	return nil
 }
