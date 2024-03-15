@@ -211,18 +211,21 @@ func (o *FailoverOptions) EnsureDefaults() {
 		o.PrimaryDirProbeInterval = time.Second
 	}
 	if o.HealthyProbeLatencyThreshold == 0 {
-		o.HealthyProbeLatencyThreshold = 100 * time.Millisecond
+		o.HealthyProbeLatencyThreshold = 25 * time.Millisecond
 	}
 	if o.HealthyInterval == 0 {
-		o.HealthyInterval = 2 * time.Minute
+		o.HealthyInterval = 15 * time.Second
 	}
 	if o.UnhealthySamplingInterval == 0 {
 		o.UnhealthySamplingInterval = 100 * time.Millisecond
 	}
 	if o.UnhealthyOperationLatencyThreshold == nil {
 		o.UnhealthyOperationLatencyThreshold = func() (time.Duration, bool) {
-			return 200 * time.Millisecond, true
+			return 100 * time.Millisecond, true
 		}
+	}
+	if o.ElevatedWriteStallThresholdLag == 0 {
+		o.ElevatedWriteStallThresholdLag = 60 * time.Second
 	}
 }
 

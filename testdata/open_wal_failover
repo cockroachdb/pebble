@@ -47,11 +47,11 @@ grep-between path=(a,data/OPTIONS-000006) start=(\[WAL Failover\]) end=^$
 ----
   secondary_dir=secondary-wals
   primary_dir_probe_interval=1s
-  healthy_probe_latency_threshold=100ms
-  healthy_interval=2m0s
+  healthy_probe_latency_threshold=25ms
+  healthy_interval=15s
   unhealthy_sampling_interval=100ms
-  unhealthy_operation_latency_threshold=200ms
-  elevated_write_stall_threshold_lag=0s
+  unhealthy_operation_latency_threshold=100ms
+  elevated_write_stall_threshold_lag=1m0s
 
 # Opening the same directory without providing the secondary path in either the
 # WAL failover configuration or as a WALRecoveryDir should error.
