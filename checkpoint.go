@@ -137,6 +137,11 @@ func mkdirAllAndSyncParents(fs vfs.FS, destDir string) (vfs.File, error) {
 // space overhead for a checkpoint if hard links are disabled. Also beware that
 // even if hard links are used, the space overhead for the checkpoint will
 // increase over time as the DB performs compactions.
+//
+// Note that shared files in a checkpoint could get deleted if the DB is
+// restarted after a checkpoint operation, as the reference for the checkpoint
+// is only maintained in memory. This is okay as long as users of Checkpoint
+// crash shortly afterwards with a "poison file" preventing further restarts.
 func (d *DB) Checkpoint(
 	destDir string, opts ...CheckpointOption,
 ) (
@@ -268,6 +273,7 @@ func (d *DB) Checkpoint(
 	}
 
 	var excludedFiles map[deletedFileEntry]*fileMetadata
+	var remoteFiles []base.DiskFileNum
 	// Set of FileBacking.DiskFileNum which will be required by virtual sstables
 	// in the checkpoint.
 	requiredVirtualBackingFiles := make(map[base.DiskFileNum]struct{})
@@ -292,6 +298,21 @@ func (d *DB) Checkpoint(
 					continue
 				}
 				requiredVirtualBackingFiles[fileBacking.DiskFileNum] = struct{}{}
+			}
+			meta, err := d.objProvider.Lookup(fileTypeTable, fileBacking.DiskFileNum)
+			if err != nil {
+				ckErr = err
+				return ckErr
+			}
+			if meta.IsRemote() {
+				// We don't copy remote files. This is desirable as checkpointing is
+				// supposed to be a fast operation, and references to remote files can
+				// always be resolved by any checkpoint readers by reading the object
+				// catalog. We don't add this file to excludedFiles either, as that'd
+				// cause it to be deleted in the second manifest entry which is also
+				// inaccurate.
+				remoteFiles = append(remoteFiles, meta.DiskFileNum)
+				continue
 			}
 
 			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, fileBacking.DiskFileNum)
@@ -318,6 +339,12 @@ func (d *DB) Checkpoint(
 	)
 	if ckErr != nil {
 		return ckErr
+	}
+	if len(remoteFiles) > 0 {
+		ckErr = d.objProvider.CheckpointState(fs, destDir, fileTypeTable, remoteFiles)
+		if ckErr != nil {
+			return ckErr
+		}
 	}
 
 	// Copy the WAL files. We copy rather than link because WAL file recycling

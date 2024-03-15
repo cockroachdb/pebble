@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"path/filepath"
 	"slices"
 	"sync"
 
@@ -376,6 +377,28 @@ func (c *Catalog) createNewCatalogFileLocked() (outErr error) {
 	c.mu.catalogRecWriter = recWriter
 	c.mu.catalogFilename = filename
 	return nil
+}
+
+// Checkpoint copies catalog state to a file in the specified directory
+func (c *Catalog) Checkpoint(fs vfs.FS, dir string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// NB: Every write to recWriter is flushed. We don't need to worry about
+	// this new file descriptor not getting all the saved catalog entries.
+	existingCatalogFilepath := filepath.Join(c.dirname, c.mu.catalogFilename)
+	destPath := filepath.Join(dir, c.mu.catalogFilename)
+	if err := vfs.CopyAcrossFS(c.fs, existingCatalogFilepath, fs, destPath); err != nil {
+		return err
+	}
+	catalogMarker, _, err := atomicfs.LocateMarker(fs, dir, catalogMarkerName)
+	if err != nil {
+		return err
+	}
+	if err := catalogMarker.Move(c.mu.catalogFilename); err != nil {
+		return err
+	}
+	return catalogMarker.Close()
 }
 
 func writeRecord(ve *VersionEdit, file vfs.File, recWriter *record.Writer) error {
