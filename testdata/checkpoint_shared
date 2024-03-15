@@ -1,0 +1,333 @@
+open db
+----
+mkdir-all: db 0755
+open-dir: 
+sync: 
+close: 
+open-dir: db
+close: db
+open-dir: db
+lock: db/LOCK
+open-dir: db
+open-dir: db
+create: db/MANIFEST-000001
+sync: db/MANIFEST-000001
+create: db/marker.manifest.000001.MANIFEST-000001
+close: db/marker.manifest.000001.MANIFEST-000001
+sync: db
+open-dir: db
+open-dir: db
+open-dir: db
+sync: db/MANIFEST-000001
+create: db/000002.log
+sync: db
+create: db/marker.format-version.000001.017
+close: db/marker.format-version.000001.017
+sync: db
+create: db/temporary.000003.dbtmp
+sync: db/temporary.000003.dbtmp
+close: db/temporary.000003.dbtmp
+rename: db/temporary.000003.dbtmp -> db/OPTIONS-000003
+sync: db
+create: db/REMOTE-OBJ-CATALOG-000001
+sync: db/REMOTE-OBJ-CATALOG-000001
+create: db/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+close: db/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+sync: db
+sync: db/REMOTE-OBJ-CATALOG-000001
+
+batch db
+set a 1
+set b 2
+set c 3
+----
+sync-data: db/000002.log
+
+flush db
+----
+sync-data: db/000002.log
+close: db/000002.log
+create: db/000004.log
+sync: db
+sync: db/REMOTE-OBJ-CATALOG-000001
+sync: db/MANIFEST-000001
+
+batch db
+set b 5
+set d 7
+set e 8
+----
+sync-data: db/000004.log
+
+flush db
+----
+sync-data: db/000004.log
+close: db/000004.log
+reuseForWrite: db/000002.log -> db/000006.log
+sync: db
+sync: db/REMOTE-OBJ-CATALOG-000001
+sync: db/MANIFEST-000001
+
+batch db
+set f 9
+set g 10
+----
+sync-data: db/000006.log
+
+checkpoint db checkpoints/checkpoint1
+----
+mkdir-all: checkpoints/checkpoint1 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: 
+sync: 
+close: 
+open-dir: checkpoints/checkpoint1
+link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
+open-dir: checkpoints/checkpoint1
+create: checkpoints/checkpoint1/marker.format-version.000001.017
+sync-data: checkpoints/checkpoint1/marker.format-version.000001.017
+close: checkpoints/checkpoint1/marker.format-version.000001.017
+sync: checkpoints/checkpoint1
+close: checkpoints/checkpoint1
+open: db/MANIFEST-000001
+create: checkpoints/checkpoint1/MANIFEST-000001
+sync-data: checkpoints/checkpoint1/MANIFEST-000001
+close: checkpoints/checkpoint1/MANIFEST-000001
+close: db/MANIFEST-000001
+open-dir: checkpoints/checkpoint1
+create: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint1
+close: checkpoints/checkpoint1
+open: db/REMOTE-OBJ-CATALOG-000001
+create: checkpoints/checkpoint1/REMOTE-OBJ-CATALOG-000001
+sync-data: checkpoints/checkpoint1/REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint1/REMOTE-OBJ-CATALOG-000001
+close: db/REMOTE-OBJ-CATALOG-000001
+open-dir: checkpoints/checkpoint1
+create: checkpoints/checkpoint1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+sync-data: checkpoints/checkpoint1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+sync: checkpoints/checkpoint1
+close: checkpoints/checkpoint1
+open: db/000006.log
+create: checkpoints/checkpoint1/000006.log
+sync-data: checkpoints/checkpoint1/000006.log
+close: checkpoints/checkpoint1/000006.log
+close: db/000006.log
+sync: checkpoints/checkpoint1
+close: checkpoints/checkpoint1
+
+checkpoint db checkpoints/checkpoint1
+----
+checkpoint checkpoints/checkpoint1: file already exists
+
+# Create a checkpoint that omits SSTs that don't overlap with the [d - f) range.
+checkpoint db checkpoints/checkpoint2 restrict=(d-f)
+----
+mkdir-all: checkpoints/checkpoint2 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint2
+link: db/OPTIONS-000003 -> checkpoints/checkpoint2/OPTIONS-000003
+open-dir: checkpoints/checkpoint2
+create: checkpoints/checkpoint2/marker.format-version.000001.017
+sync-data: checkpoints/checkpoint2/marker.format-version.000001.017
+close: checkpoints/checkpoint2/marker.format-version.000001.017
+sync: checkpoints/checkpoint2
+close: checkpoints/checkpoint2
+open: db/MANIFEST-000001
+create: checkpoints/checkpoint2/MANIFEST-000001
+sync-data: checkpoints/checkpoint2/MANIFEST-000001
+close: checkpoints/checkpoint2/MANIFEST-000001
+close: db/MANIFEST-000001
+open-dir: checkpoints/checkpoint2
+create: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint2
+close: checkpoints/checkpoint2
+open: db/REMOTE-OBJ-CATALOG-000001
+create: checkpoints/checkpoint2/REMOTE-OBJ-CATALOG-000001
+sync-data: checkpoints/checkpoint2/REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint2/REMOTE-OBJ-CATALOG-000001
+close: db/REMOTE-OBJ-CATALOG-000001
+open-dir: checkpoints/checkpoint2
+create: checkpoints/checkpoint2/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+sync-data: checkpoints/checkpoint2/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint2/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+sync: checkpoints/checkpoint2
+close: checkpoints/checkpoint2
+open: db/000006.log
+create: checkpoints/checkpoint2/000006.log
+sync-data: checkpoints/checkpoint2/000006.log
+close: checkpoints/checkpoint2/000006.log
+close: db/000006.log
+sync: checkpoints/checkpoint2
+close: checkpoints/checkpoint2
+
+# Create a checkpoint that omits SSTs that don't overlap with [a - e) and [d - f).
+checkpoint db checkpoints/checkpoint3 restrict=(a-e, d-f)
+----
+mkdir-all: checkpoints/checkpoint3 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint3
+link: db/OPTIONS-000003 -> checkpoints/checkpoint3/OPTIONS-000003
+open-dir: checkpoints/checkpoint3
+create: checkpoints/checkpoint3/marker.format-version.000001.017
+sync-data: checkpoints/checkpoint3/marker.format-version.000001.017
+close: checkpoints/checkpoint3/marker.format-version.000001.017
+sync: checkpoints/checkpoint3
+close: checkpoints/checkpoint3
+open: db/MANIFEST-000001
+create: checkpoints/checkpoint3/MANIFEST-000001
+sync-data: checkpoints/checkpoint3/MANIFEST-000001
+close: checkpoints/checkpoint3/MANIFEST-000001
+close: db/MANIFEST-000001
+open-dir: checkpoints/checkpoint3
+create: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint3
+close: checkpoints/checkpoint3
+open: db/REMOTE-OBJ-CATALOG-000001
+create: checkpoints/checkpoint3/REMOTE-OBJ-CATALOG-000001
+sync-data: checkpoints/checkpoint3/REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint3/REMOTE-OBJ-CATALOG-000001
+close: db/REMOTE-OBJ-CATALOG-000001
+open-dir: checkpoints/checkpoint3
+create: checkpoints/checkpoint3/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+sync-data: checkpoints/checkpoint3/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint3/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+sync: checkpoints/checkpoint3
+close: checkpoints/checkpoint3
+open: db/000006.log
+create: checkpoints/checkpoint3/000006.log
+sync-data: checkpoints/checkpoint3/000006.log
+close: checkpoints/checkpoint3/000006.log
+close: db/000006.log
+sync: checkpoints/checkpoint3
+close: checkpoints/checkpoint3
+
+compact db
+----
+sync-data: db/000006.log
+close: db/000006.log
+reuseForWrite: db/000004.log -> db/000008.log
+sync: db
+sync: db/REMOTE-OBJ-CATALOG-000001
+sync: db/MANIFEST-000001
+sync: db/REMOTE-OBJ-CATALOG-000001
+sync: db/MANIFEST-000001
+
+batch db
+set h 11
+----
+sync-data: db/000008.log
+
+list db
+----
+000006.log
+000008.log
+LOCK
+MANIFEST-000001
+OPTIONS-000003
+REMOTE-OBJ-CATALOG-000001
+marker.format-version.000001.017
+marker.manifest.000001.MANIFEST-000001
+marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+
+list checkpoints/checkpoint1
+----
+000006.log
+MANIFEST-000001
+OPTIONS-000003
+REMOTE-OBJ-CATALOG-000001
+marker.format-version.000001.017
+marker.manifest.000001.MANIFEST-000001
+marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+
+open checkpoints/checkpoint1 readonly
+----
+open-dir: checkpoints/checkpoint1
+lock: checkpoints/checkpoint1/LOCK
+open-dir: checkpoints/checkpoint1
+open-dir: checkpoints/checkpoint1
+open: checkpoints/checkpoint1/MANIFEST-000001
+close: checkpoints/checkpoint1/MANIFEST-000001
+open-dir: checkpoints/checkpoint1
+open-dir: checkpoints/checkpoint1
+open-dir: checkpoints/checkpoint1
+open: checkpoints/checkpoint1/REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint1/REMOTE-OBJ-CATALOG-000001
+open: checkpoints/checkpoint1/OPTIONS-000003
+close: checkpoints/checkpoint1/OPTIONS-000003
+open: checkpoints/checkpoint1/000006.log
+close: checkpoints/checkpoint1/000006.log
+
+scan checkpoints/checkpoint1
+----
+a 1
+b 5
+c 3
+d 7
+e 8
+f 9
+g 10
+.
+
+scan db
+----
+a 1
+b 5
+c 3
+d 7
+e 8
+f 9
+g 10
+h 11
+.
+
+# This checkpoint should contain no SSTs.
+list checkpoints/checkpoint2
+----
+000006.log
+MANIFEST-000001
+OPTIONS-000003
+REMOTE-OBJ-CATALOG-000001
+marker.format-version.000001.017
+marker.manifest.000001.MANIFEST-000001
+marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+
+open checkpoints/checkpoint2 readonly
+----
+open-dir: checkpoints/checkpoint2
+lock: checkpoints/checkpoint2/LOCK
+open-dir: checkpoints/checkpoint2
+open-dir: checkpoints/checkpoint2
+open: checkpoints/checkpoint2/MANIFEST-000001
+close: checkpoints/checkpoint2/MANIFEST-000001
+open-dir: checkpoints/checkpoint2
+open-dir: checkpoints/checkpoint2
+open-dir: checkpoints/checkpoint2
+open: checkpoints/checkpoint2/REMOTE-OBJ-CATALOG-000001
+close: checkpoints/checkpoint2/REMOTE-OBJ-CATALOG-000001
+open: checkpoints/checkpoint2/OPTIONS-000003
+close: checkpoints/checkpoint2/OPTIONS-000003
+open: checkpoints/checkpoint2/000006.log
+close: checkpoints/checkpoint2/000006.log
+
+scan checkpoints/checkpoint2
+----
+b 5
+d 7
+e 8
+f 9
+g 10
+.

@@ -298,6 +298,11 @@ type Provider interface {
 	// directory does not exist.
 	IsNotExistError(err error) bool
 
+	// CheckpointState saves any saved state on local disk to the specified
+	// directory on the specified VFS. A new Pebble instance instantiated at that
+	// path should be able to resolve references to the specified files.
+	CheckpointState(fs vfs.FS, dir string, fileType base.FileType, fileNums []base.DiskFileNum) error
+
 	// Metrics returns metrics about objstorage. Currently, it only returns metrics
 	// about the shared cache.
 	Metrics() sharedcache.Metrics

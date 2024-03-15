@@ -16,11 +16,12 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCheckpoint(t *testing.T) {
+func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 	dbs := make(map[string]*DB)
 	defer func() {
 		for _, db := range dbs {
@@ -32,6 +33,7 @@ func TestCheckpoint(t *testing.T) {
 
 	mem := vfs.NewMem()
 	var memLog base.InMemLogger
+	remoteMem := remote.NewInMem()
 	opts := &Options{
 		FS:                          vfs.WithLogging(mem, memLog.Infof),
 		FormatMajorVersion:          internalFormatNewest,
@@ -39,10 +41,16 @@ func TestCheckpoint(t *testing.T) {
 		DisableAutomaticCompactions: true,
 		Logger:                      testLogger{t},
 	}
+	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		"": remoteMem,
+	})
+	if createOnShared {
+		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+	}
 	opts.DisableTableStats = true
 	opts.private.testingAlwaysWaitForCleanup = true
 
-	datadriven.RunTest(t, "testdata/checkpoint", func(t *testing.T, td *datadriven.TestData) string {
+	datadriven.RunTest(t, ddFile, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "batch":
 			if len(td.CmdArgs) != 1 {
@@ -192,6 +200,12 @@ func TestCheckpoint(t *testing.T) {
 				return err.Error()
 			}
 			dbs[dir] = d
+			if len(dbs) == 1 && createOnShared {
+				// This is the first db. Set a creator ID.
+				if err := d.SetCreatorID(1); err != nil {
+					return err.Error()
+				}
+			}
 			return memLog.String()
 
 		case "scan":
@@ -213,6 +227,15 @@ func TestCheckpoint(t *testing.T) {
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
+	})
+}
+
+func TestCheckpoint(t *testing.T) {
+	t.Run("shared=false", func(t *testing.T) {
+		testCheckpointImpl(t, "testdata/checkpoint", false /* createOnShared */)
+	})
+	t.Run("shared=true", func(t *testing.T) {
+		testCheckpointImpl(t, "testdata/checkpoint_shared", true /* createOnShared */)
 	})
 }
 
