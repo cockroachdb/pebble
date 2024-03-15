@@ -28,13 +28,17 @@ func TestVirtualBackings(t *testing.T) {
 
 		switch d.Cmd {
 		case "add":
-			bv.Add(&FileBacking{
+			bv.AddAndRef(&FileBacking{
 				DiskFileNum: n,
 				Size:        size,
 			})
 
 		case "remove":
-			bv.Remove(n)
+			backingIsObsolete := bv.RemoveAndUnref(n)
+			// We don't take Refs on backings anywhere else in this test.
+			if !backingIsObsolete {
+				t.Errorf("removed backings should be obsolete")
+			}
 
 		case "add-table":
 			bv.AddTable(&FileMetadata{
@@ -49,6 +53,12 @@ func TestVirtualBackings(t *testing.T) {
 				FileBacking: &FileBacking{DiskFileNum: n},
 				Size:        size,
 			})
+
+		case "protect":
+			bv.Protect(n)
+
+		case "unprotect":
+			bv.Unprotect(n)
 
 		default:
 			d.Fatalf(t, "unknown command %q", d.Cmd)
