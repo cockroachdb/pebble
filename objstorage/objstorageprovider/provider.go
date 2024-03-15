@@ -455,6 +455,30 @@ func (p *provider) Metrics() sharedcache.Metrics {
 	return sharedcache.Metrics{}
 }
 
+// CheckpointState is part of the objstorage.Provider interface.
+func (p *provider) CheckpointState(
+	fs vfs.FS, dir string, fileType base.FileType, fileNums []base.DiskFileNum,
+) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range fileNums {
+		if _, ok := p.mu.knownObjects[fileNums[i]]; !ok {
+			return errors.Wrapf(
+				os.ErrNotExist,
+				"file %s (type %d) unknown to the objstorage provider",
+				fileNums[i], errors.Safe(fileType),
+			)
+		}
+		// Prevent this object from deletion, at least for the life of this instance.
+		p.mu.protectedObjects[fileNums[i]] = p.mu.protectedObjects[fileNums[i]] + 1
+	}
+
+	if p.remote.catalog != nil {
+		return p.remote.catalog.Checkpoint(fs, dir)
+	}
+	return nil
+}
+
 func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
