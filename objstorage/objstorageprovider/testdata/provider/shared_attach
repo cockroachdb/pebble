@@ -65,6 +65,7 @@ close
 ----
 <local fs> sync: p1
 <local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
+<local fs> close: p1
 <local fs> close: p1/REMOTE-OBJ-CATALOG-000001
 <local fs> close: p1
 

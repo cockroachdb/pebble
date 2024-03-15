@@ -59,6 +59,7 @@ error applying batch: deleting non-existent object 001000
 
 close
 ----
+close: test
 close: test/REMOTE-OBJ-CATALOG-000001
 
 open test
@@ -92,6 +93,7 @@ marker.remote-obj-catalog.000002.REMOTE-OBJ-CATALOG-000002
 
 close
 ----
+close: test
 close: test/REMOTE-OBJ-CATALOG-000002
 
 open test
@@ -103,6 +105,7 @@ creator-id: 5
 
 close
 ----
+close: test
 
 open other-path
 ----
@@ -137,6 +140,7 @@ marker.remote-obj-catalog.000002.REMOTE-OBJ-CATALOG-000002
 
 close
 ----
+close: other-path
 close: other-path/REMOTE-OBJ-CATALOG-000001
 
 open test

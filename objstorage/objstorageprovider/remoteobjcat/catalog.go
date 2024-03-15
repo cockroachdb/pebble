@@ -147,7 +147,12 @@ func (c *Catalog) SetCreatorID(id objstorage.CreatorID) error {
 
 // Close any open files.
 func (c *Catalog) Close() error {
-	return c.closeCatalogFile()
+	var err error
+	if c.mu.marker != nil {
+		err = c.mu.marker.Close()
+		c.mu.marker = nil
+	}
+	return errors.CombineErrors(err, c.closeCatalogFile())
 }
 
 func (c *Catalog) closeCatalogFile() error {

@@ -5,6 +5,7 @@
 package remoteobjcat_test
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -17,10 +18,11 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/vfstest"
 )
 
 func TestCatalog(t *testing.T) {
-	mem := vfs.NewMem()
+	mem, dumpOpenFiles := vfstest.WithOpenFileTracking(vfs.NewMem())
 	var memLog base.InMemLogger
 
 	var cat *remoteobjcat.Catalog
@@ -162,6 +164,11 @@ func TestCatalog(t *testing.T) {
 			cat = nil
 			if err != nil {
 				return fmt.Sprintf("%v", err)
+			}
+			var openFileBuf bytes.Buffer
+			dumpOpenFiles(&openFileBuf)
+			if openFileBuf.Len() > 0 {
+				memLog.Errorf("open files remain: %s\n", openFileBuf.String())
 			}
 			return memLog.String()
 
