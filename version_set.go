@@ -168,7 +168,7 @@ func (vs *versionSet) create(
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextDiskFileNum()
-	err = vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum)
+	err = vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum, nil /* virtualBackings */)
 	if err == nil {
 		if err = vs.manifest.Flush(); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
@@ -295,12 +295,8 @@ func (vs *versionSet) load(
 
 	// Populate the fileBackingMap and the FileBacking for virtual sstables since
 	// we have finished version edit accumulation.
-	for _, s := range bve.AddedFileBacking {
-		vs.virtualBackings.Add(s)
-	}
-
-	for _, diskFileNum := range bve.RemovedFileBacking {
-		vs.virtualBackings.Remove(diskFileNum)
+	for _, b := range bve.AddedFileBacking {
+		vs.virtualBackings.AddAndRef(b)
 	}
 
 	for _, addedLevel := range bve.Added {
@@ -311,12 +307,16 @@ func (vs *versionSet) load(
 		}
 	}
 
-	// There should be no deleted files, since we're starting with an empty state.
 	if invariants.Enabled {
+		// There should be no deleted tables or backings, since we're starting from
+		// an empty state.
 		for _, deletedLevel := range bve.Deleted {
 			if len(deletedLevel) != 0 {
-				panic("deleted files during manifest replay")
+				panic("deleted files after manifest replay")
 			}
+		}
+		if len(bve.RemovedFileBacking) > 0 {
+			panic("deleted backings after manifest replay")
 		}
 	}
 
@@ -500,9 +500,15 @@ func (vs *versionSet) logAndApply(
 	}
 	var newManifestFileNum base.DiskFileNum
 	var prevManifestFileSize uint64
+	var newManifestVirtualBackings []*fileBacking
 	if requireRotation {
 		newManifestFileNum = vs.getNextDiskFileNum()
 		prevManifestFileSize = uint64(vs.manifest.Size())
+
+		// We want the virtual backings *before* applying the version edit, because
+		// the new manifest will contain the pre-apply version plus the last version
+		// edit.
+		newManifestVirtualBackings = vs.virtualBackings.Backings()
 	}
 
 	// Grab certain values before releasing vs.mu, in case createManifest() needs
@@ -510,8 +516,8 @@ func (vs *versionSet) logAndApply(
 	minUnflushedLogNum := vs.minUnflushedLogNum
 	nextFileNum := vs.nextFileNum
 
-	// Update backing metadata and populate RemovedBackingTables.
-	zombies := getZombiesAndUpdateVirtualBackings(ve, &vs.virtualBackings)
+	// Note: this call populates ve.RemovedBackingTables.
+	zombieBackings, removedVirtualBackings := getZombiesAndUpdateVirtualBackings(ve, &vs.virtualBackings)
 
 	if err := func() error {
 		vs.mu.Unlock()
@@ -533,7 +539,7 @@ func (vs *versionSet) logAndApply(
 		}
 
 		if newManifestFileNum != 0 {
-			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum); err != nil {
+			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum, newManifestVirtualBackings); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   jobID,
 					Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
@@ -599,12 +605,25 @@ func (vs *versionSet) logAndApply(
 	// Update the zombie tables set first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
 	// being called.
-	for fileNum, size := range zombies {
-		vs.zombieTables[fileNum] = size
+	for _, b := range zombieBackings {
+		vs.zombieTables[b.DiskFileNum] = b.Size
 	}
+
+	// Unref the removed backings and report those that already became obsolete.
+	// Note that the only case where we report obsolete tables here is when
+	// VirtualBackings.Protect/Unprotect was used to keep a backing alive without
+	// it being used in the current version.
+	var obsoleteVirtualBackings []*fileBacking
+	for _, b := range removedVirtualBackings {
+		if b.Unref() == 0 {
+			obsoleteVirtualBackings = append(obsoleteVirtualBackings, b)
+		}
+	}
+	vs.addObsoleteLocked(obsoleteVirtualBackings)
 
 	// Install the new version.
 	vs.append(newVersion)
+
 	if ve.MinUnflushedLogNum != 0 {
 		vs.minUnflushedLogNum = ve.MinUnflushedLogNum
 	}
@@ -661,40 +680,47 @@ func (vs *versionSet) logAndApply(
 }
 
 // getZombiesAndUpdateVirtualBackings updates the virtual backings with the
-// changes in the versionEdit, populates ve.RemovedBackingTables, and returns
-// all backings (physical and virtual) that will no longer be needed when we
-// apply ve.
+// changes in the versionEdit and populates ve.RemovedBackingTables.
+// Returns:
+//   - zombieBackings: all backings (physical and virtual) that will no longer be
+//     needed when we apply ve.
+//   - removedVirtualBackings: the virtual backings that will be removed by the
+//     VersionEdit and which must be Unref()ed by the caller. These backings
+//     match ve.RemovedBackingTables.
 func getZombiesAndUpdateVirtualBackings(
 	ve *versionEdit, virtualBackings *manifest.VirtualBackings,
-) map[base.DiskFileNum]uint64 {
-	var zombies map[base.DiskFileNum]uint64
-
-	// We deal with physical and virtual tables separately.
-
-	// Physical tables are the sole users of their backing.
-	for _, m := range ve.DeletedFiles {
-		if !m.Virtual {
-			if zombies == nil {
-				zombies = make(map[base.DiskFileNum]uint64)
-			}
-			zombies[m.FileBacking.DiskFileNum] = m.FileBacking.Size
-		}
-	}
-	// Tables can move between levels, in which case they appear in both
-	// DeletedFiles and NewFiles.
+) (zombieBackings, removedVirtualBackings []*fileBacking) {
+	// First, deal with the physical tables.
+	//
+	// A physical backing has become unused if it is in DeletedFiles but not in
+	// NewFiles or CreatedBackingTables.
+	//
+	// Note that for the common case where there are very few elements, the map
+	// will stay on the stack.
+	stillUsed := make(map[base.DiskFileNum]struct{})
 	for _, nf := range ve.NewFiles {
 		if !nf.Meta.Virtual {
-			delete(zombies, nf.Meta.FileBacking.DiskFileNum)
+			stillUsed[nf.Meta.FileBacking.DiskFileNum] = struct{}{}
+		}
+	}
+	for _, b := range ve.CreatedBackingTables {
+		stillUsed[b.DiskFileNum] = struct{}{}
+	}
+	for _, m := range ve.DeletedFiles {
+		if !m.Virtual {
+			if _, ok := stillUsed[m.FileBacking.DiskFileNum]; !ok {
+				zombieBackings = append(zombieBackings, m.FileBacking)
+			}
 		}
 	}
 
-	for _, b := range ve.CreatedBackingTables {
-		virtualBackings.Add(b)
-		// Physical backings can become virtual.
-		delete(zombies, b.DiskFileNum)
-	}
+	// Now deal with virtual tables.
+	//
 	// When a virtual table moves between levels we AddTable() then RemoveTable(),
 	// which works out.
+	for _, b := range ve.CreatedBackingTables {
+		virtualBackings.AddAndRef(b)
+	}
 	for _, nf := range ve.NewFiles {
 		if nf.Meta.Virtual {
 			virtualBackings.AddTable(nf.Meta)
@@ -709,17 +735,15 @@ func getZombiesAndUpdateVirtualBackings(
 	if unused := virtualBackings.Unused(); len(unused) > 0 {
 		// Virtual backings that are no longer used are zombies and are also added
 		// to RemovedBackingTables (before the version edit is written to disk).
-		if zombies == nil {
-			zombies = make(map[base.DiskFileNum]uint64, len(ve.RemovedBackingTables))
-		}
 		ve.RemovedBackingTables = make([]base.DiskFileNum, len(unused))
 		for i, b := range unused {
-			zombies[b.DiskFileNum] = b.Size
-			virtualBackings.Remove(b.DiskFileNum)
 			ve.RemovedBackingTables[i] = b.DiskFileNum
+			zombieBackings = append(zombieBackings, b)
+			virtualBackings.Remove(b.DiskFileNum)
 		}
+		removedVirtualBackings = zombieBackings[len(zombieBackings)-len(unused):]
 	}
-	return zombies
+	return zombieBackings, removedVirtualBackings
 }
 
 func (vs *versionSet) incrementCompactions(
@@ -764,7 +788,10 @@ func (vs *versionSet) incrementCompactionBytes(numBytes int64) {
 
 // createManifest creates a manifest file that contains a snapshot of vs.
 func (vs *versionSet) createManifest(
-	dirname string, fileNum, minUnflushedLogNum base.DiskFileNum, nextFileNum uint64,
+	dirname string,
+	fileNum, minUnflushedLogNum base.DiskFileNum,
+	nextFileNum uint64,
+	virtualBackings []*fileBacking,
 ) (err error) {
 	var (
 		filename     = base.MakeFilepath(vs.fs, dirname, fileTypeManifest, fileNum)
@@ -791,7 +818,7 @@ func (vs *versionSet) createManifest(
 	snapshot := versionEdit{
 		ComparerName: vs.cmp.Name,
 	}
-	dedup := make(map[base.DiskFileNum]struct{})
+
 	for level, levelMetadata := range vs.currentVersion().Levels {
 		iter := levelMetadata.Iter()
 		for meta := iter.First(); meta != nil; meta = iter.Next() {
@@ -799,15 +826,10 @@ func (vs *versionSet) createManifest(
 				Level: level,
 				Meta:  meta,
 			})
-			if _, ok := dedup[meta.FileBacking.DiskFileNum]; meta.Virtual && !ok {
-				dedup[meta.FileBacking.DiskFileNum] = struct{}{}
-				snapshot.CreatedBackingTables = append(
-					snapshot.CreatedBackingTables,
-					meta.FileBacking,
-				)
-			}
 		}
 	}
+
+	snapshot.CreatedBackingTables = virtualBackings
 
 	// When creating a version snapshot for an existing DB, this snapshot VersionEdit will be
 	// immediately followed by another VersionEdit (being written in logAndApply()). That
@@ -871,24 +893,17 @@ func (vs *versionSet) append(v *version) {
 	v.Ref()
 	vs.versions.PushBack(v)
 	if invariants.Enabled {
-		// Verify that the virtualBackings map is correct.
-		m := make(map[base.DiskFileNum]struct{})
+		// Verify that the virtualBackings contains all the backings referenced by
+		// the version.
 		for _, l := range v.Levels {
 			iter := l.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
 				if f.Virtual {
-					m[f.FileBacking.DiskFileNum] = struct{}{}
+					if _, ok := vs.virtualBackings.Get(f.FileBacking.DiskFileNum); !ok {
+						panic(fmt.Sprintf("%s is not in virtualBackings", f.FileBacking.DiskFileNum))
+					}
 				}
 			}
-		}
-		vs.virtualBackings.ForEach(func(b *fileBacking) {
-			if _, ok := m[b.DiskFileNum]; !ok {
-				panic(fmt.Sprintf("%s should not be in virtualBackings", b.DiskFileNum))
-			}
-			delete(m, b.DiskFileNum)
-		})
-		for n := range m {
-			panic(fmt.Sprintf("%s is not in virtualBackings", n))
 		}
 	}
 }
@@ -910,6 +925,14 @@ func (vs *versionSet) addLiveFileNums(m map[base.DiskFileNum]struct{}) {
 			break
 		}
 	}
+	// virtualBackings contains backings that are referenced by some virtual
+	// tables in the latest version (which are handled above), and backings that
+	// are not but are still alive because of the protection mechanism (see
+	// manifset.VirtualBackings). This loop ensures the latter get added to the
+	// map.
+	vs.virtualBackings.ForEach(func(b *fileBacking) {
+		m[b.DiskFileNum] = struct{}{}
+	})
 }
 
 // addObsoleteLocked will add the fileInfo associated with obsolete backing

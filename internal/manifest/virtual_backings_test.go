@@ -28,7 +28,7 @@ func TestVirtualBackings(t *testing.T) {
 
 		switch d.Cmd {
 		case "add":
-			bv.Add(&FileBacking{
+			bv.AddAndRef(&FileBacking{
 				DiskFileNum: n,
 				Size:        size,
 			})
@@ -49,6 +49,12 @@ func TestVirtualBackings(t *testing.T) {
 				FileBacking: &FileBacking{DiskFileNum: n},
 				Size:        size,
 			})
+
+		case "protect":
+			bv.Protect(n)
+
+		case "unprotect":
+			bv.Unprotect(n)
 
 		default:
 			d.Fatalf(t, "unknown command %q", d.Cmd)
