@@ -181,7 +181,11 @@ func ingestLoad1External(
 	if !e.HasRangeKey && !e.HasPointKey {
 		return nil, errors.New("pebble: cannot ingest external file with no point or range keys")
 	}
-	if opts.Comparer.Compare(e.Bounds.Start, e.Bounds.End) >= 0 {
+
+	if opts.Comparer.Compare(e.Bounds.Start, e.Bounds.End) > 0 {
+		return nil, errors.Newf("pebble: external file bounds [%q, %q) are invalid", e.Bounds.Start, e.Bounds.End)
+	}
+	if opts.Comparer.Compare(e.Bounds.Start, e.Bounds.End) == 0 && !e.BoundsHasInclusiveEndKey {
 		return nil, errors.Newf("pebble: external file bounds [%q, %q) are invalid", e.Bounds.Start, e.Bounds.End)
 	}
 	if n := opts.Comparer.Split(e.Bounds.Start); n != len(e.Bounds.Start) {
@@ -218,11 +222,17 @@ func ingestLoad1External(
 	smallestCopy := slices.Clone(e.Bounds.Start)
 	largestCopy := slices.Clone(e.Bounds.End)
 	if e.HasPointKey {
-		meta.ExtendPointKeyBounds(
-			opts.Comparer.Compare,
-			base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
-			base.MakeRangeDeleteSentinelKey(largestCopy),
-		)
+		if e.BoundsHasInclusiveEndKey {
+			meta.ExtendPointKeyBounds(
+				opts.Comparer.Compare,
+				base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
+				base.MakeInternalKey(largestCopy, 0, InternalKeyKindMax))
+		} else {
+			meta.ExtendPointKeyBounds(
+				opts.Comparer.Compare,
+				base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
+				base.MakeRangeDeleteSentinelKey(largestCopy))
+		}
 	}
 	if e.HasRangeKey {
 		meta.ExtendRangeKeyBounds(
@@ -1142,6 +1152,10 @@ type ExternalFile struct {
 	// Multiple ExternalFiles in one ingestion must all have non-overlapping
 	// bounds.
 	Bounds KeyRange
+
+	// BoundsHasInclusiveEndKey is true if Bounds.End should be
+	// treated as inclusive.
+	BoundsHasInclusiveEndKey bool
 
 	// HasPointKey and HasRangeKey denote whether this file contains point keys
 	// or range keys. If both structs are false, an error is returned during

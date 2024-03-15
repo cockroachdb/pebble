@@ -485,14 +485,20 @@ func (d *DB) truncateExternalFile(
 	}
 
 	cmpUpper := cmp(upper, file.Largest.UserKey)
-	needsUpperTruncate := cmpUpper < 0 || (cmpUpper == 0 && !file.Largest.IsExclusiveSentinel())
+	needsUpperTruncate := cmpUpper < 0
 	if needsUpperTruncate {
 		sst.Bounds.End = slices.Clone(upper)
+		sst.BoundsHasInclusiveEndKey = false
 	} else {
 		sst.Bounds.End = slices.Clone(file.Largest.UserKey)
+		sst.BoundsHasInclusiveEndKey = !file.Largest.IsExclusiveSentinel()
 	}
 
-	if cmp(sst.Bounds.Start, sst.Bounds.End) >= 0 {
+	if cmp(sst.Bounds.Start, sst.Bounds.End) > 0 {
+		return nil, errors.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.Bounds.Start, sst.Bounds.End)
+	}
+
+	if cmp(sst.Bounds.Start, sst.Bounds.End) == 0 && !sst.BoundsHasInclusiveEndKey {
 		return nil, errors.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.Bounds.Start, sst.Bounds.End)
 	}
 

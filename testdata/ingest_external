@@ -616,3 +616,34 @@ trunctest bounds=(a,c)
 replicate 1 2 c z
 ----
 replicated 0 external SSTs
+
+reset
+----
+
+build-remote inclusive_bounds_test
+set a foo
+set b bar
+set c baz
+----
+
+ingest-external
+inclusive_bounds_test bounds=(a,c) bounds-are-inclusive=true
+----
+
+lsm
+----
+L6:
+  000004(000004):[a#10,DELSIZED-c#10,DELSIZED]
+
+replicate 1 2 a d
+----
+replicated 1 external SSTs
+
+iter
+first
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
