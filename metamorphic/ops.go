@@ -980,10 +980,12 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 		for i, obj := range objs {
 			meta := t.getExternalObj(obj.externalObjID)
 			external[i] = pebble.ExternalFile{
-				Locator: "external",
-				ObjName: externalObjName(obj.externalObjID),
-				Size:    meta.sstMeta.Size,
-				Bounds:  obj.bounds,
+				Locator:           "external",
+				ObjName:           externalObjName(obj.externalObjID),
+				Size:              meta.sstMeta.Size,
+				StartKey:          obj.bounds.Start,
+				EndKey:            obj.bounds.End,
+				EndKeyIsInclusive: false,
 				// Note: if the table has point/range keys, we don't know for sure whether
 				// this particular range has any, but that's acceptable.
 				HasPointKey:     meta.sstMeta.HasPointKeys || meta.sstMeta.HasRangeDelKeys,

@@ -1321,8 +1321,8 @@ func runIngestExternalCmd(
 			switch arg.Key {
 			case "bounds":
 				nArgs(2)
-				ef.Bounds.Start = []byte(arg.Vals[0])
-				ef.Bounds.End = []byte(arg.Vals[1])
+				ef.StartKey = []byte(arg.Vals[0])
+				ef.EndKey = []byte(arg.Vals[1])
 			case "bounds-are-inclusive":
 				nArgs(1)
 				b, err := strconv.ParseBool(arg.Vals[0])
@@ -1330,7 +1330,7 @@ func runIngestExternalCmd(
 					usageErr(fmt.Sprintf("%s should have boolean argument: %v",
 						arg.Key, err))
 				}
-				ef.BoundsHasInclusiveEndKey = b
+				ef.EndKeyIsInclusive = b
 			case "size":
 				nArgs(1)
 				arg.Scan(t, 0, &ef.Size)
@@ -1347,7 +1347,7 @@ func runIngestExternalCmd(
 				usageErr(fmt.Sprintf("unknown argument %v", arg.Key))
 			}
 		}
-		if ef.Bounds.Start == nil {
+		if ef.StartKey == nil {
 			usageErr("no bounds specified")
 		}
 
