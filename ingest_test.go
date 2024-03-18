@@ -334,8 +334,7 @@ func TestIngestLink(t *testing.T) {
 				opts.FS.Remove(meta[i].path)
 			}
 
-			lr := ingestLoadResult{local: meta}
-			err = ingestLink(0 /* jobID */, opts, objProvider, lr)
+			err = ingestLinkLocal(0 /* jobID */, opts, objProvider, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -402,8 +401,7 @@ func TestIngestLinkFallback(t *testing.T) {
 
 	meta := &fileMetadata{FileNum: 1}
 	meta.InitPhysicalBacking()
-	lr := ingestLoadResult{local: []ingestLocalMeta{{fileMetadata: meta, path: "source"}}}
-	err = ingestLink(0, opts, objProvider, lr)
+	err = ingestLinkLocal(0, opts, objProvider, []ingestLocalMeta{{fileMetadata: meta, path: "source"}})
 	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")

@@ -286,6 +286,10 @@ type Provider interface {
 	// Pebble and will never be removed by Pebble.
 	CreateExternalObjectBacking(locator remote.Locator, objName string) (RemoteObjectBacking, error)
 
+	// GetExternalObjects returns a list of DiskFileNums corresponding to all
+	// objects that are backed by the given external object.
+	GetExternalObjects(locator remote.Locator, objName string) []base.DiskFileNum
+
 	// AttachRemoteObjects registers existing remote objects with this provider.
 	//
 	// The objects are not guaranteed to be durable (accessible in case of
