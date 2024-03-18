@@ -182,17 +182,17 @@ func ingestLoad1External(
 		return nil, errors.New("pebble: cannot ingest external file with no point or range keys")
 	}
 
-	if opts.Comparer.Compare(e.Bounds.Start, e.Bounds.End) > 0 {
-		return nil, errors.Newf("pebble: external file bounds [%q, %q) are invalid", e.Bounds.Start, e.Bounds.End)
+	if opts.Comparer.Compare(e.StartKey, e.EndKey) > 0 {
+		return nil, errors.Newf("pebble: external file bounds [%q, %q) are invalid", e.StartKey, e.EndKey)
 	}
-	if opts.Comparer.Compare(e.Bounds.Start, e.Bounds.End) == 0 && !e.BoundsHasInclusiveEndKey {
-		return nil, errors.Newf("pebble: external file bounds [%q, %q) are invalid", e.Bounds.Start, e.Bounds.End)
+	if opts.Comparer.Compare(e.StartKey, e.EndKey) == 0 && !e.EndKeyIsInclusive {
+		return nil, errors.Newf("pebble: external file bounds [%q, %q) are invalid", e.StartKey, e.EndKey)
 	}
-	if n := opts.Comparer.Split(e.Bounds.Start); n != len(e.Bounds.Start) {
-		return nil, errors.Newf("pebble: external file bounds start key %q has suffix", e.Bounds.Start)
+	if n := opts.Comparer.Split(e.StartKey); n != len(e.StartKey) {
+		return nil, errors.Newf("pebble: external file bounds start key %q has suffix", e.StartKey)
 	}
-	if n := opts.Comparer.Split(e.Bounds.End); n != len(e.Bounds.End) {
-		return nil, errors.Newf("pebble: external file bounds end key %q has suffix", e.Bounds.End)
+	if n := opts.Comparer.Split(e.EndKey); n != len(e.EndKey) {
+		return nil, errors.Newf("pebble: external file bounds end key %q has suffix", e.EndKey)
 	}
 
 	// #3287: range keys don't yet work correctly when the range key bounds are not tight.
@@ -219,10 +219,13 @@ func ingestLoad1External(
 	// In the name of keeping this ingestion as fast as possible, we avoid
 	// *all* existence checks and synthesize a file metadata with smallest/largest
 	// keys that overlap whatever the passed-in span was.
-	smallestCopy := slices.Clone(e.Bounds.Start)
-	largestCopy := slices.Clone(e.Bounds.End)
+	smallestCopy := slices.Clone(e.StartKey)
+	largestCopy := slices.Clone(e.EndKey)
 	if e.HasPointKey {
-		if e.BoundsHasInclusiveEndKey {
+		// Sequence numbers are updated later by
+		// ingestUpdateSeqNum, applying a squence number that
+		// is applied to all keys in the sstable.
+		if e.EndKeyIsInclusive {
 			meta.ExtendPointKeyBounds(
 				opts.Comparer.Compare,
 				base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
@@ -1143,19 +1146,20 @@ type ExternalFile struct {
 	// is acceptable in lieu of the backing file size.
 	Size uint64
 
-	// Bounds of the sstable; the ingestion of this file will only result in keys
-	// within [Bounds.Start, Bounds.End). These bounds are loose i.e. it's
-	// possible for keys to not span the entirety of this range.
+	// StartKey and EndKey define the bounds of the sstable; the ingestion
+	// of this file will only result in keys within [StartKey, EndKey) if
+	// EndKeyIsInclusive is false or [StartKey, EndKey] if it is true.
+	// These bounds are loose i.e. it's possible for keys to not span the
+	// entirety of this range.
 	//
-	// The Bounds.Start/End user keys must not have suffixes.
+	// StartKey and EndKey user keys must not have suffixes.
 	//
 	// Multiple ExternalFiles in one ingestion must all have non-overlapping
 	// bounds.
-	Bounds KeyRange
+	StartKey, EndKey []byte
 
-	// BoundsHasInclusiveEndKey is true if Bounds.End should be
-	// treated as inclusive.
-	BoundsHasInclusiveEndKey bool
+	// EndKeyIsInclusive is true if EndKey should be treated as inclusive.
+	EndKeyIsInclusive bool
 
 	// HasPointKey and HasRangeKey denote whether this file contains point keys
 	// or range keys. If both structs are false, an error is returned during

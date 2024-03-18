@@ -475,15 +475,13 @@ func TestScanInternal(t *testing.T) {
 
 				writeSST(points, rangeDels, rangeKeys, objstorageprovider.NewRemoteWritable(file))
 				ef := ExternalFile{
-					ObjName: objName,
-					Locator: remote.Locator("external-storage"),
-					Size:    10,
-					Bounds: KeyRange{
-						Start: smallest.UserKey,
-						End:   largest.UserKey,
-					},
-					BoundsHasInclusiveEndKey: true,
-					HasPointKey:              true,
+					ObjName:           objName,
+					Locator:           remote.Locator("external-storage"),
+					Size:              10,
+					StartKey:          smallest.UserKey,
+					EndKey:            largest.UserKey,
+					EndKeyIsInclusive: true,
+					HasPointKey:       true,
 				}
 				_, err = d.IngestExternalFiles([]ExternalFile{ef})
 				require.NoError(t, err)
@@ -554,8 +552,8 @@ func TestScanInternal(t *testing.T) {
 					externalFileVisitor = func(sst *ExternalFile) error {
 						fmt.Fprintf(&b, "external file: %s %s [0x%s-0x%s] (hasPoint: %v, hasRange: %v)\n",
 							sst.Locator, sst.ObjName,
-							hex.EncodeToString(sst.Bounds.Start),
-							hex.EncodeToString(sst.Bounds.End),
+							hex.EncodeToString(sst.StartKey),
+							hex.EncodeToString(sst.EndKey),
 							sst.HasPointKey, sst.HasRangeKey)
 						return nil
 					}

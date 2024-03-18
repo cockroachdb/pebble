@@ -467,7 +467,6 @@ func (d *DB) truncateExternalFile(
 		Level:           uint8(level),
 		ObjName:         objMeta.Remote.CustomObjectName,
 		Locator:         objMeta.Remote.Locator,
-		Bounds:          KeyRange{},
 		HasPointKey:     file.HasPointKeys,
 		HasRangeKey:     file.HasRangeKeys,
 		Size:            file.Size,
@@ -479,27 +478,27 @@ func (d *DB) truncateExternalFile(
 
 	needsLowerTruncate := cmp(lower, file.Smallest.UserKey) > 0
 	if needsLowerTruncate {
-		sst.Bounds.Start = slices.Clone(lower)
+		sst.StartKey = slices.Clone(lower)
 	} else {
-		sst.Bounds.Start = slices.Clone(file.Smallest.UserKey)
+		sst.StartKey = slices.Clone(file.Smallest.UserKey)
 	}
 
 	cmpUpper := cmp(upper, file.Largest.UserKey)
 	needsUpperTruncate := cmpUpper < 0
 	if needsUpperTruncate {
-		sst.Bounds.End = slices.Clone(upper)
-		sst.BoundsHasInclusiveEndKey = false
+		sst.EndKey = slices.Clone(upper)
+		sst.EndKeyIsInclusive = false
 	} else {
-		sst.Bounds.End = slices.Clone(file.Largest.UserKey)
-		sst.BoundsHasInclusiveEndKey = !file.Largest.IsExclusiveSentinel()
+		sst.EndKey = slices.Clone(file.Largest.UserKey)
+		sst.EndKeyIsInclusive = !file.Largest.IsExclusiveSentinel()
 	}
 
-	if cmp(sst.Bounds.Start, sst.Bounds.End) > 0 {
-		return nil, errors.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.Bounds.Start, sst.Bounds.End)
+	if cmp(sst.StartKey, sst.EndKey) > 0 {
+		return nil, errors.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.StartKey, sst.EndKey)
 	}
 
-	if cmp(sst.Bounds.Start, sst.Bounds.End) == 0 && !sst.BoundsHasInclusiveEndKey {
-		return nil, errors.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.Bounds.Start, sst.Bounds.End)
+	if cmp(sst.StartKey, sst.EndKey) == 0 && !sst.EndKeyIsInclusive {
+		return nil, errors.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.StartKey, sst.EndKey)
 	}
 
 	return sst, nil
