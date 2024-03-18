@@ -28,7 +28,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 )
 
-var errCorruptIndexEntry = base.CorruptionErrorf("pebble/table: corrupt index entry")
 var errReaderClosed = errors.New("pebble/table: reader is closed")
 
 // decodeBlockHandle returns the block handle encoded at the start of src, as
@@ -923,7 +922,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		for key, value := iter.First(); key != nil; key, value = iter.Next() {
 			dataBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 			if err != nil {
-				return nil, errCorruptIndexEntry
+				return nil, errCorruptIndexEntry(err)
 			}
 			if len(dataBH.Props) > 0 {
 				alloc, dataBH.Props = alloc.Copy(dataBH.Props)
@@ -937,7 +936,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
 			indexBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 			if err != nil {
-				return nil, errCorruptIndexEntry
+				return nil, errCorruptIndexEntry(err)
 			}
 			l.Index = append(l.Index, indexBH.BlockHandle)
 
@@ -956,7 +955,7 @@ func (r *Reader) Layout() (*Layout, error) {
 					alloc, dataBH.Props = alloc.Copy(dataBH.Props)
 				}
 				if err != nil {
-					return nil, errCorruptIndexEntry
+					return nil, errCorruptIndexEntry(err)
 				}
 				l.Data = append(l.Data, dataBH)
 			}
@@ -1101,7 +1100,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		}
 		startIdxBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
 		if err != nil {
-			return 0, errCorruptIndexEntry
+			return 0, errCorruptIndexEntry(err)
 		}
 		startIdxBlock, err := r.readBlock(context.Background(), startIdxBH.BlockHandle,
 			nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
@@ -1122,7 +1121,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		} else {
 			endIdxBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
 			if err != nil {
-				return 0, errCorruptIndexEntry
+				return 0, errCorruptIndexEntry(err)
 			}
 			endIdxBlock, err := r.readBlock(context.Background(),
 				endIdxBH.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
@@ -1146,7 +1145,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	}
 	startBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
 	if err != nil {
-		return 0, errCorruptIndexEntry
+		return 0, errCorruptIndexEntry(err)
 	}
 
 	includeInterpolatedValueBlocksSize := func(dataBlockSize uint64) uint64 {
@@ -1177,7 +1176,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	}
 	endBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
 	if err != nil {
-		return 0, errCorruptIndexEntry
+		return 0, errCorruptIndexEntry(err)
 	}
 	return includeInterpolatedValueBlocksSize(
 		endBH.Offset + endBH.Length + blockTrailerLen - startBH.Offset), nil
@@ -1329,4 +1328,12 @@ func (s *simpleReadable) Size() int64 {
 // NewReaddHandle is part of the objstorage.Readable interface.
 func (s *simpleReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
 	return &s.rh
+}
+
+func errCorruptIndexEntry(err error) error {
+	err = base.CorruptionErrorf("pebble/table: corrupt index entry: %v", err)
+	if invariants.Enabled {
+		panic(err)
+	}
+	return err
 }
