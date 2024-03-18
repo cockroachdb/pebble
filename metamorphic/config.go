@@ -17,6 +17,7 @@ const (
 	OpDBCheckpoint
 	OpDBClose
 	OpDBCompact
+	OpDBDownload
 	OpDBFlush
 	OpDBRatchetFormatMajorVersion
 	OpDBRestart
@@ -142,6 +143,7 @@ func DefaultOpConfig() OpConfig {
 			OpBatchCommit:                 5,
 			OpDBCheckpoint:                1,
 			OpDBCompact:                   1,
+			OpDBDownload:                  1,
 			OpDBFlush:                     2,
 			OpDBRatchetFormatMajorVersion: 1,
 			OpDBRestart:                   2,
