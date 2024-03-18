@@ -204,13 +204,6 @@ func ingestLoad1External(
 		Virtual:      true,
 		Size:         e.Size,
 	}
-	// For simplicity, we use the same number for both the FileNum and the
-	// DiskFileNum (even though this is a virtual sstable). Pass the underlying
-	// FileBacking's size to the same size as the virtualized view of the sstable.
-	// This ensures that we don't over-prioritize this sstable for compaction just
-	// yet, as we do not have a clear sense of what parts of this sstable are
-	// referenced by other nodes.
-	meta.InitProviderBacking(base.DiskFileNum(fileNum), e.Size)
 
 	// In the name of keeping this ingestion as fast as possible, we avoid
 	// *all* existence checks and synthesize a file metadata with smallest/largest
@@ -235,9 +228,6 @@ func ingestLoad1External(
 	meta.SyntheticPrefix = e.SyntheticPrefix
 	meta.SyntheticSuffix = e.SyntheticSuffix
 
-	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
-		return nil, err
-	}
 	return meta, nil
 }
 
@@ -407,6 +397,11 @@ type ingestSharedMeta struct {
 type ingestExternalMeta struct {
 	*fileMetadata
 	external ExternalFile
+	// tookRefOnBacking is true if the external file is reusing a backing
+	// that existed before this ingestion. In this case, we took a reference count
+	// on that backing that we need to restore. When we drop the reference, we set
+	// tookRefOnBacking back to false.
+	usedExistingBacking bool
 }
 
 func (r *ingestLoadResult) fileCount() int {
@@ -603,6 +598,17 @@ func ingestLink(
 			})
 		}
 	}
+	return nil
+}
+
+// ingestAttachRemote attaches remote objects to the storage provider.
+//
+// For external objects, we reuse existing FileBackings from the current version
+// when possible.
+//
+// ingestUnprotectExternalBackings() must be called after this function (even in
+// error cases).
+func (d *DB) ingestAttachRemote(jobID int, lr ingestLoadResult) error {
 	remoteObjs := make([]objstorage.RemoteObjectToAttach, 0, len(lr.shared)+len(lr.external))
 	for i := range lr.shared {
 		backing, err := lr.shared[i].shared.Backing.Get()
@@ -615,20 +621,52 @@ func ingestLink(
 			Backing:  backing,
 		})
 	}
+
+	d.findExistingBackingsForExternalObjects(lr.external)
+
+	newFileBackings := make(map[remote.ObjectKey]*fileBacking, len(lr.external))
 	for i := range lr.external {
-		// Try to resolve a reference to the external file.
-		backing, err := objProvider.CreateExternalObjectBacking(lr.external[i].external.Locator, lr.external[i].external.ObjName)
+		meta := lr.external[i].fileMetadata
+		if meta.FileBacking != nil {
+			// The backing was filled in by findExistingBackingsForExternalObjects().
+			continue
+		}
+		key := remote.MakeObjectKey(lr.external[i].external.Locator, lr.external[i].external.ObjName)
+		if backing, ok := newFileBackings[key]; ok {
+			// We already created the same backing in this loop.
+			meta.FileBacking = backing
+			continue
+		}
+		providerBacking, err := d.objProvider.CreateExternalObjectBacking(key.Locator, key.ObjectName)
 		if err != nil {
 			return err
 		}
+		// We have to attach the remote object (and assign it a DiskFileNum). For
+		// simplicity, we use the same number for both the FileNum and the
+		// DiskFileNum (even though this is a virtual sstable).
+		meta.InitProviderBacking(base.DiskFileNum(meta.FileNum), lr.external[i].external.Size)
+
+		// Set the underlying FileBacking's size to the same size as the virtualized
+		// view of the sstable. This ensures that we don't over-prioritize this
+		// sstable for compaction just yet, as we do not have a clear sense of
+		// what parts of this sstable are referenced by other nodes.
+		meta.FileBacking.Size = lr.external[i].external.Size
+		newFileBackings[key] = meta.FileBacking
+
 		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
-			FileNum:  lr.external[i].FileBacking.DiskFileNum,
+			FileNum:  meta.FileBacking.DiskFileNum,
 			FileType: fileTypeTable,
-			Backing:  backing,
+			Backing:  providerBacking,
 		})
 	}
 
-	remoteObjMetas, err := objProvider.AttachRemoteObjects(remoteObjs)
+	for i := range lr.external {
+		if err := lr.external[i].Validate(d.opts.Comparer.Compare, d.opts.Comparer.FormatKey); err != nil {
+			return err
+		}
+	}
+
+	remoteObjMetas, err := d.objProvider.AttachRemoteObjects(remoteObjs)
 	if err != nil {
 		return err
 	}
@@ -641,8 +679,8 @@ func ingestLink(
 		// open the db again after a crash/restart (see checkConsistency in open.go),
 		// plus it more accurately allows us to prioritize compactions of files
 		// that were originally created by us.
-		if remoteObjMetas[i].IsShared() && !objProvider.IsSharedForeign(remoteObjMetas[i]) {
-			size, err := objProvider.Size(remoteObjMetas[i])
+		if remoteObjMetas[i].IsShared() && !d.objProvider.IsSharedForeign(remoteObjMetas[i]) {
+			size, err := d.objProvider.Size(remoteObjMetas[i])
 			if err != nil {
 				return err
 			}
@@ -650,18 +688,61 @@ func ingestLink(
 		}
 	}
 
-	if opts.EventListener.TableCreated != nil {
+	if d.opts.EventListener.TableCreated != nil {
 		for i := range remoteObjMetas {
-			opts.EventListener.TableCreated(TableCreateInfo{
+			d.opts.EventListener.TableCreated(TableCreateInfo{
 				JobID:   jobID,
 				Reason:  "ingesting",
-				Path:    objProvider.Path(remoteObjMetas[i]),
+				Path:    d.objProvider.Path(remoteObjMetas[i]),
 				FileNum: remoteObjMetas[i].DiskFileNum,
 			})
 		}
 	}
 
 	return nil
+}
+
+// findExistingBackingsForExternalObjects populates the FileBacking for external
+// files which are already in use by the current version.
+//
+// We take a Ref and LatestRef on populated backings.
+func (d *DB) findExistingBackingsForExternalObjects(metas []ingestExternalMeta) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for i := range metas {
+		diskFileNums := d.objProvider.GetExternalObjects(metas[i].external.Locator, metas[i].external.ObjName)
+		// We cross-check against fileBackings in the current version because it is
+		// possible that the external object is referenced by an sstable which only
+		// exists in a previous version. In that case, that object could be removed
+		// at any time so we cannot reuse it.
+		for _, n := range diskFileNums {
+			if backing, ok := d.mu.versions.virtualBackings.Get(n); ok {
+				// Protect this backing from being removed from the latest version. We
+				// will unprotect in ingestUnprotectExternalBackings.
+				d.mu.versions.virtualBackings.Protect(n)
+				metas[i].usedExistingBacking = true
+				metas[i].FileBacking = backing
+				break
+			}
+		}
+	}
+}
+
+// ingestUnprotectExternalBackings unprotects the file backings that were reused
+// for external objects when the ingestion fails.
+func (d *DB) ingestUnprotectExternalBackings(lr ingestLoadResult) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for _, meta := range lr.external {
+		if meta.usedExistingBacking {
+			// If the backing is not use anywhere else and the ingest failed (or the
+			// ingested tables were already compacted away), this call will cause in
+			// the next version update to remove the backing.
+			d.mu.versions.virtualBackings.Unprotect(meta.FileBacking.DiskFileNum)
+		}
+	}
 }
 
 func setSeqNumInMetadata(m *fileMetadata, seqNum uint64, cmp Compare, format base.FormatKey) error {
@@ -1164,7 +1245,7 @@ type ExternalFile struct {
 	//  - the backing sst must not contain multiple keys with the same prefix.
 	SyntheticSuffix []byte
 
-	// Level denotes the level at which this file was presetnt at read time
+	// Level denotes the level at which this file was present at read time
 	// if the external file was returned by a scan of an existing Pebble
 	// instance. If Level is 0, this field is ignored.
 	Level uint8
@@ -1406,6 +1487,12 @@ func (d *DB) ingest(
 	// fall back to copying, and if that fails we undo our work and return an
 	// error.
 	if err := ingestLink(jobID, d.opts, d.objProvider, loadResult); err != nil {
+		return IngestOperationStats{}, err
+	}
+
+	err = d.ingestAttachRemote(jobID, loadResult)
+	defer d.ingestUnprotectExternalBackings(loadResult)
+	if err != nil {
 		return IngestOperationStats{}, err
 	}
 
@@ -2190,41 +2277,41 @@ func (d *DB) ingestApply(
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
 		var m *fileMetadata
-		sharedIdx := -1
-		externalIdx := -1
 		specifiedLevel := -1
-		externalFile := false
+		isShared := false
+		isExternal := false
 		if i < len(lr.local) {
 			// local file.
 			m = lr.local[i].fileMetadata
 		} else if (i - len(lr.local)) < len(lr.shared) {
 			// shared file.
-			sharedIdx = i - len(lr.local)
+			isShared = true
+			sharedIdx := i - len(lr.local)
 			m = lr.shared[sharedIdx].fileMetadata
 			specifiedLevel = int(lr.shared[sharedIdx].shared.Level)
 		} else {
 			// external file.
-			externalFile = true
-			externalIdx = i - (len(lr.local) + len(lr.shared))
+			isExternal = true
+			externalIdx := i - (len(lr.local) + len(lr.shared))
 			m = lr.external[externalIdx].fileMetadata
-			specifiedLevel = int(lr.external[externalIdx].external.Level)
+			if lr.externalFilesHaveLevel {
+				specifiedLevel = int(lr.external[externalIdx].external.Level)
+			}
 		}
+
+		// Add to CreatedBackingTables if this is a new backing.
+		//
+		// Shared files always have a new backing. External files have new backings
+		// iff the backing disk file num and the file num match (see ingestAttachRemote).
+		if isShared || (isExternal && m.FileBacking.DiskFileNum == base.DiskFileNum(m.FileNum)) {
+			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
+		}
+
 		f := &ve.NewFiles[i]
 		var err error
-		if sharedIdx >= 0 {
+		if specifiedLevel != -1 {
 			f.Level = specifiedLevel
-			if f.Level < sharedLevelsStart {
-				panic(fmt.Sprintf("cannot slot a shared file higher than the highest shared level: %d < %d",
-					f.Level, sharedLevelsStart))
-			}
-			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
-		} else if externalFile && lr.externalFilesHaveLevel {
-			f.Level = specifiedLevel
-			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 		} else {
-			if externalFile {
-				ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
-			}
 			var splitFile *fileMetadata
 			if exciseSpan.Valid() && exciseSpan.Contains(d.cmp, m.Smallest) && exciseSpan.Contains(d.cmp, m.Largest) {
 				// This file fits perfectly within the excise span. We can slot it at
@@ -2268,6 +2355,10 @@ func (d *DB) ingestApply(
 		if err != nil {
 			d.mu.versions.logUnlock()
 			return nil, err
+		}
+		if isShared && f.Level < sharedLevelsStart {
+			panic(fmt.Sprintf("cannot slot a shared file higher than the highest shared level: %d < %d",
+				f.Level, sharedLevelsStart))
 		}
 		f.Meta = m
 		levelMetrics := metrics[f.Level]
@@ -2383,6 +2474,7 @@ func (d *DB) ingestApply(
 	if err := d.mu.versions.logAndApply(jobID, ve, metrics, false /* forceRotation */, func() []compactionInfo {
 		return d.getInProgressCompactionInfoLocked(nil)
 	}); err != nil {
+		// Note: any error during logAndApply is fatal; this won't be reachable in production.
 		return nil, err
 	}
 
