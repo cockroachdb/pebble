@@ -186,7 +186,7 @@ func (w *WorkloadCollector) onFlushEnd(info pebble.FlushInfo) {
 }
 
 // onManifestCreated is attached to a pebble.DB as an
-// EventListener.ManifestCreated func. It records the the new manifest so that
+// EventListener.ManifestCreated func. It records the new manifest so that
 // it's copied asynchronously in the background.
 func (w *WorkloadCollector) onManifestCreated(info pebble.ManifestCreateInfo) {
 	w.curManifest.Store(uint64(info.FileNum))
