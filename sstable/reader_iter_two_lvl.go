@@ -49,7 +49,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 	if i.bpfs != nil {
 		intersects, err := i.bpfs.intersects(bhp.Props)
 		if err != nil {
-			i.err = errCorruptIndexEntry
+			i.err = errCorruptIndexEntry(err)
 			return loadBlockFailed
 		}
 		if intersects == blockMaybeExcluded {
