@@ -65,6 +65,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.writerID, nil, []interface{}{&t.key}
 	case *deleteRangeOp:
 		return &t.writerID, nil, []interface{}{&t.start, &t.end}
+	case *downloadOp:
+		return &t.dbID, nil, []interface{}{&t.spans}
 	case *iterFirstOp:
 		return &t.iterID, nil, nil
 	case *flushOp:
@@ -140,6 +142,7 @@ var methods = map[string]*methodInfo{
 	"Compact":                   makeMethod(compactOp{}, dbTag),
 	"Delete":                    makeMethod(deleteOp{}, dbTag, batchTag),
 	"DeleteRange":               makeMethod(deleteRangeOp{}, dbTag, batchTag),
+	"Download":                  makeMethod(downloadOp{}, dbTag),
 	"First":                     makeMethod(iterFirstOp{}, iterTag),
 	"Flush":                     makeMethod(flushOp{}, dbTag),
 	"Get":                       makeMethod(getOp{}, dbTag, batchTag, snapTag),
@@ -296,7 +299,7 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 	var varArg interface{}
 	if len(args) > 0 {
 		switch args[len(args)-1].(type) {
-		case *[]objID, *[]pebble.KeyRange, *[]pebble.CheckpointSpan, *[]externalObjWithBounds:
+		case *[]objID, *[]pebble.KeyRange, *[]pebble.CheckpointSpan, *[]pebble.DownloadSpan, *[]externalObjWithBounds:
 			varArg = args[len(args)-1]
 			args = args[:len(args)-1]
 		}
@@ -366,6 +369,8 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 			*t = p.parseKeyRanges(list)
 		case *[]pebble.CheckpointSpan:
 			*t = p.parseCheckpointSpans(list)
+		case *[]pebble.DownloadSpan:
+			*t = p.parseDownloadSpans(list)
 		case *[]externalObjWithBounds:
 			*t = p.parseExternalObjsWithBounds(list)
 		default:
@@ -385,6 +390,15 @@ func (e listElem) expectToken(p *parser, expTok token.Token) {
 	if e.tok != expTok {
 		panic(p.errorf(e.pos, "unexpected token: %q", p.tokenf(e.tok, e.lit)))
 	}
+}
+
+// pop checks that the first element of the list matches the expected token,
+// removes it from the list and returns the literal.
+func (p *parser) pop(list *[]listElem, expTok token.Token) string {
+	(*list)[0].expectToken(p, expTok)
+	lit := (*list)[0].lit
+	(*list) = (*list)[1:]
+	return lit
 }
 
 // parseKeyRange parses an arbitrary number of comma separated STRING/IDENT/INT
@@ -427,16 +441,15 @@ func (p *parser) parseObjIDs(list []listElem) []objID {
 
 func (p *parser) parseKeys(list []listElem) [][]byte {
 	res := make([][]byte, len(list))
-	for i, elem := range list {
-		elem.expectToken(p, token.STRING)
-		res[i] = unquoteBytes(elem.lit)
+	for i := range res {
+		res[i] = unquoteBytes(p.pop(&list, token.STRING))
 	}
 	return res
 }
 
 func (p *parser) parseKeyRanges(list []listElem) []pebble.KeyRange {
 	keys := p.parseKeys(list)
-	if len(keys)%2 == 1 {
+	if len(keys)%2 != 0 {
 		panic(p.errorf(list[0].pos, "expected even number of keys"))
 	}
 	res := make([]pebble.KeyRange, len(keys)/2)
@@ -466,30 +479,41 @@ func (p *parser) parseCheckpointSpans(list []listElem) []pebble.CheckpointSpan {
 	return res
 }
 
+func (p *parser) parseDownloadSpans(list []listElem) []pebble.DownloadSpan {
+	if len(list)%3 != 0 {
+		panic(p.errorf(list[0].pos, "expected 3k args"))
+	}
+	res := make([]pebble.DownloadSpan, len(list)/3)
+	for i := range res {
+		res[i] = pebble.DownloadSpan{
+			StartKey:               unquoteBytes(p.pop(&list, token.STRING)),
+			EndKey:                 unquoteBytes(p.pop(&list, token.STRING)),
+			ViaBackingFileDownload: p.pop(&list, token.IDENT) == "true",
+		}
+	}
+	return res
+}
+
 func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithBounds {
 	const numArgs = 5
-	if len(list)%numArgs != 0 {
+	if len(list)%5 != 0 {
 		panic(p.errorf(list[0].pos, "expected number of arguments to be multiple of %d", numArgs))
 	}
 	objs := make([]externalObjWithBounds, len(list)/numArgs)
 	for i := range objs {
-		list[0].expectToken(p, token.IDENT)
-		list[1].expectToken(p, token.STRING)
-		list[2].expectToken(p, token.STRING)
-		list[3].expectToken(p, token.STRING)
-		list[4].expectToken(p, token.STRING)
+		pos := list[0].pos
 		objs[i] = externalObjWithBounds{
-			externalObjID: p.parseObjID(list[0].pos, list[0].lit),
+			externalObjID: p.parseObjID(pos, p.pop(&list, token.IDENT)),
 			bounds: pebble.KeyRange{
-				Start: unquoteBytes(list[1].lit),
-				End:   unquoteBytes(list[2].lit),
+				Start: unquoteBytes(p.pop(&list, token.STRING)),
+				End:   unquoteBytes(p.pop(&list, token.STRING)),
 			},
 		}
-		if syntheticSuffix := unquoteBytes(list[3].lit); len(syntheticSuffix) > 0 {
+		if syntheticSuffix := unquoteBytes(p.pop(&list, token.STRING)); len(syntheticSuffix) > 0 {
 			objs[i].syntheticSuffix = syntheticSuffix
 		}
 
-		syntheticPrefix := unquoteBytes(list[4].lit)
+		syntheticPrefix := unquoteBytes(p.pop(&list, token.STRING))
 		if len(syntheticPrefix) > 0 {
 			if !bytes.HasPrefix(objs[i].bounds.Start, syntheticPrefix) {
 				panic(fmt.Sprintf("invalid synthetic prefix %q %q", objs[i].bounds.Start, syntheticPrefix))
@@ -499,7 +523,6 @@ func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithB
 			}
 			objs[i].syntheticPrefix = syntheticPrefix
 		}
-		list = list[numArgs:]
 	}
 	return objs
 }

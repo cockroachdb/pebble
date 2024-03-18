@@ -195,6 +195,54 @@ func (o *checkpointOp) diagramKeyRanges() []pebble.KeyRange {
 	return res
 }
 
+// downloadOp models a DB.Download operation.
+type downloadOp struct {
+	dbID  objID
+	spans []pebble.DownloadSpan
+}
+
+func (o *downloadOp) run(t *Test, h historyRecorder) {
+	db := t.getDB(o.dbID)
+	err := t.withRetries(func() error {
+		return db.Download(context.Background(), o.spans)
+	})
+	h.Recordf("%s // %v", o, err)
+}
+
+func (o *downloadOp) String() string {
+	var spanStr bytes.Buffer
+	for i, span := range o.spans {
+		if i > 0 {
+			spanStr.WriteString(", ")
+		}
+		fmt.Fprintf(&spanStr, "%q /* start */, %q /* end */, %v /* viaBackingFileDownload */",
+			span.StartKey, span.EndKey, span.ViaBackingFileDownload)
+	}
+	return fmt.Sprintf("%s.Download(%s)", o.dbID, spanStr.String())
+}
+
+func (o *downloadOp) receiver() objID     { return o.dbID }
+func (o downloadOp) syncObjs() objIDSlice { return nil }
+
+func (o *downloadOp) keys() []*[]byte {
+	var res []*[]byte
+	for i := range o.spans {
+		res = append(res, &o.spans[i].StartKey, &o.spans[i].EndKey)
+	}
+	return res
+}
+
+func (o *downloadOp) diagramKeyRanges() []pebble.KeyRange {
+	var res []pebble.KeyRange
+	for i := range o.spans {
+		res = append(res, pebble.KeyRange{
+			Start: o.spans[i].StartKey,
+			End:   o.spans[i].EndKey,
+		})
+	}
+	return res
+}
+
 // closeOp models a {Batch,Iterator,Snapshot}.Close operation.
 type closeOp struct {
 	objID objID

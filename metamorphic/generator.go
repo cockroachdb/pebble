@@ -156,6 +156,7 @@ func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 		OpBatchCommit:                 g.batchCommit,
 		OpDBCheckpoint:                g.dbCheckpoint,
 		OpDBCompact:                   g.dbCompact,
+		OpDBDownload:                  g.dbDownload,
 		OpDBFlush:                     g.dbFlush,
 		OpDBRatchetFormatMajorVersion: g.dbRatchetFormatMajorVersion,
 		OpDBRestart:                   g.dbRestart,
@@ -400,6 +401,23 @@ func (g *generator) dbCompact() {
 		start:       start,
 		end:         end,
 		parallelize: g.rng.Float64() < 0.5,
+	})
+}
+
+func (g *generator) dbDownload() {
+	numSpans := 1 + g.expRandInt(1)
+	spans := make([]pebble.DownloadSpan, numSpans)
+	for i := range spans {
+		keys := g.keyGenerator.UniqueKeys(2, func() []byte { return g.keyGenerator.RandKey(0.001) })
+		start, end := keys[0], keys[1]
+		spans[i].StartKey = start
+		spans[i].EndKey = end
+		spans[i].ViaBackingFileDownload = g.rng.Intn(2) == 0
+	}
+	dbID := g.dbs.rand(g.rng)
+	g.add(&downloadOp{
+		dbID:  dbID,
+		spans: spans,
 	})
 }
 
