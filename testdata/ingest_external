@@ -616,3 +616,129 @@ trunctest bounds=(a,c)
 replicate 1 2 c z
 ----
 replicated 0 external SSTs
+
+# Test reuse of external backings.
+reset
+----
+
+build-remote reuse1
+set ax ax
+set ay ay
+set da da
+set db db
+set dc dc
+set uv uv
+----
+
+build-remote reuse2
+set f f
+set h h
+set j j
+----
+
+# Test reuse of backings within a single ingestion. We should see only two
+# backings.
+ingest-external
+reuse1 bounds=(a,b)
+reuse2 bounds=(f,g)
+reuse2 bounds=(h,i)
+reuse1 bounds=(d,e)
+reuse1 bounds=(u,v)
+reuse2 bounds=(j,k)
+----
+
+lsm
+----
+L6:
+  000004(000004):[a#10,DELSIZED-b#inf,RANGEDEL]
+  000007(000004):[d#11,DELSIZED-e#inf,RANGEDEL]
+  000005(000005):[f#12,DELSIZED-g#inf,RANGEDEL]
+  000006(000005):[h#13,DELSIZED-i#inf,RANGEDEL]
+  000009(000005):[j#14,DELSIZED-k#inf,RANGEDEL]
+  000008(000004):[u#15,DELSIZED-v#inf,RANGEDEL]
+
+# Test reuse of backings across separate requests.
+ingest-external
+reuse1 bounds=(xu,xv) synthetic-prefix=x
+reuse2 bounds=(yj,yk) synthetic-prefix=y
+----
+
+lsm
+----
+L6:
+  000004(000004):[a#10,DELSIZED-b#inf,RANGEDEL]
+  000007(000004):[d#11,DELSIZED-e#inf,RANGEDEL]
+  000005(000005):[f#12,DELSIZED-g#inf,RANGEDEL]
+  000006(000005):[h#13,DELSIZED-i#inf,RANGEDEL]
+  000009(000005):[j#14,DELSIZED-k#inf,RANGEDEL]
+  000008(000004):[u#15,DELSIZED-v#inf,RANGEDEL]
+  000010(000004):[xu#16,DELSIZED-xv#inf,RANGEDEL]
+  000011(000005):[yj#17,DELSIZED-yk#inf,RANGEDEL]
+
+batch
+del-range a z
+----
+
+compact a z
+----
+
+ingest-external
+reuse1 bounds=(a,b)
+reuse2 bounds=(f,g)
+----
+
+lsm
+----
+L6:
+  000014(000014):[a#19,DELSIZED-b#inf,RANGEDEL]
+  000015(000015):[f#20,DELSIZED-g#inf,RANGEDEL]
+
+# Multiple reuse of existing backings in one request.
+ingest-external
+reuse2 bounds=(h,i)
+reuse1 bounds=(d,e)
+reuse1 bounds=(u,v)
+reuse2 bounds=(j,k)
+reuse1 bounds=(xu,xv) synthetic-prefix=x
+reuse2 bounds=(yj,yk) synthetic-prefix=y
+----
+
+lsm
+----
+L6:
+  000014(000014):[a#19,DELSIZED-b#inf,RANGEDEL]
+  000017(000014):[d#21,DELSIZED-e#inf,RANGEDEL]
+  000015(000015):[f#20,DELSIZED-g#inf,RANGEDEL]
+  000016(000015):[h#22,DELSIZED-i#inf,RANGEDEL]
+  000019(000015):[j#23,DELSIZED-k#inf,RANGEDEL]
+  000018(000014):[u#24,DELSIZED-v#inf,RANGEDEL]
+  000020(000014):[xu#25,DELSIZED-xv#inf,RANGEDEL]
+  000021(000015):[yj#26,DELSIZED-yk#inf,RANGEDEL]
+
+# Test that reusing the same backing region with different prefix and suffix
+# works as expected. In particular, make sure the synthetic suffix doesn't
+# modify cached block data, leading to the next iterator seeing the suffix.
+
+reset
+----
+
+build-remote reuse
+set a@10 a
+set b@11 b
+----
+
+ingest-external
+reuse bounds=(a,c) synthetic-suffix=@20
+reuse bounds=(za,zc) synthetic-prefix=z
+----
+
+iter
+first
+next
+next
+next
+----
+a@20: (a, .)
+b@20: (b, .)
+za@10: (a, .)
+zb@11: (b, .)

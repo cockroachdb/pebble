@@ -37,13 +37,7 @@ type provider struct {
 	mu struct {
 		sync.RWMutex
 
-		remote struct {
-			// catalogBatch accumulates remote object creations and deletions until
-			// Sync is called.
-			catalogBatch remoteobjcat.Batch
-
-			storageObjects map[remote.Locator]remote.Storage
-		}
+		remote remoteLockedState
 
 		// localObjectsChanged is set if non-remote objects were created or deleted
 		// but Sync was not yet called.
@@ -476,6 +470,9 @@ func (p *provider) addMetadataLocked(meta objstorage.ObjectMetadata) {
 			CleanupMethod:    meta.Remote.CleanupMethod,
 			CustomObjectName: meta.Remote.CustomObjectName,
 		})
+		if meta.IsExternal() {
+			p.mu.remote.addExternalObject(meta)
+		}
 	} else {
 		p.mu.localObjectsChanged = true
 	}
@@ -490,6 +487,9 @@ func (p *provider) removeMetadata(fileNum base.DiskFileNum) {
 		return
 	}
 	delete(p.mu.knownObjects, fileNum)
+	if meta.IsExternal() {
+		p.mu.remote.removeExternalObject(meta)
+	}
 	if meta.IsRemote() {
 		p.mu.remote.catalogBatch.DeleteObject(fileNum)
 	} else {

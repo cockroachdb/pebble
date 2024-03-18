@@ -361,6 +361,7 @@ func (vs *versionSet) logLock() {
 	// Wait for any existing writing to the manifest to complete, then mark the
 	// manifest as busy.
 	for vs.writing {
+		// Note: writerCond.L is DB.mu, so we unlock it while we wait.
 		vs.writerCond.Wait()
 	}
 	vs.writing = true
