@@ -131,3 +131,18 @@ type ObjectReader interface {
 
 	Close() error
 }
+
+// ObjectKey is a (locator, object name) pair which uniquely identifies a remote
+// object and can be used as a map key.
+type ObjectKey struct {
+	Locator    Locator
+	ObjectName string
+}
+
+// MakeObjectKey is a convenience constructor for ObjectKey.
+func MakeObjectKey(locator Locator, objectName string) ObjectKey {
+	return ObjectKey{
+		Locator:    locator,
+		ObjectName: objectName,
+	}
+}

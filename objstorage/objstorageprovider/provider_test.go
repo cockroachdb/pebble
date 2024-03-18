@@ -384,7 +384,7 @@ func TestSharedMultipleLocators(t *testing.T) {
 	require.NoError(t, p3.Close())
 }
 
-func TestAttachCustomObject(t *testing.T) {
+func TestAttachExternalObject(t *testing.T) {
 	ctx := context.Background()
 	storage := remote.NewInMem()
 	sharedFactory := remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
@@ -424,6 +424,8 @@ func TestAttachCustomObject(t *testing.T) {
 	require.NoError(t, r.ReadAt(ctx, buf, 0))
 	require.Equal(t, byte(123), checkData(t, 0, buf))
 	require.NoError(t, r.Close())
+
+	require.Equal(t, []base.DiskFileNum{1}, p1.GetExternalObjects("foo", "some-obj-name"))
 
 	// Verify that we can extract a correct backing from this provider and attach
 	// the object to another provider.
