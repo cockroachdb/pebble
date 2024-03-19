@@ -1735,7 +1735,7 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 	maxLevelWithFiles := 1
 	cur := d.mu.versions.currentVersion()
 	for level := 0; level < numLevels; level++ {
-		overlaps := cur.Overlaps(level, start, end, false)
+		overlaps := cur.Overlaps(level, base.UserKeyBoundsInclusive(start, end))
 		if !overlaps.Empty() {
 			maxLevelWithFiles = level + 1
 		}
@@ -1812,7 +1812,7 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 func (d *DB) manualCompact(start, end []byte, level int, parallelize bool) error {
 	d.mu.Lock()
 	curr := d.mu.versions.currentVersion()
-	files := curr.Overlaps(level, start, end, false)
+	files := curr.Overlaps(level, base.UserKeyBoundsInclusive(start, end))
 	if files.Empty() {
 		d.mu.Unlock()
 		return nil
@@ -1924,7 +1924,7 @@ func (d *DB) downloadSpan(ctx context.Context, span DownloadSpan) error {
 			if vers.Levels[i].Empty() {
 				continue
 			}
-			overlap := vers.Overlaps(i, span.StartKey, span.EndKey, true /* exclusiveEnd */)
+			overlap := vers.Overlaps(i, base.UserKeyBoundsEndExclusive(span.StartKey, span.EndKey))
 			foundExternalFile := false
 			overlap.Each(func(metadata *manifest.FileMetadata) {
 				objMeta, err := d.objProvider.Lookup(fileTypeTable, metadata.FileBacking.DiskFileNum)
@@ -2296,8 +2296,11 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 		iter := srcLevels[i].Iter()
 		j := 0
 		for m := iter.First(); m != nil; m = iter.Next() {
-			if opt.start != nil && opt.end != nil && !m.Overlaps(d.opts.Comparer.Compare, opt.start, opt.end, true /* exclusive end */) {
-				continue
+			if opt.start != nil && opt.end != nil {
+				b := base.UserKeyBoundsEndExclusive(opt.start, opt.end)
+				if !m.Overlaps(d.opts.Comparer.Compare, &b) {
+					continue
+				}
 			}
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
@@ -2402,7 +2405,7 @@ func (d *DB) EstimateDiskUsageByBackingType(
 			// We can only use `Overlaps` to restrict `files` at L1+ since at L0 it
 			// expands the range iteratively until it has found a set of files that
 			// do not overlap any other L0 files outside that set.
-			overlaps := readState.current.Overlaps(level, start, end, false /* exclusiveEnd */)
+			overlaps := readState.current.Overlaps(level, base.UserKeyBoundsInclusive(start, end))
 			iter = overlaps.Iter()
 		}
 		for file := iter.First(); file != nil; file = iter.Next() {

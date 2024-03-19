@@ -1047,8 +1047,10 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				pc.outputLevel.level = pc.startLevel.level + 1
 			}
 			pc.version = newVersion(opts, files)
-			pc.startLevel.files = pc.version.Overlaps(pc.startLevel.level,
-				[]byte(args[0].String()), []byte(args[1].String()), false /* exclusiveEnd */)
+			pc.startLevel.files = pc.version.Overlaps(
+				pc.startLevel.level,
+				base.UserKeyBoundsInclusive([]byte(args[0].String()), []byte(args[1].String())),
+			)
 
 			var isCompacting bool
 			if !pc.setupInputs(opts, availBytes, pc.startLevel) {

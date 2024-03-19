@@ -390,6 +390,10 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 	return info
 }
 
+func (c *compaction) userKeyBounds() base.UserKeyBounds {
+	return base.UserKeyBoundsFromInternal(c.smallest, c.largest)
+}
+
 func newCompaction(
 	pc *pickedCompaction, opts *Options, beganAt time.Time, provider objstorage.Provider,
 ) *compaction {
@@ -422,8 +426,7 @@ func newCompaction(
 	// Compute the set of outputLevel+1 files that overlap this compaction (these
 	// are the grandparent sstables).
 	if c.outputLevel.level+1 < numLevels {
-		c.grandparents = c.version.Overlaps(c.outputLevel.level+1,
-			c.smallest.UserKey, c.largest.UserKey, c.largest.IsExclusiveSentinel())
+		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.userKeyBounds())
 	}
 	c.setupInuseKeyRanges()
 	c.kind = pc.kind
@@ -657,8 +660,7 @@ func newFlush(
 	if opts.FlushSplitBytes > 0 {
 		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
-		c.grandparents = c.version.Overlaps(baseLevel, c.smallest.UserKey,
-			c.largest.UserKey, c.largest.IsExclusiveSentinel())
+		c.grandparents = c.version.Overlaps(baseLevel, c.userKeyBounds())
 		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)
 	}
 
@@ -1866,8 +1868,9 @@ func (d *DB) maybeScheduleDownloadCompaction(env compactionEnv, maxConcurrentCom
 		var externalFile *fileMetadata
 		var err error
 		var level int
+		bounds := base.UserKeyBoundsEndExclusive(download.start, download.end)
 		for i := range v.Levels {
-			overlaps := v.Overlaps(i, download.start, download.end, true /* exclusiveEnd */)
+			overlaps := v.Overlaps(i, bounds)
 			iter := overlaps.Iter()
 			provider := d.objProvider
 			for f := iter.First(); f != nil; f = iter.Next() {
@@ -2256,7 +2259,7 @@ func checkDeleteCompactionHints(
 		// The hint h will be resolved and dropped, regardless of whether
 		// there are any tables that can be deleted.
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
-			overlaps := v.Overlaps(l, h.start, h.end, true /* exclusiveEnd */)
+			overlaps := v.Overlaps(l, base.UserKeyBoundsEndExclusive(h.start, h.end))
 			iter := overlaps.Iter()
 			for m := iter.First(); m != nil; m = iter.Next() {
 				if m.IsCompacting() || !h.canDelete(cmp, m, snapshots) || files[m] {
