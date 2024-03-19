@@ -107,7 +107,7 @@ func TestOverlaps(t *testing.T) {
 			d.ScanArgs(t, "start", &start)
 			d.ScanArgs(t, "end", &end)
 			d.ScanArgs(t, "exclusive-end", &exclusiveEnd)
-			overlaps := v.Overlaps(level, []byte(start), []byte(end), exclusiveEnd)
+			overlaps := v.Overlaps(level, base.UserKeyBoundsEndExclusiveIf([]byte(start), []byte(end), exclusiveEnd))
 			var buf bytes.Buffer
 			fmt.Fprintf(&buf, "%d files:\n", overlaps.Len())
 			overlaps.Each(func(f *FileMetadata) {
