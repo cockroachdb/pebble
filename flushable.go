@@ -11,7 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -50,10 +52,11 @@ const (
 )
 
 type bounded interface {
-	// InternalKeyBounds returns a start key and an end key. Both bounds are
-	// inclusive.
-	InternalKeyBounds() (InternalKey, InternalKey)
+	UserKeyBounds() base.UserKeyBounds
 }
+
+var _ bounded = (*fileMetadata)(nil)
+var _ bounded = KeyRange{}
 
 func sliceAsBounded[B bounded](s []B) []bounded {
 	ret := make([]bounded, len(s))
@@ -148,6 +151,7 @@ type flushableList []*flushableEntry
 // ingestedFlushable is the implementation of the flushable interface for the
 // ingesting sstables which are added to the flushable list.
 type ingestedFlushable struct {
+	// files are non-overlapping and ordered (according to their bounds).
 	files            []physicalMeta
 	comparer         *Comparer
 	newIters         tableNewIters
@@ -166,6 +170,15 @@ func newIngestedFlushable(
 	newIters tableNewIters,
 	newRangeKeyIters keyspanimpl.TableNewSpanIter,
 ) *ingestedFlushable {
+	if invariants.Enabled {
+		for i := 1; i < len(files); i++ {
+			prev := files[i-1].UserKeyBounds()
+			this := files[i].UserKeyBounds()
+			if prev.End.Applies(comparer.Compare, this.Start) {
+				panic(errors.AssertionFailedf("ingested flushable files overlap: %s %s", prev, this))
+			}
+		}
+	}
 	var physicalFiles []physicalMeta
 	var hasRangeKeys bool
 	for _, f := range files {
@@ -288,32 +301,43 @@ func (s *ingestedFlushable) readyForFlush() bool {
 func (s *ingestedFlushable) computePossibleOverlaps(
 	fn func(bounded) shouldContinue, bounded ...bounded,
 ) {
-	for i := range bounded {
-		smallest, largest := bounded[i].InternalKeyBounds()
-		for j := 0; j < len(s.files); j++ {
-			if sstableKeyCompare(s.comparer.Compare, s.files[j].Largest, smallest) >= 0 {
-				// This file's largest key is larger than smallest. Either the
-				// file overlaps the bounds, or it lies strictly after the
-				// bounds. Either way we can stop iterating since the files are
-				// sorted. But first, determine if there's overlap and call fn
-				// if necessary.
-				if sstableKeyCompare(s.comparer.Compare, s.files[j].Smallest, largest) <= 0 {
-					// The file overlaps in key boundaries. The file doesn't necessarily
-					// contain any keys within the key range, but we would need to
-					// perform I/O to know for sure. The flushable interface dictates
-					// that we're not permitted to perform I/O here, so err towards
-					// assuming overlap.
-					if !fn(bounded[i]) {
-						return
-					}
-				}
-				break
+	for _, b := range bounded {
+		bounds := b.UserKeyBounds()
+		if s.anyFileOverlaps(b, &bounds) {
+			// Some file overlaps in key boundaries. The file doesn't necessarily
+			// contain any keys within the key range, but we would need to perform I/O
+			// to know for sure. The flushable interface dictates that we're not
+			// permitted to perform I/O here, so err towards assuming overlap.
+			if !fn(b) {
+				return
 			}
 		}
 	}
 }
 
-// computePossibleOverlapsGenericImpl is an implemention of the flushable
+// anyFileBoundsOverlap returns true if there is at least a file in s.files with
+// bounds that overlap the given bounds.
+func (s *ingestedFlushable) anyFileOverlaps(b bounded, bounds *base.UserKeyBounds) bool {
+	// Note that s.files are non-overlapping and sorted.
+	for _, f := range s.files {
+		fileBounds := f.UserKeyBounds()
+		if !fileBounds.End.Applies(s.comparer.Compare, bounds.Start) {
+			// The file ends before the bounds start. Go to the next file.
+			continue
+		}
+		if !bounds.End.Applies(s.comparer.Compare, fileBounds.Start) {
+			// The file starts after the bounds end. There is no overlap, and
+			// further files will not overlap either (the files are sorted).
+			return false
+		}
+		// There is overlap. Note that UserKeyBounds.Overlaps() performs exactly the
+		// checks above.
+		return true
+	}
+	return false
+}
+
+// computePossibleOverlapsGenericImpl is an implementation of the flushable
 // interface's computePossibleOverlaps function for flushable implementations
 // with only in-memory state that do not have special requirements and should
 // read through the ordinary flushable iterators.
@@ -327,9 +351,7 @@ func computePossibleOverlapsGenericImpl[F flushable](
 	rangeDelIter := f.newRangeDelIter(nil)
 	rkeyIter := f.newRangeKeyIter(nil)
 	for _, b := range bounded {
-		s, l := b.InternalKeyBounds()
-		kr := internalKeyRange{s, l}
-		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, kr, cmp) {
+		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, b.UserKeyBounds(), cmp) {
 			if !fn(b) {
 				break
 			}

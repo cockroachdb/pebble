@@ -1,0 +1,96 @@
+// Copyright 2024 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+
+package base
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestUserKeyBounds(t *testing.T) {
+	var ukb UserKeyBounds
+	cmp := DefaultComparer.Compare
+	require.False(t, ukb.Valid(cmp))
+
+	a := []byte("a")
+	b := []byte("b")
+	c := []byte("c")
+	d := []byte("d")
+	e := []byte("e")
+
+	bb := UserKeyBoundsInclusive(b, b)
+	bdi := UserKeyBoundsInclusive(b, d)
+	bde := UserKeyBoundsEndExclusive(b, d)
+	aci := UserKeyBoundsEndExclusiveIf(a, c, false)
+	ace := UserKeyBoundsEndExclusiveIf(a, c, true)
+	cde := UserKeyBoundsEndExclusive(c, d)
+
+	t.Run("Valid", func(t *testing.T) {
+		require.True(t, bb.Valid(cmp))
+		require.True(t, bdi.Valid(cmp))
+		require.True(t, bde.Valid(cmp))
+		var bad UserKeyBounds
+		require.False(t, bad.Valid(cmp))
+		bad = UserKeyBoundsEndExclusive(a, a)
+		require.False(t, bad.Valid(cmp))
+		bad = UserKeyBoundsInclusive(b, a)
+		require.False(t, bad.Valid(cmp))
+	})
+
+	t.Run("String", func(t *testing.T) {
+		require.Equal(t, "[b, b]", bb.String())
+		require.Equal(t, "[b, d]", bdi.String())
+		require.Equal(t, "[b, d)", bde.String())
+	})
+
+	t.Run("Overlaps", func(t *testing.T) {
+		require.True(t, bdi.Overlaps(cmp, &bdi))
+		require.True(t, bdi.Overlaps(cmp, &bde))
+		require.True(t, bdi.Overlaps(cmp, &bb))
+		require.True(t, bde.Overlaps(cmp, &bde))
+		require.True(t, bde.Overlaps(cmp, &bdi))
+		require.True(t, bde.Overlaps(cmp, &aci))
+		require.True(t, bde.Overlaps(cmp, &bb))
+		require.True(t, aci.Overlaps(cmp, &cde))
+		require.False(t, ace.Overlaps(cmp, &cde))
+		require.False(t, cde.Overlaps(cmp, &bb))
+	})
+
+	t.Run("ContainsBounds", func(t *testing.T) {
+		require.True(t, bdi.ContainsBounds(cmp, &bb))
+		require.True(t, bdi.ContainsBounds(cmp, &bde))
+		require.True(t, bde.ContainsBounds(cmp, &bde))
+		require.False(t, bde.ContainsBounds(cmp, &bdi))
+	})
+
+	t.Run("ContainsUserKey", func(t *testing.T) {
+		require.True(t, bb.ContainsUserKey(cmp, b))
+		require.False(t, bb.ContainsUserKey(cmp, a))
+		require.False(t, bb.ContainsUserKey(cmp, c))
+		require.False(t, bb.ContainsUserKey(cmp, a))
+
+		require.False(t, bdi.ContainsUserKey(cmp, a))
+		require.True(t, bdi.ContainsUserKey(cmp, b))
+		require.True(t, bdi.ContainsUserKey(cmp, c))
+		require.True(t, bdi.ContainsUserKey(cmp, d))
+		require.False(t, bdi.ContainsUserKey(cmp, e))
+
+		require.False(t, bde.ContainsUserKey(cmp, a))
+		require.True(t, bde.ContainsUserKey(cmp, b))
+		require.True(t, bde.ContainsUserKey(cmp, c))
+		require.False(t, bde.ContainsUserKey(cmp, d))
+		require.False(t, bde.ContainsUserKey(cmp, e))
+	})
+
+	t.Run("ContainsInternalKey", func(t *testing.T) {
+		require.False(t, bde.ContainsInternalKey(cmp, MakeRangeDeleteSentinelKey(b)))
+		require.True(t, bde.ContainsInternalKey(cmp, MakeInternalKey(b, 0, InternalKeyKindSet)))
+		require.True(t, bde.ContainsInternalKey(cmp, MakeInternalKey(c, 0, InternalKeyKindSet)))
+		require.True(t, bdi.ContainsInternalKey(cmp, MakeInternalKey(d, 0, InternalKeyKindSet)))
+		require.False(t, bde.ContainsInternalKey(cmp, MakeInternalKey(d, 0, InternalKeyKindSet)))
+		require.True(t, bde.ContainsInternalKey(cmp, MakeRangeDeleteSentinelKey(d)))
+	})
+}

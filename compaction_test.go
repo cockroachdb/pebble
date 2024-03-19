@@ -1211,8 +1211,8 @@ func TestManualCompaction(t *testing.T) {
 		ongoingCompaction.outputLevel = &ongoingCompaction.inputs[1]
 		// Mark files as compacting.
 		curr := d.mu.versions.currentVersion()
-		ongoingCompaction.startLevel.files = curr.Overlaps(startLevel, start, end, false)
-		ongoingCompaction.outputLevel.files = curr.Overlaps(outputLevel, start, end, false)
+		ongoingCompaction.startLevel.files = curr.Overlaps(startLevel, base.UserKeyBoundsInclusive(start, end))
+		ongoingCompaction.outputLevel.files = curr.Overlaps(outputLevel, base.UserKeyBoundsInclusive(start, end))
 		for _, cl := range ongoingCompaction.inputs {
 			iter := cl.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {

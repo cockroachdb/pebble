@@ -500,8 +500,7 @@ func (d *DB) estimateSizesBeneath(
 	}
 
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, meta.Smallest.UserKey,
-			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
+		overlaps := v.Overlaps(l, meta.UserKeyBounds())
 		iter := overlaps.Iter()
 		for file = iter.First(); file != nil; file = iter.Next() {
 			var err error
@@ -553,7 +552,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	// additional I/O to read the file's index blocks.
 	hintSeqNum = math.MaxUint64
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, start, end, true /* exclusiveEnd */)
+		overlaps := v.Overlaps(l, base.UserKeyBoundsEndExclusive(start, end))
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
 			startCmp := d.cmp(start, file.Smallest.UserKey)
