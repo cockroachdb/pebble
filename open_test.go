@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"sort"
@@ -1187,6 +1188,27 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 	db, err := Open("", opts)
 	require.NoError(t, err)
 	db.Close()
+}
+
+func TestPeek(t *testing.T) {
+	// The file paths are UNIX-oriented. To avoid duplicating the test fixtures
+	// just for Windows, just skip the tests on Windows.
+	if runtime.GOOS == "windows" {
+		t.Skip()
+	}
+
+	datadriven.RunTest(t, "testdata/peek", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "peek":
+			desc, err := Peek(td.CmdArgs[0].String(), vfs.Default)
+			if err != nil {
+				return fmt.Sprintf("err=%v", err)
+			}
+			return desc.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q\n", td.Cmd)
+		}
+	})
 }
 
 func TestGetVersion(t *testing.T) {
