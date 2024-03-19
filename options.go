@@ -402,7 +402,7 @@ type LevelOptions struct {
 	// Compression defines the per-block compression to use.
 	//
 	// The default value (DefaultCompression) uses snappy compression.
-	Compression Compression
+	Compression func() Compression
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for Get calls.
@@ -453,8 +453,8 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	if o.BlockSizeThreshold <= 0 {
 		o.BlockSizeThreshold = base.DefaultBlockSizeThreshold
 	}
-	if o.Compression <= DefaultCompression || o.Compression >= sstable.NCompression {
-		o.Compression = SnappyCompression
+	if o.Compression == nil {
+		o.Compression = func() Compression { return DefaultCompression }
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize
@@ -1399,7 +1399,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  block_restart_interval=%d\n", l.BlockRestartInterval)
 		fmt.Fprintf(&buf, "  block_size=%d\n", l.BlockSize)
 		fmt.Fprintf(&buf, "  block_size_threshold=%d\n", l.BlockSizeThreshold)
-		fmt.Fprintf(&buf, "  compression=%s\n", l.Compression)
+		fmt.Fprintf(&buf, "  compression=%s\n", resolveDefaultCompression(l.Compression()))
 		fmt.Fprintf(&buf, "  filter_policy=%s\n", filterPolicyName(l.FilterPolicy))
 		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
 		fmt.Fprintf(&buf, "  index_block_size=%d\n", l.IndexBlockSize)
@@ -1751,13 +1751,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "compression":
 				switch value {
 				case "Default":
-					l.Compression = DefaultCompression
+					l.Compression = func() sstable.Compression { return DefaultCompression }
 				case "NoCompression":
-					l.Compression = NoCompression
+					l.Compression = func() sstable.Compression { return NoCompression }
 				case "Snappy":
-					l.Compression = SnappyCompression
+					l.Compression = func() sstable.Compression { return SnappyCompression }
 				case "ZSTD":
-					l.Compression = ZstdCompression
+					l.Compression = func() sstable.Compression { return ZstdCompression }
 				default:
 					return errors.Errorf("pebble: unknown compression: %q", errors.Safe(value))
 				}
@@ -1934,9 +1934,16 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.BlockRestartInterval = levelOpts.BlockRestartInterval
 	writerOpts.BlockSize = levelOpts.BlockSize
 	writerOpts.BlockSizeThreshold = levelOpts.BlockSizeThreshold
-	writerOpts.Compression = levelOpts.Compression
+	writerOpts.Compression = resolveDefaultCompression(levelOpts.Compression())
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
 	return writerOpts
+}
+
+func resolveDefaultCompression(c Compression) Compression {
+	if c <= DefaultCompression || c >= sstable.NCompression {
+		c = SnappyCompression
+	}
+	return c
 }

@@ -75,6 +75,13 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Experimental.IngestSplit:",
 		"Experimental.RemoteStorage:",
 		"Experimental.SingleDeleteInvariantViolationCallback:",
+		"Levels[0].Compression:",
+		"Levels[1].Compression:",
+		"Levels[2].Compression:",
+		"Levels[3].Compression:",
+		"Levels[4].Compression:",
+		"Levels[5].Compression:",
+		"Levels[6].Compression:",
 		"WALFailover.FailoverOptions.UnhealthyOperationLatencyThreshold:",
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
