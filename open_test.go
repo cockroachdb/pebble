@@ -1189,6 +1189,21 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 	db.Close()
 }
 
+func TestPeek(t *testing.T) {
+	datadriven.RunTest(t, "testdata/peek", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "peek":
+			desc, err := Peek(td.CmdArgs[0].String(), vfs.Default)
+			if err != nil {
+				return fmt.Sprintf("err=%v", err)
+			}
+			return desc.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q\n", td.Cmd)
+		}
+	})
+}
+
 func TestGetVersion(t *testing.T) {
 	mem := vfs.NewMem()
 	opts := &Options{

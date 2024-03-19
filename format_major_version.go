@@ -282,9 +282,9 @@ const formatVersionMarkerName = `format-version`
 // only acceptable if we are creating a new store (we no longer support
 // FormatMostCompatible which is the only one with no version marker file).
 func lookupFormatMajorVersion(
-	fs vfs.FS, dirname string,
+	fs vfs.FS, dirname string, ls []string,
 ) (FormatMajorVersion, *atomicfs.Marker, error) {
-	m, versString, err := atomicfs.LocateMarker(fs, dirname, formatVersionMarkerName)
+	m, versString, err := atomicfs.LocateMarkerInListing(fs, dirname, formatVersionMarkerName, ls)
 	if err != nil {
 		return 0, nil, err
 	}

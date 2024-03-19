@@ -124,8 +124,16 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 	}()
 
+	// List the directory contents. This also happens to include WAL log files, if
+	// they are in the same dir, but we will ignore those below. The provider is
+	// also given this list, but it ignores non sstable files.
+	ls, err := opts.FS.List(dirname)
+	if err != nil {
+		return nil, err
+	}
+
 	// Establish the format major version.
-	formatVersion, formatVersionMarker, err := lookupFormatMajorVersion(opts.FS, dirname)
+	formatVersion, formatVersionMarker, err := lookupFormatMajorVersion(opts.FS, dirname, ls)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +177,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	// Find the currently active manifest, if there is one.
-	manifestMarker, manifestFileNum, manifestExists, err := findCurrentManifest(opts.FS, dirname)
+	manifestMarker, manifestFileNum, manifestExists, err := findCurrentManifest(opts.FS, dirname, ls)
 	if err != nil {
 		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
 	}
@@ -281,13 +289,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 
-	// List the objects. This also happens to include WAL log files, if they are
-	// in the same dir, but we will ignore those below. The provider is also
-	// given this list, but it ignores non sstable files.
-	ls, err := opts.FS.List(d.dirname)
-	if err != nil {
-		return nil, err
-	}
 	providerSettings := objstorageprovider.Settings{
 		Logger:              opts.Logger,
 		FS:                  opts.FS,
@@ -1076,13 +1077,33 @@ type DBDesc struct {
 	// ManifestFilename is the filename of the current active manifest,
 	// if the database exists.
 	ManifestFilename string
+	// OptionsFilename is the filename of the most recent OPTIONS file, if it
+	// exists.
+	OptionsFilename string
+}
+
+// String implements fmt.Stringer.
+func (d *DBDesc) String() string {
+	if !d.Exists {
+		return "uninitialized"
+	}
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "initialized at format major version %s\n", d.FormatMajorVersion)
+	fmt.Fprintf(&buf, "manifest: %s\n", d.ManifestFilename)
+	fmt.Fprintf(&buf, "options: %s", d.OptionsFilename)
+	return buf.String()
 }
 
 // Peek looks for an existing database in dirname on the provided FS. It
 // returns a brief description of the database. Peek is read-only and
 // does not open the database
 func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
-	vers, versMarker, err := lookupFormatMajorVersion(fs, dirname)
+	ls, err := fs.List(dirname)
+	if err != nil {
+		return nil, err
+	}
+
+	vers, versMarker, err := lookupFormatMajorVersion(fs, dirname, ls)
 	if err != nil {
 		return nil, err
 	}
@@ -1093,7 +1114,7 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 	}
 
 	// Find the currently active manifest, if there is one.
-	manifestMarker, manifestFileNum, exists, err := findCurrentManifest(fs, dirname)
+	manifestMarker, manifestFileNum, exists, err := findCurrentManifest(fs, dirname, ls)
 	if err != nil {
 		return nil, err
 	}
@@ -1107,6 +1128,19 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 		Exists:             exists,
 		FormatMajorVersion: vers,
 	}
+
+	// Find the OPTIONS file with the highest file number within the list of
+	// directory entries.
+	var previousOptionsFileNum base.DiskFileNum
+	for _, filename := range ls {
+		ft, fn, ok := base.ParseFilename(fs, filename)
+		if !ok || ft != fileTypeOptions || fn < previousOptionsFileNum {
+			continue
+		}
+		previousOptionsFileNum = fn
+		desc.OptionsFilename = filename
+	}
+
 	if exists {
 		desc.ManifestFilename = base.MakeFilepath(fs, dirname, fileTypeManifest, manifestFileNum)
 	}
