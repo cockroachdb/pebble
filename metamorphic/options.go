@@ -686,11 +686,11 @@ func RandomOptions(
 	// We use either no compression, snappy compression or zstd compression.
 	switch rng.Intn(3) {
 	case 0:
-		lopts.Compression = pebble.NoCompression
+		lopts.Compression = func() sstable.Compression { return pebble.NoCompression }
 	case 1:
-		lopts.Compression = pebble.ZstdCompression
+		lopts.Compression = func() sstable.Compression { return pebble.ZstdCompression }
 	default:
-		lopts.Compression = pebble.SnappyCompression
+		lopts.Compression = func() sstable.Compression { return pebble.SnappyCompression }
 	}
 	opts.Levels = []pebble.LevelOptions{lopts}
 
