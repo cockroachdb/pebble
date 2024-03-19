@@ -1,0 +1,31 @@
+peek testdata/db-stage-1
+----
+initialized at format major version 013
+manifest: testdata/db-stage-1/MANIFEST-000001
+options: testdata/db-stage-1/OPTIONS-000003
+
+peek testdata/db-stage-2
+----
+initialized at format major version 013
+manifest: testdata/db-stage-2/MANIFEST-000001
+options: testdata/db-stage-2/OPTIONS-000003
+
+peek testdata/db-stage-3
+----
+initialized at format major version 013
+manifest: testdata/db-stage-3/MANIFEST-000006
+options: testdata/db-stage-3/OPTIONS-000007
+
+peek testdata/db-stage-4
+----
+initialized at format major version 013
+manifest: testdata/db-stage-4/MANIFEST-000006
+options: testdata/db-stage-4/OPTIONS-000007
+
+peek testdata/db-stage-5
+----
+err=open testdata/db-stage-5: no such file or directory
+
+peek testdata
+----
+uninitialized
