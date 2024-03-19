@@ -3038,6 +3038,7 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 	dbDesc, err := Peek("", mem)
 	require.NoError(t, err)
 	require.True(t, dbDesc.Exists)
+	require.Greater(t, len(dbDesc.OptionsFilename), 0)
 	f, err = mem.Open(dbDesc.ManifestFilename)
 	require.NoError(t, err)
 	defer f.Close()

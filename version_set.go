@@ -1070,11 +1070,11 @@ func (vs *versionSet) updateObsoleteTableMetricsLocked() {
 }
 
 func findCurrentManifest(
-	fs vfs.FS, dirname string,
+	fs vfs.FS, dirname string, ls []string,
 ) (marker *atomicfs.Marker, manifestNum base.DiskFileNum, exists bool, err error) {
 	// Locating a marker should succeed even if the marker has never been placed.
 	var filename string
-	marker, filename, err = atomicfs.LocateMarker(fs, dirname, manifestMarkerName)
+	marker, filename, err = atomicfs.LocateMarkerInListing(fs, dirname, manifestMarkerName, ls)
 	if err != nil {
 		return nil, 0, false, err
 	}
