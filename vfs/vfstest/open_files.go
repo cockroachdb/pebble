@@ -48,8 +48,7 @@ func (fs *openFilesFS) dumpStacks(w io.Writer) {
 }
 
 func (fs *openFilesFS) Create(name string) (vfs.File, error) {
-	f, err := fs.inner.Create(name)
-	return fs.wrapOpenFile(f), err
+	return fs.wrapOpenFile(fs.inner.Create(name))
 }
 
 func (fs *openFilesFS) Link(oldname, newname string) error {
@@ -57,18 +56,15 @@ func (fs *openFilesFS) Link(oldname, newname string) error {
 }
 
 func (fs *openFilesFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
-	f, err := fs.inner.Open(name, opts...)
-	return fs.wrapOpenFile(f), err
+	return fs.wrapOpenFile(fs.inner.Open(name, opts...))
 }
 
 func (fs *openFilesFS) OpenReadWrite(name string, opts ...vfs.OpenOption) (vfs.File, error) {
-	f, err := fs.inner.OpenReadWrite(name, opts...)
-	return fs.wrapOpenFile(f), err
+	return fs.wrapOpenFile(fs.inner.OpenReadWrite(name, opts...))
 }
 
 func (fs *openFilesFS) OpenDir(name string) (vfs.File, error) {
-	f, err := fs.inner.OpenDir(name)
-	return fs.wrapOpenFile(f), err
+	return fs.wrapOpenFile(fs.inner.OpenDir(name))
 }
 
 func (fs *openFilesFS) Remove(name string) error {
@@ -84,8 +80,7 @@ func (fs *openFilesFS) Rename(oldname, newname string) error {
 }
 
 func (fs *openFilesFS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
-	f, err := fs.inner.ReuseForWrite(oldname, newname)
-	return fs.wrapOpenFile(f), err
+	return fs.wrapOpenFile(fs.inner.ReuseForWrite(oldname, newname))
 }
 
 func (fs *openFilesFS) MkdirAll(dir string, perm os.FileMode) error {
@@ -120,16 +115,16 @@ func (fs *openFilesFS) GetDiskUsage(path string) (vfs.DiskUsage, error) {
 	return fs.inner.GetDiskUsage(path)
 }
 
-func (fs *openFilesFS) wrapOpenFile(f vfs.File) vfs.File {
-	if f == nil {
-		return f
+func (fs *openFilesFS) wrapOpenFile(f vfs.File, err error) (vfs.File, error) {
+	if f == nil || err != nil {
+		return f, err
 	}
 	of := &openFile{File: f, parent: fs}
 	of.n = runtime.Callers(2, of.pcs[:])
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 	fs.files[of] = struct{}{}
-	return of
+	return of, nil
 }
 
 type openFile struct {
