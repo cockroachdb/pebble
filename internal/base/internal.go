@@ -463,11 +463,13 @@ func (k InternalKey) Pretty(f FormatKey) fmt.Formatter {
 // with the same user key if used as an end boundary. See the comment on
 // InternalKeyRangeDeletionSentinel.
 func (k InternalKey) IsExclusiveSentinel() bool {
+	if (k.Trailer >> 8) != InternalKeySeqNumMax {
+		return false
+	}
 	switch kind := k.Kind(); kind {
-	case InternalKeyKindRangeDelete:
-		return k.Trailer == InternalKeyRangeDeleteSentinel
-	case InternalKeyKindRangeKeyDelete, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
-		return (k.Trailer >> 8) == InternalKeySeqNumMax
+	case InternalKeyKindRangeDelete, InternalKeyKindRangeKeyDelete,
+		InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
+		return true
 	default:
 		return false
 	}

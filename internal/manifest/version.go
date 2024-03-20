@@ -283,6 +283,13 @@ func (m *FileMetadata) InternalKeyBounds() (InternalKey, InternalKey) {
 	return m.Smallest, m.Largest
 }
 
+// UserKeyBounds returns the user key bounds that correspond to m.Smallest and
+// Largest. Because we do not allow split user keys, the user key bounds of
+// files within a level do not overlap.
+func (m *FileMetadata) UserKeyBounds() base.UserKeyBounds {
+	return base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
+}
+
 // SyntheticSeqNum returns a SyntheticSeqNum which is set when SmallestSeqNum
 // equals LargestSeqNum.
 func (m *FileMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
@@ -599,17 +606,10 @@ func (m *FileMetadata) extendOverallBounds(
 	}
 }
 
-// Overlaps returns true if the file key range overlaps with the given range.
-func (m *FileMetadata) Overlaps(cmp Compare, start []byte, end []byte, exclusiveEnd bool) bool {
-	if c := cmp(m.Largest.UserKey, start); c < 0 || (c == 0 && m.Largest.IsExclusiveSentinel()) {
-		// f is completely before the specified range; no overlap.
-		return false
-	}
-	if c := cmp(m.Smallest.UserKey, end); c > 0 || (c == 0 && exclusiveEnd) {
-		// f is completely after the specified range; no overlap.
-		return false
-	}
-	return true
+// Overlaps returns true if the file key range overlaps with the given user key bounds.
+func (m *FileMetadata) Overlaps(cmp Compare, bounds *base.UserKeyBounds) bool {
+	b := m.UserKeyBounds()
+	return b.Overlaps(cmp, bounds)
 }
 
 // ContainedWithinSpan returns true if the file key range completely overlaps with the
@@ -984,17 +984,19 @@ func SortBySmallest(files []*FileMetadata, cmp Compare) {
 	sort.Sort(bySmallest{files, cmp})
 }
 
-func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd bool) LevelSlice {
+// overlaps returns the subset of files in a level that overlap with the given
+// bounds. It is meant for levels other than L0.
+func overlaps(iter LevelIterator, cmp Compare, bounds base.UserKeyBounds) LevelSlice {
 	startIter := iter.Clone()
 	{
-		startIterFile := startIter.SeekGE(cmp, start)
+		startIterFile := startIter.SeekGE(cmp, bounds.Start)
 		// SeekGE compares user keys. The user key `start` may be equal to the
 		// f.Largest because f.Largest is a range deletion sentinel, indicating
 		// that the user key `start` is NOT contained within the file f. If
 		// that's the case, we can narrow the overlapping bounds to exclude the
 		// file with the sentinel.
 		if startIterFile != nil && startIterFile.Largest.IsExclusiveSentinel() &&
-			cmp(startIterFile.Largest.UserKey, start) == 0 {
+			cmp(startIterFile.Largest.UserKey, bounds.Start) == 0 {
 			startIterFile = startIter.Next()
 		}
 		_ = startIterFile // Ignore unused assignment.
@@ -1002,13 +1004,16 @@ func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd b
 
 	endIter := iter.Clone()
 	{
-		endIterFile := endIter.SeekGE(cmp, end)
+		endIterFile := endIter.SeekGE(cmp, bounds.End.Key)
 
-		if !exclusiveEnd {
+		if bounds.End.Kind == base.Inclusive {
 			// endIter is now pointing at the *first* file with a largest key >= end.
 			// If there are multiple files including the user key `end`, we want all
 			// of them, so move forward.
-			for endIterFile != nil && cmp(endIterFile.Largest.UserKey, end) == 0 {
+			// TODO(radu): files are now disjoint in terms of user keys, so this
+			// should be simplified. The contract of LevelIterator.SeekGE should be
+			// re-examined as well.
+			for endIterFile != nil && cmp(endIterFile.Largest.UserKey, bounds.End.Key) == 0 {
 				endIterFile = endIter.Next()
 			}
 		}
@@ -1022,9 +1027,7 @@ func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd b
 		//
 		// the above for loop will Next until it arrives at [g, h]. We need to
 		// observe that g > f, and Prev to the file with bounds [f, f].
-		if endIterFile == nil {
-			endIterFile = endIter.Prev()
-		} else if c := cmp(endIterFile.Smallest.UserKey, end); c > 0 || c == 0 && exclusiveEnd {
+		if endIterFile == nil || !bounds.End.IsUpperBoundFor(cmp, endIterFile.Smallest.UserKey) {
 			endIterFile = endIter.Prev()
 		}
 		_ = endIterFile // Ignore unused assignment.
@@ -1300,11 +1303,12 @@ func (v *Version) CalculateInuseKeyRanges(
 		level++
 	}
 
+	bounds := base.UserKeyBoundsInclusive(smallest, largest)
 	for ; level <= maxLevel; level++ {
 		// NB: We always treat `largest` as inclusive for simplicity, because
 		// there's little consequence to calculating slightly broader in-use key
 		// ranges.
-		overlaps := v.Overlaps(level, smallest, largest, false /* exclusiveEnd */)
+		overlaps := v.Overlaps(level, bounds)
 		iter := overlaps.Iter()
 
 		// We may already have in-use key ranges from higher levels. Iterate
@@ -1402,7 +1406,7 @@ func seekGT(iter *LevelIterator, cmp base.Compare, key []byte) *FileMetadata {
 func (v *Version) Contains(level int, m *FileMetadata) bool {
 	iter := v.Levels[level].Iter()
 	if level > 0 {
-		overlaps := v.Overlaps(level, m.Smallest.UserKey, m.Largest.UserKey, m.Largest.IsExclusiveSentinel())
+		overlaps := v.Overlaps(level, m.UserKeyBounds())
 		iter = overlaps.Iter()
 	}
 	for f := iter.First(); f != nil; f = iter.Next() {
@@ -1414,14 +1418,14 @@ func (v *Version) Contains(level int, m *FileMetadata) bool {
 }
 
 // Overlaps returns all elements of v.files[level] whose user key range
-// intersects the given range. If level is non-zero then the user key ranges of
+// intersects the given bounds. If level is non-zero then the user key bounds of
 // v.files[level] are assumed to not overlap (although they may touch). If level
-// is zero then that assumption cannot be made, and the [start, end] range is
-// expanded to the union of those matching ranges so far and the computation is
-// repeated until [start, end] stabilizes.
+// is zero then that assumption cannot be made, and the given bounds are
+// expanded to the union of those matching bounds so far and the computation is
+// repeated until the bounds stabilize.
 // The returned files are a subsequence of the input files, i.e., the ordering
 // is not changed.
-func (v *Version) Overlaps(level int, start, end []byte, exclusiveEnd bool) LevelSlice {
+func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 	if level == 0 {
 		// Indices that have been selected as overlapping.
 		l0 := v.Levels[level]
@@ -1436,7 +1440,7 @@ func (v *Version) Overlaps(level int, start, end []byte, exclusiveEnd bool) Leve
 				if selected {
 					continue
 				}
-				if !meta.Overlaps(v.cmp.Compare, start, end, exclusiveEnd) {
+				if !meta.Overlaps(v.cmp.Compare, &bounds) {
 					// meta is completely outside the specified range; skip it.
 					continue
 				}
@@ -1444,25 +1448,16 @@ func (v *Version) Overlaps(level int, start, end []byte, exclusiveEnd bool) Leve
 				selectedIndices[i] = true
 				numSelected++
 
-				smallest := meta.Smallest.UserKey
-				largest := meta.Largest.UserKey
-				// Since level == 0, check if the newly added fileMetadata has
-				// expanded the range. We expand the range immediately for files
-				// we have remaining to check in this loop. All already checked
-				// and unselected files will need to be rechecked via the
-				// restart below.
-				if v.cmp.Compare(smallest, start) < 0 {
-					start = smallest
+				// Since this is L0, check if the newly added fileMetadata has expanded
+				// the range. We expand the range immediately for files we have
+				// remaining to check in this loop. All already checked and unselected
+				// files will need to be rechecked via the restart below.
+				if v.cmp.Compare(meta.Smallest.UserKey, bounds.Start) < 0 {
+					bounds.Start = meta.Smallest.UserKey
 					restart = true
 				}
-				if v := v.cmp.Compare(largest, end); v > 0 {
-					end = largest
-					exclusiveEnd = meta.Largest.IsExclusiveSentinel()
-					restart = true
-				} else if v == 0 && exclusiveEnd && !meta.Largest.IsExclusiveSentinel() {
-					// Only update the exclusivity of our existing `end`
-					// bound.
-					exclusiveEnd = false
+				if !bounds.End.IsUpperBoundForInternalKey(v.cmp.Compare, meta.Largest) {
+					bounds.End = base.UserKeyExclusiveIf(meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
 					restart = true
 				}
 			}
@@ -1491,7 +1486,7 @@ func (v *Version) Overlaps(level int, start, end []byte, exclusiveEnd bool) Leve
 		return slice
 	}
 
-	return overlaps(v.Levels[level].Iter(), v.cmp.Compare, start, end, exclusiveEnd)
+	return overlaps(v.Levels[level].Iter(), v.cmp.Compare, bounds)
 }
 
 // CheckOrdering checks that the files are consistent with respect to
