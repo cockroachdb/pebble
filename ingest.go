@@ -40,6 +40,8 @@ func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
 
 // KeyRange encodes a key range in user key space. A KeyRange's Start is
 // inclusive while its End is exclusive.
+//
+// KeyRange is equivalent to base.UserKeyBounds with exclusive end.
 type KeyRange struct {
 	Start, End []byte
 }
@@ -55,11 +57,9 @@ func (k *KeyRange) Contains(cmp base.Compare, key InternalKey) bool {
 	return (v < 0 || (v == 0 && key.IsExclusiveSentinel())) && cmp(k.Start, key.UserKey) <= 0
 }
 
-// InternalKeyBounds returns the key range as internal key bounds, with the end
-// boundary represented as an exclusive range delete sentinel key.
-func (k KeyRange) InternalKeyBounds() (InternalKey, InternalKey) {
-	return base.MakeInternalKey(k.Start, InternalKeySeqNumMax, InternalKeyKindMax),
-		base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, k.End)
+// UserKeyBounds returns the KeyRange as UserKeyBounds. Also implements the internal `bounded` interface.
+func (k KeyRange) UserKeyBounds() base.UserKeyBounds {
+	return base.UserKeyBoundsEndExclusive(k.Start, k.End)
 }
 
 // OverlapsInternalKeyRange checks if the specified internal key range has an
@@ -67,16 +67,17 @@ func (k KeyRange) InternalKeyBounds() (InternalKey, InternalKey) {
 // of smallest-largest within k, rather just that there's some intersection
 // between the two ranges.
 func (k *KeyRange) OverlapsInternalKeyRange(cmp base.Compare, smallest, largest InternalKey) bool {
-	v := cmp(k.Start, largest.UserKey)
-	return v <= 0 && !(largest.IsExclusiveSentinel() && v == 0) &&
-		cmp(k.End, smallest.UserKey) > 0
+	ukb := k.UserKeyBounds()
+	b := base.UserKeyBoundsFromInternal(smallest, largest)
+	return ukb.Overlaps(cmp, &b)
 }
 
 // Overlaps checks if the specified file has an overlap with the KeyRange.
 // Note that we aren't checking for full containment of m within k, rather just
 // that there's some intersection between m and k's bounds.
 func (k *KeyRange) Overlaps(cmp base.Compare, m *fileMetadata) bool {
-	return k.OverlapsInternalKeyRange(cmp, m.Smallest, m.Largest)
+	b := k.UserKeyBounds()
+	return m.Overlaps(cmp, &b)
 }
 
 // OverlapsKeyRange checks if this span overlaps with the provided KeyRange.
@@ -827,16 +828,14 @@ func ingestUpdateSeqNum(
 	return nil
 }
 
-// Denotes an internal key range. Smallest and largest are both inclusive.
-type internalKeyRange struct {
-	smallest, largest InternalKey
-}
-
+// overlapWIthIterator returns true if the given iterators produce keys or spans
+// overlapping the given UserKeyBounds. May return false positives (e.g. in
+// error cases).
 func overlapWithIterator(
 	iter internalIterator,
 	rangeDelIter *keyspan.FragmentIterator,
 	rkeyIter keyspan.FragmentIterator,
-	keyRange internalKeyRange,
+	bounds base.UserKeyBounds,
 	cmp Compare,
 ) bool {
 	// Check overlap with point operations.
@@ -858,10 +857,9 @@ func overlapWithIterator(
 	//    means boundary < L and hence is similar to 1).
 	// 4) boundary == L and L is sentinel,
 	//    we'll always overlap since for any values of i,j ranges [i, k) and [j, k) always overlap.
-	key, _ := iter.SeekGE(keyRange.smallest.UserKey, base.SeekGEFlagsNone)
+	key, _ := iter.SeekGE(bounds.Start, base.SeekGEFlagsNone)
 	if key != nil {
-		c := sstableKeyCompare(cmp, *key, keyRange.largest)
-		if c <= 0 {
+		if bounds.End.IsUpperBoundForInternalKey(cmp, *key) {
 			return true
 		}
 	}
@@ -872,37 +870,20 @@ func overlapWithIterator(
 
 	computeOverlapWithSpans := func(rIter keyspan.FragmentIterator) (bool, error) {
 		// NB: The spans surfaced by the fragment iterator are non-overlapping.
-		span, err := rIter.SeekLT(keyRange.smallest.UserKey)
+		span, err := rIter.SeekGE(bounds.Start)
 		if err != nil {
 			return false, err
-		} else if span == nil {
-			span, err = rIter.Next()
-			if err != nil {
-				return false, err
-			}
 		}
 		for ; span != nil; span, err = rIter.Next() {
-			if span.Empty() {
-				continue
-			}
-			key := span.SmallestKey()
-			c := sstableKeyCompare(cmp, key, keyRange.largest)
-			if c > 0 {
-				// The start of the span is after the largest key in the
-				// ingested table.
+			if !bounds.End.IsUpperBoundFor(cmp, span.Start) {
+				// The span starts after our bounds.
 				return false, nil
 			}
-			if cmp(span.End, keyRange.smallest.UserKey) > 0 {
-				// The end of the span is greater than the smallest in the
-				// table. Note that the span end key is exclusive, thus ">0"
-				// instead of ">=0".
+			if !span.Empty() {
 				return true, nil
 			}
 		}
-		if err != nil {
-			return false, err
-		}
-		return false, nil
+		return false, err
 	}
 
 	// rkeyIter is either a range key level iter, or a range key iterator
@@ -1029,11 +1010,7 @@ func ingestTargetLevel(
 			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), manifest.KeyTypeRange,
 		)
 
-		kr := internalKeyRange{
-			smallest: meta.Smallest,
-			largest:  meta.Largest,
-		}
-		overlap := overlapWithIterator(iter, &rangeDelIter, &levelIter, kr, comparer.Compare)
+		overlap := overlapWithIterator(iter, &rangeDelIter, &levelIter, meta.UserKeyBounds(), comparer.Compare)
 		err := iter.Close() // Closes range del iter as well.
 		err = firstError(err, levelIter.Close())
 		if err != nil {
@@ -1059,11 +1036,7 @@ func ingestTargetLevel(
 			v.Levels[level].Iter(), manifest.Level(level), manifest.KeyTypeRange,
 		)
 
-		kr := internalKeyRange{
-			smallest: meta.Smallest,
-			largest:  meta.Largest,
-		}
-		overlap := overlapWithIterator(levelIter, &rangeDelIter, rkeyLevelIter, kr, comparer.Compare)
+		overlap := overlapWithIterator(levelIter, &rangeDelIter, rkeyLevelIter, meta.UserKeyBounds(), comparer.Compare)
 		err := levelIter.Close() // Closes range del iter as well.
 		err = firstError(err, rkeyLevelIter.Close())
 		if err != nil {
@@ -1075,8 +1048,7 @@ func ingestTargetLevel(
 
 		// Check boundary overlap.
 		var candidateSplitFile *fileMetadata
-		boundaryOverlaps := v.Overlaps(level, meta.Smallest.UserKey,
-			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
+		boundaryOverlaps := v.Overlaps(level, meta.UserKeyBounds())
 		if !boundaryOverlaps.Empty() {
 			// We are already guaranteed to not have any data overlaps with files
 			// in boundaryOverlaps, otherwise we'd have returned in the above if
@@ -2149,6 +2121,7 @@ func (d *DB) ingestSplit(
 	replacedFiles map[base.FileNum][]newFileEntry,
 ) error {
 	for _, s := range files {
+		ingestFileBounds := s.ingestFile.UserKeyBounds()
 		// replacedFiles can be thought of as a tree, where we start iterating with
 		// s.splitFile and run its fileNum through replacedFiles, then find which of
 		// the replaced files overlaps with s.ingestFile, which becomes the new
@@ -2166,7 +2139,7 @@ func (d *DB) ingestSplit(
 			}
 			updatedSplitFile := false
 			for i := range replaced {
-				if replaced[i].Meta.Overlaps(d.cmp, s.ingestFile.Smallest.UserKey, s.ingestFile.Largest.UserKey, s.ingestFile.Largest.IsExclusiveSentinel()) {
+				if replaced[i].Meta.Overlaps(d.cmp, &ingestFileBounds) {
 					if updatedSplitFile {
 						// This should never happen because the earlier ingestTargetLevel
 						// function only finds split file candidates that are guaranteed to
@@ -2219,7 +2192,8 @@ func (d *DB) ingestSplit(
 		}
 		replacedFiles[splitFile.FileNum] = added
 		for i := range added {
-			if s.ingestFile.Overlaps(d.cmp, added[i].Meta.Smallest.UserKey, added[i].Meta.Largest.UserKey, added[i].Meta.Largest.IsExclusiveSentinel()) {
+			addedBounds := added[i].Meta.UserKeyBounds()
+			if s.ingestFile.Overlaps(d.cmp, &addedBounds) {
 				panic("ingest-time split produced a file that overlaps with ingested file")
 			}
 		}
@@ -2426,7 +2400,7 @@ func (d *DB) ingestApply(
 		// for files, and if they are, we should signal those compactions to error
 		// out.
 		for level := range current.Levels {
-			overlaps := current.Overlaps(level, exciseSpan.Start, exciseSpan.End, true /* exclusiveEnd */)
+			overlaps := current.Overlaps(level, exciseSpan.UserKeyBounds())
 			iter := overlaps.Iter()
 
 			for m := iter.First(); m != nil; m = iter.Next() {

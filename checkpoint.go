@@ -75,7 +75,8 @@ func excludeFromCheckpoint(f *fileMetadata, opt *checkpointOptions, cmp Compare)
 		return false
 	}
 	for _, s := range opt.restrictToSpans {
-		if f.Overlaps(cmp, s.Start, s.End, true /* exclusiveEnd */) {
+		spanBounds := base.UserKeyBoundsEndExclusive(s.Start, s.End)
+		if f.Overlaps(cmp, &spanBounds) {
 			return false
 		}
 	}
