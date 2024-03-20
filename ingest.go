@@ -1402,6 +1402,7 @@ func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error 
 		}
 	}
 
+	d.mu.versions.metrics.Ingest.Count++
 	currMem := d.mu.mem.mutable
 	// NB: Placing ingested sstables above the current memtables
 	// requires rotating of the existing memtables/WAL. There is
