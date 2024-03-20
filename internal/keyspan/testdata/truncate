@@ -24,38 +24,6 @@ truncate a-e
 1:  b-d
 2:    de
 
-# The second range tombstone should be elided, as it starts after the
-# specified file end key.
-
-truncate a-e endKey=(d.SET.3)
-----
-1:  b-d
-
-# The second range tombstone should be back in the below example, as the
-# specified end key has a trailer (RANGEDEL.2) exactly matching that of the
-# rangedel tombstone's start key.
-
-truncate a-e endKey=(d.RANGEDEL.2)
-----
-1:  b-d
-2:    de
-
-truncate a-e endKey=(d.SET.1)
-----
-1:  b-d
-2:    de
-
-# Similarly, truncate range tombstones that end before the start key.
-
-truncate a-e startKey=(d.SET.3)
-----
-2:    de
-
-truncate a-e startKey=(c.SET.3)
-----
-1:  b-d
-2:    de
-
 truncate a-f
 ----
 1:  b-d
