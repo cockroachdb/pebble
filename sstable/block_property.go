@@ -875,3 +875,12 @@ func (f *BlockPropertiesFilterer) intersectsFilter(i int, prop []byte) (intersec
 	}
 	return blockIntersects, nil
 }
+
+func uvarintLen(v uint32) int {
+	i := 0
+	for v >= 0x80 {
+		v >>= 7
+		i++
+	}
+	return i + 1
+}
