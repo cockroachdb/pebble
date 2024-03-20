@@ -334,7 +334,7 @@ Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
-Ingestions: 1  as flushable: 1 (1.2KB in 2 tables)
+Ingestions: 2  as flushable: 1 (1.2KB in 2 tables)
 
 sstables
 ----
