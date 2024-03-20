@@ -6,13 +6,10 @@ package keyspan
 
 import "github.com/cockroachdb/pebble/internal/base"
 
-// FilterFunc defines a transform from the input Span into the output Span. The
-// function returns true if the Span should be returned by the iterator, and
-// false if the Span should be skipped. The FilterFunc is permitted to mutate
-// the output Span, for example, to elice certain keys, or update the Span's
-// bounds if so desired. The output Span's Keys slice may be reused to reduce
-// allocations.
-type FilterFunc func(in *Span, out *Span) (keep bool)
+// FilterFunc is a callback that allows filtering keys from a Span. The result
+// is the set of keys that should be retained (using buf as a buffer). If the
+// result has no keys, the span is skipped altogether.
+type FilterFunc func(span *Span, buf []Key) []Key
 
 // filteringIter is a FragmentIterator that uses a FilterFunc to select which
 // Spans from the input iterator are returned in the output.
@@ -45,17 +42,7 @@ func (i *filteringIter) SeekGE(key []byte) (*Span, error) {
 	if err != nil {
 		return nil, err
 	}
-	s, err = i.filter(s, +1)
-	if err != nil {
-		return nil, err
-	}
-	// i.filter could return a span that's less than key, _if_ the filterFunc
-	// (which has no knowledge of the seek key) mutated the span to end at a key
-	// less than or equal to `key`. Detect this case and next/invalidate the iter.
-	if s != nil && i.cmp(s.End, key) <= 0 {
-		return i.Next()
-	}
-	return s, nil
+	return i.filter(s, +1)
 }
 
 // SeekLT implements FragmentIterator.
@@ -64,17 +51,7 @@ func (i *filteringIter) SeekLT(key []byte) (*Span, error) {
 	if err != nil {
 		return nil, err
 	}
-	span, err = i.filter(span, -1)
-	if err != nil {
-		return nil, err
-	}
-	// i.filter could return a span that's >= key, _if_ the filterFunc (which has
-	// no knowledge of the seek key) mutated the span to start at a key greater
-	// than or equal to `key`. Detect this case and prev/invalidate the iter.
-	if span != nil && i.cmp(span.Start, key) >= 0 {
-		return i.Prev()
-	}
-	return span, nil
+	return i.filter(span, -1)
 }
 
 // First implements FragmentIterator.
@@ -128,9 +105,17 @@ func (i *filteringIter) filter(span *Span, dir int8) (*Span, error) {
 	}
 	var err error
 	for span != nil {
-		if keep := i.filterFn(span, &i.span); keep {
+		keys := i.filterFn(span, i.span.Keys[:0])
+		if len(keys) > 0 {
+			i.span = Span{
+				Start:     span.Start,
+				End:       span.End,
+				Keys:      keys,
+				KeysOrder: span.KeysOrder,
+			}
 			return &i.span, nil
 		}
+
 		if dir == +1 {
 			span, err = i.iter.Next()
 		} else {
