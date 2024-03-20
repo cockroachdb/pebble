@@ -457,7 +457,7 @@ func TestScanInternal(t *testing.T) {
 				}()
 			} else if ingest {
 				points, rangeDels, rangeKeys := batchSort(b)
-				file, err := d.opts.FS.Create("temp0.sst")
+				file, err := d.opts.FS.Create("temp0.sst", vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 				writeSST(points, rangeDels, rangeKeys, objstorageprovider.NewFileWritable(file))
 				require.NoError(t, d.Ingest([]string{"temp0.sst"}))

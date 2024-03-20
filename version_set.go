@@ -878,7 +878,7 @@ func (vs *versionSet) createManifest(
 			vs.fs.Remove(filename)
 		}
 	}()
-	manifestFile, err = vs.fs.Create(filename)
+	manifestFile, err = vs.fs.Create(filename, "pebble-manifest")
 	if err != nil {
 		return err
 	}

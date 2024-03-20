@@ -154,7 +154,7 @@ func TestProvider(t *testing.T) {
 
 				tmpFileCounter++
 				tmpFilename := fmt.Sprintf("temp-file-%d", tmpFileCounter)
-				f, err := fs.Create(tmpFilename)
+				f, err := fs.Create(tmpFilename, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 				data := make([]byte, size)
 				genData(byte(salt), 0, data)

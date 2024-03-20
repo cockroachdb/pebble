@@ -130,7 +130,7 @@ func buildHamletTestSST(
 	keys := wordCount.SortedKeys()
 
 	// Write the key/value pairs to a new table, in increasing key order.
-	f0, err := fs.Create(filename)
+	f0, err := fs.Create(filename, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}

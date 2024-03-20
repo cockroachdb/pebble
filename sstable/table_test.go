@@ -440,7 +440,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 				for _, vLen := range valueLengths {
 					got, memFS := 0, vfs.NewMem()
 
-					wf, err := memFS.Create("foo")
+					wf, err := memFS.Create("foo", vfs.WriteCategoryUnspecified)
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 						continue
@@ -566,7 +566,7 @@ func TestFooterRoundTrip(t *testing.T) {
 					for _, offset := range []int64{0, 1, 100} {
 						t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {
 							mem := vfs.NewMem()
-							f, err := mem.Create("test")
+							f, err := mem.Create("test", vfs.WriteCategoryUnspecified)
 							require.NoError(t, err)
 
 							_, err = f.Write(buf[:offset])
@@ -626,7 +626,7 @@ func TestReadFooter(t *testing.T) {
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
 			mem := vfs.NewMem()
-			f, err := mem.Create("test")
+			f, err := mem.Create("test", vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 
 			_, err = f.Write([]byte(c.encoded))

@@ -403,7 +403,7 @@ func (d *DB) writeCheckpointManifest(
 		}
 		defer src.Close()
 
-		dst, err := fs.Create(destPath)
+		dst, err := fs.Create(destPath, vfs.WriteCategoryUnspecified)
 		if err != nil {
 			return err
 		}

@@ -113,7 +113,7 @@ type fsBench struct {
 // createFile can be used to create an empty file.
 // Invariant: File shouldn't already exist.
 func createFile(filepath string) vfs.File {
-	fh, err := fsConfig.fs.Create(filepath)
+	fh, err := fsConfig.fs.Create(filepath, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		log.Fatalln(err)
 	}

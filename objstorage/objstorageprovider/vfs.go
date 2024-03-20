@@ -35,10 +35,13 @@ func (p *provider) vfsOpenForReading(
 }
 
 func (p *provider) vfsCreate(
-	_ context.Context, fileType base.FileType, fileNum base.DiskFileNum,
+	_ context.Context,
+	fileType base.FileType,
+	fileNum base.DiskFileNum,
+	category vfs.DiskWriteCategory,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	filename := p.vfsPath(fileType, fileNum)
-	file, err := p.st.FS.Create(filename)
+	file, err := p.st.FS.Create(filename, category)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}

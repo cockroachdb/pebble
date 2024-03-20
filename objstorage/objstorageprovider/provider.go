@@ -247,7 +247,13 @@ func (p *provider) Create(
 	if opts.PreferSharedStorage && p.st.Remote.CreateOnShared != remote.CreateOnSharedNone {
 		w, meta, err = p.sharedCreate(ctx, fileType, fileNum, p.st.Remote.CreateOnSharedLocator, opts)
 	} else {
-		w, meta, err = p.vfsCreate(ctx, fileType, fileNum)
+		var category vfs.DiskWriteCategory
+		if opts.WriteCategory != "" {
+			category = opts.WriteCategory
+		} else {
+			category = vfs.WriteCategoryUnspecified
+		}
+		w, meta, err = p.vfsCreate(ctx, fileType, fileNum, category)
 	}
 	if err != nil {
 		err = errors.Wrapf(err, "creating object %s", fileNum)

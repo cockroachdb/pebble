@@ -39,7 +39,7 @@ func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
 		)
 		switch s[0] {
 		case "create":
-			g, err = fs.Create(s[1])
+			g, err = fs.Create(s[1], WriteCategoryUnspecified)
 		case "link":
 			err = fs.Link(s[1], s[2])
 		case "open":
@@ -53,7 +53,7 @@ func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
 		case "rename":
 			err = fs.Rename(s[1], s[2])
 		case "reuseForWrite":
-			g, err = fs.ReuseForWrite(s[1], s[2])
+			g, err = fs.ReuseForWrite(s[1], s[2], WriteCategoryUnspecified)
 		case "resetToSynced":
 			fs.ResetToSyncedState()
 		case "ignoreSyncs":
@@ -218,7 +218,7 @@ func TestList(t *testing.T) {
 		"/foot",
 	}
 	for _, filename := range filenames {
-		f, err := fs.Create(filename)
+		f, err := fs.Create(filename, WriteCategoryUnspecified)
 		if err != nil {
 			t.Fatalf("Create %q: %v", filename, err)
 		}
