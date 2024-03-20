@@ -678,7 +678,7 @@ type Options struct {
 		RequiredInPlaceValueBound UserKeyPrefixBound
 
 		// DisableIngestAsFlushable disables lazy ingestion of sstables through
-		// a WAL write and memtable rotation. Only effectual if the the format
+		// a WAL write and memtable rotation. Only effectual if the format
 		// major version is at least `FormatFlushableIngest`.
 		DisableIngestAsFlushable func() bool
 

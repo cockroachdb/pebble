@@ -1606,7 +1606,7 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 	return i.iterValidityState
 }
 
-// First moves the iterator the the first key/value pair. Returns true if the
+// First moves the iterator the first key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) First() bool {
 	if i.rangeKey != nil {
@@ -1642,7 +1642,7 @@ func (i *Iterator) First() bool {
 	return i.iterValidityState == IterValid
 }
 
-// Last moves the iterator the the last key/value pair. Returns true if the
+// Last moves the iterator the last key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Last() bool {
 	if i.rangeKey != nil {

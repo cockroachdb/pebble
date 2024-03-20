@@ -133,14 +133,14 @@ type InternalIterator interface {
 	// the upper bound.
 	SeekLT(key []byte, flags SeekLTFlags) (*InternalKey, LazyValue)
 
-	// First moves the iterator the the first key/value pair. Returns the key and
+	// First moves the iterator the first key/value pair. Returns the key and
 	// value if the iterator is pointing at a valid entry, and (nil, nilv)
 	// otherwise. Note that First only checks the upper bound. It is up to the
 	// caller to ensure that First() is not called when there is a lower bound,
 	// and instead call SeekGE(lower).
 	First() (*InternalKey, LazyValue)
 
-	// Last moves the iterator the the last key/value pair. Returns the key and
+	// Last moves the iterator the last key/value pair. Returns the key and
 	// value if the iterator is pointing at a valid entry, and (nil, nilv)
 	// otherwise. Note that Last only checks the lower bound. It is up to the
 	// caller to ensure that Last() is not called when there is an upper bound,

@@ -176,7 +176,7 @@ if a file picked for compaction has already been compacted, the version edit
 will expect a different file number for each virtual sstable, etc.
 
 There are direct references to the `FilemetaData.FileNum` throughout Pebble. For
-example, the file number is accessed when the the `DB.Checkpoint` function is
+example, the file number is accessed when the `DB.Checkpoint` function is
 called. This function iterates through the files in each level of the lsm,
 constructs the filepath using the file number, and reads the file from disk. In
 such cases, it is important to exclude virtual sstables.
@@ -254,7 +254,7 @@ ensure that the physical sstable is eventually deleted when there are no
 versions which reference it.
 
 Sstables are deleted from disk by the `DB.doDeleteObsoleteFiles` function which
-looks for files to delete in the the `DB.mu.versions.obsoleteTables` slice.
+looks for files to delete in the `DB.mu.versions.obsoleteTables` slice.
 So we need to ensure that any physical sstable which was virtualized is added to
 the obsolete tables list iff `FilemetaData.refs` is 0.
 

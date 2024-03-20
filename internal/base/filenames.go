@@ -164,7 +164,7 @@ func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
 
 	ls, lsErr := fs.List(fs.PathDir(filename))
 	if lsErr != nil {
-		// TODO(jackson): if oserror.IsNotExist(lsErr), the the data directory
+		// TODO(jackson): if oserror.IsNotExist(lsErr), the data directory
 		// doesn't exist anymore. Another process likely deleted it before
 		// killing the process. We want to fatal the process, but without
 		// triggering error reporting like Sentry.

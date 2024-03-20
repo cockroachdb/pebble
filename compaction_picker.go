@@ -1052,7 +1052,7 @@ func pickCompactionSeedFile(
 	// table-size gives an indication of write amplification (a smaller ratio is
 	// preferrable).
 	//
-	// The current heuristic is based off the the RocksDB kMinOverlappingRatio
+	// The current heuristic is based off the RocksDB kMinOverlappingRatio
 	// heuristic. It chooses the file with the minimum overlapping ratio with
 	// the target level, which minimizes write amplification.
 	//

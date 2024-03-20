@@ -1121,7 +1121,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			// naively at a@3, but since b@4<b@3, we shift our forward iteration to
 			// begin at b@4. We never need to shift by more than one restart point
 			// (i.e. to c@4) because it's impossible for the search key to be greater
-			// than the the key at the next restart point in the block because that
+			// than the key at the next restart point in the block because that
 			// key will always have a different prefix. Put another way, because no
 			// key in the block shares the same prefix, naive binary search should
 			// always land at most 1 restart point off the correct one.
