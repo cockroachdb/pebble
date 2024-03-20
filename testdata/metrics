@@ -484,7 +484,7 @@ Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
-Ingestions: 0  as flushable: 2 (1.8KB in 3 tables)
+Ingestions: 2  as flushable: 2 (1.8KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
@@ -546,7 +546,7 @@ Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
-Ingestions: 0  as flushable: 2 (1.8KB in 3 tables)
+Ingestions: 2  as flushable: 2 (1.8KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
@@ -622,7 +622,7 @@ Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
-Ingestions: 1  as flushable: 2 (1.8KB in 3 tables)
+Ingestions: 3  as flushable: 2 (1.8KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
@@ -723,7 +723,7 @@ Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
-Ingestions: 2  as flushable: 2 (1.8KB in 3 tables)
+Ingestions: 4  as flushable: 2 (1.8KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
