@@ -143,7 +143,7 @@ func DefaultOpConfig() OpConfig {
 			OpBatchCommit:                 5,
 			OpDBCheckpoint:                1,
 			OpDBCompact:                   1,
-			OpDBDownload:                  1,
+			OpDBDownload:                  0, // TODO(radu, bilal): fix #3430 and reenable.
 			OpDBFlush:                     2,
 			OpDBRatchetFormatMajorVersion: 1,
 			OpDBRestart:                   2,
