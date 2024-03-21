@@ -447,11 +447,13 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	// Validate the most-recent OPTIONS file, if there is one.
-	var strictWALTail bool
 	if previousOptionsFilename != "" {
 		path := opts.FS.PathJoin(dirname, previousOptionsFilename)
-		strictWALTail, err = checkOptions(opts, path)
+		previousOptions, err := readOptionsFile(opts, path)
 		if err != nil {
+			return nil, err
+		}
+		if err := opts.CheckCompatibility(previousOptions); err != nil {
 			return nil, err
 		}
 	}
@@ -467,8 +469,14 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	var ve versionEdit
 	var toFlush flushableList
 	for i, lf := range replayWALs {
-		lastWAL := i == len(replayWALs)-1
-		flush, maxSeqNum, err := d.replayWAL(jobID, &ve, lf, strictWALTail && !lastWAL)
+		// WALs other than the last one would have been closed cleanly.
+		//
+		// Note: we used to never require strict WAL tails when reading from older
+		// versions: RocksDB 6.2.1 and the version of Pebble included in CockroachDB
+		// 20.1 do not guarantee that closed WALs end cleanly. But the earliest
+		// compatible Pebble format is newer and guarantees a clean EOF.
+		strictWALTail := i < len(replayWALs)-1
+		flush, maxSeqNum, err := d.replayWAL(jobID, &ve, lf, strictWALTail)
 		if err != nil {
 			return nil, err
 		}
@@ -1051,18 +1059,18 @@ func (d *DB) replayWAL(
 	return toFlush, maxSeqNum, err
 }
 
-func checkOptions(opts *Options, path string) (strictWALTail bool, err error) {
+func readOptionsFile(opts *Options, path string) (string, error) {
 	f, err := opts.FS.Open(path)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	defer f.Close()
 
 	data, err := io.ReadAll(f)
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	return opts.checkOptions(string(data))
+	return string(data), nil
 }
 
 // DBDesc briefly describes high-level state about a database.
