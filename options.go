@@ -1409,6 +1409,8 @@ func (o *Options) String() string {
 	return buf.String()
 }
 
+// parseOptions takes options serialized by Options.String() and parses them into
+// keys and values, calling fn for each one.
 func parseOptions(s string, fn func(section, key, value string) error) error {
 	var section string
 	for _, line := range strings.Split(s, "\n") {
@@ -1803,9 +1805,14 @@ func (e ErrMissingWALRecoveryDir) Error() string {
 	return fmt.Sprintf("directory %q may contain relevant WALs", e.Dir)
 }
 
-func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
-	// TODO(jackson): Refactor to avoid awkwardness of the strictWALTail return value.
-	return strictWALTail, parseOptions(s, func(section, key, value string) error {
+// CheckCompatibility verifies the options are compatible with the previous options
+// serialized by Options.String(). For example, the Comparer and Merger must be
+// the same, or data will not be able to be properly read from the DB.
+//
+// This function only looks at specific keys and does not error out if the
+// options are newer and contain unknown keys.
+func (o *Options) CheckCompatibility(previousOptions string) error {
+	return parseOptions(previousOptions, func(section, key, value string) error {
 		switch section + "." + key {
 		case "Options.comparer":
 			if value != o.Comparer.Name {
@@ -1818,11 +1825,6 @@ func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 			if value != "nullptr" && value != o.Merger.Name {
 				return errors.Errorf("pebble: merger name from file %q != merger name from options %q",
 					errors.Safe(value), errors.Safe(o.Merger.Name))
-			}
-		case "Options.strict_wal_tail":
-			strictWALTail, err = strconv.ParseBool(value)
-			if err != nil {
-				return errors.Errorf("pebble: error parsing strict_wal_tail value %q: %w", value, err)
 			}
 		case "Options.wal_dir", "WAL Failover.secondary_dir":
 			switch {
@@ -1841,14 +1843,6 @@ func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 		}
 		return nil
 	})
-}
-
-// Check verifies the options are compatible with the previous options
-// serialized by Options.String(). For example, the Comparer and Merger must be
-// the same, or data will not be able to be properly read from the DB.
-func (o *Options) Check(s string) error {
-	_, err := o.checkOptions(s)
-	return err
 }
 
 // Validate verifies that the options are mutually consistent. For example,

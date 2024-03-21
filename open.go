@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -450,8 +451,24 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	var strictWALTail bool
 	if previousOptionsFilename != "" {
 		path := opts.FS.PathJoin(dirname, previousOptionsFilename)
-		strictWALTail, err = checkOptions(opts, path)
+		previousOptions, err := readOptionsFile(opts, path)
 		if err != nil {
+			return nil, err
+		}
+		if err := opts.CheckCompatibility(previousOptions); err != nil {
+			return nil, err
+		}
+		// Set strictWALTail from the previous options.
+		if err := parseOptions(previousOptions, func(section, key, value string) error {
+			if section == "Options" && key == "strict_wal_tail" {
+				var err error
+				strictWALTail, err = strconv.ParseBool(value)
+				if err != nil {
+					return errors.Errorf("pebble: error parsing strict_wal_tail value %q: %w", value, err)
+				}
+			}
+			return nil
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -1051,18 +1068,18 @@ func (d *DB) replayWAL(
 	return toFlush, maxSeqNum, err
 }
 
-func checkOptions(opts *Options, path string) (strictWALTail bool, err error) {
+func readOptionsFile(opts *Options, path string) (string, error) {
 	f, err := opts.FS.Open(path)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	defer f.Close()
 
 	data, err := io.ReadAll(f)
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	return opts.checkOptions(string(data))
+	return string(data), nil
 }
 
 // DBDesc briefly describes high-level state about a database.
