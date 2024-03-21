@@ -1763,7 +1763,7 @@ func (o *newSnapshotOp) run(t *Test, h historyRecorder) {
 	createEfos := ((11400714819323198485 * uint64(t.idx) * t.testOpts.seedEFOS) >> 63) == 1
 	// If either of these options is true, an EFOS _must_ be created, regardless
 	// of what the fibonacci hash returned.
-	excisePossible := t.testOpts.useSharedReplicate || t.testOpts.useExcise
+	excisePossible := t.testOpts.useSharedReplicate || t.testOpts.useExternalReplicate || t.testOpts.useExcise
 	if createEfos || excisePossible {
 		s := t.getDB(o.dbID).NewEventuallyFileOnlySnapshot(bounds)
 		t.setSnapshot(o.snapID, s)
@@ -1992,12 +1992,74 @@ func (r *replicateOp) runSharedReplicate(
 	h.Recordf("%s // %v", r, err)
 }
 
+func (r *replicateOp) runExternalReplicate(
+	t *Test, h historyRecorder, source, dest *pebble.DB, w *sstable.Writer, sstPath string,
+) {
+	var externalSSTs []pebble.ExternalFile
+	var err error
+	err = source.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, r.start, r.end,
+		func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
+			val, _, err := value.Value(nil)
+			if err != nil {
+				panic(err)
+			}
+			return w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val)
+		},
+		func(start, end []byte, seqNum uint64) error {
+			return w.DeleteRange(start, end)
+		},
+		func(start, end []byte, keys []keyspan.Key) error {
+			s := keyspan.Span{
+				Start: start,
+				End:   end,
+				Keys:  keys,
+			}
+			return rangekey.Encode(&s, w.AddRangeKey)
+		},
+		nil,
+		func(sst *pebble.ExternalFile) error {
+			externalSSTs = append(externalSSTs, *sst)
+			return nil
+		},
+	)
+	if err != nil {
+		h.Recordf("%s // %v", r, err)
+		return
+	}
+
+	err = w.Close()
+	if err != nil {
+		h.Recordf("%s // %v", r, err)
+		return
+	}
+	meta, err := w.Metadata()
+	if err != nil {
+		h.Recordf("%s // %v", r, err)
+		return
+	}
+	if len(externalSSTs) == 0 && meta.Properties.NumEntries == 0 && meta.Properties.NumRangeKeys() == 0 {
+		// IngestAndExcise below will be a no-op. We should do a
+		// DeleteRange+RangeKeyDel to mimic the behaviour of the non-external-replicate
+		// case.
+		//
+		// TODO(bilal): Remove this when we support excises with no matching ingests.
+		if err := dest.RangeKeyDelete(r.start, r.end, t.writeOpts); err != nil {
+			h.Recordf("%s // %v", r, err)
+			return
+		}
+		err := dest.DeleteRange(r.start, r.end, t.writeOpts)
+		h.Recordf("%s // %v", r, err)
+		return
+	}
+
+	_, err = dest.IngestAndExcise([]string{sstPath}, nil, externalSSTs /* external */, pebble.KeyRange{Start: r.start, End: r.end}, false /* sstContainsExciseTombstone */)
+	h.Recordf("%s // %v", r, err)
+}
+
 func (r *replicateOp) run(t *Test, h historyRecorder) {
 	// Shared replication only works if shared storage is enabled.
-	useSharedIngest := t.testOpts.useSharedReplicate
-	if !t.testOpts.sharedStorageEnabled {
-		useSharedIngest = false
-	}
+	useSharedIngest := t.testOpts.useSharedReplicate && t.testOpts.sharedStorageEnabled
+	useExternalIngest := t.testOpts.useExternalReplicate && t.testOpts.externalStorageEnabled
 
 	source := t.getDB(r.source)
 	dest := t.getDB(r.dest)
@@ -2011,6 +2073,10 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 
 	if useSharedIngest {
 		r.runSharedReplicate(t, h, source, dest, w, sstPath)
+		return
+	}
+	if useExternalIngest {
+		r.runExternalReplicate(t, h, source, dest, w, sstPath)
 		return
 	}
 
