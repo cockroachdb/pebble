@@ -900,6 +900,12 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 		h.Recordf("%s // %v", o, err)
 		return
 	}
+	if t.testOpts.ingestContainsExciseTombstone {
+		// Add a rangedel and rangekeydel to the batch. This ensures it'll end up
+		// inside
+		err = firstError(err, b.DeleteRange(o.exciseStart, o.exciseEnd, t.writeOpts))
+		err = firstError(err, b.RangeKeyDelete(o.exciseStart, o.exciseEnd, t.writeOpts))
+	}
 	path, writerMeta, err2 := buildForIngest(t, o.dbID, b, 0 /* i */)
 	if err2 != nil {
 		h.Recordf("Build(%s) // %v", o.batchID, err2)
@@ -926,7 +932,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 			_, err := t.getDB(o.dbID).IngestAndExcise([]string{path}, nil /* shared */, nil /* external */, pebble.KeyRange{
 				Start: o.exciseStart,
 				End:   o.exciseEnd,
-			}, false)
+			}, t.testOpts.ingestContainsExciseTombstone)
 			return err
 		}))
 	} else {

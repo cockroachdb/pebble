@@ -158,6 +158,9 @@ func parseOptions(
 			case "TestOptions.use_excise":
 				opts.useExcise = true
 				return true
+			case "TestOptions.ingest_contains_excise_tombstone":
+				opts.ingestContainsExciseTombstone = true
+				return true
 			default:
 				if customOptionParsers == nil {
 					return false
@@ -247,6 +250,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.useExcise {
 		fmt.Fprintf(&buf, "  use_excise=%v\n", opts.useExcise)
+	}
+	if opts.ingestContainsExciseTombstone {
+		fmt.Fprintf(&buf, "  ingest_contains_excise_tombstone=%v\n", opts.ingestContainsExciseTombstone)
 	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
@@ -358,6 +364,11 @@ type TestOptions struct {
 	// excises. However !useExcise && !useSharedReplicate can be used to guarantee
 	// lack of excises.
 	useExcise bool
+	// ingestContainsExciseTombstone, if true and useExcise is true, specifies that
+	// we will also add a tombstone covering the excise to any sstables we ingest
+	// in an IngestAndExcise operation. This could make this IngestAndExcise
+	// eligible for being a flushable ingest.
+	ingestContainsExciseTombstone bool
 }
 
 // InitRemoteStorageFactory initializes Opts.Experimental.RemoteStorage.
@@ -765,16 +776,15 @@ func RandomOptions(
 	}
 
 	testOpts.seedEFOS = rng.Uint64()
-	// TODO(bilal): Enable ingestSplit when known bugs with virtual sstables
-	// are addressed.
-	//
-	// testOpts.ingestSplit = rng.Intn(2) == 0
+	testOpts.ingestSplit = rng.Intn(2) == 0
 	opts.Experimental.IngestSplit = func() bool { return testOpts.ingestSplit }
 	testOpts.useExcise = rng.Intn(2) == 0
 	if testOpts.useExcise {
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatVirtualSSTables {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatVirtualSSTables
 		}
+		// TODO(bilal): Enable this when known bugs with this are fixed.
+		// testOpts.ingestContainsExciseTombstone = rng.Intn(2) == 0
 	}
 	testOpts.InitRemoteStorageFactory()
 	testOpts.Opts.EnsureDefaults()

@@ -175,7 +175,7 @@ func DefaultOpConfig() OpConfig {
 			OpWriterDelete:                100,
 			OpWriterDeleteRange:           50,
 			OpWriterIngest:                100,
-			OpWriterIngestAndExcise:       0, // TODO(bilal): Enable this.
+			OpWriterIngestAndExcise:       50,
 			OpWriterLogData:               10,
 			OpWriterMerge:                 100,
 			OpWriterRangeKeySet:           10,
@@ -313,7 +313,6 @@ func WriteOpConfig() OpConfig {
 func multiInstanceConfig() OpConfig {
 	cfg := DefaultOpConfig()
 	cfg.ops[OpReplicate] = 5
-	cfg.ops[OpWriterIngestAndExcise] = 50
 	// Single deletes and merges are disabled in multi-instance mode, as
 	// replicateOp and ingestAndExciseOp don't support them.
 	cfg.ops[OpWriterSingleDelete] = 0
