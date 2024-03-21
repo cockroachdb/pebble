@@ -155,6 +155,9 @@ func parseOptions(
 			case "TestOptions.use_shared_replicate":
 				opts.useSharedReplicate = true
 				return true
+			case "TestOptions.use_external_replicate":
+				opts.useExternalReplicate = true
+				return true
 			case "TestOptions.use_excise":
 				opts.useExcise = true
 				return true
@@ -244,6 +247,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.useSharedReplicate {
 		fmt.Fprintf(&buf, "  use_shared_replicate=%v\n", opts.useSharedReplicate)
+	}
+	if opts.useExternalReplicate {
+		fmt.Fprintf(&buf, "  use_external_replicate=%v\n", opts.useExternalReplicate)
 	}
 	if opts.useExcise {
 		fmt.Fprintf(&buf, "  use_excise=%v\n", opts.useExcise)
@@ -335,6 +341,8 @@ type TestOptions struct {
 	externalStorageFS      remote.Storage
 	// Enables the use of shared replication in TestOptions.
 	useSharedReplicate bool
+	// Enables the use of external replication in TestOptions.
+	useExternalReplicate bool
 	// Enable the secondary cache. Only effective if sharedStorageEnabled is
 	// also true.
 	secondaryCacheEnabled bool
