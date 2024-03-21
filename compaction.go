@@ -1467,6 +1467,11 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	suggestSplit := d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit() &&
 		d.FormatMajorVersion() >= FormatVirtualSSTables
 
+	if suggestSplit || ingestFlushable.exciseSpan.Valid() {
+		// We could add deleted files to ve.
+		ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
+	}
+
 	replacedFiles := make(map[base.FileNum][]newFileEntry)
 	for _, file := range ingestFlushable.files {
 		// This file fits perfectly within the excise span, so we can slot it at L6.
@@ -1483,7 +1488,6 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		}
 
 		if ingestFlushable.exciseSpan.Valid() {
-			ve.DeletedFiles = map[manifest.DeletedFileEntry]*manifest.FileMetadata{}
 			// Iterate through all levels and find files that intersect with exciseSpan.
 			for level = range c.version.Levels {
 				overlaps := c.version.Overlaps(level, base.UserKeyBoundsEndExclusive(ingestFlushable.exciseSpan.Start, ingestFlushable.exciseSpan.End))
