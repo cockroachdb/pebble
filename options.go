@@ -1032,16 +1032,6 @@ type Options struct {
 	// private options are only used by internal tests or are used internally
 	// for facilitating upgrade paths of unconfigurable functionality.
 	private struct {
-		// strictWALTail configures whether or not a database's WALs created
-		// prior to the most recent one should be interpreted strictly,
-		// requiring a clean EOF. RocksDB 6.2.1 and the version of Pebble
-		// included in CockroachDB 20.1 do not guarantee that closed WALs end
-		// cleanly. If this option is set within an OPTIONS file, Pebble
-		// interprets previous WALs strictly, requiring a clean EOF.
-		// Otherwise, it interprets them permissively in the same manner as
-		// RocksDB 6.2.1.
-		strictWALTail bool
-
 		// disableDeleteOnlyCompactions prevents the scheduling of delete-only
 		// compactions that drop sstables wholy covered by range tombstones or
 		// range key tombstones.
@@ -1194,7 +1184,6 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Merger == nil {
 		o.Merger = DefaultMerger
 	}
-	o.private.strictWALTail = true
 	if o.MaxConcurrentCompactions == nil {
 		o.MaxConcurrentCompactions = func() int { return 1 }
 	}
@@ -1353,7 +1342,9 @@ func (o *Options) String() string {
 	}
 	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
-	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", o.private.strictWALTail)
+	// We no longer care about strict_wal_tail, but set it to true in case an
+	// older version reads the options.
+	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", true)
 	fmt.Fprintf(&buf, "  table_cache_shards=%d\n", o.Experimental.TableCacheShards)
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
@@ -1409,6 +1400,8 @@ func (o *Options) String() string {
 	return buf.String()
 }
 
+// parseOptions takes options serialized by Options.String() and parses them into
+// keys and values, calling fn for each one.
 func parseOptions(s string, fn func(section, key, value string) error) error {
 	var section string
 	for _, line := range strings.Split(s, "\n") {
@@ -1637,7 +1630,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "point_tombstone_weight":
 				// Do nothing; deprecated.
 			case "strict_wal_tail":
-				o.private.strictWALTail, err = strconv.ParseBool(value)
+				var strictWALTail bool
+				strictWALTail, err = strconv.ParseBool(value)
+				if err == nil && !strictWALTail {
+					err = errors.Newf("reading from versions with strict_wal_tail=false no longer supported")
+				}
 			case "merger":
 				switch value {
 				case "nullptr":
@@ -1803,9 +1800,14 @@ func (e ErrMissingWALRecoveryDir) Error() string {
 	return fmt.Sprintf("directory %q may contain relevant WALs", e.Dir)
 }
 
-func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
-	// TODO(jackson): Refactor to avoid awkwardness of the strictWALTail return value.
-	return strictWALTail, parseOptions(s, func(section, key, value string) error {
+// CheckCompatibility verifies the options are compatible with the previous options
+// serialized by Options.String(). For example, the Comparer and Merger must be
+// the same, or data will not be able to be properly read from the DB.
+//
+// This function only looks at specific keys and does not error out if the
+// options are newer and contain unknown keys.
+func (o *Options) CheckCompatibility(previousOptions string) error {
+	return parseOptions(previousOptions, func(section, key, value string) error {
 		switch section + "." + key {
 		case "Options.comparer":
 			if value != o.Comparer.Name {
@@ -1818,11 +1820,6 @@ func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 			if value != "nullptr" && value != o.Merger.Name {
 				return errors.Errorf("pebble: merger name from file %q != merger name from options %q",
 					errors.Safe(value), errors.Safe(o.Merger.Name))
-			}
-		case "Options.strict_wal_tail":
-			strictWALTail, err = strconv.ParseBool(value)
-			if err != nil {
-				return errors.Errorf("pebble: error parsing strict_wal_tail value %q: %w", value, err)
 			}
 		case "Options.wal_dir", "WAL Failover.secondary_dir":
 			switch {
@@ -1841,14 +1838,6 @@ func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 		}
 		return nil
 	})
-}
-
-// Check verifies the options are compatible with the previous options
-// serialized by Options.String(). For example, the Comparer and Merger must be
-// the same, or data will not be able to be properly read from the DB.
-func (o *Options) Check(s string) error {
-	_, err := o.checkOptions(s)
-	return err
 }
 
 // Validate verifies that the options are mutually consistent. For example,
