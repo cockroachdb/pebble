@@ -629,9 +629,30 @@ func (k *keyManager) update(o op) {
 			k.objKeyMeta(batchID).CollapseKeys()
 			k.mergeObjectInto(batchID, s.dbID)
 		}
-		// TODO(bilal): Handle ingestAndExciseOp and replicateOp here. We currently
-		// disable SingleDelete when these operations are enabled (see
-		// multiInstanceConfig).
+	case *ingestAndExciseOp:
+		// IngestAndExcise does not ingest multiple batches, so we will not see
+		// a failure due to overlapping sstables. However we do need to merge
+		// the singular batch into the key manager.
+		//
+		// Remove all keys from the key manager within the excise span before
+		// merging the batch into the db.
+		ts := k.nextMetaTimestamp()
+		keyRange := pebble.KeyRange{Start: s.exciseStart, End: s.exciseEnd}
+		for _, key := range k.knownKeysInRange(keyRange) {
+			meta := k.getOrInit(s.batchID, key)
+			if meta.objID.tag() == dbTag {
+				meta.clear()
+			} else {
+				meta.history = append(meta.history, keyHistoryItem{
+					opType:        OpWriterDeleteRange, // Mimic a DeleteRange.
+					metaTimestamp: ts,
+				})
+			}
+		}
+		k.objKeyMeta(s.batchID).CollapseKeys()
+		k.mergeObjectInto(s.batchID, s.dbID)
+		// TODO(bilal): Handle replicateOp here. We currently disable SingleDelete
+		// when these operations are enabled (see multiInstanceConfig).
 	case *newExternalObjOp:
 		// Collapse and transfer the keys from the batch to the external object.
 		k.objKeyMeta(s.batchID).CollapseKeys()
