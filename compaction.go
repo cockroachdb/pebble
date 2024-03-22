@@ -244,7 +244,11 @@ type compaction struct {
 	// application. Only holders of the manifest lock will write to this atomic.
 	cancel atomic.Bool
 
-	kind      compactionKind
+	kind compactionKind
+	// isDownloadCompaction is true if this compaction was started as part of a Download operation.
+	// In this case kind is compactionKindCopy or compactionKindRewrite.
+	isDownloadCompaction bool
+
 	cmp       Compare
 	equal     Equal
 	comparer  *base.Comparer
@@ -1898,79 +1902,86 @@ func pickElisionOnly(picker compactionPicker, env compactionEnv) *pickedCompacti
 	return picker.pickElisionOnlyCompaction(env)
 }
 
-// maybeScheduleDownloadCompaction schedules a download compaction.
+// tryScheduleDownloadCompaction tries to start a download compaction.
 //
-// Requires d.mu to be held.
-func (d *DB) maybeScheduleDownloadCompaction(env compactionEnv, maxConcurrentCompactions int) {
-	for len(d.mu.compact.downloads) > 0 && d.mu.compact.compactingCount < maxConcurrentCompactions {
-		v := d.mu.versions.currentVersion()
-		download := d.mu.compact.downloads[0]
-		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
-		var externalFile *fileMetadata
-		var err error
-		var level int
+// Returns true if we started a download compaction (or completed it
+// immediately because it is a no-op or we hit an error).
+//
+// Requires d.mu to be held. Updates d.mu.compact.downloads.
+func (d *DB) tryScheduleDownloadCompaction(env compactionEnv) bool {
+	v := d.mu.versions.currentVersion()
+	download := d.mu.compact.downloads[0]
+	env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+
+	// Find an external file within the span that is not already compacting.
+	externalFile, level, err := func() (*fileMetadata, int, error) {
 		bounds := base.UserKeyBoundsEndExclusive(download.start, download.end)
 		for i := range v.Levels {
 			overlaps := v.Overlaps(i, bounds)
 			iter := overlaps.Iter()
-			provider := d.objProvider
 			for f := iter.First(); f != nil; f = iter.Next() {
-				var objMeta objstorage.ObjectMetadata
-				objMeta, err = provider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+				objMeta, err := d.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
 				if err != nil {
-					break
+					return nil, 0, err
 				}
-				if objMeta.IsExternal() {
-					if f.IsCompacting() {
-						continue
-					}
-					externalFile = f
-					level = i
-					break
+				if objMeta.IsExternal() && !f.IsCompacting() {
+					return f, i, nil
 				}
 			}
-			if externalFile != nil || err != nil {
-				break
-			}
 		}
-		if err != nil {
-			d.mu.compact.downloads = d.mu.compact.downloads[1:]
-			download.doneChans[download.compactionsStarted] <- err
-			continue
-		}
-		if externalFile == nil {
-			// The entirety of this span is downloaded, or is being downloaded right
-			// now. No need to schedule additional downloads for this span.
-			d.mu.compact.downloads = d.mu.compact.downloads[1:]
-			continue
-		}
-		pc := pickDownloadCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), download, level, externalFile)
-		if pc != nil {
-			doneCh := download.doneChans[download.compactionsStarted]
-			download.compactionsStarted++
-			// Create another doneChan for the next compaction.
-			download.doneChans = append(download.doneChans, make(chan error, 1))
+		return nil, 0, nil
+	}()
 
-			c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
-			d.mu.compact.compactingCount++
-			d.addInProgressCompaction(c)
-			go d.compact(c, doneCh)
-		}
+	if err != nil {
+		// Report and error and remove this download span.
+		download.doneChans[download.compactionsStarted] <- err
+		d.mu.compact.downloads = d.mu.compact.downloads[1:]
+		return true
 	}
+	if externalFile == nil {
+		// The entirety of this span is downloaded, or is being downloaded right
+		// now.
+		d.mu.compact.downloads = d.mu.compact.downloads[1:]
+		return true
+	}
+
+	pc := pickDownloadCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), download, level, externalFile)
+	if pc == nil {
+		// We are not able to run this download compaction at this time.
+		//
+		// TODO(radu): there may be other external files within this span that we
+		// could try.
+		return false
+	}
+
+	doneCh := download.doneChans[download.compactionsStarted]
+	download.compactionsStarted++
+	// Create another doneChan for the next compaction.
+	download.doneChans = append(download.doneChans, make(chan error, 1))
+
+	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+	c.isDownloadCompaction = true
+	d.mu.compact.downloadingCount++
+	d.addInProgressCompaction(c)
+	go d.compact(c, doneCh)
+	return true
 }
 
 // maybeScheduleCompactionPicker schedules a compaction if necessary,
 // calling `pickFunc` to pick automatic compactions.
 //
-// d.mu must be held when calling this.
+// Requires d.mu to be held.
 func (d *DB) maybeScheduleCompactionPicker(
 	pickFunc func(compactionPicker, compactionEnv) *pickedCompaction,
 ) {
 	if d.closed.Load() != nil || d.opts.ReadOnly {
 		return
 	}
-	maxConcurrentCompactions := d.opts.MaxConcurrentCompactions()
-	if d.mu.compact.compactingCount >= maxConcurrentCompactions {
+	maxCompactions := d.opts.MaxConcurrentCompactions()
+	maxDownloads := d.opts.MaxConcurrentDownloads()
+
+	if d.mu.compact.compactingCount >= maxCompactions &&
+		(len(d.mu.compact.downloads) == 0 || d.mu.compact.downloadingCount >= maxDownloads) {
 		if len(d.mu.compact.manual) > 0 {
 			// Inability to run head blocks later manual compactions.
 			d.mu.compact.manual[0].retries++
@@ -1979,7 +1990,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 
 	// Compaction picking needs a coherent view of a Version. In particular, we
-	// need to exlude concurrent ingestions from making a decision on which level
+	// need to exclude concurrent ingestions from making a decision on which level
 	// to ingest into that conflicts with our compaction
 	// decision. versionSet.logLock provides the necessary mutual exclusion.
 	d.mu.versions.logLock()
@@ -1997,64 +2008,102 @@ func (d *DB) maybeScheduleCompactionPicker(
 		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
 	}
 
-	// Check for delete-only compactions first, because they're expected to be
-	// cheap and reduce future compaction work.
-	if !d.opts.private.disableDeleteOnlyCompactions &&
-		len(d.mu.compact.deletionHints) > 0 &&
-		!d.opts.DisableAutomaticCompactions {
-		v := d.mu.versions.currentVersion()
-		snapshots := d.mu.snapshots.toSlice()
-		inputs, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots)
-		d.mu.compact.deletionHints = unresolvedHints
+	if d.mu.compact.compactingCount < maxCompactions {
+		// Check for delete-only compactions first, because they're expected to be
+		// cheap and reduce future compaction work.
+		if !d.opts.private.disableDeleteOnlyCompactions &&
+			!d.opts.DisableAutomaticCompactions &&
+			len(d.mu.compact.deletionHints) > 0 {
+			d.tryScheduleDeleteOnlyCompaction()
+		}
 
-		if len(inputs) > 0 {
-			c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow())
-			d.mu.compact.compactingCount++
-			d.addInProgressCompaction(c)
-			go d.compact(c, nil)
+		for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < maxCompactions {
+			if manual := d.mu.compact.manual[0]; !d.tryScheduleManualCompaction(env, manual) {
+				// Inability to run head blocks later manual compactions.
+				manual.retries++
+				break
+			}
+			d.mu.compact.manual = d.mu.compact.manual[1:]
+		}
+
+		for !d.opts.DisableAutomaticCompactions && d.mu.compact.compactingCount < maxCompactions &&
+			d.tryScheduleAutoCompaction(env, pickFunc) {
 		}
 	}
 
-	for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < maxConcurrentCompactions {
-		v := d.mu.versions.currentVersion()
-		manual := d.mu.compact.manual[0]
-		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
-		pc, retryLater := pickManualCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
-		if pc != nil {
-			c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
-			d.mu.compact.manual = d.mu.compact.manual[1:]
-			d.mu.compact.compactingCount++
-			d.addInProgressCompaction(c)
-			go d.compact(c, manual.done)
-		} else if !retryLater {
-			// Noop
-			d.mu.compact.manual = d.mu.compact.manual[1:]
-			manual.done <- nil
-		} else {
-			// Inability to run head blocks later manual compactions.
-			manual.retries++
-			break
-		}
+	for len(d.mu.compact.downloads) > 0 && d.mu.compact.downloadingCount < maxDownloads &&
+		d.tryScheduleDownloadCompaction(env) {
 	}
+}
 
-	for !d.opts.DisableAutomaticCompactions && d.mu.compact.compactingCount < maxConcurrentCompactions {
-		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
-		env.readCompactionEnv = readCompactionEnv{
-			readCompactions:          &d.mu.compact.readCompactions,
-			flushing:                 d.mu.compact.flushing || d.passedFlushThreshold(),
-			rescheduleReadCompaction: &d.mu.compact.rescheduleReadCompaction,
-		}
-		pc := pickFunc(d.mu.versions.picker, env)
-		if pc == nil {
-			break
-		}
-		c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+// tryScheduleDeleteOnlyCompaction tries to kick off a delete-only compaction
+// for all files that can be deleted as suggested by deletionHints.
+//
+// Requires d.mu to be held. Updates d.mu.compact.deletionHints.
+func (d *DB) tryScheduleDeleteOnlyCompaction() {
+	v := d.mu.versions.currentVersion()
+	snapshots := d.mu.snapshots.toSlice()
+	inputs, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots)
+	d.mu.compact.deletionHints = unresolvedHints
+
+	if len(inputs) > 0 {
+		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow())
 		d.mu.compact.compactingCount++
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
 	}
+}
 
-	d.maybeScheduleDownloadCompaction(env, maxConcurrentCompactions)
+// tryScheduleManualCompaction tries to kick off the given manual compaction.
+//
+// Returns false if we are not able to run this compaction at this time.
+//
+// Requires d.mu to be held.
+func (d *DB) tryScheduleManualCompaction(env compactionEnv, manual *manualCompaction) bool {
+	v := d.mu.versions.currentVersion()
+	env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+	pc, retryLater := pickManualCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
+	if pc == nil {
+		if !retryLater {
+			// Manual compaction is a no-op. Signal completion and exit.
+			manual.done <- nil
+			return true
+		}
+		// We are not able to run this manual compaction at this time.
+		return false
+	}
+
+	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+	d.mu.compact.compactingCount++
+	d.addInProgressCompaction(c)
+	go d.compact(c, manual.done)
+	return true
+}
+
+// tryScheduleAutoCompaction tries to kick off an automatic compaction.
+//
+// Returns false if no automatic compactions are necessary or able to run at
+// this time.
+//
+// Requires d.mu to be held.
+func (d *DB) tryScheduleAutoCompaction(
+	env compactionEnv, pickFunc func(compactionPicker, compactionEnv) *pickedCompaction,
+) bool {
+	env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+	env.readCompactionEnv = readCompactionEnv{
+		readCompactions:          &d.mu.compact.readCompactions,
+		flushing:                 d.mu.compact.flushing || d.passedFlushThreshold(),
+		rescheduleReadCompaction: &d.mu.compact.rescheduleReadCompaction,
+	}
+	pc := pickFunc(d.mu.versions.picker, env)
+	if pc == nil {
+		return false
+	}
+	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+	d.mu.compact.compactingCount++
+	d.addInProgressCompaction(c)
+	go d.compact(c, nil)
+	return true
 }
 
 // deleteCompactionHintType indicates whether the deleteCompactionHint was
@@ -2339,7 +2388,11 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 			// TODO(peter): count consecutive compaction errors and backoff.
 			d.opts.EventListener.BackgroundError(err)
 		}
-		d.mu.compact.compactingCount--
+		if c.isDownloadCompaction {
+			d.mu.compact.downloadingCount--
+		} else {
+			d.mu.compact.compactingCount--
+		}
 		delete(d.mu.compact.inProgress, c)
 		// Add this compaction's duration to the cumulative duration. NB: This
 		// must be atomic with the above removal of c from
@@ -3393,7 +3446,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	d.opts.DisableAutomaticCompactions = true
 
 	// Wait for any ongoing compaction to complete before continuing.
-	for d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
+	for d.mu.compact.compactingCount > 0 || d.mu.compact.downloadingCount > 0 || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()
 	}
 

@@ -91,6 +91,7 @@ func TestOptionsString(t *testing.T) {
   l0_stop_writes_threshold=12
   lbase_max_bytes=67108864
   max_concurrent_compactions=1
+  max_concurrent_downloads=1
   max_manifest_file_size=134217728
   max_open_files=1000
   mem_table_size=4194304
