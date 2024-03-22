@@ -1444,9 +1444,6 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	baseLevel := d.mu.versions.picker.getBaseLevel()
 	iterOpts := IterOptions{logger: d.opts.Logger}
 	ve := &versionEdit{}
-	var level int
-	var err error
-	var fileToSplit *fileMetadata
 	var ingestSplitFiles []ingestSplitFile
 	ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
 
@@ -1474,45 +1471,24 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 
 	replacedFiles := make(map[base.FileNum][]newFileEntry)
 	for _, file := range ingestFlushable.files {
+		var fileToSplit *fileMetadata
+		var level int
+
 		// This file fits perfectly within the excise span, so we can slot it at L6.
 		if ingestFlushable.exciseSpan.Valid() &&
 			ingestFlushable.exciseSpan.Contains(d.cmp, file.FileMetadata.Smallest) &&
 			ingestFlushable.exciseSpan.Contains(d.cmp, file.FileMetadata.Largest) {
 			level = 6
 		} else {
+			var err error
 			level, fileToSplit, err = ingestTargetLevel(
 				d.newIters, d.tableNewRangeKeyIter, iterOpts, d.opts.Comparer,
 				c.version, baseLevel, d.mu.compact.inProgress, file.FileMetadata,
 				suggestSplit,
 			)
-		}
-
-		if ingestFlushable.exciseSpan.Valid() {
-			// Iterate through all levels and find files that intersect with exciseSpan.
-			for level = range c.version.Levels {
-				overlaps := c.version.Overlaps(level, base.UserKeyBoundsEndExclusive(ingestFlushable.exciseSpan.Start, ingestFlushable.exciseSpan.End))
-				iter := overlaps.Iter()
-
-				for m := iter.First(); m != nil; m = iter.Next() {
-					newFiles, err := d.excise(ingestFlushable.exciseSpan, m, ve, level)
-					if err != nil {
-						return nil, err
-					}
-
-					if _, ok := ve.DeletedFiles[deletedFileEntry{
-						Level:   level,
-						FileNum: m.FileNum,
-					}]; !ok {
-						// We did not excise this file.
-						continue
-					}
-					replacedFiles[m.FileNum] = newFiles
-					updateLevelMetricsOnExcise(m, level, newFiles)
-				}
+			if err != nil {
+				return nil, err
 			}
-		}
-		if err != nil {
-			return nil, err
 		}
 
 		// Add the current flushableIngest file to the version.
@@ -1531,6 +1507,30 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		}
 		levelMetrics.BytesIngested += file.Size
 		levelMetrics.TablesIngested++
+	}
+	if ingestFlushable.exciseSpan.Valid() {
+		// Iterate through all levels and find files that intersect with exciseSpan.
+		for l := range c.version.Levels {
+			overlaps := c.version.Overlaps(l, base.UserKeyBoundsEndExclusive(ingestFlushable.exciseSpan.Start, ingestFlushable.exciseSpan.End))
+			iter := overlaps.Iter()
+
+			for m := iter.First(); m != nil; m = iter.Next() {
+				newFiles, err := d.excise(ingestFlushable.exciseSpan, m, ve, l)
+				if err != nil {
+					return nil, err
+				}
+
+				if _, ok := ve.DeletedFiles[deletedFileEntry{
+					Level:   l,
+					FileNum: m.FileNum,
+				}]; !ok {
+					// We did not excise this file.
+					continue
+				}
+				replacedFiles[m.FileNum] = newFiles
+				updateLevelMetricsOnExcise(m, l, newFiles)
+			}
+		}
 	}
 
 	if len(ingestSplitFiles) > 0 {
