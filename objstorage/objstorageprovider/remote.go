@@ -421,5 +421,5 @@ func (p *provider) ensureStorage(locator remote.Locator) (remote.Storage, error)
 func (p *provider) GetExternalObjects(locator remote.Locator, objName string) []base.DiskFileNum {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.mu.remote.getExternalObjects(locator, objName)
+	return slices.Clone(p.mu.remote.getExternalObjects(locator, objName))
 }
