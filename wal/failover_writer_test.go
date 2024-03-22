@@ -726,4 +726,35 @@ func randStr(fill []byte, rng *rand.Rand) {
 	}
 }
 
+func TestFailoverWriterManyRecords(t *testing.T) {
+	stopper := newStopper()
+	memFS := vfs.NewMem()
+	f, err := memFS.OpenDir("")
+	require.NoError(t, err)
+	dir := dirAndFileHandle{
+		Dir:  Dir{FS: memFS, Dirname: ""},
+		File: f,
+	}
+	w, err := newFailoverWriter(failoverWriterOpts{
+		wn:              1,
+		timeSource:      defaultTime{},
+		logCreator:      simpleLogCreator,
+		preallocateSize: func() int { return 0 },
+		stopper:         stopper,
+		writerClosed:    func(_ logicalLogWithSizesEtc) {},
+	}, dir)
+	require.NoError(t, err)
+	var buf [1]byte
+	const count = 4 * initialBufferLen
+	wg := &sync.WaitGroup{}
+	wg.Add(count)
+	for i := 0; i < count; i++ {
+		_, err := w.WriteRecord(buf[:], SyncOptions{Done: wg, Err: new(error)}, nil)
+		require.NoError(t, err)
+	}
+	_, err = w.Close()
+	require.NoError(t, err)
+	stopper.stop()
+}
+
 // TODO(sumeer): randomized error injection and delay injection test.
