@@ -256,8 +256,7 @@ func openExternalObj(
 		rangeDelIter = keyspan.Truncate(
 			t.opts.Comparer.Compare,
 			rangeDelIter,
-			start, end,
-			nil /* start */, nil /* end */, false, /* panicOnUpperTruncate */
+			base.UserKeyBoundsEndExclusive(start, end),
 		)
 	}
 
@@ -267,8 +266,7 @@ func openExternalObj(
 		rangeKeyIter = keyspan.Truncate(
 			t.opts.Comparer.Compare,
 			rangeKeyIter,
-			start, end,
-			nil /* start */, nil /* end */, false, /* panicOnUpperTruncate */
+			base.UserKeyBoundsEndExclusive(start, end),
 		)
 	}
 	return reader, pointIter, rangeDelIter, rangeKeyIter

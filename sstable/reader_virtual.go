@@ -138,13 +138,9 @@ func (v *VirtualReader) NewRawRangeDelIter(
 	if iter == nil {
 		return nil, nil
 	}
-	lower := &v.vState.lower
-	upper := &v.vState.upper
 
-	// Truncation of spans isn't allowed at a user key that also contains points
-	// in the same virtual sstable, as it would lead to covered points getting
-	// uncovered. Set panicOnUpperTruncate to true if the file's upper bound
-	// is not an exclusive sentinel.
+	// Note that if upper is not an exclusive sentinel, Truncate will assert that
+	// there is no span that contains that key.
 	//
 	// As an example, if an sstable contains a rangedel a-c and point keys at
 	// a.SET.2 and b.SET.3, the file bounds [a#2,SET-b#RANGEDELSENTINEL] are
@@ -152,8 +148,8 @@ func (v *VirtualReader) NewRawRangeDelIter(
 	// includes both point keys), but not [a#2,SET-b#3,SET] (as it would truncate
 	// the rangedel at b and lead to the point being uncovered).
 	return keyspan.Truncate(
-		v.reader.Compare, iter, lower.UserKey, upper.UserKey,
-		lower, upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnUpperTruncate */
+		v.reader.Compare, iter,
+		base.UserKeyBoundsFromInternal(v.vState.lower, v.vState.upper),
 	), nil
 }
 
@@ -175,8 +171,6 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 	if iter == nil {
 		return nil, nil
 	}
-	lower := &v.vState.lower
-	upper := &v.vState.upper
 
 	if v.vState.isSharedIngested {
 		// We need to coalesce range keys within each sstable, and then apply the
@@ -196,10 +190,8 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 		iter = transformIter
 	}
 
-	// Truncation of spans isn't allowed at a user key that also contains points
-	// in the same virtual sstable, as it would lead to covered points getting
-	// uncovered. Set panicOnUpperTruncate to true if the file's upper bound
-	// is not an exclusive sentinel.
+	// Note that if upper is not an exclusive sentinel, Truncate will assert that
+	// there is no span that contains that key.
 	//
 	// As an example, if an sstable contains a range key a-c and point keys at
 	// a.SET.2 and b.SET.3, the file bounds [a#2,SET-b#RANGEKEYSENTINEL] are
@@ -207,8 +199,8 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 	// includes both point keys), but not [a#2,SET-b#3,SET] (as it would truncate
 	// the range key at b and lead to the point being uncovered).
 	return keyspan.Truncate(
-		v.reader.Compare, iter, lower.UserKey, upper.UserKey,
-		lower, upper, !v.vState.upper.IsExclusiveSentinel(), /* panicOnUpperTruncate */
+		v.reader.Compare, iter,
+		base.UserKeyBoundsFromInternal(v.vState.lower, v.vState.upper),
 	), nil
 }
 
