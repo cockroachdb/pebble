@@ -1277,6 +1277,22 @@ func (g *generator) writerIngestAndExcise() {
 	start, end := g.prefixKeyRange()
 	derivedDBID := g.objDB[batchID]
 
+	// Check for any single delete conflicts. If this batch is single-deleting
+	// a key that isn't safe to single delete in the underlying db, _and_ this
+	// key is not in the excise span, we add a delete before the ingestAndExcise.
+	singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(batchID, dbID, true /* collapsed */)
+	for _, conflict := range singleDeleteConflicts {
+		if g.cmp(conflict, start) >= 0 && g.cmp(conflict, end) < 0 {
+			// This key will get excised anyway.
+			continue
+		}
+		g.add(&deleteOp{
+			writerID:    dbID,
+			key:         conflict,
+			derivedDBID: dbID,
+		})
+	}
+
 	g.add(&ingestAndExciseOp{
 		dbID:        dbID,
 		batchID:     batchID,

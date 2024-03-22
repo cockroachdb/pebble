@@ -896,8 +896,15 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 	if t.testOpts.Opts.Comparer.Compare(o.exciseEnd, o.exciseStart) <= 0 {
 		panic("non-well-formed excise span")
 	}
+	db := t.getDB(o.dbID)
 	if b.Empty() {
-		// No-op.
+		// Ingestion will be a no-op. But still do a DeleteRange and RangeKeyDelete
+		// as the generator/key manager expect this to succeed regardless.
+		//
+		// TODO(bilal): Take out this case when we support standalone Excises with
+		// no ingestions.
+		err = firstError(err, db.DeleteRange(o.exciseStart, o.exciseEnd, t.writeOpts))
+		err = firstError(err, db.RangeKeyDelete(o.exciseStart, o.exciseEnd, t.writeOpts))
 		h.Recordf("%s // %v", o, err)
 		return
 	}
@@ -920,7 +927,6 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 		h.Recordf("%s // %v", o, err)
 		return
 	}
-	db := t.getDB(o.dbID)
 	if !t.testOpts.useExcise {
 		// Do a rangedel and rangekeydel before the ingestion. This mimics the
 		// behaviour of an excise.
