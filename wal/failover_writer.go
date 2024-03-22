@@ -153,9 +153,10 @@ func (q *recordQueue) push(
 	ht := q.headTail.Load()
 	h, t := unpackHeadTail(ht)
 	n := int(h - t)
-	if len(q.buffer) == n {
+	m := len(q.buffer)
+	if m == n {
 		// Full
-		m := 2 * n
+		m = 2 * n
 		newBuffer := make([]recordQueueEntry, m)
 		for i := int(t); i < int(h); i++ {
 			newBuffer[i%m] = q.buffer[i%n]
@@ -165,7 +166,7 @@ func (q *recordQueue) push(
 		q.mu.Unlock()
 	}
 	q.mu.RLock()
-	q.buffer[h] = recordQueueEntry{
+	q.buffer[int(h)%m] = recordQueueEntry{
 		p:     p,
 		opts:  opts,
 		unref: unref,
@@ -174,7 +175,7 @@ func (q *recordQueue) push(
 	// multiple consumers are popping using CAS and that immediately transfers
 	// ownership to the producer.
 	for i := q.lastTailObservedByProducer; i < t; i++ {
-		q.buffer[i] = recordQueueEntry{}
+		q.buffer[int(i)%m] = recordQueueEntry{}
 	}
 	q.lastTailObservedByProducer = t
 	q.headTail.Add(1 << headTailBits)
