@@ -969,16 +969,15 @@ func newCombinedDeletionKeyspanIter(
 		}
 		// Wrap the range key iterator in a filter that elides keys other than range
 		// key deletions.
-		iter = keyspan.Filter(iter, func(in *keyspan.Span, out *keyspan.Span) (keep bool) {
-			out.Start, out.End = in.Start, in.End
-			out.Keys = out.Keys[:0]
+		iter = keyspan.Filter(iter, func(in *keyspan.Span, buf []keyspan.Key) []keyspan.Key {
+			keys := buf[:0]
 			for _, k := range in.Keys {
 				if k.Kind() != base.InternalKeyKindRangeKeyDelete {
 					continue
 				}
-				out.Keys = append(out.Keys, k)
+				keys = append(keys, k)
 			}
-			return len(out.Keys) > 0
+			return keys
 		}, comparer.Compare)
 		dIter := &keyspan.DefragmentingIter{}
 		dIter.Init(comparer, iter, equal, reducer, new(keyspan.DefragmentingBuffers))
