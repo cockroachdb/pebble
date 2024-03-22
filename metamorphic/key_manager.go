@@ -636,18 +636,9 @@ func (k *keyManager) update(o op) {
 		//
 		// Remove all keys from the key manager within the excise span before
 		// merging the batch into the db.
-		ts := k.nextMetaTimestamp()
-		keyRange := pebble.KeyRange{Start: s.exciseStart, End: s.exciseEnd}
-		for _, key := range k.knownKeysInRange(keyRange) {
-			meta := k.getOrInit(s.batchID, key)
-			if meta.objID.tag() == dbTag {
-				meta.clear()
-			} else {
-				meta.history = append(meta.history, keyHistoryItem{
-					opType:        OpWriterDeleteRange, // Mimic a DeleteRange.
-					metaTimestamp: ts,
-				})
-			}
+		for _, key := range k.InRangeKeysForObj(s.dbID, s.exciseStart, s.exciseEnd) {
+			m := k.getOrInit(s.dbID, key.key)
+			m.clear()
 		}
 		k.objKeyMeta(s.batchID).CollapseKeys()
 		k.mergeObjectInto(s.batchID, s.dbID)

@@ -314,7 +314,7 @@ func multiInstanceConfig() OpConfig {
 	cfg := DefaultOpConfig()
 	cfg.ops[OpReplicate] = 5
 	// Single deletes and merges are disabled in multi-instance mode, as
-	// replicateOp and ingestAndExciseOp don't support them.
+	// replicateOp doesn't support them.
 	cfg.ops[OpWriterSingleDelete] = 0
 	cfg.ops[OpWriterMerge] = 0
 
