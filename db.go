@@ -412,8 +412,10 @@ type DB struct {
 			cond sync.Cond
 			// True when a flush is in progress.
 			flushing bool
-			// The number of ongoing compactions.
+			// The number of ongoing non-download compactions.
 			compactingCount int
+			// The number of download compactions.
+			downloadingCount int
 			// The list of deletion hints, suggesting ranges for delete-only
 			// compactions.
 			deletionHints []deleteCompactionHint
@@ -1610,7 +1612,7 @@ func (d *DB) Close() error {
 
 	defer d.opts.Cache.Unref()
 
-	for d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
+	for d.mu.compact.compactingCount > 0 || d.mu.compact.downloadingCount > 0 || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()
 	}
 	for d.mu.tableStats.loading {
@@ -1989,7 +1991,7 @@ func (d *DB) downloadSpan(ctx context.Context, span DownloadSpan) error {
 					return true
 				}
 				d.maybeScheduleCompaction()
-				if d.mu.compact.compactingCount == 0 {
+				if d.mu.compact.compactingCount == 0 && d.mu.compact.downloadingCount == 0 {
 					// No compactions were scheduled above. Waiting on the cond lock below
 					// could possibly lead to a forever-wait. Return true if the db is
 					// closed so we exit out of this method.
@@ -2082,7 +2084,8 @@ func (d *DB) Metrics() *Metrics {
 	*metrics = d.mu.versions.metrics
 	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt(0)
 	metrics.Compact.InProgressBytes = d.mu.versions.atomicInProgressBytes.Load()
-	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount)
+	// TODO(radu): split this to separate the download compactions.
+	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount + d.mu.compact.downloadingCount)
 	metrics.Compact.MarkedFiles = vers.Stats.MarkedForCompaction
 	metrics.Compact.Duration = d.mu.compact.duration
 	for c := range d.mu.compact.inProgress {

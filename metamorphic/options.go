@@ -537,6 +537,7 @@ func standardOptions() []*TestOptions {
 		29: fmt.Sprintf(`
 [Options]
   format_major_version=%s
+  max_concurrent_downloads=2
 [TestOptions]
   shared_storage_enabled=true
   external_storage_enabled=true
@@ -607,6 +608,10 @@ func RandomOptions(
 	maxConcurrentCompactions := rng.Intn(3) + 1  // 1-3
 	opts.MaxConcurrentCompactions = func() int {
 		return maxConcurrentCompactions
+	}
+	maxConcurrentDownloads := rng.Intn(3) + 1 // 1-3
+	opts.MaxConcurrentDownloads = func() int {
+		return maxConcurrentDownloads
 	}
 	opts.MaxManifestFileSize = 1 << uint(rng.Intn(30)) // 1B  - 1GB
 	opts.MemTableSize = 2 << (10 + uint(rng.Intn(16))) // 2KB - 256MB

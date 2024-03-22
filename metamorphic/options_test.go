@@ -69,6 +69,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"BlockPropertyCollectors:",
 		"EventListener:",
 		"MaxConcurrentCompactions:",
+		"MaxConcurrentDownloads:",
 		"Experimental.DisableIngestAsFlushable:",
 		"Experimental.EnableValueBlocks:",
 		"Experimental.IneffectualSingleDeleteCallback:",
@@ -121,6 +122,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 			require.Equal(t, o.Opts.Experimental.IngestSplit(), parsed.Opts.Experimental.IngestSplit())
 		}
 		require.Equal(t, o.Opts.MaxConcurrentCompactions(), parsed.Opts.MaxConcurrentCompactions())
+		require.Equal(t, o.Opts.MaxConcurrentDownloads(), parsed.Opts.MaxConcurrentDownloads())
 		require.Equal(t, len(o.Opts.BlockPropertyCollectors), len(parsed.Opts.BlockPropertyCollectors))
 
 		diff := pretty.Diff(o.Opts, parsed.Opts)

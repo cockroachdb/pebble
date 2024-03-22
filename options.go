@@ -918,12 +918,30 @@ type Options struct {
 	Merger *Merger
 
 	// MaxConcurrentCompactions specifies the maximum number of concurrent
-	// compactions. The default is 1. Concurrent compactions are performed
-	// - when L0 read-amplification passes the L0CompactionConcurrency threshold
-	// - for automatic background compactions
-	// - when a manual compaction for a level is split and parallelized
-	// MaxConcurrentCompactions must be greater than 0.
+	// compactions (not including download compactions).
+	//
+	// Concurrent compactions are performed:
+	//  - when L0 read-amplification passes the L0CompactionConcurrency threshold;
+	//  - for automatic background compactions;
+	//  - when a manual compaction for a level is split and parallelized.
+	//
+	// MaxConcurrentCompactions() must be greater than 0.
+	//
+	// The default value is 1.
 	MaxConcurrentCompactions func() int
+
+	// MaxConcurrentDownloads specifies the maximum number of download
+	// compactions. These are compactions that copy an external file to the local
+	// store.
+	//
+	// This limit is independent of MaxConcurrentCompactions; at any point in
+	// time, we may be running MaxConcurrentCompactions non-download compactions
+	// and MaxConcurrentDownloads download compactions.
+	//
+	// MaxConcurrentDownloads() must be greater than 0.
+	//
+	// The default value is 1.
+	MaxConcurrentDownloads func() int
 
 	// DisableAutomaticCompactions dictates whether automatic compactions are
 	// scheduled or not. The default is false (enabled). This option is only used
@@ -1187,6 +1205,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.MaxConcurrentCompactions == nil {
 		o.MaxConcurrentCompactions = func() int { return 1 }
 	}
+	if o.MaxConcurrentDownloads == nil {
+		o.MaxConcurrentDownloads = func() int { return 1 }
+	}
 	if o.NumPrevManifest <= 0 {
 		o.NumPrevManifest = 1
 	}
@@ -1331,6 +1352,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  level_multiplier=%d\n", o.Experimental.LevelMultiplier)
 	}
 	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", o.MaxConcurrentCompactions())
+	fmt.Fprintf(&buf, "  max_concurrent_downloads=%d\n", o.MaxConcurrentDownloads())
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
@@ -1584,6 +1606,14 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					err = errors.New("max_concurrent_compactions cannot be <= 0")
 				} else {
 					o.MaxConcurrentCompactions = func() int { return concurrentCompactions }
+				}
+			case "max_concurrent_downloads":
+				var concurrentDownloads int
+				concurrentDownloads, err = strconv.Atoi(value)
+				if concurrentDownloads <= 0 {
+					err = errors.New("max_concurrent_compactions cannot be <= 0")
+				} else {
+					o.MaxConcurrentDownloads = func() int { return concurrentDownloads }
 				}
 			case "max_manifest_file_size":
 				o.MaxManifestFileSize, err = strconv.ParseInt(value, 10, 64)

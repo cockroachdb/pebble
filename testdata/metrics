@@ -139,7 +139,7 @@ Iter category stats:
 
 disk-usage
 ----
-3.1KB
+3.2KB
 
 # Closing iter a will release one of the zombie memtables.
 
