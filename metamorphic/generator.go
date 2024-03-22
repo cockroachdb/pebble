@@ -1294,13 +1294,12 @@ func (g *generator) writerIngestAndExcise() {
 	}
 
 	g.add(&ingestAndExciseOp{
-		dbID:        dbID,
-		batchID:     batchID,
-		derivedDBID: derivedDBID,
-		exciseStart: start,
-		exciseEnd:   end,
-		// TODO(bilal): Uncomment this when known bugs are fixed.
-		//sstContainsExciseTombstone: g.rng.Intn(2) == 0,
+		dbID:                       dbID,
+		batchID:                    batchID,
+		derivedDBID:                derivedDBID,
+		exciseStart:                start,
+		exciseEnd:                  end,
+		sstContainsExciseTombstone: g.rng.Intn(2) == 0,
 	})
 }
 

@@ -908,7 +908,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 		h.Recordf("%s // %v", o, err)
 		return
 	}
-	if t.testOpts.useExcise && o.sstContainsExciseTombstone {
+	if o.sstContainsExciseTombstone {
 		// Add a rangedel and rangekeydel to the batch. This ensures it'll end up
 		// inside the sstable.
 		err = firstError(err, b.DeleteRange(o.exciseStart, o.exciseEnd, t.writeOpts))

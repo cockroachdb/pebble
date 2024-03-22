@@ -632,10 +632,10 @@ flushable ingest
 lsm
 ----
 L0.0:
+  000010:[b#17,SET-f#17,SET]
   000013:[x#15,SET-x#15,SET]
 L6:
   000014(000009):[a#0,SET-a#0,SET]
-  000010:[b#17,SET-f#17,SET]
   000015(000009):[g#0,SET-g#0,SET]
 
 iter lower=c upper=e
@@ -650,5 +650,62 @@ c: (something, .)
 .
 .
 c: (something, .)
+.
+.
+
+batch
+set a old
+set aa old
+----
+
+flush
+----
+
+compact a z
+----
+
+lsm
+----
+L6:
+  000018:[a#0,SET-x#0,SET]
+
+batch commit
+----
+
+build ext5
+set a outside-span
+----
+
+build ext6
+set b somethingElse
+set c somethingElse
+set f somethingElse
+del b-e
+----
+
+ingest-and-excise ext5 ext6 excise=b-e contains-excise-tombstone
+----
+
+lsm
+----
+L0.0:
+  000019:[a#22,SET-a#22,SET]
+  000020:[b#23,SET-f#23,SET]
+L6:
+  000021(000018):[a#0,SET-aa#0,SET]
+  000022(000018):[f#0,SET-x#0,SET]
+
+iter lower=a upper=f
+first
+next
+next
+next
+next
+next
+----
+a: (outside-span, .)
+aa: (old, .)
+b: (somethingElse, .)
+c: (somethingElse, .)
 .
 .
