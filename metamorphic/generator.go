@@ -1300,7 +1300,7 @@ func (g *generator) writerIngestAndExcise() {
 		exciseStart: start,
 		exciseEnd:   end,
 		// TODO(bilal): Uncomment this when known bugs are fixed.
-		//sstContainsExciseTombstone: g.rng.Intn(2) == 0,
+		sstContainsExciseTombstone: g.rng.Intn(2) == 0,
 	})
 }
 

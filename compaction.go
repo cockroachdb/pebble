@@ -1489,25 +1489,25 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 
 		if ingestFlushable.exciseSpan.Valid() {
 			// Iterate through all levels and find files that intersect with exciseSpan.
-			for level = range c.version.Levels {
-				overlaps := c.version.Overlaps(level, base.UserKeyBoundsEndExclusive(ingestFlushable.exciseSpan.Start, ingestFlushable.exciseSpan.End))
+			for l := range c.version.Levels {
+				overlaps := c.version.Overlaps(l, ingestFlushable.exciseSpan.UserKeyBounds())
 				iter := overlaps.Iter()
 
 				for m := iter.First(); m != nil; m = iter.Next() {
-					newFiles, err := d.excise(ingestFlushable.exciseSpan, m, ve, level)
+					newFiles, err := d.excise(ingestFlushable.exciseSpan, m, ve, l)
 					if err != nil {
 						return nil, err
 					}
 
 					if _, ok := ve.DeletedFiles[deletedFileEntry{
-						Level:   level,
+						Level:   l,
 						FileNum: m.FileNum,
 					}]; !ok {
 						// We did not excise this file.
 						continue
 					}
 					replacedFiles[m.FileNum] = newFiles
-					updateLevelMetricsOnExcise(m, level, newFiles)
+					updateLevelMetricsOnExcise(m, l, newFiles)
 				}
 			}
 		}
