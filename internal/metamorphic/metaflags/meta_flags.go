@@ -14,6 +14,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/metamorphic"
@@ -40,6 +41,8 @@ type CommonFlags struct {
 	// NumInstances is the number of Pebble instances to create in one run. See
 	// "num-instances" flag below.
 	NumInstances int
+	// OpTimeout is a per-operation timeout.
+	OpTimeout time.Duration
 }
 
 func initCommonFlags() *CommonFlags {
@@ -71,6 +74,8 @@ func initCommonFlags() *CommonFlags {
 		"limit execution of a single run to the provided number of threads; must be ≥ 1")
 
 	flag.IntVar(&c.NumInstances, "num-instances", 1, "number of pebble instances to create (default: 1)")
+
+	flag.DurationVar(&c.OpTimeout, "op-timeout", 5*time.Minute, "per-op timeout")
 
 	return c
 }
@@ -185,6 +190,7 @@ func InitAllFlags() (*RunOnceFlags, *RunFlags) {
 func (ro *RunOnceFlags) MakeRunOnceOptions() []metamorphic.RunOnceOption {
 	onceOpts := []metamorphic.RunOnceOption{
 		metamorphic.MaxThreads(ro.MaxThreads),
+		metamorphic.OpTimeout(ro.OpTimeout),
 	}
 	if ro.Keep {
 		onceOpts = append(onceOpts, metamorphic.KeepData{})
@@ -236,6 +242,7 @@ func (r *RunFlags) MakeRunOptions() []metamorphic.RunOption {
 		metamorphic.Seed(r.Seed),
 		metamorphic.OpCount(r.Ops.Static),
 		metamorphic.MaxThreads(r.MaxThreads),
+		metamorphic.OpTimeout(r.OpTimeout),
 	}
 	if r.Keep {
 		opts = append(opts, metamorphic.KeepData{})
