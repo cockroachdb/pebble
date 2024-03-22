@@ -1958,52 +1958,60 @@ func (d *DB) downloadSpan(ctx context.Context, span DownloadSpan) error {
 		}
 	}
 
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	for {
+		// Non-blocking select.
 		select {
 		case <-ctx.Done():
-			d.mu.Lock()
-			defer d.mu.Unlock()
 			removeUsFromList()
 			return ctx.Err()
+
 		case err := <-doneChan:
 			if err != nil {
-				d.mu.Lock()
-				defer d.mu.Unlock()
 				removeUsFromList()
 				return err
 			}
-			compactionIdx++
 			// Grab the next doneCh to wait on.
-			func() {
-				d.mu.Lock()
-				defer d.mu.Unlock()
-				doneChan = dSpan.doneChans[compactionIdx]
-			}()
+			compactionIdx++
+			doneChan = dSpan.doneChans[compactionIdx]
+			continue
+
 		default:
-			doneSpan := func() bool {
-				d.mu.Lock()
-				defer d.mu.Unlock()
-				// It's possible to have downloaded all files without writing to any
-				// doneChans. This is expected if there are a significant amount
-				// of overlapping writes that schedule regular, non-download compactions.
-				if noExternalFilesInSpan() {
-					removeUsFromList()
-					return true
-				}
-				d.maybeScheduleCompaction()
-				if d.mu.compact.compactingCount == 0 && d.mu.compact.downloadingCount == 0 {
-					// No compactions were scheduled above. Waiting on the cond lock below
-					// could possibly lead to a forever-wait. Return true if the db is
-					// closed so we exit out of this method.
-					return d.closed.Load() != nil
-				}
-				d.mu.compact.cond.Wait()
-				return false
-			}()
-			if doneSpan {
+		}
+
+		// It's possible to have downloaded all files without getting notifications
+		// on all doneChans. This is expected if there are a significant amount of
+		// overlapping writes that schedule regular, non-download compactions.
+		//
+		// TODO(radu): if the span overlaps many files, checking this after every
+		// compaction completes might be expensive.
+		if noExternalFilesInSpan() {
+			removeUsFromList()
+			return nil
+		}
+
+		d.maybeScheduleCompaction()
+
+		// If no compactions/download are running (and none were scheduled above),
+		// we cannot wait on the condition.
+		if d.mu.compact.compactingCount == 0 && d.mu.compact.downloadingCount == 0 {
+			if d.closed.Load() != nil {
 				return nil
 			}
+			// It is possible that the last compaction just updated the version but
+			// did not yet update the compacting state on the external file(s). Sleep
+			// for a bit and try again.
+			// TODO(radu): investigate this case further.
+			d.mu.Unlock()
+			time.Sleep(100 * time.Microsecond)
+			d.mu.Lock()
+			continue
 		}
+
+		// Wait for a compaction/download to complete and recheck.
+		d.mu.compact.cond.Wait()
 	}
 }
 
