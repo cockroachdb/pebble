@@ -14,8 +14,9 @@ import (
 // truncated to be contained within the given user key bounds.
 //
 // Note that fragment iterator Spans always have exclusive end-keys; if the
-// given bounds have an inclusive end key the input iterator must not produce a
-// span that contains that key.
+// given bounds have an inclusive end key, then the input iterator must not
+// produce a span that contains that key. The only difference between bounds.End
+// being inclusive vs exclusive is this extra check.
 func Truncate(cmp base.Compare, iter FragmentIterator, bounds base.UserKeyBounds) FragmentIterator {
 	return &truncatingIter{
 		iter:   iter,
@@ -132,7 +133,7 @@ func (i *truncatingIter) nextSpanWithinBounds(
 			}
 			return nil, false, err
 		}
-		// Intersect [span.Start, span.End) with [lower, upper).
+		// Intersect [span.Start, span.End) with [i.bounds.Start, i.bounds.End.Key).
 		spanBoundsChanged = false
 		start := span.Start
 		if i.cmp(start, i.bounds.Start) < 0 {
