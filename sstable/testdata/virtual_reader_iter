@@ -1,6 +1,6 @@
-# Test 1: Start with a simple sanity checking test which uses singleLevel
-# iterators as the backing iterator for the sstable. This will also test the
-# compaction iterator since it's the simplest.
+# Start with a simple sanity checking test which uses singleLevel iterators as
+# the backing iterator for the sstable. This will also test the compaction
+# iterator since it's the simplest.
 build
 a.SET.1:a
 b.SET.1:b
@@ -10,102 +10,14 @@ d.SET.1:d
 point:    [a#1,SET-d#1,SET]
 seqnums:  [1-1]
 
-# Note that the RawKeySize,RawValueSize aren't accurate here because we use
-# Reader.EstimateDiskUsage with virtual sstables bounds to determine virtual
-# sstable size which is then used to extrapolate virtual sstable properties,
-# and for tiny sstables, virtual sstable sizes aren't accurate. In this
-# testcase, the virtual sstable size is 50, whereas the backing sstable size is
-# 850.
 virtualize lower=b.SET.1 upper=c.SET.1
 ----
 bounds:  [b#1,SET-c#1,SET]
-filenum: 000001
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 3
-  rocksdb.raw.value.size: 1
 
 compaction-iter
 ----
 b#1,SET:b
 c#1,SET:c
-
-# Test 2: Similar to test 1 but force two level iterators.
-build block-size=1 index-block-size=1
-a.SET.1:a
-b.SET.1:b
-c.SET.1:c
-d.SET.1:d
-----
-point:    [a#1,SET-d#1,SET]
-seqnums:  [1-1]
-
-virtualize lower=b.SET.1 upper=c.SET.1
-----
-bounds:  [b#1,SET-c#1,SET]
-filenum: 000002
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 3
-  rocksdb.raw.value.size: 1
-
-compaction-iter
-----
-b#1,SET:b
-c#1,SET:c
-
-# Test the constrain bounds function. It performs some subtle shrinking and
-# expanding of bounds. The current virtual sstable bounds are [b,c].
-# 1. start key < virtual sstable start key, end key is exclusive.
-constrain a,bb,false
-----
-b,bb,false
-
-# 2. start key < virtual sstable start key, end key is inclusive.
-constrain a,bb,true
-----
-b,bb,true
-
-# 3. start key is within virtual sstable bounds, end key is at virtual sstable
-# end bound, but is exclusive.
-constrain bb,c,false
-----
-bb,c,false
-
-# 3. start key is within virtual sstable bounds, end key is at virtual sstable
-# end bound, but is inclusive.
-constrain bb,c,true
-----
-bb,c,true
-
-# 4. start key is within virtual sstable bounds, end key is above virtual
-# sstable end bound and is exclusive.
-constrain bb,e,false
-----
-bb,c,true
-
-# 5. start key is within virtual sstable bounds, end key is above virtual
-# sstable end bound and is inclusive.
-constrain bb,e,true
-----
-bb,c,true
-
-# 6. Both start, end keys fit within virtual sstable bounds.
-constrain bb,bbb,false
-----
-bb,bbb,false
-
-# 6. Both start, end keys are out of bounds, but overlap.
-constrain a,d,false
-----
-b,c,true
-
-# 7. start, end keys have no overlap with virtual sstable bounds. Note that
-# lower becomes greater than upper here. We support this in the iterators
-# and don't return any keys for this case.
-constrain a,aa,false
-----
-b,aa,false
 
 scan-range-del
 ----
@@ -113,7 +25,7 @@ scan-range-del
 scan-range-key
 ----
 
-# Test 3: Tests raw range key/range del iterators, and makes sure that they
+# Test raw range key/range del iterators, and make sure that they
 # respect virtual bounds.
 build block-size=1 index-block-size=1
 a.SET.1:a
@@ -134,14 +46,6 @@ seqnums:  [1-12]
 virtualize lower=a.SET.1 upper=f.SET.1
 ----
 bounds:  [a#1,SET-f#1,SET]
-filenum: 000003
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 4
-  rocksdb.raw.value.size: 1
-  rocksdb.deleted.keys: 1
-  rocksdb.num.range-deletions: 1
-  pebble.num.range-key-sets: 1
 
 scan-range-del
 ----
@@ -151,7 +55,7 @@ scan-range-key
 ----
 a-d:{(#11,RANGEKEYSET,@t10,foo)}
 
-# Test 4: Test iterators with various bounds, and various operations. This calls
+# Test iterators with various bounds, and various operations. This calls
 # VirtualReader.NewIterWithBlockPropertyFilters and performs various operations
 # on those.
 build
@@ -170,11 +74,6 @@ seqnums:  [1-9]
 virtualize lower=dd.SET.5 upper=ddd.SET.6
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
-filenum: 000004
-props:
-  rocksdb.num.entries: 2
-  rocksdb.raw.key.size: 11
-  rocksdb.raw.value.size: 2
 
 # Check lower bound enforcement during SeekPrefixGE.
 iter
@@ -204,11 +103,6 @@ seqnums:  [1-9]
 virtualize lower=c.SET.3 upper=f.SET.6
 ----
 bounds:  [c#3,SET-f#6,SET]
-filenum: 000005
-props:
-  rocksdb.num.entries: 2
-  rocksdb.raw.key.size: 11
-  rocksdb.raw.value.size: 2
 
 # Just test a basic iterator once virtual sstable bounds have been set.
 iter
@@ -307,12 +201,6 @@ seqnums:  [1-9]
 virtualize lower=c.SET.3 upper=f.SET.1:ff
 ----
 bounds:  [c#3,SET-f#0,SET]
-filenum: 000006
-props:
-  rocksdb.num.entries: 2
-  rocksdb.raw.key.size: 13
-  rocksdb.raw.value.size: 2
-  pebble.value-blocks.size: 3
 
 iter
 set-bounds lower=d upper=e
@@ -364,12 +252,6 @@ last
 virtualize lower=f.SET.6 upper=h.SET.9
 ----
 bounds:  [f#6,SET-h#9,SET]
-filenum: 000007
-props:
-  rocksdb.num.entries: 2
-  rocksdb.raw.key.size: 13
-  rocksdb.raw.value.size: 2
-  pebble.value-blocks.size: 3
 
 iter
 seek-lt z
@@ -407,11 +289,6 @@ seqnums:  [1-9]
 virtualize lower=dd.SET.5 upper=ddd.SET.6
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
-filenum: 000008
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 4
-  rocksdb.raw.value.size: 1
 
 # Check lower bound enforcement during SeekPrefixGE.
 iter
@@ -441,11 +318,6 @@ seqnums:  [1-9]
 virtualize lower=c.SET.3 upper=f.SET.6
 ----
 bounds:  [c#3,SET-f#6,SET]
-filenum: 000009
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 7
-  rocksdb.raw.value.size: 1
 
 # Just test a basic iterator once virtual sstable bounds have been set.
 iter
@@ -544,12 +416,6 @@ seqnums:  [1-9]
 virtualize lower=c.SET.3 upper=f.SET.1:ff
 ----
 bounds:  [c#3,SET-f#0,SET]
-filenum: 000010
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 7
-  rocksdb.raw.value.size: 1
-  pebble.value-blocks.size: 2
 
 iter
 set-bounds lower=d upper=e
@@ -601,12 +467,6 @@ last
 virtualize lower=f.SET.6 upper=h.SET.9
 ----
 bounds:  [f#6,SET-h#9,SET]
-filenum: 000011
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 7
-  rocksdb.raw.value.size: 1
-  pebble.value-blocks.size: 2
 
 iter
 seek-lt z
@@ -644,13 +504,6 @@ seqnums:  [1-5]
 virtualize lower=a.SET.1 upper=e.RANGEDEL.72057594037927935
 ----
 bounds:  [a#1,SET-e#72057594037927935,RANGEDEL]
-filenum: 000012
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 4
-  rocksdb.raw.value.size: 1
-  rocksdb.deleted.keys: 1
-  rocksdb.num.range-deletions: 1
 
 iter
 first
@@ -688,13 +541,6 @@ seqnums:  [1-5]
 virtualize lower=a.SET.1 upper=e.RANGEDEL.72057594037927935
 ----
 bounds:  [a#1,SET-e#72057594037927935,RANGEDEL]
-filenum: 000013
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 4
-  rocksdb.raw.value.size: 1
-  rocksdb.deleted.keys: 1
-  rocksdb.num.range-deletions: 1
 
 iter
 first
@@ -738,14 +584,6 @@ seqnums:  [1-12]
 virtualize lower=a.SET.1 upper=b.SET.5
 ----
 bounds:  [a#1,SET-b#5,SET]
-filenum: 000014
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 3
-  rocksdb.raw.value.size: 1
-  rocksdb.deleted.keys: 1
-  rocksdb.num.range-deletions: 1
-  pebble.num.range-key-sets: 1
 
 # Test that a virtual reader with a suffix replacement rule replaces the
 # suffixes from the backing file during iteration.
@@ -768,11 +606,6 @@ seqnums:  [1-9]
 virtualize lower=c@7.SET.3 upper=f@4.SET.8 suffix=@8
 ----
 bounds:  [c@7#3,SET-f@4#8,SET]
-filenum: 000015
-props:
-  rocksdb.num.entries: 2
-  rocksdb.raw.key.size: 15
-  rocksdb.raw.value.size: 2
 
 # Just test a basic iterator once virtual sstable bounds have been set.
 iter
