@@ -18,7 +18,8 @@ import (
 //
 // Compare is used to compare user keys, such as those passed as arguments to
 // the various DB methods, as well as those returned from Separator, Successor,
-// and Split.
+// and Split. It is also used to compare key suffixes, i.e. the remainder of the
+// key after Split.
 type Compare func(a, b []byte) int
 
 // Equal returns true if a and b are equivalent.
@@ -55,44 +56,39 @@ var DefaultFormatter FormatKey = func(key []byte) fmt.Formatter {
 type FormatValue func(key, value []byte) fmt.Formatter
 
 // Separator is used to construct SSTable index blocks. A trivial implementation
-// is `return a`, but appending fewer bytes leads to smaller SSTables.
+// is `return append(dst, a...)`, but appending fewer bytes leads to smaller
+// SSTables.
 //
-// Given keys a, b for which Compare(a, b) < 0, Separator returns a key k such
+// Given keys a, b for which Compare(a, b) < 0, Separator produces a key k such
 // that:
 //
 // 1. Compare(a, k) <= 0, and
 // 2. Compare(k, b) < 0.
 //
-// As a special case, b may be nil in which case the second condition is dropped.
-//
-// For example, if dst, a and b are the []byte equivalents of the strings
-// "aqua", "black" and "blue", then the result may be "aquablb".
-// Similarly, if the arguments were "aqua", "green" and "", then the result
-// may be "aquah".
+// For example, if a and b are the []byte equivalents of the strings "black" and
+// "blue", then the function may append "blb" to dst.
 type Separator func(dst, a, b []byte) []byte
 
-// Successor returns a shortened key given a key a, such that Compare(k, a) >=
-// 0. A simple implementation may return a unchanged. The dst parameter may be
-// used to store the returned key, though it is valid to pass nil. The returned
-// key must be valid to pass to Compare.
+// Successor appends to dst a shortened key k given a key a such that
+// Compare(a, k) <= 0. A simple implementation may return a unchanged.
+// The appended key k must be valid to pass to Compare.
 type Successor func(dst, a []byte) []byte
 
 // ImmediateSuccessor is invoked with a prefix key ([Split(a) == len(a)]) and
-// returns the smallest prefix key that is larger than the given prefix a.
+// appends to dst the smallest prefix key that is larger than the given prefix a.
 //
-// ImmediateSuccessor must return a prefix key k such that:
+// ImmediateSuccessor must generate a prefix key k such that:
 //
-//	Split(k) == len(k) and Compare(k, a) > 0
+//	Split(k) == len(k) and Compare(a, k) < 0
 //
-// and there exists no representable k2 such that:
+// and there exists no representable prefix key k2 such that:
 //
-//	Split(k2) == len(k2) and Compare(k2, a) > 0 and Compare(k2, k) < 0
+//	Split(k2) == len(k2) and Compare(a, k2) < 0 and Compare(k2, k) < 0
 //
 // As an example, an implementation built on the natural byte ordering using
 // bytes.Compare could append a `\0` to `a`.
 //
-// The dst parameter may be used to store the returned key, though it is valid
-// to pass nil. The returned key must be valid to pass to Compare.
+// The appended key must be valid to pass to Compare.
 type ImmediateSuccessor func(dst, a []byte) []byte
 
 // Split returns the length of the prefix of the user key that corresponds to
@@ -108,25 +104,23 @@ type ImmediateSuccessor func(dst, a []byte) []byte
 // corresponds to assigning a constant version to each key in the database. For
 // performance reasons, it is preferable to use a `nil` split in this case.
 //
-// The returned prefix must have the following properties:
+// Let prefix(a) = a[:Split(a)] and suffix(a) = a[Split(a):]. The following
+// properties must hold:
 //
-//  1. The prefix must be a byte prefix:
-//
-//     bytes.HasPrefix(a, prefix(a))
-//
-//  2. A key consisting of just a prefix must sort before all other keys with
+//  1. A key consisting of just a prefix must sort before all other keys with
 //     that prefix:
 //
-//     Compare(prefix(a), a) < 0 if len(suffix(a)) > 0
+//     If len(suffix(a)) > 0, then Compare(prefix(a), a) < 0.
 //
-//  3. Prefixes must be used to order keys before suffixes:
+//  2. Prefixes must be used to order keys before suffixes:
 //
-//     If Compare(a, b) <= 0, then Compare(prefix(a), prefix(b)) <= 0
+//     If Compare(a, b) <= 0, then Compare(prefix(a), prefix(b)) <= 0.
+//     If Compare(prefix(a), prefix(b)) < 0, then Compare(a, b) < 0
 //
-//  4. Suffixes themselves must be valid keys and comparable, respecting the same
-//     ordering as within a key.
+//  3. Suffixes themselves must be valid keys and comparable, respecting the same
+//     ordering as within a key:
 //
-//     If Compare(prefix(a), prefix(b)) == 0, then Compare(suffix(a), suffix(b)) == Compare(a, b)
+//     If Compare(prefix(a), prefix(b)) = 0, then Compare(a, b) = Compare(suffix(a), suffix(b)).
 type Split func(a []byte) int
 
 // DefaultSplit is a trivial implementation of Split which always returns the
