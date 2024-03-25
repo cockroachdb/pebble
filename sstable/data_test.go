@@ -269,9 +269,10 @@ func scanGlobalSeqNum(td *datadriven.TestData) (uint64, error) {
 type runIterCmdOption func(*runIterCmdOptions)
 
 type runIterCmdOptions struct {
-	everyOp      func(io.Writer)
-	everyOpAfter func(io.Writer)
-	stats        *base.InternalIteratorStats
+	everyOp       func(io.Writer)
+	everyOpAfter  func(io.Writer)
+	stats         *base.InternalIteratorStats
+	maskingFilter TestKeysMaskingFilter
 }
 
 func runIterCmdEveryOp(everyOp func(io.Writer)) runIterCmdOption {
@@ -284,6 +285,12 @@ func runIterCmdEveryOpAfter(everyOp func(io.Writer)) runIterCmdOption {
 
 func runIterCmdStats(stats *base.InternalIteratorStats) runIterCmdOption {
 	return func(opts *runIterCmdOptions) { opts.stats = stats }
+}
+
+// runIterCmdMaskingFilter associates a masking filter and enables use of the
+// "with-masking" command.
+func runIterCmdMaskingFilter(maskingFilter TestKeysMaskingFilter) runIterCmdOption {
+	return func(opts *runIterCmdOptions) { opts.maskingFilter = maskingFilter }
 }
 
 func runIterCmd(
@@ -299,6 +306,24 @@ func runIterCmd(
 
 	var b bytes.Buffer
 	var prefix []byte
+	var maskingSuffix []byte
+	skipMaskedKeys := func(direction int) {
+		if len(maskingSuffix) == 0 {
+			return
+		}
+		for iter.Valid() {
+			k := iter.Key().UserKey
+			suffix := k[testkeys.Comparer.Split(k):]
+			if len(suffix) == 0 || testkeys.Comparer.Compare(suffix, maskingSuffix) <= 0 {
+				return
+			}
+			if direction > 0 {
+				iter.Next()
+			} else {
+				iter.Prev()
+			}
+		}
+	}
 	for _, line := range strings.Split(td.Input, "\n") {
 		parts := strings.Fields(line)
 		if len(parts) == 0 {
@@ -319,6 +344,7 @@ func runIterCmd(
 				}
 			}
 			iter.SeekGE([]byte(strings.TrimSpace(parts[1])), flags)
+			skipMaskedKeys(+1)
 		case "seek-prefix-ge":
 			if len(parts) != 2 && len(parts) != 3 {
 				return "seek-prefix-ge <key> [<try-seek-using-next>]\n"
@@ -333,24 +359,30 @@ func runIterCmd(
 				}
 			}
 			iter.SeekPrefixGE(prefix, prefix /* key */, flags)
+			skipMaskedKeys(+1)
 		case "seek-lt":
 			if len(parts) != 2 {
 				return "seek-lt <key>\n"
 			}
 			prefix = nil
 			iter.SeekLT([]byte(strings.TrimSpace(parts[1])), base.SeekLTFlagsNone)
+			skipMaskedKeys(-1)
 		case "first":
 			prefix = nil
 			iter.First()
+			skipMaskedKeys(+1)
 		case "last":
 			prefix = nil
 			iter.Last()
+			skipMaskedKeys(-1)
 		case "next":
 			iter.Next()
+			skipMaskedKeys(+1)
 		case "next-ignore-result":
 			iter.NextIgnoreResult()
 		case "prev":
 			iter.Prev()
+			skipMaskedKeys(-1)
 		case "next-prefix":
 			if len(parts) != 1 {
 				return "next-prefix should have no parameter\n"
@@ -363,6 +395,7 @@ func runIterCmd(
 			k = k[:prefixLen]
 			kSucc := testkeys.Comparer.ImmediateSuccessor(nil, k)
 			iter.NextPrefix(kSucc)
+			skipMaskedKeys(+1)
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
 				return "set-bounds lower=<lower> upper=<upper>\n"
@@ -394,6 +427,12 @@ func runIterCmd(
 			continue
 		case "reset-stats":
 			*opts.stats = base.InternalIteratorStats{}
+			continue
+		case "mask-suffix":
+			maskingSuffix = []byte(parts[1])
+			if err := opts.maskingFilter.SetSuffix(maskingSuffix); err != nil {
+				return fmt.Sprintf("set-suffix error: %s", err)
+			}
 			continue
 		case "internal-iter-state":
 			fmt.Fprintf(&b, "| %T:\n", origIter)
