@@ -618,3 +618,59 @@ next
 <e@8:5>:e
 <f@8:6>:f
 .
+
+build
+aa@2.SET.1:aa
+ab@1.SET.1:ab
+ac@1.SET.1:ac
+ad@1.SET.1:ad
+ae@1.SET.1:ae
+af@1.SET.1:af
+ba@1.SET.1:ba
+bb@1.SET.1:bb
+bc@2.SET.1:bc
+bd@1.SET.1:bd
+be@3.SET.1:be
+bf@1.SET.1:bf
+ca@1.SET.1:ca
+cb@1.SET.1:cb
+cc@1.SET.1:cc
+cd@1.SET.1:cd
+ce@1.SET.1:ce
+cf@1.SET.1:cf
+----
+point:    [aa@2#1,SET-cf@1#1,SET]
+seqnums:  [1-1]
+
+virtualize lower=ae1.SET.1 upper=ca@1.SET.1
+----
+bounds:  [ae1#1,SET-ca@1#1,SET]
+
+iter with-masking-filter
+mask-suffix @2
+first
+next
+next
+prev
+prev
+----
+<bc@2:1>:bc
+<be@3:1>:be
+.
+<be@3:1>:be
+<bc@2:1>:bc
+
+# Regression test for #3450: filter out the block that intersects the lower
+# bound on Prev, reconfigure the filter, and do Next.
+iter with-masking-filter
+mask-suffix @2
+seek-lt c
+prev
+prev
+mask-suffix @1
+next
+----
+<be@3:1>:be
+<bc@2:1>:bc
+.
+<af@1:1>:af
