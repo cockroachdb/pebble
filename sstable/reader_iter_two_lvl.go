@@ -901,9 +901,42 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 		if i.err != nil || i.exhaustedBounds > 0 {
 			return nil, base.LazyValue{}
 		}
+
+		// It is possible that skipBackward went too far and the virtual table lower
+		// bound is after the first key in the block we are about to load, in which
+		// case we must use SeekGE below. The keys in the block we are about to load
+		// start right after the topLevelIndex key (before we Next).
+		//
+		// An example of how this can happen:
+		//
+		//   Second-level index block 1 - contains keys a@1, c@1
+		//   Second-level index block 2 - contains keys e@1, g@1
+		//   Second-level index block 3 - contains keys i@2, k@2
+		//
+		//   The virtual table lower bound is f. We have a range key masking filter
+		//   that filters keys with @1 suffix. We are positioned inside block 3 then
+		//   we Prev(). Block 2 is entirely filtered out, which makes us move to
+		//   block 1. Now the range key masking filter gets an update (via
+		//   SpanChanged) and it no longer filters out any keys. At this point if a
+		//   Next happens, we will load block 2 but it would not be legal to return
+		//   "e@1" which is outside the virtual bounds.
+		//
+		//   The core of the problem is that skipBackward doesn't know it can stop
+		//   at block 2, because it doesn't know what keys are at the start of that
+		//   block. This is why we don't have this problem in the opposite
+		//   direction: skipForward will never go beyond the last relevant block
+		//   because it looks at the separator key which is an upper bound for the
+		//   block.
+		//
+		// Note that this is only a problem with virtual tables; we make no
+		// guarantees wrt an iterator lower bound when we iterate forward. But we
+		// must never return keys that are not inside the virtual table.
+		useSeek := i.vState != nil &&
+			(!i.topLevelIndex.valid() || base.InternalCompare(i.cmp, i.topLevelIndex.ikey, i.vState.lower) < 0)
+
 		i.exhaustedBounds = 0
-		var ikey *InternalKey
-		if ikey, _ = i.topLevelIndex.Next(); ikey == nil {
+		topLevelKey, _ := i.topLevelIndex.Next()
+		if topLevelKey == nil {
 			i.data.invalidate()
 			i.index.invalidate()
 			return nil, base.LazyValue{}
@@ -913,7 +946,14 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			return nil, base.LazyValue{}
 		}
 		if result == loadBlockOK {
-			if ikey, val := i.singleLevelIterator.firstInternal(); ikey != nil {
+			var ikey *InternalKey
+			var val base.LazyValue
+			if useSeek {
+				ikey, val = i.singleLevelIterator.SeekGE(i.lower, base.SeekGEFlagsNone)
+			} else {
+				ikey, val = i.singleLevelIterator.firstInternal()
+			}
+			if ikey != nil {
 				return i.maybeVerifyKey(ikey, val)
 			}
 			// Next iteration will return if singleLevelIterator set
@@ -927,7 +967,7 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			// multiple index blocks. If upper is exclusive we use >=
 			// below, else we use >.
 			if i.upper != nil {
-				cmp := i.cmp(ikey.UserKey, i.upper)
+				cmp := i.cmp(topLevelKey.UserKey, i.upper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
 					// Next iteration will return.
@@ -943,8 +983,8 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 			return nil, base.LazyValue{}
 		}
 		i.exhaustedBounds = 0
-		var ikey *InternalKey
-		if ikey, _ = i.topLevelIndex.Prev(); ikey == nil {
+		topLevelKey, _ := i.topLevelIndex.Prev()
+		if topLevelKey == nil {
 			i.data.invalidate()
 			i.index.invalidate()
 			return nil, base.LazyValue{}
@@ -954,9 +994,11 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 			return nil, base.LazyValue{}
 		}
 		if result == loadBlockOK {
-			if ikey, val := i.singleLevelIterator.lastInternal(); ikey != nil {
+			ikey, val := i.singleLevelIterator.lastInternal()
+			if ikey != nil {
 				return i.maybeVerifyKey(ikey, val)
 			}
+
 			// Next iteration will return if singleLevelIterator set
 			// exhaustedBounds = -1.
 		} else {
@@ -966,7 +1008,7 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 			// the previous entry starts with keys <= ikey.UserKey since even
 			// though this is the current block's separator, the same user key
 			// can span multiple index blocks.
-			if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
+			if i.lower != nil && i.cmp(topLevelKey.UserKey, i.lower) < 0 {
 				i.exhaustedBounds = -1
 				// Next iteration will return.
 			}
