@@ -38,7 +38,7 @@ bounds:  [b#1,SET-c#1,SET]
 filenum: 000002
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 3
+  rocksdb.raw.key.size: 2
   rocksdb.raw.value.size: 1
 
 # Test the constrain bounds function. It performs some subtle shrinking and
@@ -140,6 +140,6 @@ virtualize lower=dd.SET.5 upper=ddd.SET.6 show-props
 bounds:  [dd#5,SET-ddd#6,SET]
 filenum: 000004
 props:
-  rocksdb.num.entries: 2
-  rocksdb.raw.key.size: 11
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 10
   rocksdb.raw.value.size: 2
