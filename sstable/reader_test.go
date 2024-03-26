@@ -261,6 +261,9 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				Comparer:       testkeys.Comparer,
 				BlockSize:      blockSize,
 				IndexBlockSize: indexBlockSize,
+				BlockPropertyCollectors: []func() BlockPropertyCollector{
+					NewTestKeysBlockPropertyCollector,
+				},
 			}
 			wMeta, r, err = runBuildCmd(td, writerOpts, 0)
 			if err != nil {
@@ -414,15 +417,34 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			if upperStr != "" {
 				upper = []byte(upperStr)
 			}
-
 			var stats base.InternalIteratorStats
+			runIterCmdOpts := []runIterCmdOption{
+				runIterCmdStats(&stats),
+			}
+			var filterer *BlockPropertiesFilterer
+			if td.HasArg("with-masking-filter") {
+				maskingFilter := NewTestKeysMaskingFilter()
+				runIterCmdOpts = append(runIterCmdOpts, runIterCmdMaskingFilter(maskingFilter))
+				var err error
+				filterer, err = IntersectsTable(
+					[]BlockPropertyFilter{maskingFilter},
+					nil, wMeta.Properties.UserProperties, transforms.SyntheticSuffix,
+				)
+				if err != nil {
+					td.Fatalf(t, "error creating filterer: %v", err)
+				}
+				if filterer == nil {
+					td.Fatalf(t, "nil filterer")
+				}
+			}
+
 			iter, err := v.NewIterWithBlockPropertyFiltersAndContextEtc(
-				context.Background(), transforms, lower, upper, nil, false,
+				context.Background(), transforms, lower, upper, filterer, false,
 				&stats, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
 			}
-			return runIterCmd(td, iter, true, runIterCmdStats(&stats))
+			return runIterCmd(td, iter, true, runIterCmdOpts...)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
