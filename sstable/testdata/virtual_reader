@@ -16,19 +16,22 @@ seqnums:  [1-1]
 # and for tiny sstables, virtual sstable sizes aren't accurate. In this
 # testcase, the virtual sstable size is 50, whereas the backing sstable size is
 # 850.
-virtualize b.SET.1-c.SET.1
+virtualize lower=b.SET.1 upper=c.SET.1
 ----
 bounds:  [b#1,SET-c#1,SET]
 filenum: 000001
-props: NumEntries: 1, RawKeySize: 3, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 3
+  rocksdb.raw.value.size: 1
 
-citer
+compaction-iter
 ----
 b#1,SET:b
 c#1,SET:c
 
 # Test 2: Similar to test 1 but force two level iterators.
-build twoLevel
+build block-size=1 index-block-size=1
 a.SET.1:a
 b.SET.1:b
 c.SET.1:c
@@ -37,13 +40,16 @@ d.SET.1:d
 point:    [a#1,SET-d#1,SET]
 seqnums:  [1-1]
 
-virtualize b.SET.1-c.SET.1
+virtualize lower=b.SET.1 upper=c.SET.1
 ----
 bounds:  [b#1,SET-c#1,SET]
 filenum: 000002
-props: NumEntries: 1, RawKeySize: 3, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 3
+  rocksdb.raw.value.size: 1
 
-citer
+compaction-iter
 ----
 b#1,SET:b
 c#1,SET:c
@@ -109,7 +115,7 @@ scan-range-key
 
 # Test 3: Tests raw range key/range del iterators, and makes sure that they
 # respect virtual bounds.
-build twoLevel
+build block-size=1 index-block-size=1
 a.SET.1:a
 d.SET.2:d
 f.SET.3:f
@@ -125,11 +131,17 @@ seqnums:  [1-12]
 
 # Note that we shouldn't have range del spans which cross virtual sstable
 # boundaries. NumRangeKeySets must be > 1.
-virtualize a.SET.1-f.SET.1
+virtualize lower=a.SET.1 upper=f.SET.1
 ----
 bounds:  [a#1,SET-f#1,SET]
 filenum: 000003
-props: NumEntries: 1, RawKeySize: 4, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 1, NumRangeDeletions: 1, NumRangeKeyDels: 0, NumRangeKeySets: 1, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 4
+  rocksdb.raw.value.size: 1
+  rocksdb.deleted.keys: 1
+  rocksdb.num.range-deletions: 1
+  pebble.num.range-key-sets: 1
 
 scan-range-del
 ----
@@ -155,11 +167,14 @@ h.SET.9:h
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize dd.SET.5-ddd.SET.6
+virtualize lower=dd.SET.5 upper=ddd.SET.6
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
 filenum: 000004
-props: NumEntries: 2, RawKeySize: 11, RawValueSize: 2, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 2
+  rocksdb.raw.key.size: 11
+  rocksdb.raw.value.size: 2
 
 # Check lower bound enforcement during SeekPrefixGE.
 iter
@@ -186,11 +201,14 @@ point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
 # Set bounds c-f for the virtual sstable.
-virtualize c.SET.3-f.SET.6
+virtualize lower=c.SET.3 upper=f.SET.6
 ----
 bounds:  [c#3,SET-f#6,SET]
 filenum: 000005
-props: NumEntries: 2, RawKeySize: 11, RawValueSize: 2, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 2
+  rocksdb.raw.key.size: 11
+  rocksdb.raw.value.size: 2
 
 # Just test a basic iterator once virtual sstable bounds have been set.
 iter
@@ -208,14 +226,14 @@ next
 
 # Create an iterator with bounds. External bounds should still be restricted
 # along with virtual sstable bounds.
-iter a-d
+iter lower=a upper=d
 first
 next
 ----
 <c:3>:c
 .
 
-iter d-g
+iter lower=d upper=g
 first
 next
 next
@@ -286,11 +304,15 @@ h.SET.9:h
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize c.SET.3-f.SET.1:ff
+virtualize lower=c.SET.3 upper=f.SET.1:ff
 ----
 bounds:  [c#3,SET-f#0,SET]
 filenum: 000006
-props: NumEntries: 2, RawKeySize: 13, RawValueSize: 2, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 3
+props:
+  rocksdb.num.entries: 2
+  rocksdb.raw.key.size: 13
+  rocksdb.raw.value.size: 2
+  pebble.value-blocks.size: 3
 
 iter
 set-bounds lower=d upper=e
@@ -339,11 +361,15 @@ last
 ----
 <f:1>:ff
 
-virtualize f.SET.6-h.SET.9
+virtualize lower=f.SET.6 upper=h.SET.9
 ----
 bounds:  [f#6,SET-h#9,SET]
 filenum: 000007
-props: NumEntries: 2, RawKeySize: 13, RawValueSize: 2, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 3
+props:
+  rocksdb.num.entries: 2
+  rocksdb.raw.key.size: 13
+  rocksdb.raw.value.size: 2
+  pebble.value-blocks.size: 3
 
 iter
 seek-lt z
@@ -365,7 +391,7 @@ last
 <f:1>:ff
 
 # Test 5: Same as test 4, but force two level iterators.
-build twoLevel
+build block-size=1 index-block-size=1
 a.SET.1:a
 b.SET.2:b
 c.SET.3:c
@@ -378,11 +404,14 @@ h.SET.9:h
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize dd.SET.5-ddd.SET.6
+virtualize lower=dd.SET.5 upper=ddd.SET.6
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
 filenum: 000008
-props: NumEntries: 1, RawKeySize: 4, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 4
+  rocksdb.raw.value.size: 1
 
 # Check lower bound enforcement during SeekPrefixGE.
 iter
@@ -395,7 +424,7 @@ next
 .
 
 # Build a simpler sstable for the rest of the tests.
-build twoLevel
+build block-size=1 index-block-size=1
 a.SET.1:a
 b.SET.2:b
 c.SET.3:c
@@ -409,11 +438,14 @@ point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
 # Set bounds c-f for the virtual sstable.
-virtualize c.SET.3-f.SET.6
+virtualize lower=c.SET.3 upper=f.SET.6
 ----
 bounds:  [c#3,SET-f#6,SET]
 filenum: 000009
-props: NumEntries: 1, RawKeySize: 7, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 7
+  rocksdb.raw.value.size: 1
 
 # Just test a basic iterator once virtual sstable bounds have been set.
 iter
@@ -431,14 +463,14 @@ next
 
 # Create an iterator with bounds. External bounds should still be restricted
 # along with virtual sstable bounds.
-iter a-d
+iter lower=a upper=d
 first
 next
 ----
 <c:3>:c
 .
 
-iter d-g
+iter lower=d upper=g
 first
 next
 next
@@ -495,7 +527,7 @@ prev
 .
 
 # Test SeekLT
-build twoLevel
+build block-size=1 index-block-size=1
 a.SET.1:a
 b.SET.2:b
 c.SET.3:c
@@ -509,11 +541,15 @@ h.SET.9:h
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize c.SET.3-f.SET.1:ff
+virtualize lower=c.SET.3 upper=f.SET.1:ff
 ----
 bounds:  [c#3,SET-f#0,SET]
 filenum: 000010
-props: NumEntries: 1, RawKeySize: 7, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 2
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 7
+  rocksdb.raw.value.size: 1
+  pebble.value-blocks.size: 2
 
 iter
 set-bounds lower=d upper=e
@@ -562,11 +598,15 @@ last
 ----
 <f:1>:ff
 
-virtualize f.SET.6-h.SET.9
+virtualize lower=f.SET.6 upper=h.SET.9
 ----
 bounds:  [f#6,SET-h#9,SET]
 filenum: 000011
-props: NumEntries: 1, RawKeySize: 7, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 2
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 7
+  rocksdb.raw.value.size: 1
+  pebble.value-blocks.size: 2
 
 iter
 seek-lt z
@@ -601,11 +641,16 @@ point:    [a#1,SET-f#5,SET]
 rangedel: [d#4,RANGEDEL-e#72057594037927935,RANGEDEL]
 seqnums:  [1-5]
 
-virtualize a.SET.1-e.RANGEDEL.72057594037927935
+virtualize lower=a.SET.1 upper=e.RANGEDEL.72057594037927935
 ----
 bounds:  [a#1,SET-e#72057594037927935,RANGEDEL]
 filenum: 000012
-props: NumEntries: 1, RawKeySize: 4, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 1, NumRangeDeletions: 1, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 4
+  rocksdb.raw.value.size: 1
+  rocksdb.deleted.keys: 1
+  rocksdb.num.range-deletions: 1
 
 iter
 first
@@ -619,7 +664,7 @@ seek-lt f
 <d:2>:d
 
 # Don't expose e from the compaction iter.
-citer
+compaction-iter
 ----
 a#1,SET:a
 d#2,SET:d
@@ -629,7 +674,7 @@ scan-range-del
 d-e:{(#4,RANGEDEL)}
 
 
-build twoLevel
+build block-size=1 index-block-size=1
 a.SET.1:a
 d.SET.2:d
 e.SET.3:e
@@ -640,11 +685,16 @@ point:    [a#1,SET-f#5,SET]
 rangedel: [d#4,RANGEDEL-e#72057594037927935,RANGEDEL]
 seqnums:  [1-5]
 
-virtualize a.SET.1-e.RANGEDEL.72057594037927935
+virtualize lower=a.SET.1 upper=e.RANGEDEL.72057594037927935
 ----
 bounds:  [a#1,SET-e#72057594037927935,RANGEDEL]
 filenum: 000013
-props: NumEntries: 1, RawKeySize: 4, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 1, NumRangeDeletions: 1, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 4
+  rocksdb.raw.value.size: 1
+  rocksdb.deleted.keys: 1
+  rocksdb.num.range-deletions: 1
 
 iter
 first
@@ -658,7 +708,7 @@ seek-lt f
 <d:2>:d
 
 # Don't expose e from the compaction iter.
-citer
+compaction-iter
 ----
 a#1,SET:a
 d#2,SET:d
@@ -668,7 +718,7 @@ scan-range-del
 d-e:{(#4,RANGEDEL)}
 
 # Test NumRangeKeySets.
-build twoLevel
+build block-size=1 index-block-size=1
 a.SET.1:a
 b.SET.5:b
 d.SET.2:d
@@ -685,15 +735,21 @@ seqnums:  [1-12]
 
 # Virtual sstable doesn't contain range key set, but NumRangeKeySets in the
 # properties must be > 0.
-virtualize a.SET.1-b.SET.5
+virtualize lower=a.SET.1 upper=b.SET.5
 ----
 bounds:  [a#1,SET-b#5,SET]
 filenum: 000014
-props: NumEntries: 1, RawKeySize: 3, RawValueSize: 1, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 1, NumRangeDeletions: 1, NumRangeKeyDels: 0, NumRangeKeySets: 1, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 3
+  rocksdb.raw.value.size: 1
+  rocksdb.deleted.keys: 1
+  rocksdb.num.range-deletions: 1
+  pebble.num.range-key-sets: 1
 
 # Test that a virtual reader with a suffix replacement rule replaces the
 # suffixes from the backing file during iteration.
-build with-suffix
+build
 a@2.SET.1:a
 b@4.SET.2:b
 c@3.SET.3:c
@@ -709,11 +765,14 @@ seqnums:  [1-9]
 # Set bounds c@7-f@2 for the virtual sstable. Notice that we correctly elide c
 # because post suffix replacement, it is not in the bounds. Further, notice that
 # we do surface f because post suffix replacement, it is within the bounds.
-virtualize c@7.SET.3-f@4.SET.8 suffix=@8
+virtualize lower=c@7.SET.3 upper=f@4.SET.8 suffix=@8
 ----
 bounds:  [c@7#3,SET-f@4#8,SET]
 filenum: 000015
-props: NumEntries: 2, RawKeySize: 15, RawValueSize: 2, RawPointTombstoneKeySize: 0, RawPointTombstoneValueSize: 0, NumSizedDeletions: 0, NumDeletions: 0, NumRangeDeletions: 0, NumRangeKeyDels: 0, NumRangeKeySets: 0, ValueBlocksSize: 0
+props:
+  rocksdb.num.entries: 2
+  rocksdb.raw.key.size: 15
+  rocksdb.raw.value.size: 2
 
 # Just test a basic iterator once virtual sstable bounds have been set.
 iter
