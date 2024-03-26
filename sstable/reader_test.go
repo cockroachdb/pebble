@@ -220,31 +220,10 @@ func TestVirtualReader(t *testing.T) {
 		var b bytes.Buffer
 		fmt.Fprintf(&b, "bounds:  [%s-%s]\n", v.vState.lower, v.vState.upper)
 		fmt.Fprintf(&b, "filenum: %s\n", v.vState.fileNum.String())
-		fmt.Fprintf(
-			&b, "props: %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d, %s: %d\n",
-			"NumEntries",
-			v.Properties.NumEntries,
-			"RawKeySize",
-			v.Properties.RawKeySize,
-			"RawValueSize",
-			v.Properties.RawValueSize,
-			"RawPointTombstoneKeySize",
-			v.Properties.RawPointTombstoneKeySize,
-			"RawPointTombstoneValueSize",
-			v.Properties.RawPointTombstoneValueSize,
-			"NumSizedDeletions",
-			v.Properties.NumSizedDeletions,
-			"NumDeletions",
-			v.Properties.NumDeletions,
-			"NumRangeDeletions",
-			v.Properties.NumRangeDeletions,
-			"NumRangeKeyDels",
-			v.Properties.NumRangeKeyDels,
-			"NumRangeKeySets",
-			v.Properties.NumRangeKeySets,
-			"ValueBlocksSize",
-			v.Properties.ValueBlocksSize,
-		)
+		fmt.Fprintf(&b, "props:\n")
+		for _, line := range strings.Split(strings.TrimSpace(v.Properties.String()), "\n") {
+			fmt.Fprintf(&b, "  %s\n", line)
+		}
 		return b.String()
 	}
 
@@ -260,18 +239,7 @@ func TestVirtualReader(t *testing.T) {
 			var err error
 			writerOpts := &WriterOptions{
 				TableFormat: TableFormatMax,
-			}
-			// Use a single level index by default.
-			writerOpts.IndexBlockSize = 100000
-			if len(td.CmdArgs) == 1 {
-				if td.CmdArgs[0].String() == "twoLevel" {
-					// Force a two level index.
-					writerOpts.IndexBlockSize = 1
-					writerOpts.BlockSize = 1
-				}
-			}
-			if td.HasArg("with-suffix") {
-				writerOpts.Comparer = testkeys.Comparer
+				Comparer:    testkeys.Comparer,
 			}
 			wMeta, r, err = runBuildCmd(td, writerOpts, 0)
 			if err != nil {
@@ -294,9 +262,11 @@ func TestVirtualReader(t *testing.T) {
 
 			var params VirtualReaderParams
 			// Parse the virtualization bounds.
-			bounds := strings.Split(td.CmdArgs[0].String(), "-")
-			params.Lower = base.ParseInternalKey(bounds[0])
-			params.Upper = base.ParseInternalKey(bounds[1])
+			var lowerStr, upperStr string
+			td.ScanArgs(t, "lower", &lowerStr)
+			td.ScanArgs(t, "upper", &upperStr)
+			params.Lower = base.ParseInternalKey(lowerStr)
+			params.Upper = base.ParseInternalKey(upperStr)
 
 			transforms = IterTransforms{}
 			if td.HasArg("suffix") {
@@ -316,7 +286,7 @@ func TestVirtualReader(t *testing.T) {
 			v = &vr
 			return formatVirtualReader(v)
 
-		case "citer":
+		case "compaction-iter":
 			// Creates a compaction iterator from the virtual reader, and then
 			// just scans the keyspace. Which is all a compaction iterator is
 			// used for. This tests the First and Next calls.
@@ -412,9 +382,14 @@ func TestVirtualReader(t *testing.T) {
 				return "virtualize must be called before iter"
 			}
 			var lower, upper []byte
-			if len(td.CmdArgs) > 0 {
-				splits := strings.Split(td.CmdArgs[0].String(), "-")
-				lower, upper = []byte(splits[0]), []byte(splits[1])
+			var lowerStr, upperStr string
+			td.MaybeScanArgs(t, "lower", &lowerStr)
+			td.MaybeScanArgs(t, "upper", &upperStr)
+			if lowerStr != "" {
+				lower = []byte(lowerStr)
+			}
+			if upperStr != "" {
+				upper = []byte(upperStr)
 			}
 
 			var stats base.InternalIteratorStats
