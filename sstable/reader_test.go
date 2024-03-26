@@ -178,6 +178,23 @@ func (i *iterAdapter) SetContext(ctx context.Context) {
 }
 
 func TestVirtualReader(t *testing.T) {
+	t.Run("props", func(t *testing.T) {
+		runVirtualReaderTest(t, "testdata/virtual_reader_props", 0 /* blockSize */, 0 /* indexBlockSize */)
+	})
+	t.Run("iter", func(t *testing.T) {
+		for run := 0; run < 100; run++ {
+			var blockSize, indexBlockSize int
+			if run > 0 {
+				blockSize = rand.Intn(200)
+				indexBlockSize = rand.Intn(200)
+			}
+			t.Logf("run %d: blockSize=%d indexBlockSize=%d", run, blockSize, indexBlockSize)
+			runVirtualReaderTest(t, "testdata/virtual_reader_iter", blockSize, indexBlockSize)
+		}
+	})
+}
+
+func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize int) {
 	// A faux filenum used to create fake filemetadata for testing.
 	var fileNum int = 1
 	nextFileNum := func() base.FileNum {
@@ -216,18 +233,20 @@ func TestVirtualReader(t *testing.T) {
 		return b.String()
 	}
 
-	formatVirtualReader := func(v *VirtualReader) string {
+	formatVirtualReader := func(v *VirtualReader, showProps bool) string {
 		var b bytes.Buffer
 		fmt.Fprintf(&b, "bounds:  [%s-%s]\n", v.vState.lower, v.vState.upper)
-		fmt.Fprintf(&b, "filenum: %s\n", v.vState.fileNum.String())
-		fmt.Fprintf(&b, "props:\n")
-		for _, line := range strings.Split(strings.TrimSpace(v.Properties.String()), "\n") {
-			fmt.Fprintf(&b, "  %s\n", line)
+		if showProps {
+			fmt.Fprintf(&b, "filenum: %s\n", v.vState.fileNum.String())
+			fmt.Fprintf(&b, "props:\n")
+			for _, line := range strings.Split(strings.TrimSpace(v.Properties.String()), "\n") {
+				fmt.Fprintf(&b, "  %s\n", line)
+			}
 		}
 		return b.String()
 	}
 
-	datadriven.RunTest(t, "testdata/virtual_reader", func(t *testing.T, td *datadriven.TestData) string {
+	datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
 			if r != nil {
@@ -238,8 +257,10 @@ func TestVirtualReader(t *testing.T) {
 			}
 			var err error
 			writerOpts := &WriterOptions{
-				TableFormat: TableFormatMax,
-				Comparer:    testkeys.Comparer,
+				TableFormat:    TableFormatMax,
+				Comparer:       testkeys.Comparer,
+				BlockSize:      blockSize,
+				IndexBlockSize: indexBlockSize,
 			}
 			wMeta, r, err = runBuildCmd(td, writerOpts, 0)
 			if err != nil {
@@ -268,6 +289,8 @@ func TestVirtualReader(t *testing.T) {
 			params.Lower = base.ParseInternalKey(lowerStr)
 			params.Upper = base.ParseInternalKey(upperStr)
 
+			showProps := td.HasArg("show-props")
+
 			transforms = IterTransforms{}
 			if td.HasArg("suffix") {
 				var synthSuffixStr string
@@ -284,7 +307,7 @@ func TestVirtualReader(t *testing.T) {
 			}
 			vr := MakeVirtualReader(r, params)
 			v = &vr
-			return formatVirtualReader(v)
+			return formatVirtualReader(v, showProps)
 
 		case "compaction-iter":
 			// Creates a compaction iterator from the virtual reader, and then
