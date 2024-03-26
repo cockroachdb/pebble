@@ -291,6 +291,7 @@ func (i *singleLevelIterator) initBounds() {
 	i.blockLower = i.lower
 	if i.blockLower != nil {
 		key, _ := i.data.First()
+		// TODO(radu): this should be <= 0
 		if key != nil && i.cmp(i.blockLower, key.UserKey) < 0 {
 			// The lower-bound is less than the first key in the block. No need
 			// to check the lower-bound again for this block.
@@ -298,6 +299,7 @@ func (i *singleLevelIterator) initBounds() {
 		}
 	}
 	i.blockUpper = i.upper
+	// TODO(radu): this should be >= 0
 	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Key().UserKey) > 0 {
 		// The upper-bound is greater than the index key which itself is greater
 		// than or equal to every key in the block. No need to check the
@@ -307,6 +309,32 @@ func (i *singleLevelIterator) initBounds() {
 		//
 		// TODO(bananabrick): We could also set blockUpper to nil for the >=
 		// case, if blockUpper is inclusive.
+		i.blockUpper = nil
+	}
+}
+
+func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
+	// TODO(radu): determine automatically if we need to call First or not and
+	// unify this function with initBounds().
+	if i.data.getFirstUserKey() == nil {
+		panic("initBoundsForAlreadyLoadedBlock must not be called on empty or corrupted block")
+	}
+	i.blockLower = i.lower
+	if i.blockLower != nil {
+		firstUserKey := i.data.getFirstUserKey()
+		// TODO(radu): this should be <= 0
+		if firstUserKey != nil && i.cmp(i.blockLower, firstUserKey) < 0 {
+			// The lower-bound is less than the first key in the block. No need
+			// to check the lower-bound again for this block.
+			i.blockLower = nil
+		}
+	}
+	i.blockUpper = i.upper
+	// TODO(radu): this should be >= 0
+	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Key().UserKey) > 0 {
+		// The upper-bound is greater than the index key which itself is greater
+		// than or equal to every key in the block. No need to check the
+		// upper-bound again for this block.
 		i.blockUpper = nil
 	}
 }
@@ -524,28 +552,6 @@ func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	}
 	_, _ = i.index.Next()
 	return blockIntersects
-}
-
-func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
-	if i.data.getFirstUserKey() == nil {
-		panic("initBoundsForAlreadyLoadedBlock must not be called on empty or corrupted block")
-	}
-	i.blockLower = i.lower
-	if i.blockLower != nil {
-		firstUserKey := i.data.getFirstUserKey()
-		if firstUserKey != nil && i.cmp(i.blockLower, firstUserKey) < 0 {
-			// The lower-bound is less than the first key in the block. No need
-			// to check the lower-bound again for this block.
-			i.blockLower = nil
-		}
-	}
-	i.blockUpper = i.upper
-	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Key().UserKey) > 0 {
-		// The upper-bound is greater than the index key which itself is greater
-		// than or equal to every key in the block. No need to check the
-		// upper-bound again for this block.
-		i.blockUpper = nil
-	}
 }
 
 // The number of times to call Next/Prev in a block before giving up and seeking.
@@ -1351,8 +1357,8 @@ func (i *singleLevelIterator) Prev() (*InternalKey, base.LazyValue) {
 
 func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 	for {
-		var key *InternalKey
-		if key, _ = i.index.Next(); key == nil {
+		indexKey, _ := i.index.Next()
+		if indexKey == nil {
 			i.data.invalidate()
 			break
 		}
@@ -1363,7 +1369,7 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			}
 			if result == loadBlockFailed {
 				// We checked that i.index was at a valid entry, so
-				// loadBlockFailed could not have happened due to to i.index
+				// loadBlockFailed could not have happened due to i.index
 				// being exhausted, and must be due to an error.
 				panic("loadBlock should not have failed with no error")
 			}
@@ -1374,7 +1380,7 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			// separator, the same user key can span multiple blocks. If upper
 			// is exclusive we use >= below, else we use >.
 			if i.upper != nil {
-				cmp := i.cmp(key.UserKey, i.upper)
+				cmp := i.cmp(indexKey.UserKey, i.upper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
 					return nil, base.LazyValue{}
@@ -1382,7 +1388,42 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			}
 			continue
 		}
-		if key, val := i.data.First(); key != nil {
+		var key *InternalKey
+		var val base.LazyValue
+		// It is possible that skipBackward went too far and the virtual table lower
+		// bound is after the first key in the block we are about to load, in which
+		// case we must use SeekGE.
+		//
+		// An example of how this can happen:
+		//
+		//   Data block 1 - contains keys a@1, c@1
+		//   Data block 2 - contains keys e@1, g@1
+		//   Data block 3 - contains keys i@2, k@2
+		//
+		//   The virtual table lower bound is f. We have a range key masking filter
+		//   that filters keys with @1 suffix. We are positioned inside block 3 then
+		//   we Prev(). Block 2 is entirely filtered out, which makes us move to
+		//   block 1. Now the range key masking filter gets an update (via
+		//   SpanChanged) and it no longer filters out any keys. At this point if a
+		//   Next happens, we will load block 2 but it would not be legal to return
+		//   "e@1" which is outside the virtual bounds.
+		//
+		//   The core of the problem is that skipBackward doesn't know it can stop
+		//   at block 2, because it doesn't know what keys are at the start of that
+		//   block. This is why we don't have this problem in the opposite
+		//   direction: skipForward will never go beyond the last relevant block
+		//   because it looks at the separator key which is an upper bound for the
+		//   block.
+		//
+		// Note that this is only a problem with virtual tables; we make no
+		// guarantees wrt an iterator lower bound when we iterate forward. But we
+		// must never return keys that are not inside the virtual table.
+		if i.vState != nil && i.blockLower != nil {
+			key, val = i.data.SeekGE(i.lower, base.SeekGEFlagsNone)
+		} else {
+			key, val = i.data.First()
+		}
+		if key != nil {
 			if i.blockUpper != nil {
 				cmp := i.cmp(key.UserKey, i.blockUpper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
@@ -1398,8 +1439,8 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 
 func (i *singleLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 	for {
-		var key *InternalKey
-		if key, _ = i.index.Prev(); key == nil {
+		indexKey, _ := i.index.Prev()
+		if indexKey == nil {
 			i.data.invalidate()
 			break
 		}
@@ -1419,7 +1460,7 @@ func (i *singleLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 			// bound is already exceeded. Note that the previous block starts with
 			// keys <= key.UserKey since even though this is the current block's
 			// separator, the same user key can span multiple blocks.
-			if i.lower != nil && i.cmp(key.UserKey, i.lower) < 0 {
+			if i.lower != nil && i.cmp(indexKey.UserKey, i.lower) < 0 {
 				i.exhaustedBounds = -1
 				return nil, base.LazyValue{}
 			}
