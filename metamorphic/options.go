@@ -240,9 +240,9 @@ func optionsToString(opts *TestOptions) string {
 	if opts.ingestSplit {
 		fmt.Fprintf(&buf, "  ingest_split=%v\n", opts.ingestSplit)
 	}
-	if opts.ioLatencyProbability > 0.0 {
+	if opts.ioLatencyProbability > 0 {
 		fmt.Fprintf(&buf, "  io_latency_mean=%s\n", opts.ioLatencyMean)
-		fmt.Fprintf(&buf, "  io_latency_probability=%f\n", opts.ioLatencyProbability)
+		fmt.Fprintf(&buf, "  io_latency_probability=%.10f\n", opts.ioLatencyProbability)
 		fmt.Fprintf(&buf, "  io_latency_seed=%d\n", opts.ioLatencySeed)
 	}
 	if opts.useSharedReplicate {
@@ -714,8 +714,10 @@ func RandomOptions(
 	testOpts.strictFS = rng.Intn(2) != 0 // Only relevant for MemFS.
 	// 50% of the time, enable IO latency injection.
 	if rng.Intn(2) == 0 {
+		// Note: we want ioLatencyProbability to be at least 1e-10, otherwise it
+		// might print as 0 when we stringify options.
+		testOpts.ioLatencyProbability = 1e-10 + 0.01*rng.Float64() // 0-1%
 		testOpts.ioLatencyMean = expRandDuration(rng, 3*time.Millisecond, time.Second)
-		testOpts.ioLatencyProbability = 0.01 * rng.Float64() // 0-1%
 		testOpts.ioLatencySeed = rng.Int63()
 	}
 	testOpts.Threads = rng.Intn(runtime.GOMAXPROCS(0)) + 1
