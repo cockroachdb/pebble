@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
@@ -30,7 +31,7 @@ import (
 func New(ops Ops, opts *TestOptions, dir string, w io.Writer) (*Test, error) {
 	t := newTest(ops)
 	h := newHistory(nil /* failRegexp */, w)
-	if err := t.init(h, dir, opts, 1 /* num instances */); err != nil {
+	if err := t.init(h, dir, opts, 1 /* numInstances */, 0 /* opTimeout */); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -48,6 +49,7 @@ type Test struct {
 	idx       int
 	dir       string
 	h         *history
+	opTimeout time.Duration
 	opts      *pebble.Options
 	testOpts  *TestOptions
 	writeOpts *pebble.WriteOptions
@@ -77,9 +79,12 @@ func newTest(ops []op) *Test {
 	}
 }
 
-func (t *Test) init(h *history, dir string, testOpts *TestOptions, numInstances int) error {
+func (t *Test) init(
+	h *history, dir string, testOpts *TestOptions, numInstances int, opTimeout time.Duration,
+) error {
 	t.dir = dir
 	t.h = h
+	t.opTimeout = opTimeout
 	t.testOpts = testOpts
 	t.writeOpts = pebble.NoSync
 	if testOpts.strictFS {
@@ -389,9 +394,24 @@ func (t *Test) step(h *history, optionalRecordf func(string, ...interface{})) bo
 	if t.idx >= len(t.ops) {
 		return false
 	}
-	t.ops[t.idx].run(t, h.recorder(-1 /* thread */, t.idx, optionalRecordf))
+	t.runOp(t.idx, h.recorder(-1 /* thread */, t.idx, optionalRecordf))
 	t.idx++
 	return true
+}
+
+// runOp runs t.ops[idx] with t.opTimeout.
+func (t *Test) runOp(idx int, h historyRecorder) {
+	op := t.ops[idx]
+	var timer *time.Timer
+	if t.opTimeout > 0 {
+		timer = time.AfterFunc(t.opTimeout, func() {
+			panic(fmt.Sprintf("operation took longer than %s: %s", t.opTimeout, op.String()))
+		})
+	}
+	op.run(t, h)
+	if timer != nil {
+		timer.Stop()
+	}
 }
 
 func (t *Test) setBatch(id objID, b *pebble.Batch) {

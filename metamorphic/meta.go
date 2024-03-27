@@ -222,6 +222,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 			"-keep=" + fmt.Sprint(runOpts.keep),
 			"-run-dir=" + runDir,
 			"-test.run=" + topLevelTestName + "$",
+			"--op-timeout=" + runOpts.opTimeout.String(),
 		}
 		if runOpts.numInstances > 1 {
 			args = append(args, "--num-instances="+strconv.Itoa(runOpts.numInstances))
@@ -388,8 +389,13 @@ func buildOptions(
 }
 
 type runOnceOptions struct {
-	keep                bool
-	maxThreads          int
+	// Note: when adding a new option, a new flag might need to be passed to the
+	// "inner" execution of the test binary in RunAndCompare.
+
+	keep       bool
+	maxThreads int
+	// opTimeout causes the test to fail if any one op takes longer than this.
+	opTimeout           time.Duration
 	errorRate           float64
 	failRegexp          *regexp.Regexp
 	numInstances        int
@@ -423,6 +429,13 @@ type MaxThreads int
 
 func (m MaxThreads) apply(ro *runAndCompareOptions) { ro.maxThreads = int(m) }
 func (m MaxThreads) applyOnce(ro *runOnceOptions)   { ro.maxThreads = int(m) }
+
+// OpTimeout sets a timeout for each executed operation. A value of 0 means no
+// timeout.
+type OpTimeout time.Duration
+
+func (t OpTimeout) apply(ro *runAndCompareOptions) { ro.opTimeout = time.Duration(t) }
+func (t OpTimeout) applyOnce(ro *runOnceOptions)   { ro.opTimeout = time.Duration(t) }
 
 // FailOnMatch configures the run to fail immediately if the history matches the
 // provided regular expression.
@@ -544,7 +557,7 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	defer h.Close()
 
 	m := newTest(ops)
-	require.NoError(t, m.init(h, dir, testOpts, runOpts.numInstances))
+	require.NoError(t, m.init(h, dir, testOpts, runOpts.numInstances, runOpts.opTimeout))
 
 	if err := Execute(m); err != nil {
 		fmt.Fprintf(os.Stderr, "Seed: %d\n", seed)
@@ -609,7 +622,7 @@ func Execute(m *Test) error {
 					}
 				}
 
-				m.ops[idx].run(m, m.h.recorder(t, idx, nil /* optionalRecordf */))
+				m.runOp(idx, m.h.recorder(t, idx, nil /* optionalRecordf */))
 
 				// If this operation has a done channel, close it so that
 				// other operations that synchronize on this operation know
