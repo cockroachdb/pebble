@@ -29,6 +29,9 @@ import (
 // higher false positive rate than one computed just from the they keys in it.
 //
 // Closes input and finishes or aborts output, including on non-nil errors.
+//
+// Note that CopySpan is not aware of any suffix or prefix replacement; the
+// caller must account for those when specifying the bounds.
 func CopySpan(
 	ctx context.Context,
 	input objstorage.Readable,
@@ -119,7 +122,7 @@ func CopySpan(
 	// a non-empty sst by copying something outside the span, but #3907 means that
 	// the empty virtual span would still be a problem, so don't bother.
 	if len(blocks) < 1 {
-		return 0, errors.New("CopySpan cannot copy an empty span")
+		return 0, errors.Newf("CopySpan cannot copy empty span %s %s", start, end)
 	}
 
 	// Find the span of the input file that contains all our blocks, and then copy
