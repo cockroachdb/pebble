@@ -807,7 +807,7 @@ func TestExcise(t *testing.T) {
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(exciseSpan, m, ve, level)
+					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
@@ -1160,7 +1160,7 @@ func testIngestSharedImpl(
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(exciseSpan, m, ve, level)
+					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
@@ -1651,7 +1651,7 @@ func TestConcurrentExcise(t *testing.T) {
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(exciseSpan, m, ve, level)
+					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
@@ -1806,6 +1806,9 @@ func TestIngestExternal(t *testing.T) {
 			"external-locator": remoteStorage,
 		})
 		opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
+		opts.Experimental.IngestSplit = func() bool {
+			return true
+		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
@@ -1857,6 +1860,28 @@ func TestIngestExternal(t *testing.T) {
 		case "flush":
 			if err := d.Flush(); err != nil {
 				return err.Error()
+			}
+			return ""
+
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest":
+			flushed = false
+			if err := runIngestCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			// Wait for a possible flush.
+			d.mu.Lock()
+			for d.mu.compact.flushing {
+				d.mu.compact.cond.Wait()
+			}
+			d.mu.Unlock()
+			if flushed {
+				return "memtable flushed"
 			}
 			return ""
 

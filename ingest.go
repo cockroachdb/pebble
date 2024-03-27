@@ -1820,11 +1820,12 @@ func (d *DB) ingest(
 //
 // The manifest lock must be held when calling this method.
 func (d *DB) excise(
-	exciseSpan KeyRange, m *fileMetadata, ve *versionEdit, level int,
+	exciseSpan base.UserKeyBounds, m *fileMetadata, ve *versionEdit, level int,
 ) ([]manifest.NewFileEntry, error) {
 	numCreatedFiles := 0
 	// Check if there's actually an overlap between m and exciseSpan.
-	if !exciseSpan.Overlaps(d.cmp, m) {
+	mBounds := base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
+	if !exciseSpan.Overlaps(d.cmp, &mBounds) {
 		return nil, nil
 	}
 	ve.DeletedFiles[deletedFileEntry{
@@ -1832,7 +1833,7 @@ func (d *DB) excise(
 		FileNum: m.FileNum,
 	}] = m
 	// Fast path: m sits entirely within the exciseSpan, so just delete it.
-	if exciseSpan.Contains(d.cmp, m.Smallest) && exciseSpan.Contains(d.cmp, m.Largest) {
+	if exciseSpan.ContainsInternalKey(d.cmp, m.Smallest) && exciseSpan.ContainsInternalKey(d.cmp, m.Largest) {
 		return nil, nil
 	}
 	var iter internalIterator
@@ -1873,7 +1874,7 @@ func (d *DB) excise(
 			SyntheticPrefix: m.SyntheticPrefix,
 			SyntheticSuffix: m.SyntheticSuffix,
 		}
-		if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.SmallestPointKey) {
+		if m.HasPointKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.SmallestPointKey) {
 			// This file will probably contain point keys.
 			smallestPointKey := m.SmallestPointKey
 			var err error
@@ -1917,7 +1918,7 @@ func (d *DB) excise(
 				leftFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel))
 			}
 		}
-		if m.HasRangeKeys && !exciseSpan.Contains(d.cmp, m.SmallestRangeKey) {
+		if m.HasRangeKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.SmallestRangeKey) {
 			// This file will probably contain range keys.
 			var err error
 			smallestRangeKey := m.SmallestRangeKey
@@ -1966,7 +1967,7 @@ func (d *DB) excise(
 		}
 	}
 	// Create a file to the right, if necessary.
-	if exciseSpan.Contains(d.cmp, m.Largest) {
+	if exciseSpan.ContainsInternalKey(d.cmp, m.Largest) {
 		// No key exists to the right of the excise span in this file.
 		if needsBacking && !m.Virtual {
 			// If m is virtual, then its file backing is already known to the manifest.
@@ -1992,7 +1993,7 @@ func (d *DB) excise(
 		SyntheticPrefix: m.SyntheticPrefix,
 		SyntheticSuffix: m.SyntheticSuffix,
 	}
-	if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.LargestPointKey) {
+	if m.HasPointKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.LargestPointKey) {
 		// This file will probably contain point keys
 		largestPointKey := m.LargestPointKey
 		var err error
@@ -2018,20 +2019,27 @@ func (d *DB) excise(
 				rangeDelIter = emptyKeyspanIter
 			}
 		}
-		key, _ := iter.SeekGE(exciseSpan.End, base.SeekGEFlagsNone)
+		key, _ := iter.SeekGE(exciseSpan.End.Key, base.SeekGEFlagsNone)
 		if key != nil {
+			if exciseSpan.End.Kind == base.Inclusive && d.equal(exciseSpan.End.Key, key.UserKey) {
+				return nil, errors.New("cannot excise with an inclusive end key and data overlap at end key")
+			}
 			rightFile.ExtendPointKeyBounds(d.cmp, key.Clone(), largestPointKey)
 		}
 		// Store the max of (exciseSpan.End, rdel.Start) in firstRangeDel. This
 		// needs to be a copy if the key is owned by the range del iter.
 		var firstRangeDel []byte
-		rdel, err := rangeDelIter.SeekGE(exciseSpan.End)
+		rdel, err := rangeDelIter.SeekGE(exciseSpan.End.Key)
 		if err != nil {
 			return nil, err
 		} else if rdel != nil {
 			firstRangeDel = append(firstRangeDel[:0], rdel.Start...)
-			if d.cmp(firstRangeDel, exciseSpan.End) < 0 {
-				firstRangeDel = exciseSpan.End
+			if d.cmp(firstRangeDel, exciseSpan.End.Key) < 0 {
+				// NB: This can only be done if the end bound is exclusive.
+				if exciseSpan.End.Kind != base.Exclusive {
+					return nil, errors.New("cannot truncate rangedel during excise with an inclusive upper bound")
+				}
+				firstRangeDel = exciseSpan.End.Key
 			}
 		}
 		if firstRangeDel != nil {
@@ -2040,7 +2048,7 @@ func (d *DB) excise(
 			rightFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, largestPointKey)
 		}
 	}
-	if m.HasRangeKeys && !exciseSpan.Contains(d.cmp, m.LargestRangeKey) {
+	if m.HasRangeKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.LargestRangeKey) {
 		// This file will probably contain range keys.
 		largestRangeKey := m.LargestRangeKey
 		if rangeKeyIter == nil {
@@ -2054,13 +2062,16 @@ func (d *DB) excise(
 		// Store the max of (exciseSpan.End, rkey.Start) in firstRangeKey. This
 		// needs to be a copy if the key is owned by the range key iter.
 		var firstRangeKey []byte
-		rkey, err := rangeKeyIter.SeekGE(exciseSpan.End)
+		rkey, err := rangeKeyIter.SeekGE(exciseSpan.End.Key)
 		if err != nil {
 			return nil, err
 		} else if rkey != nil {
 			firstRangeKey = append(firstRangeKey[:0], rkey.Start...)
-			if d.cmp(firstRangeKey, exciseSpan.End) < 0 {
-				firstRangeKey = exciseSpan.End
+			if d.cmp(firstRangeKey, exciseSpan.End.Key) < 0 {
+				if exciseSpan.End.Kind != base.Exclusive {
+					return nil, errors.New("cannot truncate range key during excise with an inclusive upper bound")
+				}
+				firstRangeKey = exciseSpan.End.Key
 			}
 		}
 		if firstRangeKey != nil {
@@ -2199,9 +2210,9 @@ func (d *DB) ingestSplit(
 		// (assuming !s.ingestFile.Largest.IsExclusiveSentinel()). The conflation
 		// of exclusive vs inclusive end bounds should not make a difference here
 		// as we're guaranteed to not have any data overlap between splitFile and
-		// s.ingestFile, so panic if we do see a newly added file with an endKey
-		// equalling s.ingestFile.Largest, and !s.ingestFile.Largest.IsExclusiveSentinel()
-		added, err := d.excise(KeyRange{Start: s.ingestFile.Smallest.UserKey, End: s.ingestFile.Largest.UserKey}, splitFile, ve, s.level)
+		// s.ingestFile. d.excise will return an error if we pass an inclusive user
+		// key bound _and_ we end up seeing data overlap at the end key.
+		added, err := d.excise(base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, ve, s.level)
 		if err != nil {
 			return err
 		}
@@ -2425,7 +2436,7 @@ func (d *DB) ingestApply(
 			iter := overlaps.Iter()
 
 			for m := iter.First(); m != nil; m = iter.Next() {
-				newFiles, err := d.excise(exciseSpan, m, ve, level)
+				newFiles, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
 				if err != nil {
 					return nil, err
 				}
