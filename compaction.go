@@ -2627,6 +2627,13 @@ func (d *DB) runCopyCompaction(
 			start.UserKey = newMeta.SyntheticPrefix.Invert(start.UserKey)
 			end.UserKey = newMeta.SyntheticPrefix.Invert(end.UserKey)
 		}
+		if newMeta.SyntheticSuffix.IsSet() {
+			// Extend the bounds as necessary so that the keys don't include suffixes.
+			start.UserKey = start.UserKey[:c.comparer.Split(start.UserKey)]
+			if n := c.comparer.Split(end.UserKey); n < len(end.UserKey) {
+				end = base.MakeRangeDeleteSentinelKey(c.comparer.ImmediateSuccessor(nil, end.UserKey[:n]))
+			}
+		}
 
 		wrote, err := sstable.CopySpan(ctx,
 			src, d.opts.MakeReaderOptions(),
