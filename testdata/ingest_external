@@ -780,3 +780,53 @@ a@20: (a, .)
 b@20: (b, .)
 za@10: (a, .)
 zb@11: (b, .)
+
+reset
+----
+
+build-remote ext3
+set aa@10 a
+set b@11 b
+----
+
+ingest-external
+ext3 bounds=(a,c)
+----
+
+lsm
+----
+L6:
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
+
+iter
+first
+next
+next
+----
+aa@10: (a, .)
+b@11: (b, .)
+.
+
+build local1
+set a foo
+----
+
+ingest local1
+----
+
+lsm
+----
+L6:
+  000005:[a#11,SET-a#11,SET]
+  000006(000004):[aa@10#10,SET-c#inf,RANGEDEL]
+
+iter
+first
+next
+next
+next
+----
+a: (foo, .)
+aa@10: (a, .)
+b@11: (b, .)
+.
