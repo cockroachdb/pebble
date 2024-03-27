@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"runtime/pprof"
 	"slices"
 	"sort"
@@ -2497,7 +2498,14 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	// there are no references obsolete tables will be added to the obsolete
 	// table list.
 	if err == nil {
-		d.updateReadStateLocked(d.opts.DebugCheck)
+		checker := d.opts.DebugCheck
+		// If we are trying to download many files, running the debug checker after
+		// every download can make the Download operation very slow; disable it
+		// (with 90% probability).
+		if checker != nil && c.isDownload && rand.Intn(10) != 0 {
+			checker = nil
+		}
+		d.updateReadStateLocked(checker)
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
 	d.deleteObsoleteFiles(jobID)
