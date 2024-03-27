@@ -237,7 +237,7 @@ func (v *VersionEdit) Apply(
 	for _, meta := range v.NewObjects {
 		if invariants.Enabled {
 			if _, exists := objects[meta.FileNum]; exists {
-				return errors.AssertionFailedf("version edit adds existing object %s", meta.FileNum)
+				return base.AssertionFailedf("version edit adds existing object %s", meta.FileNum)
 			}
 		}
 		objects[meta.FileNum] = meta
@@ -245,7 +245,7 @@ func (v *VersionEdit) Apply(
 	for _, fileNum := range v.DeletedObjects {
 		if invariants.Enabled {
 			if _, exists := objects[fileNum]; !exists {
-				return errors.AssertionFailedf("version edit deletes non-existent object %s", fileNum)
+				return base.AssertionFailedf("version edit deletes non-existent object %s", fileNum)
 			}
 		}
 		delete(objects, fileNum)

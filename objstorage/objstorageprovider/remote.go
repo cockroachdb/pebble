@@ -182,7 +182,7 @@ func (p *provider) sharedClose() error {
 // SetCreatorID is part of the objstorage.Provider interface.
 func (p *provider) SetCreatorID(creatorID objstorage.CreatorID) error {
 	if p.st.Remote.StorageFactory == nil {
-		return errors.AssertionFailedf("attempt to set CreatorID but remote storage not enabled")
+		return base.AssertionFailedf("attempt to set CreatorID but remote storage not enabled")
 	}
 	// Note: this call is a cheap no-op if the creator ID was already set. This
 	// call also checks if we are trying to change the ID.

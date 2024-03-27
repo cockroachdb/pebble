@@ -490,11 +490,11 @@ func ingestLoad(
 		})
 		if external[i].Level > 0 {
 			if i != 0 && !result.externalFilesHaveLevel {
-				return ingestLoadResult{}, errors.AssertionFailedf("pebble: external sstables must all have level set or unset")
+				return ingestLoadResult{}, base.AssertionFailedf("pebble: external sstables must all have level set or unset")
 			}
 			result.externalFilesHaveLevel = true
 		} else if result.externalFilesHaveLevel {
-			return ingestLoadResult{}, errors.AssertionFailedf("pebble: external sstables must all have level set or unset")
+			return ingestLoadResult{}, base.AssertionFailedf("pebble: external sstables must all have level set or unset")
 		}
 	}
 	return result, nil
@@ -512,7 +512,7 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 	if lr.externalFilesHaveLevel {
 		for _, f := range lr.external {
 			if !exciseSpan.Contains(cmp, f.Smallest) || !exciseSpan.Contains(cmp, f.Largest) {
-				return errors.AssertionFailedf("pebble: external file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
+				return base.AssertionFailedf("pebble: external file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
 			}
 		}
 	}
@@ -521,7 +521,7 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 		if len(lr.shared) > 0 {
 			// If external files are present alongside shared files,
 			// return an error.
-			return errors.AssertionFailedf("pebble: external files cannot be ingested atomically alongside shared files")
+			return base.AssertionFailedf("pebble: external files cannot be ingested atomically alongside shared files")
 		}
 
 		// Sort according to the smallest key.
@@ -570,7 +570,7 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 		})
 		for i := 1; i < len(filesInLevel); i++ {
 			if sstableKeyCompare(cmp, filesInLevel[i-1].Largest, filesInLevel[i].Smallest) >= 0 {
-				return errors.AssertionFailedf("pebble: external shared sstables have overlapping ranges")
+				return base.AssertionFailedf("pebble: external shared sstables have overlapping ranges")
 			}
 		}
 	}
@@ -988,7 +988,7 @@ func ingestTargetLevel(
 	// This assertion implicitly checks that we have the current version of
 	// the metadata.
 	if v.L0Sublevels == nil {
-		return 0, nil, errors.AssertionFailedf("could not read L0 sublevels")
+		return 0, nil, base.AssertionFailedf("could not read L0 sublevels")
 	}
 	iterOps.CategoryAndQoS = sstable.CategoryAndQoS{
 		Category: "pebble-ingest",
@@ -2022,7 +2022,7 @@ func (d *DB) excise(
 		key, _ := iter.SeekGE(exciseSpan.End.Key, base.SeekGEFlagsNone)
 		if key != nil {
 			if exciseSpan.End.Kind == base.Inclusive && d.equal(exciseSpan.End.Key, key.UserKey) {
-				return nil, errors.AssertionFailedf("cannot excise with an inclusive end key and data overlap at end key")
+				return nil, base.AssertionFailedf("cannot excise with an inclusive end key and data overlap at end key")
 			}
 			rightFile.ExtendPointKeyBounds(d.cmp, key.Clone(), largestPointKey)
 		}
@@ -2037,7 +2037,7 @@ func (d *DB) excise(
 			if d.cmp(firstRangeDel, exciseSpan.End.Key) < 0 {
 				// NB: This can only be done if the end bound is exclusive.
 				if exciseSpan.End.Kind != base.Exclusive {
-					return nil, errors.AssertionFailedf("cannot truncate rangedel during excise with an inclusive upper bound")
+					return nil, base.AssertionFailedf("cannot truncate rangedel during excise with an inclusive upper bound")
 				}
 				firstRangeDel = exciseSpan.End.Key
 			}
@@ -2069,7 +2069,7 @@ func (d *DB) excise(
 			firstRangeKey = append(firstRangeKey[:0], rkey.Start...)
 			if d.cmp(firstRangeKey, exciseSpan.End.Key) < 0 {
 				if exciseSpan.End.Kind != base.Exclusive {
-					return nil, errors.AssertionFailedf("cannot truncate range key during excise with an inclusive upper bound")
+					return nil, base.AssertionFailedf("cannot truncate range key during excise with an inclusive upper bound")
 				}
 				firstRangeKey = exciseSpan.End.Key
 			}

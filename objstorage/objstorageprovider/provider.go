@@ -403,7 +403,7 @@ func (p *provider) Lookup(
 		)
 	}
 	if meta.FileType != fileType {
-		return objstorage.ObjectMetadata{}, errors.AssertionFailedf(
+		return objstorage.ObjectMetadata{}, base.AssertionFailedf(
 			"file %s type mismatch (known type %d, expected type %d)",
 			fileNum, errors.Safe(meta.FileType), errors.Safe(fileType),
 		)

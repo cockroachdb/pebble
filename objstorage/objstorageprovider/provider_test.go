@@ -222,8 +222,12 @@ func TestProvider(t *testing.T) {
 				scanArgs("<key> <file-num>", &key, &fileNum)
 				meta, err := curProvider.Lookup(base.FileTypeTable, fileNum)
 				require.NoError(t, err)
-				handle, err := curProvider.RemoteObjectBacking(&meta)
-				if err != nil {
+				var handle objstorage.RemoteObjectBackingHandle
+				if err := base.CatchErrorPanic(func() error {
+					var err error
+					handle, err = curProvider.RemoteObjectBacking(&meta)
+					return err
+				}); err != nil {
 					return err.Error()
 				}
 				backing, err := handle.Get()
