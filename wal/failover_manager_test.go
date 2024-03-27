@@ -582,6 +582,15 @@ func TestFailoverManager_Quiesce(t *testing.T) {
 	require.NoError(t, m.Close())
 }
 
+func TestFailoverManager_SecondaryIsWritable(t *testing.T) {
+	var m failoverManager
+	require.EqualError(t, m.init(Options{
+		Primary:         Dir{FS: vfs.NewMem(), Dirname: "primary"},
+		Secondary:       Dir{FS: errorfs.Wrap(vfs.NewMem(), errorfs.ErrInjected), Dirname: "secondary"},
+		PreallocateSize: func() int { return 4 },
+	}, nil /* initial  logs */), "failed to write to WAL secondary dir: injected error")
+}
+
 // TODO(sumeer): test wrap around of history in dirProber.
 
 // TODO(sumeer): the failover datadriven test cases are not easy to write,
