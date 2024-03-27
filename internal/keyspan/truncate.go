@@ -5,7 +5,6 @@
 package keyspan
 
 import (
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
@@ -127,7 +126,7 @@ func (i *truncatingIter) nextSpanWithinBounds(
 	var err error
 	for span != nil {
 		if i.bounds.End.Kind == base.Inclusive && span.Contains(i.cmp, i.bounds.End.Key) {
-			err := errors.AssertionFailedf("inclusive upper bound %q inside span %s", i.bounds.End.Key, span)
+			err := base.AssertionFailedf("inclusive upper bound %q inside span %s", i.bounds.End.Key, span)
 			if invariants.Enabled {
 				panic(err)
 			}

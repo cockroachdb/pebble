@@ -132,7 +132,7 @@ func CopySpan(
 	length := blocks[len(blocks)-1].bh.Offset + blocks[len(blocks)-1].bh.Length + blockTrailerLen - offset
 
 	if spanEnd := length + offset; spanEnd < offset {
-		return 0, errors.AssertionFailedf("invalid intersecting span for CopySpan [%d, %d)", offset, spanEnd)
+		return 0, base.AssertionFailedf("invalid intersecting span for CopySpan [%d, %d)", offset, spanEnd)
 	}
 
 	if err := objstorage.Copy(ctx, r.readable, w.writable, offset, length); err != nil {

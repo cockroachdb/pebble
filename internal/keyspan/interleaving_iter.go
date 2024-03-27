@@ -1069,7 +1069,7 @@ func (i *InterleavingIter) savePoint(key *base.InternalKey, value base.LazyValue
 	if invariants.Enabled {
 		if err := i.pointIter.Error(); key != nil && err != nil {
 			panic(errors.WithSecondaryError(
-				errors.AssertionFailedf("pebble: %T point iterator returned non-nil key %q while iter has error", i.pointIter, key),
+				base.AssertionFailedf("pebble: %T point iterator returned non-nil key %q while iter has error", i.pointIter, key),
 				err))
 		}
 	}

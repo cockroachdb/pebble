@@ -11,7 +11,6 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
@@ -478,7 +477,7 @@ func (b *BlockIntervalFilter) Intersects(prop []byte) (bool, error) {
 // SyntheticSuffixIntersects implements the BlockPropertyFilter interface.
 func (b *BlockIntervalFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
 	if b.syntheticReplacer == nil {
-		return false, errors.AssertionFailedf("missing SyntheticReplacer for SyntheticSuffixIntersects()")
+		return false, base.AssertionFailedf("missing SyntheticReplacer for SyntheticSuffixIntersects()")
 	}
 	var i interval
 	if err := i.decode(prop); err != nil {

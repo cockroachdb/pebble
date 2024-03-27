@@ -44,7 +44,7 @@ func (p *provider) encodeRemoteObjectBacking(
 	meta *objstorage.ObjectMetadata,
 ) (objstorage.RemoteObjectBacking, error) {
 	if !meta.IsRemote() {
-		return nil, errors.AssertionFailedf("object %s not on remote storage", meta.DiskFileNum)
+		return nil, base.AssertionFailedf("object %s not on remote storage", meta.DiskFileNum)
 	}
 
 	buf := make([]byte, 0, binary.MaxVarintLen64*4)
