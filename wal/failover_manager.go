@@ -5,10 +5,13 @@
 package wal
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
@@ -472,6 +475,25 @@ func (wm *failoverManager) init(o Options, initial Logs) error {
 		o.timeSource = defaultTime{}
 	}
 	o.FailoverOptions.EnsureDefaults()
+
+	// Synchronously ensure that we're able to write to the secondary before we
+	// proceed. An operator doesn't want to encounter an issue writing to the
+	// secondary the first time there's a need to failover. We write a bit of
+	// metadata to a file in the secondary's directory.
+	f, err := o.Secondary.FS.Create(o.Secondary.FS.PathJoin(o.Secondary.Dirname, "failover_source"))
+	if err != nil {
+		return errors.Newf("failed to write to WAL secondary dir: %v", err)
+	}
+	if _, err := io.WriteString(f, fmt.Sprintf("primary: %s\nprocess start: %s\n",
+		o.Primary.Dirname,
+		time.Now(),
+	)); err != nil {
+		return errors.Newf("failed to write metadata to WAL secondary dir: %v", err)
+	}
+	if err := errors.CombineErrors(f.Sync(), f.Close()); err != nil {
+		return err
+	}
+
 	stopper := newStopper()
 	var dirs [numDirIndices]dirAndFileHandle
 	for i, dir := range []Dir{o.Primary, o.Secondary} {
