@@ -71,7 +71,7 @@ crossversion-meta:
 
 .PHONY: stress-crossversion
 stress-crossversion:
-	STRESS=1 ./scripts/run-crossversion-meta.sh crl-release-21.2 crl-release-22.1 crl-release-22.2 crl-release-23.1 master
+	STRESS=1 ./scripts/run-crossversion-meta.sh crl-release-22.1 crl-release-22.2 crl-release-23.1 crl-release-23.2 master
 
 .PHONY: generate
 generate:
