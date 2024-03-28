@@ -360,6 +360,9 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 		Input:       make([]LevelInfo, 0, len(c.inputs)),
 		Annotations: []string{},
 	}
+	if c.isDownload {
+		info.Reason = "download," + info.Reason
+	}
 	for _, cl := range c.inputs {
 		inputInfo := LevelInfo{Level: cl.level, Tables: nil}
 		iter := cl.files.Iter()
