@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode"
 
 	"github.com/cockroachdb/errors"
@@ -81,13 +82,12 @@ func (h *history) Error() error {
 	return nil
 }
 
-func (h *history) format(prefix, format string, args ...interface{}) string {
+func (h *history) format(typ, format string, args ...interface{}) string {
 	var buf strings.Builder
 	orig := fmt.Sprintf(format, args...)
+	timestamp := time.Now().Format("15:04:05.000")
 	for _, line := range strings.Split(strings.TrimSpace(orig), "\n") {
-		buf.WriteString(prefix)
-		buf.WriteString(line)
-		buf.WriteString("\n")
+		fmt.Fprintf(&buf, "// %s %s: %s\n", timestamp, typ, line)
 	}
 	return buf.String()
 }
@@ -100,7 +100,7 @@ func (h *history) Infof(format string, args ...interface{}) {
 	// Suppress any messages that come after closing. This could happen if the
 	// test doesn't close the database.
 	if !h.mu.closed {
-		_ = h.log.Output(2, h.format("// INFO: ", format, args...))
+		_ = h.log.Output(2, h.format("INFO", format, args...))
 	}
 }
 
@@ -112,7 +112,7 @@ func (h *history) Errorf(format string, args ...interface{}) {
 	// Suppress any messages that come after closing. This could happen if the
 	// test doesn't close the database.
 	if !h.mu.closed {
-		_ = h.log.Output(2, h.format("// ERROR: ", format, args...))
+		_ = h.log.Output(2, h.format("ERROR", format, args...))
 	}
 }
 
@@ -124,7 +124,7 @@ func (h *history) Fatalf(format string, args ...interface{}) {
 	if h.mu.closed {
 		panic(fmt.Sprintf(format, args...))
 	}
-	_ = h.log.Output(2, h.format("// FATAL: ", format, args...))
+	_ = h.log.Output(2, h.format("FATAL", format, args...))
 	h.err.Store(errors.Errorf(format, args...))
 }
 

@@ -22,13 +22,16 @@ func TestHistoryLogger(t *testing.T) {
 	h.Infof("hello\nworld\n")
 	h.Fatalf("hello\n\nworld")
 
-	expected := `// INFO: hello
-// INFO: world
-// FATAL: hello
-// FATAL: 
-// FATAL: world
+	re := regexp.MustCompile(`[0-9][0-9]:[0-9][0-9]:[0-9][0-9]\.[0-9][0-9][0-9]`)
+	actual := re.ReplaceAllString(buf.String(), "00:00:00.000")
+
+	expected := `// 00:00:00.000 INFO: hello
+// 00:00:00.000 INFO: world
+// 00:00:00.000 FATAL: hello
+// 00:00:00.000 FATAL: 
+// 00:00:00.000 FATAL: world
 `
-	if actual := buf.String(); expected != actual {
+	if expected != actual {
 		t.Fatalf("expected\n%s\nbut found\n%s", expected, actual)
 	}
 }
