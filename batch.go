@@ -1914,7 +1914,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) (*flushableBatch, error
 			// we'll begin assigning keys sequence numbers that weren't
 			// allocated.
 			if index >= uint32(batch.count) {
-				return nil, errors.AssertionFailedf("pebble: batch entry index %d ≥ batch.count %d", index, batch.count)
+				return nil, base.AssertionFailedf("pebble: batch entry index %d ≥ batch.count %d", index, batch.count)
 			}
 			index++
 		}

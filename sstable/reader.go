@@ -451,10 +451,10 @@ func (r *Reader) NewRawRangeDelIter(transforms IterTransforms) (keyspan.Fragment
 		return nil, nil
 	}
 	if transforms.SyntheticSuffix.IsSet() {
-		return nil, errors.AssertionFailedf("synthetic suffix not supported with range del iterator")
+		return nil, base.AssertionFailedf("synthetic suffix not supported with range del iterator")
 	}
 	if transforms.SyntheticPrefix.IsSet() {
-		return nil, errors.AssertionFailedf("synthetic prefix not supported with range del iterator")
+		return nil, base.AssertionFailedf("synthetic prefix not supported with range del iterator")
 	}
 	h, err := r.readRangeDel(nil /* stats */, nil /* iterStats */)
 	if err != nil {
@@ -482,10 +482,10 @@ func (r *Reader) NewRawRangeKeyIter(transforms IterTransforms) (keyspan.Fragment
 		return nil, nil
 	}
 	if transforms.SyntheticSuffix.IsSet() {
-		return nil, errors.AssertionFailedf("synthetic suffix not supported with range key iterator")
+		return nil, base.AssertionFailedf("synthetic suffix not supported with range key iterator")
 	}
 	if transforms.SyntheticPrefix.IsSet() {
-		return nil, errors.AssertionFailedf("synthetic prefix not supported with range key iterator")
+		return nil, base.AssertionFailedf("synthetic prefix not supported with range key iterator")
 	}
 	h, err := r.readRangeKey(nil /* stats */, nil /* iterStats */)
 	if err != nil {

@@ -494,11 +494,11 @@ func (d *DB) truncateExternalFile(
 	}
 
 	if cmp(sst.StartKey, sst.EndKey) > 0 {
-		return nil, errors.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.StartKey, sst.EndKey)
+		return nil, base.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.StartKey, sst.EndKey)
 	}
 
 	if cmp(sst.StartKey, sst.EndKey) == 0 && !sst.EndKeyIsInclusive {
-		return nil, errors.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.StartKey, sst.EndKey)
+		return nil, base.AssertionFailedf("pebble: invalid external file bounds after truncation [%q, %q)", sst.StartKey, sst.EndKey)
 	}
 
 	return sst, nil
@@ -683,7 +683,7 @@ func scanInternalImpl(
 		panic("lower and upper bounds must be specified in skip-shared iteration mode")
 	}
 	if opts.visitSharedFile != nil && opts.visitExternalFile != nil {
-		return errors.AssertionFailedf("cannot provide both a shared-file and external-file visitor")
+		return base.AssertionFailedf("cannot provide both a shared-file and external-file visitor")
 	}
 
 	// Before starting iteration, check if any files in levels sharedLevelsStart

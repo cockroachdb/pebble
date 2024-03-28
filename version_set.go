@@ -550,7 +550,7 @@ func (vs *versionSet) logAndApply(
 		defer vs.mu.Lock()
 
 		if vs.getFormatMajorVersion() < FormatVirtualSSTables && len(ve.CreatedBackingTables) > 0 {
-			return errors.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
+			return base.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
 		}
 		var b bulkVersionEdit
 		err := b.Accumulate(ve)

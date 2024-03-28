@@ -4,7 +4,10 @@
 
 package sstable
 
-import "github.com/cockroachdb/errors"
+import (
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
+)
 
 // obsoleteKeyBlockPropertyCollector is a block property collector used to
 // implement obsoleteKeyBlockPropertyFilter - a filter that excludes blocks
@@ -117,7 +120,7 @@ func (o obsoleteKeyBlockPropertyFilter) SyntheticSuffixIntersects(
 	}
 	// A block with suffix replacement should never be obsolete.
 	if isObsolete {
-		return false, errors.AssertionFailedf("block with synthetic suffix is obsolete")
+		return false, base.AssertionFailedf("block with synthetic suffix is obsolete")
 	}
 	return true, nil
 }

@@ -125,7 +125,7 @@ func Open(fs vfs.FS, dirname string) (*Catalog, CatalogContents, error) {
 // SetCreatorID sets the creator ID. If it is already set, it must match.
 func (c *Catalog) SetCreatorID(id objstorage.CreatorID) error {
 	if !id.IsSet() {
-		return errors.AssertionFailedf("attempt to unset CreatorID")
+		return base.AssertionFailedf("attempt to unset CreatorID")
 	}
 
 	c.mu.Lock()
@@ -133,7 +133,7 @@ func (c *Catalog) SetCreatorID(id objstorage.CreatorID) error {
 
 	if c.mu.creatorID.IsSet() {
 		if c.mu.creatorID != id {
-			return errors.AssertionFailedf("attempt to change CreatorID from %s to %s", c.mu.creatorID, id)
+			return base.AssertionFailedf("attempt to change CreatorID from %s to %s", c.mu.creatorID, id)
 		}
 		return nil
 	}
@@ -236,13 +236,13 @@ func (c *Catalog) ApplyBatch(b Batch) error {
 	}
 	for _, meta := range b.ve.NewObjects {
 		if exists(meta.FileNum) {
-			return errors.AssertionFailedf("adding existing object %s", meta.FileNum)
+			return base.AssertionFailedf("adding existing object %s", meta.FileNum)
 		}
 		toAdd[meta.FileNum] = struct{}{}
 	}
 	for _, n := range b.ve.DeletedObjects {
 		if !exists(n) {
-			return errors.AssertionFailedf("deleting non-existent object %s", n)
+			return base.AssertionFailedf("deleting non-existent object %s", n)
 		}
 	}
 
@@ -331,7 +331,7 @@ func makeCatalogFilename(iter uint64) string {
 // current catalog and sets c.mu.catalogFile and c.mu.catalogRecWriter.
 func (c *Catalog) createNewCatalogFileLocked() (outErr error) {
 	if c.mu.catalogFile != nil {
-		return errors.AssertionFailedf("catalogFile already open")
+		return base.AssertionFailedf("catalogFile already open")
 	}
 	filename := makeCatalogFilename(c.mu.marker.NextIter())
 	filepath := c.fs.PathJoin(c.dirname, filename)

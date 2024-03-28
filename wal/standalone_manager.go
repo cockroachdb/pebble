@@ -8,7 +8,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -49,7 +48,7 @@ var _ Manager = &StandaloneManager{}
 // init implements Manager.
 func (m *StandaloneManager) init(o Options, initial Logs) error {
 	if o.Secondary.FS != nil {
-		return errors.AssertionFailedf("cannot create StandaloneManager with a secondary")
+		return base.AssertionFailedf("cannot create StandaloneManager with a secondary")
 	}
 	var err error
 	var walDir vfs.File

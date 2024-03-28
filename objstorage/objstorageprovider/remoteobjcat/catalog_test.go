@@ -94,7 +94,9 @@ func TestCatalog(t *testing.T) {
 				td.Fatalf(t, "set-creator-id <id>")
 			}
 			id := objstorage.CreatorID(toUInt64(td.CmdArgs[0].String())[0])
-			if err := cat.SetCreatorID(id); err != nil {
+			if err := base.CatchErrorPanic(func() error {
+				return cat.SetCreatorID(id)
+			}); err != nil {
 				return fmt.Sprintf("error setting creator ID: %v", err)
 			}
 			return memLog.String()
@@ -115,7 +117,9 @@ func TestCatalog(t *testing.T) {
 					td.Fatalf(t, "unknown batch command: %s", tokens[0])
 				}
 			}
-			if err := cat.ApplyBatch(b); err != nil {
+			if err := base.CatchErrorPanic(func() error {
+				return cat.ApplyBatch(b)
+			}); err != nil {
 				return fmt.Sprintf("error applying batch: %v", err)
 			}
 			b.Reset()
