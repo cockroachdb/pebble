@@ -131,7 +131,8 @@ func (m *simpleMergingIter) step() bool {
 	item := &m.heap.items[0]
 	l := &m.levels[item.index]
 	// Sentinels are not relevant for this point checking.
-	if !item.key.IsExclusiveSentinel() && item.key.Visible(m.snapshot, base.InternalKeySeqNumMax) {
+	if !l.isIgnorableBoundaryKey && !item.key.IsExclusiveSentinel() &&
+		item.key.Visible(m.snapshot, base.InternalKeySeqNumMax) {
 		m.numPoints++
 		keyChanged := m.heap.cmp(item.key.UserKey, m.lastKey.UserKey) != 0
 		if !keyChanged {
@@ -223,46 +224,49 @@ func (m *simpleMergingIter) step() bool {
 	m.lastIterMsg = l.iter.String()
 
 	// Step to the next point.
-	if l.iterKey, l.iterValue = l.iter.Next(); l.iterKey != nil {
-		// Check point keys in an sstable are ordered. Although not required, we check
-		// for memtables as well. A subtle check here is that successive sstables of
-		// L1 and higher levels are ordered. This happens when levelIter moves to the
-		// next sstable in the level, in which case item.key is previous sstable's
-		// last point key.
-		if base.InternalCompare(m.heap.cmp, item.key, *l.iterKey) >= 0 {
-			m.err = errors.Errorf("out of order keys %s >= %s in %s",
-				item.key.Pretty(m.formatKey), l.iterKey.Pretty(m.formatKey), l.iter)
+	l.iterKey, l.iterValue = l.iter.Next()
+	if !l.isIgnorableBoundaryKey {
+		if l.iterKey != nil {
+			// Check point keys in an sstable are ordered. Although not required, we check
+			// for memtables as well. A subtle check here is that successive sstables of
+			// L1 and higher levels are ordered. This happens when levelIter moves to the
+			// next sstable in the level, in which case item.key is previous sstable's
+			// last point key.
+			if base.InternalCompare(m.heap.cmp, item.key, *l.iterKey) >= 0 {
+				m.err = errors.Errorf("out of order keys %s >= %s in %s",
+					item.key.Pretty(m.formatKey), l.iterKey.Pretty(m.formatKey), l.iter)
+				return false
+			}
+			item.key.Trailer = l.iterKey.Trailer
+			item.key.UserKey = append(item.key.UserKey[:0], l.iterKey.UserKey...)
+			item.value = l.iterValue
+			if m.heap.len() > 1 {
+				m.heap.fix(0)
+			}
+		} else {
+			m.err = l.iter.Close()
+			l.iter = nil
+			m.heap.pop()
+		}
+		if m.err != nil {
 			return false
 		}
-		item.key.Trailer = l.iterKey.Trailer
-		item.key.UserKey = append(item.key.UserKey[:0], l.iterKey.UserKey...)
-		item.value = l.iterValue
-		if m.heap.len() > 1 {
-			m.heap.fix(0)
-		}
-	} else {
-		m.err = l.iter.Close()
-		l.iter = nil
-		m.heap.pop()
-	}
-	if m.err != nil {
-		return false
-	}
-	if m.heap.len() == 0 {
-		// Last record was a MERGE record.
-		if m.valueMerger != nil {
-			var closer io.Closer
-			_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
-			if m.err == nil && closer != nil {
-				m.err = closer.Close()
+		if m.heap.len() == 0 {
+			// Last record was a MERGE record.
+			if m.valueMerger != nil {
+				var closer io.Closer
+				_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
+				if m.err == nil && closer != nil {
+					m.err = closer.Close()
+				}
+				if m.err != nil {
+					m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
+						item.key.Pretty(m.formatKey), m.lastIterMsg)
+				}
+				m.valueMerger = nil
 			}
-			if m.err != nil {
-				m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
-					item.key.Pretty(m.formatKey), m.lastIterMsg)
-			}
-			m.valueMerger = nil
+			return false
 		}
-		return false
 	}
 	m.positionRangeDels()
 	return true

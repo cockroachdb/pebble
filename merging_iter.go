@@ -952,6 +952,17 @@ func (m *mergingIter) findPrevEntry() (*InternalKey, base.LazyValue) {
 		if m.levels[item.index].isSyntheticIterBoundsKey {
 			break
 		}
+		// Skip ignorable boundary keys. These are not real keys and exist to
+		// keep sstables open until we've surpassed their end boundaries so that
+		// their range deletions are visible.
+		if m.levels[item.index].isIgnorableBoundaryKey {
+			m.err = m.prevEntry(item)
+			if m.err != nil {
+				return nil, base.LazyValue{}
+			}
+			continue
+		}
+
 		m.addItemStats(item)
 		if isDeleted, err := m.isPrevEntryDeleted(item); err != nil {
 			m.err = err
@@ -960,8 +971,7 @@ func (m *mergingIter) findPrevEntry() (*InternalKey, base.LazyValue) {
 			m.stats.PointsCoveredByRangeTombstones++
 			continue
 		}
-		if item.iterKey.Visible(m.snapshot, m.batchSnapshot) &&
-			(!m.levels[item.index].isIgnorableBoundaryKey) {
+		if item.iterKey.Visible(m.snapshot, m.batchSnapshot) {
 			return item.iterKey, item.iterValue
 		}
 		m.err = m.prevEntry(item)
