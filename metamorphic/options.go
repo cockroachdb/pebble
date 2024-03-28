@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -280,7 +281,6 @@ func defaultOptions() *pebble.Options {
 		// Always use our custom comparer which provides a Split method,
 		// splitting keys at the trailing '@'.
 		Comparer:           testkeys.Comparer,
-		DebugCheck:         pebble.DebugCheckLevels,
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: defaultFormatMajorVersion,
 		Levels: []pebble.LevelOptions{{
@@ -288,6 +288,30 @@ func defaultOptions() *pebble.Options {
 		}},
 		BlockPropertyCollectors: blockPropertyCollectorConstructors,
 	}
+
+	// We don't want to run the level checker every time because it can slow down
+	// downloads and background compactions too much.
+	//
+	// We aim to run it once every 500ms (on average). To do this with some
+	// randomization, each time we get a callback we see how much time passed
+	// since the last call and run the check with a proportional probability.
+	const meanTimeBetweenChecks = 500 * time.Millisecond
+	startTime := time.Now()
+	// lastCallTime stores the time of the last DebugCheck call, as the duration
+	// since startTime.
+	var lastCallTime atomic.Uint64
+	opts.DebugCheck = func(db *pebble.DB) error {
+		now := time.Since(startTime)
+		last := time.Duration(lastCallTime.Swap(uint64(now)))
+		// Run the check with probability equal to the time (as a fraction of
+		// meanTimeBetweenChecks) passed since the last time we had a chance, as a
+		// fraction of meanTimeBetweenChecks.
+		if rand.Float64() < float64(now-last)/float64(meanTimeBetweenChecks) {
+			return pebble.DebugCheckLevels(db)
+		}
+		return nil
+	}
+
 	return opts
 }
 
