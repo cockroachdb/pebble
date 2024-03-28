@@ -16,11 +16,7 @@ import (
 
 type twoLevelIterator struct {
 	singleLevelIterator
-	// maybeFilteredKeysSingleLevel indicates whether the last iterator
-	// positioning operation may have skipped any index blocks due to
-	// block-property filters when positioning the top-level-index.
-	maybeFilteredKeysTwoLevel bool
-	topLevelIndex             blockIter
+	topLevelIndex blockIter
 }
 
 // twoLevelIterator implements the base.InternalIterator interface.
@@ -56,7 +52,6 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 			intersects = i.resolveMaybeExcluded(dir)
 		}
 		if intersects == blockExcluded {
-			i.maybeFilteredKeysTwoLevel = true
 			return loadBlockIrrelevant
 		}
 		// blockIntersects
@@ -208,21 +203,6 @@ func (i *twoLevelIterator) String() string {
 	return i.reader.fileNum.String()
 }
 
-// MaybeFilteredKeys may be called when an iterator is exhausted to indicate
-// whether or not the last positioning method may have skipped any keys due to
-// block-property filters.
-func (i *twoLevelIterator) MaybeFilteredKeys() bool {
-	// While reading sstables with two-level indexes, knowledge of whether we've
-	// filtered keys is tracked separately for each index level. The
-	// seek-using-next optimizations have different criteria. We can only reset
-	// maybeFilteredKeys back to false during a seek when NOT using the
-	// fast-path that uses the current iterator position.
-	//
-	// If either level might have filtered keys to arrive at the current
-	// iterator position, return MaybeFilteredKeys=true.
-	return i.maybeFilteredKeysTwoLevel || i.maybeFilteredKeysSingleLevel
-}
-
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
@@ -255,16 +235,6 @@ func (i *twoLevelIterator) SeekGE(
 
 	// SeekGE performs various step-instead-of-seeking optimizations: eg enabled
 	// by trySeekUsingNext, or by monotonically increasing bounds (i.boundsCmp).
-	// Care must be taken to ensure that when performing these optimizations and
-	// the iterator becomes exhausted, i.maybeFilteredKeys is set appropriately.
-	// Consider a previous SeekGE that filtered keys from k until the current
-	// iterator position.
-	//
-	// If the previous SeekGE exhausted the iterator while seeking within the
-	// two-level index, it's possible keys greater than or equal to the current
-	// search key were filtered through skipped index blocks. We must not reuse
-	// the position of the two-level index iterator without remembering the
-	// previous value of maybeFilteredKeys.
 
 	// We fall into the slow path if i.index.isDataInvalidated() even if the
 	// top-level iterator is already positioned correctly and all other
@@ -282,7 +252,6 @@ func (i *twoLevelIterator) SeekGE(
 		// The previous exhausted state of singleLevelIterator is no longer
 		// relevant, since we may be moving to a different index block.
 		i.exhaustedBounds = 0
-		i.maybeFilteredKeysTwoLevel = false
 		flags = flags.DisableTrySeekUsingNext()
 		var ikey *InternalKey
 		if ikey, _ = i.topLevelIndex.SeekGE(key, flags); ikey == nil {
@@ -342,15 +311,15 @@ func (i *twoLevelIterator) SeekGE(
 		// index block. No need to reset the state of singleLevelIterator.
 		//
 		// Note that cases 1 and 2 never overlap, and one of them must be true,
-		// but we have some test code (TestIterRandomizedMaybeFilteredKeys) that
-		// sets both to true, so we fix things here and then do an invariant
+		// but we used to have some test code (TestIterRandomizedMaybeFilteredKeys)
+		// that set both to true, so we fix things here and then do an invariant
 		// check.
 		//
 		// This invariant checking is important enough that we do not gate it
 		// behind invariants.Enabled.
 		if i.boundsCmp > 0 {
-			// TODO(sumeer): fix TestIterRandomizedMaybeFilteredKeys so as to not
-			// need this behavior.
+			// TODO(sumeer): fix now that TestIterRandomizedMaybeFilteredKeys does
+			// nnot exist.
 			flags = flags.DisableTrySeekUsingNext()
 		}
 		if i.boundsCmp > 0 == flags.TrySeekUsingNext() {
@@ -450,17 +419,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 
 	// SeekPrefixGE performs various step-instead-of-seeking optimizations: eg
 	// enabled by trySeekUsingNext, or by monotonically increasing bounds
-	// (i.boundsCmp).  Care must be taken to ensure that when performing these
-	// optimizations and the iterator becomes exhausted,
-	// i.maybeFilteredKeysTwoLevel is set appropriately.  Consider a previous
-	// SeekPrefixGE that filtered keys from k until the current iterator
-	// position.
-	//
-	// If the previous SeekPrefixGE exhausted the iterator while seeking within
-	// the two-level index, it's possible keys greater than or equal to the
-	// current search key were filtered through skipped index blocks. We must
-	// not reuse the position of the two-level index iterator without
-	// remembering the previous value of maybeFilteredKeysTwoLevel.
+	// (i.boundsCmp).
 
 	// We fall into the slow path if i.index.isDataInvalidated() even if the
 	// top-level iterator is already positioned correctly and all other
@@ -478,7 +437,6 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		// The previous exhausted state of singleLevelIterator is no longer
 		// relevant, since we may be moving to a different index block.
 		i.exhaustedBounds = 0
-		i.maybeFilteredKeysTwoLevel = false
 		flags = flags.DisableTrySeekUsingNext()
 		var ikey *InternalKey
 		if ikey, _ = i.topLevelIndex.SeekGE(key, flags); ikey == nil {
@@ -603,7 +561,6 @@ func (i *twoLevelIterator) virtualLastSeekLE() (*InternalKey, base.LazyValue) {
 	// Seek optimization only applies until iterator is first positioned with a
 	// SeekGE or SeekLT after SetBounds.
 	i.boundsCmp = 0
-	i.maybeFilteredKeysTwoLevel = false
 	ikey, _ := i.topLevelIndex.SeekGE(key, base.SeekGEFlagsNone)
 	// We can have multiple internal keys with the same user key as the seek
 	// key. In that case, we want the last (greatest) internal key.
@@ -662,7 +619,6 @@ func (i *twoLevelIterator) SeekLT(
 	// NB: If a bound-limited block property filter is configured, it's
 	// externally ensured that the filter is disabled (through returning
 	// Intersects=false irrespective of the block props provided) during seeks.
-	i.maybeFilteredKeysTwoLevel = false
 	if ikey, _ = i.topLevelIndex.SeekGE(key, base.SeekGEFlagsNone); ikey == nil {
 		if ikey, _ = i.topLevelIndex.Last(); ikey == nil {
 			i.data.invalidate()
@@ -724,7 +680,6 @@ func (i *twoLevelIterator) First() (*InternalKey, base.LazyValue) {
 		return i.SeekGE(i.lower, base.SeekGEFlagsNone)
 	}
 	i.exhaustedBounds = 0
-	i.maybeFilteredKeysTwoLevel = false
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
@@ -777,7 +732,6 @@ func (i *twoLevelIterator) Last() (*InternalKey, base.LazyValue) {
 		panic("twoLevelIterator.Last() used despite upper bound")
 	}
 	i.exhaustedBounds = 0
-	i.maybeFilteredKeysTwoLevel = false
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
@@ -818,7 +772,6 @@ func (i *twoLevelIterator) Last() (*InternalKey, base.LazyValue) {
 func (i *twoLevelIterator) Next() (*InternalKey, base.LazyValue) {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
-	i.maybeFilteredKeysTwoLevel = false
 	if i.err != nil {
 		// TODO(jackson): Can this case be turned into a panic? Once an error is
 		// encountered, the iterator must be re-seeked.
@@ -837,7 +790,6 @@ func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyVa
 	}
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
-	i.maybeFilteredKeysTwoLevel = false
 	if i.err != nil {
 		// TODO(jackson): Can this case be turned into a panic? Once an error is
 		// encountered, the iterator must be re-seeked.
@@ -886,7 +838,6 @@ func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyVa
 func (i *twoLevelIterator) Prev() (*InternalKey, base.LazyValue) {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
-	i.maybeFilteredKeysTwoLevel = false
 	if i.err != nil {
 		return nil, base.LazyValue{}
 	}

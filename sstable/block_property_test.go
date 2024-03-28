@@ -1028,10 +1028,7 @@ func TestBlockProperties(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			return runIterCmd(td, iter, false, runIterCmdEveryOpAfter(func(w io.Writer) {
-				// After every op, point the value of MaybeFilteredKeys.
-				fmt.Fprintf(w, " MaybeFilteredKeys()=%t", iter.MaybeFilteredKeys())
-			}))
+			return runIterCmd(td, iter, false)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
@@ -1119,9 +1116,6 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 				// iterator output.
 				io.Copy(w, &buf)
 				buf.Reset()
-			}), runIterCmdEveryOpAfter(func(w io.Writer) {
-				// After every op, point the value of MaybeFilteredKeys.
-				fmt.Fprintf(w, " MaybeFilteredKeys()=%t", iter.MaybeFilteredKeys())
 			}))
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)

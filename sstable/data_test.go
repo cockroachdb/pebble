@@ -270,17 +270,12 @@ type runIterCmdOption func(*runIterCmdOptions)
 
 type runIterCmdOptions struct {
 	everyOp       func(io.Writer)
-	everyOpAfter  func(io.Writer)
 	stats         *base.InternalIteratorStats
 	maskingFilter TestKeysMaskingFilter
 }
 
 func runIterCmdEveryOp(everyOp func(io.Writer)) runIterCmdOption {
 	return func(opts *runIterCmdOptions) { opts.everyOp = everyOp }
-}
-
-func runIterCmdEveryOpAfter(everyOp func(io.Writer)) runIterCmdOption {
-	return func(opts *runIterCmdOptions) { opts.everyOpAfter = everyOp }
 }
 
 func runIterCmdStats(stats *base.InternalIteratorStats) runIterCmdOption {
@@ -488,9 +483,6 @@ func runIterCmd(
 			fmt.Fprintf(&b, "<err=%v>", err)
 		} else {
 			fmt.Fprintf(&b, ".")
-		}
-		if opts.everyOpAfter != nil {
-			opts.everyOpAfter(&b)
 		}
 		b.WriteString("\n")
 	}
