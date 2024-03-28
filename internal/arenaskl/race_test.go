@@ -29,7 +29,7 @@ func TestNodeArenaEnd(t *testing.T) {
 	// path.
 	for i := uint32(1); i < 256; i++ {
 		a := newArena(i)
-		_, err := newNode(a, 1, ikey, val)
+		_, err := newNode(a, 1, ikey, val, nil)
 		if err == nil {
 			// We reached an arena size big enough to allocate a node.
 			// If there's an issue at the boundary, the race detector would

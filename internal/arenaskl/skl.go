@@ -170,6 +170,19 @@ func (s *Skiplist) Add(key base.InternalKey, value []byte) error {
 	return s.addInternal(key, value, &ins)
 }
 
+// lowestDuplicateNodeIfExists checks the lowest level of the skiplist for another node that has the same user key as Key.
+// This is used for optimizing the case where multiple nodes with the same UserKey are inserted.
+func (s *Skiplist) lowestDuplicateNodeIfExists(key base.InternalKey, ins *Inserter) *node {
+	prev := ins.spl[0].prev
+	next := ins.spl[0].next
+	if prev != nil && s.cmp(prev.getKeyBytes(s.arena), key.UserKey) == 0 {
+		return prev
+	} else if next != nil && s.cmp(next.getKeyBytes(s.arena), key.UserKey) == 0 {
+		return next
+	}
+	return nil
+}
+
 func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter) error {
 	if s.findSplice(key, ins) {
 		// Found a matching node, but handle case where it's been deleted.
@@ -183,7 +196,9 @@ func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter
 		runtime.Gosched()
 	}
 
-	nd, height, err := s.newNode(key, value)
+	duplicateNodeIfExists := s.lowestDuplicateNodeIfExists(key, ins)
+
+	nd, height, err := s.newNode(key, value, duplicateNodeIfExists)
 	if err != nil {
 		return err
 	}
@@ -315,10 +330,10 @@ func (s *Skiplist) NewFlushIter(bytesFlushed *uint64) base.InternalIterator {
 }
 
 func (s *Skiplist) newNode(
-	key base.InternalKey, value []byte,
+	key base.InternalKey, value []byte, duplicateNodeIfExists *node,
 ) (nd *node, height uint32, err error) {
 	height = s.randomHeight()
-	nd, err = newNode(s.arena, height, key, value)
+	nd, err = newNode(s.arena, height, key, value, duplicateNodeIfExists)
 	if err != nil {
 		return
 	}
