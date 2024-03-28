@@ -92,17 +92,7 @@ type levelIter struct {
 	iter internalIterator
 	// iterFile holds the current file. It is always equal to l.files.Current().
 	iterFile *fileMetadata
-	// filteredIter is an optional interface that may be implemented by internal
-	// iterators that perform filtering of keys. When a new file's iterator is
-	// opened, it's tested to see if it implements filteredIter. If it does,
-	// it's stored here to allow the level iterator to recognize when keys were
-	// omitted from iteration results due to filtering. This is important when a
-	// file contains range deletions that may delete keys from other files. The
-	// levelIter must not advance to the next file until the mergingIter has
-	// advanced beyond the file's bounds. See
-	// levelIterBoundaryContext.isIgnorableBoundaryKey.
-	filteredIter filteredIter
-	newIters     tableNewIters
+	newIters tableNewIters
 	// When rangeDelIterPtr != nil, the caller requires that *rangeDelIterPtr must
 	// point to a range del iterator corresponding to the current file. When this
 	// iterator returns nil, *rangeDelIterPtr should also be set to nil. Whenever
@@ -178,29 +168,6 @@ type levelIter struct {
 	// which construct "impossible" situations (e.g. seeking to a key before the
 	// lower bound).
 	disableInvariants bool
-}
-
-// filteredIter is an additional interface implemented by iterators that may
-// skip over point keys during iteration. The sstable.Iterator implements this
-// interface.
-type filteredIter interface {
-	// MaybeFilteredKeys may be called when an iterator is exhausted, indicating
-	// whether or not the iterator's last positioning method may have skipped
-	// any keys due to low-level filters.
-	//
-	// When an iterator is configured to use block-property filters, the
-	// low-level iterator may skip over blocks or whole sstables of keys.
-	// Implementations that implement skipping must implement this interface.
-	// Higher-level iterators require it to preserve invariants (eg, a levelIter
-	// used in a mergingIter must keep the file's range-del iterator open until
-	// the mergingIter has moved past the file's bounds, even if all of the
-	// file's point keys were filtered).
-	//
-	// MaybeFilteredKeys may always return false positives, that is it may
-	// return true when no keys were filtered. It should only be called when the
-	// iterator is exhausted. It must never return false negatives when the
-	// iterator is exhausted.
-	MaybeFilteredKeys() bool
 }
 
 // levelIter implements the base.InternalIterator interface.
@@ -642,27 +609,17 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			continue
 		}
 
-		var rangeDelIter keyspan.FragmentIterator
-		var iter internalIterator
-		iter, rangeDelIter, l.err = l.newIters.TODO(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts)
-		l.iter = iter
+		var iters iterSet
+		iters, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterPointKeys|iterRangeDeletions)
 		if l.err != nil {
 			return noFileLoaded
 		}
-		if rangeDelIter != nil {
-			if fi, ok := iter.(filteredIter); ok {
-				l.filteredIter = fi
-			} else {
-				l.filteredIter = nil
-			}
-		} else {
-			l.filteredIter = nil
-		}
+		l.iter = iters.Point()
 		if l.rangeDelIterPtr != nil {
-			*l.rangeDelIterPtr = rangeDelIter
-			l.rangeDelIterCopy = rangeDelIter
-		} else if rangeDelIter != nil {
-			rangeDelIter.Close()
+			*l.rangeDelIterPtr = iters.rangeDeletion
+			l.rangeDelIterCopy = iters.rangeDeletion
+		} else if iters.rangeDeletion != nil {
+			iters.rangeDeletion.Close()
 		}
 		return newFileLoaded
 	}

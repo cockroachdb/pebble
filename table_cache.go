@@ -30,25 +30,6 @@ import (
 var emptyIter = &errorIter{err: nil}
 var emptyKeyspanIter = &errorKeyspanIter{err: nil}
 
-// filteredAll is a singleton internalIterator implementation used when an
-// sstable does contain point keys, but all the keys are filtered by the active
-// PointKeyFilters set in the iterator's IterOptions.
-//
-// filteredAll implements filteredIter, ensuring the level iterator recognizes
-// when it may need to return file boundaries to keep the rangeDelIter open
-// during mergingIter operation.
-var filteredAll = &filteredAllKeysIter{errorIter: errorIter{err: nil}}
-
-var _ filteredIter = filteredAll
-
-type filteredAllKeysIter struct {
-	errorIter
-}
-
-func (s *filteredAllKeysIter) MaybeFilteredKeys() bool {
-	return true
-}
-
 // tableNewIters creates new iterators (point, range deletion and/or range key)
 // for the given file metadata. Which of the various iterator kinds the user is
 // requesting is specified with the iterKinds bitmap.
@@ -533,14 +514,7 @@ func (c *tableCacheShard) newIters(
 	}
 	// Only point iterators ever require the reader stay pinned in the cache. If
 	// we're not returning a point iterator to the caller, we need to unref v.
-	// There's an added subtlety that iters.point may be non-nil but not a true
-	// iterator that's ref'd the underlying reader if block filters excluded the
-	// entirety of the table.
-	//
-	// TODO(jackson): This `filteredAll` subtlety can be removed after the
-	// planned #2863 refactor, when there will be no need to return a special
-	// empty iterator type to signify that point keys were filtered.
-	if iters.point == nil || iters.point == filteredAll {
+	if iters.point == nil {
 		c.unrefValue(v)
 	}
 	return iters, nil
@@ -594,15 +568,8 @@ func (c *tableCacheShard) newPointIter(
 		if err != nil {
 			return nil, err
 		} else if !ok {
-			// Return an empty iterator. This iterator has no mutable state, so
-			// using a singleton is fine. We must return `filteredAll` instead
-			// of nil so that the returned iterator returns MaybeFilteredKeys()
-			// = true.
-			//
-			// TODO(jackson): This `filteredAll` subtlety can be removed after the
-			// planned #2863 refactor, when there will be no need to return a special
-			// empty iterator type to signify that point keys were filtered.
-			return filteredAll, err
+			// No point keys within the table match the filters.
+			return nil, nil
 		}
 	}
 

@@ -20,17 +20,6 @@ type Iterator interface {
 	// NextPrefix implements (base.InternalIterator).NextPrefix.
 	NextPrefix(succKey []byte) (*InternalKey, base.LazyValue)
 
-	// MaybeFilteredKeys may be called when an iterator is exhausted to indicate
-	// whether or not the last positioning method may have skipped any keys due
-	// to block-property filters. This is used by the Pebble levelIter to
-	// control when an iterator steps to the next sstable.
-	//
-	// MaybeFilteredKeys may always return false positives, that is it may
-	// return true when no keys were filtered. It should only be called when the
-	// iterator is exhausted. It must never return false negatives when the
-	// iterator is exhausted.
-	MaybeFilteredKeys() bool
-
 	SetCloseHook(fn func(i Iterator) error)
 }
 

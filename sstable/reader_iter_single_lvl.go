@@ -152,11 +152,6 @@ type singleLevelIterator struct {
 	// singleLevelIterator, given that these two iterators share this field.
 	exhaustedBounds int8
 
-	// maybeFilteredKeysSingleLevel indicates whether the last iterator
-	// positioning operation may have skipped any data blocks due to
-	// block-property filters when positioning the index.
-	maybeFilteredKeysSingleLevel bool
-
 	// useFilter specifies whether the filter block in this sstable, if present,
 	// should be used for prefix seeks or not. In some cases it is beneficial
 	// to skip a filter block even if it exists (eg. if probability of a match
@@ -453,7 +448,6 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 			intersects = i.resolveMaybeExcluded(dir)
 		}
 		if intersects == blockExcluded {
-			i.maybeFilteredKeysSingleLevel = true
 			return loadBlockIrrelevant
 		}
 		// blockIntersects
@@ -673,15 +667,6 @@ func (i *singleLevelIterator) seekGEHelper(
 
 	// SeekGE performs various step-instead-of-seeking optimizations: eg enabled
 	// by trySeekUsingNext, or by monotonically increasing bounds (i.boundsCmp).
-	// Care must be taken to ensure that when performing these optimizations and
-	// the iterator becomes exhausted, i.maybeFilteredKeys is set appropriately.
-	// Consider a previous SeekGE that filtered keys from k until the current
-	// iterator position.
-	//
-	// If the previous SeekGE exhausted the iterator, it's possible keys greater
-	// than or equal to the current search key were filtered. We must not reuse
-	// the current iterator position without remembering the previous value of
-	// maybeFilteredKeys.
 
 	var dontSeekWithinBlock bool
 	if !i.data.isDataInvalidated() && !i.index.isDataInvalidated() && i.data.valid() && i.index.valid() &&
@@ -739,10 +724,6 @@ func (i *singleLevelIterator) seekGEHelper(
 		}
 
 		// Slow-path.
-		// Since we're re-seeking the iterator, the previous value of
-		// maybeFilteredKeysSingleLevel is irrelevant. If we filter out blocks
-		// during seeking, loadBlock will set it to true.
-		i.maybeFilteredKeysSingleLevel = false
 
 		var ikey *InternalKey
 		if ikey, _ = i.index.SeekGE(key, flags.DisableTrySeekUsingNext()); ikey == nil {
@@ -906,7 +887,6 @@ func (i *singleLevelIterator) virtualLastSeekLE() (*InternalKey, base.LazyValue)
 	// SeekGE or SeekLT after SetBounds.
 	i.boundsCmp = 0
 	i.positionedUsingLatestBounds = true
-	i.maybeFilteredKeysSingleLevel = false
 
 	ikey, _ := i.index.SeekGE(key, base.SeekGEFlagsNone)
 	// We can have multiple internal keys with the same user key as the seek
@@ -1000,16 +980,7 @@ func (i *singleLevelIterator) SeekLT(
 	i.boundsCmp = 0
 
 	// Seeking operations perform various step-instead-of-seeking optimizations:
-	// eg by considering monotonically increasing bounds (i.boundsCmp). Care
-	// must be taken to ensure that when performing these optimizations and the
-	// iterator becomes exhausted i.maybeFilteredKeysSingleLevel is set
-	// appropriately.  Consider a previous SeekLT that filtered keys from k
-	// until the current iterator position.
-	//
-	// If the previous SeekLT did exhausted the iterator, it's possible keys
-	// less than the current search key were filtered. We must not reuse the
-	// current iterator position without remembering the previous value of
-	// maybeFilteredKeysSingleLevel.
+	// eg by considering monotonically increasing bounds (i.boundsCmp).
 
 	i.positionedUsingLatestBounds = true
 
@@ -1036,7 +1007,6 @@ func (i *singleLevelIterator) SeekLT(
 		}
 	} else {
 		// Slow-path.
-		i.maybeFilteredKeysSingleLevel = false
 		var ikey *InternalKey
 
 		// NB: If a bound-limited block property filter is configured, it's
@@ -1104,7 +1074,6 @@ func (i *singleLevelIterator) First() (*InternalKey, base.LazyValue) {
 	}
 
 	i.positionedUsingLatestBounds = true
-	i.maybeFilteredKeysSingleLevel = false
 
 	return i.firstInternal()
 }
@@ -1173,7 +1142,6 @@ func (i *singleLevelIterator) Last() (*InternalKey, base.LazyValue) {
 		panic("singleLevelIterator.Last() used despite upper bound")
 	}
 	i.positionedUsingLatestBounds = true
-	i.maybeFilteredKeysSingleLevel = false
 	return i.lastInternal()
 }
 
@@ -1229,7 +1197,6 @@ func (i *singleLevelIterator) Next() (*InternalKey, base.LazyValue) {
 		panic("Next called even though exhausted upper bound")
 	}
 	i.exhaustedBounds = 0
-	i.maybeFilteredKeysSingleLevel = false
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
@@ -1257,7 +1224,6 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.Laz
 		panic("NextPrefix called even though exhausted upper bound")
 	}
 	i.exhaustedBounds = 0
-	i.maybeFilteredKeysSingleLevel = false
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 	if i.err != nil {
@@ -1335,7 +1301,6 @@ func (i *singleLevelIterator) Prev() (*InternalKey, base.LazyValue) {
 		panic("Prev called even though exhausted lower bound")
 	}
 	i.exhaustedBounds = 0
-	i.maybeFilteredKeysSingleLevel = false
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
@@ -1483,13 +1448,6 @@ func (i *singleLevelIterator) Error() error {
 		return err
 	}
 	return i.err
-}
-
-// MaybeFilteredKeys may be called when an iterator is exhausted to indicate
-// whether or not the last positioning method may have skipped any keys due to
-// block-property filters.
-func (i *singleLevelIterator) MaybeFilteredKeys() bool {
-	return i.maybeFilteredKeysSingleLevel
 }
 
 // SetCloseHook sets a function that will be called when the iterator is
