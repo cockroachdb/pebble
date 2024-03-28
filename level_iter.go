@@ -1018,37 +1018,29 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
 				// bounds.
 				return nil, base.LazyValue{}
 			}
-			// If the boundary is a range deletion tombstone, return that key.
-			if l.iterFile.LargestPointKey.Kind() == InternalKeyKindRangeDelete {
-				l.largestBoundary = &l.iterFile.LargestPointKey
-				if l.boundaryContext != nil {
-					l.boundaryContext.isIgnorableBoundaryKey = true
-				}
-				return l.largestBoundary, base.LazyValue{}
-			}
-			// If the last point iterator positioning op might've skipped keys,
-			// it's possible the file's range deletions are still relevant to
-			// other levels. Return the largest boundary as a special ignorable
-			// marker to avoid advancing to the next file.
+			// If the boundary is a range deletion tombstone, or the caller is
+			// accessing range dels through l.rangeDelIterPtr, pause at an
+			// ignorable boundary key to avoid advancing to the next file until
+			// other levels are caught up.
 			//
-			// The sstable iterator cannot guarantee that keys were skipped. A
-			// SeekGE that lands on a index separator k only knows that the
-			// block at the index entry contains keys ≤ k. We can't know whether
-			// there were actually keys between the seek key and the index
-			// separator key. If the block is then excluded due to block
-			// property filters, the iterator does not know whether keys were
-			// actually skipped by the block's exclusion.
-			//
-			// Since MaybeFilteredKeys cannot guarantee that keys were skipped,
-			// it's possible l.iterFile.Largest was already returned. Returning
-			// l.iterFile.Largest again is a violation of the strict
+			// Note that even if the largest boundary is not a range deletion,
+			// there may still be range deletions beyong the last point key
+			// returned. When block-property filters are in use, the sstable
+			// iterator may have transparently skipped a tail of the point keys
+			// in the file. If the last point key returned /was/ the largest
+			// key, then we'll return a key with the same user key and trailer
+			// twice.  Returning it again is a violation of the strict
 			// monotonicity normally provided. The mergingIter's heap can
 			// tolerate this repeat key and in this case will keep the level at
 			// the top of the heap and immediately skip the entry, advancing to
 			// the next file.
-			if *l.rangeDelIterPtr != nil && l.filteredIter != nil &&
-				l.filteredIter.MaybeFilteredKeys() {
-				l.largestBoundary = &l.iterFile.Largest
+			//
+			// TODO(jackson): We should be able to condition this only on
+			// *l.rangeDelIterPtr != nil, but the getIter retains tombstones
+			// returned by the rangeDelIter after it's nil'd the ptr.
+			if l.iterFile.LargestPointKey.Kind() == InternalKeyKindRangeDelete ||
+				*l.rangeDelIterPtr != nil {
+				l.largestBoundary = &l.iterFile.LargestPointKey
 				if l.boundaryContext != nil {
 					l.boundaryContext.isIgnorableBoundaryKey = true
 				}
