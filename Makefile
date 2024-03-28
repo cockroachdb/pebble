@@ -119,7 +119,7 @@ endif
 # addressed; see https://github.com/cockroachdb/crlfmt/pull/44
 .PHONY: format
 format:
-	go install github.com/cockroachdb/crlfmt@44a36ec7 && crlfmt -w -tab 2 .
+	go install github.com/cockroachdb/crlfmt@44a36ec7 && crlfmt -w -tab 2 -ignore '\.gen\.go' .
 
 .PHONY: format-check
 format-check:

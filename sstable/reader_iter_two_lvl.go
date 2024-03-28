@@ -178,6 +178,7 @@ func (i *twoLevelIterator) init(
 	i.stats = stats
 	i.transforms = transforms
 	i.bufferPool = bufferPool
+	i.canUseStreamlinedBlockIter = !transforms.SyntheticPrefix.IsSet() && !transforms.SyntheticSuffix.IsSet()
 	err = i.topLevelIndex.initHandle(i.cmp, i.reader.Split, topLevelIndexH, transforms)
 	if err != nil {
 		// blockIter.Close releases topLevelIndexH and always returns a nil error

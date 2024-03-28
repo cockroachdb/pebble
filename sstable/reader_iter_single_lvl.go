@@ -164,6 +164,8 @@ type singleLevelIterator struct {
 	useFilter              bool
 	lastBloomFilterMatched bool
 
+	canUseStreamlinedBlockIter bool
+
 	transforms IterTransforms
 
 	// inPool is set to true before putting the iterator in the reusable pool;
@@ -219,6 +221,7 @@ func (i *singleLevelIterator) init(
 	i.stats = stats
 	i.transforms = transforms
 	i.bufferPool = bufferPool
+	i.canUseStreamlinedBlockIter = !transforms.SyntheticPrefix.IsSet() && !transforms.SyntheticSuffix.IsSet()
 	err = i.index.initHandle(i.cmp, r.Split, indexH, transforms)
 	if err != nil {
 		// blockIter.Close releases indexH and always returns a nil error
