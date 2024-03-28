@@ -391,8 +391,8 @@ iter lower=a point-key-filter=(suffix-point-keys-only,1,2)
 seek-lt h
 last
 ----
-<a@1:1> MaybeFilteredKeys()=true
-<a@1:1> MaybeFilteredKeys()=true
+<a@1:1>
+<a@1:1>
 
 # Same as above, but each index block holds 2 keys. This exercises a variant of
 # the above bug. Specifically, the bounds check performed /within/ skipBackward,
@@ -438,7 +438,7 @@ g#72057594037927935,SEPARATOR:
 iter lower=a upper=z point-key-filter=(suffix-point-keys-only,1,2)
 seek-lt h
 ----
-<a@1:1> MaybeFilteredKeys()=true
+<a@1:1>
 
 # Test MaybeFilteredKeys().
 
@@ -453,12 +453,12 @@ next
 seek-ge b
 seek-ge e@3
 ----
-<a@1:1> MaybeFilteredKeys()=false
-<e@3:5> MaybeFilteredKeys()=true
-<f@5:3> MaybeFilteredKeys()=false
-. MaybeFilteredKeys()=false
-<e@3:5> MaybeFilteredKeys()=true
-<e@3:5> MaybeFilteredKeys()=false
+<a@1:1>
+<e@3:5>
+<f@5:3>
+.
+<e@3:5>
+<e@3:5>
 
 
 # NB: `seek-ge e` and `seek-ge dog` return MaybeFilteredKeys()=true, despite no
@@ -473,8 +473,8 @@ iter point-key-filter=(suffix-point-keys-only,1,9)
 seek-ge e
 seek-ge dog
 ----
-<e@3:5> MaybeFilteredKeys()=true
-<e@3:5> MaybeFilteredKeys()=true
+<e@3:5>
+<e@3:5>
 
 iter point-key-filter=(suffix-point-keys-only,1,100)
 first
@@ -487,15 +487,15 @@ next
 seek-lt d
 seek-ge d
 ----
-<a@1:1> MaybeFilteredKeys()=false
-<b@10:2> MaybeFilteredKeys()=false
-<c@15:3> MaybeFilteredKeys()=false
-<d@25:4> MaybeFilteredKeys()=false
-<e@3:5> MaybeFilteredKeys()=false
-<f@5:3> MaybeFilteredKeys()=false
-. MaybeFilteredKeys()=false
-<c@15:3> MaybeFilteredKeys()=false
-<d@25:4> MaybeFilteredKeys()=false
+<a@1:1>
+<b@10:2>
+<c@15:3>
+<d@25:4>
+<e@3:5>
+<f@5:3>
+.
+<c@15:3>
+<d@25:4>
 
 # [10,16) intersects {b@10, c@15}.
 
@@ -510,15 +510,15 @@ seek-lt f
 seek-lt e
 seek-lt d
 ----
-<c@15:3> MaybeFilteredKeys()=true
-<b@10:2> MaybeFilteredKeys()=false
-. MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
-<b@10:2> MaybeFilteredKeys()=false
-<c@15:3> MaybeFilteredKeys()=false
-<c@15:3> MaybeFilteredKeys()=true
-<c@15:3> MaybeFilteredKeys()=true
-<c@15:3> MaybeFilteredKeys()=false
+<c@15:3>
+<b@10:2>
+.
+.
+<b@10:2>
+<c@15:3>
+<c@15:3>
+<c@15:3>
+<c@15:3>
 
 # Test monotonically increasing bounds optimization, with the first seek
 # filtering keys. The subsequent seek must not reuse the current iterator
@@ -531,10 +531,10 @@ seek-ge d
 set-bounds lower=ee upper=g
 seek-ge ee
 ----
-. MaybeFilteredKeys()=false
-. MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
+.
+.
+.
+.
 
 iter point-key-filter=(suffix-point-keys-only,10,16)
 set-bounds lower=a upper=b
@@ -543,11 +543,11 @@ set-bounds lower=b upper=e
 seek-ge b
 seek-ge bb
 ----
-. MaybeFilteredKeys()=false
-. MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
-<b@10:2> MaybeFilteredKeys()=true
-<c@15:3> MaybeFilteredKeys()=false
+.
+.
+.
+<b@10:2>
+<c@15:3>
 
 # Test monotonically decreasing bounds optimization, with the first seek
 # filtering keys. The subsequent seek must not reuse the current iterator
@@ -563,13 +563,13 @@ set-bounds lower=a upper=c
 seek-lt c
 seek-lt b
 ----
-. MaybeFilteredKeys()=false
-. MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
-<c@15:3> MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
-<b@10:2> MaybeFilteredKeys()=false
-. MaybeFilteredKeys()=true
+.
+.
+.
+<c@15:3>
+.
+<b@10:2>
+.
 
 # The below case tests try-seek-using-next.
 #
@@ -585,11 +585,11 @@ seek-ge bb true
 seek-ge c@16 true
 seek-ge c@19 true
 ----
-<b@10:2> MaybeFilteredKeys()=true
-<b@10:2> MaybeFilteredKeys()=true
-<c@15:3> MaybeFilteredKeys()=false
-. MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
+<b@10:2>
+<b@10:2>
+<c@15:3>
+.
+.
 
 # Test another case of monotonically increasing bounds optimization, with a
 # different index block structure. The first seek down below should filter keys,
@@ -626,10 +626,10 @@ seek-ge d
 set-bounds lower=e upper=g
 seek-ge ee
 ----
-. MaybeFilteredKeys()=false
-. MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
+.
+.
+.
+.
 
 # Test another case of monotonically increasing bounds optimization, with a new
 # index block structure: This one has only one level. The first seek down below
@@ -665,10 +665,10 @@ seek-ge d
 set-bounds lower=ee upper=g
 seek-ge ee
 ----
-. MaybeFilteredKeys()=false
-. MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
-. MaybeFilteredKeys()=true
+.
+.
+.
+.
 
 # Create a table with a single block of point keys to test suffix replacement
 # injection during block property filtering
