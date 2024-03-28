@@ -105,6 +105,8 @@ next
 stats
 next
 stats
+next
+stats
 reset-stats
 stats
 ----
@@ -116,6 +118,8 @@ b#8,SET:b
 c#7,SET:c
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 f#5,SET:f
+{BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+f#5,SET:
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 g#4,SET:g
 {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
@@ -380,8 +384,10 @@ j.SET.3:j
 iter
 seek-ge f
 next
+next
 ----
 f/<invalid>#5,SET:f
+f#5,SET:
 i#4,SET:i
 
 # The below count should be 2, as we skip over the rangekey-only file.

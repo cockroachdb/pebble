@@ -131,8 +131,10 @@ c.SET.2:c
 iter
 first
 next
+next
 ----
 c#2,SET:c
+c#2,SET:
 .
 
 iter
