@@ -1,0 +1,78 @@
+# A simple ingest-and-excise test that ensures invariants are respected in the
+# presence of overlapping writes to the memtable, flushes, and compactions. The
+# individual commands don't assert much themselves, depending on Pebble's
+# invariant violations to trigger if a sequence violates invariants.
+
+define
+L0
+  a.SET.3:v
+  apple.SET.3:v
+  b.SET.3:v
+L0
+  a.SET.2:v
+  avocado.SET.3:v
+----
+L0.1:
+  000004:[a#3,SET-b#3,SET]
+L0.0:
+  000005:[a#2,SET-avocado#3,SET]
+0:define
+
+build ext-ab
+set a a
+set anchovy anchovy
+del-range a b
+range-key-del a b
+----
+1:build
+
+build ext-bc
+set b b
+set banana banana
+del-range b c
+range-key-del b c
+----
+2:build
+
+batch
+set apple 4
+----
+3:batch
+
+batch
+set banana 5
+----
+4:batch
+
+flush
+----
+5:flush
+
+maybe-compact
+----
+6:maybe-compact
+
+ingest-and-excise contains-excise-tombstone excise=a-b ext-ab
+----
+7:ingest-and-excise
+
+ingest-and-excise contains-excise-tombstone excise=b-c ext-bc
+----
+8:ingest-and-excise
+
+# Re-run the same sequence of operations 10 times, injecting random latency between
+# some steps and within some IO operations. Randomize the ordering of the last four
+# steps.
+
+run io-latency=(.1,100µs) step-latency=(.2,5ms) count=10
+sequential( 0:define 1:build 2:build reorder( 3:batch 4:batch 5:flush 6:maybe-compact 7:ingest-and-excise 8:ingest-and-excise ) )
+----
+ok
+
+# Re-run the same sequence of operations 10 times, injecting random latency between
+# some steps and within some IO operations. Run the last four steps in parallel.
+
+run io-latency=(.1,100µs) step-latency=(.2,5ms) count=10
+sequential( 0:define 1:build 2:build parallel( 3:batch 4:batch 5:flush 6:maybe-compact 7:ingest-and-excise 8:ingest-and-excise ) )
+----
+ok

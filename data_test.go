@@ -741,6 +741,13 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	opts = opts.EnsureDefaults()
 	opts.FS = vfs.NewMem()
+	return runDBDefineCmdReuseFS(td, opts)
+}
+
+// runDBDefineCmdReuseFS is like runDBDefineCmd, but does not set opts.FS, expecting
+// the caller to have set an appropriate FS already.
+func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) {
+	opts = opts.EnsureDefaults()
 
 	var snapshots []uint64
 	var levelMaxBytes map[int]int64
