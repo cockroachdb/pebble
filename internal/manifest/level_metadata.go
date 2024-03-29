@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -558,7 +559,7 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 		return nil
 	}
 	if invariants.Enabled {
-		i.assertNotL0Cmp(userKey)
+		i.assertNotL0Cmp()
 	}
 	m := i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Largest.UserKey, userKey) >= 0
@@ -579,14 +580,9 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 // assertNotL0Cmp verifies that the btree associated with the iterator is
 // ordered by Smallest key (i.e. L1+ or L0 sublevel) and not by LargestSeqNum
 // (L0).
-//
-// userKey is an arbitrary valid key.
-func (i *LevelIterator) assertNotL0Cmp(userKey []byte) {
-	k := base.MakeInternalKey(userKey, 1, base.InternalKeyKindSet)
-	a := FileMetadata{Smallest: k, LargestSeqNum: 10}
-	b := FileMetadata{Smallest: k, LargestSeqNum: 100}
-	if i.iter.cmp(&a, &b) != 0 {
-		panic("SeekGE used with btreeCmpSeqNum")
+func (i *LevelIterator) assertNotL0Cmp() {
+	if reflect.ValueOf(i.iter.cmp).Pointer() == reflect.ValueOf(btreeCmpSeqNum).Pointer() {
+		panic("Seek used with btreeCmpSeqNum")
 	}
 }
 
@@ -599,7 +595,7 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 		return nil
 	}
 	if invariants.Enabled {
-		i.assertNotL0Cmp(userKey)
+		i.assertNotL0Cmp()
 	}
 	i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Smallest.UserKey, userKey) >= 0
