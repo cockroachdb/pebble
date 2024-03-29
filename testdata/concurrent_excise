@@ -177,3 +177,97 @@ d: (something, .)
 dd: (memory, .)
 e: (bar, .)
 .
+
+
+
+
+
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+set a bar
+set e foobar
+----
+
+compact a-z
+----
+ok
+
+lsm
+----
+L6:
+  000005:[a#10,SET-e#11,SET]
+
+batch
+set a new
+----
+
+flush
+----
+
+batch
+set d new
+set e new
+----
+
+flush
+----
+
+lsm
+----
+L0.0:
+  000007:[a#12,SET-a#12,SET]
+  000009:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-e#11,SET]
+
+build ext5
+set c something
+set b something
+del b-c
+----
+
+batch
+set c new
+----
+
+compact a-e block=c1
+----
+spun off in separate goroutine
+
+ingest-and-excise ext5 excise=b-c contains-excise-tombstone
+----
+
+lsm
+----
+L0.1:
+  000013:[b#17,SET-c#17,SET]
+L0.0:
+  000007:[a#12,SET-a#12,SET]
+  000011:[c#15,SET-c#15,SET]
+  000009:[d#13,SET-e#14,SET]
+L6:
+  000014(000005):[a#10,SET-a#10,SET]
+  000015(000005):[e#11,SET-e#11,SET]
+
+unblock c1
+----
+ok
+
+lsm
+----
+L0.1:
+  000013:[b#17,SET-c#17,SET]
+L0.0:
+  000007:[a#12,SET-a#12,SET]
+  000011:[c#15,SET-c#15,SET]
+  000009:[d#13,SET-e#14,SET]
+L6:
+  000014(000005):[a#10,SET-a#10,SET]
+  000015(000005):[e#11,SET-e#11,SET]

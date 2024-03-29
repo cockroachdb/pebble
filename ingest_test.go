@@ -1514,6 +1514,9 @@ func TestConcurrentExcise(t *testing.T) {
 			return ""
 
 		case "ingest-and-excise":
+			d.mu.Lock()
+			prevFlushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
+			d.mu.Unlock()
 			if err := runIngestAndExciseCmd(td, d, d.opts.FS); err != nil {
 				return err.Error()
 			}
@@ -1522,7 +1525,11 @@ func TestConcurrentExcise(t *testing.T) {
 			for d.mu.compact.flushing {
 				d.mu.compact.cond.Wait()
 			}
+			flushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
 			d.mu.Unlock()
+			if prevFlushableIngests < flushableIngests {
+				return "flushable ingest"
+			}
 			return ""
 
 		case "replicate":
