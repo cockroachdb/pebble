@@ -310,18 +310,9 @@ func (i *twoLevelIterator) SeekGE(
 		// i.topLevelIndex.Key().UserKey) <= 0, we are at the correct lower level
 		// index block. No need to reset the state of singleLevelIterator.
 		//
-		// Note that cases 1 and 2 never overlap, and one of them must be true,
-		// but we used to have some test code (TestIterRandomizedMaybeFilteredKeys)
-		// that set both to true, so we fix things here and then do an invariant
-		// check.
-		//
+		// Note that cases 1 and 2 never overlap, and one of them must be true.
 		// This invariant checking is important enough that we do not gate it
 		// behind invariants.Enabled.
-		if i.boundsCmp > 0 {
-			// TODO(sumeer): fix now that TestIterRandomizedMaybeFilteredKeys does
-			// nnot exist.
-			flags = flags.DisableTrySeekUsingNext()
-		}
 		if i.boundsCmp > 0 == flags.TrySeekUsingNext() {
 			panic(fmt.Sprintf("inconsistency in optimization case 1 %t and case 2 %t",
 				i.boundsCmp > 0, flags.TrySeekUsingNext()))
