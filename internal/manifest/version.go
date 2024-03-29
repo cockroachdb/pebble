@@ -1489,6 +1489,17 @@ func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 	return overlaps(v.Levels[level].Iter(), v.cmp.Compare, bounds)
 }
 
+// IterAllLevelsAndSublevels calls fn with an iterator for each L0 sublevel
+// (from top to bottom), then once for each level below L0.
+func (v *Version) IterAllLevelsAndSublevels(fn func(it LevelIterator, level int, sublevel int)) {
+	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
+		fn(v.L0SublevelFiles[sublevel].Iter(), 0, sublevel)
+	}
+	for level := 1; level < NumLevels; level++ {
+		fn(v.Levels[level].Iter(), level, invalidSublevel)
+	}
+}
+
 // CheckOrdering checks that the files are consistent with respect to
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
