@@ -551,12 +551,14 @@ func (i *LevelIterator) Prev() *FileMetadata {
 
 // SeekGE seeks to the first file in the iterator's file set with a largest
 // user key greater than or equal to the provided user key. The iterator must
-// have been constructed from L1+, because it requires the underlying files to
-// be sorted by user keys and non-overlapping.
+// have been constructed from L1+ or from a single sublevel of L0, because it
+// requires the underlying files to be sorted by user keys and non-overlapping.
 func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
-	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
 	if i.iter.r == nil {
 		return nil
+	}
+	if invariants.Enabled {
+		i.assertNotL0Cmp(userKey)
 	}
 	m := i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Largest.UserKey, userKey) >= 0
@@ -574,14 +576,30 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 	return i.skipFilteredForward(m)
 }
 
-// SeekLT seeks to the last file in the iterator's file set with a smallest
-// user key less than the provided user key. The iterator must have been
-// constructed from L1+, because it requires the underlying files to be sorted
-// by user keys and non-overlapping.
+// assertNotL0Cmp verifies that the btree associated with the iterator is
+// ordered by Smallest key (i.e. L1+ or L0 sublevel) and not by LargestSeqNum
+// (L0).
+//
+// userKey is an arbitrary valid key.
+func (i *LevelIterator) assertNotL0Cmp(userKey []byte) {
+	k := base.MakeInternalKey(userKey, 1, base.InternalKeyKindSet)
+	a := FileMetadata{Smallest: k, LargestSeqNum: 10}
+	b := FileMetadata{Smallest: k, LargestSeqNum: 100}
+	if i.iter.cmp(&a, &b) != 0 {
+		panic("SeekGE used with btreeCmpSeqNum")
+	}
+}
+
+// SeekLT seeks to the last file in the iterator's file set with a smallest user
+// key less than the provided user key. The iterator must have been constructed
+// from L1+ or from a single sublevel of L0, because it requires the underlying
+// files to be sorted by user keys and non-overlapping.
 func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
-	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
 	if i.iter.r == nil {
 		return nil
+	}
+	if invariants.Enabled {
+		i.assertNotL0Cmp(userKey)
 	}
 	i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Smallest.UserKey, userKey) >= 0
