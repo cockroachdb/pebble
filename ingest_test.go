@@ -804,30 +804,16 @@ func TestExcise(t *testing.T) {
 			d.mu.versions.logLock()
 			d.mu.Unlock()
 			current := d.mu.versions.currentVersion()
-			for _, sublevel := range current.L0Sublevels.Levels {
-				iter := sublevel.Iter()
-				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, 0 /* level */)
-					if err != nil {
-						d.mu.Lock()
-						d.mu.versions.logUnlock()
-						d.mu.Unlock()
-						return fmt.Sprintf("error when excising %s: %s", m.FileNum, err.Error())
-					}
-				}
-			}
-			for level := 1; level < manifest.NumLevels; level++ {
-				iter := current.Levels[level].Iter()
+
+			current.IterAllLevelsAndSublevels(func(iter manifest.LevelIterator, level, _ int) {
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
 					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
 					if err != nil {
-						d.mu.Lock()
-						d.mu.versions.logUnlock()
-						d.mu.Unlock()
-						return fmt.Sprintf("error when excising %s: %s", m.FileNum, err.Error())
+						td.Fatalf(t, "error when excising %s: %s", m.FileNum, err.Error())
 					}
 				}
-			}
+			})
+
 			d.mu.Lock()
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
