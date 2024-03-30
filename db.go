@@ -360,7 +360,7 @@ type DB struct {
 		// notifications and act as a mechanism for tying together the events and
 		// log messages for a single job such as a flush, compaction, or file
 		// ingestion. Job IDs are not serialized to disk or used for correctness.
-		nextJobID int
+		nextJobID JobID
 
 		// The collection of immutable versions and state about the log and visible
 		// sequence numbers. Use the pointer here to ensure the atomic fields in
@@ -1679,7 +1679,7 @@ func (d *DB) Close() error {
 	// Since we called d.readState.val.unrefLocked() above, we are expected to
 	// manually schedule deletion of obsolete files.
 	if len(d.mu.versions.obsoleteTables) > 0 {
-		d.deleteObsoleteFiles(d.mu.nextJobID)
+		d.deleteObsoleteFiles(d.newJobIDLocked())
 	}
 
 	d.mu.Unlock()
@@ -2745,8 +2745,7 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	if d.opts.DisableWAL {
 		panic("pebble: invalid function call")
 	}
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 	newLogNum = d.mu.versions.getNextDiskFileNum()
 
 	d.mu.Unlock()
@@ -2770,7 +2769,7 @@ func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	}
 
 	d.mu.Unlock()
-	writer, err := d.mu.log.manager.Create(wal.NumWAL(newLogNum), jobID)
+	writer, err := d.mu.log.manager.Create(wal.NumWAL(newLogNum), int(jobID))
 	if err != nil {
 		panic(err)
 	}

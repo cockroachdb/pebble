@@ -69,7 +69,7 @@ type obsoleteFile struct {
 }
 
 type cleanupJob struct {
-	jobID         int
+	jobID         JobID
 	obsoleteFiles []obsoleteFile
 }
 
@@ -108,7 +108,7 @@ func (cm *cleanupManager) Close() {
 }
 
 // EnqueueJob adds a cleanup job to the manager's queue.
-func (cm *cleanupManager) EnqueueJob(jobID int, obsoleteFiles []obsoleteFile) {
+func (cm *cleanupManager) EnqueueJob(jobID JobID, obsoleteFiles []obsoleteFile) {
 	job := &cleanupJob{
 		jobID:         jobID,
 		obsoleteFiles: obsoleteFiles,
@@ -226,7 +226,7 @@ func (cm *cleanupManager) maybePace(
 
 // deleteObsoleteFile deletes a (non-object) file that is no longer needed.
 func (cm *cleanupManager) deleteObsoleteFile(
-	fs vfs.FS, fileType fileType, jobID int, path string, fileNum base.DiskFileNum, fileSize uint64,
+	fs vfs.FS, fileType fileType, jobID JobID, path string, fileNum base.DiskFileNum, fileSize uint64,
 ) {
 	// TODO(peter): need to handle this error, probably by re-adding the
 	// file that couldn't be deleted to one of the obsolete slices map.
@@ -238,14 +238,14 @@ func (cm *cleanupManager) deleteObsoleteFile(
 	switch fileType {
 	case fileTypeLog:
 		cm.opts.EventListener.WALDeleted(WALDeleteInfo{
-			JobID:   jobID,
+			JobID:   int(jobID),
 			Path:    path,
 			FileNum: fileNum,
 			Err:     err,
 		})
 	case fileTypeManifest:
 		cm.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
-			JobID:   jobID,
+			JobID:   int(jobID),
 			Path:    path,
 			FileNum: fileNum,
 			Err:     err,
@@ -256,7 +256,7 @@ func (cm *cleanupManager) deleteObsoleteFile(
 }
 
 func (cm *cleanupManager) deleteObsoleteObject(
-	fileType fileType, jobID int, fileNum base.DiskFileNum,
+	fileType fileType, jobID JobID, fileNum base.DiskFileNum,
 ) {
 	if fileType != fileTypeTable {
 		panic("not an object")
@@ -277,7 +277,7 @@ func (cm *cleanupManager) deleteObsoleteObject(
 	switch fileType {
 	case fileTypeTable:
 		cm.opts.EventListener.TableDeleted(TableDeleteInfo{
-			JobID:   jobID,
+			JobID:   int(jobID),
 			Path:    path,
 			FileNum: fileNum,
 			Err:     err,

@@ -430,8 +430,6 @@ func ingestLoad(
 	external []ExternalFile,
 	cacheID uint64,
 	pending []base.FileNum,
-	objProvider objstorage.Provider,
-	jobID int,
 ) (ingestLoadResult, error) {
 	localFileNums := pending[:len(paths)]
 	sharedFileNums := pending[len(paths) : len(paths)+len(shared)]
@@ -590,7 +588,7 @@ func ingestCleanup(objProvider objstorage.Provider, meta []ingestLocalMeta) erro
 // ingestLinkLocal creates new objects which are backed by either hardlinks to or
 // copies of the ingested files.
 func ingestLinkLocal(
-	jobID int, opts *Options, objProvider objstorage.Provider, localMetas []ingestLocalMeta,
+	jobID JobID, opts *Options, objProvider objstorage.Provider, localMetas []ingestLocalMeta,
 ) error {
 	for i := range localMetas {
 		objMeta, err := objProvider.LinkOrCopyFromLocal(
@@ -605,7 +603,7 @@ func ingestLinkLocal(
 		}
 		if opts.EventListener.TableCreated != nil {
 			opts.EventListener.TableCreated(TableCreateInfo{
-				JobID:   jobID,
+				JobID:   int(jobID),
 				Reason:  "ingesting",
 				Path:    objProvider.Path(objMeta),
 				FileNum: base.PhysicalTableDiskFileNum(localMetas[i].FileNum),
@@ -622,7 +620,7 @@ func ingestLinkLocal(
 //
 // ingestUnprotectExternalBackings() must be called after this function (even in
 // error cases).
-func (d *DB) ingestAttachRemote(jobID int, lr ingestLoadResult) error {
+func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 	remoteObjs := make([]objstorage.RemoteObjectToAttach, 0, len(lr.shared)+len(lr.external))
 	for i := range lr.shared {
 		backing, err := lr.shared[i].shared.Backing.Get()
@@ -705,7 +703,7 @@ func (d *DB) ingestAttachRemote(jobID int, lr ingestLoadResult) error {
 	if d.opts.EventListener.TableCreated != nil {
 		for i := range remoteObjMetas {
 			d.opts.EventListener.TableCreated(TableCreateInfo{
-				JobID:   jobID,
+				JobID:   int(jobID),
 				Reason:  "ingesting",
 				Path:    d.objProvider.Path(remoteObjMetas[i]),
 				FileNum: remoteObjMetas[i].DiskFileNum,
@@ -1459,13 +1457,12 @@ func (d *DB) ingest(
 		pendingOutputs[i] = d.mu.versions.getNextFileNum()
 	}
 
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 	d.mu.Unlock()
 
 	// Load the metadata for all the files being ingested. This step detects
 	// and elides empty sstables.
-	loadResult, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, shared, external, d.cacheID, pendingOutputs, d.objProvider, jobID)
+	loadResult, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, shared, external, d.cacheID, pendingOutputs)
 	if err != nil {
 		return IngestOperationStats{}, err
 	}
@@ -1755,7 +1752,7 @@ func (d *DB) ingest(
 	}
 
 	info := TableIngestInfo{
-		JobID:     jobID,
+		JobID:     int(jobID),
 		Err:       err,
 		flushable: asFlushable,
 	}
@@ -2248,7 +2245,7 @@ func (d *DB) ingestSplit(
 }
 
 func (d *DB) ingestApply(
-	jobID int,
+	jobID JobID,
 	lr ingestLoadResult,
 	findTargetLevel ingestTargetLevelFunc,
 	mut *memTable,
@@ -2589,8 +2586,7 @@ func (d *DB) validateSSTables() {
 	pending := d.mu.tableValidation.pending
 	d.mu.tableValidation.pending = nil
 	d.mu.tableValidation.validating = true
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 	rs := d.loadReadState()
 
 	// Drop DB.mu before performing IO.
@@ -2661,7 +2657,7 @@ func (d *DB) validateSSTables() {
 		}
 
 		d.opts.EventListener.TableValidated(TableValidatedInfo{
-			JobID: jobID,
+			JobID: int(jobID),
 			Meta:  f.Meta,
 		})
 	}

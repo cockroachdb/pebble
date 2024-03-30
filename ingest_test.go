@@ -128,7 +128,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}).WithFSDefaults()
-			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.FileNum{1}, nil, 0)
+			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.FileNum{1})
 			if err != nil {
 				return err.Error()
 			}
@@ -218,7 +218,7 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	lr, err := ingestLoad(opts, version, paths, nil, nil, 0, pending, nil, 0)
+	lr, err := ingestLoad(opts, version, paths, nil, nil, 0, pending)
 	require.NoError(t, err)
 
 	for _, m := range lr.local {
@@ -238,7 +238,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.FileNum{1}, nil, 0); err == nil {
+	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.FileNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }

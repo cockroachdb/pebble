@@ -286,8 +286,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 
 	providerSettings := objstorageprovider.Settings{
 		Logger:              opts.Logger,
@@ -511,7 +510,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			entry.readerUnrefLocked(true)
 		}
 
-		d.mu.log.writer, err = d.mu.log.manager.Create(wal.NumWAL(newLogNum), jobID)
+		d.mu.log.writer, err = d.mu.log.manager.Create(wal.NumWAL(newLogNum), int(jobID))
 		if err != nil {
 			return nil, err
 		}
@@ -754,7 +753,7 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
-	jobID int, ve *versionEdit, ll wal.LogicalLog, strictWALTail bool,
+	jobID JobID, ve *versionEdit, ll wal.LogicalLog, strictWALTail bool,
 ) (toFlush flushableList, maxSeqNum uint64, err error) {
 	rr := ll.OpenForRead()
 	defer rr.Close()

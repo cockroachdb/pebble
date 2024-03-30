@@ -451,8 +451,7 @@ var _ = (*DB)(nil).markFilesLocked
 // markFilesLocked durably marks the files that match the given findFilesFunc for
 // compaction.
 func (d *DB) markFilesLocked(findFn findFilesFunc) error {
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 
 	// Acquire a read state to have a view of the LSM and a guarantee that none
 	// of the referenced files will be deleted until we've unreferenced the read
