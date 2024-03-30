@@ -52,13 +52,12 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		for i := range paths {
 			pendingOutputs[i] = d.mu.versions.getNextFileNum()
 		}
-		jobID := d.mu.nextJobID
-		d.mu.nextJobID++
+		jobID := d.newJobIDLocked()
 		d.mu.Unlock()
 
 		// We can reuse the ingestLoad function for this test even if we're
 		// not actually ingesting a file.
-		lr, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheID, pendingOutputs, d.objProvider, jobID)
+		lr, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheID, pendingOutputs)
 		if err != nil {
 			panic(err)
 		}

@@ -356,8 +356,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 
 	applyVE := func(ve *versionEdit) error {
 		d.mu.versions.logLock()
-		jobID := d.mu.nextJobID
-		d.mu.nextJobID++
+		jobID := d.newJobIDLocked()
 
 		err := d.mu.versions.logAndApply(jobID, ve, fileMetrics(ve), false, func() []compactionInfo {
 			return d.getInProgressCompactionInfoLocked(nil)

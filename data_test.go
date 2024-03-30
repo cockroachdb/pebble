@@ -1047,8 +1047,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	}
 
 	if len(ve.NewFiles) > 0 {
-		jobID := d.mu.nextJobID
-		d.mu.nextJobID++
+		jobID := d.newJobIDLocked()
 		d.mu.versions.logLock()
 		if err := d.mu.versions.logAndApply(jobID, ve, newFileMetrics(ve.NewFiles), false, func() []compactionInfo {
 			return nil

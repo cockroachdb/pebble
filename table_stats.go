@@ -91,8 +91,7 @@ func (d *DB) collectTableStats() bool {
 	pending := d.mu.tableStats.pending
 	d.mu.tableStats.pending = nil
 	d.mu.tableStats.loading = true
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 	loadedInitial := d.mu.tableStats.loadedInitial
 	// Drop DB.mu before performing IO.
 	d.mu.Unlock()
@@ -122,7 +121,7 @@ func (d *DB) collectTableStats() bool {
 	if loadedInitial && !d.mu.tableStats.loadedInitial {
 		d.mu.tableStats.loadedInitial = loadedInitial
 		d.opts.EventListener.TableStatsLoaded(TableStatsInfo{
-			JobID: jobID,
+			JobID: int(jobID),
 		})
 	}
 

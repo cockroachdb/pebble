@@ -161,7 +161,7 @@ func (vs *versionSet) init(
 
 // create creates a version set for a fresh DB.
 func (vs *versionSet) create(
-	jobID int,
+	jobID JobID,
 	dirname string,
 	provider objstorage.Provider,
 	opts *Options,
@@ -197,7 +197,7 @@ func (vs *versionSet) create(
 	}
 
 	vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-		JobID:   jobID,
+		JobID:   int(jobID),
 		Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
 		FileNum: vs.manifestFileNum,
 		Err:     err,
@@ -425,7 +425,7 @@ func (vs *versionSet) logUnlock() {
 // inProgressCompactions is called while DB.mu is held, to get the list of
 // in-progress compactions.
 func (vs *versionSet) logAndApply(
-	jobID int,
+	jobID JobID,
 	ve *versionEdit,
 	metrics map[int]*LevelMetrics,
 	forceRotation bool,
@@ -567,7 +567,7 @@ func (vs *versionSet) logAndApply(
 		if newManifestFileNum != 0 {
 			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum, newManifestVirtualBackings); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-					JobID:   jobID,
+					JobID:   int(jobID),
 					Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
 					FileNum: newManifestFileNum,
 					Err:     err,
@@ -601,7 +601,7 @@ func (vs *versionSet) logAndApply(
 				return errors.Wrap(err, "MANIFEST set current failed")
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-				JobID:   jobID,
+				JobID:   int(jobID),
 				Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
 				FileNum: newManifestFileNum,
 			})

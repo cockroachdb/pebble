@@ -353,9 +353,9 @@ type compaction struct {
 	pickerMetrics compactionPickerMetrics
 }
 
-func (c *compaction) makeInfo(jobID int) CompactionInfo {
+func (c *compaction) makeInfo(jobID JobID) CompactionInfo {
 	info := CompactionInfo{
-		JobID:       jobID,
+		JobID:       int(jobID),
 		Reason:      c.kind.String(),
 		Input:       make([]LevelInfo, 0, len(c.inputs)),
 		Annotations: []string{},
@@ -1648,10 +1648,9 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 	d.addInProgressCompaction(c)
 
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 	d.opts.EventListener.FlushBegin(FlushInfo{
-		JobID:      jobID,
+		JobID:      int(jobID),
 		Input:      inputs,
 		InputBytes: inputBytes,
 		Ingest:     ingest,
@@ -1680,7 +1679,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 
 	info := FlushInfo{
-		JobID:      jobID,
+		JobID:      int(jobID),
 		Input:      inputs,
 		InputBytes: inputBytes,
 		Duration:   d.timeNow().Sub(startTime),
@@ -2422,8 +2421,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		}()
 	}
 
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 	info := c.makeInfo(jobID)
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
@@ -2525,7 +2523,7 @@ type compactStats struct {
 // d.mu must be held when calling this method. The mutex will be released when
 // doing IO.
 func (d *DB) runCopyCompaction(
-	jobID int,
+	jobID JobID,
 	c *compaction,
 	inputMeta *fileMetadata,
 	objMeta objstorage.ObjectMetadata,
@@ -2684,7 +2682,7 @@ type compactionOutput struct {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
-	jobID int, c *compaction,
+	jobID JobID, c *compaction,
 ) (ve *versionEdit, pendingOutputs []compactionOutput, stats compactStats, retErr error) {
 	// As a sanity check, confirm that the smallest / largest keys for new and
 	// deleted files in the new versionEdit pass a validation function before
@@ -2960,7 +2958,7 @@ func (d *DB) runCompaction(
 			reason = "compacting"
 		}
 		d.opts.EventListener.TableCreated(TableCreateInfo{
-			JobID:   jobID,
+			JobID:   int(jobID),
 			Reason:  reason,
 			Path:    d.objProvider.Path(objMeta),
 			FileNum: diskFileNum,
@@ -3569,9 +3567,7 @@ func (d *DB) enableFileDeletions() {
 	if d.mu.disableFileDeletions > 0 {
 		return
 	}
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
-	d.deleteObsoleteFiles(jobID)
+	d.deleteObsoleteFiles(d.newJobIDLocked())
 }
 
 type fileInfo = base.FileInfo
@@ -3582,7 +3578,7 @@ type fileInfo = base.FileInfo
 //
 // Does nothing if file deletions are disabled (see disableFileDeletions). A
 // cleanup job will be scheduled when file deletions are re-enabled.
-func (d *DB) deleteObsoleteFiles(jobID int) {
+func (d *DB) deleteObsoleteFiles(jobID JobID) {
 	if d.mu.disableFileDeletions > 0 {
 		return
 	}
@@ -3689,9 +3685,7 @@ func (d *DB) maybeScheduleObsoleteTableDeletion() {
 
 func (d *DB) maybeScheduleObsoleteTableDeletionLocked() {
 	if len(d.mu.versions.obsoleteTables) > 0 {
-		jobID := d.mu.nextJobID
-		d.mu.nextJobID++
-		d.deleteObsoleteFiles(jobID)
+		d.deleteObsoleteFiles(d.newJobIDLocked())
 	}
 }
 
