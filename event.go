@@ -242,6 +242,47 @@ func (i FlushInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	}
 }
 
+// DownloadInfo contains the info for a DB.Download() event.
+type DownloadInfo struct {
+	// JobID is the ID of the download job.
+	JobID int
+
+	Spans []DownloadSpan
+
+	// Duration is the time since the operation was started.
+	Duration                    time.Duration
+	DownloadCompactionsLaunched int
+
+	RestartCount int
+	Done         bool
+	Err          error
+}
+
+func (i DownloadInfo) String() string {
+	return redact.StringWithoutMarkers(i)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (i DownloadInfo) SafeFormat(w redact.SafePrinter, _ rune) {
+	switch {
+	case i.Err != nil:
+		w.Printf("[JOB %d] download error after %1.fs: %s", redact.Safe(i.JobID), i.Err, redact.Safe(i.Duration.Seconds()))
+
+	case i.Done:
+		w.Printf("[JOB %d] download finished in %.1fs (launched %d compactions)",
+			redact.Safe(i.JobID), redact.Safe(i.Duration.Seconds()), redact.Safe(i.DownloadCompactionsLaunched))
+
+	default:
+		if i.RestartCount == 0 {
+			w.Printf("[JOB %d] starting download for %d spans", redact.Safe(i.JobID), redact.Safe(len(i.Spans)))
+		} else {
+			w.Printf("[JOB %d] restarting download (restart #%d, time so far %.1fs, launched %d compactions)",
+				redact.Safe(i.JobID), redact.Safe(i.RestartCount), redact.Safe(i.Duration.Seconds()),
+				redact.Safe(i.DownloadCompactionsLaunched))
+		}
+	}
+}
+
 // ManifestCreateInfo contains info about a manifest creation event.
 type ManifestCreateInfo struct {
 	// JobID is the ID of the job the caused the manifest to be created.
@@ -517,6 +558,14 @@ type EventListener struct {
 	// installed.
 	FlushEnd func(FlushInfo)
 
+	// DownloadBegin is invoked when a db.Download operation starts or restarts
+	// (restarts are caused by new external tables being ingested during the
+	// operation).
+	DownloadBegin func(DownloadInfo)
+
+	// DownloadEnd is invoked when a db.Download operation completes.
+	DownloadEnd func(DownloadInfo)
+
 	// FormatUpgrade is invoked after the database's FormatMajorVersion
 	// is upgraded.
 	FormatUpgrade func(FormatMajorVersion)
@@ -586,6 +635,12 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	if l.FlushEnd == nil {
 		l.FlushEnd = func(info FlushInfo) {}
 	}
+	if l.DownloadBegin == nil {
+		l.DownloadBegin = func(info DownloadInfo) {}
+	}
+	if l.DownloadEnd == nil {
+		l.DownloadEnd = func(info DownloadInfo) {}
+	}
 	if l.FormatUpgrade == nil {
 		l.FormatUpgrade = func(v FormatMajorVersion) {}
 	}
@@ -648,6 +703,12 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 			logger.Infof("%s", info)
 		},
 		FlushEnd: func(info FlushInfo) {
+			logger.Infof("%s", info)
+		},
+		DownloadBegin: func(info DownloadInfo) {
+			logger.Infof("%s", info)
+		},
+		DownloadEnd: func(info DownloadInfo) {
 			logger.Infof("%s", info)
 		},
 		FormatUpgrade: func(v FormatMajorVersion) {
@@ -717,6 +778,14 @@ func TeeEventListener(a, b EventListener) EventListener {
 		FlushEnd: func(info FlushInfo) {
 			a.FlushEnd(info)
 			b.FlushEnd(info)
+		},
+		DownloadBegin: func(info DownloadInfo) {
+			a.DownloadBegin(info)
+			b.DownloadBegin(info)
+		},
+		DownloadEnd: func(info DownloadInfo) {
+			a.DownloadEnd(info)
+			b.DownloadEnd(info)
 		},
 		FormatUpgrade: func(v FormatMajorVersion) {
 			a.FormatUpgrade(v)

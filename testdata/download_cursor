@@ -1,0 +1,144 @@
+# This file tests the download cursor functionality.
+# Backings >= 100 are external.
+
+# Basic test to verify cursor iteration.
+define
+L0:
+  1(101):[a#1,SET-a#1,SET] seqnums:[3-3]
+  2(102):[b#1,SET-d#1,SET] seqnums:[3-3]
+  3(103):[e#1,SET-g#1,SET] seqnums:[3-3]
+  4(104):[a#1,SET-c#1,SET] seqnums:[2-2]
+L2:
+  5(105):[b#1,SET-c#1,SET]
+----
+L0.1:
+  000001(000101):[a#1,SET-a#1,SET] seqnums:[3-3] points:[a#1,SET-a#1,SET]
+  000002(000102):[b#1,SET-d#1,SET] seqnums:[3-3] points:[b#1,SET-d#1,SET]
+L0.0:
+  000004(000104):[a#1,SET-c#1,SET] seqnums:[2-2] points:[a#1,SET-c#1,SET]
+  000003(000103):[e#1,SET-g#1,SET] seqnums:[3-3] points:[e#1,SET-g#1,SET]
+L2:
+  000005(000105):[b#1,SET-c#1,SET] seqnums:[0-0] points:[b#1,SET-c#1,SET]
+
+# Verify iteration.
+cursor lower=a upper=d
+start
+iterate
+----
+start:
+  level=0 key="a" seqNum=0
+iterate:
+  file: 000004:[a#1,SET-c#1,SET]  file-cursor: level=0 key="a" seqNum=2
+  file: 000001:[a#1,SET-a#1,SET]  file-cursor: level=0 key="a" seqNum=3
+  file: 000002:[b#1,SET-d#1,SET]  file-cursor: level=0 key="b" seqNum=3
+  file: 000005:[b#1,SET-c#1,SET]  file-cursor: level=2 key="b" seqNum=0
+  no more files
+
+cursor lower=b upper=z
+start
+iterate
+----
+start:
+  level=0 key="b" seqNum=0
+iterate:
+  file: 000002:[b#1,SET-d#1,SET]  file-cursor: level=0 key="b" seqNum=3
+  file: 000003:[e#1,SET-g#1,SET]  file-cursor: level=0 key="e" seqNum=3
+  file: 000005:[b#1,SET-c#1,SET]  file-cursor: level=2 key="b" seqNum=0
+  no more files
+
+# Verify that non-external files are skipped.
+define
+L0:
+  1:[a#1,SET-a#1,SET] seqnums:[3-3]
+  2(102):[b#1,SET-d#1,SET] seqnums:[3-3]
+  3:[e#1,SET-g#1,SET] seqnums:[3-3]
+  4(104):[a#1,SET-c#1,SET] seqnums:[2-2]
+L2:
+  5(105):[b#1,SET-c#1,SET] seqnums:[1-1]
+----
+L0.1:
+  000001:[a#1,SET-a#1,SET] seqnums:[3-3] points:[a#1,SET-a#1,SET]
+  000002(000102):[b#1,SET-d#1,SET] seqnums:[3-3] points:[b#1,SET-d#1,SET]
+L0.0:
+  000004(000104):[a#1,SET-c#1,SET] seqnums:[2-2] points:[a#1,SET-c#1,SET]
+  000003:[e#1,SET-g#1,SET] seqnums:[3-3] points:[e#1,SET-g#1,SET]
+L2:
+  000005(000105):[b#1,SET-c#1,SET] seqnums:[1-1] points:[b#1,SET-c#1,SET]
+
+cursor lower=a upper=z
+start
+iterate
+----
+start:
+  level=0 key="a" seqNum=0
+iterate:
+  file: 000004:[a#1,SET-c#1,SET]  file-cursor: level=0 key="a" seqNum=2
+  file: 000002:[b#1,SET-d#1,SET]  file-cursor: level=0 key="b" seqNum=3
+  file: 000005:[b#1,SET-c#1,SET]  file-cursor: level=2 key="b" seqNum=1
+  no more files
+
+# Simulate a file moving between levels.
+define
+L1:
+  1(101):[a#1,SET-b#1,SET]
+  2(102):[c#1,SET-d#1,SET]
+  3(103):[e#1,SET-f#1,SET]
+L2:
+  4(104):[a1#1,SET-b#1,SET]
+  5(105):[d1#1,SET-g#1,SET]
+----
+L1:
+  000001(000101):[a#1,SET-b#1,SET] seqnums:[0-0] points:[a#1,SET-b#1,SET]
+  000002(000102):[c#1,SET-d#1,SET] seqnums:[0-0] points:[c#1,SET-d#1,SET]
+  000003(000103):[e#1,SET-f#1,SET] seqnums:[0-0] points:[e#1,SET-f#1,SET]
+L2:
+  000004(000104):[a1#1,SET-b#1,SET] seqnums:[0-0] points:[a1#1,SET-b#1,SET]
+  000005(000105):[d1#1,SET-g#1,SET] seqnums:[0-0] points:[d1#1,SET-g#1,SET]
+
+cursor lower=a upper=z
+start
+next-file
+next-file
+next-file
+----
+start:
+  level=0 key="a" seqNum=0
+next-file:
+  file: 000001:[a#1,SET-b#1,SET]  file-cursor: level=1 key="a" seqNum=0
+next-file:
+  file: 000002:[c#1,SET-d#1,SET]  file-cursor: level=1 key="c" seqNum=0
+next-file:
+  file: 000003:[e#1,SET-f#1,SET]  file-cursor: level=1 key="e" seqNum=0
+
+define
+L1:
+  1(101):[a#1,SET-b#1,SET]
+  3(103):[e#1,SET-f#1,SET]
+L2:
+  4(104):[a1#1,SET-b#1,SET]
+  2(102):[c#1,SET-d#1,SET]
+  5(105):[d1#1,SET-g#1,SET]
+----
+L1:
+  000001(000101):[a#1,SET-b#1,SET] seqnums:[0-0] points:[a#1,SET-b#1,SET]
+  000003(000103):[e#1,SET-f#1,SET] seqnums:[0-0] points:[e#1,SET-f#1,SET]
+L2:
+  000004(000104):[a1#1,SET-b#1,SET] seqnums:[0-0] points:[a1#1,SET-b#1,SET]
+  000002(000102):[c#1,SET-d#1,SET] seqnums:[0-0] points:[c#1,SET-d#1,SET]
+  000005(000105):[d1#1,SET-g#1,SET] seqnums:[0-0] points:[d1#1,SET-g#1,SET]
+
+# Continue the cursor above. We should see table 2 again.
+cursor lower=a upper=z
+next-file
+next-file
+next-file
+next-file
+----
+next-file:
+  file: 000004:[a1#1,SET-b#1,SET]  file-cursor: level=2 key="a1" seqNum=0
+next-file:
+  file: 000002:[c#1,SET-d#1,SET]  file-cursor: level=2 key="c" seqNum=0
+next-file:
+  file: 000005:[d1#1,SET-g#1,SET]  file-cursor: level=2 key="d1" seqNum=0
+next-file:
+  file: <nil>  file-cursor: level=7 key="a" seqNum=0
