@@ -52,20 +52,26 @@ maybe-compact
 ----
 6:maybe-compact
 
+# Create a memtable overlap with the ingested sst to trigger a flushable ingest.
+batch
+set alpha 5
+----
+7:batch
+
 ingest-and-excise contains-excise-tombstone excise=a-b ext-ab
 ----
-7:ingest-and-excise
+8:ingest-and-excise
 
 ingest-and-excise contains-excise-tombstone excise=b-c ext-bc
 ----
-8:ingest-and-excise
+9:ingest-and-excise
 
 # Re-run the same sequence of operations 10 times, injecting random latency between
 # some steps and within some IO operations. Randomize the ordering of the last four
 # steps.
 
 run io-latency=(.1,100µs) step-latency=(.2,5ms) count=10
-sequential( 0:define 1:build 2:build reorder( 3:batch 4:batch 5:flush 6:maybe-compact 7:ingest-and-excise 8:ingest-and-excise ) )
+sequential( 0:define 1:build 2:build reorder( 3:batch 4:batch 5:flush 6:maybe-compact 7:batch 8:ingest-and-excise 9:ingest-and-excise ) )
 ----
 ok
 
@@ -73,6 +79,6 @@ ok
 # some steps and within some IO operations. Run the last four steps in parallel.
 
 run io-latency=(.1,100µs) step-latency=(.2,5ms) count=10
-sequential( 0:define 1:build 2:build parallel( 3:batch 4:batch 5:flush 6:maybe-compact 7:ingest-and-excise 8:ingest-and-excise ) )
+sequential( 0:define 1:build 2:build parallel( 3:batch 4:batch 5:flush 6:maybe-compact 7:batch 8:ingest-and-excise 9:ingest-and-excise ) )
 ----
 ok
