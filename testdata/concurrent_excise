@@ -177,3 +177,119 @@ d: (something, .)
 dd: (memory, .)
 e: (bar, .)
 .
+
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+set a bar
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+build ext6
+set e foo
+----
+
+ingest ext6
+----
+
+lsm
+----
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000006:[e#11,SET-e#11,SET]
+
+batch
+set a new
+----
+
+flush
+----
+
+batch
+set d new
+set e new
+----
+
+flush
+----
+
+lsm
+----
+L0.0:
+  000008:[a#12,SET-a#12,SET]
+  000010:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000006:[e#11,SET-e#11,SET]
+
+build ext5
+set bb something
+set b something
+del b-c
+----
+
+lsm
+----
+L0.0:
+  000008:[a#12,SET-a#12,SET]
+  000010:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000006:[e#11,SET-e#11,SET]
+
+compact a-e block=c1
+----
+spun off in separate goroutine
+
+batch
+set bb new
+----
+
+lsm
+----
+L0.0:
+  000008:[a#12,SET-a#12,SET]
+  000010:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000006:[e#11,SET-e#11,SET]
+
+ingest-and-excise ext5 excise=b-c contains-excise-tombstone
+----
+flushable ingest
+
+lsm
+----
+L0.0:
+  000008:[a#12,SET-a#12,SET]
+  000010:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000012:[b#16,SET-bb#16,SET]
+  000006:[e#11,SET-e#11,SET]
+
+unblock c1
+----
+ok
+
+lsm
+----
+L0.0:
+  000008:[a#12,SET-a#12,SET]
+  000010:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000012:[b#16,SET-bb#16,SET]
+  000006:[e#11,SET-e#11,SET]

@@ -1722,12 +1722,24 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			}
 		} else if len(ve.DeletedFiles) > 0 {
 			// c.kind == compactionKindIngestedFlushable && we have deleted files due
-			// to ingest-time splits.
+			// to ingest-time splits or excises.
 			//
 			// Iterate through all other compactions, and check if their inputs have
-			// been replaced due to an ingest-time split. In that case, cancel the
-			// compaction.
+			// been replaced due to an ingest-time split or excise. In that case,
+			// cancel the compaction.
+			ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
 			for c2 := range d.mu.compact.inProgress {
+				// Check if this compaction overlaps with the excise span. Note that just
+				// checking if the inputs individually overlap with the excise span
+				// isn't sufficient; for instance, a compaction could have [a,b] and [e,f]
+				// as inputs and write it all out as [a,b,e,f] in one sstable. If we're
+				// doing a [c,d) excise at the same time as this compaction, we will have
+				// to error out the whole compaction as we can't guarantee it hasn't/won't
+				// write a file overlapping with the excise span.
+				if ingestFlushable.exciseSpan.OverlapsInternalKeyRange(d.cmp, c2.smallest, c2.largest) {
+					c2.cancel.Store(true)
+					continue
+				}
 				for i := range c2.inputs {
 					iter := c2.inputs[i].files.Iter()
 					for f := iter.First(); f != nil; f = iter.Next() {

@@ -1419,7 +1419,6 @@ func TestConcurrentExcise(t *testing.T) {
 		require.NoError(t, mem2.MkdirAll("ext", 0755))
 		opts1 := &Options{
 			Comparer:              testkeys.Comparer,
-			LBaseMaxBytes:         1,
 			FS:                    mem1,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
@@ -1439,6 +1438,7 @@ func TestConcurrentExcise(t *testing.T) {
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts1.DisableAutomaticCompactions = true
+		opts1.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
 
 		opts2 := &Options{}
 		*opts2 = *opts1
@@ -1514,6 +1514,9 @@ func TestConcurrentExcise(t *testing.T) {
 			return ""
 
 		case "ingest-and-excise":
+			d.mu.Lock()
+			prevFlushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
+			d.mu.Unlock()
 			if err := runIngestAndExciseCmd(td, d, d.opts.FS); err != nil {
 				return err.Error()
 			}
@@ -1522,7 +1525,11 @@ func TestConcurrentExcise(t *testing.T) {
 			for d.mu.compact.flushing {
 				d.mu.compact.cond.Wait()
 			}
+			flushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
 			d.mu.Unlock()
+			if prevFlushableIngests < flushableIngests {
+				return "flushable ingest"
+			}
 			return ""
 
 		case "replicate":
