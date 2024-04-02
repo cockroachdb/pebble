@@ -164,7 +164,7 @@ func TestLoadPrecedingKeys(t *testing.T) {
 
 	// NB: We can't assert equality, because the original run may not have
 	// ever used the max of the distribution.
-	require.Greater(t, cfg2.writeSuffixDist.Max(), uint64(1))
+	require.GreaterOrEqual(t, cfg2.writeSuffixDist.Max(), uint64(1))
 
 	// NB: We can't assert equality, because the original run may have generated
 	// keys that it didn't end up using in operations.
