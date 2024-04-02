@@ -2028,7 +2028,7 @@ func (w *Writer) Close() (err error) {
 	{
 		// Finish and record the prop collectors if props are not yet recorded.
 		// Pre-computed props might have been copied by specialized sst creators
-		// like suffix replacer or a span copier.
+		// like suffix replacer.
 		if len(w.props.UserProperties) == 0 {
 			userProps := make(map[string]string)
 			for i := range w.blockPropCollectors {

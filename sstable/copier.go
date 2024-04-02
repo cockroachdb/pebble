@@ -101,6 +101,9 @@ func CopySpan(
 	// original props instead. This will result in over-counts but that is safer
 	// than under-counts.
 	w.props = r.Properties
+	// Remove all user properties to disable block properties, which we do not
+	// calculate.
+	w.props.UserProperties = nil
 	// Reset props that we'll re-derive as we build our own index.
 	w.props.IndexPartitions = 0
 	w.props.TopLevelIndexSize = 0
