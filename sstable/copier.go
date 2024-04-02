@@ -19,14 +19,17 @@ import (
 // [start, end), as well as potentially some additional keys from the original
 // file that were adjacent to but outside that span.
 //
-// CopySpan differs from simply seeking a reader to start and iterating a until
-// end passing the results to a writer in that it does not write the new sstable
-// from scratch, key-by-key, recompressing each key nto new blocks and computing
-// new filters and properties. Instead it finds _blocks_ that intersect the
-// requested span and copies those, whole, to the new file, avoiding all
-// decompression and recompression work. It then copies the original filter as
-// these can serve as a filter for the subset as well, just with potentially a
-// higher false positive rate than one computed just from the they keys in it.
+// CopySpan differs from simply seeking a reader to start and iterating until
+// the end passing the results to a writer in that it does not write the new
+// sstable from scratch, key-by-key, recompressing each key into new blocks and
+// computing new filters and properties. Instead, it finds data _blocks_ that
+// intersect the requested span and copies those, whole, to the new file,
+// avoiding all decompression and recompression work. It then copies the
+// original bloom filter - this filter is valid for the subset of data as well,
+// just with potentially a higher false positive rate compared to one that would
+// be computed just from the keys in it.
+//
+// The resulting sstable will have no block properties.
 //
 // Closes input and finishes or aborts output, including on non-nil errors.
 //
@@ -61,11 +64,11 @@ func CopySpan(
 
 	// We don't want the writer to attempt to write out block property data in
 	// index blocks. This data won't be valid since we're not passing the actual
-	// key data through the writer. The data blocks will still have their
-	// properties unchanged, and we will use the the table level properties from
-	// the original ssts as well.
-	// TODO(dt,radu): Figure out how to initialize the prop collector state from
-	// the decoded block props such that they can re-encode index block props.
+	// key data through the writer. We also remove the table-level properties
+	// below.
+	//
+	// TODO(dt,radu): Figure out how to populate the prop collector state with
+	// block props from the original sst.
 	w.blockPropCollectors = nil
 
 	defer func() {
@@ -101,6 +104,9 @@ func CopySpan(
 	// original props instead. This will result in over-counts but that is safer
 	// than under-counts.
 	w.props = r.Properties
+	// Remove all user properties to disable block properties, which we do not
+	// calculate.
+	w.props.UserProperties = nil
 	// Reset props that we'll re-derive as we build our own index.
 	w.props.IndexPartitions = 0
 	w.props.TopLevelIndexSize = 0

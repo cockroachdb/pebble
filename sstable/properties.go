@@ -180,7 +180,8 @@ type Properties struct {
 	SnapshotPinnedValueSize uint64 `prop:"pebble.raw.snapshot-pinned-values.size"`
 	// Size of the top-level index if kTwoLevelIndexSearch is used.
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
-	// User collected properties.
+	// User collected properties. Currently, we only use them to store block
+	// properties aggregated at the table level.
 	UserProperties map[string]string
 
 	// Loaded set indicating which fields have been loaded from disk. Indexed by
