@@ -30,18 +30,18 @@ import (
 // not contain the key.
 func (m *memTable) get(key []byte) (value []byte, err error) {
 	it := m.skl.NewIter(nil, nil)
-	ikey, val := it.SeekGE(key, base.SeekGEFlagsNone)
-	if ikey == nil {
+	kv := it.SeekGE(key, base.SeekGEFlagsNone)
+	if kv == nil {
 		return nil, ErrNotFound
 	}
-	if !m.equal(key, ikey.UserKey) {
+	if !m.equal(key, kv.UserKey) {
 		return nil, ErrNotFound
 	}
-	switch ikey.Kind() {
+	switch kv.Kind() {
 	case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 		return nil, ErrNotFound
 	default:
-		return val.InPlaceValue(), nil
+		return kv.InPlaceValue(), nil
 	}
 }
 
@@ -68,8 +68,8 @@ func (m *memTable) set(key InternalKey, value []byte) error {
 
 // count returns the number of entries in a DB.
 func (m *memTable) count() (n int) {
-	x := newInternalIterAdapter(m.newIter(nil))
-	for valid := x.First(); valid; valid = x.Next() {
+	x := m.newIter(nil)
+	for kv := x.First(); kv != nil; kv = x.Next() {
 		n++
 	}
 	if x.Close() != nil {
@@ -80,9 +80,9 @@ func (m *memTable) count() (n int) {
 
 // bytesIterated returns the number of bytes iterated in a DB.
 func (m *memTable) bytesIterated(t *testing.T) (bytesIterated uint64) {
-	x := newInternalIterAdapter(m.newFlushIter(nil, &bytesIterated))
+	x := m.newFlushIter(nil, &bytesIterated)
 	var prevIterated uint64
-	for valid := x.First(); valid; valid = x.Next() {
+	for kv := x.First(); kv != nil; kv = x.Next() {
 		if bytesIterated < prevIterated {
 			t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
 		}
@@ -127,9 +127,11 @@ func TestMemTableBasic(t *testing.T) {
 		t.Fatalf("7.get: got (%q, %v), want (%q, %v)", v, err, "", ErrNotFound)
 	}
 	// Check an iterator.
-	s, x := "", newInternalIterAdapter(m.newIter(nil))
-	for valid := x.SeekGE([]byte("mango"), base.SeekGEFlagsNone); valid; valid = x.Next() {
-		s += fmt.Sprintf("%s/%s.", x.Key().UserKey, x.Value())
+	s, x := "", m.newIter(nil)
+	for kv := x.SeekGE([]byte("mango"), base.SeekGEFlagsNone); kv != nil; kv = x.Next() {
+		v, _, err := kv.Value(nil)
+		require.NoError(t, err)
+		s += fmt.Sprintf("%s/%s.", kv.UserKey, v)
 	}
 	if want := "peach/yellow.plum/purple."; s != want {
 		t.Fatalf("8.iter: got %q, want %q", s, want)
@@ -229,19 +231,21 @@ func TestMemTable1000Entries(t *testing.T) {
 		"506",
 		"507",
 	}
-	x := newInternalIterAdapter(m0.newIter(nil))
-	x.SeekGE([]byte(wants[0]), base.SeekGEFlagsNone)
+	x := m0.newIter(nil)
+	kv := x.SeekGE([]byte(wants[0]), base.SeekGEFlagsNone)
 	for _, want := range wants {
-		if !x.Valid() {
+		if kv == nil {
 			t.Fatalf("iter: next failed, want=%q", want)
 		}
-		if got := string(x.Key().UserKey); got != want {
+		if got := string(kv.UserKey); got != want {
 			t.Fatalf("iter: got %q, want %q", got, want)
 		}
-		if k := x.Key().UserKey; len(k) != cap(k) {
+		if k := kv.UserKey; len(k) != cap(k) {
 			t.Fatalf("iter: len(k)=%d, cap(k)=%d", len(k), cap(k))
 		}
-		if v := x.Value(); len(v) != cap(v) {
+		v, _, err := kv.Value(nil)
+		require.NoError(t, err)
+		if len(v) != cap(v) {
 			t.Fatalf("iter: len(v)=%d, cap(v)=%d", len(v), cap(v))
 		}
 		x.Next()
@@ -498,27 +502,27 @@ func BenchmarkMemTableIterSeekGE(b *testing.B) {
 func BenchmarkMemTableIterNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := m.newIter(nil)
-	_, _ = iter.First()
+	_ = iter.First()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key, _ := iter.Next()
-		if key == nil {
-			key, _ = iter.First()
+		kv := iter.Next()
+		if kv == nil {
+			kv = iter.First()
 		}
-		_ = key
+		_ = kv
 	}
 }
 
 func BenchmarkMemTableIterPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := m.newIter(nil)
-	_, _ = iter.Last()
+	_ = iter.Last()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key, _ := iter.Prev()
-		if key == nil {
-			key, _ = iter.Last()
+		kv := iter.Prev()
+		if kv == nil {
+			kv = iter.Last()
 		}
-		_ = key
+		_ = kv
 	}
 }

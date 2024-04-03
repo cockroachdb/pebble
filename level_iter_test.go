@@ -53,8 +53,10 @@ func TestLevelIter(t *testing.T) {
 				f := &fakeIter{}
 				for _, key := range strings.Fields(line) {
 					j := strings.Index(key, ":")
-					f.keys = append(f.keys, base.ParseInternalKey(key[:j]))
-					f.vals = append(f.vals, []byte(key[j+1:]))
+					f.kvs = append(f.kvs, base.InternalKV{
+						InternalKey: base.ParseInternalKey(key[:j]),
+						LazyValue:   base.MakeInPlaceValue([]byte(key[j+1:])),
+					})
 				}
 				iters = append(iters, f)
 
@@ -62,8 +64,8 @@ func TestLevelIter(t *testing.T) {
 					FileNum: FileNum(len(metas)),
 				}).ExtendPointKeyBounds(
 					DefaultComparer.Compare,
-					f.keys[0],
-					f.keys[len(f.keys)-1],
+					f.kvs[0].InternalKey,
+					f.kvs[len(f.kvs)-1].InternalKey,
 				)
 				meta.InitPhysicalBacking()
 				metas = append(metas, meta)
@@ -368,8 +370,8 @@ func must(err error) {
 }
 
 func (i *levelIterTestIter) rangeDelSeek(
-	key []byte, ikey *InternalKey, val base.LazyValue, dir int,
-) (*InternalKey, base.LazyValue) {
+	key []byte, kv *base.InternalKV, dir int,
+) *base.InternalKV {
 	var tombstone keyspan.Span
 	if i.rangeDelIter != nil {
 		var t *keyspan.Span
@@ -387,40 +389,39 @@ func (i *levelIterTestIter) rangeDelSeek(
 			tombstone = t.Visible(1000)
 		}
 	}
-	if ikey == nil {
-		return &InternalKey{
-			UserKey: []byte(fmt.Sprintf("./%s", tombstone)),
-		}, base.LazyValue{}
+	if kv == nil {
+		return &base.InternalKV{
+			InternalKey: base.InternalKey{UserKey: []byte(fmt.Sprintf("./%s", tombstone))},
+		}
 	}
-	return &InternalKey{
-		UserKey: []byte(fmt.Sprintf("%s/%s", ikey.UserKey, tombstone)),
-		Trailer: ikey.Trailer,
-	}, val
+	return &base.InternalKV{
+		InternalKey: base.InternalKey{
+			UserKey: []byte(fmt.Sprintf("%s/%s", kv.UserKey, tombstone)),
+			Trailer: kv.Trailer,
+		},
+		LazyValue: kv.LazyValue,
+	}
 }
 
 func (i *levelIterTestIter) String() string {
 	return "level-iter-test"
 }
 
-func (i *levelIterTestIter) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*InternalKey, base.LazyValue) {
-	ikey, val := i.levelIter.SeekGE(key, flags)
-	return i.rangeDelSeek(key, ikey, val, 1)
+func (i *levelIterTestIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	kv := i.levelIter.SeekGE(key, flags)
+	return i.rangeDelSeek(key, kv, 1)
 }
 
 func (i *levelIterTestIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
-	ikey, val := i.levelIter.SeekPrefixGE(prefix, key, flags)
-	return i.rangeDelSeek(key, ikey, val, 1)
+) *base.InternalKV {
+	kv := i.levelIter.SeekPrefixGE(prefix, key, flags)
+	return i.rangeDelSeek(key, kv, 1)
 }
 
-func (i *levelIterTestIter) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*InternalKey, base.LazyValue) {
-	ikey, val := i.levelIter.SeekLT(key, flags)
-	return i.rangeDelSeek(key, ikey, val, -1)
+func (i *levelIterTestIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
+	kv := i.levelIter.SeekLT(key, flags)
+	return i.rangeDelSeek(key, kv, -1)
 }
 
 func TestLevelIterSeek(t *testing.T) {
@@ -518,11 +519,11 @@ func buildLevelIterTables(
 	for i := range readers {
 		iter, err := readers[i].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 		require.NoError(b, err)
-		smallest, _ := iter.First()
+		smallest := iter.First()
 		meta[i] = &fileMetadata{}
 		meta[i].FileNum = FileNum(i)
-		largest, _ := iter.Last()
-		meta[i].ExtendPointKeyBounds(opts.Comparer.Compare, (*smallest).Clone(), (*largest).Clone())
+		largest := iter.Last()
+		meta[i].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.InternalKey.Clone(), largest.InternalKey.Clone())
 		meta[i].InitPhysicalBacking()
 	}
 	slice := manifest.NewLevelSliceKeySorted(base.DefaultComparer.Compare, meta)
@@ -599,10 +600,10 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 								pos := i % (keyCount - 1)
 								l.SetBounds(keys[pos], keys[pos+1])
 								// SeekGE will return keys[pos].
-								k, _ := l.SeekGE(keys[pos], base.SeekGEFlagsNone)
+								kv := l.SeekGE(keys[pos], base.SeekGEFlagsNone)
 								// Next() will get called once and return nil.
-								for k != nil {
-									k, _ = l.Next()
+								for kv != nil {
+									kv = l.Next()
 								}
 							}
 							l.Close()
@@ -686,11 +687,11 @@ func BenchmarkLevelIterNext(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								key, _ := l.Next()
-								if key == nil {
-									key, _ = l.First()
+								kv := l.Next()
+								if kv == nil {
+									kv = l.First()
 								}
-								_ = key
+								_ = kv
 							}
 							l.Close()
 						})
@@ -720,11 +721,11 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								key, _ := l.Prev()
-								if key == nil {
-									key, _ = l.Last()
+								kv := l.Prev()
+								if kv == nil {
+									kv = l.Last()
 								}
-								_ = key
+								_ = kv
 							}
 							l.Close()
 						})

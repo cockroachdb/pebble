@@ -18,44 +18,42 @@ type errorIter struct {
 // errorIter implements the base.InternalIterator interface.
 var _ internalIterator = (*errorIter)(nil)
 
-func (c *errorIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, base.LazyValue) {
-	return nil, base.LazyValue{}
+func (c *errorIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	return nil
 }
 
-func (c *errorIter) SeekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (c *errorIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	return c.SeekPrefixGEStrict(prefix, key, flags)
 }
 
 func (c *errorIter) SeekPrefixGEStrict(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
-	return nil, base.LazyValue{}
+) *base.InternalKV {
+	return nil
 }
 
-func (c *errorIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, base.LazyValue) {
-	return nil, base.LazyValue{}
+func (c *errorIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
+	return nil
 }
 
-func (c *errorIter) First() (*InternalKey, base.LazyValue) {
-	return nil, base.LazyValue{}
+func (c *errorIter) First() *base.InternalKV {
+	return nil
 }
 
-func (c *errorIter) Last() (*InternalKey, base.LazyValue) {
-	return nil, base.LazyValue{}
+func (c *errorIter) Last() *base.InternalKV {
+	return nil
 }
 
-func (c *errorIter) Next() (*InternalKey, base.LazyValue) {
-	return nil, base.LazyValue{}
+func (c *errorIter) Next() *base.InternalKV {
+	return nil
 }
 
-func (c *errorIter) Prev() (*InternalKey, base.LazyValue) {
-	return nil, base.LazyValue{}
+func (c *errorIter) Prev() *base.InternalKV {
+	return nil
 }
 
-func (c *errorIter) NextPrefix([]byte) (*InternalKey, base.LazyValue) {
-	return nil, base.LazyValue{}
+func (c *errorIter) NextPrefix([]byte) *base.InternalKV {
+	return nil
 }
 
 func (c *errorIter) Error() error {

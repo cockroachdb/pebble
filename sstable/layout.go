@@ -187,7 +187,7 @@ func (l *Layout) Describe(
 		switch b.name {
 		case "data", "range-del", "range-key":
 			iter, _ := newBlockIter(r.Compare, r.Split, h.Get(), NoTransforms)
-			for key, value := iter.First(); key != nil; key, value = iter.Next() {
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
 				ptr := unsafe.Pointer(uintptr(iter.ptr) + uintptr(iter.offset))
 				shared, ptr := decodeVarint(ptr)
 				unshared, ptr := decodeVarint(ptr)
@@ -211,36 +211,36 @@ func (l *Layout) Describe(
 				if fmtRecord != nil {
 					fmt.Fprintf(w, "              ")
 					if l.Format < TableFormatPebblev3 {
-						fmtRecord(key, value.InPlaceValue())
+						fmtRecord(&kv.InternalKey, kv.InPlaceValue())
 					} else {
 						// InPlaceValue() will succeed even for data blocks where the
 						// actual value is in a different location, since this value was
 						// fetched from a blockIter which does not know about value
 						// blocks.
-						v := value.InPlaceValue()
-						if base.TrailerKind(key.Trailer) != InternalKeyKindSet {
-							fmtRecord(key, v)
+						v := kv.InPlaceValue()
+						if base.TrailerKind(kv.Trailer) != InternalKeyKindSet {
+							fmtRecord(&kv.InternalKey, v)
 						} else if !isValueHandle(valuePrefix(v[0])) {
-							fmtRecord(key, v[1:])
+							fmtRecord(&kv.InternalKey, v[1:])
 						} else {
 							vh := decodeValueHandle(v[1:])
-							fmtRecord(key, []byte(fmt.Sprintf("value handle %+v", vh)))
+							fmtRecord(&kv.InternalKey, []byte(fmt.Sprintf("value handle %+v", vh)))
 						}
 					}
 				}
 
-				if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
+				if base.InternalCompare(r.Compare, lastKey, kv.InternalKey) >= 0 {
 					fmt.Fprintf(w, "              WARNING: OUT OF ORDER KEYS!\n")
 				}
-				lastKey.Trailer = key.Trailer
-				lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
+				lastKey.Trailer = kv.Trailer
+				lastKey.UserKey = append(lastKey.UserKey[:0], kv.UserKey...)
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
 			formatTrailer()
 		case "index", "top-index":
 			iter, _ := newBlockIter(r.Compare, r.Split, h.Get(), NoTransforms)
-			for key, value := iter.First(); key != nil; key, value = iter.Next() {
-				bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
+				bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 				if err != nil {
 					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(iter.offset), err)
 					continue

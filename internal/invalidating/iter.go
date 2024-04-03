@@ -27,8 +27,7 @@ func MaybeWrapIfInvariants(iter base.InternalIterator) base.InternalIterator {
 // returned key/value to all 1s.
 type iter struct {
 	iter        base.InternalIterator
-	lastKey     *base.InternalKey
-	lastValue   base.LazyValue
+	lastKV      *base.InternalKV
 	ignoreKinds [base.InternalKeyKindMax + 1]bool
 	err         error
 }
@@ -63,90 +62,84 @@ func NewIter(originalIterator base.InternalIterator, opts ...Option) base.TopLev
 	return i
 }
 
-func (i *iter) update(
-	key *base.InternalKey, value base.LazyValue,
-) (*base.InternalKey, base.LazyValue) {
+func (i *iter) update(kv *base.InternalKV) *base.InternalKV {
 	i.trashLastKV()
-	if key == nil {
-		i.lastKey = nil
-		i.lastValue = base.LazyValue{}
-		return nil, base.LazyValue{}
+	if kv == nil {
+		i.lastKV = nil
+		return nil
 	}
 
-	i.lastKey = &base.InternalKey{}
-	*i.lastKey = key.Clone()
-	i.lastValue = base.LazyValue{
-		ValueOrHandle: append(make([]byte, 0, len(value.ValueOrHandle)), value.ValueOrHandle...),
+	i.lastKV = &base.InternalKV{
+		InternalKey: kv.InternalKey.Clone(),
+		LazyValue: base.LazyValue{
+			ValueOrHandle: append(make([]byte, 0, len(kv.ValueOrHandle)), kv.ValueOrHandle...),
+		},
 	}
-	if value.Fetcher != nil {
+	if kv.Fetcher != nil {
 		fetcher := new(base.LazyFetcher)
-		*fetcher = *value.Fetcher
-		i.lastValue.Fetcher = fetcher
+		*fetcher = *kv.Fetcher
+		i.lastKV.Fetcher = fetcher
 	}
-	return i.lastKey, i.lastValue
+	return i.lastKV
 }
 
 func (i *iter) trashLastKV() {
-	if i.lastKey == nil {
+	if i.lastKV == nil {
 		return
 	}
-	if i.ignoreKinds[i.lastKey.Kind()] {
+	if i.ignoreKinds[i.lastKV.Kind()] {
 		return
 	}
 
-	if i.lastKey != nil {
-		for j := range i.lastKey.UserKey {
-			i.lastKey.UserKey[j] = 0xff
+	if i.lastKV != nil {
+		for j := range i.lastKV.UserKey {
+			i.lastKV.UserKey[j] = 0xff
 		}
-		i.lastKey.Trailer = 0xffffffffffffffff
+		i.lastKV.Trailer = 0xffffffffffffffff
 	}
-	for j := range i.lastValue.ValueOrHandle {
-		i.lastValue.ValueOrHandle[j] = 0xff
+	for j := range i.lastKV.ValueOrHandle {
+		i.lastKV.ValueOrHandle[j] = 0xff
 	}
-	if i.lastValue.Fetcher != nil {
+	if i.lastKV.Fetcher != nil {
 		// Not all the LazyFetcher fields are visible, so we zero out the last
 		// value's Fetcher struct entirely.
-		*i.lastValue.Fetcher = base.LazyFetcher{}
+		*i.lastKV.Fetcher = base.LazyFetcher{}
 	}
 }
 
-func (i *iter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.InternalKey, base.LazyValue) {
+func (i *iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	return i.update(i.iter.SeekGE(key, flags))
 }
 
-func (i *iter) SeekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (i *iter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	return i.update(i.iter.SeekPrefixGE(prefix, key, flags))
 }
 
-func (i *iter) SeekPrefixGEStrict(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (i *iter) SeekPrefixGEStrict(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	return i.update(i.iter.SeekPrefixGE(prefix, key, flags))
 }
 
-func (i *iter) SeekLT(key []byte, flags base.SeekLTFlags) (*base.InternalKey, base.LazyValue) {
+func (i *iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	return i.update(i.iter.SeekLT(key, flags))
 }
 
-func (i *iter) First() (*base.InternalKey, base.LazyValue) {
+func (i *iter) First() *base.InternalKV {
 	return i.update(i.iter.First())
 }
 
-func (i *iter) Last() (*base.InternalKey, base.LazyValue) {
+func (i *iter) Last() *base.InternalKV {
 	return i.update(i.iter.Last())
 }
 
-func (i *iter) Next() (*base.InternalKey, base.LazyValue) {
+func (i *iter) Next() *base.InternalKV {
 	return i.update(i.iter.Next())
 }
 
-func (i *iter) Prev() (*base.InternalKey, base.LazyValue) {
+func (i *iter) Prev() *base.InternalKV {
 	return i.update(i.iter.Prev())
 }
 
-func (i *iter) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
+func (i *iter) NextPrefix(succKey []byte) *base.InternalKV {
 	return i.update(i.iter.NextPrefix(succKey))
 }
 

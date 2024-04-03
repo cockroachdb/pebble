@@ -192,24 +192,24 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		}
 
 		var lastKey base.InternalKey
-		for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
-			if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
+		for kv := iter.First(); kv != nil; kv = iter.Next() {
+			if base.InternalCompare(r.Compare, lastKey, kv.InternalKey) >= 0 {
 				fmt.Fprintf(stdout, "WARNING: OUT OF ORDER KEYS!\n")
 				if s.fmtKey.spec != "null" {
 					fmt.Fprintf(stdout, "    %s >= %s\n",
-						lastKey.Pretty(s.fmtKey.fn), key.Pretty(s.fmtKey.fn))
+						lastKey.Pretty(s.fmtKey.fn), kv.Pretty(s.fmtKey.fn))
 				}
 			}
-			lastKey.Trailer = key.Trailer
-			lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
+			lastKey.Trailer = kv.Trailer
+			lastKey.UserKey = append(lastKey.UserKey[:0], kv.UserKey...)
 
-			n := r.Split(key.UserKey)
-			prefix := key.UserKey[:n]
-			key2, _ := prefixIter.SeekPrefixGE(prefix, key.UserKey, base.SeekGEFlagsNone)
-			if key2 == nil {
+			n := r.Split(kv.UserKey)
+			prefix := kv.UserKey[:n]
+			kv2 := prefixIter.SeekPrefixGE(prefix, kv.UserKey, base.SeekGEFlagsNone)
+			if kv2 == nil {
 				fmt.Fprintf(stdout, "WARNING: PREFIX ITERATION FAILURE!\n")
 				if s.fmtKey.spec != "null" {
-					fmt.Fprintf(stdout, "    %s not found\n", key.Pretty(s.fmtKey.fn))
+					fmt.Fprintf(stdout, "    %s not found\n", kv.Pretty(s.fmtKey.fn))
 				}
 			}
 		}
@@ -381,7 +381,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 		iterCloser := base.CloseHelper(iter)
 		defer iterCloser.Close()
-		key, value := iter.SeekGE(s.start, base.SeekGEFlagsNone)
+		kv := iter.SeekGE(s.start, base.SeekGEFlagsNone)
 
 		// We configured sstable.Reader to return raw tombstones which requires a
 		// bit more work here to put them in a form that can be iterated in
@@ -432,29 +432,29 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		count := s.count
 
 		var lastKey base.InternalKey
-		for key != nil || rangeDel != nil {
-			if key != nil && (rangeDel == nil || r.Compare(key.UserKey, rangeDel.Start) < 0) {
+		for kv != nil || rangeDel != nil {
+			if kv != nil && (rangeDel == nil || r.Compare(kv.UserKey, rangeDel.Start) < 0) {
 				// The filter specifies a prefix of the key.
 				//
 				// TODO(peter): Is using prefix comparison like this kosher for all
 				// comparers? Probably not, but it is for common ones such as the
 				// Pebble default and CockroachDB's comparer.
-				if s.filter == nil || bytes.HasPrefix(key.UserKey, s.filter) {
+				if s.filter == nil || bytes.HasPrefix(kv.UserKey, s.filter) {
 					fmt.Fprint(stdout, prefix)
-					v, _, err := value.Value(nil)
+					v, _, err := kv.Value(nil)
 					if err != nil {
 						fmt.Fprintf(stdout, "%s%s\n", prefix, err)
 						return
 					}
-					formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, v)
+					formatKeyValue(stdout, s.fmtKey, s.fmtValue, &kv.InternalKey, v)
 
 				}
-				if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
+				if base.InternalCompare(r.Compare, lastKey, kv.InternalKey) >= 0 {
 					fmt.Fprintf(stdout, "%s    WARNING: OUT OF ORDER KEYS!\n", prefix)
 				}
-				lastKey.Trailer = key.Trailer
-				lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
-				key, value = iter.Next()
+				lastKey.Trailer = kv.Trailer
+				lastKey.UserKey = append(lastKey.UserKey[:0], kv.UserKey...)
+				kv = iter.Next()
 			} else {
 				// If a filter is specified, we want to output any range tombstone
 				// which overlaps the prefix. The comparison on the start key is

@@ -215,33 +215,33 @@ func rewriteBlocks(
 			bw.restarts = make([]uint32, 0, iter.numRestarts)
 		}
 
-		for key, val := iter.First(); key != nil; key, val = iter.Next() {
-			if key.Kind() != InternalKeyKindSet {
+		for kv := iter.First(); kv != nil; kv = iter.Next() {
+			if kv.Kind() != InternalKeyKindSet {
 				return errBadKind
 			}
-			si := split(key.UserKey)
-			oldSuffix := key.UserKey[si:]
+			si := split(kv.UserKey)
+			oldSuffix := kv.UserKey[si:]
 			if !bytes.Equal(oldSuffix, from) {
 				err := errors.Errorf("key has suffix %q, expected %q", oldSuffix, from)
 				return err
 			}
 			newLen := si + len(to)
 			if cap(scratch.UserKey) < newLen {
-				scratch.UserKey = make([]byte, 0, len(key.UserKey)*2+len(to)-len(from))
+				scratch.UserKey = make([]byte, 0, len(kv.UserKey)*2+len(to)-len(from))
 			}
 
-			scratch.Trailer = key.Trailer
+			scratch.Trailer = kv.Trailer
 			scratch.UserKey = scratch.UserKey[:newLen]
-			copy(scratch.UserKey, key.UserKey[:si])
+			copy(scratch.UserKey, kv.UserKey[:si])
 			copy(scratch.UserKey[si:], to)
 
 			// NB: for TableFormatPebblev3 and higher, since
 			// !iter.lazyValueHandling.hasValuePrefix, it will return the raw value
 			// in the block, which includes the 1-byte prefix. This is fine since bw
 			// also does not know about the prefix and will preserve it in bw.add.
-			v := val.InPlaceValue()
+			v := kv.InPlaceValue()
 			if invariants.Enabled && r.tableFormat >= TableFormatPebblev3 &&
-				key.Kind() == InternalKeyKindSet {
+				kv.Kind() == InternalKeyKindSet {
 				if len(v) < 1 {
 					return errors.Errorf("value has no prefix")
 				}
@@ -478,28 +478,28 @@ func RewriteKeySuffixesViaWriter(
 	}
 	defer i.Close()
 
-	k, v := i.First()
+	kv := i.First()
 	var scratch InternalKey
-	for k != nil {
-		if k.Kind() != InternalKeyKindSet {
+	for kv != nil {
+		if kv.Kind() != InternalKeyKindSet {
 			return nil, errors.New("invalid key type")
 		}
-		oldSuffix := k.UserKey[r.Split(k.UserKey):]
+		oldSuffix := kv.UserKey[r.Split(kv.UserKey):]
 		if !bytes.Equal(oldSuffix, from) {
 			return nil, errors.Errorf("key has suffix %q, expected %q", oldSuffix, from)
 		}
-		scratch.UserKey = append(scratch.UserKey[:0], k.UserKey[:len(k.UserKey)-len(from)]...)
+		scratch.UserKey = append(scratch.UserKey[:0], kv.UserKey[:len(kv.UserKey)-len(from)]...)
 		scratch.UserKey = append(scratch.UserKey, to...)
-		scratch.Trailer = k.Trailer
+		scratch.Trailer = kv.Trailer
 
-		val, _, err := v.Value(nil)
+		val, _, err := kv.Value(nil)
 		if err != nil {
 			return nil, err
 		}
 		if w.addPoint(scratch, val, false); err != nil {
 			return nil, err
 		}
-		k, v = i.Next()
+		kv = i.Next()
 	}
 	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {
 		return nil, err

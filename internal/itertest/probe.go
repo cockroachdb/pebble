@@ -66,9 +66,8 @@ type Op struct {
 	// Return is initialized with the return result of the underlying iterator.
 	// Probes may mutate them.
 	Return struct {
-		Key   *base.InternalKey
-		Value base.LazyValue
-		Err   error
+		KV  *base.InternalKV
+		Err error
 	}
 }
 
@@ -136,91 +135,85 @@ var _ base.InternalIterator = (*probeIterator)(nil)
 // handleOp takes an Op representing the iterator operation performed, and the
 // underlying iterator's return value. It populates `Return.Err` and invokes the
 // probe.
-func (p *probeIterator) handleOp(preProbeOp Op) (*base.InternalKey, base.LazyValue) {
+func (p *probeIterator) handleOp(preProbeOp Op) *base.InternalKV {
 	p.probeCtx.Op = preProbeOp
-	if preProbeOp.Return.Key == nil && p.iter != nil {
+	if preProbeOp.Return.KV == nil && p.iter != nil {
 		p.probeCtx.Op.Return.Err = p.iter.Error()
 	}
 
 	p.probe.Probe(&p.probeCtx)
-	return p.probeCtx.Op.Return.Key, p.probeCtx.Op.Return.Value
+	return p.probeCtx.Op.Return.KV
 }
 
-func (p *probeIterator) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (p *probeIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	op := Op{
 		Kind:    OpSeekGE,
 		SeekKey: key,
 	}
 	if p.iter != nil {
-		op.Return.Key, op.Return.Value = p.iter.SeekGE(key, flags)
+		op.Return.KV = p.iter.SeekGE(key, flags)
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) SeekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (p *probeIterator) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	op := Op{
 		Kind:    OpSeekPrefixGE,
 		SeekKey: key,
 	}
 	if p.iter != nil {
-		op.Return.Key, op.Return.Value = p.iter.SeekPrefixGE(prefix, key, flags)
+		op.Return.KV = p.iter.SeekPrefixGE(prefix, key, flags)
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (p *probeIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	op := Op{
 		Kind:    OpSeekLT,
 		SeekKey: key,
 	}
 	if p.iter != nil {
-		op.Return.Key, op.Return.Value = p.iter.SeekLT(key, flags)
+		op.Return.KV = p.iter.SeekLT(key, flags)
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) First() (*base.InternalKey, base.LazyValue) {
+func (p *probeIterator) First() *base.InternalKV {
 	op := Op{Kind: OpFirst}
 	if p.iter != nil {
-		op.Return.Key, op.Return.Value = p.iter.First()
+		op.Return.KV = p.iter.First()
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) Last() (*base.InternalKey, base.LazyValue) {
+func (p *probeIterator) Last() *base.InternalKV {
 	op := Op{Kind: OpLast}
 	if p.iter != nil {
-		op.Return.Key, op.Return.Value = p.iter.Last()
+		op.Return.KV = p.iter.Last()
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) Next() (*base.InternalKey, base.LazyValue) {
+func (p *probeIterator) Next() *base.InternalKV {
 	op := Op{Kind: OpNext}
 	if p.iter != nil {
-		op.Return.Key, op.Return.Value = p.iter.Next()
+		op.Return.KV = p.iter.Next()
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
+func (p *probeIterator) NextPrefix(succKey []byte) *base.InternalKV {
 	op := Op{Kind: OpNextPrefix, SeekKey: succKey}
 	if p.iter != nil {
-		op.Return.Key, op.Return.Value = p.iter.NextPrefix(succKey)
+		op.Return.KV = p.iter.NextPrefix(succKey)
 	}
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) Prev() (*base.InternalKey, base.LazyValue) {
+func (p *probeIterator) Prev() *base.InternalKV {
 	op := Op{Kind: OpPrev}
 	if p.iter != nil {
-		op.Return.Key, op.Return.Value = p.iter.Prev()
+		op.Return.KV = p.iter.Prev()
 	}
 	return p.handleOp(op)
 }

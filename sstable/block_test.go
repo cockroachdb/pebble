@@ -147,8 +147,8 @@ func TestInvalidInternalKeyDecoding(t *testing.T) {
 	for _, tc := range testCases {
 		i := blockIter{}
 		i.decodeInternalKey([]byte(tc))
-		require.Nil(t, i.ikey.UserKey)
-		require.Equal(t, uint64(InternalKeyKindInvalid), i.ikey.Trailer)
+		require.Nil(t, i.ikv.UserKey)
+		require.Equal(t, uint64(InternalKeyKindInvalid), i.ikv.Trailer)
 	}
 }
 
@@ -298,18 +298,18 @@ func TestBlockIterKeyStability(t *testing.T) {
 	// restart-interval of 1 so that prefix compression was not performed.
 	for j := range expected {
 		keys := [][]byte{}
-		for key, _ := i.SeekGE(expected[j], base.SeekGEFlagsNone); key != nil; key, _ = i.Next() {
-			check(key.UserKey)
-			keys = append(keys, key.UserKey)
+		for kv := i.SeekGE(expected[j], base.SeekGEFlagsNone); kv != nil; kv = i.Next() {
+			check(kv.UserKey)
+			keys = append(keys, kv.UserKey)
 		}
 		require.EqualValues(t, expected[j:], keys)
 	}
 
 	for j := range expected {
 		keys := [][]byte{}
-		for key, _ := i.SeekLT(expected[j], base.SeekLTFlagsNone); key != nil; key, _ = i.Prev() {
-			check(key.UserKey)
-			keys = append(keys, key.UserKey)
+		for kv := i.SeekLT(expected[j], base.SeekLTFlagsNone); kv != nil; kv = i.Prev() {
+			check(kv.UserKey)
+			keys = append(keys, kv.UserKey)
 		}
 		for i, j := 0, len(keys)-1; i < j; i, j = i+1, j-1 {
 			keys[i], keys[j] = keys[j], keys[i]
@@ -342,18 +342,18 @@ func TestBlockIterReverseDirections(t *testing.T) {
 			require.NoError(t, err)
 
 			pos := 3
-			if key, _ := i.SeekLT([]byte("carrot"), base.SeekLTFlagsNone); !bytes.Equal(keys[pos], key.UserKey) {
-				t.Fatalf("expected %s, but found %s", keys[pos], key.UserKey)
+			if kv := i.SeekLT([]byte("carrot"), base.SeekLTFlagsNone); !bytes.Equal(keys[pos], kv.UserKey) {
+				t.Fatalf("expected %s, but found %s", keys[pos], kv.UserKey)
 			}
 			for pos > targetPos {
 				pos--
-				if key, _ := i.Prev(); !bytes.Equal(keys[pos], key.UserKey) {
-					t.Fatalf("expected %s, but found %s", keys[pos], key.UserKey)
+				if kv := i.Prev(); !bytes.Equal(keys[pos], kv.UserKey) {
+					t.Fatalf("expected %s, but found %s", keys[pos], kv.UserKey)
 				}
 			}
 			pos++
-			if key, _ := i.Next(); !bytes.Equal(keys[pos], key.UserKey) {
-				t.Fatalf("expected %s, but found %s", keys[pos], key.UserKey)
+			if kv := i.Next(); !bytes.Equal(keys[pos], kv.UserKey) {
+				t.Fatalf("expected %s, but found %s", keys[pos], kv.UserKey)
 			}
 		})
 	}
@@ -374,20 +374,17 @@ type checker struct {
 	alsoCheck func()
 }
 
-func (c *checker) check(
-	eKey *base.InternalKey, eVal base.LazyValue,
-) func(gKey *base.InternalKey, gVal base.LazyValue) {
-	return func(gKey *base.InternalKey, gVal base.LazyValue) {
+func (c *checker) check(eKV *base.InternalKV) func(*base.InternalKV) {
+	return func(gKV *base.InternalKV) {
 		c.t.Helper()
-		if eKey != nil {
-			require.NotNil(c.t, gKey, "expected %q", eKey.UserKey)
-			c.t.Logf("expected %q, got %q", eKey.UserKey, gKey.UserKey)
-			require.Equal(c.t, eKey, gKey)
-			require.Equal(c.t, eVal, gVal)
+		if eKV != nil {
+			require.NotNil(c.t, gKV, "expected %q", eKV.UserKey)
+			c.t.Logf("expected %q, got %q", eKV.UserKey, gKV.UserKey)
+			require.Equal(c.t, eKV, gKV)
 			c.notValid = false
 		} else {
-			c.t.Logf("expected nil, got %q", gKey)
-			require.Nil(c.t, gKey)
+			c.t.Logf("expected nil, got %q", gKV)
+			require.Nil(c.t, gKV)
 			c.notValid = true
 		}
 		c.alsoCheck()

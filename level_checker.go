@@ -51,8 +51,7 @@ type simpleMergingIterLevel struct {
 	rangeDelIter keyspan.FragmentIterator
 	levelIterBoundaryContext
 
-	iterKey   *InternalKey
-	iterValue base.LazyValue
+	iterKV    *base.InternalKV
 	tombstone *keyspan.Span
 }
 
@@ -89,14 +88,14 @@ func (m *simpleMergingIter) init(
 	m.heap.items = make([]simpleMergingIterItem, 0, len(levels))
 	for i := range m.levels {
 		l := &m.levels[i]
-		l.iterKey, l.iterValue = l.iter.First()
-		if l.iterKey != nil {
+		l.iterKV = l.iter.First()
+		if l.iterKV != nil {
 			item := simpleMergingIterItem{
 				index: i,
-				value: l.iterValue,
+				value: l.iterKV.LazyValue,
 			}
-			item.key.Trailer = l.iterKey.Trailer
-			item.key.UserKey = append(item.key.UserKey[:0], l.iterKey.UserKey...)
+			item.key.Trailer = l.iterKV.Trailer
+			item.key.UserKey = append(item.key.UserKey[:0], l.iterKV.UserKey...)
 			m.heap.items = append(m.heap.items, item)
 		}
 	}
@@ -224,22 +223,22 @@ func (m *simpleMergingIter) step() bool {
 	m.lastIterMsg = l.iter.String()
 
 	// Step to the next point.
-	l.iterKey, l.iterValue = l.iter.Next()
+	l.iterKV = l.iter.Next()
 	if !l.isIgnorableBoundaryKey {
-		if l.iterKey != nil {
+		if l.iterKV != nil {
 			// Check point keys in an sstable are ordered. Although not required, we check
 			// for memtables as well. A subtle check here is that successive sstables of
 			// L1 and higher levels are ordered. This happens when levelIter moves to the
 			// next sstable in the level, in which case item.key is previous sstable's
 			// last point key.
-			if base.InternalCompare(m.heap.cmp, item.key, *l.iterKey) >= 0 {
+			if base.InternalCompare(m.heap.cmp, item.key, l.iterKV.InternalKey) >= 0 {
 				m.err = errors.Errorf("out of order keys %s >= %s in %s",
-					item.key.Pretty(m.formatKey), l.iterKey.Pretty(m.formatKey), l.iter)
+					item.key.Pretty(m.formatKey), l.iterKV.Pretty(m.formatKey), l.iter)
 				return false
 			}
-			item.key.Trailer = l.iterKey.Trailer
-			item.key.UserKey = append(item.key.UserKey[:0], l.iterKey.UserKey...)
-			item.value = l.iterValue
+			item.key.Trailer = l.iterKV.Trailer
+			item.key.UserKey = append(item.key.UserKey[:0], l.iterKV.UserKey...)
+			item.value = l.iterKV.LazyValue
 			if m.heap.len() > 1 {
 				m.heap.fix(0)
 			}

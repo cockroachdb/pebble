@@ -505,3 +505,9 @@ func ParsePrettyInternalKey(s string) InternalKey {
 	}
 	return MakeInternalKey([]byte(ukey), seqNum, kind)
 }
+
+// InternalKV represents a single internal key-value pair.
+type InternalKV struct {
+	InternalKey
+	LazyValue
+}

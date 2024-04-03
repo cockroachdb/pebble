@@ -137,7 +137,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 			opFunc = nextOp()
 		}
 
-		t.Logf("%s = %s [err = %v]", ops.latestOpDesc, ops.k, it.Error())
+		t.Logf("%s = %s [err = %v]", ops.latestOpDesc, ops.kv, it.Error())
 		afterCount := counter.Load()
 		// TODO(jackson): Consider running all commands against a parallel
 		// iterator constructed over a sstable containing the same data in a
@@ -145,7 +145,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		// injection. Then we can assert the results are identical.
 
 		if afterCount > beforeCount {
-			if ops.k != nil || it.Error() == nil {
+			if ops.kv != nil || it.Error() == nil {
 				t.Errorf("error swallowed during %s with stack %s",
 					ops.latestOpDesc, string(stack))
 			}
@@ -160,8 +160,7 @@ type opRunner struct {
 	latestOpDesc  string
 	latestSeekKey []byte
 	dir           int8
-	k             *base.InternalKey
-	v             base.LazyValue
+	kv            *base.InternalKV
 }
 
 func (r *opRunner) runSeekGE() bool {
@@ -174,7 +173,7 @@ func (r *opRunner) runSeekGE() bool {
 	r.latestOpDesc = fmt.Sprintf("SeekGE(%q, TrySeekUsingNext()=%t)",
 		k, flags.TrySeekUsingNext())
 	r.latestSeekKey = k
-	r.k, r.v = r.it.SeekGE(k, base.SeekGEFlagsNone)
+	r.kv = r.it.SeekGE(k, base.SeekGEFlagsNone)
 	r.dir = +1
 	return true
 }
@@ -190,7 +189,7 @@ func (r *opRunner) runSeekPrefixGE() bool {
 	r.latestOpDesc = fmt.Sprintf("SeekPrefixGE(%q, %q, TrySeekUsingNext()=%t)",
 		k[:i], k, flags.TrySeekUsingNext())
 	r.latestSeekKey = k
-	r.k, r.v = r.it.SeekPrefixGE(k[:i], k, flags)
+	r.kv = r.it.SeekPrefixGE(k[:i], k, flags)
 	r.dir = +1
 	return true
 }
@@ -198,31 +197,31 @@ func (r *opRunner) runSeekPrefixGE() bool {
 func (r *opRunner) runSeekLT() bool {
 	k := r.randKey()
 	r.latestOpDesc = fmt.Sprintf("SeekLT(%q)", k)
-	r.k, r.v = r.it.SeekLT(k, base.SeekLTFlagsNone)
+	r.kv = r.it.SeekLT(k, base.SeekLTFlagsNone)
 	r.dir = -1
 	return true
 }
 
 func (r *opRunner) runFirst() bool {
 	r.latestOpDesc = "First()"
-	r.k, r.v = r.it.First()
+	r.kv = r.it.First()
 	r.dir = +1
 	return true
 }
 
 func (r *opRunner) runLast() bool {
 	r.latestOpDesc = "Last()"
-	r.k, r.v = r.it.Last()
+	r.kv = r.it.Last()
 	r.dir = -1
 	return true
 }
 
 func (r *opRunner) runNext() bool {
-	if r.dir == +1 && r.k == nil {
+	if r.dir == +1 && r.kv == nil {
 		return false
 	}
 	r.latestOpDesc = "Next()"
-	r.k, r.v = r.it.Next()
+	r.kv = r.it.Next()
 	r.dir = +1
 	return true
 }
@@ -230,23 +229,23 @@ func (r *opRunner) runNext() bool {
 func (r *opRunner) runNextPrefix() bool {
 	// NextPrefix cannot be called to change directions or when an iterator is
 	// exhausted.
-	if r.dir == -1 || r.k == nil {
+	if r.dir == -1 || r.kv == nil {
 		return false
 	}
-	p := r.k.UserKey[:r.wopts.Comparer.Split(r.k.UserKey)]
+	p := r.kv.UserKey[:r.wopts.Comparer.Split(r.kv.UserKey)]
 	succKey := r.wopts.Comparer.ImmediateSuccessor(nil, p)
 	r.latestOpDesc = fmt.Sprintf("NextPrefix(%q)", succKey)
-	r.k, r.v = r.it.NextPrefix(succKey)
+	r.kv = r.it.NextPrefix(succKey)
 	r.dir = +1
 	return true
 }
 
 func (r *opRunner) runPrev() bool {
-	if r.dir == -1 && r.k == nil {
+	if r.dir == -1 && r.kv == nil {
 		return false
 	}
 	r.latestOpDesc = "Prev()"
-	r.k, r.v = r.it.Prev()
+	r.kv = r.it.Prev()
 	r.dir = -1
 	return true
 }

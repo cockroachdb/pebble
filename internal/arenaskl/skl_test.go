@@ -39,8 +39,7 @@ const arenaSize = 1 << 20
 // returned a boolean corresponding to Valid. Only used by test code.
 type iterAdapter struct {
 	*Iterator
-	key *base.InternalKey
-	val []byte
+	kv *base.InternalKV
 }
 
 func newIterAdapter(iter *Iterator) *iterAdapter {
@@ -49,10 +48,9 @@ func newIterAdapter(iter *Iterator) *iterAdapter {
 	}
 }
 
-func (i *iterAdapter) update(key *base.InternalKey, val base.LazyValue) bool {
-	i.key = key
-	i.val = val.InPlaceValue()
-	return i.key != nil
+func (i *iterAdapter) update(kv *base.InternalKV) bool {
+	i.kv = kv
+	return i.kv != nil
 }
 
 func (i *iterAdapter) String() string {
@@ -88,15 +86,15 @@ func (i *iterAdapter) Prev() bool {
 }
 
 func (i *iterAdapter) Key() base.InternalKey {
-	return *i.key
+	return i.kv.InternalKey
 }
 
 func (i *iterAdapter) Value() []byte {
-	return i.val
+	return i.kv.LazyValue.InPlaceValue()
 }
 
 func (i *iterAdapter) Valid() bool {
-	return i.key != nil
+	return i.kv != nil
 }
 
 func makeIntKey(i int) base.InternalKey {
@@ -788,7 +786,7 @@ func TestBytesIterated(t *testing.T) {
 func (s *Skiplist) bytesIterated(t *testing.T) (bytesIterated uint64) {
 	x := s.NewFlushIter(&bytesIterated)
 	var prevIterated uint64
-	for key, _ := x.First(); key != nil; key, _ = x.Next() {
+	for kv := x.First(); kv != nil; kv = x.Next() {
 		if bytesIterated < prevIterated {
 			t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
 		}
@@ -824,9 +822,9 @@ func BenchmarkReadWrite(b *testing.B) {
 
 				for pb.Next() {
 					if rng.Float32() < readFrac {
-						key, _ := it.SeekGE(randomKey(rng, buf).UserKey, base.SeekGEFlagsNone)
-						if key != nil {
-							_ = key
+						kv := it.SeekGE(randomKey(rng, buf).UserKey, base.SeekGEFlagsNone)
+						if kv != nil {
+							_ = kv
 							count++
 						}
 					} else {
@@ -868,11 +866,11 @@ func BenchmarkIterNext(b *testing.B) {
 	it := l.NewIter(nil, nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key, _ := it.Next()
-		if key == nil {
-			key, _ = it.First()
+		kv := it.Next()
+		if kv == nil {
+			kv = it.First()
 		}
-		_ = key
+		_ = kv
 	}
 }
 
@@ -887,14 +885,14 @@ func BenchmarkIterPrev(b *testing.B) {
 	}
 
 	it := l.NewIter(nil, nil)
-	_, _ = it.Last()
+	_ = it.Last()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key, _ := it.Prev()
-		if key == nil {
-			key, _ = it.Last()
+		kv := it.Prev()
+		if kv == nil {
+			kv = it.Last()
 		}
-		_ = key
+		_ = kv
 	}
 }
 

@@ -2853,31 +2853,31 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 		rangeDelIter := iters.RangeDeletion()
 
 		// Check that the lower bound is tight.
-		pointKey, _ := pointIter.First()
+		pointKV := pointIter.First()
 		rangeDel, err := rangeDelIter.First()
 		if err != nil {
 			panic(err)
 		}
 		if (rangeDel == nil || d.cmp(rangeDel.SmallestKey().UserKey, m.SmallestPointKey.UserKey) != 0) &&
-			(pointKey == nil || d.cmp(pointKey.UserKey, m.SmallestPointKey.UserKey) != 0) {
+			(pointKV == nil || d.cmp(pointKV.UserKey, m.SmallestPointKey.UserKey) != 0) {
 			panic(errors.Newf("pebble: virtual sstable %s lower point key bound is not tight", m.FileNum))
 		}
 
 		// Check that the upper bound is tight.
-		pointKey, _ = pointIter.Last()
+		pointKV = pointIter.Last()
 		rangeDel, err = rangeDelIter.Last()
 		if err != nil {
 			panic(err)
 		}
 		if (rangeDel == nil || d.cmp(rangeDel.LargestKey().UserKey, m.LargestPointKey.UserKey) != 0) &&
-			(pointKey == nil || d.cmp(pointKey.UserKey, m.LargestPointKey.UserKey) != 0) {
+			(pointKV == nil || d.cmp(pointKV.UserKey, m.LargestPointKey.UserKey) != 0) {
 			panic(errors.Newf("pebble: virtual sstable %s upper point key bound is not tight", m.FileNum))
 		}
 
 		// Check that iterator keys are within bounds.
-		for key, _ := pointIter.First(); key != nil; key, _ = pointIter.Next() {
-			if d.cmp(key.UserKey, m.SmallestPointKey.UserKey) < 0 || d.cmp(key.UserKey, m.LargestPointKey.UserKey) > 0 {
-				panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, key.UserKey))
+		for kv := pointIter.First(); kv != nil; kv = pointIter.Next() {
+			if d.cmp(kv.UserKey, m.SmallestPointKey.UserKey) < 0 || d.cmp(kv.UserKey, m.LargestPointKey.UserKey) > 0 {
+				panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, kv.UserKey))
 			}
 		}
 		s, err := rangeDelIter.First()

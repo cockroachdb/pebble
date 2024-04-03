@@ -130,9 +130,7 @@ func TestSimpleIterError(t *testing.T) {
 	s := simpleLevelIter{cmp: DefaultComparer.Compare, iters: []internalIterator{&errorIter{err: errors.New("injected")}}}
 	s.init(IterOptions{})
 	defer s.Close()
-
-	iterKey, _ := s.First()
-	require.Nil(t, iterKey)
+	require.Nil(t, s.First())
 	require.Error(t, s.Error())
 }
 

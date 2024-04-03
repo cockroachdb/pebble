@@ -218,10 +218,9 @@ type Iterator struct {
 	// allocations. opts.LowerBound and opts.UpperBound point into this slice.
 	boundsBuf    [2][]byte
 	boundsBufIdx int
-	// iterKey, iterValue reflect the latest position of iter, except when
-	// SetBounds is called. In that case, these are explicitly set to nil.
-	iterKey             *InternalKey
-	iterValue           LazyValue
+	// iterKV reflects the latest position of iter, except when SetBounds is
+	// called. In that case, it is explicitly set to nil.
+	iterKV              *base.InternalKV
 	alloc               *iterAlloc
 	getIterAlloc        *getIterAlloc
 	prefixOrFullSeekKey []byte
@@ -516,8 +515,8 @@ func (i *Iterator) findNextEntry(limit []byte) {
 		return
 	}
 
-	for i.iterKey != nil {
-		key := *i.iterKey
+	for i.iterKV != nil {
+		key := i.iterKV.InternalKey
 
 		// The topLevelIterator.StrictSeekPrefixGE contract requires that in
 		// prefix mode [i.hasPrefix=t], every point key returned by the internal
@@ -539,7 +538,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 		// the behavior non-deterministic (since the behavior will vary based
 		// on what has been compacted), which makes it hard to test with the
 		// metamorphic test. So we forego that performance optimization.
-		if limit != nil && i.cmp(limit, i.iterKey.UserKey) <= 0 {
+		if limit != nil && i.cmp(limit, i.iterKV.UserKey) <= 0 {
 			i.iterValidityState = IterAtLimit
 			i.pos = iterPosCurForwardPaused
 			return
@@ -547,7 +546,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 
 		// If the user has configured a SkipPoint function, invoke it to see
 		// whether we should skip over the current user key.
-		if i.opts.SkipPoint != nil && key.Kind() != InternalKeyKindRangeKeySet && i.opts.SkipPoint(i.iterKey.UserKey) {
+		if i.opts.SkipPoint != nil && key.Kind() != InternalKeyKindRangeKeySet && i.opts.SkipPoint(i.iterKV.UserKey) {
 			// NB: We could call nextUserKey, but in some cases the SkipPoint
 			// predicate function might be cheaper than nextUserKey's key copy
 			// and key comparison. This should be the case for MVCC suffix
@@ -556,7 +555,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			// whether we skip over just the internal key, the user key, or even
 			// the key prefix.
 			i.stats.ForwardStepCount[InternalIterCall]++
-			i.iterKey, i.iterValue = i.iter.Next()
+			i.iterKV = i.iter.Next()
 			continue
 		}
 
@@ -595,7 +594,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
-			i.value = i.iterValue
+			i.value = i.iterKV.LazyValue
 			i.iterValidityState = IterValid
 			i.saveRangeKey()
 			return
@@ -649,9 +648,9 @@ func (i *Iterator) nextPointCurrentUserKey() bool {
 
 	i.pos = iterPosCurForward
 
-	i.iterKey, i.iterValue = i.iter.Next()
+	i.iterKV = i.iter.Next()
 	i.stats.ForwardStepCount[InternalIterCall]++
-	if i.iterKey == nil {
+	if i.iterKV == nil {
 		if err := i.iter.Error(); err != nil {
 			i.err = err
 		} else {
@@ -659,12 +658,12 @@ func (i *Iterator) nextPointCurrentUserKey() bool {
 		}
 		return false
 	}
-	if !i.equal(i.key, i.iterKey.UserKey) {
+	if !i.equal(i.key, i.iterKV.UserKey) {
 		i.pos = iterPosNext
 		return false
 	}
 
-	key := *i.iterKey
+	key := i.iterKV.InternalKey
 	switch key.Kind() {
 	case InternalKeyKindRangeKeySet:
 		// RangeKeySets must always be interleaved as the first internal key
@@ -679,7 +678,7 @@ func (i *Iterator) nextPointCurrentUserKey() bool {
 		return false
 
 	case InternalKeyKindSet, InternalKeyKindSetWithDelete:
-		i.value = i.iterValue
+		i.value = i.iterKV.LazyValue
 		return true
 
 	case InternalKeyKindMerge:
@@ -700,7 +699,7 @@ func (i *Iterator) nextPointCurrentUserKey() bool {
 // mergeForward does not update iterValidityState.
 func (i *Iterator) mergeForward(key base.InternalKey) (valid bool) {
 	var iterValue []byte
-	iterValue, _, i.err = i.iterValue.Value(nil)
+	iterValue, _, i.err = i.iterKV.Value(nil)
 	if i.err != nil {
 		return false
 	}
@@ -739,19 +738,19 @@ func (i *Iterator) closeValueCloser() error {
 }
 
 func (i *Iterator) nextUserKey() {
-	if i.iterKey == nil {
+	if i.iterKV == nil {
 		return
 	}
-	trailer := i.iterKey.Trailer
-	done := i.iterKey.Trailer <= base.InternalKeyZeroSeqnumMaxTrailer
+	trailer := i.iterKV.Trailer
+	done := i.iterKV.Trailer <= base.InternalKeyZeroSeqnumMaxTrailer
 	if i.iterValidityState != IterValid {
-		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
+		i.keyBuf = append(i.keyBuf[:0], i.iterKV.UserKey...)
 		i.key = i.keyBuf
 	}
 	for {
 		i.stats.ForwardStepCount[InternalIterCall]++
-		i.iterKey, i.iterValue = i.iter.Next()
-		if i.iterKey == nil {
+		i.iterKV = i.iter.Next()
+		if i.iterKV == nil {
 			if err := i.iter.Error(); err != nil {
 				i.err = err
 				return
@@ -766,14 +765,14 @@ func (i *Iterator) nextUserKey() {
 		// distributed writes. We expect it to trigger very frequently when
 		// iterating through ingested sstables, which contain keys that all have
 		// the same sequence number.
-		if done || i.iterKey == nil || i.iterKey.Trailer >= trailer {
+		if done || i.iterKV == nil || i.iterKV.Trailer >= trailer {
 			break
 		}
-		if !i.equal(i.key, i.iterKey.UserKey) {
+		if !i.equal(i.key, i.iterKV.UserKey) {
 			break
 		}
-		done = i.iterKey.Trailer <= base.InternalKeyZeroSeqnumMaxTrailer
-		trailer = i.iterKey.Trailer
+		done = i.iterKV.Trailer <= base.InternalKeyZeroSeqnumMaxTrailer
+		trailer = i.iterKV.Trailer
 	}
 }
 
@@ -906,15 +905,15 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 	// findNextEntry, this is being done to make the behavior of limit
 	// deterministic to allow for metamorphic testing. It is not required by
 	// the best-effort contract of limit.
-	for i.iterKey != nil {
-		key := *i.iterKey
+	for i.iterKV != nil {
+		key := i.iterKV.InternalKey
 
 		// NB: We cannot pause if the current key is covered by a range key.
 		// Otherwise, the user might not ever learn of a range key that covers
 		// the key space being iterated over in which there are no point keys.
 		// Since limits are best effort, ignoring the limit in this case is
 		// allowed by the contract of limit.
-		if firstLoopIter && limit != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
+		if firstLoopIter && limit != nil && i.cmp(limit, i.iterKV.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
 			i.iterValidityState = IterAtLimit
 			i.pos = iterPosCurReversePaused
 			return
@@ -964,15 +963,15 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// whether we skip over just the internal key, the user key, or even
 			// the key prefix.
 			i.stats.ReverseStepCount[InternalIterCall]++
-			i.iterKey, i.iterValue = i.iter.Prev()
-			if i.iterKey == nil {
+			i.iterKV = i.iter.Prev()
+			if i.iterKV == nil {
 				if err := i.iter.Error(); err != nil {
 					i.err = err
 					i.iterValidityState = IterExhausted
 					return
 				}
 			}
-			if limit != nil && i.iterKey != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
+			if limit != nil && i.iterKV != nil && i.cmp(limit, i.iterKV.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
 				i.iterValidityState = IterAtLimit
 				i.pos = iterPosCurReversePaused
 				return
@@ -1002,7 +1001,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// that we can maintain the invariant during backward iteration that
 			// i.iterPos = iterPosPrev.
 			i.stats.ReverseStepCount[InternalIterCall]++
-			i.iterKey, i.iterValue = i.iter.Prev()
+			i.iterKV = i.iter.Prev()
 
 			// Set rangeKeyBoundary so that on the next iteration, we know to
 			// return the key even if the MERGE point key is deleted.
@@ -1013,7 +1012,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			i.iterValidityState = IterExhausted
 			valueMerger = nil
 			i.stats.ReverseStepCount[InternalIterCall]++
-			i.iterKey, i.iterValue = i.iter.Prev()
+			i.iterKV = i.iter.Prev()
 			// Compare with the limit. We could optimize by only checking when
 			// we step to the previous user key, but detecting that requires a
 			// comparison too. Note that this position may already passed a
@@ -1023,7 +1022,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// other than the firstLoopIter and SkipPoint cases above, where we
 			// could step to a different user key and start processing it for
 			// returning to the caller.
-			if limit != nil && i.iterKey != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
+			if limit != nil && i.iterKV != nil && i.cmp(limit, i.iterKV.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
 				i.iterValidityState = IterAtLimit
 				i.pos = iterPosCurReversePaused
 				return
@@ -1037,10 +1036,10 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// call, so use valueBuf instead. Note that valueBuf is only used
 			// in this one instance; everywhere else (eg. in findNextEntry),
 			// we just point i.value to the unsafe i.iter-owned value buffer.
-			i.value, i.valueBuf = i.iterValue.Clone(i.valueBuf[:0], &i.fetcher)
+			i.value, i.valueBuf = i.iterKV.LazyValue.Clone(i.valueBuf[:0], &i.fetcher)
 			i.saveRangeKey()
 			i.iterValidityState = IterValid
-			i.iterKey, i.iterValue = i.iter.Prev()
+			i.iterKV = i.iter.Prev()
 			i.stats.ReverseStepCount[InternalIterCall]++
 			valueMerger = nil
 			continue
@@ -1051,7 +1050,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 				i.key = i.keyBuf
 				i.saveRangeKey()
 				var iterValue []byte
-				iterValue, _, i.err = i.iterValue.Value(nil)
+				iterValue, _, i.err = i.iterKV.Value(nil)
 				if i.err != nil {
 					return
 				}
@@ -1076,7 +1075,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 				}
 				valueMerger, i.err = i.merge(i.key, value)
 				var iterValue []byte
-				iterValue, _, i.err = i.iterValue.Value(nil)
+				iterValue, _, i.err = i.iterKV.Value(nil)
 				if i.err != nil {
 					i.iterValidityState = IterExhausted
 					return
@@ -1090,7 +1089,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 				}
 			} else {
 				var iterValue []byte
-				iterValue, _, i.err = i.iterValue.Value(nil)
+				iterValue, _, i.err = i.iterKV.Value(nil)
 				if i.err != nil {
 					i.iterValidityState = IterExhausted
 					return
@@ -1101,7 +1100,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 					return
 				}
 			}
-			i.iterKey, i.iterValue = i.iter.Prev()
+			i.iterKV = i.iter.Prev()
 			i.stats.ReverseStepCount[InternalIterCall]++
 			continue
 
@@ -1111,7 +1110,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			return
 		}
 	}
-	// i.iterKey == nil, so broke out of the preceding loop.
+	// i.iterKV == nil, so broke out of the preceding loop.
 
 	// Is iterKey nil due to an error?
 	if i.err = i.iter.Error(); i.err != nil {
@@ -1139,26 +1138,26 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 }
 
 func (i *Iterator) prevUserKey() {
-	if i.iterKey == nil {
+	if i.iterKV == nil {
 		return
 	}
 	if i.iterValidityState != IterValid {
 		// If we're going to compare against the prev key, we need to save the
 		// current key.
-		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
+		i.keyBuf = append(i.keyBuf[:0], i.iterKV.UserKey...)
 		i.key = i.keyBuf
 	}
 	for {
-		i.iterKey, i.iterValue = i.iter.Prev()
+		i.iterKV = i.iter.Prev()
 		i.stats.ReverseStepCount[InternalIterCall]++
-		if i.iterKey == nil {
+		if i.iterKV == nil {
 			if err := i.iter.Error(); err != nil {
 				i.err = err
 				i.iterValidityState = IterExhausted
 			}
 			break
 		}
-		if !i.equal(i.key, i.iterKey.UserKey) {
+		if !i.equal(i.key, i.iterKV.UserKey) {
 			break
 		}
 	}
@@ -1171,16 +1170,16 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 
 	// Loop looking for older values for this key and merging them.
 	for {
-		i.iterKey, i.iterValue = i.iter.Next()
+		i.iterKV = i.iter.Next()
 		i.stats.ForwardStepCount[InternalIterCall]++
-		if i.iterKey == nil {
+		if i.iterKV == nil {
 			if i.err = i.iter.Error(); i.err != nil {
 				return
 			}
 			i.pos = iterPosNext
 			return
 		}
-		key = *i.iterKey
+		key = i.iterKV.InternalKey
 		if !i.equal(i.key, key.UserKey) {
 			// We've advanced to the next key.
 			i.pos = iterPosNext
@@ -1199,7 +1198,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 			// We've hit a Set value. Merge with the existing value and return.
 			var iterValue []byte
-			iterValue, _, i.err = i.iterValue.Value(nil)
+			iterValue, _, i.err = i.iterKV.Value(nil)
 			if i.err != nil {
 				return
 			}
@@ -1210,7 +1209,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
 			var iterValue []byte
-			iterValue, _, i.err = i.iterValue.Value(nil)
+			iterValue, _, i.err = i.iterKV.Value(nil)
 			if i.err != nil {
 				return
 			}
@@ -1324,7 +1323,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 			if invariants.Enabled && flags.TrySeekUsingNext() && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
 				flags = flags.DisableTrySeekUsingNext()
 			}
-			if !flags.BatchJustRefreshed() && i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKey.UserKey) <= 0 {
+			if !flags.BatchJustRefreshed() && i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKV.UserKey) <= 0 {
 				// Have some work to do, but don't need to seek, and we can
 				// start doing findNextEntry from i.iterKey.
 				seekInternalIter = false
@@ -1332,7 +1331,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 		}
 	}
 	if seekInternalIter {
-		i.iterKey, i.iterValue = i.iter.SeekGE(key, flags)
+		i.iterKV = i.iter.SeekGE(key, flags)
 		i.stats.ForwardSeekCount[InternalIterCall]++
 		if err := i.iter.Error(); err != nil {
 			i.err = err
@@ -1489,7 +1488,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 		}
 		key = upperBound
 	}
-	i.iterKey, i.iterValue = i.iter.SeekPrefixGE(i.prefixOrFullSeekKey, key, flags)
+	i.iterKV = i.iter.SeekPrefixGE(i.prefixOrFullSeekKey, key, flags)
 	i.stats.ForwardSeekCount[InternalIterCall]++
 	i.findNextEntry(nil)
 	i.maybeSampleRead()
@@ -1580,7 +1579,7 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 					return i.iterValidityState
 				}
 			}
-			if i.pos == iterPosCurReversePaused && i.cmp(i.iterKey.UserKey, key) < 0 {
+			if i.pos == iterPosCurReversePaused && i.cmp(i.iterKV.UserKey, key) < 0 {
 				// Have some work to do, but don't need to seek, and we can
 				// start doing findPrevEntry from i.iterKey.
 				seekInternalIter = false
@@ -1588,7 +1587,7 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 		}
 	}
 	if seekInternalIter {
-		i.iterKey, i.iterValue = i.iter.SeekLT(key, base.SeekLTFlagsNone)
+		i.iterKV = i.iter.SeekLT(key, base.SeekLTFlagsNone)
 		i.stats.ReverseSeekCount[InternalIterCall]++
 		if err := i.iter.Error(); err != nil {
 			i.err = err
@@ -1764,7 +1763,7 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		// Switching directions.
 		// Unless the iterator was exhausted, reverse iteration needs to
 		// position the iterator at iterPosPrev.
-		if i.iterKey != nil {
+		if i.iterKV != nil {
 			i.err = errors.New("switching from reverse to forward but iter is not at prev")
 			i.iterValidityState = IterExhausted
 			return i.iterValidityState
@@ -1778,7 +1777,7 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		//
 		// Switching directions; The iterator must not be exhausted since it
 		// paused.
-		if i.iterKey == nil {
+		if i.iterKV == nil {
 			i.err = errors.New("switching paused from reverse to forward but iter is exhausted")
 			i.iterValidityState = IterExhausted
 			return i.iterValidityState
@@ -1787,7 +1786,7 @@ func (i *Iterator) nextPrefix() IterValidityState {
 	case iterPosPrev:
 		// The underlying iterator is pointed to the previous key (this can
 		// only happen when switching iteration directions).
-		if i.iterKey == nil {
+		if i.iterKV == nil {
 			// We're positioned before the first key. Need to reposition to point to
 			// the first key.
 			i.iterFirstWithinBounds()
@@ -1796,8 +1795,8 @@ func (i *Iterator) nextPrefix() IterValidityState {
 			// i.key. iterPosPrev guarantees that it's positioned at the last
 			// key with the user key less than i.key, so we're guaranteed to
 			// land on the correct key with a single Next.
-			i.iterKey, i.iterValue = i.iter.Next()
-			if i.iterKey == nil {
+			i.iterKV = i.iter.Next()
+			if i.iterKV == nil {
 				// This should only be possible if i.iter.Next() encountered an
 				// error.
 				if i.iter.Error() == nil {
@@ -1807,9 +1806,9 @@ func (i *Iterator) nextPrefix() IterValidityState {
 				i.iterValidityState = IterExhausted
 				return i.iterValidityState
 			}
-			if invariants.Enabled && !i.equal(i.iterKey.UserKey, i.key) {
+			if invariants.Enabled && !i.equal(i.iterKV.UserKey, i.key) {
 				i.opts.logger.Fatalf("pebble: invariant violation: Nexting internal iterator from iterPosPrev landed on %q, not %q",
-					i.iterKey.UserKey, i.key)
+					i.iterKV.UserKey, i.key)
 			}
 		}
 		// The internal iterator is now positioned at i.key. Advance to the next
@@ -1818,10 +1817,10 @@ func (i *Iterator) nextPrefix() IterValidityState {
 	case iterPosNext:
 		// Already positioned on the next key. Only call nextPrefixKey if the
 		// next key shares the same prefix.
-		if i.iterKey != nil {
+		if i.iterKV != nil {
 			currKeyPrefixLen := i.split(i.key)
-			iterKeyPrefixLen := i.split(i.iterKey.UserKey)
-			if bytes.Equal(i.iterKey.UserKey[:iterKeyPrefixLen], i.key[:currKeyPrefixLen]) {
+			iterKeyPrefixLen := i.split(i.iterKV.UserKey)
+			if bytes.Equal(i.iterKV.UserKey[:iterKeyPrefixLen], i.key[:currKeyPrefixLen]) {
 				i.internalNextPrefix(currKeyPrefixLen)
 			}
 		}
@@ -1834,7 +1833,7 @@ func (i *Iterator) nextPrefix() IterValidityState {
 }
 
 func (i *Iterator) internalNextPrefix(currKeyPrefixLen int) {
-	if i.iterKey == nil {
+	if i.iterKV == nil {
 		return
 	}
 	// The Next "fast-path" is not really a fast-path when there is more than
@@ -1842,20 +1841,20 @@ func (i *Iterator) internalNextPrefix(currKeyPrefixLen int) {
 	// slowdown (~10%) for one version if we remove it and only call NextPrefix.
 	// When there are two versions, only calling NextPrefix is ~30% faster.
 	i.stats.ForwardStepCount[InternalIterCall]++
-	if i.iterKey, i.iterValue = i.iter.Next(); i.iterKey == nil {
+	if i.iterKV = i.iter.Next(); i.iterKV == nil {
 		return
 	}
-	iterKeyPrefixLen := i.split(i.iterKey.UserKey)
-	if !bytes.Equal(i.iterKey.UserKey[:iterKeyPrefixLen], i.key[:currKeyPrefixLen]) {
+	iterKeyPrefixLen := i.split(i.iterKV.UserKey)
+	if !bytes.Equal(i.iterKV.UserKey[:iterKeyPrefixLen], i.key[:currKeyPrefixLen]) {
 		return
 	}
 	i.stats.ForwardStepCount[InternalIterCall]++
 	i.prefixOrFullSeekKey = i.comparer.ImmediateSuccessor(i.prefixOrFullSeekKey[:0], i.key[:currKeyPrefixLen])
-	i.iterKey, i.iterValue = i.iter.NextPrefix(i.prefixOrFullSeekKey)
-	if invariants.Enabled && i.iterKey != nil {
-		if iterKeyPrefixLen := i.split(i.iterKey.UserKey); i.cmp(i.iterKey.UserKey[:iterKeyPrefixLen], i.prefixOrFullSeekKey) < 0 {
+	i.iterKV = i.iter.NextPrefix(i.prefixOrFullSeekKey)
+	if invariants.Enabled && i.iterKV != nil {
+		if iterKeyPrefixLen := i.split(i.iterKV.UserKey); i.cmp(i.iterKV.UserKey[:iterKeyPrefixLen], i.prefixOrFullSeekKey) < 0 {
 			panic(errors.AssertionFailedf("pebble: iter.NextPrefix did not advance beyond the current prefix: now at %q; expected to be geq %q",
-				i.iterKey, i.prefixOrFullSeekKey))
+				i.iterKV.InternalKey, i.prefixOrFullSeekKey))
 		}
 	}
 }
@@ -1907,7 +1906,7 @@ func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 		// Switching directions.
 		// Unless the iterator was exhausted, reverse iteration needs to
 		// position the iterator at iterPosPrev.
-		if i.iterKey != nil {
+		if i.iterKV != nil {
 			i.err = errors.New("switching from reverse to forward but iter is not at prev")
 			i.iterValidityState = IterExhausted
 			return i.iterValidityState
@@ -1918,7 +1917,7 @@ func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 	case iterPosCurReversePaused:
 		// Switching directions.
 		// The iterator must not be exhausted since it paused.
-		if i.iterKey == nil {
+		if i.iterKV == nil {
 			i.err = errors.New("switching paused from reverse to forward but iter is exhausted")
 			i.iterValidityState = IterExhausted
 			return i.iterValidityState
@@ -1931,7 +1930,7 @@ func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 		// nextUserKey to save the current key i.iter is pointing at in order
 		// to determine when the next user-key is reached.
 		i.iterValidityState = IterExhausted
-		if i.iterKey == nil {
+		if i.iterKV == nil {
 			// We're positioned before the first key. Need to reposition to point to
 			// the first key.
 			i.iterFirstWithinBounds()
@@ -2029,7 +2028,7 @@ func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
 		// to prevUserKey to save the current key i.iter is pointing at in
 		// order to determine when the prev user-key is reached.
 		i.iterValidityState = IterExhausted
-		if i.iterKey == nil {
+		if i.iterKV == nil {
 			// We're positioned after the last key. Need to reposition to point to
 			// the last key.
 			i.iterLastWithinBounds()
@@ -2056,9 +2055,9 @@ func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
 func (i *Iterator) iterFirstWithinBounds() {
 	i.stats.ForwardSeekCount[InternalIterCall]++
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
+		i.iterKV = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
 	} else {
-		i.iterKey, i.iterValue = i.iter.First()
+		i.iterKV = i.iter.First()
 	}
 }
 
@@ -2067,9 +2066,9 @@ func (i *Iterator) iterFirstWithinBounds() {
 func (i *Iterator) iterLastWithinBounds() {
 	i.stats.ReverseSeekCount[InternalIterCall]++
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
-		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound, base.SeekLTFlagsNone)
+		i.iterKV = i.iter.SeekLT(upperBound, base.SeekLTFlagsNone)
 	} else {
-		i.iterKey, i.iterValue = i.iter.Last()
+		i.iterKV = i.iter.Last()
 	}
 }
 
@@ -2703,8 +2702,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 func (i *Iterator) invalidate() {
 	i.lastPositioningOp = unknownLastPositionOp
 	i.hasPrefix = false
-	i.iterKey = nil
-	i.iterValue = LazyValue{}
+	i.iterKV = nil
 	i.err = nil
 	// This switch statement isn't necessary for correctness since callers
 	// should call a repositioning method. We could have arbitrarily set i.pos
@@ -3031,8 +3029,8 @@ func (i *Iterator) internalNext() (internalNextValidity, base.InternalKeyKind) {
 
 	switch i.pos {
 	case iterPosCurForward:
-		i.iterKey, i.iterValue = i.iter.Next()
-		if i.iterKey == nil {
+		i.iterKV = i.iter.Next()
+		if i.iterKV == nil {
 			// We check i.iter.Error() here and return an internalNextError enum
 			// variant so that the caller does not need to check i.iter.Error()
 			// in the common case that the next internal key has a new user key.
@@ -3041,8 +3039,8 @@ func (i *Iterator) internalNext() (internalNextValidity, base.InternalKeyKind) {
 			}
 			i.pos = iterPosNext
 			return internalNextExhausted, base.InternalKeyKindInvalid
-		} else if i.comparer.Equal(i.iterKey.UserKey, i.key) {
-			return internalNextValid, i.iterKey.Kind()
+		} else if i.comparer.Equal(i.iterKV.UserKey, i.key) {
+			return internalNextValid, i.iterKV.Kind()
 		}
 		i.pos = iterPosNext
 		return internalNextExhausted, base.InternalKeyKindInvalid

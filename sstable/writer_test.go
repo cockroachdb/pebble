@@ -381,11 +381,11 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			var values []base.LazyValue
 			n := 0
 			var b []byte
-			for k, lv := iter.First(); k != nil; k, lv = iter.Next() {
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
 				var lvClone base.LazyValue
-				lvClone, b = lv.Clone(b, &fetchers[n])
-				if lv.Fetcher != nil {
-					_, callerOwned, err := lv.Value(nil)
+				lvClone, b = kv.LazyValue.Clone(b, &fetchers[n])
+				if kv.LazyValue.Fetcher != nil {
+					_, callerOwned, err := kv.LazyValue.Value(nil)
 					require.False(t, callerOwned)
 					require.NoError(t, err)
 				}
@@ -909,9 +909,9 @@ func TestWriterRace(t *testing.T) {
 			require.NoError(t, err)
 			defer it.Close()
 			ki := 0
-			for k, v := it.First(); k != nil; k, v = it.Next() {
-				require.Equal(t, k.UserKey, keys[ki])
-				vBytes, _, err := v.Value(nil)
+			for kv := it.First(); kv != nil; kv = it.Next() {
+				require.Equal(t, kv.UserKey, keys[ki])
+				vBytes, _, err := kv.Value(nil)
 				require.NoError(t, err)
 				require.Equal(t, vBytes, val)
 				ki++

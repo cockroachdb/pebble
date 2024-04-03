@@ -203,13 +203,13 @@ func intersectingIndexEntries(
 
 	var alloc bytealloc.A
 	res := make([]indexEntry, 0, r.Properties.NumDataBlocks)
-	for key, value := top.SeekGE(start.UserKey, base.SeekGEFlagsNone); key != nil; key, value = top.Next() {
-		bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
+	for kv := top.SeekGE(start.UserKey, base.SeekGEFlagsNone); kv != nil; kv = top.Next() {
+		bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 		if err != nil {
 			return nil, err
 		}
 		if r.Properties.IndexType != twoLevelIndex {
-			entry := indexEntry{bh: bh, sep: *key}
+			entry := indexEntry{bh: bh, sep: kv.InternalKey}
 			alloc, entry.bh.Props = alloc.Copy(entry.bh.Props)
 			alloc, entry.sep.UserKey = alloc.Copy(entry.sep.UserKey)
 			res = append(res, entry)
@@ -226,16 +226,16 @@ func intersectingIndexEntries(
 			}
 			defer sub.Close() // in-loop, but it is a short loop.
 
-			for key, value := sub.SeekGE(start.UserKey, base.SeekGEFlagsNone); key != nil; key, value = sub.Next() {
-				bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
+			for kv := sub.SeekGE(start.UserKey, base.SeekGEFlagsNone); kv != nil; kv = sub.Next() {
+				bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 				if err != nil {
 					return nil, err
 				}
-				entry := indexEntry{bh: bh, sep: *key}
+				entry := indexEntry{bh: bh, sep: kv.InternalKey}
 				alloc, entry.bh.Props = alloc.Copy(entry.bh.Props)
 				alloc, entry.sep.UserKey = alloc.Copy(entry.sep.UserKey)
 				res = append(res, entry)
-				if base.InternalCompare(r.Compare, end, *key) <= 0 {
+				if base.InternalCompare(r.Compare, end, kv.InternalKey) <= 0 {
 					break
 				}
 			}
@@ -243,7 +243,7 @@ func intersectingIndexEntries(
 				return nil, err
 			}
 		}
-		if base.InternalCompare(r.Compare, end, *key) <= 0 {
+		if base.InternalCompare(r.Compare, end, kv.InternalKey) <= 0 {
 			break
 		}
 	}

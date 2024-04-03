@@ -18,7 +18,7 @@ type Iterator interface {
 	base.InternalIterator
 
 	// NextPrefix implements (base.InternalIterator).NextPrefix.
-	NextPrefix(succKey []byte) (*InternalKey, base.LazyValue)
+	NextPrefix(succKey []byte) *base.InternalKV
 
 	SetCloseHook(fn func(i Iterator) error)
 }
@@ -189,56 +189,50 @@ func (i *compactionIterator) String() string {
 	return i.reader.fileNum.String()
 }
 
-func (i *compactionIterator) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *compactionIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	panic("pebble: SeekGE unimplemented")
 }
 
 func (i *compactionIterator) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+) *base.InternalKV {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-func (i *compactionIterator) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *compactionIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	panic("pebble: SeekLT unimplemented")
 }
 
-func (i *compactionIterator) First() (*InternalKey, base.LazyValue) {
+func (i *compactionIterator) First() *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	return i.skipForward(i.singleLevelIterator.First())
 }
 
-func (i *compactionIterator) Last() (*InternalKey, base.LazyValue) {
+func (i *compactionIterator) Last() *base.InternalKV {
 	panic("pebble: Last unimplemented")
 }
 
 // Note: compactionIterator.Next mirrors the implementation of Iterator.Next
 // due to performance. Keep the two in sync.
-func (i *compactionIterator) Next() (*InternalKey, base.LazyValue) {
+func (i *compactionIterator) Next() *base.InternalKV {
 	if i.err != nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	return i.skipForward(i.data.Next())
 }
 
-func (i *compactionIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+func (i *compactionIterator) NextPrefix(succKey []byte) *base.InternalKV {
 	panic("pebble: NextPrefix unimplemented")
 }
 
-func (i *compactionIterator) Prev() (*InternalKey, base.LazyValue) {
+func (i *compactionIterator) Prev() *base.InternalKV {
 	panic("pebble: Prev unimplemented")
 }
 
-func (i *compactionIterator) skipForward(
-	key *InternalKey, val base.LazyValue,
-) (*InternalKey, base.LazyValue) {
-	if key == nil {
+func (i *compactionIterator) skipForward(kv *base.InternalKV) *base.InternalKV {
+	if kv == nil {
 		for {
-			if key, _ := i.index.Next(); key == nil {
+			if kv := i.index.Next(); kv == nil {
 				break
 			}
 			result := i.loadBlock(+1)
@@ -259,7 +253,7 @@ func (i *compactionIterator) skipForward(
 				}
 			}
 			// result == loadBlockOK
-			if key, val = i.data.First(); key != nil {
+			if kv = i.data.First(); kv != nil {
 				break
 			}
 		}
@@ -270,12 +264,12 @@ func (i *compactionIterator) skipForward(
 	i.prevOffset = curOffset
 
 	// We have an upper bound when the table is virtual.
-	if i.upper != nil && key != nil {
-		cmp := i.cmp(key.UserKey, i.upper)
+	if i.upper != nil && kv != nil {
+		cmp := i.cmp(kv.UserKey, i.upper)
 		if cmp > 0 || (!i.endKeyInclusive && cmp == 0) {
-			return nil, base.LazyValue{}
+			return nil
 		}
 	}
 
-	return key, val
+	return kv
 }

@@ -368,8 +368,8 @@ func (f *keySpanFrags) get(
 		}
 		it := skl.NewIter(nil, nil)
 		var keysDst []keyspan.Key
-		for key, val := it.First(); key != nil; key, val = it.Next() {
-			s, err := constructSpan(*key, val.InPlaceValue(), keysDst)
+		for kv := it.First(); kv != nil; kv = it.Next() {
+			s, err := constructSpan(kv.InternalKey, kv.InPlaceValue(), keysDst)
 			if err != nil {
 				panic(err)
 			}
