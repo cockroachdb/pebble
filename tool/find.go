@@ -466,7 +466,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				return err
 			}
 			defer iter.Close()
-			key, value := iter.SeekGE(searchKey, base.SeekGEFlagsNone)
+			kv := iter.SeekGE(searchKey, base.SeekGEFlagsNone)
 
 			// We configured sstable.Reader to return raw tombstones which requires a
 			// bit more work here to put them in a form that can be iterated in
@@ -509,24 +509,24 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			}
 
 			foundRef := false
-			for key != nil || rangeDel != nil {
-				if key != nil &&
-					(rangeDel == nil || r.Compare(key.UserKey, rangeDel.Start) < 0) {
-					if r.Compare(searchKey, key.UserKey) != 0 {
-						key, value = nil, base.LazyValue{}
+			for kv != nil || rangeDel != nil {
+				if kv != nil &&
+					(rangeDel == nil || r.Compare(kv.UserKey(), rangeDel.Start) < 0) {
+					if r.Compare(searchKey, kv.UserKey()) != 0 {
+						kv = nil
 						continue
 					}
-					v, _, err := value.Value(nil)
+					v, _, err := kv.Value(nil)
 					if err != nil {
 						return err
 					}
 					refs = append(refs, findRef{
-						key:      key.Clone(),
+						key:      kv.K.Clone(),
 						value:    slices.Clone(v),
 						fileNum:  base.PhysicalTableFileNum(fl.DiskFileNum),
 						filename: filepath.Base(fl.path),
 					})
-					key, value = iter.Next()
+					kv = iter.Next()
 				} else {
 					// Use rangedel.Encode to add a reference for each key
 					// within the span.

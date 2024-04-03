@@ -491,8 +491,8 @@ var _ internalIterator = (*lazyCombinedIter)(nil)
 // operations that land in the middle of a range key and must truncate to the
 // user-provided seek key.
 func (i *lazyCombinedIter) initCombinedIteration(
-	dir int8, pointKey *InternalKey, pointValue base.LazyValue, seekKey []byte,
-) (*InternalKey, base.LazyValue) {
+	dir int8, pointKV *base.InternalKV, seekKey []byte,
+) *base.InternalKV {
 	// Invariant: i.parent.rangeKey is nil.
 	// Invariant: !i.combinedIterState.initialized.
 	if invariants.Enabled {
@@ -540,11 +540,11 @@ func (i *lazyCombinedIter) initCombinedIteration(
 		// key instead to `bar`. It is guaranteed that no range key exists
 		// earlier than `bar`, otherwise a levelIter would've observed it and
 		// set `combinedIterState.key` to its start key.
-		if pointKey != nil {
-			if dir == +1 && i.parent.cmp(i.combinedIterState.key, pointKey.UserKey) > 0 {
-				seekKey = pointKey.UserKey
-			} else if dir == -1 && i.parent.cmp(seekKey, pointKey.UserKey) < 0 {
-				seekKey = pointKey.UserKey
+		if pointKV != nil {
+			if dir == +1 && i.parent.cmp(i.combinedIterState.key, pointKV.K.UserKey) > 0 {
+				seekKey = pointKV.K.UserKey
+			} else if dir == -1 && i.parent.cmp(seekKey, pointKV.K.UserKey) < 0 {
+				seekKey = pointKV.K.UserKey
 			}
 		}
 	}
@@ -582,7 +582,7 @@ func (i *lazyCombinedIter) initCombinedIteration(
 	//
 	// In the forward direction (invert for backwards), the seek key is a key
 	// guaranteed to find the smallest range key that's greater than the last
-	// key the iterator returned. The range key may be less than pointKey, in
+	// key the iterator returned. The range key may be less than pointKV, in
 	// which case the range key will be interleaved next instead of the point
 	// key.
 	if dir == +1 {
@@ -590,103 +590,99 @@ func (i *lazyCombinedIter) initCombinedIteration(
 		if i.parent.hasPrefix {
 			prefix = i.parent.prefixOrFullSeekKey
 		}
-		return i.parent.rangeKey.iiter.InitSeekGE(prefix, seekKey, pointKey, pointValue)
+		return i.parent.rangeKey.iiter.InitSeekGE(prefix, seekKey, pointKV)
 	}
-	return i.parent.rangeKey.iiter.InitSeekLT(seekKey, pointKey, pointValue)
+	return i.parent.rangeKey.iiter.InitSeekLT(seekKey, pointKV)
 }
 
-func (i *lazyCombinedIter) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *lazyCombinedIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	if i.combinedIterState.initialized {
 		return i.parent.rangeKey.iiter.SeekGE(key, flags)
 	}
-	k, v := i.pointIter.SeekGE(key, flags)
+	kv := i.pointIter.SeekGE(key, flags)
 	if i.combinedIterState.triggered {
-		return i.initCombinedIteration(+1, k, v, key)
+		return i.initCombinedIteration(+1, kv, key)
 	}
-	return k, v
+	return kv
 }
 
 func (i *lazyCombinedIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*InternalKey, base.LazyValue) {
+) *base.InternalKV {
 	if i.combinedIterState.initialized {
 		return i.parent.rangeKey.iiter.SeekPrefixGE(prefix, key, flags)
 	}
-	k, v := i.pointIter.SeekPrefixGE(prefix, key, flags)
+	kv := i.pointIter.SeekPrefixGE(prefix, key, flags)
 	if i.combinedIterState.triggered {
-		return i.initCombinedIteration(+1, k, v, key)
+		return i.initCombinedIteration(+1, kv, key)
 	}
-	return k, v
+	return kv
 }
 
-func (i *lazyCombinedIter) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*InternalKey, base.LazyValue) {
+func (i *lazyCombinedIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	if i.combinedIterState.initialized {
 		return i.parent.rangeKey.iiter.SeekLT(key, flags)
 	}
-	k, v := i.pointIter.SeekLT(key, flags)
+	kv := i.pointIter.SeekLT(key, flags)
 	if i.combinedIterState.triggered {
-		return i.initCombinedIteration(-1, k, v, key)
+		return i.initCombinedIteration(-1, kv, key)
 	}
-	return k, v
+	return kv
 }
 
-func (i *lazyCombinedIter) First() (*InternalKey, base.LazyValue) {
+func (i *lazyCombinedIter) First() *base.InternalKV {
 	if i.combinedIterState.initialized {
 		return i.parent.rangeKey.iiter.First()
 	}
-	k, v := i.pointIter.First()
+	kv := i.pointIter.First()
 	if i.combinedIterState.triggered {
-		return i.initCombinedIteration(+1, k, v, nil)
+		return i.initCombinedIteration(+1, kv, nil)
 	}
-	return k, v
+	return kv
 }
 
-func (i *lazyCombinedIter) Last() (*InternalKey, base.LazyValue) {
+func (i *lazyCombinedIter) Last() *base.InternalKV {
 	if i.combinedIterState.initialized {
 		return i.parent.rangeKey.iiter.Last()
 	}
-	k, v := i.pointIter.Last()
+	kv := i.pointIter.Last()
 	if i.combinedIterState.triggered {
-		return i.initCombinedIteration(-1, k, v, nil)
+		return i.initCombinedIteration(-1, kv, nil)
 	}
-	return k, v
+	return kv
 }
 
-func (i *lazyCombinedIter) Next() (*InternalKey, base.LazyValue) {
+func (i *lazyCombinedIter) Next() *base.InternalKV {
 	if i.combinedIterState.initialized {
 		return i.parent.rangeKey.iiter.Next()
 	}
-	k, v := i.pointIter.Next()
+	kv := i.pointIter.Next()
 	if i.combinedIterState.triggered {
-		return i.initCombinedIteration(+1, k, v, nil)
+		return i.initCombinedIteration(+1, kv, nil)
 	}
-	return k, v
+	return kv
 }
 
-func (i *lazyCombinedIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+func (i *lazyCombinedIter) NextPrefix(succKey []byte) *base.InternalKV {
 	if i.combinedIterState.initialized {
 		return i.parent.rangeKey.iiter.NextPrefix(succKey)
 	}
-	k, v := i.pointIter.NextPrefix(succKey)
+	kv := i.pointIter.NextPrefix(succKey)
 	if i.combinedIterState.triggered {
-		return i.initCombinedIteration(+1, k, v, nil)
+		return i.initCombinedIteration(+1, kv, nil)
 	}
-	return k, v
+	return kv
 }
 
-func (i *lazyCombinedIter) Prev() (*InternalKey, base.LazyValue) {
+func (i *lazyCombinedIter) Prev() *base.InternalKV {
 	if i.combinedIterState.initialized {
 		return i.parent.rangeKey.iiter.Prev()
 	}
-	k, v := i.pointIter.Prev()
+	kv := i.pointIter.Prev()
 	if i.combinedIterState.triggered {
-		return i.initCombinedIteration(-1, k, v, nil)
+		return i.initCombinedIteration(-1, kv, nil)
 	}
-	return k, v
+	return kv
 }
 
 func (i *lazyCombinedIter) Error() error {

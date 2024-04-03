@@ -953,8 +953,8 @@ func TestBlockProperties(t *testing.T) {
 					var blocks []int
 					var i int
 					iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
-					for key, value := iter.First(); key != nil; key, value = iter.Next() {
-						bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
+					for kv := iter.First(); kv != nil; kv = iter.Next() {
+						bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 						if err != nil {
 							return err.Error()
 						}
@@ -1341,9 +1341,9 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		return nil
 	}
 
-	for key, val := i.First(); key != nil; key, val = i.Next() {
-		sb.WriteString(fmt.Sprintf("%s:\n", key))
-		bhp, err := decodeBlockHandleWithProperties(val.InPlaceValue())
+	for kv := i.First(); kv != nil; kv = i.Next() {
+		sb.WriteString(fmt.Sprintf("%s:\n", kv.K))
+		bhp, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 		if err != nil {
 			return err.Error()
 		}
@@ -1363,9 +1363,9 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 			if err := subiter.init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
 				return err.Error()
 			}
-			for key, value := subiter.First(); key != nil; key, value = subiter.Next() {
-				sb.WriteString(fmt.Sprintf("  %s:\n", key))
-				dataBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
+			for kv := subiter.First(); kv != nil; kv = subiter.Next() {
+				sb.WriteString(fmt.Sprintf("  %s:\n", kv.K))
+				dataBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 				if err != nil {
 					return err.Error()
 				}

@@ -207,12 +207,12 @@ func (b *lsmViewBuilder) tableDetails(
 		if b.scanTables {
 			n := 0
 			if it := iters.point; it != nil {
-				for k, _ := it.First(); k != nil; k, _ = it.Next() {
+				for kv := it.First(); kv != nil; kv = it.Next() {
 					if n == maxPoints {
 						outf("  ...")
 						break
 					}
-					outf("  %s", k.Pretty(b.fmtKey))
+					outf("  %s", kv.K.Pretty(b.fmtKey))
 					n++
 				}
 				if err := it.Error(); err != nil {

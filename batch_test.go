@@ -1069,9 +1069,9 @@ func TestBatchRangeOps(t *testing.T) {
 					return err.Error()
 				}
 			} else {
-				for k, v := internalIter.First(); k != nil; k, v = internalIter.Next() {
-					k.SetSeqNum(k.SeqNum() &^ InternalKeySeqNumBatch)
-					fmt.Fprintf(&buf, "%s:%s\n", k, v.InPlaceValue())
+				for kv := internalIter.First(); kv != nil; kv = internalIter.Next() {
+					kv.K.SetSeqNum(kv.K.SeqNum() &^ InternalKeySeqNumBatch)
+					fmt.Fprintf(&buf, "%s:%s\n", kv.K, kv.InPlaceValue())
 				}
 			}
 			return buf.String()
@@ -1193,9 +1193,9 @@ func TestFlushableBatch(t *testing.T) {
 
 			var buf bytes.Buffer
 
-			iter := newInternalIterAdapter(b.newIter(nil))
-			for valid := iter.First(); valid; valid = iter.Next() {
-				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+			iter := b.newIter(nil)
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
+				fmt.Fprintf(&buf, "%s:%s\n", kv.K, kv.InPlaceValue())
 			}
 			iter.Close()
 
@@ -1261,8 +1261,8 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 }
 
 func scanInternalIter(w io.Writer, ii internalIterator) {
-	for k, v := ii.First(); k != nil; k, v = ii.Next() {
-		fmt.Fprintf(w, "%s:%s\n", k, v.InPlaceValue())
+	for kv := ii.First(); kv != nil; kv = ii.Next() {
+		fmt.Fprintf(w, "%s:%s\n", kv.K, kv.InPlaceValue())
 	}
 }
 
@@ -1290,7 +1290,7 @@ func TestFlushableBatchBytesIterated(t *testing.T) {
 		it := fb.newFlushIter(nil, &bytesIterated)
 
 		var prevIterated uint64
-		for key, _ := it.First(); key != nil; key, _ = it.Next() {
+		for kv := it.First(); kv != nil; kv = it.Next() {
 			if bytesIterated < prevIterated {
 				t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
 			}
@@ -1308,8 +1308,8 @@ func TestEmptyFlushableBatch(t *testing.T) {
 	// Verify that we can create a flushable batch on an empty batch.
 	fb, err := newFlushableBatch(newBatch(nil), DefaultComparer)
 	require.NoError(t, err)
-	it := newInternalIterAdapter(fb.newIter(nil))
-	require.False(t, it.First())
+	it := fb.newIter(nil)
+	require.Nil(t, it.First())
 }
 
 func TestBatchCommitStats(t *testing.T) {

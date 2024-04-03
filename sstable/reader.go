@@ -742,11 +742,11 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 		return nil, err
 	}
 	var tombstones []keyspan.Span
-	for key, value := iter.First(); key != nil; key, value = iter.Next() {
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
 		t := keyspan.Span{
-			Start: key.UserKey,
-			End:   value.InPlaceValue(),
-			Keys:  []keyspan.Key{{Trailer: key.Trailer}},
+			Start: kv.K.UserKey,
+			End:   kv.InPlaceValue(),
+			Keys:  []keyspan.Key{{Trailer: kv.K.Trailer}},
 		}
 		tombstones = append(tombstones, t)
 	}
@@ -919,8 +919,8 @@ func (r *Reader) Layout() (*Layout, error) {
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.indexBH)
 		iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
-		for key, value := iter.First(); key != nil; key, value = iter.Next() {
-			dataBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
+		for kv := iter.First(); kv != nil; kv = iter.Next() {
+			dataBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 			if err != nil {
 				return nil, errCorruptIndexEntry(err)
 			}
@@ -933,8 +933,8 @@ func (r *Reader) Layout() (*Layout, error) {
 		l.TopIndex = r.indexBH
 		topIter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		iter := &blockIter{}
-		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
-			indexBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
+		for kv := topIter.First(); kv != nil; kv = topIter.Next() {
+			indexBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 			if err != nil {
 				return nil, errCorruptIndexEntry(err)
 			}
@@ -949,8 +949,8 @@ func (r *Reader) Layout() (*Layout, error) {
 			if err := iter.init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
 				return nil, err
 			}
-			for key, value := iter.First(); key != nil; key, value = iter.Next() {
-				dataBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
+				dataBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 				if len(dataBH.Props) > 0 {
 					alloc, dataBH.Props = alloc.Copy(dataBH.Props)
 				}
@@ -1093,12 +1093,12 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, err
 		}
 
-		key, val := topIter.SeekGE(start, base.SeekGEFlagsNone)
-		if key == nil {
+		kv := topIter.SeekGE(start, base.SeekGEFlagsNone)
+		if kv == nil {
 			// The range falls completely after this file, or an error occurred.
 			return 0, topIter.Error()
 		}
-		startIdxBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
+		startIdxBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 		if err != nil {
 			return 0, errCorruptIndexEntry(err)
 		}
@@ -1113,13 +1113,13 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, err
 		}
 
-		key, val = topIter.SeekGE(end, base.SeekGEFlagsNone)
-		if key == nil {
+		kv = topIter.SeekGE(end, base.SeekGEFlagsNone)
+		if kv == nil {
 			if err := topIter.Error(); err != nil {
 				return 0, err
 			}
 		} else {
-			endIdxBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
+			endIdxBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 			if err != nil {
 				return 0, errCorruptIndexEntry(err)
 			}
@@ -1138,12 +1138,12 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	// startIdxIter should not be nil at this point, while endIdxIter can be if the
 	// range spans past the end of the file.
 
-	key, val := startIdxIter.SeekGE(start, base.SeekGEFlagsNone)
-	if key == nil {
+	kv := startIdxIter.SeekGE(start, base.SeekGEFlagsNone)
+	if kv == nil {
 		// The range falls completely after this file, or an error occurred.
 		return 0, startIdxIter.Error()
 	}
-	startBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
+	startBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 	if err != nil {
 		return 0, errCorruptIndexEntry(err)
 	}
@@ -1166,15 +1166,15 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		// The range spans beyond this file. Include data blocks through the last.
 		return includeInterpolatedValueBlocksSize(r.Properties.DataSize - startBH.Offset), nil
 	}
-	key, val = endIdxIter.SeekGE(end, base.SeekGEFlagsNone)
-	if key == nil {
+	kv = endIdxIter.SeekGE(end, base.SeekGEFlagsNone)
+	if kv == nil {
 		if err := endIdxIter.Error(); err != nil {
 			return 0, err
 		}
 		// The range spans beyond this file. Include data blocks through the last.
 		return includeInterpolatedValueBlocksSize(r.Properties.DataSize - startBH.Offset), nil
 	}
-	endBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
+	endBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 	if err != nil {
 		return 0, errCorruptIndexEntry(err)
 	}

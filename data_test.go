@@ -532,10 +532,10 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	}
 	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(f), writeOpts)
 	iter := b.newInternalIter(nil)
-	for key, val := iter.First(); key != nil; key, val = iter.Next() {
-		tmp := *key
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		tmp := kv.K
 		tmp.SetSeqNum(0)
-		if err := w.Add(tmp, val.InPlaceValue()); err != nil {
+		if err := w.Add(tmp, kv.InPlaceValue()); err != nil {
 			return err
 		}
 	}
@@ -626,10 +626,10 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	}
 	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 	iter := b.newInternalIter(nil)
-	for key, val := iter.First(); key != nil; key, val = iter.Next() {
-		tmp := *key
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		tmp := kv.K
 		tmp.SetSeqNum(0)
-		if err := w.Add(tmp, val.InPlaceValue()); err != nil {
+		if err := w.Add(tmp, kv.InPlaceValue()); err != nil {
 			return err
 		}
 	}

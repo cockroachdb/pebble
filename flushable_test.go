@@ -123,8 +123,8 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		case "iter":
 			iter := flushable.newIter(nil)
 			var buf bytes.Buffer
-			for x, _ := iter.First(); x != nil; x, _ = iter.Next() {
-				buf.WriteString(x.String())
+			for x := iter.First(); x != nil; x = iter.Next() {
+				buf.WriteString(x.K.String())
 				buf.WriteString("\n")
 			}
 			iter.Close()
