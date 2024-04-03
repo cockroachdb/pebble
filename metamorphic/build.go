@@ -62,11 +62,11 @@ func writeSSTForIngestion(
 	}
 
 	var lastUserKey []byte
-	for key, value := pointIter.First(); key != nil; key, value = pointIter.Next() {
+	for kv := pointIter.First(); kv != nil; kv = pointIter.Next() {
 		// Ignore duplicate keys.
 		if lastUserKey != nil {
 			last := lastUserKey
-			this := key.UserKey
+			this := kv.UserKey()
 			if uniquePrefixes {
 				last = last[:t.opts.Comparer.Split(last)]
 				this = this[:t.opts.Comparer.Split(this)]
@@ -75,23 +75,24 @@ func writeSSTForIngestion(
 				continue
 			}
 		}
-		lastUserKey = append(lastUserKey[:0], key.UserKey...)
+		lastUserKey = append(lastUserKey[:0], kv.UserKey()...)
 
-		key.SetSeqNum(base.SeqNumZero)
+		k := *kv
+		k.K.SetSeqNum(base.SeqNumZero)
+		k.K.UserKey = outputKey(k.K.UserKey)
+		value := kv.V
 		// It's possible that we wrote the key on a batch from a db that supported
 		// DeleteSized, but will be ingesting into a db that does not. Detect this
 		// case and translate the key to an InternalKeyKindDelete.
-		if targetFMV < pebble.FormatDeleteSizedAndObsolete && key.Kind() == pebble.InternalKeyKindDeleteSized {
+		if targetFMV < pebble.FormatDeleteSizedAndObsolete && kv.Kind() == pebble.InternalKeyKindDeleteSized {
 			value = pebble.LazyValue{}
-			key.SetKind(pebble.InternalKeyKindDelete)
+			k.K.SetKind(pebble.InternalKeyKindDelete)
 		}
 		valBytes, _, err := value.Value(nil)
 		if err != nil {
 			return nil, err
 		}
-		k := *key
-		k.UserKey = outputKey(k.UserKey)
-		if err := w.Add(k, valBytes); err != nil {
+		if err := w.Add(k.K, valBytes); err != nil {
 			return nil, err
 		}
 	}
@@ -282,9 +283,9 @@ func externalObjIsEmpty(
 	defer reader.Close()
 	defer closeIters(pointIter, rangeDelIter, rangeKeyIter)
 
-	key, _ := pointIter.First()
+	kv := pointIter.First()
 	panicIfErr(pointIter.Error())
-	if key != nil {
+	if kv != nil {
 		return false
 	}
 	for _, it := range []keyspan.FragmentIterator{rangeDelIter, rangeKeyIter} {
