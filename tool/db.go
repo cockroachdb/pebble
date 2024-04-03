@@ -44,6 +44,7 @@ type dbT struct {
 	comparers       sstable.Comparers
 	mergers         sstable.Mergers
 	openErrEnhancer func(error) error
+	openOptions     []OpenOption
 
 	// Flags.
 	comparerName  string
@@ -65,12 +66,14 @@ func newDB(
 	comparers sstable.Comparers,
 	mergers sstable.Mergers,
 	openErrEnhancer func(error) error,
+	openOptions []OpenOption,
 ) *dbT {
 	d := &dbT{
 		opts:            opts,
 		comparers:       comparers,
 		mergers:         mergers,
 		openErrEnhancer: openErrEnhancer,
+		openOptions:     openOptions,
 	}
 	d.fmtKey.mustSet("quoted")
 	d.fmtValue.mustSet("[%x]")
@@ -283,11 +286,13 @@ func (d *dbT) loadOptions(dir string) error {
 	return nil
 }
 
-type openOption interface {
-	apply(opts *pebble.Options)
+// OpenOption is an option that may be applied to the *pebble.Options before
+// calling pebble.Open.
+type OpenOption interface {
+	Apply(dirname string, opts *pebble.Options)
 }
 
-func (d *dbT) openDB(dir string, openOptions ...openOption) (*pebble.DB, error) {
+func (d *dbT) openDB(dir string, openOptions ...OpenOption) (*pebble.DB, error) {
 	db, err := d.openDBInternal(dir, openOptions...)
 	if err != nil {
 		if d.openErrEnhancer != nil {
@@ -298,7 +303,7 @@ func (d *dbT) openDB(dir string, openOptions ...openOption) (*pebble.DB, error) 
 	return db, nil
 }
 
-func (d *dbT) openDBInternal(dir string, openOptions ...openOption) (*pebble.DB, error) {
+func (d *dbT) openDBInternal(dir string, openOptions ...OpenOption) (*pebble.DB, error) {
 	if err := d.loadOptions(dir); err != nil {
 		return nil, errors.Wrap(err, "error loading options")
 	}
@@ -316,7 +321,10 @@ func (d *dbT) openDBInternal(dir string, openOptions ...openOption) (*pebble.DB,
 	}
 	opts := *d.opts
 	for _, opt := range openOptions {
-		opt.apply(&opts)
+		opt.Apply(dir, &opts)
+	}
+	for _, opt := range d.openOptions {
+		opt.Apply(dir, &opts)
 	}
 	opts.Cache = pebble.NewCache(128 << 20 /* 128 MB */)
 	defer opts.Cache.Unref()
@@ -348,7 +356,7 @@ func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
 
 type nonReadOnly struct{}
 
-func (n nonReadOnly) apply(opts *pebble.Options) {
+func (n nonReadOnly) Apply(dirname string, opts *pebble.Options) {
 	opts.ReadOnly = false
 	// Increase the L0 compaction threshold to reduce the likelihood of an
 	// unintended compaction changing test output.
@@ -529,9 +537,8 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			}
 		}
 		v, err := bve.Apply(
-			nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes,
-			d.opts.Experimental.ReadCompactionRate, nil, /* zombies */
-			manifest.AllowSplitUserKeys,
+			nil /* version */, cmp, d.opts.FlushSplitBytes,
+			d.opts.Experimental.ReadCompactionRate,
 		)
 		if err != nil {
 			return err

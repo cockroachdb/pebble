@@ -270,7 +270,7 @@ type ManifestDeleteInfo struct {
 	// JobID is the ID of the job the caused the Manifest to be deleted.
 	JobID   int
 	Path    string
-	FileNum FileNum
+	FileNum base.DiskFileNum
 	Err     error
 }
 
@@ -294,7 +294,7 @@ type TableCreateInfo struct {
 	// "ingesting".
 	Reason  string
 	Path    string
-	FileNum FileNum
+	FileNum base.DiskFileNum
 }
 
 func (i TableCreateInfo) String() string {
@@ -311,7 +311,7 @@ func (i TableCreateInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 type TableDeleteInfo struct {
 	JobID   int
 	Path    string
-	FileNum FileNum
+	FileNum base.DiskFileNum
 	Err     error
 }
 
@@ -418,7 +418,7 @@ type WALCreateInfo struct {
 	FileNum base.DiskFileNum
 	// The file number of a previous WAL which was recycled to create this
 	// one. Zero if recycling did not take place.
-	RecycledFileNum FileNum
+	RecycledFileNum base.DiskFileNum
 	Err             error
 }
 
@@ -443,11 +443,14 @@ func (i WALCreateInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 }
 
 // WALDeleteInfo contains the info for a WAL deletion event.
+//
+// TODO(sumeer): extend WALDeleteInfo for the failover case in case the path
+// is insufficient to infer whether primary or secondary.
 type WALDeleteInfo struct {
 	// JobID is the ID of the job the caused the WAL to be deleted.
 	JobID   int
 	Path    string
-	FileNum FileNum
+	FileNum base.DiskFileNum
 	Err     error
 }
 

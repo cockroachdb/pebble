@@ -1,133 +1,187 @@
+// Copyright 2019 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+
 package metamorphic
 
 import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
 
-// objKey is a tuple of (objID, key). This struct is used primarily as a map
-// key for keyManager. Only writer objTags can occur here, i.e., dbTag and
-// batchTag, since this is used for tracking the keys in a writer.
-type objKey struct {
-	id  objID
-	key []byte
-}
-
-// makeObjKey returns a new objKey given and id and key.
-func makeObjKey(id objID, key []byte) objKey {
-	if id.tag() != dbTag && id.tag() != batchTag {
-		panic("unexpected non-writer tag")
-	}
-	return objKey{id, key}
-}
-
-// String implements fmt.Stringer, returning a stable string representation of
-// the objKey. This string is used as map key.
-func (o objKey) String() string {
-	return fmt.Sprintf("%s:%s", o.id, o.key)
-}
-
-type keyUpdate struct {
-	deleted bool
-	// metaTimestamp at which the write or delete op occurred.
-	metaTimestamp int
-}
-
 // keyMeta is metadata associated with an (objID, key) pair, where objID is
 // a writer containing the key.
 type keyMeta struct {
-	objKey
-
-	// The number of Sets of the key in this writer.
-	sets int
-	// The number of Merges of the key in this writer.
-	merges int
-	// singleDel can be true only if sets <= 1 && merges == 0 and the
-	// SingleDelete was added to this writer after the set.
-	singleDel bool
-	// The number of Deletes of the key in this writer.
-	dels int
-	// del can be true only if a Delete was added to this writer after the
-	// Sets and Merges counted above.
-	del bool
-
-	// updateOps should always be ordered by non-decreasing metaTimestamp.
-	// updateOps will not be updated if the key is range deleted. Therefore, it
-	// is a best effort sequence of updates to the key. updateOps is used to
-	// determine if an iterator created on the DB can read a certain key.
-	updateOps []keyUpdate
+	objID objID
+	key   []byte
+	// history provides the history of writer operations applied against this
+	// key on this object. history is always ordered by non-decreasing
+	// metaTimestamp.
+	history keyHistory
 }
 
 func (m *keyMeta) clear() {
-	m.sets = 0
-	m.merges = 0
-	m.singleDel = false
-	m.del = false
-	m.dels = 0
-	m.updateOps = nil
+	m.history = m.history[:0]
 }
 
-// mergeInto merges this metadata this into the metadata for other.
-func (m *keyMeta) mergeInto(keyManager *keyManager, other *keyMeta) {
-	if other.del && !m.del {
-		// m's Sets and Merges are later.
-		if m.sets > 0 || m.merges > 0 {
-			other.del = false
+// mergeInto merges this metadata into the metadata for other, appending all of
+// its individual operations to dst at the provided timestamp.
+func (m *keyMeta) mergeInto(dst *keyMeta, ts int) {
+	for _, op := range m.history {
+		// If the key is being merged into a database object and the operation
+		// is a delete, we can clear the destination history. Database objects
+		// are end points in the merging of keys and won't be the source of a
+		// future merge. Deletions cause all other operations to behave as
+		// though the key was never written to the database at all, so we don't
+		// need to consider it for maintaining single delete invariants.
+		//
+		// NB: There's a subtlety here in that isDelete() will return true if
+		// opType is a writerSingleDelete, but single deletes are capable of
+		// leaking information about the history of writes. However, that's
+		// okay, because as long as we're properly generating single deletes
+		// according to the W1 invariant described in keyManager's comment, a
+		// single delete is equivalent to delete for the current history.
+		if dst.objID.tag() == dbTag && op.opType.isDelete() {
+			dst.clear()
+			continue
 		}
-	} else {
-		other.del = m.del
+		dst.history = append(dst.history, keyHistoryItem{
+			opType:        op.opType,
+			metaTimestamp: ts,
+		})
 	}
-	// Sets, merges, dels are additive.
-	other.sets += m.sets
-	other.merges += m.merges
-	other.dels += m.dels
+}
 
-	// Single deletes are preserved. This is valid since we are also
-	// maintaining a global invariant that SingleDelete will only be added for
-	// a key that has no inflight Sets or Merges (Sets have made their way to
-	// the DB), and no subsequent Sets or Merges will happen until the
-	// SingleDelete makes its way to the DB.
-	other.singleDel = other.singleDel || m.singleDel
-	if other.singleDel {
-		if other.sets > 1 || other.merges > 0 || other.dels > 0 {
-			panic(fmt.Sprintf("invalid sets %d or merges %d or dels %d",
-				other.sets, other.merges, other.dels))
-		}
+type bounds struct {
+	smallest    []byte
+	largest     []byte
+	largestExcl bool // is largest exclusive?
+}
+
+func (b bounds) checkValid(cmp base.Compare) {
+	if c := cmp(b.smallest, b.largest); c > 0 {
+		panic(fmt.Sprintf("invalid bound [%q, %q]", b.smallest, b.largest))
+	} else if c == 0 && b.largestExcl {
+		panic(fmt.Sprintf("invalid bound [%q, %q)", b.smallest, b.largest))
 	}
+}
 
-	// Determine if the key is visible or not after the keyMetas are merged.
-	// TODO(bananabrick): We currently only care about key updates which make it
-	// to the DB, since we only use key updates to determine if an iterator
-	// can read a key in the DB. We could extend the timestamp system to add
-	// support for iterators created on batches.
-	if other.del || other.singleDel {
-		other.updateOps = append(
-			other.updateOps, keyUpdate{true, keyManager.nextMetaTimestamp()},
-		)
-	} else {
-		other.updateOps = append(
-			other.updateOps, keyUpdate{false, keyManager.nextMetaTimestamp()},
-		)
+func (b bounds) String() string {
+	if b.largestExcl {
+		return fmt.Sprintf("[%q,%q)", b.smallest, b.largest)
+	}
+	return fmt.Sprintf("[%q,%q]", b.smallest, b.largest)
+}
+
+// Overlaps returns true iff the bounds intersect.
+func (b *bounds) Overlaps(cmp base.Compare, other bounds) bool {
+	if b.IsUnset() || other.IsUnset() {
+		return false
+	}
+	// Is b strictly before other?
+	if v := cmp(b.largest, other.smallest); v < 0 || (v == 0 && b.largestExcl) {
+		return false
+	}
+	// Is b strictly after other?
+	if v := cmp(b.smallest, other.largest); v > 0 || (v == 0 && other.largestExcl) {
+		return false
+	}
+	return true
+}
+
+// IsUnset returns true if the bounds haven't been set.
+func (b bounds) IsUnset() bool {
+	return b.smallest == nil && b.largest == nil
+}
+
+// Expand potentially expands the receiver bounds to include the other given
+// bounds. If the receiver is unset, the other bounds are copied.
+func (b *bounds) Expand(cmp base.Compare, other bounds) {
+	if other.IsUnset() {
+		return
+	}
+	other.checkValid(cmp)
+	if b.IsUnset() {
+		*b = other
+		return
+	}
+	if cmp(b.smallest, other.smallest) > 0 {
+		b.smallest = other.smallest
+	}
+	if v := cmp(b.largest, other.largest); v < 0 || (v == 0 && b.largestExcl) {
+		b.largest = other.largest
+		b.largestExcl = other.largestExcl
 	}
 }
 
 // keyManager tracks the write operations performed on keys in the generation
-// phase of the metamorphic test. It makes the assumption that write
-// operations do not fail, since that can cause the keyManager state to be not
-// in-sync with the actual state of the writers. This assumption is needed to
-// correctly decide when it is safe to generate a SingleDelete. This
-// assumption is violated in a single place in the metamorphic test: ingestion
-// of multiple batches. We sidestep this issue in a narrow way in
-// generator.writerIngest by not ingesting multiple batches that contain
-// deletes or single deletes, since loss of those specific operations on a key
-// are what we cannot tolerate (doing SingleDelete on a key that has not been
-// written to because the Set was lost is harmless).
+// phase of the metamorphic test. It maintains histories of operations performed
+// against every unique user key on every writer object. These histories inform
+// operation generation in order to maintain invariants that Pebble requires of
+// end users, mostly around single deletions.
+//
+// A single deletion has a subtle requirement of the writer:
+//
+//	W1: The writer may only single delete a key `k` if `k` has been Set once
+//	    (and never MergeD) since the last delete.
+//
+// When a SINGLEDEL key deletes a SET key within a compaction, both the SET and
+// the SINGLEDEL keys are elided. If multiple SETs of the key exist within the
+// LSM, the SINGLEDEL reveals the lower SET. This behavior is dependent on the
+// internal LSM state and nondeterministic. To ensure determinism, the end user
+// must satisfy W1 and use single delete only when they can guarantee that the
+// key has been set at most once since the last delete, preventing this rollback
+// to a previous value.
+//
+// This W1 invariant requires a delicate dance during operation generation,
+// because independent batches may be independently built and committed. With
+// multi-instance variants of the metamorphic tests, keys in batches may
+// ultimately be committed to any of several DB instances. To satisfy these
+// requirements, the key manager tracks the history of every key on every
+// writable object. When generating a new single deletion operation, the
+// generator asks the key manager for a set of keys for which a single delete
+// maintains the W1 invariant within the object itself. This object-local W1
+// invariant (OLW1) is equivalent to W1 if one only ever performs write
+// operations directly against individual DB objects.
+//
+// However with the existence of batches that receive writes independent of DB
+// objects, W1 may be violated by appending the histories of two objects that
+// independently satisfy OLW1. Consider a sequence such as:
+//
+//  1. db1.Set("foo")
+//  2. batch1.Set("foo")
+//  3. batch1.SingleDelete("foo")
+//  4. db1.Apply(batch1)
+//
+// Both db1 and batch1 satisfy the object-local invariant OLW1. However the
+// composition of the histories created by appending batch1's operations to db1
+// creates a history that now violates W1 on db1. To detect this violation,
+// batch applications/commits and ingestions examine the tail of the destination
+// object's history and the head of the source batch's history. When a violation
+// is detected, these operations insert additional Delete operations to clear
+// the conflicting keys before proceeding with the conflicting operation. These
+// deletes reset the key history.
+//
+// Note that this generation-time key tracking requires that operations be
+// infallible, because a runtime failure would cause the key manager's state to
+// diverge from the runtime object state. Ingestion operations pose an obstacle,
+// because the generator may generate ingestions that fail due to overlapping
+// sstables. Today, this complication is sidestepped by avoiding ingestion of
+// multiple batches containing deletes or single deletes since loss of those
+// specific operations on a key are what we cannot tolerate (doing SingleDelete
+// on a key that has not been written to because the Set was lost is harmless).
+//
+// TODO(jackson): Instead, compute smallest and largest bounds of batches so
+// that we know at generation-time whether or not an ingestion operation will
+// fail and can avoid updating key state.
 type keyManager struct {
 	comparer *base.Comparer
 
@@ -137,68 +191,129 @@ type keyManager struct {
 	// iterator.
 	metaTimestamp int
 
-	// byObjKey tracks the state for each (writer, key) pair. It refers to the
-	// same *keyMeta as in the byObj slices. Using a map allows for fast state
-	// lookups when changing the state based on a writer operation on the key.
-	byObjKey map[string]*keyMeta
-	// List of keys per writer, and what has happened to it in that writer.
-	// Will be transferred when needed.
-	byObj map[objID][]*keyMeta
-
+	byObj map[objID]*objKeyMeta
 	// globalKeys represents all the keys that have been generated so far. Not
 	// all these keys have been written to. globalKeys is sorted.
 	globalKeys [][]byte
-	// globalKeysMap contains the same keys as globalKeys. It ensures no
-	// duplication, and contains the aggregate state of the key across all
-	// writers, including inflight state that has not made its way to the DB
-	// yet.The keyMeta.objKey is uninitialized.
-	globalKeysMap map[string]*keyMeta
+	// globalKeysMap contains the same keys as globalKeys but in a map. It
+	// ensures no duplication.
+	globalKeysMap map[string]bool
 	// globalKeyPrefixes contains all the key prefixes (as defined by the
 	// comparer's Split) generated so far. globalKeyPrefixes is sorted.
 	globalKeyPrefixes [][]byte
 	// globalKeyPrefixesMap contains the same keys as globalKeyPrefixes. It
 	// ensures no duplication.
 	globalKeyPrefixesMap map[string]struct{}
+}
 
-	// Using SingleDeletes imposes some constraints on the above state, and
-	// causes some state transitions that help with generating complex but
-	// correct sequences involving SingleDeletes.
-	// - Generating a SingleDelete requires for that key: global.merges==0 &&
-	//   global.sets==1 && global.dels==0 && !global.singleDel && (db.sets==1
-	//   || writer.sets==1), where global represents the entry in
-	//   globalKeysMap[key] and db represents the entry in
-	//   byObjKey[makeObjKey(makeObjID(dbTag, 0), key)], and writer is the
-	//   entry in byObjKey[makeObjKey(writerID, key)].
-	//
-	// - We do not track state changes due to range deletes, so one should
-	//   think of these counts as upper bounds. Also we are not preventing
-	//   interactions caused by concurrently in-flight range deletes and
-	//   SingleDelete. This is acceptable since it does not cause
-	//   non-determinism.
-	//
-	// - When the SingleDelete is generated, it is recorded as
-	//   writer.singleDel=true and global.singleDel=true. No more write
-	//   operations are permitted on this key until db.singleDel transitions
-	//   to true.
-	//
-	// - When db.singleDel transitions to true, we are guaranteed that no
-	//   writer other than the DB has any writes for this key. We set
-	//   db.singleDel and global.singleDel to false and the corresponding sets
-	//   and merges counts in global and db also to 0. This allows this key to
-	//   fully participate again in write operations. This means we can
-	//   generate sequences of the form:
-	//   SET => SINGLEDEL => SET* => MERGE* => DEL
-	//   SET => SINGLEDEL => SET => SINGLEDEL, among others.
-	//
-	// - The above logic is insufficient to generate sequences of the form
-	//   SET => DEL => SET => SINGLEDEL
-	//   To do this we need to track Deletes. When db.del transitions to true,
-	//   we check if db.sets==global.sets && db.merges==global.merges &&
-	//   db.dels==global.dels. If true, there are no in-flight
-	//   sets/merges/deletes to this key. We then default initialize the
-	//   global and db entries since one can behave as if this key was never
-	//   written in this system. This enables the above sequence, among
-	//   others.
+type objKeyMeta struct {
+	id objID
+	// List of keys, and what has happened to each in this object.
+	// Will be transferred when needed.
+	keys map[string]*keyMeta
+	// bounds holds user key bounds encompassing all the keys set within an
+	// object. It's updated within `update` when a new op is generated.
+	bounds bounds
+	// These flags are true if the object has had range del or range key operations.
+	hasRangeDels bool
+	hasRangeKeys bool
+}
+
+// MergeKey adds the given key at the given meta timestamp, merging the histories as needed.
+func (okm *objKeyMeta) MergeKey(k *keyMeta, ts int) {
+	meta, ok := okm.keys[string(k.key)]
+	if !ok {
+		meta = &keyMeta{
+			objID: okm.id,
+			key:   k.key,
+		}
+		okm.keys[string(k.key)] = meta
+	}
+	k.mergeInto(meta, ts)
+}
+
+// CollapseKeys collapses the history of all keys. Used with ingestion operation
+// which only use the last value of any given key.
+func (okm *objKeyMeta) CollapseKeys() {
+	for _, keyMeta := range okm.keys {
+		keyMeta.history = keyMeta.history.collapsed()
+	}
+}
+
+// MergeFrom merges the `from` metadata into this one, appending all of its
+// individual operations at the provided timestamp.
+func (okm *objKeyMeta) MergeFrom(from *objKeyMeta, metaTimestamp int, cmp base.Compare) {
+	// The result should be the same regardless of the ordering of the keys.
+	for _, k := range from.keys {
+		okm.MergeKey(k, metaTimestamp)
+	}
+	okm.bounds.Expand(cmp, from.bounds)
+	okm.hasRangeDels = okm.hasRangeDels || from.hasRangeDels
+	okm.hasRangeKeys = okm.hasRangeKeys || from.hasRangeKeys
+}
+
+// objKeyMeta looks up the objKeyMeta for a given object, creating it if necessary.
+func (k *keyManager) objKeyMeta(o objID) *objKeyMeta {
+	m, ok := k.byObj[o]
+	if !ok {
+		m = &objKeyMeta{
+			id:   o,
+			keys: make(map[string]*keyMeta),
+		}
+		k.byObj[o] = m
+	}
+	return m
+}
+
+// SortedKeysForObj returns all the entries in objKeyMeta(o).keys, in sorted
+// order.
+func (k *keyManager) SortedKeysForObj(o objID) []keyMeta {
+	okm := k.objKeyMeta(o)
+	res := make([]keyMeta, 0, len(okm.keys))
+	for _, m := range okm.keys {
+		res = append(res, *m)
+	}
+	slices.SortFunc(res, func(a, b keyMeta) int {
+		cmp := k.comparer.Compare(a.key, b.key)
+		if cmp == 0 {
+			panic(fmt.Sprintf("distinct keys %q and %q compared as equal", a.key, b.key))
+		}
+		return cmp
+	})
+	return res
+}
+
+// InRangeKeysForObj returns all keys in the range [lower, upper) associated with the
+// given object, in sorted order.
+func (k *keyManager) InRangeKeysForObj(o objID, lower, upper []byte) []keyMeta {
+	var inRangeKeys []keyMeta
+	for _, km := range k.SortedKeysForObj(o) {
+		if k.comparer.Compare(km.key, lower) >= 0 && k.comparer.Compare(km.key, upper) < 0 {
+			inRangeKeys = append(inRangeKeys, km)
+		}
+	}
+	return inRangeKeys
+
+}
+
+// KeysForExternalIngest returns the keys that will be ingested with an external
+// object (taking into consideration the bounds, synthetic suffix, etc).
+func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta {
+	var res []keyMeta
+	for _, km := range k.SortedKeysForObj(obj.externalObjID) {
+		// Apply prefix and suffix changes, then check the bounds.
+		if obj.syntheticPrefix.IsSet() {
+			km.key = obj.syntheticPrefix.Apply(km.key)
+		}
+		if obj.syntheticSuffix.IsSet() {
+			n := k.comparer.Split(km.key)
+			km.key = append(km.key[:n:n], obj.syntheticSuffix...)
+		}
+		if k.comparer.Compare(km.key, obj.bounds.Start) >= 0 && k.comparer.Compare(km.key, obj.bounds.End) < 0 {
+			res = append(res, km)
+		}
+	}
+	return res
 }
 
 func (k *keyManager) nextMetaTimestamp() int {
@@ -208,18 +323,16 @@ func (k *keyManager) nextMetaTimestamp() int {
 }
 
 // newKeyManager returns a pointer to a new keyManager. Callers should
-// interact with this using addNewKey, eligible*Keys, update,
-// canTolerateApplyFailure methods only.
+// interact with this using addNewKey, knownKeys, update methods only.
 func newKeyManager(numInstances int) *keyManager {
 	m := &keyManager{
 		comparer:             testkeys.Comparer,
-		byObjKey:             make(map[string]*keyMeta),
-		byObj:                make(map[objID][]*keyMeta),
-		globalKeysMap:        make(map[string]*keyMeta),
+		byObj:                make(map[objID]*objKeyMeta),
+		globalKeysMap:        make(map[string]bool),
 		globalKeyPrefixesMap: make(map[string]struct{}),
 	}
 	for i := 1; i <= max(numInstances, 1); i++ {
-		m.byObj[makeObjID(dbTag, uint32(i))] = []*keyMeta{}
+		m.objKeyMeta(makeObjID(dbTag, uint32(i)))
 	}
 	return m
 }
@@ -227,18 +340,19 @@ func newKeyManager(numInstances int) *keyManager {
 // addNewKey adds the given key to the key manager for global key tracking.
 // Returns false iff this is not a new key.
 func (k *keyManager) addNewKey(key []byte) bool {
-	_, ok := k.globalKeysMap[string(key)]
-	if ok {
+	if k.globalKeysMap[string(key)] {
 		return false
 	}
-	keyString := string(key)
 	insertSorted(k.comparer.Compare, &k.globalKeys, key)
-	k.globalKeysMap[keyString] = &keyMeta{objKey: objKey{key: key}}
+	k.globalKeysMap[string(key)] = true
 
 	prefixLen := k.comparer.Split(key)
-	if _, ok := k.globalKeyPrefixesMap[keyString[:prefixLen]]; !ok {
+	if prefixLen == 0 {
+		panic(fmt.Sprintf("key %q has zero length prefix", key))
+	}
+	if _, ok := k.globalKeyPrefixesMap[string(key[:prefixLen])]; !ok {
 		insertSorted(k.comparer.Compare, &k.globalKeyPrefixes, key[:prefixLen])
-		k.globalKeyPrefixesMap[keyString[:prefixLen]] = struct{}{}
+		k.globalKeyPrefixesMap[string(key[:prefixLen])] = struct{}{}
 	}
 	return true
 }
@@ -246,111 +360,184 @@ func (k *keyManager) addNewKey(key []byte) bool {
 // getOrInit returns the keyMeta for the (objID, key) pair, if it exists, else
 // allocates, initializes and returns a new value.
 func (k *keyManager) getOrInit(id objID, key []byte) *keyMeta {
-	o := makeObjKey(id, key)
-	m, ok := k.byObjKey[o.String()]
+	objKeys := k.objKeyMeta(id)
+	m, ok := objKeys.keys[string(key)]
 	if ok {
 		return m
 	}
-	m = &keyMeta{objKey: makeObjKey(id, key)}
+	m = &keyMeta{
+		objID: id,
+		key:   key,
+	}
 	// Initialize the key-to-meta index.
-	k.byObjKey[o.String()] = m
-	// Add to the id-to-metas slide.
-	k.byObj[o.id] = append(k.byObj[o.id], m)
+	objKeys.keys[string(key)] = m
+	// Expand the object's bounds to contain this key if they don't already.
+	objKeys.bounds.Expand(k.comparer.Compare, k.makeSingleKeyBounds(key))
 	return m
 }
 
-// contains returns true if the (objID, key) pair is tracked by the keyManager.
-func (k *keyManager) contains(id objID, key []byte) bool {
-	_, ok := k.byObjKey[makeObjKey(id, key).String()]
-	return ok
+// mergeObjectInto merges obj key metadata from an object into another and
+// deletes the metadata for the source object (which must not be used again).
+func (k *keyManager) mergeObjectInto(from, to objID) {
+	toMeta := k.objKeyMeta(to)
+	ts := k.nextMetaTimestamp()
+	toMeta.MergeFrom(k.objKeyMeta(from), ts, k.comparer.Compare)
+
+	delete(k.byObj, from)
 }
 
-// mergeKeysInto merges all metadata for all keys associated with the "from" ID
-// with the metadata for keys associated with the "to" ID.
-func (k *keyManager) mergeKeysInto(from, to objID) {
-	msFrom, ok := k.byObj[from]
+// expandBounds expands the incrementally maintained bounds of o to be at least
+// as wide as `b`.
+func (k *keyManager) expandBounds(o objID, b bounds) {
+	k.objKeyMeta(o).bounds.Expand(k.comparer.Compare, b)
+}
+
+// doObjectBoundsOverlap returns true iff any of the named objects have key
+// bounds that overlap any other named object.
+func (k *keyManager) doObjectBoundsOverlap(objIDs []objID) bool {
+	for i := range objIDs {
+		ib, iok := k.byObj[objIDs[i]]
+		if !iok {
+			continue
+		}
+		for j := i + 1; j < len(objIDs); j++ {
+			jb, jok := k.byObj[objIDs[j]]
+			if !jok {
+				continue
+			}
+			if ib.bounds.Overlaps(k.comparer.Compare, jb.bounds) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// checkForSingleDelConflicts examines all the keys written to srcObj, and
+// determines whether any of the contained single deletes would be
+// nondeterministic if applied to dstObj in dstObj's current state. It returns a
+// slice of all the keys that are found to conflict. In order to preserve
+// determinism, the caller must delete the key from the destination before
+// writing src's mutations to dst in order to ensure determinism.
+//
+// It takes a `srcCollapsed` parameter that determines whether the source
+// history should be "collapsed" (see keyHistory.collapsed) before determining
+// whether the applied state will conflict. This is required to facilitate
+// ingestOps which are NOT equivalent to committing the batch, because they can
+// only commit 1 internal point key at each unique user key.
+func (k *keyManager) checkForSingleDelConflicts(srcObj, dstObj objID, srcCollapsed bool) [][]byte {
+	dstKeys := k.objKeyMeta(dstObj)
+	var conflicts [][]byte
+	for _, src := range k.SortedKeysForObj(srcObj) {
+		if srcCollapsed {
+			src.history = src.history.collapsed()
+		}
+		if k.checkForSingleDelConflict(src, dstKeys) {
+			conflicts = append(conflicts, src.key)
+		}
+	}
+	return conflicts
+}
+
+// checkForSingleDelConflict returns true if applying the history of the source
+// key on top of the given object results in a possible SingleDel
+// nondeterminism. See checkForSingleDelConflicts.
+func (k *keyManager) checkForSingleDelConflict(src keyMeta, dstObjKeyMeta *objKeyMeta) bool {
+	// Single delete generation logic already ensures that both the source
+	// object and the destination object's single deletes are deterministic
+	// within the context of their existing writes. However, applying the source
+	// keys on top of the destination object may violate the invariants.
+	// Consider:
+	//
+	//    src: a.SET; a.SINGLEDEL;
+	//    dst: a.SET;
+	//
+	// The merged view is:
+	//
+	//    a.SET; a.SET; a.SINGLEDEL;
+	//
+	// This is invalid, because there is more than 1 value mutation of the
+	// key before the single delete.
+	//
+	// We walk the source object's history in chronological order, looking
+	// for a single delete that was written before a DEL/RANGEDEL. (NB: We
+	// don't need to look beyond a DEL/RANGEDEL, because these deletes bound
+	// any subsequently-written single deletes to applying to the keys
+	// within src's history between the two tombstones. We already know from
+	// per-object history invariants that any such single delete must be
+	// deterministic with respect to src's keys.)
+	var srcHasUnboundedSingleDelete bool
+	var srcValuesBeforeSingleDelete int
+
+	// When the srcObj is being ingested (srcCollapsed=t), the semantics
+	// change. We must first "collapse" the key's history to represent the
+	// ingestion semantics.
+	srcHistory := src.history
+
+srcloop:
+	for _, item := range srcHistory {
+		switch item.opType {
+		case OpWriterDelete, OpWriterDeleteRange:
+			// We found a DEL or RANGEDEL before any single delete. If src
+			// contains additional single deletes, their effects are limited
+			// to applying to later keys. Combining the two object histories
+			// doesn't pose any determinism risk.
+			return false
+
+		case OpWriterSingleDelete:
+			// We found a single delete. Since we found this single delete
+			// before a DEL or RANGEDEL, this delete has the potential to
+			// affect the visibility of keys in `dstObj`. We'll need to look
+			// for potential conflicts down below.
+			srcHasUnboundedSingleDelete = true
+			if srcValuesBeforeSingleDelete > 1 {
+				panic(errors.AssertionFailedf("unexpectedly found %d sets/merges before single del",
+					srcValuesBeforeSingleDelete))
+			}
+			break srcloop
+
+		case OpWriterSet, OpWriterMerge:
+			// We found a SET or MERGE operation for this key. If there's a
+			// subsequent single delete, we'll need to make sure there's not
+			// a SET or MERGE in the dst too.
+			srcValuesBeforeSingleDelete++
+
+		default:
+			panic(errors.AssertionFailedf("unexpected optype %d", item.opType))
+		}
+	}
+	if !srcHasUnboundedSingleDelete {
+		return false
+	}
+
+	dst, ok := dstObjKeyMeta.keys[string(src.key)]
+	// If the destination writer has no record of the key, the combined key
+	// history is simply the src object's key history which is valid due to
+	// per-object single deletion invariants.
 	if !ok {
-		msFrom = []*keyMeta{}
-		k.byObj[from] = msFrom
+		return false
 	}
 
-	msTo, ok := k.byObj[to]
-	if !ok {
-		msTo = []*keyMeta{}
-		k.byObj[to] = msTo
-	}
+	// We need to examine the trailing key history on dst.
+	consecutiveValues := srcValuesBeforeSingleDelete
+	for i := len(dst.history) - 1; i >= 0; i-- {
+		switch dst.history[i].opType {
+		case OpWriterSet, OpWriterMerge:
+			// A SET/MERGE may conflict if there's more than 1 consecutive
+			// SET/MERGEs.
+			consecutiveValues++
+			if consecutiveValues > 1 {
+				return true
+			}
+		case OpWriterDelete, OpWriterSingleDelete, OpWriterDeleteRange:
+			// Dels clear the history, enabling use of single delete.
+			return false
 
-	// Sort to facilitate a merge.
-	slices.SortFunc(msFrom, func(a, b *keyMeta) int {
-		return cmp.Compare(a.String(), b.String())
-	})
-	slices.SortFunc(msTo, func(a, b *keyMeta) int {
-		return cmp.Compare(a.String(), b.String())
-	})
-
-	var msNew []*keyMeta
-	var iTo int
-	for _, m := range msFrom {
-		// Move cursor on mTo forward.
-		for iTo < len(msTo) && string(msTo[iTo].key) < string(m.key) {
-			msNew = append(msNew, msTo[iTo])
-			iTo++
+		default:
+			panic(errors.AssertionFailedf("unexpected optype %d", dst.history[i].opType))
 		}
-
-		var mTo *keyMeta
-		if iTo < len(msTo) && string(msTo[iTo].key) == string(m.key) {
-			mTo = msTo[iTo]
-			iTo++
-		} else {
-			mTo = &keyMeta{objKey: makeObjKey(to, m.key)}
-			k.byObjKey[mTo.String()] = mTo
-		}
-
-		m.mergeInto(k, mTo)
-		msNew = append(msNew, mTo)
-
-		delete(k.byObjKey, m.String()) // Unlink "from".
 	}
-
-	// Add any remaining items from the "to" set.
-	for iTo < len(msTo) {
-		msNew = append(msNew, msTo[iTo])
-		iTo++
-	}
-
-	k.byObj[to] = msNew   // Update "to".
-	delete(k.byObj, from) // Unlink "from".
-}
-
-func (k *keyManager) checkForDelOrSingleDelTransition(dbMeta *keyMeta, globalMeta *keyMeta) {
-	if dbMeta.singleDel {
-		if !globalMeta.singleDel {
-			panic("inconsistency with globalMeta")
-		}
-		if dbMeta.del || globalMeta.del || dbMeta.dels > 0 || globalMeta.dels > 0 ||
-			dbMeta.merges > 0 || globalMeta.merges > 0 || dbMeta.sets != 1 || globalMeta.sets != 1 {
-			panic("inconsistency in metas when SingleDelete applied to DB")
-		}
-		dbMeta.clear()
-		globalMeta.clear()
-		return
-	}
-	if dbMeta.del && globalMeta.sets == dbMeta.sets && globalMeta.merges == dbMeta.merges &&
-		globalMeta.dels == dbMeta.dels {
-		if dbMeta.singleDel || globalMeta.singleDel {
-			panic("Delete should not have happened given SingleDelete")
-		}
-		dbMeta.clear()
-		globalMeta.clear()
-	}
-}
-
-func (k *keyManager) checkForDelOrSingleDelTransitionInDB(dbID objID) {
-	keys := k.byObj[dbID]
-	for _, dbMeta := range keys {
-		globalMeta := k.globalKeysMap[string(dbMeta.key)]
-		k.checkForDelOrSingleDelTransition(dbMeta, globalMeta)
-	}
+	return false
 }
 
 // update updates the internal state of the keyManager according to the given
@@ -359,75 +546,136 @@ func (k *keyManager) update(o op) {
 	switch s := o.(type) {
 	case *setOp:
 		meta := k.getOrInit(s.writerID, s.key)
-		globalMeta := k.globalKeysMap[string(s.key)]
-		meta.sets++ // Update the set count on this specific (id, key) pair.
-		meta.del = false
-		globalMeta.sets++
-		meta.updateOps = append(meta.updateOps, keyUpdate{false, k.nextMetaTimestamp()})
-		if meta.singleDel || globalMeta.singleDel {
-			panic("setting a key that has in-flight SingleDelete")
-		}
+		meta.history = append(meta.history, keyHistoryItem{
+			opType:        OpWriterSet,
+			metaTimestamp: k.nextMetaTimestamp(),
+		})
 	case *mergeOp:
 		meta := k.getOrInit(s.writerID, s.key)
-		globalMeta := k.globalKeysMap[string(s.key)]
-		meta.merges++
-		meta.del = false
-		globalMeta.merges++
-		meta.updateOps = append(meta.updateOps, keyUpdate{false, k.nextMetaTimestamp()})
-		if meta.singleDel || globalMeta.singleDel {
-			panic("merging a key that has in-flight SingleDelete")
-		}
+		meta.history = append(meta.history, keyHistoryItem{
+			opType:        OpWriterMerge,
+			metaTimestamp: k.nextMetaTimestamp(),
+		})
 	case *deleteOp:
 		meta := k.getOrInit(s.writerID, s.key)
-		globalMeta := k.globalKeysMap[string(s.key)]
-		meta.del = true
-		globalMeta.del = true
-		meta.dels++
-		globalMeta.dels++
-		meta.updateOps = append(meta.updateOps, keyUpdate{true, k.nextMetaTimestamp()})
-		if s.writerID.tag() == dbTag {
-			k.checkForDelOrSingleDelTransition(meta, globalMeta)
+		if meta.objID.tag() == dbTag {
+			meta.clear()
+		} else {
+			meta.history = append(meta.history, keyHistoryItem{
+				opType:        OpWriterDelete,
+				metaTimestamp: k.nextMetaTimestamp(),
+			})
 		}
+	case *deleteRangeOp:
+		// We track the history of discrete point keys, but a range deletion
+		// applies over a continuous key span of infinite keys. However, the key
+		// manager knows all keys that have been used in all operations, so we
+		// can discretize the range tombstone by adding it to every known key
+		// within the range.
+		ts := k.nextMetaTimestamp()
+		keyRange := pebble.KeyRange{Start: s.start, End: s.end}
+		for _, key := range k.knownKeysInRange(keyRange) {
+			meta := k.getOrInit(s.writerID, key)
+			if meta.objID.tag() == dbTag {
+				meta.clear()
+			} else {
+				meta.history = append(meta.history, keyHistoryItem{
+					opType:        OpWriterDeleteRange,
+					metaTimestamp: ts,
+				})
+			}
+		}
+		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
+		k.objKeyMeta(s.writerID).hasRangeDels = true
+
 	case *singleDeleteOp:
-		if !k.globalStateIndicatesEligibleForSingleDelete(s.key) {
-			panic("key ineligible for SingleDelete")
-		}
 		meta := k.getOrInit(s.writerID, s.key)
-		globalMeta := k.globalKeysMap[string(s.key)]
-		meta.singleDel = true
-		globalMeta.singleDel = true
-		meta.updateOps = append(meta.updateOps, keyUpdate{true, k.nextMetaTimestamp()})
-		if s.writerID.tag() == dbTag {
-			k.checkForDelOrSingleDelTransition(meta, globalMeta)
-		}
+		meta.history = append(meta.history, keyHistoryItem{
+			opType:        OpWriterSingleDelete,
+			metaTimestamp: k.nextMetaTimestamp(),
+		})
+	case *rangeKeyDeleteOp:
+		// Range key operations on their own don't determine singledel eligibility,
+		// however range key operations could be part of a batch which contains
+		// other operations that do affect it. If those batches were to get
+		// ingested, we'd need to know what the bounds of sstables generated out
+		// of those batches are, as that determines whether that ingestion
+		// will succeed or not.
+		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
+		k.objKeyMeta(s.writerID).hasRangeKeys = true
+	case *rangeKeySetOp:
+		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
+		k.objKeyMeta(s.writerID).hasRangeKeys = true
+	case *rangeKeyUnsetOp:
+		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
+		k.objKeyMeta(s.writerID).hasRangeKeys = true
 	case *ingestOp:
-		// For each batch, merge all keys with the keys in the DB.
+		// Some ingestion operations may attempt to ingest overlapping sstables
+		// which is prohibited. We know at generation time whether these
+		// ingestions will be successful. If they won't be successful, we should
+		// not update the key state because both the batch(es) and target DB
+		// will be left unmodified.
+		if k.doObjectBoundsOverlap(s.batchIDs) {
+			// This ingestion will fail.
+			return
+		}
+
+		// For each batch, merge the keys into the DB. We can't call
+		// keyMeta.mergeInto directly to merge, because ingest operations first
+		// "flatten" the batch (because you can't set the same key twice at a
+		// single sequence number). Instead we compute the collapsed history and
+		// merge that.
 		for _, batchID := range s.batchIDs {
-			k.mergeKeysInto(batchID, s.dbID)
+			k.objKeyMeta(batchID).CollapseKeys()
+			k.mergeObjectInto(batchID, s.dbID)
 		}
-		k.checkForDelOrSingleDelTransitionInDB(s.dbID)
-	// TODO(bilal): Handle replicateOp and ingestAndExciseOp here.
+	case *ingestAndExciseOp:
+		// IngestAndExcise does not ingest multiple batches, so we will not see
+		// a failure due to overlapping sstables. However we do need to merge
+		// the singular batch into the key manager.
+		//
+		// Remove all keys from the key manager within the excise span before
+		// merging the batch into the db.
+		for _, key := range k.InRangeKeysForObj(s.dbID, s.exciseStart, s.exciseEnd) {
+			m := k.getOrInit(s.dbID, key.key)
+			m.clear()
+		}
+		k.objKeyMeta(s.batchID).CollapseKeys()
+		k.mergeObjectInto(s.batchID, s.dbID)
+		// TODO(bilal): Handle replicateOp here. We currently disable SingleDelete
+		// when these operations are enabled (see multiInstanceConfig).
+	case *newExternalObjOp:
+		// Collapse and transfer the keys from the batch to the external object.
+		k.objKeyMeta(s.batchID).CollapseKeys()
+		k.mergeObjectInto(s.batchID, s.externalObjID)
+	case *ingestExternalFilesOp:
+		// Merge the keys from the external objects (within the restricted bounds)
+		// into the database.
+		ts := k.nextMetaTimestamp()
+		dbMeta := k.objKeyMeta(s.dbID)
+		for _, obj := range s.objs {
+			for _, keyMeta := range k.KeysForExternalIngest(obj) {
+				dbMeta.MergeKey(&keyMeta, ts)
+			}
+			dbMeta.bounds.Expand(k.comparer.Compare, k.makeEndExclusiveBounds(obj.bounds.Start, obj.bounds.End))
+		}
 	case *applyOp:
-		// Merge the keys from this writer into the parent writer.
-		k.mergeKeysInto(s.batchID, s.writerID)
-		if s.writerID.tag() == dbTag {
-			k.checkForDelOrSingleDelTransitionInDB(s.writerID)
-		}
+		// Merge the keys from this batch into the parent writer.
+		k.mergeObjectInto(s.batchID, s.writerID)
 	case *batchCommitOp:
 		// Merge the keys from the batch with the keys from the DB.
-		k.mergeKeysInto(s.batchID, s.dbID)
-		k.checkForDelOrSingleDelTransitionInDB(s.dbID)
+		k.mergeObjectInto(s.batchID, s.dbID)
 	}
 }
 
-func (k *keyManager) eligibleReadKeys() (keys [][]byte) {
+func (k *keyManager) knownKeys() (keys [][]byte) {
 	return k.globalKeys
 }
 
-// eligibleReadKeysInRange returns all eligible read keys within the range
+// knownKeysInRange returns all eligible read keys within the range
 // [start,end). The returned slice is owned by the keyManager and must not be
 // retained.
-func (k *keyManager) eligibleReadKeysInRange(kr pebble.KeyRange) (keys [][]byte) {
+func (k *keyManager) knownKeysInRange(kr pebble.KeyRange) (keys [][]byte) {
 	s, _ := slices.BinarySearchFunc(k.globalKeys, kr.Start, k.comparer.Compare)
 	e, _ := slices.BinarySearchFunc(k.globalKeys, kr.End, k.comparer.Compare)
 	if s >= e {
@@ -447,60 +695,141 @@ func (k *keyManager) prefixExists(prefix []byte) bool {
 	return exists
 }
 
-func (k *keyManager) eligibleWriteKeys() (keys [][]byte) {
-	// Creating and sorting this slice of keys is wasteful given that the
-	// caller will pick one, but makes it simpler for unit testing.
-	for _, v := range k.globalKeysMap {
-		if v.singleDel {
+// eligibleSingleDeleteKeys returns a slice of keys that can be safely single
+// deleted, given the writer id. Restricting single delete keys through this
+// method is used to ensure the OLW1 guarantee (see the keyManager comment) for
+// the provided object ID.
+func (k *keyManager) eligibleSingleDeleteKeys(o objID) (keys [][]byte) {
+	// Creating a slice of keys is wasteful given that the caller will pick one,
+	// but makes it simpler for unit testing.
+	objKeys := k.objKeyMeta(o)
+	for _, key := range k.globalKeys {
+		meta, ok := objKeys.keys[string(key)]
+		if !ok {
+			keys = append(keys, key)
 			continue
 		}
-		keys = append(keys, v.key)
-	}
-	slices.SortFunc(keys, k.comparer.Compare)
-	return keys
-}
-
-// eligibleSingleDeleteKeys returns a slice of keys that can be safely single
-// deleted, given the writer id.
-func (k *keyManager) eligibleSingleDeleteKeys(id, dbID objID) (keys [][]byte) {
-	// Creating and sorting this slice of keys is wasteful given that the
-	// caller will pick one, but makes it simpler for unit testing.
-	addForObjID := func(id objID) {
-		for _, m := range k.byObj[id] {
-			if m.sets == 1 && k.globalStateIndicatesEligibleForSingleDelete(m.key) {
-				keys = append(keys, m.key)
-			}
+		// Examine the history within this object.
+		if meta.history.canSingleDelete() {
+			keys = append(keys, key)
 		}
 	}
-	addForObjID(id)
-	if id.tag() != dbTag {
-		addForObjID(dbID)
-	}
-	slices.SortFunc(keys, k.comparer.Compare)
 	return keys
 }
 
-func (k *keyManager) globalStateIndicatesEligibleForSingleDelete(key []byte) bool {
-	m := k.globalKeysMap[string(key)]
-	return m.merges == 0 && m.sets == 1 && m.dels == 0 && !m.singleDel
+// makeSingleKeyBounds creates a [key, key] bound.
+func (k *keyManager) makeSingleKeyBounds(key []byte) bounds {
+	return bounds{
+		smallest:    key,
+		largest:     key,
+		largestExcl: false,
+	}
 }
 
-// canTolerateApplyFailure is called with a batch ID and returns true iff a
-// failure to apply this batch to the DB can be tolerated.
-func (k *keyManager) canTolerateApplyFailure(id objID) bool {
-	if id.tag() != batchTag {
-		panic("called with an objID that is not a batch")
+// makeEndExclusiveBounds creates a [smallest, largest) bound.
+func (k *keyManager) makeEndExclusiveBounds(smallest, largest []byte) bounds {
+	b := bounds{
+		smallest:    smallest,
+		largest:     largest,
+		largestExcl: true,
 	}
-	ms, ok := k.byObj[id]
-	if !ok {
+	b.checkValid(k.comparer.Compare)
+	return b
+}
+
+// a keyHistoryItem describes an individual operation performed on a key.
+type keyHistoryItem struct {
+	// opType may be writerSet, writerDelete, writerSingleDelete,
+	// writerDeleteRange or writerMerge only. No other opTypes may appear here.
+	opType        OpType
+	metaTimestamp int
+}
+
+// keyHistory captures the history of mutations to a key in chronological order.
+type keyHistory []keyHistoryItem
+
+// before returns the subslice of the key history that happened strictly before
+// the provided meta timestamp.
+func (h keyHistory) before(metaTimestamp int) keyHistory {
+	i, _ := slices.BinarySearchFunc(h, metaTimestamp, func(a keyHistoryItem, ts int) int {
+		return cmp.Compare(a.metaTimestamp, ts)
+	})
+	return h[:i]
+}
+
+// canSingleDelete examines the tail of the history and returns true if a single
+// delete appended to this history would satisfy the single delete invariants.
+func (h keyHistory) canSingleDelete() bool {
+	if len(h) == 0 {
 		return true
 	}
-	for _, m := range ms {
-		if m.singleDel || m.del {
-			return false
+	switch o := h[len(h)-1].opType; o {
+	case OpWriterDelete, OpWriterDeleteRange, OpWriterSingleDelete:
+		return true
+	case OpWriterSet, OpWriterMerge:
+		if len(h) == 1 {
+			return true
+		}
+		return h[len(h)-2].opType.isDelete()
+	default:
+		panic(errors.AssertionFailedf("unexpected writer op %v", o))
+	}
+}
+
+func (h keyHistory) String() string {
+	var sb strings.Builder
+	for i, it := range h {
+		if i > 0 {
+			fmt.Fprint(&sb, ", ")
+		}
+		switch it.opType {
+		case OpWriterDelete:
+			fmt.Fprint(&sb, "del")
+		case OpWriterDeleteRange:
+			fmt.Fprint(&sb, "delrange")
+		case OpWriterSingleDelete:
+			fmt.Fprint(&sb, "singledel")
+		case OpWriterSet:
+			fmt.Fprint(&sb, "set")
+		case OpWriterMerge:
+			fmt.Fprint(&sb, "merge")
+		default:
+			fmt.Fprintf(&sb, "optype[v=%d]", it.opType)
+		}
+		fmt.Fprintf(&sb, "(%d)", it.metaTimestamp)
+	}
+	return sb.String()
+}
+
+// hasVisibleKey examines the tail of the history and returns true if the
+// history should end in a visible value for this key.
+func (h keyHistory) hasVisibleValue() bool {
+	if len(h) == 0 {
+		return false
+	}
+	return !h[len(h)-1].opType.isDelete()
+}
+
+// collapsed returns a new key history that's equivalent to the history created
+// by an ingestOp that "collapses" a batch's keys. See ingestOp.build.
+func (h keyHistory) collapsed() keyHistory {
+	var ret keyHistory
+	// When collapsing a batch, any range deletes are semantically applied
+	// first. Look for any range deletes and apply them.
+	for _, op := range h {
+		if op.opType == OpWriterDeleteRange {
+			ret = append(ret, op)
+			break
 		}
 	}
-	return true
+	// Among point keys, the most recently written key wins.
+	for i := len(h) - 1; i >= 0; i-- {
+		if h[i].opType != OpWriterDeleteRange {
+			ret = append(ret, h[i])
+			break
+		}
+	}
+	return ret
 }
 
 func opWrittenKeys(untypedOp op) [][]byte {
@@ -518,7 +847,6 @@ func opWrittenKeys(untypedOp op) [][]byte {
 	case *flushOp:
 	case *getOp:
 	case *ingestOp:
-	case *ingestAndExciseOp:
 	case *initOp:
 	case *iterFirstOp:
 	case *iterLastOp:
@@ -546,11 +874,12 @@ func opWrittenKeys(untypedOp op) [][]byte {
 	case *singleDeleteOp:
 		return [][]byte{t.key}
 	case *replicateOp:
+		return [][]byte{t.start, t.end}
 	}
 	return nil
 }
 
-func loadPrecedingKeys(t TestingT, ops []op, cfg *config, m *keyManager) {
+func loadPrecedingKeys(t TestingT, ops []op, cfg *OpConfig, m *keyManager) {
 	for _, op := range ops {
 		// Pretend we're generating all the operation's keys as potential new
 		// key, so that we update the key manager's keys and prefix sets.

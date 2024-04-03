@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
@@ -65,6 +67,9 @@ func exampleMetrics() Metrics {
 	m.WAL.BytesIn = 25
 	m.WAL.BytesWritten = 26
 	m.Ingest.Count = 27
+	m.Table.Local.LiveSize = 28
+	m.Table.Local.ObsoleteSize = 29
+	m.Table.Local.ZombieSize = 30
 
 	for i := range m.Levels {
 		l := &m.Levels[i]
@@ -93,44 +98,88 @@ func exampleMetrics() Metrics {
 }
 
 func TestMetrics(t *testing.T) {
-	c := cache.New(cacheDefaultSize)
-	defer c.Unref()
-	opts := &Options{
-		Cache:                 c,
-		Comparer:              testkeys.Comparer,
-		FormatMajorVersion:    FormatNewest,
-		FS:                    vfs.NewMem(),
-		L0CompactionThreshold: 8,
-		// Large value for determinism.
-		MaxOpenFiles: 10000,
+	if runtime.GOARCH == "386" {
+		t.Skip("skipped on 32-bit due to slightly varied output")
 	}
-	opts.Experimental.EnableValueBlocks = func() bool { return true }
-	opts.Levels = append(opts.Levels, LevelOptions{TargetFileSize: 50})
+	defer sstable.DeterministicReadBlockDurationForTesting()()
 
-	// Prevent foreground flushes and compactions from triggering asynchronous
-	// follow-up compactions. This avoids asynchronously-scheduled work from
-	// interfering with the expected metrics output and reduces test flakiness.
-	opts.DisableAutomaticCompactions = true
-
-	// Increase the threshold for memtable stalls to allow for more flushable
-	// ingests.
-	opts.MemTableStopWritesThreshold = 4
-
-	d, err := Open("", opts)
-	require.NoError(t, err)
+	var d *DB
+	var iters map[string]*Iterator
+	var closeFunc func()
+	var memFS *vfs.MemFS
+	var remoteStorage remote.Storage
 	defer func() {
-		require.NoError(t, d.Close())
-	}()
-
-	iters := make(map[string]*Iterator)
-	defer func() {
-		for _, i := range iters {
-			require.NoError(t, i.Close())
+		if closeFunc != nil {
+			closeFunc()
 		}
 	}()
+	init := func(t *testing.T, createOnSharedLower bool, reopen bool) {
+		if closeFunc != nil {
+			closeFunc()
+		}
+		if !reopen {
+			memFS = vfs.NewMem()
+			remoteStorage = remote.NewInMem()
+		}
+		c := cache.New(cacheDefaultSize)
+		defer c.Unref()
+		opts := &Options{
+			Cache:                 c,
+			Comparer:              testkeys.Comparer,
+			FormatMajorVersion:    FormatNewest,
+			FS:                    memFS,
+			L0CompactionThreshold: 8,
+			// Large value for determinism.
+			MaxOpenFiles: 10000,
+		}
+		opts.Experimental.EnableValueBlocks = func() bool { return true }
+		opts.Levels = append(opts.Levels, LevelOptions{TargetFileSize: 50})
 
+		// Prevent foreground flushes and compactions from triggering asynchronous
+		// follow-up compactions. This avoids asynchronously-scheduled work from
+		// interfering with the expected metrics output and reduces test flakiness.
+		opts.DisableAutomaticCompactions = true
+
+		// Increase the threshold for memtable stalls to allow for more flushable
+		// ingests.
+		opts.MemTableStopWritesThreshold = 4
+
+		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+			"": remoteStorage,
+		})
+		if createOnSharedLower {
+			opts.Experimental.CreateOnShared = remote.CreateOnSharedLower
+		} else {
+			opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
+		}
+		var err error
+		d, err = Open("", opts)
+		require.NoError(t, err)
+		if createOnSharedLower {
+			require.NoError(t, d.SetCreatorID(1))
+		}
+		iters = make(map[string]*Iterator)
+		closeFunc = func() {
+			for _, i := range iters {
+				require.NoError(t, i.Close())
+			}
+			require.NoError(t, d.Close())
+		}
+	}
 	datadriven.RunTest(t, "testdata/metrics", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "init":
+			createOnSharedLower := false
+			if td.HasArg("shared-lower") {
+				createOnSharedLower = true
+			}
+			reopen := false
+			if td.HasArg("reopen") {
+				reopen = true
+			}
+			init(t, createOnSharedLower, reopen)
+			return ""
+
 		case "example":
 			m := exampleMetrics()
 			res := m.String()
@@ -263,12 +312,11 @@ func TestMetrics(t *testing.T) {
 			d.mu.Unlock()
 
 			m := d.Metrics()
+			// Some subset of cases show non-determinism in cache hits/misses.
 			if td.HasArg("zero-cache-hits-misses") {
 				// Avoid non-determinism.
-				m.TableCache.Hits = 0
-				m.TableCache.Misses = 0
-				m.BlockCache.Hits = 0
-				m.BlockCache.Misses = 0
+				m.TableCache = cache.Metrics{}
+				m.BlockCache = cache.Metrics{}
 				// Empirically, the unknown stats are also non-deterministic.
 				if len(m.CategoryStats) > 0 && m.CategoryStats[0].Category == "_unknown" {
 					m.CategoryStats[0].CategoryStats = sstable.CategoryStats{}

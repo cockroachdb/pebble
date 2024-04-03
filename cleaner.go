@@ -12,8 +12,9 @@ import (
 
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/tokenbucket"
 )
 
@@ -29,7 +30,7 @@ type ArchiveCleaner = base.ArchiveCleaner
 type cleanupManager struct {
 	opts            *Options
 	objProvider     objstorage.Provider
-	onTableDeleteFn func(fileSize uint64)
+	onTableDeleteFn func(fileSize uint64, isLocal bool)
 	deletePacer     *deletionPacer
 
 	// jobsCh is used as the cleanup job queue.
@@ -50,16 +51,25 @@ type cleanupManager struct {
 // We can queue this many jobs before we have to block EnqueueJob.
 const jobsQueueDepth = 1000
 
-// obsoleteFile holds information about a file that needs to be deleted soon.
-type obsoleteFile struct {
+// deletableFile is used for non log files.
+type deletableFile struct {
 	dir      string
 	fileNum  base.DiskFileNum
-	fileType fileType
 	fileSize uint64
+	isLocal  bool
+}
+
+// obsoleteFile holds information about a file that needs to be deleted soon.
+type obsoleteFile struct {
+	fileType fileType
+	// nonLogFile is populated when fileType != fileTypeLog.
+	nonLogFile deletableFile
+	// logFile is populated when fileType == fileTypeLog.
+	logFile wal.DeletableLog
 }
 
 type cleanupJob struct {
-	jobID         int
+	jobID         JobID
 	obsoleteFiles []obsoleteFile
 }
 
@@ -68,7 +78,7 @@ type cleanupJob struct {
 func openCleanupManager(
 	opts *Options,
 	objProvider objstorage.Provider,
-	onTableDeleteFn func(fileSize uint64),
+	onTableDeleteFn func(fileSize uint64, isLocal bool),
 	getDeletePacerInfo func() deletionPacerInfo,
 ) *cleanupManager {
 	cm := &cleanupManager{
@@ -98,7 +108,7 @@ func (cm *cleanupManager) Close() {
 }
 
 // EnqueueJob adds a cleanup job to the manager's queue.
-func (cm *cleanupManager) EnqueueJob(jobID int, obsoleteFiles []obsoleteFile) {
+func (cm *cleanupManager) EnqueueJob(jobID JobID, obsoleteFiles []obsoleteFile) {
 	job := &cleanupJob{
 		jobID:         jobID,
 		obsoleteFiles: obsoleteFiles,
@@ -110,8 +120,8 @@ func (cm *cleanupManager) EnqueueJob(jobID int, obsoleteFiles []obsoleteFile) {
 	// subject to the throttling rate which defeats the purpose.
 	var pacingBytes uint64
 	for _, of := range obsoleteFiles {
-		if cm.needsPacing(of.fileType, of.fileNum) {
-			pacingBytes += of.fileSize
+		if cm.needsPacing(of.fileType, of.nonLogFile.fileNum) {
+			pacingBytes += of.nonLogFile.fileSize
 		}
 	}
 	if pacingBytes > 0 {
@@ -122,10 +132,6 @@ func (cm *cleanupManager) EnqueueJob(jobID int, obsoleteFiles []obsoleteFile) {
 	cm.mu.totalJobs++
 	cm.maybeLogLocked()
 	cm.mu.Unlock()
-
-	if invariants.Enabled && len(cm.jobsCh) >= cap(cm.jobsCh)-2 {
-		panic("cleanup jobs queue full")
-	}
 
 	cm.jobsCh <- job
 }
@@ -154,13 +160,18 @@ func (cm *cleanupManager) mainLoop() {
 	tb.Init(1.0, 1.0)
 	for job := range cm.jobsCh {
 		for _, of := range job.obsoleteFiles {
-			if of.fileType != fileTypeTable {
-				path := base.MakeFilepath(cm.opts.FS, of.dir, of.fileType, of.fileNum)
-				cm.deleteObsoleteFile(of.fileType, job.jobID, path, of.fileNum, of.fileSize)
-			} else {
-				cm.maybePace(&tb, of.fileType, of.fileNum, of.fileSize)
-				cm.onTableDeleteFn(of.fileSize)
-				cm.deleteObsoleteObject(fileTypeTable, job.jobID, of.fileNum)
+			switch of.fileType {
+			case fileTypeTable:
+				cm.maybePace(&tb, of.fileType, of.nonLogFile.fileNum, of.nonLogFile.fileSize)
+				cm.onTableDeleteFn(of.nonLogFile.fileSize, of.nonLogFile.isLocal)
+				cm.deleteObsoleteObject(fileTypeTable, job.jobID, of.nonLogFile.fileNum)
+			case fileTypeLog:
+				cm.deleteObsoleteFile(of.logFile.FS, fileTypeLog, job.jobID, of.logFile.Path,
+					base.DiskFileNum(of.logFile.NumWAL), of.logFile.ApproxFileSize)
+			default:
+				path := base.MakeFilepath(cm.opts.FS, of.nonLogFile.dir, of.fileType, of.nonLogFile.fileNum)
+				cm.deleteObsoleteFile(
+					cm.opts.FS, of.fileType, job.jobID, path, of.nonLogFile.fileNum, of.nonLogFile.fileSize)
 			}
 		}
 		cm.mu.Lock()
@@ -171,11 +182,12 @@ func (cm *cleanupManager) mainLoop() {
 	}
 }
 
-func (cm *cleanupManager) needsPacing(fileType base.FileType, fileNum base.DiskFileNum) bool {
+// fileNumIfSST is read iff fileType is fileTypeTable.
+func (cm *cleanupManager) needsPacing(fileType base.FileType, fileNumIfSST base.DiskFileNum) bool {
 	if fileType != fileTypeTable {
 		return false
 	}
-	meta, err := cm.objProvider.Lookup(fileType, fileNum)
+	meta, err := cm.objProvider.Lookup(fileType, fileNumIfSST)
 	if err != nil {
 		// The object was already removed from the provider; we won't actually
 		// delete anything, so we don't need to pace.
@@ -214,11 +226,11 @@ func (cm *cleanupManager) maybePace(
 
 // deleteObsoleteFile deletes a (non-object) file that is no longer needed.
 func (cm *cleanupManager) deleteObsoleteFile(
-	fileType fileType, jobID int, path string, fileNum base.DiskFileNum, fileSize uint64,
+	fs vfs.FS, fileType fileType, jobID JobID, path string, fileNum base.DiskFileNum, fileSize uint64,
 ) {
 	// TODO(peter): need to handle this error, probably by re-adding the
 	// file that couldn't be deleted to one of the obsolete slices map.
-	err := cm.opts.Cleaner.Clean(cm.opts.FS, fileType, path)
+	err := cm.opts.Cleaner.Clean(fs, fileType, path)
 	if oserror.IsNotExist(err) {
 		return
 	}
@@ -226,16 +238,16 @@ func (cm *cleanupManager) deleteObsoleteFile(
 	switch fileType {
 	case fileTypeLog:
 		cm.opts.EventListener.WALDeleted(WALDeleteInfo{
-			JobID:   jobID,
+			JobID:   int(jobID),
 			Path:    path,
-			FileNum: fileNum.FileNum(),
+			FileNum: fileNum,
 			Err:     err,
 		})
 	case fileTypeManifest:
 		cm.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
-			JobID:   jobID,
+			JobID:   int(jobID),
 			Path:    path,
-			FileNum: fileNum.FileNum(),
+			FileNum: fileNum,
 			Err:     err,
 		})
 	case fileTypeTable:
@@ -244,7 +256,7 @@ func (cm *cleanupManager) deleteObsoleteFile(
 }
 
 func (cm *cleanupManager) deleteObsoleteObject(
-	fileType fileType, jobID int, fileNum base.DiskFileNum,
+	fileType fileType, jobID JobID, fileNum base.DiskFileNum,
 ) {
 	if fileType != fileTypeTable {
 		panic("not an object")
@@ -265,9 +277,9 @@ func (cm *cleanupManager) deleteObsoleteObject(
 	switch fileType {
 	case fileTypeTable:
 		cm.opts.EventListener.TableDeleted(TableDeleteInfo{
-			JobID:   jobID,
+			JobID:   int(jobID),
 			Path:    path,
-			FileNum: fileNum.FileNum(),
+			FileNum: fileNum,
 			Err:     err,
 		})
 	}

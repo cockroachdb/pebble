@@ -48,21 +48,23 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 
 	loadFileMeta := func(paths []string) []*fileMetadata {
 		d.mu.Lock()
-		pendingOutputs := make([]base.DiskFileNum, len(paths))
+		pendingOutputs := make([]base.FileNum, len(paths))
 		for i := range paths {
-			pendingOutputs[i] = d.mu.versions.getNextDiskFileNum()
+			pendingOutputs[i] = d.mu.versions.getNextFileNum()
 		}
-		jobID := d.mu.nextJobID
-		d.mu.nextJobID++
+		jobID := d.newJobIDLocked()
 		d.mu.Unlock()
 
 		// We can reuse the ingestLoad function for this test even if we're
 		// not actually ingesting a file.
-		lr, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheID, pendingOutputs, d.objProvider, jobID)
+		lr, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheID, pendingOutputs)
 		if err != nil {
 			panic(err)
 		}
-		meta := lr.localMeta
+		meta := make([]*fileMetadata, len(lr.local))
+		for i := range meta {
+			meta[i] = lr.local[i].fileMetadata
+		}
 		if len(meta) == 0 {
 			// All of the sstables to be ingested were empty. Nothing to do.
 			panic("empty sstable")
@@ -70,7 +72,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// The table cache requires the *fileMetadata to have a positive
 		// reference count. Fake a reference before we try to load the file.
 		for _, f := range meta {
-			f.Ref()
+			f.FileBacking.Ref()
 		}
 
 		// Verify the sstables do not overlap.
@@ -83,7 +85,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// (e.g. because the files reside on a different filesystem), ingestLink will
 		// fall back to copying, and if that fails we undo our work and return an
 		// error.
-		if err := ingestLink(jobID, d.opts, d.objProvider, lr, nil /* shared */); err != nil {
+		if err := ingestLinkLocal(jobID, d.opts, d.objProvider, lr.local); err != nil {
 			panic("couldn't hard link sstables")
 		}
 
@@ -116,9 +118,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 			}
 
 			meta := loadFileMeta(paths)
-			flushable = newIngestedFlushable(
-				meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter,
-			)
+			flushable = newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, KeyRange{})
 			return ""
 		case "iter":
 			iter := flushable.newIter(nil)
@@ -133,22 +133,30 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 			iter := flushable.newRangeKeyIter(nil)
 			var buf bytes.Buffer
 			if iter != nil {
-				for span := iter.First(); span != nil; span = iter.Next() {
+				span, err := iter.First()
+				for ; span != nil; span, err = iter.Next() {
 					buf.WriteString(span.String())
 					buf.WriteString("\n")
 				}
-				iter.Close()
+				err = firstError(err, iter.Close())
+				if err != nil {
+					fmt.Fprintf(&buf, "err=%q", err.Error())
+				}
 			}
 			return buf.String()
 		case "rangedelIter":
 			iter := flushable.newRangeDelIter(nil)
 			var buf bytes.Buffer
 			if iter != nil {
-				for span := iter.First(); span != nil; span = iter.Next() {
+				span, err := iter.First()
+				for ; span != nil; span, err = iter.Next() {
 					buf.WriteString(span.String())
 					buf.WriteString("\n")
 				}
-				iter.Close()
+				err = firstError(err, iter.Close())
+				if err != nil {
+					fmt.Fprintf(&buf, "err=%q", err.Error())
+				}
 			}
 			return buf.String()
 		case "readyForFlush":

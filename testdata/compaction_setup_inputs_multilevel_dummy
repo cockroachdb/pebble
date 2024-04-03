@@ -8,11 +8,11 @@ L3
   c.SET.3-d.SET.2 size=1
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 L3
-  000003:[c#3,1-d#2,1]
+  000003:[c#3,SET-d#2,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 2.00; ML WriteAmp 1.50
 Original OverlappingRatio 1.00; ML OverlappingRatio 0.50

@@ -67,6 +67,7 @@ size: 100
 close
 ----
 <local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
+<local fs> close: p1
 <local fs> close: p1/REMOTE-OBJ-CATALOG-000001
 <local fs> close: p1
 
@@ -134,7 +135,6 @@ attach
 b1 101
 b2 102
 ----
-<local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
 000101 -> remote://61a6-1-000001.sst
 000102 -> remote://61a6-1-000001.sst
 

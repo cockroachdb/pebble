@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"path/filepath"
 	"slices"
 	"sync"
 
@@ -124,7 +125,7 @@ func Open(fs vfs.FS, dirname string) (*Catalog, CatalogContents, error) {
 // SetCreatorID sets the creator ID. If it is already set, it must match.
 func (c *Catalog) SetCreatorID(id objstorage.CreatorID) error {
 	if !id.IsSet() {
-		return errors.AssertionFailedf("attempt to unset CreatorID")
+		return base.AssertionFailedf("attempt to unset CreatorID")
 	}
 
 	c.mu.Lock()
@@ -132,7 +133,7 @@ func (c *Catalog) SetCreatorID(id objstorage.CreatorID) error {
 
 	if c.mu.creatorID.IsSet() {
 		if c.mu.creatorID != id {
-			return errors.AssertionFailedf("attempt to change CreatorID from %s to %s", c.mu.creatorID, id)
+			return base.AssertionFailedf("attempt to change CreatorID from %s to %s", c.mu.creatorID, id)
 		}
 		return nil
 	}
@@ -147,7 +148,12 @@ func (c *Catalog) SetCreatorID(id objstorage.CreatorID) error {
 
 // Close any open files.
 func (c *Catalog) Close() error {
-	return c.closeCatalogFile()
+	var err error
+	if c.mu.marker != nil {
+		err = c.mu.marker.Close()
+		c.mu.marker = nil
+	}
+	return errors.CombineErrors(err, c.closeCatalogFile())
 }
 
 func (c *Catalog) closeCatalogFile() error {
@@ -230,13 +236,13 @@ func (c *Catalog) ApplyBatch(b Batch) error {
 	}
 	for _, meta := range b.ve.NewObjects {
 		if exists(meta.FileNum) {
-			return errors.AssertionFailedf("adding existing object %s", meta.FileNum)
+			return base.AssertionFailedf("adding existing object %s", meta.FileNum)
 		}
 		toAdd[meta.FileNum] = struct{}{}
 	}
 	for _, n := range b.ve.DeletedObjects {
 		if !exists(n) {
-			return errors.AssertionFailedf("deleting non-existent object %s", n)
+			return base.AssertionFailedf("deleting non-existent object %s", n)
 		}
 	}
 
@@ -325,7 +331,7 @@ func makeCatalogFilename(iter uint64) string {
 // current catalog and sets c.mu.catalogFile and c.mu.catalogRecWriter.
 func (c *Catalog) createNewCatalogFileLocked() (outErr error) {
 	if c.mu.catalogFile != nil {
-		return errors.AssertionFailedf("catalogFile already open")
+		return base.AssertionFailedf("catalogFile already open")
 	}
 	filename := makeCatalogFilename(c.mu.marker.NextIter())
 	filepath := c.fs.PathJoin(c.dirname, filename)
@@ -371,6 +377,28 @@ func (c *Catalog) createNewCatalogFileLocked() (outErr error) {
 	c.mu.catalogRecWriter = recWriter
 	c.mu.catalogFilename = filename
 	return nil
+}
+
+// Checkpoint copies catalog state to a file in the specified directory
+func (c *Catalog) Checkpoint(fs vfs.FS, dir string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// NB: Every write to recWriter is flushed. We don't need to worry about
+	// this new file descriptor not getting all the saved catalog entries.
+	existingCatalogFilepath := filepath.Join(c.dirname, c.mu.catalogFilename)
+	destPath := filepath.Join(dir, c.mu.catalogFilename)
+	if err := vfs.CopyAcrossFS(c.fs, existingCatalogFilepath, fs, destPath); err != nil {
+		return err
+	}
+	catalogMarker, _, err := atomicfs.LocateMarker(fs, dir, catalogMarkerName)
+	if err != nil {
+		return err
+	}
+	if err := catalogMarker.Move(c.mu.catalogFilename); err != nil {
+		return err
+	}
+	return catalogMarker.Close()
 }
 
 func writeRecord(ve *VersionEdit, file vfs.File, recWriter *record.Writer) error {

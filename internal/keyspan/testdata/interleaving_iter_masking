@@ -48,30 +48,30 @@ next
 ----
 -- SpanChanged(nil)
 -- SpanChanged(nil)
-PointKey: b@2#1,1
+PointKey: b@2#1,SET
 Span: <invalid>
 -
 -- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
-PointKey: e#72057594037927935,21
+PointKey: e#72057594037927935,RANGEKEYSET
 Span: e-f:{(#1,RANGEKEYSET,@9,foo)}
 -
 -- SpanChanged(f-h:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@3,bar)})
-PointKey: f#72057594037927935,21
+PointKey: f#72057594037927935,RANGEKEYSET
 Span: f-h:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@3,bar)}
 -
 -- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
-PointKey: h#72057594037927935,21
+PointKey: h#72057594037927935,RANGEKEYSET
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
 -- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
-PointKey: l#72057594037927935,21
+PointKey: l#72057594037927935,RANGEKEYSET
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
-PointKey: l@8#1,1
+PointKey: l@8#1,SET
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
-PointKey: m#72057594037927935,21
+PointKey: m#72057594037927935,RANGEKEYSET
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(nil)
@@ -89,30 +89,30 @@ prev
 ----
 -- SpanChanged(nil)
 -- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
-PointKey: m#72057594037927935,21
+PointKey: m#72057594037927935,RANGEKEYSET
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
-PointKey: l@8#1,1
+PointKey: l@8#1,SET
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
-PointKey: l#72057594037927935,21
+PointKey: l#72057594037927935,RANGEKEYSET
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
-PointKey: h#72057594037927935,21
+PointKey: h#72057594037927935,RANGEKEYSET
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
 -- SpanChanged(f-h:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@3,bar)})
-PointKey: f#72057594037927935,21
+PointKey: f#72057594037927935,RANGEKEYSET
 Span: f-h:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@3,bar)}
 -
 -- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
-PointKey: e#72057594037927935,21
+PointKey: e#72057594037927935,RANGEKEYSET
 Span: e-f:{(#1,RANGEKEYSET,@9,foo)}
 -
 -- SpanChanged(nil)
-PointKey: b@2#1,1
+PointKey: b@2#1,SET
 Span: <invalid>
 -
 -- SpanChanged(nil)
@@ -130,35 +130,35 @@ seek-ge r
 ----
 -- SpanChanged(nil)
 -- SpanChanged(nil)
-PointKey: b@2#1,1
+PointKey: b@2#1,SET
 Span: <invalid>
 -
 -- SpanChanged(nil)
 -- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
-PointKey: e#72057594037927935,21
+PointKey: e#72057594037927935,RANGEKEYSET
 Span: e-f:{(#1,RANGEKEYSET,@9,foo)}
 -
 -- SpanChanged(nil)
 -- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
-PointKey: h#72057594037927935,21
+PointKey: h#72057594037927935,RANGEKEYSET
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
 -- SpanChanged(nil)
 -- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
-PointKey: i#72057594037927935,21
+PointKey: i#72057594037927935,RANGEKEYSET
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
 -- SpanChanged(nil)
 -- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
-PointKey: l#72057594037927935,21
+PointKey: l#72057594037927935,RANGEKEYSET
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
-PointKey: l@8#1,1
+PointKey: l@8#1,SET
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(nil)
 -- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
-PointKey: m#72057594037927935,21
+PointKey: m#72057594037927935,RANGEKEYSET
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(nil)
@@ -182,25 +182,25 @@ prev
 ----
 -- SpanChanged(nil)
 -- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
-PointKey: l#72057594037927935,21
+PointKey: l#72057594037927935,RANGEKEYSET
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
-PointKey: m#72057594037927935,21
+PointKey: m#72057594037927935,RANGEKEYSET
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(nil)
 -- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
-PointKey: h#72057594037927935,21
+PointKey: h#72057594037927935,RANGEKEYSET
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
 -- SpanChanged(nil)
 -- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
-PointKey: l#72057594037927935,21
+PointKey: l#72057594037927935,RANGEKEYSET
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
-PointKey: h#72057594037927935,21
+PointKey: h#72057594037927935,RANGEKEYSET
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
 
@@ -210,11 +210,11 @@ next
 ----
 -- SpanChanged(nil)
 -- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
-PointKey: l#72057594037927935,21
+PointKey: l#72057594037927935,RANGEKEYSET
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
-PointKey: m#72057594037927935,21
+PointKey: m#72057594037927935,RANGEKEYSET
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
 
@@ -248,13 +248,13 @@ next
 ----
 -- SpanChanged(nil)
 -- SpanChanged(a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)})
-PointKey: a#72057594037927935,21
+PointKey: a#72057594037927935,RANGEKEYSET
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -
-PointKey: a#1,1
+PointKey: a#1,SET
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -
-PointKey: a@12#1,1
+PointKey: a@12#1,SET
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -
 -- SpanChanged(nil)
@@ -268,13 +268,13 @@ prev
 ----
 -- SpanChanged(nil)
 -- SpanChanged(a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)})
-PointKey: a@12#1,1
+PointKey: a@12#1,SET
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -
-PointKey: a#1,1
+PointKey: a#1,SET
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -
-PointKey: a#72057594037927935,21
+PointKey: a#72057594037927935,RANGEKEYSET
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -
 -- SpanChanged(nil)
@@ -298,19 +298,19 @@ next
 ----
 -- SpanChanged(nil)
 -- SpanChanged(a-c:{(#2,RANGEKEYSET,@20,apples)})
-PointKey: a#72057594037927935,21
+PointKey: a#72057594037927935,RANGEKEYSET
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
-PointKey: a#1,1
+PointKey: a#1,SET
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
-PointKey: a@3#1,1
+PointKey: a@3#1,SET
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
-PointKey: a@12#1,1
+PointKey: a@12#1,SET
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
-PointKey: b@2#1,1
+PointKey: b@2#1,SET
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
 -- SpanChanged(nil)
@@ -326,19 +326,19 @@ prev
 ----
 -- SpanChanged(nil)
 -- SpanChanged(a-c:{(#2,RANGEKEYSET,@20,apples)})
-PointKey: b@2#1,1
+PointKey: b@2#1,SET
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
-PointKey: a@12#1,1
+PointKey: a@12#1,SET
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
-PointKey: a@3#1,1
+PointKey: a@3#1,SET
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
-PointKey: a#1,1
+PointKey: a#1,SET
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
-PointKey: a#72057594037927935,21
+PointKey: a#72057594037927935,RANGEKEYSET
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
 -- SpanChanged(nil)
@@ -362,13 +362,13 @@ next
 ----
 -- SpanChanged(nil)
 -- SpanChanged(a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)})
-PointKey: a#72057594037927935,20
+PointKey: a#72057594037927935,RANGEKEYUNSET
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
-PointKey: a#1,1
+PointKey: a#1,SET
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
-PointKey: a@12#1,1
+PointKey: a@12#1,SET
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
 -- SpanChanged(nil)
@@ -385,13 +385,13 @@ prev
 ----
 -- SpanChanged(nil)
 -- SpanChanged(a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)})
-PointKey: a@12#1,1
+PointKey: a@12#1,SET
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
-PointKey: a#1,1
+PointKey: a#1,SET
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
-PointKey: a#72057594037927935,20
+PointKey: a#72057594037927935,RANGEKEYUNSET
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
 -- SpanChanged(nil)
@@ -427,14 +427,14 @@ next
 ----
 -- SpanChanged(nil)
 -- SpanChanged(a-c:{(#1,RANGEKEYSET,@5,apples)})
-PointKey: a#72057594037927935,21
+PointKey: a#72057594037927935,RANGEKEYSET
 Span: a-c:{(#1,RANGEKEYSET,@5,apples)}
 -
 -- SpanChanged(c-z:{(#1,RANGEKEYSET,@10,bananas)})
-PointKey: c#72057594037927935,21
+PointKey: c#72057594037927935,RANGEKEYSET
 Span: c-z:{(#1,RANGEKEYSET,@10,bananas)}
 -
-PointKey: j@11#3,1
+PointKey: j@11#3,SET
 Span: c-z:{(#1,RANGEKEYSET,@10,bananas)}
 -
 
@@ -445,14 +445,14 @@ prev
 ----
 -- SpanChanged(nil)
 -- SpanChanged(c-z:{(#1,RANGEKEYSET,@10,bananas)})
-PointKey: j@11#3,1
+PointKey: j@11#3,SET
 Span: c-z:{(#1,RANGEKEYSET,@10,bananas)}
 -
-PointKey: c#72057594037927935,21
+PointKey: c#72057594037927935,RANGEKEYSET
 Span: c-z:{(#1,RANGEKEYSET,@10,bananas)}
 -
 -- SpanChanged(a-c:{(#1,RANGEKEYSET,@5,apples)})
-PointKey: a#72057594037927935,21
+PointKey: a#72057594037927935,RANGEKEYSET
 Span: a-c:{(#1,RANGEKEYSET,@5,apples)}
 -
 
@@ -486,15 +486,15 @@ next
 ----
 -- SpanChanged(nil)
 -- SpanChanged(a-c:{(#1,RANGEKEYSET,@10,apples)})
-PointKey: a#72057594037927935,21
+PointKey: a#72057594037927935,RANGEKEYSET
 Span: a-c:{(#1,RANGEKEYSET,@10,apples)}
 -
 -- SpanChanged(nil)
-PointKey: d@9#3,1
+PointKey: d@9#3,SET
 Span: <invalid>
 -
 -- SpanChanged(e-f:{(#1,RANGEKEYSET,@5,bananas)})
-PointKey: e#72057594037927935,21
+PointKey: e#72057594037927935,RANGEKEYSET
 Span: e-f:{(#1,RANGEKEYSET,@5,bananas)}
 -
 -- SpanChanged(nil)

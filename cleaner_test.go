@@ -95,6 +95,7 @@ func TestCleaner(t *testing.T) {
 			opts := (&Options{
 				FS:     fs,
 				WALDir: dir + "_wal",
+				Logger: testLogger{t},
 			}).WithFSDefaults()
 
 			for i := 1; i < len(td.CmdArgs); i++ {
@@ -108,7 +109,7 @@ func TestCleaner(t *testing.T) {
 				}
 			}
 			// Asynchronous table stats retrieval makes the output flaky.
-			opts.private.disableTableStats = true
+			opts.DisableTableStats = true
 			opts.private.testingAlwaysWaitForCleanup = true
 			d, err := Open(dir, opts)
 			if err != nil {

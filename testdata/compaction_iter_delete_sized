@@ -6,7 +6,7 @@ iter
 first
 next
 ----
-a#1,1:b
+a#1,SET:b
 .
 
 define
@@ -18,21 +18,21 @@ iter
 first
 next
 ----
-a#2,1:c
+a#2,SET:c
 .
 
 iter snapshots=0
 first
 next
 ----
-a#2,1:c
+a#2,SET:c
 .
 
 iter snapshots=1
 first
 next
 ----
-a#2,1:c
+a#2,SET:c
 .
 
 iter snapshots=2
@@ -40,8 +40,8 @@ first
 next
 next
 ----
-a#2,1:c
-a#1,1:b
+a#2,SET:c
+a#1,SET:b
 .
 
 define
@@ -53,7 +53,7 @@ iter
 first
 next
 ----
-a#2,0:
+a#2,DEL:
 .
 
 iter elide-tombstones=true
@@ -66,15 +66,15 @@ first
 next
 next
 ----
-a#2,0:
-a#1,1:b
+a#2,DEL:
+a#1,SET:b
 .
 
 iter elide-tombstones=true snapshots=1
 first
 next
 ----
-a#2,0:
+a#2,DEL:
 .
 
 define
@@ -88,8 +88,8 @@ first
 next
 next
 ----
-a#2,0:
-b#3,1:c
+a#2,DEL:
+b#3,SET:c
 .
 
 iter snapshots=1
@@ -97,8 +97,8 @@ first
 next
 next
 ----
-a#2,0:
-b#3,1:c
+a#2,DEL:
+b#3,SET:c
 .
 
 iter snapshots=2
@@ -107,9 +107,9 @@ next
 next
 next
 ----
-a#2,0:
-a#1,1:b
-b#3,1:c
+a#2,DEL:
+a#1,SET:b
+b#3,SET:c
 .
 
 define
@@ -124,9 +124,9 @@ next
 next
 next
 ----
-a#1,1:a
-b#2,1:b
-c#3,1:c
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
 .
 
 define
@@ -142,8 +142,8 @@ first
 next
 next
 ----
-a#3,1:bcd[base]
-b#2,2:ab
+a#3,SET:bcd[base]
+b#2,MERGE:ab
 .
 
 iter snapshots=3 print-snapshot-pinned print-force-obsolete
@@ -152,9 +152,9 @@ next
 next
 next
 ----
-a#3,2:d (not pinned) (not force obsolete)
-a#2,1:bc[base] (pinned) (not force obsolete)
-b#2,2:ab (not pinned) (not force obsolete)
+a#3,MERGE:d (not pinned) (not force obsolete)
+a#2,SET:bc[base] (pinned) (not force obsolete)
+b#2,MERGE:ab (not pinned) (not force obsolete)
 .
 
 define
@@ -169,7 +169,7 @@ iter
 first
 next
 ----
-a#9,18:b
+a#9,SETWITHDEL:b
 .
 
 iter snapshots=6
@@ -177,8 +177,8 @@ first
 next
 next
 ----
-a#9,18:b
-a#5,1:f
+a#9,SETWITHDEL:b
+a#5,SET:f
 .
 
 iter snapshots=7
@@ -186,8 +186,8 @@ first
 next
 next
 ----
-a#9,18:b
-a#6,0:
+a#9,SETWITHDEL:b
+a#6,DEL:
 .
 
 iter snapshots=8
@@ -195,8 +195,8 @@ first
 next
 next
 ----
-a#9,18:b
-a#7,18:d
+a#9,SETWITHDEL:b
+a#7,SETWITHDEL:d
 .
 
 iter snapshots=9
@@ -204,15 +204,15 @@ first
 next
 next
 ----
-a#9,1:b
-a#8,0:
+a#9,SET:b
+a#8,DEL:
 .
 
 iter snapshots=10
 first
 next
 ----
-a#9,18:b
+a#9,SETWITHDEL:b
 .
 
 iter snapshots=(5,6,7,8,9)
@@ -223,11 +223,11 @@ next
 next
 next
 ----
-a#9,1:b
-a#8,0:
-a#7,1:d
-a#6,0:
-a#5,1:f
+a#9,SET:b
+a#8,DEL:
+a#7,SET:d
+a#6,DEL:
+a#5,SET:f
 .
 
 define
@@ -247,9 +247,7 @@ a.INVALID.1:c
 
 iter
 first
-next
 ----
-a#2,18:b
 err=invalid internal key kind: INVALID
 
 define
@@ -259,9 +257,7 @@ a.INVALID.1:c
 
 iter
 first
-next
 ----
-a#2,2:b
 err=invalid internal key kind: INVALID
 
 define
@@ -271,10 +267,10 @@ a.RANGEDEL.1:d
 
 iter
 first
-tombstones
+next
 ----
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#1,RANGEDEL)}
 err=invalid internal key kind: INVALID
-.
 
 define
 a.MERGE.2:b
@@ -288,9 +284,9 @@ next
 next
 next
 ----
-a#2,2:b (not pinned) (not force obsolete)
-a#1,2:c (pinned) (not force obsolete)
-a#0,2:d (pinned) (not force obsolete)
+a#2,MERGE:b (not pinned) (not force obsolete)
+a#1,MERGE:c (pinned) (not force obsolete)
+a#0,MERGE:d (pinned) (not force obsolete)
 .
 
 define
@@ -306,11 +302,13 @@ first
 next
 next
 next
+next
 tombstones
 ----
-a#2,18:b
-a#1,15:c
-b#4,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#2,SET:b
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
 .
 a-b#1
 b-c#4
@@ -322,11 +320,13 @@ first
 next
 next
 next
+next
 tombstones
 ----
-a#2,1:b
-a#1,15:c
-b#4,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#2,SET:b
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
 .
 a-b#1
 b-c#4
@@ -340,12 +340,14 @@ next
 next
 next
 next
+next
 tombstones
 ----
-a#2,18:b (not pinned) (not force obsolete)
-a#1,15:c (not pinned) (not force obsolete)
-b#4,15:d (not pinned) (not force obsolete)
-b#2,1:e (pinned) (force obsolete)
+a#72057594037927935,RANGEDEL: (not pinned) (not force obsolete); Span() = a-b:{(#1,RANGEDEL)}
+a#2,SET:b (not pinned) (not force obsolete)
+b#72057594037927935,RANGEDEL: (not pinned) (not force obsolete); Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+b#2,SET:e (pinned) (force obsolete)
+c#72057594037927935,RANGEDEL: (not pinned) (force obsolete); Span() = c-d:{(#4,RANGEDEL)}
 .
 a-b#1
 b-c#4
@@ -360,13 +362,15 @@ next
 next
 next
 next
+next
 tombstones
 ----
-a#2,18:b (not pinned) (not force obsolete)
-a#1,15:c (not pinned) (not force obsolete)
-b#4,15:d (not pinned) (not force obsolete)
-b#2,1:e (pinned) (force obsolete)
-c#3,1:f (pinned) (force obsolete)
+a#72057594037927935,RANGEDEL: (not pinned) (not force obsolete); Span() = a-b:{(#1,RANGEDEL)}
+a#2,SET:b (not pinned) (not force obsolete)
+b#72057594037927935,RANGEDEL: (not pinned) (not force obsolete); Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+b#2,SET:e (pinned) (force obsolete)
+c#72057594037927935,RANGEDEL: (not pinned) (force obsolete); Span() = c-d:{(#4,RANGEDEL)}
+c#3,SET:f (pinned) (force obsolete)
 .
 a-b#1
 b-c#4
@@ -390,10 +394,10 @@ next
 next
 tombstones
 ----
-a#3,15:e
-b#4,1:b
-c#3,1:c
-e#1,1:e
+a#72057594037927935,RANGEDEL:; Span() = a-e:{(#3,RANGEDEL)}
+b#4,SET:b
+c#3,SET:c
+e#1,SET:e
 .
 a-e#3
 .
@@ -414,10 +418,10 @@ next
 next
 tombstones
 ----
-a#3,15:e
-b#4,2:b
-c#3,2:c
-e#1,2:e
+a#72057594037927935,RANGEDEL:; Span() = a-e:{(#3,RANGEDEL)}
+b#4,MERGE:b
+c#3,MERGE:c
+e#1,MERGE:e
 .
 a-e#3
 .
@@ -443,10 +447,10 @@ next
 next
 tombstones
 ----
-a#3,15:c
-b#5,1:de[base]
-d#5,2:bc
-d#3,15:f
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#5,MERGE:de
+d#72057594037927935,RANGEDEL:; Span() = d-f:{(#3,RANGEDEL)}
+d#5,MERGE:bc
 .
 a-c#3
 d-f#3
@@ -463,11 +467,15 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
+e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 a-b#3
 b-c#3
@@ -483,17 +491,16 @@ next
 next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
-.
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
 a-b#3
 b-c#3
 c-d#3
 c-d#1
 d-e#2
 d-e#1
-e-f#1
 .
 
 iter snapshots=3
@@ -501,11 +508,15 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
+e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 a-b#3
 b-c#3
@@ -521,11 +532,15 @@ first
 next
 next
 next
+next
+next
 tombstones
 ----
-a#3,15:d
-b#2,15:e
-c#1,15:f
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
+e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 a-b#3
 b-c#3
@@ -551,11 +566,11 @@ tombstones f
 next
 tombstones
 ----
-a#10,15:k (not pinned) (not force obsolete)
-f#9,1:f (pinned) (force obsolete)
+a#72057594037927935,RANGEDEL: (not pinned) (not force obsolete); Span() = a-k:{(#10,RANGEDEL)}
+f#9,SET:f (pinned) (force obsolete)
 a-f#10
 .
-f#8,1:f (pinned) (force obsolete)
+f#8,SET:f (pinned) (force obsolete)
 f-k#10
 .
 
@@ -572,10 +587,10 @@ tombstones f
 next
 tombstones
 ----
-f#10,15:k
-f#9,1:f
+f#72057594037927935,RANGEDEL:; Span() = f-k:{(#10,RANGEDEL)}
+f#9,SET:f
 .
-f#8,1:f
+f#8,SET:f
 f-k#10
 .
 
@@ -589,16 +604,20 @@ d.SET.4:d
 iter
 first
 next
-next
-next
 tombstones c
+next
+next
+next
+next
 tombstones
 ----
-a#1,1:a
-b#2,15:d
-c#3,15:e
-d#4,1:d
+a#1,SET:a
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#2,RANGEDEL)}
 b-c#2
+.
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#3,RANGEDEL)}
+d#4,SET:d
 .
 c-d#3
 d-e#3
@@ -607,16 +626,20 @@ d-e#3
 iter snapshots=3
 first
 next
-next
-next
 tombstones c
+next
+next
+next
+next
 tombstones
 ----
-a#1,1:a
-b#2,15:d
-c#3,15:e
-d#4,1:d
+a#1,SET:a
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#2,RANGEDEL)}
 b-c#2
+.
+c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
+d#72057594037927935,RANGEDEL:; Span() = d-e:{(#3,RANGEDEL)}
+d#4,SET:d
 .
 c-d#3
 c-d#2
@@ -633,12 +656,14 @@ iter
 first
 next
 next
+next
 tombstones c
 tombstones
 ----
-a#1,1:a
-b#2,15:d
-c#4,1:d
+a#1,SET:a
+b#72057594037927935,RANGEDEL:; Span() = b-d:{(#2,RANGEDEL)}
+c#4,SET:d
+.
 b-c#2
 .
 c-d#2
@@ -658,10 +683,10 @@ next
 next
 next
 ----
-a#2,15:d
-a#2,1:a
-b#2,1:b
-c#2,1:c
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#2,RANGEDEL)}
+a#2,SET:a
+b#2,SET:b
+c#2,SET:c
 .
 
 define
@@ -672,13 +697,14 @@ iter
 first
 next
 ----
-a#1,7:
+a#1,SINGLEDEL:
 .
 
 iter elide-tombstones=true
 first
 ----
 .
+ineffectual-single-deletes: a
 
 define
 a.SINGLEDEL.2:
@@ -689,8 +715,9 @@ iter
 first
 next
 ----
-a#2,7:
+a#2,SINGLEDEL:
 .
+ineffectual-single-deletes: a
 
 define
 a.SINGLEDEL.3:
@@ -702,6 +729,7 @@ iter
 first
 ----
 .
+ineffectual-single-deletes: a
 
 define
 a.SET.3:a
@@ -714,9 +742,10 @@ first
 next
 next
 ----
-a#3,1:a
-b#2,0:
+a#3,SET:a
+b#2,DEL:
 .
+ineffectual-single-deletes: b
 
 define
 a.SINGLEDEL.2:
@@ -727,13 +756,15 @@ iter
 first
 next
 ----
-a#2,0:
+a#2,DEL:
 .
+ineffectual-single-deletes: a
 
 iter elide-tombstones=true
 first
 ----
 .
+ineffectual-single-deletes: a
 
 define
 a.SINGLEDEL.2:
@@ -742,9 +773,7 @@ a.MERGE.1:
 
 iter
 first
-next
 ----
-a#2,0:
 .
 
 iter elide-tombstones=true
@@ -773,7 +802,16 @@ iter
 first
 next
 ----
-a#2,18:b
+a#2,SETWITHDEL:b
+.
+
+# We don't notice the ineffectual single delete since the SET causes all
+# SingleDelete error checking to be skipped.
+iter elide-tombstones=true
+first
+next
+----
+a#2,SETWITHDEL:b
 .
 
 define
@@ -786,11 +824,12 @@ iter
 first
 next
 ----
-a#6,1:b[base]
+a#6,SETWITHDEL:b[base]
 .
 
 # Non-deterministic use of SINGLEDEL where there are two older SETs that have
-# not been deleted or single deleted. It is permitted to shadow both.
+# not been deleted or single deleted. It is permitted to shadow both, since
+# MERGE turns into a SETWITHDELETE when it meets the SINGLEDEL.
 define
 a.MERGE.6:b
 a.SINGLEDEL.5:
@@ -802,7 +841,7 @@ iter
 first
 next
 ----
-a#6,1:b[base]
+a#6,SETWITHDEL:b[base]
 .
 
 define
@@ -815,7 +854,7 @@ iter
 first
 next
 ----
-b#3,1:c
+b#3,SET:c
 .
 
 define
@@ -828,8 +867,9 @@ iter
 first
 next
 ----
-a#1,1:a
+a#1,SET:a
 .
+invariant-violation-single-deletes: a
 
 define
 a.SINGLEDEL.3:
@@ -837,12 +877,14 @@ a.MERGE.2:b
 a.MERGE.1:a
 ----
 
+# SINGLEDEL consumes the first MERGE.
 iter
 first
 next
 ----
-a#3,0:
+a#1,MERGE:a
 .
+invariant-violation-single-deletes: a
 
 define
 a.SINGLEDEL.4:
@@ -861,8 +903,8 @@ first
 next
 next
 ----
-a#2,7:
-a#1,1:val
+a#2,SINGLEDEL:
+a#1,SET:val
 .
 
 define
@@ -876,7 +918,7 @@ iter
 first
 next
 ----
-a#2,0:
+a#2,DEL:
 .
 
 iter snapshots=2
@@ -884,15 +926,15 @@ first
 next
 next
 ----
-a#2,0:
-a#1,1:val
+a#2,DEL:
+a#1,SET:val
 .
 
 iter snapshots=3
 first
 next
 ----
-a#2,0:
+a#2,DEL:
 .
 
 iter snapshots=(2,3)
@@ -900,8 +942,8 @@ first
 next
 next
 ----
-a#2,0:
-a#1,1:val
+a#2,DEL:
+a#1,SET:val
 .
 
 define
@@ -915,24 +957,27 @@ iter
 first
 next
 ----
-a#2,1:ab[base]
+a#2,SET:ab[base]
 .
+invariant-violation-single-deletes: a
 
 iter snapshots=2
 first
 next
 next
 ----
-a#2,2:b
-a#1,1:a
+a#2,MERGE:b
+a#1,SET:a
 .
+invariant-violation-single-deletes: a
 
 iter snapshots=3
 first
 next
 ----
-a#2,1:ab[base]
+a#2,SET:ab[base]
 .
+invariant-violation-single-deletes: a
 
 iter snapshots=(2,3,4)
 first
@@ -941,10 +986,10 @@ next
 next
 next
 ----
-a#4,7:
-a#3,1:c
-a#2,2:b
-a#1,1:a
+a#4,SINGLEDEL:
+a#3,SET:c
+a#2,MERGE:b
+a#1,SET:a
 .
 
 define
@@ -959,8 +1004,8 @@ next
 next
 tombstones
 ----
-a#3,7:
-a#2,15:c
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#2,RANGEDEL)}
+a#3,SINGLEDEL:
 .
 a-c#2
 .
@@ -978,8 +1023,8 @@ next
 next
 tombstones
 ----
-a#3,15:d
-d#2,0:
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
+d#2,DEL:
 .
 a-d#3
 .
@@ -990,9 +1035,9 @@ next
 next
 next
 ----
-a#3,15:d
-a#2,0:
-d#2,0:
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
+a#2,DEL:
+d#2,DEL:
 .
 
 iter snapshots=2
@@ -1001,9 +1046,9 @@ next
 next
 next
 ----
-a#3,15:d
-a#1,1:a
-d#2,0:
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
+a#1,SET:a
+d#2,DEL:
 .
 
 iter snapshots=1
@@ -1011,8 +1056,8 @@ first
 next
 next
 ----
-a#3,15:d
-d#2,0:
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
+d#2,DEL:
 .
 
 define
@@ -1027,9 +1072,9 @@ next
 next
 tombstones
 ----
-a#2,2:a
+a#2,MERGE:a
 .
-b#1,15:c
+b#72057594037927935,RANGEDEL:; Span() = b-c:{(#1,RANGEDEL)}
 .
 b-c#1
 .
@@ -1044,12 +1089,10 @@ iter allow-zero-seqnum=true
 first
 next
 next
-next
 tombstones
 ----
-a#2,2:v2
-a#1,15:b
-a#0,2:v1
+a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#0,MERGE:v1v2
 .
 a-b#1
 .
@@ -1066,21 +1109,21 @@ iter
 first
 next
 ----
-a#5,1:5[base]
+a#5,SETWITHDEL:5[base]
 .
 
 iter allow-zero-seqnum=true
 first
 next
 ----
-a#0,1:5[base]
+a#0,SETWITHDEL:5[base]
 .
 
 iter elide-tombstones=true
 first
 next
 ----
-a#5,1:5[base]
+a#5,SETWITHDEL:5[base]
 .
 
 iter snapshots=2
@@ -1088,8 +1131,8 @@ first
 next
 next
 ----
-a#5,1:5[base]
-a#1,2:1
+a#5,SETWITHDEL:5[base]
+a#1,MERGE:1
 .
 
 iter snapshots=2 elide-tombstones=true
@@ -1097,12 +1140,11 @@ first
 next
 next
 ----
-a#5,1:5[base]
-a#1,2:1
+a#5,SETWITHDEL:5[base]
+a#1,MERGE:1
 .
 
-# Verify that we transform merge+rangedel -> set. This isn't strictly
-# necessary, but provides consistency with the behavior for merge+del.
+# Verify that merge+rangedel -> merge.
 
 define
 a.RANGEDEL.3:c
@@ -1116,8 +1158,8 @@ first
 next
 next
 ----
-a#3,15:c
-b#5,1:5[base]
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#5,MERGE:5
 .
 
 iter allow-zero-seqnum=true
@@ -1125,18 +1167,20 @@ first
 next
 next
 ----
-a#3,15:c
-b#0,1:5[base]
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#0,MERGE:5
 .
 
 iter snapshots=2
 first
 next
 next
+next
 ----
-a#3,15:c
-b#5,1:5[base]
-b#1,2:1
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#5,MERGE:5
+b#1,MERGE:1
+.
 
 define
 a.RANGEDEL.3:c
@@ -1150,18 +1194,20 @@ first
 next
 next
 ----
-a#3,15:c
-b#5,1:5[base]
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#5,MERGE:5
 .
 
 iter snapshots=2
 first
 next
 next
+next
 ----
-a#3,15:c
-b#5,1:5[base]
-b#1,2:1
+a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+b#5,MERGE:5
+b#1,MERGE:1
+.
 
 # SET that meets a DEL is transformed into a SETWITHDEL.
 
@@ -1174,7 +1220,7 @@ iter
 first
 next
 ----
-a#2,18:b
+a#2,SETWITHDEL:b
 .
 
 iter snapshots=2
@@ -1182,8 +1228,8 @@ first
 next
 next
 ----
-a#2,1:b
-a#1,0:
+a#2,SET:b
+a#1,DEL:
 .
 
 define
@@ -1196,7 +1242,7 @@ iter
 first
 next
 ----
-a#3,18:c
+a#3,SETWITHDEL:c
 .
 
 iter snapshots=2
@@ -1204,8 +1250,8 @@ first
 next
 next
 ----
-a#3,18:c
-a#1,1:b
+a#3,SETWITHDEL:c
+a#1,SET:b
 .
 
 define
@@ -1218,7 +1264,7 @@ iter
 first
 next
 ----
-a#3,18:c
+a#3,SETWITHDEL:c
 .
 
 iter snapshots=3
@@ -1226,8 +1272,8 @@ first
 next
 next
 ----
-a#3,1:c
-a#2,18:b
+a#3,SET:c
+a#2,SETWITHDEL:b
 .
 
 iter snapshots=2
@@ -1235,8 +1281,8 @@ first
 next
 next
 ----
-a#3,1:c
-a#1,0:
+a#3,SET:c
+a#1,DEL:
 .
 
 define
@@ -1249,7 +1295,7 @@ iter
 first
 next
 ----
-a#3,0:
+a#3,DEL:
 .
 
 iter snapshots=3
@@ -1257,8 +1303,8 @@ first
 next
 next
 ----
-a#3,0:
-a#2,18:b
+a#3,DEL:
+a#2,SETWITHDEL:b
 .
 
 iter snapshots=2
@@ -1266,8 +1312,8 @@ first
 next
 next
 ----
-a#3,0:
-a#1,0:
+a#3,DEL:
+a#1,DEL:
 .
 
 # SETWITHDEL-eligible entries at or under a RANGEDEL at the same user key should
@@ -1284,8 +1330,8 @@ first
 next
 next
 ----
-a#0,18:c
-a#2,15:z
+a#72057594037927935,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
+a#0,SET:c
 .
 
 iter allow-zero-seqnum=true snapshots=3
@@ -1294,9 +1340,9 @@ next
 next
 next
 ----
-a#3,1:c
-a#2,15:z
-a#0,18:b
+a#72057594037927935,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
+a#3,SET:c
+a#0,SET:b
 .
 
 iter allow-zero-seqnum=true snapshots=2
@@ -1305,9 +1351,9 @@ next
 next
 next
 ----
-a#3,18:c
-a#2,15:z
-a#1,0:
+a#72057594037927935,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
+a#3,SET:c
+a#1,DEL:
 .
 
 define
@@ -1322,8 +1368,8 @@ first
 next
 next
 ----
-a#4,18:c
-a#3,15:z
+a#72057594037927935,RANGEDEL:; Span() = a-z:{(#3,RANGEDEL)}
+a#4,SET:c
 .
 
 # Invalid keys are emitted under SETWITHDEL.
@@ -1335,9 +1381,7 @@ a.INVALID.1:
 
 iter
 first
-next
 ----
-a#2,18:b
 err=invalid internal key kind: INVALID
 
 define
@@ -1348,9 +1392,7 @@ a.SET.1:b
 
 iter
 first
-next
 ----
-a#3,18:c
 err=invalid internal key kind: INVALID
 
 # SINGLEDEL that meets a SETWITHDEL is transformed into a DEL.
@@ -1366,8 +1408,8 @@ first
 next
 next
 ----
-a#3,0:
-b#1,1:c
+a#3,DEL:
+b#1,SET:c
 .
 
 iter snapshots=2
@@ -1375,8 +1417,8 @@ first
 next
 next
 ----
-a#3,0:
-b#1,1:c
+a#3,DEL:
+b#1,SET:c
 .
 
 iter snapshots=3
@@ -1385,9 +1427,9 @@ next
 next
 next
 ----
-a#3,7:
-a#2,18:d
-b#1,1:c
+a#3,SINGLEDEL:
+a#2,SETWITHDEL:d
+b#1,SET:c
 .
 
 define
@@ -1401,8 +1443,8 @@ first
 next
 next
 ----
-a#3,18:3
-b#1,1:c
+a#3,SETWITHDEL:3
+b#1,SET:c
 .
 missized-dels=0
 
@@ -1412,9 +1454,9 @@ next
 next
 next
 ----
-a#3,18:3
-a#2,1:d
-b#1,1:c
+a#3,SETWITHDEL:3
+a#2,SET:d
+b#1,SET:c
 .
 
 # Test a DELSIZED whose encoded value matches the size of a deleted key. The
@@ -1433,9 +1475,9 @@ first
 next
 next
 ----
-a#9,1:foo
-b#8,23:
-c#2,1:bar
+a#9,SET:foo
+b#8,DELSIZED:
+c#2,SET:bar
 missized-dels=0
 
 # Test two DELSIZEDs meeting. The lower-sequenced number value should carry
@@ -1454,9 +1496,9 @@ first
 next
 next
 ----
-a#9,1:foo
-b#9,23:varint(10)
-c#2,1:bar
+a#9,SET:foo
+b#9,DELSIZED:varint(10)
+c#2,SET:bar
 missized-dels=1
 
 # Test a DELSIZED whose encoded value is larger than the size of the deleted
@@ -1475,9 +1517,9 @@ first
 next
 next
 ----
-a#2,1:foo
-b#8,0:
-c#9,1:bar
+a#2,SET:foo
+b#8,DEL:
+c#9,SET:bar
 missized-dels=1
 
 # Test two DELSIZED at the same user key, but with correctly sized deleted keys.
@@ -1493,7 +1535,7 @@ iter print-missized-dels
 first
 next
 ----
-a#9,23:
+a#9,DELSIZED:
 .
 missized-dels=0
 
@@ -1511,7 +1553,7 @@ iter print-missized-dels
 first
 next
 ----
-a#9,0:
+a#9,DEL:
 .
 missized-dels=1
 
@@ -1529,7 +1571,7 @@ iter print-missized-dels
 first
 next
 ----
-a#9,0:
+a#9,DEL:
 .
 missized-dels=0
 
@@ -1555,10 +1597,10 @@ next
 next
 next
 ----
-a#7,18:foo
-b#4,18:bar
-c#9,18:coconut
-d#8,1:dragonfruit
+a#7,SETWITHDEL:foo
+b#4,SETWITHDEL:bar
+c#9,SETWITHDEL:coconut
+d#8,SET:dragonfruit
 .
 missized-dels=0
 
@@ -1575,7 +1617,7 @@ iter print-missized-dels
 first
 next
 ----
-a#9,0:
+a#9,DEL:
 .
 missized-dels=1
 
@@ -1592,7 +1634,7 @@ first
 next
 tombstones
 ----
-a#4,23:varint(4)
+a#4,DELSIZED:varint(4)
 .
 .
 
@@ -1619,7 +1661,7 @@ first
 next
 tombstones
 ----
-a#4,23:
+a#4,DELSIZED:
 .
 .
 
@@ -1634,9 +1676,9 @@ tombstones
 
 # Test a very subtle sequence where a elision of tombstones is active, and a
 # unskippable RANGEDEL sits between a DELSIZED and the key it was intended to
-# delete. The unskippable RANGEDEL breaks the skipping of keys within the
-# snapshot stripe, but it's ultimately okay because we preserve skip=true across
-# the RANGEDEL return.
+# delete. In previous versions of the code, the RANGEDEL was interleaved at its
+# sequence number and "unskippable" breaking the skipping of keys within the
+# snapshot stripe.
 
 define
 a.DELSIZED.5:varint(4)
@@ -1649,7 +1691,7 @@ first
 next
 tombstones
 ----
-a#4,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#4,RANGEDEL)}
 .
 .
 
@@ -1660,7 +1702,7 @@ first
 next
 tombstones
 ----
-a#4,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#4,RANGEDEL)}
 .
 .
 
@@ -1677,7 +1719,7 @@ first
 next
 tombstones
 ----
-a#4,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#4,RANGEDEL)}
 .
 .
 
@@ -1694,9 +1736,10 @@ first
 next
 tombstones
 ----
-a#4,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#4,RANGEDEL)}
 .
 .
+ineffectual-single-deletes: a
 
 # Perform a few variants of the above but with a range del with a seqnum equal to
 # keys. NB: When seqnums are equal, the order of keys with various kinds is:
@@ -1707,13 +1750,10 @@ a#4,15:d
 # compaction iterator should always observe them first.
 
 define
+a-z:{(#5,RANGEKEYDEL)}
 a.SINGLEDEL.6:
 a.SETWITHDEL.5:foo
 a.RANGEDEL.5:z
-----
-
-define-range-keys
-a-z:{(#5,RANGEKEYDEL)}
 ----
 
 # In the following case, the SINGLEDEL meets a SETWITHDEL, promoting the
@@ -1726,9 +1766,9 @@ next
 next
 tombstones
 ----
-a#72057594037927935,19:
-a#6,0:
-a#5,15:z
+a#72057594037927935,RANGEKEYDEL:
+a#72057594037927935,RANGEDEL:; Span() = a-z:{(#5,RANGEDEL)}
+a#6,DEL:
 .
 a-z#5
 .
@@ -1742,8 +1782,8 @@ next
 next
 tombstones
 ----
-a#72057594037927935,19:
-a#5,15:z
+a#72057594037927935,RANGEKEYDEL:
+a#72057594037927935,RANGEDEL:; Span() = a-z:{(#5,RANGEDEL)}
 .
 .
 
@@ -1753,21 +1793,17 @@ a.RANGEDEL.5:d
 a.SET.5:foo
 ----
 
-# NB: In this case, the RANGEDEL acts as an unintentional snapshot stripe
-# change. This is a code artifact, and we will be able to remove this behavior
-# when range deletes are interleaved at the maximal sequence number by an
-# interleaving iterator (like range keys are).
+# NB: In this case, in previous versions of the code, the RANGEDEL acted as an
+# unintentional snapshot stripe change. This was a code artifact that was fixed
+# when we began interleaving range deletions at the maximal sequence number
+# using an interleaving iterator (like range keys are).
 
 iter
 first
 next
-next
-next
 tombstones
 ----
-a#6,7:
-a#5,15:d
-a#5,1:foo
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#5,RANGEDEL)}
 .
 a-d#5
 .
@@ -1777,9 +1813,31 @@ first
 next
 tombstones
 ----
-a#5,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#5,RANGEDEL)}
 .
 .
+
+define
+a.SINGLEDEL.6:
+a.SET.5:foo
+a.RANGEDEL.4:d
+a.SET.4:bar
+----
+
+# In previous versions of the code, the SINGLEDEL invariant checking could not
+# see past the RANGEDEL and see that the a.SET.4 violates the invariant. This
+# was a code artifact that has been improved when we began interleaving range
+# deletes at the maximal sequence number
+
+iter
+first
+next
+next
+----
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#4,RANGEDEL)}
+a#4,SET:bar
+.
+invariant-violation-single-deletes: a
 
 define
 a.SINGLEDEL.6:
@@ -1794,8 +1852,8 @@ first
 next
 tombstones
 ----
-a#6,0:
-a#5,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#5,RANGEDEL)}
+a#6,DEL:
 a-d#5
 .
 
@@ -1804,7 +1862,7 @@ first
 next
 tombstones
 ----
-a#5,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#5,RANGEDEL)}
 .
 .
 
@@ -1817,10 +1875,12 @@ a.SET.5:foo
 iter
 first
 next
+next
 tombstones
 ----
-a#6,23:varint(3)
-a#5,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#5,RANGEDEL)}
+a#6,DEL:
+.
 a-d#5
 .
 
@@ -1829,7 +1889,7 @@ first
 next
 tombstones
 ----
-a#5,15:d
+a#72057594037927935,RANGEDEL:; Span() = a-d:{(#5,RANGEDEL)}
 .
 .
 
@@ -1857,13 +1917,13 @@ iter print-missized-dels
 first
 next
 ----
-a#5,0:
+a#5,DEL:
 .
 missized-dels=0
 
 # Regression test for #3087.
 #
-# Whne a DELSIZED and a SINGLEDEL meet in a compaction, a DEL key should be
+# When a DELSIZED and a SINGLEDEL meet in a compaction, a DEL key should be
 # emitted.
 
 define
@@ -1877,5 +1937,40 @@ iter
 first
 next
 ----
-a#5,0:
+a#5,DEL:
 .
+
+# When a MERGE and a DEL[SIZED] meet in a compaction, a SETWITHDEL key (NOT a
+# SET) should be emitted. Otherwise, a sequence such as SINGLEDDEL, MERGE, DEL,
+# SET could result in the SET re-appearing.
+
+define
+a.MERGE.5:foo
+a.DEL.3:
+----
+
+iter
+first
+next
+----
+a#5,SETWITHDEL:foo[base]
+.
+
+define
+a.SINGLEDEL.4:
+a.MERGE.3:a3
+a.SET.2:a2
+b.SINGLEDEL.6:
+b.SET.5:b5
+b.SETWITHDEL.4:b4
+----
+
+iter
+first
+next
+next
+----
+a#2,SET:a2
+b#4,SETWITHDEL:b4
+.
+invariant-violation-single-deletes: a,b

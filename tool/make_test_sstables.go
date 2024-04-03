@@ -23,7 +23,10 @@ func makeOutOfOrder() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
+	opts := sstable.WriterOptions{
+		TableFormat: sstable.TableFormatPebblev1,
+	}
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), opts)
 	private.SSTableWriterDisableKeyOrderChecks(w)
 
 	set := func(key string) {

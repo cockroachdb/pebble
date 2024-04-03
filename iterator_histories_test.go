@@ -32,6 +32,7 @@ func TestIterHistories(t *testing.T) {
 		}
 
 		var d *DB
+		var refedCache bool
 		var buf bytes.Buffer
 		iters := map[string]*Iterator{}
 		batches := map[string]*Batch{}
@@ -45,18 +46,23 @@ func TestIterHistories(t *testing.T) {
 			opts = &Options{
 				FS:                 vfs.NewMem(),
 				Comparer:           testkeys.Comparer,
-				FormatMajorVersion: FormatRangeKeys,
+				FormatMajorVersion: FormatMinSupported,
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					sstable.NewTestKeysBlockPropertyCollector,
 				},
+				Logger: testLogger{t},
 			}
 
 			opts.DisableAutomaticCompactions = true
 			opts.EnsureDefaults()
 			opts.WithFSDefaults()
+			originalCache := opts.Cache
 			if err := parseDBOptionsArgs(opts, td.CmdArgs); err != nil {
 				return nil, err
 			}
+			// If the test replaced the cache, we'll need to unref the
+			// new cache later.
+			refedCache = opts.Cache != originalCache
 			return opts, nil
 		}
 		cleanup := func() (err error) {
@@ -68,9 +74,28 @@ func TestIterHistories(t *testing.T) {
 				err = firstError(err, iter.Close())
 				delete(iters, key)
 			}
+
 			if d != nil {
+				// Close all open snapshots.
+				d.mu.Lock()
+				var ss []*Snapshot
+				l := &d.mu.snapshots
+				for i := l.root.next; i != &l.root; i = i.next {
+					ss = append(ss, i)
+				}
+				d.mu.Unlock()
+				for i := range ss {
+					err = firstError(err, ss[i].Close())
+				}
+
 				err = firstError(err, d.Close())
 				d = nil
+			}
+
+			if refedCache {
+				opts.Cache.Unref()
+				opts.Cache = nil
+				refedCache = false
 			}
 			return err
 		}
@@ -98,9 +123,13 @@ func TestIterHistories(t *testing.T) {
 				if err := cleanup(); err != nil {
 					return err.Error()
 				}
+				originalCache := opts.Cache
 				if err := parseDBOptionsArgs(opts, td.CmdArgs); err != nil {
 					return err.Error()
 				}
+				// If the test replaced the cache, we'll need to unref the
+				// new cache later.
+				refedCache = originalCache != opts.Cache
 				d, err = Open("", opts)
 				require.NoError(t, err)
 				return ""

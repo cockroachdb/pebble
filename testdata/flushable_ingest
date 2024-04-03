@@ -56,12 +56,11 @@ ls
 000006.sst
 000007.log
 000008.log
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000015.016
+marker.format-version.000004.017
 marker.manifest.000001.MANIFEST-000001
 
 # Test basic WAL replay
@@ -78,12 +77,11 @@ ls
 000006.sst
 000007.log
 000008.log
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000015.016
+marker.format-version.000004.017
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -92,9 +90,9 @@ open
 # Make sure that the sstables got flushed in the correct order on a WAL replay.
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000009:[a#10,SET-a#10,SET]
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
@@ -134,11 +132,11 @@ ingest ext1 ext2 ext3
 
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000009:[a#10,SET-a#10,SET]
-6:
+L6:
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
 
@@ -209,11 +207,11 @@ flush
 
 lsm
 ----
-0.2:
+L0.2:
   000007:[a#13,SET-a#13,SET]
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000010:[a#10,SET-a#10,SET]
   000011:[b#12,SET-b#12,SET]
 
@@ -248,7 +246,7 @@ ingest ext1 ext2
 
 lsm
 ----
-6:
+L6:
   000004:[b#11,SET-b#11,SET]
   000005:[d#12,SET-d#12,SET]
 
@@ -278,11 +276,11 @@ ingest ext1 ext2 ext3
 
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000009:[a#10,SET-a#10,SET]
-6:
+L6:
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
 
@@ -307,16 +305,16 @@ ingest ext4 ext5
 # yet.
 lsm
 ----
-0.3:
+L0.3:
   000010:[a#15,SET-a#15,SET]
-0.2:
+L0.2:
   000014:[a#14,SET-a#14,SET]
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000009:[a#10,SET-a#10,SET]
   000011:[b#16,SET-b#16,SET]
-6:
+L6:
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
 
@@ -387,12 +385,11 @@ ls
 000006.sst
 000007.log
 000008.log
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000015.016
+marker.format-version.000004.017
 marker.manifest.000001.MANIFEST-000001
 
 close
@@ -408,12 +405,11 @@ ls
 000006.sst
 000007.log
 000008.log
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000015.016
+marker.format-version.000004.017
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -422,9 +418,9 @@ open
 # Make sure that the sstables got flushed in the correct order on a WAL replay.
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#11,SET-a#11,SET]
-0.0:
+L0.0:
   000009:[a#10,SET-a#10,SET]
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
@@ -440,13 +436,12 @@ ls
 000009.sst
 000010.sst
 000011.log
-CURRENT
 LOCK
 MANIFEST-000001
 MANIFEST-000012
 OPTIONS-000013
 ext
-marker.format-version.000015.016
+marker.format-version.000004.017
 marker.manifest.000002.MANIFEST-000012
 
 # Make sure that the new mutable memtable can accept writes.
@@ -573,9 +568,9 @@ flush
 # expected.
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#12,SET-b#12,SET]
-0.0:
+L0.0:
   000007:[a#10,SET-b#11,SET]
 
 ls
@@ -585,12 +580,11 @@ ls
 000005.log
 000006.log
 000007.sst
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000015.016
+marker.format-version.000004.017
 marker.manifest.000001.MANIFEST-000001
 
 close
@@ -604,13 +598,12 @@ resetToSynced
 000004.sst
 000005.log
 000006.log
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
 ext1
-marker.format-version.000015.016
+marker.format-version.000004.017
 marker.manifest.000001.MANIFEST-000001
 
 ignoreSyncs false
@@ -621,7 +614,7 @@ open
 
 lsm
 ----
-0.1:
+L0.1:
   000004:[a#12,SET-b#12,SET]
-0.0:
+L0.0:
   000007:[a#10,SET-b#11,SET]

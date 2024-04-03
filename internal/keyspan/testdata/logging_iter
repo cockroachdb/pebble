@@ -1,0 +1,75 @@
+define
+a-b:{(#2,SET) (#1,SET)}
+b-c:{(#2,SET) (#1,SET)}
+c-d:{(#2,SET) (#1,SET)}
+----
+
+iter
+seek-ge a
+next
+next
+prev
+first
+next
+last
+prev
+----
+*keyspan.assertIter: SeekGE("a")
+ ├── *keyspan.Iter: SeekGE("a")
+ │    └── a-b:{(#2,SET) (#1,SET)} <nil>
+ └── a-b:{(#2,SET) (#1,SET)} <nil>
+*keyspan.assertIter: Next()
+ ├── *keyspan.Iter: Next()
+ │    └── b-c:{(#2,SET) (#1,SET)} <nil>
+ └── b-c:{(#2,SET) (#1,SET)} <nil>
+*keyspan.assertIter: Next()
+ ├── *keyspan.Iter: Next()
+ │    └── c-d:{(#2,SET) (#1,SET)} <nil>
+ └── c-d:{(#2,SET) (#1,SET)} <nil>
+*keyspan.assertIter: Prev()
+ ├── *keyspan.Iter: Prev()
+ │    └── b-c:{(#2,SET) (#1,SET)} <nil>
+ └── b-c:{(#2,SET) (#1,SET)} <nil>
+*keyspan.assertIter: First()
+ ├── *keyspan.Iter: First()
+ │    └── a-b:{(#2,SET) (#1,SET)} <nil>
+ └── a-b:{(#2,SET) (#1,SET)} <nil>
+*keyspan.assertIter: Next()
+ ├── *keyspan.Iter: Next()
+ │    └── b-c:{(#2,SET) (#1,SET)} <nil>
+ └── b-c:{(#2,SET) (#1,SET)} <nil>
+*keyspan.assertIter: Last()
+ ├── *keyspan.Iter: Last()
+ │    └── c-d:{(#2,SET) (#1,SET)} <nil>
+ └── c-d:{(#2,SET) (#1,SET)} <nil>
+*keyspan.assertIter: Prev()
+ ├── *keyspan.Iter: Prev()
+ │    └── b-c:{(#2,SET) (#1,SET)} <nil>
+ └── b-c:{(#2,SET) (#1,SET)} <nil>
+*keyspan.assertIter: Close()
+ └── *keyspan.Iter: Close()
+
+iter
+seek-lt a
+seek-lt c
+next
+next
+----
+*keyspan.assertIter: SeekLT("a")
+ ├── *keyspan.Iter: SeekLT("a")
+ │    └── <nil> <nil>
+ └── <nil> <nil>
+*keyspan.assertIter: SeekLT("c")
+ ├── *keyspan.Iter: SeekLT("c")
+ │    └── b-c:{(#2,SET) (#1,SET)} <nil>
+ └── b-c:{(#2,SET) (#1,SET)} <nil>
+*keyspan.assertIter: Next()
+ ├── *keyspan.Iter: Next()
+ │    └── c-d:{(#2,SET) (#1,SET)} <nil>
+ └── c-d:{(#2,SET) (#1,SET)} <nil>
+*keyspan.assertIter: Next()
+ ├── *keyspan.Iter: Next()
+ │    └── <nil> <nil>
+ └── <nil> <nil>
+*keyspan.assertIter: Close()
+ └── *keyspan.Iter: Close()

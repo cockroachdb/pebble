@@ -38,11 +38,10 @@ list-files build
 ----
 build:
   000002.log
-  CURRENT
   LOCK
   MANIFEST-000001
   OPTIONS-000003
-  marker.format-version.000007.008
+  marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 
 commit
@@ -60,11 +59,10 @@ build:
   000002.log
   000004.log
   000005.sst
-  CURRENT
   LOCK
   MANIFEST-000001
   OPTIONS-000003
-  marker.format-version.000007.008
+  marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 
 
@@ -79,12 +77,11 @@ list-files build
 build:
   000005.sst
   000006.log
-  CURRENT
   LOCK
   MANIFEST-000001
   MANIFEST-000007
   OPTIONS-000008
-  marker.format-version.000007.008
+  marker.format-version.000001.013
   marker.manifest.000002.MANIFEST-000007
 
 delete-all build/MANIFEST-000007

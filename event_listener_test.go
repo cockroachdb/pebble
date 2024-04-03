@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,9 @@ import (
 
 // Verify event listener actions, as well as expected filesystem operations.
 func TestEventListener(t *testing.T) {
+	if runtime.GOARCH == "386" {
+		t.Skip("skipped on 32-bit due to slightly varied output")
+	}
 	var d *DB
 	var memLog base.InMemLogger
 	mem := vfs.NewMem()
@@ -47,6 +51,11 @@ func TestEventListener(t *testing.T) {
 				flushEnd(info)
 			}
 			opts := &Options{
+				// The table stats collector runs asynchronously and its
+				// timing is less predictable. It increments nextJobID, which
+				// can make these tests flaky. The TableStatsLoaded event is
+				// tested separately in TestTableStats.
+				DisableTableStats:     true,
 				FS:                    vfs.WithLogging(mem, memLog.Infof),
 				FormatMajorVersion:    internalFormatNewest,
 				EventListener:         &lel,
@@ -54,11 +63,6 @@ func TestEventListener(t *testing.T) {
 				L0CompactionThreshold: 10,
 				WALDir:                "wal",
 			}
-			// The table stats collector runs asynchronously and its
-			// timing is less predictable. It increments nextJobID, which
-			// can make these tests flaky. The TableStatsLoaded event is
-			// tested separately in TestTableStats.
-			opts.private.disableTableStats = true
 			var err error
 			d, err = Open("db", opts)
 			if err != nil {
@@ -336,7 +340,7 @@ func TestEventListenerRedact(t *testing.T) {
 	l := MakeLoggingEventListener(redactLogger{logger: &log})
 	l.WALDeleted(WALDeleteInfo{
 		JobID:   5,
-		FileNum: FileNum(20),
+		FileNum: base.DiskFileNum(20),
 		Err:     errors.Errorf("unredacted error: %s", "unredacted string"),
 	})
 	require.Equal(t, "[JOB 5] WAL delete error: unredacted error: ‹×›\n", log.String())

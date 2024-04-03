@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"unsafe"
@@ -163,7 +164,11 @@ type singleLevelIterator struct {
 	useFilter              bool
 	lastBloomFilterMatched bool
 
-	hideObsoletePoints bool
+	transforms IterTransforms
+
+	// inPool is set to true before putting the iterator in the reusable pool;
+	// used to detect double-close.
+	inPool bool
 }
 
 // singleLevelIterator implements the base.InternalIterator interface.
@@ -180,9 +185,10 @@ func (i *singleLevelIterator) init(
 	ctx context.Context,
 	r *Reader,
 	v *virtualState,
+	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilter, hideObsoletePoints bool,
+	useFilter bool,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
@@ -202,6 +208,7 @@ func (i *singleLevelIterator) init(
 		i.endKeyInclusive, lower, upper = v.constrainBounds(lower, upper, false /* endInclusive */)
 	}
 
+	i.inPool = false
 	i.ctx = ctx
 	i.lower = lower
 	i.upper = upper
@@ -210,9 +217,9 @@ func (i *singleLevelIterator) init(
 	i.reader = r
 	i.cmp = r.Compare
 	i.stats = stats
-	i.hideObsoletePoints = hideObsoletePoints
+	i.transforms = transforms
 	i.bufferPool = bufferPool
-	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum, false)
+	err = i.index.initHandle(i.cmp, r.Split, indexH, transforms)
 	if err != nil {
 		// blockIter.Close releases indexH and always returns a nil error
 		_ = i.index.Close()
@@ -244,19 +251,17 @@ func (i *singleLevelIterator) init(
 	return nil
 }
 
-// Helper function to check if keys returned from iterator are within global and virtual bounds.
+// Helper function to check if keys returned from iterator are within virtual bounds.
 func (i *singleLevelIterator) maybeVerifyKey(
 	iKey *InternalKey, val base.LazyValue,
 ) (*InternalKey, base.LazyValue) {
-	// maybeVerify key is only used for virtual sstable iterators.
-	if invariants.Enabled && i.vState != nil && iKey != nil {
+	if invariants.Enabled && iKey != nil && i.vState != nil {
 		key := iKey.UserKey
-
-		uc, vuc := i.cmp(key, i.upper), i.cmp(key, i.vState.upper.UserKey)
-		lc, vlc := i.cmp(key, i.lower), i.cmp(key, i.vState.lower.UserKey)
-
-		if (i.vState.upper.IsExclusiveSentinel() && vuc == 0) || (!i.endKeyInclusive && uc == 0) || uc > 0 || vuc > 0 || lc < 0 || vlc < 0 {
-			panic(fmt.Sprintf("key: %s out of bounds of singleLevelIterator", key))
+		v := i.vState
+		lc := i.cmp(key, v.lower.UserKey)
+		uc := i.cmp(key, v.upper.UserKey)
+		if lc < 0 || uc > 0 || (uc == 0 && v.upper.IsExclusiveSentinel()) {
+			panic(fmt.Sprintf("key %q out of singleLeveliterator virtual bounds %s %s", key, v.lower.UserKey, v.upper.UserKey))
 		}
 	}
 	return iKey, val
@@ -273,8 +278,9 @@ func (i *singleLevelIterator) setupForCompaction() {
 
 func (i *singleLevelIterator) resetForReuse() singleLevelIterator {
 	return singleLevelIterator{
-		index: i.index.resetForReuse(),
-		data:  i.data.resetForReuse(),
+		index:  i.index.resetForReuse(),
+		data:   i.data.resetForReuse(),
+		inPool: true,
 	}
 }
 
@@ -285,6 +291,7 @@ func (i *singleLevelIterator) initBounds() {
 	i.blockLower = i.lower
 	if i.blockLower != nil {
 		key, _ := i.data.First()
+		// TODO(radu): this should be <= 0
 		if key != nil && i.cmp(i.blockLower, key.UserKey) < 0 {
 			// The lower-bound is less than the first key in the block. No need
 			// to check the lower-bound again for this block.
@@ -292,15 +299,39 @@ func (i *singleLevelIterator) initBounds() {
 		}
 	}
 	i.blockUpper = i.upper
+	// TODO(radu): this should be >= 0 if blockUpper is inclusive.
 	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Key().UserKey) > 0 {
 		// The upper-bound is greater than the index key which itself is greater
 		// than or equal to every key in the block. No need to check the
 		// upper-bound again for this block. Even if blockUpper is inclusive
 		// because of upper being inclusive, we can still safely set blockUpper
 		// to nil here.
-		//
-		// TODO(bananabrick): We could also set blockUpper to nil for the >=
-		// case, if blockUpper is inclusive.
+		i.blockUpper = nil
+	}
+}
+
+func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
+	// TODO(radu): determine automatically if we need to call First or not and
+	// unify this function with initBounds().
+	if i.data.getFirstUserKey() == nil {
+		panic("initBoundsForAlreadyLoadedBlock must not be called on empty or corrupted block")
+	}
+	i.blockLower = i.lower
+	if i.blockLower != nil {
+		firstUserKey := i.data.getFirstUserKey()
+		// TODO(radu): this should be <= 0
+		if firstUserKey != nil && i.cmp(i.blockLower, firstUserKey) < 0 {
+			// The lower-bound is less than the first key in the block. No need
+			// to check the lower-bound again for this block.
+			i.blockLower = nil
+		}
+	}
+	i.blockUpper = i.upper
+	// TODO(radu): this should be >= 0 if blockUpper is inclusive.
+	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Key().UserKey) > 0 {
+		// The upper-bound is greater than the index key which itself is greater
+		// than or equal to every key in the block. No need to check the
+		// upper-bound again for this block.
 		i.blockUpper = nil
 	}
 }
@@ -319,6 +350,23 @@ func disableBoundsOpt(bound []byte, ptr uintptr) bool {
 // deterministic iterator behavior. Some unit tests examine internal iterator
 // state and require this behavior to be deterministic.
 var ensureBoundsOptDeterminism bool
+
+// SetBoundsWithSyntheticPrefix indicates whether this iterator requires keys
+// passed to its SetBounds() method by a prefix rewriting wrapper to be *not*
+// rewritten to be in terms of this iterator's content, but instead be passed
+// as-is, i.e. with the synthetic prefix still on them.
+//
+// This allows an optimization when this iterator is passing these bounds on to
+// a vState to additionally constrain them. In said vState, passed bounds are
+// combined with the vState bounds which are in terms of the rewritten prefix.
+// If the caller rewrote bounds to be in terms of content prefix and SetBounds
+// passed those to vState, the vState would need to *un*rewrite them back to the
+// synthetic prefix in order to combine them with the vState bounds. Thus, if
+// this iterator knows bounds will be passed to vState, it can signal that it
+// they should be passed without being rewritten to skip converting to and fro.
+func (i singleLevelIterator) SetBoundsWithSyntheticPrefix() bool {
+	return i.vState != nil
+}
 
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package. Note that the upper field is exclusive.
@@ -392,13 +440,13 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 	i.data.invalidate()
 	i.dataBH = bhp.BlockHandle
 	if err != nil {
-		i.err = errCorruptIndexEntry
+		i.err = errCorruptIndexEntry(err)
 		return loadBlockFailed
 	}
 	if i.bpfs != nil {
 		intersects, err := i.bpfs.intersects(bhp.Props)
 		if err != nil {
-			i.err = errCorruptIndexEntry
+			i.err = errCorruptIndexEntry(err)
 			return loadBlockFailed
 		}
 		if intersects == blockMaybeExcluded {
@@ -417,7 +465,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum, i.hideObsoletePoints)
+	i.err = i.data.initHandle(i.cmp, i.reader.Split, block, i.transforms)
 	if i.err != nil {
 		// The block is partially loaded, and we don't want it to appear valid.
 		i.data.invalidate()
@@ -440,7 +488,7 @@ func (i *singleLevelIterator) readBlockForVBR(
 // that a block is excluded according to its properties but only if its bounds
 // fall within the filter's current bounds.  This function consults the
 // apprioriate bound, depending on the iteration direction, and returns either
-// `blockIntersects` or `blockMaybeExcluded`.
+// `blockIntersects` or `blockExcluded`.
 func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	// TODO(jackson): We could first try comparing to top-level index block's
 	// key, and if within bounds avoid per-data block key comparisons.
@@ -501,28 +549,6 @@ func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	}
 	_, _ = i.index.Next()
 	return blockIntersects
-}
-
-func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
-	if i.data.getFirstUserKey() == nil {
-		panic("initBoundsForAlreadyLoadedBlock must not be called on empty or corrupted block")
-	}
-	i.blockLower = i.lower
-	if i.blockLower != nil {
-		firstUserKey := i.data.getFirstUserKey()
-		if firstUserKey != nil && i.cmp(i.blockLower, firstUserKey) < 0 {
-			// The lower-bound is less than the first key in the block. No need
-			// to check the lower-bound again for this block.
-			i.blockLower = nil
-		}
-	}
-	i.blockUpper = i.upper
-	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Key().UserKey) > 0 {
-		// The upper-bound is greater than the index key which itself is greater
-		// than or equal to every key in the block. No need to check the
-		// upper-bound again for this block.
-		i.blockUpper = nil
-	}
 }
 
 // The number of times to call Next/Prev in a block before giving up and seeking.
@@ -852,26 +878,98 @@ func (i *singleLevelIterator) virtualLast() (*InternalKey, base.LazyValue) {
 		panic("pebble: invalid call to virtualLast")
 	}
 
-	// Seek to the first internal key.
-	ikey, _ := i.SeekGE(i.upper, base.SeekGEFlagsNone)
-	if i.endKeyInclusive {
-		// Let's say the virtual sstable upper bound is c#1, with the keys c#3, c#2,
-		// c#1, d, e, ... in the sstable. So, the last key in the virtual sstable is
-		// c#1. We can perform SeekGE(i.upper) and then keep nexting until we find
-		// the last key with userkey == i.upper.
-		//
-		// TODO(bananabrick): Think about how to improve this. If many internal keys
-		// with the same user key at the upper bound then this could be slow, but
-		// maybe the odds of having many internal keys with the same user key at the
-		// upper bound are low.
-		for ikey != nil && i.cmp(ikey.UserKey, i.upper) == 0 {
-			ikey, _ = i.Next()
-		}
-		return i.Prev()
+	if !i.endKeyInclusive {
+		// Trivial case.
+		return i.SeekLT(i.upper, base.SeekLTFlagsNone)
 	}
+	return i.virtualLastSeekLE()
+}
 
-	// We seeked to the first key >= i.upper.
-	return i.Prev()
+// virtualLastSeekLE is called by virtualLast to do a SeekLE as part of a
+// virtualLast. Consider generalizing this into a SeekLE() if there are other
+// uses of this method in the future. Does a SeekLE on the upper bound of the
+// file/iterator.
+func (i *singleLevelIterator) virtualLastSeekLE() (*InternalKey, base.LazyValue) {
+	// Callers of SeekLE don't know about virtual sstable bounds, so we may
+	// have to internally restrict the bounds.
+	//
+	// TODO(bananabrick): We can optimize this check away for the level iter
+	// if necessary.
+	if !i.endKeyInclusive {
+		panic("unexpected virtualLastSeekLE with exclusive upper bounds")
+	}
+	key := i.upper
+
+	i.exhaustedBounds = 0
+	i.err = nil // clear cached iteration error
+	// Seek optimization only applies until iterator is first positioned with a
+	// SeekGE or SeekLT after SetBounds.
+	i.boundsCmp = 0
+	i.positionedUsingLatestBounds = true
+	i.maybeFilteredKeysSingleLevel = false
+
+	ikey, _ := i.index.SeekGE(key, base.SeekGEFlagsNone)
+	// We can have multiple internal keys with the same user key as the seek
+	// key. In that case, we want the last (greatest) internal key.
+	//
+	// INVARIANT: One of two cases:
+	// A. ikey == nil. There is no data block with index key >= key. So all keys
+	//    in the last data block are < key.
+	// B. ikey.userkey >= key. This data block may have some keys > key.
+	//
+	// Subcases of B:
+	//   B1. ikey.userkey == key. This is when loop iteration happens.
+	//       Since ikey.UserKey >= largest data key in the block, the largest data
+	//       key in this block is <= key.
+	//   B2. ikey.userkey > key. Loop iteration will not happen.
+	//
+	// NB: We can avoid this Next()ing if we just implement a blockIter.SeekLE().
+	// This might be challenging to do correctly, so impose regular operations
+	// for now.
+	for ikey != nil && bytes.Equal(ikey.UserKey, key) {
+		ikey, _ = i.index.Next()
+	}
+	if ikey == nil {
+		// Cases A or B1 where B1 exhausted all blocks. In both cases the last block
+		// has all keys <= key. skipBackward enforces the lower bound.
+		return i.skipBackward()
+	}
+	// Case B. We are here because we were originally in case B2, or we were in B1
+	// and we arrived at a block where ikey.UserKey > key. Either way, ikey.UserKey
+	// > key. So there could be keys in the block > key. But the block preceding
+	// this block cannot have any keys > key, otherwise it would have been the
+	// result of the original index.SeekGE.
+	result := i.loadBlock(-1)
+	if result == loadBlockFailed {
+		return nil, base.LazyValue{}
+	}
+	if result == loadBlockIrrelevant {
+		// Want to skip to the previous block.
+		return i.skipBackward()
+	}
+	ikey, _ = i.data.SeekGE(key, base.SeekGEFlagsNone)
+	var val base.LazyValue
+	// Go to the last user key that matches key, and then Prev() on the data
+	// block.
+	for ikey != nil && bytes.Equal(ikey.UserKey, key) {
+		ikey, _ = i.data.Next()
+	}
+	ikey, val = i.data.Prev()
+	if ikey != nil {
+		// Enforce the lower bound here, as we could have gone past it. This happens
+		// if keys between `i.blockLower` and `key` are obsolete, for instance. Even
+		// though i.blockLower (which is either nil or equal to i.lower) is <= key,
+		// all internal keys in the user key interval [i.blockLower, key] could be
+		// obsolete (due to a RANGEDEL which will not be observed here). And
+		// i.data.Prev will skip all these obsolete keys, and could land on a key
+		// below the lower bound, requiring the lower bound check.
+		if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
+			i.exhaustedBounds = -1
+			return nil, base.LazyValue{}
+		}
+		return ikey, val
+	}
+	return i.skipBackward()
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -891,7 +989,7 @@ func (i *singleLevelIterator) SeekLT(
 		// first internal key with user key < key.
 		if cmp > 0 {
 			// Return the last key in the virtual sstable.
-			return i.virtualLast()
+			return i.maybeVerifyKey(i.virtualLast())
 		}
 	}
 
@@ -998,16 +1096,13 @@ func (i *singleLevelIterator) SeekLT(
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *singleLevelIterator) First() (*InternalKey, base.LazyValue) {
-	// If the iterator was created on a virtual sstable, we will SeekGE to the
-	// lower bound instead of using First, because First does not respect
-	// bounds.
-	if i.vState != nil {
+	// If we have a lower bound, use SeekGE. Note that in general this is not
+	// supported usage, except when the lower bound is there because the table is
+	// virtual.
+	if i.lower != nil {
 		return i.SeekGE(i.lower, base.SeekGEFlagsNone)
 	}
 
-	if i.lower != nil {
-		panic("singleLevelIterator.First() used despite lower bound")
-	}
 	i.positionedUsingLatestBounds = true
 	i.maybeFilteredKeysSingleLevel = false
 
@@ -1071,7 +1166,7 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, base.LazyValue) {
 // SeekLT(upper))
 func (i *singleLevelIterator) Last() (*InternalKey, base.LazyValue) {
 	if i.vState != nil {
-		return i.virtualLast()
+		return i.maybeVerifyKey(i.virtualLast())
 	}
 
 	if i.upper != nil {
@@ -1259,8 +1354,8 @@ func (i *singleLevelIterator) Prev() (*InternalKey, base.LazyValue) {
 
 func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 	for {
-		var key *InternalKey
-		if key, _ = i.index.Next(); key == nil {
+		indexKey, _ := i.index.Next()
+		if indexKey == nil {
 			i.data.invalidate()
 			break
 		}
@@ -1271,7 +1366,7 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			}
 			if result == loadBlockFailed {
 				// We checked that i.index was at a valid entry, so
-				// loadBlockFailed could not have happened due to to i.index
+				// loadBlockFailed could not have happened due to i.index
 				// being exhausted, and must be due to an error.
 				panic("loadBlock should not have failed with no error")
 			}
@@ -1282,7 +1377,7 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			// separator, the same user key can span multiple blocks. If upper
 			// is exclusive we use >= below, else we use >.
 			if i.upper != nil {
-				cmp := i.cmp(key.UserKey, i.upper)
+				cmp := i.cmp(indexKey.UserKey, i.upper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
 					return nil, base.LazyValue{}
@@ -1290,7 +1385,42 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 			}
 			continue
 		}
-		if key, val := i.data.First(); key != nil {
+		var key *InternalKey
+		var val base.LazyValue
+		// It is possible that skipBackward went too far and the virtual table lower
+		// bound is after the first key in the block we are about to load, in which
+		// case we must use SeekGE.
+		//
+		// An example of how this can happen:
+		//
+		//   Data block 1 - contains keys a@1, c@1
+		//   Data block 2 - contains keys e@1, g@1
+		//   Data block 3 - contains keys i@2, k@2
+		//
+		//   The virtual table lower bound is f. We have a range key masking filter
+		//   that filters keys with @1 suffix. We are positioned inside block 3 then
+		//   we Prev(). Block 2 is entirely filtered out, which makes us move to
+		//   block 1. Now the range key masking filter gets an update (via
+		//   SpanChanged) and it no longer filters out any keys. At this point if a
+		//   Next happens, we will load block 2 but it would not be legal to return
+		//   "e@1" which is outside the virtual bounds.
+		//
+		//   The core of the problem is that skipBackward doesn't know it can stop
+		//   at block 2, because it doesn't know what keys are at the start of that
+		//   block. This is why we don't have this problem in the opposite
+		//   direction: skipForward will never go beyond the last relevant block
+		//   because it looks at the separator key which is an upper bound for the
+		//   block.
+		//
+		// Note that this is only a problem with virtual tables; we make no
+		// guarantees wrt an iterator lower bound when we iterate forward. But we
+		// must never return keys that are not inside the virtual table.
+		if i.vState != nil && i.blockLower != nil {
+			key, val = i.data.SeekGE(i.lower, base.SeekGEFlagsNone)
+		} else {
+			key, val = i.data.First()
+		}
+		if key != nil {
 			if i.blockUpper != nil {
 				cmp := i.cmp(key.UserKey, i.blockUpper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
@@ -1306,8 +1436,8 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, base.LazyValue) {
 
 func (i *singleLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 	for {
-		var key *InternalKey
-		if key, _ = i.index.Prev(); key == nil {
+		indexKey, _ := i.index.Prev()
+		if indexKey == nil {
 			i.data.invalidate()
 			break
 		}
@@ -1327,7 +1457,7 @@ func (i *singleLevelIterator) skipBackward() (*InternalKey, base.LazyValue) {
 			// bound is already exceeded. Note that the previous block starts with
 			// keys <= key.UserKey since even though this is the current block's
 			// separator, the same user key can span multiple blocks.
-			if i.lower != nil && i.cmp(key.UserKey, i.lower) < 0 {
+			if i.lower != nil && i.cmp(indexKey.UserKey, i.lower) < 0 {
 				i.exhaustedBounds = -1
 				return nil, base.LazyValue{}
 			}
@@ -1378,6 +1508,9 @@ func firstError(err0, err1 error) error {
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *singleLevelIterator) Close() error {
+	if invariants.Enabled && i.inPool {
+		panic("Close called on interator in pool")
+	}
 	i.iterStats.close()
 	var err error
 	if i.closeHook != nil {

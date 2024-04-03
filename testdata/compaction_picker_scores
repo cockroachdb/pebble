@@ -11,9 +11,9 @@ L6
   d.SET.1:<rand-bytes=65536>
   e.SET.1:<rand-bytes=65536>
 ----
-5:
+L5:
   000004:[a#2,RANGEDEL-f#inf,RANGEDEL]
-6:
+L6:
   000005:[a#1,SET-e#1,SET]
 
 scores
@@ -24,7 +24,7 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	729B   0.0
+L5  	657B   0.0
 L6  	321KB  -
 
 enable-table-stats
@@ -37,7 +37,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 328519
+range-deletions-bytes-estimate: 328447
 
 scores
 ----
@@ -47,7 +47,7 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	729B   4.5
+L5  	657B   4.5
 L6  	321KB  -
 
 # Ensure that point deletions in a higher level result in a compensated level
@@ -67,9 +67,9 @@ L6
   d.SET.1:<rand-bytes=65536>
   e.SET.1:<rand-bytes=65536>
 ----
-5:
+L5:
   000004:[a#2,DEL-e#2,DEL]
-6:
+L6:
   000005:[a#1,SET-e#1,SET]
 
 scores
@@ -80,7 +80,7 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	715B   0.0
+L5  	643B   0.0
 L6  	321KB  -
 
 enable-table-stats
@@ -92,7 +92,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 5
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 164581
+point-deletions-bytes-estimate: 164509
 range-deletions-bytes-estimate: 0
 
 scores
@@ -103,7 +103,7 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	715B   2.3
+L5  	643B   2.3
 L6  	321KB  -
 
 # Run a similar test as above, but this time the table containing the DELs is
@@ -124,7 +124,7 @@ L6
   d.SET.1:<rand-bytes=65536>
   e.SET.1:<rand-bytes=65536>
 ----
-6:
+L6:
   000004:[a#1,SET-e#1,SET]
 
 ingest ext1
@@ -134,9 +134,9 @@ del c:
 del d:
 del e:
 ----
-5:
+L5:
   000005:[a:#10,DEL-e:#10,DEL]
-6:
+L6:
   000004:[a#1,SET-e#1,SET]
 
 wait-pending-table-stats
@@ -145,14 +145,14 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 5
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 164616
+point-deletions-bytes-estimate: 164533
 range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
 1 compactions in progress:
-5: 000005:a:#10,0-e:#10,0
-6: 000004:a#1,1-e#1,1
+5: 000005:a:#10,DEL-e:#10,DEL
+6: 000004:a#1,SET-e#1,SET
 
 scores
 ----
@@ -167,7 +167,7 @@ L6  	321KB  -
 
 lsm
 ----
-6:
+L6:
   000006:[a#0,SET-e#0,SET]
 
 # Test the adjustment of level sizes to accommodate in-progress compactions. A
@@ -191,10 +191,10 @@ L6
 L6
   e.SET.1:<rand-bytes=131072>
 ----
-5:
+L5:
   000004:[aa#2,SET-dd#2,SET]
   000005:[e#2,SET-e#2,SET]
-6:
+L6:
   000006:[a#1,SET-d#1,SET]
   000007:[e#1,SET-e#1,SET]
 
@@ -211,20 +211,20 @@ L6  	385KB  -
 
 lsm verbose
 ----
-5:
-  000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET]
-  000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET]
-6:
-  000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET]
-  000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET]
+L5:
+  000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET] size:525021
+  000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET] size:131670
+L6:
+  000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET] size:262869
+  000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET] size:131670
 
 # Attempting to schedule a compaction should begin a L5->L6 compaction.
 
 maybe-compact
 ----
 1 compactions in progress:
-5: 000004:aa#2,1-dd#2,1
-6: 000006:a#1,1-d#1,1
+5: 000004:aa#2,SET-dd#2,SET
+6: 000006:a#1,SET-d#1,SET
 
 # The scores and sizes should be stable between when the version edit has been
 # applied but the compaction has not completed, and when the compaction is
@@ -243,9 +243,9 @@ L6  	898KB  -
 
 lsm
 ----
-5:
+L5:
   000005:[e#2,SET-e#2,SET]
-6:
+L6:
   000008:[a#0,SET-dd#0,SET]
   000007:[e#1,SET-e#1,SET]
 

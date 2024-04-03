@@ -11,8 +11,12 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"os"
 	"regexp"
+	"strings"
+	"time"
 
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/metamorphic"
 )
@@ -38,6 +42,8 @@ type CommonFlags struct {
 	// NumInstances is the number of Pebble instances to create in one run. See
 	// "num-instances" flag below.
 	NumInstances int
+	// OpTimeout is a per-operation timeout.
+	OpTimeout time.Duration
 }
 
 func initCommonFlags() *CommonFlags {
@@ -70,6 +76,12 @@ func initCommonFlags() *CommonFlags {
 
 	flag.IntVar(&c.NumInstances, "num-instances", 1, "number of pebble instances to create (default: 1)")
 
+	defaultOpTimeout := 1 * time.Minute
+	if invariants.RaceEnabled {
+		defaultOpTimeout *= 5
+	}
+	flag.DurationVar(&c.OpTimeout, "op-timeout", defaultOpTimeout, "per-op timeout")
+
 	return c
 }
 
@@ -81,18 +93,27 @@ type RunOnceFlags struct {
 	RunDir string
 	// Compare applies to metamorphic.Compare. See "compare" flag below.
 	Compare string
+	// TryToReduce enables a mode where we try to find a minimal subset of
+	// operations that reproduce a problem during a test run (e.g. panic or
+	// internal error).
+	TryToReduce bool
 }
 
 func initRunOnceFlags(c *CommonFlags) *RunOnceFlags {
 	ro := &RunOnceFlags{CommonFlags: c}
 	flag.StringVar(&ro.RunDir, "run-dir", "",
-		"the specific configuration to (re-)run (used for post-mortem debugging)")
+		`directory containing the specific configuration to (re-)run (used for post-mortem debugging).
+Example: --run-dir _meta/231220-164251.3552792807512/random-003`)
 
 	flag.StringVar(&ro.Compare, "compare", "",
-		`comma separated list of options files to compare. The result of each run is compared with
-the result of the run from the first options file in the list. Example, -compare
-random-003,standard-000. The dir flag should have the directory containing these directories.
-Example, -dir _meta/200610-203012.077`)
+		`runs to compare, in the format _meta/test-root-dir/{run1,run2,...}. The result
+of each run is compared with the result of the first run.
+Example, --compare '_meta/231220-164251.3552792807512/{standard-000,random-025}'`)
+
+	flag.BoolVar(&ro.TryToReduce, "try-to-reduce", false,
+		`if set, we will try to reduce the number of operations that cause a failure. The
+verbose flag should be used with this flag.`)
+
 	return ro
 }
 
@@ -174,6 +195,7 @@ func InitAllFlags() (*RunOnceFlags, *RunFlags) {
 func (ro *RunOnceFlags) MakeRunOnceOptions() []metamorphic.RunOnceOption {
 	onceOpts := []metamorphic.RunOnceOption{
 		metamorphic.MaxThreads(ro.MaxThreads),
+		metamorphic.OpTimeout(ro.OpTimeout),
 	}
 	if ro.Keep {
 		onceOpts = append(onceOpts, metamorphic.KeepData{})
@@ -190,12 +212,42 @@ func (ro *RunOnceFlags) MakeRunOnceOptions() []metamorphic.RunOnceOption {
 	return onceOpts
 }
 
+// ParseCompare parses the value of the compare flag, in format
+// "test-root-dir/{run1,run2,...}". Exits if the value is not valid.
+//
+// Returns the common test root dir (e.g. "test-root-dir") and a list of
+// subdirectories (e.g. {"run1", "run2"}).
+func (ro *RunOnceFlags) ParseCompare() (testRootDir string, runSubdirs []string) {
+	testRootDir, runSubdirs, ok := ro.tryParseCompare()
+	if !ok {
+		fmt.Fprintf(os.Stderr, `cannot parse compare flag value %q; format is "test-root-dir/{run1,run2,..}"`, ro.Compare)
+		os.Exit(1)
+	}
+	return testRootDir, runSubdirs
+}
+
+func (ro *RunOnceFlags) tryParseCompare() (testRootDir string, runSubdirs []string, ok bool) {
+	value := ro.Compare
+	brace := strings.Index(value, "{")
+	if brace == -1 || !strings.HasSuffix(value, "}") {
+		return "", nil, false
+	}
+
+	testRootDir = value[:brace]
+	runSubdirs = strings.Split(value[brace+1:len(value)-1], ",")
+	if len(runSubdirs) < 2 {
+		return "", nil, false
+	}
+	return testRootDir, runSubdirs, true
+}
+
 // MakeRunOptions constructs RunOptions based on the flags.
 func (r *RunFlags) MakeRunOptions() []metamorphic.RunOption {
 	opts := []metamorphic.RunOption{
 		metamorphic.Seed(r.Seed),
 		metamorphic.OpCount(r.Ops.Static),
 		metamorphic.MaxThreads(r.MaxThreads),
+		metamorphic.OpTimeout(r.OpTimeout),
 	}
 	if r.Keep {
 		opts = append(opts, metamorphic.KeepData{})

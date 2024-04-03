@@ -4,7 +4,10 @@
 
 package base
 
-import "github.com/cockroachdb/errors"
+import (
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/invariants"
+)
 
 // ErrNotFound means that a get or delete call did not find the requested key.
 var ErrNotFound = errors.New("pebble: not found")
@@ -25,4 +28,30 @@ func MarkCorruptionError(err error) error {
 // the string as an error value that is marked as a corruption error.
 func CorruptionErrorf(format string, args ...interface{}) error {
 	return errors.Mark(errors.Newf(format, args...), ErrCorruption)
+}
+
+// AssertionFailedf creates an assertion error and panics in invariants.Enabled
+// builds. It should only be used when it indicates a bug.
+func AssertionFailedf(format string, args ...interface{}) error {
+	err := errors.AssertionFailedf(format, args...)
+	if invariants.Enabled {
+		panic(err)
+	}
+	return err
+}
+
+// CatchErrorPanic runs a function and catches any panic that contains an
+// error, returning that error. Used in tests, in particular to catch panics
+// threw by AssertionFailedf.
+func CatchErrorPanic(f func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(error); ok {
+				err = e
+			} else {
+				panic(r)
+			}
+		}
+	}()
+	return f()
 }

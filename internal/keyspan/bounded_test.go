@@ -60,7 +60,7 @@ func TestBoundedIter(t *testing.T) {
 			buf.Reset()
 			lower, upper := getBounds(td)
 			iter.SetBounds(lower, upper)
-			runIterCmd(t, td, &iter, &buf)
+			RunIterCmd(td.Input, &iter, &buf)
 			return buf.String()
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)

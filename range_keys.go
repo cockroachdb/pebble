@@ -22,6 +22,12 @@ func (i *Iterator) constructRangeKeyIter() {
 		&i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
 		&i.hasPrefix, &i.prefixOrFullSeekKey, false /* internalKeys */, &i.rangeKey.rangeKeyBuffers.internal)
 
+	if i.opts.DebugRangeKeyStack {
+		// The default logger is preferable to i.opts.getLogger(), at least in the
+		// metamorphic test.
+		i.rangeKey.rangeKeyIter = keyspan.InjectLogging(i.rangeKey.rangeKeyIter, base.DefaultLogger)
+	}
+
 	// If there's an indexed batch with range keys, include it.
 	if i.batch != nil {
 		if i.batch.index == nil {
@@ -395,6 +401,14 @@ func (m *rangeKeyMasking) Intersects(prop []byte) (bool, error) {
 		return true, nil
 	}
 	return m.filter.Intersects(prop)
+}
+
+func (m *rangeKeyMasking) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
+	if m.maskSpan == nil {
+		// No span is actively masking.
+		return true, nil
+	}
+	return m.filter.SyntheticSuffixIntersects(prop, suffix)
 }
 
 // KeyIsWithinLowerBound implements the limitedBlockPropertyFilter interface

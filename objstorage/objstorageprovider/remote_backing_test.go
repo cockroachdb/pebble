@@ -34,11 +34,11 @@ func TestSharedObjectBacking(t *testing.T) {
 			const creatorID = objstorage.CreatorID(99)
 			require.NoError(t, p.SetCreatorID(creatorID))
 			meta := objstorage.ObjectMetadata{
-				DiskFileNum: base.FileNum(1).DiskFileNum(),
+				DiskFileNum: base.DiskFileNum(1),
 				FileType:    base.FileTypeTable,
 			}
 			meta.Remote.CreatorID = 100
-			meta.Remote.CreatorFileNum = base.FileNum(200).DiskFileNum()
+			meta.Remote.CreatorFileNum = base.DiskFileNum(200)
 			meta.Remote.CleanupMethod = cleanup
 			meta.Remote.Locator = "foo"
 			meta.Remote.CustomObjectName = "obj-name"
@@ -52,18 +52,18 @@ func TestSharedObjectBacking(t *testing.T) {
 			_, err = h.Get()
 			require.Error(t, err)
 
-			d1, err := decodeRemoteObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), buf)
+			d1, err := decodeRemoteObjectBacking(base.FileTypeTable, base.DiskFileNum(100), buf)
 			require.NoError(t, err)
-			require.Equal(t, uint64(100), uint64(d1.meta.DiskFileNum.FileNum()))
+			require.Equal(t, uint64(100), uint64(d1.meta.DiskFileNum))
 			require.Equal(t, base.FileTypeTable, d1.meta.FileType)
 			d1.meta.Remote.Storage = sharedStorage
 			require.Equal(t, meta.Remote, d1.meta.Remote)
 			if cleanup == objstorage.SharedRefTracking {
 				require.Equal(t, creatorID, d1.refToCheck.creatorID)
-				require.Equal(t, base.FileNum(1).DiskFileNum(), d1.refToCheck.fileNum)
+				require.Equal(t, base.DiskFileNum(1), d1.refToCheck.fileNum)
 			} else {
 				require.Equal(t, objstorage.CreatorID(0), d1.refToCheck.creatorID)
-				require.Equal(t, base.FileNum(0).DiskFileNum(), d1.refToCheck.fileNum)
+				require.Equal(t, base.DiskFileNum(0), d1.refToCheck.fileNum)
 			}
 
 			t.Run("unknown-tags", func(t *testing.T) {
@@ -73,18 +73,18 @@ func TestSharedObjectBacking(t *testing.T) {
 				buf2 = binary.AppendUvarint(buf2, 2)
 				buf2 = append(buf2, 1, 1)
 
-				d2, err := decodeRemoteObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), buf2)
+				d2, err := decodeRemoteObjectBacking(base.FileTypeTable, base.DiskFileNum(100), buf2)
 				require.NoError(t, err)
-				require.Equal(t, uint64(100), uint64(d2.meta.DiskFileNum.FileNum()))
+				require.Equal(t, uint64(100), uint64(d2.meta.DiskFileNum))
 				require.Equal(t, base.FileTypeTable, d2.meta.FileType)
 				d2.meta.Remote.Storage = sharedStorage
 				require.Equal(t, meta.Remote, d2.meta.Remote)
 				if cleanup == objstorage.SharedRefTracking {
 					require.Equal(t, creatorID, d2.refToCheck.creatorID)
-					require.Equal(t, base.FileNum(1).DiskFileNum(), d2.refToCheck.fileNum)
+					require.Equal(t, base.DiskFileNum(1), d2.refToCheck.fileNum)
 				} else {
 					require.Equal(t, objstorage.CreatorID(0), d2.refToCheck.creatorID)
-					require.Equal(t, base.FileNum(0).DiskFileNum(), d2.refToCheck.fileNum)
+					require.Equal(t, base.DiskFileNum(0), d2.refToCheck.fileNum)
 				}
 
 				buf3 := buf2
@@ -111,9 +111,9 @@ func TestCreateSharedObjectBacking(t *testing.T) {
 
 	backing, err := p.CreateExternalObjectBacking("foo", "custom-obj-name")
 	require.NoError(t, err)
-	d, err := decodeRemoteObjectBacking(base.FileTypeTable, base.FileNum(100).DiskFileNum(), backing)
+	d, err := decodeRemoteObjectBacking(base.FileTypeTable, base.DiskFileNum(100), backing)
 	require.NoError(t, err)
-	require.Equal(t, uint64(100), uint64(d.meta.DiskFileNum.FileNum()))
+	require.Equal(t, uint64(100), uint64(d.meta.DiskFileNum))
 	require.Equal(t, base.FileTypeTable, d.meta.FileType)
 	require.Equal(t, remote.Locator("foo"), d.meta.Remote.Locator)
 	require.Equal(t, "custom-obj-name", d.meta.Remote.CustomObjectName)
@@ -134,7 +134,7 @@ func TestAttachRemoteObjects(t *testing.T) {
 	require.NoError(t, err)
 	_, err = p.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
 		FileType: base.FileTypeTable,
-		FileNum:  base.FileNum(100).DiskFileNum(),
+		FileNum:  100,
 		Backing:  backing,
 	}})
 	require.NoError(t, err)
@@ -153,6 +153,6 @@ func TestAttachRemoteObjects(t *testing.T) {
 	o := objs[0]
 	require.Equal(t, remote.Locator("foo"), o.Remote.Locator)
 	require.Equal(t, "custom-obj-name", o.Remote.CustomObjectName)
-	require.Equal(t, uint64(100), uint64(o.DiskFileNum.FileNum()))
+	require.Equal(t, uint64(100), uint64(o.DiskFileNum))
 	require.Equal(t, base.FileTypeTable, o.FileType)
 }

@@ -59,6 +59,7 @@ func TestSetCurrentFileCrash(t *testing.T) {
 			FS:                    mem,
 			MaxManifestFileSize:   1,
 			L0CompactionThreshold: 10,
+			Logger:                testLogger{t},
 		})
 		require.NoError(t, err)
 		require.NoError(t, d.Close())

@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -127,12 +128,12 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}).WithFSDefaults()
-			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}, nil, 0)
+			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.FileNum{1})
 			if err != nil {
 				return err.Error()
 			}
 			var buf bytes.Buffer
-			for _, m := range lr.localMeta {
+			for _, m := range lr.local {
 				fmt.Fprintf(&buf, "%d: %s-%s\n", m.FileNum, m.Smallest, m.Largest)
 				fmt.Fprintf(&buf, "  points: %s-%s\n", m.SmallestPointKey, m.LargestPointKey)
 				fmt.Fprintf(&buf, "  ranges: %s-%s\n", m.SmallestRangeKey, m.LargestRangeKey)
@@ -160,13 +161,16 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 
 	paths := make([]string, 1+rng.Intn(10))
-	pending := make([]base.DiskFileNum, len(paths))
-	expected := make([]*fileMetadata, len(paths))
+	pending := make([]base.FileNum, len(paths))
+	expected := make([]ingestLocalMeta, len(paths))
 	for i := range paths {
 		paths[i] = fmt.Sprint(i)
-		pending[i] = base.FileNum(rng.Uint64()).DiskFileNum()
-		expected[i] = &fileMetadata{
-			FileNum: pending[i].FileNum(),
+		pending[i] = base.FileNum(rng.Uint64())
+		expected[i] = ingestLocalMeta{
+			fileMetadata: &fileMetadata{
+				FileNum: pending[i],
+			},
+			path: paths[i],
 		}
 		expected[i].StatsMarkValid()
 
@@ -214,14 +218,14 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	lr, err := ingestLoad(opts, version, paths, nil, nil, 0, pending, nil, 0)
+	lr, err := ingestLoad(opts, version, paths, nil, nil, 0, pending)
 	require.NoError(t, err)
 
-	for _, m := range lr.localMeta {
+	for _, m := range lr.local {
 		m.CreationTime = 0
 	}
-	t.Log(strings.Join(pretty.Diff(expected, lr.localMeta), "\n"))
-	require.Equal(t, expected, lr.localMeta)
+	t.Log(strings.Join(pretty.Diff(expected, lr.local), "\n"))
+	require.Equal(t, expected, lr.local)
 }
 
 func TestIngestLoadInvalid(t *testing.T) {
@@ -234,7 +238,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.DiskFileNum{base.FileNum(1).DiskFileNum()}, nil, 0); err == nil {
+	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.FileNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -252,8 +256,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 			switch d.Cmd {
 			case "ingest":
 				var buf bytes.Buffer
-				var meta []*fileMetadata
-				var paths []string
+				var meta []ingestLocalMeta
 				var cmpName string
 				d.ScanArgs(t, "cmp", &cmpName)
 				cmp := comparers[cmpName]
@@ -272,16 +275,18 @@ func TestIngestSortAndVerify(t *testing.T) {
 					}
 					m := (&fileMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
 					m.InitPhysicalBacking()
-					meta = append(meta, m)
-					paths = append(paths, strconv.Itoa(i))
+					meta = append(meta, ingestLocalMeta{
+						fileMetadata: m,
+						path:         strconv.Itoa(i),
+					})
 				}
-				lr := ingestLoadResult{localPaths: paths, localMeta: meta}
+				lr := ingestLoadResult{local: meta}
 				err := ingestSortAndVerify(cmp, lr, KeyRange{})
 				if err != nil {
 					return fmt.Sprintf("%v\n", err)
 				}
 				for i := range meta {
-					fmt.Fprintf(&buf, "%s: %v-%v\n", paths[i], meta[i].Smallest, meta[i].Largest)
+					fmt.Fprintf(&buf, "%s: %v-%v\n", meta[i].path, meta[i].Smallest, meta[i].Largest)
 				}
 				return buf.String()
 
@@ -307,15 +312,14 @@ func TestIngestLink(t *testing.T) {
 			require.NoError(t, err)
 			defer objProvider.Close()
 
-			paths := make([]string, 10)
-			meta := make([]*fileMetadata, len(paths))
-			contents := make([][]byte, len(paths))
-			for j := range paths {
-				paths[j] = fmt.Sprintf("external%d", j)
-				meta[j] = &fileMetadata{}
+			meta := make([]ingestLocalMeta, 10)
+			contents := make([][]byte, len(meta))
+			for j := range meta {
+				meta[j].path = fmt.Sprintf("external%d", j)
+				meta[j].fileMetadata = &fileMetadata{}
 				meta[j].FileNum = FileNum(j)
 				meta[j].InitPhysicalBacking()
-				f, err := opts.FS.Create(paths[j])
+				f, err := opts.FS.Create(meta[j].path)
 				require.NoError(t, err)
 
 				contents[j] = []byte(fmt.Sprintf("data%d", j))
@@ -327,11 +331,10 @@ func TestIngestLink(t *testing.T) {
 			}
 
 			if i < count {
-				opts.FS.Remove(paths[i])
+				opts.FS.Remove(meta[i].path)
 			}
 
-			lr := ingestLoadResult{localMeta: meta, localPaths: paths}
-			err = ingestLink(0 /* jobID */, opts, objProvider, lr, nil /* shared */)
+			err = ingestLinkLocal(0 /* jobID */, opts, objProvider, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -362,7 +365,7 @@ func TestIngestLink(t *testing.T) {
 					if fileTypeTable != ftype {
 						t.Fatalf("expected table, but found %d", ftype)
 					}
-					if j != int(fileNum.FileNum()) {
+					if j != int(fileNum) {
 						t.Fatalf("expected table %d, but found %d", j, fileNum)
 					}
 					f, err := opts.FS.Open(opts.FS.PathJoin(dir, files[j]))
@@ -396,10 +399,9 @@ func TestIngestLinkFallback(t *testing.T) {
 	require.NoError(t, err)
 	defer objProvider.Close()
 
-	meta := []*fileMetadata{{FileNum: 1}}
-	meta[0].InitPhysicalBacking()
-	lr := ingestLoadResult{localMeta: meta, localPaths: []string{"source"}}
-	err = ingestLink(0, opts, objProvider, lr, nil /* shared */)
+	meta := &fileMetadata{FileNum: 1}
+	meta.InitPhysicalBacking()
+	err = ingestLinkLocal(0, opts, objProvider, []ingestLocalMeta{{fileMetadata: meta, path: "source"}})
 	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")
@@ -450,6 +452,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			L0StopWritesThreshold:       100,
 			DebugCheck:                  DebugCheckLevels,
 			FormatMajorVersion:          internalFormatNewest,
+			Logger:                      testLogger{t},
 		}).WithFSDefaults()
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -582,19 +585,31 @@ func TestExcise(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
 	var flushed bool
+	var efos map[string]*EventuallyFileOnlySnapshot
 	defer func() {
+		for _, e := range efos {
+			require.NoError(t, e.Close())
+		}
 		require.NoError(t, d.Close())
 	}()
 
 	var opts *Options
-	reset := func() {
+	reset := func(blockSize int) {
+		for _, e := range efos {
+			require.NoError(t, e.Close())
+		}
 		if d != nil {
 			require.NoError(t, d.Close())
 		}
+		efos = make(map[string]*EventuallyFileOnlySnapshot)
 
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 		opts = &Options{
+			BlockPropertyCollectors: []func() BlockPropertyCollector{
+				sstable.NewTestKeysBlockPropertyCollector,
+			},
+			Comparer:              testkeys.Comparer,
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
@@ -603,7 +618,10 @@ func TestExcise(t *testing.T) {
 				flushed = true
 			}},
 			FormatMajorVersion: FormatVirtualSSTables,
-			Comparer:           testkeys.Comparer,
+			Logger:             testLogger{t},
+		}
+		if blockSize != 0 {
+			opts.Levels = append(opts.Levels, LevelOptions{BlockSize: blockSize, IndexBlockSize: 32 << 10})
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -616,12 +634,21 @@ func TestExcise(t *testing.T) {
 		d, err = Open("", opts)
 		require.NoError(t, err)
 	}
-	reset()
+	reset(0 /* blockSize */)
 
 	datadriven.RunTest(t, "testdata/excise", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
-			reset()
+			var blockSize int
+			for i := range td.CmdArgs {
+				switch td.CmdArgs[i].Key {
+				case "tiny-blocks":
+					blockSize = 1
+				default:
+					return fmt.Sprintf("unexpected arg: %s", td.CmdArgs[i].Key)
+				}
+			}
+			reset(blockSize)
 			return ""
 		case "reopen":
 			require.NoError(t, d.Close())
@@ -669,6 +696,9 @@ func TestExcise(t *testing.T) {
 
 		case "ingest-and-excise":
 			flushed = false
+			d.mu.Lock()
+			prevFlushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
+			d.mu.Unlock()
 			if err := runIngestAndExciseCmd(td, d, mem); err != nil {
 				return err.Error()
 			}
@@ -677,19 +707,71 @@ func TestExcise(t *testing.T) {
 			for d.mu.compact.flushing {
 				d.mu.compact.cond.Wait()
 			}
+			flushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
 			d.mu.Unlock()
 			if flushed {
+				if prevFlushableIngests < flushableIngests {
+					return "flushable ingest"
+				}
 				return "memtable flushed"
 			}
 			return ""
+
+		case "file-only-snapshot":
+			if len(td.CmdArgs) != 1 {
+				panic("insufficient args for file-only-snapshot command")
+			}
+			name := td.CmdArgs[0].Key
+			var keyRanges []KeyRange
+			for _, line := range strings.Split(td.Input, "\n") {
+				fields := strings.Fields(line)
+				if len(fields) != 2 {
+					return "expected two fields for file-only snapshot KeyRanges"
+				}
+				kr := KeyRange{Start: []byte(fields[0]), End: []byte(fields[1])}
+				keyRanges = append(keyRanges, kr)
+			}
+
+			s := d.NewEventuallyFileOnlySnapshot(keyRanges)
+			efos[name] = s
+			return "ok"
 
 		case "get":
 			return runGetCmd(t, td, d)
 
 		case "iter":
-			iter, _ := d.NewIter(&IterOptions{
+			opts := &IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
-			})
+			}
+			var reader Reader = d
+			for i := range td.CmdArgs {
+				switch td.CmdArgs[i].Key {
+				case "range-key-masking":
+					opts.RangeKeyMasking = RangeKeyMasking{
+						Suffix: []byte(td.CmdArgs[i].Vals[0]),
+						Filter: func() BlockPropertyFilterMask {
+							return sstable.NewTestKeysMaskingFilter()
+						},
+					}
+				case "lower":
+					if len(td.CmdArgs[i].Vals) != 1 {
+						return fmt.Sprintf(
+							"%s expects at most 1 value for lower", td.Cmd)
+					}
+					opts.LowerBound = []byte(td.CmdArgs[i].Vals[0])
+				case "upper":
+					if len(td.CmdArgs[i].Vals) != 1 {
+						return fmt.Sprintf(
+							"%s expects at most 1 value for upper", td.Cmd)
+					}
+					opts.UpperBound = []byte(td.CmdArgs[i].Vals[0])
+				case "snapshot":
+					reader = efos[td.CmdArgs[i].Vals[0]]
+				default:
+					return fmt.Sprintf("unexpected argument: %s", td.CmdArgs[i].Key)
+				}
+			}
+			iter, _ := reader.NewIter(opts)
 			return runIterCmd(td, iter, true)
 
 		case "lsm":
@@ -722,18 +804,16 @@ func TestExcise(t *testing.T) {
 			d.mu.versions.logLock()
 			d.mu.Unlock()
 			current := d.mu.versions.currentVersion()
-			for level := range current.Levels {
-				iter := current.Levels[level].Iter()
+
+			current.IterAllLevelsAndSublevels(func(iter manifest.LevelIterator, level, _ int) {
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(exciseSpan, m, ve, level)
+					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
 					if err != nil {
-						d.mu.Lock()
-						d.mu.versions.logUnlock()
-						d.mu.Unlock()
-						return fmt.Sprintf("error when excising %s: %s", m.FileNum, err.Error())
+						td.Fatalf(t, "error when excising %s: %s", m.FileNum, err.Error())
 					}
 				}
-			}
+			})
+
 			d.mu.Lock()
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
@@ -806,7 +886,7 @@ func testIngestSharedImpl(
 	replicateCounter := 1
 	var opts1, opts2 *Options
 
-	reset := func() {
+	reset := func(t *testing.T) {
 		for _, e := range efos {
 			require.NoError(t, e.Close())
 		}
@@ -831,9 +911,10 @@ func testIngestSharedImpl(
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
 			FormatMajorVersion:    FormatVirtualSSTables,
+			Logger:                testLogger{t},
 		}
 		// lel.
-		lel := MakeLoggingEventListener(DefaultLogger)
+		lel := MakeLoggingEventListener(testLogger{t})
 		opts1.EventListener = &lel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
@@ -864,7 +945,7 @@ func testIngestSharedImpl(
 		creatorIDCounter++
 		d = d1
 	}
-	reset()
+	reset(t)
 
 	datadriven.RunTest(t, fmt.Sprintf("testdata/%s", fileName), func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -891,7 +972,7 @@ func testIngestSharedImpl(
 			d = d1
 			return "ok, note that the active db has been set to 1 (use 'switch' to change)"
 		case "reset":
-			reset()
+			reset(t)
 			return ""
 		case "switch":
 			if len(td.CmdArgs) != 1 {
@@ -1010,11 +1091,12 @@ func testIngestSharedImpl(
 					sharedSSTs = append(sharedSSTs, *sst)
 					return nil
 				},
+				nil,
 			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, KeyRange{Start: startKey, End: endKey})
+			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1076,7 +1158,7 @@ func testIngestSharedImpl(
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(exciseSpan, m, ve, level)
+					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
@@ -1152,7 +1234,7 @@ func TestSimpleIngestShared(t *testing.T) {
 	mem := vfs.NewMem()
 	var d *DB
 	var provider2 objstorage.Provider
-	opts2 := Options{FS: vfs.NewMem(), FormatMajorVersion: FormatVirtualSSTables}
+	opts2 := Options{FS: vfs.NewMem(), FormatMajorVersion: FormatVirtualSSTables, Logger: testLogger{t}}
 	opts2.EnsureDefaults()
 
 	// Create an objProvider where we will fake-create some sstables that can
@@ -1194,6 +1276,7 @@ func TestSimpleIngestShared(t *testing.T) {
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
+			Logger:                testLogger{t},
 		}
 		opts.Experimental.RemoteStorage = providerSettings.Remote.StorageFactory
 		opts.Experimental.CreateOnShared = providerSettings.Remote.CreateOnShared
@@ -1218,16 +1301,16 @@ func TestSimpleIngestShared(t *testing.T) {
 	{
 		// Create a shared file.
 		fn := base.FileNum(2)
-		f, meta, err := provider2.Create(context.TODO(), fileTypeTable, fn.DiskFileNum(), objstorage.CreateOptions{PreferSharedStorage: true})
+		f, meta, err := provider2.Create(context.TODO(), fileTypeTable, base.PhysicalTableDiskFileNum(fn), objstorage.CreateOptions{PreferSharedStorage: true})
 		require.NoError(t, err)
 		w := sstable.NewWriter(f, d.opts.MakeWriterOptions(0, d.opts.FormatMajorVersion.MaxTableFormat()))
 		w.Set([]byte("d"), []byte("shared"))
 		w.Set([]byte("e"), []byte("shared"))
 		w.Close()
-		metaMap[fn.DiskFileNum()] = meta
+		metaMap[base.PhysicalTableDiskFileNum(fn)] = meta
 	}
 
-	m := metaMap[base.FileNum(2).DiskFileNum()]
+	m := metaMap[base.DiskFileNum(2)]
 	handle, err := provider2.RemoteObjectBacking(&m)
 	require.NoError(t, err)
 	size, err := provider2.Size(m)
@@ -1242,7 +1325,7 @@ func TestSimpleIngestShared(t *testing.T) {
 		Level:            6,
 		Size:             uint64(size + 5),
 	}
-	_, err = d.IngestAndExcise([]string{}, []SharedSSTMeta{sharedSSTMeta}, KeyRange{Start: []byte("d"), End: []byte("ee")})
+	_, err = d.IngestAndExcise([]string{}, []SharedSSTMeta{sharedSSTMeta}, nil /* external */, KeyRange{Start: []byte("d"), End: []byte("ee")}, false)
 	require.NoError(t, err)
 
 	// TODO(bilal): Once reading of shared sstables is in, verify that the values
@@ -1334,15 +1417,15 @@ func TestConcurrentExcise(t *testing.T) {
 		require.NoError(t, mem2.MkdirAll("ext", 0755))
 		opts1 := &Options{
 			Comparer:              testkeys.Comparer,
-			LBaseMaxBytes:         1,
 			FS:                    mem1,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
 			FormatMajorVersion:    FormatVirtualSSTables,
+			Logger:                testLogger{t},
 		}
 		// lel.
-		lel := MakeLoggingEventListener(DefaultLogger)
+		lel := MakeLoggingEventListener(testLogger{t})
 		tel := TeeEventListener(lel, el)
 		opts1.EventListener = &tel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
@@ -1353,6 +1436,7 @@ func TestConcurrentExcise(t *testing.T) {
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts1.DisableAutomaticCompactions = true
+		opts1.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
 
 		opts2 := &Options{}
 		*opts2 = *opts1
@@ -1428,6 +1512,9 @@ func TestConcurrentExcise(t *testing.T) {
 			return ""
 
 		case "ingest-and-excise":
+			d.mu.Lock()
+			prevFlushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
+			d.mu.Unlock()
 			if err := runIngestAndExciseCmd(td, d, d.opts.FS); err != nil {
 				return err.Error()
 			}
@@ -1436,7 +1523,11 @@ func TestConcurrentExcise(t *testing.T) {
 			for d.mu.compact.flushing {
 				d.mu.compact.cond.Wait()
 			}
+			flushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
 			d.mu.Unlock()
+			if prevFlushableIngests < flushableIngests {
+				return "flushable ingest"
+			}
 			return ""
 
 		case "replicate":
@@ -1498,11 +1589,12 @@ func TestConcurrentExcise(t *testing.T) {
 					sharedSSTs = append(sharedSSTs, *sst)
 					return nil
 				},
+				nil,
 			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, KeyRange{Start: startKey, End: endKey})
+			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1564,7 +1656,7 @@ func TestConcurrentExcise(t *testing.T) {
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(exciseSpan, m, ve, level)
+					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
@@ -1665,23 +1757,46 @@ func TestConcurrentExcise(t *testing.T) {
 
 func TestIngestExternal(t *testing.T) {
 	var mem vfs.FS
-	var d *DB
+	var d, d1, d2 *DB
+	var opts *Options
 	var flushed bool
 	defer func() {
-		require.NoError(t, d.Close())
+		if d1 != nil {
+			require.NoError(t, d1.Close())
+		}
+		if d2 != nil {
+			require.NoError(t, d2.Close())
+		}
 	}()
 
 	var remoteStorage remote.Storage
-
-	reset := func() {
+	replicateCounter := 1
+	reopen := func(t *testing.T) {
 		if d != nil {
-			require.NoError(t, d.Close())
+			if d1 != nil {
+				require.NoError(t, d1.Close())
+			}
+			if d2 != nil {
+				require.NoError(t, d2.Close())
+			}
 		}
+
+		var err error
+		d1, err = Open("d1", opts)
+		require.NoError(t, err)
+		require.NoError(t, d1.SetCreatorID(1))
+		d2, err = Open("d2", opts)
+		require.NoError(t, err)
+		require.NoError(t, d2.SetCreatorID(2))
+		d = d1
+	}
+	reset := func(t *testing.T, majorVersion FormatMajorVersion) {
 
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 		remoteStorage = remote.NewInMem()
-		opts := &Options{
+		opts = &Options{
+			Comparer:              testkeys.Comparer,
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
@@ -1689,27 +1804,36 @@ func TestIngestExternal(t *testing.T) {
 			EventListener: &EventListener{FlushEnd: func(info FlushInfo) {
 				flushed = true
 			}},
-			FormatMajorVersion: FormatVirtualSSTables,
+			FormatMajorVersion: majorVersion,
+			Logger:             testLogger{t},
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"external-locator": remoteStorage,
 		})
 		opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
+		opts.Experimental.IngestSplit = func() bool {
+			return true
+		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
-
-		var err error
-		d, err = Open("", opts)
-		require.NoError(t, err)
-		require.NoError(t, d.SetCreatorID(1))
+		lel := MakeLoggingEventListener(testLogger{t})
+		opts.EventListener = &lel
+		reopen(t)
 	}
-	reset()
+	reset(t, FormatNewest)
 
 	datadriven.RunTest(t, "testdata/ingest_external", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "reopen":
+			reopen(t)
+			return ""
 		case "reset":
-			reset()
+			majorVersion := int64(FormatNewest)
+			if td.HasArg("format-major-version") {
+				td.ScanArgs(t, "format-major-version", &majorVersion)
+			}
+			reset(t, FormatMajorVersion(majorVersion))
 			return ""
 		case "batch":
 			b := d.NewIndexedBatch()
@@ -1725,16 +1849,34 @@ func TestIngestExternal(t *testing.T) {
 				return err.Error()
 			}
 			return ""
-
+		case "switch":
+			if len(td.CmdArgs) != 1 {
+				return "usage: switch <1 or 2>"
+			}
+			switch td.CmdArgs[0].Key {
+			case "1":
+				d = d1
+			case "2":
+				d = d2
+			default:
+				return "usage: switch <1 or 2>"
+			}
+			return "ok"
 		case "flush":
 			if err := d.Flush(); err != nil {
 				return err.Error()
 			}
 			return ""
 
-		case "ingest-external":
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest":
 			flushed = false
-			if err := runIngestExternalCmd(td, d, "external-locator"); err != nil {
+			if err := runIngestCmd(td, d, mem); err != nil {
 				return err.Error()
 			}
 			// Wait for a possible flush.
@@ -1747,6 +1889,46 @@ func TestIngestExternal(t *testing.T) {
 				return "memtable flushed"
 			}
 			return ""
+
+		case "ingest-external":
+			flushed = false
+			if err := runIngestExternalCmd(t, td, d, remoteStorage, "external-locator"); err != nil {
+				return err.Error()
+			}
+			// Wait for a possible flush.
+			d.mu.Lock()
+			for d.mu.compact.flushing {
+				d.mu.compact.cond.Wait()
+			}
+			d.mu.Unlock()
+			if flushed {
+				return "memtable flushed"
+			}
+			return ""
+
+		case "download":
+			if len(td.CmdArgs) < 2 {
+				panic("insufficient args for download command")
+			}
+			viaBackingFileDownload := false
+			for _, arg := range td.CmdArgs[2:] {
+				switch arg.Key {
+				case "via-backing-file-download":
+					viaBackingFileDownload = true
+				default:
+					return fmt.Sprintf("unexpected key: %s", arg.Key)
+				}
+			}
+			l := []byte(td.CmdArgs[0].Key)
+			r := []byte(td.CmdArgs[1].Key)
+			spans := []DownloadSpan{{StartKey: l, EndKey: r, ViaBackingFileDownload: viaBackingFileDownload}}
+			ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Minute)
+			defer cancel()
+			err := d.Download(ctx, spans)
+			if err != nil {
+				return err.Error()
+			}
+			return "ok"
 
 		case "get":
 			return runGetCmd(t, td, d)
@@ -1783,6 +1965,73 @@ func TestIngestExternal(t *testing.T) {
 				return err.Error()
 			}
 			return ""
+		case "replicate":
+			if len(td.CmdArgs) != 4 {
+				return "usage: replicate <from-db-num> <to-db-num> <start-key> <end-key>"
+			}
+			var from, to *DB
+			switch td.CmdArgs[0].Key {
+			case "1":
+				from = d1
+			case "2":
+				from = d2
+			default:
+				return "usage: replicate <from-db-num> <to-db-num> <start-key> <end-key>"
+			}
+			switch td.CmdArgs[1].Key {
+			case "1":
+				to = d1
+			case "2":
+				to = d2
+			default:
+				return "usage: replicate <from-db-num> <to-db-num> <start-key> <end-key>"
+			}
+			startKey := []byte(td.CmdArgs[2].Key)
+			endKey := []byte(td.CmdArgs[3].Key)
+
+			writeOpts := d.opts.MakeWriterOptions(0 /* level */, to.opts.FormatMajorVersion.MaxTableFormat())
+			sstPath := fmt.Sprintf("ext/replicate%d.sst", replicateCounter)
+			f, err := to.opts.FS.Create(sstPath)
+			require.NoError(t, err)
+			replicateCounter++
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
+
+			var externalFiles []ExternalFile
+			err = from.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, startKey, endKey,
+				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
+					val, _, err := value.Value(nil)
+					require.NoError(t, err)
+					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val))
+					return nil
+				},
+				func(start, end []byte, seqNum uint64) error {
+					require.NoError(t, w.DeleteRange(start, end))
+					return nil
+				},
+				func(start, end []byte, keys []keyspan.Key) error {
+					s := keyspan.Span{
+						Start:     start,
+						End:       end,
+						Keys:      keys,
+						KeysOrder: 0,
+					}
+					require.NoError(t, rangekey.Encode(&s, func(k base.InternalKey, v []byte) error {
+						return w.AddRangeKey(base.MakeInternalKey(k.UserKey, 0, k.Kind()), v)
+					}))
+					return nil
+				},
+				nil,
+				func(sst *ExternalFile) error {
+					externalFiles = append(externalFiles, *sst)
+					return nil
+				},
+			)
+			require.NoError(t, err)
+			require.NoError(t, w.Close())
+			_, err = to.IngestAndExcise([]string{sstPath}, nil /* shared */, externalFiles, KeyRange{Start: startKey, End: endKey}, false)
+			require.NoError(t, err)
+			return fmt.Sprintf("replicated %d external SSTs", len(externalFiles))
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
@@ -1791,16 +2040,21 @@ func TestIngestExternal(t *testing.T) {
 
 func TestIngestMemtableOverlaps(t *testing.T) {
 	comparers := []Comparer{
-		{Name: "default", Compare: DefaultComparer.Compare, FormatKey: DefaultComparer.FormatKey},
 		{
-			Name:      "reverse",
-			Compare:   func(a, b []byte) int { return DefaultComparer.Compare(b, a) },
-			FormatKey: DefaultComparer.FormatKey,
+			Name:    "default",
+			Compare: DefaultComparer.Compare,
+		},
+		{
+			Name:    "reverse",
+			Compare: func(a, b []byte) int { return DefaultComparer.Compare(b, a) },
 		},
 	}
 	m := make(map[string]*Comparer)
 	for i := range comparers {
 		c := &comparers[i]
+		c.AbbreviatedKey = func(key []byte) uint64 { panic("unimplemented") }
+		c.Successor = func(dst, a []byte) []byte { panic("unimplemented") }
+		c.Separator = func(dst, a, b []byte) []byte { panic("unimplemented") }
 		m[c.Name] = c
 	}
 
@@ -1865,12 +2119,17 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 				case "overlaps":
 					var buf bytes.Buffer
 					for _, data := range strings.Split(d.Input, "\n") {
-						var keyRanges []internalKeyRange
+						var keyRanges []bounded
 						for _, part := range strings.Fields(data) {
 							meta := parseMeta(part)
-							keyRanges = append(keyRanges, internalKeyRange{smallest: meta.Smallest, largest: meta.Largest})
+							keyRanges = append(keyRanges, meta)
 						}
-						fmt.Fprintf(&buf, "%t\n", ingestMemtableOverlaps(mem.cmp, mem, keyRanges))
+						var overlaps bool
+						mem.computePossibleOverlaps(func(bounded) shouldContinue {
+							overlaps = true
+							return stopIteration
+						}, keyRanges...)
+						fmt.Fprintf(&buf, "%t\n", overlaps)
 					}
 					return buf.String()
 
@@ -2070,6 +2329,9 @@ func TestIngest(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
 	var flushed bool
+	if runtime.GOARCH == "386" {
+		t.Skip("skipped on 32-bit due to slightly varied output")
+	}
 	defer func() {
 		require.NoError(t, d.Close())
 	}()
@@ -2432,10 +2694,10 @@ func TestConcurrentIngestCompact(t *testing.T) {
 			ingest("c")
 
 			expectLSM(`
-0.0:
+L0.0:
   000005:[a#11,SET-a#11,SET]
   000007:[c#13,SET-c#13,SET]
-6:
+L6:
   000004:[a#10,SET-a#10,SET]
   000006:[c#12,SET-c#12,SET]
 `)
@@ -2459,9 +2721,9 @@ func TestConcurrentIngestCompact(t *testing.T) {
 				compact("a", "z")
 
 				expectLSM(`
-0.0:
+L0.0:
   000009:[b#14,SET-b#14,SET]
-6:
+L6:
   000008:[a#0,SET-c#0,SET]
 `)
 
@@ -2493,54 +2755,46 @@ func TestConcurrentIngestCompact(t *testing.T) {
 func TestIngestFlushQueuedMemTable(t *testing.T) {
 	// Verify that ingestion forces a flush of a queued memtable.
 
-	// Test with a format major version prior to FormatFlushableIngest and one
-	// after. Both should result in the same statistic calculations.
-	for _, fmv := range []FormatMajorVersion{FormatFlushableIngest - 1, internalFormatNewest} {
-		func(fmv FormatMajorVersion) {
-			mem := vfs.NewMem()
-			d, err := Open("", &Options{
-				FS:                 mem,
-				FormatMajorVersion: fmv,
-			})
-			require.NoError(t, err)
+	mem := vfs.NewMem()
+	o := &Options{FS: mem}
+	o.testingRandomized(t)
+	d, err := Open("", o)
+	require.NoError(t, err)
 
-			// Add the key "a" to the memtable, then fill up the memtable with the key
-			// "b". The ingested sstable will only overlap with the queued memtable.
-			require.NoError(t, d.Set([]byte("a"), nil, nil))
-			for {
-				require.NoError(t, d.Set([]byte("b"), nil, nil))
-				d.mu.Lock()
-				done := len(d.mu.mem.queue) == 2
-				d.mu.Unlock()
-				if done {
-					break
-				}
-			}
-
-			ingest := func(keys ...string) {
-				t.Helper()
-				f, err := mem.Create("ext")
-				require.NoError(t, err)
-
-				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
-					TableFormat: fmv.MinTableFormat(),
-				})
-				for _, k := range keys {
-					require.NoError(t, w.Set([]byte(k), nil))
-				}
-				require.NoError(t, w.Close())
-				stats, err := d.IngestWithStats([]string{"ext"})
-				require.NoError(t, err)
-				require.Equal(t, stats.ApproxIngestedIntoL0Bytes, stats.Bytes)
-				require.Equal(t, stats.MemtableOverlappingFiles, 1)
-				require.Less(t, uint64(0), stats.Bytes)
-			}
-
-			ingest("a")
-
-			require.NoError(t, d.Close())
-		}(fmv)
+	// Add the key "a" to the memtable, then fill up the memtable with the key
+	// "b". The ingested sstable will only overlap with the queued memtable.
+	require.NoError(t, d.Set([]byte("a"), nil, nil))
+	for {
+		require.NoError(t, d.Set([]byte("b"), nil, nil))
+		d.mu.Lock()
+		done := len(d.mu.mem.queue) == 2
+		d.mu.Unlock()
+		if done {
+			break
+		}
 	}
+
+	ingest := func(keys ...string) {
+		f, err := mem.Create("ext")
+		require.NoError(t, err)
+
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+			TableFormat: o.FormatMajorVersion.MinTableFormat(),
+		})
+		for _, k := range keys {
+			require.NoError(t, w.Set([]byte(k), nil))
+		}
+		require.NoError(t, w.Close())
+		stats, err := d.IngestWithStats([]string{"ext"})
+		require.NoError(t, err)
+		require.Equal(t, stats.ApproxIngestedIntoL0Bytes, stats.Bytes)
+		require.Equal(t, 1, stats.MemtableOverlappingFiles)
+		require.Less(t, uint64(0), stats.Bytes)
+	}
+
+	ingest("a")
+
+	require.NoError(t, d.Close())
 }
 
 func TestIngestStats(t *testing.T) {
@@ -2818,6 +3072,7 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 	dbDesc, err := Peek("", mem)
 	require.NoError(t, err)
 	require.True(t, dbDesc.Exists)
+	require.Greater(t, len(dbDesc.OptionsFilename), 0)
 	f, err = mem.Open(dbDesc.ManifestFilename)
 	require.NoError(t, err)
 	defer f.Close()
@@ -2928,7 +3183,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 	// to induce errors on Remove calls. Even if we're unsuccessful in
 	// removing the obsolete files, the external files should not be
 	// overwritten.
-	d, err = Open(dir, &Options{FS: noRemoveFS{FS: fs}})
+	d, err = Open(dir, &Options{FS: noRemoveFS{FS: fs}, Logger: testLogger{t}})
 	require.NoError(t, err)
 	require.NoError(t, d.Set([]byte("bar"), nil, nil))
 	require.NoError(t, d.Flush())
@@ -2977,14 +3232,14 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 	}
 
 	var (
-		seqnum uint64
+		seqNum uint64
 		err    error
 		metas  []*fileMetadata
 	)
 	datadriven.RunTest(t, "testdata/ingest_update_seqnums", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "starting-seqnum":
-			seqnum, err = strconv.ParseUint(td.Input, 10, 64)
+			seqNum, err = strconv.ParseUint(td.Input, 10, 64)
 			if err != nil {
 				return err.Error()
 			}
@@ -3057,8 +3312,10 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 
 		case "update-files":
 			// Update the bounds across all files.
-			if err = ingestUpdateSeqNum(cmp, base.DefaultFormatter, seqnum, ingestLoadResult{localMeta: metas}); err != nil {
-				return err.Error()
+			for i, m := range metas {
+				if err := setSeqNumInMetadata(m, seqNum+uint64(i), cmp, base.DefaultFormatter); err != nil {
+					return err.Error()
+				}
 			}
 
 			var buf bytes.Buffer
@@ -3121,7 +3378,7 @@ func TestIngestCleanup(t *testing.T) {
 			// Create the files in the VFS.
 			metaMap := make(map[base.FileNum]objstorage.Writable)
 			for _, fn := range fns {
-				w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, fn.DiskFileNum(), objstorage.CreateOptions{})
+				w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, base.PhysicalTableDiskFileNum(fn), objstorage.CreateOptions{})
 				require.NoError(t, err)
 
 				metaMap[fn] = w
@@ -3137,11 +3394,11 @@ func TestIngestCleanup(t *testing.T) {
 			}
 
 			// Cleanup the set of files in the FS.
-			var toRemove []*fileMetadata
+			var toRemove []ingestLocalMeta
 			for _, fn := range tc.cleanupFiles {
 				m := &fileMetadata{FileNum: fn}
 				m.InitPhysicalBacking()
-				toRemove = append(toRemove, m)
+				toRemove = append(toRemove, ingestLocalMeta{fileMetadata: m})
 			}
 
 			err = ingestCleanup(objProvider, toRemove)
@@ -3289,8 +3546,13 @@ func TestIngestValidation(t *testing.T) {
 			var backgroundErr error
 			logger := &fatalCapturingLogger{t: t}
 			opts := &Options{
-				FS:     testFS,
-				Logger: logger,
+				// Disable table stats so that injected errors can't be accidentally
+				// injected into the table stats collector read, and so the table
+				// stats collector won't prime the table+block cache such that the
+				// error injection won't trigger at all during ingest validation.
+				DisableTableStats: true,
+				FS:                testFS,
+				Logger:            logger,
 				EventListener: &EventListener{
 					TableValidated: func(i TableValidatedInfo) {
 						wg.Done()
@@ -3300,11 +3562,6 @@ func TestIngestValidation(t *testing.T) {
 					},
 				},
 			}
-			// Disable table stats so that injected errors can't be accidentally
-			// injected into the table stats collector read, and so the table
-			// stats collector won't prime the table+block cache such that the
-			// error injection won't trigger at all during ingest validation.
-			opts.private.disableTableStats = true
 			opts.Experimental.ValidateOnIngest = true
 			d, err := Open("", opts)
 			require.NoError(t, err)
@@ -3511,6 +3768,6 @@ func runBenchmarkManySSTablesInUseKeyRanges(b *testing.B, d *DB, count int) {
 	smallest := []byte("0")
 	largest := []byte("z")
 	for i := 0; i < b.N; i++ {
-		_ = calculateInuseKeyRanges(v, d.cmp, 0, numLevels-1, smallest, largest)
+		_ = v.CalculateInuseKeyRanges(0, numLevels-1, smallest, largest)
 	}
 }

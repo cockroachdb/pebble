@@ -18,23 +18,28 @@ import (
 func TestSeek(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
-	var iter FragmentIterator
 	var buf bytes.Buffer
+	var spans []Span
 
 	datadriven.RunTest(t, "testdata/seek", func(t *testing.T, d *datadriven.TestData) string {
 		buf.Reset()
 		switch d.Cmd {
 		case "build":
-			spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
+			spans = buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
 			for _, s := range spans {
 				fmt.Fprintln(&buf, s)
 			}
-			iter = NewIter(cmp, spans)
 			return buf.String()
 		case "seek-ge", "seek-le":
+			var iter FragmentIterator = NewIter(cmp, spans)
+			if cmdArg, ok := d.Arg("probes"); ok {
+				iter = attachProbes(iter, probeContext{log: &buf},
+					parseProbes(cmdArg.Vals...)...)
+			}
+
 			seek := SeekLE
 			if d.Cmd == "seek-ge" {
-				seek = func(_ base.Compare, iter FragmentIterator, key []byte) *Span {
+				seek = func(_ base.Compare, iter FragmentIterator, key []byte) (*Span, error) {
 					return iter.SeekGE(key)
 				}
 			}
@@ -48,12 +53,16 @@ func TestSeek(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				span := seek(cmp, iter, []byte(parts[0]))
-				if span != nil {
+				span, err := seek(cmp, iter, []byte(parts[0]))
+				if err != nil {
+					fmt.Fprintf(&buf, "<nil> <err=%q>\n", err)
+				} else if span == nil {
+					fmt.Fprintln(&buf, "<nil>")
+				} else {
 					visible := span.Visible(seq)
 					span = &visible
+					fmt.Fprintln(&buf, span)
 				}
-				fmt.Fprintln(&buf, span)
 			}
 			return buf.String()
 		default:

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
@@ -18,7 +17,7 @@ import (
 
 func TestGenerator(t *testing.T) {
 	rng := randvar.NewRand()
-	g := newGenerator(rng, defaultConfig(), newKeyManager(1 /* numInstances */))
+	g := newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
 
 	g.newBatch()
 	g.newBatch()
@@ -63,7 +62,7 @@ func TestGenerator(t *testing.T) {
 		t.Logf("\n%s", g)
 	}
 
-	g = newGenerator(rng, defaultConfig(), newKeyManager(1 /* numInstances */))
+	g = newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
 
 	g.newSnapshot()
 	g.newSnapshot()
@@ -96,7 +95,7 @@ func TestGenerator(t *testing.T) {
 		t.Logf("\n%s", g)
 	}
 
-	g = newGenerator(rng, defaultConfig(), newKeyManager(1 /* numInstances */))
+	g = newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
 
 	g.newIndexedBatch()
 	g.newIndexedBatch()
@@ -130,7 +129,7 @@ func TestGeneratorRandom(t *testing.T) {
 	seed := uint64(time.Now().UnixNano())
 	ops := randvar.NewUniform(1000, 10000)
 	cfgs := []string{"default", "multiInstance"}
-	generateFromSeed := func(cfg config) string {
+	generateFromSeed := func(cfg OpConfig) string {
 		rng := rand.New(rand.NewSource(seed))
 		count := ops.Uint64(rng)
 		return formatOps(generate(rng, count, cfg, newKeyManager(cfg.numInstances)))
@@ -138,9 +137,9 @@ func TestGeneratorRandom(t *testing.T) {
 
 	for i := range cfgs {
 		t.Run(fmt.Sprintf("config=%s", cfgs[i]), func(t *testing.T) {
-			cfg := defaultConfig
+			cfg := DefaultOpConfig
 			if cfgs[i] == "multiInstance" {
-				cfg = func() config {
+				cfg = func() OpConfig {
 					cfg := multiInstanceConfig()
 					cfg.numInstances = 2
 					return cfg
@@ -168,38 +167,9 @@ func TestGeneratorRandom(t *testing.T) {
 	}
 }
 
-func TestGenerateRandKeyToReadInRange(t *testing.T) {
-	rng := randvar.NewRand()
-	g := newGenerator(rng, defaultConfig(), newKeyManager(1 /* numInstances */))
-	// Seed 100 initial keys.
-	for i := 0; i < 100; i++ {
-		_ = g.randKeyToWrite(1.0)
-	}
-	for i := 0; i < 100; i++ {
-		a := g.randKeyToRead(0.01)
-		b := g.randKeyToRead(0.01)
-		// Ensure unique prefixes; required by randKeyToReadInRange.
-		for g.equal(g.prefix(a), g.prefix(b)) {
-			b = g.randKeyToRead(0.01)
-		}
-		if v := g.cmp(a, b); v > 0 {
-			a, b = b, a
-		}
-		kr := pebble.KeyRange{Start: a, End: b}
-		for j := 0; j < 10; j++ {
-			k := g.randKeyToReadInRange(0.05, kr)
-			if g.cmp(k, a) < 0 {
-				t.Errorf("generated random key %q outside range %s", k, kr)
-			} else if g.cmp(k, b) >= 0 {
-				t.Errorf("generated random key %q outside range %s", k, kr)
-			}
-		}
-	}
-}
-
 func TestGenerateDisjointKeyRanges(t *testing.T) {
 	rng := randvar.NewRand()
-	g := newGenerator(rng, defaultConfig(), newKeyManager(1 /* numInstances */))
+	g := newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
 
 	for i := 0; i < 10; i++ {
 		keyRanges := g.generateDisjointKeyRanges(5)

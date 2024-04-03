@@ -9,10 +9,10 @@ L6
   000010:a.SET.1-f.SET.2 size=100
   000011:g.SET.1-l.SET.2 size=100
 ----
-5:
+L5:
   000101:[a#11,SET-f#12,SET]
   000102:[g#11,SET-l#12,SET]
-6:
+L6:
   000010:[a#1,SET-f#2,SET]
   000011:[g#1,SET-l#2,SET]
 
@@ -47,9 +47,9 @@ L5
 L6
   000010:a.SET.1-f.SET.2 size=1000000000
 ----
-5:
+L5:
   000101:[a#11,SET-f#12,SET]
-6:
+L6:
   000010:[a#1,SET-f#2,SET]
 
 add-read-compaction
@@ -81,10 +81,10 @@ L6
   000010:a.SET.1-f.SET.2 size=100000000
   000012:g.SET.1-l.SET.2 size=100
 ----
-5:
+L5:
   000101:[a#11,SET-f#12,SET]
   000102:[g#11,SET-l#12,SET]
-6:
+L6:
   000010:[a#1,SET-f#2,SET]
   000012:[g#1,SET-l#2,SET]
 
@@ -117,10 +117,10 @@ L6
   000010:a.SET.1-f.SET.2 size=100000000
   000012:g.SET.1-l.SET.2 size=100
 ----
-5:
+L5:
   000101:[a#11,SET-f#12,SET]
   000102:[g#11,SET-l#12,SET]
-6:
+L6:
   000010:[a#1,SET-f#2,SET]
   000012:[g#1,SET-l#2,SET]
 

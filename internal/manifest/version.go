@@ -8,16 +8,16 @@ import (
 	"bytes"
 	stdcmp "cmp"
 	"fmt"
+	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // Compare exports the base.Compare type.
@@ -269,6 +269,43 @@ type FileMetadata struct {
 	boundTypeSmallest, boundTypeLargest boundType
 	// Virtual is true if the FileMetadata belongs to a virtual sstable.
 	Virtual bool
+
+	// SyntheticPrefix is used to prepend a prefix to all keys; used for some virtual
+	// tables.
+	SyntheticPrefix sstable.SyntheticPrefix
+
+	// SyntheticSuffix overrides all suffixes in a table; used for some virtual tables.
+	SyntheticSuffix sstable.SyntheticSuffix
+}
+
+// InternalKeyBounds returns the set of overall table bounds.
+func (m *FileMetadata) InternalKeyBounds() (InternalKey, InternalKey) {
+	return m.Smallest, m.Largest
+}
+
+// UserKeyBounds returns the user key bounds that correspond to m.Smallest and
+// Largest. Because we do not allow split user keys, the user key bounds of
+// files within a level do not overlap.
+func (m *FileMetadata) UserKeyBounds() base.UserKeyBounds {
+	return base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
+}
+
+// SyntheticSeqNum returns a SyntheticSeqNum which is set when SmallestSeqNum
+// equals LargestSeqNum.
+func (m *FileMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
+	if m.SmallestSeqNum == m.LargestSeqNum {
+		return sstable.SyntheticSeqNum(m.SmallestSeqNum)
+	}
+	return sstable.NoSyntheticSeqNum
+}
+
+// IterTransforms returns an sstable.IterTransforms that has SyntheticSeqNum set as needed.
+func (m *FileMetadata) IterTransforms() sstable.IterTransforms {
+	return sstable.IterTransforms{
+		SyntheticSeqNum: m.SyntheticSeqNum(),
+		SyntheticSuffix: m.SyntheticSuffix,
+		SyntheticPrefix: m.SyntheticPrefix,
+	}
 }
 
 // PhysicalFileMeta is used by functions which want a guarantee that their input
@@ -316,6 +353,19 @@ type VirtualFileMeta struct {
 	*FileMetadata
 }
 
+// VirtualReaderParams fills in the parameters necessary to create a virtual
+// sstable reader.
+func (m VirtualFileMeta) VirtualReaderParams(isShared bool) sstable.VirtualReaderParams {
+	return sstable.VirtualReaderParams{
+		Lower:            m.Smallest,
+		Upper:            m.Largest,
+		FileNum:          m.FileNum,
+		IsSharedIngested: isShared && m.SyntheticSeqNum() != 0,
+		Size:             m.Size,
+		BackingSize:      m.FileBacking.Size,
+	}
+}
+
 // PhysicalMeta should be the only source of creating the PhysicalFileMeta
 // wrapper type.
 func (m *FileMetadata) PhysicalMeta() PhysicalFileMeta {
@@ -343,37 +393,42 @@ func (m *FileMetadata) VirtualMeta() VirtualFileMeta {
 //
 // See the comment above the FileMetadata type for sstable terminology.
 type FileBacking struct {
-	// Reference count for the backing file on disk: incremented when a
-	// physical or virtual sstable which is backed by the FileBacking is
-	// added to a version and decremented when the version is unreferenced.
-	// We ref count in order to determine when it is safe to delete a
-	// backing sst file from disk. The backing file is obsolete when the
-	// reference count falls to zero.
+	DiskFileNum base.DiskFileNum
+	Size        uint64
+
+	// Reference count for the backing file, used to determine when a backing file
+	// is obsolete and can be removed.
+	//
+	// The reference count is at least the number of distinct tables that use this
+	// backing across all versions that have a non-zero reference count. The tables
+	// in each version are maintained in a copy-on-write B-tree and each B-tree node
+	// keeps a reference on the respective backings.
+	//
+	// In addition, a reference count is taken for every backing in the latest
+	// version's VirtualBackings (necessary to support Protect/Unprotect).
 	refs atomic.Int32
-	// latestVersionRefs are the references to the FileBacking in the
-	// latest version. This reference can be through a single physical
-	// sstable in the latest version, or one or more virtual sstables in the
-	// latest version.
-	//
-	// INVARIANT: latestVersionRefs <= refs.
-	latestVersionRefs atomic.Int32
-	// VirtualizedSize is set iff the backing sst is only referred to by
-	// virtual ssts in the latest version. VirtualizedSize is the sum of the
-	// virtual sstable sizes of all of the virtual sstables in the latest
-	// version which are backed by the physical sstable. When a virtual
-	// sstable is removed from the latest version, we will decrement the
-	// VirtualizedSize. During compaction picking, we'll compensate a
-	// virtual sstable file size by
-	// (FileBacking.Size - FileBacking.VirtualizedSize) / latestVersionRefs.
-	// The intuition is that if FileBacking.Size - FileBacking.VirtualizedSize
-	// is high, then the space amplification due to virtual sstables is
-	// high, and we should pick the virtual sstable with a higher priority.
-	//
-	// TODO(bananabrick): Compensate the virtual sstable file size using
-	// the VirtualizedSize during compaction picking and test.
-	VirtualizedSize atomic.Uint64
-	DiskFileNum     base.DiskFileNum
-	Size            uint64
+}
+
+// MustHaveRefs asserts that the backing has a positive refcount.
+func (b *FileBacking) MustHaveRefs() {
+	if refs := b.refs.Load(); refs <= 0 {
+		panic(errors.AssertionFailedf("backing %s must have positive refcount (refs=%d)",
+			b.DiskFileNum, refs))
+	}
+}
+
+// Ref increments the backing's ref count.
+func (b *FileBacking) Ref() {
+	b.refs.Add(1)
+}
+
+// Unref decrements the backing's ref count (and returns the new count).
+func (b *FileBacking) Unref() int32 {
+	v := b.refs.Add(-1)
+	if invariants.Enabled && v < 0 {
+		panic("pebble: invalid FileMetadata refcounting")
+	}
+	return v
 }
 
 // InitPhysicalBacking allocates and sets the FileBacking which is required by a
@@ -388,19 +443,23 @@ func (m *FileMetadata) InitPhysicalBacking() {
 		panic("pebble: virtual sstables should use a pre-existing FileBacking")
 	}
 	if m.FileBacking == nil {
-		m.FileBacking = &FileBacking{Size: m.Size, DiskFileNum: m.FileNum.DiskFileNum()}
+		m.FileBacking = &FileBacking{
+			DiskFileNum: base.PhysicalTableDiskFileNum(m.FileNum),
+			Size:        m.Size,
+		}
 	}
 }
 
 // InitProviderBacking creates a new FileBacking for a file backed by
 // an objstorage.Provider.
-func (m *FileMetadata) InitProviderBacking(fileNum base.DiskFileNum) {
+func (m *FileMetadata) InitProviderBacking(fileNum base.DiskFileNum, size uint64) {
 	if !m.Virtual {
 		panic("pebble: provider-backed sstables must be virtual")
 	}
 	if m.FileBacking == nil {
 		m.FileBacking = &FileBacking{DiskFileNum: fileNum}
 	}
+	m.FileBacking.Size = size
 }
 
 // ValidateVirtual should be called once the FileMetadata for a virtual sstable
@@ -425,54 +484,6 @@ func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
 	if m.Size == 0 {
 		panic("pebble: virtual sstable size must be set upon creation")
 	}
-}
-
-// Refs returns the refcount of backing sstable.
-func (m *FileMetadata) Refs() int32 {
-	return m.FileBacking.refs.Load()
-}
-
-// Ref increments the ref count associated with the backing sstable.
-func (m *FileMetadata) Ref() {
-	m.FileBacking.refs.Add(1)
-}
-
-// Unref decrements the ref count associated with the backing sstable.
-func (m *FileMetadata) Unref() int32 {
-	v := m.FileBacking.refs.Add(-1)
-	if invariants.Enabled && v < 0 {
-		panic("pebble: invalid FileMetadata refcounting")
-	}
-	return v
-}
-
-// LatestRef increments the latest ref count associated with the backing
-// sstable.
-func (m *FileMetadata) LatestRef() {
-	m.FileBacking.latestVersionRefs.Add(1)
-
-	if m.Virtual {
-		m.FileBacking.VirtualizedSize.Add(m.Size)
-	}
-}
-
-// LatestUnref decrements the latest ref count associated with the backing
-// sstable.
-func (m *FileMetadata) LatestUnref() int32 {
-	if m.Virtual {
-		m.FileBacking.VirtualizedSize.Add(-m.Size)
-	}
-
-	v := m.FileBacking.latestVersionRefs.Add(-1)
-	if invariants.Enabled && v < 0 {
-		panic("pebble: invalid FileMetadata latest refcounting")
-	}
-	return v
-}
-
-// LatestRefs returns the latest ref count associated with the backing sstable.
-func (m *FileMetadata) LatestRefs() int32 {
-	return m.FileBacking.latestVersionRefs.Load()
 }
 
 // SetCompactionState transitions this file's compaction state to the given
@@ -595,17 +606,10 @@ func (m *FileMetadata) extendOverallBounds(
 	}
 }
 
-// Overlaps returns true if the file key range overlaps with the given range.
-func (m *FileMetadata) Overlaps(cmp Compare, start []byte, end []byte, exclusiveEnd bool) bool {
-	if c := cmp(m.Largest.UserKey, start); c < 0 || (c == 0 && m.Largest.IsExclusiveSentinel()) {
-		// f is completely before the specified range; no overlap.
-		return false
-	}
-	if c := cmp(m.Smallest.UserKey, end); c > 0 || (c == 0 && exclusiveEnd) {
-		// f is completely after the specified range; no overlap.
-		return false
-	}
-	return true
+// Overlaps returns true if the file key range overlaps with the given user key bounds.
+func (m *FileMetadata) Overlaps(cmp Compare, bounds *base.UserKeyBounds) bool {
+	b := m.UserKeyBounds()
+	return b.Overlaps(cmp, bounds)
 }
 
 // ContainedWithinSpan returns true if the file key range completely overlaps with the
@@ -707,8 +711,13 @@ func (m *FileMetadata) String() string {
 // and overall bounds for the table.
 func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "%s:[%s-%s]",
-		m.FileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+	if m.Virtual {
+		fmt.Fprintf(&b, "%s(%s):[%s-%s]",
+			m.FileNum, m.FileBacking.DiskFileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+	} else {
+		fmt.Fprintf(&b, "%s:[%s-%s]",
+			m.FileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+	}
 	if !verbose {
 		return b.String()
 	}
@@ -721,61 +730,71 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 		fmt.Fprintf(&b, " ranges:[%s-%s]",
 			m.SmallestRangeKey.Pretty(format), m.LargestRangeKey.Pretty(format))
 	}
+	if m.Size != 0 {
+		fmt.Fprintf(&b, " size:%d", m.Size)
+	}
 	return b.String()
 }
 
 // ParseFileMetadataDebug parses a FileMetadata from its DebugString
 // representation.
-func ParseFileMetadataDebug(s string) (*FileMetadata, error) {
-	// Split lines of the form:
-	//  000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...]
-	fields := strings.FieldsFunc(s, func(c rune) bool {
-		switch c {
-		case ':', '[', '-', ']':
-			return true
-		default:
-			return unicode.IsSpace(c) // NB: also trim whitespace padding.
-		}
-	})
-	if len(fields)%3 != 0 {
-		return nil, errors.Newf("malformed input: %s", s)
-	}
+func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
+	defer func() {
+		err = errors.CombineErrors(err, maybeRecover())
+	}()
+
+	// Input format:
+	//	000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...]
 	m := &FileMetadata{}
-	for len(fields) > 0 {
-		prefix := fields[0]
-		if prefix == "seqnums" {
-			smallestSeqNum, err := strconv.ParseUint(fields[1], 10, 64)
-			if err != nil {
-				return m, errors.Newf("malformed input: %s: %s", s, err)
-			}
-			largestSeqNum, err := strconv.ParseUint(fields[2], 10, 64)
-			if err != nil {
-				return m, errors.Newf("malformed input: %s: %s", s, err)
-			}
-			m.SmallestSeqNum, m.LargestSeqNum = smallestSeqNum, largestSeqNum
-			fields = fields[3:]
-			continue
-		}
-		smallest := base.ParsePrettyInternalKey(fields[1])
-		largest := base.ParsePrettyInternalKey(fields[2])
-		switch prefix {
-		case "points":
-			m.SmallestPointKey, m.LargestPointKey = smallest, largest
-			m.HasPointKeys = true
-		case "ranges":
-			m.SmallestRangeKey, m.LargestRangeKey = smallest, largest
-			m.HasRangeKeys = true
-		default:
-			fileNum, err := strconv.ParseUint(prefix, 10, 64)
-			if err != nil {
-				return m, errors.Newf("malformed input: %s: %s", s, err)
-			}
-			m.FileNum = base.FileNum(fileNum)
-			m.Smallest, m.Largest = smallest, largest
-			m.boundsSet = true
-		}
-		fields = fields[3:]
+	p := makeDebugParser(s)
+	m.FileNum = p.FileNum()
+	var backingNum base.DiskFileNum
+	if p.Peek() == "(" {
+		p.Expect("(")
+		backingNum = p.DiskFileNum()
+		p.Expect(")")
 	}
+	p.Expect(":", "[")
+	m.Smallest = p.InternalKey()
+	p.Expect("-")
+	m.Largest = p.InternalKey()
+	p.Expect("]")
+
+	for !p.Done() {
+		field := p.Next()
+		p.Expect(":")
+		switch field {
+		case "seqnums":
+			p.Expect("[")
+			m.SmallestSeqNum = p.Uint64()
+			p.Expect("-")
+			m.LargestSeqNum = p.Uint64()
+			p.Expect("]")
+
+		case "points":
+			p.Expect("[")
+			m.SmallestPointKey = p.InternalKey()
+			p.Expect("-")
+			m.LargestPointKey = p.InternalKey()
+			m.HasPointKeys = true
+			p.Expect("]")
+
+		case "ranges":
+			p.Expect("[")
+			m.SmallestRangeKey = p.InternalKey()
+			p.Expect("-")
+			m.LargestRangeKey = p.InternalKey()
+			m.HasRangeKeys = true
+			p.Expect("]")
+
+		case "size":
+			m.Size = p.Uint64()
+
+		default:
+			p.Errf("unknown field %q", field)
+		}
+	}
+
 	// By default, when the parser sees just the overall bounds, we set the point
 	// keys. This preserves backwards compatability with existing test cases that
 	// specify only the overall bounds.
@@ -783,7 +802,12 @@ func ParseFileMetadataDebug(s string) (*FileMetadata, error) {
 		m.SmallestPointKey, m.LargestPointKey = m.Smallest, m.Largest
 		m.HasPointKeys = true
 	}
-	m.InitPhysicalBacking()
+	if backingNum == 0 {
+		m.InitPhysicalBacking()
+	} else {
+		m.Virtual = true
+		m.InitProviderBacking(backingNum, 0 /* size */)
+	}
 	return m, nil
 }
 
@@ -849,6 +873,24 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	// Ensure that FileMetadata.Init was called.
 	if m.FileBacking == nil {
 		return base.CorruptionErrorf("file metadata FileBacking not set")
+	}
+
+	if m.SyntheticPrefix.IsSet() {
+		if !m.Virtual {
+			return base.CorruptionErrorf("non-virtual file with synthetic prefix")
+		}
+		if !bytes.HasPrefix(m.Smallest.UserKey, m.SyntheticPrefix) {
+			return base.CorruptionErrorf("virtual file with synthetic prefix has smallest key with a different prefix: %s", m.Smallest.Pretty(formatKey))
+		}
+		if !bytes.HasPrefix(m.Largest.UserKey, m.SyntheticPrefix) {
+			return base.CorruptionErrorf("virtual file with synthetic prefix has largest key with a different prefix: %s", m.Largest.Pretty(formatKey))
+		}
+	}
+
+	if m.SyntheticSuffix != nil {
+		if !m.Virtual {
+			return base.CorruptionErrorf("non-virtual file with synthetic suffix")
+		}
 	}
 
 	return nil
@@ -942,17 +984,19 @@ func SortBySmallest(files []*FileMetadata, cmp Compare) {
 	sort.Sort(bySmallest{files, cmp})
 }
 
-func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd bool) LevelSlice {
+// overlaps returns the subset of files in a level that overlap with the given
+// bounds. It is meant for levels other than L0.
+func overlaps(iter LevelIterator, cmp Compare, bounds base.UserKeyBounds) LevelSlice {
 	startIter := iter.Clone()
 	{
-		startIterFile := startIter.SeekGE(cmp, start)
+		startIterFile := startIter.SeekGE(cmp, bounds.Start)
 		// SeekGE compares user keys. The user key `start` may be equal to the
 		// f.Largest because f.Largest is a range deletion sentinel, indicating
 		// that the user key `start` is NOT contained within the file f. If
 		// that's the case, we can narrow the overlapping bounds to exclude the
 		// file with the sentinel.
 		if startIterFile != nil && startIterFile.Largest.IsExclusiveSentinel() &&
-			cmp(startIterFile.Largest.UserKey, start) == 0 {
+			cmp(startIterFile.Largest.UserKey, bounds.Start) == 0 {
 			startIterFile = startIter.Next()
 		}
 		_ = startIterFile // Ignore unused assignment.
@@ -960,13 +1004,16 @@ func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd b
 
 	endIter := iter.Clone()
 	{
-		endIterFile := endIter.SeekGE(cmp, end)
+		endIterFile := endIter.SeekGE(cmp, bounds.End.Key)
 
-		if !exclusiveEnd {
+		if bounds.End.Kind == base.Inclusive {
 			// endIter is now pointing at the *first* file with a largest key >= end.
 			// If there are multiple files including the user key `end`, we want all
 			// of them, so move forward.
-			for endIterFile != nil && cmp(endIterFile.Largest.UserKey, end) == 0 {
+			// TODO(radu): files are now disjoint in terms of user keys, so this
+			// should be simplified. The contract of LevelIterator.SeekGE should be
+			// re-examined as well.
+			for endIterFile != nil && cmp(endIterFile.Largest.UserKey, bounds.End.Key) == 0 {
 				endIterFile = endIter.Next()
 			}
 		}
@@ -980,9 +1027,7 @@ func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd b
 		//
 		// the above for loop will Next until it arrives at [g, h]. We need to
 		// observe that g > f, and Prev to the file with bounds [f, f].
-		if endIterFile == nil {
-			endIterFile = endIter.Prev()
-		} else if c := cmp(endIterFile.Smallest.UserKey, end); c > 0 || c == 0 && exclusiveEnd {
+		if endIterFile == nil || !bounds.End.IsUpperBoundFor(cmp, endIterFile.Smallest.UserKey) {
 			endIterFile = endIter.Prev()
 		}
 		_ = endIterFile // Ignore unused assignment.
@@ -996,9 +1041,11 @@ const NumLevels = 7
 // NewVersion constructs a new Version with the provided files. It requires
 // the provided files are already well-ordered. It's intended for testing.
 func NewVersion(
-	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64, files [NumLevels][]*FileMetadata,
+	comparer *base.Comparer, flushSplitBytes int64, files [NumLevels][]*FileMetadata,
 ) *Version {
-	var v Version
+	v := &Version{
+		cmp: comparer,
+	}
 	for l := range files {
 		// NB: We specifically insert `files` into the B-Tree in the order
 		// they appear within `files`. Some tests depend on this behavior in
@@ -1010,16 +1057,23 @@ func NewVersion(
 		if l == 0 {
 			v.Levels[l].tree.cmp = btreeCmpSeqNum
 		} else {
-			v.Levels[l].tree.cmp = btreeCmpSmallestKey(cmp)
+			v.Levels[l].tree.cmp = btreeCmpSmallestKey(comparer.Compare)
 		}
 		for _, f := range files[l] {
 			v.Levels[l].totalSize += f.Size
 		}
 	}
-	if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
+	if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
 		panic(err)
 	}
-	return &v
+	return v
+}
+
+// TestingNewVersion returns a blank Version, used for tests.
+func TestingNewVersion(comparer *base.Comparer) *Version {
+	return &Version{
+		cmp: comparer,
+	}
 }
 
 // Version is a collection of file metadata for on-disk tables at various
@@ -1089,6 +1143,8 @@ type Version struct {
 		MarkedForCompaction int
 	}
 
+	cmp *base.Comparer
+
 	// The list the version is linked into.
 	list *VersionList
 
@@ -1099,19 +1155,19 @@ type Version struct {
 // String implements fmt.Stringer, printing the FileMetadata for each level in
 // the Version.
 func (v *Version) String() string {
-	return v.string(base.DefaultFormatter, false)
+	return v.string(false)
 }
 
 // DebugString returns an alternative format to String() which includes sequence
 // number and kind information for the sstable boundaries.
-func (v *Version) DebugString(format base.FormatKey) string {
-	return v.string(format, true)
+func (v *Version) DebugString() string {
+	return v.string(true)
 }
 
 func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSlice) string {
 	var buf bytes.Buffer
 	for sublevel := len(sublevels) - 1; sublevel >= 0; sublevel-- {
-		fmt.Fprintf(&buf, "0.%d:\n", sublevel)
+		fmt.Fprintf(&buf, "L0.%d:\n", sublevel)
 		sublevels[sublevel].Each(func(f *FileMetadata) {
 			fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
 		})
@@ -1119,60 +1175,52 @@ func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSli
 	return buf.String()
 }
 
-func (v *Version) string(format base.FormatKey, verbose bool) string {
+func (v *Version) string(verbose bool) string {
 	var buf bytes.Buffer
 	if len(v.L0SublevelFiles) > 0 {
-		fmt.Fprintf(&buf, "%s", describeSublevels(format, verbose, v.L0SublevelFiles))
+		fmt.Fprintf(&buf, "%s", describeSublevels(v.cmp.FormatKey, verbose, v.L0SublevelFiles))
 	}
 	for level := 1; level < NumLevels; level++ {
 		if v.Levels[level].Empty() {
 			continue
 		}
-		fmt.Fprintf(&buf, "%d:\n", level)
+		fmt.Fprintf(&buf, "L%d:\n", level)
 		iter := v.Levels[level].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
+			fmt.Fprintf(&buf, "  %s\n", f.DebugString(v.cmp.FormatKey, verbose))
 		}
 	}
 	return buf.String()
 }
 
 // ParseVersionDebug parses a Version from its DebugString output.
-func ParseVersionDebug(
-	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64, s string,
-) (*Version, error) {
-	var level int
+func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string) (*Version, error) {
 	var files [NumLevels][]*FileMetadata
+	level := -1
 	for _, l := range strings.Split(s, "\n") {
-		l = strings.TrimSpace(l)
-
-		switch l[:2] {
-		case "0.", "0:", "1:", "2:", "3:", "4:", "5:", "6:":
-			var err error
-			level, err = strconv.Atoi(l[:1])
-			if err != nil {
-				return nil, err
-			}
-		default:
-			m, err := ParseFileMetadataDebug(l)
-			if err != nil {
-				return nil, err
-			}
-			// If we only parsed overall bounds, default to setting the point bounds.
-			if !m.HasPointKeys && !m.HasRangeKeys {
-				m.SmallestPointKey, m.LargestPointKey = m.Smallest, m.Largest
-				m.HasPointKeys = true
-			}
-			files[level] = append(files[level], m)
+		if l == "" {
+			continue
 		}
+		p := makeDebugParser(l)
+		if l, ok := p.TryLevel(); ok {
+			level = l
+			continue
+		}
+
+		if level == -1 {
+			return nil, errors.Errorf("version string must start with a level")
+		}
+		m, err := ParseFileMetadataDebug(l)
+		if err != nil {
+			return nil, err
+		}
+		files[level] = append(files[level], m)
 	}
-	// Reverse the order of L0 files. This ensures we construct the same
-	// sublevels. (They're printed from higher sublevel to lower, which means in
-	// a partial order that represents newest to oldest).
-	for i := 0; i < len(files[0])/2; i++ {
-		files[0][i], files[0][len(files[0])-i-1] = files[0][len(files[0])-i-1], files[0][i]
-	}
-	return NewVersion(cmp, formatKey, flushSplitBytes, files), nil
+	// L0 files are printed from higher sublevel to lower, which means in a
+	// partial order that represents newest to oldest. Reverse the order of L0
+	// files to ensure we construct the same sublevels.
+	slices.Reverse(files[0])
+	return NewVersion(comparer, flushSplitBytes, files), nil
 }
 
 // Refs returns the number of references to the version.
@@ -1227,26 +1275,138 @@ func (v *Version) Next() *Version {
 }
 
 // InitL0Sublevels initializes the L0Sublevels
-func (v *Version) InitL0Sublevels(
-	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64,
-) error {
+func (v *Version) InitL0Sublevels(flushSplitBytes int64) error {
 	var err error
-	v.L0Sublevels, err = NewL0Sublevels(&v.Levels[0], cmp, formatKey, flushSplitBytes)
+	v.L0Sublevels, err = NewL0Sublevels(&v.Levels[0], v.cmp.Compare, v.cmp.FormatKey, flushSplitBytes)
 	if err == nil && v.L0Sublevels != nil {
 		v.L0SublevelFiles = v.L0Sublevels.Levels
 	}
 	return err
 }
 
+// CalculateInuseKeyRanges examines file metadata in levels [level, maxLevel]
+// within bounds [smallest,largest], returning an ordered slice of key ranges
+// that include all keys that exist within levels [level, maxLevel] and within
+// [smallest,largest].
+func (v *Version) CalculateInuseKeyRanges(
+	level, maxLevel int, smallest, largest []byte,
+) []UserKeyRange {
+	// Use two slices, alternating which one is input and which one is output
+	// as we descend the LSM.
+	var input, output []UserKeyRange
+
+	// L0 requires special treatment, since sstables within L0 may overlap.
+	// We use the L0 Sublevels structure to efficiently calculate the merged
+	// in-use key ranges.
+	if level == 0 {
+		output = v.L0Sublevels.InUseKeyRanges(smallest, largest)
+		level++
+	}
+
+	bounds := base.UserKeyBoundsInclusive(smallest, largest)
+	for ; level <= maxLevel; level++ {
+		// NB: We always treat `largest` as inclusive for simplicity, because
+		// there's little consequence to calculating slightly broader in-use key
+		// ranges.
+		overlaps := v.Overlaps(level, bounds)
+		iter := overlaps.Iter()
+
+		// We may already have in-use key ranges from higher levels. Iterate
+		// through both our accumulated in-use key ranges and this level's
+		// files, merging the two.
+		//
+		// Tables higher within the LSM have broader key spaces. We use this
+		// when possible to seek past a level's files that are contained by
+		// our current accumulated in-use key ranges. This helps avoid
+		// per-sstable work during flushes or compactions in high levels which
+		// overlap the majority of the LSM's sstables.
+		input, output = output, input
+		output = output[:0]
+
+		var currFile *FileMetadata
+		var currAccum *UserKeyRange
+		if len(input) > 0 {
+			currAccum, input = &input[0], input[1:]
+		}
+		cmp := v.cmp.Compare
+
+		// If we have an accumulated key range and its start is ≤ smallest,
+		// we can seek to the accumulated range's end. Otherwise, we need to
+		// start at the first overlapping file within the level.
+		if currAccum != nil && v.cmp.Compare(currAccum.Start, smallest) <= 0 {
+			currFile = seekGT(&iter, cmp, currAccum.End)
+		} else {
+			currFile = iter.First()
+		}
+
+		for currFile != nil || currAccum != nil {
+			// If we've exhausted either the files in the level or the
+			// accumulated key ranges, we just need to append the one we have.
+			// If we have both a currFile and a currAccum, they either overlap
+			// or they're disjoint. If they're disjoint, we append whichever
+			// one sorts first and move on to the next file or range. If they
+			// overlap, we merge them into currAccum and proceed to the next
+			// file.
+			switch {
+			case currAccum == nil || (currFile != nil && cmp(currFile.Largest.UserKey, currAccum.Start) < 0):
+				// This file is strictly before the current accumulated range,
+				// or there are no more accumulated ranges.
+				output = append(output, UserKeyRange{
+					Start: currFile.Smallest.UserKey,
+					End:   currFile.Largest.UserKey,
+				})
+				currFile = iter.Next()
+			case currFile == nil || (currAccum != nil && cmp(currAccum.End, currFile.Smallest.UserKey) < 0):
+				// The current accumulated key range is strictly before the
+				// current file, or there are no more files.
+				output = append(output, *currAccum)
+				currAccum = nil
+				if len(input) > 0 {
+					currAccum, input = &input[0], input[1:]
+				}
+			default:
+				// The current accumulated range and the current file overlap.
+				// Adjust the accumulated range to be the union.
+				if cmp(currFile.Smallest.UserKey, currAccum.Start) < 0 {
+					currAccum.Start = currFile.Smallest.UserKey
+				}
+				if cmp(currFile.Largest.UserKey, currAccum.End) > 0 {
+					currAccum.End = currFile.Largest.UserKey
+				}
+
+				// Extending `currAccum`'s end boundary may have caused it to
+				// overlap with `input` key ranges that we haven't processed
+				// yet. Merge any such key ranges.
+				for len(input) > 0 && cmp(input[0].Start, currAccum.End) <= 0 {
+					if cmp(input[0].End, currAccum.End) > 0 {
+						currAccum.End = input[0].End
+					}
+					input = input[1:]
+				}
+				// Seek the level iterator past our current accumulated end.
+				currFile = seekGT(&iter, cmp, currAccum.End)
+			}
+		}
+	}
+	return output
+}
+
+func seekGT(iter *LevelIterator, cmp base.Compare, key []byte) *FileMetadata {
+	f := iter.SeekGE(cmp, key)
+	for f != nil && cmp(f.Largest.UserKey, key) == 0 {
+		f = iter.Next()
+	}
+	return f
+}
+
 // Contains returns a boolean indicating whether the provided file exists in
 // the version at the given level. If level is non-zero then Contains binary
 // searches among the files. If level is zero, Contains scans the entire
 // level.
-func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
+func (v *Version) Contains(level int, m *FileMetadata) bool {
 	iter := v.Levels[level].Iter()
 	if level > 0 {
-		overlaps := v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey,
-			m.Largest.IsExclusiveSentinel())
+		overlaps := v.Overlaps(level, m.UserKeyBounds())
 		iter = overlaps.Iter()
 	}
 	for f := iter.First(); f != nil; f = iter.Next() {
@@ -1258,16 +1418,14 @@ func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
 }
 
 // Overlaps returns all elements of v.files[level] whose user key range
-// intersects the given range. If level is non-zero then the user key ranges of
+// intersects the given bounds. If level is non-zero then the user key bounds of
 // v.files[level] are assumed to not overlap (although they may touch). If level
-// is zero then that assumption cannot be made, and the [start, end] range is
-// expanded to the union of those matching ranges so far and the computation is
-// repeated until [start, end] stabilizes.
+// is zero then that assumption cannot be made, and the given bounds are
+// expanded to the union of those matching bounds so far and the computation is
+// repeated until the bounds stabilize.
 // The returned files are a subsequence of the input files, i.e., the ordering
 // is not changed.
-func (v *Version) Overlaps(
-	level int, cmp Compare, start, end []byte, exclusiveEnd bool,
-) LevelSlice {
+func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 	if level == 0 {
 		// Indices that have been selected as overlapping.
 		l0 := v.Levels[level]
@@ -1282,7 +1440,7 @@ func (v *Version) Overlaps(
 				if selected {
 					continue
 				}
-				if !meta.Overlaps(cmp, start, end, exclusiveEnd) {
+				if !meta.Overlaps(v.cmp.Compare, &bounds) {
 					// meta is completely outside the specified range; skip it.
 					continue
 				}
@@ -1290,25 +1448,16 @@ func (v *Version) Overlaps(
 				selectedIndices[i] = true
 				numSelected++
 
-				smallest := meta.Smallest.UserKey
-				largest := meta.Largest.UserKey
-				// Since level == 0, check if the newly added fileMetadata has
-				// expanded the range. We expand the range immediately for files
-				// we have remaining to check in this loop. All already checked
-				// and unselected files will need to be rechecked via the
-				// restart below.
-				if cmp(smallest, start) < 0 {
-					start = smallest
+				// Since this is L0, check if the newly added fileMetadata has expanded
+				// the range. We expand the range immediately for files we have
+				// remaining to check in this loop. All already checked and unselected
+				// files will need to be rechecked via the restart below.
+				if v.cmp.Compare(meta.Smallest.UserKey, bounds.Start) < 0 {
+					bounds.Start = meta.Smallest.UserKey
 					restart = true
 				}
-				if v := cmp(largest, end); v > 0 {
-					end = largest
-					exclusiveEnd = meta.Largest.IsExclusiveSentinel()
-					restart = true
-				} else if v == 0 && exclusiveEnd && !meta.Largest.IsExclusiveSentinel() {
-					// Only update the exclusivity of our existing `end`
-					// bound.
-					exclusiveEnd = false
+				if !bounds.End.IsUpperBoundForInternalKey(v.cmp.Compare, meta.Largest) {
+					bounds.End = base.UserKeyExclusiveIf(meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
 					restart = true
 				}
 			}
@@ -1337,27 +1486,34 @@ func (v *Version) Overlaps(
 		return slice
 	}
 
-	return overlaps(v.Levels[level].Iter(), cmp, start, end, exclusiveEnd)
+	return overlaps(v.Levels[level].Iter(), v.cmp.Compare, bounds)
+}
+
+// IterAllLevelsAndSublevels calls fn with an iterator for each L0 sublevel
+// (from top to bottom), then once for each level below L0.
+func (v *Version) IterAllLevelsAndSublevels(fn func(it LevelIterator, level int, sublevel int)) {
+	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
+		fn(v.L0SublevelFiles[sublevel].Iter(), 0, sublevel)
+	}
+	for level := 1; level < NumLevels; level++ {
+		fn(v.Levels[level].Iter(), level, invalidSublevel)
+	}
 }
 
 // CheckOrdering checks that the files are consistent with respect to
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
-func (v *Version) CheckOrdering(
-	cmp Compare, format base.FormatKey, order OrderingInvariants,
-) error {
+func (v *Version) CheckOrdering() error {
 	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 		sublevelIter := v.L0SublevelFiles[sublevel].Iter()
-		// Sublevels have NEVER allowed split user keys, so we can pass
-		// ProhibitSplitUserKeys.
-		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), sublevelIter, ProhibitSplitUserKeys); err != nil {
-			return base.CorruptionErrorf("%s\n%s", err, v.DebugString(format))
+		if err := CheckOrdering(v.cmp.Compare, v.cmp.FormatKey, L0Sublevel(sublevel), sublevelIter); err != nil {
+			return base.CorruptionErrorf("%s\n%s", err, v.DebugString())
 		}
 	}
 
 	for level, lm := range v.Levels {
-		if err := CheckOrdering(cmp, format, Level(level), lm.Iter(), order); err != nil {
-			return base.CorruptionErrorf("%s\n%s", err, v.DebugString(format))
+		if err := CheckOrdering(v.cmp.Compare, v.cmp.FormatKey, Level(level), lm.Iter()); err != nil {
+			return base.CorruptionErrorf("%s\n%s", err, v.DebugString())
 		}
 	}
 	return nil
@@ -1425,34 +1581,10 @@ func (l *VersionList) Remove(v *Version) {
 	v.list = nil // avoid memory leaks
 }
 
-// OrderingInvariants dictates the file ordering invariants active.
-type OrderingInvariants int8
-
-const (
-	// ProhibitSplitUserKeys indicates that adjacent files within a level cannot
-	// contain the same user key.
-	ProhibitSplitUserKeys OrderingInvariants = iota
-	// AllowSplitUserKeys indicates that adjacent files within a level may
-	// contain the same user key. This is only allowed by historical format
-	// major versions.
-	//
-	// TODO(jackson): Remove.
-	AllowSplitUserKeys
-)
-
 // CheckOrdering checks that the files are consistent with respect to
 // seqnums (for level 0 files -- see detailed comment below) and increasing and non-
 // overlapping internal key ranges (for non-level 0 files).
-//
-// The ordering field may be passed AllowSplitUserKeys to allow adjacent files that are both
-// inclusive of the same user key. Pebble no longer creates version edits
-// installing such files, and Pebble databases with sufficiently high format
-// major version should no longer have any such files within their LSM.
-// TODO(jackson): Remove AllowSplitUserKeys when we remove support for the
-// earlier format major versions.
-func CheckOrdering(
-	cmp Compare, format base.FormatKey, level Level, files LevelIterator, ordering OrderingInvariants,
-) error {
+func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files LevelIterator) error {
 	// The invariants to check for L0 sublevels are the same as the ones to
 	// check for all other levels. However, if L0 is not organized into
 	// sublevels, or if all L0 files are being passed in, we do the legacy L0
@@ -1531,28 +1663,15 @@ func CheckOrdering(
 						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
 
-				// What's considered "overlapping" is dependent on the format
-				// major version. If ordering=ProhibitSplitUserKeys, then both
-				// files cannot contain keys with the same user keys. If the
-				// bounds have the same user key, the previous file's boundary
-				// must have a Trailer indicating that it's exclusive.
-				switch ordering {
-				case AllowSplitUserKeys:
-					if base.InternalCompare(cmp, prev.Largest, f.Smallest) >= 0 {
-						return base.CorruptionErrorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
-							errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
-							prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
-							f.Smallest.Pretty(format), f.Largest.Pretty(format))
-					}
-				case ProhibitSplitUserKeys:
-					if v := cmp(prev.Largest.UserKey, f.Smallest.UserKey); v > 0 || (v == 0 && !prev.Largest.IsExclusiveSentinel()) {
-						return base.CorruptionErrorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
-							errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
-							prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
-							f.Smallest.Pretty(format), f.Largest.Pretty(format))
-					}
-				default:
-					panic("unreachable")
+				// In all supported format major version, split user keys are
+				// prohibited, so both files cannot contain keys with the same user
+				// keys. If the bounds have the same user key, the previous file's
+				// boundary must have a Trailer indicating that it's exclusive.
+				if v := cmp(prev.Largest.UserKey, f.Smallest.UserKey); v > 0 || (v == 0 && !prev.Largest.IsExclusiveSentinel()) {
+					return base.CorruptionErrorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
+						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
+						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
+						f.Smallest.Pretty(format), f.Largest.Pretty(format))
 				}
 			}
 		}

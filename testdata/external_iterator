@@ -26,7 +26,7 @@ next
 c: (c, .)
 .
 
-iter files=(2, 1) fwd-only
+iter files=(2, 1)
 first
 next
 ----
@@ -42,7 +42,7 @@ set f f
 # the rangedel. Since the point keys are assigned a higher sequence
 # number, they should NOT be shadowed by the rangedel.
 
-iter files=(3, 2, 1) fwd-only
+iter files=(3, 2, 1)
 first
 next
 next
@@ -65,7 +65,7 @@ build 5
 range-key-del b d
 ----
 
-iter files=(5, 4, 3, 2, 1) fwd-only
+iter files=(5, 4, 3, 2, 1)
 first
 next
 next
@@ -127,7 +127,7 @@ build ek
 range-key-set e k @5 foo
 ----
 
-iter files=(ag, ek) fwd-only
+iter files=(ag, ek)
 first
 next
 ----
@@ -147,7 +147,7 @@ set k@3 v
 set p@4 v
 ----
 
-iter files=(points, ag, ek) mask-suffix=@7 fwd-only
+iter files=(points, ag, ek) mask-suffix=@7
 first
 next
 next
@@ -170,7 +170,7 @@ range-key-set a k @4 bar
 range-key-set a k @1 bax
 ----
 
-iter files=(points, ag, ek, stacked) fwd-only
+iter files=(points, ag, ek, stacked)
 first
 next
 ----
@@ -179,7 +179,7 @@ a@4: (v, [a-k) @5=foo, @4=bar, @1=bax)
 
 # Test mutating the external iterator's options through SetOptions.
 
-iter files=(points, ag, ek) fwd-only
+iter files=(points, ag, ek)
 set-options key-types=point
 first
 next
@@ -193,11 +193,6 @@ c@2: (v, .)
 .
 e@5: (v, .)
 k@3: (v, .)
-
-# Test the TrySeekUsingNext optimization that's enabled only for fwd-only
-# external iterators. Seed the database with keys like 'a', 'aa', 'aaa', etc so
-# that the index block uses a final separator that's beyond all the other live
-# keys.
 
 reset
 ----
@@ -227,9 +222,6 @@ set aaaaa@3 aaaaa@3
 set aaaaa@1 aaaaa@1
 ----
 
-# Note the absence of fwd-only. This iterator will not use the TrySeekUsingNext
-# optimization.
-
 iter files=(a, aa, aaa, aaaa, aaaaa)
 seek-ge a
 next
@@ -254,33 +246,4 @@ aaaa@1: (aaaa@1, .)
 aaaaa@3: (aaaaa@3, .)
 aaaaa@1: (aaaaa@1, .)
 stats: (interface (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 475B, cached 0B, read-time 0s)), (points: (count 10, key-bytes 50B, value-bytes 50B, tombstoned 0)))
-
-# Note the inclusion of fwd-only. This iterator will use the TrySeekUsingNext
-# optimization and loads ~half the block-bytes as a result.
-
-iter files=(a, aa, aaa, aaaa, aaaaa) fwd-only
-seek-ge a
-next
-seek-ge aa
-next
-seek-ge aaa
-next
-seek-ge aaaa
-next
-seek-ge aaaaa
-next
-stats
-----
-a@3: (a@3, .)
-a@1: (a@1, .)
-aa@3: (aa@3, .)
-aa@1: (aa@1, .)
-aaa@3: (aaa@3, .)
-aaa@1: (aaa@1, .)
-aaaa@3: (aaaa@3, .)
-aaaa@1: (aaaa@1, .)
-aaaaa@3: (aaaaa@3, .)
-aaaaa@1: (aaaaa@1, .)
-stats: (interface (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 281B, cached 0B, read-time 0s)), (points: (count 10, key-bytes 50B, value-bytes 50B, tombstoned 0)))
+(internal-stats: (block-bytes: (total 547B, cached 0B, read-time 0s)), (points: (count 10, key-bytes 50B, value-bytes 35B, tombstoned 0)), (separated: (count 15, bytes 65B, fetched 25B)))

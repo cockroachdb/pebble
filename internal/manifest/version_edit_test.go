@@ -11,7 +11,6 @@ import (
 	"os"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -45,11 +44,13 @@ func checkRoundTrip(e0 VersionEdit) error {
 func TestVERoundTripAndAccumulate(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	m1 := (&FileMetadata{
-		FileNum:        810,
-		Size:           8090,
-		CreationTime:   809060,
-		SmallestSeqNum: 9,
-		LargestSeqNum:  11,
+		FileNum:         810,
+		Size:            8090,
+		CreationTime:    809060,
+		SmallestSeqNum:  9,
+		LargestSeqNum:   11,
+		SyntheticPrefix: []byte("after"),
+		SyntheticSuffix: []byte("foo"),
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
@@ -129,6 +130,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		SmallestSeqNum:      3,
 		LargestSeqNum:       5,
 		MarkedForCompaction: true,
+		SyntheticSuffix:     []byte("foo"),
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
@@ -203,14 +205,12 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		{},
 		// A complete version edit.
 		{
-			ComparerName:       "11",
-			MinUnflushedLogNum: 22,
-			ObsoletePrevLogNum: 33,
-			NextFileNum:        44,
-			LastSeqNum:         55,
-			RemovedBackingTables: []base.DiskFileNum{
-				base.FileNum(10).DiskFileNum(), base.FileNum(11).DiskFileNum(),
-			},
+			ComparerName:         "11",
+			MinUnflushedLogNum:   22,
+			ObsoletePrevLogNum:   33,
+			NextFileNum:          44,
+			LastSeqNum:           55,
+			RemovedBackingTables: []base.DiskFileNum{10, 11},
 			CreatedBackingTables: []*FileBacking{m5.FileBacking, m6.FileBacking},
 			DeletedFiles: map[DeletedFileEntry]*FileMetadata{
 				{
@@ -423,123 +423,114 @@ func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 }
 
 func TestVersionEditApply(t *testing.T) {
-	parseMeta := func(s string) (*FileMetadata, error) {
-		m, err := ParseFileMetadataDebug(s)
-		if err != nil {
-			return nil, err
-		}
-		m.SmallestSeqNum = m.Smallest.SeqNum()
-		m.LargestSeqNum = m.Largest.SeqNum()
-		if m.SmallestSeqNum > m.LargestSeqNum {
-			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
-		}
-		m.InitPhysicalBacking()
-		return m, nil
-	}
+	const flushSplitBytes = 10 * 1024 * 1024
+	const readCompactionRate = 32000
 
-	// TODO(bananabrick): Improve the parsing logic in this test.
+	versions := make(map[string]*Version)
 	datadriven.RunTest(t, "testdata/version_edit_apply",
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
-			case "apply":
-				// TODO(sumeer): move this Version parsing code to utils, to
-				// avoid repeating it, and make it the inverse of
-				// Version.DebugString().
-				var v *Version
-				var veList []*VersionEdit
-				isVersion := true
-				isDelete := true
-				var level int
-				var err error
-				versionFiles := map[base.FileNum]*FileMetadata{}
-				for _, data := range strings.Split(d.Input, "\n") {
-					data = strings.TrimSpace(data)
-					switch data {
-					case "edit":
-						isVersion = false
-						veList = append(veList, &VersionEdit{})
-					case "delete":
-						isVersion = false
-						isDelete = true
-					case "add":
-						isVersion = false
-						isDelete = false
-					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
-						level, err = strconv.Atoi(data[1:])
-						if err != nil {
-							return err.Error()
-						}
-					default:
-						var ve *VersionEdit
-						if len(veList) > 0 {
-							ve = veList[len(veList)-1]
-						}
-						if isVersion || !isDelete {
-							meta, err := parseMeta(data)
-							if err != nil {
-								return err.Error()
-							}
-							if isVersion {
-								if v == nil {
-									v = new(Version)
-									for l := 0; l < NumLevels; l++ {
-										v.Levels[l] = makeLevelMetadata(base.DefaultComparer.Compare, l, nil /* files */)
-									}
-								}
-								versionFiles[meta.FileNum] = meta
-								v.Levels[level].insert(meta)
-								meta.LatestRef()
-							} else {
-								ve.NewFiles =
-									append(ve.NewFiles, NewFileEntry{Level: level, Meta: meta})
-							}
-						} else {
-							fileNum, err := strconv.Atoi(data)
-							if err != nil {
-								return err.Error()
-							}
-							dfe := DeletedFileEntry{Level: level, FileNum: base.FileNum(fileNum)}
-							if ve.DeletedFiles == nil {
-								ve.DeletedFiles = make(map[DeletedFileEntry]*FileMetadata)
-							}
-							ve.DeletedFiles[dfe] = versionFiles[dfe.FileNum]
-						}
-					}
+			case "define":
+				// Define a version.
+				name := d.CmdArgs[0].String()
+				v, err := ParseVersionDebug(base.DefaultComparer, flushSplitBytes, d.Input)
+				if err != nil {
+					d.Fatalf(t, "%v", err)
 				}
+				versions[name] = v
+				return v.DebugString()
 
-				if v != nil {
-					if err := v.InitL0Sublevels(base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20); err != nil {
-						return err.Error()
-					}
+			case "apply":
+				// Apply an edit to the given version.
+				name := d.CmdArgs[0].String()
+				v := versions[name]
+				if v == nil {
+					d.Fatalf(t, "unknown version %q", name)
+					return ""
 				}
 
 				bve := BulkVersionEdit{}
 				bve.AddedByFileNum = make(map[base.FileNum]*FileMetadata)
-				for _, ve := range veList {
-					if err := bve.Accumulate(ve); err != nil {
-						return err.Error()
+				for _, l := range v.Levels {
+					it := l.Iter()
+					for f := it.First(); f != nil; f = it.Next() {
+						bve.AddedByFileNum[f.FileNum] = f
 					}
 				}
-				zombies := make(map[base.DiskFileNum]uint64)
-				newv, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000, zombies, ProhibitSplitUserKeys)
+
+				lines := strings.Split(d.Input, "\n")
+				for len(lines) > 0 {
+					// We allow multiple version edits with a special separator.
+					var linesForOneVE []string
+					if nextSplit := slices.Index(lines, "new version edit"); nextSplit != -1 {
+						linesForOneVE = lines[:nextSplit]
+						lines = lines[nextSplit+1:]
+					} else {
+						linesForOneVE = lines
+						lines = nil
+					}
+					ve, err := ParseVersionEditDebug(strings.Join(linesForOneVE, "\n"))
+					if err != nil {
+						d.Fatalf(t, "%v", err)
+					}
+					if err := bve.Accumulate(ve); err != nil {
+						return fmt.Sprintf("error during Accumulate: %v", err)
+					}
+				}
+
+				newv, err := bve.Apply(v, base.DefaultComparer, flushSplitBytes, readCompactionRate)
 				if err != nil {
 					return err.Error()
 				}
 
-				zombieFileNums := make([]base.DiskFileNum, 0, len(zombies))
-				if len(veList) == 1 {
-					// Only care about zombies if a single version edit was
-					// being applied.
-					for fileNum := range zombies {
-						zombieFileNums = append(zombieFileNums, fileNum)
-					}
-					slices.Sort(zombieFileNums)
+				// Reinitialize the L0 sublevels in the original version; otherwise we
+				// will get "AddL0Files called twice on the same receiver" panics.
+				if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
+					panic(err)
 				}
-
-				return fmt.Sprintf("%szombies %d\n", newv, zombieFileNums)
+				return newv.DebugString()
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
+}
+
+func TestParseVersionEditDebugRoundTrip(t *testing.T) {
+	testCases := []struct {
+		input  string
+		output string
+	}{
+		{
+			input: `  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
+		},
+		{
+			input:  `add-table: L0 1:[a#0,SET-z#0,DEL]`,
+			output: `  add-table:     L0 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]`,
+		},
+		{
+			input: `  del-table:     L1 000001`,
+		},
+		{
+			input: strings.Join([]string{
+				`  del-table:     L1 000002`,
+				`  del-table:     L3 000003`,
+				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
+				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:2`,
+			}, "\n"),
+		},
+	}
+	for _, tc := range testCases {
+		t.Run("", func(t *testing.T) {
+			ve, err := ParseVersionEditDebug(tc.input)
+			require.NoError(t, err)
+			got := ve.DebugString(base.DefaultFormatter)
+			got = strings.TrimSuffix(got, "\n")
+			want := tc.input
+			if tc.output != "" {
+				want = tc.output
+			}
+			require.Equal(t, want, got)
+		})
+	}
 }

@@ -38,6 +38,7 @@ type T struct {
 	mergers         sstable.Mergers
 	defaultComparer string
 	openErrEnhancer func(error) error
+	openOptions     []OpenOption
 }
 
 // A Option configures the Pebble introspection tool.
@@ -82,6 +83,14 @@ func Filters(filters ...FilterPolicy) Option {
 	}
 }
 
+// OpenOptions may be passed to New to provide a set of OpenOptions that should
+// be invoked to configure the *pebble.Options before opening a database.
+func OpenOptions(openOptions ...OpenOption) Option {
+	return func(t *T) {
+		t.openOptions = append(t.openOptions, openOptions...)
+	}
+}
+
 // FS sets the filesystem implementation to use by the introspection tools.
 func FS(fs vfs.FS) Option {
 	return func(t *T) {
@@ -121,7 +130,7 @@ func New(opts ...Option) *T {
 		opt(t)
 	}
 
-	t.db = newDB(&t.opts, t.comparers, t.mergers, t.openErrEnhancer)
+	t.db = newDB(&t.opts, t.comparers, t.mergers, t.openErrEnhancer, t.openOptions)
 	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)

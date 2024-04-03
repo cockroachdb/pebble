@@ -9,7 +9,7 @@ ingest ext0
 
 lsm
 ----
-6:
+L6:
   000004:[a#10,SET-l#10,SET]
 
 
@@ -23,52 +23,61 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000006:[d#11,SET-f#12,SET]
-6:
+L6:
   000004:[a#10,SET-l#10,SET]
 
 excise c k
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000006
-  deleted:       L6 000004
-  added:         L6 000007:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
-  added:         L6 000008:[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
+  del-table:     L0 000006
+  del-table:     L6 000004
+  add-table:     L6 000007(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33
+  add-table:     L6 000008(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET] size:33
+  add-backing:   000004
 
 
 excise a e
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000006
-  deleted:       L6 000004
-  added:         L0 000009:[f#12,SET-f#12,SET] seqnums:[11-12] points:[f#12,SET-f#12,SET]
-  added:         L6 000010:[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
+  del-table:     L0 000006
+  del-table:     L6 000004
+  add-table:     L0 000009(000006):[f#12,SET-f#12,SET] seqnums:[11-12] points:[f#12,SET-f#12,SET] size:45
+  add-table:     L6 000010(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET] size:33
+  add-backing:   000006
+  add-backing:   000004
 
 excise e z
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000006
-  deleted:       L6 000004
-  added:         L0 000011:[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
-  added:         L6 000012:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
+  del-table:     L0 000006
+  del-table:     L6 000004
+  add-table:     L0 000011(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET] size:45
+  add-table:     L6 000012(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33
+  add-backing:   000006
+  add-backing:   000004
 
 excise f l
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000006
-  deleted:       L6 000004
-  added:         L0 000013:[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
-  added:         L6 000014:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
-  added:         L6 000015:[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET]
+  del-table:     L0 000006
+  del-table:     L6 000004
+  add-table:     L0 000013(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET] size:45
+  add-table:     L6 000014(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33
+  add-table:     L6 000015(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET] size:33
+  add-backing:   000006
+  add-backing:   000004
 
 excise f ll
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000006
-  deleted:       L6 000004
-  added:         L0 000016:[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET]
-  added:         L6 000017:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET]
+  del-table:     L0 000006
+  del-table:     L6 000004
+  add-table:     L0 000016(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET] size:45
+  add-table:     L6 000017(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33
+  add-backing:   000006
+  add-backing:   000004
 
 excise p q
 ----
@@ -76,9 +85,9 @@ would excise 0 files, use ingest-and-excise to excise.
 
 lsm
 ----
-0.0:
+L0.0:
   000006:[d#11,SET-f#12,SET]
-6:
+L6:
   000004:[a#10,SET-l#10,SET]
 
 iter
@@ -104,10 +113,10 @@ ingest-and-excise ext1 excise=c-k
 
 lsm
 ----
-6:
-  000019:[a#10,SET-a#10,SET]
-  000018:[d#13,SET-e#13,SET]
-  000020:[l#10,SET-l#10,SET]
+L6:
+  000019(000004):[a#10,SET-a#10,SET]
+  000018:[d#14,SET-e#14,SET]
+  000020(000004):[l#10,SET-l#10,SET]
 
 iter
 first
@@ -145,23 +154,25 @@ ingest ext4
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[b#11,SET-i#inf,RANGEDEL]
-6:
+L6:
   000004:[c#10,RANGEKEYSET-f#inf,RANGEKEYSET]
 
 excise f g
 ----
 would excise 1 files, use ingest-and-excise to excise.
-  deleted:       L0 000005
-  added:         L0 000006:[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
-  added:         L0 000007:[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
+  del-table:     L0 000005
+  add-table:     L0 000006(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET] size:28
+  add-table:     L0 000007(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1
+  add-backing:   000005
 
 excise b c
 ----
 would excise 1 files, use ingest-and-excise to excise.
-  deleted:       L0 000005
-  added:         L0 000008:[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
+  del-table:     L0 000005
+  add-table:     L0 000008(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1
+  add-backing:   000005
 
 excise i j
 ----
@@ -173,11 +184,13 @@ would excise 0 files, use ingest-and-excise to excise.
 excise c d
 ----
 would excise 2 files, use ingest-and-excise to excise.
-  deleted:       L0 000005
-  deleted:       L6 000004
-  added:         L0 000009:[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET]
-  added:         L0 000010:[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL]
-  added:         L6 000011:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET]
+  del-table:     L0 000005
+  del-table:     L6 000004
+  add-table:     L0 000009(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET] size:28
+  add-table:     L0 000010(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1
+  add-table:     L6 000011(000004):[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] size:1
+  add-backing:   000005
+  add-backing:   000004
 
 reset
 ----
@@ -195,7 +208,7 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[a#10,SET-ee#inf,RANGEKEYSET]
 
 build ext2
@@ -207,11 +220,11 @@ ingest-and-excise ext2 excise=b-c
 
 lsm
 ----
-0.0:
-  000007:[a#10,SET-a#10,SET]
-  000008:[d#12,SET-ee#inf,RANGEKEYSET]
-6:
-  000006:[z#14,SET-z#14,SET]
+L0.0:
+  000007(000005):[a#10,SET-a#10,SET]
+  000008(000005):[d#12,SET-ee#inf,RANGEKEYSET]
+L6:
+  000006:[z#15,SET-z#15,SET]
 
 # Regression test for https://github.com/cockroachdb/pebble/issues/2947.
 reset
@@ -235,7 +248,7 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[a#10,SET-j#19,SET]
 
 build ext2
@@ -247,11 +260,11 @@ ingest-and-excise ext2 excise=d-e
 
 lsm
 ----
-0.0:
-  000007:[a#10,SET-c#12,SET]
-  000008:[e#14,SET-j#19,SET]
-6:
-  000006:[z#20,SET-z#20,SET]
+L0.0:
+  000007(000005):[a#10,SET-c#12,SET]
+  000008(000005):[e#14,SET-j#19,SET]
+L6:
+  000006:[z#21,SET-z#21,SET]
 
 build ext3
 set zz zz
@@ -263,13 +276,13 @@ ingest-and-excise ext3 excise=g-h
 # 7, 10, 11 should have the same file backing struct.
 lsm
 ----
-0.0:
-  000007:[a#10,SET-c#12,SET]
-  000010:[e#14,SET-f#15,SET]
-  000011:[h#17,SET-j#19,SET]
-6:
-  000006:[z#20,SET-z#20,SET]
-  000009:[zz#21,SET-zz#21,SET]
+L0.0:
+  000007(000005):[a#10,SET-c#12,SET]
+  000010(000005):[e#14,SET-f#15,SET]
+  000011(000005):[h#17,SET-j#19,SET]
+L6:
+  000006:[z#21,SET-z#21,SET]
+  000009:[zz#23,SET-zz#23,SET]
 
 confirm-backing 7 10 11
 ----
@@ -282,13 +295,13 @@ reopen
 # replay.
 lsm
 ----
-0.0:
-  000007:[a#10,SET-c#12,SET]
-  000010:[e#14,SET-f#15,SET]
-  000011:[h#17,SET-j#19,SET]
-6:
-  000006:[z#20,SET-z#20,SET]
-  000009:[zz#21,SET-zz#21,SET]
+L0.0:
+  000007(000005):[a#10,SET-c#12,SET]
+  000010(000005):[e#14,SET-f#15,SET]
+  000011(000005):[h#17,SET-j#19,SET]
+L6:
+  000006:[z#21,SET-z#21,SET]
+  000009:[zz#23,SET-zz#23,SET]
 
 confirm-backing 7 10 11
 ----
@@ -311,7 +324,7 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[a#10,SET-e#14,SET]
 
 build ext2
@@ -323,17 +336,376 @@ ingest-and-excise ext2 excise=d-f
 
 lsm
 ----
-0.0:
-  000007:[a#10,SET-c#12,SET]
-6:
-  000006:[z#15,SET-z#15,SET]
+L0.0:
+  000007(000005):[a#10,SET-c#12,SET]
+L6:
+  000006:[z#16,SET-z#16,SET]
 
 reopen
 ----
 
 lsm
 ----
-0.0:
-  000007:[a#10,SET-c#12,SET]
-6:
-  000006:[z#15,SET-z#15,SET]
+L0.0:
+  000007(000005):[a#10,SET-c#12,SET]
+L6:
+  000006:[z#16,SET-z#16,SET]
+
+# Regression test for #3128. A key at the upper bound of a virtual sstable
+# should not be skipped in reverse iteration with range key masking enabled.
+# bbsomethinglong@4 is not covered by the range key [bd-f) (which gets truncated
+# into a [cc-f) with an excise) and so should not be range key masked in both
+# iteration directions at the bottom.
+
+reset tiny-blocks
+----
+
+batch
+set a@3 foo
+merge b@5 bar
+merge bbsomethinglong@4 bazz
+merge bg@3 something
+merge d@6 baz
+merge z something
+----
+
+flush
+----
+
+batch
+set c foobar
+----
+
+flush
+----
+
+lsm
+----
+L0.1:
+  000007:[c#16,SET-c#16,SET]
+L0.0:
+  000005:[a@3#10,SET-z#15,MERGE]
+
+compact a z
+----
+
+build ext4
+range-key-set bd f @7 foo
+merge f something
+----
+
+ingest ext4
+----
+
+lsm
+----
+L0.0:
+  000009:[bd#17,RANGEKEYSET-f#17,MERGE]
+L6:
+  000008:[a@3#0,SET-z#0,MERGE]
+
+build ext3
+set z updated
+----
+
+ingest-and-excise ext3 excise=bd-cc
+----
+
+lsm
+----
+L0.0:
+  000011(000009):[cc#17,RANGEKEYSET-f#17,MERGE]
+  000010:[z#19,SET-z#19,SET]
+L6:
+  000012(000008):[a@3#0,SET-bbsomethinglong@4#0,MERGE]
+  000013(000008):[d@6#0,MERGE-z#0,MERGE]
+
+iter range-key-masking=@10
+first
+next
+next
+next
+next
+----
+a@3: (foo, .)
+b@5: (bar, .)
+bbsomethinglong@4: (bazz, .)
+cc: (., [cc-f) @7=foo UPDATED)
+f: (something, . UPDATED)
+
+
+iter range-key-masking=@10
+set-bounds lower=a upper=f
+seek-lt f
+prev
+prev
+----
+.
+cc: (., [cc-f) @7=foo UPDATED)
+bbsomethinglong@4: (bazz, . UPDATED)
+b@5: (bar, .)
+
+# Regression test for #3236. Lower bounds are enforced in virtualLastSeekLE()
+# in the case where the actual virtual sstable last key is invisible due to
+# being obsolete. We create an EFOS to ensure that we create a virtual
+# sstable consisting only of obsolete keys with an excise, then do an iterator
+# operation that does a virtualLastSeekLE() on it.
+
+reset
+----
+
+batch
+set a foo
+set b bar
+----
+
+batch
+set d@6 baz
+----
+
+flush
+----
+
+compact a z
+----
+
+batch
+set d@6 something
+----
+
+flush
+----
+
+batch
+set x something
+----
+
+file-only-snapshot s1
+a z
+----
+ok
+
+build ext7
+del d@6
+----
+
+ingest ext7
+----
+
+lsm
+----
+L0.1:
+  000008:[d@6#15,DEL-d@6#15,DEL]
+L0.0:
+  000007:[d@6#13,SET-d@6#13,SET]
+L6:
+  000005:[a#10,SET-d@6#12,SET]
+
+compact c e
+----
+
+lsm
+----
+L6:
+  000009:[a#0,SET-d@6#0,SET]
+
+build ext5
+set c something
+----
+
+ingest-and-excise ext5 excise=c-cc
+----
+memtable flushed
+
+lsm
+----
+L0.0:
+  000012:[x#14,SET-x#14,SET]
+L6:
+  000013(000009):[a#0,SET-b#0,SET]
+  000010:[c#17,SET-c#17,SET]
+  000014(000009):[d@6#15,DEL-d@6#0,SET]
+
+iter lower=c upper=e
+last
+prev
+prev
+seek-lt dd
+prev
+prev
+----
+c: (something, .)
+.
+.
+c: (something, .)
+.
+.
+
+
+# Test to verify that IngestAndExcise now uses flushableIngest when directed to 
+# do so using a flag that is passed down by the caller.
+
+reset
+----
+
+batch
+set a foo
+set b bar
+----
+
+batch
+set d@6 baz
+----
+
+flush
+----
+
+compact a z
+----
+
+batch
+set d@6 something
+set g something
+----
+
+flush
+----
+
+lsm
+----
+L0.0:
+  000007:[d@6#13,SET-g#14,SET]
+L6:
+  000005:[a#10,SET-d@6#12,SET]
+
+batch
+set x something
+----
+
+file-only-snapshot s1
+a z
+----
+ok
+
+lsm
+----
+L0.0:
+  000007:[d@6#13,SET-g#14,SET]
+L6:
+  000005:[a#10,SET-d@6#12,SET]
+
+build ext7
+del d@6
+----
+
+ingest ext7
+----
+
+lsm
+----
+L0.1:
+  000008:[d@6#16,DEL-d@6#16,DEL]
+L0.0:
+  000007:[d@6#13,SET-g#14,SET]
+L6:
+  000005:[a#10,SET-d@6#12,SET]
+
+compact c e
+----
+
+lsm
+----
+L6:
+  000009:[a#0,SET-g#0,SET]
+
+build ext5
+set c something
+set b something
+set f something
+del b-e
+----
+
+ingest-and-excise ext5 excise=b-e contains-excise-tombstone
+----
+flushable ingest
+
+lsm
+----
+L0.0:
+  000010:[b#17,SET-f#17,SET]
+  000013:[x#15,SET-x#15,SET]
+L6:
+  000014(000009):[a#0,SET-a#0,SET]
+  000015(000009):[g#0,SET-g#0,SET]
+
+iter lower=c upper=e
+last
+prev
+prev
+seek-lt dd
+prev
+prev
+----
+c: (something, .)
+.
+.
+c: (something, .)
+.
+.
+
+batch
+set a old
+set aa old
+----
+
+flush
+----
+
+compact a z
+----
+
+lsm
+----
+L6:
+  000018:[a#0,SET-x#0,SET]
+
+batch commit
+----
+
+build ext5
+set a outside-span
+----
+
+build ext6
+set b somethingElse
+set c somethingElse
+set f somethingElse
+del b-e
+----
+
+ingest-and-excise ext5 ext6 excise=b-e contains-excise-tombstone
+----
+
+lsm
+----
+L0.0:
+  000019:[a#22,SET-a#22,SET]
+  000020:[b#23,SET-f#23,SET]
+L6:
+  000021(000018):[a#0,SET-aa#0,SET]
+  000022(000018):[f#0,SET-x#0,SET]
+
+iter lower=a upper=f
+first
+next
+next
+next
+next
+next
+----
+a: (outside-span, .)
+aa: (old, .)
+b: (somethingElse, .)
+c: (somethingElse, .)
+.
+.

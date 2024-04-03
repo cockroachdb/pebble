@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -44,6 +45,43 @@ type remoteSubsystem struct {
 		// test tweaks this field).
 		checkRefsOnOpen bool
 	}
+}
+
+type remoteLockedState struct {
+	// catalogBatch accumulates remote object creations and deletions until
+	// Sync is called.
+	catalogBatch remoteobjcat.Batch
+
+	storageObjects map[remote.Locator]remote.Storage
+
+	externalObjects map[remote.ObjectKey][]base.DiskFileNum
+}
+
+func (rs *remoteLockedState) addExternalObject(meta objstorage.ObjectMetadata) {
+	if rs.externalObjects == nil {
+		rs.externalObjects = make(map[remote.ObjectKey][]base.DiskFileNum)
+	}
+	key := remote.MakeObjectKey(meta.Remote.Locator, meta.Remote.CustomObjectName)
+	rs.externalObjects[key] = append(rs.externalObjects[key], meta.DiskFileNum)
+}
+
+func (rs *remoteLockedState) removeExternalObject(meta objstorage.ObjectMetadata) {
+	key := remote.MakeObjectKey(meta.Remote.Locator, meta.Remote.CustomObjectName)
+	newSlice := slices.DeleteFunc(rs.externalObjects[key], func(n base.DiskFileNum) bool {
+		return n == meta.DiskFileNum
+	})
+	if len(newSlice) == 0 {
+		delete(rs.externalObjects, key)
+	} else {
+		rs.externalObjects[key] = newSlice
+	}
+}
+
+func (rs *remoteLockedState) getExternalObjects(
+	locator remote.Locator, objName string,
+) []base.DiskFileNum {
+	key := remote.MakeObjectKey(locator, objName)
+	return rs.externalObjects[key]
 }
 
 // remoteInit initializes the remote object subsystem (if configured) and finds
@@ -110,6 +148,9 @@ func (p *provider) remoteInit() error {
 			o.AssertValid()
 		}
 		p.mu.knownObjects[o.DiskFileNum] = o
+		if o.IsExternal() {
+			p.mu.remote.addExternalObject(o)
+		}
 	}
 	return nil
 }
@@ -126,9 +167,9 @@ func (p *provider) sharedClose() error {
 	if p.st.Remote.StorageFactory == nil {
 		return nil
 	}
-	var err error
+	err := p.sharedSync()
 	if p.remote.cache != nil {
-		err = p.remote.cache.Close()
+		err = firstError(err, p.remote.cache.Close())
 		p.remote.cache = nil
 	}
 	if p.remote.catalog != nil {
@@ -141,7 +182,7 @@ func (p *provider) sharedClose() error {
 // SetCreatorID is part of the objstorage.Provider interface.
 func (p *provider) SetCreatorID(creatorID objstorage.CreatorID) error {
 	if p.st.Remote.StorageFactory == nil {
-		return errors.AssertionFailedf("attempt to set CreatorID but remote storage not enabled")
+		return base.AssertionFailedf("attempt to set CreatorID but remote storage not enabled")
 	}
 	// Note: this call is a cheap no-op if the creator ID was already set. This
 	// call also checks if we are trying to change the ID.
@@ -374,4 +415,11 @@ func (p *provider) ensureStorage(locator remote.Locator) (remote.Storage, error)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.ensureStorageLocked(locator)
+}
+
+// GetExternalObjects is part of the Provider interface.
+func (p *provider) GetExternalObjects(locator remote.Locator, objName string) []base.DiskFileNum {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Clone(p.mu.remote.getExternalObjects(locator, objName))
 }

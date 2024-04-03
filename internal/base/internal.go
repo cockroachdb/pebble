@@ -80,6 +80,9 @@ const (
 	InternalKeyKindRangeKeyUnset InternalKeyKind = 20
 	InternalKeyKindRangeKeySet   InternalKeyKind = 21
 
+	InternalKeyKindRangeKeyMin InternalKeyKind = InternalKeyKindRangeKeyDelete
+	InternalKeyKindRangeKeyMax InternalKeyKind = InternalKeyKindRangeKeySet
+
 	// InternalKeyKindIngestSST is used to distinguish a batch that corresponds to
 	// the WAL entry for ingested sstables that are added to the flushable
 	// queue. This InternalKeyKind cannot appear, amongst other key kinds in a
@@ -448,7 +451,7 @@ func (k *InternalKey) CopyFrom(k2 InternalKey) {
 
 // String returns a string representation of the key.
 func (k InternalKey) String() string {
-	return fmt.Sprintf("%s#%d,%d", FormatBytes(k.UserKey), k.SeqNum(), k.Kind())
+	return fmt.Sprintf("%s#%d,%s", FormatBytes(k.UserKey), k.SeqNum(), k.Kind())
 }
 
 // Pretty returns a formatter for the key.
@@ -460,11 +463,13 @@ func (k InternalKey) Pretty(f FormatKey) fmt.Formatter {
 // with the same user key if used as an end boundary. See the comment on
 // InternalKeyRangeDeletionSentinel.
 func (k InternalKey) IsExclusiveSentinel() bool {
+	if (k.Trailer >> 8) != InternalKeySeqNumMax {
+		return false
+	}
 	switch kind := k.Kind(); kind {
-	case InternalKeyKindRangeDelete:
-		return k.Trailer == InternalKeyRangeDeleteSentinel
-	case InternalKeyKindRangeKeyDelete, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
-		return (k.Trailer >> 8) == InternalKeySeqNumMax
+	case InternalKeyKindRangeDelete, InternalKeyKindRangeKeyDelete,
+		InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
+		return true
 	default:
 		return false
 	}

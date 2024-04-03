@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/redact"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -259,10 +260,20 @@ type Metrics struct {
 		ZombieSize uint64
 		// The count of zombie tables.
 		ZombieCount int64
-		// The count of the backing sstables.
+		// The count of sstables backing virtual tables.
 		BackingTableCount uint64
-		// The sum of the sizes of the all of the backing sstables.
+		// The sum of the sizes of the BackingTableCount sstables that are backing virtual tables.
 		BackingTableSize uint64
+
+		// Local file sizes.
+		Local struct {
+			// LiveSize is the number of bytes in live tables.
+			LiveSize uint64
+			// ObsoleteSize is the number of bytes in obsolete tables.
+			ObsoleteSize uint64
+			// ZombieSize is the number of bytes in zombie tables.
+			ZombieSize uint64
+		}
 	}
 
 	TableCache CacheMetrics
@@ -284,11 +295,16 @@ type Metrics struct {
 		Size uint64
 		// Physical size of the WAL files on-disk. With WAL file recycling,
 		// this is greater than the live data in WAL files.
+		//
+		// TODO(sumeer): it seems this does not include ObsoletePhysicalSize.
+		// Should the comment be updated?
 		PhysicalSize uint64
 		// Number of logical bytes written to the WAL.
 		BytesIn uint64
 		// Number of bytes written to the WAL.
 		BytesWritten uint64
+		// Failover contains failover stats. Empty if failover is not enabled.
+		Failover wal.FailoverStats
 	}
 
 	LogWriter struct {
@@ -323,18 +339,19 @@ var (
 )
 
 // DiskSpaceUsage returns the total disk space used by the database in bytes,
-// including live and obsolete files.
+// including live and obsolete files. This only includes local files, i.e.,
+// remote files (as known to objstorage.Provider) are not included.
 func (m *Metrics) DiskSpaceUsage() uint64 {
 	var usageBytes uint64
 	usageBytes += m.WAL.PhysicalSize
 	usageBytes += m.WAL.ObsoletePhysicalSize
-	for _, lm := range m.Levels {
-		usageBytes += uint64(lm.Size)
-	}
-	usageBytes += m.Table.ObsoleteSize
-	usageBytes += m.Table.ZombieSize
+	usageBytes += m.Table.Local.LiveSize
+	usageBytes += m.Table.Local.ObsoleteSize
+	usageBytes += m.Table.Local.ZombieSize
 	usageBytes += m.private.optionsFileSize
 	usageBytes += m.private.manifestFileSize
+	// TODO(sumeer): InProgressBytes does not distinguish between local and
+	// remote files. This causes a small error. Fix.
 	usageBytes += uint64(m.Compact.InProgressBytes)
 	return usageBytes
 }
@@ -529,12 +546,18 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.SafeString("-------------------------------------------------------------------------------------------------------------------")
 	appendIfMulti("--------------------")
 	newline()
-	w.Printf("WAL: %d files (%s)  in: %s  written: %s (%.0f%% overhead)\n",
+	w.Printf("WAL: %d files (%s)  in: %s  written: %s (%.0f%% overhead)",
 		redact.Safe(m.WAL.Files),
 		humanize.Bytes.Uint64(m.WAL.Size),
 		humanize.Bytes.Uint64(m.WAL.BytesIn),
 		humanize.Bytes.Uint64(m.WAL.BytesWritten),
 		redact.Safe(percent(int64(m.WAL.BytesWritten)-int64(m.WAL.BytesIn), int64(m.WAL.BytesIn))))
+	if m.WAL.Failover == (wal.FailoverStats{}) {
+		w.Printf("\n")
+	} else {
+		w.Printf(" failover: (switches: %d, primary: %s, secondary: %s)\n", m.WAL.Failover.DirSwitchCount,
+			m.WAL.Failover.PrimaryWriteDuration.String(), m.WAL.Failover.SecondaryWriteDuration.String())
+	}
 
 	w.Printf("Flushes: %d\n", redact.Safe(m.Flush.Count))
 
@@ -559,9 +582,10 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(m.MemTable.ZombieCount),
 		humanize.Bytes.Uint64(m.MemTable.ZombieSize))
 
-	w.Printf("Zombie tables: %d (%s)\n",
+	w.Printf("Zombie tables: %d (%s, local: %s)\n",
 		redact.Safe(m.Table.ZombieCount),
-		humanize.Bytes.Uint64(m.Table.ZombieSize))
+		humanize.Bytes.Uint64(m.Table.ZombieSize),
+		humanize.Bytes.Uint64(m.Table.Local.ZombieSize))
 
 	w.Printf("Backing tables: %d (%s)\n",
 		redact.Safe(m.Table.BackingTableCount),
@@ -569,6 +593,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("Virtual tables: %d (%s)\n",
 		redact.Safe(m.NumVirtual()),
 		humanize.Bytes.Uint64(m.VirtualSize()))
+	w.Printf("Local tables size: %s\n", humanize.Bytes.Uint64(m.Table.Local.LiveSize))
 
 	formatCacheMetrics := func(m *CacheMetrics, name redact.SafeString) {
 		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",

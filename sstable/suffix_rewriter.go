@@ -46,8 +46,8 @@ func RewriteKeySuffixes(
 // TODO(sumeer): document limitations, if any, due to this limited
 // re-computation of properties (is there any loss of fidelity?).
 //
-// Any block and table property collectors configured in the WriterOptions must
-// implement SuffixReplaceableTableCollector/SuffixReplaceableBlockCollector.
+// Any block property collectors configured in the WriterOptions must implement
+// SuffixReplaceableBlockCollector.
 //
 // The WriterOptions.TableFormat is ignored, and the output sstable has the
 // same TableFormat as the input, which is returned in case the caller wants
@@ -115,12 +115,6 @@ func rewriteKeySuffixesInBlocks(
 		}
 	}()
 
-	for _, c := range w.propCollectors {
-		if _, ok := c.(SuffixReplaceableTableCollector); !ok {
-			return nil, TableFormatUnspecified,
-				errors.Errorf("property collector %s does not support suffix replacement", c.Name())
-		}
-	}
 	for _, c := range w.blockPropCollectors {
 		if _, ok := c.(SuffixReplaceableBlockCollector); !ok {
 			return nil, TableFormatUnspecified,
@@ -207,7 +201,7 @@ func rewriteBlocks(
 		if err != nil {
 			return err
 		}
-		if err := iter.init(r.Compare, inputBlock, r.Properties.GlobalSeqNum, false); err != nil {
+		if err := iter.init(r.Compare, r.Split, inputBlock, NoTransforms); err != nil {
 			return err
 		}
 
@@ -278,6 +272,16 @@ func rewriteBlocks(
 	return nil
 }
 
+func checkWriterFilterMatchesReader(r *Reader, w *Writer) error {
+	if r.Properties.FilterPolicyName != w.filter.policyName() {
+		return errors.New("mismatched filters")
+	}
+	if was, is := r.Properties.ComparerName, w.props.ComparerName; was != is {
+		return errors.Errorf("mismatched Comparer %s vs %s, replacement requires same splitter to copy filters", was, is)
+	}
+	return nil
+}
+
 func rewriteDataBlocksToWriter(
 	r *Reader,
 	w *Writer,
@@ -293,11 +297,8 @@ func rewriteDataBlocksToWriter(
 	blocks := make([]blockWithSpan, len(data))
 
 	if w.filter != nil {
-		if r.Properties.FilterPolicyName != w.filter.policyName() {
-			return errors.New("mismatched filters")
-		}
-		if was, is := r.Properties.ComparerName, w.props.ComparerName; was != is {
-			return errors.Errorf("mismatched Comparer %s vs %s, replacement requires same splitter to copy filters", was, is)
+		if err := checkWriterFilterMatchesReader(r, w); err != nil {
+			return err
 		}
 	}
 
@@ -329,12 +330,6 @@ func rewriteDataBlocksToWriter(
 	close(errCh)
 	if err, ok := <-errCh; ok {
 		return err
-	}
-
-	for _, p := range w.propCollectors {
-		if err := p.(SuffixReplaceableTableCollector).UpdateKeySuffixes(r.Properties.UserProperties, from, to); err != nil {
-			return err
-		}
 	}
 
 	var decoder blockPropertiesDecoder
@@ -404,7 +399,7 @@ func rewriteDataBlocksToWriter(
 }
 
 func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
-	iter, err := r.NewRawRangeKeyIter()
+	iter, err := r.NewRawRangeKeyIter(NoTransforms)
 	if err != nil {
 		return err
 	}
@@ -414,7 +409,8 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
 	}
 	defer iter.Close()
 
-	for s := iter.First(); s != nil; s = iter.Next() {
+	s, err := iter.First()
+	for ; s != nil; s, err = iter.Next() {
 		if !s.Valid() {
 			break
 		}
@@ -428,7 +424,7 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
 			s.Keys[i].Suffix = to
 		}
 
-		err := rangekey.Encode(s, func(k base.InternalKey, v []byte) error {
+		err = rangekey.Encode(s, func(k base.InternalKey, v []byte) error {
 			// Calling AddRangeKey instead of addRangeKeySpan bypasses the fragmenter.
 			// This is okay because the raw fragments off of `iter` are already
 			// fragmented, and suffix replacement should not affect fragmentation.
@@ -438,8 +434,7 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
 			return err
 		}
 	}
-
-	return nil
+	return err
 }
 
 type copyFilterWriter struct {
@@ -477,7 +472,7 @@ func RewriteKeySuffixesViaWriter(
 			w.Close()
 		}
 	}()
-	i, err := r.NewIter(nil, nil)
+	i, err := r.NewIter(NoTransforms, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -540,8 +535,9 @@ func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error)
 	if cap(buf) < decompressedLen {
 		buf = make([]byte, decompressedLen)
 	}
-	res, err := decompressInto(typ, raw[prefix:], buf[:decompressedLen])
-	return res, buf, err
+	dst := buf[:decompressedLen]
+	err = decompressInto(typ, raw[prefix:], dst)
+	return dst, buf, err
 }
 
 // memReader is a thin wrapper around a []byte such that it can be passed to

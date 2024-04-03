@@ -17,13 +17,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -372,15 +374,12 @@ func TestLargeBatch(t *testing.T) {
 		}
 	}
 
-	logNum := func() base.DiskFileNum {
+	getLatestLog := func() wal.LogicalLog {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum
-	}
-	fileSize := func(fileNum base.DiskFileNum) int64 {
-		info, err := d.opts.FS.Stat(base.MakeFilepath(d.opts.FS, "", fileTypeLog, fileNum))
+		logs, err := d.mu.log.manager.List()
 		require.NoError(t, err)
-		return info.Size()
+		return logs[len(logs)-1]
 	}
 	memTableCreationSeqNum := func() uint64 {
 		d.mu.Lock()
@@ -388,8 +387,9 @@ func TestLargeBatch(t *testing.T) {
 		return d.mu.mem.mutable.logSeqNum
 	}
 
-	startLogNum := logNum()
-	startLogStartSize := fileSize(startLogNum)
+	startLog := getLatestLog()
+	startLogStartSize, err := startLog.PhysicalSize()
+	require.NoError(t, err)
 	startSeqNum := d.mu.versions.logSeqNum.Load()
 
 	// Write a key with a value larger than the memtable size.
@@ -398,18 +398,20 @@ func TestLargeBatch(t *testing.T) {
 	// Verify that the large batch was written to the WAL that existed before it
 	// was committed. We verify that WAL rotation occurred, where the large batch
 	// was written to, and that the new WAL is empty.
-	endLogNum := logNum()
-	if startLogNum == endLogNum {
+	endLog := getLatestLog()
+	if startLog.Num == endLog.Num {
 		t.Fatal("expected WAL rotation")
 	}
-	startLogEndSize := fileSize(startLogNum)
+	startLogEndSize, err := startLog.PhysicalSize()
+	require.NoError(t, err)
 	if startLogEndSize == startLogStartSize {
 		t.Fatalf("expected large batch to be written to %s.log, but file size unchanged at %d",
-			startLogNum, startLogEndSize)
+			startLog.Num, startLogEndSize)
 	}
-	endLogSize := fileSize(endLogNum)
+	endLogSize, err := endLog.PhysicalSize()
+	require.NoError(t, err)
 	if endLogSize != 0 {
-		t.Fatalf("expected %s.log to be empty, but found %d", endLogNum, endLogSize)
+		t.Fatalf("expected %s to be empty, but found %d", endLog, endLogSize)
 	}
 	if creationSeqNum := memTableCreationSeqNum(); creationSeqNum <= startSeqNum {
 		t.Fatalf("expected memTable.logSeqNum=%d > largeBatch.seqNum=%d", creationSeqNum, startSeqNum)
@@ -417,13 +419,13 @@ func TestLargeBatch(t *testing.T) {
 
 	// Verify this results in one L0 table being created.
 	require.NoError(t, try(100*time.Microsecond, 20*time.Second,
-		verifyLSM("0.0:\n  000005:[a#10,SET-a#10,SET]\n")))
+		verifyLSM("L0.0:\n  000005:[a#10,SET-a#10,SET]\n")))
 
 	require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("b"), 512), nil))
 
 	// Verify this results in a second L0 table being created.
 	require.NoError(t, try(100*time.Microsecond, 20*time.Second,
-		verifyLSM("0.0:\n  000005:[a#10,SET-a#10,SET]\n  000007:[b#11,SET-b#11,SET]\n")))
+		verifyLSM("L0.0:\n  000005:[a#10,SET-a#10,SET]\n  000007:[b#11,SET-b#11,SET]\n")))
 
 	// Allocate a bunch of batches to exhaust the batchPool. None of these
 	// batches should have a non-zero count.
@@ -789,16 +791,16 @@ func TestIterLeakSharedCache(t *testing.T) {
 
 func TestMemTableReservation(t *testing.T) {
 	opts := &Options{
-		Cache:        NewCache(128 << 10 /* 128 KB */),
-		MemTableSize: initialMemTableSize,
-		FS:           vfs.NewMem(),
+		Cache: NewCache(128 << 10 /* 128 KB */),
+		// We're going to be looking at and asserting the global memtable reservation
+		// amount below so we don't want to race with any triggered stats collections.
+		DisableTableStats: true,
+		MemTableSize:      initialMemTableSize,
+		FS:                vfs.NewMem(),
 	}
 	defer opts.Cache.Unref()
 	opts.testingRandomized(t)
 	opts.EnsureDefaults()
-	// We're going to be looking at and asserting the global memtable reservation
-	// amount below so we don't want to race with any triggered stats collections.
-	opts.private.disableTableStats = true
 
 	// Add a block to the cache. Note that the memtable size is larger than the
 	// cache size, so opening the DB should cause this block to be evicted.
@@ -806,7 +808,7 @@ func TestMemTableReservation(t *testing.T) {
 	helloWorld := []byte("hello world")
 	value := cache.Alloc(len(helloWorld))
 	copy(value.Buf(), helloWorld)
-	opts.Cache.Set(tmpID, base.FileNum(0).DiskFileNum(), 0, value).Release()
+	opts.Cache.Set(tmpID, base.DiskFileNum(0), 0, value).Release()
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -823,7 +825,7 @@ func TestMemTableReservation(t *testing.T) {
 		t.Fatalf("expected 2 refs, but found %d", refs)
 	}
 	// Verify the memtable reservation has caused our test block to be evicted.
-	if h := opts.Cache.Get(tmpID, base.FileNum(0).DiskFileNum(), 0); h.Get() != nil {
+	if h := opts.Cache.Get(tmpID, base.DiskFileNum(0), 0); h.Get() != nil {
 		t.Fatalf("expected failure, but found success: %s", h.Get())
 	}
 
@@ -1412,10 +1414,7 @@ func (t *testTracer) IsTracingEnabled(ctx context.Context) bool {
 }
 
 func TestTracing(t *testing.T) {
-	if !invariants.Enabled {
-		// The test relies on timing behavior injected when invariants.Enabled.
-		return
-	}
+	defer sstable.DeterministicReadBlockDurationForTesting()()
 	var tracer testTracer
 	c := NewCache(0)
 	defer c.Unref()
@@ -1435,7 +1434,7 @@ func TestTracing(t *testing.T) {
 	_, closer, err := d.Get([]byte("hello"))
 	require.NoError(t, err)
 	closer.Close()
-	readerInitTraceString := "reading 37 bytes took 5ms\nreading 628 bytes took 5ms\n"
+	readerInitTraceString := "reading 37 bytes took 5ms\nreading 419 bytes took 5ms\n"
 	iterTraceString := "reading 27 bytes took 5ms\nreading 29 bytes took 5ms\n"
 	require.Equal(t, readerInitTraceString+iterTraceString, tracer.buf.String())
 
@@ -1965,5 +1964,359 @@ func BenchmarkRotateMemtables(b *testing.B) {
 		if err := d.Flush(); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// TODO(sumeer): rewrite test when LogRecycler is hidden from this package.
+func TestRecycleLogs(t *testing.T) {
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS: mem,
+	})
+	require.NoError(t, err)
+
+	logNum := func() base.DiskFileNum {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		walNums, err := d.mu.log.manager.List()
+		require.NoError(t, err)
+		return base.DiskFileNum(walNums[len(walNums)-1].Num)
+	}
+	logCount := func() int {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		walNums, err := d.mu.log.manager.List()
+		require.NoError(t, err)
+		return len(walNums)
+	}
+
+	recycler := d.mu.log.manager.RecyclerForTesting()
+	// Flush the memtable a few times, forcing rotation of the WAL. We should see
+	// the recycled logs change as expected.
+	require.EqualValues(t, []base.DiskFileNum(nil), recycler.LogNumsForTesting())
+	curLog := logNum()
+
+	require.NoError(t, d.Flush())
+
+	require.EqualValues(t, []base.DiskFileNum{curLog}, recycler.LogNumsForTesting())
+	curLog = logNum()
+
+	require.NoError(t, d.Flush())
+
+	require.EqualValues(t, []base.DiskFileNum{curLog}, recycler.LogNumsForTesting())
+
+	require.NoError(t, d.Close())
+
+	d, err = Open("", &Options{
+		FS:     mem,
+		Logger: testLogger{t},
+	})
+	require.NoError(t, err)
+	recycler = d.mu.log.manager.RecyclerForTesting()
+	metrics := d.Metrics()
+	if n := logCount(); n != int(metrics.WAL.Files) {
+		t.Fatalf("expected %d WAL files, but found %d", n, metrics.WAL.Files)
+	}
+	if n, sz := recycler.Stats(); n != int(metrics.WAL.ObsoleteFiles) {
+		t.Fatalf("expected %d obsolete WAL files, but found %d", n, metrics.WAL.ObsoleteFiles)
+	} else if sz != metrics.WAL.ObsoletePhysicalSize {
+		t.Fatalf("expected %d obsolete physical WAL size, but found %d", sz, metrics.WAL.ObsoletePhysicalSize)
+	}
+	if recycled := recycler.LogNumsForTesting(); len(recycled) != 0 {
+		t.Fatalf("expected no recycled WAL files after recovery, but found %d", recycled)
+	}
+	require.NoError(t, d.Close())
+}
+
+type sstAndLogFileBlockingFS struct {
+	vfs.FS
+	unblocker sync.WaitGroup
+}
+
+var _ vfs.FS = &sstAndLogFileBlockingFS{}
+
+func (fs *sstAndLogFileBlockingFS) Create(name string) (vfs.File, error) {
+	if strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".sst") {
+		fs.unblocker.Wait()
+	}
+	return fs.FS.Create(name)
+}
+
+func (fs *sstAndLogFileBlockingFS) unblock() {
+	fs.unblocker.Done()
+}
+
+func newBlockingFS(fs vfs.FS) *sstAndLogFileBlockingFS {
+	lfbfs := &sstAndLogFileBlockingFS{FS: fs}
+	lfbfs.unblocker.Add(1)
+	return lfbfs
+}
+
+func TestWALFailoverAvoidsWriteStall(t *testing.T) {
+	mem := vfs.NewMem()
+	// All sst and log creation is blocked.
+	primaryFS := newBlockingFS(mem)
+	// Secondary for WAL failover can do log creation.
+	secondary := wal.Dir{FS: mem, Dirname: "secondary"}
+	walFailover := &WALFailoverOptions{Secondary: secondary, FailoverOptions: wal.FailoverOptions{
+		UnhealthySamplingInterval:          100 * time.Millisecond,
+		UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return time.Second, true },
+	}}
+	o := &Options{
+		FS:                          primaryFS,
+		MemTableSize:                4 << 20,
+		MemTableStopWritesThreshold: 2,
+		WALFailover:                 walFailover,
+	}
+	d, err := Open("", o)
+	require.NoError(t, err)
+	defer d.Close()
+	value := make([]byte, 1<<20)
+	rand.Read(value)
+	// After ~8 writes, the default write stall threshold is exceeded, but the
+	// writes will not block indefinitely since failover has or will happen, and
+	// wal.Manager.ElevateWriteStallThresholdForFailover() will return true.
+	for i := 0; i < 200; i++ {
+		require.NoError(t, d.Set([]byte(fmt.Sprintf("%d", i)), value, nil))
+	}
+	// Validate that the default write stall threshold was exceeded.
+	require.Greater(
+		t, d.Metrics().MemTable.Size, o.MemTableSize*uint64(o.MemTableStopWritesThreshold))
+	// Unblock the writes to allow the DB to close.
+	primaryFS.unblock()
+}
+
+// TestDeterminism is a datadriven test intended to validate determinism of
+// operations in the face of concurrency or randomizing of operations. The test
+// data defines a sequence of commands run sequentially. Then the test may
+// re-run the sequence introducing latencies, reorderings, parallelism, etc,
+// ensuring that all re-runs produce the same output.
+func TestDeterminism(t *testing.T) {
+	var d *DB
+	var fs vfs.FS = vfs.NewMem()
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	type step struct {
+		fn     func(td *datadriven.TestData) string
+		td     datadriven.TestData
+		output string
+	}
+	var sequence []step
+	addStep := func(td *datadriven.TestData, fn func(td *datadriven.TestData) string) string {
+		s := strings.TrimSpace(fn(td))
+		sequence = append(sequence, step{
+			fn:     fn,
+			td:     *td,
+			output: s,
+		})
+		if len(s) > 0 {
+			s = s + "\n"
+		}
+		return s + fmt.Sprintf("%d:%s", len(sequence)-1, td.Cmd)
+	}
+
+	datadriven.RunTest(t, "testdata/determinism",
+		func(t *testing.T, td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "reset":
+				fs = vfs.NewMem()
+				sequence = nil
+				return ""
+			case "define":
+				return addStep(td, func(td *datadriven.TestData) string {
+					opts := &Options{
+						FS:                          fs,
+						DebugCheck:                  DebugCheckLevels,
+						Logger:                      testLogger{t},
+						FormatMajorVersion:          FormatNewest,
+						DisableAutomaticCompactions: true,
+					}
+					opts.Experimental.IngestSplit = func() bool { return rand.Intn(2) == 1 }
+					var err error
+					if d, err = runDBDefineCmdReuseFS(td, opts); err != nil {
+						return err.Error()
+					}
+					return d.mu.versions.currentVersion().String()
+				})
+			case "batch":
+				return addStep(td, func(td *datadriven.TestData) string {
+					b := d.NewBatch()
+					require.NoError(t, runBatchDefineCmd(td, b))
+					require.NoError(t, b.Commit(nil))
+					return ""
+				})
+			case "build":
+				return addStep(td, func(td *datadriven.TestData) string {
+					require.NoError(t, runBuildCmd(td, d, fs))
+					return ""
+				})
+			case "flush":
+				return addStep(td, func(td *datadriven.TestData) string {
+					_, err := d.AsyncFlush()
+					if err != nil {
+						return err.Error()
+					}
+					return ""
+				})
+			case "ingest-and-excise":
+				return addStep(td, func(td *datadriven.TestData) string {
+					if err := runIngestAndExciseCmd(td, d, fs); err != nil {
+						return err.Error()
+					}
+					return ""
+				})
+			case "maybe-compact":
+				return addStep(td, func(td *datadriven.TestData) string {
+					d.mu.Lock()
+					defer d.mu.Unlock()
+					d.opts.DisableAutomaticCompactions = false
+					d.maybeScheduleCompaction()
+					d.opts.DisableAutomaticCompactions = true
+					return ""
+				})
+			case "run":
+				var mkfs func() vfs.FS = func() vfs.FS { return vfs.NewMem() }
+				var beforeStep func()
+				for _, cmdArg := range td.CmdArgs {
+					switch cmdArg.Key {
+					case "io-latency", "step-latency":
+						p, err := strconv.ParseFloat(cmdArg.Vals[0], 64)
+						require.NoError(t, err)
+						mean, err := time.ParseDuration(cmdArg.Vals[1])
+						require.NoError(t, err)
+						if cmdArg.Key == "io-latency" {
+							prevMkfs := mkfs
+							mkfs = func() vfs.FS {
+								return errorfs.Wrap(prevMkfs(), errorfs.RandomLatency(errorfs.Randomly(p, 0), mean, 0))
+							}
+						} else if cmdArg.Key == "step-latency" {
+							beforeStep = func() {
+								if rand.Float64() < p {
+									time.Sleep(time.Duration(min(rand.ExpFloat64(), 20.0) * float64(mean)))
+								}
+							}
+						}
+					}
+				}
+				ordering := parseOrdering(td.Input)
+
+				var sb strings.Builder
+				rerunSequence := func() string {
+					sb.Reset()
+					fs = mkfs()
+					output := make([]string, len(sequence))
+					ordering.visit(func(i int) {
+						beforeStep()
+						output[i] = strings.TrimSpace(sequence[i].fn(&sequence[i].td))
+					})
+					for i := range output {
+						if output[i] != sequence[i].output {
+							fmt.Fprintf(&sb, "# step %d: %s\n", i, sequence[i].td.Cmd)
+							fmt.Fprintf(&sb, "expected:\n%s\ngot:\n%s", sequence[i].output, output[i])
+							fmt.Fprintln(&sb)
+						}
+					}
+					return sb.String()
+				}
+				retries := 10
+				td.MaybeScanArgs(t, "count", &retries)
+				for i := 0; i < retries; i++ {
+					if diff := rerunSequence(); len(diff) > 0 {
+						return diff
+					}
+				}
+				return "ok"
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
+			}
+		})
+}
+
+type orderingNode interface {
+	visit(func(int))
+}
+
+type sequential []orderingNode
+
+func (s sequential) visit(fn func(int)) {
+	for _, n := range s {
+		n.visit(fn)
+	}
+}
+
+type reorder []orderingNode
+
+func (r reorder) visit(fn func(int)) {
+	for _, i := range rand.Perm(len(r)) {
+		r[i].visit(fn)
+	}
+}
+
+type parallel []orderingNode
+
+func (p parallel) visit(fn func(int)) {
+	var wg sync.WaitGroup
+	wg.Add(len(p))
+	for i := range p {
+		go func(i int) {
+			defer wg.Done()
+			p[i].visit(fn)
+		}(i)
+	}
+	wg.Wait()
+}
+
+type leaf int
+
+func (l leaf) visit(fn func(int)) { fn(int(l)) }
+
+func parseOrdering(s string) orderingNode {
+	n, _ := parseOrderingTokens(strings.Fields(s))
+	return n
+}
+
+func parseOrderingTokens(tokens []string) (orderingNode, int) {
+	if len(tokens) == 0 {
+		return nil, 0
+	}
+	switch tokens[0] {
+	case ")":
+		panic("unexpected )")
+	case "sequential(", "reorder(", "parallel(":
+		var nodes []orderingNode
+		i := 1
+		for i < len(tokens) {
+			if tokens[i] == ")" {
+				i++
+				break
+			}
+			n, m := parseOrderingTokens(tokens[i:])
+			nodes = append(nodes, n)
+			i += m
+		}
+		switch tokens[0] {
+		case "sequential(":
+			return sequential(nodes), i
+		case "reorder(":
+			return reorder(nodes), i
+		case "parallel(":
+			return parallel(nodes), i
+		default:
+			panic("unreachable")
+		}
+	default:
+		n := strings.IndexByte(tokens[0], ':')
+		if n == -1 {
+			n = len(tokens[0])
+		}
+		v, err := strconv.Atoi(tokens[0][:n])
+		if err != nil {
+			panic(err)
+		}
+		return leaf(v), 1
 	}
 }

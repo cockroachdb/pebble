@@ -4,7 +4,7 @@ a.SET.1-b.SET.2
 
 expand-inputs 0
 ----
-0: a#1,1-b#2,1
+0: a#1,SET-b#2,SET
 
 define
 a.SET.1-b.SET.2
@@ -14,65 +14,26 @@ e.SET.5-f.SET.6
 
 expand-inputs 0
 ----
-0: a#1,1-b#2,1
+0: a#1,SET-b#2,SET
 
 expand-inputs 1
 ----
-1: c#3,1-d#4,1
+1: c#3,SET-d#4,SET
 
 expand-inputs 2
 ----
-2: e#5,1-f#6,1
-
-define
-a.SET.1-b.SET.2
-b.SET.1-d.SET.4
-e.SET.5-f.SET.6
-----
-
-expand-inputs 0
-----
-0: a#1,1-b#2,1
-1: b#1,1-d#4,1
-
-expand-inputs 1
-----
-0: a#1,1-b#2,1
-1: b#1,1-d#4,1
-
-expand-inputs 2
-----
-2: e#5,1-f#6,1
-
-define
-a.SET.1-b.SET.2
-b.SET.1-d.SET.4
-d.SET.2-f.SET.6
-----
-
-expand-inputs 0
-----
-0: a#1,1-b#2,1
-1: b#1,1-d#4,1
-2: d#2,1-f#6,1
-
-expand-inputs 1
-----
-0: a#1,1-b#2,1
-1: b#1,1-d#4,1
-2: d#2,1-f#6,1
+2: e#5,SET-f#6,SET
 
 define
 a.SET.1-b.RANGEDEL.72057594037927935
 b.SET.1-d.SET.4
-d.SET.2-f.SET.6
+e.SET.2-f.SET.6
 ----
 
 expand-inputs 0
 ----
-0: a#1,1-b#72057594037927935,15
+0: a#1,SET-b#72057594037927935,RANGEDEL
 
 expand-inputs 1
 ----
-1: b#1,1-d#4,1
-2: d#2,1-f#6,1
+1: b#1,SET-d#4,SET

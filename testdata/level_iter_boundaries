@@ -2,7 +2,7 @@ build
 a.RANGEDEL.1:c
 b.RANGEDEL.2:d
 ----
-0: a#1,15-d#72057594037927935,15
+0: a#1,RANGEDEL-d#72057594037927935,RANGEDEL
 
 iter
 first
@@ -10,9 +10,9 @@ next
 last
 prev
 ----
-d#72057594037927935,15:
+d#72057594037927935,RANGEDEL:
 .
-a#1,15:
+a#1,RANGEDEL:
 .
 
 iter
@@ -21,9 +21,9 @@ seek-ge d
 seek-lt b
 prev
 ----
-d#72057594037927935,15:
+d#72057594037927935,RANGEDEL:
 .
-a#1,15:
+a#1,RANGEDEL:
 .
 
 iter
@@ -32,9 +32,9 @@ seek-prefix-ge d
 seek-lt b
 prev
 ----
-d#72057594037927935,15:
+d#72057594037927935,RANGEDEL:
 .
-a#1,15:
+a#1,RANGEDEL:
 .
 
 iter
@@ -57,20 +57,20 @@ clear
 build
 a.SET.1:a
 ----
-0: a#1,1-a#1,1
+0: a#1,SET-a#1,SET
 
 build
 b.RANGEDEL.2:c
 ----
-0: a#1,1-a#1,1
-1: b#2,15-c#72057594037927935,15
+0: a#1,SET-a#1,SET
+1: b#2,RANGEDEL-c#72057594037927935,RANGEDEL
 
 build
 c.SET.3:c
 ----
-0: a#1,1-a#1,1
-1: b#2,15-c#72057594037927935,15
-2: c#3,1-c#3,1
+0: a#1,SET-a#1,SET
+1: b#2,RANGEDEL-c#72057594037927935,RANGEDEL
+2: c#3,SET-c#3,SET
 
 iter
 first
@@ -78,9 +78,9 @@ next
 next
 next
 ----
-a#1,1:a
-c#72057594037927935,15:
-c#3,1:c
+a#1,SET:a
+c#72057594037927935,RANGEDEL:
+c#3,SET:c
 .
 
 iter
@@ -89,9 +89,9 @@ prev
 prev
 prev
 ----
-c#3,1:c
-b#2,15:
-a#1,1:a
+c#3,SET:c
+b#2,RANGEDEL:
+a#1,SET:a
 .
 
 clear
@@ -101,23 +101,23 @@ build
 a.SET.1:b
 b.RANGEDEL.2:c
 ----
-0: a#1,1-c#72057594037927935,15
+0: a#1,SET-c#72057594037927935,RANGEDEL
 
 iter
 first
 next
 next
 ----
-a#1,1:b
-c#72057594037927935,15:
+a#1,SET:b
+c#72057594037927935,RANGEDEL:
 .
 
 iter
 last
 prev
 ----
-a#1,1:b
-.
+a#1,SET:b
+a#1,SET:
 
 clear
 ----
@@ -126,13 +126,13 @@ build
 a.RANGEDEL.1:b
 c.SET.2:c
 ----
-0: a#1,15-c#2,1
+0: a#1,RANGEDEL-c#2,SET
 
 iter
 first
 next
 ----
-c#2,1:c
+c#2,SET:c
 .
 
 iter
@@ -140,8 +140,8 @@ last
 prev
 prev
 ----
-c#2,1:c
-a#1,15:
+c#2,SET:c
+a#1,RANGEDEL:
 .
 
 # Regression test to check that Seek{GE,LT} work properly in certain
@@ -154,7 +154,7 @@ build
 d.SET.3:d
 c.RANGEDEL.2:e
 ----
-0: c#2,15-e#72057594037927935,15
+0: c#2,RANGEDEL-e#72057594037927935,RANGEDEL
 
 iter
 seek-ge d
@@ -167,15 +167,15 @@ seek-ge d
 prev
 seek-lt e
 ----
-d#3,1:d
-e#72057594037927935,15:
-d#3,1:d
-e#72057594037927935,15:
-d#3,1:d
-c#2,15:
-d#3,1:d
-c#2,15:
-d#3,1:d
+d#3,SET:d
+e#72057594037927935,RANGEDEL:
+d#3,SET:d
+e#72057594037927935,RANGEDEL:
+d#3,SET:d
+c#2,RANGEDEL:
+d#3,SET:d
+c#2,RANGEDEL:
+d#3,SET:d
 
 # Regression test to check that Seek{GE,LT}, First, and Last do not
 # have iteration bounds affected by SeekPrefixGE. Previously,
@@ -191,7 +191,7 @@ build
 b.SET.4:b
 d.SET.3:d
 ----
-0: b#4,1-d#3,1
+0: b#4,SET-d#3,SET
 
 iter
 seek-prefix-ge c
@@ -199,7 +199,7 @@ seek-ge d
 next
 ----
 .
-d#3,1:d
+d#3,SET:d
 .
 
 iter
@@ -208,7 +208,7 @@ seek-lt e
 next
 ----
 .
-d#3,1:d
+d#3,SET:d
 .
 
 iter
@@ -218,8 +218,8 @@ next
 next
 ----
 .
-b#4,1:b
-d#3,1:d
+b#4,SET:b
+d#3,SET:d
 .
 
 iter
@@ -228,7 +228,7 @@ last
 next
 ----
 .
-d#3,1:d
+d#3,SET:d
 .
 
 clear
@@ -238,22 +238,22 @@ build
 a.SET.3:z
 d.SET.4:z
 ----
-0: a#3,1-d#4,1
+0: a#3,SET-d#4,SET
 
 build
 e.SET.5:z
 f.SET.6:z
 g.RANGEDEL.2:h
 ----
-0: a#3,1-d#4,1
-1: e#5,1-h#72057594037927935,15
+0: a#3,SET-d#4,SET
+1: e#5,SET-h#72057594037927935,RANGEDEL
 
 build
 j.SET.6:z
 ----
-0: a#3,1-d#4,1
-1: e#5,1-h#72057594037927935,15
-2: j#6,1-j#6,1
+0: a#3,SET-d#4,SET
+1: e#5,SET-h#72057594037927935,RANGEDEL
+2: j#6,SET-j#6,SET
 
 # Test cases to check that when the bounds are contained within a file, iterating
 # beyond the bounds does not cause the levelIter to change to the next/prev file.
@@ -264,7 +264,7 @@ set-bounds lower=a upper=b
 seek-ge a
 next
 ----
-a#3,1:z
+a#3,SET:z
 .
 
 file-pos
@@ -275,7 +275,7 @@ iter save continue
 seek-prefix-ge a
 next
 ----
-a#3,1:z
+a#3,SET:z
 .
 
 file-pos
@@ -307,7 +307,7 @@ set-bounds lower=a upper=b
 seek-ge a
 next
 ----
-a#3,1:z
+a#3,SET:z
 .
 
 file-pos
@@ -319,7 +319,7 @@ set-bounds lower=d upper=e
 seek-ge d
 next
 ----
-d#4,1:z
+d#4,SET:z
 .
 
 file-pos
@@ -330,7 +330,7 @@ iter save continue
 seek-prefix-ge d
 next
 ----
-d#4,1:z
+d#4,SET:z
 .
 
 file-pos
@@ -343,8 +343,8 @@ seek-ge e
 next
 next
 ----
-e#5,1:z
-f#72057594037927935,15:
+e#5,SET:z
+f#72057594037927935,RANGEDEL:
 .
 
 file-pos
@@ -356,8 +356,8 @@ seek-lt f
 prev
 prev
 ----
-e#5,1:z
-.
+e#5,SET:z
+e#5,SET:
 .
 
 file-pos
@@ -370,8 +370,8 @@ seek-lt g
 prev
 prev
 ----
-f#6,1:z
-f#72057594037927935,15:
+f#6,SET:z
+f#72057594037927935,RANGEDEL:
 .
 
 file-pos

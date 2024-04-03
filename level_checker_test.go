@@ -37,7 +37,8 @@ func TestCheckLevelsBasics(t *testing.T) {
 				t.Fatalf("%s: cloneFileSystem failed: %v", tc, err)
 			}
 			d, err := Open(tc, &Options{
-				FS: fs,
+				FS:     fs,
+				Logger: testLogger{t},
 			})
 			if err != nil {
 				t.Fatalf("%s: Open failed: %v", tc, err)
@@ -95,17 +96,20 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 
 	var fileNum FileNum
 	newIters :=
-		func(_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+		func(_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds) (iterSet, error) {
 			r := readers[file.FileNum]
-			rangeDelIter, err := r.NewRawRangeDelIter()
+			rangeDelIter, err := r.NewRawRangeDelIter(sstable.NoTransforms)
 			if err != nil {
-				return nil, nil, err
+				return iterSet{}, err
 			}
-			iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 			if err != nil {
-				return nil, nil, err
+				return iterSet{}, err
 			}
-			return iter, rangeDelIter, nil
+			return iterSet{
+				point:         iter,
+				rangeDeletion: rangeDelIter,
+			}, nil
 		}
 
 	fm := &failMerger{}
@@ -209,7 +213,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				cacheOpts := private.SSTableCacheOpts(0, base.FileNum(uint64(fileNum)-1).DiskFileNum()).(sstable.ReaderOption)
+				cacheOpts := private.SSTableCacheOpts(0, base.DiskFileNum(fileNum-1)).(sstable.ReaderOption)
 				r, err := sstable.NewReader(readable, sstable.ReaderOptions{}, cacheOpts)
 				if err != nil {
 					return err.Error()
@@ -249,8 +253,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				files[i+1] = levels[i]
 			}
 			version := manifest.NewVersion(
-				base.DefaultComparer.Compare,
-				base.DefaultFormatter,
+				base.DefaultComparer,
 				0,
 				files)
 			readState := &readState{current: version}

@@ -714,12 +714,9 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	currentVersion := func() (*manifest.Version, error) {
 		var err error
 		v, err = bve.Apply(v,
-			r.Opts.Comparer.Compare,
-			r.Opts.Comparer.FormatKey,
+			r.Opts.Comparer,
 			r.Opts.FlushSplitBytes,
-			r.Opts.Experimental.ReadCompactionRate,
-			nil, /* zombies */
-			manifest.ProhibitSplitUserKeys)
+			r.Opts.Experimental.ReadCompactionRate)
 		bve = manifest.BulkVersionEdit{AddedByFileNum: bve.AddedByFileNum}
 		return v, err
 	}
@@ -823,7 +820,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				// corresponding sstables before being terminated.
 				if s.kind == flushStepKind || s.kind == ingestStepKind {
 					for _, fileNum := range newFiles {
-						if _, ok := r.workload.sstables[fileNum.FileNum()]; !ok {
+						if _, ok := r.workload.sstables[base.PhysicalTableFileNum(fileNum)]; !ok {
 							// TODO(jackson,leon): This isn't exactly an error
 							// condition. Give this more thought; do we want to
 							// require graceful exiting of workload collection,
@@ -908,7 +905,7 @@ func findWorkloadFiles(
 		case base.FileTypeManifest:
 			manifests = append(manifests, dirent)
 		case base.FileTypeTable:
-			sstables[fileNum.FileNum()] = struct{}{}
+			sstables[base.PhysicalTableFileNum(fileNum)] = struct{}{}
 		}
 	}
 	if len(manifests) == 0 {
@@ -1000,7 +997,7 @@ func loadFlushedSSTableKeys(
 			defer r.Close()
 
 			// Load all the point keys.
-			iter, err := r.NewIter(nil, nil)
+			iter, err := r.NewIter(sstable.NoTransforms, nil, nil)
 			if err != nil {
 				return err
 			}
@@ -1020,11 +1017,12 @@ func loadFlushedSSTableKeys(
 			}
 
 			// Load all the range tombstones.
-			if iter, err := r.NewRawRangeDelIter(); err != nil {
+			if iter, err := r.NewRawRangeDelIter(sstable.NoTransforms); err != nil {
 				return err
 			} else if iter != nil {
 				defer iter.Close()
-				for s := iter.First(); s != nil; s = iter.Next() {
+				s, err := iter.First()
+				for ; s != nil; s, err = iter.Next() {
 					if err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
 						var key flushedKey
 						key.Trailer = k.Trailer
@@ -1036,14 +1034,18 @@ func loadFlushedSSTableKeys(
 						return err
 					}
 				}
+				if err != nil {
+					return err
+				}
 			}
 
 			// Load all the range keys.
-			if iter, err := r.NewRawRangeKeyIter(); err != nil {
+			if iter, err := r.NewRawRangeKeyIter(sstable.NoTransforms); err != nil {
 				return err
 			} else if iter != nil {
 				defer iter.Close()
-				for s := iter.First(); s != nil; s = iter.Next() {
+				s, err := iter.First()
+				for ; s != nil; s, err = iter.Next() {
 					if err := rangekey.Encode(s, func(k base.InternalKey, v []byte) error {
 						var key flushedKey
 						key.Trailer = k.Trailer
@@ -1054,6 +1056,9 @@ func loadFlushedSSTableKeys(
 					}); err != nil {
 						return err
 					}
+				}
+				if err != nil {
+					return err
 				}
 			}
 			return nil

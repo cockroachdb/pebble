@@ -4,70 +4,170 @@
 
 package keyspan
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
+)
 
 // Truncate creates a new iterator where every span in the supplied iterator is
-// truncated to be contained within the range [lower, upper). If start and end
-// are specified, filter out any spans that are completely outside those bounds.
-func Truncate(
-	cmp base.Compare,
-	iter FragmentIterator,
-	lower, upper []byte,
-	start, end *base.InternalKey,
-	panicOnUpperTruncate bool,
-) FragmentIterator {
-	return Filter(iter, func(in *Span, out *Span) (keep bool) {
-		out.Start, out.End = in.Start, in.End
-		out.Keys = append(out.Keys[:0], in.Keys...)
+// truncated to be contained within the given user key bounds.
+//
+// Note that fragment iterator Spans always have exclusive end-keys; if the
+// given bounds have an inclusive end key, then the input iterator must not
+// produce a span that contains that key. The only difference between bounds.End
+// being inclusive vs exclusive is this extra check.
+func Truncate(cmp base.Compare, iter FragmentIterator, bounds base.UserKeyBounds) FragmentIterator {
+	return &truncatingIter{
+		iter:   iter,
+		cmp:    cmp,
+		bounds: bounds,
+	}
+}
 
-		// Ignore this span if it lies completely outside start, end. Note that
-		// end endInclusive indicated whether end is inclusive.
-		//
-		// The comparison between s.End and start is by user key only, as
-		// the span is exclusive at s.End, so comparing by user keys
-		// is sufficient.
-		if start != nil && cmp(in.End, start.UserKey) <= 0 {
-			return false
-		}
-		if end != nil {
-			v := cmp(in.Start, end.UserKey)
-			switch {
-			case v > 0:
-				// Wholly outside the end bound. Skip it.
-				return false
-			case v == 0:
-				// This span begins at the same user key as `end`. Whether or
-				// not any of the keys contained within the span are relevant is
-				// dependent on Trailers. Any keys contained within the span
-				// with trailers larger than end cover the small sliver of
-				// keyspace between [k#inf, k#<end-seqnum>]. Since keys are
-				// sorted descending by Trailer within the span, we need to find
-				// the prefix of keys with larger trailers.
-				for i := range in.Keys {
-					if in.Keys[i].Trailer < end.Trailer {
-						out.Keys = out.Keys[:i]
-						break
-					}
-				}
-			default:
-				// Wholly within the end bound. Keep it.
+type truncatingIter struct {
+	iter FragmentIterator
+	cmp  base.Compare
+
+	bounds base.UserKeyBounds
+
+	span Span
+}
+
+// SeekGE implements FragmentIterator.
+func (i *truncatingIter) SeekGE(key []byte) (*Span, error) {
+	span, err := i.iter.SeekGE(key)
+	if err != nil {
+		return nil, err
+	}
+	span, spanBoundsChanged, err := i.nextSpanWithinBounds(span, +1)
+	if err != nil {
+		return nil, err
+	}
+	// nextSpanWithinBounds could return a span that's less than key, if the end
+	// bound was truncated to end at a key less than or equal to `key`. Detect
+	// this case and next/invalidate the iter.
+	if spanBoundsChanged && i.cmp(span.End, key) <= 0 {
+		return i.Next()
+	}
+	return span, nil
+}
+
+// SeekLT implements FragmentIterator.
+func (i *truncatingIter) SeekLT(key []byte) (*Span, error) {
+	span, err := i.iter.SeekLT(key)
+	if err != nil {
+		return nil, err
+	}
+	span, spanBoundsChanged, err := i.nextSpanWithinBounds(span, -1)
+	if err != nil {
+		return nil, err
+	}
+	// nextSpanWithinBounds could return a span that's >= key, if the start bound
+	// was truncated to start at a key greater than or equal to `key`. Detect this
+	// case and prev/invalidate the iter.
+	if spanBoundsChanged && i.cmp(span.Start, key) >= 0 {
+		return i.Prev()
+	}
+	return span, nil
+}
+
+// First implements FragmentIterator.
+func (i *truncatingIter) First() (*Span, error) {
+	span, err := i.iter.First()
+	if err != nil {
+		return nil, err
+	}
+	span, _, err = i.nextSpanWithinBounds(span, +1)
+	return span, err
+}
+
+// Last implements FragmentIterator.
+func (i *truncatingIter) Last() (*Span, error) {
+	span, err := i.iter.Last()
+	if err != nil {
+		return nil, err
+	}
+	span, _, err = i.nextSpanWithinBounds(span, -1)
+	return span, err
+}
+
+// Next implements FragmentIterator.
+func (i *truncatingIter) Next() (*Span, error) {
+	span, err := i.iter.Next()
+	if err != nil {
+		return nil, err
+	}
+	span, _, err = i.nextSpanWithinBounds(span, +1)
+	return span, err
+}
+
+// Prev implements FragmentIterator.
+func (i *truncatingIter) Prev() (*Span, error) {
+	span, err := i.iter.Prev()
+	if err != nil {
+		return nil, err
+	}
+	span, _, err = i.nextSpanWithinBounds(span, -1)
+	return span, err
+}
+
+// Close implements FragmentIterator.
+func (i *truncatingIter) Close() error {
+	return i.iter.Close()
+}
+
+// nextSpanWithinBounds returns the first span (starting with the given span and
+// advancing in the given direction) that intersects the bounds. It returns a
+// span that is entirely within the bounds; spanBoundsChanged indicates if the span
+// bounds had to be truncated.
+func (i *truncatingIter) nextSpanWithinBounds(
+	span *Span, dir int8,
+) (_ *Span, spanBoundsChanged bool, _ error) {
+	var err error
+	for span != nil {
+		if i.bounds.End.Kind == base.Inclusive && span.Contains(i.cmp, i.bounds.End.Key) {
+			err := base.AssertionFailedf("inclusive upper bound %q inside span %s", i.bounds.End.Key, span)
+			if invariants.Enabled {
+				panic(err)
 			}
+			return nil, false, err
 		}
+		// Intersect [span.Start, span.End) with [i.bounds.Start, i.bounds.End.Key).
+		spanBoundsChanged = false
+		start := span.Start
+		if i.cmp(start, i.bounds.Start) < 0 {
+			spanBoundsChanged = true
+			start = i.bounds.Start
+		}
+		end := span.End
+		if i.cmp(end, i.bounds.End.Key) > 0 {
+			spanBoundsChanged = true
+			end = i.bounds.End.Key
+		}
+		if !spanBoundsChanged {
+			return span, false, nil
+		}
+		if i.cmp(start, end) < 0 {
+			i.span = Span{
+				Start:     start,
+				End:       end,
+				Keys:      span.Keys,
+				KeysOrder: span.KeysOrder,
+			}
+			return &i.span, true, nil
+		}
+		// Span is outside of bounds, find the next one.
+		if dir == +1 {
+			span, err = i.iter.Next()
+		} else {
+			span, err = i.iter.Prev()
+		}
+	}
+	// NB: err may be nil or non-nil.
+	return nil, false, err
+}
 
-		var truncated bool
-		// Truncate the bounds to lower and upper.
-		if cmp(in.Start, lower) < 0 {
-			out.Start = lower
-		}
-		if cmp(in.End, upper) > 0 {
-			truncated = true
-			out.End = upper
-		}
-
-		if panicOnUpperTruncate && truncated {
-			panic("pebble: upper bound should not be truncated")
-		}
-
-		return !out.Empty() && cmp(out.Start, out.End) < 0
-	}, cmp)
+// WrapChildren implements FragmentIterator.
+func (i *truncatingIter) WrapChildren(wrap WrapFn) {
+	i.iter = wrap(i.iter)
 }

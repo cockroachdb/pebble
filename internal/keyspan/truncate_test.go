@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTruncate(t *testing.T) {
@@ -35,29 +36,13 @@ func TestTruncate(t *testing.T) {
 				t.Fatalf("expected 1-3 arguments: %s", d.CmdArgs)
 			}
 			parts := strings.Split(d.CmdArgs[0].String(), "-")
-			var startKey, endKey *base.InternalKey
-			if len(d.CmdArgs) > 1 {
-				for _, arg := range d.CmdArgs[1:] {
-					switch arg.Key {
-					case "startKey":
-						startKey = &base.InternalKey{}
-						*startKey = base.ParseInternalKey(arg.Vals[0])
-					case "endKey":
-						endKey = &base.InternalKey{}
-						*endKey = base.ParseInternalKey(arg.Vals[0])
-					}
-				}
-			}
 			if len(parts) != 2 {
 				t.Fatalf("malformed arg: %s", d.CmdArgs[0])
 			}
 			lower := []byte(parts[0])
 			upper := []byte(parts[1])
 
-			tIter := Truncate(
-				cmp, iter, lower, upper, startKey, endKey, false,
-			)
-			return tIter
+			return Truncate(cmp, iter, base.UserKeyBoundsEndExclusive(lower, upper))
 		}
 
 		switch d.Cmd {
@@ -70,9 +55,12 @@ func TestTruncate(t *testing.T) {
 			tIter := doTruncate()
 			defer tIter.Close()
 			var truncated []Span
-			for s := tIter.First(); s != nil; s = tIter.Next() {
+			var s *Span
+			var err error
+			for s, err = tIter.First(); s != nil; s, err = tIter.Next() {
 				truncated = append(truncated, s.ShallowClone())
 			}
+			require.NoError(t, err)
 			return formatAlphabeticSpans(truncated)
 
 		case "truncate-and-save-iter":
@@ -84,7 +72,7 @@ func TestTruncate(t *testing.T) {
 
 		case "saved-iter":
 			var buf bytes.Buffer
-			runIterCmd(t, d, savedIter, &buf)
+			RunIterCmd(d.Input, savedIter, &buf)
 			return buf.String()
 
 		default:

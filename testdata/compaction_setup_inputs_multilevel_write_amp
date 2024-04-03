@@ -8,11 +8,11 @@ L3
   c.SET.3-d.SET.2 size=1
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 L3
-  000003:[c#3,1-d#2,1]
+  000003:[c#3,SET-d#2,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 2.00; ML WriteAmp 1.50
 Original OverlappingRatio 1.00; ML OverlappingRatio 0.50
@@ -28,11 +28,11 @@ L3
   c.SET.3-d.SET.2 size=1
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 L3
-  000003:[c#3,1-d#2,1]
+  000003:[c#3,SET-d#2,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 1.10; ML WriteAmp 1.09
 Original OverlappingRatio 0.10; ML OverlappingRatio 0.09
@@ -47,9 +47,9 @@ L3
   c.SET.3-d.SET.2 size=3
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 
 # Init a multi-level compaction, but note that the second files in L2 and L3 do not get
 # chosen, as they don't overlap with the original compaction.
@@ -64,11 +64,11 @@ L3
   e.SET.2-h.SET.4 size=4
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 L3
-  000004:[c#3,1-d#2,1]
+  000004:[c#3,SET-d#2,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 1.83; ML WriteAmp 1.55
 Original OverlappingRatio 0.83; ML OverlappingRatio 0.55
@@ -83,9 +83,9 @@ L3
   e.SET.3-f.SET.2 size=100
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 1.83; ML WriteAmp 1.00
 Original OverlappingRatio 0.83; ML OverlappingRatio 0.00
@@ -98,9 +98,9 @@ L2
   a.SET.3-c.SET.4 size=5
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 1.83; ML WriteAmp 1.00
 Original OverlappingRatio 0.83; ML OverlappingRatio 0.00
@@ -117,7 +117,7 @@ L3
   a.SET.3-c.SET.4 size=5
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 
 # Init a multi-level compaction, without an overlapping file in the (tie goes to the ML compaction!)
 # intermediate and output levels
@@ -130,7 +130,7 @@ L3
   e.SET.4-f.SET.5 size=5
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 1.00; ML WriteAmp 1.00
 Original OverlappingRatio 0.00; ML OverlappingRatio 0.00
@@ -148,12 +148,12 @@ L3
   a.SET.3-c.SET.4 size=3
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#2,1-b#3,1]
-  000003:[c#2,1-d#3,1]
+  000002:[a#2,SET-b#3,SET]
+  000003:[c#2,SET-d#3,SET]
 L3
-  000004:[a#3,1-c#4,1]
+  000004:[a#3,SET-c#4,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 2.67; ML WriteAmp 1.27
 Original OverlappingRatio 1.67; ML OverlappingRatio 0.27
@@ -171,38 +171,15 @@ L3
   a.SET.3-c.SET.4 size=1
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000003:[a#2,1-b#3,1]
+  000003:[a#2,SET-b#3,SET]
 L3
-  000004:[a#3,1-c#4,1]
+  000004:[a#3,SET-c#4,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 2.00; ML WriteAmp 1.50
 Original OverlappingRatio 1.00; ML OverlappingRatio 0.50
 
-# Verify an expansion of the output level in the initial setupInputs will init a multi-level
-# compaction. i.e. without the initial expansion, the multil level compaction would not have
-# occurred.
-setup-inputs a a
-L1
-  a.SET.5-b.SET.6 size=1
-L2
-  a.SET.3-c.SET.4 size=1
-  c.SET.3-d.SET.2 size=1
-L3
-  c.SET.4-d.SET.4 size=3
-----
-L1
-  000001:[a#5,1-b#6,1]
-L2
-  000002:[a#3,1-c#4,1]
-  000003:[c#3,1-d#2,1]
-L3
-  000004:[c#4,1-d#4,1]
-init-multi-level(1,2,3)
-Original WriteAmp 3.00; ML WriteAmp 2.00
-Original OverlappingRatio 2.00; ML OverlappingRatio 1.00
-
 setup-inputs a a
 L1
   a.SET.5-b.SET.6 size=1
@@ -212,9 +189,9 @@ L3
   c.SET.4-d.SET.4 size=3
 ----
 L1
-  000001:[a#5,1-b#6,1]
+  000001:[a#5,SET-b#6,SET]
 L2
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 
 
 # Verify the second setupInputs call does not add an intermediate file if doing so would expand the
@@ -230,11 +207,11 @@ L3
   e.SET.4-f.SET.5 size=1
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#2,1-b#3,1]
+  000002:[a#2,SET-b#3,SET]
 L3
-  000004:[b#1,1-d#1,1]
+  000004:[b#1,SET-d#1,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 2.00; ML WriteAmp 1.50
 Original OverlappingRatio 1.00; ML OverlappingRatio 0.50
@@ -251,11 +228,11 @@ L4
   c.SET.4-d.SET.3 size=1
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 L3
-  000003:[c#3,1-d#2,1]
+  000003:[c#3,SET-d#2,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 1.83; ML WriteAmp 1.18
 Original OverlappingRatio 0.83; ML OverlappingRatio 0.18
@@ -270,32 +247,50 @@ L3
   a.SET.3-d.SET.4 size=3
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#5,1-b#6,1]
+  000002:[a#5,SET-b#6,SET]
 
-# During second setupInputs call, allow output level expansion even if max size
-# limit is exceeded, but not conduct intermediate level expansion.
-#
-# TODO(msbutler): If second setup inputs exceeds maxSize limits, should the first compaction get
-# returned?
-setup-inputs avail-bytes=20 a a
+setup-inputs a a
 L1
-  a.SET.1-b.SET.2 size=4
+  a.SET.1-c.SET.2 size=4
 L2
-  a.SET.5-b.SET.6 size=5
-  c.SET.4-e.SET.3 size=8
+  a.SET.5-d.SET.6 size=5
+  e.SET.4-f.SET.3 size=8
 L3
-  a.SET.3-d.SET.4 size=2
-  d.SET.2-e.SET.2 size=2
+  a.SET.3-b.SET.4 size=2
+  c.SET.2-g.SET.2 size=2
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-c#2,SET]
 L2
-  000002:[a#5,1-b#6,1]
+  000002:[a#5,SET-d#6,SET]
+  000003:[e#4,SET-f#3,SET]
 L3
-  000004:[a#3,1-d#4,1]
-  000005:[d#2,1-e#2,1]
+  000004:[a#3,SET-b#4,SET]
+  000005:[c#2,SET-g#2,SET]
+init-multi-level(1,2,3)
+Original WriteAmp 2.25; ML WriteAmp 1.24
+Original OverlappingRatio 1.25; ML OverlappingRatio 0.24
+
+# If max size is exceeded, we no longer pick e-f in L2.
+setup-inputs avail-bytes=20 a a
+L1
+  a.SET.1-c.SET.2 size=4
+L2
+  a.SET.5-d.SET.6 size=5
+  e.SET.4-f.SET.3 size=8
+L3
+  a.SET.3-b.SET.4 size=2
+  c.SET.2-g.SET.2 size=2
+----
+L1
+  000001:[a#1,SET-c#2,SET]
+L2
+  000002:[a#5,SET-d#6,SET]
+L3
+  000004:[a#3,SET-b#4,SET]
+  000005:[c#2,SET-g#2,SET]
 init-multi-level(1,2,3)
 Original WriteAmp 2.25; ML WriteAmp 1.44
 Original OverlappingRatio 1.25; ML OverlappingRatio 0.44
@@ -308,9 +303,9 @@ L6
   a.SET.3-c.SET.4 size=5
 ----
 L5
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L6
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 
 # Don't init a multi-level compaction if the start level is L0.
 setup-inputs a a
@@ -320,9 +315,9 @@ L1
   a.SET.3-c.SET.4 size=5
 ----
 L0
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L1
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]
 
 # Verify a multi level compaction will not init on a compacting file.
 setup-inputs a a
@@ -334,6 +329,6 @@ L3
   c.SET.3-d.SET.2 size=1 compacting
 ----
 L1
-  000001:[a#1,1-b#2,1]
+  000001:[a#1,SET-b#2,SET]
 L2
-  000002:[a#3,1-c#4,1]
+  000002:[a#3,SET-c#4,SET]

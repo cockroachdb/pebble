@@ -65,6 +65,7 @@ close
 ----
 <local fs> sync: p1
 <local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
+<local fs> close: p1
 <local fs> close: p1/REMOTE-OBJ-CATALOG-000001
 <local fs> close: p1
 
@@ -101,7 +102,6 @@ b3 103
 <remote> create object "eaac-1-000003.sst.ref.2.000103"
 <remote> close writer for "eaac-1-000003.sst.ref.2.000103" after 0 bytes
 <remote> size of object "eaac-1-000003.sst.ref.1.000003": 0
-<local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
 000101 -> remote://61a6-1-000001.sst
 000102 -> remote://a629-1-000002.sst
 000103 -> remote://eaac-1-000003.sst

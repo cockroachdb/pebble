@@ -7,11 +7,13 @@ package metamorphic
 import (
 	"bytes"
 	"fmt"
+	"math"
+	"os"
 	"slices"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
-	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable"
 	"golang.org/x/exp/rand"
 )
 
@@ -47,16 +49,26 @@ func (o iterOpts) IsZero() bool {
 		o.maskSuffix == nil && o.filterMin == 0 && o.filterMax == 0 && !o.useL6Filters
 }
 
+// GenerateOps generates n random operations, drawing randomness from the
+// provided pseudorandom generator and using cfg to determine the distribution
+// of op types.
+func GenerateOps(rng *rand.Rand, n uint64, cfg OpConfig) Ops {
+	// Generate a new set of random ops, writing them to <dir>/ops. These will be
+	// read by the child processes when performing a test run.
+	return generate(rng, n, cfg, newKeyManager(1 /* num instances */))
+}
+
 type generator struct {
-	cfg config
+	cfg OpConfig
 	rng *rand.Rand
 
 	init *initOp
 	ops  []op
 
 	// keyManager tracks the state of keys a operation generation time.
-	keyManager *keyManager
-	dbs        objIDSlice
+	keyManager   *keyManager
+	keyGenerator *keyGenerator
+	dbs          objIDSlice
 	// Unordered sets of object IDs for live objects. Used to randomly select on
 	// object when generating an operation. There are 4 concrete objects: the DB
 	// (of which there is exactly 1), batches, iterators, and snapshots.
@@ -73,6 +85,8 @@ type generator struct {
 	liveSnapshots objIDSlice
 	// liveWriters contains the DB, and any live batches. The DB is always at index 0.
 	liveWriters objIDSlice
+	// externalObjects contains the external objects created.
+	externalObjects objIDSlice
 
 	// Maps used to find associated objects during generation. These maps are not
 	// needed during test execution.
@@ -103,12 +117,14 @@ type generator struct {
 	iterReaderID map[objID]objID
 }
 
-func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
+func newGenerator(rng *rand.Rand, cfg OpConfig, km *keyManager) *generator {
+	keyGenerator := newKeyGenerator(km, rng, cfg)
 	g := &generator{
 		cfg:                   cfg,
 		rng:                   rng,
 		init:                  &initOp{dbSlots: uint32(cfg.numInstances)},
 		keyManager:            km,
+		keyGenerator:          keyGenerator,
 		liveReaders:           objIDSlice{makeObjID(dbTag, 1)},
 		liveWriters:           objIDSlice{makeObjID(dbTag, 1)},
 		dbs:                   objIDSlice{makeObjID(dbTag, 1)},
@@ -132,62 +148,75 @@ func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 	return g
 }
 
-func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
+func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 	g := newGenerator(rng, cfg, km)
 
-	generators := []func(){
-		batchAbort:                  g.batchAbort,
-		batchCommit:                 g.batchCommit,
-		dbCheckpoint:                g.dbCheckpoint,
-		dbCompact:                   g.dbCompact,
-		dbFlush:                     g.dbFlush,
-		dbRatchetFormatMajorVersion: g.dbRatchetFormatMajorVersion,
-		dbRestart:                   g.dbRestart,
-		iterClose:                   g.randIter(g.iterClose),
-		iterFirst:                   g.randIter(g.iterFirst),
-		iterLast:                    g.randIter(g.iterLast),
-		iterNext:                    g.randIter(g.iterNext),
-		iterNextWithLimit:           g.randIter(g.iterNextWithLimit),
-		iterNextPrefix:              g.randIter(g.iterNextPrefix),
-		iterCanSingleDelete:         g.randIter(g.iterCanSingleDelete),
-		iterPrev:                    g.randIter(g.iterPrev),
-		iterPrevWithLimit:           g.randIter(g.iterPrevWithLimit),
-		iterSeekGE:                  g.randIter(g.iterSeekGE),
-		iterSeekGEWithLimit:         g.randIter(g.iterSeekGEWithLimit),
-		iterSeekLT:                  g.randIter(g.iterSeekLT),
-		iterSeekLTWithLimit:         g.randIter(g.iterSeekLTWithLimit),
-		iterSeekPrefixGE:            g.randIter(g.iterSeekPrefixGE),
-		iterSetBounds:               g.randIter(g.iterSetBounds),
-		iterSetOptions:              g.randIter(g.iterSetOptions),
-		newBatch:                    g.newBatch,
-		newIndexedBatch:             g.newIndexedBatch,
-		newIter:                     g.newIter,
-		newIterUsingClone:           g.newIterUsingClone,
-		newSnapshot:                 g.newSnapshot,
-		readerGet:                   g.readerGet,
-		replicate:                   g.replicate,
-		snapshotClose:               g.snapshotClose,
-		writerApply:                 g.writerApply,
-		writerDelete:                g.writerDelete,
-		writerDeleteRange:           g.writerDeleteRange,
-		writerIngest:                g.writerIngest,
-		writerIngestAndExcise:       g.writerIngestAndExcise,
-		writerMerge:                 g.writerMerge,
-		writerRangeKeyDelete:        g.writerRangeKeyDelete,
-		writerRangeKeySet:           g.writerRangeKeySet,
-		writerRangeKeyUnset:         g.writerRangeKeyUnset,
-		writerSet:                   g.writerSet,
-		writerSingleDelete:          g.writerSingleDelete,
+	opGenerators := []func(){
+		OpBatchAbort:                  g.batchAbort,
+		OpBatchCommit:                 g.batchCommit,
+		OpDBCheckpoint:                g.dbCheckpoint,
+		OpDBCompact:                   g.dbCompact,
+		OpDBDownload:                  g.dbDownload,
+		OpDBFlush:                     g.dbFlush,
+		OpDBRatchetFormatMajorVersion: g.dbRatchetFormatMajorVersion,
+		OpDBRestart:                   g.dbRestart,
+		OpIterClose:                   g.randIter(g.iterClose),
+		OpIterFirst:                   g.randIter(g.iterFirst),
+		OpIterLast:                    g.randIter(g.iterLast),
+		OpIterNext:                    g.randIter(g.iterNext),
+		OpIterNextWithLimit:           g.randIter(g.iterNextWithLimit),
+		OpIterNextPrefix:              g.randIter(g.iterNextPrefix),
+		OpIterCanSingleDelete:         g.randIter(g.iterCanSingleDelete),
+		OpIterPrev:                    g.randIter(g.iterPrev),
+		OpIterPrevWithLimit:           g.randIter(g.iterPrevWithLimit),
+		OpIterSeekGE:                  g.randIter(g.iterSeekGE),
+		OpIterSeekGEWithLimit:         g.randIter(g.iterSeekGEWithLimit),
+		OpIterSeekLT:                  g.randIter(g.iterSeekLT),
+		OpIterSeekLTWithLimit:         g.randIter(g.iterSeekLTWithLimit),
+		OpIterSeekPrefixGE:            g.randIter(g.iterSeekPrefixGE),
+		OpIterSetBounds:               g.randIter(g.iterSetBounds),
+		OpIterSetOptions:              g.randIter(g.iterSetOptions),
+		OpNewBatch:                    g.newBatch,
+		OpNewIndexedBatch:             g.newIndexedBatch,
+		OpNewIter:                     g.newIter,
+		OpNewIterUsingClone:           g.newIterUsingClone,
+		OpNewSnapshot:                 g.newSnapshot,
+		OpNewExternalObj:              g.newExternalObj,
+		OpReaderGet:                   g.readerGet,
+		OpReplicate:                   g.replicate,
+		OpSnapshotClose:               g.snapshotClose,
+		OpWriterApply:                 g.writerApply,
+		OpWriterDelete:                g.writerDelete,
+		OpWriterDeleteRange:           g.writerDeleteRange,
+		OpWriterIngest:                g.writerIngest,
+		OpWriterIngestAndExcise:       g.writerIngestAndExcise,
+		OpWriterIngestExternalFiles:   g.writerIngestExternalFiles,
+		OpWriterLogData:               g.writerLogData,
+		OpWriterMerge:                 g.writerMerge,
+		OpWriterRangeKeyDelete:        g.writerRangeKeyDelete,
+		OpWriterRangeKeySet:           g.writerRangeKeySet,
+		OpWriterRangeKeyUnset:         g.writerRangeKeyUnset,
+		OpWriterSet:                   g.writerSet,
+		OpWriterSingleDelete:          g.writerSingleDelete,
 	}
 
 	// TPCC-style deck of cards randomization. Every time the end of the deck is
 	// reached, we shuffle the deck.
-	deck := randvar.NewDeck(g.rng, cfg.ops...)
+	deck := randvar.NewDeck(g.rng, cfg.ops[:]...)
+
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintln(os.Stderr, formatOps(g.ops))
+			panic(r)
+		}
+	}()
 	for i := uint64(0); i < count; i++ {
-		generators[deck.Int()]()
+		opGenerators[deck.Int()]()
 	}
 
 	g.dbClose()
+
+	computeDerivedFields(g.ops)
 	return g.ops
 }
 
@@ -196,86 +225,14 @@ func (g *generator) add(op op) {
 	g.keyManager.update(op)
 }
 
-// randKeyToWrite returns a key for any write other than SingleDelete.
-//
-// TODO(peter): make the size and distribution of keys configurable. See
-// keyDist and keySizeDist in config.go.
-func (g *generator) randKeyToWrite(newKey float64) []byte {
-	return g.randKeyHelper(g.keyManager.eligibleWriteKeys(), newKey, nil)
-}
-
 // prefixKeyRange generates a [start, end) pair consisting of two prefix keys.
 func (g *generator) prefixKeyRange() ([]byte, []byte) {
-	start := g.randPrefixToWrite(0.001)
-	end := g.randPrefixToWrite(0.001)
-	for g.cmp(start, end) == 0 {
-		end = g.randPrefixToWrite(0.05)
-	}
-	if g.cmp(start, end) > 0 {
-		start, end = end, start
-	}
-	return start, end
+	keys := g.keyGenerator.UniqueKeys(2, func() []byte { return g.keyGenerator.RandPrefix(0.01) })
+	return keys[0], keys[1]
 }
 
-// randPrefixToWrite returns a prefix key (a key with no suffix) for a range key
-// write operation.
-func (g *generator) randPrefixToWrite(newPrefix float64) []byte {
-	prefixes := g.keyManager.prefixes()
-	if len(prefixes) > 0 && g.rng.Float64() > newPrefix {
-		// Use an existing prefix.
-		p := g.rng.Intn(len(prefixes))
-		return prefixes[p]
-	}
-
-	// Use a new prefix.
-	var prefix []byte
-	for {
-		prefix = g.randKeyHelperSuffix(nil, 4, 12, 0)
-		if !g.keyManager.prefixExists(prefix) {
-			if !g.keyManager.addNewKey(prefix) {
-				panic("key must not exist if prefix doesn't exist")
-			}
-			return prefix
-		}
-	}
-}
-
-// randSuffixToWrite generates a random suffix according to the configuration's suffix
-// distribution. It takes a probability 0 ≤ p ≤ 1.0 indicating the probability
-// with which the generator should increase the max suffix generated by the
-// generator.
-//
-// randSuffixToWrite may return a nil suffix, with the probability the
-// configuration's suffix distribution assigns to the zero suffix.
-func (g *generator) randSuffixToWrite(incMaxProb float64) []byte {
-	if g.rng.Float64() < incMaxProb {
-		g.cfg.writeSuffixDist.IncMax(1)
-	}
-	return suffixFromInt(int64(g.cfg.writeSuffixDist.Uint64(g.rng)))
-}
-
-// randSuffixToRead generates a random suffix used during reads. The suffixes
-// generated by this function are within the same range as suffixes generated by
-// randSuffixToWrite, however randSuffixToRead pulls from a uniform
-// distribution.
-func (g *generator) randSuffixToRead() []byte {
-	// When reading, don't apply the recency skewing in order to better exercise
-	// a reading a mix of older and newer keys.
-	max := g.cfg.writeSuffixDist.Max()
-	return suffixFromInt(g.rng.Int63n(int64(max)))
-}
-
-func suffixFromInt(suffix int64) []byte {
-	// Treat the zero as no suffix to match the behavior during point key
-	// generation in randKeyHelper.
-	if suffix == 0 {
-		return nil
-	}
-	return testkeys.Suffix(suffix)
-}
-
-func (g *generator) randKeyToSingleDelete(id, dbID objID) []byte {
-	keys := g.keyManager.eligibleSingleDeleteKeys(id, dbID)
+func (g *generator) randKeyToSingleDelete(id objID) []byte {
+	keys := g.keyManager.eligibleSingleDeleteKeys(id)
 	length := len(keys)
 	if length == 0 {
 		return nil
@@ -283,161 +240,11 @@ func (g *generator) randKeyToSingleDelete(id, dbID objID) []byte {
 	return keys[g.rng.Intn(length)]
 }
 
-// randKeyToRead returns a key for read operations.
-func (g *generator) randKeyToRead(newKey float64) []byte {
-	return g.randKeyHelper(g.keyManager.eligibleReadKeys(), newKey, nil)
-}
-
-// randKeyToReadInRange returns a key for read operations within the provided
-// key range. The bounds of the provided key range must span a prefix boundary.
-func (g *generator) randKeyToReadInRange(newKey float64, kr pebble.KeyRange) []byte {
-	return g.randKeyHelper(g.keyManager.eligibleReadKeysInRange(kr), newKey, &kr)
-}
-
-func (g *generator) randKeyHelper(
-	keys [][]byte, newKey float64, newKeyBounds *pebble.KeyRange,
-) []byte {
-	switch {
-	case len(keys) > 0 && g.rng.Float64() > newKey:
-		// Use an existing user key.
-		return keys[g.rng.Intn(len(keys))]
-
-	case len(keys) > 0 && g.rng.Float64() > g.cfg.newPrefix:
-		// Use an existing prefix but a new suffix, producing a new user key.
-		prefixes := g.keyManager.prefixes()
-
-		// If we're constrained to a key range, find which existing prefixes
-		// fall within that key range.
-		if newKeyBounds != nil {
-			s, _ := slices.BinarySearchFunc(prefixes, newKeyBounds.Start, g.cmp)
-			e, _ := slices.BinarySearchFunc(prefixes, newKeyBounds.End, g.cmp)
-			prefixes = prefixes[s:e]
-		}
-
-		if len(prefixes) > 0 {
-			for {
-				// Pick a prefix on each iteration in case most or all suffixes are
-				// already in use for any individual prefix.
-				p := g.rng.Intn(len(prefixes))
-				suffix := int64(g.cfg.writeSuffixDist.Uint64(g.rng))
-
-				var key []byte
-				if suffix > 0 {
-					key = resizeBuffer(key, len(prefixes[p]), testkeys.SuffixLen(suffix))
-					n := copy(key, prefixes[p])
-					testkeys.WriteSuffix(key[n:], suffix)
-				} else {
-					key = resizeBuffer(key, len(prefixes[p]), 0)
-					copy(key, prefixes[p])
-				}
-
-				if (newKeyBounds == nil || (g.cmp(key, newKeyBounds.Start) >= 0 && g.cmp(key, newKeyBounds.End) < 0)) &&
-					g.keyManager.addNewKey(key) {
-					return key
-				}
-
-				// If the generated key already existed, or the generated key
-				// fell outside the provided bounds, increase the suffix
-				// distribution and loop.
-				g.cfg.writeSuffixDist.IncMax(1)
-			}
-		}
-		// Otherwise fall through to generating a new prefix.
-		fallthrough
-
-	default:
-		// Use a new prefix, producing a new user key.
-
-		var key []byte
-
-		suffix := int64(g.cfg.writeSuffixDist.Uint64(g.rng))
-
-		// If we have bounds in which we need to generate the key, use
-		// testkeys.RandomSeparator to generate a key between the bounds.
-		if newKeyBounds != nil {
-			targetLength := 4 + g.rng.Intn(8)
-			key = testkeys.RandomSeparator(nil, g.prefix(newKeyBounds.Start), g.prefix(newKeyBounds.End),
-				suffix, targetLength, g.rng)
-		} else {
-			for {
-				key = g.randKeyHelperSuffix(nil, 4, 12, suffix)
-				if !g.keyManager.prefixExists(key[:testkeys.Comparer.Split(key)]) {
-					if !g.keyManager.addNewKey(key) {
-						panic("key must not exist if prefix doesn't exist")
-					}
-					break
-				}
-			}
-		}
-		return key
-	}
-}
-
-// randKeyHelperSuffix is a helper function for randKeyHelper, and should not be
-// invoked directly.
-func (g *generator) randKeyHelperSuffix(
-	dst []byte, minPrefixLen, maxPrefixLen int, suffix int64,
-) []byte {
-	n := minPrefixLen
-	if maxPrefixLen > minPrefixLen {
-		n += g.rng.Intn(maxPrefixLen - minPrefixLen)
-	}
-	// In order to test a mix of suffixed and unsuffixed keys, omit the zero
-	// suffix.
-	if suffix == 0 {
-		dst = resizeBuffer(dst, n, 0)
-		g.fillRand(dst)
-		return dst
-	}
-	suffixLen := testkeys.SuffixLen(suffix)
-	dst = resizeBuffer(dst, n, suffixLen)
-	g.fillRand(dst[:n])
-	testkeys.WriteSuffix(dst[n:], suffix)
-	return dst
-}
-
 func resizeBuffer(buf []byte, prefixLen, suffixLen int) []byte {
 	if cap(buf) >= prefixLen+suffixLen {
 		return buf[:prefixLen+suffixLen]
 	}
 	return make([]byte, prefixLen+suffixLen)
-}
-
-// TODO(peter): make the value size configurable. See valueSizeDist in
-// config.go.
-func (g *generator) randValue(min, max int) []byte {
-	n := min
-	if max > min {
-		n += g.rng.Intn(max - min)
-	}
-	if n == 0 {
-		return nil
-	}
-	buf := make([]byte, n)
-	g.fillRand(buf)
-	return buf
-}
-
-func (g *generator) fillRand(buf []byte) {
-	// NB: The actual random values are not particularly important. We only use
-	// lowercase letters because that makes visual determination of ordering
-	// easier, rather than having to remember the lexicographic ordering of
-	// uppercase vs lowercase, or letters vs numbers vs punctuation.
-	const letters = "abcdefghijklmnopqrstuvwxyz"
-	const lettersLen = uint64(len(letters))
-	const lettersCharsPerRand = 12 // floor(log(math.MaxUint64)/log(lettersLen))
-
-	var r uint64
-	var q int
-	for i := 0; i < len(buf); i++ {
-		if q == 0 {
-			r = g.rng.Uint64()
-			q = lettersCharsPerRand
-		}
-		buf[i] = letters[r%lettersLen]
-		r = r / lettersLen
-		q--
-	}
 }
 
 func (g *generator) newBatch() {
@@ -490,7 +297,7 @@ func (g *generator) removeBatchFromGenerator(batchID objID) {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
-		g.add(&closeOp{objID: id, derivedDBID: g.objDB[batchID]})
+		g.add(&closeOp{objID: id})
 	}
 }
 
@@ -502,7 +309,7 @@ func (g *generator) batchAbort() {
 	batchID := g.liveBatches.rand(g.rng)
 	g.removeBatchFromGenerator(batchID)
 
-	g.add(&closeOp{objID: batchID, derivedDBID: g.objDB[batchID]})
+	g.add(&closeOp{objID: batchID})
 }
 
 func (g *generator) batchCommit() {
@@ -513,11 +320,28 @@ func (g *generator) batchCommit() {
 	batchID := g.liveBatches.rand(g.rng)
 	dbID := g.objDB[batchID]
 	g.removeBatchFromGenerator(batchID)
+
+	// The batch we're applying may contain single delete tombstones that when
+	// applied to the writer result in nondeterminism in the deleted key. If
+	// that's the case, we can restore determinism by first deleting the key
+	// from the writer.
+	//
+	// Generating additional operations here is not ideal, but it simplifies
+	// single delete invariants significantly.
+	singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(batchID, dbID, false /* collapsed */)
+	for _, conflict := range singleDeleteConflicts {
+		g.add(&deleteOp{
+			writerID:    dbID,
+			key:         conflict,
+			derivedDBID: dbID,
+		})
+	}
+
 	g.add(&batchCommitOp{
 		dbID:    dbID,
 		batchID: batchID,
 	})
-	g.add(&closeOp{objID: batchID, derivedDBID: dbID})
+	g.add(&closeOp{objID: batchID})
 
 }
 
@@ -532,9 +356,8 @@ func (g *generator) dbClose() {
 	}
 	for len(g.liveBatches) > 0 {
 		batchID := g.liveBatches[0]
-		dbID := g.objDB[batchID]
 		g.removeBatchFromGenerator(batchID)
-		g.add(&closeOp{objID: batchID, derivedDBID: dbID})
+		g.add(&closeOp{objID: batchID})
 	}
 	for len(g.dbs) > 0 {
 		db := g.dbs[0]
@@ -544,20 +367,14 @@ func (g *generator) dbClose() {
 }
 
 func (g *generator) dbCheckpoint() {
-	// 1/2 of the time we don't restrict the checkpoint;
-	// 1/4 of the time we restrict to 1 span;
-	// 1/8 of the time we restrict to 2 spans; etc.
-	numSpans := 0
+	numSpans := g.expRandInt(1)
 	var spans []pebble.CheckpointSpan
-	for g.rng.Intn(2) == 0 {
-		numSpans++
-	}
 	if numSpans > 0 {
 		spans = make([]pebble.CheckpointSpan, numSpans)
 	}
 	for i := range spans {
-		start := g.randKeyToRead(0.01)
-		end := g.randKeyToRead(0.01)
+		start := g.keyGenerator.RandKey(0.01)
+		end := g.keyGenerator.RandKey(0.01)
 		if g.cmp(start, end) > 0 {
 			start, end = end, start
 		}
@@ -573,8 +390,8 @@ func (g *generator) dbCheckpoint() {
 
 func (g *generator) dbCompact() {
 	// Generate new key(s) with a 1% probability.
-	start := g.randKeyToRead(0.01)
-	end := g.randKeyToRead(0.01)
+	start := g.keyGenerator.RandKey(0.01)
+	end := g.keyGenerator.RandKey(0.01)
 	if g.cmp(start, end) > 0 {
 		start, end = end, start
 	}
@@ -584,6 +401,23 @@ func (g *generator) dbCompact() {
 		start:       start,
 		end:         end,
 		parallelize: g.rng.Float64() < 0.5,
+	})
+}
+
+func (g *generator) dbDownload() {
+	numSpans := 1 + g.expRandInt(1)
+	spans := make([]pebble.DownloadSpan, numSpans)
+	for i := range spans {
+		keys := g.keyGenerator.UniqueKeys(2, func() []byte { return g.keyGenerator.RandKey(0.001) })
+		start, end := keys[0], keys[1]
+		spans[i].StartKey = start
+		spans[i].EndKey = end
+		spans[i].ViaBackingFileDownload = g.rng.Intn(2) == 0
+	}
+	dbID := g.dbs.rand(g.rng)
+	g.add(&downloadOp{
+		dbID:  dbID,
+		spans: spans,
 	})
 }
 
@@ -616,9 +450,8 @@ func (g *generator) dbRestart() {
 	// Close the batches.
 	for len(g.liveBatches) > 0 {
 		batchID := g.liveBatches[0]
-		dbID := g.objDB[batchID]
 		g.removeBatchFromGenerator(batchID)
-		g.add(&closeOp{objID: batchID, derivedDBID: dbID})
+		g.add(&closeOp{objID: batchID})
 	}
 	if len(g.liveReaders) != len(g.dbs) || len(g.liveWriters) != len(g.dbs) {
 		panic(fmt.Sprintf("unexpected counts: liveReaders %d, liveWriters: %d",
@@ -639,32 +472,21 @@ func (g *generator) maybeSetSnapshotIterBounds(readerID objID, opts *iterOpts) b
 		return false
 	}
 	// Pick a random keyrange within one of the snapshot's key ranges.
-	parentBounds := snapBounds[g.rng.Intn(len(snapBounds))]
+	parentBounds := pickOneUniform(g.rng, snapBounds)
 	// With 10% probability, use the parent start bound as-is.
 	if g.rng.Float64() <= 0.1 {
 		opts.lower = parentBounds.Start
 	} else {
-		opts.lower = testkeys.RandomSeparator(
-			nil, /* dst */
-			parentBounds.Start,
-			parentBounds.End,
-			0, /* suffix */
-			4+g.rng.Intn(8),
-			g.rng,
-		)
+		opts.lower = g.keyGenerator.RandKeyInRange(0.1, parentBounds)
 	}
 	// With 10% probability, use the parent end bound as-is.
 	if g.rng.Float64() <= 0.1 {
 		opts.upper = parentBounds.End
 	} else {
-		opts.upper = testkeys.RandomSeparator(
-			nil, /* dst */
-			opts.lower,
-			parentBounds.End,
-			0, /* suffix */
-			4+g.rng.Intn(8),
-			g.rng,
-		)
+		opts.upper = g.keyGenerator.RandKeyInRange(0.1, pebble.KeyRange{
+			Start: opts.lower,
+			End:   parentBounds.End,
+		})
 	}
 	return true
 }
@@ -691,11 +513,11 @@ func (g *generator) newIter() {
 		// Generate lower/upper bounds with a 10% probability.
 		if g.rng.Float64() <= 0.1 {
 			// Generate a new key with a .1% probability.
-			opts.lower = g.randKeyToRead(0.001)
+			opts.lower = g.keyGenerator.RandKey(0.001)
 		}
 		if g.rng.Float64() <= 0.1 {
 			// Generate a new key with a .1% probability.
-			opts.upper = g.randKeyToRead(0.001)
+			opts.upper = g.keyGenerator.RandKey(0.001)
 		}
 		if g.cmp(opts.lower, opts.upper) > 0 {
 			opts.lower, opts.upper = opts.upper, opts.lower
@@ -708,12 +530,12 @@ func (g *generator) newIter() {
 	// block-property filtering and explicitly within the iterator operations to
 	// ensure determinism.
 	if g.rng.Float64() <= 0.1 {
-		max := g.cfg.writeSuffixDist.Max()
-		opts.filterMin, opts.filterMax = g.rng.Uint64n(max)+1, g.rng.Uint64n(max)+1
+		opts.filterMin = uint64(g.keyGenerator.UniformSuffixInt() + 1)
+		opts.filterMax = uint64(g.keyGenerator.UniformSuffixInt() + 1)
 		if opts.filterMin > opts.filterMax {
 			opts.filterMin, opts.filterMax = opts.filterMax, opts.filterMin
 		} else if opts.filterMin == opts.filterMax {
-			opts.filterMax = opts.filterMin + 1
+			opts.filterMax++
 		}
 	}
 
@@ -743,7 +565,7 @@ func (g *generator) randKeyTypesAndMask() (keyTypes uint32, maskSuffix []byte) {
 		keyTypes = uint32(pebble.IterKeyTypePointsAndRanges)
 		// With 50% probability, enable masking.
 		if g.rng.Intn(2) == 1 {
-			maskSuffix = g.randSuffixToRead()
+			maskSuffix = g.keyGenerator.UniformSuffix()
 		}
 	default: // 20% probability
 		keyTypes = uint32(pebble.IterKeyTypeRangesOnly)
@@ -812,14 +634,9 @@ func (g *generator) iterClose(iterID objID) {
 	if readerIters, ok := g.iters[iterID]; ok {
 		delete(g.iters, iterID)
 		delete(readerIters, iterID)
-		//lint:ignore SA9003 - readability
-	} else {
-		// NB: the DB object does not track its open iterators because it never
-		// closes.
 	}
 
-	readerID := g.iterReaderID[iterID]
-	g.add(&closeOp{objID: iterID, derivedDBID: g.objDB[readerID]})
+	g.add(&closeOp{objID: iterID})
 }
 
 func (g *generator) iterSetBounds(iterID objID) {
@@ -847,11 +664,11 @@ func (g *generator) iterSetBounds(iterID objID) {
 			attempts++
 			if genLower {
 				// Generate a new key with a .1% probability.
-				lower = g.randKeyToRead(0.001)
+				lower = g.keyGenerator.RandKey(0.001)
 			}
 			if genUpper {
 				// Generate a new key with a .1% probability.
-				upper = g.randKeyToRead(0.001)
+				upper = g.keyGenerator.RandKey(0.001)
 			}
 			if g.cmp(lower, upper) > 0 {
 				lower, upper = upper, lower
@@ -947,28 +764,31 @@ func (g *generator) iterSetOptions(iterID objID) {
 	// operation. Ideally, we should not do this as part of generating a single
 	// op, but this is easier than trying to control future op generation via
 	// generator state.
-	g.pickOneUniform(
-		g.iterFirst,
-		g.iterLast,
-		g.iterSeekGE,
-		g.iterSeekGEWithLimit,
-		g.iterSeekPrefixGE,
-		g.iterSeekLT,
-		g.iterSeekLTWithLimit,
+	pickOneUniform(
+		g.rng,
+		[]func(objID){
+			g.iterFirst,
+			g.iterLast,
+			g.iterSeekGE,
+			g.iterSeekGEWithLimit,
+			g.iterSeekPrefixGE,
+			g.iterSeekLT,
+			g.iterSeekLTWithLimit,
+		},
 	)(iterID)
 }
 
 func (g *generator) iterSeekGE(iterID objID) {
 	g.add(&iterSeekGEOp{
 		iterID:          iterID,
-		key:             g.randKeyToRead(0.001), // 0.1% new keys
+		key:             g.keyGenerator.RandKey(0.001), // 0.1% new keys
 		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
 
 func (g *generator) iterSeekGEWithLimit(iterID objID) {
 	// 0.1% new keys
-	key, limit := g.randKeyToRead(0.001), g.randKeyToRead(0.001)
+	key, limit := g.keyGenerator.RandKey(0.001), g.keyGenerator.RandKey(0.001)
 	if g.cmp(key, limit) > 0 {
 		key, limit = limit, key
 	}
@@ -978,18 +798,6 @@ func (g *generator) iterSeekGEWithLimit(iterID objID) {
 		limit:           limit,
 		derivedReaderID: g.iterReaderID[iterID],
 	})
-}
-
-func (g *generator) randKeyToReadWithinBounds(lower, upper []byte, readerID objID) []*keyMeta {
-	var inRangeKeys []*keyMeta
-	for _, keyMeta := range g.keyManager.byObj[readerID] {
-		posKey := keyMeta.key
-		if g.cmp(posKey, lower) < 0 || g.cmp(posKey, upper) >= 0 {
-			continue
-		}
-		inRangeKeys = append(inRangeKeys, keyMeta)
-	}
-	return inRangeKeys
 }
 
 func (g *generator) iterSeekPrefixGE(iterID objID) {
@@ -1007,28 +815,20 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 	// random key.
 	if g.rng.Intn(10) >= 1 {
 		possibleKeys := make([][]byte, 0, 100)
-		inRangeKeys := g.randKeyToReadWithinBounds(lower, upper, g.objDB[iterID])
+		inRangeKeys := g.keyManager.InRangeKeysForObj(g.objDB[iterID], lower, upper)
 		for _, keyMeta := range inRangeKeys {
-			posKey := keyMeta.key
-			var foundWriteWithoutDelete bool
-			for _, update := range keyMeta.updateOps {
-				if update.metaTimestamp > iterCreationTimestamp {
-					break
-				}
+			visibleHistory := keyMeta.history.before(iterCreationTimestamp)
 
-				if update.deleted {
-					foundWriteWithoutDelete = false
-				} else {
-					foundWriteWithoutDelete = true
-				}
-			}
-			if foundWriteWithoutDelete {
-				possibleKeys = append(possibleKeys, posKey)
+			// Check if the last op on this key set a value, (eg SETs, MERGEs).
+			// If the key should be visible to the iterator and it would make a
+			// good candidate for a SeekPrefixGE.
+			if visibleHistory.hasVisibleValue() {
+				possibleKeys = append(possibleKeys, keyMeta.key)
 			}
 		}
 
 		if len(possibleKeys) > 0 {
-			key = []byte(possibleKeys[g.rng.Int31n(int32(len(possibleKeys)))])
+			key = possibleKeys[g.rng.Int31n(int32(len(possibleKeys)))]
 		}
 	}
 
@@ -1037,7 +837,7 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 		// even if we couldn't find any keys visible to the iterator. However,
 		// doing this in experiments didn't really increase the valid
 		// SeekPrefixGE calls by much.
-		key = g.randKeyToRead(0) // 0% new keys
+		key = g.keyGenerator.RandKey(0) // 0% new keys
 	}
 
 	g.add(&iterSeekPrefixGEOp{
@@ -1050,14 +850,14 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 func (g *generator) iterSeekLT(iterID objID) {
 	g.add(&iterSeekLTOp{
 		iterID:          iterID,
-		key:             g.randKeyToRead(0.001), // 0.1% new keys
+		key:             g.keyGenerator.RandKey(0.001), // 0.1% new keys
 		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
 
 func (g *generator) iterSeekLTWithLimit(iterID objID) {
 	// 0.1% new keys
-	key, limit := g.randKeyToRead(0.001), g.randKeyToRead(0.001)
+	key, limit := g.keyGenerator.RandKey(0.001), g.keyGenerator.RandKey(0.001)
 	if g.cmp(limit, key) > 0 {
 		key, limit = limit, key
 	}
@@ -1111,7 +911,7 @@ func (g *generator) iterPrev(iterID objID) {
 func (g *generator) iterNextWithLimit(iterID objID) {
 	g.add(&iterNextOp{
 		iterID:          iterID,
-		limit:           g.randKeyToRead(0.001), // 0.1% new keys
+		limit:           g.keyGenerator.RandKey(0.001), // 0.1% new keys
 		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
@@ -1133,7 +933,7 @@ func (g *generator) iterCanSingleDelete(iterID objID) {
 func (g *generator) iterPrevWithLimit(iterID objID) {
 	g.add(&iterPrevOp{
 		iterID:          iterID,
-		limit:           g.randKeyToRead(0.001), // 0.1% new keys
+		limit:           g.keyGenerator.RandKey(0.001), // 0.1% new keys
 		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
@@ -1150,9 +950,9 @@ func (g *generator) readerGet() {
 	var key []byte
 	if bounds := g.snapshotBounds[readerID]; len(bounds) > 0 {
 		kr := bounds[g.rng.Intn(len(bounds))]
-		key = g.randKeyToReadInRange(0.001, kr) // 0.1% new keys
+		key = g.keyGenerator.RandKeyInRange(0.001, kr) // 0.1% new keys
 	} else {
-		key = g.randKeyToRead(0.001) // 0.1% new keys
+		key = g.keyGenerator.RandKey(0.001) // 0.1% new keys
 	}
 	derivedDBID := objID(0)
 	if readerID.tag() == batchTag || readerID.tag() == snapTag {
@@ -1183,22 +983,12 @@ func (g *generator) replicate() {
 
 // generateDisjointKeyRanges generates n disjoint key ranges.
 func (g *generator) generateDisjointKeyRanges(n int) []pebble.KeyRange {
-	bounds := make([][]byte, 2*n)
-	used := map[string]bool{}
-	for i := 0; i < len(bounds); i++ {
-		k := g.prefix(g.randKeyToRead(0.1))
-		for used[string(k)] {
-			k = g.prefix(g.randKeyToRead(0.1))
-		}
-		bounds[i] = k
-		used[string(k)] = true
-	}
-	slices.SortFunc(bounds, g.cmp)
+	keys := g.keyGenerator.UniqueKeys(2*n, func() []byte { return g.keyGenerator.RandPrefix(0.1) })
 	keyRanges := make([]pebble.KeyRange, n)
 	for i := range keyRanges {
 		keyRanges[i] = pebble.KeyRange{
-			Start: bounds[i*2],
-			End:   bounds[i*2+1],
+			Start: keys[i*2],
+			End:   keys[i*2+1],
 		}
 	}
 	return keyRanges
@@ -1226,7 +1016,7 @@ func (g *generator) newSnapshot() {
 	// instead of a Snapshot, testing equivalence between the two for reads within
 	// those bounds.
 	s.bounds = g.generateDisjointKeyRanges(
-		g.rng.Intn(5) + 1, /* between 1-5 */
+		1 + g.expRandInt(3),
 	)
 	g.snapshotBounds[snapID] = s.bounds
 	g.add(s)
@@ -1247,10 +1037,37 @@ func (g *generator) snapshotClose() {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
-		g.add(&closeOp{objID: id, derivedDBID: g.objDB[snapID]})
+		g.add(&closeOp{objID: id})
 	}
 
-	g.add(&closeOp{objID: snapID, derivedDBID: g.objDB[snapID]})
+	g.add(&closeOp{objID: snapID})
+}
+
+func (g *generator) newExternalObj() {
+	if len(g.liveBatches) == 0 {
+		return
+	}
+	var batchID objID
+	// Try to find a suitable batch.
+	for i := 0; ; i++ {
+		if i == 10 {
+			return
+		}
+		batchID = g.liveBatches.rand(g.rng)
+		okm := g.keyManager.objKeyMeta(batchID)
+		// #3287: IngestExternalFiles currently doesn't support range keys.
+		if !okm.bounds.IsUnset() && !okm.hasRangeKeys {
+			break
+		}
+	}
+	g.removeBatchFromGenerator(batchID)
+	objID := makeObjID(externalObjTag, g.init.externalObjSlots)
+	g.init.externalObjSlots++
+	g.externalObjects = append(g.externalObjects, objID)
+	g.add(&newExternalObjOp{
+		batchID:       batchID,
+		externalObjID: objID,
+	})
 }
 
 func (g *generator) writerApply() {
@@ -1279,6 +1096,22 @@ func (g *generator) writerApply() {
 		}
 	}
 
+	// The batch we're applying may contain single delete tombstones that when
+	// applied to the writer result in nondeterminism in the deleted key. If
+	// that's the case, we can restore determinism by first deleting the key
+	// from the writer.
+	//
+	// Generating additional operations here is not ideal, but it simplifies
+	// single delete invariants significantly.
+	singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(batchID, writerID, false /* collapsed */)
+	for _, conflict := range singleDeleteConflicts {
+		g.add(&deleteOp{
+			writerID:    writerID,
+			key:         conflict,
+			derivedDBID: dbID,
+		})
+	}
+
 	g.removeBatchFromGenerator(batchID)
 
 	g.add(&applyOp{
@@ -1286,8 +1119,7 @@ func (g *generator) writerApply() {
 		batchID:  batchID,
 	})
 	g.add(&closeOp{
-		objID:       batchID,
-		derivedDBID: dbID,
+		objID: batchID,
 	})
 }
 
@@ -1303,7 +1135,7 @@ func (g *generator) writerDelete() {
 	}
 	g.add(&deleteOp{
 		writerID:    writerID,
-		key:         g.randKeyToWrite(0.001), // 0.1% new keys
+		key:         g.keyGenerator.RandKey(0.001), // 0.1% new keys
 		derivedDBID: derivedDBID,
 	})
 }
@@ -1313,11 +1145,8 @@ func (g *generator) writerDeleteRange() {
 		return
 	}
 
-	start := g.randKeyToWrite(0.001)
-	end := g.randKeyToWrite(0.001)
-	if g.cmp(start, end) > 0 {
-		start, end = end, start
-	}
+	keys := g.keyGenerator.UniqueKeys(2, func() []byte { return g.keyGenerator.RandKey(0.001) })
+	start, end := keys[0], keys[1]
 
 	writerID := g.liveWriters.rand(g.rng)
 	g.add(&deleteRangeOp{
@@ -1351,7 +1180,7 @@ func (g *generator) writerRangeKeySet() {
 	var suffix []byte
 	if g.rng.Float64() < 0.90 {
 		// Increase the max suffix 5% of the time.
-		suffix = g.randSuffixToWrite(0.05)
+		suffix = g.keyGenerator.SkewedSuffix(0.05)
 	}
 
 	writerID := g.liveWriters.rand(g.rng)
@@ -1360,7 +1189,7 @@ func (g *generator) writerRangeKeySet() {
 		start:    start,
 		end:      end,
 		suffix:   suffix,
-		value:    g.randValue(0, maxValueSize),
+		value:    randBytes(g.rng, 0, maxValueSize),
 	})
 }
 
@@ -1374,7 +1203,7 @@ func (g *generator) writerRangeKeyUnset() {
 	var suffix []byte
 	if g.rng.Float64() < 0.90 {
 		// Increase the max suffix 5% of the time.
-		suffix = g.randSuffixToWrite(0.05)
+		suffix = g.keyGenerator.SkewedSuffix(0.05)
 	}
 
 	// TODO(jackson): Increase probability of effective unsets? Purely random
@@ -1394,38 +1223,40 @@ func (g *generator) writerIngest() {
 		return
 	}
 
-	// TODO(nicktrav): this is resulting in too many single batch ingests.
-	// Consider alternatives. One possibility would be to pass through whether
-	// we can tolerate failure or not, and if the ingestOp encounters a
-	// failure, it would retry after splitting into single batch ingests.
-
 	dbID := g.dbs.rand(g.rng)
-	// Ingest between 1 and 3 batches.
-	batchIDs := make([]objID, 0, 1+g.rng.Intn(3))
-	canFail := cap(batchIDs) > 1
-	for i := 0; i < cap(batchIDs); i++ {
+	n := min(1+g.expRandInt(1), len(g.liveBatches))
+	batchIDs := make([]objID, n)
+	derivedDBIDs := make([]objID, n)
+	for i := 0; i < n; i++ {
 		batchID := g.liveBatches.rand(g.rng)
-		if canFail && !g.keyManager.canTolerateApplyFailure(batchID) {
-			continue
-		}
-		// After the ingest runs, it either succeeds and the keys are in the
-		// DB, or it fails and these keys never make it to the DB.
-		g.removeBatchFromGenerator(batchID)
-		batchIDs = append(batchIDs, batchID)
-		if len(g.liveBatches) == 0 {
-			break
-		}
-	}
-	if len(batchIDs) == 0 && len(g.liveBatches) > 0 {
-		// Unable to find multiple batches because of the
-		// canTolerateApplyFailure call above, so just pick one batch.
-		batchID := g.liveBatches.rand(g.rng)
-		g.removeBatchFromGenerator(batchID)
-		batchIDs = append(batchIDs, batchID)
-	}
-	derivedDBIDs := make([]objID, len(batchIDs))
-	for i := range batchIDs {
+		batchIDs[i] = batchID
 		derivedDBIDs[i] = g.objDB[batchIDs[i]]
+		g.removeBatchFromGenerator(batchID)
+	}
+
+	// Ingestions may fail if the ingested sstables overlap one another.
+	// Either it succeeds and its keys are committed to the DB, or it fails and
+	// the keys are not committed.
+	if !g.keyManager.doObjectBoundsOverlap(batchIDs) {
+		// This ingestion will succeed.
+		//
+		// The batches we're ingesting may contain single delete tombstones that
+		// when applied to the writer result in nondeterminism in the deleted key.
+		// If that's the case, we can restore determinism by first deleting the keys
+		// from the writer.
+		//
+		// Generating additional operations here is not ideal, but it simplifies
+		// single delete invariants significantly.
+		for _, batchID := range batchIDs {
+			singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(batchID, dbID, true /* collapsed */)
+			for _, conflict := range singleDeleteConflicts {
+				g.add(&deleteOp{
+					writerID:    dbID,
+					key:         conflict,
+					derivedDBID: dbID,
+				})
+			}
+		}
 	}
 	g.add(&ingestOp{
 		dbID:         dbID,
@@ -1446,12 +1277,166 @@ func (g *generator) writerIngestAndExcise() {
 	start, end := g.prefixKeyRange()
 	derivedDBID := g.objDB[batchID]
 
+	// Check for any single delete conflicts. If this batch is single-deleting
+	// a key that isn't safe to single delete in the underlying db, _and_ this
+	// key is not in the excise span, we add a delete before the ingestAndExcise.
+	singleDeleteConflicts := g.keyManager.checkForSingleDelConflicts(batchID, dbID, true /* collapsed */)
+	for _, conflict := range singleDeleteConflicts {
+		if g.cmp(conflict, start) >= 0 && g.cmp(conflict, end) < 0 {
+			// This key will get excised anyway.
+			continue
+		}
+		g.add(&deleteOp{
+			writerID:    dbID,
+			key:         conflict,
+			derivedDBID: dbID,
+		})
+	}
+
 	g.add(&ingestAndExciseOp{
-		dbID:        dbID,
-		batchID:     batchID,
-		derivedDBID: derivedDBID,
-		exciseStart: start,
-		exciseEnd:   end,
+		dbID:                       dbID,
+		batchID:                    batchID,
+		derivedDBID:                derivedDBID,
+		exciseStart:                start,
+		exciseEnd:                  end,
+		sstContainsExciseTombstone: g.rng.Intn(2) == 0,
+	})
+}
+
+func (g *generator) writerIngestExternalFiles() {
+	if len(g.externalObjects) == 0 {
+		return
+	}
+	dbID := g.dbs.rand(g.rng)
+	numFiles := 1 + g.expRandInt(1)
+	objs := make([]externalObjWithBounds, numFiles)
+
+	// We generate the parameters in multiple passes:
+	//  1. Generate objs with random start and end keys. Their bounds can overlap.
+	//  2. Sort objects by the start bound and trim the bounds to remove overlap.
+	//  3. Remove any objects where the previous step resulted in empty bounds.
+	//  4. Randomly add synthetic suffixes.
+
+	for i := range objs {
+		// We allow the same object to be selected multiple times.
+		id := g.externalObjects.rand(g.rng)
+		b := g.keyManager.objKeyMeta(id).bounds
+
+		objStart := g.prefix(b.smallest)
+		objEnd := g.prefix(b.largest)
+		if !b.largestExcl || len(objEnd) != len(b.largest) {
+			// Move up the end key a bit by appending a few letters to the prefix.
+			objEnd = append(objEnd, randBytes(g.rng, 1, 3)...)
+		}
+		if g.cmp(objStart, objEnd) >= 0 {
+			panic("bug in generating obj bounds")
+		}
+		// Generate two random keys within the given bounds.
+		// First, generate a start key in the range [objStart, objEnd).
+		start := g.keyGenerator.RandKeyInRange(0.01, pebble.KeyRange{
+			Start: objStart,
+			End:   objEnd,
+		})
+		start = g.prefix(start)
+		// Second, generate an end key in the range (start, objEnd]. To do this, we
+		// generate a key in the range [start, objEnd) and if we get `start`, we
+		// remap that to `objEnd`.
+		end := g.keyGenerator.RandKeyInRange(0.01, pebble.KeyRange{
+			Start: start,
+			End:   objEnd,
+		})
+		end = g.prefix(end)
+		if g.cmp(start, end) == 0 {
+			end = objEnd
+		}
+		// Randomly set up synthetic prefix.
+		var syntheticPrefix sstable.SyntheticPrefix
+		// We can only use a synthetic prefix if we don't have range dels.
+		// TODO(radu): we will want to support this at some point.
+		if !g.keyManager.objKeyMeta(id).hasRangeDels && g.rng.Intn(2) == 0 {
+			syntheticPrefix = randBytes(g.rng, 1, 5)
+			start = syntheticPrefix.Apply(start)
+			end = syntheticPrefix.Apply(end)
+		}
+
+		objs[i] = externalObjWithBounds{
+			externalObjID: id,
+			bounds: pebble.KeyRange{
+				Start: start,
+				End:   end,
+			},
+			syntheticPrefix: syntheticPrefix,
+		}
+	}
+
+	// Sort by start bound.
+	slices.SortFunc(objs, func(a, b externalObjWithBounds) int {
+		return g.cmp(a.bounds.Start, b.bounds.Start)
+	})
+
+	// Trim bounds so that there is no overlap.
+	for i := 0; i < len(objs)-1; i++ {
+		if g.cmp(objs[i].bounds.End, objs[i+1].bounds.Start) > 0 {
+			objs[i].bounds.End = objs[i+1].bounds.Start
+		}
+	}
+	// Some bounds might be empty now, remove those objects altogether. Note that
+	// the last object is unmodified, so at least that object will remain.
+	objs = slices.DeleteFunc(objs, func(o externalObjWithBounds) bool {
+		return g.cmp(o.bounds.Start, o.bounds.End) >= 0
+	})
+
+	for i := range objs {
+		// We can only use a synthetic suffix if we don't have range dels.
+		// TODO(radu): we will want to support this at some point.
+		if g.keyManager.objKeyMeta(objs[i].externalObjID).hasRangeDels {
+			continue
+		}
+
+		if g.rng.Intn(2) == 0 {
+			// Generate a suffix that sorts before any previously generated suffix.
+			objs[i].syntheticSuffix = g.keyGenerator.IncMaxSuffix()
+		}
+	}
+
+	// The batches we're ingesting may contain single delete tombstones that when
+	// applied to the db result in nondeterminism in the deleted key. If that's
+	// the case, we can restore determinism by first deleting the keys from the
+	// db.
+	//
+	// Generating additional operations here is not ideal, but it simplifies
+	// single delete invariants significantly.
+	dbKeys := g.keyManager.objKeyMeta(dbID)
+	for _, o := range objs {
+		for _, src := range g.keyManager.KeysForExternalIngest(o) {
+			if g.keyManager.checkForSingleDelConflict(src, dbKeys) {
+				g.add(&deleteOp{
+					writerID:    dbID,
+					key:         src.key,
+					derivedDBID: dbID,
+				})
+			}
+		}
+	}
+
+	// Shuffle the objects.
+	g.rng.Shuffle(len(objs), func(i, j int) {
+		objs[i], objs[j] = objs[j], objs[i]
+	})
+
+	g.add(&ingestExternalFilesOp{
+		dbID: dbID,
+		objs: objs,
+	})
+}
+
+func (g *generator) writerLogData() {
+	if len(g.liveWriters) == 0 {
+		return
+	}
+	g.add(&logDataOp{
+		writerID: g.liveWriters.rand(g.rng),
+		data:     randBytes(g.rng, 0, g.expRandInt(10)),
 	})
 }
 
@@ -1464,8 +1449,8 @@ func (g *generator) writerMerge() {
 	g.add(&mergeOp{
 		writerID: writerID,
 		// 20% new keys.
-		key:   g.randKeyToWrite(0.2),
-		value: g.randValue(0, maxValueSize),
+		key:   g.keyGenerator.RandKey(0.2),
+		value: randBytes(g.rng, 0, maxValueSize),
 	})
 }
 
@@ -1478,8 +1463,8 @@ func (g *generator) writerSet() {
 	g.add(&setOp{
 		writerID: writerID,
 		// 50% new keys.
-		key:   g.randKeyToWrite(0.5),
-		value: g.randValue(0, maxValueSize),
+		key:   g.keyGenerator.RandKey(0.5),
+		value: randBytes(g.rng, 0, maxValueSize),
 	})
 }
 
@@ -1489,8 +1474,7 @@ func (g *generator) writerSingleDelete() {
 	}
 
 	writerID := g.liveWriters.rand(g.rng)
-	dbID := g.objDB[writerID]
-	key := g.randKeyToSingleDelete(writerID, dbID)
+	key := g.randKeyToSingleDelete(writerID)
 	if key == nil {
 		return
 	}
@@ -1522,11 +1506,11 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 			// With 1/3 probability, update the bounds.
 			if g.rng.Intn(3) == 0 {
 				// Generate a new key with a .1% probability.
-				opts.lower = g.randKeyToRead(0.001)
+				opts.lower = g.keyGenerator.RandKey(0.001)
 			}
 			if g.rng.Intn(3) == 0 {
 				// Generate a new key with a .1% probability.
-				opts.upper = g.randKeyToRead(0.001)
+				opts.upper = g.keyGenerator.RandKey(0.001)
 			}
 			if g.cmp(opts.lower, opts.upper) > 0 {
 				opts.lower, opts.upper = opts.upper, opts.lower
@@ -1544,8 +1528,8 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 		}
 		// With 10% probability, set a filter range.
 		if g.rng.Intn(10) == 1 {
-			max := g.cfg.writeSuffixDist.Max()
-			opts.filterMin, opts.filterMax = g.rng.Uint64n(max)+1, g.rng.Uint64n(max)+1
+			opts.filterMin = uint64(g.keyGenerator.UniformSuffixInt() + 1)
+			opts.filterMax = uint64(g.keyGenerator.UniformSuffixInt() + 1)
 			if opts.filterMin > opts.filterMax {
 				opts.filterMin, opts.filterMax = opts.filterMax, opts.filterMin
 			} else if opts.filterMin == opts.filterMax {
@@ -1559,25 +1543,13 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 	}
 }
 
-func (g *generator) pickOneUniform(options ...func(objID)) func(objID) {
-	i := g.rng.Intn(len(options))
-	return options[i]
-}
-
 func (g *generator) cmp(a, b []byte) int {
 	return g.keyManager.comparer.Compare(a, b)
 }
 
-func (g *generator) equal(a, b []byte) bool {
-	return g.keyManager.comparer.Equal(a, b)
-}
-
-func (g *generator) split(a []byte) int {
-	return g.keyManager.comparer.Split(a)
-}
-
 func (g *generator) prefix(a []byte) []byte {
-	return a[:g.split(a)]
+	n := g.keyManager.comparer.Split(a)
+	return a[:n:n]
 }
 
 func (g *generator) String() string {
@@ -1586,4 +1558,15 @@ func (g *generator) String() string {
 		fmt.Fprintf(&buf, "%s\n", op)
 	}
 	return buf.String()
+}
+
+// expRandInt returns a random non-negative integer using the exponential
+// distribution with the given mean. This is useful when we usually want to test
+// with small values, but we want to occasionally test with a larger value.
+//
+// Large integers are exponentially less likely than small integers;
+// specifically, the probability decreases by a factor of `e` every `mean`
+// values.
+func (g *generator) expRandInt(mean int) int {
+	return int(math.Round(g.rng.ExpFloat64() * float64(mean)))
 }

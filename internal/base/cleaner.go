@@ -35,6 +35,9 @@ type ArchiveCleaner struct{}
 var _ NeedsFileContents = ArchiveCleaner{}
 
 // Clean archives file.
+//
+// TODO(sumeer): for log files written to the secondary FS, the archiving will
+// also write to the secondary. We should consider archiving to the primary.
 func (ArchiveCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
 	switch fileType {
 	case FileTypeLog, FileTypeManifest, FileTypeTable:

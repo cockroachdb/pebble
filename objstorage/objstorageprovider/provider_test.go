@@ -109,7 +109,7 @@ func TestProvider(t *testing.T) {
 					d.CmdArgs = d.CmdArgs[:4]
 					opts.SharedCleanupMethod = objstorage.SharedNoCleanup
 				}
-				var fileNum base.FileNum
+				var fileNum base.DiskFileNum
 				var typ string
 				var salt, size int
 				scanArgs("<file-num> <local|shared> <salt> <size> [no-ref-tracking]", &fileNum, &typ, &salt, &size)
@@ -120,7 +120,7 @@ func TestProvider(t *testing.T) {
 				default:
 					d.Fatalf(t, "'%s' should be 'local' or 'shared'", typ)
 				}
-				w, _, err := curProvider.Create(ctx, base.FileTypeTable, fileNum.DiskFileNum(), opts)
+				w, _, err := curProvider.Create(ctx, base.FileTypeTable, fileNum, opts)
 				if err != nil {
 					return err.Error()
 				}
@@ -140,7 +140,7 @@ func TestProvider(t *testing.T) {
 					d.CmdArgs = d.CmdArgs[:4]
 					opts.SharedCleanupMethod = objstorage.SharedNoCleanup
 				}
-				var fileNum base.FileNum
+				var fileNum base.DiskFileNum
 				var typ string
 				var salt, size int
 				scanArgs("<file-num> <local|shared> <salt> <size> [no-ref-tracking]", &fileNum, &typ, &salt, &size)
@@ -164,7 +164,7 @@ func TestProvider(t *testing.T) {
 				require.NoError(t, f.Close())
 
 				_, err = curProvider.LinkOrCopyFromLocal(
-					ctx, fs, tmpFilename, base.FileTypeTable, fileNum.DiskFileNum(), opts,
+					ctx, fs, tmpFilename, base.FileTypeTable, fileNum, opts,
 				)
 				require.NoError(t, err)
 				return log.String()
@@ -175,9 +175,9 @@ func TestProvider(t *testing.T) {
 					d.CmdArgs = d.CmdArgs[:1]
 					forCompaction = true
 				}
-				var fileNum base.FileNum
+				var fileNum base.DiskFileNum
 				scanArgs("<file-num> [for-compaction]", &fileNum)
-				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum.DiskFileNum(), objstorage.OpenOptions{})
+				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum, objstorage.OpenOptions{})
 				if err != nil {
 					return err.Error()
 				}
@@ -203,9 +203,9 @@ func TestProvider(t *testing.T) {
 				return log.String()
 
 			case "remove":
-				var fileNum base.FileNum
+				var fileNum base.DiskFileNum
 				scanArgs("<file-num>", &fileNum)
-				if err := curProvider.Remove(base.FileTypeTable, fileNum.DiskFileNum()); err != nil {
+				if err := curProvider.Remove(base.FileTypeTable, fileNum); err != nil {
 					return err.Error()
 				}
 				return log.String()
@@ -218,12 +218,16 @@ func TestProvider(t *testing.T) {
 
 			case "save-backing":
 				var key string
-				var fileNum base.FileNum
+				var fileNum base.DiskFileNum
 				scanArgs("<key> <file-num>", &key, &fileNum)
-				meta, err := curProvider.Lookup(base.FileTypeTable, fileNum.DiskFileNum())
+				meta, err := curProvider.Lookup(base.FileTypeTable, fileNum)
 				require.NoError(t, err)
-				handle, err := curProvider.RemoteObjectBacking(&meta)
-				if err != nil {
+				var handle objstorage.RemoteObjectBackingHandle
+				if err := base.CatchErrorPanic(func() error {
+					var err error
+					handle, err = curProvider.RemoteObjectBacking(&meta)
+					return err
+				}); err != nil {
 					return err.Error()
 				}
 				backing, err := handle.Get()
@@ -246,7 +250,7 @@ func TestProvider(t *testing.T) {
 				var objs []objstorage.RemoteObjectToAttach
 				for _, l := range lines {
 					var key string
-					var fileNum base.FileNum
+					var fileNum base.DiskFileNum
 					_, err := fmt.Sscan(l, &key, &fileNum)
 					require.NoError(t, err)
 					b, ok := backings[key]
@@ -255,7 +259,7 @@ func TestProvider(t *testing.T) {
 					}
 					objs = append(objs, objstorage.RemoteObjectToAttach{
 						FileType: base.FileTypeTable,
-						FileNum:  fileNum.DiskFileNum(),
+						FileNum:  fileNum,
 						Backing:  b,
 					})
 				}
@@ -300,8 +304,8 @@ func TestSharedMultipleLocators(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, p2.SetCreatorID(2))
 
-	file1 := base.FileNum(1).DiskFileNum()
-	file2 := base.FileNum(2).DiskFileNum()
+	file1 := base.DiskFileNum(1)
+	file2 := base.DiskFileNum(2)
 
 	for i, provider := range []objstorage.Provider{p1, p2} {
 		w, _, err := provider.Create(ctx, base.FileTypeTable, file1, objstorage.CreateOptions{
@@ -384,7 +388,7 @@ func TestSharedMultipleLocators(t *testing.T) {
 	require.NoError(t, p3.Close())
 }
 
-func TestAttachCustomObject(t *testing.T) {
+func TestAttachExternalObject(t *testing.T) {
 	ctx := context.Background()
 	storage := remote.NewInMem()
 	sharedFactory := remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
@@ -410,14 +414,14 @@ func TestAttachCustomObject(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = p1.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
-		FileNum:  base.FileNum(1).DiskFileNum(),
+		FileNum:  base.DiskFileNum(1),
 		FileType: base.FileTypeTable,
 		Backing:  backing,
 	}})
 	require.NoError(t, err)
 
 	// Verify the provider can read the object.
-	r, err := p1.OpenForReading(ctx, base.FileTypeTable, base.FileNum(1).DiskFileNum(), objstorage.OpenOptions{})
+	r, err := p1.OpenForReading(ctx, base.FileTypeTable, base.DiskFileNum(1), objstorage.OpenOptions{})
 	require.NoError(t, err)
 	require.Equal(t, int64(len(data)), r.Size())
 	buf := make([]byte, r.Size())
@@ -425,9 +429,11 @@ func TestAttachCustomObject(t *testing.T) {
 	require.Equal(t, byte(123), checkData(t, 0, buf))
 	require.NoError(t, r.Close())
 
+	require.Equal(t, []base.DiskFileNum{1}, p1.GetExternalObjects("foo", "some-obj-name"))
+
 	// Verify that we can extract a correct backing from this provider and attach
 	// the object to another provider.
-	meta, err := p1.Lookup(base.FileTypeTable, base.FileNum(1).DiskFileNum())
+	meta, err := p1.Lookup(base.FileTypeTable, base.DiskFileNum(1))
 	require.NoError(t, err)
 	handle, err := p1.RemoteObjectBacking(&meta)
 	require.NoError(t, err)
@@ -443,14 +449,14 @@ func TestAttachCustomObject(t *testing.T) {
 	require.NoError(t, p2.SetCreatorID(2))
 
 	_, err = p2.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
-		FileNum:  base.FileNum(10).DiskFileNum(),
+		FileNum:  base.DiskFileNum(10),
 		FileType: base.FileTypeTable,
 		Backing:  backing,
 	}})
 	require.NoError(t, err)
 
 	// Verify the provider can read the object.
-	r, err = p2.OpenForReading(ctx, base.FileTypeTable, base.FileNum(10).DiskFileNum(), objstorage.OpenOptions{})
+	r, err = p2.OpenForReading(ctx, base.FileTypeTable, base.DiskFileNum(10), objstorage.OpenOptions{})
 	require.NoError(t, err)
 	require.Equal(t, int64(len(data)), r.Size())
 	buf = make([]byte, r.Size())
@@ -473,7 +479,7 @@ func TestNotExistError(t *testing.T) {
 	require.NoError(t, provider.SetCreatorID(1))
 
 	for i, shared := range []bool{false, true} {
-		fileNum := base.FileNum(1 + i).DiskFileNum()
+		fileNum := base.DiskFileNum(1 + i)
 		name := "local"
 		if shared {
 			name = "remote"
@@ -569,7 +575,7 @@ func TestParallelSync(t *testing.T) {
 					defer wg.Done()
 					rng := rand.New(rand.NewSource(int64(startNum)))
 					for i := 0; i < numOps; i++ {
-						num := base.FileNum(startNum + i).DiskFileNum()
+						num := base.DiskFileNum(startNum + i)
 						w, _, err := p.Create(context.Background(), base.FileTypeTable, num, objstorage.CreateOptions{
 							PreferSharedStorage: shared,
 						})

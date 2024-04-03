@@ -145,7 +145,7 @@ func (meta *ObjectMetadata) AssertValid() {
 			if meta.Remote.CreatorID == 0 {
 				panic(errors.AssertionFailedf("CreatorID not set"))
 			}
-			if meta.Remote.CreatorFileNum == base.FileNum(0).DiskFileNum() {
+			if meta.Remote.CreatorFileNum == 0 {
 				panic(errors.AssertionFailedf("CreatorFileNum not set"))
 			}
 		}
@@ -286,7 +286,14 @@ type Provider interface {
 	// Pebble and will never be removed by Pebble.
 	CreateExternalObjectBacking(locator remote.Locator, objName string) (RemoteObjectBacking, error)
 
+	// GetExternalObjects returns a list of DiskFileNums corresponding to all
+	// objects that are backed by the given external object.
+	GetExternalObjects(locator remote.Locator, objName string) []base.DiskFileNum
+
 	// AttachRemoteObjects registers existing remote objects with this provider.
+	//
+	// The objects are not guaranteed to be durable (accessible in case of
+	// crashes) until Sync is called.
 	AttachRemoteObjects(objs []RemoteObjectToAttach) ([]ObjectMetadata, error)
 
 	Close() error
@@ -294,6 +301,11 @@ type Provider interface {
 	// IsNotExistError indicates whether the error is known to report that a file or
 	// directory does not exist.
 	IsNotExistError(err error) bool
+
+	// CheckpointState saves any saved state on local disk to the specified
+	// directory on the specified VFS. A new Pebble instance instantiated at that
+	// path should be able to resolve references to the specified files.
+	CheckpointState(fs vfs.FS, dir string, fileType base.FileType, fileNums []base.DiskFileNum) error
 
 	// Metrics returns metrics about objstorage. Currently, it only returns metrics
 	// about the shared cache.
@@ -327,4 +339,37 @@ type RemoteObjectToAttach struct {
 	// generated from a different instance, but using the same Provider
 	// implementation).
 	Backing RemoteObjectBacking
+}
+
+// Copy copies the specified range from the input to the output.
+func Copy(ctx context.Context, in Readable, out Writable, offset, length uint64) error {
+	r := in.NewReadHandle(ctx)
+	r.SetupForCompaction()
+	buf := make([]byte, 256<<10)
+	end := offset + length
+	for offset < end {
+		n := min(end-offset, uint64(len(buf)))
+		if n == 0 {
+			break
+		}
+		readErr := r.ReadAt(ctx, buf[:n], int64(offset))
+		if readErr != nil {
+			return readErr
+		}
+		offset += n
+		if err := out.Write(buf[:n]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// MustIsLocalTable requires that a table exist with fileNum, and returns true
+// iff it is local.
+func MustIsLocalTable(provider Provider, fileNum base.DiskFileNum) bool {
+	meta, err := provider.Lookup(base.FileTypeTable, fileNum)
+	if err != nil {
+		panic(err)
+	}
+	return !meta.IsRemote()
 }

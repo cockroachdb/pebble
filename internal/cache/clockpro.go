@@ -83,8 +83,8 @@ type shard struct {
 	reservedSize int64
 	maxSize      int64
 	coldTarget   int64
-	blocks       robinHoodMap // fileNum+offset -> block
-	files        robinHoodMap // fileNum -> list of blocks
+	blocks       blockMap // fileNum+offset -> block
+	files        blockMap // fileNum -> list of blocks
 
 	// The blocks and files maps store values in manually managed memory that is
 	// invisible to the Go GC. This is fine for Value and entry objects that are
@@ -114,7 +114,7 @@ type shard struct {
 func (c *shard) Get(id uint64, fileNum base.DiskFileNum, offset uint64) Handle {
 	c.mu.RLock()
 	var value *Value
-	if e := c.blocks.Get(key{fileKey{id, fileNum}, offset}); e != nil {
+	if e, _ := c.blocks.Get(key{fileKey{id, fileNum}, offset}); e != nil {
 		value = e.acquireValue()
 		if value != nil {
 			e.referenced.Store(true)
@@ -138,7 +138,7 @@ func (c *shard) Set(id uint64, fileNum base.DiskFileNum, offset uint64, value *V
 	defer c.mu.Unlock()
 
 	k := key{fileKey{id, fileNum}, offset}
-	e := c.blocks.Get(k)
+	e, _ := c.blocks.Get(k)
 
 	switch {
 	case e == nil:
@@ -225,7 +225,7 @@ func (c *shard) Delete(id uint64, fileNum base.DiskFileNum, offset uint64) {
 	// shared lock.
 	k := key{fileKey{id, fileNum}, offset}
 	c.mu.RLock()
-	exists := c.blocks.Get(k) != nil
+	_, exists := c.blocks.Get(k)
 	c.mu.RUnlock()
 	if !exists {
 		return
@@ -236,7 +236,7 @@ func (c *shard) Delete(id uint64, fileNum base.DiskFileNum, offset uint64) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 
-		e := c.blocks.Get(k)
+		e, _ := c.blocks.Get(k)
 		if e == nil {
 			return
 		}
@@ -280,7 +280,7 @@ func (c *shard) evictFileRun(fkey key) (moreRemaining bool) {
 		}
 	}()
 
-	blocks := c.files.Get(fkey)
+	blocks, _ := c.files.Get(fkey)
 	if blocks == nil {
 		// No blocks for this file.
 		return false
@@ -314,8 +314,8 @@ func (c *shard) Free() {
 		e.free()
 	}
 
-	c.blocks.free()
-	c.files.free()
+	c.blocks.Close()
+	c.files.Close()
 }
 
 func (c *shard) Reserve(n int) {
@@ -385,7 +385,7 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 	}
 
 	fkey := key.file()
-	if fileBlocks := c.files.Get(fkey); fileBlocks == nil {
+	if fileBlocks, _ := c.files.Get(fkey); fileBlocks == nil {
 		c.files.Put(fkey, e)
 	} else {
 		fileBlocks.linkFile(e)
@@ -445,13 +445,13 @@ func (c *shard) metaCheck(e *entry) {
 				e, e.key, debug.Stack())
 			os.Exit(1)
 		}
-		if c.blocks.findByValue(e) != nil {
-			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in blocks map\n%s\n%s",
+		if c.blocks.findByValue(e) {
+			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in blocks map\n%#v\n%s",
 				e, e.key, &c.blocks, debug.Stack())
 			os.Exit(1)
 		}
-		if c.files.findByValue(e) != nil {
-			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in files map\n%s\n%s",
+		if c.files.findByValue(e) {
+			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in files map\n%#v\n%s",
 				e, e.key, &c.files, debug.Stack())
 			os.Exit(1)
 		}
@@ -729,8 +729,8 @@ func newShards(size int64, shards int) *Cache {
 		if entriesGoAllocated {
 			c.shards[i].entries = make(map[*entry]struct{})
 		}
-		c.shards[i].blocks.init(16)
-		c.shards[i].files.init(16)
+		c.shards[i].blocks.Init(16)
+		c.shards[i].files.Init(16)
 	}
 
 	// Note: this is a no-op if invariants are disabled or race is enabled.
@@ -765,7 +765,7 @@ func (c *Cache) getShard(id uint64, fileNum base.DiskFileNum, offset uint64) *sh
 		h ^= uint64(id & 0xff)
 		id >>= 8
 	}
-	fileNumVal := uint64(fileNum.FileNum())
+	fileNumVal := uint64(fileNum)
 	for i := 0; i < 8; i++ {
 		h *= prime64
 		h ^= uint64(fileNumVal) & 0xff
@@ -893,7 +893,7 @@ func (c *Cache) Metrics() Metrics {
 	for i := range c.shards {
 		s := &c.shards[i]
 		s.mu.RLock()
-		m.Count += int64(s.blocks.Count())
+		m.Count += int64(s.blocks.Len())
 		m.Size += s.sizeHot + s.sizeCold
 		s.mu.RUnlock()
 		m.Hits += s.hits.Load()

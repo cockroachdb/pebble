@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -119,8 +120,7 @@ func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) *LevelFile {
 	if lm.level != 0 {
 		// If lm holds files for levels >0, we can narrow our search by binary
 		// searching by bounds.
-		o := overlaps(iter, cmp, m.Smallest.UserKey,
-			m.Largest.UserKey, m.Largest.IsExclusiveSentinel())
+		o := overlaps(iter, cmp, m.UserKeyBounds())
 		iter = o.Iter()
 	}
 	for f := iter.First(); f != nil; f = iter.Next() {
@@ -393,52 +393,6 @@ const (
 	KeyTypeRange
 )
 
-type keyTypeAnnotator struct{}
-
-var _ Annotator = keyTypeAnnotator{}
-
-func (k keyTypeAnnotator) Zero(dst interface{}) interface{} {
-	var val *KeyType
-	if dst != nil {
-		val = dst.(*KeyType)
-	} else {
-		val = new(KeyType)
-	}
-	*val = KeyTypePoint
-	return val
-}
-
-func (k keyTypeAnnotator) Accumulate(m *FileMetadata, dst interface{}) (interface{}, bool) {
-	v := dst.(*KeyType)
-	switch *v {
-	case KeyTypePoint:
-		if m.HasRangeKeys {
-			*v = KeyTypePointAndRange
-		}
-	case KeyTypePointAndRange:
-		// Do nothing.
-	default:
-		panic("unexpected key type")
-	}
-	return v, true
-}
-
-func (k keyTypeAnnotator) Merge(src interface{}, dst interface{}) interface{} {
-	v := dst.(*KeyType)
-	srcVal := src.(*KeyType)
-	switch *v {
-	case KeyTypePoint:
-		if *srcVal == KeyTypePointAndRange {
-			*v = KeyTypePointAndRange
-		}
-	case KeyTypePointAndRange:
-		// Do nothing.
-	default:
-		panic("unexpected key type")
-	}
-	return v
-}
-
 // LevelIterator iterates over a set of files' metadata. Its zero value is an
 // empty iterator.
 type LevelIterator struct {
@@ -598,12 +552,14 @@ func (i *LevelIterator) Prev() *FileMetadata {
 
 // SeekGE seeks to the first file in the iterator's file set with a largest
 // user key greater than or equal to the provided user key. The iterator must
-// have been constructed from L1+, because it requires the underlying files to
-// be sorted by user keys and non-overlapping.
+// have been constructed from L1+ or from a single sublevel of L0, because it
+// requires the underlying files to be sorted by user keys and non-overlapping.
 func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
-	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
 	if i.iter.r == nil {
 		return nil
+	}
+	if invariants.Enabled {
+		i.assertNotL0Cmp()
 	}
 	m := i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Largest.UserKey, userKey) >= 0
@@ -621,14 +577,25 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 	return i.skipFilteredForward(m)
 }
 
-// SeekLT seeks to the last file in the iterator's file set with a smallest
-// user key less than the provided user key. The iterator must have been
-// constructed from L1+, because it requires the underlying files to be sorted
-// by user keys and non-overlapping.
+// assertNotL0Cmp verifies that the btree associated with the iterator is
+// ordered by Smallest key (i.e. L1+ or L0 sublevel) and not by LargestSeqNum
+// (L0).
+func (i *LevelIterator) assertNotL0Cmp() {
+	if reflect.ValueOf(i.iter.cmp).Pointer() == reflect.ValueOf(btreeCmpSeqNum).Pointer() {
+		panic("Seek used with btreeCmpSeqNum")
+	}
+}
+
+// SeekLT seeks to the last file in the iterator's file set with a smallest user
+// key less than the provided user key. The iterator must have been constructed
+// from L1+ or from a single sublevel of L0, because it requires the underlying
+// files to be sorted by user keys and non-overlapping.
 func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
-	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
 	if i.iter.r == nil {
 		return nil
+	}
+	if invariants.Enabled {
+		i.assertNotL0Cmp()
 	}
 	i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Smallest.UserKey, userKey) >= 0

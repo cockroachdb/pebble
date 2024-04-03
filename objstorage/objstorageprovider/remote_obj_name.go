@@ -23,7 +23,7 @@ func remoteObjectName(meta objstorage.ObjectMetadata) string {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
 			"%04x-%d-%06d.sst",
-			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum.FileNum(),
+			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum,
 		)
 	}
 	panic("unknown FileType")
@@ -42,14 +42,14 @@ func sharedObjectRefName(
 	}
 	if meta.Remote.CustomObjectName != "" {
 		return fmt.Sprintf(
-			"%s.ref.%d.%06d", meta.Remote.CustomObjectName, refCreatorID, refFileNum.FileNum(),
+			"%s.ref.%d.%06d", meta.Remote.CustomObjectName, refCreatorID, refFileNum,
 		)
 	}
 	switch meta.FileType {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
 			"%04x-%d-%06d.sst.ref.%d.%06d",
-			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum.FileNum(), refCreatorID, refFileNum.FileNum(),
+			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum, refCreatorID, refFileNum,
 		)
 	}
 	panic("unknown FileType")
@@ -63,7 +63,7 @@ func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
 			"%04x-%d-%06d.sst.ref.",
-			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum.FileNum(),
+			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum,
 		)
 	}
 	panic("unknown FileType")
@@ -87,5 +87,5 @@ func (p *provider) sharedObjectRefName(meta objstorage.ObjectMetadata) string {
 func objHash(meta objstorage.ObjectMetadata) uint16 {
 	const prime1 = 7459
 	const prime2 = 17539
-	return uint16(uint64(meta.Remote.CreatorID)*prime1 + uint64(meta.Remote.CreatorFileNum.FileNum())*prime2)
+	return uint16(uint64(meta.Remote.CreatorID)*prime1 + uint64(meta.Remote.CreatorFileNum)*prime2)
 }

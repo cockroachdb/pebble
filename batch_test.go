@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -18,12 +17,13 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"unicode"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/batchskl"
+	"github.com/cockroachdb/pebble/internal/datadrivenutil"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -239,7 +239,7 @@ func TestBatchLen(t *testing.T) {
 		require.Equal(t, size, len(b.Repr()))
 	}
 
-	requireLenAndReprEq(batchHeaderLen)
+	requireLenAndReprEq(batchrepr.HeaderLen)
 
 	key := "test-key"
 	value := "test-value"
@@ -379,18 +379,14 @@ func TestBatchReset(t *testing.T) {
 	// At this point b.data has not been modified since the db.NewBatch() and is
 	// either nil or contains a byte slice of length batchHeaderLen, with a 0
 	// seqnum encoded in data[0:8] and an arbitrary count encoded in data[8:12].
-	// The following commented code will often fail.
-	// 	count := binary.LittleEndian.Uint32(b.countData())
-	//  if count != 0 && count != 3 {
-	//  	t.Fatalf("count: %d", count)
-	//  }
 	// If we simply called b.Reset now and later used b.data to initialize
 	// expected, the count in expected will also be arbitrary. So we fix the
 	// count in b.data now by calling b.Repr(). This call isn't essential, since
 	// we will call b.Repr() again, and just shows that it fixes the count in
 	// b.data.
-	_ = b.Repr()
-	require.Equal(t, uint32(3), binary.LittleEndian.Uint32(b.countData()))
+	h, ok := batchrepr.ReadHeader(b.Repr())
+	require.True(t, ok)
+	require.Equal(t, uint32(3), h.Count)
 
 	b.Reset()
 	require.Equal(t, db, b.db)
@@ -399,7 +395,7 @@ func TestBatchReset(t *testing.T) {
 	require.Equal(t, uint32(0), b.Count())
 	require.Equal(t, uint64(0), b.countRangeDels)
 	require.Equal(t, uint64(0), b.countRangeKeys)
-	require.Equal(t, batchHeaderLen, len(b.data))
+	require.Equal(t, batchrepr.HeaderLen, len(b.data))
 	require.Equal(t, uint64(0), b.SeqNum())
 	require.Equal(t, uint64(0), b.memTableSize)
 	require.Equal(t, FormatMajorVersion(0x00), b.minimumFormatMajorVersion)
@@ -420,6 +416,87 @@ func TestBatchReset(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 	require.Equal(t, v, []byte(value))
+}
+
+func TestBatchReuse(t *testing.T) {
+	db, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	batches := map[string]*Batch{}
+	datadriven.RunTest(t, "testdata/batch_reuse", func(t *testing.T, td *datadriven.TestData) string {
+		buf.Reset()
+		switch td.Cmd {
+		case "run":
+			lines := datadrivenutil.Lines(td.Input)
+			for len(lines) > 0 {
+				l := lines.Next()
+				fields := l.Fields('.', '(', ')', '"')
+				if len(l) > 0 && l[0] == '#' {
+					// Comment.
+					fmt.Fprintln(&buf, l)
+					continue
+				}
+				switch {
+				case fields.Index(1) == "=":
+					switch {
+					case fields.Index(2).Str() == "db" && fields.Index(3).Str() == "NewBatch":
+						// Command of the form: b = db.NewBatch()
+						batches[fields.Index(0).Str()] = db.NewBatch()
+						fmt.Fprintln(&buf, l)
+					case fields.Index(2).Str() == "new" && fields.Index(3).Str() == "Batch":
+						// Command of the form: b = new(Batch)
+						batches[fields.Index(0).Str()] = new(Batch)
+						fmt.Fprintln(&buf, l)
+					default:
+						return fmt.Sprintf("unrecognized batch constructor: %s", l)
+					}
+				case fields.Index(1) == "Set":
+					// Command of the form: b1.Set("foo", "bar")
+					batches[fields.Index(0).Str()].Set(
+						fields.Index(2).Bytes(),
+						fields.Index(3).Bytes(),
+						nil,
+					)
+					fmt.Fprintln(&buf, l)
+				case fields.Index(1) == "lifecycle":
+					// Command of the form: b1.lifecycle
+					v := batches[fields.Index(0).Str()].lifecycle.Load()
+					fmt.Fprintf(&buf, "%s = %b\n", l, v)
+				case fields.Index(1) == "refData":
+					// Command of the form: b1.refData()
+					batches[fields.Index(0).Str()].refData()
+					fmt.Fprintf(&buf, "%s\n", l)
+				case fields.Index(1) == "unrefData":
+					// Command of the form: b1.unrefData()
+					batches[fields.Index(0).Str()].unrefData()
+					fmt.Fprintf(&buf, "%s\n", l)
+				case fields.Index(1) == "Close":
+					// Command of the form: b1.Close()
+					err := batches[fields.Index(0).Str()].Close()
+					fmt.Fprintf(&buf, "%s = %v\n", l, err)
+				case fields.Index(1) == "Len":
+					// Command of the form: b1.Len()
+					fmt.Fprintf(&buf, "%s = %d\n", l, batches[fields.Index(0).Str()].Len())
+				case fields.Index(1) == "Reset":
+					// Command of the form: b1.Reset()
+					batches[fields.Index(0).Str()].Reset()
+					fmt.Fprintf(&buf, "%s\n", l)
+				case fields.Index(0) == "cap" && fields.Index(2) == "data":
+					// Command of the form: cap(b1.data)
+					v := cap(batches[fields.Index(1).Str()].data)
+					fmt.Fprintf(&buf, "%s = %d\n", l, v)
+				default:
+					return fmt.Sprintf("unrecognized `run` subcommand: %+v", fields)
+				}
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
 }
 
 func TestIndexedBatchReset(t *testing.T) {
@@ -719,19 +796,16 @@ func TestBatchIncrement(t *testing.T) {
 		0xfffffffe,
 	}
 	for _, tc := range testCases {
-		var buf [batchHeaderLen]byte
+		var buf [batchrepr.HeaderLen]byte
 		binary.LittleEndian.PutUint32(buf[8:12], tc)
 		var b Batch
 		b.SetRepr(buf[:])
 		b.count++
-		got := binary.LittleEndian.Uint32(b.Repr()[8:12])
 		want := tc + 1
-		if got != want {
-			t.Errorf("input=%d: got %d, want %d", tc, got, want)
-		}
-		_, count := ReadBatch(b.Repr())
-		if got != want {
-			t.Errorf("input=%d: got %d, want %d", tc, count, want)
+		h, ok := batchrepr.ReadHeader(b.Repr())
+		require.True(t, ok)
+		if h.Count != want {
+			t.Errorf("input=%d: got %d, want %d", tc, h.Count, want)
 		}
 	}
 
@@ -743,7 +817,7 @@ func TestBatchIncrement(t *testing.T) {
 				}
 			}
 		}()
-		var buf [batchHeaderLen]byte
+		var buf [batchrepr.HeaderLen]byte
 		binary.LittleEndian.PutUint32(buf[8:12], 0xffffffff)
 		var b Batch
 		b.SetRepr(buf[:])
@@ -984,7 +1058,8 @@ func TestBatchRangeOps(t *testing.T) {
 
 			var buf bytes.Buffer
 			if fragmentIter != nil {
-				for s := fragmentIter.First(); s != nil; s = fragmentIter.Next() {
+				s, err := fragmentIter.First()
+				for ; s != nil; s, err = fragmentIter.Next() {
 					for i := range s.Keys {
 						s.Keys[i].Trailer = base.MakeTrailer(
 							s.Keys[i].SeqNum()&^base.InternalKeySeqNumBatch,
@@ -992,6 +1067,9 @@ func TestBatchRangeOps(t *testing.T) {
 						)
 					}
 					fmt.Fprintln(&buf, s)
+				}
+				if err != nil {
+					return err.Error()
 				}
 			} else {
 				for k, v := internalIter.First(); k != nil; k, v = internalIter.Next() {
@@ -1058,7 +1136,10 @@ func TestFlushableBatch(t *testing.T) {
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
 				ikey := base.ParseInternalKey(key[:j])
-				value := []byte(fmt.Sprint(ikey.SeqNum()))
+				value := []byte(key[j+1:])
+				if len(value) == 0 {
+					value = []byte(fmt.Sprintf("%d", ikey.SeqNum()))
+				}
 				switch ikey.Kind() {
 				case InternalKeyKindDelete:
 					require.NoError(t, batch.Delete(ikey.UserKey, nil))
@@ -1066,6 +1147,8 @@ func TestFlushableBatch(t *testing.T) {
 					require.NoError(t, batch.Set(ikey.UserKey, value, nil))
 				case InternalKeyKindMerge:
 					require.NoError(t, batch.Merge(ikey.UserKey, value, nil))
+				case InternalKeyKindLogData:
+					require.NoError(t, batch.LogData(ikey.UserKey, nil))
 				case InternalKeyKindRangeDelete:
 					require.NoError(t, batch.DeleteRange(ikey.UserKey, value, nil))
 				case InternalKeyKindRangeKeyDelete:
@@ -1187,8 +1270,12 @@ func scanInternalIter(w io.Writer, ii internalIterator) {
 }
 
 func scanKeyspanIterator(w io.Writer, ki keyspan.FragmentIterator) {
-	for s := ki.First(); s != nil; s = ki.Next() {
+	s, err := ki.First()
+	for ; s != nil; s, err = ki.Next() {
 		fmt.Fprintln(w, s)
+	}
+	if err != nil {
+		fmt.Fprintf(w, "err=%q", err.Error())
 	}
 }
 
@@ -1370,49 +1457,32 @@ func TestBatchCommitStats(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestBatchReader(t *testing.T) {
-	datadriven.RunTest(t, "testdata/batch_reader", func(t *testing.T, td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "scan":
-			var repr bytes.Buffer
-			for i, l := range strings.Split(td.Input, "\n") {
-				// Remove any trailing comments behind #.
-				if i := strings.IndexRune(l, '#'); i >= 0 {
-					l = l[:i]
-				}
-				// Strip all whitespace from the line.
-				l = strings.Map(func(r rune) rune {
-					if unicode.IsSpace(r) {
-						return -1
-					}
-					return r
-				}, l)
-				b, err := hex.DecodeString(l)
-				if err != nil {
-					return fmt.Sprintf("failed to decode hex; line %d", i)
-				}
-				repr.Write(b)
-			}
-			r, count := ReadBatch(repr.Bytes())
-			var out strings.Builder
-			fmt.Fprintf(&out, "Count: %d\n", count)
-			for {
-				kind, ukey, value, ok, err := r.Next()
-				if !ok {
-					if err != nil {
-						fmt.Fprintf(&out, "err: %s\n", err)
-					} else {
-						fmt.Fprint(&out, "eof")
-					}
-					break
-				}
-				fmt.Fprintf(&out, "%s: %q: %q\n", kind, ukey, value)
-			}
-			return out.String()
+// TestBatchLogDataMemtableSize tests that LogDatas never contribute to memtable
+// size.
+func TestBatchLogDataMemtableSize(t *testing.T) {
+	// Create a batch with Set("foo", "bar") and a LogData. Only the Set should
+	// contribute to the batch's memtable size.
+	b := Batch{}
+	require.NoError(t, b.Set([]byte("foo"), []byte("bar"), nil))
+	require.Equal(t, uint64(201), b.memTableSize)
+	require.NoError(t, b.LogData([]byte("baxbarbaz"), nil))
+	require.Equal(t, uint64(201), b.memTableSize)
 
-		default:
-			return fmt.Sprintf("unrecognized command %q", td.Cmd)
-		}
+	t.Run("SetRepr", func(t *testing.T) {
+		// Setting another batch's repr using SetRepr should result in a
+		// recalculation of the memtable size that matches.
+		a := Batch{}
+		a.db = new(DB)
+		require.NoError(t, a.SetRepr(b.Repr()))
+		require.Equal(t, uint64(201), a.memTableSize)
+	})
+	t.Run("Apply", func(t *testing.T) {
+		// Applying another batch using apply should result in a recalculation
+		// of the memtable size that matches.
+		a := Batch{}
+		a.db = new(DB)
+		require.NoError(t, a.Apply(&b, nil))
+		require.Equal(t, uint64(201), a.memTableSize)
 	})
 }
 

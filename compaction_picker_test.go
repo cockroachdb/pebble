@@ -134,8 +134,8 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 					return errMsg
 				}
 
-				p, ok := newCompactionPicker(vers, opts, nil).(*compactionPickerByScore)
-				require.True(t, ok)
+				vb := manifest.MakeVirtualBackings()
+				p := newCompactionPickerByScore(vers, &vb, opts, nil)
 				var buf bytes.Buffer
 				for level := p.getBaseLevel(); level < numLevels; level++ {
 					fmt.Fprintf(&buf, "%d: %d\n", level, p.levelMaxBytes[level])
@@ -217,10 +217,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 				}
 
-				p := newCompactionPicker(vers, opts, inProgress)
-				var ok bool
-				pickerByScore, ok = p.(*compactionPickerByScore)
-				require.True(t, ok)
+				vb := manifest.MakeVirtualBackings()
+				pickerByScore = newCompactionPickerByScore(vers, &vb, opts, inProgress)
 				return fmt.Sprintf("base: %d", pickerByScore.baseLevel)
 			case "queue":
 				var b strings.Builder
@@ -356,7 +354,8 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 				}
 				opts.MemTableSize = 1000
 
-				p := newCompactionPicker(vers, opts, nil)
+				vb := manifest.MakeVirtualBackings()
+				p := newCompactionPickerByScore(vers, &vb, opts, nil)
 				return fmt.Sprintf("%d\n", p.estimatedCompactionDebt(0))
 
 			default:
@@ -501,9 +500,8 @@ func TestCompactionPickerL0(t *testing.T) {
 			version := newVersion(opts, fileMetas)
 			version.L0Sublevels.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
 			vs := &versionSet{
-				opts:    opts,
-				cmp:     DefaultComparer.Compare,
-				cmpName: DefaultComparer.Name,
+				opts: opts,
+				cmp:  DefaultComparer,
 			}
 			vs.versions.Init(nil)
 			vs.append(version)
@@ -725,14 +723,14 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			version := newVersion(opts, fileMetas)
 			version.L0Sublevels.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
 			vs := &versionSet{
-				opts:    opts,
-				cmp:     DefaultComparer.Compare,
-				cmpName: DefaultComparer.Name,
+				opts: opts,
+				cmp:  DefaultComparer,
 			}
 			vs.versions.Init(nil)
 			vs.append(version)
 
-			picker = newCompactionPicker(version, opts, inProgressCompactions).(*compactionPickerByScore)
+			vb := manifest.MakeVirtualBackings()
+			picker = newCompactionPickerByScore(version, &vb, opts, inProgressCompactions)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -843,14 +841,14 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 
 			vers = newVersion(opts, fileMetas)
 			vs := &versionSet{
-				opts:    opts,
-				cmp:     DefaultComparer.Compare,
-				cmpName: DefaultComparer.Name,
+				opts: opts,
+				cmp:  DefaultComparer,
 			}
 			vs.versions.Init(nil)
 			vs.append(vers)
 			var inProgressCompactions []compactionInfo
-			picker = newCompactionPicker(vers, opts, inProgressCompactions).(*compactionPickerByScore)
+			vb := manifest.MakeVirtualBackings()
+			picker = newCompactionPickerByScore(vers, &vb, opts, inProgressCompactions)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -930,9 +928,8 @@ func (d alwaysMultiLevel) pick(
 	return pcMulti
 }
 
-func (d alwaysMultiLevel) allowL0() bool {
-	return false
-}
+func (d alwaysMultiLevel) allowL0() bool  { return false }
+func (d alwaysMultiLevel) String() string { return "always" }
 
 func TestPickedCompactionSetupInputs(t *testing.T) {
 	opts := &Options{}
@@ -1038,12 +1035,22 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				}
 			}
 
+			for _, levelFiles := range files {
+				for i := 1; i < len(levelFiles); i++ {
+					if !checkTableBoundary(levelFiles[i-1], levelFiles[i], opts.Comparer.Compare) {
+						d.Fatalf(t, "overlapping tables: %s and %s", levelFiles[i-1], levelFiles[i])
+					}
+				}
+			}
+
 			if pc.outputLevel.level == -1 {
 				pc.outputLevel.level = pc.startLevel.level + 1
 			}
 			pc.version = newVersion(opts, files)
-			pc.startLevel.files = pc.version.Overlaps(pc.startLevel.level, pc.cmp,
-				[]byte(args[0].String()), []byte(args[1].String()), false /* exclusiveEnd */)
+			pc.startLevel.files = pc.version.Overlaps(
+				pc.startLevel.level,
+				base.UserKeyBoundsInclusive([]byte(args[0].String()), []byte(args[1].String())),
+			)
 
 			var isCompacting bool
 			if !pc.setupInputs(opts, availBytes, pc.startLevel) {
@@ -1134,6 +1141,12 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 					files = append(files, meta)
 				}
 				manifest.SortBySmallest(files, cmp)
+				// Verify that the tables have no user key overlap.
+				for i := 1; i < len(files); i++ {
+					if !checkTableBoundary(files[i-1], files[i], cmp) {
+						d.Fatalf(t, "overlapping tables: %s and %s", files[i-1], files[i])
+					}
+				}
 				return ""
 
 			case "expand-inputs":
@@ -1162,10 +1175,8 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 					_ = iter.Next()
 				}
 
-				inputs, _ := expandToAtomicUnit(cmp, iter.Take().Slice(), true /* disableIsCompacting */)
-
 				var buf bytes.Buffer
-				inputs.Each(func(f *fileMetadata) {
+				iter.Take().Slice().Each(func(f *fileMetadata) {
 					fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
 				})
 				return buf.String()
@@ -1252,14 +1263,14 @@ func TestCompactionOutputFileSize(t *testing.T) {
 
 			vers = newVersion(opts, fileMetas)
 			vs := &versionSet{
-				opts:    opts,
-				cmp:     DefaultComparer.Compare,
-				cmpName: DefaultComparer.Name,
+				opts: opts,
+				cmp:  DefaultComparer,
 			}
 			vs.versions.Init(nil)
 			vs.append(vers)
 			var inProgressCompactions []compactionInfo
-			picker = newCompactionPicker(vers, opts, inProgressCompactions).(*compactionPickerByScore)
+			vb := manifest.MakeVirtualBackings()
+			picker = newCompactionPickerByScore(vers, &vb, opts, inProgressCompactions)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -1359,6 +1370,24 @@ func TestCompactionPickerPickFile(t *testing.T) {
 		case "file-sizes":
 			return runTableFileSizesCmd(td, d)
 
+		case "build":
+			if err := runBuildCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest-and-excise":
+			if err := runIngestAndExciseCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "lsm":
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
 		case "pick-file":
 			s := strings.TrimPrefix(td.CmdArgs[0].String(), "L")
 			level, err := strconv.Atoi(s)
@@ -1379,7 +1408,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 			var ok bool
 			d.maybeScheduleCompactionPicker(func(untypedPicker compactionPicker, env compactionEnv) *pickedCompaction {
 				p := untypedPicker.(*compactionPickerByScore)
-				lf, ok = pickCompactionSeedFile(p.vers, opts, level, level+1, env.earliestSnapshotSeqNum)
+				lf, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, opts, level, level+1, env.earliestSnapshotSeqNum)
 				return nil
 			})
 			if !ok {
@@ -1466,13 +1495,13 @@ func TestCompactionPickerScores(t *testing.T) {
 
 		case "disable-table-stats":
 			d.mu.Lock()
-			d.opts.private.disableTableStats = true
+			d.opts.DisableTableStats = true
 			d.mu.Unlock()
 			return ""
 
 		case "enable-table-stats":
 			d.mu.Lock()
-			d.opts.private.disableTableStats = false
+			d.opts.DisableTableStats = false
 			d.maybeCollectTableStatsLocked()
 			d.mu.Unlock()
 			return ""
@@ -1590,4 +1619,9 @@ func checkClone(t *testing.T, pc *pickedCompaction) {
 			require.NotEqual(t, &pc.startLevel.l0SublevelInfo[i], &pcClone.startLevel.l0SublevelInfo[i])
 		}
 	}
+}
+
+func checkTableBoundary(a, b *fileMetadata, cmp base.Compare) (ok bool) {
+	c := cmp(a.LargestPointKey.UserKey, b.SmallestPointKey.UserKey)
+	return c < 0 || (c == 0 && a.LargestPointKey.IsExclusiveSentinel())
 }

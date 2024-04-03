@@ -43,9 +43,9 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000007:[d#12,SET-d#12,SET]
-6:
+L6:
   000005:[c#10,SET-f#11,SET]
 
 compact a-z block=c1
@@ -88,9 +88,9 @@ ok
 
 lsm
 ----
-6:
-  000010:[d#13,SET-d#13,SET]
-  000011:[f#11,SET-f#11,SET]
+L6:
+  000010(000010):[d#14,DELSIZED-d#14,DEL]
+  000011(000005):[f#11,SET-f#11,SET]
 
 compact a-z
 ----
@@ -165,7 +165,7 @@ replicated 1 shared SSTs
 
 wait-for-file-only-snapshot s2
 ----
-pebble: snapshot excised before conversion to file-only snapshot
+ok
 
 iter snapshot=s2
 first
@@ -173,4 +173,123 @@ next
 next
 next
 ----
-pebble: snapshot excised before conversion to file-only snapshot
+d: (something, .)
+dd: (memory, .)
+e: (bar, .)
+.
+
+
+reset
+----
+
+switch 1
+----
+ok
+
+batch
+set a bar
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+build ext6
+set e foo
+----
+
+ingest ext6
+----
+
+lsm
+----
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000006:[e#11,SET-e#11,SET]
+
+batch
+set a new
+----
+
+flush
+----
+
+batch
+set d new
+set e new
+----
+
+flush
+----
+
+lsm
+----
+L0.0:
+  000008:[a#12,SET-a#12,SET]
+  000010:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000006:[e#11,SET-e#11,SET]
+
+build ext5
+set bb something
+set b something
+del b-c
+----
+
+lsm
+----
+L0.0:
+  000008:[a#12,SET-a#12,SET]
+  000010:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000006:[e#11,SET-e#11,SET]
+
+compact a-e block=c1
+----
+spun off in separate goroutine
+
+batch
+set bb new
+----
+
+lsm
+----
+L0.0:
+  000008:[a#12,SET-a#12,SET]
+  000010:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000006:[e#11,SET-e#11,SET]
+
+ingest-and-excise ext5 excise=b-c contains-excise-tombstone
+----
+flushable ingest
+
+lsm
+----
+L0.0:
+  000008:[a#12,SET-a#12,SET]
+  000010:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000012:[b#16,SET-bb#16,SET]
+  000006:[e#11,SET-e#11,SET]
+
+unblock c1
+----
+ok
+
+lsm
+----
+L0.0:
+  000008:[a#12,SET-a#12,SET]
+  000010:[d#13,SET-e#14,SET]
+L6:
+  000005:[a#10,SET-a#10,SET]
+  000012:[b#16,SET-bb#16,SET]
+  000006:[e#11,SET-e#11,SET]

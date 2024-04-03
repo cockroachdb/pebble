@@ -1,0 +1,676 @@
+# Start with a simple sanity checking test which uses singleLevel iterators as
+# the backing iterator for the sstable. This will also test the compaction
+# iterator since it's the simplest.
+build
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+d.SET.1:d
+----
+point:    [a#1,SET-d#1,SET]
+seqnums:  [1-1]
+
+virtualize lower=b.SET.1 upper=c.SET.1
+----
+bounds:  [b#1,SET-c#1,SET]
+
+compaction-iter
+----
+b#1,SET:b
+c#1,SET:c
+
+scan-range-del
+----
+
+scan-range-key
+----
+
+# Test raw range key/range del iterators, and make sure that they
+# respect virtual bounds.
+build block-size=1 index-block-size=1
+a.SET.1:a
+d.SET.2:d
+f.SET.3:f
+d.RANGEDEL.4:e
+rangekey: a-d:{(#11,RANGEKEYSET,@t10,foo)}
+g.RANGEDEL.5:l
+rangekey: y-z:{(#12,RANGEKEYSET,@t11,foo)}
+----
+point:    [a#1,SET-f#3,SET]
+rangedel: [d#4,RANGEDEL-l#72057594037927935,RANGEDEL]
+rangekey: [a#11,RANGEKEYSET-z#72057594037927935,RANGEKEYSET]
+seqnums:  [1-12]
+
+# Note that we shouldn't have range del spans which cross virtual sstable
+# boundaries. NumRangeKeySets must be > 1.
+virtualize lower=a.SET.1 upper=f.SET.1
+----
+bounds:  [a#1,SET-f#1,SET]
+
+scan-range-del
+----
+d-e:{(#4,RANGEDEL)}
+
+scan-range-key
+----
+a-d:{(#11,RANGEKEYSET,@t10,foo)}
+
+# Test iterators with various bounds, and various operations. This calls
+# VirtualReader.NewIterWithBlockPropertyFilters and performs various operations
+# on those.
+build
+a.SET.1:a
+b.SET.2:b
+c.SET.3:c
+d.SET.4:d
+dd.SET.5:dd
+ddd.SET.6:ddd
+g.SET.8:g
+h.SET.9:h
+----
+point:    [a#1,SET-h#9,SET]
+seqnums:  [1-9]
+
+virtualize lower=dd.SET.5 upper=ddd.SET.6
+----
+bounds:  [dd#5,SET-ddd#6,SET]
+
+# Check lower bound enforcement during SeekPrefixGE.
+iter
+seek-prefix-ge d
+next
+next
+----
+<dd:5>:dd
+<ddd:6>:ddd
+.
+
+# Build a simpler sstable for the rest of the tests.
+build
+a.SET.1:a
+b.SET.2:b
+c.SET.3:c
+d.SET.4:d
+e.SET.5:e
+f.SET.6:f
+g.SET.8:g
+h.SET.9:h
+----
+point:    [a#1,SET-h#9,SET]
+seqnums:  [1-9]
+
+# Set bounds c-f for the virtual sstable.
+virtualize lower=c.SET.3 upper=f.SET.6
+----
+bounds:  [c#3,SET-f#6,SET]
+
+# Just test a basic iterator once virtual sstable bounds have been set.
+iter
+first
+next
+next
+next
+next
+----
+<c:3>:c
+<d:4>:d
+<e:5>:e
+<f:6>:f
+.
+
+# Create an iterator with bounds. External bounds should still be restricted
+# along with virtual sstable bounds.
+iter lower=a upper=d
+first
+next
+----
+<c:3>:c
+.
+
+iter lower=d upper=g
+first
+next
+next
+next
+----
+<d:4>:d
+<e:5>:e
+<f:6>:f
+.
+
+# e is turned into an exclusive bounds, and thus it is hidden.
+iter
+set-bounds lower=d upper=e
+first
+next
+----
+.
+<d:4>:d
+.
+
+# Virtual sstable lower bound must be enforced internally from within the
+# iterator.
+iter
+seek-ge b
+next
+next
+next
+next
+----
+<c:3>:c
+<d:4>:d
+<e:5>:e
+<f:6>:f
+.
+
+# Upper bound enforcement by SeekGE.
+iter
+seek-ge g
+----
+.
+
+# Test prev.
+iter
+seek-ge d
+prev
+next
+prev
+prev
+----
+<d:4>:d
+<c:3>:c
+<d:4>:d
+<c:3>:c
+.
+
+# Test SeekLT
+build
+a.SET.1:a
+b.SET.2:b
+c.SET.3:c
+d.SET.4:d
+e.SET.5:e
+f.SET.6:f
+f.SET.1:ff
+g.SET.8:g
+h.SET.9:h
+----
+point:    [a#1,SET-h#9,SET]
+seqnums:  [1-9]
+
+virtualize lower=c.SET.3 upper=f.SET.1:ff
+----
+bounds:  [c#3,SET-f#0,SET]
+
+iter
+set-bounds lower=d upper=e
+seek-lt e
+----
+.
+<d:4>:d
+
+iter
+seek-ge f
+next
+next
+----
+<f:6>:f
+<f:1>:ff
+.
+
+iter
+seek-lt f
+next
+next
+prev
+prev
+prev
+prev
+prev
+----
+<e:5>:e
+<f:6>:f
+<f:1>:ff
+<f:6>:f
+<e:5>:e
+<d:4>:d
+<c:3>:c
+.
+
+# We should get f here, not g as SeekLT will apply the virtual sstable end
+# bound.
+iter
+seek-lt h
+----
+<f:1>:ff
+
+iter
+last
+----
+<f:1>:ff
+
+virtualize lower=f.SET.6 upper=h.SET.9
+----
+bounds:  [f#6,SET-h#9,SET]
+
+iter
+seek-lt z
+----
+<h:9>:h
+
+iter
+last
+----
+<h:9>:h
+
+iter
+set-bounds lower=c upper=g
+first
+last
+----
+.
+<f:6>:f
+<f:1>:ff
+
+# Test 5: Same as test 4, but force two level iterators.
+build block-size=1 index-block-size=1
+a.SET.1:a
+b.SET.2:b
+c.SET.3:c
+d.SET.4:d
+dd.SET.5:dd
+ddd.SET.6:ddd
+g.SET.8:g
+h.SET.9:h
+----
+point:    [a#1,SET-h#9,SET]
+seqnums:  [1-9]
+
+virtualize lower=dd.SET.5 upper=ddd.SET.6
+----
+bounds:  [dd#5,SET-ddd#6,SET]
+
+# Check lower bound enforcement during SeekPrefixGE.
+iter
+seek-prefix-ge d
+next
+next
+----
+<dd:5>:dd
+<ddd:6>:ddd
+.
+
+# Build a simpler sstable for the rest of the tests.
+build block-size=1 index-block-size=1
+a.SET.1:a
+b.SET.2:b
+c.SET.3:c
+d.SET.4:d
+e.SET.5:e
+f.SET.6:f
+g.SET.8:g
+h.SET.9:h
+----
+point:    [a#1,SET-h#9,SET]
+seqnums:  [1-9]
+
+# Set bounds c-f for the virtual sstable.
+virtualize lower=c.SET.3 upper=f.SET.6
+----
+bounds:  [c#3,SET-f#6,SET]
+
+# Just test a basic iterator once virtual sstable bounds have been set.
+iter
+first
+next
+next
+next
+next
+----
+<c:3>:c
+<d:4>:d
+<e:5>:e
+<f:6>:f
+.
+
+# Create an iterator with bounds. External bounds should still be restricted
+# along with virtual sstable bounds.
+iter lower=a upper=d
+first
+next
+----
+<c:3>:c
+.
+
+iter lower=d upper=g
+first
+next
+next
+next
+----
+<d:4>:d
+<e:5>:e
+<f:6>:f
+.
+
+# e is turned into an exclusive bounds, and thus it is hidden.
+iter
+set-bounds lower=d upper=e
+first
+next
+----
+.
+<d:4>:d
+.
+
+# Virtual sstable lower bound must be enforced internally from within the
+# iterator.
+iter
+seek-ge b
+next
+next
+next
+next
+----
+<c:3>:c
+<d:4>:d
+<e:5>:e
+<f:6>:f
+.
+
+# Upper bound enforcement by SeekGE.
+iter
+seek-ge g
+----
+.
+
+# Test prev.
+iter
+seek-ge d
+prev
+next
+prev
+prev
+----
+<d:4>:d
+<c:3>:c
+<d:4>:d
+<c:3>:c
+.
+
+# Test SeekLT
+build block-size=1 index-block-size=1
+a.SET.1:a
+b.SET.2:b
+c.SET.3:c
+d.SET.4:d
+e.SET.5:e
+f.SET.6:f
+f.SET.1:ff
+g.SET.8:g
+h.SET.9:h
+----
+point:    [a#1,SET-h#9,SET]
+seqnums:  [1-9]
+
+virtualize lower=c.SET.3 upper=f.SET.1:ff
+----
+bounds:  [c#3,SET-f#0,SET]
+
+iter
+set-bounds lower=d upper=e
+seek-lt e
+----
+.
+<d:4>:d
+
+iter
+seek-ge f
+next
+next
+----
+<f:6>:f
+<f:1>:ff
+.
+
+iter
+seek-lt f
+next
+next
+prev
+prev
+prev
+prev
+prev
+----
+<e:5>:e
+<f:6>:f
+<f:1>:ff
+<f:6>:f
+<e:5>:e
+<d:4>:d
+<c:3>:c
+.
+
+# We should get f here, not g as SeekLT will apply the virtual sstable end
+# bound.
+iter
+seek-lt h
+----
+<f:1>:ff
+
+iter
+last
+----
+<f:1>:ff
+
+virtualize lower=f.SET.6 upper=h.SET.9
+----
+bounds:  [f#6,SET-h#9,SET]
+
+iter
+seek-lt z
+----
+<h:9>:h
+
+iter
+last
+----
+<h:9>:h
+
+iter
+set-bounds lower=c upper=g
+first
+last
+----
+.
+<f:6>:f
+<f:1>:ff
+
+# Test 6: Exclusive sentinel handling. Note that this test only ensures that
+# exclusive sentinel handling is correct for some code path, but not all of
+# them, in the iterators. Consider a randomized test.
+build
+a.SET.1:a
+d.SET.2:d
+e.SET.3:e
+d.RANGEDEL.4:e
+f.SET.5:f
+----
+point:    [a#1,SET-f#5,SET]
+rangedel: [d#4,RANGEDEL-e#72057594037927935,RANGEDEL]
+seqnums:  [1-5]
+
+virtualize lower=a.SET.1 upper=e.RANGEDEL.72057594037927935
+----
+bounds:  [a#1,SET-e#72057594037927935,RANGEDEL]
+
+iter
+first
+next
+next
+seek-lt f
+----
+<a:1>:a
+<d:2>:d
+.
+<d:2>:d
+
+# Don't expose e from the compaction iter.
+compaction-iter
+----
+a#1,SET:a
+d#2,SET:d
+
+scan-range-del
+----
+d-e:{(#4,RANGEDEL)}
+
+
+build block-size=1 index-block-size=1
+a.SET.1:a
+d.SET.2:d
+e.SET.3:e
+d.RANGEDEL.4:e
+f.SET.5:f
+----
+point:    [a#1,SET-f#5,SET]
+rangedel: [d#4,RANGEDEL-e#72057594037927935,RANGEDEL]
+seqnums:  [1-5]
+
+virtualize lower=a.SET.1 upper=e.RANGEDEL.72057594037927935
+----
+bounds:  [a#1,SET-e#72057594037927935,RANGEDEL]
+
+iter
+first
+next
+next
+seek-lt f
+----
+<a:1>:a
+<d:2>:d
+.
+<d:2>:d
+
+# Don't expose e from the compaction iter.
+compaction-iter
+----
+a#1,SET:a
+d#2,SET:d
+
+scan-range-del
+----
+d-e:{(#4,RANGEDEL)}
+
+# Test NumRangeKeySets.
+build block-size=1 index-block-size=1
+a.SET.1:a
+b.SET.5:b
+d.SET.2:d
+f.SET.3:f
+d.RANGEDEL.4:e
+rangekey: a-d:{(#11,RANGEKEYSET,@t10,foo)}
+g.RANGEDEL.5:l
+rangekey: y-z:{(#12,RANGEKEYSET,@t11,foo)}
+----
+point:    [a#1,SET-f#3,SET]
+rangedel: [d#4,RANGEDEL-l#72057594037927935,RANGEDEL]
+rangekey: [a#11,RANGEKEYSET-z#72057594037927935,RANGEKEYSET]
+seqnums:  [1-12]
+
+# Virtual sstable doesn't contain range key set, but NumRangeKeySets in the
+# properties must be > 0.
+virtualize lower=a.SET.1 upper=b.SET.5
+----
+bounds:  [a#1,SET-b#5,SET]
+
+# Test that a virtual reader with a suffix replacement rule replaces the
+# suffixes from the backing file during iteration.
+build
+a@2.SET.1:a
+b@4.SET.2:b
+c@3.SET.3:c
+d@5.SET.4:d
+e@1.SET.5:e
+f@2.SET.6:f
+g@2.SET.8:g
+h@3.SET.9:h
+----
+point:    [a@2#1,SET-h@3#9,SET]
+seqnums:  [1-9]
+
+# Set bounds c@7-f@2 for the virtual sstable. Notice that we correctly elide c
+# because post suffix replacement, it is not in the bounds. Further, notice that
+# we do surface f because post suffix replacement, it is within the bounds.
+virtualize lower=c@7.SET.3 upper=f@4.SET.8 suffix=@8
+----
+bounds:  [c@7#3,SET-f@4#8,SET]
+
+# Just test a basic iterator once virtual sstable bounds have been set.
+iter
+first
+next
+next
+next
+----
+<d@8:4>:d
+<e@8:5>:e
+<f@8:6>:f
+.
+
+build
+aa@2.SET.1:aa
+ab@1.SET.1:ab
+ac@1.SET.1:ac
+ad@1.SET.1:ad
+ae@1.SET.1:ae
+af@1.SET.1:af
+ba@1.SET.1:ba
+bb@1.SET.1:bb
+bc@2.SET.1:bc
+bd@1.SET.1:bd
+be@3.SET.1:be
+bf@1.SET.1:bf
+ca@1.SET.1:ca
+cb@1.SET.1:cb
+cc@1.SET.1:cc
+cd@1.SET.1:cd
+ce@1.SET.1:ce
+cf@1.SET.1:cf
+----
+point:    [aa@2#1,SET-cf@1#1,SET]
+seqnums:  [1-1]
+
+virtualize lower=ae1.SET.1 upper=ca@1.SET.1
+----
+bounds:  [ae1#1,SET-ca@1#1,SET]
+
+iter with-masking-filter
+mask-suffix @2
+first
+next
+next
+prev
+prev
+----
+<bc@2:1>:bc
+<be@3:1>:be
+.
+<be@3:1>:be
+<bc@2:1>:bc
+
+# Regression test for #3450: filter out the block that intersects the lower
+# bound on Prev, reconfigure the filter, and do Next.
+iter with-masking-filter
+mask-suffix @2
+seek-lt c
+prev
+prev
+mask-suffix @1
+next
+----
+<be@3:1>:be
+<bc@2:1>:bc
+.
+<af@1:1>:af

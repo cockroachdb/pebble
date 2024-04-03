@@ -24,10 +24,10 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		{
 			NewObjects: []RemoteObjectMetadata{
 				{
-					FileNum:          base.FileNum(1).DiskFileNum(),
+					FileNum:          base.DiskFileNum(1),
 					FileType:         base.FileTypeTable,
 					CreatorID:        12,
-					CreatorFileNum:   base.FileNum(123).DiskFileNum(),
+					CreatorFileNum:   base.DiskFileNum(123),
 					CleanupMethod:    objstorage.SharedNoCleanup,
 					Locator:          "",
 					CustomObjectName: "foo",
@@ -35,39 +35,39 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			},
 		},
 		{
-			DeletedObjects: []base.DiskFileNum{base.FileNum(1).DiskFileNum()},
+			DeletedObjects: []base.DiskFileNum{base.DiskFileNum(1)},
 		},
 		{
 			CreatorID: 12345,
 			NewObjects: []RemoteObjectMetadata{
 				{
-					FileNum:          base.FileNum(1).DiskFileNum(),
+					FileNum:          base.DiskFileNum(1),
 					FileType:         base.FileTypeTable,
 					CreatorID:        12,
-					CreatorFileNum:   base.FileNum(123).DiskFileNum(),
+					CreatorFileNum:   base.DiskFileNum(123),
 					CleanupMethod:    objstorage.SharedRefTracking,
 					Locator:          "foo",
 					CustomObjectName: "",
 				},
 				{
-					FileNum:          base.FileNum(2).DiskFileNum(),
+					FileNum:          base.DiskFileNum(2),
 					FileType:         base.FileTypeTable,
 					CreatorID:        22,
-					CreatorFileNum:   base.FileNum(223).DiskFileNum(),
+					CreatorFileNum:   base.DiskFileNum(223),
 					Locator:          "bar",
 					CustomObjectName: "obj1",
 				},
 				{
-					FileNum:          base.FileNum(3).DiskFileNum(),
+					FileNum:          base.DiskFileNum(3),
 					FileType:         base.FileTypeTable,
 					CreatorID:        32,
-					CreatorFileNum:   base.FileNum(323).DiskFileNum(),
+					CreatorFileNum:   base.DiskFileNum(323),
 					CleanupMethod:    objstorage.SharedRefTracking,
 					Locator:          "baz",
 					CustomObjectName: "obj2",
 				},
 			},
-			DeletedObjects: []base.DiskFileNum{base.FileNum(4).DiskFileNum(), base.FileNum(5).DiskFileNum()},
+			DeletedObjects: []base.DiskFileNum{base.DiskFileNum(4), base.DiskFileNum(5)},
 		},
 	} {
 		if err := checkRoundTrip(ve); err != nil {

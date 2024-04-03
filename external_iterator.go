@@ -44,21 +44,6 @@ func ExternalIterReaderOptions(opts ...sstable.ReaderOption) ExternalIterOption 
 	return &externalIterReaderOptions{opts: opts}
 }
 
-// ExternalIterForwardOnly is an ExternalIterOption that specifies this iterator
-// will only be used for forward positioning operations (First, SeekGE, Next).
-// This could enable optimizations that take advantage of this invariant.
-// Behaviour when a reverse positioning operation is done on an iterator
-// opened with this option is unpredictable, though in most cases it should.
-type ExternalIterForwardOnly struct{}
-
-func (e ExternalIterForwardOnly) iterApply(iter *Iterator) {
-	iter.forwardOnly = true
-}
-
-func (e ExternalIterForwardOnly) readerOptions() []sstable.ReaderOption {
-	return nil
-}
-
 // NewExternalIter takes an input 2d array of sstable files which may overlap
 // across subarrays but not within a subarray (at least as far as points are
 // concerned; range keys are allowed to overlap arbitrarily even within a
@@ -101,16 +86,6 @@ func NewExternalIterWithContext(
 
 	var readers [][]*sstable.Reader
 
-	// Ensure we close all the opened readers if we error out.
-	defer func() {
-		if err != nil {
-			for i := range readers {
-				for j := range readers[i] {
-					_ = readers[i][j].Close()
-				}
-			}
-		}
-	}()
 	seqNumOffset := 0
 	var extraReaderOpts []sstable.ReaderOption
 	for i := range extraOpts {
@@ -120,13 +95,18 @@ func NewExternalIterWithContext(
 		seqNumOffset += len(levelFiles)
 	}
 	for _, levelFiles := range files {
-		var subReaders []*sstable.Reader
 		seqNumOffset -= len(levelFiles)
-		subReaders, err = openExternalTables(o, levelFiles, seqNumOffset, o.MakeReaderOptions(), extraReaderOpts...)
+		subReaders, err := openExternalTables(o, levelFiles, seqNumOffset, o.MakeReaderOptions(), extraReaderOpts...)
 		readers = append(readers, subReaders)
-	}
-	if err != nil {
-		return nil, err
+		if err != nil {
+			// Close all the opened readers.
+			for i := range readers {
+				for j := range readers[i] {
+					_ = readers[i][j].Close()
+				}
+			}
+			return nil, err
+		}
 	}
 
 	buf := iterAllocPool.Get().(*iterAlloc)
@@ -144,9 +124,8 @@ func NewExternalIterWithContext(
 		// Add the readers to the Iterator so that Close closes them, and
 		// SetOptions can re-construct iterators from them.
 		externalReaders: readers,
-		newIters: func(
-			ctx context.Context, f *manifest.FileMetadata, opts *IterOptions,
-			internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+		newIters: func(context.Context, *manifest.FileMetadata, *IterOptions,
+			internalIterOpts, iterKinds) (iterSet, error) {
 			// NB: External iterators are currently constructed without any
 			// `levelIters`. newIters should never be called. When we support
 			// organizing multiple non-overlapping files into a single level
@@ -187,7 +166,7 @@ func validateExternalIterOpts(iterOpts *IterOptions) error {
 	return nil
 }
 
-func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterator, error) {
+func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterator, error) {
 	// TODO(jackson): In some instances we could generate fewer levels by using
 	// L0Sublevels code to organize nonoverlapping files into the same level.
 	// This would allow us to use levelIters and keep a smaller set of data and
@@ -204,6 +183,11 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 	if len(it.externalReaders) > cap(mlevels) {
 		mlevels = make([]mergingIterLevel, 0, len(it.externalReaders))
 	}
+	// We set a synthetic sequence number, with lower levels having higer numbers.
+	seqNum := 0
+	for _, readers := range it.externalReaders {
+		seqNum += len(readers)
+	}
 	for _, readers := range it.externalReaders {
 		var combinedIters []internalIterator
 		for _, r := range readers {
@@ -217,25 +201,19 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 			// not have obsolete points (so the performance optimization is
 			// unnecessary), and we don't want to bother constructing a
 			// BlockPropertiesFilterer that includes obsoleteKeyBlockPropertyFilter.
+			transforms := sstable.IterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
+			seqNum--
 			pointIter, err = r.NewIterWithBlockPropertyFiltersAndContextEtc(
-				ctx, it.opts.LowerBound, it.opts.UpperBound, nil, /* BlockPropertiesFilterer */
-				false /* hideObsoletePoints */, false, /* useFilterBlock */
+				ctx, transforms, it.opts.LowerBound, it.opts.UpperBound, nil, /* BlockPropertiesFilterer */
+				false, /* useFilterBlock */
 				&it.stats.InternalStats, it.opts.CategoryAndQoS, nil,
 				sstable.TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return nil, err
 			}
-			rangeDelIter, err = r.NewRawRangeDelIter()
+			rangeDelIter, err = r.NewRawRangeDelIter(transforms)
 			if err != nil {
 				return nil, err
-			}
-			if rangeDelIter == nil && pointIter != nil && it.forwardOnly {
-				// TODO(bilal): Consider implementing range key pausing in
-				// simpleLevelIter so we can reduce mergingIterLevels even more by
-				// sending all sstable iterators to combinedIters, not just those
-				// corresponding to sstables without range deletes.
-				combinedIters = append(combinedIters, pointIter)
-				continue
 			}
 			mlevels = append(mlevels, mergingIterLevel{
 				iter:         pointIter,
@@ -257,15 +235,6 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 				rangeDelIter: nil,
 			})
 		}
-	}
-	if len(mlevels) == 1 && mlevels[0].rangeDelIter == nil {
-		// Set closePointIterOnce to true. This is because we're bypassing the
-		// merging iter, which turns Close()s on it idempotent for any child
-		// iterators. The outer Iterator could call Close() on a point iter twice,
-		// which sstable iterators do not support (as they release themselves to
-		// a pool).
-		it.closePointIterOnce = true
-		return mlevels[0].iter, nil
 	}
 
 	it.alloc.merging.init(&it.opts, &it.stats.InternalStats, it.comparer.Compare, it.comparer.Split, mlevels...)
@@ -289,7 +258,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 		var rangeKeyIters []keyspan.FragmentIterator
 		if it.rangeKey == nil {
 			// We could take advantage of the lack of overlaps in range keys within
-			// each slice in it.externalReaders, and generate keyspan.LevelIters
+			// each slice in it.externalReaders, and generate keyspanimpl.LevelIters
 			// out of those. However, since range keys are expected to be sparse to
 			// begin with, the performance gain might not be significant enough to
 			// warrant it.
@@ -297,9 +266,16 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 			// TODO(bilal): Explore adding a simpleRangeKeyLevelIter that does not
 			// operate on FileMetadatas (similar to simpleLevelIter), and implements
 			// this optimization.
+			// We set a synthetic sequence number, with lower levels having higer numbers.
+			seqNum := 0
+			for _, readers := range it.externalReaders {
+				seqNum += len(readers)
+			}
 			for _, readers := range it.externalReaders {
 				for _, r := range readers {
-					if rki, err := r.NewRawRangeKeyIter(); err != nil {
+					transforms := sstable.IterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
+					seqNum--
+					if rki, err := r.NewRawRangeKeyIter(transforms); err != nil {
 						return err
 					} else if rki != nil {
 						rangeKeyIters = append(rangeKeyIters, rki)
@@ -351,9 +327,6 @@ func openExternalTables(
 		if err != nil {
 			return readers, err
 		}
-		// Use the index of the file in files as the sequence number for all of
-		// its keys.
-		r.Properties.GlobalSeqNum = uint64(len(files) - i + seqNumOffset)
 		readers = append(readers, r)
 	}
 	return readers, err

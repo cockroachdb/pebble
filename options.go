@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -23,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 )
 
 const (
@@ -54,9 +56,6 @@ type FilterWriter = base.FilterWriter
 
 // FilterPolicy exports the base.FilterPolicy type.
 type FilterPolicy = base.FilterPolicy
-
-// TablePropertyCollector exports the sstable.TablePropertyCollector type.
-type TablePropertyCollector = sstable.TablePropertyCollector
 
 // BlockPropertyCollector exports the sstable.BlockPropertyCollector type.
 type BlockPropertyCollector = sstable.BlockPropertyCollector
@@ -190,6 +189,8 @@ type IterOptions struct {
 	// changed by calling SetOptions.
 	sstable.CategoryAndQoS
 
+	DebugRangeKeyStack bool
+
 	// Internal options.
 
 	logger Logger
@@ -260,14 +261,11 @@ type scanInternalOptions struct {
 	sstable.CategoryAndQoS
 	IterOptions
 
-	visitPointKey   func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error
-	visitRangeDel   func(start, end []byte, seqNum uint64) error
-	visitRangeKey   func(start, end []byte, keys []rangekey.Key) error
-	visitSharedFile func(sst *SharedSSTMeta) error
-
-	// skipSharedLevels skips levels that are shareable (level >=
-	// sharedLevelStart).
-	skipSharedLevels bool
+	visitPointKey     func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error
+	visitRangeDel     func(start, end []byte, seqNum uint64) error
+	visitRangeKey     func(start, end []byte, keys []rangekey.Key) error
+	visitSharedFile   func(sst *SharedSSTMeta) error
+	visitExternalFile func(sst *ExternalFile) error
 
 	// includeObsoleteKeys specifies whether keys shadowed by newer internal keys
 	// are exposed. If false, only one internal key per user key is exposed.
@@ -404,7 +402,7 @@ type LevelOptions struct {
 	// Compression defines the per-block compression to use.
 	//
 	// The default value (DefaultCompression) uses snappy compression.
-	Compression Compression
+	Compression func() Compression
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for Get calls.
@@ -455,8 +453,8 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	if o.BlockSizeThreshold <= 0 {
 		o.BlockSizeThreshold = base.DefaultBlockSizeThreshold
 	}
-	if o.Compression <= DefaultCompression || o.Compression >= sstable.NCompression {
-		o.Compression = SnappyCompression
+	if o.Compression == nil {
+		o.Compression = func() Compression { return DefaultCompression }
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize
@@ -703,6 +701,88 @@ type Options struct {
 		// CacheSizeBytesBytes is the size of the on-disk block cache for objects
 		// on shared storage in bytes. If it is 0, no cache is used.
 		SecondaryCacheSizeBytes int64
+
+		// NB: DO NOT crash on SingleDeleteInvariantViolationCallback or
+		// IneffectualSingleDeleteCallback, since these can be false positives
+		// even if SingleDel has been used correctly.
+		//
+		// Pebble's delete-only compactions can cause a recent RANGEDEL to peek
+		// below an older SINGLEDEL and delete an arbitrary subset of data below
+		// that SINGLEDEL. When that SINGLEDEL gets compacted (without the
+		// RANGEDEL), any of these callbacks can happen, without it being a real
+		// correctness problem.
+		//
+		// Example 1:
+		// RANGEDEL [a, c)#10 in L0
+		// SINGLEDEL b#5 in L1
+		// SET b#3 in L6
+		//
+		// If the L6 file containing the SET is narrow and the L1 file containing
+		// the SINGLEDEL is wide, a delete-only compaction can remove the file in
+		// L2 before the SINGLEDEL is compacted down. Then when the SINGLEDEL is
+		// compacted down, it will not find any SET to delete, resulting in the
+		// ineffectual callback.
+		//
+		// Example 2:
+		// RANGEDEL [a, z)#60 in L0
+		// SINGLEDEL g#50 in L1
+		// SET g#40 in L2
+		// RANGEDEL [g,h)#30 in L3
+		// SET g#20 in L6
+		//
+		// In this example, the two SETs represent the same user write, and the
+		// RANGEDELs are caused by the CockroachDB range being dropped. That is,
+		// the user wrote to g once, range was dropped, then added back, which
+		// caused the SET again, then at some point g was validly deleted using a
+		// SINGLEDEL, and then the range was dropped again. The older RANGEDEL can
+		// get fragmented due to compactions it has been part of. Say this L3 file
+		// containing the RANGEDEL is very narrow, while the L1, L2, L6 files are
+		// wider than the RANGEDEL in L0. Then the RANGEDEL in L3 can be dropped
+		// using a delete-only compaction, resulting in an LSM with state:
+		//
+		// RANGEDEL [a, z)#60 in L0
+		// SINGLEDEL g#50 in L1
+		// SET g#40 in L2
+		// SET g#20 in L6
+		//
+		// A multi-level compaction involving L1, L2, L6 will cause the invariant
+		// violation callback. This example doesn't need multi-level compactions:
+		// say there was a Pebble snapshot at g#21 preventing g#20 from being
+		// dropped when it meets g#40 in a compaction. That snapshot will not save
+		// RANGEDEL [g,h)#30, so we can have:
+		//
+		// SINGLEDEL g#50 in L1
+		// SET g#40, SET g#20 in L6
+		//
+		// And say the snapshot is removed and then the L1 and L6 compaction
+		// happens, resulting in the invariant violation callback.
+		//
+		// TODO(sumeer): rename SingleDeleteInvariantViolationCallback to remove
+		// the word "invariant".
+
+		// IneffectualPointDeleteCallback is called in compactions/flushes if any
+		// single delete is being elided without deleting a point set/merge.
+		IneffectualSingleDeleteCallback func(userKey []byte)
+
+		// SingleDeleteInvariantViolationCallback is called in compactions/flushes if any
+		// single delete has consumed a Set/Merge, and there is another immediately older
+		// Set/SetWithDelete/Merge. The user of Pebble has violated the invariant under
+		// which SingleDelete can be used correctly.
+		//
+		// Consider the sequence SingleDelete#3, Set#2, Set#1. There are three
+		// ways some of these keys can first meet in a compaction.
+		//
+		// - All 3 keys in the same compaction: this callback will detect the
+		//   violation.
+		//
+		// - SingleDelete#3, Set#2 meet in a compaction first: Both keys will
+		//   disappear. The violation will not be detected, and the DB will have
+		//   Set#1 which is likely incorrect (from the user's perspective).
+		//
+		// - Set#2, Set#1 meet in a compaction first: The output will be Set#2,
+		//   which will later be consumed by SingleDelete#3. The violation will
+		//   not be detected and the DB will be correct.
+		SingleDeleteInvariantViolationCallback func(userKey []byte)
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -838,17 +918,44 @@ type Options struct {
 	Merger *Merger
 
 	// MaxConcurrentCompactions specifies the maximum number of concurrent
-	// compactions. The default is 1. Concurrent compactions are performed
-	// - when L0 read-amplification passes the L0CompactionConcurrency threshold
-	// - for automatic background compactions
-	// - when a manual compaction for a level is split and parallelized
-	// MaxConcurrentCompactions must be greater than 0.
+	// compactions (not including download compactions).
+	//
+	// Concurrent compactions are performed:
+	//  - when L0 read-amplification passes the L0CompactionConcurrency threshold;
+	//  - for automatic background compactions;
+	//  - when a manual compaction for a level is split and parallelized.
+	//
+	// MaxConcurrentCompactions() must be greater than 0.
+	//
+	// The default value is 1.
 	MaxConcurrentCompactions func() int
+
+	// MaxConcurrentDownloads specifies the maximum number of download
+	// compactions. These are compactions that copy an external file to the local
+	// store.
+	//
+	// This limit is independent of MaxConcurrentCompactions; at any point in
+	// time, we may be running MaxConcurrentCompactions non-download compactions
+	// and MaxConcurrentDownloads download compactions.
+	//
+	// MaxConcurrentDownloads() must be greater than 0.
+	//
+	// The default value is 1.
+	MaxConcurrentDownloads func() int
 
 	// DisableAutomaticCompactions dictates whether automatic compactions are
 	// scheduled or not. The default is false (enabled). This option is only used
 	// externally when running a manual compaction, and internally for tests.
 	DisableAutomaticCompactions bool
+
+	// DisableTableStats dictates whether tables should be loaded asynchronously
+	// to compute statistics that inform compaction heuristics. The collection
+	// of table stats improves compaction of tombstones, reclaiming disk space
+	// more quickly and in some cases reducing write amplification in the
+	// presence of tombstones. Disabling table stats may be useful in tests
+	// that require determinism as the asynchronicity of table stats collection
+	// introduces significant nondeterminism.
+	DisableTableStats bool
 
 	// NoSyncOnClose decides whether the Pebble instance will enforce a
 	// close-time synchronization (e.g., fdatasync() or sync_file_range())
@@ -875,11 +982,6 @@ type Options struct {
 	// and pebble will panic otherwise.
 	TableCache *TableCache
 
-	// TablePropertyCollectors is a list of TablePropertyCollector creation
-	// functions. A new TablePropertyCollector is created for each sstable built
-	// and lives for the lifetime of the table.
-	TablePropertyCollectors []func() TablePropertyCollector
-
 	// BlockPropertyCollectors is a list of BlockPropertyCollector creation
 	// functions. A new BlockPropertyCollector is created for each sstable
 	// built and lives for the lifetime of writing that table.
@@ -900,6 +1002,24 @@ type Options struct {
 	// empty (the default), WALs will be stored in the same directory as sstables
 	// (i.e. the directory passed to pebble.Open).
 	WALDir string
+
+	// WALFailover may be set to configure Pebble to monitor writes to its
+	// write-ahead log and failover to writing write-ahead log entries to a
+	// secondary location (eg, a separate physical disk). WALFailover may be
+	// used to improve write availability in the presence of transient disk
+	// unavailability.
+	WALFailover *WALFailoverOptions
+
+	// WALRecoveryDirs is a list of additional directories that should be
+	// scanned for the existence of additional write-ahead logs. WALRecoveryDirs
+	// is expected to be used when starting Pebble with a new WALDir or a new
+	// WALFailover configuration. The directories associated with the previous
+	// configuration may still contain WALs that are required for recovery of
+	// the current database state.
+	//
+	// If a previous WAL configuration may have stored WALs elsewhere but there
+	// is not a corresponding entry in WALRecoveryDirs, Open will error.
+	WALRecoveryDirs []wal.Dir
 
 	// WALMinSyncInterval is the minimum duration between syncs of the WAL. If
 	// WAL syncs are requested faster than this interval, they will be
@@ -930,16 +1050,6 @@ type Options struct {
 	// private options are only used by internal tests or are used internally
 	// for facilitating upgrade paths of unconfigurable functionality.
 	private struct {
-		// strictWALTail configures whether or not a database's WALs created
-		// prior to the most recent one should be interpreted strictly,
-		// requiring a clean EOF. RocksDB 6.2.1 and the version of Pebble
-		// included in CockroachDB 20.1 do not guarantee that closed WALs end
-		// cleanly. If this option is set within an OPTIONS file, Pebble
-		// interprets previous WALs strictly, requiring a clean EOF.
-		// Otherwise, it interprets them permissively in the same manner as
-		// RocksDB 6.2.1.
-		strictWALTail bool
-
 		// disableDeleteOnlyCompactions prevents the scheduling of delete-only
 		// compactions that drop sstables wholy covered by range tombstones or
 		// range key tombstones.
@@ -957,9 +1067,6 @@ type Options struct {
 		// do not want to allow users to actually configure.
 		disableLazyCombinedIteration bool
 
-		// A private option to disable stats collection.
-		disableTableStats bool
-
 		// testingAlwaysWaitForCleanup is set by some tests to force waiting for
 		// obsolete file deletion (to make events deterministic).
 		testingAlwaysWaitForCleanup bool
@@ -973,12 +1080,19 @@ type Options struct {
 		// against the FS are made after the DB is closed, the FS may leak a
 		// goroutine indefinitely.
 		fsCloser io.Closer
-
-		// efosAlwaysCreatesIterators is set by some tests to force
-		// EventuallyFileOnlySnapshots to always create iterators, even after a
-		// conflicting excise.
-		efosAlwaysCreatesIterators bool
 	}
+}
+
+// WALFailoverOptions configures the WAL failover mechanics to use during
+// transient write unavailability on the primary WAL volume.
+type WALFailoverOptions struct {
+	// Secondary indicates the secondary directory and VFS to use in the event a
+	// write to the primary WAL stalls.
+	Secondary wal.Dir
+	// FailoverOptions provides configuration of the thresholds and intervals
+	// involved in WAL failover. If any of its fields are left unspecified,
+	// reasonable defaults will be used.
+	wal.FailoverOptions
 }
 
 // DebugCheckLevels calls CheckLevels on the provided database.
@@ -994,15 +1108,15 @@ func (o *Options) EnsureDefaults() *Options {
 	if o == nil {
 		o = &Options{}
 	}
+	o.Comparer = o.Comparer.EnsureDefaults()
+
 	if o.BytesPerSync <= 0 {
 		o.BytesPerSync = 512 << 10 // 512 KB
 	}
 	if o.Cleaner == nil {
 		o.Cleaner = DeleteCleaner{}
 	}
-	if o.Comparer == nil {
-		o.Comparer = DefaultComparer
-	}
+
 	if o.Experimental.DisableIngestAsFlushable == nil {
 		o.Experimental.DisableIngestAsFlushable = func() bool { return false }
 	}
@@ -1088,16 +1202,21 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Merger == nil {
 		o.Merger = DefaultMerger
 	}
-	o.private.strictWALTail = true
 	if o.MaxConcurrentCompactions == nil {
 		o.MaxConcurrentCompactions = func() int { return 1 }
+	}
+	if o.MaxConcurrentDownloads == nil {
+		o.MaxConcurrentDownloads = func() int { return 1 }
 	}
 	if o.NumPrevManifest <= 0 {
 		o.NumPrevManifest = 1
 	}
 
 	if o.FormatMajorVersion == FormatDefault {
-		o.FormatMajorVersion = FormatMostCompatible
+		o.FormatMajorVersion = FormatMinSupported
+		if o.Experimental.CreateOnShared != remote.CreateOnSharedNone {
+			o.FormatMajorVersion = FormatMinForSharedObjects
+		}
 	}
 
 	if o.FS == nil {
@@ -1105,6 +1224,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.FlushSplitBytes <= 0 {
 		o.FlushSplitBytes = 2 * o.Levels[0].TargetFileSize
+	}
+	if o.WALFailover != nil {
+		o.WALFailover.FailoverOptions.EnsureDefaults()
 	}
 	if o.Experimental.LevelMultiplier <= 0 {
 		o.Experimental.LevelMultiplier = defaultLevelMultiplier
@@ -1135,7 +1257,7 @@ func (o *Options) WithFSDefaults() *Options {
 	if o.FS == nil {
 		o.FS = vfs.Default
 	}
-	o.FS, o.private.fsCloser = vfs.WithDiskHealthChecks(o.FS, 5*time.Second,
+	o.FS, o.private.fsCloser = vfs.WithDiskHealthChecks(o.FS, 5*time.Second, nil,
 		func(info vfs.DiskSlowInfo) {
 			o.EventListener.DiskSlow(info)
 		})
@@ -1149,20 +1271,6 @@ func (o *Options) AddEventListener(l EventListener) {
 		l = TeeEventListener(l, *o.EventListener)
 	}
 	o.EventListener = &l
-}
-
-// TestingAlwaysCreateEFOSIterators is used to toggle a private option for
-// having EventuallyFileOnlySnapshots always create iterators. Meant to only
-// be used in tests.
-func (o *Options) TestingAlwaysCreateEFOSIterators(value bool) {
-	o.private.efosAlwaysCreatesIterators = value
-}
-
-func (o *Options) equal() Equal {
-	if o.Comparer.Equal == nil {
-		return bytes.Equal
-	}
-	return o.Comparer.Equal
 }
 
 // initMaps initializes the Comparers, Filters, and Mergers maps.
@@ -1244,26 +1352,22 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  level_multiplier=%d\n", o.Experimental.LevelMultiplier)
 	}
 	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", o.MaxConcurrentCompactions())
+	fmt.Fprintf(&buf, "  max_concurrent_downloads=%d\n", o.MaxConcurrentDownloads())
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
 	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.TargetByteDeletionRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
+	if o.Experimental.MultiLevelCompactionHeuristic != nil {
+		fmt.Fprintf(&buf, "  multilevel_compaction_heuristic=%s\n", o.Experimental.MultiLevelCompactionHeuristic.String())
+	}
 	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
-	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", o.private.strictWALTail)
+	// We no longer care about strict_wal_tail, but set it to true in case an
+	// older version reads the options.
+	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", true)
 	fmt.Fprintf(&buf, "  table_cache_shards=%d\n", o.Experimental.TableCacheShards)
-	fmt.Fprintf(&buf, "  table_property_collectors=[")
-	for i := range o.TablePropertyCollectors {
-		if i > 0 {
-			fmt.Fprintf(&buf, ",")
-		}
-		// NB: This creates a new TablePropertyCollector, but Options.String() is
-		// called rarely so the overhead of doing so is not consequential.
-		fmt.Fprintf(&buf, "%s", o.TablePropertyCollectors[i]().Name())
-	}
-	fmt.Fprintf(&buf, "]\n")
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
@@ -1288,6 +1392,19 @@ func (o *Options) String() string {
 		fmt.Fprintln(&buf, "  disable_lazy_combined_iteration=true")
 	}
 
+	if o.WALFailover != nil {
+		unhealthyThreshold, _ := o.WALFailover.FailoverOptions.UnhealthyOperationLatencyThreshold()
+		fmt.Fprintf(&buf, "\n")
+		fmt.Fprintf(&buf, "[WAL Failover]\n")
+		fmt.Fprintf(&buf, "  secondary_dir=%s\n", o.WALFailover.Secondary.Dirname)
+		fmt.Fprintf(&buf, "  primary_dir_probe_interval=%s\n", o.WALFailover.FailoverOptions.PrimaryDirProbeInterval)
+		fmt.Fprintf(&buf, "  healthy_probe_latency_threshold=%s\n", o.WALFailover.FailoverOptions.HealthyProbeLatencyThreshold)
+		fmt.Fprintf(&buf, "  healthy_interval=%s\n", o.WALFailover.FailoverOptions.HealthyInterval)
+		fmt.Fprintf(&buf, "  unhealthy_sampling_interval=%s\n", o.WALFailover.FailoverOptions.UnhealthySamplingInterval)
+		fmt.Fprintf(&buf, "  unhealthy_operation_latency_threshold=%s\n", unhealthyThreshold)
+		fmt.Fprintf(&buf, "  elevated_write_stall_threshold_lag=%s\n", o.WALFailover.FailoverOptions.ElevatedWriteStallThresholdLag)
+	}
+
 	for i := range o.Levels {
 		l := &o.Levels[i]
 		fmt.Fprintf(&buf, "\n")
@@ -1295,7 +1412,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  block_restart_interval=%d\n", l.BlockRestartInterval)
 		fmt.Fprintf(&buf, "  block_size=%d\n", l.BlockSize)
 		fmt.Fprintf(&buf, "  block_size_threshold=%d\n", l.BlockSizeThreshold)
-		fmt.Fprintf(&buf, "  compression=%s\n", l.Compression)
+		fmt.Fprintf(&buf, "  compression=%s\n", resolveDefaultCompression(l.Compression()))
 		fmt.Fprintf(&buf, "  filter_policy=%s\n", filterPolicyName(l.FilterPolicy))
 		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
 		fmt.Fprintf(&buf, "  index_block_size=%d\n", l.IndexBlockSize)
@@ -1305,6 +1422,8 @@ func (o *Options) String() string {
 	return buf.String()
 }
 
+// parseOptions takes options serialized by Options.String() and parses them into
+// keys and values, calling fn for each one.
 func parseOptions(s string, fn func(section, key, value string) error) error {
 	var section string
 	for _, line := range strings.Split(s, "\n") {
@@ -1461,7 +1580,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				var v uint64
 				v, err = strconv.ParseUint(value, 10, 64)
 				if vers := FormatMajorVersion(v); vers > internalFormatNewest || vers == FormatDefault {
-					err = errors.Newf("unknown format major version %d", o.FormatMajorVersion)
+					err = errors.Newf("unsupported format major version %d", o.FormatMajorVersion)
 				}
 				if err == nil {
 					o.FormatMajorVersion = FormatMajorVersion(v)
@@ -1488,6 +1607,14 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				} else {
 					o.MaxConcurrentCompactions = func() int { return concurrentCompactions }
 				}
+			case "max_concurrent_downloads":
+				var concurrentDownloads int
+				concurrentDownloads, err = strconv.Atoi(value)
+				if concurrentDownloads <= 0 {
+					err = errors.New("max_concurrent_compactions cannot be <= 0")
+				} else {
+					o.MaxConcurrentDownloads = func() int { return concurrentDownloads }
+				}
 			case "max_manifest_file_size":
 				o.MaxManifestFileSize, err = strconv.ParseInt(value, 10, 64)
 			case "max_open_files":
@@ -1504,10 +1631,40 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "min_flush_rate":
 				// Do nothing; option existed in older versions of pebble, and
 				// may be meaningful again eventually.
+			case "multilevel_compaction_heuristic":
+				switch {
+				case value == "none":
+					o.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
+				case strings.HasPrefix(value, "wamp"):
+					fields := strings.FieldsFunc(strings.TrimPrefix(value, "wamp"), func(r rune) bool {
+						return unicode.IsSpace(r) || r == ',' || r == '(' || r == ')'
+					})
+					if len(fields) != 2 {
+						err = errors.Newf("require 2 arguments")
+					}
+					var h WriteAmpHeuristic
+					if err == nil {
+						h.AddPropensity, err = strconv.ParseFloat(fields[0], 64)
+					}
+					if err == nil {
+						h.AllowL0, err = strconv.ParseBool(fields[1])
+					}
+					if err == nil {
+						o.Experimental.MultiLevelCompactionHeuristic = h
+					} else {
+						err = errors.Wrapf(err, "unexpected wamp heuristic arguments: %s", value)
+					}
+				default:
+					err = errors.Newf("unrecognized multilevel compaction heuristic: %s", value)
+				}
 			case "point_tombstone_weight":
 				// Do nothing; deprecated.
 			case "strict_wal_tail":
-				o.private.strictWALTail, err = strconv.ParseBool(value)
+				var strictWALTail bool
+				strictWALTail, err = strconv.ParseBool(value)
+				if err == nil && !strictWALTail {
+					err = errors.Newf("reading from versions with strict_wal_tail=false no longer supported")
+				}
 			case "merger":
 				switch value {
 				case "nullptr":
@@ -1533,7 +1690,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					return errors.Errorf("pebble: unknown table format: %q", errors.Safe(value))
 				}
 			case "table_property_collectors":
-				// TODO(peter): set o.TablePropertyCollectors
+				// No longer implemented; ignore.
 			case "validate_on_ingest":
 				o.Experimental.ValidateOnIngest, err = strconv.ParseBool(value)
 			case "wal_dir":
@@ -1550,6 +1707,39 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				var createOnSharedInt int64
 				createOnSharedInt, err = strconv.ParseInt(value, 10, 64)
 				o.Experimental.CreateOnShared = remote.CreateOnSharedStrategy(createOnSharedInt)
+			default:
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
+					return nil
+				}
+				return errors.Errorf("pebble: unknown option: %s.%s",
+					errors.Safe(section), errors.Safe(key))
+			}
+			return err
+
+		case section == "WAL Failover":
+			if o.WALFailover == nil {
+				o.WALFailover = new(WALFailoverOptions)
+			}
+			var err error
+			switch key {
+			case "secondary_dir":
+				o.WALFailover.Secondary = wal.Dir{Dirname: value, FS: vfs.Default}
+			case "primary_dir_probe_interval":
+				o.WALFailover.PrimaryDirProbeInterval, err = time.ParseDuration(value)
+			case "healthy_probe_latency_threshold":
+				o.WALFailover.HealthyProbeLatencyThreshold, err = time.ParseDuration(value)
+			case "healthy_interval":
+				o.WALFailover.HealthyInterval, err = time.ParseDuration(value)
+			case "unhealthy_sampling_interval":
+				o.WALFailover.UnhealthySamplingInterval, err = time.ParseDuration(value)
+			case "unhealthy_operation_latency_threshold":
+				var threshold time.Duration
+				threshold, err = time.ParseDuration(value)
+				o.WALFailover.UnhealthyOperationLatencyThreshold = func() (time.Duration, bool) {
+					return threshold, true
+				}
+			case "elevated_write_stall_threshold_lag":
+				o.WALFailover.ElevatedWriteStallThresholdLag, err = time.ParseDuration(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
@@ -1588,13 +1778,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "compression":
 				switch value {
 				case "Default":
-					l.Compression = DefaultCompression
+					l.Compression = func() sstable.Compression { return DefaultCompression }
 				case "NoCompression":
-					l.Compression = NoCompression
+					l.Compression = func() sstable.Compression { return NoCompression }
 				case "Snappy":
-					l.Compression = SnappyCompression
+					l.Compression = func() sstable.Compression { return SnappyCompression }
 				case "ZSTD":
-					l.Compression = ZstdCompression
+					l.Compression = func() sstable.Compression { return ZstdCompression }
 				default:
 					return errors.Errorf("pebble: unknown compression: %q", errors.Safe(value))
 				}
@@ -1628,9 +1818,26 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	})
 }
 
-func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
-	// TODO(jackson): Refactor to avoid awkwardness of the strictWALTail return value.
-	return strictWALTail, parseOptions(s, func(section, key, value string) error {
+// ErrMissingWALRecoveryDir is an error returned when a database is attempted to be
+// opened without supplying a Options.WALRecoveryDir entry for a directory that
+// may contain WALs required to recover a consistent database state.
+type ErrMissingWALRecoveryDir struct {
+	Dir string
+}
+
+// Error implements error.
+func (e ErrMissingWALRecoveryDir) Error() string {
+	return fmt.Sprintf("directory %q may contain relevant WALs", e.Dir)
+}
+
+// CheckCompatibility verifies the options are compatible with the previous options
+// serialized by Options.String(). For example, the Comparer and Merger must be
+// the same, or data will not be able to be properly read from the DB.
+//
+// This function only looks at specific keys and does not error out if the
+// options are newer and contain unknown keys.
+func (o *Options) CheckCompatibility(previousOptions string) error {
+	return parseOptions(previousOptions, func(section, key, value string) error {
 		switch section + "." + key {
 		case "Options.comparer":
 			if value != o.Comparer.Name {
@@ -1644,22 +1851,23 @@ func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 				return errors.Errorf("pebble: merger name from file %q != merger name from options %q",
 					errors.Safe(value), errors.Safe(o.Merger.Name))
 			}
-		case "Options.strict_wal_tail":
-			strictWALTail, err = strconv.ParseBool(value)
-			if err != nil {
-				return errors.Errorf("pebble: error parsing strict_wal_tail value %q: %w", value, err)
+		case "Options.wal_dir", "WAL Failover.secondary_dir":
+			switch {
+			case o.WALDir == value:
+				return nil
+			case o.WALFailover != nil && o.WALFailover.Secondary.Dirname == value:
+				return nil
+			default:
+				for _, d := range o.WALRecoveryDirs {
+					if d.Dirname == value {
+						return nil
+					}
+				}
+				return ErrMissingWALRecoveryDir{Dir: value}
 			}
 		}
 		return nil
 	})
-}
-
-// Check verifies the options are compatible with the previous options
-// serialized by Options.String(). For example, the Comparer and Merger must be
-// the same, or data will not be able to be properly read from the DB.
-func (o *Options) Check(s string) error {
-	_, err := o.checkOptions(s)
-	return err
 }
 
 // Validate verifies that the options are mutually consistent. For example,
@@ -1686,9 +1894,14 @@ func (o *Options) Validate() error {
 		fmt.Fprintf(&buf, "MemTableStopWritesThreshold (%d) must be >= 2\n",
 			o.MemTableStopWritesThreshold)
 	}
-	if o.FormatMajorVersion > internalFormatNewest {
-		fmt.Fprintf(&buf, "FormatMajorVersion (%d) must be <= %d\n",
-			o.FormatMajorVersion, internalFormatNewest)
+	if o.FormatMajorVersion < FormatMinSupported || o.FormatMajorVersion > internalFormatNewest {
+		fmt.Fprintf(&buf, "FormatMajorVersion (%d) must be between %d and %d\n",
+			o.FormatMajorVersion, FormatMinSupported, internalFormatNewest)
+	}
+	if o.Experimental.CreateOnShared != remote.CreateOnSharedNone && o.FormatMajorVersion < FormatMinForSharedObjects {
+		fmt.Fprintf(&buf, "FormatMajorVersion (%d) when CreateOnShared is set must be at least %d\n",
+			o.FormatMajorVersion, FormatMinForSharedObjects)
+
 	}
 	if o.TableCache != nil && o.Cache != o.TableCache.cache {
 		fmt.Fprintf(&buf, "underlying cache in the TableCache and the Cache dont match\n")
@@ -1727,7 +1940,6 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 		if o.Merger != nil {
 			writerOpts.MergerName = o.Merger.Name
 		}
-		writerOpts.TablePropertyCollectors = o.TablePropertyCollectors
 		writerOpts.BlockPropertyCollectors = o.BlockPropertyCollectors
 	}
 	if format >= sstable.TableFormatPebblev3 {
@@ -1741,9 +1953,16 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.BlockRestartInterval = levelOpts.BlockRestartInterval
 	writerOpts.BlockSize = levelOpts.BlockSize
 	writerOpts.BlockSizeThreshold = levelOpts.BlockSizeThreshold
-	writerOpts.Compression = levelOpts.Compression
+	writerOpts.Compression = resolveDefaultCompression(levelOpts.Compression())
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
 	return writerOpts
+}
+
+func resolveDefaultCompression(c Compression) Compression {
+	if c <= DefaultCompression || c >= sstable.NCompression {
+		c = SnappyCompression
+	}
+	return c
 }

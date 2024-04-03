@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -46,7 +48,7 @@ func TestScanStatistics(t *testing.T) {
 			FS:                 vfs.NewMem(),
 			Logger:             testLogger{t: t},
 			Comparer:           testkeys.Comparer,
-			FormatMajorVersion: FormatRangeKeys,
+			FormatMajorVersion: FormatMinForSharedObjects,
 			BlockPropertyCollectors: []func() BlockPropertyCollector{
 				sstable.NewTestKeysBlockPropertyCollector,
 			},
@@ -218,11 +220,13 @@ func TestScanInternal(t *testing.T) {
 			visitRangeDel func(start, end []byte, seqNum uint64) error,
 			visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
 			visitSharedFile func(sst *SharedSSTMeta) error,
+			visitExternalFile func(sst *ExternalFile) error,
 		) error
 	}
 	batches := map[string]*Batch{}
 	snaps := map[string]*Snapshot{}
 	efos := map[string]*EventuallyFileOnlySnapshot{}
+	extStorage := remote.NewInMem()
 	parseOpts := func(td *datadriven.TestData) (*Options, error) {
 		opts := &Options{
 			FS:                 vfs.NewMem(),
@@ -234,7 +238,8 @@ func TestScanInternal(t *testing.T) {
 			},
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": remote.NewInMem(),
+			"external-storage": extStorage,
+			"":                 remote.NewInMem(),
 		})
 		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 		opts.Experimental.CreateOnSharedLocator = ""
@@ -291,6 +296,14 @@ func TestScanInternal(t *testing.T) {
 					opts.Merger = base.DefaultMerger
 				default:
 					return nil, errors.Newf("unrecognized Merger %q\n", cmdArg.Vals[0])
+				}
+			case "create-on-shared":
+				v, err := strconv.ParseBool(cmdArg.Vals[0])
+				if err != nil {
+					return nil, err
+				}
+				if !v {
+					opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
 				}
 			}
 		}
@@ -387,8 +400,51 @@ func TestScanInternal(t *testing.T) {
 			td.MaybeScanArgs(t, "name", &name)
 			commit := td.HasArg("commit")
 			ingest := td.HasArg("ingest")
+			ingestExternal := td.HasArg("ingest-external")
 			b := d.NewIndexedBatch()
 			require.NoError(t, runBatchDefineCmd(td, b))
+
+			writeSST := func(
+				points internalIterator,
+				rangeDels keyspan.FragmentIterator,
+				rangeKeys keyspan.FragmentIterator,
+				writer objstorage.Writable) {
+				w := sstable.NewWriter(writer, d.opts.MakeWriterOptions(0, sstable.TableFormatPebblev4))
+				{
+					span, err := rangeDels.First()
+					for ; span != nil; span, err = rangeDels.Next() {
+						require.NoError(t, w.DeleteRange(span.Start, span.End))
+					}
+					require.NoError(t, err)
+					require.NoError(t, rangeDels.Close())
+				}
+				{
+					span, err := rangeKeys.First()
+					for ; span != nil; span, err = rangeKeys.Next() {
+						keys := []keyspan.Key{}
+						for i := range span.Keys {
+							keys = append(keys, span.Keys[i])
+							keys[i].Trailer = base.MakeTrailer(0, keys[i].Kind())
+						}
+						keyspan.SortKeysByTrailer(&keys)
+						newSpan := &keyspan.Span{Start: span.Start, End: span.End, Keys: keys}
+						require.NoError(t, rangekey.Encode(newSpan, w.AddRangeKey))
+					}
+					require.NoError(t, err)
+				}
+				require.NoError(t, rangeKeys.Close())
+				for key, val := points.First(); key != nil; key, val = points.Next() {
+					t.Logf("writing %s", *key)
+					var value []byte
+					var err error
+					value, _, err = val.Value(value)
+					require.NoError(t, err)
+					require.NoError(t, w.Add(*key, value))
+				}
+				points.Close()
+				require.NoError(t, w.Close())
+			}
+
 			var err error
 			if commit {
 				func() {
@@ -403,31 +459,32 @@ func TestScanInternal(t *testing.T) {
 				points, rangeDels, rangeKeys := batchSort(b)
 				file, err := d.opts.FS.Create("temp0.sst")
 				require.NoError(t, err)
-				w := sstable.NewWriter(objstorageprovider.NewFileWritable(file), d.opts.MakeWriterOptions(0, sstable.TableFormatPebblev4))
-				for span := rangeDels.First(); span != nil; span = rangeDels.Next() {
-					require.NoError(t, w.DeleteRange(span.Start, span.End))
-				}
-				rangeDels.Close()
-				for span := rangeKeys.First(); span != nil; span = rangeKeys.Next() {
-					keys := []keyspan.Key{}
-					for i := range span.Keys {
-						keys = append(keys, span.Keys[i])
-						keys[i].Trailer = base.MakeTrailer(0, keys[i].Kind())
-					}
-					keyspan.SortKeysByTrailer(&keys)
-					newSpan := &keyspan.Span{Start: span.Start, End: span.End, Keys: keys}
-					rangekey.Encode(newSpan, w.AddRangeKey)
-				}
-				rangeKeys.Close()
-				for key, val := points.First(); key != nil; key, val = points.Next() {
-					var value []byte
-					value, _, err = val.Value(value)
-					require.NoError(t, err)
-					require.NoError(t, w.Add(*key, value))
-				}
-				points.Close()
-				require.NoError(t, w.Close())
+				writeSST(points, rangeDels, rangeKeys, objstorageprovider.NewFileWritable(file))
 				require.NoError(t, d.Ingest([]string{"temp0.sst"}))
+			} else if ingestExternal {
+				points, rangeDels, rangeKeys := batchSort(b)
+				largestUnsafe, _ := points.Last()
+				largest := largestUnsafe.Clone()
+				smallestUnsafe, _ := points.First()
+				smallest := smallestUnsafe.Clone()
+				var objName string
+				td.MaybeScanArgs(t, "ingest-external", &objName)
+				file, err := extStorage.CreateObject(objName)
+				require.NoError(t, err)
+				objstorageprovider.NewRemoteWritable(file)
+
+				writeSST(points, rangeDels, rangeKeys, objstorageprovider.NewRemoteWritable(file))
+				ef := ExternalFile{
+					ObjName:           objName,
+					Locator:           remote.Locator("external-storage"),
+					Size:              10,
+					StartKey:          smallest.UserKey,
+					EndKey:            largest.UserKey,
+					EndKeyIsInclusive: true,
+					HasPointKey:       true,
+				}
+				_, err = d.IngestExternalFiles([]ExternalFile{ef})
+				require.NoError(t, err)
 			} else if name != "" {
 				batches[name] = b
 			}
@@ -464,7 +521,8 @@ func TestScanInternal(t *testing.T) {
 			var lower, upper []byte
 			var reader scanInternalReader = d
 			var b strings.Builder
-			var fileVisitor func(sst *SharedSSTMeta) error
+			var sharedFileVisitor func(sst *SharedSSTMeta) error
+			var externalFileVisitor func(sst *ExternalFile) error
 			for _, arg := range td.CmdArgs {
 				switch arg.Key {
 				case "lower":
@@ -486,8 +544,17 @@ func TestScanInternal(t *testing.T) {
 					}
 					reader = efos
 				case "skip-shared":
-					fileVisitor = func(sst *SharedSSTMeta) error {
+					sharedFileVisitor = func(sst *SharedSSTMeta) error {
 						fmt.Fprintf(&b, "shared file: %s [%s-%s] [point=%s-%s] [range=%s-%s]\n", sst.fileNum, sst.Smallest.String(), sst.Largest.String(), sst.SmallestPointKey.String(), sst.LargestPointKey.String(), sst.SmallestRangeKey.String(), sst.LargestRangeKey.String())
+						return nil
+					}
+				case "skip-external":
+					externalFileVisitor = func(sst *ExternalFile) error {
+						fmt.Fprintf(&b, "external file: %s %s [0x%s-0x%s] (hasPoint: %v, hasRange: %v)\n",
+							sst.Locator, sst.ObjName,
+							hex.EncodeToString(sst.StartKey),
+							hex.EncodeToString(sst.EndKey),
+							sst.HasPointKey, sst.HasRangeKey)
 						return nil
 					}
 				}
@@ -507,7 +574,8 @@ func TestScanInternal(t *testing.T) {
 					fmt.Fprintf(&b, "%s\n", s.String())
 					return nil
 				},
-				fileVisitor,
+				sharedFileVisitor,
+				externalFileVisitor,
 			)
 			if err != nil {
 				return err.Error()

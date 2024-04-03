@@ -17,7 +17,6 @@ import (
 )
 
 const propertiesBlockRestartInterval = math.MaxInt32
-const propGlobalSeqnumName = "rocksdb.external_sst_file.global_seqno"
 
 var propTagMap = make(map[string]reflect.StructField)
 var propBoolTrue = []byte{'1'}
@@ -143,9 +142,6 @@ type Properties struct {
 	FilterPolicyName string `prop:"rocksdb.filter.policy"`
 	// The size of filter block.
 	FilterSize uint64 `prop:"rocksdb.filter.size"`
-	// The global sequence number to use for all entries in the table. Present if
-	// the table was created externally and ingested whole.
-	GlobalSeqNum uint64 `prop:"rocksdb.external_sst_file.global_seqno"`
 	// Total number of index partitions if kTwoLevelIndexSearch is used.
 	IndexPartitions uint64 `prop:"rocksdb.index.partitions"`
 	// The size of index block.
@@ -167,11 +163,6 @@ type Properties struct {
 	NumValueBlocks uint64 `prop:"pebble.num.value-blocks"`
 	// The number of values stored in value blocks. Only serialized if > 0.
 	NumValuesInValueBlocks uint64 `prop:"pebble.num.values.in.value-blocks"`
-	// The name of the prefix extractor used in this table. Empty if no prefix
-	// extractor is used.
-	PrefixExtractorName string `prop:"rocksdb.prefix.extractor.name"`
-	// If filtering is enabled, was the filter created on the key prefix.
-	PrefixFiltering bool `prop:"rocksdb.block.based.table.prefix.filtering"`
 	// A comma separated list of names of the property collectors used in this
 	// table.
 	PropertyCollectorNames string `prop:"rocksdb.property.collectors"`
@@ -189,10 +180,9 @@ type Properties struct {
 	SnapshotPinnedValueSize uint64 `prop:"pebble.raw.snapshot-pinned-values.size"`
 	// Size of the top-level index if kTwoLevelIndexSearch is used.
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
-	// User collected properties.
+	// User collected properties. Currently, we only use them to store block
+	// properties aggregated at the table level.
 	UserProperties map[string]string
-	// If filtering is enabled, was the filter created on the whole key.
-	WholeKeyFiltering bool `prop:"rocksdb.block.based.table.whole.key.filtering"`
 
 	// Loaded set indicating which fields have been loaded from disk. Indexed by
 	// the field's byte offset within the struct
@@ -287,12 +277,7 @@ func (p *Properties) load(
 			case reflect.Uint32:
 				field.SetUint(uint64(binary.LittleEndian.Uint32(i.Value())))
 			case reflect.Uint64:
-				var n uint64
-				if string(i.Key().UserKey) == propGlobalSeqnumName {
-					n = binary.LittleEndian.Uint64(i.Value())
-				} else {
-					n, _ = binary.Uvarint(i.Value())
-				}
+				n, _ := binary.Uvarint(i.Value())
 				field.SetUint(n)
 			case reflect.String:
 				field.SetString(intern.Bytes(i.Value()))
@@ -333,6 +318,8 @@ func (p *Properties) saveUint64(m map[string][]byte, offset uintptr, value uint6
 	m[propOffsetTagMap[offset]] = buf[:]
 }
 
+var _ = (*Properties).saveUint64
+
 func (p *Properties) saveUvarint(m map[string][]byte, offset uintptr, value uint64) {
 	var buf [10]byte
 	n := binary.PutUvarint(buf[:], value)
@@ -361,7 +348,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	p.saveUvarint(m, unsafe.Offsetof(p.DataSize), p.DataSize)
 	if p.ExternalFormatVersion != 0 {
 		p.saveUint32(m, unsafe.Offsetof(p.ExternalFormatVersion), p.ExternalFormatVersion)
-		p.saveUint64(m, unsafe.Offsetof(p.GlobalSeqNum), p.GlobalSeqNum)
 	}
 	if p.FilterPolicyName != "" {
 		p.saveString(m, unsafe.Offsetof(p.FilterPolicyName), p.FilterPolicyName)
@@ -410,10 +396,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	if p.NumValuesInValueBlocks > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.NumValuesInValueBlocks), p.NumValuesInValueBlocks)
 	}
-	if p.PrefixExtractorName != "" {
-		p.saveString(m, unsafe.Offsetof(p.PrefixExtractorName), p.PrefixExtractorName)
-	}
-	p.saveBool(m, unsafe.Offsetof(p.PrefixFiltering), p.PrefixFiltering)
 	if p.PropertyCollectorNames != "" {
 		p.saveString(m, unsafe.Offsetof(p.PropertyCollectorNames), p.PropertyCollectorNames)
 	}
@@ -427,7 +409,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 	if p.ValueBlocksSize > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.ValueBlocksSize), p.ValueBlocksSize)
 	}
-	p.saveBool(m, unsafe.Offsetof(p.WholeKeyFiltering), p.WholeKeyFiltering)
 
 	if tblFormat < TableFormatPebblev1 {
 		m["rocksdb.column.family.id"] = binary.AppendUvarint([]byte(nil), math.MaxInt32)

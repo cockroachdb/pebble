@@ -11,7 +11,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 )
@@ -160,91 +159,6 @@ func TestGetIter(t *testing.T) {
 				"the.SEPARATOR.101 a",
 				"the.SEPARATOR.100 ErrNotFound",
 				"zzz.SEPARATOR.105 ErrNotFound",
-			},
-		},
-
-		{
-			description: "quad-4: four level-4 tables",
-			tables: []testTable{
-				{
-					level:   4,
-					fileNum: 11,
-					data: []string{
-						"aardvark.SET.101 a1",
-						"alpaca__.SET.201 a2",
-						"anteater.SET.301 a3",
-					},
-				},
-				{
-					level:   4,
-					fileNum: 22,
-					data: []string{
-						"baboon__.SET.102 b1",
-						"baboon__.DEL.202 ",
-						"baboon__.SET.302 b3",
-						"bear____.SET.402 b4",
-						"bear____.DEL.502 ",
-						"buffalo_.SET.602 b6",
-					},
-				},
-				{
-					level:   4,
-					fileNum: 33,
-					data: []string{
-						"buffalo_.SET.103 B1",
-					},
-				},
-				{
-					level:   4,
-					fileNum: 44,
-					data: []string{
-						"chipmunk.SET.104 c1",
-						"chipmunk.SET.204 c2",
-					},
-				},
-			},
-			queries: []string{
-				"a_______.SEPARATOR.999 ErrNotFound",
-				"aardvark.SEPARATOR.999 a1",
-				"aardvark.SEPARATOR.102 a1",
-				"aardvark.SEPARATOR.101 a1",
-				"aardvark.SEPARATOR.100 ErrNotFound",
-				"alpaca__.SEPARATOR.999 a2",
-				"alpaca__.SEPARATOR.200 ErrNotFound",
-				"anteater.SEPARATOR.999 a3",
-				"anteater.SEPARATOR.302 a3",
-				"anteater.SEPARATOR.301 a3",
-				"anteater.SEPARATOR.300 ErrNotFound",
-				"anteater.SEPARATOR.000 ErrNotFound",
-				"b_______.SEPARATOR.999 ErrNotFound",
-				"baboon__.SEPARATOR.999 b3",
-				"baboon__.SEPARATOR.302 b3",
-				"baboon__.SEPARATOR.301 ErrNotFound",
-				"baboon__.SEPARATOR.202 ErrNotFound",
-				"baboon__.SEPARATOR.201 b1",
-				"baboon__.SEPARATOR.102 b1",
-				"baboon__.SEPARATOR.101 ErrNotFound",
-				"bear____.SEPARATOR.999 ErrNotFound",
-				"bear____.SEPARATOR.500 b4",
-				"bear____.SEPARATOR.000 ErrNotFound",
-				"buffalo_.SEPARATOR.999 b6",
-				"buffalo_.SEPARATOR.603 b6",
-				"buffalo_.SEPARATOR.602 b6",
-				"buffalo_.SEPARATOR.601 B1",
-				"buffalo_.SEPARATOR.104 B1",
-				"buffalo_.SEPARATOR.103 B1",
-				"buffalo_.SEPARATOR.102 ErrNotFound",
-				"buffalo_.SEPARATOR.000 ErrNotFound",
-				"c_______.SEPARATOR.999 ErrNotFound",
-				"chipmunk.SEPARATOR.999 c2",
-				"chipmunk.SEPARATOR.205 c2",
-				"chipmunk.SEPARATOR.204 c2",
-				"chipmunk.SEPARATOR.203 c1",
-				"chipmunk.SEPARATOR.105 c1",
-				"chipmunk.SEPARATOR.104 c1",
-				"chipmunk.SEPARATOR.103 ErrNotFound",
-				"chipmunk.SEPARATOR.000 ErrNotFound",
-				"d_______.SEPARATOR.999 ErrNotFound",
 			},
 		},
 
@@ -465,20 +379,20 @@ func TestGetIter(t *testing.T) {
 		},
 	}
 
-	cmp := testkeys.Comparer.Compare
+	cmp := testkeys.Comparer
 	for _, tc := range testCases {
 		desc := tc.description[:strings.Index(tc.description, ":")]
 
 		// m is a map from file numbers to DBs.
 		m := map[FileNum]*memTable{}
 		newIter := func(
-			_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
-		) (internalIterator, keyspan.FragmentIterator, error) {
+			_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
+		) (iterSet, error) {
 			d, ok := m[file.FileNum]
 			if !ok {
-				return nil, nil, errors.New("no such file")
+				return iterSet{}, errors.New("no such file")
 			}
-			return d.newIter(nil), nil, nil
+			return iterSet{point: d.newIter(nil)}, nil
 		}
 
 		var files [numLevels][]*fileMetadata
@@ -498,7 +412,7 @@ func TestGetIter(t *testing.T) {
 					t.Fatalf("desc=%q: memtable Set: %v", desc, err)
 				}
 
-				meta.ExtendPointKeyBounds(cmp, ikey, ikey)
+				meta.ExtendPointKeyBounds(cmp.Compare, ikey, ikey)
 				if i == 0 {
 					meta.SmallestSeqNum = ikey.SeqNum()
 					meta.LargestSeqNum = ikey.SeqNum()
@@ -514,8 +428,8 @@ func TestGetIter(t *testing.T) {
 
 			files[tt.level] = append(files[tt.level], meta)
 		}
-		v := manifest.NewVersion(cmp, base.DefaultFormatter, 10<<20, files)
-		err := v.CheckOrdering(cmp, base.DefaultFormatter, manifest.AllowSplitUserKeys)
+		v := manifest.NewVersion(cmp, 10<<20, files)
+		err := v.CheckOrdering()
 		if tc.badOrdering && err == nil {
 			t.Errorf("desc=%q: want bad ordering, got nil error", desc)
 			continue

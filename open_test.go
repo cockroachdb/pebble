@@ -12,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,10 +30,13 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/redact"
+	"github.com/ghemawat/stream"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -149,11 +154,124 @@ func TestErrorIfNotPristine(t *testing.T) {
 	}
 }
 
+func TestOpen_WALFailover(t *testing.T) {
+	filesystems := map[string]vfs.FS{}
+
+	extractFSAndPath := func(cmdArg datadriven.CmdArg) (fs vfs.FS, dir string) {
+		var ok bool
+		if fs, ok = filesystems[cmdArg.Vals[0]]; !ok {
+			fs = vfs.NewMem()
+			filesystems[cmdArg.Vals[0]] = fs
+		}
+		dir = cmdArg.Vals[1]
+		return fs, dir
+	}
+
+	getFSAndPath := func(td *datadriven.TestData, key string) (fs vfs.FS, dir string, ok bool) {
+		cmdArg, ok := td.Arg(key)
+		if !ok {
+			return nil, "", false
+		}
+		fs, dir = extractFSAndPath(cmdArg)
+		return fs, dir, ok
+	}
+
+	datadriven.RunTest(t, "testdata/open_wal_failover", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "grep-between":
+			fs, path, ok := getFSAndPath(td, "path")
+			if !ok {
+				return "no `dir` provided"
+			}
+			var start, end string
+			td.ScanArgs(t, "start", &start)
+			td.ScanArgs(t, "end", &end)
+			// Read the entirety of the file into memory (rather than passing
+			// f into stream.ReadLines) to avoid a data race between closing the
+			// file and stream.ReadLines asynchronously reading the file.
+			f, err := fs.Open(path)
+			if err != nil {
+				return err.Error()
+			}
+			data, err := io.ReadAll(f)
+			if err != nil {
+				return err.Error()
+			}
+			require.NoError(t, f.Close())
+
+			var buf bytes.Buffer
+			if err := stream.Run(stream.Sequence(
+				stream.ReadLines(bytes.NewReader(data)),
+				streamFilterBetweenGrep(start, end),
+				stream.WriteLines(&buf),
+			)); err != nil {
+				return err.Error()
+			}
+			return buf.String()
+		case "list":
+			fs, dir, ok := getFSAndPath(td, "path")
+			if !ok {
+				return "no `path` provided"
+			}
+			ls, err := fs.List(dir)
+			if err != nil {
+				return err.Error()
+			}
+			slices.Sort(ls)
+			var buf bytes.Buffer
+			for _, f := range ls {
+				fmt.Fprintf(&buf, "  %s\n", f)
+			}
+			return buf.String()
+		case "open":
+			var dataDir string
+			o := &Options{Logger: testLogger{t}}
+			for _, cmdArg := range td.CmdArgs {
+				switch cmdArg.Key {
+				case "path":
+					o.FS, dataDir = extractFSAndPath(cmdArg)
+				case "secondary":
+					fs, dir := extractFSAndPath(cmdArg)
+					o.WALFailover = &WALFailoverOptions{
+						Secondary: wal.Dir{FS: fs, Dirname: dir},
+					}
+				case "wal-recovery-dir":
+					fs, dir := extractFSAndPath(cmdArg)
+					o.WALRecoveryDirs = append(o.WALRecoveryDirs, wal.Dir{FS: fs, Dirname: dir})
+				default:
+					return fmt.Sprintf("unrecognized cmdArg %q", cmdArg.Key)
+				}
+			}
+			if o.FS == nil {
+				return "no path"
+			}
+			d, err := Open(dataDir, o)
+			if err != nil {
+				return err.Error()
+			}
+			require.NoError(t, d.Close())
+			return "ok"
+		case "stat":
+			fs, path, ok := getFSAndPath(td, "path")
+			if !ok {
+				return "no `path` provided"
+			}
+			finfo, err := fs.Stat(path)
+			if err != nil {
+				return err.Error()
+			}
+			return fmt.Sprintf("IsDir: %t", finfo.IsDir())
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
+
 func TestOpenAlreadyLocked(t *testing.T) {
-	runTest := func(t *testing.T, dirname string, fs vfs.FS) {
+	runTest := func(t *testing.T, lockPath, dirname string, fs vfs.FS) {
 		opts := testingRandomized(t, &Options{FS: fs})
 		var err error
-		opts.Lock, err = LockDirectory(dirname, fs)
+		opts.Lock, err = LockDirectory(lockPath, fs)
 		require.NoError(t, err)
 
 		d, err := Open(dirname, opts)
@@ -178,29 +296,36 @@ func TestOpenAlreadyLocked(t *testing.T) {
 		require.Equal(t, int32(0), opts.Lock.refs.Load())
 	}
 	t.Run("memfs", func(t *testing.T) {
-		runTest(t, "", vfs.NewMem())
+		runTest(t, "", "", vfs.NewMem())
 	})
 	t.Run("disk", func(t *testing.T) {
-		runTest(t, t.TempDir(), vfs.Default)
+		t.Run("absolute", func(t *testing.T) {
+			dir := t.TempDir()
+			runTest(t, dir, dir, vfs.Default)
+		})
+		t.Run("relative", func(t *testing.T) {
+			dir := t.TempDir()
+			original, err := os.Getwd()
+			require.NoError(t, err)
+			defer func() { require.NoError(t, os.Chdir(original)) }()
+
+			wd := filepath.Dir(dir)
+			require.NoError(t, os.Chdir(wd))
+			lockPath, err := filepath.Rel(wd, dir)
+			require.NoError(t, err)
+			runTest(t, lockPath, dir, vfs.Default)
+		})
 	})
 }
 
 func TestNewDBFilenames(t *testing.T) {
 	versions := map[FormatMajorVersion][]string{
-		FormatMostCompatible: {
-			"000002.log",
-			"CURRENT",
-			"LOCK",
-			"MANIFEST-000001",
-			"OPTIONS-000003",
-		},
 		internalFormatNewest: {
 			"000002.log",
-			"CURRENT",
 			"LOCK",
 			"MANIFEST-000001",
 			"OPTIONS-000003",
-			"marker.format-version.000015.016",
+			"marker.format-version.000004.017",
 			"marker.manifest.000001.MANIFEST-000001",
 		},
 	}
@@ -355,8 +480,11 @@ func TestOpenOptionsCheck(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
 
+	fooCmp := *base.DefaultComparer
+	fooCmp.Name = "foo"
+
 	opts = &Options{
-		Comparer: &Comparer{Name: "foo"},
+		Comparer: &fooCmp,
 		FS:       mem,
 	}
 	_, err = Open("", opts)
@@ -380,11 +508,11 @@ func TestOpenCrashWritingOptions(t *testing.T) {
 	// Open the database again, this time with a mocked filesystem that
 	// will only succeed in partially writing the OPTIONS file.
 	fs := optionsTornWriteFS{FS: memFS}
-	_, err = Open("", &Options{FS: fs})
+	_, err = Open("", &Options{FS: fs, Logger: testLogger{t}})
 	require.Error(t, err)
 
 	// Re-opening the database must succeed.
-	d, err = Open("", &Options{FS: memFS})
+	d, err = Open("", &Options{FS: memFS, Logger: testLogger{t}})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
 }
@@ -602,7 +730,7 @@ func TestOpenWALReplay(t *testing.T) {
 
 			if readOnly {
 				m := d.Metrics()
-				require.Equal(t, int64(logCount), m.WAL.Files)
+				require.Equal(t, int64(logCount), m.WAL.ObsoleteFiles)
 				d.mu.Lock()
 				require.NotNil(t, d.mu.mem.mutable)
 				d.mu.Unlock()
@@ -663,6 +791,7 @@ func TestWALReplaySequenceNumBug(t *testing.T) {
 	d, err = Open("", &Options{
 		FS:       mem,
 		ReadOnly: true,
+		Logger:   testLogger{t},
 	})
 	require.NoError(t, err)
 	val, c, _ := d.Get([]byte("1"))
@@ -788,73 +917,6 @@ func TestTwoWALReplayCorrupt(t *testing.T) {
 	require.Error(t, err, "pebble: corruption")
 }
 
-// TestTwoWALReplayCorrupt tests WAL-replay behavior when the first of the two
-// WALs is corrupted with an sstable checksum error and the OPTIONS file does
-// not enable the private strict_wal_tail option, indicating that the WAL was
-// produced by a database that did not guarantee clean WAL tails. See #864.
-func TestTwoWALReplayPermissive(t *testing.T) {
-	// Use the real filesystem so that we can seek and overwrite WAL data
-	// easily.
-	dir, err := os.MkdirTemp("", "wal-replay")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
-
-	opts := &Options{
-		MemTableStopWritesThreshold: 4,
-		MemTableSize:                2048,
-	}
-	opts.testingRandomized(t)
-	opts.EnsureDefaults()
-	d, err := Open(dir, opts)
-	require.NoError(t, err)
-	d.mu.Lock()
-	d.mu.compact.flushing = true
-	d.mu.Unlock()
-	require.NoError(t, d.Set([]byte("1"), []byte(strings.Repeat("a", 1024)), nil))
-	require.NoError(t, d.Set([]byte("2"), nil, nil))
-	d.mu.Lock()
-	d.mu.compact.flushing = false
-	d.mu.Unlock()
-	require.NoError(t, d.Close())
-
-	// We should have two WALs.
-	var logs []string
-	var optionFilename string
-	ls, err := vfs.Default.List(dir)
-	require.NoError(t, err)
-	for _, name := range ls {
-		if filepath.Ext(name) == ".log" {
-			logs = append(logs, name)
-		}
-		if strings.HasPrefix(filepath.Base(name), "OPTIONS") {
-			optionFilename = name
-		}
-	}
-	sort.Strings(logs)
-	if len(logs) < 2 {
-		t.Fatalf("expected at least two log files, found %d", len(logs))
-	}
-
-	// Corrupt the (n-1)th WAL by zeroing four bytes, 100 bytes from the end
-	// of the file.
-	f, err := os.OpenFile(filepath.Join(dir, logs[len(logs)-2]), os.O_RDWR, os.ModePerm)
-	require.NoError(t, err)
-	off, err := f.Seek(-100, 2)
-	require.NoError(t, err)
-	_, err = f.Write([]byte{0, 0, 0, 0})
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-	t.Logf("zeored four bytes in %s at offset %d\n", logs[len(logs)-2], off)
-
-	// Remove the OPTIONS file containing the strict_wal_tail option.
-	require.NoError(t, vfs.Default.Remove(filepath.Join(dir, optionFilename)))
-
-	// Re-opening the database should not report the corruption.
-	d, err = Open(dir, nil)
-	require.NoError(t, err)
-	require.NoError(t, d.Close())
-}
-
 // TestCrashOpenCrashAfterWALCreation tests a database that exits
 // ungracefully, begins recovery, creates the new WAL but promptly exits
 // ungracefully again.
@@ -942,6 +1004,7 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 				}
 				return nil
 			})),
+			Logger: testLogger{t},
 		})
 		require.NoError(t, err)
 		require.NoError(t, d.Close())
@@ -1059,6 +1122,27 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 	db.Close()
 }
 
+func TestPeek(t *testing.T) {
+	// The file paths are UNIX-oriented. To avoid duplicating the test fixtures
+	// just for Windows, just skip the tests on Windows.
+	if runtime.GOOS == "windows" {
+		t.Skip()
+	}
+
+	datadriven.RunTest(t, "testdata/peek", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "peek":
+			desc, err := Peek(td.CmdArgs[0].String(), vfs.Default)
+			if err != nil {
+				return fmt.Sprintf("err=%v", err)
+			}
+			return desc.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q\n", td.Cmd)
+		}
+	})
+}
+
 func TestGetVersion(t *testing.T) {
 	mem := vfs.NewMem()
 	opts := &Options{
@@ -1080,7 +1164,7 @@ func TestGetVersion(t *testing.T) {
 	require.Equal(t, "0.1", version)
 
 	// Case 3: Manually created OPTIONS file with a higher number.
-	highestOptionsNum := FileNum(0)
+	highestOptionsNum := base.DiskFileNum(0)
 	ls, err := mem.List("")
 	require.NoError(t, err)
 	for _, filename := range ls {
@@ -1090,8 +1174,8 @@ func TestGetVersion(t *testing.T) {
 		}
 		switch ft {
 		case fileTypeOptions:
-			if fn.FileNum() > highestOptionsNum {
-				highestOptionsNum = fn.FileNum()
+			if fn > highestOptionsNum {
+				highestOptionsNum = fn
 			}
 		}
 	}
@@ -1115,42 +1199,46 @@ func TestGetVersion(t *testing.T) {
 	require.Equal(t, "rocksdb v6.2.1", version)
 }
 
-func TestRocksDBNoFlushManifest(t *testing.T) {
+// TestOpenNeverFlushed verifies that we can open a database that had an
+// ingestion but no other operations.
+func TestOpenNeverFlushed(t *testing.T) {
 	mem := vfs.NewMem()
-	// Have the comparer and merger names match what's in the testdata
-	// directory.
-	comparer := *DefaultComparer
-	merger := *DefaultMerger
-	comparer.Name = "cockroach_comparator"
-	merger.Name = "cockroach_merge_operator"
-	opts := &Options{
-		FS:       mem,
-		Comparer: &comparer,
-		Merger:   &merger,
+
+	sstFile, err := mem.Create("to-ingest.sst")
+	require.NoError(t, err)
+
+	writerOpts := sstable.WriterOptions{}
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(sstFile), writerOpts)
+	for _, key := range []string{"a", "b", "c", "d"} {
+		require.NoError(t, w.Set([]byte(key), []byte("val-"+key)))
 	}
+	require.NoError(t, w.Close())
 
-	// rocksdb-ingest-only is a RocksDB-generated db directory that has not had
-	// a single flush yet, only ingestion operations. The manifest contains
-	// a next-log-num but no log-num entry. Ensure that pebble can read these
-	// directories without an issue.
-	_, err := vfs.Clone(vfs.Default, mem, "testdata/rocksdb-ingest-only", "testdata")
+	opts := &Options{
+		FS:     mem,
+		Logger: testLogger{t},
+	}
+	db, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, db.Ingest([]string{"to-ingest.sst"}))
+	require.NoError(t, db.Close())
+
+	db, err = Open("", opts)
 	require.NoError(t, err)
 
-	db, err := Open("testdata", opts)
+	val, closer, err := db.Get([]byte("b"))
 	require.NoError(t, err)
-	defer db.Close()
-
-	val, closer, err := db.Get([]byte("ajulxeiombjiyw\x00\x00\x00\x00\x00\x00\x00\x01\x12\x09"))
-	require.NoError(t, err)
-	require.NotEmpty(t, val)
+	require.Equal(t, "val-b", string(val))
 	require.NoError(t, closer.Close())
+
+	require.NoError(t, db.Close())
 }
 
 func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
 	fs := vfs.NewMem()
 	d, err := Open("", &Options{
 		FS:                 fs,
-		FormatMajorVersion: FormatVersioned,
+		FormatMajorVersion: FormatMinSupported,
 	})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
@@ -1163,10 +1251,10 @@ func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
 
 	_, err = Open("", &Options{
 		FS:                 fs,
-		FormatMajorVersion: FormatVersioned,
+		FormatMajorVersion: FormatMinSupported,
 	})
 	require.Error(t, err)
-	require.EqualError(t, err, `pebble: database "" written in format major version 999999`)
+	require.EqualError(t, err, `pebble: database "" written in unknown format major version 999999`)
 }
 
 // ensureFilesClosed updates the provided Options to wrap the filesystem. It
@@ -1246,8 +1334,6 @@ func TestCheckConsistency(t *testing.T) {
 	require.NoError(t, err)
 	defer provider.Close()
 
-	cmp := base.DefaultComparer.Compare
-	fmtKey := base.DefaultComparer.FormatKey
 	parseMeta := func(s string) (*manifest.FileMetadata, error) {
 		if len(s) == 0 {
 			return nil, nil
@@ -1309,7 +1395,7 @@ func TestCheckConsistency(t *testing.T) {
 					}
 				}
 
-				v := manifest.NewVersion(cmp, fmtKey, 0, filesByLevel)
+				v := manifest.NewVersion(base.DefaultComparer, 0, filesByLevel)
 				err := checkConsistency(v, dir, provider)
 				if err != nil {
 					if redactErr {
@@ -1350,7 +1436,7 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 	mem := vfs.NewMem()
 	memShared := remote.NewInMem()
 
-	opts := &Options{FS: mem}
+	opts := &Options{FS: mem, Logger: testLogger{t}}
 	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": memShared,
@@ -1366,8 +1452,8 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 
 	// Create a shared file with the newest file num and then close the db.
 	d.mu.Lock()
-	nextFileNum := d.mu.versions.getNextFileNum()
-	w, _, err := d.objProvider.Create(context.TODO(), fileTypeTable, nextFileNum.DiskFileNum(), objstorage.CreateOptions{PreferSharedStorage: true})
+	nextFileNum := d.mu.versions.getNextDiskFileNum()
+	w, _, err := d.objProvider.Create(context.TODO(), fileTypeTable, nextFileNum, objstorage.CreateOptions{PreferSharedStorage: true})
 	require.NoError(t, err)
 	require.NoError(t, w.Write([]byte("foobar")))
 	require.NoError(t, w.Finish())

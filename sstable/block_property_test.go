@@ -7,6 +7,7 @@ package sstable
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -271,7 +272,7 @@ func TestBlockIntervalFilter(t *testing.T) {
 			var points testDataBlockIntervalCollector
 			name := "foo"
 			bic := NewBlockIntervalCollector(name, &points, nil)
-			bif := NewBlockIntervalFilter(name, tc.filter.lower, tc.filter.upper)
+			bif := NewBlockIntervalFilter(name, tc.filter.lower, tc.filter.upper, nil)
 			points.i = tc.prop
 			prop, _ := bic.FinishDataBlock(nil)
 			intersects, err := bif.Intersects(prop)
@@ -341,6 +342,12 @@ func (b filterWithTrueForEmptyProp) Intersects(prop []byte) (bool, error) {
 		return true, nil
 	}
 	return b.BlockPropertyFilter.Intersects(prop)
+}
+
+func (b filterWithTrueForEmptyProp) SyntheticSuffixIntersects(
+	prop []byte, suffix []byte,
+) (bool, error) {
+	panic("unimplemented")
 }
 
 func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) {
@@ -475,10 +482,10 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			var filters []BlockPropertyFilter
 			for _, f := range tc.filters {
-				filter := NewBlockIntervalFilter(f.name, f.i.lower, f.i.upper)
+				filter := NewBlockIntervalFilter(f.name, f.i.lower, f.i.upper, nil)
 				filters = append(filters, filter)
 			}
-			filterer := newBlockPropertiesFilterer(filters, nil)
+			filterer := newBlockPropertiesFilterer(filters, nil, nil)
 			intersects, err := filterer.intersectsUserPropsAndFinishInit(tc.userProps)
 			require.NoError(t, err)
 			require.Equal(t, tc.intersects, intersects)
@@ -719,7 +726,7 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 				}
 			}
 			for _, f := range tc.filters {
-				filter := NewBlockIntervalFilter("", f.i.lower, f.i.upper)
+				filter := NewBlockIntervalFilter("", f.i.lower, f.i.upper, nil)
 				bpf := BlockPropertyFilter(filter)
 				if f.intersectsForEmptyProp {
 					bpf = filterWithTrueForEmptyProp{filter}
@@ -895,8 +902,15 @@ func TestBlockProperties(t *testing.T) {
 			return runBlockPropsCmd(r, td)
 
 		case "filter":
+			syntheticSuffix := make([]byte, 0, binary.MaxVarintLen64)
 			var points, ranges []BlockPropertyFilter
 			for _, cmd := range td.CmdArgs {
+				if cmd.Key == "synthetic" {
+					var suffix uint64
+					td.ScanArgs(t, "synthetic", &suffix)
+					syntheticSuffix = binary.AppendUvarint(nil, suffix)
+					continue
+				}
 				filter, err := parseIntervalFilter(cmd)
 				if err != nil {
 					return err.Error()
@@ -916,7 +930,7 @@ func TestBlockProperties(t *testing.T) {
 			var f *BlockPropertiesFilterer
 			buf.WriteString("points: ")
 			if len(points) > 0 {
-				f = newBlockPropertiesFilterer(points, nil)
+				f = newBlockPropertiesFilterer(points, nil, syntheticSuffix)
 				ok, err := f.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 				if err != nil {
 					return err.Error()
@@ -938,7 +952,7 @@ func TestBlockProperties(t *testing.T) {
 
 					var blocks []int
 					var i int
-					iter, _ := newBlockIter(r.Compare, indexH.Get())
+					iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 					for key, value := iter.First(); key != nil; key, value = iter.Next() {
 						bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 						if err != nil {
@@ -970,7 +984,7 @@ func TestBlockProperties(t *testing.T) {
 			// Range key filter matches.
 			buf.WriteString("ranges: ")
 			if len(ranges) > 0 {
-				f := newBlockPropertiesFilterer(ranges, nil)
+				f := newBlockPropertiesFilterer(ranges, nil, nil)
 				ok, err := f.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 				if err != nil {
 					return err.Error()
@@ -1001,7 +1015,7 @@ func TestBlockProperties(t *testing.T) {
 					filters = append(filters, f)
 				}
 			}
-			filterer := newBlockPropertiesFilterer(filters, nil)
+			filterer := newBlockPropertiesFilterer(filters, nil, nil)
 			ok, err := filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 			if err != nil {
 				return err.Error()
@@ -1009,7 +1023,7 @@ func TestBlockProperties(t *testing.T) {
 				return "filter excludes entire table"
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
-				lower, upper, filterer, false /* use (bloom) filter */, &stats,
+				NoTransforms, lower, upper, filterer, false /* useFilterBlock */, &stats,
 				CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
@@ -1053,6 +1067,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 		case "iter":
 			var buf bytes.Buffer
 			var lower, upper []byte
+			syntheticSuffix := make([]byte, 0, binary.MaxVarintLen64)
 			filter := boundLimitedWrapper{
 				w:   &buf,
 				cmp: testkeys.Comparer.Compare,
@@ -1075,13 +1090,17 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 				case "filter-lower":
 					ik := base.MakeInternalKey([]byte(arg.Vals[0]), 0, base.InternalKeyKindSet)
 					filter.lower = &ik
+				case "synthetic":
+					var suffix uint64
+					td.ScanArgs(t, "synthetic", &suffix)
+					syntheticSuffix = binary.AppendUvarint(nil, suffix)
 				}
 			}
 			if filter.inner == nil {
 				return "missing block property filter"
 			}
 
-			filterer := newBlockPropertiesFilterer(nil, &filter)
+			filterer := newBlockPropertiesFilterer(nil, &filter, syntheticSuffix)
 			ok, err := filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 			if err != nil {
 				return err.Error()
@@ -1089,7 +1108,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 				return "filter excludes entire table"
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
-				lower, upper, filterer, false /* use (bloom) filter */, &stats,
+				NoTransforms, lower, upper, filterer, false /* useFilterBlock */, &stats,
 				CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
@@ -1135,6 +1154,21 @@ func (bl *boundLimitedWrapper) Intersects(prop []byte) (bool, error) {
 	return v, err
 }
 
+func (bl *boundLimitedWrapper) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
+	propString := fmt.Sprintf("%x", prop)
+	var i interval
+	if err := i.decode(prop); err == nil {
+		// If it decodes as an interval, pretty print it as an interval.
+		propString = fmt.Sprintf("[%d, %d)", i.lower, i.upper)
+	}
+
+	v, err := bl.inner.SyntheticSuffixIntersects(prop, suffix)
+	if bl.w != nil {
+		fmt.Fprintf(bl.w, "    filter.SyntheticSuffixIntersects(%s) = (%t, %v)\n", propString, v, err)
+	}
+	return v, err
+}
+
 func (bl *boundLimitedWrapper) KeyIsWithinLowerBound(key []byte) (ret bool) {
 	if bl.lower == nil {
 		ret = true
@@ -1159,6 +1193,17 @@ func (bl *boundLimitedWrapper) KeyIsWithinUpperBound(key []byte) (ret bool) {
 	return ret
 }
 
+var _ BlockIntervalSyntheticReplacer = testingBlockIntervalSyntheticReplacer{}
+
+type testingBlockIntervalSyntheticReplacer struct{}
+
+func (sr testingBlockIntervalSyntheticReplacer) AdjustIntervalWithSyntheticSuffix(
+	lower uint64, upper uint64, suffix []byte,
+) (adjustedLower uint64, adjustedUpper uint64, err error) {
+	synthDecoded, _ := binary.Uvarint(suffix)
+	return synthDecoded, synthDecoded + 1, nil
+}
+
 func parseIntervalFilter(cmd datadriven.CmdArg) (BlockPropertyFilter, error) {
 	name := cmd.Vals[0]
 	minS, maxS := cmd.Vals[1], cmd.Vals[2]
@@ -1170,7 +1215,7 @@ func parseIntervalFilter(cmd datadriven.CmdArg) (BlockPropertyFilter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewBlockIntervalFilter(name, min, max), nil
+	return NewBlockIntervalFilter(name, min, max, testingBlockIntervalSyntheticReplacer{}), nil
 }
 
 func runCollectorsCmd(r *Reader, td *datadriven.TestData) string {
@@ -1274,7 +1319,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		return err.Error()
 	}
 	twoLevelIndex := r.Properties.IndexPartitions > 0
-	i, err := newBlockIter(r.Compare, bh.Get())
+	i, err := newBlockIter(r.Compare, r.Split, bh.Get(), NoTransforms)
 	if err != nil {
 		return err.Error()
 	}
@@ -1321,8 +1366,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 			if err != nil {
 				return err.Error()
 			}
-			if err := subiter.init(
-				r.Compare, subIndex.Get(), 0 /* globalSeqNum */, false); err != nil {
+			if err := subiter.init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
 				return err.Error()
 			}
 			for key, value := subiter.First(); key != nil; key, value = subiter.Next() {
@@ -1420,18 +1464,6 @@ func (p *intSuffixCollector) setFromSuffix(to []byte) error {
 	return nil
 }
 
-type intSuffixTablePropCollector struct {
-	name string
-	intSuffixCollector
-}
-
-var _ TablePropertyCollector = &intSuffixTablePropCollector{}
-var _ SuffixReplaceableTableCollector = &intSuffixTablePropCollector{}
-
-func intSuffixTablePropCollectorFn(name string, len int) func() TablePropertyCollector {
-	return func() TablePropertyCollector { return &intSuffixTablePropCollector{name, makeIntSuffixCollector(len)} }
-}
-
 func (p *intSuffixCollector) Add(key InternalKey, _ []byte) error {
 	if len(key.UserKey) > p.suffixLen {
 		parsed, err := strconv.Atoi(string(key.UserKey[len(key.UserKey)-p.suffixLen:]))
@@ -1447,20 +1479,6 @@ func (p *intSuffixCollector) Add(key InternalKey, _ []byte) error {
 		}
 	}
 	return nil
-}
-
-func (p *intSuffixTablePropCollector) Finish(userProps map[string]string) error {
-	userProps[p.name+".min"] = fmt.Sprint(p.min)
-	userProps[p.name+".max"] = fmt.Sprint(p.max)
-	return nil
-}
-
-func (p *intSuffixTablePropCollector) Name() string { return p.name }
-
-func (p *intSuffixTablePropCollector) UpdateKeySuffixes(
-	oldProps map[string]string, from, to []byte,
-) error {
-	return p.setFromSuffix(to)
 }
 
 // testIntSuffixIntervalCollector is a wrapper for testIntSuffixCollector that

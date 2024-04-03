@@ -5,20 +5,42 @@
 package metamorphic
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 )
 
-type test struct {
+// New constructs a new metamorphic test that runs the provided operations
+// against a database using the provided TestOptions and outputs the history of
+// events to an io.Writer.
+//
+// dir specifies the path within opts.Opts.FS to open the database.
+func New(ops Ops, opts *TestOptions, dir string, w io.Writer) (*Test, error) {
+	t := newTest(ops)
+	h := newHistory(nil /* failRegexp */, w)
+	if err := t.init(h, dir, opts, 1 /* numInstances */, 0 /* opTimeout */); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// A Test configures an individual test run consisting of a set of operations,
+// TestOptions configuring the target database to which the operations should be
+// applied, and a sink for outputting test history.
+type Test struct {
 	// The list of ops to execute. The ops refer to slots in the batches, iters,
 	// and snapshots slices.
 	ops       []op
@@ -26,6 +48,8 @@ type test struct {
 	opsDone   []chan struct{} // op index -> done channel
 	idx       int
 	dir       string
+	h         *history
+	opTimeout time.Duration
 	opts      *pebble.Options
 	testOpts  *TestOptions
 	writeOpts *pebble.WriteOptions
@@ -34,37 +58,59 @@ type test struct {
 	dbs []*pebble.DB
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
-	batches   []*pebble.Batch
-	iters     []*retryableIter
-	snapshots []readerCloser
+	batches      []*pebble.Batch
+	iters        []*retryableIter
+	snapshots    []readerCloser
+	externalObjs []externalObjMeta
+
+	// externalStorage is used to write external objects. If external storage is
+	// enabled, this is the same with testOpts.externalStorageFS; otherwise, this
+	// is an in-memory implementation used only by the test.
+	externalStorage remote.Storage
 }
 
-func newTest(ops []op) *test {
-	return &test{
+type externalObjMeta struct {
+	sstMeta *sstable.WriterMetadata
+}
+
+func newTest(ops []op) *Test {
+	return &Test{
 		ops: ops,
 	}
 }
 
-func (t *test) init(h *history, dir string, testOpts *TestOptions, numInstances int) error {
+func (t *Test) init(
+	h *history, dir string, testOpts *TestOptions, numInstances int, opTimeout time.Duration,
+) error {
 	t.dir = dir
+	t.h = h
+	t.opTimeout = opTimeout
 	t.testOpts = testOpts
 	t.writeOpts = pebble.NoSync
 	if testOpts.strictFS {
 		t.writeOpts = pebble.Sync
+	} else {
+		t.writeOpts = pebble.NoSync
 	}
+	testOpts.Opts.WithFSDefaults()
 	t.opts = testOpts.Opts.EnsureDefaults()
 	t.opts.Logger = h
 	lel := pebble.MakeLoggingEventListener(t.opts.Logger)
 	t.opts.EventListener = &lel
-	t.opts.DebugCheck = func(db *pebble.DB) error {
-		// Wrap the ordinary DebugCheckLevels with retrying
-		// of injected errors.
-		return withRetries(func() error {
-			return pebble.DebugCheckLevels(db)
-		})
+	// If the test options set a DebugCheck func, wrap it with retrying of
+	// retriable errors (according to the test's retry policy).
+	if debugCheck := t.opts.DebugCheck; debugCheck != nil {
+		t.opts.DebugCheck = func(db *pebble.DB) error {
+			return t.withRetries(func() error { return debugCheck(db) })
+		}
 	}
 	if numInstances < 1 {
 		numInstances = 1
+	}
+	if t.testOpts.externalStorageEnabled {
+		t.externalStorage = t.testOpts.externalStorageFS
+	} else {
+		t.externalStorage = remote.NewInMem()
 	}
 
 	t.opsWaitOn, t.opsDone = computeSynchronizationPoints(t.ops)
@@ -80,7 +126,7 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 		if err == nil || errors.Is(err, errorfs.ErrInjected) || errors.Is(err, pebble.ErrCancelledCompaction) {
 			return
 		}
-		t.maybeSaveData()
+		t.saveInMemoryData()
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -138,7 +184,7 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 		if len(t.dbs) > 1 {
 			dir = path.Join(t.dir, fmt.Sprintf("db%d", i+1))
 		}
-		err = withRetries(func() error {
+		err = t.withRetries(func() error {
 			db, err = pebble.Open(dir, t.opts)
 			return err
 		})
@@ -149,7 +195,7 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 		h.log.Printf("// db%d.Open() %v", i+1, err)
 
 		if t.testOpts.sharedStorageEnabled {
-			err = withRetries(func() error {
+			err = t.withRetries(func() error {
 				return db.SetCreatorID(uint64(i + 1))
 			})
 			if err != nil {
@@ -195,12 +241,27 @@ func (t *test) init(h *history, dir string, testOpts *TestOptions, numInstances 
 	return nil
 }
 
-func (t *test) isFMV(dbID objID, fmv pebble.FormatMajorVersion) bool {
+func (t *Test) withRetries(fn func() error) error {
+	return withRetries(fn, t.testOpts.RetryPolicy)
+}
+
+func (t *Test) isFMV(dbID objID, fmv pebble.FormatMajorVersion) bool {
 	db := t.getDB(dbID)
 	return db.FormatMajorVersion() >= fmv
 }
 
-func (t *test) restartDB(dbID objID) error {
+// minFMV returns the minimum FormatMajorVersion between all databases.
+func (t *Test) minFMV() pebble.FormatMajorVersion {
+	minVersion := pebble.FormatNewest
+	for _, db := range t.dbs {
+		if db != nil {
+			minVersion = min(minVersion, db.FormatMajorVersion())
+		}
+	}
+	return minVersion
+}
+
+func (t *Test) restartDB(dbID objID) error {
 	db := t.getDB(dbID)
 	if !t.testOpts.strictFS {
 		return nil
@@ -229,7 +290,7 @@ func (t *test) restartDB(dbID objID) error {
 
 	// TODO(jackson): Audit errorRate and ensure custom options' hooks semantics
 	// are well defined within the context of retries.
-	err := withRetries(func() (err error) {
+	err := t.withRetries(func() (err error) {
 		// Reacquire any resources required by custom options. This may be used, for
 		// example, by the encryption-at-rest custom option (within the Cockroach
 		// repository) to reopen the file registry.
@@ -252,41 +313,122 @@ func (t *test) restartDB(dbID objID) error {
 	return err
 }
 
-// If an in-memory FS is being used, save the contents to disk.
-func (t *test) maybeSaveData() {
-	rootFS := vfs.Root(t.opts.FS)
-	if rootFS == vfs.Default {
-		return
+func (t *Test) saveInMemoryDataInternal() error {
+	if rootFS := vfs.Root(t.opts.FS); rootFS != vfs.Default {
+		// t.opts.FS is an in-memory system; copy it to disk.
+		if err := os.RemoveAll(t.dir); err != nil {
+			return err
+		}
+		if _, err := vfs.Clone(rootFS, vfs.Default, t.dir, t.dir); err != nil {
+			return err
+		}
 	}
-	_ = os.RemoveAll(t.dir)
-	if _, err := vfs.Clone(rootFS, vfs.Default, t.dir, t.dir); err != nil {
-		t.opts.Logger.Infof("unable to clone: %s: %v", t.dir, err)
+	if t.testOpts.sharedStorageEnabled {
+		if err := copyRemoteStorage(t.testOpts.sharedStorageFS, filepath.Join(t.dir, "shared")); err != nil {
+			return err
+		}
+	}
+	if t.testOpts.externalStorageEnabled {
+		if err := copyRemoteStorage(t.testOpts.externalStorageFS, filepath.Join(t.dir, "external")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyRemoteStorage(fs remote.Storage, outputDir string) error {
+	if err := vfs.Default.MkdirAll(outputDir, 0755); err != nil {
+		return err
+	}
+	objs, err := fs.List("", "")
+	if err != nil {
+		return err
+	}
+	for i := range objs {
+		reader, readSize, err := fs.ReadObject(context.TODO(), objs[i])
+		if err != nil {
+			return err
+		}
+		buf := make([]byte, readSize)
+		if err := reader.ReadAt(context.TODO(), buf, 0); err != nil {
+			return err
+		}
+		outputPath := vfs.Default.PathJoin(outputDir, objs[i])
+		outputFile, err := vfs.Default.Create(outputPath)
+		if err != nil {
+			return err
+		}
+		if _, err := outputFile.Write(buf); err != nil {
+			outputFile.Close()
+			return err
+		}
+		if err := outputFile.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// If an in-memory FS is being used, save the contents to disk.
+func (t *Test) saveInMemoryData() {
+	if err := t.saveInMemoryDataInternal(); err != nil {
+		t.opts.Logger.Infof("unable to save data: %s: %v", t.dir, err)
 	}
 }
 
-func (t *test) step(h *history) bool {
+// Step runs one single operation, returning: whether there are additional
+// operations remaining; the operation's output; and an error if any occurred
+// while running the operation.
+//
+// Step may be used instead of Execute to advance a test one operation at a
+// time.
+func (t *Test) Step() (more bool, operationOutput string, err error) {
+	more = t.step(t.h, func(format string, args ...interface{}) {
+		operationOutput = fmt.Sprintf(format, args...)
+	})
+	err = t.h.Error()
+	return more, operationOutput, err
+}
+
+func (t *Test) step(h *history, optionalRecordf func(string, ...interface{})) bool {
 	if t.idx >= len(t.ops) {
 		return false
 	}
-	t.ops[t.idx].run(t, h.recorder(-1 /* thread */, t.idx))
+	t.runOp(t.idx, h.recorder(-1 /* thread */, t.idx, optionalRecordf))
 	t.idx++
 	return true
 }
 
-func (t *test) setBatch(id objID, b *pebble.Batch) {
+// runOp runs t.ops[idx] with t.opTimeout.
+func (t *Test) runOp(idx int, h historyRecorder) {
+	op := t.ops[idx]
+	var timer *time.Timer
+	if t.opTimeout > 0 {
+		timer = time.AfterFunc(t.opTimeout, func() {
+			panic(fmt.Sprintf("operation took longer than %s: %s", t.opTimeout, op.String()))
+		})
+	}
+	op.run(t, h)
+	if timer != nil {
+		timer.Stop()
+	}
+}
+
+func (t *Test) setBatch(id objID, b *pebble.Batch) {
 	if id.tag() != batchTag {
 		panic(fmt.Sprintf("invalid batch ID: %s", id))
 	}
 	t.batches[id.slot()] = b
 }
 
-func (t *test) setIter(id objID, i *pebble.Iterator) {
+func (t *Test) setIter(id objID, i *pebble.Iterator) {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
 	t.iters[id.slot()] = &retryableIter{
-		iter:    i,
-		lastKey: nil,
+		iter:      i,
+		lastKey:   nil,
+		needRetry: t.testOpts.RetryPolicy,
 	}
 }
 
@@ -295,14 +437,28 @@ type readerCloser interface {
 	io.Closer
 }
 
-func (t *test) setSnapshot(id objID, s readerCloser) {
+func (t *Test) setSnapshot(id objID, s readerCloser) {
 	if id.tag() != snapTag {
 		panic(fmt.Sprintf("invalid snapshot ID: %s", id))
 	}
 	t.snapshots[id.slot()] = s
 }
 
-func (t *test) clearObj(id objID) {
+func (t *Test) setExternalObj(id objID, meta externalObjMeta) {
+	if id.tag() != externalObjTag {
+		panic(fmt.Sprintf("invalid external object ID: %s", id))
+	}
+	t.externalObjs[id.slot()] = meta
+}
+
+func (t *Test) getExternalObj(id objID) externalObjMeta {
+	if id.tag() != externalObjTag || t.externalObjs[id.slot()].sstMeta == nil {
+		panic(fmt.Sprintf("metamorphic test internal error: invalid external object ID: %s", id))
+	}
+	return t.externalObjs[id.slot()]
+}
+
+func (t *Test) clearObj(id objID) {
 	switch id.tag() {
 	case dbTag:
 		t.dbs[id.slot()-1] = nil
@@ -312,17 +468,19 @@ func (t *test) clearObj(id objID) {
 		t.iters[id.slot()] = nil
 	case snapTag:
 		t.snapshots[id.slot()] = nil
+	default:
+		panic(fmt.Sprintf("cannot clear ID: %s", id))
 	}
 }
 
-func (t *test) getBatch(id objID) *pebble.Batch {
-	if id.tag() != batchTag {
-		panic(fmt.Sprintf("invalid batch ID: %s", id))
+func (t *Test) getBatch(id objID) *pebble.Batch {
+	if id.tag() != batchTag || t.batches[id.slot()] == nil {
+		panic(fmt.Sprintf("metamorphic test internal error: invalid batch ID: %s", id))
 	}
 	return t.batches[id.slot()]
 }
 
-func (t *test) getCloser(id objID) io.Closer {
+func (t *Test) getCloser(id objID) io.Closer {
 	switch id.tag() {
 	case dbTag:
 		return t.dbs[id.slot()-1]
@@ -332,18 +490,19 @@ func (t *test) getCloser(id objID) io.Closer {
 		return t.iters[id.slot()]
 	case snapTag:
 		return t.snapshots[id.slot()]
+	default:
+		panic(fmt.Sprintf("cannot close ID: %s", id))
 	}
-	panic(fmt.Sprintf("cannot close ID: %s", id))
 }
 
-func (t *test) getIter(id objID) *retryableIter {
+func (t *Test) getIter(id objID) *retryableIter {
 	if id.tag() != iterTag {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
 	return t.iters[id.slot()]
 }
 
-func (t *test) getReader(id objID) pebble.Reader {
+func (t *Test) getReader(id objID) pebble.Reader {
 	switch id.tag() {
 	case dbTag:
 		return t.dbs[id.slot()-1]
@@ -351,21 +510,23 @@ func (t *test) getReader(id objID) pebble.Reader {
 		return t.batches[id.slot()]
 	case snapTag:
 		return t.snapshots[id.slot()]
+	default:
+		panic(fmt.Sprintf("invalid reader ID: %s", id))
 	}
-	panic(fmt.Sprintf("invalid reader ID: %s", id))
 }
 
-func (t *test) getWriter(id objID) pebble.Writer {
+func (t *Test) getWriter(id objID) pebble.Writer {
 	switch id.tag() {
 	case dbTag:
 		return t.dbs[id.slot()-1]
 	case batchTag:
 		return t.batches[id.slot()]
+	default:
+		panic(fmt.Sprintf("invalid writer ID: %s", id))
 	}
-	panic(fmt.Sprintf("invalid writer ID: %s", id))
 }
 
-func (t *test) getDB(id objID) *pebble.DB {
+func (t *Test) getDB(id objID) *pebble.DB {
 	switch id.tag() {
 	case dbTag:
 		return t.dbs[id.slot()-1]
@@ -423,6 +584,9 @@ func computeSynchronizationPoints(ops []op) (opsWaitOn [][]int, opsDone []chan s
 		// the DB since it mutates database state.
 		for _, syncObjID := range o.syncObjs() {
 			if vi, vok := lastOpReference[syncObjID]; vok {
+				if vi == i {
+					panic(fmt.Sprintf("%s has %s as syncObj multiple times", ops[i].String(), syncObjID))
+				}
 				opsWaitOn[i] = append(opsWaitOn[i], vi)
 			}
 			lastOpReference[syncObjID] = i

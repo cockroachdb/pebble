@@ -1,191 +1,217 @@
-apply
- L0
-  1:[a#1,SET-b#2,SET]
-  2:[c#3,SET-d#4,SET]
-edit
- delete
-  L0
-   1
- add
-  L2
-  1:[a#1,SET-b#2,SET]
-  4:[c#3,SET-d#4,SET]
+define v1
+L0:
+  000002:[c#3,SET-d#4,SET] seqnums:[3-4]
+  000001:[a#1,SET-b#2,SET] seqnums:[1-2]
 ----
-0.0:
-  000002:[c#3,SET-d#4,SET]
-2:
-  000001:[a#1,SET-b#2,SET]
-  000004:[c#3,SET-d#4,SET]
-zombies []
+L0.0:
+  000001:[a#1,SET-b#2,SET] seqnums:[1-2] points:[a#1,SET-b#2,SET]
+  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
 
-apply
- L0
-  1:[a#1,SET-b#2,SET]
-  2:[c#3,SET-d#4,SET]
-edit
- delete
-  L1
-   1
+# Empty edit.
+apply v1
+----
+L0.0:
+  000001:[a#1,SET-b#2,SET] seqnums:[1-2] points:[a#1,SET-b#2,SET]
+  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+
+apply v1
+  del-table: L0 000001
+  add-table: L2 000001:[a#1,SET-b#2,SET] seqnums:[1-2]
+  add-table: L2 000004:[c#3,SET-d#4,SET] seqnums:[3-4]
+----
+L0.0:
+  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+L2:
+  000001:[a#1,SET-b#2,SET] seqnums:[1-2] points:[a#1,SET-b#2,SET]
+  000004:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+
+apply v1
+  del-table: L1 000001
 ----
 pebble: internal error: No current or added files but have deleted files: 1
 
-apply
- L0
-  1:[a#1,SET-c#2,SET]
-  2:[c#3,SET-d#4,SET]
-edit
- delete
-  L0
-   1
- add
-  L2
-   1:[a#1,SET-c#2,SET]
-   4:[b#3,SET-d#4,SET]
+apply v1
+  del-table: L0 000001
+  add-table: L2 000001:[a#1,SET-b#2,SET] seqnums:[1-2]
+  add-table: L2 000004:[b#3,SET-d#4,SET] seqnums:[3-4]
 ----
-pebble: internal error: L2 files 000001 and 000004 have overlapping ranges: [a#1,SET-c#2,SET] vs [b#3,SET-d#4,SET]
+pebble: internal error: L2 files 000001 and 000004 have overlapping ranges: [a#1,SET-b#2,SET] vs [b#3,SET-d#4,SET]
 
-apply
- L0
-  1:[a#1,SET-c#2,SET]
-  2:[c#3,SET-d#4,SET]
-edit
- add
-  L0
-   4:[b#3,SET-d#5,SET]
+define v2
+L0:
+  000002:[c#3,SET-d#4,SET] seqnums:[3-4]
+  000001:[a#1,SET-c#2,SET] seqnums:[1-2]
 ----
-0.2:
-  000004:[b#3,SET-d#5,SET]
-0.1:
-  000002:[c#3,SET-d#4,SET]
-0.0:
-  000001:[a#1,SET-c#2,SET]
-zombies []
+L0.1:
+  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+L0.0:
+  000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
 
-apply
- L0
-   1:[a#1,SET-c#2,SET]
-   2:[c#3,SET-d#4,SET]
-edit
- add
-  L0
-   4:[b#0,SET-d#0,SET]
+apply v2
+  add-table: L0 000004:[b#3,SET-d#5,SET] seqnums:[3-5]
 ----
-0.2:
-  000002:[c#3,SET-d#4,SET]
-0.1:
-  000001:[a#1,SET-c#2,SET]
-0.0:
-  000004:[b#0,SET-d#0,SET]
-zombies []
+L0.2:
+  000004:[b#3,SET-d#5,SET] seqnums:[3-5] points:[b#3,SET-d#5,SET]
+L0.1:
+  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+L0.0:
+  000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
+
+apply v2
+  add-table: L0 000004:[b#0,SET-d#0,SET] seqnums:[0-0]
+----
+L0.2:
+  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+L0.1:
+  000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
+L0.0:
+  000004:[b#0,SET-d#0,SET] seqnums:[0-0] points:[b#0,SET-d#0,SET]
 
 
-apply
-edit
- add
-  L0
-   1:[a#1,SET-c#2,SET]
-   4:[b#3,SET-d#5,SET]
+define empty
 ----
-0.1:
-  000004:[b#3,SET-d#5,SET]
-0.0:
-  000001:[a#1,SET-c#2,SET]
-zombies []
 
-apply
- L0
-  1:[a#1,SET-c#2,SET]
+apply empty
+  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
+  add-table: L0 000004:[b#3,SET-d#5,SET] seqnums:[3-5]
 ----
-0.0:
-  000001:[a#1,SET-c#2,SET]
-zombies []
+L0.1:
+  000004:[b#3,SET-d#5,SET] seqnums:[3-5] points:[b#3,SET-d#5,SET]
+L0.0:
+  000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
 
-apply
- L2
-  3:[b#1,SET-c#2,SET]
-  4:[d#3,SET-f#4,SET]
-  5:[h#3,SET-h#2,SET]
-  2:[n#5,SET-q#3,SET]
-  1:[r#2,SET-t#1,SET]
-edit
- delete
-  L2
-   4
-   1
- add
-  L2
-   6:[a#10,SET-a#7,SET]
-   7:[e#1,SET-g#2,SET]
-   10:[j#3,SET-m#2,SET]
+apply v2
+  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
 ----
-2:
-  000006:[a#10,SET-a#7,SET]
+pebble: files 000001 and 000001 collided on sort keys
+
+apply empty
+  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
+----
+L0.0:
+  000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
+
+apply empty
+  add-table: L2 000010:[j#3,SET-m#2,SET]
+  add-table: L2 000006:[a#10,SET-a#7,SET]
+----
+L2:
+  000006:[a#10,SET-a#7,SET] seqnums:[0-0] points:[a#10,SET-a#7,SET]
+  000010:[j#3,SET-m#2,SET] seqnums:[0-0] points:[j#3,SET-m#2,SET]
+
+define v3
+L2:
   000003:[b#1,SET-c#2,SET]
-  000007:[e#1,SET-g#2,SET]
+  000004:[d#3,SET-f#4,SET]
   000005:[h#3,SET-h#2,SET]
-  000010:[j#3,SET-m#2,SET]
   000002:[n#5,SET-q#3,SET]
-zombies [1 4]
-
-apply
-edit
- add
-  L2
-   10:[j#3,SET-m#2,SET]
-   6:[a#10,SET-a#7,SET]
+  000001:[r#2,SET-t#1,SET]
 ----
-2:
-  000006:[a#10,SET-a#7,SET]
-  000010:[j#3,SET-m#2,SET]
-zombies []
+L2:
+  000003:[b#1,SET-c#2,SET] seqnums:[0-0] points:[b#1,SET-c#2,SET]
+  000004:[d#3,SET-f#4,SET] seqnums:[0-0] points:[d#3,SET-f#4,SET]
+  000005:[h#3,SET-h#2,SET] seqnums:[0-0] points:[h#3,SET-h#2,SET]
+  000002:[n#5,SET-q#3,SET] seqnums:[0-0] points:[n#5,SET-q#3,SET]
+  000001:[r#2,SET-t#1,SET] seqnums:[0-0] points:[r#2,SET-t#1,SET]
 
-# Verify that the zombies map is populated correctly.
-
-apply
- L0
-  1:[a#1,SET-b#2,SET]
- L1
-  2:[c#3,SET-d#2,SET]
-edit
- delete
-  L0
-   1
-  L1
-   2
+apply v3
+  del-table: L2 000004
+  del-table: L2 000001
+  add-table: L2 000006:[a#10,SET-a#7,SET]
+  add-table: L2 000007:[e#1,SET-g#2,SET]
+  add-table: L2 000010:[j#3,SET-m#2,SET]
 ----
-zombies [1 2]
+L2:
+  000006:[a#10,SET-a#7,SET] seqnums:[0-0] points:[a#10,SET-a#7,SET]
+  000003:[b#1,SET-c#2,SET] seqnums:[0-0] points:[b#1,SET-c#2,SET]
+  000007:[e#1,SET-g#2,SET] seqnums:[0-0] points:[e#1,SET-g#2,SET]
+  000005:[h#3,SET-h#2,SET] seqnums:[0-0] points:[h#3,SET-h#2,SET]
+  000010:[j#3,SET-m#2,SET] seqnums:[0-0] points:[j#3,SET-m#2,SET]
+  000002:[n#5,SET-q#3,SET] seqnums:[0-0] points:[n#5,SET-q#3,SET]
+
+define v4
+L0:
+  000001:[a#1,SET-b#2,SET]
+L1:
+  000002:[c#3,SET-d#2,SET]
+----
+L0.0:
+  000001:[a#1,SET-b#2,SET] seqnums:[0-0] points:[a#1,SET-b#2,SET]
+L1:
+  000002:[c#3,SET-d#2,SET] seqnums:[0-0] points:[c#3,SET-d#2,SET]
+
+apply v4
+  del-table: L0 000001
+  del-table: L1 000002
+----
 
 # Deletion of a non-existent table results in an error.
-
-apply
- L0
-  1:[a#1,SET-b#2,SET]
-edit
- delete
-  L0
-   2
+apply v4
+  del-table: L0 000004
 ----
-pebble: file deleted L0.000002 before it was inserted
+error during Accumulate: pebble: file deleted L0.000004 before it was inserted
 
-apply
- L0
-  1:[a#1,SET-b#2,SET]
-edit
- delete
-  L0
-   1
- add
-  L2
-  1:[a#1,SET-b#2,SET]
-  4:[c#3,SET-d#4,SET]
-  5:[s#3,SET-z#4,SET]
-edit
-  delete
-    L2
-     1
-    L2
-     4
+define v5
+L0:
+  000001:[a#1,SET-b#2,SET]
 ----
-2:
-  000005:[s#3,SET-z#4,SET]
-zombies []
+L0.0:
+  000001:[a#1,SET-b#2,SET] seqnums:[0-0] points:[a#1,SET-b#2,SET]
+
+apply v5
+  del-table: L0 1
+  add-table: L2 000001:[a#1,SET-b#2,SET]
+  add-table: L2 000004:[c#3,SET-d#4,SET]
+  add-table: L2 000005:[s#3,SET-z#4,SET]
+new version edit
+  del-table: L2 000001
+  del-table: L2 000004
+----
+L2:
+  000005:[s#3,SET-z#4,SET] seqnums:[0-0] points:[s#3,SET-z#4,SET]
+
+define v6
+L1:
+  000001:[a#2,SET-e#2,SET]
+L2:
+  000002:[c#1,SET-f#1,SET]
+----
+L1:
+  000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]
+L2:
+  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+
+# Convert a physical table to virtual tables.
+apply v6
+  del-table: L1 000001
+  add-table: L1 000003(000009):[a#2,SET-b#2,SET]
+  add-table: L1 000004(000009):[c#2,SET-e#2,SET]
+  add-backing: 000009
+----
+L1:
+  000003(000009):[a#2,SET-b#2,SET] seqnums:[0-0] points:[a#2,SET-b#2,SET]
+  000004(000009):[c#2,SET-e#2,SET] seqnums:[0-0] points:[c#2,SET-e#2,SET]
+L2:
+  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+
+define v7
+L1:
+  000003(000009):[a#2,SET-b#2,SET] seqnums:[0-0] points:[a#2,SET-b#2,SET]
+  000004(000009):[c#2,SET-e#2,SET] seqnums:[0-0] points:[c#2,SET-e#2,SET]
+L2:
+  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+----
+L1:
+  000003(000009):[a#2,SET-b#2,SET] seqnums:[0-0] points:[a#2,SET-b#2,SET]
+  000004(000009):[c#2,SET-e#2,SET] seqnums:[0-0] points:[c#2,SET-e#2,SET]
+L2:
+  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+
+# Remove virtual tables and their backing.
+apply v7
+  del-table: L1 000003
+  del-table: L1 000004
+  del-backing: 000009
+----
+L2:
+  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]

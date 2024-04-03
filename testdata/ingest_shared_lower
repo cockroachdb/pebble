@@ -13,7 +13,7 @@ ingest ext0
 
 lsm
 ----
-6:
+L6:
   000004:[a#10,SET-l#10,SET]
 
 
@@ -31,7 +31,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000008:[a#0,SET-l#0,SET]
 
 switch 2
@@ -49,8 +49,8 @@ replicated 1 shared SSTs
 
 lsm
 ----
-6:
-  000005:[d#10,SET-f#10,SET]
+L6:
+  000005(000005):[d#11,DELSIZED-f#11,DEL]
 
 iter
 first
@@ -105,15 +105,16 @@ ok
 
 lsm
 ----
-6:
+L6:
   000008:[a#0,SET-l#0,SET]
 
 excise e gg
 ----
 would excise 1 files, use ingest-and-excise to excise.
-  deleted:       L6 000008
-  added:         L6 000009:[a#0,1-d#0,1]
-  added:         L6 000010:[l#0,1-l#0,1]
+  del-table:     L6 000008
+  add-table:     L6 000009(000008):[a#0,SET-d#0,SET]
+  add-table:     L6 000010(000008):[l#0,SET-l#0,SET]
+  add-backing:   000008
 
 replicate 2 1 e gg
 ----
@@ -335,11 +336,11 @@ flush
 
 lsm
 ----
-0.1:
+L0.1:
   000010:[a@3#15,SET-c@9#17,SET]
-0.0:
+L0.0:
   000008:[b#14,RANGEDEL-d#inf,RANGEDEL]
-6:
+L6:
   000006:[a@3#10,SET-e#13,SET]
 
 iter
@@ -365,10 +366,10 @@ ok
 
 lsm
 ----
-0.0:
-  000004:[a@3#11,SET-d#inf,RANGEDEL]
-6:
-  000005:[a@3#10,SET-e#10,SET]
+L0.0:
+  000004:[a@3#12,SET-d#inf,RANGEDEL]
+L6:
+  000005(000005):[a@3#11,DELSIZED-e#11,DEL]
 
 iter
 first
@@ -416,9 +417,9 @@ ingest s1
 
 lsm
 ----
-5:
+L5:
   000007:[b#14,RANGEDEL-d#inf,RANGEDEL]
-6:
+L6:
   000006:[a@3#10,SET-e#13,SET]
 
 batch
@@ -432,11 +433,11 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000009:[a@3#15,SET-c@9#17,SET]
-5:
+L5:
   000007:[b#14,RANGEDEL-d#inf,RANGEDEL]
-6:
+L6:
   000006:[a@3#10,SET-e#13,SET]
 
 iter
@@ -464,12 +465,12 @@ ok
 
 lsm
 ----
-0.0:
-  000004:[a@3#12,SET-c@9#12,SET]
-5:
-  000005:[b#11,RANGEDEL-d#inf,RANGEDEL]
-6:
-  000006:[a@3#10,SET-e#10,SET]
+L0.0:
+  000004:[a@3#13,SET-c@9#13,SET]
+L5:
+  000005(000005):[b#12,DELSIZED-d#inf,RANGEDEL]
+L6:
+  000006(000006):[a@3#11,DELSIZED-e#11,DEL]
 
 iter
 first
@@ -509,7 +510,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000006:[a#10,RANGEKEYSET-e#12,SET]
 
 switch 2
@@ -538,10 +539,10 @@ ok
 
 lsm
 ----
-6:
-  000009:[a#10,RANGEKEYSET-aaa#inf,RANGEKEYSET]
-  000008:[b#13,SET-c#13,SET]
-  000010:[d#11,SET-e#12,SET]
+L6:
+  000009(000006):[a#10,RANGEKEYSET-aaa#inf,RANGEKEYSET]
+  000008(000008):[b#14,DELSIZED-c#14,DEL]
+  000010(000006):[d#11,SET-e#12,SET]
 
 iter
 first
@@ -586,9 +587,9 @@ ingest s2
 
 lsm
 ----
-5:
+L5:
   000007:[bb#14,RANGEDEL-g#inf,RANGEDEL]
-6:
+L6:
   000006:[a@3#10,SET-e#13,SET]
 
 switch 2
@@ -608,7 +609,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000006:[ff#10,SET-ff#10,SET]
 
 # This replication should truncate the range deletion in pebble instance 1
@@ -620,10 +621,10 @@ replicated 2 shared SSTs
 
 lsm
 ----
-5:
-  000008:[bb#12,RANGEDEL-f#inf,RANGEDEL]
-6:
-  000009:[b@5#11,SET-e#11,SET]
+L5:
+  000008(000008):[bb#13,DELSIZED-f#inf,RANGEDEL]
+L6:
+  000009(000009):[b@5#12,DELSIZED-e#12,DEL]
   000006:[ff#10,SET-ff#10,SET]
 
 iter
@@ -667,9 +668,9 @@ ingest s3
 
 lsm
 ----
-5:
+L5:
   000007:[bb#14,RANGEKEYSET-g#inf,RANGEKEYSET]
-6:
+L6:
   000006:[a@3#10,SET-e#13,SET]
 
 switch 2
@@ -689,7 +690,7 @@ ok
 
 lsm
 ----
-6:
+L6:
   000006:[ff#10,SET-ff#10,SET]
 
 # This replication should truncate the range key in pebble instance 1
@@ -701,10 +702,10 @@ replicated 2 shared SSTs
 
 lsm
 ----
-5:
-  000008:[bb#12,RANGEKEYSET-f#inf,RANGEKEYSET]
-6:
-  000009:[b@5#11,SET-e#11,SET]
+L5:
+  000008(000008):[bb#13,RANGEKEYSET-f#inf,RANGEKEYDEL]
+L6:
+  000009(000009):[b@5#12,DELSIZED-e#12,DEL]
   000006:[ff#10,SET-ff#10,SET]
 
 iter
@@ -792,7 +793,7 @@ ok
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[b#10,SET-b#10,SET]
 
 iter snapshot=s1
@@ -841,7 +842,7 @@ del c
 
 lsm
 ----
-6:
+L6:
   000006:[a#10,SET-c#12,SET]
 
 file-only-snapshot s2
@@ -987,7 +988,7 @@ replicated 2 shared SSTs
 
 wait-for-file-only-snapshot s3
 ----
-pebble: snapshot excised before conversion to file-only snapshot
+ok
 
 iter snapshot=s3
 first
@@ -996,7 +997,11 @@ next
 next
 next
 ----
-pebble: snapshot excised before conversion to file-only snapshot
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+f: (foobar, .)
+.
 
 iter snapshot=s3
 first
@@ -1007,7 +1012,13 @@ next
 next
 next
 ----
-pebble: snapshot excised before conversion to file-only snapshot
+a: (foo, .)
+b: (bar, .)
+.
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+f: (foobar, .)
 
 iter
 first

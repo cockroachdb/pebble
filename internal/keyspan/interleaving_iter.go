@@ -207,6 +207,9 @@ func (i *InterleavingIter) Init(
 	keyspanIter FragmentIterator,
 	opts InterleavingIterOpts,
 ) {
+	keyspanIter = MaybeAssert(keyspanIter, comparer.Compare)
+	// To debug:
+	// keyspanIter = InjectLogging(keyspanIter, base.DefaultLogger)
 	*i = InterleavingIter{
 		cmp:         comparer.Compare,
 		comparer:    comparer,
@@ -289,7 +292,7 @@ func (i *InterleavingIter) SeekGE(
 	if i.span != nil && i.cmp(key, i.span.End) < 0 && i.cmp(key, i.span.Start) >= 0 {
 		// We're seeking within the existing span's bounds. We still might need
 		// truncate the span to the iterator's bounds.
-		i.saveSpanForward(i.span)
+		i.saveSpanForward(i.span, nil)
 		i.savedKeyspan()
 	} else {
 		i.keyspanSeekGE(key, nil /* prefix */)
@@ -346,7 +349,7 @@ func (i *InterleavingIter) SeekPrefixGE(
 		if ei := i.comparer.Split(i.span.End); i.cmp(prefix, i.span.End[:ei]) < 0 {
 			// We're seeking within the existing span's bounds. We still might need
 			// truncate the span to the iterator's bounds.
-			i.saveSpanForward(i.span)
+			i.saveSpanForward(i.span, nil)
 			i.savedKeyspan()
 			seekKeyspanIter = false
 		}
@@ -375,7 +378,7 @@ func (i *InterleavingIter) SeekLT(
 	if i.span != nil && i.cmp(key, i.span.Start) > 0 && i.cmp(key, i.span.End) < 0 {
 		// We're seeking within the existing span's bounds. We still might need
 		// truncate the span to the iterator's bounds.
-		i.saveSpanBackward(i.span)
+		i.saveSpanBackward(i.span, nil)
 		// The span's start key is still not guaranteed to be less than key,
 		// because of the bounds enforcement. Consider the following example:
 		//
@@ -845,20 +848,13 @@ func (i *InterleavingIter) keyspanSeekLT(k []byte) {
 	i.savedKeyspan()
 }
 
-func (i *InterleavingIter) saveSpanForward(span *Span) {
+func (i *InterleavingIter) saveSpanForward(span *Span, err error) {
 	i.span = span
+	i.err = firstError(i.err, err)
 	i.truncated = false
 	i.truncatedSpan = Span{}
 	if i.span == nil {
-		i.err = firstError(i.err, i.keyspanIter.Error())
 		return
-	}
-	if invariants.Enabled {
-		if err := i.keyspanIter.Error(); err != nil {
-			panic(errors.WithSecondaryError(
-				errors.AssertionFailedf("pebble: %T keyspan iterator returned non-nil span %s while iter has error", i.keyspanIter, i.span),
-				err))
-		}
 	}
 	// Check the upper bound if we have one.
 	if i.upper != nil && i.cmp(i.span.Start, i.upper) >= 0 {
@@ -907,20 +903,13 @@ func (i *InterleavingIter) saveSpanForward(span *Span) {
 	}
 }
 
-func (i *InterleavingIter) saveSpanBackward(span *Span) {
+func (i *InterleavingIter) saveSpanBackward(span *Span, err error) {
 	i.span = span
+	i.err = firstError(i.err, err)
 	i.truncated = false
 	i.truncatedSpan = Span{}
 	if i.span == nil {
-		i.err = firstError(i.err, i.keyspanIter.Error())
 		return
-	}
-	if invariants.Enabled {
-		if err := i.keyspanIter.Error(); err != nil {
-			panic(errors.WithSecondaryError(
-				errors.AssertionFailedf("pebble: %T keyspan iterator returned non-nil span %s while iter has error", i.keyspanIter, i.span),
-				err))
-		}
 	}
 
 	// Check the lower bound if we have one.
@@ -1029,8 +1018,6 @@ func (i *InterleavingIter) verify(
 			panic("pebble: invariant violation: accumulated error swallowed")
 		case i.err == nil && i.pointIter.Error() != nil:
 			panic("pebble: invariant violation: pointIter swallowed")
-		case i.err == nil && i.keyspanIter.Error() != nil:
-			panic("pebble: invariant violation: keyspanIter error swallowed")
 		}
 	}
 	return k, v
@@ -1082,7 +1069,7 @@ func (i *InterleavingIter) savePoint(key *base.InternalKey, value base.LazyValue
 	if invariants.Enabled {
 		if err := i.pointIter.Error(); key != nil && err != nil {
 			panic(errors.WithSecondaryError(
-				errors.AssertionFailedf("pebble: %T point iterator returned non-nil key %q while iter has error", i.pointIter, key),
+				base.AssertionFailedf("pebble: %T point iterator returned non-nil key %q while iter has error", i.pointIter, key),
 				err))
 		}
 	}

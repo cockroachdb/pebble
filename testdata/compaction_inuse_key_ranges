@@ -4,7 +4,7 @@ L1
   d.SET.1-e.SET.1
   e.SET.1-f.SET.1
 ----
-1:
+L1:
   000001:[a#1,SET-b#1,SET]
   000002:[d#1,SET-e#1,SET]
   000003:[e#1,SET-f#1,SET]
@@ -26,9 +26,9 @@ L1
 L2
   b.SET.1-c.SET.2
 ----
-1:
+L1:
   000001:[a#1,SET-b#1,SET]
-2:
+L2:
   000002:[b#1,SET-c#2,SET]
 
 inuse-key-ranges
@@ -42,9 +42,9 @@ L1
 L2
   c.SET.1-d.SET.2
 ----
-1:
+L1:
   000001:[a#1,SET-b#1,SET]
-2:
+L2:
   000002:[c#1,SET-d#2,SET]
 
 inuse-key-ranges
@@ -58,9 +58,9 @@ L1
 L2
   a.SET.1-b.SET.2
 ----
-1:
+L1:
   000001:[b#1,SET-c#1,SET]
-2:
+L2:
   000002:[a#1,SET-b#2,SET]
 
 inuse-key-ranges
@@ -74,9 +74,9 @@ L1
 L2
   a.SET.1-b.SET.2
 ----
-1:
+L1:
   000001:[c#1,SET-d#1,SET]
-2:
+L2:
   000002:[a#1,SET-b#2,SET]
 
 inuse-key-ranges
@@ -91,7 +91,7 @@ L1
   f.SET.1-g.SET.1
   i.SET.1-j.SET.1
 ----
-1:
+L1:
   000001:[a#1,SET-b#1,SET]
   000002:[c#1,SET-d#1,SET]
   000003:[f#1,SET-g#1,SET]
@@ -116,12 +116,12 @@ L6
   a.SET.0-i.SET.0
   k.SET.0-z.SET.0
 ----
-1:
+L1:
   000001:[a#1,SET-b#1,SET]
   000002:[c#1,SET-d#1,SET]
   000003:[f#1,SET-g#1,SET]
   000004:[i#1,SET-j#1,SET]
-6:
+L6:
   000005:[a#0,SET-i#0,SET]
   000006:[k#0,SET-z#0,SET]
 
@@ -140,12 +140,12 @@ L6
   a.SET.0-i.SET.0
   k.SET.0-z.SET.0
 ----
-0.0:
+L0.0:
   000001:[a#1,SET-b#1,SET]
   000002:[c#1,SET-d#1,SET]
   000003:[f#1,SET-g#1,SET]
   000004:[i#1,SET-j#1,SET]
-6:
+L6:
   000005:[a#0,SET-i#0,SET]
   000006:[k#0,SET-z#0,SET]
 
@@ -164,15 +164,15 @@ L0
   e.SET.1-m.SET.1
   g.SET.1-p.SET.1
 ----
-0.3:
+L0.3:
   000005:[c#1,SET-d#1,SET]
-0.2:
+L0.2:
   000004:[bb#1,SET-dd#1,SET]
-0.1:
+L0.1:
   000002:[aa#1,SET-ab#1,SET]
   000003:[b#2,SET-d#1,SET]
   000007:[g#1,SET-p#1,SET]
-0.0:
+L0.0:
   000001:[a#1,SET-b#1,SET]
   000006:[e#1,SET-m#1,SET]
 
@@ -207,17 +207,17 @@ L4
 L6
   m.SET.1-z.SET.1
 ----
-1:
+L1:
   000001:[a#6,SET-b#6,SET]
   000002:[d#6,SET-g#6,SET]
-2:
+L2:
   000003:[c#5,SET-d#5,SET]
   000004:[i#5,SET-j#5,SET]
-3:
+L3:
   000005:[b#1,SET-c#1,SET]
-4:
+L4:
   000006:[f#1,SET-k#1,SET]
-6:
+L6:
   000007:[m#1,SET-z#1,SET]
 
 inuse-key-ranges
@@ -286,15 +286,15 @@ L4
   a.SET.1-f.SET.1
   w.SET.1-z.SET.1
 ----
-1:
+L1:
   000001:[m#6,SET-p#6,SET]
-2:
+L2:
   000002:[j#5,SET-n#5,SET]
   000003:[o#5,SET-t#5,SET]
-3:
+L3:
   000004:[e#2,SET-k#2,SET]
   000005:[s#2,SET-x#2,SET]
-4:
+L4:
   000006:[a#1,SET-f#1,SET]
   000007:[w#1,SET-z#1,SET]
 
@@ -329,9 +329,9 @@ L2
   bb.SET.5-bb.SET.5
   cc.SET.5-cc.SET.5
 ----
-1:
+L1:
   000001:[a#6,SET-c#6,SET]
-2:
+L2:
   000002:[b#5,SET-b#5,SET]
   000003:[bb#5,SET-bb#5,SET]
   000004:[cc#5,SET-cc#5,SET]
@@ -353,9 +353,9 @@ L2
   c.SET.5-c.SET.5
   c.SET.5-d.SET.5
 ----
-1:
+L1:
   000001:[a#6,SET-c#6,SET]
-2:
+L2:
   000002:[b#5,SET-b#5,SET]
   000003:[bb#5,SET-bb#5,SET]
   000004:[bc#5,SET-c#5,SET]
@@ -388,17 +388,17 @@ L2
 L3
   bb.SET.4-bb.SET.4
 ----
-0.0:
+L0.0:
   000001:[d#7,SET-i#7,SET]
-1:
+L1:
   000002:[a#6,SET-a#6,SET]
   000003:[d#6,SET-d#6,SET]
   000004:[h#6,SET-i#6,SET]
-2:
+L2:
   000005:[b#5,SET-b#5,SET]
   000006:[c#5,SET-c#5,SET]
   000007:[e#5,SET-e#5,SET]
-3:
+L3:
   000008:[bb#4,SET-bb#4,SET]
 
 inuse-key-ranges

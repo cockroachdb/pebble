@@ -5,6 +5,7 @@
 package remoteobjcat_test
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -17,10 +18,11 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/vfstest"
 )
 
 func TestCatalog(t *testing.T) {
-	mem := vfs.NewMem()
+	mem, dumpOpenFiles := vfstest.WithOpenFileTracking(vfs.NewMem())
 	var memLog base.InMemLogger
 
 	var cat *remoteobjcat.Catalog
@@ -45,11 +47,11 @@ func TestCatalog(t *testing.T) {
 			}
 			vals := toUInt64(args...)
 			return remoteobjcat.RemoteObjectMetadata{
-				FileNum: base.FileNum(vals[0]).DiskFileNum(),
+				FileNum: base.DiskFileNum(vals[0]),
 				// When we support other file types, we should let the test determine this.
 				FileType:       base.FileTypeTable,
 				CreatorID:      objstorage.CreatorID(vals[1]),
-				CreatorFileNum: base.FileNum(vals[2]).DiskFileNum(),
+				CreatorFileNum: base.DiskFileNum(vals[2]),
 			}
 		}
 
@@ -58,7 +60,7 @@ func TestCatalog(t *testing.T) {
 			if len(args) != 1 {
 				td.Fatalf(t, "delete <file-num>")
 			}
-			return base.FileNum(toUInt64(args[0])[0]).DiskFileNum()
+			return base.DiskFileNum(toUInt64(args[0])[0])
 		}
 
 		memLog.Reset()
@@ -92,7 +94,9 @@ func TestCatalog(t *testing.T) {
 				td.Fatalf(t, "set-creator-id <id>")
 			}
 			id := objstorage.CreatorID(toUInt64(td.CmdArgs[0].String())[0])
-			if err := cat.SetCreatorID(id); err != nil {
+			if err := base.CatchErrorPanic(func() error {
+				return cat.SetCreatorID(id)
+			}); err != nil {
 				return fmt.Sprintf("error setting creator ID: %v", err)
 			}
 			return memLog.String()
@@ -113,7 +117,9 @@ func TestCatalog(t *testing.T) {
 					td.Fatalf(t, "unknown batch command: %s", tokens[0])
 				}
 			}
-			if err := cat.ApplyBatch(b); err != nil {
+			if err := base.CatchErrorPanic(func() error {
+				return cat.ApplyBatch(b)
+			}); err != nil {
 				return fmt.Sprintf("error applying batch: %v", err)
 			}
 			b.Reset()
@@ -140,11 +146,11 @@ func TestCatalog(t *testing.T) {
 			for batchIdx := 0; batchIdx < n; batchIdx++ {
 				for i := 0; i < size; i++ {
 					b.AddObject(remoteobjcat.RemoteObjectMetadata{
-						FileNum: base.FileNum(rand.Uint64()).DiskFileNum(),
+						FileNum: base.DiskFileNum(rand.Uint64()),
 						// When we support other file types, we should let the test determine this.
 						FileType:       base.FileTypeTable,
 						CreatorID:      objstorage.CreatorID(rand.Uint64()),
-						CreatorFileNum: base.FileNum(rand.Uint64()).DiskFileNum(),
+						CreatorFileNum: base.DiskFileNum(rand.Uint64()),
 					})
 				}
 				if err := cat.ApplyBatch(b); err != nil {
@@ -162,6 +168,11 @@ func TestCatalog(t *testing.T) {
 			cat = nil
 			if err != nil {
 				return fmt.Sprintf("%v", err)
+			}
+			var openFileBuf bytes.Buffer
+			dumpOpenFiles(&openFileBuf)
+			if openFileBuf.Len() > 0 {
+				memLog.Errorf("open files remain: %s\n", openFileBuf.String())
 			}
 			return memLog.String()
 

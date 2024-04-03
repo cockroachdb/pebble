@@ -9,7 +9,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"slices"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -17,11 +17,12 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCheckpoint(t *testing.T) {
+func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 	dbs := make(map[string]*DB)
 	defer func() {
 		for _, db := range dbs {
@@ -33,16 +34,24 @@ func TestCheckpoint(t *testing.T) {
 
 	mem := vfs.NewMem()
 	var memLog base.InMemLogger
+	remoteMem := remote.NewInMem()
 	opts := &Options{
 		FS:                          vfs.WithLogging(mem, memLog.Infof),
 		FormatMajorVersion:          internalFormatNewest,
 		L0CompactionThreshold:       10,
 		DisableAutomaticCompactions: true,
+		Logger:                      testLogger{t},
 	}
-	opts.private.disableTableStats = true
+	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		"": remoteMem,
+	})
+	if createOnShared {
+		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+	}
+	opts.DisableTableStats = true
 	opts.private.testingAlwaysWaitForCleanup = true
 
-	datadriven.RunTest(t, "testdata/checkpoint", func(t *testing.T, td *datadriven.TestData) string {
+	datadriven.RunTest(t, ddFile, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "batch":
 			if len(td.CmdArgs) != 1 {
@@ -133,14 +142,10 @@ func TestCheckpoint(t *testing.T) {
 			d := dbs[td.CmdArgs[0].String()]
 			d.mu.Lock()
 			d.mu.versions.logLock()
-			var fileNums []base.DiskFileNum
-			for _, b := range d.mu.versions.backingState.fileBackingMap {
-				fileNums = append(fileNums, b.DiskFileNum)
-			}
+			fileNums := d.mu.versions.virtualBackings.DiskFileNums()
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
 
-			slices.Sort(fileNums)
 			var buf bytes.Buffer
 			for _, f := range fileNums {
 				buf.WriteString(fmt.Sprintf("%s\n", f.String()))
@@ -196,6 +201,12 @@ func TestCheckpoint(t *testing.T) {
 				return err.Error()
 			}
 			dbs[dir] = d
+			if len(dbs) == 1 && createOnShared {
+				// This is the first db. Set a creator ID.
+				if err := d.SetCreatorID(1); err != nil {
+					return err.Error()
+				}
+			}
 			return memLog.String()
 
 		case "scan":
@@ -220,9 +231,21 @@ func TestCheckpoint(t *testing.T) {
 	})
 }
 
+func TestCheckpoint(t *testing.T) {
+	t.Run("shared=false", func(t *testing.T) {
+		testCheckpointImpl(t, "testdata/checkpoint", false /* createOnShared */)
+	})
+	t.Run("shared=true", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skipf("skipped on windows")
+		}
+		testCheckpointImpl(t, "testdata/checkpoint_shared", true /* createOnShared */)
+	})
+}
+
 func TestCheckpointCompaction(t *testing.T) {
 	fs := vfs.NewMem()
-	d, err := Open("", &Options{FS: fs})
+	d, err := Open("", &Options{FS: fs, Logger: testLogger{t: t}})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -268,7 +291,7 @@ func TestCheckpointCompaction(t *testing.T) {
 		}
 	}()
 	go func() {
-		opts := &Options{FS: fs}
+		opts := &Options{FS: fs, Logger: testLogger{t: t}}
 		defer cancel()
 		defer wg.Done()
 		for dir := range check {
@@ -285,7 +308,7 @@ func TestCheckpointCompaction(t *testing.T) {
 					if tbl.Virtual {
 						continue
 					}
-					if _, err := fs.Stat(base.MakeFilepath(fs, dir, base.FileTypeTable, tbl.FileNum.DiskFileNum())); err != nil {
+					if _, err := fs.Stat(base.MakeFilepath(fs, dir, base.FileTypeTable, base.PhysicalTableDiskFileNum(tbl.FileNum))); err != nil {
 						t.Error(err)
 						return
 					}
@@ -305,7 +328,7 @@ func TestCheckpointCompaction(t *testing.T) {
 func TestCheckpointFlushWAL(t *testing.T) {
 	const checkpointPath = "checkpoints/checkpoint"
 	fs := vfs.NewStrictMem()
-	opts := &Options{FS: fs}
+	opts := &Options{FS: fs, Logger: testLogger{t: t}}
 	key, value := []byte("key"), []byte("value")
 
 	// Create a checkpoint from an unsynced DB.
@@ -364,11 +387,12 @@ func TestCheckpointManyFiles(t *testing.T) {
 		FS:                          vfs.NewMem(),
 		FormatMajorVersion:          internalFormatNewest,
 		DisableAutomaticCompactions: true,
+		Logger:                      testLogger{t},
 	}
 	// Disable compression to speed up the test.
 	opts.EnsureDefaults()
 	for i := range opts.Levels {
-		opts.Levels[i].Compression = NoCompression
+		opts.Levels[i].Compression = func() Compression { return NoCompression }
 	}
 
 	d, err := Open("", opts)

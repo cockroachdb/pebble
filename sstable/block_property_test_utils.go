@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -35,7 +36,26 @@ func NewTestKeysBlockPropertyCollector() BlockPropertyCollector {
 // and keys with suffixes within the range [filterMin, filterMax). For keys with
 // suffixes outside the range, iteration is nondeterministic.
 func NewTestKeysBlockPropertyFilter(filterMin, filterMax uint64) *BlockIntervalFilter {
-	return NewBlockIntervalFilter(testKeysBlockPropertyName, filterMin, filterMax)
+	return NewBlockIntervalFilter(testKeysBlockPropertyName, filterMin, filterMax, testKeysBlockIntervalSyntheticReplacer{})
+}
+
+var _ BlockIntervalSyntheticReplacer = testKeysBlockIntervalSyntheticReplacer{}
+
+type testKeysBlockIntervalSyntheticReplacer struct{}
+
+// AdjustIntervalWithSyntheticSuffix implements BlockIntervalSyntheticReplacer.
+func (sr testKeysBlockIntervalSyntheticReplacer) AdjustIntervalWithSyntheticSuffix(
+	lower uint64, upper uint64, suffix []byte,
+) (adjustedLower uint64, adjustedUpper uint64, err error) {
+	decoded, err := testkeys.ParseSuffix(suffix)
+	if err != nil {
+		return 0, 0, err
+	}
+	// The testKeysSuffixIntervalCollector below maps keys with no suffix to MaxUint64; ignore it.
+	if upper != math.MaxUint64 && uint64(decoded) < upper {
+		panic(fmt.Sprintf("the synthetic suffix %d is less than the property upper bound %d", decoded, upper))
+	}
+	return uint64(decoded), uint64(decoded) + 1, nil
 }
 
 // NewTestKeysMaskingFilter constructs a TestKeysMaskingFilter that implements
@@ -66,6 +86,11 @@ func (f TestKeysMaskingFilter) SetSuffix(suffix []byte) error {
 // Intersects implements the BlockPropertyFilter interface.
 func (f TestKeysMaskingFilter) Intersects(prop []byte) (bool, error) {
 	return f.BlockIntervalFilter.Intersects(prop)
+}
+
+// SyntheticSuffixIntersects implements the BlockPropertyFilter interface.
+func (f TestKeysMaskingFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
+	return f.BlockIntervalFilter.SyntheticSuffixIntersects(prop, suffix)
 }
 
 var _ DataBlockIntervalCollector = (*testKeysSuffixIntervalCollector)(nil)

@@ -5,8 +5,10 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -144,31 +146,41 @@ func TestMergingIterCornerCases(t *testing.T) {
 	fmtKey := DefaultComparer.FormatKey
 	opts := (*Options)(nil).EnsureDefaults()
 	var v *version
+	var buf bytes.Buffer
 
-	// Indexed by fileNum.
+	// Indexed by FileNum.
 	var readers []*sstable.Reader
 	defer func() {
 		for _, r := range readers {
 			r.Close()
 		}
 	}()
+	parser := itertest.NewParser()
 
-	var fileNum base.FileNum
+	var (
+		pointProbes    map[base.FileNum][]itertest.Probe
+		rangeDelProbes map[base.FileNum][]keyspanProbe
+		fileNum        base.FileNum
+	)
 	newIters :=
-		func(_ context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts,
-		) (internalIterator, keyspan.FragmentIterator, error) {
+		func(_ context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts, kinds iterKinds,
+		) (iterSet, error) {
 			r := readers[file.FileNum]
-			rangeDelIter, err := r.NewRawRangeDelIter()
+			rangeDelIter, err := r.NewRawRangeDelIter(sstable.NoTransforms)
 			if err != nil {
-				return nil, nil, err
+				return iterSet{}, err
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
+				sstable.NoTransforms,
 				opts.GetLowerBound(), opts.GetUpperBound(), nil, true /* useFilterBlock */, iio.stats,
 				sstable.CategoryAndQoS{}, nil, sstable.TrivialReaderProvider{Reader: r})
 			if err != nil {
-				return nil, nil, err
+				return iterSet{}, err
 			}
-			return iter, rangeDelIter, nil
+			return iterSet{
+				point:         itertest.Attach(iter, itertest.ProbeState{Log: &buf}, pointProbes[file.FileNum]...),
+				rangeDeletion: attachKeyspanProbes(rangeDelIter, keyspanProbeContext{log: &buf}, rangeDelProbes[file.FileNum]...),
+			}, nil
 		}
 
 	datadriven.RunTest(t, "testdata/merging_iter", func(t *testing.T, d *datadriven.TestData) string {
@@ -254,6 +266,29 @@ func TestMergingIterCornerCases(t *testing.T) {
 			v = newVersion(opts, files)
 			return v.String()
 		case "iter":
+			buf.Reset()
+			pointProbes = make(map[base.FileNum][]itertest.Probe, len(v.Levels))
+			rangeDelProbes = make(map[base.FileNum][]keyspanProbe, len(v.Levels))
+			for _, cmdArg := range d.CmdArgs {
+				switch key := cmdArg.Key; key {
+				case "probe-points":
+					i, err := strconv.Atoi(cmdArg.Vals[0][1:])
+					if err != nil {
+						require.NoError(t, err)
+					}
+					pointProbes[base.FileNum(i)] = itertest.MustParseProbes(parser, cmdArg.Vals[1:]...)
+				case "probe-rangedels":
+					i, err := strconv.Atoi(cmdArg.Vals[0][1:])
+					if err != nil {
+						require.NoError(t, err)
+					}
+					rangeDelProbes[base.FileNum(i)] = parseKeyspanProbes(cmdArg.Vals[1:]...)
+				default:
+					// Might be a command understood by the RunInternalIterCmd
+					// command, so don't error.
+				}
+			}
+
 			levelIters := make([]mergingIterLevel, 0, len(v.Levels))
 			var stats base.InternalIteratorStats
 			for i, l := range v.Levels {
@@ -264,6 +299,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				li := &levelIter{}
 				li.init(context.Background(), IterOptions{}, testkeys.Comparer,
 					newIters, slice.Iter(), manifest.Level(i), internalIterOpts{stats: &stats})
+
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
 				li.initRangeDel(&levelIters[i].rangeDelIter)
@@ -277,8 +313,9 @@ func TestMergingIterCornerCases(t *testing.T) {
 			// (https://github.com/cockroachdb/pebble/pull/3037 caused a SIGSEGV due
 			// to a nil pointer dereference).
 			miter.SetContext(context.Background())
-			return itertest.RunInternalIterCmd(t, d, miter,
+			itertest.RunInternalIterCmdWriter(t, &buf, d, miter,
 				itertest.Verbose, itertest.WithStats(&stats))
+			return buf.String()
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
@@ -372,7 +409,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
 							var stats base.InternalIteratorStats
@@ -405,7 +442,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
 							var stats base.InternalIteratorStats
@@ -441,7 +478,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
 							var stats base.InternalIteratorStats
@@ -597,7 +634,7 @@ func buildLevelsForMergingIterSeqSeek(
 	for i := range readers {
 		meta := make([]*fileMetadata, len(readers[i]))
 		for j := range readers[i] {
-			iter, err := readers[i][j].NewIter(nil /* lower */, nil /* upper */)
+			iter, err := readers[i][j].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 			require.NoError(b, err)
 			smallest, _ := iter.First()
 			meta[j] = &fileMetadata{}
@@ -620,19 +657,19 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		levelIndex := i
 		level := len(readers) - 1 - i
 		newIters := func(
-			_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
-		) (internalIterator, keyspan.FragmentIterator, error) {
+			_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
+		) (iterSet, error) {
 			iter, err := readers[levelIndex][file.FileNum].NewIter(
-				opts.LowerBound, opts.UpperBound)
+				sstable.NoTransforms, opts.LowerBound, opts.UpperBound)
 			if err != nil {
-				return nil, nil, err
+				return iterSet{}, err
 			}
-			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter()
+			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(sstable.NoTransforms)
 			if err != nil {
 				iter.Close()
-				return nil, nil, err
+				return iterSet{}, err
 			}
-			return iter, rdIter, err
+			return iterSet{point: iter, rangeDeletion: rdIter}, err
 		}
 		l := newLevelIter(
 			context.Background(), IterOptions{}, testkeys.Comparer, newIters, levelSlices[i].Iter(),

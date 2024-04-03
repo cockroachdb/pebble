@@ -1,18 +1,19 @@
 module github.com/cockroachdb/pebble
 
 require (
-	github.com/DataDog/zstd v1.4.5
+	github.com/DataDog/zstd v1.5.6-0.20230824185856-869dae002e5e
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/cockroachdb/datadriven v1.0.3-0.20230413201302-be42291fc80f
 	github.com/cockroachdb/errors v1.11.1
 	github.com/cockroachdb/metamorphic v0.0.0-20231108215700-4ba948b56895
 	github.com/cockroachdb/redact v1.1.5
+	github.com/cockroachdb/swiss v0.0.0-20240303172742-c161743eb608
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06
 	github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
 	github.com/golang/snappy v0.0.4
 	github.com/guptarohit/asciigraph v0.5.5
-	github.com/klauspost/compress v1.15.15
+	github.com/klauspost/compress v1.16.7
 	github.com/kr/pretty v0.3.1
 	github.com/pkg/errors v0.9.1
 	github.com/pmezard/go-difflib v1.0.0
@@ -23,7 +24,7 @@ require (
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 	golang.org/x/perf v0.0.0-20230113213139-801c7ef9e5c5
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
-	golang.org/x/sys v0.11.0
+	golang.org/x/sys v0.17.0
 )
 
 require (

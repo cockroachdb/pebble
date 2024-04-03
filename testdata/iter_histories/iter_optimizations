@@ -340,7 +340,7 @@ seek-ge b@7
 .
 .
 .
-lastPositioningOp="invalidate"
+lastPositioningOp="unknown"
 b@6: (b@6, .)
 
 reset
@@ -433,9 +433,9 @@ flush
 
 lsm
 ----
-0.1:
+L0.1:
   000007:[c@0#13,DEL-e@0#14,SET]
-0.0:
+L0.0:
   000005:[a#10,RANGEDEL-d@1#12,SET]
 
 # The first SeekPrefixGE(b@3) positions each level iterator over their
@@ -482,7 +482,7 @@ flush
 
 compact a-h
 ----
-6:
+L6:
   000005:[b#10,SET-b#10,SET]
 
 batch commit
@@ -495,7 +495,7 @@ flush
 
 compact a-h
 ----
-6:
+L6:
   000005:[b#10,SET-b#10,SET]
   000007:[g#11,SET-g#11,SET]
 
@@ -517,10 +517,10 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000009:[b#12,RANGEDEL-d#inf,RANGEDEL]
   000011:[e#13,SET-e#13,SET]
-6:
+L6:
   000005:[b#10,SET-b#10,SET]
   000007:[g#11,SET-g#11,SET]
 
@@ -576,7 +576,7 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[c#11,RANGEKEYSET-e#inf,RANGEKEYSET]
 
 batch commit
@@ -589,7 +589,7 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[c#11,RANGEKEYSET-e#inf,RANGEKEYSET]
   000007:[j#12,SET-j#12,SET]
 
@@ -612,10 +612,10 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000009:[b@2#14,MERGE-d#inf,RANGEDEL]
   000011:[m#15,DEL-m#15,DEL]
-6:
+L6:
   000005:[c#11,RANGEKEYSET-e#inf,RANGEKEYSET]
   000007:[j#12,SET-j#12,SET]
 
@@ -670,7 +670,7 @@ flush
 
 compact a-f
 ----
-6:
+L6:
   000005:[d@4#10,SET-d@4#10,SET]
 
 batch commit
@@ -684,7 +684,7 @@ flush
 
 compact e-k
 ----
-6:
+L6:
   000005:[d@4#10,SET-d@4#10,SET]
   000007:[f@5#11,SET-g@5#12,SET]
 
@@ -707,11 +707,11 @@ flush
 
 lsm
 ----
-0.1:
+L0.1:
   000011:[dd#15,RANGEDEL-ee#inf,RANGEDEL]
-0.0:
+L0.0:
   000009:[b@5#13,DEL-e@4#14,SET]
-6:
+L6:
   000005:[d@4#10,SET-d@4#10,SET]
   000007:[f@5#11,SET-g@5#12,SET]
 

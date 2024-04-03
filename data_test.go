@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,6 +32,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"github.com/ghemawat/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -118,8 +120,6 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					op = "seekge"
 				case seekLTLastPositioningOp:
 					op = "seeklt"
-				case invalidatedLastPositionOp:
-					op = "invalidate"
 				}
 				fmt.Fprintf(&b, "%s=%q\n", field, op)
 			default:
@@ -263,7 +263,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 func parseIterOptions(
 	opts *IterOptions, ref *IterOptions, parts []string,
 ) (foundAny bool, err error) {
-	const usageString = "[lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>] [mask-filter=<bool>] [only-durable=<bool>] [table-filter=reuse|none] [point-filters=reuse|none]\n"
+	const usageString = "[lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>] [mask-filter=<bool>] [only-durable=<bool>] point-filters=reuse|none]\n"
 	for _, part := range parts {
 		arg := strings.SplitN(part, "=", 2)
 		if len(arg) != 2 {
@@ -300,15 +300,6 @@ func parseIterOptions(
 			opts.RangeKeyMasking.Filter = func() BlockPropertyFilterMask {
 				return sstable.NewTestKeysMaskingFilter()
 			}
-		case "table-filter":
-			switch arg[1] {
-			case "reuse":
-				opts.TableFilter = ref.TableFilter
-			case "none":
-				opts.TableFilter = nil
-			default:
-				return false, errors.Newf("unknown arg table-filter=%q:\n%s", arg[1], usageString)
-			}
 		case "only-durable":
 			var err error
 			opts.OnlyReadGuaranteedDurable, err = strconv.ParseBool(arg[1])
@@ -337,9 +328,7 @@ func printIterState(
 			validityStateStr = " at-limit"
 		}
 	}
-	if err := iter.Error(); err != nil {
-		fmt.Fprintf(b, "err=%v\n", err)
-	} else if validity == IterValid {
+	if validity == IterValid {
 		switch {
 		case iter.opts.pointKeys():
 			hasPoint, hasRange := iter.HasPointAndRange()
@@ -378,7 +367,11 @@ func printIterState(
 		}
 		fmt.Fprintln(b)
 	} else {
-		fmt.Fprintf(b, ".%s\n", validityStateStr)
+		if err := iter.Error(); err != nil {
+			fmt.Fprintf(b, "err=%v\n", err)
+		} else {
+			fmt.Fprintf(b, ".%s\n", validityStateStr)
+		}
 	}
 }
 
@@ -500,14 +493,11 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 
 	// Override table format, if provided.
 	tableFormat := d.opts.FormatMajorVersion.MaxTableFormat()
+	var blockSize int64
 	for _, cmdArg := range td.CmdArgs[1:] {
 		switch cmdArg.Key {
 		case "format":
 			switch cmdArg.Vals[0] {
-			case "leveldb":
-				tableFormat = sstable.TableFormatLevelDB
-			case "rocksdbv2":
-				tableFormat = sstable.TableFormatRocksDBv2
 			case "pebblev1":
 				tableFormat = sstable.TableFormatPebblev1
 			case "pebblev2":
@@ -519,10 +509,22 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 			default:
 				return errors.Errorf("unknown format string %s", cmdArg.Vals[0])
 			}
+		case "block-size":
+			var err error
+			blockSize, err = strconv.ParseInt(cmdArg.Vals[0], 10, 64)
+			if err != nil {
+				return errors.Wrap(err, td.Pos)
+			}
 		}
 	}
 
 	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
+	if blockSize == 0 && rand.Intn(4) == 0 {
+		// Force two-level indexes if not already forced on or off.
+		blockSize = 5
+	}
+	writeOpts.BlockSize = int(blockSize)
+	writeOpts.IndexBlockSize = int(blockSize)
 
 	f, err := storage.CreateObject(path)
 	if err != nil {
@@ -542,8 +544,9 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	}
 
 	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
-		for s := rdi.First(); s != nil; s = rdi.Next() {
-			err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
+		s, err := rdi.First()
+		for ; s != nil && err == nil; s, err = rdi.Next() {
+			err = rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
 				k.SetSeqNum(0)
 				return w.Add(k, v)
 			})
@@ -551,10 +554,14 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 				return err
 			}
 		}
+		if err != nil {
+			return err
+		}
 	}
 
 	if rki := b.newRangeKeyIter(nil, math.MaxUint64); rki != nil {
-		for s := rki.First(); s != nil; s = rki.Next() {
+		s, err := rki.First()
+		for ; s != nil; s, err = rki.Next() {
 			for _, k := range s.Keys {
 				var err error
 				switch k.Kind() {
@@ -571,6 +578,9 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 					return err
 				}
 			}
+		}
+		if err != nil {
+			return err
 		}
 	}
 
@@ -594,10 +604,6 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		switch cmdArg.Key {
 		case "format":
 			switch cmdArg.Vals[0] {
-			case "leveldb":
-				tableFormat = sstable.TableFormatLevelDB
-			case "rocksdbv2":
-				tableFormat = sstable.TableFormatRocksDBv2
 			case "pebblev1":
 				tableFormat = sstable.TableFormatPebblev1
 			case "pebblev2":
@@ -632,8 +638,9 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	}
 
 	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
-		for s := rdi.First(); s != nil; s = rdi.Next() {
-			err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
+		s, err := rdi.First()
+		for ; s != nil && err == nil; s, err = rdi.Next() {
+			err = rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
 				k.SetSeqNum(0)
 				return w.Add(k, v)
 			})
@@ -641,10 +648,14 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 				return err
 			}
 		}
+		if err != nil {
+			return err
+		}
 	}
 
 	if rki := b.newRangeKeyIter(nil, math.MaxUint64); rki != nil {
-		for s := rki.First(); s != nil; s = rki.Next() {
+		s, err := rki.First()
+		for ; s != nil; s, err = rki.Next() {
 			for _, k := range s.Keys {
 				var err error
 				switch k.Kind() {
@@ -661,6 +672,9 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 					return err
 				}
 			}
+		}
+		if err != nil {
+			return err
 		}
 	}
 
@@ -727,6 +741,13 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	opts = opts.EnsureDefaults()
 	opts.FS = vfs.NewMem()
+	return runDBDefineCmdReuseFS(td, opts)
+}
+
+// runDBDefineCmdReuseFS is like runDBDefineCmd, but does not set opts.FS, expecting
+// the caller to have set an appropriate FS already.
+func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) {
+	opts = opts.EnsureDefaults()
 
 	var snapshots []uint64
 	var levelMaxBytes map[int]int64
@@ -788,7 +809,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			if err != nil {
 				return nil, errors.Errorf("%s: could not parse %q as bool: %s", td.Cmd, arg.Vals[0], err)
 			}
-			opts.private.disableTableStats = !enable
+			opts.DisableTableStats = !enable
 		case "block-size":
 			size, err := strconv.Atoi(arg.Vals[0])
 			if err != nil {
@@ -856,8 +877,11 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			flushable: mem,
 			flushed:   make(chan struct{}),
 		}}
-		c := newFlush(d.opts, d.mu.versions.currentVersion(),
+		c, err := newFlush(d.opts, d.mu.versions.currentVersion(),
 			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now())
+		if err != nil {
+			return err
+		}
 		c.disableSpanElision = true
 		// NB: define allows the test to exactly specify which keys go
 		// into which sstables. If the test has a small target file
@@ -1030,8 +1054,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	}
 
 	if len(ve.NewFiles) > 0 {
-		jobID := d.mu.nextJobID
-		d.mu.nextJobID++
+		jobID := d.newJobIDLocked()
 		d.mu.versions.logLock()
 		if err := d.mu.versions.logAndApply(jobID, ve, newFileMetrics(ve.NewFiles), false, func() []compactionInfo {
 			return nil
@@ -1154,7 +1177,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	// Note that m can be nil here if the sstable exists in the file system, but
 	// not in the lsm. If m is nil just assume that file is not virtual.
 
-	backingFileNum := base.FileNum(uint64(file)).DiskFileNum()
+	backingFileNum := base.DiskFileNum(file)
 	if m != nil {
 		backingFileNum = m.FileBacking.DiskFileNum
 	}
@@ -1180,7 +1203,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	var v sstable.VirtualReader
 	props := r.Properties.String()
 	if m != nil && m.Virtual {
-		v = sstable.MakeVirtualReader(r, m.VirtualMeta(), false /* isForeign */)
+		v = sstable.MakeVirtualReader(r, m.VirtualMeta().VirtualReaderParams(false /* isShared */))
 		props = v.Properties.String()
 	}
 	if len(td.Input) == 0 {
@@ -1241,6 +1264,7 @@ func (d *DB) waitTableStats() {
 
 func runIngestAndExciseCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	var exciseSpan KeyRange
+	var sstContainsExciseTombstone bool
 	paths := make([]string, 0, len(td.CmdArgs))
 	for i, arg := range td.CmdArgs {
 		switch td.CmdArgs[i].Key {
@@ -1254,12 +1278,14 @@ func runIngestAndExciseCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 			}
 			exciseSpan.Start = []byte(fields[0])
 			exciseSpan.End = []byte(fields[1])
+		case "contains-excise-tombstone":
+			sstContainsExciseTombstone = true
 		default:
 			paths = append(paths, arg.String())
 		}
 	}
 
-	if _, err := d.IngestAndExcise(paths, nil /* shared */, exciseSpan); err != nil {
+	if _, err := d.IngestAndExcise(paths, nil /* shared */, nil /* external */, exciseSpan, sstContainsExciseTombstone); err != nil {
 		return err
 	}
 	return nil
@@ -1277,24 +1303,71 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	return nil
 }
 
-func runIngestExternalCmd(td *datadriven.TestData, d *DB, locator string) error {
-	external := make([]ExternalFile, 0)
-	for _, arg := range strings.Split(td.Input, "\n") {
-		fields := strings.Split(arg, ",")
-		if len(fields) != 4 {
-			return errors.New("usage: path,size,smallest,largest")
+func runIngestExternalCmd(
+	t testing.TB, td *datadriven.TestData, d *DB, st remote.Storage, locator string,
+) error {
+	var external []ExternalFile
+	for _, line := range strings.Split(td.Input, "\n") {
+		usageErr := func(info interface{}) {
+			t.Helper()
+			td.Fatalf(t, "error parsing %q: %v; "+
+				"usage: obj bounds=(smallest,largest) [size=x] [synthetic-prefix=prefix] [synthetic-suffix=suffix]",
+				line, info,
+			)
 		}
-		ef := ExternalFile{}
-		ef.Locator = remote.Locator(locator)
-		ef.ObjName = fields[0]
-		sizeInt, err := strconv.Atoi(fields[1])
+		objName, args, err := datadriven.ParseLine(line)
 		if err != nil {
-			return err
+			usageErr(err)
 		}
-		ef.Size = uint64(sizeInt)
-		ef.SmallestUserKey = []byte(fields[2])
-		ef.LargestUserKey = []byte(fields[3])
-		ef.HasPointKey = true
+		sz, err := st.Size(objName)
+		if err != nil {
+			return errors.Wrapf(err, "sizeof %s", objName)
+		}
+		ef := ExternalFile{
+			Locator:     remote.Locator(locator),
+			ObjName:     objName,
+			HasPointKey: true,
+			Size:        uint64(sz),
+		}
+		for _, arg := range args {
+			nArgs := func(n int) {
+				if len(arg.Vals) != n {
+					usageErr(fmt.Sprintf("%s must have %d arguments", arg.Key, n))
+				}
+			}
+			switch arg.Key {
+			case "bounds":
+				nArgs(2)
+				ef.StartKey = []byte(arg.Vals[0])
+				ef.EndKey = []byte(arg.Vals[1])
+			case "bounds-are-inclusive":
+				nArgs(1)
+				b, err := strconv.ParseBool(arg.Vals[0])
+				if err != nil {
+					usageErr(fmt.Sprintf("%s should have boolean argument: %v",
+						arg.Key, err))
+				}
+				ef.EndKeyIsInclusive = b
+			case "size":
+				nArgs(1)
+				arg.Scan(t, 0, &ef.Size)
+
+			case "synthetic-prefix":
+				nArgs(1)
+				ef.SyntheticPrefix = []byte(arg.Vals[0])
+
+			case "synthetic-suffix":
+				nArgs(1)
+				ef.SyntheticSuffix = []byte(arg.Vals[0])
+
+			default:
+				usageErr(fmt.Sprintf("unknown argument %v", arg.Key))
+			}
+		}
+		if ef.StartKey == nil {
+			usageErr("no bounds specified")
+		}
+
 		external = append(external, ef)
 	}
 
@@ -1304,42 +1377,11 @@ func runIngestExternalCmd(td *datadriven.TestData, d *DB, locator string) error 
 	return nil
 }
 
-func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
-	var paths []string
-	var level int
-	for _, arg := range td.CmdArgs {
-		switch arg.Key {
-		case "paths":
-			paths = append(paths, arg.Vals...)
-		case "level":
-			var err error
-			level, err = strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return err
-			}
-		}
-	}
-	_, err := d.ingest(paths, func(
-		tableNewIters,
-		keyspan.TableNewSpanIter,
-		IterOptions,
-		*Comparer,
-		*version,
-		int,
-		map[*compaction]struct{},
-		*fileMetadata,
-		bool,
-	) (int, *fileMetadata, error) {
-		return level, nil, nil
-	}, nil /* shared */, KeyRange{}, nil /* external */)
-	return err
-}
-
 func runLSMCmd(td *datadriven.TestData, d *DB) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if td.HasArg("verbose") {
-		return d.mu.versions.currentVersion().DebugString(d.opts.Comparer.FormatKey)
+		return d.mu.versions.currentVersion().DebugString()
 	}
 	return d.mu.versions.currentVersion().String()
 }
@@ -1371,7 +1413,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			if err != nil {
 				return errors.Errorf("%s: could not parse %q as bool: %s", cmdArg.Key, cmdArg.Vals[0], err)
 			}
-			opts.private.disableTableStats = !enable
+			opts.DisableTableStats = !enable
 		case "format-major-version":
 			v, err := strconv.Atoi(cmdArg.Vals[0])
 			if err != nil {
@@ -1387,6 +1429,16 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			for i := range opts.Levels {
 				opts.Levels[i].BlockSize = v
 			}
+		case "cache-size":
+			if opts.Cache != nil {
+				opts.Cache.Unref()
+				opts.Cache = nil
+			}
+			size, err := strconv.ParseInt(cmdArg.Vals[0], 10, 64)
+			if err != nil {
+				return err
+			}
+			opts.Cache = NewCache(size)
 		case "index-block-size":
 			v, err := strconv.Atoi(cmdArg.Vals[0])
 			if err != nil {
@@ -1423,4 +1475,30 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 		}
 	}
 	return nil
+}
+
+func streamFilterBetweenGrep(start, end string) stream.Filter {
+	startRegexp, err := regexp.Compile(start)
+	if err != nil {
+		return stream.FilterFunc(func(stream.Arg) error { return err })
+	}
+	endRegexp, err := regexp.Compile(end)
+	if err != nil {
+		return stream.FilterFunc(func(stream.Arg) error { return err })
+	}
+	var passedStart bool
+	return stream.FilterFunc(func(arg stream.Arg) error {
+		for s := range arg.In {
+			if passedStart {
+				if endRegexp.MatchString(s) {
+					break
+				}
+				arg.Out <- s
+				continue
+			} else {
+				passedStart = startRegexp.MatchString(s)
+			}
+		}
+		return nil
+	})
 }

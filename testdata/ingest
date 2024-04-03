@@ -26,7 +26,7 @@ ingest ext0
 
 lsm
 ----
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
 
 metrics
@@ -40,19 +40,20 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   696B     0B       0 |     - |    0B |     1   696B |     0     0B |     0     0B |    0B |   1  0.0
-total |     1   696B     0B       0 |     - |  696B |     1   696B |     0     0B |     0   696B |    0B |   1  1.0
+    6 |     1   601B     0B       0 |     - |    0B |     1   601B |     0     0B |     0     0B |    0B |   1  0.0
+total |     1   601B     0B       0 |     - |  601B |     1   601B |     0     0B |     0   601B |    0B |   1  1.0
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
 Flushes: 0
 Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
              default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 0 (0B)
-Zombie tables: 0 (0B)
+Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 6 entries (1.2KB)  hit rate: 35.7%
-Table cache: 1 entries (800B)  hit rate: 50.0%
+Local tables size: 601B
+Block cache: 6 entries (1009B)  hit rate: 35.7%
+Table cache: 1 entries (768B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -95,9 +96,9 @@ ingest ext1
 
 lsm
 ----
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
 
 iter
@@ -125,11 +126,11 @@ ingest ext2
 
 lsm
 ----
-0.1:
+L0.1:
   000008:[a#12,SET-c#12,SET]
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
 
 iter
@@ -160,13 +161,13 @@ ingest ext3
 
 lsm
 ----
-0.2:
+L0.2:
   000009:[b#13,MERGE-c#13,DEL]
-0.1:
+L0.1:
   000008:[a#12,SET-c#12,SET]
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
 
 iter
@@ -197,13 +198,13 @@ ingest ext4
 
 lsm
 ----
-0.2:
+L0.2:
   000009:[b#13,MERGE-c#13,DEL]
-0.1:
+L0.1:
   000008:[a#12,SET-c#12,SET]
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
   000010:[x#14,SET-y#14,SET]
 
@@ -240,15 +241,15 @@ memtable flushed
 
 lsm
 ----
-0.2:
+L0.2:
   000009:[b#13,MERGE-c#13,DEL]
-0.1:
+L0.1:
   000008:[a#12,SET-c#12,SET]
   000011:[k#17,SET-k#17,SET]
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
   000014:[j#15,SET-k#16,SET]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
   000010:[x#14,SET-y#14,SET]
 
@@ -281,15 +282,15 @@ ingest ext6
 
 lsm
 ----
-0.2:
+L0.2:
   000009:[b#13,MERGE-c#13,DEL]
-0.1:
+L0.1:
   000008:[a#12,SET-c#12,SET]
   000011:[k#17,SET-k#17,SET]
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
   000014:[j#15,SET-k#16,SET]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
   000015:[n#19,SET-n#19,SET]
   000010:[x#14,SET-y#14,SET]
@@ -312,18 +313,18 @@ memtable flushed
 
 lsm
 ----
-0.3:
+L0.3:
   000016:[a#20,RANGEDEL-z#inf,RANGEDEL]
-0.2:
+L0.2:
   000009:[b#13,MERGE-c#13,DEL]
-0.1:
+L0.1:
   000008:[a#12,SET-c#12,SET]
   000011:[k#17,SET-k#17,SET]
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
   000014:[j#15,SET-k#16,SET]
   000019:[m#18,SET-m#18,SET]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
   000015:[n#19,SET-n#19,SET]
   000010:[x#14,SET-y#14,SET]
@@ -356,7 +357,7 @@ num-entries: 2
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1420
+range-deletions-bytes-estimate: 1230
 
 # A set operation takes precedence over a range deletion at the same
 # sequence number as can occur during ingestion.
@@ -390,21 +391,21 @@ ingest ext9
 
 lsm
 ----
-0.4:
+L0.4:
   000021:[a#22,SET-g#22,SET]
   000020:[j#21,RANGEDEL-m#21,SET]
-0.3:
+L0.3:
   000016:[a#20,RANGEDEL-z#inf,RANGEDEL]
-0.2:
+L0.2:
   000009:[b#13,MERGE-c#13,DEL]
-0.1:
+L0.1:
   000008:[a#12,SET-c#12,SET]
   000011:[k#17,SET-k#17,SET]
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
   000014:[j#15,SET-k#16,SET]
   000019:[m#18,SET-m#18,SET]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
   000015:[n#19,SET-n#19,SET]
   000010:[x#14,SET-y#14,SET]
@@ -443,21 +444,21 @@ d:40
 
 lsm
 ----
-0.4:
+L0.4:
   000021:[a#22,SET-g#22,SET]
   000020:[j#21,RANGEDEL-m#21,SET]
-0.3:
+L0.3:
   000016:[a#20,RANGEDEL-z#inf,RANGEDEL]
-0.2:
+L0.2:
   000009:[b#13,MERGE-c#13,DEL]
-0.1:
+L0.1:
   000008:[a#12,SET-c#12,SET]
   000011:[k#17,SET-k#17,SET]
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
   000014:[j#15,SET-k#16,SET]
   000019:[m#18,SET-m#18,SET]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
   000023:[d#23,SET-d#23,SET]
   000024:[i#24,RANGEDEL-j#inf,RANGEDEL]
@@ -476,21 +477,21 @@ ingest ext13
 
 lsm
 ----
-0.4:
+L0.4:
   000021:[a#22,SET-g#22,SET]
   000020:[j#21,RANGEDEL-m#21,SET]
-0.3:
+L0.3:
   000016:[a#20,RANGEDEL-z#inf,RANGEDEL]
-0.2:
+L0.2:
   000009:[b#13,MERGE-c#13,DEL]
-0.1:
+L0.1:
   000008:[a#12,SET-c#12,SET]
   000011:[k#17,SET-k#17,SET]
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
   000014:[j#15,SET-k#16,SET]
   000019:[m#18,SET-m#18,SET]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
   000023:[d#23,SET-d#23,SET]
   000025:[e#26,RANGEDEL-f#inf,RANGEDEL]
@@ -515,25 +516,25 @@ memtable flushed
 
 lsm
 ----
-0.6:
+L0.6:
   000026:[b#28,SET-b#28,SET]
-0.5:
+L0.5:
   000029:[a#27,RANGEDEL-d#inf,RANGEDEL]
-0.4:
+L0.4:
   000021:[a#22,SET-g#22,SET]
   000020:[j#21,RANGEDEL-m#21,SET]
-0.3:
+L0.3:
   000016:[a#20,RANGEDEL-z#inf,RANGEDEL]
-0.2:
+L0.2:
   000009:[b#13,MERGE-c#13,DEL]
-0.1:
+L0.1:
   000008:[a#12,SET-c#12,SET]
   000011:[k#17,SET-k#17,SET]
-0.0:
+L0.0:
   000007:[a#11,SET-b#11,DEL]
   000014:[j#15,SET-k#16,SET]
   000019:[m#18,SET-m#18,SET]
-6:
+L6:
   000006:[a#10,SET-b#10,SET]
   000023:[d#23,SET-d#23,SET]
   000025:[e#26,RANGEDEL-f#inf,RANGEDEL]
@@ -560,7 +561,7 @@ ingest ext15
 
 lsm
 ----
-6:
+L6:
   000004:[a#11,RANGEDEL-b#inf,RANGEDEL]
 
 reset
@@ -579,7 +580,7 @@ ingest ext16
 
 lsm
 ----
-6:
+L6:
   000004:[a#11,RANGEDEL-b#inf,RANGEDEL]
 
 reset
@@ -608,9 +609,9 @@ ingest ext18
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[a#11,SET-c#11,SET]
-6:
+L6:
   000004:[a#10,RANGEDEL-b#inf,RANGEDEL]
 
 reset
@@ -642,9 +643,9 @@ ingest ext21
 
 lsm
 ----
-0.0:
+L0.0:
   000006:[c#12,SET-c#12,SET]
-6:
+L6:
   000005:[a#11,SET-b#11,SET]
   000004:[c#10,RANGEDEL-d#inf,RANGEDEL]
 
@@ -671,9 +672,9 @@ ingest ext23
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[a#11,SET-b#11,SET]
-6:
+L6:
   000004:[a#10,RANGEDEL-b#inf,RANGEDEL]
 
 reset
@@ -698,9 +699,9 @@ ingest ext25
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[a#11,RANGEDEL-b#inf,RANGEDEL]
-6:
+L6:
   000004:[a#10,RANGEDEL-b#inf,RANGEDEL]
 
 # Check for range key ingestion bug fix in
@@ -719,7 +720,7 @@ ingest ext1
 
 lsm
 ----
-6:
+L6:
   000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
 
 build ext2
@@ -731,9 +732,9 @@ ingest ext2
 
 lsm
 ----
-0.0:
+L0.0:
   000005:[b#11,RANGEKEYSET-e#inf,RANGEKEYSET]
-6:
+L6:
   000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
 
 build ext3
@@ -746,11 +747,11 @@ ingest ext3
 # Without the fix in #2082 we would expect ext3 file to be ingested into L6.
 lsm
 ----
-0.1:
+L0.1:
   000006:[a#12,RANGEKEYDEL-c#inf,RANGEKEYDEL]
-0.0:
+L0.0:
   000005:[b#11,RANGEKEYSET-e#inf,RANGEKEYSET]
-6:
+L6:
   000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
 
 build ext4
@@ -762,13 +763,13 @@ ingest ext4
 
 lsm
 ----
-0.2:
+L0.2:
   000007:[a#13,SET-a#13,SET]
-0.1:
+L0.1:
   000006:[a#12,RANGEKEYDEL-c#inf,RANGEKEYDEL]
-0.0:
+L0.0:
   000005:[b#11,RANGEKEYSET-e#inf,RANGEKEYSET]
-6:
+L6:
   000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
 
 compact a aa
@@ -778,7 +779,7 @@ compact a aa
 # get elided as it would be in L6 beneath the b-e range key in L0.
 lsm
 ----
-6:
+L6:
   000008:[a#0,SET-g#inf,RANGEKEYSET]
 
 # Shouldn't show results for the b-c range as it must be deleted.
@@ -808,7 +809,7 @@ ingest ext1
 
 lsm
 ----
-6:
+L6:
   000004:[c#10,SET-e#10,SET]
 
 
@@ -821,7 +822,7 @@ ingest ext2
 
 lsm
 ----
-6:
+L6:
   000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
   000004:[c#10,SET-e#10,SET]
 
@@ -837,7 +838,7 @@ ingest ext3
 
 lsm
 ----
-6:
+L6:
   000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
   000004:[c#10,SET-e#10,SET]
   000006:[f#12,SET-h#12,SET]
@@ -852,7 +853,7 @@ ingest ext4
 
 lsm
 ----
-6:
+L6:
   000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
   000004:[c#10,SET-e#10,SET]
   000007:[eee#13,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
@@ -867,7 +868,7 @@ ingest ext5
 
 lsm
 ----
-6:
+L6:
   000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
   000004:[c#10,SET-e#10,SET]
   000008:[ee#14,RANGEKEYSET-eee#inf,RANGEKEYSET]
@@ -884,7 +885,7 @@ ingest ext6
 
 lsm
 ----
-6:
+L6:
   000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
   000004:[c#10,SET-e#10,SET]
   000008:[ee#14,RANGEKEYSET-eee#inf,RANGEKEYSET]
@@ -901,7 +902,7 @@ ingest ext7
 
 lsm
 ----
-6:
+L6:
   000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
   000004:[c#10,SET-e#10,SET]
   000008:[ee#14,RANGEKEYSET-eee#inf,RANGEKEYSET]
@@ -923,7 +924,7 @@ ingest ext10
 
 lsm
 ----
-6:
+L6:
   000004:[a#10,SET-e#10,SET]
 
 # The below ingestion should split one existing file.
@@ -938,10 +939,10 @@ ingest ext11
 
 lsm
 ----
-6:
-  000006:[a#10,SET-a#10,SET]
+L6:
+  000006(000004):[a#10,SET-a#10,SET]
   000005:[b#11,SET-d#11,SET]
-  000007:[e#10,SET-e#10,SET]
+  000007(000004):[e#10,SET-e#10,SET]
 
 iter
 first
@@ -966,12 +967,12 @@ ingest ext12
 
 lsm
 ----
-0.0:
+L0.0:
   000008:[c#12,SET-e#12,SET]
-6:
-  000006:[a#10,SET-a#10,SET]
+L6:
+  000006(000004):[a#10,SET-a#10,SET]
   000005:[b#11,SET-d#11,SET]
-  000007:[e#10,SET-e#10,SET]
+  000007(000004):[e#10,SET-e#10,SET]
 
 # The below ingestion should fall through one existing file and split another
 # file.
@@ -986,14 +987,14 @@ ingest ext13
 
 lsm
 ----
-0.0:
+L0.0:
   000008:[c#12,SET-e#12,SET]
-6:
-  000006:[a#10,SET-a#10,SET]
-  000010:[b#11,SET-b#11,SET]
+L6:
+  000006(000004):[a#10,SET-a#10,SET]
+  000010(000005):[b#11,SET-b#11,SET]
   000009:[cc#13,SET-ccc#13,SET]
-  000011:[d#11,SET-d#11,SET]
-  000007:[e#10,SET-e#10,SET]
+  000011(000005):[d#11,SET-d#11,SET]
+  000007(000004):[e#10,SET-e#10,SET]
 
 iter
 seek-ge c
@@ -1020,16 +1021,16 @@ ingest ext14
 
 lsm
 ----
-0.1:
+L0.1:
   000012:[d#14,SET-dd#14,SET]
-0.0:
+L0.0:
   000008:[c#12,SET-e#12,SET]
-6:
-  000006:[a#10,SET-a#10,SET]
-  000010:[b#11,SET-b#11,SET]
+L6:
+  000006(000004):[a#10,SET-a#10,SET]
+  000010(000005):[b#11,SET-b#11,SET]
   000009:[cc#13,SET-ccc#13,SET]
-  000011:[d#11,SET-d#11,SET]
-  000007:[e#10,SET-e#10,SET]
+  000011(000005):[d#11,SET-d#11,SET]
+  000007(000004):[e#10,SET-e#10,SET]
 
 iter
 seek-lt d
@@ -1062,7 +1063,7 @@ ingest ext10
 
 lsm
 ----
-6:
+L6:
   000004:[a#10,SET-g#10,SET]
 
 build ext11
@@ -1082,11 +1083,11 @@ ingest ext11 ext12
 
 lsm
 ----
-6:
-  000007:[a#10,SET-a#10,SET]
+L6:
+  000007(000004):[a#10,SET-a#10,SET]
   000005:[b#11,SET-c#11,SET]
   000006:[cc#12,SET-d#12,SET]
-  000008:[e#10,SET-g#10,SET]
+  000008(000004):[e#10,SET-g#10,SET]
 
 # A virtual sstable produced from an ingest split can be ingest split again.
 
@@ -1100,13 +1101,13 @@ ingest ext13
 
 lsm
 ----
-6:
-  000007:[a#10,SET-a#10,SET]
+L6:
+  000007(000004):[a#10,SET-a#10,SET]
   000005:[b#11,SET-c#11,SET]
   000006:[cc#12,SET-d#12,SET]
-  000010:[e#10,SET-e#10,SET]
+  000010(000004):[e#10,SET-e#10,SET]
   000009:[ee#13,SET-f#13,SET]
-  000011:[g#10,SET-g#10,SET]
+  000011(000004):[g#10,SET-g#10,SET]
 
 reset enable-split
 ----
@@ -1122,7 +1123,7 @@ ingest ext10
 
 lsm
 ----
-6:
+L6:
   000004:[a#10,SET-g#10,SET]
 
 build ext11
@@ -1148,13 +1149,13 @@ ingest ext11 ext12 ext13
 
 lsm
 ----
-6:
-  000008:[a#10,SET-a#10,SET]
+L6:
+  000008(000004):[a#10,SET-a#10,SET]
   000005:[b#11,SET-c#11,SET]
   000006:[cc#12,SET-d#12,SET]
-  000010:[e#10,SET-e#10,SET]
+  000010(000004):[e#10,SET-e#10,SET]
   000007:[ee#13,SET-f#13,SET]
-  000011:[g#10,SET-g#10,SET]
+  000011(000004):[g#10,SET-g#10,SET]
 
 iter
 first

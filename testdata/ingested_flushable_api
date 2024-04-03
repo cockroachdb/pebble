@@ -8,8 +8,8 @@ flushable ext1
 
 iter
 ----
-c#0,1
-e#0,1
+c#0,SET
+e#0,SET
 
 rangekeyIter
 ----
@@ -93,7 +93,7 @@ flushable ext4
 
 iter
 ----
-k#0,1
+k#0,SET
 
 rangekeyIter
 ----

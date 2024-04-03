@@ -5,17 +5,16 @@
 package pebble
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -58,13 +57,13 @@ type versionSet struct {
 	atomicInProgressBytes atomic.Int64
 
 	// Immutable fields.
-	dirname string
+	dirname  string
+	provider objstorage.Provider
 	// Set to DB.mu.
-	mu      *sync.Mutex
-	opts    *Options
-	fs      vfs.FS
-	cmp     Compare
-	cmpName string
+	mu   *sync.Mutex
+	opts *Options
+	fs   vfs.FS
+	cmp  *base.Comparer
 	// Dynamic base level allows the dynamic base level computation to be
 	// disabled. Used by tests which want to create specific LSM structures.
 	dynamicBaseLevel bool
@@ -73,34 +72,40 @@ type versionSet struct {
 	versions versionList
 	picker   compactionPicker
 
+	// Not all metrics are kept here. See DB.Metrics().
 	metrics Metrics
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
 	obsoleteFn        func(obsolete []*fileBacking)
-	obsoleteTables    []fileInfo
+	obsoleteTables    []tableInfo
 	obsoleteManifests []fileInfo
 	obsoleteOptions   []fileInfo
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
-	zombieTables map[base.DiskFileNum]uint64 // filenum -> size
+	zombieTables map[base.DiskFileNum]tableInfo
 
-	// backingState is protected by the versionSet.logLock. It's populated
-	// during Open in versionSet.load, but it's not used concurrently during
-	// load.
-	backingState struct {
-		// fileBackingMap is a map for the FileBacking which is supporting virtual
-		// sstables in the latest version. Once the file backing is backing no
-		// virtual sstables in the latest version, it is removed from this map and
-		// the corresponding state is added to the zombieTables map. Note that we
-		// don't keep track of file backing which supports a virtual sstable
-		// which is not in the latest version.
-		fileBackingMap map[base.DiskFileNum]*fileBacking
-		// fileBackingSize is the sum of the sizes of the fileBackings in the
-		// fileBackingMap.
-		fileBackingSize uint64
-	}
+	// virtualBackings contains information about the FileBackings which support
+	// virtual sstables in the latest version. It is mainly used to determine when
+	// a backing is no longer in use by the tables in the latest version; this is
+	// not a trivial problem because compactions and other operations can happen
+	// in parallel (and they can finish in unpredictable order).
+	//
+	// This mechanism is complementary to the backing Ref/Unref mechanism, which
+	// determines when a backing is no longer used by *any* live version and can
+	// be removed.
+	//
+	// In principle this should have been a copy-on-write structure, with each
+	// Version having its own record of its virtual backings (similar to the
+	// B-tree that holds the tables). However, in practice we only need it for the
+	// latest version, so we use a simpler structure and store it in the
+	// versionSet instead.
+	//
+	// virtualBackings is modified under DB.mu and the log lock. If it is accessed
+	// under DB.mu and a version update is in progress, it reflects the state of
+	// the next version.
+	virtualBackings manifest.VirtualBackings
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
@@ -116,7 +121,6 @@ type versionSet struct {
 
 	manifestFile          vfs.File
 	manifest              *record.Writer
-	setCurrent            func(base.DiskFileNum) error
 	getFormatMajorVersion func() FormatMajorVersion
 
 	writing    bool
@@ -125,53 +129,56 @@ type versionSet struct {
 	rotationHelper record.RotationHelper
 }
 
+type tableInfo struct {
+	fileInfo
+	isLocal bool
+}
+
 func (vs *versionSet) init(
 	dirname string,
+	provider objstorage.Provider,
 	opts *Options,
 	marker *atomicfs.Marker,
-	setCurrent func(base.DiskFileNum) error,
 	getFMV func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) {
 	vs.dirname = dirname
+	vs.provider = provider
 	vs.mu = mu
 	vs.writerCond.L = mu
 	vs.opts = opts
 	vs.fs = opts.FS
-	vs.cmp = opts.Comparer.Compare
-	vs.cmpName = opts.Comparer.Name
+	vs.cmp = opts.Comparer
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
-	vs.zombieTables = make(map[base.DiskFileNum]uint64)
-	vs.backingState.fileBackingMap = make(map[base.DiskFileNum]*fileBacking)
-	vs.backingState.fileBackingSize = 0
+	vs.zombieTables = make(map[base.DiskFileNum]tableInfo)
+	vs.virtualBackings = manifest.MakeVirtualBackings()
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
-	vs.setCurrent = setCurrent
 	vs.getFormatMajorVersion = getFMV
 }
 
 // create creates a version set for a fresh DB.
 func (vs *versionSet) create(
-	jobID int,
+	jobID JobID,
 	dirname string,
+	provider objstorage.Provider,
 	opts *Options,
 	marker *atomicfs.Marker,
-	setCurrent func(base.DiskFileNum) error,
 	getFormatMajorVersion func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) error {
-	vs.init(dirname, opts, marker, setCurrent, getFormatMajorVersion, mu)
+	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
 	newVersion := &version{}
 	vs.append(newVersion)
 	var err error
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
+	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil)
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextDiskFileNum()
-	err = vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum)
+	err = vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum, nil /* virtualBackings */)
 	if err == nil {
 		if err = vs.manifest.Flush(); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
@@ -183,14 +190,14 @@ func (vs *versionSet) create(
 		}
 	}
 	if err == nil {
-		// NB: setCurrent is responsible for syncing the data directory.
-		if err = vs.setCurrent(vs.manifestFileNum); err != nil {
+		// NB: Move() is responsible for syncing the data directory.
+		if err = vs.manifestMarker.Move(base.MakeFilename(fileTypeManifest, vs.manifestFileNum)); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
 		}
 	}
 
 	vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-		JobID:   jobID,
+		JobID:   int(jobID),
 		Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
 		FileNum: vs.manifestFileNum,
 		Err:     err,
@@ -204,14 +211,14 @@ func (vs *versionSet) create(
 // load loads the version set from the manifest file.
 func (vs *versionSet) load(
 	dirname string,
+	provider objstorage.Provider,
 	opts *Options,
 	manifestFileNum base.DiskFileNum,
 	marker *atomicfs.Marker,
-	setCurrent func(base.DiskFileNum) error,
 	getFormatMajorVersion func() FormatMajorVersion,
 	mu *sync.Mutex,
 ) error {
-	vs.init(dirname, opts, marker, setCurrent, getFormatMajorVersion, mu)
+	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
 
 	vs.manifestFileNum = manifestFileNum
 	manifestPath := base.MakeFilepath(opts.FS, dirname, fileTypeManifest, vs.manifestFileNum)
@@ -247,10 +254,10 @@ func (vs *versionSet) load(
 			return err
 		}
 		if ve.ComparerName != "" {
-			if ve.ComparerName != vs.cmpName {
+			if ve.ComparerName != vs.cmp.Name {
 				return errors.Errorf("pebble: manifest file %q for DB %q: "+
 					"comparer name from file %q != comparer name from Options %q",
-					errors.Safe(manifestFilename), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName))
+					errors.Safe(manifestFilename), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmp.Name))
 			}
 		}
 		if err := bve.Accumulate(&ve); err != nil {
@@ -299,19 +306,32 @@ func (vs *versionSet) load(
 
 	// Populate the fileBackingMap and the FileBacking for virtual sstables since
 	// we have finished version edit accumulation.
-	for _, s := range bve.AddedFileBacking {
-		vs.addFileBacking(s)
+	for _, b := range bve.AddedFileBacking {
+		vs.virtualBackings.AddAndRef(b)
 	}
 
-	for _, fileNum := range bve.RemovedFileBacking {
-		vs.removeFileBacking(fileNum)
+	for _, addedLevel := range bve.Added {
+		for _, m := range addedLevel {
+			if m.Virtual {
+				vs.virtualBackings.AddTable(m)
+			}
+		}
 	}
 
-	newVersion, err := bve.Apply(
-		nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes,
-		opts.Experimental.ReadCompactionRate, nil, /* zombies */
-		getFormatMajorVersion().orderingInvariants(),
-	)
+	if invariants.Enabled {
+		// There should be no deleted tables or backings, since we're starting from
+		// an empty state.
+		for _, deletedLevel := range bve.Deleted {
+			if len(deletedLevel) != 0 {
+				panic("deleted files after manifest replay")
+			}
+		}
+		if len(bve.RemovedFileBacking) > 0 {
+			panic("deleted backings after manifest replay")
+		}
+	}
+
+	newVersion, err := bve.Apply(nil, opts.Comparer, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
 	if err != nil {
 		return err
 	}
@@ -324,8 +344,21 @@ func (vs *versionSet) load(
 		files := newVersion.Levels[i].Slice()
 		l.Size = int64(files.SizeSum())
 	}
+	for _, l := range newVersion.Levels {
+		iter := l.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			if !f.Virtual {
+				_, localSize := sizeIfLocal(f.FileBacking, vs.provider)
+				vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
+			}
+		}
+	}
+	vs.virtualBackings.ForEach(func(backing *fileBacking) {
+		_, localSize := sizeIfLocal(backing, vs.provider)
+		vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
+	})
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil)
+	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil)
 	return nil
 }
 
@@ -352,6 +385,7 @@ func (vs *versionSet) logLock() {
 	// Wait for any existing writing to the manifest to complete, then mark the
 	// manifest as busy.
 	for vs.writing {
+		// Note: writerCond.L is DB.mu, so we unlock it while we wait.
 		vs.writerCond.Wait()
 	}
 	vs.writing = true
@@ -368,28 +402,20 @@ func (vs *versionSet) logUnlock() {
 	vs.writerCond.Signal()
 }
 
-// Only call if the DiskFileNum doesn't exist in the fileBackingMap.
-func (vs *versionSet) addFileBacking(backing *manifest.FileBacking) {
-	_, ok := vs.backingState.fileBackingMap[backing.DiskFileNum]
-	if ok {
-		panic("pebble: trying to add an existing file backing")
-	}
-	vs.backingState.fileBackingMap[backing.DiskFileNum] = backing
-	vs.backingState.fileBackingSize += backing.Size
-}
-
-// Only call if the the DiskFileNum exists in the fileBackingMap.
-func (vs *versionSet) removeFileBacking(dfn base.DiskFileNum) {
-	backing, ok := vs.backingState.fileBackingMap[dfn]
-	if !ok {
-		panic("pebble: trying to remove an unknown file backing")
-	}
-	delete(vs.backingState.fileBackingMap, dfn)
-	vs.backingState.fileBackingSize -= backing.Size
-}
-
 // logAndApply logs the version edit to the manifest, applies the version edit
 // to the current version, and installs the new version.
+//
+// logAndApply fills in the following fields of the VersionEdit: NextFileNum,
+// LastSeqNum, RemovedBackingTables. The removed backing tables are those
+// backings that are no longer used (in the new version) after applying the edit
+// (as per vs.virtualBackings). Other than these fields, the VersionEdit must be
+// complete.
+//
+// New table backing references (FileBacking.Ref) are taken as part of applying
+// the version edit. The state of the virtual backings (vs.virtualBackings) is
+// updated before logging to the manifest and installing the latest version;
+// this is ok because any failure in those steps is fatal.
+// TODO(radu): remove the error return.
 //
 // DB.mu must be held when calling this method and will be released temporarily
 // while performing file I/O. Requires that the manifest is locked for writing
@@ -399,7 +425,7 @@ func (vs *versionSet) removeFileBacking(dfn base.DiskFileNum) {
 // inProgressCompactions is called while DB.mu is held, to get the list of
 // in-progress compactions.
 func (vs *versionSet) logAndApply(
-	jobID int,
+	jobID JobID,
 	ve *versionEdit,
 	metrics map[int]*LevelMetrics,
 	forceRotation bool,
@@ -445,8 +471,6 @@ func (vs *versionSet) logAndApply(
 	}
 
 	currentVersion := vs.currentVersion()
-	fmv := vs.getFormatMajorVersion()
-	orderingInvariants := fmv.orderingInvariants()
 	var newVersion *version
 
 	// Generate a new manifest if we don't currently have one, or forceRotation
@@ -501,9 +525,15 @@ func (vs *versionSet) logAndApply(
 	}
 	var newManifestFileNum base.DiskFileNum
 	var prevManifestFileSize uint64
+	var newManifestVirtualBackings []*fileBacking
 	if requireRotation {
 		newManifestFileNum = vs.getNextDiskFileNum()
 		prevManifestFileSize = uint64(vs.manifest.Size())
+
+		// We want the virtual backings *before* applying the version edit, because
+		// the new manifest will contain the pre-apply version plus the last version
+		// edit.
+		newManifestVirtualBackings = vs.virtualBackings.Backings()
 	}
 
 	// Grab certain values before releasing vs.mu, in case createManifest() needs
@@ -511,29 +541,33 @@ func (vs *versionSet) logAndApply(
 	minUnflushedLogNum := vs.minUnflushedLogNum
 	nextFileNum := vs.nextFileNum
 
-	var zombies map[base.DiskFileNum]uint64
+	// Note: this call populates ve.RemovedBackingTables.
+	zombieBackings, removedVirtualBackings, localLiveSizeDelta :=
+		getZombiesAndUpdateVirtualBackings(ve, &vs.virtualBackings, vs.provider)
+
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
 
-		var err error
 		if vs.getFormatMajorVersion() < FormatVirtualSSTables && len(ve.CreatedBackingTables) > 0 {
-			return errors.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
+			return base.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
 		}
-		newVersion, zombies, err = manifest.AccumulateIncompleteAndApplySingleVE(
-			ve, currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
-			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
-			vs.backingState.fileBackingMap, vs.addFileBacking, vs.removeFileBacking,
-			orderingInvariants,
+		var b bulkVersionEdit
+		err := b.Accumulate(ve)
+		if err != nil {
+			return errors.Wrap(err, "MANIFEST accumulate failed")
+		}
+		newVersion, err = b.Apply(
+			currentVersion, vs.cmp, vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
 		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
 		}
 
 		if newManifestFileNum != 0 {
-			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum); err != nil {
+			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum, newManifestVirtualBackings); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-					JobID:   jobID,
+					JobID:   int(jobID),
 					Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
 					FileNum: newManifestFileNum,
 					Err:     err,
@@ -562,12 +596,12 @@ func (vs *versionSet) logAndApply(
 			return errors.Wrap(err, "MANIFEST sync failed")
 		}
 		if newManifestFileNum != 0 {
-			// NB: setCurrent is responsible for syncing the data directory.
-			if err := vs.setCurrent(newManifestFileNum); err != nil {
+			// NB: Move() is responsible for syncing the data directory.
+			if err := vs.manifestMarker.Move(base.MakeFilename(fileTypeManifest, newManifestFileNum)); err != nil {
 				return errors.Wrap(err, "MANIFEST set current failed")
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-				JobID:   jobID,
+				JobID:   int(jobID),
 				Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
 				FileNum: newManifestFileNum,
 			})
@@ -597,20 +631,39 @@ func (vs *versionSet) logAndApply(
 	// Update the zombie tables set first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
 	// being called.
-	for fileNum, size := range zombies {
-		vs.zombieTables[fileNum] = size
+	for _, b := range zombieBackings {
+		vs.zombieTables[b.backing.DiskFileNum] = tableInfo{
+			fileInfo: fileInfo{
+				FileNum:  b.backing.DiskFileNum,
+				FileSize: b.backing.Size,
+			},
+			isLocal: b.isLocal,
+		}
 	}
+
+	// Unref the removed backings and report those that already became obsolete.
+	// Note that the only case where we report obsolete tables here is when
+	// VirtualBackings.Protect/Unprotect was used to keep a backing alive without
+	// it being used in the current version.
+	var obsoleteVirtualBackings []*fileBacking
+	for _, b := range removedVirtualBackings {
+		if b.backing.Unref() == 0 {
+			obsoleteVirtualBackings = append(obsoleteVirtualBackings, b.backing)
+		}
+	}
+	vs.addObsoleteLocked(obsoleteVirtualBackings)
 
 	// Install the new version.
 	vs.append(newVersion)
+
 	if ve.MinUnflushedLogNum != 0 {
 		vs.minUnflushedLogNum = ve.MinUnflushedLogNum
 	}
 	if newManifestFileNum != 0 {
 		if vs.manifestFileNum != 0 {
 			vs.obsoleteManifests = append(vs.obsoleteManifests, fileInfo{
-				fileNum:  vs.manifestFileNum,
-				fileSize: prevManifestFileSize,
+				FileNum:  vs.manifestFileNum,
+				FileSize: prevManifestFileSize,
 			})
 		}
 		vs.manifestFileNum = newManifestFileNum
@@ -650,12 +703,116 @@ func (vs *versionSet) logAndApply(
 		}
 	}
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
+	vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localLiveSizeDelta)
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress)
+	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, inProgress)
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}
 	return nil
+}
+
+type fileBackingInfo struct {
+	backing *fileBacking
+	isLocal bool
+}
+
+// getZombiesAndUpdateVirtualBackings updates the virtual backings with the
+// changes in the versionEdit and populates ve.RemovedBackingTables.
+// Returns:
+//   - zombieBackings: all backings (physical and virtual) that will no longer be
+//     needed when we apply ve.
+//   - removedVirtualBackings: the virtual backings that will be removed by the
+//     VersionEdit and which must be Unref()ed by the caller. These backings
+//     match ve.RemovedBackingTables.
+//   - localLiveSizeDelta: the delta in local live bytes.
+func getZombiesAndUpdateVirtualBackings(
+	ve *versionEdit, virtualBackings *manifest.VirtualBackings, provider objstorage.Provider,
+) (zombieBackings, removedVirtualBackings []fileBackingInfo, localLiveSizeDelta int64) {
+	// First, deal with the physical tables.
+	//
+	// A physical backing has become unused if it is in DeletedFiles but not in
+	// NewFiles or CreatedBackingTables.
+	//
+	// Note that for the common case where there are very few elements, the map
+	// will stay on the stack.
+	stillUsed := make(map[base.DiskFileNum]struct{})
+	for _, nf := range ve.NewFiles {
+		if !nf.Meta.Virtual {
+			stillUsed[nf.Meta.FileBacking.DiskFileNum] = struct{}{}
+			_, localFileDelta := sizeIfLocal(nf.Meta.FileBacking, provider)
+			localLiveSizeDelta += localFileDelta
+		}
+	}
+	for _, b := range ve.CreatedBackingTables {
+		stillUsed[b.DiskFileNum] = struct{}{}
+	}
+	for _, m := range ve.DeletedFiles {
+		if !m.Virtual {
+			// NB: this deleted file may also be in NewFiles or
+			// CreatedBackingTables, due to a file moving between levels, or
+			// becoming virtualized. In which case there is no change due to this
+			// file in the localLiveSizeDelta -- the subtraction below compensates
+			// for the addition.
+			isLocal, localFileDelta := sizeIfLocal(m.FileBacking, provider)
+			localLiveSizeDelta -= localFileDelta
+			if _, ok := stillUsed[m.FileBacking.DiskFileNum]; !ok {
+				zombieBackings = append(zombieBackings, fileBackingInfo{
+					backing: m.FileBacking,
+					isLocal: isLocal,
+				})
+			}
+		}
+	}
+
+	// Now deal with virtual tables.
+	//
+	// When a virtual table moves between levels we AddTable() then RemoveTable(),
+	// which works out.
+	for _, b := range ve.CreatedBackingTables {
+		virtualBackings.AddAndRef(b)
+		_, localFileDelta := sizeIfLocal(b, provider)
+		localLiveSizeDelta += localFileDelta
+	}
+	for _, nf := range ve.NewFiles {
+		if nf.Meta.Virtual {
+			virtualBackings.AddTable(nf.Meta)
+		}
+	}
+	for _, m := range ve.DeletedFiles {
+		if m.Virtual {
+			virtualBackings.RemoveTable(m)
+		}
+	}
+
+	if unused := virtualBackings.Unused(); len(unused) > 0 {
+		// Virtual backings that are no longer used are zombies and are also added
+		// to RemovedBackingTables (before the version edit is written to disk).
+		ve.RemovedBackingTables = make([]base.DiskFileNum, len(unused))
+		for i, b := range unused {
+			isLocal, localFileDelta := sizeIfLocal(b, provider)
+			localLiveSizeDelta -= localFileDelta
+			ve.RemovedBackingTables[i] = b.DiskFileNum
+			zombieBackings = append(zombieBackings, fileBackingInfo{
+				backing: b,
+				isLocal: isLocal,
+			})
+			virtualBackings.Remove(b.DiskFileNum)
+		}
+		removedVirtualBackings = zombieBackings[len(zombieBackings)-len(unused):]
+	}
+	return zombieBackings, removedVirtualBackings, localLiveSizeDelta
+}
+
+// sizeIfLocal returns backing.Size if the backing is a local file, else 0.
+func sizeIfLocal(
+	backing *fileBacking, provider objstorage.Provider,
+) (isLocal bool, localSize int64) {
+	isLocal = objstorage.MustIsLocalTable(provider, backing.DiskFileNum)
+	if isLocal {
+		return true, int64(backing.Size)
+	}
+	return false, 0
 }
 
 func (vs *versionSet) incrementCompactions(
@@ -700,7 +857,10 @@ func (vs *versionSet) incrementCompactionBytes(numBytes int64) {
 
 // createManifest creates a manifest file that contains a snapshot of vs.
 func (vs *versionSet) createManifest(
-	dirname string, fileNum, minUnflushedLogNum base.DiskFileNum, nextFileNum uint64,
+	dirname string,
+	fileNum, minUnflushedLogNum base.DiskFileNum,
+	nextFileNum uint64,
+	virtualBackings []*fileBacking,
 ) (err error) {
 	var (
 		filename     = base.MakeFilepath(vs.fs, dirname, fileTypeManifest, fileNum)
@@ -725,9 +885,9 @@ func (vs *versionSet) createManifest(
 	manifest = record.NewWriter(manifestFile)
 
 	snapshot := versionEdit{
-		ComparerName: vs.cmpName,
+		ComparerName: vs.cmp.Name,
 	}
-	dedup := make(map[base.DiskFileNum]struct{})
+
 	for level, levelMetadata := range vs.currentVersion().Levels {
 		iter := levelMetadata.Iter()
 		for meta := iter.First(); meta != nil; meta = iter.Next() {
@@ -735,15 +895,10 @@ func (vs *versionSet) createManifest(
 				Level: level,
 				Meta:  meta,
 			})
-			if _, ok := dedup[meta.FileBacking.DiskFileNum]; meta.Virtual && !ok {
-				dedup[meta.FileBacking.DiskFileNum] = struct{}{}
-				snapshot.CreatedBackingTables = append(
-					snapshot.CreatedBackingTables,
-					meta.FileBacking,
-				)
-			}
 		}
 	}
+
+	snapshot.CreatedBackingTables = virtualBackings
 
 	// When creating a version snapshot for an existing DB, this snapshot VersionEdit will be
 	// immediately followed by another VersionEdit (being written in logAndApply()). That
@@ -806,6 +961,20 @@ func (vs *versionSet) append(v *version) {
 	v.Deleted = vs.obsoleteFn
 	v.Ref()
 	vs.versions.PushBack(v)
+	if invariants.Enabled {
+		// Verify that the virtualBackings contains all the backings referenced by
+		// the version.
+		for _, l := range v.Levels {
+			iter := l.Iter()
+			for f := iter.First(); f != nil; f = iter.Next() {
+				if f.Virtual {
+					if _, ok := vs.virtualBackings.Get(f.FileBacking.DiskFileNum); !ok {
+						panic(fmt.Sprintf("%s is not in virtualBackings", f.FileBacking.DiskFileNum))
+					}
+				}
+			}
+		}
+	}
 }
 
 func (vs *versionSet) currentVersion() *version {
@@ -825,6 +994,14 @@ func (vs *versionSet) addLiveFileNums(m map[base.DiskFileNum]struct{}) {
 			break
 		}
 	}
+	// virtualBackings contains backings that are referenced by some virtual
+	// tables in the latest version (which are handled above), and backings that
+	// are not but are still alive because of the protection mechanism (see
+	// manifset.VirtualBackings). This loop ensures the latter get added to the
+	// map.
+	vs.virtualBackings.ForEach(func(b *fileBacking) {
+		m[b.DiskFileNum] = struct{}{}
+	})
 }
 
 // addObsoleteLocked will add the fileInfo associated with obsolete backing
@@ -838,29 +1015,35 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*fileBacking) {
 		return
 	}
 
-	obsoleteFileInfo := make([]fileInfo, len(obsolete))
+	obsoleteFileInfo := make([]tableInfo, len(obsolete))
 	for i, bs := range obsolete {
-		obsoleteFileInfo[i].fileNum = bs.DiskFileNum
-		obsoleteFileInfo[i].fileSize = bs.Size
+		obsoleteFileInfo[i].FileNum = bs.DiskFileNum
+		obsoleteFileInfo[i].FileSize = bs.Size
 	}
 
 	if invariants.Enabled {
 		dedup := make(map[base.DiskFileNum]struct{})
 		for _, fi := range obsoleteFileInfo {
-			dedup[fi.fileNum] = struct{}{}
+			dedup[fi.FileNum] = struct{}{}
 		}
 		if len(dedup) != len(obsoleteFileInfo) {
 			panic("pebble: duplicate FileBacking present in obsolete list")
 		}
 	}
 
-	for _, fi := range obsoleteFileInfo {
+	for i, fi := range obsoleteFileInfo {
 		// Note that the obsolete tables are no longer zombie by the definition of
 		// zombie, but we leave them in the zombie tables map until they are
 		// deleted from disk.
-		if _, ok := vs.zombieTables[fi.fileNum]; !ok {
-			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fi.fileNum)
+		//
+		// TODO(sumeer): this means that the zombie metrics, like ZombieSize,
+		// computed in DB.Metrics are also being counted in the obsolete metrics.
+		// Was this intentional?
+		info, ok := vs.zombieTables[fi.FileNum]
+		if !ok {
+			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fi.FileNum)
 		}
+		obsoleteFileInfo[i].isLocal = info.isLocal
 	}
 
 	vs.obsoleteTables = append(vs.obsoleteTables, obsoleteFileInfo...)
@@ -878,120 +1061,36 @@ func (vs *versionSet) addObsolete(obsolete []*fileBacking) {
 func (vs *versionSet) updateObsoleteTableMetricsLocked() {
 	vs.metrics.Table.ObsoleteCount = int64(len(vs.obsoleteTables))
 	vs.metrics.Table.ObsoleteSize = 0
+	vs.metrics.Table.Local.ObsoleteSize = 0
 	for _, fi := range vs.obsoleteTables {
-		vs.metrics.Table.ObsoleteSize += fi.fileSize
-	}
-}
-
-func setCurrentFunc(
-	vers FormatMajorVersion, marker *atomicfs.Marker, fs vfs.FS, dirname string, dir vfs.File,
-) func(base.DiskFileNum) error {
-	if vers < formatVersionedManifestMarker {
-		// Pebble versions before `formatVersionedManifestMarker` used
-		// the CURRENT file to signal which MANIFEST is current. Ignore
-		// the filename read during LocateMarker.
-		return func(manifestFileNum base.DiskFileNum) error {
-			if err := setCurrentFile(dirname, fs, manifestFileNum); err != nil {
-				return err
-			}
-			if err := dir.Sync(); err != nil {
-				// This is a panic here, rather than higher in the call
-				// stack, for parity with the atomicfs.Marker behavior.
-				// A panic is always necessary because failed Syncs are
-				// unrecoverable.
-				panic(errors.Wrap(err, "fatal: MANIFEST dirsync failed"))
-			}
-			return nil
+		vs.metrics.Table.ObsoleteSize += fi.FileSize
+		if fi.isLocal {
+			vs.metrics.Table.Local.ObsoleteSize += fi.FileSize
 		}
-	}
-	return setCurrentFuncMarker(marker, fs, dirname)
-}
-
-func setCurrentFuncMarker(
-	marker *atomicfs.Marker, fs vfs.FS, dirname string,
-) func(base.DiskFileNum) error {
-	return func(manifestFileNum base.DiskFileNum) error {
-		return marker.Move(base.MakeFilename(fileTypeManifest, manifestFileNum))
 	}
 }
 
 func findCurrentManifest(
-	vers FormatMajorVersion, fs vfs.FS, dirname string,
+	fs vfs.FS, dirname string, ls []string,
 ) (marker *atomicfs.Marker, manifestNum base.DiskFileNum, exists bool, err error) {
-	// NB: We always locate the manifest marker, even if we might not
-	// actually use it (because we're opening the database at an earlier
-	// format major version that uses the CURRENT file).  Locating a
-	// marker should succeed even if the marker has never been placed.
+	// Locating a marker should succeed even if the marker has never been placed.
 	var filename string
-	marker, filename, err = atomicfs.LocateMarker(fs, dirname, manifestMarkerName)
+	marker, filename, err = atomicfs.LocateMarkerInListing(fs, dirname, manifestMarkerName, ls)
 	if err != nil {
-		return nil, base.FileNum(0).DiskFileNum(), false, err
+		return nil, 0, false, err
 	}
-
-	if vers < formatVersionedManifestMarker {
-		// Pebble versions before `formatVersionedManifestMarker` used
-		// the CURRENT file to signal which MANIFEST is current. Ignore
-		// the filename read during LocateMarker.
-
-		manifestNum, err = readCurrentFile(fs, dirname)
-		if oserror.IsNotExist(err) {
-			return marker, base.FileNum(0).DiskFileNum(), false, nil
-		} else if err != nil {
-			return marker, base.FileNum(0).DiskFileNum(), false, err
-		}
-		return marker, manifestNum, true, nil
-	}
-
-	// The current format major version is >=
-	// formatVersionedManifestMarker indicating that the
-	// atomicfs.Marker is the source of truth on the current manifest.
 
 	if filename == "" {
 		// The marker hasn't been set yet. This database doesn't exist.
-		return marker, base.FileNum(0).DiskFileNum(), false, nil
+		return marker, 0, false, nil
 	}
 
 	var ok bool
 	_, manifestNum, ok = base.ParseFilename(fs, filename)
 	if !ok {
-		return marker, base.FileNum(0).DiskFileNum(), false, base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(filename))
+		return marker, 0, false, base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(filename))
 	}
 	return marker, manifestNum, true, nil
-}
-
-func readCurrentFile(fs vfs.FS, dirname string) (base.DiskFileNum, error) {
-	// Read the CURRENT file to find the current manifest file.
-	current, err := fs.Open(base.MakeFilepath(fs, dirname, fileTypeCurrent, base.FileNum(0).DiskFileNum()))
-	if err != nil {
-		return base.FileNum(0).DiskFileNum(), errors.Wrapf(err, "pebble: could not open CURRENT file for DB %q", dirname)
-	}
-	defer current.Close()
-	stat, err := current.Stat()
-	if err != nil {
-		return base.FileNum(0).DiskFileNum(), err
-	}
-	n := stat.Size()
-	if n == 0 {
-		return base.FileNum(0).DiskFileNum(), errors.Errorf("pebble: CURRENT file for DB %q is empty", dirname)
-	}
-	if n > 4096 {
-		return base.FileNum(0).DiskFileNum(), errors.Errorf("pebble: CURRENT file for DB %q is too large", dirname)
-	}
-	b := make([]byte, n)
-	_, err = current.ReadAt(b, 0)
-	if err != nil {
-		return base.FileNum(0).DiskFileNum(), err
-	}
-	if b[n-1] != '\n' {
-		return base.FileNum(0).DiskFileNum(), base.CorruptionErrorf("pebble: CURRENT file for DB %q is malformed", dirname)
-	}
-	b = bytes.TrimSpace(b)
-
-	_, manifestFileNum, ok := base.ParseFilename(fs, string(b))
-	if !ok {
-		return base.FileNum(0).DiskFileNum(), base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
-	}
-	return manifestFileNum, nil
 }
 
 func newFileMetrics(newFiles []manifest.NewFileEntry) map[int]*LevelMetrics {

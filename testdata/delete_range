@@ -8,10 +8,10 @@ del d
 
 scan
 ----
-a#0,1:1
-b#1,1:2
-c#2,2:3
-d#4,0:
+a#0,SET:1
+b#1,SET:2
+c#2,MERGE:3
+d#4,DEL:
 
 scan range-del
 ----
@@ -82,7 +82,7 @@ del-range <nil> d
 
 scan
 ----
-#0,1:1
+#0,SET:1
 
 scan range-del
 ----

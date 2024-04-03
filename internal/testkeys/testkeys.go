@@ -17,6 +17,7 @@ import (
 	"cmp"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -29,6 +30,8 @@ const alpha = "abcdefghijklmnopqrstuvwxyz"
 const suffixDelim = '@'
 
 var inverseAlphabet = make(map[byte]int64, len(alpha))
+
+var prefixRE = regexp.MustCompile("[" + alpha + "]+")
 
 func init() {
 	for i := range alpha {
@@ -99,6 +102,11 @@ var Comparer = &base.Comparer{
 	Name:  "pebble.internal.testkeys",
 }
 
+// The comparator is similar to the one in Cockroach; when the prefixes are
+// equal:
+//   - a key without a suffix is smaller than one with a suffix;
+//   - when both keys have a suffix, the key with the larger (decoded) suffix
+//     value is smaller.
 func compare(a, b []byte) int {
 	ai, bi := split(a), split(b)
 	if v := bytes.Compare(a[:ai], b[:bi]); v != 0 {
@@ -281,21 +289,22 @@ func (a alphabet) EveryN(n int64) Keyspace {
 }
 
 func keyCount(n, l int) int64 {
-	if n == 0 {
-		return 0
-	} else if n == 1 {
-		return int64(l)
-	}
 	// The number of representable keys in the keyspace is a function of the
-	// length of the alphabet n and the max key length l. Consider how the
-	// number of representable keys grows as l increases:
-	//
-	// l = 1: n
-	// l = 2: n + n^2
-	// l = 3: n + n^2 + n^3
-	// ...
-	// Σ i=(1...l) n^i = n*(n^l - 1)/(n-1)
-	return (int64(n) * (int64(math.Pow(float64(n), float64(l))) - 1)) / int64(n-1)
+	// length of the alphabet n and the max key length l:
+	//   n + n^2 + ... + n^l
+	x := int64(1)
+	res := int64(0)
+	for i := 1; i <= l; i++ {
+		if x >= math.MaxInt64/int64(n) {
+			panic("overflow")
+		}
+		x *= int64(n)
+		res += x
+		if res < 0 {
+			panic("overflow")
+		}
+	}
+	return res
 }
 
 func (a alphabet) key(buf []byte, idx int64) int {
@@ -377,128 +386,71 @@ func computeAlphabetKeyIndex(key []byte, alphabet map[byte]int64, n int) int64 {
 	return ret
 }
 
-func abs(a int64) int64 {
-	if a < 0 {
-		return -a
+// RandomPrefixInRange returns a random prefix in the range [a, b), where a and
+// b are prefixes.
+func RandomPrefixInRange(a, b []byte, rng *rand.Rand) []byte {
+	assertValidPrefix(a)
+	assertValidPrefix(b)
+	assertLess(a, b)
+	commonPrefix := 0
+	for commonPrefix < len(a)-1 && commonPrefix < len(b)-1 && a[commonPrefix] == b[commonPrefix] {
+		commonPrefix++
 	}
-	return a
+
+	// We will generate a piece of a key from the Alpha(maxLength) keyspace. Note
+	// that maxLength cannot be higher than ~13 or we will encounter overflows.
+	maxLength := 4 + rng.Intn(8)
+
+	// Skip any common prefix (but leave at least one character in each key).
+	skipPrefix := 0
+	for skipPrefix+1 < min(len(a), len(b)) && a[skipPrefix] == b[skipPrefix] {
+		skipPrefix++
+	}
+	aPiece := a[skipPrefix:]
+	bPiece := b[skipPrefix:]
+	if len(aPiece) > maxLength {
+		// The trimmed prefix is smaller than a; we must be careful below to not
+		// return a key smaller than a.
+		aPiece = aPiece[:maxLength]
+	}
+	if len(bPiece) > maxLength {
+		// The trimmed prefix is smaller than b, so we will still respect the bound.
+		bPiece = bPiece[:maxLength]
+	}
+	assertLess(aPiece, bPiece)
+	apIdx := computeAlphabetKeyIndex(aPiece, inverseAlphabet, maxLength)
+	bpIdx := computeAlphabetKeyIndex(bPiece, inverseAlphabet, maxLength)
+	if bpIdx <= apIdx {
+		panic("unreachable")
+	}
+	generatedIdx := apIdx + rng.Int63n(bpIdx-apIdx)
+	if generatedIdx == apIdx {
+		// Return key a. We handle this separately in case we trimmed aPiece above.
+		return append([]byte(nil), a...)
+	}
+	dst := make([]byte, skipPrefix+maxLength)
+	copy(dst, a[:skipPrefix])
+	pieceLen := WriteKey(dst[skipPrefix:], Alpha(maxLength), generatedIdx)
+	dst = dst[:skipPrefix+pieceLen]
+	assertLE(a, dst)
+	assertLess(dst, b)
+	return dst
 }
 
-// RandomSeparator returns a random alphabetic key k such that a < k < b,
-// pulling randomness from the provided random number generator. If dst is
-// provided and the generated key fits within dst's capacity, the returned slice
-// will use dst's memory.
-//
-// If a prefix P exists such that Prefix(a) < P < Prefix(b), the generated key
-// will consist of the prefix P appended with the provided suffix. A zero suffix
-// generates an unsuffixed key. If no such prefix P exists, RandomSeparator will
-// try to find a key k with either Prefix(a) or Prefix(b) such that a < k < b,
-// but the generated key will not use the provided suffix. Note that it's
-// possible that no separator key exists (eg, a='a@2', b='a@1'), in which case
-// RandomSeparator returns nil.
-//
-// If RandomSeparator generates a new prefix, the generated prefix will have
-// length at most MAX(maxLength, len(Prefix(a)), len(Prefix(b))).
-//
-// RandomSeparator panics if a or b fails to decode.
-func RandomSeparator(dst, a, b []byte, suffix int64, maxLength int, rng *rand.Rand) []byte {
+func assertValidPrefix(p []byte) {
+	if !prefixRE.Match(p) {
+		panic(fmt.Sprintf("invalid prefix %q", p))
+	}
+}
+
+func assertLess(a, b []byte) {
 	if Comparer.Compare(a, b) >= 0 {
-		return nil
+		panic(fmt.Sprintf("invalid key ordering: %q >= %q", a, b))
 	}
+}
 
-	// Determine both keys' logical prefixes and suffixes.
-	ai := Comparer.Split(a)
-	bi := Comparer.Split(b)
-	ap := a[:ai]
-	bp := b[:bi]
-	maxLength = max(maxLength, len(ap), len(bp))
-	var as, bs int64
-	var err error
-	if ai != len(a) {
-		as, err = ParseSuffix(a[ai:])
-		if err != nil {
-			panic(fmt.Sprintf("failed to parse suffix of %q", a))
-		}
+func assertLE(a, b []byte) {
+	if Comparer.Compare(a, b) > 0 {
+		panic(fmt.Sprintf("invalid key ordering: %q > %q", a, b))
 	}
-	if bi != len(b) {
-		bs, err = ParseSuffix(b[bi:])
-		if err != nil {
-			panic(fmt.Sprintf("failed to parse suffix of %q", b))
-		}
-	}
-
-	apIdx := computeAlphabetKeyIndex(ap, inverseAlphabet, maxLength)
-	bpIdx := computeAlphabetKeyIndex(bp, inverseAlphabet, maxLength)
-	diff := bpIdx - apIdx
-	generatedIdx := bpIdx
-	if diff > 0 {
-		var add int64 = diff + 1
-		var start int64 = apIdx
-		if as == 1 {
-			// There's no expressible key with prefix a greater than a@1. So,
-			// exclude ap.
-			start = apIdx + 1
-			add = diff
-		}
-		if bs == 0 {
-			// No key with prefix b can sort before b@0. We don't want to pick b.
-			add--
-		}
-		// We're allowing generated id to be in the range [start, start + add - 1].
-		if start > start+add-1 {
-			return nil
-		}
-		// If we can generate a key which is actually in the middle of apIdx
-		// and bpIdx use it so that we don't have to bother about timestamps.
-		generatedIdx = rng.Int63n(add) + start
-		for diff > 1 && generatedIdx == apIdx || generatedIdx == bpIdx {
-			generatedIdx = rng.Int63n(add) + start
-		}
-	}
-
-	switch {
-	case generatedIdx == apIdx && generatedIdx == bpIdx:
-		if abs(bs-as) <= 1 {
-			// There's no expressible suffix between the two, and there's no
-			// possible separator key.
-			return nil
-		}
-		// The key b is >= key a, but has the same prefix, so b must have the
-		// smaller timestamp, unless a has timestamp of 0.
-		//
-		// NB: The zero suffix (suffix-less) sorts before all other suffixes, so
-		// any suffix we generate will be greater than it.
-		if as == 0 {
-			// bs > as
-			suffix = bs + rng.Int63n(10) + 1
-		} else {
-			// bs < as.
-			// Generate suffix in range [bs + 1, as - 1]
-			suffix = bs + 1 + rng.Int63n(as-bs-1)
-		}
-	case generatedIdx == apIdx:
-		// NB: The zero suffix (suffix-less) sorts before all other suffixes, so
-		// any suffix we generate will be greater than it.
-		if as == 0 && suffix == 0 {
-			suffix++
-		} else if as != 0 && suffix >= as {
-			suffix = rng.Int63n(as)
-		}
-	case generatedIdx == bpIdx:
-		if suffix <= bs {
-			suffix = bs + rng.Int63n(10) + 1
-		}
-	}
-	if sz := maxLength + SuffixLen(suffix); cap(dst) < sz {
-		dst = make([]byte, sz)
-	} else {
-		dst = dst[:cap(dst)]
-	}
-	var w int
-	if suffix == 0 {
-		w = WriteKey(dst, Alpha(maxLength), generatedIdx)
-	} else {
-		w = WriteKeyAt(dst, Alpha(maxLength), generatedIdx, suffix)
-	}
-	return dst[:w]
 }

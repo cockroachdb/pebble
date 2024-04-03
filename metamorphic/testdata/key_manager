@@ -1,9 +1,8 @@
 # run subcommands
 #
 # add-new-key <key>
-# read-keys
-# write-keys
-# singledel-keys <writerID> <dbID>
+# keys
+# singledel-keys <writerID>
 # op <operation string as printed to ops files>
 
 run
@@ -16,69 +15,58 @@ add-new-key foo
 # Test SET; SINGLEDEL on DB.
 
 run
-read-keys
-write-keys
-singledel-keys db1 db1
-singledel-keys batch1 db1
+keys
+singledel-keys db1
+singledel-keys batch1
 op db1.Set("foo", "foo")
-read-keys
-write-keys
-singledel-keys db1 db1
-singledel-keys batch1 db1
+keys
+singledel-keys db1
+singledel-keys batch1
+bounds db1
 op db1.SingleDelete("foo", false)
-read-keys
-write-keys
-singledel-keys db1 db1
+keys
+singledel-keys db1
 ----
-read keys: "foo"
-write keys: "foo"
-singledel keys: (none)
-singledel keys: (none)
+keys: "foo"
+can singledel on db1: "foo"
+can singledel on batch1: "foo"
 [db1.Set("foo", "foo")]
-read keys: "foo"
-write keys: "foo"
-singledel keys: "foo"
-singledel keys: "foo"
+keys: "foo"
+can singledel on db1: "foo"
+can singledel on batch1: "foo"
+db1: ["foo","foo"]
 [db1.SingleDelete("foo", false /* maybeReplaceDelete */)]
-read keys: "foo"
-write keys: "foo"
-singledel keys: (none)
-
+keys: "foo"
+can singledel on db1: "foo"
 
 # Test SET; SINGLEDEL on batch on separate key.
 
 run
 add-new-key bar
 op batch1.Set("bar", "bar")
-read-keys
-write-keys
-singledel-keys db1 db1
-singledel-keys batch1 db1
-singledel-keys batch2 db1
+keys
+singledel-keys db1
+singledel-keys batch1
+singledel-keys batch2
 op batch1.SingleDelete("bar", false)
-read-keys
-write-keys
-singledel-keys db1 db1
-singledel-keys batch1 db1
+keys
+singledel-keys db1
+singledel-keys batch1
 op db1.Apply(batch1)
-write-keys
-singledel-keys db1 db1
+singledel-keys db1
 ----
 "bar" is new
 [batch1.Set("bar", "bar")]
-read keys: "bar", "foo"
-write keys: "bar", "foo"
-singledel keys: (none)
-singledel keys: "bar"
-singledel keys: (none)
+keys: "bar", "foo"
+can singledel on db1: "bar", "foo"
+can singledel on batch1: "bar", "foo"
+can singledel on batch2: "bar", "foo"
 [batch1.SingleDelete("bar", false /* maybeReplaceDelete */)]
-read keys: "bar", "foo"
-write keys: "foo"
-singledel keys: (none)
-singledel keys: (none)
+keys: "bar", "foo"
+can singledel on db1: "bar", "foo"
+can singledel on batch1: "bar", "foo"
 [db1.Apply(batch1)]
-write keys: "bar", "foo"
-singledel keys: (none)
+can singledel on db1: "bar", "foo"
 
 # Test SET on db; SINGLEDEL on batch.
 
@@ -88,35 +76,29 @@ reset
 run
 add-new-key foo
 op db1.Set("foo", "foo")
-write-keys
-singledel-keys db1 db1
-singledel-keys batch1 db1
+singledel-keys db1
+singledel-keys batch1
 op batch1.SingleDelete("foo", false)
-write-keys
-singledel-keys db1 db1
-singledel-keys batch1 db1
+singledel-keys db1
+singledel-keys batch1
 op db1.Apply(batch1)
-write-keys
-singledel-keys db1 db1
+singledel-keys db1
 op db1.Set("foo", "foo")
-singledel-keys db1 db1
-singledel-keys batch1 db1
+singledel-keys db1
+singledel-keys batch1
 ----
 "foo" is new
 [db1.Set("foo", "foo")]
-write keys: "foo"
-singledel keys: "foo"
-singledel keys: "foo"
+can singledel on db1: "foo"
+can singledel on batch1: "foo"
 [batch1.SingleDelete("foo", false /* maybeReplaceDelete */)]
-write keys: (none)
-singledel keys: (none)
-singledel keys: (none)
+can singledel on db1: "foo"
+can singledel on batch1: "foo"
 [db1.Apply(batch1)]
-write keys: "foo"
-singledel keys: (none)
+can singledel on db1: "foo"
 [db1.Set("foo", "foo")]
-singledel keys: "foo"
-singledel keys: "foo"
+can singledel on db1: "foo"
+can singledel on batch1: "foo"
 
 # Test SET; DEL; SET; SingleDelete on db.
 
@@ -127,26 +109,20 @@ run
 add-new-key foo
 op db1.Set("foo", "foo")
 op db1.Delete("foo")
-write-keys
-singledel-keys db1 db1
+singledel-keys db1
 op db1.Set("foo", "foo")
-write-keys
-singledel-keys db1 db1
+singledel-keys db1
 op db1.SingleDelete("foo", false)
-write-keys
-singledel-keys db1 db1
+singledel-keys db1
 ----
 "foo" is new
 [db1.Set("foo", "foo")]
 [db1.Delete("foo")]
-write keys: "foo"
-singledel keys: (none)
+can singledel on db1: "foo"
 [db1.Set("foo", "foo")]
-write keys: "foo"
-singledel keys: "foo"
+can singledel on db1: "foo"
 [db1.SingleDelete("foo", false /* maybeReplaceDelete */)]
-write keys: "foo"
-singledel keys: (none)
+can singledel on db1: "foo"
 
 # Test SET; DEL; SET; DEL on batches.
 
@@ -158,52 +134,58 @@ add-new-key foo
 op batch1.Set("foo", "foo")
 op batch1.Delete("foo")
 op batch1.Set("foo", "foo")
-write-keys
-singledel-keys batch1 db1
+singledel-keys batch1
 op db1.Apply(batch1)
-write-keys
 ----
 "foo" is new
 [batch1.Set("foo", "foo")]
 [batch1.Delete("foo")]
 [batch1.Set("foo", "foo")]
-write keys: "foo"
-singledel keys: (none)
+can singledel on batch1: "foo"
 [db1.Apply(batch1)]
-write keys: "foo"
 
-# "foo" should not be eliible for single delete because set count is 2.
+# "foo" should be eligible for single delete on db1 because a Delete separates
+# the two sets.
 
 run
-singledel-keys db1 db1
+singledel-keys db1
 ----
-singledel keys: (none)
+can singledel on db1: "foo"
+
+# A batch that contains its own Set and SingleDelete should conflict, because
+# the two Sets would stack.
+
+run
+op batch2.Set("foo", "foo")
+op batch2.SingleDelete("foo", false)
+conflicts batch2 db1
+----
+[batch2.Set("foo", "foo")]
+[batch2.SingleDelete("foo", false /* maybeReplaceDelete */)]
+conflicts merging batch2 into db1: "foo"
+
+# Setting "foo" again on the DB should result in the key no longer be eligible
+# for single delete because there are two stacked SETs on db1.s
 
 run
 op db1.Set("foo", "foo")
+singledel-keys db1
 ----
 [db1.Set("foo", "foo")]
-
-# "foo" should still not be eliible for single delete because set count is 3.
-
-run
-singledel-keys db1 db1
-----
-singledel keys: (none)
-
+can singledel on db1: (none)
 
 run
 op batch2.Delete("foo")
 op db1.Apply(batch2)
-singledel-keys db1 db1
+singledel-keys db1
 op db1.Set("foo", "foo")
-singledel-keys db1 db1
+singledel-keys db1
 ----
 [batch2.Delete("foo")]
 [db1.Apply(batch2)]
-singledel keys: (none)
+can singledel on db1: "foo"
 [db1.Set("foo", "foo")]
-singledel keys: "foo"
+can singledel on db1: "foo"
 
 # Test SET; MERGE; DEL; SINGLEDEL on DB.
 
@@ -213,33 +195,27 @@ reset
 run
 add-new-key foo
 op db.Set("foo", "foo")
-singledel-keys db1 db1
+singledel-keys db1
 op db1.Merge("foo", "foo")
-singledel-keys db1 db1
+singledel-keys db1
 op db1.Delete("foo")
-write-keys
-singledel-keys db1 db1
+singledel-keys db1
 op db1.Set("foo", "foo")
-write-keys
-singledel-keys db1 db1
+singledel-keys db1
 op db1.SingleDelete("foo", false)
-write-keys
-singledel-keys db1 db1
+singledel-keys db1
 ----
 "foo" is new
 [db1.Set("foo", "foo")]
-singledel keys: "foo"
+can singledel on db1: "foo"
 [db1.Merge("foo", "foo")]
-singledel keys: (none)
+can singledel on db1: (none)
 [db1.Delete("foo")]
-write keys: "foo"
-singledel keys: (none)
+can singledel on db1: "foo"
 [db1.Set("foo", "foo")]
-write keys: "foo"
-singledel keys: "foo"
+can singledel on db1: "foo"
 [db1.SingleDelete("foo", false /* maybeReplaceDelete */)]
-write keys: "foo"
-singledel keys: (none)
+can singledel on db1: "foo"
 
 # Test SET; DEL (db); SET; SINGLEDEL (batch)
 
@@ -249,40 +225,253 @@ reset
 run
 add-new-key foo
 op db1.Set("foo", "foo")
-singledel-keys db1 db1
+singledel-keys db1
 op db1.Delete("foo")
-write-keys
-singledel-keys db1 db1
+singledel-keys db1
 op db1.Set("foo", "foo")
-write-keys
-singledel-keys db1 db1
-singledel-keys batch1 db1
+singledel-keys db1
+singledel-keys batch1
 op batch1.SingleDelete("foo", false)
-write-keys
-singledel-keys db1 db1
-singledel-keys batch1 db1
+singledel-keys db1
+singledel-keys batch1
 op db1.Apply(batch1)
-write-keys
-singledel-keys db1 db1
+singledel-keys db1
 op db1.Set("foo", "foo")
-singledel-keys db1 db1
+singledel-keys db1
 ----
 "foo" is new
 [db1.Set("foo", "foo")]
-singledel keys: "foo"
+can singledel on db1: "foo"
 [db1.Delete("foo")]
-write keys: "foo"
-singledel keys: (none)
+can singledel on db1: "foo"
 [db1.Set("foo", "foo")]
-write keys: "foo"
-singledel keys: "foo"
-singledel keys: "foo"
+can singledel on db1: "foo"
+can singledel on batch1: "foo"
 [batch1.SingleDelete("foo", false /* maybeReplaceDelete */)]
-write keys: (none)
-singledel keys: (none)
-singledel keys: (none)
+can singledel on db1: "foo"
+can singledel on batch1: "foo"
 [db1.Apply(batch1)]
-write keys: "foo"
-singledel keys: (none)
+can singledel on db1: "foo"
 [db1.Set("foo", "foo")]
-singledel keys: "foo"
+can singledel on db1: "foo"
+
+# A delete range should "reset" keys, even if the delete range is applied to a
+# batch that doesn't yet contain the relevant key.
+
+reset
+----
+
+run
+add-new-key foo
+add-new-key bar
+op db1.Set("foo", "foo")
+op db1.Set("foo", "foo")
+singledel-keys db1
+op batch1.DeleteRange("a", "z")
+conflicts collapsed batch1 db1
+op db1.Apply(batch1)
+singledel-keys db1
+----
+"foo" is new
+"bar" is new
+[db1.Set("foo", "foo")]
+[db1.Set("foo", "foo")]
+can singledel on db1: "bar"
+[batch1.DeleteRange("a", "z")]
+conflicts merging batch1 (collapsed) into db1: (none)
+[db1.Apply(batch1)]
+can singledel on db1: "bar", "foo"
+
+# Ingestion flattens keys, with any range dels contained within the batch
+# semantically applying beneath the most recent point. In this case, foo should
+# remain eligible immediately after ingestion because the DeleteRange shadows
+# the original Set on db1. It should not be eligible after the final Set,
+# because the ingested set and the final set stack, both on top of the delete
+# range.
+
+reset
+----
+
+run
+add-new-key foo
+add-new-key bar
+op db1.Set("foo", "foo")
+singledel-keys db1
+op batch1.Set("foo", "foo")
+op batch1.DeleteRange("a", "z")
+conflicts collapsed batch1 db1
+op db1.Ingest(batch1)
+singledel-keys db1
+op db1.Set("foo", "foo")
+singledel-keys db1
+bounds db1
+----
+"foo" is new
+"bar" is new
+[db1.Set("foo", "foo")]
+can singledel on db1: "bar", "foo"
+[batch1.Set("foo", "foo")]
+[batch1.DeleteRange("a", "z")]
+conflicts merging batch1 (collapsed) into db1: (none)
+[db1.Ingest(batch1)]
+can singledel on db1: "bar", "foo"
+[db1.Set("foo", "foo")]
+can singledel on db1: "bar"
+db1: ["a","z")
+
+# Repeat the above test, but this time with an ingestion that should fail due to
+# overlapping key ranges.
+
+run
+add-new-key foo
+add-new-key bar
+op db1.Set("foo", "foo")
+singledel-keys db1
+op batch1.Set("foo", "foo")
+bounds batch1
+op batch1.DeleteRange("a", "z")
+bounds batch1
+op batch2.DeleteRange("y", "z")
+conflicts collapsed batch1 db1
+op db1.Ingest(batch1, batch2)
+singledel-keys db1
+op db1.Set("foo", "foo")
+singledel-keys db1
+bounds db1
+----
+"foo" already tracked
+"bar" already tracked
+[db1.Set("foo", "foo")]
+can singledel on db1: "bar"
+[batch1.Set("foo", "foo")]
+batch1: ["foo","foo"]
+[batch1.DeleteRange("a", "z")]
+batch1: ["a","z")
+[batch2.DeleteRange("y", "z")]
+conflicts merging batch1 (collapsed) into db1: (none)
+[db1.Ingest(batch1, batch2)]
+can singledel on db1: "bar"
+[db1.Set("foo", "foo")]
+can singledel on db1: "bar"
+db1: ["a","z")
+
+# Since ingestion flattens keys, foo should be single-deletable on the db after
+# ingest, even though it couldn't be single deleted from the batch before
+# ingestion.
+
+reset
+----
+
+run
+add-new-key foo
+op batch1.Set("foo", "foo")
+op batch1.Set("foo", "foo")
+conflicts collapsed batch1 db1
+singledel-keys batch1
+op db1.Ingest(batch1)
+singledel-keys db1
+----
+"foo" is new
+[batch1.Set("foo", "foo")]
+[batch1.Set("foo", "foo")]
+conflicts merging batch1 (collapsed) into db1: (none)
+can singledel on batch1: (none)
+[db1.Ingest(batch1)]
+can singledel on db1: "foo"
+
+
+# Because ingestion flattens keys, foo remains eligible for single delete the
+# entire test case. During flattening, the Delete wins over the Set.
+
+reset
+----
+
+run
+add-new-key foo
+op batch1.Set("foo", "foo")
+op batch1.Delete("foo")
+singledel-keys batch1
+op db1.Ingest(batch1)
+singledel-keys db1
+op db1.Set("foo", "foo")
+singledel-keys db1
+----
+"foo" is new
+[batch1.Set("foo", "foo")]
+[batch1.Delete("foo")]
+can singledel on batch1: "foo"
+[db1.Ingest(batch1)]
+can singledel on db1: "foo"
+[db1.Set("foo", "foo")]
+can singledel on db1: "foo"
+
+# Ingestion flattening means that the batch1.Set sits semantically on top of the
+# delete range despite being inserted to the batch before the delete range.
+
+reset
+----
+
+run
+add-new-key foo
+op batch1.Set("foo", "foo")
+op batch1.DeleteRange("a", "z")
+op db1.Ingest(batch1)
+op db1.Set("foo", "foo")
+singledel-keys db1
+----
+"foo" is new
+[batch1.Set("foo", "foo")]
+[batch1.DeleteRange("a", "z")]
+[db1.Ingest(batch1)]
+[db1.Set("foo", "foo")]
+can singledel on db1: (none)
+
+# In this scenario batch1 would conflict with db1 if it were applied as a batch
+# commit, but when ingested and "collapsed" it does not conflict.
+
+reset
+----
+
+run
+add-new-key foo
+op db1.Set("foo", "foo")
+op batch1.Set("foo", "foo")
+op batch1.SingleDelete("foo", false)
+conflicts batch1 db1
+conflicts collapsed batch1 db1
+op db1.Ingest(batch1)
+----
+"foo" is new
+[db1.Set("foo", "foo")]
+[batch1.Set("foo", "foo")]
+[batch1.SingleDelete("foo", false /* maybeReplaceDelete */)]
+conflicts merging batch1 into db1: "foo"
+conflicts merging batch1 (collapsed) into db1: (none)
+[db1.Ingest(batch1)]
+
+# Allow a MERGE to be deleted by a single delete, as long as it's the only
+# value-carrying key.
+
+reset
+----
+
+run
+add-new-key foo
+op db1.Merge("foo", "foo")
+singledel-keys db1
+op batch1.Merge("foo", "foo")
+op batch1.SingleDelete("foo", true)
+conflicts batch1 db1
+conflicts collapsed batch1 db1
+op db1.Merge("foo", "foo")
+singledel-keys db1
+----
+"foo" is new
+[db1.Merge("foo", "foo")]
+can singledel on db1: "foo"
+[batch1.Merge("foo", "foo")]
+[batch1.SingleDelete("foo", true /* maybeReplaceDelete */)]
+conflicts merging batch1 into db1: "foo"
+conflicts merging batch1 (collapsed) into db1: (none)
+[db1.Merge("foo", "foo")]
+can singledel on db1: (none)

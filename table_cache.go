@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -46,6 +47,79 @@ type filteredAllKeysIter struct {
 
 func (s *filteredAllKeysIter) MaybeFilteredKeys() bool {
 	return true
+}
+
+// tableNewIters creates new iterators (point, range deletion and/or range key)
+// for the given file metadata. Which of the various iterator kinds the user is
+// requesting is specified with the iterKinds bitmap.
+//
+// On success, the requested subset of iters.{point,rangeDel,rangeKey} are
+// populated with iterators.
+//
+// If a point iterator is requested and the operation was successful,
+// iters.point is guaranteed to be non-nil and must be closed when the caller is
+// finished.
+//
+// If a range deletion or range key iterator is requested, the corresponding
+// iterator may be nil if the table does not contain any keys of the
+// corresponding kind. The returned iterSet type provides RangeDeletion() and
+// RangeKey() convenience methods that return non-nil empty iterators that may
+// be used if the caller requires a non-nil iterator.
+//
+// On error, all iterators are nil.
+//
+// The only (non-test) implementation of tableNewIters is
+// tableCacheContainer.newIters().
+type tableNewIters func(
+	ctx context.Context,
+	file *manifest.FileMetadata,
+	opts *IterOptions,
+	internalOpts internalIterOpts,
+	kinds iterKinds,
+) (iterSet, error)
+
+// TODO implements the old tableNewIters interface that always attempted to open
+// a point iterator and a range deletion iterator. All call sites should be
+// updated to use `f` directly.
+func (f tableNewIters) TODO(
+	ctx context.Context,
+	file *manifest.FileMetadata,
+	opts *IterOptions,
+	internalOpts internalIterOpts,
+) (internalIterator, keyspan.FragmentIterator, error) {
+	iters, err := f(ctx, file, opts, internalOpts, iterPointKeys|iterRangeDeletions)
+	if err != nil {
+		return nil, nil, err
+	}
+	return iters.point, iters.rangeDeletion, nil
+}
+
+// tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
+// for the rangedel iterator returned by tableNewIters.
+func tableNewRangeDelIter(
+	ctx context.Context, newIters tableNewIters,
+) keyspanimpl.TableNewSpanIter {
+	return func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeDeletions)
+		if err != nil {
+			return nil, err
+		}
+		return iters.RangeDeletion(), nil
+	}
+}
+
+// tableNewRangeKeyIter takes a tableNewIters and returns a TableNewSpanIter
+// for the range key iterator returned by tableNewIters.
+func tableNewRangeKeyIter(
+	ctx context.Context, newIters tableNewIters,
+) keyspanimpl.TableNewSpanIter {
+	return func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeKeys)
+		if err != nil {
+			return nil, err
+		}
+		return iters.RangeKey(), nil
+	}
 }
 
 var tableCacheLabels = pprof.Labels("pebble", "table-cache")
@@ -140,14 +214,9 @@ func (c *tableCacheContainer) newIters(
 	file *manifest.FileMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
-) (internalIterator, keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileBacking.DiskFileNum).newIters(ctx, file, opts, internalOpts, &c.dbOpts)
-}
-
-func (c *tableCacheContainer) newRangeKeyIter(
-	file *manifest.FileMetadata, opts keyspan.SpanIterOptions,
-) (keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileBacking.DiskFileNum).newRangeKeyIter(file, opts, &c.dbOpts)
+	kinds iterKinds,
+) (iterSet, error) {
+	return c.tableCache.getShard(file.FileBacking.DiskFileNum).newIters(ctx, file, opts, internalOpts, &c.dbOpts, kinds)
 }
 
 // getTableProperties returns the properties associated with the backing physical
@@ -201,17 +270,13 @@ func (c *tableCacheContainer) estimateSize(
 	return size, nil
 }
 
-// createCommonReader creates a Reader for this file. isForeign, if true for
-// virtual sstables, is passed into the vSSTable reader so its iterators can
-// collapse obsolete points accordingly.
-func createCommonReader(
-	v *tableCacheValue, file *fileMetadata, isForeign bool,
-) sstable.CommonReader {
+// createCommonReader creates a Reader for this file.
+func createCommonReader(v *tableCacheValue, file *fileMetadata) sstable.CommonReader {
 	// TODO(bananabrick): We suffer an allocation if file is a virtual sstable.
 	var cr sstable.CommonReader = v.reader
 	if file.Virtual {
 		virtualReader := sstable.MakeVirtualReader(
-			v.reader, file.VirtualMeta(), isForeign,
+			v.reader, file.VirtualMeta().VirtualReaderParams(v.isShared),
 		)
 		cr = &virtualReader
 	}
@@ -222,22 +287,17 @@ func (c *tableCacheContainer) withCommonReader(
 	meta *fileMetadata, fn func(sstable.CommonReader) error,
 ) error {
 	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(meta, &c.dbOpts)
+	v := s.findNode(meta.FileBacking, &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		return v.err
 	}
-	provider := c.dbOpts.objProvider
-	objMeta, err := provider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
-	if err != nil {
-		return err
-	}
-	return fn(createCommonReader(v, meta, provider.IsSharedForeign(objMeta)))
+	return fn(createCommonReader(v, meta))
 }
 
 func (c *tableCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
 	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(meta.FileMetadata, &c.dbOpts)
+	v := s.findNode(meta.FileBacking, &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		return v.err
@@ -250,7 +310,7 @@ func (c *tableCacheContainer) withVirtualReader(
 	meta virtualMeta, fn func(sstable.VirtualReader) error,
 ) error {
 	s := c.tableCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(meta.FileMetadata, &c.dbOpts)
+	v := s.findNode(meta.FileBacking, &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		return v.err
@@ -260,7 +320,7 @@ func (c *tableCacheContainer) withVirtualReader(
 	if err != nil {
 		return err
 	}
-	return fn(sstable.MakeVirtualReader(v.reader, meta, provider.IsSharedForeign(objMeta)))
+	return fn(sstable.MakeVirtualReader(v.reader, meta.VirtualReaderParams(objMeta.IsShared())))
 }
 
 func (c *tableCacheContainer) iterCount() int64 {
@@ -337,7 +397,7 @@ func NewTableCache(cache *Cache, numShards int, size int) *TableCache {
 }
 
 func (c *TableCache) getShard(fileNum base.DiskFileNum) *tableCacheShard {
-	return c.shards[uint64(fileNum.FileNum())%uint64(len(c.shards))]
+	return c.shards[uint64(fileNum)%uint64(len(c.shards))]
 }
 
 type tableCacheKey struct {
@@ -403,6 +463,7 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 	tableFilter func(userProps map[string]string) bool,
 	blockPropertyFilters []BlockPropertyFilter,
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter,
+	syntheticSuffix sstable.SyntheticSuffix,
 ) (ok bool, filterer *sstable.BlockPropertiesFilterer, err error) {
 	if tableFilter != nil &&
 		!tableFilter(v.reader.Properties.UserProperties) {
@@ -414,6 +475,7 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 			blockPropertyFilters,
 			boundLimitedFilter,
 			v.reader.Properties.UserProperties,
+			syntheticSuffix,
 		)
 		// NB: IntersectsTable will return a nil filterer if the table-level
 		// properties indicate there's no intersection with the provided filters.
@@ -430,7 +492,8 @@ func (c *tableCacheShard) newIters(
 	opts *IterOptions,
 	internalOpts internalIterOpts,
 	dbOpts *tableCacheOpts,
-) (internalIterator, keyspan.FragmentIterator, error) {
+	kinds iterKinds,
+) (iterSet, error) {
 	// TODO(sumeer): constructing the Reader should also use a plumbed context,
 	// since parts of the sstable are read during the construction. The Reader
 	// should not remember that context since the Reader can be long-lived.
@@ -439,14 +502,67 @@ func (c *tableCacheShard) newIters(
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
-	v := c.findNode(file, dbOpts)
+	v := c.findNode(file.FileBacking, dbOpts)
 	if v.err != nil {
 		defer c.unrefValue(v)
-		return nil, nil, v.err
+		return iterSet{}, v.err
 	}
 
-	hideObsoletePoints := false
-	var pointKeyFilters []BlockPropertyFilter
+	// Note: This suffers an allocation for virtual sstables.
+	cr := createCommonReader(v, file)
+	var iters iterSet
+	var err error
+	if kinds.RangeKey() && file.HasRangeKeys {
+		iters.rangeKey, err = c.newRangeKeyIter(v, file, cr, opts.SpanIterOptions())
+	}
+	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
+		iters.rangeDeletion, err = c.newRangeDelIter(ctx, file, cr, dbOpts)
+	}
+	if kinds.Point() && err == nil {
+		iters.point, err = c.newPointIter(ctx, v, file, cr, opts, internalOpts, dbOpts)
+	}
+	if err != nil {
+		// NB: There's a subtlety here: Because the point iterator is the last
+		// iterator we attempt to create, it's not possible for:
+		//   err != nil && iters.point != nil
+		// If it were possible, we'd need to account for it to avoid double
+		// unref-ing here, once during CloseAll and once during `unrefValue`.
+		iters.CloseAll()
+		c.unrefValue(v)
+		return iterSet{}, err
+	}
+	// Only point iterators ever require the reader stay pinned in the cache. If
+	// we're not returning a point iterator to the caller, we need to unref v.
+	// There's an added subtlety that iters.point may be non-nil but not a true
+	// iterator that's ref'd the underlying reader if block filters excluded the
+	// entirety of the table.
+	//
+	// TODO(jackson): This `filteredAll` subtlety can be removed after the
+	// planned #2863 refactor, when there will be no need to return a special
+	// empty iterator type to signify that point keys were filtered.
+	if iters.point == nil || iters.point == filteredAll {
+		c.unrefValue(v)
+	}
+	return iters, nil
+}
+
+// newPointIter is an internal helper that constructs a point iterator over a
+// sstable. This function is for internal use only, and callers should use
+// newIters instead.
+func (c *tableCacheShard) newPointIter(
+	ctx context.Context,
+	v *tableCacheValue,
+	file *manifest.FileMetadata,
+	cr sstable.CommonReader,
+	opts *IterOptions,
+	internalOpts internalIterOpts,
+	dbOpts *tableCacheOpts,
+) (internalIterator, error) {
+	var (
+		hideObsoletePoints bool = false
+		pointKeyFilters    []BlockPropertyFilter
+		filterer           *sstable.BlockPropertiesFilterer
+	)
 	if opts != nil {
 		// This code is appending (at most one filter) in-place to
 		// opts.PointKeyFilters even though the slice is shared for iterators in
@@ -462,54 +578,32 @@ func (c *tableCacheShard) newIters(
 		//
 		// An alternative would be to have different slices for different sstable
 		// iterators, but that requires more work to avoid allocations.
+		//
+		// TODO(bilal): for compaction reads of foreign sstables, we do hide
+		// obsolete points (see sstable.Reader.newCompactionIter) but we don't
+		// apply the obsolete block property filter. We could optimize this by
+		// applying the filter.
 		hideObsoletePoints, pointKeyFilters =
 			v.reader.TryAddBlockPropertyFilterForHideObsoletePoints(
 				opts.snapshotForHideObsoletePoints, file.LargestSeqNum, opts.PointKeyFilters)
-	}
-	ok := true
-	var filterer *sstable.BlockPropertiesFilterer
-	var err error
-	if opts != nil {
+
+		var ok bool
+		var err error
 		ok, filterer, err = c.checkAndIntersectFilters(v, opts.TableFilter,
-			pointKeyFilters, internalOpts.boundLimitedFilter)
-	}
-	if err != nil {
-		c.unrefValue(v)
-		return nil, nil, err
-	}
-
-	provider := dbOpts.objProvider
-	// Check if this file is a foreign file.
-	objMeta, err := provider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Note: This suffers an allocation for virtual sstables.
-	cr := createCommonReader(v, file, provider.IsSharedForeign(objMeta))
-
-	// NB: range-del iterator does not maintain a reference to the table, nor
-	// does it need to read from it after creation.
-	rangeDelIter, err := cr.NewRawRangeDelIter()
-	if err != nil {
-		c.unrefValue(v)
-		return nil, nil, err
-	}
-
-	if !ok {
-		c.unrefValue(v)
-		// Return an empty iterator. This iterator has no mutable state, so
-		// using a singleton is fine.
-		// NB: We still return the potentially non-empty rangeDelIter. This
-		// ensures the iterator observes the file's range deletions even if the
-		// block property filters exclude all the file's point keys. The range
-		// deletions may still delete keys lower in the LSM in files that DO
-		// match the active filters.
-		//
-		// The point iterator returned must implement the filteredIter
-		// interface, so that the level iterator surfaces file boundaries when
-		// range deletions are present.
-		return filteredAll, rangeDelIter, err
+			pointKeyFilters, internalOpts.boundLimitedFilter, file.SyntheticSuffix)
+		if err != nil {
+			return nil, err
+		} else if !ok {
+			// Return an empty iterator. This iterator has no mutable state, so
+			// using a singleton is fine. We must return `filteredAll` instead
+			// of nil so that the returned iterator returns MaybeFilteredKeys()
+			// = true.
+			//
+			// TODO(jackson): This `filteredAll` subtlety can be removed after the
+			// planned #2863 refactor, when there will be no need to return a special
+			// empty iterator type to signify that point keys were filtered.
+			return filteredAll, err
+		}
 	}
 
 	var iter sstable.Iterator
@@ -520,43 +614,41 @@ func (c *tableCacheShard) newIters(
 	}
 	tableFormat, err := v.reader.TableFormat()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	var rp sstable.ReaderProvider
 	if tableFormat >= sstable.TableFormatPebblev3 && v.reader.Properties.NumValueBlocks > 0 {
 		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
 	}
 
-	if provider.IsSharedForeign(objMeta) {
+	if v.isShared && file.SyntheticSeqNum() != 0 {
 		if tableFormat < sstable.TableFormatPebblev4 {
-			return nil, nil, errors.New("pebble: shared foreign sstable has a lower table format than expected")
+			return nil, errors.New("pebble: shared ingested sstable has a lower table format than expected")
 		}
+		// The table is shared and ingested.
 		hideObsoletePoints = true
 	}
+	transforms := file.IterTransforms()
+	transforms.HideObsoletePoints = hideObsoletePoints
 	var categoryAndQoS sstable.CategoryAndQoS
 	if opts != nil {
 		categoryAndQoS = opts.CategoryAndQoS
 	}
 	if internalOpts.bytesIterated != nil {
 		iter, err = cr.NewCompactionIter(
-			internalOpts.bytesIterated, categoryAndQoS, dbOpts.sstStatsCollector, rp,
+			transforms, internalOpts.bytesIterated, categoryAndQoS, dbOpts.sstStatsCollector, rp,
 			internalOpts.bufferPool)
 	} else {
 		iter, err = cr.NewIterWithBlockPropertyFiltersAndContextEtc(
-			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, hideObsoletePoints, useFilter,
+			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter,
 			internalOpts.stats, categoryAndQoS, dbOpts.sstStatsCollector, rp)
 	}
 	if err != nil {
-		if rangeDelIter != nil {
-			_ = rangeDelIter.Close()
-		}
-		c.unrefValue(v)
-		return nil, nil, err
+		return nil, err
 	}
 	// NB: v.closeHook takes responsibility for calling unrefValue(v) here. Take
 	// care to avoid introducing an allocation here by adding a closure.
 	iter.SetCloseHook(v.closeHook)
-
 	c.iterCount.Add(1)
 	dbOpts.iterCount.Add(1)
 	if invariants.RaceEnabled {
@@ -564,73 +656,56 @@ func (c *tableCacheShard) newIters(
 		c.mu.iters[iter] = debug.Stack()
 		c.mu.Unlock()
 	}
-	return iter, rangeDelIter, nil
+	return iter, nil
 }
 
-func (c *tableCacheShard) newRangeKeyIter(
-	file *manifest.FileMetadata, opts keyspan.SpanIterOptions, dbOpts *tableCacheOpts,
+// newRangeDelIter is an internal helper that constructs an iterator over a
+// sstable's range deletions. This function is for table-cache internal use
+// only, and callers should use newIters instead.
+func (c *tableCacheShard) newRangeDelIter(
+	ctx context.Context, file *manifest.FileMetadata, cr sstable.CommonReader, dbOpts *tableCacheOpts,
 ) (keyspan.FragmentIterator, error) {
-	// Calling findNode gives us the responsibility of decrementing v's
-	// refCount. If opening the underlying table resulted in error, then we
-	// decrement this straight away. Otherwise, we pass that responsibility to
-	// the sstable iterator, which decrements when it is closed.
-	v := c.findNode(file, dbOpts)
-	if v.err != nil {
-		defer c.unrefValue(v)
-		return nil, v.err
+	// NB: range-del iterator does not maintain a reference to the table, nor
+	// does it need to read from it after creation.
+	rangeDelIter, err := cr.NewRawRangeDelIter(file.IterTransforms())
+	if err != nil {
+		return nil, err
 	}
+	// Assert expected bounds in tests.
+	if invariants.Enabled && rangeDelIter != nil {
+		cmp := base.DefaultComparer.Compare
+		if dbOpts.opts.Comparer != nil {
+			cmp = dbOpts.opts.Comparer.Compare
+		}
+		rangeDelIter = keyspan.AssertBounds(
+			rangeDelIter, file.SmallestPointKey, file.LargestPointKey.UserKey, cmp,
+		)
+	}
+	return rangeDelIter, nil
+}
 
-	ok := true
-	var err error
+// newRangeKeyIter is an internal helper that constructs an iterator over a
+// sstable's range keys. This function is for table-cache internal use only, and
+// callers should use newIters instead.
+func (c *tableCacheShard) newRangeKeyIter(
+	v *tableCacheValue, file *fileMetadata, cr sstable.CommonReader, opts keyspan.SpanIterOptions,
+) (keyspan.FragmentIterator, error) {
+	transforms := file.IterTransforms()
 	// Don't filter a table's range keys if the file contains RANGEKEYDELs.
 	// The RANGEKEYDELs may delete range keys in other levels. Skipping the
 	// file's range key blocks may surface deleted range keys below. This is
 	// done here, rather than deferring to the block-property collector in order
 	// to maintain parity with point keys and the treatment of RANGEDELs.
-	if v.reader.Properties.NumRangeKeyDels == 0 {
-		ok, _, err = c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters, nil)
-	}
-	if err != nil {
-		c.unrefValue(v)
-		return nil, err
-	}
-	if !ok {
-		c.unrefValue(v)
-		// Return the empty iterator. This iterator has no mutable state, so
-		// using a singleton is fine.
-		return emptyKeyspanIter, err
-	}
-
-	var iter keyspan.FragmentIterator
-	if file.Virtual {
-		provider := dbOpts.objProvider
-		var objMeta objstorage.ObjectMetadata
-		objMeta, err = provider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
-		if err == nil {
-			virtualReader := sstable.MakeVirtualReader(
-				v.reader, file.VirtualMeta(), provider.IsSharedForeign(objMeta),
-			)
-			iter, err = virtualReader.NewRawRangeKeyIter()
+	if v.reader.Properties.NumRangeKeyDels == 0 && len(opts.RangeKeyFilters) > 0 {
+		ok, _, err := c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters, nil, transforms.SyntheticSuffix)
+		if err != nil {
+			return nil, err
+		} else if !ok {
+			return nil, nil
 		}
-	} else {
-		iter, err = v.reader.NewRawRangeKeyIter()
 	}
-
-	// iter is a block iter that holds the entire value of the block in memory.
-	// No need to hold onto a ref of the cache value.
-	c.unrefValue(v)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if iter == nil {
-		// NewRawRangeKeyIter can return nil even if there's no error. However,
-		// the keyspan.LevelIter expects a non-nil iterator if err is nil.
-		return emptyKeyspanIter, nil
-	}
-
-	return iter, nil
+	// TODO(radu): wrap in an AssertBounds.
+	return cr.NewRawRangeKeyIter(transforms)
 }
 
 type tableCacheShardReaderProvider struct {
@@ -659,7 +734,7 @@ var _ sstable.ReaderProvider = &tableCacheShardReaderProvider{}
 func (rp *tableCacheShardReaderProvider) GetReader() (*sstable.Reader, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount.
-	v := rp.c.findNode(rp.file, rp.dbOpts)
+	v := rp.c.findNode(rp.file.FileBacking, rp.dbOpts)
 	if v.err != nil {
 		defer rp.c.unrefValue(v)
 		return nil, v.err
@@ -679,7 +754,7 @@ func (c *tableCacheShard) getTableProperties(
 	file *fileMetadata, dbOpts *tableCacheOpts,
 ) (*sstable.Properties, error) {
 	// Calling findNode gives us the responsibility of decrementing v's refCount here
-	v := c.findNode(file, dbOpts)
+	v := c.findNode(file.FileBacking, dbOpts)
 	defer c.unrefValue(v)
 
 	if v.err != nil {
@@ -755,33 +830,26 @@ func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
-func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *tableCacheValue {
-	v := c.findNodeInternal(meta, dbOpts)
-
-	// Loading a file before its global sequence number is known (eg,
-	// during ingest before entering the commit pipeline) can pollute
-	// the cache with incorrect state. In invariant builds, verify
-	// that the global sequence number of the returned reader matches.
-	if invariants.Enabled {
-		if v.reader != nil && meta.LargestSeqNum == meta.SmallestSeqNum &&
-			v.reader.Properties.GlobalSeqNum != meta.SmallestSeqNum {
-			panic(errors.AssertionFailedf("file %s loaded from table cache with the wrong global sequence number %d",
-				meta, v.reader.Properties.GlobalSeqNum))
-		}
+func (c *tableCacheShard) findNode(b *fileBacking, dbOpts *tableCacheOpts) *tableCacheValue {
+	// The backing must have a positive refcount (otherwise it could be deleted at any time).
+	b.MustHaveRefs()
+	// Caution! Here fileMetadata can be a physical or virtual table. Table cache
+	// readers are associated with the physical backings. All virtual tables with
+	// the same backing will use the same reader from the cache; so no information
+	// that can differ among these virtual tables can be plumbed into loadInfo.
+	info := loadInfo{
+		backingFileNum: b.DiskFileNum,
 	}
-	return v
+
+	return c.findNodeInternal(info, dbOpts)
 }
 
 func (c *tableCacheShard) findNodeInternal(
-	meta *fileMetadata, dbOpts *tableCacheOpts,
+	loadInfo loadInfo, dbOpts *tableCacheOpts,
 ) *tableCacheValue {
-	if refs := meta.Refs(); refs <= 0 {
-		panic(errors.AssertionFailedf("attempting to load file %s with refs=%d from table cache",
-			meta, refs))
-	}
 	// Fast-path for a hit in the cache.
 	c.mu.RLock()
-	key := tableCacheKey{dbOpts.cacheID, meta.FileBacking.DiskFileNum}
+	key := tableCacheKey{dbOpts.cacheID, loadInfo.backingFileNum}
 	if n := c.mu.nodes[key]; n != nil && n.value != nil {
 		// Fast-path hit.
 		//
@@ -803,7 +871,7 @@ func (c *tableCacheShard) findNodeInternal(
 	case n == nil:
 		// Slow-path miss of a non-existent node.
 		n = &tableCacheNode{
-			fileNum: meta.FileBacking.DiskFileNum,
+			fileNum: loadInfo.backingFileNum,
 			ptype:   tableCacheNodeCold,
 		}
 		c.addNode(n, dbOpts)
@@ -861,12 +929,7 @@ func (c *tableCacheShard) findNodeInternal(
 	// Note adding to the cache lists must complete before we begin loading the
 	// table as a failure during load will result in the node being unlinked.
 	pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-		v.load(
-			loadInfo{
-				backingFileNum: meta.FileBacking.DiskFileNum,
-				smallestSeqNum: meta.SmallestSeqNum,
-				largestSeqNum:  meta.LargestSeqNum,
-			}, c, dbOpts)
+		v.load(loadInfo, c, dbOpts)
 	})
 	return v
 }
@@ -1085,16 +1148,16 @@ type tableCacheValue struct {
 	closeHook func(i sstable.Iterator) error
 	reader    *sstable.Reader
 	err       error
+	isShared  bool
 	loaded    chan struct{}
 	// Reference count for the value. The reader is closed when the reference
 	// count drops to zero.
 	refCount atomic.Int32
 }
 
+// loadInfo contains the information needed to populate a new cache entry.
 type loadInfo struct {
 	backingFileNum base.DiskFileNum
-	largestSeqNum  uint64
-	smallestSeqNum uint64
 }
 
 func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *tableCacheOpts) {
@@ -1108,12 +1171,14 @@ func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *ta
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, loadInfo.backingFileNum).(sstable.ReaderOption)
 		v.reader, err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
 	}
+	if err == nil {
+		var objMeta objstorage.ObjectMetadata
+		objMeta, err = dbOpts.objProvider.Lookup(fileTypeTable, loadInfo.backingFileNum)
+		v.isShared = objMeta.IsShared()
+	}
 	if err != nil {
 		v.err = errors.Wrapf(
-			err, "pebble: backing file %s error", errors.Safe(loadInfo.backingFileNum.FileNum()))
-	}
-	if v.err == nil && loadInfo.smallestSeqNum == loadInfo.largestSeqNum {
-		v.reader.Properties.GlobalSeqNum = loadInfo.largestSeqNum
+			err, "pebble: backing file %s error", loadInfo.backingFileNum)
 	}
 	if v.err != nil {
 		c.mu.Lock()
@@ -1206,3 +1271,75 @@ func (n *tableCacheNode) unlink() *tableCacheNode {
 	n.links.next = n
 	return next
 }
+
+// iterSet holds a set of iterators of various key kinds, all constructed over
+// the same data structure (eg, an sstable). A subset of the fields may be
+// populated depending on the `iterKinds` passed to newIters.
+type iterSet struct {
+	point         internalIterator
+	rangeDeletion keyspan.FragmentIterator
+	rangeKey      keyspan.FragmentIterator
+}
+
+// TODO(jackson): Consider adding methods for fast paths that check whether an
+// iterator of a particular kind is nil, so that these call sites don't need to
+// reach into the struct's fields directly.
+
+// Point returns the contained point iterator. If there is no point iterator,
+// Point returns a non-nil empty point iterator.
+func (s *iterSet) Point() internalIterator {
+	if s.point == nil {
+		return emptyIter
+	}
+	return s.point
+}
+
+// RangeDeletion returns the contained range deletion iterator. If there is no
+// range deletion iterator, RangeDeletion returns a non-nil empty keyspan
+// iterator.
+func (s *iterSet) RangeDeletion() keyspan.FragmentIterator {
+	if s.rangeDeletion == nil {
+		return emptyKeyspanIter
+	}
+	return s.rangeDeletion
+}
+
+// RangeKey returns the contained range key iterator. If there is no range key
+// iterator, RangeKey returns a non-nil empty keyspan iterator.
+func (s *iterSet) RangeKey() keyspan.FragmentIterator {
+	if s.rangeKey == nil {
+		return emptyKeyspanIter
+	}
+	return s.rangeKey
+}
+
+// CloseAll closes all of the held iterators. If CloseAll is called, then Close
+// must be not be called on the constituent iterators.
+func (s *iterSet) CloseAll() error {
+	var err error
+	if s.point != nil {
+		err = s.point.Close()
+	}
+	if s.rangeDeletion != nil {
+		err = firstError(err, s.rangeDeletion.Close())
+	}
+	if s.rangeKey != nil {
+		err = firstError(err, s.rangeKey.Close())
+	}
+	return err
+}
+
+// iterKinds is a bitmap indicating a set of kinds of iterators. Callers may
+// bitwise-OR iterPointKeys, iterRangeDeletions and/or iterRangeKeys together to
+// represent a set of desired iterator kinds.
+type iterKinds uint8
+
+func (t iterKinds) Point() bool         { return (t & iterPointKeys) != 0 }
+func (t iterKinds) RangeDeletion() bool { return (t & iterRangeDeletions) != 0 }
+func (t iterKinds) RangeKey() bool      { return (t & iterRangeKeys) != 0 }
+
+const (
+	iterPointKeys iterKinds = 1 << iota
+	iterRangeDeletions
+	iterRangeKeys
+)

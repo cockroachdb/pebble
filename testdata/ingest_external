@@ -8,13 +8,13 @@ set c foobar
 ----
 
 ingest-external
-f1,5,a,cc
+f1 bounds=(a,cc)
 ----
 
 lsm
 ----
-6:
-  000004:[a#10,DELSIZED-cc#inf,RANGEDEL]
+L6:
+  000004(000004):[a#10,DELSIZED-cc#inf,RANGEDEL]
 
 iter
 first
@@ -39,13 +39,13 @@ set c foobar
 ----
 
 ingest-external
-f2,5,a,c
+f2 bounds=(a,c)
 ----
 
 lsm
 ----
-6:
-  000004:[a#10,DELSIZED-c#inf,RANGEDEL]
+L6:
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
 
 iter
 first
@@ -73,22 +73,22 @@ set h foo
 # This ingestion should error out due to the overlap between file spans.
 
 ingest-external
-f3,10,c,f
-f4,10,e,h
+f3 bounds=(c,f)
+f4 bounds=(e,h)
 ----
 pebble: external sstables have overlapping ranges
 
 ingest-external
-f3,10,c,f
-f4,10,f,hh
+f3 bounds=(c,f)
+f4 bounds=(f,hh)
 ----
 
 lsm
 ----
-6:
-  000004:[a#10,DELSIZED-c#inf,RANGEDEL]
-  000007:[c#11,DELSIZED-f#inf,RANGEDEL]
-  000008:[f#12,DELSIZED-hh#inf,RANGEDEL]
+L6:
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
+  000007(000007):[c#11,DELSIZED-f#inf,RANGEDEL]
+  000008(000008):[f#12,DELSIZED-hh#inf,RANGEDEL]
 
 iter
 first
@@ -116,7 +116,717 @@ compact a z
 
 lsm
 ----
-6:
-  000004:[a#10,DELSIZED-c#inf,RANGEDEL]
-  000007:[c#11,DELSIZED-f#inf,RANGEDEL]
-  000008:[f#12,DELSIZED-hh#inf,RANGEDEL]
+L6:
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
+  000007(000007):[c#11,DELSIZED-f#inf,RANGEDEL]
+  000008(000008):[f#12,DELSIZED-hh#inf,RANGEDEL]
+
+download a j
+----
+ok
+
+lsm
+----
+L6:
+  000009:[a#0,SET-b#0,SET]
+  000010:[c#0,SET-e#0,SET]
+  000011:[f#0,SET-h#0,SET]
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (foobarbaz, .)
+d: (haha, .)
+e: (something, .)
+f: (foo, .)
+g: (foo, .)
+h: (foo, .)
+.
+
+build-remote f5
+set f foo
+set g foo
+set h foo
+----
+
+ingest-external
+f5 bounds=(ff,fi) synthetic-prefix=f
+----
+
+build-remote f6
+set bf foo
+set bg foo
+set bh foo
+----
+
+# Test that ingestion with a syntehtic prefix or suffix fails on older
+# major versions.
+
+reset format-major-version=16
+----
+
+build-remote f5
+set ef foo
+set eg foo
+set eh foo
+----
+
+ingest-external
+f5 bounds=(ff,fi) synthetic-prefix=(f)
+----
+pebble: format major version too old for synthetic prefix ingestion
+
+ingest-external
+f5 bounds=(ff,fi) synthetic-suffix=@5
+----
+pebble: format major version too old for synthetic suffix ingestion
+
+
+# Test plumbing for ingestion with suffix replacement
+reset
+----
+
+build-remote f1
+set a@1 foo
+set b@2 foo
+set c@1 foo
+----
+
+build-remote f6
+set b foo
+del-range f u
+----
+
+ingest-external
+f1 bounds=(a,d) synthetic-suffix=@5
+----
+
+iter
+first
+next
+next
+----
+a@5: (foo, .)
+b@5: (foo, .)
+c@5: (foo, .)
+
+# Verify that we require bounds without suffix.
+ingest-external
+f6 bounds=(a@1,z)
+----
+pebble: external file bounds start key "a@1" has suffix
+
+ingest-external
+f6 bounds=(a,z@10)
+----
+pebble: external file bounds end key "z@10" has suffix
+
+# Verify that we require valid bounds.
+ingest-external
+f6 bounds=(c,a)
+----
+pebble: external file bounds ["c", "a") are invalid
+
+# Test the case when we are ingesting part of a RANGEDEL.
+reset
+----
+
+batch
+set i bar
+----
+
+build-remote f6
+set b foo
+del-range f u
+----
+
+ingest-external
+f6 bounds=(a,c)
+f6 bounds=(g,v)
+----
+
+# The previous element cannot be i, because it is inside the [g, v) portion of
+# the [f, u) RANGEDEL.
+iter
+prev
+----
+b: (foo, .)
+
+# Test the case where the input files need to be reordered during ingest.
+reset
+----
+
+build-remote f7
+set a foo
+----
+
+build-remote f8
+set x bar
+----
+
+ingest-external
+f8 bounds=(x,y)
+f7 bounds=(a,b)
+----
+
+iter
+first
+next
+----
+a: (foo, .)
+x: (bar, .)
+
+# Test ViaBackingFileDownload.
+
+reset
+----
+
+build-remote f7 block-size=5
+set b ignored
+set c foo
+set d haha
+set e something
+set x ignored
+----
+
+build-remote f8 block-size=100
+set a ignored
+set g foo
+set h foo
+set i foo
+set z ignored
+----
+
+ingest-external
+f7 bounds=(gc,gf) synthetic-prefix=g
+f8 bounds=(gg,gj) synthetic-prefix=g
+----
+
+iter
+seek-ge g
+next
+next
+next
+next
+next
+----
+gc: (foo, .)
+gd: (haha, .)
+ge: (something, .)
+gg: (foo, .)
+gh: (foo, .)
+gi: (foo, .)
+
+lsm verbose
+----
+L6:
+  000004(000004):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:979
+  000005(000005):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:660
+
+download g h via-backing-file-download
+----
+ok
+
+# observe the size decreases since span copy ignores the unneeded blocks.
+lsm verbose
+----
+L6:
+  000006(000006):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:742
+  000007(000007):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:644
+
+reopen
+----
+
+lsm
+----
+L6:
+  000006(000006):[gc#10,DELSIZED-gf#inf,RANGEDEL]
+  000007(000007):[gg#11,DELSIZED-gj#inf,RANGEDEL]
+
+iter
+seek-ge g
+next
+next
+next
+next
+next
+----
+gc: (foo, .)
+gd: (haha, .)
+ge: (something, .)
+gg: (foo, .)
+gh: (foo, .)
+gi: (foo, .)
+
+
+
+# Test seeks with keys outside of the synthetic prefix range.
+reset
+----
+
+build-remote f9
+set i foo
+----
+
+ingest-external
+f9 bounds=(cg,ck) synthetic-prefix=c
+----
+
+iter
+seek-ge bp
+----
+ci: (foo, .)
+
+iter
+seek-prefix-ge bp
+----
+.
+
+iter
+seek-lt de
+----
+ci: (foo, .)
+
+# Test compactions with prefix synthesis.
+reset
+----
+
+build-remote ext
+set a a
+set b b
+set c c
+----
+
+ingest-external
+ext bounds=(ea,ed) synthetic-prefix=e
+----
+
+ingest-external
+ext bounds=(ba,bd) synthetic-prefix=b
+----
+
+# Write some keys so we actually perform a compaction.
+batch
+set a a
+set c c
+set f f
+----
+
+compact a z
+----
+
+lsm
+----
+L6:
+  000008:[a#0,SET-f#0,SET]
+
+# Make sure we see both ba..bc and ea..ec.
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a: (a, .)
+ba: (a, .)
+bb: (b, .)
+bc: (c, .)
+c: (c, .)
+ea: (a, .)
+eb: (b, .)
+ec: (c, .)
+f: (f, .)
+.
+
+reset
+----
+
+build-remote f11
+set a foo
+set b bar
+----
+
+ingest-external
+f11 bounds=(a,c)
+----
+
+batch
+set a bar
+----
+
+iter
+first
+next
+----
+a: (bar, .)
+b: (bar, .)
+
+replicate 1 2 a z
+----
+replicated 1 external SSTs
+
+switch 2
+----
+ok
+
+iter
+first
+next
+----
+a: (bar, .)
+b: (bar, .)
+
+# Replicate with existing data in L6.
+
+reset
+----
+
+build-remote f12
+set a d1-v1
+set b d1-v1
+set c d1-v1
+set d d-1v1
+----
+
+ingest-external
+f12 bounds=(a,d)
+----
+
+batch
+set b d1-v2
+----
+
+switch 2
+----
+ok
+
+batch
+set a d2-v1
+set b d2-v1
+set c d2-v1
+set d d2-v1
+----
+
+compact a z
+----
+
+lsm
+----
+L6:
+  000005:[a#10,SET-d#13,SET]
+
+replicate 1 2 b d
+----
+replicated 1 external SSTs
+
+
+iter
+first
+next
+next
+next
+----
+a: (d2-v1, .)
+b: (d1-v2, .)
+c: (d1-v1, .)
+d: (d2-v1, .)
+
+# Replicate with an internal file in L0
+
+reset
+----
+
+batch
+set d d1-v1
+set e d1-v1
+----
+
+compact a z
+----
+
+lsm
+----
+L6:
+  000005:[d#10,SET-e#11,SET]
+
+build-remote f13
+set a d1-v1
+set b d1-v1
+----
+
+ingest-external
+f13 bounds=(a,c)
+----
+
+switch 2
+----
+ok
+
+batch
+set a d2-v1
+set b d2-v1
+set d d2-v1
+set e d2-v1
+----
+
+compact a z
+----
+
+lsm
+----
+L6:
+  000005:[a#10,SET-e#13,SET]
+
+replicate 1 2 b e
+----
+replicated 1 external SSTs
+
+iter
+first
+next
+next
+next
+----
+a: (d2-v1, .)
+b: (d1-v1, .)
+d: (d1-v1, .)
+e: (d2-v1, .)
+
+reset
+----
+
+build-remote trunctest
+set a foo
+set b bar
+----
+
+ingest-external
+trunctest bounds=(a,c)
+----
+
+replicate 1 2 c z
+----
+replicated 0 external SSTs
+
+reset
+----
+
+build-remote inclusive_bounds_test
+set a foo
+set b bar
+set c baz
+----
+
+ingest-external
+inclusive_bounds_test bounds=(a,c) bounds-are-inclusive=true
+----
+
+lsm
+----
+L6:
+  000004(000004):[a#10,DELSIZED-c#10,DEL]
+
+replicate 1 2 a d
+----
+replicated 1 external SSTs
+
+iter
+first
+next
+next
+----
+a: (foo, .)
+b: (bar, .)
+c: (baz, .)
+
+# Test reuse of external backings.
+reset
+----
+
+build-remote reuse1
+set ax ax
+set ay ay
+set da da
+set db db
+set dc dc
+set uv uv
+----
+
+build-remote reuse2
+set f f
+set h h
+set j j
+----
+
+# Test reuse of backings within a single ingestion. We should see only two
+# backings.
+ingest-external
+reuse1 bounds=(a,b)
+reuse2 bounds=(f,g)
+reuse2 bounds=(h,i)
+reuse1 bounds=(d,e)
+reuse1 bounds=(u,v)
+reuse2 bounds=(j,k)
+----
+
+lsm
+----
+L6:
+  000004(000004):[a#10,DELSIZED-b#inf,RANGEDEL]
+  000007(000004):[d#11,DELSIZED-e#inf,RANGEDEL]
+  000005(000005):[f#12,DELSIZED-g#inf,RANGEDEL]
+  000006(000005):[h#13,DELSIZED-i#inf,RANGEDEL]
+  000009(000005):[j#14,DELSIZED-k#inf,RANGEDEL]
+  000008(000004):[u#15,DELSIZED-v#inf,RANGEDEL]
+
+# Test reuse of backings across separate requests.
+ingest-external
+reuse1 bounds=(xu,xv) synthetic-prefix=x
+reuse2 bounds=(yj,yk) synthetic-prefix=y
+----
+
+lsm
+----
+L6:
+  000004(000004):[a#10,DELSIZED-b#inf,RANGEDEL]
+  000007(000004):[d#11,DELSIZED-e#inf,RANGEDEL]
+  000005(000005):[f#12,DELSIZED-g#inf,RANGEDEL]
+  000006(000005):[h#13,DELSIZED-i#inf,RANGEDEL]
+  000009(000005):[j#14,DELSIZED-k#inf,RANGEDEL]
+  000008(000004):[u#15,DELSIZED-v#inf,RANGEDEL]
+  000010(000004):[xu#16,DELSIZED-xv#inf,RANGEDEL]
+  000011(000005):[yj#17,DELSIZED-yk#inf,RANGEDEL]
+
+batch
+del-range a z
+----
+
+compact a z
+----
+
+ingest-external
+reuse1 bounds=(a,b)
+reuse2 bounds=(f,g)
+----
+
+lsm
+----
+L6:
+  000014(000014):[a#19,DELSIZED-b#inf,RANGEDEL]
+  000015(000015):[f#20,DELSIZED-g#inf,RANGEDEL]
+
+# Multiple reuse of existing backings in one request.
+ingest-external
+reuse2 bounds=(h,i)
+reuse1 bounds=(d,e)
+reuse1 bounds=(u,v)
+reuse2 bounds=(j,k)
+reuse1 bounds=(xu,xv) synthetic-prefix=x
+reuse2 bounds=(yj,yk) synthetic-prefix=y
+----
+
+lsm
+----
+L6:
+  000014(000014):[a#19,DELSIZED-b#inf,RANGEDEL]
+  000017(000014):[d#21,DELSIZED-e#inf,RANGEDEL]
+  000015(000015):[f#20,DELSIZED-g#inf,RANGEDEL]
+  000016(000015):[h#22,DELSIZED-i#inf,RANGEDEL]
+  000019(000015):[j#23,DELSIZED-k#inf,RANGEDEL]
+  000018(000014):[u#24,DELSIZED-v#inf,RANGEDEL]
+  000020(000014):[xu#25,DELSIZED-xv#inf,RANGEDEL]
+  000021(000015):[yj#26,DELSIZED-yk#inf,RANGEDEL]
+
+# Test that reusing the same backing region with different prefix and suffix
+# works as expected. In particular, make sure the synthetic suffix doesn't
+# modify cached block data, leading to the next iterator seeing the suffix.
+
+reset
+----
+
+build-remote reuse
+set a@10 a
+set b@11 b
+----
+
+ingest-external
+reuse bounds=(a,c) synthetic-suffix=@20
+reuse bounds=(za,zc) synthetic-prefix=z
+----
+
+iter
+first
+next
+next
+next
+----
+a@20: (a, .)
+b@20: (b, .)
+za@10: (a, .)
+zb@11: (b, .)
+
+reset
+----
+
+build-remote ext3
+set aa@10 a
+set b@11 b
+----
+
+ingest-external
+ext3 bounds=(a,c)
+----
+
+lsm
+----
+L6:
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
+
+iter
+first
+next
+next
+----
+aa@10: (a, .)
+b@11: (b, .)
+.
+
+build local1
+set a foo
+----
+
+ingest local1
+----
+
+lsm
+----
+L6:
+  000005:[a#11,SET-a#11,SET]
+  000006(000004):[aa@10#10,SET-c#inf,RANGEDEL]
+
+iter
+first
+next
+next
+next
+----
+a: (foo, .)
+aa@10: (a, .)
+b@11: (b, .)
+.

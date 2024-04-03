@@ -1,0 +1,713 @@
+# Simple test case that constructs two writers with no errors or latency.
+init-manager
+----
+ok
+recycler min-log-num: 0
+
+# Wait for monitor ticker to start.
+advance-time dur=1ms wait-monitor
+----
+monitor state: dir index: 0
+now: 1ms
+
+create-writer wal-num=1
+----
+ok
+
+# Ensure LogWriter is created, so that it does not race with advance-time
+# below.
+advance-time dur=0ms wait-for-log-writer
+----
+now: 1ms
+
+# Wait for monitor tick. Still using primary dir.
+advance-time dur=75ms wait-monitor
+----
+monitor state: dir index: 0 num-switches: 0, ongoing-latency-at-switch: 0s
+now: 76ms
+
+list-and-stats
+----
+logs:
+  000001: {(pri,000)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 0
+  failover: switches 0 pri-dur 76ms sec-dur 0s
+
+close-writer
+----
+ok
+
+list-fs
+----
+pri/000001.log
+sec/failover_source
+
+create-writer wal-num=2
+----
+ok
+
+close-writer
+----
+ok
+
+elevate-write-stall-threshold
+----
+false
+
+list-fs
+----
+pri/000001.log
+pri/000002.log
+sec/failover_source
+
+close-manager
+----
+ok
+
+# The min recyable log num bumps up to 3.
+init-manager reuse-fs
+----
+ok
+recycler min-log-num: 3
+
+list-and-stats
+----
+stats:
+  obsolete: count 2 size 22
+  live: count 0 size 0
+  failover: switches 0 pri-dur 0s sec-dur 0s
+
+# Wait for monitor ticker to start.
+advance-time dur=1ms wait-monitor
+----
+monitor state: dir index: 0
+now: 1ms
+
+create-writer wal-num=5
+----
+ok
+
+# Ensure LogWriter is created, so that it does not race with advance-time
+# below.
+advance-time dur=0ms wait-for-log-writer
+----
+now: 1ms
+
+write-record value=mammoth
+----
+offset: 18
+
+close-writer
+----
+ok
+
+list-and-stats
+----
+logs:
+  000005: {(pri,000)}
+stats:
+  obsolete: count 2 size 22
+  live: count 1 size 18
+  failover: switches 0 pri-dur 1ms sec-dur 0s
+
+create-writer wal-num=7
+----
+ok
+
+# Ensure LogWriter is created, so that it does not race with advance-time
+# below.
+advance-time dur=0ms wait-for-log-writer
+----
+now: 1ms
+
+write-record value=sheep
+----
+offset: 16
+
+close-writer
+----
+ok
+
+list-and-stats
+----
+logs:
+  000005: {(pri,000)}
+  000007: {(pri,000)}
+stats:
+  obsolete: count 2 size 22
+  live: count 2 size 34
+  failover: switches 0 pri-dur 1ms sec-dur 0s
+
+obsolete min-unflushed=7
+----
+ok
+recycler non-empty, front filenum: 5 size: 18
+to delete:
+  wal 1: path: pri/000001.log size: 11
+  wal 2: path: pri/000002.log size: 11
+
+obsolete min-unflushed=8 no-recycle
+----
+ok
+recycler non-empty, front filenum: 5 size: 18
+to delete:
+  wal 7: path: pri/000007.log size: 16
+
+# Reuses a file from the recycler.
+create-writer wal-num=9
+----
+ok
+
+advance-time dur=0ms wait-for-log-writer
+----
+now: 1ms
+
+# Because of the reuse, the file size for this live log is non-zero.
+list-and-stats
+----
+logs:
+  000009: {(pri,000)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 29
+  failover: switches 0 pri-dur 1ms sec-dur 0s
+
+write-record value=woolly
+----
+offset: 17
+
+write-record value=rhinoceros
+----
+offset: 38
+
+close-writer
+----
+ok
+
+list-and-stats
+----
+logs:
+  000009: {(pri,000)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 38
+  failover: switches 0 pri-dur 1ms sec-dur 0s
+
+close-manager
+----
+ok
+
+# Test where error on first log file creation causes switch to secondary, and
+# the secondary creation blocks for too long, causing switch back to the
+# primary.
+init-manager inject-errors=((ErrInjected (And Writes (PathMatch "*/000001.log") (OnIndex 0))))
+----
+ok
+recycler min-log-num: 0
+
+block-io-config filename=000001-001.log create
+----
+000001-001.log: 0b1
+
+# Wait for monitor ticker to start.
+advance-time dur=1ms wait-monitor
+----
+monitor state: dir index: 0
+now: 1ms
+
+create-writer wal-num=1
+----
+ok
+
+# Wait until create error has been noticed.
+advance-time dur=1ms wait-ongoing-io wait-for-log-writer
+----
+now: 2ms
+
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 0 pri-dur 2ms sec-dur 0s
+
+# Wait until monitor sees the error and switches to secondary.
+advance-time dur=75ms wait-monitor wait-prober
+----
+monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 0s
+prober state:
+now: 77ms
+
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 1 pri-dur 77ms sec-dur 0s
+
+# The switch to secondary blocks on creation.
+advance-time dur=0ms wait-ongoing-io
+----
+now: 77ms
+
+write-record value=mammoth
+----
+offset: 7
+
+elevate-write-stall-threshold
+----
+true
+
+# Wait until monitor sees the slowness and switches back to primary.
+advance-time dur=80ms wait-monitor wait-prober wait-for-log-writer
+----
+monitor state: dir index: 0 failback time: 157ms num-switches: 2, ongoing-latency-at-switch: 80ms
+prober state:
+now: 157ms
+
+# Unblock creation on secondary.
+wait-for-and-unblock-io filename=000001-001.log
+----
+
+advance-time dur=0ms wait-for-log-writer
+----
+now: 157ms
+
+close-writer
+----
+ok
+
+list-and-stats
+----
+logs:
+  000001: {(pri,002)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 18
+  failover: switches 2 pri-dur 77ms sec-dur 80ms
+
+advance-time dur=1s
+----
+now: 1.157s
+
+elevate-write-stall-threshold
+----
+true
+
+advance-time dur=10s
+----
+now: 11.157s
+
+elevate-write-stall-threshold
+----
+false
+
+# Log on primary is not recycled since logNameIndex > 0.
+obsolete min-unflushed=2
+----
+ok
+recycler empty
+to delete:
+  wal 1: path: pri/000001-002.log size: 18
+
+create-writer wal-num=2
+----
+ok
+
+advance-time dur=0ms wait-for-log-writer
+----
+now: 11.157s
+
+write-record value=sheep
+----
+offset: 16
+
+close-writer
+----
+ok
+
+list-and-stats
+----
+logs:
+  000002: {(pri,000)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 16
+  failover: switches 2 pri-dur 11.077s sec-dur 80ms
+
+obsolete min-unflushed=3
+----
+ok
+recycler non-empty, front filenum: 2 size: 16
+
+close-manager
+----
+ok
+
+list-fs
+----
+pri/000001-002.log
+pri/000002.log
+sec/000001-001.log
+sec/failover_source
+
+# Test with dampening of switching based on latency and secondary errors.
+#
+# Error in creation of files in the secondary.
+init-manager inject-errors=((ErrInjected (And Writes (PathMatch "sec/*.log"))))
+----
+ok
+recycler min-log-num: 0
+
+# Block creation of the first 3 files in the primary.
+block-io-config filename=000001.log create
+----
+000001.log: 0b1
+
+block-io-config filename=000001-002.log create
+----
+000001-002.log: 0b1
+
+block-io-config filename=000001-004.log create
+----
+000001-004.log: 0b1
+
+# Wait for monitor ticker to start.
+advance-time dur=1ms wait-monitor
+----
+monitor state: dir index: 0
+now: 1ms
+
+create-writer wal-num=1
+----
+ok
+
+# Blocked in creation.
+advance-time dur=0ms wait-ongoing-io
+----
+now: 1ms
+
+# Wait until monitor sees the slowness and switches to secondary.
+advance-time dur=76ms wait-monitor wait-prober
+----
+monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 76ms
+prober state:
+now: 77ms
+
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 1 pri-dur 77ms sec-dur 0s
+
+elevate-write-stall-threshold
+----
+true
+
+# Wait for the error.
+advance-time dur=0ms wait-ongoing-io wait-for-log-writer
+----
+now: 77ms
+
+list-fs
+----
+sec/failover_source
+
+# Wait until monitor sees the error and switches back to primary.
+advance-time dur=75ms wait-monitor wait-prober
+----
+monitor state: dir index: 0 failback time: 152ms num-switches: 2, ongoing-latency-at-switch: 76ms
+prober state:
+now: 152ms
+
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 2 pri-dur 77ms sec-dur 75ms
+
+# Blocked in creation.
+advance-time dur=0ms wait-ongoing-io
+----
+now: 152ms
+
+# Monitor sees the slowness but since latency is < 2*76ms, does not switch.
+advance-time dur=77ms wait-monitor
+----
+monitor state: dir index: 0 failback time: 152ms num-switches: 2, ongoing-latency-at-switch: 76ms
+now: 229ms
+
+# Wait until monitor sees the slowness and switches to secondary.
+advance-time dur=77ms wait-monitor wait-prober
+----
+monitor state: dir index: 1 failback time: 152ms num-switches: 3, ongoing-latency-at-switch: 154ms
+prober state:
+now: 306ms
+
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 3 pri-dur 231ms sec-dur 75ms
+
+# Wait for the error.
+advance-time dur=0ms wait-ongoing-io wait-for-log-writer
+----
+now: 306ms
+
+# Wait until monitor sees the error and switches back to primary.
+advance-time dur=75ms wait-monitor wait-prober
+----
+monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
+prober state:
+now: 381ms
+
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 4 pri-dur 231ms sec-dur 150ms
+
+# Blocked in creation.
+advance-time dur=0ms wait-ongoing-io
+----
+now: 381ms
+
+advance-time dur=78ms wait-monitor
+----
+monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
+now: 459ms
+
+advance-time dur=78ms wait-monitor
+----
+monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
+now: 537ms
+
+advance-time dur=78ms wait-monitor
+----
+monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
+now: 615ms
+
+advance-time dur=78ms wait-monitor
+----
+monitor state: dir index: 0 failback time: 381ms num-switches: 4, ongoing-latency-at-switch: 154ms
+now: 693ms
+
+list-and-stats
+----
+logs:
+  000001: {}
+stats:
+  obsolete: count 0 size 0
+  live: count 0 size 0
+  failover: switches 4 pri-dur 543ms sec-dur 150ms
+
+# Unblock everything.
+block-io-config filename=000001.log
+----
+000001.log: 0b0
+
+block-io-config filename=000001-002.log
+----
+000001-002.log: 0b0
+
+block-io-config filename=000001-004.log
+----
+000001-004.log: 0b0
+
+close-writer
+----
+ok
+
+close-manager
+----
+ok
+
+list-fs
+----
+pri/000001-002.log
+pri/000001-004.log
+pri/000001.log
+sec/failover_source
+
+# Test failback after primary is healthy.
+init-manager inject-errors=((ErrInjected (And Writes (PathMatch "*/000001.log"))))
+----
+ok
+recycler min-log-num: 0
+
+# Wait for monitor ticker to start.
+advance-time dur=0ms wait-monitor
+----
+monitor state: dir index: 0
+now: 0s
+
+create-writer wal-num=1
+----
+ok
+
+# Wait until create error has been noticed.
+advance-time dur=1ms wait-ongoing-io wait-for-log-writer
+----
+now: 1ms
+
+# Wait until monitor sees the error and switches to secondary.
+advance-time dur=74ms wait-monitor wait-prober wait-for-log-writer
+----
+monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 0s
+prober state:
+now: 75ms
+
+list-and-stats
+----
+logs:
+  000001: {(sec,001)}
+stats:
+  obsolete: count 0 size 0
+  live: count 1 size 0
+  failover: switches 1 pri-dur 75ms sec-dur 0s
+
+elevate-write-stall-threshold
+----
+true
+
+# Monitor will tick at 75ms, 150ms, 225ms, 300ms, ...
+# Prober will tick at 175ms, 275ms.
+#
+# We have already ensure the secondary is created, to ensure that creation
+# does not race with the advancement of time (otherwise we can accidentally
+# observe 75ms latency on the creation).
+
+advance-time dur=75ms wait-monitor
+----
+monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 0s
+now: 150ms
+
+advance-time dur=25ms wait-prober
+----
+prober state: 0: 0s
+now: 175ms
+
+advance-time dur=50ms wait-monitor
+----
+monitor state: dir index: 1 num-switches: 1, ongoing-latency-at-switch: 0s
+now: 225ms
+
+advance-time dur=50ms wait-prober
+----
+prober state: 0: 0s 1: 0s
+now: 275ms
+
+advance-time dur=25ms wait-monitor wait-prober wait-for-log-writer
+----
+monitor state: dir index: 0 failback time: 300ms num-switches: 2, ongoing-latency-at-switch: 0s
+prober state:
+now: 300ms
+
+list-and-stats
+----
+logs:
+  000001: {(sec,001), (pri,002)}
+stats:
+  obsolete: count 0 size 0
+  live: count 2 size 0
+  failover: switches 2 pri-dur 75ms sec-dur 225ms
+
+advance-time dur=1s
+----
+now: 1.3s
+
+elevate-write-stall-threshold
+----
+true
+
+advance-time dur=9s
+----
+now: 10.3s
+
+elevate-write-stall-threshold
+----
+false
+
+list-and-stats
+----
+logs:
+  000001: {(sec,001), (pri,002)}
+stats:
+  obsolete: count 0 size 0
+  live: count 2 size 0
+  failover: switches 2 pri-dur 10.075s sec-dur 225ms
+
+close-writer
+----
+ok
+
+close-manager
+----
+ok
+
+list-fs
+----
+pri/000001-002.log
+pri/probe-file
+sec/000001-001.log
+sec/failover_source
+
+# Test that if UnhealthyOperationLatencyThreshold says not to allow failovers
+# yet, failover doesn't occur even if the primary errors.
+
+init-manager disable-failover inject-errors=((ErrInjected (And Writes (PathMatch "*/000001.log"))))
+----
+ok
+recycler min-log-num: 0
+
+# Wait for monitor ticker to start.
+advance-time dur=0ms wait-monitor
+----
+monitor state: dir index: 0
+now: 0s
+
+create-writer wal-num=1
+----
+ok
+
+# Wait until create error has been noticed.
+advance-time dur=1ms wait-ongoing-io wait-for-log-writer
+----
+now: 1ms
+
+# Wait until monitor sees the error.
+advance-time dur=74ms wait-monitor
+----
+monitor state: dir index: 0 num-switches: 0, ongoing-latency-at-switch: 0s
+now: 75ms
+
+close-writer
+----
+injected error
+
+close-manager
+----
+ok
+
+list-fs
+----
+sec/failover_source

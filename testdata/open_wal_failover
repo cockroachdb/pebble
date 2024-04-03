@@ -1,0 +1,68 @@
+# Open a database without WAL failover configured.
+
+open path=(a,data)
+----
+ok
+
+list path=(a,data)
+----
+  000002.log
+  LOCK
+  MANIFEST-000001
+  OPTIONS-000003
+  marker.format-version.000001.013
+  marker.manifest.000001.MANIFEST-000001
+
+# The OPTIONS file should not include a [WAL Failover] stanza.
+
+grep-between path=(a,data/OPTIONS-000003) start=(\[WAL Failover\]) end=^$
+----
+
+# Open the same database with WAL failover configured, but pointing to a
+# different FS.
+
+open path=(a,data) secondary=(b,secondary-wals)
+----
+ok
+
+# Open should have created the 'secondary-wals' directory on the 'b' FS.
+
+list path=(b,)
+----
+  secondary-wals
+
+list path=(a,data)
+----
+  000004.log
+  LOCK
+  MANIFEST-000001
+  MANIFEST-000005
+  OPTIONS-000006
+  marker.format-version.000001.013
+  marker.manifest.000002.MANIFEST-000005
+
+# The new OPTIONS file should declare the secondary WAL path.
+
+grep-between path=(a,data/OPTIONS-000006) start=(\[WAL Failover\]) end=^$
+----
+  secondary_dir=secondary-wals
+  primary_dir_probe_interval=1s
+  healthy_probe_latency_threshold=25ms
+  healthy_interval=15s
+  unhealthy_sampling_interval=100ms
+  unhealthy_operation_latency_threshold=100ms
+  elevated_write_stall_threshold_lag=1m0s
+
+# Opening the same directory without providing the secondary path in either the
+# WAL failover configuration or as a WALRecoveryDir should error.
+
+open path=(a,data)
+----
+directory "secondary-wals" may contain relevant WALs
+
+# But opening the same directory while providing the secondary path as a WAL
+# recovery dir should succeed.
+
+open path=(a,data) wal-recovery-dir=(b,secondary-wals)
+----
+ok

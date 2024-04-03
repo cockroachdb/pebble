@@ -1,0 +1,452 @@
+# Switch once with tail of first log equal to the head of the second log. This
+# is because the record at the tail did not request sync, so stayed in the
+# queue when the switch happened, and was replayed.
+#
+# Large initial-file-size due to log recycling.
+init initial-file-size=500
+----
+
+write sync=true value=woolly
+----
+
+write sync=false value=sheep
+----
+
+wait-for-queue length=1
+----
+
+switch
+----
+ok
+
+write sync=false value=yak print-offset
+----
+offset: 47
+
+# The approx file size reflects the initial-file-size.
+get-log
+----
+getLog: num: 0
+  segment 0: size 500 closed false dir: pri
+  segment 1: size 0 closed false dir: sec
+
+close
+----
+close: ok, offset: 47
+records:
+  record 0: synced
+  record 1: no sync
+  record 2: no sync
+write bytes metric: 41
+getLog: num: 0
+  segment 0: size 500 closed false dir: pri
+  segment 1: size 30 closed true dir: sec
+log files:
+  pri/000000.log
+    0: woolly
+    17: sheep
+    EOF
+  sec/000000-001.log
+    0: sheep
+    16: yak
+    EOF
+log writers:
+  writer 0: no error
+  writer 1: no error
+
+# Error is injected on create of first log file.
+init inject-errors=((ErrInjected (And Writes (PathMatch "*/000001.log") (OnIndex 0))))
+----
+
+# The offset is the cumulative length of the records since there is no writer.
+write sync=true value=woolly print-offset
+----
+offset: 6
+
+# The offset is the cumulative length of the records since there is no writer.
+write sync=true value=sheep print-offset
+----
+offset: 11
+
+get-log
+----
+getLog: num: 1
+
+switch
+----
+ok
+
+close
+----
+close: ok, offset: 11
+records:
+  record 0: synced
+  record 1: synced
+write bytes metric: 44
+getLog: num: 1
+  segment 1: size 33 closed true dir: sec
+log files:
+  sec/000001-001.log
+    0: woolly
+    17: sheep
+    EOF
+log writers:
+  writer 0: injected error
+  writer 1: no error
+
+# Error is injected on write of first (or first and second) record in first
+# log file.
+init inject-errors=((ErrInjected (And Writes (PathMatch "*/000002.log") (OnIndex 1))))
+----
+
+write sync=true value=woolly
+----
+
+write sync=true value=mammoth
+----
+
+switch
+----
+ok
+
+get-log
+----
+getLog: num: 2
+  segment 0: size 0 closed false dir: pri
+  segment 1: size 0 closed false dir: sec
+
+close
+----
+close: ok, offset: 35
+records:
+  record 0: synced
+  record 1: synced
+write bytes metric: 46
+getLog: num: 2
+  segment 0: size 35 closed false dir: pri
+  segment 1: size 35 closed true dir: sec
+log files:
+  pri/000002.log
+    EOF
+  sec/000002-001.log
+    0: woolly
+    17: mammoth
+    EOF
+log writers:
+  writer 0: injected error
+  writer 1: no error
+
+# Error is injected on sync of first (or first and second) record in first log
+# file.
+#
+# TODO(sumeer): this disabled case flakes under stress, with the primary file
+# occasionally containing woolly. Index 0 is create, index 1 is write, and
+# index 2 is the earliest the sync can happen, so this should work. Fix this.
+# init inject-errors=((ErrInjected (And Writes (PathMatch "*/000003.log") (OnIndex 2))))
+# ----
+
+init
+----
+
+write sync=true value=woolly
+----
+
+write sync=true value=sheep
+----
+
+# switch
+# ----
+# ok
+#
+# close
+# ----
+# close: ok, offset: 33
+# records:
+#   record 0: synced
+#   record 1: synced
+# write bytes metric: 44
+# getLog: num: 3
+#   segment 0: size 33 closed false dir: pri
+#   segment 1: size 33 closed true dir: sec
+# log files:
+#   pri/000003.log
+#     EOF
+#   sec/000003-001.log
+#     0: woolly
+#     17: sheep
+#     EOF
+# log writers:
+#   writer 0: injected error
+#   writer 1: no error
+
+close
+----
+close: ok, offset: 33
+records:
+  record 0: synced
+  record 1: synced
+write bytes metric: 44
+getLog: num: 3
+  segment 0: size 33 closed true dir: pri
+log files:
+  pri/000003.log
+    0: woolly
+    17: sheep
+    EOF
+log writers:
+  writer 0: no error
+
+# Error is injected on create of first log file. Close does not block.
+init inject-errors=((ErrInjected (And Writes (PathMatch "*/000004.log") (OnIndex 0))))
+----
+
+close
+----
+close: injected error, offset: 0
+write bytes metric: 0
+getLog: num: 4
+log writers:
+  writer 0: injected error
+
+# Error is injected on the EOF write that happens in LogWriter.Close. Even
+# though all records have already been synced, an error is exposed since the
+# EOF trailer was not written.
+init inject-errors=((ErrInjected (And Writes (PathMatch "*/000005.log") (OnIndex 3))))
+----
+
+write sync=true value=woolly
+----
+
+wait-for-queue length=0
+----
+
+close
+----
+close: injected error, offset: 17
+records:
+  record 0: synced
+write bytes metric: 17
+getLog: num: 5
+  segment 0: size 17 closed true dir: pri
+log files:
+  pri/000005.log
+    0: woolly
+    EOF
+log writers:
+  writer 0: injected error
+
+# Error is injected on all writer creation.
+init inject-errors=((ErrInjected (And Writes (PathMatch "*/*.log"))))
+----
+
+write sync=true value=woolly print-offset
+----
+offset: 6
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+exceeded switching limit
+
+close sem-count=99
+----
+close: injected error, offset: 6
+records:
+  record 0: sync error injected error
+write bytes metric: 0
+getLog: num: 6
+log writers:
+  writer 0: injected error
+  writer 1: injected error
+  writer 2: injected error
+  writer 3: injected error
+  writer 4: injected error
+  writer 5: injected error
+  writer 6: injected error
+  writer 7: injected error
+  writer 8: injected error
+  writer 9: injected error
+
+# Same as previous with record that did not request sync.
+init inject-errors=((ErrInjected (And Writes (PathMatch "*/*.log"))))
+----
+
+write sync=false value=woolly print-offset
+----
+offset: 6
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+close
+----
+close: injected error, offset: 6
+records:
+  record 0: no sync
+write bytes metric: 0
+getLog: num: 7
+log writers:
+  writer 0: injected error
+  writer 1: injected error
+  writer 2: injected error
+  writer 3: injected error
+  writer 4: injected error
+  writer 5: injected error
+  writer 6: injected error
+  writer 7: injected error
+  writer 8: injected error
+  writer 9: injected error
+
+# Injected error on sync of the primary dir.
+init inject-errors=((ErrInjected (And Writes (PathMatch "pri") (OnIndex 0))))
+----
+
+write sync=false value=woolly
+----
+
+switch
+----
+ok
+
+close
+----
+close: ok, offset: 6
+records:
+  record 0: no sync
+write bytes metric: 28
+getLog: num: 8
+  segment 1: size 17 closed true dir: sec
+log files:
+  sec/000008-001.log
+    0: woolly
+    EOF
+log writers:
+  writer 0: injected error
+  writer 1: no error
+
+# Injected error on sync of the primary and secondary dir once. Switching back
+# to the primary directory works.
+init inject-errors=((ErrInjected (And Writes (Or (And (PathMatch "pri") (OnIndex 0)) (And (PathMatch "sec") (OnIndex 0))))))
+----
+
+write sync=true value=woolly
+----
+
+switch
+----
+ok
+
+switch
+----
+ok
+
+close
+----
+close: ok, offset: 6
+records:
+  record 0: synced
+write bytes metric: 28
+getLog: num: 9
+  segment 2: size 17 closed true dir: pri
+log files:
+  pri/000009-002.log
+    0: woolly
+    EOF
+  pri/000009.log
+    EOF
+log writers:
+  writer 0: injected error
+  writer 1: injected error
+  writer 2: no error
+
+# Error is injected on one writer creation. Close does not wait for more
+# switches to happen.
+init inject-errors=((ErrInjected (And Writes (PathMatch "*/*.log"))))
+----
+
+write sync=true value=woolly print-offset
+----
+offset: 6
+
+switch
+----
+ok
+
+close sem-count=99
+----
+close: injected error, offset: 6
+records:
+  record 0: sync error injected error
+write bytes metric: 0
+getLog: num: 10
+log writers:
+  writer 0: injected error
+  writer 1: injected error

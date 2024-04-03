@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,8 +29,9 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 	}
 	if o.FormatMajorVersion == FormatDefault {
 		// Pick a random format major version from the range
-		// [MostCompatible, FormatNewest].
-		o.FormatMajorVersion = FormatMajorVersion(rand.Intn(int(internalFormatNewest)) + 1)
+		// [FormatMinSupported, FormatNewest].
+		n := rand.Intn(int(internalFormatNewest - FormatMinSupported + 1))
+		o.FormatMajorVersion = FormatMinSupported + FormatMajorVersion(n)
 		t.Logf("Running %s with format major version %s", t.Name(), o.FormatMajorVersion.String())
 	}
 	return o
@@ -82,24 +84,25 @@ func TestOptionsString(t *testing.T) {
   flush_delay_delete_range=0s
   flush_delay_range_key=0s
   flush_split_bytes=4194304
-  format_major_version=1
+  format_major_version=13
   l0_compaction_concurrency=10
   l0_compaction_file_threshold=500
   l0_compaction_threshold=4
   l0_stop_writes_threshold=12
   lbase_max_bytes=67108864
   max_concurrent_compactions=1
+  max_concurrent_downloads=1
   max_manifest_file_size=134217728
   max_open_files=1000
   mem_table_size=4194304
   mem_table_stop_writes_threshold=2
   min_deletion_rate=0
   merger=pebble.concatenate
+  multilevel_compaction_heuristic=wamp(0.00, false)
   read_compaction_rate=16000
   read_sampling_multiplier=16
   strict_wal_tail=true
   table_cache_shards=8
-  table_property_collectors=[]
   validate_on_ingest=false
   wal_dir=
   wal_bytes_per_sync=0
@@ -121,25 +124,23 @@ func TestOptionsString(t *testing.T) {
 
 	var opts *Options
 	opts = opts.EnsureDefaults()
-	if v := opts.String(); expected != v {
-		t.Fatalf("expected\n%s\nbut found\n%s", expected, v)
-	}
+	require.Equal(t, expected, opts.String())
 }
 
-func TestOptionsCheck(t *testing.T) {
+func TestOptionsCheckCompatibility(t *testing.T) {
 	var opts *Options
 	opts = opts.EnsureDefaults()
 	s := opts.String()
-	require.NoError(t, opts.Check(s))
-	require.Regexp(t, `invalid key=value syntax`, opts.Check("foo\n"))
+	require.NoError(t, opts.CheckCompatibility(s))
+	require.Regexp(t, `invalid key=value syntax`, opts.CheckCompatibility("foo\n"))
 
 	tmp := *opts
 	tmp.Comparer = &Comparer{Name: "foo"}
-	require.Regexp(t, `comparer name from file.*!=.*`, tmp.Check(s))
+	require.Regexp(t, `comparer name from file.*!=.*`, tmp.CheckCompatibility(s))
 
 	tmp = *opts
 	tmp.Merger = &Merger{Name: "foo"}
-	require.Regexp(t, `merger name from file.*!=.*`, tmp.Check(s))
+	require.Regexp(t, `merger name from file.*!=.*`, tmp.CheckCompatibility(s))
 
 	// RocksDB uses a similar (INI-style) syntax for the OPTIONS file, but
 	// different section names and keys.
@@ -150,14 +151,14 @@ func TestOptionsCheck(t *testing.T) {
 `
 	tmp = *opts
 	tmp.Comparer = &Comparer{Name: "foo"}
-	require.Regexp(t, `comparer name from file.*!=.*`, tmp.Check(s))
+	require.Regexp(t, `comparer name from file.*!=.*`, tmp.CheckCompatibility(s))
 
 	tmp.Comparer = &Comparer{Name: "rocksdb-comparer"}
 	tmp.Merger = &Merger{Name: "foo"}
-	require.Regexp(t, `merger name from file.*!=.*`, tmp.Check(s))
+	require.Regexp(t, `merger name from file.*!=.*`, tmp.CheckCompatibility(s))
 
 	tmp.Merger = &Merger{Name: "rocksdb-merger"}
-	require.NoError(t, tmp.Check(s))
+	require.NoError(t, tmp.CheckCompatibility(s))
 
 	// RocksDB allows the merge operator to be unspecified, in which case it
 	// shows up as "nullptr".
@@ -166,7 +167,51 @@ func TestOptionsCheck(t *testing.T) {
   merge_operator=nullptr
 `
 	tmp = *opts
-	require.NoError(t, tmp.Check(s))
+	require.NoError(t, tmp.CheckCompatibility(s))
+
+	// Check that an OPTIONS file that configured an explicit WALDir that will
+	// no longer be used errors if it's not also present in WALRecoveryDirs.
+	require.Equal(t, ErrMissingWALRecoveryDir{Dir: "external-wal-dir"},
+		(&Options{}).EnsureDefaults().CheckCompatibility(`
+[Options]
+  wal_dir=external-wal-dir
+`))
+	// But not if it's configured as a WALRecoveryDir or current WALDir.
+	require.NoError(t,
+		(&Options{WALRecoveryDirs: []wal.Dir{{Dirname: "external-wal-dir"}}}).EnsureDefaults().CheckCompatibility(`
+[Options]
+  wal_dir=external-wal-dir
+`))
+	require.NoError(t,
+		(&Options{WALDir: "external-wal-dir"}).EnsureDefaults().CheckCompatibility(`
+[Options]
+  wal_dir=external-wal-dir
+`))
+
+	// Check that an OPTIONS file that configured a secondary failover WAL dir
+	// that will no longer be used errors if it's not also present in
+	// WALRecoveryDirs.
+	require.Equal(t, ErrMissingWALRecoveryDir{Dir: "failover-wal-dir"},
+		(&Options{}).EnsureDefaults().CheckCompatibility(`
+[Options]
+
+[WAL Failover]
+  secondary_dir=failover-wal-dir
+`))
+	// But not if it's configured as a WALRecoveryDir or current failover
+	// secondary dir.
+	require.NoError(t, (&Options{WALRecoveryDirs: []wal.Dir{{Dirname: "failover-wal-dir"}}}).EnsureDefaults().CheckCompatibility(`
+[Options]
+
+[WAL Failover]
+  secondary_dir=failover-wal-dir
+`))
+	require.NoError(t, (&Options{WALFailover: &WALFailoverOptions{Secondary: wal.Dir{Dirname: "failover-wal-dir"}}}).EnsureDefaults().CheckCompatibility(`
+[Options]
+
+[WAL Failover]
+  secondary_dir=failover-wal-dir
+`))
 }
 
 type testCleaner struct{}
@@ -235,6 +280,9 @@ func TestOptionsParse(t *testing.T) {
 			opts.FlushDelayRangeKey = 11 * time.Second
 			opts.Experimental.LevelMultiplier = 5
 			opts.TargetByteDeletionRate = 200
+			opts.WALFailover = &WALFailoverOptions{
+				Secondary: wal.Dir{Dirname: "wal_secondary", FS: vfs.Default},
+			}
 			opts.Experimental.ReadCompactionRate = 300
 			opts.Experimental.ReadSamplingMultiplier = 400
 			opts.Experimental.TableCacheShards = 500

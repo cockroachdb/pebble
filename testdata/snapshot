@@ -166,7 +166,7 @@ compact c-d
 
 db-state
 ----
-6:
+L6:
   000005:[a#10,SET-a#10,SET]
   000007:[c#12,SET-c#11,SET]
 

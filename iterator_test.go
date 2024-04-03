@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"io"
@@ -22,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invalidating"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -458,6 +458,12 @@ type minSeqNumPropertyCollector struct {
 	minSeqNum uint64
 }
 
+var _ BlockPropertyCollector = (*minSeqNumPropertyCollector)(nil)
+
+func (c *minSeqNumPropertyCollector) Name() string {
+	return "minSeqNumPropertyCollector"
+}
+
 func (c *minSeqNumPropertyCollector) Add(key InternalKey, value []byte) error {
 	if c.minSeqNum == 0 || c.minSeqNum > key.SeqNum() {
 		c.minSeqNum = key.SeqNum()
@@ -465,13 +471,46 @@ func (c *minSeqNumPropertyCollector) Add(key InternalKey, value []byte) error {
 	return nil
 }
 
-func (c *minSeqNumPropertyCollector) Finish(userProps map[string]string) error {
-	userProps["test.min-seq-num"] = fmt.Sprint(c.minSeqNum)
-	return nil
+func (c *minSeqNumPropertyCollector) FinishDataBlock(buf []byte) ([]byte, error) {
+	return nil, nil
 }
 
-func (c *minSeqNumPropertyCollector) Name() string {
-	return "minSeqNumPropertyCollector"
+func (c *minSeqNumPropertyCollector) AddPrevDataBlockToIndexBlock() {}
+
+func (c *minSeqNumPropertyCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (c *minSeqNumPropertyCollector) FinishTable(buf []byte) ([]byte, error) {
+	return binary.AppendUvarint(buf, c.minSeqNum), nil
+}
+
+// minSeqNumFilter is a BlockPropertyFilter that uses the
+// minSeqNumPropertyCollector data to filter out entire tables.
+type minSeqNumFilter struct {
+	seqNumUpperBound uint64
+}
+
+var _ BlockPropertyFilter = (*minSeqNumFilter)(nil)
+
+func (*minSeqNumFilter) Name() string {
+	return (&minSeqNumPropertyCollector{}).Name()
+}
+
+func (f *minSeqNumFilter) Intersects(prop []byte) (bool, error) {
+	// Blocks will have no data.
+	if len(prop) == 0 {
+		return true, nil
+	}
+	minSeqNum, n := binary.Uvarint(prop)
+	if n <= 0 {
+		return false, errors.Errorf("invalid block property data %v", prop)
+	}
+	return minSeqNum < f.seqNumUpperBound, nil
+}
+
+func (f *minSeqNumFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
+	panic("unimplemented")
 }
 
 func TestReadSampling(t *testing.T) {
@@ -504,10 +543,11 @@ func TestReadSampling(t *testing.T) {
 			}
 
 			opts := &Options{}
-			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
-				func() TablePropertyCollector {
+			opts.BlockPropertyCollectors = []func() BlockPropertyCollector{
+				func() BlockPropertyCollector {
 					return &minSeqNumPropertyCollector{}
-				})
+				},
+			}
 
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -653,10 +693,11 @@ func TestIteratorTableFilter(t *testing.T) {
 			}
 
 			opts := &Options{}
-			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
-				func() TablePropertyCollector {
+			opts.BlockPropertyCollectors = []func() BlockPropertyCollector{
+				func() BlockPropertyCollector {
 					return &minSeqNumPropertyCollector{}
-				})
+				},
+			}
 
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -676,12 +717,8 @@ func TestIteratorTableFilter(t *testing.T) {
 			iterOpts := &IterOptions{}
 			var filterSeqNum uint64
 			if td.MaybeScanArgs(t, "filter", &filterSeqNum) {
-				iterOpts.TableFilter = func(userProps map[string]string) bool {
-					minSeqNum, err := strconv.ParseUint(userProps["test.min-seq-num"], 10, 64)
-					if err != nil {
-						return true
-					}
-					return minSeqNum < filterSeqNum
+				iterOpts.PointKeyFilters = []BlockPropertyFilter{
+					&minSeqNumFilter{seqNumUpperBound: filterSeqNum},
 				}
 			}
 
@@ -868,10 +905,11 @@ func TestIteratorSeekOpt(t *testing.T) {
 			seekPrefixGEUsingNext = 0
 
 			opts := &Options{}
-			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
-				func() TablePropertyCollector {
+			opts.BlockPropertyCollectors = []func() BlockPropertyCollector{
+				func() BlockPropertyCollector {
 					return &minSeqNumPropertyCollector{}
-				})
+				},
+			}
 
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -884,15 +922,16 @@ func TestIteratorSeekOpt(t *testing.T) {
 			oldNewIters := d.newIters
 			d.newIters = func(
 				ctx context.Context, file *manifest.FileMetadata, opts *IterOptions,
-				internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
-				iter, rangeIter, err := oldNewIters(ctx, file, opts, internalOpts)
-				iterWrapped := &iterSeekOptWrapper{
-					internalIterator:      iter,
+				internalOpts internalIterOpts, kinds iterKinds) (iterSet, error) {
+				iters, err := oldNewIters(ctx, file, opts, internalOpts, kinds)
+				iters.point = &iterSeekOptWrapper{
+					internalIterator:      iters.point,
 					seekGEUsingNext:       &seekGEUsingNext,
 					seekPrefixGEUsingNext: &seekPrefixGEUsingNext,
 				}
-				return iterWrapped, rangeIter, err
+				return iters, err
 			}
+			d.opts.Comparer.Split = func(a []byte) int { return len(a) }
 			return s
 
 		case "iter":
@@ -906,7 +945,7 @@ func TestIteratorSeekOpt(t *testing.T) {
 				}
 				iter, _ = snap.NewIter(nil)
 				iter.readSampling.forceReadSampling = true
-				iter.comparer.Split = func(a []byte) int { return len(a) }
+				iter.comparer.Split = d.opts.Comparer.Split
 				iter.forceEnableSeekOpt = true
 				iter.merging.forceEnableSeekOpt = true
 			}
@@ -1220,8 +1259,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 							return err.Error()
 						}
 						opts.PointKeyFilters = append(opts.PointKeyFilters,
-							sstable.NewBlockIntervalFilter(fmt.Sprintf("%d", id),
-								uint64(lower), uint64(upper)))
+							sstable.NewBlockIntervalFilter(fmt.Sprintf("%d", id), uint64(lower), uint64(upper), nil))
 					default:
 						return fmt.Sprintf("unknown key: %s", arg.Key)
 					}
@@ -1313,8 +1351,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 
 	var iterOpts IterOptions
 	iterOpts.PointKeyFilters = []BlockPropertyFilter{
-		sstable.NewBlockIntervalFilter("0",
-			uint64(lower), uint64(upper)),
+		sstable.NewBlockIntervalFilter("0", uint64(lower), uint64(upper), nil),
 	}
 	iter, _ := d.NewIter(&iterOpts)
 	defer func() {
@@ -1751,11 +1788,11 @@ func iterOptionsString(o *IterOptions) string {
 
 func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace, rng *rand.Rand) *DB {
 	dbOpts := &Options{
-		Comparer:           testkeys.Comparer,
-		FS:                 vfs.NewMem(),
-		FormatMajorVersion: FormatRangeKeys,
-		Logger:             panicLogger{},
+		Comparer: testkeys.Comparer,
+		FS:       vfs.NewMem(),
+		Logger:   panicLogger{},
 	}
+	dbOpts.testingRandomized(t)
 	d, err := Open("", dbOpts)
 	require.NoError(t, err)
 
@@ -1802,10 +1839,10 @@ func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace, rng *rand.Rand) *DB
 
 func newPointTestkeysDatabase(t *testing.T, ks testkeys.Keyspace) *DB {
 	dbOpts := &Options{
-		Comparer:           testkeys.Comparer,
-		FS:                 vfs.NewMem(),
-		FormatMajorVersion: FormatRangeKeys,
+		Comparer: testkeys.Comparer,
+		FS:       vfs.NewMem(),
 	}
+	dbOpts.testingRandomized(t)
 	d, err := Open("", dbOpts)
 	require.NoError(t, err)
 
@@ -2183,8 +2220,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 					var iterOpts IterOptions
 					if filter {
 						iterOpts.PointKeyFilters = []BlockPropertyFilter{
-							sstable.NewBlockIntervalFilter("0",
-								uint64(0), uint64(1)),
+							sstable.NewBlockIntervalFilter("0", uint64(0), uint64(1), nil),
 						}
 					}
 					iter, _ := d.NewIter(&iterOpts)

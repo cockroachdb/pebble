@@ -34,10 +34,10 @@ func main() {
 
 	var b remoteobjcat.Batch
 	b.AddObject(remoteobjcat.RemoteObjectMetadata{
-		FileNum:        base.FileNum(1).DiskFileNum(),
+		FileNum:        base.DiskFileNum(1),
 		FileType:       base.FileTypeTable,
 		CreatorID:      3,
-		CreatorFileNum: base.FileNum(1).DiskFileNum(),
+		CreatorFileNum: base.DiskFileNum(1),
 		CleanupMethod:  objstorage.SharedRefTracking,
 		Locator:        "foo",
 	})
@@ -46,16 +46,16 @@ func main() {
 	}
 	b.Reset()
 	b.AddObject(remoteobjcat.RemoteObjectMetadata{
-		FileNum:        base.FileNum(2).DiskFileNum(),
+		FileNum:        base.DiskFileNum(2),
 		FileType:       base.FileTypeTable,
 		CreatorID:      5,
-		CreatorFileNum: base.FileNum(10).DiskFileNum(),
+		CreatorFileNum: base.DiskFileNum(10),
 		CleanupMethod:  objstorage.SharedRefTracking,
 		Locator:        "foo",
 	})
-	b.DeleteObject(base.FileNum(1).DiskFileNum())
+	b.DeleteObject(base.DiskFileNum(1))
 	b.AddObject(remoteobjcat.RemoteObjectMetadata{
-		FileNum:          base.FileNum(3).DiskFileNum(),
+		FileNum:          base.DiskFileNum(3),
 		FileType:         base.FileTypeTable,
 		CleanupMethod:    objstorage.SharedRefTracking,
 		Locator:          "bar",

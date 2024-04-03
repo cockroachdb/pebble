@@ -12,7 +12,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 	"unicode"
 
 	"github.com/cockroachdb/errors"
@@ -28,6 +30,10 @@ type history struct {
 	err    atomic.Value
 	failRE *regexp.Regexp
 	log    *log.Logger
+	mu     struct {
+		sync.Mutex
+		closed bool
+	}
 }
 
 func newHistory(failRE *regexp.Regexp, writers ...io.Writer) *history {
@@ -36,8 +42,18 @@ func newHistory(failRE *regexp.Regexp, writers ...io.Writer) *history {
 	return h
 }
 
-// Recordf records the results of a single operation.
+func (h *history) Close() {
+	h.mu.Lock()
+	h.mu.closed = true
+	h.mu.Unlock()
+}
+
 func (h *history) Recordf(op int, format string, args ...interface{}) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.mu.closed {
+		panic("Recordf after close")
+	}
 	if strings.Contains(format, "\n") {
 		// We could remove this restriction but suffixing every line with "#<seq>".
 		panic(fmt.Sprintf("format string must not contain \\n: %q", format))
@@ -66,13 +82,12 @@ func (h *history) Error() error {
 	return nil
 }
 
-func (h *history) format(prefix, format string, args ...interface{}) string {
+func (h *history) format(typ, format string, args ...interface{}) string {
 	var buf strings.Builder
 	orig := fmt.Sprintf(format, args...)
+	timestamp := time.Now().Format("15:04:05.000")
 	for _, line := range strings.Split(strings.TrimSpace(orig), "\n") {
-		buf.WriteString(prefix)
-		buf.WriteString(line)
-		buf.WriteString("\n")
+		fmt.Fprintf(&buf, "// %s %s: %s\n", timestamp, typ, line)
 	}
 	return buf.String()
 }
@@ -80,39 +95,73 @@ func (h *history) format(prefix, format string, args ...interface{}) string {
 // Infof implements the pebble.Logger interface. Note that the output is
 // commented.
 func (h *history) Infof(format string, args ...interface{}) {
-	_ = h.log.Output(2, h.format("// INFO: ", format, args...))
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	// Suppress any messages that come after closing. This could happen if the
+	// test doesn't close the database.
+	if !h.mu.closed {
+		_ = h.log.Output(2, h.format("INFO", format, args...))
+	}
 }
 
 // Errorf implements the pebble.Logger interface. Note that the output is
 // commented.
 func (h *history) Errorf(format string, args ...interface{}) {
-	_ = h.log.Output(2, h.format("// ERROR: ", format, args...))
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	// Suppress any messages that come after closing. This could happen if the
+	// test doesn't close the database.
+	if !h.mu.closed {
+		_ = h.log.Output(2, h.format("ERROR", format, args...))
+	}
 }
 
 // Fatalf implements the pebble.Logger interface. Note that the output is
 // commented.
 func (h *history) Fatalf(format string, args ...interface{}) {
-	_ = h.log.Output(2, h.format("// FATAL: ", format, args...))
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.mu.closed {
+		panic(fmt.Sprintf(format, args...))
+	}
+	_ = h.log.Output(2, h.format("FATAL", format, args...))
 	h.err.Store(errors.Errorf(format, args...))
 }
 
-func (h *history) recorder(thread int, op int) historyRecorder {
+func (h *history) recorder(
+	thread int, op int, optionalRecordf func(format string, args ...interface{}),
+) historyRecorder {
 	return historyRecorder{
-		history: h,
-		op:      op,
+		history:         h,
+		op:              op,
+		optionalRecordf: optionalRecordf,
 	}
 }
 
 // historyRecorder pairs a history with an operation, annotating all lines
 // recorded through it with the operation number.
 type historyRecorder struct {
-	history *history
-	op      int
+	history         *history
+	op              int
+	optionalRecordf func(string, ...interface{})
 }
 
 // Recordf records the results of a single operation.
 func (h historyRecorder) Recordf(format string, args ...interface{}) {
+	// Check for assertion errors.
+	for _, a := range args {
+		if err, ok := a.(error); ok && errors.IsAssertionFailure(err) {
+			fmt.Fprintf(os.Stderr, "%+v", err)
+			panic(err)
+		}
+	}
 	h.history.Recordf(h.op, format, args...)
+	// If the history recorder was configured with an additional record func,
+	// invoke it. This can be used to collect the per-operation output when
+	// manually stepping the metamorphic test.
+	if h.optionalRecordf != nil {
+		h.optionalRecordf(format, args...)
+	}
 }
 
 // Error returns an error if the test has failed from log output, either a

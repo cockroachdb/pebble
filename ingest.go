@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sort"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -38,6 +40,8 @@ func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
 
 // KeyRange encodes a key range in user key space. A KeyRange's Start is
 // inclusive while its End is exclusive.
+//
+// KeyRange is equivalent to base.UserKeyBounds with exclusive end.
 type KeyRange struct {
 	Start, End []byte
 }
@@ -53,21 +57,27 @@ func (k *KeyRange) Contains(cmp base.Compare, key InternalKey) bool {
 	return (v < 0 || (v == 0 && key.IsExclusiveSentinel())) && cmp(k.Start, key.UserKey) <= 0
 }
 
+// UserKeyBounds returns the KeyRange as UserKeyBounds. Also implements the internal `bounded` interface.
+func (k KeyRange) UserKeyBounds() base.UserKeyBounds {
+	return base.UserKeyBoundsEndExclusive(k.Start, k.End)
+}
+
 // OverlapsInternalKeyRange checks if the specified internal key range has an
 // overlap with the KeyRange. Note that we aren't checking for full containment
 // of smallest-largest within k, rather just that there's some intersection
 // between the two ranges.
 func (k *KeyRange) OverlapsInternalKeyRange(cmp base.Compare, smallest, largest InternalKey) bool {
-	v := cmp(k.Start, largest.UserKey)
-	return v <= 0 && !(largest.IsExclusiveSentinel() && v == 0) &&
-		cmp(k.End, smallest.UserKey) > 0
+	ukb := k.UserKeyBounds()
+	b := base.UserKeyBoundsFromInternal(smallest, largest)
+	return ukb.Overlaps(cmp, &b)
 }
 
 // Overlaps checks if the specified file has an overlap with the KeyRange.
 // Note that we aren't checking for full containment of m within k, rather just
 // that there's some intersection between m and k's bounds.
 func (k *KeyRange) Overlaps(cmp base.Compare, m *fileMetadata) bool {
-	return k.OverlapsInternalKeyRange(cmp, m.Smallest, m.Largest)
+	b := k.UserKeyBounds()
+	return m.Overlaps(cmp, &b)
 }
 
 // OverlapsKeyRange checks if this span overlaps with the provided KeyRange.
@@ -92,7 +102,7 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 // ingestSynthesizeShared constructs a fileMetadata for one shared sstable owned
 // or shared by another node.
 func ingestSynthesizeShared(
-	opts *Options, sm SharedSSTMeta, fileNum base.DiskFileNum,
+	opts *Options, sm SharedSSTMeta, fileNum base.FileNum,
 ) (*fileMetadata, error) {
 	if sm.Size == 0 {
 		// Disallow 0 file sizes
@@ -101,41 +111,59 @@ func ingestSynthesizeShared(
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
 	meta := &fileMetadata{
-		FileNum:      fileNum.FileNum(),
+		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
 		Virtual:      true,
 		Size:         sm.Size,
 	}
-	meta.InitProviderBacking(fileNum)
-	// Set the underlying FileBacking's size to the same size as the virtualized
-	// view of the sstable. This ensures that we don't over-prioritize this
-	// sstable for compaction just yet, as we do not have a clear sense of what
-	// parts of this sstable are referenced by other nodes.
-	meta.FileBacking.Size = sm.Size
-	if sm.LargestRangeKey.Valid() && sm.LargestRangeKey.UserKey != nil {
-		// Initialize meta.{HasRangeKeys,Smallest,Largest}, etc.
-		//
-		// NB: We create new internal keys and pass them into ExternalRangeKeyBounds
-		// so that we can sub a zero sequence number into the bounds. We can set
-		// the sequence number to anything here; it'll be reset in ingestUpdateSeqNum
-		// anyway. However we do need to use the same sequence number across all
-		// bound keys at this step so that we end up with bounds that are consistent
-		// across point/range keys.
-		smallestRangeKey := base.MakeInternalKey(sm.SmallestRangeKey.UserKey, 0, sm.SmallestRangeKey.Kind())
-		largestRangeKey := base.MakeExclusiveSentinelKey(sm.LargestRangeKey.Kind(), sm.LargestRangeKey.UserKey)
-		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallestRangeKey, largestRangeKey)
-	}
+	// For simplicity, we use the same number for both the FileNum and the
+	// DiskFileNum (even though this is a virtual sstable). Pass the underlying
+	// FileBacking's size to the same size as the virtualized view of the sstable.
+	// This ensures that we don't over-prioritize this sstable for compaction just
+	// yet, as we do not have a clear sense of what parts of this sstable are
+	// referenced by other nodes.
+	meta.InitProviderBacking(base.DiskFileNum(fileNum), sm.Size)
+
 	if sm.LargestPointKey.Valid() && sm.LargestPointKey.UserKey != nil {
 		// Initialize meta.{HasPointKeys,Smallest,Largest}, etc.
 		//
-		// See point above in the ExtendRangeKeyBounds call on why we use a zero
-		// sequence number here.
-		smallestPointKey := base.MakeInternalKey(sm.SmallestPointKey.UserKey, 0, sm.SmallestPointKey.Kind())
-		largestPointKey := base.MakeInternalKey(sm.LargestPointKey.UserKey, 0, sm.LargestPointKey.Kind())
+		// NB: We create new internal keys and pass them into ExtendPointKeyBounds
+		// so that we can sub a zero sequence number into the bounds. We can set
+		// the sequence number to anything here; it'll be reset in ingestUpdateSeqNum
+		// anyway. However, we do need to use the same sequence number across all
+		// bound keys at this step so that we end up with bounds that are consistent
+		// across point/range keys.
+		//
+		// Because of the sequence number rewriting, we cannot use the Kind of
+		// sm.SmallestPointKey. For example, the original SST might start with
+		// a.SET.2 and a.RANGEDEL.1 (with a.SET.2 being the smallest key); after
+		// rewriting the sequence numbers, these keys become a.SET.100 and
+		// a.RANGEDEL.100, with a.RANGEDEL.100 being the smallest key. To create a
+		// correct bound, we just use the maximum key kind (which sorts first).
+		// Similarly, we use the smallest key kind for the largest key.
+		smallestPointKey := base.MakeInternalKey(sm.SmallestPointKey.UserKey, 0, base.InternalKeyKindMax)
+		largestPointKey := base.MakeInternalKey(sm.LargestPointKey.UserKey, 0, 0)
 		if sm.LargestPointKey.IsExclusiveSentinel() {
 			largestPointKey = base.MakeRangeDeleteSentinelKey(sm.LargestPointKey.UserKey)
 		}
+		if opts.Comparer.Equal(smallestPointKey.UserKey, largestPointKey.UserKey) &&
+			smallestPointKey.Trailer < largestPointKey.Trailer {
+			// We get kinds from the sender, however we substitute our own sequence
+			// numbers. This can result in cases where an sstable [b#5,SET-b#4,DELSIZED]
+			// becomes [b#0,SET-b#0,DELSIZED] when we synthesize it here, but the
+			// kinds need to be reversed now because DelSized > Set.
+			smallestPointKey, largestPointKey = largestPointKey, smallestPointKey
+		}
 		meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallestPointKey, largestPointKey)
+	}
+	if sm.LargestRangeKey.Valid() && sm.LargestRangeKey.UserKey != nil {
+		// Initialize meta.{HasRangeKeys,Smallest,Largest}, etc.
+		//
+		// See comment above on why we use a zero sequence number and these key
+		// kinds here.
+		smallestRangeKey := base.MakeInternalKey(sm.SmallestRangeKey.UserKey, 0, base.InternalKeyKindRangeKeyMax)
+		largestRangeKey := base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeyMin, sm.LargestRangeKey.UserKey)
+		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallestRangeKey, largestRangeKey)
 	}
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
 		return nil, err
@@ -146,74 +174,74 @@ func ingestSynthesizeShared(
 // ingestLoad1External loads the fileMetadata for one external sstable.
 // Sequence number and target level calculation happens during prepare/apply.
 func ingestLoad1External(
-	opts *Options,
-	e ExternalFile,
-	fileNum base.DiskFileNum,
-	objprovider objstorage.Provider,
-	jobID int,
+	opts *Options, e ExternalFile, fileNum base.FileNum,
 ) (*fileMetadata, error) {
 	if e.Size == 0 {
-		// Disallow 0 file sizes
 		return nil, errors.New("pebble: cannot ingest external file with size 0")
 	}
 	if !e.HasRangeKey && !e.HasPointKey {
 		return nil, errors.New("pebble: cannot ingest external file with no point or range keys")
 	}
+
+	if opts.Comparer.Compare(e.StartKey, e.EndKey) > 0 {
+		return nil, errors.Newf("pebble: external file bounds [%q, %q) are invalid", e.StartKey, e.EndKey)
+	}
+	if opts.Comparer.Compare(e.StartKey, e.EndKey) == 0 && !e.EndKeyIsInclusive {
+		return nil, errors.Newf("pebble: external file bounds [%q, %q) are invalid", e.StartKey, e.EndKey)
+	}
+	if n := opts.Comparer.Split(e.StartKey); n != len(e.StartKey) {
+		return nil, errors.Newf("pebble: external file bounds start key %q has suffix", e.StartKey)
+	}
+	if n := opts.Comparer.Split(e.EndKey); n != len(e.EndKey) {
+		return nil, errors.Newf("pebble: external file bounds end key %q has suffix", e.EndKey)
+	}
+
+	// #3287: range keys don't yet work correctly when the range key bounds are not tight.
+	if e.HasRangeKey {
+		return nil, errors.New("pebble: range keys not supported in external files")
+	}
+
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
-	meta := &fileMetadata{}
-	meta.FileNum = fileNum.FileNum()
-	meta.CreationTime = time.Now().Unix()
-	meta.Virtual = true
-	meta.Size = e.Size
-	meta.InitProviderBacking(fileNum)
+	meta := &fileMetadata{
+		FileNum:      fileNum,
+		CreationTime: time.Now().Unix(),
+		Virtual:      true,
+		Size:         e.Size,
+	}
 
-	// Try to resolve a reference to the external file.
-	backing, err := objprovider.CreateExternalObjectBacking(e.Locator, e.ObjName)
-	if err != nil {
-		return nil, err
-	}
-	metas, err := objprovider.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
-		FileNum:  fileNum,
-		FileType: fileTypeTable,
-		Backing:  backing,
-	}})
-	if err != nil {
-		return nil, err
-	}
-	if opts.EventListener.TableCreated != nil {
-		opts.EventListener.TableCreated(TableCreateInfo{
-			JobID:   jobID,
-			Reason:  "ingesting",
-			Path:    objprovider.Path(metas[0]),
-			FileNum: fileNum.FileNum(),
-		})
-	}
 	// In the name of keeping this ingestion as fast as possible, we avoid
 	// *all* existence checks and synthesize a file metadata with smallest/largest
 	// keys that overlap whatever the passed-in span was.
-	smallestCopy := make([]byte, len(e.SmallestUserKey))
-	copy(smallestCopy, e.SmallestUserKey)
-	largestCopy := make([]byte, len(e.LargestUserKey))
-	copy(largestCopy, e.LargestUserKey)
+	smallestCopy := slices.Clone(e.StartKey)
+	largestCopy := slices.Clone(e.EndKey)
 	if e.HasPointKey {
-		meta.ExtendPointKeyBounds(opts.Comparer.Compare, base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
-			base.MakeRangeDeleteSentinelKey(largestCopy))
+		// Sequence numbers are updated later by
+		// ingestUpdateSeqNum, applying a squence number that
+		// is applied to all keys in the sstable.
+		if e.EndKeyIsInclusive {
+			meta.ExtendPointKeyBounds(
+				opts.Comparer.Compare,
+				base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
+				base.MakeInternalKey(largestCopy, 0, 0))
+		} else {
+			meta.ExtendPointKeyBounds(
+				opts.Comparer.Compare,
+				base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
+				base.MakeRangeDeleteSentinelKey(largestCopy))
+		}
 	}
 	if e.HasRangeKey {
-		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, base.MakeInternalKey(smallestCopy, 0, InternalKeyKindRangeKeySet),
-			base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyDelete, largestCopy))
+		meta.ExtendRangeKeyBounds(
+			opts.Comparer.Compare,
+			base.MakeInternalKey(smallestCopy, 0, InternalKeyKindRangeKeyMax),
+			base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyMin, largestCopy),
+		)
 	}
 
-	// Set the underlying FileBacking's size to the same size as the virtualized
-	// view of the sstable. This ensures that we don't over-prioritize this
-	// sstable for compaction just yet, as we do not have a clear sense of
-	// what parts of this sstable are referenced by other nodes.
-	meta.FileBacking.Size = e.Size
+	meta.SyntheticPrefix = e.SyntheticPrefix
+	meta.SyntheticSuffix = e.SyntheticSuffix
 
-	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
-		return nil, err
-	}
 	return meta, nil
 }
 
@@ -224,9 +252,9 @@ func ingestLoad1(
 	fmv FormatMajorVersion,
 	readable objstorage.Readable,
 	cacheID uint64,
-	fileNum base.DiskFileNum,
+	fileNum base.FileNum,
 ) (*fileMetadata, error) {
-	cacheOpts := private.SSTableCacheOpts(cacheID, fileNum).(sstable.ReaderOption)
+	cacheOpts := private.SSTableCacheOpts(cacheID, base.PhysicalTableDiskFileNum(fileNum)).(sstable.ReaderOption)
 	r, err := sstable.NewReader(readable, opts.MakeReaderOptions(), cacheOpts)
 	if err != nil {
 		return nil, err
@@ -246,7 +274,7 @@ func ingestLoad1(
 	}
 
 	meta := &fileMetadata{}
-	meta.FileNum = fileNum.FileNum()
+	meta.FileNum = fileNum
 	meta.Size = uint64(readable.Size())
 	meta.CreationTime = time.Now().Unix()
 	meta.InitPhysicalBacking()
@@ -263,7 +291,7 @@ func ingestLoad1(
 	maybeSetStatsFromProperties(meta.PhysicalMeta(), &r.Properties)
 
 	{
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 		if err != nil {
 			return nil, err
 		}
@@ -289,24 +317,25 @@ func ingestLoad1(
 		}
 	}
 
-	iter, err := r.NewRawRangeDelIter()
+	iter, err := r.NewRawRangeDelIter(sstable.NoTransforms)
 	if err != nil {
 		return nil, err
 	}
 	if iter != nil {
 		defer iter.Close()
 		var smallest InternalKey
-		if s := iter.First(); s != nil {
+		if s, err := iter.First(); err != nil {
+			return nil, err
+		} else if s != nil {
 			key := s.SmallestKey()
 			if err := ingestValidateKey(opts, &key); err != nil {
 				return nil, err
 			}
 			smallest = key.Clone()
 		}
-		if err := iter.Error(); err != nil {
+		if s, err := iter.Last(); err != nil {
 			return nil, err
-		}
-		if s := iter.Last(); s != nil {
+		} else if s != nil {
 			k := s.SmallestKey()
 			if err := ingestValidateKey(opts, &k); err != nil {
 				return nil, err
@@ -318,24 +347,25 @@ func ingestLoad1(
 
 	// Update the range-key bounds for the table.
 	{
-		iter, err := r.NewRawRangeKeyIter()
+		iter, err := r.NewRawRangeKeyIter(sstable.NoTransforms)
 		if err != nil {
 			return nil, err
 		}
 		if iter != nil {
 			defer iter.Close()
 			var smallest InternalKey
-			if s := iter.First(); s != nil {
+			if s, err := iter.First(); err != nil {
+				return nil, err
+			} else if s != nil {
 				key := s.SmallestKey()
 				if err := ingestValidateKey(opts, &key); err != nil {
 					return nil, err
 				}
 				smallest = key.Clone()
 			}
-			if err := iter.Error(); err != nil {
+			if s, err := iter.Last(); err != nil {
 				return nil, err
-			}
-			if s := iter.Last(); s != nil {
+			} else if s != nil {
 				k := s.SmallestKey()
 				if err := ingestValidateKey(opts, &k); err != nil {
 					return nil, err
@@ -344,9 +374,6 @@ func ingestLoad1(
 				// the table provides the upper bound for the table.
 				largest := s.LargestKey().Clone()
 				meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallest, largest)
-			}
-			if err := iter.Error(); err != nil {
-				return nil, err
 			}
 		}
 	}
@@ -364,11 +391,35 @@ func ingestLoad1(
 }
 
 type ingestLoadResult struct {
-	localMeta, sharedMeta []*fileMetadata
-	externalMeta          []*fileMetadata
-	localPaths            []string
-	sharedLevels          []uint8
-	fileCount             int
+	local    []ingestLocalMeta
+	shared   []ingestSharedMeta
+	external []ingestExternalMeta
+
+	externalFilesHaveLevel bool
+}
+
+type ingestLocalMeta struct {
+	*fileMetadata
+	path string
+}
+
+type ingestSharedMeta struct {
+	*fileMetadata
+	shared SharedSSTMeta
+}
+
+type ingestExternalMeta struct {
+	*fileMetadata
+	external ExternalFile
+	// usedExistingBacking is true if the external file is reusing a backing
+	// that existed before this ingestion. In this case, we called
+	// VirtualBackings.Protect() on that backing; we will need to call
+	// Unprotect() after the ingestion.
+	usedExistingBacking bool
+}
+
+func (r *ingestLoadResult) fileCount() int {
+	return len(r.local) + len(r.shared) + len(r.external)
 }
 
 func ingestLoad(
@@ -378,12 +429,14 @@ func ingestLoad(
 	shared []SharedSSTMeta,
 	external []ExternalFile,
 	cacheID uint64,
-	pending []base.DiskFileNum,
-	objProvider objstorage.Provider,
-	jobID int,
+	pending []base.FileNum,
 ) (ingestLoadResult, error) {
-	meta := make([]*fileMetadata, 0, len(paths))
-	newPaths := make([]string, 0, len(paths))
+	localFileNums := pending[:len(paths)]
+	sharedFileNums := pending[len(paths) : len(paths)+len(shared)]
+	externalFileNums := pending[len(paths)+len(shared) : len(paths)+len(shared)+len(external)]
+
+	var result ingestLoadResult
+	result.local = make([]ingestLocalMeta, 0, len(paths))
 	for i := range paths {
 		f, err := opts.FS.Open(paths[i])
 		if err != nil {
@@ -394,128 +447,120 @@ func ingestLoad(
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
-		m, err := ingestLoad1(opts, fmv, readable, cacheID, pending[i])
+		m, err := ingestLoad1(opts, fmv, readable, cacheID, localFileNums[i])
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
 		if m != nil {
-			meta = append(meta, m)
-			newPaths = append(newPaths, paths[i])
+			result.local = append(result.local, ingestLocalMeta{
+				fileMetadata: m,
+				path:         paths[i],
+			})
 		}
-	}
-	if len(shared) == 0 && len(external) == 0 {
-		return ingestLoadResult{localMeta: meta, localPaths: newPaths, fileCount: len(meta)}, nil
 	}
 
 	// Sort the shared files according to level.
 	sort.Sort(sharedByLevel(shared))
 
-	sharedMeta := make([]*fileMetadata, 0, len(shared))
-	levels := make([]uint8, 0, len(shared))
+	result.shared = make([]ingestSharedMeta, 0, len(shared))
 	for i := range shared {
-		m, err := ingestSynthesizeShared(opts, shared[i], pending[len(paths)+i])
+		m, err := ingestSynthesizeShared(opts, shared[i], sharedFileNums[i])
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
 		if shared[i].Level < sharedLevelsStart {
 			return ingestLoadResult{}, errors.New("cannot ingest shared file in level below sharedLevelsStart")
 		}
-		sharedMeta = append(sharedMeta, m)
-		levels = append(levels, shared[i].Level)
+		result.shared = append(result.shared, ingestSharedMeta{
+			fileMetadata: m,
+			shared:       shared[i],
+		})
 	}
-	externalMeta := make([]*fileMetadata, 0, len(external))
+	result.external = make([]ingestExternalMeta, 0, len(external))
 	for i := range external {
-		m, err := ingestLoad1External(opts, external[i], pending[len(paths)+len(shared)+i], objProvider, jobID)
+		m, err := ingestLoad1External(opts, external[i], externalFileNums[i])
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
-		externalMeta = append(externalMeta, m)
-	}
-	result := ingestLoadResult{
-		localMeta:    meta,
-		sharedMeta:   sharedMeta,
-		externalMeta: externalMeta,
-		localPaths:   newPaths,
-		sharedLevels: levels,
-		fileCount:    len(meta) + len(sharedMeta) + len(externalMeta),
+		result.external = append(result.external, ingestExternalMeta{
+			fileMetadata: m,
+			external:     external[i],
+		})
+		if external[i].Level > 0 {
+			if i != 0 && !result.externalFilesHaveLevel {
+				return ingestLoadResult{}, base.AssertionFailedf("pebble: external sstables must all have level set or unset")
+			}
+			result.externalFilesHaveLevel = true
+		} else if result.externalFilesHaveLevel {
+			return ingestLoadResult{}, base.AssertionFailedf("pebble: external sstables must all have level set or unset")
+		}
 	}
 	return result, nil
-}
-
-// Struct for sorting metadatas by smallest user keys, while ensuring the
-// matching path also gets swapped to the same index. For use in
-// ingestSortAndVerify.
-type metaAndPaths struct {
-	meta  []*fileMetadata
-	paths []string
-	cmp   Compare
-}
-
-func (m metaAndPaths) Len() int {
-	return len(m.meta)
-}
-
-func (m metaAndPaths) Less(i, j int) bool {
-	return m.cmp(m.meta[i].Smallest.UserKey, m.meta[j].Smallest.UserKey) < 0
-}
-
-func (m metaAndPaths) Swap(i, j int) {
-	m.meta[i], m.meta[j] = m.meta[j], m.meta[i]
-	if m.paths != nil {
-		m.paths[i], m.paths[j] = m.paths[j], m.paths[i]
-	}
 }
 
 func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) error {
 	// Verify that all the shared files (i.e. files in sharedMeta)
 	// fit within the exciseSpan.
-	for i := range lr.sharedMeta {
-		f := lr.sharedMeta[i]
+	for _, f := range lr.shared {
 		if !exciseSpan.Contains(cmp, f.Smallest) || !exciseSpan.Contains(cmp, f.Largest) {
-			return errors.AssertionFailedf("pebble: shared file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
+			return errors.Newf("pebble: shared file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
 		}
 	}
-	if len(lr.externalMeta) > 0 {
-		if len(lr.localMeta) > 0 || len(lr.sharedMeta) > 0 {
-			// Currently we only support external ingests on their own. If external
-			// files are present alongside local/shared files, return an error.
-			return errors.AssertionFailedf("pebble: external files cannot be ingested atomically alongside other types of files")
+
+	if lr.externalFilesHaveLevel {
+		for _, f := range lr.external {
+			if !exciseSpan.Contains(cmp, f.Smallest) || !exciseSpan.Contains(cmp, f.Largest) {
+				return base.AssertionFailedf("pebble: external file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
+			}
 		}
-		sort.Sort(&metaAndPaths{
-			meta: lr.externalMeta,
-			cmp:  cmp,
+	}
+
+	if len(lr.external) > 0 {
+		if len(lr.shared) > 0 {
+			// If external files are present alongside shared files,
+			// return an error.
+			return base.AssertionFailedf("pebble: external files cannot be ingested atomically alongside shared files")
+		}
+
+		// Sort according to the smallest key.
+		slices.SortFunc(lr.external, func(a, b ingestExternalMeta) int {
+			return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
 		})
-		for i := 1; i < len(lr.externalMeta); i++ {
-			if sstableKeyCompare(cmp, lr.externalMeta[i-1].Largest, lr.externalMeta[i].Smallest) >= 0 {
-				return errors.AssertionFailedf("pebble: external sstables have overlapping ranges")
+		for i := 1; i < len(lr.external); i++ {
+			if sstableKeyCompare(cmp, lr.external[i-1].Largest, lr.external[i].Smallest) >= 0 {
+				return errors.Newf("pebble: external sstables have overlapping ranges")
 			}
 		}
 		return nil
 	}
-	if len(lr.localMeta) <= 1 || len(lr.localPaths) <= 1 {
+	if len(lr.local) <= 1 {
 		return nil
 	}
 
-	sort.Sort(&metaAndPaths{
-		meta:  lr.localMeta,
-		paths: lr.localPaths,
-		cmp:   cmp,
+	// Sort according to the smallest key.
+	slices.SortFunc(lr.local, func(a, b ingestLocalMeta) int {
+		return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
 	})
 
-	for i := 1; i < len(lr.localPaths); i++ {
-		if sstableKeyCompare(cmp, lr.localMeta[i-1].Largest, lr.localMeta[i].Smallest) >= 0 {
-			return errors.AssertionFailedf("pebble: local ingestion sstables have overlapping ranges")
+	for i := 1; i < len(lr.local); i++ {
+		if sstableKeyCompare(cmp, lr.local[i-1].Largest, lr.local[i].Smallest) >= 0 {
+			return errors.Newf("pebble: local ingestion sstables have overlapping ranges")
 		}
 	}
-	if len(lr.sharedMeta) == 0 {
+	if len(lr.shared) == 0 {
 		return nil
 	}
-	filesInLevel := make([]*fileMetadata, 0, len(lr.sharedMeta))
+	filesInLevel := make([]*fileMetadata, 0, len(lr.shared))
 	for l := sharedLevelsStart; l < numLevels; l++ {
 		filesInLevel = filesInLevel[:0]
-		for i := range lr.sharedMeta {
-			if lr.sharedLevels[i] == uint8(l) {
-				filesInLevel = append(filesInLevel, lr.sharedMeta[i])
+		for i := range lr.shared {
+			if lr.shared[i].shared.Level == uint8(l) {
+				filesInLevel = append(filesInLevel, lr.shared[i].fileMetadata)
+			}
+		}
+		for i := range lr.external {
+			if lr.external[i].external.Level == uint8(l) {
+				filesInLevel = append(filesInLevel, lr.external[i].fileMetadata)
 			}
 		}
 		slices.SortFunc(filesInLevel, func(a, b *fileMetadata) int {
@@ -523,14 +568,14 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 		})
 		for i := 1; i < len(filesInLevel); i++ {
 			if sstableKeyCompare(cmp, filesInLevel[i-1].Largest, filesInLevel[i].Smallest) >= 0 {
-				return errors.AssertionFailedf("pebble: external shared sstables have overlapping ranges")
+				return base.AssertionFailedf("pebble: external shared sstables have overlapping ranges")
 			}
 		}
 	}
 	return nil
 }
 
-func ingestCleanup(objProvider objstorage.Provider, meta []*fileMetadata) error {
+func ingestCleanup(objProvider objstorage.Provider, meta []ingestLocalMeta) error {
 	var firstErr error
 	for i := range meta {
 		if err := objProvider.Remove(fileTypeTable, meta[i].FileBacking.DiskFileNum); err != nil {
@@ -540,52 +585,105 @@ func ingestCleanup(objProvider objstorage.Provider, meta []*fileMetadata) error 
 	return firstErr
 }
 
-// ingestLink creates new objects which are backed by either hardlinks to or
-// copies of the ingested files. It also attaches shared objects to the provider.
-func ingestLink(
-	jobID int,
-	opts *Options,
-	objProvider objstorage.Provider,
-	lr ingestLoadResult,
-	shared []SharedSSTMeta,
+// ingestLinkLocal creates new objects which are backed by either hardlinks to or
+// copies of the ingested files.
+func ingestLinkLocal(
+	jobID JobID, opts *Options, objProvider objstorage.Provider, localMetas []ingestLocalMeta,
 ) error {
-	for i := range lr.localPaths {
+	for i := range localMetas {
 		objMeta, err := objProvider.LinkOrCopyFromLocal(
-			context.TODO(), opts.FS, lr.localPaths[i], fileTypeTable, lr.localMeta[i].FileBacking.DiskFileNum,
+			context.TODO(), opts.FS, localMetas[i].path, fileTypeTable, localMetas[i].FileBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true},
 		)
 		if err != nil {
-			if err2 := ingestCleanup(objProvider, lr.localMeta[:i]); err2 != nil {
+			if err2 := ingestCleanup(objProvider, localMetas[:i]); err2 != nil {
 				opts.Logger.Errorf("ingest cleanup failed: %v", err2)
 			}
 			return err
 		}
 		if opts.EventListener.TableCreated != nil {
 			opts.EventListener.TableCreated(TableCreateInfo{
-				JobID:   jobID,
+				JobID:   int(jobID),
 				Reason:  "ingesting",
 				Path:    objProvider.Path(objMeta),
-				FileNum: lr.localMeta[i].FileNum,
+				FileNum: base.PhysicalTableDiskFileNum(localMetas[i].FileNum),
 			})
 		}
 	}
-	sharedObjs := make([]objstorage.RemoteObjectToAttach, 0, len(shared))
-	for i := range shared {
-		backing, err := shared[i].Backing.Get()
+	return nil
+}
+
+// ingestAttachRemote attaches remote objects to the storage provider.
+//
+// For external objects, we reuse existing FileBackings from the current version
+// when possible.
+//
+// ingestUnprotectExternalBackings() must be called after this function (even in
+// error cases).
+func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
+	remoteObjs := make([]objstorage.RemoteObjectToAttach, 0, len(lr.shared)+len(lr.external))
+	for i := range lr.shared {
+		backing, err := lr.shared[i].shared.Backing.Get()
 		if err != nil {
 			return err
 		}
-		sharedObjs = append(sharedObjs, objstorage.RemoteObjectToAttach{
-			FileNum:  lr.sharedMeta[i].FileBacking.DiskFileNum,
+		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
+			FileNum:  lr.shared[i].FileBacking.DiskFileNum,
 			FileType: fileTypeTable,
 			Backing:  backing,
 		})
 	}
-	sharedObjMetas, err := objProvider.AttachRemoteObjects(sharedObjs)
+
+	d.findExistingBackingsForExternalObjects(lr.external)
+
+	newFileBackings := make(map[remote.ObjectKey]*fileBacking, len(lr.external))
+	for i := range lr.external {
+		meta := lr.external[i].fileMetadata
+		if meta.FileBacking != nil {
+			// The backing was filled in by findExistingBackingsForExternalObjects().
+			continue
+		}
+		key := remote.MakeObjectKey(lr.external[i].external.Locator, lr.external[i].external.ObjName)
+		if backing, ok := newFileBackings[key]; ok {
+			// We already created the same backing in this loop.
+			meta.FileBacking = backing
+			continue
+		}
+		providerBacking, err := d.objProvider.CreateExternalObjectBacking(key.Locator, key.ObjectName)
+		if err != nil {
+			return err
+		}
+		// We have to attach the remote object (and assign it a DiskFileNum). For
+		// simplicity, we use the same number for both the FileNum and the
+		// DiskFileNum (even though this is a virtual sstable).
+		meta.InitProviderBacking(base.DiskFileNum(meta.FileNum), lr.external[i].external.Size)
+
+		// Set the underlying FileBacking's size to the same size as the virtualized
+		// view of the sstable. This ensures that we don't over-prioritize this
+		// sstable for compaction just yet, as we do not have a clear sense of
+		// what parts of this sstable are referenced by other nodes.
+		meta.FileBacking.Size = lr.external[i].external.Size
+		newFileBackings[key] = meta.FileBacking
+
+		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
+			FileNum:  meta.FileBacking.DiskFileNum,
+			FileType: fileTypeTable,
+			Backing:  providerBacking,
+		})
+	}
+
+	for i := range lr.external {
+		if err := lr.external[i].Validate(d.opts.Comparer.Compare, d.opts.Comparer.FormatKey); err != nil {
+			return err
+		}
+	}
+
+	remoteObjMetas, err := d.objProvider.AttachRemoteObjects(remoteObjs)
 	if err != nil {
 		return err
 	}
-	for i := range sharedObjMetas {
+
+	for i := range lr.shared {
 		// One corner case around file sizes we need to be mindful of, is that
 		// if one of the shareObjs was initially created by us (and has boomeranged
 		// back from another node), we'll need to update the FileBacking's size
@@ -593,132 +691,149 @@ func ingestLink(
 		// open the db again after a crash/restart (see checkConsistency in open.go),
 		// plus it more accurately allows us to prioritize compactions of files
 		// that were originally created by us.
-		if sharedObjMetas[i].IsShared() && !objProvider.IsSharedForeign(sharedObjMetas[i]) {
-			size, err := objProvider.Size(sharedObjMetas[i])
+		if remoteObjMetas[i].IsShared() && !d.objProvider.IsSharedForeign(remoteObjMetas[i]) {
+			size, err := d.objProvider.Size(remoteObjMetas[i])
 			if err != nil {
 				return err
 			}
-			lr.sharedMeta[i].FileBacking.Size = uint64(size)
+			lr.shared[i].FileBacking.Size = uint64(size)
 		}
-		if opts.EventListener.TableCreated != nil {
-			opts.EventListener.TableCreated(TableCreateInfo{
-				JobID:   jobID,
+	}
+
+	if d.opts.EventListener.TableCreated != nil {
+		for i := range remoteObjMetas {
+			d.opts.EventListener.TableCreated(TableCreateInfo{
+				JobID:   int(jobID),
 				Reason:  "ingesting",
-				Path:    objProvider.Path(sharedObjMetas[i]),
-				FileNum: lr.sharedMeta[i].FileNum,
+				Path:    d.objProvider.Path(remoteObjMetas[i]),
+				FileNum: remoteObjMetas[i].DiskFileNum,
 			})
 		}
 	}
-	// We do not need to do anything about lr.externalMetas. Those were already
-	// linked in ingestLoad.
 
 	return nil
 }
 
-func ingestMemtableOverlaps(cmp Compare, mem flushable, keyRanges []internalKeyRange) bool {
-	iter := mem.newIter(nil)
-	rangeDelIter := mem.newRangeDelIter(nil)
-	rkeyIter := mem.newRangeKeyIter(nil)
+// findExistingBackingsForExternalObjects populates the FileBacking for external
+// files which are already in use by the current version.
+//
+// We take a Ref and LatestRef on populated backings.
+func (d *DB) findExistingBackingsForExternalObjects(metas []ingestExternalMeta) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	closeIters := func() error {
-		err := iter.Close()
-		if rangeDelIter != nil {
-			err = firstError(err, rangeDelIter.Close())
+	for i := range metas {
+		diskFileNums := d.objProvider.GetExternalObjects(metas[i].external.Locator, metas[i].external.ObjName)
+		// We cross-check against fileBackings in the current version because it is
+		// possible that the external object is referenced by an sstable which only
+		// exists in a previous version. In that case, that object could be removed
+		// at any time so we cannot reuse it.
+		for _, n := range diskFileNums {
+			if backing, ok := d.mu.versions.virtualBackings.Get(n); ok {
+				// Protect this backing from being removed from the latest version. We
+				// will unprotect in ingestUnprotectExternalBackings.
+				d.mu.versions.virtualBackings.Protect(n)
+				metas[i].usedExistingBacking = true
+				metas[i].FileBacking = backing
+				break
+			}
 		}
-		if rkeyIter != nil {
-			err = firstError(err, rkeyIter.Close())
+	}
+}
+
+// ingestUnprotectExternalBackings unprotects the file backings that were reused
+// for external objects when the ingestion fails.
+func (d *DB) ingestUnprotectExternalBackings(lr ingestLoadResult) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for _, meta := range lr.external {
+		if meta.usedExistingBacking {
+			// If the backing is not use anywhere else and the ingest failed (or the
+			// ingested tables were already compacted away), this call will cause in
+			// the next version update to remove the backing.
+			d.mu.versions.virtualBackings.Unprotect(meta.FileBacking.DiskFileNum)
 		}
+	}
+}
+
+func setSeqNumInMetadata(m *fileMetadata, seqNum uint64, cmp Compare, format base.FormatKey) error {
+	setSeqFn := func(k base.InternalKey) base.InternalKey {
+		return base.MakeInternalKey(k.UserKey, seqNum, k.Kind())
+	}
+	// NB: we set the fields directly here, rather than via their Extend*
+	// methods, as we are updating sequence numbers.
+	if m.HasPointKeys {
+		m.SmallestPointKey = setSeqFn(m.SmallestPointKey)
+	}
+	if m.HasRangeKeys {
+		m.SmallestRangeKey = setSeqFn(m.SmallestRangeKey)
+	}
+	m.Smallest = setSeqFn(m.Smallest)
+	// Only update the seqnum for the largest key if that key is not an
+	// "exclusive sentinel" (i.e. a range deletion sentinel or a range key
+	// boundary), as doing so effectively drops the exclusive sentinel (by
+	// lowering the seqnum from the max value), and extends the bounds of the
+	// table.
+	// NB: as the largest range key is always an exclusive sentinel, it is never
+	// updated.
+	if m.HasPointKeys && !m.LargestPointKey.IsExclusiveSentinel() {
+		m.LargestPointKey = setSeqFn(m.LargestPointKey)
+	}
+	if !m.Largest.IsExclusiveSentinel() {
+		m.Largest = setSeqFn(m.Largest)
+	}
+	// Setting smallestSeqNum == largestSeqNum triggers the setting of
+	// Properties.GlobalSeqNum when an sstable is loaded.
+	m.SmallestSeqNum = seqNum
+	m.LargestSeqNum = seqNum
+	// Ensure the new bounds are consistent.
+	if err := m.Validate(cmp, format); err != nil {
 		return err
 	}
-
-	for _, kr := range keyRanges {
-		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, kr, cmp) {
-			closeIters()
-			return true
-		}
-	}
-
-	// Assume overlap if any iterator errored out.
-	return closeIters() != nil
+	return nil
 }
 
 func ingestUpdateSeqNum(
 	cmp Compare, format base.FormatKey, seqNum uint64, loadResult ingestLoadResult,
 ) error {
-	setSeqFn := func(k base.InternalKey) base.InternalKey {
-		return base.MakeInternalKey(k.UserKey, seqNum, k.Kind())
-	}
-	updateMetadata := func(m *fileMetadata) error {
-		// NB: we set the fields directly here, rather than via their Extend*
-		// methods, as we are updating sequence numbers.
-		if m.HasPointKeys {
-			m.SmallestPointKey = setSeqFn(m.SmallestPointKey)
-		}
-		if m.HasRangeKeys {
-			m.SmallestRangeKey = setSeqFn(m.SmallestRangeKey)
-		}
-		m.Smallest = setSeqFn(m.Smallest)
-		// Only update the seqnum for the largest key if that key is not an
-		// "exclusive sentinel" (i.e. a range deletion sentinel or a range key
-		// boundary), as doing so effectively drops the exclusive sentinel (by
-		// lowering the seqnum from the max value), and extends the bounds of the
-		// table.
-		// NB: as the largest range key is always an exclusive sentinel, it is never
-		// updated.
-		if m.HasPointKeys && !m.LargestPointKey.IsExclusiveSentinel() {
-			m.LargestPointKey = setSeqFn(m.LargestPointKey)
-		}
-		if !m.Largest.IsExclusiveSentinel() {
-			m.Largest = setSeqFn(m.Largest)
-		}
-		// Setting smallestSeqNum == largestSeqNum triggers the setting of
-		// Properties.GlobalSeqNum when an sstable is loaded.
-		m.SmallestSeqNum = seqNum
-		m.LargestSeqNum = seqNum
-		// Ensure the new bounds are consistent.
-		if err := m.Validate(cmp, format); err != nil {
-			return err
-		}
-		seqNum++
-		return nil
-	}
-
 	// Shared sstables are required to be sorted by level ascending. We then
 	// iterate the shared sstables in reverse, assigning the lower sequence
 	// numbers to the shared sstables that will be ingested into the lower
 	// (larger numbered) levels first. This ensures sequence number shadowing is
 	// correct.
-	for i := len(loadResult.sharedMeta) - 1; i >= 0; i-- {
-		if i-1 >= 0 && loadResult.sharedLevels[i-1] > loadResult.sharedLevels[i] {
-			panic(errors.AssertionFailedf("shared files %s, %s out of order", loadResult.sharedMeta[i-1], loadResult.sharedMeta[i]))
+	for i := len(loadResult.shared) - 1; i >= 0; i-- {
+		if i-1 >= 0 && loadResult.shared[i-1].shared.Level > loadResult.shared[i].shared.Level {
+			panic(errors.AssertionFailedf("shared files %s, %s out of order", loadResult.shared[i-1], loadResult.shared[i]))
 		}
-		if err := updateMetadata(loadResult.sharedMeta[i]); err != nil {
+		if err := setSeqNumInMetadata(loadResult.shared[i].fileMetadata, seqNum, cmp, format); err != nil {
 			return err
 		}
+		seqNum++
 	}
-	for i := range loadResult.localMeta {
-		if err := updateMetadata(loadResult.localMeta[i]); err != nil {
+	for i := range loadResult.external {
+		if err := setSeqNumInMetadata(loadResult.external[i].fileMetadata, seqNum, cmp, format); err != nil {
 			return err
 		}
+		seqNum++
 	}
-	for i := range loadResult.externalMeta {
-		if err := updateMetadata(loadResult.externalMeta[i]); err != nil {
+	for i := range loadResult.local {
+		if err := setSeqNumInMetadata(loadResult.local[i].fileMetadata, seqNum, cmp, format); err != nil {
 			return err
 		}
+		seqNum++
 	}
 	return nil
 }
 
-// Denotes an internal key range. Smallest and largest are both inclusive.
-type internalKeyRange struct {
-	smallest, largest InternalKey
-}
-
+// overlapWIthIterator returns true if the given iterators produce keys or spans
+// overlapping the given UserKeyBounds. May return false positives (e.g. in
+// error cases).
 func overlapWithIterator(
 	iter internalIterator,
 	rangeDelIter *keyspan.FragmentIterator,
 	rkeyIter keyspan.FragmentIterator,
-	keyRange internalKeyRange,
+	bounds base.UserKeyBounds,
 	cmp Compare,
 ) bool {
 	// Check overlap with point operations.
@@ -740,10 +855,9 @@ func overlapWithIterator(
 	//    means boundary < L and hence is similar to 1).
 	// 4) boundary == L and L is sentinel,
 	//    we'll always overlap since for any values of i,j ranges [i, k) and [j, k) always overlap.
-	key, _ := iter.SeekGE(keyRange.smallest.UserKey, base.SeekGEFlagsNone)
+	key, _ := iter.SeekGE(bounds.Start, base.SeekGEFlagsNone)
 	if key != nil {
-		c := sstableKeyCompare(cmp, *key, keyRange.largest)
-		if c <= 0 {
+		if bounds.End.IsUpperBoundForInternalKey(cmp, *key) {
 			return true
 		}
 	}
@@ -752,41 +866,29 @@ func overlapWithIterator(
 		return true
 	}
 
-	computeOverlapWithSpans := func(rIter keyspan.FragmentIterator) bool {
+	computeOverlapWithSpans := func(rIter keyspan.FragmentIterator) (bool, error) {
 		// NB: The spans surfaced by the fragment iterator are non-overlapping.
-		span := rIter.SeekLT(keyRange.smallest.UserKey)
-		if span == nil {
-			span = rIter.Next()
+		span, err := rIter.SeekGE(bounds.Start)
+		if err != nil {
+			return false, err
 		}
-		for ; span != nil; span = rIter.Next() {
-			if span.Empty() {
-				continue
+		for ; span != nil; span, err = rIter.Next() {
+			if !bounds.End.IsUpperBoundFor(cmp, span.Start) {
+				// The span starts after our bounds.
+				return false, nil
 			}
-			key := span.SmallestKey()
-			c := sstableKeyCompare(cmp, key, keyRange.largest)
-			if c > 0 {
-				// The start of the span is after the largest key in the
-				// ingested table.
-				return false
-			}
-			if cmp(span.End, keyRange.smallest.UserKey) > 0 {
-				// The end of the span is greater than the smallest in the
-				// table. Note that the span end key is exclusive, thus ">0"
-				// instead of ">=0".
-				return true
+			if !span.Empty() {
+				return true, nil
 			}
 		}
-		// Assume overlap if iterator errored.
-		if err := rIter.Error(); err != nil {
-			return true
-		}
-		return false
+		return false, err
 	}
 
 	// rkeyIter is either a range key level iter, or a range key iterator
 	// over a single file.
 	if rkeyIter != nil {
-		if computeOverlapWithSpans(rkeyIter) {
+		// If an error occurs, assume overlap.
+		if overlap, err := computeOverlapWithSpans(rkeyIter); overlap || err != nil {
 			return true
 		}
 	}
@@ -795,7 +897,9 @@ func overlapWithIterator(
 	if rangeDelIter == nil || *rangeDelIter == nil {
 		return false
 	}
-	return computeOverlapWithSpans(*rangeDelIter)
+	overlap, err := computeOverlapWithSpans(*rangeDelIter)
+	// If an error occurs, assume overlap.
+	return overlap || err != nil
 }
 
 // ingestTargetLevel returns the target level for a file being ingested.
@@ -804,7 +908,7 @@ func overlapWithIterator(
 // is returned as the splitFile.
 func ingestTargetLevel(
 	newIters tableNewIters,
-	newRangeKeyIter keyspan.TableNewSpanIter,
+	newRangeKeyIter keyspanimpl.TableNewSpanIter,
 	iterOps IterOptions,
 	comparer *Comparer,
 	v *version,
@@ -882,7 +986,7 @@ func ingestTargetLevel(
 	// This assertion implicitly checks that we have the current version of
 	// the metadata.
 	if v.L0Sublevels == nil {
-		return 0, nil, errors.AssertionFailedf("could not read L0 sublevels")
+		return 0, nil, base.AssertionFailedf("could not read L0 sublevels")
 	}
 	iterOps.CategoryAndQoS = sstable.CategoryAndQoS{
 		Category: "pebble-ingest",
@@ -898,17 +1002,13 @@ func ingestTargetLevel(
 		// sets it up for the target file.
 		iter.initRangeDel(&rangeDelIter)
 
-		levelIter := keyspan.LevelIter{}
+		levelIter := keyspanimpl.LevelIter{}
 		levelIter.Init(
 			keyspan.SpanIterOptions{}, comparer.Compare, newRangeKeyIter,
 			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), manifest.KeyTypeRange,
 		)
 
-		kr := internalKeyRange{
-			smallest: meta.Smallest,
-			largest:  meta.Largest,
-		}
-		overlap := overlapWithIterator(iter, &rangeDelIter, &levelIter, kr, comparer.Compare)
+		overlap := overlapWithIterator(iter, &rangeDelIter, &levelIter, meta.UserKeyBounds(), comparer.Compare)
 		err := iter.Close() // Closes range del iter as well.
 		err = firstError(err, levelIter.Close())
 		if err != nil {
@@ -928,17 +1028,13 @@ func ingestTargetLevel(
 		// sets it up for the target file.
 		levelIter.initRangeDel(&rangeDelIter)
 
-		rkeyLevelIter := &keyspan.LevelIter{}
+		rkeyLevelIter := &keyspanimpl.LevelIter{}
 		rkeyLevelIter.Init(
 			keyspan.SpanIterOptions{}, comparer.Compare, newRangeKeyIter,
 			v.Levels[level].Iter(), manifest.Level(level), manifest.KeyTypeRange,
 		)
 
-		kr := internalKeyRange{
-			smallest: meta.Smallest,
-			largest:  meta.Largest,
-		}
-		overlap := overlapWithIterator(levelIter, &rangeDelIter, rkeyLevelIter, kr, comparer.Compare)
+		overlap := overlapWithIterator(levelIter, &rangeDelIter, rkeyLevelIter, meta.UserKeyBounds(), comparer.Compare)
 		err := levelIter.Close() // Closes range del iter as well.
 		err = firstError(err, rkeyLevelIter.Close())
 		if err != nil {
@@ -950,8 +1046,7 @@ func ingestTargetLevel(
 
 		// Check boundary overlap.
 		var candidateSplitFile *fileMetadata
-		boundaryOverlaps := v.Overlaps(level, comparer.Compare, meta.Smallest.UserKey,
-			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
+		boundaryOverlaps := v.Overlaps(level, meta.UserKeyBounds())
 		if !boundaryOverlaps.Empty() {
 			// We are already guaranteed to not have any data overlaps with files
 			// in boundaryOverlaps, otherwise we'd have returned in the above if
@@ -1065,7 +1160,7 @@ func (d *DB) Ingest(paths []string) error {
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-	_, err := d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{}, nil /* external */)
+	_, err := d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{}, false, nil /* external */)
 	return err
 }
 
@@ -1094,21 +1189,54 @@ type ExternalFile struct {
 	// Locator is the shared.Locator that can be used with objProvider to
 	// resolve a reference to this external sstable.
 	Locator remote.Locator
+
 	// ObjName is the unique name of this sstable on Locator.
 	ObjName string
+
 	// Size of the referenced proportion of the virtualized sstable. An estimate
 	// is acceptable in lieu of the backing file size.
 	Size uint64
-	// SmallestUserKey and LargestUserKey are the [smallest,largest) user key
-	// bounds of the sstable. Both these bounds are loose i.e. it's possible for
-	// the sstable to not span the entirety of this range. However, multiple
-	// ExternalFiles in one ingestion must all have non-overlapping
-	// [smallest, largest) spans. Note that this Largest bound is exclusive.
-	SmallestUserKey, LargestUserKey []byte
+
+	// StartKey and EndKey define the bounds of the sstable; the ingestion
+	// of this file will only result in keys within [StartKey, EndKey) if
+	// EndKeyIsInclusive is false or [StartKey, EndKey] if it is true.
+	// These bounds are loose i.e. it's possible for keys to not span the
+	// entirety of this range.
+	//
+	// StartKey and EndKey user keys must not have suffixes.
+	//
+	// Multiple ExternalFiles in one ingestion must all have non-overlapping
+	// bounds.
+	StartKey, EndKey []byte
+
+	// EndKeyIsInclusive is true if EndKey should be treated as inclusive.
+	EndKeyIsInclusive bool
+
 	// HasPointKey and HasRangeKey denote whether this file contains point keys
 	// or range keys. If both structs are false, an error is returned during
 	// ingestion.
 	HasPointKey, HasRangeKey bool
+
+	// SyntheticPrefix will prepend this suffix to all keys in the file during
+	// iteration. Note that the backing file itself is not modified.
+	//
+	// SyntheticPrefix must be a prefix of both Bounds.Start and Bounds.End.
+	SyntheticPrefix []byte
+
+	// SyntheticSuffix will replace the suffix of every key in the file during
+	// iteration. Note that the file itself is not modified, rather, every key
+	// returned by an iterator will have the synthetic suffix.
+	//
+	// SyntheticSuffix can only be used under the following conditions:
+	//  - the synthetic suffix must sort before any non-empty suffixes in the
+	//    backing sst (the entire sst, not just the part restricted to Bounds).
+	//  - the backing sst must not contain multiple keys with the same prefix.
+	SyntheticSuffix []byte
+
+	// Level denotes the level at which this file was present at read time
+	// if the external file was returned by a scan of an existing Pebble
+	// instance. If Level is 0, this field is ignored.
+	Level uint8
 }
 
 // IngestWithStats does the same as Ingest, and additionally returns
@@ -1120,7 +1248,7 @@ func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{}, nil /* external */)
+	return d.ingest(paths, ingestTargetLevel, nil, KeyRange{}, false, nil)
 }
 
 // IngestExternalFiles does the same as IngestWithStats, and additionally
@@ -1138,7 +1266,7 @@ func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats,
 	if d.opts.Experimental.RemoteStorage == nil {
 		return IngestOperationStats{}, errors.New("pebble: cannot ingest external files without shared storage configured")
 	}
-	return d.ingest(nil, ingestTargetLevel, nil /* shared */, KeyRange{}, external)
+	return d.ingest(nil, ingestTargetLevel, nil, KeyRange{}, false, external)
 }
 
 // IngestAndExcise does the same as IngestWithStats, and additionally accepts a
@@ -1152,7 +1280,11 @@ func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats,
 // Panics if this DB instance was not instantiated with a remote.Storage and
 // shared sstables are present.
 func (d *DB) IngestAndExcise(
-	paths []string, shared []SharedSSTMeta, exciseSpan KeyRange,
+	paths []string,
+	shared []SharedSSTMeta,
+	external []ExternalFile,
+	exciseSpan KeyRange,
+	sstsContainExciseTombstone bool,
 ) (IngestOperationStats, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
@@ -1160,7 +1292,7 @@ func (d *DB) IngestAndExcise(
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	if invariants.Enabled && d.opts.Comparer.Split != nil {
+	if invariants.Enabled {
 		// Excise is only supported on prefix keys.
 		if d.opts.Comparer.Split(exciseSpan.Start) != len(exciseSpan.Start) {
 			panic("IngestAndExcise called with suffixed start key")
@@ -1169,12 +1301,18 @@ func (d *DB) IngestAndExcise(
 			panic("IngestAndExcise called with suffixed end key")
 		}
 	}
-	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, nil /* external */)
+	if v := d.FormatMajorVersion(); v < FormatMinForSharedObjects {
+		return IngestOperationStats{}, errors.Errorf(
+			"store has format major version %d; IngestAndExise requires at least %d",
+			v, FormatMinForSharedObjects,
+		)
+	}
+	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, sstsContainExciseTombstone, external)
 }
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
 func (d *DB) newIngestedFlushableEntry(
-	meta []*fileMetadata, seqNum uint64, logNum base.DiskFileNum,
+	meta []*fileMetadata, seqNum uint64, logNum base.DiskFileNum, exciseSpan KeyRange,
 ) (*flushableEntry, error) {
 	// Update the sequence number for all of the sstables in the
 	// metadata. Writing the metadata to the manifest when the
@@ -1184,13 +1322,13 @@ func (d *DB) newIngestedFlushableEntry(
 	// when the flushable is eventually flushed. If Pebble restarts in that
 	// time, then we'll lose the ingest sequence number information. But this
 	// information will also be reconstructed on node restart.
-	if err := ingestUpdateSeqNum(
-		d.cmp, d.opts.Comparer.FormatKey, seqNum, ingestLoadResult{localMeta: meta},
-	); err != nil {
-		return nil, err
+	for i, m := range meta {
+		if err := setSeqNumInMetadata(m, seqNum+uint64(i), d.cmp, d.opts.Comparer.FormatKey); err != nil {
+			return nil, err
+		}
 	}
 
-	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter)
+	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan)
 
 	// NB: The logNum/seqNum are the WAL number which we're writing this entry
 	// to and the sequence number within the WAL which we'll write this entry
@@ -1199,12 +1337,12 @@ func (d *DB) newIngestedFlushableEntry(
 	// The flushable entry starts off with a single reader ref, so increment
 	// the FileMetadata.Refs.
 	for _, file := range f.files {
-		file.Ref()
+		file.FileBacking.Ref()
 	}
 	entry.unrefFiles = func() []*fileBacking {
 		var obsolete []*fileBacking
 		for _, file := range f.files {
-			if file.Unref() == 0 {
+			if file.FileBacking.Unref() == 0 {
 				obsolete = append(obsolete, file.FileMetadata.FileBacking)
 			}
 		}
@@ -1220,7 +1358,9 @@ func (d *DB) newIngestedFlushableEntry(
 // we're holding both locks, the order in which we rotate the memtable or
 // recycle the WAL in this function is irrelevant as long as the correct log
 // numbers are assigned to the appropriate flushable.
-func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error {
+func (d *DB) handleIngestAsFlushable(
+	meta []*fileMetadata, seqNum uint64, exciseSpan KeyRange,
+) error {
 	b := d.NewBatch()
 	for _, m := range meta {
 		b.ingestSST(m.FileNum)
@@ -1246,7 +1386,7 @@ func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error 
 		d.mu.Lock()
 	}
 
-	entry, err := d.newIngestedFlushableEntry(meta, seqNum, logNum)
+	entry, err := d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan)
 	if err != nil {
 		return err
 	}
@@ -1266,6 +1406,7 @@ func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error 
 		}
 	}
 
+	d.mu.versions.metrics.Ingest.Count++
 	currMem := d.mu.mem.mutable
 	// NB: Placing ingested sstables above the current memtables
 	// requires rotating of the existing memtables/WAL. There is
@@ -1275,6 +1416,7 @@ func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error 
 	d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	d.rotateMemtable(newLogNum, nextSeqNum, currMem)
 	d.updateReadStateLocked(d.opts.DebugCheck)
+	// TODO(aaditya): is this necessary? we call this already in rotateMemtable above
 	d.maybeScheduleFlush()
 	return nil
 }
@@ -1285,6 +1427,7 @@ func (d *DB) ingest(
 	targetLevelFunc ingestTargetLevelFunc,
 	shared []SharedSSTMeta,
 	exciseSpan KeyRange,
+	sstsContainExciseTombstone bool,
 	external []ExternalFile,
 ) (IngestOperationStats, error) {
 	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
@@ -1293,29 +1436,38 @@ func (d *DB) ingest(
 	if (exciseSpan.Valid() || len(shared) > 0 || len(external) > 0) && d.FormatMajorVersion() < FormatVirtualSSTables {
 		return IngestOperationStats{}, errors.New("pebble: format major version too old for excise, shared or external sstable ingestion")
 	}
+	if len(external) > 0 && d.FormatMajorVersion() < FormatSyntheticPrefixSuffix {
+		for i := range external {
+			if len(external[i].SyntheticPrefix) > 0 {
+				return IngestOperationStats{}, errors.New("pebble: format major version too old for synthetic prefix ingestion")
+			}
+			if len(external[i].SyntheticSuffix) > 0 {
+				return IngestOperationStats{}, errors.New("pebble: format major version too old for synthetic suffix ingestion")
+			}
+		}
+	}
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted. Note that this causes
 	// the file number ordering to be out of alignment with sequence number
 	// ordering. The sorting of L0 tables by sequence number avoids relying on
 	// that (busted) invariant.
 	d.mu.Lock()
-	pendingOutputs := make([]base.DiskFileNum, len(paths)+len(shared)+len(external))
+	pendingOutputs := make([]base.FileNum, len(paths)+len(shared)+len(external))
 	for i := 0; i < len(paths)+len(shared)+len(external); i++ {
-		pendingOutputs[i] = d.mu.versions.getNextDiskFileNum()
+		pendingOutputs[i] = d.mu.versions.getNextFileNum()
 	}
 
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 	d.mu.Unlock()
 
 	// Load the metadata for all the files being ingested. This step detects
 	// and elides empty sstables.
-	loadResult, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, shared, external, d.cacheID, pendingOutputs, d.objProvider, jobID)
+	loadResult, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, shared, external, d.cacheID, pendingOutputs)
 	if err != nil {
 		return IngestOperationStats{}, err
 	}
 
-	if loadResult.fileCount == 0 {
+	if loadResult.fileCount() == 0 {
 		// All of the sstables to be ingested were empty. Nothing to do.
 		return IngestOperationStats{}, nil
 	}
@@ -1327,10 +1479,16 @@ func (d *DB) ingest(
 
 	// Hard link the sstables into the DB directory. Since the sstables aren't
 	// referenced by a version, they won't be used. If the hard linking fails
-	// (e.g. because the files reside on a different filesystem), ingestLink will
-	// fall back to copying, and if that fails we undo our work and return an
+	// (e.g. because the files reside on a different filesystem), ingestLinkLocal
+	// will fall back to copying, and if that fails we undo our work and return an
 	// error.
-	if err := ingestLink(jobID, d.opts, d.objProvider, loadResult, shared); err != nil {
+	if err := ingestLinkLocal(jobID, d.opts, d.objProvider, loadResult.local); err != nil {
+		return IngestOperationStats{}, err
+	}
+
+	err = d.ingestAttachRemote(jobID, loadResult)
+	defer d.ingestUnprotectExternalBackings(loadResult)
+	if err != nil {
 		return IngestOperationStats{}, err
 	}
 
@@ -1341,25 +1499,82 @@ func (d *DB) ingest(
 		return IngestOperationStats{}, err
 	}
 
-	// metaFlushableOverlaps is a slice parallel to meta indicating which of the
-	// ingested sstables overlap some table in the flushable queue. It's used to
-	// approximate ingest-into-L0 stats when using flushable ingests.
-	metaFlushableOverlaps := make([]bool, loadResult.fileCount)
+	// metaFlushableOverlaps is a map indicating which of the ingested sstables
+	// overlap some table in the flushable queue. It's used to approximate
+	// ingest-into-L0 stats when using flushable ingests.
+	metaFlushableOverlaps := make(map[FileNum]bool, loadResult.fileCount())
 	var mem *flushableEntry
 	var mut *memTable
 	// asFlushable indicates whether the sstable was ingested as a flushable.
 	var asFlushable bool
-	iterOps := IterOptions{
-		CategoryAndQoS: sstable.CategoryAndQoS{
-			Category: "pebble-ingest",
-			QoSLevel: sstable.LatencySensitiveQoSLevel,
-		},
-	}
 	prepare := func(seqNum uint64) {
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
 
+		// Determine the set of bounds we care about for the purpose of checking
+		// for overlap among the flushables. If there's an excise span, we need
+		// to check for overlap with its bounds as well.
+		overlapBounds := make([]bounded, 0, loadResult.fileCount()+1)
+		for _, m := range loadResult.local {
+			overlapBounds = append(overlapBounds, m.fileMetadata)
+		}
+		for _, m := range loadResult.shared {
+			overlapBounds = append(overlapBounds, m.fileMetadata)
+		}
+		for _, m := range loadResult.external {
+			overlapBounds = append(overlapBounds, m.fileMetadata)
+		}
+		if exciseSpan.Valid() {
+			overlapBounds = append(overlapBounds, &exciseSpan)
+		}
+
 		d.mu.Lock()
 		defer d.mu.Unlock()
+
+		// Check if any of the currently-open EventuallyFileOnlySnapshots overlap
+		// in key ranges with the excise span. If so, we need to check for memtable
+		// overlaps with all bounds of that EventuallyFileOnlySnapshot in addition
+		// to the ingestion's own bounds too.
+
+		if exciseSpan.Valid() {
+			for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
+				if s.efos == nil {
+					continue
+				}
+				if base.Visible(seqNum, s.efos.seqNum, base.InternalKeySeqNumMax) {
+					// We only worry about snapshots older than the excise. Any snapshots
+					// created after the excise should see the excised view of the LSM
+					// anyway.
+					//
+					// Since we delay publishing the excise seqnum as visible until after
+					// the apply step, this case will never be hit in practice until we
+					// make excises flushable ingests.
+					continue
+				}
+				if invariants.Enabled {
+					if s.efos.hasTransitioned() {
+						panic("unexpected transitioned EFOS in snapshots list")
+					}
+				}
+				for i := range s.efos.protectedRanges {
+					if !s.efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
+						continue
+					}
+					// Our excise conflicts with this EFOS. We need to add its protected
+					// ranges to our overlapBounds. Grow overlapBounds in one allocation
+					// if necesary.
+					prs := s.efos.protectedRanges
+					if cap(overlapBounds) < len(overlapBounds)+len(prs) {
+						oldOverlapBounds := overlapBounds
+						overlapBounds = make([]bounded, len(oldOverlapBounds), len(oldOverlapBounds)+len(prs))
+						copy(overlapBounds, oldOverlapBounds)
+					}
+					for i := range prs {
+						overlapBounds = append(overlapBounds, &prs[i])
+					}
+					break
+				}
+			}
+		}
 
 		// Check to see if any files overlap with any of the memtables. The queue
 		// is ordered from oldest to newest with the mutable memtable being the
@@ -1368,59 +1583,33 @@ func (d *DB) ingest(
 
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
-			iter := m.newIter(&iterOps)
-			rangeDelIter := m.newRangeDelIter(&iterOps)
-			rkeyIter := m.newRangeKeyIter(&iterOps)
+			m.computePossibleOverlaps(func(b bounded) shouldContinue {
+				// If this is the first table to overlap a flushable, save
+				// the flushable. This ingest must be ingested or flushed
+				// after it.
+				if mem == nil {
+					mem = m
+				}
 
-			checkForOverlap := func(i int, meta *fileMetadata) {
-				if metaFlushableOverlaps[i] {
-					// This table already overlapped a more recent flushable.
-					return
+				switch v := b.(type) {
+				case *fileMetadata:
+					// NB: False positives are possible if `m` is a flushable
+					// ingest that overlaps the file `v` in bounds but doesn't
+					// contain overlapping data. This is considered acceptable
+					// because it's rare (in CockroachDB a bound overlap likely
+					// indicates a data overlap), and blocking the commit
+					// pipeline while we perform I/O to check for overlap may be
+					// more disruptive than enqueueing this ingestion on the
+					// flushable queue and switching to a new memtable.
+					metaFlushableOverlaps[v.FileNum] = true
+				case *KeyRange:
+					// An excise span or an EventuallyFileOnlySnapshot protected range;
+					// not a file.
+				default:
+					panic("unreachable")
 				}
-				kr := internalKeyRange{
-					smallest: meta.Smallest,
-					largest:  meta.Largest,
-				}
-				if overlapWithIterator(iter, &rangeDelIter, rkeyIter, kr, d.cmp) {
-					// If this is the first table to overlap a flushable, save
-					// the flushable. This ingest must be ingested or flushed
-					// after it.
-					if mem == nil {
-						mem = m
-					}
-					metaFlushableOverlaps[i] = true
-				}
-			}
-			for i := range loadResult.localMeta {
-				checkForOverlap(i, loadResult.localMeta[i])
-			}
-			for i := range loadResult.sharedMeta {
-				checkForOverlap(len(loadResult.localMeta)+i, loadResult.sharedMeta[i])
-			}
-			for i := range loadResult.externalMeta {
-				checkForOverlap(len(loadResult.localMeta)+len(loadResult.sharedMeta)+i, loadResult.externalMeta[i])
-			}
-			if exciseSpan.Valid() {
-				kr := internalKeyRange{
-					smallest: base.MakeInternalKey(exciseSpan.Start, InternalKeySeqNumMax, InternalKeyKindMax),
-					largest:  base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, exciseSpan.End),
-				}
-				if overlapWithIterator(iter, &rangeDelIter, rkeyIter, kr, d.cmp) {
-					if mem == nil {
-						mem = m
-					}
-				}
-			}
-			err := iter.Close()
-			if rangeDelIter != nil {
-				err = firstError(err, rangeDelIter.Close())
-			}
-			if rkeyIter != nil {
-				err = firstError(err, rkeyIter.Close())
-			}
-			if err != nil {
-				d.opts.Logger.Errorf("ingest error reading flushable for log %s: %s", m.logNum, err)
-			}
+				return continueIteration
+			}, overlapBounds...)
 		}
 
 		if mem == nil {
@@ -1438,11 +1627,19 @@ func (d *DB) ingest(
 			mut.writerRef()
 			return
 		}
-		// The ingestion overlaps with some entry in the flushable queue.
-		if d.FormatMajorVersion() < FormatFlushableIngest ||
-			d.opts.Experimental.DisableIngestAsFlushable() ||
-			len(shared) > 0 || exciseSpan.Valid() || len(external) > 0 ||
-			(len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1) {
+
+		// The ingestion overlaps with some entry in the flushable queue. If the
+		// pre-conditions are met below, we can treat this ingestion as a flushable
+		// ingest, otherwise we wait on the memtable flush before ingestion.
+		//
+		// TODO(aaditya): We should make flushableIngest compatible with remote
+		// files.
+		hasRemoteFiles := len(shared) > 0 || len(external) > 0
+		canIngestFlushable := d.FormatMajorVersion() >= FormatFlushableIngest &&
+			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold) &&
+			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles
+
+		if !canIngestFlushable || (exciseSpan.Valid() && !sstsContainExciseTombstone) {
 			// We're not able to ingest as a flushable,
 			// so we must synchronously flush.
 			//
@@ -1470,7 +1667,11 @@ func (d *DB) ingest(
 		// Since there aren't too many memtables already queued up, we can
 		// slide the ingested sstables on top of the existing memtables.
 		asFlushable = true
-		err = d.handleIngestAsFlushable(loadResult.localMeta, seqNum)
+		fileMetas := make([]*fileMetadata, len(loadResult.local))
+		for i := range fileMetas {
+			fileMetas[i] = loadResult.local[i].fileMetadata
+		}
+		err = d.handleIngestAsFlushable(fileMetas, seqNum, exciseSpan)
 	}
 
 	var ve *versionEdit
@@ -1487,6 +1688,13 @@ func (d *DB) ingest(
 			return
 		}
 
+		// If there's an excise being done atomically with the same ingest, we
+		// assign the lowest sequence number in the set of sequence numbers for this
+		// ingestion to the excise. Note that we've already allocated fileCount+1
+		// sequence numbers in this case.
+		if exciseSpan.Valid() {
+			seqNum++ // the first seqNum is reserved for the excise.
+		}
 		// Update the sequence numbers for all ingested sstables'
 		// metadata. When the version edit is applied, the metadata is
 		// written to the manifest, persisting the sequence number.
@@ -1512,7 +1720,7 @@ func (d *DB) ingest(
 
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, err = d.ingestApply(jobID, loadResult, targetLevelFunc, mut, exciseSpan)
+		ve, err = d.ingestApply(jobID, loadResult, targetLevelFunc, mut, exciseSpan, seqNum)
 	}
 
 	// Only one ingest can occur at a time because if not, one would block waiting
@@ -1520,18 +1728,23 @@ func (d *DB) ingest(
 	// the commit mutex which would prevent unrelated batches from writing their
 	// changes to the WAL and memtable. This will cause a bigger commit hiccup
 	// during ingestion.
+	seqNumCount := loadResult.fileCount()
+	if exciseSpan.Valid() {
+		seqNumCount++
+	}
 	d.commit.ingestSem <- struct{}{}
-	d.commit.AllocateSeqNum(loadResult.fileCount, prepare, apply)
+	d.commit.AllocateSeqNum(seqNumCount, prepare, apply)
 	<-d.commit.ingestSem
 
 	if err != nil {
-		if err2 := ingestCleanup(d.objProvider, loadResult.localMeta); err2 != nil {
+		if err2 := ingestCleanup(d.objProvider, loadResult.local); err2 != nil {
 			d.opts.Logger.Errorf("ingest cleanup failed: %v", err2)
 		}
 	} else {
 		// Since we either created a hard link to the ingesting files, or copied
 		// them over, it is safe to remove the originals paths.
-		for _, path := range loadResult.localPaths {
+		for i := range loadResult.local {
+			path := loadResult.local[i].path
 			if err2 := d.opts.FS.Remove(path); err2 != nil {
 				d.opts.Logger.Errorf("ingest failed to remove original file: %s", err2)
 			}
@@ -1539,16 +1752,16 @@ func (d *DB) ingest(
 	}
 
 	info := TableIngestInfo{
-		JobID:     jobID,
+		JobID:     int(jobID),
 		Err:       err,
 		flushable: asFlushable,
 	}
-	if len(loadResult.localMeta) > 0 {
-		info.GlobalSeqNum = loadResult.localMeta[0].SmallestSeqNum
-	} else if len(loadResult.sharedMeta) > 0 {
-		info.GlobalSeqNum = loadResult.sharedMeta[0].SmallestSeqNum
+	if len(loadResult.local) > 0 {
+		info.GlobalSeqNum = loadResult.local[0].SmallestSeqNum
+	} else if len(loadResult.shared) > 0 {
+		info.GlobalSeqNum = loadResult.shared[0].SmallestSeqNum
 	} else {
-		info.GlobalSeqNum = loadResult.externalMeta[0].SmallestSeqNum
+		info.GlobalSeqNum = loadResult.external[0].SmallestSeqNum
 	}
 	var stats IngestOperationStats
 	if ve != nil {
@@ -1564,7 +1777,7 @@ func (d *DB) ingest(
 			if e.Level == 0 {
 				stats.ApproxIngestedIntoL0Bytes += e.Meta.Size
 			}
-			if i < len(metaFlushableOverlaps) && metaFlushableOverlaps[i] {
+			if metaFlushableOverlaps[e.Meta.FileNum] {
 				stats.MemtableOverlappingFiles++
 			}
 		}
@@ -1573,8 +1786,8 @@ func (d *DB) ingest(
 		info.Tables = make([]struct {
 			TableInfo
 			Level int
-		}, len(loadResult.localMeta))
-		for i, f := range loadResult.localMeta {
+		}, len(loadResult.local))
+		for i, f := range loadResult.local {
 			info.Tables[i].Level = -1
 			info.Tables[i].TableInfo = f.TableInfo()
 			stats.Bytes += f.Size
@@ -1586,7 +1799,7 @@ func (d *DB) ingest(
 			// before entering the commit pipeline, we can use that overlap to
 			// improve our approximation by incorporating overlap with L0, not
 			// just memtables.
-			if metaFlushableOverlaps[i] {
+			if metaFlushableOverlaps[f.FileNum] {
 				stats.ApproxIngestedIntoL0Bytes += f.Size
 				stats.MemtableOverlappingFiles++
 			}
@@ -1604,11 +1817,12 @@ func (d *DB) ingest(
 //
 // The manifest lock must be held when calling this method.
 func (d *DB) excise(
-	exciseSpan KeyRange, m *fileMetadata, ve *versionEdit, level int,
+	exciseSpan base.UserKeyBounds, m *fileMetadata, ve *versionEdit, level int,
 ) ([]manifest.NewFileEntry, error) {
 	numCreatedFiles := 0
 	// Check if there's actually an overlap between m and exciseSpan.
-	if !exciseSpan.Overlaps(d.cmp, m) {
+	mBounds := base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
+	if !exciseSpan.Overlaps(d.cmp, &mBounds) {
 		return nil, nil
 	}
 	ve.DeletedFiles[deletedFileEntry{
@@ -1616,7 +1830,7 @@ func (d *DB) excise(
 		FileNum: m.FileNum,
 	}] = m
 	// Fast path: m sits entirely within the exciseSpan, so just delete it.
-	if exciseSpan.Contains(d.cmp, m.Smallest) && exciseSpan.Contains(d.cmp, m.Largest) {
+	if exciseSpan.ContainsInternalKey(d.cmp, m.Smallest) && exciseSpan.ContainsInternalKey(d.cmp, m.Largest) {
 		return nil, nil
 	}
 	var iter internalIterator
@@ -1652,14 +1866,16 @@ func (d *DB) excise(
 			FileNum:     d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
-			SmallestSeqNum: m.SmallestSeqNum,
-			LargestSeqNum:  m.LargestSeqNum,
+			SmallestSeqNum:  m.SmallestSeqNum,
+			LargestSeqNum:   m.LargestSeqNum,
+			SyntheticPrefix: m.SyntheticPrefix,
+			SyntheticSuffix: m.SyntheticSuffix,
 		}
-		if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.SmallestPointKey) {
-			// This file will contain point keys
+		if m.HasPointKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.SmallestPointKey) {
+			// This file will probably contain point keys.
 			smallestPointKey := m.SmallestPointKey
 			var err error
-			iter, rangeDelIter, err = d.newIters(context.TODO(), m, &IterOptions{
+			iter, rangeDelIter, err = d.newIters.TODO(context.TODO(), m, &IterOptions{
 				CategoryAndQoS: sstable.CategoryAndQoS{
 					Category: "pebble-ingest",
 					QoSLevel: sstable.LatencySensitiveQoSLevel,
@@ -1684,8 +1900,9 @@ func (d *DB) excise(
 			var lastRangeDel []byte
 			if rangeDelIter != nil {
 				defer rangeDelIter.Close()
-				rdel := rangeDelIter.SeekLT(exciseSpan.Start)
-				if rdel != nil {
+				if rdel, err := rangeDelIter.SeekLT(exciseSpan.Start); err != nil {
+					return nil, err
+				} else if rdel != nil {
 					lastRangeDel = append(lastRangeDel[:0], rdel.End...)
 					if d.cmp(lastRangeDel, exciseSpan.Start) > 0 {
 						lastRangeDel = exciseSpan.Start
@@ -1698,8 +1915,8 @@ func (d *DB) excise(
 				leftFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel))
 			}
 		}
-		if m.HasRangeKeys && !exciseSpan.Contains(d.cmp, m.SmallestRangeKey) {
-			// This file will contain range keys
+		if m.HasRangeKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.SmallestRangeKey) {
+			// This file will probably contain range keys.
 			var err error
 			smallestRangeKey := m.SmallestRangeKey
 			rangeKeyIter, err = d.tableNewRangeKeyIter(m, keyspan.SpanIterOptions{})
@@ -1711,8 +1928,9 @@ func (d *DB) excise(
 			var lastRangeKey []byte
 			var lastRangeKeyKind InternalKeyKind
 			defer rangeKeyIter.Close()
-			rkey := rangeKeyIter.SeekLT(exciseSpan.Start)
-			if rkey != nil {
+			if rkey, err := rangeKeyIter.SeekLT(exciseSpan.Start); err != nil {
+				return nil, err
+			} else if rkey != nil {
 				lastRangeKey = append(lastRangeKey[:0], rkey.End...)
 				if d.cmp(lastRangeKey, exciseSpan.Start) > 0 {
 					lastRangeKey = exciseSpan.Start
@@ -1746,7 +1964,7 @@ func (d *DB) excise(
 		}
 	}
 	// Create a file to the right, if necessary.
-	if exciseSpan.Contains(d.cmp, m.Largest) {
+	if exciseSpan.ContainsInternalKey(d.cmp, m.Largest) {
 		// No key exists to the right of the excise span in this file.
 		if needsBacking && !m.Virtual {
 			// If m is virtual, then its file backing is already known to the manifest.
@@ -1767,15 +1985,17 @@ func (d *DB) excise(
 		FileNum:     d.mu.versions.getNextFileNum(),
 		// Note that these are loose bounds for smallest/largest seqnums, but they're
 		// sufficient for maintaining correctness.
-		SmallestSeqNum: m.SmallestSeqNum,
-		LargestSeqNum:  m.LargestSeqNum,
+		SmallestSeqNum:  m.SmallestSeqNum,
+		LargestSeqNum:   m.LargestSeqNum,
+		SyntheticPrefix: m.SyntheticPrefix,
+		SyntheticSuffix: m.SyntheticSuffix,
 	}
-	if m.HasPointKeys && !exciseSpan.Contains(d.cmp, m.LargestPointKey) {
-		// This file will contain point keys
+	if m.HasPointKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.LargestPointKey) {
+		// This file will probably contain point keys
 		largestPointKey := m.LargestPointKey
 		var err error
 		if iter == nil && rangeDelIter == nil {
-			iter, rangeDelIter, err = d.newIters(context.TODO(), m, &IterOptions{
+			iter, rangeDelIter, err = d.newIters.TODO(context.TODO(), m, &IterOptions{
 				CategoryAndQoS: sstable.CategoryAndQoS{
 					Category: "pebble-ingest",
 					QoSLevel: sstable.LatencySensitiveQoSLevel,
@@ -1796,18 +2016,27 @@ func (d *DB) excise(
 				rangeDelIter = emptyKeyspanIter
 			}
 		}
-		key, _ := iter.SeekGE(exciseSpan.End, base.SeekGEFlagsNone)
+		key, _ := iter.SeekGE(exciseSpan.End.Key, base.SeekGEFlagsNone)
 		if key != nil {
+			if exciseSpan.End.Kind == base.Inclusive && d.equal(exciseSpan.End.Key, key.UserKey) {
+				return nil, base.AssertionFailedf("cannot excise with an inclusive end key and data overlap at end key")
+			}
 			rightFile.ExtendPointKeyBounds(d.cmp, key.Clone(), largestPointKey)
 		}
 		// Store the max of (exciseSpan.End, rdel.Start) in firstRangeDel. This
 		// needs to be a copy if the key is owned by the range del iter.
 		var firstRangeDel []byte
-		rdel := rangeDelIter.SeekGE(exciseSpan.End)
-		if rdel != nil {
+		rdel, err := rangeDelIter.SeekGE(exciseSpan.End.Key)
+		if err != nil {
+			return nil, err
+		} else if rdel != nil {
 			firstRangeDel = append(firstRangeDel[:0], rdel.Start...)
-			if d.cmp(firstRangeDel, exciseSpan.End) < 0 {
-				firstRangeDel = exciseSpan.End
+			if d.cmp(firstRangeDel, exciseSpan.End.Key) < 0 {
+				// NB: This can only be done if the end bound is exclusive.
+				if exciseSpan.End.Kind != base.Exclusive {
+					return nil, base.AssertionFailedf("cannot truncate rangedel during excise with an inclusive upper bound")
+				}
+				firstRangeDel = exciseSpan.End.Key
 			}
 		}
 		if firstRangeDel != nil {
@@ -1816,8 +2045,8 @@ func (d *DB) excise(
 			rightFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, largestPointKey)
 		}
 	}
-	if m.HasRangeKeys && !exciseSpan.Contains(d.cmp, m.LargestRangeKey) {
-		// This file will contain range keys.
+	if m.HasRangeKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.LargestRangeKey) {
+		// This file will probably contain range keys.
 		largestRangeKey := m.LargestRangeKey
 		if rangeKeyIter == nil {
 			var err error
@@ -1830,11 +2059,16 @@ func (d *DB) excise(
 		// Store the max of (exciseSpan.End, rkey.Start) in firstRangeKey. This
 		// needs to be a copy if the key is owned by the range key iter.
 		var firstRangeKey []byte
-		rkey := rangeKeyIter.SeekGE(exciseSpan.End)
-		if rkey != nil {
+		rkey, err := rangeKeyIter.SeekGE(exciseSpan.End.Key)
+		if err != nil {
+			return nil, err
+		} else if rkey != nil {
 			firstRangeKey = append(firstRangeKey[:0], rkey.Start...)
-			if d.cmp(firstRangeKey, exciseSpan.End) < 0 {
-				firstRangeKey = exciseSpan.End
+			if d.cmp(firstRangeKey, exciseSpan.End.Key) < 0 {
+				if exciseSpan.End.Kind != base.Exclusive {
+					return nil, base.AssertionFailedf("cannot truncate range key during excise with an inclusive upper bound")
+				}
+				firstRangeKey = exciseSpan.End.Key
 			}
 		}
 		if firstRangeKey != nil {
@@ -1860,6 +2094,9 @@ func (d *DB) excise(
 			// for it here.
 			rightFile.Size = 1
 		}
+		if err := rightFile.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
+			return nil, err
+		}
 		rightFile.ValidateVirtual(m)
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: rightFile})
 		needsBacking = true
@@ -1874,15 +2111,12 @@ func (d *DB) excise(
 		ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 	}
 
-	if err := rightFile.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
-		return nil, err
-	}
 	return ve.NewFiles[len(ve.NewFiles)-numCreatedFiles:], nil
 }
 
 type ingestTargetLevelFunc func(
 	newIters tableNewIters,
-	newRangeKeyIter keyspan.TableNewSpanIter,
+	newRangeKeyIter keyspanimpl.TableNewSpanIter,
 	iterOps IterOptions,
 	comparer *Comparer,
 	v *version,
@@ -1916,6 +2150,7 @@ func (d *DB) ingestSplit(
 	replacedFiles map[base.FileNum][]newFileEntry,
 ) error {
 	for _, s := range files {
+		ingestFileBounds := s.ingestFile.UserKeyBounds()
 		// replacedFiles can be thought of as a tree, where we start iterating with
 		// s.splitFile and run its fileNum through replacedFiles, then find which of
 		// the replaced files overlaps with s.ingestFile, which becomes the new
@@ -1933,7 +2168,7 @@ func (d *DB) ingestSplit(
 			}
 			updatedSplitFile := false
 			for i := range replaced {
-				if replaced[i].Meta.Overlaps(d.cmp, s.ingestFile.Smallest.UserKey, s.ingestFile.Largest.UserKey, s.ingestFile.Largest.IsExclusiveSentinel()) {
+				if replaced[i].Meta.Overlaps(d.cmp, &ingestFileBounds) {
 					if updatedSplitFile {
 						// This should never happen because the earlier ingestTargetLevel
 						// function only finds split file candidates that are guaranteed to
@@ -1972,9 +2207,9 @@ func (d *DB) ingestSplit(
 		// (assuming !s.ingestFile.Largest.IsExclusiveSentinel()). The conflation
 		// of exclusive vs inclusive end bounds should not make a difference here
 		// as we're guaranteed to not have any data overlap between splitFile and
-		// s.ingestFile, so panic if we do see a newly added file with an endKey
-		// equalling s.ingestFile.Largest, and !s.ingestFile.Largest.IsExclusiveSentinel()
-		added, err := d.excise(KeyRange{Start: s.ingestFile.Smallest.UserKey, End: s.ingestFile.Largest.UserKey}, splitFile, ve, s.level)
+		// s.ingestFile. d.excise will return an error if we pass an inclusive user
+		// key bound _and_ we end up seeing data overlap at the end key.
+		added, err := d.excise(base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, ve, s.level)
 		if err != nil {
 			return err
 		}
@@ -1986,7 +2221,8 @@ func (d *DB) ingestSplit(
 		}
 		replacedFiles[splitFile.FileNum] = added
 		for i := range added {
-			if s.ingestFile.Overlaps(d.cmp, added[i].Meta.Smallest.UserKey, added[i].Meta.Largest.UserKey, added[i].Meta.Largest.IsExclusiveSentinel()) {
+			addedBounds := added[i].Meta.UserKeyBounds()
+			if s.ingestFile.Overlaps(d.cmp, &addedBounds) {
 				panic("ingest-time split produced a file that overlaps with ingested file")
 			}
 		}
@@ -2009,17 +2245,18 @@ func (d *DB) ingestSplit(
 }
 
 func (d *DB) ingestApply(
-	jobID int,
+	jobID JobID,
 	lr ingestLoadResult,
 	findTargetLevel ingestTargetLevelFunc,
 	mut *memTable,
 	exciseSpan KeyRange,
+	exciseSeqNum uint64,
 ) (*versionEdit, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	ve := &versionEdit{
-		NewFiles: make([]newFileEntry, lr.fileCount),
+		NewFiles: make([]newFileEntry, lr.fileCount()),
 	}
 	if exciseSpan.Valid() || (d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit()) {
 		ve.DeletedFiles = map[manifest.DeletedFileEntry]*manifest.FileMetadata{}
@@ -2057,43 +2294,50 @@ func (d *DB) ingestApply(
 	// is possible for split files to appear twice in this list.
 	filesToSplit := make([]ingestSplitFile, 0)
 	checkCompactions := false
-	for i := 0; i < lr.fileCount; i++ {
+	for i := 0; i < lr.fileCount(); i++ {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
 		var m *fileMetadata
-		sharedIdx := -1
-		sharedLevel := -1
-		externalFile := false
-		if i < len(lr.localMeta) {
+		specifiedLevel := -1
+		isShared := false
+		isExternal := false
+		if i < len(lr.local) {
 			// local file.
-			m = lr.localMeta[i]
-		} else if (i - len(lr.localMeta)) < len(lr.sharedMeta) {
+			m = lr.local[i].fileMetadata
+		} else if (i - len(lr.local)) < len(lr.shared) {
 			// shared file.
-			sharedIdx = i - len(lr.localMeta)
-			m = lr.sharedMeta[sharedIdx]
-			sharedLevel = int(lr.sharedLevels[sharedIdx])
+			isShared = true
+			sharedIdx := i - len(lr.local)
+			m = lr.shared[sharedIdx].fileMetadata
+			specifiedLevel = int(lr.shared[sharedIdx].shared.Level)
 		} else {
 			// external file.
-			externalFile = true
-			m = lr.externalMeta[i-(len(lr.localMeta)+len(lr.sharedMeta))]
+			isExternal = true
+			externalIdx := i - (len(lr.local) + len(lr.shared))
+			m = lr.external[externalIdx].fileMetadata
+			if lr.externalFilesHaveLevel {
+				specifiedLevel = int(lr.external[externalIdx].external.Level)
+			}
 		}
+
+		// Add to CreatedBackingTables if this is a new backing.
+		//
+		// Shared files always have a new backing. External files have new backings
+		// iff the backing disk file num and the file num match (see ingestAttachRemote).
+		if isShared || (isExternal && m.FileBacking.DiskFileNum == base.DiskFileNum(m.FileNum)) {
+			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
+		}
+
 		f := &ve.NewFiles[i]
 		var err error
-		if sharedIdx >= 0 {
-			f.Level = sharedLevel
-			if f.Level < sharedLevelsStart {
-				panic("cannot slot a shared file higher than the highest shared level")
-			}
-			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
+		if specifiedLevel != -1 {
+			f.Level = specifiedLevel
 		} else {
-			if externalFile {
-				ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
-			}
 			var splitFile *fileMetadata
 			if exciseSpan.Valid() && exciseSpan.Contains(d.cmp, m.Smallest) && exciseSpan.Contains(d.cmp, m.Largest) {
 				// This file fits perfectly within the excise span. We can slot it at
 				// L6, or sharedLevelsStart - 1 if we have shared files.
-				if len(lr.sharedMeta) > 0 {
+				if len(lr.shared) > 0 || lr.externalFilesHaveLevel {
 					f.Level = sharedLevelsStart - 1
 					if baseLevel > f.Level {
 						f.Level = 0
@@ -2132,6 +2376,10 @@ func (d *DB) ingestApply(
 		if err != nil {
 			d.mu.versions.logUnlock()
 			return nil, err
+		}
+		if isShared && f.Level < sharedLevelsStart {
+			panic(fmt.Sprintf("cannot slot a shared file higher than the highest shared level: %d < %d",
+				f.Level, sharedLevelsStart))
 		}
 		f.Meta = m
 		levelMetrics := metrics[f.Level]
@@ -2181,11 +2429,11 @@ func (d *DB) ingestApply(
 		// for files, and if they are, we should signal those compactions to error
 		// out.
 		for level := range current.Levels {
-			overlaps := current.Overlaps(level, d.cmp, exciseSpan.Start, exciseSpan.End, true /* exclusiveEnd */)
+			overlaps := current.Overlaps(level, exciseSpan.UserKeyBounds())
 			iter := overlaps.Iter()
 
 			for m := iter.First(); m != nil; m = iter.Next() {
-				newFiles, err := d.excise(exciseSpan, m, ve, level)
+				newFiles, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
 				if err != nil {
 					return nil, err
 				}
@@ -2242,31 +2490,38 @@ func (d *DB) ingestApply(
 				}
 			}
 		}
-		// Check for any EventuallyFileOnlySnapshots that could be watching for
-		// an excise on this span.
-		if exciseSpan.Valid() {
-			for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
-				if s.efos == nil {
-					continue
-				}
-				efos := s.efos
-				// TODO(bilal): We can make this faster by taking advantage of the sorted
-				// nature of protectedRanges to do a sort.Search, or even maintaining a
-				// global list of all protected ranges instead of having to peer into every
-				// snapshot.
-				for i := range efos.protectedRanges {
-					if efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
-						efos.excised.Store(true)
-						break
-					}
-				}
-			}
-		}
 	}
+
 	if err := d.mu.versions.logAndApply(jobID, ve, metrics, false /* forceRotation */, func() []compactionInfo {
 		return d.getInProgressCompactionInfoLocked(nil)
 	}); err != nil {
+		// Note: any error during logAndApply is fatal; this won't be reachable in production.
 		return nil, err
+	}
+
+	// Check for any EventuallyFileOnlySnapshots that could be watching for
+	// an excise on this span. There should be none as the
+	// computePossibleOverlaps steps should have forced these EFOS to transition
+	// to file-only snapshots by now. If we see any that conflict with this
+	// excise, panic.
+	if exciseSpan.Valid() {
+		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
+			// Skip non-EFOS snapshots, and also skip any EFOS that were created
+			// *after* the excise.
+			if s.efos == nil || base.Visible(exciseSeqNum, s.efos.seqNum, base.InternalKeySeqNumMax) {
+				continue
+			}
+			efos := s.efos
+			// TODO(bilal): We can make this faster by taking advantage of the sorted
+			// nature of protectedRanges to do a sort.Search, or even maintaining a
+			// global list of all protected ranges instead of having to peer into every
+			// snapshot.
+			for i := range efos.protectedRanges {
+				if efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
+					panic("unexpected excise of an EventuallyFileOnlySnapshot's bounds")
+				}
+			}
+		}
 	}
 
 	d.mu.versions.metrics.Ingest.Count++
@@ -2331,8 +2586,7 @@ func (d *DB) validateSSTables() {
 	pending := d.mu.tableValidation.pending
 	d.mu.tableValidation.pending = nil
 	d.mu.tableValidation.validating = true
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 	rs := d.loadReadState()
 
 	// Drop DB.mu before performing IO.
@@ -2350,7 +2604,7 @@ func (d *DB) validateSSTables() {
 	for _, f := range pending {
 		// The file may have been moved or deleted since it was ingested, in
 		// which case we skip.
-		if !rs.current.Contains(f.Level, d.cmp, f.Meta) {
+		if !rs.current.Contains(f.Level, f.Meta) {
 			// Assume the file was moved to a lower level. It is rare enough
 			// that a table is moved or deleted between the time it was ingested
 			// and the time the validation routine runs that the overall cost of
@@ -2358,7 +2612,7 @@ func (d *DB) validateSSTables() {
 			// ingested tables.
 			found := false
 			for i := f.Level + 1; i < numLevels; i++ {
-				if rs.current.Contains(i, d.cmp, f.Meta) {
+				if rs.current.Contains(i, f.Meta) {
 					found = true
 					break
 				}
@@ -2403,7 +2657,7 @@ func (d *DB) validateSSTables() {
 		}
 
 		d.opts.EventListener.TableValidated(TableValidatedInfo{
-			JobID: jobID,
+			JobID: int(jobID),
 			Meta:  f.Meta,
 		})
 	}

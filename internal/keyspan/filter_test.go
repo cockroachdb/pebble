@@ -18,16 +18,15 @@ func TestFilteringIter(t *testing.T) {
 	// makeFilter returns a FilterFunc that will filter out all keys in a Span
 	// that are not of the given kind. Empty spans are skipped.
 	makeFilter := func(kind base.InternalKeyKind) FilterFunc {
-		return func(in *Span, out *Span) (keep bool) {
-			out.Start, out.End = in.Start, in.End
-			out.Keys = out.Keys[:0]
+		return func(in *Span, buf []Key) []Key {
+			keys := buf[:0]
 			for _, k := range in.Keys {
 				if k.Kind() != kind {
 					continue
 				}
-				out.Keys = append(out.Keys, k)
+				keys = append(keys, k)
 			}
-			return len(out.Keys) > 0
+			return keys
 		}
 	}
 
@@ -69,8 +68,7 @@ func TestFilteringIter(t *testing.T) {
 			innerIter := NewIter(cmp, spans)
 			iter := Filter(innerIter, filter, cmp)
 			defer iter.Close()
-			s := runFragmentIteratorCmd(iter, td.Input, nil)
-			return s
+			return RunFragmentIteratorCmd(iter, td.Input, nil)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", cmd)

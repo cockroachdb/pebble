@@ -5,12 +5,13 @@
 package metamorphic
 
 import (
+	"bytes"
 	"fmt"
 	"go/scanner"
 	"go/token"
 	"reflect"
+	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
@@ -39,8 +40,11 @@ func makeMethod(i interface{}, tags ...objTag) *methodInfo {
 // args returns the receiverID, targetID and arguments for the op. The
 // receiverID is the ID of the object the op will be applied to. The targetID
 // is the ID of the object for assignment. If the method does not return a new
-// object, then targetID will be nil. The argument list is just what it sounds
-// like: the list of arguments for the operation.
+// object, then targetID will be nil.
+//
+// The argument list returns pointers to operation fields that map to arguments
+// for the operation. The last argument can be a pointer to a slice,
+// corresponding to a variable number of arguments.
 func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	switch t := op.(type) {
 	case *applyOp:
@@ -61,6 +65,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.writerID, nil, []interface{}{&t.key}
 	case *deleteRangeOp:
 		return &t.writerID, nil, []interface{}{&t.start, &t.end}
+	case *downloadOp:
+		return &t.dbID, nil, []interface{}{&t.spans}
 	case *iterFirstOp:
 		return &t.iterID, nil, nil
 	case *flushOp:
@@ -70,11 +76,15 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *ingestOp:
 		return &t.dbID, nil, []interface{}{&t.batchIDs}
 	case *ingestAndExciseOp:
-		return &t.dbID, nil, []interface{}{&t.batchID, &t.exciseStart, &t.exciseEnd}
+		return &t.dbID, nil, []interface{}{&t.batchID, &t.exciseStart, &t.exciseEnd, &t.sstContainsExciseTombstone}
+	case *ingestExternalFilesOp:
+		return &t.dbID, nil, []interface{}{&t.objs}
 	case *initOp:
-		return nil, nil, []interface{}{&t.dbSlots, &t.batchSlots, &t.iterSlots, &t.snapshotSlots}
+		return nil, nil, []interface{}{&t.dbSlots, &t.batchSlots, &t.iterSlots, &t.snapshotSlots, &t.externalObjSlots}
 	case *iterLastOp:
 		return &t.iterID, nil, nil
+	case *logDataOp:
+		return &t.writerID, nil, []interface{}{&t.data}
 	case *mergeOp:
 		return &t.writerID, nil, []interface{}{&t.key, &t.value}
 	case *newBatchOp:
@@ -87,6 +97,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMin, &t.filterMax, &t.useL6Filters, &t.maskSuffix}
 	case *newSnapshotOp:
 		return &t.dbID, &t.snapID, []interface{}{&t.bounds}
+	case *newExternalObjOp:
+		return &t.batchID, &t.externalObjID, nil
 	case *iterNextOp:
 		return &t.iterID, nil, []interface{}{&t.limit}
 	case *iterNextPrefixOp:
@@ -130,18 +142,22 @@ var methods = map[string]*methodInfo{
 	"Compact":                   makeMethod(compactOp{}, dbTag),
 	"Delete":                    makeMethod(deleteOp{}, dbTag, batchTag),
 	"DeleteRange":               makeMethod(deleteRangeOp{}, dbTag, batchTag),
+	"Download":                  makeMethod(downloadOp{}, dbTag),
 	"First":                     makeMethod(iterFirstOp{}, iterTag),
 	"Flush":                     makeMethod(flushOp{}, dbTag),
 	"Get":                       makeMethod(getOp{}, dbTag, batchTag, snapTag),
 	"Ingest":                    makeMethod(ingestOp{}, dbTag),
 	"IngestAndExcise":           makeMethod(ingestAndExciseOp{}, dbTag),
+	"IngestExternalFiles":       makeMethod(ingestExternalFilesOp{}, dbTag),
 	"Init":                      makeMethod(initOp{}, dbTag),
 	"Last":                      makeMethod(iterLastOp{}, iterTag),
+	"LogData":                   makeMethod(logDataOp{}, dbTag, batchTag),
 	"Merge":                     makeMethod(mergeOp{}, dbTag, batchTag),
 	"NewBatch":                  makeMethod(newBatchOp{}, dbTag),
 	"NewIndexedBatch":           makeMethod(newIndexedBatchOp{}, dbTag),
 	"NewIter":                   makeMethod(newIterOp{}, dbTag, batchTag, snapTag),
 	"NewSnapshot":               makeMethod(newSnapshotOp{}, dbTag),
+	"NewExternalObj":            makeMethod(newExternalObjOp{}, batchTag),
 	"Next":                      makeMethod(iterNextOp{}, iterTag),
 	"NextPrefix":                makeMethod(iterNextPrefixOp{}, iterTag),
 	"InternalNext":              makeMethod(iterCanSingleDelOp{}, iterTag),
@@ -256,30 +272,6 @@ func (p *parser) parseOp() op {
 	panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
 }
 
-func parseObjID(str string) (objID, error) {
-	var tag objTag
-	switch {
-	case strings.HasPrefix(str, "db"):
-		tag, str = dbTag, str[2:]
-		if str == "" {
-			str = "1"
-		}
-	case strings.HasPrefix(str, "batch"):
-		tag, str = batchTag, str[5:]
-	case strings.HasPrefix(str, "iter"):
-		tag, str = iterTag, str[4:]
-	case strings.HasPrefix(str, "snap"):
-		tag, str = snapTag, str[4:]
-	default:
-		return 0, errors.Newf("unable to parse objectID: %q", str)
-	}
-	id, err := strconv.ParseInt(str, 10, 32)
-	if err != nil {
-		return 0, err
-	}
-	return makeObjID(tag, uint32(id)), nil
-}
-
 func (p *parser) parseObjID(pos token.Pos, str string) objID {
 	id, err := parseObjID(str)
 	if err != nil {
@@ -300,156 +292,66 @@ func unquoteBytes(lit string) []byte {
 }
 
 func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
-	pos, _ := p.scanToken(token.LPAREN)
-	for i := range args {
-		if i > 0 {
-			pos, _ = p.scanToken(token.COMMA)
-		}
+	pos, list := p.parseList()
+	p.scanToken(token.SEMICOLON)
 
+	// The last argument can have variable length.
+	var varArg interface{}
+	if len(args) > 0 {
+		switch args[len(args)-1].(type) {
+		case *[]objID, *[]pebble.KeyRange, *[]pebble.CheckpointSpan, *[]pebble.DownloadSpan, *[]externalObjWithBounds:
+			varArg = args[len(args)-1]
+			args = args[:len(args)-1]
+		}
+	}
+
+	if len(list) < len(args) {
+		panic(p.errorf(pos, "%s: not enough arguments", methodName))
+	}
+	if len(list) > len(args) && varArg == nil {
+		panic(p.errorf(pos, "%s: too many arguments", methodName))
+	}
+
+	for i := range args {
+		elem := list[i]
 		switch t := args[i].(type) {
 		case *uint32:
-			_, lit := p.scanToken(token.INT)
-			val, err := strconv.ParseUint(lit, 10, 32)
+			elem.expectToken(p, token.INT)
+			val, err := strconv.ParseUint(elem.lit, 10, 32)
 			if err != nil {
-				panic(err)
+				panic(p.errorf(elem.pos, "error parsing %q: %s", elem.lit, err))
 			}
 			*t = uint32(val)
 
 		case *uint64:
-			_, lit := p.scanToken(token.INT)
-			val, err := strconv.ParseUint(lit, 10, 64)
+			elem.expectToken(p, token.INT)
+			val, err := strconv.ParseUint(elem.lit, 10, 64)
 			if err != nil {
-				panic(err)
+				panic(p.errorf(elem.pos, "error parsing %q: %s", elem.lit, err))
 			}
-			*t = uint64(val)
+			*t = val
 
 		case *[]byte:
-			_, lit := p.scanToken(token.STRING)
-			*t = unquoteBytes(lit)
+			elem.expectToken(p, token.STRING)
+			*t = unquoteBytes(elem.lit)
 
 		case *bool:
-			_, lit := p.scanToken(token.IDENT)
-			b, err := strconv.ParseBool(lit)
+			elem.expectToken(p, token.IDENT)
+			b, err := strconv.ParseBool(elem.lit)
 			if err != nil {
-				panic(err)
+				panic(p.errorf(elem.pos, "error parsing %q: %s", elem.lit, err))
 			}
 			*t = b
 
 		case *objID:
-			pos, lit := p.scanToken(token.IDENT)
-			*t = p.parseObjID(pos, lit)
-
-		case *[]pebble.KeyRange:
-			var pending pebble.KeyRange
-			for {
-				pos, tok, lit := p.s.Scan()
-				switch tok {
-				case token.STRING:
-					x := unquoteBytes(lit)
-					if pending.Start == nil {
-						pending.Start = x
-					} else {
-						pending.End = x
-						*t = append(*t, pending)
-						pending = pebble.KeyRange{}
-					}
-					pos, tok, lit := p.s.Scan()
-					switch tok {
-					case token.COMMA:
-						continue
-					case token.RPAREN:
-						p.scanToken(token.SEMICOLON)
-						return
-					default:
-						panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
-					}
-				case token.RPAREN:
-					p.scanToken(token.SEMICOLON)
-					return
-				default:
-					panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
-				}
-			}
-
-		case *[]objID:
-			for {
-				pos, tok, lit := p.s.Scan()
-				switch tok {
-				case token.IDENT:
-					*t = append(*t, p.parseObjID(pos, lit))
-					pos, tok, lit := p.s.Scan()
-					switch tok {
-					case token.COMMA:
-						continue
-					case token.RPAREN:
-						p.scanToken(token.SEMICOLON)
-						return
-					default:
-						panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
-					}
-				case token.RPAREN:
-					p.scanToken(token.SEMICOLON)
-					return
-				default:
-					panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
-				}
-			}
-
-		case *[]pebble.CheckpointSpan:
-			pos, tok, lit := p.s.Scan()
-			switch tok {
-			case token.RPAREN:
-				// No spans.
-				*t = nil
-				p.scanToken(token.SEMICOLON)
-				return
-
-			case token.STRING:
-				var keys [][]byte
-				for {
-					s, err := strconv.Unquote(lit)
-					if err != nil {
-						panic(p.errorf(pos, "unquoting %q: %v", lit, err))
-					}
-					keys = append(keys, []byte(s))
-
-					pos, tok, lit = p.s.Scan()
-					switch tok {
-					case token.COMMA:
-						pos, tok, lit = p.s.Scan()
-						if tok != token.STRING {
-							panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
-						}
-						continue
-
-					case token.RPAREN:
-						p.scanToken(token.SEMICOLON)
-						if len(keys)%2 == 1 {
-							panic(p.errorf(pos, "expected even number of keys"))
-						}
-						*t = make([]pebble.CheckpointSpan, len(keys)/2)
-						for i := range *t {
-							(*t)[i] = pebble.CheckpointSpan{
-								Start: keys[i*2],
-								End:   keys[i*2+1],
-							}
-						}
-						return
-
-					default:
-						panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
-					}
-				}
-
-			default:
-				panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
-			}
+			elem.expectToken(p, token.IDENT)
+			*t = p.parseObjID(elem.pos, elem.lit)
 
 		case *pebble.FormatMajorVersion:
-			_, lit := p.scanToken(token.INT)
-			val, err := strconv.ParseUint(lit, 10, 64)
+			elem.expectToken(p, token.INT)
+			val, err := strconv.ParseUint(elem.lit, 10, 64)
 			if err != nil {
-				panic(err)
+				panic(p.errorf(elem.pos, "error parsing %q: %s", elem.lit, err))
 			}
 			*t = pebble.FormatMajorVersion(val)
 
@@ -457,8 +359,172 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 			panic(p.errorf(pos, "%s: unsupported arg[%d] type: %T", methodName, i, args[i]))
 		}
 	}
-	p.scanToken(token.RPAREN)
-	p.scanToken(token.SEMICOLON)
+
+	if varArg != nil {
+		list = list[len(args):]
+		switch t := varArg.(type) {
+		case *[]objID:
+			*t = p.parseObjIDs(list)
+		case *[]pebble.KeyRange:
+			*t = p.parseKeyRanges(list)
+		case *[]pebble.CheckpointSpan:
+			*t = p.parseCheckpointSpans(list)
+		case *[]pebble.DownloadSpan:
+			*t = p.parseDownloadSpans(list)
+		case *[]externalObjWithBounds:
+			*t = p.parseExternalObjsWithBounds(list)
+		default:
+			// We already checked for these types when we set varArgs.
+			panic("unreachable")
+		}
+	}
+}
+
+type listElem struct {
+	pos token.Pos
+	tok token.Token
+	lit string
+}
+
+func (e listElem) expectToken(p *parser, expTok token.Token) {
+	if e.tok != expTok {
+		panic(p.errorf(e.pos, "unexpected token: %q", p.tokenf(e.tok, e.lit)))
+	}
+}
+
+// pop checks that the first element of the list matches the expected token,
+// removes it from the list and returns the literal.
+func (p *parser) pop(list *[]listElem, expTok token.Token) string {
+	(*list)[0].expectToken(p, expTok)
+	lit := (*list)[0].lit
+	(*list) = (*list)[1:]
+	return lit
+}
+
+// parseKeyRange parses an arbitrary number of comma separated STRING/IDENT/INT
+// tokens surrounded by parens.
+func (p *parser) parseList() (token.Pos, []listElem) {
+	p.scanToken(token.LPAREN)
+	var list []listElem
+	for {
+		pos, tok, lit := p.s.Scan()
+		if len(list) == 0 && tok == token.RPAREN {
+			return pos, nil
+		}
+
+		switch tok {
+		case token.STRING, token.IDENT, token.INT:
+			list = append(list, listElem{
+				pos: pos,
+				tok: tok,
+				lit: lit,
+			})
+			pos, tok, lit = p.s.Scan()
+			switch tok {
+			case token.COMMA:
+				continue
+			case token.RPAREN:
+				return pos, list
+			}
+		}
+		panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
+	}
+}
+
+func (p *parser) parseObjIDs(list []listElem) []objID {
+	res := make([]objID, len(list))
+	for i, elem := range list {
+		res[i] = p.parseObjID(elem.pos, elem.lit)
+	}
+	return res
+}
+
+func (p *parser) parseKeys(list []listElem) [][]byte {
+	res := make([][]byte, len(list))
+	for i := range res {
+		res[i] = unquoteBytes(p.pop(&list, token.STRING))
+	}
+	return res
+}
+
+func (p *parser) parseKeyRanges(list []listElem) []pebble.KeyRange {
+	keys := p.parseKeys(list)
+	if len(keys)%2 != 0 {
+		panic(p.errorf(list[0].pos, "expected even number of keys"))
+	}
+	res := make([]pebble.KeyRange, len(keys)/2)
+	for i := range res {
+		res[i].Start = keys[2*i]
+		res[i].End = keys[2*i+1]
+	}
+	return res
+}
+
+func (p *parser) parseCheckpointSpans(list []listElem) []pebble.CheckpointSpan {
+	keys := p.parseKeys(list)
+	if len(keys)%2 == 1 {
+		panic(p.errorf(list[0].pos, "expected even number of keys"))
+	}
+	if len(keys) == 0 {
+		// Necessary for round-trip tests which differentiate between nil and empty slice.
+		return nil
+	}
+	res := make([]pebble.CheckpointSpan, len(keys)/2)
+	for i := range res {
+		res[i] = pebble.CheckpointSpan{
+			Start: keys[i*2],
+			End:   keys[i*2+1],
+		}
+	}
+	return res
+}
+
+func (p *parser) parseDownloadSpans(list []listElem) []pebble.DownloadSpan {
+	if len(list)%3 != 0 {
+		panic(p.errorf(list[0].pos, "expected 3k args"))
+	}
+	res := make([]pebble.DownloadSpan, len(list)/3)
+	for i := range res {
+		res[i] = pebble.DownloadSpan{
+			StartKey:               unquoteBytes(p.pop(&list, token.STRING)),
+			EndKey:                 unquoteBytes(p.pop(&list, token.STRING)),
+			ViaBackingFileDownload: p.pop(&list, token.IDENT) == "true",
+		}
+	}
+	return res
+}
+
+func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithBounds {
+	const numArgs = 5
+	if len(list)%5 != 0 {
+		panic(p.errorf(list[0].pos, "expected number of arguments to be multiple of %d", numArgs))
+	}
+	objs := make([]externalObjWithBounds, len(list)/numArgs)
+	for i := range objs {
+		pos := list[0].pos
+		objs[i] = externalObjWithBounds{
+			externalObjID: p.parseObjID(pos, p.pop(&list, token.IDENT)),
+			bounds: pebble.KeyRange{
+				Start: unquoteBytes(p.pop(&list, token.STRING)),
+				End:   unquoteBytes(p.pop(&list, token.STRING)),
+			},
+		}
+		if syntheticSuffix := unquoteBytes(p.pop(&list, token.STRING)); len(syntheticSuffix) > 0 {
+			objs[i].syntheticSuffix = syntheticSuffix
+		}
+
+		syntheticPrefix := unquoteBytes(p.pop(&list, token.STRING))
+		if len(syntheticPrefix) > 0 {
+			if !bytes.HasPrefix(objs[i].bounds.Start, syntheticPrefix) {
+				panic(fmt.Sprintf("invalid synthetic prefix %q %q", objs[i].bounds.Start, syntheticPrefix))
+			}
+			if !bytes.HasPrefix(objs[i].bounds.End, syntheticPrefix) {
+				panic(fmt.Sprintf("invalid synthetic prefix %q %q", objs[i].bounds.End, syntheticPrefix))
+			}
+			objs[i].syntheticPrefix = syntheticPrefix
+		}
+	}
+	return objs
 }
 
 func (p *parser) scanToken(expected token.Token) (pos token.Pos, lit string) {
@@ -523,7 +589,7 @@ func (p *parser) tokenf(tok token.Token, lit string) string {
 }
 
 func (p *parser) errorf(pos token.Pos, format string, args ...interface{}) error {
-	return errors.New(p.fset.Position(pos).String() + ": " + fmt.Sprintf(format, args...))
+	return errors.New("metamorphic test internal error: " + p.fset.Position(pos).String() + ": " + fmt.Sprintf(format, args...))
 }
 
 // computeDerivedFields makes one pass through the provided operations, filling
@@ -583,9 +649,29 @@ func computeDerivedFields(ops []op) {
 		case *batchCommitOp:
 			v.dbID = objToDB[v.batchID]
 		case *closeOp:
-			if derivedDBID, ok := objToDB[v.objID]; ok && v.objID.tag() != dbTag {
-				v.derivedDBID = derivedDBID
+			if v.objID.tag() == dbTag {
+				// Find all objects that use this db.
+				v.affectedObjects = nil
+				for obj, db := range objToDB {
+					if db == v.objID {
+						v.affectedObjects = append(v.affectedObjects, obj)
+					}
+				}
+				// Sort so the output is deterministic.
+				slices.Sort(v.affectedObjects)
+			} else if dbID, ok := objToDB[v.objID]; ok {
+				v.affectedObjects = objIDSlice{dbID}
 			}
+		case *dbRestartOp:
+			// Find all objects that use this db.
+			v.affectedObjects = nil
+			for obj, db := range objToDB {
+				if db == v.dbID {
+					v.affectedObjects = append(v.affectedObjects, obj)
+				}
+			}
+			// Sort so the output is deterministic.
+			slices.Sort(v.affectedObjects)
 		case *ingestOp:
 			v.derivedDBIDs = make([]objID, len(v.batchIDs))
 			for i := range v.batchIDs {

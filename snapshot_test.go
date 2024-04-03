@@ -62,9 +62,7 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 	defer close()
 
 	randVersion := func() FormatMajorVersion {
-		minVersion := formatUnusedPrePebblev1MarkedCompacted
-		return FormatMajorVersion(int(minVersion) + rand.Intn(
-			int(internalFormatNewest)-int(minVersion)+1))
+		return FormatMinSupported + FormatMajorVersion(rand.Intn(int(internalFormatNewest-FormatMinSupported)+1))
 	}
 	datadriven.RunTest(t, "testdata/snapshot", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {

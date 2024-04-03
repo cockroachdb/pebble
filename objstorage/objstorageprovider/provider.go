@@ -37,13 +37,7 @@ type provider struct {
 	mu struct {
 		sync.RWMutex
 
-		remote struct {
-			// catalogBatch accumulates remote object creations and deletions until
-			// Sync is called.
-			catalogBatch remoteobjcat.Batch
-
-			storageObjects map[remote.Locator]remote.Storage
-		}
+		remote remoteLockedState
 
 		// localObjectsChanged is set if non-remote objects were created or deleted
 		// but Sync was not yet called.
@@ -409,7 +403,7 @@ func (p *provider) Lookup(
 		)
 	}
 	if meta.FileType != fileType {
-		return objstorage.ObjectMetadata{}, errors.AssertionFailedf(
+		return objstorage.ObjectMetadata{}, base.AssertionFailedf(
 			"file %s type mismatch (known type %d, expected type %d)",
 			fileNum, errors.Safe(meta.FileType), errors.Safe(fileType),
 		)
@@ -455,12 +449,40 @@ func (p *provider) Metrics() sharedcache.Metrics {
 	return sharedcache.Metrics{}
 }
 
+// CheckpointState is part of the objstorage.Provider interface.
+func (p *provider) CheckpointState(
+	fs vfs.FS, dir string, fileType base.FileType, fileNums []base.DiskFileNum,
+) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range fileNums {
+		if _, ok := p.mu.knownObjects[fileNums[i]]; !ok {
+			return errors.Wrapf(
+				os.ErrNotExist,
+				"file %s (type %d) unknown to the objstorage provider",
+				fileNums[i], errors.Safe(fileType),
+			)
+		}
+		// Prevent this object from deletion, at least for the life of this instance.
+		p.mu.protectedObjects[fileNums[i]] = p.mu.protectedObjects[fileNums[i]] + 1
+	}
+
+	if p.remote.catalog != nil {
+		return p.remote.catalog.Checkpoint(fs, dir)
+	}
+	return nil
+}
+
 func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.addMetadataLocked(meta)
+}
+
+func (p *provider) addMetadataLocked(meta objstorage.ObjectMetadata) {
 	if invariants.Enabled {
 		meta.AssertValid()
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.mu.knownObjects[meta.DiskFileNum] = meta
 	if meta.IsRemote() {
 		p.mu.remote.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{
@@ -472,6 +494,9 @@ func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
 			CleanupMethod:    meta.Remote.CleanupMethod,
 			CustomObjectName: meta.Remote.CustomObjectName,
 		})
+		if meta.IsExternal() {
+			p.mu.remote.addExternalObject(meta)
+		}
 	} else {
 		p.mu.localObjectsChanged = true
 	}
@@ -486,6 +511,9 @@ func (p *provider) removeMetadata(fileNum base.DiskFileNum) {
 		return
 	}
 	delete(p.mu.knownObjects, fileNum)
+	if meta.IsExternal() {
+		p.mu.remote.removeExternalObject(meta)
+	}
 	if meta.IsRemote() {
 		p.mu.remote.catalogBatch.DeleteObject(fileNum)
 	} else {

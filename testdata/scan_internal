@@ -27,9 +27,9 @@ ok
 scan-internal file-only-snapshot=efos1
 ----
 a-c:{(#0,RANGEKEYSET,@5,boop)}
-b#12,1 (d)
+b#12,SET (d)
 c-e:{(#0,RANGEKEYSET,@5,beep)}
-e#13,1 (foo)
+e#13,SET (foo)
 
 flush
 ----
@@ -37,9 +37,9 @@ flush
 scan-internal
 ----
 a-c:{(#0,RANGEKEYSET,@5,boop)}
-b#12,1 (d)
+b#12,SET (d)
 c-e:{(#0,RANGEKEYSET,@5,beep)}
-e#13,1 (foo)
+e#13,SET (foo)
 
 # Keys deleted by rangedels are elided.
 
@@ -53,7 +53,7 @@ scan-internal
 a-c:{(#0,RANGEKEYSET,@5,boop)}
 b-d#14,RANGEDEL
 c-e:{(#0,RANGEKEYSET,@5,beep)}
-e#13,1 (foo)
+e#13,SET (foo)
 
 flush
 ----
@@ -63,7 +63,7 @@ scan-internal
 a-c:{(#0,RANGEKEYSET,@5,boop)}
 b-d#14,RANGEDEL
 c-e:{(#0,RANGEKEYSET,@5,beep)}
-e#13,1 (foo)
+e#13,SET (foo)
 
 # Snapshots work with scan internal.
 
@@ -79,9 +79,9 @@ ok
 scan-internal file-only-snapshot=efos1
 ----
 a-c:{(#0,RANGEKEYSET,@5,boop)}
-b#12,1 (d)
+b#12,SET (d)
 c-e:{(#0,RANGEKEYSET,@5,beep)}
-e#13,1 (foo)
+e#13,SET (foo)
 
 # Force keys newer than the snapshot into a lower level, then try skip-shared
 # iteration through it. This should return an error as it would expose keys
@@ -89,12 +89,12 @@ e#13,1 (foo)
 
 compact a-z
 ----
-6:
+L6:
   000008:[a#10,RANGEKEYSET-e#13,SET]
 
 lsm
 ----
-6:
+L6:
   000008:[a#10,RANGEKEYSET-e#13,SET]
 
 scan-internal lower=a upper=z skip-shared snapshot=foo
@@ -132,7 +132,7 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#10,RANGEKEYSET-e#inf,RANGEKEYSET]
 
 batch commit
@@ -160,10 +160,10 @@ flush
 
 lsm
 ----
-0.0:
+L0.0:
   000009:[a#13,RANGEKEYDEL-b#inf,RANGEKEYDEL]
   000007:[b#12,RANGEKEYUNSET-d#inf,RANGEKEYUNSET]
-6:
+L6:
   000005:[a#10,RANGEKEYSET-e#inf,RANGEKEYSET]
 
 scan-internal
@@ -223,7 +223,7 @@ committed 2 keys
 scan-internal
 ----
 a-c:{(#0,RANGEKEYSET,@5,boop)}
-b@3#10,1 (bar)
+b@3#10,SET (bar)
 c-e:{(#0,RANGEKEYSET,@5,beep)}
 
 # Point keys are collapsed in a way similar to a compaction.
@@ -239,8 +239,8 @@ committed 2 keys
 
 scan-internal
 ----
-b@3#10,1 (bar)
-c#11,1 (foo)
+b@3#10,SET (bar)
+c#11,SET (foo)
 
 batch commit
 set b@3 barfoo
@@ -249,8 +249,8 @@ committed 1 keys
 
 scan-internal
 ----
-b@3#12,1 (barfoo)
-c#11,1 (foo)
+b@3#12,SET (barfoo)
+c#11,SET (foo)
 
 batch commit
 set b@3 baz
@@ -261,9 +261,9 @@ committed 3 keys
 
 scan-internal
 ----
-b@3#13,1 (baz)
-c#14,0 ()
-d@4#15,1 (bar)
+b@3#13,SET (baz)
+c#14,DEL ()
+d@4#15,SET (bar)
 
 batch commit
 set f barbaz
@@ -272,10 +272,10 @@ committed 1 keys
 
 scan-internal
 ----
-b@3#13,1 (baz)
-c#14,0 ()
-d@4#15,1 (bar)
-f#16,1 (barbaz)
+b@3#13,SET (baz)
+c#14,DEL ()
+d@4#15,SET (bar)
+f#16,SET (barbaz)
 
 # Skip-shared iteration mode. Test truncation of range key at scan bounds.
 
@@ -298,7 +298,7 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#11,RANGEKEYSET-e#inf,RANGEDEL]
 
 batch commit
@@ -308,49 +308,49 @@ committed 1 keys
 
 lsm
 ----
-6:
+L6:
   000005:[a#11,RANGEKEYSET-e#inf,RANGEDEL]
 
 scan-internal
 ----
 a-c:{(#0,RANGEKEYSET,@5,boop)}
-b@3#10,1 (bar)
+b@3#10,SET (bar)
 c-e#12,RANGEDEL
-f@8#13,1 (baz)
+f@8#13,SET (baz)
 
 scan-internal skip-shared lower=a upper=z
 ----
-shared file: 000005 [a#11,21-e#72057594037927935,15] [point=b@3#10,1-e#72057594037927935,15] [range=a#11,21-c#72057594037927935,21]
-f@8#13,1 (baz)
+shared file: 000005 [a#11,RANGEKEYSET-e#72057594037927935,RANGEDEL] [point=b@3#10,SET-e#72057594037927935,RANGEDEL] [range=a#11,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+f@8#13,SET (baz)
 
 scan-internal skip-shared lower=a upper=e
 ----
-shared file: 000005 [a#11,21-e#72057594037927935,15] [point=b@3#10,1-e#72057594037927935,15] [range=a#11,21-c#72057594037927935,21]
+shared file: 000005 [a#11,RANGEKEYSET-e#72057594037927935,RANGEDEL] [point=b@3#10,SET-e#72057594037927935,RANGEDEL] [range=a#11,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
 
 scan-internal skip-shared lower=a upper=d
 ----
-shared file: 000005 [a#11,21-d#72057594037927935,15] [point=b@3#10,1-d#72057594037927935,15] [range=a#11,21-c#72057594037927935,21]
+shared file: 000005 [a#11,RANGEKEYSET-d#72057594037927935,RANGEDEL] [point=b@3#10,SET-d#72057594037927935,RANGEDEL] [range=a#11,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
 
 scan-internal skip-shared lower=a upper=c
 ----
-shared file: 000005 [a#11,21-c#72057594037927935,21] [point=b@3#10,1-b@3#10,1] [range=a#11,21-c#72057594037927935,21]
+shared file: 000005 [a#11,RANGEKEYSET-c#72057594037927935,RANGEKEYSET] [point=b@3#10,SET-b@3#10,SET] [range=a#11,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
 
 scan-internal skip-shared lower=a upper=b
 ----
-shared file: 000005 [a#11,21-b#72057594037927935,21] [point=#0,0-#0,0] [range=a#11,21-b#72057594037927935,21]
+shared file: 000005 [a#11,RANGEKEYSET-b#72057594037927935,RANGEKEYSET] [point=#0,DEL-#0,DEL] [range=a#11,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
 
 scan-internal skip-shared lower=b upper=z
 ----
-shared file: 000005 [b#11,21-e#72057594037927935,15] [point=b@3#10,1-e#72057594037927935,15] [range=b#11,21-c#72057594037927935,21]
-f@8#13,1 (baz)
+shared file: 000005 [b#11,RANGEKEYSET-e#72057594037927935,RANGEDEL] [point=b@3#10,SET-e#72057594037927935,RANGEDEL] [range=b#11,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+f@8#13,SET (baz)
 
 scan-internal skip-shared lower=b upper=bb
 ----
-shared file: 000005 [b#11,21-bb#72057594037927935,21] [point=b@3#10,1-b@3#10,1] [range=b#11,21-bb#72057594037927935,21]
+shared file: 000005 [b#11,RANGEKEYSET-bb#72057594037927935,RANGEKEYSET] [point=b@3#10,SET-b@3#10,SET] [range=b#11,RANGEKEYSET-bb#72057594037927935,RANGEKEYSET]
 
 scan-internal skip-shared lower=e upper=ff
 ----
-f@8#13,1 (baz)
+f@8#13,SET (baz)
 
 # Shared files that don't have any keys in [lower, upper) are ignored.
 
@@ -370,12 +370,12 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#10,SET-f#11,SET]
 
 lsm
 ----
-6:
+L6:
   000005:[a#10,SET-f#11,SET]
 
 scan-internal skip-shared lower=c upper=d
@@ -383,26 +383,26 @@ scan-internal skip-shared lower=c upper=d
 
 scan-internal skip-shared lower=a upper=d
 ----
-shared file: 000005 [a#10,1-c#72057594037927935,15] [point=a#10,1-c#72057594037927935,15] [range=#0,0-#0,0]
+shared file: 000005 [a#10,SET-c#72057594037927935,RANGEDEL] [point=a#10,SET-c#72057594037927935,RANGEDEL] [range=#0,DEL-#0,DEL]
 
 scan-internal skip-shared lower=bb upper=d
 ----
-shared file: 000005 [bb#12,15-c#72057594037927935,15] [point=bb#12,15-c#72057594037927935,15] [range=#0,0-#0,0]
+shared file: 000005 [bb#12,RANGEDEL-c#72057594037927935,RANGEDEL] [point=bb#12,RANGEDEL-c#72057594037927935,RANGEDEL] [range=#0,DEL-#0,DEL]
 
 scan-internal skip-shared lower=c upper=ea
 ----
-shared file: 000005 [e#13,21-ea#72057594037927935,21] [point=#0,0-#0,0] [range=e#13,21-ea#72057594037927935,21]
+shared file: 000005 [e#13,RANGEKEYSET-ea#72057594037927935,RANGEKEYSET] [point=#0,DEL-#0,DEL] [range=e#13,RANGEKEYSET-ea#72057594037927935,RANGEKEYSET]
 
 scan-internal skip-shared lower=c upper=z
 ----
-shared file: 000005 [e#13,21-f#11,1] [point=f#11,1-f#11,1] [range=e#13,21-ee#72057594037927935,21]
+shared file: 000005 [e#13,RANGEKEYSET-f#11,SET] [point=f#11,SET-f#11,SET] [range=e#13,RANGEKEYSET-ee#72057594037927935,RANGEKEYSET]
 
 # An upper bound equalling a file's Largest user key should be reason enough to
 # truncate that file's bounds.
 
 scan-internal skip-shared lower=c upper=f
 ----
-shared file: 000005 [e#13,21-ee#72057594037927935,21] [point=#0,0-#0,0] [range=e#13,21-ee#72057594037927935,21]
+shared file: 000005 [e#13,RANGEKEYSET-ee#72057594037927935,RANGEKEYSET] [point=#0,DEL-#0,DEL] [range=e#13,RANGEKEYSET-ee#72057594037927935,RANGEKEYSET]
 
 # Construct a file with an exclusive sentinel as the largest key. Verify that
 # scan-internal with skip-shared and an upper bound at that exclusive sentinel
@@ -423,16 +423,16 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#10,SET-ee#inf,RANGEKEYSET]
 
 scan-internal skip-shared lower=a upper=ee
 ----
-shared file: 000005 [a#10,1-ee#72057594037927935,21] [point=a#10,1-c#72057594037927935,15] [range=e#12,21-ee#72057594037927935,21]
+shared file: 000005 [a#10,SET-ee#72057594037927935,RANGEKEYSET] [point=a#10,SET-c#72057594037927935,RANGEDEL] [range=e#12,RANGEKEYSET-ee#72057594037927935,RANGEKEYSET]
 
 scan-internal skip-shared lower=b upper=ee
 ----
-shared file: 000005 [b#11,15-ee#72057594037927935,21] [point=b#11,15-c#72057594037927935,15] [range=e#12,21-ee#72057594037927935,21]
+shared file: 000005 [b#11,RANGEDEL-ee#72057594037927935,RANGEKEYSET] [point=b#11,RANGEDEL-c#72057594037927935,RANGEDEL] [range=e#12,RANGEKEYSET-ee#72057594037927935,RANGEKEYSET]
 
 # Ensure we don't leave any range key bounds unintentionally set.
 
@@ -452,13 +452,95 @@ flush
 
 compact a-z
 ----
-6:
+L6:
   000005:[a#10,RANGEKEYSET-d#13,SET]
 
 scan-internal skip-shared lower=b upper=e
 ----
-shared file: 000005 [b#11,1-d#13,1] [point=b#11,1-d#13,1] [range=#0,0-#0,0]
+shared file: 000005 [b#11,SET-d#13,SET] [point=b#11,SET-d#13,SET] [range=#0,DEL-#0,DEL]
 
 scan-internal skip-shared lower=a upper=aaa
 ----
-shared file: 000005 [a#10,21-aa#72057594037927935,21] [point=#0,0-#0,0] [range=a#10,21-aa#72057594037927935,21]
+shared file: 000005 [a#10,RANGEKEYSET-aa#72057594037927935,RANGEKEYSET] [point=#0,DEL-#0,DEL] [range=a#10,RANGEKEYSET-aa#72057594037927935,RANGEKEYSET]
+
+reset
+----
+
+batch ingest-external=file1
+set a foo
+set b bar
+set c baz
+----
+wrote 3 keys to batch ""
+
+batch commit
+set d bat
+----
+committed 1 keys
+
+flush
+----
+
+lsm
+----
+L0.0:
+  000006:[d#11,SET-d#11,SET]
+L6:
+  000004(000004):[a#10,DELSIZED-c#10,DEL]
+
+
+
+scan-internal skip-external lower=m upper=n
+----
+
+scan-internal skip-external lower=a upper=f
+----
+external file: external-storage file1 [0x61-0x63] (hasPoint: true, hasRange: false)
+d#11,SET (bat)
+
+
+reset create-on-shared=false
+----
+
+batch commit
+set d bat
+----
+committed 1 keys
+
+flush
+----
+
+batch ingest-external=file1
+set a foo
+set b bar
+set c baz
+----
+wrote 3 keys to batch ""
+
+flush
+----
+
+compact a-z
+----
+L6:
+  000006(000006):[a#11,DELSIZED-c#11,DEL]
+  000005:[d#10,SET-d#10,SET]
+
+scan-internal skip-external lower=m upper=n
+----
+
+scan-internal skip-external lower=a upper=f
+----
+external file: external-storage file1 [0x61-0x63] (hasPoint: true, hasRange: false)
+d#10,SET (bat)
+
+scan-internal skip-shared lower=a upper=f
+----
+external file is present but no external file visitor is defined: pebble: cannot use skip-shared iteration due to non-shareable files in lower levels
+
+scan-internal lower=a upper=f
+----
+a#11,SET (foo)
+b#11,SET (bar)
+c#11,SET (baz)
+d#10,SET (bat)

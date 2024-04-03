@@ -72,7 +72,7 @@ L0
   rangekey:c-d:{(#0,RANGEKEYSET,@1,foo)}
   e@2.SET.2:e@2
 ----
-0.0:
+L0.0:
   000004:[a#9,SET-e@2#2,SET]
 
 layout filename=000004.sst
@@ -80,10 +80,10 @@ layout filename=000004.sst
          0  data (38)
         43  index (35)
         83  range-key (29)
-       117  properties (645)
-       767  meta-index (57)
-       829  footer (53)
-       882  EOF
+       117  properties (573)
+       695  meta-index (57)
+       757  footer (53)
+       810  EOF
 
 # Inject an error on the first `ReadAt` call on 000004.sst's range key block
 # (which is at offset 83).
@@ -97,3 +97,164 @@ first
 ----
 err=injected error
 a: (a, .)
+
+# Test a scenario where an error occurs while the top-level Iterator is
+# Prev()-ing backwards through many versions of the same user key. In the below
+# test, reading the first block of the sstable (containing c.SET.13) fails. The
+# iterator must surface the error. Previously a bug existed that would allow the
+# iterator to mistakenly surface c.SET.12.
+
+define auto-compactions=off block-size=1 snapshots=(10,11,12,13)
+L1
+  c.SET.13:c13
+  c.SET.12:c12
+  c.SET.11:c11
+  c.SET.10:c10
+  c.SET.9:c9
+  c.SET.8:c8
+  d.SET.9:d9
+  e.SET.9:e9
+----
+L1:
+  000004:[c#13,SET-e#9,SET]
+
+layout filename=000004.sst
+----
+         0  data (23)
+        28  data (23)
+        56  data (23)
+        84  data (23)
+       112  data (22)
+       139  data (22)
+       166  data (22)
+       193  index (113)
+       311  properties (571)
+       887  meta-index (33)
+       925  footer (53)
+       978  EOF
+
+reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 0))))
+----
+
+combined-iter
+last
+prev
+prev
+----
+e: (e9, .)
+d: (d9, .)
+err=injected error
+
+reset
+----
+
+# Test the case of switching from reverse to forward iteration. During reverse
+# iteration, the underlying iterator may be positioned at an internal key with a
+# user key less than the current Key() [i.pos = iterPosPrev]. When switching
+# back to the forward direction, the iterator must be stepped forward to a user
+# key representing the current Key().
+#
+# Previously, if this step errored with the invariants tag enabled, a nil
+# pointer panic was possible as an invariant assertion assumed that i.iterKey
+# became non-nil (based on the knowledge that there must exist internal keys
+# that represent the current Key()). This test exercises this case for both
+# Next and NextPrefix.
+#
+# We set the cache-size to 1 so that no unused blocks are held in the cache, and
+# we know the Next of the internal iterator will need to read from disk.
+
+define auto-compactions=off cache-size=1 block-size=1
+L1
+  a.SET.1:a1
+  b.SET.1:b1
+  c.SET.1:c1
+  d.SET.1:d1
+  e.SET.1:e1
+----
+L1:
+  000004:[a#1,SET-e#1,SET]
+
+layout filename=000004.sst
+----
+         0  data (22)
+        27  data (22)
+        54  data (22)
+        81  data (22)
+       108  data (22)
+       135  index (84)
+       224  properties (495)
+       724  meta-index (33)
+       762  footer (53)
+       815  EOF
+
+# NB: Block offset to key contained:
+#  0 -> a, 27 -> b, 54 -> c, 81 -> d, 108 -> e
+#
+# After the last prev in the below cases, the top-level pebble.Iterator is
+# positioned at c, but the underlying internal iterator is positioned at b.
+# We set up error injection to error when loading the block corresponding to 'c'
+# but only on the second tim the block is loaded.
+
+reopen cache-size=1 auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 54) (OnIndex 1))))
+----
+
+combined-iter
+last
+prev
+prev
+next-prefix
+----
+e: (e1, .)
+d: (d1, .)
+c: (c1, .)
+err=injected error
+
+reopen cache-size=1 auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 54) (OnIndex 1))))
+----
+
+combined-iter
+last
+prev
+prev
+next
+----
+e: (e1, .)
+d: (d1, .)
+c: (c1, .)
+err=injected error
+
+# Test a simple MERGE scenario where an error occurs while the top-level
+# Iterator is merging MERGE keys.
+
+define auto-compactions=off block-size=1 snapshots=(1,2,3,4)
+L1
+    a.MERGE.1:a1
+    a.MERGE.2:a2
+    a.MERGE.3:a3
+    a.MERGE.4:a4
+----
+L1:
+  000004:[a#4,MERGE-a#1,MERGE]
+
+layout filename=000004.sst
+----
+         0  data (22)
+        27  data (22)
+        54  data (22)
+        81  data (22)
+       108  index (71)
+       184  properties (570)
+       759  meta-index (33)
+       797  footer (53)
+       850  EOF
+
+
+reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 54))))
+----
+
+combined-iter
+first
+last
+----
+err=injected error
+err=injected error

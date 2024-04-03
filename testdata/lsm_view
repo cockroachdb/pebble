@@ -1,0 +1,15 @@
+define
+L0
+  b.SET.3:3
+  e.SET.4:4
+L0
+  d.SET.5:5
+  f.SET.6:6
+L0
+  x.SET.7:7
+  y.SET.8:8
+L3
+  g.SET.1:1
+  h.SET.2:2
+----
+https://raduberinde.github.io/lsmview/decode.html#eJyMkr9us0AQxPvvKVZz7fKJfwfWlZHSpUu6CFkg1tgyxokhkUnkd49AkGBA2FRzM1q43yzfyOVT8hLmtZPrIj4IDJ7s_w4YVZzk0sVxIjkMNBjl7ktgdKgZ5SHOcymr9V5qGIeRx6fs9-wxUqniXfsJ2M2jDaVK8_PjC1m0UUGjulca0qF-aA7yXnwcSkOaLArAeDvuiqqcn6TebfXQL450iotMKG0Yo0t04SmmPY_pL2HaI0x3iukbSpTXXVaUv4jpkUX-AHNuknq31UN_jMl_FMESRTCiCKcUgaGzCru71Gq1SBGSRasBxdwk9W6rh_4dy7r6I2dy90buza86XCrJH5WkpyWFhjLldKhb5S6W5JBF7qCkuUnq3VYP_TtK8m-UoG_kwXUeMfZSt7AJGCkYAsYGjAyMLRhnMGpEl38_AQAA___EPTzv

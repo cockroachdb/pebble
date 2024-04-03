@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -225,6 +226,10 @@ type pickedCompaction struct {
 	pickerMetrics compactionPickerMetrics
 }
 
+func (pc *pickedCompaction) userKeyBounds() base.UserKeyBounds {
+	return base.UserKeyBoundsFromInternal(pc.smallest, pc.largest)
+}
+
 func defaultOutputLevel(startLevel, baseLevel int) int {
 	outputLevel := startLevel + 1
 	if startLevel == 0 {
@@ -410,25 +415,21 @@ func (pc *pickedCompaction) setupInputs(
 		opts, adjustedOutputLevel(pc.outputLevel.level, pc.baseLevel), diskAvailBytes,
 	)
 
-	// Expand the initial inputs to a clean cut.
-	var isCompacting bool
-	startLevel.files, isCompacting = expandToAtomicUnit(pc.cmp, startLevel.files, false /* disableIsCompacting */)
-	if isCompacting {
+	if anyTablesCompacting(startLevel.files) {
 		return false
 	}
+
 	pc.maybeExpandBounds(manifest.KeyRange(pc.cmp, startLevel.files.Iter()))
 
 	// Determine the sstables in the output level which overlap with the input
-	// sstables, and then expand those tables to a clean cut. No need to do
-	// this for intra-L0 compactions; outputLevel.files is left empty for those.
+	// sstables. No need to do this for intra-L0 compactions; outputLevel.files is
+	// left empty for those.
 	if startLevel.level != pc.outputLevel.level {
-		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.cmp, pc.smallest.UserKey,
-			pc.largest.UserKey, pc.largest.IsExclusiveSentinel())
-		pc.outputLevel.files, isCompacting = expandToAtomicUnit(pc.cmp, pc.outputLevel.files,
-			false /* disableIsCompacting */)
-		if isCompacting {
+		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.userKeyBounds())
+		if anyTablesCompacting(pc.outputLevel.files) {
 			return false
 		}
+
 		pc.maybeExpandBounds(manifest.KeyRange(pc.cmp,
 			startLevel.files.Iter(), pc.outputLevel.files.Iter()))
 	}
@@ -517,10 +518,8 @@ func (pc *pickedCompaction) grow(
 	if pc.outputLevel.files.Empty() {
 		return false
 	}
-	grow0 := pc.version.Overlaps(startLevel.level, pc.cmp, sm.UserKey,
-		la.UserKey, la.IsExclusiveSentinel())
-	grow0, isCompacting := expandToAtomicUnit(pc.cmp, grow0, false /* disableIsCompacting */)
-	if isCompacting {
+	grow0 := pc.version.Overlaps(startLevel.level, base.UserKeyBoundsFromInternal(sm, la))
+	if anyTablesCompacting(grow0) {
 		return false
 	}
 	if grow0.Len() <= startLevel.files.Len() {
@@ -532,10 +531,8 @@ func (pc *pickedCompaction) grow(
 	// We need to include the outputLevel iter because without it, in a multiLevel scenario,
 	// sm1 and la1 could shift the output level keyspace when pc.outputLevel.files is set to grow1.
 	sm1, la1 := manifest.KeyRange(pc.cmp, grow0.Iter(), pc.outputLevel.files.Iter())
-	grow1 := pc.version.Overlaps(pc.outputLevel.level, pc.cmp, sm1.UserKey,
-		la1.UserKey, la1.IsExclusiveSentinel())
-	grow1, isCompacting = expandToAtomicUnit(pc.cmp, grow1, false /* disableIsCompacting */)
-	if isCompacting {
+	grow1 := pc.version.Overlaps(pc.outputLevel.level, base.UserKeyBoundsFromInternal(sm1, la1))
+	if anyTablesCompacting(grow1) {
 		return false
 	}
 	if grow1.Len() != pc.outputLevel.files.Len() {
@@ -568,118 +565,31 @@ func (pc *pickedCompaction) setupMultiLevelCandidate(opts *Options, diskAvailByt
 	return pc.setupInputs(opts, diskAvailBytes, pc.extraLevels[len(pc.extraLevels)-1])
 }
 
-// expandToAtomicUnit expands the provided level slice within its level both
-// forwards and backwards to its "atomic compaction unit" boundaries, if
-// necessary.
-//
-// While picking compaction inputs, this is required to maintain the invariant
-// that the versions of keys at level+1 are older than the versions of keys at
-// level. Tables are added to the right of the current slice tables such that
-// the rightmost table has a "clean cut". A clean cut is either a change in
-// user keys, or when the largest key in the left sstable is a range tombstone
-// sentinel key (InternalKeyRangeDeleteSentinel).
-//
-// In addition to maintaining the seqnum invariant, expandToAtomicUnit is used
-// to provide clean boundaries for range tombstone truncation during
-// compaction. In order to achieve these clean boundaries, expandToAtomicUnit
-// needs to find a "clean cut" on the left edge of the compaction as well.
-// This is necessary in order for "atomic compaction units" to always be
-// compacted as a unit. Failure to do this leads to a subtle bug with
-// truncation of range tombstones to atomic compaction unit boundaries.
-// Consider the scenario:
-//
-//	L3:
-//	  12:[a#2,15-b#1,1]
-//	  13:[b#0,15-d#72057594037927935,15]
-//
-// These sstables contain a range tombstone [a-d)#2 which spans the two
-// sstables. The two sstables need to always be kept together. Compacting
-// sstable 13 independently of sstable 12 would result in:
-//
-//	L3:
-//	  12:[a#2,15-b#1,1]
-//	L4:
-//	  14:[b#0,15-d#72057594037927935,15]
-//
-// This state is still ok, but when sstable 12 is next compacted, its range
-// tombstones will be truncated at "b" (the largest key in its atomic
-// compaction unit). In the scenario here, that could result in b#1 becoming
-// visible when it should be deleted.
-//
-// isCompacting is returned true for any atomic units that contain files that
-// have in-progress compactions, i.e. FileMetadata.Compacting == true. If
-// disableIsCompacting is true, isCompacting always returns false. This helps
-// avoid spurious races from being detected when this method is used outside
-// of compaction picking code.
-//
-// TODO(jackson): Compactions and flushes no longer split a user key between two
-// sstables. We could perform a migration, re-compacting any sstables with split
-// user keys, which would allow us to remove atomic compaction unit expansion
-// code.
-func expandToAtomicUnit(
-	cmp Compare, inputs manifest.LevelSlice, disableIsCompacting bool,
-) (slice manifest.LevelSlice, isCompacting bool) {
-	// NB: Inputs for L0 can't be expanded and *version.Overlaps guarantees
-	// that we get a 'clean cut.' For L0, Overlaps will return a slice without
-	// access to the rest of the L0 files, so it's OK to try to reslice.
-	if inputs.Empty() {
-		// Nothing to expand.
-		return inputs, false
+// anyTablesCompacting returns true if any tables in the level slice are
+// compacting.
+func anyTablesCompacting(inputs manifest.LevelSlice) bool {
+	it := inputs.Iter()
+	for f := it.First(); f != nil; f = it.Next() {
+		if f.IsCompacting() {
+			return true
+		}
 	}
-
-	// TODO(jackson): Update to avoid use of LevelIterator.Current(). The
-	// Reslice interface will require some tweaking, because we currently rely
-	// on Reslice having already positioned the LevelIterator appropriately.
-
-	inputs = inputs.Reslice(func(start, end *manifest.LevelIterator) {
-		iter := start.Clone()
-		iter.Prev()
-		for cur, prev := start.Current(), iter.Current(); prev != nil; cur, prev = start.Prev(), iter.Prev() {
-			if cur.IsCompacting() {
-				isCompacting = true
-			}
-			if cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
-				break
-			}
-			if prev.Largest.IsExclusiveSentinel() {
-				// The table prev has a largest key indicating that the user key
-				// prev.largest.UserKey doesn't actually exist in the table.
-				break
-			}
-			// prev.Largest.UserKey == cur.Smallest.UserKey, so we need to
-			// include prev in the compaction.
-		}
-
-		iter = end.Clone()
-		iter.Next()
-		for cur, next := end.Current(), iter.Current(); next != nil; cur, next = end.Next(), iter.Next() {
-			if cur.IsCompacting() {
-				isCompacting = true
-			}
-			if cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
-				break
-			}
-			if cur.Largest.IsExclusiveSentinel() {
-				// The table cur has a largest key indicating that the user key
-				// cur.largest.UserKey doesn't actually exist in the table.
-				break
-			}
-			// cur.Largest.UserKey == next.Smallest.UserKey, so we need to
-			// include next in the compaction.
-		}
-	})
-	inputIter := inputs.Iter()
-	isCompacting = !disableIsCompacting &&
-		(isCompacting || inputIter.First().IsCompacting() || inputIter.Last().IsCompacting())
-	return inputs, isCompacting
+	return false
 }
 
-func newCompactionPicker(
-	v *version, opts *Options, inProgressCompactions []compactionInfo,
-) compactionPicker {
+// newCompactionPickerByScore creates a compactionPickerByScore associated with
+// the newest version. The picker is used under logLock (until a new version is
+// installed).
+func newCompactionPickerByScore(
+	v *version,
+	virtualBackings *manifest.VirtualBackings,
+	opts *Options,
+	inProgressCompactions []compactionInfo,
+) *compactionPickerByScore {
 	p := &compactionPickerByScore{
-		opts: opts,
-		vers: v,
+		opts:            opts,
+		vers:            v,
+		virtualBackings: virtualBackings,
 	}
 	p.initLevelMaxBytes(inProgressCompactions)
 	return p
@@ -779,8 +689,9 @@ func totalCompensatedSize(iter manifest.LevelIterator) uint64 {
 // compaction picker is associated with a single version. A new compaction
 // picker is created and initialized every time a new version is installed.
 type compactionPickerByScore struct {
-	opts *Options
-	vers *version
+	opts            *Options
+	vers            *version
+	virtualBackings *manifest.VirtualBackings
 	// The level to target for L0 compactions. Levels L1 to baseLevel must be
 	// empty.
 	baseLevel int
@@ -1126,25 +1037,29 @@ func calculateL0UncompensatedScore(
 // function is linear with respect to the number of files in `level` and
 // `outputLevel`.
 func pickCompactionSeedFile(
-	vers *version, opts *Options, level, outputLevel int, earliestSnapshotSeqNum uint64,
+	vers *version,
+	virtualBackings *manifest.VirtualBackings,
+	opts *Options,
+	level, outputLevel int,
+	earliestSnapshotSeqNum uint64,
 ) (manifest.LevelFile, bool) {
 	// Select the file within the level to compact. We want to minimize write
-	// amplification, but also ensure that deletes are propagated to the
-	// bottom level in a timely fashion so as to reclaim disk space. A table's
-	// smallest sequence number provides a measure of its age. The ratio of
-	// overlapping-bytes / table-size gives an indication of write
-	// amplification (a smaller ratio is preferrable).
+	// amplification, but also ensure that (a) deletes are propagated to the
+	// bottom level in a timely fashion, and (b) virtual sstables that are
+	// pinning backing sstables where most of the data is garbage are compacted
+	// away. Doing (a) and (b) reclaims disk space. A table's smallest sequence
+	// number provides a measure of its age. The ratio of overlapping-bytes /
+	// table-size gives an indication of write amplification (a smaller ratio is
+	// preferrable).
 	//
 	// The current heuristic is based off the the RocksDB kMinOverlappingRatio
 	// heuristic. It chooses the file with the minimum overlapping ratio with
 	// the target level, which minimizes write amplification.
 	//
-	// It uses a "compensated size" for the denominator, which is the file
-	// size but artificially inflated by an estimate of the space that may be
-	// reclaimed through compaction. Currently, we only compensate for range
-	// deletions and only with a rough estimate of the reclaimable bytes. This
-	// differs from RocksDB which only compensates for point tombstones and
-	// only if they exceed the number of non-deletion entries in table.
+	// The heuristic uses a "compensated size" for the denominator, which is the
+	// file size inflated by (a) an estimate of the space that may be reclaimed
+	// through compaction, and (b) a fraction of the amount of garbage in the
+	// backing sstable pinned by this (virtual) sstable.
 	//
 	// TODO(peter): For concurrent compactions, we may want to try harder to
 	// pick a seed file whose resulting compaction bounds do not overlap with
@@ -1231,7 +1146,7 @@ func pickCompactionSeedFile(
 			continue
 		}
 
-		compSz := compensatedSize(f)
+		compSz := compensatedSize(f) + responsibleForGarbageBytes(virtualBackings, f)
 		scaledRatio := overlappingBytes * 1024 / compSz
 		if scaledRatio < smallestRatio {
 			smallestRatio = scaledRatio
@@ -1239,6 +1154,36 @@ func pickCompactionSeedFile(
 		}
 	}
 	return file, file.FileMetadata != nil
+}
+
+// responsibleForGarbageBytes returns the amount of garbage in the backing
+// sstable that we consider the responsibility of this virtual sstable. For
+// non-virtual sstables, this is of course 0. For virtual sstables, we equally
+// distribute the responsibility of the garbage across all the virtual
+// sstables that are referencing the same backing sstable. One could
+// alternatively distribute this in proportion to the virtual sst sizes, but
+// it isn't clear that more sophisticated heuristics are worth it, given that
+// the garbage cannot be reclaimed until all the referencing virtual sstables
+// are compacted.
+func responsibleForGarbageBytes(virtualBackings *manifest.VirtualBackings, m *fileMetadata) uint64 {
+	if !m.Virtual {
+		return 0
+	}
+	useCount, virtualizedSize := virtualBackings.Usage(m.FileBacking.DiskFileNum)
+	// Since virtualizedSize is the sum of the estimated size of all virtual
+	// ssts, we allow for the possibility that virtualizedSize could exceed
+	// m.FileBacking.Size.
+	totalGarbage := int64(m.FileBacking.Size) - int64(virtualizedSize)
+	if totalGarbage <= 0 {
+		return 0
+	}
+	if useCount == 0 {
+		// This cannot happen if m exists in the latest version. The call to
+		// ResponsibleForGarbageBytes during compaction picking ensures that m
+		// exists in the latest version by holding versionSet.logLock.
+		panic(errors.AssertionFailedf("%s has zero useCount", m.String()))
+	}
+	return uint64(totalGarbage) / uint64(useCount)
 }
 
 // pickAuto picks the best compaction, if any.
@@ -1354,7 +1299,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 
 		// info.level > 0
 		var ok bool
-		info.file, ok = pickCompactionSeedFile(p.vers, p.opts, info.level, info.outputLevel, env.earliestSnapshotSeqNum)
+		info.file, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, p.opts, info.level, info.outputLevel, env.earliestSnapshotSeqNum)
 		if !ok {
 			continue
 		}
@@ -1578,9 +1523,8 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	// compaction unit.
 	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, numLevels-1, p.baseLevel)
 	pc.kind = compactionKindElisionOnly
-	var isCompacting bool
-	pc.startLevel.files, isCompacting = expandToAtomicUnit(p.opts.Comparer.Compare, lf.Slice(), false /* disableIsCompacting */)
-	if isCompacting {
+	pc.startLevel.files = lf.Slice()
+	if anyTablesCompacting(lf.Slice()) {
 		return nil
 	}
 	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
@@ -1614,27 +1558,9 @@ func (p *compactionPickerByScore) pickRewriteCompaction(env compactionEnv) (pc *
 		}
 
 		inputs := lf.Slice()
-		// L0 files generated by a flush have never been split such that
-		// adjacent files can contain the same user key. So we do not need to
-		// rewrite an atomic compaction unit for L0. Note that there is nothing
-		// preventing two different flushes from producing files that are
-		// non-overlapping from an InternalKey perspective, but span the same
-		// user key. However, such files cannot be in the same L0 sublevel,
-		// since each sublevel requires non-overlapping user keys (unlike other
-		// levels).
-		if l > 0 {
-			// Find this file's atomic compaction unit. This is only relevant
-			// for levels L1+.
-			var isCompacting bool
-			inputs, isCompacting = expandToAtomicUnit(
-				p.opts.Comparer.Compare,
-				inputs,
-				false, /* disableIsCompacting */
-			)
-			if isCompacting {
-				// Try the next level.
-				continue
-			}
+		if anyTablesCompacting(inputs) {
+			// Try the next level.
+			continue
 		}
 
 		pc = newPickedCompaction(p.opts, p.vers, l, l, p.baseLevel)
@@ -1678,8 +1604,7 @@ func pickAutoLPositive(
 	if pc.startLevel.level == 0 {
 		cmp := opts.Comparer.Compare
 		smallest, largest := manifest.KeyRange(cmp, pc.startLevel.files.Iter())
-		pc.startLevel.files = vers.Overlaps(0, cmp, smallest.UserKey,
-			largest.UserKey, largest.IsExclusiveSentinel())
+		pc.startLevel.files = vers.Overlaps(0, base.UserKeyBoundsFromInternal(smallest, largest))
 		if pc.startLevel.files.Empty() {
 			panic("pebble: empty compaction")
 		}
@@ -1716,6 +1641,9 @@ type MultiLevelHeuristic interface {
 
 	// Returns if the heuristic allows L0 to be involved in ML compaction
 	allowL0() bool
+
+	// String implements fmt.Stringer.
+	String() string
 }
 
 // NoMultiLevel will never add an additional level to the compaction.
@@ -1729,9 +1657,8 @@ func (nml NoMultiLevel) pick(
 	return pc
 }
 
-func (nml NoMultiLevel) allowL0() bool {
-	return false
-}
+func (nml NoMultiLevel) allowL0() bool  { return false }
+func (nml NoMultiLevel) String() string { return "none" }
 
 func (pc *pickedCompaction) predictedWriteAmp() float64 {
 	var bytesToCompact uint64
@@ -1798,6 +1725,11 @@ func (wa WriteAmpHeuristic) pick(
 
 func (wa WriteAmpHeuristic) allowL0() bool {
 	return wa.AllowL0
+}
+
+// String implements fmt.Stringer.
+func (wa WriteAmpHeuristic) String() string {
+	return fmt.Sprintf("wamp(%.2f, %t)", wa.AddPropensity, wa.AllowL0)
 }
 
 // Helper method to pick compactions originating from L0. Uses information about
@@ -1879,7 +1811,7 @@ func pickManualCompaction(
 	}
 	pc = newPickedCompaction(opts, vers, manual.level, defaultOutputLevel(manual.level, baseLevel), baseLevel)
 	manual.outputLevel = pc.outputLevel.level
-	pc.startLevel.files = vers.Overlaps(manual.level, opts.Comparer.Compare, manual.start, manual.end, false)
+	pc.startLevel.files = vers.Overlaps(manual.level, base.UserKeyBoundsInclusive(manual.start, manual.end))
 	if pc.startLevel.files.Empty() {
 		// Nothing to do
 		return nil, false
@@ -1906,6 +1838,44 @@ func pickManualCompaction(
 	return pc, false
 }
 
+// pickDownloadCompaction picks a download compaction for the downloadSpan,
+// which could be specified as being performed either by a copy compaction of
+// the backing file or a rewrite compaction.
+func pickDownloadCompaction(
+	vers *version,
+	opts *Options,
+	env compactionEnv,
+	baseLevel int,
+	download *downloadSpan,
+	level int,
+	file *fileMetadata,
+) (pc *pickedCompaction) {
+	// Check if the file is compacting already. In that case we don't need to do
+	// anything as it'll be downloaded in the process.
+	if file.CompactionState == manifest.CompactionStateCompacting {
+		return nil
+	}
+	if download.kind != compactionKindCopy && download.kind != compactionKindRewrite {
+		panic("invalid download/rewrite compaction kind")
+	}
+	pc = newPickedCompaction(opts, vers, level, level, baseLevel)
+	pc.kind = download.kind
+	pc.startLevel.files = manifest.NewLevelSliceKeySorted(opts.Comparer.Compare, []*fileMetadata{file})
+	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+		// setupInputs returned false indicating there's a conflicting
+		// concurrent compaction.
+		return nil
+	}
+	if pc.outputLevel.level != level {
+		panic("pebble: download compaction picked unexpected output level")
+	}
+	// Fail-safe to protect against compacting the same sstable concurrently.
+	if inputRangeAlreadyCompacting(env, pc) {
+		return nil
+	}
+	return pc
+}
+
 func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 	env compactionEnv,
 ) (pc *pickedCompaction) {
@@ -1927,8 +1897,7 @@ func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 func pickReadTriggeredCompactionHelper(
 	p *compactionPickerByScore, rc *readCompaction, env compactionEnv,
 ) (pc *pickedCompaction) {
-	cmp := p.opts.Comparer.Compare
-	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end, false /* exclusiveEnd */)
+	overlapSlice := p.vers.Overlaps(rc.level, base.UserKeyBoundsInclusive(rc.start, rc.end))
 	if overlapSlice.Empty() {
 		// If there is no overlap, then the file with the key range
 		// must have been compacted away. So, we don't proceed to
@@ -1960,9 +1929,7 @@ func pickReadTriggeredCompactionHelper(
 	pc.kind = compactionKindRead
 
 	// Prevent read compactions which are too wide.
-	outputOverlaps := pc.version.Overlaps(
-		pc.outputLevel.level, pc.cmp, pc.smallest.UserKey,
-		pc.largest.UserKey, pc.largest.IsExclusiveSentinel())
+	outputOverlaps := pc.version.Overlaps(pc.outputLevel.level, pc.userKeyBounds())
 	if outputOverlaps.SizeSum() > pc.maxReadCompactionBytes {
 		return nil
 	}

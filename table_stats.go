@@ -10,7 +10,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 )
@@ -70,7 +72,7 @@ func (d *DB) updateTableStatsLocked(newFiles []manifest.NewFileEntry) {
 func (d *DB) shouldCollectTableStatsLocked() bool {
 	return !d.mu.tableStats.loading &&
 		d.closed.Load() == nil &&
-		!d.opts.private.disableTableStats &&
+		!d.opts.DisableTableStats &&
 		(len(d.mu.tableStats.pending) > 0 || !d.mu.tableStats.loadedInitial)
 }
 
@@ -89,8 +91,7 @@ func (d *DB) collectTableStats() bool {
 	pending := d.mu.tableStats.pending
 	d.mu.tableStats.pending = nil
 	d.mu.tableStats.loading = true
-	jobID := d.mu.nextJobID
-	d.mu.nextJobID++
+	jobID := d.newJobIDLocked()
 	loadedInitial := d.mu.tableStats.loadedInitial
 	// Drop DB.mu before performing IO.
 	d.mu.Unlock()
@@ -120,7 +121,7 @@ func (d *DB) collectTableStats() bool {
 	if loadedInitial && !d.mu.tableStats.loadedInitial {
 		d.mu.tableStats.loadedInitial = loadedInitial
 		d.opts.EventListener.TableStatsLoaded(TableStatsInfo{
-			JobID: jobID,
+			JobID: int(jobID),
 		})
 	}
 
@@ -147,7 +148,7 @@ func (d *DB) collectTableStats() bool {
 		v := d.mu.versions.currentVersion()
 		keepHints := hints[:0]
 		for _, h := range hints {
-			if v.Contains(h.tombstoneLevel, d.cmp, h.tombstoneFile) {
+			if v.Contains(h.tombstoneLevel, h.tombstoneFile) {
 				keepHints = append(keepHints, h)
 			}
 		}
@@ -183,7 +184,7 @@ func (d *DB) loadNewFileStats(
 		// The file isn't guaranteed to still be live in the readState's
 		// version. It may have been deleted or moved. Skip it if it's not in
 		// the expected level.
-		if !rs.current.Contains(nf.Level, d.cmp, nf.Meta) {
+		if !rs.current.Contains(nf.Level, nf.Meta) {
 			continue
 		}
 
@@ -370,7 +371,8 @@ func (d *DB) loadTableRangeDelStats(
 	// numbers. Also, merging abutting tombstones reduces the number of calls to
 	// estimateReclaimedSizeBeneath which is costly, and improves the accuracy of
 	// our overall estimate.
-	for s := iter.First(); s != nil; s = iter.Next() {
+	s, err := iter.First()
+	for ; s != nil; s, err = iter.Next() {
 		start, end := s.Start, s.End
 		// We only need to consider deletion size estimates for tables that contain
 		// RANGEDELs.
@@ -458,7 +460,10 @@ func (d *DB) loadTableRangeDelStats(
 		copy(hint.end, end)
 		compactionHints = append(compactionHints, hint)
 	}
-	return compactionHints, err
+	if err != nil {
+		return nil, err
+	}
+	return compactionHints, nil
 }
 
 func (d *DB) estimateSizesBeneath(
@@ -494,8 +499,7 @@ func (d *DB) estimateSizesBeneath(
 	}
 
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, d.cmp, meta.Smallest.UserKey,
-			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
+		overlaps := v.Overlaps(l, meta.UserKeyBounds())
 		iter := overlaps.Iter()
 		for file = iter.First(); file != nil; file = iter.Next() {
 			var err error
@@ -547,7 +551,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	// additional I/O to read the file's index blocks.
 	hintSeqNum = math.MaxUint64
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, d.cmp, start, end, true /* exclusiveEnd */)
+		overlaps := v.Overlaps(l, base.UserKeyBoundsEndExclusive(start, end))
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
 			startCmp := d.cmp(start, file.Smallest.UserKey)
@@ -882,7 +886,7 @@ func newCombinedDeletionKeyspanIter(
 	// The separate iters for the range dels and range keys are wrapped in a
 	// merging iter to join the keyspaces into a single keyspace. The separate
 	// iters are only added if the particular key kind is present.
-	mIter := &keyspan.MergingIter{}
+	mIter := &keyspanimpl.MergingIter{}
 	var transform = keyspan.TransformerFunc(func(cmp base.Compare, in keyspan.Span, out *keyspan.Span) error {
 		if in.KeysOrder != keyspan.ByTrailerDesc {
 			panic("pebble: combined deletion iter encountered keys in non-trailer descending order")
@@ -892,48 +896,87 @@ func newCombinedDeletionKeyspanIter(
 		out.KeysOrder = keyspan.ByTrailerDesc
 		// NB: The order of by-trailer descending may have been violated,
 		// because we've layered rangekey and rangedel iterators from the same
-		// sstable into the same keyspan.MergingIter. The MergingIter will
+		// sstable into the same keyspanimpl.MergingIter. The MergingIter will
 		// return the keys in the order that the child iterators were provided.
 		// Sort the keys to ensure they're sorted by trailer descending.
 		keyspan.SortKeysByTrailer(&out.Keys)
 		return nil
 	})
-	mIter.Init(comparer.Compare, transform, new(keyspan.MergingBuffers))
+	mIter.Init(comparer.Compare, transform, new(keyspanimpl.MergingBuffers))
 
-	iter, err := cr.NewRawRangeDelIter()
+	iter, err := cr.NewRawRangeDelIter(m.IterTransforms())
 	if err != nil {
 		return nil, err
 	}
 	if iter != nil {
+		// Assert expected bounds. In previous versions of Pebble, range
+		// deletions persisted to sstables could exceed the bounds of the
+		// containing files due to "split user keys." This required readers to
+		// constrain the tombstones' bounds to the containing file at read time.
+		// See docs/range_deletions.md for an extended discussion of the design
+		// and invariants at that time.
+		//
+		// We've since compacted away all 'split user-keys' and in the process
+		// eliminated all "untruncated range tombstones" for physical sstables.
+		// We no longer need to perform truncation at read time for these
+		// sstables.
+		//
+		// At the same time, we've also introduced the concept of "virtual
+		// SSTables" where the file metadata's effective bounds can again be
+		// reduced to be narrower than the contained tombstones. These virtual
+		// SSTables handle truncation differently, performing it using
+		// keyspan.Truncate when the sstable's range deletion iterator is
+		// opened.
+		//
+		// Together, these mean that we should never see untruncated range
+		// tombstones any more—and the merging iterator no longer accounts for
+		// their existence. Since there's abundant subtlety that we're relying
+		// on, we choose to be conservative and assert that these invariants
+		// hold. We could (and previously did) choose to only validate these
+		// bounds in invariants builds, but the most likely avenue for these
+		// tombstones' existence is through a bug in a migration and old data
+		// sitting around in an old store from long ago.
+		//
+		// The table stats collector will read all files range deletions
+		// asynchronously after Open, and provides a perfect opportunity to
+		// validate our invariants without harming user latency. We also
+		// previously performed truncation here which similarly required key
+		// comparisons, so replacing those key comparisons with assertions
+		// should be roughly similar in performance.
+		//
+		// TODO(jackson): Only use AssertBounds in invariants builds in the
+		// following release.
+		iter = keyspan.AssertBounds(
+			iter, m.SmallestPointKey, m.LargestPointKey.UserKey, comparer.Compare,
+		)
 		dIter := &keyspan.DefragmentingIter{}
 		dIter.Init(comparer, iter, equal, reducer, new(keyspan.DefragmentingBuffers))
 		iter = dIter
-		// Truncate tombstones to the containing file's bounds if necessary.
-		// See docs/range_deletions.md for why this is necessary.
-		iter = keyspan.Truncate(
-			comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey,
-			nil, nil, false, /* panicOnUpperTruncate */
-		)
 		mIter.AddLevel(iter)
 	}
 
-	iter, err = cr.NewRawRangeKeyIter()
+	iter, err = cr.NewRawRangeKeyIter(m.IterTransforms())
 	if err != nil {
 		return nil, err
 	}
 	if iter != nil {
+		// Assert expected bounds in tests.
+		if invariants.Enabled {
+			iter = keyspan.AssertBounds(
+				iter, m.SmallestRangeKey, m.LargestRangeKey.UserKey, comparer.Compare,
+			)
+		}
 		// Wrap the range key iterator in a filter that elides keys other than range
 		// key deletions.
-		iter = keyspan.Filter(iter, func(in *keyspan.Span, out *keyspan.Span) (keep bool) {
-			out.Start, out.End = in.Start, in.End
-			out.Keys = out.Keys[:0]
+		iter = keyspan.Filter(iter, func(in *keyspan.Span, buf []keyspan.Key) []keyspan.Key {
+			keys := buf[:0]
 			for _, k := range in.Keys {
 				if k.Kind() != base.InternalKeyKindRangeKeyDelete {
 					continue
 				}
-				out.Keys = append(out.Keys, k)
+				keys = append(keys, k)
 			}
-			return len(out.Keys) > 0
+			return keys
 		}, comparer.Compare)
 		dIter := &keyspan.DefragmentingIter{}
 		dIter.Init(comparer, iter, equal, reducer, new(keyspan.DefragmentingBuffers))

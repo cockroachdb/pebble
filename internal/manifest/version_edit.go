@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // TODO(peter): describe the MANIFEST file format, independently of the C++
@@ -56,13 +58,17 @@ const (
 	tagCreatedBackingTable = 105
 	tagRemovedBackingTable = 106
 
-	// The custom tags sub-format used by tagNewFile4 and above.
+	// The custom tags sub-format used by tagNewFile4 and above. All tags less
+	// than customTagNonSafeIgnoreMask are safe to ignore and their format must be
+	// a single bytes field.
 	customTagTerminate         = 1
 	customTagNeedsCompaction   = 2
 	customTagCreationTime      = 6
 	customTagPathID            = 65
 	customTagNonSafeIgnoreMask = 1 << 6
 	customTagVirtual           = 66
+	customTagSyntheticPrefix   = 67
+	customTagSyntheticSuffix   = 68
 )
 
 // DeletedFileEntry holds the state for a file deletion from a level. The file
@@ -211,7 +217,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				return err
 			}
 			v.RemovedBackingTables = append(
-				v.RemovedBackingTables, base.FileNum(n).DiskFileNum(),
+				v.RemovedBackingTables, base.DiskFileNum(n),
 			)
 		case tagCreatedBackingTable:
 			dfn, err := d.readUvarint()
@@ -223,7 +229,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				return err
 			}
 			fileBacking := &FileBacking{
-				DiskFileNum: base.FileNum(dfn).DiskFileNum(),
+				DiskFileNum: base.DiskFileNum(dfn),
 				Size:        size,
 			}
 			v.CreatedBackingTables = append(v.CreatedBackingTables, fileBacking)
@@ -336,6 +342,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				virtual        bool
 				backingFileNum uint64
 			}{}
+			var syntheticPrefix sstable.SyntheticPrefix
+			var syntheticSuffix sstable.SyntheticSuffix
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
@@ -344,28 +352,23 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 					if customTag == customTagTerminate {
 						break
-					} else if customTag == customTagVirtual {
-						virtualState.virtual = true
-						n, err := d.readUvarint()
-						if err != nil {
-							return err
-						}
-						virtualState.backingFileNum = n
-						continue
-					}
-
-					field, err := d.readBytes()
-					if err != nil {
-						return err
 					}
 					switch customTag {
 					case customTagNeedsCompaction:
+						field, err := d.readBytes()
+						if err != nil {
+							return err
+						}
 						if len(field) != 1 {
 							return base.CorruptionErrorf("new-file4: need-compaction field wrong size")
 						}
 						markedForCompaction = (field[0] == 1)
 
 					case customTagCreationTime:
+						field, err := d.readBytes()
+						if err != nil {
+							return err
+						}
 						var n int
 						creationTime, n = binary.Uvarint(field)
 						if n != len(field) {
@@ -375,9 +378,30 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					case customTagPathID:
 						return base.CorruptionErrorf("new-file4: path-id field not supported")
 
+					case customTagVirtual:
+						virtualState.virtual = true
+						if virtualState.backingFileNum, err = d.readUvarint(); err != nil {
+							return err
+						}
+
+					case customTagSyntheticPrefix:
+						synthetic, err := d.readBytes()
+						if err != nil {
+							return err
+						}
+						syntheticPrefix = synthetic
+
+					case customTagSyntheticSuffix:
+						if syntheticSuffix, err = d.readBytes(); err != nil {
+							return err
+						}
+
 					default:
 						if (customTag & customTagNonSafeIgnoreMask) != 0 {
 							return base.CorruptionErrorf("new-file4: custom field not supported: %d", customTag)
+						}
+						if _, err := d.readBytes(); err != nil {
+							return err
 						}
 					}
 				}
@@ -390,6 +414,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				LargestSeqNum:       largestSeqNum,
 				MarkedForCompaction: markedForCompaction,
 				Virtual:             virtualState.virtual,
+				SyntheticPrefix:     syntheticPrefix,
+				SyntheticSuffix:     syntheticSuffix,
 			}
 			if tag != tagNewFile5 { // no range keys present
 				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
@@ -430,7 +456,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				Meta:  m,
 			}
 			if virtualState.virtual {
-				nfe.BackingFileNum = base.FileNum(virtualState.backingFileNum).DiskFileNum()
+				nfe.BackingFileNum = base.DiskFileNum(virtualState.backingFileNum)
 			}
 			v.NewFiles = append(v.NewFiles, nfe)
 
@@ -479,20 +505,23 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 		return stdcmp.Compare(a.FileNum, b.FileNum)
 	})
 	for _, df := range entries {
-		fmt.Fprintf(&buf, "  deleted:       L%d %s\n", df.Level, df.FileNum)
+		fmt.Fprintf(&buf, "  del-table:     L%d %s\n", df.Level, df.FileNum)
 	}
 	for _, nf := range v.NewFiles {
-		fmt.Fprintf(&buf, "  added:         L%d", nf.Level)
-		if verbose {
-			fmt.Fprintf(&buf, " %s", nf.Meta.DebugString(fmtKey, true /* verbose */))
-		} else {
-			fmt.Fprintf(&buf, " %s", nf.Meta.String())
-		}
+		fmt.Fprintf(&buf, "  add-table:     L%d", nf.Level)
+		fmt.Fprintf(&buf, " %s", nf.Meta.DebugString(fmtKey, verbose))
 		if nf.Meta.CreationTime != 0 {
 			fmt.Fprintf(&buf, " (%s)",
 				time.Unix(nf.Meta.CreationTime, 0).UTC().Format(time.RFC3339))
 		}
 		fmt.Fprintln(&buf)
+	}
+
+	for _, b := range v.CreatedBackingTables {
+		fmt.Fprintf(&buf, "  add-backing:   %s\n", b.DiskFileNum)
+	}
+	for _, n := range v.RemovedBackingTables {
+		fmt.Fprintf(&buf, "  del-backing:   %s\n", n)
 	}
 	return buf.String()
 }
@@ -505,6 +534,69 @@ func (v *VersionEdit) DebugString(fmtKey base.FormatKey) string {
 // String implements fmt.Stringer for a VersionEdit.
 func (v *VersionEdit) String() string {
 	return v.string(false /* verbose */, base.DefaultFormatter)
+}
+
+// ParseVersionEditDebug parses a VersionEdit from its DebugString
+// implementation.
+//
+// It doesn't recognize all fields; this implementation can be filled in as
+// needed.
+func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
+	defer func() {
+		err = errors.CombineErrors(err, maybeRecover())
+	}()
+
+	var ve VersionEdit
+	for _, l := range strings.Split(s, "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		field, value, ok := strings.Cut(l, ":")
+		if !ok {
+			return nil, errors.Errorf("malformed line %q", l)
+		}
+		field = strings.TrimSpace(field)
+		p := makeDebugParser(value)
+		switch field {
+		case "add-table":
+			level := p.Level()
+			meta, err := ParseFileMetadataDebug(p.Remaining())
+			if err != nil {
+				return nil, err
+			}
+			ve.NewFiles = append(ve.NewFiles, NewFileEntry{
+				Level: level,
+				Meta:  meta,
+			})
+
+		case "del-table":
+			level := p.Level()
+			num := p.FileNum()
+			if ve.DeletedFiles == nil {
+				ve.DeletedFiles = make(map[DeletedFileEntry]*FileMetadata)
+			}
+			ve.DeletedFiles[DeletedFileEntry{
+				Level:   level,
+				FileNum: num,
+			}] = nil
+
+		case "add-backing":
+			n := p.DiskFileNum()
+			ve.CreatedBackingTables = append(ve.CreatedBackingTables, &FileBacking{
+				DiskFileNum: n,
+				Size:        100,
+			})
+
+		case "del-backing":
+			n := p.DiskFileNum()
+			ve.RemovedBackingTables = append(ve.RemovedBackingTables, n)
+
+		default:
+			return nil, errors.Errorf("field %q not implemented", field)
+		}
+	}
+	return &ve, nil
 }
 
 // Encode encodes an edit to the specified writer.
@@ -529,11 +621,11 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	for _, dfn := range v.RemovedBackingTables {
 		e.writeUvarint(tagRemovedBackingTable)
-		e.writeUvarint(uint64(dfn.FileNum()))
+		e.writeUvarint(uint64(dfn))
 	}
 	for _, fileBacking := range v.CreatedBackingTables {
 		e.writeUvarint(tagCreatedBackingTable)
-		e.writeUvarint(uint64(fileBacking.DiskFileNum.FileNum()))
+		e.writeUvarint(uint64(fileBacking.DiskFileNum))
 		e.writeUvarint(fileBacking.Size)
 	}
 	// RocksDB requires LastSeqNum to be encoded for the first MANIFEST entry,
@@ -604,7 +696,15 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			}
 			if x.Meta.Virtual {
 				e.writeUvarint(customTagVirtual)
-				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum.FileNum()))
+				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum))
+			}
+			if x.Meta.SyntheticPrefix != nil {
+				e.writeUvarint(customTagSyntheticPrefix)
+				e.writeBytes(x.Meta.SyntheticPrefix)
+			}
+			if x.Meta.SyntheticSuffix != nil {
+				e.writeUvarint(customTagSyntheticSuffix)
+				e.writeBytes(x.Meta.SyntheticSuffix)
 			}
 			e.writeUvarint(customTagTerminate)
 		}
@@ -824,104 +924,32 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		}
 	}
 
-	// Since a file can be removed from backing files in exactly one version
-	// edit it is safe to just append without any de-duplication.
-	b.RemovedFileBacking = append(b.RemovedFileBacking, ve.RemovedBackingTables...)
+	for _, n := range ve.RemovedBackingTables {
+		if _, ok := b.AddedFileBacking[n]; ok {
+			delete(b.AddedFileBacking, n)
+		} else {
+			// Since a file can be removed from backing files in exactly one version
+			// edit it is safe to just append without any de-duplication.
+			b.RemovedFileBacking = append(b.RemovedFileBacking, n)
+		}
+	}
 
 	return nil
 }
 
-// AccumulateIncompleteAndApplySingleVE should be called if a single version edit
-// is to be applied to the provided curr Version and if the caller needs to
-// update the versionSet.zombieTables map. This function exists separately from
-// BulkVersionEdit.Apply because it is easier to reason about properties
-// regarding BulkVersionedit.Accumulate/Apply and zombie table generation, if we
-// know that exactly one version edit is being accumulated.
+// Apply applies the delta b to the current version to produce a new version.
+// The new version is consistent with respect to the comparer.
 //
-// Note that the version edit passed into this function may be incomplete
-// because compactions don't have the ref counting information necessary to
-// populate VersionEdit.RemovedBackingTables. This function will complete such a
-// version edit by populating RemovedBackingTables.
-//
-// Invariant: Any file being deleted through ve must belong to the curr Version.
-// We can't have a delete for some arbitrary file which does not exist in curr.
-func AccumulateIncompleteAndApplySingleVE(
-	ve *VersionEdit,
-	curr *Version,
-	cmp Compare,
-	formatKey base.FormatKey,
-	flushSplitBytes int64,
-	readCompactionRate int64,
-	backingStateMap map[base.DiskFileNum]*FileBacking,
-	addBackingFunc func(*FileBacking),
-	removeBackingFunc func(base.DiskFileNum),
-	orderingInvariants OrderingInvariants,
-) (_ *Version, zombies map[base.DiskFileNum]uint64, _ error) {
-	if len(ve.RemovedBackingTables) != 0 {
-		panic("pebble: invalid incomplete version edit")
-	}
-	var b BulkVersionEdit
-	err := b.Accumulate(ve)
-	if err != nil {
-		return nil, nil, err
-	}
-	zombies = make(map[base.DiskFileNum]uint64)
-	v, err := b.Apply(
-		curr, cmp, formatKey, flushSplitBytes, readCompactionRate, zombies, orderingInvariants,
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	for _, s := range b.AddedFileBacking {
-		addBackingFunc(s)
-	}
-
-	for fileNum := range zombies {
-		if _, ok := backingStateMap[fileNum]; ok {
-			// This table was backing some virtual sstable in the latest version,
-			// but is now a zombie. We add RemovedBackingTables entries for
-			// these, before the version edit is written to disk.
-			ve.RemovedBackingTables = append(
-				ve.RemovedBackingTables, fileNum,
-			)
-			removeBackingFunc(fileNum)
-		}
-	}
-	return v, zombies, nil
-}
-
-// Apply applies the delta b to the current version to produce a new
-// version. The new version is consistent with respect to the comparer cmp.
+// Apply updates the backing refcounts (Ref/Unref) as files are installed into
+// the levels.
 //
 // curr may be nil, which is equivalent to a pointer to a zero version.
-//
-// On success, if a non-nil zombies map is provided to Apply, the map is updated
-// with file numbers and files sizes of deleted files. These files are
-// considered zombies because they are no longer referenced by the returned
-// Version, but cannot be deleted from disk as they are still in use by the
-// incoming Version.
 func (b *BulkVersionEdit) Apply(
-	curr *Version,
-	cmp Compare,
-	formatKey base.FormatKey,
-	flushSplitBytes int64,
-	readCompactionRate int64,
-	zombies map[base.DiskFileNum]uint64,
-	orderingInvariants OrderingInvariants,
+	curr *Version, comparer *base.Comparer, flushSplitBytes int64, readCompactionRate int64,
 ) (*Version, error) {
-	addZombie := func(state *FileBacking) {
-		if zombies != nil {
-			zombies[state.DiskFileNum] = state.Size
-		}
+	v := &Version{
+		cmp: comparer,
 	}
-	removeZombie := func(state *FileBacking) {
-		if zombies != nil {
-			delete(zombies, state.DiskFileNum)
-		}
-	}
-
-	v := new(Version)
 
 	// Adjust the count of files marked for compaction.
 	if curr != nil {
@@ -934,12 +962,12 @@ func (b *BulkVersionEdit) Apply(
 
 	for level := range v.Levels {
 		if curr == nil || curr.Levels[level].tree.root == nil {
-			v.Levels[level] = makeLevelMetadata(cmp, level, nil /* files */)
+			v.Levels[level] = makeLevelMetadata(comparer.Compare, level, nil /* files */)
 		} else {
 			v.Levels[level] = curr.Levels[level].clone()
 		}
 		if curr == nil || curr.RangeKeyLevels[level].tree.root == nil {
-			v.RangeKeyLevels[level] = makeLevelMetadata(cmp, level, nil /* files */)
+			v.RangeKeyLevels[level] = makeLevelMetadata(comparer.Compare, level, nil /* files */)
 		} else {
 			v.RangeKeyLevels[level] = curr.RangeKeyLevels[level].clone()
 		}
@@ -949,7 +977,7 @@ func (b *BulkVersionEdit) Apply(
 			if level == 0 {
 				// Initialize L0Sublevels.
 				if curr == nil || curr.L0Sublevels == nil {
-					if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
+					if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
 						return nil, errors.Wrap(err, "pebble: internal error")
 					}
 				} else {
@@ -995,23 +1023,6 @@ func (b *BulkVersionEdit) Apply(
 					return nil, err
 				}
 			}
-
-			// Note that a backing sst will only become a zombie if the
-			// references to it in the latest version is 0. We will remove the
-			// backing sst from the zombie list in the next loop if one of the
-			// addedFiles in any of the levels is referencing the backing sst.
-			// This is possible if a physical sstable is virtualized, or if it
-			// is moved.
-			latestRefCount := f.LatestRefs()
-			if latestRefCount <= 0 {
-				// If a file is present in deletedFilesMap for a level, then it
-				// must have already been added to the level previously, which
-				// means that its latest ref count cannot be 0.
-				err := errors.Errorf("pebble: internal error: incorrect latestRefs reference counting for file", f.FileNum)
-				return nil, err
-			} else if f.LatestUnref() == 0 {
-				addZombie(f.FileBacking)
-			}
 		}
 
 		addedFiles := make([]*FileMetadata, 0, len(addedFilesMap))
@@ -1040,9 +1051,6 @@ func (b *BulkVersionEdit) Apply(
 			f.InitAllowedSeeks = allowedSeeks
 
 			err := lm.insert(f)
-			// We're adding this file to the new version, so increment the
-			// latest refs count.
-			f.LatestRef()
 			if err != nil {
 				return nil, errors.Wrap(err, "pebble")
 			}
@@ -1052,13 +1060,12 @@ func (b *BulkVersionEdit) Apply(
 					return nil, errors.Wrap(err, "pebble")
 				}
 			}
-			removeZombie(f.FileBacking)
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
-			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {
+			if sm == nil || base.InternalCompare(comparer.Compare, sm.Smallest, f.Smallest) > 0 {
 				sm = f
 			}
-			if la == nil || base.InternalCompare(cmp, la.Largest, f.Largest) < 0 {
+			if la == nil || base.InternalCompare(comparer.Compare, la.Largest, f.Largest) < 0 {
 				la = f
 			}
 		}
@@ -1073,15 +1080,18 @@ func (b *BulkVersionEdit) Apply(
 				SortBySeqNum(addedFiles)
 				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(addedFiles, flushSplitBytes, &v.Levels[0])
 				if errors.Is(err, errInvalidL0SublevelsOpt) {
-					err = v.InitL0Sublevels(cmp, formatKey, flushSplitBytes)
+					err = v.InitL0Sublevels(flushSplitBytes)
 				} else if invariants.Enabled && err == nil {
-					copyOfSublevels, err := NewL0Sublevels(&v.Levels[0], cmp, formatKey, flushSplitBytes)
+					copyOfSublevels, err := NewL0Sublevels(&v.Levels[0], comparer.Compare, comparer.FormatKey, flushSplitBytes)
 					if err != nil {
 						panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
 					}
-					s1 := describeSublevels(base.DefaultFormatter, false /* verbose */, copyOfSublevels.Levels)
-					s2 := describeSublevels(base.DefaultFormatter, false /* verbose */, v.L0Sublevels.Levels)
+					s1 := describeSublevels(comparer.FormatKey, false /* verbose */, copyOfSublevels.Levels)
+					s2 := describeSublevels(comparer.FormatKey, false /* verbose */, v.L0Sublevels.Levels)
 					if s1 != s2 {
+						// Add verbosity.
+						s1 := describeSublevels(comparer.FormatKey, true /* verbose */, copyOfSublevels.Levels)
+						s2 := describeSublevels(comparer.FormatKey, true /* verbose */, v.L0Sublevels.Levels)
 						panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
 					}
 				}
@@ -1089,10 +1099,10 @@ func (b *BulkVersionEdit) Apply(
 					return nil, errors.Wrap(err, "pebble: internal error")
 				}
 				v.L0SublevelFiles = v.L0Sublevels.Levels
-			} else if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
+			} else if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
 				return nil, errors.Wrap(err, "pebble: internal error")
 			}
-			if err := CheckOrdering(cmp, formatKey, Level(0), v.Levels[level].Iter(), orderingInvariants); err != nil {
+			if err := CheckOrdering(comparer.Compare, comparer.FormatKey, Level(0), v.Levels[level].Iter()); err != nil {
 				return nil, errors.Wrap(err, "pebble: internal error")
 			}
 			continue
@@ -1100,8 +1110,7 @@ func (b *BulkVersionEdit) Apply(
 
 		// Check consistency of the level in the vicinity of our edits.
 		if sm != nil && la != nil {
-			overlap := overlaps(v.Levels[level].Iter(), cmp, sm.Smallest.UserKey,
-				la.Largest.UserKey, la.Largest.IsExclusiveSentinel())
+			overlap := overlaps(v.Levels[level].Iter(), comparer.Compare, sm.UserKeyBounds())
 			// overlap contains all of the added files. We want to ensure that
 			// the added files are consistent with neighboring existing files
 			// too, so reslice the overlap to pull in a neighbor on each side.
@@ -1113,7 +1122,7 @@ func (b *BulkVersionEdit) Apply(
 					end.Prev()
 				}
 			})
-			if err := CheckOrdering(cmp, formatKey, Level(level), check.Iter(), orderingInvariants); err != nil {
+			if err := CheckOrdering(comparer.Compare, comparer.FormatKey, Level(level), check.Iter()); err != nil {
 				return nil, errors.Wrap(err, "pebble: internal error")
 			}
 		}

@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path"
 	"strconv"
@@ -20,7 +19,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -105,7 +103,7 @@ func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) 
 
 		numStillOpen := 0
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilepath(fs, "", fileTypeTable, base.FileNum(uint64(i)).DiskFileNum())
+			filename := base.MakeFilepath(fs, "", fileTypeTable, base.DiskFileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO > gotC {
 				numStillOpen++
@@ -135,7 +133,7 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 		defer fs.mu.Unlock()
 
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilepath(fs, "", fileTypeTable, base.FileNum(uint64(i)).DiskFileNum())
+			filename := base.MakeFilepath(fs, "", fileTypeTable, base.DiskFileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO != gotC {
 				return errors.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
@@ -172,7 +170,7 @@ func newTableCacheContainerTest(
 	defer objProvider.Close()
 
 	for i := 0; i < tableCacheTestNumTables; i++ {
-		w, _, err := objProvider.Create(context.Background(), fileTypeTable, base.FileNum(uint64(i)).DiskFileNum(), objstorage.CreateOptions{})
+		w, _, err := objProvider.Create(context.Background(), fileTypeTable, base.DiskFileNum(i), objstorage.CreateOptions{})
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
@@ -261,18 +259,17 @@ func TestVirtualReadsWiring(t *testing.T) {
 			DisableAutomaticCompactions: true,
 		})
 	require.NoError(t, err)
-	defer d.Close()
 
 	b := newBatch(d)
 	// Some combination of sets, range deletes, and range key sets/unsets, so
 	// all of the table cache iterator functions are utilized.
-	require.NoError(t, b.Set([]byte{'a'}, []byte{'a'}, nil))
-	require.NoError(t, b.Set([]byte{'d'}, []byte{'d'}, nil))
-	require.NoError(t, b.DeleteRange([]byte{'c'}, []byte{'e'}, nil))
-	require.NoError(t, b.Set([]byte{'f'}, []byte{'f'}, nil))
-	require.NoError(t, b.RangeKeySet([]byte{'f'}, []byte{'k'}, nil, []byte{'c'}, nil))
-	require.NoError(t, b.RangeKeyUnset([]byte{'j'}, []byte{'k'}, nil, nil))
-	require.NoError(t, b.Set([]byte{'z'}, []byte{'z'}, nil))
+	require.NoError(t, b.Set([]byte{'a'}, []byte{'a'}, nil))                           // SeqNum start.
+	require.NoError(t, b.Set([]byte{'d'}, []byte{'d'}, nil))                           // SeqNum: +1
+	require.NoError(t, b.DeleteRange([]byte{'c'}, []byte{'e'}, nil))                   // SeqNum: +2
+	require.NoError(t, b.Set([]byte{'f'}, []byte{'f'}, nil))                           // SeqNum: +3
+	require.NoError(t, b.RangeKeySet([]byte{'f'}, []byte{'k'}, nil, []byte{'c'}, nil)) // SeqNum: +4
+	require.NoError(t, b.RangeKeyUnset([]byte{'j'}, []byte{'k'}, nil, nil))            // SeqNum: +5
+	require.NoError(t, b.Set([]byte{'z'}, []byte{'z'}, nil))                           // SeqNum: +6
 	require.NoError(t, d.Apply(b, nil))
 	require.NoError(t, d.Flush())
 	require.NoError(t, d.Compact([]byte{'a'}, []byte{'b'}, false))
@@ -290,31 +287,44 @@ func TestVirtualReadsWiring(t *testing.T) {
 	f2 := f1 + 1
 	d.mu.versions.nextFileNum += 2
 
+	seqNumA := parentFile.Smallest.SeqNum()
+	// See SeqNum comments above.
+	seqNumCEDel := seqNumA + 2
+	seqNumRangeSet := seqNumA + 4
+	seqNumRangeUnset := seqNumA + 5
+	seqNumZ := seqNumA + 6
+
 	v1 := &manifest.FileMetadata{
-		FileBacking:    parentFile.FileBacking,
-		FileNum:        f1,
-		CreationTime:   time.Now().Unix(),
-		Size:           parentFile.Size / 2,
-		SmallestSeqNum: parentFile.SmallestSeqNum,
-		LargestSeqNum:  parentFile.LargestSeqNum,
-		Smallest:       base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
-		Largest:        base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
-		HasPointKeys:   true,
-		Virtual:        true,
+		FileBacking:      parentFile.FileBacking,
+		FileNum:          f1,
+		CreationTime:     time.Now().Unix(),
+		Size:             parentFile.Size / 2,
+		SmallestSeqNum:   parentFile.SmallestSeqNum,
+		LargestSeqNum:    parentFile.LargestSeqNum,
+		Smallest:         base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
+		Largest:          base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
+		SmallestPointKey: base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
+		LargestPointKey:  base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
+		HasPointKeys:     true,
+		Virtual:          true,
 	}
 	v1.Stats.NumEntries = 1
 
 	v2 := &manifest.FileMetadata{
-		FileBacking:    parentFile.FileBacking,
-		FileNum:        f2,
-		CreationTime:   time.Now().Unix(),
-		Size:           parentFile.Size / 2,
-		SmallestSeqNum: parentFile.SmallestSeqNum,
-		LargestSeqNum:  parentFile.LargestSeqNum,
-		Smallest:       base.MakeInternalKey([]byte{'d'}, parentFile.Smallest.SeqNum()+1, InternalKeyKindSet),
-		Largest:        base.MakeInternalKey([]byte{'z'}, parentFile.Largest.SeqNum(), InternalKeyKindSet),
-		HasPointKeys:   true,
-		Virtual:        true,
+		FileBacking:      parentFile.FileBacking,
+		FileNum:          f2,
+		CreationTime:     time.Now().Unix(),
+		Size:             parentFile.Size / 2,
+		SmallestSeqNum:   parentFile.SmallestSeqNum,
+		LargestSeqNum:    parentFile.LargestSeqNum,
+		Smallest:         base.MakeInternalKey([]byte{'d'}, seqNumCEDel, InternalKeyKindRangeDelete),
+		Largest:          base.MakeInternalKey([]byte{'z'}, seqNumZ, InternalKeyKindSet),
+		SmallestPointKey: base.MakeInternalKey([]byte{'d'}, seqNumCEDel, InternalKeyKindRangeDelete),
+		LargestPointKey:  base.MakeInternalKey([]byte{'z'}, seqNumZ, InternalKeyKindSet),
+		SmallestRangeKey: base.MakeInternalKey([]byte{'f'}, seqNumRangeSet, InternalKeyKindRangeKeySet),
+		LargestRangeKey:  base.MakeInternalKey([]byte{'k'}, seqNumRangeUnset, InternalKeyKindRangeKeyUnset),
+		HasPointKeys:     true,
+		Virtual:          true,
 	}
 	v2.Stats.NumEntries = 6
 
@@ -346,8 +356,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 
 	applyVE := func(ve *versionEdit) error {
 		d.mu.versions.logLock()
-		jobID := d.mu.nextJobID
-		d.mu.nextJobID++
+		jobID := d.newJobIDLocked()
 
 		err := d.mu.versions.logAndApply(jobID, ve, fileMetrics(ve), false, func() []compactionInfo {
 			return d.getInProgressCompactionInfoLocked(nil)
@@ -387,6 +396,9 @@ func TestVirtualReadsWiring(t *testing.T) {
 		require.Equal(t, []byte{expected[i]}, iter.Value())
 	}
 	iter.Close()
+
+	// We don't defer this Close in case we get a panic while holding d.mu.
+	d.Close()
 }
 
 // The table cache shouldn't be usable after all the dbs close.
@@ -599,9 +611,9 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Unlock()
 			m := &fileMetadata{FileNum: FileNum(fileNum)}
 			m.InitPhysicalBacking()
-			m.Ref()
-			defer m.Unref()
-			iter, _, err := c.newIters(context.Background(), m, nil, internalIterOpts{})
+			m.FileBacking.Ref()
+			defer m.FileBacking.Unref()
+			iter, _, err := tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
@@ -658,20 +670,20 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
-			var iter io.Closer
+			var iters iterSet
 			var err error
 			m := &fileMetadata{FileNum: FileNum(j)}
 			m.InitPhysicalBacking()
-			m.Ref()
+			m.FileBacking.Ref()
 			if rangeIter {
-				iter, err = c.newRangeKeyIter(m, keyspan.SpanIterOptions{})
+				iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterRangeKeys)
 			} else {
-				iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
+				iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 			}
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
-			if err := iter.Close(); err != nil {
+			if err := iters.CloseAll(); err != nil {
 				t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 			}
 		}
@@ -712,12 +724,12 @@ func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
 			m := &fileMetadata{FileNum: FileNum(j)}
 			m.InitPhysicalBacking()
-			m.Ref()
-			iter1, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
+			m.FileBacking.Ref()
+			iter1, _, err := tableNewIters(c1.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
-			iter2, _, err := c2.newIters(context.Background(), m, nil, internalIterOpts{})
+			iter2, _, err := tableNewIters(c2.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
@@ -761,24 +773,24 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 	rng := rand.New(rand.NewSource(2))
 	for i := 0; i < N; i++ {
 		j := rng.Intn(tableCacheTestNumTables)
-		var iter io.Closer
+		var iters iterSet
 		var err error
 		m := &fileMetadata{FileNum: FileNum(j)}
 		m.InitPhysicalBacking()
-		m.Ref()
+		m.FileBacking.Ref()
 		if rangeIter {
-			iter, err = c.newRangeKeyIter(m, keyspan.SpanIterOptions{})
+			iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterRangeKeys)
 		} else {
-			iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
+			iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 		}
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
-		if err := iter.Close(); err != nil {
+		if err := iters.CloseAll(); err != nil {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		c.evict(base.FileNum(lo + rng.Uint64n(hi-lo)).DiskFileNum())
+		c.evict(base.DiskFileNum(lo + rng.Uint64n(hi-lo)))
 	}
 
 	sumEvicted, nEvicted := 0, 0
@@ -830,13 +842,13 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 		j := rng.Intn(tableCacheTestNumTables)
 		m := &fileMetadata{FileNum: FileNum(j)}
 		m.InitPhysicalBacking()
-		m.Ref()
-		iter1, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
+		m.FileBacking.Ref()
+		iter1, _, err := tableNewIters(c1.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
 
-		iter2, _, err := c2.newIters(context.Background(), m, nil, internalIterOpts{})
+		iter2, _, err := tableNewIters(c2.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
@@ -849,8 +861,8 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		c1.evict(base.FileNum(lo + rng.Uint64n(hi-lo)).DiskFileNum())
-		c2.evict(base.FileNum(lo + rng.Uint64n(hi-lo)).DiskFileNum())
+		c1.evict(base.DiskFileNum(lo + rng.Uint64n(hi-lo)))
+		c2.evict(base.DiskFileNum(lo + rng.Uint64n(hi-lo)))
 	}
 
 	check := func(fs *tableCacheTestFS, c *tableCacheContainer) (float64, float64, float64) {
@@ -897,9 +909,9 @@ func TestTableCacheIterLeak(t *testing.T) {
 
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
-	m.Ref()
-	defer m.Unref()
-	iter, _, err := c.newIters(context.Background(), m, nil, internalIterOpts{})
+	m.FileBacking.Ref()
+	defer m.FileBacking.Unref()
+	iter, _, err := tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c.close(); err == nil {
@@ -924,9 +936,9 @@ func TestSharedTableCacheIterLeak(t *testing.T) {
 
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
-	m.Ref()
-	defer m.Unref()
-	iter, _, err := c1.newIters(context.Background(), m, nil, internalIterOpts{})
+	m.FileBacking.Ref()
+	defer m.FileBacking.Unref()
+	iter, _, err := tableNewIters(c1.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c1.close(); err == nil {
@@ -962,15 +974,15 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	fs.setOpenError(true /* enabled */)
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
-	m.Ref()
-	defer m.Unref()
-	if _, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{}); err == nil {
+	m.FileBacking.Ref()
+	defer m.FileBacking.Unref()
+	if _, _, err = tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
 	require.Equal(t, "pebble: backing file 000000 error: injected error", err.Error())
 	fs.setOpenError(false /* enabled */)
 	var iter internalIterator
-	iter, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{})
+	iter, _, err = tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{})
 	require.NoError(t, err)
 	require.NoError(t, iter.Close())
 	fs.validate(t, c, nil)
@@ -1012,8 +1024,7 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 	const testFileNum = 3
 	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
 	require.NoError(t, err)
-	w, _, err := objProvider.Create(context.Background(), fileTypeTable,
-		base.FileNum(testFileNum).DiskFileNum(), objstorage.CreateOptions{})
+	w, _, err := objProvider.Create(context.Background(), fileTypeTable, testFileNum, objstorage.CreateOptions{})
 	w.Write(buf)
 	require.NoError(t, w.Finish())
 	opts := &Options{}
@@ -1027,9 +1038,9 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 
 	m := &fileMetadata{FileNum: testFileNum}
 	m.InitPhysicalBacking()
-	m.Ref()
-	defer m.Unref()
-	if _, _, err = c.newIters(context.Background(), m, nil, internalIterOpts{}); err == nil {
+	m.FileBacking.Ref()
+	defer m.FileBacking.Unref()
+	if _, _, err = tableNewIters(c.newIters).TODO(context.Background(), m, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
 	require.Equal(t,
@@ -1112,15 +1123,15 @@ func TestTableCacheClockPro(t *testing.T) {
 		// Ensure that underlying sstables exist on disk, creating each table the
 		// first time it is seen.
 		if !tables[key] {
-			makeTable(base.FileNum(uint64(key)).DiskFileNum())
+			makeTable(base.DiskFileNum(key))
 			tables[key] = true
 		}
 
 		oldHits := cache.hits.Load()
 		m := &fileMetadata{FileNum: FileNum(key)}
 		m.InitPhysicalBacking()
-		m.Ref()
-		v := cache.findNode(m, dbOpts)
+		m.FileBacking.Ref()
+		v := cache.findNode(m.FileBacking, dbOpts)
 		cache.unrefValue(v)
 
 		hit := cache.hits.Load() != oldHits
@@ -1129,7 +1140,7 @@ func TestTableCacheClockPro(t *testing.T) {
 			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
 		}
 		line++
-		m.Unref()
+		m.FileBacking.Unref()
 	}
 }
 
@@ -1154,16 +1165,16 @@ func BenchmarkNewItersAlloc(b *testing.B) {
 	d.mu.Unlock()
 
 	// Open once so that the Reader is cached.
-	iter, _, err := d.newIters(context.Background(), m, nil, internalIterOpts{})
-	require.NoError(b, iter.Close())
+	iters, err := d.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys|iterRangeDeletions)
+	require.NoError(b, iters.CloseAll())
 	require.NoError(b, err)
 
 	for i := 0; i < b.N; i++ {
 		b.StartTimer()
-		iter, _, err := d.newIters(context.Background(), m, nil, internalIterOpts{})
+		iters, err := d.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys|iterRangeDeletions)
 		b.StopTimer()
 		require.NoError(b, err)
-		require.NoError(b, iter.Close())
+		require.NoError(b, iters.CloseAll())
 	}
 }
 
@@ -1204,7 +1215,7 @@ func TestTableCacheNoSuchFileError(t *testing.T) {
 	_, _, _ = d.Get([]byte("a"))
 	require.NotZero(t, len(logger.fatalMsgs), "no fatal message emitted")
 	require.Equal(t, 1, len(logger.fatalMsgs), "expected one fatal message; got: %v", logger.fatalMsgs)
-	require.Contains(t, logger.fatalMsgs[0], "directory contains 6 files, 0 unknown, 0 tables, 2 logs, 1 manifests")
+	require.Contains(t, logger.fatalMsgs[0], "directory contains 7 files, 2 unknown, 0 tables, 2 logs, 1 manifests")
 }
 
 func BenchmarkTableCacheHotPath(b *testing.B) {
@@ -1240,11 +1251,11 @@ func BenchmarkTableCacheHotPath(b *testing.B) {
 
 	m := &fileMetadata{FileNum: 1}
 	m.InitPhysicalBacking()
-	m.Ref()
+	m.FileBacking.Ref()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v := cache.findNode(m, dbOpts)
+		v := cache.findNode(m.FileBacking, dbOpts)
 		cache.unrefValue(v)
 	}
 }

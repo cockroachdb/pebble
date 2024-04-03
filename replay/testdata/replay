@@ -6,26 +6,25 @@ tree
           /
             build/
       89      000004.log
-     658      000005.sst
+     586      000005.sst
       49      000006.log
-     686      000007.sst
-      16      CURRENT
+     614      000007.sst
        0      LOCK
       98      MANIFEST-000001
      122      MANIFEST-000008
-    1189      OPTIONS-000003
-       0      marker.format-version.000007.008
+    1240      OPTIONS-000003
+       0      marker.format-version.000001.013
        0      marker.manifest.000002.MANIFEST-000008
             simple/
-     686      000007.sst
+     614      000007.sst
       98      MANIFEST-000001
      122      MANIFEST-000008
               checkpoint/
       25        000004.log
-     658        000005.sst
+     586        000005.sst
       98        MANIFEST-000001
-    1189        OPTIONS-000003
-       0        marker.format-version.000001.008
+    1240        OPTIONS-000003
+       0        marker.format-version.000001.013
        0        marker.manifest.000001.MANIFEST-000001
 
 cat build/OPTIONS-000003
@@ -44,24 +43,25 @@ cat build/OPTIONS-000003
   flush_delay_delete_range=0s
   flush_delay_range_key=0s
   flush_split_bytes=4194304
-  format_major_version=8
+  format_major_version=13
   l0_compaction_concurrency=10
   l0_compaction_file_threshold=500
   l0_compaction_threshold=4
   l0_stop_writes_threshold=12
   lbase_max_bytes=67108864
   max_concurrent_compactions=1
+  max_concurrent_downloads=1
   max_manifest_file_size=96
   max_open_files=1000
   mem_table_size=4194304
   mem_table_stop_writes_threshold=2
   min_deletion_rate=0
   merger=pebble.concatenate
+  multilevel_compaction_heuristic=wamp(0.00, false)
   read_compaction_rate=16000
   read_sampling_multiplier=16
   strict_wal_tail=true
   table_cache_shards=2
-  table_property_collectors=[]
   validate_on_ingest=false
   wal_dir=
   wal_bytes_per_sync=0

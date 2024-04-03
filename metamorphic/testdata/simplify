@@ -1,0 +1,35 @@
+simplify-keys
+db2.RangeKeySet("apple", "raspberry", "", "")
+snap9 = db2.NewSnapshot("banana", "durian", "guanabana", "pineapple")
+db2.Compact("cranberry", "pear", true /* parallelize */)
+----
+db2.RangeKeySet("a", "h", "", "")
+snap9 = db2.NewSnapshot("b", "d", "e", "g")
+db2.Compact("c", "f", true /* parallelize */)
+
+simplify-keys
+db2.RangeKeySet("apple", "raspberry", "", "")
+snap9 = db2.NewSnapshot("apple", "raspberry")
+db2.Compact("apple", "raspberry", true /* parallelize */)
+----
+db2.RangeKeySet("a", "b", "", "")
+snap9 = db2.NewSnapshot("a", "b")
+db2.Compact("a", "b", true /* parallelize */)
+
+simplify-keys
+db2.RangeKeySet("apple@1", "raspberry", "", "")
+snap9 = db2.NewSnapshot("apple@1", "raspberry@4")
+db2.Compact("apple@1", "raspberry@4", true /* parallelize */)
+----
+db2.RangeKeySet("a", "b", "", "")
+snap9 = db2.NewSnapshot("a", "c")
+db2.Compact("a", "c", true /* parallelize */)
+
+simplify-keys retain-suffixes
+db2.RangeKeySet("apple@1", "raspberry", "", "")
+snap9 = db2.NewSnapshot("apple@1", "raspberry@4")
+db2.Compact("apple@1", "raspberry@4", true /* parallelize */)
+----
+db2.RangeKeySet("a@1", "b", "", "")
+snap9 = db2.NewSnapshot("a@1", "b@4")
+db2.Compact("a@1", "b@4", true /* parallelize */)

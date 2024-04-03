@@ -14,6 +14,21 @@ b-d:{(#1,RANGEDEL)}
 b-d:{}
 <nil>
 
+seek-ge probes=(ErrInjected,(Log "#  iter."))
+a 2
+b 2
+b 1
+d 2
+----
+#  iter.SeekGE("a") = nil <err="injected error">
+<nil> <err="injected error">
+#  iter.SeekGE("b") = nil <err="injected error">
+<nil> <err="injected error">
+#  iter.SeekGE("b") = nil <err="injected error">
+<nil> <err="injected error">
+#  iter.SeekGE("d") = nil <err="injected error">
+<nil> <err="injected error">
+
 seek-le
 a 2
 b 2
@@ -24,6 +39,21 @@ d 2
 b-d:{(#1,RANGEDEL)}
 b-d:{}
 b-d:{(#1,RANGEDEL)}
+
+seek-le probes=(ErrInjected,(Log "#  iter."))
+a 2
+b 2
+b 1
+d 2
+----
+#  iter.SeekGE("a") = nil <err="injected error">
+<nil> <err="injected error">
+#  iter.SeekGE("b") = nil <err="injected error">
+<nil> <err="injected error">
+#  iter.SeekGE("b") = nil <err="injected error">
+<nil> <err="injected error">
+#  iter.SeekGE("d") = nil <err="injected error">
+<nil> <err="injected error">
 
 build
 3:  b-d
@@ -307,3 +337,33 @@ c-e:{}
 c-e:{}
 c-e:{}
 c-e:{(#5,RANGEDEL)}
+
+build
+1: a-c
+2: f-g
+----
+a-c:{(#1,RANGEDEL)}
+f-g:{(#2,RANGEDEL)}
+
+seek-le
+c 5
+d 5
+f 5
+----
+a-c:{(#1,RANGEDEL)}
+a-c:{(#1,RANGEDEL)}
+f-g:{(#2,RANGEDEL)}
+
+seek-le probes=((If OpPrev ErrInjected noop),(Log "#  iter."))
+c 5
+d 5
+f 5
+----
+#  iter.SeekGE("c") = f-g:{(#2,RANGEDEL)}
+#  iter.Prev() = nil <err="injected error">
+<nil> <err="injected error">
+#  iter.SeekGE("d") = f-g:{(#2,RANGEDEL)}
+#  iter.Prev() = nil <err="injected error">
+<nil> <err="injected error">
+#  iter.SeekGE("f") = f-g:{(#2,RANGEDEL)}
+f-g:{(#2,RANGEDEL)}

@@ -69,12 +69,24 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"BlockPropertyCollectors:",
 		"EventListener:",
 		"MaxConcurrentCompactions:",
-		"Experimental.EnableValueBlocks:",
+		"MaxConcurrentDownloads:",
 		"Experimental.DisableIngestAsFlushable:",
-		"Experimental.RemoteStorage:",
+		"Experimental.EnableValueBlocks:",
+		"Experimental.IneffectualSingleDeleteCallback:",
 		"Experimental.IngestSplit:",
+		"Experimental.RemoteStorage:",
+		"Experimental.SingleDeleteInvariantViolationCallback:",
+		"Levels[0].Compression:",
+		"Levels[1].Compression:",
+		"Levels[2].Compression:",
+		"Levels[3].Compression:",
+		"Levels[4].Compression:",
+		"Levels[5].Compression:",
+		"Levels[6].Compression:",
+		"WALFailover.FailoverOptions.UnhealthyOperationLatencyThreshold:",
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
+		"Experimental.MultiLevelCompactionHeuristic.AddPropensity",
 	}
 
 	// Ensure that we unref any caches created, so invariants builds don't
@@ -110,6 +122,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 			require.Equal(t, o.Opts.Experimental.IngestSplit(), parsed.Opts.Experimental.IngestSplit())
 		}
 		require.Equal(t, o.Opts.MaxConcurrentCompactions(), parsed.Opts.MaxConcurrentCompactions())
+		require.Equal(t, o.Opts.MaxConcurrentDownloads(), parsed.Opts.MaxConcurrentDownloads())
 		require.Equal(t, len(o.Opts.BlockPropertyCollectors), len(parsed.Opts.BlockPropertyCollectors))
 
 		diff := pretty.Diff(o.Opts, parsed.Opts)
@@ -139,7 +152,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	for i := 0; i < 100; i++ {
 		t.Run(fmt.Sprintf("random-%03d", i), func(t *testing.T) {
-			o := randomOptions(rng, nil)
+			o := RandomOptions(rng, nil)
 			defer maybeUnref(o)
 			checkOptions(t, o)
 		})

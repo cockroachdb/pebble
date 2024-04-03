@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datatest"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -91,7 +92,7 @@ func runReplayTest(t *testing.T, path string) {
 			opts := &pebble.Options{
 				FS:                        fs,
 				Comparer:                  testkeys.Comparer,
-				FormatMajorVersion:        pebble.FormatRangeKeys,
+				FormatMajorVersion:        pebble.FormatMinSupported,
 				L0CompactionFileThreshold: 1,
 			}
 			setDefaultExperimentalOpts(opts)
@@ -168,13 +169,13 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 		EventListener: &pebble.EventListener{
 			FlushEnd: func(info pebble.FlushInfo) {
 				for _, tbl := range info.Output {
-					diskFileNums = append(diskFileNums, tbl.FileNum.DiskFileNum())
+					diskFileNums = append(diskFileNums, base.PhysicalTableDiskFileNum(tbl.FileNum))
 				}
 			},
 		},
 		FS:                 vfs.NewMem(),
 		Comparer:           testkeys.Comparer,
-		FormatMajorVersion: pebble.FormatRangeKeys,
+		FormatMajorVersion: pebble.FormatMinSupported,
 	}
 	d, err := pebble.Open("", opts)
 	require.NoError(t, err)
@@ -204,7 +205,7 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 				return err.Error()
 			}
 
-			br, _ := pebble.ReadBatch(b.Repr())
+			br := batchrepr.Read(b.Repr())
 			kind, ukey, v, ok, err := br.Next()
 			for ; ok; kind, ukey, v, ok, err = br.Next() {
 				fmt.Fprintf(&buf, "%s.%s", ukey, kind)
@@ -282,7 +283,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			opts := &pebble.Options{
 				Comparer:                    testkeys.Comparer,
 				DisableAutomaticCompactions: true,
-				FormatMajorVersion:          pebble.FormatRangeKeys,
+				FormatMajorVersion:          pebble.FormatMinSupported,
 				FS:                          fs,
 				MaxManifestFileSize:         96,
 			}
@@ -334,14 +335,16 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			if fT != "file" {
 				fileNumInt, err := strconv.Atoi(td.CmdArgs[2].String())
 				require.NoError(t, err)
-				fileNum := base.FileNum(fileNumInt)
+				fileNum := base.DiskFileNum(fileNumInt)
 				switch fT {
 				case "table":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeTable, fileNum.DiskFileNum())
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeTable, fileNum)
 				case "log":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeLog, fileNum.DiskFileNum())
+					// TODO(jackson): expose a func from the wal package for
+					// constructing log filenames for tests?
+					filePath = fs.PathJoin(dir, fmt.Sprintf("%s.log", fileNum))
 				case "manifest":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum.DiskFileNum())
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum)
 				}
 			}
 			f, err := fs.Create(filePath)

@@ -1,89 +1,40 @@
 open db
 ----
 mkdir-all: db 0755
+open-dir: 
+sync: 
+close: 
+open-dir: db
+close: db
 open-dir: db
 lock: db/LOCK
 open-dir: db
 open-dir: db
-open: db/CURRENT
+open-dir: db
+open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
-remove: db/temporary.000001.dbtmp
-create: db/temporary.000001.dbtmp
-sync: db/temporary.000001.dbtmp
-close: db/temporary.000001.dbtmp
-rename: db/temporary.000001.dbtmp -> db/CURRENT
+create: db/marker.manifest.000001.MANIFEST-000001
+close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 open-dir: db
 sync: db/MANIFEST-000001
 create: db/000002.log
 sync: db
-create: db/marker.manifest.000001.MANIFEST-000001
-close: db/marker.manifest.000001.MANIFEST-000001
+create: db/marker.format-version.000001.014
+close: db/marker.format-version.000001.014
 sync: db
-create: db/marker.format-version.000001.002
-close: db/marker.format-version.000001.002
+create: db/marker.format-version.000002.015
+close: db/marker.format-version.000002.015
+remove: db/marker.format-version.000001.014
 sync: db
-remove: db/temporary.000000.dbtmp
-create: db/temporary.000000.dbtmp
-sync: db/temporary.000000.dbtmp
-close: db/temporary.000000.dbtmp
-rename: db/temporary.000000.dbtmp -> db/CURRENT
-create: db/marker.format-version.000002.003
-close: db/marker.format-version.000002.003
-remove: db/marker.format-version.000001.002
+create: db/marker.format-version.000003.016
+close: db/marker.format-version.000003.016
+remove: db/marker.format-version.000002.015
 sync: db
-create: db/marker.format-version.000003.004
-close: db/marker.format-version.000003.004
-remove: db/marker.format-version.000002.003
-sync: db
-create: db/marker.format-version.000004.005
-close: db/marker.format-version.000004.005
-remove: db/marker.format-version.000003.004
-sync: db
-create: db/marker.format-version.000005.006
-close: db/marker.format-version.000005.006
-remove: db/marker.format-version.000004.005
-sync: db
-create: db/marker.format-version.000006.007
-close: db/marker.format-version.000006.007
-remove: db/marker.format-version.000005.006
-sync: db
-create: db/marker.format-version.000007.008
-close: db/marker.format-version.000007.008
-remove: db/marker.format-version.000006.007
-sync: db
-create: db/marker.format-version.000008.009
-close: db/marker.format-version.000008.009
-remove: db/marker.format-version.000007.008
-sync: db
-create: db/marker.format-version.000009.010
-close: db/marker.format-version.000009.010
-remove: db/marker.format-version.000008.009
-sync: db
-create: db/marker.format-version.000010.011
-close: db/marker.format-version.000010.011
-remove: db/marker.format-version.000009.010
-sync: db
-create: db/marker.format-version.000011.012
-close: db/marker.format-version.000011.012
-remove: db/marker.format-version.000010.011
-sync: db
-create: db/marker.format-version.000012.013
-close: db/marker.format-version.000012.013
-remove: db/marker.format-version.000011.012
-sync: db
-create: db/marker.format-version.000013.014
-close: db/marker.format-version.000013.014
-remove: db/marker.format-version.000012.013
-sync: db
-create: db/marker.format-version.000014.015
-close: db/marker.format-version.000014.015
-remove: db/marker.format-version.000013.014
-sync: db
-create: db/marker.format-version.000015.016
-close: db/marker.format-version.000015.016
-remove: db/marker.format-version.000014.015
+create: db/marker.format-version.000004.017
+close: db/marker.format-version.000004.017
+remove: db/marker.format-version.000003.016
 sync: db
 create: db/temporary.000003.dbtmp
 sync: db/temporary.000003.dbtmp
@@ -147,9 +98,9 @@ close:
 open-dir: checkpoints/checkpoint1
 link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
-create: checkpoints/checkpoint1/marker.format-version.000001.016
-sync-data: checkpoints/checkpoint1/marker.format-version.000001.016
-close: checkpoints/checkpoint1/marker.format-version.000001.016
+create: checkpoints/checkpoint1/marker.format-version.000001.017
+sync-data: checkpoints/checkpoint1/marker.format-version.000001.017
+close: checkpoints/checkpoint1/marker.format-version.000001.017
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 link: db/000005.sst -> checkpoints/checkpoint1/000005.sst
@@ -187,9 +138,9 @@ close: checkpoints
 open-dir: checkpoints/checkpoint2
 link: db/OPTIONS-000003 -> checkpoints/checkpoint2/OPTIONS-000003
 open-dir: checkpoints/checkpoint2
-create: checkpoints/checkpoint2/marker.format-version.000001.016
-sync-data: checkpoints/checkpoint2/marker.format-version.000001.016
-close: checkpoints/checkpoint2/marker.format-version.000001.016
+create: checkpoints/checkpoint2/marker.format-version.000001.017
+sync-data: checkpoints/checkpoint2/marker.format-version.000001.017
+close: checkpoints/checkpoint2/marker.format-version.000001.017
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 link: db/000007.sst -> checkpoints/checkpoint2/000007.sst
@@ -222,9 +173,9 @@ close: checkpoints
 open-dir: checkpoints/checkpoint3
 link: db/OPTIONS-000003 -> checkpoints/checkpoint3/OPTIONS-000003
 open-dir: checkpoints/checkpoint3
-create: checkpoints/checkpoint3/marker.format-version.000001.016
-sync-data: checkpoints/checkpoint3/marker.format-version.000001.016
-close: checkpoints/checkpoint3/marker.format-version.000001.016
+create: checkpoints/checkpoint3/marker.format-version.000001.017
+sync-data: checkpoints/checkpoint3/marker.format-version.000001.017
+close: checkpoints/checkpoint3/marker.format-version.000001.017
 sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
 link: db/000005.sst -> checkpoints/checkpoint3/000005.sst
@@ -260,32 +211,26 @@ close: db/000009.sst
 sync: db
 sync: db/MANIFEST-000001
 open: db/000005.sst
-read-at(630, 53): db/000005.sst
-read-at(593, 37): db/000005.sst
-read-at(74, 519): db/000005.sst
+read-at(558, 53): db/000005.sst
+read-at(521, 37): db/000005.sst
+read-at(74, 447): db/000005.sst
+open: db/000009.sst
+read-at(553, 53): db/000009.sst
+read-at(516, 37): db/000009.sst
+read-at(69, 447): db/000009.sst
+open: db/000007.sst
+read-at(558, 53): db/000007.sst
+read-at(521, 37): db/000007.sst
+read-at(74, 447): db/000007.sst
 read-at(47, 27): db/000005.sst
 open: db/000005.sst
-close: db/000005.sst
-open: db/000009.sst
-read-at(625, 53): db/000009.sst
-read-at(588, 37): db/000009.sst
-read-at(69, 519): db/000009.sst
-read-at(42, 27): db/000009.sst
-open: db/000009.sst
-close: db/000009.sst
-open: db/000007.sst
-read-at(630, 53): db/000007.sst
-read-at(593, 37): db/000007.sst
-read-at(74, 519): db/000007.sst
-read-at(47, 27): db/000007.sst
-open: db/000007.sst
-close: db/000007.sst
-open: db/000005.sst
 read-at(0, 47): db/000005.sst
+read-at(47, 27): db/000007.sst
 open: db/000007.sst
 read-at(0, 47): db/000007.sst
 create: db/000010.sst
 close: db/000005.sst
+read-at(42, 27): db/000009.sst
 open: db/000009.sst
 read-at(0, 42): db/000009.sst
 close: db/000007.sst
@@ -311,11 +256,10 @@ list db
 000006.log
 000008.log
 000010.sst
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000015.016
+marker.format-version.000004.017
 marker.manifest.000001.MANIFEST-000001
 
 list checkpoints/checkpoint1
@@ -325,13 +269,15 @@ list checkpoints/checkpoint1
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.016
+marker.format-version.000001.017
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint1 readonly
 ----
 open-dir: checkpoints/checkpoint1
 lock: checkpoints/checkpoint1/LOCK
+open-dir: checkpoints/checkpoint1
+open-dir: checkpoints/checkpoint1
 open-dir: checkpoints/checkpoint1
 open-dir: checkpoints/checkpoint1
 open: checkpoints/checkpoint1/MANIFEST-000001
@@ -345,15 +291,15 @@ close: checkpoints/checkpoint1/000006.log
 scan checkpoints/checkpoint1
 ----
 open: checkpoints/checkpoint1/000007.sst
-read-at(630, 53): checkpoints/checkpoint1/000007.sst
-read-at(593, 37): checkpoints/checkpoint1/000007.sst
-read-at(74, 519): checkpoints/checkpoint1/000007.sst
+read-at(558, 53): checkpoints/checkpoint1/000007.sst
+read-at(521, 37): checkpoints/checkpoint1/000007.sst
+read-at(74, 447): checkpoints/checkpoint1/000007.sst
 read-at(47, 27): checkpoints/checkpoint1/000007.sst
 read-at(0, 47): checkpoints/checkpoint1/000007.sst
 open: checkpoints/checkpoint1/000005.sst
-read-at(630, 53): checkpoints/checkpoint1/000005.sst
-read-at(593, 37): checkpoints/checkpoint1/000005.sst
-read-at(74, 519): checkpoints/checkpoint1/000005.sst
+read-at(558, 53): checkpoints/checkpoint1/000005.sst
+read-at(521, 37): checkpoints/checkpoint1/000005.sst
+read-at(74, 447): checkpoints/checkpoint1/000005.sst
 read-at(47, 27): checkpoints/checkpoint1/000005.sst
 read-at(0, 47): checkpoints/checkpoint1/000005.sst
 a 1
@@ -368,9 +314,9 @@ g 10
 scan db
 ----
 open: db/000010.sst
-read-at(657, 53): db/000010.sst
-read-at(620, 37): db/000010.sst
-read-at(101, 519): db/000010.sst
+read-at(585, 53): db/000010.sst
+read-at(548, 37): db/000010.sst
+read-at(101, 447): db/000010.sst
 read-at(74, 27): db/000010.sst
 read-at(0, 74): db/000010.sst
 a 1
@@ -390,13 +336,15 @@ list checkpoints/checkpoint2
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.016
+marker.format-version.000001.017
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint2 readonly
 ----
 open-dir: checkpoints/checkpoint2
 lock: checkpoints/checkpoint2/LOCK
+open-dir: checkpoints/checkpoint2
+open-dir: checkpoints/checkpoint2
 open-dir: checkpoints/checkpoint2
 open-dir: checkpoints/checkpoint2
 open: checkpoints/checkpoint2/MANIFEST-000001
@@ -410,9 +358,9 @@ close: checkpoints/checkpoint2/000006.log
 scan checkpoints/checkpoint2
 ----
 open: checkpoints/checkpoint2/000007.sst
-read-at(630, 53): checkpoints/checkpoint2/000007.sst
-read-at(593, 37): checkpoints/checkpoint2/000007.sst
-read-at(74, 519): checkpoints/checkpoint2/000007.sst
+read-at(558, 53): checkpoints/checkpoint2/000007.sst
+read-at(521, 37): checkpoints/checkpoint2/000007.sst
+read-at(74, 447): checkpoints/checkpoint2/000007.sst
 read-at(47, 27): checkpoints/checkpoint2/000007.sst
 read-at(0, 47): checkpoints/checkpoint2/000007.sst
 b 5
@@ -430,13 +378,15 @@ list checkpoints/checkpoint3
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.016
+marker.format-version.000001.017
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint3 readonly
 ----
 open-dir: checkpoints/checkpoint3
 lock: checkpoints/checkpoint3/LOCK
+open-dir: checkpoints/checkpoint3
+open-dir: checkpoints/checkpoint3
 open-dir: checkpoints/checkpoint3
 open-dir: checkpoints/checkpoint3
 open: checkpoints/checkpoint3/MANIFEST-000001
@@ -450,15 +400,15 @@ close: checkpoints/checkpoint3/000006.log
 scan checkpoints/checkpoint3
 ----
 open: checkpoints/checkpoint3/000007.sst
-read-at(630, 53): checkpoints/checkpoint3/000007.sst
-read-at(593, 37): checkpoints/checkpoint3/000007.sst
-read-at(74, 519): checkpoints/checkpoint3/000007.sst
+read-at(558, 53): checkpoints/checkpoint3/000007.sst
+read-at(521, 37): checkpoints/checkpoint3/000007.sst
+read-at(74, 447): checkpoints/checkpoint3/000007.sst
 read-at(47, 27): checkpoints/checkpoint3/000007.sst
 read-at(0, 47): checkpoints/checkpoint3/000007.sst
 open: checkpoints/checkpoint3/000005.sst
-read-at(630, 53): checkpoints/checkpoint3/000005.sst
-read-at(593, 37): checkpoints/checkpoint3/000005.sst
-read-at(74, 519): checkpoints/checkpoint3/000005.sst
+read-at(558, 53): checkpoints/checkpoint3/000005.sst
+read-at(521, 37): checkpoints/checkpoint3/000005.sst
+read-at(74, 447): checkpoints/checkpoint3/000005.sst
 read-at(47, 27): checkpoints/checkpoint3/000005.sst
 read-at(0, 47): checkpoints/checkpoint3/000005.sst
 a 1
@@ -477,7 +427,7 @@ g 10
 
 lsm db
 ----
-6:
+L6:
   000010:[a#0,SET-g#0,SET]
 
 build db ext1 format=pebblev2
@@ -492,10 +442,10 @@ ingest-and-excise db ext1 excise=c-d
 # 12, 13 are virtual sstables.
 lsm db
 ----
-6:
-  000012:[a#0,SET-b#0,SET]
-  000013:[d#0,SET-g#0,SET]
-  000011:[i#19,SET-k#19,SET]
+L6:
+  000012(000010):[a#0,SET-b#0,SET]
+  000013(000010):[d#0,SET-g#0,SET]
+  000011:[i#20,SET-k#20,SET]
 
 build db ext2 format=pebblev2
 set z z
@@ -507,12 +457,12 @@ ingest-and-excise db ext2 excise=j-k
 # 12, 13, 15, 16 are virtual.
 lsm db
 ----
-6:
-  000012:[a#0,SET-b#0,SET]
-  000013:[d#0,SET-g#0,SET]
-  000015:[i#19,SET-i#19,SET]
-  000016:[k#19,SET-k#19,SET]
-  000014:[z#20,SET-z#20,SET]
+L6:
+  000012(000010):[a#0,SET-b#0,SET]
+  000013(000010):[d#0,SET-g#0,SET]
+  000015(000011):[i#20,SET-i#20,SET]
+  000016(000011):[k#20,SET-k#20,SET]
+  000014:[z#22,SET-z#22,SET]
 
 # scan db so that it is known what to expect from the checkpoints.
 scan db
@@ -527,8 +477,8 @@ h 11
 i i
 k k
 open: db/000014.sst
-read-at(636, 53): db/000014.sst
-read-at(599, 37): db/000014.sst
+read-at(541, 53): db/000014.sst
+read-at(504, 37): db/000014.sst
 z z
 .
 
@@ -542,9 +492,9 @@ close: checkpoints
 open-dir: checkpoints/checkpoint4
 link: db/OPTIONS-000003 -> checkpoints/checkpoint4/OPTIONS-000003
 open-dir: checkpoints/checkpoint4
-create: checkpoints/checkpoint4/marker.format-version.000001.016
-sync-data: checkpoints/checkpoint4/marker.format-version.000001.016
-close: checkpoints/checkpoint4/marker.format-version.000001.016
+create: checkpoints/checkpoint4/marker.format-version.000001.017
+sync-data: checkpoints/checkpoint4/marker.format-version.000001.017
+close: checkpoints/checkpoint4/marker.format-version.000001.017
 sync: checkpoints/checkpoint4
 close: checkpoints/checkpoint4
 link: db/000010.sst -> checkpoints/checkpoint4/000010.sst
@@ -575,6 +525,8 @@ open-dir: checkpoints/checkpoint4
 lock: checkpoints/checkpoint4/LOCK
 open-dir: checkpoints/checkpoint4
 open-dir: checkpoints/checkpoint4
+open-dir: checkpoints/checkpoint4
+open-dir: checkpoints/checkpoint4
 open: checkpoints/checkpoint4/MANIFEST-000001
 close: checkpoints/checkpoint4/MANIFEST-000001
 open-dir: checkpoints/checkpoint4
@@ -586,9 +538,9 @@ close: checkpoints/checkpoint4/000008.log
 scan checkpoints/checkpoint4
 ----
 open: checkpoints/checkpoint4/000010.sst
-read-at(657, 53): checkpoints/checkpoint4/000010.sst
-read-at(620, 37): checkpoints/checkpoint4/000010.sst
-read-at(101, 519): checkpoints/checkpoint4/000010.sst
+read-at(585, 53): checkpoints/checkpoint4/000010.sst
+read-at(548, 37): checkpoints/checkpoint4/000010.sst
+read-at(101, 447): checkpoints/checkpoint4/000010.sst
 read-at(74, 27): checkpoints/checkpoint4/000010.sst
 read-at(0, 74): checkpoints/checkpoint4/000010.sst
 a 1
@@ -598,18 +550,18 @@ e 8
 f 9
 g 10
 open: checkpoints/checkpoint4/000011.sst
-read-at(653, 53): checkpoints/checkpoint4/000011.sst
-read-at(616, 37): checkpoints/checkpoint4/000011.sst
-read-at(70, 546): checkpoints/checkpoint4/000011.sst
+read-at(558, 53): checkpoints/checkpoint4/000011.sst
+read-at(521, 37): checkpoints/checkpoint4/000011.sst
+read-at(70, 451): checkpoints/checkpoint4/000011.sst
 read-at(43, 27): checkpoints/checkpoint4/000011.sst
 read-at(0, 43): checkpoints/checkpoint4/000011.sst
 h 11
 i i
 k k
 open: checkpoints/checkpoint4/000014.sst
-read-at(636, 53): checkpoints/checkpoint4/000014.sst
-read-at(599, 37): checkpoints/checkpoint4/000014.sst
-read-at(53, 546): checkpoints/checkpoint4/000014.sst
+read-at(541, 53): checkpoints/checkpoint4/000014.sst
+read-at(504, 37): checkpoints/checkpoint4/000014.sst
+read-at(53, 451): checkpoints/checkpoint4/000014.sst
 read-at(26, 27): checkpoints/checkpoint4/000014.sst
 read-at(0, 26): checkpoints/checkpoint4/000014.sst
 z z
@@ -627,11 +579,10 @@ list db
 000010.sst
 000011.sst
 000014.sst
-CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000015.016
+marker.format-version.000004.017
 marker.manifest.000001.MANIFEST-000001
 
 
@@ -646,9 +597,9 @@ close: checkpoints
 open-dir: checkpoints/checkpoint5
 link: db/OPTIONS-000003 -> checkpoints/checkpoint5/OPTIONS-000003
 open-dir: checkpoints/checkpoint5
-create: checkpoints/checkpoint5/marker.format-version.000001.016
-sync-data: checkpoints/checkpoint5/marker.format-version.000001.016
-close: checkpoints/checkpoint5/marker.format-version.000001.016
+create: checkpoints/checkpoint5/marker.format-version.000001.017
+sync-data: checkpoints/checkpoint5/marker.format-version.000001.017
+close: checkpoints/checkpoint5/marker.format-version.000001.017
 sync: checkpoints/checkpoint5
 close: checkpoints/checkpoint5
 link: db/000010.sst -> checkpoints/checkpoint5/000010.sst
@@ -676,8 +627,15 @@ close: checkpoints/checkpoint5
 open checkpoints/checkpoint5
 ----
 mkdir-all: checkpoints/checkpoint5 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint5
+close: checkpoints/checkpoint5
 open-dir: checkpoints/checkpoint5
 lock: checkpoints/checkpoint5/LOCK
+open-dir: checkpoints/checkpoint5
+open-dir: checkpoints/checkpoint5
 open-dir: checkpoints/checkpoint5
 open-dir: checkpoints/checkpoint5
 open: checkpoints/checkpoint5/MANIFEST-000001
@@ -715,13 +673,13 @@ print-backing checkpoints/checkpoint5
 # sstable 12 is gone.
 lsm checkpoints/checkpoint5
 ----
-0.0:
+L0.0:
   000017:[h#18,SET-h#18,SET]
-6:
-  000013:[d#0,SET-g#0,SET]
-  000015:[i#19,SET-i#19,SET]
-  000016:[k#19,SET-k#19,SET]
-  000014:[z#20,SET-z#20,SET]
+L6:
+  000013(000010):[d#0,SET-g#0,SET]
+  000015(000011):[i#20,SET-i#20,SET]
+  000016(000011):[k#20,SET-k#20,SET]
+  000014:[z#22,SET-z#22,SET]
 
 close checkpoints/checkpoint5
 ----
@@ -737,9 +695,9 @@ close: checkpoints
 open-dir: checkpoints/checkpoint6
 link: db/OPTIONS-000003 -> checkpoints/checkpoint6/OPTIONS-000003
 open-dir: checkpoints/checkpoint6
-create: checkpoints/checkpoint6/marker.format-version.000001.016
-sync-data: checkpoints/checkpoint6/marker.format-version.000001.016
-close: checkpoints/checkpoint6/marker.format-version.000001.016
+create: checkpoints/checkpoint6/marker.format-version.000001.017
+sync-data: checkpoints/checkpoint6/marker.format-version.000001.017
+close: checkpoints/checkpoint6/marker.format-version.000001.017
 sync: checkpoints/checkpoint6
 close: checkpoints/checkpoint6
 link: db/000011.sst -> checkpoints/checkpoint6/000011.sst
@@ -766,8 +724,15 @@ close: checkpoints/checkpoint6
 open checkpoints/checkpoint6
 ----
 mkdir-all: checkpoints/checkpoint6 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint6
+close: checkpoints/checkpoint6
 open-dir: checkpoints/checkpoint6
 lock: checkpoints/checkpoint6/LOCK
+open-dir: checkpoints/checkpoint6
+open-dir: checkpoints/checkpoint6
 open-dir: checkpoints/checkpoint6
 open-dir: checkpoints/checkpoint6
 open: checkpoints/checkpoint6/MANIFEST-000001
@@ -803,9 +768,9 @@ print-backing checkpoints/checkpoint6
 
 lsm checkpoints/checkpoint6
 ----
-0.0:
+L0.0:
   000017:[h#18,SET-h#18,SET]
-6:
-  000015:[i#19,SET-i#19,SET]
-  000016:[k#19,SET-k#19,SET]
-  000014:[z#20,SET-z#20,SET]
+L6:
+  000015(000011):[i#20,SET-i#20,SET]
+  000016(000011):[k#20,SET-k#20,SET]
+  000014:[z#22,SET-z#22,SET]

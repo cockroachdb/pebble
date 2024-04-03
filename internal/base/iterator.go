@@ -108,12 +108,12 @@ type InternalIterator interface {
 	// that key is greater than or equal to the lower bound.
 	//
 	// The prefix argument is used by some InternalIterator implementations (e.g.
-	// sstable.Reader) to avoid expensive operations. A user-defined Split
-	// function must be supplied to the Comparer for the DB. The supplied prefix
-	// will be the prefix of the given key returned by that Split function. If
-	// the iterator is able to determine that no key with the prefix exists, it
-	// can return (nil,nilv). Unlike SeekGE, this is not an indication that
-	// iteration is exhausted.
+	// sstable.Reader) to avoid expensive operations. This operation is only
+	// useful when a user-defined Split function is supplied to the Comparer for
+	// the DB. The supplied prefix will be the prefix of the given key returned by
+	// that Split function. If the iterator is able to determine that no key with
+	// the prefix exists, it can return (nil,nilv). Unlike SeekGE, this is not an
+	// indication that iteration is exhausted.
 	//
 	// Note that the iterator may return keys not matching the prefix. It is up
 	// to the caller to check if the prefix matches.
@@ -191,8 +191,10 @@ type InternalIterator interface {
 
 	// Close closes the iterator and returns any accumulated error. Exhausting
 	// all the key/value pairs in a table is not considered to be an error.
-	// It is valid to call Close multiple times. Other methods should not be
-	// called after the iterator has been closed.
+	//
+	// Once Close is called, the iterator should not be used again. Specific
+	// implementations may support multiple calls to Close (but no other calls
+	// after the first Close).
 	Close() error
 
 	// SetBounds sets the lower and upper bounds for the iterator. Note that the
@@ -210,6 +212,16 @@ type InternalIterator interface {
 	SetContext(ctx context.Context)
 
 	fmt.Stringer
+}
+
+// TopLevelIterator extends InternalIterator to include an additional absolute
+// positioning method, SeekPrefixGEStrict.
+type TopLevelIterator interface {
+	InternalIterator
+
+	// SeekPrefixGEStrict extends InternalIterator.SeekPrefixGE with a guarantee
+	// that the iterator only returns keys matching the prefix.
+	SeekPrefixGEStrict(prefix, key []byte, flags SeekGEFlags) (*InternalKey, LazyValue)
 }
 
 // SeekGEFlags holds flags that may configure the behavior of a forward seek.

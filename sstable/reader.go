@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 	"slices"
@@ -27,7 +28,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 )
 
-var errCorruptIndexEntry = base.CorruptionErrorf("pebble/table: corrupt index entry")
 var errReaderClosed = errors.New("pebble/table: reader is closed")
 
 // decodeBlockHandle returns the block handle encoded at the start of src, as
@@ -108,6 +108,7 @@ func (c Comparers) readerApply(r *Reader) {
 	}
 	if comparer, ok := c[r.Properties.ComparerName]; ok {
 		r.Compare = comparer.Compare
+		r.Equal = comparer.Equal
 		r.FormatKey = comparer.FormatKey
 		r.Split = comparer.Split
 	}
@@ -142,7 +143,7 @@ func (c *cacheOpts) readerApply(r *Reader) {
 	if r.cacheID == 0 {
 		r.cacheID = c.cacheID
 	}
-	if r.fileNum.FileNum() == 0 {
+	if r.fileNum == 0 {
 		r.fileNum = c.fileNum
 	}
 }
@@ -151,9 +152,58 @@ func (c *cacheOpts) writerApply(w *Writer) {
 	if w.cacheID == 0 {
 		w.cacheID = c.cacheID
 	}
-	if w.fileNum.FileNum() == 0 {
+	if w.fileNum == 0 {
 		w.fileNum = c.fileNum
 	}
+}
+
+// SyntheticSuffix will replace every suffix of every key surfaced during block
+// iteration. A synthetic suffix can be used if:
+//  1. no two keys in the sst share the same prefix; and
+//  2. pebble.Compare(prefix + replacementSuffix, prefix + originalSuffix) < 0,
+//     for all keys in the backing sst which have a suffix (i.e. originalSuffix
+//     is not empty).
+type SyntheticSuffix []byte
+
+// IsSet returns true if the synthetic suffix is not enpty.
+func (ss SyntheticSuffix) IsSet() bool {
+	return len(ss) > 0
+}
+
+// SyntheticPrefix represents a byte slice that is implicitly prepended to every
+// key in a file being read or accessed by a reader.  Note that the table is
+// assumed to contain "prefix-less" keys that become full keys when prepended
+// with the synthetic prefix. The table's bloom filters are constructed only on
+// the "prefix-less" keys in the table, but interactions with the file including
+// seeks and reads, will all behave as if the file had been constructed from
+// keys that did include the prefix. Note that all Compare operations may act on
+// a prefix-less key as the synthetic prefix will never modify key metadata
+// stored in the key suffix.
+//
+// NB: Since this transformation currently only applies to point keys, a block
+// with range keys cannot be iterated over with a synthetic prefix.
+type SyntheticPrefix []byte
+
+// IsSet returns true if the synthetic prefix is not enpty.
+func (sp SyntheticPrefix) IsSet() bool {
+	return len(sp) > 0
+}
+
+// Apply prepends the synthetic prefix to a key.
+func (sp SyntheticPrefix) Apply(key []byte) []byte {
+	res := make([]byte, 0, len(sp)+len(key))
+	res = append(res, sp...)
+	res = append(res, key...)
+	return res
+}
+
+// Invert removes the synthetic prefix from a key.
+func (sp SyntheticPrefix) Invert(key []byte) []byte {
+	res, ok := bytes.CutPrefix(key, sp)
+	if !ok {
+		panic(fmt.Sprintf("unexpected prefix: %s", key))
+	}
+	return res
 }
 
 // rawTombstonesOpt is a Reader open option for specifying that range
@@ -175,32 +225,6 @@ func init() {
 	private.SSTableRawTombstonesOpt = rawTombstonesOpt{}
 }
 
-// CommonReader abstracts functionality over a Reader or a VirtualReader. This
-// can be used by code which doesn't care to distinguish between a reader and a
-// virtual reader.
-type CommonReader interface {
-	NewRawRangeKeyIter() (keyspan.FragmentIterator, error)
-	NewRawRangeDelIter() (keyspan.FragmentIterator, error)
-	NewIterWithBlockPropertyFiltersAndContextEtc(
-		ctx context.Context, lower, upper []byte,
-		filterer *BlockPropertiesFilterer,
-		hideObsoletePoints, useFilterBlock bool,
-		stats *base.InternalIteratorStats,
-		categoryAndQoS CategoryAndQoS,
-		statsCollector *CategoryStatsCollector,
-		rp ReaderProvider,
-	) (Iterator, error)
-	NewCompactionIter(
-		bytesIterated *uint64,
-		categoryAndQoS CategoryAndQoS,
-		statsCollector *CategoryStatsCollector,
-		rp ReaderProvider,
-		bufferPool *BufferPool,
-	) (Iterator, error)
-	EstimateDiskUsage(start, end []byte) (uint64, error)
-	CommonProperties() *CommonProperties
-}
-
 // Reader is a table reader.
 type Reader struct {
 	readable          objstorage.Readable
@@ -218,6 +242,7 @@ type Reader struct {
 	footerBH          BlockHandle
 	opts              ReaderOptions
 	Compare           Compare
+	Equal             Equal
 	FormatKey         base.FormatKey
 	Split             Split
 	tableFilter       *tableFilterReader
@@ -237,6 +262,8 @@ type Reader struct {
 	metaBufferPool      BufferPool
 	metaBufferPoolAlloc [3]allocedBuffer
 }
+
+var _ CommonReader = (*Reader)(nil)
 
 // Close implements DB.Close, as documented in the pebble package.
 func (r *Reader) Close() error {
@@ -259,6 +286,7 @@ func (r *Reader) Close() error {
 // table. If an error occurs, NewIterWithBlockPropertyFilters cleans up after
 // itself and returns a nil iterator.
 func (r *Reader) NewIterWithBlockPropertyFilters(
+	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	useFilterBlock bool,
@@ -268,30 +296,31 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.newIterWithBlockPropertyFiltersAndContext(
-		context.Background(), lower, upper, filterer, false, useFilterBlock, stats,
-		categoryAndQoS, statsCollector, rp, nil)
+		context.Background(), transforms, lower, upper, filterer, useFilterBlock,
+		stats, categoryAndQoS, statsCollector, rp, nil)
 }
 
 // NewIterWithBlockPropertyFiltersAndContextEtc is similar to
 // NewIterWithBlockPropertyFilters and additionally accepts a context for
 // tracing.
 //
-// If hideObsoletePoints, the callee assumes that filterer already includes
-// obsoleteKeyBlockPropertyFilter. The caller can satisfy this contract by
-// first calling TryAddBlockPropertyFilterForHideObsoletePoints.
+// If transform.HideObsoletePoints is set, the callee assumes that filterer
+// already includes obsoleteKeyBlockPropertyFilter. The caller can satisfy this
+// contract by first calling TryAddBlockPropertyFilterForHideObsoletePoints.
 func (r *Reader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	ctx context.Context,
+	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	hideObsoletePoints, useFilterBlock bool,
+	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.newIterWithBlockPropertyFiltersAndContext(
-		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats, categoryAndQoS,
-		statsCollector, rp, nil)
+		ctx, transforms, lower, upper, filterer, useFilterBlock,
+		stats, categoryAndQoS, statsCollector, rp, nil)
 }
 
 // TryAddBlockPropertyFilterForHideObsoletePoints is expected to be called
@@ -312,23 +341,23 @@ func (r *Reader) TryAddBlockPropertyFilterForHideObsoletePoints(
 
 func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	ctx context.Context,
+	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	hideObsoletePoints bool,
 	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
-	v *virtualState,
+	vState *virtualState,
 ) (Iterator, error) {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats,
-			categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+		err := i.init(ctx, r, vState, transforms, lower, upper, filterer, useFilterBlock,
+			stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
 		if err != nil {
 			return nil, err
 		}
@@ -336,8 +365,8 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats,
-		categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+	err := i.init(ctx, r, vState, transforms, lower, upper, filterer, useFilterBlock,
+		stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
 	if err != nil {
 		return nil, err
 	}
@@ -348,40 +377,44 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 // occurs, NewIter cleans up after itself and returns a nil iterator. NewIter
 // must only be used when the Reader is guaranteed to outlive any LazyValues
 // returned from the iter.
-func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
+func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterator, error) {
 	return r.NewIterWithBlockPropertyFilters(
-		lower, upper, nil, true /* useFilterBlock */, nil, /* stats */
-		CategoryAndQoS{}, nil /*statsCollector */, TrivialReaderProvider{Reader: r})
+		transforms, lower, upper, nil, true, /* useFilterBlock */
+		nil /* stats */, CategoryAndQoS{}, nil /* statsCollector */, TrivialReaderProvider{Reader: r})
 }
 
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
 // the number of bytes iterated. If an error occurs, NewCompactionIter cleans up
 // after itself and returns a nil iterator.
 func (r *Reader) NewCompactionIter(
+	transforms IterTransforms,
 	bytesIterated *uint64,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *BufferPool,
 ) (Iterator, error) {
-	return r.newCompactionIter(bytesIterated, categoryAndQoS, statsCollector, rp, nil, bufferPool)
+	return r.newCompactionIter(transforms, bytesIterated, categoryAndQoS, statsCollector, rp, nil, bufferPool)
 }
 
 func (r *Reader) newCompactionIter(
+	transforms IterTransforms,
 	bytesIterated *uint64,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
-	v *virtualState,
+	vState *virtualState,
 	bufferPool *BufferPool,
 ) (Iterator, error) {
+	if vState != nil && vState.isSharedIngested {
+		transforms.HideObsoletePoints = true
+	}
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
 		err := i.init(
 			context.Background(),
-			r, v, nil /* lower */, nil /* upper */, nil,
-			false /* useFilter */, v != nil && v.isForeign, /* hideObsoletePoints */
-			nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
+			r, vState, transforms, nil /* lower */, nil /* upper */, nil,
+			false /* useFilter */, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 		)
 		if err != nil {
 			return nil, err
@@ -394,9 +427,8 @@ func (r *Reader) newCompactionIter(
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
-		context.Background(), r, v, nil /* lower */, nil, /* upper */
-		nil, false /* useFilter */, v != nil && v.isForeign, /* hideObsoletePoints */
-		nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
+		context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
+		nil, false /* useFilter */, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 	)
 	if err != nil {
 		return nil, err
@@ -414,16 +446,26 @@ func (r *Reader) newCompactionIter(
 //
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
-func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
+func (r *Reader) NewRawRangeDelIter(transforms IterTransforms) (keyspan.FragmentIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
+	}
+	if transforms.SyntheticSuffix.IsSet() {
+		return nil, base.AssertionFailedf("synthetic suffix not supported with range del iterator")
+	}
+	if transforms.SyntheticPrefix.IsSet() {
+		return nil, base.AssertionFailedf("synthetic prefix not supported with range del iterator")
 	}
 	h, err := r.readRangeDel(nil /* stats */, nil /* iterStats */)
 	if err != nil {
 		return nil, err
 	}
 	i := &fragmentBlockIter{elideSameSeqnum: true}
-	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum, false); err != nil {
+	// It's okay for hideObsoletePoints to be false here, even for shared ingested
+	// sstables. This is because rangedels do not apply to points in the same
+	// sstable at the same sequence number anyway, so exposing obsolete rangedels
+	// is harmless.
+	if err := i.blockIter.initHandle(r.Compare, r.Split, h, transforms); err != nil {
 		return nil, err
 	}
 	return i, nil
@@ -435,16 +477,23 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 //
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
-func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
+func (r *Reader) NewRawRangeKeyIter(transforms IterTransforms) (keyspan.FragmentIterator, error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
+	}
+	if transforms.SyntheticSuffix.IsSet() {
+		return nil, base.AssertionFailedf("synthetic suffix not supported with range key iterator")
+	}
+	if transforms.SyntheticPrefix.IsSet() {
+		return nil, base.AssertionFailedf("synthetic prefix not supported with range key iterator")
 	}
 	h, err := r.readRangeKey(nil /* stats */, nil /* iterStats */)
 	if err != nil {
 		return nil, err
 	}
 	i := rangeKeyFragmentBlockIterPool.Get().(*rangeKeyFragmentBlockIter)
-	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum, false); err != nil {
+
+	if err := i.blockIter.initHandle(r.Compare, r.Split, h, transforms); err != nil {
 		return nil, err
 	}
 	return i, nil
@@ -490,7 +539,7 @@ func (r *Reader) readRangeKey(
 }
 
 func checkChecksum(
-	checksumType ChecksumType, b []byte, bh BlockHandle, fileNum base.FileNum,
+	checksumType ChecksumType, b []byte, bh BlockHandle, fileNum base.DiskFileNum,
 ) error {
 	expectedChecksum := binary.LittleEndian.Uint32(b[bh.Length+1:])
 	var computedChecksum uint32
@@ -506,7 +555,7 @@ func checkChecksum(
 	if expectedChecksum != computedChecksum {
 		return base.CorruptionErrorf(
 			"pebble/table: invalid table %s (checksum mismatch at %d/%d)",
-			errors.Safe(fileNum), errors.Safe(bh.Offset), errors.Safe(bh.Length))
+			fileNum, errors.Safe(bh.Offset), errors.Safe(bh.Length))
 	}
 	return nil
 }
@@ -541,6 +590,19 @@ func (b cacheValueOrBuf) truncate(n int) {
 	}
 }
 
+// DeterministicReadBlockDurationForTesting is for tests that want a
+// deterministic value of the time to read a block (that is not in the cache).
+// The return value is a function that must be called before the test exits.
+func DeterministicReadBlockDurationForTesting() func() {
+	drbdForTesting := deterministicReadBlockDurationForTesting
+	deterministicReadBlockDurationForTesting = true
+	return func() {
+		deterministicReadBlockDurationForTesting = drbdForTesting
+	}
+}
+
+var deterministicReadBlockDurationForTesting = false
+
 func (r *Reader) readBlock(
 	ctx context.Context,
 	bh BlockHandle,
@@ -560,7 +622,7 @@ func (r *Reader) readBlock(
 			stats.BlockBytesInCache += bh.Length
 		}
 		if iterStats != nil {
-			iterStats.reportStats(bh.Length, bh.Length)
+			iterStats.reportStats(bh.Length, bh.Length, 0)
 		}
 		// This block is already in the cache; return a handle to existing vlaue
 		// in the cache.
@@ -589,8 +651,8 @@ func (r *Reader) readBlock(
 	readDuration := time.Since(readStartTime)
 	// TODO(sumeer): should the threshold be configurable.
 	const slowReadTracingThreshold = 5 * time.Millisecond
-	// The invariants.Enabled path is for deterministic testing.
-	if invariants.Enabled {
+	// For deterministic testing.
+	if deterministicReadBlockDurationForTesting {
 		readDuration = slowReadTracingThreshold
 	}
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
@@ -606,7 +668,7 @@ func (r *Reader) readBlock(
 		compressed.release()
 		return bufferHandle{}, err
 	}
-	if err := checkChecksum(r.checksumType, compressed.get(), bh, r.fileNum.FileNum()); err != nil {
+	if err := checkChecksum(r.checksumType, compressed.get(), bh, r.fileNum); err != nil {
 		compressed.release()
 		return bufferHandle{}, err
 	}
@@ -630,7 +692,7 @@ func (r *Reader) readBlock(
 		} else {
 			decompressed = cacheValueOrBuf{v: cache.Alloc(decodedLen)}
 		}
-		if _, err := decompressInto(typ, compressed.get()[prefixLen:], decompressed.get()); err != nil {
+		if err := decompressInto(typ, compressed.get()[prefixLen:], decompressed.get()); err != nil {
 			compressed.release()
 			return bufferHandle{}, err
 		}
@@ -661,7 +723,7 @@ func (r *Reader) readBlock(
 		stats.BlockBytes += bh.Length
 	}
 	if iterStats != nil {
-		iterStats.reportStats(bh.Length, 0)
+		iterStats.reportStats(bh.Length, 0, readDuration)
 	}
 	if decompressed.buf.Valid() {
 		return bufferHandle{b: decompressed.buf}, nil
@@ -676,7 +738,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// tombstones. We need properly fragmented and sorted range tombstones in
 	// order to serve from them directly.
 	iter := &blockIter{}
-	if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum, false); err != nil {
+	if err := iter.init(r.Compare, r.Split, b, NoTransforms); err != nil {
 		return nil, err
 	}
 	var tombstones []keyspan.Span
@@ -856,11 +918,11 @@ func (r *Reader) Layout() (*Layout, error) {
 
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.indexBH)
-		iter, _ := newBlockIter(r.Compare, indexH.Get())
+		iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		for key, value := iter.First(); key != nil; key, value = iter.Next() {
 			dataBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 			if err != nil {
-				return nil, errCorruptIndexEntry
+				return nil, errCorruptIndexEntry(err)
 			}
 			if len(dataBH.Props) > 0 {
 				alloc, dataBH.Props = alloc.Copy(dataBH.Props)
@@ -869,12 +931,12 @@ func (r *Reader) Layout() (*Layout, error) {
 		}
 	} else {
 		l.TopIndex = r.indexBH
-		topIter, _ := newBlockIter(r.Compare, indexH.Get())
+		topIter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		iter := &blockIter{}
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
 			indexBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 			if err != nil {
-				return nil, errCorruptIndexEntry
+				return nil, errCorruptIndexEntry(err)
 			}
 			l.Index = append(l.Index, indexBH.BlockHandle)
 
@@ -883,8 +945,8 @@ func (r *Reader) Layout() (*Layout, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := iter.init(r.Compare, subIndex.Get(), 0, /* globalSeqNum */
-				false /* hideObsoletePoints */); err != nil {
+			// TODO(msbutler): figure out how to pass virtualState to layout call.
+			if err := iter.init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
 				return nil, err
 			}
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
@@ -893,7 +955,7 @@ func (r *Reader) Layout() (*Layout, error) {
 					alloc, dataBH.Props = alloc.Copy(dataBH.Props)
 				}
 				if err != nil {
-					return nil, errCorruptIndexEntry
+					return nil, errCorruptIndexEntry(err)
 				}
 				l.Data = append(l.Data, dataBH)
 			}
@@ -1019,14 +1081,14 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	// to the same blockIter over the single index in the unpartitioned case.
 	var startIdxIter, endIdxIter *blockIter
 	if r.Properties.IndexPartitions == 0 {
-		iter, err := newBlockIter(r.Compare, indexH.Get())
+		iter, err := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		if err != nil {
 			return 0, err
 		}
 		startIdxIter = iter
 		endIdxIter = iter
 	} else {
-		topIter, err := newBlockIter(r.Compare, indexH.Get())
+		topIter, err := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		if err != nil {
 			return 0, err
 		}
@@ -1038,7 +1100,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		}
 		startIdxBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
 		if err != nil {
-			return 0, errCorruptIndexEntry
+			return 0, errCorruptIndexEntry(err)
 		}
 		startIdxBlock, err := r.readBlock(context.Background(), startIdxBH.BlockHandle,
 			nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
@@ -1046,7 +1108,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, err
 		}
 		defer startIdxBlock.Release()
-		startIdxIter, err = newBlockIter(r.Compare, startIdxBlock.Get())
+		startIdxIter, err = newBlockIter(r.Compare, r.Split, startIdxBlock.Get(), NoTransforms)
 		if err != nil {
 			return 0, err
 		}
@@ -1059,7 +1121,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		} else {
 			endIdxBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
 			if err != nil {
-				return 0, errCorruptIndexEntry
+				return 0, errCorruptIndexEntry(err)
 			}
 			endIdxBlock, err := r.readBlock(context.Background(),
 				endIdxBH.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
@@ -1067,7 +1129,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				return 0, err
 			}
 			defer endIdxBlock.Release()
-			endIdxIter, err = newBlockIter(r.Compare, endIdxBlock.Get())
+			endIdxIter, err = newBlockIter(r.Compare, r.Split, endIdxBlock.Get(), NoTransforms)
 			if err != nil {
 				return 0, err
 			}
@@ -1083,7 +1145,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	}
 	startBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
 	if err != nil {
-		return 0, errCorruptIndexEntry
+		return 0, errCorruptIndexEntry(err)
 	}
 
 	includeInterpolatedValueBlocksSize := func(dataBlockSize uint64) uint64 {
@@ -1114,7 +1176,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	}
 	endBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
 	if err != nil {
-		return 0, errCorruptIndexEntry
+		return 0, errCorruptIndexEntry(err)
 	}
 	return includeInterpolatedValueBlocksSize(
 		endBH.Offset + endBH.Length + blockTrailerLen - startBH.Offset), nil
@@ -1178,6 +1240,7 @@ func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
 		r.Compare = o.Comparer.Compare
+		r.Equal = o.Comparer.Equal
 		r.FormatKey = o.Comparer.FormatKey
 		r.Split = o.Comparer.Split
 	}
@@ -1265,4 +1328,12 @@ func (s *simpleReadable) Size() int64 {
 // NewReaddHandle is part of the objstorage.Readable interface.
 func (s *simpleReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
 	return &s.rh
+}
+
+func errCorruptIndexEntry(err error) error {
+	err = base.CorruptionErrorf("pebble/table: corrupt index entry: %v", err)
+	if invariants.Enabled {
+		panic(err)
+	}
+	return err
 }

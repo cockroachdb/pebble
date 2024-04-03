@@ -141,7 +141,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			return format(td, meta)
 
 		case "scan":
-			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			origIter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 			if err != nil {
 				return err.Error()
 			}
@@ -167,7 +167,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			return buf.String()
 
 		case "scan-range-del":
-			iter, err := r.NewRawRangeDelIter()
+			iter, err := r.NewRawRangeDelIter(NoTransforms)
 			if err != nil {
 				return err.Error()
 			}
@@ -177,13 +177,17 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for s := iter.First(); s != nil; s = iter.Next() {
+			s, err := iter.First()
+			for ; s != nil; s, err = iter.Next() {
 				fmt.Fprintf(&buf, "%s\n", s)
+			}
+			if err != nil {
+				return err.Error()
 			}
 			return buf.String()
 
 		case "scan-range-key":
-			iter, err := r.NewRawRangeKeyIter()
+			iter, err := r.NewRawRangeKeyIter(NoTransforms)
 			if err != nil {
 				return err.Error()
 			}
@@ -193,8 +197,12 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for s := iter.First(); s != nil; s = iter.Next() {
+			s, err := iter.First()
+			for ; s != nil; s, err = iter.Next() {
 				fmt.Fprintf(&buf, "%s\n", s)
+			}
+			if err != nil {
+				return err.Error()
 			}
 			return buf.String()
 
@@ -282,6 +290,10 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				inPlaceValueBound.Lower = []byte(l)
 				inPlaceValueBound.Upper = []byte(u)
 			}
+			var disableValueBlocks bool
+			if td.HasArg("disable-value-blocks") {
+				td.ScanArgs(t, "disable-value-blocks", &disableValueBlocks)
+			}
 			meta, r, err = runBuildCmd(td, &WriterOptions{
 				BlockSize:                 blockSize,
 				Comparer:                  testkeys.Comparer,
@@ -289,6 +301,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				Parallelism:               parallelism,
 				RequiredInPlaceValueBound: inPlaceValueBound,
 				ShortAttributeExtractor:   attributeExtractor,
+				DisableValueBlocks:        disableValueBlocks,
 			}, 0)
 			if err != nil {
 				return err.Error()
@@ -308,7 +321,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 
 		case "scan-raw":
 			// Raw scan does not fetch from value blocks.
-			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			origIter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 			if err != nil {
 				return err.Error()
 			}
@@ -347,7 +360,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			return buf.String()
 
 		case "scan":
-			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			origIter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 			if err != nil {
 				return err.Error()
 			}
@@ -360,7 +373,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			return buf.String()
 
 		case "scan-cloned-lazy-values":
-			iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 			if err != nil {
 				return err.Error()
 			}
@@ -578,7 +591,7 @@ func TestWriterClearCache(t *testing.T) {
 		Comparer:    testkeys.Comparer,
 		TableFormat: TableFormatPebblev3,
 	}
-	cacheOpts := &cacheOpts{cacheID: 1, fileNum: base.FileNum(1).DiskFileNum()}
+	cacheOpts := &cacheOpts{cacheID: 1, fileNum: 1}
 	invalidData := func() *cache.Value {
 		invalid := []byte("invalid data")
 		v := cache.Alloc(len(invalid))
@@ -892,7 +905,7 @@ func TestWriterRace(t *testing.T) {
 			r, err := NewMemReader(f.Data(), readerOpts)
 			require.NoError(t, err)
 			defer r.Close()
-			it, err := r.NewIter(nil, nil)
+			it, err := r.NewIter(NoTransforms, nil, nil)
 			require.NoError(t, err)
 			defer it.Close()
 			ki := 0

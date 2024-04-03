@@ -7,35 +7,36 @@ package metamorphic
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 	"golang.org/x/exp/rand"
 )
 
 const (
-	// The metamorphic test exercises range keys, so we cannot use an older
-	// FormatMajorVersion than pebble.FormatRangeKeys.
-	minimumFormatMajorVersion = pebble.FormatRangeKeys
+	minimumFormatMajorVersion = pebble.FormatMinSupported
 	// The format major version to use in the default options configurations. We
-	// default to the last format major version of Cockroach 22.2 so we exercise
-	// the runtime version ratcheting that a cluster upgrading to 23.1 would
-	// experience. The randomized options may still use format major versions
-	// that are less than defaultFormatMajorVersion but are at least
-	// minimumFormatMajorVersion.
-	defaultFormatMajorVersion = pebble.FormatPrePebblev1Marked
+	// default to the minimum supported format so we exercise the runtime version
+	// ratcheting that a cluster upgrading would experience. The randomized
+	// options may still use format major versions that are less than
+	// defaultFormatMajorVersion but are at least minimumFormatMajorVersion.
+	defaultFormatMajorVersion = pebble.FormatMinSupported
 	// newestFormatMajorVersionToTest is the most recent format major version
 	// the metamorphic tests should use. This may be greater than
 	// pebble.FormatNewest when some format major versions are marked as
@@ -55,6 +56,7 @@ func parseOptions(
 				return true
 			case "TestOptions.strictfs":
 				opts.strictFS = true
+				opts.Opts.FS = vfs.NewStrictMem()
 				return true
 			case "TestOptions.ingest_using_apply":
 				opts.ingestUsingApply = true
@@ -67,6 +69,7 @@ func parseOptions(
 				return true
 			case "TestOptions.use_disk":
 				opts.useDisk = true
+				opts.Opts.FS = vfs.Default
 				return true
 			case "TestOptions.initial_state_desc":
 				opts.initialStateDesc = value
@@ -79,7 +82,7 @@ func parseOptions(
 				if err != nil {
 					panic(err)
 				}
-				opts.threads = v
+				opts.Threads = v
 				return true
 			case "TestOptions.disable_block_property_collector":
 				v, err := strconv.ParseBool(value)
@@ -95,17 +98,22 @@ func parseOptions(
 				opts.enableValueBlocks = true
 				opts.Opts.Experimental.EnableValueBlocks = func() bool { return true }
 				return true
+			case "TestOptions.disable_value_blocks_for_ingest_sstables":
+				opts.disableValueBlocksForIngestSSTables = true
+				return true
 			case "TestOptions.async_apply_to_db":
 				opts.asyncApplyToDB = true
 				return true
 			case "TestOptions.shared_storage_enabled":
 				opts.sharedStorageEnabled = true
-				opts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-					"": remote.NewInMem(),
-				})
+				opts.sharedStorageFS = remote.NewInMem()
 				if opts.Opts.Experimental.CreateOnShared == remote.CreateOnSharedNone {
 					opts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 				}
+				return true
+			case "TestOptions.external_storage_enabled":
+				opts.externalStorageEnabled = true
+				opts.externalStorageFS = remote.NewInMem()
 				return true
 			case "TestOptions.secondary_cache_enabled":
 				opts.secondaryCacheEnabled = true
@@ -118,6 +126,27 @@ func parseOptions(
 				}
 				opts.seedEFOS = v
 				return true
+			case "TestOptions.io_latency_mean":
+				v, err := time.ParseDuration(value)
+				if err != nil {
+					panic(err)
+				}
+				opts.ioLatencyMean = v
+				return true
+			case "TestOptions.io_latency_probability":
+				v, err := strconv.ParseFloat(value, 64)
+				if err != nil {
+					panic(err)
+				}
+				opts.ioLatencyProbability = v
+				return true
+			case "TestOptions.io_latency_seed":
+				v, err := strconv.ParseInt(value, 10, 64)
+				if err != nil {
+					panic(err)
+				}
+				opts.ioLatencySeed = v
+				return true
 			case "TestOptions.ingest_split":
 				opts.ingestSplit = true
 				opts.Opts.Experimental.IngestSplit = func() bool {
@@ -127,12 +156,11 @@ func parseOptions(
 			case "TestOptions.use_shared_replicate":
 				opts.useSharedReplicate = true
 				return true
+			case "TestOptions.use_external_replicate":
+				opts.useExternalReplicate = true
+				return true
 			case "TestOptions.use_excise":
 				opts.useExcise = true
-				return true
-			case "TestOptions.efos_always_creates_iterators":
-				opts.efosAlwaysCreatesIters = true
-				opts.Opts.TestingAlwaysCreateEFOSIterators(true /* value */)
 				return true
 			default:
 				if customOptionParsers == nil {
@@ -150,6 +178,12 @@ func parseOptions(
 		},
 	}
 	err := opts.Opts.Parse(data, hooks)
+	// Ensure that the WAL failover FS agrees with the primary FS. They're
+	// separate options, but in the metamorphic tests we keep them in sync.
+	if opts.Opts.WALFailover != nil {
+		opts.Opts.WALFailover.Secondary.FS = opts.Opts.FS
+	}
+	opts.InitRemoteStorageFactory()
 	opts.Opts.EnsureDefaults()
 	return err
 }
@@ -177,8 +211,8 @@ func optionsToString(opts *TestOptions) string {
 	if opts.initialStateDesc != "" {
 		fmt.Fprintf(&buf, "  initial_state_desc=%s\n", opts.initialStateDesc)
 	}
-	if opts.threads != 0 {
-		fmt.Fprintf(&buf, "  threads=%d\n", opts.threads)
+	if opts.Threads != 0 {
+		fmt.Fprintf(&buf, "  threads=%d\n", opts.Threads)
 	}
 	if opts.disableBlockPropertyCollector {
 		fmt.Fprintf(&buf, "  disable_block_property_collector=%t\n", opts.disableBlockPropertyCollector)
@@ -186,11 +220,17 @@ func optionsToString(opts *TestOptions) string {
 	if opts.enableValueBlocks {
 		fmt.Fprintf(&buf, "  enable_value_blocks=%t\n", opts.enableValueBlocks)
 	}
+	if opts.disableValueBlocksForIngestSSTables {
+		fmt.Fprintf(&buf, "  disable_value_blocks_for_ingest_sstables=%t\n", opts.disableValueBlocksForIngestSSTables)
+	}
 	if opts.asyncApplyToDB {
 		fmt.Fprint(&buf, "  async_apply_to_db=true\n")
 	}
 	if opts.sharedStorageEnabled {
 		fmt.Fprint(&buf, "  shared_storage_enabled=true\n")
+	}
+	if opts.externalStorageEnabled {
+		fmt.Fprint(&buf, "  external_storage_enabled=true\n")
 	}
 	if opts.secondaryCacheEnabled {
 		fmt.Fprint(&buf, "  secondary_cache_enabled=true\n")
@@ -201,14 +241,19 @@ func optionsToString(opts *TestOptions) string {
 	if opts.ingestSplit {
 		fmt.Fprintf(&buf, "  ingest_split=%v\n", opts.ingestSplit)
 	}
+	if opts.ioLatencyProbability > 0 {
+		fmt.Fprintf(&buf, "  io_latency_mean=%s\n", opts.ioLatencyMean)
+		fmt.Fprintf(&buf, "  io_latency_probability=%.10f\n", opts.ioLatencyProbability)
+		fmt.Fprintf(&buf, "  io_latency_seed=%d\n", opts.ioLatencySeed)
+	}
 	if opts.useSharedReplicate {
 		fmt.Fprintf(&buf, "  use_shared_replicate=%v\n", opts.useSharedReplicate)
 	}
+	if opts.useExternalReplicate {
+		fmt.Fprintf(&buf, "  use_external_replicate=%v\n", opts.useExternalReplicate)
+	}
 	if opts.useExcise {
 		fmt.Fprintf(&buf, "  use_excise=%v\n", opts.useExcise)
-	}
-	if opts.efosAlwaysCreatesIters {
-		fmt.Fprintf(&buf, "  efos_always_creates_iterators=%v\n", opts.efosAlwaysCreatesIters)
 	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
@@ -223,13 +268,18 @@ func optionsToString(opts *TestOptions) string {
 
 func defaultTestOptions() *TestOptions {
 	return &TestOptions{
-		Opts:    defaultOptions(),
-		threads: 16,
+		Opts:        defaultOptions(),
+		Threads:     16,
+		RetryPolicy: NeverRetry,
 	}
 }
 
 func defaultOptions() *pebble.Options {
 	opts := &pebble.Options{
+		// Use an archive cleaner to ease post-mortem debugging.
+		Cleaner: base.ArchiveCleaner{},
+		// Always use our custom comparer which provides a Split method,
+		// splitting keys at the trailing '@'.
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: defaultFormatMajorVersion,
@@ -238,6 +288,30 @@ func defaultOptions() *pebble.Options {
 		}},
 		BlockPropertyCollectors: blockPropertyCollectorConstructors,
 	}
+
+	// We don't want to run the level checker every time because it can slow down
+	// downloads and background compactions too much.
+	//
+	// We aim to run it once every 500ms (on average). To do this with some
+	// randomization, each time we get a callback we see how much time passed
+	// since the last call and run the check with a proportional probability.
+	const meanTimeBetweenChecks = 500 * time.Millisecond
+	startTime := time.Now()
+	// lastCallTime stores the time of the last DebugCheck call, as the duration
+	// since startTime.
+	var lastCallTime atomic.Uint64
+	opts.DebugCheck = func(db *pebble.DB) error {
+		now := time.Since(startTime)
+		last := time.Duration(lastCallTime.Swap(uint64(now)))
+		// Run the check with probability equal to the time (as a fraction of
+		// meanTimeBetweenChecks) passed since the last time we had a chance, as a
+		// fraction of meanTimeBetweenChecks.
+		if rand.Float64() < float64(now-last)/float64(meanTimeBetweenChecks) {
+			return pebble.DebugCheckLevels(db)
+		}
+		return nil
+	}
+
 	return opts
 }
 
@@ -246,12 +320,22 @@ func defaultOptions() *pebble.Options {
 type TestOptions struct {
 	// Opts holds the *pebble.Options for the test.
 	Opts *pebble.Options
+	// Threads configures the parallelism of the test. Each thread will run in
+	// an independent goroutine and be responsible for executing operations
+	// against an independent set of objects. The outcome of any individual
+	// operation will still be deterministic, with the metamorphic test
+	// inserting synchronization where necessary.
+	Threads int
+	// RetryPolicy configures which errors should be retried.
+	RetryPolicy RetryPolicy
 	// CustomOptions holds custom test options that are defined outside of this
 	// package.
 	CustomOpts []CustomOption
-	useDisk    bool
-	strictFS   bool
-	threads    int
+
+	// internal
+
+	useDisk  bool
+	strictFS bool
 	// Use Batch.Apply rather than DB.Ingest.
 	ingestUsingApply bool
 	// Use Batch.DeleteSized rather than Batch.Delete.
@@ -269,12 +353,20 @@ type TestOptions struct {
 	disableBlockPropertyCollector bool
 	// Enable the use of value blocks.
 	enableValueBlocks bool
+	// Disables value blocks in the sstables written for ingest.
+	disableValueBlocksForIngestSSTables bool
 	// Use DB.ApplyNoSyncWait for applies that want to sync the WAL.
 	asyncApplyToDB bool
 	// Enable the use of shared storage.
 	sharedStorageEnabled bool
+	sharedStorageFS      remote.Storage
+	// Enable the use of shared storage for external file ingestion.
+	externalStorageEnabled bool
+	externalStorageFS      remote.Storage
 	// Enables the use of shared replication in TestOptions.
 	useSharedReplicate bool
+	// Enables the use of external replication in TestOptions.
+	useExternalReplicate bool
 	// Enable the secondary cache. Only effective if sharedStorageEnabled is
 	// also true.
 	secondaryCacheEnabled bool
@@ -283,6 +375,13 @@ type TestOptions struct {
 	// are actually created as EventuallyFileOnlySnapshots is deterministically
 	// derived from the seed and the operation index.
 	seedEFOS uint64
+	// If nonzero, enables the injection of random IO latency. The mechanics of
+	// a Pebble operation can be very timing dependent, so artificial latency
+	// can ensure a wide variety of mechanics are exercised. Additionally,
+	// exercising some mechanics such as WAL failover require IO latency.
+	ioLatencyProbability float64
+	ioLatencySeed        int64
+	ioLatencyMean        time.Duration
 	// Enables ingest splits. Saved here for serialization as Options does not
 	// serialize this.
 	ingestSplit bool
@@ -291,11 +390,20 @@ type TestOptions struct {
 	// excises. However !useExcise && !useSharedReplicate can be used to guarantee
 	// lack of excises.
 	useExcise bool
-	// Enables EFOS to always create iterators, even if a conflicting excise
-	// happens. Used to guarantee EFOS determinism when conflicting excises are
-	// in play. If false, EFOS determinism is maintained by having the DB do a
-	// flush after every new EFOS.
-	efosAlwaysCreatesIters bool
+}
+
+// InitRemoteStorageFactory initializes Opts.Experimental.RemoteStorage.
+func (testOpts *TestOptions) InitRemoteStorageFactory() {
+	if testOpts.sharedStorageEnabled || testOpts.externalStorageEnabled {
+		m := make(map[remote.Locator]remote.Storage)
+		if testOpts.sharedStorageEnabled {
+			m[""] = testOpts.sharedStorageFS
+		}
+		if testOpts.externalStorageEnabled {
+			m["external"] = testOpts.externalStorageFS
+		}
+		testOpts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(m)
+	}
 }
 
 // CustomOption defines a custom option that configures the behavior of an
@@ -437,11 +545,28 @@ func standardOptions() []*TestOptions {
 [Options]
   format_major_version=%s
 `, newestFormatMajorVersionToTest),
-		27: `
+		27: fmt.Sprintf(`
+[Options]
+  format_major_version=%s
 [TestOptions]
   shared_storage_enabled=true
   secondary_cache_enabled=true
-`,
+`, pebble.FormatMinForSharedObjects),
+		28: fmt.Sprintf(`
+[Options]
+  format_major_version=%s
+[TestOptions]
+  external_storage_enabled=true
+`, pebble.FormatSyntheticPrefixSuffix),
+		29: fmt.Sprintf(`
+[Options]
+  format_major_version=%s
+  max_concurrent_downloads=2
+[TestOptions]
+  shared_storage_enabled=true
+  external_storage_enabled=true
+  secondary_cache_enabled=false
+`, pebble.FormatSyntheticPrefixSuffix),
 	}
 
 	opts := make([]*TestOptions, len(stdOpts))
@@ -456,7 +581,9 @@ func standardOptions() []*TestOptions {
 	return opts
 }
 
-func randomOptions(
+// RandomOptions generates a random set of operations, drawing randomness from
+// rng.
+func RandomOptions(
 	rng *rand.Rand, customOptionParsers map[string]func(string) (CustomOption, bool),
 ) *TestOptions {
 	testOpts := defaultTestOptions()
@@ -506,11 +633,45 @@ func randomOptions(
 	opts.MaxConcurrentCompactions = func() int {
 		return maxConcurrentCompactions
 	}
+	maxConcurrentDownloads := rng.Intn(3) + 1 // 1-3
+	opts.MaxConcurrentDownloads = func() int {
+		return maxConcurrentDownloads
+	}
 	opts.MaxManifestFileSize = 1 << uint(rng.Intn(30)) // 1B  - 1GB
 	opts.MemTableSize = 2 << (10 + uint(rng.Intn(16))) // 2KB - 256MB
 	opts.MemTableStopWritesThreshold = 2 + rng.Intn(5) // 2 - 5
 	if rng.Intn(2) == 0 {
 		opts.WALDir = "data/wal"
+	}
+
+	// Half the time enable WAL failover.
+	if rng.Intn(2) == 0 {
+		// Use 10x longer durations when writing directly to FS; we don't want
+		// WAL failover to trigger excessively frequently.
+		referenceDur := time.Millisecond
+		if testOpts.useDisk {
+			referenceDur *= 10
+		}
+
+		scaleDuration := func(d time.Duration, minFactor, maxFactor float64) time.Duration {
+			return time.Duration(float64(d) * (minFactor + rng.Float64()*(maxFactor-minFactor)))
+		}
+		unhealthyThreshold := expRandDuration(rng, 3*referenceDur, time.Second)
+		healthyThreshold := expRandDuration(rng, 3*referenceDur, time.Second)
+		healthyInterval := scaleDuration(healthyThreshold, 1.0, 10.0) // Between 1-10x the healthy threshold
+		opts.WALFailover = &pebble.WALFailoverOptions{
+			Secondary: wal.Dir{FS: vfs.Default, Dirname: "data/wal_secondary"},
+			FailoverOptions: wal.FailoverOptions{
+				PrimaryDirProbeInterval:      scaleDuration(healthyThreshold, 0.10, 0.50), // Between 10-50% of the healthy threshold
+				HealthyProbeLatencyThreshold: healthyThreshold,
+				HealthyInterval:              healthyInterval,
+				UnhealthySamplingInterval:    scaleDuration(unhealthyThreshold, 0.10, 0.50), // Between 10-50% of the unhealthy threshold
+				UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) {
+					return unhealthyThreshold, true
+				},
+				ElevatedWriteStallThresholdLag: expRandDuration(rng, 5*referenceDur, 2*time.Second),
+			},
+		}
 	}
 	if rng.Intn(4) == 0 {
 		// Enable Writer parallelism for 25% of the random options. Setting
@@ -522,6 +683,23 @@ func randomOptions(
 	if rng.Intn(2) == 0 {
 		opts.Experimental.DisableIngestAsFlushable = func() bool { return true }
 	}
+
+	// We either use no multilevel compactions, multilevel compactions with the
+	// default (zero) additional propensity, or multilevel compactions with an
+	// additional propensity to encourage more multilevel compactions than we
+	// ohterwise would.
+	switch rng.Intn(3) {
+	case 0:
+		opts.Experimental.MultiLevelCompactionHeuristic = pebble.NoMultiLevel{}
+	case 1:
+		opts.Experimental.MultiLevelCompactionHeuristic = pebble.WriteAmpHeuristic{}
+	default:
+		opts.Experimental.MultiLevelCompactionHeuristic = pebble.WriteAmpHeuristic{
+			AddPropensity: rng.Float64() * float64(rng.Intn(3)), // [0,3.0)
+			AllowL0:       rng.Intn(4) == 1,                     // 25% of the time
+		}
+	}
+
 	var lopts pebble.LevelOptions
 	lopts.BlockRestartInterval = 1 + rng.Intn(64)  // 1 - 64
 	lopts.BlockSize = 1 << uint(rng.Intn(24))      // 1 - 16MB
@@ -545,11 +723,11 @@ func randomOptions(
 	// We use either no compression, snappy compression or zstd compression.
 	switch rng.Intn(3) {
 	case 0:
-		lopts.Compression = pebble.NoCompression
+		lopts.Compression = func() sstable.Compression { return pebble.NoCompression }
 	case 1:
-		lopts.Compression = pebble.ZstdCompression
+		lopts.Compression = func() sstable.Compression { return pebble.ZstdCompression }
 	default:
-		lopts.Compression = pebble.SnappyCompression
+		lopts.Compression = func() sstable.Compression { return pebble.SnappyCompression }
 	}
 	opts.Levels = []pebble.LevelOptions{lopts}
 
@@ -558,9 +736,27 @@ func randomOptions(
 	// sufficient.
 	testOpts.useDisk = false
 	testOpts.strictFS = rng.Intn(2) != 0 // Only relevant for MemFS.
-	testOpts.threads = rng.Intn(runtime.GOMAXPROCS(0)) + 1
+	// 50% of the time, enable IO latency injection.
+	if rng.Intn(2) == 0 {
+		// Note: we want ioLatencyProbability to be at least 1e-10, otherwise it
+		// might print as 0 when we stringify options.
+		testOpts.ioLatencyProbability = 1e-10 + 0.01*rng.Float64() // 0-1%
+		testOpts.ioLatencyMean = expRandDuration(rng, 3*time.Millisecond, time.Second)
+		testOpts.ioLatencySeed = rng.Int63()
+	}
+	testOpts.Threads = rng.Intn(runtime.GOMAXPROCS(0)) + 1
 	if testOpts.strictFS {
 		opts.DisableWAL = false
+		opts.FS = vfs.NewStrictMem()
+	} else if !testOpts.useDisk {
+		opts.FS = vfs.NewMem()
+	}
+	// Update the WALFailover's secondary to use the same FS. This isn't
+	// strictly necessary (the WALFailover could use a separate FS), but it
+	// ensures when we save a copy of the test state to disk, we include the
+	// secondary's WALs.
+	if opts.WALFailover != nil {
+		opts.WALFailover.Secondary.FS = opts.FS
 	}
 	testOpts.ingestUsingApply = rng.Intn(2) != 0
 	testOpts.deleteSized = rng.Intn(2) != 0
@@ -569,19 +765,19 @@ func randomOptions(
 	if testOpts.disableBlockPropertyCollector {
 		testOpts.Opts.BlockPropertyCollectors = nil
 	}
-	testOpts.enableValueBlocks = opts.FormatMajorVersion >= pebble.FormatSSTableValueBlocks &&
-		rng.Intn(2) != 0
+	testOpts.enableValueBlocks = rng.Intn(2) != 0
 	if testOpts.enableValueBlocks {
 		testOpts.Opts.Experimental.EnableValueBlocks = func() bool { return true }
 	}
+	testOpts.disableValueBlocksForIngestSSTables = rng.Intn(2) == 0
 	testOpts.asyncApplyToDB = rng.Intn(2) != 0
 	// 20% of time, enable shared storage.
 	if rng.Intn(5) == 0 {
 		testOpts.sharedStorageEnabled = true
-		inMemShared := remote.NewInMem()
-		testOpts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": inMemShared,
-		})
+		if testOpts.Opts.FormatMajorVersion < pebble.FormatMinForSharedObjects {
+			testOpts.Opts.FormatMajorVersion = pebble.FormatMinForSharedObjects
+		}
+		testOpts.sharedStorageFS = remote.NewInMem()
 		// If shared storage is enabled, pick between writing all files on shared
 		// vs. lower levels only, 50% of the time.
 		testOpts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
@@ -597,19 +793,32 @@ func randomOptions(
 		// 50% of the time, enable shared replication.
 		testOpts.useSharedReplicate = rng.Intn(2) == 0
 	}
+
+	// 50% of time, enable external storage.
+	if rng.Intn(2) == 0 {
+		testOpts.externalStorageEnabled = true
+		if testOpts.Opts.FormatMajorVersion < pebble.FormatSyntheticPrefixSuffix {
+			testOpts.Opts.FormatMajorVersion = pebble.FormatSyntheticPrefixSuffix
+		}
+		testOpts.externalStorageFS = remote.NewInMem()
+	}
+
 	testOpts.seedEFOS = rng.Uint64()
 	testOpts.ingestSplit = rng.Intn(2) == 0
 	opts.Experimental.IngestSplit = func() bool { return testOpts.ingestSplit }
 	testOpts.useExcise = rng.Intn(2) == 0
-	if testOpts.useExcise || testOpts.useSharedReplicate {
-		testOpts.efosAlwaysCreatesIters = rng.Intn(2) == 0
-		opts.TestingAlwaysCreateEFOSIterators(testOpts.efosAlwaysCreatesIters)
+	if testOpts.useExcise {
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatVirtualSSTables {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatVirtualSSTables
 		}
 	}
+	testOpts.InitRemoteStorageFactory()
 	testOpts.Opts.EnsureDefaults()
 	return testOpts
+}
+
+func expRandDuration(rng *rand.Rand, meanDur, maxDur time.Duration) time.Duration {
+	return min(maxDur, time.Duration(math.Round(rng.ExpFloat64()*float64(meanDur))))
 }
 
 func setupInitialState(dataDir string, testOpts *TestOptions) error {
@@ -635,35 +844,31 @@ func setupInitialState(dataDir string, testOpts *TestOptions) error {
 	// Tests with wal_dir set store their WALs in a `wal` directory. The source
 	// database (initialStatePath) could've had wal_dir set, or the current test
 	// options (testOpts) could have wal_dir set, or both.
-	fs := testOpts.Opts.FS
-	walDir := fs.PathJoin(dataDir, "wal")
-	if err := fs.MkdirAll(walDir, os.ModePerm); err != nil {
-		return err
-	}
-
-	// Copy <dataDir>/wal/*.log -> <dataDir>.
-	src, dst := walDir, dataDir
+	//
+	// If the test opts are not configured to use a WAL dir, we add the WAL dir
+	// as a 'WAL recovery dir' so that we'll read any WALs in the directory in
+	// Open.
+	walRecoveryPath := testOpts.Opts.FS.PathJoin(dataDir, "wal")
 	if testOpts.Opts.WALDir != "" {
-		// Copy <dataDir>/*.log -> <dataDir>/wal.
-		src, dst = dst, src
+		// If the test opts are configured to use a WAL dir, we add the data
+		// directory itself as a 'WAL recovery dir' so that we'll read any WALs if
+		// the previous test was writing them to the data directory.
+		walRecoveryPath = dataDir
 	}
-	return moveLogs(fs, src, dst)
-}
+	testOpts.Opts.WALRecoveryDirs = append(testOpts.Opts.WALRecoveryDirs, wal.Dir{
+		FS:      testOpts.Opts.FS,
+		Dirname: walRecoveryPath,
+	})
 
-func moveLogs(fs vfs.FS, srcDir, dstDir string) error {
-	ls, err := fs.List(srcDir)
-	if err != nil {
-		return err
-	}
-	for _, f := range ls {
-		if filepath.Ext(f) != ".log" {
-			continue
-		}
-		src := fs.PathJoin(srcDir, f)
-		dst := fs.PathJoin(dstDir, f)
-		if err := fs.Rename(src, dst); err != nil {
-			return err
-		}
+	// If the failover dir exists and the test opts are not configured to use
+	// WAL failover, add the failover directory as a 'WAL recovery dir' in case
+	// the previous test was configured to use failover.
+	failoverDir := testOpts.Opts.FS.PathJoin(dataDir, "wal_secondary")
+	if _, err := testOpts.Opts.FS.Stat(failoverDir); err == nil && testOpts.Opts.WALFailover == nil {
+		testOpts.Opts.WALRecoveryDirs = append(testOpts.Opts.WALRecoveryDirs, wal.Dir{
+			FS:      testOpts.Opts.FS,
+			Dirname: failoverDir,
+		})
 	}
 	return nil
 }

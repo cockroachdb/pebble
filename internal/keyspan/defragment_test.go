@@ -79,9 +79,7 @@ func TestDefragmentingIter(t *testing.T) {
 					return fmt.Sprintf("unknown command: %s", cmd)
 				}
 			}
-			var miter MergingIter
-			miter.Init(cmp, noopTransform, new(MergingBuffers), NewIter(cmp, spans))
-			innerIter := attachProbes(&miter, probeContext{log: &buf}, probes...)
+			innerIter := attachProbes(NewIter(cmp, spans), probeContext{log: &buf}, probes...)
 			var iter DefragmentingIter
 			iter.Init(comparer, innerIter, equal, reducer, new(DefragmentingBuffers))
 			for _, line := range strings.Split(td.Input, "\n") {
@@ -163,14 +161,9 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	original = fragment(cmp, formatKey, original)
 	fragmented = fragment(cmp, formatKey, fragmented)
 
-	var originalInner MergingIter
-	originalInner.Init(cmp, noopTransform, new(MergingBuffers), NewIter(cmp, original))
-	var fragmentedInner MergingIter
-	fragmentedInner.Init(cmp, noopTransform, new(MergingBuffers), NewIter(cmp, fragmented))
-
 	var referenceIter, fragmentedIter DefragmentingIter
-	referenceIter.Init(comparer, &originalInner, DefragmentInternal, StaticDefragmentReducer, new(DefragmentingBuffers))
-	fragmentedIter.Init(comparer, &fragmentedInner, DefragmentInternal, StaticDefragmentReducer, new(DefragmentingBuffers))
+	referenceIter.Init(comparer, NewIter(cmp, original), DefragmentInternal, StaticDefragmentReducer, new(DefragmentingBuffers))
+	fragmentedIter.Init(comparer, NewIter(cmp, fragmented), DefragmentInternal, StaticDefragmentReducer, new(DefragmentingBuffers))
 
 	// Generate 100 random operations and run them against both iterators.
 	const numIterOps = 100

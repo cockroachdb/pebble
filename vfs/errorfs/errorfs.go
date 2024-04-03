@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
@@ -80,6 +81,10 @@ const (
 	OpFileStat
 	// OpFileSync describes a file sync operation.
 	OpFileSync
+	// OpFileSyncData describes a file sync operation.
+	OpFileSyncData
+	// OpFileSyncTo describes a file sync operation.
+	OpFileSyncTo
 	// OpFileFlush describes a file flush operation.
 	OpFileFlush
 )
@@ -89,7 +94,7 @@ func (o OpKind) ReadOrWrite() OpReadWrite {
 	switch o {
 	case OpOpen, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat:
 		return OpIsRead
-	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForWrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileFlush, OpFilePreallocate:
+	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForWrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileSyncData, OpFileSyncTo, OpFileFlush, OpFilePreallocate:
 		return OpIsWrite
 	default:
 		panic(fmt.Sprintf("unrecognized op %v\n", o))
@@ -195,7 +200,11 @@ func (a anyInjector) MaybeError(op Op) error {
 // surfaced through the user interface.
 type Counter struct {
 	Injector
-	atomic.Uint64
+	mu struct {
+		sync.Mutex
+		v       uint64
+		lastErr error
+	}
 }
 
 // String implements fmt.Stringer.
@@ -207,9 +216,26 @@ func (c *Counter) String() string {
 func (c *Counter) MaybeError(op Op) error {
 	err := c.Injector.MaybeError(op)
 	if err != nil {
-		c.Uint64.Add(1)
+		c.mu.Lock()
+		c.mu.v++
+		c.mu.lastErr = err
+		c.mu.Unlock()
 	}
 	return err
+}
+
+// Load returns the number of errors injected.
+func (c *Counter) Load() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.mu.v
+}
+
+// LastError returns the last non-nil error injected.
+func (c *Counter) LastError() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.mu.lastErr
 }
 
 // Toggle wraps an Injector. By default, Toggle injects nothing. When toggled on
@@ -504,12 +530,16 @@ func (f *errorFile) Sync() error {
 }
 
 func (f *errorFile) SyncData() error {
-	// TODO(jackson): Consider error injection.
+	if err := f.inj.MaybeError(Op{Kind: OpFileSyncData, Path: f.path}); err != nil {
+		return err
+	}
 	return f.file.SyncData()
 }
 
 func (f *errorFile) SyncTo(length int64) (fullSync bool, err error) {
-	// TODO(jackson): Consider error injection.
+	if err := f.inj.MaybeError(Op{Kind: OpFileSyncTo, Path: f.path}); err != nil {
+		return false, err
+	}
 	return f.file.SyncTo(length)
 }
 

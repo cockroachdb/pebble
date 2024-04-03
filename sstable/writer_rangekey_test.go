@@ -105,15 +105,19 @@ func TestWriter_RangeKeys(t *testing.T) {
 				return err.Error()
 			}
 
-			iter, err := r.NewRawRangeKeyIter()
+			iter, err := r.NewRawRangeKeyIter(NoTransforms)
 			if err != nil {
 				return err.Error()
 			}
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for s := iter.First(); s != nil; s = iter.Next() {
+			s, err := iter.First()
+			for ; s != nil; s, err = iter.Next() {
 				_, _ = fmt.Fprintf(&buf, "%s\n", s)
+			}
+			if err != nil {
+				return err.Error()
 			}
 			return buf.String()
 

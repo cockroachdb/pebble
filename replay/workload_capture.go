@@ -166,7 +166,7 @@ func (w *WorkloadCollector) onTableIngest(info pebble.TableIngestInfo) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Tables {
-		w.enqueueCopyLocked(table.FileNum.DiskFileNum())
+		w.enqueueCopyLocked(base.PhysicalTableDiskFileNum(table.FileNum))
 	}
 	w.copier.Broadcast()
 }
@@ -180,7 +180,7 @@ func (w *WorkloadCollector) onFlushEnd(info pebble.FlushInfo) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Output {
-		w.enqueueCopyLocked(table.FileNum.DiskFileNum())
+		w.enqueueCopyLocked(base.PhysicalTableDiskFileNum(table.FileNum))
 	}
 	w.copier.Broadcast()
 }
@@ -370,9 +370,8 @@ func (w *WorkloadCollector) Start(destFS vfs.FS, destPath string) {
 	//      still zero. Once the associated database is opened, it'll invoke
 	//      onManifestCreated which will handle enqueuing the manifest on
 	//      `w.mu.manifests`.
-	fileNum := base.FileNum(w.curManifest.Load())
-	if fileNum != 0 {
-		fileName := base.MakeFilename(base.FileTypeManifest, fileNum.DiskFileNum())
+	if fileNum := base.DiskFileNum(w.curManifest.Load()); fileNum != 0 {
+		fileName := base.MakeFilename(base.FileTypeManifest, fileNum)
 		w.mu.manifests = append(w.mu.manifests[:0], &manifestDetails{sourceFilepath: w.srcFilepath(fileName)})
 		w.mu.fileState[fileName] |= readyForProcessing
 	}

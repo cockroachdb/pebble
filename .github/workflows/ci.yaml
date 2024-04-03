@@ -10,6 +10,9 @@ on:
     - master
     - crl-release-*
 
+env:
+  GO_VERSION: "1.22"
+
 jobs:
 
   linux:
@@ -21,9 +24,12 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
-    - run: make test generate
+    - run: GOTRACEBACK=all make test testobjiotracing generate
+
+    - name: Assert workspace clean
+      run: scripts/check-workspace-clean.sh
 
   linux-32bit:
     name: go-linux-32bit
@@ -34,9 +40,9 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.21"
+          go-version: "${{ env.GO_VERSION }}"
 
-      - run: GOARCH=386 make test
+      - run: GOTRACEBACK=all GOARCH=386 make test
 
   linux-crossversion:
     name: go-linux-crossversion
@@ -47,7 +53,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - run: make crossversion-meta
 
@@ -60,9 +66,9 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
-    - run: make testrace TAGS=
+    - run: GOTRACEBACK=all make testrace TAGS=
 
   linux-no-invariants:
     name: go-linux-no-invariants
@@ -73,9 +79,9 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
-    - run: make test TAGS=
+    - run: GOTRACEBACK=all make test TAGS=
 
   linux-no-cgo:
     name: go-linux-no-cgo
@@ -86,9 +92,9 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
-    - run: CGO_ENABLED=0 make test TAGS=
+    - run: GOTRACEBACK=all CGO_ENABLED=0 make test TAGS=
 
   darwin:
     name: go-macos
@@ -99,9 +105,9 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
-    - run: make test
+    - run: GOTRACEBACK=all make test
 
   windows:
     name: go-windows
@@ -112,7 +118,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - run: go test -v ./...
 
@@ -125,7 +131,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - name: FreeBSD build
       env:
@@ -151,7 +157,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: "1.21"
+        go-version: "${{ env.GO_VERSION }}"
 
     - name: mod-tidy-check
       run: make mod-tidy-check

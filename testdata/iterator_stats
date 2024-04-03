@@ -5,7 +5,7 @@ set c 2
 
 ingest ext1
 ----
-6:
+L6:
   000004:[a#10,MERGE-c#10,SET]
 
 iter
@@ -45,7 +45,7 @@ set e@18 e18
 
 ingest ext2
 ----
-6:
+L6:
   000004:[a#10,MERGE-c#10,SET]
   000005:[d@10#11,SET-e@18#11,SET]
 
