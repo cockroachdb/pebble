@@ -88,6 +88,7 @@ generate-test-data:
 	${GO} run -tags make_test_sstables ./tool/make_test_sstables.go
 	${GO} run -tags make_test_remotecat ./tool/make_test_remotecat.go
 
+.PHONY: mod-update
 mod-update:
 	${GO} get -u
 	${GO} mod tidy
