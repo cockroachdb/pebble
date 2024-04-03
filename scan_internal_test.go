@@ -433,13 +433,13 @@ func TestScanInternal(t *testing.T) {
 					require.NoError(t, err)
 				}
 				require.NoError(t, rangeKeys.Close())
-				for key, val := points.First(); key != nil; key, val = points.Next() {
-					t.Logf("writing %s", *key)
+				for kv := points.First(); kv != nil; kv = points.Next() {
+					t.Logf("writing %s", kv.InternalKey)
 					var value []byte
 					var err error
-					value, _, err = val.Value(value)
+					value, _, err = kv.Value(value)
 					require.NoError(t, err)
-					require.NoError(t, w.Add(*key, value))
+					require.NoError(t, w.Add(kv.InternalKey, value))
 				}
 				points.Close()
 				require.NoError(t, w.Close())
@@ -463,10 +463,10 @@ func TestScanInternal(t *testing.T) {
 				require.NoError(t, d.Ingest([]string{"temp0.sst"}))
 			} else if ingestExternal {
 				points, rangeDels, rangeKeys := batchSort(b)
-				largestUnsafe, _ := points.Last()
-				largest := largestUnsafe.Clone()
-				smallestUnsafe, _ := points.First()
-				smallest := smallestUnsafe.Clone()
+				largestUnsafe := points.Last()
+				largest := largestUnsafe.InternalKey.Clone()
+				smallestUnsafe := points.First()
+				smallest := smallestUnsafe.InternalKey.Clone()
 				var objName string
 				td.MaybeScanArgs(t, "ingest-external", &objName)
 				file, err := extStorage.CreateObject(objName)
@@ -612,8 +612,10 @@ func TestPointCollapsingIter(t *testing.T) {
 						})
 						continue
 					}
-					f.keys = append(f.keys, k)
-					f.vals = append(f.vals, v)
+					f.kvs = append(f.kvs, base.InternalKV{
+						InternalKey: k,
+						LazyValue:   base.MakeInPlaceValue(v),
+					})
 				}
 			}
 

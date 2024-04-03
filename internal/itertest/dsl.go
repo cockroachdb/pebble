@@ -50,10 +50,12 @@ func NewParser() *dsl.Parser[Probe] {
 		})
 	probeParser.DefineFunc("ReturnKV",
 		func(p *dsl.Parser[Probe], s *dsl.Scanner) Probe {
-			ik := base.ParseInternalKey(s.ConsumeString())
-			val := []byte(s.ConsumeString())
+			kv := base.InternalKV{
+				InternalKey: base.ParseInternalKey(s.ConsumeString()),
+				LazyValue:   base.MakeInPlaceValue([]byte(s.ConsumeString())),
+			}
 			s.Consume(token.RPAREN)
-			return ReturnKV(&ik, val)
+			return ReturnKV(&kv)
 		})
 	probeParser.DefineFunc("Log",
 		func(p *dsl.Parser[Probe], s *dsl.Scanner) (ret Probe) {
@@ -94,8 +96,7 @@ func (p *ErrorProbe) Error() error {
 // with an error.
 func (p *ErrorProbe) Probe(pctx *ProbeContext) {
 	pctx.Op.Return.Err = p.err
-	pctx.Op.Return.Key = nil
-	pctx.Op.Return.Value = base.LazyValue{}
+	pctx.Op.Return.KV = nil
 }
 
 // If a conditional Probe. If its predicate evaluates to true, it probes using
@@ -135,17 +136,17 @@ func (lp loggingProbe) Probe(pctx *ProbeContext) {
 		fmt.Fprintf(pctx.Log, "%q", pctx.SeekKey)
 	}
 	fmt.Fprint(pctx.Log, ") = ")
-	if pctx.Return.Key == nil {
+	if pctx.Return.KV == nil {
 		fmt.Fprint(pctx.Log, "nil")
 		if pctx.Return.Err != nil {
 			fmt.Fprintf(pctx.Log, " <err=%q>", pctx.Return.Err)
 		}
 	} else {
-		v, _, err := pctx.Return.Value.Value(nil)
+		v, _, err := pctx.Return.KV.Value(nil)
 		if err != nil {
 			panic(err)
 		}
-		fmt.Fprintf(pctx.Log, "(%s,%q)", pctx.Return.Key, v)
+		fmt.Fprintf(pctx.Log, "(%s,%q)", pctx.Return.KV.InternalKey, v)
 	}
 	fmt.Fprintln(pctx.Log)
 }
@@ -159,24 +160,22 @@ func (p UserKey) String() string { return fmt.Sprintf("(UserKey %q)", string(p))
 
 // Evaluate implements Predicate.
 func (p UserKey) Evaluate(pctx *ProbeContext) bool {
-	return pctx.Op.Return.Key != nil && pctx.Comparer.Equal(pctx.Op.Return.Key.UserKey, p)
+	return pctx.Op.Return.KV != nil && pctx.Comparer.Equal(pctx.Op.Return.KV.UserKey(), p)
 }
 
 // ReturnKV returns a Probe that modifies an operation's return value to the
 // provided KV pair.
-func ReturnKV(k *base.InternalKey, v []byte) Probe {
-	return &returnKV{k, v}
+func ReturnKV(kv *base.InternalKV) Probe {
+	return &returnKV{kv}
 }
 
 type returnKV struct {
-	*base.InternalKey
-	Value []byte
+	*base.InternalKV
 }
 
 // Probe implements Probe.
 func (kv *returnKV) Probe(pctx *ProbeContext) {
-	pctx.Op.Return.Key = kv.InternalKey
-	pctx.Op.Return.Value = base.MakeInPlaceValue(kv.Value)
+	pctx.Op.Return.KV = kv.InternalKV
 }
 
 // Noop returns a Probe that does nothing.
@@ -194,6 +193,5 @@ type returnNil struct{}
 
 func (returnNil) String() string { return "Nil" }
 func (returnNil) Probe(pctx *ProbeContext) {
-	pctx.Op.Return.Key = nil
-	pctx.Op.Return.Value = base.LazyValue{}
+	pctx.Op.Return.KV = nil
 }

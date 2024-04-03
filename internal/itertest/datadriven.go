@@ -93,15 +93,15 @@ func RunInternalIterCmdWriter(
 
 	var prefix []byte
 	var prevKey []byte
-	getKV := func(key *base.InternalKey, val base.LazyValue) (*base.InternalKey, []byte) {
-		if key != nil {
-			prevKey = key.UserKey
-		} else {
+	getKV := func(kv *base.InternalKV) (*base.InternalKey, []byte) {
+		if kv == nil {
 			prevKey = nil
+			return nil, nil
 		}
-		v, _, err := val.Value(nil)
+		prevKey = kv.UserKey()
+		v, _, err := kv.Value(nil)
 		require.NoError(t, err)
-		return key, v
+		return &kv.InternalKey, v
 	}
 	for _, line := range strings.Split(d.Input, "\n") {
 		parts := strings.Fields(line)

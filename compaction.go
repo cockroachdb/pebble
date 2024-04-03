@@ -607,18 +607,18 @@ func newFlush(
 
 	smallestSet, largestSet := false, false
 	updatePointBounds := func(iter internalIterator) {
-		if key, _ := iter.First(); key != nil {
+		if kv := iter.First(); kv != nil {
 			if !smallestSet ||
-				base.InternalCompare(c.cmp, c.smallest, *key) > 0 {
+				base.InternalCompare(c.cmp, c.smallest, kv.InternalKey) > 0 {
 				smallestSet = true
-				c.smallest = key.Clone()
+				c.smallest = kv.InternalKey.Clone()
 			}
 		}
-		if key, _ := iter.Last(); key != nil {
+		if kv := iter.Last(); kv != nil {
 			if !largestSet ||
-				base.InternalCompare(c.cmp, c.largest, *key) < 0 {
+				base.InternalCompare(c.cmp, c.largest, kv.InternalKey) < 0 {
 				largestSet = true
-				c.largest = key.Clone()
+				c.largest = kv.InternalKey.Clone()
 			}
 		}
 	}

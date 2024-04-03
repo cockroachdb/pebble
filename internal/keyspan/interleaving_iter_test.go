@@ -80,15 +80,15 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 		split: testkeys.Comparer.Split,
 	}
 
-	var prevKey *base.InternalKey
-	formatKey := func(k *base.InternalKey, _ base.LazyValue) {
-		if k == nil {
+	var prevKV *base.InternalKV
+	formatKey := func(kv *base.InternalKV) {
+		if kv == nil {
 			fmt.Fprint(&buf, ".")
 			return
 		}
-		prevKey = k
+		prevKV = kv
 		s := iter.Span()
-		fmt.Fprintf(&buf, "PointKey: %s\n", k.String())
+		fmt.Fprintf(&buf, "PointKey: %s\n", kv.Key().String())
 		if s != nil {
 			fmt.Fprintf(&buf, "Span: %s\n-", s)
 		} else {
@@ -114,12 +114,14 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				InterleavingIterOpts{Mask: &hooks})
 			return "OK"
 		case "define-pointkeys":
-			var points []base.InternalKey
+			var points []base.InternalKV
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
-				points = append(points, base.ParseInternalKey(line))
+				points = append(points, base.InternalKV{
+					InternalKey: base.ParseInternalKey(line),
+				})
 			}
-			pointIter = pointIterator{cmp: cmp, keys: points}
+			pointIter = pointIterator{cmp: cmp, kvs: points}
 			hooks.maskSuffix = nil
 			iter.Init(testkeys.Comparer, &pointIter, keyspanIter,
 				InterleavingIterOpts{Mask: &hooks})
@@ -128,7 +130,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			buf.Reset()
 			// Clear any previous bounds.
 			iter.SetBounds(nil, nil)
-			prevKey = nil
+			prevKV = nil
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
 				bufLen := buf.Len()
@@ -146,7 +148,8 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				case "next":
 					formatKey(iter.Next())
 				case "next-prefix":
-					succKey := testkeys.Comparer.ImmediateSuccessor(nil, prevKey.UserKey[:testkeys.Comparer.Split(prevKey.UserKey)])
+					prevUserKey := prevKV.UserKey()
+					succKey := testkeys.Comparer.ImmediateSuccessor(nil, prevUserKey[:testkeys.Comparer.Split(prevUserKey)])
 					formatKey(iter.NextPrefix(succKey))
 				case "prev":
 					formatKey(iter.Prev())
@@ -189,7 +192,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 
 type pointIterator struct {
 	cmp   base.Compare
-	keys  []base.InternalKey
+	kvs   []base.InternalKV
 	lower []byte
 	upper []byte
 	index int
@@ -197,89 +200,83 @@ type pointIterator struct {
 
 var _ base.InternalIterator = &pointIterator{}
 
-func (i *pointIterator) SeekGE(
-	key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
-	i.index = sort.Search(len(i.keys), func(j int) bool {
-		return i.cmp(i.keys[j].UserKey, key) >= 0
+func (i *pointIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	i.index = sort.Search(len(i.kvs), func(j int) bool {
+		return i.cmp(i.kvs[j].UserKey(), key) >= 0
 	})
-	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, base.LazyValue{}
+	if i.index < 0 || i.index >= len(i.kvs) {
+		return nil
 	}
-	if i.upper != nil && i.cmp(i.keys[i.index].UserKey, i.upper) >= 0 {
-		return nil, base.LazyValue{}
+	if i.upper != nil && i.cmp(i.kvs[i.index].UserKey(), i.upper) >= 0 {
+		return nil
 	}
-	return &i.keys[i.index], base.LazyValue{}
+	return &i.kvs[i.index]
 }
 
-func (i *pointIterator) SeekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (i *pointIterator) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	return i.SeekGE(key, flags)
 }
 
-func (i *pointIterator) SeekLT(
-	key []byte, flags base.SeekLTFlags,
-) (*base.InternalKey, base.LazyValue) {
-	i.index = sort.Search(len(i.keys), func(j int) bool {
-		return i.cmp(i.keys[j].UserKey, key) >= 0
+func (i *pointIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
+	i.index = sort.Search(len(i.kvs), func(j int) bool {
+		return i.cmp(i.kvs[j].UserKey(), key) >= 0
 	})
 	i.index--
-	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, base.LazyValue{}
+	if i.index < 0 || i.index >= len(i.kvs) {
+		return nil
 	}
-	if i.lower != nil && i.cmp(i.keys[i.index].UserKey, i.lower) < 0 {
-		return nil, base.LazyValue{}
+	if i.lower != nil && i.cmp(i.kvs[i.index].UserKey(), i.lower) < 0 {
+		return nil
 	}
-	return &i.keys[i.index], base.LazyValue{}
+	return &i.kvs[i.index]
 }
 
-func (i *pointIterator) First() (*base.InternalKey, base.LazyValue) {
+func (i *pointIterator) First() *base.InternalKV {
 	i.index = 0
-	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, base.LazyValue{}
+	if i.index < 0 || i.index >= len(i.kvs) {
+		return nil
 	}
-	if i.upper != nil && i.cmp(i.keys[i.index].UserKey, i.upper) >= 0 {
-		return nil, base.LazyValue{}
+	if i.upper != nil && i.cmp(i.kvs[i.index].UserKey(), i.upper) >= 0 {
+		return nil
 	}
-	return &i.keys[i.index], base.LazyValue{}
+	return &i.kvs[i.index]
 }
 
-func (i *pointIterator) Last() (*base.InternalKey, base.LazyValue) {
-	i.index = len(i.keys) - 1
-	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, base.LazyValue{}
+func (i *pointIterator) Last() *base.InternalKV {
+	i.index = len(i.kvs) - 1
+	if i.index < 0 || i.index >= len(i.kvs) {
+		return nil
 	}
-	if i.lower != nil && i.cmp(i.keys[i.index].UserKey, i.lower) < 0 {
-		return nil, base.LazyValue{}
+	if i.lower != nil && i.cmp(i.kvs[i.index].UserKey(), i.lower) < 0 {
+		return nil
 	}
-	return &i.keys[i.index], base.LazyValue{}
+	return &i.kvs[i.index]
 }
 
-func (i *pointIterator) Next() (*base.InternalKey, base.LazyValue) {
+func (i *pointIterator) Next() *base.InternalKV {
 	i.index++
-	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, base.LazyValue{}
+	if i.index < 0 || i.index >= len(i.kvs) {
+		return nil
 	}
-	if i.upper != nil && i.cmp(i.keys[i.index].UserKey, i.upper) >= 0 {
-		return nil, base.LazyValue{}
+	if i.upper != nil && i.cmp(i.kvs[i.index].UserKey(), i.upper) >= 0 {
+		return nil
 	}
-	return &i.keys[i.index], base.LazyValue{}
+	return &i.kvs[i.index]
 }
 
-func (i *pointIterator) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
+func (i *pointIterator) NextPrefix(succKey []byte) *base.InternalKV {
 	return i.SeekGE(succKey, base.SeekGEFlagsNone)
 }
 
-func (i *pointIterator) Prev() (*base.InternalKey, base.LazyValue) {
+func (i *pointIterator) Prev() *base.InternalKV {
 	i.index--
-	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, base.LazyValue{}
+	if i.index < 0 || i.index >= len(i.kvs) {
+		return nil
 	}
-	if i.lower != nil && i.cmp(i.keys[i.index].UserKey, i.lower) < 0 {
-		return nil, base.LazyValue{}
+	if i.lower != nil && i.cmp(i.kvs[i.index].UserKey(), i.lower) < 0 {
+		return nil
 	}
-	return &i.keys[i.index], base.LazyValue{}
+	return &i.kvs[i.index]
 }
 
 func (i *pointIterator) Close() error   { return nil }

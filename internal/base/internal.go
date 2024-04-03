@@ -505,3 +505,52 @@ func ParsePrettyInternalKey(s string) InternalKey {
 	}
 	return MakeInternalKey([]byte(ukey), seqNum, kind)
 }
+
+// InternalKV represents a single internal key-value pair.
+type InternalKV struct {
+	InternalKey InternalKey
+	LazyValue   LazyValue
+}
+
+// Key returns the KV's internal key.
+func (kv *InternalKV) Key() InternalKey {
+	return kv.InternalKey
+}
+
+// Kind returns the KV's internal key kind.
+func (kv *InternalKV) Kind() InternalKeyKind {
+	return kv.InternalKey.Kind()
+}
+
+// SeqNum returns the KV's internal key sequence number.
+func (kv *InternalKV) SeqNum() uint64 {
+	return kv.InternalKey.SeqNum()
+}
+
+// UserKey returns the KV's user key.
+func (kv *InternalKV) UserKey() []byte {
+	return kv.InternalKey.UserKey
+}
+
+// InPlaceValue returns the KV's in-place value.
+func (kv *InternalKV) InPlaceValue() []byte {
+	return kv.LazyValue.InPlaceValue()
+}
+
+// Value return's the KV's underlying value.
+func (kv *InternalKV) Value(buf []byte) (val []byte, callerOwned bool, err error) {
+	return kv.LazyValue.Value(buf)
+}
+
+// Visible returns true if the key is visible at the specified snapshot
+// sequence number.
+func (kv *InternalKV) Visible(snapshot, batchSnapshot uint64) bool {
+	return Visible(kv.InternalKey.SeqNum(), snapshot, batchSnapshot)
+}
+
+// IsExclusiveSentinel returns whether this key excludes point keys
+// with the same user key if used as an end boundary. See the comment on
+// InternalKeyRangeDeletionSentinel.
+func (kv *InternalKV) IsExclusiveSentinel() bool {
+	return kv.InternalKey.IsExclusiveSentinel()
+}

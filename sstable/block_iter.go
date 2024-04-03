@@ -150,16 +150,19 @@ type blockIter struct {
 	// val contains the value the iterator is currently pointed at. If non-nil,
 	// this points to a slice of the block data.
 	val []byte
-	// lazyValue is val turned into a LazyValue, whenever a positioning method
-	// returns a non-nil key-value pair.
-	lazyValue base.LazyValue
-	// ikey contains the decoded InternalKey the iterator is currently pointed
-	// at. Note that the memory backing ikey.UserKey is either data stored
-	// directly in the block, fullKey, cachedBuf, or synthSuffixBuf. The key
+	// ikv contains the decoded internal KV the iterator is currently positioned
+	// at.
+	//
+	// ikv.InternalKey contains the decoded InternalKey the iterator is
+	// currently pointed at. Note that the memory backing ikv.UserKey is either
+	// data stored directly in the block, fullKey, or cachedBuf. The key
 	// stability guarantee for blocks built with a restart interval of 1 is
-	// achieved by having ikey.UserKey always point to data stored directly in the
-	// block.
-	ikey InternalKey
+	// achieved by having ikv.UserKey always point to data stored directly in
+	// the block.
+	//
+	// ikv.LazyValue is val turned into a LazyValue, whenever a positioning
+	// method returns a non-nil key-value pair.
+	ikv base.InternalKV
 	// cached and cachedBuf are used during reverse iteration. They are needed
 	// because we can't perform prefix decoding in reverse, only in the forward
 	// direction. In order to iterate in reverse, we decode and cache the entries
@@ -443,14 +446,14 @@ func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 		trailer := binary.LittleEndian.Uint64(key[n:])
 		hiddenPoint = i.transforms.HideObsoletePoints &&
 			(trailer&trailerObsoleteBit != 0)
-		i.ikey.Trailer = trailer & trailerObsoleteMask
-		i.ikey.UserKey = key[:n:n]
+		i.ikv.InternalKey.Trailer = trailer & trailerObsoleteMask
+		i.ikv.InternalKey.UserKey = key[:n:n]
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
-			i.ikey.SetSeqNum(uint64(n))
+			i.ikv.InternalKey.SetSeqNum(uint64(n))
 		}
 	} else {
-		i.ikey.Trailer = uint64(InternalKeyKindInvalid)
-		i.ikey.UserKey = nil
+		i.ikv.InternalKey.Trailer = uint64(InternalKeyKindInvalid)
+		i.ikv.InternalKey.UserKey = nil
 	}
 	return hiddenPoint
 }
@@ -458,13 +461,13 @@ func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 // maybeReplaceSuffix replaces the suffix in i.ikey.UserKey with
 // i.transforms.syntheticSuffix.
 func (i *blockIter) maybeReplaceSuffix() {
-	if i.transforms.SyntheticSuffix.IsSet() && i.ikey.UserKey != nil {
-		prefixLen := i.split(i.ikey.UserKey)
+	if i.transforms.SyntheticSuffix.IsSet() && i.ikv.InternalKey.UserKey != nil {
+		prefixLen := i.split(i.ikv.InternalKey.UserKey)
 		// If ikey is cached or may get cached, we must copy
 		// UserKey to a new buffer before suffix replacement.
-		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
+		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikv.InternalKey.UserKey[:prefixLen]...)
 		i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
-		i.ikey.UserKey = i.synthSuffixBuf
+		i.ikv.InternalKey.UserKey = i.synthSuffixBuf
 	}
 }
 
@@ -496,7 +499,7 @@ func (i *blockIter) getFirstUserKey() []byte {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, base.LazyValue) {
+func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	if invariants.Enabled && i.isDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
@@ -514,7 +517,7 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 			// result.
 			i.offset = i.restarts
 			i.nextOffset = i.restarts
-			return nil, base.LazyValue{}
+			return nil
 		}
 		searchKey = key[len(i.transforms.SyntheticPrefix):]
 	}
@@ -613,7 +616,7 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 
 	// Iterate from that restart point to somewhere >= the key sought.
 	if !i.valid() {
-		return nil, base.LazyValue{}
+		return nil
 	}
 
 	// A note on seeking in a block with a suffix replacement rule: even though
@@ -646,39 +649,37 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 
 	i.maybeReplaceSuffix()
 
-	if !hiddenPoint && i.cmp(i.ikey.UserKey, key) >= 0 {
+	if !hiddenPoint && i.cmp(i.ikv.InternalKey.UserKey, key) >= 0 {
 		// Initialize i.lazyValue
 		if !i.lazyValueHandling.hasValuePrefix ||
-			base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
-			i.lazyValue = base.MakeInPlaceValue(i.val)
+			base.TrailerKind(i.ikv.InternalKey.Trailer) != InternalKeyKindSet {
+			i.ikv.LazyValue = base.MakeInPlaceValue(i.val)
 		} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
-			i.lazyValue = base.MakeInPlaceValue(i.val[1:])
+			i.ikv.LazyValue = base.MakeInPlaceValue(i.val[1:])
 		} else {
-			i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+			i.ikv.LazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
 		}
-		return &i.ikey, i.lazyValue
+		return &i.ikv
 	}
 	for i.Next(); i.valid(); i.Next() {
-		if i.cmp(i.ikey.UserKey, key) >= 0 {
-			// i.Next() has already initialized i.lazyValue.
-			return &i.ikey, i.lazyValue
+		if i.cmp(i.ikv.InternalKey.UserKey, key) >= 0 {
+			// i.Next() has already initialized i.ikv.LazyValue.
+			return &i.ikv
 		}
 	}
-	return nil, base.LazyValue{}
+	return nil
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package.
-func (i *blockIter) SeekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, base.LazyValue) {
+func (i *blockIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	// This should never be called as prefix iteration is handled by sstable.Iterator.
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, base.LazyValue) {
+func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	if invariants.Enabled && i.isDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
@@ -696,7 +697,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			// subsequent Next() call returns the first key in the block.
 			i.offset = -1
 			i.nextOffset = 0
-			return nil, base.LazyValue{}
+			return nil
 		}
 		searchKey = key[len(i.transforms.SyntheticPrefix):]
 	}
@@ -791,16 +792,16 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 			// suffix replacement, the SeekLT would incorrectly return nil. With
 			// suffix replacement though, a@4 should be returned as a@4 sorts before
 			// a@3.
-			ikey, lazyVal := i.First()
-			if i.cmp(ikey.UserKey, key) < 0 {
-				return ikey, lazyVal
+			ikv := i.First()
+			if i.cmp(ikv.InternalKey.UserKey, key) < 0 {
+				return ikv
 			}
 		}
 		// If index == 0 then all keys in this block are larger than the key
 		// sought, so there is no match.
 		i.offset = -1
 		i.nextOffset = 0
-		return nil, base.LazyValue{}
+		return nil
 	}
 
 	// INVARIANT: index > 0
@@ -868,7 +869,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 
 			// If the binary search point is actually less than the search key, post
 			// replacement, bump the target offset.
-			if i.cmp(i.ikey.UserKey, key) < 0 {
+			if i.cmp(i.ikv.InternalKey.UserKey, key) < 0 {
 				i.offset = targetOffset
 				if index+1 < i.numRestarts {
 					// if index+1 is within the i.data bounds, use it to find the target
@@ -905,7 +906,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 		// NB: we don't use the hiddenPoint return value of decodeInternalKey
 		// since we want to stop as soon as we reach a key >= ikey.UserKey, so
 		// that we can reverse.
-		if i.cmp(i.ikey.UserKey, key) >= 0 {
+		if i.cmp(i.ikv.InternalKey.UserKey, key) >= 0 {
 			// The current key is greater than or equal to our search key. Back up to
 			// the previous key which was less than our search key. Note that this for
 			// loop will execute at least once with this if-block not being true, so
@@ -931,29 +932,29 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 	}
 
 	if !i.valid() {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||
-		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
-		i.lazyValue = base.MakeInPlaceValue(i.val)
+		base.TrailerKind(i.ikv.InternalKey.Trailer) != InternalKeyKindSet {
+		i.ikv.LazyValue = base.MakeInPlaceValue(i.val)
 	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
-		i.lazyValue = base.MakeInPlaceValue(i.val[1:])
+		i.ikv.LazyValue = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+		i.ikv.LazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
 	}
-	return &i.ikey, i.lazyValue
+	return &i.ikv
 }
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *blockIter) First() (*InternalKey, base.LazyValue) {
+func (i *blockIter) First() *base.InternalKV {
 	if invariants.Enabled && i.isDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
 
 	i.offset = 0
 	if !i.valid() {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	i.clearCache()
 	i.readEntry()
@@ -963,14 +964,14 @@ func (i *blockIter) First() (*InternalKey, base.LazyValue) {
 	}
 	i.maybeReplaceSuffix()
 	if !i.lazyValueHandling.hasValuePrefix ||
-		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
-		i.lazyValue = base.MakeInPlaceValue(i.val)
+		base.TrailerKind(i.ikv.InternalKey.Trailer) != InternalKeyKindSet {
+		i.ikv.LazyValue = base.MakeInPlaceValue(i.val)
 	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
-		i.lazyValue = base.MakeInPlaceValue(i.val[1:])
+		i.ikv.LazyValue = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+		i.ikv.LazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
 	}
-	return &i.ikey, i.lazyValue
+	return &i.ikv
 }
 
 func decodeRestart(b []byte) int32 {
@@ -980,7 +981,7 @@ func decodeRestart(b []byte) int32 {
 }
 
 // Last implements internalIterator.Last, as documented in the pebble package.
-func (i *blockIter) Last() (*InternalKey, base.LazyValue) {
+func (i *blockIter) Last() *base.InternalKV {
 	if invariants.Enabled && i.isDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
@@ -988,7 +989,7 @@ func (i *blockIter) Last() (*InternalKey, base.LazyValue) {
 	// Seek forward from the last restart point.
 	i.offset = decodeRestart(i.data[i.restarts+4*(i.numRestarts-1):])
 	if !i.valid() {
-		return nil, base.LazyValue{}
+		return nil
 	}
 
 	i.readEntry()
@@ -1006,19 +1007,19 @@ func (i *blockIter) Last() (*InternalKey, base.LazyValue) {
 	}
 	i.maybeReplaceSuffix()
 	if !i.lazyValueHandling.hasValuePrefix ||
-		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
-		i.lazyValue = base.MakeInPlaceValue(i.val)
+		base.TrailerKind(i.ikv.InternalKey.Trailer) != InternalKeyKindSet {
+		i.ikv.LazyValue = base.MakeInPlaceValue(i.val)
 	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
-		i.lazyValue = base.MakeInPlaceValue(i.val[1:])
+		i.ikv.LazyValue = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+		i.ikv.LazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
 	}
-	return &i.ikey, i.lazyValue
+	return &i.ikv
 }
 
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
-func (i *blockIter) Next() (*InternalKey, base.LazyValue) {
+func (i *blockIter) Next() *base.InternalKV {
 	if len(i.cachedBuf) > 0 {
 		// We're switching from reverse iteration to forward iteration. We need to
 		// populate i.fullKey with the current key we're positioned at so that
@@ -1037,7 +1038,7 @@ func (i *blockIter) Next() (*InternalKey, base.LazyValue) {
 start:
 	i.offset = i.nextOffset
 	if !i.valid() {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	i.readEntry()
 	// Manually inlined version of i.decodeInternalKey(i.key).
@@ -1045,53 +1046,53 @@ start:
 		trailer := binary.LittleEndian.Uint64(i.key[n:])
 		hiddenPoint := i.transforms.HideObsoletePoints &&
 			(trailer&trailerObsoleteBit != 0)
-		i.ikey.Trailer = trailer & trailerObsoleteMask
-		i.ikey.UserKey = i.key[:n:n]
+		i.ikv.InternalKey.Trailer = trailer & trailerObsoleteMask
+		i.ikv.InternalKey.UserKey = i.key[:n:n]
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
-			i.ikey.SetSeqNum(uint64(n))
+			i.ikv.InternalKey.SetSeqNum(uint64(n))
 		}
 		if hiddenPoint {
 			goto start
 		}
 		if i.transforms.SyntheticSuffix.IsSet() {
 			// Inlined version of i.maybeReplaceSuffix()
-			prefixLen := i.split(i.ikey.UserKey)
-			i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
+			prefixLen := i.split(i.ikv.InternalKey.UserKey)
+			i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikv.InternalKey.UserKey[:prefixLen]...)
 			i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
-			i.ikey.UserKey = i.synthSuffixBuf
+			i.ikv.InternalKey.UserKey = i.synthSuffixBuf
 		}
 	} else {
-		i.ikey.Trailer = uint64(InternalKeyKindInvalid)
-		i.ikey.UserKey = nil
+		i.ikv.InternalKey.Trailer = uint64(InternalKeyKindInvalid)
+		i.ikv.InternalKey.UserKey = nil
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||
-		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
-		i.lazyValue = base.MakeInPlaceValue(i.val)
+		base.TrailerKind(i.ikv.InternalKey.Trailer) != InternalKeyKindSet {
+		i.ikv.LazyValue = base.MakeInPlaceValue(i.val)
 	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
-		i.lazyValue = base.MakeInPlaceValue(i.val[1:])
+		i.ikv.LazyValue = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+		i.ikv.LazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
 	}
-	return &i.ikey, i.lazyValue
+	return &i.ikv
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
-func (i *blockIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+func (i *blockIter) NextPrefix(succKey []byte) *base.InternalKV {
 	if i.lazyValueHandling.hasValuePrefix {
 		return i.nextPrefixV3(succKey)
 	}
 	const nextsBeforeSeek = 3
-	k, v := i.Next()
-	for j := 1; k != nil && i.cmp(k.UserKey, succKey) < 0; j++ {
+	kv := i.Next()
+	for j := 1; kv != nil && i.cmp(kv.InternalKey.UserKey, succKey) < 0; j++ {
 		if j >= nextsBeforeSeek {
 			return i.SeekGE(succKey, base.SeekGEFlagsNone)
 		}
-		k, v = i.Next()
+		kv = i.Next()
 	}
-	return k, v
+	return kv
 }
 
-func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) {
+func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 	// Doing nexts that involve a key comparison can be expensive (and the cost
 	// depends on the key length), so we use the same threshold of 3 that we use
 	// for TableFormatPebblev2 in blockIter.nextPrefix above. The next fast path
@@ -1116,11 +1117,11 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 	if invariants.Enabled && !i.valid() {
 		panic(errors.AssertionFailedf("nextPrefixV3 called on invalid blockIter"))
 	}
-	prevKeyIsSet := i.ikey.Kind() == InternalKeyKindSet
+	prevKeyIsSet := i.ikv.Kind() == InternalKeyKindSet
 	for {
 		i.offset = i.nextOffset
 		if !i.valid() {
-			return nil, base.LazyValue{}
+			return nil
 		}
 		// Need to decode the length integers, so we can compute nextOffset.
 		ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
@@ -1325,28 +1326,30 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 			trailer := binary.LittleEndian.Uint64(i.key[n:])
 			hiddenPoint = i.transforms.HideObsoletePoints &&
 				(trailer&trailerObsoleteBit != 0)
-			i.ikey.Trailer = trailer & trailerObsoleteMask
-			i.ikey.UserKey = i.key[:n:n]
+			i.ikv.InternalKey = base.InternalKey{
+				Trailer: trailer & trailerObsoleteMask,
+				UserKey: i.key[:n:n],
+			}
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
-				i.ikey.SetSeqNum(uint64(n))
+				i.ikv.InternalKey.SetSeqNum(uint64(n))
 			}
 			if i.transforms.SyntheticSuffix.IsSet() {
 				// Inlined version of i.maybeReplaceSuffix()
-				prefixLen := i.split(i.ikey.UserKey)
-				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
+				prefixLen := i.split(i.ikv.InternalKey.UserKey)
+				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikv.InternalKey.UserKey[:prefixLen]...)
 				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
-				i.ikey.UserKey = i.synthSuffixBuf
+				i.ikv.InternalKey.UserKey = i.synthSuffixBuf
 			}
 		} else {
-			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
-			i.ikey.UserKey = nil
+			i.ikv.InternalKey.Trailer = uint64(InternalKeyKindInvalid)
+			i.ikv.InternalKey.UserKey = nil
 		}
 		nextCmpCount++
-		if invariants.Enabled && prefixChanged && i.cmp(i.ikey.UserKey, succKey) < 0 {
+		if invariants.Enabled && prefixChanged && i.cmp(i.ikv.InternalKey.UserKey, succKey) < 0 {
 			panic(errors.AssertionFailedf("prefix should have changed but %x < %x",
-				i.ikey.UserKey, succKey))
+				i.ikv.UserKey, succKey))
 		}
-		if prefixChanged || i.cmp(i.ikey.UserKey, succKey) >= 0 {
+		if prefixChanged || i.cmp(i.ikv.InternalKey.UserKey, succKey) >= 0 {
 			// Prefix has changed.
 			if hiddenPoint {
 				return i.Next()
@@ -1354,14 +1357,14 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 			if invariants.Enabled && !i.lazyValueHandling.hasValuePrefix {
 				panic(errors.AssertionFailedf("nextPrefixV3 being run for non-v3 sstable"))
 			}
-			if base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
-				i.lazyValue = base.MakeInPlaceValue(i.val)
+			if base.TrailerKind(i.ikv.InternalKey.Trailer) != InternalKeyKindSet {
+				i.ikv.LazyValue = base.MakeInPlaceValue(i.val)
 			} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
-				i.lazyValue = base.MakeInPlaceValue(i.val[1:])
+				i.ikv.LazyValue = base.MakeInPlaceValue(i.val[1:])
 			} else {
-				i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+				i.ikv.LazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
 			}
-			return &i.ikey, i.lazyValue
+			return &i.ikv
 		}
 		// Else prefix has not changed.
 
@@ -1374,7 +1377,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *blockIter) Prev() (*InternalKey, base.LazyValue) {
+func (i *blockIter) Prev() *base.InternalKV {
 start:
 	for n := len(i.cached) - 1; n >= 0; n-- {
 		i.nextOffset = i.offset
@@ -1390,41 +1393,43 @@ start:
 			if hiddenPoint {
 				continue
 			}
-			i.ikey.Trailer = trailer & trailerObsoleteMask
-			i.ikey.UserKey = i.key[:n:n]
+			i.ikv.InternalKey = base.InternalKey{
+				Trailer: trailer & trailerObsoleteMask,
+				UserKey: i.key[:n:n],
+			}
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
-				i.ikey.SetSeqNum(uint64(n))
+				i.ikv.InternalKey.SetSeqNum(uint64(n))
 			}
 			if i.transforms.SyntheticSuffix.IsSet() {
 				// Inlined version of i.maybeReplaceSuffix()
-				prefixLen := i.split(i.ikey.UserKey)
+				prefixLen := i.split(i.ikv.InternalKey.UserKey)
 				// If ikey is cached or may get cached, we must de-reference
 				// UserKey before suffix replacement.
-				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
+				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikv.InternalKey.UserKey[:prefixLen]...)
 				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
-				i.ikey.UserKey = i.synthSuffixBuf
+				i.ikv.InternalKey.UserKey = i.synthSuffixBuf
 			}
 		} else {
-			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
-			i.ikey.UserKey = nil
+			i.ikv.InternalKey.Trailer = uint64(InternalKeyKindInvalid)
+			i.ikv.InternalKey.UserKey = nil
 		}
 		i.cached = i.cached[:n]
 		if !i.lazyValueHandling.hasValuePrefix ||
-			base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
-			i.lazyValue = base.MakeInPlaceValue(i.val)
+			base.TrailerKind(i.ikv.InternalKey.Trailer) != InternalKeyKindSet {
+			i.ikv.LazyValue = base.MakeInPlaceValue(i.val)
 		} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
-			i.lazyValue = base.MakeInPlaceValue(i.val[1:])
+			i.ikv.LazyValue = base.MakeInPlaceValue(i.val[1:])
 		} else {
-			i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+			i.ikv.LazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
 		}
-		return &i.ikey, i.lazyValue
+		return &i.ikv
 	}
 
 	i.clearCache()
 	if i.offset <= 0 {
 		i.offset = -1
 		i.nextOffset = 0
-		return nil, base.LazyValue{}
+		return nil
 	}
 
 	targetOffset := i.offset
@@ -1483,31 +1488,36 @@ start:
 	}
 	if i.transforms.SyntheticSuffix.IsSet() {
 		// Inlined version of i.maybeReplaceSuffix()
-		prefixLen := i.split(i.ikey.UserKey)
+		prefixLen := i.split(i.ikv.InternalKey.UserKey)
 		// If ikey is cached or may get cached, we must de-reference
 		// UserKey before suffix replacement.
-		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikey.UserKey[:prefixLen]...)
+		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikv.InternalKey.UserKey[:prefixLen]...)
 		i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
-		i.ikey.UserKey = i.synthSuffixBuf
+		i.ikv.InternalKey.UserKey = i.synthSuffixBuf
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||
-		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
-		i.lazyValue = base.MakeInPlaceValue(i.val)
+		base.TrailerKind(i.ikv.InternalKey.Trailer) != InternalKeyKindSet {
+		i.ikv.LazyValue = base.MakeInPlaceValue(i.val)
 	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
-		i.lazyValue = base.MakeInPlaceValue(i.val[1:])
+		i.ikv.LazyValue = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+		i.ikv.LazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
 	}
-	return &i.ikey, i.lazyValue
+	return &i.ikv
 }
 
-// Key implements internalIterator.Key, as documented in the pebble package.
+// Key returns the internal key at the current iterator position.
 func (i *blockIter) Key() *InternalKey {
-	return &i.ikey
+	return &i.ikv.InternalKey
+}
+
+// KV returns the internal KV at the current iterator position.
+func (i *blockIter) KV() *base.InternalKV {
+	return &i.ikv
 }
 
 func (i *blockIter) value() base.LazyValue {
-	return i.lazyValue
+	return i.ikv.LazyValue
 }
 
 // Error implements internalIterator.Error, as documented in the pebble
@@ -1522,7 +1532,7 @@ func (i *blockIter) Close() error {
 	i.handle.Release()
 	i.handle = bufferHandle{}
 	i.val = nil
-	i.lazyValue = base.LazyValue{}
+	i.ikv = base.InternalKV{}
 	i.lazyValueHandling.vbr = nil
 	return nil
 }
