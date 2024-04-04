@@ -1846,20 +1846,19 @@ func pickDownloadCompaction(
 	opts *Options,
 	env compactionEnv,
 	baseLevel int,
-	download *downloadSpan,
+	kind compactionKind,
 	level int,
 	file *fileMetadata,
 ) (pc *pickedCompaction) {
-	// Check if the file is compacting already. In that case we don't need to do
-	// anything as it'll be downloaded in the process.
+	// Check if the file is compacting already.
 	if file.CompactionState == manifest.CompactionStateCompacting {
 		return nil
 	}
-	if download.kind != compactionKindCopy && download.kind != compactionKindRewrite {
+	if kind != compactionKindCopy && kind != compactionKindRewrite {
 		panic("invalid download/rewrite compaction kind")
 	}
 	pc = newPickedCompaction(opts, vers, level, level, baseLevel)
-	pc.kind = download.kind
+	pc.kind = kind
 	pc.startLevel.files = manifest.NewLevelSliceKeySorted(opts.Comparer.Compare, []*fileMetadata{file})
 	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
 		// setupInputs returned false indicating there's a conflicting

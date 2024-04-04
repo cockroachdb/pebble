@@ -422,9 +422,9 @@ type DB struct {
 			// The list of manual compactions. The next manual compaction to perform
 			// is at the start of the list. New entries are added to the end.
 			manual []*manualCompaction
-			// downloads is the list of suggested download tasks. The next download to
+			// downloads is the list of pending download tasks. The next download to
 			// perform is at the start of the list. New entries are added to the end.
-			downloads []*downloadSpan
+			downloads []*downloadSpanTask
 			// inProgress is the set of in-progress flushes and compactions.
 			// It's used in the calculation of some metrics and to initialize L0
 			// sublevels' state. Some of the compactions contained within this

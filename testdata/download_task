@@ -1,0 +1,194 @@
+# This file tests download span task functionality.
+# Backings >= 100 are external.
+
+define
+L0:
+  1(101):[a#1,SET-c#1,SET]
+  2(102):[d#1,SET-f#1,SET]
+  3(103):[g#1,SET-i#1,SET]
+L1:
+  4(104):[b#1,SET-d#1,SET]
+  5(105):[e#1,SET-e#1,SET]
+  6(106):[f#1,SET-j#1,SET]
+L2:
+  7(107):[a#1,SET-e#1,SET]
+  8(108):[h#1,SET-i#1,SET]
+----
+
+# Simple case, none of the tables are already compacting.
+new-task start=a end=z
+----
+cursor: level=0 key="a" seqNum=0
+
+try-launch
+----
+downloading 000001
+bookmark 0: level=0 key="a" seqNum=0  end-bound="c"
+cursor: level=0 key="a" seqNum=1
+
+# Test a download compaction that gets cancelled.
+try-launch fail
+----
+launching download for 000002 and cancelling it
+bookmark 0: level=0 key="d" seqNum=0  end-bound="f"
+cursor: level=0 key="d" seqNum=1
+
+try-launch
+----
+downloading 000002
+bookmark 0: level=0 key="d" seqNum=0  end-bound="f"
+cursor: level=0 key="d" seqNum=1
+
+try-launch
+----
+downloading 000003
+bookmark 0: level=0 key="g" seqNum=0  end-bound="i"
+cursor: level=0 key="g" seqNum=1
+
+try-launch
+----
+downloading 000004
+bookmark 0: level=1 key="b" seqNum=0  end-bound="d"
+cursor: level=1 key="b" seqNum=1
+
+try-launch
+----
+downloading 000005
+bookmark 0: level=1 key="e" seqNum=0  end-bound="e"
+cursor: level=1 key="e" seqNum=1
+
+try-launch
+----
+downloading 000006
+bookmark 0: level=1 key="f" seqNum=0  end-bound="j"
+cursor: level=1 key="f" seqNum=1
+
+try-launch
+----
+downloading 000007
+bookmark 0: level=2 key="a" seqNum=0  end-bound="e"
+cursor: level=2 key="a" seqNum=1
+
+try-launch
+----
+downloading 000008
+bookmark 0: level=2 key="h" seqNum=0  end-bound="i"
+cursor: level=2 key="h" seqNum=1
+
+try-launch
+----
+cursor: level=7 key="" seqNum=0
+task completed
+
+define
+L0:
+  1(101):[a#1,SET-c#1,SET]
+  2(102):[d#1,SET-f#1,SET]
+  3(103):[g#1,SET-i#1,SET]
+L1:
+  4(104):[b#1,SET-d#1,SET]
+  5(105):[e#1,SET-e#1,SET]
+  6(106):[f#1,SET-j#1,SET]
+L2:
+  7(107):[a#1,SET-e#1,SET]
+  8(108):[h#1,SET-i#1,SET]
+----
+
+# Set some already-compacting tables.
+set-compacting
+2 5
+----
+
+new-task start=a end=z
+----
+cursor: level=0 key="a" seqNum=0
+
+try-launch max-concurrent-downloads=2
+----
+downloading 000001
+bookmark 0: level=0 key="a" seqNum=0  end-bound="c"
+cursor: level=0 key="a" seqNum=1
+
+# Now we encounter file 2; we leave bookmark 0 there and advance to the next file.
+try-launch max-concurrent-downloads=2
+----
+downloading 000003
+bookmark 0: level=0 key="d" seqNum=0  end-bound="f"
+bookmark 1: level=0 key="g" seqNum=0  end-bound="i"
+cursor: level=0 key="g" seqNum=1
+
+try-launch max-concurrent-downloads=2
+----
+downloading 000004
+bookmark 0: level=0 key="d" seqNum=0  end-bound="f"
+bookmark 1: level=1 key="b" seqNum=0  end-bound="d"
+cursor: level=1 key="b" seqNum=1
+
+# We encounter file 5 and the task will now wait for one of these compactions to
+# finish.
+try-launch max-concurrent-downloads=2
+----
+bookmark 0: level=0 key="d" seqNum=0  end-bound="f"
+bookmark 1: level=1 key="e" seqNum=0  end-bound="e"
+cursor: level=1 key="e" seqNum=1
+
+# With concurrency 3 we can launch new downloads.
+try-launch max-concurrent-downloads=3
+----
+downloading 000006
+bookmark 0: level=0 key="d" seqNum=0  end-bound="f"
+bookmark 1: level=1 key="e" seqNum=0  end-bound="e"
+bookmark 2: level=1 key="f" seqNum=0  end-bound="j"
+cursor: level=1 key="f" seqNum=1
+
+# Update version as if files 1 through 5 were downloaded and 6 and 7 are
+# compacting.
+define
+L0:
+  1:[a#1,SET-c#1,SET]
+  2:[d#1,SET-f#1,SET]
+  3:[g#1,SET-i#1,SET]
+L1:
+  4:[b#1,SET-d#1,SET]
+  5:[e#1,SET-e#1,SET]
+  6(106):[f#1,SET-j#1,SET]
+L2:
+  7(107):[a#1,SET-e#1,SET]
+  8(108):[h#1,SET-i#1,SET]
+----
+
+set-compacting
+6 7
+----
+
+try-launch max-concurrent-downloads=2
+----
+bookmark 0: level=1 key="f" seqNum=0  end-bound="j"
+bookmark 1: level=2 key="a" seqNum=0  end-bound="e"
+cursor: level=2 key="a" seqNum=1
+
+try-launch max-concurrent-downloads=2
+----
+bookmark 0: level=1 key="f" seqNum=0  end-bound="j"
+bookmark 1: level=2 key="a" seqNum=0  end-bound="e"
+cursor: level=2 key="a" seqNum=1
+
+# Update version as if all files have been downloaded.
+define
+L0:
+  1:[a#1,SET-c#1,SET]
+  2:[d#1,SET-f#1,SET]
+  3:[g#1,SET-i#1,SET]
+L1:
+  4:[b#1,SET-d#1,SET]
+  5:[e#1,SET-e#1,SET]
+  6:[f#1,SET-j#1,SET]
+L2:
+  7:[a#1,SET-e#1,SET]
+  8:[h#1,SET-i#1,SET]
+----
+
+try-launch
+----
+cursor: level=7 key="" seqNum=0
+task completed
