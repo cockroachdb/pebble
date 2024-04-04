@@ -1912,63 +1912,22 @@ func pickElisionOnly(picker compactionPicker, env compactionEnv) *pickedCompacti
 // immediately because it is a no-op or we hit an error).
 //
 // Requires d.mu to be held. Updates d.mu.compact.downloads.
-func (d *DB) tryScheduleDownloadCompaction(env compactionEnv) bool {
-	v := d.mu.versions.currentVersion()
-	download := d.mu.compact.downloads[0]
-	env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
-
-	// Find an external file within the span that is not already compacting.
-	externalFile, level, err := func() (*fileMetadata, int, error) {
-		bounds := base.UserKeyBoundsEndExclusive(download.start, download.end)
-		for i := range v.Levels {
-			overlaps := v.Overlaps(i, bounds)
-			iter := overlaps.Iter()
-			for f := iter.First(); f != nil; f = iter.Next() {
-				objMeta, err := d.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
-				if err != nil {
-					return nil, 0, err
-				}
-				if objMeta.IsExternal() && !f.IsCompacting() {
-					return f, i, nil
-				}
-			}
+func (d *DB) tryScheduleDownloadCompaction(env compactionEnv, maxConcurrentDownloads int) bool {
+	vers := d.mu.versions.currentVersion()
+	for i := 0; i < len(d.mu.compact.downloads); {
+		download := d.mu.compact.downloads[i]
+		switch d.tryLaunchDownloadCompaction(download, vers, env, maxConcurrentDownloads) {
+		case launchedCompaction:
+			return true
+		case didNotLaunchCompaction:
+			// See if we can launch a compaction for another download task.
+			i++
+		case downloadTaskCompleted:
+			// Task is completed and must be removed.
+			d.mu.compact.downloads = slices.Delete(d.mu.compact.downloads, i, i+1)
 		}
-		return nil, 0, nil
-	}()
-
-	if err != nil {
-		// Report an error and remove this download span.
-		download.doneChans[download.compactionsStarted] <- err
-		d.mu.compact.downloads = d.mu.compact.downloads[1:]
-		return true
 	}
-	if externalFile == nil {
-		// The entirety of this span is downloaded, or is being downloaded right
-		// now.
-		d.mu.compact.downloads = d.mu.compact.downloads[1:]
-		return true
-	}
-
-	pc := pickDownloadCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), download, level, externalFile)
-	if pc == nil {
-		// We are not able to run this download compaction at this time.
-		//
-		// TODO(radu): there may be other external files within this span that we
-		// could try.
-		return false
-	}
-
-	doneCh := download.doneChans[download.compactionsStarted]
-	download.compactionsStarted++
-	// Create another doneChan for the next compaction.
-	download.doneChans = append(download.doneChans, make(chan error, 1))
-
-	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
-	c.isDownload = true
-	d.mu.compact.downloadingCount++
-	d.addInProgressCompaction(c)
-	go d.compact(c, doneCh)
-	return true
+	return false
 }
 
 // maybeScheduleCompactionPicker schedules a compaction if necessary,
@@ -2036,7 +1995,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 
 	for len(d.mu.compact.downloads) > 0 && d.mu.compact.downloadingCount < maxDownloads &&
-		d.tryScheduleDownloadCompaction(env) {
+		d.tryScheduleDownloadCompaction(env, maxDownloads) {
 	}
 }
 
