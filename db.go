@@ -2048,6 +2048,43 @@ func (d *DB) Download(ctx context.Context, spans []DownloadSpan) error {
 	return nil
 }
 
+// ExternalFileCount returns the number of external files present in
+// the range `[start, end]`.
+func (d *DB) ExternalFileCount(ctx context.Context, start, end []byte) (int, error) {
+	if d.opts.Comparer.Compare(start, end) > 0 {
+		return 0, errors.New("invalid key-range specified (start > end)")
+	}
+
+	rs := d.loadReadState()
+	defer rs.unref()
+
+	cmp := d.opts.Comparer
+	overlaps := func(startA, endA, startB, endB []byte) bool {
+		return !(cmp.Compare(endB, startA) < 0 || cmp.Compare(endA, startB) < 0)
+	}
+
+	count := 0
+	for _level, files := range rs.current.Levels {
+		iter := files.Iter()
+		for m := iter.First(); m != nil; m = iter.Next() {
+			if err := ctx.Err(); err != nil {
+				return 0, err
+			}
+
+			if overlaps(start, end, m.Smallest.UserKey, m.Largest.UserKey) {
+				objMeta, err := d.objProvider.Lookup(fileTypeTable, m.FileBacking.DiskFileNum)
+				if err != nil {
+					return 0, err
+				}
+				if objMeta.IsExternal() {
+					count++
+				}
+			}
+		}
+	}
+	return count, nil
+}
+
 // Flush the memtable to stable storage.
 func (d *DB) Flush() error {
 	flushDone, err := d.AsyncFlush()
