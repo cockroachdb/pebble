@@ -359,7 +359,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 			got, c.falsePositives, c.trueNegatives, n)
 	}
 
-	// According the the comments in the C++ LevelDB code, the false positive
+	// According the comments in the C++ LevelDB code, the false positive
 	// rate should be approximately 1% for for bloom.FilterPolicy(10). The 10
 	// was the parameter used to write the .sst file. When reading the file,
 	// the 1 in the bloom.FilterPolicy(1) above doesn't matter, only the

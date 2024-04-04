@@ -224,7 +224,7 @@ c@10: (., [c-"c\x00") @1=bar UPDATED)
 #      b. In L6, the level iterator seeks to 000004 which contains a key with
 #         the prefix, returning 'b@4'.
 #   2. Next():
-#      a. Next advances the the L6 iterator to file 000005. This file contains a
+#      a. Next advances the L6 iterator to file 000005. This file contains a
 #         range key [e,f)@1=bar, which updates the lazy-combined iterator's
 #         state, recording the earliest observed range key as 'e'. The L6 level
 #         iterator then returns the file single point key 'c'.

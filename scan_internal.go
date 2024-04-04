@@ -447,7 +447,7 @@ type scanInternalIterator struct {
 // produced that is suitable for external consumption by other Pebble
 // instances.
 //
-// truncateSharedFile reads the file to try to create the the smallest
+// truncateSharedFile reads the file to try to create the smallest
 // possible bounds.  Here, we blindly truncate them. This may mean we
 // include this SST in iterations it isn't really needed in. Since we
 // don't expect External files to be long-lived in the pebble

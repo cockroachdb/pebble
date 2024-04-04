@@ -1514,7 +1514,7 @@ func (d *DB) NewIndexedBatch() *Batch {
 }
 
 // NewIndexedBatchWithSize is mostly identical to NewIndexedBatch, but it will
-// allocate the the specified memory space for the internal slice in advance.
+// allocate the specified memory space for the internal slice in advance.
 func (d *DB) NewIndexedBatchWithSize(size int) *Batch {
 	return newIndexedBatchWithSize(d, d.opts.Comparer, size)
 }
