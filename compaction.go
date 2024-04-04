@@ -1180,21 +1180,6 @@ type readCompaction struct {
 	fileNum base.FileNum
 }
 
-type downloadSpan struct {
-	start []byte
-	end   []byte
-	// doneChans contains a list of channels passed into compactions as done
-	// channels. Each channel has a buffer size of 1 and is only passed into
-	// one compaction. This slice can grow over the lifetime of a downloadSpan.
-	doneChans []chan error
-	// compactionsStarted is the number of compactions started for this
-	// downloadSpan. Must be equal to len(doneChans)-1, i.e. there's one spare
-	// doneChan created each time a compaction starts up, for the next compaction.
-	compactionsStarted int
-
-	kind compactionKind
-}
-
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
