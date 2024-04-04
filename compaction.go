@@ -1719,13 +1719,9 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 					metrics.BytesIn += d.mu.mem.queue[i].logSize
 				}
 			}
-		} else if len(ve.DeletedFiles) > 0 {
-			// c.kind == compactionKindIngestedFlushable && we have deleted files due
+		} else {
+			// c.kind == compactionKindIngestedFlushable && we could have deleted files due
 			// to ingest-time splits or excises.
-			//
-			// Iterate through all other compactions, and check if their inputs have
-			// been replaced due to an ingest-time split or excise. In that case,
-			// cancel the compaction.
 			ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
 			for c2 := range d.mu.compact.inProgress {
 				// Check if this compaction overlaps with the excise span. Note that just
@@ -1739,12 +1735,20 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 					c2.cancel.Store(true)
 					continue
 				}
-				for i := range c2.inputs {
-					iter := c2.inputs[i].files.Iter()
-					for f := iter.First(); f != nil; f = iter.Next() {
-						if _, ok := ve.DeletedFiles[deletedFileEntry{FileNum: f.FileNum, Level: c2.inputs[i].level}]; ok {
-							c2.cancel.Store(true)
-							break
+			}
+
+			if len(ve.DeletedFiles) > 0 {
+				// Iterate through all other compactions, and check if their inputs have
+				// been replaced due to an ingest-time split or excise. In that case,
+				// cancel the compaction.
+				for c2 := range d.mu.compact.inProgress {
+					for i := range c2.inputs {
+						iter := c2.inputs[i].files.Iter()
+						for f := iter.First(); f != nil; f = iter.Next() {
+							if _, ok := ve.DeletedFiles[deletedFileEntry{FileNum: f.FileNum, Level: c2.inputs[i].level}]; ok {
+								c2.cancel.Store(true)
+								break
+							}
 						}
 					}
 				}
