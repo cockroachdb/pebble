@@ -3265,7 +3265,7 @@ func (d *DB) runCompaction(
 					// guarantees the lifetime of the [start, end) bounds until the next
 					// positioning method is called.
 					//
-					// Additionally, the Span.Keys slice is owned by the the range
+					// Additionally, the Span.Keys slice is owned by the range
 					// deletion iterator stack, and it may be overwritten when we advance.
 					//
 					// Clone the Keys slice and the start and end keys.

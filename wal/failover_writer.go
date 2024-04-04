@@ -514,7 +514,7 @@ func (ww *failoverWriter) WriteRecord(
 		// 10 records, so they are all accumulated as an estimate. Then the first
 		// LogWriter successfully writes and syncs the first 5 records and gets
 		// stuck. A switch happens to a second LogWriter that is handed the
-		// remaining 5 records, and the the 11th record arrives via a WriteRecord.
+		// remaining 5 records, and the 11th record arrives via a WriteRecord.
 		// The transition from !notEstimatedOffset to notEstimatedOffset will
 		// happen on this 11th record, and the logic here will use the length of
 		// the second LogWriter, that does not reflect the full length.
@@ -651,7 +651,7 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 				// TODO(sumeer): consider deleting this file too, since
 				// failoverWriter.Close may not wait for it. This is going to be
 				// extremely rare, so the risk of garbage empty files piling up is
-				// extremely low. Say failover happens daily and and of those cases we
+				// extremely low. Say failover happens daily and of those cases we
 				// have to be very unlucky and the close happens while a failover was
 				// ongoing and the previous LogWriter successfully wrote everything
 				// (say 1% probability if we want to be pessimistic). A garbage file

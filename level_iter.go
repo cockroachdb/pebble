@@ -338,7 +338,7 @@ func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *fileMetadata
 	//      between the current position and the seek key. However in most real-
 	//      world use cases, the seek key is likely to be nearby. Rather than
 	//      performing a log(N) seek through the file metadata, we next a few
-	//      times from from our existing location. If we don't find a file whose
+	//      times from our existing location. If we don't find a file whose
 	//      largest is >= key within a few nexts, we fall back to seeking.
 	//
 	//      Note that in this case, the file returned by findFileGE may be
