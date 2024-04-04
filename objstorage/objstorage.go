@@ -373,3 +373,10 @@ func MustIsLocalTable(provider Provider, fileNum base.DiskFileNum) bool {
 	}
 	return !meta.IsRemote()
 }
+
+// IsExternalTable returns true if a table with the given fileNum exists and is
+// external.
+func IsExternalTable(provider Provider, fileNum base.DiskFileNum) bool {
+	meta, err := provider.Lookup(base.FileTypeTable, fileNum)
+	return err == nil && meta.IsExternal()
+}

@@ -146,6 +146,10 @@ func (t *Test) init(
 			maybeExit(info.Err)
 		}
 	}
+	t.opts.EventListener.DownloadEnd = func(info pebble.DownloadInfo) {
+		t.opts.Logger.Infof("%s", info)
+		maybeExit(info.Err)
+	}
 	t.opts.EventListener.ManifestCreated = func(info pebble.ManifestCreateInfo) {
 		t.opts.Logger.Infof("%s", info)
 		maybeExit(info.Err)

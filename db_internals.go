@@ -16,3 +16,9 @@ func (d *DB) newJobIDLocked() JobID {
 	d.mu.nextJobID++
 	return res
 }
+
+func (d *DB) newJobID() JobID {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.newJobIDLocked()
+}
