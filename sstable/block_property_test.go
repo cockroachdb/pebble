@@ -174,8 +174,20 @@ type testDataBlockIntervalCollector struct {
 	i interval
 }
 
+var _ DataBlockIntervalCollector = &testDataBlockIntervalCollector{}
+
 func (c *testDataBlockIntervalCollector) Add(key InternalKey, value []byte) error {
 	return nil
+}
+
+func (c *testDataBlockIntervalCollector) AddCollectedWithSuffixReplacement(
+	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
+) error {
+	return errors.Errorf("not supported")
+}
+
+func (c *testDataBlockIntervalCollector) SupportsSuffixReplacement() bool {
+	return false
 }
 
 func (c *testDataBlockIntervalCollector) FinishDataBlock() (lower uint64, upper uint64, err error) {
@@ -809,12 +821,24 @@ func (c *valueCharBlockIntervalCollector) FinishDataBlock() (lower, upper uint64
 	return l, u, nil
 }
 
+func (c *valueCharBlockIntervalCollector) AddCollectedWithSuffixReplacement(
+	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
+) error {
+	return errors.Errorf("not supported")
+}
+
+func (c *valueCharBlockIntervalCollector) SupportsSuffixReplacement() bool {
+	return false
+}
+
 // testKeysSuffixIntervalCollector maintains an interval over the timestamps in
 // MVCC-like suffixes for keys (e.g. foo@123).
 type suffixIntervalCollector struct {
 	initialized  bool
 	lower, upper uint64
 }
+
+var _ DataBlockIntervalCollector = &suffixIntervalCollector{}
 
 // Add implements DataBlockIntervalCollector by adding the timestamp(s) in the
 // suffix(es) of this record to the current interval.
@@ -870,6 +894,16 @@ func (c *suffixIntervalCollector) FinishDataBlock() (lower, upper uint64, err er
 	c.lower, c.upper = 0, 0
 	c.initialized = false
 	return l, u, nil
+}
+
+func (c *suffixIntervalCollector) AddCollectedWithSuffixReplacement(
+	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
+) error {
+	return errors.Errorf("not implemented")
+}
+
+func (c *suffixIntervalCollector) SupportsSuffixReplacement() bool {
+	return false
 }
 
 func TestBlockProperties(t *testing.T) {
@@ -1391,7 +1425,6 @@ type keyCountCollector struct {
 }
 
 var _ BlockPropertyCollector = &keyCountCollector{}
-var _ SuffixReplaceableBlockCollector = &keyCountCollector{}
 
 func keyCountCollectorFn(name string) func() BlockPropertyCollector {
 	return func() BlockPropertyCollector { return &keyCountCollector{name: name} }
@@ -1431,13 +1464,19 @@ func (p *keyCountCollector) FinishTable(buf []byte) ([]byte, error) {
 	return buf, nil
 }
 
-func (p *keyCountCollector) UpdateKeySuffixes(old []byte, _, _ []byte) error {
-	n, err := strconv.Atoi(string(old))
+func (p *keyCountCollector) AddCollectedWithSuffixReplacement(
+	oldProp []byte, oldSuffix, newSuffix []byte,
+) error {
+	n, err := strconv.Atoi(string(oldProp))
 	if err != nil {
 		return err
 	}
 	p.block = n
 	return nil
+}
+
+func (p *keyCountCollector) SupportsSuffixReplacement() bool {
+	return true
 }
 
 // intSuffixCollector is testing prop collector that collects the min and
@@ -1487,6 +1526,8 @@ type intSuffixIntervalCollector struct {
 	intSuffixCollector
 }
 
+var _ DataBlockIntervalCollector = &intSuffixIntervalCollector{}
+
 func intSuffixIntervalCollectorFn(name string, length int) func() BlockPropertyCollector {
 	return func() BlockPropertyCollector {
 		return NewBlockIntervalCollector(name, &intSuffixIntervalCollector{makeIntSuffixCollector(length)}, nil)
@@ -1494,12 +1535,17 @@ func intSuffixIntervalCollectorFn(name string, length int) func() BlockPropertyC
 }
 
 var _ DataBlockIntervalCollector = &intSuffixIntervalCollector{}
-var _ SuffixReplaceableBlockCollector = &intSuffixIntervalCollector{}
 
 func (p *intSuffixIntervalCollector) FinishDataBlock() (lower uint64, upper uint64, err error) {
 	return p.min, p.max + 1, nil
 }
 
-func (p *intSuffixIntervalCollector) UpdateKeySuffixes(oldProp []byte, from, to []byte) error {
-	return p.setFromSuffix(to)
+func (p *intSuffixIntervalCollector) AddCollectedWithSuffixReplacement(
+	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
+) error {
+	return p.setFromSuffix(newSuffix)
+}
+
+func (p *intSuffixIntervalCollector) SupportsSuffixReplacement() bool {
+	return true
 }

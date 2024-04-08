@@ -98,49 +98,53 @@ import (
 type BlockPropertyCollector interface {
 	// Name returns the name of the block property collector.
 	Name() string
+
 	// Add is called with each new entry added to a data block in the sstable.
 	// The callee can assume that these are in sorted order.
 	Add(key InternalKey, value []byte) error
+
+	// AddCollectedWithSuffixReplacement adds previously collected property data
+	// and updates it to reflect a change of suffix on all keys: the old property
+	// data is assumed to be constructed from keys that all have the same
+	// oldSuffix and is recalculated to reflect the same keys but with newSuffix.
+	//
+	// A collector which supports this method must be able to derive its updated
+	// value from its old value and the change being made to the suffix, without
+	// needing to be passed each updated K/V.
+	//
+	// For example, a collector that only inspects values can simply copy its
+	// previously computed property as-is, since key-suffix replacement does not
+	// change values, while a collector that depends only on key suffixes, like
+	// one which collected mvcc-timestamp bounds from timestamp-suffixed keys, can
+	// just set its new bounds from the new suffix, as it is common to all keys,
+	// without needing to recompute it from every key.
+	//
+	// This method is optional (if it is not implemented, it always returns an
+	// error). SupportsSuffixReplacement() can be used to check if this method is
+	// implemented.
+	AddCollectedWithSuffixReplacement(oldProp []byte, oldSuffix, newSuffix []byte) error
+
+	// SupportsSuffixReplacement returns whether the collector supports the
+	// AddCollectedWithSuffixReplacement method.
+	SupportsSuffixReplacement() bool
+
 	// FinishDataBlock is called when all the entries have been added to a
 	// data block. Subsequent Add calls will be for the next data block. It
 	// returns the property value for the finished block.
 	FinishDataBlock(buf []byte) ([]byte, error)
+
 	// AddPrevDataBlockToIndexBlock adds the entry corresponding to the
 	// previous FinishDataBlock to the current index block.
 	AddPrevDataBlockToIndexBlock()
+
 	// FinishIndexBlock is called when an index block, containing all the
 	// key-value pairs since the last FinishIndexBlock, will no longer see new
 	// entries. It returns the property value for the index block.
 	FinishIndexBlock(buf []byte) ([]byte, error)
+
 	// FinishTable is called when the sstable is finished, and returns the
 	// property value for the sstable.
 	FinishTable(buf []byte) ([]byte, error)
-}
-
-// SuffixReplaceableBlockCollector is an extension to the BlockPropertyCollector
-// interface that allows a block property collector to indicate that it supports
-// being *updated* during suffix replacement, i.e. when an existing SST in which
-// all keys have the same key suffix is updated to have a new suffix.
-//
-// A collector which supports being updated in such cases must be able to derive
-// its updated value from its old value and the change being made to the suffix,
-// without needing to be passed each updated K/V.
-//
-// For example, a collector that only inspects values would can simply copy its
-// previously computed property as-is, since key-suffix replacement does not
-// change values, while a collector that depends only on key suffixes, like one
-// which collected mvcc-timestamp bounds from timestamp-suffixed keys, can just
-// set its new bounds from the new suffix, as it is common to all keys, without
-// needing to recompute it from every key.
-//
-// An implementation of DataBlockIntervalCollector can also implement this
-// interface, in which case the BlockPropertyCollector returned by passing it to
-// NewBlockIntervalCollector will also implement this interface automatically.
-type SuffixReplaceableBlockCollector interface {
-	// UpdateKeySuffixes is called when a block is updated to change the suffix of
-	// all keys in the block, and is passed the old value for that prop, if any,
-	// for that block as well as the old and new suffix.
-	UpdateKeySuffixes(oldProp []byte, oldSuffix, newSuffix []byte) error
 }
 
 // BlockPropertyFilter is used in an Iterator to filter sstables and blocks
@@ -237,6 +241,25 @@ type DataBlockIntervalCollector interface {
 	// Add is called with each new entry added to a data block in the sstable.
 	// The callee can assume that these are in sorted order.
 	Add(key InternalKey, value []byte) error
+
+	// AddCollectedWithSuffixReplacement extends the interval with a given
+	// interval after updating it to reflect a change of suffix on all keys: the
+	// [oldLower, oldUpper) interval is assumed to be constructed from keys that
+	// all have the same oldSuffix and is recalculated to reflect the same keys but
+	// with newSuffix.
+	//
+	// This method is optional (if it is not implemented, it always returns an
+	// error). SupportsSuffixReplacement() can be used to check if this method is
+	// implemented.
+	//
+	// See BlockPropertyCollector.AddCollectedWithSuffixReplacement for more
+	// information.
+	AddCollectedWithSuffixReplacement(oldLower, oldUpper uint64, oldSuffix, newSuffix []byte) error
+
+	// SupportsSuffixReplacement returns whether the collector supports the
+	// AddCollectedWithSuffixReplacement method.
+	SupportsSuffixReplacement() bool
+
 	// FinishDataBlock is called when all the entries have been added to a
 	// data block. Subsequent Add calls will be for the next data block. It
 	// returns the [lower, upper) for the finished block.
@@ -262,23 +285,19 @@ func NewBlockIntervalCollector(
 	if pointCollector == nil && rangeCollector == nil {
 		panic("sstable: at least one interval collector must be provided")
 	}
-	bic := BlockIntervalCollector{
+	return &BlockIntervalCollector{
 		name:   name,
 		points: pointCollector,
 		ranges: rangeCollector,
 	}
-	if _, ok := pointCollector.(SuffixReplaceableBlockCollector); ok {
-		return &suffixReplacementBlockCollectorWrapper{bic}
-	}
-	return &bic
 }
 
-// Name implements the BlockPropertyCollector interface.
+// Name is part of the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) Name() string {
 	return b.name
 }
 
-// Add implements the BlockPropertyCollector interface.
+// Add is part of the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) Add(key InternalKey, value []byte) error {
 	if rangekey.IsRangeKey(key.Kind()) {
 		if b.ranges != nil {
@@ -290,7 +309,23 @@ func (b *BlockIntervalCollector) Add(key InternalKey, value []byte) error {
 	return nil
 }
 
-// FinishDataBlock implements the BlockPropertyCollector interface.
+// AddCollectedWithSuffixReplacement is part of the BlockPropertyCollector interface.
+func (b *BlockIntervalCollector) AddCollectedWithSuffixReplacement(
+	oldProp []byte, oldSuffix, newSuffix []byte,
+) error {
+	var i interval
+	if err := i.decode(oldProp); err != nil {
+		return err
+	}
+	return b.points.AddCollectedWithSuffixReplacement(i.lower, i.upper, oldSuffix, newSuffix)
+}
+
+// SupportsSuffixReplacement is part of the BlockPropertyCollector interface.
+func (b *BlockIntervalCollector) SupportsSuffixReplacement() bool {
+	return b.points.SupportsSuffixReplacement()
+}
+
+// FinishDataBlock is part of the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) FinishDataBlock(buf []byte) ([]byte, error) {
 	if b.points == nil {
 		return buf, nil
@@ -400,17 +435,6 @@ func (i interval) intersects(x interval) bool {
 	}
 	// Neither set is empty.
 	return i.upper > x.lower && i.lower < x.upper
-}
-
-type suffixReplacementBlockCollectorWrapper struct {
-	BlockIntervalCollector
-}
-
-// UpdateKeySuffixes implements the SuffixReplaceableBlockCollector interface.
-func (w *suffixReplacementBlockCollectorWrapper) UpdateKeySuffixes(
-	oldProp []byte, from, to []byte,
-) error {
-	return w.BlockIntervalCollector.points.(SuffixReplaceableBlockCollector).UpdateKeySuffixes(oldProp, from, to)
 }
 
 // BlockIntervalSyntheticReplacer provides methods to conduct just in time

@@ -63,8 +63,8 @@ func (o *obsoleteKeyBlockPropertyCollector) FinishTable(buf []byte) ([]byte, err
 	return obsoleteKeyBlockPropertyEncode(!o.tableIsNonObsolete, buf), nil
 }
 
-// UpdateKeySuffixes is part of the BlockPropertyCollector interface.
-func (o *obsoleteKeyBlockPropertyCollector) UpdateKeySuffixes(
+// AddCollectedWithSuffixReplacement is part of the BlockPropertyCollector interface.
+func (o *obsoleteKeyBlockPropertyCollector) AddCollectedWithSuffixReplacement(
 	oldProp []byte, oldSuffix, newSuffix []byte,
 ) error {
 	// Verify the property is valid.
@@ -75,6 +75,11 @@ func (o *obsoleteKeyBlockPropertyCollector) UpdateKeySuffixes(
 	// Suffix rewriting currently loses the obsolete bit.
 	o.blockIsNonObsolete = true
 	return nil
+}
+
+// SupportsSuffixReplacement is part of the BlockPropertyCollector interface.
+func (o *obsoleteKeyBlockPropertyCollector) SupportsSuffixReplacement() bool {
+	return true
 }
 
 // obsoleteKeyBlockPropertyFilter implements the filter that excludes blocks

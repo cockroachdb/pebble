@@ -15,21 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 )
 
-// RewriteKeySuffixes is deprecated.
-//
-// TODO(sumeer): remove after switching CockroachDB to RewriteKeySuffixesAndReturnFormat.
-func RewriteKeySuffixes(
-	sst []byte,
-	rOpts ReaderOptions,
-	out objstorage.Writable,
-	o WriterOptions,
-	from, to []byte,
-	concurrency int,
-) (*WriterMetadata, error) {
-	meta, _, err := RewriteKeySuffixesAndReturnFormat(sst, rOpts, out, o, from, to, concurrency)
-	return meta, err
-}
-
 // RewriteKeySuffixesAndReturnFormat copies the content of the passed SSTable
 // bytes to a new sstable, written to `out`, in which the suffix `from` has is
 // replaced with `to` in every key. The input sstable must consist of only
@@ -47,7 +32,7 @@ func RewriteKeySuffixes(
 // re-computation of properties (is there any loss of fidelity?).
 //
 // Any block property collectors configured in the WriterOptions must implement
-// SuffixReplaceableBlockCollector.
+// AddCollectedWithSuffixChange.
 //
 // The WriterOptions.TableFormat is ignored, and the output sstable has the
 // same TableFormat as the input, which is returned in case the caller wants
@@ -116,7 +101,7 @@ func rewriteKeySuffixesInBlocks(
 	}()
 
 	for _, c := range w.blockPropCollectors {
-		if _, ok := c.(SuffixReplaceableBlockCollector); !ok {
+		if !c.SupportsSuffixReplacement() {
 			return nil, TableFormatUnspecified,
 				errors.Errorf("block property collector %s does not support suffix replacement", c.Name())
 		}
@@ -371,7 +356,7 @@ func rewriteDataBlocksToWriter(
 		}
 
 		for i, p := range w.blockPropCollectors {
-			if err := p.(SuffixReplaceableBlockCollector).UpdateKeySuffixes(oldProps[i], from, to); err != nil {
+			if err := p.AddCollectedWithSuffixReplacement(oldProps[i], from, to); err != nil {
 				return err
 			}
 		}

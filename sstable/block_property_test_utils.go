@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 )
@@ -139,4 +140,16 @@ func (c *testKeysSuffixIntervalCollector) FinishDataBlock() (lower, upper uint64
 	c.lower, c.upper = 0, 0
 	c.initialized = false
 	return l, u, nil
+}
+
+// AddCollectedWithSuffixReplacement is part of the DataBlockIntervalCollector interface.
+func (c *testKeysSuffixIntervalCollector) AddCollectedWithSuffixReplacement(
+	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
+) error {
+	return errors.Errorf("not implemented")
+}
+
+// SupportsSuffixReplacement part of the DataBlockIntervalCollector interface.
+func (c *testKeysSuffixIntervalCollector) SupportsSuffixReplacement() bool {
+	return false
 }

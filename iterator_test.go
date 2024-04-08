@@ -485,6 +485,16 @@ func (c *minSeqNumPropertyCollector) FinishTable(buf []byte) ([]byte, error) {
 	return binary.AppendUvarint(buf, c.minSeqNum), nil
 }
 
+func (c *minSeqNumPropertyCollector) AddCollectedWithSuffixReplacement(
+	oldProp []byte, oldSuffix, newSuffix []byte,
+) error {
+	return errors.Errorf("not implemented")
+}
+
+func (c *minSeqNumPropertyCollector) SupportsSuffixReplacement() bool {
+	return false
+}
+
 // minSeqNumFilter is a BlockPropertyFilter that uses the
 // minSeqNumPropertyCollector data to filter out entire tables.
 type minSeqNumFilter struct {
@@ -1121,6 +1131,8 @@ type testBlockIntervalCollector struct {
 	lower, upper  uint64
 }
 
+var _ sstable.DataBlockIntervalCollector = (*testBlockIntervalCollector)(nil)
+
 func (bi *testBlockIntervalCollector) Add(key InternalKey, value []byte) error {
 	k := key.UserKey
 	if len(k) < bi.numLength+bi.offsetFromEnd {
@@ -1154,6 +1166,16 @@ func (bi *testBlockIntervalCollector) FinishDataBlock() (lower uint64, upper uin
 	l, u := bi.lower, bi.upper
 	bi.lower, bi.upper = 0, 0
 	return l, u, nil
+}
+
+func (bi *testBlockIntervalCollector) AddCollectedWithSuffixReplacement(
+	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
+) error {
+	return errors.Errorf("not implemented")
+}
+
+func (bi *testBlockIntervalCollector) SupportsSuffixReplacement() bool {
+	return false
 }
 
 func TestIteratorBlockIntervalFilter(t *testing.T) {
