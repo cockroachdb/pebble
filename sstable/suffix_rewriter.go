@@ -101,9 +101,9 @@ func rewriteKeySuffixesInBlocks(
 	}()
 
 	for _, c := range w.blockPropCollectors {
-		if !c.SupportsSuffixReplacement() {
+		if !c.dataBlock.SupportsSuffixReplacement() {
 			return nil, TableFormatUnspecified,
-				errors.Errorf("block property collector %s does not support suffix replacement", c.Name())
+				errors.Errorf("block property collector %s does not support suffix replacement", c.dataBlock.Name())
 		}
 	}
 
@@ -329,11 +329,11 @@ func rewriteDataBlocksToWriter(
 			oldShortIDs[i] = invalidShortID
 		}
 		for i, p := range w.blockPropCollectors {
-			if prop, ok := r.Properties.UserProperties[p.Name()]; ok {
+			if prop, ok := r.Properties.UserProperties[p.dataBlock.Name()]; ok {
 				was, is := shortID(prop[0]), shortID(i)
 				oldShortIDs[was] = is
 			} else {
-				return errors.Errorf("sstable does not contain property %s", p.Name())
+				return errors.Errorf("sstable does not contain property %s", p.dataBlock.Name())
 			}
 		}
 	}
@@ -361,7 +361,7 @@ func rewriteDataBlocksToWriter(
 		}
 
 		for i, p := range w.blockPropCollectors {
-			if err := p.AddCollectedWithSuffixReplacement(oldProps[i], from, to); err != nil {
+			if err := p.dataBlock.AddCollectedWithSuffixReplacement(oldProps[i], to); err != nil {
 				return err
 			}
 		}

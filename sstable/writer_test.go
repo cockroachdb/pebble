@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -740,147 +739,6 @@ func (f *discardFile) Write(p []byte) error {
 	return nil
 }
 
-type blockPropErrSite uint
-
-const (
-	errSiteAdd blockPropErrSite = iota
-	errSiteFinishBlock
-	errSiteFinishIndex
-	errSiteFinishTable
-	errSiteNone
-)
-
-type testBlockPropCollector struct {
-	errSite blockPropErrSite
-	err     error
-}
-
-var _ BlockPropertyCollector = (*testBlockPropCollector)(nil)
-
-func (c *testBlockPropCollector) Name() string { return "testBlockPropCollector" }
-
-func (c *testBlockPropCollector) AddPointKey(_ InternalKey, _ []byte) error {
-	if c.errSite == errSiteAdd {
-		return c.err
-	}
-	return nil
-}
-
-func (c *testBlockPropCollector) AddRangeKeys(_ Span) error {
-	if c.errSite == errSiteAdd {
-		return c.err
-	}
-	return nil
-}
-
-func (c *testBlockPropCollector) FinishDataBlock(_ []byte) ([]byte, error) {
-	if c.errSite == errSiteFinishBlock {
-		return nil, c.err
-	}
-	return nil, nil
-}
-
-func (c *testBlockPropCollector) AddPrevDataBlockToIndexBlock() {}
-
-func (c *testBlockPropCollector) FinishIndexBlock(_ []byte) ([]byte, error) {
-	if c.errSite == errSiteFinishIndex {
-		return nil, c.err
-	}
-	return nil, nil
-}
-
-func (c *testBlockPropCollector) FinishTable(_ []byte) ([]byte, error) {
-	if c.errSite == errSiteFinishTable {
-		return nil, c.err
-	}
-	return nil, nil
-}
-
-func (c *testBlockPropCollector) AddCollectedWithSuffixReplacement(
-	oldProp []byte, oldSuffix, newSuffix []byte,
-) error {
-	return errors.Errorf("not implemented")
-}
-
-func (c *testBlockPropCollector) SupportsSuffixReplacement() bool {
-	return false
-}
-
-func TestWriterBlockPropertiesErrors(t *testing.T) {
-	blockPropErr := errors.Newf("block property collector failed")
-	testCases := []blockPropErrSite{
-		errSiteAdd,
-		errSiteFinishBlock,
-		errSiteFinishIndex,
-		errSiteFinishTable,
-		errSiteNone,
-	}
-
-	var (
-		k1 = base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet)
-		v1 = []byte("apples")
-		k2 = base.MakeInternalKey([]byte("b"), 0, base.InternalKeyKindSet)
-		v2 = []byte("bananas")
-		k3 = base.MakeInternalKey([]byte("c"), 0, base.InternalKeyKindSet)
-		v3 = []byte("carrots")
-	)
-
-	for _, tc := range testCases {
-		t.Run("", func(t *testing.T) {
-			fs := vfs.NewMem()
-			f, err := fs.Create("test", vfs.WriteCategoryUnspecified)
-			require.NoError(t, err)
-
-			w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
-				BlockSize: 1,
-				BlockPropertyCollectors: []func() BlockPropertyCollector{
-					func() BlockPropertyCollector {
-						return &testBlockPropCollector{
-							errSite: tc,
-							err:     blockPropErr,
-						}
-					},
-				},
-				TableFormat: TableFormatPebblev1,
-			})
-
-			err = w.Add(k1, v1)
-			switch tc {
-			case errSiteAdd:
-				require.Error(t, err)
-				require.Equal(t, blockPropErr, err)
-				return
-			case errSiteFinishBlock:
-				require.NoError(t, err)
-				// Addition of a second key completes the first block.
-				err = w.Add(k2, v2)
-				require.Error(t, err)
-				require.Equal(t, blockPropErr, err)
-				return
-			case errSiteFinishIndex:
-				require.NoError(t, err)
-				// Addition of a second key completes the first block.
-				err = w.Add(k2, v2)
-				require.NoError(t, err)
-				// The index entry for the first block is added after the completion of
-				// the second block, which is triggered by adding a third key.
-				err = w.Add(k3, v3)
-				require.Error(t, err)
-				require.Equal(t, blockPropErr, err)
-				return
-			}
-
-			err = w.Close()
-			if tc == errSiteFinishTable {
-				require.Error(t, err)
-				require.Equal(t, blockPropErr, err)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
 func TestWriter_TableFormatCompatibility(t *testing.T) {
 	testCases := []struct {
 		name        string
@@ -1005,10 +863,9 @@ func TestObsoleteBlockPropertyCollectorFilter(t *testing.T) {
 	// Data block with 1 obsolete and 1 non-obsolete point.
 	c.AddPoint(false)
 	c.AddPoint(true)
-	finishAndCheck := func(finishFunc func([]byte) ([]byte, error), expectedIntersects bool) {
+	finishAndCheck := func(expectedIntersects bool) []byte {
 		var buf [1]byte
-		prop, err := finishFunc(buf[:0:1])
-		require.NoError(t, err)
+		prop := c.Finish(buf[:0:1])
 		expectedLength := 1
 		if expectedIntersects {
 			// The common case is encoded in 0 bytes
@@ -1016,50 +873,30 @@ func TestObsoleteBlockPropertyCollectorFilter(t *testing.T) {
 		}
 		require.Equal(t, expectedLength, len(prop))
 		// Confirm that the collector used the slice.
-		require.Equal(t, unsafe.Pointer(&buf[0]), unsafe.Pointer(&prop[:1][0]))
+		require.Equal(t, &buf[0], &prop[:1][0])
 		intersects, err := f.Intersects(prop)
 		require.NoError(t, err)
 		require.Equal(t, expectedIntersects, intersects)
+		return prop
 	}
-	finishAndCheck(c.FinishDataBlock, true)
-	c.AddPrevDataBlockToIndexBlock()
+	prop1 := finishAndCheck(true)
+
 	// Data block with only obsolete points.
 	c.AddPoint(true)
 	c.AddPoint(true)
-	finishAndCheck(c.FinishDataBlock, false)
-	c.AddPrevDataBlockToIndexBlock()
-	// Index block has one obsolete block and one non-obsolete block.
-	finishAndCheck(c.FinishIndexBlock, true)
+	prop2 := finishAndCheck(false)
 
 	// Data block with obsolete point.
 	c.AddPoint(true)
-	finishAndCheck(c.FinishDataBlock, false)
-	c.AddPrevDataBlockToIndexBlock()
-	// Data block with obsolete point.
-	c.AddPoint(true)
-	finishAndCheck(c.FinishDataBlock, false)
-	c.AddPrevDataBlockToIndexBlock()
-	// Index block has only obsolete blocks.
-	finishAndCheck(c.FinishIndexBlock, false)
-	// Table is not obsolete.
-	finishAndCheck(c.FinishTable, true)
+	prop3 := finishAndCheck(false)
 
-	// Reset the collector state.
-	c = obsoleteKeyBlockPropertyCollector{}
-	// Table with only obsolete blocks.
+	require.NoError(t, c.AddCollected(prop1))
+	require.NoError(t, c.AddCollected(prop2))
+	finishAndCheck(true)
 
-	// Data block with obsolete point.
-	c.AddPoint(true)
-	finishAndCheck(c.FinishDataBlock, false)
-	c.AddPrevDataBlockToIndexBlock()
-	// Data block with obsolete point.
-	c.AddPoint(true)
-	finishAndCheck(c.FinishDataBlock, false)
-	c.AddPrevDataBlockToIndexBlock()
-	// Index block has only obsolete blocks.
-	finishAndCheck(c.FinishIndexBlock, false)
-	// Table is obsolete.
-	finishAndCheck(c.FinishTable, false)
+	require.NoError(t, c.AddCollected(prop2))
+	require.NoError(t, c.AddCollected(prop3))
+	finishAndCheck(false)
 }
 
 func BenchmarkWriter(b *testing.B) {

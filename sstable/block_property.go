@@ -11,23 +11,26 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // Block properties are an optional user-facing feature that can be used to
-// filter data blocks (and whole sstables) from an Iterator before they are
-// loaded. They do not apply to range delete blocks. These are expected to
-// very concisely represent a set of some attribute value contained within the
-// key or value, such that the set includes all the attribute values in the
-// block. This has some similarities with OLAP pruning approaches that
-// maintain min-max attribute values for some column (which concisely
-// represent a set), that is then used to prune at query time. In Pebble's
-// case, data blocks are small, typically 25-50KB, so these properties should
-// reduce their precision in order to be concise -- a good rule of thumb is to
-// not consume more than 50-100 bytes across all properties maintained for a
-// block, i.e., a 500x reduction compared to loading the data block.
+// filter data blocks or index blocks or whole sstables from an Iterator before
+// they are loaded.
+//
+// Block properties are expected to very concisely represent a set of some
+// attribute value contained within the key or value, such that the set includes
+// all the attribute values in the block. This has some similarities with OLAP
+// pruning approaches that maintain min-max attribute values for some column
+// (which concisely represent a set), that is then used to prune at query time.
+// In Pebble's case, data blocks are small, typically 25-50KB, so these
+// properties should reduce their precision in order to be concise -- a good
+// rule of thumb is to not consume more than 50-100 bytes across all properties
+// maintained for a block, i.e., a 500x reduction compared to loading the data
+// block.
 //
 // A block property must be assigned a unique name, which is encoded and
 // stored in the sstable. This name must be unique among all user-properties
@@ -37,17 +40,12 @@ import (
 // considered semantically identical. The caller is free to choose the
 // semantics of an empty byte slice e.g. they could use it to represent the
 // empty set or the universal set, whichever they think is more common and
-// therefore better to encode more concisely. The serialization of the
-// property for the various Finish*() calls in a BlockPropertyCollector
-// implementation should be identical, since the corresponding
-// BlockPropertyFilter implementation is not told the context in which it is
-// deserializing the property.
+// therefore better to encode more concisely.
 //
-// Block properties are more general than table properties and should be
-// preferred over using table properties. A BlockPropertyCollector can achieve
-// identical behavior to table properties by returning the nil slice from
-// FinishDataBlock and FinishIndexBlock, and interpret them as the universal
-// set in BlockPropertyFilter, and return a non-universal set in FinishTable.
+// Block properties are hierarchical: the properties for an index block must be
+// derivable just from the properties of the data blocks it contains. Similarly,
+// the table properties must be derivable just from the properties of the index
+// blocks and range block.
 //
 // Block property filtering is nondeterministic because the separation of keys
 // into blocks is nondeterministic. Clients use block-property filters to
@@ -83,19 +81,10 @@ import (
 // compactions. If Pebble is configured with such value separation, block
 // properties must only apply to the key, and will be provided a nil value.
 
-// BlockPropertyCollector is used when writing a sstable.
-//
-//   - All calls to Add are included in the next FinishDataBlock, after which
-//     the next data block is expected to start.
-//
-//   - The index entry generated for the data block, which contains the return
-//     value from FinishDataBlock, is not immediately included in the current
-//     index block. It is included when AddPrevDataBlockToIndexBlock is called.
-//     An alternative would be to return an opaque handle from FinishDataBlock
-//     and pass it to a new AddToIndexBlock method, which requires more
-//     plumbing, and passing of an interface{} results in a undesirable heap
-//     allocation. AddPrevDataBlockToIndexBlock must be called before keys are
-//     added to the new data block.
+// BlockPropertyCollector is used when writing a sstable. Multiple
+// BlockPropertyCollector instances are used for each property, according to the
+// various levels (data/range blocks, index blocks, table). The lowest levels
+// use AddPointKey()/AddRangeKey() while the other levels use AddCollected().`
 type BlockPropertyCollector interface {
 	// Name returns the name of the block property collector.
 	Name() string
@@ -104,16 +93,20 @@ type BlockPropertyCollector interface {
 	// sstable. The callee can assume that these are in sorted order.
 	AddPointKey(key InternalKey, value []byte) error
 
-	// AddRangeKeys is called for each range span added to the sstable. The range
-	// key properties are stored separately and don't contribute to data block
-	// properties. They are only used when FinishTable is called.
-	// TODO(radu): clean up this subtle semantic.
+	// AddRangeKeys is called for each range span added to a range key block in
+	// the sstable. The callee can assume these are fragmented and in sorted
+	// order.
 	AddRangeKeys(span keyspan.Span) error
 
+	// AddCollected adds previously collected property data. For example, when
+	// calculating properties for index blocks, AddCollected is called with the
+	// results of Finish for each data block.
+	AddCollected(prop []byte) error
+
 	// AddCollectedWithSuffixReplacement adds previously collected property data
-	// and updates it to reflect a change of suffix on all keys: the old property
-	// data is assumed to be constructed from keys that all have the same
-	// oldSuffix and is recalculated to reflect the same keys but with newSuffix.
+	// after updating to reflect a change of suffix on all keys: the property data
+	// is recalculated to reflect the same keys it was computed from but with
+	// newSuffix.
 	//
 	// A collector which supports this method must be able to derive its updated
 	// value from its old value and the change being made to the suffix, without
@@ -129,29 +122,15 @@ type BlockPropertyCollector interface {
 	// This method is optional (if it is not implemented, it always returns an
 	// error). SupportsSuffixReplacement() can be used to check if this method is
 	// implemented.
-	AddCollectedWithSuffixReplacement(oldProp []byte, oldSuffix, newSuffix []byte) error
+	AddCollectedWithSuffixReplacement(oldProp []byte, newSuffix []byte) error
 
 	// SupportsSuffixReplacement returns whether the collector supports the
 	// AddCollectedWithSuffixReplacement method.
 	SupportsSuffixReplacement() bool
 
-	// FinishDataBlock is called when all the entries have been added to a
-	// data block. Subsequent Add calls will be for the next data block. It
-	// returns the property value for the finished block.
-	FinishDataBlock(buf []byte) ([]byte, error)
-
-	// AddPrevDataBlockToIndexBlock adds the entry corresponding to the
-	// previous FinishDataBlock to the current index block.
-	AddPrevDataBlockToIndexBlock()
-
-	// FinishIndexBlock is called when an index block, containing all the
-	// key-value pairs since the last FinishIndexBlock, will no longer see new
-	// entries. It returns the property value for the index block.
-	FinishIndexBlock(buf []byte) ([]byte, error)
-
-	// FinishTable is called when the sstable is finished, and returns the
-	// property value for the sstable.
-	FinishTable(buf []byte) ([]byte, error)
+	// Finish appends the property value to buf and resets the collector to an
+	// empty state.
+	Finish(buf []byte) []byte
 }
 
 // BlockPropertyFilter is used in an Iterator to filter sstables and blocks
@@ -233,9 +212,7 @@ type BlockIntervalCollector struct {
 	mapper         IntervalMapper
 	suffixReplacer BlockIntervalSuffixReplacer
 
-	blockInterval BlockInterval
-	indexInterval BlockInterval
-	tableInterval BlockInterval
+	interval BlockInterval
 }
 
 var _ BlockPropertyCollector = &BlockIntervalCollector{}
@@ -291,7 +268,7 @@ func (b *BlockIntervalCollector) AddPointKey(key InternalKey, value []byte) erro
 	if err != nil {
 		return err
 	}
-	b.blockInterval.UnionWith(interval)
+	b.interval.UnionWith(interval)
 	return nil
 }
 
@@ -306,14 +283,27 @@ func (b *BlockIntervalCollector) AddRangeKeys(span Span) error {
 	}
 	// Range keys are not included in block or index intervals; they just apply
 	// directly to the table interval.
-	b.tableInterval.UnionWith(interval)
+	b.interval.UnionWith(interval)
+	return nil
+}
+
+// AddCollected is part of the BlockPropertyCollector interface.
+func (b *BlockIntervalCollector) AddCollected(prop []byte) error {
+	i, err := decodeBlockInterval(prop)
+	if err != nil {
+		return err
+	}
+	b.interval.UnionWith(i)
 	return nil
 }
 
 // AddCollectedWithSuffixReplacement is part of the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) AddCollectedWithSuffixReplacement(
-	oldProp []byte, oldSuffix, newSuffix []byte,
+	oldProp []byte, newSuffix []byte,
 ) error {
+	if b.suffixReplacer == nil {
+		return errors.Errorf("%s does not support suffix replacement", b.name)
+	}
 	i, err := decodeBlockInterval(oldProp)
 	if err != nil {
 		return err
@@ -322,7 +312,7 @@ func (b *BlockIntervalCollector) AddCollectedWithSuffixReplacement(
 	if err != nil {
 		return err
 	}
-	b.blockInterval.UnionWith(i)
+	b.interval.UnionWith(i)
 	return nil
 }
 
@@ -331,30 +321,11 @@ func (b *BlockIntervalCollector) SupportsSuffixReplacement() bool {
 	return b.suffixReplacer != nil
 }
 
-// FinishDataBlock is part of the BlockPropertyCollector interface.
-func (b *BlockIntervalCollector) FinishDataBlock(buf []byte) ([]byte, error) {
-	buf = encodeBlockInterval(b.blockInterval, buf)
-	b.tableInterval.UnionWith(b.blockInterval)
-	return buf, nil
-}
-
-// AddPrevDataBlockToIndexBlock implements the BlockPropertyCollector
-// interface.
-func (b *BlockIntervalCollector) AddPrevDataBlockToIndexBlock() {
-	b.indexInterval.UnionWith(b.blockInterval)
-	b.blockInterval = BlockInterval{}
-}
-
-// FinishIndexBlock implements the BlockPropertyCollector interface.
-func (b *BlockIntervalCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
-	buf = encodeBlockInterval(b.indexInterval, buf)
-	b.indexInterval = BlockInterval{}
-	return buf, nil
-}
-
-// FinishTable implements the BlockPropertyCollector interface.
-func (b *BlockIntervalCollector) FinishTable(buf []byte) ([]byte, error) {
-	return encodeBlockInterval(b.tableInterval, buf), nil
+// Finish is part of the BlockPropertyCollector interface.
+func (b *BlockIntervalCollector) Finish(buf []byte) []byte {
+	result := encodeBlockInterval(b.interval, buf)
+	b.interval = BlockInterval{}
+	return result
 }
 
 // BlockInterval represents the [Lower, Upper) interval of 64-bit values
