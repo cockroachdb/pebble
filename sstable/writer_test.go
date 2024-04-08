@@ -697,6 +697,8 @@ type testBlockPropCollector struct {
 	err     error
 }
 
+var _ BlockPropertyCollector = (*testBlockPropCollector)(nil)
+
 func (c *testBlockPropCollector) Name() string { return "testBlockPropCollector" }
 
 func (c *testBlockPropCollector) Add(_ InternalKey, _ []byte) error {
@@ -727,6 +729,16 @@ func (c *testBlockPropCollector) FinishTable(_ []byte) ([]byte, error) {
 		return nil, c.err
 	}
 	return nil, nil
+}
+
+func (c *testBlockPropCollector) AddCollectedWithSuffixReplacement(
+	oldProp []byte, oldSuffix, newSuffix []byte,
+) error {
+	return errors.Errorf("not implemented")
+}
+
+func (c *testBlockPropCollector) SupportsSuffixReplacement() bool {
+	return false
 }
 
 func TestWriterBlockPropertiesErrors(t *testing.T) {
