@@ -665,6 +665,51 @@ func TestWriterClearCache(t *testing.T) {
 	require.NoError(t, r.Close())
 }
 
+func TestWriterFlushHeuristics(t *testing.T) {
+	datadriven.RunTest(t, "testdata/flush_heuristics", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "build":
+			var keySize, valSize, blockSize, targetSize, sizeThreshold, sizeClassAwareThreshold int
+			td.ScanArgs(t, "key-size", &keySize)
+			td.ScanArgs(t, "val-size", &valSize)
+			td.ScanArgs(t, "block-size", &blockSize)
+			td.ScanArgs(t, "target-size", &targetSize)
+			td.ScanArgs(t, "threshold", &sizeThreshold)
+			td.ScanArgs(t, "size-class-threshold", &sizeClassAwareThreshold)
+
+			var sizeClasses []int
+			if td.HasArg("hints") {
+				var sizeClassHints string
+				td.ScanArgs(t, "hints", &sizeClassHints)
+				sizeStrClasses := strings.Split(sizeClassHints, ",")
+				for _, strClass := range sizeStrClasses {
+					size, err := strconv.Atoi(strClass)
+					require.NoError(t, err)
+					sizeClasses = append(sizeClasses, size)
+				}
+			}
+
+			flush := shouldFlushWithHints(
+				keySize,
+				valSize,
+				base.DefaultBlockRestartInterval,
+				blockSize,
+				1, /* numEntries */
+				flushDecisionOptions{
+					blockSize:               targetSize,
+					blockSizeThreshold:      sizeThreshold,
+					sizeClassAwareThreshold: sizeClassAwareThreshold,
+				},
+				sizeClasses,
+			)
+			return strconv.FormatBool(flush)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
 type discardFile struct {
 	wrote int64
 }
