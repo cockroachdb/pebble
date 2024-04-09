@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"slices"
 	"sort"
 	"sync"
 
@@ -210,6 +211,8 @@ type Writer struct {
 	// When w.tableFormat >= TableFormatPebblev3, valueBlockWriter is nil iff
 	// WriterOptions.DisableValueBlocks was true.
 	valueBlockWriter *valueBlockWriter
+
+	allocatorSizeClasses []int
 }
 
 type pointKeyInfo struct {
@@ -425,7 +428,7 @@ func newIndexBlockBuf(useMutex bool) *indexBlockBuf {
 }
 
 func (i *indexBlockBuf) shouldFlush(
-	sep InternalKey, valueLen, targetBlockSize, sizeThreshold int,
+	sep InternalKey, valueLen, targetBlockSize, sizeThreshold int, sizeClassHints []int,
 ) bool {
 	if i.size.useMutex {
 		i.size.mu.Lock()
@@ -433,9 +436,9 @@ func (i *indexBlockBuf) shouldFlush(
 	}
 
 	nEntries := i.size.estimate.numTotalEntries()
-	return shouldFlush(
-		sep, valueLen, i.restartInterval, int(i.size.estimate.size()),
-		int(nEntries), targetBlockSize, sizeThreshold)
+	return shouldFlushWithHints(
+		sep.Size(), valueLen, i.restartInterval, int(i.size.estimate.size()),
+		int(nEntries), targetBlockSize, sizeThreshold, sizeClassHints)
 }
 
 func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) {
@@ -653,11 +656,11 @@ func (d *dataBlockBuf) compressAndChecksum(c Compression) {
 }
 
 func (d *dataBlockBuf) shouldFlush(
-	key InternalKey, valueLen, targetBlockSize, sizeThreshold int,
+	key InternalKey, valueLen, targetBlockSize, sizeThreshold int, sizeClassHints []int,
 ) bool {
-	return shouldFlush(
-		key, valueLen, d.dataBlock.restartInterval, d.dataBlock.estimatedSize(),
-		d.dataBlock.nEntries, targetBlockSize, sizeThreshold)
+	return shouldFlushWithHints(
+		key.Size(), valueLen, d.dataBlock.restartInterval, d.dataBlock.estimatedSize(),
+		d.dataBlock.nEntries, targetBlockSize, sizeThreshold, sizeClassHints)
 }
 
 type indexBlockAndBlockProperties struct {
@@ -1400,7 +1403,7 @@ func (w *Writer) flush(key InternalKey) error {
 	// to determine that we are going to flush the index block from the Writer
 	// client.
 	shouldFlushIndexBlock := supportsTwoLevelIndex(w.tableFormat) && w.indexBlock.shouldFlush(
-		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,
+		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold, w.allocatorSizeClasses,
 	)
 
 	var indexProps []byte
@@ -1449,7 +1452,7 @@ func (w *Writer) flush(key InternalKey) error {
 }
 
 func (w *Writer) maybeFlush(key InternalKey, valueLen int) error {
-	if !w.dataBlockBuf.shouldFlush(key, valueLen, w.blockSize, w.blockSizeThreshold) {
+	if !w.dataBlockBuf.shouldFlush(key, valueLen, w.blockSize, w.blockSizeThreshold, w.allocatorSizeClasses) {
 		return nil
 	}
 
@@ -1584,7 +1587,7 @@ func (w *Writer) addIndexEntrySep(
 ) error {
 	shouldFlush := supportsTwoLevelIndex(
 		w.tableFormat) && w.indexBlock.shouldFlush(
-		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,
+		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold, w.allocatorSizeClasses,
 	)
 	var flushableIndexBlock *indexBlockBuf
 	var props []byte
@@ -1610,15 +1613,67 @@ func (w *Writer) addIndexEntrySep(
 	return err
 }
 
-func shouldFlush(
-	key InternalKey,
-	valueLen int,
+func shouldFlushWithHints(
+	keyLen, valueLen int,
 	restartInterval, estimatedBlockSize, numEntries, targetBlockSize, sizeThreshold int,
+	sizeClassHints []int,
 ) bool {
 	if numEntries == 0 {
 		return false
 	}
 
+	// If we are not informed about the memory allocator's size classes we fall
+	// back to a simple set of flush heuristics that are unaware of internal
+	// fragmentation in block cache allocations.
+	if len(sizeClassHints) == 0 {
+		return shouldFlushWithoutHints(
+			keyLen, valueLen, restartInterval, estimatedBlockSize, numEntries, targetBlockSize, sizeThreshold)
+	}
+
+	// For the fast path we can avoid computing the exact varint encoded
+	// key-value pair size. Instead, we combine the key-value pair size with an
+	// upper-bound estimate of the associated metadata (4B restart point, 4B
+	// shared prefix length, 5B varint unshared key size, 5B varint value size).
+	newEstimatedSize := estimatedBlockSize + keyLen + valueLen + 18
+	if newEstimatedSize <= targetBlockSize {
+		return false
+	}
+
+	sizeClass, ok := blockSizeClass(estimatedBlockSize, sizeClassHints)
+	// If the block size could not be mapped to a size class we fall back to
+	// using a simpler set of flush heuristics.
+	if !ok {
+		return shouldFlushWithoutHints(
+			keyLen, valueLen, restartInterval, estimatedBlockSize, numEntries, targetBlockSize, sizeThreshold)
+	}
+
+	newSize := estimatedBlockSize + keyLen + valueLen
+	if numEntries%restartInterval == 0 {
+		newSize += 4
+	}
+	newSize += 4                            // varint for shared prefix length
+	newSize += uvarintLen(uint32(keyLen))   // varint for unshared key bytes
+	newSize += uvarintLen(uint32(valueLen)) // varint for value size
+
+	if estimatedBlockSize < targetBlockSize {
+		newSizeClass, ok := blockSizeClass(newSize, sizeClassHints)
+		if !ok || newSizeClass-newSize >= sizeClass-estimatedBlockSize {
+			// Although the block hasn't reached the target size, waiting to insert the
+			// next entry would exceed the target and increase memory fragmentation.
+			return true
+		}
+		return false
+	}
+
+	// Flush if inserting the next entry bumps the block size to the memory
+	// allocator's next size class.
+	return newSize > sizeClass
+}
+
+func shouldFlushWithoutHints(
+	keyLen, valueLen int,
+	restartInterval, estimatedBlockSize, numEntries, targetBlockSize, sizeThreshold int,
+) bool {
 	if estimatedBlockSize >= targetBlockSize {
 		return true
 	}
@@ -1630,15 +1685,27 @@ func shouldFlush(
 		return false
 	}
 
-	newSize := estimatedBlockSize + key.Size() + valueLen
+	newSize := estimatedBlockSize + keyLen + valueLen
 	if numEntries%restartInterval == 0 {
 		newSize += 4
 	}
-	newSize += 4                              // varint for shared prefix length
-	newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
-	newSize += uvarintLen(uint32(valueLen))   // varint for value size
+	newSize += 4                            // varint for shared prefix length
+	newSize += uvarintLen(uint32(keyLen))   // varint for unshared key bytes
+	newSize += uvarintLen(uint32(valueLen)) // varint for value size
 	// Flush if the block plus the new entry is larger than the target size.
 	return newSize > targetBlockSize
+}
+
+// blockSizeClass returns the smallest memory allocator size class that could
+// hold a block of a given size and returns a boolean indicating whether an
+// appropriate size class was found. It is useful for computing the potential
+// space wasted by an allocation.
+func blockSizeClass(blockSize int, sizeClassHints []int) (int, bool) {
+	sizeClassIdx, _ := slices.BinarySearch(sizeClassHints, blockSize)
+	if sizeClassIdx == len(sizeClassHints) {
+		return -1, false
+	}
+	return sizeClassHints[sizeClassIdx], true
 }
 
 func cloneKeyWithBuf(k InternalKey, a bytealloc.A) (bytealloc.A, InternalKey) {
@@ -2218,6 +2285,7 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 			Cmp:    o.Comparer.Compare,
 			Format: o.Comparer.FormatKey,
 		},
+		allocatorSizeClasses: o.AllocatorSizeClasses,
 	}
 	if w.tableFormat >= TableFormatPebblev3 {
 		w.shortAttributeExtractor = o.ShortAttributeExtractor

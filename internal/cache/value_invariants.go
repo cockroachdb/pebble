@@ -15,6 +15,10 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 )
 
+// ValueMetadataSize denotes the number of bytes of metadata allocated for a
+// cache entry.
+const ValueMetadataSize = 0
+
 // newValue creates a Value with a manually managed buffer of size n.
 //
 // This definition of newValue is used when either the "invariants" or

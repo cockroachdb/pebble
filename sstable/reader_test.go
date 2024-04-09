@@ -1406,8 +1406,8 @@ func TestReaderChecksumErrors(t *testing.T) {
 						}
 
 						w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
-							BlockSize:      blockSize,
-							IndexBlockSize: indexBlockSize,
+							BlockSize:      blockSize + cache.ValueMetadataSize,
+							IndexBlockSize: indexBlockSize + cache.ValueMetadataSize,
 							Checksum:       checksumType,
 						})
 						require.NoError(t, w.Set(bytes.Repeat([]byte("a"), blockSize), nil))
