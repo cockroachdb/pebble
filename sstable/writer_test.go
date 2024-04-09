@@ -665,6 +665,53 @@ func TestWriterClearCache(t *testing.T) {
 	require.NoError(t, r.Close())
 }
 
+func TestWriterFlushHeuristics(t *testing.T) {
+	datadriven.RunTest(t, "testdata/flush_heuristics", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "build":
+			var keySize, valSize, blockSize, targetSize, sizeThreshold int
+			td.ScanArgs(t, "key-size", &keySize)
+			td.ScanArgs(t, "val-size", &valSize)
+			td.ScanArgs(t, "block-size-with-metadata", &blockSize)
+			td.ScanArgs(t, "target-size", &targetSize)
+			td.ScanArgs(t, "threshold", &sizeThreshold)
+
+			var sizeClasses []int
+			if td.HasArg("hints") {
+				var sizeClassHints string
+				td.ScanArgs(t, "hints", &sizeClassHints)
+				sizeStrClasses := strings.Split(sizeClassHints, ",")
+				for _, strClass := range sizeStrClasses {
+					size, err := strconv.Atoi(strClass)
+					require.NoError(t, err)
+					sizeClasses = append(sizeClasses, size)
+				}
+			}
+			if len(sizeClasses) > 0 {
+				blockSize -= cache.ValueMetadataSize
+			}
+
+			flush := shouldFlushWithHints(
+				keySize,
+				valSize,
+				base.DefaultBlockRestartInterval,
+				blockSize,
+				1, /* numEntries */
+				flushDecisionOptions{
+					blockSize:               targetSize,
+					blockSizeThreshold:      sizeThreshold,
+					sizeClassAwareThreshold: sizeThreshold,
+				},
+				sizeClasses,
+			)
+			return strconv.FormatBool(flush)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
 type discardFile struct {
 	wrote int64
 }

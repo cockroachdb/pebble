@@ -1,0 +1,59 @@
+# Block size exceeds target block size.
+build key-size=0 val-size=0 block-size-with-metadata=64 target-size=64 threshold=59
+----
+true
+
+# Block size does not exceed threshold size.
+build key-size=0 val-size=0 block-size-with-metadata=59 target-size=64 threshold=59
+----
+false
+
+# New block size exceeds the target size.
+build key-size=1 val-size=1 block-size-with-metadata=60 target-size=64 threshold=32
+----
+true
+
+# New block size does not exceed the target size.
+build key-size=1 val-size=1 block-size-with-metadata=40 target-size=64 threshold=32
+----
+false
+
+# New block size does not exceed the target size with hints enabled.
+build key-size=1 val-size=1 block-size-with-metadata=40 target-size=64 threshold=0 hints=8,16,32,64,128
+----
+false
+
+# Block size does meet size threshold with hints enabled.
+build key-size=1 val-size=1 block-size-with-metadata=38 target-size=64 threshold=0 hints=8,16,32,64,128
+----
+false
+
+# New block size reduces internal fragmentation.
+build key-size=1 val-size=60 block-size-with-metadata=40 target-size=64 threshold=0 hints=8,16,32,64,128
+----
+false
+
+# New block size increases internal fragmentation.
+build key-size=1 val-size=40 block-size-with-metadata=40 target-size=64 threshold=0 hints=8,16,32,64,128
+----
+true
+
+# Block size target exceeded with hints enabled.
+build key-size=1 val-size=1 block-size-with-metadata=64 target-size=64 threshold=0 hints=8,16,32,64,128
+----
+true
+
+# Block size target exceeded, however, new block would reduce internal fragmentation.
+build key-size=1 val-size=1 block-size-with-metadata=70 target-size=64 threshold=0 hints=8,16,32,64,128
+----
+false
+
+# Fall back to heuristics with hints disabled when size class is limited.
+build key-size=1 val-size=1 block-size-with-metadata=59 target-size=64 threshold=59 hints=8,16,32
+----
+false
+
+# Fall back to heuristics with hints disabled when new size class could not be computed.
+build key-size=1 val-size=60 block-size-with-metadata=50 target-size=64 threshold=0 hints=8,16,32,64
+----
+false

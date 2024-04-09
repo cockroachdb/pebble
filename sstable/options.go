@@ -132,8 +132,16 @@ type WriterOptions struct {
 	// specified percentage of the target block size and adding the next entry
 	// would cause the block to be larger than the target block size.
 	//
-	// The default value is 90
+	// The default value is 90.
 	BlockSizeThreshold int
+
+	// SizeClassAwareThreshold imposes a minimum block size restriction for blocks
+	// to be flushed, that is computed as the percentage of the target block size.
+	// Note that this threshold takes precedence over BlockSizeThreshold when
+	// valid AllocatorSizeClasses are specified.
+	//
+	// The default value is 60.
+	SizeClassAwareThreshold int
 
 	// Cache is used to cache uncompressed blocks from sstables.
 	//
@@ -230,6 +238,12 @@ type WriterOptions struct {
 	// 750MB sstables -- see
 	// https://github.com/cockroachdb/cockroach/issues/117113).
 	DisableValueBlocks bool
+
+	// AllocatorSizeClasses provides a sorted list containing the supported size
+	// classes of the underlying memory allocator. This provides hints to the
+	// writer's flushing policy to select block sizes that preemptively reduce
+	// internal fragmentation when loaded into the block cache.
+	AllocatorSizeClasses []int
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {
@@ -241,6 +255,9 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	}
 	if o.BlockSizeThreshold <= 0 {
 		o.BlockSizeThreshold = base.DefaultBlockSizeThreshold
+	}
+	if o.SizeClassAwareThreshold <= 0 {
+		o.SizeClassAwareThreshold = base.SizeClassAwareBlockSizeThreshold
 	}
 	if o.Comparer == nil {
 		o.Comparer = base.DefaultComparer
