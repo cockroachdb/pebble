@@ -306,19 +306,25 @@ func TestBlockPropertiesEncoderDecoder(t *testing.T) {
 	props1 := encoder.props()
 	unsafeProps := encoder.unsafeProps()
 	require.True(t, bytes.Equal(props1, unsafeProps), "%x != %x", props1, unsafeProps)
+
+	expect := func(decoder *blockPropertiesDecoder, expectedID shortID, expectedVal string) {
+		t.Helper()
+		require.False(t, decoder.Done())
+		id, prop, err := decoder.Next()
+		require.NoError(t, err)
+		require.Equal(t, expectedID, id)
+		require.Equal(t, string(prop), expectedVal)
+	}
+
 	decodeProps1 := func() {
-		decoder := blockPropertiesDecoder{props: props1}
-		require.False(t, decoder.done())
-		id, prop, err := decoder.next()
-		require.NoError(t, err)
-		require.Equal(t, shortID(1), id)
-		require.Equal(t, string(prop), "foo")
-		require.False(t, decoder.done())
-		id, prop, err = decoder.next()
-		require.NoError(t, err)
-		require.Equal(t, shortID(10), id)
-		require.Equal(t, string(prop), "cockroach")
-		require.True(t, decoder.done())
+		decoder := makeBlockPropertiesDecoder(11, props1)
+		expect(&decoder, 0, "")
+		expect(&decoder, 1, "foo")
+		for i := shortID(2); i < 10; i++ {
+			expect(&decoder, i, "")
+		}
+		expect(&decoder, 10, "cockroach")
+		require.True(t, decoder.Done())
 	}
 	decodeProps1()
 
@@ -333,13 +339,12 @@ func TestBlockPropertiesEncoderDecoder(t *testing.T) {
 	// Safe props should still decode.
 	decodeProps1()
 	// Decode props2
-	decoder := blockPropertiesDecoder{props: props2}
-	require.False(t, decoder.done())
-	id, prop, err := decoder.next()
-	require.NoError(t, err)
-	require.Equal(t, shortID(10), id)
-	require.Equal(t, string(prop), "bar")
-	require.True(t, decoder.done())
+	decoder := makeBlockPropertiesDecoder(11, props2)
+	for i := shortID(0); i < 10; i++ {
+		expect(&decoder, i, "")
+	}
+	expect(&decoder, 10, "bar")
+	require.True(t, decoder.Done())
 }
 
 // filterWithTrueForEmptyProp is a wrapper for BlockPropertyFilter that
@@ -1354,12 +1359,15 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 	defer bh.Release()
 	var sb strings.Builder
 	decodeProps := func(props []byte, indent string) error {
-		d := blockPropertiesDecoder{props: props}
+		d := makeBlockPropertiesDecoder(11, props)
 		var lines []string
-		for !d.done() {
-			id, prop, err := d.next()
+		for !d.Done() {
+			id, prop, err := d.Next()
 			if err != nil {
 				return err
+			}
+			if prop == nil {
+				continue
 			}
 			var i interval
 			if err := i.decode(prop); err != nil {
