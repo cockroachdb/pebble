@@ -4,6 +4,12 @@
 
 package cache
 
+import "unsafe"
+
+// ValueMetadataSize denotes the number of bytes of metadata allocated for a
+// cache entry.
+const ValueMetadataSize = int(unsafe.Sizeof(Value{}))
+
 // Value holds a reference counted immutable value.
 type Value struct {
 	buf []byte
