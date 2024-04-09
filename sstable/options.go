@@ -230,6 +230,12 @@ type WriterOptions struct {
 	// 750MB sstables -- see
 	// https://github.com/cockroachdb/cockroach/issues/117113).
 	DisableValueBlocks bool
+
+	// AllocatorSizeClasses provides a sorted list containing the supported size
+	// classes of the underlying memory allocator. This provides hints to the
+	// writer's flushing policy to select block sizes that preemptively reduce
+	// internal fragmentation when loaded into the block cache.
+	AllocatorSizeClasses []int
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {

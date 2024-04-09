@@ -1190,7 +1190,10 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 			FormatMajorVersion:      internalFormatNewest,
 			BlockPropertyCollectors: bpCollectors,
 		}
-		lo := LevelOptions{BlockSize: 1, IndexBlockSize: 1}
+		lo := LevelOptions{
+			BlockSize:      1,
+			IndexBlockSize: 1,
+		}
 		opts.Levels = append(opts.Levels, lo)
 
 		// Automatic compactions may compact away tombstones from L6, making
