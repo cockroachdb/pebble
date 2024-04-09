@@ -6,8 +6,6 @@ package sstable
 
 import (
 	"encoding/binary"
-	"fmt"
-	"math"
 	"sync"
 	"unsafe"
 
@@ -520,6 +518,11 @@ func (e *blockPropertiesEncoder) resetProps() {
 }
 
 func (e *blockPropertiesEncoder) addProp(id shortID, scratch []byte) {
+	if len(scratch) == 0 {
+		// We omit empty properties. The decoder will know that any missing had
+		// empty values.
+		return
+	}
 	const lenID = 1
 	lenProp := uvarintLen(uint32(len(scratch)))
 	n := lenID + lenProp + len(scratch)
@@ -558,16 +561,37 @@ func (e *blockPropertiesEncoder) props() []byte {
 
 type blockPropertiesDecoder struct {
 	props []byte
+	// numCollectedProps is the number of collectors that were used when writing
+	// these properties. This can be larger than the number of properties actually
+	// encoded because empty property values are omitted.
+	endID  shortID
+	nextID shortID
 }
 
-func (d *blockPropertiesDecoder) done() bool {
-	return len(d.props) == 0
+func makeBlockPropertiesDecoder(numCollectedProps int, propsBuf []byte) blockPropertiesDecoder {
+	return blockPropertiesDecoder{
+		props: propsBuf,
+		endID: shortID(numCollectedProps),
+	}
 }
 
-// REQUIRES: !done()
-func (d *blockPropertiesDecoder) next() (id shortID, prop []byte, err error) {
+func (d *blockPropertiesDecoder) Done() bool {
+	return d.nextID >= d.endID
+}
+
+// Next returns the property for each shortID between 0 and numCollectedProps-1, in order.
+// Note that some properties might be empty.
+// REQUIRES: !Done()
+func (d *blockPropertiesDecoder) Next() (id shortID, prop []byte, err error) {
+	id = d.nextID
+	d.nextID++
+
+	if len(d.props) == 0 || shortID(d.props[0]) != id {
+		// This property was omitted because it was empty.
+		return id, nil, nil
+	}
+
 	const lenID = 1
-	id = shortID(d.props[0])
 	propLen, m := binary.Uvarint(d.props[lenID:])
 	n := lenID + m
 	if m <= 0 || propLen == 0 || (n+int(propLen)) > len(d.props) {
@@ -787,64 +811,39 @@ const (
 	blockMaybeExcluded
 )
 
-func (f *BlockPropertiesFilterer) intersects(props []byte) (ret intersectsResult, err error) {
-	i := 0
-	decoder := blockPropertiesDecoder{props: props}
-	ret = blockIntersects
-	for i < len(f.shortIDToFiltersIndex) {
-		var id int
-		var prop []byte
-		if !decoder.done() {
-			var shortID shortID
-			var err error
-			shortID, prop, err = decoder.next()
-			if err != nil {
-				return ret, err
-			}
-			id = int(shortID)
-		} else {
-			id = math.MaxUint8 + 1
-		}
-		for i < len(f.shortIDToFiltersIndex) && id > i {
-			// The property for this id is not encoded for this block, but there
-			// may still be a filter for this id.
-			if intersects, err := f.intersectsFilter(i, nil); err != nil {
-				return ret, err
-			} else if intersects == blockExcluded {
-				return blockExcluded, nil
-			} else if intersects == blockMaybeExcluded {
-				ret = blockMaybeExcluded
-			}
-			i++
-		}
-		if i >= len(f.shortIDToFiltersIndex) {
-			return ret, nil
-		}
-		// INVARIANT: id <= i. And since i is always incremented by 1, id==i.
-		if id != i {
-			panic(fmt.Sprintf("%d != %d", id, i))
-		}
-		if intersects, err := f.intersectsFilter(i, prop); err != nil {
+func (f *BlockPropertiesFilterer) intersects(props []byte) (intersectsResult, error) {
+	decoder := makeBlockPropertiesDecoder(len(f.shortIDToFiltersIndex), props)
+	ret := blockIntersects
+	for !decoder.Done() {
+		id, prop, err := decoder.Next()
+		if err != nil {
 			return ret, err
-		} else if intersects == blockExcluded {
+		}
+		intersects, err := f.intersectsFilter(id, prop)
+		if err != nil {
+			return ret, err
+		}
+		if intersects == blockExcluded {
 			return blockExcluded, nil
-		} else if intersects == blockMaybeExcluded {
+		}
+		if intersects == blockMaybeExcluded {
 			ret = blockMaybeExcluded
 		}
-		i++
 	}
-	// ret == blockIntersects || ret == blockMaybeExcluded
+	// ret is either blockIntersects or blockMaybeExcluded.
 	return ret, nil
 }
 
-func (f *BlockPropertiesFilterer) intersectsFilter(i int, prop []byte) (intersectsResult, error) {
+func (f *BlockPropertiesFilterer) intersectsFilter(
+	id shortID, prop []byte,
+) (intersectsResult, error) {
 	var intersects bool
 	var err error
-	if f.shortIDToFiltersIndex[i] >= 0 {
-		if len(f.syntheticSuffix) == 0 {
-			intersects, err = f.filters[f.shortIDToFiltersIndex[i]].Intersects(prop)
+	if filterIdx := f.shortIDToFiltersIndex[id]; filterIdx >= 0 {
+		if !f.syntheticSuffix.IsSet() {
+			intersects, err = f.filters[filterIdx].Intersects(prop)
 		} else {
-			intersects, err = f.filters[f.shortIDToFiltersIndex[i]].SyntheticSuffixIntersects(prop, f.syntheticSuffix)
+			intersects, err = f.filters[filterIdx].SyntheticSuffixIntersects(prop, f.syntheticSuffix)
 		}
 		if err != nil {
 			return blockIntersects, err
@@ -853,7 +852,7 @@ func (f *BlockPropertiesFilterer) intersectsFilter(i int, prop []byte) (intersec
 			return blockExcluded, nil
 		}
 	}
-	if i == f.boundLimitedShortID {
+	if int(id) == f.boundLimitedShortID {
 		// The bound-limited filter uses this id.
 		//
 		// The bound-limited filter only applies within a keyspan interval. We
@@ -861,7 +860,7 @@ func (f *BlockPropertiesFilterer) intersectsFilter(i int, prop []byte) (intersec
 		// Intersects determines that there is no intersection, we return
 		// `blockMaybeExcluded` if no other bpf unconditionally excludes the
 		// block.
-		if len(f.syntheticSuffix) == 0 {
+		if !f.syntheticSuffix.IsSet() {
 			intersects, err = f.boundLimitedFilter.Intersects(prop)
 		} else {
 			intersects, err = f.boundLimitedFilter.SyntheticSuffixIntersects(prop, f.syntheticSuffix)

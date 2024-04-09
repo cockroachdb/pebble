@@ -332,16 +332,20 @@ func rewriteDataBlocksToWriter(
 		return err
 	}
 
-	var decoder blockPropertiesDecoder
 	var oldShortIDs []shortID
 	var oldProps [][]byte
 	if len(w.blockPropCollectors) > 0 {
 		oldProps = make([][]byte, len(w.blockPropCollectors))
 		oldShortIDs = make([]shortID, math.MaxUint8)
+		for i := range oldShortIDs {
+			oldShortIDs[i] = math.MaxUint8
+		}
 		for i, p := range w.blockPropCollectors {
 			if prop, ok := r.Properties.UserProperties[p.Name()]; ok {
-				was, is := shortID(byte(prop[0])), shortID(i)
+				was, is := shortID(prop[0]), shortID(i)
 				oldShortIDs[was] = is
+			} else {
+				return errors.Errorf("sstable does not contain property %s", p.Name())
 			}
 		}
 	}
@@ -361,13 +365,15 @@ func rewriteDataBlocksToWriter(
 		for i := range oldProps {
 			oldProps[i] = nil
 		}
-		decoder.props = data[i].Props
-		for !decoder.done() {
-			id, val, err := decoder.next()
+		decoder := makeBlockPropertiesDecoder(len(oldProps), data[i].Props)
+		for !decoder.Done() {
+			id, val, err := decoder.Next()
 			if err != nil {
 				return err
 			}
-			oldProps[oldShortIDs[id]] = val
+			if oldShortIDs[id] != math.MaxUint8 {
+				oldProps[oldShortIDs[id]] = val
+			}
 		}
 
 		for i, p := range w.blockPropCollectors {

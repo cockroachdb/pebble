@@ -1477,9 +1477,7 @@ func (w *Writer) finishDataBlockProps(buf *dataBlockBuf) error {
 		if scratch, err = w.blockPropCollectors[i].FinishDataBlock(scratch); err != nil {
 			return err
 		}
-		if len(scratch) > 0 {
-			buf.blockPropsEncoder.addProp(shortID(i), scratch)
-		}
+		buf.blockPropsEncoder.addProp(shortID(i), scratch)
 	}
 
 	buf.dataBlockProps = buf.blockPropsEncoder.unsafeProps()
@@ -1667,9 +1665,7 @@ func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 		if scratch, err = w.blockPropCollectors[i].FinishIndexBlock(scratch); err != nil {
 			return nil, err
 		}
-		if len(scratch) > 0 {
-			w.blockPropsEncoder.addProp(shortID(i), scratch)
-		}
+		w.blockPropsEncoder.addProp(shortID(i), scratch)
 	}
 	return w.blockPropsEncoder.props(), nil
 }

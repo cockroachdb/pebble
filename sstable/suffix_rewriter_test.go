@@ -81,10 +81,10 @@ func TestRewriteSuffixProps(t *testing.T) {
 					if byBlocks {
 						_, rewriteFormat, err := rewriteKeySuffixesInBlocks(
 							r, rewrittenSST, rwOpts, from, to, 8)
+						require.NoError(t, err)
 						// rewriteFormat is equal to the original format, since
 						// rwOpts.TableFormat is ignored.
 						require.Equal(t, wOpts.TableFormat, rewriteFormat)
-						require.NoError(t, err)
 						adjustPropsForEffectiveFormat(rewriteFormat)
 					} else {
 						_, err := RewriteKeySuffixesViaWriter(r, rewrittenSST, rwOpts, from, to)
@@ -114,25 +114,25 @@ func TestRewriteSuffixProps(t *testing.T) {
 					ival := interval{}
 					for i := range layout.Data {
 						oldProps := make([][]byte, len(wOpts.BlockPropertyCollectors))
-						oldDecoder := blockPropertiesDecoder{layout.Data[i].Props}
-						for !oldDecoder.done() {
-							id, val, err := oldDecoder.next()
+						oldDecoder := makeBlockPropertiesDecoder(len(oldProps), layout.Data[i].Props)
+						for !oldDecoder.Done() {
+							id, val, err := oldDecoder.Next()
 							require.NoError(t, err)
 							oldProps[id] = val
 						}
 						newProps := make([][]byte, len(rwOpts.BlockPropertyCollectors))
-						newDecoder := blockPropertiesDecoder{newLayout.Data[i].Props}
-						for !newDecoder.done() {
-							id, val, err := newDecoder.next()
+						newDecoder := makeBlockPropertiesDecoder(len(newProps), newLayout.Data[i].Props)
+						for !newDecoder.Done() {
+							id, val, err := newDecoder.Next()
 							require.NoError(t, err)
 							if int(id) < len(newProps) {
 								newProps[id] = val
 							}
 						}
 						require.Equal(t, oldProps[0], newProps[1])
-						ival.decode(newProps[0])
+						require.NoError(t, ival.decode(newProps[0]))
 						require.Equal(t, interval{646, 647}, ival)
-						ival.decode(newProps[2])
+						require.NoError(t, ival.decode(newProps[2]))
 						require.Equal(t, interval{46, 47}, ival)
 					}
 				})
