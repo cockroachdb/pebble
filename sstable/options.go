@@ -236,9 +236,12 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.BlockRestartInterval <= 0 {
 		o.BlockRestartInterval = base.DefaultBlockRestartInterval
 	}
-	if o.BlockSize <= 0 {
+	// The target block size is decremented to reduce internal fragmentation when
+	// blocks are loaded into the block cache.
+	if o.BlockSize <= cache.ValueMetadataSize {
 		o.BlockSize = base.DefaultBlockSize
 	}
+	o.BlockSize -= cache.ValueMetadataSize
 	if o.BlockSizeThreshold <= 0 {
 		o.BlockSizeThreshold = base.DefaultBlockSizeThreshold
 	}
@@ -248,8 +251,10 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.Compression <= DefaultCompression || o.Compression >= NCompression {
 		o.Compression = SnappyCompression
 	}
-	if o.IndexBlockSize <= 0 {
+	if o.IndexBlockSize <= cache.ValueMetadataSize {
 		o.IndexBlockSize = o.BlockSize
+	} else {
+		o.IndexBlockSize -= cache.ValueMetadataSize
 	}
 	if o.MergerName == "" {
 		o.MergerName = base.DefaultMerger.Name

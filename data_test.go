@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -523,8 +524,8 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 		// Force two-level indexes if not already forced on or off.
 		blockSize = 5
 	}
-	writeOpts.BlockSize = int(blockSize)
-	writeOpts.IndexBlockSize = int(blockSize)
+	writeOpts.BlockSize = int(blockSize) + cache.ValueMetadataSize
+	writeOpts.IndexBlockSize = writeOpts.BlockSize
 
 	f, err := storage.CreateObject(path)
 	if err != nil {
@@ -1427,7 +1428,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				return err
 			}
 			for i := range opts.Levels {
-				opts.Levels[i].BlockSize = v
+				opts.Levels[i].BlockSize = v + cache.ValueMetadataSize
 			}
 		case "cache-size":
 			if opts.Cache != nil {
@@ -1445,7 +1446,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				return err
 			}
 			for i := range opts.Levels {
-				opts.Levels[i].IndexBlockSize = v
+				opts.Levels[i].IndexBlockSize = v + cache.ValueMetadataSize
 			}
 		case "target-file-size":
 			v, err := strconv.Atoi(cmdArg.Vals[0])

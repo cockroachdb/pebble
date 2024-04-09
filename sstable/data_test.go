@@ -41,6 +41,7 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 			if err != nil {
 				return err
 			}
+			writerOpts.BlockSize += cache.ValueMetadataSize
 		case "index-block-size":
 			if len(arg.Vals) != 1 {
 				return errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
@@ -50,6 +51,7 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 			if err != nil {
 				return err
 			}
+			writerOpts.IndexBlockSize += cache.ValueMetadataSize
 		case "filter":
 			writerOpts.FilterPolicy = bloom.FilterPolicy(10)
 		case "comparer-split-4b-suffix":

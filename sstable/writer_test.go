@@ -767,7 +767,7 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 			require.NoError(t, err)
 
 			w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
-				BlockSize: 1,
+				BlockSize: 1 + cache.ValueMetadataSize,
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					func() BlockPropertyCollector {
 						return &testBlockPropCollector{
