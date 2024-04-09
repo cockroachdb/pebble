@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"slices"
 	"sort"
 	"sync"
 
@@ -110,6 +111,16 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	}
 }
 
+// flushDecisionOptions holds parameters to inform the sstable block flushing
+// heuristics.
+type flushDecisionOptions struct {
+	blockSize          int
+	blockSizeThreshold int
+	// sizeClassAwareThreshold takes precedence over blockSizeThreshold when the
+	// Writer is aware of the allocator's size classes.
+	sizeClassAwareThreshold int
+}
+
 // Writer is a table writer.
 type Writer struct {
 	writable objstorage.Writable
@@ -120,23 +131,23 @@ type Writer struct {
 	// collisions.
 	cacheID uint64
 	fileNum base.DiskFileNum
+	// dataBlockOptions and indexBlockOptions are used to configure the sstable
+	// block flush heuristics.
+	dataBlockOptions  flushDecisionOptions
+	indexBlockOptions flushDecisionOptions
 	// The following fields are copied from Options.
-	blockSize               int
-	blockSizeThreshold      int
-	indexBlockSize          int
-	indexBlockSizeThreshold int
-	compare                 Compare
-	split                   Split
-	formatKey               base.FormatKey
-	compression             Compression
-	separator               Separator
-	successor               Successor
-	tableFormat             TableFormat
-	isStrictObsolete        bool
-	writingToLowestLevel    bool
-	cache                   *cache.Cache
-	restartInterval         int
-	checksumType            ChecksumType
+	compare              Compare
+	split                Split
+	formatKey            base.FormatKey
+	compression          Compression
+	separator            Separator
+	successor            Successor
+	tableFormat          TableFormat
+	isStrictObsolete     bool
+	writingToLowestLevel bool
+	cache                *cache.Cache
+	restartInterval      int
+	checksumType         ChecksumType
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
@@ -210,6 +221,8 @@ type Writer struct {
 	// When w.tableFormat >= TableFormatPebblev3, valueBlockWriter is nil iff
 	// WriterOptions.DisableValueBlocks was true.
 	valueBlockWriter *valueBlockWriter
+
+	allocatorSizeClasses []int
 }
 
 type pointKeyInfo struct {
@@ -425,7 +438,7 @@ func newIndexBlockBuf(useMutex bool) *indexBlockBuf {
 }
 
 func (i *indexBlockBuf) shouldFlush(
-	sep InternalKey, valueLen, targetBlockSize, sizeThreshold int,
+	sep InternalKey, valueLen int, flushOptions flushDecisionOptions, sizeClassHints []int,
 ) bool {
 	if i.size.useMutex {
 		i.size.mu.Lock()
@@ -433,9 +446,9 @@ func (i *indexBlockBuf) shouldFlush(
 	}
 
 	nEntries := i.size.estimate.numTotalEntries()
-	return shouldFlush(
-		sep, valueLen, i.restartInterval, int(i.size.estimate.size()),
-		int(nEntries), targetBlockSize, sizeThreshold)
+	return shouldFlushWithHints(
+		sep.Size(), valueLen, i.restartInterval, int(i.size.estimate.size()),
+		int(nEntries), flushOptions, sizeClassHints)
 }
 
 func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) {
@@ -653,11 +666,11 @@ func (d *dataBlockBuf) compressAndChecksum(c Compression) {
 }
 
 func (d *dataBlockBuf) shouldFlush(
-	key InternalKey, valueLen, targetBlockSize, sizeThreshold int,
+	key InternalKey, valueLen int, flushOptions flushDecisionOptions, sizeClassHints []int,
 ) bool {
-	return shouldFlush(
-		key, valueLen, d.dataBlock.restartInterval, d.dataBlock.estimatedSize(),
-		d.dataBlock.nEntries, targetBlockSize, sizeThreshold)
+	return shouldFlushWithHints(
+		key.Size(), valueLen, d.dataBlock.restartInterval, d.dataBlock.estimatedSize(),
+		d.dataBlock.nEntries, flushOptions, sizeClassHints)
 }
 
 type indexBlockAndBlockProperties struct {
@@ -1400,7 +1413,7 @@ func (w *Writer) flush(key InternalKey) error {
 	// to determine that we are going to flush the index block from the Writer
 	// client.
 	shouldFlushIndexBlock := supportsTwoLevelIndex(w.tableFormat) && w.indexBlock.shouldFlush(
-		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,
+		sep, encodedBHPEstimatedSize, w.indexBlockOptions, w.allocatorSizeClasses,
 	)
 
 	var indexProps []byte
@@ -1449,7 +1462,7 @@ func (w *Writer) flush(key InternalKey) error {
 }
 
 func (w *Writer) maybeFlush(key InternalKey, valueLen int) error {
-	if !w.dataBlockBuf.shouldFlush(key, valueLen, w.blockSize, w.blockSizeThreshold) {
+	if !w.dataBlockBuf.shouldFlush(key, valueLen, w.dataBlockOptions, w.allocatorSizeClasses) {
 		return nil
 	}
 
@@ -1584,7 +1597,7 @@ func (w *Writer) addIndexEntrySep(
 ) error {
 	shouldFlush := supportsTwoLevelIndex(
 		w.tableFormat) && w.indexBlock.shouldFlush(
-		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,
+		sep, encodedBHPEstimatedSize, w.indexBlockOptions, w.allocatorSizeClasses,
 	)
 	var flushableIndexBlock *indexBlockBuf
 	var props []byte
@@ -1610,35 +1623,114 @@ func (w *Writer) addIndexEntrySep(
 	return err
 }
 
-func shouldFlush(
-	key InternalKey,
-	valueLen int,
-	restartInterval, estimatedBlockSize, numEntries, targetBlockSize, sizeThreshold int,
+func shouldFlushWithHints(
+	keyLen, valueLen int,
+	restartInterval, estimatedBlockSize, numEntries int,
+	flushOptions flushDecisionOptions,
+	sizeClassHints []int,
 ) bool {
 	if numEntries == 0 {
 		return false
 	}
 
-	if estimatedBlockSize >= targetBlockSize {
+	// If we are not informed about the memory allocator's size classes we fall
+	// back to a simple set of flush heuristics that are unaware of internal
+	// fragmentation in block cache allocations.
+	if len(sizeClassHints) == 0 {
+		return shouldFlushWithoutHints(
+			keyLen, valueLen, restartInterval, estimatedBlockSize, numEntries, flushOptions)
+	}
+
+	// For size-class aware flushing we need to account for the metadata that is
+	// allocated when this block is loaded into the block cache. For instance, if
+	// a block has size 1020B it may fit within a 1024B class. However, when
+	// loaded into the block cache we also allocate space for the cache entry
+	// metadata. The new allocation of size ~1052B may now only fit within a
+	// 2048B class, which increases internal fragmentation.
+	blockSizeWithMetadata := estimatedBlockSize + cache.ValueMetadataSize
+
+	// For the fast path we can avoid computing the exact varint encoded
+	// key-value pair size. Instead, we combine the key-value pair size with an
+	// upper-bound estimate of the associated metadata (4B restart point, 4B
+	// shared prefix length, 5B varint unshared key size, 5B varint value size).
+	newEstimatedSize := blockSizeWithMetadata + keyLen + valueLen + 18
+	// Our new block size estimate disregards key prefix compression. This puts
+	// us at risk of overestimating the size and flushing small blocks. We
+	// mitigate this by imposing a minimum size restriction.
+	if blockSizeWithMetadata <= flushOptions.sizeClassAwareThreshold || newEstimatedSize <= flushOptions.blockSize {
+		return false
+	}
+
+	sizeClass, ok := blockSizeClass(blockSizeWithMetadata, sizeClassHints)
+	// If the block size could not be mapped to a size class we fall back to
+	// using a simpler set of flush heuristics.
+	if !ok {
+		return shouldFlushWithoutHints(
+			keyLen, valueLen, restartInterval, estimatedBlockSize, numEntries, flushOptions)
+	}
+
+	// Tighter upper-bound estimate of the metadata stored with the next
+	// key-value pair.
+	newSize := blockSizeWithMetadata + keyLen + valueLen
+	if numEntries%restartInterval == 0 {
+		newSize += 4
+	}
+	newSize += 4                            // varint for shared prefix length
+	newSize += uvarintLen(uint32(keyLen))   // varint for unshared key bytes
+	newSize += uvarintLen(uint32(valueLen)) // varint for value size
+
+	if blockSizeWithMetadata < flushOptions.blockSize {
+		newSizeClass, ok := blockSizeClass(newSize, sizeClassHints)
+		if ok && newSizeClass-newSize >= sizeClass-blockSizeWithMetadata {
+			// Although the block hasn't reached the target size, waiting to insert the
+			// next entry would exceed the target and increase memory fragmentation.
+			return true
+		}
+		return false
+	}
+
+	// Flush if inserting the next entry bumps the block size to the memory
+	// allocator's next size class.
+	return newSize > sizeClass
+}
+
+func shouldFlushWithoutHints(
+	keyLen, valueLen int,
+	restartInterval, estimatedBlockSize, numEntries int,
+	flushOptions flushDecisionOptions,
+) bool {
+	if estimatedBlockSize >= flushOptions.blockSize {
 		return true
 	}
 
 	// The block is currently smaller than the target size.
-	if estimatedBlockSize <= sizeThreshold {
+	if estimatedBlockSize <= flushOptions.blockSizeThreshold {
 		// The block is smaller than the threshold size at which we'll consider
 		// flushing it.
 		return false
 	}
 
-	newSize := estimatedBlockSize + key.Size() + valueLen
+	newSize := estimatedBlockSize + keyLen + valueLen
 	if numEntries%restartInterval == 0 {
 		newSize += 4
 	}
-	newSize += 4                              // varint for shared prefix length
-	newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
-	newSize += uvarintLen(uint32(valueLen))   // varint for value size
+	newSize += 4                            // varint for shared prefix length
+	newSize += uvarintLen(uint32(keyLen))   // varint for unshared key bytes
+	newSize += uvarintLen(uint32(valueLen)) // varint for value size
 	// Flush if the block plus the new entry is larger than the target size.
-	return newSize > targetBlockSize
+	return newSize > flushOptions.blockSize
+}
+
+// blockSizeClass returns the smallest memory allocator size class that could
+// hold a block of a given size and returns a boolean indicating whether an
+// appropriate size class was found. It is useful for computing the potential
+// space wasted by an allocation.
+func blockSizeClass(blockSize int, sizeClassHints []int) (int, bool) {
+	sizeClassIdx, _ := slices.BinarySearch(sizeClassHints, blockSize)
+	if sizeClassIdx == len(sizeClassHints) {
+		return -1, false
+	}
+	return sizeClassHints[sizeClassIdx], true
 }
 
 func cloneKeyWithBuf(k InternalKey, a bytealloc.A) (bytealloc.A, InternalKey) {
@@ -2188,23 +2280,29 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
-		blockSize:               o.BlockSize,
-		blockSizeThreshold:      (o.BlockSize*o.BlockSizeThreshold + 99) / 100,
-		indexBlockSize:          o.IndexBlockSize,
-		indexBlockSizeThreshold: (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
-		compare:                 o.Comparer.Compare,
-		split:                   o.Comparer.Split,
-		formatKey:               o.Comparer.FormatKey,
-		compression:             o.Compression,
-		separator:               o.Comparer.Separator,
-		successor:               o.Comparer.Successor,
-		tableFormat:             o.TableFormat,
-		isStrictObsolete:        o.IsStrictObsolete,
-		writingToLowestLevel:    o.WritingToLowestLevel,
-		cache:                   o.Cache,
-		restartInterval:         o.BlockRestartInterval,
-		checksumType:            o.Checksum,
-		indexBlock:              newIndexBlockBuf(o.Parallelism),
+		dataBlockOptions: flushDecisionOptions{
+			blockSize:               o.BlockSize,
+			blockSizeThreshold:      (o.BlockSize*o.BlockSizeThreshold + 99) / 100,
+			sizeClassAwareThreshold: (o.BlockSize*o.SizeClassAwareThreshold + 99) / 100,
+		},
+		indexBlockOptions: flushDecisionOptions{
+			blockSize:               o.IndexBlockSize,
+			blockSizeThreshold:      (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
+			sizeClassAwareThreshold: (o.IndexBlockSize*o.SizeClassAwareThreshold + 99) / 100,
+		},
+		compare:              o.Comparer.Compare,
+		split:                o.Comparer.Split,
+		formatKey:            o.Comparer.FormatKey,
+		compression:          o.Compression,
+		separator:            o.Comparer.Separator,
+		successor:            o.Comparer.Successor,
+		tableFormat:          o.TableFormat,
+		isStrictObsolete:     o.IsStrictObsolete,
+		writingToLowestLevel: o.WritingToLowestLevel,
+		cache:                o.Cache,
+		restartInterval:      o.BlockRestartInterval,
+		checksumType:         o.Checksum,
+		indexBlock:           newIndexBlockBuf(o.Parallelism),
 		rangeDelBlock: blockWriter{
 			restartInterval: 1,
 		},
@@ -2218,13 +2316,14 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 			Cmp:    o.Comparer.Compare,
 			Format: o.Comparer.FormatKey,
 		},
+		allocatorSizeClasses: o.AllocatorSizeClasses,
 	}
 	if w.tableFormat >= TableFormatPebblev3 {
 		w.shortAttributeExtractor = o.ShortAttributeExtractor
 		w.requiredInPlaceValueBound = o.RequiredInPlaceValueBound
 		if !o.DisableValueBlocks {
 			w.valueBlockWriter = newValueBlockWriter(
-				w.blockSize, w.blockSizeThreshold, w.compression, w.checksumType, func(compressedSize int) {
+				w.dataBlockOptions.blockSize, w.dataBlockOptions.blockSizeThreshold, w.compression, w.checksumType, func(compressedSize int) {
 					w.coordination.sizeEstimate.dataBlockCompressed(compressedSize, 0)
 				})
 		}

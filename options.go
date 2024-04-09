@@ -1060,6 +1060,12 @@ type Options struct {
 	// to temporarily persist data spilled to disk for row-oriented SQL query execution.
 	EnableSQLRowSpillMetrics bool
 
+	// AllocatorSizeClasses provides a sorted list containing the supported size
+	// classes of the underlying memory allocator. This provides hints to the
+	// sstable block writer's flushing policy to select block sizes that
+	// preemptively reduce internal fragmentation when loaded into the block cache.
+	AllocatorSizeClasses []int
+
 	// private options are only used by internal tests or are used internally
 	// for facilitating upgrade paths of unconfigurable functionality.
 	private struct {
@@ -1970,6 +1976,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
+	writerOpts.AllocatorSizeClasses = o.AllocatorSizeClasses
 	return writerOpts
 }
 
