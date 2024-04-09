@@ -12,6 +12,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
@@ -524,11 +525,28 @@ func (b *BlockIntervalFilter) SetInterval(lower, upper uint64) {
 	b.filterInterval = interval{lower: lower, upper: upper}
 }
 
-// When encoding block properties for each block, we cannot afford to encode
-// the name. Instead, the name is mapped to a shortID, in the scope of that
-// sstable, and the shortID is encoded. Since we use a uint8, there is a limit
-// of 256 block property collectors per sstable.
-type shortID uint8
+// When encoding block properties for each block, we cannot afford to encode the
+// name. Instead, the name is mapped to a shortID, in the scope of that sstable,
+// and the shortID is encoded as a single byte (which imposes a limit of of 256
+// block property collectors per sstable).
+// Note that the in-memory type is int16 to avoid overflows (e.g. in loops) and
+// to allow special values like -1 in code.
+type shortID int16
+
+const invalidShortID shortID = -1
+const maxShortID shortID = math.MaxUint8
+const maxPropertyCollectors = int(maxShortID) + 1
+
+func (id shortID) IsValid() bool {
+	return id >= 0 && id <= maxShortID
+}
+
+func (id shortID) ToByte() byte {
+	if invariants.Enabled && !id.IsValid() {
+		panic(fmt.Sprintf("inavlid id %d", id))
+	}
+	return byte(id)
+}
 
 type blockPropertiesEncoder struct {
 	propsBuf []byte
@@ -544,6 +562,11 @@ func (e *blockPropertiesEncoder) resetProps() {
 }
 
 func (e *blockPropertiesEncoder) addProp(id shortID, scratch []byte) {
+	if len(scratch) == 0 {
+		// We omit empty properties. The decoder will know that any missing IDs had
+		// empty values.
+		return
+	}
 	const lenID = 1
 	lenProp := uvarintLen(uint32(len(scratch)))
 	n := lenID + lenProp + len(scratch)
@@ -558,7 +581,7 @@ func (e *blockPropertiesEncoder) addProp(id shortID, scratch []byte) {
 	}
 	pos := len(e.propsBuf)
 	b := e.propsBuf[pos : pos+lenID]
-	b[0] = byte(id)
+	b[0] = id.ToByte()
 	pos += lenID
 	b = e.propsBuf[pos : pos+lenProp]
 	n = binary.PutUvarint(b, uint64(len(scratch)))
@@ -582,16 +605,41 @@ func (e *blockPropertiesEncoder) props() []byte {
 
 type blockPropertiesDecoder struct {
 	props []byte
+
+	// numCollectedProps is the number of collectors that were used when writing
+	// these properties. The encoded properties contain values for shortIDs 0
+	// through numCollectedProps-1, in order (with empty properties omitted).
+	numCollectedProps int
+	nextID            shortID
 }
 
-func (d *blockPropertiesDecoder) done() bool {
-	return len(d.props) == 0
+func makeBlockPropertiesDecoder(numCollectedProps int, propsBuf []byte) blockPropertiesDecoder {
+	return blockPropertiesDecoder{
+		props:             propsBuf,
+		numCollectedProps: numCollectedProps,
+	}
 }
 
-// REQUIRES: !done()
-func (d *blockPropertiesDecoder) next() (id shortID, prop []byte, err error) {
+func (d *blockPropertiesDecoder) Done() bool {
+	return int(d.nextID) >= d.numCollectedProps
+}
+
+// Next returns the property for each shortID between 0 and numCollectedProps-1, in order.
+// Note that some properties might be empty.
+// REQUIRES: !Done()
+func (d *blockPropertiesDecoder) Next() (id shortID, prop []byte, err error) {
+	id = d.nextID
+	d.nextID++
+
+	if len(d.props) == 0 || shortID(d.props[0]) != id {
+		if invariants.Enabled && len(d.props) > 0 && shortID(d.props[0]) < id {
+			panic("shortIDs are not in order")
+		}
+		// This property was omitted because it was empty.
+		return id, nil, nil
+	}
+
 	const lenID = 1
-	id = shortID(d.props[0])
 	propLen, m := binary.Uvarint(d.props[lenID:])
 	n := lenID + m
 	if m <= 0 || propLen == 0 || (n+int(propLen)) > len(d.props) {
@@ -811,64 +859,39 @@ const (
 	blockMaybeExcluded
 )
 
-func (f *BlockPropertiesFilterer) intersects(props []byte) (ret intersectsResult, err error) {
-	i := 0
-	decoder := blockPropertiesDecoder{props: props}
-	ret = blockIntersects
-	for i < len(f.shortIDToFiltersIndex) {
-		var id int
-		var prop []byte
-		if !decoder.done() {
-			var shortID shortID
-			var err error
-			shortID, prop, err = decoder.next()
-			if err != nil {
-				return ret, err
-			}
-			id = int(shortID)
-		} else {
-			id = math.MaxUint8 + 1
-		}
-		for i < len(f.shortIDToFiltersIndex) && id > i {
-			// The property for this id is not encoded for this block, but there
-			// may still be a filter for this id.
-			if intersects, err := f.intersectsFilter(i, nil); err != nil {
-				return ret, err
-			} else if intersects == blockExcluded {
-				return blockExcluded, nil
-			} else if intersects == blockMaybeExcluded {
-				ret = blockMaybeExcluded
-			}
-			i++
-		}
-		if i >= len(f.shortIDToFiltersIndex) {
-			return ret, nil
-		}
-		// INVARIANT: id <= i. And since i is always incremented by 1, id==i.
-		if id != i {
-			panic(fmt.Sprintf("%d != %d", id, i))
-		}
-		if intersects, err := f.intersectsFilter(i, prop); err != nil {
+func (f *BlockPropertiesFilterer) intersects(props []byte) (intersectsResult, error) {
+	decoder := makeBlockPropertiesDecoder(len(f.shortIDToFiltersIndex), props)
+	ret := blockIntersects
+	for !decoder.Done() {
+		id, prop, err := decoder.Next()
+		if err != nil {
 			return ret, err
-		} else if intersects == blockExcluded {
+		}
+		intersects, err := f.intersectsFilter(id, prop)
+		if err != nil {
+			return ret, err
+		}
+		if intersects == blockExcluded {
 			return blockExcluded, nil
-		} else if intersects == blockMaybeExcluded {
+		}
+		if intersects == blockMaybeExcluded {
 			ret = blockMaybeExcluded
 		}
-		i++
 	}
-	// ret == blockIntersects || ret == blockMaybeExcluded
+	// ret is either blockIntersects or blockMaybeExcluded.
 	return ret, nil
 }
 
-func (f *BlockPropertiesFilterer) intersectsFilter(i int, prop []byte) (intersectsResult, error) {
+func (f *BlockPropertiesFilterer) intersectsFilter(
+	id shortID, prop []byte,
+) (intersectsResult, error) {
 	var intersects bool
 	var err error
-	if f.shortIDToFiltersIndex[i] >= 0 {
-		if len(f.syntheticSuffix) == 0 {
-			intersects, err = f.filters[f.shortIDToFiltersIndex[i]].Intersects(prop)
+	if filterIdx := f.shortIDToFiltersIndex[id]; filterIdx >= 0 {
+		if !f.syntheticSuffix.IsSet() {
+			intersects, err = f.filters[filterIdx].Intersects(prop)
 		} else {
-			intersects, err = f.filters[f.shortIDToFiltersIndex[i]].SyntheticSuffixIntersects(prop, f.syntheticSuffix)
+			intersects, err = f.filters[filterIdx].SyntheticSuffixIntersects(prop, f.syntheticSuffix)
 		}
 		if err != nil {
 			return blockIntersects, err
@@ -877,7 +900,7 @@ func (f *BlockPropertiesFilterer) intersectsFilter(i int, prop []byte) (intersec
 			return blockExcluded, nil
 		}
 	}
-	if i == f.boundLimitedShortID {
+	if int(id) == f.boundLimitedShortID {
 		// The bound-limited filter uses this id.
 		//
 		// The bound-limited filter only applies within a keyspan interval. We
@@ -885,7 +908,7 @@ func (f *BlockPropertiesFilterer) intersectsFilter(i int, prop []byte) (intersec
 		// Intersects determines that there is no intersection, we return
 		// `blockMaybeExcluded` if no other bpf unconditionally excludes the
 		// block.
-		if len(f.syntheticSuffix) == 0 {
+		if !f.syntheticSuffix.IsSet() {
 			intersects, err = f.boundLimitedFilter.Intersects(prop)
 		} else {
 			intersects, err = f.boundLimitedFilter.SyntheticSuffixIntersects(prop, f.syntheticSuffix)

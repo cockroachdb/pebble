@@ -1477,9 +1477,7 @@ func (w *Writer) finishDataBlockProps(buf *dataBlockBuf) error {
 		if scratch, err = w.blockPropCollectors[i].FinishDataBlock(scratch); err != nil {
 			return err
 		}
-		if len(scratch) > 0 {
-			buf.blockPropsEncoder.addProp(shortID(i), scratch)
-		}
+		buf.blockPropsEncoder.addProp(shortID(i), scratch)
 	}
 
 	buf.dataBlockProps = buf.blockPropsEncoder.unsafeProps()
@@ -1667,9 +1665,7 @@ func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 		if scratch, err = w.blockPropCollectors[i].FinishIndexBlock(scratch); err != nil {
 			return nil, err
 		}
-		if len(scratch) > 0 {
-			w.blockPropsEncoder.addProp(shortID(i), scratch)
-		}
+		w.blockPropsEncoder.addProp(shortID(i), scratch)
 	}
 	return w.blockPropsEncoder.props(), nil
 }
@@ -2272,39 +2268,31 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	w.props.PropertyCollectorNames = "[]"
 	w.props.ExternalFormatVersion = rocksDBExternalFormatVersion
 
-	if len(o.BlockPropertyCollectors) > 0 || w.tableFormat >= TableFormatPebblev4 {
-		var buf bytes.Buffer
-		buf.WriteString("[")
-		numBlockPropertyCollectors := len(o.BlockPropertyCollectors)
-		if w.tableFormat >= TableFormatPebblev4 {
-			numBlockPropertyCollectors++
-		}
-		// shortID is a uint8, so we cannot exceed that number of block
-		// property collectors.
-		if numBlockPropertyCollectors > math.MaxUint8 {
+	numBlockPropertyCollectors := len(o.BlockPropertyCollectors)
+	if w.tableFormat >= TableFormatPebblev4 {
+		numBlockPropertyCollectors++
+	}
+
+	if numBlockPropertyCollectors > 0 {
+		if numBlockPropertyCollectors > maxPropertyCollectors {
 			w.err = errors.New("pebble: too many block property collectors")
 			return w
 		}
-		if numBlockPropertyCollectors > 0 {
-			w.blockPropCollectors = make([]BlockPropertyCollector, numBlockPropertyCollectors)
-		}
-		if len(o.BlockPropertyCollectors) > 0 {
-			// The shortID assigned to a collector is the same as its index in
-			// this slice.
-			for i := range o.BlockPropertyCollectors {
-				w.blockPropCollectors[i] = o.BlockPropertyCollectors[i]()
-				if i > 0 {
-					buf.WriteString(",")
-				}
-				buf.WriteString(w.blockPropCollectors[i].Name())
-			}
+		w.blockPropCollectors = make([]BlockPropertyCollector, 0, numBlockPropertyCollectors)
+		for _, constructFn := range o.BlockPropertyCollectors {
+			w.blockPropCollectors = append(w.blockPropCollectors, constructFn())
 		}
 		if w.tableFormat >= TableFormatPebblev4 {
-			if numBlockPropertyCollectors > 1 {
+			w.blockPropCollectors = append(w.blockPropCollectors, &w.obsoleteCollector)
+		}
+
+		var buf bytes.Buffer
+		buf.WriteString("[")
+		for i := range w.blockPropCollectors {
+			if i > 0 {
 				buf.WriteString(",")
 			}
-			w.blockPropCollectors[numBlockPropertyCollectors-1] = &w.obsoleteCollector
-			buf.WriteString(w.obsoleteCollector.Name())
+			buf.WriteString(w.blockPropCollectors[i].Name())
 		}
 		buf.WriteString("]")
 		w.props.PropertyCollectorNames = buf.String()
