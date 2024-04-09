@@ -17,6 +17,7 @@ import (
 
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -266,8 +267,8 @@ func (tf TestFixtureInfo) Build(fs vfs.FS, filename string) error {
 }
 
 const fixtureDefaultIndexBlockSize = math.MaxInt32
-const fixtureSmallIndexBlockSize = 128
-const fixtureBlockSize = 2048
+const fixtureSmallIndexBlockSize = 128 + cache.ValueMetadataSize
+const fixtureBlockSize = 2048 + cache.ValueMetadataSize
 const fixtureFormat = TableFormatPebblev1
 
 var fixtureComparer = func() *Comparer {

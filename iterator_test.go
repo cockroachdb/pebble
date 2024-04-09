@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -1190,7 +1191,10 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 			FormatMajorVersion:      internalFormatNewest,
 			BlockPropertyCollectors: bpCollectors,
 		}
-		lo := LevelOptions{BlockSize: 1, IndexBlockSize: 1}
+		lo := LevelOptions{
+			BlockSize:      1 + cache.ValueMetadataSize,
+			IndexBlockSize: 1 + cache.ValueMetadataSize,
+		}
 		opts.Levels = append(opts.Levels, lo)
 
 		// Automatic compactions may compact away tombstones from L6, making
