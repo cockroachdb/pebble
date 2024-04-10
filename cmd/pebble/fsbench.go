@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -216,7 +216,7 @@ func createBench(benchName string, benchDescription string) fsBenchmark {
 			}
 
 			start := time.Now()
-			fh := createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, numFiles)))
+			fh := createFile(filepath.Join(dirpath, fmt.Sprintf("%s%d", pref, numFiles)))
 			syncFile(bench.dir)
 			hist.Record(time.Since(start))
 
@@ -265,7 +265,7 @@ func deleteBench(
 		// prepopulate the directory
 		prePref := "pre_temp_"
 		for i := 0; i < preNumFiles; i++ {
-			fh := createFile(path.Join(dirpath, fmt.Sprintf("%s%d", prePref, i)))
+			fh := createFile(filepath.Join(dirpath, fmt.Sprintf("%s%d", prePref, i)))
 			if preFileSize > 0 {
 				writeToFile(fh, preFileSize)
 				syncFile(fh)
@@ -281,12 +281,12 @@ func deleteBench(
 			}
 
 			filename := "newfile"
-			fh := createFile(path.Join(dirpath, filename))
+			fh := createFile(filepath.Join(dirpath, filename))
 			writeToFile(fh, fileSize)
 			syncFile(fh)
 
 			start := time.Now()
-			deleteFile(path.Join(dirpath, filename))
+			deleteFile(filepath.Join(dirpath, filename))
 			hist.Record(time.Since(start))
 
 			return true
@@ -332,7 +332,7 @@ func deleteUniformBench(
 		// setup the operation to benchmark, and the cleaup functions.
 		pref := "temp_"
 		for i := 0; i < numFiles; i++ {
-			fh := createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, i)))
+			fh := createFile(filepath.Join(dirpath, fmt.Sprintf("%s%d", pref, i)))
 			if fileSize > 0 {
 				writeToFile(fh, fileSize)
 				syncFile(fh)
@@ -352,7 +352,7 @@ func deleteUniformBench(
 			}
 
 			start := time.Now()
-			deleteFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, numFiles-1)))
+			deleteFile(filepath.Join(dirpath, fmt.Sprintf("%s%d", pref, numFiles-1)))
 			hist.Record(time.Since(start))
 
 			numFiles--
@@ -408,7 +408,7 @@ func writeSyncBench(
 			fileNum      int
 			bytesWritten int64
 		}
-		benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
+		benchData.fh = createFile(filepath.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
 
 		bench.run = func(hist *namedHistogram) bool {
 			if benchData.done.Load() {
@@ -419,7 +419,7 @@ func writeSyncBench(
 				closeFile(benchData.fh)
 				benchData.fileNum++
 				benchData.bytesWritten = 0
-				benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
+				benchData.fh = createFile(filepath.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
 			}
 
 			benchData.bytesWritten += writeSize
@@ -481,7 +481,7 @@ func diskUsageBench(
 			fileNum      int
 			bytesWritten int64
 		}
-		benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
+		benchData.fh = createFile(filepath.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
 
 		bench.run = func(hist *namedHistogram) bool {
 			if benchData.done.Load() {
@@ -492,7 +492,7 @@ func diskUsageBench(
 				closeFile(benchData.fh)
 				benchData.fileNum++
 				benchData.bytesWritten = 0
-				benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
+				benchData.fh = createFile(filepath.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
 			}
 
 			benchData.bytesWritten += writeSize

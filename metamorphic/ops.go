@@ -11,7 +11,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -2073,7 +2072,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 
 	source := t.getDB(r.source)
 	dest := t.getDB(r.dest)
-	sstPath := path.Join(t.tmpDir, fmt.Sprintf("ext-replicate%d.sst", t.idx))
+	sstPath := filepath.Join(t.tmpDir, fmt.Sprintf("ext-replicate%d.sst", t.idx))
 	f, err := t.opts.FS.Create(sstPath, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		h.Recordf("%s // %v", r, err)
