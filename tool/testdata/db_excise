@@ -1,0 +1,51 @@
+create foo
+----
+
+db set foo blue blue-val
+----
+
+db set foo orange orange-val
+----
+
+db set foo green green-val
+----
+
+db set foo red red-val
+----
+
+db set foo yellow yellow-val
+----
+
+db scan foo
+----
+test formatter: blue test value formatter: blue-val
+test formatter: green test value formatter: green-val
+test formatter: orange test value formatter: orange-val
+test formatter: red test value formatter: red-val
+test formatter: yellow test value formatter: yellow-val
+scanned 5 records in 1.0s
+
+db excise foo
+----
+Excise range not specified.
+
+db excise foo --start=gr
+----
+Excise range not specified.
+
+db excise foo --end=t
+----
+Excise range not specified.
+
+db excise foo --start=gr --end=t --yes
+----
+Excising range:
+  start: gr
+  end:   t
+Excise complete.
+
+db scan foo
+----
+test formatter: blue test value formatter: blue-val
+test formatter: yellow test value formatter: yellow-val
+scanned 2 records in 1.0s
