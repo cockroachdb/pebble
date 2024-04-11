@@ -1774,6 +1774,6 @@ func TestBatchOption(t *testing.T) {
 		b := newBatch(nil, tc.opts...)
 		// newBatch returns batch from the pool so it is possible for len(data) to be > 0
 		b.data = nil
-		require.Equal(t, tc.expected, newBatch(nil, tc.opts...))
+		require.Equal(t, tc.expected, b)
 	}
 }
