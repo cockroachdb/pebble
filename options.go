@@ -682,6 +682,10 @@ type Options struct {
 		// major version is at least `FormatFlushableIngest`.
 		DisableIngestAsFlushable func() bool
 
+		// CheckExternalIngestions enables opening external ssts at ingest time and
+		// validating that they are not empty. Used for testing/debugging.
+		CheckExternalIngestions bool
+
 		// RemoteStorage enables use of remote storage (e.g. S3) for storing
 		// sstables. Setting this option enables use of CreateOnShared option and
 		// allows ingestion of external files.
