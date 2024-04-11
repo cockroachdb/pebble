@@ -34,7 +34,7 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 	if kv == nil {
 		return nil, ErrNotFound
 	}
-	if !m.equal(key, kv.UserKey()) {
+	if !m.equal(key, kv.K.UserKey) {
 		return nil, ErrNotFound
 	}
 	switch kv.Kind() {
@@ -131,7 +131,7 @@ func TestMemTableBasic(t *testing.T) {
 	for kv := x.SeekGE([]byte("mango"), base.SeekGEFlagsNone); kv != nil; kv = x.Next() {
 		v, _, err := kv.Value(nil)
 		require.NoError(t, err)
-		s += fmt.Sprintf("%s/%s.", kv.UserKey(), v)
+		s += fmt.Sprintf("%s/%s.", kv.K.UserKey, v)
 	}
 	if want := "peach/yellow.plum/purple."; s != want {
 		t.Fatalf("8.iter: got %q, want %q", s, want)
@@ -237,10 +237,10 @@ func TestMemTable1000Entries(t *testing.T) {
 		if kv == nil {
 			t.Fatalf("iter: next failed, want=%q", want)
 		}
-		if got := string(kv.UserKey()); got != want {
+		if got := string(kv.K.UserKey); got != want {
 			t.Fatalf("iter: got %q, want %q", got, want)
 		}
-		if k := kv.UserKey(); len(k) != cap(k) {
+		if k := kv.K.UserKey; len(k) != cap(k) {
 			t.Fatalf("iter: len(k)=%d, cap(k)=%d", len(k), cap(k))
 		}
 		v, _, err := kv.Value(nil)

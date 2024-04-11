@@ -106,7 +106,7 @@ func (g *getIter) Next() *base.InternalKV {
 					g.iter = nil
 					return nil
 				}
-				if g.comparer.Equal(g.key, g.iterKV.UserKey()) {
+				if g.comparer.Equal(g.key, g.iterKV.K.UserKey) {
 					if !g.iterKV.Visible(g.snapshot, base.InternalKeySeqNumMax) {
 						g.iterKV = g.iter.Next()
 						continue

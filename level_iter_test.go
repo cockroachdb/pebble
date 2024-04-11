@@ -396,7 +396,7 @@ func (i *levelIterTestIter) rangeDelSeek(
 	}
 	return &base.InternalKV{
 		K: base.InternalKey{
-			UserKey: []byte(fmt.Sprintf("%s/%s", kv.UserKey(), tombstone)),
+			UserKey: []byte(fmt.Sprintf("%s/%s", kv.K.UserKey, tombstone)),
 			Trailer: kv.K.Trailer,
 		},
 		V: kv.V,

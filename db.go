@@ -2859,7 +2859,7 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 			panic(err)
 		}
 		if (rangeDel == nil || d.cmp(rangeDel.SmallestKey().UserKey, m.SmallestPointKey.UserKey) != 0) &&
-			(pointKV == nil || d.cmp(pointKV.UserKey(), m.SmallestPointKey.UserKey) != 0) {
+			(pointKV == nil || d.cmp(pointKV.K.UserKey, m.SmallestPointKey.UserKey) != 0) {
 			panic(errors.Newf("pebble: virtual sstable %s lower point key bound is not tight", m.FileNum))
 		}
 
@@ -2870,14 +2870,14 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 			panic(err)
 		}
 		if (rangeDel == nil || d.cmp(rangeDel.LargestKey().UserKey, m.LargestPointKey.UserKey) != 0) &&
-			(pointKV == nil || d.cmp(pointKV.UserKey(), m.LargestPointKey.UserKey) != 0) {
+			(pointKV == nil || d.cmp(pointKV.K.UserKey, m.LargestPointKey.UserKey) != 0) {
 			panic(errors.Newf("pebble: virtual sstable %s upper point key bound is not tight", m.FileNum))
 		}
 
 		// Check that iterator keys are within bounds.
 		for kv := pointIter.First(); kv != nil; kv = pointIter.Next() {
-			if d.cmp(kv.UserKey(), m.SmallestPointKey.UserKey) < 0 || d.cmp(kv.UserKey(), m.LargestPointKey.UserKey) > 0 {
-				panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, kv.UserKey()))
+			if d.cmp(kv.K.UserKey, m.SmallestPointKey.UserKey) < 0 || d.cmp(kv.K.UserKey, m.LargestPointKey.UserKey) > 0 {
+				panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, kv.K.UserKey))
 			}
 		}
 		s, err := rangeDelIter.First()

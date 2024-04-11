@@ -148,7 +148,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				case "next":
 					formatKey(iter.Next())
 				case "next-prefix":
-					prevUserKey := prevKV.UserKey()
+					prevUserKey := prevKV.K.UserKey
 					succKey := testkeys.Comparer.ImmediateSuccessor(nil, prevUserKey[:testkeys.Comparer.Split(prevUserKey)])
 					formatKey(iter.NextPrefix(succKey))
 				case "prev":
@@ -202,12 +202,12 @@ var _ base.InternalIterator = &pointIterator{}
 
 func (i *pointIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	i.index = sort.Search(len(i.kvs), func(j int) bool {
-		return i.cmp(i.kvs[j].UserKey(), key) >= 0
+		return i.cmp(i.kvs[j].K.UserKey, key) >= 0
 	})
 	if i.index < 0 || i.index >= len(i.kvs) {
 		return nil
 	}
-	if i.upper != nil && i.cmp(i.kvs[i.index].UserKey(), i.upper) >= 0 {
+	if i.upper != nil && i.cmp(i.kvs[i.index].K.UserKey, i.upper) >= 0 {
 		return nil
 	}
 	return &i.kvs[i.index]
@@ -219,13 +219,13 @@ func (i *pointIterator) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags)
 
 func (i *pointIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	i.index = sort.Search(len(i.kvs), func(j int) bool {
-		return i.cmp(i.kvs[j].UserKey(), key) >= 0
+		return i.cmp(i.kvs[j].K.UserKey, key) >= 0
 	})
 	i.index--
 	if i.index < 0 || i.index >= len(i.kvs) {
 		return nil
 	}
-	if i.lower != nil && i.cmp(i.kvs[i.index].UserKey(), i.lower) < 0 {
+	if i.lower != nil && i.cmp(i.kvs[i.index].K.UserKey, i.lower) < 0 {
 		return nil
 	}
 	return &i.kvs[i.index]
@@ -236,7 +236,7 @@ func (i *pointIterator) First() *base.InternalKV {
 	if i.index < 0 || i.index >= len(i.kvs) {
 		return nil
 	}
-	if i.upper != nil && i.cmp(i.kvs[i.index].UserKey(), i.upper) >= 0 {
+	if i.upper != nil && i.cmp(i.kvs[i.index].K.UserKey, i.upper) >= 0 {
 		return nil
 	}
 	return &i.kvs[i.index]
@@ -247,7 +247,7 @@ func (i *pointIterator) Last() *base.InternalKV {
 	if i.index < 0 || i.index >= len(i.kvs) {
 		return nil
 	}
-	if i.lower != nil && i.cmp(i.kvs[i.index].UserKey(), i.lower) < 0 {
+	if i.lower != nil && i.cmp(i.kvs[i.index].K.UserKey, i.lower) < 0 {
 		return nil
 	}
 	return &i.kvs[i.index]
@@ -258,7 +258,7 @@ func (i *pointIterator) Next() *base.InternalKV {
 	if i.index < 0 || i.index >= len(i.kvs) {
 		return nil
 	}
-	if i.upper != nil && i.cmp(i.kvs[i.index].UserKey(), i.upper) >= 0 {
+	if i.upper != nil && i.cmp(i.kvs[i.index].K.UserKey, i.upper) >= 0 {
 		return nil
 	}
 	return &i.kvs[i.index]
@@ -273,7 +273,7 @@ func (i *pointIterator) Prev() *base.InternalKV {
 	if i.index < 0 || i.index >= len(i.kvs) {
 		return nil
 	}
-	if i.lower != nil && i.cmp(i.kvs[i.index].UserKey(), i.lower) < 0 {
+	if i.lower != nil && i.cmp(i.kvs[i.index].K.UserKey, i.lower) < 0 {
 		return nil
 	}
 	return &i.kvs[i.index]

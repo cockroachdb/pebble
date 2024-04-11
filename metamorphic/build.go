@@ -66,7 +66,7 @@ func writeSSTForIngestion(
 		// Ignore duplicate keys.
 		if lastUserKey != nil {
 			last := lastUserKey
-			this := kv.UserKey()
+			this := kv.K.UserKey
 			if uniquePrefixes {
 				last = last[:t.opts.Comparer.Split(last)]
 				this = this[:t.opts.Comparer.Split(this)]
@@ -75,7 +75,7 @@ func writeSSTForIngestion(
 				continue
 			}
 		}
-		lastUserKey = append(lastUserKey[:0], kv.UserKey()...)
+		lastUserKey = append(lastUserKey[:0], kv.K.UserKey...)
 
 		k := *kv
 		k.K.SetSeqNum(base.SeqNumZero)

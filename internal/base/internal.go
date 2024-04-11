@@ -522,11 +522,6 @@ func (kv *InternalKV) SeqNum() uint64 {
 	return kv.K.SeqNum()
 }
 
-// UserKey returns the KV's user key.
-func (kv *InternalKV) UserKey() []byte {
-	return kv.K.UserKey
-}
-
 // InPlaceValue returns the KV's in-place value.
 func (kv *InternalKV) InPlaceValue() []byte {
 	return kv.V.InPlaceValue()

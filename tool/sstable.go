@@ -201,11 +201,11 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 				}
 			}
 			lastKey.Trailer = kv.K.Trailer
-			lastKey.UserKey = append(lastKey.UserKey[:0], kv.UserKey()...)
+			lastKey.UserKey = append(lastKey.UserKey[:0], kv.K.UserKey...)
 
-			n := r.Split(kv.UserKey())
-			prefix := kv.UserKey()[:n]
-			kv2 := prefixIter.SeekPrefixGE(prefix, kv.UserKey(), base.SeekGEFlagsNone)
+			n := r.Split(kv.K.UserKey)
+			prefix := kv.K.UserKey[:n]
+			kv2 := prefixIter.SeekPrefixGE(prefix, kv.K.UserKey, base.SeekGEFlagsNone)
 			if kv2 == nil {
 				fmt.Fprintf(stdout, "WARNING: PREFIX ITERATION FAILURE!\n")
 				if s.fmtKey.spec != "null" {
@@ -453,7 +453,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "%s    WARNING: OUT OF ORDER KEYS!\n", prefix)
 				}
 				lastKey.Trailer = kv.K.Trailer
-				lastKey.UserKey = append(lastKey.UserKey[:0], kv.UserKey()...)
+				lastKey.UserKey = append(lastKey.UserKey[:0], kv.K.UserKey...)
 				kv = iter.Next()
 			} else {
 				// If a filter is specified, we want to output any range tombstone

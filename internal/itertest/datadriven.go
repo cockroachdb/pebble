@@ -98,7 +98,7 @@ func RunInternalIterCmdWriter(
 			prevKey = nil
 			return nil, nil
 		}
-		prevKey = kv.UserKey()
+		prevKey = kv.K.UserKey
 		v, _, err := kv.Value(nil)
 		require.NoError(t, err)
 		return &kv.K, v

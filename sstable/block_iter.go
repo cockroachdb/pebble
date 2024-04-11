@@ -1347,7 +1347,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 		nextCmpCount++
 		if invariants.Enabled && prefixChanged && i.cmp(i.ikv.K.UserKey, succKey) < 0 {
 			panic(errors.AssertionFailedf("prefix should have changed but %x < %x",
-				i.ikv.UserKey, succKey))
+				i.ikv.K.UserKey, succKey))
 		}
 		if prefixChanged || i.cmp(i.ikv.K.UserKey, succKey) >= 0 {
 			// Prefix has changed.
