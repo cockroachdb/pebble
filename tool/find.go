@@ -511,8 +511,8 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			foundRef := false
 			for kv != nil || rangeDel != nil {
 				if kv != nil &&
-					(rangeDel == nil || r.Compare(kv.UserKey(), rangeDel.Start) < 0) {
-					if r.Compare(searchKey, kv.UserKey()) != 0 {
+					(rangeDel == nil || r.Compare(kv.K.UserKey, rangeDel.Start) < 0) {
+					if r.Compare(searchKey, kv.K.UserKey) != 0 {
 						kv = nil
 						continue
 					}

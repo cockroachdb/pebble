@@ -1005,7 +1005,7 @@ func loadFlushedSSTableKeys(
 			for kv := iter.First(); kv != nil; kv = iter.Next() {
 				var key flushedKey
 				key.Trailer = kv.K.Trailer
-				bufs.alloc, key.UserKey = bufs.alloc.Copy(kv.UserKey())
+				bufs.alloc, key.UserKey = bufs.alloc.Copy(kv.K.UserKey)
 				if v, callerOwned, err := kv.Value(nil); err != nil {
 					return err
 				} else if callerOwned {

@@ -626,7 +626,7 @@ func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 	// prefix. If nextEntry is ever invoked while we're already beyond the
 	// current prefix, we're violating the invariant.
 	if invariants.Enabled && m.prefix != nil {
-		if s := m.split(l.iterKV.UserKey()); !bytes.Equal(m.prefix, l.iterKV.UserKey()[:s]) {
+		if s := m.split(l.iterKV.K.UserKey); !bytes.Equal(m.prefix, l.iterKV.K.UserKey[:s]) {
 			m.logger.Fatalf("mergingIter: prefix violation: nexting beyond prefix %q; existing heap root %q\n%s",
 				m.prefix, l.iterKV, debug.Stack())
 		}
@@ -1262,7 +1262,7 @@ func (m *mergingIter) Next() *base.InternalKV {
 
 	iterKV := m.findNextEntry()
 	if invariants.Enabled && m.prefix != nil && iterKV != nil {
-		if n := m.split(iterKV.UserKey()); !bytes.Equal(m.prefix, iterKV.UserKey()[:n]) {
+		if n := m.split(iterKV.K.UserKey); !bytes.Equal(m.prefix, iterKV.K.UserKey[:n]) {
 			m.logger.Fatalf("mergingIter: prefix violation: returning key %q without prefix %q\n", iterKV, m.prefix)
 		}
 	}
@@ -1288,7 +1288,7 @@ func (m *mergingIter) NextPrefix(succKey []byte) *base.InternalKV {
 	// NextPrefix was invoked.
 	root := &m.heap.items[0]
 	m.levelsPositioned[(*root).index] = true
-	if invariants.Enabled && m.heap.cmp((*root).iterKV.UserKey(), succKey) >= 0 {
+	if invariants.Enabled && m.heap.cmp((*root).iterKV.K.UserKey, succKey) >= 0 {
 		m.logger.Fatalf("pebble: invariant violation: NextPrefix(%q) called on merging iterator already positioned at %q",
 			succKey, (*root).iterKV)
 	}

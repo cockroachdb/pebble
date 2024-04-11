@@ -160,7 +160,7 @@ func (p UserKey) String() string { return fmt.Sprintf("(UserKey %q)", string(p))
 
 // Evaluate implements Predicate.
 func (p UserKey) Evaluate(pctx *ProbeContext) bool {
-	return pctx.Op.Return.KV != nil && pctx.Comparer.Equal(pctx.Op.Return.KV.UserKey(), p)
+	return pctx.Op.Return.KV != nil && pctx.Comparer.Equal(pctx.Op.Return.KV.K.UserKey, p)
 }
 
 // ReturnKV returns a Probe that modifies an operation's return value to the

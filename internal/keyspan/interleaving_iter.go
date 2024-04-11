@@ -486,7 +486,7 @@ func (i *InterleavingIter) NextPrefix(succKey []byte) *base.InternalKV {
 	case posPointKey:
 		i.savePoint(i.pointIter.NextPrefix(succKey))
 		if i.withinSpan {
-			if i.pointKV == nil || i.cmp(i.span.End, i.pointKV.UserKey()) <= 0 {
+			if i.pointKV == nil || i.cmp(i.span.End, i.pointKV.K.UserKey) <= 0 {
 				i.pos = posKeyspanEnd
 			} else {
 				i.pos = posPointKey
@@ -577,7 +577,7 @@ func (i *InterleavingIter) Prev() *base.InternalKV {
 //	MIN(i.pointKey, i.span.Start)
 func (i *InterleavingIter) computeSmallestPos() {
 	if i.err == nil {
-		if i.span != nil && (i.pointKV == nil || i.cmp(i.startKey(), i.pointKV.UserKey()) <= 0) {
+		if i.span != nil && (i.pointKV == nil || i.cmp(i.startKey(), i.pointKV.K.UserKey) <= 0) {
 			i.withinSpan = true
 			i.pos = posKeyspanStart
 			return
@@ -596,7 +596,7 @@ func (i *InterleavingIter) computeSmallestPos() {
 //	MAX(i.pointKey, i.span.End)
 func (i *InterleavingIter) computeLargestPos() {
 	if i.err == nil {
-		if i.span != nil && (i.pointKV == nil || i.cmp(i.span.End, i.pointKV.UserKey()) > 0) {
+		if i.span != nil && (i.pointKV == nil || i.cmp(i.span.End, i.pointKV.K.UserKey) > 0) {
 			i.withinSpan = true
 			i.pos = posKeyspanEnd
 			return
@@ -660,7 +660,7 @@ func (i *InterleavingIter) nextPos() {
 			i.pos = posKeyspanEnd
 		default:
 			// i.withinSpan && i.pointKV != nil && i.span != nil
-			if i.cmp(i.span.End, i.pointKV.UserKey()) <= 0 {
+			if i.cmp(i.span.End, i.pointKV.K.UserKey) <= 0 {
 				i.pos = posKeyspanEnd
 			} else {
 				i.pos = posPointKey
@@ -668,7 +668,7 @@ func (i *InterleavingIter) nextPos() {
 		}
 	case posKeyspanStart:
 		// Either a point key or the span's end key comes next.
-		if i.pointKV != nil && i.cmp(i.pointKV.UserKey(), i.span.End) < 0 {
+		if i.pointKV != nil && i.cmp(i.pointKV.K.UserKey, i.span.End) < 0 {
 			i.pos = posPointKey
 		} else {
 			i.pos = posKeyspanEnd
@@ -727,7 +727,7 @@ func (i *InterleavingIter) prevPos() {
 			i.pos = posKeyspanEnd
 		default:
 			// i.withinSpan && i.pointKey != nil && i.span != nil
-			if i.cmp(i.span.Start, i.pointKV.UserKey()) > 0 {
+			if i.cmp(i.span.Start, i.pointKV.K.UserKey) > 0 {
 				i.pos = posKeyspanStart
 			} else {
 				i.pos = posPointKey
@@ -739,7 +739,7 @@ func (i *InterleavingIter) prevPos() {
 		i.computeLargestPos()
 	case posKeyspanEnd:
 		// Either a point key or the span's start key is previous.
-		if i.pointKV != nil && i.cmp(i.pointKV.UserKey(), i.span.Start) >= 0 {
+		if i.pointKV != nil && i.cmp(i.pointKV.K.UserKey, i.span.Start) >= 0 {
 			i.pos = posPointKey
 		} else {
 			i.pos = posKeyspanStart
@@ -768,7 +768,7 @@ func (i *InterleavingIter) yieldPosition(lowerBound []byte, advance func()) *bas
 
 			if i.mask != nil {
 				i.maybeUpdateMask()
-				if i.withinSpan && i.mask.SkipPoint(i.pointKV.UserKey()) {
+				if i.withinSpan && i.mask.SkipPoint(i.pointKV.K.UserKey) {
 					// The span covers the point key. If a SkipPoint hook is
 					// configured, ask it if we should skip this point key.
 					if i.prefix != nil {
@@ -997,9 +997,9 @@ func (i *InterleavingIter) verify(kv *base.InternalKV) *base.InternalKV {
 		switch {
 		case i.dir == -1 && i.spanMarkerTruncated:
 			panic("pebble: invariant violation: truncated span key in reverse iteration")
-		case kv != nil && i.lower != nil && i.cmp(kv.UserKey(), i.lower) < 0:
+		case kv != nil && i.lower != nil && i.cmp(kv.K.UserKey, i.lower) < 0:
 			panic("pebble: invariant violation: key < lower bound")
-		case kv != nil && i.upper != nil && i.cmp(kv.UserKey(), i.upper) >= 0:
+		case kv != nil && i.upper != nil && i.cmp(kv.K.UserKey, i.upper) >= 0:
 			panic("pebble: invariant violation: key ≥ upper bound")
 		case i.err != nil && kv != nil:
 			panic("pebble: invariant violation: accumulated error swallowed")

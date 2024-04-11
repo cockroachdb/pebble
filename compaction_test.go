@@ -872,7 +872,7 @@ func TestCompaction(t *testing.T) {
 	get1 := func(iter internalIterator) (ret string) {
 		b := &bytes.Buffer{}
 		for kv := iter.First(); kv != nil; kv = iter.Next() {
-			b.Write(kv.UserKey())
+			b.Write(kv.K.UserKey)
 		}
 		if err := iter.Close(); err != nil {
 			t.Fatalf("iterator Close: %v", err)

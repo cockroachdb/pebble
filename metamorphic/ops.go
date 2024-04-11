@@ -788,17 +788,17 @@ func (o *ingestOp) collapseBatch(
 			// sequence number precedence determine which of the keys "wins".
 			// But the code to build the ingested sstable will only keep the
 			// most recent internal key and will not merge across internal keys.
-			if equal(lastUserKey, kv.UserKey()) {
+			if equal(lastUserKey, kv.K.UserKey) {
 				continue
 			}
 			// NB: We don't have to copy the key or value since we're reading from a
 			// batch which doesn't do prefix compression.
-			lastUserKey = kv.UserKey()
+			lastUserKey = kv.K.UserKey
 
 			var err error
 			switch kv.Kind() {
 			case pebble.InternalKeyKindDelete:
-				err = collapsed.Delete(kv.UserKey(), nil)
+				err = collapsed.Delete(kv.K.UserKey, nil)
 			case pebble.InternalKeyKindDeleteSized:
 				v, _ := binary.Uvarint(kv.InPlaceValue())
 				// Batch.DeleteSized takes just the length of the value being
@@ -808,15 +808,15 @@ func (o *ingestOp) collapseBatch(
 				// the key length from the encoded value before calling
 				// collapsed.DeleteSized, which will again add the key length
 				// before encoding.
-				err = collapsed.DeleteSized(kv.UserKey(), uint32(v-uint64(len(kv.UserKey()))), nil)
+				err = collapsed.DeleteSized(kv.K.UserKey, uint32(v-uint64(len(kv.K.UserKey))), nil)
 			case pebble.InternalKeyKindSingleDelete:
-				err = collapsed.SingleDelete(kv.UserKey(), nil)
+				err = collapsed.SingleDelete(kv.K.UserKey, nil)
 			case pebble.InternalKeyKindSet:
-				err = collapsed.Set(kv.UserKey(), kv.InPlaceValue(), nil)
+				err = collapsed.Set(kv.K.UserKey, kv.InPlaceValue(), nil)
 			case pebble.InternalKeyKindMerge:
-				err = collapsed.Merge(kv.UserKey(), kv.InPlaceValue(), nil)
+				err = collapsed.Merge(kv.K.UserKey, kv.InPlaceValue(), nil)
 			case pebble.InternalKeyKindLogData:
-				err = collapsed.LogData(kv.UserKey(), nil)
+				err = collapsed.LogData(kv.K.UserKey, nil)
 			default:
 				err = errors.Errorf("unknown batch record kind: %d", kv.Kind())
 			}

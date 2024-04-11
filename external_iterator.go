@@ -382,8 +382,8 @@ func (s *simpleLevelIter) resetFilteredIters() {
 		if iterKV != nil {
 			s.filtered = append(s.filtered, s.iters[i])
 			bufStart := len(s.firstKeysBuf)
-			s.firstKeysBuf = append(s.firstKeysBuf, iterKV.UserKey()...)
-			s.firstKeys = append(s.firstKeys, s.firstKeysBuf[bufStart:bufStart+len(iterKV.UserKey())])
+			s.firstKeysBuf = append(s.firstKeysBuf, iterKV.K.UserKey...)
+			s.firstKeys = append(s.firstKeys, s.firstKeysBuf[bufStart:bufStart+len(iterKV.K.UserKey)])
 		} else if err := s.iters[i].Error(); err != nil {
 			s.err = err
 		}

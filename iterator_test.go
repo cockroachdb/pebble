@@ -272,7 +272,7 @@ func testIterator(
 		var b bytes.Buffer
 		iter := invalidating.NewIter(newFunc(tc.iters...))
 		for kv := iter.First(); kv != nil; kv = iter.Next() {
-			fmt.Fprintf(&b, "<%s:%d>", kv.UserKey(), kv.SeqNum())
+			fmt.Fprintf(&b, "<%s:%d>", kv.K.UserKey, kv.SeqNum())
 		}
 		if err := iter.Close(); err != nil {
 			fmt.Fprintf(&b, "err=%v", err)
@@ -298,7 +298,7 @@ func testIterator(
 		kv := iter.First()
 		j := 0
 		for ; kv != nil && j < len(testKeyValuePairs); j++ {
-			got := fmt.Sprintf("%s:%d", kv.UserKey(), kv.SeqNum())
+			got := fmt.Sprintf("%s:%d", kv.K.UserKey, kv.SeqNum())
 			want := testKeyValuePairs[j]
 			if got != want {
 				bad = true

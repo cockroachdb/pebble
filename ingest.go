@@ -2018,7 +2018,7 @@ func (d *DB) excise(
 		}
 		kv := iter.SeekGE(exciseSpan.End.Key, base.SeekGEFlagsNone)
 		if kv != nil {
-			if exciseSpan.End.Kind == base.Inclusive && d.equal(exciseSpan.End.Key, kv.UserKey()) {
+			if exciseSpan.End.Kind == base.Inclusive && d.equal(exciseSpan.End.Key, kv.K.UserKey) {
 				return nil, base.AssertionFailedf("cannot excise with an inclusive end key and data overlap at end key")
 			}
 			rightFile.ExtendPointKeyBounds(d.cmp, kv.K.Clone(), largestPointKey)

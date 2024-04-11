@@ -289,7 +289,7 @@ func (p *pointCollapsingIterator) saveKey() {
 		p.savedKey = InternalKey{UserKey: p.savedKeyBuf[:0]}
 		return
 	}
-	p.savedKeyBuf = append(p.savedKeyBuf[:0], p.iterKV.UserKey()...)
+	p.savedKeyBuf = append(p.savedKeyBuf[:0], p.iterKV.K.UserKey...)
 	p.savedKey = InternalKey{UserKey: p.savedKeyBuf, Trailer: p.iterKV.K.Trailer}
 }
 

@@ -635,10 +635,10 @@ func (l *levelIter) verify(kv *base.InternalKV) *base.InternalKV {
 		// We allow returning a boundary key that is outside of the lower/upper
 		// bounds as such keys are always range tombstones which will be skipped by
 		// the Iterator.
-		if l.lower != nil && kv != l.smallestBoundary && l.cmp(kv.UserKey(), l.lower) < 0 {
+		if l.lower != nil && kv != l.smallestBoundary && l.cmp(kv.K.UserKey, l.lower) < 0 {
 			l.logger.Fatalf("levelIter %s: lower bound violation: %s < %s\n%s", l.level, kv, l.lower, debug.Stack())
 		}
-		if l.upper != nil && kv != l.largestBoundary && l.cmp(kv.UserKey(), l.upper) > 0 {
+		if l.upper != nil && kv != l.largestBoundary && l.cmp(kv.K.UserKey, l.upper) > 0 {
 			l.logger.Fatalf("levelIter %s: upper bound violation: %s > %s\n%s", l.level, kv, l.upper, debug.Stack())
 		}
 	}
