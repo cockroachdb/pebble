@@ -700,6 +700,68 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 		}
 	}
 
+	if invariants.Enabled || d.opts.Experimental.CheckExternalIngestions {
+		// Verify that the ingestion is not empty. Empty tables cause correctness
+		// issues in some iterators.
+		for i := range lr.external {
+			e := &lr.external[i]
+			isEmpty, err := func() (bool, error) {
+				readable, err := d.objProvider.OpenForReading(
+					context.Background(), fileTypeTable, e.FileBacking.DiskFileNum, objstorage.OpenOptions{},
+				)
+				if err != nil {
+					return false, err
+				}
+				reader, err := sstable.NewReader(readable, d.opts.MakeReaderOptions())
+				if err != nil {
+					readable.Close()
+					return false, err
+				}
+				defer reader.Close()
+				iter, err := reader.NewIter(e.IterTransforms(), nil, nil)
+				if err != nil {
+					return false, err
+				}
+				if iter != nil {
+					defer iter.Close()
+					if kv := iter.SeekGE(e.external.StartKey, base.SeekGEFlagsNone); kv != nil {
+						cmp := d.opts.Comparer.Compare(kv.K.UserKey, e.external.EndKey)
+						if cmp < 0 || (cmp == 0 && e.external.EndKeyIsInclusive) {
+							return false, nil
+						}
+					}
+					if err := iter.Error(); err != nil {
+						return false, err
+					}
+				}
+				rangeIter, err := reader.NewRawRangeDelIter(e.IterTransforms())
+				if err != nil {
+					return false, err
+				}
+				if rangeIter != nil {
+					defer rangeIter.Close()
+					span, err := rangeIter.SeekGE(e.external.StartKey)
+					if err != nil {
+						return false, err
+					}
+					if span != nil {
+						cmp := d.opts.Comparer.Compare(span.Start, e.external.EndKey)
+						if cmp < 0 || (cmp == 0 && e.external.EndKeyIsInclusive) {
+							return false, nil
+						}
+					}
+				}
+				return true, nil
+			}()
+			if err != nil {
+				return err
+			}
+			if isEmpty {
+				panic(fmt.Sprintf("external ingestion is empty: %s (%q %q)", e.external.ObjName, e.external.StartKey, e.external.EndKey))
+			}
+		}
+	}
+
 	if d.opts.EventListener.TableCreated != nil {
 		for i := range remoteObjMetas {
 			d.opts.EventListener.TableCreated(TableCreateInfo{
