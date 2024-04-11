@@ -313,6 +313,12 @@ func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta 
 			res = append(res, km)
 		}
 	}
+	// Check for duplicate resulting keys.
+	for i := 1; i < len(res); i++ {
+		if k.comparer.Compare(res[i].key, res[i-1].key) == 0 {
+			panic(fmt.Sprintf("duplicate external ingest key %q", res[i].key))
+		}
+	}
 	return res
 }
 
