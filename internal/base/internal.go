@@ -506,6 +506,15 @@ func ParsePrettyInternalKey(s string) InternalKey {
 	return MakeInternalKey([]byte(ukey), seqNum, kind)
 }
 
+// MakeInternalKV constructs an InternalKV with the provided internal key and
+// value. The value is encoded in-place.
+func MakeInternalKV(k InternalKey, v []byte) InternalKV {
+	return InternalKV{
+		K: k,
+		V: MakeInPlaceValue(v),
+	}
+}
+
 // InternalKV represents a single internal key-value pair.
 type InternalKV struct {
 	K InternalKey

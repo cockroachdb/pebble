@@ -205,10 +205,7 @@ func TestCompactionIter(t *testing.T) {
 					} else {
 						value = []byte(key[j+1:])
 					}
-					kvs = append(kvs, base.InternalKV{
-						K: ik,
-						V: base.MakeInPlaceValue(value),
-					})
+					kvs = append(kvs, base.MakeInternalKV(ik, value))
 				}
 				rangeDelFragmenter.Finish()
 				return ""
