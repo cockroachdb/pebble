@@ -1734,7 +1734,7 @@ func TestBatchOption(t *testing.T) {
 			name: "default",
 			opts: nil,
 			expected: &Batch{batchInternal: batchInternal{
-				opts: &batchOptions{
+				opts: batchOptions{
 					initialSizeBytes:     defaultBatchInitialSize,
 					maxRetainedSizeBytes: defaultBatchMaxRetainedSize,
 				},
@@ -1744,7 +1744,7 @@ func TestBatchOption(t *testing.T) {
 			name: "with_invalid_values",
 			opts: []BatchOption{WithInitialSizeBytes(0), WithMaxRetainedSizeBytes(-1)},
 			expected: &Batch{batchInternal: batchInternal{
-				opts: &batchOptions{
+				opts: batchOptions{
 					initialSizeBytes:     defaultBatchInitialSize,
 					maxRetainedSizeBytes: defaultBatchMaxRetainedSize,
 				},
@@ -1754,7 +1754,7 @@ func TestBatchOption(t *testing.T) {
 			name: "with_custom_initial_size",
 			opts: []BatchOption{WithInitialSizeBytes(2 << 10)},
 			expected: &Batch{batchInternal: batchInternal{
-				opts: &batchOptions{
+				opts: batchOptions{
 					initialSizeBytes:     2 << 10,
 					maxRetainedSizeBytes: defaultBatchMaxRetainedSize,
 				},
@@ -1764,7 +1764,7 @@ func TestBatchOption(t *testing.T) {
 			name: "with_custom_max_retained_size",
 			opts: []BatchOption{WithMaxRetainedSizeBytes(2 << 10)},
 			expected: &Batch{batchInternal: batchInternal{
-				opts: &batchOptions{
+				opts: batchOptions{
 					initialSizeBytes:     defaultBatchInitialSize,
 					maxRetainedSizeBytes: 2 << 10,
 				},

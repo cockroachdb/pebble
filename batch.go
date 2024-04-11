@@ -272,7 +272,7 @@ type batchInternal struct {
 	cmp            Compare
 	formatKey      base.FormatKey
 	abbreviatedKey AbbreviatedKey
-	opts           *batchOptions
+	opts           batchOptions
 
 	// An upper bound on required space to add this batch to a memtable.
 	// Note that although batches are limited to 4 GiB in size, that limit
@@ -445,9 +445,9 @@ var indexedBatchPool = sync.Pool{
 func newBatch(db *DB, opts ...BatchOption) *Batch {
 	b := batchPool.Get().(*Batch)
 	b.db = db
-	b.opts = b.opts.ensureDefaults()
+	b.opts.ensureDefaults()
 	for _, opt := range opts {
-		opt(b.opts)
+		opt(&b.opts)
 	}
 	return b
 }
@@ -468,7 +468,7 @@ func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 	i.batch.db = db
 	i.batch.index = &i.index
 	i.batch.index.Init(&i.batch.data, i.batch.cmp, i.batch.abbreviatedKey)
-	i.batch.opts = i.batch.opts.ensureDefaults()
+	i.batch.opts.ensureDefaults()
 	return &i.batch
 }
 
@@ -1517,7 +1517,7 @@ func (b *Batch) Indexed() bool {
 // init ensures that the batch data slice is initialized to meet the
 // minimum required size and allocates space for the batch header.
 func (b *Batch) init(size int) {
-	b.opts = b.opts.ensureDefaults()
+	b.opts.ensureDefaults()
 	n := b.opts.initialSizeBytes
 	for n < size {
 		n *= 2
@@ -2398,17 +2398,13 @@ type batchOptions struct {
 }
 
 // ensureDefaults creates batch options with default values.
-func (o *batchOptions) ensureDefaults() *batchOptions {
-	if o == nil {
-		o = &batchOptions{}
-	}
+func (o *batchOptions) ensureDefaults() {
 	if o.initialSizeBytes <= 0 {
 		o.initialSizeBytes = defaultBatchInitialSize
 	}
 	if o.maxRetainedSizeBytes <= 0 {
 		o.maxRetainedSizeBytes = defaultBatchMaxRetainedSize
 	}
-	return o
 }
 
 // BatchOption allows customizing the batch.
@@ -2418,9 +2414,7 @@ type BatchOption func(*batchOptions)
 // to 1KB.
 func WithInitialSizeBytes(s int) BatchOption {
 	return func(opts *batchOptions) {
-		if s > 0 {
-			opts.initialSizeBytes = s
-		}
+		opts.initialSizeBytes = s
 	}
 }
 
@@ -2429,9 +2423,7 @@ func WithInitialSizeBytes(s int) BatchOption {
 // Defaults to 1MB.
 func WithMaxRetainedSizeBytes(s int) BatchOption {
 	return func(opts *batchOptions) {
-		if s > 0 {
-			opts.maxRetainedSizeBytes = s
-		}
+		opts.maxRetainedSizeBytes = s
 	}
 }
 
