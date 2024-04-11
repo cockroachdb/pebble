@@ -412,10 +412,7 @@ func TestIterator(t *testing.T) {
 			kvs = kvs[:0]
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
-				kvs = append(kvs, base.InternalKV{
-					K: base.ParseInternalKey(key[:j]),
-					V: base.MakeInPlaceValue([]byte(key[j+1:])),
-				})
+				kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
 			}
 			return ""
 
@@ -1065,10 +1062,7 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 			kvs = kvs[:0]
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
-				kvs = append(kvs, base.InternalKV{
-					K: base.ParseInternalKey(key[:j]),
-					V: base.MakeInPlaceValue([]byte(key[j+1:])),
-				})
+				kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
 			}
 			return ""
 

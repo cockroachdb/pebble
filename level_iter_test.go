@@ -53,10 +53,7 @@ func TestLevelIter(t *testing.T) {
 				f := &fakeIter{}
 				for _, key := range strings.Fields(line) {
 					j := strings.Index(key, ":")
-					f.kvs = append(f.kvs, base.InternalKV{
-						K: base.ParseInternalKey(key[:j]),
-						V: base.MakeInPlaceValue([]byte(key[j+1:])),
-					})
+					f.kvs = append(f.kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
 				}
 				iters = append(iters, f)
 

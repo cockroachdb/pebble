@@ -699,12 +699,10 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 	// the table's bound with isIgnorableBoundaryKey set.
 	if l.rangeDelIterPtr != nil && *l.rangeDelIterPtr != nil {
 		if l.tableOpts.UpperBound != nil {
-			l.syntheticBoundary = base.InternalKV{
-				K: base.InternalKey{
-					UserKey: l.tableOpts.UpperBound,
-					Trailer: InternalKeyRangeDeleteSentinel,
-				},
-			}
+			l.syntheticBoundary = base.MakeInternalKV(base.InternalKey{
+				UserKey: l.tableOpts.UpperBound,
+				Trailer: InternalKeyRangeDeleteSentinel,
+			}, nil)
 			l.largestBoundary = &l.syntheticBoundary
 			if l.boundaryContext != nil {
 				l.boundaryContext.isSyntheticIterBoundsKey = true
@@ -716,7 +714,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 		// the mergingIter advances beyond the file's bounds. We set
 		// isIgnorableBoundaryKey to signal that the actual key returned should
 		// be ignored, and does not represent a real key in the database.
-		l.syntheticBoundary = base.InternalKV{K: l.iterFile.LargestPointKey}
+		l.syntheticBoundary = base.MakeInternalKV(l.iterFile.LargestPointKey, nil)
 		l.largestBoundary = &l.syntheticBoundary
 		if l.boundaryContext != nil {
 			l.boundaryContext.isSyntheticIterBoundsKey = false
@@ -1001,7 +999,7 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 			// returned by the rangeDelIter after it's nil'd the ptr.
 			if l.iterFile.LargestPointKey.Kind() == InternalKeyKindRangeDelete ||
 				*l.rangeDelIterPtr != nil {
-				l.syntheticBoundary = base.InternalKV{K: l.iterFile.LargestPointKey}
+				l.syntheticBoundary = base.MakeInternalKV(l.iterFile.LargestPointKey, nil)
 				l.largestBoundary = &l.syntheticBoundary
 				if l.boundaryContext != nil {
 					l.boundaryContext.isIgnorableBoundaryKey = true
@@ -1052,10 +1050,10 @@ func (l *levelIter) skipEmptyFileBackward() *base.InternalKV {
 			// represent a real key.
 			if l.tableOpts.LowerBound != nil {
 				if *l.rangeDelIterPtr != nil {
-					l.syntheticBoundary.K = base.InternalKey{
+					l.syntheticBoundary = base.MakeInternalKV(base.InternalKey{
 						UserKey: l.tableOpts.LowerBound,
 						Trailer: InternalKeyRangeDeleteSentinel,
-					}
+					}, nil)
 					l.smallestBoundary = &l.syntheticBoundary
 					if l.boundaryContext != nil {
 						l.boundaryContext.isSyntheticIterBoundsKey = true
@@ -1078,7 +1076,7 @@ func (l *levelIter) skipEmptyFileBackward() *base.InternalKV {
 			// keep the level at the top of the heap and immediately skip the entry,
 			// advancing to the next file.
 			if *l.rangeDelIterPtr != nil {
-				l.syntheticBoundary = base.InternalKV{K: l.iterFile.SmallestPointKey}
+				l.syntheticBoundary = base.MakeInternalKV(l.iterFile.SmallestPointKey, nil)
 				l.smallestBoundary = &l.syntheticBoundary
 				if l.boundaryContext != nil {
 					l.boundaryContext.isIgnorableBoundaryKey = true

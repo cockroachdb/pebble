@@ -50,10 +50,7 @@ func NewParser() *dsl.Parser[Probe] {
 		})
 	probeParser.DefineFunc("ReturnKV",
 		func(p *dsl.Parser[Probe], s *dsl.Scanner) Probe {
-			kv := base.InternalKV{
-				K: base.ParseInternalKey(s.ConsumeString()),
-				V: base.MakeInPlaceValue([]byte(s.ConsumeString())),
-			}
+			kv := base.MakeInternalKV(base.ParseInternalKey(s.ConsumeString()), []byte(s.ConsumeString()))
 			s.Consume(token.RPAREN)
 			return ReturnKV(&kv)
 		})

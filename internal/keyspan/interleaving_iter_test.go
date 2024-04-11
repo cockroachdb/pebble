@@ -117,9 +117,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			var points []base.InternalKV
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
-				points = append(points, base.InternalKV{
-					K: base.ParseInternalKey(line),
-				})
+				points = append(points, base.MakeInternalKV(base.ParseInternalKey(line), nil))
 			}
 			pointIter = pointIterator{cmp: cmp, kvs: points}
 			hooks.maskSuffix = nil

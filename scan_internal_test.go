@@ -612,10 +612,7 @@ func TestPointCollapsingIter(t *testing.T) {
 						})
 						continue
 					}
-					f.kvs = append(f.kvs, base.InternalKV{
-						K: k,
-						V: base.MakeInPlaceValue(v),
-					})
+					f.kvs = append(f.kvs, base.MakeInternalKV(k, v))
 				}
 			}
 
