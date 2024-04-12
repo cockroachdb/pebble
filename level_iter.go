@@ -107,52 +107,22 @@ type levelIter struct {
 	files            manifest.LevelIterator
 	err              error
 
-	// Pointer into this level's entry in `mergingIterLevel::levelIterBoundaryContext`.
-	// We populate it with the corresponding bounds for the currently opened file. It is used for
-	// two purposes (described for forward iteration. The explanation for backward iteration is
-	// similar.)
-	// - To limit the optimization that seeks lower-level iterators past keys shadowed by a range
-	//   tombstone. Limiting this seek to the file largestUserKey is necessary since
-	//   range tombstones are stored untruncated, while they only apply to keys within their
-	//   containing file's boundaries. For a detailed example, see comment above `mergingIter`.
-	// - To constrain the tombstone to act-within the bounds of the sstable when checking
-	//   containment. For forward iteration we need the smallestUserKey.
+	// Pointer into this level's mergingIterLevel.levelIterBoundaryContext.
+	// It's populated when the levelIter is in-use by a mergingIter. It's used
+	// to signal additional semantic meaning about the most recently returned
+	// key. It's currently used to pause at two different types of bounds:
 	//
-	// An example is sstable bounds [c#8, g#12] containing a tombstone [b, i)#7.
-	// - When doing a SeekGE to user key X, the levelIter is at this sstable because X is either within
-	//   the sstable bounds or earlier than the start of the sstable (and there is no sstable in
-	//   between at this level). If X >= smallestUserKey, and the tombstone [b, i) contains X,
-	//   it is correct to SeekGE the sstables at lower levels to min(g, i) (i.e., min of
-	//   largestUserKey, tombstone.End) since any user key preceding min(g, i) must be covered by this
-	//   tombstone (since it cannot have a version younger than this tombstone as it is at a lower
-	//   level). And even if X = smallestUserKey or equal to the start user key of the tombstone,
-	//   if the above conditions are satisfied we know that the internal keys corresponding to X at
-	//   lower levels must have a version smaller than that in this file (again because of the level
-	//   argument). So we don't need to use sequence numbers for this comparison.
-	// - When checking whether this tombstone deletes internal key X we know that the levelIter is at this
-	//   sstable so (repeating the above) X.UserKey is either within the sstable bounds or earlier than the
-	//   start of the sstable (and there is no sstable in between at this level).
-	//   - X is at at a lower level. If X.UserKey >= smallestUserKey, and the tombstone contains
-	//     X.UserKey, we know X is deleted. This argument also works when X is a user key (we use
-	//     it when seeking to test whether a user key is deleted).
-	//   - X is at the same level. X must be within the sstable bounds of the tombstone so the
-	//     X.UserKey >= smallestUserKey comparison is trivially true. In addition to the tombstone containing
-	//     X we need to compare the sequence number of X and the tombstone (we don't need to look
-	//     at how this tombstone is truncated to act-within the file bounds, which are InternalKeys,
-	//     since X and the tombstone are from the same file).
-	//
-	// Iterating backwards has one more complication when checking whether a tombstone deletes
-	// internal key X at a lower level (the construction we do here also works for a user key X).
-	// Consider sstable bounds [c#8, g#InternalRangeDelSentinel] containing a tombstone [b, i)#7.
-	// If we are positioned at key g#10 at a lower sstable, the tombstone we will see is [b, i)#7,
-	// since the higher sstable is positioned at a key <= g#10. We should not use this tombstone
-	// to delete g#10. This requires knowing that the largestUserKey is a range delete sentinel,
-	// which we set in a separate bool below.
-	//
-	// These fields differs from the `*Boundary` fields in a few ways:
-	// - `*Boundary` is only populated when the iterator is positioned exactly on the sentinel key.
-	// - `*Boundary` can hold either the lower- or upper-bound, depending on the iterator direction.
-	// - `*Boundary` is not exposed to the next higher-level iterator, i.e., `mergingIter`.
+	// - isSyntheticIterBoundsKey is set to true when the iterator has
+	//   user-imposed iteration bounds (l.{lower,upper}), and the levelIter
+	//   reached the user-imposed bound. This signals that the underlying
+	//   iterators are not necessarily exhausted, but iteration has paused to
+	//   avoid unnecessarily loading sstables outside the user-imposed bounds.
+	// - isIgnorableBoundaryKey is set to true when the levelIter returns a
+	//   fake key at one of the bounds of an sstable within the level. It does
+	//   this only when the current sstable contains range deletions. It ensures
+	//   the merging iterator does not move beyond the table until the table's
+	//   range deletions are no longer necessary, even if the table contains
+	//   no more relevant point keys.
 	boundaryContext *levelIterBoundaryContext
 
 	// internalOpts holds the internal iterator options to pass to the table
