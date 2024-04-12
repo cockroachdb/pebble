@@ -5,9 +5,12 @@
 package tool
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/cockroachdb/errors"
@@ -21,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/tool/logs"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -38,6 +42,7 @@ type dbT struct {
 	Set        *cobra.Command
 	Space      *cobra.Command
 	IOBench    *cobra.Command
+	Excise     *cobra.Command
 
 	// Configuration.
 	opts            *pebble.Options
@@ -59,6 +64,7 @@ type dbT struct {
 	ioParallelism int
 	ioSizes       string
 	verbose       bool
+	bypassPrompt  bool
 }
 
 func newDB(
@@ -165,6 +171,16 @@ use by another process.
 		Args: cobra.ExactArgs(1),
 		Run:  d.runSpace,
 	}
+	d.Excise = &cobra.Command{
+		Use:   "excise <dir>",
+		Short: "excise a key range",
+		Long: `
+Excise a key range, removing all SSTs inside the range and virtualizing any SSTs
+that partially overlap the range.
+`,
+		Args: cobra.ExactArgs(1),
+		Run:  d.runExcise,
+	}
 	d.IOBench = &cobra.Command{
 		Use:   "io-bench <dir>",
 		Short: "perform sstable IO benchmark",
@@ -176,32 +192,41 @@ specified database.
 		Run:  d.runIOBench,
 	}
 
-	d.Root.AddCommand(d.Check, d.Checkpoint, d.Get, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.IOBench)
+	d.Root.AddCommand(d.Check, d.Checkpoint, d.Get, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.IOBench)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
-	for _, cmd := range []*cobra.Command{d.Check, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space} {
+	for _, cmd := range []*cobra.Command{d.Check, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise} {
 		cmd.Flags().StringVar(
 			&d.comparerName, "comparer", "", "comparer name (use default if empty)")
 		cmd.Flags().StringVar(
 			&d.mergerName, "merger", "", "merger name (use default if empty)")
 	}
 
-	for _, cmd := range []*cobra.Command{d.Scan, d.Space} {
-		cmd.Flags().Var(
-			&d.start, "start", "start key for the range")
-		cmd.Flags().Var(
-			&d.end, "end", "end key for the range")
-	}
-
-	d.Scan.Flags().Var(
-		&d.fmtKey, "key", "key formatter")
 	for _, cmd := range []*cobra.Command{d.Scan, d.Get} {
 		cmd.Flags().Var(
 			&d.fmtValue, "value", "value formatter")
 	}
 
+	d.Space.Flags().Var(
+		&d.start, "start", "start key for the range")
+	d.Space.Flags().Var(
+		&d.end, "end", "inclusive end key for the range")
+
+	d.Scan.Flags().Var(
+		&d.fmtKey, "key", "key formatter")
+	d.Scan.Flags().Var(
+		&d.start, "start", "start key for the range")
+	d.Scan.Flags().Var(
+		&d.end, "end", "exclusive end key for the range")
 	d.Scan.Flags().Int64Var(
 		&d.count, "count", 0, "key count for scan (0 is unlimited)")
+
+	d.Excise.Flags().Var(
+		&d.start, "start", "start key for the excised range")
+	d.Excise.Flags().Var(
+		&d.end, "end", "exclusive end key for the excised range")
+	d.Excise.Flags().BoolVar(
+		&d.bypassPrompt, "yes", false, "bypass prompt")
 
 	d.IOBench.Flags().BoolVar(
 		&d.allLevels, "all-levels", false, "if set, benchmark all levels (default is only L5/L6)")
@@ -489,6 +514,86 @@ func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
 		return
 	}
 	fmt.Fprintf(stdout, "%d\n", bytes)
+}
+
+func (d *dbT) runExcise(cmd *cobra.Command, args []string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
+
+	// Init range.
+	span := pebble.KeyRange{
+		Start: d.start,
+		End:   d.end,
+	}
+	if span.Start == nil || span.End == nil {
+		fmt.Fprintf(stderr, "Excise range not specified.\n")
+		return
+	}
+
+	dbOpts := d.opts.EnsureDefaults()
+	// Disable all processes that would try to open tables: table stats,
+	// consistency check, automatic compactions.
+	dbOpts.DisableTableStats = true
+	dbOpts.DisableConsistencyCheck = true
+	dbOpts.DisableAutomaticCompactions = true
+
+	dbDir := args[0]
+	db, err := d.openDB(dbDir, nonReadOnly{})
+	if err != nil {
+		fmt.Fprintf(stderr, "%s\n", err)
+		return
+	}
+	defer d.closeDB(stdout, db)
+
+	fmt.Fprintf(stdout, "Excising range:\n")
+	fmt.Fprintf(stdout, "  start: %s\n", d.fmtKey.fn(span.Start))
+	fmt.Fprintf(stdout, "  end:   %s\n", d.fmtKey.fn(span.End))
+
+	if !d.bypassPrompt {
+		fmt.Fprintf(stdout, "WARNING!!!\n")
+		fmt.Fprintf(stdout, "This command will remove all keys in this range!\n")
+		reader := bufio.NewReader(cmd.InOrStdin())
+		for {
+			fmt.Fprintf(stdout, "Continue? [Y/N] ")
+			answer, _ := reader.ReadString('\n')
+			answer = strings.ToLower(strings.TrimSpace(answer))
+			if answer == "y" || answer == "yes" {
+				break
+			}
+
+			if answer == "n" || answer == "no" {
+				fmt.Fprintf(stderr, "Aborting\n")
+				return
+			}
+		}
+	}
+
+	// Write a temporary sst that only has excise tombstones. We write it inside
+	// the database directory so that the command works against any FS.
+	// TODO(radu): remove this if we add a separate DB.Excise method.
+	path := dbOpts.FS.PathJoin(dbDir, fmt.Sprintf("excise-%0x.sst", rand.Uint32()))
+	defer dbOpts.FS.Remove(path)
+	f, err := dbOpts.FS.Create(path, vfs.WriteCategoryUnspecified)
+	if err != nil {
+		fmt.Fprintf(stderr, "Error creating temporary sst file %q: %s\n", path, err)
+		return
+	}
+	writable := objstorageprovider.NewFileWritable(f)
+	writerOpts := dbOpts.MakeWriterOptions(0, db.FormatMajorVersion().MaxTableFormat())
+	w := sstable.NewWriter(writable, writerOpts)
+	err = w.DeleteRange(span.Start, span.End)
+	err = errors.CombineErrors(err, w.RangeKeyDelete(span.Start, span.End))
+	err = errors.CombineErrors(err, w.Close())
+	if err != nil {
+		fmt.Fprintf(stderr, "Error writing temporary sst file %q: %s\n", path, err)
+		return
+	}
+
+	_, err = db.IngestAndExcise([]string{path}, nil, nil, span, true /* sstsContainExciseTombstone */)
+	if err != nil {
+		fmt.Fprintf(stderr, "Error excising: %s\n", err)
+		return
+	}
+	fmt.Fprintf(stdout, "Excise complete.\n")
 }
 
 func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
