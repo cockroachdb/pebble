@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
@@ -43,6 +44,52 @@ func runTests(t *testing.T, path string) {
 		clonedPaths := make(map[string]string)
 		t.Run(name, func(t *testing.T) {
 			datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
+				// Register a test comparer and merger so that we can check the
+				// behavior of tools when the comparer and merger do not match.
+				comparer := func() *Comparer {
+					c := *base.DefaultComparer
+					c.Name = "test-comparer"
+					c.FormatKey = func(key []byte) fmt.Formatter {
+						return fmtFormatter{
+							fmt: "test formatter: %s",
+							v:   key,
+						}
+					}
+					c.FormatValue = func(_, value []byte) fmt.Formatter {
+						return fmtFormatter{
+							fmt: "test value formatter: %s",
+							v:   value,
+						}
+					}
+					return &c
+				}()
+				altComparer := func() *Comparer {
+					c := *base.DefaultComparer
+					c.Name = "alt-comparer"
+					return &c
+				}()
+				merger := func() *Merger {
+					m := *base.DefaultMerger
+					m.Name = "test-merger"
+					return &m
+				}()
+
+				if d.Cmd == "create" {
+					dbDir := d.CmdArgs[0].String()
+					opts := &pebble.Options{
+						Comparer:           comparer,
+						Merger:             merger,
+						FS:                 fs,
+						FormatMajorVersion: pebble.FormatVirtualSSTables,
+					}
+					db, err := pebble.Open(dbDir, opts)
+					if err != nil {
+						d.Fatalf(t, "%v", err)
+					}
+					db.Close()
+					return ""
+				}
+
 				args := []string{d.Cmd}
 				for _, arg := range d.CmdArgs {
 					args = append(args, arg.String())
@@ -76,35 +123,6 @@ func runTests(t *testing.T, path string) {
 					timeNow = time.Now
 				}()
 
-				// Register a test comparer and merger so that we can check the
-				// behavior of tools when the comparer and merger do not match.
-				comparer := func() *Comparer {
-					c := *base.DefaultComparer
-					c.Name = "test-comparer"
-					c.FormatKey = func(key []byte) fmt.Formatter {
-						return fmtFormatter{
-							fmt: "test formatter: %s",
-							v:   key,
-						}
-					}
-					c.FormatValue = func(_, value []byte) fmt.Formatter {
-						return fmtFormatter{
-							fmt: "test value formatter: %s",
-							v:   value,
-						}
-					}
-					return &c
-				}()
-				altComparer := func() *Comparer {
-					c := *base.DefaultComparer
-					c.Name = "alt-comparer"
-					return &c
-				}()
-				merger := func() *Merger {
-					m := *base.DefaultMerger
-					m.Name = "test-merger"
-					return &m
-				}()
 				openErrEnhancer := func(err error) error {
 					if errors.Is(err, base.ErrCorruption) {
 						return base.CorruptionErrorf("%v\nCustom message in case of corruption error.", err)

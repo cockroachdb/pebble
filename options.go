@@ -952,6 +952,11 @@ type Options struct {
 	// externally when running a manual compaction, and internally for tests.
 	DisableAutomaticCompactions bool
 
+	// DisableConsistencyCheck disables the consistency check that is performed on
+	// open. Should only be used when a database cannot be opened normally (e.g.
+	// some of the tables don't exist / aren't accessible).
+	DisableConsistencyCheck bool
+
 	// DisableTableStats dictates whether tables should be loaded asynchronously
 	// to compute statistics that inform compaction heuristics. The collection
 	// of table stats improves compaction of tombstones, reclaiming disk space

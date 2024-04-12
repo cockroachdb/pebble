@@ -1365,7 +1365,7 @@ func (d *DB) IngestAndExcise(
 	}
 	if v := d.FormatMajorVersion(); v < FormatMinForSharedObjects {
 		return IngestOperationStats{}, errors.Errorf(
-			"store has format major version %d; IngestAndExise requires at least %d",
+			"store has format major version %d; IngestAndExcise requires at least %d",
 			v, FormatMinForSharedObjects,
 		)
 	}
