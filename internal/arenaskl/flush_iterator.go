@@ -24,7 +24,6 @@ import "github.com/cockroachdb/pebble/internal/base"
 // simply value copying the struct.
 type flushIterator struct {
 	Iterator
-	bytesIterated *uint64
 }
 
 // flushIterator implements the base.InternalIterator interface.
@@ -51,12 +50,7 @@ func (it *flushIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.Intern
 // that First only checks the upper bound. It is up to the caller to ensure
 // that key is greater than or equal to the lower bound.
 func (it *flushIterator) First() *base.InternalKV {
-	kv := it.Iterator.First()
-	if kv == nil {
-		return nil
-	}
-	*it.bytesIterated += uint64(it.nd.allocSize)
-	return kv
+	return it.Iterator.First()
 }
 
 // Next advances to the next position. Returns the key and value if the
@@ -69,7 +63,6 @@ func (it *flushIterator) Next() *base.InternalKV {
 		return nil
 	}
 	it.decodeKey()
-	*it.bytesIterated += uint64(it.nd.allocSize)
 	it.kv.V = base.MakeInPlaceValue(it.value())
 	return &it.kv
 }

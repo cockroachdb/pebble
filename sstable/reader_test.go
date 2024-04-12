@@ -325,8 +325,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			}
 
 			var rp ReaderProvider
-			var bytesIterated uint64
-			iter, err := v.NewCompactionIter(transforms, &bytesIterated, CategoryAndQoS{}, nil, rp, &bp)
+			iter, err := v.NewCompactionIter(transforms, CategoryAndQoS{}, nil, rp, &bp)
 			if err != nil {
 				return err.Error()
 			}
@@ -940,65 +939,6 @@ func checkValidPrefix(prefix, key []byte) bool {
 	return prefix == nil || bytes.HasPrefix(key, prefix)
 }
 
-func testBytesIteratedWithCompression(
-	t *testing.T,
-	compression Compression,
-	allowedSizeDeviationPercent uint64,
-	blockSizes []int,
-	maxNumEntries []uint64,
-) {
-	for i, blockSize := range blockSizes {
-		for _, indexBlockSize := range blockSizes {
-			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
-				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression, nil)
-				var bytesIterated, prevIterated uint64
-				var pool BufferPool
-				pool.Init(5)
-				citer, err := r.NewCompactionIter(
-					NoTransforms, &bytesIterated, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
-				require.NoError(t, err)
-
-				for kv := citer.First(); kv != nil; kv = citer.Next() {
-					if bytesIterated < prevIterated {
-						t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
-					}
-					prevIterated = bytesIterated
-				}
-
-				expected := r.Properties.DataSize
-				allowedSizeDeviation := expected * allowedSizeDeviationPercent / 100
-				// There is some inaccuracy due to compression estimation.
-				if bytesIterated < expected-allowedSizeDeviation || bytesIterated > expected+allowedSizeDeviation {
-					t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
-				}
-
-				require.NoError(t, citer.Close())
-				require.NoError(t, r.Close())
-				pool.Release()
-			}
-		}
-	}
-}
-
-func TestBytesIterated(t *testing.T) {
-	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
-	t.Run("Compressed", func(t *testing.T) {
-		testBytesIteratedWithCompression(t, SnappyCompression, 1, blockSizes, []uint64{1e5, 1e5, 1e5, 1e5, 1e5})
-	})
-	t.Run("Uncompressed", func(t *testing.T) {
-		testBytesIteratedWithCompression(t, NoCompression, 0, blockSizes, []uint64{1e5, 1e5, 1e5, 1e5, 1e5})
-	})
-	t.Run("Zstd", func(t *testing.T) {
-		// compression with zstd is extremely slow with small block size (esp the nocgo version).
-		// use less numEntries to make the test run at reasonable speed (under 10 seconds).
-		maxNumEntries := []uint64{1e2, 1e2, 1e3, 4e3, 1e5}
-		if useStandardZstdLib {
-			maxNumEntries = []uint64{1e3, 1e3, 1e4, 4e4, 1e5}
-		}
-		testBytesIteratedWithCompression(t, ZstdCompression, 1, blockSizes, maxNumEntries)
-	})
-}
-
 func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 	tmpDir := path.Join(t.TempDir())
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.Default, tmpDir))
@@ -1009,11 +949,10 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 		for _, indexBlockSize := range blockSizes {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
 				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, DefaultCompression, nil)
-				var bytesIterated uint64
 				var pool BufferPool
 				pool.Init(5)
 				citer, err := r.NewCompactionIter(
-					NoTransforms, &bytesIterated, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
+					NoTransforms, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
@@ -1069,7 +1008,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		var pool BufferPool
 		pool.Init(5)
 		citer, err := r.NewCompactionIter(
-			NoTransforms, nil, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
+			NoTransforms, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
 		require.NoError(t, err)
 		defer citer.Close()
 		i := citer.(*compactionIterator)
@@ -1758,19 +1697,6 @@ func TestReader_TableFormat(t *testing.T) {
 			test(t, tf)
 		})
 	}
-}
-
-func buildTestTable(
-	t *testing.T,
-	numEntries uint64,
-	blockSize, indexBlockSize int,
-	compression Compression,
-	prefix []byte,
-) *Reader {
-	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.NewMem(), "" /* dirName */))
-	require.NoError(t, err)
-	defer provider.Close()
-	return buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, compression, prefix)
 }
 
 func buildTestTableWithProvider(

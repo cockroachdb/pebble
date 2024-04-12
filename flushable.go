@@ -22,7 +22,7 @@ import (
 // flushable defines the interface for immutable memtables.
 type flushable interface {
 	newIter(o *IterOptions) internalIterator
-	newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator
+	newFlushIter(o *IterOptions) internalIterator
 	newRangeDelIter(o *IterOptions) keyspan.FragmentIterator
 	newRangeKeyIter(o *IterOptions) keyspan.FragmentIterator
 	containsRangeKeys() bool
@@ -226,7 +226,7 @@ func (s *ingestedFlushable) newIter(o *IterOptions) internalIterator {
 }
 
 // newFlushIter is part of the flushable interface.
-func (s *ingestedFlushable) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
+func (s *ingestedFlushable) newFlushIter(*IterOptions) internalIterator {
 	// newFlushIter is only used for writing memtables to disk as sstables.
 	// Since ingested sstables are already present on disk, they don't need to
 	// make use of a flush iter.

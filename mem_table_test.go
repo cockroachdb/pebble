@@ -78,22 +78,6 @@ func (m *memTable) count() (n int) {
 	return n
 }
 
-// bytesIterated returns the number of bytes iterated in a DB.
-func (m *memTable) bytesIterated(t *testing.T) (bytesIterated uint64) {
-	x := m.newFlushIter(nil, &bytesIterated)
-	var prevIterated uint64
-	for kv := x.First(); kv != nil; kv = x.Next() {
-		if bytesIterated < prevIterated {
-			t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
-		}
-		prevIterated = bytesIterated
-	}
-	if x.Close() != nil {
-		return 0
-	}
-	return bytesIterated
-}
-
 func ikey(s string) InternalKey {
 	return base.MakeInternalKey([]byte(s), 0, InternalKeyKindSet)
 }
@@ -153,18 +137,6 @@ func TestMemTableCount(t *testing.T) {
 	for i := 0; i < 200; i++ {
 		if j := m.count(); j != i {
 			t.Fatalf("count: got %d, want %d", j, i)
-		}
-		m.set(InternalKey{UserKey: []byte{byte(i)}}, nil)
-	}
-}
-
-func TestMemTableBytesIterated(t *testing.T) {
-	m := newMemTable(memTableOptions{})
-	for i := 0; i < 200; i++ {
-		bytesIterated := m.bytesIterated(t)
-		expected := m.inuseBytes()
-		if bytesIterated != expected {
-			t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
 		}
 		m.set(InternalKey{UserKey: []byte{byte(i)}}, nil)
 	}

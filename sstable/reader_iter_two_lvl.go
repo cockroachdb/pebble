@@ -995,8 +995,6 @@ func (i *twoLevelIterator) Close() error {
 // were separated due to performance.
 type twoLevelCompactionIterator struct {
 	*twoLevelIterator
-	bytesIterated *uint64
-	prevOffset    uint64
 }
 
 // twoLevelCompactionIterator implements the base.InternalIterator interface.
@@ -1082,10 +1080,6 @@ func (i *twoLevelCompactionIterator) skipForward(kv *base.InternalKV) *base.Inte
 			}
 		}
 	}
-
-	curOffset := i.recordOffset()
-	*i.bytesIterated += uint64(curOffset - i.prevOffset)
-	i.prevOffset = curOffset
 
 	// We have an upper bound when the table is virtual.
 	if i.upper != nil && kv != nil {

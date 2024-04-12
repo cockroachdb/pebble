@@ -17,7 +17,10 @@ import (
 )
 
 type internalIterOpts struct {
-	bytesIterated      *uint64
+	// if compaction is set, sstable-level iterators will be created using
+	// NewCompactionIter; these iterators have a more constrained interface
+	// and are optimized for the sequential scan of a compaction.
+	compaction         bool
 	bufferPool         *sstable.BufferPool
 	stats              *base.InternalIteratorStats
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter
