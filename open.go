@@ -385,7 +385,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	d.cleanupManager = openCleanupManager(opts, d.objProvider, d.onObsoleteTableDelete, d.getDeletionPacerInfo)
 
-	if manifestExists {
+	if manifestExists && !opts.DisableConsistencyCheck {
 		curVersion := d.mu.versions.currentVersion()
 		if err := checkConsistency(curVersion, dirname, d.objProvider); err != nil {
 			return nil, err

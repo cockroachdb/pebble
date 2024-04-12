@@ -1,0 +1,80 @@
+create foo
+----
+
+db set foo blue blue-val
+----
+
+db set foo orange orange-val
+----
+
+db set foo green green-val
+----
+
+db set foo red red-val
+----
+
+db set foo yellow yellow-val
+----
+
+db scan foo
+----
+test formatter: blue test value formatter: blue-val
+test formatter: green test value formatter: green-val
+test formatter: orange test value formatter: orange-val
+test formatter: red test value formatter: red-val
+test formatter: yellow test value formatter: yellow-val
+scanned 5 records in 1.0s
+
+db excise foo
+----
+Excise range not specified.
+
+db excise foo --start=gr
+----
+Excise range not specified.
+
+db excise foo --end=t
+----
+Excise range not specified.
+
+db excise foo --start=gr --end=t --yes
+----
+Excising range:
+  start: gr
+  end:   t
+Excise complete.
+
+db scan foo
+----
+test formatter: blue test value formatter: blue-val
+test formatter: yellow test value formatter: yellow-val
+scanned 2 records in 1.0s
+
+
+db scan testdata/broken-external-db
+----
+L0: 000008: file 000008 (type 2) unknown to the objstorage provider: file does not exist
+
+# The database LSM is as follows:
+#   L0.0:
+#     000008(000008):[a25#16,DELSIZED-c19#inf,RANGEDEL] seqnums:[16-16] points:[a25#16,DELSIZED-c19#inf,RANGEDEL] size:123
+#   L6:
+#     000005:[a10#10,SET-a30#12,SET] seqnums:[10-12] points:[a10#10,SET-a30#12,SET] size:617
+#     000007:[c10#13,SET-c30#15,SET] seqnums:[13-15] points:[c10#13,SET-c30#15,SET] size:618
+#
+# We excise the external file in L0.
+
+db excise testdata/broken-external-db --start=a21 --end=c2 --yes
+----
+Excising range:
+  start: a21
+  end:   c2
+Excise complete.
+
+db scan testdata/broken-external-db
+----
+a10 [613130]
+a20 [613230]
+c20 [633230]
+c30 [633330]
+scanned 4 records in 1.0s

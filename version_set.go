@@ -808,7 +808,7 @@ func getZombiesAndUpdateVirtualBackings(
 func sizeIfLocal(
 	backing *fileBacking, provider objstorage.Provider,
 ) (isLocal bool, localSize int64) {
-	isLocal = objstorage.MustIsLocalTable(provider, backing.DiskFileNum)
+	isLocal = objstorage.IsLocalTable(provider, backing.DiskFileNum)
 	if isLocal {
 		return true, int64(backing.Size)
 	}
