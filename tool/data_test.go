@@ -35,18 +35,12 @@ func runTests(t *testing.T, path string) {
 		root = next
 	}
 
-	normalize := func(name string) string {
-		if os.PathSeparator == '/' {
-			return name
-		}
-		return strings.Replace(name, "/", string(os.PathSeparator), -1)
-	}
-
 	for _, path := range paths {
 		name, err := filepath.Rel(root, path)
 		require.NoError(t, err)
 
 		fs := vfs.NewMem()
+		clonedPaths := make(map[string]string)
 		t.Run(name, func(t *testing.T) {
 			datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
 				args := []string{d.Cmd}
@@ -55,17 +49,22 @@ func runTests(t *testing.T, path string) {
 				}
 				args = append(args, strings.Fields(d.Input)...)
 
-				// The testdata files contain paths with "/" path separators, but we
-				// might be running on a system with a different path separator
-				// (e.g. Windows). Copy the input data into a mem filesystem which
-				// always uses "/" for the path separator.
+				// If any args are paths, clone them into the in-memory filesystem. We
+				// only do this the first time we see each particular path (so that the
+				// test can observe any modifications).
 				for i := range args {
-					src := normalize(args[i])
+					if dest, ok := clonedPaths[args[i]]; ok {
+						args[i] = dest
+						continue
+					}
+					// Replace path separator in case we are running on Windows.
+					src := strings.Replace(args[i], "/", string(os.PathSeparator), -1)
 					dest := vfs.Default.PathBase(src)
 					if ok, err := vfs.Clone(vfs.Default, fs, src, dest); err != nil {
 						return err.Error()
 					} else if ok {
-						args[i] = fs.PathBase(args[i])
+						clonedPaths[args[i]] = dest
+						args[i] = dest
 					}
 				}
 
