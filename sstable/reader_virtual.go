@@ -91,14 +91,13 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 // NewCompactionIter is the compaction iterator function for virtual readers.
 func (v *VirtualReader) NewCompactionIter(
 	transforms IterTransforms,
-	bytesIterated *uint64,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *BufferPool,
 ) (Iterator, error) {
 	return v.reader.newCompactionIter(
-		transforms, bytesIterated, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
+		transforms, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
 }
 
 // NewIterWithBlockPropertyFiltersAndContextEtc wraps

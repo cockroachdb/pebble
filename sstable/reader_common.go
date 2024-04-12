@@ -33,7 +33,6 @@ type CommonReader interface {
 
 	NewCompactionIter(
 		transforms IterTransforms,
-		bytesIterated *uint64,
 		categoryAndQoS CategoryAndQoS,
 		statsCollector *CategoryStatsCollector,
 		rp ReaderProvider,

@@ -295,8 +295,6 @@ type compaction struct {
 
 	// flushing contains the flushables (aka memtables) that are being flushed.
 	flushing flushableList
-	// bytesIterated contains the number of bytes that have been flushed/compacted.
-	bytesIterated uint64
 	// bytesWritten contains the number of bytes that have been written to outputs.
 	bytesWritten int64
 
@@ -942,7 +940,7 @@ func (c *compaction) newInputIter(
 		// stored in c.flushing.
 		for i := range c.flushing {
 			f := c.flushing[i]
-			iters = append(iters, f.newFlushIter(nil, &c.bytesIterated))
+			iters = append(iters, f.newFlushIter(nil))
 			rangeDelIter := f.newRangeDelIter(nil)
 			if rangeDelIter != nil {
 				rangeDelIters = append(rangeDelIters, rangeDelIter)
@@ -959,8 +957,8 @@ func (c *compaction) newInputIter(
 			// deletions to compactions are handled below.
 			iters = append(iters, newLevelIter(context.Background(),
 				iterOpts, c.comparer, newIters, level.files.Iter(), l, internalIterOpts{
-					bytesIterated: &c.bytesIterated,
-					bufferPool:    &c.bufferPool,
+					compaction: true,
+					bufferPool: &c.bufferPool,
 				}))
 			// TODO(jackson): Use keyspanimpl.LevelIter to avoid loading all the range
 			// deletions into memory upfront. (See #2015, which reverted this.) There
@@ -1000,7 +998,7 @@ func (c *compaction) newInputIter(
 			iter := level.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
 				rangeDelIter, closer, err := c.newRangeDelIter(
-					newIters, iter.Take(), iterOpts, l, &c.bytesIterated)
+					newIters, iter.Take(), iterOpts, l)
 				if err != nil {
 					// The error will already be annotated with the BackingFileNum, so
 					// we annotate it with the FileNum.
@@ -1113,17 +1111,13 @@ func (c *compaction) newInputIter(
 }
 
 func (c *compaction) newRangeDelIter(
-	newIters tableNewIters,
-	f manifest.LevelFile,
-	opts IterOptions,
-	l manifest.Level,
-	bytesIterated *uint64,
+	newIters tableNewIters, f manifest.LevelFile, opts IterOptions, l manifest.Level,
 ) (keyspan.FragmentIterator, io.Closer, error) {
 	opts.level = l
-	iterSet, err := newIters(context.Background(), f.FileMetadata,
-		&opts, internalIterOpts{
-			bytesIterated: &c.bytesIterated,
-			bufferPool:    &c.bufferPool,
+	iterSet, err := newIters(context.Background(), f.FileMetadata, &opts,
+		internalIterOpts{
+			compaction: true,
+			bufferPool: &c.bufferPool,
 		}, iterRangeDeletions)
 	if err != nil {
 		return nil, nil, err
@@ -1767,8 +1761,6 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		d.mu.versions.logUnlock()
 	}
 
-	bytesFlushed = c.bytesIterated
-
 	// If err != nil, then the flush will be retried, and we will recalculate
 	// these metrics.
 	if err == nil {
@@ -1820,7 +1812,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		close(flushed[i].flushed)
 	}
 
-	return bytesFlushed, err
+	return inputBytes, err
 }
 
 // maybeTransitionSnapshotsToFileOnlyLocked transitions any "eventually

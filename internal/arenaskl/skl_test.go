@@ -769,35 +769,6 @@ func TestIteratorBounds(t *testing.T) {
 	require.False(t, it.Prev())
 }
 
-func TestBytesIterated(t *testing.T) {
-	l := NewSkiplist(newArena(arenaSize), bytes.Compare)
-	emptySize := l.arena.Size()
-	for i := 0; i < 200; i++ {
-		bytesIterated := l.bytesIterated(t)
-		expected := uint64(l.arena.Size() - emptySize)
-		if bytesIterated != expected {
-			t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
-		}
-		l.Add(base.InternalKey{UserKey: []byte{byte(i)}}, nil)
-	}
-}
-
-// bytesIterated returns the number of bytes iterated in the skiplist.
-func (s *Skiplist) bytesIterated(t *testing.T) (bytesIterated uint64) {
-	x := s.NewFlushIter(&bytesIterated)
-	var prevIterated uint64
-	for kv := x.First(); kv != nil; kv = x.Next() {
-		if bytesIterated < prevIterated {
-			t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
-		}
-		prevIterated = bytesIterated
-	}
-	if x.Close() != nil {
-		return 0
-	}
-	return bytesIterated
-}
-
 func randomKey(rng *rand.Rand, b []byte) base.InternalKey {
 	key := rng.Uint32()
 	key2 := rng.Uint32()
