@@ -557,15 +557,25 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 
 	get := &buf.get
 	*get = getIter{
-		logger:   d.opts.Logger,
 		comparer: d.opts.Comparer,
 		newIters: d.newIters,
 		snapshot: seqNum,
-		key:      key,
-		batch:    b,
-		mem:      readState.memtables,
-		l0:       readState.current.L0SublevelFiles,
-		version:  readState.current,
+		iterOpts: IterOptions{
+			// TODO(sumeer): replace with a parameter provided by the caller.
+			CategoryAndQoS: sstable.CategoryAndQoS{
+				Category: "pebble-get",
+				QoSLevel: sstable.LatencySensitiveQoSLevel,
+			},
+			logger:                        d.opts.Logger,
+			snapshotForHideObsoletePoints: seqNum,
+		},
+		key: key,
+		// Compute the key prefix for bloom filtering.
+		prefix:  key[:d.opts.Comparer.Split(key)],
+		batch:   b,
+		mem:     readState.memtables,
+		l0:      readState.current.L0SublevelFiles,
+		version: readState.current,
 	}
 
 	// Strip off memtables which cannot possibly contain the seqNum being read

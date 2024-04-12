@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 func TestGetIter(t *testing.T) {
@@ -448,9 +449,18 @@ func TestGetIter(t *testing.T) {
 			get.comparer = testkeys.Comparer
 			get.newIters = newIter
 			get.key = ikey.UserKey
+			get.prefix = ikey.UserKey[:testkeys.Comparer.Split(ikey.UserKey)]
 			get.l0 = v.L0SublevelFiles
 			get.version = v
 			get.snapshot = ikey.SeqNum() + 1
+			get.iterOpts = IterOptions{
+				CategoryAndQoS: sstable.CategoryAndQoS{
+					Category: "pebble-get",
+					QoSLevel: sstable.LatencySensitiveQoSLevel,
+				},
+				logger:                        testLogger{t},
+				snapshotForHideObsoletePoints: get.snapshot,
+			}
 
 			i := &buf.dbi
 			i.comparer = *testkeys.Comparer

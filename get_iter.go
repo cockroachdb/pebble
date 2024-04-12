@@ -11,7 +11,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/sstable"
 )
 
 // getIter is an internal iterator used to perform gets. It iterates through
@@ -19,22 +18,26 @@ import (
 // internalIterator, but specialized for Get operations so that it loads data
 // lazily.
 type getIter struct {
-	logger       Logger
-	comparer     *Comparer
-	newIters     tableNewIters
-	snapshot     uint64
-	key          []byte
-	iter         internalIterator
-	rangeDelIter keyspan.FragmentIterator
-	tombstone    *keyspan.Span
-	levelIter    levelIter
-	level        int
-	batch        *Batch
-	mem          flushableList
-	l0           []manifest.LevelSlice
-	version      *version
-	iterKV       *base.InternalKV
-	err          error
+	comparer *Comparer
+	newIters tableNewIters
+	snapshot uint64
+	iterOpts IterOptions
+	key      []byte
+	prefix   []byte
+	iter     internalIterator
+	level    int
+	batch    *Batch
+	mem      flushableList
+	l0       []manifest.LevelSlice
+	version  *version
+	iterKV   *base.InternalKV
+	// tombstoned and tombstonedSeqNum track whether the key has been deleted by
+	// a range delete tombstone. The first visible (at getIter.snapshot) range
+	// deletion encounterd transitions tombstoned to true. The tombstonedSeqNum
+	// field is updated to hold the sequence number of the tombstone.
+	tombstoned       bool
+	tombstonedSeqNum uint64
+	err              error
 }
 
 // TODO(sumeer): CockroachDB code doesn't use getIter, but, for completeness,
@@ -72,6 +75,9 @@ func (g *getIter) Last() *base.InternalKV {
 }
 
 func (g *getIter) Next() *base.InternalKV {
+	// If g.iter != nil, we're already iterating through a level. Next.  NB: We
+	// can't perform this Next below, in the for loop, because when we open an
+	// iterator into the next level, we need to seek to the key.
 	if g.iter != nil {
 		g.iterKV = g.iter.Next()
 		if err := g.iter.Error(); err != nil {
@@ -80,33 +86,27 @@ func (g *getIter) Next() *base.InternalKV {
 		}
 	}
 
+	// This for loop finds the next internal key in the LSM that is equal to
+	// g.key, visible at g.snapshot and not shadowed by a range deletion. If it
+	// exhausts a level, it initializes iterators for the next level.
 	for {
 		if g.iter != nil {
-			// We have to check rangeDelIter on each iteration because a single
-			// user-key can be spread across multiple tables in a level. A range
-			// tombstone will appear in the table corresponding to its start
-			// key. Every call to levelIter.Next() potentially switches to a new
-			// table and thus reinitializes rangeDelIter.
-			if g.rangeDelIter != nil {
-				g.tombstone, g.err = keyspan.Get(g.comparer.Compare, g.rangeDelIter, g.key)
-				g.err = firstError(g.err, g.rangeDelIter.Close())
-				if g.err != nil {
-					return nil
-				}
-				g.rangeDelIter = nil
-			}
-
 			if g.iterKV != nil {
-				if g.tombstone != nil && g.tombstone.CoversAt(g.snapshot, g.iterKV.SeqNum()) {
-					// We have a range tombstone covering this key. Rather than return a
-					// point or range deletion here, we return false and close our
-					// internal iterator which will make Valid() return false,
-					// effectively stopping iteration.
+				// Check if the current KV pair is deleted by a range deletion.
+				if g.tombstoned && g.tombstonedSeqNum > g.iterKV.SeqNum() {
+					// We have a range tombstone covering this key. Rather than
+					// return a point or range deletion here, we return nil and
+					// close our internal iterator stopping iteration.
 					g.err = g.iter.Close()
 					g.iter = nil
 					return nil
 				}
+
+				// Is this the correct user key?
 				if g.comparer.Equal(g.key, g.iterKV.K.UserKey) {
+					// If the KV pair is not visible at the get's snapshot,
+					// Next. The level may still contain older keys with the
+					// same user key that are visible.
 					if !g.iterKV.Visible(g.snapshot, base.InternalKeySeqNumMax) {
 						g.iterKV = g.iter.Next()
 						continue
@@ -122,118 +122,11 @@ func (g *getIter) Next() *base.InternalKV {
 				return nil
 			}
 		}
-
-		// Create an iterator from the batch.
-		if g.batch != nil {
-			if g.batch.index == nil {
-				g.err = ErrNotIndexed
-				g.iterKV = nil
-				return nil
-			}
-			g.iter = g.batch.newInternalIter(nil)
-			g.rangeDelIter = g.batch.newRangeDelIter(
-				nil,
-				// Get always reads the entirety of the batch's history, so no
-				// batch keys should be filtered.
-				base.InternalKeySeqNumMax,
-			)
-			g.iterKV = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
-			if err := g.iter.Error(); err != nil {
-				g.err = err
-				return nil
-			}
-			g.batch = nil
-			continue
-		}
-
-		// If we have a tombstone from a previous level it is guaranteed to delete
-		// keys in lower levels.
-		if g.tombstone != nil && g.tombstone.VisibleAt(g.snapshot) {
+		// g.iter == nil; we need to initialize the next iterator.
+		if !g.initializeNextIterator() {
 			return nil
 		}
-
-		// Create iterators from memtables from newest to oldest.
-		if n := len(g.mem); n > 0 {
-			m := g.mem[n-1]
-			g.iter = m.newIter(nil)
-			g.rangeDelIter = m.newRangeDelIter(nil)
-			g.mem = g.mem[:n-1]
-			g.iterKV = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
-			if err := g.iter.Error(); err != nil {
-				g.err = err
-				return nil
-			}
-			continue
-		}
-
-		if g.level == 0 {
-			// Create iterators from L0 from newest to oldest.
-			if n := len(g.l0); n > 0 {
-				files := g.l0[n-1].Iter()
-				g.l0 = g.l0[:n-1]
-				iterOpts := IterOptions{
-					// TODO(sumeer): replace with a parameter provided by the caller.
-					CategoryAndQoS: sstable.CategoryAndQoS{
-						Category: "pebble-get",
-						QoSLevel: sstable.LatencySensitiveQoSLevel,
-					},
-					logger:                        g.logger,
-					snapshotForHideObsoletePoints: g.snapshot}
-				g.levelIter.init(context.Background(), iterOpts, g.comparer, g.newIters,
-					files, manifest.L0Sublevel(n), internalIterOpts{})
-				g.levelIter.initRangeDel(&g.rangeDelIter)
-				bc := levelIterBoundaryContext{}
-				g.levelIter.initBoundaryContext(&bc)
-				g.iter = &g.levelIter
-
-				prefix := g.key[:g.comparer.Split(g.key)]
-				g.iterKV = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
-				if err := g.iter.Error(); err != nil {
-					g.err = err
-					return nil
-				}
-
-				if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
-					g.iterKV = nil
-				}
-				continue
-			}
-			g.level++
-		}
-
-		if g.level >= numLevels {
-			return nil
-		}
-		if g.version.Levels[g.level].Empty() {
-			g.level++
-			continue
-		}
-
-		iterOpts := IterOptions{
-			// TODO(sumeer): replace with a parameter provided by the caller.
-			CategoryAndQoS: sstable.CategoryAndQoS{
-				Category: "pebble-get",
-				QoSLevel: sstable.LatencySensitiveQoSLevel,
-			}, logger: g.logger, snapshotForHideObsoletePoints: g.snapshot}
-		g.levelIter.init(context.Background(), iterOpts, g.comparer, g.newIters,
-			g.version.Levels[g.level].Iter(), manifest.Level(g.level), internalIterOpts{})
-		g.levelIter.initRangeDel(&g.rangeDelIter)
-		bc := levelIterBoundaryContext{}
-		g.levelIter.initBoundaryContext(&bc)
-		g.level++
-		g.iter = &g.levelIter
-
-		// Compute the key prefix for bloom filtering if split function is
-		// specified, or use the user key as default.
-		prefix := g.key[:g.comparer.Split(g.key)]
-		g.iterKV = g.iter.SeekPrefixGE(prefix, g.key, base.SeekGEFlagsNone)
-		if err := g.iter.Error(); err != nil {
-			g.err = err
-			return nil
-		}
-		if bc.isSyntheticIterBoundsKey || bc.isIgnorableBoundaryKey {
-			g.iterKV = nil
-		}
+		g.iterKV = g.iter.SeekPrefixGE(g.prefix, g.key, base.SeekGEFlagsNone)
 	}
 }
 
@@ -243,10 +136,6 @@ func (g *getIter) Prev() *base.InternalKV {
 
 func (g *getIter) NextPrefix([]byte) *base.InternalKV {
 	panic("pebble: NextPrefix unimplemented")
-}
-
-func (g *getIter) Valid() bool {
-	return g.iterKV != nil && g.err == nil
 }
 
 func (g *getIter) Error() error {
@@ -268,3 +157,139 @@ func (g *getIter) SetBounds(lower, upper []byte) {
 }
 
 func (g *getIter) SetContext(_ context.Context) {}
+
+func (g *getIter) initializeNextIterator() (ok bool) {
+	// A batch's keys shadow all other keys, so we visit the batch first.
+	if g.batch != nil {
+		if g.batch.index == nil {
+			g.err = ErrNotIndexed
+			g.iterKV = nil
+			return false
+		}
+		g.iter = g.batch.newInternalIter(nil)
+		if !g.maybeSetTombstone(g.batch.newRangeDelIter(nil,
+			// Get always reads the entirety of the batch's history, so no
+			// batch keys should be filtered.
+			base.InternalKeySeqNumMax,
+		)) {
+			return false
+		}
+		g.batch = nil
+		return true
+	}
+
+	// If we're trying to initialize the next level of the iterator stack but
+	// have a tombstone from a previous level, it is guaranteed to delete keys
+	// in lower levels. This key is deleted.
+	if g.tombstoned {
+		return false
+	}
+
+	// Create iterators from memtables from newest to oldest.
+	if n := len(g.mem); n > 0 {
+		m := g.mem[n-1]
+		g.iter = m.newIter(nil)
+		if !g.maybeSetTombstone(m.newRangeDelIter(nil)) {
+			return false
+		}
+		g.mem = g.mem[:n-1]
+		return true
+	}
+
+	// Visit each sublevel of L0 individually, so that we only need to read
+	// at most one file per sublevel.
+	if g.level == 0 {
+		// Create iterators from L0 from newest to oldest.
+		if n := len(g.l0); n > 0 {
+			files := g.l0[n-1].Iter()
+			g.l0 = g.l0[:n-1]
+
+			iter, rangeDelIter, err := g.getSSTableIterators(files, manifest.L0Sublevel(n))
+			if err != nil {
+				g.err = firstError(g.err, err)
+				return false
+			}
+			if !g.maybeSetTombstone(rangeDelIter) {
+				return false
+			}
+			g.iter = iter
+			return true
+		}
+		// We've exhausted all the sublevels of L0. Progress to L1.
+		g.level++
+	}
+	for g.level < numLevels {
+		if g.version.Levels[g.level].Empty() {
+			g.level++
+			continue
+		}
+		// Open the next level of the LSM.
+		iter, rangeDelIter, err := g.getSSTableIterators(g.version.Levels[g.level].Iter(), manifest.Level(g.level))
+		if err != nil {
+			g.err = firstError(g.err, err)
+			return false
+		}
+		if !g.maybeSetTombstone(rangeDelIter) {
+			return false
+		}
+		g.level++
+		g.iter = iter
+		return true
+	}
+	// We've exhausted all levels of the LSM.
+	return false
+}
+
+func (g *getIter) getSSTableIterators(
+	files manifest.LevelIterator, level manifest.Level,
+) (internalIterator, keyspan.FragmentIterator, error) {
+	files = files.Filter(manifest.KeyTypePoint)
+	m := files.SeekGE(g.comparer.Compare, g.key)
+	if m == nil {
+		return emptyIter, nil, nil
+	}
+	// This file has a key bound ≥ `key`. But the largest point key bound may
+	// still be a range deletion sentinel, which is exclusive.  In this case,
+	// the file doesn't actually contain any point keys equal to `key`. We next
+	// to keep searching for a file that actually contains point keys ≥ key.
+	if m.LargestPointKey.IsExclusiveSentinel() && g.comparer.Equal(m.LargestPointKey.UserKey, g.key) {
+		m = files.Next()
+	}
+	// m is now positioned at the file containing the first point key ≥ `g.key`.
+	// Does it exist and possibly contain point keys with the user key 'g.key'?
+	if m == nil || !m.HasPointKeys || g.comparer.Compare(m.SmallestPointKey.UserKey, g.key) > 0 {
+		return emptyIter, nil, nil
+	}
+	// m may possibly contain point (or range deletion) keys relevant to g.key.
+	g.iterOpts.level = level
+	iters, err := g.newIters(context.Background(), m, &g.iterOpts, internalIterOpts{}, iterPointKeys|iterRangeDeletions)
+	if err != nil {
+		return emptyIter, nil, err
+	}
+	return iters.Point(), iters.RangeDeletion(), nil
+}
+
+// maybeSetTombstone updates g.tombstoned[SeqNum] to reflect the presence of a
+// range deletion covering g.key, if there are any. It returns true if
+// successful, or false if an error occurred and the caller should abort
+// iteration.
+func (g *getIter) maybeSetTombstone(rangeDelIter keyspan.FragmentIterator) (ok bool) {
+	if rangeDelIter == nil {
+		// Nothing to do.
+		return true
+	}
+	// Find the range deletion that covers the sought key, if any.
+	t, err := keyspan.Get(g.comparer.Compare, rangeDelIter, g.key)
+	if err != nil {
+		g.err = firstError(g.err, err)
+		return false
+	}
+	// Find the most recent visible range deletion's sequence number. We only
+	// care about the most recent range deletion that's visible because it's the
+	// "most powerful."
+	g.tombstonedSeqNum, g.tombstoned = t.LargestVisibleSeqNum(g.snapshot)
+	if g.err = firstError(g.err, rangeDelIter.Close()); g.err != nil {
+		return false
+	}
+	return true
+}

@@ -191,6 +191,26 @@ func (s *Span) LargestSeqNum() uint64 {
 	return s.Keys[0].SeqNum()
 }
 
+// LargestVisibleSeqNum returns the largest sequence number of a key contained
+// within the span that's also visible at the provided snapshot sequence number.
+// It requires the Span's keys be in ByTrailerDesc order. It panics if the span
+// contains no keys or its keys are sorted in a different order.
+func (s *Span) LargestVisibleSeqNum(snapshot uint64) (largest uint64, ok bool) {
+	if s == nil {
+		return 0, false
+	} else if len(s.Keys) == 0 {
+		panic("pebble: Span contains no keys")
+	} else if s.KeysOrder != ByTrailerDesc {
+		panic("pebble: span's keys unexpectedly not in trailer order")
+	}
+	for i := range s.Keys {
+		if s.Keys[i].VisibleAt(snapshot) {
+			return s.Keys[i].SeqNum(), true
+		}
+	}
+	return 0, false
+}
+
 // TODO(jackson): Replace most of the calls to Visible with more targeted calls
 // that avoid the need to construct a new Span.
 
