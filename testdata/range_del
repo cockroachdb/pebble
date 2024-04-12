@@ -1381,3 +1381,20 @@ num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1135
+
+define
+L1
+  a.RANGEDEL.11:d
+  a.MERGE.11:1
+  a.SET.10:2
+  b.SET.11:1
+  c.SET.11:1
+----
+mem: 1
+L1:
+  000004:[a#11,RANGEDEL-d#inf,RANGEDEL]
+
+get seq=12
+a
+----
+a:1
