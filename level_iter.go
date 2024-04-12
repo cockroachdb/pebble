@@ -17,7 +17,7 @@ import (
 )
 
 type internalIterOpts struct {
-	bytesIterated      *uint64
+	compaction         bool
 	bufferPool         *sstable.BufferPool
 	stats              *base.InternalIteratorStats
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter

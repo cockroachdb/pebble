@@ -260,8 +260,8 @@ func (m *memTable) newIter(o *IterOptions) internalIterator {
 }
 
 // newFlushIter is part of the flushable interface.
-func (m *memTable) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
-	return m.skl.NewFlushIter(bytesFlushed)
+func (m *memTable) newFlushIter(o *IterOptions) internalIterator {
+	return m.skl.NewFlushIter()
 }
 
 // newRangeDelIter is part of the flushable interface.

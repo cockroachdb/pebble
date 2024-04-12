@@ -601,9 +601,9 @@ func (c *tableCacheShard) newPointIter(
 	if opts != nil {
 		categoryAndQoS = opts.CategoryAndQoS
 	}
-	if internalOpts.bytesIterated != nil {
+	if internalOpts.compaction {
 		iter, err = cr.NewCompactionIter(
-			transforms, internalOpts.bytesIterated, categoryAndQoS, dbOpts.sstStatsCollector, rp,
+			transforms, categoryAndQoS, dbOpts.sstStatsCollector, rp,
 			internalOpts.bufferPool)
 	} else {
 		iter, err = cr.NewIterWithBlockPropertyFiltersAndContextEtc(

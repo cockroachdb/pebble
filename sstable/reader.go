@@ -388,18 +388,16 @@ func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterat
 // after itself and returns a nil iterator.
 func (r *Reader) NewCompactionIter(
 	transforms IterTransforms,
-	bytesIterated *uint64,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *BufferPool,
 ) (Iterator, error) {
-	return r.newCompactionIter(transforms, bytesIterated, categoryAndQoS, statsCollector, rp, nil, bufferPool)
+	return r.newCompactionIter(transforms, categoryAndQoS, statsCollector, rp, nil, bufferPool)
 }
 
 func (r *Reader) newCompactionIter(
 	transforms IterTransforms,
-	bytesIterated *uint64,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
@@ -420,10 +418,7 @@ func (r *Reader) newCompactionIter(
 			return nil, err
 		}
 		i.setupForCompaction()
-		return &twoLevelCompactionIterator{
-			twoLevelIterator: i,
-			bytesIterated:    bytesIterated,
-		}, nil
+		return &twoLevelCompactionIterator{twoLevelIterator: i}, nil
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
@@ -434,10 +429,7 @@ func (r *Reader) newCompactionIter(
 		return nil, err
 	}
 	i.setupForCompaction()
-	return &compactionIterator{
-		singleLevelIterator: i,
-		bytesIterated:       bytesIterated,
-	}, nil
+	return &compactionIterator{singleLevelIterator: i}, nil
 }
 
 // NewRawRangeDelIter returns an internal iterator for the contents of the

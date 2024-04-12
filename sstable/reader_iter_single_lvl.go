@@ -594,24 +594,6 @@ func (i *singleLevelIterator) trySeekLTUsingPrevWithinBlock(
 	return kv, false
 }
 
-func (i *singleLevelIterator) recordOffset() uint64 {
-	offset := i.dataBH.Offset
-	if i.data.valid() {
-		// - i.dataBH.Length/len(i.data.data) is the compression ratio. If
-		//   uncompressed, this is 1.
-		// - i.data.nextOffset is the uncompressed position of the current record
-		//   in the block.
-		// - i.dataBH.Offset is the offset of the block in the sstable before
-		//   decompression.
-		offset += (uint64(i.data.nextOffset) * i.dataBH.Length) / uint64(len(i.data.data))
-	} else {
-		// Last entry in the block must increment bytes iterated by the size of the block trailer
-		// and restart points.
-		offset += i.dataBH.Length + blockTrailerLen
-	}
-	return offset
-}
-
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.

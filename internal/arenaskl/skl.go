@@ -307,10 +307,9 @@ func (s *Skiplist) NewIter(lower, upper []byte) *Iterator {
 // NewFlushIter returns a new flushIterator, which is similar to an Iterator
 // but also sets the current number of the bytes that have been iterated
 // through.
-func (s *Skiplist) NewFlushIter(bytesFlushed *uint64) base.InternalIterator {
+func (s *Skiplist) NewFlushIter() base.InternalIterator {
 	return &flushIterator{
-		Iterator:      Iterator{list: s, nd: s.head},
-		bytesIterated: bytesFlushed,
+		Iterator: Iterator{list: s, nd: s.head},
 	}
 }
 

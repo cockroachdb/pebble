@@ -2056,7 +2056,7 @@ func (b *flushableBatch) newIter(o *IterOptions) internalIterator {
 }
 
 // newFlushIter is part of the flushable interface.
-func (b *flushableBatch) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
+func (b *flushableBatch) newFlushIter(o *IterOptions) internalIterator {
 	return &flushFlushableBatchIter{
 		flushableBatchIter: flushableBatchIter{
 			batch:   b,
@@ -2065,7 +2065,6 @@ func (b *flushableBatch) newFlushIter(o *IterOptions, bytesFlushed *uint64) inte
 			cmp:     b.cmp,
 			index:   -1,
 		},
-		bytesIterated: bytesFlushed,
 	}
 }
 
@@ -2327,7 +2326,6 @@ func (i *flushableBatchIter) SetContext(_ context.Context) {}
 // of number of bytes iterated.
 type flushFlushableBatchIter struct {
 	flushableBatchIter
-	bytesIterated *uint64
 }
 
 // flushFlushableBatchIter implements the base.InternalIterator interface.
@@ -2353,13 +2351,7 @@ func (i *flushFlushableBatchIter) SeekLT(key []byte, flags base.SeekLTFlags) *ba
 
 func (i *flushFlushableBatchIter) First() *base.InternalKV {
 	i.err = nil // clear cached iteration error
-	kv := i.flushableBatchIter.First()
-	if kv == nil {
-		return nil
-	}
-	entryBytes := i.offsets[i.index].keyEnd - i.offsets[i.index].offset
-	*i.bytesIterated += uint64(entryBytes) + i.valueSize()
-	return kv
+	return i.flushableBatchIter.First()
 }
 
 func (i *flushFlushableBatchIter) NextPrefix(succKey []byte) *base.InternalKV {
@@ -2376,39 +2368,11 @@ func (i *flushFlushableBatchIter) Next() *base.InternalKV {
 	if i.index == len(i.offsets) {
 		return nil
 	}
-	kv := i.getKV(i.index)
-	entryBytes := i.offsets[i.index].keyEnd - i.offsets[i.index].offset
-	*i.bytesIterated += uint64(entryBytes) + i.valueSize()
-	return kv
+	return i.getKV(i.index)
 }
 
 func (i flushFlushableBatchIter) Prev() *base.InternalKV {
 	panic("pebble: Prev unimplemented")
-}
-
-func (i flushFlushableBatchIter) valueSize() uint64 {
-	p := i.data[i.offsets[i.index].offset:]
-	if len(p) == 0 {
-		i.err = base.CorruptionErrorf("corrupted batch")
-		return 0
-	}
-	kind := InternalKeyKind(p[0])
-	if kind > InternalKeyKindMax {
-		i.err = base.CorruptionErrorf("corrupted batch")
-		return 0
-	}
-	var length uint64
-	switch kind {
-	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
-		keyEnd := i.offsets[i.index].keyEnd
-		v, n := binary.Uvarint(i.data[keyEnd:])
-		if n <= 0 {
-			i.err = base.CorruptionErrorf("corrupted batch")
-			return 0
-		}
-		length = v + uint64(n)
-	}
-	return length
 }
 
 // batchOptions holds the parameters to configure batch.

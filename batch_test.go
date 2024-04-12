@@ -1279,34 +1279,6 @@ func scanKeyspanIterator(w io.Writer, ki keyspan.FragmentIterator) {
 	}
 }
 
-func TestFlushableBatchBytesIterated(t *testing.T) {
-	batch := newBatch(nil)
-	for j := 0; j < 1000; j++ {
-		key := make([]byte, 8+j%3)
-		value := make([]byte, 7+j%5)
-		batch.Set(key, value, nil)
-
-		fb, err := newFlushableBatch(batch, DefaultComparer)
-		require.NoError(t, err)
-
-		var bytesIterated uint64
-		it := fb.newFlushIter(nil, &bytesIterated)
-
-		var prevIterated uint64
-		for kv := it.First(); kv != nil; kv = it.Next() {
-			if bytesIterated < prevIterated {
-				t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
-			}
-			prevIterated = bytesIterated
-		}
-
-		expected := fb.inuseBytes()
-		if bytesIterated != expected {
-			t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
-		}
-	}
-}
-
 func TestEmptyFlushableBatch(t *testing.T) {
 	// Verify that we can create a flushable batch on an empty batch.
 	fb, err := newFlushableBatch(newBatch(nil), DefaultComparer)

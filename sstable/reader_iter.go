@@ -175,8 +175,6 @@ func checkRangeKeyFragmentBlockIterator(obj interface{}) {
 // bytes that have been iterated through.
 type compactionIterator struct {
 	*singleLevelIterator
-	bytesIterated *uint64
-	prevOffset    uint64
 }
 
 // compactionIterator implements the base.InternalIterator interface.
@@ -258,10 +256,6 @@ func (i *compactionIterator) skipForward(kv *base.InternalKV) *base.InternalKV {
 			}
 		}
 	}
-
-	curOffset := i.recordOffset()
-	*i.bytesIterated += uint64(curOffset - i.prevOffset)
-	i.prevOffset = curOffset
 
 	// We have an upper bound when the table is virtual.
 	if i.upper != nil && kv != nil {
