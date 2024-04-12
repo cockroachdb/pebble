@@ -450,7 +450,7 @@ func newCompaction(
 		isRemote := false
 		// We should always be passed a provider, except in some unit tests.
 		if provider != nil {
-			isRemote = !objstorage.MustIsLocalTable(provider, meta.FileBacking.DiskFileNum)
+			isRemote = !objstorage.IsLocalTable(provider, meta.FileBacking.DiskFileNum)
 		}
 		// Avoid a trivial move or copy if all of these are true, as rewriting a
 		// new file is better:
