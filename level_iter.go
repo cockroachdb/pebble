@@ -993,12 +993,7 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 			// tolerate this repeat key and in this case will keep the level at
 			// the top of the heap and immediately skip the entry, advancing to
 			// the next file.
-			//
-			// TODO(jackson): We should be able to condition this only on
-			// *l.rangeDelIterPtr != nil, but the getIter retains tombstones
-			// returned by the rangeDelIter after it's nil'd the ptr.
-			if l.iterFile.LargestPointKey.Kind() == InternalKeyKindRangeDelete ||
-				*l.rangeDelIterPtr != nil {
+			if *l.rangeDelIterPtr != nil {
 				l.syntheticBoundary = base.MakeInternalKV(l.iterFile.LargestPointKey, nil)
 				l.largestBoundary = &l.syntheticBoundary
 				if l.boundaryContext != nil {
