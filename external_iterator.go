@@ -6,8 +6,6 @@ package pebble
 
 import (
 	"context"
-	"fmt"
-	"sort"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -189,7 +187,6 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 		seqNum += len(readers)
 	}
 	for _, readers := range it.externalReaders {
-		var combinedIters []internalIterator
 		for _, r := range readers {
 			var (
 				rangeDelIter keyspan.FragmentIterator
@@ -218,21 +215,6 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 			mlevels = append(mlevels, mergingIterLevel{
 				iter:         pointIter,
 				rangeDelIter: rangeDelIter,
-			})
-		}
-		if len(combinedIters) == 1 {
-			mlevels = append(mlevels, mergingIterLevel{
-				iter: combinedIters[0],
-			})
-		} else if len(combinedIters) > 1 {
-			sli := &simpleLevelIter{
-				cmp:   it.cmp,
-				iters: combinedIters,
-			}
-			sli.init(it.opts)
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         sli,
-				rangeDelIter: nil,
 			})
 		}
 	}
@@ -331,199 +313,3 @@ func openExternalTables(
 	}
 	return readers, err
 }
-
-// simpleLevelIter is similar to a levelIter in that it merges the points
-// from multiple point iterators that are non-overlapping in the key ranges
-// they return. It is only expected to support forward iteration and forward
-// regular seeking; reverse iteration and prefix seeking is not supported.
-// Intended to be a low-overhead, non-FileMetadata dependent option for
-// NewExternalIter. To optimize seeking and forward iteration, it maintains
-// two slices of child iterators; one of all iterators, and a subset of it that
-// contains just the iterators that contain point keys within the current
-// bounds.
-//
-// Note that this levelIter does not support pausing at file boundaries
-// in case of range tombstones in this file that could apply to points outside
-// of this file (and outside of this level). This is sufficient for optimizing
-// the main use cases of NewExternalIter, however for completeness it would make
-// sense to build this pausing functionality in.
-type simpleLevelIter struct {
-	cmp          Compare
-	err          error
-	lowerBound   []byte
-	iters        []internalIterator
-	filtered     []internalIterator
-	firstKeys    [][]byte
-	firstKeysBuf []byte
-	currentIdx   int
-}
-
-var _ internalIterator = &simpleLevelIter{}
-
-// init initializes this simpleLevelIter.
-func (s *simpleLevelIter) init(opts IterOptions) {
-	s.currentIdx = 0
-	s.lowerBound = opts.LowerBound
-	s.resetFilteredIters()
-}
-
-func (s *simpleLevelIter) resetFilteredIters() {
-	s.filtered = s.filtered[:0]
-	s.firstKeys = s.firstKeys[:0]
-	s.firstKeysBuf = s.firstKeysBuf[:0]
-	s.err = nil
-	for i := range s.iters {
-		var iterKV *base.InternalKV
-		if s.lowerBound != nil {
-			iterKV = s.iters[i].SeekGE(s.lowerBound, base.SeekGEFlagsNone)
-		} else {
-			iterKV = s.iters[i].First()
-		}
-		if iterKV != nil {
-			s.filtered = append(s.filtered, s.iters[i])
-			bufStart := len(s.firstKeysBuf)
-			s.firstKeysBuf = append(s.firstKeysBuf, iterKV.K.UserKey...)
-			s.firstKeys = append(s.firstKeys, s.firstKeysBuf[bufStart:bufStart+len(iterKV.K.UserKey)])
-		} else if err := s.iters[i].Error(); err != nil {
-			s.err = err
-		}
-	}
-}
-
-func (s *simpleLevelIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	if s.err != nil {
-		return nil
-	}
-	// Find the first file that is entirely >= key. The file before that could
-	// contain the key we're looking for.
-	n := sort.Search(len(s.firstKeys), func(i int) bool {
-		return s.cmp(key, s.firstKeys[i]) <= 0
-	})
-	if n > 0 {
-		s.currentIdx = n - 1
-	} else {
-		s.currentIdx = n
-	}
-	if s.currentIdx < len(s.filtered) {
-		if iterKV := s.filtered[s.currentIdx].SeekGE(key, flags); iterKV != nil {
-			return iterKV
-		}
-		if err := s.filtered[s.currentIdx].Error(); err != nil {
-			s.err = err
-		}
-		s.currentIdx++
-	}
-	return s.skipEmptyFileForward(key, flags)
-}
-
-func (s *simpleLevelIter) skipEmptyFileForward(
-	seekKey []byte, flags base.SeekGEFlags,
-) *base.InternalKV {
-	var iterKV *base.InternalKV
-	for s.currentIdx >= 0 && s.currentIdx < len(s.filtered) && s.err == nil {
-		if seekKey != nil {
-			iterKV = s.filtered[s.currentIdx].SeekGE(seekKey, flags)
-		} else if s.lowerBound != nil {
-			iterKV = s.filtered[s.currentIdx].SeekGE(s.lowerBound, flags)
-		} else {
-			iterKV = s.filtered[s.currentIdx].First()
-		}
-		if iterKV != nil {
-			return iterKV
-		}
-		if err := s.filtered[s.currentIdx].Error(); err != nil {
-			s.err = err
-		}
-		s.currentIdx++
-	}
-	return nil
-}
-
-func (s *simpleLevelIter) SeekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) *base.InternalKV {
-	panic("unimplemented")
-}
-
-func (s *simpleLevelIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
-	panic("unimplemented")
-}
-
-func (s *simpleLevelIter) First() *base.InternalKV {
-	if s.err != nil {
-		return nil
-	}
-	s.currentIdx = 0
-	return s.skipEmptyFileForward(nil /* seekKey */, base.SeekGEFlagsNone)
-}
-
-func (s *simpleLevelIter) Last() *base.InternalKV {
-	panic("unimplemented")
-}
-
-func (s *simpleLevelIter) Next() *base.InternalKV {
-	if s.err != nil {
-		return nil
-	}
-	if s.currentIdx < 0 || s.currentIdx >= len(s.filtered) {
-		return nil
-	}
-	if iterKV := s.filtered[s.currentIdx].Next(); iterKV != nil {
-		return iterKV
-	}
-	s.currentIdx++
-	return s.skipEmptyFileForward(nil /* seekKey */, base.SeekGEFlagsNone)
-}
-
-func (s *simpleLevelIter) NextPrefix(succKey []byte) *base.InternalKV {
-	if s.err != nil {
-		return nil
-	}
-	if s.currentIdx < 0 || s.currentIdx >= len(s.filtered) {
-		return nil
-	}
-	if iterKV := s.filtered[s.currentIdx].NextPrefix(succKey); iterKV != nil {
-		return iterKV
-	}
-	s.currentIdx++
-	return s.skipEmptyFileForward(succKey /* seekKey */, base.SeekGEFlagsNone)
-}
-
-func (s *simpleLevelIter) Prev() *base.InternalKV {
-	panic("unimplemented")
-}
-
-func (s *simpleLevelIter) Error() error {
-	if s.currentIdx >= 0 && s.currentIdx < len(s.filtered) {
-		s.err = firstError(s.err, s.filtered[s.currentIdx].Error())
-	}
-	return s.err
-}
-
-func (s *simpleLevelIter) Close() error {
-	var err error
-	for i := range s.iters {
-		err = firstError(err, s.iters[i].Close())
-	}
-	return err
-}
-
-func (s *simpleLevelIter) SetBounds(lower, upper []byte) {
-	s.currentIdx = -1
-	s.lowerBound = lower
-	for i := range s.iters {
-		s.iters[i].SetBounds(lower, upper)
-	}
-	s.resetFilteredIters()
-}
-
-func (s *simpleLevelIter) SetContext(_ context.Context) {}
-
-func (s *simpleLevelIter) String() string {
-	if s.currentIdx < 0 || s.currentIdx >= len(s.filtered) {
-		return "simpleLevelIter: current=<nil>"
-	}
-	return fmt.Sprintf("simpleLevelIter: current=%s", s.filtered[s.currentIdx])
-}
-
-var _ internalIterator = &simpleLevelIter{}
