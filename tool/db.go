@@ -49,6 +49,7 @@ type dbT struct {
 	mergers         sstable.Mergers
 	openErrEnhancer func(error) error
 	openOptions     []OpenOption
+	exciseSpanFn    DBExciseSpanFn
 
 	// Flags.
 	comparerName  string
@@ -72,6 +73,7 @@ func newDB(
 	mergers sstable.Mergers,
 	openErrEnhancer func(error) error,
 	openOptions []OpenOption,
+	exciseSpanFn DBExciseSpanFn,
 ) *dbT {
 	d := &dbT{
 		opts:            opts,
@@ -79,6 +81,7 @@ func newDB(
 		mergers:         mergers,
 		openErrEnhancer: openErrEnhancer,
 		openOptions:     openOptions,
+		exciseSpanFn:    exciseSpanFn,
 	}
 	d.fmtKey.mustSet("quoted")
 	d.fmtValue.mustSet("[%x]")
@@ -515,16 +518,37 @@ func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
 	fmt.Fprintf(stdout, "%d\n", bytes)
 }
 
+func (d *dbT) getExciseSpan() (pebble.KeyRange, error) {
+	// If a DBExciseSpanFn is specified, try to use it and see if it returns a
+	// valid span.
+	if d.exciseSpanFn != nil {
+		span, err := d.exciseSpanFn()
+		if err != nil {
+			return pebble.KeyRange{}, err
+		}
+		if span.Valid() {
+			if d.start != nil || d.end != nil {
+				return pebble.KeyRange{}, errors.Errorf(
+					"--start/--end cannot be used when span is specified by other methods.")
+			}
+			return span, nil
+		}
+	}
+	if d.start == nil || d.end == nil {
+		return pebble.KeyRange{}, errors.Errorf("excise range not specified.")
+	}
+	return pebble.KeyRange{
+		Start: d.start,
+		End:   d.end,
+	}, nil
+}
+
 func (d *dbT) runExcise(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
-	// Init range.
-	span := pebble.KeyRange{
-		Start: d.start,
-		End:   d.end,
-	}
-	if span.Start == nil || span.End == nil {
-		fmt.Fprintf(stderr, "Excise range not specified.\n")
+	span, err := d.getExciseSpan()
+	if err != nil {
+		fmt.Fprintf(stderr, "Error: %v\n", err)
 		return
 	}
 
@@ -542,6 +566,11 @@ func (d *dbT) runExcise(cmd *cobra.Command, args []string) {
 		return
 	}
 	defer d.closeDB(stdout, db)
+
+	// Update the internal formatter if this comparator has one specified.
+	if d.opts.Comparer != nil {
+		d.fmtKey.setForComparer(d.opts.Comparer.Name, d.comparers)
+	}
 
 	fmt.Fprintf(stdout, "Excising range:\n")
 	fmt.Fprintf(stdout, "  start: %s\n", d.fmtKey.fn(span.Start))

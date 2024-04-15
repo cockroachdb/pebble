@@ -27,21 +27,21 @@ scanned 5 records in 1.0s
 
 db excise foo
 ----
-Excise range not specified.
+Error: excise range not specified.
 
 db excise foo --start=gr
 ----
-Excise range not specified.
+Error: excise range not specified.
 
 db excise foo --end=t
 ----
-Excise range not specified.
+Error: excise range not specified.
 
 db excise foo --start=gr --end=t --yes
 ----
 Excising range:
-  start: gr
-  end:   t
+  start: test formatter: gr
+  end:   test formatter: t
 Excise complete.
 
 db scan foo
@@ -49,7 +49,6 @@ db scan foo
 test formatter: blue test value formatter: blue-val
 test formatter: yellow test value formatter: yellow-val
 scanned 2 records in 1.0s
-
 
 db scan testdata/broken-external-db
 ----
