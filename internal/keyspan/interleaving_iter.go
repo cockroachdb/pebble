@@ -190,6 +190,10 @@ var _ base.InternalIterator = &InterleavingIter{}
 type InterleavingIterOpts struct {
 	Mask                   SpanMask
 	LowerBound, UpperBound []byte
+	// InterleaveEndKeys configures the interleaving iterator to interleave the
+	// end keys of spans (in addition to the start keys, which are always
+	// interleaved).
+	InterleaveEndKeys bool
 }
 
 // Init initializes the InterleavingIter to interleave point keys from pointIter
@@ -792,16 +796,19 @@ func (i *InterleavingIter) yieldPosition(lowerBound []byte, advance func()) *bas
 			}
 			return i.yieldPointKey()
 		case posKeyspanEnd:
-			// Don't interleave end keys; just advance.
-			advance()
-			continue
+			if !i.opts.InterleaveEndKeys {
+				// Don't interleave end keys; just advance.
+				advance()
+				continue
+			}
+			return i.yieldSyntheticSpanEndMarker()
 		case posKeyspanStart:
 			// Don't interleave an empty span.
 			if i.span.Empty() {
 				advance()
 				continue
 			}
-			return i.yieldSyntheticSpanMarker(lowerBound)
+			return i.yieldSyntheticSpanStartMarker(lowerBound)
 		default:
 			panic(fmt.Sprintf("unexpected interleavePos=%d", i.pos))
 		}
@@ -939,7 +946,7 @@ func (i *InterleavingIter) yieldPointKey() *base.InternalKV {
 	return i.verify(i.pointKV)
 }
 
-func (i *InterleavingIter) yieldSyntheticSpanMarker(lowerBound []byte) *base.InternalKV {
+func (i *InterleavingIter) yieldSyntheticSpanStartMarker(lowerBound []byte) *base.InternalKV {
 	i.spanMarker.K.UserKey = i.startKey()
 	i.spanMarker.K.Trailer = base.MakeTrailer(base.InternalKeySeqNumMax, i.span.Keys[0].Kind())
 
@@ -976,6 +983,12 @@ func (i *InterleavingIter) yieldSyntheticSpanMarker(lowerBound []byte) *base.Int
 	return i.verify(&i.spanMarker)
 }
 
+func (i *InterleavingIter) yieldSyntheticSpanEndMarker() *base.InternalKV {
+	i.spanMarker.K.UserKey = i.endKey()
+	i.spanMarker.K.Trailer = base.MakeTrailer(base.InternalKeySeqNumMax, i.span.Keys[0].Kind())
+	return i.verify(&i.spanMarker)
+}
+
 func (i *InterleavingIter) disablePrefixMode() {
 	if i.prefix != nil {
 		i.prefix = nil
@@ -994,7 +1007,8 @@ func (i *InterleavingIter) verify(kv *base.InternalKV) *base.InternalKV {
 			panic("pebble: invariant violation: truncated span key in reverse iteration")
 		case kv != nil && i.opts.LowerBound != nil && i.cmp(kv.K.UserKey, i.opts.LowerBound) < 0:
 			panic("pebble: invariant violation: key < lower bound")
-		case kv != nil && i.opts.UpperBound != nil && i.cmp(kv.K.UserKey, i.opts.UpperBound) >= 0:
+		case kv != nil && i.opts.UpperBound != nil &&
+			!base.UserKeyExclusive(i.opts.UpperBound).IsUpperBoundForInternalKey(i.comparer.Compare, kv.K):
 			panic("pebble: invariant violation: key ≥ upper bound")
 		case i.err != nil && kv != nil:
 			panic("pebble: invariant violation: accumulated error swallowed")
@@ -1041,6 +1055,13 @@ func (i *InterleavingIter) startKey() []byte {
 		return i.truncatedSpan.Start
 	}
 	return i.span.Start
+}
+
+func (i *InterleavingIter) endKey() []byte {
+	if i.truncated {
+		return i.truncatedSpan.End
+	}
+	return i.span.End
 }
 
 func (i *InterleavingIter) savePoint(kv *base.InternalKV) {
