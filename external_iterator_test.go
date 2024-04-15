@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -68,70 +66,6 @@ func TestExternalIterator(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
-}
-
-func TestSimpleLevelIter(t *testing.T) {
-	mem := vfs.NewMem()
-	o := &Options{
-		FS:       mem,
-		Comparer: testkeys.Comparer,
-	}
-	o.testingRandomized(t)
-	o.EnsureDefaults()
-	d, err := Open("", o)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, d.Close()) }()
-
-	datadriven.RunTest(t, "testdata/simple_level_iter", func(t *testing.T, td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "reset":
-			mem = vfs.NewMem()
-			return ""
-		case "build":
-			if err := runBuildCmd(td, d, mem); err != nil {
-				return err.Error()
-			}
-			return ""
-		case "iter":
-			var files []sstable.ReadableFile
-			var filenames []string
-			td.ScanArgs(t, "files", &filenames)
-			for _, name := range filenames {
-				f, err := mem.Open(name)
-				require.NoError(t, err)
-				files = append(files, f)
-			}
-			readers, err := openExternalTables(o, files, 0, o.MakeReaderOptions())
-			require.NoError(t, err)
-			defer func() {
-				for i := range readers {
-					_ = readers[i].Close()
-				}
-			}()
-			var internalIters []internalIterator
-			for i := range readers {
-				iter, err := readers[i].NewIter(sstable.NoTransforms, nil, nil)
-				require.NoError(t, err)
-				internalIters = append(internalIters, iter)
-			}
-			it := &simpleLevelIter{cmp: o.Comparer.Compare, iters: internalIters}
-			it.init(IterOptions{})
-
-			response := itertest.RunInternalIterCmd(t, td, it)
-			require.NoError(t, it.Close())
-			return response
-		default:
-			return fmt.Sprintf("unknown command: %s", td.Cmd)
-		}
-	})
-}
-
-func TestSimpleIterError(t *testing.T) {
-	s := simpleLevelIter{cmp: DefaultComparer.Compare, iters: []internalIterator{&errorIter{err: errors.New("injected")}}}
-	s.init(IterOptions{})
-	defer s.Close()
-	require.Nil(t, s.First())
-	require.Error(t, s.Error())
 }
 
 func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
