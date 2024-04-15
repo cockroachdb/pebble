@@ -78,6 +78,96 @@ PointKey: tomato#2,SET
 Span: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 
+# Test interleaving end keys.
+
+iter interleave-end-keys
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+-- SpanChanged(nil)
+-- SpanChanged(a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)})
+PointKey: a#72057594037927935,RANGEKEYSET
+Span: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
+-
+PointKey: artichoke#10,SET
+Span: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
+-
+PointKey: artichoke#8,SET
+Span: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
+-
+PointKey: c#72057594037927935,RANGEKEYSET
+Span: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
+-
+-- SpanChanged(c-d:{(#4,RANGEKEYSET,@3,coconut)})
+PointKey: c#72057594037927935,RANGEKEYSET
+Span: c-d:{(#4,RANGEKEYSET,@3,coconut)}
+-
+PointKey: carrot#13,SET
+Span: c-d:{(#4,RANGEKEYSET,@3,coconut)}
+-
+PointKey: cauliflower#9,DEL
+Span: c-d:{(#4,RANGEKEYSET,@3,coconut)}
+-
+PointKey: d#72057594037927935,RANGEKEYSET
+Span: c-d:{(#4,RANGEKEYSET,@3,coconut)}
+-
+-- SpanChanged(e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)})
+PointKey: e#72057594037927935,RANGEKEYSET
+Span: e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+-
+PointKey: f#72057594037927935,RANGEKEYSET
+Span: e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+-
+-- SpanChanged(h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)})
+PointKey: h#72057594037927935,RANGEKEYDEL
+Span: h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
+-
+PointKey: j#72057594037927935,RANGEKEYDEL
+Span: h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
+-
+-- SpanChanged(l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)})
+PointKey: l#72057594037927935,RANGEKEYUNSET
+Span: l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+-
+PointKey: m#72057594037927935,RANGEKEYUNSET
+Span: l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+-
+-- SpanChanged(nil)
+PointKey: parsnip#3,SET
+Span: <invalid>
+-
+-- SpanChanged(q-z:{(#14,RANGEKEYSET,@9,mangos)})
+PointKey: q#72057594037927935,RANGEKEYSET
+Span: q-z:{(#14,RANGEKEYSET,@9,mangos)}
+-
+PointKey: tomato#2,SET
+Span: q-z:{(#14,RANGEKEYSET,@9,mangos)}
+-
+PointKey: z#72057594037927935,RANGEKEYSET
+Span: q-z:{(#14,RANGEKEYSET,@9,mangos)}
+-
+-- SpanChanged(nil)
+PointKey: zucchini#12,MERGE
+Span: <invalid>
+-
+
 # Test set-bounds passes through to the underlying point iterator and truncates
 # a range key's end.
 
@@ -995,4 +1085,227 @@ Span: f-g:{(#6,RANGEKEYSET,@9,foo)}
 -
 -- SpanChanged(nil)
 .
+.
+
+define-spans
+b-e:{(#5,RANGEDEL)}
+f-g:{(#6,RANGEDEL)}
+----
+OK
+
+define-pointkeys
+a@4.SET.8
+c@11.SET.8
+c@3.SET.8
+c@1.SET.4
+d@5.SET.3
+e@9.SET.2
+----
+OK
+
+iter interleave-end-keys
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+-- SpanChanged(nil)
+-- SpanChanged(nil)
+PointKey: a@4#8,SET
+Span: <invalid>
+-
+-- SpanChanged(b-e:{(#5,RANGEDEL)})
+PointKey: b#72057594037927935,RANGEDEL
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: c@11#8,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: c@3#8,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: c@1#4,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: d@5#3,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: e#72057594037927935,RANGEDEL
+Span: b-e:{(#5,RANGEDEL)}
+-
+-- SpanChanged(nil)
+PointKey: e@9#2,SET
+Span: <invalid>
+-
+-- SpanChanged(f-g:{(#6,RANGEDEL)})
+PointKey: f#72057594037927935,RANGEDEL
+Span: f-g:{(#6,RANGEDEL)}
+-
+PointKey: g#72057594037927935,RANGEDEL
+Span: f-g:{(#6,RANGEDEL)}
+-
+-- SpanChanged(nil)
+.
+
+iter interleave-end-keys
+last
+prev
+prev
+prev
+prev
+prev
+prev
+prev
+prev
+prev
+prev
+----
+-- SpanChanged(nil)
+PointKey: g#72057594037927935,RANGEDEL
+Span: f-g:{(#6,RANGEDEL)}
+-
+-- SpanChanged(f-g:{(#6,RANGEDEL)})
+PointKey: f#72057594037927935,RANGEDEL
+Span: f-g:{(#6,RANGEDEL)}
+-
+-- SpanChanged(nil)
+PointKey: e@9#2,SET
+Span: <invalid>
+-
+PointKey: e#72057594037927935,RANGEDEL
+Span: b-e:{(#5,RANGEDEL)}
+-
+-- SpanChanged(b-e:{(#5,RANGEDEL)})
+PointKey: d@5#3,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: c@1#4,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: c@3#8,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: c@11#8,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: b#72057594037927935,RANGEDEL
+Span: b-e:{(#5,RANGEDEL)}
+-
+-- SpanChanged(nil)
+PointKey: a@4#8,SET
+Span: <invalid>
+-
+-- SpanChanged(nil)
+.
+
+iter interleave-end-keys
+seek-ge c@1
+next
+----
+-- SpanChanged(nil)
+-- SpanChanged(b-e:{(#5,RANGEDEL)})
+PointKey: c@1#72057594037927935,RANGEDEL
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: c@1#4,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+
+iter interleave-end-keys
+seek-lt c@10
+prev
+----
+-- SpanChanged(nil)
+PointKey: e#72057594037927935,RANGEDEL
+Span: b-e:{(#5,RANGEDEL)}
+-
+-- SpanChanged(b-e:{(#5,RANGEDEL)})
+PointKey: c@11#8,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+
+# Test abutting spans.
+
+define-spans
+a-b:{(#5,RANGEDEL)}
+b-c:{(#6,RANGEDEL)}
+----
+OK
+
+define-pointkeys
+a@4.SET.8
+b@9.DEL.2
+c@11.SET.8
+c@3.SET.8
+----
+OK
+
+iter interleave-end-keys
+seek-ge a
+next
+next
+next
+next
+----
+-- SpanChanged(nil)
+-- SpanChanged(a-b:{(#5,RANGEDEL)})
+PointKey: a#72057594037927935,RANGEDEL
+Span: a-b:{(#5,RANGEDEL)}
+-
+PointKey: a@4#8,SET
+Span: a-b:{(#5,RANGEDEL)}
+-
+PointKey: b#72057594037927935,RANGEDEL
+Span: a-b:{(#5,RANGEDEL)}
+-
+-- SpanChanged(b-c:{(#6,RANGEDEL)})
+PointKey: b#72057594037927935,RANGEDEL
+Span: b-c:{(#6,RANGEDEL)}
+-
+PointKey: b@9#2,DEL
+Span: b-c:{(#6,RANGEDEL)}
+-
+
+iter interleave-end-keys
+seek-ge a@9
+next
+next
+----
+-- SpanChanged(nil)
+-- SpanChanged(a-b:{(#5,RANGEDEL)})
+PointKey: a@9#72057594037927935,RANGEDEL
+Span: a-b:{(#5,RANGEDEL)}
+-
+PointKey: a@4#8,SET
+Span: a-b:{(#5,RANGEDEL)}
+-
+PointKey: b#72057594037927935,RANGEDEL
+Span: a-b:{(#5,RANGEDEL)}
+-
+
+iter interleave-end-keys
+seek-lt a@1
+prev
+prev
+prev
+----
+-- SpanChanged(nil)
+PointKey: b#72057594037927935,RANGEDEL
+Span: a-b:{(#5,RANGEDEL)}
+-
+-- SpanChanged(a-b:{(#5,RANGEDEL)})
+PointKey: a@4#8,SET
+Span: a-b:{(#5,RANGEDEL)}
+-
+PointKey: a#72057594037927935,RANGEDEL
+Span: a-b:{(#5,RANGEDEL)}
+-
+-- SpanChanged(nil)
 .

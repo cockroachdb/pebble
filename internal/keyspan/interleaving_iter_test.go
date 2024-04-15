@@ -122,6 +122,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			if cmdArg, ok := td.Arg("masking-threshold"); ok {
 				hooks.threshold = []byte(strings.Join(cmdArg.Vals, ""))
 			}
+			opts.InterleaveEndKeys = td.HasArg("interleave-end-keys")
 			iter.Init(testkeys.Comparer, &pointIter, keyspanIter, opts)
 			// Clear any previous bounds.
 			pointIter.SetBounds(nil, nil)
