@@ -39,6 +39,7 @@ type T struct {
 	defaultComparer string
 	openErrEnhancer func(error) error
 	openOptions     []OpenOption
+	exciseSpanFn    DBExciseSpanFn
 }
 
 // A Option configures the Pebble introspection tool.
@@ -108,6 +109,20 @@ func OpenErrEnhancer(fn func(error) error) Option {
 	}
 }
 
+// DBExciseSpanFn is a function used to obtain the excise span for the `db
+// excise` command. This allows a higher-level wrapper to add its own way of
+// specifying the span. Returns an invalid KeyRange if none was specified (in
+// which case the default --start/end flags are used).
+type DBExciseSpanFn func() (pebble.KeyRange, error)
+
+// WithDBExciseSpanFn specifies a function that returns the excise span for the
+// `db excise` command.
+func WithDBExciseSpanFn(fn DBExciseSpanFn) Option {
+	return func(t *T) {
+		t.exciseSpanFn = fn
+	}
+}
+
 // New creates a new introspection tool.
 func New(opts ...Option) *T {
 	t := &T{
@@ -130,7 +145,7 @@ func New(opts ...Option) *T {
 		opt(t)
 	}
 
-	t.db = newDB(&t.opts, t.comparers, t.mergers, t.openErrEnhancer, t.openOptions)
+	t.db = newDB(&t.opts, t.comparers, t.mergers, t.openErrEnhancer, t.openOptions, t.exciseSpanFn)
 	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)
