@@ -19,14 +19,16 @@ import (
 
 // recordQueueEntry is an entry in recordQueue.
 type recordQueueEntry struct {
-	p     []byte
-	opts  SyncOptions
-	unref func()
+	p                   []byte
+	opts                SyncOptions
+	unref               func()
+	writeStartUnixNanos int64
 }
 
 type poppedEntry struct {
-	opts  SyncOptions
-	unref func()
+	opts                SyncOptions
+	unref               func()
+	writeStartUnixNanos int64
 }
 
 const initialBufferLen = 8192
@@ -134,11 +136,14 @@ type recordQueue struct {
 	// only RLock (since WriteRecord is externally synchronized), (b)
 	// snapshotAndSwitchWriter, using Lock. (b) excludes (a).
 	lastLogSize int64
+
+	failoverWriteAndSyncLatency prometheus.Histogram
 }
 
-func (q *recordQueue) init() {
+func (q *recordQueue) init(failoverWriteAndSyncLatency prometheus.Histogram) {
 	*q = recordQueue{
-		buffer: make([]recordQueueEntry, initialBufferLen),
+		buffer:                      make([]recordQueueEntry, initialBufferLen),
+		failoverWriteAndSyncLatency: failoverWriteAndSyncLatency,
 	}
 }
 
@@ -147,6 +152,7 @@ func (q *recordQueue) push(
 	p []byte,
 	opts SyncOptions,
 	unref func(),
+	writeStartUnixNanos int64,
 	latestLogSizeInWriteRecord int64,
 	latestWriterInWriteRecord *record.LogWriter,
 ) (index uint32, writer *record.LogWriter, lastLogSize int64) {
@@ -167,9 +173,10 @@ func (q *recordQueue) push(
 	}
 	q.mu.RLock()
 	q.buffer[int(h)%m] = recordQueueEntry{
-		p:     p,
-		opts:  opts,
-		unref: unref,
+		p:                   p,
+		opts:                opts,
+		unref:               unref,
+		writeStartUnixNanos: writeStartUnixNanos,
 	}
 	// Reclaim memory for consumed entries. We couldn't do that in pop since
 	// multiple consumers are popping using CAS and that immediately transfers
@@ -216,6 +223,7 @@ func (q *recordQueue) popAll(err error) (numRecords int, numSyncsPopped int) {
 // pop. This would avoid the CAS below, but it seems better to reduce the
 // amount of queued work regardless of who has successfully written it.
 func (q *recordQueue) pop(index uint32, err error) (numSyncsPopped int) {
+	nowUnixNanos := time.Now().UnixNano()
 	var buf [512]poppedEntry
 	tailEntriesToPop := func() (t uint32, numEntriesToPop int) {
 		ht := q.headTail.Load()
@@ -246,14 +254,17 @@ func (q *recordQueue) pop(index uint32, err error) (numSyncsPopped int) {
 		// release those buffer slots to the producer.
 		idx := (i + int(tail)) % n
 		b[i] = poppedEntry{
-			opts:  q.buffer[idx].opts,
-			unref: q.buffer[idx].unref,
+			opts:                q.buffer[idx].opts,
+			unref:               q.buffer[idx].unref,
+			writeStartUnixNanos: q.buffer[idx].writeStartUnixNanos,
 		}
 	}
 	// Since tail cannot change, we don't need to do a compare-and-swap.
 	q.headTail.Add(uint64(numEntriesToPop))
 	q.mu.RUnlock()
 	q.consumerMu.Unlock()
+	addLatencySample := false
+	var maxLatencyNanos int64
 	for i := 0; i < numEntriesToPop; i++ {
 		// Now that we've synced the entry, we can unref it to signal that we
 		// will not read the written byte slice again.
@@ -266,7 +277,20 @@ func (q *recordQueue) pop(index uint32, err error) (numSyncsPopped int) {
 				*b[i].opts.Err = err
 			}
 			b[i].opts.Done.Done()
+			latency := nowUnixNanos - b[i].writeStartUnixNanos
+			if !addLatencySample {
+				addLatencySample = true
+				maxLatencyNanos = latency
+			} else if maxLatencyNanos < latency {
+				maxLatencyNanos = latency
+			}
 		}
+	}
+	if addLatencySample {
+		if maxLatencyNanos < 0 {
+			maxLatencyNanos = 0
+		}
+		q.failoverWriteAndSyncLatency.Observe(float64(maxLatencyNanos))
 	}
 	return numSyncsPopped
 }
@@ -434,7 +458,8 @@ type failoverWriterOpts struct {
 	queueSemChan    chan struct{}
 	stopper         *stopper
 
-	writerClosed func(logicalLogWithSizesEtc)
+	failoverWriteAndSyncLatency prometheus.Histogram
+	writerClosed                func(logicalLogWithSizesEtc)
 
 	writerCreatedForTest chan<- struct{}
 }
@@ -460,7 +485,7 @@ func newFailoverWriter(
 	ww := &failoverWriter{
 		opts: opts,
 	}
-	ww.q.init()
+	ww.q.init(opts.failoverWriteAndSyncLatency)
 	ww.mu.cond = sync.NewCond(&ww.mu)
 	// The initial record.LogWriter creation also happens via a
 	// switchToNewWriter since we don't want it to block newFailoverWriter.
@@ -480,10 +505,15 @@ func (ww *failoverWriter) WriteRecord(
 	if ref != nil {
 		unref = ref()
 	}
+	var writeStartUnixNanos int64
+	if opts.Done != nil {
+		writeStartUnixNanos = time.Now().UnixNano()
+	}
 	recordIndex, writer, lastLogSize := ww.q.push(
 		p,
 		opts,
 		unref,
+		writeStartUnixNanos,
 		ww.logicalOffset.latestLogSizeInWriteRecord,
 		ww.logicalOffset.latestWriterInWriteRecord,
 	)

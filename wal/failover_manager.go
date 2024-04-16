@@ -614,20 +614,21 @@ func (wm *failoverManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		}
 	}()
 	fwOpts := failoverWriterOpts{
-		wn:                   wn,
-		logger:               wm.opts.Logger,
-		timeSource:           wm.opts.timeSource,
-		jobID:                jobID,
-		logCreator:           wm.logCreator,
-		noSyncOnClose:        wm.opts.NoSyncOnClose,
-		bytesPerSync:         wm.opts.BytesPerSync,
-		preallocateSize:      wm.opts.PreallocateSize,
-		minSyncInterval:      wm.opts.MinSyncInterval,
-		fsyncLatency:         wm.opts.FsyncLatency,
-		queueSemChan:         wm.opts.QueueSemChan,
-		stopper:              wm.stopper,
-		writerClosed:         wm.writerClosed,
-		writerCreatedForTest: wm.opts.logWriterCreatedForTesting,
+		wn:                          wn,
+		logger:                      wm.opts.Logger,
+		timeSource:                  wm.opts.timeSource,
+		jobID:                       jobID,
+		logCreator:                  wm.logCreator,
+		noSyncOnClose:               wm.opts.NoSyncOnClose,
+		bytesPerSync:                wm.opts.BytesPerSync,
+		preallocateSize:             wm.opts.PreallocateSize,
+		minSyncInterval:             wm.opts.MinSyncInterval,
+		fsyncLatency:                wm.opts.FsyncLatency,
+		queueSemChan:                wm.opts.QueueSemChan,
+		stopper:                     wm.stopper,
+		failoverWriteAndSyncLatency: wm.opts.FailoverWriteAndSyncLatency,
+		writerClosed:                wm.writerClosed,
+		writerCreatedForTest:        wm.opts.logWriterCreatedForTesting,
 	}
 	var err error
 	var ww *failoverWriter
@@ -664,6 +665,7 @@ func (wm *failoverManager) writerClosed(llse logicalLogWithSizesEtc) {
 func (wm *failoverManager) Stats() Stats {
 	obsoleteLogsCount, obsoleteLogSize := wm.recycler.Stats()
 	failoverStats := wm.monitor.stats()
+	failoverStats.FailoverWriteAndSyncLatency = wm.opts.FailoverWriteAndSyncLatency
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 	var liveFileCount int

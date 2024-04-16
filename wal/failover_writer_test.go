@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -274,14 +275,15 @@ func TestFailoverWriter(t *testing.T) {
 					}
 					logWriterCreated = make(chan struct{}, 100)
 					w, err = newFailoverWriter(failoverWriterOpts{
-						wn:                   wn,
-						timeSource:           defaultTime{},
-						logCreator:           testLogCreator,
-						preallocateSize:      func() int { return 0 },
-						queueSemChan:         queueSemChan,
-						stopper:              stopper,
-						writerClosed:         func(_ logicalLogWithSizesEtc) {},
-						writerCreatedForTest: logWriterCreated,
+						wn:                          wn,
+						timeSource:                  defaultTime{},
+						logCreator:                  testLogCreator,
+						preallocateSize:             func() int { return 0 },
+						queueSemChan:                queueSemChan,
+						stopper:                     stopper,
+						failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+						writerClosed:                func(_ logicalLogWithSizesEtc) {},
+						writerCreatedForTest:        logWriterCreated,
 					}, testDirs[dirIndex])
 					require.NoError(t, err)
 					if !noWaitForLogWriterCreation {
@@ -637,14 +639,15 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 	queueSemChan := make(chan struct{}, len(records))
 	dirIndex := 0
 	ww, err := newFailoverWriter(failoverWriterOpts{
-		wn:                   0,
-		timeSource:           defaultTime{},
-		logCreator:           simpleLogCreator,
-		preallocateSize:      func() int { return 0 },
-		queueSemChan:         queueSemChan,
-		stopper:              stopper,
-		writerClosed:         func(_ logicalLogWithSizesEtc) {},
-		writerCreatedForTest: logWriterCreated,
+		wn:                          0,
+		timeSource:                  defaultTime{},
+		logCreator:                  simpleLogCreator,
+		preallocateSize:             func() int { return 0 },
+		queueSemChan:                queueSemChan,
+		stopper:                     stopper,
+		failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		writerClosed:                func(_ logicalLogWithSizesEtc) {},
+		writerCreatedForTest:        logWriterCreated,
 	}, dirs[dirIndex])
 	require.NoError(t, err)
 	wg := &sync.WaitGroup{}
@@ -736,12 +739,13 @@ func TestFailoverWriterManyRecords(t *testing.T) {
 		File: f,
 	}
 	w, err := newFailoverWriter(failoverWriterOpts{
-		wn:              1,
-		timeSource:      defaultTime{},
-		logCreator:      simpleLogCreator,
-		preallocateSize: func() int { return 0 },
-		stopper:         stopper,
-		writerClosed:    func(_ logicalLogWithSizesEtc) {},
+		wn:                          1,
+		timeSource:                  defaultTime{},
+		logCreator:                  simpleLogCreator,
+		preallocateSize:             func() int { return 0 },
+		stopper:                     stopper,
+		failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		writerClosed:                func(_ logicalLogWithSizesEtc) {},
 	}, dir)
 	require.NoError(t, err)
 	var buf [1]byte
