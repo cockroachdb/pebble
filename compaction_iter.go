@@ -6,7 +6,9 @@ package pebble
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/compact"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/redact"
@@ -149,6 +152,7 @@ import (
 // exported function, and before a subsequent call to Next advances the iterator
 // and mutates the contents of the returned key and value.
 type compactionIter struct {
+	cmp   Compare
 	equal Equal
 	merge Merge
 	iter  internalIterator
@@ -232,12 +236,6 @@ type compactionIter struct {
 	// should request a compaction split next time they're asked in
 	// [shouldSplitBefore].
 	frontiers compact.Frontiers
-	// Reference to the range deletion tombstone fragmenter (e.g.,
-	// `compaction.rangeDelFrag`).
-	// TODO(jackson): We can eliminate range{Del,Key}Frag now that fragmentation
-	// is performed upfront by keyspanimpl.MergingIters.
-	rangeDelFrag *keyspan.Fragmenter
-	rangeKeyFrag *keyspan.Fragmenter
 	// The fragmented tombstones.
 	tombstones []keyspan.Span
 	// The fragmented range keys.
@@ -261,12 +259,9 @@ type compactionIter struct {
 func newCompactionIter(
 	cmp Compare,
 	equal Equal,
-	formatKey base.FormatKey,
 	merge Merge,
 	iter internalIterator,
 	snapshots []uint64,
-	rangeDelFrag *keyspan.Fragmenter,
-	rangeKeyFrag *keyspan.Fragmenter,
 	allowZeroSeqNum bool,
 	elideTombstone func(key []byte) bool,
 	elideRangeTombstone func(start, end []byte) bool,
@@ -275,12 +270,11 @@ func newCompactionIter(
 	formatVersion FormatMajorVersion,
 ) *compactionIter {
 	i := &compactionIter{
+		cmp:                                    cmp,
 		equal:                                  equal,
 		merge:                                  merge,
 		iter:                                   iter,
 		snapshots:                              snapshots,
-		rangeDelFrag:                           rangeDelFrag,
-		rangeKeyFrag:                           rangeKeyFrag,
 		allowZeroSeqNum:                        allowZeroSeqNum,
 		elideTombstone:                         elideTombstone,
 		elideRangeTombstone:                    elideRangeTombstone,
@@ -289,12 +283,6 @@ func newCompactionIter(
 		formatVersion:                          formatVersion,
 	}
 	i.frontiers.Init(cmp)
-	i.rangeDelFrag.Cmp = cmp
-	i.rangeDelFrag.Format = formatKey
-	i.rangeDelFrag.Emit = i.emitRangeDelChunk
-	i.rangeKeyFrag.Cmp = cmp
-	i.rangeKeyFrag.Format = formatKey
-	i.rangeKeyFrag.Emit = i.emitRangeKeyChunk
 	return i
 }
 
@@ -399,28 +387,32 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			return &i.key, i.value
 		}
 
-		// TODO(sumeer): we could avoid calling Covers if i.iterStripeChange ==
-		// sameStripeSameKey since that check has already been done in
-		// nextInStripeHelper. However, we also need to handle the case of
+		// Check if the last tombstone covers the key.
+		// TODO(sumeer): we could avoid calling tombstoneCovers if
+		// i.iterStripeChange == sameStripeSameKey since that check has already been
+		// done in nextInStripeHelper. However, we also need to handle the case of
 		// CoversInvisibly below.
-		if cover := i.rangeDelFrag.Covers(i.iterKV.K, i.curSnapshotSeqNum); cover == keyspan.CoversVisibly {
+		switch i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) {
+		case keyspan.CoversVisibly:
 			// A pending range deletion deletes this key. Skip it.
 			i.saveKey()
 			i.skipInStripe()
 			continue
-		} else if cover == keyspan.CoversInvisibly {
-			// i.iterKV would be deleted by a range deletion if there weren't
-			// any open snapshots. Mark it as pinned.
+
+		case keyspan.CoversInvisibly:
+			// i.iterKV would be deleted by a range deletion if there weren't any open
+			// snapshots. Mark it as pinned.
 			//
-			// NB: there are multiple places in this file where we call
-			// i.rangeDelFrag.Covers and this is the only one where we are writing
-			// to i.snapshotPinned. Those other cases occur in mergeNext where the
-			// caller is deciding whether the value should be merged or not, and the
-			// key is in the same snapshot stripe. Hence, snapshotPinned is by
-			// definition false in those cases.
+			// NB: there are multiple places in this file where we check for a
+			// covering tombstone and this is the only one where we are writing to
+			// i.snapshotPinned. Those other cases occur in mergeNext where the caller
+			// is deciding whether the value should be merged or not, and the key is
+			// in the same snapshot stripe. Hence, snapshotPinned is by definition
+			// false in those cases.
 			i.snapshotPinned = true
 			i.forceObsoleteDueToRangeDel = true
-		} else {
+
+		default:
 			i.forceObsoleteDueToRangeDel = false
 		}
 
@@ -688,7 +680,7 @@ func (i *compactionIter) nextInStripeHelper() stripeChangeType {
 		}
 		if i.curSnapshotIdx == origSnapshotIdx {
 			// Same snapshot.
-			if i.rangeDelFrag.Covers(i.iterKV.K, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
+			if i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
 				continue
 			}
 			return sameStripe
@@ -891,7 +883,7 @@ func (i *compactionIter) singleDeleteNext() bool {
 						// violation. The rare case is newStripeSameKey, where it is a
 						// violation if not covered by a RANGEDEL.
 						if change == sameStripe ||
-							i.rangeDelFrag.Covers(i.iterKV.K, i.curSnapshotSeqNum) == keyspan.NoCover {
+							i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) == keyspan.NoCover {
 							i.singleDeleteInvariantViolationCallback(i.key.UserKey)
 						}
 					}
@@ -1241,76 +1233,120 @@ func (i *compactionIter) Close() error {
 	return i.err
 }
 
-// Tombstones returns a list of pending range tombstones in the fragmenter
-// up to the specified key, or all pending range tombstones if key = nil.
-func (i *compactionIter) Tombstones(key []byte) []keyspan.Span {
-	if key == nil {
-		i.rangeDelFrag.Finish()
-	} else {
-		// The specified end key is exclusive; no versions of the specified
-		// user key (including range tombstones covering that key) should
-		// be flushed yet.
-		i.rangeDelFrag.TruncateAndFlushTo(key)
-	}
-	tombstones := i.tombstones
-	i.tombstones = nil
-	return tombstones
+// AddTombstoneSpan adds a copy of a span of range dels, to be later returned by
+// TombstonesUpTo.
+//
+// The spans must be non-overlapping and ordered. Empty spans are ignored.
+func (i *compactionIter) AddTombstoneSpan(span *keyspan.Span) {
+	i.tombstones = i.appendSpan(i.tombstones, span)
 }
 
-// RangeKeys returns a list of pending fragmented range keys up to the specified
-// key, or all pending range keys if key = nil.
-func (i *compactionIter) RangeKeys(key []byte) []keyspan.Span {
-	if key == nil {
-		i.rangeKeyFrag.Finish()
-	} else {
-		// The specified end key is exclusive; no versions of the specified
-		// user key (including range tombstones covering that key) should
-		// be flushed yet.
-		i.rangeKeyFrag.TruncateAndFlushTo(key)
+// tombstoneCovers returns whether the key is covered by a tombstone and whether
+// it is covered by a tombstone visible in the given snapshot.
+//
+// The key's UserKey must be greater or equal to the last span Start key passed
+// to AddTombstoneSpan.
+func (i *compactionIter) tombstoneCovers(key InternalKey, snapshot uint64) keyspan.Cover {
+	if len(i.tombstones) == 0 {
+		return keyspan.NoCover
 	}
-	rangeKeys := i.rangeKeys
-	i.rangeKeys = nil
-	return rangeKeys
+	last := &i.tombstones[len(i.tombstones)-1]
+	if invariants.Enabled && i.cmp(key.UserKey, last.Start) < 0 {
+		panic(errors.AssertionFailedf("invalid key %q, last span %s", key, last))
+	}
+	if i.cmp(key.UserKey, last.End) < 0 && last.Covers(key.SeqNum()) {
+		if last.CoversAt(snapshot, key.SeqNum()) {
+			return keyspan.CoversVisibly
+		}
+		return keyspan.CoversInvisibly
+	}
+	return keyspan.NoCover
 }
 
-func (i *compactionIter) emitRangeDelChunk(fragmented keyspan.Span) {
-	// Apply the snapshot stripe rules, keeping only the latest tombstone for
-	// each snapshot stripe.
-	currentIdx := -1
-	keys := fragmented.Keys[:0]
-	for _, k := range fragmented.Keys {
-		idx, _ := snapshotIndex(k.SeqNum(), i.snapshots)
-		if currentIdx == idx {
-			continue
-		}
-		if idx == 0 && i.elideRangeTombstone(fragmented.Start, fragmented.End) {
-			// This is the last snapshot stripe and the range tombstone
-			// can be elided.
-			break
-		}
+// TombstonesUpTo returns a list of pending range tombstones up to the
+// specified key, or all pending range tombstones if key = nil.
+//
+// If a key is specified, it must be greater than the last span Start key passed
+// to AddTombstoneSpan.
+func (i *compactionIter) TombstonesUpTo(key []byte) []keyspan.Span {
+	var toReturn []keyspan.Span
+	toReturn, i.tombstones = i.splitSpans(i.tombstones, key)
 
-		keys = append(keys, k)
-		if idx == 0 {
-			// This is the last snapshot stripe.
-			break
+	result := toReturn[:0]
+	for _, span := range toReturn {
+		// Apply the snapshot stripe rules, keeping only the latest tombstone for
+		// each snapshot stripe.
+		currentIdx := -1
+		keys := make([]keyspan.Key, 0, min(len(span.Keys), len(i.snapshots)+1))
+		for _, k := range span.Keys {
+			idx, _ := snapshotIndex(k.SeqNum(), i.snapshots)
+			if currentIdx == idx {
+				continue
+			}
+			if idx == 0 && i.elideRangeTombstone(span.Start, span.End) {
+				// This is the last snapshot stripe and the range tombstone
+				// can be elided.
+				break
+			}
+
+			keys = append(keys, k)
+			if idx == 0 {
+				// This is the last snapshot stripe.
+				break
+			}
+			currentIdx = idx
 		}
-		currentIdx = idx
+		if len(keys) > 0 {
+			result = append(result, keyspan.Span{
+				Start: i.cloneKey(span.Start),
+				End:   i.cloneKey(span.End),
+				Keys:  keys,
+			})
+		}
 	}
-	if len(keys) > 0 {
-		i.tombstones = append(i.tombstones, keyspan.Span{
-			Start: fragmented.Start,
-			End:   fragmented.End,
-			Keys:  keys,
-		})
-	}
+
+	return result
 }
 
-func (i *compactionIter) emitRangeKeyChunk(fragmented keyspan.Span) {
+// FirstTombstoneStart returns the start key of the first pending tombstone (the
+// first span that would be returned by TombstonesUpTo). Returns nil if
+// there are no pending range keys.
+func (i *compactionIter) FirstTombstoneStart() []byte {
+	if len(i.tombstones) == 0 {
+		return nil
+	}
+	return i.tombstones[0].Start
+}
+
+// AddRangeKeySpan adds a copy of a span of range keys, to be later returned by
+// RangeKeysUpTo. The span is shallow cloned.
+//
+// The spans must be non-overlapping and ordered. Empty spans are ignored.
+func (i *compactionIter) AddRangeKeySpan(span *keyspan.Span) {
+	i.rangeKeys = i.appendSpan(i.rangeKeys, span)
+}
+
+// RangeKeysUpTo returns a list of pending range keys up to the specified key,
+// or all pending range keys if key = nil.
+//
+// If a key is specified, it must be greater than the last span Start key passed
+// to AddRangeKeySpan.
+func (i *compactionIter) RangeKeysUpTo(key []byte) []keyspan.Span {
+	var result []keyspan.Span
+	result, i.rangeKeys = i.splitSpans(i.rangeKeys, key)
 	// Elision of snapshot stripes happens in rangeKeyCompactionTransform, so no need to
 	// do that here.
-	if len(fragmented.Keys) > 0 {
-		i.rangeKeys = append(i.rangeKeys, fragmented)
+	return result
+}
+
+// FirstRangeKeyStart returns the start key of the first pending range key span
+// (the first span that would be returned by RangeKeysUpTo). Returns nil
+// if there are no pending range keys.
+func (i *compactionIter) FirstRangeKeyStart() []byte {
+	if len(i.rangeKeys) == 0 {
+		return nil
 	}
+	return i.rangeKeys[0].Start
 }
 
 // maybeZeroSeqnum attempts to set the seqnum for the current key to 0. Doing
@@ -1330,4 +1366,55 @@ func (i *compactionIter) maybeZeroSeqnum(snapshotIdx int) {
 		return
 	}
 	i.key.SetSeqNum(base.SeqNumZero)
+}
+
+// appendSpan appends a span to a list of ordered, non-overlapping spans.
+// The span is shallow cloned.
+func (i *compactionIter) appendSpan(spans []keyspan.Span, span *keyspan.Span) []keyspan.Span {
+	if span.Empty() {
+		return spans
+	}
+	if invariants.Enabled && len(spans) > 0 {
+		if last := spans[len(spans)-1]; i.cmp(last.End, span.Start) > 0 {
+			panic(errors.AssertionFailedf("overlapping range key spans: %s and %s", last, span))
+		}
+	}
+	return append(spans, keyspan.Span{
+		Start: i.cloneKey(span.Start),
+		End:   i.cloneKey(span.End),
+		Keys:  slices.Clone(span.Keys),
+	})
+}
+
+// splitSpans takes a list of ordered, non-overlapping spans and a key and
+// returns two lists of spans: one that ends at or before the key, and one which
+// starts at or after key.
+//
+// If the key is nil, returns all spans. If not nil, the key must not be smaller
+// than the start of the last span in the list.
+func (i *compactionIter) splitSpans(
+	spans []keyspan.Span, key []byte,
+) (before, after []keyspan.Span) {
+	n := len(spans)
+	if n == 0 || key == nil || i.cmp(spans[n-1].End, key) <= 0 {
+		// Common case: return all spans (retaining any extra allocated space).
+		return spans[:n:n], spans[n:]
+	}
+	if c := i.cmp(key, spans[n-1].Start); c <= 0 {
+		if c < 0 {
+			panic(fmt.Sprintf("invalid key %q, last span %s", key, spans[n-1]))
+		}
+		// The last span starts exactly at key.
+		return spans[: n-1 : n-1], spans[n-1:]
+	}
+	// We have to split the last span.
+	key = i.cloneKey(key)
+	before = spans[:n:n]
+	after = append(spans[n:], keyspan.Span{
+		Start: key,
+		End:   spans[n-1].End,
+		Keys:  slices.Clone(spans[n-1].Keys),
+	})
+	before[n-1].End = key
+	return before, after
 }

@@ -132,12 +132,9 @@ func TestCompactionIter(t *testing.T) {
 		return newCompactionIter(
 			DefaultComparer.Compare,
 			DefaultComparer.Equal,
-			DefaultComparer.FormatKey,
 			merge,
 			iter,
 			snapshots,
-			&keyspan.Fragmenter{},
-			&keyspan.Fragmenter{},
 			allowZeroSeqnum,
 			func([]byte) bool {
 				return elideTombstones
@@ -268,7 +265,7 @@ func TestCompactionIter(t *testing.T) {
 						if len(parts) == 2 {
 							key = []byte(parts[1])
 						}
-						for _, v := range iter.Tombstones(key) {
+						for _, v := range iter.TombstonesUpTo(key) {
 							for _, k := range v.Keys {
 								fmt.Fprintf(&b, "%s-%s#%d\n", v.Start, v.End, k.SeqNum())
 							}
@@ -280,7 +277,7 @@ func TestCompactionIter(t *testing.T) {
 						if len(parts) == 2 {
 							key = []byte(parts[1])
 						}
-						for _, v := range iter.RangeKeys(key) {
+						for _, v := range iter.RangeKeysUpTo(key) {
 							fmt.Fprintf(&b, "%s\n", v)
 						}
 						fmt.Fprintf(&b, ".\n")
@@ -314,11 +311,11 @@ func TestCompactionIter(t *testing.T) {
 						}
 						fmt.Fprintf(&b, "%s:%s%s%s", iter.Key(), v, snapshotPinned, forceObsolete)
 						if iter.Key().Kind() == InternalKeyKindRangeDelete {
-							iter.rangeDelFrag.Add(*rangeDelInterleaving.Span())
+							iter.AddTombstoneSpan(rangeDelInterleaving.Span())
 							fmt.Fprintf(&b, "; Span() = %s", *rangeDelInterleaving.Span())
 						}
 						if rangekey.IsRangeKey(iter.Key().Kind()) {
-							iter.rangeKeyFrag.Add(*rangeKeyInterleaving.Span())
+							iter.AddRangeKeySpan(rangeKeyInterleaving.Span())
 						}
 						fmt.Fprintln(&b)
 					} else if err := iter.Error(); err != nil {
