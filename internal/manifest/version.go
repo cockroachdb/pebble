@@ -848,6 +848,12 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 				m.SmallestPointKey.Pretty(formatKey), m.LargestPointKey.Pretty(formatKey),
 			)
 		}
+		if !isValidPointBoundKeyKind[m.SmallestPointKey.Kind()] {
+			return base.CorruptionErrorf("file %s has invalid smallest point key kind", m)
+		}
+		if !isValidPointBoundKeyKind[m.LargestPointKey.Kind()] {
+			return base.CorruptionErrorf("file %s has invalid largest point key kind", m)
+		}
 	}
 
 	// Range key validation.
@@ -867,6 +873,12 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 				m.Smallest.Pretty(formatKey), m.Largest.Pretty(formatKey),
 				m.SmallestRangeKey.Pretty(formatKey), m.LargestRangeKey.Pretty(formatKey),
 			)
+		}
+		if !isValidRangeKeyBoundKeyKind[m.SmallestRangeKey.Kind()] {
+			return base.CorruptionErrorf("file %s has invalid smallest range key kind", m)
+		}
+		if !isValidRangeKeyBoundKeyKind[m.LargestRangeKey.Kind()] {
+			return base.CorruptionErrorf("file %s has invalid largest range key kind", m)
 		}
 	}
 
@@ -895,6 +907,23 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 
 	return nil
 }
+
+var (
+	isValidPointBoundKeyKind = [base.InternalKeyKindMax + 1]bool{
+		base.InternalKeyKindDelete:        true,
+		base.InternalKeyKindSet:           true,
+		base.InternalKeyKindMerge:         true,
+		base.InternalKeyKindSingleDelete:  true,
+		base.InternalKeyKindRangeDelete:   true,
+		base.InternalKeyKindSetWithDelete: true,
+		base.InternalKeyKindDeleteSized:   true,
+	}
+	isValidRangeKeyBoundKeyKind = [base.InternalKeyKindMax + 1]bool{
+		base.InternalKeyKindRangeKeySet:    true,
+		base.InternalKeyKindRangeKeyUnset:  true,
+		base.InternalKeyKindRangeKeyDelete: true,
+	}
+)
 
 // TableInfo returns a subset of the FileMetadata state formatted as a
 // TableInfo.
