@@ -302,13 +302,6 @@ type compaction struct {
 	smallest InternalKey
 	largest  InternalKey
 
-	// The range deletion tombstone fragmenter. Adds range tombstones as they are
-	// returned from `compactionIter` and fragments them for output to files.
-	// Referenced by `compactionIter` which uses it to check whether keys are deleted.
-	rangeDelFrag keyspan.Fragmenter
-	// The range key fragmenter. Similar to rangeDelFrag in that it gets range
-	// keys from the compaction iter and fragments them for output to files.
-	rangeKeyFrag keyspan.Fragmenter
 	// rangeDelInterlaving is an interleaving iterator for range deletions, that
 	// interleaves range tombstones among the point keys.
 	rangeDelInterleaving keyspan.InterleavingIter
@@ -2780,8 +2773,8 @@ func (d *DB) runCompaction(
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	iiter = invalidating.MaybeWrapIfInvariants(iiter)
-	iter := newCompactionIter(c.cmp, c.equal, c.formatKey, d.merge, iiter, snapshots,
-		&c.rangeDelFrag, &c.rangeKeyFrag, c.allowedZeroSeqNum, c.elideTombstone,
+	iter := newCompactionIter(c.cmp, c.equal, d.merge, iiter, snapshots,
+		c.allowedZeroSeqNum, c.elideTombstone,
 		c.elideRangeTombstone, d.opts.Experimental.IneffectualSingleDeleteCallback,
 		d.opts.Experimental.SingleDeleteInvariantViolationCallback,
 		d.FormatMajorVersion())
@@ -2974,21 +2967,15 @@ func (d *DB) runCompaction(
 		// the splitKey passed to finishOutput (if set), otherwise we would generate
 		// an sstable where the largest key is smaller than the smallest key due to
 		// how the largest key boundary is set below. NB: It is permissible for the
-		// range tombstone / range key start key to be the empty string.
+		// range tombstone / range key start key to be nil.
 		//
 		// TODO: It is unfortunate that we have to do this check here rather than
 		// when we decide to finish the sstable in the runCompaction loop. A better
 		// structure currently eludes us.
 		if tw == nil {
-			startKey := c.rangeDelFrag.Start()
-			if len(iter.tombstones) > 0 {
-				startKey = iter.tombstones[0].Start
-			}
+			startKey := iter.FirstTombstoneStart()
 			if startKey == nil {
-				startKey = c.rangeKeyFrag.Start()
-				if len(iter.rangeKeys) > 0 {
-					startKey = iter.rangeKeys[0].Start
-				}
+				startKey = iter.FirstRangeKeyStart()
 			}
 			if splitKey != nil && d.cmp(startKey, splitKey) == 0 {
 				return nil
@@ -2999,7 +2986,7 @@ func (d *DB) runCompaction(
 		// compactionIter.Tombstones via keyspan.Fragmenter.FlushTo, and by the
 		// WriterMetadata.LargestRangeDel.UserKey.
 		splitKey = append([]byte(nil), splitKey...)
-		for _, v := range iter.Tombstones(splitKey) {
+		for _, v := range iter.TombstonesUpTo(splitKey) {
 			if tw == nil {
 				if err := newOutput(); err != nil {
 					return err
@@ -3033,7 +3020,7 @@ func (d *DB) runCompaction(
 				return err
 			}
 		}
-		for _, v := range iter.RangeKeys(splitKey) {
+		for _, v := range iter.RangeKeysUpTo(splitKey) {
 			// Same logic as for range tombstones, except added using tw.AddRangeKey.
 			if tw == nil {
 				if err := newOutput(); err != nil {
@@ -3194,10 +3181,10 @@ func (d *DB) runCompaction(
 		// the current range deletion in the fragmenter, whichever is
 		// greater.
 		prevPoint := prevPointKey.UnsafeKey()
-		if c.cmp(prevPoint.UserKey, c.rangeDelFrag.Start()) > 0 {
+		if c.cmp(prevPoint.UserKey, iter.FirstTombstoneStart()) > 0 {
 			return prevPoint.UserKey
 		}
-		return c.rangeDelFrag.Start()
+		return iter.FirstTombstoneStart()
 	}
 	outputSplitters := []compact.OutputSplitter{
 		// We do not split the same user key across different sstables within
@@ -3224,11 +3211,11 @@ func (d *DB) runCompaction(
 	// to a grandparent file largest key, or nil. Taken together, these
 	// progress guarantees ensure that eventually the input iterator will be
 	// exhausted and the range tombstone fragments will all be flushed.
-	for key, val := iter.First(); key != nil || !c.rangeDelFrag.Empty() || !c.rangeKeyFrag.Empty(); {
+	for key, val := iter.First(); key != nil || iter.FirstTombstoneStart() != nil || iter.FirstRangeKeyStart() != nil; {
 		var firstKey []byte
 		if key != nil {
 			firstKey = key.UserKey
-		} else if startKey := c.rangeDelFrag.Start(); startKey != nil {
+		} else if startKey := iter.FirstTombstoneStart(); startKey != nil {
 			// Pass the start key of the first pending tombstone to find the
 			// next limit. All pending tombstones have the same start key. We
 			// use this as opposed to the end key of the last written sstable to
@@ -3256,55 +3243,21 @@ func (d *DB) runCompaction(
 
 			switch key.Kind() {
 			case InternalKeyKindRangeDelete:
-				// Range tombstones are handled specially. They are fragmented,
-				// and they're not written until later during `finishOutput()`.
-				// We add them to the `Fragmenter` now to make them visible to
-				// `compactionIter` so covered keys in the same snapshot stripe
-				// can be elided.
-
-				// The interleaved range deletion might only be one of many with
-				// these bounds. Some fragmenting is performed ahead of time by
-				// keyspanimpl.MergingIter.
-				if s := c.rangeDelInterleaving.Span(); !s.Empty() {
-					// The memory management here is subtle. Range deletions blocks do NOT
-					// use prefix compression, which ensures that range deletion spans'
-					// memory is available as long we keep the iterator open. However, the
-					// keyspanimpl.MergingIter that merges spans across levels only
-					// guarantees the lifetime of the [start, end) bounds until the next
-					// positioning method is called.
-					//
-					// Additionally, the Span.Keys slice is owned by the range
-					// deletion iterator stack, and it may be overwritten when we advance.
-					//
-					// Clone the Keys slice and the start and end keys.
-					//
-					// TODO(jackson): Avoid the clone by removing c.rangeDelFrag and
-					// performing explicit truncation of the pending rangedel span as
-					// necessary.
-					clone := keyspan.Span{
-						Start: iter.cloneKey(s.Start),
-						End:   iter.cloneKey(s.End),
-						Keys:  make([]keyspan.Key, len(s.Keys)),
-					}
-					copy(clone.Keys, s.Keys)
-					c.rangeDelFrag.Add(clone)
-				}
+				// Range tombstones are handled specially. They are not written until
+				// later during `finishOutput()`. We add them to the compaction iterator
+				// so covered keys in the same snapshot stripe can be elided.
+				//
+				// Since the keys' Suffix and Value fields are not deep cloned, the
+				// underlying blockIter must be kept open for the lifetime of the
+				// compaction.
+				iter.AddTombstoneSpan(c.rangeDelInterleaving.Span())
 				continue
 			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-				// Range keys are handled in the same way as range tombstones, except
-				// with a dedicated fragmenter.
-				if s := c.rangeKeyInterleaving.Span(); !s.Empty() {
-					clone := keyspan.Span{
-						Start: iter.cloneKey(s.Start),
-						End:   iter.cloneKey(s.End),
-						Keys:  make([]keyspan.Key, len(s.Keys)),
-					}
-					// Since the keys' Suffix and Value fields are not deep cloned, the
-					// underlying blockIter must be kept open for the lifetime of the
-					// compaction.
-					copy(clone.Keys, s.Keys)
-					c.rangeKeyFrag.Add(clone)
-				}
+				// Range keys are handled in the same way as range tombstones.
+				// Since the keys' Suffix and Value fields are not deep cloned, the
+				// underlying blockIter must be kept open for the lifetime of the
+				// compaction.
+				iter.AddRangeKeySpan(c.rangeKeyInterleaving.Span())
 				continue
 			}
 			if tw == nil {
