@@ -95,7 +95,7 @@ advance-time dur=0ms wait-for-log-writer
 ----
 now: 1ms
 
-write-record value=mammoth
+write-record value=mammoth sync
 ----
 offset: 18
 
@@ -111,6 +111,7 @@ stats:
   obsolete: count 2 size 22
   live: count 1 size 18
   failover: switches 0 pri-dur 1ms sec-dur 0s
+  latency sample count: 1
 
 create-writer wal-num=7
 ----
@@ -139,6 +140,7 @@ stats:
   obsolete: count 2 size 22
   live: count 2 size 34
   failover: switches 0 pri-dur 1ms sec-dur 0s
+  latency sample count: 1
 
 obsolete min-unflushed=7
 ----
@@ -173,6 +175,7 @@ stats:
   obsolete: count 0 size 0
   live: count 1 size 29
   failover: switches 0 pri-dur 1ms sec-dur 0s
+  latency sample count: 1
 
 write-record value=woolly
 ----
@@ -194,6 +197,7 @@ stats:
   obsolete: count 0 size 0
   live: count 1 size 38
   failover: switches 0 pri-dur 1ms sec-dur 0s
+  latency sample count: 1
 
 close-manager
 ----
