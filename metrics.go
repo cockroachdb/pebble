@@ -552,7 +552,9 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		humanize.Bytes.Uint64(m.WAL.BytesIn),
 		humanize.Bytes.Uint64(m.WAL.BytesWritten),
 		redact.Safe(percent(int64(m.WAL.BytesWritten)-int64(m.WAL.BytesIn), int64(m.WAL.BytesIn))))
-	if m.WAL.Failover == (wal.FailoverStats{}) {
+	failoverStats := m.WAL.Failover
+	failoverStats.FailoverWriteAndSyncLatency = nil
+	if failoverStats == (wal.FailoverStats{}) {
 		w.Printf("\n")
 	} else {
 		w.Printf(" failover: (switches: %d, primary: %s, secondary: %s)\n", m.WAL.Failover.DirSwitchCount,
