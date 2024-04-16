@@ -142,6 +142,9 @@ type Options struct {
 	EventListener EventListener
 
 	FailoverOptions
+	// FailoverWriteAndSyncLatency is only populated when WAL failover is
+	// configured.
+	FailoverWriteAndSyncLatency prometheus.Histogram
 }
 
 // Init constructs and initializes a WAL manager from the provided options and
@@ -300,6 +303,13 @@ type FailoverStats struct {
 	// SecondaryWriteDuration is the cumulative duration for which WAL writes
 	// are using the secondary directory.
 	SecondaryWriteDuration time.Duration
+
+	// FailoverWriteAndSyncLatency measures the latency of writing and syncing a
+	// set of writes that were synced together. Each sample represents the
+	// highest latency observed across the writes in the set of writes. It gives
+	// us a sense of the user-observed latency, which can be much lower than the
+	// underlying fsync latency, when WAL failover is working effectively.
+	FailoverWriteAndSyncLatency prometheus.Histogram
 }
 
 // Manager handles all WAL work.

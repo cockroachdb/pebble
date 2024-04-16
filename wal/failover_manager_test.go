@@ -17,6 +17,8 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"github.com/prometheus/client_golang/prometheus"
+	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -337,18 +339,19 @@ func TestManagerFailover(t *testing.T) {
 				fs = newBlockingFS(fsToWrap)
 				fm = &failoverManager{}
 				o := Options{
-					Primary:              Dir{FS: fs, Dirname: dirs[primaryDirIndex]},
-					Secondary:            Dir{FS: fs, Dirname: dirs[secondaryDirIndex]},
-					MinUnflushedWALNum:   0,
-					MaxNumRecyclableLogs: 1,
-					NoSyncOnClose:        false,
-					BytesPerSync:         0,
-					PreallocateSize:      func() int { return 0 },
-					MinSyncInterval:      nil,
-					FsyncLatency:         nil,
-					QueueSemChan:         nil,
-					Logger:               nil,
-					EventListener:        nil,
+					Primary:                     Dir{FS: fs, Dirname: dirs[primaryDirIndex]},
+					Secondary:                   Dir{FS: fs, Dirname: dirs[secondaryDirIndex]},
+					MinUnflushedWALNum:          0,
+					MaxNumRecyclableLogs:        1,
+					NoSyncOnClose:               false,
+					BytesPerSync:                0,
+					PreallocateSize:             func() int { return 0 },
+					MinSyncInterval:             nil,
+					FsyncLatency:                nil,
+					QueueSemChan:                nil,
+					Logger:                      nil,
+					EventListener:               nil,
+					FailoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 				}
 				require.NoError(t, memFS.MkdirAll(dirs[primaryDirIndex], 0755))
 				require.NoError(t, memFS.MkdirAll(dirs[secondaryDirIndex], 0755))
@@ -438,12 +441,27 @@ func TestManagerFailover(t *testing.T) {
 				fmt.Fprintf(&b, "  live: count %d size %d\n", stats.LiveFileCount, stats.LiveFileSize)
 				fmt.Fprintf(&b, "  failover: switches %d pri-dur %s sec-dur %s\n", stats.Failover.DirSwitchCount,
 					stats.Failover.PrimaryWriteDuration.String(), stats.Failover.SecondaryWriteDuration.String())
+				var latencyProto io_prometheus_client.Metric
+				stats.Failover.FailoverWriteAndSyncLatency.Write(&latencyProto)
+				latencySampleCount := *latencyProto.Histogram.SampleCount
+				if latencySampleCount > 0 {
+					fmt.Fprintf(&b, "  latency sample count: %d\n", latencySampleCount)
+				}
 				return b.String()
 
 			case "write-record":
 				var value string
 				td.ScanArgs(t, "value", &value)
-				offset, err := fw.WriteRecord([]byte(value), SyncOptions{}, nil)
+				var so SyncOptions
+				if td.HasArg("sync") {
+					wg := &sync.WaitGroup{}
+					wg.Add(1)
+					so = SyncOptions{
+						Done: wg,
+						Err:  new(error),
+					}
+				}
+				offset, err := fw.WriteRecord([]byte(value), so, nil)
 				require.NoError(t, err)
 				return fmt.Sprintf("offset: %d", offset)
 
@@ -570,6 +588,7 @@ func TestFailoverManager_Quiesce(t *testing.T) {
 			UnhealthySamplingInterval:          250 * time.Microsecond,
 			UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return time.Millisecond, true },
 		},
+		FailoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 	}, nil /* initial  logs */))
 	for i := 0; i < 3; i++ {
 		w, err := m.Create(NumWAL(i), i)

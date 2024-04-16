@@ -365,6 +365,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	if opts.WALFailover != nil {
 		walOpts.Secondary = opts.WALFailover.Secondary
 		walOpts.FailoverOptions = opts.WALFailover.FailoverOptions
+		walOpts.FailoverWriteAndSyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: FsyncLatencyBuckets,
+		})
 	}
 	walDirs := append(walOpts.Dirs(), opts.WALRecoveryDirs...)
 	wals, err := wal.Scan(walDirs...)
