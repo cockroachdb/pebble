@@ -876,3 +876,34 @@ d#10,SET:d10
 #  000032.Close() = nil
 #  000031.Last() = nil <err="injected error">
 err=injected error
+
+# Test a case where a SeekLT encounters a tombstone that has an
+# end boundary exactly equal to the seek key. The tombstone should
+# allow the cascading seek optimization.
+
+define
+L
+a.SET.103 jd.RANGEDEL.72057594037927935
+a.SET.103:103 imd.SET.793:793 iwoeionch.SET.792:792 c.RANGEDEL.101:jd
+L
+b.SET.90 o.SET.65
+b.SET.90:90 cat.SET.70:70 g.SET.80:80 o.SET.65:65
+L
+all.SET.0 zk.SET.722
+all.SET.0:0 c.SET.0:0 zk.SET.722:722
+----
+L1:
+  000033:[a#103,SET-jd#inf,RANGEDEL]
+L2:
+  000034:[b#90,SET-o#65,SET]
+L3:
+  000035:[all#0,SET-zk#722,SET]
+
+iter probe-points=(000033,(Log "#  000033.")) probe-points=(000034,(Log "#  000034.")) probe-points=(000035,(Log "#  000035."))
+set-bounds lower=cz upper=jd
+seek-lt jd
+----
+#  000033.SeekLT("jd") = (iwoeionch#792,SET,"792")
+#  000034.SeekLT("c") = nil
+#  000035.SeekLT("c") = nil
+iwoeionch#792,SET:792
