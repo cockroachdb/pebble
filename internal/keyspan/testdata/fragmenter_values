@@ -38,7 +38,6 @@ build
 build
 2: a--c                       apple
 1:  b--d                      banana
-truncate-and-flush-to c
 ----
 2: ab                         apple
 2:  bc                        apple
@@ -49,7 +48,6 @@ build
 3: a-c                        apple
 2: a---e                      banana
 1: a-----g                    coconut
-truncate-and-flush-to d
 3:    d----i                  orange
 ----
 3: a-c                        apple
