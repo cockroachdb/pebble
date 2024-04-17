@@ -32,37 +32,36 @@ const (
 )
 
 func TestLevelIter(t *testing.T) {
-	var iters []*fakeIter
+	var iterKVs [][]base.InternalKV
 	var files manifest.LevelSlice
 
 	newIters := func(
 		_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 	) (iterSet, error) {
-		f := *iters[file.FileNum]
-		f.lower = opts.GetLowerBound()
-		f.upper = opts.GetUpperBound()
-		return iterSet{point: &f}, nil
+		f := base.NewFakeIter(iterKVs[file.FileNum])
+		f.SetBounds(opts.GetLowerBound(), opts.GetUpperBound())
+		return iterSet{point: f}, nil
 	}
 
 	datadriven.RunTest(t, "testdata/level_iter", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
-			iters = nil
+			iterKVs = nil
 			var metas []*fileMetadata
 			for _, line := range strings.Split(d.Input, "\n") {
-				f := &fakeIter{}
+				var kvs []base.InternalKV
 				for _, key := range strings.Fields(line) {
 					j := strings.Index(key, ":")
-					f.kvs = append(f.kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
+					kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
 				}
-				iters = append(iters, f)
+				iterKVs = append(iterKVs, kvs)
 
 				meta := (&fileMetadata{
 					FileNum: FileNum(len(metas)),
 				}).ExtendPointKeyBounds(
 					DefaultComparer.Compare,
-					f.kvs[0].K,
-					f.kvs[len(f.kvs)-1].K,
+					kvs[0].K,
+					kvs[len(kvs)-1].K,
 				)
 				meta.InitPhysicalBacking()
 				metas = append(metas, meta)

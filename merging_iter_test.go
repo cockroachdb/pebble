@@ -58,12 +58,12 @@ func TestMergingIterSeek(t *testing.T) {
 		case "iter":
 			var iters []internalIterator
 			for _, line := range strings.Split(def, "\n") {
-				f := &fakeIter{}
+				var kvs []base.InternalKV
 				for _, key := range strings.Fields(line) {
 					j := strings.Index(key, ":")
-					f.kvs = append(f.kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
+					kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
 				}
-				iters = append(iters, f)
+				iters = append(iters, base.NewFakeIter(kvs))
 			}
 
 			var stats base.InternalIteratorStats
@@ -116,12 +116,12 @@ func TestMergingIterNextPrev(t *testing.T) {
 				case "iter":
 					iters := make([]internalIterator, len(c))
 					for i := range c {
-						f := &fakeIter{}
-						iters[i] = f
+						var kvs []base.InternalKV
 						for _, key := range strings.Fields(c[i]) {
 							j := strings.Index(key, ":")
-							f.kvs = append(f.kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
+							kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
 						}
+						iters[i] = base.NewFakeIter(kvs)
 					}
 
 					var stats base.InternalIteratorStats

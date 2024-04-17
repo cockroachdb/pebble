@@ -45,178 +45,6 @@ var testKeyValuePairs = []string{
 	"19:19",
 }
 
-type fakeIter struct {
-	lower    []byte
-	upper    []byte
-	kvs      []base.InternalKV
-	index    int
-	valid    bool
-	closeErr error
-}
-
-// fakeIter implements the base.InternalIterator interface.
-var _ base.InternalIterator = (*fakeIter)(nil)
-
-func fakeIkey(s string) InternalKey {
-	j := strings.Index(s, ":")
-	seqNum, err := strconv.Atoi(s[j+1:])
-	if err != nil {
-		panic(err)
-	}
-	return base.MakeInternalKey([]byte(s[:j]), uint64(seqNum), InternalKeyKindSet)
-}
-
-func newFakeIterator(closeErr error, keys ...string) *fakeIter {
-	kvs := make([]base.InternalKV, len(keys))
-	for i, k := range keys {
-		kvs[i] = base.InternalKV{K: fakeIkey(k)}
-	}
-	return &fakeIter{
-		kvs:      kvs,
-		index:    0,
-		valid:    len(kvs) > 0,
-		closeErr: closeErr,
-	}
-}
-
-func (f *fakeIter) String() string {
-	return "fake"
-}
-
-func (f *fakeIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	f.valid = false
-	for f.index = 0; f.index < len(f.kvs); f.index++ {
-		if DefaultComparer.Compare(key, f.key().UserKey) <= 0 {
-			if f.upper != nil && DefaultComparer.Compare(f.upper, f.key().UserKey) <= 0 {
-				return nil
-			}
-			f.valid = true
-			return f.KV()
-		}
-	}
-	return nil
-}
-
-func (f *fakeIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	return f.SeekGE(key, flags)
-}
-
-func (f *fakeIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
-	f.valid = false
-	for f.index = len(f.kvs) - 1; f.index >= 0; f.index-- {
-		if DefaultComparer.Compare(key, f.key().UserKey) > 0 {
-			if f.lower != nil && DefaultComparer.Compare(f.lower, f.key().UserKey) > 0 {
-				return nil
-			}
-			f.valid = true
-			return f.KV()
-		}
-	}
-	return nil
-}
-
-func (f *fakeIter) First() *base.InternalKV {
-	f.valid = false
-	f.index = -1
-	if kv := f.Next(); kv == nil {
-		return nil
-	}
-	if f.upper != nil && DefaultComparer.Compare(f.upper, f.key().UserKey) <= 0 {
-		return nil
-	}
-	f.valid = true
-	return f.KV()
-}
-
-func (f *fakeIter) Last() *base.InternalKV {
-	f.valid = false
-	f.index = len(f.kvs)
-	if kv := f.Prev(); kv == nil {
-		return nil
-	}
-	if f.lower != nil && DefaultComparer.Compare(f.lower, f.key().UserKey) > 0 {
-		return nil
-	}
-	f.valid = true
-	return f.KV()
-}
-
-func (f *fakeIter) Next() *base.InternalKV {
-	f.valid = false
-	if f.index == len(f.kvs) {
-		return nil
-	}
-	f.index++
-	if f.index == len(f.kvs) {
-		return nil
-	}
-	if f.upper != nil && DefaultComparer.Compare(f.upper, f.key().UserKey) <= 0 {
-		return nil
-	}
-	f.valid = true
-	return f.KV()
-}
-
-func (f *fakeIter) Prev() *base.InternalKV {
-	f.valid = false
-	if f.index < 0 {
-		return nil
-	}
-	f.index--
-	if f.index < 0 {
-		return nil
-	}
-	if f.lower != nil && DefaultComparer.Compare(f.lower, f.key().UserKey) > 0 {
-		return nil
-	}
-	f.valid = true
-	return f.KV()
-}
-
-func (f *fakeIter) NextPrefix(succKey []byte) *base.InternalKV {
-	return f.SeekGE(succKey, base.SeekGEFlagsNone)
-}
-
-// key returns the current Key the iterator is positioned at regardless of the
-// value of f.valid.
-func (f *fakeIter) key() *InternalKey {
-	return &f.kvs[f.index].K
-}
-
-func (f *fakeIter) KV() *base.InternalKV {
-	if f.valid {
-		return &f.kvs[f.index]
-	}
-	// It is invalid to call Key() when Valid() returns false. Rather than
-	// returning nil here which would technically be more correct, return a
-	// non-nil key which is the behavior of some InternalIterator
-	// implementations. This provides better testing of users of
-	// InternalIterators.
-	if f.index < 0 {
-		return &f.kvs[0]
-	}
-	return &f.kvs[len(f.kvs)-1]
-}
-
-func (f *fakeIter) Valid() bool {
-	return f.index >= 0 && f.index < len(f.kvs) && f.valid
-}
-
-func (f *fakeIter) Error() error {
-	return f.closeErr
-}
-
-func (f *fakeIter) Close() error {
-	return f.closeErr
-}
-
-func (f *fakeIter) SetBounds(lower, upper []byte) {
-	f.lower = lower
-	f.upper = upper
-}
-
-func (f *fakeIter) SetContext(_ context.Context) {}
-
 // testIterator tests creating a combined iterator from a number of sub-
 // iterators. newFunc is a constructor function. splitFunc returns a random
 // split of the testKeyValuePairs slice such that walking a combined iterator
@@ -226,6 +54,11 @@ func testIterator(
 	newFunc func(...internalIterator) internalIterator,
 	splitFunc func(r *rand.Rand) [][]string,
 ) {
+	fakeIterWithCloseErr := func(kvs []base.InternalKV, errorMsg string) *base.FakeIter {
+		f := base.NewFakeIter(kvs)
+		f.SetCloseErr(errors.New(errorMsg))
+		return f
+	}
 	// Test pre-determined sub-iterators. The sub-iterators are designed
 	// so that the combined key/value pair order is the same whether the
 	// combined iterator is concatenating or merging.
@@ -237,33 +70,33 @@ func testIterator(
 		{
 			"one sub-iterator",
 			[]internalIterator{
-				newFakeIterator(nil, "e:1", "w:2"),
+				base.NewFakeIter(base.FakeKVs("e:1", "w:2")),
 			},
 			"<e:1><w:2>.",
 		},
 		{
 			"two sub-iterators",
 			[]internalIterator{
-				newFakeIterator(nil, "a0:0"),
-				newFakeIterator(nil, "b1:1", "b2:2"),
+				base.NewFakeIter(base.FakeKVs("a0:0")),
+				base.NewFakeIter(base.FakeKVs("b1:1", "b2:2")),
 			},
 			"<a0:0><b1:1><b2:2>.",
 		},
 		{
 			"empty sub-iterators",
 			[]internalIterator{
-				newFakeIterator(nil),
-				newFakeIterator(nil),
-				newFakeIterator(nil),
+				base.NewFakeIter(nil),
+				base.NewFakeIter(nil),
+				base.NewFakeIter(nil),
 			},
 			".",
 		},
 		{
 			"sub-iterator errors",
 			[]internalIterator{
-				newFakeIterator(nil, "a0:0", "a1:1"),
-				newFakeIterator(errors.New("the sky is falling"), "b2:2", "b3:3", "b4:4"),
-				newFakeIterator(errors.New("run for your lives"), "c5:5", "c6:6"),
+				base.NewFakeIter(base.FakeKVs("a0:0", "a1:1")),
+				fakeIterWithCloseErr(base.FakeKVs("b2:2", "b3:3", "b4:4"), "the sky is falling"),
+				fakeIterWithCloseErr(base.FakeKVs("c5:5", "c6:6"), "run for your lives"),
 			},
 			"<a0:0><a1:1><b2:2><b3:3><b4:4>err=the sky is falling",
 		},
@@ -292,7 +125,7 @@ func testIterator(
 		splits := splitFunc(r)
 		iters := make([]internalIterator, len(splits))
 		for i, split := range splits {
-			iters[i] = newFakeIterator(nil, split...)
+			iters[i] = base.NewFakeIter(base.FakeKVs(split...))
 		}
 		iter := invalidating.NewIter(newFunc(iters...))
 		kv := iter.First()
@@ -329,47 +162,6 @@ func testIterator(
 	}
 }
 
-// deletableSumValueMerger computes the sum of its arguments,
-// but transforms a zero sum into a non-existent entry.
-type deletableSumValueMerger struct {
-	sum int64
-}
-
-func newDeletableSumValueMerger(key, value []byte) (ValueMerger, error) {
-	m := &deletableSumValueMerger{}
-	return m, m.MergeNewer(value)
-}
-
-func (m *deletableSumValueMerger) parseAndCalculate(value []byte) error {
-	v, err := strconv.ParseInt(string(value), 10, 64)
-	if err == nil {
-		m.sum += v
-	}
-	return err
-}
-
-func (m *deletableSumValueMerger) MergeNewer(value []byte) error {
-	return m.parseAndCalculate(value)
-}
-
-func (m *deletableSumValueMerger) MergeOlder(value []byte) error {
-	return m.parseAndCalculate(value)
-}
-
-func (m *deletableSumValueMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
-	if m.sum == 0 {
-		return nil, nil, nil
-	}
-	return []byte(strconv.FormatInt(m.sum, 10)), nil, nil
-}
-
-func (m *deletableSumValueMerger) DeletableFinish(
-	includesBase bool,
-) ([]byte, bool, io.Closer, error) {
-	value, closer, err := m.Finish(includesBase)
-	return value, len(value) == 0, closer, err
-}
-
 func TestIterator(t *testing.T) {
 	var merge Merge
 	var kvs []base.InternalKV
@@ -390,11 +182,9 @@ func TestIterator(t *testing.T) {
 			merge:    wrappedMerge,
 		}
 		// NB: Use a mergingIter to filter entries newer than seqNum.
-		iter := newMergingIter(nil /* logger */, &it.stats.InternalStats, it.cmp, it.split, &fakeIter{
-			lower: opts.GetLowerBound(),
-			upper: opts.GetUpperBound(),
-			kvs:   kvs,
-		})
+		fakeIter := base.NewFakeIter(kvs)
+		fakeIter.SetBounds(opts.GetLowerBound(), opts.GetUpperBound())
+		iter := newMergingIter(nil /* logger */, &it.stats.InternalStats, it.cmp, it.split, fakeIter)
 		iter.snapshot = seqNum
 		// NB: This Iterator cannot be cloned since it is not constructed
 		// with a readState. It suffices for this test.
@@ -407,7 +197,7 @@ func TestIterator(t *testing.T) {
 		case "define":
 			merge = nil
 			if arg, ok := d.Arg("merger"); ok && len(arg.Vals[0]) > 0 && arg.Vals[0] == "deletable" {
-				merge = newDeletableSumValueMerger
+				merge = base.NewDeletableSumValueMerger
 			}
 			kvs = kvs[:0]
 			for _, key := range strings.Split(d.Input, "\n") {
@@ -1040,11 +830,8 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 
 	var errorIter errorSeekIter
 	newIter := func(opts IterOptions) *Iterator {
-		iter := &fakeIter{
-			lower: opts.GetLowerBound(),
-			upper: opts.GetUpperBound(),
-			kvs:   kvs,
-		}
+		iter := base.NewFakeIter(kvs)
+		iter.SetBounds(opts.GetLowerBound(), opts.GetUpperBound())
 		errorIter = errorSeekIter{internalIterator: invalidating.NewIter(iter)}
 		// NB: This Iterator cannot be cloned since it is not constructed
 		// with a readState. It suffices for this test.
