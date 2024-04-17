@@ -710,7 +710,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterLevel) (bool, error) {
 			continue
 		}
 
-		if l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, item.iterKV.K.UserKey) {
+		if l.tombstone.VisibleAt(m.snapshot) && m.heap.cmp(l.tombstone.Start, item.iterKV.K.UserKey) <= 0 {
 			if level < item.index {
 				// We could also do m.seekGE(..., level + 1). The levels from
 				// [level + 1, item.index) are already after item.iterKV so seeking them may be
@@ -904,7 +904,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterLevel) (bool, error) {
 		if l.tombstone == nil {
 			continue
 		}
-		if l.tombstone.Contains(m.heap.cmp, item.iterKV.K.UserKey) && l.tombstone.VisibleAt(m.snapshot) {
+		if l.tombstone.VisibleAt(m.snapshot) && m.heap.cmp(l.tombstone.End, item.iterKV.K.UserKey) > 0 {
 			if level < item.index {
 				// We could also do m.seekLT(..., level + 1). The levels from
 				// [level + 1, item.index) are already before item.iterKV so seeking them may be
@@ -1072,7 +1072,7 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 			if err != nil {
 				return err
 			}
-			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, key) {
+			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) && m.heap.cmp(l.tombstone.Start, key) <= 0 {
 				// Based on the containment condition tombstone.End > key, so
 				// the assignment to key results in a monotonically
 				// non-decreasing key across iterations of this loop.
@@ -1162,8 +1162,12 @@ func (m *mergingIter) seekLT(key []byte, level int, flags base.SeekLTFlags) erro
 				return err
 			}
 			l.tombstone = tomb
+			// Since SeekLT is exclusive on `key` and a tombstone's end key is
+			// also exclusive, a seek key equal to a tombstone's end key still
+			// enables the seek optimization (Note this is different than the
+			// check performed by (*keyspan.Span).Contains).
 			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) &&
-				l.tombstone.Contains(m.heap.cmp, key) {
+				m.heap.cmp(key, l.tombstone.End) <= 0 {
 				// NB: Based on the containment condition
 				// tombstone.Start.UserKey <= key, so the assignment to key
 				// results in a monotonically non-increasing key across
