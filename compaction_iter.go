@@ -393,13 +393,13 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 		// done in nextInStripeHelper. However, we also need to handle the case of
 		// CoversInvisibly below.
 		switch i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) {
-		case keyspan.CoversVisibly:
+		case coversVisibly:
 			// A pending range deletion deletes this key. Skip it.
 			i.saveKey()
 			i.skipInStripe()
 			continue
 
-		case keyspan.CoversInvisibly:
+		case coversInvisibly:
 			// i.iterKV would be deleted by a range deletion if there weren't any open
 			// snapshots. Mark it as pinned.
 			//
@@ -680,7 +680,7 @@ func (i *compactionIter) nextInStripeHelper() stripeChangeType {
 		}
 		if i.curSnapshotIdx == origSnapshotIdx {
 			// Same snapshot.
-			if i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
+			if i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) == coversVisibly {
 				continue
 			}
 			return sameStripe
@@ -883,7 +883,7 @@ func (i *compactionIter) singleDeleteNext() bool {
 						// violation. The rare case is newStripeSameKey, where it is a
 						// violation if not covered by a RANGEDEL.
 						if change == sameStripe ||
-							i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) == keyspan.NoCover {
+							i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) == noCover {
 							i.singleDeleteInvariantViolationCallback(i.key.UserKey)
 						}
 					}
@@ -1241,14 +1241,35 @@ func (i *compactionIter) AddTombstoneSpan(span *keyspan.Span) {
 	i.tombstones = i.appendSpan(i.tombstones, span)
 }
 
+// cover is returned by tombstoneCovers and describes a span's relationship to
+// a key at a particular snapshot.
+type cover int8
+
+const (
+	// noCover indicates the tested key does not fall within the span's bounds,
+	// or the span contains no keys with sequence numbers higher than the key's.
+	noCover cover = iota
+
+	// coversInvisibly indicates the tested key does fall within the span's
+	// bounds and the span contains at least one key with a higher sequence
+	// number, but none visible at the provided snapshot.
+	coversInvisibly
+
+	// coversVisibly indicates the tested key does fall within the span's
+	// bounds, and the span constains at least one key with a sequence number
+	// higher than the key's sequence number that is visible at the provided
+	// snapshot.
+	coversVisibly
+)
+
 // tombstoneCovers returns whether the key is covered by a tombstone and whether
 // it is covered by a tombstone visible in the given snapshot.
 //
 // The key's UserKey must be greater or equal to the last span Start key passed
 // to AddTombstoneSpan.
-func (i *compactionIter) tombstoneCovers(key InternalKey, snapshot uint64) keyspan.Cover {
+func (i *compactionIter) tombstoneCovers(key InternalKey, snapshot uint64) cover {
 	if len(i.tombstones) == 0 {
-		return keyspan.NoCover
+		return noCover
 	}
 	last := &i.tombstones[len(i.tombstones)-1]
 	if invariants.Enabled && i.cmp(key.UserKey, last.Start) < 0 {
@@ -1256,11 +1277,11 @@ func (i *compactionIter) tombstoneCovers(key InternalKey, snapshot uint64) keysp
 	}
 	if i.cmp(key.UserKey, last.End) < 0 && last.Covers(key.SeqNum()) {
 		if last.CoversAt(snapshot, key.SeqNum()) {
-			return keyspan.CoversVisibly
+			return coversVisibly
 		}
-		return keyspan.CoversInvisibly
+		return coversInvisibly
 	}
-	return keyspan.NoCover
+	return noCover
 }
 
 // TombstonesUpTo returns a list of pending range tombstones up to the

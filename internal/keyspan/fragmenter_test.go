@@ -50,15 +50,6 @@ func buildSpans(
 		},
 	}
 	for _, line := range strings.Split(s, "\n") {
-		if strings.HasPrefix(line, "truncate-and-flush-to ") {
-			parts := strings.Split(line, " ")
-			if len(parts) != 2 {
-				t.Fatalf("expected 2 components, but found %d: %s", len(parts), line)
-			}
-			f.TruncateAndFlushTo([]byte(parts[1]))
-			continue
-		}
-
 		f.Add(parseSpanSingleKey(t, line, kind))
 	}
 	f.Finish()
@@ -171,78 +162,6 @@ func TestFragmenter(t *testing.T) {
 				}
 			}
 			return strings.Join(results, " ")
-
-		default:
-			return fmt.Sprintf("unknown command: %s", d.Cmd)
-		}
-	})
-}
-
-func TestFragmenterCovers(t *testing.T) {
-	datadriven.RunTest(t, "testdata/fragmenter_covers", func(t *testing.T, d *datadriven.TestData) string {
-		switch d.Cmd {
-		case "build":
-			f := &Fragmenter{
-				Cmp:    base.DefaultComparer.Compare,
-				Format: base.DefaultComparer.FormatKey,
-				Emit: func(fragmented Span) {
-				},
-			}
-			var buf bytes.Buffer
-			for _, line := range strings.Split(d.Input, "\n") {
-				switch {
-				case strings.HasPrefix(line, "add "):
-					t := parseSpanSingleKey(t, strings.TrimPrefix(line, "add "), base.InternalKeyKindRangeDelete)
-					f.Add(t)
-				case strings.HasPrefix(line, "deleted "):
-					fields := strings.Fields(strings.TrimPrefix(line, "deleted "))
-					key := base.ParseInternalKey(fields[0])
-					snapshot, err := strconv.ParseUint(fields[1], 10, 64)
-					if err != nil {
-						return err.Error()
-					}
-					func() {
-						defer func() {
-							if r := recover(); r != nil {
-								fmt.Fprintf(&buf, "%s: %s\n", key, r)
-							}
-						}()
-						switch f.Covers(key, snapshot) {
-						case NoCover:
-							fmt.Fprintf(&buf, "%s: none\n", key)
-						case CoversInvisibly:
-							fmt.Fprintf(&buf, "%s: invisibly\n", key)
-						case CoversVisibly:
-							fmt.Fprintf(&buf, "%s: visibly\n", key)
-						}
-					}()
-				}
-			}
-			return buf.String()
-
-		default:
-			return fmt.Sprintf("unknown command: %s", d.Cmd)
-		}
-	})
-}
-
-func TestFragmenterTruncateAndFlushTo(t *testing.T) {
-	cmp := base.DefaultComparer.Compare
-	fmtKey := base.DefaultComparer.FormatKey
-
-	datadriven.RunTest(t, "testdata/fragmenter_truncate_and_flush_to", func(t *testing.T, d *datadriven.TestData) string {
-		switch d.Cmd {
-		case "build":
-			return func() (result string) {
-				defer func() {
-					if r := recover(); r != nil {
-						result = fmt.Sprint(r)
-					}
-				}()
-
-				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
-				return formatAlphabeticSpans(spans)
-			}()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
