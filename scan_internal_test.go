@@ -596,7 +596,7 @@ func TestPointCollapsingIter(t *testing.T) {
 			return ""
 
 		case "iter":
-			f := &fakeIter{}
+			var kvs []base.InternalKV
 			var spans []keyspan.Span
 			for _, line := range strings.Split(def, "\n") {
 				for _, key := range strings.Fields(line) {
@@ -612,9 +612,10 @@ func TestPointCollapsingIter(t *testing.T) {
 						})
 						continue
 					}
-					f.kvs = append(f.kvs, base.MakeInternalKV(k, v))
+					kvs = append(kvs, base.MakeInternalKV(k, v))
 				}
 			}
+			f := base.NewFakeIter(kvs)
 
 			ksIter := keyspan.NewIter(base.DefaultComparer.Compare, spans)
 			pcIter := &pointCollapsingIterator{

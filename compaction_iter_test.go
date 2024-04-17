@@ -107,7 +107,7 @@ func TestCompactionIter(t *testing.T) {
 		// SSTables are not released while iterating, and therefore not
 		// susceptible to use-after-free bugs, we skip the zeroing of
 		// RangeDelete keys.
-		fi := &fakeIter{kvs: kvs}
+		fi := base.NewFakeIter(kvs)
 		rangeDelInterleaving = &keyspan.InterleavingIter{}
 		rangeDelInterleaving.Init(
 			base.DefaultComparer,
@@ -159,7 +159,7 @@ func TestCompactionIter(t *testing.T) {
 				merge = nil
 				if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "merger" &&
 					len(d.CmdArgs[0].Vals) > 0 && d.CmdArgs[0].Vals[0] == "deletable" {
-					merge = newDeletableSumValueMerger
+					merge = base.NewDeletableSumValueMerger
 				}
 				kvs = kvs[:0]
 				rangeKeys = rangeKeys[:0]
