@@ -381,20 +381,18 @@ func checkRangeTombstones(c *checkConfig) error {
 	addTombstonesFromLevel := func(files manifest.LevelIterator, lsmLevel int) error {
 		for f := files.First(); f != nil; f = files.Next() {
 			lf := files.Take()
-			//lower, upper := manifest.KeyRange(c.cmp, lf.Iter())
-			iterToClose, iter, err := c.newIters.TODO(
-				context.Background(), lf.FileMetadata, &IterOptions{level: manifest.Level(lsmLevel)}, internalIterOpts{})
+			iters, err := c.newIters(
+				context.Background(), lf.FileMetadata, &IterOptions{level: manifest.Level(lsmLevel)},
+				internalIterOpts{}, iterRangeDeletions)
 			if err != nil {
 				return err
 			}
-			iterToClose.Close()
-			if iter == nil {
-				continue
-			}
-			if tombstones, err = addTombstonesFromIter(iter, level, lsmLevel, f.FileNum,
+			if tombstones, err = addTombstonesFromIter(iters.RangeDeletion(), level, lsmLevel, f.FileNum,
 				tombstones, c.seqNum, c.cmp, c.formatKey); err != nil {
+				iters.CloseAll()
 				return err
 			}
+			iters.CloseAll()
 		}
 		return nil
 	}

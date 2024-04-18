@@ -1895,9 +1895,26 @@ func (d *DB) excise(
 	if exciseSpan.ContainsInternalKey(d.cmp, m.Smallest) && exciseSpan.ContainsInternalKey(d.cmp, m.Largest) {
 		return nil, nil
 	}
-	var iter internalIterator
-	var rangeDelIter keyspan.FragmentIterator
-	var rangeKeyIter keyspan.FragmentIterator
+
+	var iters iterSet
+	var itersLoaded bool
+	defer iters.CloseAll()
+	loadItersIfNecessary := func() error {
+		if itersLoaded {
+			return nil
+		}
+		var err error
+		iters, err = d.newIters(context.TODO(), m, &IterOptions{
+			CategoryAndQoS: sstable.CategoryAndQoS{
+				Category: "pebble-ingest",
+				QoSLevel: sstable.LatencySensitiveQoSLevel,
+			},
+			level: manifest.Level(level),
+		}, internalIterOpts{}, iterPointKeys|iterRangeDeletions|iterRangeKeys)
+		itersLoaded = true
+		return err
+	}
+
 	needsBacking := false
 	// Create a file to the left of the excise span, if necessary.
 	// The bounds of this file will be [m.Smallest, lastKeyBefore(exciseSpan.Start)].
@@ -1935,43 +1952,23 @@ func (d *DB) excise(
 		}
 		if m.HasPointKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.SmallestPointKey) {
 			// This file will probably contain point keys.
-			smallestPointKey := m.SmallestPointKey
-			var err error
-			iter, rangeDelIter, err = d.newIters.TODO(context.TODO(), m, &IterOptions{
-				CategoryAndQoS: sstable.CategoryAndQoS{
-					Category: "pebble-ingest",
-					QoSLevel: sstable.LatencySensitiveQoSLevel,
-				},
-				level: manifest.Level(level),
-			}, internalIterOpts{})
-			if err != nil {
+			if err := loadItersIfNecessary(); err != nil {
 				return nil, err
 			}
-			var kv *base.InternalKV
-			if iter != nil {
-				defer iter.Close()
-				kv = iter.SeekLT(exciseSpan.Start, base.SeekLTFlagsNone)
-			} else {
-				iter = emptyIter
-			}
-			if kv != nil {
+			smallestPointKey := m.SmallestPointKey
+			if kv := iters.Point().SeekLT(exciseSpan.Start, base.SeekLTFlagsNone); kv != nil {
 				leftFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, kv.K.Clone())
 			}
 			// Store the min of (exciseSpan.Start, rdel.End) in lastRangeDel. This
 			// needs to be a copy if the key is owned by the range del iter.
 			var lastRangeDel []byte
-			if rangeDelIter != nil {
-				defer rangeDelIter.Close()
-				if rdel, err := rangeDelIter.SeekLT(exciseSpan.Start); err != nil {
-					return nil, err
-				} else if rdel != nil {
-					lastRangeDel = append(lastRangeDel[:0], rdel.End...)
-					if d.cmp(lastRangeDel, exciseSpan.Start) > 0 {
-						lastRangeDel = exciseSpan.Start
-					}
+			if rdel, err := iters.RangeDeletion().SeekLT(exciseSpan.Start); err != nil {
+				return nil, err
+			} else if rdel != nil {
+				lastRangeDel = append(lastRangeDel[:0], rdel.End...)
+				if d.cmp(lastRangeDel, exciseSpan.Start) > 0 {
+					lastRangeDel = exciseSpan.Start
 				}
-			} else {
-				rangeDelIter = emptyKeyspanIter
 			}
 			if lastRangeDel != nil {
 				leftFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel))
@@ -1979,18 +1976,15 @@ func (d *DB) excise(
 		}
 		if m.HasRangeKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.SmallestRangeKey) {
 			// This file will probably contain range keys.
-			var err error
-			smallestRangeKey := m.SmallestRangeKey
-			rangeKeyIter, err = d.tableNewRangeKeyIter(m, keyspan.SpanIterOptions{})
-			if err != nil {
+			if err := loadItersIfNecessary(); err != nil {
 				return nil, err
 			}
+			smallestRangeKey := m.SmallestRangeKey
 			// Store the min of (exciseSpan.Start, rkey.End) in lastRangeKey. This
 			// needs to be a copy if the key is owned by the range key iter.
 			var lastRangeKey []byte
 			var lastRangeKeyKind InternalKeyKind
-			defer rangeKeyIter.Close()
-			if rkey, err := rangeKeyIter.SeekLT(exciseSpan.Start); err != nil {
+			if rkey, err := iters.RangeKey().SeekLT(exciseSpan.Start); err != nil {
 				return nil, err
 			} else if rkey != nil {
 				lastRangeKey = append(lastRangeKey[:0], rkey.End...)
@@ -2054,32 +2048,11 @@ func (d *DB) excise(
 	}
 	if m.HasPointKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.LargestPointKey) {
 		// This file will probably contain point keys
-		largestPointKey := m.LargestPointKey
-		var err error
-		if iter == nil && rangeDelIter == nil {
-			iter, rangeDelIter, err = d.newIters.TODO(context.TODO(), m, &IterOptions{
-				CategoryAndQoS: sstable.CategoryAndQoS{
-					Category: "pebble-ingest",
-					QoSLevel: sstable.LatencySensitiveQoSLevel,
-				},
-				level: manifest.Level(level),
-			}, internalIterOpts{})
-			if err != nil {
-				return nil, err
-			}
-			if iter != nil {
-				defer iter.Close()
-			} else {
-				iter = emptyIter
-			}
-			if rangeDelIter != nil {
-				defer rangeDelIter.Close()
-			} else {
-				rangeDelIter = emptyKeyspanIter
-			}
+		if err := loadItersIfNecessary(); err != nil {
+			return nil, err
 		}
-		kv := iter.SeekGE(exciseSpan.End.Key, base.SeekGEFlagsNone)
-		if kv != nil {
+		largestPointKey := m.LargestPointKey
+		if kv := iters.Point().SeekGE(exciseSpan.End.Key, base.SeekGEFlagsNone); kv != nil {
 			if exciseSpan.End.Kind == base.Inclusive && d.equal(exciseSpan.End.Key, kv.K.UserKey) {
 				return nil, base.AssertionFailedf("cannot excise with an inclusive end key and data overlap at end key")
 			}
@@ -2088,7 +2061,7 @@ func (d *DB) excise(
 		// Store the max of (exciseSpan.End, rdel.Start) in firstRangeDel. This
 		// needs to be a copy if the key is owned by the range del iter.
 		var firstRangeDel []byte
-		rdel, err := rangeDelIter.SeekGE(exciseSpan.End.Key)
+		rdel, err := iters.RangeDeletion().SeekGE(exciseSpan.End.Key)
 		if err != nil {
 			return nil, err
 		} else if rdel != nil {
@@ -2109,19 +2082,14 @@ func (d *DB) excise(
 	}
 	if m.HasRangeKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.LargestRangeKey) {
 		// This file will probably contain range keys.
-		largestRangeKey := m.LargestRangeKey
-		if rangeKeyIter == nil {
-			var err error
-			rangeKeyIter, err = d.tableNewRangeKeyIter(m, keyspan.SpanIterOptions{})
-			if err != nil {
-				return nil, err
-			}
-			defer rangeKeyIter.Close()
+		if err := loadItersIfNecessary(); err != nil {
+			return nil, err
 		}
+		largestRangeKey := m.LargestRangeKey
 		// Store the max of (exciseSpan.End, rkey.Start) in firstRangeKey. This
 		// needs to be a copy if the key is owned by the range key iter.
 		var firstRangeKey []byte
-		rkey, err := rangeKeyIter.SeekGE(exciseSpan.End.Key)
+		rkey, err := iters.RangeKey().SeekGE(exciseSpan.End.Key)
 		if err != nil {
 			return nil, err
 		} else if rkey != nil {
