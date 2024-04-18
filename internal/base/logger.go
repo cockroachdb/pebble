@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"runtime"
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -88,8 +87,7 @@ func (b *InMemLogger) Errorf(format string, args ...interface{}) {
 
 // Fatalf is part of the Logger interface.
 func (b *InMemLogger) Fatalf(format string, args ...interface{}) {
-	b.Infof(format, args...)
-	runtime.Goexit()
+	b.Infof("FATAL: "+format, args...)
 }
 
 // LoggerAndTracer defines an interface for logging and tracing.

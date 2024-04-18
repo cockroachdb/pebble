@@ -1136,15 +1136,15 @@ func TestValidateVersionEdit(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			err := validateVersionEdit(tc.ve, tc.vFunc, base.DefaultFormatter)
+			logger := &base.InMemLogger{}
+			validateVersionEdit(tc.ve, tc.vFunc, base.DefaultFormatter, logger)
+			msg := strings.TrimSpace(logger.String())
 			if tc.wantErr != nil {
-				if !errors.Is(err, tc.wantErr) {
-					t.Fatalf("got: %s; want: %s", err, tc.wantErr)
+				if !strings.Contains(msg, tc.wantErr.Error()) {
+					t.Fatalf("got: %q; want: %s", msg, tc.wantErr)
 				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("got %s; wanted no error", err)
+			} else if msg != "" {
+				t.Fatalf("got %s; wanted no error", msg)
 			}
 		})
 	}
