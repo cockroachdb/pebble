@@ -14,7 +14,7 @@
 #         a b c d e f g h i j k l m n o p q
 #
 
-define-rangekeys
+define-spans
 e-f:{(#1,RANGEKEYSET,@9,foo)}
 f-h:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@3,bar)}
 h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
@@ -31,12 +31,7 @@ n@4.SET.1
 ----
 OK
 
-set-masking-threshold
-@7
-----
-OK
-
-iter
+iter masking-threshold=@7
 first
 next
 next
@@ -77,7 +72,7 @@ Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -- SpanChanged(nil)
 .
 
-iter
+iter masking-threshold=@7
 last
 prev
 prev
@@ -118,7 +113,7 @@ Span: <invalid>
 -- SpanChanged(nil)
 .
 
-iter
+iter masking-threshold=@7
 seek-ge a
 seek-ge c
 seek-ge h
@@ -168,12 +163,7 @@ Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 # Setting the masking threshold to @9 should result in l@8 being masked by
 # [e,m)@9.
 
-set-masking-threshold
-@9
-----
-OK
-
-iter
+iter masking-threshold=@9
 seek-ge l
 next
 seek-lt l
@@ -204,7 +194,7 @@ PointKey: h#72057594037927935,RANGEKEYSET
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
 
-iter
+iter masking-threshold=@9
 seek-ge l
 next
 ----
@@ -218,7 +208,7 @@ PointKey: m#72057594037927935,RANGEKEYSET
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
 
-define-rangekeys
+define-spans
 a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 ----
 OK
@@ -231,16 +221,11 @@ b@2.SET.1
 ----
 OK
 
-set-masking-threshold
-@10
-----
-OK
-
 # Test that both a@3 and b@2 are masked by the rangekey.
 # The unsuffixed point key 'a' and the point key at a higher timestamp 'a@12'
 # are not masked.
 
-iter
+iter masking-threshold=@10
 first
 next
 next
@@ -260,7 +245,7 @@ Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -- SpanChanged(nil)
 .
 
-iter
+iter masking-threshold=@10
 last
 prev
 prev
@@ -283,12 +268,12 @@ Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 # Try the same test, but with a range key that sorts before the masking
 # threshold (eg, higher MVCC timestamp). Nothing should be masked.
 
-define-rangekeys
+define-spans
 a-c:{(#2,RANGEKEYSET,@20,apples)}
 ----
 OK
 
-iter
+iter masking-threshold=@10
 first
 next
 next
@@ -316,7 +301,7 @@ Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -- SpanChanged(nil)
 .
 
-iter
+iter masking-threshold=@10
 last
 prev
 prev
@@ -348,12 +333,12 @@ Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 # Unset, and no Set. Nothing should be masked. No range keys should be surfaced,
 # because there are none.
 
-define-rangekeys
+define-spans
 a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 ----
 OK
 
-iter
+iter masking-threshold=@10
 first
 next
 next
@@ -376,7 +361,7 @@ Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -- SpanChanged(nil)
 .
 
-iter
+iter masking-threshold=@10
 last
 prev
 prev
@@ -402,7 +387,7 @@ Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 # Test a scenario where a point key is masked in the forward direction, which in
 # turn requires nexting to the next range key as well.
 
-define-rangekeys
+define-spans
 a-c:{(#1,RANGEKEYSET,@5,apples)}
 c-z:{(#1,RANGEKEYSET,@10,bananas)}
 ----
@@ -415,12 +400,7 @@ j@11.SET.3
 ----
 OK
 
-set-masking-threshold
-@20
-----
-OK
-
-iter
+iter masking-threshold=@20
 first
 next
 next
@@ -438,7 +418,7 @@ PointKey: j@11#3,SET
 Span: c-z:{(#1,RANGEKEYSET,@10,bananas)}
 -
 
-iter
+iter masking-threshold=@20
 last
 prev
 prev
@@ -459,7 +439,7 @@ Span: a-c:{(#1,RANGEKEYSET,@5,apples)}
 # Test a scenario where a there's an empty range key, requiring the interleaving
 # iter to call SpanChanged(nil) which should clear the previous mask.
 
-define-rangekeys
+define-spans
 a-c:{(#1,RANGEKEYSET,@10,apples)}
 c-e:{}
 e-f:{(#1,RANGEKEYSET,@5,bananas)}
@@ -473,12 +453,7 @@ d@9.SET.3
 ----
 OK
 
-set-masking-threshold
-@20
-----
-OK
-
-iter
+iter masking-threshold=@20
 seek-ge a
 next
 next
