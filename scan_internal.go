@@ -529,26 +529,23 @@ func (d *DB) truncateSharedFile(
 
 	// We will need to truncate file bounds in at least one direction. Open all
 	// relevant iterators.
-	iter, rangeDelIter, err := d.newIters.TODO(ctx, file, &IterOptions{
+	iters, err := d.newIters(ctx, file, &IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 		level:      manifest.Level(level),
-	}, internalIterOpts{})
+	}, internalIterOpts{}, iterPointKeys|iterRangeDeletions|iterRangeKeys)
 	if err != nil {
 		return nil, false, err
 	}
-	defer iter.Close()
+	defer iters.CloseAll()
+	iter := iters.point
+	rangeDelIter := iters.rangeDeletion
+	rangeKeyIter := iters.rangeKey
 	if rangeDelIter != nil {
 		rangeDelIter = keyspan.Truncate(cmp, rangeDelIter, base.UserKeyBoundsEndExclusive(lower, upper))
-		defer rangeDelIter.Close()
-	}
-	rangeKeyIter, err := d.tableNewRangeKeyIter(file, keyspan.SpanIterOptions{})
-	if err != nil {
-		return nil, false, err
 	}
 	if rangeKeyIter != nil {
 		rangeKeyIter = keyspan.Truncate(cmp, rangeKeyIter, base.UserKeyBoundsEndExclusive(lower, upper))
-		defer rangeKeyIter.Close()
 	}
 	// Check if we need to truncate on the left side. This means finding a new
 	// LargestPointKey and LargestRangeKey that is >= lower.

@@ -59,22 +59,6 @@ type tableNewIters func(
 	kinds iterKinds,
 ) (iterSet, error)
 
-// TODO implements the old tableNewIters interface that always attempted to open
-// a point iterator and a range deletion iterator. All call sites should be
-// updated to use `f` directly.
-func (f tableNewIters) TODO(
-	ctx context.Context,
-	file *manifest.FileMetadata,
-	opts *IterOptions,
-	internalOpts internalIterOpts,
-) (internalIterator, keyspan.FragmentIterator, error) {
-	iters, err := f(ctx, file, opts, internalOpts, iterPointKeys|iterRangeDeletions)
-	if err != nil {
-		return nil, nil, err
-	}
-	return iters.point, iters.rangeDeletion, nil
-}
-
 // tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
 // for the rangedel iterator returned by tableNewIters.
 func tableNewRangeDelIter(
