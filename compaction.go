@@ -146,6 +146,8 @@ const (
 	// compactionKindCopy denotes a copy compaction where the input file is
 	// copied byte-by-byte into a new file with a new FileNum in the output level.
 	compactionKindCopy
+	// compactionKindDeleteOnly denotes a compaction that only deletes input
+	// files. It can occur when wide range tombstones completely contain sstables.
 	compactionKindDeleteOnly
 	compactionKindElisionOnly
 	compactionKindRead
@@ -1660,6 +1662,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		Err:        err,
 	}
 	if err == nil {
+		validateVersionEdit(ve, d.opts.Experimental.KeyValidationFunc, d.opts.Comparer.FormatKey, d.opts.Logger)
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]
 			info.Output = append(info.Output, e.Meta.TableInfo())
@@ -2373,6 +2376,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
+		validateVersionEdit(ve, d.opts.Experimental.KeyValidationFunc, d.opts.Comparer.FormatKey, d.opts.Logger)
 		err = func() error {
 			var err error
 			d.mu.versions.logLock()
@@ -2470,11 +2474,10 @@ func (d *DB) runCopyCompaction(
 	c *compaction,
 	inputMeta *fileMetadata,
 	objMeta objstorage.ObjectMetadata,
-	versionEdit *versionEdit,
-) (ve *versionEdit, pendingOutputs []compactionOutput, retErr error) {
+	ve *versionEdit,
+) (pendingOutputs []compactionOutput, retErr error) {
 	ctx := context.TODO()
 
-	ve = versionEdit
 	if !objMeta.IsExternal() {
 		if objMeta.IsRemote() || !remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level) {
 			panic("pebble: scheduled a copy compaction that is not actually moving files to shared storage")
@@ -2544,7 +2547,7 @@ func (d *DB) runCopyCompaction(
 			ctx, fileTypeTable, inputMeta.FileBacking.DiskFileNum, objstorage.OpenOptions{},
 		)
 		if err != nil {
-			return ve, pendingOutputs, err
+			return pendingOutputs, err
 		}
 		defer func() {
 			if src != nil {
@@ -2559,7 +2562,7 @@ func (d *DB) runCopyCompaction(
 			},
 		)
 		if err != nil {
-			return ve, pendingOutputs, err
+			return pendingOutputs, err
 		}
 		pendingOutputs = append(pendingOutputs, compactionOutput{
 			meta:    newMeta,
@@ -2586,7 +2589,7 @@ func (d *DB) runCopyCompaction(
 		)
 		src = nil // We passed src to CopySpan; it's responsible for closing it.
 		if err != nil {
-			return ve, pendingOutputs, err
+			return pendingOutputs, err
 		}
 		newMeta.FileBacking.Size = wrote
 		newMeta.Size = wrote
@@ -2600,7 +2603,7 @@ func (d *DB) runCopyCompaction(
 			objstorage.CreateOptions{PreferSharedStorage: true})
 
 		if err != nil {
-			return ve, pendingOutputs, err
+			return pendingOutputs, err
 		}
 	}
 	ve.NewFiles[0].Meta = newMeta
@@ -2609,9 +2612,9 @@ func (d *DB) runCopyCompaction(
 	}
 
 	if err := d.objProvider.Sync(); err != nil {
-		return nil, pendingOutputs, err
+		return pendingOutputs, err
 	}
-	return ve, pendingOutputs, nil
+	return pendingOutputs, nil
 }
 
 type compactionOutput struct {
@@ -2619,94 +2622,83 @@ type compactionOutput struct {
 	isLocal bool
 }
 
-// runCompactions runs a compaction that produces new on-disk tables from
+func (d *DB) runDeleteOnlyCompaction(
+	jobID JobID, c *compaction,
+) (ve *versionEdit, pendingOutputs []compactionOutput, stats compactStats, retErr error) {
+	c.metrics = make(map[int]*LevelMetrics, len(c.inputs))
+	ve = &versionEdit{
+		DeletedFiles: map[deletedFileEntry]*fileMetadata{},
+	}
+	for _, cl := range c.inputs {
+		levelMetrics := &LevelMetrics{}
+		iter := cl.files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			ve.DeletedFiles[deletedFileEntry{
+				Level:   cl.level,
+				FileNum: f.FileNum,
+			}] = f
+		}
+		c.metrics[cl.level] = levelMetrics
+	}
+	return ve, nil, stats, nil
+}
+
+func (d *DB) runMoveOrCopyCompaction(
+	jobID JobID, c *compaction,
+) (ve *versionEdit, pendingOutputs []compactionOutput, stats compactStats, _ error) {
+	iter := c.startLevel.files.Iter()
+	meta := iter.First()
+	if invariants.Enabled {
+		if iter.Next() != nil {
+			panic("got more than one file for a move or copy compaction")
+		}
+	}
+	if c.cancel.Load() {
+		return ve, nil, stats, ErrCancelledCompaction
+	}
+	objMeta, err := d.objProvider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
+	if err != nil {
+		return ve, pendingOutputs, stats, err
+	}
+	c.metrics = map[int]*LevelMetrics{
+		c.outputLevel.level: {
+			BytesMoved:  meta.Size,
+			TablesMoved: 1,
+		},
+	}
+	ve = &versionEdit{
+		DeletedFiles: map[deletedFileEntry]*fileMetadata{
+			{Level: c.startLevel.level, FileNum: meta.FileNum}: meta,
+		},
+		NewFiles: []newFileEntry{
+			{Level: c.outputLevel.level, Meta: meta},
+		},
+	}
+	if c.kind == compactionKindMove {
+		return ve, nil, stats, nil
+	}
+
+	pendingOutputs, err = d.runCopyCompaction(jobID, c, meta, objMeta, ve)
+	return ve, pendingOutputs, stats, err
+}
+
+// runCompaction runs a compaction that produces new on-disk tables from
 // memtables or old on-disk tables.
+//
+// runCompaction cannot be used for compactionKindIngestedFlushable.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID JobID, c *compaction,
 ) (ve *versionEdit, pendingOutputs []compactionOutput, stats compactStats, retErr error) {
-	// As a sanity check, confirm that the smallest / largest keys for new and
-	// deleted files in the new versionEdit pass a validation function before
-	// returning the edit.
-	defer func() {
-		// If we're handling a panic, don't expect the version edit to validate.
-		if r := recover(); r != nil {
-			panic(r)
-		} else if ve != nil {
-			err := validateVersionEdit(ve, d.opts.Experimental.KeyValidationFunc, d.opts.Comparer.FormatKey)
-			if err != nil {
-				d.opts.Logger.Fatalf("pebble: version edit validation failed: %s", err)
-			}
-		}
-	}()
-
-	// Check for a delete-only compaction. This can occur when wide range
-	// tombstones completely contain sstables.
-	if c.kind == compactionKindDeleteOnly {
-		c.metrics = make(map[int]*LevelMetrics, len(c.inputs))
-		ve := &versionEdit{
-			DeletedFiles: map[deletedFileEntry]*fileMetadata{},
-		}
-		for _, cl := range c.inputs {
-			levelMetrics := &LevelMetrics{}
-			iter := cl.files.Iter()
-			for f := iter.First(); f != nil; f = iter.Next() {
-				ve.DeletedFiles[deletedFileEntry{
-					Level:   cl.level,
-					FileNum: f.FileNum,
-				}] = f
-			}
-			c.metrics[cl.level] = levelMetrics
-		}
-		return ve, nil, stats, nil
-	}
-
-	if c.kind == compactionKindIngestedFlushable {
+	switch c.kind {
+	case compactionKindDeleteOnly:
+		return d.runDeleteOnlyCompaction(jobID, c)
+	case compactionKindMove, compactionKindCopy:
+		return d.runMoveOrCopyCompaction(jobID, c)
+	case compactionKindIngestedFlushable:
 		panic("pebble: runCompaction cannot handle compactionKindIngestedFlushable.")
-	}
-
-	// Check for a move or copy of one table from one level to the next. We avoid
-	// such a move if there is lots of overlapping grandparent data. Otherwise,
-	// the move could create a parent file that will require a very expensive
-	// merge later on.
-	if c.kind == compactionKindMove || c.kind == compactionKindCopy {
-		iter := c.startLevel.files.Iter()
-		meta := iter.First()
-		if invariants.Enabled {
-			if iter.Next() != nil {
-				panic("got more than one file for a move or copy compaction")
-			}
-		}
-		if c.cancel.Load() {
-			return ve, nil, stats, ErrCancelledCompaction
-		}
-		objMeta, err := d.objProvider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
-		if err != nil {
-			return ve, pendingOutputs, stats, err
-		}
-		c.metrics = map[int]*LevelMetrics{
-			c.outputLevel.level: {
-				BytesMoved:  meta.Size,
-				TablesMoved: 1,
-			},
-		}
-		ve := &versionEdit{
-			DeletedFiles: map[deletedFileEntry]*fileMetadata{
-				{Level: c.startLevel.level, FileNum: meta.FileNum}: meta,
-			},
-			NewFiles: []newFileEntry{
-				{Level: c.outputLevel.level, Meta: meta},
-			},
-		}
-		if c.kind == compactionKindCopy {
-			ve, pendingOutputs, retErr = d.runCopyCompaction(jobID, c, meta, objMeta, ve)
-			if retErr != nil {
-				return ve, pendingOutputs, stats, retErr
-			}
-		}
-		return ve, nil, stats, nil
 	}
 
 	defer func() {
@@ -2881,8 +2873,6 @@ func (d *DB) runCompaction(
 			switch c.kind {
 			case compactionKindFlush:
 				ctx = objiotracing.WithReason(ctx, objiotracing.ForFlush)
-			case compactionKindIngestedFlushable:
-				ctx = objiotracing.WithReason(ctx, objiotracing.ForIngestion)
 			default:
 				ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
 			}
@@ -2897,8 +2887,6 @@ func (d *DB) runCompaction(
 			} else {
 				writeCategory = "pebble-memtable-flush"
 			}
-		case compactionKindIngestedFlushable:
-			writeCategory = "pebble-ingestion"
 		default:
 			writeCategory = "pebble-compaction"
 		}
@@ -3336,30 +3324,23 @@ func (d *DB) runCompaction(
 // validateVersionEdit validates that start and end keys across new and deleted
 // files in a versionEdit pass the given validation function.
 func validateVersionEdit(
-	ve *versionEdit, validateFn func([]byte) error, format base.FormatKey,
-) error {
-	validateMetaFn := func(f *manifest.FileMetadata) error {
-		for _, key := range []InternalKey{f.Smallest, f.Largest} {
-			if err := validateFn(key.UserKey); err != nil {
-				return errors.Wrapf(err, "key=%q; file=%s", format(key.UserKey), f)
-			}
+	ve *versionEdit, validateFn func([]byte) error, format base.FormatKey, logger Logger,
+) {
+	validateKey := func(f *manifest.FileMetadata, key []byte) {
+		if err := validateFn(key); err != nil {
+			logger.Fatalf("pebble: version edit validation failed (key=%s file=%s): %v", format(key), f, err)
 		}
-		return nil
 	}
 
 	// Validate both new and deleted files.
 	for _, f := range ve.NewFiles {
-		if err := validateMetaFn(f.Meta); err != nil {
-			return err
-		}
+		validateKey(f.Meta, f.Meta.Smallest.UserKey)
+		validateKey(f.Meta, f.Meta.Largest.UserKey)
 	}
 	for _, m := range ve.DeletedFiles {
-		if err := validateMetaFn(m); err != nil {
-			return err
-		}
+		validateKey(m, m.Smallest.UserKey)
+		validateKey(m, m.Largest.UserKey)
 	}
-
-	return nil
 }
 
 // scanObsoleteFiles scans the filesystem for files that are no longer needed
