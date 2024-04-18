@@ -131,88 +131,9 @@ func (m *simpleMergingIter) step() bool {
 	// Sentinels are not relevant for this point checking.
 	if !l.isIgnorableBoundaryKey && !item.key.IsExclusiveSentinel() &&
 		item.key.Visible(m.snapshot, base.InternalKeySeqNumMax) {
-		m.numPoints++
-		keyChanged := m.heap.cmp(item.key.UserKey, m.lastKey.UserKey) != 0
-		if !keyChanged {
-			// At the same user key. We will see them in decreasing seqnum
-			// order so the lastLevel must not be lower.
-			if m.lastLevel > item.index {
-				m.err = errors.Errorf("found InternalKey %s in %s and InternalKey %s in %s",
-					item.key.Pretty(m.formatKey), l.iter, m.lastKey.Pretty(m.formatKey),
-					m.lastIterMsg)
-				return false
-			}
-			m.lastLevel = item.index
-		} else {
-			// The user key has changed.
-			m.lastKey.Trailer = item.key.Trailer
-			m.lastKey.UserKey = append(m.lastKey.UserKey[:0], item.key.UserKey...)
-			m.lastLevel = item.index
-		}
-		// Ongoing series of MERGE records ends with a MERGE record.
-		if keyChanged && m.valueMerger != nil {
-			var closer io.Closer
-			_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
-			if m.err == nil && closer != nil {
-				m.err = closer.Close()
-			}
-			m.valueMerger = nil
-		}
-		itemValue, _, err := item.value.Value(nil)
-		if err != nil {
-			m.err = err
+		// This is a visible point key.
+		if !m.handleVisiblePoint(item, l) {
 			return false
-		}
-		if m.valueMerger != nil {
-			// Ongoing series of MERGE records.
-			switch item.key.Kind() {
-			case InternalKeyKindSingleDelete, InternalKeyKindDelete, InternalKeyKindDeleteSized:
-				var closer io.Closer
-				_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
-				if m.err == nil && closer != nil {
-					m.err = closer.Close()
-				}
-				m.valueMerger = nil
-			case InternalKeyKindSet, InternalKeyKindSetWithDelete:
-				m.err = m.valueMerger.MergeOlder(itemValue)
-				if m.err == nil {
-					var closer io.Closer
-					_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
-					if m.err == nil && closer != nil {
-						m.err = closer.Close()
-					}
-				}
-				m.valueMerger = nil
-			case InternalKeyKindMerge:
-				m.err = m.valueMerger.MergeOlder(itemValue)
-			default:
-				m.err = errors.Errorf("pebble: invalid internal key kind %s in %s",
-					item.key.Pretty(m.formatKey),
-					l.iter)
-				return false
-			}
-		} else if item.key.Kind() == InternalKeyKindMerge && m.err == nil {
-			// New series of MERGE records.
-			m.valueMerger, m.err = m.merge(item.key.UserKey, itemValue)
-		}
-		if m.err != nil {
-			m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
-				item.key.Pretty(m.formatKey), l.iter)
-			return false
-		}
-		// Is this point covered by a tombstone at a lower level? Note that all these
-		// iterators must be positioned at a key > item.key.
-		for level := item.index + 1; level < len(m.levels); level++ {
-			lvl := &m.levels[level]
-			if lvl.rangeDelIter == nil || lvl.tombstone.Empty() {
-				continue
-			}
-			if lvl.tombstone.Contains(m.heap.cmp, item.key.UserKey) && lvl.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
-				m.err = errors.Errorf("tombstone %s in %s deletes key %s in %s",
-					lvl.tombstone.Pretty(m.formatKey), lvl.iter, item.key.Pretty(m.formatKey),
-					l.iter)
-				return false
-			}
 		}
 	}
 
@@ -269,6 +190,97 @@ func (m *simpleMergingIter) step() bool {
 		}
 	}
 	m.positionRangeDels()
+	return true
+}
+
+// handleVisiblePoint returns true if validation succeeded and level checking
+// can continue.
+func (m *simpleMergingIter) handleVisiblePoint(
+	item *simpleMergingIterItem, l *simpleMergingIterLevel,
+) (ok bool) {
+	m.numPoints++
+	keyChanged := m.heap.cmp(item.key.UserKey, m.lastKey.UserKey) != 0
+	if !keyChanged {
+		// At the same user key. We will see them in decreasing seqnum
+		// order so the lastLevel must not be lower.
+		if m.lastLevel > item.index {
+			m.err = errors.Errorf("found InternalKey %s in %s and InternalKey %s in %s",
+				item.key.Pretty(m.formatKey), l.iter, m.lastKey.Pretty(m.formatKey),
+				m.lastIterMsg)
+			return false
+		}
+		m.lastLevel = item.index
+	} else {
+		// The user key has changed.
+		m.lastKey.Trailer = item.key.Trailer
+		m.lastKey.UserKey = append(m.lastKey.UserKey[:0], item.key.UserKey...)
+		m.lastLevel = item.index
+	}
+	// Ongoing series of MERGE records ends with a MERGE record.
+	if keyChanged && m.valueMerger != nil {
+		var closer io.Closer
+		_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
+		if m.err == nil && closer != nil {
+			m.err = closer.Close()
+		}
+		m.valueMerger = nil
+	}
+	itemValue, _, err := item.value.Value(nil)
+	if err != nil {
+		m.err = err
+		return false
+	}
+	if m.valueMerger != nil {
+		// Ongoing series of MERGE records.
+		switch item.key.Kind() {
+		case InternalKeyKindSingleDelete, InternalKeyKindDelete, InternalKeyKindDeleteSized:
+			var closer io.Closer
+			_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
+			if m.err == nil && closer != nil {
+				m.err = closer.Close()
+			}
+			m.valueMerger = nil
+		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
+			m.err = m.valueMerger.MergeOlder(itemValue)
+			if m.err == nil {
+				var closer io.Closer
+				_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
+				if m.err == nil && closer != nil {
+					m.err = closer.Close()
+				}
+			}
+			m.valueMerger = nil
+		case InternalKeyKindMerge:
+			m.err = m.valueMerger.MergeOlder(itemValue)
+		default:
+			m.err = errors.Errorf("pebble: invalid internal key kind %s in %s",
+				item.key.Pretty(m.formatKey),
+				l.iter)
+			return false
+		}
+	} else if item.key.Kind() == InternalKeyKindMerge && m.err == nil {
+		// New series of MERGE records.
+		m.valueMerger, m.err = m.merge(item.key.UserKey, itemValue)
+	}
+	if m.err != nil {
+		m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
+			item.key.Pretty(m.formatKey), l.iter)
+		return false
+	}
+	// Is this point covered by a tombstone at a lower level? Note that all these
+	// iterators must be positioned at a key > item.key.
+	for level := item.index + 1; level < len(m.levels); level++ {
+		lvl := &m.levels[level]
+		if lvl.rangeDelIter == nil || lvl.tombstone.Empty() {
+			continue
+		}
+		if lvl.tombstone.Contains(m.heap.cmp, item.key.UserKey) && lvl.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
+			m.err = errors.Errorf("tombstone %s in %s deletes key %s in %s",
+				lvl.tombstone.Pretty(m.formatKey), lvl.iter, item.key.Pretty(m.formatKey),
+				l.iter)
+			return false
+		}
+	}
 	return true
 }
 
