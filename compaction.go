@@ -2146,7 +2146,9 @@ func (h deleteCompactionHint) String() string {
 	)
 }
 
-func (h *deleteCompactionHint) canDelete(cmp Compare, m *fileMetadata, snapshots []uint64) bool {
+func (h *deleteCompactionHint) canDelete(
+	cmp Compare, m *fileMetadata, snapshots compact.Snapshots,
+) bool {
 	// The file can only be deleted if all of its keys are older than the
 	// earliest tombstone aggregated into the hint.
 	if m.LargestSeqNum >= h.tombstoneSmallestSeqNum || m.SmallestSeqNum < h.fileSmallestSeqNum {
@@ -2158,9 +2160,7 @@ func (h *deleteCompactionHint) canDelete(cmp Compare, m *fileMetadata, snapshots
 	// but this file's oldest sequence number might be lower than the hint's
 	// smallest sequence number despite the file falling within the key range
 	// if this file was constructed after the hint by a compaction.
-	ti, _ := snapshotIndex(h.tombstoneLargestSeqNum, snapshots)
-	fi, _ := snapshotIndex(m.SmallestSeqNum, snapshots)
-	if ti != fi {
+	if snapshots.Index(h.tombstoneLargestSeqNum) != snapshots.Index(m.SmallestSeqNum) {
 		return false
 	}
 
@@ -2239,7 +2239,7 @@ func (d *DB) maybeUpdateDeleteCompactionHints(c *compaction) {
 }
 
 func checkDeleteCompactionHints(
-	cmp Compare, v *version, hints []deleteCompactionHint, snapshots []uint64,
+	cmp Compare, v *version, hints []deleteCompactionHint, snapshots compact.Snapshots,
 ) ([]compactionLevel, []deleteCompactionHint) {
 	var files map[*fileMetadata]bool
 	var byLevel [numLevels][]*fileMetadata
@@ -2286,9 +2286,7 @@ func checkDeleteCompactionHints(
 		// ______________________________________________________________
 		//     a b c d e f g h i j k l m n o p q r s t u v w x y z
 
-		ti, _ := snapshotIndex(h.tombstoneLargestSeqNum, snapshots)
-		fi, _ := snapshotIndex(h.fileSmallestSeqNum, snapshots)
-		if ti != fi {
+		if snapshots.Index(h.tombstoneLargestSeqNum) != snapshots.Index(h.fileSmallestSeqNum) {
 			// Cannot resolve yet.
 			unresolvedHints = append(unresolvedHints, h)
 			continue
