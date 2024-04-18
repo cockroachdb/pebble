@@ -724,7 +724,7 @@ func (i *InterleavingIter) prevPos() {
 		case i.span == nil:
 			panic("withinSpan=true, but i.span == nil")
 		case i.pointKV == nil:
-			i.pos = posKeyspanEnd
+			i.pos = posKeyspanStart
 		default:
 			// i.withinSpan && i.pointKey != nil && i.span != nil
 			if i.cmp(i.span.Start, i.pointKV.K.UserKey) > 0 {
