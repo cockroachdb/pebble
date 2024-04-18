@@ -150,11 +150,12 @@ import (
 // exported function, and before a subsequent call to Next advances the iterator
 // and mutates the contents of the returned key and value.
 type Iter struct {
-	cmp   base.Compare
-	equal base.Equal
-	merge base.Merge
-	iter  base.InternalIterator
-	err   error
+	cmp base.Compare
+
+	cfg IterConfig
+
+	iter base.InternalIterator
+	err  error
 	// `key.UserKey` is set to `keyBuf` caused by saving `i.iterKV.UserKey`
 	// and `key.Trailer` is set to `i.iterKV.Trailer`. This is the
 	// case on return from all public methods -- these methods return `key`.
@@ -215,10 +216,6 @@ type Iter struct {
 	// The index of the snapshot for the current key within the snapshots slice.
 	curSnapshotIdx    int
 	curSnapshotSeqNum uint64
-	// The snapshot sequence numbers that need to be maintained. These sequence
-	// numbers define the snapshot stripes (see the Snapshots description
-	// above). The sequence numbers are in ascending order.
-	snapshots Snapshots
 	// frontiers holds a heap of user keys that affect compaction behavior when
 	// they're exceeded. Before a new key is returned, the compaction iterator
 	// advances the frontier, notifying any code that subscribed to be notified
@@ -235,13 +232,54 @@ type Iter struct {
 	// The fragmented range keys.
 	rangeKeys []keyspan.Span
 	// Byte allocator for the tombstone keys.
-	alloc                                  bytealloc.A
-	allowZeroSeqNum                        bool
-	elideTombstone                         func(key []byte) bool
-	elideRangeTombstone                    func(start, end []byte) bool
-	ineffectualSingleDeleteCallback        func(userKey []byte)
-	singleDeleteInvariantViolationCallback func(userKey []byte)
-	stats                                  IterStats
+	alloc bytealloc.A
+	stats IterStats
+}
+
+// IterConfig contains the parameters necessary to create a compaction iterator.
+type IterConfig struct {
+	Cmp   base.Compare
+	Equal base.Equal
+	Merge base.Merge
+
+	// The snapshot sequence numbers that need to be maintained. These sequence
+	// numbers define the snapshot stripes.
+	Snapshots Snapshots
+
+	// AllowZeroSeqNum allows the sequence number of KVs in the bottom snapshot
+	// stripe to be simplified to 0 (which improves compression and enables an
+	// optimization during forward iteration). This can be enabled if there are no
+	// tables overlapping the output at lower levels (than the output) in the LSM.
+	AllowZeroSeqNum bool
+
+	// ElideTombstone returns true if it is ok to elide a tombstone for the
+	// specified key. A return value of true guarantees that there are no
+	// key/value pairs at a lower level (than the output) that possibly contain
+	// the specified user key. The keys in multiple invocations to ElideTombstone
+	// must be supplied in order.
+	ElideTombstone func(key []byte) bool
+
+	// ElideRangeTombstone returns true if it is ok to elide the specified range
+	// tombstone. A return value of true guarantees that there are no key/value
+	// pairs at a lower level (than the output) that possibly overlap the
+	// specified tombstone.
+	ElideRangeTombstone func(start, end []byte) bool
+
+	// IneffectualPointDeleteCallback is called if a SINGLEDEL is being elided
+	// without deleting a point set/merge.
+	IneffectualSingleDeleteCallback func(userKey []byte)
+
+	// SingleDeleteInvariantViolationCallback is called in compactions/flushes if any
+	// single delete has consumed a Set/Merge, and there is another immediately older
+	// Set/SetWithDelete/Merge. The user of Pebble has violated the invariant under
+	// which SingleDelete can be used correctly.
+	SingleDeleteInvariantViolationCallback func(userKey []byte)
+}
+
+func (c *IterConfig) ensureDefaults() {
+	if c.IneffectualSingleDeleteCallback == nil {
+		c.IneffectualSingleDeleteCallback = func(userKey []byte) {}
+	}
 }
 
 // IterStats are statistics produced by the compaction iterator.
@@ -259,31 +297,14 @@ const (
 
 // NewIter creates a new compaction iterator. See the comment for Iter for a
 // detailed description.
-func NewIter(
-	cmp base.Compare,
-	equal base.Equal,
-	merge base.Merge,
-	iter base.InternalIterator,
-	snapshots Snapshots,
-	allowZeroSeqNum bool,
-	elideTombstone func(key []byte) bool,
-	elideRangeTombstone func(start, end []byte) bool,
-	ineffectualSingleDeleteCallback func(userKey []byte),
-	singleDeleteInvariantViolationCallback func(userKey []byte),
-) *Iter {
+func NewIter(cfg IterConfig, iter base.InternalIterator) *Iter {
+	cfg.ensureDefaults()
 	i := &Iter{
-		cmp:                                    cmp,
-		equal:                                  equal,
-		merge:                                  merge,
-		iter:                                   iter,
-		snapshots:                              snapshots,
-		allowZeroSeqNum:                        allowZeroSeqNum,
-		elideTombstone:                         elideTombstone,
-		elideRangeTombstone:                    elideRangeTombstone,
-		ineffectualSingleDeleteCallback:        ineffectualSingleDeleteCallback,
-		singleDeleteInvariantViolationCallback: singleDeleteInvariantViolationCallback,
+		cmp:  cfg.Cmp,
+		cfg:  cfg,
+		iter: iter,
 	}
-	i.frontiers.Init(cmp)
+	i.frontiers.Init(cfg.Cmp)
 	return i
 }
 
@@ -323,7 +344,7 @@ func (i *Iter) First() (*base.InternalKey, []byte) {
 		if i.err != nil {
 			return nil, nil
 		}
-		i.curSnapshotIdx, i.curSnapshotSeqNum = i.snapshots.IndexAndSeqNum(i.iterKV.SeqNum())
+		i.curSnapshotIdx, i.curSnapshotSeqNum = i.cfg.Snapshots.IndexAndSeqNum(i.iterKV.SeqNum())
 	}
 	i.pos = iterPosNext
 	i.iterStripeChange = newStripeNewKey
@@ -446,7 +467,7 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 
 		switch i.iterKV.Kind() {
 		case base.InternalKeyKindDelete, base.InternalKeyKindSingleDelete, base.InternalKeyKindDeleteSized:
-			if i.elideTombstone(i.iterKV.K.UserKey) {
+			if i.cfg.ElideTombstone(i.iterKV.K.UserKey) {
 				if i.curSnapshotIdx == 0 {
 					// If we're at the last snapshot stripe and the tombstone
 					// can be elided skip skippable keys in the same stripe.
@@ -515,7 +536,7 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 			// advances the iterator, adjusting curSnapshotIdx.
 			origSnapshotIdx := i.curSnapshotIdx
 			var valueMerger base.ValueMerger
-			valueMerger, i.err = i.merge(i.iterKV.K.UserKey, i.iterValue)
+			valueMerger, i.err = i.cfg.Merge(i.iterKV.K.UserKey, i.iterValue)
 			if i.err == nil {
 				i.mergeNext(valueMerger)
 			}
@@ -653,8 +674,8 @@ func (i *Iter) nextInStripeHelper() stripeChangeType {
 		//    number ordering within a user key. If the previous key was one
 		//    of these keys, we consider the new key a `newStripeNewKey` to
 		//    reflect that it's the beginning of a new stream of point keys.
-		if i.key.IsExclusiveSentinel() || !i.equal(i.key.UserKey, kv.K.UserKey) {
-			i.curSnapshotIdx, i.curSnapshotSeqNum = i.snapshots.IndexAndSeqNum(kv.SeqNum())
+		if i.key.IsExclusiveSentinel() || !i.cfg.Equal(i.key.UserKey, kv.K.UserKey) {
+			i.curSnapshotIdx, i.curSnapshotSeqNum = i.cfg.Snapshots.IndexAndSeqNum(kv.SeqNum())
 			return newStripeNewKey
 		}
 
@@ -675,7 +696,7 @@ func (i *Iter) nextInStripeHelper() stripeChangeType {
 			panic(errors.AssertionFailedf("pebble: invariant violation: %s and %s out of order", prevKey, kv.K))
 		}
 
-		i.curSnapshotIdx, i.curSnapshotSeqNum = i.snapshots.IndexAndSeqNum(kv.SeqNum())
+		i.curSnapshotIdx, i.curSnapshotSeqNum = i.cfg.Snapshots.IndexAndSeqNum(kv.SeqNum())
 		switch kv.Kind() {
 		case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete,
 			base.InternalKeyKindRangeDelete:
@@ -867,9 +888,8 @@ func (i *Iter) singleDeleteNext() bool {
 		kind := key.Kind()
 		switch kind {
 		case base.InternalKeyKindDelete, base.InternalKeyKindSetWithDelete, base.InternalKeyKindDeleteSized:
-			if (kind == base.InternalKeyKindDelete || kind == base.InternalKeyKindDeleteSized) &&
-				i.ineffectualSingleDeleteCallback != nil {
-				i.ineffectualSingleDeleteCallback(i.key.UserKey)
+			if kind == base.InternalKeyKindDelete || kind == base.InternalKeyKindDeleteSized {
+				i.cfg.IneffectualSingleDeleteCallback(i.key.UserKey)
 			}
 			// We've hit a Delete, DeleteSized, SetWithDelete, transform
 			// the SingleDelete into a full Delete.
@@ -893,14 +913,14 @@ func (i *Iter) singleDeleteNext() bool {
 				nextKind := i.iterKV.Kind()
 				switch nextKind {
 				case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete, base.InternalKeyKindMerge:
-					if i.singleDeleteInvariantViolationCallback != nil {
+					if i.cfg.SingleDeleteInvariantViolationCallback != nil {
 						// sameStripe keys returned by nextInStripe() are already
 						// known to not be covered by a RANGEDEL, so it is an invariant
 						// violation. The rare case is newStripeSameKey, where it is a
 						// violation if not covered by a RANGEDEL.
 						if change == sameStripe ||
 							i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) == noCover {
-							i.singleDeleteInvariantViolationCallback(i.key.UserKey)
+							i.cfg.SingleDeleteInvariantViolationCallback(i.key.UserKey)
 						}
 					}
 				case base.InternalKeyKindDelete, base.InternalKeyKindDeleteSized, base.InternalKeyKindSingleDelete:
@@ -918,9 +938,7 @@ func (i *Iter) singleDeleteNext() bool {
 		case base.InternalKeyKindSingleDelete:
 			// Two single deletes met in a compaction. The first single delete is
 			// ineffectual.
-			if i.ineffectualSingleDeleteCallback != nil {
-				i.ineffectualSingleDeleteCallback(i.key.UserKey)
-			}
+			i.cfg.IneffectualSingleDeleteCallback(i.key.UserKey)
 			// Continue to apply the second single delete.
 			continue
 
@@ -955,9 +973,7 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 			// user key, meaning that even now at its moment of elision, it still
 			// hasn't elided any other keys. The single delete was ineffectual (a
 			// no-op).
-			if i.ineffectualSingleDeleteCallback != nil {
-				i.ineffectualSingleDeleteCallback(i.key.UserKey)
-			}
+			i.cfg.IneffectualSingleDeleteCallback(i.key.UserKey)
 			i.skip = false
 			return
 		case newStripeSameKey:
@@ -969,9 +985,7 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 			kind := i.iterKV.Kind()
 			switch kind {
 			case base.InternalKeyKindDelete, base.InternalKeyKindDeleteSized, base.InternalKeyKindSingleDelete:
-				if i.ineffectualSingleDeleteCallback != nil {
-					i.ineffectualSingleDeleteCallback(i.key.UserKey)
-				}
+				i.cfg.IneffectualSingleDeleteCallback(i.key.UserKey)
 				switch kind {
 				case base.InternalKeyKindDelete, base.InternalKeyKindDeleteSized:
 					i.skipInStripe()
@@ -1011,8 +1025,8 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 					nextKind := i.iterKV.Kind()
 					switch nextKind {
 					case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete, base.InternalKeyKindMerge:
-						if i.singleDeleteInvariantViolationCallback != nil {
-							i.singleDeleteInvariantViolationCallback(i.key.UserKey)
+						if i.cfg.SingleDeleteInvariantViolationCallback != nil {
+							i.cfg.SingleDeleteInvariantViolationCallback(i.key.UserKey)
 						}
 					case base.InternalKeyKindDelete, base.InternalKeyKindDeleteSized, base.InternalKeyKindSingleDelete:
 					default:
@@ -1319,13 +1333,13 @@ func (i *Iter) TombstonesUpTo(key []byte) []keyspan.Span {
 		// Apply the snapshot stripe rules, keeping only the latest tombstone for
 		// each snapshot stripe.
 		currentIdx := -1
-		keys := make([]keyspan.Key, 0, min(len(span.Keys), len(i.snapshots)+1))
+		keys := make([]keyspan.Key, 0, min(len(span.Keys), len(i.cfg.Snapshots)+1))
 		for _, k := range span.Keys {
-			idx := i.snapshots.Index(k.SeqNum())
+			idx := i.cfg.Snapshots.Index(k.SeqNum())
 			if currentIdx == idx {
 				continue
 			}
-			if idx == 0 && i.elideRangeTombstone(span.Start, span.End) {
+			if idx == 0 && i.cfg.ElideRangeTombstone(span.Start, span.End) {
 				// This is the last snapshot stripe and the range tombstone
 				// can be elided.
 				break
@@ -1396,7 +1410,7 @@ func (i *Iter) FirstRangeKeyStart() []byte {
 // to skip some key comparisons. The seqnum for an entry can be zeroed if the
 // entry is on the bottom snapshot stripe and on the bottom level of the LSM.
 func (i *Iter) maybeZeroSeqnum(snapshotIdx int) {
-	if !i.allowZeroSeqNum {
+	if !i.cfg.AllowZeroSeqNum {
 		// TODO(peter): allowZeroSeqNum applies to the entire compaction. We could
 		// make the determination on a key by key basis, similar to what is done
 		// for elideTombstone. Need to add a benchmark for Iter to verify

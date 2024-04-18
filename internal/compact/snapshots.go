@@ -10,6 +10,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
+// Snapshots stores a list of snapshot sequence numbers, in ascending order.
+//
 // Snapshots are lightweight point-in-time views of the DB state. At its core,
 // a snapshot is a sequence number along with a guarantee from Pebble that it
 // will maintain the view of the database at that sequence number. Part of this

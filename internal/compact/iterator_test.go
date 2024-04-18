@@ -90,26 +90,26 @@ func TestCompactionIter(t *testing.T) {
 			}
 		}
 		resetSingleDelStats()
-		return NewIter(
-			base.DefaultComparer.Compare,
-			base.DefaultComparer.Equal,
-			merge,
-			iter,
-			snapshots,
-			allowZeroSeqnum,
-			func([]byte) bool {
+		cfg := IterConfig{
+			Cmp:             base.DefaultComparer.Compare,
+			Equal:           base.DefaultComparer.Equal,
+			Merge:           merge,
+			Snapshots:       snapshots,
+			AllowZeroSeqNum: allowZeroSeqnum,
+			ElideTombstone: func([]byte) bool {
 				return elideTombstones
 			},
-			func(_, _ []byte) bool {
+			ElideRangeTombstone: func(_, _ []byte) bool {
 				return elideTombstones
 			},
-			func(userKey []byte) {
+			IneffectualSingleDeleteCallback: func(userKey []byte) {
 				ineffectualSingleDeleteKeys = append(ineffectualSingleDeleteKeys, string(userKey))
 			},
-			func(userKey []byte) {
+			SingleDeleteInvariantViolationCallback: func(userKey []byte) {
 				invariantViolationSingleDeleteKeys = append(invariantViolationSingleDeleteKeys, string(userKey))
 			},
-		)
+		}
+		return NewIter(cfg, iter)
 	}
 
 	runTest := func(t *testing.T, file string) {
