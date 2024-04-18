@@ -99,19 +99,13 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 	datadriven.RunTest(t, filename, func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
-		case "set-masking-threshold":
-			hooks.threshold = []byte(strings.TrimSpace(td.Input))
-			return "OK"
-		case "define-rangekeys":
+		case "define-spans":
 			var spans []Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
 				spans = append(spans, ParseSpan(line))
 			}
 			keyspanIter = NewIter(cmp, spans)
-			hooks.maskSuffix = nil
-			iter.Init(testkeys.Comparer, &pointIter, keyspanIter,
-				InterleavingIterOpts{Mask: &hooks})
 			return "OK"
 		case "define-pointkeys":
 			var points []base.InternalKV
@@ -120,14 +114,17 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				points = append(points, base.MakeInternalKV(base.ParseInternalKey(line), nil))
 			}
 			pointIter = pointIterator{cmp: cmp, kvs: points}
-			hooks.maskSuffix = nil
-			iter.Init(testkeys.Comparer, &pointIter, keyspanIter,
-				InterleavingIterOpts{Mask: &hooks})
 			return "OK"
 		case "iter":
 			buf.Reset()
+			hooks.maskSuffix = nil
+			opts := InterleavingIterOpts{Mask: &hooks}
+			if cmdArg, ok := td.Arg("masking-threshold"); ok {
+				hooks.threshold = []byte(strings.Join(cmdArg.Vals, ""))
+			}
+			iter.Init(testkeys.Comparer, &pointIter, keyspanIter, opts)
 			// Clear any previous bounds.
-			iter.SetBounds(nil, nil)
+			pointIter.SetBounds(nil, nil)
 			prevKV = nil
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {

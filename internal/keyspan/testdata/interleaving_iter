@@ -1,4 +1,4 @@
-define-rangekeys
+define-spans
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 c-d:{(#4,RANGEKEYSET,@3,coconut)}
 e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
@@ -265,7 +265,7 @@ PointKey: q#72057594037927935,RANGEKEYSET
 Span: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 
-define-rangekeys
+define-spans
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 c-d:{(#4,RANGEKEYSET,@3,coconut)}
 e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
@@ -354,7 +354,7 @@ PointKey: h#72057594037927935,RANGEKEYDEL
 Span: h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
 -
 
-define-rangekeys
+define-spans
 a-z:{(#5,RANGEKEYSET,@5,apples)}
 ----
 OK
@@ -485,7 +485,7 @@ Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
 
 # Test sparse range keys.
 
-define-rangekeys
+define-spans
 ace-bat:{(#5,RANGEKEYSET,@5,v5)}
 x-z:{(#6,RANGEKEYSET,@6,v5)}
 ----
@@ -606,7 +606,7 @@ Span: <invalid>
 
 # First, Last, SeekLT and SeekGE elide spans without Sets.
 
-define-rangekeys
+define-spans
 b-d:{(#5,RANGEKEYDEL)}
 f-g:{(#6,RANGEKEYDEL)}
 ----
@@ -647,7 +647,7 @@ Span: b-d:{(#5,RANGEKEYDEL)}
 # Test a scenario where Next is out of point keys, the current range key has
 # already been interleaved, and there are no more range keys.
 
-define-rangekeys
+define-spans
 w-y:{(#5,RANGEKEYSET,@1,v1)}
 y-z:{(#5,RANGEKEYDEL)}
 ----
@@ -691,7 +691,7 @@ Span: w-y:{(#5,RANGEKEYSET,@1,v1)}
 -- SpanChanged(nil)
 .
 
-define-rangekeys
+define-spans
 a-z:{(#5,RANGEKEYSET,@1,v1)}
 ----
 OK
@@ -750,7 +750,7 @@ Span: c-z:{(#5,RANGEKEYSET,@1,v1)}
 # Test switching directions after exhausting a range key iterator.
 # Switching reverse to forward iteration.
 
-define-rangekeys
+define-spans
 j-l:{(#3,RANGEKEYSET,@1,v0)}
 ----
 OK
@@ -807,7 +807,7 @@ Span: j-l:{(#3,RANGEKEYSET,@1,v0)}
 # Test switching directions after exhausting a range key iterator.
 # Switching forward to reverse iteration.
 
-define-rangekeys
+define-spans
 j-l:{(#3,RANGEKEYSET,@1,v0)}
 ----
 OK
@@ -850,7 +850,7 @@ Span: j-l:{(#3,RANGEKEYSET,@1,v0)}
 
 # Test a seek that moves the lower bound beyond the upper bound.
 
-define-rangekeys
+define-spans
 a-d:{(#10,RANGEKEYSET,@5,apples)}
 ----
 OK
@@ -882,7 +882,7 @@ seek-lt a
 # iterator's bounds, despite the fact the SeekLT search key is exclusive. See
 # the comment in keyspanSeekLT.
 
-define-rangekeys
+define-spans
 b-f:{(#1,RANGEKEYSET,@1,foo)}
 ----
 OK
@@ -902,7 +902,7 @@ seek-lt d
 
 # Test seek-prefix-ge and its truncation of bounds to the prefix's bounds.
 
-define-rangekeys
+define-spans
 b-d:{(#5,RANGEKEYSET,@1,foo)}
 f-g:{(#6,RANGEKEYSET,@1,foo)}
 ----
@@ -944,7 +944,7 @@ Span: b-d:{(#5,RANGEKEYSET,@1,foo)}
 
 # Test NextPrefix
 
-define-rangekeys
+define-spans
 b-e:{(#5,RANGEKEYSET,@9,foo)}
 f-g:{(#6,RANGEKEYSET,@9,foo)}
 ----
