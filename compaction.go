@@ -2771,11 +2771,10 @@ func (d *DB) runCompaction(
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	iiter = invalidating.MaybeWrapIfInvariants(iiter)
-	iter := newCompactionIter(c.cmp, c.equal, d.merge, iiter, snapshots,
+	iter := compact.NewIter(c.cmp, c.equal, d.merge, iiter, snapshots,
 		c.allowedZeroSeqNum, c.elideTombstone,
 		c.elideRangeTombstone, d.opts.Experimental.IneffectualSingleDeleteCallback,
-		d.opts.Experimental.SingleDeleteInvariantViolationCallback,
-		d.FormatMajorVersion())
+		d.opts.Experimental.SingleDeleteInvariantViolationCallback)
 
 	var (
 		createdFiles    []base.DiskFileNum
@@ -3187,13 +3186,13 @@ func (d *DB) runCompaction(
 		// user key change boundary when doing a split.
 		compact.PreventSplitUserKeys(
 			c.cmp,
-			compact.FileSizeSplitter(&iter.frontiers, c.maxOutputFileSize, c.grandparents.Iter()),
+			compact.FileSizeSplitter(iter.Frontiers(), c.maxOutputFileSize, c.grandparents.Iter()),
 			unsafePrevUserKey,
 		),
-		compact.LimitFuncSplitter(&iter.frontiers, c.findGrandparentLimit),
+		compact.LimitFuncSplitter(iter.Frontiers(), c.findGrandparentLimit),
 	}
 	if splitL0Outputs {
-		outputSplitters = append(outputSplitters, compact.LimitFuncSplitter(&iter.frontiers, c.findL0Limit))
+		outputSplitters = append(outputSplitters, compact.LimitFuncSplitter(iter.Frontiers(), c.findL0Limit))
 	}
 	splitter := compact.CombineSplitters(c.cmp, outputSplitters...)
 
@@ -3259,10 +3258,10 @@ func (d *DB) runCompaction(
 					return nil, pendingOutputs, stats, err
 				}
 			}
-			if err := tw.AddWithForceObsolete(*key, val, iter.forceObsoleteDueToRangeDel); err != nil {
+			if err := tw.AddWithForceObsolete(*key, val, iter.ForceObsoleteDueToRangeDel()); err != nil {
 				return nil, pendingOutputs, stats, err
 			}
-			if iter.snapshotPinned {
+			if iter.SnapshotPinned() {
 				// The kv pair we just added to the sstable was only surfaced by
 				// the compaction iterator because an open snapshot prevented
 				// its elision. Increment the stats.
@@ -3313,7 +3312,7 @@ func (d *DB) runCompaction(
 	// The compaction iterator keeps track of a count of the number of DELSIZED
 	// keys that encoded an incorrect size. Propagate it up as a part of
 	// compactStats.
-	stats.countMissizedDels = iter.stats.countMissizedDels
+	stats.countMissizedDels = iter.Stats().CountMissizedDels
 
 	if err := d.objProvider.Sync(); err != nil {
 		return nil, pendingOutputs, stats, err

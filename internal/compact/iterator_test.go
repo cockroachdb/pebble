@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package pebble
+package compact
 
 import (
 	"bytes"
@@ -16,7 +16,6 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
@@ -48,24 +47,15 @@ func (m *debugMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 }
 
 func TestCompactionIter(t *testing.T) {
-	var merge Merge
+	var merge base.Merge
 	var kvs []base.InternalKV
 	var rangeKeys []keyspan.Span
 	var rangeDels []keyspan.Span
-	var snapshots compact.Snapshots
+	var snapshots Snapshots
 	var elideTombstones bool
 	var allowZeroSeqnum bool
 	var rangeKeyInterleaving *keyspan.InterleavingIter
 	var rangeDelInterleaving *keyspan.InterleavingIter
-
-	// The input to the data-driven test is dependent on the format major
-	// version we are testing against.
-	fileFunc := func(formatVersion FormatMajorVersion) string {
-		if formatVersion < FormatDeleteSizedAndObsolete {
-			return "testdata/compaction_iter_set_with_del"
-		}
-		return "testdata/compaction_iter_delete_sized"
-	}
 
 	var ineffectualSingleDeleteKeys []string
 	var invariantViolationSingleDeleteKeys []string
@@ -73,7 +63,7 @@ func TestCompactionIter(t *testing.T) {
 		ineffectualSingleDeleteKeys = ineffectualSingleDeleteKeys[:0]
 		invariantViolationSingleDeleteKeys = invariantViolationSingleDeleteKeys[:0]
 	}
-	newIter := func(formatVersion FormatMajorVersion) *compactionIter {
+	newIter := func() *Iter {
 		// To adhere to the existing assumption that range deletion blocks in
 		// SSTables are not released while iterating, and therefore not
 		// susceptible to use-after-free bugs, we skip the zeroing of
@@ -91,7 +81,7 @@ func TestCompactionIter(t *testing.T) {
 			rangeDelInterleaving,
 			keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys),
 			keyspan.InterleavingIterOpts{})
-		iter := invalidating.NewIter(rangeKeyInterleaving, invalidating.IgnoreKinds(InternalKeyKindRangeDelete))
+		iter := invalidating.NewIter(rangeKeyInterleaving, invalidating.IgnoreKinds(base.InternalKeyKindRangeDelete))
 		if merge == nil {
 			merge = func(key, value []byte) (base.ValueMerger, error) {
 				m := &debugMerger{}
@@ -100,9 +90,9 @@ func TestCompactionIter(t *testing.T) {
 			}
 		}
 		resetSingleDelStats()
-		return newCompactionIter(
-			DefaultComparer.Compare,
-			DefaultComparer.Equal,
+		return NewIter(
+			base.DefaultComparer.Compare,
+			base.DefaultComparer.Equal,
 			merge,
 			iter,
 			snapshots,
@@ -119,12 +109,11 @@ func TestCompactionIter(t *testing.T) {
 			func(userKey []byte) {
 				invariantViolationSingleDeleteKeys = append(invariantViolationSingleDeleteKeys, string(userKey))
 			},
-			formatVersion,
 		)
 	}
 
-	runTest := func(t *testing.T, formatVersion FormatMajorVersion) {
-		datadriven.RunTest(t, fileFunc(formatVersion), func(t *testing.T, d *datadriven.TestData) string {
+	runTest := func(t *testing.T, file string) {
+		datadriven.RunTest(t, file, func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
 				merge = nil
@@ -136,8 +125,8 @@ func TestCompactionIter(t *testing.T) {
 				rangeKeys = rangeKeys[:0]
 				rangeDels = rangeDels[:0]
 				rangeDelFragmenter := keyspan.Fragmenter{
-					Cmp:    DefaultComparer.Compare,
-					Format: DefaultComparer.FormatKey,
+					Cmp:    base.DefaultComparer.Compare,
+					Format: base.DefaultComparer.FormatKey,
 					Emit: func(s keyspan.Span) {
 						rangeDels = append(rangeDels, s)
 					},
@@ -219,7 +208,7 @@ func TestCompactionIter(t *testing.T) {
 				}
 				slices.Sort(snapshots)
 
-				iter := newIter(formatVersion)
+				iter := newIter()
 				var b bytes.Buffer
 				for _, line := range strings.Split(d.Input, "\n") {
 					parts := strings.Fields(line)
@@ -281,7 +270,7 @@ func TestCompactionIter(t *testing.T) {
 							}
 						}
 						fmt.Fprintf(&b, "%s:%s%s%s", iter.Key(), v, snapshotPinned, forceObsolete)
-						if iter.Key().Kind() == InternalKeyKindRangeDelete {
+						if iter.Key().Kind() == base.InternalKeyKindRangeDelete {
 							iter.AddTombstoneSpan(rangeDelInterleaving.Span())
 							fmt.Fprintf(&b, "; Span() = %s", *rangeDelInterleaving.Span())
 						}
@@ -296,7 +285,7 @@ func TestCompactionIter(t *testing.T) {
 					}
 				}
 				if printMissizedDels {
-					fmt.Fprintf(&b, "missized-dels=%d\n", iter.stats.countMissizedDels)
+					fmt.Fprintf(&b, "missized-dels=%d\n", iter.stats.CountMissizedDels)
 				}
 				if len(ineffectualSingleDeleteKeys) > 0 {
 					fmt.Fprintf(&b, "ineffectual-single-deletes: %s\n",
@@ -314,15 +303,7 @@ func TestCompactionIter(t *testing.T) {
 		})
 	}
 
-	// Rather than testing against all format version, we test against the
-	// significant boundaries.
-	formatVersions := []FormatMajorVersion{
-		FormatMinSupported,
-		internalFormatNewest,
-	}
-	for _, formatVersion := range formatVersions {
-		t.Run(fmt.Sprintf("version-%s", formatVersion), func(t *testing.T) {
-			runTest(t, formatVersion)
-		})
-	}
+	runTest(t, "testdata/iter")
+	runTest(t, "testdata/iter_set_with_del")
+	runTest(t, "testdata/iter_delete_sized")
 }
