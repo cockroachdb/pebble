@@ -16,41 +16,12 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/stretchr/testify/require"
 )
-
-func TestSnapshotIndex(t *testing.T) {
-	testCases := []struct {
-		snapshots      []uint64
-		seq            uint64
-		expectedIndex  int
-		expectedSeqNum uint64
-	}{
-		{[]uint64{}, 1, 0, InternalKeySeqNumMax},
-		{[]uint64{1}, 0, 0, 1},
-		{[]uint64{1}, 1, 1, InternalKeySeqNumMax},
-		{[]uint64{1}, 2, 1, InternalKeySeqNumMax},
-		{[]uint64{1, 3}, 1, 1, 3},
-		{[]uint64{1, 3}, 2, 1, 3},
-		{[]uint64{1, 3}, 3, 2, InternalKeySeqNumMax},
-		{[]uint64{1, 3}, 4, 2, InternalKeySeqNumMax},
-		{[]uint64{1, 3, 3}, 2, 1, 3},
-	}
-	for _, c := range testCases {
-		t.Run("", func(t *testing.T) {
-			idx, seqNum := snapshotIndex(c.seq, c.snapshots)
-			if c.expectedIndex != idx {
-				t.Fatalf("expected %d, but got %d", c.expectedIndex, idx)
-			}
-			if c.expectedSeqNum != seqNum {
-				t.Fatalf("expected %d, but got %d", c.expectedSeqNum, seqNum)
-			}
-		})
-	}
-}
 
 type debugMerger struct {
 	buf []byte
@@ -81,7 +52,7 @@ func TestCompactionIter(t *testing.T) {
 	var kvs []base.InternalKV
 	var rangeKeys []keyspan.Span
 	var rangeDels []keyspan.Span
-	var snapshots []uint64
+	var snapshots compact.Snapshots
 	var elideTombstones bool
 	var allowZeroSeqnum bool
 	var rangeKeyInterleaving *keyspan.InterleavingIter

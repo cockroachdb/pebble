@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"sort"
 	"strconv"
 
 	"github.com/cockroachdb/errors"
@@ -224,7 +223,7 @@ type compactionIter struct {
 	// The snapshot sequence numbers that need to be maintained. These sequence
 	// numbers define the snapshot stripes (see the Snapshots description
 	// above). The sequence numbers are in ascending order.
-	snapshots []uint64
+	snapshots compact.Snapshots
 	// frontiers holds a heap of user keys that affect compaction behavior when
 	// they're exceeded. Before a new key is returned, the compaction iterator
 	// advances the frontier, notifying any code that subscribed to be notified
@@ -261,7 +260,7 @@ func newCompactionIter(
 	equal Equal,
 	merge Merge,
 	iter internalIterator,
-	snapshots []uint64,
+	snapshots compact.Snapshots,
 	allowZeroSeqNum bool,
 	elideTombstone func(key []byte) bool,
 	elideRangeTombstone func(start, end []byte) bool,
@@ -296,7 +295,7 @@ func (i *compactionIter) First() (*InternalKey, []byte) {
 		if i.err != nil {
 			return nil, nil
 		}
-		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iterKV.SeqNum(), i.snapshots)
+		i.curSnapshotIdx, i.curSnapshotSeqNum = i.snapshots.IndexAndSeqNum(i.iterKV.SeqNum())
 	}
 	i.pos = iterPosNext
 	i.iterStripeChange = newStripeNewKey
@@ -549,18 +548,6 @@ func (i *compactionIter) closeValueCloser() error {
 	return i.err
 }
 
-// snapshotIndex returns the index of the first sequence number in snapshots
-// which is greater than or equal to seq.
-func snapshotIndex(seq uint64, snapshots []uint64) (int, uint64) {
-	index := sort.Search(len(snapshots), func(i int) bool {
-		return snapshots[i] > seq
-	})
-	if index >= len(snapshots) {
-		return index, InternalKeySeqNumMax
-	}
-	return index, snapshots[index]
-}
-
 // skipInStripe skips over skippable keys in the same stripe and user key. It
 // may set i.err, in which case i.iterKV will be nil.
 func (i *compactionIter) skipInStripe() {
@@ -638,7 +625,7 @@ func (i *compactionIter) nextInStripeHelper() stripeChangeType {
 		//    of these keys, we consider the new key a `newStripeNewKey` to
 		//    reflect that it's the beginning of a new stream of point keys.
 		if i.key.IsExclusiveSentinel() || !i.equal(i.key.UserKey, kv.K.UserKey) {
-			i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(kv.SeqNum(), i.snapshots)
+			i.curSnapshotIdx, i.curSnapshotSeqNum = i.snapshots.IndexAndSeqNum(kv.SeqNum())
 			return newStripeNewKey
 		}
 
@@ -659,7 +646,7 @@ func (i *compactionIter) nextInStripeHelper() stripeChangeType {
 			panic(errors.AssertionFailedf("pebble: invariant violation: %s and %s out of order", prevKey, kv.K))
 		}
 
-		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(kv.SeqNum(), i.snapshots)
+		i.curSnapshotIdx, i.curSnapshotSeqNum = i.snapshots.IndexAndSeqNum(kv.SeqNum())
 		switch kv.Kind() {
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete,
 			InternalKeyKindRangeDelete:
@@ -1300,7 +1287,7 @@ func (i *compactionIter) TombstonesUpTo(key []byte) []keyspan.Span {
 		currentIdx := -1
 		keys := make([]keyspan.Key, 0, min(len(span.Keys), len(i.snapshots)+1))
 		for _, k := range span.Keys {
-			idx, _ := snapshotIndex(k.SeqNum(), i.snapshots)
+			idx := i.snapshots.Index(k.SeqNum())
 			if currentIdx == idx {
 				continue
 			}
