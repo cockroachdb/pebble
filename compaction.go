@@ -2771,10 +2771,18 @@ func (d *DB) runCompaction(
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	iiter = invalidating.MaybeWrapIfInvariants(iiter)
-	iter := compact.NewIter(c.cmp, c.equal, d.merge, iiter, snapshots,
-		c.allowedZeroSeqNum, c.elideTombstone,
-		c.elideRangeTombstone, d.opts.Experimental.IneffectualSingleDeleteCallback,
-		d.opts.Experimental.SingleDeleteInvariantViolationCallback)
+	cfg := compact.IterConfig{
+		Cmp:                                    c.cmp,
+		Equal:                                  c.equal,
+		Merge:                                  d.merge,
+		Snapshots:                              snapshots,
+		AllowZeroSeqNum:                        c.allowedZeroSeqNum,
+		ElideTombstone:                         c.elideTombstone,
+		ElideRangeTombstone:                    c.elideRangeTombstone,
+		IneffectualSingleDeleteCallback:        d.opts.Experimental.IneffectualSingleDeleteCallback,
+		SingleDeleteInvariantViolationCallback: d.opts.Experimental.SingleDeleteInvariantViolationCallback,
+	}
+	iter := compact.NewIter(cfg, iiter)
 
 	var (
 		createdFiles    []base.DiskFileNum
