@@ -145,7 +145,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 5
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 164533
+point-deletions-bytes-estimate: 164517
 range-deletions-bytes-estimate: 0
 
 maybe-compact

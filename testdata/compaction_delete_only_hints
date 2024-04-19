@@ -414,4 +414,4 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L6 [000006 000007 000008 000009 000011] (3.5KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+  [JOB 100] compacted(delete-only) L6 [000006 000007 000008 000009 000011] (3.3KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s

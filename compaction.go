@@ -3027,9 +3027,6 @@ func (d *DB) runCompaction(
 		{
 			// Set internal sstable properties.
 			p := getInternalWriterProperties(tw)
-			// Set the external sst version to 0. This is what RocksDB expects for
-			// db-internal sstables; otherwise, it could apply a global sequence number.
-			p.ExternalFormatVersion = 0
 			// Set the snapshot pinned totals.
 			p.SnapshotPinnedKeys = pinnedCount
 			p.SnapshotPinnedKeySize = pinnedKeySize
