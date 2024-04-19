@@ -5,8 +5,10 @@
 package pebble
 
 import (
+	"cmp"
 	"context"
 	"runtime/pprof"
+	"slices"
 	"sync"
 	"time"
 
@@ -304,4 +306,306 @@ func (cm *cleanupManager) maybeLogLocked() {
 		cm.mu.jobsQueueWarningIssued = false
 		cm.opts.Logger.Infof("cleanup back to normal; job queue has under %d jobs", lowThreshold)
 	}
+}
+
+func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
+	var pacerInfo deletionPacerInfo
+	// Call GetDiskUsage after every file deletion. This may seem inefficient,
+	// but in practice this was observed to take constant time, regardless of
+	// volume size used, at least on linux with ext4 and zfs. All invocations
+	// take 10 microseconds or less.
+	pacerInfo.freeBytes = d.calculateDiskAvailableBytes()
+	d.mu.Lock()
+	pacerInfo.obsoleteBytes = d.mu.versions.metrics.Table.ObsoleteSize
+	pacerInfo.liveBytes = uint64(d.mu.versions.metrics.Total().Size)
+	d.mu.Unlock()
+	return pacerInfo
+}
+
+// onObsoleteTableDelete is called to update metrics when an sstable is deleted.
+func (d *DB) onObsoleteTableDelete(fileSize uint64, isLocal bool) {
+	d.mu.Lock()
+	d.mu.versions.metrics.Table.ObsoleteCount--
+	d.mu.versions.metrics.Table.ObsoleteSize -= fileSize
+	if isLocal {
+		d.mu.versions.metrics.Table.Local.ObsoleteSize -= fileSize
+	}
+	d.mu.Unlock()
+}
+
+// scanObsoleteFiles scans the filesystem for files that are no longer needed
+// and adds those to the internal lists of obsolete files. Note that the files
+// are not actually deleted by this method. A subsequent call to
+// deleteObsoleteFiles must be performed. Must be not be called concurrently
+// with compactions and flushes. db.mu must be held when calling this function.
+func (d *DB) scanObsoleteFiles(list []string) {
+	// Disable automatic compactions temporarily to avoid concurrent compactions /
+	// flushes from interfering. The original value is restored on completion.
+	disabledPrev := d.opts.DisableAutomaticCompactions
+	defer func() {
+		d.opts.DisableAutomaticCompactions = disabledPrev
+	}()
+	d.opts.DisableAutomaticCompactions = true
+
+	// Wait for any ongoing compaction to complete before continuing.
+	for d.mu.compact.compactingCount > 0 || d.mu.compact.downloadingCount > 0 || d.mu.compact.flushing {
+		d.mu.compact.cond.Wait()
+	}
+
+	liveFileNums := make(map[base.DiskFileNum]struct{})
+	d.mu.versions.addLiveFileNums(liveFileNums)
+	// Protect against files which are only referred to by the ingestedFlushable
+	// from being deleted. These are added to the flushable queue on WAL replay
+	// during read only mode and aren't part of the Version. Note that if
+	// !d.opts.ReadOnly, then all flushables of type ingestedFlushable have
+	// already been flushed.
+	for _, fEntry := range d.mu.mem.queue {
+		if f, ok := fEntry.flushable.(*ingestedFlushable); ok {
+			for _, file := range f.files {
+				liveFileNums[file.FileBacking.DiskFileNum] = struct{}{}
+			}
+		}
+	}
+
+	manifestFileNum := d.mu.versions.manifestFileNum
+
+	var obsoleteTables []tableInfo
+	var obsoleteManifests []fileInfo
+	var obsoleteOptions []fileInfo
+
+	for _, filename := range list {
+		fileType, diskFileNum, ok := base.ParseFilename(d.opts.FS, filename)
+		if !ok {
+			continue
+		}
+		switch fileType {
+		case fileTypeManifest:
+			if diskFileNum >= manifestFileNum {
+				continue
+			}
+			fi := fileInfo{FileNum: diskFileNum}
+			if stat, err := d.opts.FS.Stat(filename); err == nil {
+				fi.FileSize = uint64(stat.Size())
+			}
+			obsoleteManifests = append(obsoleteManifests, fi)
+		case fileTypeOptions:
+			if diskFileNum >= d.optionsFileNum {
+				continue
+			}
+			fi := fileInfo{FileNum: diskFileNum}
+			if stat, err := d.opts.FS.Stat(filename); err == nil {
+				fi.FileSize = uint64(stat.Size())
+			}
+			obsoleteOptions = append(obsoleteOptions, fi)
+		case fileTypeTable:
+			// Objects are handled through the objstorage provider below.
+		default:
+			// Don't delete files we don't know about.
+		}
+	}
+
+	objects := d.objProvider.List()
+	for _, obj := range objects {
+		switch obj.FileType {
+		case fileTypeTable:
+			if _, ok := liveFileNums[obj.DiskFileNum]; ok {
+				continue
+			}
+			fileInfo := fileInfo{
+				FileNum: obj.DiskFileNum,
+			}
+			if size, err := d.objProvider.Size(obj); err == nil {
+				fileInfo.FileSize = uint64(size)
+			}
+			obsoleteTables = append(obsoleteTables, tableInfo{
+				fileInfo: fileInfo,
+				isLocal:  !obj.IsRemote(),
+			})
+
+		default:
+			// Ignore object types we don't know about.
+		}
+	}
+
+	d.mu.versions.obsoleteTables = mergeTableInfos(d.mu.versions.obsoleteTables, obsoleteTables)
+	d.mu.versions.updateObsoleteTableMetricsLocked()
+	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
+	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
+}
+
+// disableFileDeletions disables file deletions and then waits for any
+// in-progress deletion to finish. The caller is required to call
+// enableFileDeletions in order to enable file deletions again. It is ok for
+// multiple callers to disable file deletions simultaneously, though they must
+// all invoke enableFileDeletions in order for file deletions to be re-enabled
+// (there is an internal reference count on file deletion disablement).
+//
+// d.mu must be held when calling this method.
+func (d *DB) disableFileDeletions() {
+	d.mu.disableFileDeletions++
+	d.mu.Unlock()
+	defer d.mu.Lock()
+	d.cleanupManager.Wait()
+}
+
+// enableFileDeletions enables previously disabled file deletions. A cleanup job
+// is queued if necessary.
+//
+// d.mu must be held when calling this method.
+func (d *DB) enableFileDeletions() {
+	if d.mu.disableFileDeletions <= 0 {
+		panic("pebble: file deletion disablement invariant violated")
+	}
+	d.mu.disableFileDeletions--
+	if d.mu.disableFileDeletions > 0 {
+		return
+	}
+	d.deleteObsoleteFiles(d.newJobIDLocked())
+}
+
+type fileInfo = base.FileInfo
+
+// deleteObsoleteFiles enqueues a cleanup job to the cleanup manager, if necessary.
+//
+// d.mu must be held when calling this. The function will release and re-aquire the mutex.
+//
+// Does nothing if file deletions are disabled (see disableFileDeletions). A
+// cleanup job will be scheduled when file deletions are re-enabled.
+func (d *DB) deleteObsoleteFiles(jobID JobID) {
+	if d.mu.disableFileDeletions > 0 {
+		return
+	}
+	_, noRecycle := d.opts.Cleaner.(base.NeedsFileContents)
+
+	// NB: d.mu.versions.minUnflushedLogNum is the log number of the earliest
+	// log that has not had its contents flushed to an sstable.
+	obsoleteLogs, err := d.mu.log.manager.Obsolete(wal.NumWAL(d.mu.versions.minUnflushedLogNum), noRecycle)
+	if err != nil {
+		panic(err)
+	}
+
+	obsoleteTables := append([]tableInfo(nil), d.mu.versions.obsoleteTables...)
+	d.mu.versions.obsoleteTables = nil
+
+	for _, tbl := range obsoleteTables {
+		delete(d.mu.versions.zombieTables, tbl.FileNum)
+	}
+
+	// Sort the manifests cause we want to delete some contiguous prefix
+	// of the older manifests.
+	slices.SortFunc(d.mu.versions.obsoleteManifests, func(a, b fileInfo) int {
+		return cmp.Compare(a.FileNum, b.FileNum)
+	})
+
+	var obsoleteManifests []fileInfo
+	manifestsToDelete := len(d.mu.versions.obsoleteManifests) - d.opts.NumPrevManifest
+	if manifestsToDelete > 0 {
+		obsoleteManifests = d.mu.versions.obsoleteManifests[:manifestsToDelete]
+		d.mu.versions.obsoleteManifests = d.mu.versions.obsoleteManifests[manifestsToDelete:]
+		if len(d.mu.versions.obsoleteManifests) == 0 {
+			d.mu.versions.obsoleteManifests = nil
+		}
+	}
+
+	obsoleteOptions := d.mu.versions.obsoleteOptions
+	d.mu.versions.obsoleteOptions = nil
+
+	// Release d.mu while preparing the cleanup job and possibly waiting.
+	// Note the unusual order: Unlock and then Lock.
+	d.mu.Unlock()
+	defer d.mu.Lock()
+
+	filesToDelete := make([]obsoleteFile, 0, len(obsoleteLogs)+len(obsoleteTables)+len(obsoleteManifests)+len(obsoleteOptions))
+	for _, f := range obsoleteLogs {
+		filesToDelete = append(filesToDelete, obsoleteFile{fileType: fileTypeLog, logFile: f})
+	}
+	// We sort to make the order of deletions deterministic, which is nice for
+	// tests.
+	slices.SortFunc(obsoleteTables, func(a, b tableInfo) int {
+		return cmp.Compare(a.FileNum, b.FileNum)
+	})
+	for _, f := range obsoleteTables {
+		d.tableCache.evict(f.FileNum)
+		filesToDelete = append(filesToDelete, obsoleteFile{
+			fileType: fileTypeTable,
+			nonLogFile: deletableFile{
+				dir:      d.dirname,
+				fileNum:  f.FileNum,
+				fileSize: f.FileSize,
+				isLocal:  f.isLocal,
+			},
+		})
+	}
+	files := [2]struct {
+		fileType fileType
+		obsolete []fileInfo
+	}{
+		{fileTypeManifest, obsoleteManifests},
+		{fileTypeOptions, obsoleteOptions},
+	}
+	for _, f := range files {
+		// We sort to make the order of deletions deterministic, which is nice for
+		// tests.
+		slices.SortFunc(f.obsolete, func(a, b fileInfo) int {
+			return cmp.Compare(a.FileNum, b.FileNum)
+		})
+		for _, fi := range f.obsolete {
+			dir := d.dirname
+			filesToDelete = append(filesToDelete, obsoleteFile{
+				fileType: f.fileType,
+				nonLogFile: deletableFile{
+					dir:      dir,
+					fileNum:  fi.FileNum,
+					fileSize: fi.FileSize,
+					isLocal:  true,
+				},
+			})
+		}
+	}
+	if len(filesToDelete) > 0 {
+		d.cleanupManager.EnqueueJob(jobID, filesToDelete)
+	}
+	if d.opts.private.testingAlwaysWaitForCleanup {
+		d.cleanupManager.Wait()
+	}
+}
+
+func (d *DB) maybeScheduleObsoleteTableDeletion() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.maybeScheduleObsoleteTableDeletionLocked()
+}
+
+func (d *DB) maybeScheduleObsoleteTableDeletionLocked() {
+	if len(d.mu.versions.obsoleteTables) > 0 {
+		d.deleteObsoleteFiles(d.newJobIDLocked())
+	}
+}
+
+func merge(a, b []fileInfo) []fileInfo {
+	if len(b) == 0 {
+		return a
+	}
+
+	a = append(a, b...)
+	slices.SortFunc(a, func(a, b fileInfo) int {
+		return cmp.Compare(a.FileNum, b.FileNum)
+	})
+	return slices.CompactFunc(a, func(a, b fileInfo) bool {
+		return a.FileNum == b.FileNum
+	})
+}
+
+func mergeTableInfos(a, b []tableInfo) []tableInfo {
+	if len(b) == 0 {
+		return a
+	}
+
+	a = append(a, b...)
+	slices.SortFunc(a, func(a, b tableInfo) int {
+		return cmp.Compare(a.FileNum, b.FileNum)
+	})
+	return slices.CompactFunc(a, func(a, b tableInfo) bool {
+		return a.FileNum == b.FileNum
+	})
 }
