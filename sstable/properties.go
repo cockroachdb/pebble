@@ -133,10 +133,6 @@ type Properties struct {
 	CompressionOptions string `prop:"rocksdb.compression_options"`
 	// The total size of all data blocks.
 	DataSize uint64 `prop:"rocksdb.data.size"`
-	// The external sstable version format. Version 2 is the one RocksDB has been
-	// using since 5.13. RocksDB only uses the global sequence number for an
-	// sstable if this property has been set.
-	ExternalFormatVersion uint32 `prop:"rocksdb.external_sst_file.version"`
 	// The name of the filter policy used in this table. Empty if no filter
 	// policy is used.
 	FilterPolicyName string `prop:"rocksdb.filter.policy"`
@@ -346,9 +342,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rawBlockWriter) {
 		p.saveString(m, unsafe.Offsetof(p.CompressionOptions), p.CompressionOptions)
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.DataSize), p.DataSize)
-	if p.ExternalFormatVersion != 0 {
-		p.saveUint32(m, unsafe.Offsetof(p.ExternalFormatVersion), p.ExternalFormatVersion)
-	}
 	if p.FilterPolicyName != "" {
 		p.saveString(m, unsafe.Offsetof(p.FilterPolicyName), p.FilterPolicyName)
 	}

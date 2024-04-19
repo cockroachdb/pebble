@@ -177,9 +177,9 @@ remove: db/MANIFEST-000009
 ingest
 ----
 open: ext/0
-read-at(569, 53): ext/0
-read-at(532, 37): ext/0
-read-at(53, 479): ext/0
+read-at(537, 53): ext/0
+read-at(500, 37): ext/0
+read-at(53, 447): ext/0
 read-at(26, 27): ext/0
 read-at(0, 26): ext/0
 close: ext/0
@@ -203,33 +203,33 @@ sync: db
 remove: db/MANIFEST-000011
 [JOB 10] MANIFEST deleted 000011
 remove: ext/0
-[JOB 10] ingested L0:000015 (622B)
+[JOB 10] ingested L0:000015 (590B)
 
 metrics
 ----
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     2  1.2KB     0B       0 |  0.40 |   81B |     1   622B |     0     0B |     3  1.7KB |    0B |   2 21.9
+    0 |     2  1.2KB     0B       0 |  0.40 |   81B |     1   590B |     0     0B |     3  1.7KB |    0B |   2 21.9
     1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     1   590B     0B       0 |     - | 1.2KB |     0     0B |     0     0B |     1   590B | 1.2KB |   1  0.5
-total |     3  1.8KB     0B       0 |     - |  730B |     1   622B |     0     0B |     4  3.0KB | 1.2KB |   3  4.2
+total |     3  1.7KB     0B       0 |     - |  698B |     1   590B |     0     0B |     4  3.0KB | 1.2KB |   3  4.4
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (27B)  in: 48B  written: 108B (125% overhead)
 Flushes: 3
-Compactions: 1  estimated debt: 1.8KB  in progress: 0 (0B)
+Compactions: 1  estimated debt: 1.7KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 1.8KB
-Block cache: 6 entries (1002B)  hit rate: 0.0%
-Table cache: 1 entries (768B)  hit rate: 40.0%
+Local tables size: 1.7KB
+Block cache: 6 entries (970B)  hit rate: 0.0%
+Table cache: 1 entries (760B)  hit rate: 40.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -244,16 +244,16 @@ ingest-flushable
 ----
 sync-data: wal/000012.log
 open: ext/a
-read-at(569, 53): ext/a
-read-at(532, 37): ext/a
-read-at(53, 479): ext/a
+read-at(537, 53): ext/a
+read-at(500, 37): ext/a
+read-at(53, 447): ext/a
 read-at(26, 27): ext/a
 read-at(0, 26): ext/a
 close: ext/a
 open: ext/b
-read-at(569, 53): ext/b
-read-at(532, 37): ext/b
-read-at(53, 479): ext/b
+read-at(537, 53): ext/b
+read-at(500, 37): ext/b
+read-at(53, 447): ext/b
 read-at(26, 27): ext/b
 read-at(0, 26): ext/b
 close: ext/b
@@ -275,7 +275,7 @@ sync: wal
 [JOB 13] WAL created 000020
 remove: ext/a
 remove: ext/b
-[JOB 11] ingested as flushable 000017 (622B), 000018 (622B)
+[JOB 11] ingested as flushable 000017 (590B), 000018 (590B)
 sync-data: wal/000020.log
 close: wal/000020.log
 create: wal/000021.log
@@ -298,7 +298,7 @@ close: db/marker.manifest.000007.MANIFEST-000023
 remove: db/marker.manifest.000006.MANIFEST-000016
 sync: db
 [JOB 16] MANIFEST created 000023
-[JOB 16] flushed 2 ingested flushables L0:000017 (622B) + L6:000018 (622B) in 1.0s (2.0s total), output rate 1.2KB/s
+[JOB 16] flushed 2 ingested flushables L0:000017 (590B) + L6:000018 (590B) in 1.0s (2.0s total), output rate 1.2KB/s
 remove: db/MANIFEST-000014
 [JOB 16] MANIFEST deleted 000014
 [JOB 17] flushing 1 memtable (100B) to L0
@@ -310,26 +310,26 @@ metrics
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     4  2.4KB     0B       0 |  0.80 |   81B |     2  1.2KB |     0     0B |     4  2.3KB |    0B |   4 29.1
+    0 |     4  2.3KB     0B       0 |  0.80 |   81B |     2  1.2KB |     0     0B |     4  2.3KB |    0B |   4 29.1
     1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     2  1.2KB     0B       0 |     - | 1.2KB |     1   622B |     0     0B |     1   590B | 1.2KB |   1  0.5
-total |     6  3.6KB     0B       0 |     - | 1.9KB |     3  1.8KB |     0     0B |     5  4.8KB | 1.2KB |   5  2.5
+    6 |     2  1.2KB     0B       0 |     - | 1.2KB |     1   590B |     0     0B |     1   590B | 1.2KB |   1  0.5
+total |     6  3.5KB     0B       0 |     - | 1.8KB |     3  1.7KB |     0     0B |     5  4.7KB | 1.2KB |   5  2.6
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (29B)  in: 82B  written: 110B (34% overhead)
 Flushes: 6
-Compactions: 1  estimated debt: 3.6KB  in progress: 0 (0B)
+Compactions: 1  estimated debt: 3.5KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
 MemTables: 1 (512KB)  zombie: 1 (512KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 3.6KB
-Block cache: 12 entries (2.0KB)  hit rate: 7.7%
-Table cache: 1 entries (768B)  hit rate: 50.0%
+Local tables size: 3.5KB
+Block cache: 12 entries (1.9KB)  hit rate: 7.7%
+Table cache: 1 entries (760B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0

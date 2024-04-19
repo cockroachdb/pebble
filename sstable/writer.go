@@ -2266,7 +2266,6 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	w.props.CompressionName = o.Compression.String()
 	w.props.MergerName = o.MergerName
 	w.props.PropertyCollectorNames = "[]"
-	w.props.ExternalFormatVersion = rocksDBExternalFormatVersion
 
 	numBlockPropertyCollectors := len(o.BlockPropertyCollectors)
 	if w.tableFormat >= TableFormatPebblev4 {

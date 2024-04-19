@@ -22,10 +22,10 @@ h.sst
      13752  data (156)
      13913  index (245)
      14163  range-del (421)
-     14589  properties (441)
-     15035  meta-index (61)
-     15101  footer (53)
-     15154  EOF
+     14589  properties (409)
+     15003  meta-index (61)
+     15069  footer (53)
+     15122  EOF
 
 sstable layout
 ../sstable/testdata/h.table-bloom.no-compression.sst
@@ -48,10 +48,10 @@ h.table-bloom.no-compression.sst
      26799  filter (2245)
      29049  index (325)
      29379  range-del (421)
-     29805  properties (485)
-     30295  meta-index (112)
-     30412  footer (53)
-     30465  EOF
+     29805  properties (453)
+     30263  meta-index (112)
+     30380  footer (53)
+     30433  EOF
 
 sstable layout
 ../sstable/testdata/h.no-compression.two_level_index.sst
@@ -76,10 +76,10 @@ h.no-compression.two_level_index.sst
      27047  index (95)
      27147  top-index (70)
      27222  range-del (421)
-     27648  properties (487)
-     28140  meta-index (63)
-     28208  footer (53)
-     28261  EOF
+     27648  properties (455)
+     28108  meta-index (63)
+     28176  footer (53)
+     28229  EOF
 
 sstable layout
 -v
@@ -3744,42 +3744,41 @@ h.no-compression.two_level_index.sst
      27631    [restart 27523]
      27635    [restart 27546]
      27643    [trailer compression=none checksum=0xb93b31c5]
-     27648  properties (487)
+     27648  properties (455)
      27648    rocksdb.block.based.table.index.type (43) [restart]
      27691    rocksdb.comparator (39)
      27730    rocksdb.compression (23)
      27753    rocksdb.compression_options (106)
      27859    rocksdb.data.size (15)
      27874    rocksdb.deleted.keys (15)
-     27889    rocksdb.external_sst_file.version (32)
-     27921    rocksdb.filter.size (15)
-     27936    rocksdb.index.partitions (20)
-     27956    rocksdb.index.size (9)
-     27965    rocksdb.merge.operands (18)
-     27983    rocksdb.merge.operator (13)
-     27996    rocksdb.num.data.blocks (19)
-     28015    rocksdb.num.entries (12)
-     28027    rocksdb.num.range-deletions (19)
-     28046    rocksdb.property.collectors (24)
-     28070    rocksdb.raw.key.size (18)
-     28088    rocksdb.raw.value.size (15)
-     28103    rocksdb.top-level.index.size (24)
-     28127    [restart 27648]
-     28135    [trailer compression=none checksum=0x789e68f8]
-     28140  meta-index (63)
-     28140    rocksdb.properties block:27648/487 [restart]
-     28166    rocksdb.range_del block:27222/421 [restart]
-     28191    [restart 28140]
-     28195    [restart 28166]
-     28203    [trailer compression=none checksum=0xb36870b3]
-     28208  footer (53)
-     28208    checksum type: crc32c
-     28209    meta: offset=28140, length=63
-     28213    index: offset=27147, length=70
-     28217    [padding]
-     28249    version: 1
-     28253    magic number: 0xf09faab3f09faab3
-     28261  EOF
+     27889    rocksdb.filter.size (15)
+     27904    rocksdb.index.partitions (20)
+     27924    rocksdb.index.size (9)
+     27933    rocksdb.merge.operands (18)
+     27951    rocksdb.merge.operator (13)
+     27964    rocksdb.num.data.blocks (19)
+     27983    rocksdb.num.entries (12)
+     27995    rocksdb.num.range-deletions (19)
+     28014    rocksdb.property.collectors (24)
+     28038    rocksdb.raw.key.size (18)
+     28056    rocksdb.raw.value.size (15)
+     28071    rocksdb.top-level.index.size (24)
+     28095    [restart 27648]
+     28103    [trailer compression=none checksum=0x3c8612a0]
+     28108  meta-index (63)
+     28108    rocksdb.properties block:27648/455 [restart]
+     28134    rocksdb.range_del block:27222/421 [restart]
+     28159    [restart 28108]
+     28163    [restart 28134]
+     28171    [trailer compression=none checksum=0x7fb4f5d6]
+     28176  footer (53)
+     28176    checksum type: crc32c
+     28177    meta: offset=28108, length=63
+     28181    index: offset=27147, length=70
+     28185    [padding]
+     28217    version: 1
+     28221    magic number: 0xf09faab3f09faab3
+     28229  EOF
 
 sstable layout
 -v

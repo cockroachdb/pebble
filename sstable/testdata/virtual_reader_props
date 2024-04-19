@@ -140,6 +140,6 @@ virtualize lower=dd.SET.5 upper=ddd.SET.6 show-props
 bounds:  [dd#5,SET-ddd#6,SET]
 filenum: 000004
 props:
-  rocksdb.num.entries: 1
+  rocksdb.num.entries: 2
   rocksdb.raw.key.size: 10
   rocksdb.raw.value.size: 2

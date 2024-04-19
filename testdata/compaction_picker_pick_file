@@ -171,7 +171,7 @@ L5:
   000005:[f#11,SET-f#11,SET]: 57942 bytes (57KB)
 L6:
   000006:[c#0,SET-c#0,SET]: 66134 bytes (65KB)
-  000009:[d#13,SET-d#13,SET]: 621 bytes (621B)
+  000009:[d#13,SET-d#13,SET]: 589 bytes (589B)
   000007:[e#0,SET-e#0,SET]: 66134 bytes (65KB)
   000008:[f#0,SET-f#0,SET]: 66134 bytes (65KB)
 
@@ -209,8 +209,8 @@ L5:
   000011:[e#11,SET-e#11,SET]: 126 bytes (126B)
   000005:[f#11,SET-f#11,SET]: 57942 bytes (57KB)
 L6:
-  000012:[c#15,SET-c#15,SET]: 621 bytes (621B)
-  000009:[d#13,SET-d#13,SET]: 621 bytes (621B)
+  000012:[c#15,SET-c#15,SET]: 589 bytes (589B)
+  000009:[d#13,SET-d#13,SET]: 589 bytes (589B)
   000007:[e#0,SET-e#0,SET]: 66134 bytes (65KB)
   000008:[f#0,SET-f#0,SET]: 66134 bytes (65KB)
 
