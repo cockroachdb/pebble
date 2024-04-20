@@ -471,6 +471,45 @@ func BenchmarkMemTableIterSeekGE(b *testing.B) {
 	}
 }
 
+func BenchmarkMemTableIterSeqSeekGEWithBounds(b *testing.B) {
+	m, keys := buildMemTable(b)
+	rng := rand.New(rand.NewSource(uint64(17136275210000)))
+	// Set bounds to restrict iteration to the middle 50% of keys.
+	iter := m.newIter(&IterOptions{
+		LowerBound: keys[len(keys)/4],
+		UpperBound: keys[3*len(keys)/4],
+	})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		iter.SeekGE(keys[rng.Intn(len(keys))], base.SeekGEFlagsNone)
+	}
+}
+
+// BenchmarkMemTableIterSeekGESuccessiveWithBounds benchmarks a particular case
+// where an upper bound excludes the majority of the memtable keys and the user
+// seeks the iterator with successively increasing keys. This pattern is
+// expected to be common in CockroachDB: eg, intent resolution with an upper
+// bound at the end of the lock table span, or a MVCC iterator with an upper
+// bound restricting constraining iteration to a single CockroachDB Range.
+func BenchmarkMemTableIterSeekGESuccessiveWithBounds(b *testing.B) {
+	m, keys := buildMemTable(b)
+	iter := m.newIter(&IterOptions{
+		UpperBound: keys[1],
+	})
+	flags := base.SeekGEFlagsNone.EnableTrySeekUsingNext()
+
+	seekKeys := make([][]byte, 256)
+	for i := 1; i < len(seekKeys); i++ {
+		seekKeys[i] = append(append([]byte(nil), keys[0]...), byte(i-1))
+	}
+
+	b.ResetTimer()
+	iter.SeekGE(keys[0], base.SeekGEFlagsNone)
+	for i := 0; i < b.N-1; i++ {
+		iter.SeekGE(seekKeys[i%len(seekKeys)], flags)
+	}
+}
+
 func BenchmarkMemTableIterNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := m.newIter(nil)
@@ -485,6 +524,25 @@ func BenchmarkMemTableIterNext(b *testing.B) {
 	}
 }
 
+func BenchmarkMemTableIterNextWithBounds(b *testing.B) {
+	m, keys := buildMemTable(b)
+	// Set bounds to restrict iteration to the middle 50% of keys.
+	opts := &IterOptions{
+		LowerBound: keys[len(keys)/4],
+		UpperBound: keys[3*len(keys)/4],
+	}
+	iter := m.newIter(opts)
+	_ = iter.SeekGE(opts.LowerBound, base.SeekGEFlagsNone)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		kv := iter.Next()
+		if kv == nil {
+			kv = iter.SeekGE(opts.LowerBound, base.SeekGEFlagsNone)
+		}
+		_ = kv
+	}
+}
+
 func BenchmarkMemTableIterPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := m.newIter(nil)
@@ -494,6 +552,25 @@ func BenchmarkMemTableIterPrev(b *testing.B) {
 		kv := iter.Prev()
 		if kv == nil {
 			kv = iter.Last()
+		}
+		_ = kv
+	}
+}
+
+func BenchmarkMemTableIterPrevWithBounds(b *testing.B) {
+	m, keys := buildMemTable(b)
+	// Set bounds to restrict iteration to the middle 50% of keys.
+	opts := &IterOptions{
+		LowerBound: keys[len(keys)/4],
+		UpperBound: keys[3*len(keys)/4],
+	}
+	iter := m.newIter(opts)
+	_ = iter.SeekLT(opts.UpperBound, base.SeekLTFlagsNone)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		kv := iter.Prev()
+		if kv == nil {
+			kv = iter.SeekLT(opts.UpperBound, base.SeekLTFlagsNone)
 		}
 		_ = kv
 	}
