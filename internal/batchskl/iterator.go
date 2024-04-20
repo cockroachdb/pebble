@@ -171,31 +171,11 @@ func (it *Iterator) Prev() *base.InternalKey {
 	return &it.key
 }
 
-// Key returns the key at the current position.
-func (it *Iterator) Key() *base.InternalKey {
-	return &it.key
-}
-
 // KeyInfo returns the offset of the start of the record, the start of the key,
 // and the end of the key.
 func (it *Iterator) KeyInfo() (offset, keyStart, keyEnd uint32) {
 	n := it.list.node(it.nd)
 	return n.offset, n.keyStart, n.keyEnd
-}
-
-// Head true iff the iterator is positioned at the sentinel head node.
-func (it *Iterator) Head() bool {
-	return it.nd == it.list.head
-}
-
-// Tail true iff the iterator is positioned at the sentinel tail node.
-func (it *Iterator) Tail() bool {
-	return it.nd == it.list.tail
-}
-
-// Valid returns nil iff the iterator is positioned at a valid node.
-func (it *Iterator) Valid() bool {
-	return it.list != nil && it.nd != it.list.head && it.nd != it.list.tail
 }
 
 func (it *Iterator) String() string {
