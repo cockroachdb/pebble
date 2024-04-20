@@ -33,12 +33,25 @@ type Iterator struct {
 	key   base.InternalKey
 	lower []byte
 	upper []byte
+	// {lower,upper}Node are lazily populated with the offset of an arbitrary
+	// node that is beyond the lower and upper bound respectively. Once
+	// populated, [lower|upper]Node may be used to detect when iteration has
+	// reached a bound without performing a key comparison. This may be
+	// beneficial when performing repeated SeekGEs with TrySeekUsingNext and an
+	// upper bound set. Once the upper bound has been met, no additional key
+	// comparisons are necessary.
+	//
+	// Note that {lower,upper}Node may be zero if the iterator has not yet
+	// encountered a node beyond the respective bound. No valid node may ever
+	// have a zero offset because the skiplist head sentinel node is always
+	// allocated first, ensuring all other nodes have non-zero offsets.
+	lowerNode uint32
+	upperNode uint32
 }
 
 // Close resets the iterator.
 func (it *Iterator) Close() error {
-	it.list = nil
-	it.nd = 0
+	*it = Iterator{}
 	return nil
 }
 
@@ -49,7 +62,7 @@ func (it *Iterator) Close() error {
 // bound.
 func (it *Iterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKey {
 	if flags.TrySeekUsingNext() {
-		if it.nd == it.list.tail {
+		if it.nd == it.list.tail || it.nd == it.upperNode {
 			// Iterator is done.
 			return nil
 		}
@@ -73,12 +86,12 @@ func (it *Iterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKey
 	}
 
 	_, it.nd = it.seekForBaseSplice(key, it.list.abbreviatedKey(key))
-	if it.nd == it.list.tail {
+	if it.nd == it.list.tail || it.nd == it.upperNode {
 		return nil
 	}
 	nodeKey := it.list.getKey(it.nd)
 	if it.upper != nil && it.list.cmp(it.upper, nodeKey.UserKey) <= 0 {
-		it.nd = it.list.tail
+		it.upperNode = it.nd
 		return nil
 	}
 	it.key = nodeKey
@@ -91,12 +104,12 @@ func (it *Iterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKey
 // caller to ensure that key is less than the upper bound.
 func (it *Iterator) SeekLT(key []byte) *base.InternalKey {
 	it.nd, _ = it.seekForBaseSplice(key, it.list.abbreviatedKey(key))
-	if it.nd == it.list.head {
+	if it.nd == it.list.head || it.nd == it.lowerNode {
 		return nil
 	}
 	nodeKey := it.list.getKey(it.nd)
 	if it.lower != nil && it.list.cmp(it.lower, nodeKey.UserKey) > 0 {
-		it.nd = it.list.head
+		it.lowerNode = it.nd
 		return nil
 	}
 	it.key = nodeKey
@@ -109,12 +122,12 @@ func (it *Iterator) SeekLT(key []byte) *base.InternalKey {
 // the lower bound (e.g. via a call to SeekGE(lower)).
 func (it *Iterator) First() *base.InternalKey {
 	it.nd = it.list.getNext(it.list.head, 0)
-	if it.nd == it.list.tail {
+	if it.nd == it.list.tail || it.nd == it.upperNode {
 		return nil
 	}
 	nodeKey := it.list.getKey(it.nd)
 	if it.upper != nil && it.list.cmp(it.upper, nodeKey.UserKey) <= 0 {
-		it.nd = it.list.tail
+		it.upperNode = it.nd
 		return nil
 	}
 	it.key = nodeKey
@@ -127,12 +140,12 @@ func (it *Iterator) First() *base.InternalKey {
 // bound (e.g. via a call to SeekLT(upper)).
 func (it *Iterator) Last() *base.InternalKey {
 	it.nd = it.list.getPrev(it.list.tail, 0)
-	if it.nd == it.list.head {
+	if it.nd == it.list.head || it.nd == it.lowerNode {
 		return nil
 	}
 	nodeKey := it.list.getKey(it.nd)
 	if it.lower != nil && it.list.cmp(it.lower, nodeKey.UserKey) > 0 {
-		it.nd = it.list.head
+		it.lowerNode = it.nd
 		return nil
 	}
 	it.key = nodeKey
@@ -143,12 +156,12 @@ func (it *Iterator) Last() *base.InternalKey {
 // Valid() will be false after this call.
 func (it *Iterator) Next() *base.InternalKey {
 	it.nd = it.list.getNext(it.nd, 0)
-	if it.nd == it.list.tail {
+	if it.nd == it.list.tail || it.nd == it.upperNode {
 		return nil
 	}
 	nodeKey := it.list.getKey(it.nd)
 	if it.upper != nil && it.list.cmp(it.upper, nodeKey.UserKey) <= 0 {
-		it.nd = it.list.tail
+		it.upperNode = it.nd
 		return nil
 	}
 	it.key = nodeKey
@@ -159,12 +172,12 @@ func (it *Iterator) Next() *base.InternalKey {
 // Valid() will be false after this call.
 func (it *Iterator) Prev() *base.InternalKey {
 	it.nd = it.list.getPrev(it.nd, 0)
-	if it.nd == it.list.head {
+	if it.nd == it.list.head || it.nd == it.lowerNode {
 		return nil
 	}
 	nodeKey := it.list.getKey(it.nd)
 	if it.lower != nil && it.list.cmp(it.lower, nodeKey.UserKey) > 0 {
-		it.nd = it.list.head
+		it.lowerNode = it.nd
 		return nil
 	}
 	it.key = nodeKey
