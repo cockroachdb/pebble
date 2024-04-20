@@ -188,25 +188,25 @@ func TestContains(t *testing.T) {
 	m11 := newFileMeta(
 		711,
 		1,
-		base.ParseInternalKey("g.SET.7118"),
+		base.ParseInternalKey("h.SET.7118"),
 		base.ParseInternalKey("j.SET.7119"),
 	)
 	m12 := newFileMeta(
 		712,
 		1,
 		base.ParseInternalKey("n.SET.7128"),
-		base.ParseInternalKey("p.SET.7129"),
+		base.ParseInternalKey("o.SET.7129"),
 	)
 	m13 := newFileMeta(
 		713,
 		1,
-		base.ParseInternalKey("p.SET.7148"),
 		base.ParseInternalKey("p.SET.7149"),
+		base.ParseInternalKey("p.SET.7148"),
 	)
 	m14 := newFileMeta(
 		714,
 		1,
-		base.ParseInternalKey("p.SET.7138"),
+		base.ParseInternalKey("q.SET.7138"),
 		base.ParseInternalKey("u.SET.7139"),
 	)
 
@@ -217,6 +217,7 @@ func TestContains(t *testing.T) {
 		},
 		cmp: testkeys.Comparer,
 	}
+	require.NoError(t, v.CheckOrdering())
 
 	testCases := []struct {
 		level int

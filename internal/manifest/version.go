@@ -1249,7 +1249,11 @@ func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string)
 	// partial order that represents newest to oldest. Reverse the order of L0
 	// files to ensure we construct the same sublevels.
 	slices.Reverse(files[0])
-	return NewVersion(comparer, flushSplitBytes, files), nil
+	v := NewVersion(comparer, flushSplitBytes, files)
+	if err := v.CheckOrdering(); err != nil {
+		return nil, err
+	}
+	return v, nil
 }
 
 // Refs returns the number of references to the version.
