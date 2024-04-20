@@ -504,7 +504,7 @@ func TestIndexedBatchReset(t *testing.T) {
 		count := 0
 		iter := sl.NewIter(nil, nil)
 		defer iter.Close()
-		for iter.First(); iter.Valid(); iter.Next() {
+		for k := iter.First(); k != nil; k = iter.Next() {
 			count++
 		}
 		return count
