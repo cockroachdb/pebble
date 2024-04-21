@@ -40,10 +40,14 @@ import (
 )
 
 func newVersion(opts *Options, files [numLevels][]*fileMetadata) *version {
-	return manifest.NewVersion(
+	v := manifest.NewVersion(
 		opts.Comparer,
 		opts.FlushSplitBytes,
 		files)
+	if err := v.CheckOrdering(); err != nil {
+		panic(err)
+	}
+	return v
 }
 
 type compactionPickerForTesting struct {
@@ -231,14 +235,14 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.101"),
 						base.ParseInternalKey("i.SET.102"),
+						base.ParseInternalKey("i.SET.101"),
 					),
 					newFileMeta(
 						110,
 						1,
-						base.ParseInternalKey("i.SET.111"),
 						base.ParseInternalKey("i.SET.112"),
+						base.ParseInternalKey("i.SET.111"),
 					),
 				},
 			}),
@@ -257,8 +261,8 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.101"),
 						base.ParseInternalKey("i.SET.102"),
+						base.ParseInternalKey("i.SET.101"),
 					),
 				},
 				1: {
@@ -291,8 +295,8 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.101"),
-						base.ParseInternalKey("t.SET.102"),
+						base.ParseInternalKey("i.SET.102"),
+						base.ParseInternalKey("t.SET.101"),
 					),
 				},
 				1: {
@@ -2347,13 +2351,18 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := (&fileMetadata{}).ExtendRangeKeyBounds(
-			cmp,
-			base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		)
+		m := &fileMetadata{}
+		smallest := base.ParseInternalKey(strings.TrimSpace(parts[0]))
+		largest := base.ParseInternalKey(strings.TrimSpace(parts[1]))
+
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+
+		// TODO(radu): this is a hack, make the test specify correct keys or
+		// simplify the input to just provide user keys.
+		smallest.SetKind(InternalKeyKindRangeKeySet)
+		largest = base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeySet, largest.UserKey)
+		m.ExtendRangeKeyBounds(cmp, smallest, largest)
 		m.InitPhysicalBacking()
 		return m
 	}
@@ -2438,7 +2447,7 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 	var (
 		fileNum     = FileNum(0)
 		opts        = (*Options)(nil).EnsureDefaults()
-		seed        = int64(time.Now().UnixNano())
+		seed        = time.Now().UnixNano()
 		rng         = rand.New(rand.NewSource(seed))
 		endKeyspace = 26 * 26
 	)
@@ -2452,17 +2461,20 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 			return []byte{byte(i/26 + 'a'), byte(i%26 + 'a')}
 		}
 		makeIK := func(level, i int) InternalKey {
+			seqNum := uint64(numLevels-level) * 100
+			if level == 0 {
+				seqNum += uint64(i)
+			}
 			return base.MakeInternalKey(
 				makeUserKey(i),
-				uint64(numLevels-level),
+				seqNum,
 				base.InternalKeyKindSet,
 			)
 		}
 		makeFile := func(level, start, end int) *fileMetadata {
 			fileNum++
-			m := (&fileMetadata{
-				FileNum: fileNum,
-			}).ExtendPointKeyBounds(
+			m := &fileMetadata{FileNum: fileNum}
+			m.ExtendPointKeyBounds(
 				opts.Comparer.Compare,
 				makeIK(level, start),
 				makeIK(level, end),

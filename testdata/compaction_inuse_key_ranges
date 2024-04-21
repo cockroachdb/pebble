@@ -5,9 +5,9 @@ L1
   e.SET.1-f.SET.1
 ----
 L1:
-  000001:[a#1,SET-b#1,SET]
-  000002:[d#1,SET-e#1,SET]
-  000003:[e#1,SET-f#1,SET]
+  000001:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000002:[d#1,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000003:[e#1,RANGEKEYSET-f#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a b
@@ -27,9 +27,9 @@ L2
   b.SET.1-c.SET.2
 ----
 L1:
-  000001:[a#1,SET-b#1,SET]
+  000001:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
 L2:
-  000002:[b#1,SET-c#2,SET]
+  000002:[b#1,RANGEKEYSET-c#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a c
@@ -43,9 +43,9 @@ L2
   c.SET.1-d.SET.2
 ----
 L1:
-  000001:[a#1,SET-b#1,SET]
+  000001:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
 L2:
-  000002:[c#1,SET-d#2,SET]
+  000002:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a c
@@ -59,9 +59,9 @@ L2
   a.SET.1-b.SET.2
 ----
 L1:
-  000001:[b#1,SET-c#1,SET]
+  000001:[b#1,RANGEKEYSET-c#inf,RANGEKEYSET]
 L2:
-  000002:[a#1,SET-b#2,SET]
+  000002:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a c
@@ -75,9 +75,9 @@ L2
   a.SET.1-b.SET.2
 ----
 L1:
-  000001:[c#1,SET-d#1,SET]
+  000001:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 L2:
-  000002:[a#1,SET-b#2,SET]
+  000002:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a c
@@ -92,10 +92,10 @@ L1
   i.SET.1-j.SET.1
 ----
 L1:
-  000001:[a#1,SET-b#1,SET]
-  000002:[c#1,SET-d#1,SET]
-  000003:[f#1,SET-g#1,SET]
-  000004:[i#1,SET-j#1,SET]
+  000001:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000002:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000003:[f#1,RANGEKEYSET-g#inf,RANGEKEYSET]
+  000004:[i#1,RANGEKEYSET-j#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a z
@@ -104,7 +104,7 @@ inuse-key-ranges
 ----
 a-b c-d f-g i-j
 a-b c-d
-f-g i-j
+i-j
 
 define
 L1
@@ -117,13 +117,13 @@ L6
   k.SET.0-z.SET.0
 ----
 L1:
-  000001:[a#1,SET-b#1,SET]
-  000002:[c#1,SET-d#1,SET]
-  000003:[f#1,SET-g#1,SET]
-  000004:[i#1,SET-j#1,SET]
+  000001:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000002:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000003:[f#1,RANGEKEYSET-g#inf,RANGEKEYSET]
+  000004:[i#1,RANGEKEYSET-j#inf,RANGEKEYSET]
 L6:
-  000005:[a#0,SET-i#0,SET]
-  000006:[k#0,SET-z#0,SET]
+  000005:[a#0,RANGEKEYSET-i#inf,RANGEKEYSET]
+  000006:[k#0,RANGEKEYSET-z#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a z
@@ -141,13 +141,13 @@ L6
   k.SET.0-z.SET.0
 ----
 L0.0:
-  000001:[a#1,SET-b#1,SET]
-  000002:[c#1,SET-d#1,SET]
-  000003:[f#1,SET-g#1,SET]
-  000004:[i#1,SET-j#1,SET]
+  000001:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000002:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000003:[f#1,RANGEKEYSET-g#inf,RANGEKEYSET]
+  000004:[i#1,RANGEKEYSET-j#inf,RANGEKEYSET]
 L6:
-  000005:[a#0,SET-i#0,SET]
-  000006:[k#0,SET-z#0,SET]
+  000005:[a#0,RANGEKEYSET-i#inf,RANGEKEYSET]
+  000006:[k#0,RANGEKEYSET-z#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a z
@@ -164,17 +164,16 @@ L0
   e.SET.1-m.SET.1
   g.SET.1-p.SET.1
 ----
-L0.3:
-  000005:[c#1,SET-d#1,SET]
 L0.2:
-  000004:[bb#1,SET-dd#1,SET]
+  000005:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 L0.1:
-  000002:[aa#1,SET-ab#1,SET]
-  000003:[b#2,SET-d#1,SET]
-  000007:[g#1,SET-p#1,SET]
+  000002:[aa#1,RANGEKEYSET-ab#inf,RANGEKEYSET]
+  000004:[bb#1,RANGEKEYSET-dd#inf,RANGEKEYSET]
+  000007:[g#1,RANGEKEYSET-p#inf,RANGEKEYSET]
 L0.0:
-  000001:[a#1,SET-b#1,SET]
-  000006:[e#1,SET-m#1,SET]
+  000001:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000003:[b#2,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000006:[e#1,RANGEKEYSET-m#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a z
@@ -208,17 +207,17 @@ L6
   m.SET.1-z.SET.1
 ----
 L1:
-  000001:[a#6,SET-b#6,SET]
-  000002:[d#6,SET-g#6,SET]
+  000001:[a#6,RANGEKEYSET-b#inf,RANGEKEYSET]
+  000002:[d#6,RANGEKEYSET-g#inf,RANGEKEYSET]
 L2:
-  000003:[c#5,SET-d#5,SET]
-  000004:[i#5,SET-j#5,SET]
+  000003:[c#5,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000004:[i#5,RANGEKEYSET-j#inf,RANGEKEYSET]
 L3:
-  000005:[b#1,SET-c#1,SET]
+  000005:[b#1,RANGEKEYSET-c#inf,RANGEKEYSET]
 L4:
-  000006:[f#1,SET-k#1,SET]
+  000006:[f#1,RANGEKEYSET-k#inf,RANGEKEYSET]
 L6:
-  000007:[m#1,SET-z#1,SET]
+  000007:[m#1,RANGEKEYSET-z#inf,RANGEKEYSET]
 
 inuse-key-ranges
 5 a z
@@ -246,7 +245,7 @@ inuse-key-ranges
 ----
 f-k m-z
 f-k
-f-k m-z
+m-z
 .
 f-k m-z
 
@@ -287,16 +286,16 @@ L4
   w.SET.1-z.SET.1
 ----
 L1:
-  000001:[m#6,SET-p#6,SET]
+  000001:[m#6,RANGEKEYSET-p#inf,RANGEKEYSET]
 L2:
-  000002:[j#5,SET-n#5,SET]
-  000003:[o#5,SET-t#5,SET]
+  000002:[j#5,RANGEKEYSET-n#inf,RANGEKEYSET]
+  000003:[o#5,RANGEKEYSET-t#inf,RANGEKEYSET]
 L3:
-  000004:[e#2,SET-k#2,SET]
-  000005:[s#2,SET-x#2,SET]
+  000004:[e#2,RANGEKEYSET-k#inf,RANGEKEYSET]
+  000005:[s#2,RANGEKEYSET-x#inf,RANGEKEYSET]
 L4:
-  000006:[a#1,SET-f#1,SET]
-  000007:[w#1,SET-z#1,SET]
+  000006:[a#1,RANGEKEYSET-f#inf,RANGEKEYSET]
+  000007:[w#1,RANGEKEYSET-z#inf,RANGEKEYSET]
 
 inuse-key-ranges
 3 a z
@@ -317,7 +316,7 @@ a-z
 a-p
 a-p
 a-p
-m-z
+o-z
 o-z
 m-z
 
@@ -325,42 +324,42 @@ define
 L1
   a.SET.6-c.SET.6
 L2
-  b.SET.5-b.SET.5
-  bb.SET.5-bb.SET.5
-  cc.SET.5-cc.SET.5
+  b.SET.5-ba.SET.5
+  bb.SET.5-bba.SET.5
+  cc.SET.5-cca.SET.5
 ----
 L1:
-  000001:[a#6,SET-c#6,SET]
+  000001:[a#6,RANGEKEYSET-c#inf,RANGEKEYSET]
 L2:
-  000002:[b#5,SET-b#5,SET]
-  000003:[bb#5,SET-bb#5,SET]
-  000004:[cc#5,SET-cc#5,SET]
+  000002:[b#5,RANGEKEYSET-ba#inf,RANGEKEYSET]
+  000003:[bb#5,RANGEKEYSET-bba#inf,RANGEKEYSET]
+  000004:[cc#5,RANGEKEYSET-cca#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a c
 0 a cc
 ----
 a-c
-a-c cc-cc
+a-c cc-cca
 
 define
 L1
   a.SET.6-c.SET.6
 L2
-  b.SET.5-b.SET.5
-  bb.SET.5-bb.SET.5
+  b.SET.5-ba.SET.5
+  bb.SET.5-bba.SET.5
   bc.SET.5-c.SET.5
-  c.SET.5-c.SET.5
-  c.SET.5-d.SET.5
+  c.SET.5-ca.SET.5
+  ca.SET.5-d.SET.5
 ----
 L1:
-  000001:[a#6,SET-c#6,SET]
+  000001:[a#6,RANGEKEYSET-c#inf,RANGEKEYSET]
 L2:
-  000002:[b#5,SET-b#5,SET]
-  000003:[bb#5,SET-bb#5,SET]
-  000004:[bc#5,SET-c#5,SET]
-  000005:[c#5,SET-c#5,SET]
-  000006:[c#5,SET-d#5,SET]
+  000002:[b#5,RANGEKEYSET-ba#inf,RANGEKEYSET]
+  000003:[bb#5,RANGEKEYSET-bba#inf,RANGEKEYSET]
+  000004:[bc#5,RANGEKEYSET-c#inf,RANGEKEYSET]
+  000005:[c#5,RANGEKEYSET-ca#inf,RANGEKEYSET]
+  000006:[ca#5,RANGEKEYSET-d#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a c
@@ -368,42 +367,42 @@ inuse-key-ranges
 0 a d
 0 c c
 ----
+a-ca
 a-d
 a-d
-a-d
-a-d
+c-ca
 
 
 define
 L0
   d.SET.7-i.SET.7
 L1
-  a.SET.6-a.SET.6
-  d.SET.6-d.SET.6
+  a.SET.6-aa.SET.6
+  d.SET.6-da.SET.6
   h.SET.6-i.SET.6
 L2
-  b.SET.5-b.SET.5
-  c.SET.5-c.SET.5
-  e.SET.5-e.SET.5
+  b.SET.5-ba.SET.5
+  c.SET.5-ca.SET.5
+  e.SET.5-ea.SET.5
 L3
-  bb.SET.4-bb.SET.4
+  bb.SET.4-bba.SET.4
 ----
 L0.0:
-  000001:[d#7,SET-i#7,SET]
+  000001:[d#7,RANGEKEYSET-i#inf,RANGEKEYSET]
 L1:
-  000002:[a#6,SET-a#6,SET]
-  000003:[d#6,SET-d#6,SET]
-  000004:[h#6,SET-i#6,SET]
+  000002:[a#6,RANGEKEYSET-aa#inf,RANGEKEYSET]
+  000003:[d#6,RANGEKEYSET-da#inf,RANGEKEYSET]
+  000004:[h#6,RANGEKEYSET-i#inf,RANGEKEYSET]
 L2:
-  000005:[b#5,SET-b#5,SET]
-  000006:[c#5,SET-c#5,SET]
-  000007:[e#5,SET-e#5,SET]
+  000005:[b#5,RANGEKEYSET-ba#inf,RANGEKEYSET]
+  000006:[c#5,RANGEKEYSET-ca#inf,RANGEKEYSET]
+  000007:[e#5,RANGEKEYSET-ea#inf,RANGEKEYSET]
 L3:
-  000008:[bb#4,SET-bb#4,SET]
+  000008:[bb#4,RANGEKEYSET-bba#inf,RANGEKEYSET]
 
 inuse-key-ranges
 0 a z
 1 a z
 ----
-a-a b-b bb-bb c-c d-i
-b-b bb-bb c-c e-e
+a-aa b-ba bb-bba c-ca d-i
+b-ba bb-bba c-ca e-ea
