@@ -1017,45 +1017,16 @@ func SortBySmallest(files []*FileMetadata, cmp Compare) {
 // bounds. It is meant for levels other than L0.
 func overlaps(iter LevelIterator, cmp Compare, bounds base.UserKeyBounds) LevelSlice {
 	startIter := iter.Clone()
-	{
-		startIterFile := startIter.SeekGE(cmp, bounds.Start)
-		// SeekGE compares user keys. The user key `start` may be equal to the
-		// f.Largest because f.Largest is a range deletion sentinel, indicating
-		// that the user key `start` is NOT contained within the file f. If
-		// that's the case, we can narrow the overlapping bounds to exclude the
-		// file with the sentinel.
-		if startIterFile != nil && startIterFile.Largest.IsExclusiveSentinel() &&
-			cmp(startIterFile.Largest.UserKey, bounds.Start) == 0 {
-			startIterFile = startIter.Next()
-		}
-		_ = startIterFile // Ignore unused assignment.
-	}
 
+	startIter.SeekGE(cmp, bounds.Start)
+
+	// Note: LevelSlice uses inclusive bounds, so we need to position endIter at
+	// the last overlapping file.
 	endIter := iter.Clone()
 	{
 		endIterFile := endIter.SeekGE(cmp, bounds.End.Key)
-
-		if bounds.End.Kind == base.Inclusive {
-			// endIter is now pointing at the *first* file with a largest key >= end.
-			// If there are multiple files including the user key `end`, we want all
-			// of them, so move forward.
-			// TODO(radu): files are now disjoint in terms of user keys, so this
-			// should be simplified. The contract of LevelIterator.SeekGE should be
-			// re-examined as well.
-			for endIterFile != nil && cmp(endIterFile.Largest.UserKey, bounds.End.Key) == 0 {
-				endIterFile = endIter.Next()
-			}
-		}
-
-		// LevelSlice uses inclusive bounds, so if we seeked to the end sentinel
-		// or nexted too far because Largest.UserKey equaled `end`, go back.
-		//
-		// Consider !exclusiveEnd and end = 'f', with the following file bounds:
-		//
-		//     [b,d] [e, f] [f, f] [g, h]
-		//
-		// the above for loop will Next until it arrives at [g, h]. We need to
-		// observe that g > f, and Prev to the file with bounds [f, f].
+		// The first file that ends after bounds.End.Key might or might not overlap
+		// the bounds; we need to check the start key.
 		if endIterFile == nil || !bounds.End.IsUpperBoundFor(cmp, endIterFile.Smallest.UserKey) {
 			endIterFile = endIter.Prev()
 		}

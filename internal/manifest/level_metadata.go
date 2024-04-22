@@ -550,72 +550,81 @@ func (i *LevelIterator) Prev() *FileMetadata {
 	return i.skipFilteredBackward(i.iter.cur())
 }
 
-// SeekGE seeks to the first file in the iterator's file set with a largest
-// user key greater than or equal to the provided user key. The iterator must
-// have been constructed from L1+ or from a single sublevel of L0, because it
-// requires the underlying files to be sorted by user keys and non-overlapping.
+// SeekGE seeks to the first file with a largest key (of the desired type) that
+// is an upper bound for the given user key. This is the first file that could
+// contain a user key that is greater than or equal to userKey.
+//
+// More specifically, userKey is less than the file's largest.UserKey or they
+// are equal and largest is not an exclusive sentinel.
+//
+// The iterator must have been constructed from L1+ or from a single sublevel of
+// L0, because it requires the underlying files to be sorted by user keys and
+// non-overlapping.
 func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 	if i.iter.r == nil {
 		return nil
 	}
-	if invariants.Enabled {
-		i.assertNotL0Cmp()
-	}
+	i.assertNotL0Cmp()
 	m := i.seek(func(m *FileMetadata) bool {
-		return cmp(m.Largest.UserKey, userKey) >= 0
+		return m.Largest.IsUpperBoundFor(cmp, userKey)
 	})
 	if i.filter != KeyTypePointAndRange && m != nil {
 		b, ok := m.LargestBound(i.filter)
-		if !ok {
-			m = i.Next()
-		} else if c := cmp(b.UserKey, userKey); c < 0 || c == 0 && b.IsExclusiveSentinel() {
-			// This file does not contain any keys of the type ≥ lower. It
-			// should be filtered, even though it does contain point keys.
-			m = i.Next()
+		if !ok || !b.IsUpperBoundFor(cmp, userKey) {
+			// The file does not contain any keys of desired key types
+			// that are >= userKey.
+			return i.Next()
 		}
 	}
 	return i.skipFilteredForward(m)
 }
 
-// assertNotL0Cmp verifies that the btree associated with the iterator is
-// ordered by Smallest key (i.e. L1+ or L0 sublevel) and not by LargestSeqNum
-// (L0).
-func (i *LevelIterator) assertNotL0Cmp() {
-	if reflect.ValueOf(i.iter.cmp).Pointer() == reflect.ValueOf(btreeCmpSeqNum).Pointer() {
-		panic("Seek used with btreeCmpSeqNum")
-	}
-}
-
-// SeekLT seeks to the last file in the iterator's file set with a smallest user
-// key less than the provided user key. The iterator must have been constructed
-// from L1+ or from a single sublevel of L0, because it requires the underlying
-// files to be sorted by user keys and non-overlapping.
+// SeekLT seeks to the last file with a smallest key (of the desired type) that
+// is less than the given user key. This is the last file that could contain a
+// key less than userKey.
+//
+// The iterator must have been constructed from L1+ or from a single sublevel of
+// L0, because it requires the underlying files to be sorted by user keys and
+// non-overlapping.
 func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 	if i.iter.r == nil {
 		return nil
 	}
-	if invariants.Enabled {
-		i.assertNotL0Cmp()
-	}
+	i.assertNotL0Cmp()
 	i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Smallest.UserKey, userKey) >= 0
 	})
 	m := i.Prev()
 	// Although i.Prev() guarantees that the current file contains keys of the
 	// relevant type, it doesn't guarantee that the keys of the relevant type
-	// are < userKey.
+	// are < userKey. For example, say that we have these two files:
+	//   f1: [a, f) with keys of the desired type in the range [c, d)
+	//   f2: [h, k)
+	// and userKey is b. The seek call above will position us at f2 and Prev will
+	// position us at f1.
 	if i.filter != KeyTypePointAndRange && m != nil {
 		b, ok := m.SmallestBound(i.filter)
 		if !ok {
 			panic("unreachable")
 		}
-		if c := cmp(b.UserKey, userKey); c >= 0 {
-			// This file does not contain any keys of the type ≥ lower. It
-			// should be filtered, even though it does contain point keys.
-			m = i.Prev()
+		if cmp(b.UserKey, userKey) >= 0 {
+			// This file does not contain any keys of desired key types
+			// that are <= userKey.
+			return i.Prev()
 		}
 	}
-	return i.skipFilteredBackward(m)
+	return m
+}
+
+// assertNotL0Cmp verifies that the btree associated with the iterator is
+// ordered by Smallest key (i.e. L1+ or L0 sublevel) and not by LargestSeqNum
+// (L0).
+func (i *LevelIterator) assertNotL0Cmp() {
+	if invariants.Enabled {
+		if reflect.ValueOf(i.iter.cmp).Pointer() == reflect.ValueOf(btreeCmpSeqNum).Pointer() {
+			panic("Seek used with btreeCmpSeqNum")
+		}
+	}
 }
 
 // skipFilteredForward takes the file metadata at the iterator's current
@@ -666,6 +675,10 @@ func (i *LevelIterator) skipFilteredBackward(meta *FileMetadata) *FileMetadata {
 	return meta
 }
 
+// seek repositions the iterator over the first file for which fn returns true,
+// mirroring the semantics of the standard library's sort.Search function: fn
+// returns false for some (possibly empty) prefix of the tree's files, and then
+// true for the (possibly empty) remainder.
 func (i *LevelIterator) seek(fn func(*FileMetadata) bool) *FileMetadata {
 	i.iter.seek(fn)
 

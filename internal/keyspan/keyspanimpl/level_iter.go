@@ -123,35 +123,6 @@ func (l *LevelIter) Init(
 	}
 }
 
-func (l *LevelIter) findFileGE(key []byte) *manifest.FileMetadata {
-	// Find the earliest file whose largest key is >= key.
-	//
-	// If the earliest file has its largest key == key and that largest key is a
-	// range deletion sentinel, we know that we manufactured this sentinel to convert
-	// the exclusive range deletion end key into an inclusive key (reminder: [start, end)#seqnum
-	// is the form of a range deletion sentinel which can contribute a largest key = end#sentinel).
-	// In this case we don't return this as the earliest file since there is nothing actually
-	// equal to key in it.
-
-	m := l.files.SeekGE(l.cmp, key)
-	for m != nil {
-		largestKey := m.LargestRangeKey
-		if l.keyType == manifest.KeyTypePoint {
-			largestKey = m.LargestPointKey
-		}
-		if !largestKey.IsExclusiveSentinel() || l.cmp(largestKey.UserKey, key) != 0 {
-			break
-		}
-		m = l.files.Next()
-	}
-	return m
-}
-
-func (l *LevelIter) findFileLT(key []byte) *manifest.FileMetadata {
-	// Find the last file whose smallest key is < key.
-	return l.files.SeekLT(l.cmp, key)
-}
-
 type loadFileReturnIndicator int8
 
 const (
@@ -208,7 +179,7 @@ func (l *LevelIter) SeekGE(key []byte) (*keyspan.Span, error) {
 	l.straddleDir = 0
 	l.err = nil // clear cached iteration error
 
-	f := l.findFileGE(key)
+	f := l.files.SeekGE(l.cmp, key)
 	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(key, f.SmallestRangeKey.UserKey) < 0 {
 		// Peek at the previous file.
 		prevFile := l.files.Prev()
@@ -261,7 +232,7 @@ func (l *LevelIter) SeekLT(key []byte) (*keyspan.Span, error) {
 	l.straddleDir = 0
 	l.err = nil // clear cached iteration error
 
-	f := l.findFileLT(key)
+	f := l.files.SeekLT(l.cmp, key)
 	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(f.LargestRangeKey.UserKey, key) < 0 {
 		// Peek at the next file.
 		nextFile := l.files.Next()
