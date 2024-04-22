@@ -614,6 +614,17 @@ func (l *levelIter) verify(kv *base.InternalKV) *base.InternalKV {
 		if l.upper != nil && kv != l.largestBoundary && l.cmp(kv.K.UserKey, l.upper) > 0 {
 			l.logger.Fatalf("levelIter %s: upper bound violation: %s > %s\n%s", l.level, kv, l.upper, debug.Stack())
 		}
+
+		if l.boundaryContext != nil && l.boundaryContext.isSyntheticIterBoundsKey {
+			switch {
+			case !kv.K.IsExclusiveSentinel():
+				l.logger.Fatalf("levelIter %s: returning %s and isSyntheticIterBounds=true", l.level, kv)
+			case l.lower == nil && l.upper == nil:
+				// If we knew the direction of iteration, we could verify that
+				// specifically the corresponding bound is non-nil.
+				l.logger.Fatalf("levelIter %s: returning %s but has no bounds", l.level, kv)
+			}
+		}
 	}
 	return kv
 }
