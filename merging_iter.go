@@ -53,6 +53,9 @@ type levelIterBoundaryContext struct {
 	// becomes the top element of the heap. When used with a user-facing Iterator,
 	// the only range deletions exposed by this mergingIter should be those with
 	// `isSyntheticIterBoundsKey || isIgnorableBoundaryKey`.
+	//
+	// When true, the coincident key is an exclusive sentinel, and the current
+	// direction of iteration has a user-imposed iteration bound.
 	isSyntheticIterBoundsKey bool
 	// isIgnorableBoundaryKey is set to true iff the key returned by the level
 	// iterator is a file boundary key that should be ignored when returning to
@@ -457,9 +460,7 @@ func (m *mergingIter) switchToMinHeap() error {
 		// Next on the L2 iterator, it would return e, violating its lower
 		// bound.  Instead, we seek it to >= f and Next from there.
 
-		if l.iterKV == nil || (m.lower != nil && l.isSyntheticIterBoundsKey &&
-			l.iterKV.IsExclusiveSentinel() &&
-			m.heap.cmp(l.iterKV.K.UserKey, m.lower) <= 0) {
+		if l.iterKV == nil || (l.isSyntheticIterBoundsKey && m.heap.cmp(l.iterKV.K.UserKey, m.lower) <= 0) {
 			if m.lower != nil {
 				l.iterKV = l.iter.SeekGE(m.lower, base.SeekGEFlagsNone)
 			} else {
@@ -490,8 +491,7 @@ func (m *mergingIter) switchToMinHeap() error {
 	// sentinel. Similar to the logic applied to the other levels, in these
 	// cases we seek the iterator to the first key in order to avoid violating
 	// levelIter's invariants. See the example in the for loop above.
-	if m.lower != nil && cur.isSyntheticIterBoundsKey && cur.iterKV.IsExclusiveSentinel() &&
-		m.heap.cmp(cur.iterKV.K.UserKey, m.lower) <= 0 {
+	if cur.isSyntheticIterBoundsKey && m.heap.cmp(cur.iterKV.K.UserKey, m.lower) <= 0 {
 		cur.iterKV = cur.iter.SeekGE(m.lower, base.SeekGEFlagsNone)
 	} else {
 		cur.iterKV = cur.iter.Next()
@@ -555,8 +555,7 @@ func (m *mergingIter) switchToMaxHeap() error {
 		// Prev on the L2 iterator, it would return h, violating its upper
 		// bound.  Instead, we seek it to < g, and Prev from there.
 
-		if l.iterKV == nil || (m.upper != nil && l.isSyntheticIterBoundsKey &&
-			l.iterKV.IsExclusiveSentinel() && m.heap.cmp(l.iterKV.K.UserKey, m.upper) >= 0) {
+		if l.iterKV == nil || (l.isSyntheticIterBoundsKey && m.heap.cmp(l.iterKV.K.UserKey, m.upper) >= 0) {
 			if m.upper != nil {
 				l.iterKV = l.iter.SeekLT(m.upper, base.SeekLTFlagsNone)
 			} else {
@@ -588,8 +587,7 @@ func (m *mergingIter) switchToMaxHeap() error {
 	// cases we seek the iterator to  in order to avoid violating levelIter's
 	// invariants by Prev-ing through files.  See the example in the for loop
 	// above.
-	if m.upper != nil && cur.isSyntheticIterBoundsKey && cur.iterKV.IsExclusiveSentinel() &&
-		m.heap.cmp(cur.iterKV.K.UserKey, m.upper) >= 0 {
+	if cur.isSyntheticIterBoundsKey && m.heap.cmp(cur.iterKV.K.UserKey, m.upper) >= 0 {
 		cur.iterKV = cur.iter.SeekLT(m.upper, base.SeekLTFlagsNone)
 	} else {
 		cur.iterKV = cur.iter.Prev()
