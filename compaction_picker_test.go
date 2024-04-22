@@ -388,6 +388,9 @@ func TestCompactionPickerL0(t *testing.T) {
 		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		if m.SmallestSeqNum > m.LargestSeqNum {
+			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
+		}
 		m.InitPhysicalBacking()
 		return m, nil
 	}
@@ -967,6 +970,9 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		if m.SmallestSeqNum > m.LargestSeqNum {
+			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
+		}
 		m.InitPhysicalBacking()
 		return m
 	}

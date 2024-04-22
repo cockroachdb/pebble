@@ -1,30 +1,33 @@
 define
 L1
-  a.SET.1-b.SET.1
-  d.SET.1-e.SET.1
-  e.SET.1-f.SET.1
+  1:[a#1,SET-b#1,SET]
+  2:[d#1,SET-e#inf,RANGEDEL]
+  3:[e#1,SET-f#1,SET]
 ----
 L1:
   000001:[a#1,SET-b#1,SET]
-  000002:[d#1,SET-e#1,SET]
+  000002:[d#1,SET-e#inf,RANGEDEL]
   000003:[e#1,SET-f#1,SET]
 
+# Each test case indicates the compaction output level and bounds; we want the
+# in-use key ranges to reflect the levels *below* the output level (except for
+# L0 where we want to reflect all levels including L0).
 inuse-key-ranges
-0 a b
-0 c d
-0 g h
-1 a b
+L0 a b
+L0 c d
+L0 g h
+L1 a b
 ----
-a-b
-d-e
-.
-.
+L0 a-b: a-b
+L0 c-d: d-e
+L0 g-h: .
+L1 a-b: .
 
 define
 L1
-  a.SET.1-b.SET.1
+  1:[a#1,SET-b#1,SET]
 L2
-  b.SET.1-c.SET.2
+  2:[b#1,SET-c#2,SET]
 ----
 L1:
   000001:[a#1,SET-b#1,SET]
@@ -32,15 +35,21 @@ L2:
   000002:[b#1,SET-c#2,SET]
 
 inuse-key-ranges
-0 a c
+L0 a c
+L1 a aa
+L1 a b
+L2 a z
 ----
-a-c
+L0 a-c: a-c
+L1 a-aa: .
+L1 a-b: b-c
+L2 a-z: .
 
 define
 L1
-  a.SET.1-b.SET.1
+  1:[a#1,SET-b#1,SET]
 L2
-  c.SET.1-d.SET.2
+  2:[c#1,SET-d#2,SET]
 ----
 L1:
   000001:[a#1,SET-b#1,SET]
@@ -48,15 +57,17 @@ L2:
   000002:[c#1,SET-d#2,SET]
 
 inuse-key-ranges
-0 a c
+L0 a c
+L0 a b
 ----
-a-b c-d
+L0 a-c: a-b c-d
+L0 a-b: a-b
 
 define
 L1
-  b.SET.1-c.SET.1
+  1:[b#1,SET-c#1,SET]
 L2
-  a.SET.1-b.SET.2
+  2:[a#1,SET-b#2,SET]
 ----
 L1:
   000001:[b#1,SET-c#1,SET]
@@ -64,15 +75,15 @@ L2:
   000002:[a#1,SET-b#2,SET]
 
 inuse-key-ranges
-0 a c
+L0 a c
 ----
-a-c
+L0 a-c: a-c
 
 define
 L1
-  c.SET.1-d.SET.1
+  1:[c#1,SET-d#1,SET]
 L2
-  a.SET.1-b.SET.2
+  2:[a#1,SET-b#2,SET]
 ----
 L1:
   000001:[c#1,SET-d#1,SET]
@@ -80,330 +91,329 @@ L2:
   000002:[a#1,SET-b#2,SET]
 
 inuse-key-ranges
-0 a c
+L0 a c
 ----
-a-b c-d
+L0 a-c: a-b c-d
 
 define
 L1
-  a.SET.1-b.SET.1
-  c.SET.1-d.SET.1
-  f.SET.1-g.SET.1
-  i.SET.1-j.SET.1
+  1:[a#1,SET-b#inf,RANGEDEL]
+  1:[c#1,SET-d#inf,RANGEDEL]
+  1:[f#1,SET-g#inf,RANGEDEL]
+  1:[i#1,SET-j#inf,RANGEDEL]
 ----
 L1:
-  000001:[a#1,SET-b#1,SET]
-  000002:[c#1,SET-d#1,SET]
-  000003:[f#1,SET-g#1,SET]
-  000004:[i#1,SET-j#1,SET]
+  000001:[a#1,SET-b#inf,RANGEDEL]
+  000001:[c#1,SET-d#inf,RANGEDEL]
+  000001:[f#1,SET-g#inf,RANGEDEL]
+  000001:[i#1,SET-j#inf,RANGEDEL]
 
 inuse-key-ranges
-0 a z
-0 a c
-0 g z
+L0 a z
+L0 a c
+L0 g z
 ----
-a-b c-d f-g i-j
-a-b c-d
-f-g i-j
+L0 a-z: a-b c-d f-g i-j
+L0 a-c: a-b c-d
+L0 g-z: i-j
 
 define
 L1
-  a.SET.1-b.SET.1
-  c.SET.1-d.SET.1
-  f.SET.1-g.SET.1
-  i.SET.1-j.SET.1
+  1:[a#1,SET-b#inf,RANGEDEL]
+  1:[c#1,SET-d#inf,RANGEDEL]
+  1:[f#1,SET-g#inf,RANGEDEL]
+  1:[i#1,SET-j#inf,RANGEDEL]
 L6
-  a.SET.0-i.SET.0
-  k.SET.0-z.SET.0
+  1:[a#0,SET-i#inf,RANGEDEL]
+  1:[k#0,SET-z#inf,RANGEDEL]
 ----
 L1:
-  000001:[a#1,SET-b#1,SET]
-  000002:[c#1,SET-d#1,SET]
-  000003:[f#1,SET-g#1,SET]
-  000004:[i#1,SET-j#1,SET]
+  000001:[a#1,SET-b#inf,RANGEDEL]
+  000001:[c#1,SET-d#inf,RANGEDEL]
+  000001:[f#1,SET-g#inf,RANGEDEL]
+  000001:[i#1,SET-j#inf,RANGEDEL]
 L6:
-  000005:[a#0,SET-i#0,SET]
-  000006:[k#0,SET-z#0,SET]
+  000001:[a#0,SET-i#inf,RANGEDEL]
+  000001:[k#0,SET-z#inf,RANGEDEL]
 
 inuse-key-ranges
-0 a z
+L0 a z
 ----
-a-j k-z
+L0 a-z: a-j k-z
 
 define
 L0
-  a.SET.1-b.SET.1
-  c.SET.1-d.SET.1
-  f.SET.1-g.SET.1
-  i.SET.1-j.SET.1
+  1:[a#1,SET-b#inf,RANGEDEL]
+  1:[c#1,SET-d#inf,RANGEDEL]
+  1:[f#1,SET-g#inf,RANGEDEL]
+  1:[i#1,SET-j#inf,RANGEDEL]
 L6
-  a.SET.0-i.SET.0
-  k.SET.0-z.SET.0
+  1:[a#0,SET-i#inf,RANGEDEL]
+  1:[k#0,SET-z#inf,RANGEDEL]
 ----
 L0.0:
-  000001:[a#1,SET-b#1,SET]
-  000002:[c#1,SET-d#1,SET]
-  000003:[f#1,SET-g#1,SET]
-  000004:[i#1,SET-j#1,SET]
+  000001:[a#1,SET-b#inf,RANGEDEL]
+  000001:[c#1,SET-d#inf,RANGEDEL]
+  000001:[f#1,SET-g#inf,RANGEDEL]
+  000001:[i#1,SET-j#inf,RANGEDEL]
 L6:
-  000005:[a#0,SET-i#0,SET]
-  000006:[k#0,SET-z#0,SET]
+  000001:[a#0,SET-i#inf,RANGEDEL]
+  000001:[k#0,SET-z#inf,RANGEDEL]
 
+# L0 compaction should reflect the ranges in L0 as well.
 inuse-key-ranges
-0 a z
+L0 a z
 ----
-a-j k-z
+L0 a-z: a-j k-z
 
 define
 L0
-  a.SET.1-b.SET.1
-  aa.SET.1-ab.SET.1
-  b.SET.2-d.SET.1
-  bb.SET.1-dd.SET.1
-  c.SET.1-d.SET.1
-  e.SET.1-m.SET.1
-  g.SET.1-p.SET.1
+  1:[aa#7,SET-ab#inf,RANGEDEL] seqnums:[7-7]
+  2:[bb#6,SET-dd#inf,RANGEDEL] seqnums:[6-6]
+  3:[a#5,SET-b#inf,RANGEDEL] seqnums:[5-5]
+  4:[b#4,SET-d#inf,RANGEDEL] seqnums:[4-4]
+  5:[c#3,SET-d#inf,RANGEDEL] seqnums:[3-3]
+  6:[e#2,SET-m#inf,RANGEDEL] seqnums:[2-2]
+  7:[g#1,SET-p#inf,RANGEDEL] seqnums:[1-1]
 ----
-L0.3:
-  000005:[c#1,SET-d#1,SET]
 L0.2:
-  000004:[bb#1,SET-dd#1,SET]
+  000002:[bb#6,SET-dd#inf,RANGEDEL]
 L0.1:
-  000002:[aa#1,SET-ab#1,SET]
-  000003:[b#2,SET-d#1,SET]
-  000007:[g#1,SET-p#1,SET]
+  000001:[aa#7,SET-ab#inf,RANGEDEL]
+  000004:[b#4,SET-d#inf,RANGEDEL]
+  000006:[e#2,SET-m#inf,RANGEDEL]
 L0.0:
-  000001:[a#1,SET-b#1,SET]
-  000006:[e#1,SET-m#1,SET]
+  000003:[a#5,SET-b#inf,RANGEDEL]
+  000005:[c#3,SET-d#inf,RANGEDEL]
+  000007:[g#1,SET-p#inf,RANGEDEL]
 
 inuse-key-ranges
-0 a z
-0 e p
-0 e f
-0 b c
-0 q r
-0 1 2
-0 ddd dddd
+L0 a z
+L0 e p
+L0 e f
+L0 b c
+L0 q r
+L0 1 2
+L0 ddd dddd
 ----
-a-dd e-p
-e-p
-e-m
-b-dd
-.
-.
-.
+L0 a-z: a-dd e-p
+L0 e-p: e-p
+L0 e-f: e-m
+L0 b-c: b-dd
+L0 q-r: .
+L0 1-2: .
+L0 ddd-dddd: .
 
 define
 L1
-  a.SET.6-b.SET.6
-  d.SET.6-g.SET.6
+  1:[a#6,SET-b#inf,RANGEDEL]
+  2:[d#6,SET-g#inf,RANGEDEL]
 L2
-  c.SET.5-d.SET.5
-  i.SET.5-j.SET.5
+  3:[c#5,SET-d#inf,RANGEDEL]
+  4:[i#5,SET-j#inf,RANGEDEL]
 L3
-  b.SET.1-c.SET.1
+  5:[b#1,SET-c#inf,RANGEDEL]
 L4
-  f.SET.1-k.SET.1
+  6:[f#1,SET-k#inf,RANGEDEL]
 L6
-  m.SET.1-z.SET.1
+  7:[m#1,SET-z#inf,RANGEDEL]
 ----
 L1:
-  000001:[a#6,SET-b#6,SET]
-  000002:[d#6,SET-g#6,SET]
+  000001:[a#6,SET-b#inf,RANGEDEL]
+  000002:[d#6,SET-g#inf,RANGEDEL]
 L2:
-  000003:[c#5,SET-d#5,SET]
-  000004:[i#5,SET-j#5,SET]
+  000003:[c#5,SET-d#inf,RANGEDEL]
+  000004:[i#5,SET-j#inf,RANGEDEL]
 L3:
-  000005:[b#1,SET-c#1,SET]
+  000005:[b#1,SET-c#inf,RANGEDEL]
 L4:
-  000006:[f#1,SET-k#1,SET]
+  000006:[f#1,SET-k#inf,RANGEDEL]
 L6:
-  000007:[m#1,SET-z#1,SET]
+  000007:[m#1,SET-z#inf,RANGEDEL]
 
 inuse-key-ranges
-5 a z
-5 a b
-5 m z
-5 m zz
-5 mm zz
-5 l x
-5 l zz
+L5 a z
+L5 a b
+L5 m z
+L5 m zz
+L5 mm zz
+L5 l x
+L5 l zz
 ----
-m-z
-.
-m-z
-m-z
-m-z
-m-z
-m-z
+L5 a-z: m-z
+L5 a-b: .
+L5 m-z: m-z
+L5 m-zz: m-z
+L5 mm-zz: m-z
+L5 l-x: m-z
+L5 l-zz: m-z
 
 inuse-key-ranges
-3 a z
-3 f k
-3 k m
-3 l ll
-3 b n
+L3 a z
+L3 f k
+L3 k m
+L3 l ll
+L3 b n
 ----
-f-k m-z
-f-k
-f-k m-z
-.
-f-k m-z
+L3 a-z: f-k m-z
+L3 f-k: f-k
+L3 k-m: m-z
+L3 l-ll: .
+L3 b-n: f-k m-z
 
 inuse-key-ranges
-2 a z
+L2 a z
 ----
-b-c f-k m-z
+L2 a-z: b-c f-k m-z
 
 inuse-key-ranges
-1 a z
+L1 a z
 ----
-b-d f-k m-z
+L1 a-z: b-d f-k m-z
 
 inuse-key-ranges
-0 a z
-0 a k
-0 a b
-0 bb bc
-0 f k
+L0 a z
+L0 a k
+L0 a b
+L0 bb bc
+L0 f k
 ----
-a-k m-z
-a-k
-a-c
-b-c
-d-k
+L0 a-z: a-k m-z
+L0 a-k: a-k
+L0 a-b: a-c
+L0 bb-bc: b-c
+L0 f-k: d-k
 
 define
 L1
-  m.SET.6-p.SET.6
+  1:[m#6,SET-p#inf,RANGEDEL]
 L2
-  j.SET.5-n.SET.5
-  o.SET.5-t.SET.5
+  2:[j#5,SET-n#inf,RANGEDEL]
+  3:[o#5,SET-t#inf,RANGEDEL]
 L3
-  e.SET.2-k.SET.2
-  s.SET.2-x.SET.2
+  4:[a#2,SET-k#inf,RANGEDEL]
+  5:[s#2,SET-x#inf,RANGEDEL]
 L4
-  a.SET.1-f.SET.1
-  w.SET.1-z.SET.1
+  6:[a#1,SET-f#inf,RANGEDEL]
+  7:[w#1,SET-z#inf,RANGEDEL]
 ----
 L1:
-  000001:[m#6,SET-p#6,SET]
+  000001:[m#6,SET-p#inf,RANGEDEL]
 L2:
-  000002:[j#5,SET-n#5,SET]
-  000003:[o#5,SET-t#5,SET]
+  000002:[j#5,SET-n#inf,RANGEDEL]
+  000003:[o#5,SET-t#inf,RANGEDEL]
 L3:
-  000004:[e#2,SET-k#2,SET]
-  000005:[s#2,SET-x#2,SET]
+  000004:[a#2,SET-k#inf,RANGEDEL]
+  000005:[s#2,SET-x#inf,RANGEDEL]
 L4:
-  000006:[a#1,SET-f#1,SET]
-  000007:[w#1,SET-z#1,SET]
+  000006:[a#1,SET-f#inf,RANGEDEL]
+  000007:[w#1,SET-z#inf,RANGEDEL]
 
 inuse-key-ranges
-3 a z
-2 a z
-1 a z
-0 a z
-0 a n
-0 a mm
-0 a nn
-0 p z
-0 pp z
-0 oo z
+L3 a z
+L2 a z
+L1 a z
+L0 a z
+L0 a n
+L0 a mm
+L0 a nn
+L0 p z
+L0 pp z
+L0 oo z
 ----
-a-f w-z
-a-k s-z
-a-n o-z
-a-z
-a-p
-a-p
-a-p
-m-z
-o-z
-m-z
+L3 a-z: a-f w-z
+L2 a-z: a-k s-z
+L1 a-z: a-n o-z
+L0 a-z: a-z
+L0 a-n: a-p
+L0 a-mm: a-p
+L0 a-nn: a-p
+L0 p-z: o-z
+L0 pp-z: o-z
+L0 oo-z: m-z
 
 define
 L1
-  a.SET.6-c.SET.6
+  1:[a#6,SET-c#inf,RANGEDEL]
 L2
-  b.SET.5-b.SET.5
-  bb.SET.5-bb.SET.5
-  cc.SET.5-cc.SET.5
+  2:[b#5,SET-ba#inf,RANGEDEL]
+  3:[bb#5,SET-bba#inf,RANGEDEL]
+  4:[cc#5,SET-cca#inf,RANGEDEL]
 ----
 L1:
-  000001:[a#6,SET-c#6,SET]
+  000001:[a#6,SET-c#inf,RANGEDEL]
 L2:
-  000002:[b#5,SET-b#5,SET]
-  000003:[bb#5,SET-bb#5,SET]
-  000004:[cc#5,SET-cc#5,SET]
+  000002:[b#5,SET-ba#inf,RANGEDEL]
+  000003:[bb#5,SET-bba#inf,RANGEDEL]
+  000004:[cc#5,SET-cca#inf,RANGEDEL]
 
 inuse-key-ranges
-0 a c
-0 a cc
+L0 a c
+L0 a cc
 ----
-a-c
-a-c cc-cc
+L0 a-c: a-c
+L0 a-cc: a-c cc-cca
 
 define
 L1
-  a.SET.6-c.SET.6
+  1:[a#6,SET-c#inf,RANGEDEL]
 L2
-  b.SET.5-b.SET.5
-  bb.SET.5-bb.SET.5
-  bc.SET.5-c.SET.5
-  c.SET.5-c.SET.5
-  c.SET.5-d.SET.5
+  2:[b#5,SET-ba#inf,RANGEDEL]
+  3:[bb#5,SET-bba#inf,RANGEDEL]
+  4:[bc#5,SET-c#inf,RANGEDEL]
+  5:[c#5,SET-ca#inf,RANGEDEL]
+  6:[ca#5,SET-d#inf,RANGEDEL]
 ----
 L1:
-  000001:[a#6,SET-c#6,SET]
+  000001:[a#6,SET-c#inf,RANGEDEL]
 L2:
-  000002:[b#5,SET-b#5,SET]
-  000003:[bb#5,SET-bb#5,SET]
-  000004:[bc#5,SET-c#5,SET]
-  000005:[c#5,SET-c#5,SET]
-  000006:[c#5,SET-d#5,SET]
+  000002:[b#5,SET-ba#inf,RANGEDEL]
+  000003:[bb#5,SET-bba#inf,RANGEDEL]
+  000004:[bc#5,SET-c#inf,RANGEDEL]
+  000005:[c#5,SET-ca#inf,RANGEDEL]
+  000006:[ca#5,SET-d#inf,RANGEDEL]
 
 inuse-key-ranges
-0 a c
-0 a cc
-0 a d
-0 c c
+L0 a c
+L0 a cc
+L0 a d
+L0 c c
 ----
-a-d
-a-d
-a-d
-a-d
-
+L0 a-c: a-ca
+L0 a-cc: a-d
+L0 a-d: a-d
+L0 c-c: c-ca
 
 define
 L0
-  d.SET.7-i.SET.7
+  1:[d#7,SET-i#inf,RANGEDEL]
 L1
-  a.SET.6-a.SET.6
-  d.SET.6-d.SET.6
-  h.SET.6-i.SET.6
+  2:[a#6,SET-aa#inf,RANGEDEL]
+  3:[d#6,SET-da#inf,RANGEDEL]
+  4:[h#6,SET-i#inf,RANGEDEL]
 L2
-  b.SET.5-b.SET.5
-  c.SET.5-c.SET.5
-  e.SET.5-e.SET.5
+  5:[b#5,SET-ba#inf,RANGEDEL]
+  6:[c#5,SET-ca#inf,RANGEDEL]
+  7:[e#5,SET-ea#inf,RANGEDEL]
 L3
-  bb.SET.4-bb.SET.4
+  8:[bb#5,SET-bba#inf,RANGEDEL]
 ----
 L0.0:
-  000001:[d#7,SET-i#7,SET]
+  000001:[d#7,SET-i#inf,RANGEDEL]
 L1:
-  000002:[a#6,SET-a#6,SET]
-  000003:[d#6,SET-d#6,SET]
-  000004:[h#6,SET-i#6,SET]
+  000002:[a#6,SET-aa#inf,RANGEDEL]
+  000003:[d#6,SET-da#inf,RANGEDEL]
+  000004:[h#6,SET-i#inf,RANGEDEL]
 L2:
-  000005:[b#5,SET-b#5,SET]
-  000006:[c#5,SET-c#5,SET]
-  000007:[e#5,SET-e#5,SET]
+  000005:[b#5,SET-ba#inf,RANGEDEL]
+  000006:[c#5,SET-ca#inf,RANGEDEL]
+  000007:[e#5,SET-ea#inf,RANGEDEL]
 L3:
-  000008:[bb#4,SET-bb#4,SET]
+  000008:[bb#5,SET-bba#inf,RANGEDEL]
 
 inuse-key-ranges
-0 a z
-1 a z
+L0 a z
+L1 a z
 ----
-a-a b-b bb-bb c-c d-i
-b-b bb-bb c-c e-e
+L0 a-z: a-aa b-ba bb-bba c-ca d-i
+L1 a-z: b-ba bb-bba c-ca e-ea
