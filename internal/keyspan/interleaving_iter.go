@@ -98,10 +98,7 @@ type InterleavingIter struct {
 	comparer    *base.Comparer
 	pointIter   base.InternalIterator
 	keyspanIter FragmentIterator
-	mask        SpanMask
-
-	// lower and upper hold the iteration bounds set through SetBounds.
-	lower, upper []byte
+	opts        InterleavingIterOpts
 	// keyBuf is used to copy SeekGE or SeekPrefixGE arguments when they're used
 	// to truncate a span. The byte slices backing a SeekGE/SeekPrefixGE search
 	// keys can come directly from the end user, so they're copied into keyBuf
@@ -214,9 +211,7 @@ func (i *InterleavingIter) Init(
 		comparer:    comparer,
 		pointIter:   pointIter,
 		keyspanIter: keyspanIter,
-		mask:        opts.Mask,
-		lower:       opts.LowerBound,
-		upper:       opts.UpperBound,
+		opts:        opts,
 	}
 }
 
@@ -261,7 +256,7 @@ func (i *InterleavingIter) InitSeekLT(key []byte, pointKV *base.InternalKV) *bas
 	i.savePoint(pointKV)
 	i.keyspanSeekLT(key)
 	i.computeLargestPos()
-	return i.yieldPosition(i.lower, i.prevPos)
+	return i.yieldPosition(i.opts.LowerBound, i.prevPos)
 }
 
 // SeekGE implements (base.InternalIterator).SeekGE.
@@ -394,7 +389,7 @@ func (i *InterleavingIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.Inte
 
 	i.dir = -1
 	i.computeLargestPos()
-	return i.yieldPosition(i.lower, i.prevPos)
+	return i.yieldPosition(i.opts.LowerBound, i.prevPos)
 }
 
 // First implements (base.InternalIterator).First.
@@ -407,7 +402,7 @@ func (i *InterleavingIter) First() *base.InternalKV {
 	i.savedKeyspan()
 	i.dir = +1
 	i.computeSmallestPos()
-	return i.yieldPosition(i.lower, i.nextPos)
+	return i.yieldPosition(i.opts.LowerBound, i.nextPos)
 }
 
 // Last implements (base.InternalIterator).Last.
@@ -420,7 +415,7 @@ func (i *InterleavingIter) Last() *base.InternalKV {
 	i.savedKeyspan()
 	i.dir = -1
 	i.computeLargestPos()
-	return i.yieldPosition(i.lower, i.prevPos)
+	return i.yieldPosition(i.opts.LowerBound, i.prevPos)
 }
 
 // Next implements (base.InternalIterator).Next.
@@ -429,7 +424,7 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 		// Switching directions.
 		i.dir = +1
 
-		if i.mask != nil {
+		if i.opts.Mask != nil {
 			// Clear the mask while we reposition the point iterator. While
 			// switching directions, we may move the point iterator outside of
 			// i.span's bounds.
@@ -471,7 +466,7 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 		// Fallthrough to calling i.nextPos.
 	}
 	i.nextPos()
-	return i.yieldPosition(i.lower, i.nextPos)
+	return i.yieldPosition(i.opts.LowerBound, i.nextPos)
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
@@ -497,7 +492,7 @@ func (i *InterleavingIter) NextPrefix(succKey []byte) *base.InternalKV {
 	case posKeyspanStart, posKeyspanEnd:
 		i.nextPos()
 	}
-	return i.yieldPosition(i.lower, i.nextPos)
+	return i.yieldPosition(i.opts.LowerBound, i.nextPos)
 }
 
 // Prev implements (base.InternalIterator).Prev.
@@ -506,7 +501,7 @@ func (i *InterleavingIter) Prev() *base.InternalKV {
 		// Switching directions.
 		i.dir = -1
 
-		if i.mask != nil {
+		if i.opts.Mask != nil {
 			// Clear the mask while we reposition the point iterator. While
 			// switching directions, we may move the point iterator outside of
 			// i.span's bounds.
@@ -569,7 +564,7 @@ func (i *InterleavingIter) Prev() *base.InternalKV {
 		// Fallthrough to calling i.prevPos.
 	}
 	i.prevPos()
-	return i.yieldPosition(i.lower, i.prevPos)
+	return i.yieldPosition(i.opts.LowerBound, i.prevPos)
 }
 
 // computeSmallestPos sets i.{pos,withinSpan} to:
@@ -766,9 +761,9 @@ func (i *InterleavingIter) yieldPosition(lowerBound []byte, advance func()) *bas
 				panic("i.pointKV is nil")
 			}
 
-			if i.mask != nil {
+			if i.opts.Mask != nil {
 				i.maybeUpdateMask()
-				if i.withinSpan && i.mask.SkipPoint(i.pointKV.K.UserKey) {
+				if i.withinSpan && i.opts.Mask.SkipPoint(i.pointKV.K.UserKey) {
 					// The span covers the point key. If a SkipPoint hook is
 					// configured, ask it if we should skip this point key.
 					if i.prefix != nil {
@@ -848,7 +843,7 @@ func (i *InterleavingIter) saveSpanForward(span *Span, err error) {
 		return
 	}
 	// Check the upper bound if we have one.
-	if i.upper != nil && i.cmp(i.span.Start, i.upper) >= 0 {
+	if i.opts.UpperBound != nil && i.cmp(i.span.Start, i.opts.UpperBound) >= 0 {
 		i.span = nil
 		return
 	}
@@ -861,17 +856,17 @@ func (i *InterleavingIter) saveSpanForward(span *Span, err error) {
 
 	// NB: These truncations don't require setting `keyspanMarkerTruncated`:
 	// That flag only applies to truncated span marker keys.
-	if i.lower != nil && i.cmp(i.span.Start, i.lower) < 0 {
+	if i.opts.LowerBound != nil && i.cmp(i.span.Start, i.opts.LowerBound) < 0 {
 		i.truncated = true
 		i.truncatedSpan = *i.span
-		i.truncatedSpan.Start = i.lower
+		i.truncatedSpan.Start = i.opts.LowerBound
 	}
-	if i.upper != nil && i.cmp(i.upper, i.span.End) < 0 {
+	if i.opts.UpperBound != nil && i.cmp(i.opts.UpperBound, i.span.End) < 0 {
 		if !i.truncated {
 			i.truncated = true
 			i.truncatedSpan = *i.span
 		}
-		i.truncatedSpan.End = i.upper
+		i.truncatedSpan.End = i.opts.UpperBound
 	}
 	// If this is a part of a SeekPrefixGE call, we may also need to truncate to
 	// the prefix's bounds.
@@ -904,7 +899,7 @@ func (i *InterleavingIter) saveSpanBackward(span *Span, err error) {
 	}
 
 	// Check the lower bound if we have one.
-	if i.lower != nil && i.cmp(i.span.End, i.lower) <= 0 {
+	if i.opts.LowerBound != nil && i.cmp(i.span.End, i.opts.LowerBound) <= 0 {
 		i.span = nil
 		return
 	}
@@ -917,17 +912,17 @@ func (i *InterleavingIter) saveSpanBackward(span *Span, err error) {
 
 	// NB: These truncations don't require setting `keyspanMarkerTruncated`:
 	// That flag only applies to truncated span marker keys.
-	if i.lower != nil && i.cmp(i.span.Start, i.lower) < 0 {
+	if i.opts.LowerBound != nil && i.cmp(i.span.Start, i.opts.LowerBound) < 0 {
 		i.truncated = true
 		i.truncatedSpan = *i.span
-		i.truncatedSpan.Start = i.lower
+		i.truncatedSpan.Start = i.opts.LowerBound
 	}
-	if i.upper != nil && i.cmp(i.upper, i.span.End) < 0 {
+	if i.opts.UpperBound != nil && i.cmp(i.opts.UpperBound, i.span.End) < 0 {
 		if !i.truncated {
 			i.truncated = true
 			i.truncatedSpan = *i.span
 		}
-		i.truncatedSpan.End = i.upper
+		i.truncatedSpan.End = i.opts.UpperBound
 	}
 	if i.truncated && i.comparer.Equal(i.truncatedSpan.Start, i.truncatedSpan.End) {
 		i.span = nil
@@ -958,7 +953,7 @@ func (i *InterleavingIter) yieldSyntheticSpanMarker(lowerBound []byte) *base.Int
 		// bound for truncating a span. The span a-z will be truncated to [k,
 		// z). If i.upper == k, we'd mistakenly try to return a span [k, k), an
 		// invariant violation.
-		if i.comparer.Equal(lowerBound, i.upper) {
+		if i.comparer.Equal(lowerBound, i.opts.UpperBound) {
 			return i.yieldNil()
 		}
 
@@ -997,9 +992,9 @@ func (i *InterleavingIter) verify(kv *base.InternalKV) *base.InternalKV {
 		switch {
 		case i.dir == -1 && i.spanMarkerTruncated:
 			panic("pebble: invariant violation: truncated span key in reverse iteration")
-		case kv != nil && i.lower != nil && i.cmp(kv.K.UserKey, i.lower) < 0:
+		case kv != nil && i.opts.LowerBound != nil && i.cmp(kv.K.UserKey, i.opts.LowerBound) < 0:
 			panic("pebble: invariant violation: key < lower bound")
-		case kv != nil && i.upper != nil && i.cmp(kv.K.UserKey, i.upper) >= 0:
+		case kv != nil && i.opts.UpperBound != nil && i.cmp(kv.K.UserKey, i.opts.UpperBound) >= 0:
 			panic("pebble: invariant violation: key ≥ upper bound")
 		case i.err != nil && kv != nil:
 			panic("pebble: invariant violation: accumulated error swallowed")
@@ -1019,15 +1014,15 @@ func (i *InterleavingIter) savedKeyspan() {
 // hasn't been updated with the current keyspan yet.
 func (i *InterleavingIter) maybeUpdateMask() {
 	switch {
-	case i.mask == nil, i.maskSpanChangedCalled:
+	case i.opts.Mask == nil, i.maskSpanChangedCalled:
 		return
 	case !i.withinSpan || i.span.Empty():
 		i.clearMask()
 	case i.truncated:
-		i.mask.SpanChanged(&i.truncatedSpan)
+		i.opts.Mask.SpanChanged(&i.truncatedSpan)
 		i.maskSpanChangedCalled = true
 	default:
-		i.mask.SpanChanged(i.span)
+		i.opts.Mask.SpanChanged(i.span)
 		i.maskSpanChangedCalled = true
 	}
 }
@@ -1035,9 +1030,9 @@ func (i *InterleavingIter) maybeUpdateMask() {
 // clearMask clears the current mask, if a mask is configured and no mask should
 // be active.
 func (i *InterleavingIter) clearMask() {
-	if i.mask != nil {
+	if i.opts.Mask != nil {
 		i.maskSpanChangedCalled = false
-		i.mask.SpanChanged(nil)
+		i.opts.Mask.SpanChanged(nil)
 	}
 }
 
@@ -1079,7 +1074,7 @@ func (i *InterleavingIter) Span() *Span {
 
 // SetBounds implements (base.InternalIterator).SetBounds.
 func (i *InterleavingIter) SetBounds(lower, upper []byte) {
-	i.lower, i.upper = lower, upper
+	i.opts.LowerBound, i.opts.UpperBound = lower, upper
 	i.pointIter.SetBounds(lower, upper)
 	i.Invalidate()
 }
