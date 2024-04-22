@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -422,6 +423,251 @@ func TestFileMetadata_ParseRoundTrip(t *testing.T) {
 				want = tc.output
 			}
 			require.Equal(t, want, got)
+		})
+	}
+}
+
+func TestCalculateInuseKeyRanges(t *testing.T) {
+	newVersion := func(files [NumLevels][]*FileMetadata) *Version {
+		t.Helper()
+		v := NewVersion(base.DefaultComparer, 64*1024, files)
+		if err := v.CheckOrdering(); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *FileMetadata {
+		m := &FileMetadata{
+			FileNum: fileNum,
+			Size:    size,
+		}
+		m.ExtendPointKeyBounds(base.DefaultComparer.Compare, smallest, largest)
+		m.InitPhysicalBacking()
+		return m
+	}
+	tests := []struct {
+		name     string
+		v        *Version
+		level    int
+		depth    int
+		smallest []byte
+		largest  []byte
+		want     []UserKeyRange
+	}{
+		{
+			name: "No files in next level",
+			v: newVersion([NumLevels][]*FileMetadata{
+				1: {
+					newFileMeta(
+						1,
+						1,
+						base.ParseInternalKey("a.SET.2"),
+						base.ParseInternalKey("c.SET.2"),
+					),
+					newFileMeta(
+						2,
+						1,
+						base.ParseInternalKey("d.SET.2"),
+						base.ParseInternalKey("e.SET.2"),
+					),
+				},
+			}),
+			level:    1,
+			depth:    2,
+			smallest: []byte("a"),
+			largest:  []byte("e"),
+			want: []UserKeyRange{
+				{
+					Start: []byte("a"),
+					End:   []byte("c"),
+				},
+				{
+					Start: []byte("d"),
+					End:   []byte("e"),
+				},
+			},
+		},
+		{
+			name: "No overlapping key ranges",
+			v: newVersion([NumLevels][]*FileMetadata{
+				1: {
+					newFileMeta(
+						1,
+						1,
+						base.ParseInternalKey("a.SET.1"),
+						base.ParseInternalKey("c.SET.1"),
+					),
+					newFileMeta(
+						2,
+						1,
+						base.ParseInternalKey("l.SET.1"),
+						base.ParseInternalKey("p.SET.1"),
+					),
+				},
+				2: {
+					newFileMeta(
+						3,
+						1,
+						base.ParseInternalKey("d.SET.1"),
+						base.ParseInternalKey("i.SET.1"),
+					),
+					newFileMeta(
+						4,
+						1,
+						base.ParseInternalKey("s.SET.1"),
+						base.ParseInternalKey("w.SET.1"),
+					),
+				},
+			}),
+			level:    1,
+			depth:    2,
+			smallest: []byte("a"),
+			largest:  []byte("z"),
+			want: []UserKeyRange{
+				{
+					Start: []byte("a"),
+					End:   []byte("c"),
+				},
+				{
+					Start: []byte("d"),
+					End:   []byte("i"),
+				},
+				{
+					Start: []byte("l"),
+					End:   []byte("p"),
+				},
+				{
+					Start: []byte("s"),
+					End:   []byte("w"),
+				},
+			},
+		},
+		{
+			name: "First few non-overlapping, followed by overlapping",
+			v: newVersion([NumLevels][]*FileMetadata{
+				1: {
+					newFileMeta(
+						1,
+						1,
+						base.ParseInternalKey("a.SET.1"),
+						base.ParseInternalKey("c.SET.1"),
+					),
+					newFileMeta(
+						2,
+						1,
+						base.ParseInternalKey("d.SET.1"),
+						base.ParseInternalKey("e.SET.1"),
+					),
+					newFileMeta(
+						3,
+						1,
+						base.ParseInternalKey("n.SET.1"),
+						base.ParseInternalKey("o.SET.1"),
+					),
+					newFileMeta(
+						4,
+						1,
+						base.ParseInternalKey("p.SET.1"),
+						base.ParseInternalKey("q.SET.1"),
+					),
+				},
+				2: {
+					newFileMeta(
+						5,
+						1,
+						base.ParseInternalKey("m.SET.1"),
+						base.ParseInternalKey("q.SET.1"),
+					),
+					newFileMeta(
+						6,
+						1,
+						base.ParseInternalKey("s.SET.1"),
+						base.ParseInternalKey("w.SET.1"),
+					),
+				},
+			}),
+			level:    1,
+			depth:    2,
+			smallest: []byte("a"),
+			largest:  []byte("z"),
+			want: []UserKeyRange{
+				{
+					Start: []byte("a"),
+					End:   []byte("c"),
+				},
+				{
+					Start: []byte("d"),
+					End:   []byte("e"),
+				},
+				{
+					Start: []byte("m"),
+					End:   []byte("q"),
+				},
+				{
+					Start: []byte("s"),
+					End:   []byte("w"),
+				},
+			},
+		},
+		{
+			name: "All overlapping",
+			v: newVersion([NumLevels][]*FileMetadata{
+				1: {
+					newFileMeta(
+						1,
+						1,
+						base.ParseInternalKey("d.SET.1"),
+						base.ParseInternalKey("e.SET.1"),
+					),
+					newFileMeta(
+						2,
+						1,
+						base.ParseInternalKey("n.SET.1"),
+						base.ParseInternalKey("o.SET.1"),
+					),
+					newFileMeta(
+						3,
+						1,
+						base.ParseInternalKey("p.SET.1"),
+						base.ParseInternalKey("q.SET.1"),
+					),
+				},
+				2: {
+					newFileMeta(
+						4,
+						1,
+						base.ParseInternalKey("a.SET.1"),
+						base.ParseInternalKey("c.SET.1"),
+					),
+					newFileMeta(
+						5,
+						1,
+						base.ParseInternalKey("d.SET.1"),
+						base.ParseInternalKey("w.SET.1"),
+					),
+				},
+			}),
+			level:    1,
+			depth:    2,
+			smallest: []byte("a"),
+			largest:  []byte("z"),
+			want: []UserKeyRange{
+				{
+					Start: []byte("a"),
+					End:   []byte("c"),
+				},
+				{
+					Start: []byte("d"),
+					End:   []byte("w"),
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.v.CalculateInuseKeyRanges(tt.level, tt.depth, tt.smallest, tt.largest); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("CalculateInuseKeyRanges() = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }
