@@ -1,27 +1,27 @@
 
 # Test snapshot striping and coalescing.
 
-transform snapshots=(5,10,15) disable-elision
+transform snapshots=(5,10,15) in-use-key-ranges=(a-z)
 a-c:{(#9,RANGEKEYSET,@3,foo5) (#4,RANGEKEYSET,@3,foo3) (#3,RANGEKEYSET,@3,foo2)}
 ----
 a-c:{(#9,RANGEKEYSET,@3,foo5) (#4,RANGEKEYSET,@3,foo3)}
 
-transform snapshots=(5,10,15) disable-elision
+transform snapshots=(5,10,15) in-use-key-ranges=(a-z)
 a-c:{(#9,RANGEKEYUNSET,@3) (#8,RANGEKEYSET,@3,foo5) (#4,RANGEKEYSET,@3,foo3) (#3,RANGEKEYSET,@3,foo2)}
 ----
 a-c:{(#9,RANGEKEYUNSET,@3) (#4,RANGEKEYSET,@3,foo3)}
 
-transform snapshots=(5,10,15) disable-elision
+transform snapshots=(5,10,15) in-use-key-ranges=(a-z)
 a-c:{(#9,RANGEKEYDEL) (#8,RANGEKEYSET,@3,foo5) (#4,RANGEKEYSET,@3,foo3) (#3,RANGEKEYSET,@3,foo2)}
 ----
 a-c:{(#9,RANGEKEYDEL) (#4,RANGEKEYSET,@3,foo3)}
 
-transform snapshots=(5,10,15) disable-elision
+transform snapshots=(5,10,15) in-use-key-ranges=(a-z)
 a-c:{(#11,RANGEKEYDEL) (#8,RANGEKEYSET,@3,foo5) (#4,RANGEKEYSET,@3,foo3) (#3,RANGEKEYSET,@3,foo2)}
 ----
 a-c:{(#11,RANGEKEYDEL) (#8,RANGEKEYSET,@3,foo5) (#4,RANGEKEYSET,@3,foo3)}
 
-transform disable-elision
+transform in-use-key-ranges=(a-z)
 a-c:{(#11,RANGEKEYDEL) (#8,RANGEKEYSET,@3,foo5) (#4,RANGEKEYSET,@3,foo3) (#3,RANGEKEYSET,@3,foo2)}
 ----
 a-c:{(#11,RANGEKEYDEL)}
@@ -110,7 +110,7 @@ a-c:{(#11,RANGEKEYSET,@3,foo5) (#11,RANGEKEYUNSET,@3) (#11,RANGEKEYDEL)}
 ----
 a-c:{(#11,RANGEKEYSET,@3,foo5) (#11,RANGEKEYDEL)}
 
-transform disable-elision
+transform in-use-key-ranges=(a-z)
 a-c:{(#11,RANGEKEYSET,@3,foo5) (#11,RANGEKEYUNSET,@3) (#11,RANGEKEYDEL)
 ----
 a-c:{(#11,RANGEKEYSET,@3,foo5) (#11,RANGEKEYDEL)}

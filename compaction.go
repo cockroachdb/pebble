@@ -288,10 +288,6 @@ type compaction struct {
 	// maxOverlapBytes is the maximum number of bytes of overlap allowed for a
 	// single output table with the tables in the grandparent level.
 	maxOverlapBytes uint64
-	// disableSpanElision disables elision of range tombstones and range keys. Used
-	// by tests to allow range tombstones or range keys to be added to tables where
-	// they would otherwise be elided.
-	disableSpanElision bool
 
 	// flushing contains the flushables (aka memtables) that are being flushed.
 	flushing flushableList
@@ -694,10 +690,9 @@ func (c *compaction) setupInuseKeyRanges() {
 	// range of the compaction. This is an optimization to avoid key comparisons
 	// against inuseKeyRanges during the compaction when every key within the
 	// compaction overlaps with an in-use span.
-	if len(c.inuseKeyRanges) > 0 {
-		c.inuseEntireRange = c.cmp(c.inuseKeyRanges[0].Start, c.smallest.UserKey) <= 0 &&
-			c.cmp(c.inuseKeyRanges[0].End, c.largest.UserKey) >= 0
-	}
+	c.inuseEntireRange = len(c.inuseKeyRanges) > 0 &&
+		c.cmp(c.inuseKeyRanges[0].Start, c.smallest.UserKey) <= 0 &&
+		c.cmp(c.inuseKeyRanges[0].End, c.largest.UserKey) >= 0
 }
 
 // findGrandparentLimit takes the start user key for a table and returns the
@@ -776,7 +771,15 @@ func (c *compaction) errorOnUserKeyOverlap(ve *versionEdit) error {
 // looking for an sstable which overlaps the bounds of the compaction at a
 // lower level in the LSM.
 func (c *compaction) allowZeroSeqNum() bool {
-	return c.elideRangeTombstone(c.smallest.UserKey, c.largest.UserKey)
+	// TODO(peter): we disable zeroing of seqnums during flushing to match
+	// RocksDB behavior and to avoid generating overlapping sstables during
+	// DB.replayWAL. When replaying WAL files at startup, we flush after each
+	// WAL is replayed building up a single version edit that is
+	// applied. Because we don't apply the version edit after each flush, this
+	// code doesn't know that L0 contains files and zeroing of seqnums should
+	// be disabled. That is fixable, but it seems safer to just match the
+	// RocksDB behavior for now.
+	return !c.inuseEntireRange && len(c.flushing) == 0 && len(c.inuseKeyRanges) == 0
 }
 
 // elideTombstone returns true if it is ok to elide a tombstone for the
@@ -806,24 +809,11 @@ func (c *compaction) elideTombstone(key []byte) bool {
 // pairs at c.outputLevel.level+1 or higher that possibly overlap the specified
 // tombstone.
 func (c *compaction) elideRangeTombstone(start, end []byte) bool {
-	// Disable range tombstone elision if the testing knob for that is enabled,
-	// or if we are flushing memtables. The latter requirement is due to
+	// Disable range tombstone elision if we are flushing memtables, due to
 	// inuseKeyRanges not accounting for key ranges in other memtables that are
 	// being flushed in the same compaction. It's possible for a range tombstone
 	// in one memtable to overlap keys in a preceding memtable in c.flushing.
-	//
-	// This function is also used in setting allowZeroSeqNum, so disabling
-	// elision of range tombstones also disables zeroing of SeqNums.
-	//
-	// TODO(peter): we disable zeroing of seqnums during flushing to match
-	// RocksDB behavior and to avoid generating overlapping sstables during
-	// DB.replayWAL. When replaying WAL files at startup, we flush after each
-	// WAL is replayed building up a single version edit that is
-	// applied. Because we don't apply the version edit after each flush, this
-	// code doesn't know that L0 contains files and zeroing of seqnums should
-	// be disabled. That is fixable, but it seems safer to just match the
-	// RocksDB behavior for now.
-	if c.disableSpanElision || len(c.flushing) != 0 {
+	if c.inuseEntireRange || len(c.flushing) != 0 {
 		return false
 	}
 
