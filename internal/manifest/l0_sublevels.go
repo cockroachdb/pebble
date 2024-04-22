@@ -25,17 +25,17 @@ var errInvalidL0SublevelsOpt = errors.New("pebble: L0 sublevel generation optimi
 // Intervals are of the form [start, end) with no gap between intervals. Each
 // file overlaps perfectly with a sequence of intervals. This perfect overlap
 // occurs because the union of file boundary keys is used to pick intervals.
-// However the largest key in a file is inclusive, so when it is used as
-// an interval, the actual key is ImmediateSuccessor(key). We don't have the
+// However when the largest key in a file is inclusive and it is used as an end
+// of an interval, the actual key is ImmediateSuccessor(key). We don't have the
 // ImmediateSuccessor function to do this computation, so we instead keep an
-// isLargest bool to remind the code about this fact. This is used for
+// isInclusiveEndBound bool to remind the code about this fact. This is used for
 // comparisons in the following manner:
 // - intervalKey{k, false} < intervalKey{k, true}
 // - k1 < k2 -> intervalKey{k1, _} < intervalKey{k2, _}.
 //
 // Note that the file's largest key is exclusive if the internal key
 // has a trailer matching the rangedel sentinel key. In this case, we set
-// isLargest to false for end interval computation.
+// isInclusiveEndBound to false for end interval computation.
 //
 // For example, consider three files with bounds [a,e], [b,g], and [e,j]. The
 // interval keys produced would be intervalKey{a, false}, intervalKey{b, false},
@@ -54,8 +54,8 @@ var errInvalidL0SublevelsOpt = errors.New("pebble: L0 sublevel generation optimi
 // picking overlapping files for a compaction, only need to use the index
 // numbers and so avoid expensive byte slice comparisons.
 type intervalKey struct {
-	key       []byte
-	isLargest bool
+	key                 []byte
+	isInclusiveEndBound bool
 }
 
 // intervalKeyTemp is used in the sortAndSweep step. It contains additional metadata
@@ -82,10 +82,10 @@ func (i *intervalKeyTemp) setFileIntervalIndex(idx int) {
 func intervalKeyCompare(cmp Compare, a, b intervalKey) int {
 	rv := cmp(a.key, b.key)
 	if rv == 0 {
-		if a.isLargest && !b.isLargest {
+		if a.isInclusiveEndBound && !b.isInclusiveEndBound {
 			return +1
 		}
-		if !a.isLargest && b.isLargest {
+		if !a.isInclusiveEndBound && b.isInclusiveEndBound {
 			return -1
 		}
 	}
@@ -300,8 +300,8 @@ func NewL0Sublevels(
 		})
 		keys = append(keys, intervalKeyTemp{
 			intervalKey: intervalKey{
-				key:       f.Largest.UserKey,
-				isLargest: !f.Largest.IsExclusiveSentinel(),
+				key:                 f.Largest.UserKey,
+				isInclusiveEndBound: !f.Largest.IsExclusiveSentinel(),
 			},
 			fileMeta: f,
 			isEndKey: true,
@@ -478,8 +478,8 @@ func (s *L0Sublevels) AddL0Files(
 		}
 		right := intervalKeyTemp{
 			intervalKey: intervalKey{
-				key:       f.Largest.UserKey,
-				isLargest: !f.Largest.IsExclusiveSentinel(),
+				key:                 f.Largest.UserKey,
+				isInclusiveEndBound: !f.Largest.IsExclusiveSentinel(),
 			},
 			fileMeta: f,
 			isEndKey: true,
@@ -760,8 +760,8 @@ func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 	// were added after the compaction initiated, and the active compaction
 	// files straddle the input file. Mark these intervals as base compacting.
 	for _, c := range inProgress {
-		startIK := intervalKey{key: c.Smallest.UserKey, isLargest: false}
-		endIK := intervalKey{key: c.Largest.UserKey, isLargest: !c.Largest.IsExclusiveSentinel()}
+		startIK := intervalKey{key: c.Smallest.UserKey, isInclusiveEndBound: false}
+		endIK := intervalKey{key: c.Largest.UserKey, isInclusiveEndBound: !c.Largest.IsExclusiveSentinel()}
 		start, _ := slices.BinarySearchFunc(s.orderedIntervals, startIK, func(a fileInterval, b intervalKey) int {
 			return intervalKeyCompare(s.cmp, a.startKey, b)
 		})
@@ -908,8 +908,8 @@ type UserKeyRange struct {
 // nonoverlapping.
 func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []UserKeyRange {
 	// Binary search to find the provided keys within the intervals.
-	startIK := intervalKey{key: smallest, isLargest: false}
-	endIK := intervalKey{key: largest, isLargest: true}
+	startIK := intervalKey{key: smallest, isInclusiveEndBound: false}
+	endIK := intervalKey{key: largest, isInclusiveEndBound: true}
 	start := sort.Search(len(s.orderedIntervals), func(i int) bool {
 		return intervalKeyCompare(s.cmp, s.orderedIntervals[i].startKey, startIK) > 0
 	})
@@ -1453,7 +1453,7 @@ func (s *L0Sublevels) PickBaseCompaction(
 			for ; m != nil && !baseCompacting; m = baseIter.Next() {
 				cmp := s.cmp(m.Smallest.UserKey, s.orderedIntervals[c.maxIntervalIndex+1].startKey.key)
 				// Compaction is ending at exclusive bound of c.maxIntervalIndex+1
-				if cmp > 0 || (cmp == 0 && !s.orderedIntervals[c.maxIntervalIndex+1].startKey.isLargest) {
+				if cmp > 0 || (cmp == 0 && !s.orderedIntervals[c.maxIntervalIndex+1].startKey.isInclusiveEndBound) {
 					break
 				}
 				baseCompacting = baseCompacting || m.IsCompacting()
