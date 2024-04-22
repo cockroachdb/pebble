@@ -40,10 +40,14 @@ import (
 )
 
 func newVersion(opts *Options, files [numLevels][]*fileMetadata) *version {
-	return manifest.NewVersion(
+	v := manifest.NewVersion(
 		opts.Comparer,
 		opts.FlushSplitBytes,
 		files)
+	if err := v.CheckOrdering(); err != nil {
+		panic(err)
+	}
+	return v
 }
 
 type compactionPickerForTesting struct {
@@ -231,14 +235,14 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.101"),
 						base.ParseInternalKey("i.SET.102"),
+						base.ParseInternalKey("i.SET.101"),
 					),
 					newFileMeta(
 						110,
 						1,
-						base.ParseInternalKey("i.SET.111"),
 						base.ParseInternalKey("i.SET.112"),
+						base.ParseInternalKey("i.SET.111"),
 					),
 				},
 			}),
@@ -257,8 +261,8 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.101"),
 						base.ParseInternalKey("i.SET.102"),
+						base.ParseInternalKey("i.SET.101"),
 					),
 				},
 				1: {
@@ -291,8 +295,8 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.101"),
-						base.ParseInternalKey("t.SET.102"),
+						base.ParseInternalKey("i.SET.102"),
+						base.ParseInternalKey("t.SET.101"),
 					),
 				},
 				1: {
@@ -2339,25 +2343,8 @@ func TestCompactionReadTriggered(t *testing.T) {
 }
 
 func TestCompactionInuseKeyRanges(t *testing.T) {
-	cmp := DefaultComparer.Compare
-	parseMeta := func(s string) *fileMetadata {
-		parts := strings.Split(s, "-")
-		if len(parts) != 2 {
-			t.Fatalf("malformed table spec: %s", s)
-		}
-		m := (&fileMetadata{}).ExtendRangeKeyBounds(
-			cmp,
-			base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		)
-		m.SmallestSeqNum = m.Smallest.SeqNum()
-		m.LargestSeqNum = m.Largest.SeqNum()
-		m.InitPhysicalBacking()
-		return m
-	}
-
-	opts := (*Options)(nil).EnsureDefaults()
-
+	opts := &Options{}
+	opts.EnsureDefaults()
 	var c *compaction
 	datadriven.RunTest(t, "testdata/compaction_inuse_key_ranges", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -2370,27 +2357,15 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 				inputs:    []compactionLevel{{}, {}},
 			}
 			c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
-			var files [numLevels][]*fileMetadata
-			var currentLevel int
-			fileNum := FileNum(1)
 
-			for _, data := range strings.Split(td.Input, "\n") {
-				switch data {
-				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
-					level, err := strconv.Atoi(data[1:])
-					if err != nil {
-						return err.Error()
-					}
-					currentLevel = level
-
-				default:
-					meta := parseMeta(data)
-					meta.FileNum = fileNum
-					fileNum++
-					files[currentLevel] = append(files[currentLevel], meta)
-				}
+			v, err := manifest.ParseVersionDebug(DefaultComparer, opts.FlushSplitBytes, td.Input)
+			if err != nil {
+				td.Fatalf(t, "%v", err)
 			}
-			c.version = newVersion(opts, files)
+			if err := v.CheckOrdering(); err != nil {
+				td.Fatalf(t, "%v", err)
+			}
+			c.version = v
 			return c.version.String()
 
 		case "inuse-key-ranges":
@@ -2401,7 +2376,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 					fmt.Fprintf(&buf, "expected <level> <smallest> <largest>: %q\n", line)
 					continue
 				}
-				level, err := strconv.Atoi(parts[0])
+				level, err := strconv.Atoi(strings.TrimPrefix(parts[0], "L"))
 				if err != nil {
 					fmt.Fprintf(&buf, "expected <level> <smallest> <largest>: %q: %v\n", line, err)
 					continue
@@ -2412,6 +2387,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 
 				c.inuseKeyRanges = nil
 				c.setupInuseKeyRanges()
+				fmt.Fprintf(&buf, "L%d %s-%s: ", c.outputLevel.level, c.smallest.UserKey, c.largest.UserKey)
 				if len(c.inuseKeyRanges) == 0 {
 					fmt.Fprintf(&buf, ".\n")
 				} else {
@@ -2436,7 +2412,7 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 	var (
 		fileNum     = FileNum(0)
 		opts        = (*Options)(nil).EnsureDefaults()
-		seed        = int64(time.Now().UnixNano())
+		seed        = time.Now().UnixNano()
 		rng         = rand.New(rand.NewSource(seed))
 		endKeyspace = 26 * 26
 	)
@@ -2450,17 +2426,20 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 			return []byte{byte(i/26 + 'a'), byte(i%26 + 'a')}
 		}
 		makeIK := func(level, i int) InternalKey {
+			seqNum := uint64(numLevels-level) * 100
+			if level == 0 {
+				seqNum += uint64(i)
+			}
 			return base.MakeInternalKey(
 				makeUserKey(i),
-				uint64(numLevels-level),
+				seqNum,
 				base.InternalKeyKindSet,
 			)
 		}
 		makeFile := func(level, start, end int) *fileMetadata {
 			fileNum++
-			m := (&fileMetadata{
-				FileNum: fileNum,
-			}).ExtendPointKeyBounds(
+			m := &fileMetadata{FileNum: fileNum}
+			m.ExtendPointKeyBounds(
 				opts.Comparer.Compare,
 				makeIK(level, start),
 				makeIK(level, end),
