@@ -255,13 +255,6 @@ func (g *getIter) getSSTableIterators(
 	if m == nil {
 		return emptyIter, nil, nil
 	}
-	// This file has a key bound ≥ `key`. But the largest point key bound may
-	// still be a range deletion sentinel, which is exclusive.  In this case,
-	// the file doesn't actually contain any point keys equal to `key`. We next
-	// to keep searching for a file that actually contains point keys ≥ key.
-	if m.LargestPointKey.IsExclusiveSentinel() && g.comparer.Equal(m.LargestPointKey.UserKey, g.key) {
-		m = files.Next()
-	}
 	// m is now positioned at the file containing the first point key ≥ `g.key`.
 	// Does it exist and possibly contain point keys with the user key 'g.key'?
 	if m == nil || !m.HasPointKeys || g.comparer.Compare(m.SmallestPointKey.UserKey, g.key) > 0 {
