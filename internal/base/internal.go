@@ -380,6 +380,14 @@ func (k InternalKey) SeqNum() uint64 {
 	return k.Trailer >> 8
 }
 
+// IsUpperBoundFor returns true if a range ending in k contains the userKey:
+// either userKey < k.UserKey or they are equal and k is not an exclusive
+// sentinel.
+func (k InternalKey) IsUpperBoundFor(cmp Compare, userKey []byte) bool {
+	c := cmp(userKey, k.UserKey)
+	return c < 0 || (c == 0 && !k.IsExclusiveSentinel())
+}
+
 // SeqNumFromTrailer returns the sequence number component of a trailer.
 func SeqNumFromTrailer(t uint64) uint64 {
 	return t >> 8
