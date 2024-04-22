@@ -882,7 +882,6 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		if err != nil {
 			return err
 		}
-		c.disableSpanElision = true
 		// NB: define allows the test to exactly specify which keys go
 		// into which sstables. If the test has a small target file
 		// size to test grandparent limits, etc, the maxOutputFileSize

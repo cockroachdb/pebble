@@ -745,7 +745,6 @@ func TestCompactionTransform(t *testing.T) {
 		case "transform":
 			var snapshots []uint64
 			var keyRanges []manifest.UserKeyRange
-			disableElision := td.HasArg("disable-elision")
 			td.MaybeScanArgs(t, "snapshots", &snapshots)
 			if arg, ok := td.Arg("in-use-key-ranges"); ok {
 				for _, keyRange := range arg.Vals {
@@ -768,10 +767,9 @@ func TestCompactionTransform(t *testing.T) {
 			}
 			var outSpan keyspan.Span
 			c := compaction{
-				cmp:                base.DefaultComparer.Compare,
-				comparer:           base.DefaultComparer,
-				disableSpanElision: disableElision,
-				inuseKeyRanges:     keyRanges,
+				cmp:            base.DefaultComparer.Compare,
+				comparer:       base.DefaultComparer,
+				inuseKeyRanges: keyRanges,
 			}
 			transformer := rangeKeyCompactionTransform(base.DefaultComparer.Equal, snapshots, c.elideRangeTombstone)
 			if err := transformer.Transform(base.DefaultComparer.Compare, span, &outSpan); err != nil {
