@@ -25,7 +25,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -740,46 +739,6 @@ func TestElideRangeTombstone(t *testing.T) {
 			}
 		}
 	}
-}
-
-func TestCompactionTransform(t *testing.T) {
-	datadriven.RunTest(t, "testdata/compaction_transform", func(t *testing.T, td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "transform":
-			var snapshots []uint64
-			var keyRanges []base.UserKeyBounds
-			td.MaybeScanArgs(t, "snapshots", &snapshots)
-			if arg, ok := td.Arg("in-use-key-ranges"); ok {
-				for _, keyRange := range arg.Vals {
-					parts := strings.SplitN(keyRange, "-", 2)
-					start := []byte(strings.TrimSpace(parts[0]))
-					end := []byte(strings.TrimSpace(parts[1]))
-					keyRanges = append(keyRanges, base.UserKeyBoundsInclusive(start, end))
-				}
-			}
-			span := keyspan.ParseSpan(td.Input)
-			for i := range span.Keys {
-				if i > 0 {
-					if span.Keys[i-1].Trailer < span.Keys[i].Trailer {
-						return "span keys not sorted"
-					}
-				}
-			}
-			var outSpan keyspan.Span
-			c := compaction{
-				cmp:            base.DefaultComparer.Compare,
-				comparer:       base.DefaultComparer,
-				inuseKeyRanges: keyRanges,
-			}
-			transformer := rangeKeyCompactionTransform(base.DefaultComparer.Equal, snapshots, c.elideRangeTombstone)
-			if err := transformer.Transform(base.DefaultComparer.Compare, span, &outSpan); err != nil {
-				return fmt.Sprintf("error: %s", err)
-			}
-			return outSpan.String()
-		default:
-			return fmt.Sprintf("unknown command: %s", td.Cmd)
-		}
-	})
 }
 
 type cpuPermissionGranter struct {
