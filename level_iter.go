@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -630,6 +631,10 @@ func (l *levelIter) verify(kv *base.InternalKV) *base.InternalKV {
 }
 
 func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	if invariants.Enabled && l.lower != nil && l.cmp(key, l.lower) < 0 {
+		panic(errors.AssertionFailedf("levelIter SeekGE to key %q violates lower bound %q", key, l.lower))
+	}
+
 	l.err = nil // clear cached iteration error
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
@@ -653,6 +658,10 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 }
 
 func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	if invariants.Enabled && l.lower != nil && l.cmp(key, l.lower) < 0 {
+		panic(errors.AssertionFailedf("levelIter SeekGE to key %q violates lower bound %q", key, l.lower))
+	}
+
 	l.err = nil // clear cached iteration error
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
@@ -722,6 +731,10 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 }
 
 func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
+	if invariants.Enabled && l.upper != nil && l.cmp(key, l.upper) > 0 {
+		panic(errors.AssertionFailedf("levelIter SeekLT to key %q violates upper bound %q", key, l.upper))
+	}
+
 	l.err = nil // clear cached iteration error
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
@@ -740,6 +753,10 @@ func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV 
 }
 
 func (l *levelIter) First() *base.InternalKV {
+	if invariants.Enabled && l.lower != nil {
+		panic(errors.AssertionFailedf("levelIter First called while lower bound %q is set", l.lower))
+	}
+
 	l.err = nil // clear cached iteration error
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
@@ -758,6 +775,10 @@ func (l *levelIter) First() *base.InternalKV {
 }
 
 func (l *levelIter) Last() *base.InternalKV {
+	if invariants.Enabled && l.upper != nil {
+		panic(errors.AssertionFailedf("levelIter Last called while upper bound %q is set", l.upper))
+	}
+
 	l.err = nil // clear cached iteration error
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
