@@ -62,7 +62,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 		keyRanges := v.CalculateInuseKeyRanges(level, manifest.NumLevels-1, smallest, largest)
 		t.Logf("%d: [%s, %s] levels L%d-L6: ", i, smallest, largest, level)
 		for _, kr := range keyRanges {
-			t.Logf("  [%s,%s]", kr.Start, kr.End)
+			t.Logf("  %s", kr.String())
 		}
 
 		for l := level; l < manifest.NumLevels; l++ {
@@ -85,7 +85,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 
 				var containedWithin bool
 				for _, kr := range keyRanges {
-					containedWithin = containedWithin || (cmp(fileSmallest, kr.Start) >= 0 && cmp(fileLargest, kr.End) <= 0)
+					containedWithin = containedWithin || (cmp(fileSmallest, kr.Start) >= 0 && kr.End.IsUpperBoundFor(cmp, fileLargest))
 				}
 				if !containedWithin {
 					t.Fatalf("file L%d.%s overlaps [%s, %s] but no in-use key range contains it",

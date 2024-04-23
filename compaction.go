@@ -322,7 +322,7 @@ type compaction struct {
 	// grandparent and lower levels. See setupInuseKeyRanges() for the
 	// construction. Used by elideTombstone() and elideRangeTombstone() to
 	// determine if keys affected by a tombstone possibly exist at a lower level.
-	inuseKeyRanges []manifest.UserKeyRange
+	inuseKeyRanges []base.UserKeyBounds
 	// inuseEntireRange is set if the above inuse key ranges wholly contain the
 	// compaction's key range. This allows compactions in higher levels to often
 	// elide key comparisons.
@@ -692,7 +692,7 @@ func (c *compaction) setupInuseKeyRanges() {
 	// compaction overlaps with an in-use span.
 	c.inuseEntireRange = len(c.inuseKeyRanges) > 0 &&
 		c.cmp(c.inuseKeyRanges[0].Start, c.smallest.UserKey) <= 0 &&
-		c.cmp(c.inuseKeyRanges[0].End, c.largest.UserKey) >= 0
+		c.inuseKeyRanges[0].End.IsUpperBoundFor(c.cmp, c.largest.UserKey)
 }
 
 // findGrandparentLimit takes the start user key for a table and returns the
@@ -794,11 +794,8 @@ func (c *compaction) elideTombstone(key []byte) bool {
 
 	for ; c.elideTombstoneIndex < len(c.inuseKeyRanges); c.elideTombstoneIndex++ {
 		r := &c.inuseKeyRanges[c.elideTombstoneIndex]
-		if c.cmp(key, r.End) <= 0 {
-			if c.cmp(key, r.Start) >= 0 {
-				return false
-			}
-			break
+		if r.End.IsUpperBoundFor(c.cmp, key) {
+			return c.cmp(key, r.Start) < 0
 		}
 	}
 	return true
@@ -818,7 +815,7 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 	}
 
 	lower := sort.Search(len(c.inuseKeyRanges), func(i int) bool {
-		return c.cmp(c.inuseKeyRanges[i].End, start) >= 0
+		return c.inuseKeyRanges[i].End.IsUpperBoundFor(c.cmp, start)
 	})
 	upper := sort.Search(len(c.inuseKeyRanges), func(i int) bool {
 		return c.cmp(c.inuseKeyRanges[i].Start, end) > 0

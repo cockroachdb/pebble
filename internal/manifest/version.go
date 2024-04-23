@@ -1294,10 +1294,10 @@ func (v *Version) InitL0Sublevels(flushSplitBytes int64) error {
 // [smallest,largest].
 func (v *Version) CalculateInuseKeyRanges(
 	level, maxLevel int, smallest, largest []byte,
-) []UserKeyRange {
+) []base.UserKeyBounds {
 	// Use two slices, alternating which one is input and which one is output
 	// as we descend the LSM.
-	var input, output []UserKeyRange
+	var input, output []base.UserKeyBounds
 
 	// L0 requires special treatment, since sstables within L0 may overlap.
 	// We use the L0 Sublevels structure to efficiently calculate the merged
@@ -1328,7 +1328,7 @@ func (v *Version) CalculateInuseKeyRanges(
 		output = output[:0]
 
 		var currFile *FileMetadata
-		var currAccum *UserKeyRange
+		var currAccum *base.UserKeyBounds
 		if len(input) > 0 {
 			currAccum, input = &input[0], input[1:]
 		}
@@ -1338,7 +1338,7 @@ func (v *Version) CalculateInuseKeyRanges(
 		// we can seek to the accumulated range's end. Otherwise, we need to
 		// start at the first overlapping file within the level.
 		if currAccum != nil && v.cmp.Compare(currAccum.Start, smallest) <= 0 {
-			currFile = seekGT(&iter, cmp, currAccum.End)
+			currFile = seekGT(&iter, cmp, currAccum.End.Key)
 		} else {
 			currFile = iter.First()
 		}
@@ -1355,12 +1355,10 @@ func (v *Version) CalculateInuseKeyRanges(
 			case currAccum == nil || (currFile != nil && cmp(currFile.Largest.UserKey, currAccum.Start) < 0):
 				// This file is strictly before the current accumulated range,
 				// or there are no more accumulated ranges.
-				output = append(output, UserKeyRange{
-					Start: currFile.Smallest.UserKey,
-					End:   currFile.Largest.UserKey,
-				})
+				// TODO(radu): refine the boundary type.
+				output = append(output, base.UserKeyBoundsInclusive(currFile.Smallest.UserKey, currFile.Largest.UserKey))
 				currFile = iter.Next()
-			case currFile == nil || (currAccum != nil && cmp(currAccum.End, currFile.Smallest.UserKey) < 0):
+			case currFile == nil || (currAccum != nil && cmp(currAccum.End.Key, currFile.Smallest.UserKey) < 0):
 				// The current accumulated key range is strictly before the
 				// current file, or there are no more files.
 				output = append(output, *currAccum)
@@ -1374,21 +1372,21 @@ func (v *Version) CalculateInuseKeyRanges(
 				if cmp(currFile.Smallest.UserKey, currAccum.Start) < 0 {
 					currAccum.Start = currFile.Smallest.UserKey
 				}
-				if cmp(currFile.Largest.UserKey, currAccum.End) > 0 {
-					currAccum.End = currFile.Largest.UserKey
+				if cmp(currFile.Largest.UserKey, currAccum.End.Key) > 0 {
+					currAccum.End.Key = currFile.Largest.UserKey
 				}
 
 				// Extending `currAccum`'s end boundary may have caused it to
 				// overlap with `input` key ranges that we haven't processed
 				// yet. Merge any such key ranges.
-				for len(input) > 0 && cmp(input[0].Start, currAccum.End) <= 0 {
-					if cmp(input[0].End, currAccum.End) > 0 {
+				for len(input) > 0 && cmp(input[0].Start, currAccum.End.Key) <= 0 {
+					if cmp(input[0].End.Key, currAccum.End.Key) > 0 {
 						currAccum.End = input[0].End
 					}
 					input = input[1:]
 				}
 				// Seek the level iterator past our current accumulated end.
-				currFile = seekGT(&iter, cmp, currAccum.End)
+				currFile = seekGT(&iter, cmp, currAccum.End.Key)
 			}
 		}
 	}

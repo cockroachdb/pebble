@@ -747,17 +747,14 @@ func TestCompactionTransform(t *testing.T) {
 		switch td.Cmd {
 		case "transform":
 			var snapshots []uint64
-			var keyRanges []manifest.UserKeyRange
+			var keyRanges []base.UserKeyBounds
 			td.MaybeScanArgs(t, "snapshots", &snapshots)
 			if arg, ok := td.Arg("in-use-key-ranges"); ok {
 				for _, keyRange := range arg.Vals {
 					parts := strings.SplitN(keyRange, "-", 2)
 					start := []byte(strings.TrimSpace(parts[0]))
 					end := []byte(strings.TrimSpace(parts[1]))
-					keyRanges = append(keyRanges, manifest.UserKeyRange{
-						Start: start,
-						End:   end,
-					})
+					keyRanges = append(keyRanges, base.UserKeyBoundsInclusive(start, end))
 				}
 			}
 			span := keyspan.ParseSpan(td.Input)
@@ -2394,7 +2391,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 						if i > 0 {
 							fmt.Fprintf(&buf, " ")
 						}
-						fmt.Fprintf(&buf, "%s-%s", r.Start, r.End)
+						fmt.Fprintf(&buf, "%s-%s", r.Start, r.End.Key)
 					}
 					fmt.Fprintf(&buf, "\n")
 				}
@@ -2504,7 +2501,7 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 					for _, kr := range keyRanges {
 						contained = contained ||
 							(opts.Comparer.Compare(checkStart, kr.Start) >= 0 &&
-								opts.Comparer.Compare(checkEnd, kr.End) <= 0)
+								opts.Comparer.Compare(checkEnd, kr.End.Key) <= 0)
 					}
 					if !contained {
 						t.Errorf("Seed %d, iter %d: File %s overlaps %q-%q, but is not fully contained in any of the key ranges.",

@@ -897,16 +897,10 @@ func (s *L0Sublevels) ReadAmplification() int {
 	return amp
 }
 
-// UserKeyRange encodes a key range in user key space. A UserKeyRange's Start
-// and End boundaries are both inclusive.
-type UserKeyRange struct {
-	Start, End []byte
-}
-
 // InUseKeyRanges returns the merged table bounds of L0 files overlapping the
 // provided user key range. The returned key ranges are sorted and
 // nonoverlapping.
-func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []UserKeyRange {
+func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []base.UserKeyBounds {
 	// Binary search to find the provided keys within the intervals.
 	startIK := intervalKey{key: smallest, isInclusiveEndBound: false}
 	endIK := intervalKey{key: largest, isInclusiveEndBound: true}
@@ -921,8 +915,8 @@ func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []UserKeyRange {
 		return intervalKeyCompare(s.cmp, s.orderedIntervals[i].startKey, endIK) > 0
 	})
 
-	var keyRanges []UserKeyRange
-	var curr *UserKeyRange
+	var keyRanges []base.UserKeyBounds
+	var curr *base.UserKeyBounds
 	for i := start; i < end; {
 		// Intervals with no files are not in use and can be skipped, once we
 		// end the current UserKeyRange.
@@ -934,7 +928,7 @@ func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []UserKeyRange {
 
 		// If curr is nil, start a new in-use key range.
 		if curr == nil {
-			keyRanges = append(keyRanges, UserKeyRange{
+			keyRanges = append(keyRanges, base.UserKeyBounds{
 				Start: s.orderedIntervals[i].startKey.key,
 			})
 			curr = &keyRanges[len(keyRanges)-1]
@@ -949,7 +943,9 @@ func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []UserKeyRange {
 			// maxIdx starts. We must set curr.End now, before making that leap,
 			// because this iteration may be the last.
 			i = maxIdx
-			curr.End = s.orderedIntervals[i+1].startKey.key
+			curr.End.Key = s.orderedIntervals[i+1].startKey.key
+			// TODO(radu): make the kind more accurate.
+			curr.End.Kind = base.Inclusive
 			continue
 		}
 
@@ -957,7 +953,9 @@ func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []UserKeyRange {
 		// interval. Update the current end to be the next interval's start key.
 		// Note that curr is not necessarily finished, because there may be an
 		// abutting non-empty interval.
-		curr.End = s.orderedIntervals[i+1].startKey.key
+		curr.End.Key = s.orderedIntervals[i+1].startKey.key
+		// TODO(radu): make the kind more accurate.
+		curr.End.Kind = base.Inclusive
 		i++
 	}
 	return keyRanges

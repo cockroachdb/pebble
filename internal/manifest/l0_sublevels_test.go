@@ -417,7 +417,7 @@ func TestL0Sublevels(t *testing.T) {
 
 				keyRanges := sublevels.InUseKeyRanges(smallest, largest)
 				for i, r := range keyRanges {
-					fmt.Fprintf(&buf, "%s-%s", sublevels.formatKey(r.Start), sublevels.formatKey(r.End))
+					fmt.Fprintf(&buf, "%s-%s", sublevels.formatKey(r.Start), sublevels.formatKey(r.End.Key))
 					if i < len(keyRanges)-1 {
 						fmt.Fprint(&buf, ", ")
 					}
