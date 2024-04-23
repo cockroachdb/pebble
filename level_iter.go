@@ -138,6 +138,15 @@ type levelIter struct {
 	// IterOptions.PointKeyFilters is declared.
 	filtersBuf [1]BlockPropertyFilter
 
+	// exhaustedDir is set to +1 or -1 when the levelIter has been exhausted in
+	// the forward or backward direction respectively. It is set when the
+	// underlying data is exhausted, not when iteration has reached the upper or
+	// lower boundary and interleaved a synthetic iterator bound key. When the
+	// iterator is exhausted and Next or Prev is called, the levelIter uses
+	// exhaustedDir to determine whether the iterator should step on to the
+	// first or last key within iteration bounds.
+	exhaustedDir int8
+
 	// Disable invariant checks even if they are otherwise enabled. Used by tests
 	// which construct "impossible" situations (e.g. seeking to a key before the
 	// lower bound).
@@ -193,6 +202,7 @@ func (l *levelIter) init(
 	l.iterFile = nil
 	l.newIters = newIters
 	l.files = files
+	l.exhaustedDir = 0
 	l.internalOpts = internalOpts
 }
 
@@ -636,6 +646,7 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 	}
 
 	l.err = nil // clear cached iteration error
+	l.exhaustedDir = 0
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
@@ -644,6 +655,7 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 	// IterOptions.LowerBound.
 	loadFileIndicator := l.loadFile(l.findFileGE(key, flags), +1)
 	if loadFileIndicator == noFileLoaded {
+		l.exhaustedDir = +1
 		return nil
 	}
 	if loadFileIndicator == newFileLoaded {
@@ -663,6 +675,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 	}
 
 	l.err = nil // clear cached iteration error
+	l.exhaustedDir = 0
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
@@ -672,6 +685,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 	// IterOptions.LowerBound.
 	loadFileIndicator := l.loadFile(l.findFileGE(key, flags), +1)
 	if loadFileIndicator == noFileLoaded {
+		l.exhaustedDir = +1
 		return nil
 	}
 	if loadFileIndicator == newFileLoaded {
@@ -725,6 +739,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 	// likely that the next key will also be contained in the current file.
 	n := l.split(l.iterFile.LargestPointKey.UserKey)
 	if l.cmp(prefix, l.iterFile.LargestPointKey.UserKey[:n]) < 0 {
+		l.exhaustedDir = +1
 		return nil
 	}
 	return l.verify(l.skipEmptyFileForward())
@@ -736,6 +751,7 @@ func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV 
 	}
 
 	l.err = nil // clear cached iteration error
+	l.exhaustedDir = 0
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
@@ -744,6 +760,7 @@ func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
 	if l.loadFile(l.findFileLT(key, flags), -1) == noFileLoaded {
+		l.exhaustedDir = -1
 		return nil
 	}
 	if kv := l.iter.SeekLT(key, flags); kv != nil {
@@ -758,6 +775,7 @@ func (l *levelIter) First() *base.InternalKV {
 	}
 
 	l.err = nil // clear cached iteration error
+	l.exhaustedDir = 0
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
@@ -766,6 +784,7 @@ func (l *levelIter) First() *base.InternalKV {
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
 	if l.loadFile(l.files.First(), +1) == noFileLoaded {
+		l.exhaustedDir = +1
 		return nil
 	}
 	if kv := l.iter.First(); kv != nil {
@@ -780,6 +799,7 @@ func (l *levelIter) Last() *base.InternalKV {
 	}
 
 	l.err = nil // clear cached iteration error
+	l.exhaustedDir = 0
 	if l.boundaryContext != nil {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
@@ -788,6 +808,7 @@ func (l *levelIter) Last() *base.InternalKV {
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
 	if l.loadFile(l.files.Last(), -1) == noFileLoaded {
+		l.exhaustedDir = -1
 		return nil
 	}
 	if kv := l.iter.Last(); kv != nil {
@@ -797,6 +818,12 @@ func (l *levelIter) Last() *base.InternalKV {
 }
 
 func (l *levelIter) Next() *base.InternalKV {
+	if l.exhaustedDir == -1 {
+		if l.lower != nil {
+			return l.SeekGE(l.lower, base.SeekGEFlagsNone)
+		}
+		return l.First()
+	}
 	if l.err != nil || l.iter == nil {
 		return nil
 	}
@@ -825,6 +852,7 @@ func (l *levelIter) Next() *base.InternalKV {
 			}
 			return l.verify(l.skipEmptyFileForward())
 		}
+		l.exhaustedDir = +1
 		return nil
 
 	default:
@@ -887,10 +915,17 @@ func (l *levelIter) NextPrefix(succKey []byte) *base.InternalKV {
 		}
 		return l.verify(l.skipEmptyFileForward())
 	}
+	l.exhaustedDir = +1
 	return nil
 }
 
 func (l *levelIter) Prev() *base.InternalKV {
+	if l.exhaustedDir == +1 {
+		if l.upper != nil {
+			return l.SeekLT(l.upper, base.SeekLTFlagsNone)
+		}
+		return l.Last()
+	}
 	if l.err != nil || l.iter == nil {
 		return nil
 	}
@@ -919,6 +954,7 @@ func (l *levelIter) Prev() *base.InternalKV {
 			}
 			return l.verify(l.skipEmptyFileBackward())
 		}
+		l.exhaustedDir = -1
 		return nil
 
 	default:
@@ -980,6 +1016,7 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 				// helps with performance when many levels are populated with
 				// sstables and most don't have any actual keys within the
 				// bounds.
+				l.exhaustedDir = +1
 				return nil
 			}
 			// If the boundary is a range deletion tombstone, or the caller is
@@ -1010,6 +1047,7 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 
 		// Current file was exhausted. Move to the next file.
 		if l.loadFile(l.files.Next(), +1) == noFileLoaded {
+			l.exhaustedDir = +1
 			return nil
 		}
 	}
@@ -1064,6 +1102,7 @@ func (l *levelIter) skipEmptyFileBackward() *base.InternalKV {
 				// helps with performance when many levels are populated with
 				// sstables and most don't have any actual keys within the
 				// bounds.
+				l.exhaustedDir = -1
 				return nil
 			}
 			// If the boundary could be a range deletion tombstone, return the
@@ -1087,6 +1126,7 @@ func (l *levelIter) skipEmptyFileBackward() *base.InternalKV {
 
 		// Current file was exhausted. Move to the previous file.
 		if l.loadFile(l.files.Prev(), -1) == noFileLoaded {
+			l.exhaustedDir = -1
 			return nil
 		}
 	}
