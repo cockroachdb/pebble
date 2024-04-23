@@ -58,6 +58,10 @@ type intervalKey struct {
 	isInclusiveEndBound bool
 }
 
+func (k *intervalKey) toEndBoundary() base.UserKeyBoundary {
+	return base.UserKeyExclusiveIf(k.key, !k.isInclusiveEndBound)
+}
+
 // intervalKeyTemp is used in the sortAndSweep step. It contains additional metadata
 // which is used to generate the {min,max}IntervalIndex for files.
 type intervalKeyTemp struct {
@@ -943,9 +947,7 @@ func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []base.UserKeyBou
 			// maxIdx starts. We must set curr.End now, before making that leap,
 			// because this iteration may be the last.
 			i = maxIdx
-			curr.End.Key = s.orderedIntervals[i+1].startKey.key
-			// TODO(radu): make the kind more accurate.
-			curr.End.Kind = base.Inclusive
+			curr.End = s.orderedIntervals[i+1].startKey.toEndBoundary()
 			continue
 		}
 
@@ -953,9 +955,7 @@ func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []base.UserKeyBou
 		// interval. Update the current end to be the next interval's start key.
 		// Note that curr is not necessarily finished, because there may be an
 		// abutting non-empty interval.
-		curr.End.Key = s.orderedIntervals[i+1].startKey.key
-		// TODO(radu): make the kind more accurate.
-		curr.End.Kind = base.Inclusive
+		curr.End = s.orderedIntervals[i+1].startKey.toEndBoundary()
 		i++
 	}
 	return keyRanges

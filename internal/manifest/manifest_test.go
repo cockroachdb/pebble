@@ -74,18 +74,17 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 				// this file extends before or after smallest/largest, truncate
 				// it to be within [smallest,largest] for the purpose of
 				// correctness checking.
-				fileSmallest := f.Smallest.UserKey
-				fileLargest := f.Largest.UserKey
-				if cmp(fileSmallest, smallest) < 0 {
-					fileSmallest = smallest
+				b := f.UserKeyBounds()
+				if cmp(b.Start, smallest) < 0 {
+					b.Start = smallest
 				}
-				if cmp(fileLargest, largest) > 0 {
-					fileLargest = largest
+				if cmp(b.End.Key, largest) >= 0 {
+					b.End = base.UserKeyInclusive(largest)
 				}
 
 				var containedWithin bool
 				for _, kr := range keyRanges {
-					containedWithin = containedWithin || (cmp(fileSmallest, kr.Start) >= 0 && kr.End.IsUpperBoundFor(cmp, fileLargest))
+					containedWithin = containedWithin || kr.ContainsBounds(cmp, &b)
 				}
 				if !containedWithin {
 					t.Fatalf("file L%d.%s overlaps [%s, %s] but no in-use key range contains it",

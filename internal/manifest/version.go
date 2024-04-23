@@ -1338,7 +1338,7 @@ func (v *Version) CalculateInuseKeyRanges(
 		// we can seek to the accumulated range's end. Otherwise, we need to
 		// start at the first overlapping file within the level.
 		if currAccum != nil && v.cmp.Compare(currAccum.Start, smallest) <= 0 {
-			currFile = seekGT(&iter, cmp, currAccum.End.Key)
+			currFile = seekGT(&iter, cmp, currAccum.End)
 		} else {
 			currFile = iter.First()
 		}
@@ -1355,8 +1355,7 @@ func (v *Version) CalculateInuseKeyRanges(
 			case currAccum == nil || (currFile != nil && cmp(currFile.Largest.UserKey, currAccum.Start) < 0):
 				// This file is strictly before the current accumulated range,
 				// or there are no more accumulated ranges.
-				// TODO(radu): refine the boundary type.
-				output = append(output, base.UserKeyBoundsInclusive(currFile.Smallest.UserKey, currFile.Largest.UserKey))
+				output = append(output, currFile.UserKeyBounds())
 				currFile = iter.Next()
 			case currFile == nil || (currAccum != nil && cmp(currAccum.End.Key, currFile.Smallest.UserKey) < 0):
 				// The current accumulated key range is strictly before the
@@ -1369,36 +1368,42 @@ func (v *Version) CalculateInuseKeyRanges(
 			default:
 				// The current accumulated range and the current file overlap.
 				// Adjust the accumulated range to be the union.
-				if cmp(currFile.Smallest.UserKey, currAccum.Start) < 0 {
-					currAccum.Start = currFile.Smallest.UserKey
+				fileBounds := currFile.UserKeyBounds()
+				if cmp(fileBounds.Start, currAccum.Start) < 0 {
+					currAccum.Start = fileBounds.Start
 				}
-				if cmp(currFile.Largest.UserKey, currAccum.End.Key) > 0 {
-					currAccum.End.Key = currFile.Largest.UserKey
+				if fileBounds.End.IsUpperBoundFor(cmp, currAccum.End.Key) {
+					currAccum.End = fileBounds.End
 				}
 
 				// Extending `currAccum`'s end boundary may have caused it to
 				// overlap with `input` key ranges that we haven't processed
 				// yet. Merge any such key ranges.
 				for len(input) > 0 && cmp(input[0].Start, currAccum.End.Key) <= 0 {
-					if cmp(input[0].End.Key, currAccum.End.Key) > 0 {
+					if input[0].End.IsUpperBoundFor(cmp, currAccum.End.Key) {
 						currAccum.End = input[0].End
 					}
 					input = input[1:]
 				}
 				// Seek the level iterator past our current accumulated end.
-				currFile = seekGT(&iter, cmp, currAccum.End.Key)
+				currFile = seekGT(&iter, cmp, currAccum.End)
 			}
 		}
 	}
 	return output
 }
 
-func seekGT(iter *LevelIterator, cmp base.Compare, key []byte) *FileMetadata {
-	f := iter.SeekGE(cmp, key)
-	for f != nil && cmp(f.Largest.UserKey, key) == 0 {
-		f = iter.Next()
+func seekGT(iter *LevelIterator, cmp base.Compare, boundary base.UserKeyBoundary) *FileMetadata {
+	f := iter.SeekGE(cmp, boundary.Key)
+	if f == nil || cmp(f.Largest.UserKey, boundary.Key) != 0 {
+		return f
 	}
-	return f
+	if boundary.Kind == base.Exclusive && !f.Largest.IsExclusiveSentinel() {
+		// The boundary is exclusive and the file's largest key is not exclusive; so
+		// we are extending the boundary.
+		return f
+	}
+	return iter.Next()
 }
 
 // Contains returns a boolean indicating whether the provided file exists in
