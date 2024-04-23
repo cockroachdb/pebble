@@ -3,9 +3,12 @@ define
 
 elide start-level=5
 a
+a-c
+a-d
 b
 c
 d
+d-e
 e
 f
 g
@@ -13,11 +16,15 @@ h
 i
 j
 k
+z-zz
 ----
 elideTombstone("a") = true
+elideRangeTombstone("a", "c") = true
+elideRangeTombstone("a", "d") = true
 elideTombstone("b") = true
 elideTombstone("c") = true
 elideTombstone("d") = true
+elideRangeTombstone("d", "e") = true
 elideTombstone("e") = true
 elideTombstone("f") = true
 elideTombstone("g") = true
@@ -25,9 +32,11 @@ elideTombstone("h") = true
 elideTombstone("i") = true
 elideTombstone("j") = true
 elideTombstone("k") = true
+elideRangeTombstone("z", "zz") = true
 
 elide start-level=1
 a
+a-c
 b
 c
 d
@@ -38,8 +47,10 @@ h
 i
 j
 k
+k-l
 ----
 elideTombstone("a") = true
+elideRangeTombstone("a", "c") = true
 elideTombstone("b") = true
 elideTombstone("c") = true
 elideTombstone("d") = true
@@ -50,6 +61,7 @@ elideTombstone("h") = true
 elideTombstone("i") = true
 elideTombstone("j") = true
 elideTombstone("k") = true
+elideRangeTombstone("k", "l") = true
 
 define
 L1
@@ -91,7 +103,12 @@ L4:
   000011:[t#101,SET-t#101,SET]
 
 elide start-level=1
+a-b
+a-u
 b
+b-c
+b-k
+b-u
 c
 d
 e
@@ -113,11 +130,17 @@ t
 u
 v
 w
+w-y
 x
 y
 z
 ----
+elideRangeTombstone("a", "b") = true
+elideRangeTombstone("a", "u") = false
 elideTombstone("b") = true
+elideRangeTombstone("b", "c") = true
+elideRangeTombstone("b", "k") = false
+elideRangeTombstone("b", "u") = false
 elideTombstone("c") = true
 elideTombstone("d") = true
 elideTombstone("e") = true
@@ -139,6 +162,7 @@ elideTombstone("t") = false
 elideTombstone("u") = true
 elideTombstone("v") = true
 elideTombstone("w") = false
+elideRangeTombstone("w", "y") = false
 elideTombstone("x") = false
 elideTombstone("y") = true
 elideTombstone("z") = true
@@ -196,13 +220,103 @@ L6:
 
 elide start-level=1
 a
+a-f
+a-g
+a-h
 b
 g
 goo
+i-j
 z
+z-zz
 ----
 elideTombstone("a") = true
+elideRangeTombstone("a", "f") = true
+elideRangeTombstone("a", "g") = false
+elideRangeTombstone("a", "h") = false
 elideTombstone("b") = true
 elideTombstone("g") = false
 elideTombstone("goo") = false
+elideRangeTombstone("i", "j") = false
 elideTombstone("z") = true
+elideRangeTombstone("z", "zz") = true
+
+define
+L1
+  c.SET.801:c
+  g.SET.800:g
+L1
+  x.SET.701:x
+	y.SET.700:y
+L2
+	d.SET.601:d
+	h.SET.600:h
+L2
+	r.SET.501:r
+	t.SET.500:t
+L3
+	f.SET.401:f
+	g.SET.400:g
+L3
+  w.SET.301:w
+  x.SET.300:x
+L4
+  f.SET.201:f
+  m.SET.200:m
+L4
+  t.SET.101:t
+  t.SET.100:t
+----
+L1:
+  000004:[c#801,SET-g#800,SET]
+  000005:[x#701,SET-y#700,SET]
+L2:
+  000006:[d#601,SET-h#600,SET]
+  000007:[r#501,SET-t#500,SET]
+L3:
+  000008:[f#401,SET-g#400,SET]
+  000009:[w#301,SET-x#300,SET]
+L4:
+  000010:[f#201,SET-m#200,SET]
+  000011:[t#101,SET-t#101,SET]
+
+elide start-level=1
+b-c
+c-d
+d-e
+e-f
+f-g
+g-h
+h-i
+l-m
+m-n
+n-o
+q-r
+r-s
+s-t
+t-u
+u-v
+v-w
+w-x
+x-y
+y-z
+----
+elideRangeTombstone("b", "c") = true
+elideRangeTombstone("c", "d") = true
+elideRangeTombstone("d", "e") = true
+elideRangeTombstone("e", "f") = false
+elideRangeTombstone("f", "g") = false
+elideRangeTombstone("g", "h") = false
+elideRangeTombstone("h", "i") = false
+elideRangeTombstone("l", "m") = false
+elideRangeTombstone("m", "n") = false
+elideRangeTombstone("n", "o") = true
+elideRangeTombstone("q", "r") = true
+elideRangeTombstone("r", "s") = true
+elideRangeTombstone("s", "t") = false
+elideRangeTombstone("t", "u") = false
+elideRangeTombstone("u", "v") = true
+elideRangeTombstone("v", "w") = false
+elideRangeTombstone("w", "x") = false
+elideRangeTombstone("x", "y") = false
+elideRangeTombstone("y", "z") = true

@@ -584,162 +584,21 @@ func TestElideTombstone(t *testing.T) {
 				}
 				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 				c.setupInuseKeyRanges()
-				for _, ukey := range strings.Split(td.Input, "\n") {
-					fmt.Fprintf(&buf, "elideTombstone(%q) = %t\n", ukey, c.elideTombstone([]byte(ukey)))
+				for _, line := range strings.Split(td.Input, "\n") {
+					switch f := strings.FieldsFunc(line, func(r rune) bool { return r == '-' }); len(f) {
+					case 1:
+						fmt.Fprintf(&buf, "elideTombstone(%q) = %t\n", f[0], c.elideTombstone([]byte(f[0])))
+					case 2:
+						fmt.Fprintf(&buf, "elideRangeTombstone(%q, %q) = %t\n", f[0], f[1], c.elideRangeTombstone([]byte(f[0]), []byte(f[1])))
+					default:
+						td.Fatalf(t, "invalid line %q", line)
+					}
 				}
 				return buf.String()
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
 		})
-}
-
-func TestElideRangeTombstone(t *testing.T) {
-	opts := (*Options)(nil).EnsureDefaults()
-
-	newFileMeta := func(smallest, largest base.InternalKey) *fileMetadata {
-		m := (&fileMetadata{}).ExtendPointKeyBounds(
-			opts.Comparer.Compare, smallest, largest,
-		)
-		m.InitPhysicalBacking()
-		return m
-	}
-
-	type want struct {
-		key      string
-		endKey   string
-		expected bool
-	}
-
-	testCases := []struct {
-		desc     string
-		level    int
-		version  *version
-		wants    []want
-		flushing flushableList
-	}{
-		{
-			desc:    "empty",
-			level:   1,
-			version: newVersion(opts, [numLevels][]*fileMetadata{}),
-			wants: []want{
-				{"x", "y", true},
-			},
-		},
-		{
-			desc:  "non-empty",
-			level: 1,
-			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: {
-					newFileMeta(
-						base.ParseInternalKey("c.SET.801"),
-						base.ParseInternalKey("g.SET.800"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("x.SET.701"),
-						base.ParseInternalKey("y.SET.700"),
-					),
-				},
-				2: {
-					newFileMeta(
-						base.ParseInternalKey("d.SET.601"),
-						base.ParseInternalKey("h.SET.600"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("r.SET.501"),
-						base.ParseInternalKey("t.SET.500"),
-					),
-				},
-				3: {
-					newFileMeta(
-						base.ParseInternalKey("f.SET.401"),
-						base.ParseInternalKey("g.SET.400"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("w.SET.301"),
-						base.ParseInternalKey("x.SET.300"),
-					),
-				},
-				4: {
-					newFileMeta(
-						base.ParseInternalKey("f.SET.201"),
-						base.ParseInternalKey("m.SET.200"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("t.SET.101"),
-						base.ParseInternalKey("t.SET.100"),
-					),
-				},
-			}),
-			wants: []want{
-				{"b", "c", true},
-				{"c", "d", true},
-				{"d", "e", true},
-				{"e", "f", false},
-				{"f", "g", false},
-				{"g", "h", false},
-				{"h", "i", false},
-				{"l", "m", false},
-				{"m", "n", false},
-				{"n", "o", true},
-				{"q", "r", true},
-				{"r", "s", true},
-				{"s", "t", false},
-				{"t", "u", false},
-				{"u", "v", true},
-				{"v", "w", false},
-				{"w", "x", false},
-				{"x", "y", false},
-				{"y", "z", true},
-			},
-		},
-		{
-			desc:  "flushing",
-			level: -1,
-			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: {
-					newFileMeta(
-						base.ParseInternalKey("h.SET.901"),
-						base.ParseInternalKey("j.SET.900"),
-					),
-				},
-				1: {
-					newFileMeta(
-						base.ParseInternalKey("c.SET.801"),
-						base.ParseInternalKey("g.SET.800"),
-					),
-					newFileMeta(
-						base.ParseInternalKey("x.SET.701"),
-						base.ParseInternalKey("y.SET.700"),
-					),
-				},
-			}),
-			wants: []want{
-				{"m", "n", false},
-			},
-			// Pretend one memtable is being flushed
-			flushing: flushableList{nil},
-		},
-	}
-
-	for _, tc := range testCases {
-		c := compaction{
-			cmp:      DefaultComparer.Compare,
-			comparer: DefaultComparer,
-			version:  tc.version,
-			inputs:   []compactionLevel{{level: tc.level}, {level: tc.level + 1}},
-			smallest: base.ParseInternalKey("a.SET.0"),
-			largest:  base.ParseInternalKey("z.SET.0"),
-			flushing: tc.flushing,
-		}
-		c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
-		c.setupInuseKeyRanges()
-		for _, w := range tc.wants {
-			if got := c.elideRangeTombstone([]byte(w.key), []byte(w.endKey)); got != w.expected {
-				t.Errorf("%s: keys=%q-%q: got %v, want %v", tc.desc, w.key, w.endKey, got, w.expected)
-			}
-		}
-	}
 }
 
 func TestCompactionTransform(t *testing.T) {
