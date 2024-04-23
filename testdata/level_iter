@@ -161,24 +161,20 @@ d#4,SET:4
 
 iter lower=a
 seek-ge a
-first
 ----
-a#1,SET:1
 a#1,SET:1
 
 iter
 set-bounds lower=a
 seek-ge a
-first
 ----
-a#1,SET:1
 a#1,SET:1
 
 iter
 set-bounds lower=dd upper=f
-seek-lt dc
+seek-lt dd
 set-bounds lower=a upper=f
-seek-lt dc
+seek-lt dd
 prev
 prev
 prev
@@ -227,127 +223,91 @@ load c lower=b upper=e
 ----
 [,]
 
-# levelIter only checks lower bound when loading sstables.
 iter lower=b
-seek-ge a
-first
+seek-ge b
 ----
-a#1,SET:1
-a#1,SET:1
+b#2,SET:2
 
 iter lower=c
-seek-ge a
-first
+seek-ge c
 ----
-c#3,SET:3
 c#3,SET:3
 
 iter
 set-bounds lower=b
-seek-ge a
-first
+seek-ge b
 ----
-a#1,SET:1
-a#1,SET:1
+b#2,SET:2
 
 iter
 set-bounds lower=c
-seek-ge a
-first
+seek-ge c
 ----
-c#3,SET:3
 c#3,SET:3
 
-# levelIter only checks lower bound when loading sstables.
 iter lower=d
-seek-ge a
-first
+seek-ge d
 ----
-c#3,SET:3
-c#3,SET:3
+d#4,SET:4
 
 iter lower=e
-seek-ge a
-first
+seek-ge e
 ----
-.
 .
 
 iter upper=e
 seek-lt e
-last
 ----
-dd#5,SET:5
 dd#5,SET:5
 
 iter
 set-bounds lower=d
-seek-ge a
-first
+seek-ge d
 ----
-c#3,SET:3
-c#3,SET:3
+d#4,SET:4
 
 iter
 set-bounds lower=e
-seek-ge a
-first
+seek-ge e
 ----
-.
 .
 
 iter
 set-bounds upper=e
 seek-lt e
-last
 ----
-dd#5,SET:5
 dd#5,SET:5
 
-# levelIter only checks upper bound when loading sstables.
 iter upper=d
-seek-lt e
-last
+seek-lt d
 ----
-d#4,SET:4
-d#4,SET:4
+c#3,SET:3
 
 iter upper=c
-seek-lt e
-last
+seek-lt c
 ----
-b#2,SET:2
 b#2,SET:2
 
 iter
 set-bounds upper=d
-seek-lt e
-last
+seek-lt d
 ----
-d#4,SET:4
-d#4,SET:4
+c#3,SET:3
 
 iter
 set-bounds upper=c
-seek-lt e
-last
+seek-lt c
 ----
-b#2,SET:2
 b#2,SET:2
 
-# levelIter only checks upper bound when loading sstables.
 iter upper=b
-seek-lt e
-last
+seek-lt b
 ----
-b#2,SET:2
-b#2,SET:2
+a#1,SET:1
 
 iter upper=a
-seek-lt e
-last
+seek-lt a
 ----
-.
 .
 
 iter upper=dd
@@ -359,18 +319,14 @@ d#4,SET:4
 
 iter
 set-bounds upper=b
-seek-lt e
-last
+seek-lt b
 ----
-b#2,SET:2
-b#2,SET:2
+a#1,SET:1
 
 iter
 set-bounds upper=a
-seek-lt e
-last
+seek-lt a
 ----
-.
 .
 
 iter
@@ -391,7 +347,7 @@ dd#5,SET:5
 .
 
 iter lower=dd
-seek-prefix-ge d
+seek-prefix-ge dd
 next
 ----
 dd#5,SET:5
