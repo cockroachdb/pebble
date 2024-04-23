@@ -18,8 +18,8 @@ L0 c d
 L0 g h
 L1 a b
 ----
-L0 a-b: a-b
-L0 c-d: d-e
+L0 a-b: [a, b]
+L0 c-d: [d, e]
 L0 g-h: .
 L1 a-b: .
 
@@ -40,9 +40,9 @@ L1 a aa
 L1 a b
 L2 a z
 ----
-L0 a-c: a-c
+L0 a-c: [a, c]
 L1 a-aa: .
-L1 a-b: b-c
+L1 a-b: [b, c]
 L2 a-z: .
 
 define
@@ -60,8 +60,8 @@ inuse-key-ranges
 L0 a c
 L0 a b
 ----
-L0 a-c: a-b c-d
-L0 a-b: a-b
+L0 a-c: [a, b] [c, d]
+L0 a-b: [a, b]
 
 define
 L1
@@ -77,7 +77,7 @@ L2:
 inuse-key-ranges
 L0 a c
 ----
-L0 a-c: a-c
+L0 a-c: [a, c]
 
 define
 L1
@@ -93,7 +93,7 @@ L2:
 inuse-key-ranges
 L0 a c
 ----
-L0 a-c: a-b c-d
+L0 a-c: [a, b] [c, d]
 
 define
 L1
@@ -113,9 +113,9 @@ L0 a z
 L0 a c
 L0 g z
 ----
-L0 a-z: a-b c-d f-g i-j
-L0 a-c: a-b c-d
-L0 g-z: i-j
+L0 a-z: [a, b] [c, d] [f, g] [i, j]
+L0 a-c: [a, b] [c, d]
+L0 g-z: [i, j]
 
 define
 L1
@@ -139,7 +139,7 @@ L6:
 inuse-key-ranges
 L0 a z
 ----
-L0 a-z: a-j k-z
+L0 a-z: [a, j] [k, z]
 
 define
 L0
@@ -164,7 +164,7 @@ L6:
 inuse-key-ranges
 L0 a z
 ----
-L0 a-z: a-j k-z
+L0 a-z: [a, j] [k, z]
 
 define
 L0
@@ -196,10 +196,10 @@ L0 q r
 L0 1 2
 L0 ddd dddd
 ----
-L0 a-z: a-dd e-p
-L0 e-p: e-p
-L0 e-f: e-m
-L0 b-c: b-dd
+L0 a-z: [a, dd] [e, p]
+L0 e-p: [e, p]
+L0 e-f: [e, m]
+L0 b-c: [b, dd]
 L0 q-r: .
 L0 1-2: .
 L0 ddd-dddd: .
@@ -240,13 +240,13 @@ L5 mm zz
 L5 l x
 L5 l zz
 ----
-L5 a-z: m-z
+L5 a-z: [m, z]
 L5 a-b: .
-L5 m-z: m-z
-L5 m-zz: m-z
-L5 mm-zz: m-z
-L5 l-x: m-z
-L5 l-zz: m-z
+L5 m-z: [m, z]
+L5 m-zz: [m, z]
+L5 mm-zz: [m, z]
+L5 l-x: [m, z]
+L5 l-zz: [m, z]
 
 inuse-key-ranges
 L3 a z
@@ -255,21 +255,21 @@ L3 k m
 L3 l ll
 L3 b n
 ----
-L3 a-z: f-k m-z
-L3 f-k: f-k
-L3 k-m: m-z
+L3 a-z: [f, k] [m, z]
+L3 f-k: [f, k]
+L3 k-m: [m, z]
 L3 l-ll: .
-L3 b-n: f-k m-z
+L3 b-n: [f, k] [m, z]
 
 inuse-key-ranges
 L2 a z
 ----
-L2 a-z: b-c f-k m-z
+L2 a-z: [b, c] [f, k] [m, z]
 
 inuse-key-ranges
 L1 a z
 ----
-L1 a-z: b-d f-k m-z
+L1 a-z: [b, d] [f, k] [m, z]
 
 inuse-key-ranges
 L0 a z
@@ -278,11 +278,11 @@ L0 a b
 L0 bb bc
 L0 f k
 ----
-L0 a-z: a-k m-z
-L0 a-k: a-k
-L0 a-b: a-c
-L0 bb-bc: b-c
-L0 f-k: d-k
+L0 a-z: [a, k] [m, z]
+L0 a-k: [a, k]
+L0 a-b: [a, c]
+L0 bb-bc: [b, c]
+L0 f-k: [d, k]
 
 define
 L1
@@ -321,16 +321,16 @@ L0 p z
 L0 pp z
 L0 oo z
 ----
-L3 a-z: a-f w-z
-L2 a-z: a-k s-z
-L1 a-z: a-n o-z
-L0 a-z: a-z
-L0 a-n: a-p
-L0 a-mm: a-p
-L0 a-nn: a-p
-L0 p-z: o-z
-L0 pp-z: o-z
-L0 oo-z: m-z
+L3 a-z: [a, f] [w, z]
+L2 a-z: [a, k] [s, z]
+L1 a-z: [a, n] [o, z]
+L0 a-z: [a, z]
+L0 a-n: [a, p]
+L0 a-mm: [a, p]
+L0 a-nn: [a, p]
+L0 p-z: [o, z]
+L0 pp-z: [o, z]
+L0 oo-z: [m, z]
 
 define
 L1
@@ -351,8 +351,8 @@ inuse-key-ranges
 L0 a c
 L0 a cc
 ----
-L0 a-c: a-c
-L0 a-cc: a-c cc-cca
+L0 a-c: [a, c]
+L0 a-cc: [a, c] [cc, cca]
 
 define
 L1
@@ -379,10 +379,10 @@ L0 a cc
 L0 a d
 L0 c c
 ----
-L0 a-c: a-ca
-L0 a-cc: a-d
-L0 a-d: a-d
-L0 c-c: c-ca
+L0 a-c: [a, ca]
+L0 a-cc: [a, d]
+L0 a-d: [a, d]
+L0 c-c: [c, ca]
 
 define
 L0
@@ -415,5 +415,5 @@ inuse-key-ranges
 L0 a z
 L1 a z
 ----
-L0 a-z: a-aa b-ba bb-bba c-ca d-i
-L1 a-z: b-ba bb-bba c-ca e-ea
+L0 a-z: [a, aa] [b, ba] [bb, bba] [c, ca] [d, i]
+L1 a-z: [b, ba] [bb, bba] [c, ca] [e, ea]
