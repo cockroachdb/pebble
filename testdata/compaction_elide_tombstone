@@ -205,4 +205,4 @@ elideTombstone("a") = true
 elideTombstone("b") = true
 elideTombstone("g") = false
 elideTombstone("goo") = false
-elideTombstone("z") = false
+elideTombstone("z") = true
