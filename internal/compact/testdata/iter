@@ -1197,21 +1197,16 @@ next
 .
 .
 
-# Test that range keys are interleaved, and exposed to the fragmenter.
-
+# Test that range keys are interleaved and exposed by the iterator.
 define
 a.SINGLEDEL.4:
 a.SET.3:val
 a.DEL.2:
 a.SET.1:val
 c.SET.3:val
-----
-
-define-range-keys
 a-b:{(#3,RANGEKEYSET,@2,foo)}
 d-e:{(#3,RANGEKEYSET,@2,foo)}
 ----
-unknown command: define-range-keys
 
 iter
 first
@@ -1221,9 +1216,11 @@ next
 next
 range-keys
 ----
+a#72057594037927935,RANGEKEYSET:
 a#2,DEL:
 c#3,SET:val
+d#72057594037927935,RANGEKEYSET:
 .
-.
-.
+a-b:{(#3,RANGEKEYSET,@2,foo)}
+d-e:{(#3,RANGEKEYSET,@2,foo)}
 .

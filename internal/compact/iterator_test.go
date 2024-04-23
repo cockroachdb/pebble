@@ -298,7 +298,8 @@ func TestCompactionIter(t *testing.T) {
 				return b.String()
 
 			default:
-				return fmt.Sprintf("unknown command: %s", d.Cmd)
+				d.Fatalf(t, "unknown command: %s", d.Cmd)
+				return ""
 			}
 		})
 	}
