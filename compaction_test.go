@@ -2391,7 +2391,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 						if i > 0 {
 							fmt.Fprintf(&buf, " ")
 						}
-						fmt.Fprintf(&buf, "%s-%s", r.Start, r.End.Key)
+						fmt.Fprintf(&buf, "%s", r.String())
 					}
 					fmt.Fprintf(&buf, "\n")
 				}
