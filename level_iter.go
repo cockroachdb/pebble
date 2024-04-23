@@ -593,8 +593,13 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			continue
 		}
 
+		iterKinds := iterPointKeys
+		if l.rangeDelIterPtr != nil {
+			iterKinds |= iterRangeDeletions
+		}
+
 		var iters iterSet
-		iters, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterPointKeys|iterRangeDeletions)
+		iters, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterKinds)
 		if l.err != nil {
 			return noFileLoaded
 		}
@@ -602,8 +607,6 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 		if l.rangeDelIterPtr != nil {
 			*l.rangeDelIterPtr = iters.rangeDeletion
 			l.rangeDelIterCopy = iters.rangeDeletion
-		} else if iters.rangeDeletion != nil {
-			iters.rangeDeletion.Close()
 		}
 		return newFileLoaded
 	}
