@@ -1877,7 +1877,7 @@ func (d *DB) splitManualCompaction(
 			level: level,
 			done:  make(chan error, 1),
 			start: keyRange.Start,
-			end:   keyRange.End,
+			end:   keyRange.End.Key,
 			split: true,
 		})
 	}

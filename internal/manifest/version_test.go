@@ -452,7 +452,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 		depth    int
 		smallest []byte
 		largest  []byte
-		want     []UserKeyRange
+		want     []base.UserKeyBounds
 	}{
 		{
 			name: "No files in next level",
@@ -476,15 +476,9 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 			depth:    2,
 			smallest: []byte("a"),
 			largest:  []byte("e"),
-			want: []UserKeyRange{
-				{
-					Start: []byte("a"),
-					End:   []byte("c"),
-				},
-				{
-					Start: []byte("d"),
-					End:   []byte("e"),
-				},
+			want: []base.UserKeyBounds{
+				base.UserKeyBoundsInclusive([]byte("a"), []byte("c")),
+				base.UserKeyBoundsInclusive([]byte("d"), []byte("e")),
 			},
 		},
 		{
@@ -523,23 +517,11 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 			depth:    2,
 			smallest: []byte("a"),
 			largest:  []byte("z"),
-			want: []UserKeyRange{
-				{
-					Start: []byte("a"),
-					End:   []byte("c"),
-				},
-				{
-					Start: []byte("d"),
-					End:   []byte("i"),
-				},
-				{
-					Start: []byte("l"),
-					End:   []byte("p"),
-				},
-				{
-					Start: []byte("s"),
-					End:   []byte("w"),
-				},
+			want: []base.UserKeyBounds{
+				base.UserKeyBoundsInclusive([]byte("a"), []byte("c")),
+				base.UserKeyBoundsInclusive([]byte("d"), []byte("i")),
+				base.UserKeyBoundsInclusive([]byte("l"), []byte("p")),
+				base.UserKeyBoundsInclusive([]byte("s"), []byte("w")),
 			},
 		},
 		{
@@ -590,23 +572,11 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 			depth:    2,
 			smallest: []byte("a"),
 			largest:  []byte("z"),
-			want: []UserKeyRange{
-				{
-					Start: []byte("a"),
-					End:   []byte("c"),
-				},
-				{
-					Start: []byte("d"),
-					End:   []byte("e"),
-				},
-				{
-					Start: []byte("m"),
-					End:   []byte("q"),
-				},
-				{
-					Start: []byte("s"),
-					End:   []byte("w"),
-				},
+			want: []base.UserKeyBounds{
+				base.UserKeyBoundsInclusive([]byte("a"), []byte("c")),
+				base.UserKeyBoundsInclusive([]byte("d"), []byte("e")),
+				base.UserKeyBoundsInclusive([]byte("m"), []byte("q")),
+				base.UserKeyBoundsInclusive([]byte("s"), []byte("w")),
 			},
 		},
 		{
@@ -651,15 +621,9 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 			depth:    2,
 			smallest: []byte("a"),
 			largest:  []byte("z"),
-			want: []UserKeyRange{
-				{
-					Start: []byte("a"),
-					End:   []byte("c"),
-				},
-				{
-					Start: []byte("d"),
-					End:   []byte("w"),
-				},
+			want: []base.UserKeyBounds{
+				base.UserKeyBoundsInclusive([]byte("a"), []byte("c")),
+				base.UserKeyBoundsInclusive([]byte("d"), []byte("w")),
 			},
 		},
 	}
