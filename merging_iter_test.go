@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
@@ -163,22 +164,27 @@ func TestMergingIterCornerCases(t *testing.T) {
 	newIters :=
 		func(_ context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts, kinds iterKinds,
 		) (iterSet, error) {
+			var set iterSet
+			var err error
 			r := readers[file.FileNum]
-			rangeDelIter, err := r.NewRawRangeDelIter(sstable.NoTransforms)
-			if err != nil {
-				return iterSet{}, err
+			if kinds.RangeDeletion() {
+				set.rangeDeletion, err = r.NewRawRangeDelIter(sstable.NoTransforms)
+				if err != nil {
+					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
+				}
 			}
-			iter, err := r.NewIterWithBlockPropertyFilters(
-				sstable.NoTransforms,
-				opts.GetLowerBound(), opts.GetUpperBound(), nil, true /* useFilterBlock */, iio.stats,
-				sstable.CategoryAndQoS{}, nil, sstable.TrivialReaderProvider{Reader: r})
-			if err != nil {
-				return iterSet{}, err
+			if kinds.Point() {
+				set.point, err = r.NewIterWithBlockPropertyFilters(
+					sstable.NoTransforms,
+					opts.GetLowerBound(), opts.GetUpperBound(), nil, true /* useFilterBlock */, iio.stats,
+					sstable.CategoryAndQoS{}, nil, sstable.TrivialReaderProvider{Reader: r})
+				if err != nil {
+					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
+				}
 			}
-			return iterSet{
-				point:         itertest.Attach(iter, itertest.ProbeState{Log: &buf}, pointProbes[file.FileNum]...),
-				rangeDeletion: attachKeyspanProbes(rangeDelIter, keyspanProbeContext{log: &buf}, rangeDelProbes[file.FileNum]...),
-			}, nil
+			set.point = itertest.Attach(set.point, itertest.ProbeState{Log: &buf}, pointProbes[file.FileNum]...)
+			set.rangeDeletion = attachKeyspanProbes(set.rangeDeletion, keyspanProbeContext{log: &buf}, rangeDelProbes[file.FileNum]...)
+			return set, nil
 		}
 
 	datadriven.RunTest(t, "testdata/merging_iter", func(t *testing.T, d *datadriven.TestData) string {

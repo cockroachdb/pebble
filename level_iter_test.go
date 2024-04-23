@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
@@ -164,18 +165,25 @@ func (lt *levelIterTest) newIters(
 ) (iterSet, error) {
 	lt.itersCreated++
 	transforms := file.IterTransforms()
-	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFiltersAndContextEtc(
-		ctx, transforms,
-		opts.LowerBound, opts.UpperBound, nil, true /* useFilterBlock */, iio.stats, sstable.CategoryAndQoS{},
-		nil, sstable.TrivialReaderProvider{Reader: lt.readers[file.FileNum]})
-	if err != nil {
-		return iterSet{}, err
+	var set iterSet
+	if kinds.Point() {
+		iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFiltersAndContextEtc(
+			ctx, transforms,
+			opts.LowerBound, opts.UpperBound, nil, true /* useFilterBlock */, iio.stats, sstable.CategoryAndQoS{},
+			nil, sstable.TrivialReaderProvider{Reader: lt.readers[file.FileNum]})
+		if err != nil {
+			return iterSet{}, errors.CombineErrors(err, set.CloseAll())
+		}
+		set.point = iter
 	}
-	rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(transforms)
-	if err != nil {
-		return iterSet{}, err
+	if kinds.RangeDeletion() {
+		rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(transforms)
+		if err != nil {
+			return iterSet{}, errors.CombineErrors(err, set.CloseAll())
+		}
+		set.rangeDeletion = rangeDelIter
 	}
-	return iterSet{point: iter, rangeDeletion: rangeDelIter}, nil
+	return set, nil
 }
 
 func (lt *levelIterTest) runClear(d *datadriven.TestData) string {
@@ -344,7 +352,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 			if iter.iterFile == nil {
 				return "nil iterFile"
 			}
-			return fmt.Sprintf("file %d", iter.iterFile.FileNum)
+			return fmt.Sprintf("file %s [loaded=%t]", iter.iterFile.FileNum, iter.iter != nil)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)

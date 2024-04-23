@@ -271,7 +271,7 @@ a#3,SET:z
 
 file-pos
 ----
-file 0
+file 000000 [loaded=true]
 
 iter save continue
 seek-prefix-ge a
@@ -282,7 +282,7 @@ a#3,SET:z
 
 file-pos
 ----
-file 0
+file 000000 [loaded=true]
 
 iter save continue
 set-bounds lower=b upper=c
@@ -292,7 +292,7 @@ seek-ge b
 
 file-pos
 ----
-file 0
+file 000000 [loaded=true]
 
 iter save continue
 seek-prefix-ge b
@@ -301,7 +301,7 @@ seek-prefix-ge b
 
 file-pos
 ----
-file 0
+file 000000 [loaded=true]
 
 # Seek to an earlier position just as a sanity check.
 iter save continue
@@ -314,7 +314,7 @@ a#3,SET:z
 
 file-pos
 ----
-file 0
+file 000000 [loaded=true]
 
 iter save continue
 set-bounds lower=d upper=e
@@ -326,7 +326,7 @@ d#4,SET:z
 
 file-pos
 ----
-file 1
+file 000001 [loaded=false]
 
 iter save continue
 seek-prefix-ge d
@@ -337,7 +337,7 @@ d#4,SET:z
 
 file-pos
 ----
-file 1
+file 000001 [loaded=false]
 
 iter save continue
 set-bounds lower=e upper=f
@@ -351,7 +351,7 @@ f#72057594037927935,RANGEDEL:
 
 file-pos
 ----
-file 1
+file 000001 [loaded=true]
 
 iter save continue
 seek-lt f
@@ -364,7 +364,7 @@ e#5,SET:
 
 file-pos
 ----
-file 0
+file 000000 [loaded=false]
 
 iter save continue
 set-bounds lower=f upper=g
@@ -378,7 +378,7 @@ f#72057594037927935,RANGEDEL:
 
 file-pos
 ----
-file 1
+file 000001 [loaded=true]
 
 iter continue
 ----
