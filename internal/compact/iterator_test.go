@@ -54,8 +54,6 @@ func TestCompactionIter(t *testing.T) {
 	var snapshots Snapshots
 	var elideTombstones bool
 	var allowZeroSeqnum bool
-	var rangeKeyInterleaving *keyspan.InterleavingIter
-	var rangeDelInterleaving *keyspan.InterleavingIter
 
 	var ineffectualSingleDeleteKeys []string
 	var invariantViolationSingleDeleteKeys []string
@@ -63,25 +61,8 @@ func TestCompactionIter(t *testing.T) {
 		ineffectualSingleDeleteKeys = ineffectualSingleDeleteKeys[:0]
 		invariantViolationSingleDeleteKeys = invariantViolationSingleDeleteKeys[:0]
 	}
-	newIter := func() *Iter {
-		// To adhere to the existing assumption that range deletion blocks in
-		// SSTables are not released while iterating, and therefore not
-		// susceptible to use-after-free bugs, we skip the zeroing of
-		// RangeDelete keys.
-		fi := base.NewFakeIter(kvs)
-		rangeDelInterleaving = &keyspan.InterleavingIter{}
-		rangeDelInterleaving.Init(
-			base.DefaultComparer,
-			fi,
-			keyspan.NewIter(base.DefaultComparer.Compare, rangeDels),
-			keyspan.InterleavingIterOpts{})
-		rangeKeyInterleaving = &keyspan.InterleavingIter{}
-		rangeKeyInterleaving.Init(
-			base.DefaultComparer,
-			rangeDelInterleaving,
-			keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys),
-			keyspan.InterleavingIterOpts{})
-		iter := invalidating.NewIter(rangeKeyInterleaving, invalidating.IgnoreKinds(base.InternalKeyKindRangeDelete))
+	newIter := func() (iter *Iter, rangeKeyInterleaving, rangeDelInterleaving *keyspan.InterleavingIter) {
+		resetSingleDelStats()
 		if merge == nil {
 			merge = func(key, value []byte) (base.ValueMerger, error) {
 				m := &debugMerger{}
@@ -89,7 +70,6 @@ func TestCompactionIter(t *testing.T) {
 				return m, nil
 			}
 		}
-		resetSingleDelStats()
 		cfg := IterConfig{
 			Cmp:             base.DefaultComparer.Compare,
 			Equal:           base.DefaultComparer.Equal,
@@ -109,7 +89,8 @@ func TestCompactionIter(t *testing.T) {
 				invariantViolationSingleDeleteKeys = append(invariantViolationSingleDeleteKeys, string(userKey))
 			},
 		}
-		return NewIter(cfg, iter)
+		input, rangeDelInterleaving, rangeKeyInterleaving := makeInputIter(kvs, rangeDels, rangeKeys)
+		return NewIter(cfg, input), rangeDelInterleaving, rangeKeyInterleaving
 	}
 
 	runTest := func(t *testing.T, file string) {
@@ -208,7 +189,7 @@ func TestCompactionIter(t *testing.T) {
 				}
 				slices.Sort(snapshots)
 
-				iter := newIter()
+				iter, rangeDelInterleaving, rangeKeyInterleaving := newIter()
 				var b bytes.Buffer
 				for _, line := range strings.Split(d.Input, "\n") {
 					parts := strings.Fields(line)
@@ -276,6 +257,7 @@ func TestCompactionIter(t *testing.T) {
 						}
 						if rangekey.IsRangeKey(iter.Key().Kind()) {
 							iter.AddRangeKeySpan(rangeKeyInterleaving.Span())
+							fmt.Fprintf(&b, "; Span() = %s", *rangeKeyInterleaving.Span())
 						}
 						fmt.Fprintln(&b)
 					} else if err := iter.Error(); err != nil {
@@ -307,4 +289,39 @@ func TestCompactionIter(t *testing.T) {
 	runTest(t, "testdata/iter")
 	runTest(t, "testdata/iter_set_with_del")
 	runTest(t, "testdata/iter_delete_sized")
+}
+
+// makeInputIter creates an iterator that can be used as an input for the
+// compaction Iter, along with rangeDel and rangeKey interleaving iterators
+// which can be used to retrieve the span corresponding to a range del or range
+// key.
+func makeInputIter(
+	points []base.InternalKV, rangeDels, rangeKeys []keyspan.Span,
+) (
+	input base.InternalIterator,
+	rangeDelInterleaving, rangeKeyInterleaving *keyspan.InterleavingIter,
+) {
+	// To adhere to the existing assumption that range deletion blocks in
+	// SSTables are not released while iterating, and therefore not
+	// susceptible to use-after-free bugs, we skip the zeroing of
+	// RangeDelete keys.
+	fi := base.NewFakeIter(points)
+	rangeDelInterleaving = &keyspan.InterleavingIter{}
+	rangeDelInterleaving.Init(
+		base.DefaultComparer,
+		fi,
+		keyspan.NewIter(base.DefaultComparer.Compare, rangeDels),
+		keyspan.InterleavingIterOpts{})
+	rangeKeyInterleaving = &keyspan.InterleavingIter{}
+	rangeKeyInterleaving.Init(
+		base.DefaultComparer,
+		rangeDelInterleaving,
+		keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys),
+		keyspan.InterleavingIterOpts{})
+	// To adhere to the existing assumption that range deletion blocks in
+	// SSTables are not released while iterating, and therefore not
+	// susceptible to use-after-free bugs, we skip the zeroing of
+	// RangeDelete keys.
+	input = invalidating.NewIter(rangeKeyInterleaving, invalidating.IgnoreKinds(base.InternalKeyKindRangeDelete))
+	return input, rangeDelInterleaving, rangeKeyInterleaving
 }
