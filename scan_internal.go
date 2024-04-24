@@ -900,7 +900,6 @@ func (i *scanInternalIterator) constructPointIter(
 		li.init(
 			i.ctx, i.opts.IterOptions, i.comparer, i.newIters, files, level,
 			internalIterOpts{})
-		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		mlevels[mlevelsIndex].iter = li
 		rli.Init(keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
 			i.comparer.Compare, tableNewRangeDelIter(i.ctx, i.newIters), files, level,

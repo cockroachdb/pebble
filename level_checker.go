@@ -49,7 +49,6 @@ import (
 type simpleMergingIterLevel struct {
 	iter         internalIterator
 	rangeDelIter keyspan.FragmentIterator
-	levelIterBoundaryContext
 
 	iterKV    *base.InternalKV
 	tombstone *keyspan.Span
@@ -129,8 +128,7 @@ func (m *simpleMergingIter) step() bool {
 	item := &m.heap.items[0]
 	l := &m.levels[item.index]
 	// Sentinels are not relevant for this point checking.
-	if !l.isIgnorableBoundaryKey && !item.key.IsExclusiveSentinel() &&
-		item.key.Visible(m.snapshot, base.InternalKeySeqNumMax) {
+	if !item.key.IsExclusiveSentinel() && item.key.Visible(m.snapshot, base.InternalKeySeqNumMax) {
 		// This is a visible point key.
 		if !m.handleVisiblePoint(item, l) {
 			return false
@@ -144,50 +142,50 @@ func (m *simpleMergingIter) step() bool {
 
 	// Step to the next point.
 	l.iterKV = l.iter.Next()
-	if !l.isIgnorableBoundaryKey {
-		if l.iterKV != nil {
-			// Check point keys in an sstable are ordered. Although not required, we check
-			// for memtables as well. A subtle check here is that successive sstables of
-			// L1 and higher levels are ordered. This happens when levelIter moves to the
-			// next sstable in the level, in which case item.key is previous sstable's
-			// last point key.
-			if base.InternalCompare(m.heap.cmp, item.key, l.iterKV.K) >= 0 {
-				m.err = errors.Errorf("out of order keys %s >= %s in %s",
-					item.key.Pretty(m.formatKey), l.iterKV.K.Pretty(m.formatKey), l.iter)
-				return false
-			}
-			item.key = base.InternalKey{
-				Trailer: l.iterKV.K.Trailer,
-				UserKey: append(item.key.UserKey[:0], l.iterKV.K.UserKey...),
-			}
-			item.value = l.iterKV.V
-			if m.heap.len() > 1 {
-				m.heap.fix(0)
-			}
-		} else {
-			m.err = l.iter.Close()
-			l.iter = nil
-			m.heap.pop()
-		}
-		if m.err != nil {
+	if l.iterKV == nil {
+		m.err = errors.CombineErrors(l.iter.Error(), l.iter.Close())
+		l.iter = nil
+		m.heap.pop()
+	} else if !l.iterKV.K.IsExclusiveSentinel() {
+		// Check point keys in an sstable are ordered. Although not required, we check
+		// for memtables as well. A subtle check here is that successive sstables of
+		// L1 and higher levels are ordered. This happens when levelIter moves to the
+		// next sstable in the level, in which case item.key is previous sstable's
+		// last point key.
+		if base.InternalCompare(m.heap.cmp, item.key, l.iterKV.K) >= 0 {
+			m.err = errors.Errorf("out of order keys %s >= %s in %s",
+				item.key.Pretty(m.formatKey), l.iterKV.K.Pretty(m.formatKey), l.iter)
 			return false
 		}
-		if m.heap.len() == 0 {
-			// Last record was a MERGE record.
-			if m.valueMerger != nil {
-				var closer io.Closer
-				_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
-				if m.err == nil && closer != nil {
-					m.err = closer.Close()
-				}
-				if m.err != nil {
-					m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
-						item.key.Pretty(m.formatKey), m.lastIterMsg)
-				}
-				m.valueMerger = nil
-			}
-			return false
+		item.key = base.InternalKey{
+			Trailer: l.iterKV.K.Trailer,
+			UserKey: append(item.key.UserKey[:0], l.iterKV.K.UserKey...),
 		}
+		item.value = l.iterKV.V
+		if m.heap.len() > 1 {
+			m.heap.fix(0)
+		}
+	}
+	if m.err != nil {
+		return false
+	}
+	if m.heap.len() == 0 {
+		// If m.valueMerger != nil, the last record was a MERGE record.
+		if m.valueMerger != nil {
+			var closer io.Closer
+			var err error
+			_, closer, err = m.valueMerger.Finish(true /* includesBase */)
+			if closer != nil {
+				err = errors.CombineErrors(err, closer.Close())
+			}
+			if err != nil {
+				m.err = errors.CombineErrors(m.err,
+					errors.Wrapf(err, "merge processing error on key %s in %s",
+						item.key.Pretty(m.formatKey), m.lastIterMsg))
+			}
+			m.valueMerger = nil
+		}
+		return false
 	}
 	m.positionRangeDels()
 	return true
@@ -639,7 +637,6 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li.init(context.Background(), iterOpts, c.comparer, c.newIters, manifestIter,
 			manifest.L0Sublevel(sublevel), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
-		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
 		mlevelAlloc[0].iter = li
 		mlevelAlloc = mlevelAlloc[1:]
 	}
@@ -653,7 +650,6 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li.init(context.Background(), iterOpts, c.comparer, c.newIters,
 			current.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
-		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
 		mlevelAlloc[0].iter = li
 		mlevelAlloc = mlevelAlloc[1:]
 	}
