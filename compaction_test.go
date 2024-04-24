@@ -13,7 +13,6 @@ import (
 	"math/rand"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,8 +24,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -537,67 +536,6 @@ func TestPickCompaction(t *testing.T) {
 			t.Fatalf("%s:\ngot  %q\nwant %q", tc.desc, got, tc.want)
 		}
 	}
-}
-
-func TestElideTombstone(t *testing.T) {
-	var d *DB
-	defer func() {
-		if d != nil {
-			require.NoError(t, d.Close())
-		}
-	}()
-	var buf bytes.Buffer
-	datadriven.RunTest(t, "testdata/compaction_elide_tombstone",
-		func(t *testing.T, td *datadriven.TestData) string {
-			switch td.Cmd {
-			case "define":
-				if d != nil {
-					if err := d.Close(); err != nil {
-						return err.Error()
-					}
-				}
-				var err error
-				if d, err = runDBDefineCmd(td, (&Options{
-					FS:                          vfs.NewMem(),
-					DebugCheck:                  DebugCheckLevels,
-					FormatMajorVersion:          FormatNewest,
-					DisableAutomaticCompactions: true,
-				}).WithFSDefaults()); err != nil {
-					return err.Error()
-				}
-				if td.HasArg("verbose") {
-					return d.mu.versions.currentVersion().DebugString()
-				}
-				return d.mu.versions.currentVersion().String()
-			case "elide":
-				buf.Reset()
-				var startLevel int
-				td.ScanArgs(t, "start-level", &startLevel)
-				c := compaction{
-					cmp:      testkeys.Comparer.Compare,
-					comparer: testkeys.Comparer,
-					version:  d.mu.versions.currentVersion(),
-					inputs:   []compactionLevel{{level: startLevel}, {level: startLevel + 1}},
-					smallest: base.ParseInternalKey("a.SET.0"),
-					largest:  base.ParseInternalKey("z.SET.0"),
-				}
-				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
-				c.setupInuseKeyRanges()
-				for _, line := range strings.Split(td.Input, "\n") {
-					switch f := strings.FieldsFunc(line, func(r rune) bool { return r == '-' }); len(f) {
-					case 1:
-						fmt.Fprintf(&buf, "elideTombstone(%q) = %t\n", f[0], c.elideTombstone([]byte(f[0])))
-					case 2:
-						fmt.Fprintf(&buf, "elideRangeTombstone(%q, %q) = %t\n", f[0], f[1], c.elideRangeTombstone([]byte(f[0]), []byte(f[1])))
-					default:
-						td.Fatalf(t, "invalid line %q", line)
-					}
-				}
-				return buf.String()
-			default:
-				return fmt.Sprintf("unknown command: %s", td.Cmd)
-			}
-		})
 }
 
 type cpuPermissionGranter struct {
@@ -2156,181 +2094,6 @@ func TestCompactionReadTriggered(t *testing.T) {
 		})
 }
 
-func TestCompactionInuseKeyRanges(t *testing.T) {
-	opts := &Options{}
-	opts.EnsureDefaults()
-	var c *compaction
-	datadriven.RunTest(t, "testdata/compaction_inuse_key_ranges", func(t *testing.T, td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "define":
-			c = &compaction{
-				cmp:       DefaultComparer.Compare,
-				equal:     DefaultComparer.Equal,
-				comparer:  DefaultComparer,
-				formatKey: DefaultComparer.FormatKey,
-				inputs:    []compactionLevel{{}, {}},
-			}
-			c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
-
-			v, err := manifest.ParseVersionDebug(DefaultComparer, opts.FlushSplitBytes, td.Input)
-			if err != nil {
-				td.Fatalf(t, "%v", err)
-			}
-			if err := v.CheckOrdering(); err != nil {
-				td.Fatalf(t, "%v", err)
-			}
-			c.version = v
-			return c.version.String()
-
-		case "inuse-key-ranges":
-			var buf bytes.Buffer
-			for _, line := range strings.Split(td.Input, "\n") {
-				parts := strings.Fields(line)
-				if len(parts) != 3 {
-					fmt.Fprintf(&buf, "expected <level> <smallest> <largest>: %q\n", line)
-					continue
-				}
-				level, err := strconv.Atoi(strings.TrimPrefix(parts[0], "L"))
-				if err != nil {
-					fmt.Fprintf(&buf, "expected <level> <smallest> <largest>: %q: %v\n", line, err)
-					continue
-				}
-				c.outputLevel.level = level
-				c.smallest.UserKey = []byte(parts[1])
-				c.largest.UserKey = []byte(parts[2])
-
-				c.inuseKeyRanges = nil
-				c.setupInuseKeyRanges()
-				fmt.Fprintf(&buf, "L%d %s-%s: ", c.outputLevel.level, c.smallest.UserKey, c.largest.UserKey)
-				if len(c.inuseKeyRanges) == 0 {
-					fmt.Fprintf(&buf, ".\n")
-				} else {
-					for i, r := range c.inuseKeyRanges {
-						if i > 0 {
-							fmt.Fprintf(&buf, " ")
-						}
-						fmt.Fprintf(&buf, "%s", r.String())
-					}
-					fmt.Fprintf(&buf, "\n")
-				}
-			}
-			return buf.String()
-
-		default:
-			return fmt.Sprintf("unknown command: %s", td.Cmd)
-		}
-	})
-}
-
-func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
-	var (
-		fileNum     = FileNum(0)
-		opts        = (*Options)(nil).EnsureDefaults()
-		seed        = time.Now().UnixNano()
-		rng         = rand.New(rand.NewSource(seed))
-		endKeyspace = 26 * 26
-	)
-	t.Logf("Using rng seed %d.", seed)
-
-	for iter := 0; iter < 100; iter++ {
-		makeUserKey := func(i int) []byte {
-			if i >= endKeyspace {
-				i = endKeyspace - 1
-			}
-			return []byte{byte(i/26 + 'a'), byte(i%26 + 'a')}
-		}
-		makeIK := func(level, i int) InternalKey {
-			seqNum := uint64(numLevels-level) * 100
-			if level == 0 {
-				seqNum += uint64(i)
-			}
-			return base.MakeInternalKey(
-				makeUserKey(i),
-				seqNum,
-				base.InternalKeyKindSet,
-			)
-		}
-		makeFile := func(level, start, end int) *fileMetadata {
-			fileNum++
-			m := &fileMetadata{FileNum: fileNum}
-			m.ExtendPointKeyBounds(
-				opts.Comparer.Compare,
-				makeIK(level, start),
-				makeIK(level, end),
-			)
-			m.SmallestSeqNum = m.Smallest.SeqNum()
-			m.LargestSeqNum = m.Largest.SeqNum()
-			m.InitPhysicalBacking()
-			return m
-		}
-		overlaps := func(startA, endA, startB, endB []byte) bool {
-			disjoint := opts.Comparer.Compare(endB, startA) < 0 || opts.Comparer.Compare(endA, startB) < 0
-			return !disjoint
-		}
-		var files [numLevels][]*fileMetadata
-		for l := 0; l < numLevels; l++ {
-			for i := 0; i < rand.Intn(10); i++ {
-				s := rng.Intn(endKeyspace)
-				maxWidth := rng.Intn(endKeyspace-s) + 1
-				e := rng.Intn(maxWidth) + s
-				sKey, eKey := makeUserKey(s), makeUserKey(e)
-				// Discard the key range if it overlaps any existing files
-				// within this level.
-				var o bool
-				for _, f := range files[l] {
-					o = o || overlaps(sKey, eKey, f.Smallest.UserKey, f.Largest.UserKey)
-				}
-				if o {
-					continue
-				}
-				files[l] = append(files[l], makeFile(l, s, e))
-			}
-			slices.SortFunc(files[l], func(a, b *fileMetadata) int {
-				return opts.Comparer.Compare(a.Smallest.UserKey, b.Smallest.UserKey)
-			})
-		}
-		v := newVersion(opts, files)
-		t.Log(v.DebugString())
-		for i := 0; i < 1000; i++ {
-			l := rng.Intn(numLevels)
-			s := rng.Intn(endKeyspace)
-			maxWidth := rng.Intn(endKeyspace-s) + 1
-			e := rng.Intn(maxWidth) + s
-			sKey, eKey := makeUserKey(s), makeUserKey(e)
-			keyRanges := v.CalculateInuseKeyRanges(l, numLevels-1, sKey, eKey)
-
-			for level := l; level < numLevels; level++ {
-				for _, f := range files[level] {
-					if !overlaps(sKey, eKey, f.Smallest.UserKey, f.Largest.UserKey) {
-						// This file doesn't overlap the queried range. Skip it.
-						continue
-					}
-					// This file does overlap the queried range. The key range
-					// [MAX(f.Smallest, sKey), MIN(f.Largest, eKey)] must be fully
-					// contained by a key range in keyRanges.
-					checkStart, checkEnd := f.Smallest.UserKey, f.Largest.UserKey
-					if opts.Comparer.Compare(checkStart, sKey) < 0 {
-						checkStart = sKey
-					}
-					if opts.Comparer.Compare(checkEnd, eKey) > 0 {
-						checkEnd = eKey
-					}
-					var contained bool
-					for _, kr := range keyRanges {
-						contained = contained ||
-							(opts.Comparer.Compare(checkStart, kr.Start) >= 0 &&
-								opts.Comparer.Compare(checkEnd, kr.End.Key) <= 0)
-					}
-					if !contained {
-						t.Errorf("Seed %d, iter %d: File %s overlaps %q-%q, but is not fully contained in any of the key ranges.",
-							seed, iter, f, sKey, eKey)
-					}
-				}
-			}
-		}
-	}
-}
-
 func TestCompactionAllowZeroSeqNum(t *testing.T) {
 	var d *DB
 	defer func() {
@@ -2439,8 +2202,9 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.startLevel.files.Iter(),
 						c.outputLevel.files.Iter())
 
-					c.inuseKeyRanges = nil
-					c.setupInuseKeyRanges()
+					c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
+						c.cmp, c.version, c.outputLevel.level, base.UserKeyBoundsFromInternal(c.smallest, c.largest),
+					)
 					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
 				}
 				return buf.String()
@@ -2693,7 +2457,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					return iterSet{point: &errorIter{}}, nil
 				}
 				result := "OK"
-				_, err := c.newInputIter(newIters, nil, nil)
+				_, err := c.newInputIter(newIters, nil)
 				if err != nil {
 					result = fmt.Sprint(err)
 				}

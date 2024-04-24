@@ -1,0 +1,96 @@
+init elide-nothing
+----
+
+points
+a
+b
+----
+a: don't elide
+b: don't elide
+
+ranges
+a-d
+a-g
+b-f
+----
+a-d: don't elide
+a-g: don't elide
+b-f: don't elide
+
+init in-use-ranges
+c-e
+g-j
+u-v
+----
+
+points
+a
+b
+c
+d
+e
+h
+k
+u
+w
+----
+a: elide
+b: elide
+c: don't elide
+d: don't elide
+e: elide
+h: don't elide
+k: elide
+u: don't elide
+w: elide
+
+ranges
+a-b
+a-c
+a-d
+a-e
+b-j
+b-c
+e-f
+e-g
+f-z
+f-g
+m-o
+m-n
+m-u
+m-v
+----
+a-b: elide
+a-c: elide
+a-d: don't elide
+a-e: don't elide
+b-j: don't elide
+b-c: elide
+e-f: elide
+e-g: elide
+f-z: don't elide
+f-g: elide
+m-o: elide
+m-n: elide
+m-u: elide
+m-v: don't elide
+
+# No ranges in use (elide everything).
+init in-use-ranges
+----
+
+points
+a
+b
+z
+----
+a: elide
+b: elide
+z: elide
+
+ranges
+a-c
+b-z
+----
+a-c: elide
+b-z: elide

@@ -1406,6 +1406,8 @@ func seekGT(iter *LevelIterator, cmp base.Compare, boundary base.UserKeyBoundary
 	}
 	// If boundary is inclusive or the file boundary is exclusive we do not
 	// tolerate an equal largest key.
+	// Note: we know f.Largest.UserKey >= boundary.End.Key so this condition is
+	// equivalent to boundary.End.IsUpperBoundForInternalKey(cmp, f.Largest).
 	if (boundary.Kind == base.Inclusive || f.Largest.IsExclusiveSentinel()) && cmp(boundary.Key, f.Largest.UserKey) == 0 {
 		return iter.Next()
 	}

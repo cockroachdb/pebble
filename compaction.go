@@ -259,16 +259,8 @@ type compaction struct {
 	// L0Sublevels. If nil, flushes aren't split.
 	l0Limits [][]byte
 
-	// List of disjoint inuse key ranges the compaction overlaps with in
-	// grandparent and lower levels. See setupInuseKeyRanges() for the
-	// construction. Used by elideTombstone() and elideRangeTombstone() to
-	// determine if keys affected by a tombstone possibly exist at a lower level.
-	inuseKeyRanges []base.UserKeyBounds
-	// inuseEntireRange is set if the above inuse key ranges wholly contain the
-	// compaction's key range. This allows compactions in higher levels to often
-	// elide key comparisons.
-	inuseEntireRange    bool
-	elideTombstoneIndex int
+	delElision      compact.TombstoneElision
+	rangeKeyElision compact.TombstoneElision
 
 	// allowedZeroSeqNum is true if seqnums can be zeroed if there are no
 	// snapshots requiring them to be kept. This determination is made by
@@ -364,7 +356,9 @@ func newCompaction(
 	if c.outputLevel.level+1 < numLevels {
 		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.userKeyBounds())
 	}
-	c.setupInuseKeyRanges()
+	c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
+		c.cmp, c.version, c.outputLevel.level, base.UserKeyBoundsFromInternal(c.smallest, c.largest),
+	)
 	c.kind = pc.kind
 
 	if c.kind == compactionKindDefault && c.outputLevel.files.Empty() && !c.hasExtraLevelData() &&
@@ -600,7 +594,8 @@ func newFlush(
 		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)
 	}
 
-	c.setupInuseKeyRanges()
+	// We don't elide tombstones for flushes.
+	c.delElision, c.rangeKeyElision = compact.NoTombstoneElision(), compact.NoTombstoneElision()
 	return c, nil
 }
 
@@ -615,25 +610,6 @@ func (c *compaction) hasExtraLevelData() bool {
 		return false
 	}
 	return true
-}
-
-func (c *compaction) setupInuseKeyRanges() {
-	level := c.outputLevel.level + 1
-	if c.outputLevel.level == 0 {
-		level = 0
-	}
-	// calculateInuseKeyRanges will return a series of sorted spans. Overlapping
-	// or abutting spans have already been merged.
-	c.inuseKeyRanges = c.version.CalculateInuseKeyRanges(
-		level, numLevels-1, c.smallest.UserKey, c.largest.UserKey,
-	)
-	// Check if there's a single in-use span that encompasses the entire key
-	// range of the compaction. This is an optimization to avoid key comparisons
-	// against inuseKeyRanges during the compaction when every key within the
-	// compaction overlaps with an in-use span.
-	c.inuseEntireRange = len(c.inuseKeyRanges) > 0 &&
-		c.cmp(c.inuseKeyRanges[0].Start, c.smallest.UserKey) <= 0 &&
-		c.inuseKeyRanges[0].End.IsUpperBoundFor(c.cmp, c.largest.UserKey)
 }
 
 // findGrandparentLimit takes the start user key for a table and returns the
@@ -709,8 +685,8 @@ func (c *compaction) errorOnUserKeyOverlap(ve *versionEdit) error {
 
 // allowZeroSeqNum returns true if seqnum's can be zeroed if there are no
 // snapshots requiring them to be kept. It performs this determination by
-// looking for an sstable which overlaps the bounds of the compaction at a
-// lower level in the LSM.
+// looking at the TombstoneElision values which are set up based on sstables
+// which overlap the bounds of the compaction at a lower level in the LSM.
 func (c *compaction) allowZeroSeqNum() bool {
 	// TODO(peter): we disable zeroing of seqnums during flushing to match
 	// RocksDB behavior and to avoid generating overlapping sstables during
@@ -720,53 +696,12 @@ func (c *compaction) allowZeroSeqNum() bool {
 	// code doesn't know that L0 contains files and zeroing of seqnums should
 	// be disabled. That is fixable, but it seems safer to just match the
 	// RocksDB behavior for now.
-	return !c.inuseEntireRange && len(c.flushing) == 0 && len(c.inuseKeyRanges) == 0
-}
-
-// elideTombstone returns true if it is ok to elide a tombstone for the
-// specified key. A return value of true guarantees that there are no key/value
-// pairs at c.level+2 or higher that possibly contain the specified user
-// key. The keys in multiple invocations to elideTombstone must be supplied in
-// order.
-func (c *compaction) elideTombstone(key []byte) bool {
-	if c.inuseEntireRange || len(c.flushing) != 0 {
-		return false
-	}
-
-	for ; c.elideTombstoneIndex < len(c.inuseKeyRanges); c.elideTombstoneIndex++ {
-		r := &c.inuseKeyRanges[c.elideTombstoneIndex]
-		if r.End.IsUpperBoundFor(c.cmp, key) {
-			return c.cmp(key, r.Start) < 0
-		}
-	}
-	return true
-}
-
-// elideRangeTombstone returns true if it is ok to elide the specified range
-// tombstone. A return value of true guarantees that there are no key/value
-// pairs at c.outputLevel.level+1 or higher that possibly overlap the specified
-// tombstone.
-func (c *compaction) elideRangeTombstone(start, end []byte) bool {
-	// Disable range tombstone elision if we are flushing memtables, due to
-	// inuseKeyRanges not accounting for key ranges in other memtables that are
-	// being flushed in the same compaction. It's possible for a range tombstone
-	// in one memtable to overlap keys in a preceding memtable in c.flushing.
-	if c.inuseEntireRange || len(c.flushing) != 0 {
-		return false
-	}
-
-	lower := sort.Search(len(c.inuseKeyRanges), func(i int) bool {
-		return c.inuseKeyRanges[i].End.IsUpperBoundFor(c.cmp, start)
-	})
-	upper := sort.Search(len(c.inuseKeyRanges), func(i int) bool {
-		return c.cmp(c.inuseKeyRanges[i].Start, end) > 0
-	})
-	return lower >= upper
+	return len(c.flushing) == 0 && c.delElision.ElidesEverything() && c.rangeKeyElision.ElidesEverything()
 }
 
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
-	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter, snapshots []uint64,
+	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter,
 ) (_ internalIterator, retErr error) {
 	// Validate the ordering of compaction input files for defense in depth.
 	if len(c.flushing) == 0 {
@@ -2647,7 +2582,7 @@ func (d *DB) runCompaction(
 	c.bufferPool.Init(12)
 	defer c.bufferPool.Release()
 
-	iiter, err := c.newInputIter(d.newIters, d.tableNewRangeKeyIter, snapshots)
+	iiter, err := c.newInputIter(d.newIters, d.tableNewRangeKeyIter)
 	if err != nil {
 		return nil, pendingOutputs, stats, err
 	}
@@ -2657,10 +2592,10 @@ func (d *DB) runCompaction(
 		Cmp:                                    c.cmp,
 		Equal:                                  c.equal,
 		Merge:                                  d.merge,
+		TombstoneElision:                       c.delElision,
+		RangeKeyElision:                        c.rangeKeyElision,
 		Snapshots:                              snapshots,
 		AllowZeroSeqNum:                        c.allowedZeroSeqNum,
-		ElideTombstone:                         c.elideTombstone,
-		ElideRangeTombstone:                    c.elideRangeTombstone,
 		IneffectualSingleDeleteCallback:        d.opts.Experimental.IneffectualSingleDeleteCallback,
 		SingleDeleteInvariantViolationCallback: d.opts.Experimental.SingleDeleteInvariantViolationCallback,
 	}

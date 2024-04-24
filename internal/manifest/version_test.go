@@ -7,10 +7,13 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -633,5 +636,116 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 				t.Errorf("CalculateInuseKeyRanges() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
+	var (
+		fileNum     = base.FileNum(0)
+		seed        = time.Now().UnixNano()
+		rng         = rand.New(rand.NewSource(seed))
+		endKeyspace = 26 * 26
+		cmp         = base.DefaultComparer.Compare
+	)
+	t.Logf("Using rng seed %d.", seed)
+
+	for iter := 0; iter < 100; iter++ {
+		makeUserKey := func(i int) []byte {
+			if i >= endKeyspace {
+				i = endKeyspace - 1
+			}
+			return []byte{byte(i/26 + 'a'), byte(i%26 + 'a')}
+		}
+		makeIK := func(level, i int) InternalKey {
+			seqNum := uint64(NumLevels-level) * 100
+			if level == 0 {
+				seqNum += uint64(i)
+			}
+			return base.MakeInternalKey(
+				makeUserKey(i),
+				seqNum,
+				base.InternalKeyKindSet,
+			)
+		}
+		makeFile := func(level, start, end int) *FileMetadata {
+			fileNum++
+			m := &FileMetadata{FileNum: fileNum}
+			m.ExtendPointKeyBounds(
+				cmp,
+				makeIK(level, start),
+				makeIK(level, end),
+			)
+			m.SmallestSeqNum = m.Smallest.SeqNum()
+			m.LargestSeqNum = m.Largest.SeqNum()
+			m.InitPhysicalBacking()
+			return m
+		}
+		overlaps := func(startA, endA, startB, endB []byte) bool {
+			disjoint := cmp(endB, startA) < 0 || cmp(endA, startB) < 0
+			return !disjoint
+		}
+		var files [NumLevels][]*FileMetadata
+		for l := 0; l < NumLevels; l++ {
+			for i := 0; i < rand.Intn(10); i++ {
+				s := rng.Intn(endKeyspace)
+				maxWidth := rng.Intn(endKeyspace-s) + 1
+				e := rng.Intn(maxWidth) + s
+				sKey, eKey := makeUserKey(s), makeUserKey(e)
+				// Discard the key range if it overlaps any existing files
+				// within this level.
+				var o bool
+				for _, f := range files[l] {
+					o = o || overlaps(sKey, eKey, f.Smallest.UserKey, f.Largest.UserKey)
+				}
+				if o {
+					continue
+				}
+				files[l] = append(files[l], makeFile(l, s, e))
+			}
+			slices.SortFunc(files[l], func(a, b *FileMetadata) int {
+				return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
+			})
+		}
+		v := NewVersion(base.DefaultComparer, 64*1024, files)
+		if err := v.CheckOrdering(); err != nil {
+			t.Fatal(err)
+		}
+		t.Log(v.DebugString())
+		for i := 0; i < 1000; i++ {
+			l := rng.Intn(NumLevels)
+			s := rng.Intn(endKeyspace)
+			maxWidth := rng.Intn(endKeyspace-s) + 1
+			e := rng.Intn(maxWidth) + s
+			sKey, eKey := makeUserKey(s), makeUserKey(e)
+			keyRanges := v.CalculateInuseKeyRanges(l, NumLevels-1, sKey, eKey)
+
+			for level := l; level < NumLevels; level++ {
+				for _, f := range files[level] {
+					if !overlaps(sKey, eKey, f.Smallest.UserKey, f.Largest.UserKey) {
+						// This file doesn't overlap the queried range. Skip it.
+						continue
+					}
+					// This file does overlap the queried range. The key range
+					// [MAX(f.Smallest, sKey), MIN(f.Largest, eKey)] must be fully
+					// contained by a key range in keyRanges.
+					checkStart, checkEnd := f.Smallest.UserKey, f.Largest.UserKey
+					if cmp(checkStart, sKey) < 0 {
+						checkStart = sKey
+					}
+					if cmp(checkEnd, eKey) > 0 {
+						checkEnd = eKey
+					}
+					var contained bool
+					for _, kr := range keyRanges {
+						contained = contained ||
+							(cmp(checkStart, kr.Start) >= 0 && cmp(checkEnd, kr.End.Key) <= 0)
+					}
+					if !contained {
+						t.Errorf("Seed %d, iter %d: File %s overlaps %q-%q, but is not fully contained in any of the key ranges.",
+							seed, iter, f, sKey, eKey)
+					}
+				}
+			}
+		}
 	}
 }
