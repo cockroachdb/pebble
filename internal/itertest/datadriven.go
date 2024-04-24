@@ -15,44 +15,68 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
 
 type iterCmdOpts struct {
-	fmtKV func(io.Writer, *base.InternalKey, []byte, base.InternalIterator)
-	stats *base.InternalIteratorStats
+	fmtKV           formatKV
+	withoutNewlines bool
+	stats           *base.InternalIteratorStats
 }
 
 // An IterOpt configures the behavior of RunInternalIterCmd.
 type IterOpt func(*iterCmdOpts)
 
-// Verbose configures RunInternalIterCmd to output verbose results.
-func Verbose(opts *iterCmdOpts) { opts.fmtKV = verboseFmt }
+// A formatKV configures the formatting to use when presenting key-value pairs.
+type formatKV func(w io.Writer, key *base.InternalKey, v []byte, iter base.InternalIterator)
+
+// WithFormatKV configures RunInternalIterCmd to use the specified FormatKV to format key-value results.
+func WithFormatKV(fmtKV formatKV) IterOpt {
+	return func(opts *iterCmdOpts) { opts.fmtKV = fmtKV }
+}
 
 // Condensed configures RunInternalIterCmd to output condensed results without
-// values.
-func Condensed(opts *iterCmdOpts) { opts.fmtKV = condensedFmt }
+// values, collapsed onto a single line.
+func Condensed(opts *iterCmdOpts) {
+	opts.fmtKV = condensedFormatKV
+	opts.withoutNewlines = true
+}
+
+// Verbose configures RunInternalIterCmd to output verbose results.
+func Verbose(opts *iterCmdOpts) { opts.fmtKV = verboseFormatKV }
+
+// WithSpan configures RunInternalIterCmd to print the span returned by spanFunc
+// after each iteration operation.
+func WithSpan(spanFunc func() *keyspan.Span) IterOpt {
+	return func(opts *iterCmdOpts) {
+		prevFmtKV := opts.fmtKV
+		opts.fmtKV = func(w io.Writer, key *base.InternalKey, v []byte, iter base.InternalIterator) {
+			prevFmtKV(w, key, v, iter)
+			fmt.Fprintf(w, " [Span = %s]", spanFunc())
+		}
+	}
+}
 
 // WithStats configures RunInternalIterCmd to collect iterator stats in the
 // struct pointed to by stats.
 func WithStats(stats *base.InternalIteratorStats) IterOpt {
-	return func(opts *iterCmdOpts) {
-		opts.stats = stats
-	}
+	return func(opts *iterCmdOpts) { opts.stats = stats }
 }
 
-func defaultFmt(w io.Writer, key *base.InternalKey, v []byte, iter base.InternalIterator) {
+func defaultFormatKV(w io.Writer, key *base.InternalKey, v []byte, iter base.InternalIterator) {
 	if key != nil {
-		fmt.Fprintf(w, "%s:%s\n", key.UserKey, v)
+		fmt.Fprintf(w, "%s:%s", key.UserKey, v)
 	} else if err := iter.Error(); err != nil {
-		fmt.Fprintf(w, "err=%v\n", err)
+		fmt.Fprintf(w, "err=%v", err)
 	} else {
-		fmt.Fprintf(w, ".\n")
+		fmt.Fprintf(w, ".")
 	}
 }
 
-func condensedFmt(w io.Writer, key *base.InternalKey, v []byte, iter base.InternalIterator) {
+// condensedFormatKV is a FormatKV that outputs condensed results.
+func condensedFormatKV(w io.Writer, key *base.InternalKey, v []byte, iter base.InternalIterator) {
 	if key != nil {
 		fmt.Fprintf(w, "<%s:%d>", key.UserKey, key.SeqNum())
 	} else if err := iter.Error(); err != nil {
@@ -62,12 +86,13 @@ func condensedFmt(w io.Writer, key *base.InternalKey, v []byte, iter base.Intern
 	}
 }
 
-func verboseFmt(w io.Writer, key *base.InternalKey, v []byte, iter base.InternalIterator) {
+// verboseFormatKV is a FormatKV that outputs verbose results.
+func verboseFormatKV(w io.Writer, key *base.InternalKey, v []byte, iter base.InternalIterator) {
 	if key != nil {
-		fmt.Fprintf(w, "%s:%s\n", key, v)
+		fmt.Fprintf(w, "%s:%s", key, v)
 		return
 	}
-	defaultFmt(w, key, v, iter)
+	defaultFormatKV(w, key, v, iter)
 }
 
 // RunInternalIterCmd evaluates a datadriven command controlling an internal
@@ -86,7 +111,7 @@ func RunInternalIterCmd(
 func RunInternalIterCmdWriter(
 	t *testing.T, w io.Writer, d *datadriven.TestData, iter base.InternalIterator, opts ...IterOpt,
 ) {
-	o := iterCmdOpts{fmtKV: defaultFmt}
+	o := iterCmdOpts{fmtKV: defaultFormatKV}
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -201,6 +226,8 @@ func RunInternalIterCmdWriter(
 			return
 		}
 		o.fmtKV(w, key, value, iter)
-
+		if !o.withoutNewlines {
+			fmt.Fprintln(w)
+		}
 	}
 }

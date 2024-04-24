@@ -34,13 +34,13 @@ h.SET.3:h
 iter
 seek-ge d
 ----
-f/d-e:{(#6,RANGEDEL)}#5,SET:f
+f#5,SET:f [Span = d-e:{(#6,RANGEDEL)}]
 
 iter
 set-bounds upper=d
 seek-ge d
 ----
-d/d-e:{(#6,RANGEDEL)}#72057594037927935,RANGEDEL:
+d#72057594037927935,RANGEDEL: [Span = d-e:{(#6,RANGEDEL)}]
 
 iter
 set-bounds upper=d
@@ -50,18 +50,18 @@ prev
 next
 next
 ----
-c/d-e:{(#6,RANGEDEL)}#7,SET:c
-d#72057594037927935,RANGEDEL:
-c#7,SET:c
-d#72057594037927935,RANGEDEL:
-.
+c#7,SET:c [Span = d-e:{(#6,RANGEDEL)}]
+d#72057594037927935,RANGEDEL: [Span = d-e:{(#6,RANGEDEL)}]
+c#7,SET:c [Span = d-e:{(#6,RANGEDEL)}]
+d#72057594037927935,RANGEDEL: [Span = d-e:{(#6,RANGEDEL)}]
+. [Span = d-e:{(#6,RANGEDEL)}]
 
 # There is no point key with d, but since there is a rangedel, levelIter returns
 # the boundary key using the largest key, f, in the file.
 iter
 seek-prefix-ge d
 ----
-f/d-e:{(#6,RANGEDEL)}#5,SET:
+f#5,SET: [Span = d-e:{(#6,RANGEDEL)}]
 
 # Tests a sequence of SeekPrefixGE with monotonically increasing keys, some of
 # which are present and some not (so fail the bloom filter match). The seek to
@@ -75,13 +75,13 @@ seek-prefix-ge g
 seek-prefix-ge gg
 seek-prefix-ge h
 ----
-./<invalid>#0,DEL:
-c/d-e:{(#6,RANGEDEL)}#7,SET:c
-f/d-e:{(#6,RANGEDEL)}#5,SET:
-f/<invalid>#5,SET:f
-g/<invalid>#4,SET:g
-./<invalid>#0,DEL:
-h/<invalid>#3,SET:h
+. [Span = <nil>]
+c#7,SET:c [Span = d-e:{(#6,RANGEDEL)}]
+f#5,SET: [Span = d-e:{(#6,RANGEDEL)}]
+f#5,SET:f [Span = <nil>]
+g#4,SET:g [Span = <nil>]
+. [Span = <nil>]
+h#3,SET:h [Span = <nil>]
 
 # Test that when sequentially iterate through all 3 files, the stats
 # accumulate as we close a file and switch to the next one. Also, while in the
@@ -110,22 +110,22 @@ stats
 reset-stats
 stats
 ----
-a/<invalid>#9,SET:a
+a#9,SET:a [Span = <nil>]
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-b#8,SET:b
+b#8,SET:b [Span = <nil>]
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-c#7,SET:c
+c#7,SET:c [Span = <nil>]
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-f#5,SET:f
+f#5,SET:f [Span = <nil>]
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-f#5,SET:
+f#5,SET: [Span = <nil>]
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-g#4,SET:g
+g#4,SET:g [Span = <nil>]
 {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-h#3,SET:h
+h#3,SET:h [Span = <nil>]
 {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-.
+. [Span = <nil>]
 {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 
@@ -133,7 +133,7 @@ iter
 set-bounds lower=d
 seek-lt d
 ----
-d/d-e:{(#6,RANGEDEL)}#72057594037927935,RANGEDEL:
+d#72057594037927935,RANGEDEL: [Span = d-e:{(#6,RANGEDEL)}]
 
 iter
 set-bounds lower=d
@@ -143,11 +143,11 @@ next
 prev
 prev
 ----
-f/d-e:{(#6,RANGEDEL)}#5,SET:f
-d#72057594037927935,RANGEDEL:
-f#5,SET:f
-d#72057594037927935,RANGEDEL:
-.
+f#5,SET:f [Span = d-e:{(#6,RANGEDEL)}]
+d#72057594037927935,RANGEDEL: [Span = d-e:{(#6,RANGEDEL)}]
+f#5,SET:f [Span = d-e:{(#6,RANGEDEL)}]
+d#72057594037927935,RANGEDEL: [Span = d-e:{(#6,RANGEDEL)}]
+. [Span = d-e:{(#6,RANGEDEL)}]
 
 # Verify that First() in the presence of an upper-bound pauses at the
 # table containing the upper-bound.
@@ -165,7 +165,7 @@ iter
 set-bounds upper=f
 first
 ----
-f#72057594037927935,RANGEDEL:
+f#72057594037927935,RANGEDEL: [Span = <nil>]
 
 # Verify that Last() in the presence of a lower-bound pauses at the
 # table containing the lower-bound.
@@ -183,7 +183,7 @@ iter
 set-bounds lower=c
 last
 ----
-c#7,SET:c
+c#7,SET:c [Span = <nil>]
 
 # Verify that a seek to a file with range tombstones as boundaries pauses on
 # those boundaries.
@@ -211,10 +211,10 @@ prev
 next
 next
 ----
-e/d-e:{(#6,RANGEDEL)}#72057594037927935,RANGEDEL:
-c#7,SET:c
-e#72057594037927935,RANGEDEL:
-f#8,SET:f
+e#72057594037927935,RANGEDEL: [Span = d-e:{(#6,RANGEDEL)}]
+c#7,SET:c [Span = d-e:{(#6,RANGEDEL)}]
+e#72057594037927935,RANGEDEL: [Span = d-e:{(#6,RANGEDEL)}]
+f#8,SET:f [Span = g-g:{(#6,RANGEDEL)}]
 
 iter
 seek-lt b
@@ -222,10 +222,10 @@ next
 prev
 prev
 ----
-a/a-b:{(#5,RANGEDEL)}#5,RANGEDEL:
-c#7,SET:c
-a#5,RANGEDEL:
-.
+a#5,RANGEDEL: [Span = a-b:{(#5,RANGEDEL)}]
+c#7,SET:c [Span = a-b:{(#5,RANGEDEL)}]
+a#5,RANGEDEL: [Span = a-b:{(#5,RANGEDEL)}]
+. [Span = \x00-\x00:{(#5,RANGEDEL)}]
 
 # Verify that prev when positioned at the largest boundary returns the
 # last key.
@@ -245,9 +245,9 @@ seek-lt c
 seek-ge d
 prev
 ----
-b/<invalid>#1,SET:b
-e/d-e:{(#2,RANGEDEL)}#72057594037927935,RANGEDEL:
-b#1,SET:b
+b#1,SET:b [Span = <nil>]
+e#72057594037927935,RANGEDEL: [Span = d-e:{(#2,RANGEDEL)}]
+b#1,SET:b [Span = d-e:{(#2,RANGEDEL)}]
 
 # Verify that next when positioned at the smallest boundary returns
 # the first key.
@@ -267,9 +267,9 @@ seek-ge d
 seek-lt d
 next
 ----
-d/<invalid>#2,SET:d
-a/a-b:{(#1,RANGEDEL)}#1,RANGEDEL:
-d#2,SET:d
+d#2,SET:d [Span = <nil>]
+a#1,RANGEDEL: [Span = a-b:{(#1,RANGEDEL)}]
+d#2,SET:d [Span = a-b:{(#1,RANGEDEL)}]
 
 # Verify SeekPrefixGE correctness with trySeekUsingNext=true
 clear
@@ -322,17 +322,17 @@ seek-prefix-ge h true
 seek-prefix-ge i true
 seek-prefix-ge j true
 ----
-a/c-e:{(#4,RANGEDEL)}#1,SET:a
-a/c-e:{(#4,RANGEDEL)}#1,SET:a
-b/c-e:{(#4,RANGEDEL)}#2,SET:b
-e#72057594037927935,RANGEDEL:
-e/c-e:{(#4,RANGEDEL)}#72057594037927935,RANGEDEL:
-e/c-e:{(#4,RANGEDEL)}#72057594037927935,RANGEDEL:
-f/<invalid>#5,SINGLEDEL:
-g/<invalid>#6,SET:g
-h/<invalid>#7,SINGLEDEL:
-i/<invalid>#6,SET:i
-j/<invalid>#7,SET:j
+a#1,SET:a [Span = c-e:{(#4,RANGEDEL)}]
+a#1,SET:a [Span = c-e:{(#4,RANGEDEL)}]
+b#2,SET:b [Span = c-e:{(#4,RANGEDEL)}]
+e#72057594037927935,RANGEDEL: [Span = c-e:{(#4,RANGEDEL)}]
+e#72057594037927935,RANGEDEL: [Span = c-e:{(#4,RANGEDEL)}]
+e#72057594037927935,RANGEDEL: [Span = c-e:{(#4,RANGEDEL)}]
+f#5,SINGLEDEL: [Span = <nil>]
+g#6,SET:g [Span = <nil>]
+h#7,SINGLEDEL: [Span = <nil>]
+i#6,SET:i [Span = <nil>]
+j#7,SET:j [Span = <nil>]
 
 # Seeks to keys that are in the next file, so cannot use Next.
 iter
@@ -341,10 +341,10 @@ seek-prefix-ge e true
 seek-prefix-ge i true
 seek-prefix-ge j true
 ----
-a/c-e:{(#4,RANGEDEL)}#1,SET:a
-e/<invalid>#4,SET:e
-i/<invalid>#6,SET:i
-j/<invalid>#7,SET:j
+a#1,SET:a [Span = c-e:{(#4,RANGEDEL)}]
+e#4,SET:e [Span = <nil>]
+i#6,SET:i [Span = <nil>]
+j#7,SET:j [Span = <nil>]
 
 # Verify that we do not open files that do not have point keys.
 
@@ -386,9 +386,9 @@ seek-ge f
 next
 next
 ----
-f/<invalid>#5,SET:f
-f#5,SET:
-i#4,SET:i
+f#5,SET:f [Span = <nil>]
+f#5,SET: [Span = <nil>]
+i#4,SET:i [Span = <nil>]
 
 # The below count should be 2, as we skip over the rangekey-only file.
 

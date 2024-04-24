@@ -186,7 +186,7 @@ func (lt *levelIterTest) newIters(
 	return set, nil
 }
 
-func (lt *levelIterTest) runClear(d *datadriven.TestData) string {
+func (lt *levelIterTest) runClear() string {
 	lt.mem = vfs.NewMem()
 	for _, r := range lt.readers {
 		r.Close()
@@ -298,13 +298,13 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 
 func TestLevelIterBoundaries(t *testing.T) {
 	lt := newLevelIterTest()
-	defer lt.runClear(nil)
+	defer lt.runClear()
 
 	var iter *levelIter
 	datadriven.RunTest(t, "testdata/level_iter_boundaries", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "clear":
-			return lt.runClear(d)
+			return lt.runClear()
 
 		case "build":
 			return lt.runBuild(d)
@@ -365,6 +365,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 type levelIterTestIter struct {
 	*levelIter
 	rangeDelIter keyspan.FragmentIterator
+	rangeDel     *keyspan.Span
 }
 
 func must(err error) {
@@ -373,10 +374,14 @@ func must(err error) {
 	}
 }
 
+func (i *levelIterTestIter) getRangeDel() *keyspan.Span {
+	return i.rangeDel
+}
+
 func (i *levelIterTestIter) rangeDelSeek(
 	key []byte, kv *base.InternalKV, dir int,
 ) *base.InternalKV {
-	var tombstone keyspan.Span
+	i.rangeDel = nil
 	if i.rangeDelIter != nil {
 		var t *keyspan.Span
 		var err error
@@ -390,21 +395,11 @@ func (i *levelIterTestIter) rangeDelSeek(
 		// positioning methods.
 		must(err)
 		if t != nil {
-			tombstone = t.Visible(1000)
+			i.rangeDel = new(keyspan.Span)
+			*i.rangeDel = t.Visible(1000)
 		}
 	}
-	if kv == nil {
-		return &base.InternalKV{
-			K: base.InternalKey{UserKey: []byte(fmt.Sprintf("./%s", tombstone))},
-		}
-	}
-	return &base.InternalKV{
-		K: base.InternalKey{
-			UserKey: []byte(fmt.Sprintf("%s/%s", kv.K.UserKey, tombstone)),
-			Trailer: kv.K.Trailer,
-		},
-		V: kv.V,
-	}
+	return kv
 }
 
 func (i *levelIterTestIter) String() string {
@@ -430,12 +425,12 @@ func (i *levelIterTestIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.Int
 
 func TestLevelIterSeek(t *testing.T) {
 	lt := newLevelIterTest()
-	defer lt.runClear(nil)
+	defer lt.runClear()
 
 	datadriven.RunTest(t, "testdata/level_iter_seek", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "clear":
-			return lt.runClear(d)
+			return lt.runClear()
 
 		case "build":
 			return lt.runBuild(d)
@@ -448,7 +443,7 @@ func TestLevelIterSeek(t *testing.T) {
 				manifest.Level(level), internalIterOpts{stats: &stats})
 			defer iter.Close()
 			iter.initRangeDel(&iter.rangeDelIter)
-			return itertest.RunInternalIterCmd(t, d, iter, itertest.Verbose, itertest.WithStats(&stats))
+			return itertest.RunInternalIterCmd(t, d, iter, itertest.Verbose, itertest.WithSpan(iter.getRangeDel), itertest.WithStats(&stats))
 
 		case "iters-created":
 			return fmt.Sprintf("%d", lt.itersCreated)
