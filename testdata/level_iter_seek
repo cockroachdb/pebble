@@ -34,13 +34,13 @@ h.SET.3:h
 iter
 seek-ge d
 ----
-f/d-e:{(#6,RANGEDEL)}#5,SET:f
+f#5,SET:f / d-e:{(#6,RANGEDEL)}
 
 iter
 set-bounds upper=d
 seek-ge d
 ----
-d/d-e:{(#6,RANGEDEL)}#72057594037927935,RANGEDEL:
+d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
 
 iter
 set-bounds upper=d
@@ -50,7 +50,7 @@ prev
 next
 next
 ----
-c/d-e:{(#6,RANGEDEL)}#7,SET:c
+c#7,SET:c / d-e:{(#6,RANGEDEL)}
 d#72057594037927935,RANGEDEL:
 c#7,SET:c
 d#72057594037927935,RANGEDEL:
@@ -61,7 +61,7 @@ d#72057594037927935,RANGEDEL:
 iter
 seek-prefix-ge d
 ----
-f/d-e:{(#6,RANGEDEL)}#5,SET:
+f#5,SET: / d-e:{(#6,RANGEDEL)}
 
 # Tests a sequence of SeekPrefixGE with monotonically increasing keys, some of
 # which are present and some not (so fail the bloom filter match). The seek to
@@ -75,13 +75,13 @@ seek-prefix-ge g
 seek-prefix-ge gg
 seek-prefix-ge h
 ----
-./<invalid>#0,DEL:
-c/d-e:{(#6,RANGEDEL)}#7,SET:c
-f/d-e:{(#6,RANGEDEL)}#5,SET:
-f/<invalid>#5,SET:f
-g/<invalid>#4,SET:g
-./<invalid>#0,DEL:
-h/<invalid>#3,SET:h
+.
+c#7,SET:c / d-e:{(#6,RANGEDEL)}
+f#5,SET: / d-e:{(#6,RANGEDEL)}
+f#5,SET:f
+g#4,SET:g
+.
+h#3,SET:h
 
 # Test that when sequentially iterate through all 3 files, the stats
 # accumulate as we close a file and switch to the next one. Also, while in the
@@ -110,7 +110,7 @@ stats
 reset-stats
 stats
 ----
-a/<invalid>#9,SET:a
+a#9,SET:a
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 b#8,SET:b
@@ -133,7 +133,7 @@ iter
 set-bounds lower=d
 seek-lt d
 ----
-d/d-e:{(#6,RANGEDEL)}#72057594037927935,RANGEDEL:
+d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
 
 iter
 set-bounds lower=d
@@ -143,7 +143,7 @@ next
 prev
 prev
 ----
-f/d-e:{(#6,RANGEDEL)}#5,SET:f
+f#5,SET:f / d-e:{(#6,RANGEDEL)}
 d#72057594037927935,RANGEDEL:
 f#5,SET:f
 d#72057594037927935,RANGEDEL:
@@ -211,7 +211,7 @@ prev
 next
 next
 ----
-e/d-e:{(#6,RANGEDEL)}#72057594037927935,RANGEDEL:
+e#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
 c#7,SET:c
 e#72057594037927935,RANGEDEL:
 f#8,SET:f
@@ -222,7 +222,7 @@ next
 prev
 prev
 ----
-a/a-b:{(#5,RANGEDEL)}#5,RANGEDEL:
+a#5,RANGEDEL: / a-b:{(#5,RANGEDEL)}
 c#7,SET:c
 a#5,RANGEDEL:
 .
@@ -245,8 +245,8 @@ seek-lt c
 seek-ge d
 prev
 ----
-b/<invalid>#1,SET:b
-e/d-e:{(#2,RANGEDEL)}#72057594037927935,RANGEDEL:
+b#1,SET:b
+e#72057594037927935,RANGEDEL: / d-e:{(#2,RANGEDEL)}
 b#1,SET:b
 
 # Verify that next when positioned at the smallest boundary returns
@@ -267,8 +267,8 @@ seek-ge d
 seek-lt d
 next
 ----
-d/<invalid>#2,SET:d
-a/a-b:{(#1,RANGEDEL)}#1,RANGEDEL:
+d#2,SET:d
+a#1,RANGEDEL: / a-b:{(#1,RANGEDEL)}
 d#2,SET:d
 
 # Verify SeekPrefixGE correctness with trySeekUsingNext=true
@@ -322,17 +322,17 @@ seek-prefix-ge h true
 seek-prefix-ge i true
 seek-prefix-ge j true
 ----
-a/c-e:{(#4,RANGEDEL)}#1,SET:a
-a/c-e:{(#4,RANGEDEL)}#1,SET:a
-b/c-e:{(#4,RANGEDEL)}#2,SET:b
+a#1,SET:a / c-e:{(#4,RANGEDEL)}
+a#1,SET:a / c-e:{(#4,RANGEDEL)}
+b#2,SET:b / c-e:{(#4,RANGEDEL)}
 e#72057594037927935,RANGEDEL:
-e/c-e:{(#4,RANGEDEL)}#72057594037927935,RANGEDEL:
-e/c-e:{(#4,RANGEDEL)}#72057594037927935,RANGEDEL:
-f/<invalid>#5,SINGLEDEL:
-g/<invalid>#6,SET:g
-h/<invalid>#7,SINGLEDEL:
-i/<invalid>#6,SET:i
-j/<invalid>#7,SET:j
+e#72057594037927935,RANGEDEL: / c-e:{(#4,RANGEDEL)}
+e#72057594037927935,RANGEDEL: / c-e:{(#4,RANGEDEL)}
+f#5,SINGLEDEL:
+g#6,SET:g
+h#7,SINGLEDEL:
+i#6,SET:i
+j#7,SET:j
 
 # Seeks to keys that are in the next file, so cannot use Next.
 iter
@@ -341,10 +341,10 @@ seek-prefix-ge e true
 seek-prefix-ge i true
 seek-prefix-ge j true
 ----
-a/c-e:{(#4,RANGEDEL)}#1,SET:a
-e/<invalid>#4,SET:e
-i/<invalid>#6,SET:i
-j/<invalid>#7,SET:j
+a#1,SET:a / c-e:{(#4,RANGEDEL)}
+e#4,SET:e
+i#6,SET:i
+j#7,SET:j
 
 # Verify that we do not open files that do not have point keys.
 
@@ -386,7 +386,7 @@ seek-ge f
 next
 next
 ----
-f/<invalid>#5,SET:f
+f#5,SET:f
 f#5,SET:
 i#4,SET:i
 
