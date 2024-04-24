@@ -32,11 +32,6 @@ type mergingIterLevel struct {
 	// intermediary internalIterator implementations.
 	levelIter *levelIter
 
-	// levelIterBoundaryContext's fields are set when using levelIter, in order
-	// to surface sstable boundary keys and file-level context. See levelIter
-	// comment and the Range Deletions comment below.
-	levelIterBoundaryContext
-
 	// tombstone caches the tombstone rangeDelIter is currently pointed at. If
 	// tombstone is nil, there are no further tombstones within the
 	// current sstable in the current iterator direction. The cached tombstone is
@@ -44,27 +39,6 @@ type mergingIterLevel struct {
 	// positioning tombstones at lower levels which cannot possibly shadow the
 	// current key.
 	tombstone *keyspan.Span
-}
-
-type levelIterBoundaryContext struct {
-	// isSyntheticIterBoundsKey is set to true iff the key returned by the level
-	// iterator is a synthetic key derived from the iterator bounds. This is used
-	// to prevent the mergingIter from being stuck at such a synthetic key if it
-	// becomes the top element of the heap. When used with a user-facing Iterator,
-	// the only range deletions exposed by this mergingIter should be those with
-	// `isSyntheticIterBoundsKey || isIgnorableBoundaryKey`.
-	//
-	// When true, the coincident key is an exclusive sentinel, and the current
-	// direction of iteration has a user-imposed iteration bound.
-	isSyntheticIterBoundsKey bool
-	// isIgnorableBoundaryKey is set to true iff the key returned by the level
-	// iterator is a file boundary key that should be ignored when returning to
-	// the parent iterator. File boundary keys are used by the level iter to
-	// keep a levelIter file's range deletion iterator open as long as other
-	// levels within the merging iterator require it. When used with a user-facing
-	// Iterator, the only range deletions exposed by this mergingIter should be
-	// those with `isSyntheticIterBoundsKey || isIgnorableBoundaryKey`.
-	isIgnorableBoundaryKey bool
 }
 
 // mergingIter provides a merged view of multiple iterators from different
@@ -707,22 +681,33 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterLevel) (bool, error) {
 func (m *mergingIter) findNextEntry() *base.InternalKV {
 	for m.heap.len() > 0 && m.err == nil {
 		item := m.heap.items[0]
-		if m.levels[item.index].isSyntheticIterBoundsKey {
-			break
-		}
 
-		m.addItemStats(item)
-
-		// Skip ignorable boundary keys. These are not real keys and exist to
-		// keep sstables open until we've surpassed their end boundaries so that
-		// their range deletions are visible.
-		if m.levels[item.index].isIgnorableBoundaryKey {
+		// The levelIter internal iterator will interleave exclusive sentinel
+		// keys to keep files open until their range deletions are no longer
+		// necessary. Sometimes these are interleaved with the user key of a
+		// file's largest key, in which case they may simply be stepped over to
+		// move to the next file in the forward direction. Other times they're
+		// interleaved at the user key of the user-iteration boundary, if that
+		// falls within the bounds of a file. In the latter case, there are no
+		// more keys < m.upper, and we can stop iterating.
+		//
+		// We perform a key comparison to differentiate between these two cases.
+		// This key comparison is considered okay because it only happens for
+		// sentinel keys. It may be eliminated after #2863.
+		if m.levels[item.index].iterKV.K.IsExclusiveSentinel() {
+			if m.upper != nil && m.heap.cmp(m.levels[item.index].iterKV.K.UserKey, m.upper) >= 0 {
+				break
+			}
+			// This key is the largest boundary of a file and can be skipped now
+			// that the file's range deletions are no longer relevant.
 			m.err = m.nextEntry(item, nil /* succKey */)
 			if m.err != nil {
 				return nil
 			}
 			continue
 		}
+
+		m.addItemStats(item)
 
 		// Check if the heap root key is deleted by a range tombstone in a
 		// higher level. If it is, isNextEntryDeleted will advance the iterator
@@ -859,13 +844,25 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterLevel) (bool, error) {
 func (m *mergingIter) findPrevEntry() *base.InternalKV {
 	for m.heap.len() > 0 && m.err == nil {
 		item := m.heap.items[0]
-		if m.levels[item.index].isSyntheticIterBoundsKey {
-			break
-		}
-		// Skip ignorable boundary keys. These are not real keys and exist to
-		// keep sstables open until we've surpassed their end boundaries so that
-		// their range deletions are visible.
-		if m.levels[item.index].isIgnorableBoundaryKey {
+
+		// The levelIter internal iterator will interleave exclusive sentinel
+		// keys to keep files open until their range deletions are no longer
+		// necessary. Sometimes these are interleaved with the user key of a
+		// file's smallest key, in which case they may simply be stepped over to
+		// move to the next file in the backward direction. Other times they're
+		// interleaved at the user key of the user-iteration boundary, if that
+		// falls within the bounds of a file. In the latter case, there are no
+		// more keys ≥ m.lower, and we can stop iterating.
+		//
+		// We perform a key comparison to differentiate between these two cases.
+		// This key comparison is considered okay because it only happens for
+		// sentinel keys. It may be eliminated after #2863.
+		if m.levels[item.index].iterKV.K.IsExclusiveSentinel() {
+			if m.lower != nil && m.heap.cmp(m.levels[item.index].iterKV.K.UserKey, m.lower) <= 0 {
+				break
+			}
+			// This key is the smallest boundary of a file and can be skipped
+			// now that the file's range deletions are no longer relevant.
 			m.err = m.prevEntry(item)
 			if m.err != nil {
 				return nil

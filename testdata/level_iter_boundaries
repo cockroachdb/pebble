@@ -12,7 +12,7 @@ prev
 ----
 d#72057594037927935,RANGEDEL:
 .
-a#1,RANGEDEL:
+a#72057594037927935,RANGEDEL:
 .
 
 iter
@@ -23,7 +23,7 @@ prev
 ----
 d#72057594037927935,RANGEDEL:
 .
-a#1,RANGEDEL:
+a#72057594037927935,RANGEDEL:
 .
 
 iter
@@ -34,7 +34,7 @@ prev
 ----
 d#72057594037927935,RANGEDEL:
 .
-a#1,RANGEDEL:
+a#72057594037927935,RANGEDEL:
 .
 
 iter
@@ -90,7 +90,7 @@ prev
 prev
 ----
 c#3,SET:c
-b#2,RANGEDEL:
+b#72057594037927935,RANGEDEL:
 a#1,SET:a
 .
 
@@ -117,7 +117,7 @@ last
 prev
 ----
 a#1,SET:b
-a#1,SET:
+a#72057594037927935,RANGEDEL:
 
 clear
 ----
@@ -134,7 +134,7 @@ next
 next
 ----
 c#2,SET:c
-c#2,SET:
+c#72057594037927935,RANGEDEL:
 .
 
 iter
@@ -143,7 +143,7 @@ prev
 prev
 ----
 c#2,SET:c
-a#1,RANGEDEL:
+a#72057594037927935,RANGEDEL:
 .
 
 # Regression test to check that Seek{GE,LT} work properly in certain
@@ -174,9 +174,9 @@ e#72057594037927935,RANGEDEL:
 d#3,SET:d
 e#72057594037927935,RANGEDEL:
 d#3,SET:d
-c#2,RANGEDEL:
+c#72057594037927935,RANGEDEL:
 d#3,SET:d
-c#2,RANGEDEL:
+c#72057594037927935,RANGEDEL:
 d#3,SET:d
 
 # Regression test to check that Seek{GE,LT}, First, and Last do not
@@ -359,7 +359,7 @@ prev
 prev
 ----
 e#5,SET:z
-e#5,SET:
+e#72057594037927935,RANGEDEL:
 .
 
 file-pos
