@@ -436,43 +436,7 @@ func (m *mergingIter) switchToMinHeap() error {
 		if l == cur {
 			continue
 		}
-
-		// If the iterator is exhausted, it may be out of bounds if range
-		// deletions modified our search key as we descended. we need to
-		// reposition it within the search bounds. If the current key is a
-		// range tombstone, the iterator might still be exhausted but at a
-		// sstable boundary sentinel. It would be okay to reposition an
-		// interator like this only through successive Next calls, except that
-		// it would violate the levelIter's invariants by causing it to return
-		// a key before the lower bound.
-		//
-		//           bounds = [ f, _ )
-		// L0:   [ b ]          [ f*                   z ]
-		// L1: [ a           |----|        k        y ]
-		// L2:    [  c  (d) ] [ e      g     m ]
-		// L3:             [                    x ]
-		//
-		// * - current key   [] - table bounds () - heap item
-		//
-		// In the above diagram, the L2 iterator is positioned at a sstable
-		// boundary (d) outside the lower bound (f). It arrived here from a
-		// seek whose seek-key was modified by a range tombstone. If we called
-		// Next on the L2 iterator, it would return e, violating its lower
-		// bound.  Instead, we seek it to >= f and Next from there.
-
-		if l.iterKV == nil || (l.isSyntheticIterBoundsKey && m.heap.cmp(l.iterKV.K.UserKey, m.lower) <= 0) {
-			if m.lower != nil {
-				l.iterKV = l.iter.SeekGE(m.lower, base.SeekGEFlagsNone)
-			} else {
-				l.iterKV = l.iter.First()
-			}
-			if l.iterKV == nil {
-				if err := l.iter.Error(); err != nil {
-					return err
-				}
-			}
-		}
-		for ; l.iterKV != nil; l.iterKV = l.iter.Next() {
+		for l.iterKV = l.iter.Next(); l.iterKV != nil; l.iterKV = l.iter.Next() {
 			if base.InternalCompare(m.heap.cmp, key, l.iterKV.K) < 0 {
 				// key < iter-key
 				break
@@ -487,15 +451,8 @@ func (m *mergingIter) switchToMinHeap() error {
 	}
 
 	// Special handling for the current iterator because we were using its key
-	// above. The iterator cur.iter may still be exhausted at a sstable boundary
-	// sentinel. Similar to the logic applied to the other levels, in these
-	// cases we seek the iterator to the first key in order to avoid violating
-	// levelIter's invariants. See the example in the for loop above.
-	if cur.isSyntheticIterBoundsKey && m.heap.cmp(cur.iterKV.K.UserKey, m.lower) <= 0 {
-		cur.iterKV = cur.iter.SeekGE(m.lower, base.SeekGEFlagsNone)
-	} else {
-		cur.iterKV = cur.iter.Next()
-	}
+	// above.
+	cur.iterKV = cur.iter.Next()
 	if cur.iterKV == nil {
 		if err := cur.iter.Error(); err != nil {
 			return err
@@ -532,42 +489,7 @@ func (m *mergingIter) switchToMaxHeap() error {
 			continue
 		}
 
-		// If the iterator is exhausted, it may be out of bounds if range
-		// deletions modified our search key as we descended. we need to
-		// reposition it within the search bounds. If the current key is a
-		// range tombstone, the iterator might still be exhausted but at a
-		// sstable boundary sentinel. It would be okay to reposition an
-		// interator like this only through successive Prev calls, except that
-		// it would violate the levelIter's invariants by causing it to return
-		// a key beyond the upper bound.
-		//
-		//           bounds = [ _, g )
-		// L0:   [ b ]          [ f*                   z ]
-		// L1: [ a                |-------| k       y ]
-		// L2:    [  c   d  ]        h [(i)    m ]
-		// L3:             [  e                  x ]
-		//
-		// * - current key   [] - table bounds () - heap item
-		//
-		// In the above diagram, the L2 iterator is positioned at a sstable
-		// boundary (i) outside the upper bound (g). It arrived here from a
-		// seek whose seek-key was modified by a range tombstone. If we called
-		// Prev on the L2 iterator, it would return h, violating its upper
-		// bound.  Instead, we seek it to < g, and Prev from there.
-
-		if l.iterKV == nil || (l.isSyntheticIterBoundsKey && m.heap.cmp(l.iterKV.K.UserKey, m.upper) >= 0) {
-			if m.upper != nil {
-				l.iterKV = l.iter.SeekLT(m.upper, base.SeekLTFlagsNone)
-			} else {
-				l.iterKV = l.iter.Last()
-			}
-			if l.iterKV == nil {
-				if err := l.iter.Error(); err != nil {
-					return err
-				}
-			}
-		}
-		for ; l.iterKV != nil; l.iterKV = l.iter.Prev() {
+		for l.iterKV = l.iter.Prev(); l.iterKV != nil; l.iterKV = l.iter.Prev() {
 			if base.InternalCompare(m.heap.cmp, key, l.iterKV.K) > 0 {
 				// key > iter-key
 				break
@@ -582,16 +504,8 @@ func (m *mergingIter) switchToMaxHeap() error {
 	}
 
 	// Special handling for the current iterator because we were using its key
-	// above. The iterator cur.iter may still be exhausted at a sstable boundary
-	// sentinel. Similar to the logic applied to the other levels, in these
-	// cases we seek the iterator to  in order to avoid violating levelIter's
-	// invariants by Prev-ing through files.  See the example in the for loop
 	// above.
-	if cur.isSyntheticIterBoundsKey && m.heap.cmp(cur.iterKV.K.UserKey, m.upper) >= 0 {
-		cur.iterKV = cur.iter.SeekLT(m.upper, base.SeekLTFlagsNone)
-	} else {
-		cur.iterKV = cur.iter.Prev()
-	}
+	cur.iterKV = cur.iter.Prev()
 	if cur.iterKV == nil {
 		if err := cur.iter.Error(); err != nil {
 			return err

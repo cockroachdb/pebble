@@ -140,7 +140,7 @@ type levelIter struct {
 
 	// exhaustedDir is set to +1 or -1 when the levelIter has been exhausted in
 	// the forward or backward direction respectively. It is set when the
-	// underlying data is exhausted, not when iteration has reached the upper or
+	// underlying data is exhausted or when iteration has reached the upper or
 	// lower boundary and interleaved a synthetic iterator bound key. When the
 	// iterator is exhausted and Next or Prev is called, the levelIter uses
 	// exhaustedDir to determine whether the iterator should step on to the
@@ -718,6 +718,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 				l.boundaryContext.isSyntheticIterBoundsKey = true
 				l.boundaryContext.isIgnorableBoundaryKey = false
 			}
+			l.exhaustedDir = +1
 			return l.verify(l.largestBoundary)
 		}
 		// Return the file's largest bound, ensuring this file stays open until
@@ -846,6 +847,7 @@ func (l *levelIter) Next() *base.InternalKV {
 			if l.rangeDelIterPtr != nil {
 				*l.rangeDelIterPtr = nil
 			}
+			l.exhaustedDir = +1
 			return nil
 		}
 		// We're stepping past the boundary key, so now we can load the next file.
@@ -948,6 +950,7 @@ func (l *levelIter) Prev() *base.InternalKV {
 			if l.rangeDelIterPtr != nil {
 				*l.rangeDelIterPtr = nil
 			}
+			l.exhaustedDir = -1
 			return nil
 		}
 		// We're stepping past the boundary key, so now we can load the prev file.
@@ -1004,6 +1007,7 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 			// that matches the exclusive upper bound, and does not represent
 			// a real key.
 			if l.tableOpts.UpperBound != nil {
+				l.exhaustedDir = +1
 				if *l.rangeDelIterPtr != nil {
 					l.syntheticBoundary.K = base.InternalKey{
 						UserKey: l.tableOpts.UpperBound,
@@ -1019,7 +1023,6 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 				// helps with performance when many levels are populated with
 				// sstables and most don't have any actual keys within the
 				// bounds.
-				l.exhaustedDir = +1
 				return nil
 			}
 			// If the boundary is a range deletion tombstone, or the caller is
@@ -1090,6 +1093,7 @@ func (l *levelIter) skipEmptyFileBackward() *base.InternalKV {
 			// that is within the inclusive lower bound, and does not
 			// represent a real key.
 			if l.tableOpts.LowerBound != nil {
+				l.exhaustedDir = -1
 				if *l.rangeDelIterPtr != nil {
 					l.syntheticBoundary = base.MakeInternalKV(base.InternalKey{
 						UserKey: l.tableOpts.LowerBound,
@@ -1105,7 +1109,6 @@ func (l *levelIter) skipEmptyFileBackward() *base.InternalKV {
 				// helps with performance when many levels are populated with
 				// sstables and most don't have any actual keys within the
 				// bounds.
-				l.exhaustedDir = -1
 				return nil
 			}
 			// If the boundary could be a range deletion tombstone, return the
