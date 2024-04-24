@@ -1388,10 +1388,69 @@ func (i *Iter) AddRangeKeySpan(span *keyspan.Span) {
 // If a key is specified, it must be greater than the last span Start key passed
 // to AddRangeKeySpan.
 func (i *Iter) RangeKeysUpTo(key []byte) []keyspan.Span {
-	var result []keyspan.Span
-	result, i.rangeKeys = i.splitSpans(i.rangeKeys, key)
+	var toReturn []keyspan.Span
+	toReturn, i.rangeKeys = i.splitSpans(i.rangeKeys, key)
+
 	// Elision of snapshot stripes happens in rangeKeyCompactionTransform, so no need to
 	// do that here.
+	result := toReturn[:0]
+
+	for _, s := range toReturn {
+		elideInLastStripe := func(keys []keyspan.Key) []keyspan.Key {
+			// Unsets and deletes in the last snapshot stripe can be elided.
+			k := 0
+			for j := range keys {
+				// TODO(radu): Elide range keys separately from point keys. This
+				// function can check for in-use ranges only in the range keyspace.
+				if (keys[j].Kind() == base.InternalKeyKindRangeKeyUnset || keys[j].Kind() == base.InternalKeyKindRangeKeyDelete) &&
+					i.cfg.ElideRangeTombstone(s.Start, s.End) {
+					continue
+				}
+				keys[k] = keys[j]
+				k++
+			}
+			keys = keys[:k]
+			return keys
+		}
+
+		var dst keyspan.Span
+		// snapshots are in ascending order, while s.keys are in descending seqnum
+		// order. Partition s.keys by snapshot stripes, and call rangekey.Coalesce
+		// on each partition.
+		dst.Start = s.Start
+		dst.End = s.End
+		dst.Keys = dst.Keys[:0]
+		x, y := len(i.cfg.Snapshots)-1, 0
+		usedLen := 0
+		for x >= 0 {
+			start := y
+			for y < len(s.Keys) && !base.Visible(s.Keys[y].SeqNum(), i.cfg.Snapshots[x], base.InternalKeySeqNumMax) {
+				// Include y in current partition.
+				y++
+			}
+			if y > start {
+				keysDst := dst.Keys[usedLen:cap(dst.Keys)]
+				rangekey.Coalesce(i.cmp, i.cfg.Equal, s.Keys[start:y], &keysDst)
+				if y == len(s.Keys) {
+					// This is the last snapshot stripe. Unsets and deletes can be elided.
+					keysDst = elideInLastStripe(keysDst)
+				}
+				usedLen += len(keysDst)
+				dst.Keys = append(dst.Keys, keysDst...)
+			}
+			x--
+		}
+		if y < len(s.Keys) {
+			keysDst := dst.Keys[usedLen:cap(dst.Keys)]
+			rangekey.Coalesce(i.cmp, i.cfg.Equal, s.Keys[y:], &keysDst)
+			keysDst = elideInLastStripe(keysDst)
+			usedLen += len(keysDst)
+			dst.Keys = append(dst.Keys, keysDst...)
+		}
+		if len(dst.Keys) > 0 {
+			result = append(result, dst)
+		}
+	}
 	return result
 }
 

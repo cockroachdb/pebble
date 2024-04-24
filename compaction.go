@@ -177,65 +177,6 @@ func (k compactionKind) String() string {
 	return "?"
 }
 
-// rangeKeyCompactionTransform is used to transform range key spans as part of the
-// keyspanimpl.MergingIter. As part of this transformation step, we can elide range
-// keys in the last snapshot stripe, as well as coalesce range keys within
-// snapshot stripes.
-func rangeKeyCompactionTransform(
-	eq base.Equal, snapshots []uint64, elideRangeKey func(start, end []byte) bool,
-) keyspan.Transformer {
-	return keyspan.TransformerFunc(func(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
-		elideInLastStripe := func(keys []keyspan.Key) []keyspan.Key {
-			// Unsets and deletes in the last snapshot stripe can be elided.
-			k := 0
-			for j := range keys {
-				if elideRangeKey(s.Start, s.End) &&
-					(keys[j].Kind() == InternalKeyKindRangeKeyUnset || keys[j].Kind() == InternalKeyKindRangeKeyDelete) {
-					continue
-				}
-				keys[k] = keys[j]
-				k++
-			}
-			keys = keys[:k]
-			return keys
-		}
-		// snapshots are in ascending order, while s.keys are in descending seqnum
-		// order. Partition s.keys by snapshot stripes, and call rangekey.Coalesce
-		// on each partition.
-		dst.Start = s.Start
-		dst.End = s.End
-		dst.Keys = dst.Keys[:0]
-		i, j := len(snapshots)-1, 0
-		usedLen := 0
-		for i >= 0 {
-			start := j
-			for j < len(s.Keys) && !base.Visible(s.Keys[j].SeqNum(), snapshots[i], base.InternalKeySeqNumMax) {
-				// Include j in current partition.
-				j++
-			}
-			if j > start {
-				keysDst := dst.Keys[usedLen:cap(dst.Keys)]
-				rangekey.Coalesce(cmp, eq, s.Keys[start:j], &keysDst)
-				if j == len(s.Keys) {
-					// This is the last snapshot stripe. Unsets and deletes can be elided.
-					keysDst = elideInLastStripe(keysDst)
-				}
-				usedLen += len(keysDst)
-				dst.Keys = append(dst.Keys, keysDst...)
-			}
-			i--
-		}
-		if j < len(s.Keys) {
-			keysDst := dst.Keys[usedLen:cap(dst.Keys)]
-			rangekey.Coalesce(cmp, eq, s.Keys[j:], &keysDst)
-			keysDst = elideInLastStripe(keysDst)
-			usedLen += len(keysDst)
-			dst.Keys = append(dst.Keys, keysDst...)
-		}
-		return nil
-	})
-}
-
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
 type compaction struct {
@@ -823,17 +764,6 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 	return lower >= upper
 }
 
-// elideRangeKey returns true if it is ok to elide the specified range key. A
-// return value of true guarantees that there are no key/value pairs at
-// c.outputLevel.level+1 or higher that possibly overlap the specified range key.
-func (c *compaction) elideRangeKey(start, end []byte) bool {
-	// TODO(bilal): Track inuseKeyRanges separately for the range keyspace as
-	// opposed to the point keyspace. Once that is done, elideRangeTombstone
-	// can just check in the point keyspace, and this function can check for
-	// inuseKeyRanges in the range keyspace.
-	return c.elideRangeTombstone(start, end)
-}
-
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
 	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter, snapshots []uint64,
@@ -1081,7 +1011,7 @@ func (c *compaction) newInputIter(
 	// keyspanimpl.MergingIter, and then interleave them among the points.
 	if len(rangeKeyIters) > 0 {
 		mi := &keyspanimpl.MergingIter{}
-		mi.Init(c.cmp, rangeKeyCompactionTransform(c.equal, snapshots, c.elideRangeKey), new(keyspanimpl.MergingBuffers), rangeKeyIters...)
+		mi.Init(c.cmp, keyspan.NoopTransform, new(keyspanimpl.MergingBuffers), rangeKeyIters...)
 		di := &keyspan.DefragmentingIter{}
 		di.Init(c.comparer, mi, keyspan.DefragmentInternal, keyspan.StaticDefragmentReducer, new(keyspan.DefragmentingBuffers))
 		c.rangeKeyInterleaving.Init(c.comparer, iter, di, keyspan.InterleavingIterOpts{})
