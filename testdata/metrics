@@ -427,7 +427,7 @@ metrics
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     4  2.8KB     0B       0 |  0.50 |  149B |     3  2.1KB |     0     0B |     6  4.2KB |    0B |   2 28.8
+    0 |     4  2.8KB     0B       0 |  0.50 |  187B |     3  2.1KB |     0     0B |     6  4.2KB |    0B |   2 22.9
     1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
@@ -436,7 +436,7 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     6 |     3  2.2KB    41B       0 |     - | 3.5KB |     0     0B |     0     0B |     3  2.2KB | 3.5KB |   1  0.6
 total |     7  5.0KB    41B       0 |     - | 2.3KB |     3  2.1KB |     0     0B |     9  8.7KB | 3.5KB |   3  3.8
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (26B)  in: 176B  written: 175B (-1% overhead)
+WAL: 1 files (26B)  in: 176B  written: 213B (21% overhead)
 Flushes: 8
 Compactions: 2  estimated debt: 5.0KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -478,12 +478,21 @@ flush
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
 
+<<<<<<< HEAD
+=======
+metrics
+----
+unknown command: <<<<<<<
+
+>>>>>>> 9027c15f (db: update flushableEntry.logSize during flushable ingest)
 build ext1
 set z z
 ----
+unknown command: >>>>>>>
 
 ingest-and-excise ext1 excise=i-k
 ----
+open ext1: file does not exist
 
 # sstable 29, 30 were created as virtual when i-k was excised.
 lsm
@@ -494,14 +503,13 @@ lsm
   000019:[f#24,SET-f#24,SET]
 0.0:
   000023:[d#19,SET-f#21,SET]
-  000029:[g#25,SET-h#26,SET]
-  000030:[k#29,SET-l#30,SET]
+  000025:[g#25,SET-i#27,SET]
+  000026:[j#28,SET-l#30,SET]
   000027:[m#31,SET-m#31,SET]
 6:
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
-  000028:[z#32,SET-z#32,SET]
 
 # There should be 2 backing tables. Note that tiny sstables have inaccurate
 # virtual sstable sizes.
@@ -512,19 +520,28 @@ num-virtual
 num-virtual 0
 virtual-size
 ----
-2
-1.3KB
-2
-2
-102B
+0
+0B
+0
+0
+0B
 
+<<<<<<< HEAD
+=======
+metrics zero-cache-hits-misses
+----
+unknown command: <<<<<<<
+
+>>>>>>> 9027c15f (db: update flushableEntry.logSize during flushable ingest)
 # Virtualize a virtual sstable.
 build ext1
 set zz zz
 ----
+unknown command: >>>>>>>
 
 ingest-and-excise ext1 excise=k-l
 ----
+open ext1: file does not exist
 
 # sstable 32 created when k-l was excised, but no new backing file should be
 # created.
@@ -536,15 +553,13 @@ lsm
   000019:[f#24,SET-f#24,SET]
 0.0:
   000023:[d#19,SET-f#21,SET]
-  000029:[g#25,SET-h#26,SET]
-  000032:[l#30,SET-l#30,SET]
+  000025:[g#25,SET-i#27,SET]
+  000026:[j#28,SET-l#30,SET]
   000027:[m#31,SET-m#31,SET]
 6:
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
-  000028:[z#32,SET-z#32,SET]
-  000031:[zz#33,SET-zz#33,SET]
 
 metrics-value
 num-backing
@@ -553,11 +568,11 @@ num-virtual
 num-virtual 0
 virtual-size
 ----
-2
-1.3KB
-2
-2
-102B
+0
+0B
+0
+0
+0B
 
 compact a-z
 ----
@@ -565,9 +580,8 @@ compact a-z
   000008:[a#0,SET-b#0,SET]
   000013:[c@20#0,SET-c@16#0,SET]
   000014:[c@15#0,SET-c@14#0,SET]
-  000033:[d#0,SET-m#0,SET]
-  000028:[z#32,SET-z#32,SET]
-  000031:[zz#33,SET-zz#33,SET]
+  000030:[d#0,SET-j#0,SET]
+  000031:[k#0,SET-m#0,SET]
 
 # Virtual sstables metrics should be gone after the compaction.
 metrics-value
@@ -582,3 +596,300 @@ virtual-size
 0
 0
 0B
+
+metrics zero-cache-hits-misses
+----
+      |                             |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B       0 |  0.00 |  245B |     3  2.1KB |     0     0B |     9  6.2KB |    0B |   0 25.8
+    1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     5  3.6KB    41B       0 |     - | 8.3KB |     0     0B |     0     0B |     5  3.6KB | 8.3KB |   1  0.4
+total |     5  3.6KB    41B       0 |     - | 2.4KB |     3  2.1KB |     0     0B |    14   12KB | 8.3KB |   1  5.1
+-------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (58B)  in: 223B  written: 303B (36% overhead)
+Flushes: 9
+Compactions: 3  estimated debt: 0B  in progress: 0 (0B)
+             default: 3  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
+Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Block cache: 0 entries (0B)  hit rate: 38.9%
+Table cache: 0 entries (0B)  hit rate: 63.6%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
+
+# Create a DB where lower levels are written as shared tables. All ingests also
+# become shared tables.
+init shared-lower
+----
+unknown command: init
+
+batch
+set a 1
+set b 1
+set c 1
+----
+
+flush
+----
+0.0:
+  000033:[a#32,SET-c#34,SET]
+6:
+  000008:[a#0,SET-b#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+  000030:[d#0,SET-j#0,SET]
+  000031:[k#0,SET-m#0,SET]
+
+# One local table.
+metrics
+----
+      |                             |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     1   676B     0B       0 |  0.25 |  283B |     3  2.1KB |     0     0B |    10  6.8KB |    0B |   1 24.7
+    1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     5  3.6KB    41B       0 |     - | 8.3KB |     0     0B |     0     0B |     5  3.6KB | 8.3KB |   1  0.4
+total |     6  4.2KB    41B       0 |     - | 2.4KB |     3  2.1KB |     0     0B |    15   13KB | 8.3KB |   2  5.3
+-------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (38B)  in: 250B  written: 321B (28% overhead)
+Flushes: 10
+Compactions: 3  estimated debt: 4.2KB  in progress: 0 (0B)
+             default: 3  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
+Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Block cache: 0 entries (0B)  hit rate: 38.9%
+Table cache: 0 entries (0B)  hit rate: 63.6%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
+
+compact a-z
+----
+6:
+  000034:[a#0,SET-c#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+  000030:[d#0,SET-j#0,SET]
+  000031:[k#0,SET-m#0,SET]
+
+# Table becomes shared, so local table size becomes 0.
+metrics
+----
+      |                             |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B       0 |  0.00 |  283B |     3  2.1KB |     0     0B |    10  6.8KB |    0B |   0 24.7
+    1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     5  3.6KB    41B       0 |     - | 8.9KB |     0     0B |     0     0B |     6  4.2KB | 9.6KB |   1  0.5
+total |     5  3.6KB    41B       0 |     - | 2.4KB |     3  2.1KB |     0     0B |    16   14KB | 9.6KB |   1  5.6
+-------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (38B)  in: 250B  written: 321B (28% overhead)
+Flushes: 10
+Compactions: 4  estimated debt: 0B  in progress: 0 (0B)
+             default: 4  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
+Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Block cache: 0 entries (0B)  hit rate: 37.0%
+Table cache: 0 entries (0B)  hit rate: 62.2%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 2 (2.1KB in 3 tables)
+
+build ext1.sst
+set b 2
+----
+
+ingest ext1.sst
+----
+
+lsm
+----
+0.0:
+  000035:[b#35,SET-b#35,SET]
+6:
+  000034:[a#0,SET-c#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+  000030:[d#0,SET-j#0,SET]
+  000031:[k#0,SET-m#0,SET]
+
+# Ingest is also shared table, so local table size stays 0.
+metrics
+----
+      |                             |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     1   716B     0B       0 |  0.25 |  283B |     4  2.8KB |     0     0B |    10  6.8KB |    0B |   1 24.7
+    1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     5  3.6KB    41B       0 |     - | 8.9KB |     0     0B |     0     0B |     6  4.2KB | 9.6KB |   1  0.5
+total |     6  4.3KB    41B       0 |     - | 3.1KB |     4  2.8KB |     0     0B |    16   14KB | 9.6KB |   2  4.6
+-------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (38B)  in: 250B  written: 321B (28% overhead)
+Flushes: 10
+Compactions: 4  estimated debt: 4.3KB  in progress: 0 (0B)
+             default: 4  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
+Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Block cache: 6 entries (1.2KB)  hit rate: 34.3%
+Table cache: 1 entries (800B)  hit rate: 60.5%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 1  as flushable: 2 (2.1KB in 3 tables)
+
+batch
+set b 3
+----
+
+flush
+----
+0.1:
+  000037:[b#36,SET-b#36,SET]
+0.0:
+  000035:[b#35,SET-b#35,SET]
+6:
+  000034:[a#0,SET-c#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+  000030:[d#0,SET-j#0,SET]
+  000031:[k#0,SET-m#0,SET]
+
+# Local table size increases due to flush.
+metrics
+----
+      |                             |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     2  1.3KB     0B       0 |  0.50 |  311B |     4  2.8KB |     0     0B |    11  7.5KB |    0B |   2 24.6
+    1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     5  3.6KB    41B       0 |     - | 8.9KB |     0     0B |     0     0B |     6  4.2KB | 9.6KB |   1  0.5
+total |     7  4.9KB    41B       0 |     - | 3.1KB |     4  2.8KB |     0     0B |    17   15KB | 9.6KB |   3  4.7
+-------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (28B)  in: 267B  written: 339B (27% overhead)
+Flushes: 11
+Compactions: 4  estimated debt: 4.9KB  in progress: 0 (0B)
+             default: 4  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
+Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Block cache: 6 entries (1.2KB)  hit rate: 34.3%
+Table cache: 1 entries (800B)  hit rate: 60.5%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 1  as flushable: 2 (2.1KB in 3 tables)
+
+# Reopen DB, to ensure stats are consistent. Also, reopened DB is not
+# configured to write shared tables.
+init reopen
+----
+unknown command: init
+
+metrics zero-cache-hits-misses
+----
+      |                             |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     2  1.3KB     0B       0 |  0.50 |  311B |     4  2.8KB |     0     0B |    11  7.5KB |    0B |   2 24.6
+    1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     5  3.6KB    41B       0 |     - | 8.9KB |     0     0B |     0     0B |     6  4.2KB | 9.6KB |   1  0.5
+total |     7  4.9KB    41B       0 |     - | 3.1KB |     4  2.8KB |     0     0B |    17   15KB | 9.6KB |   3  4.7
+-------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (28B)  in: 267B  written: 339B (27% overhead)
+Flushes: 11
+Compactions: 4  estimated debt: 4.9KB  in progress: 0 (0B)
+             default: 4  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
+Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Block cache: 6 entries (1.2KB)  hit rate: 34.3%
+Table cache: 1 entries (800B)  hit rate: 60.5%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 1  as flushable: 2 (2.1KB in 3 tables)
+
+compact a-z
+----
+6:
+  000038:[a#0,SET-c#0,SET]
+  000013:[c@20#0,SET-c@16#0,SET]
+  000014:[c@15#0,SET-c@14#0,SET]
+  000030:[d#0,SET-j#0,SET]
+  000031:[k#0,SET-m#0,SET]
+
+# All tables are local after compaction.
+metrics zero-cache-hits-misses
+----
+      |                             |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B       0 |  0.00 |  311B |     4  2.8KB |     0     0B |    11  7.5KB |    0B |   0 24.6
+    1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
+    6 |     5  3.6KB    41B       0 |     - |  10KB |     0     0B |     0     0B |     7  4.9KB |  12KB |   1  0.5
+total |     5  3.6KB    41B       0 |     - | 3.1KB |     4  2.8KB |     0     0B |    18   16KB |  12KB |   1  5.0
+-------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (28B)  in: 267B  written: 339B (27% overhead)
+Flushes: 11
+Compactions: 5  estimated debt: 0B  in progress: 0 (0B)
+             default: 5  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
+Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Block cache: 0 entries (0B)  hit rate: 37.2%
+Table cache: 0 entries (0B)  hit rate: 61.4%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 1  as flushable: 2 (2.1KB in 3 tables)
