@@ -2568,6 +2568,16 @@ func (d *DB) rotateMemtable(newLogNum base.DiskFileNum, logSeqNum uint64, prev *
 	var entry *flushableEntry
 	d.mu.mem.mutable, entry = d.newMemTable(newLogNum, logSeqNum)
 	d.mu.mem.queue = append(d.mu.mem.queue, entry)
+	// d.logSize tracks the log size of the WAL file corresponding to the most
+	// recent flushable. The log size of the previous mutable memtable no longer
+	// applies to the current mutable memtable.
+	//
+	// It's tempting to perform this update in rotateWAL, but that would not be
+	// atomic with the enqueue of the new flushable. A call to DB.Metrics()
+	// could acquire DB.mu after the WAL has been rotated but before the new
+	// memtable has been appended; this would result in omitting the log size of
+	// the most recent flushable.
+	d.logSize.Store(0)
 	d.updateReadStateLocked(nil)
 	if prev.writerUnref() {
 		d.maybeScheduleFlush()
