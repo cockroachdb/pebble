@@ -65,42 +65,30 @@ elideRangeTombstone("k", "l") = true
 
 define
 L1
-  c.SET.801:c
-  g.SET.800:g
-L1
-  x.SET.701:x
-  y.SET.700:y
+  1:[c#801,SET-g#800,SET]
+  2:[x#701,SET-y#700,SET]
 L2
-  d.SET.601:d
-  h.SET.600:h
-L2
-  r.SET.501:r
-  t.SET.500:t
+  3:[d#601,SET-h#600,SET]
+  4:[r#501,SET-t#500,SET]
 L3
-  f.SET.401:f
-  g.SET.400:g
-L3
-  w.SET.301:w
-  x.SET.300:x
+  5:[f#401,SET-g#400,SET]
+  6:[w#301,SET-x#300,SET]
 L4
-  f.SET.201:f
-  m.SET.200:m
-L4
-  t.SET.101:t
-  t.SET.100:t
+  7:[f#201,SET-m#200,SET]
+  8:[t#101,SET-t#100,SET]
 ----
 L1:
-  000004:[c#801,SET-g#800,SET]
-  000005:[x#701,SET-y#700,SET]
+  000001:[c#801,SET-g#800,SET]
+  000002:[x#701,SET-y#700,SET]
 L2:
-  000006:[d#601,SET-h#600,SET]
-  000007:[r#501,SET-t#500,SET]
+  000003:[d#601,SET-h#600,SET]
+  000004:[r#501,SET-t#500,SET]
 L3:
-  000008:[f#401,SET-g#400,SET]
-  000009:[w#301,SET-x#300,SET]
+  000005:[f#401,SET-g#400,SET]
+  000006:[w#301,SET-x#300,SET]
 L4:
-  000010:[f#201,SET-m#200,SET]
-  000011:[t#101,SET-t#101,SET]
+  000007:[f#201,SET-m#200,SET]
+  000008:[t#101,SET-t#100,SET]
 
 elide start-level=1
 a-b
@@ -168,22 +156,15 @@ elideTombstone("y") = true
 elideTombstone("z") = true
 
 define
-L1
-  a.SET.3:v
-L2
-  a.RANGEDEL.2:g
-L3
-  a.SET.0:v
-  b.SET.0:v
-L3
-  c.SET.0:v
-  d.SET.0:v
-L3
-  e.SET.0:v
-  f.SET.1:v
-L3
-  g.SET.1:v
-  g.SET.0:v
+L1:
+  4:[a#3,SET-a#3,SET]
+L2:
+  5:[a#2,RANGEDEL-g#inf,RANGEDEL]
+L3:
+  6:[a#0,SET-b#0,SET]
+  7:[c#0,SET-d#0,SET]
+  8:[e#0,SET-f#1,SET]
+  9:[g#1,SET-g#1,SET]
 ----
 L1:
   000004:[a#3,SET-a#3,SET]
@@ -211,12 +192,11 @@ elideTombstone("f") = false
 elideTombstone("g") = false
 
 define
-L6
-  g.SET.0:g
-  h.RANGEDEL.1:z
+L6:
+  1:[g#0,SET-z#inf,RANGEDEL]
 ----
 L6:
-  000004:[g#0,SET-z#inf,RANGEDEL]
+  000001:[g#0,SET-z#inf,RANGEDEL]
 
 elide start-level=1
 a
@@ -232,7 +212,7 @@ z-zz
 ----
 elideTombstone("a") = true
 elideRangeTombstone("a", "f") = true
-elideRangeTombstone("a", "g") = false
+elideRangeTombstone("a", "g") = true
 elideRangeTombstone("a", "h") = false
 elideTombstone("b") = true
 elideTombstone("g") = false
@@ -242,43 +222,31 @@ elideTombstone("z") = true
 elideRangeTombstone("z", "zz") = true
 
 define
-L1
-  c.SET.801:c
-  g.SET.800:g
-L1
-  x.SET.701:x
-	y.SET.700:y
+L1:
+  1:[c#801,SET-g#800,SET]
+  2:[x#701,SET-y#700,SET]
 L2
-	d.SET.601:d
-	h.SET.600:h
-L2
-	r.SET.501:r
-	t.SET.500:t
-L3
-	f.SET.401:f
-	g.SET.400:g
-L3
-  w.SET.301:w
-  x.SET.300:x
-L4
-  f.SET.201:f
-  m.SET.200:m
-L4
-  t.SET.101:t
-  t.SET.100:t
+  3:[d#601,SET-h#600,SET]
+  4:[r#501,SET-t#500,SET]
+L3:
+  5:[f#401,SET-g#400,SET]
+  6:[w#301,SET-x#300,SET]
+L4:
+  7:[f#201,SET-m#200,SET]
+  8:[t#101,SET-t#101,SET]
 ----
 L1:
-  000004:[c#801,SET-g#800,SET]
-  000005:[x#701,SET-y#700,SET]
+  000001:[c#801,SET-g#800,SET]
+  000002:[x#701,SET-y#700,SET]
 L2:
-  000006:[d#601,SET-h#600,SET]
-  000007:[r#501,SET-t#500,SET]
+  000003:[d#601,SET-h#600,SET]
+  000004:[r#501,SET-t#500,SET]
 L3:
-  000008:[f#401,SET-g#400,SET]
-  000009:[w#301,SET-x#300,SET]
+  000005:[f#401,SET-g#400,SET]
+  000006:[w#301,SET-x#300,SET]
 L4:
-  000010:[f#201,SET-m#200,SET]
-  000011:[t#101,SET-t#101,SET]
+  000007:[f#201,SET-m#200,SET]
+  000008:[t#101,SET-t#101,SET]
 
 elide start-level=1
 b-c
@@ -304,7 +272,7 @@ y-z
 elideRangeTombstone("b", "c") = true
 elideRangeTombstone("c", "d") = true
 elideRangeTombstone("d", "e") = true
-elideRangeTombstone("e", "f") = false
+elideRangeTombstone("e", "f") = true
 elideRangeTombstone("f", "g") = false
 elideRangeTombstone("g", "h") = false
 elideRangeTombstone("h", "i") = false
@@ -313,10 +281,10 @@ elideRangeTombstone("m", "n") = false
 elideRangeTombstone("n", "o") = true
 elideRangeTombstone("q", "r") = true
 elideRangeTombstone("r", "s") = true
-elideRangeTombstone("s", "t") = false
+elideRangeTombstone("s", "t") = true
 elideRangeTombstone("t", "u") = false
 elideRangeTombstone("u", "v") = true
-elideRangeTombstone("v", "w") = false
+elideRangeTombstone("v", "w") = true
 elideRangeTombstone("w", "x") = false
 elideRangeTombstone("x", "y") = false
 elideRangeTombstone("y", "z") = true

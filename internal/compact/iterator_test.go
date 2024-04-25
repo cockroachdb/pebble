@@ -70,18 +70,19 @@ func TestCompactionIter(t *testing.T) {
 				return m, nil
 			}
 		}
+		elision := NoTombstoneElision()
+		if elideTombstones {
+			// Elide everything.
+			elision = ElideTombstonesOutsideOf(nil)
+		}
 		cfg := IterConfig{
-			Cmp:             base.DefaultComparer.Compare,
-			Equal:           base.DefaultComparer.Equal,
-			Merge:           merge,
-			Snapshots:       snapshots,
-			AllowZeroSeqNum: allowZeroSeqnum,
-			ElideTombstone: func([]byte) bool {
-				return elideTombstones
-			},
-			ElideRangeTombstone: func(_, _ []byte) bool {
-				return elideTombstones
-			},
+			Cmp:              base.DefaultComparer.Compare,
+			Equal:            base.DefaultComparer.Equal,
+			Merge:            merge,
+			Snapshots:        snapshots,
+			TombstoneElision: elision,
+			RangeKeyElision:  elision,
+			AllowZeroSeqNum:  allowZeroSeqnum,
 			IneffectualSingleDeleteCallback: func(userKey []byte) {
 				ineffectualSingleDeleteKeys = append(ineffectualSingleDeleteKeys, string(userKey))
 			},
@@ -317,20 +318,12 @@ func TestIterRangeKeys(t *testing.T) {
 			}
 
 			cfg := IterConfig{
-				Cmp:             base.DefaultComparer.Compare,
-				Equal:           base.DefaultComparer.Equal,
-				Snapshots:       snapshots,
-				AllowZeroSeqNum: false,
-				ElideTombstone:  nil,
-				ElideRangeTombstone: func(start, end []byte) bool {
-					b := base.UserKeyBoundsEndExclusive(start, end)
-					for i := range keyRanges {
-						if keyRanges[i].Overlaps(base.DefaultComparer.Compare, &b) {
-							return false
-						}
-					}
-					return true
-				},
+				Cmp:              base.DefaultComparer.Compare,
+				Equal:            base.DefaultComparer.Equal,
+				Snapshots:        snapshots,
+				AllowZeroSeqNum:  false,
+				TombstoneElision: NoTombstoneElision(),
+				RangeKeyElision:  ElideTombstonesOutsideOf(keyRanges),
 			}
 			input, _, _ := makeInputIter(nil, nil, nil)
 
