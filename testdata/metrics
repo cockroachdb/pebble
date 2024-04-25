@@ -57,9 +57,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     0     0B     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-total |     1   661B     0B       0 |     - |   56B |     0     0B |     0     0B |     1   717B |    0B |   1 12.8
+total |     1   661B     0B       0 |     - |   28B |     0     0B |     0     0B |     1   689B |    0B |   1 24.6
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (28B)  in: 17B  written: 56B (229% overhead)
+WAL: 1 files (0B)  in: 17B  written: 28B (65% overhead)
 Flushes: 1
 Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
              default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -111,9 +111,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     1   667B     0B       0 |     - | 1.3KB |     0     0B |     0     0B |     1   667B | 1.3KB |   1  0.5
-total |     1   667B     0B       0 |     - |   84B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 24.7
+total |     1   667B     0B       0 |     - |   56B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 36.5
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
+WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -150,9 +150,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     1   667B     0B       0 |     - | 1.3KB |     0     0B |     0     0B |     1   667B | 1.3KB |   1  0.5
-total |     1   667B     0B       0 |     - |   84B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 24.7
+total |     1   667B     0B       0 |     - |   56B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 36.5
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
+WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -186,9 +186,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     1   667B     0B       0 |     - | 1.3KB |     0     0B |     0     0B |     1   667B | 1.3KB |   1  0.5
-total |     1   667B     0B       0 |     - |   84B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 24.7
+total |     1   667B     0B       0 |     - |   56B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 36.5
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
+WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -225,9 +225,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     1   667B     0B       0 |     - | 1.3KB |     0     0B |     0     0B |     1   667B | 1.3KB |   1  0.5
-total |     1   667B     0B       0 |     - |   84B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 24.7
+total |     1   667B     0B       0 |     - |   56B |     0     0B |     0     0B |     3  2.0KB | 1.3KB |   1 36.5
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (28B)  in: 34B  written: 84B (147% overhead)
+WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -290,9 +290,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     1   667B     0B       0 |     - | 1.3KB |     0     0B |     0     0B |     1   667B | 1.3KB |   1  0.5
-total |     4  2.9KB    38B       0 |     - |  242B |     0     0B |     0     0B |     6  4.4KB | 1.3KB |   2 18.6
+total |     4  2.9KB    38B       0 |     - |  149B |     0     0B |     0     0B |     6  4.3KB | 1.3KB |   2 29.7
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (93B)  in: 116B  written: 242B (109% overhead)
+WAL: 1 files (0B)  in: 116B  written: 149B (28% overhead)
 Flushes: 3
 Compactions: 1  estimated debt: 2.9KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -339,9 +339,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     3  2.2KB    41B       0 |     - | 3.5KB |     0     0B |     0     0B |     3  2.2KB | 3.5KB |   1  0.6
-total |     3  2.2KB    41B       0 |     - |  242B |     0     0B |     0     0B |     8  6.0KB | 3.5KB |   1 25.3
+total |     3  2.2KB    41B       0 |     - |  149B |     0     0B |     0     0B |     8  5.9KB | 3.5KB |   1 40.5
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (93B)  in: 116B  written: 242B (109% overhead)
+WAL: 1 files (0B)  in: 116B  written: 149B (28% overhead)
 Flushes: 3
 Compactions: 2  estimated debt: 0B  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -436,7 +436,7 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     6 |     3  2.2KB    41B       0 |     - | 3.5KB |     0     0B |     0     0B |     3  2.2KB | 3.5KB |   1  0.6
 total |     7  5.0KB    41B       0 |     - | 2.3KB |     3  2.1KB |     0     0B |     9  8.7KB | 3.5KB |   3  3.8
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (26B)  in: 176B  written: 213B (21% overhead)
+WAL: 1 files (0B)  in: 176B  written: 187B (6% overhead)
 Flushes: 8
 Compactions: 2  estimated debt: 5.0KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -609,9 +609,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     5  3.6KB    41B       0 |     - | 8.3KB |     0     0B |     0     0B |     5  3.6KB | 8.3KB |   1  0.4
-total |     5  3.6KB    41B       0 |     - | 2.4KB |     3  2.1KB |     0     0B |    14   12KB | 8.3KB |   1  5.1
+total |     5  3.6KB    41B       0 |     - | 2.3KB |     3  2.1KB |     0     0B |    14   12KB | 8.3KB |   1  5.2
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (58B)  in: 223B  written: 303B (36% overhead)
+WAL: 1 files (0B)  in: 223B  written: 245B (10% overhead)
 Flushes: 9
 Compactions: 3  estimated debt: 0B  in progress: 0 (0B)
              default: 3  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -663,9 +663,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     5  3.6KB    41B       0 |     - | 8.3KB |     0     0B |     0     0B |     5  3.6KB | 8.3KB |   1  0.4
-total |     6  4.2KB    41B       0 |     - | 2.4KB |     3  2.1KB |     0     0B |    15   13KB | 8.3KB |   2  5.3
+total |     6  4.2KB    41B       0 |     - | 2.4KB |     3  2.1KB |     0     0B |    15   13KB | 8.3KB |   2  5.4
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (38B)  in: 250B  written: 321B (28% overhead)
+WAL: 1 files (0B)  in: 250B  written: 283B (13% overhead)
 Flushes: 10
 Compactions: 3  estimated debt: 4.2KB  in progress: 0 (0B)
              default: 3  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -703,9 +703,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     5  3.6KB    41B       0 |     - | 8.9KB |     0     0B |     0     0B |     6  4.2KB | 9.6KB |   1  0.5
-total |     5  3.6KB    41B       0 |     - | 2.4KB |     3  2.1KB |     0     0B |    16   14KB | 9.6KB |   1  5.6
+total |     5  3.6KB    41B       0 |     - | 2.4KB |     3  2.1KB |     0     0B |    16   13KB | 9.6KB |   1  5.7
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (38B)  in: 250B  written: 321B (28% overhead)
+WAL: 1 files (0B)  in: 250B  written: 283B (13% overhead)
 Flushes: 10
 Compactions: 4  estimated debt: 0B  in progress: 0 (0B)
              default: 4  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -754,7 +754,7 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     6 |     5  3.6KB    41B       0 |     - | 8.9KB |     0     0B |     0     0B |     6  4.2KB | 9.6KB |   1  0.5
 total |     6  4.3KB    41B       0 |     - | 3.1KB |     4  2.8KB |     0     0B |    16   14KB | 9.6KB |   2  4.6
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (38B)  in: 250B  written: 321B (28% overhead)
+WAL: 1 files (0B)  in: 250B  written: 283B (13% overhead)
 Flushes: 10
 Compactions: 4  estimated debt: 4.3KB  in progress: 0 (0B)
              default: 4  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -800,9 +800,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     5  3.6KB    41B       0 |     - | 8.9KB |     0     0B |     0     0B |     6  4.2KB | 9.6KB |   1  0.5
-total |     7  4.9KB    41B       0 |     - | 3.1KB |     4  2.8KB |     0     0B |    17   15KB | 9.6KB |   3  4.7
+total |     7  4.9KB    41B       0 |     - | 3.1KB |     4  2.8KB |     0     0B |    17   15KB | 9.6KB |   3  4.8
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (28B)  in: 267B  written: 339B (27% overhead)
+WAL: 1 files (0B)  in: 267B  written: 311B (16% overhead)
 Flushes: 11
 Compactions: 4  estimated debt: 4.9KB  in progress: 0 (0B)
              default: 4  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -836,9 +836,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     5  3.6KB    41B       0 |     - | 8.9KB |     0     0B |     0     0B |     6  4.2KB | 9.6KB |   1  0.5
-total |     7  4.9KB    41B       0 |     - | 3.1KB |     4  2.8KB |     0     0B |    17   15KB | 9.6KB |   3  4.7
+total |     7  4.9KB    41B       0 |     - | 3.1KB |     4  2.8KB |     0     0B |    17   15KB | 9.6KB |   3  4.8
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (28B)  in: 267B  written: 339B (27% overhead)
+WAL: 1 files (0B)  in: 267B  written: 311B (16% overhead)
 Flushes: 11
 Compactions: 4  estimated debt: 4.9KB  in progress: 0 (0B)
              default: 4  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -878,7 +878,7 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     6 |     5  3.6KB    41B       0 |     - |  10KB |     0     0B |     0     0B |     7  4.9KB |  12KB |   1  0.5
 total |     5  3.6KB    41B       0 |     - | 3.1KB |     4  2.8KB |     0     0B |    18   16KB |  12KB |   1  5.0
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (28B)  in: 267B  written: 339B (27% overhead)
+WAL: 1 files (0B)  in: 267B  written: 311B (16% overhead)
 Flushes: 11
 Compactions: 5  estimated debt: 0B  in progress: 0 (0B)
              default: 5  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
