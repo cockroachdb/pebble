@@ -2675,7 +2675,6 @@ func (d *DB) runCompaction(
 	// compaction loop to make a copy of each key ahead of time. Users
 	// must be careful, because the byte slice returned by UnsafeKey
 	// points directly into the Writer's block buffer.
-	var prevPointKey sstable.PreviousPointKeyOpt
 	var cpuWorkHandle CPUWorkHandle
 	defer func() {
 		if cpuWorkHandle != nil {
@@ -2760,7 +2759,7 @@ func (d *DB) runCompaction(
 			d.opts.Experimental.MaxWriterConcurrency > 0 &&
 				(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
 
-		tw = sstable.NewWriter(writable, writerOpts, cacheOpts, &prevPointKey)
+		tw = sstable.NewWriter(writable, writerOpts, cacheOpts)
 
 		fileMeta.CreationTime = time.Now().Unix()
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
@@ -2991,7 +2990,7 @@ func (d *DB) runCompaction(
 		// Return the largest point key written to tw or the start of
 		// the current range deletion in the fragmenter, whichever is
 		// greater.
-		prevPoint := prevPointKey.UnsafeKey()
+		prevPoint := tw.UnsafeLastPointKey()
 		if c.cmp(prevPoint.UserKey, iter.FirstTombstoneStart()) > 0 {
 			return prevPoint.UserKey
 		}
