@@ -154,8 +154,11 @@ type Iter struct {
 
 	cfg IterConfig
 
-	iter base.InternalIterator
-	err  error
+	iter           base.InternalIterator
+	delElider      pointTombstoneElider
+	rangeDelElider rangeTombstoneElider
+	rangeKeyElider rangeTombstoneElider
+	err            error
 	// `key.UserKey` is set to `keyBuf` caused by saving `i.iterKV.UserKey`
 	// and `key.Trailer` is set to `i.iterKV.Trailer`. This is the
 	// case on return from all public methods -- these methods return `key`.
@@ -246,24 +249,14 @@ type IterConfig struct {
 	// numbers define the snapshot stripes.
 	Snapshots Snapshots
 
+	TombstoneElision TombstoneElision
+	RangeKeyElision  TombstoneElision
+
 	// AllowZeroSeqNum allows the sequence number of KVs in the bottom snapshot
 	// stripe to be simplified to 0 (which improves compression and enables an
 	// optimization during forward iteration). This can be enabled if there are no
 	// tables overlapping the output at lower levels (than the output) in the LSM.
 	AllowZeroSeqNum bool
-
-	// ElideTombstone returns true if it is ok to elide a tombstone for the
-	// specified key. A return value of true guarantees that there are no
-	// key/value pairs at a lower level (than the output) that possibly contain
-	// the specified user key. The keys in multiple invocations to ElideTombstone
-	// must be supplied in order.
-	ElideTombstone func(key []byte) bool
-
-	// ElideRangeTombstone returns true if it is ok to elide the specified range
-	// tombstone. A return value of true guarantees that there are no key/value
-	// pairs at a lower level (than the output) that possibly overlap the
-	// specified tombstone.
-	ElideRangeTombstone func(start, end []byte) bool
 
 	// IneffectualPointDeleteCallback is called if a SINGLEDEL is being elided
 	// without deleting a point set/merge.
@@ -305,6 +298,9 @@ func NewIter(cfg IterConfig, iter base.InternalIterator) *Iter {
 		iter: iter,
 	}
 	i.frontiers.Init(cfg.Cmp)
+	i.delElider.Init(cfg.Cmp, cfg.TombstoneElision)
+	i.rangeDelElider.Init(cfg.Cmp, cfg.TombstoneElision)
+	i.rangeKeyElider.Init(cfg.Cmp, cfg.RangeKeyElision)
 	return i
 }
 
@@ -467,7 +463,7 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 
 		switch i.iterKV.Kind() {
 		case base.InternalKeyKindDelete, base.InternalKeyKindSingleDelete, base.InternalKeyKindDeleteSized:
-			if i.cfg.ElideTombstone(i.iterKV.K.UserKey) {
+			if i.delElider.ShouldElide(i.iterKV.K.UserKey) {
 				if i.curSnapshotIdx == 0 {
 					// If we're at the last snapshot stripe and the tombstone
 					// can be elided skip skippable keys in the same stripe.
@@ -1339,7 +1335,7 @@ func (i *Iter) TombstonesUpTo(key []byte) []keyspan.Span {
 			if currentIdx == idx {
 				continue
 			}
-			if idx == 0 && i.cfg.ElideRangeTombstone(span.Start, span.End) {
+			if idx == 0 && i.rangeDelElider.ShouldElide(span.Start, span.End) {
 				// This is the last snapshot stripe and the range tombstone
 				// can be elided.
 				break
@@ -1391,19 +1387,14 @@ func (i *Iter) RangeKeysUpTo(key []byte) []keyspan.Span {
 	var toReturn []keyspan.Span
 	toReturn, i.rangeKeys = i.splitSpans(i.rangeKeys, key)
 
-	// Elision of snapshot stripes happens in rangeKeyCompactionTransform, so no need to
-	// do that here.
 	result := toReturn[:0]
-
 	for _, s := range toReturn {
 		elideInLastStripe := func(keys []keyspan.Key) []keyspan.Key {
 			// Unsets and deletes in the last snapshot stripe can be elided.
 			k := 0
 			for j := range keys {
-				// TODO(radu): Elide range keys separately from point keys. This
-				// function can check for in-use ranges only in the range keyspace.
 				if (keys[j].Kind() == base.InternalKeyKindRangeKeyUnset || keys[j].Kind() == base.InternalKeyKindRangeKeyDelete) &&
-					i.cfg.ElideRangeTombstone(s.Start, s.End) {
+					i.rangeKeyElider.ShouldElide(s.Start, s.End) {
 					continue
 				}
 				keys[k] = keys[j]
