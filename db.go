@@ -373,7 +373,7 @@ type DB struct {
 			manager wal.Manager
 			// The number of input bytes to the log. This is the raw size of the
 			// batches written to the WAL, without the overhead of the record
-			// envelopes.
+			// envelopes. Requires DB.mu to be held when read or written.
 			bytesIn uint64
 			// The Writer is protected by commitPipeline.mu. This allows log writes
 			// to be performed without holding DB.mu, but requires both
@@ -2497,7 +2497,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		var prevLogSize uint64
 		if !d.opts.DisableWAL {
 			now := time.Now()
-			newLogNum, prevLogSize = d.recycleWAL()
+			newLogNum, prevLogSize = d.rotateWAL()
 			if b != nil {
 				b.commitStats.WALRotationDuration += time.Since(now)
 			}
@@ -2575,9 +2575,13 @@ func (d *DB) rotateMemtable(newLogNum base.DiskFileNum, logSeqNum uint64, prev *
 	}
 }
 
+// rotateWAL creates a new write-ahead log, possibly recycling a previous WAL's
+// files. It returns the file number assigned to the new WAL, and the size of
+// the previous WAL file.
+//
 // Both DB.mu and commitPipeline.mu must be held by the caller. Note that DB.mu
 // may be released and reacquired.
-func (d *DB) recycleWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
+func (d *DB) rotateWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	if d.opts.DisableWAL {
 		panic("pebble: invalid function call")
 	}
