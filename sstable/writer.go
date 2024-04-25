@@ -2151,32 +2151,19 @@ type WriterOption interface {
 	writerApply(*Writer)
 }
 
-// PreviousPointKeyOpt is a WriterOption that provides access to the last
-// point key written to the writer while building a sstable.
-type PreviousPointKeyOpt struct {
-	w *Writer
-}
-
-// UnsafeKey returns the last point key written to the writer to which this
-// option was passed during creation. The returned key points directly into
+// UnsafeLastPointKey returns the last point key written to the writer to which
+// this option was passed during creation. The returned key points directly into
 // a buffer belonging to the Writer. The value's lifetime ends the next time a
 // point key is added to the Writer.
-// Invariant: UnsafeKey isn't and shouldn't be called after the Writer is closed.
-func (o PreviousPointKeyOpt) UnsafeKey() base.InternalKey {
-	if o.w == nil {
-		return base.InvalidInternalKey
-	}
-
-	if o.w.dataBlockBuf.dataBlock.nEntries >= 1 {
-		// o.w.dataBlockBuf.dataBlock.curKey is guaranteed to point to the last point key
+//
+// Must not be called after Writer is closed.
+func (w *Writer) UnsafeLastPointKey() base.InternalKey {
+	if w.dataBlockBuf.dataBlock.nEntries >= 1 {
+		// w.dataBlockBuf.dataBlock.curKey is guaranteed to point to the last point key
 		// which was added to the Writer.
-		return o.w.dataBlockBuf.dataBlock.getCurKey()
+		return w.dataBlockBuf.dataBlock.getCurKey()
 	}
 	return base.InternalKey{}
-}
-
-func (o *PreviousPointKeyOpt) writerApply(w *Writer) {
-	o.w = w
 }
 
 // NewWriter returns a new table writer for the file. Closing the writer will
