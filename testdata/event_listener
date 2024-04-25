@@ -217,9 +217,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     1   590B     0B       0 |     - | 1.2KB |     0     0B |     0     0B |     1   590B | 1.2KB |   1  0.5
-total |     3  1.7KB     0B       0 |     - |  698B |     1   590B |     0     0B |     4  3.0KB | 1.2KB |   3  4.4
+total |     3  1.7KB     0B       0 |     - |  671B |     1   590B |     0     0B |     4  3.0KB | 1.2KB |   3  4.5
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (27B)  in: 48B  written: 108B (125% overhead)
+WAL: 1 files (0B)  in: 48B  written: 81B (69% overhead)
 Flushes: 3
 Compactions: 1  estimated debt: 1.7KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
@@ -317,9 +317,9 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     2  1.2KB     0B       0 |     - | 1.2KB |     1   590B |     0     0B |     1   590B | 1.2KB |   1  0.5
-total |     6  3.5KB     0B       0 |     - | 1.9KB |     3  1.7KB |     0     0B |     5  4.7KB | 1.2KB |   5  2.5
+total |     6  3.5KB     0B       0 |     - | 1.8KB |     3  1.7KB |     0     0B |     5  4.7KB | 1.2KB |   5  2.6
 -------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (29B)  in: 82B  written: 137B (67% overhead)
+WAL: 1 files (0B)  in: 82B  written: 108B (32% overhead)
 Flushes: 6
 Compactions: 1  estimated debt: 3.5KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
