@@ -7,9 +7,12 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -333,4 +336,66 @@ func TestMetricsWAmpDisableWAL(t *testing.T) {
 	tot := m.Total()
 	require.Greater(t, tot.WriteAmp(), 1.0)
 	require.NoError(t, d.Close())
+}
+
+// TestMetricsWALBytesWrittenMonotonicity tests that the
+// Metrics.WAL.BytesWritten metric is always nondecreasing.
+// It's a regression test for issue #3505.
+func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
+	fs := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS: fs,
+		// Use a tiny memtable size so that we get frequent flushes. While a
+		// flush is in-progress or completing, the WAL bytes written should
+		// remain nondecreasing.
+		MemTableSize: 1 << 20, /* 20 KiB */
+	})
+	require.NoError(t, err)
+
+	stopCh := make(chan struct{})
+
+	ks := testkeys.Alpha(3)
+	var wg sync.WaitGroup
+	const concurrentWriters = 5
+	wg.Add(concurrentWriters)
+	for w := 0; w < concurrentWriters; w++ {
+		go func() {
+			defer wg.Done()
+			data := make([]byte, 1<<10) // 1 KiB
+			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+			_, err := rng.Read(data)
+			require.NoError(t, err)
+
+			buf := make([]byte, ks.MaxLen())
+			for i := 0; ; i++ {
+				select {
+				case <-stopCh:
+					return
+				default:
+				}
+				n := testkeys.WriteKey(buf, ks, int64(i)%ks.Count())
+				require.NoError(t, d.Set(buf[:n], data, NoSync))
+			}
+		}()
+	}
+
+	func() {
+		defer func() { close(stopCh) }()
+		abort := time.After(time.Second)
+		var prevWALBytesWritten uint64
+		for {
+			select {
+			case <-abort:
+				return
+			default:
+			}
+
+			m := d.Metrics()
+			if m.WAL.BytesWritten < prevWALBytesWritten {
+				t.Fatalf("WAL bytes written decreased: %d -> %d", prevWALBytesWritten, m.WAL.BytesWritten)
+			}
+			prevWALBytesWritten = m.WAL.BytesWritten
+		}
+	}()
+	wg.Wait()
 }
