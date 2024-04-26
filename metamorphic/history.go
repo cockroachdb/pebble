@@ -125,7 +125,8 @@ func (h *history) Fatalf(format string, args ...interface{}) {
 		panic(fmt.Sprintf(format, args...))
 	}
 	_ = h.log.Output(2, h.format("FATAL", format, args...))
-	h.err.Store(errors.Errorf(format, args...))
+	// Store the first fatal error message.
+	h.err.CompareAndSwap(nil, errors.Errorf(format, args...))
 }
 
 func (h *history) recorder(
@@ -206,7 +207,11 @@ func reorderHistory(lines []string) []string {
 		if cleaned := strings.TrimSpace(l); cleaned == "" {
 			continue
 		}
-		reordered[extractOp(l)] = l
+		idx := extractOp(l)
+		if idx >= len(reordered) {
+			panic("incomplete test history; this shouldn't happen given that execution completed successfully")
+		}
+		reordered[idx] = l
 	}
 	return reordered
 }
