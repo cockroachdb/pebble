@@ -699,7 +699,6 @@ func (c *compaction) allowZeroSeqNum() bool {
 	return len(c.flushing) == 0 && c.delElision.ElidesEverything() && c.rangeKeyElision.ElidesEverything()
 }
 
-// newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
 	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter,
 ) (_ internalIterator, retErr error) {
@@ -2769,10 +2768,6 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
-	// splitL0Outputs is true during flushes and intra-L0 compactions with flush
-	// splits enabled.
-	splitL0Outputs := c.outputLevel.level == 0 && d.opts.FlushSplitBytes > 0
-
 	// finishOutput is called with the a user key up to which all tombstones
 	// should be flushed. Typically, this is the first key of the next
 	// sstable or an empty key if this output is the final sstable.
@@ -2980,13 +2975,29 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
+	splitLimitFunc := c.findGrandparentLimit
+	// splitL0Outputs is true during flushes and intra-L0 compactions with flush
+	// splits enabled.
+	if splitL0Outputs := c.outputLevel.level == 0 && d.opts.FlushSplitBytes > 0; splitL0Outputs {
+		splitLimitFunc = func(start []byte) []byte {
+			// We limit the file at the smaller between the two limits.
+			grandParentLimit := c.findGrandparentLimit(start)
+			l0Limit := c.findL0Limit(start)
+			if grandParentLimit == nil || (l0Limit != nil && c.cmp(l0Limit, grandParentLimit) < 0) {
+				return l0Limit
+			}
+			return grandParentLimit
+		}
+	}
+
 	// Build a compactionOutputSplitter that contains all logic to determine
 	// whether the compaction loop should stop writing to one output sstable and
 	// switch to a new one. Some splitters can wrap other splitters, and the
 	// splitterGroup can be composed of multiple splitters. In this case, we
 	// start off with splitters for file sizes, grandparent limits, and (for L0
 	// splits) L0 limits, before wrapping them in an splitterGroup.
-	outputSplitters := []compact.OutputSplitter{
+	splitter := compact.CombineSplitters(
+		c.cmp,
 		// We do not split the same user key across different sstables within
 		// one flush or compaction. The FileSizeSplitter may request a split in
 		// the middle of a user key, so PreventSplitUserKeys ensures we are at a
@@ -2995,12 +3006,8 @@ func (d *DB) runCompaction(
 			c.cmp,
 			compact.FileSizeSplitter(iter.Frontiers(), c.maxOutputFileSize, c.grandparents.Iter()),
 		),
-		compact.LimitFuncSplitter(iter.Frontiers(), c.findGrandparentLimit),
-	}
-	if splitL0Outputs {
-		outputSplitters = append(outputSplitters, compact.LimitFuncSplitter(iter.Frontiers(), c.findL0Limit))
-	}
-	splitter := compact.CombineSplitters(c.cmp, outputSplitters...)
+		compact.LimitFuncSplitter(iter.Frontiers(), splitLimitFunc),
+	)
 
 	// Each outer loop iteration produces one output file. An iteration that
 	// produces a file containing point keys (and optionally range tombstones)
