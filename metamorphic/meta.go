@@ -22,12 +22,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/dsl"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
-	"github.com/pkg/errors"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -572,6 +572,8 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 			fmt.Fprintf(os.Stderr, "\n%s\n", db.LSMViewURL())
 		}
 	}
+	// Don't let the test pass if it issued a Fatalf.
+	err = errors.CombineErrors(err, h.Error())
 
 	if err != nil {
 		m.saveInMemoryData()
