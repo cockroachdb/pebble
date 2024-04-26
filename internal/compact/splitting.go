@@ -151,20 +151,16 @@ func (lf *limitFuncSplitter) OnNewOutput(key []byte) []byte {
 // splitter may be used to wrap any splitters that don't guarantee user key
 // splits. If a wrapped splitter advises a split, it must continue to advise a
 // split until a new output.
-func PreventSplitUserKeys(
-	cmp base.Compare, inner OutputSplitter, unsafePrevUserKey func() []byte,
-) OutputSplitter {
+func PreventSplitUserKeys(cmp base.Compare, inner OutputSplitter) OutputSplitter {
 	return &preventSplitUserKeysSplitter{
-		cmp:               cmp,
-		splitter:          inner,
-		unsafePrevUserKey: unsafePrevUserKey,
+		cmp:      cmp,
+		splitter: inner,
 	}
 }
 
 type preventSplitUserKeysSplitter struct {
-	cmp               base.Compare
-	splitter          OutputSplitter
-	unsafePrevUserKey func() []byte
+	cmp      base.Compare
+	splitter OutputSplitter
 }
 
 func (u *preventSplitUserKeysSplitter) ShouldSplitBefore(
@@ -184,10 +180,11 @@ func (u *preventSplitUserKeysSplitter) ShouldSplitBefore(
 	// implementation uses `unsafePrevUserKey` to gain access to the previous
 	// key which allows it to immediately respect the inner splitter if
 	// possible.
-	if split := u.splitter.ShouldSplitBefore(key, tw); split != SplitNow {
-		return split
+	if split := u.splitter.ShouldSplitBefore(key, tw); split == NoSplit {
+		return NoSplit
 	}
-	if u.cmp(key.UserKey, u.unsafePrevUserKey()) > 0 {
+	lastKey := tw.UnsafeLastPointKey()
+	if lastKey.UserKey != nil && u.cmp(lastKey.UserKey, key.UserKey) < 0 {
 		return SplitNow
 	}
 	return NoSplit

@@ -2986,16 +2986,6 @@ func (d *DB) runCompaction(
 	// splitterGroup can be composed of multiple splitters. In this case, we
 	// start off with splitters for file sizes, grandparent limits, and (for L0
 	// splits) L0 limits, before wrapping them in an splitterGroup.
-	unsafePrevUserKey := func() []byte {
-		// Return the largest point key written to tw or the start of
-		// the current range deletion in the fragmenter, whichever is
-		// greater.
-		prevPoint := tw.UnsafeLastPointKey()
-		if c.cmp(prevPoint.UserKey, iter.FirstTombstoneStart()) > 0 {
-			return prevPoint.UserKey
-		}
-		return iter.FirstTombstoneStart()
-	}
 	outputSplitters := []compact.OutputSplitter{
 		// We do not split the same user key across different sstables within
 		// one flush or compaction. The FileSizeSplitter may request a split in
@@ -3004,7 +2994,6 @@ func (d *DB) runCompaction(
 		compact.PreventSplitUserKeys(
 			c.cmp,
 			compact.FileSizeSplitter(iter.Frontiers(), c.maxOutputFileSize, c.grandparents.Iter()),
-			unsafePrevUserKey,
 		),
 		compact.LimitFuncSplitter(iter.Frontiers(), c.findGrandparentLimit),
 	}

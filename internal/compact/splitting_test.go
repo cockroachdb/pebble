@@ -13,7 +13,10 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 type mockSplitter struct {
@@ -30,7 +33,6 @@ func (m *mockSplitter) OnNewOutput(key []byte) []byte {
 
 func TestOutputSplitters(t *testing.T) {
 	var main, child0, child1 OutputSplitter
-	var prevUserKey []byte
 	cmp := base.DefaultComparer.Compare
 	pickSplitter := func(input string) *OutputSplitter {
 		switch input {
@@ -46,6 +48,17 @@ func TestOutputSplitters(t *testing.T) {
 		}
 	}
 
+	var tw *sstable.Writer
+	newWriter := func() {
+		if tw != nil {
+			_ = tw.Close()
+		}
+		fs := vfs.NewMem()
+		f, err := fs.Create("sst", vfs.WriteCategoryUnspecified)
+		require.NoError(t, err)
+		tw = sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
+	}
+	newWriter()
 	datadriven.RunTest(t, "testdata/output_splitters",
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
@@ -64,9 +77,8 @@ func TestOutputSplitters(t *testing.T) {
 				case "mock":
 					*splitterToInit = &mockSplitter{}
 				case "userkey":
-					*splitterToInit = PreventSplitUserKeys(cmp, child0, func() []byte { return prevUserKey })
+					*splitterToInit = PreventSplitUserKeys(cmp, child0)
 				}
-				(*splitterToInit).OnNewOutput(nil)
 			case "set-should-split":
 				if len(d.CmdArgs) < 2 {
 					return "expected at least 2 args"
@@ -87,12 +99,12 @@ func TestOutputSplitters(t *testing.T) {
 					return "expected at least 1 arg"
 				}
 				key := base.ParseInternalKey(d.CmdArgs[0].Key)
-				shouldSplit := main.ShouldSplitBefore(&key, nil)
+				shouldSplit := main.ShouldSplitBefore(&key, tw)
 				if shouldSplit == SplitNow {
+					newWriter()
 					main.OnNewOutput(key.UserKey)
-					prevUserKey = nil
 				} else {
-					prevUserKey = key.UserKey
+					require.NoError(t, tw.Add(key, nil))
 				}
 				return shouldSplit.String()
 			default:
