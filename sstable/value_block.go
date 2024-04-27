@@ -934,8 +934,8 @@ func (r *valueBlockReader) getBlockHandle(blockNum uint32) (BlockHandle, error) 
 		int(r.vbih.blockNumByteLength + r.vbih.blockOffsetByteLength + r.vbih.blockLengthByteLength)
 	offsetInIndex := indexEntryLen * int(blockNum)
 	if len(r.vbiBlock) < offsetInIndex+indexEntryLen {
-		return BlockHandle{}, errors.Errorf(
-			"cannot read at offset %d and length %d from block of length %d",
+		return BlockHandle{}, base.AssertionFailedf(
+			"index entry out of bounds: offset %d length %d block length %d",
 			offsetInIndex, indexEntryLen, len(r.vbiBlock))
 	}
 	b := r.vbiBlock[offsetInIndex : offsetInIndex+indexEntryLen]
