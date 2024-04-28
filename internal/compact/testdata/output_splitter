@@ -1,0 +1,148 @@
+# Test limit when a key equals limit.
+run start-key=a limit-key=f target-size=100
+a 1
+b 2
+c 3
+d 4
+e 5
+ez 6
+f 7
+----
+f 7: split at "f"
+
+# Test limit when a key goes beyond the limit.
+run start-key=a limit-key=f target-size=100
+a 1
+b 2
+d 3
+u 5
+----
+u 5: split at "f"
+
+# Test split key when there is a limit but points don't reach the limit.
+run start-key=a limit-key=f target-size=100
+a 1
+b 2
+c 3
+----
+split at "f"
+
+# Test split key with no limit and target file size not reached.
+run start-key=a target-size=100
+a 1
+b 2
+c 3
+----
+split at ""
+
+# Test target file size reached (with no grandparents).
+run start-key=a target-size=100
+a 10
+b 20
+c 90
+d 110
+e 120
+f 130
+----
+d 110: split at "d"
+
+# Don't split in-between the c keys.
+run start-key=a target-size=100
+a 10
+b 20
+c 90
+c 110
+c 130
+d 140
+----
+d 140: split at "d"
+
+# Test with grandparents.
+init-grandparents
+1:[d#1,SET-da#1,SET]
+2:[e#1,SET-ea#1,SET]
+3:[f#1,SET-fa#1,SET]
+4:[g#1,SET-ga#1,SET]
+5:[h#1,SET-ha#1,SET]
+----
+
+# Split at grandparent when getting close to the size.
+run start-key=a target-size=100
+a 10
+d 20
+da 30
+db 50
+dc 60
+de 70
+df 80
+e 90
+----
+e 90: split at "e"
+
+# Split at grandparent boundary when we pass it.
+run start-key=a target-size=100
+a 10
+d 20
+da 30
+db 50
+dc 60
+de 70
+df 80
+ea 90
+----
+ea 90: split at "e"
+
+# Split at 2x target file size.
+run start-key=a target-size=100
+a 10
+d 20
+da 30
+db 80
+dc 120
+de 180
+df 200
+df 210
+dg 220
+----
+df 200: split at "df"
+
+# Don't split at a grandparent too soon if we pass by a lot of grandparent
+# boundaries.
+run start-key=a target-size=100
+a 10
+h 60
+----
+split at ""
+
+# Split at first grandparent if we're above 50% of the target file size.
+run start-key=a target-size=100
+a 10
+b 40
+d 50
+----
+d 50: split at "d"
+
+# Use limit matching a grandparent.
+run start-key=a limit-key=h target-size=100
+a 10
+b 20
+i 30
+----
+i 30: split at "h"
+
+run start-key=a limit-key=h target-size=100
+a 10
+b 20
+h 30
+----
+h 30: split at "h"
+
+# Use limit in-between grandparents.
+run start-key=a limit-key=fx target-size=100
+a 10
+b 20
+c 40
+f 50
+h 80
+----
+h 80: split at "fx"

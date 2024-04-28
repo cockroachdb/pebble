@@ -12,94 +12,62 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/sstable"
 )
 
-type mockSplitter struct {
-	shouldSplitVal ShouldSplit
-}
-
-func (m *mockSplitter) ShouldSplitBefore(key *base.InternalKey, tw *sstable.Writer) ShouldSplit {
-	return m.shouldSplitVal
-}
-
-func (m *mockSplitter) OnNewOutput(key []byte) []byte {
-	return nil
-}
-
-func TestOutputSplitters(t *testing.T) {
-	var main, child0, child1 OutputSplitter
-	var prevUserKey []byte
-	cmp := base.DefaultComparer.Compare
-	pickSplitter := func(input string) *OutputSplitter {
-		switch input {
-		case "main":
-			return &main
-		case "child0":
-			return &child0
-		case "child1":
-			return &child1
-		default:
-			t.Fatalf("invalid splitter slot: %s", input)
-			return nil
-		}
-	}
-
-	datadriven.RunTest(t, "testdata/output_splitters",
-		func(t *testing.T, d *datadriven.TestData) string {
-			switch d.Cmd {
-			case "reset":
-				main = nil
-				child0 = nil
-				child1 = nil
-			case "init":
-				if len(d.CmdArgs) < 2 {
-					return "expected at least 2 args"
+func TestOutputSplitter(t *testing.T) {
+	var s *OutputSplitter
+	var grandparents manifest.LevelMetadata
+	datadriven.RunTest(t, "testdata/output_splitter", func(t *testing.T, d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "init-grandparents":
+			// We create a version with all tables in L1.
+			var files [manifest.NumLevels][]*manifest.FileMetadata
+			if d.Input != "" {
+				for _, l := range strings.Split(d.Input, "\n") {
+					f, err := manifest.ParseFileMetadataDebug(l)
+					if err != nil {
+						d.Fatalf(t, "error parsing %q: %v", l, err)
+					}
+					files[1] = append(files[1], f)
 				}
-				splitterToInit := pickSplitter(d.CmdArgs[0].Key)
-				switch d.CmdArgs[1].Key {
-				case "array":
-					*splitterToInit = CombineSplitters(cmp, child0, child1)
-				case "mock":
-					*splitterToInit = &mockSplitter{}
-				case "userkey":
-					*splitterToInit = PreventSplitUserKeys(cmp, child0, func() []byte { return prevUserKey })
-				}
-				(*splitterToInit).OnNewOutput(nil)
-			case "set-should-split":
-				if len(d.CmdArgs) < 2 {
-					return "expected at least 2 args"
-				}
-				splitterToSet := (*pickSplitter(d.CmdArgs[0].Key)).(*mockSplitter)
-				var val ShouldSplit
-				switch d.CmdArgs[1].Key {
-				case "split-now":
-					val = SplitNow
-				case "no-split":
-					val = NoSplit
-				default:
-					t.Fatalf("unexpected value for should-split: %s", d.CmdArgs[1].Key)
-				}
-				splitterToSet.shouldSplitVal = val
-			case "should-split-before":
-				if len(d.CmdArgs) < 1 {
-					return "expected at least 1 arg"
-				}
-				key := base.ParseInternalKey(d.CmdArgs[0].Key)
-				shouldSplit := main.ShouldSplitBefore(&key, nil)
-				if shouldSplit == SplitNow {
-					main.OnNewOutput(key.UserKey)
-					prevUserKey = nil
-				} else {
-					prevUserKey = key.UserKey
-				}
-				return shouldSplit.String()
-			default:
-				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
-			return "ok"
-		})
+			v := manifest.NewVersion(base.DefaultComparer, 64*1024, files)
+			if err := v.CheckOrdering(); err != nil {
+				d.Fatalf(t, "%v", err)
+			}
+			grandparents = v.Levels[1]
+
+		case "run":
+			var startKey, limitKey string
+			var targetFileSize uint64
+			f := &Frontiers{cmp: base.DefaultComparer.Compare}
+			d.ScanArgs(t, "start-key", &startKey)
+			d.MaybeScanArgs(t, "limit-key", &limitKey)
+			d.ScanArgs(t, "target-size", &targetFileSize)
+			s = NewOutputSplitter(
+				base.DefaultComparer.Compare, []byte(startKey), []byte(limitKey),
+				targetFileSize, grandparents.Iter(), f,
+			)
+			var last string
+			for _, l := range strings.Split(d.Input, "\n") {
+				var key string
+				var estimatedSize uint64
+				fmt.Sscanf(l, "%s %d", &key, &estimatedSize)
+				f.Advance([]byte(key))
+				if s.ShouldSplitBefore([]byte(key), estimatedSize, func() []byte { return []byte(last) }) {
+					return fmt.Sprintf("%s %d: split at %q", key, estimatedSize, s.SplitKey())
+				}
+				last = key
+			}
+			return fmt.Sprintf("split at %q", s.SplitKey())
+
+		default:
+			d.Fatalf(t, "unknown command: %s", d.Cmd)
+		}
+		return ""
+	})
 }
 
 func TestFrontiers(t *testing.T) {
