@@ -21,13 +21,13 @@ import (
 type recordQueueEntry struct {
 	p                   []byte
 	opts                SyncOptions
-	unref               func()
+	refCount            RefCount
 	writeStartUnixNanos int64
 }
 
 type poppedEntry struct {
 	opts                SyncOptions
-	unref               func()
+	refCount            RefCount
 	writeStartUnixNanos int64
 }
 
@@ -151,7 +151,7 @@ func (q *recordQueue) init(failoverWriteAndSyncLatency prometheus.Histogram) {
 func (q *recordQueue) push(
 	p []byte,
 	opts SyncOptions,
-	unref func(),
+	refCount RefCount,
 	writeStartUnixNanos int64,
 	latestLogSizeInWriteRecord int64,
 	latestWriterInWriteRecord *record.LogWriter,
@@ -175,7 +175,7 @@ func (q *recordQueue) push(
 	q.buffer[int(h)%m] = recordQueueEntry{
 		p:                   p,
 		opts:                opts,
-		unref:               unref,
+		refCount:            refCount,
 		writeStartUnixNanos: writeStartUnixNanos,
 	}
 	// Reclaim memory for consumed entries. We couldn't do that in pop since
@@ -255,7 +255,7 @@ func (q *recordQueue) pop(index uint32, err error) (numSyncsPopped int) {
 		idx := (i + int(tail)) % n
 		b[i] = poppedEntry{
 			opts:                q.buffer[idx].opts,
-			unref:               q.buffer[idx].unref,
+			refCount:            q.buffer[idx].refCount,
 			writeStartUnixNanos: q.buffer[idx].writeStartUnixNanos,
 		}
 	}
@@ -268,8 +268,8 @@ func (q *recordQueue) pop(index uint32, err error) (numSyncsPopped int) {
 	for i := 0; i < numEntriesToPop; i++ {
 		// Now that we've synced the entry, we can unref it to signal that we
 		// will not read the written byte slice again.
-		if b[i].unref != nil {
-			b[i].unref()
+		if b[i].refCount != nil {
+			b[i].refCount.Unref()
 		}
 		if b[i].opts.Done != nil {
 			numSyncsPopped++
@@ -499,11 +499,10 @@ func newFailoverWriter(
 
 // WriteRecord implements Writer.
 func (ww *failoverWriter) WriteRecord(
-	p []byte, opts SyncOptions, ref RefFunc,
+	p []byte, opts SyncOptions, ref RefCount,
 ) (logicalOffset int64, err error) {
-	var unref func()
 	if ref != nil {
-		unref = ref()
+		ref.Ref()
 	}
 	var writeStartUnixNanos int64
 	if opts.Done != nil {
@@ -512,7 +511,7 @@ func (ww *failoverWriter) WriteRecord(
 	recordIndex, writer, lastLogSize := ww.q.push(
 		p,
 		opts,
-		unref,
+		ref,
 		writeStartUnixNanos,
 		ww.logicalOffset.latestLogSizeInWriteRecord,
 		ww.logicalOffset.latestWriterInWriteRecord,
