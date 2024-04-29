@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invalidating"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -85,6 +86,10 @@ func (f *failMerger) Close() error {
 }
 
 func TestCheckLevelsCornerCases(t *testing.T) {
+	if invariants.Enabled {
+		t.Skip("disabled under invariants; relies on violating invariants to detect them")
+	}
+
 	memFS := vfs.NewMem()
 	var levels [][]*fileMetadata
 	formatKey := testkeys.Comparer.FormatKey
