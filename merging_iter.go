@@ -1199,36 +1199,55 @@ func (m *mergingIter) NextPrefix(succKey []byte) *base.InternalKV {
 
 	// The heap root necessarily must be positioned at a key < succKey, because
 	// NextPrefix was invoked.
-	root := &m.heap.items[0]
-	m.levelsPositioned[(*root).index] = true
+	root := m.heap.items[0]
 	if invariants.Enabled && m.heap.cmp((*root).iterKV.K.UserKey, succKey) >= 0 {
 		m.logger.Fatalf("pebble: invariant violation: NextPrefix(%q) called on merging iterator already positioned at %q",
 			succKey, (*root).iterKV)
 	}
-	if m.err = m.nextEntry(*root, succKey); m.err != nil {
+	// NB: root is the heap root before we call nextEntry; nextEntry may change
+	// the heap root, so we must not `root` to still be the root of the heap, or
+	// even to be in the heap if the level's iterator becomes exhausted.
+	if m.err = m.nextEntry(root, succKey); m.err != nil {
 		return nil
 	}
-	// NB: root is a pointer to the heap root. nextEntry may have changed
-	// the heap root, so we must not expect root to still point to the same
-	// level (or to even be valid, if the heap is now exhaused).
+	// We only consider the level to be conclusively positioned at the next
+	// prefix if our call to nextEntry did not advance the level onto a range
+	// deletion's boundary. Range deletions may have bounds within the prefix
+	// that are still surfaced by NextPrefix.
+	m.levelsPositioned[root.index] = root.iterKV == nil || !root.iterKV.K.IsExclusiveSentinel()
 
 	for m.heap.len() > 0 {
-		if m.levelsPositioned[(*root).index] {
+		root := m.heap.items[0]
+		if m.levelsPositioned[root.index] {
 			// A level we've previously positioned is at the top of the heap, so
 			// there are no other levels positioned at keys < succKey. We've
 			// advanced as far as we need to.
 			break
 		}
+		// If the current heap root is a sentinel key, we need to skip it.
+		// Calling NextPrefix while positioned at a sentinel key is not
+		// supported.
+		if root.iterKV.K.IsExclusiveSentinel() {
+			if m.err = m.nextEntry(root, nil); m.err != nil {
+				return nil
+			}
+			continue
+		}
+
 		// Since this level was not the original heap root when NextPrefix was
 		// called, we don't know whether this level's current key has the
 		// previous prefix or a new one.
-		if m.heap.cmp((*root).iterKV.K.UserKey, succKey) >= 0 {
+		if m.heap.cmp(root.iterKV.K.UserKey, succKey) >= 0 {
 			break
 		}
-		m.levelsPositioned[(*root).index] = true
-		if m.err = m.nextEntry(*root, succKey); m.err != nil {
+		if m.err = m.nextEntry(root, succKey); m.err != nil {
 			return nil
 		}
+		// We only consider the level to be conclusively positioned at the next
+		// prefix if our call to nextEntry did not land onto a range deletion's
+		// boundary. Range deletions may have bounds within the prefix that are
+		// still surfaced by NextPrefix.
+		m.levelsPositioned[root.index] = root.iterKV == nil || !root.iterKV.K.IsExclusiveSentinel()
 	}
 	return m.findNextEntry()
 }
