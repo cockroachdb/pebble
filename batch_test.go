@@ -464,11 +464,11 @@ func TestBatchReuse(t *testing.T) {
 					fmt.Fprintf(&buf, "%s = %b\n", l, v)
 				case fields.Index(1) == "refData":
 					// Command of the form: b1.refData()
-					batches[fields.Index(0).Str()].refData()
+					batches[fields.Index(0).Str()].Ref()
 					fmt.Fprintf(&buf, "%s\n", l)
 				case fields.Index(1) == "unrefData":
 					// Command of the form: b1.unrefData()
-					batches[fields.Index(0).Str()].unrefData()
+					batches[fields.Index(0).Str()].Unref()
 					fmt.Fprintf(&buf, "%s\n", l)
 				case fields.Index(1) == "Close":
 					// Command of the form: b1.Close()
