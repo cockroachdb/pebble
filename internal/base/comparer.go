@@ -286,6 +286,15 @@ func SharedPrefixLen(a, b []byte) int {
 	return i
 }
 
+// MinUserKey returns the smaller of two user keys. If one of the keys is empty,
+// the other one is returned.
+func MinUserKey(cmp Compare, a, b []byte) []byte {
+	if len(a) > 0 && (len(b) == 0 || cmp(a, b) < 0) {
+		return a
+	}
+	return b
+}
+
 // FormatBytes formats a byte slice using hexadecimal escapes for non-ASCII
 // data.
 type FormatBytes []byte

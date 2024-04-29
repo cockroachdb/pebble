@@ -699,7 +699,6 @@ func (c *compaction) allowZeroSeqNum() bool {
 	return len(c.flushing) == 0 && c.delElision.ElidesEverything() && c.rangeKeyElision.ElidesEverything()
 }
 
-// newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
 	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter,
 ) (_ internalIterator, retErr error) {
@@ -2769,36 +2768,10 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
-	// splitL0Outputs is true during flushes and intra-L0 compactions with flush
-	// splits enabled.
-	splitL0Outputs := c.outputLevel.level == 0 && d.opts.FlushSplitBytes > 0
-
 	// finishOutput is called with the a user key up to which all tombstones
 	// should be flushed. Typically, this is the first key of the next
 	// sstable or an empty key if this output is the final sstable.
 	finishOutput := func(splitKey []byte) error {
-		// If we haven't output any point records to the sstable (tw == nil) then the
-		// sstable will only contain range tombstones and/or range keys. The smallest
-		// key in the sstable will be the start key of the first range tombstone or
-		// range key added. We need to ensure that this start key is distinct from
-		// the splitKey passed to finishOutput (if set), otherwise we would generate
-		// an sstable where the largest key is smaller than the smallest key due to
-		// how the largest key boundary is set below. NB: It is permissible for the
-		// range tombstone / range key start key to be nil.
-		//
-		// TODO: It is unfortunate that we have to do this check here rather than
-		// when we decide to finish the sstable in the runCompaction loop. A better
-		// structure currently eludes us.
-		if tw == nil {
-			startKey := iter.FirstTombstoneStart()
-			if startKey == nil {
-				startKey = iter.FirstRangeKeyStart()
-			}
-			if splitKey != nil && d.cmp(startKey, splitKey) == 0 {
-				return nil
-			}
-		}
-
 		for _, v := range iter.TombstonesUpTo(splitKey) {
 			if tw == nil {
 				if err := newOutput(); err != nil {
@@ -2904,7 +2877,7 @@ func (d *DB) runCompaction(
 			if writerMeta.SmallestRangeDel.UserKey != nil {
 				c := d.cmp(writerMeta.SmallestRangeDel.UserKey, prevMeta.Largest.UserKey)
 				if c < 0 {
-					return errors.Errorf(
+					return base.AssertionFailedf(
 						"pebble: smallest range tombstone start key is less than previous sstable largest key: %s < %s",
 						writerMeta.SmallestRangeDel.Pretty(d.opts.Comparer.FormatKey),
 						prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey))
@@ -2914,7 +2887,7 @@ func (d *DB) runCompaction(
 					// the previous table's largest key is not exclusive. This
 					// violates the invariant that tables are key-space
 					// partitioned.
-					return errors.Errorf(
+					return base.AssertionFailedf(
 						"pebble: invariant violation: previous sstable largest key %s, current sstable smallest rangedel: %s",
 						prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey),
 						writerMeta.SmallestRangeDel.Pretty(d.opts.Comparer.FormatKey),
@@ -2980,38 +2953,20 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
-	// Build a compactionOutputSplitter that contains all logic to determine
-	// whether the compaction loop should stop writing to one output sstable and
-	// switch to a new one. Some splitters can wrap other splitters, and the
-	// splitterGroup can be composed of multiple splitters. In this case, we
-	// start off with splitters for file sizes, grandparent limits, and (for L0
-	// splits) L0 limits, before wrapping them in an splitterGroup.
-	unsafePrevUserKey := func() []byte {
-		// Return the largest point key written to tw or the start of
-		// the current range deletion in the fragmenter, whichever is
-		// greater.
-		prevPoint := tw.UnsafeLastPointKey()
-		if c.cmp(prevPoint.UserKey, iter.FirstTombstoneStart()) > 0 {
-			return prevPoint.UserKey
+	splitLimitFunc := func(start []byte) []byte {
+		limit := c.findGrandparentLimit(start)
+		// splitL0Outputs is true during flushes and intra-L0 compactions with flush
+		// splits enabled.
+		if splitL0Outputs := c.outputLevel.level == 0 && d.opts.FlushSplitBytes > 0; splitL0Outputs {
+			// We limit the file at the smaller between the two limits.
+			l0Limit := c.findL0Limit(start)
+			limit = base.MinUserKey(c.cmp, limit, l0Limit)
 		}
-		return iter.FirstTombstoneStart()
+		return limit
 	}
-	outputSplitters := []compact.OutputSplitter{
-		// We do not split the same user key across different sstables within
-		// one flush or compaction. The FileSizeSplitter may request a split in
-		// the middle of a user key, so PreventSplitUserKeys ensures we are at a
-		// user key change boundary when doing a split.
-		compact.PreventSplitUserKeys(
-			c.cmp,
-			compact.FileSizeSplitter(iter.Frontiers(), c.maxOutputFileSize, c.grandparents.Iter()),
-			unsafePrevUserKey,
-		),
-		compact.LimitFuncSplitter(iter.Frontiers(), c.findGrandparentLimit),
+	lastUserKeyFn := func() []byte {
+		return tw.UnsafeLastPointUserKey()
 	}
-	if splitL0Outputs {
-		outputSplitters = append(outputSplitters, compact.LimitFuncSplitter(iter.Frontiers(), c.findL0Limit))
-	}
-	splitter := compact.CombineSplitters(c.cmp, outputSplitters...)
 
 	// Each outer loop iteration produces one output file. An iteration that
 	// produces a file containing point keys (and optionally range tombstones)
@@ -3024,30 +2979,18 @@ func (d *DB) runCompaction(
 	for key, val := iter.First(); key != nil || iter.FirstTombstoneStart() != nil || iter.FirstRangeKeyStart() != nil; {
 		var firstKey []byte
 		if key != nil {
+			// firstKey must be at or above the current frontier; we can't use the
+			// start key from the tombstones/range keys, as the last file could have
+			// been split before the frontier.
 			firstKey = key.UserKey
-		} else if startKey := iter.FirstTombstoneStart(); startKey != nil {
-			// Pass the start key of the first pending tombstone to find the
-			// next limit. All pending tombstones have the same start key. We
-			// use this as opposed to the end key of the last written sstable to
-			// effectively handle cases like these:
-			//
-			// a.SET.3
-			// (lf.limit at b)
-			// d.RANGEDEL.4:f
-			//
-			// In this case, the partition after b has only range deletions, so
-			// if we were to find the limit after the last written key at the
-			// split point (key a), we'd get the limit b again, and
-			// finishOutput() would not advance any further because the next
-			// range tombstone to write does not start until after the L0 split
-			// point.
-			firstKey = startKey
+		} else {
+			firstKey = base.MinUserKey(c.cmp, iter.FirstTombstoneStart(), iter.FirstRangeKeyStart())
 		}
-		splitterSuggestion := splitter.OnNewOutput(firstKey)
+		splitter := compact.NewOutputSplitter(c.cmp, firstKey, splitLimitFunc(firstKey), c.maxOutputFileSize, c.grandparents.Iter(), iter.Frontiers())
 
 		// Each inner loop iteration processes one key from the input iterator.
 		for ; key != nil; key, val = iter.Next() {
-			if split := splitter.ShouldSplitBefore(key, tw); split == compact.SplitNow {
+			if splitter.ShouldSplitBefore(key.UserKey, tw.EstimatedSize(), lastUserKeyFn) {
 				break
 			}
 
@@ -3087,31 +3030,7 @@ func (d *DB) runCompaction(
 				pinnedValueSize += uint64(len(val))
 			}
 		}
-
-		// A splitter requested a split, and we're ready to finish the output.
-		// We need to choose the key at which to split any pending range
-		// tombstones. There are two options:
-		// 1. splitterSuggestion — The key suggested by the splitter. This key
-		//    is guaranteed to be greater than the last key written to the
-		//    current output.
-		// 2. key.UserKey — the first key of the next sstable output. This user
-		//     key is also guaranteed to be greater than the last user key
-		//     written to the current output (see userKeyChangeSplitter).
-		//
-		// Use whichever is smaller. Using the smaller of the two limits
-		// overlap with grandparents. Consider the case where the
-		// grandparent limit is calculated to be 'b', key is 'x', and
-		// there exist many sstables between 'b' and 'x'. If the range
-		// deletion fragmenter has a pending tombstone [a,x), splitting
-		// at 'x' would cause the output table to overlap many
-		// grandparents well beyond the calculated grandparent limit
-		// 'b'. Splitting at the smaller `splitterSuggestion` avoids
-		// this unbounded overlap with grandparent tables.
-		splitKey := splitterSuggestion
-		if key != nil && (splitKey == nil || c.cmp(splitKey, key.UserKey) > 0) {
-			splitKey = key.UserKey
-		}
-		if err := finishOutput(splitKey); err != nil {
+		if err := finishOutput(splitter.SplitKey()); err != nil {
 			return nil, pendingOutputs, stats, err
 		}
 	}
