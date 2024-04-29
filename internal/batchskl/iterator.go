@@ -201,6 +201,8 @@ func (it *Iterator) String() string {
 func (it *Iterator) SetBounds(lower, upper []byte) {
 	it.lower = lower
 	it.upper = upper
+	it.lowerNode = 0
+	it.upperNode = 0
 }
 
 func (it *Iterator) seekForBaseSplice(key []byte, abbreviatedKey uint64) (prev, next uint32) {

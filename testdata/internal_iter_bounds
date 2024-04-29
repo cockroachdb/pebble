@@ -30,3 +30,21 @@ b:2
 b:1
 .
 b:1
+
+# Test changing the bounds. The new bounds should be in effect.
+
+iter lower=b upper=c
+seek-ge d
+set-bounds lower=a upper=z
+seek-ge d
+----
+.
+d:2
+
+iter lower=b upper=c
+seek-lt b
+set-bounds lower=a upper=z
+seek-lt b
+----
+.
+a:1
