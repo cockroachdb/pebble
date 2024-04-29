@@ -33,14 +33,18 @@ h.SET.3:h
 
 iter
 seek-ge d
+next
+next
 ----
-f#5,SET:f / d-e:{(#6,RANGEDEL)}
+d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+e#72057594037927935,RANGEDEL:
+f#5,SET:f
 
 iter
 set-bounds upper=d
 seek-ge d
 ----
-d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+.
 
 iter
 set-bounds upper=d
@@ -48,28 +52,29 @@ seek-ge c
 next
 prev
 next
-next
 ----
 c#7,SET:c / d-e:{(#6,RANGEDEL)}
-d#72057594037927935,RANGEDEL:
+.
 c#7,SET:c
-d#72057594037927935,RANGEDEL:
 .
 
 # There is no point key with d, but since there is a rangedel, levelIter returns
 # the boundary key using the largest key, f, in the file.
 iter
 seek-prefix-ge d
+next
 ----
-f#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+d\x00#72057594037927935,RANGEDEL:
 
 # Tests a sequence of SeekPrefixGE with monotonically increasing keys, some of
 # which are present and some not (so fail the bloom filter match). The seek to
-# cc returns a boundary key.
+# cc returns a range deletion tombstone's start key.
 iter
 seek-prefix-ge aa
 seek-prefix-ge c
 seek-prefix-ge cc
+next
 seek-prefix-ge f
 seek-prefix-ge g
 seek-prefix-ge gg
@@ -77,7 +82,8 @@ seek-prefix-ge h
 ----
 .
 c#7,SET:c / d-e:{(#6,RANGEDEL)}
-f#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+cc\x00#72057594037927935,RANGEDEL:
 f#5,SET:f
 g#4,SET:g
 .
@@ -107,6 +113,8 @@ next
 stats
 next
 stats
+next
+stats
 reset-stats
 stats
 ----
@@ -117,9 +125,11 @@ b#8,SET:b
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 c#7,SET:c
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-f#5,SET:f
+d#72057594037927935,RANGEDEL:
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-f#72057594037927935,RANGEDEL:
+e#72057594037927935,RANGEDEL:
+{BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+f#5,SET:f
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 g#4,SET:g
 {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
@@ -133,7 +143,7 @@ iter
 set-bounds lower=d
 seek-lt d
 ----
-d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+.
 
 iter
 set-bounds lower=d
@@ -142,15 +152,17 @@ prev
 next
 prev
 prev
+prev
 ----
 f#5,SET:f / d-e:{(#6,RANGEDEL)}
-d#72057594037927935,RANGEDEL:
+e#72057594037927935,RANGEDEL:
 f#5,SET:f
+e#72057594037927935,RANGEDEL:
 d#72057594037927935,RANGEDEL:
 .
 
 # Verify that First() in the presence of an upper-bound pauses at the
-# table containing the upper-bound.
+# first range deletion's start key.
 
 clear
 ----
@@ -165,10 +177,10 @@ iter
 set-bounds upper=f
 first
 ----
-f#72057594037927935,RANGEDEL:
+d#72057594037927935,RANGEDEL:
 
 # Verify that Last() in the presence of a lower-bound pauses at the
-# table containing the lower-bound.
+# last range deletion's end key.
 
 clear
 ----
@@ -182,7 +194,11 @@ d.RANGEDEL.6:e
 iter
 set-bounds lower=c
 last
+prev
+prev
 ----
+e#72057594037927935,RANGEDEL:
+d#72057594037927935,RANGEDEL:
 c#7,SET:c
 
 # Verify that a seek to a file with range tombstones as boundaries pauses on
@@ -210,9 +226,11 @@ seek-ge d
 prev
 next
 next
+next
 ----
-e#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
 c#7,SET:c
+d#72057594037927935,RANGEDEL:
 e#72057594037927935,RANGEDEL:
 f#8,SET:f
 
@@ -221,14 +239,16 @@ seek-lt b
 next
 prev
 prev
+prev
 ----
-a#72057594037927935,RANGEDEL: / a-b:{(#5,RANGEDEL)}
+b#72057594037927935,RANGEDEL: / a-b:{(#5,RANGEDEL)}
 c#7,SET:c
+b#72057594037927935,RANGEDEL:
 a#72057594037927935,RANGEDEL:
 .
 
-# Verify that prev when positioned at the largest boundary returns the
-# last key.
+# Verify that prev when positioned at the start bound of the first range
+# deletion returns the last key.
 
 clear
 ----
@@ -246,11 +266,11 @@ seek-ge d
 prev
 ----
 b#1,SET:b
-e#72057594037927935,RANGEDEL: / d-e:{(#2,RANGEDEL)}
+d#72057594037927935,RANGEDEL: / d-e:{(#2,RANGEDEL)}
 b#1,SET:b
 
-# Verify that next when positioned at the smallest boundary returns
-# the first key.
+# Verify that next when positioned at the start boundary of the first range
+# deletion returns the first key.
 
 clear
 ----
@@ -268,7 +288,7 @@ seek-lt d
 next
 ----
 d#2,SET:d
-a#72057594037927935,RANGEDEL: / a-b:{(#1,RANGEDEL)}
+b#72057594037927935,RANGEDEL: / a-b:{(#1,RANGEDEL)}
 d#2,SET:d
 
 # Verify SeekPrefixGE correctness with trySeekUsingNext=true
@@ -325,9 +345,9 @@ seek-prefix-ge j true
 a#1,SET:a / c-e:{(#4,RANGEDEL)}
 a#1,SET:a / c-e:{(#4,RANGEDEL)}
 b#2,SET:b / c-e:{(#4,RANGEDEL)}
-e#72057594037927935,RANGEDEL:
-e#72057594037927935,RANGEDEL: / c-e:{(#4,RANGEDEL)}
-e#72057594037927935,RANGEDEL: / c-e:{(#4,RANGEDEL)}
+c#72057594037927935,RANGEDEL:
+c#72057594037927935,RANGEDEL: / c-e:{(#4,RANGEDEL)}
+d#72057594037927935,RANGEDEL: / c-e:{(#4,RANGEDEL)}
 f#5,SINGLEDEL:
 g#6,SET:g
 h#7,SINGLEDEL:
@@ -384,14 +404,14 @@ j.SET.3:j
 iter
 seek-ge f
 next
-next
 ----
 f#5,SET:f
-f#72057594037927935,RANGEDEL:
 i#4,SET:i
 
-# The below count should be 2, as we skip over the rangekey-only file.
+# The below count should be 4, as we skip over the rangekey-only file.
+# TODO(jackson): When we stop opening range deletion iterators twice, this
+# should be 2.
 
 iters-created
 ----
-2
+4

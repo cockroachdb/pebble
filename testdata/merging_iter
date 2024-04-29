@@ -58,11 +58,16 @@ seek-ge d
 next
 ----
 #  000000.rangeDelIter.opSpanSeekGE("d") = a-e:{(#8,RANGEDEL)}
+#  000000.rangeDelIter.opSpanSeekGE("d") = a-e:{(#8,RANGEDEL)}
 #  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
-#  000000.rangeDelIter.opSpanSeekGE("e") = nil
+#  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
+#  000000.rangeDelIter.opSpanSeekGE("d") = a-e:{(#8,RANGEDEL)}
+#  000000.rangeDelIter.opSpanNext() = nil
+#  000000.rangeDelIter.opSpanClose() = nil
 #  000000.rangeDelIter.opSpanClose() = nil
 #  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
 e#10,SET:10
+#  000001.rangeDelIter.opSpanNext() = nil
 #  000001.rangeDelIter.opSpanSeekGE("g") = nil <err="injected error">
 err=injected error
 
@@ -820,16 +825,16 @@ seek-lt coo
 seek-prefix-ge b
 ----
 #  iter.First() = (a#30,SET,"30")
-#  rangedelIter.opSpanSeekGE("a") = nil <err="injected error">
+#  rangedelIter.opSpanFirst() = nil <err="injected error">
 err=injected error
 #  iter.Last() = (f#21,SET,"21")
-#  rangedelIter.opSpanSeekGE("f") = nil <err="injected error">
+#  rangedelIter.opSpanLast() = nil <err="injected error">
 err=injected error
 #  iter.SeekGE("boo") = (c#18,SET,"18")
 #  rangedelIter.opSpanSeekGE("boo") = nil <err="injected error">
 err=injected error
 #  iter.SeekLT("coo") = (c#18,SET,"18")
-#  rangedelIter.opSpanSeekGE("coo") = nil <err="injected error">
+#  rangedelIter.opSpanSeekLT("coo") = nil <err="injected error">
 err=injected error
 #  iter.SeekPrefixGE("b") = (b#19,SET,"19")
 #  rangedelIter.opSpanSeekGE("b") = nil <err="injected error">

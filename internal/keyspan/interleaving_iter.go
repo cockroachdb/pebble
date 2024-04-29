@@ -1036,9 +1036,10 @@ func (i *InterleavingIter) verify(kv *base.InternalKV) *base.InternalKV {
 		switch {
 		case i.dir == -1 && i.spanMarkerTruncated:
 			panic("pebble: invariant violation: truncated span key in reverse iteration")
-		case kv != nil && i.opts.LowerBound != nil && i.cmp(kv.K.UserKey, i.opts.LowerBound) < 0:
+		case kv != nil && i.opts.LowerBound != nil && !kv.K.IsExclusiveSentinel() &&
+			i.cmp(kv.K.UserKey, i.opts.LowerBound) < 0:
 			panic("pebble: invariant violation: key < lower bound")
-		case kv != nil && i.opts.UpperBound != nil &&
+		case kv != nil && i.opts.UpperBound != nil && !kv.K.IsExclusiveSentinel() &&
 			!base.UserKeyExclusive(i.opts.UpperBound).IsUpperBoundForInternalKey(i.comparer.Compare, kv.K):
 			panic("pebble: invariant violation: key ≥ upper bound")
 		case i.err != nil && kv != nil:
