@@ -384,11 +384,11 @@ type Writer interface {
 	//
 	// Some Writer implementations may continue to read p after WriteRecord
 	// returns. This is an obstacle to reusing p's memory. If the caller would
-	// like to reuse p's memory, the caller may pass a non-nil [RefFunc].
-	// If the Writer will retain p, it will invoke the [RefFunc] before
-	// returning. When it's finished, it will invoke the func returned by the
-	// [RefFunc] to release its reference.
-	WriteRecord(p []byte, opts SyncOptions, ref RefFunc) (logicalOffset int64, err error)
+	// like to reuse p's memory, the caller may pass a non-nil [RefCount].  If
+	// the Writer will retain p, it will invoke the [RefCount] before returning.
+	// When it's finished, it will invoke [RefCount.Unref] to release its
+	// reference.
+	WriteRecord(p []byte, opts SyncOptions, ref RefCount) (logicalOffset int64, err error)
 	// Close the writer.
 	Close() (logicalOffset int64, err error)
 	// Metrics must be called after Close. The callee will no longer modify the
@@ -396,9 +396,14 @@ type Writer interface {
 	Metrics() record.LogWriterMetrics
 }
 
-// RefFunc holds funcs to increment a reference count associated with a record
-// passed to [Writer.WriteRecord]. See the comment on WriteRecord.
-type RefFunc func() (unref func())
+// RefCount is a reference count associated with a record passed to
+// [Writer.WriteRecord]. See the comment on WriteRecord.
+type RefCount interface {
+	// Ref increments the reference count.
+	Ref()
+	// Unref increments the reference count.
+	Unref()
+}
 
 // Reader reads a virtual WAL.
 type Reader interface {
