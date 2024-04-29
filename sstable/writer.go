@@ -2221,6 +2221,9 @@ func (w *Writer) Close() (err error) {
 // EstimatedSize returns the estimated size of the sstable being written if a
 // call to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
+	if w == nil {
+		return 0
+	}
 	return w.coordination.sizeEstimate.size() +
 		uint64(w.dataBlockBuf.dataBlock.estimatedSize()) +
 		w.indexBlock.estimatedSize()
@@ -2243,19 +2246,19 @@ type WriterOption interface {
 	writerApply(*Writer)
 }
 
-// UnsafeLastPointKey returns the last point key written to the writer to which
-// this option was passed during creation. The returned key points directly into
-// a buffer belonging to the Writer. The value's lifetime ends the next time a
-// point key is added to the Writer.
+// UnsafeLastPointUserKey returns the last point key written to the writer to
+// which this option was passed during creation. The returned key points
+// directly into a buffer belonging to the Writer. The value's lifetime ends the
+// next time a point key is added to the Writer.
 //
 // Must not be called after Writer is closed.
-func (w *Writer) UnsafeLastPointKey() base.InternalKey {
-	if w.dataBlockBuf.dataBlock.nEntries >= 1 {
+func (w *Writer) UnsafeLastPointUserKey() []byte {
+	if w != nil && w.dataBlockBuf.dataBlock.nEntries >= 1 {
 		// w.dataBlockBuf.dataBlock.curKey is guaranteed to point to the last point key
 		// which was added to the Writer.
-		return w.dataBlockBuf.dataBlock.getCurKey()
+		return w.dataBlockBuf.dataBlock.getCurUserKey()
 	}
-	return base.InternalKey{}
+	return nil
 }
 
 // NewWriter returns a new table writer for the file. Closing the writer will
