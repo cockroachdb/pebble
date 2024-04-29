@@ -205,11 +205,11 @@ type Batch struct {
 	// To resolve this data race, this [lifecycle] atomic is used to determine
 	// safety and responsibility of reusing a batch. The low bits of the atomic
 	// are used as a reference count (really just the lowest bit—in practice
-	// there's only 1 code path that references). The [Batch.refData] func is
-	// passed into [wal.Writer]'s WriteRecord method. The wal.Writer guarantees
-	// that if it will read [Batch.data] after the call to WriteRecord returns,
-	// it will increment the reference count. When it's complete, it'll
-	// unreference through invoking [Batch.unrefData].
+	// there's only 1 code path that references). The [Batch] is passed into
+	// [wal.Writer]'s WriteRecord method as a [RefCount] implementation. The
+	// wal.Writer guarantees that if it will read [Batch.data] after the call to
+	// WriteRecord returns, it will increment the reference count. When it's
+	// complete, it'll unreference through invoking [Batch.Unref].
 	//
 	// When the committer of a batch indicates intent to recycle a Batch through
 	// calling [Batch.Reset] or [Batch.Close], the lifecycle atomic is read. If
@@ -219,7 +219,7 @@ type Batch struct {
 	// In [Batch.Close], we set a special high bit [batchClosedBit] on lifecycle
 	// that indicates that the user will not use [Batch] again and we're free to
 	// recycle it when safe. When the commit pipeline eventually calls
-	// [Batch.unrefData], the [batchClosedBit] is noticed and the batch is
+	// [Batch.Unref], the [batchClosedBit] is noticed and the batch is
 	// recycled.
 	lifecycle atomic.Int32
 }
@@ -229,16 +229,17 @@ type Batch struct {
 // prevented immediate recycling.
 const batchClosedBit = 1 << 30
 
-// refData is passed to (wal.Writer).WriteRecord. If the WAL writer may need to
-// read b.data after it returns, it invokes refData to increment the lifecycle's
-// reference count. When it's finished, it invokes the returned function
-// [Batch.unrefData].
-func (b *Batch) refData() (unref func()) {
+// TODO(jackson): Hide the wal.RefCount implementation from the public Batch interface.
+
+// Ref implements wal.RefCount. If the WAL writer may need to read b.data after
+// it returns, it invokes Ref to increment the lifecycle's reference count. When
+// it's finished, it invokes Unref.
+func (b *Batch) Ref() {
 	b.lifecycle.Add(+1)
-	return b.unrefData
 }
 
-func (b *Batch) unrefData() {
+// Unref implemets wal.RefCount.
+func (b *Batch) Unref() {
 	if v := b.lifecycle.Add(-1); (v ^ batchClosedBit) == 0 {
 		// The [batchClosedBit] high bit is set, and there are no outstanding
 		// references. The user of the Batch called [Batch.Close], expecting the
