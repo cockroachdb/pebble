@@ -2226,34 +2226,6 @@ func TestIngestTargetLevel(t *testing.T) {
 		}
 	}()
 
-	parseMeta := func(s string) *fileMetadata {
-		var rkey bool
-		if len(s) >= 4 && s[0:4] == "rkey" {
-			rkey = true
-			s = s[5:]
-		}
-		parts := strings.Split(s, "-")
-		if len(parts) != 2 {
-			t.Fatalf("malformed table spec: %s", s)
-		}
-		var m *fileMetadata
-		if rkey {
-			m = (&fileMetadata{}).ExtendRangeKeyBounds(
-				d.cmp,
-				InternalKey{UserKey: []byte(parts[0])},
-				InternalKey{UserKey: []byte(parts[1])},
-			)
-		} else {
-			m = (&fileMetadata{}).ExtendPointKeyBounds(
-				d.cmp,
-				InternalKey{UserKey: []byte(parts[0])},
-				InternalKey{UserKey: []byte(parts[1])},
-			)
-		}
-		m.InitPhysicalBacking()
-		return m
-	}
-
 	datadriven.RunTest(t, "testdata/ingest_target_level", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
@@ -2303,7 +2275,8 @@ func TestIngestTargetLevel(t *testing.T) {
 				}
 			}
 			for _, target := range strings.Split(td.Input, "\n") {
-				meta := parseMeta(target)
+				meta, err := manifest.ParseFileMetadataDebug(target)
+				require.NoError(t, err)
 				level, overlapFile, err := ingestTargetLevel(
 					d.newIters, d.tableNewRangeKeyIter, IterOptions{logger: d.opts.Logger},
 					d.opts.Comparer, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta,
