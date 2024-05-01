@@ -2685,81 +2685,22 @@ func (d *DB) runCompaction(
 		if c.cancel.Load() {
 			return ErrCancelledCompaction
 		}
-		d.mu.Lock()
-		fileNum := d.mu.versions.getNextFileNum()
-		d.mu.Unlock()
-
-		ctx := context.TODO()
-		if objiotracing.Enabled {
-			ctx = objiotracing.WithLevel(ctx, c.outputLevel.level)
-			switch c.kind {
-			case compactionKindFlush:
-				ctx = objiotracing.WithReason(ctx, objiotracing.ForFlush)
-			default:
-				ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
-			}
-		}
-		var writeCategory vfs.DiskWriteCategory
-		switch c.kind {
-		case compactionKindFlush:
-			if d.opts.EnableSQLRowSpillMetrics {
-				// In the scenario that the Pebble engine is used for SQL row spills the data written to
-				// the memtable will correspond to spills to disk and should be categorized as such.
-				writeCategory = "sql-row-spill"
-			} else {
-				writeCategory = "pebble-memtable-flush"
-			}
-		default:
-			writeCategory = "pebble-compaction"
-		}
-		// Prefer shared storage if present.
-		createOpts := objstorage.CreateOptions{
-			PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
-			WriteCategory:       writeCategory,
-		}
-		diskFileNum := base.PhysicalTableDiskFileNum(fileNum)
-		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, diskFileNum, createOpts)
+		var objMeta objstorage.ObjectMetadata
+		var err error
+		objMeta, tw, cpuWorkHandle, err = d.newCompactionOutput(jobID, c, writerOpts)
 		if err != nil {
 			return err
 		}
-		fileMeta := &fileMetadata{}
-		fileMeta.FileNum = fileNum
+		fileMeta := &fileMetadata{
+			FileNum:      base.PhysicalTableFileNum(objMeta.DiskFileNum),
+			CreationTime: time.Now().Unix(),
+		}
 		pendingOutputs = append(pendingOutputs, compactionOutput{
 			meta:    fileMeta.PhysicalMeta().FileMetadata,
 			isLocal: !objMeta.IsRemote(),
 		})
+		createdFiles = append(createdFiles, objMeta.DiskFileNum)
 
-		reason := "flushing"
-		if c.flushing == nil {
-			reason = "compacting"
-		}
-		d.opts.EventListener.TableCreated(TableCreateInfo{
-			JobID:   int(jobID),
-			Reason:  reason,
-			Path:    d.objProvider.Path(objMeta),
-			FileNum: diskFileNum,
-		})
-		if c.kind != compactionKindFlush {
-			writable = &compactionWritable{
-				Writable: writable,
-				versions: d.mu.versions,
-				written:  &c.bytesWritten,
-			}
-		}
-		createdFiles = append(createdFiles, diskFileNum)
-		cacheOpts := private.SSTableCacheOpts(d.cacheID, diskFileNum).(sstable.WriterOption)
-
-		const MaxFileWriteAdditionalCPUTime = time.Millisecond * 100
-		cpuWorkHandle = d.opts.Experimental.CPUWorkPermissionGranter.GetPermission(
-			MaxFileWriteAdditionalCPUTime,
-		)
-		writerOpts.Parallelism =
-			d.opts.Experimental.MaxWriterConcurrency > 0 &&
-				(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
-
-		tw = sstable.NewWriter(writable, writerOpts, cacheOpts)
-
-		fileMeta.CreationTime = time.Now().Unix()
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
 			Level: c.outputLevel.level,
 			Meta:  fileMeta,
@@ -3058,6 +2999,80 @@ func (d *DB) runCompaction(
 	_ = d.calculateDiskAvailableBytes()
 
 	return ve, pendingOutputs, stats, nil
+}
+
+// newCompactionOutput creates an object for a new table produced by a
+// compaction or flush.
+func (d *DB) newCompactionOutput(
+	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
+) (objstorage.ObjectMetadata, *sstable.Writer, CPUWorkHandle, error) {
+	d.mu.Lock()
+	diskFileNum := d.mu.versions.getNextDiskFileNum()
+	d.mu.Unlock()
+
+	var writeCategory vfs.DiskWriteCategory
+	var reason string
+	if c.kind == compactionKindFlush {
+		reason = "flushing"
+		if d.opts.EnableSQLRowSpillMetrics {
+			// In the scenario that the Pebble engine is used for SQL row spills the
+			// data written to the memtable will correspond to spills to disk and
+			// should be categorized as such.
+			writeCategory = "sql-row-spill"
+		} else {
+			writeCategory = "pebble-memtable-flush"
+		}
+	} else {
+		reason = "compacting"
+		writeCategory = "pebble-compaction"
+	}
+
+	ctx := context.TODO()
+	if objiotracing.Enabled {
+		ctx = objiotracing.WithLevel(ctx, c.outputLevel.level)
+		if c.kind == compactionKindFlush {
+			ctx = objiotracing.WithReason(ctx, objiotracing.ForFlush)
+		} else {
+			ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
+		}
+	}
+
+	// Prefer shared storage if present.
+	createOpts := objstorage.CreateOptions{
+		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
+		WriteCategory:       writeCategory,
+	}
+	writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, diskFileNum, createOpts)
+	if err != nil {
+		return objstorage.ObjectMetadata{}, nil, nil, err
+	}
+
+	if c.kind != compactionKindFlush {
+		writable = &compactionWritable{
+			Writable: writable,
+			versions: d.mu.versions,
+			written:  &c.bytesWritten,
+		}
+	}
+	d.opts.EventListener.TableCreated(TableCreateInfo{
+		JobID:   int(jobID),
+		Reason:  reason,
+		Path:    d.objProvider.Path(objMeta),
+		FileNum: diskFileNum,
+	})
+
+	cacheOpts := private.SSTableCacheOpts(d.cacheID, diskFileNum).(sstable.WriterOption)
+
+	const MaxFileWriteAdditionalCPUTime = time.Millisecond * 100
+	cpuWorkHandle := d.opts.Experimental.CPUWorkPermissionGranter.GetPermission(
+		MaxFileWriteAdditionalCPUTime,
+	)
+	writerOpts.Parallelism =
+		d.opts.Experimental.MaxWriterConcurrency > 0 &&
+			(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
+
+	tw := sstable.NewWriter(writable, writerOpts, cacheOpts)
+	return objMeta, tw, cpuWorkHandle, nil
 }
 
 // validateVersionEdit validates that start and end keys across new and deleted
