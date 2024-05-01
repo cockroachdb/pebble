@@ -946,7 +946,7 @@ func TestWriterRace(t *testing.T) {
 				Compression: NoCompression,
 			}
 			defer wg.Done()
-			f := &memFile{}
+			f := &objstorage.MemObj{}
 			w := NewWriter(f, opts)
 			for ki := 0; ki < len(keys); ki++ {
 				require.NoError(

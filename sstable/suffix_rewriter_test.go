@@ -1,7 +1,6 @@
 package sstable
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math/rand"
@@ -77,7 +76,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 			}
 			for i, byBlocks := range []bool{false, true} {
 				t.Run(fmt.Sprintf("byBlocks=%v", byBlocks), func(t *testing.T) {
-					rewrittenSST := &memFile{}
+					rewrittenSST := &objstorage.MemObj{}
 					if byBlocks {
 						_, rewriteFormat, err := rewriteKeySuffixesInBlocks(
 							r, rewrittenSST, rwOpts, from, to, 8)
@@ -145,33 +144,6 @@ func TestRewriteSuffixProps(t *testing.T) {
 	}
 }
 
-// memFile is a file-like struct that buffers all data written to it in memory.
-// Implements the objstorage.Writable interface.
-type memFile struct {
-	buf bytes.Buffer
-}
-
-var _ objstorage.Writable = (*memFile)(nil)
-
-// Finish is part of the objstorage.Writable interface.
-func (*memFile) Finish() error {
-	return nil
-}
-
-// Abort is part of the objstorage.Writable interface.
-func (*memFile) Abort() {}
-
-// Write is part of the objstorage.Writable interface.
-func (f *memFile) Write(p []byte) error {
-	_, err := f.buf.Write(p)
-	return err
-}
-
-// Data returns the in-memory buffer behind this MemFile.
-func (f *memFile) Data() []byte {
-	return f.buf.Bytes()
-}
-
 func make4bSuffixTestSST(
 	t testing.TB, writerOpts WriterOptions, suffix []byte, keys int, rangeKeys int,
 ) []byte {
@@ -179,7 +151,7 @@ func make4bSuffixTestSST(
 	endKey := make([]byte, 24)
 	copy(key[24:], suffix)
 
-	f := &memFile{}
+	f := &objstorage.MemObj{}
 	w := NewWriter(f, writerOpts)
 	for i := 0; i < keys; i++ {
 		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
@@ -206,7 +178,7 @@ func make4bSuffixTestSST(
 		t.Fatal(err)
 	}
 
-	return f.buf.Bytes()
+	return f.Data()
 }
 
 func BenchmarkRewriteSST(b *testing.B) {

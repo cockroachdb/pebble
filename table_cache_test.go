@@ -989,34 +989,12 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	fs.validate(t, c, nil)
 }
 
-// memFile is a file-like struct that buffers all data written to it in memory.
-// Implements the objstorage.Writable interface.
-type memFile struct {
-	buf bytes.Buffer
-}
-
-var _ objstorage.Writable = (*memFile)(nil)
-
-// Finish is part of the objstorage.Writable interface.
-func (*memFile) Finish() error {
-	return nil
-}
-
-// Abort is part of the objstorage.Writable interface.
-func (*memFile) Abort() {}
-
-// Write is part of the objstorage.Writable interface.
-func (f *memFile) Write(p []byte) error {
-	_, err := f.buf.Write(p)
-	return err
-}
-
 func TestTableCacheErrorBadMagicNumber(t *testing.T) {
-	var file memFile
-	tw := sstable.NewWriter(&file, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
+	obj := &objstorage.MemObj{}
+	tw := sstable.NewWriter(obj, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
 	tw.Set([]byte("a"), nil)
 	require.NoError(t, tw.Close())
-	buf := file.buf.Bytes()
+	buf := obj.Data()
 	// Bad magic number.
 	buf[len(buf)-1] = 0
 	fs := &tableCacheTestFS{
