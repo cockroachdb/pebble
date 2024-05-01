@@ -3011,20 +3011,22 @@ func (d *DB) newCompactionOutput(
 	d.mu.Unlock()
 
 	var writeCategory vfs.DiskWriteCategory
+	if d.opts.EnableSQLRowSpillMetrics {
+		// In the scenario that the Pebble engine is used for SQL row spills the
+		// data written to the memtable will correspond to spills to disk and
+		// should be categorized as such.
+		writeCategory = "sql-row-spill"
+	} else if c.kind == compactionKindFlush {
+		writeCategory = "pebble-memtable-flush"
+	} else {
+		writeCategory = "pebble-compaction"
+	}
+
 	var reason string
 	if c.kind == compactionKindFlush {
 		reason = "flushing"
-		if d.opts.EnableSQLRowSpillMetrics {
-			// In the scenario that the Pebble engine is used for SQL row spills the
-			// data written to the memtable will correspond to spills to disk and
-			// should be categorized as such.
-			writeCategory = "sql-row-spill"
-		} else {
-			writeCategory = "pebble-memtable-flush"
-		}
 	} else {
 		reason = "compacting"
-		writeCategory = "pebble-compaction"
 	}
 
 	ctx := context.TODO()
