@@ -410,6 +410,14 @@ func (s Span) Pretty(f base.FormatKey) fmt.Formatter {
 	return prettySpan{s, f}
 }
 
+// Reset clears the span's Start, End, and Keys fields, retaining the slices for
+// reuse.
+func (s *Span) Reset() {
+	s.Start = s.Start[:0]
+	s.End = s.End[:0]
+	s.Keys = s.Keys[:0]
+}
+
 type prettySpan struct {
 	Span
 	formatKey base.FormatKey
