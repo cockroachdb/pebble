@@ -265,7 +265,7 @@ type Reader struct {
 
 var _ CommonReader = (*Reader)(nil)
 
-// Close implements DB.Close, as documented in the pebble package.
+// Close the reader and the underlying objstorage.Readable.
 func (r *Reader) Close() error {
 	r.opts.Cache.Unref()
 
