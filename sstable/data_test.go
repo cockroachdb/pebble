@@ -67,7 +67,7 @@ func runBuildCmd(
 	td *datadriven.TestData, writerOpts *WriterOptions, cacheSize int,
 ) (*WriterMetadata, *Reader, error) {
 
-	f0 := &memFile{}
+	f0 := &objstorage.MemObj{}
 	if err := optsFromArgs(td, writerOpts); err != nil {
 		return nil, nil, err
 	}
@@ -510,7 +510,7 @@ func runRewriteCmd(
 		return nil, r, err
 	}
 
-	f := &memFile{}
+	f := &objstorage.MemObj{}
 	meta, _, err := rewriteKeySuffixesInBlocks(r, f, opts, from, to, 2)
 	if err != nil {
 		return nil, r, errors.Wrap(err, "rewrite failed")
