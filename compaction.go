@@ -19,7 +19,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compact"
-	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
@@ -238,12 +237,6 @@ type compaction struct {
 	// The boundaries of the input data.
 	smallest InternalKey
 	largest  InternalKey
-
-	// rangeDelInterlaving is an interleaving iterator for range deletions, that
-	// interleaves range tombstones among the point keys.
-	rangeDelInterleaving keyspan.InterleavingIter
-	// rangeKeyInterleaving is the interleaving iter for range keys.
-	rangeKeyInterleaving keyspan.InterleavingIter
 
 	// A list of objects to close when the compaction finishes. Used by input
 	// iteration to keep rangeDelIters open for the lifetime of the compaction,
@@ -699,22 +692,27 @@ func (c *compaction) allowZeroSeqNum() bool {
 	return len(c.flushing) == 0 && c.delElision.ElidesEverything() && c.rangeKeyElision.ElidesEverything()
 }
 
-func (c *compaction) newInputIter(
+// newInputIters returns an iterator over all the input tables in a compaction.
+func (c *compaction) newInputIters(
 	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter,
-) (_ internalIterator, retErr error) {
+) (
+	pointIter internalIterator,
+	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
+	retErr error,
+) {
 	// Validate the ordering of compaction input files for defense in depth.
 	if len(c.flushing) == 0 {
 		if c.startLevel.level >= 0 {
 			err := manifest.CheckOrdering(c.cmp, c.formatKey,
 				manifest.Level(c.startLevel.level), c.startLevel.files.Iter())
 			if err != nil {
-				return nil, err
+				return nil, nil, nil, err
 			}
 		}
 		err := manifest.CheckOrdering(c.cmp, c.formatKey,
 			manifest.Level(c.outputLevel.level), c.outputLevel.files.Iter())
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 		if c.startLevel.level == 0 {
 			if c.startLevel.l0SublevelInfo == nil {
@@ -724,7 +722,7 @@ func (c *compaction) newInputIter(
 				err := manifest.CheckOrdering(c.cmp, c.formatKey,
 					info.sublevel, info.Iter())
 				if err != nil {
-					return nil, err
+					return nil, nil, nil, err
 				}
 			}
 		}
@@ -736,7 +734,7 @@ func (c *compaction) newInputIter(
 			err := manifest.CheckOrdering(c.cmp, c.formatKey,
 				manifest.Level(interLevel.level), interLevel.files.Iter())
 			if err != nil {
-				return nil, err
+				return nil, nil, nil, err
 			}
 		}
 	}
@@ -901,13 +899,13 @@ func (c *compaction) newInputIter(
 				for _, info := range c.startLevel.l0SublevelInfo {
 					sublevelCompactionLevel := &compactionLevel{0, info.LevelSlice, nil}
 					if err := addItersForLevel(sublevelCompactionLevel, info.sublevel); err != nil {
-						return nil, err
+						return nil, nil, nil, err
 					}
 				}
 				continue
 			}
 			if err := addItersForLevel(&c.inputs[i], manifest.Level(c.inputs[i].level)); err != nil {
-				return nil, err
+				return nil, nil, nil, err
 			}
 		}
 	}
@@ -916,9 +914,9 @@ func (c *compaction) newInputIter(
 	// of a *mergingIter. This is possible, for example, when performing a flush
 	// of a single memtable. Otherwise, combine all the iterators into a merging
 	// iter.
-	iter := iters[0]
+	pointIter = iters[0]
 	if len(iters) > 1 {
-		iter = newMergingIter(c.logger, &c.stats, c.cmp, nil, iters...)
+		pointIter = newMergingIter(c.logger, &c.stats, c.cmp, nil, iters...)
 	}
 
 	// In normal operation, levelIter iterates over the point operations in a
@@ -937,8 +935,7 @@ func (c *compaction) newInputIter(
 	if len(rangeDelIters) > 0 {
 		mi := &keyspanimpl.MergingIter{}
 		mi.Init(c.cmp, keyspan.NoopTransform, new(keyspanimpl.MergingBuffers), rangeDelIters...)
-		c.rangeDelInterleaving.Init(c.comparer, iter, mi, keyspan.InterleavingIterOpts{})
-		iter = &c.rangeDelInterleaving
+		rangeDelIter = mi
 	}
 
 	// If there are range key iterators, we need to combine them using
@@ -946,12 +943,12 @@ func (c *compaction) newInputIter(
 	if len(rangeKeyIters) > 0 {
 		mi := &keyspanimpl.MergingIter{}
 		mi.Init(c.cmp, keyspan.NoopTransform, new(keyspanimpl.MergingBuffers), rangeKeyIters...)
+		// TODO(radu): why do we have a defragmenter here but not above?
 		di := &keyspan.DefragmentingIter{}
 		di.Init(c.comparer, mi, keyspan.DefragmentInternal, keyspan.StaticDefragmentReducer, new(keyspan.DefragmentingBuffers))
-		c.rangeKeyInterleaving.Init(c.comparer, iter, di, keyspan.InterleavingIterOpts{})
-		iter = &c.rangeKeyInterleaving
+		rangeKeyIter = di
 	}
-	return iter, nil
+	return pointIter, rangeDelIter, rangeKeyIter, nil
 }
 
 func (c *compaction) newRangeDelIter(
@@ -2580,15 +2577,13 @@ func (d *DB) runCompaction(
 	c.bufferPool.Init(12)
 	defer c.bufferPool.Release()
 
-	iiter, err := c.newInputIter(d.newIters, d.tableNewRangeKeyIter)
+	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, d.tableNewRangeKeyIter)
 	if err != nil {
 		return nil, pendingOutputs, stats, err
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
-	iiter = invalidating.MaybeWrapIfInvariants(iiter)
 	cfg := compact.IterConfig{
-		Cmp:                                    c.cmp,
-		Equal:                                  c.equal,
+		Comparer:                               c.comparer,
 		Merge:                                  d.merge,
 		TombstoneElision:                       c.delElision,
 		RangeKeyElision:                        c.rangeKeyElision,
@@ -2597,7 +2592,7 @@ func (d *DB) runCompaction(
 		IneffectualSingleDeleteCallback:        d.opts.Experimental.IneffectualSingleDeleteCallback,
 		SingleDeleteInvariantViolationCallback: d.opts.Experimental.SingleDeleteInvariantViolationCallback,
 	}
-	iter := compact.NewIter(cfg, iiter)
+	iter := compact.NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)
 
 	var (
 		createdFiles    []base.DiskFileNum
@@ -3002,14 +2997,14 @@ func (d *DB) runCompaction(
 				// Since the keys' Suffix and Value fields are not deep cloned, the
 				// underlying blockIter must be kept open for the lifetime of the
 				// compaction.
-				iter.AddTombstoneSpan(c.rangeDelInterleaving.Span())
+				iter.AddTombstoneSpan(iter.RangeDelSpan())
 				continue
 			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 				// Range keys are handled in the same way as range tombstones.
 				// Since the keys' Suffix and Value fields are not deep cloned, the
 				// underlying blockIter must be kept open for the lifetime of the
 				// compaction.
-				iter.AddRangeKeySpan(c.rangeKeyInterleaving.Span())
+				iter.AddRangeKeySpan(iter.RangeKeySpan())
 				continue
 			}
 			if tw == nil {

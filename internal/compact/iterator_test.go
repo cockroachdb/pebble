@@ -16,7 +16,6 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/stretchr/testify/require"
@@ -61,7 +60,7 @@ func TestCompactionIter(t *testing.T) {
 		ineffectualSingleDeleteKeys = ineffectualSingleDeleteKeys[:0]
 		invariantViolationSingleDeleteKeys = invariantViolationSingleDeleteKeys[:0]
 	}
-	newIter := func() (iter *Iter, rangeKeyInterleaving, rangeDelInterleaving *keyspan.InterleavingIter) {
+	newIter := func() *Iter {
 		resetSingleDelStats()
 		if merge == nil {
 			merge = func(key, value []byte) (base.ValueMerger, error) {
@@ -76,8 +75,7 @@ func TestCompactionIter(t *testing.T) {
 			elision = ElideTombstonesOutsideOf(nil)
 		}
 		cfg := IterConfig{
-			Cmp:              base.DefaultComparer.Compare,
-			Equal:            base.DefaultComparer.Equal,
+			Comparer:         base.DefaultComparer,
 			Merge:            merge,
 			Snapshots:        snapshots,
 			TombstoneElision: elision,
@@ -90,8 +88,8 @@ func TestCompactionIter(t *testing.T) {
 				invariantViolationSingleDeleteKeys = append(invariantViolationSingleDeleteKeys, string(userKey))
 			},
 		}
-		input, rangeDelInterleaving, rangeKeyInterleaving := makeInputIter(kvs, rangeDels, rangeKeys)
-		return NewIter(cfg, input), rangeDelInterleaving, rangeKeyInterleaving
+		pointIter, rangeDelIter, rangeKeyIter := makeInputIters(kvs, rangeDels, rangeKeys)
+		return NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)
 	}
 
 	runTest := func(t *testing.T, file string) {
@@ -190,7 +188,7 @@ func TestCompactionIter(t *testing.T) {
 				}
 				slices.Sort(snapshots)
 
-				iter, rangeDelInterleaving, rangeKeyInterleaving := newIter()
+				iter := newIter()
 				var b bytes.Buffer
 				for _, line := range strings.Split(d.Input, "\n") {
 					parts := strings.Fields(line)
@@ -253,12 +251,12 @@ func TestCompactionIter(t *testing.T) {
 						}
 						fmt.Fprintf(&b, "%s:%s%s%s", iter.Key(), v, snapshotPinned, forceObsolete)
 						if iter.Key().Kind() == base.InternalKeyKindRangeDelete {
-							iter.AddTombstoneSpan(rangeDelInterleaving.Span())
-							fmt.Fprintf(&b, "; Span() = %s", *rangeDelInterleaving.Span())
+							iter.AddTombstoneSpan(iter.RangeDelSpan())
+							fmt.Fprintf(&b, "; Span() = %s", *iter.RangeDelSpan())
 						}
 						if rangekey.IsRangeKey(iter.Key().Kind()) {
-							iter.AddRangeKeySpan(rangeKeyInterleaving.Span())
-							fmt.Fprintf(&b, "; Span() = %s", *rangeKeyInterleaving.Span())
+							iter.AddRangeKeySpan(iter.RangeKeySpan())
+							fmt.Fprintf(&b, "; Span() = %s", *iter.RangeKeySpan())
 						}
 						fmt.Fprintln(&b)
 					} else if err := iter.Error(); err != nil {
@@ -318,16 +316,14 @@ func TestIterRangeKeys(t *testing.T) {
 			}
 
 			cfg := IterConfig{
-				Cmp:              base.DefaultComparer.Compare,
-				Equal:            base.DefaultComparer.Equal,
+				Comparer:         base.DefaultComparer,
 				Snapshots:        snapshots,
 				AllowZeroSeqNum:  false,
 				TombstoneElision: NoTombstoneElision(),
 				RangeKeyElision:  ElideTombstonesOutsideOf(keyRanges),
 			}
-			input, _, _ := makeInputIter(nil, nil, nil)
-
-			iter := NewIter(cfg, input)
+			pointIter, rangeDelIter, rangeKeyIter := makeInputIters(nil, nil, nil)
+			iter := NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)
 			iter.AddRangeKeySpan(&span)
 
 			outSpans := iter.RangeKeysUpTo(nil)
@@ -342,37 +338,16 @@ func TestIterRangeKeys(t *testing.T) {
 	})
 }
 
-// makeInputIter creates an iterator that can be used as an input for the
-// compaction Iter, along with rangeDel and rangeKey interleaving iterators
-// which can be used to retrieve the span corresponding to a range del or range
-// key.
-func makeInputIter(
+// makeInputIters creates the iterators necessthat can be used to create a compaction
+// Iter.
+func makeInputIters(
 	points []base.InternalKV, rangeDels, rangeKeys []keyspan.Span,
-) (
-	input base.InternalIterator,
-	rangeDelInterleaving, rangeKeyInterleaving *keyspan.InterleavingIter,
-) {
+) (pointIter base.InternalIterator, rangeDelIter, rangeKeyIter keyspan.FragmentIterator) {
 	// To adhere to the existing assumption that range deletion blocks in
 	// SSTables are not released while iterating, and therefore not
 	// susceptible to use-after-free bugs, we skip the zeroing of
 	// RangeDelete keys.
-	fi := base.NewFakeIter(points)
-	rangeDelInterleaving = &keyspan.InterleavingIter{}
-	rangeDelInterleaving.Init(
-		base.DefaultComparer,
-		fi,
+	return base.NewFakeIter(points),
 		keyspan.NewIter(base.DefaultComparer.Compare, rangeDels),
-		keyspan.InterleavingIterOpts{})
-	rangeKeyInterleaving = &keyspan.InterleavingIter{}
-	rangeKeyInterleaving.Init(
-		base.DefaultComparer,
-		rangeDelInterleaving,
-		keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys),
-		keyspan.InterleavingIterOpts{})
-	// To adhere to the existing assumption that range deletion blocks in
-	// SSTables are not released while iterating, and therefore not
-	// susceptible to use-after-free bugs, we skip the zeroing of
-	// RangeDelete keys.
-	input = invalidating.NewIter(rangeKeyInterleaving, invalidating.IgnoreKinds(base.InternalKeyKindRangeDelete))
-	return input, rangeDelInterleaving, rangeKeyInterleaving
+		keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys)
 }

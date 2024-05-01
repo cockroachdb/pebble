@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
@@ -154,7 +155,16 @@ type Iter struct {
 
 	cfg IterConfig
 
-	iter           base.InternalIterator
+	// rangeDelInterlaving is an interleaving iterator for range deletions, that
+	// interleaves range tombstones among the point keys.
+	rangeDelInterleaving keyspan.InterleavingIter
+	// rangeKeyInterleaving is the interleaving iter for range keys.
+	rangeKeyInterleaving keyspan.InterleavingIter
+
+	// iter is the iterator which interleaves points with RANGEDELs and range
+	// keys.
+	iter base.InternalIterator
+
 	delElider      pointTombstoneElider
 	rangeDelElider rangeTombstoneElider
 	rangeKeyElider rangeTombstoneElider
@@ -241,9 +251,8 @@ type Iter struct {
 
 // IterConfig contains the parameters necessary to create a compaction iterator.
 type IterConfig struct {
-	Cmp   base.Compare
-	Equal base.Equal
-	Merge base.Merge
+	Comparer *base.Comparer
+	Merge    base.Merge
 
 	// The snapshot sequence numbers that need to be maintained. These sequence
 	// numbers define the snapshot stripes.
@@ -290,17 +299,33 @@ const (
 
 // NewIter creates a new compaction iterator. See the comment for Iter for a
 // detailed description.
-func NewIter(cfg IterConfig, iter base.InternalIterator) *Iter {
+// rangeDelIter and rangeKeyIter can be nil.
+func NewIter(
+	cfg IterConfig,
+	pointIter base.InternalIterator,
+	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
+) *Iter {
 	cfg.ensureDefaults()
 	i := &Iter{
-		cmp:  cfg.Cmp,
-		cfg:  cfg,
-		iter: iter,
+		cmp: cfg.Comparer.Compare,
+		cfg: cfg,
 	}
-	i.frontiers.Init(cfg.Cmp)
-	i.delElider.Init(cfg.Cmp, cfg.TombstoneElision)
-	i.rangeDelElider.Init(cfg.Cmp, cfg.TombstoneElision)
-	i.rangeKeyElider.Init(cfg.Cmp, cfg.RangeKeyElision)
+
+	iter := pointIter
+	if rangeDelIter != nil {
+		i.rangeDelInterleaving.Init(cfg.Comparer, iter, rangeDelIter, keyspan.InterleavingIterOpts{})
+		iter = &i.rangeDelInterleaving
+	}
+	if rangeKeyIter != nil {
+		i.rangeKeyInterleaving.Init(cfg.Comparer, iter, rangeKeyIter, keyspan.InterleavingIterOpts{})
+		iter = &i.rangeKeyInterleaving
+	}
+	i.iter = invalidating.MaybeWrapIfInvariants(iter)
+
+	i.frontiers.Init(i.cmp)
+	i.delElider.Init(i.cmp, cfg.TombstoneElision)
+	i.rangeDelElider.Init(i.cmp, cfg.TombstoneElision)
+	i.rangeKeyElider.Init(i.cmp, cfg.RangeKeyElision)
 	return i
 }
 
@@ -348,6 +373,9 @@ func (i *Iter) First() (*base.InternalKey, []byte) {
 }
 
 // Next has the same semantics as InternalIterator.Next.
+// Note that when Next returns a RANGEDEL key, the caller can call
+// RangeDelSpan() to get the corresponding span. Similarly, when Next returns a
+// range key, the caller can use RangeKeySpan().
 func (i *Iter) Next() (*base.InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
@@ -581,6 +609,20 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 	return nil, nil
 }
 
+// RangeDelSpan returns the range deletion span corresponding to the current
+// key. Can only be called right after a Next() call that returned a RANGEDEL
+// key.
+func (i *Iter) RangeDelSpan() *keyspan.Span {
+	return i.rangeDelInterleaving.Span()
+}
+
+// RangeKeySpan returns the range deletion span corresponding to the current
+// key. Can only be called right after a Next() call that returned a range
+// key.
+func (i *Iter) RangeKeySpan() *keyspan.Span {
+	return i.rangeKeyInterleaving.Span()
+}
+
 func (i *Iter) closeValueCloser() error {
 	if i.valueCloser == nil {
 		return nil
@@ -670,7 +712,7 @@ func (i *Iter) nextInStripeHelper() stripeChangeType {
 		//    number ordering within a user key. If the previous key was one
 		//    of these keys, we consider the new key a `newStripeNewKey` to
 		//    reflect that it's the beginning of a new stream of point keys.
-		if i.key.IsExclusiveSentinel() || !i.cfg.Equal(i.key.UserKey, kv.K.UserKey) {
+		if i.key.IsExclusiveSentinel() || !i.cfg.Comparer.Equal(i.key.UserKey, kv.K.UserKey) {
 			i.curSnapshotIdx, i.curSnapshotSeqNum = i.cfg.Snapshots.IndexAndSeqNum(kv.SeqNum())
 			return newStripeNewKey
 		}
@@ -1421,7 +1463,7 @@ func (i *Iter) RangeKeysUpTo(key []byte) []keyspan.Span {
 			}
 			if y > start {
 				keysDst := dst.Keys[usedLen:cap(dst.Keys)]
-				rangekey.Coalesce(i.cmp, i.cfg.Equal, s.Keys[start:y], &keysDst)
+				rangekey.Coalesce(i.cmp, i.cfg.Comparer.Equal, s.Keys[start:y], &keysDst)
 				if y == len(s.Keys) {
 					// This is the last snapshot stripe. Unsets and deletes can be elided.
 					keysDst = elideInLastStripe(keysDst)
@@ -1433,7 +1475,7 @@ func (i *Iter) RangeKeysUpTo(key []byte) []keyspan.Span {
 		}
 		if y < len(s.Keys) {
 			keysDst := dst.Keys[usedLen:cap(dst.Keys)]
-			rangekey.Coalesce(i.cmp, i.cfg.Equal, s.Keys[y:], &keysDst)
+			rangekey.Coalesce(i.cmp, i.cfg.Comparer.Equal, s.Keys[y:], &keysDst)
 			keysDst = elideInLastStripe(keysDst)
 			usedLen += len(keysDst)
 			dst.Keys = append(dst.Keys, keysDst...)
