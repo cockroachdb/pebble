@@ -171,3 +171,11 @@ a 10
 b 20
 ----
 b 20: split at "b"
+
+# Verify that we can jump over many boundaries before the first key.
+run start-key=a limit-key=g target-size=100
+f1 10
+f2 10
+gg 10
+----
+gg 10: split at "g"

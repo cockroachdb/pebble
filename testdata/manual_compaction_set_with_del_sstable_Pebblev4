@@ -182,7 +182,8 @@ compact a-e L1
 ----
 L2:
   000009:[a#3,SET-c#inf,RANGEDEL]
-  000010:[c#2,RANGEDEL-h#3,SET]
+  000010:[c#2,RANGEDEL-e#inf,RANGEDEL]
+  000011:[e#2,RANGEDEL-h#3,SET]
 L3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
