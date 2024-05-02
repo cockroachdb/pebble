@@ -100,6 +100,8 @@ type OutputSplitter struct {
 	targetFileSize uint64
 	frontier       frontier
 
+	shouldSplitCalled bool
+
 	nextBoundary splitterBoundary
 	// reachedBoundary is set when the frontier reaches a boundary and is cleared
 	// in the first ShouldSplitBefore call after that.
@@ -121,10 +123,12 @@ type splitterBoundary struct {
 // NewOutputSplitter creates a new OutputSplitter. See OutputSplitter for more
 // information.
 //
+// The limitKey must be either nil (no limit) or a key greater than startKey.
+//
 // NewOutputSplitter registers the splitter with the provided Frontiers.
 //
-// INVARIANTS: startKey must be at or after the current frontier. The limitKey
-// must be either nil (no limit) or a key greater than startKey.
+// Note: it is allowed for the startKey to be behind the current frontier, as
+// long as the key in the first ShouldSplitBefore call is at the frontier.
 func NewOutputSplitter(
 	cmp base.Compare,
 	startKey []byte,
@@ -154,7 +158,8 @@ func NewOutputSplitter(
 	if invariants.Enabled && s.nextBoundary.key != nil && s.cmp(s.nextBoundary.key, startKey) <= 0 {
 		panic("first boundary is not after startKey")
 	}
-	s.frontier.Init(frontiers, s.nextBoundary.key, s.boundaryReached)
+	// We start using the frontier after the first ShouldSplitBefore call.
+	s.frontier.Init(frontiers, nil, s.boundaryReached)
 	return s
 }
 
@@ -203,17 +208,28 @@ func (s *OutputSplitter) setNextBoundary(nextGrandparent *manifest.FileMetadata)
 func (s *OutputSplitter) ShouldSplitBefore(
 	nextUserKey []byte, estimatedFileSize uint64, lastUserKeyFn func() []byte,
 ) ShouldSplit {
-	if invariants.Enabled {
-		if s.splitKey != nil {
-			panic("ShouldSplitBefore called after it returned SplitNow")
+	if invariants.Enabled && s.splitKey != nil {
+		panic("ShouldSplitBefore called after it returned SplitNow")
+	}
+	if !s.shouldSplitCalled {
+		// The boundary could have been advanced to nextUserKey before the splitter
+		// was created. So one single time, we advance the boundary manually.
+		s.shouldSplitCalled = true
+		for s.nextBoundary.key != nil && s.cmp(s.nextBoundary.key, nextUserKey) <= 0 {
+			s.boundaryReached(nextUserKey)
 		}
-		if s.nextBoundary.key != nil && s.cmp(s.nextBoundary.key, nextUserKey) <= 0 {
-			panic("boundary is behind the next key (or startKey was before the boundary)")
-		}
+		s.frontier.Update(s.nextBoundary.key)
+	}
+
+	if invariants.Enabled && s.nextBoundary.key != nil && s.cmp(s.nextBoundary.key, nextUserKey) <= 0 {
+		panic("boundary is behind the next key (or startKey was before the boundary)")
 	}
 	// Note: s.reachedBoundary can be empty.
 	reachedBoundary := s.reachedBoundary
 	s.reachedBoundary = splitterBoundary{}
+	if invariants.Enabled && reachedBoundary.key != nil && s.cmp(reachedBoundary.key, nextUserKey) > 0 {
+		panic("reached boundary ahead of the next user key")
+	}
 	if reachedBoundary.key != nil && !reachedBoundary.isGrandparent {
 		// Limit was reached.
 		s.splitKey = s.limit

@@ -7,6 +7,7 @@ package compact
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -51,11 +52,15 @@ func TestOutputSplitter(t *testing.T) {
 				targetFileSize, grandparents.Iter(), f,
 			)
 			var last string
-			for _, l := range strings.Split(d.Input, "\n") {
+			for i, l := range strings.Split(d.Input, "\n") {
 				var key string
 				var estimatedSize uint64
 				fmt.Sscanf(l, "%s %d", &key, &estimatedSize)
-				f.Advance([]byte(key))
+				// Advance the frontier, except (sometimes) for the first key where the
+				// splitter allows for the frontier to already be at the next user key.
+				if i > 0 || rand.Intn(2) == 0 {
+					f.Advance([]byte(key))
+				}
 				if s.ShouldSplitBefore([]byte(key), estimatedSize, func() []byte { return []byte(last) }) {
 					return fmt.Sprintf("%s %d: split at %q", key, estimatedSize, s.SplitKey())
 				}

@@ -2912,14 +2912,10 @@ func (d *DB) runCompaction(
 	// progress guarantees ensure that eventually the input iterator will be
 	// exhausted and the range tombstone fragments will all be flushed.
 	for key, val := iter.First(); key != nil || iter.FirstTombstoneStart() != nil || iter.FirstRangeKeyStart() != nil; {
-		var firstKey []byte
-		if key != nil {
-			// firstKey must be at or above the current frontier; we can't use the
-			// start key from the tombstones/range keys, as the last file could have
-			// been split before the frontier.
+		firstKey := base.MinUserKey(c.cmp, iter.FirstTombstoneStart(), iter.FirstRangeKeyStart())
+		// Note that if firstKey is not nil, it must be <= key.
+		if key != nil && firstKey == nil {
 			firstKey = key.UserKey
-		} else {
-			firstKey = base.MinUserKey(c.cmp, iter.FirstTombstoneStart(), iter.FirstRangeKeyStart())
 		}
 		splitter := compact.NewOutputSplitter(c.cmp, firstKey, splitLimitFunc(firstKey), c.maxOutputFileSize, c.grandparents.Iter(), iter.Frontiers())
 
