@@ -44,13 +44,14 @@ func checkRoundTrip(e0 VersionEdit) error {
 func TestVERoundTripAndAccumulate(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	m1 := (&FileMetadata{
-		FileNum:         810,
-		Size:            8090,
-		CreationTime:    809060,
-		SmallestSeqNum:  9,
-		LargestSeqNum:   11,
-		SyntheticPrefix: []byte("after"),
-		SyntheticSuffix: []byte("foo"),
+		FileNum:               810,
+		Size:                  8090,
+		CreationTime:          809060,
+		SmallestSeqNum:        9,
+		LargestSeqNum:         11,
+		LargestSeqNumAbsolute: 11,
+		SyntheticPrefix:       []byte("after"),
+		SyntheticSuffix:       []byte("foo"),
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
@@ -63,13 +64,14 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 	m1.InitPhysicalBacking()
 
 	m2 := (&FileMetadata{
-		FileNum:        812,
-		Size:           8090,
-		CreationTime:   809060,
-		SmallestSeqNum: 9,
-		LargestSeqNum:  11,
-		Virtual:        true,
-		FileBacking:    m1.FileBacking,
+		FileNum:               812,
+		Size:                  8090,
+		CreationTime:          809060,
+		SmallestSeqNum:        9,
+		LargestSeqNum:         11,
+		LargestSeqNumAbsolute: 11,
+		Virtual:               true,
+		FileBacking:           m1.FileBacking,
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
@@ -124,13 +126,14 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m1.InitPhysicalBacking()
 
 	m2 := (&FileMetadata{
-		FileNum:             806,
-		Size:                8060,
-		CreationTime:        806040,
-		SmallestSeqNum:      3,
-		LargestSeqNum:       5,
-		MarkedForCompaction: true,
-		SyntheticSuffix:     []byte("foo"),
+		FileNum:               806,
+		Size:                  8060,
+		CreationTime:          806040,
+		SmallestSeqNum:        3,
+		LargestSeqNum:         5,
+		LargestSeqNumAbsolute: 5,
+		MarkedForCompaction:   true,
+		SyntheticSuffix:       []byte("foo"),
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
@@ -150,11 +153,12 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m3.InitPhysicalBacking()
 
 	m4 := (&FileMetadata{
-		FileNum:        809,
-		Size:           8090,
-		CreationTime:   809060,
-		SmallestSeqNum: 9,
-		LargestSeqNum:  11,
+		FileNum:               809,
+		Size:                  8090,
+		CreationTime:          809060,
+		SmallestSeqNum:        9,
+		LargestSeqNum:         11,
+		LargestSeqNumAbsolute: 11,
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
@@ -167,11 +171,12 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m4.InitPhysicalBacking()
 
 	m5 := (&FileMetadata{
-		FileNum:        810,
-		Size:           8090,
-		CreationTime:   809060,
-		SmallestSeqNum: 9,
-		LargestSeqNum:  11,
+		FileNum:               810,
+		Size:                  8090,
+		CreationTime:          809060,
+		SmallestSeqNum:        9,
+		LargestSeqNum:         11,
+		LargestSeqNumAbsolute: 11,
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
@@ -184,11 +189,12 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m5.InitPhysicalBacking()
 
 	m6 := (&FileMetadata{
-		FileNum:        811,
-		Size:           8090,
-		CreationTime:   809060,
-		SmallestSeqNum: 9,
-		LargestSeqNum:  11,
+		FileNum:               811,
+		Size:                  8090,
+		CreationTime:          809060,
+		SmallestSeqNum:        9,
+		LargestSeqNum:         11,
+		LargestSeqNumAbsolute: 11,
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
@@ -254,11 +260,12 @@ func TestVersionEditDecode(t *testing.T) {
 	// decoded edits.
 	cmp := base.DefaultComparer.Compare
 	m := (&FileMetadata{
-		FileNum:        4,
-		Size:           709,
-		SmallestSeqNum: 12,
-		LargestSeqNum:  14,
-		CreationTime:   1701712644,
+		FileNum:               4,
+		Size:                  709,
+		SmallestSeqNum:        12,
+		LargestSeqNum:         14,
+		LargestSeqNumAbsolute: 14,
+		CreationTime:          1701712644,
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("bar"), 14, base.InternalKeyKindDelete),

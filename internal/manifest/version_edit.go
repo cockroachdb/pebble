@@ -407,15 +407,16 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			m := &FileMetadata{
-				FileNum:             fileNum,
-				Size:                size,
-				CreationTime:        int64(creationTime),
-				SmallestSeqNum:      smallestSeqNum,
-				LargestSeqNum:       largestSeqNum,
-				MarkedForCompaction: markedForCompaction,
-				Virtual:             virtualState.virtual,
-				SyntheticPrefix:     syntheticPrefix,
-				SyntheticSuffix:     syntheticSuffix,
+				FileNum:               fileNum,
+				Size:                  size,
+				CreationTime:          int64(creationTime),
+				SmallestSeqNum:        smallestSeqNum,
+				LargestSeqNum:         largestSeqNum,
+				LargestSeqNumAbsolute: largestSeqNum,
+				MarkedForCompaction:   markedForCompaction,
+				Virtual:               virtualState.virtual,
+				SyntheticPrefix:       syntheticPrefix,
+				SyntheticSuffix:       syntheticSuffix,
 			}
 			if tag != tagNewFile5 { // no range keys present
 				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)

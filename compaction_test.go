@@ -1388,6 +1388,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 		fileNumCounter++
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.LargestSeqNumAbsolute = m.LargestSeqNum
 
 		for _, field := range fields[1:] {
 			parts := strings.Split(field, "=")
@@ -2229,6 +2230,7 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.LargestSeqNumAbsolute = m.LargestSeqNum
 		m.InitPhysicalBacking()
 		return m
 	}
@@ -2359,6 +2361,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.LargestSeqNumAbsolute = m.LargestSeqNum
 		m.InitPhysicalBacking()
 		return m
 	}

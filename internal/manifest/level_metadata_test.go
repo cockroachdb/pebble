@@ -47,6 +47,7 @@ func TestLevelIterator(t *testing.T) {
 						)
 						m.SmallestSeqNum = m.Smallest.SeqNum()
 						m.LargestSeqNum = m.Largest.SeqNum()
+						m.LargestSeqNumAbsolute = m.LargestSeqNum
 						m.InitPhysicalBacking()
 						files = append(files, m)
 					}

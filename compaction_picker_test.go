@@ -85,10 +85,11 @@ func loadVersion(t *testing.T, d *datadriven.TestData) (*version, *Options, stri
 					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
 				}
 				m := (&fileMetadata{
-					FileNum:        base.FileNum(uint64(level)*100_000 + i),
-					SmallestSeqNum: key.SeqNum(),
-					LargestSeqNum:  key.SeqNum(),
-					Size:           1,
+					FileNum:               base.FileNum(uint64(level)*100_000 + i),
+					SmallestSeqNum:        key.SeqNum(),
+					LargestSeqNum:         key.SeqNum(),
+					LargestSeqNumAbsolute: key.SeqNum(),
+					Size:                  1,
 					Stats: manifest.TableStats{
 						RangeDeletionsBytesEstimate: 0,
 					},
@@ -391,6 +392,7 @@ func TestCompactionPickerL0(t *testing.T) {
 		if m.SmallestSeqNum > m.LargestSeqNum {
 			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
 		}
+		m.LargestSeqNumAbsolute = m.LargestSeqNum
 		m.InitPhysicalBacking()
 		return m, nil
 	}
@@ -616,6 +618,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.LargestSeqNumAbsolute = m.Largest.SeqNum()
 		return m, nil
 	}
 
@@ -812,6 +815,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.LargestSeqNumAbsolute = m.Largest.SeqNum()
 		return m, nil
 	}
 
@@ -973,6 +977,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		if m.SmallestSeqNum > m.LargestSeqNum {
 			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
 		}
+		m.LargestSeqNumAbsolute = m.LargestSeqNum
 		m.InitPhysicalBacking()
 		return m
 	}
@@ -1238,6 +1243,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.LargestSeqNumAbsolute = m.LargestSeqNum
 		return m, nil
 	}
 
