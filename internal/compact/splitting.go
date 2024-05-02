@@ -95,6 +95,7 @@ func (s ShouldSplit) String() string {
 // ShouldSplitBefore call.
 type OutputSplitter struct {
 	cmp            base.Compare
+	startKey       []byte
 	limit          []byte
 	targetFileSize uint64
 	frontier       frontier
@@ -134,6 +135,7 @@ func NewOutputSplitter(
 ) *OutputSplitter {
 	s := &OutputSplitter{
 		cmp:              cmp,
+		startKey:         slices.Clone(startKey),
 		targetFileSize:   targetFileSize,
 		grandparentLevel: grandparentLevel,
 	}
@@ -141,7 +143,7 @@ func NewOutputSplitter(
 		if invariants.Enabled && cmp(startKey, limit) >= 0 {
 			panic("limit <= startKey")
 		}
-		s.limit = limit
+		s.limit = slices.Clone(limit)
 	}
 	// Find the first grandparent that starts at or after startKey.
 	grandparent := s.grandparentLevel.SeekGE(cmp, startKey)
@@ -229,6 +231,13 @@ func (s *OutputSplitter) ShouldSplitBefore(
 			s.splitKey = reachedBoundary.key
 			return SplitNow
 		}
+
+		// When the target file size limit is very small (in tests), we could end up
+		// splitting at the first key, which is not allowed.
+		if s.cmp(nextUserKey, s.startKey) <= 0 {
+			return NoSplit
+		}
+
 		// TODO(radu): it would make for a cleaner interface if we didn't rely on a
 		// lastUserKeyFn. We could make a copy of the key here and split at the next
 		// user key that is different; the main difficulty is that various tests
@@ -254,6 +263,9 @@ func (s *OutputSplitter) ShouldSplitBefore(
 func (s *OutputSplitter) SplitKey() []byte {
 	s.frontier.Update(nil)
 	if s.splitKey != nil {
+		if invariants.Enabled && s.cmp(s.splitKey, s.startKey) <= 0 {
+			panic(fmt.Sprintf("splitKey %q <= startKey %q", s.splitKey, s.startKey))
+		}
 		return s.splitKey
 	}
 	return s.limit

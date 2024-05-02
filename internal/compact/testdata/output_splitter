@@ -164,3 +164,10 @@ h 20
 i 30
 ----
 h 20: split at "ga"
+
+# Verify that we never split at the first key.
+run start-key=a limit-key=ga target-size=1
+a 10
+b 20
+----
+b 20: split at "b"
