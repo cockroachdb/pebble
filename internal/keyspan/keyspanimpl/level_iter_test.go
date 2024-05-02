@@ -286,14 +286,15 @@ func TestLevelIterEquivalence(t *testing.T) {
 			for k, file := range level {
 				fileIters = append(fileIters, keyspan.NewIter(base.DefaultComparer.Compare, file))
 				meta := &manifest.FileMetadata{
-					FileNum:          base.FileNum(k + 1),
-					Size:             1024,
-					SmallestSeqNum:   2,
-					LargestSeqNum:    2,
-					SmallestRangeKey: base.MakeInternalKey(file[0].Start, file[0].SmallestKey().SeqNum(), file[0].SmallestKey().Kind()),
-					LargestRangeKey:  base.MakeExclusiveSentinelKey(file[len(file)-1].LargestKey().Kind(), file[len(file)-1].End),
-					HasPointKeys:     false,
-					HasRangeKeys:     true,
+					FileNum:               base.FileNum(k + 1),
+					Size:                  1024,
+					SmallestSeqNum:        2,
+					LargestSeqNum:         2,
+					LargestSeqNumAbsolute: 2,
+					SmallestRangeKey:      base.MakeInternalKey(file[0].Start, file[0].SmallestKey().SeqNum(), file[0].SmallestKey().Kind()),
+					LargestRangeKey:       base.MakeExclusiveSentinelKey(file[len(file)-1].LargestKey().Kind(), file[len(file)-1].End),
+					HasPointKeys:          false,
+					HasRangeKeys:          true,
 				}
 				meta.InitPhysicalBacking()
 				meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)

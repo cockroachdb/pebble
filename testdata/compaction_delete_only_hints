@@ -257,10 +257,17 @@ close-snapshot
 ----
 [JOB 100] compacted(elision-only) L6 [000004] (670B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (591B), in 1.0s (2.0s total), output rate 591B/s
 
-# The deletion hint was removed by the elision-only compaction.
+# In previous versions of the code, the deletion hint was removed by the
+# elision-only compaction because it zeroed sequence numbers of keys with
+# sequence numbers higher than the lowest tombstone sequence number.
+#
+# In the current code, the hint remains but when the hint is resolved. Instead
+# we use FileMetadata.LargestSeqNumAbsolute to ensure that we don't drop keys
+# that previously had higher sequence numbers that have since been zerored.
+
 get-hints
 ----
-(none)
+L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0, type=point-key-only)
 
 # The LSM contains the key, as expected.
 iter
@@ -270,10 +277,18 @@ next
 a: (b, .)
 .
 
-# Closing the next snapshot should NOT trigger another compaction, as the
-# deletion hint was removed in the elision-only compaction.
+# Closing the next snapshot should NOT trigger another compaction but SHOULD
+# clear the hint. Although the file 000005's largest sequence number is zero
+# (due to sequence number zeroing), the file's LargestSeqNumAbsolute
+# indicates that some of the keys previously had higher sequence numbers, so
+# the hint cannot be used to drop the file 000005.
+
 close-snapshot
 25
+----
+(none)
+
+get-hints
 ----
 (none)
 

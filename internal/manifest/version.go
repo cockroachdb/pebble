@@ -186,6 +186,15 @@ type FileMetadata struct {
 	// ingested. For virtual sstables, this corresponds to the wall clock time
 	// when the FileMetadata for the virtual sstable was first created.
 	CreationTime int64
+	// LargestSeqNumAbsolute is an upper bound for the largest sequence number
+	// in the table. This upper bound is guaranteed to be higher than any
+	// sequence number any of the table's keys have held at any point in time
+	// while the database has been open. Specifically, if the table contains
+	// keys that have had their sequence numbers zeroed during a compaction,
+	// LargestSeqNumAbsolute will be at least as high as the pre-zeroing
+	// sequence number. LargestSeqNumAbsolute is NOT durably persisted, so after
+	// a database restart it takes on the value of LargestSeqNum.
+	LargestSeqNumAbsolute uint64
 	// Lower and upper bounds for the smallest and largest sequence numbers in
 	// the table, across both point and range keys. For physical sstables, these
 	// values are tight bounds. For virtual sstables, there is no guarantee that
@@ -465,23 +474,18 @@ func (m *FileMetadata) InitProviderBacking(fileNum base.DiskFileNum, size uint64
 // ValidateVirtual should be called once the FileMetadata for a virtual sstable
 // is created to verify that the fields of the virtual sstable are sound.
 func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
-	if !m.Virtual {
+	switch {
+	case !m.Virtual:
 		panic("pebble: invalid virtual sstable")
-	}
-
-	if createdFrom.SmallestSeqNum != m.SmallestSeqNum {
+	case createdFrom.SmallestSeqNum != m.SmallestSeqNum:
 		panic("pebble: invalid smallest sequence number for virtual sstable")
-	}
-
-	if createdFrom.LargestSeqNum != m.LargestSeqNum {
+	case createdFrom.LargestSeqNum != m.LargestSeqNum:
 		panic("pebble: invalid largest sequence number for virtual sstable")
-	}
-
-	if createdFrom.FileBacking != nil && createdFrom.FileBacking != m.FileBacking {
+	case createdFrom.LargestSeqNumAbsolute != m.LargestSeqNumAbsolute:
+		panic("pebble: invalid largest absolute sequence number for virtual sstable")
+	case createdFrom.FileBacking != nil && createdFrom.FileBacking != m.FileBacking:
 		panic("pebble: invalid physical sstable state for virtual sstable")
-	}
-
-	if m.Size == 0 {
+	case m.Size == 0:
 		panic("pebble: virtual sstable size must be set upon creation")
 	}
 }
@@ -770,6 +774,7 @@ func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 			p.Expect("-")
 			m.LargestSeqNum = p.Uint64()
 			p.Expect("]")
+			m.LargestSeqNumAbsolute = m.LargestSeqNum
 
 		case "points":
 			p.Expect("[")
@@ -828,6 +833,10 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	if m.SmallestSeqNum > m.LargestSeqNum {
 		return base.CorruptionErrorf("file %s has inconsistent seqnum bounds: %d vs %d",
 			errors.Safe(m.FileNum), m.SmallestSeqNum, m.LargestSeqNum)
+	}
+	if m.LargestSeqNumAbsolute < m.LargestSeqNum {
+		return base.CorruptionErrorf("file %s has inconsistent absolute largest seqnum bounds: %d vs %d",
+			errors.Safe(m.FileNum), m.LargestSeqNumAbsolute, m.LargestSeqNum)
 	}
 
 	// Point key validation.

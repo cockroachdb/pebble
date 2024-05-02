@@ -266,6 +266,18 @@ type compaction struct {
 	pickerMetrics compactionPickerMetrics
 }
 
+// inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
+// input sstables.
+func (c *compaction) inputLargestSeqNumAbsolute() uint64 {
+	var seqNum uint64
+	for _, cl := range c.inputs {
+		cl.files.Each(func(m *manifest.FileMetadata) {
+			seqNum = max(seqNum, m.LargestSeqNumAbsolute)
+		})
+	}
+	return seqNum
+}
+
 func (c *compaction) makeInfo(jobID JobID) CompactionInfo {
 	info := CompactionInfo{
 		JobID:       int(jobID),
@@ -1583,7 +1595,6 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
 		d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
 		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.countMissizedDels
-		d.maybeUpdateDeleteCompactionHints(c)
 	}
 
 	d.clearCompactingState(c, err != nil)
@@ -1973,8 +1984,16 @@ func (h *deleteCompactionHint) canDelete(
 	cmp Compare, m *fileMetadata, snapshots compact.Snapshots,
 ) bool {
 	// The file can only be deleted if all of its keys are older than the
-	// earliest tombstone aggregated into the hint.
-	if m.LargestSeqNum >= h.tombstoneSmallestSeqNum || m.SmallestSeqNum < h.fileSmallestSeqNum {
+	// earliest tombstone aggregated into the hint. Note that we use
+	// m.LargestSeqNumAbsolute, not m.LargestSeqNum. Consider a compaction that
+	// zeroes sequence numbers. A compaction may zero the sequence number of a
+	// key with a sequence number > h.tombstoneSmallestSeqNum and set it to
+	// zero. If we looked at m.LargestSeqNum, the resulting output file would
+	// appear to not contain any keys more recent than the oldest tombstone. To
+	// avoid this error, the largest pre-zeroing sequence number is maintained
+	// in LargestSeqNumAbsolute and used here to make the determination whether
+	// the file's keys are older than all of the hint's tombstones.
+	if m.LargestSeqNumAbsolute >= h.tombstoneSmallestSeqNum || m.SmallestSeqNum < h.fileSmallestSeqNum {
 		return false
 	}
 
@@ -2010,55 +2029,6 @@ func (h *deleteCompactionHint) canDelete(
 
 	// The file's keys must be completely contained within the hint range.
 	return cmp(h.start, m.Smallest.UserKey) <= 0 && cmp(m.Largest.UserKey, h.end) < 0
-}
-
-func (d *DB) maybeUpdateDeleteCompactionHints(c *compaction) {
-	// Compactions that zero sequence numbers can interfere with compaction
-	// deletion hints. Deletion hints apply to tables containing keys older
-	// than a threshold. If a key more recent than the threshold is zeroed in
-	// a compaction, a delete-only compaction may mistake it as meeting the
-	// threshold and drop a table containing live data.
-	//
-	// To avoid this scenario, compactions that zero sequence numbers remove
-	// any conflicting deletion hints. A deletion hint is conflicting if both
-	// of the following conditions apply:
-	// * its key space overlaps with the compaction
-	// * at least one of its inputs contains a key as recent as one of the
-	//   hint's tombstones.
-	//
-	if !c.allowedZeroSeqNum {
-		return
-	}
-
-	updatedHints := d.mu.compact.deletionHints[:0]
-	for _, h := range d.mu.compact.deletionHints {
-		// If the compaction's key space is disjoint from the hint's key
-		// space, the zeroing of sequence numbers won't affect the hint. Keep
-		// the hint.
-		keysDisjoint := d.cmp(h.end, c.smallest.UserKey) < 0 || d.cmp(h.start, c.largest.UserKey) > 0
-		if keysDisjoint {
-			updatedHints = append(updatedHints, h)
-			continue
-		}
-
-		// All of the compaction's inputs must be older than the hint's
-		// tombstones.
-		inputsOlder := true
-		for _, in := range c.inputs {
-			iter := in.files.Iter()
-			for f := iter.First(); f != nil; f = iter.Next() {
-				inputsOlder = inputsOlder && f.LargestSeqNum < h.tombstoneSmallestSeqNum
-			}
-		}
-		if inputsOlder {
-			updatedHints = append(updatedHints, h)
-			continue
-		}
-
-		// Drop h, because the compaction c may have zeroed sequence numbers
-		// of keys more recent than some of h's tombstones.
-	}
-	d.mu.compact.deletionHints = updatedHints
 }
 
 func checkDeleteCompactionHints(
@@ -2248,7 +2218,6 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
 		d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
 		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.countMissizedDels
-		d.maybeUpdateDeleteCompactionHints(c)
 	}
 
 	// NB: clearing compacting state must occur before updating the read state;
@@ -2316,14 +2285,15 @@ func (d *DB) runCopyCompaction(
 	// a new FileNum. This has the potential of making the block cache less
 	// effective, however.
 	newMeta := &fileMetadata{
-		Size:            inputMeta.Size,
-		CreationTime:    inputMeta.CreationTime,
-		SmallestSeqNum:  inputMeta.SmallestSeqNum,
-		LargestSeqNum:   inputMeta.LargestSeqNum,
-		Stats:           inputMeta.Stats,
-		Virtual:         inputMeta.Virtual,
-		SyntheticPrefix: inputMeta.SyntheticPrefix,
-		SyntheticSuffix: inputMeta.SyntheticSuffix,
+		Size:                  inputMeta.Size,
+		CreationTime:          inputMeta.CreationTime,
+		SmallestSeqNum:        inputMeta.SmallestSeqNum,
+		LargestSeqNum:         inputMeta.LargestSeqNum,
+		LargestSeqNumAbsolute: inputMeta.LargestSeqNumAbsolute,
+		Stats:                 inputMeta.Stats,
+		Virtual:               inputMeta.Virtual,
+		SyntheticPrefix:       inputMeta.SyntheticPrefix,
+		SyntheticSuffix:       inputMeta.SyntheticSuffix,
 	}
 	if inputMeta.HasPointKeys {
 		newMeta.ExtendPointKeyBounds(c.cmp, inputMeta.SmallestPointKey, inputMeta.LargestPointKey)
@@ -2648,6 +2618,7 @@ func (d *DB) runCompaction(
 	// The table is typically written at the maximum allowable format implied by
 	// the current format major version of the DB.
 	tableFormat := formatVers.MaxTableFormat()
+	inputLargestSeqNumAbsolute := c.inputLargestSeqNumAbsolute()
 
 	// In format major versions with maximum table formats of Pebblev3, value
 	// blocks were conditional on an experimental setting. In format major
@@ -2785,6 +2756,15 @@ func (d *DB) runCompaction(
 		meta.Size = writerMeta.Size
 		meta.SmallestSeqNum = writerMeta.SmallestSeqNum
 		meta.LargestSeqNum = writerMeta.LargestSeqNum
+		if c.flushing == nil {
+			// Set the file's LargestSeqNumAbsolute to be the maximum value of any
+			// of the compaction's input sstables.
+			// TODO(jackson): This could be narrowed to be the maximum of input
+			// sstables that overlap the output sstable's key range.
+			meta.LargestSeqNumAbsolute = inputLargestSeqNumAbsolute
+		} else {
+			meta.LargestSeqNumAbsolute = writerMeta.LargestSeqNum
+		}
 		meta.InitPhysicalBacking()
 
 		// If the file didn't contain any range deletions, we can fill its
