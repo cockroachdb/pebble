@@ -1222,7 +1222,7 @@ func (d *DB) Ingest(paths []string) error {
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-	_, err := d.ingest(paths, ingestTargetLevel, nil /* shared */, KeyRange{}, false, nil /* external */)
+	_, err := d.ingest(paths, nil /* shared */, KeyRange{}, false, nil /* external */)
 	return err
 }
 
@@ -1310,7 +1310,7 @@ func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(paths, ingestTargetLevel, nil, KeyRange{}, false, nil)
+	return d.ingest(paths, nil, KeyRange{}, false, nil)
 }
 
 // IngestExternalFiles does the same as IngestWithStats, and additionally
@@ -1328,7 +1328,7 @@ func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats,
 	if d.opts.Experimental.RemoteStorage == nil {
 		return IngestOperationStats{}, errors.New("pebble: cannot ingest external files without shared storage configured")
 	}
-	return d.ingest(nil, ingestTargetLevel, nil, KeyRange{}, false, external)
+	return d.ingest(nil, nil, KeyRange{}, false, external)
 }
 
 // IngestAndExcise does the same as IngestWithStats, and additionally accepts a
@@ -1369,7 +1369,7 @@ func (d *DB) IngestAndExcise(
 			v, FormatMinForSharedObjects,
 		)
 	}
-	return d.ingest(paths, ingestTargetLevel, shared, exciseSpan, sstsContainExciseTombstone, external)
+	return d.ingest(paths, shared, exciseSpan, sstsContainExciseTombstone, external)
 }
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
@@ -1492,7 +1492,6 @@ func (d *DB) handleIngestAsFlushable(
 // See comment at Ingest() for details on how this works.
 func (d *DB) ingest(
 	paths []string,
-	targetLevelFunc ingestTargetLevelFunc,
 	shared []SharedSSTMeta,
 	exciseSpan KeyRange,
 	sstsContainExciseTombstone bool,
@@ -1788,7 +1787,7 @@ func (d *DB) ingest(
 
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, err = d.ingestApply(jobID, loadResult, targetLevelFunc, mut, exciseSpan, seqNum)
+		ve, err = d.ingestApply(jobID, loadResult, mut, exciseSpan, seqNum)
 	}
 
 	// Only one ingest can occur at a time because if not, one would block waiting
@@ -2150,18 +2149,6 @@ func (d *DB) excise(
 	return ve.NewFiles[len(ve.NewFiles)-numCreatedFiles:], nil
 }
 
-type ingestTargetLevelFunc func(
-	newIters tableNewIters,
-	newRangeKeyIter keyspanimpl.TableNewSpanIter,
-	iterOps IterOptions,
-	comparer *Comparer,
-	v *version,
-	baseLevel int,
-	compactions map[*compaction]struct{},
-	meta *fileMetadata,
-	suggestSplit bool,
-) (int, *fileMetadata, error)
-
 type ingestSplitFile struct {
 	// ingestFile is the file being ingested.
 	ingestFile *fileMetadata
@@ -2281,12 +2268,7 @@ func (d *DB) ingestSplit(
 }
 
 func (d *DB) ingestApply(
-	jobID JobID,
-	lr ingestLoadResult,
-	findTargetLevel ingestTargetLevelFunc,
-	mut *memTable,
-	exciseSpan KeyRange,
-	exciseSeqNum uint64,
+	jobID JobID, lr ingestLoadResult, mut *memTable, exciseSpan KeyRange, exciseSeqNum uint64,
 ) (*versionEdit, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -2382,13 +2364,13 @@ func (d *DB) ingestApply(
 					f.Level = 6
 				}
 			} else {
-				// TODO(bilal): findTargetLevel does disk IO (reading files for data
+				// TODO(bilal): ingestTargetLevel does disk IO (reading files for data
 				// overlap) even though we're holding onto d.mu. Consider unlocking
 				// d.mu while we do this. We already hold versions.logLock so we should
 				// not see any version applications while we're at this. The one
 				// complication here would be pulling out the mu.compact.inProgress
-				// check from findTargetLevel, as that requires d.mu to be held.
-				f.Level, splitFile, err = findTargetLevel(
+				// check from ingestTargetLevel, as that requires d.mu to be held.
+				f.Level, splitFile, err = ingestTargetLevel(
 					d.newIters, d.tableNewRangeKeyIter, iterOps, d.opts.Comparer, current, baseLevel, d.mu.compact.inProgress, m, shouldIngestSplit)
 			}
 
