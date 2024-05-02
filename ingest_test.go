@@ -2277,10 +2277,20 @@ func TestIngestTargetLevel(t *testing.T) {
 			for _, target := range strings.Split(td.Input, "\n") {
 				meta, err := manifest.ParseFileMetadataDebug(target)
 				require.NoError(t, err)
-				level, overlapFile, err := ingestTargetLevel(
-					d.newIters, d.tableNewRangeKeyIter, IterOptions{logger: d.opts.Logger},
-					d.opts.Comparer, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta,
-					suggestSplit)
+				overlapChecker := &overlapChecker{
+					comparer: d.opts.Comparer,
+					newIters: d.newIters,
+					opts: IterOptions{
+						logger: d.opts.Logger,
+						CategoryAndQoS: sstable.CategoryAndQoS{
+							Category: "pebble-ingest",
+							QoSLevel: sstable.LatencySensitiveQoSLevel,
+						},
+					},
+					v: d.mu.versions.currentVersion(),
+				}
+				level, overlapFile, err := ingestTargetLevel(context.Background(), overlapChecker,
+					1, d.mu.compact.inProgress, meta, suggestSplit)
 				if err != nil {
 					return err.Error()
 				}
