@@ -1245,7 +1245,6 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	c.version = d.mu.versions.currentVersion()
 
 	baseLevel := d.mu.versions.picker.getBaseLevel()
-	iterOpts := IterOptions{logger: d.opts.Logger}
 	ve := &versionEdit{}
 	var ingestSplitFiles []ingestSplitFile
 	ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
@@ -1272,6 +1271,19 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
 	}
 
+	ctx := context.Background()
+	overlapChecker := &overlapChecker{
+		comparer: d.opts.Comparer,
+		newIters: d.newIters,
+		opts: IterOptions{
+			logger: d.opts.Logger,
+			CategoryAndQoS: sstable.CategoryAndQoS{
+				Category: "pebble-ingest",
+				QoSLevel: sstable.LatencySensitiveQoSLevel,
+			},
+		},
+		v: c.version,
+	}
 	replacedFiles := make(map[base.FileNum][]newFileEntry)
 	for _, file := range ingestFlushable.files {
 		var fileToSplit *fileMetadata
@@ -1284,11 +1296,8 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 			level = 6
 		} else {
 			var err error
-			level, fileToSplit, err = ingestTargetLevel(
-				d.newIters, d.tableNewRangeKeyIter, iterOpts, d.opts.Comparer,
-				c.version, baseLevel, d.mu.compact.inProgress, file.FileMetadata,
-				suggestSplit,
-			)
+			level, fileToSplit, err = ingestTargetLevel(ctx, overlapChecker,
+				baseLevel, d.mu.compact.inProgress, file.FileMetadata, suggestSplit)
 			if err != nil {
 				return nil, err
 			}
