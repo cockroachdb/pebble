@@ -425,6 +425,7 @@ func TestGetIter(t *testing.T) {
 						meta.LargestSeqNum = ikey.SeqNum()
 					}
 				}
+				meta.LargestSeqNumAbsolute = meta.LargestSeqNum
 			}
 
 			files[tt.level] = append(files[tt.level], meta)

@@ -301,6 +301,7 @@ func TestCheckOrdering(t *testing.T) {
 				v.Levels[0].Slice().Each(func(m *FileMetadata) {
 					m.SmallestSeqNum = m.Smallest.SeqNum()
 					m.LargestSeqNum = m.Largest.SeqNum()
+					m.LargestSeqNumAbsolute = m.LargestSeqNum
 				})
 				if err = v.CheckOrdering(); err != nil {
 					return err.Error()
@@ -677,6 +678,7 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 			)
 			m.SmallestSeqNum = m.Smallest.SeqNum()
 			m.LargestSeqNum = m.Largest.SeqNum()
+			m.LargestSeqNumAbsolute = m.LargestSeqNum
 			m.InitPhysicalBacking()
 			return m
 		}
