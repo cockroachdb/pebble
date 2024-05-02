@@ -494,5 +494,11 @@ func ParseSpan(input string) Span {
 		}
 		s.Keys = append(s.Keys, k)
 	}
+	for i := 1; i < len(s.Keys); i++ {
+		if s.Keys[i-1].Trailer < s.Keys[i].Trailer {
+			panic(fmt.Sprintf("span keys not sorted: %s %s", s.Keys[i-1], s.Keys[i]))
+		}
+	}
+	s.KeysOrder = ByTrailerDesc
 	return s
 }
