@@ -301,8 +301,7 @@ func (s *ingestedFlushable) computePossibleOverlaps(
 	fn func(bounded) shouldContinue, bounded ...bounded,
 ) {
 	for _, b := range bounded {
-		bounds := b.UserKeyBounds()
-		if s.anyFileOverlaps(b, &bounds) {
+		if s.anyFileOverlaps(b.UserKeyBounds()) {
 			// Some file overlaps in key boundaries. The file doesn't necessarily
 			// contain any keys within the key range, but we would need to perform I/O
 			// to know for sure. The flushable interface dictates that we're not
@@ -316,7 +315,7 @@ func (s *ingestedFlushable) computePossibleOverlaps(
 
 // anyFileBoundsOverlap returns true if there is at least a file in s.files with
 // bounds that overlap the given bounds.
-func (s *ingestedFlushable) anyFileOverlaps(b bounded, bounds *base.UserKeyBounds) bool {
+func (s *ingestedFlushable) anyFileOverlaps(bounds base.UserKeyBounds) bool {
 	// Note that s.files are non-overlapping and sorted.
 	for _, f := range s.files {
 		fileBounds := f.UserKeyBounds()
@@ -350,7 +349,11 @@ func computePossibleOverlapsGenericImpl[F flushable](
 	rangeDelIter := f.newRangeDelIter(nil)
 	rkeyIter := f.newRangeKeyIter(nil)
 	for _, b := range bounded {
-		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, b.UserKeyBounds(), cmp) {
+		overlap, err := determineOverlapAllIters(cmp, b.UserKeyBounds(), iter, rangeDelIter, rkeyIter)
+		if invariants.Enabled && err != nil {
+			panic(errors.AssertionFailedf("expected iterator to be infallible: %v", err))
+		}
+		if overlap {
 			if !fn(b) {
 				break
 			}
@@ -366,4 +369,28 @@ func computePossibleOverlapsGenericImpl[F flushable](
 			}
 		}
 	}
+}
+
+// determineOverlapAllIters checks for overlap in a point iterator, range
+// deletion iterator and range key iterator.
+func determineOverlapAllIters(
+	cmp base.Compare,
+	bounds base.UserKeyBounds,
+	pointIter base.InternalIterator,
+	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
+) (bool, error) {
+	if pointIter != nil {
+		if pointOverlap, err := determineOverlapPointIterator(cmp, bounds, pointIter); pointOverlap || err != nil {
+			return pointOverlap, err
+		}
+	}
+	if rangeDelIter != nil {
+		if rangeDelOverlap, err := determineOverlapKeyspanIterator(cmp, bounds, rangeDelIter); rangeDelOverlap || err != nil {
+			return rangeDelOverlap, err
+		}
+	}
+	if rangeKeyIter != nil {
+		return determineOverlapKeyspanIterator(cmp, bounds, rangeKeyIter)
+	}
+	return false, nil
 }
