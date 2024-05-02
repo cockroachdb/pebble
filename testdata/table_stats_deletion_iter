@@ -54,7 +54,7 @@ w-z:{(#0,RANGEKEYDEL)}
 #   a b c d e f g h i j k l m n o p q r s t u v w x y z
 
 build
-a-z:{(#0,RANGEKEYDEL) (#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@2)}
+a-z:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@2) (#0,RANGEKEYDEL)}
 ----
 000000:[a#0,RANGEKEYSET-z#inf,RANGEKEYDEL]
 
