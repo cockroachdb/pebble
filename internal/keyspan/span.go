@@ -399,6 +399,14 @@ func (s *Span) CoversAt(snapshot, seqNum uint64) bool {
 	return false
 }
 
+// Reset clears the span's Start, End, and Keys fields, retaining the slices for
+// reuse.
+func (s *Span) Reset() {
+	s.Start = s.Start[:0]
+	s.End = s.End[:0]
+	s.Keys = s.Keys[:0]
+}
+
 // String returns a string representation of the span.
 func (s Span) String() string {
 	return fmt.Sprint(prettySpan{Span: s, formatKey: base.DefaultFormatter})

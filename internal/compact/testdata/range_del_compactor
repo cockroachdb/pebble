@@ -1,0 +1,23 @@
+# We retain one key per snapshot plus the top one.
+compact snapshots=(5,10,15) in-use-key-ranges=(a-z)
+a-c:{(#18,RANGEDEL) (#17,RANGEDEL) (#15,RANGEDEL) (#13,RANGEDEL) (#11,RANGEDEL) (#9,RANGEDEL) (#7,RANGEDEL) (#4,RANGEDEL) (#1,RANGEDEL)}
+----
+a-c:{(#18,RANGEDEL) (#13,RANGEDEL) (#9,RANGEDEL) (#4,RANGEDEL)}
+
+# Same as before, but elide in the last stripe.
+compact snapshots=(5,10,15)
+a-c:{(#18,RANGEDEL) (#17,RANGEDEL) (#15,RANGEDEL) (#13,RANGEDEL) (#11,RANGEDEL) (#9,RANGEDEL) (#7,RANGEDEL) (#4,RANGEDEL) (#1,RANGEDEL)}
+----
+a-c:{(#18,RANGEDEL) (#13,RANGEDEL) (#9,RANGEDEL)}
+
+# No snapshots = retain just the top one.
+compact in-use-key-ranges=(a-z)
+a-c:{(#4,RANGEDEL) (#2,RANGEDEL)}
+----
+a-c:{(#4,RANGEDEL)}
+
+# No snapshots and elision: retain nothing.
+compact
+a-c:{(#4,RANGEDEL) (#2,RANGEDEL)}
+----
+.

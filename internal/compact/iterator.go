@@ -165,10 +165,10 @@ type Iter struct {
 	// keys.
 	iter base.InternalIterator
 
-	delElider      pointTombstoneElider
-	rangeDelElider rangeTombstoneElider
-	rangeKeyElider rangeTombstoneElider
-	err            error
+	delElider         pointTombstoneElider
+	rangeDelCompactor RangeDelSpanCompactor
+	rangeKeyCompactor RangeKeySpanCompactor
+	err               error
 	// `key.UserKey` is set to `keyBuf` caused by saving `i.iterKV.UserKey`
 	// and `key.Trailer` is set to `i.iterKV.Trailer`. This is the
 	// case on return from all public methods -- these methods return `key`.
@@ -324,8 +324,8 @@ func NewIter(
 
 	i.frontiers.Init(i.cmp)
 	i.delElider.Init(i.cmp, cfg.TombstoneElision)
-	i.rangeDelElider.Init(i.cmp, cfg.TombstoneElision)
-	i.rangeKeyElider.Init(i.cmp, cfg.RangeKeyElision)
+	i.rangeDelCompactor = MakeRangeDelSpanCompactor(i.cmp, i.cfg.Comparer.Equal, cfg.Snapshots, cfg.TombstoneElision)
+	i.rangeKeyCompactor = MakeRangeKeySpanCompactor(i.cmp, i.cfg.Comparer.Equal, cfg.Snapshots, cfg.RangeKeyElision)
 	return i
 }
 
@@ -1367,34 +1367,14 @@ func (i *Iter) TombstonesUpTo(key []byte) []keyspan.Span {
 	toReturn, i.tombstones = i.splitSpans(i.tombstones, key)
 
 	result := toReturn[:0]
+	var tmp keyspan.Span
 	for _, span := range toReturn {
-		// Apply the snapshot stripe rules, keeping only the latest tombstone for
-		// each snapshot stripe.
-		currentIdx := -1
-		keys := make([]keyspan.Key, 0, min(len(span.Keys), len(i.cfg.Snapshots)+1))
-		for _, k := range span.Keys {
-			idx := i.cfg.Snapshots.Index(k.SeqNum())
-			if currentIdx == idx {
-				continue
-			}
-			if idx == 0 && i.rangeDelElider.ShouldElide(span.Start, span.End) {
-				// This is the last snapshot stripe and the range tombstone
-				// can be elided.
-				break
-			}
-
-			keys = append(keys, k)
-			if idx == 0 {
-				// This is the last snapshot stripe.
-				break
-			}
-			currentIdx = idx
-		}
-		if len(keys) > 0 {
+		i.rangeDelCompactor.Compact(&span, &tmp)
+		if !tmp.Empty() {
 			result = append(result, keyspan.Span{
-				Start: i.cloneKey(span.Start),
-				End:   i.cloneKey(span.End),
-				Keys:  keys,
+				Start: i.cloneKey(tmp.Start),
+				End:   i.cloneKey(tmp.End),
+				Keys:  slices.Clone(tmp.Keys),
 			})
 		}
 	}
@@ -1430,58 +1410,15 @@ func (i *Iter) RangeKeysUpTo(key []byte) []keyspan.Span {
 	toReturn, i.rangeKeys = i.splitSpans(i.rangeKeys, key)
 
 	result := toReturn[:0]
-	for _, s := range toReturn {
-		elideInLastStripe := func(keys []keyspan.Key) []keyspan.Key {
-			// Unsets and deletes in the last snapshot stripe can be elided.
-			k := 0
-			for j := range keys {
-				if (keys[j].Kind() == base.InternalKeyKindRangeKeyUnset || keys[j].Kind() == base.InternalKeyKindRangeKeyDelete) &&
-					i.rangeKeyElider.ShouldElide(s.Start, s.End) {
-					continue
-				}
-				keys[k] = keys[j]
-				k++
-			}
-			keys = keys[:k]
-			return keys
-		}
-
-		var dst keyspan.Span
-		// snapshots are in ascending order, while s.keys are in descending seqnum
-		// order. Partition s.keys by snapshot stripes, and call rangekey.Coalesce
-		// on each partition.
-		dst.Start = s.Start
-		dst.End = s.End
-		dst.Keys = dst.Keys[:0]
-		x, y := len(i.cfg.Snapshots)-1, 0
-		usedLen := 0
-		for x >= 0 {
-			start := y
-			for y < len(s.Keys) && !base.Visible(s.Keys[y].SeqNum(), i.cfg.Snapshots[x], base.InternalKeySeqNumMax) {
-				// Include y in current partition.
-				y++
-			}
-			if y > start {
-				keysDst := dst.Keys[usedLen:cap(dst.Keys)]
-				rangekey.Coalesce(i.cmp, i.cfg.Comparer.Equal, s.Keys[start:y], &keysDst)
-				if y == len(s.Keys) {
-					// This is the last snapshot stripe. Unsets and deletes can be elided.
-					keysDst = elideInLastStripe(keysDst)
-				}
-				usedLen += len(keysDst)
-				dst.Keys = append(dst.Keys, keysDst...)
-			}
-			x--
-		}
-		if y < len(s.Keys) {
-			keysDst := dst.Keys[usedLen:cap(dst.Keys)]
-			rangekey.Coalesce(i.cmp, i.cfg.Comparer.Equal, s.Keys[y:], &keysDst)
-			keysDst = elideInLastStripe(keysDst)
-			usedLen += len(keysDst)
-			dst.Keys = append(dst.Keys, keysDst...)
-		}
-		if len(dst.Keys) > 0 {
-			result = append(result, dst)
+	var tmp keyspan.Span
+	for _, span := range toReturn {
+		i.rangeKeyCompactor.Compact(&span, &tmp)
+		if !tmp.Empty() {
+			result = append(result, keyspan.Span{
+				Start: i.cloneKey(tmp.Start),
+				End:   i.cloneKey(tmp.End),
+				Keys:  slices.Clone(tmp.Keys),
+			})
 		}
 	}
 	return result
