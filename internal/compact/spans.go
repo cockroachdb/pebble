@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // RangeDelSpanCompactor coalesces RANGEDELs within snapshot stripes and elides
@@ -168,4 +169,47 @@ func (c *RangeKeySpanCompactor) elideInLastStripe(
 		k++
 	}
 	return keys[:k]
+}
+
+// SplitAndEncodeSpan splits a span at upToKey and encodes the first part into
+// the table writer, and updates the span to store the remaining part.
+//
+// If upToKey is nil or the span ends before upToKey, we encode the entire span
+// and reset it to the empty span.
+//
+// Note that the span.Start slice will be reused (it will be replaced with a
+// copy of upToKey, if appropriate).
+//
+// The span can contain either only RANGEDEL keys or only range keys.
+func SplitAndEncodeSpan(
+	cmp base.Compare, span *keyspan.Span, upToKey []byte, tw *sstable.Writer,
+) error {
+	if span.Empty() {
+		return nil
+	}
+
+	if upToKey == nil || cmp(span.End, upToKey) <= 0 {
+		if err := tw.EncodeSpan(span); err != nil {
+			return err
+		}
+		span.Reset()
+		return nil
+	}
+
+	if cmp(span.Start, upToKey) >= 0 {
+		// The span starts at/after upToKey; nothing to encode.
+		return nil
+	}
+
+	// Split the span at upToKey and encode the first part.
+	splitSpan := keyspan.Span{
+		Start: span.Start,
+		End:   upToKey,
+		Keys:  span.Keys,
+	}
+	if err := tw.EncodeSpan(&splitSpan); err != nil {
+		return err
+	}
+	span.Start = append(span.Start[:0], upToKey...)
+	return nil
 }

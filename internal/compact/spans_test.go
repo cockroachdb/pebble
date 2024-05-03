@@ -12,6 +12,9 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/stretchr/testify/require"
 )
 
 // TestRangeDelSpanCompactor tests the range key coalescing and striping logic.
@@ -40,7 +43,8 @@ func TestRangeDelSpanCompactor(t *testing.T) {
 			return output.String()
 
 		default:
-			return fmt.Sprintf("unknown command: %s", td.Cmd)
+			td.Fatalf(t, "unknown command: %s", td.Cmd)
+			return ""
 		}
 	})
 }
@@ -71,7 +75,8 @@ func TestRangeKeySpanCompactor(t *testing.T) {
 			return output.String()
 
 		default:
-			return fmt.Sprintf("unknown command: %s", td.Cmd)
+			td.Fatalf(t, "unknown command: %s", td.Cmd)
+			return ""
 		}
 	})
 }
@@ -89,4 +94,43 @@ func maybeParseInUseKeyRanges(td *datadriven.TestData) []base.UserKeyBounds {
 		keyRanges[i] = base.UserKeyBoundsInclusive(start, end)
 	}
 	return keyRanges
+}
+
+func TestSplitAndEncodeSpan(t *testing.T) {
+	var span keyspan.Span
+	datadriven.RunTest(t, "testdata/split_and_encode_span", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "set":
+			span = keyspan.ParseSpan(td.Input)
+			return ""
+
+		case "encode":
+			var upToStr string
+			td.MaybeScanArgs(t, "up-to", &upToStr)
+			var upToKey []byte
+			if upToStr != "" {
+				upToKey = []byte(upToStr)
+			}
+
+			obj := &objstorage.MemObj{}
+			tw := sstable.NewWriter(obj, sstable.WriterOptions{TableFormat: sstable.TableFormatMax})
+			require.NoError(t, SplitAndEncodeSpan(base.DefaultComparer.Compare, &span, upToKey, tw))
+			require.NoError(t, tw.Close())
+			_, rangeDels, rangeKeys := sstable.ReadAll(obj)
+			require.LessOrEqual(t, len(rangeDels)+len(rangeKeys), 1)
+			s := "."
+			if all := append(rangeDels, rangeKeys...); len(all) == 1 {
+				s = all[0].String()
+			}
+			remaining := "."
+			if !span.Empty() {
+				remaining = span.String()
+			}
+			return fmt.Sprintf("Encoded:   %s\nRemaining: %s\n", s, remaining)
+
+		default:
+			td.Fatalf(t, "unknown command: %s", td.Cmd)
+			return ""
+		}
+	})
 }
