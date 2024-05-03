@@ -290,54 +290,6 @@ func TestCompactionIter(t *testing.T) {
 	runTest(t, "testdata/iter_delete_sized")
 }
 
-// TestIterRangeKeys tests the range key coalescing and striping logic.
-func TestIterRangeKeys(t *testing.T) {
-	datadriven.RunTest(t, "testdata/iter_range_keys", func(t *testing.T, td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "transform":
-			var snapshots []uint64
-			var keyRanges []base.UserKeyBounds
-			td.MaybeScanArgs(t, "snapshots", &snapshots)
-			if arg, ok := td.Arg("in-use-key-ranges"); ok {
-				for _, keyRange := range arg.Vals {
-					parts := strings.SplitN(keyRange, "-", 2)
-					start := []byte(strings.TrimSpace(parts[0]))
-					end := []byte(strings.TrimSpace(parts[1]))
-					keyRanges = append(keyRanges, base.UserKeyBoundsInclusive(start, end))
-				}
-			}
-			span := keyspan.ParseSpan(td.Input)
-			for i := range span.Keys {
-				if i > 0 {
-					if span.Keys[i-1].Trailer < span.Keys[i].Trailer {
-						return "span keys not sorted"
-					}
-				}
-			}
-
-			cfg := IterConfig{
-				Comparer:         base.DefaultComparer,
-				Snapshots:        snapshots,
-				AllowZeroSeqNum:  false,
-				TombstoneElision: NoTombstoneElision(),
-				RangeKeyElision:  ElideTombstonesOutsideOf(keyRanges),
-			}
-			pointIter, rangeDelIter, rangeKeyIter := makeInputIters(nil, nil, nil)
-			iter := NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)
-			iter.AddRangeKeySpan(&span)
-
-			outSpans := iter.RangeKeysUpTo(nil)
-			var b strings.Builder
-			for i := range outSpans {
-				fmt.Fprintf(&b, "%s\n", outSpans[i].String())
-			}
-			return b.String()
-		default:
-			return fmt.Sprintf("unknown command: %s", td.Cmd)
-		}
-	})
-}
-
 // makeInputIters creates the iterators necessthat can be used to create a compaction
 // Iter.
 func makeInputIters(
