@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
 )
@@ -1937,6 +1938,33 @@ func (w *Writer) assertFormatCompatibility() error {
 	return nil
 }
 
+// UnsafeLastPointUserKey returns the last point key written to the writer to
+// which this option was passed during creation. The returned key points
+// directly into a buffer belonging to the Writer. The value's lifetime ends the
+// next time a point key is added to the Writer.
+//
+// Must not be called after Writer is closed.
+func (w *Writer) UnsafeLastPointUserKey() []byte {
+	if w != nil && w.dataBlockBuf.dataBlock.nEntries >= 1 {
+		// w.dataBlockBuf.dataBlock.curKey is guaranteed to point to the last point key
+		// which was added to the Writer.
+		return w.dataBlockBuf.dataBlock.getCurUserKey()
+	}
+	return nil
+}
+
+// EncodeSpan encodes the keys in the given span. The span can contain either
+// only RANGEDEL keys or only range keys.
+func (w *Writer) EncodeSpan(span *keyspan.Span) error {
+	if span.Empty() {
+		return nil
+	}
+	if span.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
+		return rangedel.Encode(span, w.Add)
+	}
+	return rangekey.Encode(span, w.AddRangeKey)
+}
+
 // Close finishes writing the table and closes the underlying file that the
 // table was written to.
 func (w *Writer) Close() (err error) {
@@ -2244,21 +2272,6 @@ type WriterOption interface {
 	// writerApply is called on the writer during opening in order to set
 	// internal parameters.
 	writerApply(*Writer)
-}
-
-// UnsafeLastPointUserKey returns the last point key written to the writer to
-// which this option was passed during creation. The returned key points
-// directly into a buffer belonging to the Writer. The value's lifetime ends the
-// next time a point key is added to the Writer.
-//
-// Must not be called after Writer is closed.
-func (w *Writer) UnsafeLastPointUserKey() []byte {
-	if w != nil && w.dataBlockBuf.dataBlock.nEntries >= 1 {
-		// w.dataBlockBuf.dataBlock.curKey is guaranteed to point to the last point key
-		// which was added to the Writer.
-		return w.dataBlockBuf.dataBlock.getCurUserKey()
-	}
-	return nil
 }
 
 // NewWriter returns a new table writer for the file. Closing the writer will
