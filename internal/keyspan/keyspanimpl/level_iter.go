@@ -5,6 +5,7 @@
 package keyspanimpl
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -17,13 +18,18 @@ import (
 // TableNewSpanIter creates a new iterator for range key spans for the given
 // file.
 type TableNewSpanIter func(
-	file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions,
+	ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error)
 
 // LevelIter provides a merged view of spans from sstables in a level.
 // It takes advantage of level invariants to only have one sstable span block
 // open at one time, opened using the newIter function passed in.
 type LevelIter struct {
+	// The context is stored here since (a) iterators are expected to be
+	// short-lived (since they pin sstables), (b) plumbing a context into every
+	// method is very painful, (c) they do not (yet) respect context
+	// cancellation and are only used for tracing.
+	ctx context.Context
 	cmp base.Compare
 	// Denotes the kind of key the level iterator should read. If the key type
 	// is KeyTypePoint, the level iterator will read range tombstones (which
@@ -84,6 +90,7 @@ var _ keyspan.FragmentIterator = (*LevelIter)(nil)
 
 // NewLevelIter returns a LevelIter.
 func NewLevelIter(
+	ctx context.Context,
 	opts keyspan.SpanIterOptions,
 	cmp base.Compare,
 	newIter TableNewSpanIter,
@@ -92,12 +99,13 @@ func NewLevelIter(
 	keyType manifest.KeyType,
 ) *LevelIter {
 	l := &LevelIter{}
-	l.Init(opts, cmp, newIter, files, level, keyType)
+	l.Init(ctx, opts, cmp, newIter, files, level, keyType)
 	return l
 }
 
 // Init initializes a LevelIter.
 func (l *LevelIter) Init(
+	ctx context.Context,
 	opts keyspan.SpanIterOptions,
 	cmp base.Compare,
 	newIter TableNewSpanIter,
@@ -105,6 +113,7 @@ func (l *LevelIter) Init(
 	level manifest.Level,
 	keyType manifest.KeyType,
 ) {
+	l.ctx = ctx
 	l.err = nil
 	l.level = level
 	l.tableOpts = opts
@@ -159,7 +168,7 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 		return noFileLoaded
 	}
 	if indicator != fileAlreadyLoaded {
-		l.iter, l.err = l.newIter(file, l.tableOpts)
+		l.iter, l.err = l.newIter(l.ctx, file, l.tableOpts)
 		if l.wrapFn != nil {
 			l.iter = l.wrapFn(l.iter)
 		}

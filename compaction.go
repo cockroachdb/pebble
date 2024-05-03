@@ -706,7 +706,7 @@ func (c *compaction) allowZeroSeqNum() bool {
 
 // newInputIters returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIters(
-	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter,
+	newIters tableNewIters,
 ) (
 	pointIter internalIterator,
 	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
@@ -778,6 +778,7 @@ func (c *compaction) newInputIters(
 			}
 		}
 	}()
+	ctx := context.Background()
 	iterOpts := IterOptions{
 		CategoryAndQoS: sstable.CategoryAndQoS{
 			Category: "pebble-compaction",
@@ -809,7 +810,7 @@ func (c *compaction) newInputIters(
 			// initRangeDel, the levelIter will close and forget the range
 			// deletion iterator when it steps on to a new file. Surfacing range
 			// deletions to compactions are handled below.
-			iters = append(iters, newLevelIter(context.Background(),
+			iters = append(iters, newLevelIter(ctx,
 				iterOpts, c.comparer, newIters, level.files.Iter(), l, internalIterOpts{
 					compaction: true,
 					bufferPool: &c.bufferPool,
@@ -875,8 +876,8 @@ func (c *compaction) newInputIters(
 			}
 			if hasRangeKeys {
 				li := &keyspanimpl.LevelIter{}
-				newRangeKeyIterWrapper := func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-					iter, err := newRangeKeyIter(file, iterOptions)
+				newRangeKeyIterWrapper := func(ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+					iter, err := newIters.NewRangeKeyIter(ctx, file, iterOptions)
 					if err != nil {
 						return nil, err
 					} else if iter == nil {
@@ -896,7 +897,7 @@ func (c *compaction) newInputIters(
 					// in this sstable must wholly lie within the file's bounds.
 					return iter, err
 				}
-				li.Init(keyspan.SpanIterOptions{}, c.cmp, newRangeKeyIterWrapper, level.files.Iter(), l, manifest.KeyTypeRange)
+				li.Init(ctx, keyspan.SpanIterOptions{}, c.cmp, newRangeKeyIterWrapper, level.files.Iter(), l, manifest.KeyTypeRange)
 				rangeKeyIters = append(rangeKeyIters, li)
 			}
 			return nil
@@ -2556,7 +2557,7 @@ func (d *DB) runCompaction(
 	c.bufferPool.Init(12)
 	defer c.bufferPool.Release()
 
-	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, d.tableNewRangeKeyIter)
+	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters)
 	if err != nil {
 		return nil, pendingOutputs, stats, err
 	}

@@ -152,10 +152,9 @@ type flushableList []*flushableEntry
 // ingesting sstables which are added to the flushable list.
 type ingestedFlushable struct {
 	// files are non-overlapping and ordered (according to their bounds).
-	files            []physicalMeta
-	comparer         *Comparer
-	newIters         tableNewIters
-	newRangeKeyIters keyspanimpl.TableNewSpanIter
+	files    []physicalMeta
+	comparer *Comparer
+	newIters tableNewIters
 
 	// Since the level slice is immutable, we construct and set it once. It
 	// should be safe to read from slice in future reads.
@@ -168,11 +167,7 @@ type ingestedFlushable struct {
 }
 
 func newIngestedFlushable(
-	files []*fileMetadata,
-	comparer *Comparer,
-	newIters tableNewIters,
-	newRangeKeyIters keyspanimpl.TableNewSpanIter,
-	exciseSpan KeyRange,
+	files []*fileMetadata, comparer *Comparer, newIters tableNewIters, exciseSpan KeyRange,
 ) *ingestedFlushable {
 	if invariants.Enabled {
 		for i := 1; i < len(files); i++ {
@@ -193,10 +188,9 @@ func newIngestedFlushable(
 	}
 
 	ret := &ingestedFlushable{
-		files:            physicalFiles,
-		comparer:         comparer,
-		newIters:         newIters,
-		newRangeKeyIters: newRangeKeyIters,
+		files:    physicalFiles,
+		comparer: comparer,
+		newIters: newIters,
 		// slice is immutable and can be set once and used many times.
 		slice:        manifest.NewLevelSliceKeySorted(comparer.Compare, files),
 		hasRangeKeys: hasRangeKeys,
@@ -233,16 +227,6 @@ func (s *ingestedFlushable) newFlushIter(*IterOptions) internalIterator {
 	panic("pebble: not implemented")
 }
 
-func (s *ingestedFlushable) constructRangeDelIter(
-	file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
-) (keyspan.FragmentIterator, error) {
-	iters, err := s.newIters(context.Background(), file, nil, internalIterOpts{}, iterRangeDeletions)
-	// Note that the keyspan level iter expects a non-nil iterator to be
-	// returned even if there is an error. So, we return iters.RangeDeletion()
-	// regardless of the value of err.
-	return iters.RangeDeletion(), err
-}
-
 // newRangeDelIter is part of the flushable interface.
 // TODO(bananabrick): Using a level iter instead of a keyspan level iter to
 // surface range deletes is more efficient.
@@ -251,8 +235,9 @@ func (s *ingestedFlushable) constructRangeDelIter(
 // the point iterator in constructRangeDeIter is not tracked.
 func (s *ingestedFlushable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
 	return keyspanimpl.NewLevelIter(
+		context.Background(),
 		keyspan.SpanIterOptions{}, s.comparer.Compare,
-		s.constructRangeDelIter, s.slice.Iter(), manifest.Level(0),
+		s.newIters.NewRangeDelIter, s.slice.Iter(), manifest.Level(0),
 		manifest.KeyTypePoint,
 	)
 }
@@ -264,7 +249,8 @@ func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIter
 	}
 
 	return keyspanimpl.NewLevelIter(
-		keyspan.SpanIterOptions{}, s.comparer.Compare, s.newRangeKeyIters,
+		context.Background(),
+		keyspan.SpanIterOptions{}, s.comparer.Compare, s.newIters.NewRangeKeyIter,
 		s.slice.Iter(), manifest.Level(0), manifest.KeyTypeRange,
 	)
 }

@@ -5,6 +5,7 @@
 package keyspanimpl
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -301,7 +302,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 				metas = append(metas, meta)
 			}
 
-			tableNewIters := func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+			tableNewIters := func(_ context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 				return keyspan.NewIter(base.DefaultComparer.Compare, tc.levels[j][file.FileNum-1]), nil
 			}
 			// Add all the fileMetadatas to L6.
@@ -314,6 +315,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 			v, err := b.Apply(nil, base.DefaultComparer, 0, 0)
 			require.NoError(t, err)
 			levelIter.Init(
+				context.Background(),
 				keyspan.SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters,
 				v.Levels[6].Iter(), 0, manifest.KeyTypeRange,
 			)
@@ -440,7 +442,7 @@ func TestLevelIter(t *testing.T) {
 			}
 			if iter == nil {
 				var lastFileNum base.FileNum
-				tableNewIters := func(file *manifest.FileMetadata, _ keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+				tableNewIters := func(_ context.Context, file *manifest.FileMetadata, _ keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 					keyType := keyType
 					spans := level[file.FileNum-1]
 					if keyType == manifest.KeyTypePoint {
@@ -458,6 +460,7 @@ func TestLevelIter(t *testing.T) {
 				v, err := b.Apply(nil, base.DefaultComparer, 0, 0)
 				require.NoError(t, err)
 				iter = NewLevelIter(
+					context.Background(),
 					keyspan.SpanIterOptions{}, base.DefaultComparer.Compare,
 					tableNewIters, v.Levels[6].Iter(), 6, keyType,
 				)
