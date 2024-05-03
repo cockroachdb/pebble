@@ -24,7 +24,7 @@ const (
 	cmdGo       = "go"
 	golint      = "golang.org/x/lint/golint@6edffad5e6160f5949cdefc81710b2706fbcd4f6"
 	staticcheck = "honnef.co/go/tools/cmd/staticcheck@2023.1.7"
-	crlfmt      = "github.com/cockroachdb/crlfmt@44a36ec7"
+	crlfmt      = "github.com/cockroachdb/crlfmt@461e8663"
 )
 
 func dirCmd(t *testing.T, dir string, name string, args ...string) stream.Filter {
