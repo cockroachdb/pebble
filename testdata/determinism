@@ -82,3 +82,55 @@ run io-latency=(.1,100µs) step-latency=(.2,5ms) count=10
 sequential( 0:define 1:build 2:build parallel( 3:batch 4:batch 5:flush 6:maybe-compact 7:batch 8:ingest-and-excise 9:ingest-and-excise ) )
 ----
 ok
+
+# Run a test with two batches committing in parallel, competing for the
+# remaining bytes of the mutable memtable. Only one of the batches can fit in
+# the remaining bytes, and the other must rotate the memtable.
+
+reset
+----
+
+define memtable-size=65536
+----
+0:define
+
+memtable-info reserved in-use
+----
+flushable queue: 1 entries
+mutable:
+  alloced:  65536
+  reserved: 1123
+  in-use:   0
+1:memtable-info
+
+batch
+set a <rand-bytes=30000>
+----
+2:batch
+
+batch
+set b <rand-bytes=30000>
+----
+3:batch
+
+memtable-info
+----
+flushable queue: 1 entries
+mutable:
+  alloced:  65536
+4:memtable-info
+
+batch
+set c <rand-bytes=3000>
+----
+5:batch
+
+batch
+set d <rand-bytes=3000>
+----
+6:batch
+
+run count=100
+sequential( 0:define 1:memtable-info 2:batch 3:batch 4:memtable-info parallel( 5:batch 6:batch ) )
+----
+ok

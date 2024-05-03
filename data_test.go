@@ -393,6 +393,24 @@ func writeRangeKeys(b io.Writer, iter *Iterator) {
 	}
 }
 
+func parseValue(s string) []byte {
+	if strings.HasPrefix(s, "<rand-bytes=") {
+		s = strings.TrimPrefix(s, "<rand-bytes=")
+		s = strings.TrimSuffix(s, ">")
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			panic(err)
+		}
+		b := make([]byte, n)
+		rnd := rand.New(rand.NewSource(int64(n)))
+		if _, err := rnd.Read(b); err != nil {
+			panic(err)
+		}
+		return b
+	}
+	return []byte(s)
+}
+
 func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 	for _, line := range strings.Split(d.Input, "\n") {
 		parts := strings.Fields(line)
@@ -408,7 +426,7 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 			if len(parts) != 3 {
 				return errors.Errorf("%s expects 2 arguments", parts[0])
 			}
-			err = b.Set([]byte(parts[1]), []byte(parts[2]), nil)
+			err = b.Set([]byte(parts[1]), parseValue(parts[2]), nil)
 		case "del":
 			if len(parts) != 2 {
 				return errors.Errorf("%s expects 1 argument", parts[0])
@@ -438,14 +456,14 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 			if len(parts) != 3 {
 				return errors.Errorf("%s expects 2 arguments", parts[0])
 			}
-			err = b.Merge([]byte(parts[1]), []byte(parts[2]), nil)
+			err = b.Merge([]byte(parts[1]), parseValue(parts[2]), nil)
 		case "range-key-set":
 			if len(parts) < 4 || len(parts) > 5 {
 				return errors.Errorf("%s expects 3 or 4 arguments", parts[0])
 			}
 			var val []byte
 			if len(parts) == 5 {
-				val = []byte(parts[4])
+				val = parseValue(parts[4])
 			}
 			err = b.RangeKeySet(
 				[]byte(parts[1]),
@@ -795,6 +813,12 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 				}
 				levelMaxBytes[level] = size
 			}
+		case "memtable-size":
+			memTableSize, err := strconv.ParseUint(arg.Vals[0], 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			opts.MemTableSize = memTableSize
 		case "auto-compactions":
 			switch arg.Vals[0] {
 			case "off":

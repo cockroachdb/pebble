@@ -290,6 +290,12 @@ func (m *memTable) containsRangeKeys() bool {
 func (m *memTable) availBytes() uint32 {
 	a := m.skl.Arena()
 	if m.writerRefs.Load() == 1 {
+		// Note that one ref is maintained as long as the memtable is the
+		// current mutable memtable, so when evaluating whether the current
+		// mutable memtable has sufficient space for committing a batch, it is
+		// guaranteed that m.writerRefs() >= 1. This means a writerRefs() of 1
+		// indicates there are no other concurrent apply operations.
+		//
 		// If there are no other concurrent apply operations, we can update the
 		// reserved bytes setting to accurately reflect how many bytes of been
 		// allocated vs the over-estimation present in memTableEntrySize.

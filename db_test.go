@@ -2180,9 +2180,27 @@ func TestDeterminism(t *testing.T) {
 					d.opts.DisableAutomaticCompactions = true
 					return ""
 				})
+			case "memtable-info":
+				return addStep(td, func(td *datadriven.TestData) string {
+					d.commit.mu.Lock()
+					defer d.commit.mu.Unlock()
+					d.mu.Lock()
+					defer d.mu.Unlock()
+					var buf bytes.Buffer
+					fmt.Fprintf(&buf, "flushable queue: %d entries\n", len(d.mu.mem.queue))
+					fmt.Fprintf(&buf, "mutable:\n")
+					fmt.Fprintf(&buf, "  alloced:  %d\n", d.mu.mem.mutable.totalBytes())
+					if td.HasArg("reserved") {
+						fmt.Fprintf(&buf, "  reserved: %d\n", d.mu.mem.mutable.reserved)
+					}
+					if td.HasArg("in-use") {
+						fmt.Fprintf(&buf, "  in-use:   %d\n", d.mu.mem.mutable.inuseBytes())
+					}
+					return buf.String()
+				})
 			case "run":
 				var mkfs func() vfs.FS = func() vfs.FS { return vfs.NewMem() }
-				var beforeStep func()
+				var beforeStep func() = func() {}
 				for _, cmdArg := range td.CmdArgs {
 					switch cmdArg.Key {
 					case "io-latency", "step-latency":
