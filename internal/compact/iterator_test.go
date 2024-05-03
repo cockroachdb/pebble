@@ -200,30 +200,8 @@ func TestCompactionIter(t *testing.T) {
 						iter.First()
 					case "next":
 						iter.Next()
-					case "tombstones":
-						var key []byte
-						if len(parts) == 2 {
-							key = []byte(parts[1])
-						}
-						for _, v := range iter.TombstonesUpTo(key) {
-							for _, k := range v.Keys {
-								fmt.Fprintf(&b, "%s-%s#%d\n", v.Start, v.End, k.SeqNum())
-							}
-						}
-						fmt.Fprintf(&b, ".\n")
-						continue
-					case "range-keys":
-						var key []byte
-						if len(parts) == 2 {
-							key = []byte(parts[1])
-						}
-						for _, v := range iter.RangeKeysUpTo(key) {
-							fmt.Fprintf(&b, "%s\n", v)
-						}
-						fmt.Fprintf(&b, ".\n")
-						continue
 					default:
-						return fmt.Sprintf("unknown op: %s", parts[0])
+						d.Fatalf(t, "unknown iter command: %s", parts[0])
 					}
 					if iter.Valid() {
 						snapshotPinned := ""
@@ -241,7 +219,8 @@ func TestCompactionIter(t *testing.T) {
 							}
 						}
 						v := string(iter.Value())
-						if iter.Key().Kind() == base.InternalKeyKindDeleteSized && len(iter.Value()) > 0 {
+						kind := iter.Key().Kind()
+						if kind == base.InternalKeyKindDeleteSized && len(iter.Value()) > 0 {
 							vn, n := binary.Uvarint(iter.Value())
 							if n != len(iter.Value()) {
 								v = fmt.Sprintf("err: %0x value not a uvarint", iter.Value())
@@ -250,13 +229,8 @@ func TestCompactionIter(t *testing.T) {
 							}
 						}
 						fmt.Fprintf(&b, "%s:%s%s%s", iter.Key(), v, snapshotPinned, forceObsolete)
-						if iter.Key().Kind() == base.InternalKeyKindRangeDelete {
-							iter.AddTombstoneSpan(iter.RangeDelSpan())
-							fmt.Fprintf(&b, "; Span() = %s", *iter.RangeDelSpan())
-						}
-						if rangekey.IsRangeKey(iter.Key().Kind()) {
-							iter.AddRangeKeySpan(iter.RangeKeySpan())
-							fmt.Fprintf(&b, "; Span() = %s", *iter.RangeKeySpan())
+						if kind == base.InternalKeyKindRangeDelete || rangekey.IsRangeKey(kind) {
+							fmt.Fprintf(&b, "; Span() = %s", iter.Span())
 						}
 						fmt.Fprintln(&b)
 					} else if err := iter.Error(); err != nil {
