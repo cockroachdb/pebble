@@ -407,6 +407,15 @@ func (s *Span) Reset() {
 	s.Keys = s.Keys[:0]
 }
 
+// CopyFrom copies the contents of the other span, retaining the slices
+// allocated in this span. Key.Suffix and Key.Value slices are not cloned.
+func (s *Span) CopyFrom(other *Span) {
+	s.Start = append(s.Start[:0], other.Start...)
+	s.End = append(s.End[:0], other.End...)
+	s.Keys = append(s.Keys[:0], other.Keys...)
+	s.KeysOrder = other.KeysOrder
+}
+
 // String returns a string representation of the span.
 func (s Span) String() string {
 	return fmt.Sprint(prettySpan{Span: s, formatKey: base.DefaultFormatter})

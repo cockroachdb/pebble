@@ -518,17 +518,19 @@ L3:
 	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
 	expectLSM(`
 L3:
-  000013:[a#12,RANGEDEL-c#inf,RANGEDEL]
+  000013:[a#12,RANGEDEL-b#inf,RANGEDEL]
+  000014:[b#12,RANGEDEL-c#inf,RANGEDEL]
 L4:
-  000014:[c#13,SET-d#inf,RANGEDEL]
+  000015:[c#13,SET-d#inf,RANGEDEL]
 `)
 
 	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00"), false))
 	expectLSM(`
 L3:
-  000013:[a#12,RANGEDEL-c#inf,RANGEDEL]
+  000013:[a#12,RANGEDEL-b#inf,RANGEDEL]
+  000014:[b#12,RANGEDEL-c#inf,RANGEDEL]
 L5:
-  000014:[c#13,SET-d#inf,RANGEDEL]
+  000015:[c#13,SET-d#inf,RANGEDEL]
 `)
 
 	if _, _, err := d.Get([]byte("b")); err != ErrNotFound {
@@ -537,10 +539,12 @@ L5:
 
 	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
 	expectLSM(`
+L3:
+  000014:[b#12,RANGEDEL-c#inf,RANGEDEL]
 L4:
-  000013:[a#12,RANGEDEL-c#inf,RANGEDEL]
+  000013:[a#12,RANGEDEL-b#inf,RANGEDEL]
 L5:
-  000014:[c#13,SET-d#inf,RANGEDEL]
+  000015:[c#13,SET-d#inf,RANGEDEL]
 `)
 
 	if v, _, err := d.Get([]byte("b")); err != ErrNotFound {
