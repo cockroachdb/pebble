@@ -6,14 +6,11 @@ package compact
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
-	"slices"
 	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -240,12 +237,15 @@ type Iter struct {
 	// should request a compaction split next time they're asked in
 	// [shouldSplitBefore].
 	frontiers Frontiers
-	// The fragmented tombstones.
-	tombstones []keyspan.Span
-	// The fragmented range keys.
-	rangeKeys []keyspan.Span
-	// Byte allocator for the tombstone keys.
-	alloc bytealloc.A
+
+	// lastRangeDelSpan stores the last, not compacted tombstone span. It is used
+	// to elide points or mark them as snapshot-pinned.
+	lastRangeDelSpan keyspan.Span
+
+	// span stores the last, compacted tombstone or range key span. It is provided
+	// to the caller via Span().
+	span keyspan.Span
+
 	stats IterStats
 }
 
@@ -372,10 +372,9 @@ func (i *Iter) First() (*base.InternalKey, []byte) {
 	return i.Next()
 }
 
-// Next has the same semantics as InternalIterator.Next.
-// Note that when Next returns a RANGEDEL key, the caller can call
-// RangeDelSpan() to get the corresponding span. Similarly, when Next returns a
-// range key, the caller can use RangeKeySpan().
+// Next has the same semantics as InternalIterator.Next. Note that when Next
+// returns a RANGEDEL or a range key, the caller can use Span() to get the
+// corresponding span.
 func (i *Iter) Next() (*base.InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
@@ -434,6 +433,26 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 			// set `skip`=true.
 			if i.skip {
 				panic(errors.AssertionFailedf("pebble: compaction iterator: skip unexpectedly true"))
+			}
+
+			if i.iterKV.Kind() == base.InternalKeyKindRangeDelete {
+				span := i.rangeDelInterleaving.Span()
+				i.lastRangeDelSpan.CopyFrom(span)
+				i.rangeDelCompactor.Compact(span, &i.span)
+				if i.span.Empty() {
+					// The range del span was elided entirely; don't return this key to the caller.
+					i.saveKey()
+					i.nextInStripe()
+					continue
+				}
+			} else {
+				i.rangeKeyCompactor.Compact(i.rangeKeyInterleaving.Span(), &i.span)
+				if i.span.Empty() {
+					// The range key span was elided entirely; don't return this key to the caller.
+					i.saveKey()
+					i.nextInStripe()
+					continue
+				}
 			}
 
 			// NOTE: there is a subtle invariant violation here in that calling
@@ -609,18 +628,12 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 	return nil, nil
 }
 
-// RangeDelSpan returns the range deletion span corresponding to the current
-// key. Can only be called right after a Next() call that returned a RANGEDEL
-// key.
-func (i *Iter) RangeDelSpan() *keyspan.Span {
-	return i.rangeDelInterleaving.Span()
-}
-
-// RangeKeySpan returns the range deletion span corresponding to the current
-// key. Can only be called right after a Next() call that returned a range
-// key.
-func (i *Iter) RangeKeySpan() *keyspan.Span {
-	return i.rangeKeyInterleaving.Span()
+// Span returns the range deletion or range key span corresponding to the
+// current key. Can only be called right after a Next() call that returned a
+// RANGEDEL or a range key. The keys in the span should not be retained or
+// modified.
+func (i *Iter) Span() *keyspan.Span {
+	return &i.span
 }
 
 func (i *Iter) closeValueCloser() error {
@@ -1265,11 +1278,6 @@ func (i *Iter) saveKey() {
 	i.frontiers.Advance(i.key.UserKey)
 }
 
-func (i *Iter) cloneKey(key []byte) []byte {
-	i.alloc, key = i.alloc.Copy(key)
-	return key
-}
-
 // Key returns the current key.
 func (i *Iter) Key() base.InternalKey {
 	return i.key
@@ -1306,14 +1314,6 @@ func (i *Iter) Close() error {
 	return i.err
 }
 
-// AddTombstoneSpan adds a copy of a span of range dels, to be later returned by
-// TombstonesUpTo.
-//
-// The spans must be non-overlapping and ordered. Empty spans are ignored.
-func (i *Iter) AddTombstoneSpan(span *keyspan.Span) {
-	i.tombstones = i.appendSpan(i.tombstones, span)
-}
-
 // cover is returned by tombstoneCovers and describes a span's relationship to
 // a key at a particular snapshot.
 type cover int8
@@ -1339,99 +1339,28 @@ const (
 // it is covered by a tombstone visible in the given snapshot.
 //
 // The key's UserKey must be greater or equal to the last span Start key passed
-// to AddTombstoneSpan.
+// to AddTombstoneSpan. The keys passed to tombstoneCovers calls must be
+// ordered.
 func (i *Iter) tombstoneCovers(key base.InternalKey, snapshot uint64) cover {
-	if len(i.tombstones) == 0 {
+	if i.lastRangeDelSpan.Empty() {
 		return noCover
 	}
-	last := &i.tombstones[len(i.tombstones)-1]
-	if invariants.Enabled && i.cmp(key.UserKey, last.Start) < 0 {
-		panic(errors.AssertionFailedf("invalid key %q, last span %s", key, last))
+	if invariants.Enabled && i.cmp(key.UserKey, i.lastRangeDelSpan.Start) < 0 {
+		panic(errors.AssertionFailedf("invalid key %q, last span %s", key, i.lastRangeDelSpan))
 	}
-	if i.cmp(key.UserKey, last.End) < 0 && last.Covers(key.SeqNum()) {
-		if last.CoversAt(snapshot, key.SeqNum()) {
-			return coversVisibly
-		}
+	if i.cmp(key.UserKey, i.lastRangeDelSpan.End) >= 0 {
+		i.lastRangeDelSpan.Reset()
+		return noCover
+	}
+	// The Covers() check is very cheap, so we want to do that first.
+	switch {
+	case !i.lastRangeDelSpan.Covers(key.SeqNum()):
+		return noCover
+	case i.lastRangeDelSpan.CoversAt(snapshot, key.SeqNum()):
+		return coversVisibly
+	default:
 		return coversInvisibly
 	}
-	return noCover
-}
-
-// TombstonesUpTo returns a list of pending range tombstones up to the
-// specified key, or all pending range tombstones if key = nil.
-//
-// If a key is specified, it must be greater than the last span Start key passed
-// to AddTombstoneSpan.
-func (i *Iter) TombstonesUpTo(key []byte) []keyspan.Span {
-	var toReturn []keyspan.Span
-	toReturn, i.tombstones = i.splitSpans(i.tombstones, key)
-
-	result := toReturn[:0]
-	var tmp keyspan.Span
-	for _, span := range toReturn {
-		i.rangeDelCompactor.Compact(&span, &tmp)
-		if !tmp.Empty() {
-			result = append(result, keyspan.Span{
-				Start: i.cloneKey(tmp.Start),
-				End:   i.cloneKey(tmp.End),
-				Keys:  slices.Clone(tmp.Keys),
-			})
-		}
-	}
-
-	return result
-}
-
-// FirstTombstoneStart returns the start key of the first pending tombstone (the
-// first span that would be returned by TombstonesUpTo). Returns nil if
-// there are no pending range keys.
-func (i *Iter) FirstTombstoneStart() []byte {
-	if len(i.tombstones) == 0 {
-		return nil
-	}
-	return i.tombstones[0].Start
-}
-
-// AddRangeKeySpan adds a copy of a span of range keys, to be later returned by
-// RangeKeysUpTo. The span is shallow cloned.
-//
-// The spans must be non-overlapping and ordered. Empty spans are ignored.
-func (i *Iter) AddRangeKeySpan(span *keyspan.Span) {
-	i.rangeKeys = i.appendSpan(i.rangeKeys, span)
-}
-
-// RangeKeysUpTo returns a list of pending range keys up to the specified key,
-// or all pending range keys if key = nil.
-//
-// If a key is specified, it must be greater than the last span Start key passed
-// to AddRangeKeySpan.
-func (i *Iter) RangeKeysUpTo(key []byte) []keyspan.Span {
-	var toReturn []keyspan.Span
-	toReturn, i.rangeKeys = i.splitSpans(i.rangeKeys, key)
-
-	result := toReturn[:0]
-	var tmp keyspan.Span
-	for _, span := range toReturn {
-		i.rangeKeyCompactor.Compact(&span, &tmp)
-		if !tmp.Empty() {
-			result = append(result, keyspan.Span{
-				Start: i.cloneKey(tmp.Start),
-				End:   i.cloneKey(tmp.End),
-				Keys:  slices.Clone(tmp.Keys),
-			})
-		}
-	}
-	return result
-}
-
-// FirstRangeKeyStart returns the start key of the first pending range key span
-// (the first span that would be returned by RangeKeysUpTo). Returns nil
-// if there are no pending range keys.
-func (i *Iter) FirstRangeKeyStart() []byte {
-	if len(i.rangeKeys) == 0 {
-		return nil
-	}
-	return i.rangeKeys[0].Start
 }
 
 // maybeZeroSeqnum attempts to set the seqnum for the current key to 0. Doing
@@ -1451,55 +1380,6 @@ func (i *Iter) maybeZeroSeqnum(snapshotIdx int) {
 		return
 	}
 	i.key.SetSeqNum(base.SeqNumZero)
-}
-
-// appendSpan appends a span to a list of ordered, non-overlapping spans.
-// The span is shallow cloned.
-func (i *Iter) appendSpan(spans []keyspan.Span, span *keyspan.Span) []keyspan.Span {
-	if span.Empty() {
-		return spans
-	}
-	if invariants.Enabled && len(spans) > 0 {
-		if last := spans[len(spans)-1]; i.cmp(last.End, span.Start) > 0 {
-			panic(errors.AssertionFailedf("overlapping range key spans: %s and %s", last, span))
-		}
-	}
-	return append(spans, keyspan.Span{
-		Start: i.cloneKey(span.Start),
-		End:   i.cloneKey(span.End),
-		Keys:  slices.Clone(span.Keys),
-	})
-}
-
-// splitSpans takes a list of ordered, non-overlapping spans and a key and
-// returns two lists of spans: one that ends at or before the key, and one which
-// starts at or after key.
-//
-// If the key is nil, returns all spans. If not nil, the key must not be smaller
-// than the start of the last span in the list.
-func (i *Iter) splitSpans(spans []keyspan.Span, key []byte) (before, after []keyspan.Span) {
-	n := len(spans)
-	if n == 0 || key == nil || i.cmp(spans[n-1].End, key) <= 0 {
-		// Common case: return all spans (retaining any extra allocated space).
-		return spans[:n:n], spans[n:]
-	}
-	if c := i.cmp(key, spans[n-1].Start); c <= 0 {
-		if c < 0 {
-			panic(fmt.Sprintf("invalid key %q, last span %s", key, spans[n-1]))
-		}
-		// The last span starts exactly at key.
-		return spans[: n-1 : n-1], spans[n-1:]
-	}
-	// We have to split the last span.
-	key = i.cloneKey(key)
-	before = spans[:n:n]
-	after = append(spans[n:], keyspan.Span{
-		Start: key,
-		End:   spans[n-1].End,
-		Keys:  slices.Clone(spans[n-1].Keys),
-	})
-	before[n-1].End = key
-	return before, after
 }
 
 func finishValueMerger(

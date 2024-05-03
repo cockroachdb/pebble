@@ -24,8 +24,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/rangedel"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -2572,6 +2570,7 @@ func (d *DB) runCompaction(
 		SingleDeleteInvariantViolationCallback: d.opts.Experimental.SingleDeleteInvariantViolationCallback,
 	}
 	iter := compact.NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)
+	var lastRangeDelSpan, lastRangeKeySpan keyspan.Span
 
 	var (
 		createdFiles    []base.DiskFileNum
@@ -2687,54 +2686,11 @@ func (d *DB) runCompaction(
 	// should be flushed. Typically, this is the first key of the next
 	// sstable or an empty key if this output is the final sstable.
 	finishOutput := func(splitKey []byte) error {
-		for _, v := range iter.TombstonesUpTo(splitKey) {
-			if tw == nil {
-				if err := newOutput(); err != nil {
-					return err
-				}
-			}
-			// The tombstone being added could be completely outside the
-			// eventual bounds of the sstable. Consider this example (bounds
-			// in square brackets next to table filename):
-			//
-			// ./000240.sst   [tmgc#391,MERGE-tmgc#391,MERGE]
-			// tmgc#391,MERGE [786e627a]
-			// tmgc-udkatvs#331,RANGEDEL
-			//
-			// ./000241.sst   [tmgc#384,MERGE-tmgc#384,MERGE]
-			// tmgc#384,MERGE [666c7070]
-			// tmgc-tvsalezade#383,RANGEDEL
-			// tmgc-tvsalezade#331,RANGEDEL
-			//
-			// ./000242.sst   [tmgc#383,RANGEDEL-tvsalezade#72057594037927935,RANGEDEL]
-			// tmgc-tvsalezade#383,RANGEDEL
-			// tmgc#375,SET [72646c78766965616c72776865676e79]
-			// tmgc-tvsalezade#356,RANGEDEL
-			//
-			// Note that both of the top two SSTables have range tombstones
-			// that start after the file's end keys. Since the file bound
-			// computation happens well after all range tombstones have been
-			// added to the writer, eliding out-of-file range tombstones based
-			// on sequence number at this stage is difficult, and necessitates
-			// read-time logic to ignore range tombstones outside file bounds.
-			if err := rangedel.Encode(&v, tw.Add); err != nil {
-				return err
-			}
+		if err := compact.SplitAndEncodeSpan(c.cmp, &lastRangeDelSpan, splitKey, tw); err != nil {
+			return err
 		}
-		for _, v := range iter.RangeKeysUpTo(splitKey) {
-			// Same logic as for range tombstones, except added using tw.AddRangeKey.
-			if tw == nil {
-				if err := newOutput(); err != nil {
-					return err
-				}
-			}
-			if err := rangekey.Encode(&v, tw.AddRangeKey); err != nil {
-				return err
-			}
-		}
-
-		if tw == nil {
-			return nil
+		if err := compact.SplitAndEncodeSpan(c.cmp, &lastRangeKeySpan, splitKey, tw); err != nil {
+			return err
 		}
 		{
 			// Set internal sstable properties.
@@ -2900,13 +2856,15 @@ func (d *DB) runCompaction(
 	// to a grandparent file largest key, or nil. Taken together, these
 	// progress guarantees ensure that eventually the input iterator will be
 	// exhausted and the range tombstone fragments will all be flushed.
-	for key, val := iter.First(); key != nil || iter.FirstTombstoneStart() != nil || iter.FirstRangeKeyStart() != nil; {
-		firstKey := base.MinUserKey(c.cmp, iter.FirstTombstoneStart(), iter.FirstRangeKeyStart())
-		// Note that if firstKey is not nil, it must be <= key.
+	for key, val := iter.First(); key != nil || !lastRangeDelSpan.Empty() || !lastRangeKeySpan.Empty(); {
+		firstKey := base.MinUserKey(c.cmp, spanStartOrNil(&lastRangeDelSpan), spanStartOrNil(&lastRangeKeySpan))
 		if key != nil && firstKey == nil {
 			firstKey = key.UserKey
 		}
 		splitter := compact.NewOutputSplitter(c.cmp, firstKey, splitLimitFunc(firstKey), c.maxOutputFileSize, c.grandparents.Iter(), iter.Frontiers())
+		if err := newOutput(); err != nil {
+			return nil, pendingOutputs, stats, err
+		}
 
 		// Each inner loop iteration processes one key from the input iterator.
 		for ; key != nil; key, val = iter.Next() {
@@ -2916,27 +2874,21 @@ func (d *DB) runCompaction(
 
 			switch key.Kind() {
 			case InternalKeyKindRangeDelete:
-				// Range tombstones are handled specially. They are not written until
-				// later during `finishOutput()`. We add them to the compaction iterator
-				// so covered keys in the same snapshot stripe can be elided.
-				//
-				// Since the keys' Suffix and Value fields are not deep cloned, the
-				// underlying blockIter must be kept open for the lifetime of the
-				// compaction.
-				iter.AddTombstoneSpan(iter.RangeDelSpan())
-				continue
-			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-				// Range keys are handled in the same way as range tombstones.
-				// Since the keys' Suffix and Value fields are not deep cloned, the
-				// underlying blockIter must be kept open for the lifetime of the
-				// compaction.
-				iter.AddRangeKeySpan(iter.RangeKeySpan())
-				continue
-			}
-			if tw == nil {
-				if err := newOutput(); err != nil {
+				// The previous span (if any) must end at or before this key, since the
+				// spans we receive are non-overlapping.
+				if err := tw.EncodeSpan(&lastRangeDelSpan); err != nil {
 					return nil, pendingOutputs, stats, err
 				}
+				lastRangeDelSpan.CopyFrom(iter.Span())
+				continue
+			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+				// The previous span (if any) must end at or before this key, since the
+				// spans we receive are non-overlapping.
+				if err := tw.EncodeSpan(&lastRangeKeySpan); err != nil {
+					return nil, pendingOutputs, stats, err
+				}
+				lastRangeKeySpan.CopyFrom(iter.Span())
+				continue
 			}
 			if err := tw.AddWithForceObsolete(*key, val, iter.ForceObsoleteDueToRangeDel()); err != nil {
 				return nil, pendingOutputs, stats, err
@@ -3077,4 +3029,11 @@ func validateVersionEdit(
 		validateKey(m, m.Smallest.UserKey)
 		validateKey(m, m.Largest.UserKey)
 	}
+}
+
+func spanStartOrNil(s *keyspan.Span) []byte {
+	if s.Empty() {
+		return nil
+	}
+	return s.Start
 }
