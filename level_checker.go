@@ -146,13 +146,13 @@ func (m *simpleMergingIter) step() bool {
 		m.err = errors.CombineErrors(l.iter.Error(), l.iter.Close())
 		l.iter = nil
 		m.heap.pop()
-	} else if !l.iterKV.K.IsExclusiveSentinel() {
+	} else {
 		// Check point keys in an sstable are ordered. Although not required, we check
 		// for memtables as well. A subtle check here is that successive sstables of
 		// L1 and higher levels are ordered. This happens when levelIter moves to the
 		// next sstable in the level, in which case item.key is previous sstable's
 		// last point key.
-		if base.InternalCompare(m.heap.cmp, item.key, l.iterKV.K) >= 0 {
+		if !l.iterKV.K.IsExclusiveSentinel() && base.InternalCompare(m.heap.cmp, item.key, l.iterKV.K) >= 0 {
 			m.err = errors.Errorf("out of order keys %s >= %s in %s",
 				item.key.Pretty(m.formatKey), l.iterKV.K.Pretty(m.formatKey), l.iter)
 			return false
