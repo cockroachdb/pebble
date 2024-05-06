@@ -16,10 +16,12 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -85,7 +87,7 @@ func (f *failMerger) Close() error {
 func TestCheckLevelsCornerCases(t *testing.T) {
 	memFS := vfs.NewMem()
 	var levels [][]*fileMetadata
-	formatKey := DefaultComparer.FormatKey
+	formatKey := testkeys.Comparer.FormatKey
 	// Indexed by fileNum
 	var readers []*sstable.Reader
 	defer func() {
@@ -106,8 +108,9 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			if err != nil {
 				return iterSet{}, err
 			}
+
 			return iterSet{
-				point:         iter,
+				point:         invalidating.MaybeWrapIfInvariants(iter),
 				rangeDeletion: rangeDelIter,
 			}, nil
 		}
@@ -143,7 +146,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				largestKey := base.ParseInternalKey(keys[1])
 				m := (&fileMetadata{
 					FileNum: fileNum,
-				}).ExtendPointKeyBounds(DefaultComparer.Compare, smallestKey, largestKey)
+				}).ExtendPointKeyBounds(testkeys.Comparer.Compare, smallestKey, largestKey)
 				m.InitPhysicalBacking()
 				*li = append(*li, m)
 
@@ -157,7 +160,10 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					return err.Error()
 				}
 				writeUnfragmented := false
-				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+					TableFormat: FormatNewest.MaxTableFormat(),
+					Comparer:    testkeys.Comparer,
+				})
 				for _, arg := range d.CmdArgs {
 					switch arg.Key {
 					case "disable-key-order-checks":
@@ -170,7 +176,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				}
 				var tombstones []keyspan.Span
 				frag := keyspan.Fragmenter{
-					Cmp:    DefaultComparer.Compare,
+					Cmp:    testkeys.Comparer.Compare,
 					Format: formatKey,
 					Emit: func(fragmented keyspan.Span) {
 						tombstones = append(tombstones, fragmented)
@@ -214,7 +220,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					return err.Error()
 				}
 				cacheOpts := private.SSTableCacheOpts(0, base.DiskFileNum(fileNum-1)).(sstable.ReaderOption)
-				r, err := sstable.NewReader(readable, sstable.ReaderOptions{}, cacheOpts)
+				r, err := sstable.NewReader(readable, sstable.ReaderOptions{Comparer: testkeys.Comparer}, cacheOpts)
 				if err != nil {
 					return err.Error()
 				}
@@ -253,12 +259,12 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				files[i+1] = levels[i]
 			}
 			version := manifest.NewVersion(
-				base.DefaultComparer,
+				testkeys.Comparer,
 				0,
 				files)
 			readState := &readState{current: version}
 			c := &checkConfig{
-				comparer:  DefaultComparer,
+				comparer:  testkeys.Comparer,
 				readState: readState,
 				newIters:  newIters,
 				seqNum:    InternalKeySeqNumMax,

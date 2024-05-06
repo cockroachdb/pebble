@@ -356,3 +356,21 @@ Level 1
 check merger=fail-merger
 ----
 merge processing error on key a#9,SINGLEDEL in L1: fileNum=000033: finish failed
+
+# Test a case where we pause at a range deletion end boundary at the end of a
+# file and the last point key of the same file has its value stored out-of-band
+# in a value block.
+
+define
+L
+a@9.SET.9 f.RANGEDEL.72057594037927935
+a@9.SET.9:a9 a@6.SET.6:a6 a.RANGEDEL.5:f
+f@6.SET.6 f@6.SET.6
+f@6.SET.6:f6
+----
+Level 1
+  file 0: [a@9#9,SET-f#72057594037927935,RANGEDEL]
+  file 1: [f@6#6,SET-f@6#6,SET]
+
+check
+----
