@@ -186,9 +186,7 @@ type Iter struct {
 	// Temporary buffer used for storing the previous value, which may be an
 	// unsafe, i.iter-owned slice that could be altered when the iterator is
 	// advanced.
-	valueBuf []byte
-	// Is the current entry valid?
-	valid            bool
+	valueBuf         []byte
 	iterKV           *base.InternalKV
 	iterValue        []byte
 	iterStripeChange stripeChangeType
@@ -405,7 +403,6 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 	}
 
 	i.pos = iterPosCurForward
-	i.valid = false
 
 	for i.iterKV != nil {
 		// If we entered a new snapshot stripe with the same key, any key we
@@ -475,7 +472,6 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 			// statistics when they apply their own snapshot striping logic.
 			i.snapshotPinned = false
 			i.value = i.iterValue
-			i.valid = true
 			return &i.key, i.value
 		}
 
@@ -539,7 +535,6 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 			case base.InternalKeyKindDelete:
 				i.saveKey()
 				i.value = i.iterValue
-				i.valid = true
 				i.skip = true
 				return &i.key, i.value
 
@@ -600,7 +595,6 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 			}
 			if i.err == nil {
 				if needDelete {
-					i.valid = false
 					if i.closeValueCloser() != nil {
 						return nil, nil
 					}
@@ -611,7 +605,6 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 				return &i.key, i.value
 			}
 			if i.err != nil {
-				i.valid = false
 				// TODO(sumeer): why is MarkCorruptionError only being called for
 				// MERGE?
 				i.err = base.MarkCorruptionError(i.err)
@@ -620,7 +613,6 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
-			i.valid = false
 			return nil, nil
 		}
 	}
@@ -643,9 +635,6 @@ func (i *Iter) closeValueCloser() error {
 
 	i.err = i.valueCloser.Close()
 	i.valueCloser = nil
-	if i.err != nil {
-		i.valid = false
-	}
 	return i.err
 }
 
@@ -763,7 +752,6 @@ func (i *Iter) nextInStripeHelper() stripeChangeType {
 			kind := i.iterKV.Kind()
 			i.iterKV = nil
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(kind))
-			i.valid = false
 			return newStripeNewKey
 		}
 		if i.curSnapshotIdx == origSnapshotIdx {
@@ -781,7 +769,6 @@ func (i *Iter) setNext() {
 	// Save the current key.
 	i.saveKey()
 	i.value = i.iterValue
-	i.valid = true
 	i.maybeZeroSeqnum(i.curSnapshotIdx)
 
 	// If this key is already a SETWITHDEL we can early return and skip the remaining
@@ -819,7 +806,6 @@ func (i *Iter) setNext() {
 				// Do nothing
 			default:
 				i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
-				i.valid = false
 			}
 		default:
 			panic("pebble: unexpected stripeChangeType: " + strconv.Itoa(int(i.iterStripeChange)))
@@ -830,7 +816,6 @@ func (i *Iter) setNext() {
 func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
 	// Save the current key.
 	i.saveKey()
-	i.valid = true
 
 	// Loop looking for older values in the current snapshot stripe and merge
 	// them.
@@ -880,7 +865,6 @@ func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
 			// MERGE + (SET*) -> SET.
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			if i.err != nil {
-				i.valid = false
 				return
 			}
 			i.key.SetKind(base.InternalKeyKindSet)
@@ -892,13 +876,11 @@ func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
 			// continue looping.
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			if i.err != nil {
-				i.valid = false
 				return
 			}
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
-			i.valid = false
 			return
 		}
 	}
@@ -918,7 +900,6 @@ func (i *Iter) singleDeleteNext() bool {
 	// Save the current key.
 	i.saveKey()
 	i.value = i.iterValue
-	i.valid = true
 
 	// Loop until finds a key to be passed to the next level.
 	for {
@@ -983,7 +964,6 @@ func (i *Iter) singleDeleteNext() bool {
 			default:
 				panic("unreachable")
 			}
-			i.valid = false
 			return false
 
 		case base.InternalKeyKindSingleDelete:
@@ -995,7 +975,6 @@ func (i *Iter) singleDeleteNext() bool {
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
-			i.valid = false
 			return false
 		}
 	}
@@ -1109,7 +1088,6 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 // any, are elided as a result of the tombstone.
 func (i *Iter) deleteSizedNext() (*base.InternalKey, []byte) {
 	i.saveKey()
-	i.valid = true
 	i.skip = true
 
 	// The DELSIZED tombstone may have no value at all. This happens when the
@@ -1213,7 +1191,6 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, []byte) {
 			expectedSize, n := binary.Uvarint(i.value)
 			if n != len(i.value) {
 				i.err = base.CorruptionErrorf("DELSIZED holds invalid value: %x", errors.Safe(i.value))
-				i.valid = false
 				return nil, nil
 			}
 			elidedSize := uint64(len(i.iterKV.K.UserKey)) + uint64(len(i.iterValue))
@@ -1252,7 +1229,6 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, []byte) {
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
-			i.valid = false
 			return nil, nil
 		}
 	}
@@ -1278,22 +1254,9 @@ func (i *Iter) saveKey() {
 	i.frontiers.Advance(i.key.UserKey)
 }
 
-// Key returns the current key.
-func (i *Iter) Key() base.InternalKey {
-	return i.key
-}
-
-// Value returns the current value.
-func (i *Iter) Value() []byte {
-	return i.value
-}
-
-// Valid returns whether the iterator is positioned at a valid key/value pair.
-func (i *Iter) Valid() bool {
-	return i.valid
-}
-
 // Error returns any error encountered.
+//
+// Note that Close will return the error as well.
 func (i *Iter) Error() error {
 	return i.err
 }
