@@ -309,6 +309,9 @@ func NewIter(
 	i := &Iter{
 		cmp: cfg.Comparer.Compare,
 		cfg: cfg,
+		// We don't want a nil keyBuf because if the first key we encounter is
+		// empty, it would become nil.
+		keyBuf: make([]byte, 8),
 	}
 
 	iter := pointIter
