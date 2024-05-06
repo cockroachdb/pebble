@@ -118,7 +118,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 			}
 
 			meta := loadFileMeta(paths)
-			flushable = newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, KeyRange{})
+			flushable = newIngestedFlushable(meta, d.opts.Comparer, d.newIters, KeyRange{})
 			return ""
 		case "iter":
 			iter := flushable.newIter(nil)

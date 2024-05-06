@@ -97,9 +97,8 @@ func (c *overlapChecker) determinePointKeyOverlapInLevel(
 	// Check for overlapping range deletions.
 	{
 		c.keyspanLevelIter.Init(
-			keyspan.SpanIterOptions{}, c.comparer.Compare, tableNewRangeDelIter(ctx, c.newIters),
-			metadataIter, level, manifest.KeyTypePoint,
-		)
+			ctx, keyspan.SpanIterOptions{}, c.comparer.Compare,
+			c.newIters.NewRangeDelIter, metadataIter, level, manifest.KeyTypePoint)
 		rangeDeletionOverlap, err := determineOverlapKeyspanIterator(c.comparer.Compare, bounds, &c.keyspanLevelIter)
 		err = errors.CombineErrors(err, c.keyspanLevelIter.Close())
 		if rangeDeletionOverlap || err != nil {
@@ -117,9 +116,8 @@ func (c *overlapChecker) determineRangeKeyOverlapInLevel(
 ) (bool, error) {
 	// Check for overlapping range keys.
 	c.keyspanLevelIter.Init(
-		keyspan.SpanIterOptions{}, c.comparer.Compare, tableNewRangeKeyIter(ctx, c.newIters),
-		metadataIter, level, manifest.KeyTypeRange,
-	)
+		ctx, keyspan.SpanIterOptions{}, c.comparer.Compare,
+		c.newIters.NewRangeKeyIter, metadataIter, level, manifest.KeyTypeRange)
 	rangeKeyOverlap, err := determineOverlapKeyspanIterator(c.comparer.Compare, bounds, &c.keyspanLevelIter)
 	return rangeKeyOverlap, errors.CombineErrors(err, c.keyspanLevelIter.Close())
 }

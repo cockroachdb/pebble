@@ -2460,7 +2460,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					return iterSet{point: &errorIter{}}, nil
 				}
 				result := "OK"
-				_, _, _, err := c.newInputIters(newIters, nil)
+				_, _, _, err := c.newInputIters(newIters)
 				if err != nil {
 					result = fmt.Sprint(err)
 				}

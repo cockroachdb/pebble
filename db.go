@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -297,9 +296,8 @@ type DB struct {
 	fileLock *Lock
 	dataDir  vfs.File
 
-	tableCache           *tableCacheContainer
-	newIters             tableNewIters
-	tableNewRangeKeyIter keyspanimpl.TableNewSpanIter
+	tableCache *tableCacheContainer
+	newIters   tableNewIters
 
 	commit *commitPipeline
 
@@ -1043,7 +1041,6 @@ func (d *DB) newIter(
 	}
 	var readState *readState
 	var newIters tableNewIters
-	var newIterRangeKey keyspanimpl.TableNewSpanIter
 	if !internalOpts.batch.batchOnly {
 		// Grab and reference the current readState. This prevents the underlying
 		// files in the associated version from being deleted if there is a current
@@ -1067,7 +1064,6 @@ func (d *DB) newIter(
 			seqNum = d.mu.versions.visibleSeqNum.Load()
 		}
 		newIters = d.newIters
-		newIterRangeKey = d.tableNewRangeKeyIter
 	}
 
 	// Bundle various structures under a single umbrella in order to allocate
@@ -1086,7 +1082,6 @@ func (d *DB) newIter(
 		boundsBuf:           buf.boundsBuf,
 		batch:               batch,
 		newIters:            newIters,
-		newIterRangeKey:     newIterRangeKey,
 		seqNum:              seqNum,
 		batchOnlyIter:       internalOpts.batch.batchOnly,
 	}
@@ -1184,7 +1179,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 			if dbi.rangeKey == nil {
 				dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 				dbi.rangeKey.init(dbi.comparer.Compare, dbi.comparer.Split, &dbi.opts)
-				dbi.constructRangeKeyIter()
+				dbi.constructRangeKeyIter(ctx)
 			} else {
 				dbi.rangeKey.iterConfig.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 			}
@@ -1309,17 +1304,16 @@ func (d *DB) newInternalIter(
 	// them together.
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &scanInternalIterator{
-		ctx:             ctx,
-		db:              d,
-		comparer:        d.opts.Comparer,
-		merge:           d.opts.Merger.Merge,
-		readState:       readState,
-		version:         sOpts.vers,
-		alloc:           buf,
-		newIters:        d.newIters,
-		newIterRangeKey: d.tableNewRangeKeyIter,
-		seqNum:          seqNum,
-		mergingIter:     &buf.merging,
+		ctx:         ctx,
+		db:          d,
+		comparer:    d.opts.Comparer,
+		merge:       d.opts.Merger.Merge,
+		readState:   readState,
+		version:     sOpts.vers,
+		alloc:       buf,
+		newIters:    d.newIters,
+		seqNum:      seqNum,
+		mergingIter: &buf.merging,
 	}
 	dbi.opts = *o
 	dbi.opts.logger = d.opts.Logger

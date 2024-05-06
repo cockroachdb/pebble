@@ -17,7 +17,7 @@ import (
 
 // constructRangeKeyIter constructs the range-key iterator stack, populating
 // i.rangeKey.rangeKeyIter with the resulting iterator.
-func (i *Iterator) constructRangeKeyIter() {
+func (i *Iterator) constructRangeKeyIter(ctx context.Context) {
 	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(
 		&i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
 		&i.hasPrefix, &i.prefixOrFullSeekKey, false /* internalKeys */, &i.rangeKey.rangeKeyBuffers.internal)
@@ -91,9 +91,10 @@ func (i *Iterator) constructRangeKeyIter() {
 
 				li := i.rangeKey.iterConfig.NewLevelIter()
 				li.Init(
+					ctx,
 					i.opts.SpanIterOptions(),
 					i.cmp,
-					i.newIterRangeKey,
+					i.newIters.NewRangeKeyIter,
 					iter.Filter(manifest.KeyTypeRange),
 					manifest.L0Sublevel(j),
 					manifest.KeyTypeRange,
@@ -109,8 +110,8 @@ func (i *Iterator) constructRangeKeyIter() {
 			}
 			li := i.rangeKey.iterConfig.NewLevelIter()
 			spanIterOpts := i.opts.SpanIterOptions()
-			li.Init(spanIterOpts, i.cmp, i.newIterRangeKey, current.RangeKeyLevels[level].Iter(),
-				manifest.Level(level), manifest.KeyTypeRange)
+			li.Init(ctx, spanIterOpts, i.cmp, i.newIters.NewRangeKeyIter,
+				current.RangeKeyLevels[level].Iter(), manifest.Level(level), manifest.KeyTypeRange)
 			i.rangeKey.iterConfig.AddLevel(li)
 		}
 	}
@@ -555,7 +556,7 @@ func (i *lazyCombinedIter) initCombinedIteration(
 	// be performing combined iteration.
 	i.parent.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 	i.parent.rangeKey.init(i.parent.comparer.Compare, i.parent.comparer.Split, &i.parent.opts)
-	i.parent.constructRangeKeyIter()
+	i.parent.constructRangeKeyIter(i.parent.ctx)
 
 	// Initialize the Iterator's interleaving iterator.
 	i.parent.rangeKey.iiter.Init(

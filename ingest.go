@@ -1271,7 +1271,7 @@ func (d *DB) newIngestedFlushableEntry(
 		}
 	}
 
-	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan)
+	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, exciseSpan)
 
 	// NB: The logNum/seqNum are the WAL number which we're writing this entry
 	// to and the sequence number within the WAL which we'll write this entry

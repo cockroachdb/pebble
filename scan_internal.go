@@ -409,23 +409,22 @@ type IteratorLevel struct {
 // *must* return the range delete as well as the range key unset/delete that did
 // the shadowing.
 type scanInternalIterator struct {
-	ctx             context.Context
-	db              *DB
-	opts            scanInternalOptions
-	comparer        *base.Comparer
-	merge           Merge
-	iter            internalIterator
-	readState       *readState
-	version         *version
-	rangeKey        *iteratorRangeKeyState
-	pointKeyIter    internalIterator
-	iterKV          *base.InternalKV
-	alloc           *iterAlloc
-	newIters        tableNewIters
-	newIterRangeKey keyspanimpl.TableNewSpanIter
-	seqNum          uint64
-	iterLevels      []IteratorLevel
-	mergingIter     *mergingIter
+	ctx          context.Context
+	db           *DB
+	opts         scanInternalOptions
+	comparer     *base.Comparer
+	merge        Merge
+	iter         internalIterator
+	readState    *readState
+	version      *version
+	rangeKey     *iteratorRangeKeyState
+	pointKeyIter internalIterator
+	iterKV       *base.InternalKV
+	alloc        *iterAlloc
+	newIters     tableNewIters
+	seqNum       uint64
+	iterLevels   []IteratorLevel
+	mergingIter  *mergingIter
 
 	// boundsBuf holds two buffers used to store the lower and upper bounds.
 	// Whenever the InternalIterator's bounds change, the new bounds are copied
@@ -901,9 +900,8 @@ func (i *scanInternalIterator) constructPointIter(
 			i.ctx, i.opts.IterOptions, i.comparer, i.newIters, files, level,
 			internalIterOpts{})
 		mlevels[mlevelsIndex].iter = li
-		rli.Init(keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
-			i.comparer.Compare, tableNewRangeDelIter(i.ctx, i.newIters), files, level,
-			manifest.KeyTypePoint)
+		rli.Init(i.ctx, keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
+			i.comparer.Compare, i.newIters.NewRangeDelIter, files, level, manifest.KeyTypePoint)
 		rangeDelIters = append(rangeDelIters, rli)
 
 		levelsIndex++
@@ -1023,7 +1021,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 	// around Key Trailer order.
 	iter := current.RangeKeyLevels[0].Iter()
 	for f := iter.Last(); f != nil; f = iter.Prev() {
-		spanIter, err := i.newIterRangeKey(f, i.opts.SpanIterOptions())
+		spanIter, err := i.newIters.NewRangeKeyIter(i.ctx, f, i.opts.SpanIterOptions())
 		if err != nil {
 			return err
 		}
@@ -1058,7 +1056,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 			levSlice := manifest.NewLevelSliceKeySorted(i.db.cmp, nonRemoteFiles)
 			levIter = levSlice.Iter()
 		}
-		li.Init(spanIterOpts, i.comparer.Compare, i.newIterRangeKey, levIter,
+		li.Init(i.ctx, spanIterOpts, i.comparer.Compare, i.newIters.NewRangeKeyIter, levIter,
 			manifest.Level(level), manifest.KeyTypeRange)
 		i.rangeKey.iterConfig.AddLevel(li)
 	}

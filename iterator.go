@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekeystack"
 	"github.com/cockroachdb/pebble/sstable"
@@ -233,7 +232,6 @@ type Iterator struct {
 	// Non-nil if this Iterator includes a Batch.
 	batch            *Batch
 	newIters         tableNewIters
-	newIterRangeKey  keyspanimpl.TableNewSpanIter
 	lazyCombinedIter lazyCombinedIter
 	seqNum           uint64
 	// batchSeqNum is used by Iterators over indexed batches to detect when the
@@ -2822,7 +2820,6 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 		batch:               i.batch,
 		batchSeqNum:         i.batchSeqNum,
 		newIters:            i.newIters,
-		newIterRangeKey:     i.newIterRangeKey,
 		seqNum:              i.seqNum,
 	}
 	dbi.processBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)

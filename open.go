@@ -400,7 +400,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		opts.TableCache, d.cacheID, d.objProvider, d.opts, tableCacheSize,
 		&sstable.CategoryStatsCollector{})
 	d.newIters = d.tableCache.newIters
-	d.tableNewRangeKeyIter = tableNewRangeKeyIter(context.TODO(), d.newIters)
 
 	var previousOptionsFileNum base.DiskFileNum
 	var previousOptionsFilename string

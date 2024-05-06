@@ -19,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -59,32 +58,28 @@ type tableNewIters func(
 	kinds iterKinds,
 ) (iterSet, error)
 
-// tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
-// for the rangedel iterator returned by tableNewIters.
-func tableNewRangeDelIter(
-	ctx context.Context, newIters tableNewIters,
-) keyspanimpl.TableNewSpanIter {
-	return func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeDeletions)
-		if err != nil {
-			return nil, err
-		}
-		return iters.RangeDeletion(), nil
+// NewRangeDelIter is a TableNewSpanIter that returns a range deletion iterator
+// constructed through f.
+func (f tableNewIters) NewRangeDelIter(
+	ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions,
+) (keyspan.FragmentIterator, error) {
+	iters, err := f(ctx, file, nil, internalIterOpts{}, iterRangeDeletions)
+	if err != nil {
+		return nil, err
 	}
+	return iters.RangeDeletion(), nil
 }
 
-// tableNewRangeKeyIter takes a tableNewIters and returns a TableNewSpanIter
-// for the range key iterator returned by tableNewIters.
-func tableNewRangeKeyIter(
-	ctx context.Context, newIters tableNewIters,
-) keyspanimpl.TableNewSpanIter {
-	return func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeKeys)
-		if err != nil {
-			return nil, err
-		}
-		return iters.RangeKey(), nil
+// NewRangeKeyIter is a TableNewSpanIter that returns a range key iterator
+// constructed through f.
+func (f tableNewIters) NewRangeKeyIter(
+	ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions,
+) (keyspan.FragmentIterator, error) {
+	iters, err := f(ctx, file, nil, internalIterOpts{}, iterRangeKeys)
+	if err != nil {
+		return nil, err
 	}
+	return iters.RangeKey(), nil
 }
 
 var tableCacheLabels = pprof.Labels("pebble", "table-cache")
