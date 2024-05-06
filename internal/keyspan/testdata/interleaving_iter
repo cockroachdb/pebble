@@ -1053,12 +1053,11 @@ OK
 iter
 first
 next-prefix
+next
 next-prefix
 next-prefix
 next-prefix
-next-prefix
-next-prefix
-next-prefix
+next
 ----
 -- SpanChanged(nil)
 -- SpanChanged(nil)
@@ -1084,7 +1083,6 @@ PointKey: f#72057594037927935,RANGEKEYSET
 Span: f-g:{(#6,RANGEKEYSET,@9,foo)}
 -
 -- SpanChanged(nil)
-.
 .
 
 define-spans

@@ -479,6 +479,8 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
+//
+// Calling NextPrefix while positioned at a span boundary is prohibited.
 func (i *InterleavingIter) NextPrefix(succKey []byte) *base.InternalKV {
 	if i.dir == -1 {
 		panic("pebble: cannot switch directions with NextPrefix")
@@ -499,7 +501,7 @@ func (i *InterleavingIter) NextPrefix(succKey []byte) *base.InternalKV {
 			i.computeSmallestPos()
 		}
 	case posKeyspanStart, posKeyspanEnd:
-		i.nextPos()
+		panic(errors.AssertionFailedf("NextPrefix called while positioned on a span boundary"))
 	}
 	return i.yieldPosition(i.opts.LowerBound, i.nextPos)
 }
