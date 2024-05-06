@@ -1631,7 +1631,7 @@ func (i *Iterator) First() bool {
 	i.requiresReposition = false
 	i.stats.ForwardSeekCount[InterfaceCall]++
 
-	i.iterFirstWithinBounds()
+	i.err = i.iterFirstWithinBounds()
 	if i.err != nil {
 		i.iterValidityState = IterExhausted
 		return false
@@ -1667,8 +1667,7 @@ func (i *Iterator) Last() bool {
 	i.requiresReposition = false
 	i.stats.ReverseSeekCount[InterfaceCall]++
 
-	i.iterLastWithinBounds()
-	if i.err != nil {
+	if i.err = i.iterLastWithinBounds(); i.err != nil {
 		i.iterValidityState = IterExhausted
 		return false
 	}
@@ -1741,6 +1740,11 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		// key.
 		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
 	}
+	// NextPrefix from an exhausted position is undefined. We keep the exhausted
+	// position, which provides determinism for the metamorphic tests.
+	if i.iterValidityState == IterExhausted {
+		return i.iterValidityState
+	}
 
 	// Although NextPrefix documents that behavior at IterAtLimit is undefined,
 	// this function handles these cases as a simple prefix-agnostic Next. This
@@ -1770,7 +1774,10 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		}
 		// The Iterator is exhausted and i.iter is positioned before the first
 		// key. Reposition to point to the first internal key.
-		i.iterFirstWithinBounds()
+		if i.err = i.iterFirstWithinBounds(); i.err != nil {
+			i.iterValidityState = IterExhausted
+			return i.iterValidityState
+		}
 	case iterPosCurReversePaused:
 		// Positioned at a limit. Implement as a prefix-agnostic Next. See TODO
 		// up above.
@@ -1789,7 +1796,15 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		if i.iterKV == nil {
 			// We're positioned before the first key. Need to reposition to point to
 			// the first key.
-			i.iterFirstWithinBounds()
+			i.err = i.iterFirstWithinBounds()
+			if i.iterKV == nil {
+				i.iterValidityState = IterExhausted
+				return i.iterValidityState
+			}
+			if invariants.Enabled && !i.equal(i.iterKV.K.UserKey, i.key) {
+				i.opts.getLogger().Fatalf("pebble: invariant violation: First internal iterator from iterPosPrev landed on %q, not %q",
+					i.iterKV.K.UserKey, i.key)
+			}
 		} else {
 			// Move the internal iterator back onto the user key stored in
 			// i.key. iterPosPrev guarantees that it's positioned at the last
@@ -1800,14 +1815,14 @@ func (i *Iterator) nextPrefix() IterValidityState {
 				// This should only be possible if i.iter.Next() encountered an
 				// error.
 				if i.iter.Error() == nil {
-					i.opts.logger.Fatalf("pebble: invariant violation: Nexting internal iterator from iterPosPrev found nothing")
+					i.opts.getLogger().Fatalf("pebble: invariant violation: Nexting internal iterator from iterPosPrev found nothing")
 				}
 				// NB: Iterator.Error() will return i.iter.Error().
 				i.iterValidityState = IterExhausted
 				return i.iterValidityState
 			}
 			if invariants.Enabled && !i.equal(i.iterKV.K.UserKey, i.key) {
-				i.opts.logger.Fatalf("pebble: invariant violation: Nexting internal iterator from iterPosPrev landed on %q, not %q",
+				i.opts.getLogger().Fatalf("pebble: invariant violation: Nexting internal iterator from iterPosPrev landed on %q, not %q",
 					i.iterKV.K.UserKey, i.key)
 			}
 		}
@@ -1850,6 +1865,10 @@ func (i *Iterator) internalNextPrefix(currKeyPrefixLen int) {
 	}
 	i.stats.ForwardStepCount[InternalIterCall]++
 	i.prefixOrFullSeekKey = i.comparer.ImmediateSuccessor(i.prefixOrFullSeekKey[:0], i.key[:currKeyPrefixLen])
+	if i.iterKV.K.IsExclusiveSentinel() {
+		panic(errors.AssertionFailedf("pebble: unexpected exclusive sentinel key: %q", i.iterKV.K))
+	}
+
 	i.iterKV = i.iter.NextPrefix(i.prefixOrFullSeekKey)
 	if invariants.Enabled && i.iterKV != nil {
 		if iterKeyPrefixLen := i.split(i.iterKV.K.UserKey); i.cmp(i.iterKV.K.UserKey[:iterKeyPrefixLen], i.prefixOrFullSeekKey) < 0 {
@@ -1913,7 +1932,10 @@ func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 		}
 		// We're positioned before the first key. Need to reposition to point to
 		// the first key.
-		i.iterFirstWithinBounds()
+		if i.err = i.iterFirstWithinBounds(); i.err != nil {
+			i.iterValidityState = IterExhausted
+			return i.iterValidityState
+		}
 	case iterPosCurReversePaused:
 		// Switching directions.
 		// The iterator must not be exhausted since it paused.
@@ -1933,9 +1955,13 @@ func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 		if i.iterKV == nil {
 			// We're positioned before the first key. Need to reposition to point to
 			// the first key.
-			i.iterFirstWithinBounds()
+			i.err = i.iterFirstWithinBounds()
 		} else {
 			i.nextUserKey()
+		}
+		if i.err != nil {
+			i.iterValidityState = IterExhausted
+			return i.iterValidityState
 		}
 		i.nextUserKey()
 	case iterPosNext:
@@ -2031,12 +2057,12 @@ func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
 		if i.iterKV == nil {
 			// We're positioned after the last key. Need to reposition to point to
 			// the last key.
-			i.iterLastWithinBounds()
+			i.err = i.iterLastWithinBounds()
 		} else {
 			i.prevUserKey()
-			if i.err != nil {
-				return i.iterValidityState
-			}
+		}
+		if i.err != nil {
+			return i.iterValidityState
 		}
 		if stepAgain {
 			i.prevUserKey()
@@ -2052,24 +2078,32 @@ func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
 
 // iterFirstWithinBounds moves the internal iterator to the first key,
 // respecting bounds.
-func (i *Iterator) iterFirstWithinBounds() {
+func (i *Iterator) iterFirstWithinBounds() error {
 	i.stats.ForwardSeekCount[InternalIterCall]++
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
 		i.iterKV = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
 	} else {
 		i.iterKV = i.iter.First()
 	}
+	if i.iterKV == nil {
+		return i.iter.Error()
+	}
+	return nil
 }
 
 // iterLastWithinBounds moves the internal iterator to the last key, respecting
 // bounds.
-func (i *Iterator) iterLastWithinBounds() {
+func (i *Iterator) iterLastWithinBounds() error {
 	i.stats.ReverseSeekCount[InternalIterCall]++
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
 		i.iterKV = i.iter.SeekLT(upperBound, base.SeekLTFlagsNone)
 	} else {
 		i.iterKV = i.iter.Last()
 	}
+	if i.iterKV == nil {
+		return i.iter.Error()
+	}
+	return nil
 }
 
 // RangeKeyData describes a range key's data, set through RangeKeySet. The key
