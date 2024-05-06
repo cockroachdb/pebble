@@ -465,12 +465,12 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 			// Since we're positioned on a Span, the pointIter is positioned
 			// entirely behind the current iterator position. Reposition it
 			// ahead of the current iterator position.
-			i.savePoint(i.pointIter.Next())
+			i.switchPointIteratorIntoForward()
 		case posKeyspanEnd:
 			// Since we're positioned on a Span, the pointIter is positioned
 			// entirely behind of the current iterator position. Reposition it
 			// ahead the current iterator position.
-			i.savePoint(i.pointIter.Next())
+			i.switchPointIteratorIntoForward()
 		}
 		// Fallthrough to calling i.nextPos.
 	}
@@ -543,7 +543,7 @@ func (i *InterleavingIter) Prev() *base.InternalKV {
 			// Since we're positioned on a Span, the pointIter is positioned
 			// entirely ahead of the current iterator position. Reposition it
 			// behind the current iterator position.
-			i.savePoint(i.pointIter.Prev())
+			i.switchPointIteratorIntoReverse()
 			// Without considering truncation of spans to seek keys, the keyspan
 			// iterator is already in the right place. But consider span [a, z)
 			// and this sequence of iterator calls:
@@ -565,7 +565,7 @@ func (i *InterleavingIter) Prev() *base.InternalKV {
 			// Since we're positioned on a Span, the pointIter is positioned
 			// entirely ahead of the current iterator position. Reposition it
 			// behind the current iterator position.
-			i.savePoint(i.pointIter.Prev())
+			i.switchPointIteratorIntoReverse()
 		}
 
 		if i.spanMarkerTruncated {
@@ -637,7 +637,7 @@ func (i *InterleavingIter) nextPos() {
 
 	switch i.pos {
 	case posExhausted:
-		i.savePoint(i.pointIter.Next())
+		i.switchPointIteratorIntoForward()
 		i.saveSpanForward(i.keyspanIter.Next())
 		i.savedKeyspan()
 		i.computeSmallestPos()
@@ -709,7 +709,7 @@ func (i *InterleavingIter) prevPos() {
 
 	switch i.pos {
 	case posExhausted:
-		i.savePoint(i.pointIter.Prev())
+		i.switchPointIteratorIntoReverse()
 		i.saveSpanBackward(i.keyspanIter.Prev())
 		i.savedKeyspan()
 		i.computeLargestPos()
@@ -846,6 +846,30 @@ func (i *InterleavingIter) keyspanSeekLT(k []byte) {
 		i.span = nil
 	}
 	i.savedKeyspan()
+}
+
+// switchPointIteratorIntoReverse switches the direction of the point iterator
+// into reverse, stepping to the previous point key. If the point iterator is
+// exhausted in the forward direction and there's an upper bound present, it's
+// re-seeked to ensure the iterator obeys the upper bound.
+func (i *InterleavingIter) switchPointIteratorIntoReverse() {
+	if i.pointKV == nil && i.opts.UpperBound != nil {
+		i.savePoint(i.pointIter.SeekLT(i.opts.UpperBound, base.SeekLTFlagsNone))
+		return
+	}
+	i.savePoint(i.pointIter.Prev())
+}
+
+// switchPointIteratorIntoForward switches the direction of the point iterator
+// into the forward direction, stepping to the next point key. If the point
+// iterator is exhausted in the reverse direction and there's a lower bound
+// present, it's re-seeked to ensure the iterator obeys the lower bound.
+func (i *InterleavingIter) switchPointIteratorIntoForward() {
+	if i.pointKV == nil && i.opts.LowerBound != nil {
+		i.savePoint(i.pointIter.SeekGE(i.opts.LowerBound, base.SeekGEFlagsNone))
+		return
+	}
+	i.savePoint(i.pointIter.Next())
 }
 
 func (i *InterleavingIter) saveSpanForward(span *Span, err error) {
