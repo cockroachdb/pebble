@@ -132,15 +132,13 @@ const (
 )
 
 func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileReturnIndicator {
-	indicator := noFileLoaded
 	if l.iterFile == file {
 		if l.err != nil {
 			return noFileLoaded
 		}
 		if l.iter != nil {
-			// We are already at the file, but we would need to check for bounds.
-			// Set indicator accordingly.
-			indicator = fileAlreadyLoaded
+			// We are already at the file.
+			return fileAlreadyLoaded
 		}
 		// We were already at file, but don't have an iterator, probably because the file was
 		// beyond the iteration bounds. It may still be, but it is also possible that the bounds
@@ -148,28 +146,26 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 	}
 
 	// Note that LevelIter.Close() can be called multiple times.
-	if indicator != fileAlreadyLoaded {
-		if err := l.Close(); err != nil {
-			return noFileLoaded
-		}
+	if err := l.Close(); err != nil {
+		return noFileLoaded
 	}
 
 	l.iterFile = file
+	l.iter = nil
 	if file == nil {
 		return noFileLoaded
 	}
-	if indicator != fileAlreadyLoaded {
-		l.iter, l.err = l.newIter(file, l.tableOpts)
-		if l.wrapFn != nil {
-			l.iter = l.wrapFn(l.iter)
-		}
-		l.iter = keyspan.MaybeAssert(l.iter, l.cmp)
-		indicator = newFileLoaded
-	}
-	if l.err != nil {
+	iter, err := l.newIter(file, l.tableOpts)
+	if err != nil {
+		l.err = err
 		return noFileLoaded
 	}
-	return indicator
+	l.iter = iter
+	if l.wrapFn != nil {
+		l.iter = l.wrapFn(l.iter)
+	}
+	l.iter = keyspan.MaybeAssert(l.iter, l.cmp)
+	return newFileLoaded
 }
 
 // SeekGE implements keyspan.FragmentIterator.
