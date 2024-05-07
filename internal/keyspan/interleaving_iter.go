@@ -199,6 +199,10 @@ type InterleavingIterOpts struct {
 	// end keys of spans (in addition to the start keys, which are always
 	// interleaved).
 	InterleaveEndKeys bool
+	// UseBoundaryKeyKinds configures the interleaving iterator to interleave
+	// keys using SPANSTART and SPANEND key kinds for start and end boundaries
+	// respectively, rather than the key kind of the first key in the Span.
+	UseBoundaryKeyKinds bool
 }
 
 // Init initializes the InterleavingIter to interleave point keys from pointIter
@@ -979,7 +983,12 @@ func (i *InterleavingIter) yieldPointKey() *base.InternalKV {
 
 func (i *InterleavingIter) yieldSyntheticSpanStartMarker(lowerBound []byte) *base.InternalKV {
 	i.spanMarker.K.UserKey = i.startKey()
-	i.spanMarker.K.Trailer = base.MakeTrailer(base.InternalKeySeqNumMax, i.span.Keys[0].Kind())
+
+	kind := base.InternalKeyKindSpanStart
+	if !i.opts.UseBoundaryKeyKinds {
+		kind = i.span.Keys[0].Kind()
+	}
+	i.spanMarker.K.Trailer = base.MakeTrailer(base.InternalKeySeqNumMax, kind)
 
 	// Truncate the key we return to our lower bound if we have one. Note that
 	// we use the lowerBound function parameter, not i.lower. The lowerBound
@@ -1015,8 +1024,12 @@ func (i *InterleavingIter) yieldSyntheticSpanStartMarker(lowerBound []byte) *bas
 }
 
 func (i *InterleavingIter) yieldSyntheticSpanEndMarker() *base.InternalKV {
+	kind := base.InternalKeyKindSpanEnd
+	if !i.opts.UseBoundaryKeyKinds {
+		kind = i.span.Keys[0].Kind()
+	}
 	i.spanMarker.K.UserKey = i.endKey()
-	i.spanMarker.K.Trailer = base.MakeTrailer(base.InternalKeySeqNumMax, i.span.Keys[0].Kind())
+	i.spanMarker.K.Trailer = base.MakeTrailer(base.InternalKeySeqNumMax, kind)
 	return i.verify(&i.spanMarker)
 }
 

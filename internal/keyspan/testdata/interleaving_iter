@@ -1152,6 +1152,58 @@ Span: f-g:{(#6,RANGEDEL)}
 -- SpanChanged(nil)
 .
 
+iter interleave-end-keys use-boundary-key-kinds
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+-- SpanChanged(nil)
+-- SpanChanged(nil)
+PointKey: a@4#8,SET
+Span: <invalid>
+-
+-- SpanChanged(b-e:{(#5,RANGEDEL)})
+PointKey: b#72057594037927935,SPANSTART
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: c@11#8,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: c@3#8,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: c@1#4,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: d@5#3,SET
+Span: b-e:{(#5,RANGEDEL)}
+-
+PointKey: e#72057594037927935,SPANEND
+Span: b-e:{(#5,RANGEDEL)}
+-
+-- SpanChanged(nil)
+PointKey: e@9#2,SET
+Span: <invalid>
+-
+-- SpanChanged(f-g:{(#6,RANGEDEL)})
+PointKey: f#72057594037927935,SPANSTART
+Span: f-g:{(#6,RANGEDEL)}
+-
+PointKey: g#72057594037927935,SPANEND
+Span: f-g:{(#6,RANGEDEL)}
+-
+-- SpanChanged(nil)
+.
+
+
 iter interleave-end-keys
 last
 prev

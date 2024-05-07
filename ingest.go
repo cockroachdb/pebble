@@ -139,7 +139,7 @@ func ingestSynthesizeShared(
 		// a.RANGEDEL.100, with a.RANGEDEL.100 being the smallest key. To create a
 		// correct bound, we just use the maximum key kind (which sorts first).
 		// Similarly, we use the smallest key kind for the largest key.
-		smallestPointKey := base.MakeInternalKey(sm.SmallestPointKey.UserKey, 0, base.InternalKeyKindMax)
+		smallestPointKey := base.MakeInternalKey(sm.SmallestPointKey.UserKey, 0, base.InternalKeyKindDurableMax)
 		largestPointKey := base.MakeInternalKey(sm.LargestPointKey.UserKey, 0, 0)
 		if sm.LargestPointKey.IsExclusiveSentinel() {
 			largestPointKey = base.MakeRangeDeleteSentinelKey(sm.LargestPointKey.UserKey)
@@ -220,12 +220,12 @@ func ingestLoad1External(
 		if e.EndKeyIsInclusive {
 			meta.ExtendPointKeyBounds(
 				opts.Comparer.Compare,
-				base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
+				base.MakeInternalKey(smallestCopy, 0, base.InternalKeyKindDurableMax),
 				base.MakeInternalKey(largestCopy, 0, 0))
 		} else {
 			meta.ExtendPointKeyBounds(
 				opts.Comparer.Compare,
-				base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
+				base.MakeInternalKey(smallestCopy, 0, base.InternalKeyKindDurableMax),
 				base.MakeRangeDeleteSentinelKey(largestCopy))
 		}
 	}

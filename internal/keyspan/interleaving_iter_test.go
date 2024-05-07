@@ -123,6 +123,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				hooks.threshold = []byte(strings.Join(cmdArg.Vals, ""))
 			}
 			opts.InterleaveEndKeys = td.HasArg("interleave-end-keys")
+			opts.UseBoundaryKeyKinds = td.HasArg("use-boundary-key-kinds")
 			iter.Init(testkeys.Comparer, &pointIter, keyspanIter, opts)
 			// Clear any previous bounds.
 			pointIter.SetBounds(nil, nil)

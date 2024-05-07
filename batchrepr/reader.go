@@ -87,7 +87,7 @@ func (r *Reader) Next() (kind base.InternalKeyKind, ukey []byte, value []byte, o
 		return 0, nil, nil, false, nil
 	}
 	kind = base.InternalKeyKind((*r)[0])
-	if kind > base.InternalKeyKindMax {
+	if kind > base.InternalKeyKindDurableMax {
 		return 0, nil, nil, false, errors.Wrapf(ErrInvalidBatch, "invalid key kind 0x%x", (*r)[0])
 	}
 	*r, ukey, ok = DecodeStr((*r)[1:])
