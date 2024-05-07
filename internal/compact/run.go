@@ -8,8 +8,11 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 )
@@ -17,15 +20,21 @@ import (
 // Result stores the result of a compaction - more specifically, the "data" part
 // where we use the compaction iterator to write output tables.
 type Result struct {
-	// Err is the result of the compaction.
-	//
-	// On success, Err is nil and Tables stores the output tables.
-	//
-	// On failure, Err is set and Tables stores the tables created so far (and
-	// which need to be cleaned up).
-	Err error
-
+	// Err is the result of the compaction. On success, Err is nil and Tables
+	// stores the output tables. On failure, Err is set and Tables stores the
+	// tables created so far (and which need to be cleaned up).
+	Err    error
 	Tables []OutputTable
+	Stats  Stats
+}
+
+// WithError returns a modified Result which has the Err field set.
+func (r Result) WithError(err error) Result {
+	return Result{
+		Err:    errors.CombineErrors(r.Err, err),
+		Tables: r.Tables,
+		Stats:  r.Stats,
+	}
 }
 
 // OutputTable contains metadata about a table that was created during a compaction.
@@ -38,8 +47,19 @@ type OutputTable struct {
 	WriterMeta sstable.WriterMetadata
 }
 
+// Stats describes stats collected during the compaction.
+type Stats struct {
+	CumulativePinnedKeys uint64
+	CumulativePinnedSize uint64
+	CountMissizedDels    uint64
+}
+
 // RunnerConfig contains the parameters needed for the Runner.
 type RunnerConfig struct {
+	// CompactionBounds are the bounds containing all the input tables. All output
+	// tables must fall within these bounds as well.
+	CompactionBounds base.UserKeyBounds
+
 	// L0SplitKeys is only set for flushes and it contains the flush split keys
 	// (see L0Sublevels.FlushSplitKeys). These are split points enforced for the
 	// output tables.
@@ -63,14 +83,36 @@ type RunnerConfig struct {
 
 // Runner is a helper for running the "data" part of a compaction (where we use
 // the compaction iterator to write output tables).
+//
+// Sample usage:
+//
+//	r := NewRunner(cfg, iter)
+//	r.Start()
+//	for !r.Done() {
+//	  objMeta, tw := ... // Create object and table writer.
+//	  r.WriteTable(objMeta, tw)
+//	}
+//	result := r.Finish()
 type Runner struct {
 	cmp  base.Compare
 	cfg  RunnerConfig
 	iter *Iter
+
+	started bool
+	tables  []OutputTable
+	// Stores any error encountered.
+	err error
+	// Last key/value returned by the compaction iterator.
+	key   *base.InternalKey
+	value []byte
+	// Last RANGEDEL span (or portion of it) that was not yet written to a table.
+	lastRangeDelSpan keyspan.Span
+	// Last range key span (or portion of it) that was not yet written to a table.
+	lastRangeKeySpan keyspan.Span
+	stats            Stats
 }
 
 // NewRunner creates a new Runner.
-// TODO(radu): document usage once we have more functionality.
 func NewRunner(cfg RunnerConfig, iter *Iter) *Runner {
 	r := &Runner{
 		cmp:  iter.cmp,
@@ -78,6 +120,143 @@ func NewRunner(cfg RunnerConfig, iter *Iter) *Runner {
 		iter: iter,
 	}
 	return r
+}
+
+// Start the runner. Start() must be called before Done() and Finish().
+func (r *Runner) Start() {
+	if r.started {
+		panic("already started")
+	}
+	r.started = true
+	r.key, r.value = r.iter.First()
+}
+
+// Done returns true if there is no more data to be written.
+func (r *Runner) Done() bool {
+	if !r.started {
+		panic("not started")
+	}
+	if r.err != nil {
+		return true
+	}
+	return r.key == nil && r.lastRangeDelSpan.Empty() && r.lastRangeKeySpan.Empty()
+}
+
+// WriteTable writes a new output table. This table will be part of
+// Result.Tables. Should only be called if Done() returned false.
+//
+// WriteTable always closes the Writer.
+func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw *sstable.Writer) {
+	r.tables = append(r.tables, OutputTable{
+		CreationTime: time.Now(),
+		ObjMeta:      objMeta,
+	})
+	if r.err != nil {
+		panic("error already encountered")
+	}
+	splitKey, err := r.writeKeysToTable(tw)
+	err = errors.CombineErrors(err, tw.Close())
+	if err != nil {
+		r.err = err
+		r.key, r.value = nil, nil
+		return
+	}
+	writerMeta, err := tw.Metadata()
+	if err != nil {
+		r.err = err
+		return
+	}
+	if err := r.validateWriterMeta(writerMeta, splitKey); err != nil {
+		r.err = err
+		return
+	}
+	r.tables[len(r.tables)-1].WriterMeta = *writerMeta
+}
+
+func (r *Runner) writeKeysToTable(tw *sstable.Writer) (splitKey []byte, _ error) {
+	firstKey := base.MinUserKey(r.cmp, spanStartOrNil(&r.lastRangeDelSpan), spanStartOrNil(&r.lastRangeKeySpan))
+	if r.key != nil && firstKey == nil {
+		firstKey = r.key.UserKey
+	}
+	if firstKey == nil {
+		return nil, base.AssertionFailedf("no data to write")
+	}
+	splitter := NewOutputSplitter(
+		r.cmp, firstKey, r.TableSplitLimit(firstKey),
+		r.cfg.TargetOutputFileSize, r.cfg.Grandparents.Iter(), r.iter.Frontiers(),
+	)
+	lastUserKeyFn := func() []byte {
+		return tw.UnsafeLastPointUserKey()
+	}
+	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
+	key, value := r.key, r.value
+	for ; key != nil; key, value = r.iter.Next() {
+		if splitter.ShouldSplitBefore(key.UserKey, tw.EstimatedSize(), lastUserKeyFn) {
+			break
+		}
+
+		switch key.Kind() {
+		case base.InternalKeyKindRangeDelete:
+			// The previous span (if any) must end at or before this key, since the
+			// spans we receive are non-overlapping.
+			if err := tw.EncodeSpan(&r.lastRangeDelSpan); r.err != nil {
+				return nil, err
+			}
+			r.lastRangeDelSpan.CopyFrom(r.iter.Span())
+			continue
+
+		case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
+			// The previous span (if any) must end at or before this key, since the
+			// spans we receive are non-overlapping.
+			if err := tw.EncodeSpan(&r.lastRangeKeySpan); err != nil {
+				return nil, err
+			}
+			r.lastRangeKeySpan.CopyFrom(r.iter.Span())
+			continue
+		}
+		if err := tw.AddWithForceObsolete(*key, value, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
+			return nil, err
+		}
+		if r.iter.SnapshotPinned() {
+			// The kv pair we just added to the sstable was only surfaced by
+			// the compaction iterator because an open snapshot prevented
+			// its elision. Increment the stats.
+			pinnedCount++
+			pinnedKeySize += uint64(len(key.UserKey)) + base.InternalTrailerLen
+			pinnedValueSize += uint64(len(value))
+		}
+	}
+	r.key, r.value = key, value
+	splitKey = splitter.SplitKey()
+	if err := SplitAndEncodeSpan(r.cmp, &r.lastRangeDelSpan, splitKey, tw); err != nil {
+		return nil, err
+	}
+	if err := SplitAndEncodeSpan(r.cmp, &r.lastRangeKeySpan, splitKey, tw); err != nil {
+		return nil, err
+	}
+	// Set internal sstable properties.
+	p := getInternalWriterProperties(tw)
+	// Set the snapshot pinned totals.
+	p.SnapshotPinnedKeys = pinnedCount
+	p.SnapshotPinnedKeySize = pinnedKeySize
+	p.SnapshotPinnedValueSize = pinnedValueSize
+	r.stats.CumulativePinnedKeys += pinnedCount
+	r.stats.CumulativePinnedSize += pinnedKeySize + pinnedValueSize
+	return splitKey, nil
+}
+
+// Finish closes the compaction iterator and returns the result of the
+// compaction.
+func (r *Runner) Finish() Result {
+	r.err = errors.CombineErrors(r.err, r.iter.Close())
+	// The compaction iterator keeps track of a count of the number of DELSIZED
+	// keys that encoded an incorrect size.
+	r.stats.CountMissizedDels = r.iter.Stats().CountMissizedDels
+	return Result{
+		Err:    r.err,
+		Tables: r.tables,
+		Stats:  r.stats,
+	}
 }
 
 // TableSplitLimit returns a hard split limit for an output table that starts at
@@ -124,4 +303,54 @@ func (r *Runner) TableSplitLimit(startKey []byte) []byte {
 	}
 
 	return limitKey
+}
+
+// validateWriterMeta runs some sanity cehcks on the WriterMetadata on an output
+// table that was just finished. splitKey is the key where the table must have
+// ended (or nil).
+func (r *Runner) validateWriterMeta(meta *sstable.WriterMetadata, splitKey []byte) error {
+	if !meta.HasPointKeys && !meta.HasRangeDelKeys && !meta.HasRangeKeys {
+		return base.AssertionFailedf("output table has no keys")
+	}
+
+	var err error
+	checkBounds := func(smallest, largest base.InternalKey, description string) {
+		bounds := base.UserKeyBoundsFromInternal(smallest, largest)
+		if !r.cfg.CompactionBounds.ContainsBounds(r.cmp, &bounds) {
+			err = errors.CombineErrors(err, base.AssertionFailedf(
+				"output table %s bounds %s extend beyond compaction bounds %s",
+				description, bounds, r.cfg.CompactionBounds,
+			))
+		}
+		if splitKey != nil && bounds.End.IsUpperBoundFor(r.cmp, splitKey) {
+			err = errors.CombineErrors(err, base.AssertionFailedf(
+				"output table %s bounds %s extend beyond split key %s",
+				description, bounds, splitKey,
+			))
+		}
+	}
+
+	if meta.HasPointKeys {
+		checkBounds(meta.SmallestPoint, meta.LargestPoint, "point key")
+	}
+	if meta.HasRangeDelKeys {
+		checkBounds(meta.SmallestRangeDel, meta.LargestRangeDel, "range del")
+	}
+	if meta.HasRangeKeys {
+		checkBounds(meta.SmallestRangeKey, meta.LargestRangeKey, "range key")
+	}
+	return err
+}
+
+// getInternalWriterProperties accesses a private variable (in the
+// internal/private package) initialized by the sstable Writer. This indirection
+// is necessary to ensure non-Pebble users constructing sstables for ingestion
+// are unable to set internal-only properties.
+var getInternalWriterProperties = private.SSTableInternalProperties.(func(*sstable.Writer) *sstable.Properties)
+
+func spanStartOrNil(s *keyspan.Span) []byte {
+	if s.Empty() {
+		return nil
+	}
+	return s.Start
 }
