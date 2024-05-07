@@ -237,10 +237,10 @@ func (s *ingestedFlushable) constructRangeDelIter(
 	file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
 	iters, err := s.newIters(context.Background(), file, nil, internalIterOpts{}, iterRangeDeletions)
-	// Note that the keyspan level iter expects a non-nil iterator to be
-	// returned even if there is an error. So, we return iters.RangeDeletion()
-	// regardless of the value of err.
-	return iters.RangeDeletion(), err
+	if err != nil {
+		return nil, err
+	}
+	return iters.RangeDeletion(), nil
 }
 
 // newRangeDelIter is part of the flushable interface.
