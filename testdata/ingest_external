@@ -830,3 +830,81 @@ a: (foo, .)
 aa@10: (a, .)
 b@11: (b, .)
 .
+
+# Test empty external ingestion.
+reset
+----
+
+build-remote ext
+set a@10 a
+set b@11 b
+----
+
+ingest-external
+ext bounds=(u,v)
+----
+
+lsm
+----
+L6:
+  000004(000004):[u#10,DELSIZED-v#inf,RANGEDEL]
+
+iter
+first
+----
+.
+
+download a z via-backing-file-download
+----
+ok
+
+# LSM should be empty now.
+lsm
+----
+
+iter
+first
+----
+.
+
+# Test with two external files, one empty.
+ingest-external
+ext bounds=(a,c)
+----
+
+ingest-external
+ext bounds=(u,v)
+----
+
+lsm
+----
+L6:
+  000006(000006):[a#11,DELSIZED-c#inf,RANGEDEL]
+  000007(000006):[u#12,DELSIZED-v#inf,RANGEDEL]
+
+iter
+first
+next
+next
+----
+a@10: (a, .)
+b@11: (b, .)
+.
+
+download a z
+----
+ok
+
+lsm
+----
+L6:
+  000008:[a@10#0,SET-b@11#0,SET]
+
+iter
+first
+next
+next
+----
+a@10: (a, .)
+b@11: (b, .)
+.

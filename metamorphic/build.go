@@ -274,32 +274,6 @@ func openExternalObj(
 	return reader, pointIter, rangeDelIter, rangeKeyIter
 }
 
-// externalObjIsEmpty returns true if the given external object has no point or
-// range keys withing the given bounds.
-func externalObjIsEmpty(
-	t *Test, externalObjID objID, bounds pebble.KeyRange, syntheticPrefix sstable.SyntheticPrefix,
-) bool {
-	reader, pointIter, rangeDelIter, rangeKeyIter := openExternalObj(t, externalObjID, bounds, syntheticPrefix)
-	defer reader.Close()
-	defer closeIters(pointIter, rangeDelIter, rangeKeyIter)
-
-	kv := pointIter.First()
-	panicIfErr(pointIter.Error())
-	if kv != nil {
-		return false
-	}
-	for _, it := range []keyspan.FragmentIterator{rangeDelIter, rangeKeyIter} {
-		if it != nil {
-			span, err := it.First()
-			panicIfErr(err)
-			if span != nil {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 func panicIfErr(err error) {
 	if err != nil {
 		panic(err)

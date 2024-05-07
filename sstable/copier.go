@@ -31,7 +31,10 @@ import (
 //
 // The resulting sstable will have no block properties.
 //
-// Closes input and finishes or aborts output, including on non-nil errors.
+// The function might return ErrEmptySpan if there are no blocks that could
+// include keys in the given range. See ErrEmptySpan for more details.
+//
+// Closes input and finishes or aborts output in all cases, including on errors.
 //
 // Note that CopySpan is not aware of any suffix or prefix replacement; the
 // caller must account for those when specifying the bounds.
@@ -81,7 +84,8 @@ func CopySpan(
 	}()
 
 	if r.Properties.NumValueBlocks > 0 || r.Properties.NumRangeKeys() > 0 || r.Properties.NumRangeDeletions > 0 {
-		return 0, errors.New("cannot CopySpan sstables with value blocks or range keys")
+		// We just checked for these conditions above.
+		return 0, base.AssertionFailedf("cannot CopySpan sstables with value blocks or range keys")
 	}
 
 	// Set the filter block to be copied over if it exists. It will return false
@@ -128,7 +132,7 @@ func CopySpan(
 	// a non-empty sst by copying something outside the span, but #3907 means that
 	// the empty virtual span would still be a problem, so don't bother.
 	if len(blocks) < 1 {
-		return 0, errors.Newf("CopySpan cannot copy empty span %s %s", start, end)
+		return 0, ErrEmptySpan
 	}
 
 	// Find the span of the input file that contains all our blocks, and then copy
@@ -170,6 +174,15 @@ func CopySpan(
 	w = nil
 	return wrote, nil
 }
+
+// ErrEmptySpan is returned by CopySpan if the input sstable has no keys in the
+// requested span.
+//
+// Note that CopySpan's determination of block overlap is best effort - we may
+// copy a block that doesn't actually contain any keys in the span, in which
+// case we won't generate this error. We currently only generate this error when
+// the span start is beyond all keys in the physical sstable.
+var ErrEmptySpan = errors.New("cannot copy empty span")
 
 // indexEntry captures the two components of an sst index entry: the key and the
 // decoded block handle value.

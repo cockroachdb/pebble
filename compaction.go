@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compact"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -2163,14 +2162,26 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 // d.mu must be held when calling this method. The mutex will be released when
 // doing IO.
 func (d *DB) runCopyCompaction(
-	jobID JobID,
-	c *compaction,
-	inputMeta *fileMetadata,
-	objMeta objstorage.ObjectMetadata,
-	ve *versionEdit,
-) error {
-	ctx := context.TODO()
+	jobID JobID, c *compaction,
+) (ve *versionEdit, stats compact.Stats, _ error) {
+	iter := c.startLevel.files.Iter()
+	inputMeta := iter.First()
+	if iter.Next() != nil {
+		return nil, compact.Stats{}, base.AssertionFailedf("got more than one file for a move compaction")
+	}
+	if c.cancel.Load() {
+		return nil, compact.Stats{}, ErrCancelledCompaction
+	}
+	ve = &versionEdit{
+		DeletedFiles: map[deletedFileEntry]*fileMetadata{
+			{Level: c.startLevel.level, FileNum: inputMeta.FileNum}: inputMeta,
+		},
+	}
 
+	objMeta, err := d.objProvider.Lookup(fileTypeTable, inputMeta.FileBacking.DiskFileNum)
+	if err != nil {
+		return nil, compact.Stats{}, err
+	}
 	if !objMeta.IsExternal() {
 		if objMeta.IsRemote() || !remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level) {
 			panic("pebble: scheduled a copy compaction that is not actually moving files to shared storage")
@@ -2215,14 +2226,6 @@ func (d *DB) runCopyCompaction(
 		newMeta.InitPhysicalBacking()
 	}
 
-	c.metrics = map[int]*LevelMetrics{
-		c.outputLevel.level: {
-			BytesIn:         inputMeta.Size,
-			BytesCompacted:  inputMeta.Size,
-			TablesCompacted: 1,
-		},
-	}
-
 	// Before dropping the db mutex, grab a ref to the current version. This
 	// prevents any concurrent excises from deleting files that this compaction
 	// needs to read/maintain a reference to.
@@ -2244,11 +2247,12 @@ func (d *DB) runCopyCompaction(
 
 	// If the src obj is external, we're doing an external to local/shared copy.
 	if objMeta.IsExternal() {
+		ctx := context.TODO()
 		src, err := d.objProvider.OpenForReading(
 			ctx, fileTypeTable, inputMeta.FileBacking.DiskFileNum, objstorage.OpenOptions{},
 		)
 		if err != nil {
-			return err
+			return nil, compact.Stats{}, err
 		}
 		defer func() {
 			if src != nil {
@@ -2263,7 +2267,7 @@ func (d *DB) runCopyCompaction(
 			},
 		)
 		if err != nil {
-			return err
+			return nil, compact.Stats{}, err
 		}
 		deleteOnExit = true
 
@@ -2287,7 +2291,17 @@ func (d *DB) runCopyCompaction(
 		)
 		src = nil // We passed src to CopySpan; it's responsible for closing it.
 		if err != nil {
-			return err
+			if errors.Is(err, sstable.ErrEmptySpan) {
+				// The virtual table was empty. Just remove the backing file.
+				// Note that deleteOnExit is true so we will delete the created object.
+				c.metrics = map[int]*LevelMetrics{
+					c.outputLevel.level: {
+						BytesIn: inputMeta.Size,
+					},
+				}
+				return ve, compact.Stats{}, nil
+			}
+			return nil, compact.Stats{}, err
 		}
 		newMeta.FileBacking.Size = wrote
 		newMeta.Size = wrote
@@ -2295,22 +2309,31 @@ func (d *DB) runCopyCompaction(
 		_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
 			d.objProvider.Path(objMeta), fileTypeTable, newMeta.FileBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true})
-
 		if err != nil {
-			return err
+			return nil, compact.Stats{}, err
 		}
 		deleteOnExit = true
 	}
-	ve.NewFiles[0].Meta = newMeta
+	ve.NewFiles = []newFileEntry{{
+		Level: c.outputLevel.level,
+		Meta:  newMeta,
+	}}
 	if newMeta.Virtual {
 		ve.CreatedBackingTables = []*fileBacking{newMeta.FileBacking}
 	}
+	c.metrics = map[int]*LevelMetrics{
+		c.outputLevel.level: {
+			BytesIn:         inputMeta.Size,
+			BytesCompacted:  newMeta.Size,
+			TablesCompacted: 1,
+		},
+	}
 
 	if err := d.objProvider.Sync(); err != nil {
-		return err
+		return nil, compact.Stats{}, err
 	}
 	deleteOnExit = false
-	return nil
+	return ve, compact.Stats{}, nil
 }
 
 func (d *DB) runDeleteOnlyCompaction(
@@ -2334,22 +2357,16 @@ func (d *DB) runDeleteOnlyCompaction(
 	return ve, stats, nil
 }
 
-func (d *DB) runMoveOrCopyCompaction(
+func (d *DB) runMoveCompaction(
 	jobID JobID, c *compaction,
 ) (ve *versionEdit, stats compact.Stats, _ error) {
 	iter := c.startLevel.files.Iter()
 	meta := iter.First()
-	if invariants.Enabled {
-		if iter.Next() != nil {
-			panic("got more than one file for a move or copy compaction")
-		}
+	if iter.Next() != nil {
+		return nil, stats, base.AssertionFailedf("got more than one file for a move compaction")
 	}
 	if c.cancel.Load() {
 		return ve, stats, ErrCancelledCompaction
-	}
-	objMeta, err := d.objProvider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
-	if err != nil {
-		return ve, stats, err
 	}
 	c.metrics = map[int]*LevelMetrics{
 		c.outputLevel.level: {
@@ -2365,12 +2382,8 @@ func (d *DB) runMoveOrCopyCompaction(
 			{Level: c.outputLevel.level, Meta: meta},
 		},
 	}
-	if c.kind == compactionKindMove {
-		return ve, stats, nil
-	}
 
-	err = d.runCopyCompaction(jobID, c, meta, objMeta, ve)
-	return ve, stats, err
+	return ve, stats, nil
 }
 
 // runCompaction runs a compaction that produces new on-disk tables from
@@ -2386,8 +2399,10 @@ func (d *DB) runCompaction(
 	switch c.kind {
 	case compactionKindDeleteOnly:
 		return d.runDeleteOnlyCompaction(jobID, c)
-	case compactionKindMove, compactionKindCopy:
-		return d.runMoveOrCopyCompaction(jobID, c)
+	case compactionKindMove:
+		return d.runMoveCompaction(jobID, c)
+	case compactionKindCopy:
+		return d.runCopyCompaction(jobID, c)
 	case compactionKindIngestedFlushable:
 		panic("pebble: runCompaction cannot handle compactionKindIngestedFlushable.")
 	}
