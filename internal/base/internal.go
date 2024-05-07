@@ -96,6 +96,9 @@ const (
 	// heuristics, but is not required to be accurate for correctness.
 	InternalKeyKindDeleteSized InternalKeyKind = 23
 
+	InternalKeyKindSpanStart InternalKeyKind = 24
+	InternalKeyKindSpanEnd   InternalKeyKind = 25
+
 	// This maximum value isn't part of the file format. Future extensions may
 	// increase this value.
 	//
@@ -105,7 +108,12 @@ const (
 	// which sorts 'less than or equal to' any other valid internalKeyKind, when
 	// searching for any kind of internal key formed by a certain user key and
 	// seqNum.
-	InternalKeyKindMax InternalKeyKind = 23
+	InternalKeyKindMax InternalKeyKind = 25
+
+	// NB: This is less than InternalKeyKindSpanStart and InternalKeyKindSpanEnd
+	// because those key kinds are never used in durable formats; only as
+	// special in-memory indicators.
+	InternalKeyKindDurableMax InternalKeyKind = 23
 
 	// Internal to the sstable format. Not exposed by any sstable iterator.
 	// Declared here to prevent definition of valid key kinds that set this bit.
@@ -157,6 +165,8 @@ var internalKeyKindNames = []string{
 	InternalKeyKindRangeKeyDelete: "RANGEKEYDEL",
 	InternalKeyKindIngestSST:      "INGESTSST",
 	InternalKeyKindDeleteSized:    "DELSIZED",
+	InternalKeyKindSpanStart:      "SPANSTART",
+	InternalKeyKindSpanEnd:        "SPANEND",
 	InternalKeyKindInvalid:        "INVALID",
 }
 
@@ -249,6 +259,8 @@ var kindsMap = map[string]InternalKeyKind{
 	"RANGEKEYDEL":   InternalKeyKindRangeKeyDelete,
 	"INGESTSST":     InternalKeyKindIngestSST,
 	"DELSIZED":      InternalKeyKindDeleteSized,
+	"SPANSTART":     InternalKeyKindSpanStart,
+	"SPANEND":       InternalKeyKindSpanEnd,
 }
 
 // ParseInternalKey parses the string representation of an internal key. The
@@ -476,7 +488,8 @@ func (k InternalKey) IsExclusiveSentinel() bool {
 	}
 	switch kind := k.Kind(); kind {
 	case InternalKeyKindRangeDelete, InternalKeyKindRangeKeyDelete,
-		InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
+		InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet,
+		InternalKeyKindSpanStart, InternalKeyKindSpanEnd:
 		return true
 	default:
 		return false

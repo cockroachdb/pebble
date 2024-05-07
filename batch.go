@@ -2284,7 +2284,7 @@ func (i *flushableBatchIter) extractValue() base.LazyValue {
 		return base.LazyValue{}
 	}
 	kind := InternalKeyKind(p[0])
-	if kind > InternalKeyKindMax {
+	if kind > base.InternalKeyKindDurableMax {
 		i.err = base.CorruptionErrorf("corrupted batch")
 		return base.LazyValue{}
 	}
