@@ -995,33 +995,12 @@ type externalObjWithBounds struct {
 func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 	db := t.getDB(o.dbID)
 
-	// We modify objs to eliminate empty objects.
-	var objs []externalObjWithBounds
-	for _, obj := range o.objs {
-		// Make sure the object exists and is not empty.
-		objMeta := t.getExternalObj(obj.externalObjID)
-		if m := objMeta.sstMeta; !m.HasPointKeys && !m.HasRangeKeys && !m.HasRangeDelKeys {
-			continue
-		}
-		if externalObjIsEmpty(t, obj.externalObjID, obj.bounds, obj.syntheticPrefix) {
-			// Currently we don't support ingesting external objects that have no point
-			// or range keys in the given range. Filter out any such objects.
-			// TODO(radu): even though we don't expect this case in practice, eventually
-			// we want to make sure that it doesn't cause failures.
-			continue
-		}
-		objs = append(objs, obj)
-	}
-	if len(objs) == 0 {
-		h.Recordf("%s // no-op", o)
-		return
-	}
 	var err error
 	if !t.testOpts.externalStorageEnabled {
 		// Emulate the operation by crating local, truncated SST files and ingesting
 		// them.
 		var paths []string
-		for i, obj := range objs {
+		for i, obj := range o.objs {
 			// Make sure the object exists and is not empty.
 			path, sstMeta := buildForIngestExternalEmulation(
 				t, o.dbID, obj.externalObjID, obj.bounds, obj.syntheticSuffix, obj.syntheticPrefix, i,
@@ -1034,8 +1013,8 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 			err = db.Ingest(paths)
 		}
 	} else {
-		external := make([]pebble.ExternalFile, len(objs))
-		for i, obj := range objs {
+		external := make([]pebble.ExternalFile, len(o.objs))
+		for i, obj := range o.objs {
 			meta := t.getExternalObj(obj.externalObjID)
 			external[i] = pebble.ExternalFile{
 				Locator:           "external",
