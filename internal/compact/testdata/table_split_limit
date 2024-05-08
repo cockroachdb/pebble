@@ -1,0 +1,226 @@
+# Tests for TableSplitLimit function. Grandparents are specified on L1, and L0
+# tables define the L0 split points.
+
+# No limits.
+define
+----
+
+split-limit
+a b
+----
+a: no limit
+b: no limit
+
+# 3 equal size grandparents
+define
+L1:
+  1:[a#0,SET-b#0,SET] size:2
+  2:[c#0,SET-d#0,SET] size:2
+  3:[e#0,SET-f#0,SET] size:2
+----
+L1:
+  000001:[a#0,SET-b#0,SET]
+  000002:[c#0,SET-d#0,SET]
+  000003:[e#0,SET-f#0,SET]
+
+split-limit max-overlap=1
+a b c d e f g
+----
+a: c
+b: c
+c: e
+d: e
+e: no limit
+f: no limit
+g: no limit
+
+split-limit max-overlap=2
+a b c d e
+----
+a: c
+b: c
+c: e
+d: e
+e: no limit
+
+split-limit max-overlap=4
+a b c d e
+----
+a: e
+b: e
+c: no limit
+d: no limit
+e: no limit
+
+# Unequal size grandparents
+define
+L1:
+  1:[a#0,SET-b#0,SET] size:1
+  2:[c#0,SET-d#0,SET] size:2
+  3:[e#0,SET-f#0,SET] size:3
+----
+L1:
+  000001:[a#0,SET-b#0,SET]
+  000002:[c#0,SET-d#0,SET]
+  000003:[e#0,SET-f#0,SET]
+
+split-limit max-overlap=1
+a b c d e f
+----
+a: c
+b: c
+c: e
+d: e
+e: no limit
+f: no limit
+
+split-limit max-overlap=3
+a b c d e f
+----
+a: e
+b: e
+c: e
+d: e
+e: no limit
+f: no limit
+
+# Unequal size grandparents
+define
+L1:
+  1:[a#0,SET-b#0,SET] size:3
+  2:[c#0,SET-d#0,SET] size:2
+  3:[e#0,SET-f#0,SET] size:1
+----
+L1:
+  000001:[a#0,SET-b#0,SET]
+  000002:[c#0,SET-d#0,SET]
+  000003:[e#0,SET-f#0,SET]
+
+split-limit max-overlap=1
+a b c d e f
+----
+a: c
+b: c
+c: e
+d: e
+e: no limit
+f: no limit
+
+split-limit max-overlap=3
+a b c d e f
+----
+a: c
+b: c
+c: no limit
+d: no limit
+e: no limit
+f: no limit
+
+# L0 split points, no grandparents.
+define flush-split-bytes=4
+L0
+  1:[a#1,SET-k#10,SET] size:2
+  2:[l#11,SET-o#13,SET] size:2
+  3:[p#14,SET-s#16,SET] size:2
+  4:[t#17,SET-w#19,SET] size:2
+----
+L0.0:
+  000001:[a#1,SET-k#10,SET]
+  000002:[l#11,SET-o#13,SET]
+  000003:[p#14,SET-s#16,SET]
+  000004:[t#17,SET-w#19,SET]
+flush split keys:
+	s
+
+split-limit
+a c f l o s u x
+----
+a: s
+c: s
+f: s
+l: s
+o: s
+s: no limit
+u: no limit
+x: no limit
+
+define flush-split-bytes=2
+L0
+  1:[a#1,SET-k#10,SET] size:2
+  2:[l#11,SET-o#13,SET] size:2
+  3:[p#14,SET-s#16,SET] size:2
+  4:[t#17,SET-w#19,SET] size:2
+----
+L0.0:
+  000001:[a#1,SET-k#10,SET]
+  000002:[l#11,SET-o#13,SET]
+  000003:[p#14,SET-s#16,SET]
+  000004:[t#17,SET-w#19,SET]
+flush split keys:
+	o
+	w
+
+split-limit
+a c f l o s u x
+----
+a: o
+c: o
+f: o
+l: o
+o: w
+s: w
+u: w
+x: no limit
+
+# L0 split points and grandparents.
+define flush-split-bytes=4
+L0
+  1:[a#1,SET-k#10,SET] size:2
+  2:[l#11,SET-o#13,SET] size:3
+  3:[p#14,SET-s#16,SET] size:3
+  4:[t#17,SET-w#19,SET] size:2
+L1:
+  1:[b#0,SET-j#0,SET] size:2
+  2:[la#0,SET-n#0,SET] size:2
+  3:[q#0,SET-r#0,SET] size:2
+----
+L0.0:
+  000001:[a#1,SET-k#10,SET]
+  000002:[l#11,SET-o#13,SET]
+  000003:[p#14,SET-s#16,SET]
+  000004:[t#17,SET-w#19,SET]
+L1:
+  000001:[b#0,SET-j#0,SET]
+  000002:[la#0,SET-n#0,SET]
+  000003:[q#0,SET-r#0,SET]
+flush split keys:
+	o
+	w
+
+split-limit max-overlap=2
+a c f l m n o s u x
+----
+a: la
+c: la
+f: la
+l: o
+m: o
+n: o
+o: w
+s: w
+u: w
+x: no limit
+
+split-limit max-overlap=4
+a c f l m n o s u x
+----
+a: o
+c: o
+f: o
+l: o
+m: o
+n: o
+o: w
+s: w
+u: w
+x: no limit

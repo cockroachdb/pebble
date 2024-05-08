@@ -12,7 +12,6 @@ import (
 	"math"
 	"runtime/pprof"
 	"slices"
-	"sort"
 	"sync/atomic"
 	"time"
 
@@ -475,9 +474,9 @@ func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) 
 		int(math.Ceil(approxOutputBytes / float64(c.maxOutputFileSize)))
 	acceptableFileCount := float64(4 * approxNumFilesBasedOnTargetSize)
 	// The byte calculation is linear in numGrandparentFiles, but we will
-	// incur this linear cost in findGrandparentLimit too, so we are also
-	// willing to pay it now. We could approximate this cheaply by using
-	// the mean file size of Lbase.
+	// incur this linear cost in compact.Runner.TableSplitLimit() too, so we are
+	// also willing to pay it now. We could approximate this cheaply by using the
+	// mean file size of Lbase.
 	grandparentFileBytes := c.grandparents.SizeSum()
 	fileCountUpperBoundDueToGrandparents :=
 		float64(grandparentFileBytes) / float64(c.maxOverlapBytes)
@@ -613,59 +612,6 @@ func (c *compaction) hasExtraLevelData() bool {
 		return false
 	}
 	return true
-}
-
-// findGrandparentLimit takes the start user key for a table and returns the
-// user key to which that table can extend without excessively overlapping
-// the grandparent level. If no limit is needed considering the grandparent
-// files, this function returns nil. This is done in order to prevent a table
-// at level N from overlapping too much data at level N+1. We want to avoid
-// such large overlaps because they translate into large compactions. The
-// current heuristic stops output of a table if the addition of another key
-// would cause the table to overlap more than 10x the target file size at
-// level N. See maxGrandparentOverlapBytes.
-func (c *compaction) findGrandparentLimit(start []byte) []byte {
-	iter := c.grandparents.Iter()
-	var overlappedBytes uint64
-	var greater bool
-	for f := iter.SeekGE(c.cmp, start); f != nil; f = iter.Next() {
-		overlappedBytes += f.Size
-		// To ensure forward progress we always return a larger user
-		// key than where we started. See comments above clients of
-		// this function for how this is used.
-		greater = greater || c.cmp(f.Smallest.UserKey, start) > 0
-		if !greater {
-			continue
-		}
-
-		// We return the smallest bound of a sstable rather than the
-		// largest because the smallest is always inclusive, and limits
-		// are used exlusively when truncating range tombstones. If we
-		// truncated an output to the largest key while there's a
-		// pending tombstone, the next output file would also overlap
-		// the same grandparent f.
-		if overlappedBytes > c.maxOverlapBytes {
-			return f.Smallest.UserKey
-		}
-	}
-	return nil
-}
-
-// findL0Limit takes the start key for a table and returns the user key to which
-// that table can be extended without hitting the next l0Limit. Having flushed
-// sstables "bridging across" an l0Limit could lead to increased L0 -> LBase
-// compaction sizes as well as elevated read amplification.
-func (c *compaction) findL0Limit(start []byte) []byte {
-	if c.startLevel.level > -1 || c.outputLevel.level != 0 || len(c.l0Limits) == 0 {
-		return nil
-	}
-	index := sort.Search(len(c.l0Limits), func(i int) bool {
-		return c.cmp(c.l0Limits[i], start) > 0
-	})
-	if index < len(c.l0Limits) {
-		return c.l0Limits[index]
-	}
-	return nil
 }
 
 // errorOnUserKeyOverlap returns an error if the last two written sstables in
@@ -2783,17 +2729,14 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
-	splitLimitFunc := func(start []byte) []byte {
-		limit := c.findGrandparentLimit(start)
-		// splitL0Outputs is true during flushes and intra-L0 compactions with flush
-		// splits enabled.
-		if splitL0Outputs := c.outputLevel.level == 0 && d.opts.FlushSplitBytes > 0; splitL0Outputs {
-			// We limit the file at the smaller between the two limits.
-			l0Limit := c.findL0Limit(start)
-			limit = base.MinUserKey(c.cmp, limit, l0Limit)
-		}
-		return limit
+	runnerCfg := compact.RunnerConfig{
+		Grandparents:               c.grandparents,
+		MaxGrandparentOverlapBytes: c.maxOverlapBytes,
+		TargetOutputFileSize:       c.maxOutputFileSize,
+		L0SplitKeys:                c.l0Limits,
 	}
+	runner := compact.NewRunner(runnerCfg, iter)
+
 	lastUserKeyFn := func() []byte {
 		return tw.UnsafeLastPointUserKey()
 	}
@@ -2814,7 +2757,9 @@ func (d *DB) runCompaction(
 		if invariants.Enabled && firstKey == nil {
 			panic("nil first key")
 		}
-		splitter := compact.NewOutputSplitter(c.cmp, firstKey, splitLimitFunc(firstKey), c.maxOutputFileSize, c.grandparents.Iter(), iter.Frontiers())
+		splitter := compact.NewOutputSplitter(
+			c.cmp, firstKey, runner.TableSplitLimit(firstKey), c.maxOutputFileSize, c.grandparents.Iter(), iter.Frontiers(),
+		)
 		if err := newOutput(); err != nil {
 			return nil, stats, err
 		}

@@ -748,7 +748,7 @@ func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 	}()
 
 	// Input format:
-	//	000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...]
+	//	000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...] size:5
 	m := &FileMetadata{}
 	p := makeDebugParser(s)
 	m.FileNum = p.FileNum()
