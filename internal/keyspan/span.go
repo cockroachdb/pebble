@@ -298,10 +298,11 @@ func (s Span) Visible(snapshot uint64) Span {
 // VisibleAt requires the Span's keys be in ByTrailerDesc order. It panics if
 // the span's keys are sorted in a different order.
 func (s *Span) VisibleAt(snapshot uint64) bool {
-	if s.KeysOrder != ByTrailerDesc {
+	if s == nil {
+		return false
+	} else if s.KeysOrder != ByTrailerDesc {
 		panic("pebble: span's keys unexpectedly not in trailer order")
-	}
-	if len(s.Keys) == 0 {
+	} else if len(s.Keys) == 0 {
 		return false
 	} else if first := s.Keys[0].SeqNum(); first&base.InternalKeySeqNumBatch != 0 {
 		// Only visible batch keys are included when an Iterator's batch spans

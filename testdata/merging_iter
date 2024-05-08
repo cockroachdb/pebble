@@ -53,22 +53,16 @@ e#10,SET:10
 g#20,SET:20
 .
 
-iter probe-rangedels=(000000,(Log "#  000000.rangeDelIter.")) probe-rangedels=(000001,(If (Equal SeekKey (Bytes "g")) ErrInjected noop),(Log "#  000001.rangeDelIter."))
+iter probe-rangedels=(000000,(Log "#  000000.rangeDelIter.")) probe-rangedels=(000001,(If opSpanNext ErrInjected noop),(Log "#  000001.rangeDelIter."))
 seek-ge d
 next
 ----
 #  000000.rangeDelIter.opSpanSeekGE("d") = a-e:{(#8,RANGEDEL)}
-#  000000.rangeDelIter.opSpanSeekGE("d") = a-e:{(#8,RANGEDEL)}
 #  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
-#  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
-#  000000.rangeDelIter.opSpanSeekGE("d") = a-e:{(#8,RANGEDEL)}
 #  000000.rangeDelIter.opSpanNext() = nil
 #  000000.rangeDelIter.opSpanClose() = nil
-#  000000.rangeDelIter.opSpanClose() = nil
-#  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
 e#10,SET:10
-#  000001.rangeDelIter.opSpanNext() = nil
-#  000001.rangeDelIter.opSpanSeekGE("g") = nil <err="injected error">
+#  000001.rangeDelIter.opSpanNext() = nil <err="injected error">
 err=injected error
 
 # isPrevEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
@@ -556,8 +550,8 @@ seek-lt jd
 next
 ----
 #  000022.SeekLT("jd") = (iwoeionch#792,SET,"792")
-#  000023.SeekLT("c") = nil
-#  000024.SeekLT("c") = nil
+#  000023.SeekLT("cz") = nil
+#  000024.SeekLT("cz") = nil
 iwoeionch#792,SET:792
 #  000023.SeekGE("cz") = nil <err="injected error">
 err=injected error
@@ -909,6 +903,6 @@ set-bounds lower=cz upper=jd
 seek-lt jd
 ----
 #  000033.SeekLT("jd") = (iwoeionch#792,SET,"792")
-#  000034.SeekLT("c") = nil
-#  000035.SeekLT("c") = nil
+#  000034.SeekLT("cz") = nil
+#  000035.SeekLT("cz") = nil
 iwoeionch#792,SET:792

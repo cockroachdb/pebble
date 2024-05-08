@@ -874,7 +874,8 @@ func (i *scanInternalIterator) constructPointIter(
 	for j := len(memtables) - 1; j >= 0; j-- {
 		mem := memtables[j]
 		mlevels = append(mlevels, mergingIterLevel{
-			iter: mem.newIter(&i.opts.IterOptions),
+			iter:         mem.newIter(&i.opts.IterOptions),
+			getTombstone: nil,
 		})
 		i.iterLevels[mlevelsIndex] = IteratorLevel{
 			Kind:           IteratorLevelFlushable,
@@ -901,6 +902,7 @@ func (i *scanInternalIterator) constructPointIter(
 			i.ctx, i.opts.IterOptions, i.comparer, i.newIters, files, level,
 			internalIterOpts{})
 		mlevels[mlevelsIndex].iter = li
+		mlevels[mlevelsIndex].getTombstone = nil // range dels handled separately below
 		rli.Init(keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
 			i.comparer.Compare, tableNewRangeDelIter(i.ctx, i.newIters), files, level,
 			manifest.KeyTypePoint)
