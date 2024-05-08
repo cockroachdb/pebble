@@ -40,12 +40,6 @@ var compactLabels = pprof.Labels("pebble", "compact")
 var flushLabels = pprof.Labels("pebble", "flush")
 var gcLabels = pprof.Labels("pebble", "gc")
 
-// getInternalWriterProperties accesses a private variable (in the
-// internal/private package) initialized by the sstable Writer. This indirection
-// is necessary to ensure non-Pebble users constructing sstables for ingestion
-// are unable to set internal-only properties.
-var getInternalWriterProperties = private.SSTableInternalProperties.(func(*sstable.Writer) *sstable.Properties)
-
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
 // if it would make the total compaction cover more than this many bytes.
@@ -1418,7 +1412,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	startTime := d.timeNow()
 
 	var ve *manifest.VersionEdit
-	var stats compactStats
+	var stats compact.Stats
 	// To determine the target level of the files in the ingestedFlushable, we
 	// need to acquire the logLock, and not release it for that duration. Since,
 	// we need to acquire the logLock below to perform the logAndApply step
@@ -1527,9 +1521,9 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	// If err != nil, then the flush will be retried, and we will recalculate
 	// these metrics.
 	if err == nil {
-		d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
-		d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
-		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.countMissizedDels
+		d.mu.snapshots.cumulativePinnedCount += stats.CumulativePinnedKeys
+		d.mu.snapshots.cumulativePinnedSize += stats.CumulativePinnedSize
+		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.CountMissizedDels
 	}
 
 	d.clearCompactingState(c, err != nil)
@@ -2131,9 +2125,9 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 			e := &ve.NewFiles[i]
 			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo())
 		}
-		d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
-		d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
-		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.countMissizedDels
+		d.mu.snapshots.cumulativePinnedCount += stats.CumulativePinnedKeys
+		d.mu.snapshots.cumulativePinnedSize += stats.CumulativePinnedSize
+		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.CountMissizedDels
 	}
 
 	// NB: clearing compacting state must occur before updating the read state;
@@ -2156,12 +2150,6 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.deleteObsoleteFiles(jobID)
 
 	return err
-}
-
-type compactStats struct {
-	cumulativePinnedKeys uint64
-	cumulativePinnedSize uint64
-	countMissizedDels    uint64
 }
 
 // runCopyCompaction runs a copy compaction where a new FileNum is created that
@@ -2327,7 +2315,7 @@ func (d *DB) runCopyCompaction(
 
 func (d *DB) runDeleteOnlyCompaction(
 	jobID JobID, c *compaction,
-) (ve *versionEdit, stats compactStats, retErr error) {
+) (ve *versionEdit, stats compact.Stats, retErr error) {
 	c.metrics = make(map[int]*LevelMetrics, len(c.inputs))
 	ve = &versionEdit{
 		DeletedFiles: map[deletedFileEntry]*fileMetadata{},
@@ -2348,7 +2336,7 @@ func (d *DB) runDeleteOnlyCompaction(
 
 func (d *DB) runMoveOrCopyCompaction(
 	jobID JobID, c *compaction,
-) (ve *versionEdit, stats compactStats, _ error) {
+) (ve *versionEdit, stats compact.Stats, _ error) {
 	iter := c.startLevel.files.Iter()
 	meta := iter.First()
 	if invariants.Enabled {
@@ -2394,7 +2382,7 @@ func (d *DB) runMoveOrCopyCompaction(
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID JobID, c *compaction,
-) (ve *versionEdit, stats compactStats, retErr error) {
+) (ve *versionEdit, stats compact.Stats, retErr error) {
 	switch c.kind {
 	case compactionKindDeleteOnly:
 		return d.runDeleteOnlyCompaction(jobID, c)
@@ -2405,7 +2393,6 @@ func (d *DB) runCompaction(
 	}
 
 	snapshots := d.mu.snapshots.toSlice()
-	formatVers := d.FormatMajorVersion()
 
 	if c.flushing == nil {
 		// Before dropping the db mutex, grab a ref to the current version. This
@@ -2423,11 +2410,44 @@ func (d *DB) runCompaction(
 		return ve, stats, ErrCancelledCompaction
 	}
 
+	// The table is typically written at the maximum allowable format implied by
+	// the current format major version of the DB.
+	tableFormat := d.FormatMajorVersion().MaxTableFormat()
+	// In format major versions with maximum table formats of Pebblev3, value
+	// blocks were conditional on an experimental setting. In format major
+	// versions with maximum table formats of Pebblev4 and higher, value blocks
+	// are always enabled.
+	if tableFormat == sstable.TableFormatPebblev3 &&
+		(d.opts.Experimental.EnableValueBlocks == nil || !d.opts.Experimental.EnableValueBlocks()) {
+		tableFormat = sstable.TableFormatPebblev2
+	}
+
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
+	result := d.compactAndWrite(jobID, c, snapshots, tableFormat)
+	if result.Err == nil {
+		ve, result.Err = c.makeVersionEdit(result)
+	}
+	if result.Err != nil {
+		// Delete any created tables.
+		for i := range result.Tables {
+			_ = d.objProvider.Remove(fileTypeTable, result.Tables[i].ObjMeta.DiskFileNum)
+		}
+	}
+	// Refresh the disk available statistic whenever a compaction/flush
+	// completes, before re-acquiring the mutex.
+	d.calculateDiskAvailableBytes()
+	return ve, result.Stats, result.Err
+}
+
+// compactAndWrite runs the data part of a compaction, where we set up a
+// compaction iterator and use it to write output tables.
+func (d *DB) compactAndWrite(
+	jobID JobID, c *compaction, snapshots compact.Snapshots, tableFormat sstable.TableFormat,
+) (result compact.Result) {
 	// Compactions use a pool of buffers to read blocks, avoiding polluting the
 	// block cache with blocks that will not be read again. We initialize the
 	// buffer pool with a size 12. This initial size does not need to be
@@ -2455,8 +2475,13 @@ func (d *DB) runCompaction(
 	defer c.bufferPool.Release()
 
 	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, d.tableNewRangeKeyIter)
+	defer func() {
+		for _, closer := range c.closers {
+			result.Err = firstError(result.Err, closer.Close())
+		}
+	}()
 	if err != nil {
-		return nil, stats, err
+		return compact.Result{Err: err}
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	cfg := compact.IterConfig{
@@ -2470,34 +2495,49 @@ func (d *DB) runCompaction(
 		SingleDeleteInvariantViolationCallback: d.opts.Experimental.SingleDeleteInvariantViolationCallback,
 	}
 	iter := compact.NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)
-	var lastRangeDelSpan, lastRangeKeySpan keyspan.Span
 
-	var (
-		createdFiles    []base.DiskFileNum
-		tw              *sstable.Writer
-		pinnedKeySize   uint64
-		pinnedValueSize uint64
-		pinnedCount     uint64
-	)
-	defer func() {
-		if iter != nil {
-			retErr = firstError(retErr, iter.Close())
+	runnerCfg := compact.RunnerConfig{
+		CompactionBounds:           base.UserKeyBoundsFromInternal(c.smallest, c.largest),
+		L0SplitKeys:                c.l0Limits,
+		Grandparents:               c.grandparents,
+		MaxGrandparentOverlapBytes: c.maxOverlapBytes,
+		TargetOutputFileSize:       c.maxOutputFileSize,
+	}
+	runner := compact.NewRunner(runnerCfg, iter)
+	for runner.MoreDataToWrite() {
+		if c.cancel.Load() {
+			return runner.Finish().WithError(ErrCancelledCompaction)
 		}
-		if tw != nil {
-			retErr = firstError(retErr, tw.Close())
+		// Create a new table.
+		writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
+		objMeta, tw, cpuWorkHandle, err := d.newCompactionOutput(jobID, c, writerOpts)
+		if err != nil {
+			return runner.Finish().WithError(err)
 		}
-		if retErr != nil {
-			for _, fileNum := range createdFiles {
-				_ = d.objProvider.Remove(fileTypeTable, fileNum)
-			}
-		}
-		for _, closer := range c.closers {
-			retErr = firstError(retErr, closer.Close())
-		}
-	}()
+		runner.WriteTable(objMeta, tw)
+		d.opts.Experimental.CPUWorkPermissionGranter.CPUWorkDone(cpuWorkHandle)
+	}
+	result = runner.Finish()
+	if result.Err == nil {
+		result.Err = d.objProvider.Sync()
+	}
+	return result
+}
 
-	ve = &versionEdit{
+// makeVersionEdit creates the version edit for a compaction, based on the
+// tables in compact.Result.
+func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error) {
+	ve := &versionEdit{
 		DeletedFiles: map[deletedFileEntry]*fileMetadata{},
+	}
+	for _, cl := range c.inputs {
+		iter := cl.files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			ve.DeletedFiles[deletedFileEntry{
+				Level:   cl.level,
+				FileNum: f.FileNum,
+			}] = f
+		}
 	}
 
 	startLevelBytes := c.startLevel.files.SizeSum()
@@ -2523,312 +2563,75 @@ func (d *DB) runCompaction(
 		outputMetrics.MultiLevel.BytesRead = outputMetrics.BytesRead
 	}
 
-	// The table is typically written at the maximum allowable format implied by
-	// the current format major version of the DB.
-	tableFormat := formatVers.MaxTableFormat()
 	inputLargestSeqNumAbsolute := c.inputLargestSeqNumAbsolute()
+	ve.NewFiles = make([]newFileEntry, len(result.Tables))
+	for i := range result.Tables {
+		t := &result.Tables[i]
 
-	// In format major versions with maximum table formats of Pebblev3, value
-	// blocks were conditional on an experimental setting. In format major
-	// versions with maximum table formats of Pebblev4 and higher, value blocks
-	// are always enabled.
-	if tableFormat == sstable.TableFormatPebblev3 &&
-		(d.opts.Experimental.EnableValueBlocks == nil || !d.opts.Experimental.EnableValueBlocks()) {
-		tableFormat = sstable.TableFormatPebblev2
-	}
-
-	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
-
-	// prevPointKey is a sstable.WriterOption that provides access to
-	// the last point key written to a writer's sstable. When a new
-	// output begins in newOutput, prevPointKey is updated to point to
-	// the new output's sstable.Writer. This allows the compaction loop
-	// to access the last written point key without requiring the
-	// compaction loop to make a copy of each key ahead of time. Users
-	// must be careful, because the byte slice returned by UnsafeKey
-	// points directly into the Writer's block buffer.
-	var cpuWorkHandle CPUWorkHandle
-	defer func() {
-		if cpuWorkHandle != nil {
-			d.opts.Experimental.CPUWorkPermissionGranter.CPUWorkDone(cpuWorkHandle)
-		}
-	}()
-
-	newOutput := func() error {
-		// Check if we've been cancelled by a concurrent operation.
-		if c.cancel.Load() {
-			return ErrCancelledCompaction
-		}
-		var objMeta objstorage.ObjectMetadata
-		var err error
-		objMeta, tw, cpuWorkHandle, err = d.newCompactionOutput(jobID, c, writerOpts)
-		if err != nil {
-			return err
-		}
 		fileMeta := &fileMetadata{
-			FileNum:      base.PhysicalTableFileNum(objMeta.DiskFileNum),
-			CreationTime: time.Now().Unix(),
+			FileNum:        base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
+			CreationTime:   t.CreationTime.Unix(),
+			Size:           t.WriterMeta.Size,
+			SmallestSeqNum: t.WriterMeta.SmallestSeqNum,
+			LargestSeqNum:  t.WriterMeta.LargestSeqNum,
 		}
-		createdFiles = append(createdFiles, objMeta.DiskFileNum)
-
-		ve.NewFiles = append(ve.NewFiles, newFileEntry{
-			Level: c.outputLevel.level,
-			Meta:  fileMeta,
-		})
-		return nil
-	}
-
-	// finishOutput is called with the a user key up to which all tombstones
-	// should be flushed. Typically, this is the first key of the next
-	// sstable or an empty key if this output is the final sstable.
-	finishOutput := func(splitKey []byte) error {
-		if err := compact.SplitAndEncodeSpan(c.cmp, &lastRangeDelSpan, splitKey, tw); err != nil {
-			return err
-		}
-		if err := compact.SplitAndEncodeSpan(c.cmp, &lastRangeKeySpan, splitKey, tw); err != nil {
-			return err
-		}
-		{
-			// Set internal sstable properties.
-			p := getInternalWriterProperties(tw)
-			// Set the snapshot pinned totals.
-			p.SnapshotPinnedKeys = pinnedCount
-			p.SnapshotPinnedKeySize = pinnedKeySize
-			p.SnapshotPinnedValueSize = pinnedValueSize
-			stats.cumulativePinnedKeys += pinnedCount
-			stats.cumulativePinnedSize += pinnedKeySize + pinnedValueSize
-			pinnedCount = 0
-			pinnedKeySize = 0
-			pinnedValueSize = 0
-		}
-		if err := tw.Close(); err != nil {
-			tw = nil
-			return err
-		}
-		d.opts.Experimental.CPUWorkPermissionGranter.CPUWorkDone(cpuWorkHandle)
-		cpuWorkHandle = nil
-		writerMeta, err := tw.Metadata()
-		if err != nil {
-			tw = nil
-			return err
-		}
-		tw = nil
-		meta := ve.NewFiles[len(ve.NewFiles)-1].Meta
-		meta.Size = writerMeta.Size
-		meta.SmallestSeqNum = writerMeta.SmallestSeqNum
-		meta.LargestSeqNum = writerMeta.LargestSeqNum
 		if c.flushing == nil {
 			// Set the file's LargestSeqNumAbsolute to be the maximum value of any
 			// of the compaction's input sstables.
 			// TODO(jackson): This could be narrowed to be the maximum of input
 			// sstables that overlap the output sstable's key range.
-			meta.LargestSeqNumAbsolute = inputLargestSeqNumAbsolute
+			fileMeta.LargestSeqNumAbsolute = inputLargestSeqNumAbsolute
 		} else {
-			meta.LargestSeqNumAbsolute = writerMeta.LargestSeqNum
+			fileMeta.LargestSeqNumAbsolute = t.WriterMeta.LargestSeqNum
 		}
-		meta.InitPhysicalBacking()
+		fileMeta.InitPhysicalBacking()
 
 		// If the file didn't contain any range deletions, we can fill its
 		// table stats now, avoiding unnecessarily loading the table later.
 		maybeSetStatsFromProperties(
-			meta.PhysicalMeta(), &writerMeta.Properties,
+			fileMeta.PhysicalMeta(), &t.WriterMeta.Properties,
 		)
 
+		if t.WriterMeta.HasPointKeys {
+			fileMeta.ExtendPointKeyBounds(c.cmp, t.WriterMeta.SmallestPoint, t.WriterMeta.LargestPoint)
+		}
+		if t.WriterMeta.HasRangeDelKeys {
+			fileMeta.ExtendPointKeyBounds(c.cmp, t.WriterMeta.SmallestRangeDel, t.WriterMeta.LargestRangeDel)
+		}
+		if t.WriterMeta.HasRangeKeys {
+			fileMeta.ExtendRangeKeyBounds(c.cmp, t.WriterMeta.SmallestRangeKey, t.WriterMeta.LargestRangeKey)
+		}
+
+		ve.NewFiles[i] = newFileEntry{
+			Level: c.outputLevel.level,
+			Meta:  fileMeta,
+		}
+
+		// Update metrics.
 		if c.flushing == nil {
 			outputMetrics.TablesCompacted++
-			outputMetrics.BytesCompacted += meta.Size
+			outputMetrics.BytesCompacted += fileMeta.Size
 		} else {
 			outputMetrics.TablesFlushed++
-			outputMetrics.BytesFlushed += meta.Size
+			outputMetrics.BytesFlushed += fileMeta.Size
 		}
-		outputMetrics.Size += int64(meta.Size)
+		outputMetrics.Size += int64(fileMeta.Size)
 		outputMetrics.NumFiles++
-		outputMetrics.Additional.BytesWrittenDataBlocks += writerMeta.Properties.DataSize
-		outputMetrics.Additional.BytesWrittenValueBlocks += writerMeta.Properties.ValueBlocksSize
+		outputMetrics.Additional.BytesWrittenDataBlocks += t.WriterMeta.Properties.DataSize
+		outputMetrics.Additional.BytesWrittenValueBlocks += t.WriterMeta.Properties.ValueBlocksSize
+	}
 
-		if n := len(ve.NewFiles); n > 1 {
-			// This is not the first output file. Ensure the sstable boundaries
-			// are nonoverlapping.
-			prevMeta := ve.NewFiles[n-2].Meta
-			if writerMeta.SmallestRangeDel.UserKey != nil {
-				c := d.cmp(writerMeta.SmallestRangeDel.UserKey, prevMeta.Largest.UserKey)
-				if c < 0 {
-					return base.AssertionFailedf(
-						"pebble: smallest range tombstone start key is less than previous sstable largest key: %s < %s",
-						writerMeta.SmallestRangeDel.Pretty(d.opts.Comparer.FormatKey),
-						prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey))
-				} else if c == 0 && !prevMeta.Largest.IsExclusiveSentinel() {
-					// The user key portion of the range boundary start key is
-					// equal to the previous table's largest key user key, and
-					// the previous table's largest key is not exclusive. This
-					// violates the invariant that tables are key-space
-					// partitioned.
-					return base.AssertionFailedf(
-						"pebble: invariant violation: previous sstable largest key %s, current sstable smallest rangedel: %s",
-						prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey),
-						writerMeta.SmallestRangeDel.Pretty(d.opts.Comparer.FormatKey),
-					)
-				}
-			}
-		}
-
-		// Verify that all range deletions outputted to the sstable are
-		// truncated to split key.
-		if splitKey != nil && writerMeta.LargestRangeDel.UserKey != nil &&
-			d.cmp(writerMeta.LargestRangeDel.UserKey, splitKey) > 0 {
-			return errors.Errorf(
-				"pebble: invariant violation: rangedel largest key %q extends beyond split key %q",
-				writerMeta.LargestRangeDel.Pretty(d.opts.Comparer.FormatKey),
-				d.opts.Comparer.FormatKey(splitKey),
+	// Sanity check that the tables are ordered and don't overlap.
+	for i := 1; i < len(ve.NewFiles); i++ {
+		if ve.NewFiles[i-1].Meta.UserKeyBounds().End.IsUpperBoundFor(c.cmp, ve.NewFiles[i].Meta.Smallest.UserKey) {
+			return nil, base.AssertionFailedf("pebble: compaction output tables overlap: %s and %s",
+				ve.NewFiles[i-1].Meta.DebugString(c.formatKey, true),
+				ve.NewFiles[i].Meta.DebugString(c.formatKey, true),
 			)
 		}
-
-		if writerMeta.HasPointKeys {
-			meta.ExtendPointKeyBounds(d.cmp, writerMeta.SmallestPoint, writerMeta.LargestPoint)
-		}
-		if writerMeta.HasRangeDelKeys {
-			meta.ExtendPointKeyBounds(d.cmp, writerMeta.SmallestRangeDel, writerMeta.LargestRangeDel)
-		}
-		if writerMeta.HasRangeKeys {
-			meta.ExtendRangeKeyBounds(d.cmp, writerMeta.SmallestRangeKey, writerMeta.LargestRangeKey)
-		}
-
-		// Verify that the sstable bounds fall within the compaction input
-		// bounds. This is a sanity check that we don't have a logic error
-		// elsewhere that causes the sstable bounds to accidentally expand past the
-		// compaction input bounds as doing so could lead to various badness such
-		// as keys being deleted by a range tombstone incorrectly.
-		if c.smallest.UserKey != nil {
-			switch v := d.cmp(meta.Smallest.UserKey, c.smallest.UserKey); {
-			case v >= 0:
-				// Nothing to do.
-			case v < 0:
-				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s < %s",
-					meta.Smallest.Pretty(d.opts.Comparer.FormatKey),
-					c.smallest.Pretty(d.opts.Comparer.FormatKey))
-			}
-		}
-		if c.largest.UserKey != nil {
-			switch v := d.cmp(meta.Largest.UserKey, c.largest.UserKey); {
-			case v <= 0:
-				// Nothing to do.
-			case v > 0:
-				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s > %s",
-					meta.Largest.Pretty(d.opts.Comparer.FormatKey),
-					c.largest.Pretty(d.opts.Comparer.FormatKey))
-			}
-		}
-		// Verify that we never split different revisions of the same user key
-		// across two different sstables.
-		if err := c.errorOnUserKeyOverlap(ve); err != nil {
-			return err
-		}
-		if err := meta.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
-			return err
-		}
-		return nil
 	}
 
-	runnerCfg := compact.RunnerConfig{
-		Grandparents:               c.grandparents,
-		MaxGrandparentOverlapBytes: c.maxOverlapBytes,
-		TargetOutputFileSize:       c.maxOutputFileSize,
-		L0SplitKeys:                c.l0Limits,
-	}
-	runner := compact.NewRunner(runnerCfg, iter)
-
-	lastUserKeyFn := func() []byte {
-		return tw.UnsafeLastPointUserKey()
-	}
-
-	// Each outer loop iteration produces one output file. An iteration that
-	// produces a file containing point keys (and optionally range tombstones)
-	// guarantees that the input iterator advanced. An iteration that produces
-	// a file containing only range tombstones guarantees the limit passed to
-	// `finishOutput()` advanced to a strictly greater user key corresponding
-	// to a grandparent file largest key, or nil. Taken together, these
-	// progress guarantees ensure that eventually the input iterator will be
-	// exhausted and the range tombstone fragments will all be flushed.
-	for key, val := iter.First(); key != nil || !lastRangeDelSpan.Empty() || !lastRangeKeySpan.Empty(); {
-		firstKey := base.MinUserKey(c.cmp, spanStartOrNil(&lastRangeDelSpan), spanStartOrNil(&lastRangeKeySpan))
-		if key != nil && firstKey == nil {
-			firstKey = key.UserKey
-		}
-		if invariants.Enabled && firstKey == nil {
-			panic("nil first key")
-		}
-		splitter := compact.NewOutputSplitter(
-			c.cmp, firstKey, runner.TableSplitLimit(firstKey), c.maxOutputFileSize, c.grandparents.Iter(), iter.Frontiers(),
-		)
-		if err := newOutput(); err != nil {
-			return nil, stats, err
-		}
-
-		// Each inner loop iteration processes one key from the input iterator.
-		for ; key != nil; key, val = iter.Next() {
-			if splitter.ShouldSplitBefore(key.UserKey, tw.EstimatedSize(), lastUserKeyFn) {
-				break
-			}
-
-			switch key.Kind() {
-			case InternalKeyKindRangeDelete:
-				// The previous span (if any) must end at or before this key, since the
-				// spans we receive are non-overlapping.
-				if err := tw.EncodeSpan(&lastRangeDelSpan); err != nil {
-					return nil, stats, err
-				}
-				lastRangeDelSpan.CopyFrom(iter.Span())
-				continue
-			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-				// The previous span (if any) must end at or before this key, since the
-				// spans we receive are non-overlapping.
-				if err := tw.EncodeSpan(&lastRangeKeySpan); err != nil {
-					return nil, stats, err
-				}
-				lastRangeKeySpan.CopyFrom(iter.Span())
-				continue
-			}
-			if err := tw.AddWithForceObsolete(*key, val, iter.ForceObsoleteDueToRangeDel()); err != nil {
-				return nil, stats, err
-			}
-			if iter.SnapshotPinned() {
-				// The kv pair we just added to the sstable was only surfaced by
-				// the compaction iterator because an open snapshot prevented
-				// its elision. Increment the stats.
-				pinnedCount++
-				pinnedKeySize += uint64(len(key.UserKey)) + base.InternalTrailerLen
-				pinnedValueSize += uint64(len(val))
-			}
-		}
-		if err := finishOutput(splitter.SplitKey()); err != nil {
-			return nil, stats, err
-		}
-	}
-
-	for _, cl := range c.inputs {
-		iter := cl.files.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
-			ve.DeletedFiles[deletedFileEntry{
-				Level:   cl.level,
-				FileNum: f.FileNum,
-			}] = f
-		}
-	}
-
-	// The compaction iterator keeps track of a count of the number of DELSIZED
-	// keys that encoded an incorrect size. Propagate it up as a part of
-	// compactStats.
-	stats.countMissizedDels = iter.Stats().CountMissizedDels
-
-	if err := d.objProvider.Sync(); err != nil {
-		return nil, stats, err
-	}
-
-	// Refresh the disk available statistic whenever a compaction/flush
-	// completes, before re-acquiring the mutex.
-	_ = d.calculateDiskAvailableBytes()
-
-	return ve, stats, nil
+	return ve, nil
 }
 
 // newCompactionOutput creates an object for a new table produced by a
@@ -2927,11 +2730,4 @@ func validateVersionEdit(
 		validateKey(m, m.Smallest.UserKey)
 		validateKey(m, m.Largest.UserKey)
 	}
-}
-
-func spanStartOrNil(s *keyspan.Span) []byte {
-	if s.Empty() {
-		return nil
-	}
-	return s.Start
 }

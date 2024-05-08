@@ -35,12 +35,14 @@ func TestTableSplitLimit(t *testing.T) {
 		case "split-limit":
 			var maxOverlap uint64
 			d.MaybeScanArgs(t, "max-overlap", &maxOverlap)
-			cfg := RunnerConfig{
-				L0SplitKeys:                v.L0Sublevels.FlushSplitKeys(),
-				Grandparents:               v.Levels[1].Slice(),
-				MaxGrandparentOverlapBytes: maxOverlap,
+			r := &Runner{
+				cmp: base.DefaultComparer.Compare,
+				cfg: RunnerConfig{
+					L0SplitKeys:                v.L0Sublevels.FlushSplitKeys(),
+					Grandparents:               v.Levels[1].Slice(),
+					MaxGrandparentOverlapBytes: maxOverlap,
+				},
 			}
-			r := NewRunner(cfg, &Iter{cmp: base.DefaultComparer.Compare})
 			for _, k := range strings.Fields(d.Input) {
 				res := r.TableSplitLimit([]byte(k))
 				if res == nil {
