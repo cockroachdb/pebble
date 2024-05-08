@@ -2861,6 +2861,9 @@ func (d *DB) runCompaction(
 		if key != nil && firstKey == nil {
 			firstKey = key.UserKey
 		}
+		if invariants.Enabled && firstKey == nil {
+			panic("nil first key")
+		}
 		splitter := compact.NewOutputSplitter(c.cmp, firstKey, splitLimitFunc(firstKey), c.maxOutputFileSize, c.grandparents.Iter(), iter.Frontiers())
 		if err := newOutput(); err != nil {
 			return nil, pendingOutputs, stats, err
