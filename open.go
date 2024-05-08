@@ -826,7 +826,7 @@ func (d *DB) replayWAL(
 		if err != nil {
 			return err
 		}
-		newVE, _, _, err := d.runCompaction(jobID, c)
+		newVE, _, err := d.runCompaction(jobID, c)
 		if err != nil {
 			return errors.Wrapf(err, "running compaction during WAL replay")
 		}
