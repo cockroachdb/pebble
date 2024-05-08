@@ -574,3 +574,14 @@ func (kv *InternalKV) Visible(snapshot, batchSnapshot uint64) bool {
 func (kv *InternalKV) IsExclusiveSentinel() bool {
 	return kv.K.IsExclusiveSentinel()
 }
+
+// String returns a string representation of the kv pair.
+func (kv *InternalKV) String() string {
+	if kv == nil {
+		return "<nil>"
+	}
+	if kv.V.Fetcher != nil {
+		return fmt.Sprintf("%s=<valblk:%x>", kv.K, kv.V.ValueOrHandle)
+	}
+	return fmt.Sprintf("%s:%s", kv.K, FormatBytes(kv.V.ValueOrHandle))
+}
