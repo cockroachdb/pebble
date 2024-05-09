@@ -16,12 +16,14 @@ manifest summarize
 ./testdata/find-db/MANIFEST-000001
 ----
 MANIFEST-000001
-                     _______L0_______L1_______L2_______L3_______L4_______L5_______L6_____TOTAL
+                        _______L0_______L1_______L2_______L3_______L4_______L5_______L6_____TOTAL
 2023-12-12T18:55:00Z
-        Ingest+Flush      2.0KB        .        .        .        .        .     671B    2.7KB
-        Ingest+Flush    2.0KB/s        .        .        .        .        .   671B/s  2.7KB/s
-       Compact (out)      2.0KB        .        .        .        .        .        .    2.0KB
-       Compact (out)    2.0KB/s        .        .        .        .        .        .  2.0KB/s
+     Ingest+Flush Bytes      2.0KB        .        .        .        .        .     671B    2.7KB
+   Ingest+Flush Bytes/s    2.0KB/s        .        .        .        .        .   671B/s  2.7KB/s
+      Compact Out Bytes      2.0KB        .        .        .        .        .        .    2.0KB
+    Compact Out Bytes/s    2.0KB/s        .        .        .        .        .        .  2.0KB/s
+     Compact In Bytes/s          .        .        .        .        .        .  2.2KB/s  2.2KB/s
+     Compact In Files/s          .        .        .        .        .        .    3.0/s    3.0/s
 2023-12-12T18:55:00Z
 ---
 Estimated start time: 2023-12-12T18:55:00Z
@@ -32,12 +34,14 @@ manifest summarize
 ./testdata/mixed/MANIFEST-000001
 ----
 MANIFEST-000001
-                     _______L0_______L1_______L2_______L3_______L4_______L5_______L6_____TOTAL
+                        _______L0_______L1_______L2_______L3_______L4_______L5_______L6_____TOTAL
 2023-12-11T18:59:04Z
-        Ingest+Flush      1.0KB        .        .        .        .        .        .    1.0KB
-        Ingest+Flush    1.0KB/s        .        .        .        .        .        .  1.0KB/s
-       Compact (out)          .        .        .        .        .        .        .        .
-       Compact (out)          .        .        .        .        .        .        .        .
+     Ingest+Flush Bytes      1.0KB        .        .        .        .        .        .    1.0KB
+   Ingest+Flush Bytes/s    1.0KB/s        .        .        .        .        .        .  1.0KB/s
+      Compact Out Bytes          .        .        .        .        .        .        .        .
+    Compact Out Bytes/s          .        .        .        .        .        .        .        .
+     Compact In Bytes/s          .        .        .        .        .        .        .        .
+     Compact In Files/s          .        .        .        .        .        .        .        .
 2023-12-11T18:59:04Z
 ---
 Estimated start time: 2023-12-11T18:59:04Z
