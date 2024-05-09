@@ -390,7 +390,15 @@ type DB struct {
 		}
 
 		mem struct {
-			// The current mutable memTable.
+			// The current mutable memTable. Readers of the pointer may hold
+			// either DB.mu or commitPipeline.mu.
+			//
+			// Its internal fields are protected by commitPipeline.mu. This
+			// allows batch commits to be performed without DB.mu as long as no
+			// memtable rotation is required.
+			//
+			// Both commitPipeline.mu and DB.mu must be held when rotating the
+			// memtable.
 			mutable *memTable
 			// Queue of flushables (the mutable memtable is at end). Elements are
 			// added to the end of the slice and removed from the beginning. Once an
@@ -930,24 +938,31 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		}
 	}
 
-	d.mu.Lock()
-
 	var err error
-	if !b.ingestedSSTBatch {
-		// Batches which contain keys of kind InternalKeyKindIngestSST will
-		// never be applied to the memtable, so we don't need to make room for
-		// write. For the other cases, switch out the memtable if there was not
-		// enough room to store the batch.
-		err = d.makeRoomForWrite(b)
-	}
-
-	// Grab a reference to the memtable while holding DB.mu. Note that for
-	// non-flushable batches (b.flushable == nil) makeRoomForWrite() added a
-	// reference to the memtable which will prevent it from being flushed until
-	// we unreference it. This reference is dropped in DB.commitApply().
+	// Grab a reference to the memtable. We don't hold DB.mu, but that's okay
+	// for readers of d.mu.mem.mutable.
 	mem := d.mu.mem.mutable
-
-	d.mu.Unlock()
+	// Batches which contain keys of kind InternalKeyKindIngestSST will
+	// never be applied to the memtable, so we don't need to make room for
+	// write.
+	if !b.ingestedSSTBatch {
+		// Flushable batches will require a rotation of the memtable regardless,
+		// so only attempt an optimistic reservation of space in the current
+		// memtable if this batch is not a large flushable batch.
+		if b.flushable == nil {
+			err = d.mu.mem.mutable.prepare(b)
+		}
+		if b.flushable != nil || err == arenaskl.ErrArenaFull {
+			// Slow path.
+			// We need to acquire DB.mu and rotate the memtable.
+			func() {
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				err = d.makeRoomForWrite(b)
+				mem = d.mu.mem.mutable
+			}()
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
