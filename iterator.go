@@ -1720,6 +1720,9 @@ func (i *Iterator) NextPrefix() bool {
 		i.iterValidityState = IterExhausted
 		return false
 	}
+	if i.Error() != nil {
+		return false
+	}
 	return i.nextPrefix() == IterValid
 }
 
@@ -1739,11 +1742,6 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		// the iterator moves into a new range key, or out of the current range
 		// key.
 		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
-	}
-	// NextPrefix from an exhausted position is undefined. We keep the exhausted
-	// position, which provides determinism for the metamorphic tests.
-	if i.iterValidityState == IterExhausted {
-		return i.iterValidityState
 	}
 
 	// Although NextPrefix documents that behavior at IterAtLimit is undefined,
