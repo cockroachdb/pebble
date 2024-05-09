@@ -32,10 +32,10 @@ import (
 //
 // The test will save the smallest reproduction found and print out the relevant
 // information.
-func tryToReduce(t *testing.T, testStateDir string, runDir string) {
+func tryToReduce(t *testing.T, testStateDir string, runDir string, reduceAttempts int) {
 	testRootDir := filepath.Dir(runDir)
 	runSubdir := filepath.Base(runDir)
-	r := makeReducer(t, testStateDir, testRootDir, []string{runSubdir})
+	r := makeReducer(t, testStateDir, testRootDir, []string{runSubdir}, reduceAttempts)
 	r.Run(t)
 }
 
@@ -52,9 +52,9 @@ func tryToReduce(t *testing.T, testStateDir string, runDir string) {
 // The test will save the smallest reproduction found and print out the relevant
 // information.
 func tryToReduceCompare(
-	t *testing.T, testStateDir string, testRootDir string, runSubdirs []string,
+	t *testing.T, testStateDir string, testRootDir string, runSubdirs []string, reduceAttempts int,
 ) {
-	r := makeReducer(t, testStateDir, testRootDir, runSubdirs)
+	r := makeReducer(t, testStateDir, testRootDir, runSubdirs, reduceAttempts)
 	r.Run(t)
 }
 
@@ -62,8 +62,9 @@ func tryToReduceCompare(
 // tries to reduce the number of operations.
 type reducer struct {
 	// testRootDir is the directory of the test, which contains the "ops" file.
-	testRootDir string
-	configs     []testConfig
+	testRootDir    string
+	configs        []testConfig
+	reduceAttempts int
 
 	ops []string
 
@@ -83,7 +84,7 @@ type testConfig struct {
 }
 
 func makeReducer(
-	t *testing.T, testStateDir string, testRootDir string, runSubdirs []string,
+	t *testing.T, testStateDir string, testRootDir string, runSubdirs []string, reduceAttempts int,
 ) *reducer {
 	// All run dirs should have the same parent path.
 	opsData, err := os.ReadFile(filepath.Join(testRootDir, "ops"))
@@ -104,10 +105,11 @@ func makeReducer(
 	t.Logf("Starting with %d operations", len(ops))
 
 	return &reducer{
-		testRootDir:  testRootDir,
-		configs:      tc,
-		ops:          ops,
-		testStateDir: testStateDir,
+		testRootDir:    testRootDir,
+		configs:        tc,
+		ops:            ops,
+		reduceAttempts: reduceAttempts,
+		testStateDir:   testStateDir,
 	}
 }
 
@@ -196,8 +198,8 @@ func (r *reducer) Run(t *testing.T) {
 	// find any reductions we decrease it. This works well even if the problem is
 	// not deterministic and isn't reproduced on every run.
 	for removeProbability := 0.1; removeProbability > 1e-5 && removeProbability > 0.1/float64(len(ops)); removeProbability *= 0.5 {
-		t.Logf("removeProbability %.2f", removeProbability)
-		for i := 0; i < 100; i++ {
+		t.Logf("removeProbability %.2f%%", removeProbability*100.0)
+		for i := 0; i < r.reduceAttempts; i++ {
 			if o := randomSubset(t, ops, removeProbability); r.try(t, o) {
 				ops = o
 				// Reset the counter.

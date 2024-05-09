@@ -97,6 +97,9 @@ type RunOnceFlags struct {
 	// operations that reproduce a problem during a test run (e.g. panic or
 	// internal error).
 	TryToReduce bool
+	// ReduceAttempts is the number of attempts to reduce (for each op removal
+	// probability).
+	ReduceAttempts int
 }
 
 func initRunOnceFlags(c *CommonFlags) *RunOnceFlags {
@@ -113,6 +116,9 @@ Example, --compare '_meta/231220-164251.3552792807512/{standard-000,random-025}'
 	flag.BoolVar(&ro.TryToReduce, "try-to-reduce", false,
 		`if set, we will try to reduce the number of operations that cause a failure. The
 verbose flag should be used with this flag.`)
+
+	flag.IntVar(&ro.ReduceAttempts, "reduce-attempts", 100,
+		`the number of attempts to reduce, for each probability; only used with --try-to-reduce.`)
 
 	return ro
 }
