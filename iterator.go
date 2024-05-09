@@ -1724,6 +1724,15 @@ func (i *Iterator) NextPrefix() bool {
 }
 
 func (i *Iterator) nextPrefix() IterValidityState {
+	// We don't need to support NextPrefix from an exhausted position, but we want
+	// to implement predictable semantics for the metamorphic tests.
+	//
+	// The iterator could be exhausted in either direction; in both cases,
+	// returning whatever Next returns is correct.
+	if i.iterValidityState == IterExhausted {
+		return i.nextWithLimit(nil)
+	}
+
 	if i.rangeKey != nil {
 		// NB: Check Valid() before clearing requiresReposition.
 		i.rangeKey.prevPosHadRangeKey = i.rangeKey.hasRangeKey && i.Valid()
@@ -1739,11 +1748,6 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		// the iterator moves into a new range key, or out of the current range
 		// key.
 		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
-	}
-	// NextPrefix from an exhausted position is undefined. We keep the exhausted
-	// position, which provides determinism for the metamorphic tests.
-	if i.iterValidityState == IterExhausted {
-		return i.iterValidityState
 	}
 
 	// Although NextPrefix documents that behavior at IterAtLimit is undefined,
