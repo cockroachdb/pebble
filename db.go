@@ -271,6 +271,10 @@ type DB struct {
 
 	// The logical size of the current WAL.
 	logSize atomic.Uint64
+	// The number of input bytes to the log. This is the raw size of the
+	// batches written to the WAL, without the overhead of the record
+	// envelopes.
+	logBytesIn atomic.Uint64
 
 	// The number of bytes available on disk.
 	diskAvailBytes atomic.Uint64
@@ -371,10 +375,6 @@ type DB struct {
 			// manager is not protected by mu, but calls to Create must be
 			// serialized, and happen after the previous writer is closed.
 			manager wal.Manager
-			// The number of input bytes to the log. This is the raw size of the
-			// batches written to the WAL, without the overhead of the record
-			// envelopes. Requires DB.mu to be held when read or written.
-			bytesIn uint64
 			// The Writer is protected by commitPipeline.mu. This allows log writes
 			// to be performed without holding DB.mu, but requires both
 			// commitPipeline.mu and DB.mu to be held when rotating the WAL/memtable
@@ -941,10 +941,6 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		err = d.makeRoomForWrite(b)
 	}
 
-	if err == nil && !d.opts.DisableWAL {
-		d.mu.log.bytesIn += uint64(len(repr))
-	}
-
 	// Grab a reference to the memtable while holding DB.mu. Note that for
 	// non-flushable batches (b.flushable == nil) makeRoomForWrite() added a
 	// reference to the memtable which will prevent it from being flushed until
@@ -955,10 +951,10 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 	if err != nil {
 		return nil, err
 	}
-
 	if d.opts.DisableWAL {
 		return mem, nil
 	}
+	d.logBytesIn.Add(uint64(len(repr)))
 
 	if b.flushable == nil {
 		size, err = d.mu.log.writer.WriteRecord(repr, wal.SyncOptions{Done: syncWG, Err: syncErr}, b)
@@ -1959,7 +1955,7 @@ func (d *DB) Metrics() *Metrics {
 	// d.atomic.logSize has exceeded that physical size. We allow for this
 	// anomaly.
 	metrics.WAL.PhysicalSize = walStats.LiveFileSize
-	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
+	metrics.WAL.BytesIn = d.logBytesIn.Load()
 	metrics.WAL.Size = d.logSize.Load()
 	for i, n := 0, len(d.mu.mem.queue)-1; i < n; i++ {
 		metrics.WAL.Size += d.mu.mem.queue[i].logSize
