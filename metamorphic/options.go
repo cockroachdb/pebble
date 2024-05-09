@@ -495,7 +495,7 @@ func standardOptions() []*TestOptions {
 `,
 		15: `
 [Level "0"]
-  target_file_size=1
+  target_file_size=12
 `,
 		16: `
 [Level "0"]
@@ -706,6 +706,9 @@ func RandomOptions(
 	lopts.BlockSizeThreshold = 50 + rng.Intn(50)   // 50 - 100
 	lopts.IndexBlockSize = 1 << uint(rng.Intn(24)) // 1 - 16MB
 	lopts.TargetFileSize = 1 << uint(rng.Intn(28)) // 1 - 256MB
+	// The EstimatedSize of an empty table writer is 8 bytes. We want something a
+	// little bigger than that as the minimum target.
+	lopts.TargetFileSize = max(lopts.TargetFileSize, 12)
 
 	// We either use no bloom filter, the default filter, or a filter with
 	// randomized bits-per-key setting. We zero out the Filters map. It'll get
