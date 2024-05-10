@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 )
 
 // CopySpan produces a copy of a approximate subset of an input sstable.
@@ -88,11 +89,23 @@ func CopySpan(
 		return 0, base.AssertionFailedf("cannot CopySpan sstables with value blocks or range keys")
 	}
 
+	var preallocRH objstorageprovider.PreallocatedReadHandle
+	// ReadBeforeForIndexAndFilter attempts to read the top-level index, filter
+	// and lower-level index blocks with one read.
+	rh := objstorageprovider.UsePreallocatedReadHandle(
+		ctx, r.readable, objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
+	defer rh.Close()
+	indexH, err := r.readIndex(ctx, rh, nil, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer indexH.Release()
+
 	// Set the filter block to be copied over if it exists. It will return false
 	// positives for keys in blocks of the original file that we don't copy, but
 	// filters can always have false positives, so this is fine.
 	if r.tableFilter != nil {
-		filterBlock, err := r.readFilter(ctx, nil, nil)
+		filterBlock, err := r.readFilter(ctx, rh, nil, nil)
 		if err != nil {
 			return 0, errors.Wrap(err, "reading filter")
 		}
@@ -123,7 +136,7 @@ func CopySpan(
 	}
 
 	// Find the blocks that intersect our span.
-	blocks, err := intersectingIndexEntries(ctx, r, start, end)
+	blocks, err := intersectingIndexEntries(ctx, r, rh, indexH, start, end)
 	if err != nil {
 		return 0, err
 	}
@@ -195,24 +208,17 @@ type indexEntry struct {
 // keys contained by [start, end), i.e. the subset of the sst's index that
 // intersects the provided span.
 func intersectingIndexEntries(
-	ctx context.Context, r *Reader, start, end InternalKey,
+	ctx context.Context,
+	r *Reader,
+	rh objstorage.ReadHandle,
+	indexH bufferHandle,
+	start, end InternalKey,
 ) ([]indexEntry, error) {
-	indexH, err := r.readIndex(ctx, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer indexH.Release()
 	top, err := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 	if err != nil {
 		return nil, err
 	}
 	defer top.Close()
-
-	var rh objstorage.ReadHandle
-	if r.Properties.IndexType == twoLevelIndex {
-		rh = r.readable.NewReadHandle(ctx)
-		defer rh.Close()
-	}
 
 	var alloc bytealloc.A
 	res := make([]indexEntry, 0, r.Properties.NumDataBlocks)

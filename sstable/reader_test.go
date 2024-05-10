@@ -43,7 +43,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		dataH, err := r.readFilter(context.Background(), nil /* stats */, nil)
+		dataH, err := r.readFilter(context.Background(), nil, nil /* stats */, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -700,7 +700,7 @@ func TestInvalidReader(t *testing.T) {
 }
 
 func indexLayoutString(t *testing.T, r *Reader) string {
-	indexH, err := r.readIndex(context.Background(), nil, nil)
+	indexH, err := r.readIndex(context.Background(), nil, nil, nil)
 	require.NoError(t, err)
 	defer indexH.Release()
 	var buf strings.Builder

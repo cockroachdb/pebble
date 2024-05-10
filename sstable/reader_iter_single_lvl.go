@@ -37,11 +37,13 @@ type singleLevelIterator struct {
 	vState *virtualState
 	// endKeyInclusive is set to force the iterator to treat the upper field as
 	// inclusive while iterating instead of exclusive.
-	endKeyInclusive bool
-	index           blockIter
-	data            blockIter
-	dataRH          objstorage.ReadHandle
-	dataRHPrealloc  objstorageprovider.PreallocatedReadHandle
+	endKeyInclusive       bool
+	index                 blockIter
+	indexFilterRH         objstorage.ReadHandle
+	indexFilterRHPrealloc objstorageprovider.PreallocatedReadHandle
+	data                  blockIter
+	dataRH                objstorage.ReadHandle
+	dataRHPrealloc        objstorageprovider.PreallocatedReadHandle
 	// dataBH refers to the last data block that the iterator considered
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
@@ -194,7 +196,9 @@ func (i *singleLevelIterator) init(
 		return r.err
 	}
 	i.iterStats.init(categoryAndQoS, statsCollector)
-	indexH, err := r.readIndex(ctx, stats, &i.iterStats)
+	i.indexFilterRH = objstorageprovider.UsePreallocatedReadHandle(
+		ctx, r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
+	indexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
 	if err != nil {
 		return err
 	}
@@ -220,7 +224,7 @@ func (i *singleLevelIterator) init(
 		_ = i.index.Close()
 		return err
 	}
-	i.dataRH = objstorageprovider.UsePreallocatedReadHandle(ctx, r.readable, &i.dataRHPrealloc)
+	i.dataRH = objstorageprovider.UsePreallocatedReadHandle(ctx, r.readable, objstorage.NoReadBefore, &i.dataRHPrealloc)
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
@@ -239,7 +243,7 @@ func (i *singleLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
-			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(ctx, r.readable, &i.vbRHPrealloc)
+			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(ctx, r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
@@ -783,7 +787,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 		i.lastBloomFilterMatched = false
 		// Check prefix bloom filter.
 		var dataH bufferHandle
-		dataH, i.err = i.reader.readFilter(i.ctx, i.stats, &i.iterStats)
+		dataH, i.err = i.reader.readFilter(i.ctx, i.indexFilterRH, i.stats, &i.iterStats)
 		if i.err != nil {
 			i.data.invalidate()
 			return nil
@@ -1448,6 +1452,10 @@ func (i *singleLevelIterator) Close() error {
 	}
 	err = firstError(err, i.data.Close())
 	err = firstError(err, i.index.Close())
+	if i.indexFilterRH != nil {
+		err = firstError(err, i.indexFilterRH.Close())
+		i.indexFilterRH = nil
+	}
 	if i.dataRH != nil {
 		err = firstError(err, i.dataRH.Close())
 		i.dataRH = nil

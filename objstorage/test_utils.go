@@ -58,6 +58,6 @@ func (f *MemObj) Size() int64 {
 }
 
 // NewReadHandle is part of the Readable interface.
-func (f *MemObj) NewReadHandle(ctx context.Context) ReadHandle {
+func (f *MemObj) NewReadHandle(ctx context.Context, readBeforeSize ReadBeforeSize) ReadHandle {
 	return &NoopReadHandle{readable: f}
 }

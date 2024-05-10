@@ -248,7 +248,7 @@ func performIOs(readables []objstorage.Readable, ios []benchIO) error {
 	ctx := context.Background()
 	rh := make([]objstorage.ReadHandle, len(readables))
 	for i := range rh {
-		rh[i] = readables[i].NewReadHandle(ctx)
+		rh[i] = readables[i].NewReadHandle(ctx, objstorage.NoReadBefore)
 	}
 	defer func() {
 		for i := range rh {
