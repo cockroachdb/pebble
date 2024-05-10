@@ -575,6 +575,8 @@ func (m *memReader) Size() int64 {
 }
 
 // NewReadHandle is part of objstorage.Readable.
-func (m *memReader) NewReadHandle(_ context.Context) objstorage.ReadHandle {
+func (m *memReader) NewReadHandle(
+	ctx context.Context, readBeforeSize objstorage.ReadBeforeSize,
+) objstorage.ReadHandle {
 	return &m.rh
 }

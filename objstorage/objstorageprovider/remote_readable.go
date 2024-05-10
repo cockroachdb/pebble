@@ -7,6 +7,7 @@ package objstorageprovider
 import (
 	"context"
 	"io"
+	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -24,8 +25,15 @@ func NewRemoteReadable(objReader remote.ObjectReader, size int64) objstorage.Rea
 
 const remoteMaxReadaheadSize = 1024 * 1024 /* 1MB */
 
+// Number of concurrent compactions is bounded and significantly lower than
+// the number of concurrent queries, and compactions consume reads from a few
+// levels, so there is no risk of high memory usage due to a higher readahead
+// size. So set this higher than remoteMaxReadaheadSize
+const remoteReadaheadSizeForCompaction = 8 * 1024 * 1024 /* 8MB */
+
 // remoteReadable is a very simple implementation of Readable on top of the
-// ReadCloser returned by remote.Storage.CreateObject.
+// remote.ObjectReader returned by remote.Storage.ReadObject. It is stateless
+// and can be called concurrently.
 type remoteReadable struct {
 	objReader remote.ObjectReader
 	size      int64
@@ -75,17 +83,67 @@ func (r *remoteReadable) Size() int64 {
 	return r.size
 }
 
-func (r *remoteReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
-	// TODO(radu): use a pool.
-	rh := &remoteReadHandle{readable: r}
-	rh.readahead.state = makeReadaheadState(remoteMaxReadaheadSize)
+func (r *remoteReadable) NewReadHandle(
+	ctx context.Context, readBeforeSize objstorage.ReadBeforeSize,
+) objstorage.ReadHandle {
+	rh := remoteReadHandlePool.Get().(*remoteReadHandle)
+	*rh = remoteReadHandle{readable: r, readBeforeSize: readBeforeSize}
+	rh.readAheadState = makeReadaheadState(remoteMaxReadaheadSize)
 	return rh
 }
 
+// TODO(sumeer): add test for remoteReadHandle.
+
+// remoteReadHandle supports doing larger reads, and buffering the additional
+// data, to serve future reads. It is not thread-safe. There are two kinds of
+// larger reads (a) read-ahead (for sequential data reads), (b) read-before,
+// for non-data reads.
+//
+// For both (a) and (b), the goal is to reduce the number of reads since
+// remote read latency and cost can be high. We have to balance this with
+// buffers consuming too much memory, since there can be a large number of
+// iterators holding remoteReadHandles open for every level.
+//
+// For (b) we have to two use-cases:
+//
+//   - When a sstable.Reader is opened, it needs to read the footer, metaindex
+//     block and meta properties block. It starts by reading the footer which is
+//     at the end of the table and then proceeds to read the other two. Instead
+//     of doing 3 tiny reads, we would like to do one read.
+//
+//   - When a single-level or two-level iterator is opened, it reads the
+//     (top-level) index block first. When the iterator is used, it will
+//     typically follow this by reading the filter block (since SeeKPrefixGE is
+//     common in CockroachDB). For a two-level iterator it will also read the
+//     lower-level index blocks which are after the filter block and before the
+//     top-level index block. It would be ideal if reading the top-level index
+//     block read enough to include the filter block. And for two-level
+//     iterators this would also include the lower-level index blocks.
+//
+// In both use-cases we want the first read from the remoteReadable to do a
+// larger read, and read bytes earlier than the requested read, hence
+// "read-before". Subsequent reads from the remoteReadable can use the usual
+// readahead logic (for the second use-case above, this can help with
+// sequential reads of the lower-level index blocks when the read-before was
+// insufficient to satisfy such reads). In the first use-case, the block cache
+// is not used. In the second use-case, the block cache is used, and if the
+// first read, which reads the top-level index, has a cache hit, we do not do
+// any read-before, since we assume that with some locality in the workload
+// the other reads will also have a cache hit (it is also messier code to try
+// to preserve some read-before).
+//
+// Note that both use-cases can often occur near each other if there is enough
+// locality of access, in which case table cache and block cache misses are
+// mainly happening for new sstables created by compactions -- in this case a
+// user-facing read will cause a table cache miss and a new sstable.Reader to
+// be created, followed by an iterator creation. We don't currently combine
+// the reads across the Reader and the iterator creation, since the code
+// structure is not simple enough, but we could consider that in the future.
 type remoteReadHandle struct {
-	readable  *remoteReadable
-	readahead struct {
-		state  readaheadState
+	readable       *remoteReadable
+	readBeforeSize objstorage.ReadBeforeSize
+	readAheadState readaheadState
+	buffered       struct {
 		data   []byte
 		offset int64
 	}
@@ -94,14 +152,53 @@ type remoteReadHandle struct {
 
 var _ objstorage.ReadHandle = (*remoteReadHandle)(nil)
 
+var remoteReadHandlePool = sync.Pool{
+	New: func() interface{} {
+		return &remoteReadHandle{}
+	},
+}
+
 // ReadAt is part of the objstorage.ReadHandle interface.
 func (r *remoteReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) error {
+	readBeforeSize := int(r.readBeforeSize)
+	if readBeforeSize > 0 {
+		// Only first read uses read-before.
+		r.readBeforeSize = 0
+		if readBeforeSize <= len(p) || offset == 0 {
+			readBeforeSize = 0
+		}
+	}
 	readaheadSize := r.maybeReadahead(offset, len(p))
 
-	// Check if we already have the data from a previous read-ahead.
-	if rhSize := int64(len(r.readahead.data)); rhSize > 0 {
-		if r.readahead.offset <= offset && r.readahead.offset+rhSize > offset {
-			n := copy(p, r.readahead.data[offset-r.readahead.offset:])
+	// Prefer read-before to read-ahead since only first call does read-before.
+	// Also, since this is the first call, the buffer must be empty.
+	if readBeforeSize > 0 {
+		r.buffered.offset = offset - int64(readBeforeSize-len(p))
+		if r.buffered.offset < 0 {
+			readBeforeSize += int(r.buffered.offset)
+			r.buffered.offset = 0
+		}
+		// TODO(radu): we need to somehow account for this memory.
+		if cap(r.buffered.data) >= readBeforeSize {
+			r.buffered.data = r.buffered.data[:readBeforeSize]
+		} else {
+			r.buffered.data = make([]byte, readBeforeSize)
+		}
+		if err := r.readable.readInternal(
+			ctx, r.buffered.data, r.buffered.offset, r.forCompaction); err != nil {
+			// Make sure we don't treat the data as valid next time.
+			r.buffered.data = r.buffered.data[:0]
+			return err
+		}
+		copy(p, r.buffered.data[int(offset-r.buffered.offset):])
+		return nil
+	}
+	// Check if we already have the data from a previous read-ahead/read-before.
+	if rhSize := int64(len(r.buffered.data)); rhSize > 0 {
+		// We only consider the case where we have a prefix of the needed data. We
+		// could enhance this to utilize a suffix of the needed data.
+		if r.buffered.offset <= offset && r.buffered.offset+rhSize > offset {
+			n := copy(p, r.buffered.data[offset-r.buffered.offset:])
 			if n == len(p) {
 				// All data was available.
 				return nil
@@ -123,20 +220,20 @@ func (r *remoteReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) e
 				return io.EOF
 			}
 		}
-		r.readahead.offset = offset
+		r.buffered.offset = offset
 		// TODO(radu): we need to somehow account for this memory.
-		if cap(r.readahead.data) >= readaheadSize {
-			r.readahead.data = r.readahead.data[:readaheadSize]
+		if cap(r.buffered.data) >= readaheadSize {
+			r.buffered.data = r.buffered.data[:readaheadSize]
 		} else {
-			r.readahead.data = make([]byte, readaheadSize)
+			r.buffered.data = make([]byte, readaheadSize)
 		}
 
-		if err := r.readable.readInternal(ctx, r.readahead.data, offset, r.forCompaction); err != nil {
+		if err := r.readable.readInternal(ctx, r.buffered.data, offset, r.forCompaction); err != nil {
 			// Make sure we don't treat the data as valid next time.
-			r.readahead.data = r.readahead.data[:0]
+			r.buffered.data = r.buffered.data[:0]
 			return err
 		}
-		copy(p, r.readahead.data)
+		copy(p, r.buffered.data)
 		return nil
 	}
 
@@ -145,15 +242,15 @@ func (r *remoteReadHandle) ReadAt(ctx context.Context, p []byte, offset int64) e
 
 func (r *remoteReadHandle) maybeReadahead(offset int64, len int) int {
 	if r.forCompaction {
-		return remoteMaxReadaheadSize
+		return remoteReadaheadSizeForCompaction
 	}
-	return int(r.readahead.state.maybeReadahead(offset, int64(len)))
+	return int(r.readAheadState.maybeReadahead(offset, int64(len)))
 }
 
 // Close is part of the objstorage.ReadHandle interface.
 func (r *remoteReadHandle) Close() error {
-	r.readable = nil
-	r.readahead.data = nil
+	*r = remoteReadHandle{}
+	remoteReadHandlePool.Put(r)
 	return nil
 }
 
@@ -165,6 +262,9 @@ func (r *remoteReadHandle) SetupForCompaction() {
 // RecordCacheHit is part of the objstorage.ReadHandle interface.
 func (r *remoteReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {
 	if !r.forCompaction {
-		r.readahead.state.recordCacheHit(offset, size)
+		r.readAheadState.recordCacheHit(offset, size)
+	}
+	if r.readBeforeSize > 0 {
+		r.readBeforeSize = 0
 	}
 }
