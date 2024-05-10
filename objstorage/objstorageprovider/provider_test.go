@@ -181,7 +181,7 @@ func TestProvider(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				rh := r.NewReadHandle(ctx)
+				rh := r.NewReadHandle(ctx, objstorage.NoReadBefore)
 				if forCompaction {
 					rh.SetupForCompaction()
 				}

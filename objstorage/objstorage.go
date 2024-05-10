@@ -38,8 +38,37 @@ type Readable interface {
 	// The ReadHandle must be closed before the Readable is closed.
 	//
 	// Multiple separate ReadHandles can be used.
-	NewReadHandle(ctx context.Context) ReadHandle
+	NewReadHandle(ctx context.Context, readBeforeSize ReadBeforeSize) ReadHandle
 }
+
+// ReadBeforeSize specifies whether the first read should read additional
+// bytes before the offset, and how big the overall read should be. This is
+// just a suggestion that the callee can ignore (and does ignore in
+// fileReadable).
+//
+// When 0, the first read will only read what it is asked to read, say n
+// bytes. When it is a value b > 0, if b > n, then the read will be padded by
+// an additional b-n bytes to the left, resulting in an overall read size of
+// b. This behavior is akin to what the read-ahead implementation does -- when
+// the n bytes are not buffered, and there is read-ahead of b > n, the read
+// length is b bytes.
+type ReadBeforeSize int64
+
+const (
+	// NoReadBefore specifies no read-before.
+	NoReadBefore ReadBeforeSize = 0
+	// ReadBeforeForNewReader is used for a new Reader reading the footer,
+	// metaindex, properties. 32KB is unnecessarily large, but it is still small
+	// when considering remote object storage.
+	ReadBeforeForNewReader = 32 * 1024
+	// ReadBeforeForIndexAndFilter is used for an iterator reading the top-level
+	// index, filter and second-level index blocks.
+	//
+	// Consider a 128MB sstable with 32KB blocks, so 4K blocks. Say keys are
+	// ~100 bytes, then the size of the index blocks is ~400KB. 512KB is a bit
+	// bigger, and not too large to be a memory concern.
+	ReadBeforeForIndexAndFilter = 512 * 1024
+)
 
 // ReadHandle is used to perform reads that are related and might benefit from
 // optimizations like read-ahead.
@@ -347,7 +376,7 @@ type RemoteObjectToAttach struct {
 
 // Copy copies the specified range from the input to the output.
 func Copy(ctx context.Context, in Readable, out Writable, offset, length uint64) error {
-	r := in.NewReadHandle(ctx)
+	r := in.NewReadHandle(ctx, NoReadBefore)
 	r.SetupForCompaction()
 	buf := make([]byte, 256<<10)
 	end := offset + length

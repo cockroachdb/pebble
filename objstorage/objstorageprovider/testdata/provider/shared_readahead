@@ -74,7 +74,7 @@ read 1 for-compaction
 <remote> size of object "61a6-1-000001.sst.ref.1.000001": 0
 <remote> create reader for object "61a6-1-000001.sst": 2000000 bytes
 size: 2000000
-<remote> read object "61a6-1-000001.sst" at 0 (length 1048576)
+<remote> read object "61a6-1-000001.sst" at 0 (length 2000000)
 0 1000: ok (salt 1)
 1000 15000: ok (salt 1)
 16000 30000: ok (salt 1)
@@ -85,3 +85,24 @@ size: 2000000
 180000 10000: ok (salt 1)
 210000 30000: ok (salt 1)
 <remote> close reader for "61a6-1-000001.sst"
+
+# When reading for a compaction, we should be doing 8MB reads from the start.
+create 2 shared 2 15000000
+----
+<remote> create object "a629-1-000002.sst"
+<remote> close writer for "a629-1-000002.sst" after 15000000 bytes
+<remote> create object "a629-1-000002.sst.ref.1.000002"
+<remote> close writer for "a629-1-000002.sst.ref.1.000002" after 0 bytes
+
+read 2 for-compaction
+0 100000
+9000000 3000000
+----
+<remote> size of object "a629-1-000002.sst.ref.1.000002": 0
+<remote> create reader for object "a629-1-000002.sst": 15000000 bytes
+size: 15000000
+<remote> read object "a629-1-000002.sst" at 0 (length 8388608)
+0 100000: ok (salt 2)
+<remote> read object "a629-1-000002.sst" at 9000000 (length 6000000)
+9000000 3000000: ok (salt 2)
+<remote> close reader for "a629-1-000002.sst"
