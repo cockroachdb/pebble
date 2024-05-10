@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 )
 
@@ -503,17 +504,23 @@ func (i *rangeKeyFragmentBlockIter) Close() error {
 }
 
 func (r *Reader) readIndex(
-	ctx context.Context, stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
+	ctx context.Context,
+	readHandle objstorage.ReadHandle,
+	stats *base.InternalIteratorStats,
+	iterStats *iterStatsAccumulator,
 ) (bufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlock(ctx, r.indexBH, nil, nil, stats, iterStats, nil /* buffer pool */)
+	return r.readBlock(ctx, r.indexBH, nil, readHandle, stats, iterStats, nil /* buffer pool */)
 }
 
 func (r *Reader) readFilter(
-	ctx context.Context, stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
+	ctx context.Context,
+	readHandle objstorage.ReadHandle,
+	stats *base.InternalIteratorStats,
+	iterStats *iterStatsAccumulator,
 ) (bufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.FilterBlock)
-	return r.readBlock(ctx, r.filterBH, nil /* transform */, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
+	return r.readBlock(ctx, r.filterBH, nil /* transform */, readHandle, stats, iterStats, nil /* buffer pool */)
 }
 
 func (r *Reader) readRangeDel(
@@ -767,7 +774,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	return rangeDelBlock.finish(), nil
 }
 
-func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
+func (r *Reader) readMetaindex(metaindexBH BlockHandle, readHandle objstorage.ReadHandle) error {
 	// We use a BufferPool when reading metaindex blocks in order to avoid
 	// populating the block cache with these blocks. In heavy-write workloads,
 	// especially with high compaction concurrency, new tables may be created
@@ -782,7 +789,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	defer r.metaBufferPool.Release()
 
 	b, err := r.readBlock(
-		context.Background(), metaindexBH, nil /* transform */, nil /* readHandle */, nil, /* stats */
+		context.Background(), metaindexBH, nil /* transform */, readHandle, nil, /* stats */
 		nil /* iterStats */, &r.metaBufferPool)
 	if err != nil {
 		return err
@@ -826,7 +833,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 
 	if bh, ok := meta[metaPropertiesName]; ok {
 		b, err = r.readBlock(
-			context.Background(), bh, nil /* transform */, nil /* readHandle */, nil, /* stats */
+			context.Background(), bh, nil /* transform */, readHandle, nil, /* stats */
 			nil /* iterStats */, nil /* buffer pool */)
 		if err != nil {
 			return err
@@ -900,7 +907,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		Format:     r.tableFormat,
 	}
 
-	indexH, err := r.readIndex(context.Background(), nil, nil)
+	indexH, err := r.readIndex(context.Background(), nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1017,7 +1024,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 
 	// Check all blocks sequentially. Make use of read-ahead, given we are
 	// scanning the entire file from start to end.
-	rh := r.readable.NewReadHandle(context.TODO())
+	rh := r.readable.NewReadHandle(context.TODO(), objstorage.NoReadBefore)
 	defer rh.Close()
 
 	for _, bh := range blocks {
@@ -1062,7 +1069,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		return 0, r.err
 	}
 
-	indexH, err := r.readIndex(context.Background(), nil, nil)
+	indexH, err := r.readIndex(context.Background(), nil, nil, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -1214,15 +1221,21 @@ func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption
 		r.cacheID = r.opts.Cache.NewID()
 	}
 
-	footer, err := readFooter(f)
+	var preallocRH objstorageprovider.PreallocatedReadHandle
+	ctx := context.TODO()
+	rh := objstorageprovider.UsePreallocatedReadHandle(
+		ctx, r.readable, objstorage.ReadBeforeForNewReader, &preallocRH)
+	defer rh.Close()
+
+	footer, err := readFooter(ctx, f, rh)
 	if err != nil {
 		r.err = err
 		return nil, r.Close()
 	}
 	r.checksumType = footer.checksum
 	r.tableFormat = footer.format
-	// Read the metaindex.
-	if err := r.readMetaindex(footer.metaindexBH); err != nil {
+	// Read the metaindex and properties blocks.
+	if err := r.readMetaindex(footer.metaindexBH, rh); err != nil {
 		r.err = err
 		return nil, r.Close()
 	}
@@ -1318,7 +1331,9 @@ func (s *simpleReadable) Size() int64 {
 }
 
 // NewReaddHandle is part of the objstorage.Readable interface.
-func (s *simpleReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
+func (s *simpleReadable) NewReadHandle(
+	ctx context.Context, readBeforeSize objstorage.ReadBeforeSize,
+) objstorage.ReadHandle {
 	return &s.rh
 }
 

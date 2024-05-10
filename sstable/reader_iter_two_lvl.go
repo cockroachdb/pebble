@@ -11,6 +11,8 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 )
 
@@ -58,7 +60,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 	}
 	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.MetadataBlock)
 	indexBlock, err := i.reader.readBlock(
-		ctx, bhp.BlockHandle, nil /* transform */, nil /* readHandle */, i.stats, &i.iterStats, i.bufferPool)
+		ctx, bhp.BlockHandle, nil /* transform */, i.indexFilterRH, i.stats, &i.iterStats, i.bufferPool)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -152,7 +154,9 @@ func (i *twoLevelIterator) init(
 		return r.err
 	}
 	i.iterStats.init(categoryAndQoS, statsCollector)
-	topLevelIndexH, err := r.readIndex(ctx, stats, &i.iterStats)
+	i.indexFilterRH = objstorageprovider.UsePreallocatedReadHandle(
+		ctx, r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
+	topLevelIndexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
 	if err != nil {
 		return err
 	}
@@ -179,7 +183,8 @@ func (i *twoLevelIterator) init(
 		_ = i.topLevelIndex.Close()
 		return err
 	}
-	i.dataRH = r.readable.NewReadHandle(ctx)
+	i.dataRH = objstorageprovider.UsePreallocatedReadHandle(
+		ctx, r.readable, objstorage.NoReadBefore, &i.dataRHPrealloc)
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			i.vbReader = &valueBlockReader{
@@ -189,7 +194,8 @@ func (i *twoLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
-			i.vbRH = r.readable.NewReadHandle(ctx)
+			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(
+				ctx, r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
@@ -385,7 +391,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		}
 		i.lastBloomFilterMatched = false
 		var dataH bufferHandle
-		dataH, i.err = i.reader.readFilter(i.ctx, i.stats, &i.iterStats)
+		dataH, i.err = i.reader.readFilter(i.ctx, i.indexFilterRH, i.stats, &i.iterStats)
 		if i.err != nil {
 			i.data.invalidate()
 			return nil
@@ -968,6 +974,10 @@ func (i *twoLevelIterator) Close() error {
 	err = firstError(err, i.data.Close())
 	err = firstError(err, i.index.Close())
 	err = firstError(err, i.topLevelIndex.Close())
+	if i.indexFilterRH != nil {
+		err = firstError(err, i.indexFilterRH.Close())
+		i.indexFilterRH = nil
+	}
 	if i.dataRH != nil {
 		err = firstError(err, i.dataRH.Close())
 		i.dataRH = nil

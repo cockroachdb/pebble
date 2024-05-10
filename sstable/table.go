@@ -324,7 +324,10 @@ type footer struct {
 	footerBH    BlockHandle
 }
 
-func readFooter(f objstorage.Readable) (footer, error) {
+// readHandle is optional.
+func readFooter(
+	ctx context.Context, f objstorage.Readable, readHandle objstorage.ReadHandle,
+) (footer, error) {
 	var footer footer
 	size := f.Size()
 	if size < minFooterLen {
@@ -337,7 +340,13 @@ func readFooter(f objstorage.Readable) (footer, error) {
 		off = 0
 		buf = buf[:size]
 	}
-	if err := f.ReadAt(context.TODO(), buf, off); err != nil {
+	var err error
+	if readHandle != nil {
+		err = readHandle.ReadAt(ctx, buf, off)
+	} else {
+		err = f.ReadAt(ctx, buf, off)
+	}
+	if err != nil {
 		return footer, errors.Wrap(err, "pebble/table: invalid table (could not read footer)")
 	}
 

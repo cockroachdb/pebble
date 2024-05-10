@@ -1,0 +1,68 @@
+init-readable size=100000
+----
+
+# remoteReadHandle with no read-before, but will read-ahead.
+new-read-handle read-before-size=0
+----
+
+read offset=50 len=100
+----
+ReadAt(len=100, offset=50)
+
+read offset=150 len=100
+----
+ReadAt(len=100, offset=150)
+
+# First read-ahead.
+read offset=250 len=100
+----
+ReadAt(len=65536, offset=250)
+
+read offset=350 len=100
+----
+
+# Read-ahead up to EOF.
+read offset=65000 len=10000
+----
+ReadAt(len=34214, offset=65786)
+
+# remoteReadHandle with read-before.
+new-read-handle read-before-size=2000
+----
+
+# Read-before happens.
+read offset=99000 len=100
+----
+ReadAt(len=2000, offset=97100)
+
+# Already buffered because of read-before.
+read offset=97300 len=300
+----
+
+# Partially in buffer, but need to read the remaining.
+read offset=99000 len=200
+----
+ReadAt(len=100, offset=99100)
+
+# Read-ahead up to EOF.
+read offset=99200 len=200
+----
+ReadAt(len=800, offset=99200)
+
+# remoteReadHandle with read-before and setup-for-compaction.
+new-read-handle read-before-size=1000 setup-for-compaction
+----
+
+# First read does read-before.
+read offset=99000 len=100
+----
+ReadAt(len=1000, offset=98100)
+
+# Next read does the maximum read-ahead, constrained by EOF.
+read offset=100 len=100
+----
+ReadAt(len=99900, offset=100)
+
+read offset=99000 len=2000
+----
+err: EOF
