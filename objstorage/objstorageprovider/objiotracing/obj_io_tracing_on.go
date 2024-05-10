@@ -171,11 +171,13 @@ func (r *readable) Size() int64 {
 }
 
 // NewReadHandle is part of the objstorage.Readable interface.
-func (r *readable) NewReadHandle(ctx context.Context) objstorage.ReadHandle {
+func (r *readable) NewReadHandle(
+	ctx context.Context, readBeforeSize objstorage.ReadBeforeSize,
+) objstorage.ReadHandle {
 	// It's safe to get the tracer from the generator without the mutex since it never changes.
 	t := r.mu.g.t
 	return &readHandle{
-		rh:       r.r.NewReadHandle(ctx),
+		rh:       r.r.NewReadHandle(ctx, readBeforeSize),
 		fileNum:  r.fileNum,
 		handleID: t.handleID.Add(1),
 		g:        makeEventGenerator(ctx, t),
