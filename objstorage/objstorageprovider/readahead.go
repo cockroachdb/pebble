@@ -40,40 +40,7 @@ func makeReadaheadState(maxReadaheadSize int64) readaheadState {
 }
 
 func (rs *readaheadState) recordCacheHit(offset, blockLength int64) {
-	currentReadEnd := offset + blockLength
-	if rs.numReads >= minFileReadsForReadahead {
-		if currentReadEnd >= rs.limit && offset <= rs.limit+rs.maxReadaheadSize {
-			// This is a read that would have resulted in a readahead, had it
-			// not been a cache hit.
-			rs.limit = currentReadEnd
-			return
-		}
-		if currentReadEnd < rs.limit-rs.prevSize || offset > rs.limit+rs.maxReadaheadSize {
-			// We read too far away from rs.limit to benefit from readahead in
-			// any scenario. Reset all variables.
-			rs.numReads = 1
-			rs.limit = currentReadEnd
-			rs.size = initialReadaheadSize
-			rs.prevSize = 0
-			return
-		}
-		// Reads in the range [rs.limit - rs.prevSize, rs.limit] end up
-		// here. This is a read that is potentially benefitting from a past
-		// readahead.
-		return
-	}
-	if currentReadEnd >= rs.limit && offset <= rs.limit+rs.maxReadaheadSize {
-		// Blocks are being read sequentially and would benefit from readahead
-		// down the line.
-		rs.numReads++
-		return
-	}
-	// We read too far ahead of the last read, or before it. This indicates
-	// a random read, where readahead is not desirable. Reset all variables.
-	rs.numReads = 1
-	rs.limit = currentReadEnd
-	rs.size = initialReadaheadSize
-	rs.prevSize = 0
+	_ = rs.maybeReadaheadOrCacheHit(offset, blockLength, false)
 }
 
 // maybeReadahead updates state and determines whether to issue a readahead /
@@ -81,6 +48,13 @@ func (rs *readaheadState) recordCacheHit(offset, blockLength int64) {
 // Returns a size value (greater than 0) that should be prefetched if readahead
 // would be beneficial.
 func (rs *readaheadState) maybeReadahead(offset, blockLength int64) int64 {
+	return rs.maybeReadaheadOrCacheHit(offset, blockLength, true)
+}
+
+// The return value should be ignored if !readahead.
+func (rs *readaheadState) maybeReadaheadOrCacheHit(
+	offset, blockLength int64, readahead bool,
+) int64 {
 	currentReadEnd := offset + blockLength
 	if rs.numReads >= minFileReadsForReadahead {
 		// The minimum threshold of sequential reads to justify reading ahead
@@ -119,18 +93,22 @@ func (rs *readaheadState) maybeReadahead(offset, blockLength int64) int64 {
 			//
 			//
 			rs.numReads++
-			rs.limit = offset + rs.size
-			rs.prevSize = rs.size
-			// Increase rs.size for the next read.
-			rs.size *= 2
-			if rs.size > rs.maxReadaheadSize {
-				rs.size = rs.maxReadaheadSize
+			if readahead {
+				rs.limit = offset + rs.size
+				rs.prevSize = rs.size
+				// Increase rs.size for the next read.
+				rs.size *= 2
+				if rs.size > rs.maxReadaheadSize {
+					rs.size = rs.maxReadaheadSize
+				}
+			} else {
+				// This is a read that would have resulted in a readahead, had it
+				// not been a cache hit.
+				rs.limit = currentReadEnd
 			}
 			return rs.prevSize
 		}
 		if currentReadEnd < rs.limit-rs.prevSize || offset > rs.limit+rs.maxReadaheadSize {
-			// The above conditional has rs.limit > rs.prevSize to confirm that
-			// rs.limit - rs.prevSize would not underflow.
 			// We read too far away from rs.limit to benefit from readahead in
 			// any scenario. Reset all variables.
 			// The case where we read too far ahead:
@@ -156,7 +134,16 @@ func (rs *readaheadState) maybeReadahead(offset, blockLength int64) int64 {
 
 			return 0
 		}
-		// Reads in the range [rs.limit - rs.prevSize, rs.limit] end up
+		// The previous if-block predicates were all false. This mechanically implies:
+		//
+		// INVARIANT:
+		//  !(currentReadEnd >= rs.limit && offset <= rs.limit+rs.maxReadaheadSize) &&
+		//  !(currentReadEnd < rs.limit-rs.prevSize || offset > rs.limit+rs.maxReadaheadSize)
+		// Which mechanically simplifies to:
+		//  currentReadEnd < rs.limit  && currentReadEnd >= rs.limit-rs.prevSize &&
+		//  offset <= rs.limit+rs.maxReadaheadSize
+		//
+		// So reads in the range [rs.limit - rs.prevSize, rs.limit] end up
 		// here. This is a read that is potentially benefitting from a past
 		// readahead, but there's no reason to issue a readahead call at the
 		// moment.
@@ -171,6 +158,8 @@ func (rs *readaheadState) maybeReadahead(offset, blockLength int64) int64 {
 		rs.numReads++
 		return 0
 	}
+	// Not yet at the numReads threshold to justify readahead. But we want to
+	// capture whether readahead will be beneficial in the future.
 	if currentReadEnd >= rs.limit && offset <= rs.limit+rs.maxReadaheadSize {
 		// Blocks are being read sequentially and would benefit from readahead
 		// down the line.
@@ -182,6 +171,16 @@ func (rs *readaheadState) maybeReadahead(offset, blockLength int64) int64 {
 		//                offset    currentReadEnd
 		//
 		rs.numReads++
+		// It is possible to fall here when rs.limit has not been initialized. If
+		// we don't initialize, rs.limit, it is possible that the first read
+		// offset was at rs.limit+rs.maxReadaheadSize-delta and the enclosing
+		// if-block predicate was true, and the next read is sequential but has
+		// offset > rs.limit+rs.maxReadaheadSize (if we left rs.limit at 0), and
+		// the enclosing if-block predicate will be false and we will incorrectly
+		// think that readahead is not beneficial. The same issue arises if
+		// rs.limit has been initialized and currentReadEnd is advancing past
+		// rs.limit.
+		rs.limit = currentReadEnd
 		return 0
 	}
 	// We read too far ahead of the last read, or before it. This indicates

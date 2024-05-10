@@ -20,9 +20,7 @@ func TestMaybeReadahead(t *testing.T) {
 		cacheHit := false
 		switch d.Cmd {
 		case "reset":
-			rs.size = initialReadaheadSize
-			rs.limit = 0
-			rs.numReads = 0
+			rs = makeReadaheadState(rs.maxReadaheadSize)
 			return ""
 
 		case "cache-read":
