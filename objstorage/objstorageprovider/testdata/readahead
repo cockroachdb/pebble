@@ -8,7 +8,7 @@ readahead:  0
 numReads:   1
 size:       65536
 prevSize:   0
-limit:      0
+limit:      2064
 
 read
 2096, 16
@@ -17,7 +17,7 @@ readahead:  0
 numReads:   2
 size:       65536
 prevSize:   0
-limit:      0
+limit:      2112
 
 read
 2112, 16
@@ -84,7 +84,7 @@ readahead:  0
 numReads:   2
 size:       65536
 prevSize:   0
-limit:      16208
+limit:      16209
 
 # The next read is too far ahead to benefit from readahead
 # (i.e. 540497 > 16208 (limit) + (512 << 10) (maxReadaheadSize))
@@ -126,45 +126,49 @@ readahead:  0
 numReads:   2
 size:       65536
 prevSize:   0
-limit:      16
+limit:      7796
 
 read
-7680, 16
+7800, 16
 ----
 readahead:  65536
 numReads:   3
 size:       131072
 prevSize:   65536
-limit:      73216
-
-read
-7780, 16
----
-readahead:  0
-numReads:   4
-size:       131072
-prevSize:   65536
-limit:      73216
+limit:      73336
 
 read
 7880, 16
 ----
-expected 2 args: offset, size
+readahead:  0
+numReads:   4
+size:       131072
+prevSize:   65536
+limit:      73336
 
 read
 7980, 16
 ----
 readahead:  0
-numReads:   4
+numReads:   5
 size:       131072
 prevSize:   65536
-limit:      73216
+limit:      73336
+
+read
+8080, 16
+----
+readahead:  0
+numReads:   6
+size:       131072
+prevSize:   65536
+limit:      73336
 
 read
 73416, 16
 ----
 readahead:  131072
-numReads:   5
+numReads:   7
 size:       262144
 prevSize:   131072
 limit:      204488
@@ -173,7 +177,7 @@ read
 204488, 16
 ----
 readahead:  262144
-numReads:   6
+numReads:   8
 size:       262144
 prevSize:   262144
 limit:      466632
@@ -184,7 +188,7 @@ read
 466632, 16
 ----
 readahead:  262144
-numReads:   7
+numReads:   9
 size:       262144
 prevSize:   262144
 limit:      728776
@@ -195,7 +199,7 @@ cache-read
 728770, 16
 ----
 readahead:  0
-numReads:   7
+numReads:   10
 size:       262144
 prevSize:   262144
 limit:      728786
@@ -204,7 +208,7 @@ read
 728780, 16
 ----
 readahead:  262144
-numReads:   8
+numReads:   11
 size:       262144
 prevSize:   262144
 limit:      990924
@@ -219,3 +223,36 @@ numReads:   1
 size:       65536
 prevSize:   0
 limit:      1216
+
+reset
+----
+
+# Offset 240KiB, length 32KiB.
+read
+245760, 32768
+----
+readahead:  0
+numReads:   1
+size:       65536
+prevSize:   0
+limit:      278528
+
+# Offset 280KiB, length 32KiB.
+read
+286720, 32768
+----
+readahead:  0
+numReads:   2
+size:       65536
+prevSize:   0
+limit:      319488
+
+# Offset 320KiB, length 32KiB.
+read
+327680, 32768
+----
+readahead:  65536
+numReads:   3
+size:       131072
+prevSize:   65536
+limit:      393216
