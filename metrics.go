@@ -157,6 +157,7 @@ type Metrics struct {
 		DefaultCount      int64
 		DeleteOnlyCount   int64
 		ElisionOnlyCount  int64
+		CopyCount         int64
 		MoveCount         int64
 		ReadCount         int64
 		RewriteCount      int64
@@ -569,13 +570,14 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(m.Compact.NumInProgress),
 		humanize.Bytes.Int64(m.Compact.InProgressBytes))
 
-	w.Printf("             default: %d  delete: %d  elision: %d  move: %d  read: %d  rewrite: %d  multi-level: %d\n",
+	w.Printf("             default: %d  delete: %d  elision: %d  move: %d  read: %d  rewrite: %d  copy: %d  multi-level: %d\n",
 		redact.Safe(m.Compact.DefaultCount),
 		redact.Safe(m.Compact.DeleteOnlyCount),
 		redact.Safe(m.Compact.ElisionOnlyCount),
 		redact.Safe(m.Compact.MoveCount),
 		redact.Safe(m.Compact.ReadCount),
 		redact.Safe(m.Compact.RewriteCount),
+		redact.Safe(m.Compact.CopyCount),
 		redact.Safe(m.Compact.MultiLevelCount))
 
 	w.Printf("MemTables: %d (%s)  zombie: %d (%s)\n",

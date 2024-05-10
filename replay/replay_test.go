@@ -441,7 +441,7 @@ func TestBenchmarkString(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, m.WriteBenchmarkString("tpcc", &buf))
 	require.Equal(t, strings.TrimSpace(`
-BenchmarkBenchmarkReplay/tpcc/CompactionCounts 1 0 compactions 0 default 0 delete 0 elision 0 move 0 read 0 rewrite 0 multilevel
+BenchmarkBenchmarkReplay/tpcc/CompactionCounts 1 0 compactions 0 default 0 delete 0 elision 0 move 0 read 0 rewrite 0 copy 0 multilevel
 BenchmarkBenchmarkReplay/tpcc/DatabaseSize/mean 1 5.36870912e+09 bytes
 BenchmarkBenchmarkReplay/tpcc/DatabaseSize/max 1 5.36870912e+09 bytes
 BenchmarkBenchmarkReplay/tpcc/DurationWorkload 1 1 sec/op
