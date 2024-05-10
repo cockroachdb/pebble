@@ -104,6 +104,7 @@ type Metrics struct {
 		Move        int64
 		Read        int64
 		Rewrite     int64
+		Copy        int64
 		MultiLevel  int64
 	}
 	EstimatedDebt SampledMetric
@@ -169,6 +170,7 @@ func (m *Metrics) WriteBenchmarkString(name string, w io.Writer) error {
 			{Value: float64(m.CompactionCounts.Move), Unit: "move"},
 			{Value: float64(m.CompactionCounts.Read), Unit: "read"},
 			{Value: float64(m.CompactionCounts.Rewrite), Unit: "rewrite"},
+			{Value: float64(m.CompactionCounts.Copy), Unit: "copy"},
 			{Value: float64(m.CompactionCounts.MultiLevel), Unit: "multilevel"},
 		}},
 		// Total database sizes sampled after every workload step and
@@ -555,6 +557,7 @@ func (r *Runner) Wait() (Metrics, error) {
 	m.CompactionCounts.Move = pm.Compact.MoveCount
 	m.CompactionCounts.Read = pm.Compact.ReadCount
 	m.CompactionCounts.Rewrite = pm.Compact.RewriteCount
+	m.CompactionCounts.Copy = pm.Compact.CopyCount
 	m.CompactionCounts.MultiLevel = pm.Compact.MultiLevelCount
 	m.Ingest.BytesIntoL0 = pm.Levels[0].BytesIngested
 	m.Ingest.BytesWeightedByLevel = ingestBytesWeighted

@@ -40,7 +40,8 @@ func exampleMetrics() Metrics {
 	m.Compact.MoveCount = 30
 	m.Compact.ReadCount = 31
 	m.Compact.RewriteCount = 32
-	m.Compact.MultiLevelCount = 33
+	m.Compact.CopyCount = 33
+	m.Compact.MultiLevelCount = 34
 	m.Compact.EstimatedDebt = 6
 	m.Compact.InProgressBytes = 7
 	m.Compact.NumInProgress = 2
