@@ -66,6 +66,7 @@ type dbT struct {
 	ioSizes       string
 	verbose       bool
 	bypassPrompt  bool
+	omitURL       bool
 }
 
 func newDB(
@@ -209,6 +210,9 @@ specified database.
 		cmd.Flags().Var(
 			&d.fmtValue, "value", "value formatter")
 	}
+
+	d.LSM.Flags().BoolVar(
+		&d.omitURL, "omit-url", false, "omit the LSM viewer URL from the output")
 
 	d.Space.Flags().Var(
 		&d.start, "start", "start key for the range")
@@ -445,6 +449,9 @@ func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
 	defer d.closeDB(stderr, db)
 
 	fmt.Fprintf(stdout, "%s", db.Metrics())
+	if !d.omitURL {
+		fmt.Fprintf(stdout, "\nLSM viewer: %s\n", db.LSMViewURL())
+	}
 }
 
 func (d *dbT) runScan(cmd *cobra.Command, args []string) {
