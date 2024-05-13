@@ -362,3 +362,23 @@ seek-prefix-ge c@10
 ----
 b@0: (b@0, .)
 c@3: (c@3, .)
+
+# Test a seek for a prefix that falls entirely in the gap between file
+# boundaries. The iterator stats should indicate that no blocks are loaded.
+
+define bloom-bits-per-key=100
+L4
+  b@0.SET.10:b@0
+L4
+  d@3.SET.10:d@3
+----
+L4:
+  000004:[b@0#10,SET-b@0#10,SET]
+  000005:[d@3#10,SET-d@3#10,SET]
+
+combined-iter
+seek-prefix-ge c@10
+stats
+----
+.
+stats: seeked 1 times (1 internal); stepped 0 times (0 internal)
