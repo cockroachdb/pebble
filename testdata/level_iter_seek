@@ -36,8 +36,8 @@ seek-ge d
 next
 next
 ----
-d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
-e#72057594037927935,RANGEDEL:
+d#72057594037927935,SPANSTART: / d-e:{(#6,RANGEDEL)}
+e#72057594037927935,SPANEND: / d-e:{(#6,RANGEDEL)}
 f#5,SET:f
 
 iter
@@ -53,7 +53,7 @@ next
 prev
 next
 ----
-c#7,SET:c / d-e:{(#6,RANGEDEL)}
+c#7,SET:c
 .
 c#7,SET:c
 .
@@ -64,8 +64,8 @@ iter
 seek-prefix-ge d
 next
 ----
-d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
-d\x00#72057594037927935,RANGEDEL:
+d#72057594037927935,SPANSTART: / d-d\x00:{(#6,RANGEDEL)}
+d\x00#72057594037927935,SPANEND: / d-d\x00:{(#6,RANGEDEL)}
 
 # Tests a sequence of SeekPrefixGE with monotonically increasing keys, some of
 # which are present and some not (so fail the bloom filter match). The seek to
@@ -81,9 +81,9 @@ seek-prefix-ge gg
 seek-prefix-ge h
 ----
 .
-c#7,SET:c / d-e:{(#6,RANGEDEL)}
-d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
-cc\x00#72057594037927935,RANGEDEL:
+c#7,SET:c
+d#72057594037927935,SPANSTART: / d-cc\x00:{(#6,RANGEDEL)}
+cc\x00#72057594037927935,SPANEND: / d-cc\x00:{(#6,RANGEDEL)}
 f#5,SET:f
 g#4,SET:g
 .
@@ -125,9 +125,9 @@ b#8,SET:b
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 c#7,SET:c
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-d#72057594037927935,RANGEDEL:
+d#72057594037927935,SPANSTART: / d-e:{(#6,RANGEDEL)}
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-e#72057594037927935,RANGEDEL:
+e#72057594037927935,SPANEND: / d-e:{(#6,RANGEDEL)}
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 f#5,SET:f
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
@@ -154,11 +154,11 @@ prev
 prev
 prev
 ----
-f#5,SET:f / d-e:{(#6,RANGEDEL)}
-e#72057594037927935,RANGEDEL:
 f#5,SET:f
-e#72057594037927935,RANGEDEL:
-d#72057594037927935,RANGEDEL:
+e#72057594037927935,SPANEND: / d-e:{(#6,RANGEDEL)}
+f#5,SET:f
+e#72057594037927935,SPANEND: / d-e:{(#6,RANGEDEL)}
+d#72057594037927935,SPANSTART: / d-e:{(#6,RANGEDEL)}
 .
 
 # Verify that First() in the presence of an upper-bound pauses at the
@@ -177,7 +177,7 @@ iter
 set-bounds upper=f
 first
 ----
-d#72057594037927935,RANGEDEL:
+d#72057594037927935,SPANSTART: / d-e:{(#6,RANGEDEL)}
 
 # Verify that Last() in the presence of a lower-bound pauses at the
 # last range deletion's end key.
@@ -197,8 +197,8 @@ last
 prev
 prev
 ----
-e#72057594037927935,RANGEDEL:
-d#72057594037927935,RANGEDEL:
+e#72057594037927935,SPANEND: / d-e:{(#6,RANGEDEL)}
+d#72057594037927935,SPANSTART: / d-e:{(#6,RANGEDEL)}
 c#7,SET:c
 
 # Verify that a seek to a file with range tombstones as boundaries pauses on
@@ -228,10 +228,10 @@ next
 next
 next
 ----
-d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+d#72057594037927935,SPANSTART: / d-e:{(#6,RANGEDEL)}
 c#7,SET:c
-d#72057594037927935,RANGEDEL:
-e#72057594037927935,RANGEDEL:
+d#72057594037927935,SPANSTART: / d-e:{(#6,RANGEDEL)}
+e#72057594037927935,SPANEND: / d-e:{(#6,RANGEDEL)}
 f#8,SET:f
 
 iter
@@ -241,10 +241,10 @@ prev
 prev
 prev
 ----
-b#72057594037927935,RANGEDEL: / a-b:{(#5,RANGEDEL)}
+b#72057594037927935,SPANEND: / a-b:{(#5,RANGEDEL)}
 c#7,SET:c
-b#72057594037927935,RANGEDEL:
-a#72057594037927935,RANGEDEL:
+b#72057594037927935,SPANEND: / a-b:{(#5,RANGEDEL)}
+a#72057594037927935,SPANSTART: / a-b:{(#5,RANGEDEL)}
 .
 
 # Verify that prev when positioned at the start bound of the first range
@@ -266,7 +266,7 @@ seek-ge d
 prev
 ----
 b#1,SET:b
-d#72057594037927935,RANGEDEL: / d-e:{(#2,RANGEDEL)}
+d#72057594037927935,SPANSTART: / d-e:{(#2,RANGEDEL)}
 b#1,SET:b
 
 # Verify that next when positioned at the start boundary of the first range
@@ -288,7 +288,7 @@ seek-lt d
 next
 ----
 d#2,SET:d
-b#72057594037927935,RANGEDEL: / a-b:{(#1,RANGEDEL)}
+b#72057594037927935,SPANEND: / a-b:{(#1,RANGEDEL)}
 d#2,SET:d
 
 # Verify SeekPrefixGE correctness with trySeekUsingNext=true
@@ -342,12 +342,12 @@ seek-prefix-ge h true
 seek-prefix-ge i true
 seek-prefix-ge j true
 ----
-a#1,SET:a / c-e:{(#4,RANGEDEL)}
-a#1,SET:a / c-e:{(#4,RANGEDEL)}
-b#2,SET:b / c-e:{(#4,RANGEDEL)}
-c#72057594037927935,RANGEDEL:
-c#72057594037927935,RANGEDEL: / c-e:{(#4,RANGEDEL)}
-d#72057594037927935,RANGEDEL: / c-e:{(#4,RANGEDEL)}
+a#1,SET:a
+a#1,SET:a
+b#2,SET:b
+c#72057594037927935,SPANSTART: / c-b\x00:{(#4,RANGEDEL)}
+c#72057594037927935,SPANSTART: / c-c\x00:{(#4,RANGEDEL)}
+d#72057594037927935,SPANSTART: / d-d\x00:{(#4,RANGEDEL)}
 f#5,SINGLEDEL:
 g#6,SET:g
 h#7,SINGLEDEL:
@@ -361,7 +361,7 @@ seek-prefix-ge e true
 seek-prefix-ge i true
 seek-prefix-ge j true
 ----
-a#1,SET:a / c-e:{(#4,RANGEDEL)}
+a#1,SET:a
 e#4,SET:e
 i#6,SET:i
 j#7,SET:j
@@ -408,10 +408,8 @@ next
 f#5,SET:f
 i#4,SET:i
 
-# The below count should be 4, as we skip over the rangekey-only file.
-# TODO(jackson): When we stop opening range deletion iterators twice, this
-# should be 2.
+# The below count should be 2, as we skip over the rangekey-only file.
 
 iters-created
 ----
-4
+2

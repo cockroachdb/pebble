@@ -1820,8 +1820,8 @@ func (i *Iterator) nextPrefix() IterValidityState {
 				return i.iterValidityState
 			}
 			if invariants.Enabled && !i.equal(i.iterKV.K.UserKey, i.key) {
-				i.opts.getLogger().Fatalf("pebble: invariant violation: Nexting internal iterator from iterPosPrev landed on %q, not %q",
-					i.iterKV.K.UserKey, i.key)
+				panic(errors.AssertionFailedf("pebble: invariant violation: Nexting internal iterator from iterPosPrev landed on %q, not %q",
+					i.iterKV.K.UserKey, i.key))
 			}
 		}
 		// The internal iterator is now positioned at i.key. Advance to the next

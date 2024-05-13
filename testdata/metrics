@@ -73,7 +73,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 589B
 Block cache: 3 entries (484B)  hit rate: 0.0%
-Table cache: 1 entries (760B)  hit rate: 50.0%
+Table cache: 1 entries (760B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
@@ -128,7 +128,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 595B
 Block cache: 5 entries (946B)  hit rate: 33.3%
-Table cache: 2 entries (1.5KB)  hit rate: 75.0%
+Table cache: 2 entries (1.5KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
@@ -170,7 +170,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 595B
 Block cache: 5 entries (946B)  hit rate: 33.3%
-Table cache: 2 entries (1.5KB)  hit rate: 75.0%
+Table cache: 2 entries (1.5KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
@@ -209,7 +209,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 595B
 Block cache: 3 entries (484B)  hit rate: 33.3%
-Table cache: 1 entries (760B)  hit rate: 75.0%
+Table cache: 1 entries (760B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
@@ -252,7 +252,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 595B
 Block cache: 0 entries (0B)  hit rate: 33.3%
-Table cache: 0 entries (0B)  hit rate: 75.0%
+Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -322,7 +322,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 2.6KB
 Block cache: 0 entries (0B)  hit rate: 33.3%
-Table cache: 0 entries (0B)  hit rate: 75.0%
+Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -376,7 +376,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 2.0KB
 Block cache: 0 entries (0B)  hit rate: 14.3%
-Table cache: 0 entries (0B)  hit rate: 64.3%
+Table cache: 0 entries (0B)  hit rate: 58.3%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -479,7 +479,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 4.3KB
 Block cache: 12 entries (1.9KB)  hit rate: 16.7%
-Table cache: 1 entries (760B)  hit rate: 64.7%
+Table cache: 1 entries (760B)  hit rate: 60.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -541,7 +541,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 6.1KB
 Block cache: 12 entries (1.9KB)  hit rate: 16.7%
-Table cache: 1 entries (760B)  hit rate: 64.7%
+Table cache: 1 entries (760B)  hit rate: 60.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
