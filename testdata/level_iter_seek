@@ -408,10 +408,10 @@ next
 f#5,SET:f
 i#4,SET:i
 
-# The below count should be 4, as we skip over the rangekey-only file.
+# The below count should be 3, as we skip over the rangekey-only file.
 # TODO(jackson): When we stop opening range deletion iterators twice, this
 # should be 2.
 
 iters-created
 ----
-4
+3
