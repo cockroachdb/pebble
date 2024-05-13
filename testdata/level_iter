@@ -124,7 +124,7 @@ next
 next
 ----
 d#4,1:4
-dd#5,1:5
+.
 .
 
 iter
@@ -141,9 +141,9 @@ prev
 prev
 ----
 d#4,1:4
-dd#5,1:5
-d#4,1:4
-c#3,1:3
+.
+.
+.
 
 iter
 seek-prefix-ge d
@@ -387,14 +387,14 @@ next
 next
 ----
 d#4,1:4
-dd#5,1:5
+.
 .
 
 iter lower=dd
 seek-prefix-ge d
 next
 ----
-dd#5,1:5
+.
 .
 
 iter lower=d
