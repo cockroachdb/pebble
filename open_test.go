@@ -713,9 +713,11 @@ func TestOpenWALReplay(t *testing.T) {
 				}
 			}
 			require.Equal(t, 0, sstCount)
-			// The memtable size starts at 256KB and doubles up to 32MB so we expect 5
-			// logs (one for each doubling).
-			require.Equal(t, 7, logCount)
+			// The memtable size starts at 256KB and doubles up to 32MB. But,
+			// we'll jump to a power of two large enough if a batch motivating a
+			// rotation is larger than the next power of two. We expect 3 WALs
+			// here.
+			require.Equal(t, 3, logCount)
 
 			// Re-open the DB with a smaller memtable. Values for 1, 2 will fit in the first memtable;
 			// value for 3 will go in the next memtable; value for 4 will be in a flushable batch
