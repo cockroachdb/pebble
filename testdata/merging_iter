@@ -730,8 +730,7 @@ err=injected error
 # L2.000029.Close() = nil <err="injected error">
 err=injected error
 # L1.000028.SeekPrefixGE("b") = (c#27,SET,"27")
-# L2.000029.SeekPrefixGE("b") = nil <err="injected error">
-err=injected error
+.
 
 # Inject errors during L1.{Next,NextPrefix,Prev}.
 
