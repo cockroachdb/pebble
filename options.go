@@ -697,6 +697,18 @@ type Options struct {
 		// CreateOnSharedLocator).
 		CreateOnShared        remote.CreateOnSharedStrategy
 		CreateOnSharedLocator remote.Locator
+		// SharedLowerUserKeyPrefix, if specified, is an additional lower bound
+		// constraint on key prefixes that should be written to shared files.
+		SharedLowerUserKeyPrefix []byte
+		// WriteSharedWithStrictObsolete specifies that shared sstables are
+		// written with WriterOptions.IsStrictObsolete set to true. Strict
+		// obsolete tables do not permit merge keys.
+		WriteSharedWithStrictObsolete bool
+		// TODO(sumeer): add ReadSharedRequiresStrictObsolete to require that
+		// shared files visited via ScanInternal parameter func(sst
+		// *SharedSSTMeta) must be strict obsolete. That visit only has access to
+		// FileMetadata, so we will need to encode the StrictObsolete bit in
+		// there.
 
 		// CacheSizeBytesBytes is the size of the on-disk block cache for objects
 		// on shared storage in bytes. If it is 0, no cache is used.

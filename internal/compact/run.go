@@ -79,6 +79,14 @@ type RunnerConfig struct {
 	// during compaction. In practice, the sizes can vary between 50%-200% of this
 	// value.
 	TargetOutputFileSize uint64
+
+	// ConsiderCreateShared is true if this compaction can write shared files if
+	// SharedLowerUserKeyPrefix allows.
+	ConsiderCreateShared bool
+
+	// Set equal to Options.Experimental.SharedLowerUserKeyPrefix, when
+	// ConsiderCreateShared is true, else nil.
+	SharedLowerUserKeyPrefix []byte
 }
 
 // Runner is a helper for running the "data" part of a compaction (where we use
@@ -97,6 +105,11 @@ type Runner struct {
 	cfg  RunnerConfig
 	iter *Iter
 
+	split base.Split
+	// At most one state transition from false => true, when the next key should
+	// be written to shared storage.
+	keyShouldBeWrittenToShared bool
+
 	tables []OutputTable
 	// Stores any error encountered.
 	err error
@@ -113,20 +126,67 @@ type Runner struct {
 // NewRunner creates a new Runner.
 func NewRunner(cfg RunnerConfig, iter *Iter) *Runner {
 	r := &Runner{
-		cmp:  iter.cmp,
-		cfg:  cfg,
-		iter: iter,
+		cmp:   iter.cmp,
+		cfg:   cfg,
+		iter:  iter,
+		split: iter.cfg.Comparer.Split,
+	}
+	if cfg.SharedLowerUserKeyPrefix == nil {
+		r.keyShouldBeWrittenToShared = cfg.ConsiderCreateShared
+	} else if r.cmp(cfg.CompactionBounds.Start[:r.split(cfg.CompactionBounds.Start)], cfg.SharedLowerUserKeyPrefix) >= 0 {
+		// All keys in the compaction are in the shared key space.
+		r.keyShouldBeWrittenToShared = true
+		// No more need to do key comparisons.
+		r.cfg.SharedLowerUserKeyPrefix = nil
+	} else {
+		// Check if the compaction will only write non-shared keys.
+		endKeyPrefix := base.UserKeyBoundary{
+			Key:  cfg.CompactionBounds.End.Key[:r.split(cfg.CompactionBounds.End.Key)],
+			Kind: cfg.CompactionBounds.End.Kind,
+		}
+		// By taking the prefix, we turn an exclusive user-key bound into an inclusive user-key prefix bound.
+		if endKeyPrefix.Kind == base.Exclusive && len(endKeyPrefix.Key) < len(cfg.CompactionBounds.End.Key) {
+			endKeyPrefix.Kind = base.Inclusive
+		}
+		c := r.cmp(endKeyPrefix.Key, cfg.SharedLowerUserKeyPrefix)
+		if c < 0 || c == 0 && endKeyPrefix.Kind == base.Exclusive {
+			r.keyShouldBeWrittenToShared = false
+			// No more need to do key comparisons, since compaction only writes
+			// non-shared keys.
+			r.cfg.SharedLowerUserKeyPrefix = nil
+		}
 	}
 	r.key, r.value = r.iter.First()
 	return r
 }
 
 // MoreDataToWrite returns true if there is more data to be written.
-func (r *Runner) MoreDataToWrite() bool {
+func (r *Runner) MoreDataToWrite() (moreData bool, keyShouldBeWrittenToShared bool) {
 	if r.err != nil {
-		return false
+		return false, false
 	}
-	return r.key != nil || !r.lastRangeDelSpan.Empty() || !r.lastRangeKeySpan.Empty()
+	moreData = r.key != nil || !r.lastRangeDelSpan.Empty() || !r.lastRangeKeySpan.Empty()
+	if moreData && !r.keyShouldBeWrittenToShared && r.cfg.SharedLowerUserKeyPrefix != nil {
+		// May be stepping to a shared key.
+		firstKey := base.MinUserKey(r.cmp, spanStartOrNil(&r.lastRangeDelSpan), spanStartOrNil(&r.lastRangeKeySpan))
+		if r.key != nil && firstKey == nil {
+			firstKey = r.key.UserKey
+		}
+		if firstKey == nil {
+			panic(base.AssertionFailedf("no data to write"))
+		}
+		firstKeyPrefix := firstKey[:r.split(firstKey)]
+		cmp := r.cmp(firstKeyPrefix, r.cfg.SharedLowerUserKeyPrefix)
+		if cmp >= 0 {
+			r.keyShouldBeWrittenToShared = true
+			// No more need to do key comparisons.
+			r.cfg.SharedLowerUserKeyPrefix = nil
+		}
+		// Else cmp < 0, i.e., firstKeyPrefix < SharedLowerUserKeyPrefix. So
+		// firstKey < SharedLowerUserKeyPrefix, and we can safely use the latter
+		// as the split-limit in writeKeysToTable below.
+	}
+	return moreData, r.keyShouldBeWrittenToShared
 }
 
 // WriteTable writes a new output table. This table will be part of
@@ -168,8 +228,13 @@ func (r *Runner) writeKeysToTable(tw *sstable.Writer) (splitKey []byte, _ error)
 	if firstKey == nil {
 		return nil, base.AssertionFailedf("no data to write")
 	}
+	tableSplitLimit := r.TableSplitLimit(firstKey)
+	if r.cfg.SharedLowerUserKeyPrefix != nil &&
+		(tableSplitLimit == nil || r.cmp(r.cfg.SharedLowerUserKeyPrefix, tableSplitLimit) < 0) {
+		tableSplitLimit = r.cfg.SharedLowerUserKeyPrefix
+	}
 	splitter := NewOutputSplitter(
-		r.cmp, firstKey, r.TableSplitLimit(firstKey),
+		r.cmp, firstKey, tableSplitLimit,
 		r.cfg.TargetOutputFileSize, r.cfg.Grandparents.Iter(), r.iter.Frontiers(),
 	)
 	lastUserKeyFn := func() []byte {
