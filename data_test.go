@@ -842,6 +842,16 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			for _, levelOpts := range opts.Levels {
 				levelOpts.BlockSize = size
 			}
+		case "bloom-bits-per-key":
+			v, err := strconv.Atoi(arg.Vals[0])
+			if err != nil {
+				return nil, err
+			}
+			fp := bloom.FilterPolicy(v)
+			opts.Filters = map[string]FilterPolicy{fp.Name(): fp}
+			for i := range opts.Levels {
+				opts.Levels[i].FilterPolicy = fp
+			}
 		case "format-major-version":
 			fmv, err := strconv.Atoi(arg.Vals[0])
 			if err != nil {
