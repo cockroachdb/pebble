@@ -341,7 +341,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	// sequence number of the first batch that will be inserted.
 	if !d.opts.ReadOnly {
 		var entry *flushableEntry
-		d.mu.mem.mutable, entry = d.newMemTable(0 /* logNum */, d.mu.versions.logSeqNum.Load())
+		d.mu.mem.mutable, entry = d.newMemTable(0 /* logNum */, d.mu.versions.logSeqNum.Load(), 0 /* minSize */)
 		d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	}
 
@@ -808,7 +808,7 @@ func (d *DB) replayWAL(
 		if mem != nil {
 			return
 		}
-		mem, entry = d.newMemTable(base.DiskFileNum(ll.Num), seqNum)
+		mem, entry = d.newMemTable(base.DiskFileNum(ll.Num), seqNum, 0 /* minSize */)
 		if d.opts.ReadOnly {
 			d.mu.mem.mutable = mem
 			d.mu.mem.queue = append(d.mu.mem.queue, entry)

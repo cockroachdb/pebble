@@ -1301,7 +1301,7 @@ func (d *DB) handleIngestAsFlushable(
 	// ingested sstables being placed on top of them, but those
 	// memtables would have to be flushed anyways.
 	d.mu.mem.queue = append(d.mu.mem.queue, entry)
-	d.rotateMemtable(newLogNum, nextSeqNum, currMem)
+	d.rotateMemtable(newLogNum, nextSeqNum, currMem, 0 /* minSize */)
 	d.updateReadStateLocked(d.opts.DebugCheck)
 	// TODO(aaditya): is this necessary? we call this already in rotateMemtable above
 	d.maybeScheduleFlush()
