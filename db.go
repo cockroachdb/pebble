@@ -959,10 +959,6 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 			func() {
 				d.mu.Lock()
 				defer d.mu.Unlock()
-				// TODO(jackson): makeRoomForWrite will try mutable.prepare
-				// again unnecessarily. We can refactor makeRoomForWrite to make
-				// the assumption that the initial memtable is full, and only
-				// attempt prepare on the rotated memtable.
 				err = d.makeRoomForWrite(b)
 				mem = d.mu.mem.mutable
 			}()
@@ -2341,13 +2337,24 @@ func (d *DB) walPreallocateSize() int {
 	return int(size)
 }
 
-func (d *DB) newMemTable(logNum base.DiskFileNum, logSeqNum uint64) (*memTable, *flushableEntry) {
+func (d *DB) newMemTable(
+	logNum base.DiskFileNum, logSeqNum, minSize uint64,
+) (*memTable, *flushableEntry) {
+	targetSize := minSize + uint64(memTableEmptySize)
+	// The targetSize should be less than MemTableSize, because any batch >=
+	// MemTableSize/2 should be treated as a large flushable batch.
+	if targetSize > d.opts.MemTableSize {
+		panic(errors.AssertionFailedf("attempting to allocate memtable larger than MemTableSize"))
+	}
+	// Double until the next memtable size is at least large enough to fit
+	// minSize.
+	for d.mu.mem.nextSize < targetSize {
+		d.mu.mem.nextSize = min(2*d.mu.mem.nextSize, d.opts.MemTableSize)
+	}
 	size := d.mu.mem.nextSize
+	// The next memtable should be double the size, up to Options.MemTableSize.
 	if d.mu.mem.nextSize < d.opts.MemTableSize {
-		d.mu.mem.nextSize *= 2
-		if d.mu.mem.nextSize > d.opts.MemTableSize {
-			d.mu.mem.nextSize = d.opts.MemTableSize
-		}
+		d.mu.mem.nextSize = min(2*d.mu.mem.nextSize, d.opts.MemTableSize)
 	}
 
 	memtblOpts := memTableOptions{
@@ -2427,69 +2434,55 @@ func (d *DB) newFlushableEntry(
 	return fe
 }
 
-// makeRoomForWrite ensures that the memtable has room to hold the contents of
-// Batch. It reserves the space in the memtable and adds a reference to the
-// memtable. The caller must later ensure that the memtable is unreferenced. If
-// the memtable is full, or a nil Batch is provided, the current memtable is
-// rotated (marked as immutable) and a new mutable memtable is allocated. This
-// memtable rotation also causes a log rotation.
+// maybeInduceWriteStall is called before performing a memtable rotation in
+// makeRoomForWrite. In some conditions, we prefer to stall the user's write
+// workload rather than continuing to accept writes that may result in resource
+// exhaustion or prohibitively slow reads.
 //
-// Both DB.mu and commitPipeline.mu must be held by the caller. Note that DB.mu
-// may be released and reacquired.
-func (d *DB) makeRoomForWrite(b *Batch) error {
-	if b != nil && b.ingestedSSTBatch {
-		panic("pebble: invalid function call")
-	}
-
-	force := b == nil || b.flushable != nil
+// There are a couple reasons we might wait to rotate the memtable and
+// instead induce a write stall:
+//  1. If too many memtables have queued, we wait for a flush to finish before
+//     creating another memtable.
+//  2. If L0 read amplification has grown too high, we wait for compactions
+//     to reduce the read amplification before accepting more writes that will
+//     increase write pressure.
+//
+// maybeInduceWriteStall checks these stall conditions, and if present, wait for
+// them to abate.
+func (d *DB) maybeInduceWriteStall(b *Batch) {
 	stalled := false
+	// This function will call EventListener.WriteStallBegin at most once.  If
+	// does call it, it will EventListener.WriteStallEnd once before returning.
 	for {
-		if b != nil && b.flushable == nil {
-			err := d.mu.mem.mutable.prepare(b)
-			if err != arenaskl.ErrArenaFull {
-				if stalled {
-					d.opts.EventListener.WriteStallEnd()
-				}
-				return err
-			}
-		} else if !force {
-			if stalled {
-				d.opts.EventListener.WriteStallEnd()
-			}
-			return nil
+		var size uint64
+		for i := range d.mu.mem.queue {
+			size += d.mu.mem.queue[i].totalBytes()
 		}
-		// force || err == ErrArenaFull, so we need to rotate the current memtable.
-		{
-			var size uint64
-			for i := range d.mu.mem.queue {
-				size += d.mu.mem.queue[i].totalBytes()
+		// If ElevateWriteStallThresholdForFailover is true, we give an
+		// unlimited memory budget for memtables. This is simpler than trying to
+		// configure an explicit value, given that memory resources can vary.
+		// When using WAL failover in CockroachDB, an OOM risk is worth
+		// tolerating for workloads that have a strict latency SLO. Also, an
+		// unlimited budget here does not mean that the disk stall in the
+		// primary will go unnoticed until the OOM -- CockroachDB is monitoring
+		// disk stalls, and we expect it to fail the node after ~60s if the
+		// primary is stalled.
+		if size >= uint64(d.opts.MemTableStopWritesThreshold)*d.opts.MemTableSize &&
+			!d.mu.log.manager.ElevateWriteStallThresholdForFailover() {
+			// We have filled up the current memtable, but already queued memtables
+			// are still flushing, so we wait.
+			if !stalled {
+				stalled = true
+				d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
+					Reason: "memtable count limit reached",
+				})
 			}
-			// If ElevateWriteStallThresholdForFailover is true, we give an
-			// unlimited memory budget for memtables. This is simpler than trying to
-			// configure an explicit value, given that memory resources can vary.
-			// When using WAL failover in CockroachDB, an OOM risk is worth
-			// tolerating for workloads that have a strict latency SLO. Also, an
-			// unlimited budget here does not mean that the disk stall in the
-			// primary will go unnoticed until the OOM -- CockroachDB is monitoring
-			// disk stalls, and we expect it to fail the node after ~60s if the
-			// primary is stalled.
-			if size >= uint64(d.opts.MemTableStopWritesThreshold)*d.opts.MemTableSize &&
-				!d.mu.log.manager.ElevateWriteStallThresholdForFailover() {
-				// We have filled up the current memtable, but already queued memtables
-				// are still flushing, so we wait.
-				if !stalled {
-					stalled = true
-					d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo{
-						Reason: "memtable count limit reached",
-					})
-				}
-				now := time.Now()
-				d.mu.compact.cond.Wait()
-				if b != nil {
-					b.commitStats.MemTableWriteStallDuration += time.Since(now)
-				}
-				continue
+			now := time.Now()
+			d.mu.compact.cond.Wait()
+			if b != nil {
+				b.commitStats.MemTableWriteStallDuration += time.Since(now)
 			}
+			continue
 		}
 		l0ReadAmp := d.mu.versions.currentVersion().L0Sublevels.ReadAmplification()
 		if l0ReadAmp >= d.opts.L0StopWritesThreshold {
@@ -2507,31 +2500,52 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			}
 			continue
 		}
-
-		var newLogNum base.DiskFileNum
-		var prevLogSize uint64
-		if !d.opts.DisableWAL {
-			now := time.Now()
-			newLogNum, prevLogSize = d.rotateWAL()
-			if b != nil {
-				b.commitStats.WALRotationDuration += time.Since(now)
-			}
+		// Not stalled.
+		if stalled {
+			d.opts.EventListener.WriteStallEnd()
 		}
+		return
+	}
+}
 
-		immMem := d.mu.mem.mutable
-		imm := d.mu.mem.queue[len(d.mu.mem.queue)-1]
-		imm.logSize = prevLogSize
-		imm.flushForced = imm.flushForced || (b == nil)
+// makeRoomForWrite rotates the current mutable memtable, ensuring that the
+// resulting mutable memtable has room to hold the contents of the provided
+// Batch. The current memtable is rotated (marked as immutable) and a new
+// mutable memtable is allocated. It reserves space in the new memtable and adds
+// a reference to the memtable. The caller must later ensure that the memtable
+// is unreferenced. This memtable rotation also causes a log rotation.
+//
+// If the current memtable is not full but the caller wishes to trigger a
+// rotation regardless, the caller may pass a nil Batch, and no space in the
+// resulting mutable memtable will be reserved.
+//
+// Both DB.mu and commitPipeline.mu must be held by the caller. Note that DB.mu
+// may be released and reacquired.
+func (d *DB) makeRoomForWrite(b *Batch) error {
+	if b != nil && b.ingestedSSTBatch {
+		panic("pebble: invalid function call")
+	}
+	d.maybeInduceWriteStall(b)
 
-		// If we are manually flushing and we used less than half of the bytes in
-		// the memtable, don't increase the size for the next memtable. This
-		// reduces memtable memory pressure when an application is frequently
-		// manually flushing.
-		if (b == nil) && uint64(immMem.availBytes()) > immMem.totalBytes()/2 {
-			d.mu.mem.nextSize = immMem.totalBytes()
+	var newLogNum base.DiskFileNum
+	var prevLogSize uint64
+	if !d.opts.DisableWAL {
+		now := time.Now()
+		newLogNum, prevLogSize = d.rotateWAL()
+		if b != nil {
+			b.commitStats.WALRotationDuration += time.Since(now)
 		}
+	}
+	immMem := d.mu.mem.mutable
+	imm := d.mu.mem.queue[len(d.mu.mem.queue)-1]
+	imm.logSize = prevLogSize
 
-		if b != nil && b.flushable != nil {
+	var logSeqNum uint64
+	var minSize uint64
+	if b != nil {
+		logSeqNum = b.SeqNum()
+		if b.flushable != nil {
+			logSeqNum += uint64(b.Count())
 			// The batch is too large to fit in the memtable so add it directly to
 			// the immutable queue. The flushable batch is associated with the same
 			// log as the immutable memtable, but logically occurs after it in
@@ -2548,24 +2562,43 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// for it until it is flushed.
 			entry.releaseMemAccounting = d.opts.Cache.Reserve(int(b.flushable.totalBytes()))
 			d.mu.mem.queue = append(d.mu.mem.queue, entry)
-		}
-
-		var logSeqNum uint64
-		if b != nil {
-			logSeqNum = b.SeqNum()
-			if b.flushable != nil {
-				logSeqNum += uint64(b.Count())
-			}
 		} else {
-			logSeqNum = d.mu.versions.logSeqNum.Load()
+			minSize = b.memTableSize
 		}
-		d.rotateMemtable(newLogNum, logSeqNum, immMem)
-		force = false
+	} else {
+		// b == nil
+		//
+		// This is a manual forced flush.
+		logSeqNum = d.mu.versions.logSeqNum.Load()
+		imm.flushForced = true
+		// If we are manually flushing and we used less than half of the bytes in
+		// the memtable, don't increase the size for the next memtable. This
+		// reduces memtable memory pressure when an application is frequently
+		// manually flushing.
+		if uint64(immMem.availBytes()) > immMem.totalBytes()/2 {
+			d.mu.mem.nextSize = immMem.totalBytes()
+		}
 	}
+	d.rotateMemtable(newLogNum, logSeqNum, immMem, minSize)
+	if b != nil && b.flushable == nil {
+		err := d.mu.mem.mutable.prepare(b)
+		// Reserve enough space for the batch after rotation must never fail. We
+		// pass in a minSize that's equal to b.memtableSize to ensure that
+		// memtable rotation allocates a memtable sufficiently large. We also
+		// held d.commit.mu for the entirety of this function, ensuring that no
+		// other committers may have reserved memory in the new memtable yet.
+		if err == arenaskl.ErrArenaFull {
+			panic(errors.AssertionFailedf("memtable still full after rotation"))
+		}
+		return err
+	}
+	return nil
 }
 
 // Both DB.mu and commitPipeline.mu must be held by the caller.
-func (d *DB) rotateMemtable(newLogNum base.DiskFileNum, logSeqNum uint64, prev *memTable) {
+func (d *DB) rotateMemtable(
+	newLogNum base.DiskFileNum, logSeqNum uint64, prev *memTable, minSize uint64,
+) {
 	// Create a new memtable, scheduling the previous one for flushing. We do
 	// this even if the previous memtable was empty because the DB.Flush
 	// mechanism is dependent on being able to wait for the empty memtable to
@@ -2582,7 +2615,7 @@ func (d *DB) rotateMemtable(newLogNum base.DiskFileNum, logSeqNum uint64, prev *
 	//
 	// NB: prev should be the current mutable memtable.
 	var entry *flushableEntry
-	d.mu.mem.mutable, entry = d.newMemTable(newLogNum, logSeqNum)
+	d.mu.mem.mutable, entry = d.newMemTable(newLogNum, logSeqNum, minSize)
 	d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	// d.logSize tracks the log size of the WAL file corresponding to the most
 	// recent flushable. The log size of the previous mutable memtable no longer
