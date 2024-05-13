@@ -31,21 +31,13 @@ type internalIterOpts struct {
 //
 // levelIter is used during compaction and as part of the Iterator
 // implementation. When used as part of the Iterator implementation, level
-// iteration needs to "pause" at sstable boundaries if a range deletion iterator
-// is open. In this case, we materialize a "synthetic" InternalKV to return from
-// levelIter. This prevents mergingIter from advancing past the sstable until
-// the sstable contains the smallest (or largest for reverse iteration) key in
-// the merged heap. Note that mergingIter treats a range deletion tombstone
-// returned by the point iterator as a no-op.
-//
-// SeekPrefixGE presents the need for a second type of pausing. If an sstable
-// iterator returns "not found" for a SeekPrefixGE operation, we don't want to
-// advance to the next sstable as the "not found" does not indicate that all of
-// the keys in the sstable are less than the search key. Advancing to the next
-// sstable would cause us to skip over range tombstones, violating
-// correctness. Instead, SeekPrefixGE creates a synthetic boundary key with the
-// kind InternalKeyKindRangeDeletion which will be used to pause the levelIter
-// at the sstable until the mergingIter is ready to advance past it.
+// iteration needs to "pause" at range deletion boundaries if file contains
+// range deletions. In this case, the levelIter uses a keyspan.InterleavingIter
+// to materialize InternalKVs at start and end boundaries of range deletions.
+// This prevents mergingIter from advancing past the sstable until the sstable
+// contains the smallest (or largest for reverse iteration) key in the merged
+// heap. Note that mergingIter treats a range deletion tombstone returned by the
+// point iterator as a no-op.
 type levelIter struct {
 	// The context is stored here since (a) iterators are expected to be
 	// short-lived (since they pin sstables), (b) plumbing a context into every
@@ -60,6 +52,9 @@ type levelIter struct {
 	// recent call to SetBounds.
 	lower []byte
 	upper []byte
+	// prefix holds the iteration prefix when the most recent absolute
+	// positioning method was a SeekPrefixGE.
+	prefix []byte
 	// The iterator options for the currently open table. If
 	// tableOpts.{Lower,Upper}Bound are nil, the corresponding iteration boundary
 	// does not lie within the table bounds.
@@ -161,6 +156,7 @@ func (l *levelIter) init(
 	l.err = nil
 	l.level = level
 	l.logger = opts.getLogger()
+	l.prefix = nil
 	l.lower = opts.LowerBound
 	l.upper = opts.UpperBound
 	l.tableOpts.TableFilter = opts.TableFilter
@@ -629,6 +625,7 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 
 	l.err = nil // clear cached iteration error
 	l.exhaustedDir = 0
+	l.prefix = nil
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 	loadFileIndicator := l.loadFile(l.findFileGE(key, flags), +1)
@@ -651,9 +648,9 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 	if invariants.Enabled && l.lower != nil && l.cmp(key, l.lower) < 0 {
 		panic(errors.AssertionFailedf("levelIter SeekGE to key %q violates lower bound %q", key, l.lower))
 	}
-
 	l.err = nil // clear cached iteration error
 	l.exhaustedDir = 0
+	l.prefix = prefix
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
@@ -673,19 +670,6 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 	if err := l.iter.Error(); err != nil {
 		return nil
 	}
-	// It is possible that we are here because bloom filter matching failed. In
-	// that case it is likely that all keys matching the prefix are wholly
-	// within the current file and cannot be in the subsequent file. In that
-	// case we don't want to go to the next file, since loading and seeking in
-	// there has some cost. Additionally, for sparse key spaces, loading the
-	// next file will defeat the optimization for the next SeekPrefixGE that is
-	// called with flags.TrySeekUsingNext(), since for sparse key spaces it is
-	// likely that the next key will also be contained in the current file.
-	n := l.split(l.iterFile.LargestPointKey.UserKey)
-	if l.cmp(prefix, l.iterFile.LargestPointKey.UserKey[:n]) < 0 {
-		l.exhaustedForward()
-		return nil
-	}
 	return l.verify(l.skipEmptyFileForward())
 }
 
@@ -696,6 +680,7 @@ func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV 
 
 	l.err = nil // clear cached iteration error
 	l.exhaustedDir = 0
+	l.prefix = nil
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
@@ -716,6 +701,7 @@ func (l *levelIter) First() *base.InternalKV {
 
 	l.err = nil // clear cached iteration error
 	l.exhaustedDir = 0
+	l.prefix = nil
 
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
@@ -736,6 +722,7 @@ func (l *levelIter) Last() *base.InternalKV {
 
 	l.err = nil // clear cached iteration error
 	l.exhaustedDir = 0
+	l.prefix = nil
 
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
@@ -835,6 +822,27 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 			l.exhaustedForward()
 			return nil
 		}
+
+		// If the iterator is in prefix iteration mode, it's possible that we
+		// are here because bloom filter matching failed. In that case it is
+		// likely that all keys matching the prefix are wholly within the
+		// current file and cannot be in a subsequent file. In that case we
+		// don't want to go to the next file, since loading and seeking in there
+		// has some cost.
+		//
+		// This is not just an optimization. We must not advance to the next
+		// file if the current file might possibly contain keys relevant to any
+		// prefix greater than our current iteration prefix. If we did, a
+		// subsequent SeekPrefixGE with TrySeekUsingNext could mistakenly skip
+		// the file's relevant keys.
+		if l.prefix != nil {
+			fileLargestPrefix := l.iterFile.LargestPointKey.UserKey[:l.split(l.iterFile.LargestPointKey.UserKey)]
+			if l.cmp(fileLargestPrefix, l.prefix) > 0 {
+				l.exhaustedForward()
+				return nil
+			}
+		}
+
 		// Current file was exhausted. Move to the next file.
 		if l.loadFile(l.files.Next(), +1) == noFileLoaded {
 			l.exhaustedForward()
