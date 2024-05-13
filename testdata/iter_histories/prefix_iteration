@@ -224,7 +224,7 @@ c@10: (., [c-"c\x00") @1=bar UPDATED)
 #      b. In L6, the level iterator seeks to 000004 which contains a key with
 #         the prefix, returning 'b@4'.
 #   2. Next():
-#      a. Next advances the the L6 iterator to file 000005. This file contains a
+#      a. Next advances the L6 iterator to file 000005. This file contains a
 #         range key [e,f)@1=bar, which updates the lazy-combined iterator's
 #         state, recording the earliest observed range key as 'e'. The L6 level
 #         iterator then returns the file single point key 'c'.
@@ -296,6 +296,55 @@ next
 ----
 b@4: (b@4, .)
 .
+
+# Regression test for #3610.
+#
+# Similar to the above case, this test consists of two SeekPrefixGEs for
+# ascending keys, resulting in TrySeekUsingNext()=true for the second seek.
+# Previously, during the first SeekPrefixGE the mergingIter could Next the
+# levelIter beyond the file containing point keys relevant to both seeks.
+
+reset bloom-bits-per-key=100
+----
+
+define bloom-bits-per-key=100
+L4
+  b@0.SET.10:b@0
+L5
+  b@8.RANGEDEL.3:b@1
+  c@3.SET.0:c@3
+----
+4:
+  000004:[b@0#10,SET-b@0#10,SET]
+5:
+  000005:[b@8#3,RANGEDEL-c@3#0,SET]
+
+combined-iter
+seek-prefix-ge b@10
+seek-prefix-ge c@10
+----
+b@0: (b@0, .)
+c@3: (c@3, .)
+
+# Test a seek for a prefix that falls entirely in the gap between file
+# boundaries. The iterator stats should indicate that no blocks are loaded.
+
+define bloom-bits-per-key=100
+L4
+  b@0.SET.10:b@0
+L4
+  d@3.SET.10:d@3
+----
+4:
+  000004:[b@0#10,SET-b@0#10,SET]
+  000005:[d@3#10,SET-d@3#10,SET]
+
+combined-iter
+seek-prefix-ge c@10
+stats
+----
+.
+stats: seeked 1 times (1 internal); stepped 0 times (0 internal)
 
 # Regression test for #2151.
 #

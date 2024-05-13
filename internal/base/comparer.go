@@ -210,6 +210,10 @@ var DefaultComparer = &Comparer{
 		return append(dst, a...)
 	},
 
+	Split: func(a []byte) int {
+		return len(a)
+	},
+
 	ImmediateSuccessor: func(dst, a []byte) (ret []byte) {
 		return append(append(dst, a...), 0x00)
 	},

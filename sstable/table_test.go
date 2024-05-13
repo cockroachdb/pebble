@@ -362,6 +362,12 @@ func build(
 	}
 	tmpFileCount++
 
+	if comparer == nil {
+		cmp := *base.DefaultComparer
+		// runTestFixtures relies on split not being defined.
+		cmp.Split = nil
+		comparer = &cmp
+	}
 	writerOpts := WriterOptions{
 		BlockSize:      blockSize,
 		Comparer:       comparer,
