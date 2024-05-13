@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -250,6 +251,15 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		m.rangeKeys.invalidate(rangeKeyCount)
 	}
 	return nil
+}
+
+func (m *memTable) initMergingIterLevel(
+	ctx context.Context, o *IterOptions, mil *mergingIterLevel,
+) {
+	*mil = mergingIterLevel{
+		iter:         m.newIter(o),
+		rangeDelIter: m.newRangeDelIter(o),
+	}
 }
 
 // newIter is part of the flushable interface. It returns an iterator that is
