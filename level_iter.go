@@ -566,7 +566,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			return noFileLoaded
 		}
 		l.iter = iters.Point()
-		if l.rangeDelIterPtr != nil {
+		if l.rangeDelIterPtr != nil && iters.rangeDeletion != nil {
 			*l.rangeDelIterPtr = iters.rangeDeletion
 			l.rangeDelIterCopy = iters.rangeDeletion
 
