@@ -107,13 +107,15 @@ type InternalIterator interface {
 	// SeekPrefixGE only checks the upper bound. It is up to the caller to ensure
 	// that key is greater than or equal to the lower bound.
 	//
-	// The prefix argument is used by some InternalIterator implementations (e.g.
-	// sstable.Reader) to avoid expensive operations. This operation is only
-	// useful when a user-defined Split function is supplied to the Comparer for
-	// the DB. The supplied prefix will be the prefix of the given key returned by
-	// that Split function. If the iterator is able to determine that no key with
-	// the prefix exists, it can return (nil,nilv). Unlike SeekGE, this is not an
-	// indication that iteration is exhausted.
+	// The prefix argument is used by some InternalIterator implementations
+	// (e.g.  sstable.Reader) to avoid expensive operations. This operation is
+	// only useful when a user-defined Split function is supplied to the
+	// Comparer for the DB. The supplied prefix will be the prefix of the given
+	// key returned by that Split function. If the iterator is able to determine
+	// that no key with the prefix exists, it can return (nil,nilv). Unlike
+	// SeekGE, this is not an indication that iteration is exhausted. The prefix
+	// byte slice is guaranteed to be stable until the next absolute positioning
+	// operation.
 	//
 	// Note that the iterator may return keys not matching the prefix. It is up
 	// to the caller to check if the prefix matches.
