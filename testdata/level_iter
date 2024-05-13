@@ -164,10 +164,8 @@ b#2,SET:2
 iter
 seek-prefix-ge d
 next
-next
 ----
 d#4,SET:4
-dd#5,SET:5
 .
 
 iter
@@ -180,27 +178,19 @@ dd#5,SET:5
 iter
 seek-prefix-ge d
 next
-prev
-prev
 ----
 d#4,SET:4
-dd#5,SET:5
-d#4,SET:4
-c#3,SET:3
+.
 
 iter
 seek-prefix-ge d
-prev
 ----
 d#4,SET:4
-c#3,SET:3
 
 iter
 seek-prefix-ge dd
-prev
 ----
 dd#5,SET:5
-d#4,SET:4
 
 iter lower=a
 seek-ge a
@@ -449,10 +439,8 @@ d#4,SET:4
 iter upper=e
 seek-prefix-ge d
 next
-next
 ----
 d#4,SET:4
-dd#5,SET:5
 .
 
 iter lower=dd
@@ -464,17 +452,13 @@ dd#5,SET:5
 
 iter lower=d
 seek-prefix-ge dd
-prev
 ----
 dd#5,SET:5
-d#4,SET:4
 
 iter lower=c
 seek-prefix-ge dd
-prev
 ----
 dd#5,SET:5
-d#4,SET:4
 
 iter lower=c
 seek-lt c

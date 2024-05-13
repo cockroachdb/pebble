@@ -554,6 +554,18 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			file = l.files.Prev()
 			continue
 		}
+		// If we're in prefix iteration, it's possible this file's smallest
+		// boundary is large enough to prove the file cannot possibly contain
+		// any keys within the iteration prefix. Loading the next file is
+		// unnecessary. This has been observed in practice on slow shared
+		// storage. See #3575.
+		if l.prefix != nil && l.cmp(file.SmallestPointKey.UserKey[:l.split(file.SmallestPointKey.UserKey)], l.prefix) > 0 {
+			// Note that because l.iter is nil, a subsequent call to
+			// SeekPrefixGE with TrySeekUsingNext()=true will load the file
+			// (returning newFileLoaded) and disable TrySeekUsingNext before
+			// performing a seek in the file.
+			return noFileLoaded
+		}
 
 		iterKinds := iterPointKeys
 		if l.rangeDelIterPtr != nil {
