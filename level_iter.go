@@ -59,6 +59,9 @@ type levelIter struct {
 	// recent call to SetBounds.
 	lower []byte
 	upper []byte
+	// prefix holds the iteration prefix when the most recent absolute
+	// positioning method was a SeekPrefixGE.
+	prefix []byte
 	// The iterator options for the currently open table. If
 	// tableOpts.{Lower,Upper}Bound are nil, the corresponding iteration boundary
 	// does not lie within the table bounds.
@@ -235,6 +238,7 @@ func (l *levelIter) init(
 	l.err = nil
 	l.level = level
 	l.logger = opts.getLogger()
+	l.prefix = nil
 	l.lower = opts.LowerBound
 	l.upper = opts.UpperBound
 	l.tableOpts.TableFilter = opts.TableFilter
@@ -641,6 +645,18 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			file = l.files.Prev()
 			continue
 		}
+		// If we're in prefix iteration, it's possible this file's smallest
+		// boundary is large enough to prove the file cannot possibly contain
+		// any keys within the iteration prefix. Loading the next file is
+		// unnecessary. This has been observed in practice on slow shared
+		// storage. See #3575.
+		if l.prefix != nil && l.cmp(file.SmallestPointKey.UserKey[:l.split(file.SmallestPointKey.UserKey)], l.prefix) > 0 {
+			// Note that because l.iter is nil, a subsequent call to
+			// SeekPrefixGE with TrySeekUsingNext()=true will load the file
+			// (returning newFileLoaded) and disable TrySeekUsingNext before
+			// performing a seek in the file.
+			return noFileLoaded
+		}
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
@@ -694,6 +710,7 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
 	}
+	l.prefix = nil
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 	loadFileIndicator := l.loadFile(l.findFileGE(key, flags), +1)
@@ -719,6 +736,7 @@ func (l *levelIter) SeekPrefixGE(
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
 	}
+	l.prefix = prefix
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
@@ -785,6 +803,7 @@ func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
 	}
+	l.prefix = nil
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
@@ -803,6 +822,7 @@ func (l *levelIter) First() (*InternalKey, base.LazyValue) {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
 	}
+	l.prefix = nil
 
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
@@ -821,6 +841,7 @@ func (l *levelIter) Last() (*InternalKey, base.LazyValue) {
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
 	}
+	l.prefix = nil
 
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
@@ -1053,6 +1074,24 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
 					l.boundaryContext.isIgnorableBoundaryKey = true
 				}
 				return l.largestBoundary, base.LazyValue{}
+			}
+		}
+		// If the iterator is in prefix iteration mode, it's possible that we
+		// are here because bloom filter matching failed. In that case it is
+		// likely that all keys matching the prefix are wholly within the
+		// current file and cannot be in a subsequent file. In that case we
+		// don't want to go to the next file, since loading and seeking in there
+		// has some cost.
+		//
+		// This is not just an optimization. We must not advance to the next
+		// file if the current file might possibly contain keys relevant to any
+		// prefix greater than our current iteration prefix. If we did, a
+		// subsequent SeekPrefixGE with TrySeekUsingNext could mistakenly skip
+		// the file's relevant keys.
+		if l.prefix != nil {
+			fileLargestPrefix := l.iterFile.LargestPointKey.UserKey[:l.split(l.iterFile.LargestPointKey.UserKey)]
+			if l.cmp(fileLargestPrefix, l.prefix) > 0 {
+				return nil, base.LazyValue{}
 			}
 		}
 

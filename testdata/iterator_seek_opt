@@ -244,7 +244,7 @@ seek-prefix-ge d
 d: (2, .)
 stats: seeked 22 times (21 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 8
-SeekPrefixGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 5
 
 # Shifting bounds, with non-overlapping and monotonic bounds, but using
 # SetOptions. A set-options sits between every two seeks. We don't call
@@ -260,7 +260,7 @@ seek-ge b
 b: (1, .)
 stats: seeked 23 times (22 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 8
-SeekPrefixGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 5
 
 iter
 set-options lower=c upper=e
@@ -270,7 +270,7 @@ seek-ge c
 c: (1, .)
 stats: seeked 24 times (23 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 8
-SeekPrefixGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 5
 
 # NB: Equal bounds.
 
@@ -282,7 +282,7 @@ seek-ge d
 d: (2, .)
 stats: seeked 25 times (24 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 10
-SeekPrefixGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 5
 
 iter
 set-options lower=a upper=c
@@ -292,7 +292,7 @@ seek-prefix-ge b
 b: (1, .)
 stats: seeked 26 times (25 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 10
-SeekPrefixGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 5
 
 iter
 set-options lower=c upper=e
@@ -302,7 +302,7 @@ seek-prefix-ge c
 c: (1, .)
 stats: seeked 27 times (26 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 10
-SeekPrefixGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 5
 
 # NB: Equal bounds.
 
@@ -314,4 +314,4 @@ seek-prefix-ge d
 d: (2, .)
 stats: seeked 28 times (27 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 10
-SeekPrefixGEs with trySeekUsingNext: 8
+SeekPrefixGEs with trySeekUsingNext: 6
