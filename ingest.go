@@ -905,7 +905,7 @@ func overlapWithIterator(
 	// It then tries to find a point in that SST that is >= S.
 	// If there's no such point it means the SST ends in a tombstone in which case
 	// levelIter.SeekGE generates a boundary range del sentinel.
-	// The comparison of this boundary with keyRange.largest(L) below
+	// The comparison of this boundary with bounds.End(L) below
 	// is subtle but maintains correctness.
 	// 1) boundary < L,
 	//    since boundary is also > S (initial seek),
@@ -916,10 +916,12 @@ func overlapWithIterator(
 	// 3) boundary == L and L is not sentinel,
 	//    means boundary < L and hence is similar to 1).
 	// 4) boundary == L and L is sentinel,
-	//    we'll always overlap since for any values of i,j ranges [i, k) and [j, k) always overlap.
+	//    means we either hit the iterator upper bound or the SST ends in a range
+	//    deletion at that same key. We require checking for overlap with
+	//    rangeDelIter.
 	key, _ := iter.SeekGE(bounds.Start, base.SeekGEFlagsNone)
 	if key != nil {
-		if bounds.End.IsUpperBoundForInternalKey(cmp, *key) {
+		if bounds.End.IsUpperBoundFor(cmp, key.UserKey) {
 			return true
 		}
 	}
@@ -971,7 +973,7 @@ func overlapWithIterator(
 func ingestTargetLevel(
 	newIters tableNewIters,
 	newRangeKeyIter keyspanimpl.TableNewSpanIter,
-	iterOps IterOptions,
+	iterOpts IterOptions,
 	comparer *Comparer,
 	v *version,
 	baseLevel int,
@@ -1050,14 +1052,25 @@ func ingestTargetLevel(
 	if v.L0Sublevels == nil {
 		return 0, nil, base.AssertionFailedf("could not read L0 sublevels")
 	}
-	iterOps.CategoryAndQoS = sstable.CategoryAndQoS{
+
+	metaBounds := meta.UserKeyBounds()
+	// Propagating an upper bound can prevent a levelIter from unnecessarily
+	// opening files that fall outside bounds if no files within a level overlap
+	// the provided bounds.
+	if metaBounds.End.Kind == base.Exclusive {
+		iterOpts.UpperBound = metaBounds.End.Key
+	} else if comparer.ImmediateSuccessor != nil {
+		si := comparer.Split(metaBounds.End.Key)
+		iterOpts.UpperBound = comparer.ImmediateSuccessor(nil, metaBounds.End.Key[:si])
+	}
+	iterOpts.CategoryAndQoS = sstable.CategoryAndQoS{
 		Category: "pebble-ingest",
 		QoSLevel: sstable.LatencySensitiveQoSLevel,
 	}
 	// Check for overlap over the keys of L0 by iterating over the sublevels.
 	for subLevel := 0; subLevel < len(v.L0SublevelFiles); subLevel++ {
 		iter := newLevelIter(context.Background(),
-			iterOps, comparer, newIters, v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), internalIterOpts{})
+			iterOpts, comparer, newIters, v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), internalIterOpts{})
 
 		var rangeDelIter keyspan.FragmentIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
@@ -1070,7 +1083,7 @@ func ingestTargetLevel(
 			v.L0Sublevels.Levels[subLevel].Iter(), manifest.Level(0), manifest.KeyTypeRange,
 		)
 
-		overlap := overlapWithIterator(iter, &rangeDelIter, &levelIter, meta.UserKeyBounds(), comparer.Compare)
+		overlap := overlapWithIterator(iter, &rangeDelIter, &levelIter, metaBounds, comparer.Compare)
 		err := iter.Close() // Closes range del iter as well.
 		err = firstError(err, levelIter.Close())
 		if err != nil {
@@ -1084,7 +1097,7 @@ func ingestTargetLevel(
 	level := baseLevel
 	for ; level < numLevels; level++ {
 		levelIter := newLevelIter(context.Background(),
-			iterOps, comparer, newIters, v.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
+			iterOpts, comparer, newIters, v.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
 		var rangeDelIter keyspan.FragmentIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
 		// sets it up for the target file.
@@ -1096,7 +1109,7 @@ func ingestTargetLevel(
 			v.Levels[level].Iter(), manifest.Level(level), manifest.KeyTypeRange,
 		)
 
-		overlap := overlapWithIterator(levelIter, &rangeDelIter, rkeyLevelIter, meta.UserKeyBounds(), comparer.Compare)
+		overlap := overlapWithIterator(levelIter, &rangeDelIter, rkeyLevelIter, metaBounds, comparer.Compare)
 		err := levelIter.Close() // Closes range del iter as well.
 		err = firstError(err, rkeyLevelIter.Close())
 		if err != nil {
@@ -1108,7 +1121,7 @@ func ingestTargetLevel(
 
 		// Check boundary overlap.
 		var candidateSplitFile *fileMetadata
-		boundaryOverlaps := v.Overlaps(level, meta.UserKeyBounds())
+		boundaryOverlaps := v.Overlaps(level, metaBounds)
 		if !boundaryOverlaps.Empty() {
 			// We are already guaranteed to not have any data overlaps with files
 			// in boundaryOverlaps, otherwise we'd have returned in the above if
