@@ -30,19 +30,15 @@ next
 next
 stats
 ----
-stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 0, 0))
+stats: seeked 0 times (0 internal); stepped 0 times (0 internal)
 a: (a, .)
 b: (b, [b-c) @5=boop UPDATED)
-stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 89B, cached 0B, read-time 0s)), (points: (count 2, key-bytes 2B, value-bytes 2B, tombstoned 0))),
-(range-key-stats: (count 1), (contained points: (count 1, skipped 0)))
+stats: seeked 1 times (1 internal); stepped 1 times (2 internal); blocks: 0B cached, 89B not cached (read time: 0s); points: 2 (2B keys, 2B values), range keys: 1, contained points: 1 (0 skipped)
 c: (c, . UPDATED)
 cat: (., [cat-dog) @3=beep UPDATED)
 d: (d, [cat-dog) @3=beep)
 .
-stats: (interface (dir, seek, step): (fwd, 1, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 6), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 89B, cached 0B, read-time 0s)), (points: (count 4, key-bytes 4B, value-bytes 4B, tombstoned 0))),
-(range-key-stats: (count 2), (contained points: (count 2, skipped 0)))
+stats: seeked 1 times (1 internal); stepped 5 times (6 internal); blocks: 0B cached, 89B not cached (read time: 0s); points: 4 (4B keys, 4B values), range keys: 2, contained points: 2 (0 skipped)
 
 # Do the above forward iteration but with a mask suffix. The results should be
 # identical despite range keys serving as masks, because none of the point keys
@@ -63,9 +59,7 @@ c: (c, . UPDATED)
 cat: (., [cat-dog) @3=beep UPDATED)
 d: (d, [cat-dog) @3=beep)
 .
-stats: (interface (dir, seek, step): (fwd, 1, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 6), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 89B, cached 89B, read-time 0s)), (points: (count 4, key-bytes 4B, value-bytes 4B, tombstoned 0))),
-(range-key-stats: (count 2), (contained points: (count 2, skipped 0)))
+stats: seeked 1 times (1 internal); stepped 5 times (6 internal); blocks: 89B cached; points: 4 (4B keys, 4B values), range keys: 2, contained points: 2 (0 skipped)
 
 # Scan backward
 
@@ -84,9 +78,7 @@ c: (c, . UPDATED)
 b: (b, [b-c) @5=boop UPDATED)
 a: (a, . UPDATED)
 .
-stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 5)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 6)),
-(internal-stats: (block-bytes: (total 89B, cached 89B, read-time 0s)), (points: (count 4, key-bytes 4B, value-bytes 4B, tombstoned 0))),
-(range-key-stats: (count 2), (contained points: (count 2, skipped 0)))
+stats: seeked 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); stepped 5 times (0 fwd/5 rev, internal: 0 fwd/6 rev); blocks: 89B cached; points: 4 (4B keys, 4B values), range keys: 2, contained points: 2 (0 skipped)
 
 combined-iter
 seek-ge ace
@@ -107,9 +99,7 @@ cat: (., [cat-dog) @3=beep)
 d: (d, [cat-dog) @3=beep)
 day: (., [cat-dog) @3=beep)
 .
-stats: (interface (dir, seek, step): (fwd, 8, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 6, 4), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 89B, cached 89B, read-time 0s)), (points: (count 4, key-bytes 4B, value-bytes 4B, tombstoned 0))),
-(range-key-stats: (count 2), (contained points: (count 3, skipped 0)))
+stats: seeked 8 times (6 internal); stepped 0 times (4 internal); blocks: 89B cached; points: 4 (4B keys, 4B values), range keys: 2, contained points: 3 (0 skipped)
 
 combined-iter
 seek-lt 1
@@ -134,9 +124,7 @@ cat: (., [cat-dog) @3=beep UPDATED)
 d: (d, [cat-dog) @3=beep)
 d: (d, [cat-dog) @3=beep)
 d: (d, [cat-dog) @3=beep)
-stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 10, 0)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 10, 10)),
-(internal-stats: (block-bytes: (total 267B, cached 267B, read-time 0s)), (points: (count 15, key-bytes 15B, value-bytes 15B, tombstoned 0))),
-(range-key-stats: (count 2), (contained points: (count 6, skipped 0)))
+stats: seeked 10 times (0 fwd/10 rev, internal: 0 fwd/10 rev); stepped 0 times (0 fwd/0 rev, internal: 0 fwd/10 rev); blocks: 267B cached; points: 15 (15B keys, 15B values), range keys: 2, contained points: 6 (0 skipped)
 
 rangekey-iter
 first
@@ -155,5 +143,4 @@ cat [cat-dog) @3=beep UPDATED
 bat [bat-c) @5=boop UPDATED
 cat [cat-catatonic) @3=beep UPDATED
 .
-stats: (interface (dir, seek, step): (fwd, 2, 4), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 2, 4), (rev, 0, 0)),
-(range-key-stats: (count 4), (contained points: (count 0, skipped 0)))
+stats: seeked 2 times (2 internal); stepped 4 times (4 internal), range keys: 4, contained points: 0 (0 skipped)
