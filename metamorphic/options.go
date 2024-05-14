@@ -656,13 +656,17 @@ func RandomOptions(
 		scaleDuration := func(d time.Duration, minFactor, maxFactor float64) time.Duration {
 			return time.Duration(float64(d) * (minFactor + rng.Float64()*(maxFactor-minFactor)))
 		}
+		probeInterval := scaleDuration(referenceDur, 0.10, 0.50) // Between 10-50% of the reference duration.
 		unhealthyThreshold := expRandDuration(rng, 3*referenceDur, time.Second)
 		healthyThreshold := expRandDuration(rng, 3*referenceDur, time.Second)
-		healthyInterval := scaleDuration(healthyThreshold, 1.0, 10.0) // Between 1-10x the healthy threshold
+		// Use a healthy interval between 1-119x the probe interval. The probe
+		// maintains a maximum history 120 entries, so the healthy interval
+		// must not exceed 119x the probe interval.
+		healthyInterval := scaleDuration(probeInterval, 1.0, 119.0)
 		opts.WALFailover = &pebble.WALFailoverOptions{
 			Secondary: wal.Dir{FS: vfs.Default, Dirname: "data/wal_secondary"},
 			FailoverOptions: wal.FailoverOptions{
-				PrimaryDirProbeInterval:      scaleDuration(healthyThreshold, 0.10, 0.50), // Between 10-50% of the healthy threshold
+				PrimaryDirProbeInterval:      probeInterval,
 				HealthyProbeLatencyThreshold: healthyThreshold,
 				HealthyInterval:              healthyInterval,
 				UnhealthySamplingInterval:    scaleDuration(unhealthyThreshold, 0.10, 0.50), // Between 10-50% of the unhealthy threshold
