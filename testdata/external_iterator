@@ -253,8 +253,7 @@ aaaa@3: (aaaa@3, .)
 aaaa@1: (aaaa@1, .)
 aaaaa@3: (aaaaa@3, .)
 aaaaa@1: (aaaaa@1, .)
-stats: (interface (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 475B, cached 0B, read-time 0s)), (points: (count 10, key-bytes 50B, value-bytes 50B, tombstoned 0)))
+stats: seeked 5 times (5 internal); stepped 5 times (5 internal); blocks: 0B cached, 475B not cached (read time: 0s); points: 10 (50B keys, 50B values)
 
 # Note the inclusion of fwd-only. This iterator will use the TrySeekUsingNext
 # optimization and loads ~half the block-bytes as a result.
@@ -282,5 +281,4 @@ aaaa@3: (aaaa@3, .)
 aaaa@1: (aaaa@1, .)
 aaaaa@3: (aaaaa@3, .)
 aaaaa@1: (aaaaa@1, .)
-stats: (interface (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 281B, cached 0B, read-time 0s)), (points: (count 10, key-bytes 50B, value-bytes 50B, tombstoned 0)))
+stats: seeked 5 times (5 internal); stepped 5 times (5 internal); blocks: 0B cached, 281B not cached (read time: 0s); points: 10 (50B keys, 50B values)

@@ -28,7 +28,7 @@ iter
 seek-ge a
 ----
 a: (4, .)
-stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0))
+stats: seeked 1 times (1 internal); stepped 0 times (0 internal)
 SeekGEs with trySeekUsingNext: 0
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -36,7 +36,7 @@ iter
 seek-ge b
 ----
 b: (1, .)
-stats: (interface (dir, seek, step): (fwd, 2, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 2, 0), (rev, 0, 0))
+stats: seeked 2 times (2 internal); stepped 0 times (0 internal)
 SeekGEs with trySeekUsingNext: 2
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -44,7 +44,7 @@ iter
 seek-ge c
 ----
 c: (1, .)
-stats: (interface (dir, seek, step): (fwd, 3, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 3, 0), (rev, 0, 0))
+stats: seeked 3 times (3 internal); stepped 0 times (0 internal)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -54,7 +54,7 @@ iter
 seek-ge bb
 ----
 c: (1, .)
-stats: (interface (dir, seek, step): (fwd, 4, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 4, 0), (rev, 0, 0))
+stats: seeked 4 times (4 internal); stepped 0 times (0 internal)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -65,7 +65,7 @@ iter
 seek-ge bbb
 ----
 c: (1, .)
-stats: (interface (dir, seek, step): (fwd, 5, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 4, 0), (rev, 0, 0))
+stats: seeked 5 times (4 internal); stepped 0 times (0 internal)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -77,7 +77,7 @@ seek-ge e
 ----
 d: (2, .)
 e: (1, .)
-stats: (interface (dir, seek, step): (fwd, 6, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 5, 1), (rev, 0, 0))
+stats: seeked 6 times (5 internal); stepped 1 times (1 internal)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -87,7 +87,7 @@ seek-ge b
 ----
 d: (2, .)
 b: (1, .)
-stats: (interface (dir, seek, step): (fwd, 7, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 6, 1), (rev, 0, 3))
+stats: seeked 7 times (6 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -97,7 +97,7 @@ iter
 seek-prefix-ge a
 ----
 a: (4, .)
-stats: (interface (dir, seek, step): (fwd, 8, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 7, 1), (rev, 0, 3))
+stats: seeked 8 times (7 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -105,7 +105,7 @@ iter
 seek-prefix-ge b
 ----
 b: (1, .)
-stats: (interface (dir, seek, step): (fwd, 9, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 8, 1), (rev, 0, 3))
+stats: seeked 9 times (8 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 2
 
@@ -113,7 +113,7 @@ iter
 seek-prefix-ge c
 ----
 c: (1, .)
-stats: (interface (dir, seek, step): (fwd, 10, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 9, 1), (rev, 0, 3))
+stats: seeked 10 times (9 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -123,7 +123,7 @@ iter
 seek-prefix-ge bb
 ----
 .
-stats: (interface (dir, seek, step): (fwd, 11, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 10, 1), (rev, 0, 3))
+stats: seeked 11 times (10 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -137,7 +137,7 @@ seek-ge a
 ----
 .
 a: (4, .)
-stats: (interface (dir, seek, step): (fwd, 12, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 11, 1), (rev, 0, 3))
+stats: seeked 12 times (11 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -147,7 +147,7 @@ seek-ge b
 ----
 .
 b: (1, .)
-stats: (interface (dir, seek, step): (fwd, 13, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 12, 1), (rev, 0, 3))
+stats: seeked 13 times (12 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -155,7 +155,7 @@ iter
 seek-ge bb
 ----
 .
-stats: (interface (dir, seek, step): (fwd, 14, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 13, 1), (rev, 0, 3))
+stats: seeked 14 times (13 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 5
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -165,7 +165,7 @@ seek-ge bbb
 ----
 .
 c: (1, .)
-stats: (interface (dir, seek, step): (fwd, 15, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 14, 1), (rev, 0, 3))
+stats: seeked 15 times (14 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 5
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -173,7 +173,7 @@ iter
 seek-ge cc
 ----
 .
-stats: (interface (dir, seek, step): (fwd, 16, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 15, 1), (rev, 0, 3))
+stats: seeked 16 times (15 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 6
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -188,7 +188,7 @@ seek-ge b
 ----
 .
 b: (1, .)
-stats: (interface (dir, seek, step): (fwd, 17, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 16, 1), (rev, 0, 3))
+stats: seeked 17 times (16 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 6
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -198,7 +198,7 @@ seek-ge c
 ----
 .
 c: (1, .)
-stats: (interface (dir, seek, step): (fwd, 18, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 17, 1), (rev, 0, 3))
+stats: seeked 18 times (17 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 6
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -210,7 +210,7 @@ seek-ge d
 ----
 .
 d: (2, .)
-stats: (interface (dir, seek, step): (fwd, 19, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 18, 1), (rev, 0, 3))
+stats: seeked 19 times (18 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 8
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -220,7 +220,7 @@ seek-prefix-ge b
 ----
 .
 b: (1, .)
-stats: (interface (dir, seek, step): (fwd, 20, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 19, 1), (rev, 0, 3))
+stats: seeked 20 times (19 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 8
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -230,7 +230,7 @@ seek-prefix-ge c
 ----
 .
 c: (1, .)
-stats: (interface (dir, seek, step): (fwd, 21, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 20, 1), (rev, 0, 3))
+stats: seeked 21 times (20 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 8
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -242,7 +242,7 @@ seek-prefix-ge d
 ----
 .
 d: (2, .)
-stats: (interface (dir, seek, step): (fwd, 22, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 21, 1), (rev, 0, 3))
+stats: seeked 22 times (21 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 8
 SeekPrefixGEs with trySeekUsingNext: 6
 
@@ -258,7 +258,7 @@ seek-ge b
 ----
 .
 b: (1, .)
-stats: (interface (dir, seek, step): (fwd, 23, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 22, 1), (rev, 0, 3))
+stats: seeked 23 times (22 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 8
 SeekPrefixGEs with trySeekUsingNext: 6
 
@@ -268,7 +268,7 @@ seek-ge c
 ----
 .
 c: (1, .)
-stats: (interface (dir, seek, step): (fwd, 24, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 23, 1), (rev, 0, 3))
+stats: seeked 24 times (23 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 8
 SeekPrefixGEs with trySeekUsingNext: 6
 
@@ -280,7 +280,7 @@ seek-ge d
 ----
 .
 d: (2, .)
-stats: (interface (dir, seek, step): (fwd, 25, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 24, 1), (rev, 0, 3))
+stats: seeked 25 times (24 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 10
 SeekPrefixGEs with trySeekUsingNext: 6
 
@@ -290,7 +290,7 @@ seek-prefix-ge b
 ----
 .
 b: (1, .)
-stats: (interface (dir, seek, step): (fwd, 26, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 25, 1), (rev, 0, 3))
+stats: seeked 26 times (25 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 10
 SeekPrefixGEs with trySeekUsingNext: 6
 
@@ -300,7 +300,7 @@ seek-prefix-ge c
 ----
 .
 c: (1, .)
-stats: (interface (dir, seek, step): (fwd, 27, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 26, 1), (rev, 0, 3))
+stats: seeked 27 times (26 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 10
 SeekPrefixGEs with trySeekUsingNext: 6
 
@@ -312,6 +312,6 @@ seek-prefix-ge d
 ----
 .
 d: (2, .)
-stats: (interface (dir, seek, step): (fwd, 28, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 27, 1), (rev, 0, 3))
+stats: seeked 28 times (27 internal); stepped 2 times (1 fwd/1 rev, internal: 1 fwd/3 rev)
 SeekGEs with trySeekUsingNext: 10
 SeekPrefixGEs with trySeekUsingNext: 8
