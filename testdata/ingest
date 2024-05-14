@@ -442,6 +442,9 @@ d
 z:40
 d:40
 
+# Here 000024:[i#24,RANGEDEL-j#inf,RANGEDEL] slips under
+# 000016:[a#20,RANGEDEL-z#inf,RANGEDEL] because the latter only contains range
+# dels [a, c) and [x, z).
 lsm
 ----
 L0.4:
