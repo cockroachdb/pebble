@@ -199,8 +199,7 @@ stats
 ----
 lastPositioningOp="unknown"
 b@5: (b@5, .)
-stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 119B, cached 0B, read-time 0s)), (points: (count 1, key-bytes 3B, value-bytes 3B, tombstoned 0)))
+stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 119B (0B cached), read time 0s; points: 1 (3B keys, 3B values)
 
 mutate batch=foo
 set h@2 h@2
@@ -215,8 +214,7 @@ stats
 .
 lastPositioningOp="seekprefixge"
 c@3: (c@3, .)
-stats: (interface (dir, seek, step): (fwd, 2, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 2, 0), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 119B, cached 0B, read-time 0s)), (points: (count 2, key-bytes 6B, value-bytes 6B, tombstoned 0)))
+stats: seeked 2 times (2 internal); stepped 0 times (0 internal); blocks: 119B (0B cached), read time 0s; points: 2 (6B keys, 6B values)
 
 mutate batch=foo
 set i@1 i@1
@@ -231,8 +229,7 @@ stats
 .
 lastPositioningOp="seekprefixge"
 d@9: (d@9, .)
-stats: (interface (dir, seek, step): (fwd, 3, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 3, 0), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 119B, cached 0B, read-time 0s)), (points: (count 3, key-bytes 9B, value-bytes 9B, tombstoned 0)))
+stats: seeked 3 times (3 internal); stepped 0 times (0 internal); blocks: 119B (0B cached), read time 0s; points: 3 (9B keys, 9B values)
 
 mutate batch=foo
 set j@6 j@6
@@ -247,8 +244,7 @@ stats
 .
 lastPositioningOp="seekprefixge"
 e@8: (e@8, .)
-stats: (interface (dir, seek, step): (fwd, 4, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 4, 0), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 119B, cached 0B, read-time 0s)), (points: (count 4, key-bytes 12B, value-bytes 12B, tombstoned 0)))
+stats: seeked 4 times (4 internal); stepped 0 times (0 internal); blocks: 119B (0B cached), read time 0s; points: 4 (12B keys, 12B values)
 
 # Ensure that a case eligible for TrySeekUsingNext across a SetOptions correctly
 # sees new batch mutations. The batch iterator should ignore the
