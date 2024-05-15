@@ -559,7 +559,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 		// any keys within the iteration prefix. Loading the next file is
 		// unnecessary. This has been observed in practice on slow shared
 		// storage. See #3575.
-		if l.prefix != nil && l.cmp(file.SmallestPointKey.UserKey[:l.split(file.SmallestPointKey.UserKey)], l.prefix) > 0 {
+		if l.prefix != nil && l.cmp(l.split.Prefix(file.SmallestPointKey.UserKey), l.prefix) > 0 {
 			// Note that because we don't update l.iter, a subsequent call to
 			// SeekPrefixGE with TrySeekUsingNext()=true will load the file
 			// (returning newFileLoaded) and disable TrySeekUsingNext before
@@ -848,8 +848,7 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 		// subsequent SeekPrefixGE with TrySeekUsingNext could mistakenly skip
 		// the file's relevant keys.
 		if l.prefix != nil {
-			fileLargestPrefix := l.iterFile.LargestPointKey.UserKey[:l.split(l.iterFile.LargestPointKey.UserKey)]
-			if l.cmp(fileLargestPrefix, l.prefix) > 0 {
+			if l.cmp(l.split.Prefix(l.iterFile.LargestPointKey.UserKey), l.prefix) > 0 {
 				l.exhaustedForward()
 				return nil
 			}
