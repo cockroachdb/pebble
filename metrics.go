@@ -265,6 +265,16 @@ type Metrics struct {
 		BackingTableCount uint64
 		// The sum of the sizes of the BackingTableCount sstables that are backing virtual tables.
 		BackingTableSize uint64
+		// The number of sstables that are compressed with an unknown compression
+		// algorithm.
+		CompressedCountUnknown int64
+		// The number of sstables that are compressed with the default compression
+		// algorithm, snappy.
+		CompressedCountSnappy int64
+		// The number of sstables that are compressed with zstd.
+		CompressedCountZstd int64
+		// The number of sstables that are uncompressed.
+		CompressedCountNone int64
 
 		// Local file sizes.
 		Local struct {
@@ -598,6 +608,20 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(m.NumVirtual()),
 		humanize.Bytes.Uint64(m.VirtualSize()))
 	w.Printf("Local tables size: %s\n", humanize.Bytes.Uint64(m.Table.Local.LiveSize))
+	w.SafeString("Compression types:")
+	if count := m.Table.CompressedCountSnappy; count > 0 {
+		w.Printf(" snappy: %d", redact.Safe(count))
+	}
+	if count := m.Table.CompressedCountZstd; count > 0 {
+		w.Printf(" zstd: %d", redact.Safe(count))
+	}
+	if count := m.Table.CompressedCountNone; count > 0 {
+		w.Printf(" none: %d", redact.Safe(count))
+	}
+	if count := m.Table.CompressedCountUnknown; count > 0 {
+		w.Printf(" unknown: %d", redact.Safe(count))
+	}
+	w.Print("\n")
 
 	formatCacheMetrics := func(m *CacheMetrics, name redact.SafeString) {
 		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",

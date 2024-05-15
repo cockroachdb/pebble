@@ -228,6 +228,7 @@ Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 1.7KB
+Compression types: snappy: 3
 Block cache: 6 entries (970B)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 40.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -328,6 +329,7 @@ Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 3.5KB
+Compression types: snappy: 6
 Block cache: 12 entries (1.9KB)  hit rate: 7.7%
 Table cache: 1 entries (760B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
