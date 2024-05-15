@@ -184,7 +184,7 @@ func TestIterator(t *testing.T) {
 		// NB: Use a mergingIter to filter entries newer than seqNum.
 		fakeIter := base.NewFakeIter(kvs)
 		fakeIter.SetBounds(opts.GetLowerBound(), opts.GetUpperBound())
-		iter := newMergingIter(nil /* logger */, &it.stats.InternalStats, it.cmp, it.split, fakeIter)
+		iter := newMergingIter(nil /* logger */, &it.stats.InternalStats, it.cmp, it.comparer.Split, fakeIter)
 		iter.snapshot = seqNum
 		// NB: This Iterator cannot be cloned since it is not constructed
 		// with a readState. It suffices for this test.
