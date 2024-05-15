@@ -172,6 +172,7 @@ func TestIngestLoadRand(t *testing.T) {
 			},
 			path: paths[i],
 		}
+		expected[i].fileMetadata.Stats.CompressionType = sstable.SnappyCompression
 		expected[i].StatsMarkValid()
 
 		func() {

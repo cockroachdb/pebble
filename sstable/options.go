@@ -47,6 +47,23 @@ func (c Compression) String() string {
 	}
 }
 
+// CompressionFromString returns an sstable.Compression from its
+// string representation. Inverse of c.String() above.
+func CompressionFromString(s string) Compression {
+	switch s {
+	case "Default":
+		return DefaultCompression
+	case "NoCompression":
+		return NoCompression
+	case "Snappy":
+		return SnappyCompression
+	case "ZSTD":
+		return ZstdCompression
+	default:
+		return DefaultCompression
+	}
+}
+
 // FilterType exports the base.FilterType type.
 type FilterType = base.FilterType
 
