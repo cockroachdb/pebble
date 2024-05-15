@@ -512,7 +512,7 @@ func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 	// prefix. If nextEntry is ever invoked while we're already beyond the
 	// current prefix, we're violating the invariant.
 	if invariants.Enabled && m.prefix != nil {
-		if s := m.split(l.iterKV.K.UserKey); !bytes.Equal(m.prefix, l.iterKV.K.UserKey[:s]) {
+		if p := m.split.Prefix(l.iterKV.K.UserKey); !bytes.Equal(m.prefix, p) {
 			m.logger.Fatalf("mergingIter: prefix violation: nexting beyond prefix %q; existing heap root %q\n%s",
 				m.prefix, l.iterKV, debug.Stack())
 		}
@@ -533,7 +533,7 @@ func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 		}
 		m.heap.pop()
 	} else {
-		if m.prefix != nil && !bytes.Equal(m.prefix, l.iterKV.K.UserKey[:m.split(l.iterKV.K.UserKey)]) {
+		if m.prefix != nil && !bytes.Equal(m.prefix, m.split.Prefix(l.iterKV.K.UserKey)) {
 			// Set keys without a matching prefix to their zero values when in prefix
 			// iteration mode and remove iterated level from heap.
 			l.iterKV = nil
@@ -633,7 +633,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterLevel) (bool, error) {
 				// file the seek will land on, we need to detect it in order to
 				// trigger construction of the combined iterator.
 				if m.prefix != nil {
-					if n := m.split(seekKey); !bytes.Equal(m.prefix, seekKey[:n]) {
+					if !bytes.Equal(m.prefix, m.split.Prefix(seekKey)) {
 						for i := item.index; i < len(m.levels); i++ {
 							// Remove this level from the heap. Setting iterKV
 							// to nil should be sufficient for initMinHeap to
@@ -951,7 +951,7 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 		if m.prefix != nil {
 			l.iterKV = l.iter.SeekPrefixGE(m.prefix, key, flags)
 			if l.iterKV != nil {
-				if n := m.split(l.iterKV.K.UserKey); !bytes.Equal(m.prefix, l.iterKV.K.UserKey[:n]) {
+				if !bytes.Equal(m.prefix, m.split.Prefix(l.iterKV.K.UserKey)) {
 					// Prevent keys without a matching prefix from being added to the heap by setting
 					// iterKey and iterValue to their zero values before calling initMinHeap.
 					l.iterKV = nil
@@ -1031,7 +1031,7 @@ func (m *mergingIter) SeekPrefixGEStrict(
 
 	iterKV := m.findNextEntry()
 	if invariants.Enabled && iterKV != nil {
-		if n := m.split(iterKV.K.UserKey); !bytes.Equal(m.prefix, iterKV.K.UserKey[:n]) {
+		if !bytes.Equal(m.prefix, m.split.Prefix(iterKV.K.UserKey)) {
 			m.logger.Fatalf("mergingIter: prefix violation: returning key %q without prefix %q\n", iterKV, m.prefix)
 		}
 	}
@@ -1175,7 +1175,7 @@ func (m *mergingIter) Next() *base.InternalKV {
 
 	iterKV := m.findNextEntry()
 	if invariants.Enabled && m.prefix != nil && iterKV != nil {
-		if n := m.split(iterKV.K.UserKey); !bytes.Equal(m.prefix, iterKV.K.UserKey[:n]) {
+		if !bytes.Equal(m.prefix, m.split.Prefix(iterKV.K.UserKey)) {
 			m.logger.Fatalf("mergingIter: prefix violation: returning key %q without prefix %q\n", iterKV, m.prefix)
 		}
 	}

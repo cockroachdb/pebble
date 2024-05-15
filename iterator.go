@@ -325,11 +325,6 @@ func (i *Iterator) cmp(a, b []byte) int {
 	return i.comparer.Compare(a, b)
 }
 
-// split is a convenience shorthand for the i.comparer.Split function.
-func (i *Iterator) split(a []byte) int {
-	return i.comparer.Split(a)
-}
-
 // equal is a convenience shorthand for the i.comparer.Equal function.
 func (i *Iterator) equal(a, b []byte) bool {
 	return i.comparer.Equal(a, b)
@@ -537,7 +532,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			// Range keys are an exception to the contract and may return a different
 			// prefix. This case is explicitly handled in the switch statement below.
 			if key.Kind() != base.InternalKeyKindRangeKeySet {
-				if n := i.split(key.UserKey); !i.equal(i.prefixOrFullSeekKey, key.UserKey[:n]) {
+				if p := i.comparer.Split.Prefix(key.UserKey); !i.equal(i.prefixOrFullSeekKey, p) {
 					i.opts.logger.Fatalf("pebble: prefix violation: key %q does not have prefix %q\n", key.UserKey, i.prefixOrFullSeekKey)
 				}
 			}
@@ -574,7 +569,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 		switch key.Kind() {
 		case InternalKeyKindRangeKeySet:
 			if i.hasPrefix {
-				if n := i.split(key.UserKey); !i.equal(i.prefixOrFullSeekKey, key.UserKey[:n]) {
+				if p := i.comparer.Split.Prefix(key.UserKey); !i.equal(i.prefixOrFullSeekKey, p) {
 					return
 				}
 			}
@@ -1438,7 +1433,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	if i.comparer.ImmediateSuccessor == nil && i.opts.KeyTypes != IterKeyTypePointsOnly {
 		panic("pebble: ImmediateSuccessor must be provided for SeekPrefixGE with range keys")
 	}
-	prefixLen := i.split(key)
+	prefixLen := i.comparer.Split(key)
 	keyPrefix := key[:prefixLen]
 	var flags base.SeekGEFlags
 	if i.batchJustRefreshed {
@@ -1486,14 +1481,14 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	copy(i.prefixOrFullSeekKey, keyPrefix)
 
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
-		if n := i.split(lowerBound); !bytes.Equal(i.prefixOrFullSeekKey, lowerBound[:n]) {
+		if p := i.comparer.Split.Prefix(lowerBound); !bytes.Equal(i.prefixOrFullSeekKey, p) {
 			i.err = errors.New("pebble: SeekPrefixGE supplied with key outside of lower bound")
 			i.iterValidityState = IterExhausted
 			return false
 		}
 		key = lowerBound
 	} else if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
-		if n := i.split(upperBound); !bytes.Equal(i.prefixOrFullSeekKey, upperBound[:n]) {
+		if p := i.comparer.Split.Prefix(upperBound); !bytes.Equal(i.prefixOrFullSeekKey, p) {
 			i.err = errors.New("pebble: SeekPrefixGE supplied with key outside of upper bound")
 			i.iterValidityState = IterExhausted
 			return false
@@ -1769,7 +1764,7 @@ func (i *Iterator) nextPrefix() IterValidityState {
 	switch i.pos {
 	case iterPosCurForward:
 		// Positioned on the current key. Advance to the next prefix.
-		i.internalNextPrefix(i.split(i.key))
+		i.internalNextPrefix(i.comparer.Split(i.key))
 	case iterPosCurForwardPaused:
 		// Positioned at a limit. Implement as a prefix-agnostic Next. See TODO
 		// up above. The iterator is already positioned at the next key.
@@ -1838,14 +1833,13 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		}
 		// The internal iterator is now positioned at i.key. Advance to the next
 		// prefix.
-		i.internalNextPrefix(i.split(i.key))
+		i.internalNextPrefix(i.comparer.Split(i.key))
 	case iterPosNext:
 		// Already positioned on the next key. Only call nextPrefixKey if the
 		// next key shares the same prefix.
 		if i.iterKV != nil {
-			currKeyPrefixLen := i.split(i.key)
-			iterKeyPrefixLen := i.split(i.iterKV.K.UserKey)
-			if bytes.Equal(i.iterKV.K.UserKey[:iterKeyPrefixLen], i.key[:currKeyPrefixLen]) {
+			currKeyPrefixLen := i.comparer.Split(i.key)
+			if bytes.Equal(i.comparer.Split.Prefix(i.iterKV.K.UserKey), i.key[:currKeyPrefixLen]) {
 				i.internalNextPrefix(currKeyPrefixLen)
 			}
 		}
@@ -1869,8 +1863,7 @@ func (i *Iterator) internalNextPrefix(currKeyPrefixLen int) {
 	if i.iterKV = i.iter.Next(); i.iterKV == nil {
 		return
 	}
-	iterKeyPrefixLen := i.split(i.iterKV.K.UserKey)
-	if !bytes.Equal(i.iterKV.K.UserKey[:iterKeyPrefixLen], i.key[:currKeyPrefixLen]) {
+	if !bytes.Equal(i.comparer.Split.Prefix(i.iterKV.K.UserKey), i.key[:currKeyPrefixLen]) {
 		return
 	}
 	i.stats.ForwardStepCount[InternalIterCall]++
@@ -1881,7 +1874,7 @@ func (i *Iterator) internalNextPrefix(currKeyPrefixLen int) {
 
 	i.iterKV = i.iter.NextPrefix(i.prefixOrFullSeekKey)
 	if invariants.Enabled && i.iterKV != nil {
-		if iterKeyPrefixLen := i.split(i.iterKV.K.UserKey); i.cmp(i.iterKV.K.UserKey[:iterKeyPrefixLen], i.prefixOrFullSeekKey) < 0 {
+		if p := i.comparer.Split.Prefix(i.iterKV.K.UserKey); i.cmp(p, i.prefixOrFullSeekKey) < 0 {
 			panic(errors.AssertionFailedf("pebble: iter.NextPrefix did not advance beyond the current prefix: now at %q; expected to be geq %q",
 				i.iterKV.K, i.prefixOrFullSeekKey))
 		}
