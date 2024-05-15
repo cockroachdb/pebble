@@ -883,7 +883,7 @@ func (c *compaction) newInputIters(
 	// boundaries.
 	if len(rangeDelIters) > 0 {
 		mi := &keyspanimpl.MergingIter{}
-		mi.Init(c.cmp, keyspan.NoopTransform, new(keyspanimpl.MergingBuffers), rangeDelIters...)
+		mi.Init(c.comparer, keyspan.NoopTransform, new(keyspanimpl.MergingBuffers), rangeDelIters...)
 		rangeDelIter = mi
 	}
 
@@ -891,7 +891,7 @@ func (c *compaction) newInputIters(
 	// keyspanimpl.MergingIter, and then interleave them among the points.
 	if len(rangeKeyIters) > 0 {
 		mi := &keyspanimpl.MergingIter{}
-		mi.Init(c.cmp, keyspan.NoopTransform, new(keyspanimpl.MergingBuffers), rangeKeyIters...)
+		mi.Init(c.comparer, keyspan.NoopTransform, new(keyspanimpl.MergingBuffers), rangeKeyIters...)
 		// TODO(radu): why do we have a defragmenter here but not above?
 		di := &keyspan.DefragmentingIter{}
 		di.Init(c.comparer, mi, keyspan.DefragmentInternal, keyspan.StaticDefragmentReducer, new(keyspan.DefragmentingBuffers))
