@@ -1994,6 +1994,11 @@ func (d *DB) Metrics() *Metrics {
 	}
 	for i := 0; i < numLevels; i++ {
 		metrics.Levels[i].Additional.ValueBlocksSize = valueBlocksSizeForLevel(vers, i)
+		unknown, snappy, none, zstd := compressionTypesForLevel(vers, i)
+		metrics.Table.CompressedCountUnknown += int64(unknown)
+		metrics.Table.CompressedCountSnappy += int64(snappy)
+		metrics.Table.CompressedCountZstd += int64(zstd)
+		metrics.Table.CompressedCountNone += int64(none)
 	}
 
 	d.mu.Unlock()

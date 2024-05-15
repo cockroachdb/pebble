@@ -677,6 +677,7 @@ func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) b
 	meta.Stats.PointDeletionsBytesEstimate = pointEstimate
 	meta.Stats.RangeDeletionsBytesEstimate = 0
 	meta.Stats.ValueBlocksSize = props.ValueBlocksSize
+	meta.Stats.CompressionType = sstable.CompressionFromString(props.CompressionName)
 	meta.StatsMarkValid()
 	return true
 }
@@ -1126,4 +1127,67 @@ func valueBlocksSizeForLevel(v *version, level int) (count uint64) {
 		return 0
 	}
 	return *v.Levels[level].Annotation(valueBlocksSizeAnnotator{}).(*uint64)
+}
+
+// compressionTypeAnnotator implements manifest.Annotator, annotating B-tree
+// nodes with the compression type of the file. Its annotation type is a
+// *compressionTypes. The compression type may change once a table's stats are
+// loaded asynchronously, so its values are marked as cacheable only if a file's
+// stats have been loaded.
+type compressionTypeAnnotator struct{}
+
+type compressionTypes struct {
+	snappy, zstd, none, unknown uint64
+}
+
+var _ manifest.Annotator = compressionTypeAnnotator{}
+
+func (a compressionTypeAnnotator) Zero(dst interface{}) interface{} {
+	if dst == nil {
+		return new(compressionTypes)
+	}
+	v := dst.(*compressionTypes)
+	*v = compressionTypes{}
+	return v
+}
+
+func (a compressionTypeAnnotator) Accumulate(
+	f *fileMetadata, dst interface{},
+) (v interface{}, cacheOK bool) {
+	vptr := dst.(*compressionTypes)
+	switch f.Stats.CompressionType {
+	case sstable.SnappyCompression:
+		vptr.snappy++
+	case sstable.ZstdCompression:
+		vptr.zstd++
+	case sstable.NoCompression:
+		vptr.none++
+	default:
+		vptr.unknown++
+	}
+	return vptr, f.StatsValid()
+}
+
+func (a compressionTypeAnnotator) Merge(src interface{}, dst interface{}) interface{} {
+	srcV := src.(*compressionTypes)
+	dstV := dst.(*compressionTypes)
+	dstV.snappy = dstV.snappy + srcV.snappy
+	dstV.zstd = dstV.zstd + srcV.zstd
+	dstV.none = dstV.none + srcV.none
+	dstV.unknown = dstV.unknown + srcV.unknown
+	return dstV
+}
+
+// compressionTypesForLevel returns the count of sstables by compression type
+// used for a level in the LSM. Sstables with compression type snappy or zstd
+// are returned, while others are ignored.
+func compressionTypesForLevel(v *version, level int) (unknown, snappy, none, zstd uint64) {
+	if v.Levels[level].Empty() {
+		return
+	}
+	compression := v.Levels[level].Annotation(compressionTypeAnnotator{}).(*compressionTypes)
+	if compression == nil {
+		return
+	}
+	return compression.unknown, compression.snappy, compression.none, compression.zstd
 }
