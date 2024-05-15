@@ -1022,28 +1022,6 @@ func SortBySmallest(files []*FileMetadata, cmp Compare) {
 	sort.Sort(bySmallest{files, cmp})
 }
 
-// overlaps returns the subset of files in a level that overlap with the given
-// bounds. It is meant for levels other than L0.
-func overlaps(iter LevelIterator, cmp Compare, bounds base.UserKeyBounds) LevelSlice {
-	startIter := iter.Clone()
-
-	startIter.SeekGE(cmp, bounds.Start)
-
-	// Note: LevelSlice uses inclusive bounds, so we need to position endIter at
-	// the last overlapping file.
-	endIter := iter.Clone()
-	{
-		endIterFile := endIter.SeekGE(cmp, bounds.End.Key)
-		// The first file that ends after bounds.End.Key might or might not overlap
-		// the bounds; we need to check the start key.
-		if endIterFile == nil || !bounds.End.IsUpperBoundFor(cmp, endIterFile.Smallest.UserKey) {
-			endIterFile = endIter.Prev()
-		}
-		_ = endIterFile // Ignore unused assignment.
-	}
-	return newBoundedLevelSlice(startIter.Clone().iter, &startIter.iter, &endIter.iter)
-}
-
 // NumLevels is the number of levels a Version contains.
 const NumLevels = 7
 
@@ -1510,7 +1488,7 @@ func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 		return slice
 	}
 
-	return overlaps(v.Levels[level].Iter(), v.cmp.Compare, bounds)
+	return v.Levels[level].Slice().Overlaps(v.cmp.Compare, bounds)
 }
 
 // IterAllLevelsAndSublevels calls fn with an iterator for each L0 sublevel

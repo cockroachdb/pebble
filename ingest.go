@@ -2214,7 +2214,7 @@ func (d *DB) ingestApply(
 
 			if splitFile != nil {
 				if invariants.Enabled {
-					if lf := current.Levels[f.Level].Find(d.cmp, splitFile); lf == nil {
+					if lf := current.Levels[f.Level].Find(d.cmp, splitFile); lf.Empty() {
 						panic("splitFile returned is not in level it should be")
 					}
 				}
