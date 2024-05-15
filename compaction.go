@@ -93,7 +93,7 @@ type compactionLevel struct {
 func (cl compactionLevel) Clone() compactionLevel {
 	newCL := compactionLevel{
 		level: cl.level,
-		files: cl.files.Reslice(func(start, end *manifest.LevelIterator) {}),
+		files: cl.files,
 	}
 	return newCL
 }

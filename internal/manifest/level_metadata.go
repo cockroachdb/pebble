@@ -114,22 +114,29 @@ func (lm *LevelMetadata) Slice() LevelSlice {
 	return newLevelSlice(lm.tree.Iter())
 }
 
-// Find finds the provided file in the level if it exists.
-func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) *LevelFile {
+// Find finds the provided file in the level. If it exists, returns a LevelSlice
+// that contains just that file; otherwise, returns an empty LevelSlice.
+func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) LevelSlice {
 	iter := lm.Iter()
-	if lm.level != 0 {
-		// If lm holds files for levels >0, we can narrow our search by binary
-		// searching by bounds.
-		o := overlaps(iter, cmp, m.UserKeyBounds())
-		iter = o.Iter()
-	}
-	for f := iter.First(); f != nil; f = iter.Next() {
-		if f == m {
-			lf := iter.Take()
-			return &lf
+	if lm.level == 0 {
+		// We only need to look at the portion of files that are "equal" to m with
+		// respect to the L0 ordering.
+		f := iter.seek(func(f *FileMetadata) bool {
+			return f.cmpSeqNum(m) >= 0
+		})
+		for ; f != nil && f.cmpSeqNum(m) == 0; f = iter.Next() {
+			if f == m {
+				return iter.Take().slice
+			}
+		}
+	} else {
+		// For levels other than L0, UserKeyBounds in the level are non-overlapping
+		// so we only need to check one file.
+		if f := iter.SeekGE(cmp, m.UserKeyBounds().Start); f == m {
+			return iter.Take().slice
 		}
 	}
-	return nil
+	return LevelSlice{}
 }
 
 // Annotation lazily calculates and returns the annotation defined by
@@ -376,6 +383,24 @@ func (ls LevelSlice) Reslice(resliceFunc func(start, end *LevelIterator)) LevelS
 	return newBoundedLevelSlice(start.iter.clone(), &start.iter, &end.iter)
 }
 
+// Overlaps returns a new LevelSlice that reflects the portion of files with
+// boundaries that overlap with the provided bounds.
+func (ls LevelSlice) Overlaps(cmp Compare, bounds base.UserKeyBounds) LevelSlice {
+	startIter := ls.Iter()
+	startIter.SeekGE(cmp, bounds.Start)
+
+	// Note: newBoundedLevelSlice uses inclusive bounds, so we need to position
+	// endIter at the last overlapping file.
+	endIter := ls.Iter()
+	endIterFile := endIter.SeekGE(cmp, bounds.End.Key)
+	// The first file that ends at/after bounds.End.Key might or might not overlap
+	// the bounds; we need to check the start key.
+	if endIterFile == nil || !bounds.End.IsUpperBoundFor(cmp, endIterFile.Smallest.UserKey) {
+		endIter.Prev()
+	}
+	return newBoundedLevelSlice(startIter.iter.clone(), &startIter.iter, &endIter.iter)
+}
+
 // KeyType is used to specify the type of keys we're looking for in
 // LevelIterator positioning operations. Files not containing any keys of the
 // desired type are skipped.
@@ -396,8 +421,10 @@ const (
 // LevelIterator iterates over a set of files' metadata. Its zero value is an
 // empty iterator.
 type LevelIterator struct {
-	iter   iterator
-	start  *iterator
+	iter iterator
+	// If set, start is an inclusive lower bound on the iterator.
+	start *iterator
+	// If set, end is an inclusive upper bound on the iterator.
 	end    *iterator
 	filter KeyType
 }

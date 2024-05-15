@@ -136,7 +136,7 @@ type sublevelInfo struct {
 func (cl sublevelInfo) Clone() sublevelInfo {
 	return sublevelInfo{
 		sublevel:   cl.sublevel,
-		LevelSlice: cl.LevelSlice.Reslice(func(start, end *manifest.LevelIterator) {}),
+		LevelSlice: cl.LevelSlice,
 	}
 }
 func (cl sublevelInfo) String() string {
@@ -1515,7 +1515,7 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 		return nil
 	}
 	lf := p.vers.Levels[numLevels-1].Find(p.opts.Comparer.Compare, candidate)
-	if lf == nil {
+	if lf.Empty() {
 		panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.FileNum, numLevels-1))
 	}
 
@@ -1523,8 +1523,8 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	// compaction unit.
 	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, numLevels-1, p.baseLevel)
 	pc.kind = compactionKindElisionOnly
-	pc.startLevel.files = lf.Slice()
-	if anyTablesCompacting(lf.Slice()) {
+	pc.startLevel.files = lf
+	if anyTablesCompacting(lf) {
 		return nil
 	}
 	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
@@ -1553,11 +1553,11 @@ func (p *compactionPickerByScore) pickRewriteCompaction(env compactionEnv) (pc *
 			continue
 		}
 		lf := p.vers.Levels[l].Find(p.opts.Comparer.Compare, candidate)
-		if lf == nil {
+		if lf.Empty() {
 			panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.FileNum, numLevels-1))
 		}
 
-		inputs := lf.Slice()
+		inputs := lf
 		if anyTablesCompacting(inputs) {
 			// Try the next level.
 			continue
