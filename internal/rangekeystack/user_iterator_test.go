@@ -63,7 +63,7 @@ func TestIter(t *testing.T) {
 				dst.End = s.End
 				return nil
 			})
-			iter.Init(cmp, transform, new(keyspanimpl.MergingBuffers), keyspan.NewIter(cmp, spans))
+			iter.Init(testkeys.Comparer, transform, new(keyspanimpl.MergingBuffers), keyspan.NewIter(cmp, spans))
 			return "OK"
 		case "iter":
 			buf.Reset()

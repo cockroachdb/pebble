@@ -68,7 +68,7 @@ func TestMergingIter(t *testing.T) {
 				}
 			}
 			var iter MergingIter
-			iter.Init(cmp, keyspan.VisibleTransform(snapshot), new(MergingBuffers), iters...)
+			iter.Init(base.DefaultComparer, keyspan.VisibleTransform(snapshot), new(MergingBuffers), iters...)
 			keyspan.RunIterCmd(td.Input, &iter, &buf)
 			return buf.String()
 		default:
@@ -181,7 +181,7 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 
 	fragmenterIter := keyspan.NewIter(f.Cmp, allFragmented)
 	mergingIter := &MergingIter{}
-	mergingIter.Init(f.Cmp, keyspan.VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), iters...)
+	mergingIter.Init(testkeys.Comparer, keyspan.VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), iters...)
 
 	// Position both so that it's okay to perform relative positioning
 	// operations immediately.

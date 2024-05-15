@@ -99,7 +99,7 @@ func (ui *UserIteratorConfig) Init(
 	ui.snapshot = snapshot
 	ui.comparer = comparer
 	ui.internalKeys = internalKeys
-	ui.miter.Init(comparer.Compare, ui, &bufs.merging, iters...)
+	ui.miter.Init(comparer, ui, &bufs.merging, iters...)
 	ui.biter.Init(comparer.Compare, comparer.Split, &ui.miter, lower, upper, hasPrefix, prefix)
 	if internalKeys {
 		ui.diter.Init(comparer, &ui.biter, keyspan.DefragmentInternal, keyspan.StaticDefragmentReducer, &bufs.defragmenting)

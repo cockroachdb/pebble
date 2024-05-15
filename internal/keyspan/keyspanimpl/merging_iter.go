@@ -23,10 +23,6 @@ import (
 // seeks would require introducing key comparisons to switchTo{Min,Max}Heap
 // where there currently are none.
 
-// TODO(jackson): There are several opportunities to use base.Equal in the
-// MergingIter implementation, but will require a bit of plumbing to thread the
-// Equal function.
-
 // MergingIter merges spans across levels of the LSM, exposing an iterator over
 // spans that yields sets of spans fragmented at unique user key boundaries.
 //
@@ -170,6 +166,7 @@ import (
 // accommodate this, find{Next,Prev}FragmentSet copy the initial boundary if the
 // subsequent Next/Prev would move to the next span.
 type MergingIter struct {
+	comparer *base.Comparer
 	*MergingBuffers
 	// start and end hold the bounds for the span currently under the
 	// iterator position.
@@ -294,16 +291,17 @@ func (l *mergingIterLevel) prev() error {
 
 // Init initializes the merging iterator with the provided fragment iterators.
 func (m *MergingIter) Init(
-	cmp base.Compare,
+	comparer *base.Comparer,
 	transformer keyspan.Transformer,
 	bufs *MergingBuffers,
 	iters ...keyspan.FragmentIterator,
 ) {
 	*m = MergingIter{
+		comparer:       comparer,
 		MergingBuffers: bufs,
 		transformer:    transformer,
 	}
-	m.heap.cmp = cmp
+	m.heap.cmp = comparer.Compare
 	levels, items := m.levels, m.heap.items
 
 	// Invariant: cap(levels) >= cap(items)
@@ -393,7 +391,7 @@ func (m *MergingIter) SeekGE(key []byte) (*keyspan.Span, error) {
 			return nil, err
 		case s == nil:
 			l.heapKey = boundKey{kind: boundKindInvalid}
-		case m.cmp(s.End, key) <= 0:
+		case m.comparer.Compare(s.End, key) <= 0:
 			l.heapKey = boundKey{
 				kind: boundKindFragmentEnd,
 				key:  s.End,
@@ -459,7 +457,7 @@ func (m *MergingIter) SeekGE(key []byte) (*keyspan.Span, error) {
 	// equal to the seek key `key`. In this case, we want this key to be our
 	// start boundary.
 	if m.heap.items[0].boundKey.kind == boundKindFragmentStart &&
-		m.cmp(m.heap.items[0].boundKey.key, key) == 0 {
+		m.comparer.Equal(m.heap.items[0].boundKey.key, key) {
 		// Call findNextFragmentSet, which will set m.start to the heap root and
 		// proceed forward.
 		return m.findNextFragmentSet()
@@ -529,7 +527,7 @@ func (m *MergingIter) SeekLT(key []byte) (*keyspan.Span, error) {
 			return nil, err
 		case s == nil:
 			l.heapKey = boundKey{kind: boundKindInvalid}
-		case m.cmp(s.Start, key) >= 0:
+		case m.comparer.Compare(s.Start, key) >= 0:
 			l.heapKey = boundKey{
 				kind: boundKindFragmentStart,
 				key:  s.Start,
@@ -594,7 +592,7 @@ func (m *MergingIter) SeekLT(key []byte) (*keyspan.Span, error) {
 	// equal to the seek key `key`. In this case, we want this key to be our end
 	// boundary.
 	if m.heap.items[0].boundKey.kind == boundKindFragmentEnd &&
-		m.cmp(m.heap.items[0].boundKey.key, key) == 0 {
+		m.comparer.Equal(m.heap.items[0].boundKey.key, key) {
 		// Call findPrevFragmentSet, which will set m.end to the heap root and
 		// proceed backwards.
 		return m.findPrevFragmentSet()
@@ -757,7 +755,7 @@ func (m *MergingIter) switchToMinHeap() error {
 	if invariants.Enabled {
 		for i := range m.levels {
 			l := &m.levels[i]
-			if l.heapKey.kind != boundKindInvalid && m.cmp(l.heapKey.key, m.start) > 0 {
+			if l.heapKey.kind != boundKindInvalid && m.comparer.Compare(l.heapKey.key, m.start) > 0 {
 				panic("pebble: invariant violation: max-heap key > m.start")
 			}
 		}
@@ -812,7 +810,7 @@ func (m *MergingIter) switchToMaxHeap() error {
 	if invariants.Enabled {
 		for i := range m.levels {
 			l := &m.levels[i]
-			if l.heapKey.kind != boundKindInvalid && m.cmp(l.heapKey.key, m.end) < 0 {
+			if l.heapKey.kind != boundKindInvalid && m.comparer.Compare(l.heapKey.key, m.end) < 0 {
 				panic("pebble: invariant violation: min-heap key < m.end")
 			}
 		}
@@ -825,10 +823,6 @@ func (m *MergingIter) switchToMaxHeap() error {
 	}
 	m.initMaxHeap()
 	return nil
-}
-
-func (m *MergingIter) cmp(a, b []byte) int {
-	return m.heap.cmp(a, b)
 }
 
 func (m *MergingIter) findNextFragmentSet() (*keyspan.Span, error) {
@@ -880,7 +874,7 @@ func (m *MergingIter) findNextFragmentSet() (*keyspan.Span, error) {
 		if err := m.nextEntry(); err != nil {
 			return nil, err
 		}
-		for len(m.heap.items) > 0 && m.cmp(m.heapRoot(), m.start) == 0 {
+		for len(m.heap.items) > 0 && m.comparer.Equal(m.heapRoot(), m.start) {
 			if err := m.nextEntry(); err != nil {
 				return nil, err
 			}
@@ -962,7 +956,7 @@ func (m *MergingIter) findPrevFragmentSet() (*keyspan.Span, error) {
 		if err := m.prevEntry(); err != nil {
 			return nil, err
 		}
-		for len(m.heap.items) > 0 && m.cmp(m.heapRoot(), m.end) == 0 {
+		for len(m.heap.items) > 0 && m.comparer.Equal(m.heapRoot(), m.end) {
 			if err := m.prevEntry(); err != nil {
 				return nil, err
 			}
@@ -1015,7 +1009,7 @@ func (m *MergingIter) heapRoot() []byte {
 // with a span returned by a child iterator.
 func (m *MergingIter) synthesizeKeys(dir int8) (bool, *keyspan.Span, error) {
 	if invariants.Enabled {
-		if m.cmp(m.start, m.end) >= 0 {
+		if m.comparer.Compare(m.start, m.end) >= 0 {
 			panic(fmt.Sprintf("pebble: invariant violation: span start ≥ end: %s >= %s", m.start, m.end))
 		}
 	}
@@ -1046,9 +1040,7 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, *keyspan.Span, error) {
 		Keys:      m.keys,
 		KeysOrder: keyspan.ByTrailerDesc,
 	}
-	// NB: m.heap.cmp is a base.Compare, whereas m.cmp is a method on
-	// MergingIter.
-	if err := m.transformer.Transform(m.heap.cmp, m.span, &m.span); err != nil {
+	if err := m.transformer.Transform(m.comparer.Compare, m.span, &m.span); err != nil {
 		return false, nil, err
 	}
 	return found, &m.span, nil

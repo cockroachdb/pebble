@@ -320,8 +320,8 @@ func TestLevelIterEquivalence(t *testing.T) {
 			levelIters = append(levelIters, &levelIter)
 		}
 
-		iter1.Init(base.DefaultComparer.Compare, keyspan.VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), fileIters...)
-		iter2.Init(base.DefaultComparer.Compare, keyspan.VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), levelIters...)
+		iter1.Init(base.DefaultComparer, keyspan.VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), fileIters...)
+		iter2.Init(base.DefaultComparer, keyspan.VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), levelIters...)
 
 		// Check iter1 and iter2 for equivalence.
 		s1, err1 := iter1.First()
