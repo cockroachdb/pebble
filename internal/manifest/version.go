@@ -72,6 +72,8 @@ type TableStats struct {
 	RangeDeletionsBytesEstimate uint64
 	// Total size of value blocks and value index block.
 	ValueBlocksSize uint64
+	// CompressionType is the compression type of the table.
+	CompressionType sstable.Compression
 }
 
 // boundType represents the type of key (point or range) present as the smallest

@@ -31,6 +31,7 @@ Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 709B
+Compression types: unknown: 1
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -64,6 +65,7 @@ Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 709B
+Compression types: unknown: 1
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
