@@ -123,6 +123,11 @@ type ImmediateSuccessor func(dst, a []byte) []byte
 //     If Compare(prefix(a), prefix(b)) = 0, then Compare(a, b) = Compare(suffix(a), suffix(b)).
 type Split func(a []byte) int
 
+// Prefix returns the prefix of the key k, using s to split the key.
+func (s Split) Prefix(k []byte) []byte {
+	return k[:s(k)]
+}
+
 // DefaultSplit is a trivial implementation of Split which always returns the
 // full key.
 var DefaultSplit Split = func(key []byte) int { return len(key) }
