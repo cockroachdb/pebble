@@ -2289,8 +2289,12 @@ func TestIngestTargetLevel(t *testing.T) {
 					},
 					v: d.mu.versions.currentVersion(),
 				}
-				level, overlapFile, err := ingestTargetLevel(context.Background(), overlapChecker,
-					1, d.mu.compact.inProgress, meta, suggestSplit)
+				lsmOverlap, err := overlapChecker.DetermineLSMOverlap(context.Background(), meta.UserKeyBounds())
+				if err != nil {
+					return err.Error()
+				}
+				level, overlapFile, err := ingestTargetLevel(
+					context.Background(), d.cmp, lsmOverlap, 1, d.mu.compact.inProgress, meta, suggestSplit)
 				if err != nil {
 					return err.Error()
 				}

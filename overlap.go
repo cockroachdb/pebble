@@ -28,6 +28,83 @@ type overlapChecker struct {
 	keyspanLevelIter keyspanimpl.LevelIter
 }
 
+// levelOverlapResult indicates the result of checking data overlap between a
+// key range and a level. We check two types of overlap:
+//
+//   - file boundary overlap: whether the key range overlaps any of the level's
+//     user key boundaries;
+//
+//   - data overlap: whether the key range overlaps any keys or ranges in the
+//     level. Data overlap implies file boundary overlap.
+type levelOverlapResult uint8
+
+const (
+	// The key range of interest doesn't overlap any tables on the level.
+	noBoundaryOverlap levelOverlapResult = iota + 1
+	// The key range of interest overlaps some tables on the level in terms of
+	// boundary, but the tables contain no data within that range.
+	noDataOverlap
+	// At least a key or range in the level overlaps with the key range of
+	// interest. Note that the data overlap check is best-effort and there could
+	// be false positives.
+	dataOverlap
+)
+
+// levelOverlap is the result of checking overlap against an LSM level.
+type levelOverlap struct {
+	result levelOverlapResult
+	// splitFile can be set only when result is noDataOverlap. If it is set, this
+	// file can be split to free up the range of interest.
+	splitFile *fileMetadata
+}
+
+// lsmOverlap stores the result of checking for data overlap for the LSM levels,
+// starting from the top (L0). The overlap checks are only populated up to the
+// first level where we find data overlap.
+//
+// This is akin to a tetris game where a horizontal bar is falling and we want
+// to determine where it lands.
+type lsmOverlap [numLevels]levelOverlap
+
+// DetermineLSMOverlap calculates the lsmOverlap for the given bounds.
+func (c *overlapChecker) DetermineLSMOverlap(
+	ctx context.Context, bounds base.UserKeyBounds,
+) (lsmOverlap, error) {
+	var result lsmOverlap
+	for level := 0; level < numLevels; level++ {
+		var err error
+		result[level], err = c.DetermineLevelOverlap(ctx, bounds, level)
+		if err != nil || result[level].result == dataOverlap {
+			return result, err
+		}
+	}
+	return result, nil
+}
+
+func (c *overlapChecker) DetermineLevelOverlap(
+	ctx context.Context, bounds base.UserKeyBounds, level int,
+) (levelOverlap, error) {
+	// First, check boundary overlap.
+	boundaryOverlaps := c.v.Overlaps(level, bounds)
+	if boundaryOverlaps.Empty() {
+		return levelOverlap{result: noBoundaryOverlap}, nil
+	}
+
+	overlap, err := c.DetermineAnyDataOverlapInLevel(ctx, bounds, level)
+	if err != nil || overlap {
+		return levelOverlap{result: dataOverlap}, err
+	}
+	var splitFile *fileMetadata
+	if boundaryOverlaps.Len() == 1 {
+		iter := boundaryOverlaps.Iter()
+		splitFile = iter.First()
+	}
+	return levelOverlap{
+		result:    noDataOverlap,
+		splitFile: splitFile,
+	}, nil
+}
+
 // DetermineAnyDataOverlapInLevel checks whether any keys within the provided
 // bounds and level exist within the checker's associated LSM version. This
 // function checks for actual keys within the bounds, performing I/O if
@@ -52,6 +129,9 @@ func (c *overlapChecker) DetermineAnyDataOverlapInLevel(
 	// NB: sublevel 0 contains the newest keys, whereas sublevel n contains the
 	// oldest keys.
 	if level == 0 {
+		if c.v.L0Sublevels == nil {
+			return true, base.AssertionFailedf("could not read L0 sublevels")
+		}
 		for subLevel := 0; subLevel < len(c.v.L0SublevelFiles); subLevel++ {
 			manifestIter := c.v.L0Sublevels.Levels[subLevel].Iter()
 			pointOverlap, err := c.determinePointKeyOverlapInLevel(
