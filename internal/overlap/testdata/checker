@@ -1,0 +1,119 @@
+define t1
+points:
+  b.SET.1
+  d.SET.1
+  u.SET.1
+----
+
+overlap t1
+[a, b)
+[a, b]
+[b1, b2]
+[b, c]
+[d, e]
+[e, u)
+[e, u]
+[u, w]
+[v, w]
+----
+[a, b): no overlap
+[a, b]: possible overlap
+[b1, b2]: no overlap
+[b, c]: possible overlap
+[d, e]: possible overlap
+[e, u): no overlap
+[e, u]: possible overlap
+[u, w]: possible overlap
+[v, w]: no overlap
+
+define t2
+range-dels:
+  b-e:{#1,RANGEDEL}
+  h-k:{#1,RANGEDEL}
+----
+
+overlap t2
+[a, b)
+[a, b]
+[d, f]
+[e, f]
+[e, h)
+[e, h]
+[j, l)
+[k, l]
+----
+[a, b): no overlap
+[a, b]: possible overlap
+[d, f]: possible overlap
+[e, f]: no overlap
+[e, h): no overlap
+[e, h]: possible overlap
+[j, l): possible overlap
+[k, l]: no overlap
+
+define t3
+range-keys:
+  b-e:{#1,RANGEKEYDEL}
+  h-k:{#1,RANGEKEYDEL}
+----
+
+overlap t3
+[a, b)
+[a, b]
+[d, f]
+[e, f]
+[e, h)
+[e, h]
+[j, l)
+[k, l]
+----
+[a, b): no overlap
+[a, b]: possible overlap
+[d, f]: possible overlap
+[e, f]: no overlap
+[e, h): no overlap
+[e, h]: possible overlap
+[j, l): possible overlap
+[k, l]: no overlap
+
+
+define tBE
+points:
+  b.SET.1
+  d.SET.1
+range-keys:
+  c-e:{#1,RANGEKEYDEL}
+----
+
+define tFM
+override-bounds: [f, m)
+points:
+  g.SET.1
+  j.SET.1
+----
+
+define tMP
+override-bounds: [m, p)
+points:
+  n.SET.1
+  o.SET.1
+----
+
+overlap tBE tFM tMP
+[b1, b2]
+[c1, c2]
+[e, f)
+[g1, g2]
+[j1, m1]
+[n1, n2]
+[n, o]
+[a, z]
+----
+[b1, b2]: no overlap
+[c1, c2]: possible overlap
+[e, f): no overlap
+[g1, g2]: no overlap
+[j1, m1]: no overlap
+[n1, n2]: no overlap
+[n, o]: possible overlap
+[a, z]: possible overlap

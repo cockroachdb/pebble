@@ -299,6 +299,21 @@ func (m *FileMetadata) UserKeyBounds() base.UserKeyBounds {
 	return base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
 }
 
+// UserKeyBoundsByType returns the user key bounds for the given key types.
+// Note that the returned bounds are invalid when requesting KeyTypePoint but
+// HasPointKeys is false, or when requesting KeyTypeRange and HasRangeKeys is
+// false.
+func (m *FileMetadata) UserKeyBoundsByType(keyType KeyType) base.UserKeyBounds {
+	switch keyType {
+	case KeyTypePoint:
+		return base.UserKeyBoundsFromInternal(m.SmallestPointKey, m.LargestPointKey)
+	case KeyTypeRange:
+		return base.UserKeyBoundsFromInternal(m.SmallestRangeKey, m.LargestRangeKey)
+	default:
+		return base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
+	}
+}
+
 // SyntheticSeqNum returns a SyntheticSeqNum which is set when SmallestSeqNum
 // equals LargestSeqNum.
 func (m *FileMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
