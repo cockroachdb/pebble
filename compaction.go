@@ -1244,9 +1244,14 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 			ingestFlushable.exciseSpan.Contains(d.cmp, file.FileMetadata.Largest) {
 			level = 6
 		} else {
-			var err error
-			level, fileToSplit, err = ingestTargetLevel(ctx, overlapChecker,
-				baseLevel, d.mu.compact.inProgress, file.FileMetadata, suggestSplit)
+			// TODO(radu): this can perform I/O; we should not do this while holding DB.mu.
+			lsmOverlap, err := overlapChecker.DetermineLSMOverlap(ctx, file.UserKeyBounds())
+			if err != nil {
+				return nil, err
+			}
+			level, fileToSplit, err = ingestTargetLevel(
+				ctx, d.cmp, lsmOverlap, baseLevel, d.mu.compact.inProgress, file.FileMetadata, suggestSplit,
+			)
 			if err != nil {
 				return nil, err
 			}

@@ -831,7 +831,8 @@ func ingestUpdateSeqNum(
 // is returned as the splitFile.
 func ingestTargetLevel(
 	ctx context.Context,
-	overlapChecker *overlapChecker,
+	cmp base.Compare,
+	lsmOverlap lsmOverlap,
 	baseLevel int,
 	compactions map[*compaction]struct{},
 	meta *fileMetadata,
@@ -903,46 +904,32 @@ func ingestTargetLevel(
 	// existing point that falls within the ingested table bounds as being "data
 	// overlap".
 
-	// This assertion implicitly checks that we have the current version of
-	// the metadata.
-	if overlapChecker.v.L0Sublevels == nil {
-		return 0, nil, base.AssertionFailedf("could not read L0 sublevels")
-	}
-	bounds := meta.UserKeyBounds()
-
-	// Check for overlap over the keys of L0.
-	if overlap, err := overlapChecker.DetermineAnyDataOverlapInLevel(ctx, bounds, 0); err != nil {
-		return 0, nil, err
-	} else if overlap {
+	if lsmOverlap[0].result == dataOverlap {
 		return 0, nil, nil
 	}
-
+	targetLevel = 0
+	splitFile = nil
 	for level := baseLevel; level < numLevels; level++ {
-		dataOverlap, err := overlapChecker.DetermineAnyDataOverlapInLevel(ctx, bounds, level)
-		if err != nil {
-			return 0, nil, err
-		} else if dataOverlap {
-			return targetLevel, splitFile, nil
-		}
-
-		// Check boundary overlap.
 		var candidateSplitFile *fileMetadata
-		boundaryOverlaps := overlapChecker.v.Overlaps(level, bounds)
-		if !boundaryOverlaps.Empty() {
-			// We are already guaranteed to not have any data overlaps with files
-			// in boundaryOverlaps, otherwise we'd have returned in the above if
-			// statements. Use this, plus boundaryOverlaps.Len() == 1 to detect for
-			// the case where we can slot this file into the current level despite
-			// a boundary overlap, by splitting one existing file into two virtual
-			// sstables.
-			if suggestSplit && boundaryOverlaps.Len() == 1 {
-				iter := boundaryOverlaps.Iter()
-				candidateSplitFile = iter.First()
-			} else {
-				// We either don't want to suggest ingest-time splits (i.e.
-				// !suggestSplit), or we boundary-overlapped with more than one file.
+		switch lsmOverlap[level].result {
+		case dataOverlap:
+			// We cannot ingest into or under this level; return the best target level
+			// so far.
+			return targetLevel, splitFile, nil
+
+		case noDataOverlap:
+			if !suggestSplit || lsmOverlap[level].splitFile == nil {
+				// We can ingest under this level, but not into this level.
 				continue
 			}
+			// We can ingest into this level if we split this file.
+			candidateSplitFile = lsmOverlap[level].splitFile
+
+		case noBoundaryOverlap:
+		// We can ingest into this level.
+
+		default:
+			return 0, nil, base.AssertionFailedf("unexpected lsmOverlap result: %v", lsmOverlap[level].result)
 		}
 
 		// Check boundary overlap with any ongoing compactions. We consider an
@@ -964,8 +951,8 @@ func ingestTargetLevel(
 			if c.outputLevel == nil || level != c.outputLevel.level {
 				continue
 			}
-			if overlapChecker.comparer.Compare(meta.Smallest.UserKey, c.largest.UserKey) <= 0 &&
-				overlapChecker.comparer.Compare(meta.Largest.UserKey, c.smallest.UserKey) >= 0 {
+			if cmp(meta.Smallest.UserKey, c.largest.UserKey) <= 0 &&
+				cmp(meta.Largest.UserKey, c.smallest.UserKey) >= 0 {
 				overlaps = true
 				break
 			}
@@ -2202,14 +2189,20 @@ func (d *DB) ingestApply(
 					f.Level = 6
 				}
 			} else {
-				// TODO(bilal): ingestTargetLevel does disk IO (reading files for data
-				// overlap) even though we're holding onto d.mu. Consider unlocking
-				// d.mu while we do this. We already hold versions.logLock so we should
-				// not see any version applications while we're at this. The one
-				// complication here would be pulling out the mu.compact.inProgress
-				// check from ingestTargetLevel, as that requires d.mu to be held.
-				f.Level, splitFile, err = ingestTargetLevel(ctx, overlapChecker,
-					baseLevel, d.mu.compact.inProgress, m, shouldIngestSplit)
+				// We check overlap against the LSM without holding DB.mu. Note that we
+				// are still holding the log lock, so the version cannot change.
+				// TODO(radu): perform this check optimistically outside of the log lock.
+				var overlap lsmOverlap
+				overlap, err = func() (lsmOverlap, error) {
+					d.mu.Unlock()
+					defer d.mu.Lock()
+					return overlapChecker.DetermineLSMOverlap(ctx, m.UserKeyBounds())
+				}()
+				if err == nil {
+					f.Level, splitFile, err = ingestTargetLevel(
+						ctx, d.cmp, overlap, baseLevel, d.mu.compact.inProgress, m, shouldIngestSplit,
+					)
+				}
 			}
 
 			if splitFile != nil {
