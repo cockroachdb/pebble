@@ -820,7 +820,7 @@ Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 0B
-Compression types: unknown: 1
+Compression types: snappy: 1
 Block cache: 1 entries (440B)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -867,7 +867,7 @@ Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 0B
-Compression types: snappy: 1 unknown: 1
+Compression types: snappy: 2
 Block cache: 6 entries (996B)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -915,7 +915,7 @@ Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 589B
-Compression types: snappy: 2 unknown: 1
+Compression types: snappy: 3
 Block cache: 6 entries (996B)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -954,7 +954,7 @@ Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 589B
-Compression types: unknown: 3
+Compression types: snappy: 3
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
