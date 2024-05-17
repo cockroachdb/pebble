@@ -602,8 +602,8 @@ rocksdb:
   rocksdb.raw.value.size: 2
   rocksdb.deleted.keys: 1
   rocksdb.num.range-deletions: 0
-  rocksdb.comparator: pebble.internal.testkeys
   rocksdb.compression: Snappy
+  rocksdb.comparator: pebble.internal.testkeys
   rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
   rocksdb.data.size: 53
   rocksdb.filter.size: 0
@@ -710,8 +710,8 @@ rocksdb:
   rocksdb.raw.value.size: 3
   rocksdb.deleted.keys: 0
   rocksdb.num.range-deletions: 0
-  rocksdb.comparator: pebble.internal.testkeys
   rocksdb.compression: Snappy
+  rocksdb.comparator: pebble.internal.testkeys
   rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
   rocksdb.data.size: 47
   rocksdb.filter.size: 0
@@ -832,8 +832,8 @@ rocksdb:
   rocksdb.raw.value.size: 1
   rocksdb.deleted.keys: 1
   rocksdb.num.range-deletions: 1
-  rocksdb.comparator: pebble.internal.testkeys
   rocksdb.compression: Snappy
+  rocksdb.comparator: pebble.internal.testkeys
   rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
   rocksdb.data.size: 13
   rocksdb.filter.size: 0

@@ -26,9 +26,9 @@ func TestPropertiesLoad(t *testing.T) {
 			NumRangeDeletions: 17,
 			RawKeySize:        23938,
 			RawValueSize:      1912,
+			CompressionName:   "Snappy",
 		},
 		ComparerName:           "leveldb.BytewiseComparator",
-		CompressionName:        "Snappy",
 		CompressionOptions:     "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
 		DataSize:               13913,
 		IndexSize:              325,
@@ -64,9 +64,9 @@ var testProps = Properties{
 		NumRangeKeySets:   20,
 		RawKeySize:        25,
 		RawValueSize:      26,
+		CompressionName:   "compression name",
 	},
 	ComparerName:           "comparator name",
-	CompressionName:        "compression name",
 	CompressionOptions:     "compression option",
 	DataSize:               3,
 	FilterPolicyName:       "filter policy name",
@@ -93,16 +93,16 @@ func TestPropertiesSave(t *testing.T) {
 	expected := &Properties{}
 	*expected = testProps
 
-	check1 := func(expected *Properties) {
+	check1 := func(e *Properties) {
 		// Check that we can save properties and read them back.
 		var w rawBlockWriter
 		w.restartInterval = propertiesBlockRestartInterval
-		expected.save(TableFormatPebblev2, &w)
+		e.save(TableFormatPebblev2, &w)
 		var props Properties
 
 		require.NoError(t, props.load(w.finish(), 0, make(map[string]struct{})))
 		props.Loaded = nil
-		if diff := pretty.Diff(*expected, props); diff != nil {
+		if diff := pretty.Diff(*e, props); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
 		}
 	}
@@ -116,6 +116,7 @@ func TestPropertiesSave(t *testing.T) {
 		if props.IndexPartitions == 0 {
 			props.TopLevelIndexSize = 0
 		}
+		props.Loaded = nil
 		check1(&props)
 	}
 }

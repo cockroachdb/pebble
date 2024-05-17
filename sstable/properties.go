@@ -99,6 +99,8 @@ type CommonProperties struct {
 	NumRangeKeySets uint64 `prop:"pebble.num.range-key-sets"`
 	// Total size of value blocks and value index block. Only serialized if > 0.
 	ValueBlocksSize uint64 `prop:"pebble.value-blocks.size"`
+	// The compression algorithm used to compress blocks.
+	CompressionName string `prop:"rocksdb.compression"`
 }
 
 // String is only used for testing purposes.
@@ -127,8 +129,6 @@ type Properties struct {
 
 	// The name of the comparer used in this table.
 	ComparerName string `prop:"rocksdb.comparator"`
-	// The compression algorithm used to compress blocks.
-	CompressionName string `prop:"rocksdb.compression"`
 	// The compression options used to compress blocks.
 	CompressionOptions string `prop:"rocksdb.compression_options"`
 	// The total size of all data blocks.
