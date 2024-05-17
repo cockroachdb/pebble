@@ -162,6 +162,17 @@ func TestMetrics(t *testing.T) {
 		if createOnSharedLower {
 			require.NoError(t, d.SetCreatorID(1))
 		}
+		if reopen {
+			// Stats population is eventually consistent, and happens in the
+			// background when a DB is re-opened. To avoid races, wait synchronously
+			// for all tables to have their stats fully populated, which requires
+			// opening each SST.
+			d.mu.Lock()
+			for !d.mu.tableStats.loadedInitial {
+				d.mu.tableStats.cond.Wait()
+			}
+			d.mu.Unlock()
+		}
 		iters = make(map[string]*Iterator)
 		closeFunc = func() {
 			for _, i := range iters {
