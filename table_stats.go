@@ -323,6 +323,7 @@ func (d *DB) loadTableStats(
 			// picking.
 			stats.NumRangeKeySets = props.NumRangeKeySets
 			stats.ValueBlocksSize = props.ValueBlocksSize
+			stats.CompressionType = sstable.CompressionFromString(props.CompressionName)
 			return
 		})
 	if err != nil {
