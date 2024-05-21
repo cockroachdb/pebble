@@ -284,11 +284,12 @@ func (k *keyManager) SortedKeysForObj(o objID) []keyMeta {
 }
 
 // InRangeKeysForObj returns all keys in the range [lower, upper) associated with the
-// given object, in sorted order.
+// given object, in sorted order. If either of the bounds is nil, it is ignored.
 func (k *keyManager) InRangeKeysForObj(o objID, lower, upper []byte) []keyMeta {
 	var inRangeKeys []keyMeta
 	for _, km := range k.SortedKeysForObj(o) {
-		if k.comparer.Compare(km.key, lower) >= 0 && k.comparer.Compare(km.key, upper) < 0 {
+		if (lower == nil || k.comparer.Compare(km.key, lower) >= 0) &&
+			(upper == nil || k.comparer.Compare(km.key, upper) < 0) {
 			inRangeKeys = append(inRangeKeys, km)
 		}
 	}
