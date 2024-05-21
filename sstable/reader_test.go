@@ -1086,6 +1086,7 @@ type readCallType int
 
 const (
 	SeekGE readCallType = iota
+	SeekPrefixGE
 	Next
 	Prev
 	SeekLT
@@ -1097,6 +1098,8 @@ func (rct readCallType) String() string {
 	switch rct {
 	case SeekGE:
 		return "SeekGE"
+	case SeekPrefixGE:
+		return "SeekPrefixGE"
 	case Next:
 		return "Next"
 	case Prev:
@@ -1114,7 +1117,7 @@ func (rct readCallType) String() string {
 
 func (rct readCallType) Opposite() readCallType {
 	switch rct {
-	case SeekGE:
+	case SeekGE, SeekPrefixGE:
 		return SeekLT
 	case Next:
 		return Prev
@@ -1195,13 +1198,18 @@ func (rw *readerWorkload) setCallAfterInvalid() {
 func (rw *readerWorkload) handleInvalid(
 	callType readCallType, iter Iterator,
 ) (*InternalKey, base.LazyValue) {
-	switch {
-	case (SeekGE == callType || Next == callType || Last == callType):
+	switch callType {
+	case SeekGE, Next, Last:
 		if len(rw.seekKeyAfterInvalid) == 0 {
 			return iter.Prev()
 		}
 		return iter.SeekLT(rw.seekKeyAfterInvalid, base.SeekLTFlagsNone)
-	case (SeekLT == callType || Prev == callType || First == callType):
+	case SeekPrefixGE:
+		if len(rw.seekKeyAfterInvalid) == 0 {
+			return iter.First()
+		}
+		return iter.SeekLT(rw.seekKeyAfterInvalid, base.SeekLTFlagsNone)
+	case SeekLT, Prev, First:
 		if len(rw.seekKeyAfterInvalid) == 0 {
 			return iter.Next()
 		}
@@ -1216,6 +1224,17 @@ func (rw *readerWorkload) read(call readCall, iter Iterator) (*InternalKey, base
 	switch call.callType {
 	case SeekGE:
 		return iter.SeekGE(call.seekKey, base.SeekGEFlagsNone)
+	case SeekPrefixGE:
+		cmp := testkeys.Comparer
+		prefix := call.seekKey[:cmp.Split(call.seekKey)]
+		k, v := iter.SeekPrefixGE(prefix, call.seekKey, base.SeekGEFlagsNone)
+		// If there is no key with this prefix to return, SeekPrefixGE might return
+		// nil or it might return a larger key. Make it always return nil so we can
+		// cross-check results.
+		if k != nil && !cmp.Equal(prefix, k.UserKey[:cmp.Split(k.UserKey)]) {
+			return nil, base.LazyValue{}
+		}
+		return k, v
 	case Next:
 		return rw.repeatRead(call, iter)
 	case SeekLT:
@@ -1266,8 +1285,7 @@ func createReadWorkload(
 			// Sqrt the likelihood of calling First and Last as they're not very interesting.
 			callType = readCallType(rng.Intn(int(Last + 1)))
 		}
-		if callType == SeekLT || callType == SeekGE {
-
+		if callType == SeekLT || callType == SeekGE || callType == SeekPrefixGE {
 			idx := rng.Int63n(int64(ks.MaxLen()))
 			ts := rng.Int63n(maxTS) + 1
 			key := testkeys.KeyAt(ks, idx, ts)
@@ -1298,11 +1316,10 @@ func createReadWorkload(
 // the same sequence of keys as another iterator initialized with a suffix
 // replacement rule to that fixed timestamp which reads an sst with the same
 // keys and randomized suffixes. The iterator with the suffix replacement rule
-// may also be initialized with a prefix synthenthsis rule while the control file
+// may also be initialized with a prefix synthesis rule while the control file
 // will contain all keys with that prefix. In other words, this is a randomized
 // version of TestBlockSyntheticSuffix and TestBlockSyntheticPrefix.
 func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
-
 	ks := testkeys.Alpha(3)
 
 	callCount := 500
@@ -1311,29 +1328,34 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 	syntheticSuffix := []byte("@" + strconv.Itoa(int(suffix)))
 	var syntheticPrefix []byte
 
-	potentialBlockSize := []int{32, 64, 128, 256}
-	potentialRestartInterval := []int{1, 4, 8, 16}
+	blockSizeCandidates := []int{32, 64, 128, 256}
+	restartIntervalCandidates := []int{1, 4, 8, 16}
+	filterPolicyCandidates := []FilterPolicy{nil, bloom.FilterPolicy(1), bloom.FilterPolicy(10)}
 
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewSource(seed))
 	mem := vfs.NewMem()
 
-	blockSize := potentialBlockSize[rng.Intn(len(potentialBlockSize))]
-	restartInterval := potentialRestartInterval[rng.Intn(len(potentialRestartInterval))]
-	if rng.Intn(1) == 0 {
+	blockSize := blockSizeCandidates[rng.Intn(len(blockSizeCandidates))]
+	restartInterval := restartIntervalCandidates[rng.Intn(len(restartIntervalCandidates))]
+	filterPolicy := filterPolicyCandidates[rng.Intn(len(filterPolicyCandidates))]
+	if rng.Intn(10) < 9 {
 		randKey := testkeys.Key(ks, rng.Int63n(ks.Count()))
 		// Choose from 3 prefix candidates: "_" sorts before all keys, randKey sorts
 		// somewhere between all keys, and "~" sorts after all keys
 		prefixCandidates := []string{"~", string(randKey) + "_", "_"}
 		syntheticPrefix = []byte(prefixCandidates[rng.Intn(len(prefixCandidates))])
-
 	}
-	t.Logf("Configured Block Size %d, Restart Interval %d, Seed %d, Prefix %s", blockSize, restartInterval, seed, string(syntheticPrefix))
+	t.Logf("Configured Block Size %d, Restart Interval %d, Seed %d, Prefix %s, Filter policy %v", blockSize, restartInterval, seed, string(syntheticPrefix), filterPolicy)
 
 	createIter := func(fileName string, syntheticSuffix SyntheticSuffix, syntheticPrefix SyntheticPrefix) (Iterator, func()) {
 		f, err := mem.Open(fileName)
 		require.NoError(t, err)
-		eReader, err := newReader(f, ReaderOptions{Comparer: testkeys.Comparer})
+		opts := ReaderOptions{Comparer: testkeys.Comparer}
+		if filterPolicy != nil {
+			opts.Filters = map[string]FilterPolicy{filterPolicy.Name(): filterPolicy}
+		}
+		eReader, err := newReader(f, opts)
 		require.NoError(t, err)
 		iter, err := eReader.newIterWithBlockPropertyFiltersAndContext(
 			context.Background(),
@@ -1358,7 +1380,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 			testCaseName = "two-level"
 		}
 		t.Run(testCaseName, func(t *testing.T) {
-			indexBlockSize := 4096
+			indexBlockSize := 10 * 1024 * 1024
 			if twoLevelIndex {
 				indexBlockSize = 1
 			}
@@ -1380,6 +1402,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 					BlockSize:            blockSize,
 					IndexBlockSize:       indexBlockSize,
 					Comparer:             testkeys.Comparer,
+					FilterPolicy:         filterPolicy,
 				})
 
 				keyIdx := int64(0)
@@ -1425,7 +1448,6 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 				alsoCheck: func() {
 					require.Nil(t, eIter.Error())
 					require.Nil(t, iter.Error())
-
 				},
 			}
 			for _, call := range w.calls {
