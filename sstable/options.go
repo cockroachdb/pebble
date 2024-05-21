@@ -98,10 +98,8 @@ type ReaderOptions struct {
 	// Merge defines the Merge function in use for this keyspace.
 	Merge base.Merge
 
-	// Filters is a map from filter policy name to filter policy. It is used for
-	// debugging tools which may be used on multiple databases configured with
-	// different filter policies. It is not necessary to populate this filters
-	// map during normal usage of a DB.
+	// Filters is a map from filter policy name to filter policy. Filters with
+	// policies that are not in this map will be ignored.
 	Filters map[string]FilterPolicy
 
 	// Merger defines the associative merge operation to use for merging values
