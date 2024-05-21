@@ -786,15 +786,9 @@ func (i *singleLevelIterator) seekPrefixGE(
 		}
 		i.lastBloomFilterMatched = false
 		// Check prefix bloom filter.
-		var dataH bufferHandle
-		dataH, i.err = i.reader.readFilter(i.ctx, i.indexFilterRH, i.stats, &i.iterStats)
-		if i.err != nil {
-			i.data.invalidate()
-			return nil
-		}
-		mayContain := i.reader.tableFilter.mayContain(dataH.Get(), prefix)
-		dataH.Release()
-		if !mayContain {
+		var mayContain bool
+		mayContain, i.err = i.bloomFilterMayContain(prefix)
+		if i.err != nil || !mayContain {
 			// This invalidation may not be necessary for correctness, and may
 			// be a place to optimize later by reusing the already loaded
 			// block. It was necessary in earlier versions of the code since
@@ -831,6 +825,26 @@ func (i *singleLevelIterator) seekPrefixGE(
 	i.boundsCmp = 0
 	i.positionedUsingLatestBounds = true
 	return i.maybeVerifyKey(i.seekGEHelper(key, boundsCmp, flags))
+}
+
+func (i *singleLevelIterator) bloomFilterMayContain(prefix []byte) (bool, error) {
+	// Check prefix bloom filter.
+	prefixToCheck := prefix
+	if i.transforms.SyntheticPrefix.IsSet() {
+		// We have to remove the synthetic prefix.
+		if !bytes.HasPrefix(prefix, i.transforms.SyntheticPrefix) {
+			// This prefix will not be found inside this table.
+			return false, nil
+		}
+		prefixToCheck = prefix[len(i.transforms.SyntheticPrefix):]
+	}
+
+	dataH, err := i.reader.readFilter(i.ctx, i.indexFilterRH, i.stats, &i.iterStats)
+	if err != nil {
+		return false, err
+	}
+	defer dataH.Release()
+	return i.reader.tableFilter.mayContain(dataH.Get(), prefixToCheck), nil
 }
 
 // virtualLast should only be called if i.vReader != nil.

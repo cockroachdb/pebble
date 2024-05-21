@@ -788,7 +788,8 @@ type Options struct {
 	// Filters is a map from filter policy name to filter policy. It is used for
 	// debugging tools which may be used on multiple databases configured with
 	// different filter policies. It is not necessary to populate this filters
-	// map during normal usage of a DB.
+	// map during normal usage of a DB (it will be done automatically by
+	// EnsureDefaults).
 	Filters map[string]FilterPolicy
 
 	// FlushDelayDeleteRange configures how long the database should wait before
