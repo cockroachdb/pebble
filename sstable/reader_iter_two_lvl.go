@@ -426,19 +426,13 @@ func (i *twoLevelIterator) SeekPrefixGE(
 			flags = flags.DisableTrySeekUsingNext()
 		}
 		i.lastBloomFilterMatched = false
-		var dataH bufferHandle
-		dataH, i.err = i.reader.readFilter(i.ctx, i.stats, &i.iterStats)
-		if i.err != nil {
-			i.data.invalidate()
-			return nil, base.LazyValue{}
-		}
-		mayContain := i.reader.tableFilter.mayContain(dataH.Get(), prefix)
-		dataH.Release()
-		if !mayContain {
-			// This invalidation may not be necessary for correctness, and may
-			// be a place to optimize later by reusing the already loaded
-			// block. It was necessary in earlier versions of the code since
-			// the caller was allowed to call Next when SeekPrefixGE returned
+		var mayContain bool
+		mayContain, i.err = i.bloomFilterMayContain(prefix)
+		if i.err != nil || !mayContain {
+			// In the i.err == nil case, this invalidation may not be necessary for
+			// correctness, and may be a place to optimize later by reusing the
+			// already loaded block. It was necessary in earlier versions of the code
+			// since the caller was allowed to call Next when SeekPrefixGE returned
 			// nil. This is no longer allowed.
 			i.data.invalidate()
 			return nil, base.LazyValue{}
