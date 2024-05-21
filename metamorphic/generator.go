@@ -99,7 +99,7 @@ type generator struct {
 	// or snapshots maps.
 	iters map[objID]objIDSet
 	// objectID -> db: used to keep track of the DB a batch, iter, or snapshot
-	// was created on.
+	// was created on. It should be read through the dbIDForObj method.
 	objDB map[objID]objID
 	// readerID -> reader iters: used to keep track of the open iterators on a
 	// reader. The iter set value will also be indexed by either the batches or
@@ -318,7 +318,7 @@ func (g *generator) batchCommit() {
 	}
 
 	batchID := g.liveBatches.rand(g.rng)
-	dbID := g.objDB[batchID]
+	dbID := g.dbIDForObj(batchID)
 	g.removeBatchFromGenerator(batchID)
 
 	// The batch we're applying may contain single delete tombstones that when
@@ -574,15 +574,22 @@ func (g *generator) randKeyTypesAndMask() (keyTypes uint32, maskSuffix []byte) {
 }
 
 func (g *generator) deriveDB(readerID objID) objID {
-	if readerID.tag() == iterTag {
-		readerID = g.iterReaderID[readerID]
-	}
 	dbParentID := readerID
+	if readerID.tag() == iterTag {
+		dbParentID = g.iterReaderID[readerID]
+	}
 	if dbParentID.tag() != dbTag {
-		dbParentID = g.objDB[dbParentID]
+		dbParentID = g.dbIDForObj(dbParentID)
 	}
 	g.objDB[readerID] = dbParentID
 	return dbParentID
+}
+
+func (g *generator) dbIDForObj(objID objID) objID {
+	if g.objDB[objID] == 0 {
+		panic(fmt.Sprintf("object %s has no associated DB", objID))
+	}
+	return g.objDB[objID]
 }
 
 func (g *generator) newIterUsingClone() {
@@ -815,7 +822,7 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 	// random key.
 	if g.rng.Intn(10) >= 1 {
 		possibleKeys := make([][]byte, 0, 100)
-		inRangeKeys := g.keyManager.InRangeKeysForObj(g.objDB[iterID], lower, upper)
+		inRangeKeys := g.keyManager.InRangeKeysForObj(g.dbIDForObj(iterID), lower, upper)
 		for _, keyMeta := range inRangeKeys {
 			visibleHistory := keyMeta.history.before(iterCreationTimestamp)
 
@@ -1079,7 +1086,7 @@ func (g *generator) writerApply() {
 	}
 
 	batchID := g.liveBatches.rand(g.rng)
-	dbID := g.objDB[batchID]
+	dbID := g.dbIDForObj(batchID)
 
 	var writerID objID
 	for {
@@ -1089,7 +1096,7 @@ func (g *generator) writerApply() {
 		writerID = g.liveWriters.rand(g.rng)
 		writerDBID := writerID
 		if writerID.tag() != dbTag {
-			writerDBID = g.objDB[writerID]
+			writerDBID = g.dbIDForObj(writerID)
 		}
 		if writerID != batchID && writerDBID == dbID {
 			break
@@ -1131,7 +1138,7 @@ func (g *generator) writerDelete() {
 	writerID := g.liveWriters.rand(g.rng)
 	derivedDBID := writerID
 	if derivedDBID.tag() != dbTag {
-		derivedDBID = g.objDB[writerID]
+		derivedDBID = g.dbIDForObj(writerID)
 	}
 	g.add(&deleteOp{
 		writerID:    writerID,
@@ -1230,7 +1237,7 @@ func (g *generator) writerIngest() {
 	for i := 0; i < n; i++ {
 		batchID := g.liveBatches.rand(g.rng)
 		batchIDs[i] = batchID
-		derivedDBIDs[i] = g.objDB[batchIDs[i]]
+		derivedDBIDs[i] = g.dbIDForObj(batchID)
 		g.removeBatchFromGenerator(batchID)
 	}
 
@@ -1275,7 +1282,7 @@ func (g *generator) writerIngestAndExcise() {
 	g.removeBatchFromGenerator(batchID)
 
 	start, end := g.prefixKeyRange()
-	derivedDBID := g.objDB[batchID]
+	derivedDBID := g.dbIDForObj(batchID)
 
 	// Check for any single delete conflicts. If this batch is single-deleting
 	// a key that isn't safe to single delete in the underlying db, _and_ this
