@@ -408,8 +408,15 @@ func (t *Test) runOp(idx int, h historyRecorder) {
 	op := t.ops[idx]
 	var timer *time.Timer
 	if t.opTimeout > 0 {
-		timer = time.AfterFunc(t.opTimeout, func() {
-			panic(fmt.Sprintf("operation took longer than %s: %s", t.opTimeout, op.String()))
+		opTimeout := t.opTimeout
+		switch op.(type) {
+		case *compactOp, *downloadOp, *newSnapshotOp, *ingestOp, *ingestAndExciseOp, *ingestExternalFilesOp:
+			// These ops can be very slow, especially if we end up with many tiny
+			// tables. Bump up the timout by a factor.
+			opTimeout *= 4
+		}
+		timer = time.AfterFunc(opTimeout, func() {
+			panic(fmt.Sprintf("operation took longer than %s: %s", opTimeout, op.String()))
 		})
 	}
 	op.run(t, h)
