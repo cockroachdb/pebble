@@ -289,7 +289,7 @@ func TestL0Sublevels(t *testing.T) {
 				SortBySmallest(fileMetas[i], base.DefaultComparer.Compare)
 			}
 
-			levelMetadata := makeLevelMetadata(base.DefaultComparer.Compare, 0, fileMetas[0])
+			levelMetadata := MakeLevelMetadata(base.DefaultComparer.Compare, 0, fileMetas[0])
 			if initialize {
 				if addL0FilesOpt {
 					SortBySeqNum(addedL0Files)
@@ -550,7 +550,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			continue
 		}
 
-		levelMetadata := makeLevelMetadata(testkeys.Comparer.Compare, 0, fileMetas)
+		levelMetadata := MakeLevelMetadata(testkeys.Comparer.Compare, 0, fileMetas)
 		var err error
 
 		if s2 == nil {

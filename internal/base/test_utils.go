@@ -6,6 +6,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -249,3 +250,14 @@ func (f *FakeIter) SetBounds(lower, upper []byte) {
 
 // SetContext is part of the InternalIterator interface.
 func (f *FakeIter) SetContext(_ context.Context) {}
+
+// ParseUserKeyBounds parses UserKeyBounds from a string representation of the
+// form "[foo, bar]" or "[foo, bar)".
+func ParseUserKeyBounds(s string) UserKeyBounds {
+	first, last, s := s[0], s[len(s)-1], s[1:len(s)-1]
+	start, end, ok := strings.Cut(s, ", ")
+	if !ok || first != '[' || (last != ']' && last != ')') {
+		panic(fmt.Sprintf("invalid bounds %q", s))
+	}
+	return UserKeyBoundsEndExclusiveIf([]byte(start), []byte(end), last == ')')
+}

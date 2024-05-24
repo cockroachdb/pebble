@@ -1,0 +1,119 @@
+define t1
+points:
+  b.SET.1
+  d.SET.1
+  u.SET.1
+----
+
+overlap t1
+[a, b)
+[a, b]
+[b1, b2]
+[b, c]
+[d, e]
+[e, u)
+[e, u]
+[u, w]
+[v, w]
+----
+[a, b): no overlap   iterators opened: none
+[a, b]: possible data overlap   iterators opened: none
+[b1, b2]: boundary overlap, no data overlap (split file: t1)   iterators opened: t1/points, t1/range-del
+[b, c]: possible data overlap   iterators opened: none
+[d, e]: possible data overlap   iterators opened: t1/points
+[e, u): boundary overlap, no data overlap (split file: t1)   iterators opened: t1/points, t1/range-del
+[e, u]: possible data overlap   iterators opened: none
+[u, w]: possible data overlap   iterators opened: none
+[v, w]: no overlap   iterators opened: none
+
+define t2
+range-dels:
+  b-e:{#1,RANGEDEL}
+  h-k:{#1,RANGEDEL}
+----
+
+overlap t2
+[a, b)
+[a, b]
+[d, f]
+[e, f]
+[e, h)
+[e, h]
+[j, l)
+[k, l]
+----
+[a, b): no overlap   iterators opened: none
+[a, b]: possible data overlap   iterators opened: none
+[d, f]: possible data overlap   iterators opened: t2/points, t2/range-del
+[e, f]: boundary overlap, no data overlap (split file: t2)   iterators opened: t2/points, t2/range-del
+[e, h): boundary overlap, no data overlap (split file: t2)   iterators opened: t2/points, t2/range-del
+[e, h]: possible data overlap   iterators opened: t2/points, t2/range-del
+[j, l): possible data overlap   iterators opened: none
+[k, l]: no overlap   iterators opened: none
+
+define t3
+range-keys:
+  b-e:{#1,RANGEKEYDEL}
+  h-k:{#1,RANGEKEYDEL}
+----
+
+overlap t3
+[a, b)
+[a, b]
+[d, f]
+[e, f]
+[e, h)
+[e, h]
+[j, l)
+[k, l]
+----
+[a, b): no overlap   iterators opened: none
+[a, b]: possible data overlap   iterators opened: none
+[d, f]: possible data overlap   iterators opened: t3/range-key
+[e, f]: boundary overlap, no data overlap (split file: t3)   iterators opened: t3/range-key
+[e, h): boundary overlap, no data overlap (split file: t3)   iterators opened: t3/range-key
+[e, h]: possible data overlap   iterators opened: t3/range-key
+[j, l): possible data overlap   iterators opened: none
+[k, l]: no overlap   iterators opened: none
+
+
+define tBE
+points:
+  b.SET.1
+  d.SET.1
+range-keys:
+  c-e:{#1,RANGEKEYDEL}
+----
+
+define tFM
+override-bounds: [f, m)
+points:
+  g.SET.1
+  j.SET.1
+----
+
+define tMP
+override-bounds: [m, p)
+points:
+  n.SET.1
+  o.SET.1
+----
+
+overlap tBE tFM tMP
+[b1, b2]
+[c1, c2]
+[e, f)
+[g1, g2]
+[j1, m1]
+[n1, n2]
+[n, o]
+[a, z]
+----
+[b1, b2]: boundary overlap, no data overlap (split file: tBE)   iterators opened: tBE/points, tBE/range-del
+[c1, c2]: possible data overlap   iterators opened: tBE/points, tBE/range-del, tBE/range-key
+[e, f): no overlap   iterators opened: none
+[g1, g2]: boundary overlap, no data overlap (split file: tFM)   iterators opened: tFM/points, tFM/range-del
+[j1, m1]: possible data overlap   iterators opened: none
+[n1, n2]: boundary overlap, no data overlap (split file: tMP)   iterators opened: tMP/points, tMP/range-del
+[n, o]: possible data overlap   iterators opened: tMP/points
+[a, z]: possible data overlap   iterators opened: none

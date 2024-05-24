@@ -816,9 +816,10 @@ ingest local1
 
 lsm
 ----
-L6:
+L0.0:
   000005:[a#11,SET-a#11,SET]
-  000006(000004):[aa@10#10,SET-c#inf,RANGEDEL]
+L6:
+  000004(000004):[a#10,DELSIZED-c#inf,RANGEDEL]
 
 iter
 first

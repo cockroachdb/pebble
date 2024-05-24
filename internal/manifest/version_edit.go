@@ -963,12 +963,12 @@ func (b *BulkVersionEdit) Apply(
 
 	for level := range v.Levels {
 		if curr == nil || curr.Levels[level].tree.root == nil {
-			v.Levels[level] = makeLevelMetadata(comparer.Compare, level, nil /* files */)
+			v.Levels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
 		} else {
 			v.Levels[level] = curr.Levels[level].clone()
 		}
 		if curr == nil || curr.RangeKeyLevels[level].tree.root == nil {
-			v.RangeKeyLevels[level] = makeLevelMetadata(comparer.Compare, level, nil /* files */)
+			v.RangeKeyLevels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
 		} else {
 			v.RangeKeyLevels[level] = curr.RangeKeyLevels[level].clone()
 		}

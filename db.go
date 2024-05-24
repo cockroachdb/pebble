@@ -3007,7 +3007,13 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 
 // DebugString returns a debugging string describing the LSM.
 func (d *DB) DebugString() string {
+	return d.DebugCurrentVersion().DebugString()
+}
+
+// DebugCurrentVersion returns the current LSM tree metadata. Should only be
+// used for testing/debugging.
+func (d *DB) DebugCurrentVersion() *manifest.Version {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.mu.versions.currentVersion().DebugString()
+	return d.mu.versions.currentVersion()
 }
