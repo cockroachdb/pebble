@@ -41,7 +41,8 @@ func (lm *LevelMetadata) release() (obsolete []*FileBacking) {
 	return lm.tree.Release()
 }
 
-func makeLevelMetadata(cmp Compare, level int, files []*FileMetadata) LevelMetadata {
+// MakeLevelMetadata creates a LevelMetadata with the given files.
+func MakeLevelMetadata(cmp Compare, level int, files []*FileMetadata) LevelMetadata {
 	bcmp := btreeCmpSeqNum
 	if level > 0 {
 		bcmp = btreeCmpSmallestKey(cmp)

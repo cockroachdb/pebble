@@ -73,6 +73,23 @@ func (eb UserKeyBoundary) IsUpperBoundForInternalKey(cmp Compare, key InternalKe
 	return c < 0 || (c == 0 && (eb.Kind == Inclusive || key.IsExclusiveSentinel()))
 }
 
+// CompareUpperBounds compares two UserKeyBoundaries as upper bounds (e.g. when
+// they are used for UserKeyBounds.End).
+func (eb UserKeyBoundary) CompareUpperBounds(cmp Compare, other UserKeyBoundary) int {
+	switch c := cmp(eb.Key, other.Key); {
+	case c != 0:
+		return c
+	case eb.Kind == other.Kind:
+		return 0
+	case eb.Kind == Inclusive:
+		// eb is inclusive, other is exclusive.
+		return 1
+	default:
+		// eb is exclusive, other is inclusive.
+		return -1
+	}
+}
+
 // UserKeyBounds is a user key interval with an inclusive start boundary and
 // with an end boundary that can be either inclusive or exclusive.
 type UserKeyBounds struct {
@@ -132,8 +149,7 @@ func (b *UserKeyBounds) ContainsBounds(cmp Compare, other *UserKeyBounds) bool {
 	if cmp(b.Start, other.Start) > 0 {
 		return false
 	}
-	c := cmp(other.End.Key, b.End.Key)
-	return c < 0 || (c == 0 && (b.End.Kind == Inclusive || other.End.Kind == Exclusive))
+	return other.End.CompareUpperBounds(cmp, b.End) <= 0
 }
 
 // ContainsUserKey returns true if the user key is within the bounds.

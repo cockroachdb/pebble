@@ -487,8 +487,8 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 4.3KB
 Compression types: snappy: 7
-Block cache: 12 entries (1.9KB)  hit rate: 16.7%
-Table cache: 1 entries (760B)  hit rate: 60.0%
+Block cache: 12 entries (1.9KB)  hit rate: 9.1%
+Table cache: 1 entries (760B)  hit rate: 53.8%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -498,7 +498,7 @@ Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
    pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
-       pebble-ingest,     latency: {BlockBytes:192 BlockBytesInCache:128 BlockReadDuration:10ms}
+       pebble-ingest,     latency: {BlockBytes:64 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 batch
 set g g
@@ -550,8 +550,8 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 6.1KB
 Compression types: snappy: 10
-Block cache: 12 entries (1.9KB)  hit rate: 16.7%
-Table cache: 1 entries (760B)  hit rate: 60.0%
+Block cache: 12 entries (1.9KB)  hit rate: 9.1%
+Table cache: 1 entries (760B)  hit rate: 53.8%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -561,7 +561,7 @@ Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
    pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
-       pebble-ingest,     latency: {BlockBytes:192 BlockBytesInCache:128 BlockReadDuration:10ms}
+       pebble-ingest,     latency: {BlockBytes:64 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 build ext1
 set z z
@@ -638,7 +638,7 @@ Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
    pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
-       pebble-ingest,     latency: {BlockBytes:328 BlockBytesInCache:128 BlockReadDuration:30ms}
+       pebble-ingest,     latency: {BlockBytes:200 BlockBytesInCache:0 BlockReadDuration:30ms}
 
 # Virtualize a virtual sstable.
 build ext1
@@ -740,7 +740,7 @@ Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
    pebble-compaction, non-latency: {BlockBytes:677 BlockBytesInCache:376 BlockReadDuration:70ms}
-       pebble-ingest,     latency: {BlockBytes:400 BlockBytesInCache:200 BlockReadDuration:30ms}
+       pebble-ingest,     latency: {BlockBytes:272 BlockBytesInCache:72 BlockReadDuration:30ms}
 
 # Create a DB where lower levels are written as shared tables. All ingests also
 # become shared tables.

@@ -186,12 +186,6 @@ close: ext/0
 link: ext/0 -> db/000015.sst
 [JOB 10] ingesting: sstable created 000015
 sync: db
-open: db/000013.sst
-read-at(537, 53): db/000013.sst
-read-at(500, 37): db/000013.sst
-read-at(53, 447): db/000013.sst
-read-at(26, 27): db/000013.sst
-read-at(0, 26): db/000013.sst
 create: db/MANIFEST-000016
 close: db/MANIFEST-000014
 sync: db/MANIFEST-000016
@@ -229,8 +223,8 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 1.7KB
 Compression types: snappy: 3
-Block cache: 6 entries (970B)  hit rate: 0.0%
-Table cache: 1 entries (760B)  hit rate: 40.0%
+Block cache: 3 entries (485B)  hit rate: 0.0%
+Table cache: 0 entries (0B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -330,8 +324,8 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 3.5KB
 Compression types: snappy: 6
-Block cache: 12 entries (1.9KB)  hit rate: 7.7%
-Table cache: 1 entries (760B)  hit rate: 50.0%
+Block cache: 9 entries (1.4KB)  hit rate: 0.0%
+Table cache: 0 entries (0B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -395,7 +389,6 @@ pebble: file deletion disablement invariant violated
 close
 ----
 close: db
-close: db/000013.sst
 sync-data: wal/000021.log
 close: wal/000021.log
 close: wal

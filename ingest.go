@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/overlap"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -832,7 +833,7 @@ func ingestUpdateSeqNum(
 func ingestTargetLevel(
 	ctx context.Context,
 	cmp base.Compare,
-	lsmOverlap lsmOverlap,
+	lsmOverlap overlap.WithLSM,
 	baseLevel int,
 	compactions map[*compaction]struct{},
 	meta *fileMetadata,
@@ -904,32 +905,32 @@ func ingestTargetLevel(
 	// existing point that falls within the ingested table bounds as being "data
 	// overlap".
 
-	if lsmOverlap[0].result == dataOverlap {
+	if lsmOverlap[0].Result == overlap.Data {
 		return 0, nil, nil
 	}
 	targetLevel = 0
 	splitFile = nil
 	for level := baseLevel; level < numLevels; level++ {
 		var candidateSplitFile *fileMetadata
-		switch lsmOverlap[level].result {
-		case dataOverlap:
+		switch lsmOverlap[level].Result {
+		case overlap.Data:
 			// We cannot ingest into or under this level; return the best target level
 			// so far.
 			return targetLevel, splitFile, nil
 
-		case noDataOverlap:
-			if !suggestSplit || lsmOverlap[level].splitFile == nil {
+		case overlap.OnlyBoundary:
+			if !suggestSplit || lsmOverlap[level].SplitFile == nil {
 				// We can ingest under this level, but not into this level.
 				continue
 			}
 			// We can ingest into this level if we split this file.
-			candidateSplitFile = lsmOverlap[level].splitFile
+			candidateSplitFile = lsmOverlap[level].SplitFile
 
-		case noBoundaryOverlap:
+		case overlap.None:
 		// We can ingest into this level.
 
 		default:
-			return 0, nil, base.AssertionFailedf("unexpected lsmOverlap result: %v", lsmOverlap[level].result)
+			return 0, nil, base.AssertionFailedf("unexpected WithLevel.Result: %v", lsmOverlap[level].Result)
 		}
 
 		// Check boundary overlap with any ongoing compactions. We consider an
@@ -2192,15 +2193,15 @@ func (d *DB) ingestApply(
 				// We check overlap against the LSM without holding DB.mu. Note that we
 				// are still holding the log lock, so the version cannot change.
 				// TODO(radu): perform this check optimistically outside of the log lock.
-				var overlap lsmOverlap
-				overlap, err = func() (lsmOverlap, error) {
+				var lsmOverlap overlap.WithLSM
+				lsmOverlap, err = func() (overlap.WithLSM, error) {
 					d.mu.Unlock()
 					defer d.mu.Lock()
 					return overlapChecker.DetermineLSMOverlap(ctx, m.UserKeyBounds())
 				}()
 				if err == nil {
 					f.Level, splitFile, err = ingestTargetLevel(
-						ctx, d.cmp, overlap, baseLevel, d.mu.compact.inProgress, m, shouldIngestSplit,
+						ctx, d.cmp, lsmOverlap, baseLevel, d.mu.compact.inProgress, m, shouldIngestSplit,
 					)
 				}
 			}

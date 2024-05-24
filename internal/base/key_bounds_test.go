@@ -10,6 +10,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestUserKeyBoundary(t *testing.T) {
+	cmp := DefaultComparer.Compare
+	a := []byte("a")
+	b := []byte("b")
+
+	aExclusive := UserKeyExclusive(a)
+	require.False(t, aExclusive.IsUpperBoundFor(cmp, a))
+	require.False(t, aExclusive.IsUpperBoundFor(cmp, b))
+
+	aInclusive := UserKeyInclusive(a)
+	require.True(t, aInclusive.IsUpperBoundFor(cmp, a))
+	require.False(t, aInclusive.IsUpperBoundFor(cmp, b))
+
+	bExclusive := UserKeyExclusive(b)
+	require.True(t, bExclusive.IsUpperBoundFor(cmp, a))
+	require.False(t, bExclusive.IsUpperBoundFor(cmp, b))
+
+	bInclusive := UserKeyInclusive(b)
+	require.True(t, bInclusive.IsUpperBoundFor(cmp, a))
+	require.True(t, bInclusive.IsUpperBoundFor(cmp, b))
+
+	ordered := []UserKeyBoundary{aExclusive, aInclusive, bExclusive, bInclusive}
+	for i := range ordered {
+		for j := range ordered {
+			expected := 0
+			if i < j {
+				expected = -1
+			} else if i > j {
+				expected = 1
+			}
+			require.Equalf(t, expected, ordered[i].CompareUpperBounds(cmp, ordered[j]),
+				"%v, %v", ordered[i], ordered[j])
+		}
+	}
+}
+
 func TestUserKeyBounds(t *testing.T) {
 	var ukb UserKeyBounds
 	cmp := DefaultComparer.Compare

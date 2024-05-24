@@ -22,7 +22,7 @@ import (
 )
 
 func levelMetadata(level int, files ...*FileMetadata) LevelMetadata {
-	return makeLevelMetadata(base.DefaultComparer.Compare, level, files)
+	return MakeLevelMetadata(base.DefaultComparer.Compare, level, files)
 }
 
 func ikey(s string) InternalKey {
@@ -82,7 +82,7 @@ func TestIkeyRange(t *testing.T) {
 				f = append(f, m)
 			}
 		}
-		levelMetadata := makeLevelMetadata(base.DefaultComparer.Compare, 0, f)
+		levelMetadata := MakeLevelMetadata(base.DefaultComparer.Compare, 0, f)
 
 		sm, la := KeyRange(base.DefaultComparer.Compare, levelMetadata.Iter())
 		got := string(sm.UserKey) + "-" + string(la.UserKey)
