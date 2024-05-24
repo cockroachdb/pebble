@@ -7,229 +7,61 @@ package pebble
 import (
 	"context"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/overlap"
 )
 
 // An overlapChecker provides facilities for checking whether any keys within a
-// particular LSM version overlap a set of bounds.
+// particular LSM version overlap a set of bounds. It is a thin wrapper for
+// dataoverlap.Checker.
 type overlapChecker struct {
 	comparer *base.Comparer
 	newIters tableNewIters
 	opts     IterOptions
 	v        *version
-
-	// bufs; reused across calls to avoid allocations.
-	upperBoundBuf    []byte
-	pointLevelIter   levelIter
-	keyspanLevelIter keyspanimpl.LevelIter
 }
 
-// levelOverlapResult indicates the result of checking data overlap between a
-// key range and a level. We check two types of overlap:
-//
-//   - file boundary overlap: whether the key range overlaps any of the level's
-//     user key boundaries;
-//
-//   - data overlap: whether the key range overlaps any keys or ranges in the
-//     level. Data overlap implies file boundary overlap.
-type levelOverlapResult uint8
-
-const (
-	// The key range of interest doesn't overlap any tables on the level.
-	noBoundaryOverlap levelOverlapResult = iota + 1
-	// The key range of interest overlaps some tables on the level in terms of
-	// boundary, but the tables contain no data within that range.
-	noDataOverlap
-	// At least a key or range in the level overlaps with the key range of
-	// interest. Note that the data overlap check is best-effort and there could
-	// be false positives.
-	dataOverlap
-)
-
-// levelOverlap is the result of checking overlap against an LSM level.
-type levelOverlap struct {
-	result levelOverlapResult
-	// splitFile can be set only when result is noDataOverlap. If it is set, this
-	// file can be split to free up the range of interest.
-	splitFile *fileMetadata
-}
-
-// lsmOverlap stores the result of checking for data overlap for the LSM levels,
-// starting from the top (L0). The overlap checks are only populated up to the
-// first level where we find data overlap.
-//
-// This is akin to a tetris game where a horizontal bar is falling and we want
-// to determine where it lands.
-type lsmOverlap [numLevels]levelOverlap
-
-// DetermineLSMOverlap calculates the lsmOverlap for the given bounds.
+// DetermineLSMOverlap calculates the overlap.WithLSM for the given bounds.
 func (c *overlapChecker) DetermineLSMOverlap(
 	ctx context.Context, bounds base.UserKeyBounds,
-) (lsmOverlap, error) {
-	var result lsmOverlap
-	for level := 0; level < numLevels; level++ {
-		var err error
-		result[level], err = c.DetermineLevelOverlap(ctx, bounds, level)
-		if err != nil || result[level].result == dataOverlap {
-			return result, err
-		}
-	}
-	return result, nil
+) (overlap.WithLSM, error) {
+	checker := overlap.MakeChecker(c.comparer.Compare, c)
+	return checker.LSMOverlap(ctx, bounds, c.v)
 }
 
-func (c *overlapChecker) DetermineLevelOverlap(
-	ctx context.Context, bounds base.UserKeyBounds, level int,
-) (levelOverlap, error) {
-	// First, check boundary overlap.
-	boundaryOverlaps := c.v.Overlaps(level, bounds)
-	if boundaryOverlaps.Empty() {
-		return levelOverlap{result: noBoundaryOverlap}, nil
-	}
+var _ overlap.IteratorFactory = (*overlapChecker)(nil)
 
-	overlap, err := c.DetermineAnyDataOverlapInLevel(ctx, bounds, level)
-	if err != nil || overlap {
-		return levelOverlap{result: dataOverlap}, err
-	}
-	var splitFile *fileMetadata
-	if boundaryOverlaps.Len() == 1 {
-		iter := boundaryOverlaps.Iter()
-		splitFile = iter.First()
-	}
-	return levelOverlap{
-		result:    noDataOverlap,
-		splitFile: splitFile,
-	}, nil
-}
-
-// DetermineAnyDataOverlapInLevel checks whether any keys within the provided
-// bounds and level exist within the checker's associated LSM version. This
-// function checks for actual keys within the bounds, performing I/O if
-// necessary. It may return false when files within the level overlaps the
-// bounds, but the files do not contain any keys within the bounds.
-func (c *overlapChecker) DetermineAnyDataOverlapInLevel(
-	ctx context.Context, bounds base.UserKeyBounds, level int,
-) (bool, error) {
-	// Propagating an upper bound can prevent a levelIter from unnecessarily
-	// opening files that fall outside bounds if no files within a level overlap
-	// the provided bounds.
-	c.opts.UpperBound = nil
-	if bounds.End.Kind == base.Exclusive {
-		c.opts.UpperBound = bounds.End.Key
-	} else if c.comparer.ImmediateSuccessor != nil {
-		si := c.comparer.Split(bounds.End.Key)
-		c.upperBoundBuf = c.comparer.ImmediateSuccessor(c.upperBoundBuf[:0], bounds.End.Key[:si])
-		c.opts.UpperBound = c.upperBoundBuf
-	}
-
-	// Check for overlap over the keys of L0 by iterating over the sublevels.
-	// NB: sublevel 0 contains the newest keys, whereas sublevel n contains the
-	// oldest keys.
-	if level == 0 {
-		if c.v.L0Sublevels == nil {
-			return true, base.AssertionFailedf("could not read L0 sublevels")
-		}
-		for subLevel := 0; subLevel < len(c.v.L0SublevelFiles); subLevel++ {
-			manifestIter := c.v.L0Sublevels.Levels[subLevel].Iter()
-			pointOverlap, err := c.determinePointKeyOverlapInLevel(
-				ctx, bounds, manifest.Level(0), manifestIter)
-			if err != nil || pointOverlap {
-				return pointOverlap, err
-			}
-			rangeOverlap, err := c.determineRangeKeyOverlapInLevel(
-				ctx, bounds, manifest.Level(0), manifestIter)
-			if err != nil || rangeOverlap {
-				return rangeOverlap, err
-			}
-		}
-		return false, nil
-	}
-
-	pointManifestIter := c.v.Levels[level].Iter()
-	pointOverlap, err := c.determinePointKeyOverlapInLevel(
-		ctx, bounds, manifest.Level(level), pointManifestIter)
-	if pointOverlap || err != nil {
-		return pointOverlap, err
-	}
-	rangeManifestIter := c.v.RangeKeyLevels[level].Iter()
-	return c.determineRangeKeyOverlapInLevel(
-		ctx, bounds, manifest.Level(level), rangeManifestIter)
-}
-
-func (c *overlapChecker) determinePointKeyOverlapInLevel(
-	ctx context.Context,
-	bounds base.UserKeyBounds,
-	level manifest.Level,
-	metadataIter manifest.LevelIterator,
-) (bool, error) {
-	// Check for overlapping point keys.
-	{
-		c.pointLevelIter.init(ctx, c.opts, c.comparer, c.newIters, metadataIter, level, internalIterOpts{})
-		pointOverlap, err := determineOverlapPointIterator(c.comparer.Compare, bounds, &c.pointLevelIter)
-		err = errors.CombineErrors(err, c.pointLevelIter.Close())
-		if pointOverlap || err != nil {
-			return pointOverlap, err
-		}
-	}
-	// Check for overlapping range deletions.
-	{
-		c.keyspanLevelIter.Init(
-			keyspan.SpanIterOptions{}, c.comparer.Compare, tableNewRangeDelIter(ctx, c.newIters),
-			metadataIter, level, manifest.KeyTypePoint,
-		)
-		rangeDeletionOverlap, err := determineOverlapKeyspanIterator(c.comparer.Compare, bounds, &c.keyspanLevelIter)
-		err = errors.CombineErrors(err, c.keyspanLevelIter.Close())
-		if rangeDeletionOverlap || err != nil {
-			return rangeDeletionOverlap, err
-		}
-	}
-	return false, nil
-}
-
-func (c *overlapChecker) determineRangeKeyOverlapInLevel(
-	ctx context.Context,
-	bounds base.UserKeyBounds,
-	level manifest.Level,
-	metadataIter manifest.LevelIterator,
-) (bool, error) {
-	// Check for overlapping range keys.
-	c.keyspanLevelIter.Init(
-		keyspan.SpanIterOptions{}, c.comparer.Compare, tableNewRangeKeyIter(ctx, c.newIters),
-		metadataIter, level, manifest.KeyTypeRange,
-	)
-	rangeKeyOverlap, err := determineOverlapKeyspanIterator(c.comparer.Compare, bounds, &c.keyspanLevelIter)
-	return rangeKeyOverlap, errors.CombineErrors(err, c.keyspanLevelIter.Close())
-}
-
-func determineOverlapPointIterator(
-	cmp base.Compare, bounds base.UserKeyBounds, iter internalIterator,
-) (bool, error) {
-	kv := iter.SeekGE(bounds.Start, base.SeekGEFlagsNone)
-	if kv == nil {
-		return false, iter.Error()
-	}
-	return bounds.End.IsUpperBoundForInternalKey(cmp, kv.K), nil
-}
-
-func determineOverlapKeyspanIterator(
-	cmp base.Compare, bounds base.UserKeyBounds, iter keyspan.FragmentIterator,
-) (bool, error) {
-	// NB: The spans surfaced by the fragment iterator are non-overlapping.
-	span, err := iter.SeekGE(bounds.Start)
+// Points is part of the overlap.IteratorFactory implementation.
+func (c *overlapChecker) Points(
+	ctx context.Context, m *manifest.FileMetadata,
+) (base.InternalIterator, error) {
+	iters, err := c.newIters(ctx, m, &c.opts, internalIterOpts{}, iterPointKeys)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	for ; span != nil; span, err = iter.Next() {
-		if !bounds.End.IsUpperBoundFor(cmp, span.Start) {
-			// The span starts after our bounds.
-			return false, nil
-		}
-		if !span.Empty() {
-			return true, nil
-		}
+	return iters.point, nil
+}
+
+// RangeDels is part of the overlap.IteratorFactory implementation.
+func (c *overlapChecker) RangeDels(
+	ctx context.Context, m *manifest.FileMetadata,
+) (keyspan.FragmentIterator, error) {
+	iters, err := c.newIters(ctx, m, &c.opts, internalIterOpts{}, iterRangeDeletions)
+	if err != nil {
+		return nil, err
 	}
-	return false, err
+	return iters.rangeDeletion, nil
+}
+
+// RangeKeys is part of the overlap.IteratorFactory implementation.
+func (c *overlapChecker) RangeKeys(
+	ctx context.Context, m *manifest.FileMetadata,
+) (keyspan.FragmentIterator, error) {
+	iters, err := c.newIters(ctx, m, &c.opts, internalIterOpts{}, iterRangeKeys)
+	if err != nil {
+		return nil, err
+	}
+	return iters.rangeKey, nil
 }
