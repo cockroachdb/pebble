@@ -93,7 +93,7 @@ func (r *remoteReadable) NewReadHandle(
 	ctx context.Context, readBeforeSize objstorage.ReadBeforeSize,
 ) objstorage.ReadHandle {
 	rh := remoteReadHandlePool.Get().(*remoteReadHandle)
-	*rh = remoteReadHandle{readable: r, readBeforeSize: readBeforeSize}
+	*rh = remoteReadHandle{readable: r, readBeforeSize: readBeforeSize, buffered: rh.buffered}
 	rh.readAheadState = makeReadaheadState(remoteMaxReadaheadSize)
 	return rh
 }
@@ -250,7 +250,9 @@ func (r *remoteReadHandle) readToBuffer(ctx context.Context, offset int64, lengt
 
 // Close is part of the objstorage.ReadHandle interface.
 func (r *remoteReadHandle) Close() error {
+	buf := r.buffered.data[:0]
 	*r = remoteReadHandle{}
+	r.buffered.data = buf
 	remoteReadHandlePool.Put(r)
 	return nil
 }
