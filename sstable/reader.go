@@ -539,6 +539,11 @@ func (r *Reader) readBlock(
 	}
 
 	// Cache miss.
+	if r.opts.ReadBlockSema != nil {
+		// Limit the number of concurrent block reads.
+		r.opts.ReadBlockSema <- struct{}{}
+		defer func() { <-r.opts.ReadBlockSema }()
+	}
 	var compressed cacheValueOrBuf
 	if bufferPool != nil {
 		compressed = cacheValueOrBuf{

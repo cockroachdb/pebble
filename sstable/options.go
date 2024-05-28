@@ -111,6 +111,8 @@ type ReaderOptions struct {
 	// The default cache size is a zero-size cache.
 	Cache *cache.Cache
 
+	ReadBlockSema chan struct{}
+
 	// User properties specified in this map will not be added to sst.Properties.UserProperties.
 	DeniedUserProperties map[string]struct{}
 

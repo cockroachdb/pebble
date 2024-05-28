@@ -481,6 +481,8 @@ type Options struct {
 	// The default cache size is 8 MB.
 	Cache *cache.Cache
 
+	ReadBlockSema chan struct{}
+
 	// Cleaner cleans obsolete files.
 	//
 	// The default cleaner uses the DeleteCleaner.
@@ -1008,6 +1010,9 @@ func DebugCheckLevels(db *DB) error {
 func (o *Options) EnsureDefaults() *Options {
 	if o == nil {
 		o = &Options{}
+	}
+	if o.ReadBlockSema == nil {
+		o.ReadBlockSema = make(chan struct{}, 1000)
 	}
 	if o.BytesPerSync <= 0 {
 		o.BytesPerSync = 512 << 10 // 512 KB
@@ -1713,6 +1718,7 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 	var readerOpts sstable.ReaderOptions
 	if o != nil {
 		readerOpts.Cache = o.Cache
+		readerOpts.ReadBlockSema = o.ReadBlockSema
 		readerOpts.Comparer = o.Comparer
 		readerOpts.Filters = o.Filters
 		if o.Merger != nil {
