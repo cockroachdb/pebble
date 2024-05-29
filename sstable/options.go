@@ -5,6 +5,8 @@
 package sstable
 
 import (
+	"context"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 )
@@ -104,12 +106,20 @@ type SuffixReplaceableTableCollector interface {
 	UpdateKeySuffixes(oldProps map[string]string, oldSuffix, newSuffix []byte) error
 }
 
+// BeforeReadBlockFn is a function that is called before reading an sstable
+// block from disk. It can limit the amount of blocks we read in parallel. If an
+// error is not returned, the doneFn *must* be called after the block read
+// completes (in all cases).
+type BeforeReadBlockFn func(ctx context.Context) (doneFn func(), _ error)
+
 // ReaderOptions holds the parameters needed for reading an sstable.
 type ReaderOptions struct {
 	// Cache is used to cache uncompressed blocks from sstables.
 	//
 	// The default cache size is a zero-size cache.
 	Cache *cache.Cache
+
+	BeforeReadBlock BeforeReadBlockFn
 
 	// User properties specified in this map will not be added to sst.Properties.UserProperties.
 	DeniedUserProperties map[string]struct{}

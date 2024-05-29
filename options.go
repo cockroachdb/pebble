@@ -481,6 +481,8 @@ type Options struct {
 	// The default cache size is 8 MB.
 	Cache *cache.Cache
 
+	BeforeReadBlock sstable.BeforeReadBlockFn
+
 	// Cleaner cleans obsolete files.
 	//
 	// The default cleaner uses the DeleteCleaner.
@@ -1713,6 +1715,7 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 	var readerOpts sstable.ReaderOptions
 	if o != nil {
 		readerOpts.Cache = o.Cache
+		readerOpts.BeforeReadBlock = o.BeforeReadBlock
 		readerOpts.Comparer = o.Comparer
 		readerOpts.Filters = o.Filters
 		if o.Merger != nil {

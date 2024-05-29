@@ -539,6 +539,14 @@ func (r *Reader) readBlock(
 	}
 
 	// Cache miss.
+
+	if r.opts.BeforeReadBlock != nil {
+		done, err := r.opts.BeforeReadBlock(ctx)
+		if err != nil {
+			return bufferHandle{}, err
+		}
+		defer done()
+	}
 	var compressed cacheValueOrBuf
 	if bufferPool != nil {
 		compressed = cacheValueOrBuf{
