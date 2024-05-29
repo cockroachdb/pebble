@@ -6,6 +6,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/cockroachdb/datadriven v1.0.3-0.20230413201302-be42291fc80f
 	github.com/cockroachdb/errors v1.11.1
+	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce
 	github.com/cockroachdb/redact v1.1.5
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06
 	github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
@@ -18,10 +19,10 @@ require (
 	github.com/prometheus/client_golang v1.12.0
 	github.com/prometheus/client_model v0.2.1-0.20210607210712-147c58e9608a
 	github.com/spf13/cobra v1.0.0
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.9.0
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 	golang.org/x/perf v0.0.0-20230113213139-801c7ef9e5c5
-	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
+	golang.org/x/sync v0.7.0
 	golang.org/x/sys v0.11.0
 )
 
