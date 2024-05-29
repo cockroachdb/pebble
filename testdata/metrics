@@ -68,7 +68,7 @@ Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Block cache: 3 entries (556B)  hit rate: 0.0%
-Table cache: 1 entries (800B)  hit rate: 0.0%
+Table cache: 1 entries (808B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
@@ -197,7 +197,7 @@ Zombie tables: 1 (661B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Block cache: 3 entries (556B)  hit rate: 42.9%
-Table cache: 1 entries (800B)  hit rate: 66.7%
+Table cache: 1 entries (808B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
@@ -445,7 +445,7 @@ Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Block cache: 12 entries (2.4KB)  hit rate: 31.1%
-Table cache: 3 entries (2.3KB)  hit rate: 57.9%
+Table cache: 3 entries (2.4KB)  hit rate: 57.9%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
