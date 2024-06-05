@@ -367,17 +367,19 @@ func (s SeekLTFlags) DisableRelativeSeek() SeekLTFlags {
 // field is relevant for an InternalIterator implementation. The field values
 // are aggregated as one goes up the InternalIterator tree.
 type InternalIteratorStats struct {
-	// Bytes in the loaded blocks. If the block was compressed, this is the
-	// compressed bytes. Currently, only the index blocks, data blocks
-	// containing points, and filter blocks are included.
-	BlockBytes uint64
-	// Subset of BlockBytes that were in the block cache.
-	BlockBytesInCache uint64
-	// BlockReadDuration accumulates the duration spent fetching blocks
-	// due to block cache misses.
-	// TODO(sumeer): this currently excludes the time spent in Reader creation,
-	// and in reading the rangedel and rangekey blocks. Fix that.
-	BlockReadDuration time.Duration
+	// Number of blocks that were accessed from cache.
+	CachedBlocks uint32
+	// Number of blocks that had to be read from disk.
+	UncachedBlocksRead uint32
+	// Total number of bytes (compressed) in blocks that were in cache.
+	CachedBlocksBytes uint64
+	// Total number of bytes (compressed) in blocks that were read from disk.
+	UncachedBlocksReadBytes uint64
+	// UncachedBlockReadDuration accumulates the duration spent reading blocks
+	// from disk. TODO(sumeer): this currently excludes the time spent in Reader
+	// creation, and in reading the rangedel and rangekey blocks. Fix that.
+	UncachedBlocksReadDuration time.Duration
+
 	// The following can repeatedly count the same points if they are iterated
 	// over multiple times. Additionally, they may count a point twice when
 	// switching directions. The latter could be improved if needed.
@@ -418,9 +420,11 @@ type InternalIteratorStats struct {
 
 // Merge merges the stats in from into the given stats.
 func (s *InternalIteratorStats) Merge(from InternalIteratorStats) {
-	s.BlockBytes += from.BlockBytes
-	s.BlockBytesInCache += from.BlockBytesInCache
-	s.BlockReadDuration += from.BlockReadDuration
+	s.CachedBlocks += from.CachedBlocks
+	s.UncachedBlocksRead += from.UncachedBlocksRead
+	s.CachedBlocksBytes += from.CachedBlocksBytes
+	s.UncachedBlocksReadBytes += from.UncachedBlocksReadBytes
+	s.UncachedBlocksReadDuration += from.UncachedBlocksReadDuration
 	s.KeyBytes += from.KeyBytes
 	s.ValueBytes += from.ValueBytes
 	s.PointCount += from.PointCount
@@ -436,17 +440,23 @@ func (s *InternalIteratorStats) String() string {
 
 // SafeFormat implements the redact.SafeFormatter interface.
 func (s *InternalIteratorStats) SafeFormat(p redact.SafePrinter, verb rune) {
-	var tombstoned humanize.FormattedString
-	if s.PointsCoveredByRangeTombstones != 0 {
-		tombstoned = "(" + humanize.Count.Uint64(s.PointsCoveredByRangeTombstones) + " tombstoned)"
+	p.Printf("blocks: %s (%s) cached",
+		humanize.Count.Uint64(uint64(s.CachedBlocks)),
+		humanize.Bytes.Uint64(s.CachedBlocksBytes),
+	)
+	if s.UncachedBlocksRead != 0 {
+		p.Printf(", %s (%s) not cached (read time: %s)",
+			humanize.Count.Uint64(uint64(s.UncachedBlocksRead)),
+			humanize.Bytes.Uint64(s.UncachedBlocksReadBytes),
+			humanize.FormattedString(s.UncachedBlocksReadDuration.String()),
+		)
 	}
-	p.Printf("blocks: %s (%s cached), read time %s; "+
-		"points: %s%s (%s keys, %s values)",
-		humanize.Bytes.Uint64(s.BlockBytes),
-		humanize.Bytes.Uint64(s.BlockBytesInCache),
-		humanize.FormattedString(s.BlockReadDuration.String()),
-		humanize.Count.Uint64(s.PointCount),
-		tombstoned,
+	p.Printf("; points: %s", humanize.Count.Uint64(s.PointCount))
+
+	if s.PointsCoveredByRangeTombstones != 0 {
+		p.Printf("(%s tombstoned)", humanize.Count.Uint64(s.PointsCoveredByRangeTombstones))
+	}
+	p.Printf(" (%s keys, %s values)",
 		humanize.Bytes.Uint64(s.KeyBytes),
 		humanize.Bytes.Uint64(s.ValueBytes),
 	)

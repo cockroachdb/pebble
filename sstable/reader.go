@@ -617,8 +617,8 @@ func (r *Reader) readBlock(
 			readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+blockTrailerLen))
 		}
 		if stats != nil {
-			stats.BlockBytes += bh.Length
-			stats.BlockBytesInCache += bh.Length
+			stats.CachedBlocks++
+			stats.CachedBlocksBytes += bh.Length
 		}
 		if iterStats != nil {
 			iterStats.reportStats(bh.Length, bh.Length, 0)
@@ -661,8 +661,9 @@ func (r *Reader) readBlock(
 			int(bh.Length+blockTrailerLen), readDuration.String())
 	}
 	if stats != nil {
-		stats.BlockBytes += bh.Length
-		stats.BlockReadDuration += readDuration
+		stats.UncachedBlocksRead++
+		stats.UncachedBlocksReadBytes += bh.Length
+		stats.UncachedBlocksReadDuration += readDuration
 	}
 	if err != nil {
 		compressed.release()

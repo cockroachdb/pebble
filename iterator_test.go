@@ -1346,70 +1346,76 @@ func TestIteratorStatsMerge(t *testing.T) {
 		ForwardStepCount: [NumStatsKind]int{5, 6},
 		ReverseStepCount: [NumStatsKind]int{7, 8},
 		InternalStats: InternalIteratorStats{
-			BlockBytes:                     9,
-			BlockBytesInCache:              10,
-			BlockReadDuration:              3 * time.Millisecond,
-			KeyBytes:                       11,
-			ValueBytes:                     12,
-			PointCount:                     13,
-			PointsCoveredByRangeTombstones: 14,
+			CachedBlocks:                   9,
+			CachedBlocksBytes:              10,
+			UncachedBlocksRead:             11,
+			UncachedBlocksReadBytes:        12,
+			UncachedBlocksReadDuration:     13 * time.Millisecond,
+			KeyBytes:                       14,
+			ValueBytes:                     15,
+			PointCount:                     16,
+			PointsCoveredByRangeTombstones: 17,
 		},
 		RangeKeyStats: RangeKeyIteratorStats{
-			Count:           15,
-			ContainedPoints: 16,
-			SkippedPoints:   17,
+			Count:           18,
+			ContainedPoints: 19,
+			SkippedPoints:   20,
 		},
 	}
 	s.InternalStats.SeparatedPointValue.Count = 1
 	s.InternalStats.SeparatedPointValue.ValueBytes = 5
 	s.InternalStats.SeparatedPointValue.ValueBytesFetched = 3
 	s2 := IteratorStats{
-		ForwardSeekCount: [NumStatsKind]int{1, 2},
-		ReverseSeekCount: [NumStatsKind]int{3, 4},
-		ForwardStepCount: [NumStatsKind]int{5, 6},
-		ReverseStepCount: [NumStatsKind]int{7, 8},
+		ForwardSeekCount: [NumStatsKind]int{10, 20},
+		ReverseSeekCount: [NumStatsKind]int{30, 40},
+		ForwardStepCount: [NumStatsKind]int{50, 60},
+		ReverseStepCount: [NumStatsKind]int{70, 80},
 		InternalStats: InternalIteratorStats{
-			BlockBytes:                     9,
-			BlockBytesInCache:              10,
-			BlockReadDuration:              4 * time.Millisecond,
-			KeyBytes:                       11,
-			ValueBytes:                     12,
-			PointCount:                     13,
-			PointsCoveredByRangeTombstones: 14,
+			CachedBlocks:                   90,
+			CachedBlocksBytes:              100,
+			UncachedBlocksRead:             110,
+			UncachedBlocksReadBytes:        120,
+			UncachedBlocksReadDuration:     130 * time.Millisecond,
+			KeyBytes:                       140,
+			ValueBytes:                     150,
+			PointCount:                     160,
+			PointsCoveredByRangeTombstones: 170,
 		},
 		RangeKeyStats: RangeKeyIteratorStats{
-			Count:           15,
-			ContainedPoints: 16,
-			SkippedPoints:   17,
+			Count:           180,
+			ContainedPoints: 190,
+			SkippedPoints:   200,
 		},
 	}
-	s2.InternalStats.SeparatedPointValue.Count = 2
-	s2.InternalStats.SeparatedPointValue.ValueBytes = 10
-	s2.InternalStats.SeparatedPointValue.ValueBytesFetched = 6
+	s2.InternalStats.SeparatedPointValue.Count = 10
+	s2.InternalStats.SeparatedPointValue.ValueBytes = 50
+	s2.InternalStats.SeparatedPointValue.ValueBytesFetched = 30
 	s.Merge(s2)
 	expected := IteratorStats{
-		ForwardSeekCount: [NumStatsKind]int{2, 4},
-		ReverseSeekCount: [NumStatsKind]int{6, 8},
-		ForwardStepCount: [NumStatsKind]int{10, 12},
-		ReverseStepCount: [NumStatsKind]int{14, 16},
+		ForwardSeekCount: [NumStatsKind]int{11, 22},
+		ReverseSeekCount: [NumStatsKind]int{33, 44},
+		ForwardStepCount: [NumStatsKind]int{55, 66},
+		ReverseStepCount: [NumStatsKind]int{77, 88},
 		InternalStats: InternalIteratorStats{
-			BlockBytes:                     18,
-			BlockBytesInCache:              20,
-			BlockReadDuration:              7 * time.Millisecond,
-			KeyBytes:                       22,
-			ValueBytes:                     24,
-			PointCount:                     26,
-			PointsCoveredByRangeTombstones: 28,
+			CachedBlocks:                   99,
+			CachedBlocksBytes:              110,
+			UncachedBlocksRead:             121,
+			UncachedBlocksReadBytes:        132,
+			UncachedBlocksReadDuration:     143 * time.Millisecond,
+			KeyBytes:                       154,
+			ValueBytes:                     165,
+			PointCount:                     176,
+			PointsCoveredByRangeTombstones: 187,
 		},
 		RangeKeyStats: RangeKeyIteratorStats{
-			Count:           30,
-			ContainedPoints: 32,
-			SkippedPoints:   34,
+			Count:           198,
+			ContainedPoints: 209,
+			SkippedPoints:   220,
 		},
 	}
-	expected.InternalStats.SeparatedPointValue.Count = 3
-	expected.InternalStats.SeparatedPointValue.ValueBytes = 15
-	expected.InternalStats.SeparatedPointValue.ValueBytesFetched = 9
+	expected.InternalStats.SeparatedPointValue.Count = 11
+	expected.InternalStats.SeparatedPointValue.ValueBytes = 55
+	expected.InternalStats.SeparatedPointValue.ValueBytesFetched = 33
 	require.Equal(t, expected, s)
 }
 

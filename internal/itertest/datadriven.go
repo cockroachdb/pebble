@@ -209,7 +209,7 @@ func RunInternalIterCmdWriter(
 		case "stats":
 			if o.stats != nil {
 				// The timing is non-deterministic, so set to 0.
-				o.stats.BlockReadDuration = 0
+				o.stats.UncachedBlocksReadDuration = 0
 				fmt.Fprintf(w, "%+v\n", *o.stats)
 			}
 			continue

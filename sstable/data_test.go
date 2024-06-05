@@ -417,7 +417,7 @@ func runIterCmd(
 			iter.SetBounds(lower, upper)
 		case "stats":
 			// The timing is non-deterministic, so set to 0.
-			opts.stats.BlockReadDuration = 0
+			opts.stats.UncachedBlocksReadDuration = 0
 			fmt.Fprintf(&b, "%+v\n", *opts.stats)
 			continue
 		case "reset-stats":
