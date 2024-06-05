@@ -150,6 +150,9 @@ func (rh *vfsReadHandle) SetupForCompaction() {
 }
 
 func (rh *vfsReadHandle) switchToOSReadahead() {
+	if disableReadahead {
+		return
+	}
 	if rh.sequentialFile != nil {
 		return
 	}

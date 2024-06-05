@@ -76,11 +76,16 @@ func (rs *readaheadState) recordCacheHit(offset, blockLength int64) {
 	rs.prevSize = 0
 }
 
+const disableReadahead = true
+
 // maybeReadahead updates state and determines whether to issue a readahead /
 // prefetch call for a block read at offset for blockLength bytes.
 // Returns a size value (greater than 0) that should be prefetched if readahead
 // would be beneficial.
 func (rs *readaheadState) maybeReadahead(offset, blockLength int64) int64 {
+	if disableReadahead {
+		return 0
+	}
 	currentReadEnd := offset + blockLength
 	if rs.numReads >= minFileReadsForReadahead {
 		// The minimum threshold of sequential reads to justify reading ahead
