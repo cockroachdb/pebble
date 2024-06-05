@@ -2801,10 +2801,10 @@ func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 	}
 	if stats.InternalStats != (InternalIteratorStats{}) {
 		s.SafeString(",\n(internal-stats: ")
-		s.Printf("(block-bytes: (total %s, cached %s, read-time %s)), "+
+		s.Printf("(block-bytes: (total %s, not-cached %s, read-time %s)), "+
 			"(points: (count %s, key-bytes %s, value-bytes %s, tombstoned %s))",
 			humanize.Bytes.Uint64(stats.InternalStats.BlockBytes),
-			humanize.Bytes.Uint64(stats.InternalStats.BlockBytesInCache),
+			humanize.Bytes.Uint64(stats.InternalStats.BlockBytes-stats.InternalStats.BlockBytesInCache),
 			humanize.FormattedString(stats.InternalStats.BlockReadDuration.String()),
 			humanize.Count.Uint64(stats.InternalStats.PointCount),
 			humanize.Bytes.Uint64(stats.InternalStats.KeyBytes),
