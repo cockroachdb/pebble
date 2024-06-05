@@ -1263,19 +1263,17 @@ func (w *Writer) encodeRangeKeySpan(span keyspan.Span) {
 func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 	if !w.disableKeyOrderChecks && w.rangeKeyBlock.nEntries > 0 {
 		prevStartKey := w.rangeKeyBlock.getCurKey()
-		prevEndKey, _, ok := rangekey.DecodeEndKey(prevStartKey.Kind(), w.rangeKeyBlock.curValue)
-		if !ok {
+		prevEndKey, _, err := rangekey.DecodeEndKey(prevStartKey.Kind(), w.rangeKeyBlock.curValue)
+		if err != nil {
 			// We panic here as we should have previously decoded and validated this
 			// key and value when it was first added to the range key block.
-			panic(errors.Errorf("pebble: invalid end key for span: %s",
-				prevStartKey.Pretty(w.formatKey)))
+			panic(err)
 		}
 
 		curStartKey := key
-		curEndKey, _, ok := rangekey.DecodeEndKey(curStartKey.Kind(), value)
-		if !ok {
-			w.err = errors.Errorf("pebble: invalid end key for span: %s",
-				curStartKey.Pretty(w.formatKey))
+		curEndKey, _, err := rangekey.DecodeEndKey(curStartKey.Kind(), value)
+		if err != nil {
+			w.err = err
 			return w.err
 		}
 
@@ -2103,9 +2101,9 @@ func (w *Writer) Close() (err error) {
 	if w.props.NumRangeKeys() > 0 {
 		key := w.rangeKeyBlock.getCurKey()
 		kind := key.Kind()
-		endKey, _, ok := rangekey.DecodeEndKey(kind, w.rangeKeyBlock.curValue)
-		if !ok {
-			return errors.Newf("invalid end key: %s", w.rangeKeyBlock.curValue)
+		endKey, _, err := rangekey.DecodeEndKey(kind, w.rangeKeyBlock.curValue)
+		if err != nil {
+			return err
 		}
 		k := base.MakeExclusiveSentinelKey(kind, endKey).Clone()
 		w.meta.SetLargestRangeKey(k)

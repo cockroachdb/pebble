@@ -6,6 +6,7 @@ package rangedel
 
 import (
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
@@ -40,4 +41,18 @@ func Decode(ik base.InternalKey, v []byte, keysDst []keyspan.Key) keyspan.Span {
 			Trailer: ik.Trailer,
 		}),
 	}
+}
+
+// DecodeIntoSpan decodes an internal key pair encoding a range deletion and
+// appends a key to the given span. The start and end keys must match those in
+// the span.
+func DecodeIntoSpan(cmp base.Compare, ik base.InternalKey, v []byte, s *keyspan.Span) error {
+	if invariants.Enabled && cmp(s.Start, ik.UserKey) != 0 {
+		return base.AssertionFailedf("DecodeIntoSpan called with different start key")
+	}
+	if cmp(s.End, v) != 0 {
+		return base.CorruptionErrorf("pebble: corrupt range key fragmentation")
+	}
+	s.Keys = append(s.Keys, keyspan.Key{Trailer: ik.Trailer})
+	return nil
 }
