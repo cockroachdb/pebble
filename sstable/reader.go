@@ -498,7 +498,7 @@ type rangeKeyFragmentBlockIter struct {
 
 func (i *rangeKeyFragmentBlockIter) Close() error {
 	err := i.fragmentBlockIter.Close()
-	i.fragmentBlockIter = i.fragmentBlockIter.resetForReuse()
+	i.fragmentBlockIter.ResetForReuse()
 	rangeKeyFragmentBlockIterPool.Put(i)
 	return err
 }

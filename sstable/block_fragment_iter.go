@@ -43,29 +43,42 @@ type fragmentBlockIter struct {
 	elideSameSeqnum bool
 }
 
-func (i *fragmentBlockIter) resetForReuse() fragmentBlockIter {
-	return fragmentBlockIter{blockIter: i.blockIter.resetForReuse()}
+func (i *fragmentBlockIter) Init(elideSameSeqnum bool) {
+	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
+	// when the spans contain few keys.
+	i.span.Keys = i.keyBuf[:0]
+	i.elideSameSeqnum = elideSameSeqnum
 }
 
-func (i *fragmentBlockIter) decodeSpanKeys(kv *base.InternalKV, internalValue []byte) error {
-	// TODO(jackson): The use of i.span.Keys to accumulate keys across multiple
-	// calls to Decode is too confusing and subtle. Refactor to make it
-	// explicit.
+func (i *fragmentBlockIter) ResetForReuse() {
+	*i = fragmentBlockIter{blockIter: i.blockIter.resetForReuse()}
+}
 
-	// decode the contents of the fragment's value. This always includes at
-	// least the end key: RANGEDELs store the end key directly as the value,
-	// whereas the various range key kinds store are more complicated.  The
-	// details of the range key internal value format are documented within the
-	// internal/rangekey package.
+// initSpan initializes the span with a single fragment.
+// Note that the span start and end keys and range key contents are aliased to
+// the key or value. This is ok because the range del/key block doesn't use
+// prefix compression (and we don't perform any transforms), so the key/value
+// will be pointing directly into the buffer data.
+func (i *fragmentBlockIter) initSpan(ik base.InternalKey, internalValue []byte) error {
 	var err error
-	switch kv.Kind() {
-	case base.InternalKeyKindRangeDelete:
-		i.span = rangedel.Decode(kv.K, internalValue, i.span.Keys)
-	case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
-		i.span, err = rangekey.Decode(kv.K, internalValue, i.span.Keys)
-	default:
-		i.span = keyspan.Span{}
-		err = base.CorruptionErrorf("pebble: corrupt keyspan fragment of kind %d", kv.Kind())
+	if ik.Kind() == base.InternalKeyKindRangeDelete {
+		i.span = rangedel.Decode(ik, internalValue, i.span.Keys[:0])
+	} else {
+		i.span, err = rangekey.Decode(ik, internalValue, i.span.Keys[:0])
+	}
+	return err
+}
+
+// addToSpan adds a fragment to the existing span. The fragment must be for the
+// same start/end keys.
+func (i *fragmentBlockIter) addToSpan(
+	cmp base.Compare, ik base.InternalKey, internalValue []byte,
+) error {
+	var err error
+	if ik.Kind() == base.InternalKeyKindRangeDelete {
+		err = rangedel.DecodeIntoSpan(cmp, ik, internalValue, &i.span)
+	} else {
+		err = rangekey.DecodeIntoSpan(cmp, ik, internalValue, &i.span)
 	}
 	return err
 }
@@ -106,31 +119,20 @@ func (i *fragmentBlockIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, e
 	i.span.Keys = i.keyBuf[:0]
 
 	// Decode the span's end key and individual keys from the value.
-	internalValue := kv.V.InPlaceValue()
-	if err := i.decodeSpanKeys(kv, internalValue); err != nil {
+	if err := i.initSpan(kv.K, kv.InPlaceValue()); err != nil {
 		return nil, err
 	}
-	prevEnd := i.span.End
 
 	// There might exist additional internal keys with identical bounds encoded
 	// within the block. Iterate forward, accumulating all the keys with
 	// identical bounds to s.
-	kv = i.blockIter.Next()
-	for kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0 {
-		internalValue = kv.InPlaceValue()
-		if err := i.decodeSpanKeys(kv, internalValue); err != nil {
+
+	// Overlapping fragments are required to have exactly equal start and
+	// end bounds.
+	for kv = i.blockIter.Next(); kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Next() {
+		if err := i.addToSpan(i.blockIter.cmp, kv.K, kv.InPlaceValue()); err != nil {
 			return nil, err
 		}
-
-		// Since k indicates an equal start key, the encoded end key must
-		// exactly equal the original end key from the first internal key.
-		// Overlapping fragments are required to have exactly equal start and
-		// end bounds.
-		if i.blockIter.cmp(prevEnd, i.span.End) != 0 {
-			i.span = keyspan.Span{}
-			return nil, base.CorruptionErrorf("pebble: corrupt keyspan fragmentation")
-		}
-		kv = i.blockIter.Next()
 	}
 	if i.elideSameSeqnum && len(i.span.Keys) > 0 {
 		i.elideKeysOfSameSeqNum()
@@ -152,36 +154,22 @@ func (i *fragmentBlockIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, 
 	if kv == nil || !i.blockIter.valid() {
 		return nil, nil
 	}
-	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
-	// when a span contains few keys.
-	i.span.Keys = i.keyBuf[:0]
 
 	// Decode the span's end key and individual keys from the value.
-	internalValue := kv.V.InPlaceValue()
-	if err := i.decodeSpanKeys(kv, internalValue); err != nil {
+	if err := i.initSpan(kv.K, kv.InPlaceValue()); err != nil {
 		return nil, err
 	}
-	prevEnd := i.span.End
 
 	// There might exist additional internal keys with identical bounds encoded
 	// within the block. Iterate backward, accumulating all the keys with
 	// identical bounds to s.
-	kv = i.blockIter.Prev()
-	for kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0 {
-		internalValue = kv.V.InPlaceValue()
-		if err := i.decodeSpanKeys(kv, internalValue); err != nil {
+	//
+	// Overlapping fragments are required to have exactly equal start and
+	// end bounds.
+	for kv = i.blockIter.Prev(); kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Prev() {
+		if err := i.addToSpan(i.blockIter.cmp, kv.K, kv.InPlaceValue()); err != nil {
 			return nil, err
 		}
-
-		// Since k indicates an equal start key, the encoded end key must
-		// exactly equal the original end key from the first internal key.
-		// Overlapping fragments are required to have exactly equal start and
-		// end bounds.
-		if i.blockIter.cmp(prevEnd, i.span.End) != 0 {
-			i.span = keyspan.Span{}
-			return nil, base.CorruptionErrorf("pebble: corrupt keyspan fragmentation")
-		}
-		kv = i.blockIter.Prev()
 	}
 	// i.blockIter is positioned over the last internal key for the previous
 	// span.
