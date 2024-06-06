@@ -90,10 +90,8 @@ func TestSetValue_Roundtrip(t *testing.T) {
 		n := EncodeSetValue(b, tc.endKey, tc.suffixValues)
 		require.Equal(t, l, n)
 
-		var endKey, rest []byte
-		var ok bool
-		endKey, rest, ok = DecodeEndKey(base.InternalKeyKindRangeKeySet, b[:n])
-		require.True(t, ok)
+		endKey, rest, err := DecodeEndKey(base.InternalKeyKindRangeKeySet, b[:n])
+		require.NoError(t, err)
 
 		var suffixValues []SuffixValue
 		for len(rest) > 0 {
@@ -184,10 +182,8 @@ func TestUnsetValue_Roundtrip(t *testing.T) {
 		n := EncodeUnsetValue(b, tc.endKey, tc.suffixes)
 		require.Equal(t, l, n)
 
-		var ok bool
-		var endKey, rest []byte
-		endKey, rest, ok = DecodeEndKey(base.InternalKeyKindRangeKeyUnset, b[:n])
-		require.True(t, ok)
+		endKey, rest, err := DecodeEndKey(base.InternalKeyKindRangeKeyUnset, b[:n])
+		require.NoError(t, err)
 		var suffixes [][]byte
 		for len(rest) > 0 {
 			var ok bool
