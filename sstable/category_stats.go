@@ -63,8 +63,8 @@ func StringToQoSForTesting(s string) QoSLevel {
 
 // CategoryAndQoS specifies both the Category and the QoSLevel.
 type CategoryAndQoS struct {
-	Category
-	QoSLevel
+	Category Category
+	QoSLevel QoSLevel
 }
 
 // CategoryStats provides stats about a category of reads.
@@ -91,9 +91,9 @@ func (s *CategoryStats) aggregate(a CategoryStats) {
 
 // CategoryStatsAggregate is the aggregate for the given category.
 type CategoryStatsAggregate struct {
-	Category
-	QoSLevel
-	CategoryStats
+	Category      Category
+	QoSLevel      QoSLevel
+	CategoryStats CategoryStats
 }
 
 type categoryStatsWithMu struct {
