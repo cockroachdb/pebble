@@ -28,7 +28,7 @@ read 1
 106000 30000
 140000 80000
 ----
-<local fs> open: p1/000001.sst
+<local fs> open: p1/000001.sst (options: *vfs.randomReadsOption)
 size: 2000000
 <local fs> read-at(0, 1000): p1/000001.sst
 0 1000: ok (salt 1)
@@ -44,7 +44,7 @@ size: 2000000
 56000 50000: ok (salt 1)
 <local fs> read-at(106000, 30000): p1/000001.sst
 106000 30000: ok (salt 1)
-<local fs> open: p1/000001.sst
+<local fs> open: p1/000001.sst (options: *vfs.sequentialReadsOption)
 <local fs> read-at(140000, 80000): p1/000001.sst
 140000 80000: ok (salt 1)
 <local fs> close: p1/000001.sst
