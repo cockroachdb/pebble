@@ -17,7 +17,7 @@ read 1
 0 1024
 512 1024
 ----
-<local fs> open: p0/000001.sst
+<local fs> open: p0/000001.sst (options: *vfs.randomReadsOption)
 size: 1024
 <local fs> read-at(0, 512): p0/000001.sst
 0 512: ok (salt 1)
@@ -41,7 +41,7 @@ read 2
 0 1024
 512 1024
 ----
-<local fs> open: p0/000002.sst
+<local fs> open: p0/000002.sst (options: *vfs.randomReadsOption)
 size: 1024
 <local fs> read-at(0, 512): p0/000002.sst
 0 512: ok (salt 2)
@@ -73,7 +73,7 @@ link-or-copy 3 local 3 100
 read 3
 0 100
 ----
-<local fs> open: p0/000003.sst
+<local fs> open: p0/000003.sst (options: *vfs.randomReadsOption)
 size: 100
 <local fs> read-at(0, 100): p0/000003.sst
 0 100: ok (salt 3)
@@ -88,7 +88,7 @@ link-or-copy 4 shared 4 1234
 read 4
 0 1234
 ----
-<local fs> open: p0/000004.sst
+<local fs> open: p0/000004.sst (options: *vfs.randomReadsOption)
 size: 1234
 <local fs> read-at(0, 1234): p0/000004.sst
 0 1234: ok (salt 4)
