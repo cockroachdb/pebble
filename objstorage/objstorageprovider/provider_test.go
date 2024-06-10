@@ -40,7 +40,9 @@ func TestProvider(t *testing.T) {
 		backings := make(map[string]objstorage.RemoteObjectBacking)
 		backingHandles := make(map[string]objstorage.RemoteObjectBackingHandle)
 		var curProvider objstorage.Provider
+		readaheadConfig := DefaultReadaheadConfig
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
+			readaheadConfig = DefaultReadaheadConfig
 			scanArgs := func(desc string, args ...interface{}) {
 				t.Helper()
 				if len(d.CmdArgs) != len(args) {
@@ -67,6 +69,9 @@ func TestProvider(t *testing.T) {
 					st.Remote.StorageFactory = sharedFactory
 					st.Remote.CreateOnShared = remote.CreateOnSharedAll
 					st.Remote.CreateOnSharedLocator = ""
+				}
+				st.Local.ReadaheadConfigFn = func() ReadaheadConfig {
+					return readaheadConfig
 				}
 				require.NoError(t, fs.MkdirAll(fsDir, 0755))
 				p, err := Open(st)
@@ -170,13 +175,29 @@ func TestProvider(t *testing.T) {
 				return log.String()
 
 			case "read":
-				forCompaction := false
-				if len(d.CmdArgs) == 2 && d.CmdArgs[1].Key == "for-compaction" {
-					d.CmdArgs = d.CmdArgs[:1]
-					forCompaction = true
+				forCompaction := d.HasArg("for-compaction")
+				if arg, ok := d.Arg("readahead"); ok {
+					var mode ReadaheadMode
+					switch arg.Vals[0] {
+					case "off":
+						mode = NoReadahead
+					case "sys-readahead":
+						mode = SysReadahead
+					case "fadvise-sequential":
+						mode = FadviseSequential
+					default:
+						d.Fatalf(t, "unknown readahead mode %s", arg.Vals[0])
+					}
+					if forCompaction {
+						readaheadConfig.Informed = mode
+					} else {
+						readaheadConfig.Speculative = mode
+					}
 				}
+
+				d.CmdArgs = d.CmdArgs[:1]
 				var fileNum base.FileNum
-				scanArgs("<file-num> [for-compaction]", &fileNum)
+				scanArgs("<file-num> [for-compaction] [readahead|speculative-overhead=off|sys-readahead|fadvise-sequential]", &fileNum)
 				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum.DiskFileNum(), objstorage.OpenOptions{})
 				if err != nil {
 					return err.Error()
