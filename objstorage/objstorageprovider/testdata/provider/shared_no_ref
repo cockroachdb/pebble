@@ -51,7 +51,7 @@ link-or-copy 3 shared 3 100 no-ref-tracking
 <local fs> create: temp-file-1
 <local fs> close: temp-file-1
 <remote> create object "eaac-1-000003.sst"
-<local fs> open: temp-file-1
+<local fs> open: temp-file-1 (options: *vfs.sequentialReadsOption)
 <remote> close writer for "eaac-1-000003.sst" after 100 bytes
 <local fs> close: temp-file-1
 
