@@ -22,7 +22,7 @@ create 1 local 1 100
 read 1
 0 100
 ----
-<local fs> open: p1/000001.sst
+<local fs> open: p1/000001.sst (options: *vfs.randomReadsOption)
 size: 100
 <local fs> read-at(0, 100): p1/000001.sst
 0 100: ok (salt 1)
@@ -91,7 +91,7 @@ link-or-copy 3 local 3 100
 read 3
 0 100
 ----
-<local fs> open: p1/000003.sst
+<local fs> open: p1/000003.sst (options: *vfs.randomReadsOption)
 size: 100
 <local fs> read-at(0, 100): p1/000003.sst
 0 100: ok (salt 3)
@@ -102,7 +102,7 @@ link-or-copy 4 shared 4 100
 <local fs> create: temp-file-2
 <local fs> close: temp-file-2
 <remote> create object "2f2f-1-000004.sst"
-<local fs> open: temp-file-2
+<local fs> open: temp-file-2 (options: *vfs.sequentialReadsOption)
 <remote> close writer for "2f2f-1-000004.sst" after 100 bytes
 <remote> create object "2f2f-1-000004.sst.ref.1.000004"
 <remote> close writer for "2f2f-1-000004.sst.ref.1.000004" after 0 bytes
