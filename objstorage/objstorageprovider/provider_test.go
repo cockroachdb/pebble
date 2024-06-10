@@ -181,7 +181,14 @@ func TestProvider(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				rh := r.NewReadHandle(ctx, objstorage.NoReadBefore)
+				var rh objstorage.ReadHandle
+				// Test both ways of getting a handle.
+				if rand.Intn(2) == 0 {
+					rh = r.NewReadHandle(ctx, objstorage.NoReadBefore)
+				} else {
+					var prealloc PreallocatedReadHandle
+					rh = UsePreallocatedReadHandle(ctx, r, objstorage.NoReadBefore, &prealloc)
+				}
 				if forCompaction {
 					rh.SetupForCompaction()
 				}

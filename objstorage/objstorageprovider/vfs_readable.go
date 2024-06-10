@@ -78,8 +78,7 @@ func (r *fileReadable) NewReadHandle(
 	ctx context.Context, readBeforeSize objstorage.ReadBeforeSize,
 ) objstorage.ReadHandle {
 	rh := readHandlePool.Get().(*vfsReadHandle)
-	rh.r = r
-	rh.rs = makeReadaheadState(fileMaxReadaheadSize)
+	rh.init(r)
 	return rh
 }
 
@@ -108,6 +107,13 @@ var readHandlePool = sync.Pool{
 		})
 		return i
 	},
+}
+
+func (rh *vfsReadHandle) init(r *fileReadable) {
+	*rh = vfsReadHandle{
+		r:  r,
+		rs: makeReadaheadState(fileMaxReadaheadSize),
+	}
 }
 
 // Close is part of the objstorage.ReadHandle interface.
@@ -213,8 +219,7 @@ func UsePreallocatedReadHandle(
 	rh *PreallocatedReadHandle,
 ) objstorage.ReadHandle {
 	if r, ok := readable.(*fileReadable); ok {
-		// See fileReadable.NewReadHandle.
-		rh.vfsReadHandle = vfsReadHandle{r: r}
+		rh.init(r)
 		return rh
 	}
 	return readable.NewReadHandle(ctx, readBeforeSize)
