@@ -27,22 +27,26 @@ type fileReadable struct {
 
 	// The following fields are used to possibly open the file again using the
 	// sequential reads option (see vfsReadHandle).
-	filename string
-	fs       vfs.FS
+	filename        string
+	fs              vfs.FS
+	readaheadConfig ReadaheadConfig
 }
 
 var _ objstorage.Readable = (*fileReadable)(nil)
 
-func newFileReadable(file vfs.File, fs vfs.FS, filename string) (*fileReadable, error) {
+func newFileReadable(
+	file vfs.File, fs vfs.FS, readaheadConfig ReadaheadConfig, filename string,
+) (*fileReadable, error) {
 	info, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
 	r := &fileReadable{
-		file:     file,
-		size:     info.Size(),
-		filename: filename,
-		fs:       fs,
+		file:            file,
+		size:            info.Size(),
+		filename:        filename,
+		fs:              fs,
+		readaheadConfig: readaheadConfig,
 	}
 	invariants.SetFinalizer(r, func(obj interface{}) {
 		if obj.(*fileReadable).file != nil {
@@ -83,8 +87,9 @@ func (r *fileReadable) NewReadHandle(
 }
 
 type vfsReadHandle struct {
-	r  *fileReadable
-	rs readaheadState
+	r             *fileReadable
+	rs            readaheadState
+	readaheadMode ReadaheadMode
 
 	// sequentialFile holds a file descriptor to the same underlying File,
 	// except with fadvise(FADV_SEQUENTIAL) called on it to take advantage of
@@ -111,8 +116,9 @@ var readHandlePool = sync.Pool{
 
 func (rh *vfsReadHandle) init(r *fileReadable) {
 	*rh = vfsReadHandle{
-		r:  r,
-		rs: makeReadaheadState(fileMaxReadaheadSize),
+		r:             r,
+		rs:            makeReadaheadState(fileMaxReadaheadSize),
+		readaheadMode: r.readaheadConfig.Speculative,
 	}
 }
 
@@ -129,14 +135,17 @@ func (rh *vfsReadHandle) Close() error {
 
 // ReadAt is part of the objstorage.ReadHandle interface.
 func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error {
-	var n int
-	var err error
 	if rh.sequentialFile != nil {
 		// Use OS-level read-ahead.
-		n, err = rh.sequentialFile.ReadAt(p, offset)
-	} else {
+		n, err := rh.sequentialFile.ReadAt(p, offset)
+		if invariants.Enabled && err == nil && n != len(p) {
+			panic("short read")
+		}
+		return err
+	}
+	if rh.readaheadMode != NoReadahead {
 		if readaheadSize := rh.rs.maybeReadahead(offset, int64(len(p))); readaheadSize > 0 {
-			if readaheadSize >= fileMaxReadaheadSize {
+			if rh.readaheadMode == FadviseSequential && readaheadSize >= fileMaxReadaheadSize {
 				// We've reached the maximum readahead size. Beyond this point, rely on
 				// OS-level readahead.
 				rh.switchToOSReadahead()
@@ -144,8 +153,8 @@ func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error
 				_ = rh.r.file.Prefetch(offset, readaheadSize)
 			}
 		}
-		n, err = rh.r.file.ReadAt(p, offset)
 	}
+	n, err := rh.r.file.ReadAt(p, offset)
 	if invariants.Enabled && err == nil && n != len(p) {
 		panic("short read")
 	}
@@ -154,10 +163,16 @@ func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error
 
 // SetupForCompaction is part of the objstorage.ReadHandle interface.
 func (rh *vfsReadHandle) SetupForCompaction() {
-	rh.switchToOSReadahead()
+	rh.readaheadMode = rh.r.readaheadConfig.Informed
+	if rh.readaheadMode == FadviseSequential {
+		rh.switchToOSReadahead()
+	}
 }
 
 func (rh *vfsReadHandle) switchToOSReadahead() {
+	if invariants.Enabled && rh.readaheadMode != FadviseSequential {
+		panic("readheadMode not respected")
+	}
 	if rh.sequentialFile != nil {
 		return
 	}
@@ -172,8 +187,8 @@ func (rh *vfsReadHandle) switchToOSReadahead() {
 
 // RecordCacheHit is part of the objstorage.ReadHandle interface.
 func (rh *vfsReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {
-	if rh.sequentialFile != nil {
-		// Using OS-level readahead, so do nothing.
+	if rh.sequentialFile != nil || rh.readaheadMode == NoReadahead {
+		// Using OS-level or no readahead, so do nothing.
 		return
 	}
 	rh.rs.recordCacheHit(offset, size)
