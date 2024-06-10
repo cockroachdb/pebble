@@ -103,19 +103,19 @@ sync: db
 remove: db/MANIFEST-000001
 [JOB 5] MANIFEST deleted 000001
 [JOB 6] compacting(default) L0 [000005 000008] (1.2KB) Score=0.00 + L6 [] (0B) Score=0.00; OverlappingRatio: Single 0.00, Multi 0.00
-open: db/000005.sst
+open: db/000005.sst (options: *vfs.randomReadsOption)
 read-at(537, 53): db/000005.sst
 read-at(500, 37): db/000005.sst
 read-at(53, 447): db/000005.sst
-open: db/000008.sst
+open: db/000008.sst (options: *vfs.randomReadsOption)
 read-at(537, 53): db/000008.sst
 read-at(500, 37): db/000008.sst
 read-at(53, 447): db/000008.sst
 read-at(26, 27): db/000005.sst
-open: db/000005.sst
+open: db/000005.sst (options: *vfs.sequentialReadsOption)
 read-at(0, 26): db/000005.sst
 read-at(26, 27): db/000008.sst
-open: db/000008.sst
+open: db/000008.sst (options: *vfs.sequentialReadsOption)
 read-at(0, 26): db/000008.sst
 close: db/000008.sst
 close: db/000005.sst
@@ -363,7 +363,7 @@ link: db/000022.sst -> checkpoint/000022.sst
 link: db/000017.sst -> checkpoint/000017.sst
 link: db/000010.sst -> checkpoint/000010.sst
 link: db/000018.sst -> checkpoint/000018.sst
-open: db/MANIFEST-000023
+open: db/MANIFEST-000023 (options: *vfs.sequentialReadsOption)
 create: checkpoint/MANIFEST-000023
 sync-data: checkpoint/MANIFEST-000023
 close: checkpoint/MANIFEST-000023
@@ -374,7 +374,7 @@ sync-data: checkpoint/marker.manifest.000001.MANIFEST-000023
 close: checkpoint/marker.manifest.000001.MANIFEST-000023
 sync: checkpoint
 close: checkpoint
-open: wal/000021.log
+open: wal/000021.log (options: *vfs.sequentialReadsOption)
 create: checkpoint/000021.log
 sync-data: checkpoint/000021.log
 close: checkpoint/000021.log
