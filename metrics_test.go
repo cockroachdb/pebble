@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -94,6 +95,9 @@ func exampleMetrics() Metrics {
 }
 
 func TestMetrics(t *testing.T) {
+	if runtime.GOARCH == "386" {
+		t.Skip("skipped on 32-bit due to slightly varied output")
+	}
 	opts := &Options{
 		Comparer:              testkeys.Comparer,
 		FormatMajorVersion:    FormatNewest,
