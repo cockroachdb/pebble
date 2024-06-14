@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
@@ -86,7 +87,7 @@ func runSync(cmd *cobra.Command, args []string) {
 								}
 							} else {
 								raw = encodeUint32Ascending(raw[:0], rand.Uint32())
-								key := mvccEncode(buf[:0], raw, 0, 0)
+								key := crdbtest.EncodeMVCCKey(buf[:0], raw, 0, 0)
 								buf = key[:0]
 								if err := b.Set(key, block, nil); err != nil {
 									log.Fatal(err)

@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -58,7 +59,7 @@ func newPebbleDB(dir string) DB {
 	defer cache.Unref()
 	opts := &pebble.Options{
 		Cache:                       cache,
-		Comparer:                    mvccComparer,
+		Comparer:                    &crdbtest.Comparer,
 		DisableWAL:                  disableWAL,
 		FormatMajorVersion:          pebble.FormatNewest,
 		L0CompactionThreshold:       2,
