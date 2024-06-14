@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/tool"
 	"github.com/spf13/cobra"
@@ -57,7 +58,7 @@ func main() {
 	}
 	rootCmd.AddCommand(benchCmd)
 
-	t := tool.New(tool.Comparers(mvccComparer, testkeys.Comparer), tool.Mergers(fauxMVCCMerger))
+	t := tool.New(tool.Comparers(&crdbtest.Comparer, testkeys.Comparer), tool.Mergers(fauxMVCCMerger))
 	rootCmd.AddCommand(t.Commands...)
 
 	for _, cmd := range []*cobra.Command{replayCmd, scanCmd, syncCmd, tombstoneCmd, writeBenchCmd, ycsbCmd} {

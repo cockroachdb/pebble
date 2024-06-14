@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/rand"
@@ -72,7 +73,7 @@ func runScan(cmd *cobra.Command, args []string) {
 				b := d.NewBatch()
 				var value []byte
 				for end := i + batch; i < end; i++ {
-					keys[i] = mvccEncode(nil, encodeUint32Ascending([]byte("key-"), uint32(i)), uint64(i+1), 0)
+					keys[i] = crdbtest.EncodeMVCCKey(nil, encodeUint32Ascending([]byte("key-"), uint32(i)), uint64(i+1), 0)
 					value = scanConfig.values.Bytes(rng, value)
 					if err := b.Set(keys[i], value, nil); err != nil {
 						log.Fatal(err)
