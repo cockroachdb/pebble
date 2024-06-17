@@ -1,0 +1,215 @@
+// Copyright 2024 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+
+// Package binfmt exposes utilities for formatting binary data with descriptive
+// comments.
+package binfmt
+
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+	"unsafe"
+)
+
+// New constructs a new binary formatter.
+func New(data []byte) *Formatter {
+	offsetWidth := strconv.Itoa(int(math.Log10(float64(len(data)-1))) + 1)
+	return &Formatter{
+		data:            data,
+		lineWidth:       40,
+		offsetFormatStr: "%0" + offsetWidth + "d-%0" + offsetWidth + "d: ",
+	}
+}
+
+// Formatter is a utility for formatting binary data with descriptive comments.
+type Formatter struct {
+	buf   bytes.Buffer
+	lines [][2]string
+	data  []byte
+	off   int
+
+	// config
+	lineWidth       int
+	offsetFormatStr string
+}
+
+// LineWidth sets the Formatter's maximum line width for binary data.
+func (f *Formatter) LineWidth(width int) *Formatter {
+	f.lineWidth = width
+	return f
+}
+
+// More returns true if there is more data in the byte slice that can be formatted.
+func (f *Formatter) More() bool {
+	return f.off < len(f.data)
+}
+
+// Remaining returns the number of unformatted bytes remaining in the byte slice.
+func (f *Formatter) Remaining() int {
+	return len(f.data) - f.off
+}
+
+// Offset returns the current offset within the original data slice.
+func (f *Formatter) Offset() int {
+	return f.off
+}
+
+// PeekInt reads a little-endian integer of the specified width at the current
+// offset.
+func (f *Formatter) PeekInt(w int) int {
+	switch w {
+	case 1:
+		return int(f.data[f.off])
+	case 2:
+		return int(binary.LittleEndian.Uint16(f.data[f.off:]))
+	case 4:
+		return int(binary.LittleEndian.Uint32(f.data[f.off:]))
+	case 8:
+		return int(binary.LittleEndian.Uint64(f.data[f.off:]))
+	default:
+		panic("unsupported width")
+	}
+}
+
+// Byte formats a single byte in binary format, displaying each bit as a zero or
+// one.
+func (f *Formatter) Byte(format string, args ...interface{}) int {
+	f.printOffsets(1)
+	f.printf("b %08b", f.data[f.off])
+	f.off++
+	f.newline(f.buf.String(), fmt.Sprintf(format, args...))
+	return 1
+}
+
+// CommentLine adds a full-width comment line to the output.
+func (f *Formatter) CommentLine(format string, args ...interface{}) {
+	f.newline("", strings.TrimSpace(fmt.Sprintf(format, args...)))
+}
+
+// HexBytesln formats the next n bytes in hexadecimal format, appending the
+// formatted comment string to each line and ending on a newline.
+func (f *Formatter) HexBytesln(n int, format string, args ...interface{}) int {
+	commentLine := strings.TrimSpace(fmt.Sprintf(format, args...))
+	printLine := func() {
+		bytesInLine := min(f.lineWidth/2, n)
+		if f.buf.Len() == 0 {
+			f.printOffsets(bytesInLine)
+		}
+		f.printf("x %0"+strconv.Itoa(bytesInLine*2)+"x", f.data[f.off:f.off+bytesInLine])
+		f.newline(f.buf.String(), commentLine)
+		f.off += bytesInLine
+		n -= bytesInLine
+	}
+	printLine()
+	commentLine = "(continued...)"
+	for n > 0 {
+		printLine()
+	}
+	return n
+}
+
+// Line prepares a single line of formatted output that will consume n bytes,
+// but formatting those n bytes in multiple ways. The line will be prefixed with
+// the offsets for the line's enire data.
+func (f *Formatter) Line(n int) Line {
+	f.printOffsets(n)
+	return Line{f: f, n: n, i: 0}
+}
+
+// String returns the current formatted output.
+func (f *Formatter) String() string {
+	f.buf.Reset()
+	// Identify the max width of the binary data so that we can add padding to
+	// align comments on the right.
+	binaryLineWidth := 0
+	for _, lineData := range f.lines {
+		binaryLineWidth = max(binaryLineWidth, len(lineData[0]))
+	}
+	for _, lineData := range f.lines {
+		fmt.Fprint(&f.buf, lineData[0])
+		if len(lineData[1]) > 0 {
+			if len(lineData[0]) == 0 {
+				// There's no binary data on this line, just a comment. Print
+				// the comment left-aligned.
+				fmt.Fprint(&f.buf, "# ")
+			} else {
+				// Align the comment to the right of the binary data.
+				fmt.Fprint(&f.buf, strings.Repeat(" ", binaryLineWidth-len(lineData[0])))
+				fmt.Fprint(&f.buf, " # ")
+			}
+			fmt.Fprint(&f.buf, lineData[1])
+		}
+		fmt.Fprintln(&f.buf)
+	}
+	return f.buf.String()
+}
+
+// Pointer returns a pointer into the original data slice at the specified
+// offset.
+func (f *Formatter) Pointer(off int) unsafe.Pointer {
+	return unsafe.Pointer(&f.data[f.off+off])
+}
+
+func (f *Formatter) newline(binaryData, comment string) {
+	f.lines = append(f.lines, [2]string{binaryData, comment})
+	f.buf.Reset()
+}
+
+func (f *Formatter) printOffsets(n int) {
+	f.printf(f.offsetFormatStr, f.off, f.off+n)
+}
+
+func (f *Formatter) printf(format string, args ...interface{}) {
+	fmt.Fprintf(&f.buf, format, args...)
+}
+
+// Line is a pending line of formatted binary output.
+type Line struct {
+	f *Formatter
+	n int
+	i int
+}
+
+// Append appends the provided string to the current line.
+func (l Line) Append(s string) Line {
+	fmt.Fprint(&l.f.buf, s)
+	return l
+}
+
+// Binary formats the next n bytes in binary format, displaying each bit as
+// a zero or one.
+func (l Line) Binary(n int) Line {
+	if n+l.i > l.n {
+		panic("binary data exceeds consumed line length")
+	}
+	for i := 0; i < n; i++ {
+		l.f.printf("%08b", l.f.data[l.f.off+l.i])
+		l.i++
+	}
+	return l
+}
+
+// HexBytes formats the next n bytes in hexadecimal format.
+func (l Line) HexBytes(n int) Line {
+	if n+l.i > l.n {
+		panic("binary data exceeds consumed line length")
+	}
+	l.f.printf("%0"+strconv.Itoa(n*2)+"x", l.f.data[l.f.off+l.i:l.f.off+l.i+n])
+	l.i += n
+	return l
+}
+
+// Done finishes the line, appending the provided comment if any.
+func (l Line) Done(format string, args ...interface{}) int {
+	if l.n != l.i {
+		panic("unconsumed data in line")
+	}
+	l.f.newline(l.f.buf.String(), fmt.Sprintf(format, args...))
+	l.f.off += l.n
+	return l.n
+}
