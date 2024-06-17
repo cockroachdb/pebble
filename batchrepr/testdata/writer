@@ -9,8 +9,9 @@ read-header
 
 set-seqnum 1052
 ----
-1c04000000000000 01000000 # [seqNum=1052,count=1]
-00 0161                   # DEL "a"
+00-08: x 1c04000000000000 # seqnum=1052
+08-12: x 01000000         # count=1
+12-15: x 00 0161          # DEL "a"
 
 read-header
 ----
@@ -18,8 +19,9 @@ read-header
 
 set-count 20
 ----
-1c04000000000000 14000000 # [seqNum=1052,count=20]
-00 0161                   # DEL "a"
+00-08: x 1c04000000000000 # seqnum=1052
+08-12: x 14000000         # count=20
+12-15: x 00 0161          # DEL "a"
 
 read-header
 ----
