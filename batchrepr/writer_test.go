@@ -5,12 +5,12 @@
 package batchrepr
 
 import (
-	"bytes"
 	"fmt"
 	"strconv"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/binfmt"
 )
 
 func TestWriter(t *testing.T) {
@@ -55,10 +55,9 @@ func prettyBinaryRepr(repr []byte) string {
 		return fmt.Sprintf("%x", repr)
 	}
 
-	var buf bytes.Buffer
-	h, _ := ReadHeader(repr)
-
-	fmt.Fprintf(&buf, "%x %x # %s\n", repr[:countOffset], repr[countOffset:HeaderLen], h)
+	f := binfmt.New(repr).LineWidth(40)
+	f.HexBytesln(8, " seqnum=%d", f.PeekInt(8))
+	f.HexBytesln(4, " count=%d", f.PeekInt(4))
 	for r := Read(repr); len(r) > 0; {
 		prevLen := len(r)
 		kind, ukey, _, ok, err := r.Next()
@@ -66,11 +65,11 @@ func prettyBinaryRepr(repr []byte) string {
 		case err != nil:
 			// The remainder of the repr is invalid. Print the remainder
 			// on a single line.
-			fmt.Fprintf(&buf, "%x", repr[len(repr)-prevLen:])
-			return buf.String()
+			f.HexBytesln(len(repr)-prevLen, " # invalid: %v", err)
+			return f.String()
 		case !ok:
 			// We're finished iterating through the repr.
-			return buf.String()
+			return f.String()
 		default:
 			// Next() decoded a single KV. Print the bytes we iterated
 			// over verbatim on a single line.
@@ -78,8 +77,8 @@ func prettyBinaryRepr(repr []byte) string {
 			j := len(repr) - len(r)
 			// Print the kind byte separated by a space to make it
 			// easier to read.
-			fmt.Fprintf(&buf, "%x %-22x # %s %q\n", repr[i:i+1], repr[i+1:j], kind, ukey)
+			f.Line(j-i).Append("x ").HexBytes(1).Append(" ").HexBytes(j-i-1).Done("%s %q", kind, ukey)
 		}
 	}
-	return buf.String()
+	return f.String()
 }
