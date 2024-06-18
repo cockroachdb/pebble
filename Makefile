@@ -17,6 +17,7 @@ all:
 	@echo "  make crossversion-meta"
 	@echo "  make testcoverage"
 	@echo "  make mod-update"
+	@echo "  make gen-bazel"
 	@echo "  make generate"
 	@echo "  make generate-test-data"
 	@echo "  make clean"
@@ -72,6 +73,19 @@ crossversion-meta:
 .PHONY: stress-crossversion
 stress-crossversion:
 	STRESS=1 ./scripts/run-crossversion-meta.sh crl-release-22.1 crl-release-22.2 crl-release-23.1 crl-release-23.2 master
+
+.PHONY: gen-bazel
+gen-bazel:
+	@echo "Generating WORKSPACE"
+	@echo 'workspace(name = "com_github_cockroachdb_pebble")' > WORKSPACE
+	@echo 'Running gazelle...'
+	${GO} run github.com/bazelbuild/bazel-gazelle/cmd/gazelle@v0.37.0 update --go_prefix=github.com/cockroachdb/pebble --repo_root=.
+	@echo 'You should now be able to build Cockroach using:'
+	@echo '  ./dev build short -- --override_repository=com_github_cockroachdb_pebble=${CURDIR}'
+
+.PHONY: clean-bazel
+clean-bazel:
+	git clean -dxf WORKSPACE BUILD.bazel '**/BUILD.bazel'
 
 .PHONY: generate
 generate:
