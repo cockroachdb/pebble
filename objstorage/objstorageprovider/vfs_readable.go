@@ -25,17 +25,18 @@ type fileReadable struct {
 	file vfs.File
 	size int64
 
+	readaheadConfig *ReadaheadConfig
+
 	// The following fields are used to possibly open the file again using the
 	// sequential reads option (see vfsReadHandle).
-	filename        string
-	fs              vfs.FS
-	readaheadConfig ReadaheadConfig
+	filename string
+	fs       vfs.FS
 }
 
 var _ objstorage.Readable = (*fileReadable)(nil)
 
 func newFileReadable(
-	file vfs.File, fs vfs.FS, readaheadConfig ReadaheadConfig, filename string,
+	file vfs.File, fs vfs.FS, readaheadConfig *ReadaheadConfig, filename string,
 ) (*fileReadable, error) {
 	info, err := file.Stat()
 	if err != nil {
@@ -118,7 +119,7 @@ func (rh *vfsReadHandle) init(r *fileReadable) {
 	*rh = vfsReadHandle{
 		r:             r,
 		rs:            makeReadaheadState(fileMaxReadaheadSize),
-		readaheadMode: r.readaheadConfig.Speculative,
+		readaheadMode: r.readaheadConfig.Speculative(),
 	}
 }
 
@@ -163,7 +164,7 @@ func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error
 
 // SetupForCompaction is part of the objstorage.ReadHandle interface.
 func (rh *vfsReadHandle) SetupForCompaction() {
-	rh.readaheadMode = rh.r.readaheadConfig.Informed
+	rh.readaheadMode = rh.r.readaheadConfig.Informed()
 	if rh.readaheadMode == FadviseSequential {
 		rh.switchToOSReadahead()
 	}
