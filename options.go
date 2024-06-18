@@ -495,9 +495,9 @@ type Options struct {
 
 	// Local contains option that pertain to files stored on the local filesystem.
 	Local struct {
-		// ReadaheadConfigFn is a function used to retrieve the current readahead
-		// mode. This function is consulted when a table enters the table cache.
-		ReadaheadConfigFn func() ReadaheadConfig
+		// ReadaheadConfig is used to retrieve the current readahead mode; it is
+		// consulted whenever a read handle is initialized.
+		ReadaheadConfig *ReadaheadConfig
 
 		// TODO(radu): move BytesPerSync, LoadBlockSema, Cleaner here.
 	}
