@@ -40,9 +40,9 @@ func TestProvider(t *testing.T) {
 		backings := make(map[string]objstorage.RemoteObjectBacking)
 		backingHandles := make(map[string]objstorage.RemoteObjectBackingHandle)
 		var curProvider objstorage.Provider
-		readaheadConfig := DefaultReadaheadConfig
+		readaheadConfig := NewReadaheadConfig()
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
-			readaheadConfig = DefaultReadaheadConfig
+			readaheadConfig.Set(defaultReadaheadInformed, defaultReadaheadSpeculative)
 			scanArgs := func(desc string, args ...interface{}) {
 				t.Helper()
 				if len(d.CmdArgs) != len(args) {
@@ -70,9 +70,7 @@ func TestProvider(t *testing.T) {
 					st.Remote.CreateOnShared = remote.CreateOnSharedAll
 					st.Remote.CreateOnSharedLocator = ""
 				}
-				st.Local.ReadaheadConfigFn = func() ReadaheadConfig {
-					return readaheadConfig
-				}
+				st.Local.ReadaheadConfig = readaheadConfig
 				require.NoError(t, fs.MkdirAll(fsDir, 0755))
 				p, err := Open(st)
 				require.NoError(t, err)
@@ -189,9 +187,9 @@ func TestProvider(t *testing.T) {
 						d.Fatalf(t, "unknown readahead mode %s", arg.Vals[0])
 					}
 					if forCompaction {
-						readaheadConfig.Informed = mode
+						readaheadConfig.Set(mode, defaultReadaheadSpeculative)
 					} else {
-						readaheadConfig.Speculative = mode
+						readaheadConfig.Set(defaultReadaheadInformed, mode)
 					}
 				}
 
