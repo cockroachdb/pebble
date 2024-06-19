@@ -1152,9 +1152,9 @@ func (i *InterleavingIter) Error() error {
 
 // Close implements (base.InternalIterator).Close.
 func (i *InterleavingIter) Close() error {
-	perr := i.pointIter.Close()
-	rerr := i.keyspanIter.Close()
-	return firstError(perr, rerr)
+	err := i.pointIter.Close()
+	i.keyspanIter.Close()
+	return err
 }
 
 // String implements (base.InternalIterator).String.

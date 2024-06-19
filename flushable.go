@@ -7,7 +7,6 @@ package pebble
 import (
 	"context"
 	"fmt"
-	"io"
 	"sync/atomic"
 	"time"
 
@@ -347,9 +346,9 @@ func computePossibleOverlapsGenericImpl[F flushable](
 ) {
 	iter := f.newIter(nil)
 	rangeDelIter := f.newRangeDelIter(nil)
-	rkeyIter := f.newRangeKeyIter(nil)
+	rangeKeyIter := f.newRangeKeyIter(nil)
 	for _, b := range bounded {
-		overlap, err := determineOverlapAllIters(cmp, b.UserKeyBounds(), iter, rangeDelIter, rkeyIter)
+		overlap, err := determineOverlapAllIters(cmp, b.UserKeyBounds(), iter, rangeDelIter, rangeKeyIter)
 		if invariants.Enabled && err != nil {
 			panic(errors.AssertionFailedf("expected iterator to be infallible: %v", err))
 		}
@@ -360,14 +359,18 @@ func computePossibleOverlapsGenericImpl[F flushable](
 		}
 	}
 
-	for _, c := range [3]io.Closer{iter, rangeDelIter, rkeyIter} {
-		if c != nil {
-			if err := c.Close(); err != nil {
-				// This implementation must be used in circumstances where
-				// reading through the iterator is infallible.
-				panic(err)
-			}
+	if iter != nil {
+		if err := iter.Close(); err != nil {
+			// This implementation must be used in circumstances where
+			// reading through the iterator is infallible.
+			panic(err)
 		}
+	}
+	if rangeDelIter != nil {
+		rangeDelIter.Close()
+	}
+	if rangeKeyIter != nil {
+		rangeKeyIter.Close()
 	}
 }
 

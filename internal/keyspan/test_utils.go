@@ -364,13 +364,12 @@ func (p *probeIterator) Prev() (*Span, error) {
 	return p.handleOp(op)
 }
 
-func (p *probeIterator) Close() error {
+func (p *probeIterator) Close() {
 	op := op{Kind: OpClose}
 	if p.iter != nil {
-		op.Err = p.iter.Close()
+		p.iter.Close()
 	}
-	_, err := p.handleOp(op)
-	return err
+	_, _ = p.handleOp(op)
 }
 
 func (p *probeIterator) WrapChildren(wrap WrapFn) {
@@ -551,7 +550,7 @@ func (i *invalidatingIter) First() (*Span, error)            { return i.invalida
 func (i *invalidatingIter) Last() (*Span, error)             { return i.invalidate(i.iter.Last()) }
 func (i *invalidatingIter) Next() (*Span, error)             { return i.invalidate(i.iter.Next()) }
 func (i *invalidatingIter) Prev() (*Span, error)             { return i.invalidate(i.iter.Prev()) }
-func (i *invalidatingIter) Close() error                     { return i.iter.Close() }
+func (i *invalidatingIter) Close()                           { i.iter.Close() }
 func (i *invalidatingIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
 }

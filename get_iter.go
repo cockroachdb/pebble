@@ -288,8 +288,6 @@ func (g *getIter) maybeSetTombstone(rangeDelIter keyspan.FragmentIterator) (ok b
 	// care about the most recent range deletion that's visible because it's the
 	// "most powerful."
 	g.tombstonedSeqNum, g.tombstoned = t.LargestVisibleSeqNum(g.snapshot)
-	if g.err = firstError(g.err, rangeDelIter.Close()); g.err != nil {
-		return false
-	}
+	rangeDelIter.Close()
 	return true
 }

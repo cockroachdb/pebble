@@ -772,9 +772,7 @@ func (o *ingestOp) collapseBatch(
 		if err != nil {
 			return nil, err
 		}
-		if err := rangeDelIter.Close(); err != nil {
-			return nil, err
-		}
+		rangeDelIter.Close()
 		rangeDelIter = nil
 	}
 
@@ -856,9 +854,7 @@ func (o *ingestOp) collapseBatch(
 				return nil, err
 			}
 		}
-		if err := rangeKeyIter.Close(); err != nil {
-			return nil, err
-		}
+		rangeKeyIter.Close()
 		rangeKeyIter = nil
 	}
 

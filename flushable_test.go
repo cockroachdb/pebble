@@ -138,7 +138,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 					buf.WriteString(span.String())
 					buf.WriteString("\n")
 				}
-				err = firstError(err, iter.Close())
+				iter.Close()
 				if err != nil {
 					fmt.Fprintf(&buf, "err=%q", err.Error())
 				}
@@ -153,7 +153,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 					buf.WriteString(span.String())
 					buf.WriteString("\n")
 				}
-				err = firstError(err, iter.Close())
+				iter.Close()
 				if err != nil {
 					fmt.Fprintf(&buf, "err=%q", err.Error())
 				}

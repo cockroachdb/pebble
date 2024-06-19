@@ -134,6 +134,6 @@ func (t *TransformerIter) Prev() (*Span, error) {
 }
 
 // Close implements the FragmentIterator interface.
-func (t *TransformerIter) Close() error {
-	return t.FragmentIterator.Close()
+func (t *TransformerIter) Close() {
+	t.FragmentIterator.Close()
 }

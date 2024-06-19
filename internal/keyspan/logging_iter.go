@@ -133,15 +133,10 @@ func (i *loggingIter) Prev() (*Span, error) {
 }
 
 // Close implements FragmentIterator.
-func (i *loggingIter) Close() error {
+func (i *loggingIter) Close() {
 	opEnd := i.opStartf("Close()")
-	err := i.iter.Close()
-	if err != nil {
-		opEnd(err)
-	} else {
-		opEnd()
-	}
-	return err
+	i.iter.Close()
+	opEnd()
 }
 
 // WrapChildren implements FragmentIterator.

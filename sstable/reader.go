@@ -496,11 +496,10 @@ type rangeKeyFragmentBlockIter struct {
 	fragmentBlockIter
 }
 
-func (i *rangeKeyFragmentBlockIter) Close() error {
-	err := i.fragmentBlockIter.Close()
+func (i *rangeKeyFragmentBlockIter) Close() {
+	i.fragmentBlockIter.Close()
 	i.fragmentBlockIter.ResetForReuse()
 	rangeKeyFragmentBlockIterPool.Put(i)
-	return err
 }
 
 func (r *Reader) readIndex(

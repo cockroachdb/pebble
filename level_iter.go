@@ -921,7 +921,7 @@ func (l *levelIter) Close() error {
 	}
 	if l.rangeDelIterPtr != nil {
 		if t := l.rangeDelIterCopy; t != nil {
-			l.err = firstError(l.err, t.Close())
+			t.Close()
 		}
 		*l.rangeDelIterPtr = nil
 		l.rangeDelIterCopy = nil

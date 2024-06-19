@@ -202,8 +202,8 @@ func (i *BoundedIter) Prev() (*Span, error) {
 }
 
 // Close implements FragmentIterator.
-func (i *BoundedIter) Close() error {
-	return i.iter.Close()
+func (i *BoundedIter) Close() {
+	i.iter.Close()
 }
 
 // SetBounds modifies the FragmentIterator's bounds.

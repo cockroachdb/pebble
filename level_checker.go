@@ -449,9 +449,9 @@ func addTombstonesFromIter(
 	seqNum uint64,
 	cmp Compare,
 	formatKey base.FormatKey,
-) (_ []tombstoneWithLevel, err error) {
+) ([]tombstoneWithLevel, error) {
 	defer func() {
-		err = firstError(err, iter.Close())
+		iter.Close()
 	}()
 
 	var prevTombstone keyspan.Span
@@ -594,7 +594,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 				l.iter = nil
 			}
 			if l.rangeDelIter != nil {
-				err = firstError(err, l.rangeDelIter.Close())
+				l.rangeDelIter.Close()
 				l.rangeDelIter = nil
 			}
 		}
