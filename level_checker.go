@@ -381,6 +381,7 @@ func checkRangeTombstones(c *checkConfig) error {
 		tombstones, err = addTombstonesFromIter(
 			iter, level, -1, 0, tombstones, c.seqNum, c.cmp, c.formatKey,
 		)
+		iter.Close()
 		if err != nil {
 			return err
 		}
@@ -397,12 +398,13 @@ func checkRangeTombstones(c *checkConfig) error {
 			if err != nil {
 				return err
 			}
-			if tombstones, err = addTombstonesFromIter(iters.RangeDeletion(), level, lsmLevel, f.FileNum,
-				tombstones, c.seqNum, c.cmp, c.formatKey); err != nil {
-				iters.CloseAll()
+			tombstones, err = addTombstonesFromIter(iters.RangeDeletion(), level, lsmLevel, f.FileNum,
+				tombstones, c.seqNum, c.cmp, c.formatKey)
+			iters.CloseAll()
+
+			if err != nil {
 				return err
 			}
-			iters.CloseAll()
 		}
 		return nil
 	}
@@ -449,11 +451,7 @@ func addTombstonesFromIter(
 	seqNum uint64,
 	cmp Compare,
 	formatKey base.FormatKey,
-) ([]tombstoneWithLevel, error) {
-	defer func() {
-		iter.Close()
-	}()
-
+) (_ []tombstoneWithLevel, err error) {
 	var prevTombstone keyspan.Span
 	tomb, err := iter.First()
 	for ; tomb != nil; tomb, err = iter.Next() {

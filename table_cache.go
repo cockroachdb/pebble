@@ -1270,12 +1270,15 @@ func (s *iterSet) CloseAll() error {
 	var err error
 	if s.point != nil {
 		err = s.point.Close()
+		s.point = nil
 	}
 	if s.rangeDeletion != nil {
 		s.rangeDeletion.Close()
+		s.rangeDeletion = nil
 	}
 	if s.rangeKey != nil {
 		s.rangeKey.Close()
+		s.rangeKey = nil
 	}
 	return err
 }

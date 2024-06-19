@@ -5,7 +5,12 @@
 package sstable
 
 import (
+	"fmt"
+	"os"
+	"sync"
+
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/fastrand"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -39,20 +44,33 @@ type fragmentBlockIter struct {
 
 	// elideSameSeqnum, if true, returns only the first-occurring (in forward
 	// order) Key for each sequence number.
-	elideSameSeqnum bool
+	elideSameSeqnum  bool
+	doubleCloseCheck invariants.DoubleCloseCheck
 }
 
 var _ keyspan.FragmentIterator = (*fragmentBlockIter)(nil)
 
-func (i *fragmentBlockIter) Init(elideSameSeqnum bool) {
+var fragmentBlockIterPool = sync.Pool{
+	New: func() interface{} {
+		i := &fragmentBlockIter{}
+		// Note: this is a no-op if invariants are disabled or race is enabled.
+		invariants.SetFinalizer(i, checkFragmentBlockIterator)
+		return i
+	},
+}
+
+func newFragmentBlockIter(elideSameSeqnum bool) *fragmentBlockIter {
+	i := fragmentBlockIterPool.Get().(*fragmentBlockIter)
+	i.init(elideSameSeqnum)
+	return i
+}
+
+func (i *fragmentBlockIter) init(elideSameSeqnum bool) {
 	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
 	i.elideSameSeqnum = elideSameSeqnum
-}
-
-func (i *fragmentBlockIter) ResetForReuse() {
-	*i = fragmentBlockIter{blockIter: i.blockIter.resetForReuse()}
+	i.doubleCloseCheck = invariants.DoubleCloseCheck{}
 }
 
 // initSpan initializes the span with a single fragment.
@@ -187,6 +205,19 @@ func (i *fragmentBlockIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, 
 // Close implements (keyspan.FragmentIterator).Close.
 func (i *fragmentBlockIter) Close() {
 	i.blockIter.Close()
+	i.doubleCloseCheck.Close()
+
+	if invariants.Enabled && fastrand.Uint32()%4 == 0 {
+		// In invariants mode, sometimes don't add the object to the pool so that we
+		// can check for double closes that take longer than the object stays in the
+		// pool.
+	} else {
+		*i = fragmentBlockIter{
+			blockIter:        i.blockIter.resetForReuse(),
+			doubleCloseCheck: i.doubleCloseCheck,
+		}
+		fragmentBlockIterPool.Put(i)
+	}
 }
 
 // First implements (keyspan.FragmentIterator).First
@@ -299,3 +330,11 @@ func (i *fragmentBlockIter) String() string {
 
 // WrapChildren implements FragmentIterator.
 func (i *fragmentBlockIter) WrapChildren(wrap keyspan.WrapFn) {}
+
+func checkFragmentBlockIterator(obj interface{}) {
+	i := obj.(*fragmentBlockIter)
+	if p := i.blockIter.handle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.handle is not nil: %p\n", p)
+		os.Exit(1)
+	}
+}

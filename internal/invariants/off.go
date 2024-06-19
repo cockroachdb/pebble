@@ -9,3 +9,10 @@ package invariants
 
 // Enabled is true if we were built with the "invariants" or "race" build tags.
 const Enabled = false
+
+// DoubleCloseCheck is used to check that objects are not double-closed.
+type DoubleCloseCheck struct{}
+
+// Close panics if called twice on the same object (if we were built with the
+// "invariants" or "race" build tags).
+func (d *DoubleCloseCheck) Close() {}

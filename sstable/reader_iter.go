@@ -126,19 +126,6 @@ var twoLevelIterPool = sync.Pool{
 	},
 }
 
-// TODO(jackson): rangedel fragmentBlockIters can't be pooled because of some
-// code paths that double Close the iters. Fix the double close and pool the
-// *fragmentBlockIter type directly.
-
-var rangeKeyFragmentBlockIterPool = sync.Pool{
-	New: func() interface{} {
-		i := &rangeKeyFragmentBlockIter{}
-		// Note: this is a no-op if invariants are disabled or race is enabled.
-		invariants.SetFinalizer(i, checkRangeKeyFragmentBlockIterator)
-		return i
-	},
-}
-
 func checkSingleLevelIterator(obj interface{}) {
 	i := obj.(*singleLevelIterator)
 	if p := i.data.handle.Get(); p != nil {
@@ -159,14 +146,6 @@ func checkTwoLevelIterator(obj interface{}) {
 	}
 	if p := i.index.handle.Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.handle is not nil: %p\n", p)
-		os.Exit(1)
-	}
-}
-
-func checkRangeKeyFragmentBlockIterator(obj interface{}) {
-	i := obj.(*rangeKeyFragmentBlockIter)
-	if p := i.blockIter.handle.Get(); p != nil {
-		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
 }
