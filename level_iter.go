@@ -601,6 +601,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			if l.err != nil {
 				l.iter = nil
 				*l.rangeDelIterPtr = nil
+				l.rangeDelIterCopy = nil
 				l.err = errors.CombineErrors(l.err, iters.CloseAll())
 				return noFileLoaded
 			}

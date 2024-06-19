@@ -55,8 +55,9 @@ type FragmentIterator interface {
 	// previous call to SeekLT or Prev returned an invalid span.
 	Prev() (*Span, error)
 
-	// Close closes the iterator. It is valid to call Close multiple times. Other
-	// methods should not be called after the iterator has been closed.
+	// Close closes the iterator. It is not in general valid to call Close
+	// multiple times. Other methods should not be called after the iterator has
+	// been closed.
 	Close()
 
 	// WrapChildren wraps any child iterators using the given function. The
