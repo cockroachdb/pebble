@@ -146,9 +146,7 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 	}
 
 	// Note that LevelIter.Close() can be called multiple times.
-	if err := l.Close(); err != nil {
-		return noFileLoaded
-	}
+	l.Close()
 
 	l.iterFile = file
 	l.iter = nil
@@ -197,9 +195,7 @@ func (l *LevelIter) SeekGE(key []byte) (*keyspan.Span, error) {
 			// cases similar to the above, while still retaining correctness.
 			// Return a straddling key instead of loading the file.
 			l.iterFile = f
-			if l.err = l.Close(); l.err != nil {
-				return l.verify(nil, l.err)
-			}
+			l.Close()
 			l.straddleDir = +1
 			l.straddle = keyspan.Span{
 				Start: prevFile.LargestRangeKey.UserKey,
@@ -250,9 +246,7 @@ func (l *LevelIter) SeekLT(key []byte) (*keyspan.Span, error) {
 			// cases similar to the above, while still retaining correctness.
 			// Return a straddling key instead of loading the file.
 			l.iterFile = f
-			if l.err = l.Close(); l.err != nil {
-				return l.verify(nil, l.err)
-			}
+			l.Close()
 			l.straddleDir = -1
 			l.straddle = keyspan.Span{
 				Start: f.LargestRangeKey.UserKey,
@@ -360,9 +354,7 @@ func (l *LevelIter) skipEmptyFileForward() (*keyspan.Span, error) {
 		// a "straddle span" in l.straddle and return that.
 		//
 		// Straddle spans are not created in rangedel mode.
-		if l.err = l.Close(); l.err != nil {
-			return l.verify(nil, l.err)
-		}
+		l.Close()
 		startKey := l.iterFile.LargestRangeKey.UserKey
 		// Resetting l.iterFile without loading the file into l.iter is okay and
 		// does not change the logic in loadFile() as long as l.iter is also nil;
@@ -423,9 +415,7 @@ func (l *LevelIter) skipEmptyFileBackward() (*keyspan.Span, error) {
 	// Straddle spans are not created in rangedel mode.
 	if l.straddleDir == 0 && l.keyType == manifest.KeyTypeRange &&
 		l.iterFile != nil && l.iter != nil {
-		if l.err = l.Close(); l.err != nil {
-			return l.verify(nil, l.err)
-		}
+		l.Close()
 		endKey := l.iterFile.SmallestRangeKey.UserKey
 		// Resetting l.iterFile without loading the file into l.iter is okay and
 		// does not change the logic in loadFile() as long as l.iter is also nil;
@@ -503,12 +493,11 @@ func (l *LevelIter) Error() error {
 }
 
 // Close implements keyspan.FragmentIterator.
-func (l *LevelIter) Close() error {
+func (l *LevelIter) Close() {
 	if l.iter != nil {
-		l.err = l.iter.Close()
+		l.iter.Close()
 		l.iter = nil
 	}
-	return l.err
 }
 
 // String implements keyspan.FragmentIterator.

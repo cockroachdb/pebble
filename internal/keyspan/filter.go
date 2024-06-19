@@ -91,8 +91,8 @@ func (i *filteringIter) Prev() (*Span, error) {
 }
 
 // Close implements FragmentIterator.
-func (i *filteringIter) Close() error {
-	return i.iter.Close()
+func (i *filteringIter) Close() {
+	i.iter.Close()
 }
 
 // filter uses the filterFn (if configured) to filter and possibly mutate the

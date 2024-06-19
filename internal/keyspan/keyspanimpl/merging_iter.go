@@ -676,14 +676,12 @@ func (m *MergingIter) Prev() (*keyspan.Span, error) {
 }
 
 // Close closes the iterator, releasing all acquired resources.
-func (m *MergingIter) Close() error {
-	var err error
+func (m *MergingIter) Close() {
 	for i := range m.levels {
-		err = firstError(err, m.levels[i].iter.Close())
+		m.levels[i].iter.Close()
 	}
 	m.levels = nil
 	m.heap.items = m.heap.items[:0]
-	return err
 }
 
 // String implements fmt.Stringer.
@@ -1239,11 +1237,4 @@ func (k boundKey) String() string {
 	fmt.Fprintf(&buf, "%s", k.span)
 	fmt.Fprint(&buf, "]")
 	return buf.String()
-}
-
-func firstError(e1, e2 error) error {
-	if e1 == nil {
-		return e2
-	}
-	return e1
 }

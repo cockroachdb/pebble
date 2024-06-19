@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"math"
 	"runtime/pprof"
 	"slices"
@@ -77,9 +76,7 @@ type noCloseIter struct {
 	keyspan.FragmentIterator
 }
 
-func (i noCloseIter) Close() error {
-	return nil
-}
+func (i *noCloseIter) Close() {}
 
 type compactionLevel struct {
 	level int
@@ -228,10 +225,10 @@ type compaction struct {
 	smallest InternalKey
 	largest  InternalKey
 
-	// A list of objects to close when the compaction finishes. Used by input
-	// iteration to keep rangeDelIters open for the lifetime of the compaction,
-	// and only close them when the compaction finishes.
-	closers []io.Closer
+	// A list of fragment iterators to close when the compaction finishes. Used by
+	// input iteration to keep rangeDelIters open for the lifetime of the
+	// compaction, and only close them when the compaction finishes.
+	closers []*noCloseIter
 
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries. Do not assume that the actual files
@@ -788,8 +785,7 @@ func (c *compaction) newInputIters(
 			// mergingIter.
 			iter := level.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				rangeDelIter, closer, err := c.newRangeDelIter(
-					newIters, iter.Take(), iterOpts, l)
+				rangeDelIter, err := c.newRangeDelIter(newIters, iter.Take(), iterOpts, l)
 				if err != nil {
 					// The error will already be annotated with the BackingFileNum, so
 					// we annotate it with the FileNum.
@@ -799,7 +795,7 @@ func (c *compaction) newInputIters(
 					continue
 				}
 				rangeDelIters = append(rangeDelIters, rangeDelIter)
-				c.closers = append(c.closers, closer)
+				c.closers = append(c.closers, rangeDelIter)
 			}
 
 			// Check if this level has any range keys.
@@ -813,25 +809,25 @@ func (c *compaction) newInputIters(
 			if hasRangeKeys {
 				li := &keyspanimpl.LevelIter{}
 				newRangeKeyIterWrapper := func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-					iter, err := newRangeKeyIter(file, iterOptions)
+					rangeKeyIter, err := newRangeKeyIter(file, iterOptions)
 					if err != nil {
 						return nil, err
-					} else if iter == nil {
+					} else if rangeKeyIter == nil {
 						return emptyKeyspanIter, nil
 					}
 					// Ensure that the range key iter is not closed until the compaction is
 					// finished. This is necessary because range key processing
 					// requires the range keys to be held in memory for up to the
 					// lifetime of the compaction.
-					c.closers = append(c.closers, iter)
-					iter = noCloseIter{iter}
+					noCloseIter := &noCloseIter{rangeKeyIter}
+					c.closers = append(c.closers, noCloseIter)
 
 					// We do not need to truncate range keys to sstable boundaries, or
 					// only read within the file's atomic compaction units, unlike with
 					// range tombstones. This is because range keys were added after we
 					// stopped splitting user keys across sstables, so all the range keys
 					// in this sstable must wholly lie within the file's bounds.
-					return iter, err
+					return noCloseIter, err
 				}
 				li.Init(keyspan.SpanIterOptions{}, c.cmp, newRangeKeyIterWrapper, level.files.Iter(), l, manifest.KeyTypeRange)
 				rangeKeyIters = append(rangeKeyIters, li)
@@ -902,7 +898,7 @@ func (c *compaction) newInputIters(
 
 func (c *compaction) newRangeDelIter(
 	newIters tableNewIters, f manifest.LevelFile, opts IterOptions, l manifest.Level,
-) (keyspan.FragmentIterator, io.Closer, error) {
+) (*noCloseIter, error) {
 	opts.level = l
 	iterSet, err := newIters(context.Background(), f.FileMetadata, &opts,
 		internalIterOpts{
@@ -910,16 +906,16 @@ func (c *compaction) newRangeDelIter(
 			bufferPool: &c.bufferPool,
 		}, iterRangeDeletions)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	} else if iterSet.rangeDeletion == nil {
 		// The file doesn't contain any range deletions.
-		return nil, nil, nil
+		return nil, nil
 	}
 	// Ensure that rangeDelIter is not closed until the compaction is
 	// finished. This is necessary because range tombstone processing
 	// requires the range tombstones to be held in memory for up to the
 	// lifetime of the compaction.
-	return noCloseIter{iterSet.rangeDeletion}, iterSet.rangeDeletion, nil
+	return &noCloseIter{iterSet.rangeDeletion}, nil
 }
 
 func (c *compaction) String() string {
@@ -2497,7 +2493,7 @@ func (d *DB) compactAndWrite(
 	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, d.tableNewRangeKeyIter)
 	defer func() {
 		for _, closer := range c.closers {
-			result.Err = firstError(result.Err, closer.Close())
+			closer.FragmentIterator.Close()
 		}
 	}()
 	if err != nil {

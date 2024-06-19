@@ -41,11 +41,15 @@ func writeSSTForIngestion(
 	}
 	w := sstable.NewWriter(writable, writerOpts)
 	pointIterCloser := base.CloseHelper(pointIter)
-	defer pointIterCloser.Close()
-	rangeDelIterCloser := base.CloseHelper(rangeDelIter)
-	defer rangeDelIterCloser.Close()
-	rangeKeyIterCloser := base.CloseHelper(rangeKeyIter)
-	defer rangeKeyIterCloser.Close()
+	defer func() {
+		_ = pointIterCloser.Close()
+		if rangeDelIter != nil {
+			rangeDelIter.Close()
+		}
+		if rangeKeyIter != nil {
+			rangeKeyIter.Close()
+		}
+	}()
 
 	outputKey := func(key []byte) []byte {
 		if !syntheticPrefix.IsSet() && !syntheticSuffix.IsSet() {
@@ -110,9 +114,8 @@ func writeSSTForIngestion(
 		if err != nil {
 			return nil, err
 		}
-		if err := rangeDelIterCloser.Close(); err != nil {
-			return nil, err
-		}
+		rangeDelIter.Close()
+		rangeDelIter = nil
 	}
 
 	if rangeKeyIter != nil {
@@ -146,9 +149,8 @@ func writeSSTForIngestion(
 		if err != nil {
 			return nil, err
 		}
-		if err := rangeKeyIterCloser.Close(); err != nil {
-			return nil, err
-		}
+		rangeKeyIter.Close()
+		rangeKeyIter = nil
 	}
 
 	if err := w.Close(); err != nil {

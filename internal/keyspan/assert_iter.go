@@ -163,8 +163,8 @@ func (i *assertIter) Prev() (*Span, error) {
 }
 
 // Close implements FragmentIterator.
-func (i *assertIter) Close() error {
-	return i.iter.Close()
+func (i *assertIter) Close() {
+	i.iter.Close()
 }
 
 // WrapChildren implements FragmentIterator.

@@ -368,11 +368,10 @@ func (p *probeKeyspanIterator) WrapChildren(wrap keyspan.WrapFn) {
 	p.iter = wrap(p.iter)
 }
 
-func (p *probeKeyspanIterator) Close() error {
+func (p *probeKeyspanIterator) Close() {
 	op := keyspanOp{Kind: opSpanClose}
 	if p.iter != nil {
-		op.Err = p.iter.Close()
+		p.iter.Close()
 	}
-	_, err := p.handleOp(op)
-	return err
+	_, _ = p.handleOp(op)
 }

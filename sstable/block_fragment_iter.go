@@ -185,8 +185,8 @@ func (i *fragmentBlockIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, 
 }
 
 // Close implements (keyspan.FragmentIterator).Close.
-func (i *fragmentBlockIter) Close() error {
-	return i.blockIter.Close()
+func (i *fragmentBlockIter) Close() {
+	i.blockIter.Close()
 }
 
 // First implements (keyspan.FragmentIterator).First

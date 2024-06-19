@@ -55,11 +55,9 @@ type FragmentIterator interface {
 	// previous call to SeekLT or Prev returned an invalid span.
 	Prev() (*Span, error)
 
-	// Close closes the iterator and returns any accumulated error. Exhausting
-	// the iterator is not considered to be an error. It is valid to call Close
-	// multiple times. Other methods should not be called after the iterator has
-	// been closed.
-	Close() error
+	// Close closes the iterator. It is valid to call Close multiple times. Other
+	// methods should not be called after the iterator has been closed.
+	Close()
 
 	// WrapChildren wraps any child iterators using the given function. The
 	// function can call WrapChildren to recursively wrap an entire iterator
@@ -207,9 +205,7 @@ func (i *Iter) Prev() (*Span, error) {
 }
 
 // Close implements FragmentIterator.Close.
-func (i *Iter) Close() error {
-	return nil
-}
+func (i *Iter) Close() {}
 
 func (i *Iter) String() string {
 	return "fragmented-spans"

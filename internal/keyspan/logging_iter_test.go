@@ -12,7 +12,6 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/stretchr/testify/require"
 )
 
 func TestLoggingIter(t *testing.T) {
@@ -34,7 +33,7 @@ func TestLoggingIter(t *testing.T) {
 			iter = Assert(iter, base.DefaultComparer.Compare)
 			iter = InjectLogging(iter, l)
 			RunFragmentIteratorCmd(iter, d.Input, nil)
-			require.NoError(t, iter.Close())
+			iter.Close()
 			out := l.String()
 			// Hide pointer values.
 			r := regexp.MustCompile(`\(0x[0-9a-f]+\)`)

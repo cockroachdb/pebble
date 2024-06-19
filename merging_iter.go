@@ -1291,9 +1291,7 @@ func (m *mergingIter) Close() error {
 			m.err = err
 		}
 		if rangeDelIter := m.levels[i].rangeDelIter; rangeDelIter != nil {
-			if err := rangeDelIter.Close(); err != nil && m.err == nil {
-				m.err = err
-			}
+			rangeDelIter.Close()
 		}
 	}
 	m.levels = nil

@@ -112,8 +112,8 @@ func (i *truncatingIter) Prev() (*Span, error) {
 }
 
 // Close implements FragmentIterator.
-func (i *truncatingIter) Close() error {
-	return i.iter.Close()
+func (i *truncatingIter) Close() {
+	i.iter.Close()
 }
 
 // nextSpanWithinBounds returns the first span (starting with the given span and

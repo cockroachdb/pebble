@@ -428,7 +428,7 @@ func TestLevelIter(t *testing.T) {
 		case "num-files":
 			return fmt.Sprintf("%d", len(level))
 		case "close-iter":
-			_ = iter.Close()
+			iter.Close()
 			iter = nil
 			return "ok"
 		case "iter":

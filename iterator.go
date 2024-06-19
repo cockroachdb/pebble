@@ -2347,7 +2347,7 @@ func (i *Iterator) Close() error {
 			i.err = firstError(i.err, i.pointIter.Close())
 		}
 		if i.rangeKey != nil && i.rangeKey.rangeKeyIter != nil {
-			i.err = firstError(i.err, i.rangeKey.rangeKeyIter.Close())
+			i.rangeKey.rangeKeyIter.Close()
 		}
 	}
 	err := i.err
@@ -2591,7 +2591,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	}
 	if i.rangeKey != nil {
 		if closeBoth || len(o.RangeKeyFilters) > 0 || len(i.opts.RangeKeyFilters) > 0 {
-			i.err = firstError(i.err, i.rangeKey.rangeKeyIter.Close())
+			i.rangeKey.rangeKeyIter.Close()
 			i.rangeKey = nil
 		} else {
 			// If there's still a range key iterator stack, invalidate the
@@ -2649,7 +2649,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 					// iterator stack. We need to reconstruct the range key
 					// iterator to add i.batchRangeKeyIter into the iterator
 					// stack.
-					i.err = firstError(i.err, i.rangeKey.rangeKeyIter.Close())
+					i.rangeKey.rangeKeyIter.Close()
 					i.rangeKey = nil
 				} else {
 					// There are range keys in the batch and we already

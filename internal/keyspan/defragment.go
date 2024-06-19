@@ -196,8 +196,8 @@ func (i *DefragmentingIter) Init(
 }
 
 // Close closes the underlying iterators.
-func (i *DefragmentingIter) Close() error {
-	return i.iter.Close()
+func (i *DefragmentingIter) Close() {
+	i.iter.Close()
 }
 
 // SeekGE moves the iterator to the first span covering a key greater than or
