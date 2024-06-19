@@ -261,13 +261,18 @@ func ParseInternalKey(s string) InternalKey {
 	if !ok {
 		panic(fmt.Sprintf("unknown kind: %q", x[1]))
 	}
-	j := 0
-	if x[2][0] == 'b' {
-		j = 1
-	}
-	seqNum, _ := strconv.ParseUint(x[2][j:], 10, 64)
-	if x[2][0] == 'b' {
-		seqNum |= InternalKeySeqNumBatch
+	var seqNum uint64
+	if x[2] == "inf" {
+		seqNum = InternalKeySeqNumMax
+	} else {
+		j := 0
+		if x[2][0] == 'b' {
+			j = 1
+		}
+		seqNum, _ = strconv.ParseUint(x[2][j:], 10, 64)
+		if x[2][0] == 'b' {
+			seqNum |= InternalKeySeqNumBatch
+		}
 	}
 	return MakeInternalKey([]byte(ukey), seqNum, kind)
 }
