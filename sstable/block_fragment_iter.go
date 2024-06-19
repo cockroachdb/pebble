@@ -36,12 +36,13 @@ type fragmentBlockIter struct {
 	keyBuf    [2]keyspan.Key
 	span      keyspan.Span
 	dir       int8
-	closeHook func(i keyspan.FragmentIterator) error
 
 	// elideSameSeqnum, if true, returns only the first-occurring (in forward
 	// order) Key for each sequence number.
 	elideSameSeqnum bool
 }
+
+var _ keyspan.FragmentIterator = (*fragmentBlockIter)(nil)
 
 func (i *fragmentBlockIter) Init(elideSameSeqnum bool) {
 	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
@@ -185,12 +186,7 @@ func (i *fragmentBlockIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, 
 
 // Close implements (keyspan.FragmentIterator).Close.
 func (i *fragmentBlockIter) Close() error {
-	var err error
-	if i.closeHook != nil {
-		err = i.closeHook(i)
-	}
-	err = firstError(err, i.blockIter.Close())
-	return err
+	return i.blockIter.Close()
 }
 
 // First implements (keyspan.FragmentIterator).First
@@ -299,11 +295,6 @@ func (i *fragmentBlockIter) SeekLT(k []byte) (*keyspan.Span, error) {
 // String implements fmt.Stringer.
 func (i *fragmentBlockIter) String() string {
 	return "fragment-block-iter"
-}
-
-// SetCloseHook implements sstable.FragmentIterator.
-func (i *fragmentBlockIter) SetCloseHook(fn func(i keyspan.FragmentIterator) error) {
-	i.closeHook = fn
 }
 
 // WrapChildren implements FragmentIterator.
