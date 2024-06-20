@@ -143,7 +143,7 @@ func TestReader(t *testing.T) {
 						count := uint32(fields.MustKeyValue("count").Uint64())
 						seq = fields.MustKeyValue("seq").Uint64()
 						rng.Read(repr[batchrepr.HeaderLen:])
-						batchrepr.SetSeqNum(repr, seq)
+						batchrepr.SetSeqNum(repr, base.SeqNum(seq))
 						batchrepr.SetCount(repr, count)
 					}
 

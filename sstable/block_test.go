@@ -7,7 +7,6 @@ package sstable
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -148,7 +147,7 @@ func TestInvalidInternalKeyDecoding(t *testing.T) {
 		i := blockIter{}
 		i.decodeInternalKey([]byte(tc))
 		require.Nil(t, i.ikv.K.UserKey)
-		require.Equal(t, uint64(InternalKeyKindInvalid), i.ikv.K.Trailer)
+		require.Equal(t, base.Trailer(InternalKeyKindInvalid), i.ikv.K.Trailer)
 	}
 }
 
@@ -224,11 +223,8 @@ func TestBlockIter(t *testing.T) {
 func TestBlockIter2(t *testing.T) {
 	makeIkey := func(s string) InternalKey {
 		j := strings.Index(s, ":")
-		seqNum, err := strconv.Atoi(s[j+1:])
-		if err != nil {
-			panic(err)
-		}
-		return base.MakeInternalKey([]byte(s[:j]), uint64(seqNum), InternalKeyKindSet)
+		seqNum := base.ParseSeqNum(s[j+1:])
+		return base.MakeInternalKey([]byte(s[:j]), seqNum, InternalKeyKindSet)
 	}
 
 	var block []byte

@@ -239,7 +239,7 @@ type Metrics struct {
 		// The number of currently open snapshots.
 		Count int
 		// The sequence number of the earliest, currently open snapshot.
-		EarliestSeqNum uint64
+		EarliestSeqNum base.SeqNum
 		// A running tally of keys written to sstables during flushes or
 		// compactions that would've been elided if it weren't for open
 		// snapshots.

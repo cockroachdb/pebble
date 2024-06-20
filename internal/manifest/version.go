@@ -37,9 +37,9 @@ type TableInfo struct {
 	// Largest is the largest internal key in the table.
 	Largest InternalKey
 	// SmallestSeqNum is the smallest sequence number in the table.
-	SmallestSeqNum uint64
+	SmallestSeqNum base.SeqNum
 	// LargestSeqNum is the largest sequence number in the table.
-	LargestSeqNum uint64
+	LargestSeqNum base.SeqNum
 }
 
 // TableStats contains statistics on a table used for compaction heuristics,
@@ -196,14 +196,14 @@ type FileMetadata struct {
 	// LargestSeqNumAbsolute will be at least as high as the pre-zeroing
 	// sequence number. LargestSeqNumAbsolute is NOT durably persisted, so after
 	// a database restart it takes on the value of LargestSeqNum.
-	LargestSeqNumAbsolute uint64
+	LargestSeqNumAbsolute base.SeqNum
 	// Lower and upper bounds for the smallest and largest sequence numbers in
 	// the table, across both point and range keys. For physical sstables, these
 	// values are tight bounds. For virtual sstables, there is no guarantee that
 	// there will be keys with SmallestSeqNum or LargestSeqNum within virtual
 	// sstable bounds.
-	SmallestSeqNum uint64
-	LargestSeqNum  uint64
+	SmallestSeqNum base.SeqNum
+	LargestSeqNum  base.SeqNum
 	// SmallestPointKey and LargestPointKey are the inclusive bounds for the
 	// internal point keys stored in the table. This includes RANGEDELs, which
 	// alter point keys.
@@ -787,9 +787,9 @@ func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 		switch field {
 		case "seqnums":
 			p.Expect("[")
-			m.SmallestSeqNum = p.Uint64()
+			m.SmallestSeqNum = p.SeqNum()
 			p.Expect("-")
-			m.LargestSeqNum = p.Uint64()
+			m.LargestSeqNum = p.SeqNum()
 			p.Expect("]")
 			m.LargestSeqNumAbsolute = m.LargestSeqNum
 

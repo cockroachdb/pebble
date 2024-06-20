@@ -247,12 +247,12 @@ type Iterator struct {
 	newIters         tableNewIters
 	newIterRangeKey  keyspanimpl.TableNewSpanIter
 	lazyCombinedIter lazyCombinedIter
-	seqNum           uint64
+	seqNum           base.SeqNum
 	// batchSeqNum is used by Iterators over indexed batches to detect when the
 	// underlying batch has been mutated. The batch beneath an indexed batch may
 	// be mutated while the Iterator is open, but new keys are not surfaced
 	// until the next call to SetOptions.
-	batchSeqNum uint64
+	batchSeqNum base.SeqNum
 	// batch{PointIter,RangeDelIter,RangeKeyIter} are used when the Iterator is
 	// configured to read through an indexed batch. If a batch is set, these
 	// iterators will be included within the iterator stack regardless of
@@ -2608,7 +2608,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// iterator or range-key iterator but we require one, it'll be created in
 	// the slow path that reconstructs the iterator in finishInitializingIter.
 	if i.batch != nil {
-		nextBatchSeqNum := (uint64(len(i.batch.data)) | base.InternalKeySeqNumBatch)
+		nextBatchSeqNum := (base.SeqNum(len(i.batch.data)) | base.InternalKeySeqNumBatch)
 		if nextBatchSeqNum != i.batchSeqNum {
 			i.batchSeqNum = nextBatchSeqNum
 			if i.merging != nil {
@@ -2867,7 +2867,7 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 	// If the caller requested the clone have a current view of the indexed
 	// batch, set the clone's batch sequence number appropriately.
 	if i.batch != nil && opts.RefreshBatchView {
-		dbi.batchSeqNum = (uint64(len(i.batch.data)) | base.InternalKeySeqNumBatch)
+		dbi.batchSeqNum = (base.SeqNum(len(i.batch.data)) | base.InternalKeySeqNumBatch)
 	}
 
 	return finishInitializingIter(ctx, buf), nil

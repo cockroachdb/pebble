@@ -338,7 +338,7 @@ func TestL0Sublevels(t *testing.T) {
 			fallthrough
 		case "pick-intra-l0-compaction":
 			minCompactionDepth := 3
-			earliestUnflushedSeqNum := uint64(math.MaxUint64)
+			earliestUnflushedSeqNum := base.SeqNum(math.MaxUint64)
 			for _, arg := range td.CmdArgs {
 				switch arg.Key {
 				case "min_depth":
@@ -347,11 +347,7 @@ func TestL0Sublevels(t *testing.T) {
 						t.Fatal(err)
 					}
 				case "earliest_unflushed_seqnum":
-					eusnInt, err := strconv.Atoi(arg.Vals[0])
-					if err != nil {
-						t.Fatal(err)
-					}
-					earliestUnflushedSeqNum = uint64(eusnInt)
+					earliestUnflushedSeqNum = base.ParseSeqNum(arg.Vals[0])
 				}
 			}
 
@@ -534,12 +530,12 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			meta := (&FileMetadata{
 				FileNum:               base.FileNum(i*10 + j + 1),
 				Size:                  rng.Uint64n(1 << 20),
-				SmallestSeqNum:        uint64(2*i + 1),
-				LargestSeqNum:         uint64(2*i + 2),
-				LargestSeqNumAbsolute: uint64(2*i + 2),
+				SmallestSeqNum:        base.SeqNum(2*i + 1),
+				LargestSeqNum:         base.SeqNum(2*i + 2),
+				LargestSeqNumAbsolute: base.SeqNum(2*i + 2),
 			}).ExtendPointKeyBounds(
 				base.DefaultComparer.Compare,
-				base.MakeInternalKey(startKey, uint64(2*i+1), base.InternalKeyKindSet),
+				base.MakeInternalKey(startKey, base.SeqNum(2*i+1), base.InternalKeyKindSet),
 				base.MakeRangeDeleteSentinelKey(endKey),
 			)
 			meta.InitPhysicalBacking()

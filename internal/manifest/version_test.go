@@ -658,9 +658,9 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 			return []byte{byte(i/26 + 'a'), byte(i%26 + 'a')}
 		}
 		makeIK := func(level, i int) InternalKey {
-			seqNum := uint64(NumLevels-level) * 100
+			seqNum := base.SeqNum(NumLevels-level) * 100
 			if level == 0 {
-				seqNum += uint64(i)
+				seqNum += base.SeqNum(i)
 			}
 			return base.MakeInternalKey(
 				makeUserKey(i),

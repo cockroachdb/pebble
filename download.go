@@ -292,7 +292,7 @@ type downloadCursor struct {
 	// Inclusive lower bound for sequence number for tables on level with
 	// Smallest.UserKey equaling key. Used to break ties within L0, and also used
 	// to position a cursor immediately after a given file.
-	seqNum uint64
+	seqNum base.SeqNum
 }
 
 var endCursor = downloadCursor{level: manifest.NumLevels}

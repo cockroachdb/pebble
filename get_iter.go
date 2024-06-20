@@ -20,7 +20,7 @@ import (
 type getIter struct {
 	comparer *Comparer
 	newIters tableNewIters
-	snapshot uint64
+	snapshot base.SeqNum
 	iterOpts IterOptions
 	key      []byte
 	prefix   []byte
@@ -36,7 +36,7 @@ type getIter struct {
 	// deletion encounterd transitions tombstoned to true. The tombstonedSeqNum
 	// field is updated to hold the sequence number of the tombstone.
 	tombstoned       bool
-	tombstonedSeqNum uint64
+	tombstonedSeqNum base.SeqNum
 	err              error
 }
 

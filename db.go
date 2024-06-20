@@ -554,7 +554,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 
 	// Determine the seqnum to read at after grabbing the read state (current and
 	// memtables) above.
-	var seqNum uint64
+	var seqNum base.SeqNum
 	if s != nil {
 		seqNum = s.seqNum
 	} else {
@@ -1013,7 +1013,7 @@ var iterAllocPool = sync.Pool{
 //   - EFOS that has been excised but is in alwaysCreateIters mode (tests only).
 //     Only `seqNum` and `readState` are set.
 type snapshotIterOpts struct {
-	seqNum    uint64
+	seqNum    base.SeqNum
 	vers      *version
 	readState *readState
 }
@@ -1255,7 +1255,7 @@ func (d *DB) ScanInternal(
 	categoryAndQoS sstable.CategoryAndQoS,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
-	visitRangeDel func(start, end []byte, seqNum uint64) error,
+	visitRangeDel func(start, end []byte, seqNum SeqNum) error,
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
 	visitExternalFile func(sst *ExternalFile) error,
@@ -2343,7 +2343,7 @@ func (d *DB) walPreallocateSize() int {
 }
 
 func (d *DB) newMemTable(
-	logNum base.DiskFileNum, logSeqNum, minSize uint64,
+	logNum base.DiskFileNum, logSeqNum base.SeqNum, minSize uint64,
 ) (*memTable, *flushableEntry) {
 	targetSize := minSize + uint64(memTableEmptySize)
 	// The targetSize should be less than MemTableSize, because any batch >=
@@ -2425,7 +2425,7 @@ func (d *DB) freeMemTable(m *memTable) {
 }
 
 func (d *DB) newFlushableEntry(
-	f flushable, logNum base.DiskFileNum, logSeqNum uint64,
+	f flushable, logNum base.DiskFileNum, logSeqNum base.SeqNum,
 ) *flushableEntry {
 	fe := &flushableEntry{
 		flushable:      f,
@@ -2546,12 +2546,12 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 	imm := d.mu.mem.queue[len(d.mu.mem.queue)-1]
 	imm.logSize = prevLogSize
 
-	var logSeqNum uint64
+	var logSeqNum base.SeqNum
 	var minSize uint64
 	if b != nil {
 		logSeqNum = b.SeqNum()
 		if b.flushable != nil {
-			logSeqNum += uint64(b.Count())
+			logSeqNum += base.SeqNum(b.Count())
 			// The batch is too large to fit in the memtable so add it directly to
 			// the immutable queue. The flushable batch is associated with the same
 			// log as the immutable memtable, but logically occurs after it in
@@ -2575,7 +2575,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// b == nil
 		//
 		// This is a manual forced flush.
-		logSeqNum = d.mu.versions.logSeqNum.Load()
+		logSeqNum = base.SeqNum(d.mu.versions.logSeqNum.Load())
 		imm.flushForced = true
 		// If we are manually flushing and we used less than half of the bytes in
 		// the memtable, don't increase the size for the next memtable. This
@@ -2603,7 +2603,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 
 // Both DB.mu and commitPipeline.mu must be held by the caller.
 func (d *DB) rotateMemtable(
-	newLogNum base.DiskFileNum, logSeqNum uint64, prev *memTable, minSize uint64,
+	newLogNum base.DiskFileNum, logSeqNum base.SeqNum, prev *memTable, minSize uint64,
 ) {
 	// Create a new memtable, scheduling the previous one for flushing. We do
 	// this even if the previous memtable was empty because the DB.Flush
@@ -2683,7 +2683,7 @@ func (d *DB) rotateWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	return newLogNum, prevLogSize
 }
 
-func (d *DB) getEarliestUnflushedSeqNumLocked() uint64 {
+func (d *DB) getEarliestUnflushedSeqNumLocked() base.SeqNum {
 	seqNum := InternalKeySeqNumMax
 	for i := range d.mu.mem.queue {
 		logSeqNum := d.mu.mem.queue[i].logSeqNum
@@ -2864,7 +2864,7 @@ func (d *DB) ScanStatistics(
 			stats.BytesRead += uint64(key.Size() + value.Len())
 			return nil
 		},
-		visitRangeDel: func(start, end []byte, seqNum uint64) error {
+		visitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
 			stats.Accumulated.KindsCount[InternalKeyKindRangeDelete]++
 			stats.BytesRead += uint64(len(start) + len(end))
 			return nil

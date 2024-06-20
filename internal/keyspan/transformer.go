@@ -33,7 +33,7 @@ var NoopTransform Transformer = TransformerFunc(func(_ base.Compare, s Span, dst
 
 // VisibleTransform filters keys that are invisible at the provided snapshot
 // sequence number.
-func VisibleTransform(snapshot uint64) Transformer {
+func VisibleTransform(snapshot base.SeqNum) Transformer {
 	return TransformerFunc(func(_ base.Compare, s Span, dst *Span) error {
 		dst.Start, dst.End = s.Start, s.End
 		dst.Keys = dst.Keys[:0]

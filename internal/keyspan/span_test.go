@@ -7,12 +7,11 @@ package keyspan
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
-	"github.com/stretchr/testify/require"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // TODO(jackson): Add unit tests for all of the various Span methods.
@@ -41,8 +40,7 @@ func TestSpan_Visible(t *testing.T) {
 		case "visible":
 			var buf bytes.Buffer
 			for _, line := range strings.Split(d.Input, "\n") {
-				snapshot, err := strconv.ParseUint(line, 10, 64)
-				require.NoError(t, err)
+				snapshot := base.ParseSeqNum(line)
 				fmt.Fprintf(&buf, "%-2d: %s\n", snapshot, s.Visible(snapshot))
 			}
 			return buf.String()
@@ -62,8 +60,7 @@ func TestSpan_VisibleAt(t *testing.T) {
 		case "visible-at":
 			var buf bytes.Buffer
 			for _, line := range strings.Split(d.Input, "\n") {
-				snapshot, err := strconv.ParseUint(line, 10, 64)
-				require.NoError(t, err)
+				snapshot := base.ParseSeqNum(line)
 				fmt.Fprintf(&buf, "%-2d: %t\n", snapshot, s.VisibleAt(snapshot))
 			}
 			return buf.String()
@@ -84,11 +81,9 @@ func TestSpan_CoversAt(t *testing.T) {
 			var buf bytes.Buffer
 			for _, line := range strings.Split(d.Input, "\n") {
 				fields := strings.Fields(line)
-				snapshot, err := strconv.ParseUint(fields[0], 10, 64)
-				require.NoError(t, err)
-				seqNum, err := strconv.ParseUint(fields[1], 10, 64)
-				require.NoError(t, err)
-				fmt.Fprintf(&buf, "%d %d : %t\n", snapshot, seqNum, s.CoversAt(snapshot, seqNum))
+				snapshot := base.ParseSeqNum(fields[0])
+				seqNum := base.ParseSeqNum(fields[1])
+				fmt.Fprintf(&buf, "%d %d : %t\n", snapshot, seqNum, s.CoversAt(base.SeqNum(snapshot), base.SeqNum(seqNum)))
 			}
 			return buf.String()
 		default:

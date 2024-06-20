@@ -12,20 +12,20 @@ import (
 
 func TestSnapshotIndex(t *testing.T) {
 	testCases := []struct {
-		snapshots      []uint64
-		seq            uint64
+		snapshots      []base.SeqNum
+		seq            base.SeqNum
 		expectedIndex  int
-		expectedSeqNum uint64
+		expectedSeqNum base.SeqNum
 	}{
-		{snapshots: []uint64{}, seq: 1, expectedIndex: 0, expectedSeqNum: base.InternalKeySeqNumMax},
-		{snapshots: []uint64{1}, seq: 0, expectedIndex: 0, expectedSeqNum: 1},
-		{snapshots: []uint64{1}, seq: 1, expectedIndex: 1, expectedSeqNum: base.InternalKeySeqNumMax},
-		{snapshots: []uint64{1}, seq: 2, expectedIndex: 1, expectedSeqNum: base.InternalKeySeqNumMax},
-		{snapshots: []uint64{1, 3}, seq: 1, expectedIndex: 1, expectedSeqNum: 3},
-		{snapshots: []uint64{1, 3}, seq: 2, expectedIndex: 1, expectedSeqNum: 3},
-		{snapshots: []uint64{1, 3}, seq: 3, expectedIndex: 2, expectedSeqNum: base.InternalKeySeqNumMax},
-		{snapshots: []uint64{1, 3}, seq: 4, expectedIndex: 2, expectedSeqNum: base.InternalKeySeqNumMax},
-		{snapshots: []uint64{1, 3, 3}, seq: 2, expectedIndex: 1, expectedSeqNum: 3},
+		{snapshots: []base.SeqNum{}, seq: 1, expectedIndex: 0, expectedSeqNum: base.InternalKeySeqNumMax},
+		{snapshots: []base.SeqNum{1}, seq: 0, expectedIndex: 0, expectedSeqNum: 1},
+		{snapshots: []base.SeqNum{1}, seq: 1, expectedIndex: 1, expectedSeqNum: base.InternalKeySeqNumMax},
+		{snapshots: []base.SeqNum{1}, seq: 2, expectedIndex: 1, expectedSeqNum: base.InternalKeySeqNumMax},
+		{snapshots: []base.SeqNum{1, 3}, seq: 1, expectedIndex: 1, expectedSeqNum: 3},
+		{snapshots: []base.SeqNum{1, 3}, seq: 2, expectedIndex: 1, expectedSeqNum: 3},
+		{snapshots: []base.SeqNum{1, 3}, seq: 3, expectedIndex: 2, expectedSeqNum: base.InternalKeySeqNumMax},
+		{snapshots: []base.SeqNum{1, 3}, seq: 4, expectedIndex: 2, expectedSeqNum: base.InternalKeySeqNumMax},
+		{snapshots: []base.SeqNum{1, 3, 3}, seq: 2, expectedIndex: 1, expectedSeqNum: 3},
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {

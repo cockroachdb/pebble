@@ -50,8 +50,8 @@ type WriterMetadata struct {
 	HasPointKeys     bool
 	HasRangeDelKeys  bool
 	HasRangeKeys     bool
-	SmallestSeqNum   uint64
-	LargestSeqNum    uint64
+	SmallestSeqNum   base.SeqNum
+	LargestSeqNum    base.SeqNum
 	Properties       Properties
 }
 
@@ -103,7 +103,7 @@ func (m *WriterMetadata) SetLargestRangeKey(k InternalKey) {
 	m.HasRangeKeys = true
 }
 
-func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
+func (m *WriterMetadata) updateSeqNum(seqNum base.SeqNum) {
 	if m.SmallestSeqNum > seqNum {
 		m.SmallestSeqNum = seqNum
 	}
@@ -227,7 +227,7 @@ type Writer struct {
 }
 
 type pointKeyInfo struct {
-	trailer uint64
+	trailer base.Trailer
 	// Only computed when w.valueBlockWriter is not nil.
 	userKeyLen int
 	// prefixLen uses w.split, if not nil. Only computed when w.valueBlockWriter
@@ -831,10 +831,10 @@ func (w *Writer) makeAddPointDecisionV3(
 	if !w.meta.HasPointKeys {
 		return false, false, false, nil
 	}
-	keyKind := base.TrailerKind(key.Trailer)
+	keyKind := key.Trailer.Kind()
 	prevPointUserKey := w.getLastPointUserKey()
 	prevPointKey := InternalKey{UserKey: prevPointUserKey, Trailer: prevPointKeyInfo.trailer}
-	prevKeyKind := base.TrailerKind(prevPointKeyInfo.trailer)
+	prevKeyKind := prevPointKeyInfo.trailer.Kind()
 	considerWriteToValueBlock := prevKeyKind == InternalKeyKindSet &&
 		keyKind == InternalKeyKindSet
 	if considerWriteToValueBlock && !w.requiredInPlaceValueBound.IsEmpty() {
@@ -951,7 +951,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte, forceObsolete bool) err
 		maxSharedKeyLen = w.lastPointKeyInfo.prefixLen
 		setHasSameKeyPrefix, writeToValueBlock, isObsolete, err =
 			w.makeAddPointDecisionV3(key, len(value))
-		addPrefixToValueStoredWithKey = base.TrailerKind(key.Trailer) == InternalKeyKindSet
+		addPrefixToValueStoredWithKey = key.Kind() == InternalKeyKindSet
 	} else {
 		err = w.makeAddPointDecisionV2(key)
 	}

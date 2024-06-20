@@ -179,7 +179,7 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 		// transform iter into VirtualReader.
 		transform := &rangekey.ForeignSSTTransformer{
 			Equal:  v.reader.Equal,
-			SeqNum: uint64(syntheticSeqNum),
+			SeqNum: base.SeqNum(syntheticSeqNum),
 		}
 		transformIter := &keyspan.TransformerIter{
 			FragmentIterator: iter,

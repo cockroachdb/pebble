@@ -85,7 +85,7 @@ type flushableEntry struct {
 	logSize uint64
 	// The current logSeqNum at the time the memtable was created. This is
 	// guaranteed to be less than or equal to any seqnum stored in the memtable.
-	logSeqNum uint64
+	logSeqNum base.SeqNum
 	// readerRefs tracks the read references on the flushable. The two sources of
 	// reader references are DB.mu.mem.queue and readState.memtables. The memory
 	// reserved by the flushable in the cache is released when the reader refs

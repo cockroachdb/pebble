@@ -43,13 +43,13 @@ type versionList = manifest.VersionList
 // to the MANIFEST file, which is replayed at startup.
 type versionSet struct {
 	// Next seqNum to use for WAL writes.
-	logSeqNum atomic.Uint64
+	logSeqNum base.AtomicSeqNum
 
 	// The upper bound on sequence numbers that have been assigned so far. A
 	// suffix of these sequence numbers may not have been written to a WAL. Both
 	// logSeqNum and visibleSeqNum are atomically updated by the commitPipeline.
 	// visibleSeqNum is <= logSeqNum.
-	visibleSeqNum atomic.Uint64
+	visibleSeqNum base.AtomicSeqNum
 
 	// Number of bytes present in sstables being written by in-progress
 	// compactions. This value will be zero if there are no in-progress

@@ -26,13 +26,17 @@ func TestRangeDelSpanCompactor(t *testing.T) {
 		case "compact":
 			var snapshots []uint64
 			td.MaybeScanArgs(t, "snapshots", &snapshots)
+			var s Snapshots
+			for _, v := range snapshots {
+				s = append(s, base.SeqNum(v))
+			}
 			keyRanges := maybeParseInUseKeyRanges(td)
 			span := keyspan.ParseSpan(td.Input)
 
 			c = MakeRangeDelSpanCompactor(
 				base.DefaultComparer.Compare,
 				base.DefaultComparer.Equal,
-				snapshots,
+				s,
 				ElideTombstonesOutsideOf(keyRanges),
 			)
 
@@ -58,13 +62,17 @@ func TestRangeKeySpanCompactor(t *testing.T) {
 		case "compact":
 			var snapshots []uint64
 			td.MaybeScanArgs(t, "snapshots", &snapshots)
+			var s Snapshots
+			for _, v := range snapshots {
+				s = append(s, base.SeqNum(v))
+			}
 			keyRanges := maybeParseInUseKeyRanges(td)
 			span := keyspan.ParseSpan(td.Input)
 
 			c = MakeRangeKeySpanCompactor(
 				base.DefaultComparer.Compare,
 				base.DefaultComparer.Equal,
-				snapshots,
+				s,
 				ElideTombstonesOutsideOf(keyRanges),
 			)
 

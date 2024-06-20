@@ -69,7 +69,7 @@ func fakeIkey(s string) InternalKey {
 	if err != nil {
 		panic(err)
 	}
-	return MakeInternalKey([]byte(s[:j]), uint64(seqNum), InternalKeyKindSet)
+	return MakeInternalKey([]byte(s[:j]), SeqNum(seqNum), InternalKeyKindSet)
 }
 
 // NewFakeIter returns an iterator over the given KVs.

@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -24,14 +23,13 @@ func parseSpanSingleKey(t *testing.T, s string, kind base.InternalKeyKind) Span 
 	if len(m) != 5 {
 		t.Fatalf("expected 5 components, but found %d: %s", len(m), s)
 	}
-	seqNum, err := strconv.Atoi(m[1])
-	require.NoError(t, err)
+	seqNum := base.ParseSeqNum(m[1])
 	return Span{
 		Start: []byte(m[2]),
 		End:   []byte(m[3]),
 		Keys: []Key{
 			{
-				Trailer: base.MakeTrailer(uint64(seqNum), kind),
+				Trailer: base.MakeTrailer(seqNum, kind),
 				Value:   []byte(strings.TrimSpace(m[4])),
 			},
 		},
@@ -105,14 +103,12 @@ func TestFragmenter(t *testing.T) {
 
 	var getRe = regexp.MustCompile(`(\w+)#(\d+)`)
 
-	parseGet := func(t *testing.T, s string) (string, int) {
+	parseGet := func(t *testing.T, s string) (string, base.SeqNum) {
 		m := getRe.FindStringSubmatch(s)
 		if len(m) != 3 {
 			t.Fatalf("expected 3 components, but found %d", len(m))
 		}
-		seq, err := strconv.Atoi(m[2])
-		require.NoError(t, err)
-		return m[1], seq
+		return m[1], base.ParseSeqNum(m[2])
 	}
 
 	var iter FragmentIterator
@@ -121,7 +117,7 @@ func TestFragmenter(t *testing.T) {
 	// read sequence number. Get ignores spans newer than the read sequence
 	// number. This is a simple version of what full processing of range
 	// tombstones looks like.
-	deleted := func(key []byte, seq, readSeq uint64) bool {
+	deleted := func(key []byte, seq, readSeq base.SeqNum) bool {
 		s, err := Get(cmp, iter, key)
 		require.NoError(t, err)
 		return s != nil && s.CoversAt(readSeq, seq)
@@ -149,13 +145,12 @@ func TestFragmenter(t *testing.T) {
 			if d.CmdArgs[0].Key != "t" {
 				return fmt.Sprintf("expected timestamp argument, but found %s", d.CmdArgs[0])
 			}
-			readSeq, err := strconv.Atoi(d.CmdArgs[0].Vals[0])
-			require.NoError(t, err)
+			readSeq := base.ParseSeqNum(d.CmdArgs[0].Vals[0])
 
 			var results []string
 			for _, p := range strings.Split(d.Input, " ") {
 				key, seq := parseGet(t, p)
-				if deleted([]byte(key), uint64(seq), uint64(readSeq)) {
+				if deleted([]byte(key), seq, readSeq) {
 					results = append(results, "deleted")
 				} else {
 					results = append(results, "alive")
