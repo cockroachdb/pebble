@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode"
 
@@ -61,7 +60,7 @@ const (
 // is applied.
 type Key struct {
 	// Trailer contains the key kind and sequence number.
-	Trailer uint64
+	Trailer base.Trailer
 	// Suffix holds an optional suffix associated with the key. This is only
 	// non-nil for RANGEKEYSET and RANGEKEYUNSET keys.
 	Suffix []byte
@@ -72,15 +71,15 @@ type Key struct {
 }
 
 // SeqNum returns the sequence number component of the key.
-func (k Key) SeqNum() uint64 {
-	return k.Trailer >> 8
+func (k Key) SeqNum() base.SeqNum {
+	return k.Trailer.SeqNum()
 }
 
 // VisibleAt returns true if the provided key is visible at the provided
 // snapshot sequence number. It interprets batch sequence numbers as always
 // visible, because non-visible batch span keys are filtered when they're
 // fragmented.
-func (k Key) VisibleAt(snapshot uint64) bool {
+func (k Key) VisibleAt(snapshot base.SeqNum) bool {
 	seq := k.SeqNum()
 	return seq < snapshot || seq&base.InternalKeySeqNumBatch != 0
 }
@@ -169,7 +168,7 @@ func (s *Span) LargestKey() base.InternalKey {
 // SmallestSeqNum returns the smallest sequence number of a key contained within
 // the span. It requires the Span's keys be in ByTrailerDesc order. It panics if
 // the span contains no keys or its keys are sorted in a different order.
-func (s *Span) SmallestSeqNum() uint64 {
+func (s *Span) SmallestSeqNum() base.SeqNum {
 	if len(s.Keys) == 0 {
 		panic("pebble: Span contains no keys")
 	} else if s.KeysOrder != ByTrailerDesc {
@@ -182,7 +181,7 @@ func (s *Span) SmallestSeqNum() uint64 {
 // LargestSeqNum returns the largest sequence number of a key contained within
 // the span. It requires the Span's keys be in ByTrailerDesc order. It panics if
 // the span contains no keys or its keys are sorted in a different order.
-func (s *Span) LargestSeqNum() uint64 {
+func (s *Span) LargestSeqNum() base.SeqNum {
 	if len(s.Keys) == 0 {
 		panic("pebble: Span contains no keys")
 	} else if s.KeysOrder != ByTrailerDesc {
@@ -195,7 +194,7 @@ func (s *Span) LargestSeqNum() uint64 {
 // within the span that's also visible at the provided snapshot sequence number.
 // It requires the Span's keys be in ByTrailerDesc order. It panics if the span
 // contains no keys or its keys are sorted in a different order.
-func (s *Span) LargestVisibleSeqNum(snapshot uint64) (largest uint64, ok bool) {
+func (s *Span) LargestVisibleSeqNum(snapshot base.SeqNum) (largest base.SeqNum, ok bool) {
 	if s == nil {
 		return 0, false
 	} else if len(s.Keys) == 0 {
@@ -220,7 +219,7 @@ func (s *Span) LargestVisibleSeqNum(snapshot uint64) (largest uint64, ok bool) {
 //
 // Visible may incur an allocation, so callers should prefer targeted,
 // non-allocating methods when possible.
-func (s Span) Visible(snapshot uint64) Span {
+func (s Span) Visible(snapshot base.SeqNum) Span {
 	if s.KeysOrder != ByTrailerDesc {
 		panic("pebble: span's keys unexpectedly not in trailer order")
 	}
@@ -297,7 +296,7 @@ func (s Span) Visible(snapshot uint64) Span {
 //
 // VisibleAt requires the Span's keys be in ByTrailerDesc order. It panics if
 // the span's keys are sorted in a different order.
-func (s *Span) VisibleAt(snapshot uint64) bool {
+func (s *Span) VisibleAt(snapshot base.SeqNum) bool {
 	if s.KeysOrder != ByTrailerDesc {
 		panic("pebble: span's keys unexpectedly not in trailer order")
 	}
@@ -365,7 +364,7 @@ func (s *Span) Contains(cmp base.Compare, key []byte) bool {
 //
 // Covers requires the Span's keys be in ByTrailerDesc order. It panics if the
 // span's keys are sorted in a different order.
-func (s Span) Covers(seqNum uint64) bool {
+func (s Span) Covers(seqNum base.SeqNum) bool {
 	if s.KeysOrder != ByTrailerDesc {
 		panic("pebble: span's keys unexpectedly not in trailer order")
 	}
@@ -381,7 +380,7 @@ func (s Span) Covers(seqNum uint64) bool {
 //
 // CoversAt requires the Span's keys be in ByTrailerDesc order. It panics if the
 // span's keys are sorted in a different order.
-func (s *Span) CoversAt(snapshot, seqNum uint64) bool {
+func (s *Span) CoversAt(snapshot, seqNum base.SeqNum) bool {
 	if s.KeysOrder != ByTrailerDesc {
 		panic("pebble: span's keys unexpectedly not in trailer order")
 	}
@@ -493,12 +492,7 @@ func ParseSpan(input string) Span {
 		})
 
 		var k Key
-		// Parse the sequence number.
-		seqNum, err := strconv.ParseUint(keyFields[0], 10, 64)
-		if err != nil {
-			panic(fmt.Sprintf("invalid sequence number: %q: %s", keyFields[0], err))
-		}
-		// Parse the key kind.
+		seqNum := base.ParseSeqNum(keyFields[0])
 		kind := base.ParseKind(keyFields[1])
 		k.Trailer = base.MakeTrailer(seqNum, kind)
 		// Parse the optional suffix.

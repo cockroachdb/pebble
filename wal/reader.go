@@ -227,7 +227,7 @@ type virtualWALReader struct {
 	// should monotonically increase as we iterate over the WAL files. If we
 	// ever observe a batch encoding a sequence number <= lastSeqNum, we must
 	// have already returned the batch and should skip it.
-	lastSeqNum uint64
+	lastSeqNum base.SeqNum
 	// recordBuf is a buffer used to hold the latest record read from a physical
 	// file, and then returned to the user. A pointer to this buffer is returned
 	// directly to the caller of NextRecord.

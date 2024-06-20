@@ -52,7 +52,7 @@ import (
 //	                        │
 //	                        ╰── <?>.Next
 type UserIteratorConfig struct {
-	snapshot     uint64
+	snapshot     base.SeqNum
 	comparer     *base.Comparer
 	miter        keyspanimpl.MergingIter
 	biter        keyspan.BoundedIter
@@ -88,7 +88,7 @@ func (bufs *Buffers) PrepareForReuse() {
 // keys not visible at the provided snapshot are ignored.
 func (ui *UserIteratorConfig) Init(
 	comparer *base.Comparer,
-	snapshot uint64,
+	snapshot base.SeqNum,
 	lower, upper []byte,
 	hasPrefix *bool,
 	prefix *[]byte,

@@ -4,13 +4,17 @@
 
 package batchrepr
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+
+	"github.com/cockroachdb/pebble/internal/base"
+)
 
 // SetSeqNum mutates the provided batch representation, storing the provided
 // sequence number in its header. The provided byte slice must already be at
 // least HeaderLen bytes long or else SetSeqNum will panic.
-func SetSeqNum(repr []byte, seqNum uint64) {
-	binary.LittleEndian.PutUint64(repr[:countOffset], seqNum)
+func SetSeqNum(repr []byte, seqNum base.SeqNum) {
+	binary.LittleEndian.PutUint64(repr[:countOffset], uint64(seqNum))
 }
 
 // SetCount mutates the provided batch representation, storing the provided

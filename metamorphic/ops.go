@@ -1926,7 +1926,7 @@ func (r *replicateOp) runSharedReplicate(
 			}
 			return w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val)
 		},
-		func(start, end []byte, seqNum uint64) error {
+		func(start, end []byte, seqNum base.SeqNum) error {
 			return w.DeleteRange(start, end)
 		},
 		func(start, end []byte, keys []keyspan.Key) error {
@@ -1990,7 +1990,7 @@ func (r *replicateOp) runExternalReplicate(
 			}
 			return w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val)
 		},
-		func(start, end []byte, seqNum uint64) error {
+		func(start, end []byte, seqNum base.SeqNum) error {
 			return w.DeleteRange(start, end)
 		},
 		func(start, end []byte, keys []keyspan.Key) error {

@@ -758,7 +758,7 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
 	jobID JobID, ve *versionEdit, ll wal.LogicalLog, strictWALTail bool,
-) (toFlush flushableList, maxSeqNum uint64, err error) {
+) (toFlush flushableList, maxSeqNum base.SeqNum, err error) {
 	rr := ll.OpenForRead()
 	defer rr.Close()
 	var (
@@ -805,7 +805,7 @@ func (d *DB) replayWAL(
 		mem, entry = nil, nil
 	}
 	// Creates a new memtable if there is no current memtable.
-	ensureMem := func(seqNum uint64) {
+	ensureMem := func(seqNum base.SeqNum) {
 		if mem != nil {
 			return
 		}
@@ -874,7 +874,7 @@ func (d *DB) replayWAL(
 		b.db = d
 		b.SetRepr(buf.Bytes())
 		seqNum := b.SeqNum()
-		maxSeqNum = seqNum + uint64(b.Count())
+		maxSeqNum = seqNum + base.SeqNum(b.Count())
 		keysReplayed += int64(b.Count())
 		batchesReplayed++
 		{

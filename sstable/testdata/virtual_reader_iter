@@ -198,9 +198,9 @@ h.SET.9:h
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize lower=c.SET.3 upper=f.SET.1:ff
+virtualize lower=c.SET.3 upper=f.SET.1
 ----
-bounds:  [c#3,SET-f#0,SET]
+bounds:  [c#3,SET-f#1,SET]
 
 iter
 set-bounds lower=d upper=e
@@ -413,9 +413,9 @@ h.SET.9:h
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize lower=c.SET.3 upper=f.SET.1:ff
+virtualize lower=c.SET.3 upper=f.SET.1
 ----
-bounds:  [c#3,SET-f#0,SET]
+bounds:  [c#3,SET-f#1,SET]
 
 iter
 set-bounds lower=d upper=e

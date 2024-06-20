@@ -27,8 +27,8 @@ type lsmFileMetadata struct {
 	Size           uint64
 	Smallest       int // ID of smallest key
 	Largest        int // ID of largest key
-	SmallestSeqNum uint64
-	LargestSeqNum  uint64
+	SmallestSeqNum base.SeqNum
+	LargestSeqNum  base.SeqNum
 	Virtual        bool
 }
 
@@ -45,7 +45,7 @@ type lsmVersionEdit struct {
 
 type lsmKey struct {
 	Pretty string
-	SeqNum uint64
+	SeqNum base.SeqNum
 	Kind   int
 }
 

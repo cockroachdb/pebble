@@ -255,8 +255,8 @@ type compaction struct {
 
 // inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
 // input sstables.
-func (c *compaction) inputLargestSeqNumAbsolute() uint64 {
-	var seqNum uint64
+func (c *compaction) inputLargestSeqNumAbsolute() base.SeqNum {
+	var seqNum base.SeqNum
 	for _, cl := range c.inputs {
 		cl.files.Each(func(m *manifest.FileMetadata) {
 			seqNum = max(seqNum, m.LargestSeqNumAbsolute)
@@ -1889,15 +1889,15 @@ type deleteCompactionHint struct {
 	// tombstone smallest sequence number to be deleted. All of a tables'
 	// sequence numbers must fall into the same snapshot stripe as the
 	// tombstone largest sequence number to be deleted.
-	tombstoneLargestSeqNum  uint64
-	tombstoneSmallestSeqNum uint64
+	tombstoneLargestSeqNum  base.SeqNum
+	tombstoneSmallestSeqNum base.SeqNum
 	// The smallest sequence number of a sstable that was found to be covered
 	// by this hint. The hint cannot be resolved until this sequence number is
 	// in the same snapshot stripe as the largest tombstone sequence number.
 	// This is set when a hint is created, so the LSM may look different and
 	// notably no longer contain the sstable that contained the key at this
 	// sequence number.
-	fileSmallestSeqNum uint64
+	fileSmallestSeqNum base.SeqNum
 }
 
 func (h deleteCompactionHint) String() string {

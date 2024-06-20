@@ -12,7 +12,6 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -292,7 +291,7 @@ func testBatchEmpty(t *testing.T, size int, opts ...BatchOption) {
 	require.True(t, b.Empty())
 	b = newBatchWithSize(nil, size)
 
-	require.Equal(t, uint64(0), b.SeqNum())
+	require.Equal(t, base.SeqNumZero, b.SeqNum())
 	require.True(t, b.Empty())
 	b.Reset()
 	require.True(t, b.Empty())
@@ -396,7 +395,7 @@ func TestBatchReset(t *testing.T) {
 	require.Equal(t, uint64(0), b.countRangeDels)
 	require.Equal(t, uint64(0), b.countRangeKeys)
 	require.Equal(t, batchrepr.HeaderLen, len(b.data))
-	require.Equal(t, uint64(0), b.SeqNum())
+	require.Equal(t, base.SeqNumZero, b.SeqNum())
 	require.Equal(t, uint64(0), b.memTableSize)
 	require.Equal(t, FormatMajorVersion(0x00), b.minimumFormatMajorVersion)
 	require.Equal(t, b.deferredOp, DeferredBatchOp{})
@@ -1188,11 +1187,8 @@ func TestFlushableBatch(t *testing.T) {
 			if len(d.CmdArgs) != 1 || len(d.CmdArgs[0].Vals) != 1 || d.CmdArgs[0].Key != "seq" {
 				return "dump seq=<value>\n"
 			}
-			seqNum, err := strconv.Atoi(d.CmdArgs[0].Vals[0])
-			if err != nil {
-				return err.Error()
-			}
-			b.setSeqNum(uint64(seqNum))
+			seqNum := base.ParseSeqNum(d.CmdArgs[0].Vals[0])
+			b.setSeqNum(seqNum)
 
 			var buf bytes.Buffer
 

@@ -176,7 +176,7 @@ type Iter struct {
 	// keyTrailer is updated when `i.key` is updated and holds the key's
 	// original trailer (eg, before any sequence-number zeroing or changes to
 	// key kind).
-	keyTrailer  uint64
+	keyTrailer  base.Trailer
 	value       []byte
 	valueCloser io.Closer
 	// Temporary buffer used for storing the previous user key in order to
@@ -223,7 +223,7 @@ type Iter struct {
 	forceObsoleteDueToRangeDel bool
 	// The index of the snapshot for the current key within the snapshots slice.
 	curSnapshotIdx    int
-	curSnapshotSeqNum uint64
+	curSnapshotSeqNum base.SeqNum
 	// frontiers holds a heap of user keys that affect compaction behavior when
 	// they're exceeded. Before a new key is returned, the compaction iterator
 	// advances the frontier, notifying any code that subscribed to be notified
@@ -738,7 +738,7 @@ func (i *Iter) nextInStripeHelper() stripeChangeType {
 		// were ingested, but range keys are interleaved into the compaction
 		// iterator's input iterator at the maximal sequence number so their
 		// original sequence number will not be observed here.
-		if prevSeqNum := base.SeqNumFromTrailer(i.keyTrailer); (prevSeqNum == 0 || prevSeqNum <= kv.SeqNum()) &&
+		if prevSeqNum := i.keyTrailer.SeqNum(); (prevSeqNum == 0 || prevSeqNum <= kv.SeqNum()) &&
 			i.key.Kind() != base.InternalKeyKindRangeDelete && kv.Kind() != base.InternalKeyKindRangeDelete {
 			prevKey := i.key
 			prevKey.Trailer = i.keyTrailer
@@ -1312,7 +1312,7 @@ const (
 // The key's UserKey must be greater or equal to the last span Start key passed
 // to AddTombstoneSpan. The keys passed to tombstoneCovers calls must be
 // ordered.
-func (i *Iter) tombstoneCovers(key base.InternalKey, snapshot uint64) cover {
+func (i *Iter) tombstoneCovers(key base.InternalKey, snapshot base.SeqNum) cover {
 	if i.lastRangeDelSpan.Empty() {
 		return noCover
 	}

@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 	"unicode"
@@ -276,7 +275,7 @@ func TestMemTableIter(t *testing.T) {
 
 func TestMemTableDeleteRange(t *testing.T) {
 	var mem *memTable
-	var seqNum uint64
+	var seqNum base.SeqNum
 
 	datadriven.RunTest(t, "testdata/delete_range", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -296,7 +295,7 @@ func TestMemTableDeleteRange(t *testing.T) {
 			if err := mem.apply(b, seqNum); err != nil {
 				return err.Error()
 			}
-			seqNum += uint64(b.Count())
+			seqNum += base.SeqNum(b.Count())
 			return ""
 
 		case "scan":
@@ -327,7 +326,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 
 	const workers = 10
 	eg, _ := errgroup.WithContext(context.Background())
-	var seqNum atomic.Uint64
+	var seqNum base.AtomicSeqNum
 	seqNum.Store(1)
 	for i := 0; i < workers; i++ {
 		i := i
@@ -416,7 +415,7 @@ func TestMemTable(t *testing.T) {
 			var seqNum uint64
 			td.ScanArgs(t, "name", &name)
 			td.ScanArgs(t, "seq", &seqNum)
-			if err := m.apply(batches[name], seqNum); err != nil {
+			if err := m.apply(batches[name], base.SeqNum(seqNum)); err != nil {
 				return err.Error()
 			}
 			delete(batches, name)

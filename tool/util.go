@@ -254,7 +254,7 @@ func formatKey(w io.Writer, fmtKey keyFormatter, key *base.InternalKey) bool {
 	return true
 }
 
-func formatSeqNumRange(w io.Writer, start, end uint64) {
+func formatSeqNumRange(w io.Writer, start, end base.SeqNum) {
 	fmt.Fprintf(w, "<#%d-#%d>", start, end)
 }
 

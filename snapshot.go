@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
@@ -20,7 +21,7 @@ import (
 type Snapshot struct {
 	// The db the snapshot was created from.
 	db     *DB
-	seqNum uint64
+	seqNum base.SeqNum
 
 	// Set if part of an EventuallyFileOnlySnapshot.
 	efos *EventuallyFileOnlySnapshot
@@ -77,7 +78,7 @@ func (s *Snapshot) ScanInternal(
 	categoryAndQoS sstable.CategoryAndQoS,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
-	visitRangeDel func(start, end []byte, seqNum uint64) error,
+	visitRangeDel func(start, end []byte, seqNum base.SeqNum) error,
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
 	visitExternalFile func(sst *ExternalFile) error,
@@ -162,19 +163,19 @@ func (l *snapshotList) count() int {
 	return count
 }
 
-func (l *snapshotList) earliest() uint64 {
-	v := uint64(math.MaxUint64)
+func (l *snapshotList) earliest() base.SeqNum {
+	v := base.SeqNum(math.MaxUint64)
 	if !l.empty() {
 		v = l.root.next.seqNum
 	}
 	return v
 }
 
-func (l *snapshotList) toSlice() []uint64 {
+func (l *snapshotList) toSlice() []base.SeqNum {
 	if l.empty() {
 		return nil
 	}
-	var results []uint64
+	var results []base.SeqNum
 	for i := l.root.next; i != &l.root; i = i.next {
 		results = append(results, i.seqNum)
 	}
@@ -250,7 +251,7 @@ type EventuallyFileOnlySnapshot struct {
 
 	// The db the snapshot was created from.
 	db     *DB
-	seqNum uint64
+	seqNum base.SeqNum
 	closed chan struct{}
 }
 
@@ -475,7 +476,7 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 	categoryAndQoS sstable.CategoryAndQoS,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
-	visitRangeDel func(start, end []byte, seqNum uint64) error,
+	visitRangeDel func(start, end []byte, seqNum base.SeqNum) error,
 	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
 	visitSharedFile func(sst *SharedSSTMeta) error,
 	visitExternalFile func(sst *ExternalFile) error,

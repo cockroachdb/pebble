@@ -218,7 +218,7 @@ func (l *Layout) Describe(
 						// fetched from a blockIter which does not know about value
 						// blocks.
 						v := kv.InPlaceValue()
-						if base.TrailerKind(kv.K.Trailer) != InternalKeyKindSet {
+						if kv.K.Kind() != InternalKeyKindSet {
 							fmtRecord(&kv.K, v)
 						} else if !isValueHandle(valuePrefix(v[0])) {
 							fmtRecord(&kv.K, v[1:])

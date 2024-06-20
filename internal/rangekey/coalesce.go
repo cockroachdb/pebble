@@ -66,7 +66,7 @@ func Coalesce(cmp base.Compare, eq base.Equal, keys []keyspan.Key, dst *[]keyspa
 // CoalesceIntoKeysBySuffix is a variant of Coalesce which outputs the results into
 // keyspan.KeysBySuffix without sorting them.
 func CoalesceIntoKeysBySuffix(
-	equal base.Equal, keysBySuffix *keyspan.KeysBySuffix, snapshot uint64, keys []keyspan.Key,
+	equal base.Equal, keysBySuffix *keyspan.KeysBySuffix, snapshot base.SeqNum, keys []keyspan.Key,
 ) {
 	// First, enforce visibility and RangeKeyDelete mechanics. We only need to
 	// consider the prefix of keys before and including the first
@@ -160,7 +160,7 @@ func CoalesceIntoKeysBySuffix(
 // rest of the iterator stack expects.
 type ForeignSSTTransformer struct {
 	Equal   base.Equal
-	SeqNum  uint64
+	SeqNum  base.SeqNum
 	sortBuf keyspan.KeysBySuffix
 }
 

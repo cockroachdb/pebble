@@ -228,8 +228,8 @@ type mergingIter struct {
 	logger        Logger
 	split         Split
 	dir           int
-	snapshot      uint64
-	batchSnapshot uint64
+	snapshot      base.SeqNum
+	batchSnapshot base.SeqNum
 	levels        []mergingIterLevel
 	heap          mergingIterHeap
 	err           error

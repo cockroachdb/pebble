@@ -48,7 +48,7 @@ func ReadHeader(repr []byte) (h Header, ok bool) {
 type Header struct {
 	// SeqNum is the sequence number at which the batch is committed. A batch
 	// that has not yet committed will have a zero sequence number.
-	SeqNum uint64
+	SeqNum base.SeqNum
 	// Count is the count of keys written to the batch.
 	Count uint32
 }
@@ -62,8 +62,8 @@ func (h Header) String() string {
 // does not validate that the repr is valid. It's exported only for very
 // performance sensitive code paths that should not necessarily read the rest of
 // the header as well.
-func ReadSeqNum(repr []byte) uint64 {
-	return binary.LittleEndian.Uint64(repr[:countOffset])
+func ReadSeqNum(repr []byte) base.SeqNum {
+	return base.SeqNum(binary.LittleEndian.Uint64(repr[:countOffset]))
 }
 
 // Read constructs a Reader from an encoded batch representation, ignoring the

@@ -377,7 +377,7 @@ func (d *DB) loadTableRangeDelStats(
 		start, end := s.Start, s.End
 		// We only need to consider deletion size estimates for tables that contain
 		// RANGEDELs.
-		var maxRangeDeleteSeqNum uint64
+		var maxRangeDeleteSeqNum base.SeqNum
 		for _, k := range s.Keys {
 			if k.Kind() == base.InternalKeyKindRangeDelete && maxRangeDeleteSeqNum < k.SeqNum() {
 				maxRangeDeleteSeqNum = k.SeqNum()
@@ -540,7 +540,7 @@ func (d *DB) estimateSizesBeneath(
 
 func (d *DB) estimateReclaimedSizeBeneath(
 	v *version, level int, start, end []byte, hintType deleteCompactionHintType,
-) (estimate uint64, hintSeqNum uint64, err error) {
+) (estimate uint64, hintSeqNum base.SeqNum, err error) {
 	// Find all files in lower levels that overlap with the deleted range
 	// [start, end).
 	//

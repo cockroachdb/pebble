@@ -80,9 +80,9 @@ func loadVersion(t *testing.T, d *datadriven.TestData) (*version, *Options, stri
 				var key InternalKey
 				if level == 0 {
 					// For L0, make `size` overlapping files.
-					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", 1)), i, InternalKeyKindSet)
+					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", 1)), base.SeqNum(i), InternalKeyKindSet)
 				} else {
-					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
+					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), base.SeqNum(i), InternalKeyKindSet)
 				}
 				m := (&fileMetadata{
 					FileNum:               base.FileNum(uint64(level)*100_000 + i),
@@ -107,7 +107,7 @@ func loadVersion(t *testing.T, d *datadriven.TestData) (*version, *Options, stri
 					// TestCompactionPickerTargetLevel. Clean this up somehow.
 					m.Size = size
 					if level != 0 {
-						endKey := base.MakeInternalKey([]byte(fmt.Sprintf("%04d", size)), i, InternalKeyKindSet)
+						endKey := base.MakeInternalKey([]byte(fmt.Sprintf("%04d", size)), base.SeqNum(i), InternalKeyKindSet)
 						m.ExtendPointKeyBounds(opts.Comparer.Compare, key, endKey)
 					}
 				}

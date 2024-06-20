@@ -328,7 +328,7 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 	type keyID struct {
 		idx    int64
 		suffix int64
-		seqNum int64
+		seqNum base.SeqNum
 	}
 	keyMap := make(map[keyID]bool)
 	// Constrain the space we generate keys to the middle 90% of the keyspace.
@@ -339,14 +339,14 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 		k := keyID{
 			idx:    cfg.rng.Int63n(sstKeys.Count()),
 			suffix: cfg.rng.Int63n(cfg.maxSuffix + 1),
-			seqNum: cfg.rng.Int63n(cfg.maxSeqNum + 1),
+			seqNum: base.SeqNum(cfg.rng.Int63n(cfg.maxSeqNum + 1)),
 		}
 		// If we've already generated this exact key, try again.
 		for keyMap[k] {
 			k = keyID{
 				idx:    cfg.rng.Int63n(sstKeys.Count()),
 				suffix: cfg.rng.Int63n(cfg.maxSuffix + 1),
-				seqNum: cfg.rng.Int63n(cfg.maxSeqNum + 1),
+				seqNum: base.SeqNum(cfg.rng.Int63n(cfg.maxSeqNum + 1)),
 			}
 		}
 		keyMap[k] = true
@@ -362,7 +362,7 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 		var keyBuf []byte
 		alloc, keyBuf = alloc.Alloc(testkeys.SuffixLen(keyID.suffix) + cfg.keys.MaxLen())
 		n := testkeys.WriteKeyAt(keyBuf, sstKeys, keyID.idx, keyID.suffix)
-		keys[i] = base.MakeInternalKey(keyBuf[:n], uint64(keyID.seqNum), kind)
+		keys[i] = base.MakeInternalKey(keyBuf[:n], keyID.seqNum, kind)
 	}
 	// The Writer requires the keys to be written in sorted order. Sort them.
 	slices.SortFunc(keys, func(a, b base.InternalKey) int {

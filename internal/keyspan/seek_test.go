@@ -7,7 +7,6 @@ package keyspan
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -49,10 +48,7 @@ func TestSeek(t *testing.T) {
 				if len(parts) != 2 {
 					return fmt.Sprintf("malformed input: %s", line)
 				}
-				seq, err := strconv.ParseUint(parts[1], 10, 64)
-				if err != nil {
-					return err.Error()
-				}
+				seq := base.ParseSeqNum(parts[1])
 				span, err := seek(cmp, iter, []byte(parts[0]))
 				if err != nil {
 					fmt.Fprintf(&buf, "<nil> <err=%q>\n", err)

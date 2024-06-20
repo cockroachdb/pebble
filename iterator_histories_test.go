@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
@@ -337,10 +338,7 @@ func TestIterHistories(t *testing.T) {
 							return uint64(v) < min || uint64(v) >= max
 						}
 					case "snapshot":
-						s, err := strconv.ParseUint(arg.Vals[0], 10, 64)
-						if err != nil {
-							return err.Error()
-						}
+						s := base.ParseSeqNum(arg.Vals[0])
 						func() {
 							d.mu.Lock()
 							defer d.mu.Unlock()

@@ -132,7 +132,7 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 		}
 
 		key := Key{
-			Trailer: base.MakeTrailer(uint64(i), base.InternalKeyKindRangeKeySet),
+			Trailer: base.MakeTrailer(base.SeqNum(i), base.InternalKeyKindRangeKeySet),
 			Value:   []byte(fmt.Sprintf("v%d", rng.Intn(3))),
 		}
 		// Generate suffixes 0, 1, 2, or 3 with 0 indicating none.

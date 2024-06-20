@@ -819,8 +819,8 @@ func propArgs(props []props, getProp func(*props) interface{}) []interface{} {
 
 type props struct {
 	Count                      uint64
-	SmallestSeqNum             uint64
-	LargestSeqNum              uint64
+	SmallestSeqNum             base.SeqNum
+	LargestSeqNum              base.SeqNum
 	DataSize                   uint64
 	FilterSize                 uint64
 	IndexSize                  uint64

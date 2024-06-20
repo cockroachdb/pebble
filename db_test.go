@@ -384,7 +384,7 @@ func TestLargeBatch(t *testing.T) {
 		require.NoError(t, err)
 		return logs[len(logs)-1]
 	}
-	memTableCreationSeqNum := func() uint64 {
+	memTableCreationSeqNum := func() base.SeqNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		return d.mu.mem.mutable.logSeqNum

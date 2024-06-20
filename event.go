@@ -384,7 +384,7 @@ type TableIngestInfo struct {
 	}
 	// GlobalSeqNum is the sequence number that was assigned to all entries in
 	// the ingested table.
-	GlobalSeqNum uint64
+	GlobalSeqNum base.SeqNum
 	// flushable indicates whether the ingested sstable was treated as a
 	// flushable.
 	flushable bool

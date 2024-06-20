@@ -585,14 +585,14 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 	for j := 1; j < len(files); j++ {
 		for _, k := range []int{0, len(keys) - 1} {
-			ikey := base.MakeInternalKey(keys[k], uint64(j), InternalKeyKindSet)
+			ikey := base.MakeInternalKey(keys[k], base.SeqNum(j), InternalKeyKindSet)
 			writers[j][0].Add(ikey, nil)
 		}
 	}
 	lastKey := []byte(fmt.Sprintf("%08d", i))
 	keys = append(keys, lastKey)
 	for j := 0; j < len(files); j++ {
-		lastIKey := base.MakeInternalKey(lastKey, uint64(j), InternalKeyKindSet)
+		lastIKey := base.MakeInternalKey(lastKey, base.SeqNum(j), InternalKeyKindSet)
 		writers[j][1].Add(lastIKey, nil)
 	}
 	for _, levelWriters := range writers {
