@@ -269,7 +269,7 @@ iter
 first
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-d:{(#1,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-d:{(#1,RANGEDEL)}
 err=invalid internal key kind: INVALID
 
 define
@@ -304,10 +304,10 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
 a#2,SET:b
-b#72057594037927935,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL)}
-c#72057594037927935,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL)}
+c#inf,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
 .
 
 iter snapshots=2
@@ -317,10 +317,10 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
 a#2,SET:b
-b#72057594037927935,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
-c#72057594037927935,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+c#inf,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
 .
 
 iter snapshots=3
@@ -331,11 +331,11 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
 a#2,SET:b
-b#72057594037927935,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
 b#2,SET:e
-c#72057594037927935,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
+c#inf,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
 .
 
 iter snapshots=4
@@ -347,11 +347,11 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
 a#2,SET:b
-b#72057594037927935,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
 b#2,SET:e
-c#72057594037927935,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
+c#inf,RANGEDEL:; Span() = c-d:{(#4,RANGEDEL)}
 c#3,SET:f
 .
 
@@ -370,7 +370,7 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-e:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-e:{(#3,RANGEDEL)}
 b#4,SET:b
 c#3,SET:c
 e#1,SET:e
@@ -391,7 +391,7 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-e:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-e:{(#3,RANGEDEL)}
 b#4,MERGE:b
 c#3,MERGE:c
 e#1,MERGE:e
@@ -417,9 +417,9 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#5,MERGE:de
-d#72057594037927935,RANGEDEL:; Span() = d-f:{(#3,RANGEDEL)}
+d#inf,RANGEDEL:; Span() = d-f:{(#3,RANGEDEL)}
 d#5,MERGE:bc
 .
 
@@ -437,11 +437,11 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
-b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL)}
-c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL)}
-d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL)}
-e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL)}
+c#inf,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL)}
+d#inf,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL)}
+e#inf,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 
 iter snapshots=2
@@ -452,11 +452,11 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
-b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL)}
-c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#1,RANGEDEL)}
-d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
-e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL)}
+c#inf,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#1,RANGEDEL)}
+d#inf,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
+e#inf,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 
 iter snapshots=3
@@ -467,11 +467,11 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
-b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
-c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
-d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL)}
-e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
+c#inf,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
+d#inf,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL)}
+e#inf,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 
 iter snapshots=(2,3)
@@ -482,11 +482,11 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
-b#72057594037927935,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
-c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
-d#72057594037927935,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
-e#72057594037927935,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-b:{(#3,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-c:{(#3,RANGEDEL) (#2,RANGEDEL)}
+c#inf,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+d#inf,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
+e#inf,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 
 define
@@ -500,7 +500,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-k:{(#10,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-k:{(#10,RANGEDEL)}
 f#9,SET:f
 f#8,SET:f
 
@@ -515,7 +515,7 @@ first
 next
 next
 ----
-f#72057594037927935,RANGEDEL:; Span() = f-k:{(#10,RANGEDEL)}
+f#inf,RANGEDEL:; Span() = f-k:{(#10,RANGEDEL)}
 f#9,SET:f
 f#8,SET:f
 
@@ -535,9 +535,9 @@ next
 next
 ----
 a#1,SET:a
-b#72057594037927935,RANGEDEL:; Span() = b-c:{(#2,RANGEDEL)}
-c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL)}
-d#72057594037927935,RANGEDEL:; Span() = d-e:{(#3,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-c:{(#2,RANGEDEL)}
+c#inf,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL)}
+d#inf,RANGEDEL:; Span() = d-e:{(#3,RANGEDEL)}
 d#4,SET:d
 .
 
@@ -550,9 +550,9 @@ next
 next
 ----
 a#1,SET:a
-b#72057594037927935,RANGEDEL:; Span() = b-c:{(#2,RANGEDEL)}
-c#72057594037927935,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
-d#72057594037927935,RANGEDEL:; Span() = d-e:{(#3,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-c:{(#2,RANGEDEL)}
+c#inf,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
+d#inf,RANGEDEL:; Span() = d-e:{(#3,RANGEDEL)}
 d#4,SET:d
 .
 
@@ -568,7 +568,7 @@ next
 next
 ----
 a#1,SET:a
-b#72057594037927935,RANGEDEL:; Span() = b-d:{(#2,RANGEDEL)}
+b#inf,RANGEDEL:; Span() = b-d:{(#2,RANGEDEL)}
 c#4,SET:d
 
 define
@@ -585,7 +585,7 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-d:{(#2,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-d:{(#2,RANGEDEL)}
 a#2,SET:a
 b#2,SET:b
 c#2,SET:c
@@ -905,7 +905,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-c:{(#2,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-c:{(#2,RANGEDEL)}
 a#3,SINGLEDEL:
 .
 
@@ -921,7 +921,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
 d#2,DEL:
 .
 
@@ -929,7 +929,7 @@ iter snapshots=3
 first
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-d:{(#3,RANGEDEL)}
 a#2,DEL:
 
 define
@@ -943,7 +943,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
 a#0,MERGE:v1v2
 .
 
@@ -1008,7 +1008,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#5,MERGE:5
 .
 
@@ -1017,7 +1017,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#0,MERGE:5
 .
 
@@ -1026,7 +1026,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#5,MERGE:5
 b#1,MERGE:1
 
@@ -1042,7 +1042,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#5,MERGE:5
 .
 
@@ -1051,7 +1051,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#5,MERGE:5
 b#1,MERGE:1
 
@@ -1177,7 +1177,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
 a#0,SET:c
 .
 
@@ -1187,7 +1187,7 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
 a#3,SET:c
 a#0,SET:b
 .
@@ -1198,7 +1198,7 @@ next
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
 a#3,SET:c
 a#1,DEL:
 .
@@ -1215,7 +1215,7 @@ first
 next
 next
 ----
-a#72057594037927935,RANGEDEL:; Span() = a-z:{(#3,RANGEDEL)}
+a#inf,RANGEDEL:; Span() = a-z:{(#3,RANGEDEL)}
 a#4,SET:c
 .
 

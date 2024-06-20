@@ -36,8 +36,8 @@ seek-ge d
 next
 next
 ----
-d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
-e#72057594037927935,RANGEDEL:
+d#inf,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+e#inf,RANGEDEL:
 f#5,SET:f
 
 iter
@@ -64,8 +64,8 @@ iter
 seek-prefix-ge d
 next
 ----
-d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
-d\x00#72057594037927935,RANGEDEL:
+d#inf,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+d\x00#inf,RANGEDEL:
 
 # Tests a sequence of SeekPrefixGE with monotonically increasing keys, some of
 # which are present and some not (so fail the bloom filter match). The seek to
@@ -82,8 +82,8 @@ seek-prefix-ge h
 ----
 .
 c#7,SET:c / d-e:{(#6,RANGEDEL)}
-d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
-cc\x00#72057594037927935,RANGEDEL:
+d#inf,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+cc\x00#inf,RANGEDEL:
 f#5,SET:f
 g#4,SET:g
 .
@@ -125,9 +125,9 @@ b#8,SET:b
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 c#7,SET:c
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-d#72057594037927935,RANGEDEL:
+d#inf,RANGEDEL:
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-e#72057594037927935,RANGEDEL:
+e#inf,RANGEDEL:
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 f#5,SET:f
 {BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
@@ -155,10 +155,10 @@ prev
 prev
 ----
 f#5,SET:f / d-e:{(#6,RANGEDEL)}
-e#72057594037927935,RANGEDEL:
+e#inf,RANGEDEL:
 f#5,SET:f
-e#72057594037927935,RANGEDEL:
-d#72057594037927935,RANGEDEL:
+e#inf,RANGEDEL:
+d#inf,RANGEDEL:
 .
 
 # Verify that First() in the presence of an upper-bound pauses at the
@@ -177,7 +177,7 @@ iter
 set-bounds upper=f
 first
 ----
-d#72057594037927935,RANGEDEL:
+d#inf,RANGEDEL:
 
 # Verify that Last() in the presence of a lower-bound pauses at the
 # last range deletion's end key.
@@ -189,7 +189,7 @@ build
 c.SET.7:c
 d.RANGEDEL.6:e
 ----
-0: c#7,SET-e#72057594037927935,RANGEDEL
+0: c#7,SET-e#inf,RANGEDEL
 
 iter
 set-bounds lower=c
@@ -197,8 +197,8 @@ last
 prev
 prev
 ----
-e#72057594037927935,RANGEDEL:
-d#72057594037927935,RANGEDEL:
+e#inf,RANGEDEL:
+d#inf,RANGEDEL:
 c#7,SET:c
 
 # Verify that a seek to a file with range tombstones as boundaries pauses on
@@ -212,13 +212,13 @@ a.RANGEDEL.5:b
 c.SET.7:c
 d.RANGEDEL.6:e
 ----
-0: a#5,RANGEDEL-e#72057594037927935,RANGEDEL
+0: a#5,RANGEDEL-e#inf,RANGEDEL
 
 build
 f.SET.8:f
 g.SET.9:g
 ----
-0: a#5,RANGEDEL-e#72057594037927935,RANGEDEL
+0: a#5,RANGEDEL-e#inf,RANGEDEL
 1: f#8,SET-g#9,SET
 
 iter
@@ -228,10 +228,10 @@ next
 next
 next
 ----
-d#72057594037927935,RANGEDEL: / d-e:{(#6,RANGEDEL)}
+d#inf,RANGEDEL: / d-e:{(#6,RANGEDEL)}
 c#7,SET:c
-d#72057594037927935,RANGEDEL:
-e#72057594037927935,RANGEDEL:
+d#inf,RANGEDEL:
+e#inf,RANGEDEL:
 f#8,SET:f
 
 iter
@@ -241,10 +241,10 @@ prev
 prev
 prev
 ----
-b#72057594037927935,RANGEDEL: / a-b:{(#5,RANGEDEL)}
+b#inf,RANGEDEL: / a-b:{(#5,RANGEDEL)}
 c#7,SET:c
-b#72057594037927935,RANGEDEL:
-a#72057594037927935,RANGEDEL:
+b#inf,RANGEDEL:
+a#inf,RANGEDEL:
 .
 
 # Verify that prev when positioned at the start bound of the first range
@@ -258,7 +258,7 @@ a.SET.1:a
 b.SET.1:b
 d.RANGEDEL.2:e
 ----
-0: a#1,SET-e#72057594037927935,RANGEDEL
+0: a#1,SET-e#inf,RANGEDEL
 
 iter
 seek-lt c
@@ -266,7 +266,7 @@ seek-ge d
 prev
 ----
 b#1,SET:b
-d#72057594037927935,RANGEDEL: / d-e:{(#2,RANGEDEL)}
+d#inf,RANGEDEL: / d-e:{(#2,RANGEDEL)}
 b#1,SET:b
 
 # Verify that next when positioned at the start boundary of the first range
@@ -288,7 +288,7 @@ seek-lt d
 next
 ----
 d#2,SET:d
-b#72057594037927935,RANGEDEL: / a-b:{(#1,RANGEDEL)}
+b#inf,RANGEDEL: / a-b:{(#1,RANGEDEL)}
 d#2,SET:d
 
 # Verify SeekPrefixGE correctness with trySeekUsingNext=true
@@ -300,7 +300,7 @@ a.SET.1:a
 b.SET.2:b
 c.RANGEDEL.4:e
 ----
-0: a#1,SET-e#72057594037927935,RANGEDEL
+0: a#1,SET-e#inf,RANGEDEL
 
 build
 e.SET.4:e
@@ -309,21 +309,21 @@ f.SET.4:f
 g.SET.6:g
 h.SINGLEDEL.7:
 ----
-0: a#1,SET-e#72057594037927935,RANGEDEL
+0: a#1,SET-e#inf,RANGEDEL
 1: e#4,SET-h#7,SINGLEDEL
 
 build
 h.SET.6:h
 i.SET.6:i
 ----
-0: a#1,SET-e#72057594037927935,RANGEDEL
+0: a#1,SET-e#inf,RANGEDEL
 1: e#4,SET-h#7,SINGLEDEL
 2: h#6,SET-i#6,SET
 
 build
 j.SET.7:j
 ----
-0: a#1,SET-e#72057594037927935,RANGEDEL
+0: a#1,SET-e#inf,RANGEDEL
 1: e#4,SET-h#7,SINGLEDEL
 2: h#6,SET-i#6,SET
 3: j#7,SET-j#7,SET
@@ -345,9 +345,9 @@ seek-prefix-ge j true
 a#1,SET:a / c-e:{(#4,RANGEDEL)}
 a#1,SET:a / c-e:{(#4,RANGEDEL)}
 b#2,SET:b / c-e:{(#4,RANGEDEL)}
-c#72057594037927935,RANGEDEL:
-c#72057594037927935,RANGEDEL: / c-e:{(#4,RANGEDEL)}
-d#72057594037927935,RANGEDEL: / c-e:{(#4,RANGEDEL)}
+c#inf,RANGEDEL:
+c#inf,RANGEDEL: / c-e:{(#4,RANGEDEL)}
+d#inf,RANGEDEL: / c-e:{(#4,RANGEDEL)}
 f#5,SINGLEDEL:
 g#6,SET:g
 h#7,SINGLEDEL:
@@ -390,7 +390,7 @@ g.RANGEKEYDEL.6:h
 ----
 0: a#9,SET-b#8,SET
 1: c#7,SET-f#5,SET
-2: g#6,RANGEKEYDEL-h#72057594037927935,RANGEKEYDEL
+2: g#6,RANGEKEYDEL-h#inf,RANGEKEYDEL
 
 build
 i.SET.4:i
@@ -398,7 +398,7 @@ j.SET.3:j
 ----
 0: a#9,SET-b#8,SET
 1: c#7,SET-f#5,SET
-2: g#6,RANGEKEYDEL-h#72057594037927935,RANGEKEYDEL
+2: g#6,RANGEKEYDEL-h#inf,RANGEKEYDEL
 3: i#4,SET-j#3,SET
 
 iter

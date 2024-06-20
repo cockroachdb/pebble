@@ -216,7 +216,7 @@ rangekey: a-b:{(#1,RANGEKEYSET,_xyz)}
 rangekey: b-c:{(#1,RANGEKEYSET,_xyz)}
 rangekey: c-d:{(#1,RANGEKEYSET,_xyz)}
 ----
-rangekey: [a#1,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
+rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 seqnums:  [1-1]
 
 scan-range-key
@@ -227,7 +227,7 @@ c-d:{(#1,RANGEKEYSET,_xyz)}
 
 rewrite from=_xyz to=_123 block-size=1 index-block-size=1 filter comparer-split-4b-suffix
 ----
-rangekey: [a#1,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
+rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 seqnums:  [1-1]
 
 scan-range-key

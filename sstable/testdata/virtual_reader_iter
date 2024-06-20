@@ -37,8 +37,8 @@ g.RANGEDEL.5:l
 rangekey: y-z:{(#12,RANGEKEYSET,@t11,foo)}
 ----
 point:    [a#1,SET-f#3,SET]
-rangedel: [d#4,RANGEDEL-l#72057594037927935,RANGEDEL]
-rangekey: [a#11,RANGEKEYSET-z#72057594037927935,RANGEKEYSET]
+rangedel: [d#4,RANGEDEL-l#inf,RANGEDEL]
+rangekey: [a#11,RANGEKEYSET-z#inf,RANGEKEYSET]
 seqnums:  [1-12]
 
 # Note that we shouldn't have range del spans which cross virtual sstable
@@ -498,12 +498,12 @@ d.RANGEDEL.4:e
 f.SET.5:f
 ----
 point:    [a#1,SET-f#5,SET]
-rangedel: [d#4,RANGEDEL-e#72057594037927935,RANGEDEL]
+rangedel: [d#4,RANGEDEL-e#inf,RANGEDEL]
 seqnums:  [1-5]
 
 virtualize lower=a.SET.1 upper=e.RANGEDEL.72057594037927935
 ----
-bounds:  [a#1,SET-e#72057594037927935,RANGEDEL]
+bounds:  [a#1,SET-e#inf,RANGEDEL]
 
 iter
 first
@@ -535,12 +535,12 @@ d.RANGEDEL.4:e
 f.SET.5:f
 ----
 point:    [a#1,SET-f#5,SET]
-rangedel: [d#4,RANGEDEL-e#72057594037927935,RANGEDEL]
+rangedel: [d#4,RANGEDEL-e#inf,RANGEDEL]
 seqnums:  [1-5]
 
 virtualize lower=a.SET.1 upper=e.RANGEDEL.72057594037927935
 ----
-bounds:  [a#1,SET-e#72057594037927935,RANGEDEL]
+bounds:  [a#1,SET-e#inf,RANGEDEL]
 
 iter
 first
@@ -575,8 +575,8 @@ g.RANGEDEL.5:l
 rangekey: y-z:{(#12,RANGEKEYSET,@t11,foo)}
 ----
 point:    [a#1,SET-f#3,SET]
-rangedel: [d#4,RANGEDEL-l#72057594037927935,RANGEDEL]
-rangekey: [a#11,RANGEKEYSET-z#72057594037927935,RANGEKEYSET]
+rangedel: [d#4,RANGEDEL-l#inf,RANGEDEL]
+rangekey: [a#11,RANGEKEYSET-z#inf,RANGEKEYSET]
 seqnums:  [1-12]
 
 # Virtual sstable doesn't contain range key set, but NumRangeKeySets in the

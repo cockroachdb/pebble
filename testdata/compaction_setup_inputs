@@ -17,7 +17,7 @@ L1
   b.SET.1-c.SET.2
 ----
 L1
-  000001:[a#1,SET-b#72057594037927935,RANGEDEL]
+  000001:[a#1,SET-b#inf,RANGEDEL]
 
 # Verify we expand the output level inputs to a clean cut.
 setup-inputs a a
@@ -30,7 +30,7 @@ L2
 L1
   000001:[a#5,SET-b#6,SET]
 L2
-  000002:[a#3,SET-c#72057594037927935,RANGEDEL]
+  000002:[a#3,SET-c#inf,RANGEDEL]
 
 # Verify we grow the start level inputs to include all sstables which
 # lie within the output level bounds.

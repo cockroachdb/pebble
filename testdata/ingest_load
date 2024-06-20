@@ -60,24 +60,24 @@ b.MERGE.0:
 load
 a.RANGEDEL.0:b
 ----
-1: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
-  points: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
+1: a#0,RANGEDEL-b#inf,RANGEDEL
+  points: a#0,RANGEDEL-b#inf,RANGEDEL
   ranges: #0,DEL-#0,DEL
 
 load
 a.SET.0:
 a.RANGEDEL.0:b
 ----
-1: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
-  points: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
+1: a#0,RANGEDEL-b#inf,RANGEDEL
+  points: a#0,RANGEDEL-b#inf,RANGEDEL
   ranges: #0,DEL-#0,DEL
 
 load
 a.SET.0:
 a.RANGEDEL.0:b
 ----
-1: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
-  points: a#0,RANGEDEL-b#72057594037927935,RANGEDEL
+1: a#0,RANGEDEL-b#inf,RANGEDEL
+  points: a#0,RANGEDEL-b#inf,RANGEDEL
   ranges: #0,DEL-#0,DEL
 
 load
@@ -100,9 +100,9 @@ pebble: table format (Pebble,v4) is not within range supported at DB format majo
 load writer-version=16 db-version=16
 rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
-1: a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
+1: a#0,RANGEKEYSET-z#inf,RANGEKEYSET
   points: #0,DEL-#0,DEL
-  ranges: a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
+  ranges: a#0,RANGEKEYSET-z#inf,RANGEKEYSET
 
 # Tables with a mixture of point and range keys.
 
@@ -114,25 +114,25 @@ rangekey: w-x:{(#0,RANGEKEYSET,@1,foo)}
 rangekey: x-y:{(#0,RANGEKEYSET,@2,bar)}
 rangekey: y-z:{(#0,RANGEKEYSET,@3,baz)}
 ----
-1: a#0,SET-z#72057594037927935,RANGEKEYSET
+1: a#0,SET-z#inf,RANGEKEYSET
   points: a#0,SET-c#0,SET
-  ranges: w#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
+  ranges: w#0,RANGEKEYSET-z#inf,RANGEKEYSET
 
 load writer-version=16 db-version=16
 c.SET.0:d
 rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
-1: a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
+1: a#0,RANGEKEYSET-z#inf,RANGEKEYSET
   points: c#0,SET-c#0,SET
-  ranges: a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
+  ranges: a#0,RANGEKEYSET-z#inf,RANGEKEYSET
 
 load writer-version=16 db-version=16
 a.SET.0:z
 rangekey: c-d:{(#0,RANGEKEYSET,@1,foo)}
 ----
-1: a#0,SET-d#72057594037927935,RANGEKEYSET
+1: a#0,SET-d#inf,RANGEKEYSET
   points: a#0,SET-a#0,SET
-  ranges: c#0,RANGEKEYSET-d#72057594037927935,RANGEKEYSET
+  ranges: c#0,RANGEKEYSET-d#inf,RANGEKEYSET
 
 # NB: range dels sort before range keys
 
@@ -140,9 +140,9 @@ load writer-version=16 db-version=16
 a.RANGEDEL.0:z
 rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
-1: a#0,RANGEKEYSET-z#72057594037927935,RANGEDEL
-  points: a#0,RANGEDEL-z#72057594037927935,RANGEDEL
-  ranges: a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET
+1: a#0,RANGEKEYSET-z#inf,RANGEDEL
+  points: a#0,RANGEDEL-z#inf,RANGEDEL
+  ranges: a#0,RANGEKEYSET-z#inf,RANGEKEYSET
 
 # Loading tables at an unsupported table format results in an error.
 

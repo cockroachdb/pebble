@@ -23,13 +23,13 @@ table-props
 
 block-props
 ----
-c#72057594037927935,SEPARATOR:
+c#inf,SEPARATOR:
   0: [2, 6)
-e#72057594037927935,SEPARATOR:
+e#inf,SEPARATOR:
   0: [3, 10)
-g#72057594037927935,SEPARATOR:
+g#inf,SEPARATOR:
   0: [0, 3)
-i#72057594037927935,SEPARATOR:
+i#inf,SEPARATOR:
   0: [3, 9)
 
 # Test an interator with a bound-limited filter that has a filtering criteria

@@ -459,6 +459,9 @@ func (k *InternalKey) CopyFrom(k2 InternalKey) {
 
 // String returns a string representation of the key.
 func (k InternalKey) String() string {
+	if k.SeqNum() == InternalKeySeqNumMax {
+		return fmt.Sprintf("%s#inf,%s", FormatBytes(k.UserKey), k.Kind())
+	}
 	return fmt.Sprintf("%s#%d,%s", FormatBytes(k.UserKey), k.SeqNum(), k.Kind())
 }
 
